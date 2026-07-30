@@ -131,8 +131,50 @@ Standard positioning formula:
 - Stelladaptor / 2600-daptor for real controller input
 - Use `stella rom.bin` to run
 - Debugger: `stella -debug rom.bin`
-- Cheat codes, state saves, and frame advance available in debugger
-- In-game: Alt+Enter for fullscreen, ` (backtick) for debugger
+- In-game: Press ` (backtick) to enter debugger; Alt+Enter for fullscreen
+
+### Stella Debugger Commands
+Once in the debugger (backtick or -debug flag):
+
+**Execution control:**
+- `run` — resume emulation
+- `frame` — advance one full frame (262 scanlines)
+- `scanline N` — advance to scanline N
+- `step` / `s` — step one CPU instruction
+- `trace` / `t` — step and print state
+- `exit` — quit Stella
+
+**Breakpoints:**
+- `break $F100` — set breakpoint at address $F100
+- `breakset` / `bp N` — list breakpoints
+- `breakclear N` — clear breakpoint N
+- `clearbreaks` — clear all breakpoints
+- `breakif {condition}` — conditional breakpoint (e.g. `breakif {a == 3}`)
+
+**State examination:**
+- `pc` — show program counter
+- `a` / `x` / `y` / `s` — show accumulator, X, Y, stack pointer
+- `c` / `z` / `n` / `v` / `d` / `i` — show individual flags
+- `memory [addr]` — read memory at addr (e.g. `memory $F100`)
+- `memory [addr] [value]` — write value to memory
+- `ram` — dump zero-page RAM ($80-$FF)
+- `tia` — show all TIA register values
+- `riot` — show RIOT timer/IO state
+
+**Display:**
+- `scanline` — show current scanline count
+- `cycles` — show CPU cycles this frame
+- `video` — toggle per-scanline TIA state dump
+
+**Useful watch expressions for breakif:**
+- `{_scan==50 && _cyc==0}` — break at start of scanline 50
+- `{_cyc>68 && _cyc<76}` — break during HBLANK
+- `{peek(0x81) == 100}` — break when playerY ($81) equals 100
+- `{peek(0x80) != 78}` — break when playerX ($80) changes from default
+
+**ROM header analysis:**
+- `rom` — dump ROM info (bankswitch type, etc.)
+- `rom` flags to verify: `bankswitch F6`, `startBank 3`
 
 ## Build Process
 ```bash
