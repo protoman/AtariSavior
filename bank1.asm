@@ -4,9 +4,12 @@
     ORG $F000
 
 ; Bank 1 - spare data bank
-; Graphics and level data can go here later
-    .byte 0
+; If CPU boots here (bankrandom), switch to bank 3 and restart
+StartBank1:
+    sta BANK3
+    jmp $F010           ; trampoline in bank 3
 
 ; Pad to fill 4K
-    ORG $FFFE
-    .byte $FF, $FF
+    ORG $FFFC
+    .word StartBank1
+    .word StartBank1

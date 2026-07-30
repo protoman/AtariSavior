@@ -197,6 +197,7 @@ MainLoop:
 .PosDone:
 
 ; Position player horizontally
+    sta WSYNC       ; align to scanline start BEFORE PosPlayer
     lda playerX
     jsr PosPlayer
 
@@ -273,7 +274,6 @@ MainLoop:
 ; Player positioning subroutine
 PosPlayer:
     sec
-    sta WSYNC
 .DivLoop:
     sbc #15
     bcs .DivLoop
@@ -297,6 +297,7 @@ PlayerSprite:
     .byte %00111100
     .byte %00000000
 
-; Pad to fill 4K
-    ORG $FFFE
-    .byte $FF, $FF
+; Pad to fill 4K  
+    ORG $FFFC
+    .word Init
+    .word Init
