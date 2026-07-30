@@ -4,7 +4,6 @@
     ORG $F000
 
 ; Zero-page variables
-  .align $80
 playerX     = $80
 playerY     = $81
 playerYSub  = $82
@@ -14,12 +13,15 @@ jetPower    = $85
 scanline    = $86
 temp        = $87
 
-Start:
+; Matching header for bank 3 startup (must be identical bytes at $F000-$F009)
     sei
     cld
     ldx #$FF
     txs
+    sta BANK0       ; safe no-op when already in bank 0
+    jmp Init
 
+Init:
     lda #0
     ldx #$2D
 .ClearTIA:
@@ -56,7 +58,6 @@ Start:
 
     lda #$01
     sta CTRLPF
-
     lda #$00
     sta NUSIZ0
 
@@ -80,42 +81,16 @@ MainLoop:
     lda #43
     sta TIM64T
 
-; Read joystick 0 (bits 4-7 of SWCHA)
+; Read joystick 0 (bits 4-7 of SWCHA: bit4=up, bit5=down, bit6=left, bit7=right; 0=pressed)
     lda SWCHA
     lsr
     lsr
     lsr
-    lsr
-    sta temp
+    lsr             ; A = %0000RLDU (bit3=right, bit2=left, bit1=down, bit0=up)
 
-; Right (bit 0 active low)
-    bit temp
-    bvc .NotRight
-    inc playerX
-    lda playerX
-    cmp #152
-    bcc .NotRight
-    lda #152
-    sta playerX
-.NotRight:
-
-; Left (bit 1 active low)
-    lsr
-    bcs .NotLeft
-    dec playerX
-    lda playerX
-    cmp #4
-    bcs .NotLeft
-    lda #4
-    sta playerX
-.NotLeft:
-
-; Down (bit 2)
-    lsr
-
-; Up (bit 3 active low) - jet thrust with inertia
-    lsr
-    bcs .NoJet
+; Check Up (bit 0) - jet thrust
+    lsr             ; carry = up (since bit0 shifted out)
+    bcs .NoJet      ; carry=1 means up NOT pressed (active low)
 
     lda jetPower
     clc
@@ -125,7 +100,7 @@ MainLoop:
     lda #$20
 .SetJet:
     sta jetPower
-    jmp .JetDone
+    jmp .AfterUp
 
 .NoJet:
     lda jetPower
@@ -136,7 +111,33 @@ MainLoop:
 .SetJet2:
     sta jetPower
 
-.JetDone:
+.AfterUp:
+; Check Down (bit 1) - advance LSR, not used directly (gravity handles it)
+    lsr             ; carry = down
+    ; not used
+
+; Check Left (bit 2) - move left
+    lsr             ; carry = left
+    bcs .NotLeft
+    dec playerX
+    lda playerX
+    cmp #4
+    bcs .NotLeft
+    lda #4
+    sta playerX
+.NotLeft:
+
+; Check Right (bit 3) - move right
+    lsr             ; carry = right
+    bcs .NotRight
+    inc playerX
+    lda playerX
+    cmp #152
+    bcc .NotRight
+    lda #152
+    sta playerX
+.NotRight:
+
 ; Gravity: vy += $0010 per frame
     lda vyLo
     clc
@@ -146,7 +147,7 @@ MainLoop:
     adc #$00
     sta vyHi
 
-; Jet: vy -= jetPower (upward)
+; Jet: vy -= jetPower (upward thrust)
     lda vyLo
     sec
     sbc jetPower
@@ -175,7 +176,7 @@ MainLoop:
     adc vyHi
     sta playerY
 
-; Clamp Y
+; Clamp Y within playfield border
     lda playerY
     cmp #8
     bcs .CheckBottom
@@ -204,22 +205,20 @@ MainLoop:
     lda INTIM
     bne .WaitVBlank
 
-; Last VBLANK scanline - apply HMOVE, turn off VBLANK
     sta WSYNC
-    sta HMOVE
     lda #0
     sta VBLANK
 
 ; KERNEL - 192 visible scanlines
     ldx #0
-.Kernel:
+.KernelLoop:
     sta WSYNC
 
     txa
     cmp #8
-    bcc .Solid
+    bcc .SolidBorder
     cmp #184
-    bcs .Solid
+    bcs .SolidBorder
 
     lda #$F0
     sta PF0
@@ -228,7 +227,7 @@ MainLoop:
     sta PF2
     jmp .DrawPlayer
 
-.Solid:
+.SolidBorder:
     lda #$F0
     sta PF0
     lda #$FF
@@ -251,7 +250,7 @@ MainLoop:
 .Next:
     inx
     cpx #192
-    bcc .Kernel
+    bcc .KernelLoop
 
 ; OVERSCAN
     lda #%01000010
@@ -265,11 +264,9 @@ MainLoop:
     lda INTIM
     bne .WaitOverscan
 
-    lda #0
-    sta VBLANK
-
     jmp MainLoop
 
+; Player positioning subroutine
 PosPlayer:
     sec
     sta WSYNC
@@ -283,8 +280,10 @@ PosPlayer:
     asl
     sta HMP0
     sta RESP0
+    sta HMOVE       ; Apply horizontal motion while still blanked
     rts
 
+; Player sprite data (8 pixels wide, 8 pixels tall)
 PlayerSprite:
     .byte %00111100
     .byte %01111110
@@ -294,3 +293,7 @@ PlayerSprite:
     .byte %01111110
     .byte %00111100
     .byte %00000000
+
+; Pad to fill 4K
+    ORG $FFFE
+    .byte $FF, $FF

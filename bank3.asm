@@ -3,47 +3,20 @@
 
     ORG $F000
 
-; Bank 3 - Reset vectors and startup
-; Power-on starts here (bank 3 selected by default)
+; Bank 3 - startup + reset vectors
+; Selected by default at power-on
 
 Startup:
     sei
     cld
     ldx #$FF
     txs
-
-    lda #0
-    ldx #$2D
-.InitTIA:
-    sta 0,x
-    dex
-    bpl .InitTIA
-
-    ldx #$7F
-.InitRAM:
-    sta $80,x
-    dex
-    bpl .InitRAM
-
-    lda #78
-    sta $80
-    lda #80
-    sta $81
-
-    lda #$1E
-    sta COLUPF
-    lda #$00
-    sta COLUBK
-    lda #$9C
-    sta COLUP0
-    lda #$01
-    sta CTRLPF
-
-    lda #$1FF6 & $FF
     sta BANK0
+; After sta BANK0, bank 0 is selected
+; CPU continues fetching from bank 0 at the same address
+; Bank 0 must have matching code at this address
 
-    jmp $F000
-
+; Pad to $FFFC for vectors  
     ORG $FFFC
     .word Startup
     .word Startup
