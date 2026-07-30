@@ -56,9 +56,8 @@ Init:
     sta RESMP0
     sta RESMP1
 
-    lda #$01
-    sta CTRLPF
     lda #$00
+    sta CTRLPF
     sta NUSIZ0
 
     sta HMCLR
@@ -66,6 +65,7 @@ Init:
 MainLoop:
 
 ; VSYNC - 3 scanlines
+    sta WSYNC           ; align to start of scanline
     lda #%00000010
     sta VSYNC
     sta WSYNC
@@ -205,15 +205,19 @@ MainLoop:
     lda INTIM
     bne .WaitVBlank
 
+; Enter kernel - first visible scanline
     sta WSYNC
+    sta HMOVE
     lda #0
     sta VBLANK
 
-; KERNEL - 192 visible scanlines
     ldx #0
+    jmp .KernelBody
+
 .KernelLoop:
     sta WSYNC
 
+.KernelBody:
     txa
     cmp #8
     bcc .SolidBorder
@@ -280,7 +284,6 @@ PosPlayer:
     asl
     sta HMP0
     sta RESP0
-    sta HMOVE       ; Apply horizontal motion while still blanked
     rts
 
 ; Player sprite data (8 pixels wide, 8 pixels tall)
