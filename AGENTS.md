@@ -152,14 +152,15 @@ Once in the debugger (backtick or -debug flag):
 - `breakif {condition}` — conditional breakpoint (e.g. `breakif {a == 3}`)
 
 **State examination:**
-- `pc` — show program counter
-- `a` / `x` / `y` / `s` — show accumulator, X, Y, stack pointer
-- `c` / `z` / `n` / `v` / `d` / `i` — show individual flags
-- `memory [addr]` — read memory at addr (e.g. `memory $F100`)
-- `memory [addr] [value]` — write value to memory
-- `ram` — dump zero-page RAM ($80-$FF)
+- `print <expr>` — evaluate/print an expression (hex/dec/bin). To read a memory
+  address, dereference with `*` (e.g. `print *$81` reads the byte at playerY).
+  Note: `print $81` prints the literal value `$81`, NOT memory. There is no
+  `peek`/`memory`/`poke` command in Stella 7.0.
+- `ram` — dump zero-page RAM ($80-$FF); `ram <addr> <val>` writes a value
 - `tia` — show all TIA register values
 - `riot` — show RIOT timer/IO state
+- `pc` / `a` / `x` / `y` / `s` — show program counter / registers
+- `c` / `z` / `n` / `v` / `d` / `i` — show individual CPU flags
 
 **Display:**
 - `scanline` — show current scanline count
@@ -194,6 +195,13 @@ cat bank0.bin bank1.bin bank2.bin bank3.bin > rom.bin
 - JMP/JSR use absolute addresses - careful with bankswitching (use far calls)
 - When switching banks, the calling bank's code becomes inaccessible; use trampolines for inter-bank calls
 - WSYNC at start of each scanline loop iteration to keep stable timing
+- GRP0 (and PFx) must be written during HBLANK (color clocks 0-68), BEFORE the
+  visible portion starts at color clock 68. Writing GRP0 late (during the visible
+  portion) causes partial/glitched sprite rendering (e.g. only ~60% of the sprite
+  shows and it flickers). To fit GRP0 + playfield in HBLANK, PRE-COMPUTE the
+  sprite byte for scanline N+1 during scanline N and store it in a variable, then
+  `lda var` / `sta GRP0` at the top of the next scanline. 1 CPU cycle = 3 color
+  clocks.
 
 ## Game Loop Structure
 ```
