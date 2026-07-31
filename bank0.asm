@@ -10,7 +10,7 @@ playerYSub  = $82
 vyLo        = $83
 vyHi        = $84
 jetPower    = $85
-scanline    = $86
+nextGRP     = $86
 temp        = $87
 
 ; Matching header for bank 3 startup (must be identical bytes at $F000-$F009)
@@ -212,50 +212,68 @@ MainLoop:
     lda #0
     sta VBLANK
 
-    ldx #0
-    jmp .KernelBody
-
-.KernelLoop:
-    sta WSYNC
-
-.KernelBody:
-    txa
-    cmp #8
-    bcc .SolidBorder
-    cmp #184
-    bcs .SolidBorder
-
-    lda #$F0
-    sta PF0
-    lda #$00
-    sta PF1
-    sta PF2
-    jmp .DrawPlayer
-
-.SolidBorder:
+    ; Set up playfield for top border (rows 0-7). PF0 stays $F0 (side
+    ; borders) for all rows; only PF1/PF2 change at the border/center
+    ; transitions (rows 8 and 184).
     lda #$F0
     sta PF0
     lda #$FF
     sta PF1
     sta PF2
 
-.DrawPlayer:
+    ; Precompute GRP0 for scanline 0 (always blank, player Y >= 8)
+    lda #0
+    sta nextGRP
+
+    ldx #0
+    jmp .KernelBody
+
+.KernelLoop:
+    sta WSYNC
+
+; Write GRP0 early (during HBLANK) so the sprite renders cleanly.
+; The value was precomputed during the previous scanline.
+.KernelBody:
+    lda nextGRP
+    sta GRP0
+
+    ; Set playfield for this scanline at border/center transitions
     txa
+    cmp #8
+    bne .ChkBottom
+    lda #$00
+    sta PF1
+    sta PF2
+    jmp .ComputeNext
+.ChkBottom:
+    cmp #184
+    bne .ComputeNext
+    lda #$FF
+    sta PF1
+    sta PF2
+
+; Precompute GRP0 for the NEXT scanline (X+1)
+.ComputeNext:
+    txa
+    clc
+    adc #1
     sec
     sbc playerY
     cmp #8
-    bcs .Blank
+    bcs .BlankNext
     tay
     lda PlayerSprite,y
-    sta GRP0
+    sta nextGRP
     jmp .Next
-.Blank:
+.BlankNext:
     lda #0
-    sta GRP0
+    sta nextGRP
 .Next:
     inx
     cpx #192
     bcc .KernelLoop
+
+.KernelDone:
 
 ; OVERSCAN
     lda #%01000010
