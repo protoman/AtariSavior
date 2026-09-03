@@ -1,0 +1,639 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="ie6 oldie"> <![endif]-->
+<!--[if IE 7]>    <html class="ie7 oldie"> <![endif]-->
+<!--[if IE 8]>    <html class="ie8 oldie"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en">
+<!--<![endif]-->
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-23W5RPE0Q4"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 16: Letting the Assembler do the Work</title>
+
+<link href="styles/fluid.css" rel="stylesheet" type="text/css">
+<link href="styles/fluid.css?id=54321" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css?id=1234567" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-16.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 16: Letting the Assembler do the Work">
+<meta name="description" content="Session 16: Letting the Assembler do the Work">
+<meta name="twitter:description" content="Session 16: Letting the Assembler do the Work">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="styles/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="index.html">Home</a> &gt; <a class="offsite" href="atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="atari-2600-memories.html#assembly_language">&#35;Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 16: Letting the Assembler do the Work</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="#symbols">Symbols</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#variables">Variables</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#_byte">.byte</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#ds">ds (Define Space)</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#seg_u">SEG.U</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#variable_overlays">Variable Overlays</a></p>
+<p class="tocsub" style="margin-left:54px;"><a href="#stella_list_posting">Stella List Posting</a></p>
+<p class="tocsec"><a href="#summary">Summary</a></p>
+<p class="tocsec"><a href="#session_links">Session Links</a></p>
+<p class="tocsec"><a href="#useful_links">Useful Links</a></p>
+</div>
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/28699-session-16-letting-the-assembler-do-the-work/">Original Session 16 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>This session we&#39;re going to have a brief look at how DASM (our assembler) builds up the binary ROM file, and how we can use DASM to help us organize our RAM.</p>
+<p>&nbsp;</p>
+<p>As we&#39;ve discovered, DASM keeps a list of all symbols and as it is assembling our code, it assigns values (= numbers, or addresses) to those symbols. When it is creating the binary ROM image, it replaces opcodes (=instructions) with appropriate values representing the opcode, and it replaces symbols with the value of the symbol from its internal symbol table.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="symbols">&nbsp;</div>
+<p class="bbmain"><a href="#symbols">Symbols</a></p>
+<p>OK, that basic process should be clear by now. When we view our symbol table (which is output when we use the -v5 switch on our command-line when assembling a file), we will see that there are some symbols which are unused (the used ones have (R ) after them, in the symbol table output). We can see, then, that it is not necessary for a symbol to actually be in the ROM binary file for it to have a value. There are several reasons why we&#39;d want to have a symbol with a value, but not have that symbol &quot;do anything&quot; or relate to anything in the binary.</p>
+<p>&nbsp;</p>
+<p>For example, we could use a symbol as a switch to tell the compiler which section of code to compile. A symbol could be used as a value to tell us how many scanlines to draw&hellip;  eg:</p>
+<pre class="bbborder">
+
+SCANLINES = 312; PAL
+
+
+
+
+
+
+;...later
+
+
+
+    iny
+
+    cpy #SCANLINES   ; at the end?
+
+    bne AnotherLine     ; do another line
+
+</pre>
+<p>We can even implement a compile-time PAL/NTSC switch something like this&hellip;</p>
+<pre class="bbborder">
+
+PAL = 0
+
+NTSC = 1
+
+
+
+SYSTEM = PAL   ; change this to PAL or NTSC
+
+
+
+
+
+#if SYSTEM = PAL
+
+   ; insert PAL-only code here
+
+#endif
+
+
+
+#if SYSTEM = NTSC
+
+   ; insert NTSC-only code here
+
+#endif
+
+</pre>
+<p>This sort of use of symbols to drive the DASM assembly process can be quite useful when you want various sections of code to behave differently<span style="padding-left:2px; padding-right:2px;">&mdash;</span>for whatever reason. You might have a test bit of code which you can conditionally compile by defining a symbol as in the above example.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="variables">&nbsp;</div>
+<p class="bbsecondary"><a href="#variables">Variables</a></p>
+<p>Now that we&#39;re comfortable with DASM&#39;s use of symbols as part of the compilation process, let&#39;s have a look at how we&#39;ve been managing our RAM so far&hellip;</p>
+<pre class="bbborder">
+
+VARIABLE = $80  ; variable using the 1st byte of RAM
+
+VAR2 = $81      ; another variable using the 2nd byte of RAM 
+
+VAR3 = $82      ; etc
+
+</pre>
+<p>That&#39;s perfectly fine<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and as we already know, lines like this will add the symbols to DASM&#39;s internal symbol table, and whenever DASM sees those symbols it will instead use the associated value. Consider the following example&hellip;</p>
+<pre class="bbborder">
+
+VARIABLE = $80  ; variable using 1st TWO bytes of RAM
+
+VAR2 = $82      ; another variable must start after the
+                ; 1st variable&#39;s space
+
+</pre>
+<p>In this case we&#39;ve created a 2-byte variable starting at the beginning of RAM. So the second variable has to start at $82 instead of $81<span style="padding-left:2px; padding-right:2px;">&mdash;</span>because the first variable requires locations $80 and $81. The above will work fine<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but there&#39;s no clear correspondence between the variable declaration (which is really just assigning a number/address to a symbol) and the amount of space required for the variable. Furthermore, if we later decided that we really needed 4 bytes (instead of 2) for VARIABLE, then we&#39;d have to &#39;shift down&#39; all following variables<span style="padding-left:2px; padding-right:2px;">&mdash;</span>that is, VAR2 would have to be changed to $84, etc.. This is not only extremely annoying and time-consuming, it is a disaster waiting to happen<span style="padding-left:2px; padding-right:2px;">&mdash;</span>because you humans are fallible.</p>
+<p>&nbsp;</p>
+<p>What we really want to do is let DASM manage the calculation of the variable/symbol addresses, and simply say &quot;here&#39;s a variable, and it&#39;s this big&quot;. And fortunately, we can do that.</p>
+<p>&nbsp;</p>
+<p>First, let&#39;s consider &#39;normal code&#39;</p>
+<pre class="bbborder">
+
+    ORG $8000
+
+LABEL1    .byte 1,34,12,3
+
+LABEL2    .byte 0
+
+</pre>
+<p>When assembled, DASM will assign $8000 as the value of the symbol LABEL1, and $8004 as the value of the symbol LABEL2 (that is, it assembles the code, and starting at location $8000 (which is also the value of LABEL1) we will see 4 bytes (1, 34, 12, 3) and then another byte (0) which is at $8004<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the value of the symbol LABEL2.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="_byte">&nbsp;</div>
+<p class="bbtertiary"><a href="#_byte">.byte</a></p>
+<p>Note, the &#39;.byte&#39; instruction (actually it&#39;s called a pseudo-op, as it&#39;s an instruction to the assembler, not an actual 6502 instruction) is just a way of telling DASM to put particular byte values in the ROM at that location.</p>
+<p>&nbsp;</p>
+<p>Remember when we wrote &#39;NOP&#39; to insert a no-operation instruction<span style="padding-left:2px; padding-right:2px;">&mdash;</span>which causes the 6502 to execute a 2 cycle delay?  When we looked at the listing file, we saw that the NOP was replaced in the ROM image by the value $EA. Well, instead of letting DASM work out what the op-code&#39;s value is, we can actually just put that value in ourselves, using a .byte instruction to DASM. Example&hellip;</p>
+<pre class="bbborder">
+
+    .byte $EA   ; a NOP instruction!
+
+</pre>
+<p>Now, this isn&#39;t often done<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but there are extremely rare cases where you might want to do this (typically with extremely obscure and highly godlike optimizations). We won&#39;t worry about that for now. But it&#39;s important to understand that just like DASM<span style="padding-left:2px; padding-right:2px;">&mdash;</span>which simply replaces a list of instructions with their values, we can just as easily do the same thing and put the values there ourselves.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="ds">&nbsp;</div>
+<p class="bbtertiary"><a href="#ds">ds (Define Space)</a></p>
+<p>Now it&#39;s easy to see how DASM gets its values for the labels from the address of the data it is currently assembling<span style="padding-left:2px; padding-right:2px;">&mdash;</span>in the earlier example, we started assembly (the ORG pseudo-op) at $8000, and then DASM encountered the label LAB1<span style="padding-left:2px; padding-right:2px;">&mdash;</span>which was given the value $8000, etc. We then inserted 4 bytes with the &#39;.byte&#39; pseudo-op. Instead of &#39;.byte&#39; which places specific values into the output binary file, we could have used the &#39;ds&#39; pseudo-op<span style="padding-left:2px; padding-right:2px;">&mdash;</span>which stands for &#39;define space&#39;. For example, the following would give the same two addresses to LAB1 and LAB2 as the above example, but the data put into the binary would differ&hellip;</p>
+<pre class="bbborder">
+
+    ORG $8000
+
+LAB1 ds 4
+
+LAB2 ds 1
+
+</pre>
+<p>Typically, the &#39;ds&#39; pseudo-op will place 0&#39;s in the ROM<span style="padding-left:2px; padding-right:2px;">&mdash;</span>as many bytes as specified in the value after the &#39;ds&#39;. In the above example, we&#39;ll see 4 0&#39;s starting at $8000 followed by another at $8004.</p>
+<p>&nbsp;</p>
+<p>Now let&#39;s consider our RAM&hellip;  which starts at $80. What would we have if we did something like this&hellip;?</p>
+<pre class="bbborder">
+
+    ORG $80 ; start of RAM
+
+VARIABLE  ds 3 ; define 3 bytes of space for this variable
+
+VAR2  ds 1     ; define 1 byte of space for this one
+
+VAR3  ds 2     ; define 2 etc..
+
+</pre>
+<p>Now that&#39;s much nicer, isn&#39;t it! It won&#39;t work, though :) The problem is, DASM will quite happily assemble this<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and it will correctly assign values $80 to VARIABLE, $83 to VAR2 and $84 to VAR3<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but it will ALSO generate a binary ROM image containing data at locations $80-$85. That&#39;s RAM, not ROM<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and it most definitely doesn&#39;t belong in a ROM binary. In fact, our ROM would now also be HUGE<span style="padding-left:2px; padding-right:2px;">&mdash;</span>because DASM would figure that it needs to create an image from location $80 - $FFFF (ie: it will be about 64K, not 4K).</p>
+<p>&nbsp;</p>
+<p>What we need to do is tell DASM that we&#39;re really just using this code-writing-style to calculate the values of the symbols, and not actually creating binary data for our ROM. And we can do that. Let&#39;s plunge right in&hellip;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="seg_u">&nbsp;</div>
+<p class="bbtertiary"><a href="#seg_u">SEG.U</a></p>
+<pre class="bbborder" style="margin-top:0px; margin-bottom:32px;">
+
+    SEG.U variables
+
+    ORG $80
+
+VARIABLE  ds 3 ; define 3 bytes of space for this variable
+
+VAR2  ds 1     ; define 1 byte of space for this one
+
+VAR3  ds 2     ; define 2 etc..
+
+</pre>
+<p>The addition is the &#39;SEG.U&#39; pseudo-op, followed by a segment name. This is telling DASM that all the following code (until a next &#39;SEG&#39; pseudo-op is encountered) is an uninitialized segment. When it encounters a &#39;segment&#39; defined like this, DASM will not generate actual binary data in the ROM<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but it will still correctly calculate the address data for the symbols.</p>
+<p>&nbsp;</p>
+<p>Note: It is important to give the segment a name (though this parameter is optional, you should choose a unique name for each segment). Naming segments assists the assembler in keeping track of exactly which parts of your code are initialized and uninitialized.</p>
+<p>&nbsp;</p>
+<p>If you now go back and have a close look at the vcs.h file, you may begin to understand exactly how the values for all of the TIA registers are actually defined/calculated. Yes, they&#39;re defined as an uninitialized segment starting at a specific location. Typically this start-location is 0, and each register is assigned one byte. We keep the register symbols in the correct order and let DASM work out the addresses for us. There&#39;s a reason for this<span style="padding-left:2px; padding-right:2px;">&mdash;</span>to do with bankswitching cartridge formats<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but the general lesson here is that it&#39;s nice to let DASM do the work for us<span style="padding-left:2px; padding-right:2px;">&mdash;</span>particularly when defining variables<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and let it worry about the actual addresses of stuff<span style="padding-left:2px; padding-right:2px;">&mdash;</span>we just tell it the size.</p>
+<p>&nbsp;</p>
+<p>One final word on the SEG pseudo-op. Though it is not strictly necessary, all of our code uses it. Without the .U extension, SEG will create binary data for our ROM. With the .U, SEG just allows DASM to populate its symbol table with names/values.</p>
+<p>&nbsp;</p>
+<p>So from now on, let&#39;s define variables &#39;the proper way&#39;. We&#39;ll use an uninitialized segment starting at $80, and give each variable a size using the &#39;ds&#39; pseudo-op. And don&#39;t forget after our variable definitions to place another &#39;SEG&#39; which will effectively tell DASM to start generating binary ROM data. Here&#39;s an example&hellip;</p>
+</div>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+<div style="margin:0px; padding:0px; max-width:830px;">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<pre class="bbborder" style="margin-bottom:0px;">
+
+  SEG.U vars  ; the label &quot;vars&quot; will appear in our symbol
+              ; table&#39;s segment list
+  ORG $80     ; start of RAM
+
+Variable ds 1  ; a 1-byte variable
+
+
+
+
+
+    SEG    ; end of uninitialized segment - start of ROM binary
+
+    ORG $F000
+; code....
+
+</pre>
+</div>
+</div>
+
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<div class="bbpageindent">
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<div class="jumpid" id="variable_overlays">&nbsp;</div>
+<p class="bbtertiary"><a href="#variable_overlays">Variable Overlays</a></p>
+<p>This is as good a place as any to mention variable overlays. This is a handy &#39;trick&#39; you can use to re-use RAM by assigning different usage (=meaning) to RAM locations based on the premise that some RAM locations are only needed for some parts of a game, and some for others. If you have two variables which do not clash in terms of the area in the code they are used, then there&#39;s no real reason why those variables can&#39;t use the same RAM location.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="stella_list_posting">&nbsp;</div>
+<p class="bbquaternary">Stella List Posting</p>
+<p>Here&#39;s my original post to the stella list on this issue (7/Feb/2001).</p>
+<p>&nbsp;</p>
+<p>As I&#39;m trying to optimize RAM usage, I&#39;d been using a general scratchpad variable (&#39;temp&#39;) and using that in the code wherever I need to. I managed the allocation and meaning of the variables manually. That is, I might know that &#39;temp+1&#39; is the variable for the line #, etc., etc. It works, but it is prone to error.</p>
+<p>&nbsp;</p>
+<p>So, I was thinking of a better way, and came up with this...</p>
+</div>
+</div>
+</div>
+
+</div>
+<div style="margin:0px; padding:0px; max-width:830px;">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<div class="bbpageindent">
+
+<pre class="bbborder">
+
+    org $80   ; start of our overlay section
+
+temp        ds 8           ; general area for variable overlays
+
+   ; other RAM variable declarations here....
+
+
+
+
+   ; and now come the &#39;overlays&#39;... these effectively use the
+   ; &#39;temp&#39; RAM location, referenced by other names...
+
+
+
+   ; overlay section 1
+
+    org temp         ; &lt;--- this is the bit that is the trick
+
+
+overlayvar1    ds 1        ; effectively &#39;temp&#39;
+
+overlayvar2    ds 2        ; effectively &#39;temp+1&#39;
+
+overlayvar3    ds 2        ; effectively &#39;temp+3&#39;
+
+
+
+   ; overlay section 2
+
+    org temp                ; ANOTHER overlay on the &#39;temp&#39;
+
+variable
+
+linecounter    ds 1         ; effectively &#39;temp&#39;
+
+indirect        ds 2         ; effectively &#39;temp+1&#39;
+
+   ; etc...
+
+
+
+   ; overlay section 3
+
+    org temp
+
+sect3var        ds 8
+
+   ; can&#39;t add more in this overlay (#3) as it&#39;s already
+   ; used all of temp&#39;s size
+
+</pre>
+</div>
+</div>
+</div>
+
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<div class="bbpageindent">
+
+<p>This all works fine... as long as you remember that when you are using variables in overlays, you can&#39;t use two different overlays at the same time. That is, the same routine (or section of code) CANNOT use variables in overlay section 1 AND overlay section 2. It&#39;s not that much of a restriction, and allows you to use nice variable names throughout your code.</p>
+<p>&nbsp;</p>
+<p>Just be careful your overlays don&#39;t get bigger than the general area allocated for each section.</p>
+<p>&nbsp;</p>
+<p>The advantages of this system are that you can CLEARLY see what your variables are, and you only have to change sizes/declarations/usage in a single place (the RAM overlay declaration) &hellip; not hunt through your code when you decide to change usage.</p>
+<p>&nbsp;</p>
+<p>/end of posting to stella</p>
+</div>
+<p>&nbsp;</p>
+<p>To summarize, we declare one &#39;variable&#39; which is a block of RAM which is used for sharing RAM. This is our overlay section. We then declare each of our Overlays by setting the origin to the start of the overlay section and define new variables. This works because the assembler is generating an UNINITIALIZED segment for our RAM variables. What that means is that we&#39;re just using the assembler to assign values to labels (to its symbols), but not actually generating ROM data. So each overlay section starts in the same spot, and defines variables (ie: assigns addresses to labels) starting at that spot. We essentially share RAM locations for those variables, with other variables which are also defined the same way.</p>
+<p>&nbsp;</p>
+<p>I&#39;ve used this technique now for many demos. It can give the effect of dramatically increasing available RAM. Just have to be careful that you don&#39;t try and use two variables sharing the same location at any time. With a bit of careful management it comes naturally.</p>
+<p>&nbsp;</p>
+<p>Here&#39;s a generic &#39;shell&#39; with comments I use for overlay RAM variables...</p>
+</div>
+</div>
+
+</div>
+<div style="margin:0px; padding:0px; max-width:930px;">
+<div class="bbpageindent">
+<div class="bbpageindent">
+
+<pre class="bbborder">
+
+    ; This overlay variable is used for the overlay variables. That&#39;s OK.
+
+    ; However, it is positioned at the END of the variables so, if on the
+
+    ; off chance we&#39;re overlapping stack space and variable, it is LIKELY
+    
+    ; that won&#39;t be a problem, as the temp variables (especially the
+    
+    ; latter ones) are only used in rare occasions.
+
+
+
+    ; FOR SAFETY, DO NOT USE THIS AREA DIRECTLY (ie: NEVER reference
+    
+    ; &#39;Overlay&#39; in the code). ADD AN OVERLAY FOR EACH
+    
+    ; ROUTINE&#39;S USE, SO CLASHES CAN BE EASILY CHECKED.
+
+
+Overlay    ds 0;   ; --&gt; overlay (share) variables
+                   ; (make sure this is as big as the biggest overlay
+                   ; subsection)
+
+
+
+
+;----------------------------------------------------------------------------
+;
+; OVERLAYS!
+
+; These variables are overlays, and should be managed with care. That is,
+; variables are ALREADY DEFINED, and we&#39;re reusing RAM for other purposes.
+
+
+; EACH OF THESE ARE VARIABLES (TEMPORARY) USED BY ONE ROUTINE (AND IT&#39;S
+; SUBROUTINES) THAT IS, LOCAL VARIABLES. USE &#39;EM FREELY, THEY COST NOTHING.
+
+
+; TOTAL SPACE USED BY ANY OVERLAY GROUP SHOULD BE &lt;= SIZE OF &#39;Overlay&#39;
+
+
+;----------------------------------------------------------------------------
+
+
+
+                org Overlay
+
+
+
+   ; ANIMATION/LOGIC SYSTEM
+
+   ; place variables here
+
+
+;----------------------------------------------------------------------------
+
+
+
+                org Overlay
+
+
+
+   ; DRAWING SYSTEM
+
+   ; place variables here
+
+
+
+   ; etc
+
+</pre>
+</div>
+</div>
+
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<div class="bbpageindent">
+
+<p>Hope that&#39;s clear enough.</p>
+</div>
+</div>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="bbmain">Summary</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p>That will do nicely for this session<span style="padding-left:2px; padding-right:2px;">&mdash;</span>see you next time!</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-15.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefulloff">Session 16: Letting the Assembler do the Work</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder">Loading ASM links…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder">Loading ICYDK section…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="index.html">Home</a> <a href="futuristic-inventions-cool-stuff.html">Inventions</a> <a href="favorite-quotes.html">Quotations</a> <a href="game-design.html">Game Design</a> <a href="atari-2600-memories.html">Atari Memories</a> <a href="personal.html">Personal Pages</a> <a href="about.html">About</a> <a href="sitemap.html">Site Map</a> <a href="contact.html">Contact</a> <a href="privacy.html">Privacy Policy</a> <a href="rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+</body>
+</html>

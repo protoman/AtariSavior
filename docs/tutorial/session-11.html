@@ -1,0 +1,1534 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="ie6 oldie"> <![endif]-->
+<!--[if IE 7]>    <html class="ie7 oldie"> <![endif]-->
+<!--[if IE 8]>    <html class="ie8 oldie"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en">
+<!--<![endif]-->
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-23W5RPE0Q4"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 11: Colorful Colors</title>
+
+<link href="styles/fluid.css" rel="stylesheet" type="text/css">
+<link href="styles/fluid.css?id=54321" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css?id=1234567" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-11.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 11: Colorful Colors">
+<meta name="description" content="Session 11: Colorful Colors">
+<meta name="twitter:description" content="Session 11: Colorful Colors">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="styles/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="index.html">Home</a> &gt; <a class="offsite" href="atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="atari-2600-memories.html#assembly_language">&#35;Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 11: Colorful Colors</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="#different_colors">3 Different Color Palettes</a></p>
+<p class="tocsec" ><a href="#colubk">COLUBK</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#ntsc_pal_secam">NTSC/PAL/SECAM</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#a_x_y">A, X, and Y Registers</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#wrap_around">The Old Wrap Around</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#wsync">WSYNC</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#initialize_tia">Initialize the TIA Registers</a></p>
+<p class="tocsec"><a href="#session_links">Session Links</a></p>
+<p class="tocsec"><a href="#useful_links">Useful Links</a></p>
+</div>
+<p class="sidetitleboxb" style="margin-top:42px;">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/27338-session-11-colourful-colors">Original Session 11 at AtariAge</a></p>
+</div>
+</div>
+<div id="fcontent728">
+<p>Even our language treats &#39;color&#39; differently<span style="padding-left:2px; padding-right:2px;">&mdash;</span>here in Oz we write &#39;colour&#39; and in the USA they write &#39;color&#39;. Likewise, &#39;2600 units in different countries don&#39;t quite speak the same language when it comes to color.</p>
+<p>&nbsp;</p>
+<p>We have already seen why there are 3 variants of &#39;2600 units<span style="padding-left:2px; padding-right:2px;">&mdash;</span>these variations (PAL, NTSC, SECAM)  exist because of the differences in TV standards in various countries. Specifically, the color  information is encoded in different ways into the analogue TV signal for each system, and the &#39;2600  hardware is responsible for inserting that color information in the data sent to the TV.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<div class="jumpid" id="different_colors">&nbsp;</div>
+<p class="bbmain"><a href="#different_colors">3 Different Color Palettes</a></p>
+<p>Not only do these different &#39;2600 systems write the color information in different ways, they also  write totally different colors!  What is one color on a NTSC system is probably NOT the same color  on PAL, and almost certainly not the same color on SECAM!</p>
+<p>&nbsp;</p>
+<p>Here are some wonderful color charts that show the colors used by each of the systems&hellip;</p>
+<p>&nbsp;</p>
+<p><a class="offsite" href="https://www.google.com/search?q=http%3A%2F%2Fwww.qotile.net%2Fminidig%2Fdocs%2Ftia_color.html">http://www.qotile.net/minidig/docs/tia_color.html</a></p>
+<p>&nbsp;</p>
+<p>Below are <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-tia-color-charts.html">adapted versions</a> of those color charts&hellip;</p>
+<p>&nbsp;</p>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+<div class="bbpageindent">
+<div style="overflow: auto;">
+<table style="width:832px; background-color: #FFF;">
+<tr>
+<td style="width:275px; text-align:left; vertical-align:top;">
+<p style="font-size:18px; font-weight:bold;">NTSC <span style="font-size:15px;">&nbsp;(128 unique colors)</span></p>
+</td>
+<td style="width:275px; text-align:left; vertical-align:top;">
+<p style="font-size:18px; font-weight:bold; margin-left:24px;">PAL <span style="font-size:15px;">&nbsp;(104 unique colors)</span></p>
+</td>
+<td style="width:280px; text-align:left; vertical-align:top;">
+<p style="font-size:18px; font-weight:bold; margin-left:24px;">SECAM <span style="font-size:15px;">&nbsp;(8 unique colors)</span></p>
+</td>
+</tr>
+<tr>
+<td style="text-align:left; vertical-align:top;">
+<table class="border1">
+<tr>
+<td style="text-align: center; vertical-align: middle;">
+<p>&nbsp;</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">0</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">2</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">4</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">6</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">8</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">A</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">C</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">E</p>
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">0</p>
+</td>
+<td title="$00" style="background-color:#000000;">
+</td>
+<td title="$02" style="background-color:#1A1A1A;">
+</td>
+<td title="$04" style="background-color:#393939;">
+</td>
+<td title="$06" style="background-color:#5B5B5B;">
+</td>
+<td title="$08" style="background-color:#7E7E7E;">
+</td>
+<td title="$0A" style="background-color:#A2A2A2;">
+</td>
+<td title="$0C" style="background-color:#C7C7C7;">
+</td>
+<td title="$0E" style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">1</p>
+</td>
+<td title="$10" style="background-color:#190200;">
+</td>
+<td title="$12" style="background-color:#3A1F00;">
+</td>
+<td title="$14" style="background-color:#5D4100;">
+</td>
+<td title="$16" style="background-color:#826400;">
+</td>
+<td title="$18" style="background-color:#A78800;">
+
+</td>
+<td title="$1A" style="background-color:#CCAD00;">
+</td>
+<td title="$1C" style="background-color:#F2D219;">
+</td>
+<td title="$1E" style="background-color:#FEFA40;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">2</p>
+</td>
+<td title="$20" style="background-color:#370000;">
+</td>
+
+<td title="$22" style="background-color:#5E0800;">
+</td>
+<td title="$24" style="background-color:#832700;">
+</td>
+<td title="$26" style="background-color:#A94900;">
+</td>
+<td title="$28" style="background-color:#CF6C00;">
+</td>
+<td title="$2A" style="background-color:#F58F17;">
+</td>
+<td title="$2C" style="background-color:#FEB438;">
+</td>
+<td title="$2E" style="background-color:#FEDF6F;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">3</p>
+</td>
+<td title="$30" style="background-color:#470000;">
+</td>
+<td title="$32" style="background-color:#730000;">
+</td>
+<td title="$34" style="background-color:#981300;">
+</td>
+<td title="$36" style="background-color:#BE3216;">
+</td>
+<td title="$38" style="background-color:#E45335;">
+</td>
+<td title="$3A" style="background-color:#FE7657;">
+</td>
+<td title="$3C" style="background-color:#FE9C81;">
+</td>
+<td title="$3E" style="background-color:#FEC6BB;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">4</p>
+</td>
+<td title="$40" style="background-color:#440008;">
+</td>
+<td title="$42" style="background-color:#6F001F;">
+</td>
+<td title="$44" style="background-color:#960640;">
+</td>
+<td title="$46" style="background-color:#BB2462;">
+</td>
+<td title="$48" style="background-color:#E14585;">
+</td>
+<td title="$4A" style="background-color:#FE67AA;">
+</td>
+<td title="$4C" style="background-color:#FE8CD6;">
+</td>
+<td title="$4E" style="background-color:#FEB7F6;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">5</p>
+</td>
+<td title="$50" style="background-color:#2D004A;">
+</td>
+<td title="$52" style="background-color:#570067;">
+</td>
+<td title="$54" style="background-color:#7D058C;">
+</td>
+<td title="$56" style="background-color:#A122B1;">
+</td>
+<td title="$58" style="background-color:#C743D7;">
+</td>
+<td title="$5A" style="background-color:#ED65FE;">
+</td>
+<td title="$5C" style="background-color:#FE8AF6;">
+</td>
+<td title="$5E" style="background-color:#FEB5F7;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">6</p>
+</td>
+<td title="$60" style="background-color:#0D0082;">
+</td>
+<td title="$62" style="background-color:#3300A2;">
+</td>
+<td title="$64" style="background-color:#550FC9;">
+</td>
+<td title="$66" style="background-color:#782DF0;">
+</td>
+<td title="$68" style="background-color:#9C4EFE;">
+</td>
+<td title="$6A" style="background-color:#C372FE;">
+</td>
+<td title="$6C" style="background-color:#EB98FE;">
+</td>
+<td title="$6E" style="background-color:#FEC0F9;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">7</p>
+</td>
+<td title="$70" style="background-color:#000091;">
+</td>
+<td title="$72" style="background-color:#0A05BD;">
+</td>
+<td title="$74" style="background-color:#2822E4;">
+</td>
+<td title="$76" style="background-color:#4842FE;">
+</td>
+<td title="$78" style="background-color:#6B64FE;">
+</td>
+<td title="$7A" style="background-color:#908AFE;">
+</td>
+<td title="$7C" style="background-color:#B7B0FE;">
+</td>
+<td title="$7E" style="background-color:#DFD8FE;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">8</p>
+</td>
+<td title="$80" style="background-color:#000072;">
+</td>
+<td title="$82" style="background-color:#001CAB;">
+</td>
+<td title="$84" style="background-color:#033CD6;">
+</td>
+<td title="$86" style="background-color:#205EFD;">
+</td>
+<td title="$88" style="background-color:#4081FE;">
+</td>
+<td title="$8A" style="background-color:#64A6FE;">
+</td>
+<td title="$8C" style="background-color:#89CEFE;">
+</td>
+<td title="$8E" style="background-color:#B0F6FE;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">9</p>
+</td>
+<td title="$90" style="background-color:#00103A;">
+</td>
+<td title="$92" style="background-color:#00316E;">
+</td>
+<td title="$94" style="background-color:#0055A2;">
+</td>
+<td title="$96" style="background-color:#0579C8;">
+</td>
+<td title="$98" style="background-color:#239DEE;">
+</td>
+<td title="$9A" style="background-color:#44C2FE;">
+</td>
+<td title="$9C" style="background-color:#68E9FE;">
+</td>
+<td title="$9E" style="background-color:#8FFEFE;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">A</p>
+</td>
+<td title="$A0" style="background-color:#001F02;">
+</td>
+<td title="$A2" style="background-color:#004326;">
+</td>
+<td title="$A4" style="background-color:#006957;">
+</td>
+<td title="$A6" style="background-color:#008D7A;">
+</td>
+<td title="$A8" style="background-color:#1BB19E;">
+</td>
+<td title="$AA" style="background-color:#3BD7C3;">
+</td>
+<td title="$AC" style="background-color:#5DFEE9;">
+</td>
+<td title="$AE" style="background-color:#86FEFE;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">B</p>
+</td>
+<td title="$B0" style="background-color:#002403;">
+</td>
+<td title="$B2" style="background-color:#004A05;">
+</td>
+<td title="$B4" style="background-color:#00700C;">
+</td>
+<td title="$B6" style="background-color:#09952B;">
+</td>
+<td title="$B8" style="background-color:#28BA4C;">
+</td>
+<td title="$BA" style="background-color:#49E06E;">
+</td>
+<td title="$BC" style="background-color:#6CFE92;">
+</td>
+<td title="$BE" style="background-color:#97FEB5;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">C</p>
+<td title="$C0" style="background-color:#002102;">
+</td>
+<td title="$C2" style="background-color:#004604;">
+</td>
+<td title="$C4" style="background-color:#086B00;">
+</td>
+<td title="$C6" style="background-color:#289000;">
+</td>
+<td title="$C8" style="background-color:#49B509;">
+</td>
+<td title="$CA" style="background-color:#6BDB28;">
+</td>
+<td title="$CC" style="background-color:#8FFE49;">
+</td>
+<td title="$CE" style="background-color:#BBFE69;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">D</p>
+</td>
+<td title="$D0" style="background-color:#001501;">
+</td>
+<td title="$D2" style="background-color:#103600;">
+</td>
+<td title="$D4" style="background-color:#305900;">
+</td>
+<td title="$D6" style="background-color:#537E00;">
+</td>
+<td title="$D8" style="background-color:#76A300;">
+</td>
+<td title="$DA" style="background-color:#9AC800;">
+</td>
+<td title="$DC" style="background-color:#BFEE1E;">
+</td>
+<td title="$DE" style="background-color:#E8FE3E;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">E</p>
+</td>
+<td title="$E0" style="background-color:#1A0200;">
+</td>
+<td title="$E2" style="background-color:#3B1F00;">
+</td>
+<td title="$E4" style="background-color:#5E4100;">
+</td>
+<td title="$E6" style="background-color:#836400;">
+</td>
+<td title="$E8" style="background-color:#A88800;">
+
+</td>
+<td title="$EA" style="background-color:#CEAD00;">
+</td>
+<td title="$EC" style="background-color:#F4D218;">
+</td>
+<td title="$EE" style="background-color:#FEFA40;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">F</p>
+</td>
+<td title="$F0" style="background-color:#380000;">
+</td>
+<td title="$F2" style="background-color:#5F0800;">
+</td>
+<td title="$F4" style="background-color:#842700;">
+</td>
+<td title="$F6" style="background-color:#AA4900;">
+</td>
+<td title="$F8" style="background-color:#D06B00;">
+</td>
+<td title="$FA" style="background-color:#F68F18;">
+</td>
+<td title="$FC" style="background-color:#FEB439;">
+</td>
+<td title="$FE" style="background-color:#FEDF70;">
+</td>
+</tr>
+</table>
+</td>
+<td style="text-align:left; vertical-align:top;">
+<table class="border1">
+<tr>
+<td style="text-align: center; vertical-align: middle;">
+<p>&nbsp;</p>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">0</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">2</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">4</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">6</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">8</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">A</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">C</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">E</p>
+</td>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">0</p>
+</td>
+<td title="$00" style="background-color:#000000;">
+</td>
+<td title="$02" style="background-color:#1A1A1A;">
+</td>
+<td title="$04" style="background-color:#393939;">
+</td>
+<td title="$06" style="background-color:#5B5B5B;">
+</td>
+<td title="$08" style="background-color:#7E7E7E;">
+</td>
+<td title="$0A" style="background-color:#A2A2A2;">
+</td>
+<td title="$0C" style="background-color:#C7C7C7;">
+</td>
+<td title="$0E" style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">1</p>
+</td>
+<td title="$10" style="background-color:#000000;">
+</td>
+<td title="$12" style="background-color:#1A1A1A;">
+</td>
+<td title="$14" style="background-color:#393939;">
+</td>
+<td title="$16" style="background-color:#5B5B5B;">
+</td>
+<td title="$18" style="background-color:#7E7E7E;">
+</td>
+<td title="$1A" style="background-color:#A2A2A2;">
+</td>
+<td title="$1C" style="background-color:#C7C7C7;">
+</td>
+<td title="$1E" style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">2</p>
+</td>
+<td title="$20" style="background-color:#1E0000;">
+</td>
+<td title="$22" style="background-color:#3F1C00;">
+</td>
+<td title="$24" style="background-color:#633D00;">
+</td>
+<td title="$26" style="background-color:#886000;">
+</td>
+<td title="$28" style="background-color:#AD8300;">
+</td>
+<td title="$2A" style="background-color:#D2A806;">
+</td>
+<td title="$2C" style="background-color:#F9CD26;">
+</td>
+<td title="$2E" style="background-color:#FEF64A;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">3</p>
+</td>
+<td title="$30" style="background-color:#002100;">
+</td>
+<td title="$32" style="background-color:#004600;">
+</td>
+<td title="$34" style="background-color:#0D6A00;">
+</td>
+<td title="$36" style="background-color:#2D9000;">
+</td>
+<td title="$38" style="background-color:#4FB500;">
+</td>
+<td title="$3A" style="background-color:#71DA06;">
+</td>
+<td title="$3C" style="background-color:#95FE26;">
+</td>
+<td title="$3E" style="background-color:#C0FE4D;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">4</p>
+</td>
+<td title="$40" style="background-color:#3A0000;">
+</td>
+<td title="$42" style="background-color:#620600;">
+</td>
+<td title="$44" style="background-color:#882500;">
+</td>
+<td title="$46" style="background-color:#AD4500;">
+</td>
+<td title="$48" style="background-color:#D2671B;">
+</td>
+<td title="$4A" style="background-color:#F98B3B;">
+</td>
+<td title="$4C" style="background-color:#FEB05E;">
+</td>
+<td title="$4E" style="background-color:#FEDB87;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">5</p>
+</td>
+<td title="$50" style="background-color:#002500;">
+</td>
+<td title="$52" style="background-color:#004B00;">
+</td>
+<td title="$54" style="background-color:#007200;">
+</td>
+<td title="$56" style="background-color:#0D9600;">
+</td>
+<td title="$58" style="background-color:#2CBB1C;">
+</td>
+<td title="$5A" style="background-color:#4EE13D;">
+</td>
+<td title="$5C" style="background-color:#70FE5F;">
+</td>
+<td title="$5E" style="background-color:#9CFE8A;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">6</p>
+</td>
+<td title="$60" style="background-color:#470000;">
+</td>
+<td title="$62" style="background-color:#720007;">
+</td>
+<td title="$64" style="background-color:#970F25;">
+</td>
+<td title="$66" style="background-color:#BD2E45;">
+</td>
+<td title="$68" style="background-color:#E34F68;">
+</td>
+<td title="$6A" style="background-color:#FE728B;">
+</td>
+<td title="$6C" style="background-color:#FE98B2;">
+</td>
+<td title="$6E" style="background-color:#FEC2DD;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">7</p>
+</td>
+<td title="$70" style="background-color:#002100;">
+</td>
+<td title="$72" style="background-color:#004505;">
+</td>
+<td title="$74" style="background-color:#006C26;">
+</td>
+<td title="$76" style="background-color:#009046;">
+</td>
+<td title="$78" style="background-color:#1CB569;">
+</td>
+<td title="$7A" style="background-color:#3DDB8C;">
+</td>
+<td title="$7C" style="background-color:#5FFEB1;">
+</td>
+<td title="$7E" style="background-color:#88FEDD;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">8</p>
+</td>
+<td title="$80" style="background-color:#410026;">
+</td>
+<td title="$82" style="background-color:#6C004F;">
+</td>
+<td title="$84" style="background-color:#920473;">
+</td>
+<td title="$86" style="background-color:#B82298;">
+</td>
+<td title="$88" style="background-color:#DE43BD;">
+</td>
+<td title="$8A" style="background-color:#FE65E3;">
+</td>
+<td title="$8C" style="background-color:#FE8AFE;">
+</td>
+<td title="$8E" style="background-color:#FEB6FE;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">9</p>
+</td>
+<td title="$90" style="background-color:#00112A;">
+</td>
+<td title="$92" style="background-color:#00344F;">
+</td>
+<td title="$94" style="background-color:#005975;">
+</td>
+<td title="$96" style="background-color:#047C9A;">
+</td>
+<td title="$98" style="background-color:#22A0BF;">
+</td>
+<td title="$9A" style="background-color:#43C5E5;">
+</td>
+<td title="$9C" style="background-color:#65EBFE;">
+</td>
+<td title="$9E" style="background-color:#8CFEFE;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">A</p>
+</td>
+<td title="$A0" style="background-color:#2A0065;">
+</td>
+<td title="$A2" style="background-color:#530092;">
+</td>
+<td title="$A4" style="background-color:#7804B9;">
+</td>
+<td title="$A6" style="background-color:#9C22E0;">
+</td>
+<td title="$A8" style="background-color:#C242FE;">
+</td>
+<td title="$AA" style="background-color:#E865FE;">
+</td>
+<td title="$AC" style="background-color:#FE8AFE;">
+</td>
+<td title="$AE" style="background-color:#FEB6FE;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">B</p>
+</td>
+<td title="$B0" style="background-color:#00006B;">
+</td>
+<td title="$B2" style="background-color:#001F94;">
+</td>
+<td title="$B4" style="background-color:#0040BC;">
+</td>
+<td title="$B6" style="background-color:#1D62E2;">
+</td>
+<td title="$B8" style="background-color:#3D85FE;">
+</td>
+<td title="$BA" style="background-color:#5FA9FE;">
+</td>
+<td title="$BC" style="background-color:#84D1FE;">
+</td>
+<td title="$BE" style="background-color:#ABF9FE;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">C</p>
+<td title="$C0" style="background-color:#08008E;">
+</td>
+<td title="$C2" style="background-color:#2D00BC;">
+</td>
+<td title="$C4" style="background-color:#4E10E4;">
+</td>
+<td title="$C6" style="background-color:#712FFE;">
+</td>
+<td title="$C8" style="background-color:#9550FE;">
+</td>
+<td title="$CA" style="background-color:#BB75FE;">
+</td>
+<td title="$CC" style="background-color:#E39BFE;">
+</td>
+<td title="$CE" style="background-color:#FEC2FE;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">D</p>
+</td>
+<td title="$D0" style="background-color:#000090;">
+</td>
+<td title="$D2" style="background-color:#0608BD;">
+</td>
+<td title="$D4" style="background-color:#2425E4;">
+</td>
+<td title="$D6" style="background-color:#4445FE;">
+</td>
+<td title="$D8" style="background-color:#6667FE;">
+</td>
+<td title="$DA" style="background-color:#8B8DFE;">
+</td>
+<td title="$DC" style="background-color:#B2B3FE;">
+</td>
+<td title="$DE" style="background-color:#DADBFE;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">E</p>
+</td>
+<td title="$E0" style="background-color:#000000;">
+</td>
+<td title="$E2" style="background-color:#1A1A1A;">
+</td>
+<td title="$E4" style="background-color:#393939;">
+</td>
+<td title="$E6" style="background-color:#5B5B5B;">
+</td>
+<td title="$E8" style="background-color:#7E7E7E;">
+</td>
+<td title="$EA" style="background-color:#A2A2A2;">
+</td>
+<td title="$EC" style="background-color:#C7C7C7;">
+</td>
+<td title="$EE" style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">F</p>
+</td>
+<td title="$F0" style="background-color:#000000;">
+</td>
+<td title="$F2" style="background-color:#1A1A1A;">
+</td>
+<td title="$F4" style="background-color:#393939;">
+</td>
+<td title="$F6" style="background-color:#5B5B5B;">
+</td>
+<td title="$F8" style="background-color:#7E7E7E;">
+</td>
+<td title="$FA" style="background-color:#A2A2A2;">
+</td>
+<td title="$FC" style="background-color:#C7C7C7;">
+</td>
+<td title="$FE" style="background-color:#EDEDED;">
+</td>
+</tr>
+</table>
+</td>
+<td style="text-align:left; vertical-align:top;">
+<table class="border1">
+<tr>
+<td style="text-align: center; vertical-align: middle;">
+<p>&nbsp;</p>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">0</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">2</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">4</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">6</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">8</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">A</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">C</p>
+</td>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">E</p>
+</td>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">0</p>
+</td>
+<td title="$00"  style="background-color:#000000;">
+</td>
+<td title="$02"  style="background-color:#2121FF;">
+</td>
+<td title="$04"  style="background-color:#F03C79;">
+</td>
+<td title="$06"  style="background-color:#FF50FF;">
+</td>
+<td title="$08"  style="background-color:#7FFF00;">
+</td>
+<td title="$0A"  style="background-color:#7FFFFF;">
+</td>
+<td title="$0C"  style="background-color:#FFFF3F;">
+</td>
+<td title="$0E"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">1</p>
+</td>
+<td title="$10"  style="background-color:#000000;">
+</td>
+<td title="$12"  style="background-color:#2121FF;">
+</td>
+<td title="$14"  style="background-color:#F03C79;">
+</td>
+<td title="$16"  style="background-color:#FF50FF;">
+</td>
+<td title="$18"  style="background-color:#7FFF00;">
+</td>
+<td title="$1A"  style="background-color:#7FFFFF;">
+</td>
+<td title="$1C"  style="background-color:#FFFF3F;">
+</td>
+<td title="$1E"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">2</p>
+</td>
+<td title="$20"  style="background-color:#000000;">
+</td>
+<td title="$22"  style="background-color:#2121FF;">
+</td>
+<td title="$24"  style="background-color:#F03C79;">
+</td>
+<td title="$26"  style="background-color:#FF50FF;">
+</td>
+<td title="$28"  style="background-color:#7FFF00;">
+</td>
+<td title="$2A"  style="background-color:#7FFFFF;">
+</td>
+<td title="$2C"  style="background-color:#FFFF3F;">
+</td>
+<td title="$2E"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">3</p>
+</td>
+<td title="$30"  style="background-color:#000000;">
+</td>
+<td title="$32"  style="background-color:#2121FF;">
+</td>
+<td title="$34"  style="background-color:#F03C79;">
+</td>
+<td title="$36"  style="background-color:#FF50FF;">
+</td>
+<td title="$38"  style="background-color:#7FFF00;">
+</td>
+<td title="$3A"  style="background-color:#7FFFFF;">
+</td>
+<td title="$3C"  style="background-color:#FFFF3F;">
+</td>
+<td title="$3E"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">4</p>
+</td>
+<td title="$40"  style="background-color:#000000;">
+</td>
+<td title="$42"  style="background-color:#2121FF;">
+</td>
+<td title="$44"  style="background-color:#F03C79;">
+</td>
+<td title="$46"  style="background-color:#FF50FF;">
+</td>
+<td title="$48"  style="background-color:#7FFF00;">
+</td>
+<td title="$4A"  style="background-color:#7FFFFF;">
+</td>
+<td title="$4C"  style="background-color:#FFFF3F;">
+</td>
+<td title="$4E"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">5</p>
+</td>
+<td title="$50"  style="background-color:#000000;">
+</td>
+<td title="$52"  style="background-color:#2121FF;">
+</td>
+<td title="$54"  style="background-color:#F03C79;">
+</td>
+<td title="$56"  style="background-color:#FF50FF;">
+</td>
+<td title="$58"  style="background-color:#7FFF00;">
+</td>
+<td title="$5A"  style="background-color:#7FFFFF;">
+</td>
+<td title="$5C"  style="background-color:#FFFF3F;">
+</td>
+<td title="$5E"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">6</p>
+</td>
+<td title="$60"  style="background-color:#000000;">
+</td>
+<td title="$62"  style="background-color:#2121FF;">
+</td>
+<td title="$64"  style="background-color:#F03C79;">
+</td>
+<td title="$66"  style="background-color:#FF50FF;">
+</td>
+<td title="$68"  style="background-color:#7FFF00;">
+</td>
+<td title="$6A"  style="background-color:#7FFFFF;">
+</td>
+<td title="$6C"  style="background-color:#FFFF3F;">
+</td>
+<td title="$6E"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">7</p>
+</td>
+<td title="$70"  style="background-color:#000000;">
+</td>
+<td title="$72"  style="background-color:#2121FF;">
+</td>
+<td title="$74"  style="background-color:#F03C79;">
+</td>
+<td title="$76"  style="background-color:#FF50FF;">
+</td>
+<td title="$78"  style="background-color:#7FFF00;">
+</td>
+<td title="$7A"  style="background-color:#7FFFFF;">
+</td>
+<td title="$7C"  style="background-color:#FFFF3F;">
+</td>
+<td title="$7E"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">8</p>
+</td>
+<td title="$80"  style="background-color:#000000;">
+</td>
+<td title="$82"  style="background-color:#2121FF;">
+</td>
+<td title="$84"  style="background-color:#F03C79;">
+</td>
+<td title="$86"  style="background-color:#FF50FF;">
+</td>
+<td title="$88"  style="background-color:#7FFF00;">
+</td>
+<td title="$8A"  style="background-color:#7FFFFF;">
+</td>
+<td title="$8C"  style="background-color:#FFFF3F;">
+</td>
+<td title="$8E"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">9</p>
+</td>
+<td title="$90"  style="background-color:#000000;">
+</td>
+<td title="$92"  style="background-color:#2121FF;">
+</td>
+<td title="$94"  style="background-color:#F03C79;">
+</td>
+<td title="$96"  style="background-color:#FF50FF;">
+</td>
+<td title="$98"  style="background-color:#7FFF00;">
+</td>
+<td title="$9A"  style="background-color:#7FFFFF;">
+</td>
+<td title="$9C"  style="background-color:#FFFF3F;">
+</td>
+<td title="$9E"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">A</p>
+</td>
+<td title="$A0"  style="background-color:#000000;">
+</td>
+<td title="$A2"  style="background-color:#2121FF;">
+</td>
+<td title="$A4"  style="background-color:#F03C79;">
+</td>
+<td title="$A6"  style="background-color:#FF50FF;">
+</td>
+<td title="$A8"  style="background-color:#7FFF00;">
+</td>
+<td title="$AA"  style="background-color:#7FFFFF;">
+</td>
+<td title="$AC"  style="background-color:#FFFF3F;">
+</td>
+<td title="$AE"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">B</p>
+</td>
+<td title="$B0"  style="background-color:#000000;">
+</td>
+<td title="$B2"  style="background-color:#2121FF;">
+</td>
+<td title="$B4"  style="background-color:#F03C79;">
+</td>
+<td title="$B6"  style="background-color:#FF50FF;">
+</td>
+<td title="$B8"  style="background-color:#7FFF00;">
+</td>
+<td title="$BA"  style="background-color:#7FFFFF;">
+</td>
+<td title="$BC"  style="background-color:#FFFF3F;">
+</td>
+<td title="$BE"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">C</p>
+<td title="$C0"  style="background-color:#000000;">
+</td>
+<td title="$C2"  style="background-color:#2121FF;">
+</td>
+<td title="$C4"  style="background-color:#F03C79;">
+</td>
+<td title="$C6"  style="background-color:#FF50FF;">
+</td>
+<td title="$C8"  style="background-color:#7FFF00;">
+</td>
+<td title="$CA"  style="background-color:#7FFFFF;">
+</td>
+<td title="$CC"  style="background-color:#FFFF3F;">
+</td>
+<td title="$CE"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">D</p>
+</td>
+<td title="$D0"  style="background-color:#000000;">
+</td>
+<td title="$D2"  style="background-color:#2121FF;">
+</td>
+<td title="$D4"  style="background-color:#F03C79;">
+</td>
+<td title="$D6"  style="background-color:#FF50FF;">
+</td>
+<td title="$D8"  style="background-color:#7FFF00;">
+</td>
+<td title="$DA"  style="background-color:#7FFFFF;">
+</td>
+<td title="$DC"  style="background-color:#FFFF3F;">
+</td>
+<td title="$DE"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">E</p>
+</td>
+<td title="$E0"  style="background-color:#000000;">
+</td>
+<td title="$E2"  style="background-color:#2121FF;">
+</td>
+<td title="$E4"  style="background-color:#F03C79;">
+</td>
+<td title="$E6"  style="background-color:#FF50FF;">
+</td>
+<td title="$E8"  style="background-color:#7FFF00;">
+</td>
+<td title="$EA"  style="background-color:#7FFFFF;">
+</td>
+<td title="$EC"  style="background-color:#FFFF3F;">
+</td>
+<td title="$EE"  style="background-color:#EDEDED;">
+</td>
+</tr>
+<tr>
+<td style="width:24px; height:16px; text-align: center; vertical-align: middle;">
+<p style="padding:0px;">F</p>
+</td>
+<td title="$F0"  style="background-color:#000000;">
+</td>
+<td title="$F2"  style="background-color:#2121FF;">
+</td>
+<td title="$F4"  style="background-color:#F03C79;">
+</td>
+<td title="$F6"  style="background-color:#FF50FF;">
+</td>
+<td title="$F8"  style="background-color:#7FFF00;">
+</td>
+<td title="$FA"  style="background-color:#7FFFFF;">
+</td>
+<td title="$FC"  style="background-color:#FFFF3F;">
+</td>
+<td title="$FE"  style="background-color:#EDEDED;">
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</div>
+</div>
+
+<p>&nbsp;</p>
+<div class="f728max">
+<p>&nbsp;</p>
+<p>Colors are represented on the &#39;2600 by numbers. How else could it be?  The color to number  correspondence is essentially an arbitrary association<span style="padding-left:2px; padding-right:2px;">&mdash;</span>so, for example on a NTSC machine the value  $1A is yellowish, on PAL the same color is gray, and on SECAM it is aqua (!). If the same color  values were used on a game converted between a NTSC and PAL system, then everything would look very  weird indeed!  To read the color charts on the page linked to above, form a 2-digit hex number from the hue and the lum values (ie: hue 2, lum 5 -&gt; $25 value -&gt; brown(ish) on NTSC, and as it happens, a very similar  brown(ish) on PAL.</p>
+<p>&nbsp;</p>
+<p>[Instead of getting your color values from static charts, you can do it the easy way and use the interactive palettes on the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-tia-color-charts.html">TIA Color Charts and Tools</a> page. It includes an NTS<span style="letter-spacing:2px;">C/</span>PAL color conversion tool and Atari 2600 color compatibility tools that can help you quickly find colors that go great together (possibly saving you a lot of time and energy).]</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="colubk">&nbsp;</div>
+<p class="bbmain"><a href="#colubk"><span style="color: #00A100;">CO</span><span style="color: #F36118;">LU</span><span style="color: #AE00CD;">BK</span> <span style="font-size:17px;">&nbsp;(Color-Luminosity Background)</span></a></p>
+
+
+<p>We&#39;ve already played with colors in our first kernel!  In the picture section (the 192 scanlines) we  had the following code&hellip;</p>
+<pre class="bbborder">
+
+       ; 192 scanlines of picture... 
+
+
+
+        ldx #0 
+
+        REPEAT 192; scanlines 
+
+
+
+          inx 
+
+          stx COLUBK 
+
+          sta WSYNC 
+
+
+
+        REPEND 
+
+</pre>
+<p>We should know by now what that &#39;sta WSYNC&#39; does<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and now it&#39;s time to understand the rest of it. Remember the picture that the kernel shows?  A very pretty rainbow effect, with color stripes across  the screen. It&#39;s the TIA producing those colors, but it&#39;s our kernel telling the TIA what color to  show on each line. And it&#39;s done with the &#39;stx COLUBK&#39; line.</p>
+<p>&nbsp;</p>
+<p>Remember how the TIA maps to memory in locations 0 - $7F, and that WSYNC is a label representing the  memory location of the TIA register (which happens, of course, to be called WSYNC). In similar  fashion, COLUBK is a label which corresponds to the TIA register of the same name. This particular  register allows us to set the color of the background that the TIA sends to the TV!</p>
+<p>&nbsp;</p>
+<p>A quick peek at the symbol table shows&hellip;</p>
+<pre class="bbborder">
+
+ COLUBK          0009       (R ) 
+
+</pre>
+<p>In fact, the very best place to look is in the Stella Programmer&#39;s guide<span style="padding-left:2px; padding-right:2px;">&mdash;</span>for here you will be able to   see the exact location and usage of this TIA register. This is a pretty simple one, though<span style="padding-left:2px; padding-right:2px;">&mdash;</span>all we  do is write a number representing the color we want (selected from the color charts linked to, above)  and the TIA will display this color as the background.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="ntsc_pal_secam">&nbsp;</div>
+<p class="bbsecondary"><a href="#ntsc_pal_secam">NTSC/PAL/SECAM</a></p>
+<p>Remember that it also depends on what system we&#39;re running on! If we&#39;re doing a PAL kernel, then  we will see a different color than if we&#39;re doing a NTSC or SECAM kernel. The bizarre consequence of  this is that if we change the number of scanlines our kernel generates, the COLORS of everything also  change. That&#39;s because (if we are running on an emulator or plug a ROM into a console) we are  essentially switching between NTSC/PAL/SECAM systems, and as noted these systems send different color  information to the TV!  It&#39;s weird, but the bottom line is that when you choose colors, you choose  them for the particular TV standard you are writing your ROM to run on. If you change to a different  TV system, then you will also need to rework all the colors of all the objects in your game.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="a_x_y">&nbsp;</div>
+<p class="bbsecondary"><a href="#a_x_y">A, X, and Y Registers</a></p>
+<p>Let&#39;s go back to our kernel and have a bit of a look at what it&#39;s doing to achieve that rainbow effect. There&#39;s remarkably little code in there for such a pretty effect.</p>
+<p>&nbsp;</p>
+<p>As we&#39;ve learned, the 6502 has just three &#39;registers&#39;. These are named A, X, and Y<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and allow us to  shift bytes to and from memory<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and perform some simple modifications to these bytes. In particular,  the X and Y registers are known as &#39;index registers&#39;, and these have very little capability (they can  be loaded, saved, incremented and decremented). The accumulator (A) is our workhorse register, and it  is this register used to do just about all the grunt-work like addition, subtraction, and bit  manipulation.</p>
+<p>&nbsp;</p>
+<p>Our simple kernel, though, uses the X register to step a color value from 0 (at the start), writing  the color value to the TIA background color register (COLUBK), incrementing X by one each scanline. First (outside the repeat) we have &#39;ldx #0&#39;. This instruction moves the numeric value 0 into the X  register. ld is an abbreviation for &#39;load&#39;, and we have lda, ldx, ldy. st is the similar abbreviation  for store, and we have stx sty sta. Inside our repeat structure, we have &#39;stx COLUBK&#39;. As noted, this  will copy the current contents of the x register into the memory location 9 (which is, of course, the  TIA register COLUBK). The TIA will then *immediately* use the value we wrote as the background color  sent to the TV. Next we have an instruction &#39;inx&#39;. This increments the current value of the X  register by one. Likewise, we have an &#39;iny&#39; instruction, which increments the y register. But, alas,  we don&#39;t have an &#39;ina&#39; instruction to increment the accumulator (!). We are also able to decrement (by  1) the x and y registers with &#39;dex&#39; and &#39;dey&#39;.</p>
+<p>&nbsp;</p>
+<p>The operation of our kernel should be pretty obvious, now. The X register is initialized with 0, and  every scanline it is written to the background color register, and incremented. So the background  color shows, scanline by scanline, the color range that the &#39;2600 is capable of. In actual fact, you  could throw another &#39;inx&#39; in there and see what happens. Or even change the &#39;inx&#39; to &#39;dex&#39;<span style="padding-left:2px; padding-right:2px;">&mdash;</span>what do  you think will happen?  As an aside, it was actually possible to blow up one early home computer by  playing around with registers like this (I kid you not!)<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but you can&#39;t possibly damage your &#39;2600 (or  emulator!) doing this. Have fun, experiment.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="wrap_around">&nbsp;</div>
+<p class="bbtertiary"><a href="#wrap_around">The Old Wrap Around</a></p>
+<p>Since we&#39;re only doing 192 lines, the X register will increment from 0 to 192 by the time we get to the  end of our block of code. But what if we&#39;d put two &#39;inx&#39; lines in?  We&#39;d have incremented the X  register by 192 x 2 = 384 times. What would its value be?  384?   No<span style="padding-left:2px; padding-right:2px;">&mdash;</span>because the X register is only  an 8-bit register, and you would need 9 bits to hold 384 (binary %110000000). When any register  overflows<span style="padding-left:2px; padding-right:2px;">&mdash;</span>or is incremented or decremented past its maximum capability, it simply &#39;wraps around&#39;. For example, if our register had %11111111 in it (255, the maximum 8-bit number) and it was  incremented, then it would simply become %00000000 (which is the low 8-bits of %100000000). Likewise,  decrementing from 0 would leave %11111111 in the register. This may seem a bit confusing right now,  but when we get used to binary arithmetic, it will seem quite natural. Hang in there, I&#39;ll avoid  throwing the need to know this sort of stuff at you for a while.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="wsync">&nbsp;</div>
+<p class="bbsecondary"><a href="#wsync">WSYNC</a></p>
+<p>Now you&#39;ve had a little introduction to the COLUBK register, I&#39;d just like to touch briefly on the  difference apparent between the WSYNC register and the COLUBK register. The former (WSYNC) was a  strobe<span style="padding-left:2px; padding-right:2px;">&mdash;</span>you could simply &#39;touch&#39; it (by writing any value) and it would instantly halt the 6502. Didn&#39;t matter what value you wrote, the effect was the same. The latter register (COLUBK) was used to  send an actual VALUE to the TIA (in this case, the value for the color for the background)<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and the  value written was very much important. In fact, this value is stored internally by the TIA and it  keeps using the value it has internally as the background color until it changes.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="initialize_tia">&nbsp;</div>
+<p class="bbsecondary"><a href="#initialize_tia">Initialize the TIA Registers</a></p>
+<p>If you think about the consequences of this, then, the TIA has at least one internal memory location  which is in an unknown state (at least by us) when the machine first powers on. We&#39;d probably see black<span style="padding-left:2px; padding-right:2px;">&mdash;</span>which happens to be value 0 on all machines), but you never know. I believe it is wise to initialize  the TIA registers to known-states when your kernel first starts<span style="padding-left:2px; padding-right:2px;">&mdash;</span>so there are no surprises on weird  machines or emulators. We have done nothing, so far, to initialize the TIA<span style="padding-left:2px; padding-right:2px;">&mdash;</span>or the 6502, for that  matter<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and I think we&#39;ll probably have a brief look at system startup code in a session  real-soon-now.</p>
+<p>&nbsp;</p>
+<p>Until then, have a play with the picture-drawing section, and see what happens when you write different  values to the COLUBK register. You might even like to change it several times in succession and see  what happens. Here&#39;s something to try (with a bit of head-scratching, you should be able to figure all  this out by now)&hellip;</p>
+<pre class="bbborder">
+
+               ; 192 scanlines of picture... 
+
+
+
+                ldx #0 
+
+                ldy #0 
+
+                REPEAT 192; scanlines 
+
+
+
+                    nop
+
+                    nop
+
+                    nop
+
+                    nop
+
+                    nop
+
+                    nop
+
+                    nop
+
+                    nop
+
+                    nop
+
+                    nop
+
+                     
+
+                    inx 
+
+                    stx COLUBK 
+
+
+
+                    nop 
+
+                    nop 
+
+                    nop 
+
+
+
+                    dey 
+
+                    sty COLUBK 
+
+
+
+                    sta WSYNC 
+
+
+
+                REPEND
+
+</pre>
+<p>One caution: as the above code is wrapped inside a repeat structure which creates 192 copies of the enclosed code, we&#39;re actually running short of ROM space! With the above code installed, there&#39;s only 10 bytes free in our entire ROM! Clearly, using REPEAT in this sort of situation is wasteful, and the code should be written as a loop. We covered looping for scanline draw early on<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but because both X and Y registers are in use at the moment, it&#39;s a bit more tricky.</p>
+<p>&nbsp;</p>
+<p>So for now, we&#39;ll just have to accept that we can&#39;t add any more code<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but at least you can see what effect adding/removing cycles can have on the existing code.</p>
+<p>&nbsp;</p>
+<p>Here&#39;s a screenshot:</p>
+<div class="bbpageindent">
+<div style="background-image:url('files_andrew_davie_sessions/kernel_11.png'); background-repeat:no-repeat; padding:0px; margin: 16px 0px 48px 0px; width:336px; height:241px;">
+<img src="files_andrew_davie_sessions/please_do_not_hotlink.gif" width="336" height="241" alt="Kernel 11" style="border:0;">
+</div>
+</div>
+
+<p style="margin-bottom:8px;">Here&#39;s the .bin file to use with an emulator:</p>
+<p class="bonsitefull"><a style="font-weight:bold;" href="files_andrew_davie_sessions/kernel_11.bin">kernel_11.bin</a></p>
+<p>&nbsp;</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefulloff">Session 11: Colorful Colors</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder">Loading ASM links…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder">Loading ICYDK section…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="index.html">Home</a> <a href="futuristic-inventions-cool-stuff.html">Inventions</a> <a href="favorite-quotes.html">Quotations</a> <a href="game-design.html">Game Design</a> <a href="atari-2600-memories.html">Atari Memories</a> <a href="personal.html">Personal Pages</a> <a href="about.html">About</a> <a href="sitemap.html">Site Map</a> <a href="contact.html">Contact</a> <a href="privacy.html">Privacy Policy</a> <a href="rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+</body>
+</html>

@@ -11,7 +11,8 @@ vyLo        = $83
 vyHi        = $84
 jetPower    = $85
 nextGRP     = $86
-temp        = $87
+joyBits     = $87
+temp        = $88
 
 ; Matching header for bank 3 startup (must be identical bytes at $F000-$F009)
     sei
@@ -87,9 +88,11 @@ MainLoop:
     lsr
     lsr
     lsr             ; A = %0000RLDU (bit3=right, bit2=left, bit1=down, bit0=up)
+    sta joyBits     ; save; jet logic clobbers A, so reload for each check
 
 ; Check Up (bit 0) - jet thrust
-    lsr             ; carry = up (since bit0 shifted out)
+    lda joyBits
+    lsr             ; carry = up (bit 0 shifted out)
     bcs .NoJet      ; carry=1 means up NOT pressed (active low)
 
     lda jetPower
@@ -112,13 +115,13 @@ MainLoop:
     sta jetPower
 
 .AfterUp:
-; Check Down (bit 1) - advance LSR, not used directly (gravity handles it)
-    lsr             ; carry = down
-    ; not used
+; Check Down (bit 1) - not used directly (gravity handles it)
+    ; (bit test skipped; down is unused)
 
 ; Check Left (bit 2) - move left
-    lsr             ; carry = left
-    bcs .NotLeft
+    lda joyBits
+    and #%00000100
+    bne .NotLeft
     dec playerX
     lda playerX
     cmp #4
@@ -128,8 +131,9 @@ MainLoop:
 .NotLeft:
 
 ; Check Right (bit 3) - move right
-    lsr             ; carry = right
-    bcs .NotRight
+    lda joyBits
+    and #%00001000
+    bne .NotRight
     inc playerX
     lda playerX
     cmp #152
@@ -196,10 +200,20 @@ MainLoop:
     sta vyLo
 .PosDone:
 
-; Position player horizontally
-    sta WSYNC       ; align to scanline start BEFORE PosPlayer
+; Position player horizontally (classic routine - same as working test kernel)
+    sta WSYNC       ; align to scanline start
     lda playerX
-    jsr PosPlayer
+    sec
+.DivLoop:
+    sbc #15
+    bcs .DivLoop
+    eor #7
+    asl
+    asl
+    asl
+    asl
+    sta HMP0
+    sta RESP0
 
 ; Wait for VBLANK timer
 .WaitVBlank:
@@ -211,15 +225,6 @@ MainLoop:
     sta HMOVE
     lda #0
     sta VBLANK
-
-    ; Set up playfield for top border (rows 0-7). PF0 stays $F0 (side
-    ; borders) for all rows; only PF1/PF2 change at the border/center
-    ; transitions (rows 8 and 184).
-    lda #$F0
-    sta PF0
-    lda #$FF
-    sta PF1
-    sta PF2
 
     ; Precompute GRP0 for scanline 0 (always blank, player Y >= 8)
     lda #0
@@ -237,17 +242,21 @@ MainLoop:
     lda nextGRP
     sta GRP0
 
-    ; Set playfield for this scanline at border/center transitions
+    ; Set playfield for this scanline (matches working test kernel)
     txa
     cmp #8
-    bne .ChkBottom
+    bcc .SolidBorder
+    cmp #184
+    bcs .SolidBorder
+    lda #$F0
+    sta PF0
     lda #$00
     sta PF1
     sta PF2
     jmp .ComputeNext
-.ChkBottom:
-    cmp #184
-    bne .ComputeNext
+.SolidBorder:
+    lda #$F0
+    sta PF0
     lda #$FF
     sta PF1
     sta PF2
@@ -288,21 +297,6 @@ MainLoop:
     bne .WaitOverscan
 
     jmp MainLoop
-
-; Player positioning subroutine
-PosPlayer:
-    sec
-.DivLoop:
-    sbc #15
-    bcs .DivLoop
-    eor #7
-    asl
-    asl
-    asl
-    asl
-    sta HMP0
-    sta RESP0
-    rts
 
 ; Player sprite data (8 pixels wide, 8 pixels tall)
 PlayerSprite:

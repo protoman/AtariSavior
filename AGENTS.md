@@ -19,7 +19,7 @@ Graphics and sound chip. Write addresses:
 - $07 COLUP1 - Player 1 color
 - $08 COLUPF - Playfield color
 - $09 COLUBK - Background color
-- $0A CTRLPF - Control playfield (D0=playfield size: 0=normal 1=wide; D1=0 mirror 1=repeat; D4=ball size: 0=1clk 1=2clk; D5=ball enabled)
+- $0A CTRLPF - Control playfield (D0=reflect: 0=repeat 1=reflect; D1=score mode: 0=normal 1=score; D4=ball size: 0=1clk 1=2clk; D5=ball enabled). Use $01 for a normal reflected playfield; add $02 only for score mode.
 - $0B REFP0 - Reflect player 0 (D3)
 - $0C REFP1 - Reflect player 1 (D3)
 - $0D PF0 - Playfield 0 (bits 4-7, leftmost 4 pixels)
@@ -100,7 +100,7 @@ Use TIM64T for timing: STA TIM64T with value = desired number of lines.
 (Note: At 1.19MHz, one scanline = 76 cycles. TIM64T counts at 64 cycles/unit.)
 
 ## Playfield Layout
-With CTRLPF D1=0 (mirror):
+With CTRLPF D0=1 (reflect):
 - Pixel 0-3:   PF0 bits 4-7 (leftmost)
 - Pixel 4-11:  PF1 bits 7-0
 - Pixel 12-19: PF2 bits 0-7
@@ -120,12 +120,21 @@ For a simple border:
 
 ## Player Positioning
 The 2600 positions sprites using RESPx (coarse) + HMx (fine).
-- RESPx resets the sprite counter to the next color clock
-- HMx adds fine offset (-8 to +7 color clocks)
-- HMOVE applies all fine motion simultaneously
+- RESPx resets the sprite counter to the current color clock; each loop
+  iteration in the positioning routine must be exactly 5 CPU cycles = 15
+  color clocks so the coarse grid matches the fine range.
+- HMx adds a fine offset of -8 to +7 color clocks.
+- HMOVE (written during HBLANK) applies all fine motion.
 
-Standard positioning formula:
-- Fine offset = ((X + 4) % 15) - 8
+CRITICAL HMPx encoding (bits 4-7): positive (0..+7) moves LEFT, negative
+(-1..-8) moves RIGHT. The classic `sbc #15; bcs` loop is only 4 cycles
+(12 clocks/block) and does NOT give pixel-precise positioning — the coarse
+step (12) must equal the fine span (15). Use the River Raid algorithm:
+compute fine = `((X+1)&15)` then `eor #7` / `asl x4` into HMP0, and a coarse
+delay count via `(X+1)/16` with /15 correction; then a `dey;bpl` delay loop
+that is PAGE-ALIGNED so the taken `bpl` crosses a page (3 cycles), making the
+loop 5 cycles (15 clocks). RESP0 is written at the end of the delay loop.
+HMOVE is applied later (at kernel entry, during HBLANK).
 
 ## Stella Emulator Tips
 - Stelladaptor / 2600-daptor for real controller input
@@ -259,3 +268,23 @@ WaitTimer:
 ## Knowledge Management
 When discovering new information about the Atari 2600 hardware, register behavior,
 timing details, or effective coding patterns, add them to this file for future reference.
+
+## Local Reference Library
+
+The `docs/` directory contains downloaded public references and source examples:
+
+- `docs/tutorial/` contains Andrew Davie's Atari 2600 Memories tutorial sessions covering display timing, initialization, playfields, sprites, positioning, and vertical movement.
+- `docs/stella/` contains Stella's public user and debugger documentation.
+- `docs/examples/` contains public `johnidm/asm-atari-2600` examples, including small kernels and larger complete games.
+- `docs/README.md` records source URLs, attribution, and which examples are useful for this project.
+
+Check upstream license and attribution terms before redistributing or reusing substantial example code.
+
+### Verified TIA Playfield Rules
+
+- `CTRLPF` bit 0 is playfield reflection. `$00` repeats the left half; `$01` reflects it.
+- `CTRLPF` bit 1 selects score mode; it is not the reflection bit.
+- `PF0` uses bits 7-4 and is displayed before `PF1`; `PF2` follows with hardware-specific bit order.
+- TIA state persists between scanlines. A kernel must write registers at deterministic points and budget every scanline to 76 CPU cycles.
+- `WSYNC` stalls until the end of the current scanline. Code after `WSYNC` must still fit before the next visible portion.
+- A 4K image uses standard/no bankswitching in Stella. An F6 image is 16K and requires F6 bankswitching.

@@ -1,0 +1,663 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="ie6 oldie"> <![endif]-->
+<!--[if IE 7]>    <html class="ie7 oldie"> <![endif]-->
+<!--[if IE 8]>    <html class="ie8 oldie"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en">
+<!--<![endif]-->
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-23W5RPE0Q4"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 20: Asymmetrical Playfields (Part 3)</title>
+
+<link href="styles/fluid.css" rel="stylesheet" type="text/css">
+<link href="styles/fluid.css?id=54321" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css?id=1234567" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-20.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 20: Asymmetrical Playfields (Part 3)">
+<meta name="description" content="Session 20: Asymmetrical Playfields (Part 3)">
+<meta name="twitter:description" content="Session 20: Asymmetrical Playfields (Part 3)">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="styles/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="index.html">Home</a> &gt; <a class="offsite" href="atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="atari-2600-memories.html#assembly_language">&#35;Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 20: Asymmetrical Playfields (Part 3)</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="#fsb">Full-Screen-Bitmap Tool</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#pixel_image">40 x 192 Pixel Image</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#data">Data</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#include">include</a></p>
+
+<p class="tocsec"><a href="#summary">Summary</a></p>
+<p class="tocsec"><a href="#exercises">Exercises</a></p>
+<p class="tocsec"><a href="#session_links">Session Links</a></p>
+<p class="tocsec"><a href="#useful_links">Useful Links</a></p>
+</div>
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/30105-session-20-asymmetrical-playfields-part-3/">Original Session 20 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>This session we&#39;re going to wrap-up our understanding of playfield graphics.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="fsb">&nbsp;</div>
+<p class="bbmain"><a href="#fsb">Full-Screen-Bitmap Tool</a></p>
+<p>It doesn&#39;t take long before you get sick of doing data by hand, and often the time spent in creating tools is repaid  many-times-over in the increase in productivity and capability those tools deliver. Sometimes a tool is a &#39;hack&#39; in that  it&#39;s not professionally produced, it has bugs, and it isn&#39;t user-friendly. But until you&#39;ve tried creating bitmap  graphics by hand a bit-at-a-time (and I&#39;m sure that some of you have already done this by now), you won&#39;t really  appreciate something<span style="padding-left:2px; padding-right:2px;">&mdash;</span>anything!<span style="padding-left:2px; padding-right:2px;">&mdash;</span>that can make the process easier. Having prepared you for the fairly shocking quality  of this, I now point you towards <a class="offsite" href="https://atariage.com/forums/topic/77792-where-can-i-download-fsbexe/?do=findComment&comment=949616">FSB</a>, the Full-Screen-Bitmap tool. It&#39;s the tool I use for generating the data for those spiffy Interleaved ChronoColour (tm)  Full-Screen-Bitmaps. But it&#39;s able to be used for monochrome playfields, too.</p>
+<p>&nbsp;</p>
+<p>The tool (Windows-only, sorry<span style="padding-left:2px; padding-right:2px;">&mdash;</span>if you&#39;re on a non-Windows platform then you may need to write your own) is run from a  DOS command-line. It takes three graphics files as input (representing the RED, GREEN, and BLUE components of a color  image) and spits-out data which can be used to display the original data on an Atari 2600. For now we&#39;re not really at  the level of drawing color bitmaps<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but we&#39;ll get there shortly. First, let&#39;s examine how to use FSB to generate data  for simple bitmap displays.</p>
+<p>&nbsp;</p>
+<p>As noted, FSB takes three graphics files as input. Let&#39;s simplify things, and pass the utility only one file. This  equates to having exactly the same data for red, green, and blue components of each pixel<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and hence the image will be  black and white (specifically, it will be two-color). That&#39;s the capability of the &#39;2600 playfield display, remember! It&#39;s only through trickery that there ever appear to be more than two colors on the screen at any time. That trickery  being either time-based or position-based changing of the background and playfield colors to give the impression of more  colors.</p>
+<p>&nbsp;</p>
+<p>Actually, I cheated a bit<span style="padding-left:2px; padding-right:2px;">&mdash;</span>if we pass only one file, the utility will process it, then have a fit when it can&#39;t find the  others. As I said, it&#39;s a bit of a hack. But sometimes, hacking is OK. Sometime, I&#39;ll get a round tuit and fix it up.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="pixel_image">&nbsp;</div>
+<p class="bbsecondary"><a href="#pixel_image">40 x 192 Pixel Image</a></p>
+<p>Right, let&#39;s get right into it. Create yourself a graphic file with a 40 x 192 pixel image, just 2-colors. It doesn&#39;t  really HAVE to be two colors for the utility to work, but the utility will only process the pixels as on or off. It&#39;s  difficult to create good-looking images in such low-resolution and odd aspect ratio. Remember, with a graphics package  you&#39;re probably drawing with square(ish) pixels, so your 40 x 192 image probably looks narrow and tall. On the &#39;2600 it  will be pretty much full-screen. That is, the pixels are &#39;stretched&#39; to roughly 8x their width. So, if you like, use  your paint program&#39;s capabilities to draw in that aspect ratio. Doesn&#39;t matter how you do it, as long as your final  image is just 40 pixels across, 192 deep.</p>
+<p>&nbsp;</p>
+<p>Once you have the image, save it as either a .BMP, a .JPG or a .PNG file. I don&#39;t support .GIF as the idea of software  patents is abhorrent to me. Having said that, I actually am the inventor of one particular piece of patented software  (It&#39;s true!  Look it up<span style="padding-left:2px; padding-right:2px;">&mdash;</span>that&#39;s exercise 1 for today) so you just never know when I&#39;m serious or not, do you?  Once we  have that image file, we can feed it into the utility&hellip;</p>
+<p>&nbsp;</p>
+<p>Navigate to where you&#39;ve placed the utility .exe file, and type (without the quotes)  &quot;FSB&quot;.</p>
+<p>&nbsp;</p>
+<p>You&#39;ll see something like this&hellip;</p>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+
+<div style="margin:0px; padding:0px; max-width:840px;">
+<div class="bbpageindent">
+<pre class="bbborder">
+
+D:Atari 2600ToolsFullScreenBitmapDebug&gt;fsb
+
+
+
+FSB -- Atari 2600 Colour Image Generatorv0.02
+
+Copyright (c)2001 TwoHeaded Software
+
+Contains paintlib code.
+paintlib is copyright (c) 1996-2000 Ulrich von Zadow
+
+
+
+
+
+Usage: FSB [-switch] RED_FILE GREEN_FILE BLUE_FILE
+
+
+
+Switches. . .
+
+  RED_FILE     File with red component of image (2-colour)
+
+  GREEN_FILE   File with green component of image (2-colour)
+
+  BLUE_FILE    File with blue component of image (2-colour)
+
+  v            Toggle verbose output ON/OFF
+
+  nNAME        set output filename prefix. Defaults to IMAGE
+
+
+
+Input files may be .BMP, .JPG, or .PNG format.
+
+
+
+Reading File: IMAGE
+
+Unrecognised and/or unsupported file type.
+
+</pre>
+</div>
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<p>If you see that, then the utility is working fine. Ignore the various error messages<span style="padding-left:2px; padding-right:2px;">&mdash;</span>as I said, it&#39;s a hack and  incomplete. But it does work well-enough for our purposes. If there&#39;s much demand/usage and I&#39;m embarrassed enough I&#39;ll clean it up.</p>
+<p>&nbsp;</p>
+<p>This time, let&#39;s pass an image to it &hellip; let&#39;s assume we saved our file as test.png in the same directory.</p>
+<p><br>
+Type (without &hellip; you know the drill)&nbsp;.&nbsp;.&nbsp;. &quot;FSB test.png&quot;</p>
+</div>
+</div>
+<div style="margin:0px; padding:0px; max-width:840px;">
+<div class="bbpageindent">
+<pre class="bbborder">
+
+D:Atari 2600FullScreenBitmapGraphics&gt;fsb test.png
+
+
+
+FSB -- Atari 2600 Colour Image Generatorv0.02
+
+Copyright (c)2001 TwoHeaded Software
+
+Contains paintlib code.
+paintlib is copyright (c) 1996-2000 Ulrich von Zadow
+
+
+
+Reading File: test.png
+
+Bitmap size: 40 x 170 pixels
+
+........
+
+........
+
+........
+
+........
+
+........
+
+........
+
+........
+
+........
+
+........
+
+........
+
+........
+
+........
+
+........
+
+........
+
+
+
+&gt;&gt;&gt;lots of stuff cut from here!! &lt;&lt;&lt;
+
+
+.*..*.*.
+
+.*.*.*.*
+
+..*.*.*.
+
+**.*..*.
+
+...*.*.*
+
+*.*.*.*.
+
+.*..*..*
+
+.*.*.*.*
+
+*.*.*.*.
+
+..*..*..
+
+Reading File: IMAGE
+
+Unrecognised and/or unsupported file type.
+
+</pre>
+</div>
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<p>You&#39;ll see a WHOLE LOT MORE of those lines with dots and asterisks. This is my debugging visual output of the graphics  as the utility is converting the data. Strictly speaking this is not necessary. But as I said, it&#39;s a hack. Increasingly I&#39;m feeling I need to fix this *sigh*. That&#39;s one of the problems with releasing your tools for others to  use. Please IGNORE that last line saying Unrecognized and/or unsupported file type. It&#39;s uh &hellip; a feature. Anyway,  plunging on&hellip; .</p>
+<p>&nbsp;</p>
+<p>Remember in the previous sessions how we determined that an asymmetrical playfield was created by writing to playfield  registers PF0, PF1, and PF2, and then with exquisite timing writing again to those registers before the scanning of the  electron-beam across the scanline got to display them again?  In essence, there are 6 bytes of data for each scanline  (two of each of the three playfield registers). Although 4 bits in playfield 0 aren&#39;t used, and there&#39;s a potential  saving there of 8 bits total (ie: one byte per line) we&#39;re not going to delve into that sort of saving here. Let&#39;s just  accept that the utility will convert the 40-bit wide image into &#39;segments&#39; such that we really have data for PF0, PF1,  PF2 for the left side of each scanline, and more data for those registers for the right side of each scanline.</p>
+<p>&nbsp;</p>
+<p>Some of the examples presented by our astute readers have already shown formidable asymmetrical playfield solutions<span style="padding-left:2px; padding-right:2px;">&mdash;</span>so  good, in fact, that I&#39;m not going to trouble with an &#39;official&#39; asymmetrical playfield solution for these tutorials. Take one of the already-presented solutions and use that.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="data">&nbsp;</div>
+<p class="bbsecondary"><a href="#data">Data</a></p>
+<p>What I would like to discuss, though, is just how the data for a full-screen-bitmap should be presented. We can organize  our data into 192 scanlines, each having 6 bytes of data<span style="padding-left:2px; padding-right:2px;">&mdash;</span>or we could organize it into 6 columns, each having 192 bytes  of data. The first method is more intuitive (to me, anyway) but it is a much more inefficient way to store our data from  the 6502&#39;s perspective. In fact, to use the first method correctly we would need to use an addressing-mode of the 6502  that I haven&#39;t introduced yet<span style="padding-left:2px; padding-right:2px;">&mdash;</span>so let&#39;s just look at how the utility spits out the data and hopefully as time goes by  you will come to trust my wisdom and perhaps even understand WHY we did it this way ;)</p>
+<p>&nbsp;</p>
+<p>A hint: When using an index register, you can address 256 bytes from any given base-address. That is, the index register  can range from 0 to 255, and that register is added to the base address when doing absolute indexed addressing to give  you a final address to read from or write-to. Now consider if we had our data organized as 192 lines, each being 6  bytes long &hellip; we could do the following&hellip;</p>
+</div>
+</div>
+<div style="margin:0px; padding:0px; max-width:940px;">
+<div class="bbpageindent">
+<pre class="bbborder">
+
+    ldx #0  ; index to the PF data
+
+    ldy #0  ; line number
+
+
+
+ALine   lda PFData,x   ; PF0 data
+
+        sta PF0
+
+        lda PFData+1,x    ; the next byte of data
+                          ; (assembler calculates the +1 when assembling)
+
+        sta PF1
+
+        lda PFData+2,x    ; the next
+
+        sta PF2
+
+
+
+; delays here, as appropriate
+
+
+
+       lda PFData+3,x  ; PF0 data, right side
+
+       sta PF0
+
+       lda PFData+4,x  ; the next
+
+       sta PF1
+
+       lda PFData+5,x  ; the next
+
+       sta PF2
+
+
+
+       txa
+
+       clc
+
+       adc #6
+
+       tax  ; increment pointer by one line (6 bytes of data)
+
+
+
+       sta WSYNC  ; wait till next line
+
+
+
+       iny
+
+       cpy #192
+
+       bne ALine
+       
+</pre>
+</div>
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<p>The above code essentially assumes that the data for the screen is in a single table consisting of 6 bytes per scanline,  and that the scanlines are stored consecutively. Can you see the problem with this?</p>
+<p>&nbsp;</p>
+<p>It&#39;s a bit obscure, but the problem is when we get to scanline #43. At or about that point, the index register used to  access the data will be 42 x 6 (=252) and we come to add 6 to it. So we get 258, right?  Wrong!  Remember, our registers  are 8-bits only, and so we only get the low 8-bits of our result<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and so 252 + 6 = 2 (think of it in binary: %11111100 + %00000110 = %100000010 (9 bits) and the low 8 bits are %00000010 = 2 decimal). So at line 43, instead of accessing data  for line 43 we end up accessing data for line 0 again<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but worse yet, not from the start of the line, but actually two  bytes &#39;in&#39;. Urk!  This is a fundamental limitation of absolute indexed addressing<span style="padding-left:2px; padding-right:2px;">&mdash;</span>you are limited to accessing data in  a 256-byte area from your base address. There are addressing-modes which allow you to get around this, but they&#39;re  slower<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and besides, it&#39;s better to reorganize your data rather than using slow code.</p>
+<p>&nbsp;</p>
+<p>OK, so now let&#39;s consider if each of the bytes of the playfield (all 6 of them) were stored in their own tables. Think  of the screen being organized into 6 columns each of 192 bytes (the depth of the screen). Since each table is now &lt;256  bytes in size, we can easily access each one of them using absolute indexed addressing. As an added bonus, they can all  be accessed using just the one index register which can ALSO double as our line-counter. Like this&hellip;</p>
+<pre class="bbborder">
+
+       ldx #0  ; line #
+
+ALine  lda PF0Data,x  ; PF0 left
+
+       sta PF0
+
+       lda PF1Data,x  ; PF1 left
+
+       sta PF1
+
+       lda PF2Data,x  ; PF2 left
+
+       sta PF2
+
+  
+
+; delay as appropriate
+
+
+
+       lda PF3Data,x  ; PF0 right
+
+       sta PF0
+
+       lda PF4Data,x  ; PF1 right
+
+       sta PF1
+
+       lda PF5Data,x  ; PF2 right
+
+       sta PF2
+
+
+
+       sta WSYNC
+
+
+
+       inx
+
+       cpx #192
+
+       bne ALine
+       
+</pre>
+<p>The above code assumes that there are 6 tables (PF0Data - PF5Data) containing &#39;strips&#39; or &#39;columns&#39; of data making up our  screen. We COULD have had just a single table with the first 192 bytes being column 0, the next being column 1, etc.,  and letting the assembler calculate the actual address from the base address like this (snippet&hellip;)</p>
+<pre class="bbborder">
+
+       ldx #0  ; line #
+
+ALine  lda PFData,x  ; column 0 - PF0 left
+
+       sta PF0
+
+       lda PFData+192,x   ; column 1 - PF1 left
+
+       sta PF1
+
+       lda PFData+384,x   ; column 2 - PF2 left
+
+
+
+; delay, etc.
+
+
+
+       lda PFData+384+192,x; column 3 - PF0 right
+
+
+
+; etc.
+
+</pre>
+<p>What it&#39;s important to understand here is that the &quot;+192&quot; etc., is *NOT* done by the 6502. Remember how our assembler  converts labels to their actual values (using the symbol table)?  Likewise it converts expressions to their actual values<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and in this case it will take the value of &#39;PFData&#39; and add to it 192, and put the resulting 16-bit value as the 2-byte  address following the lda op-code. Remember, the 6502 absolute addressing mode is simply given a base address to which  it adds the index register to get a final address from which data is retrieved (lda) or to which it is stored (sta).</p>
+<p>&nbsp;</p>
+<p>The above example with the manual-offset from the base address (that is, where +n was added) is functionally identical to  the example where there were 6 separately named tables. In both cases, the data is assumed to be strips of 192 bytes,  each strip being one of the columns representing the values to put into each of the 6 playfield registers (given that  there are 6 writes to three registers per-line, I think of the three registers as 6 separate registers).</p>
+<p>&nbsp;</p>
+<p>So that&#39;s exactly what FSB does. It creates 6 tables, each representing a &#39;strip&#39; of 192 lines of data for a single  register. Those tables are saved to a .asm file with the same prefix as the input file, and contents like this  (abridged)&hellip;</p>
+<pre class="bbborder">
+
+screen
+
+
+
+screen_STRIP_0
+
+ .byte 240
+
+ .byte 240
+
+ .byte 240
+
+ .byte 240
+
+
+
+;188 more bytes here
+
+
+
+screen_STRIP_1
+
+
+
+;192 bytes here
+
+
+
+screen_STRIP_2
+
+
+
+;192 bytes here
+
+
+
+screen_STRIP_3
+
+
+
+;192 bytes here
+
+
+
+screen_STRIP_4
+
+
+
+;192 bytes here
+
+
+
+screen_STRIP_5
+
+
+
+;192 bytes here
+
+
+;end
+
+</pre>
+<p>For space purposes that has been heavily abridged. The file was produced from a source-file called &#39;screen.jpg&#39;<span style="padding-left:2px; padding-right:2px;">&mdash;</span>as you  can see, the filename prefix has been used to create labels to identify the whole table (&#39;screen&#39;) and also to identify  each of the strips (&#39;screen_STRIP_0&#39;, etc). So you can use either of the access methods described above, if you wish. Remember, if this file were assembled, the values of the symbols &#39;screen&#39; and &#39;screen_STRIP_0&#39; would be identical as they   will be at the same address in the binary.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="include">&nbsp;</div>
+<p class="bbsecondary"><a href="#include">include</a></p>
+<p>So, we have a DASM-compatible file which contains a text-form version of the graphics file. How do we include this data  into our source, so that we may display the data as an image?  It&#39;s pretty easy<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and in fact we&#39;ve already encountered  the method when we included the &#39;vcs.h&#39; and &#39;macro.h&#39; files.</p>
+<p>&nbsp;</p>
+<p>We just use the include dasm pseudo-op.</p>
+<pre class="bbborder">
+
+&nbsp; include &quot;screen.asm&quot;  ; or whatever your generated file is
+
+</pre>
+<p>When you use the include pseudo-op, DASM actually inserts the contents of the file you specify right then and there into  that very spot into the source-code it is assembling. So be careful about where you enter that include pseudo-op. Don&#39;t  put it in the middle of your kernel-loop, for example!  Put it somewhere at the beginning or end of your code segment,  where it won&#39;t be executed as 6502 code. For example, after the jump at the end of your kernel, which goes back to the  start of the frame.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="#summary">Summary</a></p>
+<p>Until next time, enjoy!</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<div class="jumpid" id="exercises">&nbsp;</div>
+<p class="bbmain"><a href="#exercises">Exercises</a></p>
+<ol class="bbpageol">
+<li class="normalli">Create a circle as a 40 x 192 image and save it as a .JPG, .PNG or .BMP. Convert it to source-code through FSB to  create source-code data. Can you think of good ways to draw circles in such an odd screen-size?  Hint<span style="padding-left:2px; padding-right:2px;">&mdash;</span>make the size of  your image the LAST step in the draw process!</li>
+<li class="normalli">Take one of the asymmetric playfield demos from the last session and convert it to display the data generated in step  1.</li>
+<li class="normalli">Set the playfield color to a RED for one frame, then the next frame set it to a GREEN, and for the third frame set it  to a BLUE. What effect do you see?  What color does the circle appear to be?  Why?  If you haven&#39;t cottoned-on yet, this is leading towards color-bitmap technology<span style="padding-left:2px; padding-right:2px;">&mdash;</span>we may cover that in a future session. By using different colors over time, we can trick the eye to seeing a different color than those we actually use.</li>
+<li class="normalli">How can this temporal color change be used to display a range of colors?  This is tricky, so don&#39;t worry if you can&#39;t understand it. Hint: don&#39;t just change the color each frame! What else can you change?</li>
+<li class="normalli">All our discussions about bitmap graphics have revolved around the use of asymmetrical <strong>(mirrored)</strong> playfields. Yet some (not many!) games use <strong>non-mirrored</strong> playfields. What timing problems can you see when using <strong>non-mirrored</strong> playfields for bitmap graphics<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and why on earth would you want to do this?</li>
+</ol>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefulloff">Session 20: Asymmetrical Playfields (Part 3)</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder">Loading ASM links…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder">Loading ICYDK section…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="index.html">Home</a> <a href="futuristic-inventions-cool-stuff.html">Inventions</a> <a href="favorite-quotes.html">Quotations</a> <a href="game-design.html">Game Design</a> <a href="atari-2600-memories.html">Atari Memories</a> <a href="personal.html">Personal Pages</a> <a href="about.html">About</a> <a href="sitemap.html">Site Map</a> <a href="contact.html">Contact</a> <a href="privacy.html">Privacy Policy</a> <a href="rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,321 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="ie6 oldie"> <![endif]-->
+<!--[if IE 7]>    <html class="ie7 oldie"> <![endif]-->
+<!--[if IE 8]>    <html class="ie8 oldie"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en">
+<!--<![endif]-->
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-23W5RPE0Q4"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Sessions 17 and 18: Asymmetrical Playfields</title>
+
+<link href="styles/fluid.css" rel="stylesheet" type="text/css">
+<link href="styles/fluid.css?id=54321" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css?id=1234567" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-17.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Sessions 17 and 18: Asymmetrical Playfields">
+<meta name="description" content="Sessions 17 and 18: Asymmetrical Playfields">
+<meta name="twitter:description" content="Sessions 17 and 18: Asymmetrical Playfields">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="styles/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="index.html">Home</a> &gt; <a class="offsite" href="atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="atari-2600-memories.html#assembly_language">&#35;Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; text-align:center;">Sessions 17 &amp; 18: Asymmetrical Playfields</h2>
+<p style="font-size:20px; margin-bottom:8px; text-align:center; font-weight:bold;">(Parts 1 &amp; 2)</p>
+
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="#tia_frame_timing">The TIA and Frame Timing</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#wsync_refresher">WSYNC Refresher</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#synchronization">Synchronization</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#more_timing">More About Timing</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#remember">One Thing You Need to Remember</a></p>
+<p class="tocsec"><a href="#timing_diagram">Timing Diagram</a></p>
+<p class="tocsec"><a href="#summary">Summary</a></p>
+<p class="tocsec"><a href="#session_links">Session Links</a></p>
+<p class="tocsec"><a href="#useful_links">Useful Links</a></p>
+</div>
+<p class="littlebluetitle">Original Sessions</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/29205-session-17-asymmetrical-playfields-part-1">Original Session 17 at AtariAge</a></p>
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/29326-session-18-asymmetrical-playfields-part-2">Original Session 18 at AtariAge</a></p>
+</div>
+
+
+
+</div>
+<div id="fcontent728">
+<p>By now you should be familiar with how the &#39;2600 playfield works. In summary, there are three playfield registers (PF0, PF1, PF2) and these hold 20 bits of playfield data. The &#39;2600 displays this data twice on every scanline, and you can have the second half mirrored, if you wish. Playfield is a single-color, but each half of the screen may be set to use the colors of the players (more about those, later!). In short, though, we have a fairly versatile system just great for PONG-style games.</p>
+<p>&nbsp;</p>
+<p>Pretty soon, though, programmers started doing much more sophisticated things with the TIA<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and especially with the playfield registers<span style="padding-left:2px; padding-right:2px;">&mdash;</span>than just displaying symmetrical (or mirrored) playfields.</p>
+<p>&nbsp;</p>
+<p>Since writes to TIA immediately change the internal &#39;state&#39; of the TIA, and since the TIA and 6502 work in tandem during the display of a TIA frame, there&#39;s no reason why the 6502 can&#39;t modify things on-the-fly in the middle of scanlines. For example, any write to playfield registers will IMMEDIATELY reflect in changes to the data that the TIA is sending for a particular scanline. I qualify this slightly by my non-knowledge if these immediate changes are on a per-pixel basis, or on a per-byte basis. Something for us all to play with!</p>
+<p>&nbsp;</p>
+<p>In any case, as will probably have become obvious to you by now, it is possible to display a different &#39;shape&#39; on the left and right of any scanline. As stated, if we left the TIA alone then it would display the same (or a mirrored version) data on the left and right halves of the screen<span style="padding-left:2px; padding-right:2px;">&mdash;</span>coming from its 20 pixel playfield data. But if we modify any of the playfield registers on-the-fly (that is, mid-scanline) then we will see the results of that modification straight away when the TIA draws the rest of the scanline.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="tia_frame_timing">&nbsp;</div>
+<p class="bbmain"><a href="#tia_frame_timing">The TIA and Frame Timing</a></p>
+<p>Let&#39;s revisit briefly our understanding of the TIA and frame timing. Please refer to the earlier sessions where the timing of the TIA and 6502 were covered. In summary, there are exactly 228 color-clocks of TIA &#39;time&#39; on any scanline<span style="padding-left:2px; padding-right:2px;">&mdash;</span>160 of those clocks are actual visible pixels on the screen and 68 of them are the time it takes for the horizontal retrace to occur.</p>
+<p>&nbsp;</p>
+<p>Our &#39;zero point&#39; of any scanline is the beginning of horizontal retrace. This is the point at which the TIA re-enables the 6502 if it has been halted by a WSYNC write. At the beginning of any scanline, then, we know that we have exactly 68 color clocks (68/3 = 22.667 cycles) before the TIA starts &#39;drawing&#39; the line itself.</p>
+<p>&nbsp;</p>
+<p>You should already be familiar with the horizontal resolution of &#39;2600 playfield<span style="padding-left:2px; padding-right:2px;">&mdash;</span>exactly 40 pixels per scanline. I use the term &#39;pixels&#39; interchangeably here<span style="padding-left:2px; padding-right:2px;">&mdash;</span>to mean a minimum unit of graphic resolution. For the playfield, there are 40 pixels a line. But the TIA has 160 color-clocks per line, and in fact sprite resolution is also 160 pixels per line. Another way of looking at this is that each playfield pixel is 4 color-clocks wide, and each sprite pixel is 1 color clock wide (as a minimum, anyway<span style="padding-left:2px; padding-right:2px;">&mdash;</span>this can be adjusted to give double-wide and quadruple-wide sprites. We&#39;ll get to sprites soon, I promise!)</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="wsync_refresher">&nbsp;</div>
+<p class="bbsecondary"><a href="#wsync_refresher">WSYNC Refresher</a></p>
+<p>There are 228 (160 visible + 68 not visible) color clocks on each scanline. The CPU is active ALL the time, *unless* you write to WSYNC at which point the CPU is *immediately* halted and doesn&#39;t become active again until the start of the next scanline. Since it takes 3 cycles to actually write WSYNC, a kernel which is using this to time scanlines only has 73 CPU cycles per line. Why 73? Because if we look at the color clocks per line, we see 228; but if we look at 3 color clocks for every CPU cycle, we actually have 228/3 = 76 CPU cycles per line. And if we use 3 of those to do a WSYNC, then we only have 73 available for other stuff. Voila!</p>
+<p>&nbsp;</p>
+<p>And note, these 76 cycles for the whole line actually encompass the WHOLE line &hellip; 228 color clocks worth. Some of those will be during the 160 visible onscreen pixels (color clocks). Some will be during the 68 &#39;horizontal blank&#39; period<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the invisible color clocks. And the CPU can be halted by a WSYNC at *any* time during the line<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and it will be turned on at the start of the next line<span style="padding-left:2px; padding-right:2px;">&mdash;</span>no matter how long away that is.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<div class="jumpid" id="synchronization">&nbsp;</div>
+<p class="bbsecondary"><a href="#synchronization">Synchronization</a></p>
+<p>It&#39;s quite important to understand the timing of things. Let&#39;s delve a bit more deeply into the synchronization between the 6502 and the TIA, and have a close look at when/where each pixel of the playfield is actually being drawn.</p>
+<p>&nbsp;</p>
+<p>As stated above, the first 68 cycles of each scanline are the horizontal retrace period. So the very first pixel of playfield (which is 4 color-clocks wide, remember!) starts drawing on TIA cycle 68 (of 228 in the line). So if we want that pixel to be the right &#39;shape&#39; (ie: on or off, as the case may be) then we really have to make sure we have the right data in the right bit of PF0 before cycle 68.</p>
+<p>&nbsp;</p>
+<p>Likewise, we should really make sure that the second pixel has its correct data set before cycle 72 (68 + 4 color clocks). In fact, you should now understand that the 4 playfield pixels at the left of the scanline occupy TIA color clocks (68-71) (72-75) (76-79) and (80-83). The very first pixel of PF1, then, starts displaying at clock 84. So we need to make sure that data for PF1 is written before TIA clock 84. And so it goes, we should make sure that PF2 data is written to PF2 before the TIA starts displaying PF2 pixels. And that happens on clock (84 + 8 * 4 = 116)</p>
+<p>&nbsp;</p>
+<p>Finally, we can now see that PF2 will take 32 color clocks (because it&#39;s 8 pixels, at 4 clocks each). As it starts on TIA clock 116, it will end on clock 147. The obvious calculation is 147 (end) - 68 (start) = 80 color clocks. Which nicely corresponds to 20 pixels at 4 color clocks each. OK, that&#39;s straightforward, but you should now follow exactly the correspondence between TIA color clocks and the start of display of particular pixels on any scanline.</p>
+<p>&nbsp;</p>
+<p>Now, what happens at color clock 148?  The TIA starts displaying the second half of the playfield for the scanline in question, of course!  Depending on if the playfield is mirrored or not, we will start seeing data from PF2 (mirrored) or from PF0 (non-mirrored).</p>
+<p>&nbsp;</p>
+<p>Now, and here&#39;s the really neat bit<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and the whole trick behind &#39;asymmetric&#39; playfields<span style="padding-left:2px; padding-right:2px;">&mdash;</span>we know that if we rewrite the TIA playfield data AFTER it has been displayed on the left half of the scanline, but BEFORE it is displayed on the right half of the scanline, then the TIA will display different data on the left and right side of the screen.</p>
+<p>&nbsp;</p>
+<p>In particular, this method tends to use a non-mirrored playfield. We noted that PF0 finished displaying its 4 pixels on color clock 83 (inclusive). So from color clock 84 onwards (up to 148, in fact), we may freely write new data to PF0 and we won&#39;t bugger anything currently being displayed. That&#39;s 60 color clocks of time available to us.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="more_timing">&nbsp;</div>
+<p class="bbsecondary"><a href="#more_timing">More About Timing</a></p>
+<p>Time to revisit the timing relationship between the 6502 and the TIA. The TIA has 228 color clocks per scanline, but the 6502 speed is derived from the TIA clock through a divide-by-three. So the 6502 has only 76 cycles (228/3) per scanline. So if there are 60 color clocks of time available to change PF0, that corresponds to 60/3 = 20 cycles of 6502 time. Further conversions between TIA time and 6502 cycles show us that it must start after TIA cycle 84 (= 84/3) = 6502 cycle 28, and it must end before TIA cycle 148 (6502 cycle 148/3 = 49.3333). Aha!  How can we have a non-integer cycle?  We can&#39;t, of course. All this tells us is that it is IMPOSSIBLE to exactly change data on TIA color clock 148. We can change TIA data on any divisible-by-three cycle number, since the 6502 is working in tandem with the TIA but only gets a look-in every 3 cycles.</p>
+<p>&nbsp;</p>
+<p>This inability to exactly time things isn&#39;t a problem for us now, as we have already noted that there are 60 TIA color clocks in which we can effect our change for PF0.</p>
+<p>&nbsp;</p>
+<p>PF1 and PF2 operate in exactly the same fashion. PF1 is displayed from clocks 84-115 and on the right-side from clock 164 onwards (remember the right-side starts at clock 148, PF0 takes 16 color-clocks (4 pixels at 4 color-clocks each). So to modify PF1 so it displays different right-side and left-side visuals, we need to modify it between color clock 116 and 164. That gives us a narrower window of time in which we can make our modification<span style="padding-left:2px; padding-right:2px;">&mdash;</span>just 48 color clocks. But still, we can do that, right?</p>
+<p>&nbsp;</p>
+<p>Finally, PF2 is displayed from clock 116-147 (let&#39;s check, that&#39;s 32 color clocks inclusive - 32 = 8 pixels x 4 clocks per pixel. Yep!). And on the right-side of the scanline, PF2 will display from clock 164 + 32 = 196 to clock 227. 227 - 196 = exactly 32 color clocks. Voila!  So the window of opportunity for PF2, so to speak, is from color clock 148 to 195 inclusive. That&#39;s another 48 clocks.</p>
+<p>&nbsp;</p>
+<p>So to summarize the timing for writing the right-hand-side PF register updates, we can safely modify PF0 from clocks 84 - 147,  PF1 from clocks 116 - 163 inclusive, and PF2 from 148 - 195 inclusive. Note the overlap on these times. We could safely modify PF1 on (say) cycle 116, and then modify PF0 on cycle 130, and finally modify PF2 on cycle 190. The point being, it&#39;s not the ORDER of the modifications to the playfield registers that count<span style="padding-left:2px; padding-right:2px;">&mdash;</span>it&#39;s the TIMING that counts. As long as we modify the registers in the period when the TIA isn&#39;t drawing them, we won&#39;t see glitches on the screen.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="remember">&nbsp;</div>
+<p class="bbsecondary"><a href="#remember">One Thing You Need to Remember</a></p>
+<p>Well, now you have all the information you need to generate an asymmetrical playfield. But there&#39;s one thing you need to remember<span style="padding-left:2px; padding-right:2px;">&mdash;</span>once you write data to the TIA, the TIA retains that &#39;state&#39;, or the data that you last wrote. So if you want an asymmetrical playfield, you not only have to write the new data for the right-half of the scanline, you have to write the right data for the left side of the NEXT scanline!</p>
+<p>&nbsp;</p>
+<p>In fact, we already covered that. As long as PF0 is written before cycle 68 then it will display OK on the left &hellip; etc. So a typical asymmetrical playfield kernel will be writing 6 playfield writes (two to PF0, two to PF1, two to PF2) on each and every scanline. As you can imagine, you don&#39;t get a lot of change out of just 76 cycles of 6502 time per scanline, when as a minimum a load/store is going to cost you 5 cycles of time<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and in most cases more like 6 or 7. That can equate to 40 or more cycles of your 76, JUST drawing the playfield data. Ouch!</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="timing_diagram">&nbsp;</div>
+<p class="bbmain"><a href="#timing_diagram">Timing Diagram</a></p>
+<p>The following diagram shows the timing relationship between the TIA, the 6502, and playfield pixels. Further, it shows the times at which it is safe to write the playfield registers for both left and right-sides of the screen.</p>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+<div style="overflow: auto;">
+<div style="background-image:url('files_andrew_davie_sessions/2600_timing_02.png'); background-repeat:no-repeat; padding:0px; margin: 16px 0px 0px 12px; width:975px; height:473px; border:1px solid black;">
+<img src="files_andrew_davie_sessions/please_do_not_hotlink.gif" width="975" height="473" alt="Timing Diagram" style="border:0;">
+</div>
+</div>
+
+<div class="f728max">
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="#summary">Summary</a></p>
+<p>Rather than give you a code sample this session, I&#39;d like you to grab the last playfield code and convert it to display an asymmetrical playfield. Doesn&#39;t have to be fancy<span style="padding-left:2px; padding-right:2px;">&mdash;</span>just demonstrate a consistent change between left and right halves of the screen, writing PF0, PF1 and PF2 twice each on each scanline. Once you&#39;ve mastered this concept you can truly say you&#39;re on the way to programming a &#39;2600 game!</p>
+<p>&nbsp;</p>
+<p>See you next time!</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefulloff">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder">Loading ASM links…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder">Loading ICYDK section…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="index.html">Home</a> <a href="futuristic-inventions-cool-stuff.html">Inventions</a> <a href="favorite-quotes.html">Quotations</a> <a href="game-design.html">Game Design</a> <a href="atari-2600-memories.html">Atari Memories</a> <a href="personal.html">Personal Pages</a> <a href="about.html">About</a> <a href="sitemap.html">Site Map</a> <a href="contact.html">Contact</a> <a href="privacy.html">Privacy Policy</a> <a href="rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+</body>
+</html>
