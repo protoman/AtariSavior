@@ -1,0 +1,599 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="ie6 oldie"> <![endif]-->
+<!--[if IE 7]>    <html class="ie7 oldie"> <![endif]-->
+<!--[if IE 8]>    <html class="ie8 oldie"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en">
+<!--<![endif]-->
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-23W5RPE0Q4"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 23: Moving Sprites Vertically</title>
+
+<link href="styles/fluid.css" rel="stylesheet" type="text/css">
+<link href="styles/fluid.css?id=54321" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css?id=1234567" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-23.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 23: Moving Sprites Vertically">
+<meta name="description" content="Session 23: Moving Sprites Vertically">
+<meta name="twitter:description" content="Session 23: Moving Sprites Vertically">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="styles/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="index.html">Home</a> &gt; <a class="offsite" href="atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="atari-2600-memories.html#assembly_language">&#35;Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 23: Moving Sprites Vertically</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="#line_counter">Line Counter</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#flags">Flags</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#upside_down">Upside-Down</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#sprite_data">Sprite Data</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#animation">Animation</a></p>
+<p class="tocsec"><a href="#summary">Summary</a></p>
+<p class="tocsec"><a href="#exercises">Exercises</a></p>
+<p class="tocsec"><a href="#session_links">Session Links</a></p>
+<p class="tocsec"><a href="#useful_links">Useful Links</a></p>
+</div>
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/38020-session-23-moving-sprites-vertically/">Original Session 23 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>This session we&#39;re going to have a preliminary look at vertical movement of sprites.</p>
+<p>&nbsp;</p>
+<p>In the previous sessions we have seen that there are two 8-pixel wide sprites, each represented by a single 8-bit register in the TIA itself. The TIA displays the contents of the sprite registers at the same horizontal position on each scanline, corresponding to where on an earlier scanline the RESP0 or RESP1 register was toggled. We explored how to use this knowledge to develop some generic &quot;position at horizontal pixel x&quot; code which greatly simplified the movement of sprites in a horizontal direction.</p>
+<p>&nbsp;</p>
+<p>Instead of having to work with the odd RESPx timing, we have abstracted that aspect of the hardware and now reference the sprite position through a variable in RAM, and our code positions the sprite to the pixel number indicated by this variable.</p>
+<p>&nbsp;</p>
+<p>Let&#39;s now have a look at how to position a sprite vertically.</p>
+<p>&nbsp;</p>
+<p>Our examples so far have shown how sprites appear as a vertical strip the entire height of the screen. This is due, of course, to the single byte of sprite data (8 bits = 8 pixels) being duplicated by the TIA (for each sprite) on each scanline. If we change the data held in the TIA sprite graphics registers (ie: in GRP0 or GRP1), then the next time the TIA draws the relevant sprite, we see a change in the shape that the TIA draws on-screen. We still see 8 pixels, directly under the 8 pixels of the same sprite on the previous scanline<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but if we&#39;ve changed the relevant GRPx register then we will see different pixels on (solid) and different pixels off (transparent).</p>
+<p>&nbsp;</p>
+<p>To achieve vertical movement of &#39;a sprite&#39;<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and by this, we mean a recognizable shape like a balloon, for example<span style="padding-left:2px; padding-right:2px;">&mdash;</span>we need to modify the data that we are writing to the GRPx register. When we&#39;re on scanlines where the shape is not visible, then we should be writing 0 to the GRPx register<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and when on scanlines where the shape is visible, we should be writing the appropriate line of that shape to the GRPx register. Doing this quickly, and with little RAM or ROM usage, is the trickiest bit. Conceptually, it&#39;s quite simple.</p>
+<p>&nbsp;</p>
+<p>There are several ways to tackle the problem of writing the right line of the shape on the right line of the screen, and nothing when the shape isn&#39;t on the line we&#39;re drawing. Some of them take extra ROM, some require more RAM, and some of them require more cycles per line.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="line_counter">&nbsp;</div>
+<p class="bbmain"><a href="#line_counter">Line Counter</a></p>
+<p>Most kernels keep one of the registers as a &#39;line counter&#39; for use in indexing into tables of data for playfield graphics<span style="padding-left:2px; padding-right:2px;">&mdash;</span>so that the correct line of data is placed in the graphics registers for each scanline. The kernels we&#39;ve created so far also use this line counter to determine when we have done sufficient lines in our kernel. For example&hellip;</p>
+<pre class="bbborder">
+
+    ldx #0   ;2
+
+Kernel  lda PF0Table,x   ;4
+
+    sta PF0   ;3
+
+    lda PF1Table,x   ;4
+
+    sta PF1   ;3
+
+    lda PF2Table,x   ;4
+
+    sta PF2   ;3
+
+    sta WSYNC   ;3
+
+    inx   ;2
+
+    cpx #192   ;2
+
+    bne Kernel   ;3(2)
+
+</pre>
+<p>The above code segment shows a loop which iterates the X register from 0 to 192 while it writes three playfield registers on each of the scanlines it &#39;generates&#39;. We&#39;ve covered all of this in previous sessions. The numbers after the semicolon (the comment area) indicate the number of cycles that instruction will take (not taking into account possible page-boundary crossing, etc). We can see that this simple symmetrical playfield modification will take at least 31 cycles of our available 76 cycles just to do the three playfield registers on each scanline. That leaves only 45 cycles to do sprites, missiles, ball<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and let&#39;s not forget the other three playfield writes if we&#39;re doing an asymmetrical playfield.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="flags">&nbsp;</div>
+<p class="bbsecondary"><a href="#flags">Flags</a></p>
+<p>Clearly, our scanline loop is extremely starved of cycles, and any code we put in there must be extremely efficient. The biggest waste in the code above is the comparison. Remember earlier we indicated that the 6502 has a flags register, and some of these flags are set/cleared automatically after certain operations (on loads and arithmetic operations<span style="padding-left:2px; padding-right:2px;">&mdash;</span>including register increments and decrements, the negative and zero flags are automatically set/cleared). From now on we&#39;re going to use the &#39;standard&#39; way of looping and instead of specifically comparing a line count with a desired value (eg: counting up to 192), we&#39;ll switch to starting at our top value and decrementing the line counter and branching UNTIL the counter gets to 0. By using our knowledge about the automatic flag setting, we are able to remove the comparison from our loop&hellip;</p>
+<pre class="bbborder">
+
+    ldx #192   ;2
+
+Kernel  lda PF0Table,x   ;4
+
+    sta PF0   ;3
+
+    lda PF1Table,x   ;4
+
+    sta PF1   ;3
+
+    lda PF2Table,x   ;4
+
+    sta PF2   ;3
+
+    sta WSYNC   ;3
+
+    dex   ;2
+
+    bne Kernel   ;3(2)
+
+</pre>
+<div class="bbpageindent">
+<p>&nbsp;</p>
+<div class="jumpid" id="upside_down">&nbsp;</div>
+<p class="bbtertiary"><a href="#upside_down">Upside-Down</a></p>
+<p>The trick here is that the &#39;dex&#39; instruction will set the Z (zero) flag to 1 if the x register is zero after the instruction has executed, and 0 if it is non-zero. The &#39;bne&#39; instruction stands for &quot;branch if Z is zero&quot; or more memorably &quot;branch if the result was not equal (to zero)&quot;. In short, the branch will be taken if the x register is non-zero. Thus we have removed two cycles from our inner scanline loop. But at what cost?  Since the loop is now counting &#39;down&#39; instead of &#39;up&#39;, our tables will now be accessed upside-down (that is, the first scanline will show data from the bottom of the tables), and our whole playfield will &#39;flip&#39; upside-down. That&#39;s fine<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the solution for this is to change the tables themselves so they are upside-down, too!</p>
+<p>&nbsp;</p>
+<p>All of that was a bit of a diversion<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but it&#39;s important to understand how we are accessing our data in an upside-down fashion merely for the purposes of efficiency<span style="padding-left:2px; padding-right:2px;">&mdash;</span>in this case, saving us just 2 cycles per scanline. But those 2 cycles are some 2.6% of the time we have, and every little bit counts.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="sprite_data">&nbsp;</div>
+<p class="bbsecondary"><a href="#sprite_data">Sprite Data</a></p>
+<p>Even with this improvement, we have just 47 cycles left to do everything else. Let&#39;s have a look at what we need to add to this to get sprites up and running. Assume we are loading our sprite data from a table, just as with the playfield data. We&#39;d need to add&hellip;</p>
+<pre class="bbborder">
+
+    lda Sprite0Data,x   ;4
+
+    sta GRP0   ;3
+
+</pre>
+<p>That&#39;s 7 cycles, which is OK<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but we find that we have an immovable (we have no ability to change the vertical position) block of sprite data the whole height of the screen<span style="padding-left:2px; padding-right:2px;">&mdash;</span>read from the table &#39;Sprite0Data&#39;. This setup would also require that our sprite data table is 192 lines high.</p>
+<p>&nbsp;</p>
+<p>Let&#39;s assume, just for a minute, that Sprite0Data was in RAM. Then we&#39;d have the ability to use this kernel to do the display and have another part of our program draw different shapes into that RAM table (ie: if we were drawing a Pac-Man sprite, we could have the first 20 &#39;lines&#39; of the table with 0, then the next 16 lines with the shape for the Pac-Man sprite, then the remainder with 0). To move this sprite up or down, we&#39;d simply change where in the RAM table we were drawing the sprite<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and when our kernel came to do the display, it wouldn&#39;t really care where the sprite was, it would just draw the continuous strip of sprite data from the RAM table, and voila!   Vertically moving sprites.</p>
+<p>&nbsp;</p>
+<p>And this is exactly how the Atari home computers manage vertical movement of sprites. They, too, have a single register holding the sprite data<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and they, too, modify this register on-the-fly to change the shape of the sprite that is being shown on each scanline. But the difference is that the Atari computers have a bit of hardware which does EXACTLY what our little kernel above does<span style="padding-left:2px; padding-right:2px;">&mdash;</span>that is, copy sprite data from a RAM buffer into the hardware sprite register.</p>
+<p>&nbsp;</p>
+<p>The problem for Atari 2600 kernels is that we simply don&#39;t have 192 bytes of RAM to spend on a draw buffer/table for each player sprite. In fact, we only have 128 bytes RAM total for our entire program!  So it&#39;s a nice solution<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and certainly one that should be used if you are programming for some cartridge format with ample RAM<span style="padding-left:2px; padding-right:2px;">&mdash;</span>because it provides extremely quick (7 cycles) drawing of sprites.</p>
+<p>&nbsp;</p>
+<p>But for normal usage, this technique is not possible or practical.</p>
+<p>&nbsp;</p>
+<p>Unfortunately, the available alternatives are costly<span style="padding-left:2px; padding-right:2px;">&mdash;</span>in terms of processing time. The quickest &#39;generic sprite draw&#39; that I&#39;m aware of at the moment takes 18 cycles. Given our 47 cycles remaining in the scanline, 36 of these would be taken up drawing just two sprites<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and that makes asymmetrical playfield, balls and missiles a very problematic task. How can we fit all of these into the remaining 11 cycles of time?</p>
+<p>&nbsp;</p>
+<p>The short answer is:  we can&#39;t. And this is why many games revert to what is termed a &quot;2 scanline kernel&quot;. Instead of trying to fit ALL of the updates into a single scanline, the 2 scanline kernel tries to fit all of the updates into two scanlines<span style="padding-left:2px; padding-right:2px;">&mdash;</span>taking advantage of the TIA&#39;s persistent state so that registers which have been modified on one scanline will remain the same until next modified. A typical two scanline kernel will modify the playfield (left side), sprite 0, playfield (right side) on the first scanline, then the playfield (left side), sprite 1, playfield (right side) on the second scanline<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and then repeat the process.</p>
+<p>&nbsp;</p>
+<p>The upshot of this is that our sprites have a maximum resolution of two scanlines<span style="padding-left:2px; padding-right:2px;">&mdash;</span>that is, we can only modify the shape of a sprite once every two lines<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and in fact each sprite is updated on alternate lines. There&#39;s a bit of hardware (a graphics delay of 1 scanline) to compensate for this, so that the sprites APPEAR to update on the same scanline. This interesting hardware capability shows clearly that the designers of the &#39;2600 were well aware of the time limitations inherent in trying to update playfield registers, sprites missiles and ball in a single scanline<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and that they designed the hardware accordingly to mask this problem.</p>
+<p>&nbsp;</p>
+<p>But we&#39;re not concerned with two scanline kernels this session. Please be aware that they are extremely common<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and many games extend this concept to multiple-scanline kernels<span style="padding-left:2px; padding-right:2px;">&mdash;</span>where different tasks are performed in each scanline, and after n scanlines this process repeats to build up the screen out of &#39;meta-scanlines&#39;. It&#39;s a useful technique to get around the limitations of cycles per line.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="animation">&nbsp;</div>
+<p class="bbtertiary"><a href="#animation">Animation</a></p>
+<p>Before we continue, let&#39;s have a think about what we want a sprite draw to do<span style="padding-left:2px; padding-right:2px;">&mdash;</span>it&#39;s fine to be able to display a sprite shape anywhere on the screen (we&#39;ve already touched on the horizontal positioning, and now we&#39;re well on the way to understanding how the vertical positioning works)<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but sprites typically animate. How can we use the code shown so far to animate our sprites as well?</p>
+<p>&nbsp;</p>
+<p>If we used the Atari computer method<span style="padding-left:2px; padding-right:2px;">&mdash;</span>presented above<span style="padding-left:2px; padding-right:2px;">&mdash;</span>of using a &#39;strip&#39; of RAM to represent the table from which data is written to the screen, and modifying the data written to that table, then the problem is fairly simple<span style="padding-left:2px; padding-right:2px;">&mdash;</span>we just write different shapes to the table. But if we don&#39;t HAVE a RAM table, and we&#39;re forced to use a ROM table, then to get different shapes onscreen, we&#39;re going to have to use different tables. We can&#39;t modify the contents of tables in ROM!  But the code above has the table hardwired into the code itself. That is&hellip;</p>
+<pre class="bbborder">
+
+    lda Sprite0Data,x
+
+    sta GRP0
+
+</pre>
+<p>The problem here is that the address of the table is hardwired at the time we write our code<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and the assembler will happily predetermine where this table is in the ROM, and the code will always fetch the data from the same table. What we really want to do with a sprite routine is not only fetch the data from a table<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but also be able to change WHICH table we fetch the data from.</p>
+<p>&nbsp;</p>
+<p>And here is an ideal use for a new addressing mode of the 6502.</p>
+<pre class="bbborder">
+
+    lda (zp),y
+
+</pre>
+<p>In the above code, &#39;zp&#39; is a zero page two-byte variable which holds a memory address. The 6502 takes the contents of that variable (ie: the address of our table), adds the y register to it, and then uses the resulting address as our location from which to load a byte of data. It&#39;s quite an expensive instruction, taking 5 cycles to execute.</p>
+<p>&nbsp;</p>
+<p>But now our code for drawing sprites (in principle) can look like this&hellip;</p>
+<pre class="bbborder">
+
+    lda (SpriteTablePtr),y
+
+    sta GRP0
+
+</pre>
+<p>The problem this introduces is that the Y register is used for indexing the data table, whereas we were previously using the X register. There&#39;s no way around this<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the addressing mode does not work with the X register!  So let&#39;s change our kernel around a bit, and instead of using the X register to count the scanlines, we&#39;ll switch to the Y register&hellip;</p>
+<pre class="bbborder">
+
+    ldy #192   ;2
+
+Kernel 
+
+
+
+    lda PF0Table,y   ;4
+
+    sta PF0   ;3
+
+    lda PF1Table,y   ;4
+
+    sta PF1   ;3
+
+    lda PF2Table,y   ;4
+
+    sta PF2   ;3
+
+
+
+    lda (SpriteTablePtr),y; 5
+
+    sta GRP0; 3
+
+
+
+    sta WSYNC   ;3
+
+    dey   ;2
+
+    bne Kernel   ;3(2)
+
+</pre>
+<p>This is a bit better<span style="padding-left:2px; padding-right:2px;">&mdash;</span>now (as long as we previously setup the zero page 2-byte variable to point to our table) we are able to display any sprite shape that we desire, using the one bit of code. Here&#39;s what you&#39;d need to do to setup your variable to point to the sprite shape data&hellip;</p>
+<pre class="bbborder">
+
+    lda #&lt;Sprite0Data
+
+    sta SpriteTablePtr
+
+    lda #&gt;SPrite0Data
+
+    sta SpriteTablePtr+1
+
+</pre>
+<p>Additionally, the variable should be defined in the RAM segment like this&hellip;</p>
+<pre class="bbborder">
+
+SpriteTablePtr ds 2
+
+</pre>
+<p>Now let&#39;s review all of that and make sure we understand exactly what is happening&hellip; We have a zero page variable (2 bytes long) which holds the address of the sprite table containing the shape we want to display. Addresses are 16-bits long, and we&#39;ve already seen how the 6502 represents 16-bit addresses by a pair of bytes<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the low byte followed by the high byte (little-endian order). So into our sprite pointer variable, we are writing this byte-pair. The &#39;&gt;&#39; operator tells the assembler to use the high byte of an address, and the &#39;&lt;&#39; operator tells the assembler to use the low byte of an address. These are standard operators, but there&#39;s another way to do it&hellip;</p>
+<pre class="bbborder">
+
+    lda #address&amp;0xFF  ; low byte
+
+    sta var
+
+    lda #address/256   ; high byte
+
+    sta var+1
+
+</pre>
+<p>Other ways exist. It doesn&#39;t really matter which one you use<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the result is the same. We end up with a zero page variable which POINTS to the table which is used to give the data for the shape of the sprite. In fact, the variable points to the very start of the table.</p>
+<p>&nbsp;</p>
+<p>And this is our new problem!  As we have earlier seen, if we had a RAM table, then we could move the sprite up and down by drawing it into that table and let our kernel display the whole &#39;strip&#39; of sprite data. The effect would be that the sprite moved up and down on screen. But because we don&#39;t have that much RAM, we must programmatically determine on which scanline(s) the sprite data is to be displayed from the table, and which scanline(s) should contain 0-data for the sprite.</p>
+<p>&nbsp;</p>
+<p>Essentially the process consists of comparing the current line-counter (the Y register) with the vertical position required for the sprite. If the counter comparison indicates that the sprite should be visible on the current scanline, then the data is fetched from the table<span style="padding-left:2px; padding-right:2px;">&mdash;</span>else a 0 value is used for the sprite data. Rather than stepping through the entire process and deriving the optimum result, we&#39;re going to just drop in the method used by nearly all games these days&hellip;</p>
+</div>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+
+<div style="margin:0px; padding:0px; max-width:830px;">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<pre class="bbborder">
+
+        sec                 ; 2  can often be guaranteed,
+                            ; and omitted.
+
+
+         tya                ; 2
+
+        sbc SpriteEnd       ; 3
+
+        adc #SPRITE_HEIGHT  ; 2
+
+        bcs .MBDraw3        ; 2(3)
+
+
+
+        nop                 ; 2
+
+        nop                 ; 2
+
+        sec                 ; 2
+
+        bcs .skipMBDraw3    ; 3
+
+
+
+.MBDraw3
+
+        lda (Sprite),y      ; 5
+
+        sta GRP0            ; 3
+
+
+
+.skipMBDraw3
+
+</pre>
+</div>
+</div>
+
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<p>Now here things start to get a bit complex!  What the above code shows is  a sprite draw routine which effectively takes a constant 18 cycles of time to either draw the sprite data from a table (when it&#39;s visible), or skip the draw entirely (when it&#39;s not visible). There are a few assumptions here&hellip;</p>
+<p>&nbsp;</p>
+<ol class="bbpageol">
+<li class="normalli">The last drawn line of a sprite is always 0<span style="padding-left:2px; padding-right:2px;">&mdash;</span>thus subsequent lines onscreen do not need to be &#39;cleared&#39;<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the persistent state of the TIA GRP registers will be sufficient to ensure the sprite is not displayed after the sprite is finished drawing</li>
+<li class="normalli">A variable &#39;SpriteEnd&#39; is pre-calculated to indicate the starting line number of the sprite.</li>
+<li class="normalli">The sprite is of constant height (here, SPRITE_HEIGHT).</li>
+<li class="normalli">The branches in this code are assumed to NOT cross over page boundaries. If they did, then each would incur an additional cycle penalty<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and the timing for the scanline would be incorrect.</li>
+</ol>
+<p>&nbsp;</p>
+<p>So, that&#39;s a bit much to deal with in one whack<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and to be honest you don&#39;t really need to understand the intricacies. Basically the code has two  different sections<span style="padding-left:2px; padding-right:2px;">&mdash;</span>one where the sprite data is drawn from the table, and one where the draw is skipped. Each section is carefully timed so that after they rejoin at the bottom, they have both taken EXACTLY the same number of cycles to execute.</p>
+<p>&nbsp;</p>
+<p>Thomas Jentzsch has presented more optimal code, in the form of his &#39;skipdraw&#39; routine - and frankly, I&#39;ve not bothered taking the time to fully understand how it works, either!  These sections of code are pretty much guaranteed to work efficiently and correctly, provided you setup the variables properly.</p>
+<p>&nbsp;</p>
+<p>Thomas said that Dennis Debro explained it quite well, so here&#39;s <a class="offsite" href="https://www.google.com/search?q=Skipdraw+Explained+Dennis+Debro">Skipdraw Explained by Dennis Debro</a>:</p>
+</div>
+</div>
+
+
+</div>
+<div style="margin:0px; padding:0px; max-width:830px;">
+<div class="bbpageindent">
+<div class="bbpageindent">
+
+<pre class="bbborder">
+
+; Thomas Jentzsch Skipdraw 
+;==================================================================
+
+; The best way, I knew until now, was (if y contains linecounter):
+  tya                   ; 2
+; sec                   ; 2 &lt;- this can sometimes be avoided
+  sbc SpriteEnd         ; 3
+  adc #SPRITEHEIGHT     ; 2
+  bcx .skipDraw         ; 2 = 9-11 cycles
+; ...
+
+; --------- or ------------
+
+;If you like using illegal opcodes, you can use dcp (dec,cmp) here:
+  lda #SPRITEHEIGHT     ; 2
+  dcp SpriteEnd         ; 5     initial value has to be adjusted
+  bcx .skipDraw         ; 2 = 9
+; ...
+
+; Advantages:
+;- state of carry flag doesn&#39;t matter anymore (may save 2 cycles)
+;- a remains constant, could be useful for a 2nd sprite
+;- you could use the content of SpriteEnd instead of y for
+;  accessing sprite data
+;- ???
+
+
+
+;==================================================================
+; An Example:
+;
+   ; skipDraw routine for right player
+   TXA                          ; 2 A-&gt; Current scannline
+   SEC                          ; 2 Set Carry
+   SBC slowP1YCoordFromBottom+1 ; 3 
+   ADC #SPRITEHEIGHT+1          ; 2 calc if sprite is drawn
+   BCC skipDrawRight            ; 2/3 To skip or not to skip?
+   TAY                          ; 2
+   lda P1Graphic,y              ; 4
+continueRight:
+   STA GRP0     
+
+;----- this part outside of kernel
+
+skipDrawRight        ; 3 from BCC
+   LDA #0            ; 2
+   BEQ continueRight ; 3 Return...
+
+</pre>
+</div>
+</div>
+
+</div>
+<div class="f728max">
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="#summary">Summary</a></p>
+<p>In the meantime, though we have covered a lot of ground today I hope you will understand the basic principles of vertical sprite movement. In summary&hellip;</p>
+<ol class="bbpageol">
+<li class="normalli">There is no hardware facility to &#39;move&#39; sprites either horizontally or vertically. To achieve horizontal motion, we need to hit RESPx register at exactly the right horizontal position in a scanline, at which point the appropriate sprite will start drawing. To achieve vertical motion, we need to adjust what data we feed to the GRPx registers, so that the shape we are drawing starts on the appropriate scanline, and scanlines where it is not visible have 0-data.</li>
+<li class="normalli">There are precious few cycles available on scanlines, and many of these are taken up by playfield drawing and loop management. Sprite drawing can be done efficiently with large RAM buffers, but most cartridge configurations don&#39;t offer this luxury.</li>
+<li class="normalli">Drawing animated sprites can be done efficiently by using an indirect zero-page pointer to point to sprite data tables. These tables can then be used as source for the sprite draw.</li>
+<li class="normalli">The sprite draw needs to determine, for each scanline, if the sprite would be visible on that line<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and either take data from the correct table, or use 0-data.</li>
+<li class="normalli">Kernels can be extended to multiple-lines (at the cost of vertical resolution) to allow all the necessary hardware updates to be performed.</li>
+</ol>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="exercises">&nbsp;</div>
+<p class="bbmain"><a href="#exercises">Exercises</a></p>
+<ol class="bbpageol">
+<li class="normalli">Modify your current sprite drawing code to use a zero-page variable to point to a table of data in your ROM.</li>
+<li class="normalli">Create another data table, and use a variable to determine which of the two data tables to display. You might like to have it switch between these tables every second, or perhaps use the joystick button to determine which is displayed. As a hint<span style="padding-left:2px; padding-right:2px;">&mdash;</span>remember, you need to setup the zero page pointer to point to the table for your sprite draw to use<span style="padding-left:2px; padding-right:2px;">&mdash;</span>so all you need to do is change this pointer, and leave your kernel code alone.</li>
+<li class="normalli">The more difficult task is to attempt to integrate the generic draw (either the code above, or Thomas&#39;s code, which should appear shortly) into your kernel. This is worth doing<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and waiting for!<span style="padding-left:2px; padding-right:2px;">&mdash;</span>because once you have this installed, you&#39;ll have a totally generic kernel which can draw a sprite at practically any horizontal and vertical position on the screen and all you have to do is tell it WHERE to appear<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and voila!</li>
+</ol>
+<p>&nbsp;</p>
+<p>That should keep you busy. Enjoy!</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefulloff">Session 23: Moving Sprites Vertically</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder">Loading ASM links…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder">Loading ICYDK section…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="index.html">Home</a> <a href="futuristic-inventions-cool-stuff.html">Inventions</a> <a href="favorite-quotes.html">Quotations</a> <a href="game-design.html">Game Design</a> <a href="atari-2600-memories.html">Atari Memories</a> <a href="personal.html">Personal Pages</a> <a href="about.html">About</a> <a href="sitemap.html">Site Map</a> <a href="contact.html">Contact</a> <a href="privacy.html">Privacy Policy</a> <a href="rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+</body>
+</html>

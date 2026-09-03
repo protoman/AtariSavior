@@ -1,0 +1,295 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="ie6 oldie"> <![endif]-->
+<!--[if IE 7]>    <html class="ie7 oldie"> <![endif]-->
+<!--[if IE 8]>    <html class="ie8 oldie"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en">
+<!--<![endif]-->
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-23W5RPE0Q4"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 25: Advanced Timeslicing</title>
+
+<link href="styles/fluid.css" rel="stylesheet" type="text/css">
+<link href="styles/fluid.css?id=54321" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css?id=1234567" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-25.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 25: Advanced Timeslicing">
+<meta name="description" content="Session 25: Advanced Timeslicing">
+<meta name="twitter:description" content="Session 25: Advanced Timeslicing">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="styles/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="index.html">Home</a> &gt; <a class="offsite" href="atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="atari-2600-memories.html#assembly_language">&#35;Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 25: Advanced Timeslicing</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="#timer_registers">Timer Registers</a></p>
+
+<p class="tocsec"><a href="#intim">INTIM</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#asynchronous_system">Asynchronous System</a></p>
+
+<p class="tocsec"><a href="#summary">Summary</a></p>
+<p class="tocsec"><a href="#session_links">Session Links</a></p>
+<p class="tocsec"><a href="#useful_links">Useful Links</a></p>
+</div>
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/198176-session-25-advanced-timeslicing/">Original Session 25 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>Time is tight. Really tight! The general approach has been to think of the TV frame as the limiting factor for the capabilities of the machine. Whatever you can do in &#39;one frame&#39; (i.e, nominally @60Hz on NTSC or @50Hz on PAL) &hellip; that&#39;s IT. So in fact you can work out exactly how much time you have to do stuff. As we&#39;ve seen in earlier tutorials, the &#39;2600 programmer has to pump data out to the TIA in sync with the TV as it&#39;s drawing scanlines. You need to feed the TV scanlines to draw a proper picture. There are 76 cycles per scanline, and 262 scanlines per standard TV frame (312 for PAL). So 76 * 262 = 19912 cycles per frame. Multiply that by the NTSC frame rate (actually 59.94Hz) and you get &hellip; 1193525.28 (i.e., there&#39;s our 1.19MHz CPU clock speed). It all makes sense.</p>
+<p>&nbsp;</p>
+<p>So, just 262 lines. The visible screen is smaller than that, of course (usually 192 scanlines of actual graphics)<span style="padding-left:2px; padding-right:2px;">&mdash;</span>so we only need to pump data to the screen for a smaller number of lines. The rest is black, nothing to see. Below is a good visual diagram of where the time goes.</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div style="overflow: auto; margin-bottom:48px;">
+<div style="background-image:url('files_andrew_davie_sessions/tv_timing.png'); background-repeat:no-repeat; padding:0px; margin: 16px 0px 0px 0px; width:640px; height:544px; border:1px solid black;">
+<img src="files_andrew_davie_sessions/please_do_not_hotlink.gif" width="640" height="544" alt="TV Timing" style="border:0;">
+</div>
+</div>
+</div>
+<p>&nbsp;</p>
+<p>So, during those blank lines, the CPU doesn&#39;t have to pump data to the screen. In fact these two major areas of &#39;blackness&#39; (that is, the vertical blank, and the overscan) account for 37 scanlines (*76 = 2812 cycles) and 30 scanlines (*76 = 2280 cycles). Now that&#39;s not exactly swimming in available CPU capacity but it&#39;s better than nothing. So the general usage of these blank areas has been to whack in &#39;stuff&#39; that takes a fair bit of time to do.</p>
+<p>&nbsp;</p>
+<p>The problem is, you can&#39;t whack in too MUCH stuff. Because when those 37 scanlines of time have elapsed, you MUST be writing to the TIA again to make sure the next frame is displaying properly. Same for the 30 lines of overscan. There&#39;s no getting around it; you take too much time, and you stuff up the timing, and consequently the TV picture will roll, <span class="dropt">judder<span style="text-align:center;">jitter</span></span> and basically look horrible. The hard and fast rule has been to simply stay within the limitation, or to reduce the number of visible scanlines to give more processing time for doing more complex STUFF. Each scanline of visible data you sacrificed, you got 76 scanlines of available time to do your stuff. A compromise.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="timer_registers">&nbsp;</div>
+<p class="bbmain"><a href="#timer_registers">Timer Registers</a></p>
+<p>Fortunately, we have the timer registers. These are single countdown registers that will regularly decrement a value written to them. I only use TIM64T<span style="padding-left:2px; padding-right:2px;">&mdash;</span>this one counts 64 cycle blocks. If I write 10 to it, then I would expect it to reach 0 some 640 cycles later. So, the usage has been to calculate the amount of time before the screen drawing has to (re)commence, divide by 64, and put that value in TIM64T. By reading INTIM and waiting until that reaches 0, you effectively wait the right number of cycles. You can do your (variable time) &#39;stuff&#39; and not really care about how long it takes (as long as it doesn&#39;t take TOO long), and after it&#39;s finish you enter a tight loop just reading INTIM and waiting for it to go to 0. When it goes to 0, fire off a WSYNC and then begin the TV frame drawing once again.</p>
+<p>&nbsp;</p>
+<p>That&#39;s how it&#39;s BEEN done, but that&#39;s not how I did it in <a class="offsite" href="https://atariage.com/forums/topic/189547-atari-2600-boulder-dash-r-announced/">Boulder Dash</a>!</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="intim">&nbsp;</div>
+<p class="bbmain"><a href="#intim">INTIM</a></p>
+<p>The INTIM register effectively tells you not only if you&#39;re out of time, but also exactly how MUCH time you have remaining (in blocks of 64 cycles if you&#39;re using TIM64T). So, if you think about it, you can actually make decisions about if you should call a subroutine based on this value. For example, say you had a small routine which you know takes (say) 1000 cycles to run. That&#39;s 1000/64 units (= 15.625). So, if INTIM was reading 16 or greater you KNOW you can call that subroutine and not run out of time! &nbsp;This gets rather nice. Given a guaranteed maximum run-time for any subroutine (and you get this by cycle-counting the subroutine very very carefully), you can use this knowledge to determine if/when it&#39;s appropriate to call that subroutine. Furthermore, after you HAVE called the subroutine, you can repeat the process<span style="padding-left:2px; padding-right:2px;">&mdash;</span>look at INTIM and determine if there&#39;s enough time to run OTHER subroutines.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="asynchronous_system">&nbsp;</div>
+<p class="bbsecondary"><a href="#asynchronous_system">Asynchronous System</a></p>
+<p>So the whole concept of &#39;2600 programming basically changes here. Now we have an asynchronous system, where you have a queue of &#39;tasks&#39; that you have to do. These tasks in Boulder Dash are generally creature logic (process a boulder, the amoeba, etc). Each of these tasks are cycle-counted so we know exactly how long the worst-case is. And each of these tasks is only run if there&#39;s available time. If not, then they simply return and in the next chunk of available time, they will be called again. </p>
+<p>&nbsp;</p>
+<p>So, this is how the timeslicing engine works! Every part of the game logic is broken down into as small (quick) units of code as practicable. Rather than have the whole processing for an object in a single huge and costly block of code, where possible these are broken down into even smaller &#39;sub-tasks&#39;. And those tasks are effectively placed in a queue which is processed by the task manager. The task manager is a tight loop which pulls a task off the task stack, vectors to the appropriate handler for the task, and repeats. The tasks themselves are responsible for deciding if there&#39;s enough time for them to do their own stuff (i.e., fairly object-oriented in that regard). If a task doesn&#39;t think there&#39;s enough time (again, by simply reading INTIM and comparing with it&#39;s own timing equate), it simply returns. If it has enough time to do its stuff, it does so and makes sure that it&#39;s no longer on the task queue. Tasks can even add other tasks to the queue, for later processing!</p>
+<p>&nbsp;</p>
+<p>The upshot of all this is that a game doesn&#39;t have to be able to handle the very worst case most expensive thing ever in a single frame. The tasks split across multiple frames, if needed. In other words, there&#39;s now a separation between game logic (running over multiple frames if required) and the frame display (running exactly at the TV frame rate). Yes, Virginia, &#39;2600 games can slow down. Now for most situations this isn&#39;t ideal<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but in reality it doesn&#39;t really matter. Most of the gameplay for the &#39;2600 Boulder Dash just never slows down. But occasionally, very occasionally (say, when an amoeba turns into 200 boulders and they all start falling at the same time)<span style="padding-left:2px; padding-right:2px;">&mdash;</span>well, the system can handle it. Because although it may only have enough processing power to handle (say) 20 boulders in a single frame, that&#39;s OK, because the other boulders are effectively stacked and processed the next frame. And the queue may be really big for a few game loops, and the game will lag... probably not very noticeably... but when the queue is empty again, everything is back to running full speed.</p>
+</div>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="#summary">Summary</a></p>
+<p>So the above is the secret to making much more complex games than have heretofore been produced on the machine. You CAN keep the TV display going full speed (60Hz) while doing processing-intensive game logic. And you CAN do very very very complex game logic taking absolutely heaps of processing time. The trick, as noted, is to separate out the two so they are not synchronous<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and to divide the complex logic into discrete, very quick, sub-components.</p>
+<p>&nbsp;</p>
+<p>Divide and conquer!</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Back to the Beginning &gt;</a></p>
+</td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefulloff">Session 25: Advanced Timeslicing</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder">Loading ASM links…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fsidebar">
+
+<p class="bblittlegreentitle">Atari 2600 BASIC</p>
+<div class="yellowbox">
+<p>If assembly language is too hard for you, try <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html">batari Basic</a>. It&#39;s a BASIC-like language for creating Atari 2600 games. It&#39;s the faster, easier way to make Atari 2600 games.</p>
+
+<div style="width:208px; height:66px; margin-top:12px; margin-left:33px;">
+<a href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html" style="border-style: none; display: block; background-color: transparent;"><img src="filesframe/topbar988-batari.png" alt="Try batari Basic" height="66" width="208" style="border:0;"></a>
+</div>
+</div>
+
+<a href="https://www.amazon.com/s?k=the+courage+to+face+covid-19+dr.+peter+mccullough&linkCode=ll2&tag=randterr-20&linkId=aefe76cee204d05379778517d5fe4798&language=en_US&ref_=as_li_ss_tl1" target="_blank"><img src="z_amz_book_courage.png" style="border:none;" alt="THE COURAGE TO FACE COVID-19"></a>
+<a href="https://www.amazon.com/s?k=2000+Mules+DVD+D%27Souza&linkCode=ll2&tag=randterr-20&linkId=4782ca11902ddf1777431a6bd7533f15&language=en_US&ref_=as_li_ss_tl" target="_blank"><img src="z_amz_book_2000.png" style="border:none;" alt="2000 Mules DVD"></a>
+<a href="https://www.amazon.com/s?k=the+great+awakening+alex+jones&linkCode=ll2&tag=randterr-20&linkId=e73261c0ed66bfff3ef2a3bdaa73123d&language=en_US&ref_=as_li_ss_tl" target="_blank"><img src="z_amz_book_great_awake.png" style="border:none;" alt="The Great Awakening"></a>
+
+</div>
+
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder">Loading ICYDK section…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="index.html">Home</a> <a href="futuristic-inventions-cool-stuff.html">Inventions</a> <a href="favorite-quotes.html">Quotations</a> <a href="game-design.html">Game Design</a> <a href="atari-2600-memories.html">Atari Memories</a> <a href="personal.html">Personal Pages</a> <a href="about.html">About</a> <a href="sitemap.html">Site Map</a> <a href="contact.html">Contact</a> <a href="privacy.html">Privacy Policy</a> <a href="rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+</body>
+</html>

@@ -1,0 +1,751 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="ie6 oldie"> <![endif]-->
+<!--[if IE 7]>    <html class="ie7 oldie"> <![endif]-->
+<!--[if IE 8]>    <html class="ie8 oldie"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en">
+<!--<![endif]-->
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-23W5RPE0Q4"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 13: Playfield Basics</title>
+
+<link href="styles/fluid.css" rel="stylesheet" type="text/css">
+<link href="styles/fluid.css?id=54321" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css?id=1234567" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-13.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 13: Playfield Basics">
+<meta name="description" content="Session 13: Playfield Basics">
+<meta name="twitter:description" content="Session 13: Playfield Basics">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="styles/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="index.html">Home</a> &gt; <a class="offsite" href="atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="atari-2600-memories.html#assembly_language">&#35;Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 13: Playfield Basics</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="#horizontal_resolution">Horizontal Resolution</a></p>
+<p class="tocsec"><a href="#sample_code">Sample Code</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#pf1">PF1</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#equates">Equates</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#playfield_pattern">Playfield Pattern</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#playfield_color">Playfield Color</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#speed_counter">Speed Counter</a></p>
+
+<p class="tocsub" style="margin-left:18px;"><a href="#speed_throttle_pattern_change">Speed <span style="font-size:11px;">Throttle &amp; Pattern Change</span></a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#binary">Binary Number System</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#play">Play with It</a></p>
+
+<p class="tocsec"><a href="#summary">Summary</a></p>
+<p class="tocsec"><a href="#exercises">Exercises</a></p>
+<p class="tocsec"><a href="#session_links">Session Links</a></p>
+<p class="tocsec"><a href="#useful_links">Useful Links</a></p>
+</div>
+
+
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/27595-session-13-playfield-basics">Original Session 13 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>In the last few sessions, we started to explore the capabilities of the TIA. We learned that the TIA has &quot;registers&quot; which are mapped to fixed memory addresses, and that the 6502 can control the TIA by writing and/or reading these addresses. In particular, we learned that writing to the WSYNC register halts the 6502 until the TIA starts the next scanline, and that the COLUBK register is used to set the color of the background. We also learned that the TIA keeps an internal copy of the value written to COLUBK.</p>
+<p>&nbsp;</p>
+<p>Today we&#39;re going to have a look at playfield graphics, and for the first time learn how to use RAM. The playfield is quite a complex beast, so we may be spending the next few sessions exploring its capabilities.</p>
+<p>&nbsp;</p>
+<p>The &#39;2600 was originally designed to be more or less a sophisticated programmable PONG-style machine, able to display 2-player games<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but still pretty much PONG in style. These typically took place on a screen containing not much more than walls, two &quot;players&quot;<span style="padding-left:2px; padding-right:2px;">&mdash;</span>usually just straight lines and a ball. Despite this, the design of the system was versatile enough that clever programmers have produced a wide variety of games.</p>
+<p>&nbsp;</p>
+<p>The playfield is that part of the display which usually shows &quot;walls&quot; or &quot;backgrounds&quot; (not to be confused with THE background color). These walls are usually only a single color (for any given scanline), though games typically change the color over multiple scanlines to give some very nice effects.</p>
+<p>&nbsp;</p>
+<p>The playfield is also sometimes used to display very large (square, blocky looking) scores and words.</p>
+<p>&nbsp;</p>
+<p>Just like with COLUBK, the TIA has internal memory where it stores exactly 20 bits of playfield data, corresponding to just 20 pixels of playfield. Each one of these pixels can be on (displayed) or off (not displayed).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="horizontal_resolution">&nbsp;</div>
+<p class="bbmain"><a href="#horizontal_resolution">Horizontal Resolution</a></p>
+<p>The horizontal resolution of the playfield is a very-low 40 pixels, divided into two halves<span style="padding-left:2px; padding-right:2px;">&mdash;</span>both of which display the same 20 bits held in the TIA internal memory. Each half of the playfield may have its own color (we&#39;ll cover this later), but all pixels either half are the same color. Each playfield pixel is exactly 4 color-clocks wide (160 color clocks / 40 pixels = 4 color clocks per pixel).</p>
+<p>&nbsp;</p>
+<p>The TIA manages to draw a 40 pixel playfield from only 20 bits of playfield data by duplicating the playfield (the right side of the playfield displays the same data as the left side). It is possible to mirror the right side, and it is also possible to create an &quot;asymmetrical playfield&quot;<span style="padding-left:2px; padding-right:2px;">&mdash;</span>where the right and left sides of the playfield are NOT symmetrical. I&#39;ll leave you to figure out how to do that for now<span style="padding-left:2px; padding-right:2px;">&mdash;</span>we&#39;ll cover it in a future session. For now, we&#39;re just going to learn how to play with those 20 bits of TIA memory, and see what we can do with them.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="sample_code">&nbsp;</div>
+<p class="bbmain"><a href="#sample_code">Sample Code</a></p>
+<p>Let&#39;s get right into it. Here&#39;s some sample code which introduces a few new TIA registers, and also (for the first time for us) uses a RAM location to store some temporary information (a variable!). There are three TIA playfield registers (two holding 8 bits of playfield data, and one holding the remaining 4 bits)<span style="padding-left:2px; padding-right:2px;">&mdash;</span>PF0, PF1, PF2. Today we&#39;re going to focus on just one of these TIA playfield registers, PF1, because it is the simplest to understand.</p>
+
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+
+<div style="margin:0px; padding:0px; max-width:830px;">
+<pre class="bbborder">
+
+; &#39;2600 for Newbies
+; Session 13 - Playfield
+
+
+
+
+
+                processor 6502
+
+                include &quot;vcs.h&quot;
+
+                include &quot;macro.h&quot;
+
+
+;--------------------------------------------------------------------------
+
+
+
+PATTERN         = $80         ; storage location (1st byte in RAM)
+
+TIMETOCHANGE    = 20          ; speed of &quot;animation&quot; - change as desired
+;--------------------------------------------------------------------------
+
+
+
+                SEG
+
+                ORG $F000
+
+
+
+Reset
+
+
+
+   ; Clear RAM and all TIA registers
+
+
+
+                ldx #0 
+
+                lda #0 
+
+Clear           sta 0,x 
+
+                inx 
+
+                bne Clear
+
+
+
+       ;------------------------------------------------
+
+       ; Once-only initialization...
+
+
+
+                lda #0
+
+                sta PATTERN            ; The binary PF &#39;pattern&#39;
+
+
+
+                lda #$45
+
+                sta COLUPF             ; set the playfield color
+
+
+
+                ldy #0                 ; &quot;speed&quot; counter
+
+
+
+       ;------------------------------------------------
+
+
+
+StartOfFrame
+
+
+
+   ; Start of new frame
+
+   ; Start of vertical blank processing
+
+
+
+                lda #0
+
+                sta VBLANK
+
+
+
+                lda #2
+
+                sta VSYNC
+
+
+
+                sta WSYNC
+
+                sta WSYNC
+
+                sta WSYNC               ; 3 scanlines of VSYNC signal
+
+
+
+                lda #0
+
+                sta VSYNC           
+
+
+
+
+
+       ;------------------------------------------------
+
+       ; 37 scanlines of vertical blank...
+
+            
+
+                ldx #0
+
+VerticalBlank   sta WSYNC
+
+                inx
+
+                cpx #37
+
+                bne VerticalBlank
+
+
+
+       ;------------------------------------------------
+
+       ; Handle a change in the pattern once every 20 frames
+
+       ; and write the pattern to the PF1 register
+
+
+
+                iny                    ; increment speed count by one
+
+                cpy #TIMETOCHANGE      ; has it reached our &quot;change point&quot;?
+
+                bne notyet             ; no, so branch past
+
+
+
+                ldy #0                 ; reset speed count
+
+
+
+                inc PATTERN            ; switch to next pattern
+
+notyet
+
+
+
+
+
+                lda PATTERN            ; use our saved pattern
+
+                sta PF1                ; as the playfield shape
+
+
+
+       ;------------------------------------------------
+
+       ; Do 192 scanlines of color-changing (our picture)
+
+
+
+                ldx #0           ; this counts our scanline number
+
+
+
+Picture         stx COLUBK       ; change background color (rainbow effect)
+
+                sta WSYNC        ; wait till end of scanline
+
+
+
+                inx
+
+                cpx #192
+
+                bne Picture
+
+
+
+       ;------------------------------------------------
+
+
+
+   
+
+ 
+
+                lda #%01000010
+
+                sta VBLANK          ; end of screen - enter blanking
+
+
+
+   ; 30 scanlines of overscan...
+
+
+
+                ldx #0
+
+Overscan        sta WSYNC
+
+                inx
+
+                cpx #30
+
+                bne Overscan
+
+
+
+
+
+
+
+
+
+
+
+                jmp StartOfFrame
+
+
+
+
+;--------------------------------------------------------------------------
+
+
+
+            ORG $FFFA
+
+
+
+InterruptVectors
+
+
+
+            .word Reset          ; NMI
+
+            .word Reset          ; RESET
+
+            .word Reset          ; IRQ
+
+
+
+      END
+
+</pre>
+</div>
+<div class="f728max">
+
+<p>Here&#39;s a screenshot:</p>
+<div class="bbpageindent">
+<div style="background-image:url('files_andrew_davie_sessions/kernel_13.png'); background-repeat:no-repeat; padding:0px; margin: 16px 0px 48px 0px; width:336px; height:241px;">
+<img src="files_andrew_davie_sessions/please_do_not_hotlink.gif" width="336" height="241" alt="Kernel 13" style="border:0;">
+</div>
+</div>
+
+<p style="margin-bottom:8px;">Here&#39;s the .bin file to use with an emulator:</p>
+<p class="bonsitefull"><a style="font-weight:bold;" href="files_andrew_davie_sessions/kernel_13.bin">kernel_13.bin</a></p>
+<p>&nbsp;</p>
+<p>What you will see is our rainbow-colored background, as before<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but over the top of it we see a strange-pattern of vertical stripe(s). And the pattern changes. These vertical stripes are our first introduction to playfield graphics.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="pf1">&nbsp;</div>
+<p class="bbsecondary"><a href="#pf1">PF1</a></p>
+<p>Have a good look at what this demo does;  although it is only writing to a single playfield register (PF1) which can only hold 8 bits (pixels) of playfield data, you always see the same stripe(s) on the left side of the screen, as on the right. This is a result, as noted earlier, of the TIA displaying its playfield data twice on any scanline<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the first 20 bits on the left side, then repeated for the right side.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="equates">&nbsp;</div>
+<p class="bbsecondary"><a href="#equates">Equates</a></p>
+<p>Let&#39;s walk through the code and have a look at some of the new bits&hellip;</p>
+</div>
+</div>
+<div style="margin:0px; padding:0px; max-width:830px;">
+<div class="bbpageindent">
+<pre class="bbborder">
+
+PATTERN         = $80       ; storage location (1st byte in RAM)
+
+TIMETOCHANGE    = 20        ; speed of &quot;animation&quot; - change as desired
+
+</pre>
+</div>
+</div>
+
+<div class="f728max">
+<div class="bbpageindent">
+<p>At the beginning of our code we have a couple of equates. Equates are labels with values assigned to them. We have covered this sort of label value assignation when we looked at how DASM resolved symbols when assembling our source code. In this case, we have one symbol (PATTERN) which in the code is used as a storage location &hellip;</p>
+
+<pre class="bbborder">
+
+     sta PATTERN
+
+</pre>
+
+<p>&hellip; and the other (TIMETOCHANGE) which is used in the code as a number for comparison</p>
+
+<pre class="bbborder">
+
+    cpy #TIMETOCHANGE
+
+</pre>
+
+<p>Remember how we noted that the assembler simply replaced any symbol it found with the actual value of that symbol. Thus the above two sections of code are exactly identical to writing &quot;sta $80&quot; and &quot;cpy #20&quot;. But from our point of view, it&#39;s much better to read (and understand) when we use symbols instead of values.</p>
+<p>&nbsp;</p>
+<p>So, at the beginning of our source code (by convention, though you can pretty much define symbols anywhere), we include a section giving values to symbols which are used throughout the code. We have a convenient section we can go back to and &quot;adjust&quot; things later on.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="playfield_pattern">&nbsp;</div>
+<p class="bbsecondary"><a href="#playfield_pattern">Playfield Pattern</a></p>
+<p>Here&#39;s our very first usage of RAM&hellip;</p>
+
+<pre class="bbborder">
+
+                lda #0
+
+                sta PATTERN        ; The binary PF &#39;pattern&#39;
+
+</pre>
+
+<p>Remember, DASM replaces that symbol with its value. And we&#39;ve defined the value already as $80. So that &quot;sta&quot; is actually a &quot;sta $80&quot;, and if we have a look at our memory map, we see that our RAM is located at addresses $80 - $FF. So this code will load the accumulator with the value 0 (that&#39;s what that crosshatch means<span style="padding-left:2px; padding-right:2px;">&mdash;</span>load a value, not a load from memory) and then store the accumulator to memory location $80. We use PATTERN to hold the &quot;shape&quot; of the graphics we want to see. It&#39;s just a byte, consisting of 8 bits. But as we have seen, the playfield is 20 bits each being on or off, representing a pixel. By writing to PF1 we are actually modifying just 8 of the TIA playfield bits. We could also write to PF0 and PF2<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but let&#39;s get our understanding of the basic playfield operation correct, first.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="playfield_color">&nbsp;</div>
+<p class="bbsecondary"><a href="#playfield_color">Playfield Color</a></p>
+<pre class="bbborder" style="margin-top:0px; margin-bottom:32px;">
+
+                lda #$45
+
+                sta COLUPF         ; set the playfield color
+
+</pre>
+
+<p>When we modified the color of the background, we wrote to COLUBK. As we know, the TIA has its own internal &#39;state&#39;, and we can modify its state by writing to its registers. Just like COLUBK, COLUPF is a color register. It is used by the TIA for the color of playfield pixels (which are visible<span style="padding-left:2px; padding-right:2px;">&mdash;</span>ie: their corresponding bit in the PF0, PF1, PF2 registers is set).</p>
+<p>&nbsp;</p>
+<p>If you want to know what color $45 is, look it up in the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-tia-color-charts.html">color charts</a> presented earlier. I just chose a random value, which looks reddish to me :)</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<div class="jumpid" id="speed_counter">&nbsp;</div>
+<p class="bbsecondary"><a href="#speed_counter">Speed Counter</a></p>
+<pre class="bbborder" style="margin-top:0px; margin-bottom:32px;">
+
+                ldy #0                 ; &quot;speed&quot; counter
+
+</pre>
+
+<p>We should be familiar with the X, Y and A registers by now. This is loading the value 0 into the y register. Since Y was previously unused in our kernel, for this example I am using it as a sort of speed throttle. It is incremented by one every frame, and every time it gets to 20 (or more precisely, the value of TIMETOCHANGE) then we change the pattern that is being placed into the PF1 register. We change the speed at which the pattern changes by changing the value of the TIMETOCHANGE equate at the top of the file.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="speed_throttle_pattern_change">&nbsp;</div>
+<p class="bbsecondary"><a href="#speed_throttle_pattern_change">Speed Throttle and Pattern Change</a></p>
+<p>That speed throttle and pattern change is handled in this section&hellip;</p>
+</div>
+<pre class="bbborder">
+
+       ; Handle a change in the pattern once every 20 frames
+
+       ; and write the pattern to the PF1 register
+
+
+
+         iny                ; increment speed count by one
+
+         cpy #TIMETOCHANGE  ; has it reached our &ldquo;change point&rdquo;?
+
+         bne notyet         ; no, so branch past
+
+
+
+         ldy #0             ; reset speed count
+
+
+
+         inc PATTERN        ; switch to next pattern
+
+notyet
+
+
+
+
+
+         lda PATTERN        ; use our saved pattern
+
+         sta PF1            ; as the playfield shape
+
+</pre>
+</div>
+<div class="f728max">
+<p>This is the first time we&#39;ve seen an instruction like &quot;inc PATTERN&quot;<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the others we have already covered. &quot;inc&quot; is an increment<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and it simply adds 1 to the contents of any memory (mostly RAM) location. We initialized PATTERN (which lives at $80, remember!) to 0. So after 20 frames, we will find that the value gets incremented to 1. 20 frames after that, it is incremented to 2.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="binary">&nbsp;</div>
+<p class="bbsecondary"><a href="#binary">Binary Number System</a></p>
+<p>Now let&#39;s go back to our binary number system for a few minutes. Here&#39;s the binary representation of the numbers 0 to 10&hellip;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<p style="font-size:24px; line-height:35px; font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace;">00000000<br>
+00000001<br>
+00000010<br>
+00000011<br>
+00000100<br>
+00000101<br>
+00000110<br>
+00000111<br>
+00001000<br>
+00001001<br>
+00001010</p>
+</div>
+<p>&nbsp;</p>
+<p>Have a real close look at the pattern there, then run the binary again and look at the pattern of the stripe. I&#39;m telling you, they&#39;re identical!  That is because, of course, we are writing these values to the PF1 register and where there is a set bit (value of 1) that corresponds directly to a pixel being displayed on the screen.</p>
+<p>&nbsp;</p>
+<p>See how the PF1 write is <strong>outside</strong> the 192-line picture loop. We only ever write the PF1 once per frame (though we could write it every scanline if we wished). This demonstrates that the TIA has kept the value we write to its register(s) and uses that same value again and again until it is changed by us.</p>
+<div class="bbpageindent">
+<div style="overflow: auto; margin-bottom:48px;">
+<div style="background-image:url('files_andrew_davie_sessions/tia_pf_01.png'); background-repeat:no-repeat; padding:0px; margin: 16px 0px 0px 0px; width:449px; height:428px; border:1px solid black;">
+<img src="files_andrew_davie_sessions/please_do_not_hotlink.gif" width="449" height="428" alt="PF1" style="border:0;">
+</div>
+</div>
+</div>
+
+<p>The diagram above shows the operation of the PF1 register, and which of the 20 TIA playfield bits it modifies. You can also see the color-register to color correspondence.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="play">&nbsp;</div>
+<p class="bbsecondary"><a href="#play">Play with It</a></p>
+<p>The rest of the code is identical to our earlier tutorials<span style="padding-left:2px; padding-right:2px;">&mdash;</span>so to get our playfield graphics working, all we&#39;ve had to do is write a color to the playfield color register (COLUPF), and then write actual pixel data to the playfield register(s) PF0, PF1 and PF2. We&#39;ve only touched PF1 this time<span style="padding-left:2px; padding-right:2px;">&mdash;</span>feel free to have a play and see what happens when you write the others.</p>
+<p>&nbsp;</p>
+<p>You might also like to play with writing values INSIDE the picture (192-line) loop, and see what happens when you play around with the registers &#39;on-the-fly&#39;. In fact, since the TIA retains and redraws the same thing again and again, to achieve different &#39;shapes&#39; on the screen, this is exactly what we have to do<span style="padding-left:2px; padding-right:2px;">&mdash;</span>write different values to PF0, PF1, PF2 not only every scanline, but also change the shapes <strong>in the middle of a scanline</strong>!</p>
+<p>&nbsp;</p>
+<p>Today&#39;s session is meant to be an introduction to playfield graphics<span style="padding-left:2px; padding-right:2px;">&mdash;</span>don&#39;t worry too much about the missing information, or understanding exactly what&#39;s happening. Try and have a play with the code, do the exercises<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and next session we should have a more comprehensive treatment of the whole shebang.</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="#summary">Summary</a></p>
+<p>Subjects we will tackle next time include&hellip;</p>
+<ul class="bbpageul">
+<li class="normalli" style="margin-bottom:10px;">The other playfield registers (PF0, PF2)</li>
+<li class="normalli" style="margin-bottom:10px;">The super-weird TIA pixel -&gt; screen pixel mapping</li>
+<li class="normalli" style="margin-bottom:10px;">Mirrored playfields</li>
+<li class="normalli" style="margin-bottom:10px;">Two color playfields</li>
+<li class="normalli">Asymmetrical playfield</li>
+</ul>
+<p>&nbsp;</p>
+<p>See you then, then!</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="exercises">&nbsp;</div>
+<p class="bbmain"><a href="#exercises">Exercises</a></p>
+<ol class="bbpageol">
+<li class="normalli">Modify the kernel so that instead of showing a rainbow-color for the background, it is the playfield which has the rainbow effect</li>
+<li class="normalli">What happens when you use PF0 or PF2 instead of PF1?  It can get pretty bizarre<span style="padding-left:2px; padding-right:2px;">&mdash;</span>we&#39;ll explain what&#39;s going on in the next session.</li>
+<li class="normalli">Can you change the kernel so it only shows *ONE* copy of the playfield you write (that is, on the left side you see the pattern, and on the right side it&#39;s blank). Hint: You&#39;ll need to modify PF1 mid-scanline.<br>
+</ol>
+
+<p>&nbsp;</p>
+<p>We&#39;ll have a look at these exercises next session. Don&#39;t worry if you can&#39;t understand or implement them<span style="padding-left:2px; padding-right:2px;">&mdash;</span>they&#39;re pretty tricky.</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefulloff">Session 13: Playfield Basics</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder">Loading ASM links…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder">Loading ICYDK section…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="index.html">Home</a> <a href="futuristic-inventions-cool-stuff.html">Inventions</a> <a href="favorite-quotes.html">Quotations</a> <a href="game-design.html">Game Design</a> <a href="atari-2600-memories.html">Atari Memories</a> <a href="personal.html">Personal Pages</a> <a href="about.html">About</a> <a href="sitemap.html">Site Map</a> <a href="contact.html">Contact</a> <a href="privacy.html">Privacy Policy</a> <a href="rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+</body>
+</html>

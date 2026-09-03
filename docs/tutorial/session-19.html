@@ -1,0 +1,472 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="ie6 oldie"> <![endif]-->
+<!--[if IE 7]>    <html class="ie7 oldie"> <![endif]-->
+<!--[if IE 8]>    <html class="ie8 oldie"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en">
+<!--<![endif]-->
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-23W5RPE0Q4"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 19: Addressing Modes</title>
+
+<link href="styles/fluid.css" rel="stylesheet" type="text/css">
+<link href="styles/fluid.css?id=54321" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css?id=1234567" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 19: Addressing Modes">
+<meta name="description" content="Session 19: Addressing Modes">
+<meta name="twitter:description" content="Session 19: Addressing Modes">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="styles/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="index.html">Home</a> &gt; <a class="offsite" href="atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="atari-2600-memories.html#assembly_language">&#35;Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 19: Addressing Modes</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="#a_x_y_registers">A, X, and Y Registers</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#absolute_addressing">Absolute Addressing</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#zero_page_addressing">Zero-Page Addressing</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#absolute_x">Absolute,X &hellip; Zero Page,Y</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#absolute_indexed_addressing_modes">Absolute Indexed Addressing</a></p>
+
+<p class="tocsec2"><a href="#summary">Summary</a></p>
+<p class="tocsec2"><a href="#exercises">Exercises</a></p>
+<p class="tocsec2"><a href="#session_links">Session Links</a></p>
+<p class="tocsec2"><a href="#useful_links">Useful Links</a></p>
+</div>
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/29572-session-19-addressing-modes/">Original Session 19 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>Are we having fun, yet?</p>
+<p>&nbsp;</p>
+<p>We&#39;re already familiar with a few ways of loading numbers into the 6502&#39;s registers, and storing numbers from those registers into RAM or TIA registers. We&#39;ll re-visit those methods we know about, learn some new ones (not all of the 6502&#39;s addressing modes, but enough to get by with).</p>
+<p>&nbsp;</p>
+<p>This session we&#39;re going to have a bit of a look at the various ways that the 6502 can address memory, and how to write these in source code.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="a_x_y_registers">&nbsp;</div>
+<p class="bbmain"><a href="#a_x_y_registers">A, X, and Y Registers</a></p>
+<p>As you should be aware by now, the 6502 has three registers<span style="padding-left:2px; padding-right:2px;">&mdash;</span>A, X, and Y. &#39;A&#39; is our workhorse register, and we use this to do most of our loading, storing, and calculations. X and Y are index registers, and we generally use these for looping, and counting operations. They also allow us to access &#39;lists&#39; or tables of data in memory.</p>
+<p>&nbsp;</p>
+<p>Let&#39;s start with the basics. To load and store actual values to and from registers, we can use the following&hellip;</p>
+
+<pre class="bbborder">
+
+    lda #$80    ; load accumulator with the number $80
+                ; (=128 decimal)
+
+    lda $80     ; load accumulator with contents of
+                ; memory location $80
+
+
+
+    sta #$80    ; meaningless!  DASM will kick a fit.
+                ; You can&#39;t store to a number!
+
+    sta $80     ; store accumulator&#39;s contents to
+                ; memory location $80
+
+
+
+
+
+    ldx #$80    ; load x-register with the number $80
+
+
+
+   ; etc..
+
+</pre>
+
+<p>All registers can load numbers directly (called &#39;immediate values&#39;). The above examples show the accumulator being loaded with #$80 (the number 128) and also the X register being loaded with the same value. You can do this with the Y register, too.</p>
+<p>&nbsp;</p>
+<p>You can&#39;t STORE the accumulator to an immediate value. This is a meaningless concept. It&#39;s like me asking you to put a letter in your three. You may have a post-box numbered &#39;three&#39;, but you don&#39;t have a &#39;three&#39;.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="absolute_addressing">&nbsp;</div>
+<p class="bbsecondary"><a href="#absolute_addressing">Absolute Addressing</a></p>
+<p>All registers can load and store values to memory addresses by specifying the location of that address (or, of course, a label which equates to the location of that address). For example, the following two sections of code are equivalent&hellip;</p>
+
+<pre class="bbborder">
+
+    lda $F000  ; load accumulator with contents of $F000
+
+
+
+
+    ; or. . .
+
+
+
+where = $F000
+
+
+
+
+
+    lda where   ; ditto (correction made 7/7/2003)
+
+</pre>
+
+<p>As noted, the above will work for X and Y registers, too. This form of addressing (addressing means &quot;how we access memory&quot;) is called &#39;absolute addressing&#39;. Earlier we covered how the 6502 addresses code over a 16-bit memory range (that is, there are 2^16 distinct addresses that the 6502 can access, ranging from 0 to $FFFF). To form a 16-bit address, the 6502 uses pairs of bytes<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and these are always stored in little-endian format (which means that we put the low-byte first, and the high-byte last). Thus, the address $F023 would be stored in memory as two bytes in this order &hellip; $23, $F0.</p>
+<p>&nbsp;</p>
+<p>Now, when DASM is assembling our code, it converts the mnemonic we write for an instruction (eg: &#39;lda&#39;) into an opcode (a number) which is the 6502&#39;s way of understanding what each instruction is meant to do. We already encountered the mnemonic &#39;nop&#39; which converted into $EA. Whenever the 6502 encountered an $EA as an instruction, it performed a 2-cycle delay (it &#39;executed&#39; the NOP).</p>
+<p>&nbsp;</p>
+<p>We&#39;ve briefly covered how each 6502 instruction may have one or two additional parameters<span style="padding-left:2px; padding-right:2px;">&mdash;</span>that is, there&#39;s always an opcode<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but there may be one or two additional bytes following the opcode. These bytes hold things such as address data, or numeric data. For example, when we write &#39;lda #$56&#39;, DASM will place the bytes $A9, $56 into the binary. The 6502 retrieves the $A9, recognizes this as a &#39;lda&#39; instruction, then fetches the next byte $56 and transfers this value into the accumulator.</p>
+<p>&nbsp;</p>
+<p>To signify absolute addresses, the two bytes of the address are placed in little-endian format following the opcode. If we write &#39;ldy $F023&#39;<span style="padding-left:2px; padding-right:2px;">&mdash;</span>indicating we wish to load the contents of memory location $F023 into the Y register, then DASM will put the bytes $AC, $23, $F0 into our binary. And the 6502 when executing will retrieve the $AC, recognize it as a &#39;ldy&#39; instruction which requires a two-byte address<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and then fetches the address from the next two bytes, giving $F023<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and THEN retrieving the contents of that memory location and transferring it into the y register.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="zero_page_addressing">&nbsp;</div>
+<p class="bbsecondary"><a href="#zero_page_addressing">Zero-Page Addressing</a></p>
+<p>As you can see, this division of 16-bit addresses into low and high byte pairs essentially divides the memory map into 256 &#39;pages&#39; of 256 bytes each. The very first page (with the high-byte equal to 0) is known as &#39;zero-page&#39;, and this is treated a bit differently to the rest of memory. To optimize the space required for our binary, the 6502 designers decided that they would include a special version of memory addressing where, if the access was to zero page (and thus the high byte of the memory address is 0), then you could use a different opcode for the instruction and only include the low-byte of the address in the binary. This form of addressing is known as zero-page addressing.</p>
+<p>&nbsp;</p>
+<p>As with our above example, if we were accessing memory location $80 (which is the same as $0080<span style="padding-left:2px; padding-right:2px;">&mdash;</span>remember, leading zeroes are superfluous when writing numbers), then we *COULD* have an absolute access to this location (with the bytes $AC, $80, $00<span style="padding-left:2px; padding-right:2px;">&mdash;</span>interpreted in a similar fashion as described above). But DASM is smart<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and it knows that when we are accessing zero-page addresses, it uses the more efficient (both smaller code-size and faster execution) form of the instruction, and instead places the following in our binary &hellip; $A4, $80. The 6502 recognizes the opcode $A4 as a &#39;ldy&#39; instruction (as was the $AC) but in this case only one byte is retrieved to form the low byte of the address, and the high byte is assumed to be 0.</p>
+<p>&nbsp;</p>
+</div>
+<p>Mostly we can rely on DASM to choose the best form of addressing for us.</p>
+<p>&nbsp;</p>
+<p>So far, we have seen that what we can do with all the registers is essentially the same. Unfortunately, this is not the case with all the <a class="offsite" href="http://www.obelisk.demon.co.uk/6502/addressing.html">addressing modes</a>!  The 6502 is not <span class="dropt">&#39;orthogonal&#39;<span style="width:300px;">The registers aren&#39;t all equal. Some operations require certain registers. For example, you can only do math with the <b>A</b> register and if you want to set the stack pointer, you have to use the <b>X</b> register. There are many examples.<br>(Adapted from a post by Ed Fries)</span></span><span style="padding-left:2px; padding-right:2px;">&mdash;</span>and this has some bearing on our choice of which register to use for which purpose, when designing our kernel.</p>
+<p>&nbsp;</p>
+<p>OK, so now we should know what is meant by &#39;absolute addresses&#39; and &#39;zero page addresses&#39;. Pretty simple, really. Both refer to the address of memory that the 6502 can theoretically access<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and zero page addresses are those in the range $0000 to $00FF inclusive.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="absolute_x">&nbsp;</div>
+<p class="bbsecondary"><a href="#absolute_x">Absolute,X, Absolute,Y, Zero Page,X, and Zero Page,Y</a></p>
+<p>The session discussing <a class="offsite" href="atari-2600-memories-tutorial-andrew-davie-12.html">Initialization</a> introduced an efficient way of clearing memory in a loop, using a register to run through 256 bytes, and storing 0 to the memory location formed by adding the contents of the x register to a fixed memory address. These addressing modes (using the X or Y register to add to a fixed memory address, giving a final address for access) are known as &#39;Absolute,X&#39;  and &#39;Absolute,Y&#39; and &#39;Zero Page,X&#39; and &#39;Zero Page,Y&#39;. It is probably a good idea now to track down a good 6502 book</p>
+
+<pre class="bbborder">
+
+    ldx #1
+
+    lda $23,x    ; load accumulator with contents of 
+                 ; location 36 (=$24)
+
+    ldy $23,x    ; load Y register with contents of
+                 ; location %100100
+
+
+
+    ldy #2
+
+    ldx $23,y    ; load X register with contents of
+                 ; location $25
+
+    lda $23,y    ; load accumulator with contents of
+                 ; location $25
+
+</pre>
+
+<p>That last line is interesting<span style="padding-left:2px; padding-right:2px;">&mdash;</span>an example of the non-orthogonality of our instruction set. All of the above examples deal with zero-page addresses (that is, the high byte of the address is 0). Theoretically, these instructions don&#39;t need to include the high-byte in the address parameters in the binary. However, there is no &#39;zero page,y&#39; load for the accumulator!  There is a zero page,x one, though. Its a bit bizarre :)</p>
+<p>&nbsp;</p>
+<p>So DASM will assemble &#39;ldx $23,y&#39; to a zero page,y instruction<span style="padding-left:2px; padding-right:2px;">&mdash;</span>2 bytes long<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but it will assemble &#39;lda $23,y&#39; to an absolute,y instruction<span style="padding-left:2px; padding-right:2px;">&mdash;</span>3 bytes long. Such is life.</p>
+<p>&nbsp;</p>
+<p>These zero page indexed instructions have a catch<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the final address is always always always a zero page address. So in the following example&hellip;</p>
+
+<pre class="bbborder">
+
+    ldy #1
+
+    lda $FF,y
+
+</pre>
+
+<p>Since (as we just discussed) this is an absolute indexed instruction, the accumulator is loaded with the contents of memory location $100. However, the following&hellip;</p>
+
+<pre class="bbborder">
+
+    ldy #1
+
+    ldx $FF,y
+
+</pre>
+
+<p>Since this will assemble to a zero page indexed instruction, the final address is always zero-page (the high byte is set to 0 after the index register is added)<span style="padding-left:2px; padding-right:2px;">&mdash;</span>so we will actually be accessing the contents of memory location 0 (!!). That is, the address is formed by adding the y register and the address ($FF+1 = $100) and dropping the high-byte. Something to be very aware of!</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="absolute_indexed_addressing_modes">&nbsp;</div>
+<p class="bbsecondary"><a href="#absolute_indexed_addressing_modes">Absolute Indexed Addressing Modes</a></p>
+<p>Absolute indexed addressing modes are handy for loading values from data tables in ROM. They allow us to use an index register to step (for example) the line number in a kernel, and use the same register to access playfield values from tables. Consider this (mockup) code&hellip;</p>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+
+<div style="margin:0px; padding:0px; max-width:840px;">
+<div class="bbpageindent">
+<pre class="bbborder">
+
+      ldx #0   ; line #
+
+Display
+
+      lda MyPF0,x     ; load a value from the data table &quot;MyPF0&quot;
+
+      sta PF0
+
+      lda MyPF1,x     ; use table &quot;MyPF1&quot;
+
+      sta PF1
+
+      lda MyPF2,x     ; use table &quot;MyPF2&quot;
+
+      sta PF2
+
+
+
+      sta WSYNC
+
+      inx
+
+      cpx #192
+
+      bne Display
+
+
+
+     ; other stuff here
+
+
+
+      jmp StartOfFrame
+
+
+
+
+
+MyPF0
+
+      .byte 1,2,3,4,5,6  ;...etc 192 bytes of data here, giving data
+                         ; for PF0
+
+MyPF1
+
+      .byte 234,24,1,23,41,2 ; PF 1 data (should be 192 bytes long)
+
+MyPF2
+
+      .byte 64,244,31,73,43,2,0,0 ; PF 2 data (should be 192 bytes long)
+
+</pre>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+<div class="f728max">
+<div class="bbpageindent">
+<p>The above code fragment uses tables of data in our ROM. These tables contain the values which should be written to the playfield registers for each scanline. The x register increments once for each scanline, and our absolute,x load for each playfield register will load consecutive values from the appropriate tables.</p>
+<p>&nbsp;</p>
+<p>Then, creating pretty graphics becomes simply a matter of putting the right values into those tables MyPF0, MyPF1, and MyPF2. This is where building tools to convert from images to data tables becomes extremely useful!  We&#39;ll cover more of this way of doing things when we complete our sessions on asymmetrical playfields. The plan is to use a tool to create these data tables, and simplify our kernel by using data tables to display just about any asymmetrical image we want!</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="#summary">Summary</a></p>
+<p>Soon we&#39;ll cover the remaining 6502 addressing modes, and also discuss the 6502&#39;s stack.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="exercises">&nbsp;</div>
+<p class="bbmain"><a href="#exercises">Exercises</a></p>
+<ol class="bbpageol" style="margin-top:0px; margin-bottom:0px;">
+<li class="normalli">Use this method of absolute,x table access to modify or create a kernel which loads the graphics data from tables. Separate each playfield register into its own table, as above.</li>
+<li class="normalli">Can you extend this system to asymmetrical playfield?  Don&#39;t worry, we&#39;re going to give a complete asymmetrical playfield kernel (and tools!) in the next session.</li>
+<li class="normalli">How would you incorporate color changes into this system (ie: if you wanted clouds on the left, sun on the right)?</li>
+<li class="normalli">Each table requires 1 byte of ROM per PF register per scanline. Can you think of ways to reduce this requirement?  What trade-offs are necessary when reducing the table size?</li>
+<li class="normalli">Find a 6502 cycle-timing reference, and try to calculate exactly how many cycles each instruction in your kernel is taking. Add-up all the instructions on each line, and work out just how much time you have left to do &quot;all the other stuff&quot;. Such as sprite drawing!</li>
+</ol>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="atari-2600-memories-tutorial-andrew-davie-20.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefulloff">Session 19: Addressing Modes</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder">Loading ASM links…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder">Loading ICYDK section…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="index.html">Home</a> <a href="futuristic-inventions-cool-stuff.html">Inventions</a> <a href="favorite-quotes.html">Quotations</a> <a href="game-design.html">Game Design</a> <a href="atari-2600-memories.html">Atari Memories</a> <a href="personal.html">Personal Pages</a> <a href="about.html">About</a> <a href="sitemap.html">Site Map</a> <a href="contact.html">Contact</a> <a href="privacy.html">Privacy Policy</a> <a href="rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+</body>
+</html>

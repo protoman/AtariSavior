@@ -1,0 +1,479 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="ie6 oldie"> <![endif]-->
+<!--[if IE 7]>    <html class="ie7 oldie"> <![endif]-->
+<!--[if IE 8]>    <html class="ie8 oldie"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en">
+<!--<![endif]-->
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-23W5RPE0Q4"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 12: Initialization</title>
+
+<link href="styles/fluid.css" rel="stylesheet" type="text/css">
+<link href="styles/fluid.css?id=54321" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css?id=1234567" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-12.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 12: Initialization">
+<meta name="description" content="Session 12: Initialization">
+<meta name="twitter:description" content="Session 12: Initialization">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="styles/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="index.html">Home</a> &gt; <a class="offsite" href="atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="atari-2600-memories.html#assembly_language">&#35;Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 12: Initialization</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="#initializing_ram">Initializing RAM</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#clearram">ClearRAM</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#flags_register">Flags Register</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#wrap_around">The Wrap Around Trick</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#cycles_timing">Cycles and Timing</a></p>
+<p class="tocsec"><a href="#initializing_tia">Initializing the TIA</a></p>
+<p class="tocsec"><a href="#initializing_ram_and_tia">Initializing RAM and the TIA</a></p>
+<p class="tocsec"><a href="#summary">Summary</a></p>
+<p class="tocsec"><a href="#session_links">Session Links</a></p>
+<p class="tocsec"><a href="#useful_links">Useful Links</a></p>
+</div>
+
+
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/27405-session-12-initialisation/">Original Session 12 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>One of the joys of writing &#39;2600 programs involves the quest for efficiency<span style="padding-left:2px; padding-right:2px;">&mdash;</span>both in processing time used, and in ROM space required for the code. Every now and then, modern-day &#39;2600 programmers will become obsessed with some fairly trivial task and try to see how efficient they can make it.</p>
+<p>&nbsp;</p>
+<p>If you were about to go up on the Space Shuttle, you wouldn&#39;t expect them to just put in the key, turn it on, and take off. You&#39;d like the very first thing they do is to make sure that all those switches are set to their correct positions. When our Atari 2600 (which, I might point out in a tenuous link to the previous sentence, is of the same vintage as the Space Shuttle) powers-up, we should assume that the 6502, RAM and TIA (and other systems) are in a fairly unknown state. It is considered good practice to initialize these systems. Unless you really, *really* know what you&#39;re doing, it can save you problems later on.</p>
+<p>&nbsp;</p>
+<p>At the end of this session I&#39;ll present a highly optimized (and best of all, totally obscure <img src="files_andrew_davie_sessions/icon_smile.gif" width="15" height="15" alt="Smile" style="border:0; vertical-align:middle;">) piece of code which manages to initialize the 6502, all of RAM *and* the TIA using just 9&nbsp;bytes of code-size. That&#39;s quite amazing, really. But first, we&#39;re going to do it the &#39;long&#39; way, and learn a little bit more about the 6502 while we&#39;re doing it.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="initializing_ram">&nbsp;</div>
+<p class="bbmain"><a href="#initializing_ram">Initializing RAM</a></p>
+<p>We&#39;ve already been introduced to the three registers of the 6502<span style="padding-left:2px; padding-right:2px;">&mdash;</span>A, X, and Y. X and Y are known as index registers (we&#39;ll see why, very soon) and A is our accumulator<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the register used to do most of the calculations (addition, subtraction, etc).</p>
+<p>&nbsp;</p>
+<p>Let&#39;s have a look at the process of clearing (writing 0 to) all of our RAM. Our earlier discussions of the memory architecture of the 6502 showed that the &#39;2600 has just 128 bytes ($80 bytes) of RAM, starting at address $80. So, our RAM occupies memory from $80 - $FF inclusive. Since we know how to write to memory (remember the &quot;stx COLUBK&quot; we used to write a color to the TIA background color register), it should be apparent that we could do this&hellip;</p>
+
+<pre class="bbborder">
+
+    lda #0            ; load the value 0 into the accumulator
+
+    sta $80           ; store accumulator to location $80
+
+    sta $81           ; store accumulator to location $81
+
+    sta $82           ; store accumulator to location $82
+
+    sta $83           ; store accumulator to location $83
+
+    sta $84           ; store accumulator to location $84
+
+    sta $85           ; store accumulator to location $85
+
+
+
+; 119 more lines to store 0 into location $86 - $FC. . .
+
+
+
+    sta $FD           ; store accumulator to location $FD
+
+    sta $FE           ; store accumulator to location $FE
+
+    sta $FF           ; store accumulator to location $FF
+
+</pre>
+
+<p>You&#39;re right, that&#39;s ugly! The code above uses 258 bytes of ROM (2 bytes for each store, and 2 for the initial accumulator load). We can&#39;t possibly afford that<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and especially since I&#39;ve already told you that it&#39;s possible to initialize the 6502 registers, clear RAM, *AND* initialize the TIA in just 9&nbsp;bytes total!</p>
+<p>&nbsp;</p>
+<p>The index registers have their name for a reason. They are useful in exactly the situation above, where we have a series of values we want to read or write to or from memory. Have a look at this next bit of code, and we&#39;ll walk through what it does&hellip;</p>
+
+<pre class="bbborder">
+
+    ldx #0
+
+    lda #0
+
+ClearRAM  sta $80,x
+
+    inx
+
+    cpx #$80
+
+    bne ClearRAM
+
+</pre>
+
+<p>Firstly, this code is nowhere-near efficient, but it does do the same job as our first attempt and uses only 11 bytes. It achieves this saving by performing the clear in a loop, writing 0 (the accumulator) to one RAM location every iteration. The key is the &quot;sta $80,x&quot; line. In this &quot;addressing mode&quot;, the 6502 adds the destination address ($80 in this example<span style="padding-left:2px; padding-right:2px;">&mdash;</span>remember, this is the start of RAM) to the current value of the X register<span style="padding-left:2px; padding-right:2px;">&mdash;</span>giving it a final address<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and uses that final address as the source/destination for the operation.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="clearram">&nbsp;</div>
+<p class="bbsecondary"><a href="#clearram">ClearRAM</a></p>
+<p>We have initialized X to 0, and increment it every time through the loop. The line &quot;cpx #$80&quot; is a comparison, which causes the 6502 to check the value of X against the number $80 (remember, we have $80 bytes of RAM, so this is basically saying &quot;has the loop done 128 ($80) iterations yet?&quot;. The next line &quot;bne ClearRAM&quot; will transfer program flow back to the label &quot;ClearRAM&quot; every time that comparison returns &quot;no&quot;. The end result being that the loop will iterate exactly 128 times, and that the indexing will end up writing to 128 consecutive memory locations starting at $80.</p>
+
+<pre class="bbborder">
+
+    ldx #$80
+
+    lda #0
+
+ClearRAM
+
+    sta 0,x
+
+    inx
+
+    bne ClearRAM
+
+</pre>
+
+<p>Well, that&#39;s not a LOT different, but we&#39;re now using only 9 bytes to clear RAM<span style="padding-left:2px; padding-right:2px;">&mdash;</span>somehow we&#39;ve managed to get rid of that comparison! And how come we&#39;re writing to 0,x not $80,x? All will be revealed&hellip;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="flags_register">&nbsp;</div>
+<p class="bbsecondary"><a href="#flags_register">Flags Register</a></p>
+<p>When the 6502 performs operations on registers, it keeps track of certain properties of the numbers in those registers. In particular, it has internal flags which indicate if the number it last used was zero or non-zero, positive or negative, and also various other properties related to the last calculation it did. We&#39;ll get to all of that later. All of these flags are stored in an 8-bit register called the &quot;flags register&quot;. We don&#39;t have easy direct access to this register, but we do have instructions which base their operation on the flags themselves.</p>
+<p>&nbsp;</p>
+<p>We&#39;ve already used one of these operations<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the &quot;bne ClearRAM&quot; we used in our earlier version of the code. This instruction, as noted &quot;will transfer program flow back to the label &quot;ClearRAM&quot; every time that comparison returns &quot;no&quot;. The comparison returns &quot;no&quot; by setting the zero/non-zero flag in the processor&#39;s flags register!</p>
+<p>&nbsp;</p>
+<p>In actuality, this zero/non-zero flag is also set or cleared upon a load to a register, an increment or decrement of register or memory, and whenever a calculation is done on the accumulator. Whenever a value in these circumstances is zero, then the zero flag is set. Whenever the result is non-zero, the zero flag is cleared. So, we don&#39;t even need to compare for anything being 0<span style="padding-left:2px; padding-right:2px;">&mdash;</span>as long as we have just done one of the operations mentioned (load, increment, etc)<span style="padding-left:2px; padding-right:2px;">&mdash;</span>then we know that the zero flag (and possibly others) will tell us something about the number. The 6502 documentation gives extensive information for all instructions about what flags are set/cleared, under what circumstance.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="wrap_around">&nbsp;</div>
+<p class="bbsecondary"><a href="#wrap_around">The Wrap Around Trick</a></p>
+<p>We briefly discussed how index registers, only holding 8-bit values &quot;wrap-around&quot; from $FF (%11111111) to 0 when incremented, and from 0 to $FF when decremented. Our code above is using this &quot;trick&quot; by incrementing the X-register and using the knowledge that the zero-flag will always be non-zero after this operation, unless X is 0. And X will only be 0 if it was previously $FF. Instead of having X be a &quot;counter&quot; to give 128 iterations, this time we&#39;re using it as the actual address and looping it from $80 (the start of RAM) to $FF (the end of RAM) + 1. SO our store (which, remember, takes the address in the instruction, adds the value of the X register and uses that as the final address) is now &quot;sta 0,x&quot;. Since X holds the correct address to write to, we are adding 0 to that. <img src="files_andrew_davie_sessions/icon_smile.gif" width="15" height="15" alt="Smile" style="border:0; vertical-align:middle;"></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="cycles_timing">&nbsp;</div>
+<p class="bbsecondary"><a href="#cycles_timing">Cycles and Timing</a></p>
+<p>I would *highly* recommend that you don&#39;t worry too much about this sort of optimization while you&#39;re learning. The version with the comparison is perfectly adequate, safe, and easy to understand. But sometimes you find that you do need the extra cycles or bytes (the optimized version, above, is 160 cycles faster<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and that&#39;s 160x3 color clocs = 480 color clocks = more than two whole scanlines !! quicker). So you can see how crucial timing can be<span style="padding-left:2px; padding-right:2px;">&mdash;</span>by taking out a single instruction (the &quot;cpx #$80&quot;) in a loop, and rearranging how our loop counted, we saved more than two scanlines<span style="padding-left:2px; padding-right:2px;">&mdash;</span>(very) roughly 1% of the total processing time available in one frame of a TV picture!</p>
+</div>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="initializing_tia">&nbsp;</div>
+<p class="bbmain"><a href="#initializing_tia">Initializing the TIA</a></p>
+<p>Initializing the TIA is a similar process to initializing the RAM<span style="padding-left:2px; padding-right:2px;">&mdash;</span>we just want to write 0 to all memory locations from 0 to $7F (where the TIA lives!). This is safe<span style="padding-left:2px; padding-right:2px;">&mdash;</span>trust me<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and we don&#39;t really need to know what we&#39;re writing to at this stage, just that after doing this the TIA will be nice and happy. We could do this in a second loop, similar to the first, but how about this&hellip;</p>
+
+<pre class="bbborder">
+
+    ldx #0
+
+    lda #0
+
+Clear
+
+    sta $80,x     ; clear a byte of RAM
+
+    sta 0,x       ; clear a byte of TIA register
+
+    inx
+
+    cpx #$80
+
+    bne Clear
+
+</pre>
+
+<p>That&#39;s a perfectly adequate solution. Easy to read and maintain, and reasonably quick. We could, however, take advantage of the fact that RAM and the TIA are consecutive in memory (TIA from 0 - $7F, immediately followed by RAM $80 - $FF) and do the clear in one go&hellip;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="initializing_ram_and_tia">&nbsp;</div>
+<p class="bbmain"><a href="#initializing_ram_and_tia">Initializing RAM and the TIA</a></p>
+<pre class="bbborder" style="margin-bottom:32px;">
+
+    ldx #0
+
+    lda #0
+
+Clear
+
+    sta 0,x
+
+    inx
+
+    bne Clear
+
+</pre>
+
+<p>The above example uses 9 bytes, again, but now clears RAM and TIA in one &#39;go&#39; by iterating the index register (which is the effective address when used in &quot;sta 0,x&quot;) from 0 to 0 (ie: increments 256 times and then wraps back to 0 and the loop halts). This is starting to get into &quot;elegant&quot; territory, something the experienced guys strive for!</p>
+<p>&nbsp;</p>
+<p>Furthermore, after this code has completed, X = 0 and A = 0<span style="padding-left:2px; padding-right:2px;">&mdash;</span>a nice known state for two of the 3 6502 registers.</p>
+<p>&nbsp;</p>
+<p>That&#39;s all I&#39;m going to explain for the initialization at this stage<span style="padding-left:2px; padding-right:2px;">&mdash;</span>we should insert this code just after the &quot;Reset&quot; label and before the &quot;StartOfFrame&quot; label. This would cause the code to be executed only on a system reset, not every frame (as, every frame, the code branches back to the &quot;StartOfFrame&quot; for the beginning of the next frame).</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="#summary">Summary</a></p>
+<p>Before we end today&#39;s session, though, I thought I&#39;d share the &quot;magical&quot; 9-byte system clear with you. There&#39;s simply no way that I would expect you to understand this bit of code at the moment<span style="padding-left:2px; padding-right:2px;">&mdash;</span>it pulls every trick in the book<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but this should give you some taste of just how obscure a bit of code CAN be, and how beautifully elegant clever coding can do amazing things.</p>
+
+<pre class="bbborder">
+
+   ; CLEARS ALL VARIABLES, STACK
+
+   ; INIT STACK POINTER
+
+   ; ALSO CLEARS TIA REGISTERS
+
+   ; DOES THIS BY &quot;WRAPPING&quot; THE STACK - UNUSUAL
+
+
+
+    LDX #0
+
+    TXS
+
+    PHA           ; BEST WAY TO GET SP=$FF, X=0
+
+
+
+    TXA
+
+CLEAR PHA
+
+    DEX
+
+    BNE CLEAR
+
+
+
+   ; 9 BYTES TOTAL FOR CLEARING STACK, MEMORY
+
+   ; STACK POINTER NOW $FF, A=X==0
+
+</pre>
+
+<p>Though the above was a truly magical piece of code, I&#39;ve since developed an EIGHT byte solution to the problem of clearing RAM and initializing the <a class="offsite" href="https://atariage.com/forums/topic/27405-session-12-initialisation/?do=findComment&comment=2806640">stack</a> and registers. <img src="files_andrew_davie_sessions/icon_smile.gif" width="15" height="15" alt="Smile" style="border:0; vertical-align:middle;"></p>
+<pre class="bbborder">
+
+        ldx #0
+
+        txa
+
+Clear   dex
+
+        txs
+
+        pha
+
+        bne Clear
+
+</pre>
+<p>After the above, X=A=0, and all of RAM and the TIA has been initialized to 0, and the stack pointer is initialized to $FF. Amazing!</p>
+<p>&nbsp;</p>
+<p>See you next time!</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-11.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="atari-2600-memories-tutorial-andrew-davie-13.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefulloff">Session 12: Initialization</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder">Loading ASM links…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fsidebar">
+
+<p class="bblittlegreentitle">Atari 2600 BASIC</p>
+<div class="yellowbox">
+<p>If assembly language is too hard for you, try <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html">batari Basic</a>. It&#39;s a BASIC-like language for creating Atari 2600 games. It&#39;s the faster, easier way to make Atari 2600 games.</p>
+
+<div style="width:208px; height:66px; margin-top:12px; margin-left:33px;">
+<a href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html" style="border-style: none; display: block; background-color: transparent;"><img src="filesframe/topbar988-batari.png" alt="Try batari Basic" height="66" width="208" style="border:0;"></a>
+</div>
+</div>
+
+<a href="https://www.amazon.com/s?k=the+courage+to+face+covid-19+dr.+peter+mccullough&linkCode=ll2&tag=randterr-20&linkId=aefe76cee204d05379778517d5fe4798&language=en_US&ref_=as_li_ss_tl1" target="_blank"><img src="z_amz_book_courage.png" style="border:none;" alt="THE COURAGE TO FACE COVID-19"></a>
+<a href="https://www.amazon.com/s?k=2000+Mules+DVD+D%27Souza&linkCode=ll2&tag=randterr-20&linkId=4782ca11902ddf1777431a6bd7533f15&language=en_US&ref_=as_li_ss_tl" target="_blank"><img src="z_amz_book_2000.png" style="border:none;" alt="2000 Mules DVD"></a>
+<a href="https://www.amazon.com/s?k=the+great+awakening+alex+jones&linkCode=ll2&tag=randterr-20&linkId=e73261c0ed66bfff3ef2a3bdaa73123d&language=en_US&ref_=as_li_ss_tl" target="_blank"><img src="z_amz_book_great_awake.png" style="border:none;" alt="The Great Awakening"></a>
+
+</div>
+
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder">Loading ICYDK section…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="index.html">Home</a> <a href="futuristic-inventions-cool-stuff.html">Inventions</a> <a href="favorite-quotes.html">Quotations</a> <a href="game-design.html">Game Design</a> <a href="atari-2600-memories.html">Atari Memories</a> <a href="personal.html">Personal Pages</a> <a href="about.html">About</a> <a href="sitemap.html">Site Map</a> <a href="contact.html">Contact</a> <a href="privacy.html">Privacy Policy</a> <a href="rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+</body>
+</html>

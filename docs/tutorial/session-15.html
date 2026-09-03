@@ -1,0 +1,822 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="ie6 oldie"> <![endif]-->
+<!--[if IE 7]>    <html class="ie7 oldie"> <![endif]-->
+<!--[if IE 8]>    <html class="ie8 oldie"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en">
+<!--<![endif]-->
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-23W5RPE0Q4"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 15: Playfield Continued</title>
+
+<link href="styles/fluid.css" rel="stylesheet" type="text/css">
+<link href="styles/fluid.css?id=54321" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css?id=1234567" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 15: Playfield Continued">
+<meta name="description" content="Session 15: Playfield Continued">
+<meta name="twitter:description" content="Session 15: Playfield Continued">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="styles/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="index.html">Home</a> &gt; <a class="offsite" href="atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="atari-2600-memories.html#assembly_language">&#35;Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 15: Playfield Continued</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="#playfield_mirroring">Playfield Mirroring</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#ctrlpf">CTRLPF</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#d0">D0 (Reflection)</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#d1">D1 (Two Colors)</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#d2">D2 (Playfield Priority)</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#shadow_register">Shadow Register</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#and_or">AND and OR</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#playfield_reflection">Playfield Reflection</a></p>
+
+<p class="tocsec"><a href="#summary">Summary</a></p>
+<p class="tocsec"><a href="#exercises">Exercises</a></p>
+<p class="tocsec"><a href="#session_links">Session Links</a></p>
+<p class="tocsec"><a href="#useful_links">Useful Links</a></p>
+</div>
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/28219-session-15-playfield-continued/">Original Session 15 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>We&#39;ve had a bit of time to think about the playfield, and hopefully have a go at some of the exercises. Admittedly I  threw you in the deep end with the last session<span style="padding-left:2px; padding-right:2px;">&mdash;</span>so we&#39;ll go back a step and walk through exactly what all this playfield oddity is about. We&#39;ll also tackle some of the exercises to show that there&#39;s more than one way to skin a fish.</p>
+<p>&nbsp;</p>
+<p>Last session we learned that the playfield registers PF0 and PF2 are reversed. Specifically, the order of pixels in the playfield registers (one bit per pixel, remember!) is backward, compared to the order for the first playfield register we encountered<span style="padding-left:2px; padding-right:2px;">&mdash;</span>PF1. This backward ordering is rather confusing, but that&#39;s just the way it is. Have a close look at the  diagram presented in the last session and try and understand exactly the &quot;playfield register/bit&quot; to &quot;pixel position on the scanline&quot; correspondence.</p>
+<div class="bbpageindent">
+<div style="overflow: auto;">
+<div style="background-image:url('files_andrew_davie_sessions/tia_pf_02.png'); background-repeat:no-repeat; padding:0px; margin: 16px 0px 0px 0px; width:640px; height:480px; border:1px solid black;">
+<img src="files_andrew_davie_sessions/please_do_not_hotlink.gif" width="640" height="480" alt="Playfield Wierdness" style="border:0;">
+</div>
+</div>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="playfield_mirroring">&nbsp;</div>
+<p class="bbmain"><a href="#playfield_mirroring">Playfield Mirroring</a></p>
+<p>There&#39;s one new playfield-related capability of the &#39;2600 which I&#39;d like to introduce now<span style="padding-left:2px; padding-right:2px;">&mdash;</span>playfield mirroring. I&#39;ve  already introduced this to you when I stated that the right hand side of the playfield was a copy of the left hand side  (that is, the left 20 pixels come from the 20 playfield bits held in the TIA registers PF0, PF1 and PF2<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and the right  20 bits are a copy of the same bits). That copy can be displayed &#39;normally&#39;<span style="padding-left:2px; padding-right:2px;">&mdash;</span>or &#39;mirrored&#39;. When mirrored, the bits  are literally a mirrored copy of the left side of the playfield.</p>
+<p>&nbsp;</p>
+<p>We&#39;re already familiar with two &#39;types&#39; of TIA register. There&#39;s the strobe-type, where a write of any value to the  register causes something to happen, independent of the value written (an example is WSYNC, which halts the 6502 until  the TIA starts the next scanline). A second type is the normal register to which we write a byte, and the TIA uses that byte for some internal purpose (examples of these are the playfield registers PF0, PF1 and PF2). PF0 was a special-case  of this type, where<span style="padding-left:2px; padding-right:2px;">&mdash;</span>though we wrote a byte<span style="padding-left:2px; padding-right:2px;">&mdash;</span>only four of the bits were actually used by the TIA. The remaining bits  were discarded/ignored (have a look at the PF0 register in the diagram in the last session<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the X for each bit position  in bits D0-D3 indicates those bits are not used).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="ctrlpf">&nbsp;</div>
+<p class="bbsecondary"><a href="#ctrlpf">CTRLPF</a></p>
+<p>The third type of register (they&#39;re not really &#39;types&#39;<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but I want you to understand the difference between the way  we&#39;re writing data to the TIA) is where we are interested in just the state of a single BIT in a register. Time to  introduce a new TIA register, called CTRLPF. It&#39;s located at address 10 ($A)</p>
+<pre class="bbborder">
+
+CTRLPF
+
+     This address is used to write into the playfield control
+
+     register (a logic 1 causes action as described below)
+
+
+
+     D0 = REF (reflect playfield)
+
+
+
+     D1 = SCORE (left half of playfield gets color of
+
+     player 0, right half gets color of player 1)
+
+
+
+     D2 = PFP (playfield gets priority over players so they
+
+     can move behind the playfield)
+
+
+
+     D4 &amp; D5 = BALL SIZE
+
+               D5   D4   Width
+
+               0    0    1 clock
+
+               0    1    2 clocks
+
+               1    0    4 clocks
+
+               1    1    8 clocks
+
+</pre>
+<p>Wow!  This register has a lot of different stuff associated with it!  Most of it is related to playfield display (bits  D0, D1, D2) but bits D4 and D5 control the &#39;BALL SIZE&#39;<span style="padding-left:2px; padding-right:2px;">&mdash;</span>we&#39;ll worry about those bits later :)</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="d0">&nbsp;</div>
+<p class="bbtertiary"><a href="#d0">D0 (Reflection)</a></p>
+<p>Bit D0 controls the reflection (mirroring) of our playfield. If this bit is 0, then we have a &#39;normal&#39; non-mirrored  playfield, and that&#39;s what we&#39;ve been seeing so far in our demos. If we set this bit to 1, then the &#39;2600 will display a  reflected playfield (that is, the right-side of the playfield is a mirror-image of the left-side, instead of a copy). Note that only a single bit is used to control this feature<span style="padding-left:2px; padding-right:2px;">&mdash;</span>if we wrote a byte with this bit set (ie: %00000001) to  CTRLPF we would also be setting those other bits to 0<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and we should be very sure this is what we want. In fact, it&#39;s  often NOT what we want, so when we are writing to registers such as this (which contain many bits controlling different  parts of the TIA hardware/display), we should be very careful to keep all the bits exactly as we need them. Sometimes  this is done with a &#39;shadow&#39; register<span style="padding-left:2px; padding-right:2px;">&mdash;</span>a RAM copy of our current register state, and by first setting or clearing the  appropriate bit in the shadow register, and THEN writing the shadow register to the TIA register. This is necessary  because many/most of the TIA registers are only writable<span style="padding-left:2px; padding-right:2px;">&mdash;</span>that is, you cannot successfully read their contents and  expect to get the value last written.</p>
+<p>&nbsp;</p>
+<p>Let&#39;s have a quick look at those other bits in this register, related to playfield&hellip;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="d1">&nbsp;</div>
+<p class="bbtertiary"><a href="#d1">D1 (Two Colors)</a></p>
+<p>D1 = SCORE. This is interesting. Setting this bit causes the playfield to have two colors instead of one. The left  side of the playfield will be displayed using the color of sprite 0 (register COLUP0), and the right side of the  playfield will be displayed using the color of sprite 1 (register COLUP1). We won&#39;t play with this for now<span style="padding-left:2px; padding-right:2px;">&mdash;</span>but keep  in mind that it is possible. Remember, this machine was designed for PONG-style games, so this sort of effect makes  sense in that context.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="d2">&nbsp;</div>
+<p class="bbtertiary"><a href="#d2">D2 (Playfield Priority)</a></p>
+<p>D2 = PFP. Playfield priority. You may have the playfield appear in front of, or behind, sprites. If you set this bit,  then the playfield will be displayed in front, and all sprites will appear to go behind the playfield pixels. If this  bit is not set, then all sprites appear to go in front of the playfield pixels.</p>
+<p>&nbsp;</p>
+<p>That&#39;s a very quick rundown of this register. We know now that it controls the playfield mirroring (=reflection), the  playfield color control for left/right halves, the playfield priority (if sprites go in front of or behind the  playfield), and finally it does something with the &#39;BALL SIZE&#39; which we&#39;re not worrying about yet.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="shadow_register">&nbsp;</div>
+<p class="bbtertiary"><a href="#shadow_register">Shadow Register</a></p>
+<p>I&#39;ve indicated that it&#39;s useful to have a &#39;shadow&#39; copy of the register in RAM, so that we can easily keep track of the  state of this sort of register. In practice, this is rarely done<span style="padding-left:2px; padding-right:2px;">&mdash;</span>as we generally just set the reflection on or off,  the score coloring on or off, the priority on or off, and the ball size as appropriate&hellip; and then forget it. But if, for example, you were doing a game where you were changing the priority on the fly (so your sprites went behind SOME bits  background, but not other bits) then you&#39;d need to know what those other values should be.</p>
+<p>&nbsp;</p>
+<p>In any case, the point of this is to introduce you slowly to more TIA capabilities, and at the same time build your  proficiency with 6502 programming. Here&#39;s how we set and clear bits with 6502.</p>
+</div>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+
+<div style="margin:0px; padding:0px; max-width:780px;">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<pre class="bbborder">
+
+  CTRLPF_shadow = $82 ; a RAM location for our shadow register
+
+
+
+  lda #%00000000
+
+  sta CTRLPF_shadow   ; init our shadow register as required
+
+
+
+   ; lots of code here
+
+
+
+
+
+  lda CTRLPF_shadow
+
+  sta CTRLPF          ; copy shadow register to TIA register
+
+</pre>
+</div>
+</div>
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<p>The above code snippet shows the general form of shadow register usage. The shadow register is initialised<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and at some  point later in the code, we copy it to the TIA register. Now for the fun bit<span style="padding-left:2px; padding-right:2px;">&mdash;</span>setting and clearing individual bits in  the shadow register&hellip;</p>
+</div>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+
+<div style="margin:0px; padding:0px; max-width:780px;">
+<div class="bbpageindent">
+<div class="bbpageindent">
+
+<pre class="bbborder" style="margin-bottom:0px;">
+
+   ; how to set a single bit in a byte
+
+
+
+   lda CTRLPF_shadow  ; load the shadow register from RAM
+
+   ora #%00000001     ; SET bit 0 (D0 = 1)
+
+   sta CTRLPF_shadow  ; save new register value back to RAM
+
+
+
+
+
+   ; how to clear a single bit in a byte
+
+
+
+   lda CTRLPF_shadow
+
+   and #%11111110  ; keep all bits BUT the one we want to clear
+
+   sta CTRLPF_shadow
+
+</pre>
+</div>
+</div>
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="and_or">&nbsp;</div>
+<p class="bbtertiary"><a href="#and_or">AND and OR</a></p>
+<p>OK, that&#39;s not too difficult to understand. The two new 6502 instructions we have just used are &#39;ORA&#39;, which does a  logical-OR (that is, combines the accumulator with the immediate value bit-by-bit using a OR operation)<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and the &#39;AND&#39;,  which does a logical-AND (again, combines the accumulator with the immediate value bit-by-bit using an AND operation). Now this is getting into pretty basic binary math<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and you should read up on this stuff if you don&#39;t already know.</p>
+<div class="bbpageindent">
+<div style="overflow: auto; margin-bottom:32px;">
+<div class="sidebox01" style="margin-top:24px; padding:8px; width:550px;">
+<p style="font-size:17px;"><b>A bit is like a simple light switch. It can be on or off.</b></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:4px; white-space: nowrap;"><span style="font-size:22px; font-weight:bold;">AND = OFF</span> &nbsp;&nbsp;&nbsp;&nbsp; (<span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">0</span> <span style="font-size:17px; font-weight:bold;">= OFF</span> &nbsp;&nbsp; <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">1</span> <span style="font-size:17px; font-weight:bold;">= UNTOUCHED)</span></p>
+<p style="white-space: nowrap;">Use <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">0</span> to make sure the light switch is off.</p>
+<p style="white-space: nowrap;">Use <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">1</span> to leave it as it is.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:4px; white-space: nowrap;"><span style="font-size:22px; font-weight:bold;">OR = ON</span> &nbsp;&nbsp;&nbsp;&nbsp; (<span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">1</span> <span style="font-size:17px; font-weight:bold;">= ON</span> &nbsp;&nbsp; <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">0</span> <span style="font-size:17px; font-weight:bold;">= UNTOUCHED)</span></p>
+<p style="white-space: nowrap;">Use <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">1</span> to make sure the light switch is on.</p>
+<p style="white-space: nowrap;">Use <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">0</span> to leave it as it is.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:4px; white-space: nowrap;"><span style="font-size:22px; font-weight:bold;">XOR = FLIP</span> &nbsp;&nbsp;&nbsp;&nbsp; (<span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">1</span> <span style="font-size:17px; font-weight:bold;">= FLIP</span> &nbsp;&nbsp; <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">0</span> <span style="font-size:17px; font-weight:bold;">= UNTOUCHED)</span></p>
+<p style="white-space: nowrap;">Use <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">1</span> to reverse the position of the light switch.</p>
+<p style="white-space: nowrap;">Use <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">0</span> to leave it as it is.</p>
+<p>&nbsp;</p>
+
+</div>
+</div>
+</div>
+<p>Here are some truth tables for you&hellip;</p>
+<pre class="bbborder">
+OR operation
+
+
+
+ BIT |   0     1
+
+-----+------------
+
+  0  |   0     1
+
+     |
+
+  1  |   1     1
+
+
+
+
+
+AND operation
+
+
+
+ BIT |   0     1
+
+-----+------------
+
+  0  |   0     0
+
+     |
+
+  1  |   0     1
+
+</pre>
+<p>Basically the above two tables give you the result FOR A SINGLE BIT POSITION, where you either OR or AND together two  bits. For example, if I &#39;OR&#39; together 1 and 0, the resultant value (bit) is 1. Likewise, if I &#39;AND&#39; together a 1 and 0,  I get a 0. This logical operation is performed on each bit of the accumulator, with the corresponding bit of the  immediate value as part of the instruction. So &#39;ora #%00000001&#39; will actually leave the accumulator with the lowest bit  SET. No matter what. Likewise, &#39;and #%11111110&#39; will leave the accumulator with the lowest bit CLEAR. No matter what. And in the other bits, their value will remain unchanged. You should try some values and check this out, because  understanding this binary logical operation on bits is pretty fundamental to &#39;2600 programming.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<div class="jumpid" id="playfield_reflection">&nbsp;</div>
+<p class="bbtertiary"><a href="#playfield_reflection">Playfield Reflection</a></p>
+<p>In the initialization section of your current kernel, add the following lines&hellip;</p>
+<pre class="bbborder">
+
+    lda #%00000001
+
+    sta CTRLPF
+
+</pre>
+<p>That&#39;s our playfield reflection in operation<span style="padding-left:2px; padding-right:2px;">&mdash;</span>if you&#39;re running any sort of playfield code, you will see that the  right-side is now a mirror-image of the left-side. Now have a think about the exercise I offered in session 14&hellip;</p>
+<div class="bbpageindent">
+<div style="overflow: auto; margin-bottom:32px;">
+<div class="sidebox01" style="margin-top:24px;">
+<div class="bbpageindent">
+<ol start="5">
+<li class="normalli" style="margin-top:16px;">How would you make a &#39;wall&#39; which was 8 scanlines high, full screen width, followed by left and right walls just 1  pixel wide each, at extreme left/right edges of the screen, 176 scanlines high, followed by another horizontal &#39;wall&#39;,  full screen width and 8 scanlines high? Note: this would form a &#39;box&#39; border around the entire playfield.<br></li>
+</ol>
+</div>
+</div>
+</div>
+</div>
+<p>It should be apparent, now, that in this sort of situation we really only need to worry about the left side of the  playfield!  If we let the &#39;2600 reflect the right side, we will get a symmetrical copy of the left, and we&#39;ll have our  box if only we do the left-side borders. This is a <strong>huge advantage</strong> to the programmer, because we suddenly don&#39;t  have to write new PF0, PF1, PF2 values each scanline. Remember (and I&#39;ll drum this into you until the very last  session!) we only have 76 cycles per scanline<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the less we have to do on any line, the better. At the very least,  rewriting PF0, PF1 and PF2 twice per scanline would cost 30 cycles IF you were being clever. That&#39;s almost half the  available time JUST to draw background<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and there&#39;s still colors, sprites, balls and missiles to worry about!  However,  if you just use a reflected playfield, then we are only looking at single writes to PF0, PF1, PF2, cutting our playfield  update to only 15 cycles per line (eg:  lda #value / sta PF0 / lda #value2 / sta PF1 / lda #value3 / sta PF2).</p>
+<p>&nbsp;</p>
+<p>Just an aside, here<span style="padding-left:2px; padding-right:2px;">&mdash;</span>some people have been posting code IN UPPERCASE. It is quite acceptable to use upper or lowercase  for the mnemonics of your 6502 code. I prefer lowercase, as I find it easier to read and LESS LIKE SHOUTING!  But its  totally up to you<span style="padding-left:2px; padding-right:2px;">&mdash;</span>you will typically (but not always) find my code is lowercase, and you may feel free to adopt a style  that suits you. I make my constants UPPERCASE, my variables typically a mixture, and my mnemonics lower-case. Your  mileage may vary.</p>
+<p>&nbsp;</p>
+<p>So, let&#39;s get down to it<span style="padding-left:2px; padding-right:2px;">&mdash;</span>here&#39;s a solution for exercise 5, of session 14&hellip;</p>
+</div>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+
+<div style="margin:0px; padding:0px; max-width:930px;">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<pre class="bbborder">
+
+; &#39;2600 for Newbies
+; Session 15 - Playfield Continued
+; This kernel draws a simple box around the screen border
+; Introduces playfield reflection 
+
+
+
+
+
+                processor 6502
+
+                include &quot;vcs.h&quot;
+
+                include &quot;macro.h&quot;
+
+
+;----------------------------------------------------------------------------
+
+
+
+                SEG
+
+                ORG $F000
+
+
+
+Reset
+
+
+
+   ; Clear RAM and all TIA registers
+
+
+
+                ldx #0 
+
+                lda #0 
+
+Clear           sta 0,x 
+
+                inx 
+
+                bne Clear
+
+
+
+       ;------------------------------------------------
+
+       ; Once-only initialization. . .
+
+
+
+                lda #$45
+
+                sta COLUPF             ; set the playfield color
+
+
+
+                lda #%00000001
+
+                sta CTRLPF             ; reflect playfield
+
+
+
+       ;------------------------------------------------
+
+
+
+StartOfFrame
+
+
+
+   ; Start of new frame
+
+   ; Start of vertical blank processing
+
+
+
+                lda #0
+
+                sta VBLANK
+
+
+
+                lda #2
+
+                sta VSYNC
+
+
+
+                sta WSYNC
+
+                sta WSYNC
+
+                sta WSYNC               ; 3 scanlines of VSYNC signal
+
+
+
+                lda #0
+
+                sta VSYNC
+
+                
+
+       ;------------------------------------------------
+
+       ; 37 scanlines of vertical blank. . .
+
+            
+
+                ldx #0
+
+VerticalBlank   sta WSYNC
+
+                inx
+
+                cpx #37
+
+                bne VerticalBlank
+
+
+
+       ;------------------------------------------------
+
+       ; Do 192 scanlines of color-changing (our picture)
+
+
+
+                ldx #0                 ; this counts our scanline number
+
+
+
+                lda #%11111111
+
+                sta PF0
+
+                sta PF1
+
+                sta PF2
+
+
+
+   ; We won&#39;t bother rewriting PF0-PF2 every scanline of the
+   ; top 8 lines - they never change!
+
+
+Top8Lines     sta WSYNC
+
+              inx
+
+              cpx #8                 ; Are we at line 8?
+
+              bne Top8Lines          ; No, so do another
+
+
+
+                   ; Now we want 176 lines of &quot;wall&quot;
+
+                   ; Note: 176 (middle) + 8 (top) + 8 (bottom) = 192 lines
+
+
+
+              lda #%00010000  ; PF0 is mirrored &lt;-- direction,
+                              ; low 4 bits ignored
+              sta PF0
+
+              lda #0
+
+              sta PF1
+
+              sta PF2
+
+
+
+                ; Again, we don&#39;t bother writing PF0-PF2 every
+                ; scanline - they never change!
+
+
+
+
+MiddleLines   sta WSYNC
+
+              inx
+
+              cpx #184
+
+              bne MiddleLines
+
+
+
+             ; Finally, our bottom 8 scanlines - the same as the top 8
+
+             ; AGAIN, we aren&#39;t going to bother writing PF0-PF2 mid scanline!
+
+
+
+              lda #%11111111
+
+              sta PF0
+
+              sta PF1
+
+              sta PF2
+
+
+
+Bottom8Lines  sta WSYNC
+
+              inx
+
+              cpx #192
+
+              bne Bottom8Lines
+
+
+
+       ;------------------------------------------------
+
+
+
+ 
+
+              lda #%01000010
+
+              sta VBLANK          ; end of screen - enter blanking
+
+
+
+   ; 30 scanlines of overscan. . .
+
+
+
+              ldx #0
+
+Overscan      sta WSYNC
+
+              inx
+
+              cpx #30
+
+              bne Overscan
+
+
+
+              jmp StartOfFrame
+
+
+
+
+;----------------------------------------------------------------------------
+
+
+
+            ORG $FFFA
+
+
+
+InterruptVectors
+
+
+
+            .word Reset          ; NMI
+
+            .word Reset          ; RESET
+
+            .word Reset          ; IRQ
+
+
+
+      END
+
+</pre>
+</div>
+</div>
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<p>This kernel is interesting in that it achieves the box effect by writing the playfield registers BEFORE the scanline  loops to do the appropriate section. It uses the knowledge that the TIA has an internal state and will keep displaying  whatever it already has in the playfield registers. So, in fact, the actual cost (in cycles) of drawing the &#39;box&#39; playfield on each scanline is 0 cycles<span style="padding-left:2px; padding-right:2px;">&mdash;</span>ie; it&#39;s free. We just had that short initial load before each section (taking  a few cycles out of the very first scanline of each section). This is how you need to think about &#39;2600 programming<span style="padding-left:2px; padding-right:2px;">&mdash;</span>how to remove cycles from your scanlines<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and do the absolute minimal necessary.</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:8px;">Here&#39;s a screenshot:</p>
+<div class="bbpageindent">
+<div style="background-image:url('files_andrew_davie_sessions/kernel_15.png'); background-repeat:no-repeat; padding:0px; margin: 16px 0px 48px 0px; width:336px; height:241px;">
+<img src="files_andrew_davie_sessions/please_do_not_hotlink.gif" width="336" height="241" alt="Kernel 15" style="border:0;">
+</div>
+</div>
+
+<p style="margin-bottom:8px;">Here&#39;s the .bin file to use with an emulator:</p>
+<p class="bonsitefull"><a style="font-weight:bold;" href="files_andrew_davie_sessions/kernel_15.bin">kernel_15.bin</a></p>
+</div>
+</div>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="#summary">Summary</a></p>
+<p>That will do for today&#39;s session. We&#39;ve had an introduction to controlling individual TIA register bits, and seen how to achieve a reflected playfield at next to no cost. We&#39;ve had a brief introduction to the CTRLPF register, and seen how it has a myriad (well, more than 3) uses. Although some of the previous sessions have asked you to think about tricky subjects like horizontal scrolling, and asymmetrical playfields<span style="padding-left:2px; padding-right:2px;">&mdash;</span>now is not the time to actually discuss these tricky areas. So until next time (when we&#39;ll develop our playfield skills a bit more)&hellip; ciao!</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="exercises">&nbsp;</div>
+<p class="bbmain"><a href="#exercises">Exercises</a></p>
+<ol class="bbpageol" style="margin-top:0px; margin-bottom:0px;">
+<li class="normalli">Introduce a RAM shadow of the CTRLPF register, and modify it differently in each section of the kernel. For example turn reflection on and off partway through the midsection of the box, and see what happens.</li>
+<li class="normalli">Have a play with the SCORE bit in the CTRLPF register, and in conjunction with that the COLUP0 and COLUP1 color registers. Note how this SCORE bit changes where the color for the playfield comes from.</li>
+</ol>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefulloff">Session 15: Playfield Continued</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder">Loading ASM links…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder">Loading ICYDK section…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="index.html">Home</a> <a href="futuristic-inventions-cool-stuff.html">Inventions</a> <a href="favorite-quotes.html">Quotations</a> <a href="game-design.html">Game Design</a> <a href="atari-2600-memories.html">Atari Memories</a> <a href="personal.html">Personal Pages</a> <a href="about.html">About</a> <a href="sitemap.html">Site Map</a> <a href="contact.html">Contact</a> <a href="privacy.html">Privacy Policy</a> <a href="rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+</body>
+</html>

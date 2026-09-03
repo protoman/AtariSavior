@@ -1,0 +1,391 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="ie6 oldie"> <![endif]-->
+<!--[if IE 7]>    <html class="ie7 oldie"> <![endif]-->
+<!--[if IE 8]>    <html class="ie8 oldie"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en">
+<!--<![endif]-->
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-23W5RPE0Q4"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 24: Some Nice Code</title>
+
+<link href="styles/fluid.css" rel="stylesheet" type="text/css">
+<link href="styles/fluid.css?id=54321" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css?id=1234567" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-24.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 24: Some Nice Code">
+<meta name="description" content="Session 24: Some Nice Code">
+<meta name="twitter:description" content="Session 24: Some Nice Code">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="styles/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="index.html">Home</a> &gt; <a class="offsite" href="atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="atari-2600-memories.html#assembly_language">&#35;Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 24: Some Nice Code</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="#divide_by_15">Divide-by-15</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#conceptual_negative_index">Conceptual Negative Index</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#8_byte_system_clear">8-Byte System Clear</a></p>
+<p class="tocsec"><a href="#summary">Summary</a></p>
+<p class="tocsec"><a href="#session_links">Session Links</a></p>
+<p class="tocsec"><a href="#useful_links">Useful Links</a></p>
+</div>
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/47639-session-24-some-nice-code/">Original Session 24 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>In tutorial 22, we learned that to horizontally position a sprite, we need to trigger the RESPx register at the appropriate position in the scanline, at which point the sprite will display immediately. To move to an arbitrary horizontal position, we need to trigger RESPx just before the TIA is displaying the appropriate color clock. Our solution has been to use the desired X-position of the sprite as the basis for a delay loop which starts at the beginning of a scanline, delays until roughly the correct position,  adjusts the HMPx fine-tune horizontal position register and then &#39;hits&#39; RESPx to immediately position the sprite.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="divide_by_15">&nbsp;</div>
+<p class="bbmain"><a href="#divide_by_15">Divide-by-15</a></p>
+<p>Since the minimal time for a single loop iteration is 5 cycles (involving a register decrement, and a branch), and 5 cycles corresponds to 15 TIA  color-clocks, it follows that our delay-loop approach can only position RESPx writes with an accuracy of 15 TIA color-clocks. This is fine, though, as the hardware  capability of fine-positioning sprites by -8 to +7 pixels perfectly allows the correct position of the sprite to be established.</p>
+<p>&nbsp;</p>
+<p>The approach taken previously has been to effectively divide the position by 15 (either through a table-lookup, or &#39;clever&#39; code which simulated a  divide by 15 using a divide by 16 (quick) + adjustment) and use that value as the iteration counter in a delay loop. This approach works, and has been fairly standard for a number of years. This is the approach presented in our earlier tutorial.</p>
+<p>&nbsp;</p>
+<p>A posting to the [stella] list of an independent discovery of a &#39;new&#39; method much improves on this technique. In actual fact, the technique was already known and documented in the list &hellip; but for various reasons these things don&#39;t always become well-known. The &#39;new&#39; technique of horizontal positioning rolls the divide-by-15 and the delay loop into a single entity.</p>
+<pre class="bbborder">
+         sec
+
+.Div15   sbc #15      ; 2
+
+         bcs .Div15   ; 3(2)
+
+</pre>
+<p>Now that may not look like much, but it&#39;s absolutely brilliant!  Every iteration through the loop, the accumulator is decremented by 15. When the subtraction results in a carry, the accumulator has gone &#39;past&#39; 0, and our loop ends. Each iteration takes exactly 5 cycles (with an extra 2 cycles added for the initial &#39;sec&#39; and one less for the final branch not taken). The real beauty of the code is that we also, &#39;for free&#39;, get the correct -8 to +7 adjustment for the fine-tuning of the position (which with a little bit of fine-tuning can be used for the HMP0 register)!  Read the relevant post on [stella] here&hellip;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.biglist.com/lists/stella/archives/200403/msg00260.html">https://www.biglist.com/lists/stella/archives/200403/msg00260.html</a></p>
+<p>&nbsp;</p>
+<p>For this brilliant bit of coding, our thanks go to R. Mundschau&hellip;</p>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+<div style="margin:0px; padding:0px; max-width:980px;">
+<pre class="bbborder" style="margin-bottom:0px;">
+
+; Positions an object horizontally
+; Inputs: A = Desired position.
+; X = Desired object to be positioned (0-5).
+; scanlines: If control comes on or before cycle 73 then 1 scanline is consumed.
+; If control comes after cycle 73 then 2 scanlines are consumed.
+; Outputs: X = unchanged
+; A = Fine Adjustment value.
+; Y = the &quot;remainder&quot; of the division by 15 minus an additional 15.
+; control is returned on cycle 6 of the next scanline.
+
+
+
+PosObject   SUBROUTINE
+
+
+
+            sta WSYNC                ; 00     Sync to start of scanline.
+
+            sec                      ; 02     Set the carry flag so no borrow will be
+                                     ;        applied during the division.
+
+.divideby15 sbc #15                  ; 04     Waste the necessary amount of time
+                                     ;        dividing X-pos by 15!
+
+            bcs .divideby15          ; 06/07  11/16/21/26/31/36/41/46/51/56/61/66
+
+
+
+            tay
+
+            lda fineAdjustTable,y    ; 13 -&gt; Consume 5 cycles by guaranteeing we
+                                     ;       cross a page boundary
+
+            sta HMP0,x
+
+            
+
+            sta RESP0,x              ; 21/ 26/31/36/41/46/51/56/61/66/71
+                                     ; Set the rough position.
+
+            rts 
+
+
+;-----------------------------
+; This table converts the &quot;remainder&quot; of the division by 15 (-1 to -15) to the correct
+; fine adjustment value. This table is on a page boundary to guarantee the processor
+; will cross a page boundary and waste a cycle in order to be at the precise position
+; for a RESP0,x write
+
+
+
+            ORG $F000
+
+fineAdjustBegin
+
+
+
+            DC.B %01110000; Left 7 
+
+            DC.B %01100000; Left 6
+
+            DC.B %01010000; Left 5
+
+            DC.B %01000000; Left 4
+
+            DC.B %00110000; Left 3
+
+            DC.B %00100000; Left 2
+
+            DC.B %00010000; Left 1
+
+            DC.B %00000000; No movement.
+
+            DC.B %11110000; Right 1
+
+            DC.B %11100000; Right 2
+
+            DC.B %11010000; Right 3
+
+            DC.B %11000000; Right 4
+
+            DC.B %10110000; Right 5
+
+            DC.B %10100000; Right 6
+
+            DC.B %10010000; Right 7
+
+
+
+fineAdjustTable EQU fineAdjustBegin - %11110001; NOTE: %11110001 = -15
+
+</pre>
+</div>
+<div class="f728max">
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="conceptual_negative_index">&nbsp;</div>
+<p class="bbsecondary"><a href="#conceptual_negative_index">Conceptual Negative Index</a></p>
+<p>One interesting aspect of this code is the access to the table with a (conceptual) negative index (-1 to -15 inclusive). Negative numbers are represented in two&#39;s complement form, so -1 is %11111111 which is *exactly* the same as 255 (%11111111). So how can we use negative numbers as indexes?  We can&#39;t!  All indexing is considered to be with positive numbers. So if our index was -1, we would actually index 255 bytes past the beginning of our table. The neat bit of code at the bottom sets the conceptual start of our table to 241 bytes BEFORE the start of the actual data so that when we attempt to access the -15th element of the table, we ACTUALLY end up at the very first byte of the &#39;fineAdjustBegin&#39; table. Likewise, when accessing the -1th element, we ACTUALLY access the last element of the table. It&#39;s all very neat!</p>
+<p>&nbsp;</p>
+<p>Finally, since we need to account for every cycle in this code very carefully (as the horizontal position depends on exactly where we write the RESP0 value), we need to take into account the possibility that an extra cycle is being thrown in when we access fineAdjustTable,y and that access crosses a page boundary. By positioning the table being accessed exactly on a page boundary, the code guarantees that every access incurs an extra cycle &#39;penalty&#39; and is therefore consistent for all cases.</p>
+<p>&nbsp;</p>
+<p>I don&#39;t take any credit for this, I just admire it. I consider this a BRILLIANT bit of coding, so hats-off to R. Mundschau and thanks for sharing!</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="8_byte_system_clear">&nbsp;</div>
+<p class="bbsecondary"><a href="#8_byte_system_clear">8-Byte System Clear</a></p>
+<p>Another &#39;BRILLIANT&#39; bit of code, but this time from yours truly, is the 8-byte system clear. We touched on this earlier in Session 12, but I thought I&#39;d give a quick run-down on exactly how that code works&hellip;</p>
+<pre class="bbborder">
+        ldx #0 
+
+        txa 
+
+Clear   dex 
+
+        txs 
+
+        pha 
+
+        bne Clear
+
+</pre>
+<p>We assume that when this code starts, the system is in a totally unknown state. Firstly, X and A are set to 0, and we enter the loop.</p>
+<p>&nbsp;</p>
+<p>The loop begins: X-register is decremented (to 255) and this value is placed in the stack pointer (now $FF) the accumulator(0) is then pushed onto the <a class="offsite" href="https://atariage.com/forums/topic/27405-session-12-initialisation/?do=findComment&comment=2806640">stack</a>, so memory/hardware location $FF is set to 0, and the stack pointer decrements to $FE since the txs and pha don&#39;t affect the flags, the branch will be based on the decrement of the x register if non-zero, then we repeat the loop. 0 will be written to 256 consecutive memory locations starting with $FF and ending with 0 (inclusive). Loop will terminate after 256 iterations. On the final pass through, x would be decremented to 0, and this placed in the stack pointer. We then push the accumulator (0) onto the stack (which effectively writes it to memory (TIA) location 0) and as a consequence the stack pointer decrements (and wraps!) back to $FF.</p>
+<p>&nbsp;</p>
+<p>At the conclusion of the above, X = 0, A = 0, SP = $FF, a near-perfect init!</p>
+<p>&nbsp;</p>
+<p>That could be the best 8-bytes ever written. <img src="files_andrew_davie_sessions/icon_wink.gif" width="15" height="15" alt="Wink" style="border:0; vertical-align:middle;"></p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="#summary">Summary</a></p>
+<p>[This used to be the last session that Andrew Davie had time to work on. Now there is <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-25.html">Session 25</a>.]</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-23.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="atari-2600-memories-tutorial-andrew-davie-25.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefulloff">Session 24: Some Nice Code</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder">Loading ASM links…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder">Loading ICYDK section…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="index.html">Home</a> <a href="futuristic-inventions-cool-stuff.html">Inventions</a> <a href="favorite-quotes.html">Quotations</a> <a href="game-design.html">Game Design</a> <a href="atari-2600-memories.html">Atari Memories</a> <a href="personal.html">Personal Pages</a> <a href="about.html">About</a> <a href="sitemap.html">Site Map</a> <a href="contact.html">Contact</a> <a href="privacy.html">Privacy Policy</a> <a href="rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+</body>
+</html>

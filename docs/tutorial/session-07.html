@@ -1,0 +1,334 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="ie6 oldie"> <![endif]-->
+<!--[if IE 7]>    <html class="ie7 oldie"> <![endif]-->
+<!--[if IE 8]>    <html class="ie8 oldie"> <![endif]-->
+<!--[if gt IE 8]><!-->
+<html lang="en">
+<!--<![endif]-->
+<head>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-23W5RPE0Q4"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 7: The TV and our Kernel</title>
+
+<link href="styles/fluid.css" rel="stylesheet" type="text/css">
+<link href="styles/fluid.css?id=54321" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="rt_stylesheet.css?id=1234567" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-07.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 7: The TV and our Kernel">
+<meta name="description" content="Session 7: The TV and our Kernel">
+<meta name="twitter:description" content="Session 7: The TV and our Kernel">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="styles/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="index.html">Home</a> &gt; <a class="offsite" href="atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="atari-2600-memories.html#assembly_language">&#35;Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 7: The TV and our Kernel</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="#tv_timing_diagram">TV Timing Diagram</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#top_numbers">Numbers Across the Top</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#right_side_numbers">Numbers Down the Right Side</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#reset_signal">Reset Signal</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#vertical_blank_overscan">Vertical Blank and Overscan</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="#right_side_recap">Right Side Number Recap</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#scanlines_pal_tv">Scanlines and PAL TV</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="#scanline_standards">Scanline Standards</a></p>
+<p class="tocsec"><a href="#summary">Summary</a></p>
+<p class="tocsec"><a href="#session_links">Session Links</a></p>
+<p class="tocsec"><a href="#useful_links">Useful Links</a></p>
+</div>
+
+
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/27193-session-7-the-tv-and-our-kernel">Original Session 7 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>Time to complete our understanding of what constitutes a TV frame<span style="padding-left:2px; padding-right:2px;">&mdash;</span>exactly what has to be sent to the TV to make it display a picture correctly.</p>
+<p>&nbsp;</p>
+<p>Let&#39;s take another look at the diagram with the timing information and the Pitfall! image inside.</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="tv_timing_diagram">&nbsp;</div>
+<div class="bbpageindent">
+<div style="overflow: auto;">
+<p class="bbmain"><a href="#tv_timing_diagram">TV Timing Diagram</a></p>
+<div style="background-image:url('files_andrew_davie_sessions/tv_timing.png'); background-repeat:no-repeat; padding:0px; margin: 16px 0px 0px 0px; width:640px; height:544px; border:1px solid black;">
+<img src="files_andrew_davie_sessions/please_do_not_hotlink.gif" width="640" height="544" alt="TV Timing" style="border:0;">
+</div>
+</div>
+</div>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="top_numbers">&nbsp;</div>
+<p class="bbsecondary"><a href="#top_numbers">Numbers Across the Top</a></p>
+<p>Your understanding of the numbers across the top should be good, but we&#39;ll briefly revisit what they mean, just to make sure.</p>
+<p>&nbsp;</p>
+<p>There are 228 TIA color clocks on each scanline. 160 of those are spent drawing pixels, and 68 of them are the horizontal retrace period for the TV&#39;s scanning of the electron beam back to the start of the next line. In the diagram we see the horizontal blank (retrace) at the left side, so our very first color clock for the TIA&#39;s first visible pixel on the screen is cycle #68. We should understand this timing fairly well by now.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="right_side_numbers">&nbsp;</div>
+<p class="bbsecondary"><a href="#right_side_numbers">Numbers Down the Right Side</a></p>
+<p>What we&#39;re going to finalize this session is our understanding of the numbers down the right-hand side<span style="padding-left:2px; padding-right:2px;">&mdash;</span>which represent the scanlines sent to the TV. The diagram shows a valid NTSC TV frame<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and thus it consists of 262 scanlines. A PAL diagram would consist of 312 scanlines<span style="padding-left:2px; padding-right:2px;">&mdash;</span>and the inner &#39;picture&#39; area would increase from 192 lines to 242 lines.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="reset_signal">&nbsp;</div>
+<p class="bbtertiary"><a href="#reset_signal">Reset Signal</a></p>
+<p>Let&#39;s go from the top. The first thing that the TV needs is a &#39;reset signal&#39; to indicate to it that a new frame is starting. This is the 3-scanline section at the very top of the frame. There are special ways to trigger the TIA to send this signal, but we&#39;re not going to have to worry too much about understanding that<span style="padding-left:2px; padding-right:2px;">&mdash;</span>just about every game does it exactly the same way<span style="padding-left:2px; padding-right:2px;">&mdash;</span>all we need to remember is that the first thing to send is that reset trigger (called VSYNC).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="vertical_blank_overscan">&nbsp;</div>
+<p class="bbtertiary"><a href="#vertical_blank_overscan">Vertical Blank and Overscan</a></p>
+<p>TVs are not all made the same. Some cut off more of the picture than others, some show wider pictures, some show taller pictures, etc. To &#39;standardize&#39; the picture, the diagram shows the recommended spread of valid picture lines, surrounded by blank (or &#39;overscan&#39;) lines. In this case, there are 192 lines of actual picture. We don&#39;t *HAVE* to stick to this<span style="padding-left:2px; padding-right:2px;">&mdash;</span>we could steal some of the lines from the vertical blank section, and some from the overscan section, and increase our picture section appropriately.</p>
+<p>&nbsp;</p>
+<p>As long as our total number of scanlines adds up to 262 for NTSC TVs (or 312 for PAL TVs), then the TV will be able to display the frame. But remember, the further we get &#39;out of specs&#39; with this method, the less likely it is that ALL TVs will show the picture section in its entirety.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="right_side_recap">&nbsp;</div>
+<p class="bbtertiary"><a href="#right_side_recap">Right Side Number Recap</a></p>
+<p>OK, let&#39;s march through the numbers on the right side of the diagram.</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<p style="font-size:18px; margin-bottom:12px;">3 Scanlines devoted to the vertical synchronization.</p>
+<p style="font-size:18px; margin-bottom:12px;">37 scanlines of vertical blank time.</p>
+<p style="font-size:18px; margin-bottom:12px;">192 (NTSC) or 242 (PAL) lines of actual picture.</p>
+<p style="font-size:18px;">30 scanlines of overscan.</p>
+</div>
+<p>&nbsp;</p>
+<p>Total: 262 scanlines (NTSC) or 312 scanlines (PAL), constituting a valid TV frame. You send the TV this, and it will be a rock-solid display.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+</div>
+
+<div class="jumpid" id="scanlines_pal_tv">&nbsp;</div>
+<p class="bbsecondary"><a href="#scanlines_pal_tv">Scanlines and PAL TV</a></p>
+<p>One interesting aside: if you send a PAL TV an *odd* number of scanlines, it will only display in black and white. I don&#39;t know the exact reason for this, but it must be to do with where/when the color signal is encoded in the TV image, and where the TV looks for it. So remember, always send an even number of scanlines to a PAL TV.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="scanline_standards">&nbsp;</div>
+<p class="bbsecondary"><a href="#scanline_standards">Scanline Standards</a></p>
+<p>You *can* send frames with different numbers of scanlines. That is, 262 and 312 are not totally immutable values. But if you do vary these numbers, it is highly likely that an increasing number of TVs<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the further you deviate from these standards<span style="padding-left:2px; padding-right:2px;">&mdash;</span>will simply not be able to display your image. So, although you *can* &hellip; you shouldn&#39;t.</p>
+<p>&nbsp;</p>
+<p>Fortunately, emulators available to us today are able to show us the actual number of scanlines which are being generated on each frame. This must have been quite a challenging task for early &#39;2600 programmers<span style="padding-left:2px; padding-right:2px;">&mdash;</span>nowadays its quite easy to make sure we get it right.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="#summary">Summary</a></p>
+<p>Well, now we have all the knowledge we need about the composition of a TV frame. Once we know how to make the TIA generate its reset signal at the top of the frame, and how to wait the correct amount of time to allow us to correctly generate the right number of scanlines for those other sections, we will be able to design our first &#39;kernel&#39;<span style="padding-left:2px; padding-right:2px;">&mdash;</span>the bit that actually &#39;draws&#39; the frame.</p>
+<p>&nbsp;</p>
+<p>When we have our kernel working, there&#39;s not much more to a &#39;2600 game other than moving sprites around, changing colors, etc. See you next time.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefulloff">Session 7: The TV and our Kernel</p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder">Loading ASM links…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fsidebar">
+
+<p class="bblittlegreentitle">Atari 2600 BASIC</p>
+<div class="yellowbox">
+<p>If assembly language is too hard for you, try <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html">batari Basic</a>. It&#39;s a BASIC-like language for creating Atari 2600 games. It&#39;s the faster, easier way to make Atari 2600 games.</p>
+
+<div style="width:208px; height:66px; margin-top:12px; margin-left:33px;">
+<a href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html" style="border-style: none; display: block; background-color: transparent;"><img src="filesframe/topbar988-batari.png" alt="Try batari Basic" height="66" width="208" style="border:0;"></a>
+</div>
+</div>
+
+<a href="https://www.amazon.com/s?k=the+courage+to+face+covid-19+dr.+peter+mccullough&linkCode=ll2&tag=randterr-20&linkId=aefe76cee204d05379778517d5fe4798&language=en_US&ref_=as_li_ss_tl1" target="_blank"><img src="z_amz_book_courage.png" style="border:none;" alt="THE COURAGE TO FACE COVID-19"></a>
+<a href="https://www.amazon.com/s?k=2000+Mules+DVD+D%27Souza&linkCode=ll2&tag=randterr-20&linkId=4782ca11902ddf1777431a6bd7533f15&language=en_US&ref_=as_li_ss_tl" target="_blank"><img src="z_amz_book_2000.png" style="border:none;" alt="2000 Mules DVD"></a>
+<a href="https://www.amazon.com/s?k=the+great+awakening+alex+jones&linkCode=ll2&tag=randterr-20&linkId=e73261c0ed66bfff3ef2a3bdaa73123d&language=en_US&ref_=as_li_ss_tl" target="_blank"><img src="z_amz_book_great_awake.png" style="border:none;" alt="The Great Awakening"></a>
+
+</div>
+
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder">Loading ICYDK section…</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="index.html">Home</a> <a href="futuristic-inventions-cool-stuff.html">Inventions</a> <a href="favorite-quotes.html">Quotations</a> <a href="game-design.html">Game Design</a> <a href="atari-2600-memories.html">Atari Memories</a> <a href="personal.html">Personal Pages</a> <a href="about.html">About</a> <a href="sitemap.html">Site Map</a> <a href="contact.html">Contact</a> <a href="privacy.html">Privacy Policy</a> <a href="rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+</body>
+</html>
