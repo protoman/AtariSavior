@@ -1,0 +1,9 @@
+The working movement base in comparison/lo-a-rad-dragon is derived from
+Lo-A-Rad Dragon by Nik Coughlin.
+
+Copyright (c) 2019 Nik Coughlin
+
+The complete license text is preserved at:
+comparison/lo-a-rad-dragon/LICENSE
+
+See comparison/lo-a-rad-dragon/CREDITS.md for attribution and source details.
