@@ -186,6 +186,13 @@ HMOVE is applied later (at kernel entry, during HBLANK).
   never compare against RESP0/HMP0 timing values; it should test the proposed
   room-space player footprint against room-space solids and exits.
 
+## Visual Validation
+- Stella launching successfully verifies only that the ROM loads; it does not
+  verify rendering, timing, blinking, scrolling, or sprite placement.
+- After any visual change, ask the user to confirm what is actually visible
+  before treating the change as fixed. Do not infer visual correctness from a
+  successful assembly or emulator startup.
+
 ## Stella Emulator Tips
 - Stelladaptor / 2600-daptor for real controller input
 - Use `stella rom.bin` to run
