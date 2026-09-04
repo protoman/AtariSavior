@@ -20,16 +20,18 @@ Random          byte
 ; Setup consts
 ; ------------------------------------------------------------------------------
 PLAYER_HEIGHT = 8
-PLAYER_MIN_X = 8
-PLAYER_MAX_X = 129
+PLAYER_MIN_X = 0
+PLAYER_MAX_X = 140
 PLAYER_MIN_Y = 5
 PLAYER_MAX_Y = 84
 EXIT_TOP_Y = 76
 ; PlayerX is the positioning coordinate used by SetObjectXPos.
 DOOR_MIN_X = 56
 DOOR_MAX_X = 80
-DOOR_MIN_Y = 44
-DOOR_MAX_Y = 56
+; PlayerY is the sprite's top row. Keep the full 8-row sprite inside the
+; visible side-door band in the kernel (39..60).
+DOOR_MIN_Y = 39
+DOOR_MAX_Y = 53
 
 
 ; ------------------------------------------------------------------------------
@@ -114,13 +116,13 @@ LoopVBlank:
   bcs .SolidBorder
   cmp #5                    ; bottom border
   bcc .SolidBorder
-  cmp #47                   ; left/right doorway
+  cmp #39                   ; left/right doorway
   bcc .SideBorder
-  cmp #52
+  cmp #61
   bcc .Doorway
 
 .SideBorder:
-  lda #$f0                  ; side walls only
+  lda #$10                  ; narrow side walls only
   sta PF0
   lda #$00
   sta PF1
@@ -237,12 +239,17 @@ CheckP0Left:
 .SideLeft:
   lda PlayerX
   cmp #PLAYER_MIN_X
-  bcs .MoveLeft
+  bne .MoveLeft
   lda PlayerY
   cmp #DOOR_MIN_Y
   bcc .StopLeft
   cmp #DOOR_MAX_Y
   bcs .StopLeft
+  lda #PLAYER_MAX_X
+  sta PlayerX
+  jmp CheckP0Right
+  ; The side opening currently wraps to the opposite edge until room
+  ; transitions are implemented.
 .MoveLeft:
   dec PlayerX
   jmp CheckP0Right
@@ -272,12 +279,15 @@ CheckP0Right:
 .SideRight:
   lda PlayerX
   cmp #PLAYER_MAX_X
-  bcc .MoveRight
+  bne .MoveRight
   lda PlayerY
   cmp #DOOR_MIN_Y
   bcc .StopRight
   cmp #DOOR_MAX_Y
   bcs .StopRight
+  lda #PLAYER_MIN_X
+  sta PlayerX
+  jmp EndInputCheck
 .MoveRight:
   inc PlayerX
   jmp EndInputCheck

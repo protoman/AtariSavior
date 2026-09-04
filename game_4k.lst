@@ -401,26 +401,28 @@
      20 U0085							; Setup consts
      21 U0085							; ------------------------------------------------------------------------------
      22 U0085		       00 08	   PLAYER_HEIGHT =	8
-     23 U0085		       00 08	   PLAYER_MIN_X =	8
-     24 U0085		       00 81	   PLAYER_MAX_X =	129
+     23 U0085		       00 00	   PLAYER_MIN_X =	0
+     24 U0085		       00 8c	   PLAYER_MAX_X =	140
      25 U0085		       00 05	   PLAYER_MIN_Y =	5
      26 U0085		       00 54	   PLAYER_MAX_Y =	84
      27 U0085		       00 4c	   EXIT_TOP_Y =	76
      28 U0085							; PlayerX is the positioning coordinate used by SetObjectXPos.
      29 U0085		       00 38	   DOOR_MIN_X =	56
      30 U0085		       00 50	   DOOR_MAX_X =	80
-     31 U0085		       00 2c	   DOOR_MIN_Y =	44
-     32 U0085		       00 38	   DOOR_MAX_Y =	56
-     33 U0085
-     34 U0085
-     35 U0085							; ------------------------------------------------------------------------------
-     36 U0085							; Setup rom
+     31 U0085							; PlayerY is the sprite's top row. Keep the full 8-row sprite inside the
+     32 U0085							; visible side-door band in the kernel (39..60).
+     33 U0085		       00 27	   DOOR_MIN_Y =	39
+     34 U0085		       00 35	   DOOR_MAX_Y =	53
+     35 U0085
+     36 U0085
      37 U0085							; ------------------------------------------------------------------------------
-     38 U0085
-     39  10000 ????				       seg	code
-     40  f000					      org	$f000	; define the code origin at $f000 - start of the ROM
-     41  f000
-     42  f000				   Start
+     38 U0085							; Setup rom
+     39 U0085							; ------------------------------------------------------------------------------
+     40 U0085
+     41  10000 ????				       seg	code
+     42  f000					      org	$f000	; define the code origin at $f000 - start of the ROM
+     43  f000
+     44  f000				   Start
       0  f000					      CLEAN_START
       1  f000		       78		      sei
       2  f001		       d8		      cld
@@ -433,345 +435,353 @@
       9  f008		       48		      pha
      10  f009		       d0 fb		      bne	.CLEAR_STACK
      11  f00b
-     44  f00b
-     45  f00b							; ------------------------------------------------------------------------------
-     46  f00b							; Init Variables
+     46  f00b
      47  f00b							; ------------------------------------------------------------------------------
-     48  f00b		       a9 32		      lda	#50
-     49  f00d		       85 80		      sta	PlayerX
-     50  f00f		       85 81		      sta	PlayerY
-     51  f011
-     52  f011							; ------------------------------------------------------------------------------
-     53  f011							; Render
+     48  f00b							; Init Variables
+     49  f00b							; ------------------------------------------------------------------------------
+     50  f00b		       a9 32		      lda	#50
+     51  f00d		       85 80		      sta	PlayerX
+     52  f00f		       85 81		      sta	PlayerY
+     53  f011
      54  f011							; ------------------------------------------------------------------------------
-     55  f011				   StartFrame
-     56  f011
-     57  f011							; ------------------------------------------------------------------------------
-     58  f011							; Init VSYNC and VBLANK
+     55  f011							; Render
+     56  f011							; ------------------------------------------------------------------------------
+     57  f011				   StartFrame
+     58  f011
      59  f011							; ------------------------------------------------------------------------------
-     60  f011
-     61  f011		       a9 02		      lda	#2
-     62  f013		       85 01		      sta	VBLANK
-     63  f015		       85 00		      sta	VSYNC
-     64  f017
-     65  f017					      repeat	3
-     66  f017		       85 02		      sta	WSYNC
-     65  f017					      repend
-     66  f019		       85 02		      sta	WSYNC
-     65  f019					      repend
-     66  f01b		       85 02		      sta	WSYNC
-     67  f01d					      repend
-     68  f01d
-     69  f01d		       a9 00		      lda	#0
-     70  f01f		       85 00		      sta	VSYNC	; turn off VSYNC
-     71  f021
-     72  f021							; ------------------------------------------------------------------------------
-     73  f021							; Calculations run before VBLANK
+     60  f011							; Init VSYNC and VBLANK
+     61  f011							; ------------------------------------------------------------------------------
+     62  f011
+     63  f011		       a9 02		      lda	#2
+     64  f013		       85 01		      sta	VBLANK
+     65  f015		       85 00		      sta	VSYNC
+     66  f017
+     67  f017					      repeat	3
+     68  f017		       85 02		      sta	WSYNC
+     67  f017					      repend
+     68  f019		       85 02		      sta	WSYNC
+     67  f019					      repend
+     68  f01b		       85 02		      sta	WSYNC
+     69  f01d					      repend
+     70  f01d
+     71  f01d		       a9 00		      lda	#0
+     72  f01f		       85 00		      sta	VSYNC	; turn off VSYNC
+     73  f021
      74  f021							; ------------------------------------------------------------------------------
-     75  f021		       a5 80		      lda	PlayerX
-     76  f023		       a0 00		      ldy	#0
-     77  f025		       20 5e f1 	      jsr	SetObjectXPos	; set player0 x position
-     78  f028
-     79  f028		       85 02		      sta	WSYNC
-     80  f02a		       85 2a		      sta	HMOVE	; apply the horizontal offets we just set
-     81  f02c
-     82  f02c							; ------------------------------------------------------------------------------
-     83  f02c							; 37 lines of VBLANK minus 2 used above
+     75  f021							; Calculations run before VBLANK
+     76  f021							; ------------------------------------------------------------------------------
+     77  f021		       a5 80		      lda	PlayerX
+     78  f023		       a0 00		      ldy	#0
+     79  f025		       20 6c f1 	      jsr	SetObjectXPos	; set player0 x position
+     80  f028
+     81  f028		       85 02		      sta	WSYNC
+     82  f02a		       85 2a		      sta	HMOVE	; apply the horizontal offets we just set
+     83  f02c
      84  f02c							; ------------------------------------------------------------------------------
-     85  f02c
-     86  f02c		       a2 23		      ldx	#35
-     87  f02e				   LoopVBlank
-     88  f02e		       85 02		      sta	WSYNC
-     89  f030		       ca		      dex
-     90  f031		       d0 fb		      bne	LoopVBlank
-     91  f033
-     92  f033		       a9 00		      lda	#0
-     93  f035		       85 01		      sta	VBLANK	; turn off VBLANK
-     94  f037
-     95  f037							; ------------------------------------------------------------------------------
-     96  f037							; 192 visible scanlines
+     85  f02c							; 37 lines of VBLANK minus 2 used above
+     86  f02c							; ------------------------------------------------------------------------------
+     87  f02c
+     88  f02c		       a2 23		      ldx	#35
+     89  f02e				   LoopVBlank
+     90  f02e		       85 02		      sta	WSYNC
+     91  f030		       ca		      dex
+     92  f031		       d0 fb		      bne	LoopVBlank
+     93  f033
+     94  f033		       a9 00		      lda	#0
+     95  f035		       85 01		      sta	VBLANK	; turn off VBLANK
+     96  f037
      97  f037							; ------------------------------------------------------------------------------
-     98  f037
+     98  f037							; 192 visible scanlines
      99  f037							; ------------------------------------------------------------------------------
-    100  f037							; 2-line kernel
+    100  f037
     101  f037							; ------------------------------------------------------------------------------
-    102  f037		       a9 00		      lda	#$00	; black room interior
-    103  f039		       85 09		      sta	COLUBK
-    104  f03b		       a9 2a		      lda	#$2a	; orange room border
-    105  f03d		       85 08		      sta	COLUPF
-    106  f03f		       a9 01		      lda	#$01	; reflected playfield
-    107  f041		       85 0a		      sta	CTRLPF
-    108  f043
-    109  f043		       a2 60		      ldx	#96	; scanline counter
-    110  f045				   .EachLine
-    111  f045				   .DrawRoom
-    112  f045		       8a		      txa
-    113  f046		       c9 5d		      cmp	#93	; top border
-    114  f048		       b0 24		      bcs	.SolidBorder
-    115  f04a		       c9 05		      cmp	#5	; bottom border
-    116  f04c		       90 20		      bcc	.SolidBorder
-    117  f04e		       c9 2f		      cmp	#47	; left/right doorway
-    118  f050		       90 04		      bcc	.SideBorder
-    119  f052		       c9 34		      cmp	#52
-    120  f054		       90 0d		      bcc	.Doorway
-    121  f056
-    122  f056				   .SideBorder
-    123  f056		       a9 f0		      lda	#$f0	; side walls only
-    124  f058		       85 0d		      sta	PF0
-    125  f05a		       a9 00		      lda	#$00
-    126  f05c		       85 0e		      sta	PF1
-    127  f05e		       85 0f		      sta	PF2
-    128  f060		       4c 7a f0 	      jmp	.IsPlayer
-    129  f063
-    130  f063				   .Doorway
-    131  f063		       a9 00		      lda	#$00	; opening through both side walls
-    132  f065		       85 0d		      sta	PF0
-    133  f067		       85 0e		      sta	PF1
-    134  f069		       85 0f		      sta	PF2
-    135  f06b		       4c 7a f0 	      jmp	.IsPlayer
-    136  f06e
-    137  f06e				   .SolidBorder
-    138  f06e		       a9 f0		      lda	#$f0
-    139  f070		       85 0d		      sta	PF0
-    140  f072		       a9 ff		      lda	#$ff
-    141  f074		       85 0e		      sta	PF1
-    142  f076		       a9 0f		      lda	#$0f	; leave a central opening in top/bottom walls
-    143  f078		       85 0f		      sta	PF2
-    144  f07a
-    145  f07a				   .IsPlayer
-    146  f07a		       8a		      txa
-    147  f07b		       38		      sec		; always set carry before sub
-    148  f07c		       e5 81		      sbc	PlayerY
-    149  f07e		       c5 08		      cmp	PLAYER_HEIGHT
-    150  f080		       90 02		      bcc	.DrawPlayer
-    151  f082		       a9 00		      lda	#0	; if not draw empty row from sprite
-    152  f084
-    153  f084				   .DrawPlayer
-    154  f084		       a8		      tay
-    155  f085		       b9 82 f1 	      lda	PlayerSprite,Y
-    156  f088		       85 1b		      sta	GRP0
-    157  f08a		       b9 8a f1 	      lda	PlayerColors,Y
-    158  f08d		       85 06		      sta	COLUP0
-    159  f08f		       85 02		      sta	WSYNC
-    160  f091
-    161  f091		       85 02		      sta	WSYNC
-    162  f093		       ca		      dex
-    163  f094		       d0 af		      bne	.EachLine
-    164  f096
-    165  f096							; ------------------------------------------------------------------------------
-    166  f096							; Overscan
+    102  f037							; 2-line kernel
+    103  f037							; ------------------------------------------------------------------------------
+    104  f037		       a9 00		      lda	#$00	; black room interior
+    105  f039		       85 09		      sta	COLUBK
+    106  f03b		       a9 2a		      lda	#$2a	; orange room border
+    107  f03d		       85 08		      sta	COLUPF
+    108  f03f		       a9 01		      lda	#$01	; reflected playfield
+    109  f041		       85 0a		      sta	CTRLPF
+    110  f043
+    111  f043		       a2 60		      ldx	#96	; scanline counter
+    112  f045				   .EachLine
+    113  f045				   .DrawRoom
+    114  f045		       8a		      txa
+    115  f046		       c9 5d		      cmp	#93	; top border
+    116  f048		       b0 24		      bcs	.SolidBorder
+    117  f04a		       c9 05		      cmp	#5	; bottom border
+    118  f04c		       90 20		      bcc	.SolidBorder
+    119  f04e		       c9 27		      cmp	#39	; left/right doorway
+    120  f050		       90 04		      bcc	.SideBorder
+    121  f052		       c9 3d		      cmp	#61
+    122  f054		       90 0d		      bcc	.Doorway
+    123  f056
+    124  f056				   .SideBorder
+    125  f056		       a9 10		      lda	#$10	; narrow side walls only
+    126  f058		       85 0d		      sta	PF0
+    127  f05a		       a9 00		      lda	#$00
+    128  f05c		       85 0e		      sta	PF1
+    129  f05e		       85 0f		      sta	PF2
+    130  f060		       4c 7a f0 	      jmp	.IsPlayer
+    131  f063
+    132  f063				   .Doorway
+    133  f063		       a9 00		      lda	#$00	; opening through both side walls
+    134  f065		       85 0d		      sta	PF0
+    135  f067		       85 0e		      sta	PF1
+    136  f069		       85 0f		      sta	PF2
+    137  f06b		       4c 7a f0 	      jmp	.IsPlayer
+    138  f06e
+    139  f06e				   .SolidBorder
+    140  f06e		       a9 f0		      lda	#$f0
+    141  f070		       85 0d		      sta	PF0
+    142  f072		       a9 ff		      lda	#$ff
+    143  f074		       85 0e		      sta	PF1
+    144  f076		       a9 0f		      lda	#$0f	; leave a central opening in top/bottom walls
+    145  f078		       85 0f		      sta	PF2
+    146  f07a
+    147  f07a				   .IsPlayer
+    148  f07a		       8a		      txa
+    149  f07b		       38		      sec		; always set carry before sub
+    150  f07c		       e5 81		      sbc	PlayerY
+    151  f07e		       c5 08		      cmp	PLAYER_HEIGHT
+    152  f080		       90 02		      bcc	.DrawPlayer
+    153  f082		       a9 00		      lda	#0	; if not draw empty row from sprite
+    154  f084
+    155  f084				   .DrawPlayer
+    156  f084		       a8		      tay
+    157  f085		       b9 90 f1 	      lda	PlayerSprite,Y
+    158  f088		       85 1b		      sta	GRP0
+    159  f08a		       b9 98 f1 	      lda	PlayerColors,Y
+    160  f08d		       85 06		      sta	COLUP0
+    161  f08f		       85 02		      sta	WSYNC
+    162  f091
+    163  f091		       85 02		      sta	WSYNC
+    164  f093		       ca		      dex
+    165  f094		       d0 af		      bne	.EachLine
+    166  f096
     167  f096							; ------------------------------------------------------------------------------
-    168  f096
-    169  f096		       a9 02		      lda	#2
-    170  f098		       85 01		      sta	VBLANK
-    171  f09a
-    172  f09a		       a2 1e		      ldx	#30
-    173  f09c				   LoopOverscan
-    174  f09c		       85 02		      sta	WSYNC
-    175  f09e		       ca		      dex
-    176  f09f		       d0 fb		      bne	LoopOverscan
-    177  f0a1
-    178  f0a1		       a9 00		      lda	#0
-    179  f0a3		       85 01		      sta	VBLANK
-    180  f0a5
-    181  f0a5							; ------------------------------------------------------------------------------
-    182  f0a5							; Input handler
+    168  f096							; Overscan
+    169  f096							; ------------------------------------------------------------------------------
+    170  f096
+    171  f096		       a9 02		      lda	#2
+    172  f098		       85 01		      sta	VBLANK
+    173  f09a
+    174  f09a		       a2 1e		      ldx	#30
+    175  f09c				   LoopOverscan
+    176  f09c		       85 02		      sta	WSYNC
+    177  f09e		       ca		      dex
+    178  f09f		       d0 fb		      bne	LoopOverscan
+    179  f0a1
+    180  f0a1		       a9 00		      lda	#0
+    181  f0a3		       85 01		      sta	VBLANK
+    182  f0a5
     183  f0a5							; ------------------------------------------------------------------------------
-    184  f0a5				   CheckP0Up
-    185  f0a5		       a9 10		      lda	#%00010000
-    186  f0a7		       2c 80 02 	      bit	SWCHA	; compare to joy
-    187  f0aa		       d0 19		      bne	CheckP0Down
-    188  f0ac		       a5 81		      lda	PlayerY
-    189  f0ae		       c9 54		      cmp	#PLAYER_MAX_Y
-    190  f0b0		       90 0a		      bcc	.MoveUp
-    191  f0b2		       a5 80		      lda	PlayerX
-    192  f0b4		       c9 38		      cmp	#DOOR_MIN_X
-    193  f0b6		       90 09		      bcc	.StopUp
-    194  f0b8		       c9 50		      cmp	#DOOR_MAX_X
-    195  f0ba		       b0 05		      bcs	.StopUp
-    196  f0bc				   .MoveUp
-    197  f0bc		       e6 81		      inc	PlayerY
-    198  f0be		       4c c5 f0 	      jmp	CheckP0Down
-    199  f0c1				   .StopUp
-    200  f0c1		       a9 54		      lda	#PLAYER_MAX_Y
-    201  f0c3		       85 81		      sta	PlayerY
-    202  f0c5
-    203  f0c5				   CheckP0Down
-    204  f0c5		       a9 20		      lda	#%00100000
-    205  f0c7		       2c 80 02 	      bit	SWCHA
-    206  f0ca		       d0 19		      bne	CheckP0Left
-    207  f0cc		       a5 81		      lda	PlayerY
-    208  f0ce		       c9 05		      cmp	#PLAYER_MIN_Y
-    209  f0d0		       b0 0a		      bcs	.MoveDown
-    210  f0d2		       a5 80		      lda	PlayerX
-    211  f0d4		       c9 38		      cmp	#DOOR_MIN_X
-    212  f0d6		       90 09		      bcc	.StopDown
-    213  f0d8		       c9 50		      cmp	#DOOR_MAX_X
-    214  f0da		       b0 05		      bcs	.StopDown
-    215  f0dc				   .MoveDown
-    216  f0dc		       c6 81		      dec	PlayerY
-    217  f0de		       4c e5 f0 	      jmp	CheckP0Left
-    218  f0e1				   .StopDown
-    219  f0e1		       a9 05		      lda	#PLAYER_MIN_Y
-    220  f0e3		       85 81		      sta	PlayerY
-    221  f0e5
-    222  f0e5				   CheckP0Left
-    223  f0e5		       a9 40		      lda	#%01000000
-    224  f0e7		       2c 80 02 	      bit	SWCHA
-    225  f0ea		       d0 34		      bne	CheckP0Right
-    226  f0ec		       a5 81		      lda	PlayerY
-    227  f0ee		       c9 05		      cmp	#PLAYER_MIN_Y
-    228  f0f0		       90 06		      bcc	.TopBottomLeft
-    229  f0f2		       c9 4c		      cmp	#EXIT_TOP_Y
-    230  f0f4		       b0 02		      bcs	.TopBottomLeft
-    231  f0f6		       d0 08		      bne	.SideLeft
-    232  f0f8				   .TopBottomLeft
-    233  f0f8		       a5 80		      lda	PlayerX
-    234  f0fa		       c9 38		      cmp	#DOOR_MIN_X
-    235  f0fc		       f0 17		      beq	.StopTopBottomLeft
-    236  f0fe		       90 15		      bcc	.StopTopBottomLeft
-    237  f100				   .SideLeft
-    238  f100		       a5 80		      lda	PlayerX
-    239  f102		       c9 08		      cmp	#PLAYER_MIN_X
-    240  f104		       b0 0a		      bcs	.MoveLeft
-    241  f106		       a5 81		      lda	PlayerY
-    242  f108		       c9 2c		      cmp	#DOOR_MIN_Y
-    243  f10a		       90 10		      bcc	.StopLeft
-    244  f10c		       c9 38		      cmp	#DOOR_MAX_Y
-    245  f10e		       b0 0c		      bcs	.StopLeft
-    246  f110				   .MoveLeft
-    247  f110		       c6 80		      dec	PlayerX
-    248  f112		       4c 20 f1 	      jmp	CheckP0Right
-    249  f115				   .StopTopBottomLeft
-    250  f115		       a9 38		      lda	#DOOR_MIN_X
-    251  f117		       85 80		      sta	PlayerX
-    252  f119		       4c 20 f1 	      jmp	CheckP0Right
-    253  f11c				   .StopLeft
-    254  f11c		       a9 08		      lda	#PLAYER_MIN_X
-    255  f11e		       85 80		      sta	PlayerX
-    256  f120
-    257  f120				   CheckP0Right
-    258  f120		       a9 80		      lda	#%10000000
-    259  f122		       2c 80 02 	      bit	SWCHA
-    260  f125		       d0 34		      bne	EndInputCheck
-    261  f127		       a5 81		      lda	PlayerY
-    262  f129		       c9 05		      cmp	#PLAYER_MIN_Y
-    263  f12b		       90 06		      bcc	.TopBottomRight
-    264  f12d		       c9 4c		      cmp	#EXIT_TOP_Y
-    265  f12f		       b0 02		      bcs	.TopBottomRight
-    266  f131		       d0 08		      bne	.SideRight
-    267  f133				   .TopBottomRight
-    268  f133		       a5 80		      lda	PlayerX
-    269  f135		       c9 50		      cmp	#DOOR_MAX_X
-    270  f137		       f0 17		      beq	.StopTopBottomRight
-    271  f139		       b0 15		      bcs	.StopTopBottomRight
-    272  f13b				   .SideRight
-    273  f13b		       a5 80		      lda	PlayerX
-    274  f13d		       c9 81		      cmp	#PLAYER_MAX_X
-    275  f13f		       90 0a		      bcc	.MoveRight
-    276  f141		       a5 81		      lda	PlayerY
-    277  f143		       c9 2c		      cmp	#DOOR_MIN_Y
-    278  f145		       90 10		      bcc	.StopRight
-    279  f147		       c9 38		      cmp	#DOOR_MAX_Y
-    280  f149		       b0 0c		      bcs	.StopRight
-    281  f14b				   .MoveRight
-    282  f14b		       e6 80		      inc	PlayerX
-    283  f14d		       4c 5b f1 	      jmp	EndInputCheck
-    284  f150				   .StopTopBottomRight
-    285  f150		       a9 50		      lda	#DOOR_MAX_X
-    286  f152		       85 80		      sta	PlayerX
-    287  f154		       4c 5b f1 	      jmp	EndInputCheck
-    288  f157				   .StopRight
-    289  f157		       a9 81		      lda	#PLAYER_MAX_X
-    290  f159		       85 80		      sta	PlayerX
-    291  f15b
-    292  f15b				   EndInputCheck
-    293  f15b
-    294  f15b							; ------------------------------------------------------------------------------
-    295  f15b							; Check collisions
-    296  f15b							; ------------------------------------------------------------------------------
-    297  f15b
-    298  f15b							; ------------------------------------------------------------------------------
-    299  f15b							; Next frame
-    300  f15b							; ------------------------------------------------------------------------------
-    301  f15b		       4c 11 f0 	      jmp	StartFrame
-    302  f15e
-    303  f15e							; ------------------------------------------------------------------------------
-    304  f15e							; Subroutines
-    305  f15e							; ------------------------------------------------------------------------------
-    306  f15e							; Horizontal Positioning
-    307  f15e							; A is the desired x coordinate
-    308  f15e							; Y is the object type
-    309  f15e							;   0 = player0, 1 = player1, 2 = missile0, 3 = missile1, 4 = ball
-    310  f15e							; ------------------------------------------------------------------------------
-    311  f15e				   SetObjectXPos subroutine
-    312  f15e		       85 02		      sta	WSYNC	; start new scanline
-    313  f160		       38		      sec		; ensure carry flag
-    314  f161				   .Div15Loop
-    315  f161		       e9 0f		      sbc	#15	; sub 15 from desired X to get coarse location
-    316  f163		       b0 fc		      bcs	.Div15Loop	; loop until carry is clear
-    317  f165		       49 07		      eor	#7	; put in range -8 to 7
-    318  f167					      repeat	4	; shift left 4 times, only want top 4 bits
-    319  f167		       0a		      asl
-    318  f167					      repend
-    319  f168		       0a		      asl
-    318  f168					      repend
-    319  f169		       0a		      asl
-    318  f169					      repend
-    319  f16a		       0a		      asl
-    320  f16b					      repend
-    321  f16b		       99 20 00 	      sta	HMP0,Y	; store the fine offset
-    322  f16e		       99 10 00 	      sta	RESP0,Y	; store the coarse offset
-    323  f171		       60		      rts
-    324  f172
-    325  f172							; ------------------------------------------------------------------------------
-    326  f172							; Random using Linear-Feedback Shift Register
-    327  f172							; - Generate random number using LFSR
-    328  f172							; ------------------------------------------------------------------------------
-    329  f172				   SetRandom  subroutine
-    330  f172		       a5 84		      lda	Random
-    331  f174		       0a		      asl
-    332  f175		       45 84		      eor	Random
-    333  f177		       0a		      asl
-    334  f178		       45 84		      eor	Random
-    335  f17a		       0a		      asl
-    336  f17b		       0a		      asl
-    337  f17c		       45 84		      eor	Random
-    338  f17e		       0a		      asl
-    339  f17f		       26 84		      rol	Random	; ok we have LFSR random
-    340  f181
-    341  f181		       60		      rts
-    342  f182
-    343  f182							; ------------------------------------------------------------------------------
-    344  f182							; ROM Data
-    345  f182							; ------------------------------------------------------------------------------
-    346  f182							; Bitmaps and colors
-    347  f182							; ------------------------------------------------------------------------------
-    348  f182				   PlayerSprite
-    349  f182		       00		      .byte.b	#%00000000
-    350  f183		       48		      .byte.b	#%01001000
-    351  f184		       fc		      .byte.b	#%11111100
-    352  f185		       78		      .byte.b	#%01111000
-    353  f186		       80		      .byte.b	#%10000000
-    354  f187		       a8		      .byte.b	#%10101000
-    355  f188		       80		      .byte.b	#%10000000
-    356  f189		       78		      .byte.b	#%01111000
-    357  f18a
-    358  f18a				   PlayerColors
-    359  f18a		       00		      .byte.b	$00
-    360  f18b		       96		      .byte.b	$96
-    361  f18c		       96		      .byte.b	$96
-    362  f18d		       1c		      .byte.b	$1c
-    363  f18e		       1c		      .byte.b	$1c
-    364  f18f		       1c		      .byte.b	$1c
-    365  f190		       1c		      .byte.b	$1c
-    366  f191		       1c		      .byte.b	$1c
-    367  f192
-    368  f192							; ------------------------------------------------------------------------------
-    369  f192							; Fill ROM to exactly 4kb
-    370  f192							; ------------------------------------------------------------------------------
-    371  f192
-    372  fffc					      org	$fffc
-    373  fffc		       00 f0		      .word.w	Start	; tell atari where to start when we reset
-    374  fffe		       00 f0		      .word.w	Start	; interupt at $fffe - unused by vcs but makes 4kb
+    184  f0a5							; Input handler
+    185  f0a5							; ------------------------------------------------------------------------------
+    186  f0a5				   CheckP0Up
+    187  f0a5		       a9 10		      lda	#%00010000
+    188  f0a7		       2c 80 02 	      bit	SWCHA	; compare to joy
+    189  f0aa		       d0 19		      bne	CheckP0Down
+    190  f0ac		       a5 81		      lda	PlayerY
+    191  f0ae		       c9 54		      cmp	#PLAYER_MAX_Y
+    192  f0b0		       90 0a		      bcc	.MoveUp
+    193  f0b2		       a5 80		      lda	PlayerX
+    194  f0b4		       c9 38		      cmp	#DOOR_MIN_X
+    195  f0b6		       90 09		      bcc	.StopUp
+    196  f0b8		       c9 50		      cmp	#DOOR_MAX_X
+    197  f0ba		       b0 05		      bcs	.StopUp
+    198  f0bc				   .MoveUp
+    199  f0bc		       e6 81		      inc	PlayerY
+    200  f0be		       4c c5 f0 	      jmp	CheckP0Down
+    201  f0c1				   .StopUp
+    202  f0c1		       a9 54		      lda	#PLAYER_MAX_Y
+    203  f0c3		       85 81		      sta	PlayerY
+    204  f0c5
+    205  f0c5				   CheckP0Down
+    206  f0c5		       a9 20		      lda	#%00100000
+    207  f0c7		       2c 80 02 	      bit	SWCHA
+    208  f0ca		       d0 19		      bne	CheckP0Left
+    209  f0cc		       a5 81		      lda	PlayerY
+    210  f0ce		       c9 05		      cmp	#PLAYER_MIN_Y
+    211  f0d0		       b0 0a		      bcs	.MoveDown
+    212  f0d2		       a5 80		      lda	PlayerX
+    213  f0d4		       c9 38		      cmp	#DOOR_MIN_X
+    214  f0d6		       90 09		      bcc	.StopDown
+    215  f0d8		       c9 50		      cmp	#DOOR_MAX_X
+    216  f0da		       b0 05		      bcs	.StopDown
+    217  f0dc				   .MoveDown
+    218  f0dc		       c6 81		      dec	PlayerY
+    219  f0de		       4c e5 f0 	      jmp	CheckP0Left
+    220  f0e1				   .StopDown
+    221  f0e1		       a9 05		      lda	#PLAYER_MIN_Y
+    222  f0e3		       85 81		      sta	PlayerY
+    223  f0e5
+    224  f0e5				   CheckP0Left
+    225  f0e5		       a9 40		      lda	#%01000000
+    226  f0e7		       2c 80 02 	      bit	SWCHA
+    227  f0ea		       d0 3b		      bne	CheckP0Right
+    228  f0ec		       a5 81		      lda	PlayerY
+    229  f0ee		       c9 05		      cmp	#PLAYER_MIN_Y
+    230  f0f0		       90 06		      bcc	.TopBottomLeft
+    231  f0f2		       c9 4c		      cmp	#EXIT_TOP_Y
+    232  f0f4		       b0 02		      bcs	.TopBottomLeft
+    233  f0f6		       d0 08		      bne	.SideLeft
+    234  f0f8				   .TopBottomLeft
+    235  f0f8		       a5 80		      lda	PlayerX
+    236  f0fa		       c9 38		      cmp	#DOOR_MIN_X
+    237  f0fc		       f0 1e		      beq	.StopTopBottomLeft
+    238  f0fe		       90 1c		      bcc	.StopTopBottomLeft
+    239  f100				   .SideLeft
+    240  f100		       a5 80		      lda	PlayerX
+    241  f102		       c9 00		      cmp	#PLAYER_MIN_X
+    242  f104		       d0 11		      bne	.MoveLeft
+    243  f106		       a5 81		      lda	PlayerY
+    244  f108		       c9 27		      cmp	#DOOR_MIN_Y
+    245  f10a		       90 17		      bcc	.StopLeft
+    246  f10c		       c9 35		      cmp	#DOOR_MAX_Y
+    247  f10e		       b0 13		      bcs	.StopLeft
+    248  f110		       a9 8c		      lda	#PLAYER_MAX_X
+    249  f112		       85 80		      sta	PlayerX
+    250  f114		       4c 27 f1 	      jmp	CheckP0Right
+    251  f117							; The side opening currently wraps to the opposite edge until room
+    252  f117							; transitions are implemented.
+    253  f117				   .MoveLeft
+    254  f117		       c6 80		      dec	PlayerX
+    255  f119		       4c 27 f1 	      jmp	CheckP0Right
+    256  f11c				   .StopTopBottomLeft
+    257  f11c		       a9 38		      lda	#DOOR_MIN_X
+    258  f11e		       85 80		      sta	PlayerX
+    259  f120		       4c 27 f1 	      jmp	CheckP0Right
+    260  f123				   .StopLeft
+    261  f123		       a9 00		      lda	#PLAYER_MIN_X
+    262  f125		       85 80		      sta	PlayerX
+    263  f127
+    264  f127				   CheckP0Right
+    265  f127		       a9 80		      lda	#%10000000
+    266  f129		       2c 80 02 	      bit	SWCHA
+    267  f12c		       d0 3b		      bne	EndInputCheck
+    268  f12e		       a5 81		      lda	PlayerY
+    269  f130		       c9 05		      cmp	#PLAYER_MIN_Y
+    270  f132		       90 06		      bcc	.TopBottomRight
+    271  f134		       c9 4c		      cmp	#EXIT_TOP_Y
+    272  f136		       b0 02		      bcs	.TopBottomRight
+    273  f138		       d0 08		      bne	.SideRight
+    274  f13a				   .TopBottomRight
+    275  f13a		       a5 80		      lda	PlayerX
+    276  f13c		       c9 50		      cmp	#DOOR_MAX_X
+    277  f13e		       f0 1e		      beq	.StopTopBottomRight
+    278  f140		       b0 1c		      bcs	.StopTopBottomRight
+    279  f142				   .SideRight
+    280  f142		       a5 80		      lda	PlayerX
+    281  f144		       c9 8c		      cmp	#PLAYER_MAX_X
+    282  f146		       d0 11		      bne	.MoveRight
+    283  f148		       a5 81		      lda	PlayerY
+    284  f14a		       c9 27		      cmp	#DOOR_MIN_Y
+    285  f14c		       90 17		      bcc	.StopRight
+    286  f14e		       c9 35		      cmp	#DOOR_MAX_Y
+    287  f150		       b0 13		      bcs	.StopRight
+    288  f152		       a9 00		      lda	#PLAYER_MIN_X
+    289  f154		       85 80		      sta	PlayerX
+    290  f156		       4c 69 f1 	      jmp	EndInputCheck
+    291  f159				   .MoveRight
+    292  f159		       e6 80		      inc	PlayerX
+    293  f15b		       4c 69 f1 	      jmp	EndInputCheck
+    294  f15e				   .StopTopBottomRight
+    295  f15e		       a9 50		      lda	#DOOR_MAX_X
+    296  f160		       85 80		      sta	PlayerX
+    297  f162		       4c 69 f1 	      jmp	EndInputCheck
+    298  f165				   .StopRight
+    299  f165		       a9 8c		      lda	#PLAYER_MAX_X
+    300  f167		       85 80		      sta	PlayerX
+    301  f169
+    302  f169				   EndInputCheck
+    303  f169
+    304  f169							; ------------------------------------------------------------------------------
+    305  f169							; Check collisions
+    306  f169							; ------------------------------------------------------------------------------
+    307  f169
+    308  f169							; ------------------------------------------------------------------------------
+    309  f169							; Next frame
+    310  f169							; ------------------------------------------------------------------------------
+    311  f169		       4c 11 f0 	      jmp	StartFrame
+    312  f16c
+    313  f16c							; ------------------------------------------------------------------------------
+    314  f16c							; Subroutines
+    315  f16c							; ------------------------------------------------------------------------------
+    316  f16c							; Horizontal Positioning
+    317  f16c							; A is the desired x coordinate
+    318  f16c							; Y is the object type
+    319  f16c							;   0 = player0, 1 = player1, 2 = missile0, 3 = missile1, 4 = ball
+    320  f16c							; ------------------------------------------------------------------------------
+    321  f16c				   SetObjectXPos subroutine
+    322  f16c		       85 02		      sta	WSYNC	; start new scanline
+    323  f16e		       38		      sec		; ensure carry flag
+    324  f16f				   .Div15Loop
+    325  f16f		       e9 0f		      sbc	#15	; sub 15 from desired X to get coarse location
+    326  f171		       b0 fc		      bcs	.Div15Loop	; loop until carry is clear
+    327  f173		       49 07		      eor	#7	; put in range -8 to 7
+    328  f175					      repeat	4	; shift left 4 times, only want top 4 bits
+    329  f175		       0a		      asl
+    328  f175					      repend
+    329  f176		       0a		      asl
+    328  f176					      repend
+    329  f177		       0a		      asl
+    328  f177					      repend
+    329  f178		       0a		      asl
+    330  f179					      repend
+    331  f179		       99 20 00 	      sta	HMP0,Y	; store the fine offset
+    332  f17c		       99 10 00 	      sta	RESP0,Y	; store the coarse offset
+    333  f17f		       60		      rts
+    334  f180
+    335  f180							; ------------------------------------------------------------------------------
+    336  f180							; Random using Linear-Feedback Shift Register
+    337  f180							; - Generate random number using LFSR
+    338  f180							; ------------------------------------------------------------------------------
+    339  f180				   SetRandom  subroutine
+    340  f180		       a5 84		      lda	Random
+    341  f182		       0a		      asl
+    342  f183		       45 84		      eor	Random
+    343  f185		       0a		      asl
+    344  f186		       45 84		      eor	Random
+    345  f188		       0a		      asl
+    346  f189		       0a		      asl
+    347  f18a		       45 84		      eor	Random
+    348  f18c		       0a		      asl
+    349  f18d		       26 84		      rol	Random	; ok we have LFSR random
+    350  f18f
+    351  f18f		       60		      rts
+    352  f190
+    353  f190							; ------------------------------------------------------------------------------
+    354  f190							; ROM Data
+    355  f190							; ------------------------------------------------------------------------------
+    356  f190							; Bitmaps and colors
+    357  f190							; ------------------------------------------------------------------------------
+    358  f190				   PlayerSprite
+    359  f190		       00		      .byte.b	#%00000000
+    360  f191		       48		      .byte.b	#%01001000
+    361  f192		       fc		      .byte.b	#%11111100
+    362  f193		       78		      .byte.b	#%01111000
+    363  f194		       80		      .byte.b	#%10000000
+    364  f195		       a8		      .byte.b	#%10101000
+    365  f196		       80		      .byte.b	#%10000000
+    366  f197		       78		      .byte.b	#%01111000
+    367  f198
+    368  f198				   PlayerColors
+    369  f198		       00		      .byte.b	$00
+    370  f199		       96		      .byte.b	$96
+    371  f19a		       96		      .byte.b	$96
+    372  f19b		       1c		      .byte.b	$1c
+    373  f19c		       1c		      .byte.b	$1c
+    374  f19d		       1c		      .byte.b	$1c
+    375  f19e		       1c		      .byte.b	$1c
+    376  f19f		       1c		      .byte.b	$1c
+    377  f1a0
+    378  f1a0							; ------------------------------------------------------------------------------
+    379  f1a0							; Fill ROM to exactly 4kb
+    380  f1a0							; ------------------------------------------------------------------------------
+    381  f1a0
+    382  fffc					      org	$fffc
+    383  fffc		       00 f0		      .word.w	Start	; tell atari where to start when we reset
+    384  fffe		       00 f0		      .word.w	Start	; interupt at $fffe - unused by vcs but makes 4kb
 ------- FILE game_4k.asm
