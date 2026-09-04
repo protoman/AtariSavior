@@ -178,6 +178,13 @@ HMOVE is applied later (at kernel entry, during HBLANK).
   room's solid geometry. An exit should be a traversable opening in that same
   geometry, not a separate hardcoded exception. This prevents visual/collision
   drift when room shapes or exit sizes change.
+- The prototype uses `RoomX` and `RoomY` as the shared gameplay coordinates.
+  `RoomY` follows the kernel's 2-scanline row coordinate, and `RoomX` remains
+  a room-space horizontal coordinate. TIA coarse/fine positioning is an output
+  conversion performed only by `SetObjectXPos`.
+- Keep renderer-specific conversions at the boundary. Collision code should
+  never compare against RESP0/HMP0 timing values; it should test the proposed
+  room-space player footprint against room-space solids and exits.
 
 ## Stella Emulator Tips
 - Stelladaptor / 2600-daptor for real controller input
