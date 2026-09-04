@@ -136,6 +136,29 @@ that is PAGE-ALIGNED so the taken `bpl` crosses a page (3 cycles), making the
 loop 5 cycles (15 clocks). RESP0 is written at the end of the delay loop.
 HMOVE is applied later (at kernel entry, during HBLANK).
 
+## Collision Coordinates and Visible Sprite Footprint
+- The game variable passed to `SetObjectXPos` is a logical positioning
+  coordinate, not necessarily the visible left edge of the player sprite.
+  `RESP0`, the fine-motion nibble, and the player graphics width create a
+  visible offset that must be measured against the rendered image.
+- Collision checks that compare `PlayerX` or `PlayerY` directly with playfield
+  boundaries can therefore allow the sprite to overlap a wall or block an
+  opening too early. In the current room prototype, the right wall required a
+  substantially smaller logical `PLAYER_MAX_X`, and the top/bottom doorway
+  range had to be narrower than the visible opening so the full sprite stayed
+  inside the gap.
+- Doorway movement must be checked against the player footprint, not only
+  against an exact origin coordinate. At a top or bottom exit, horizontal
+  movement needs doorway-specific limits; at a left or right exit, vertical
+  movement needs the corresponding doorway limits. Rejected movement must
+  clamp to the relevant wall or doorway edge, never to an unrelated room
+  boundary, to avoid apparent teleporting.
+- For future stages with different shapes, represent collision geometry in
+  logical room coordinates and convert the player footprint into the same
+  coordinate system. A robust move test should evaluate the proposed
+  rectangle (or a smaller deliberate collision box) against wall segments and
+  doorway rectangles before committing `PlayerX`/`PlayerY`.
+
 ## Stella Emulator Tips
 - Stelladaptor / 2600-daptor for real controller input
 - Use `stella rom.bin` to run
