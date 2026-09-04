@@ -19,6 +19,13 @@ MapPtrLo        byte
 MapPtrHi        byte
 CollisionX      byte
 CollisionY      byte
+CollisionRight  byte
+CollisionBottom byte
+CollisionCellX  byte
+CollisionCellY  byte
+CollisionEndX   byte
+CollisionEndY   byte
+CollisionMask   byte
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -354,71 +361,74 @@ EndInputCheck:
 PlayerHitsMap:
   lda RoomX
   sta CollisionX
-  lda RoomY
-  sta CollisionY
-  jsr RoomSolidAt
-  bcs .MapHit
-
-  lda RoomX
   clc
   adc #PLAYER_WIDTH - 1
-  sta CollisionX
-  jsr RoomSolidAt
-  bcs .MapHit
-
-  lda RoomX
-  sta CollisionX
+  sta CollisionRight
+  lda RoomY
+  sta CollisionY
   lda RoomY
   clc
   adc #PLAYER_HEIGHT - 1
-  sta CollisionY
-  jsr RoomSolidAt
-  bcs .MapHit
+  sta CollisionBottom
 
-  lda RoomX
-  clc
-  adc #PLAYER_WIDTH - 1
-  sta CollisionX
-  jsr RoomSolidAt
-  bcs .MapHit
-
-  clc
-  rts
-
-.MapHit:
-  sec
-  rts
-
-RoomSolidAt:
+  lda CollisionX
+  lsr
+  lsr
+  sta CollisionCellX
+  lda CollisionRight
+  lsr
+  lsr
+  sta CollisionEndX
   lda CollisionY
   lsr
   lsr
-  tay
+  sta CollisionCellY
+  lda CollisionBottom
+  lsr
+  lsr
+  sta CollisionEndY
+
+.CheckRow:
+  lda CollisionCellX
+  sta CollisionX
+.CheckCell:
+  ldy CollisionCellY
   lda MapRowLo,Y
   sta MapPtrLo
   lda MapRowHi,Y
   sta MapPtrHi
 
   lda CollisionX
-  lsr
-  lsr
-  tax
-  txa
+  and #$07
+  tay
+  lda CellMasks,Y
+  sta CollisionMask
+  lda CollisionX
   lsr
   lsr
   lsr
   tay
-  txa
-  and #$07
-  tax
   lda (MapPtrLo),Y
-  and CellMasks,X
-  beq .EmptyCell
-  sec
+  and CollisionMask
+  bne .MapHit
+
+  inc CollisionX
+  lda CollisionX
+  cmp CollisionEndX
+  bcc .CheckCell
+  beq .CheckCell
+
+  inc CollisionCellY
+  lda CollisionCellY
+  cmp CollisionEndY
+  bcc .CheckRow
+  beq .CheckRow
+
+  clc
   rts
 
-.EmptyCell:
-  clc
+.MapHit:
+  sec
   rts
 
 ; ------------------------------------------------------------------------------
@@ -497,15 +507,15 @@ MapRow03: .byte $00, $00, $00, $00, $00
 MapRow04: .byte $00, $00, $00, $00, $00
 MapRow05: .byte $00, $00, $00, $00, $00
 MapRow06: .byte $00, $00, $00, $00, $00
-MapRow07: .byte $80, $00, $00, $00, $00
-MapRow08: .byte $80, $00, $00, $00, $00
-MapRow09: .byte $80, $00, $00, $00, $00
-MapRow10: .byte $80, $00, $00, $00, $00
-MapRow11: .byte $80, $00, $00, $00, $00
-MapRow12: .byte $80, $00, $00, $00, $00
-MapRow13: .byte $80, $00, $00, $00, $00
-MapRow14: .byte $80, $00, $00, $00, $00
-MapRow15: .byte $80, $00, $00, $00, $00
+MapRow07: .byte $80, $01, $00, $00, $00
+MapRow08: .byte $80, $01, $00, $00, $00
+MapRow09: .byte $80, $01, $00, $00, $00
+MapRow10: .byte $80, $01, $00, $00, $00
+MapRow11: .byte $80, $01, $00, $00, $00
+MapRow12: .byte $80, $01, $00, $00, $00
+MapRow13: .byte $80, $01, $00, $00, $00
+MapRow14: .byte $80, $01, $00, $00, $00
+MapRow15: .byte $80, $01, $00, $00, $00
 MapRow16: .byte $00, $00, $00, $00, $00
 MapRow17: .byte $00, $00, $00, $00, $00
 MapRow18: .byte $00, $00, $00, $00, $00
