@@ -20,6 +20,16 @@ Random          byte
 ; Setup consts
 ; ------------------------------------------------------------------------------
 PLAYER_HEIGHT = 8
+PLAYER_MIN_X = 8
+PLAYER_MAX_X = 129
+PLAYER_MIN_Y = 5
+PLAYER_MAX_Y = 84
+EXIT_TOP_Y = 76
+; PlayerX is the positioning coordinate used by SetObjectXPos.
+DOOR_MIN_X = 56
+DOOR_MAX_X = 80
+DOOR_MIN_Y = 44
+DOOR_MAX_Y = 56
 
 
 ; ------------------------------------------------------------------------------
@@ -175,25 +185,109 @@ CheckP0Up:
   lda #%00010000
   bit SWCHA                 ; compare to joy
   bne CheckP0Down
+  lda PlayerY
+  cmp #PLAYER_MAX_Y
+  bcc .MoveUp
+  lda PlayerX
+  cmp #DOOR_MIN_X
+  bcc .StopUp
+  cmp #DOOR_MAX_X
+  bcs .StopUp
+.MoveUp:
   inc PlayerY
+  jmp CheckP0Down
+.StopUp:
+  lda #PLAYER_MAX_Y
+  sta PlayerY
 
 CheckP0Down:
   lda #%00100000
   bit SWCHA
   bne CheckP0Left
+  lda PlayerY
+  cmp #PLAYER_MIN_Y
+  bcs .MoveDown
+  lda PlayerX
+  cmp #DOOR_MIN_X
+  bcc .StopDown
+  cmp #DOOR_MAX_X
+  bcs .StopDown
+.MoveDown:
   dec PlayerY
+  jmp CheckP0Left
+.StopDown:
+  lda #PLAYER_MIN_Y
+  sta PlayerY
 
 CheckP0Left:
   lda #%01000000
   bit SWCHA
   bne CheckP0Right
+  lda PlayerY
+  cmp #PLAYER_MIN_Y
+  bcc .TopBottomLeft
+  cmp #EXIT_TOP_Y
+  bcs .TopBottomLeft
+  bne .SideLeft
+.TopBottomLeft:
+  lda PlayerX
+  cmp #DOOR_MIN_X
+  beq .StopTopBottomLeft
+  bcc .StopTopBottomLeft
+.SideLeft:
+  lda PlayerX
+  cmp #PLAYER_MIN_X
+  bcs .MoveLeft
+  lda PlayerY
+  cmp #DOOR_MIN_Y
+  bcc .StopLeft
+  cmp #DOOR_MAX_Y
+  bcs .StopLeft
+.MoveLeft:
   dec PlayerX
+  jmp CheckP0Right
+.StopTopBottomLeft:
+  lda #DOOR_MIN_X
+  sta PlayerX
+  jmp CheckP0Right
+.StopLeft:
+  lda #PLAYER_MIN_X
+  sta PlayerX
 
 CheckP0Right:
   lda #%10000000
   bit SWCHA
   bne EndInputCheck
+  lda PlayerY
+  cmp #PLAYER_MIN_Y
+  bcc .TopBottomRight
+  cmp #EXIT_TOP_Y
+  bcs .TopBottomRight
+  bne .SideRight
+.TopBottomRight:
+  lda PlayerX
+  cmp #DOOR_MAX_X
+  beq .StopTopBottomRight
+  bcs .StopTopBottomRight
+.SideRight:
+  lda PlayerX
+  cmp #PLAYER_MAX_X
+  bcc .MoveRight
+  lda PlayerY
+  cmp #DOOR_MIN_Y
+  bcc .StopRight
+  cmp #DOOR_MAX_Y
+  bcs .StopRight
+.MoveRight:
   inc PlayerX
+  jmp EndInputCheck
+.StopTopBottomRight:
+  lda #DOOR_MAX_X
+  sta PlayerX
+  jmp EndInputCheck
+.StopRight:
+  lda #PLAYER_MAX_X
+  sta PlayerX
 
 EndInputCheck:
 
