@@ -10,8 +10,8 @@
   seg.u Variables
   org $80
 
-PlayerX         byte
-PlayerY         byte
+RoomX           byte
+RoomY           byte
 OldX            byte
 OldY            byte
 Random          byte
@@ -20,18 +20,31 @@ Random          byte
 ; Setup consts
 ; ------------------------------------------------------------------------------
 PLAYER_HEIGHT = 8
-PLAYER_MIN_X = 0
-PLAYER_MAX_X = 140
-PLAYER_MIN_Y = 5
-PLAYER_MAX_Y = 84
-EXIT_TOP_Y = 76
-; PlayerX is the positioning coordinate used by SetObjectXPos.
-DOOR_MIN_X = 56
-DOOR_MAX_X = 80
-; PlayerY is the sprite's top row. Keep the full 8-row sprite inside the
-; visible side-door band in the kernel (39..60).
-DOOR_MIN_Y = 39
-DOOR_MAX_Y = 53
+PLAYER_WIDTH = 8
+ROOM_X_MIN = 0
+ROOM_X_MAX = 140
+ROOM_Y_MIN = 5
+ROOM_Y_MAX = 84
+ROOM_TOP_BORDER_END = 5
+ROOM_BOTTOM_BORDER_START = 93
+TOP_EXIT_X_MIN = 56
+TOP_EXIT_X_MAX = 80
+SIDE_EXIT_Y_MIN = 39
+SIDE_EXIT_Y_MAX = 60
+SIDE_EXIT_ORIGIN_MIN = SIDE_EXIT_Y_MIN
+SIDE_EXIT_ORIGIN_MAX = SIDE_EXIT_Y_MAX - PLAYER_HEIGHT + 1
+
+PlayerX = RoomX
+PlayerY = RoomY
+PLAYER_MIN_X = ROOM_X_MIN
+PLAYER_MAX_X = ROOM_X_MAX
+PLAYER_MIN_Y = ROOM_Y_MIN
+PLAYER_MAX_Y = ROOM_Y_MAX
+DOOR_MIN_X = TOP_EXIT_X_MIN
+DOOR_MAX_X = TOP_EXIT_X_MAX
+DOOR_MIN_Y = SIDE_EXIT_ORIGIN_MIN
+DOOR_MAX_Y = SIDE_EXIT_ORIGIN_MAX
+EXIT_TOP_Y = ROOM_Y_MAX - PLAYER_HEIGHT
 
 
 ; ------------------------------------------------------------------------------
@@ -48,8 +61,8 @@ Start:
 ; Init Variables
 ; ------------------------------------------------------------------------------
   lda #50
-  sta PlayerX
-  sta PlayerY
+  sta RoomX
+  sta RoomY
 
 ; ------------------------------------------------------------------------------
 ; Render
@@ -74,7 +87,7 @@ StartFrame:
 ; ------------------------------------------------------------------------------
 ; Calculations run before VBLANK
 ; ------------------------------------------------------------------------------
-  lda PlayerX
+  lda RoomX
   ldy #0
   jsr SetObjectXPos         ; set player0 x position
 
@@ -112,13 +125,13 @@ LoopVBlank:
 .EachLine:
 .DrawRoom:
   txa
-  cmp #93                   ; top border
+  cmp #ROOM_BOTTOM_BORDER_START ; top border
   bcs .SolidBorder
-  cmp #5                    ; bottom border
+  cmp #ROOM_TOP_BORDER_END     ; bottom border
   bcc .SolidBorder
-  cmp #39                   ; left/right doorway
+  cmp #SIDE_EXIT_Y_MIN      ; left/right doorway
   bcc .SideBorder
-  cmp #61
+  cmp #SIDE_EXIT_Y_MAX + 1
   bcc .Doorway
 
 .SideBorder:
@@ -313,8 +326,8 @@ EndInputCheck:
 ; ------------------------------------------------------------------------------
 ; Subroutines
 ; ------------------------------------------------------------------------------
-; Horizontal Positioning
-; A is the desired x coordinate
+; Horizontal positioning conversion
+; A is the desired room-space X coordinate. TIA conversion happens here.
 ; Y is the object type
 ;   0 = player0, 1 = player1, 2 = missile0, 3 = missile1, 4 = ball
 ; ------------------------------------------------------------------------------
