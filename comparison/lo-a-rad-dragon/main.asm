@@ -282,7 +282,6 @@ CheckP0Left:
   bcc .StopTopBottomLeft
 .SideLeft:
   lda PlayerX
-  cmp #PLAYER_MIN_X
   bne .MoveLeft
   lda PlayerY
   cmp #DOOR_MIN_Y
@@ -507,15 +506,15 @@ MapRow03: .byte $00, $00, $00, $00, $00
 MapRow04: .byte $00, $00, $00, $00, $00
 MapRow05: .byte $00, $00, $00, $00, $00
 MapRow06: .byte $00, $00, $00, $00, $00
-MapRow07: .byte $80, $01, $00, $00, $00
-MapRow08: .byte $80, $01, $00, $00, $00
-MapRow09: .byte $80, $01, $00, $00, $00
-MapRow10: .byte $80, $01, $00, $00, $00
-MapRow11: .byte $80, $01, $00, $00, $00
-MapRow12: .byte $80, $01, $00, $00, $00
-MapRow13: .byte $80, $01, $00, $00, $00
-MapRow14: .byte $80, $01, $00, $00, $00
-MapRow15: .byte $80, $01, $00, $00, $00
+MapRow07: .byte $81, $01, $00, $00, $00
+MapRow08: .byte $81, $01, $00, $00, $00
+MapRow09: .byte $00, $01, $00, $00, $00
+MapRow10: .byte $00, $01, $00, $00, $00
+MapRow11: .byte $00, $01, $00, $00, $00
+MapRow12: .byte $00, $01, $00, $00, $00
+MapRow13: .byte $00, $01, $00, $00, $00
+MapRow14: .byte $81, $01, $00, $00, $00
+MapRow15: .byte $81, $01, $00, $00, $00
 MapRow16: .byte $00, $00, $00, $00, $00
 MapRow17: .byte $00, $00, $00, $00, $00
 MapRow18: .byte $00, $00, $00, $00, $00
