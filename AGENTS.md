@@ -158,6 +158,26 @@ HMOVE is applied later (at kernel entry, during HBLANK).
   coordinate system. A robust move test should evaluate the proposed
   rectangle (or a smaller deliberate collision box) against wall segments and
   doorway rectangles before committing `PlayerX`/`PlayerY`.
+- Keep the rendered geometry and collision geometry derived from one room
+  definition. The current prototype exposed a specific failure mode: the
+  side doorway was rendered from kernel counter values `39..60`, while the
+  movement code used the expanded `PlayerY` range `32..68`; the player could
+  therefore leave through visibly solid wall area. Do not tune these ranges
+  independently.
+- The kernel counter and `PlayerY` are not automatically the same vertical
+  coordinate system. The player sprite is selected with `scanline - PlayerY`,
+  while the room is selected directly from the kernel scanline counter. Generic
+  rooms should use named room-space rectangles/segments and explicit
+  conversion to both the kernel and player collision coordinates.
+- When an opening must contain the entire sprite, convert its visible span to
+  an allowed sprite-origin span: `origin_min = opening_min` and
+  `origin_max = opening_max - sprite_height + 1`. Using the visible opening's
+  maximum directly as `PlayerY` allows the sprite to extend beyond the wall;
+  this caused the side exits to remain about one player height too permissive.
+- For each proposed movement, test the player's future footprint against the
+  room's solid geometry. An exit should be a traversable opening in that same
+  geometry, not a separate hardcoded exception. This prevents visual/collision
+  drift when room shapes or exit sizes change.
 
 ## Stella Emulator Tips
 - Stelladaptor / 2600-daptor for real controller input
