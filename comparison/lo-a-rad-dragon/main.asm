@@ -89,11 +89,49 @@ LoopVBlank:
 ; ------------------------------------------------------------------------------
 ; 2-line kernel
 ; ------------------------------------------------------------------------------
-  lda #$c6                  ; background
+  lda #$00                  ; black room interior
   sta COLUBK
+  lda #$2a                  ; orange room border
+  sta COLUPF
+  lda #$01                  ; reflected playfield
+  sta CTRLPF
 
   ldx #96                   ; scanline counter
 .EachLine:
+.DrawRoom:
+  txa
+  cmp #93                   ; top border
+  bcs .SolidBorder
+  cmp #5                    ; bottom border
+  bcc .SolidBorder
+  cmp #47                   ; left/right doorway
+  bcc .SideBorder
+  cmp #52
+  bcc .Doorway
+
+.SideBorder:
+  lda #$f0                  ; side walls only
+  sta PF0
+  lda #$00
+  sta PF1
+  sta PF2
+  jmp .IsPlayer
+
+.Doorway:
+  lda #$00                  ; opening through both side walls
+  sta PF0
+  sta PF1
+  sta PF2
+  jmp .IsPlayer
+
+.SolidBorder:
+  lda #$f0
+  sta PF0
+  lda #$ff
+  sta PF1
+  lda #$0f                  ; leave a central opening in top/bottom walls
+  sta PF2
+
 .IsPlayer:
   txa
   sec                       ; always set carry before sub
