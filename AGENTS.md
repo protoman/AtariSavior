@@ -265,6 +265,41 @@ WaitTimer:
     ; Now bits 3-0 = up, down, left, right (active low)
 ```
 
+## Adventure Reference Study
+
+`comparison/adventure/adventure.asm` is kept as a local technical reference. Its
+implementation demonstrates several useful, general Atari 2600 patterns without
+requiring us to reuse its game data or assets:
+
+- A compact frame loop uses VSYNC, a timed VBLANK section, a visible kernel, and
+  an overscan timer. Game state is updated while VBLANK is active, before the
+  kernel begins.
+- Horizontal player positioning is isolated in `PosSpriteX`. The routine takes
+  an X coordinate, subtracts 15 repeatedly to obtain the coarse delay, converts
+  the remainder into the HMP high nibble, synchronizes with `WSYNC`, delays with
+  `DEY/BPL`, and strobes `RESP0,X`. `X=0` selects player 0; the same routine can
+  position other TIA objects through indexed registers.
+- `HMOVE` is issued after all object position setup, immediately after a
+  `WSYNC`, so fine motion is applied during horizontal blank.
+- Vertical sprite graphics are changed during the scanline kernel. The reference
+  keeps per-object Y coordinates in RAM and advances graphic data as the beam
+  reaches each object.
+- Room state is represented as an index into room/object tables. Objects carry
+  room, X, and Y state, so only objects belonging to the current room need to be
+  drawn or collided.
+- Joystick input is read from `SWCHA` as an active-low nibble. Movement is
+  converted into a direction mask, then applied to X/Y coordinates in a shared
+  movement routine. A separate mask can disable directions during special game
+  phases.
+- Room transitions are handled as game-state changes after collision/boundary
+  checks: select a new room index, then place the player at the corresponding
+  entry edge. This is a better foundation for HERO-style connected rooms than
+  trying to scroll the playfield first.
+
+For this project, the active `game_4k.asm` is a clean-room minimal movement
+implementation inspired by these hardware techniques. It intentionally does not
+copy Adventure's room data, graphics, object tables, or game-specific logic.
+
 ## Knowledge Management
 When discovering new information about the Atari 2600 hardware, register behavior,
 timing details, or effective coding patterns, add them to this file for future reference.
