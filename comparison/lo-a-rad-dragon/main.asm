@@ -33,6 +33,9 @@ SIDE_EXIT_Y_MIN = 39
 SIDE_EXIT_Y_MAX = 60
 SIDE_EXIT_ORIGIN_MIN = SIDE_EXIT_Y_MIN
 SIDE_EXIT_ORIGIN_MAX = SIDE_EXIT_Y_MAX - PLAYER_HEIGHT + 1
+BAR_X = 28
+BAR_Y = 30
+BAR_HEIGHT = 32
 
 PlayerX = RoomX
 PlayerY = RoomY
@@ -90,6 +93,9 @@ StartFrame:
   lda RoomX
   ldy #0
   jsr SetObjectXPos         ; set player0 x position
+  lda #BAR_X
+  ldy #1
+  jsr SetObjectXPos         ; reserve player1 position for the bar
 
   sta WSYNC
   sta HMOVE                 ; apply the horizontal offets we just set
@@ -118,6 +124,9 @@ LoopVBlank:
   sta COLUBK
   lda #$2a                  ; orange room border
   sta COLUPF
+  sta COLUP1
+  lda #$1c
+  sta COLUP0
   lda #$01                  ; reflected playfield
   sta CTRLPF
 
@@ -169,8 +178,8 @@ LoopVBlank:
   tay
   lda PlayerSprite,Y
   sta GRP0
-  lda PlayerColors,Y
-  sta COLUP0
+  lda BarMask,X
+  sta GRP1
   sta WSYNC
 
   sta WSYNC
@@ -368,6 +377,18 @@ SetRandom subroutine
 ; ------------------------------------------------------------------------------
 ; Bitmaps and colors
 ; ------------------------------------------------------------------------------
+  org $f300
+BarMask:
+  REPEAT BAR_Y
+    .byte $00
+  REPEND
+  REPEAT BAR_HEIGHT
+    .byte $ff
+  REPEND
+  REPEAT 96 - BAR_Y - BAR_HEIGHT + 1
+    .byte $00
+  REPEND
+
 PlayerSprite:
   .byte #%00000000
   .byte #%01001000
