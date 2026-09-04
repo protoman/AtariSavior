@@ -15,6 +15,10 @@ RoomY           byte
 OldX            byte
 OldY            byte
 Random          byte
+MapPtrLo        byte
+MapPtrHi        byte
+CollisionX      byte
+CollisionY      byte
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -35,7 +39,10 @@ SIDE_EXIT_ORIGIN_MIN = SIDE_EXIT_Y_MIN
 SIDE_EXIT_ORIGIN_MAX = SIDE_EXIT_Y_MAX - PLAYER_HEIGHT + 1
 BAR_X = 28
 BAR_Y = 30
+BAR_WIDTH = 8
 BAR_HEIGHT = 32
+MAP_CELL_SIZE = 4
+MAP_ROW_BYTES = 5
 
 PlayerX = RoomX
 PlayerY = RoomY
@@ -219,6 +226,10 @@ CheckP0Up:
   bcs .StopUp
 .MoveUp:
   inc PlayerY
+  jsr PlayerHitsMap
+  bcc .UpDone
+  dec PlayerY
+.UpDone:
   jmp CheckP0Down
 .StopUp:
   lda #PLAYER_MAX_Y
@@ -238,6 +249,10 @@ CheckP0Down:
   bcs .StopDown
 .MoveDown:
   dec PlayerY
+  jsr PlayerHitsMap
+  bcc .DownDone
+  inc PlayerY
+.DownDone:
   jmp CheckP0Left
 .StopDown:
   lda #PLAYER_MIN_Y
@@ -274,6 +289,10 @@ CheckP0Left:
   ; transitions are implemented.
 .MoveLeft:
   dec PlayerX
+  jsr PlayerHitsMap
+  bcc .LeftDone
+  inc PlayerX
+.LeftDone:
   jmp CheckP0Right
 .StopTopBottomLeft:
   lda #DOOR_MIN_X
@@ -312,6 +331,10 @@ CheckP0Right:
   jmp EndInputCheck
 .MoveRight:
   inc PlayerX
+  jsr PlayerHitsMap
+  bcc .RightDone
+  dec PlayerX
+.RightDone:
   jmp EndInputCheck
 .StopTopBottomRight:
   lda #DOOR_MAX_X
@@ -322,10 +345,81 @@ CheckP0Right:
   sta PlayerX
 
 EndInputCheck:
+  jmp StartFrame
 
 ; ------------------------------------------------------------------------------
 ; Check collisions
 ; ------------------------------------------------------------------------------
+
+PlayerHitsMap:
+  lda RoomX
+  sta CollisionX
+  lda RoomY
+  sta CollisionY
+  jsr RoomSolidAt
+  bcs .MapHit
+
+  lda RoomX
+  clc
+  adc #PLAYER_WIDTH - 1
+  sta CollisionX
+  jsr RoomSolidAt
+  bcs .MapHit
+
+  lda RoomX
+  sta CollisionX
+  lda RoomY
+  clc
+  adc #PLAYER_HEIGHT - 1
+  sta CollisionY
+  jsr RoomSolidAt
+  bcs .MapHit
+
+  lda RoomX
+  clc
+  adc #PLAYER_WIDTH - 1
+  sta CollisionX
+  jsr RoomSolidAt
+  bcs .MapHit
+
+  clc
+  rts
+
+.MapHit:
+  sec
+  rts
+
+RoomSolidAt:
+  lda CollisionY
+  lsr
+  lsr
+  tay
+  lda MapRowLo,Y
+  sta MapPtrLo
+  lda MapRowHi,Y
+  sta MapPtrHi
+
+  lda CollisionX
+  lsr
+  lsr
+  tax
+  txa
+  lsr
+  lsr
+  lsr
+  tay
+  txa
+  and #$07
+  tax
+  lda (MapPtrLo),Y
+  and CellMasks,X
+  beq .EmptyCell
+  sec
+  rts
+
+.EmptyCell:
+  clc
+  rts
 
 ; ------------------------------------------------------------------------------
 ; Next frame
@@ -377,6 +471,50 @@ SetRandom subroutine
 ; ------------------------------------------------------------------------------
 ; Bitmaps and colors
 ; ------------------------------------------------------------------------------
+CellMasks:
+  .byte $01, $02, $04, $08, $10, $20, $40, $80
+
+MapRowLo:
+  .byte <MapRow00, <MapRow01, <MapRow02, <MapRow03
+  .byte <MapRow04, <MapRow05, <MapRow06, <MapRow07
+  .byte <MapRow08, <MapRow09, <MapRow10, <MapRow11
+  .byte <MapRow12, <MapRow13, <MapRow14, <MapRow15
+  .byte <MapRow16, <MapRow17, <MapRow18, <MapRow19
+  .byte <MapRow20, <MapRow21, <MapRow22, <MapRow23
+
+MapRowHi:
+  .byte >MapRow00, >MapRow01, >MapRow02, >MapRow03
+  .byte >MapRow04, >MapRow05, >MapRow06, >MapRow07
+  .byte >MapRow08, >MapRow09, >MapRow10, >MapRow11
+  .byte >MapRow12, >MapRow13, >MapRow14, >MapRow15
+  .byte >MapRow16, >MapRow17, >MapRow18, >MapRow19
+  .byte >MapRow20, >MapRow21, >MapRow22, >MapRow23
+
+MapRow00: .byte $00, $00, $00, $00, $00
+MapRow01: .byte $00, $00, $00, $00, $00
+MapRow02: .byte $00, $00, $00, $00, $00
+MapRow03: .byte $00, $00, $00, $00, $00
+MapRow04: .byte $00, $00, $00, $00, $00
+MapRow05: .byte $00, $00, $00, $00, $00
+MapRow06: .byte $00, $00, $00, $00, $00
+MapRow07: .byte $80, $00, $00, $00, $00
+MapRow08: .byte $80, $00, $00, $00, $00
+MapRow09: .byte $80, $00, $00, $00, $00
+MapRow10: .byte $80, $00, $00, $00, $00
+MapRow11: .byte $80, $00, $00, $00, $00
+MapRow12: .byte $80, $00, $00, $00, $00
+MapRow13: .byte $80, $00, $00, $00, $00
+MapRow14: .byte $80, $00, $00, $00, $00
+MapRow15: .byte $80, $00, $00, $00, $00
+MapRow16: .byte $00, $00, $00, $00, $00
+MapRow17: .byte $00, $00, $00, $00, $00
+MapRow18: .byte $00, $00, $00, $00, $00
+MapRow19: .byte $00, $00, $00, $00, $00
+MapRow20: .byte $00, $00, $00, $00, $00
+MapRow21: .byte $00, $00, $00, $00, $00
+MapRow22: .byte $00, $00, $00, $00, $00
+MapRow23: .byte $00, $00, $00, $00, $00
+
   org $f300
 BarMask:
   REPEAT BAR_Y
