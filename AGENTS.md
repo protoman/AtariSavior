@@ -1,5 +1,26 @@
 # Atari 2600 Development Notes
 
+## CURRENT PROTOTYPE ARCHITECTURE (HERO-direct, supersedes tile-budget notes)
+- `game_4k.asm` -> `comparison/lo-a-rad-dragon/main.asm` + `generated/level_001_room_001.asm`.
+- Exactly HERO's rendering model: **reflected playfield with playfield priority
+  (CTRLPF=$05), symmetric cave, player as a plain sprite over it.** No
+  asymmetric PF2-right rewrites, no menu region, no 96-row/kernel-units,
+  no 20x24 tile budget. Rooms are 20x16 text grids (`rooms/*.txt`), each tile
+  = 8 color-clocks wide x 12 scanlines tall; the whole 192-line screen IS the
+  cave. Rows MUST be left-right palindromes (the TIA mirrors the 20-bit half).
+- `tools/convert_room.py` emits one PF0/PF1/PF2 triple per tile row (kernel
+  writes each register ONCE per 12-line band; TIA persists) plus a 1-byte-per-
+  tile RoomTileMap + RoomRowLo/Hi for collision. Render and collision both
+  derive from this one file.
+- Kernel: per scanline `WSYNC`, sprite byte written when `Scanline - PlayerY`
+  in 0..7 (inline; WSYNC absorbs jitter, only constraint is GRP0 lands in
+  HBLANK, < ~41 cycles). Coordinates are direct: `PlayerY` = scanline 0..191,
+  `PlayerX` = room pixel 0..159 -> TIA via `SetObjectXPos`. Tile row from scanline
+  = `/12` (YToCellRow), column = `/8`. Tile rows are drawn top-to-bottom (0..15);
+  pressing up DECREASES `PlayerY` (scanline 0 is the top of the screen).
+- Constants: PLAYER_MIN_X=8, PLAYER_MAX_X=151, PLAYER_MIN_Y=12, PLAYER_MAX_Y=172
+  (keeps the 8-tall sprite inside open rows 1..14).
+
 ## Hardware Architecture
 
 ### CPU
@@ -129,12 +150,22 @@ The 2600 positions sprites using RESPx (coarse) + HMx (fine).
 CRITICAL HMPx encoding (bits 4-7): positive (0..+7) moves LEFT, negative
 (-1..-8) moves RIGHT. The classic `sbc #15; bcs` loop is only 4 cycles
 (12 clocks/block) and does NOT give pixel-precise positioning — the coarse
-step (12) must equal the fine span (15). Use the River Raid algorithm:
+step (12) must equal the fine span (15). Used the River Raid algorithm:
 compute fine = `((X+1)&15)` then `eor #7` / `asl x4` into HMP0, and a coarse
 delay count via `(X+1)/16` with /15 correction; then a `dey;bpl` delay loop
 that is PAGE-ALIGNED so the taken `bpl` crosses a page (3 cycles), making the
 loop 5 cycles (15 clocks). RESP0 is written at the end of the delay loop.
 HMOVE is applied later (at kernel entry, during HBLANK).
+
+IMPLEMENTED IN THIS PROTOTYPE (`SetObjectXPos`, main.asm): Andrew Davie's
+session-24 routine (docs/tutorial/session-24.html), which is the same
+precision without the hand-aligned loop: `sta WSYNC; sec; sbc #15; bcs` then
+`tay; lda fineAdjustTable,y; sta HMP0,x; sta RESP0,x`. The coarse loop burns
+exactly 15 clocks/step and the page-aligned table (`FineAdjustBegin` is
+`align 256`'d) maps each remainder (-15..-1) to an exact HMP nibble; the
+indexed load's page-cross supplies the critical extra cycle. X = object
+selector (0=player0). It positions the sprite's LEFT edge at the requested
+pixel (0..159), so room X coords map 1:1 to visible columns.
 
 ## Collision Coordinates and Visible Sprite Footprint
 - The game variable passed to `SetObjectXPos` is a logical positioning
@@ -192,6 +223,11 @@ HMOVE is applied later (at kernel entry, during HBLANK).
 - After any visual change, ask the user to confirm what is actually visible
   before treating the change as fixed. Do not infer visual correctness from a
   successful assembly or emulator startup.
+- **Do NOT try to capture screenshots by running Stella** in this environment:
+  the model cannot view images, and screenshot capture keeps getting aborted.
+  When a visual (e.g. a HERO screen, menu, or sprite) must be examined, ask the
+  user to either provide an ASCII representation of what they see or take a
+  screenshot themselves and describe it.
 
 ## Stella Emulator Tips
 - Stelladaptor / 2600-daptor for real controller input
@@ -293,6 +329,78 @@ MainLoop:
     
     jmp MainLoop
 ```
+
+## Verified HERO Reference (hero.bin, Activision)
+
+### Cartridge profile
+- `hero.bin` = 8 KB, **F8 bankswitch** (confirmed by Stella `-rominfo`: "F8* (8K)").
+- Two 4K banks. Bank 1 lives at $F000-$FFFF at reset (reset vector `00 F0` at
+  physical $1FFC). Bank 0 sits at $D000-$DFFF; the "weird" absolute reads in the
+  kernel ($DC6A etc.) are just ROM in that lower window, not RAM.
+- Banks bounce via the F8 hotspots: bank1 start does `STA $FFF9`
+  (select bank0/$D000); bank0 start does `SEI; BIT $FFF9; ...; JSR $F000`
+  (back to bank1).
+
+### Disassembly workflow
+- DiStella (v3.02) in repo root, e.g. `./distella -pafs hero.bin`.
+  - Input must be exactly 2048/4096/8192 bytes; for F8, split banks first:
+    `python3 -c "d=open('hero.bin','rb').read(); open('bank0.bin','wb').write(d[:0x1000]); open('bank1.bin','wb').write(d[0x1000:])"`
+  - DiStella sets bank0 `ORG $D000`, bank1 `ORG $F000` automatically.
+  - DiStella can miss code (kernel looked like `.byte` blobs); cross-check with a
+    linear disassembler + hand-decode of raw bytes when a region looks suspicious.
+
+### CTRLPF: reflected playfield, always, no asymmetric mode
+- CTRLPF is written **once at startup and never touched again** (single
+  `STA CTRLPF` in the whole 8K).
+- bank1 init does: `LDA NUSIZ-style; STA NUSIZ1; ORA #$05; STA CTRLPF`.
+  `$05` = bits 0 (reflect) + 2 (playfield priority). NUSIZ table is
+  `$30,$30,$20,$20`, so CTRLPF ends up `$25` or `$35`:
+  D0=1 reflect, D2=1 PF-priority (player drawn BEHIND walls), D1=0 (no score
+  mode). Thus both halves always mirror symmetrically and read as one cave.
+
+### Game kernel (bank0 $DC00), 1 scanline = 61 cycles
+```
+$DC00:  STA WSYNC
+        STA RESMP1
+        LDA ($91),Y / STA GRP0 / STA GRP1 / STA GRP0     ; player+ghost data, VDEL-style double write
+        LDA ($95),Y / STA COLUP0 / STA COLUP1
+        LDA $DC6C,X / STA PF2                             ; one scalar write per register
+        LDA $DC6A,X / STA PF0
+        LDA $DC77,X / STA PF1
+        DEY / BPL $DC00
+```
+- Exactly **one PF0/PF1/PF2 write per scanline** from precomputed per-scanline
+  tables; **no mid-line PF2 rewrite**, no asymmetric left/right content.
+- Caves are symmetric by design (mirrored by hardware). Scroll-free screens:
+  each screen's per-scanline PF pattern set is baked into the bank tables.
+- Only the PF registers are written per line; COLUBK/NUSIZ/etc. are latched
+  once per frame in VBLANK.
+- A second, smaller kernel (also single-write) draws the jetpack/score rows.
+
+### Lesson for this project
+- The proven HERO/Adventure approach for a full-screen room + free-move player:
+  **reflect the playfield (CTRLPF=$01), design the room symmetric about the
+  center seam, bake per-scanline PFs.** The player coexists because playfield
+  has priority (D2=1) and vanishes behind solid wall, so no sprite-vs-PF2
+  timing conflict exists.
+- Our `rooms/level_001_room_001.txt` pattern (`#...##...##...##...#`) is already
+  center-symmetric, so CTRLPF=$01 alone makes it read as one continuous cave.
+
+### Verified: the playfield mirror is never broken; asymmetry = objects
+- Byte-scanned all of hero.bin for every PF write (`STA $0D/$0E/$0F`): 14 sites
+  in bank0, 0 in bank1, one write per register per scanline in every kernel.
+  **No mid-line/second PF rewrite exists anywhere.** In reflected mode a
+  mid-line rewrite could alter only the right half (columns 20-39 draw later),
+  but HERO never does it; the playfield is always perfectly mirrored.
+- Per-screen cave patterns are 8-entry tables at `$DC6A/$DC6C/$DC77` (PF0/PF2/
+  PF1) indexed by `X = screen & 7` (band 1 uses `$b3^7`, band 2 `($b2+1)^7`).
+  Rendered output for all 8 indices is left-right symmetric per row.
+- So the "parts added or adjusted afterwards" that look asymmetric on screen
+  are **objects drawn on top of the mirrored playfield** (players, missiles,
+  ball, and sprite tables like `$DDA0`/`$DA20` for mine carts/platforms), aided
+  by playfield priority (D2=1) so objects hide behind walls but show over open
+  space. For an asymmetric feature in our game, draw it as an object, not as a
+  playfield bit.
 
 ## Notes on HERO (Activision) reference
 - Player has a backpack/jet that allows vertical movement
