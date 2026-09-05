@@ -53,6 +53,10 @@ HORIZONTAL_BAR_Y = 60
 HORIZONTAL_BAR_HEIGHT = 8
 MAP_CELL_SIZE = 4
 MAP_ROW_BYTES = 5
+TILE_COLUMNS = 20
+TILE_ROWS = 24
+MAP_TILE_ROWS = 16
+MENU_TILE_ROWS = 8
 
 PlayerX = RoomX
 PlayerY = RoomY
@@ -154,11 +158,13 @@ LoopVBlank:
   ldx #96                   ; scanline counter
 .EachLine:
 .DrawRoom:
-  lda RoomPF0,X
+  lda TileBackground,X
+  sta COLUBK
+  lda TilePF0,X
   sta PF0
-  lda RoomPF1,X
+  lda TilePF1,X
   sta PF1
-  lda RoomPF2,X
+  lda TilePF2,X
   sta PF2
 
 .IsPlayer:
@@ -508,79 +514,84 @@ MapRow22: .byte $00, $00, $00, $00, $00
 MapRow23: .byte $00, $00, $00, $00, $00
 
   org $f300
-RoomPF0:
-  REPEAT 5
-    .byte $f0
-  REPEND
-  REPEAT 34
-    .byte $10
-  REPEND
-  REPEAT 22
+  include "generated/level_001_room_001.asm"
+
+TilePF0:
+  REPEAT 32
     .byte $00
   REPEND
-  REPEAT 32
+  REPEAT 8
+    .byte $f0
+  REPEND
+  REPEAT 24
     .byte $10
   REPEND
-  REPEAT 4
+  REPEAT 8
+    .byte $00
+  REPEND
+  REPEAT 24
+    .byte $10
+  REPEND
+  REPEAT 9
     .byte $f0
   REPEND
 
-  org $f400
-RoomPF1:
-  REPEAT 5
-    .byte $ff
-  REPEND
-  REPEAT 34
-    .byte $00
-  REPEND
-  REPEAT 22
-    .byte $00
-  REPEND
+TilePF1:
   REPEAT 32
     .byte $00
   REPEND
-  REPEAT 4
+  REPEAT 8
+    .byte $ff
+  REPEND
+  REPEAT 56
+    .byte $00
+  REPEND
+  REPEAT 9
     .byte $ff
   REPEND
 
-  org $f500
-RoomPF2:
-  REPEAT 5
-    .byte $0f
-  REPEND
-  REPEAT 34
-    .byte $00
-  REPEND
-  REPEAT 22
-    .byte $00
-  REPEND
+TilePF2:
   REPEAT 32
     .byte $00
   REPEND
-  REPEAT 4
+  REPEAT 8
     .byte $0f
+  REPEND
+  REPEAT 56
+    .byte $00
+  REPEND
+  REPEAT 9
+    .byte $0f
+  REPEND
+
+TileBackground:
+  REPEAT 32
+    .byte $08
+  REPEND
+  REPEAT 65
+    .byte $00
   REPEND
 
   org $f600
 BarMask:
-  REPEAT BAR_Y
+  REPEAT 48
     .byte $00
   REPEND
-  REPEAT BAR_HEIGHT
+  REPEAT 24
     .byte $ff
   REPEND
-  REPEAT 96 - BAR_Y - BAR_HEIGHT + 1
+  REPEAT 25
     .byte $00
   REPEND
 
 HorizontalBarMask:
-  REPEAT HORIZONTAL_BAR_Y
+  REPEAT 64
     .byte $00
   REPEND
-  REPEAT HORIZONTAL_BAR_HEIGHT
+  REPEAT 8
     .byte $02
   REPEND
-  REPEAT 96 - HORIZONTAL_BAR_Y - HORIZONTAL_BAR_HEIGHT + 1
+  REPEAT 25
     .byte $00
   REPEND
 
