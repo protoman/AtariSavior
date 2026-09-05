@@ -396,3 +396,15 @@ Check upstream license and attribution terms before redistributing or reusing su
 - With reflected playfield mode, one PF pattern is mirrored by hardware.
   A right-side-only horizontal feature requires an asymmetric kernel/data
   strategy; simply adding bits to PF1/PF2 produces a mirrored feature.
+
+### Room Tile Budget
+
+- The target logical room layout is fixed at **20 columns x 24 rows**.
+- Each logical tile represents **8x8 pixels**.
+- The upper **16 tile rows** are the playable map.
+- The lower **8 tile rows** are reserved for the menu.
+- Room text files and future editor output must stay within this 20x24 budget;
+  do not add map rows or columns to solve rendering problems.
+- Room data is converted at build time into assembler data. The 6502 kernel
+  must consume compact precomputed tables and must not parse text or perform
+  expensive tile conversion during visible scanlines.
