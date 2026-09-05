@@ -1,82 +1,50 @@
   processor 6502
 
-  include "vcs.h"
-  include "macro.h"
+    include "vcs.h"
+    include "macro.h"
 
 ; ------------------------------------------------------------------------------
 ; Setup variables
 ; ------------------------------------------------------------------------------
 
   seg.u Variables
-  org $80
+    org $80
 
 RoomX           byte
 RoomY           byte
-OldX            byte
-OldY            byte
-Random          byte
+Scanline        byte
+LineCount       byte
 MapPtrLo        byte
 MapPtrHi        byte
 CollisionX      byte
-CollisionY      byte
-CollisionRight  byte
-CollisionBottom byte
 CollisionCellX  byte
 CollisionCellY  byte
 CollisionEndX   byte
 CollisionEndY   byte
-CollisionMask   byte
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
 ; ------------------------------------------------------------------------------
 PLAYER_HEIGHT = 8
 PLAYER_WIDTH = 8
-ROOM_X_MIN = 0
-ROOM_X_MAX = 140
-ROOM_Y_MIN = 5
-ROOM_Y_MAX = 84
-ROOM_TOP_BORDER_END = 5
-ROOM_BOTTOM_BORDER_START = 93
-TOP_EXIT_X_MIN = 56
-TOP_EXIT_X_MAX = 80
-SIDE_EXIT_Y_MIN = 39
-SIDE_EXIT_Y_MAX = 60
-SIDE_EXIT_ORIGIN_MIN = SIDE_EXIT_Y_MIN
-SIDE_EXIT_ORIGIN_MAX = SIDE_EXIT_Y_MAX - PLAYER_HEIGHT + 1
-BAR_X = 28
-BAR_Y = 30
-BAR_WIDTH = 8
-BAR_HEIGHT = 32
-HORIZONTAL_BAR_X = 88
-HORIZONTAL_BAR_Y = 60
-HORIZONTAL_BAR_HEIGHT = 8
-MAP_CELL_SIZE = 4
-MAP_ROW_BYTES = 5
 TILE_COLUMNS = 20
-TILE_ROWS = 24
-MAP_TILE_ROWS = 16
-MENU_TILE_ROWS = 8
+TILE_ROWS = 16
+LINES_PER_TILE = 12
+PLAYER_MIN_X = 8
+PLAYER_MAX_X = 151
+PLAYER_MIN_Y = 12
+PLAYER_MAX_Y = 172
 
 PlayerX = RoomX
 PlayerY = RoomY
-PLAYER_MIN_X = ROOM_X_MIN
-PLAYER_MAX_X = ROOM_X_MAX
-PLAYER_MIN_Y = ROOM_Y_MIN
-PLAYER_MAX_Y = ROOM_Y_MAX
-DOOR_MIN_X = TOP_EXIT_X_MIN
-DOOR_MAX_X = TOP_EXIT_X_MAX
-DOOR_MIN_Y = SIDE_EXIT_ORIGIN_MIN
-DOOR_MAX_Y = SIDE_EXIT_ORIGIN_MAX
-EXIT_TOP_Y = ROOM_Y_MAX - PLAYER_HEIGHT
 
 
 ; ------------------------------------------------------------------------------
 ; Setup rom
 ; ------------------------------------------------------------------------------
 
-  seg code
-  org $f000       ; define the code origin at $f000 - start of the ROM
+    seg code
+    org $f000       ; define the code origin at $f000 - start of the ROM
 
 Start:
   CLEAN_START
@@ -84,11 +52,10 @@ Start:
 ; ------------------------------------------------------------------------------
 ; Init Variables
 ; ------------------------------------------------------------------------------
-  lda #50
-  sta RoomX
-  sta RoomY
-  lda #$30                  ; player 1 single, missile 1 width = 8 pixels
-  sta NUSIZ1
+  lda #132
+  sta RoomX               ; spawn centered in the open lane (cols 16-18)
+  lda #96
+  sta RoomY               ; spawn in tile row 8 (open lane)
 
 ; ------------------------------------------------------------------------------
 ; Render
@@ -111,24 +78,17 @@ StartFrame:
   sta VSYNC                 ; turn off VSYNC
 
 ; ------------------------------------------------------------------------------
-; Calculations run before VBLANK
+; Horizontal positioning (2 scanlines)
 ; ------------------------------------------------------------------------------
   lda RoomX
   ldy #0
   jsr SetObjectXPos         ; set player0 x position
-  lda #BAR_X
-  ldy #1
-  jsr SetObjectXPos         ; reserve player1 position for the bar
-  lda #HORIZONTAL_BAR_X
-  ldy #3
-  jsr SetObjectXPos         ; position missile1 for the horizontal bar
   sta WSYNC
-  sta HMOVE                 ; apply the horizontal offets we just set
+  sta HMOVE                 ; apply the horizontal offset we just set
 
 ; ------------------------------------------------------------------------------
-; 37 lines of VBLANK minus 2 used above
+; Remaining VBLANK (35 scanlines)
 ; ------------------------------------------------------------------------------
-
   ldx #35
 LoopVBlank:
   sta WSYNC
@@ -139,55 +99,71 @@ LoopVBlank:
   sta VBLANK                ; turn off VBLANK
 
 ; ------------------------------------------------------------------------------
-; 192 visible scanlines
+; Kernel (192 visible scanlines)
 ; ------------------------------------------------------------------------------
-
+; HERO/Adventure-style REFLECTED playfield. CTRLPF D0=1 mirrors the 20-bit
+; playfield, so ONE PF0/PF1/PF2 write per band defines the whole symmetric
+; cave; the hardware draws the right half as the mirror of the left. Rooms
+; must therefore be left-right symmetric (the room files are). CTRLPF D2=1
+; (playfield priority) hides the player sprite behind walls and shows it in
+; the openings, exactly like HERO.
+;
+; Layout: 16 tile rows x 20 columns, each tile 8 color-clocks wide and 12
+; scanlines tall, so the entire 192-line screen IS the cave (no menu region).
+; For each tile row the kernel writes the playfield once (TIA registers
+; persist), then paints 12 WSYNC-stabilised scanlines. The player sprite is
+; drawn whenever Scanline - PlayerY is in 0..PLAYER_HEIGHT-1. WSYNC absorbs
+; per-scanline jitter, so the only constraint is that the GRP0/PF writes land
+; during HBLANK (color clocks 0-68); the writes at the top of each iteration
+; inevitably do.
 ; ------------------------------------------------------------------------------
-; 2-line kernel
-; ------------------------------------------------------------------------------
-  lda #$00                  ; black room interior
+  lda #$00                  ; black cave interior
   sta COLUBK
-  lda #$2a                  ; orange room border
+  lda #$2a                  ; orange walls
   sta COLUPF
-  sta COLUP1
-  lda #$1c
+  lda #$1c                  ; player color
   sta COLUP0
-  lda #$01                  ; reflected playfield
+  lda #$05                  ; D0=1 reflect, D2=1 playfield priority
   sta CTRLPF
+  lda #$00                  ; one copy, not flipped, no missiles/ball
+  sta NUSIZ0
+  sta REFP0
+  sta GRP1
+  sta ENAM0
+  sta ENAM1
+  sta Scanline
 
-  ldx #96                   ; scanline counter
-.EachLine:
-.DrawRoom:
-  lda TileBackground,X
-  sta COLUBK
+  ldx #0                    ; tile row counter (row 0 at top of screen)
+.Row:
   lda TilePF0,X
-  sta PF0
+  sta PF0                   ; defines the whole line via reflection
   lda TilePF1,X
   sta PF1
   lda TilePF2,X
   sta PF2
+  lda #LINES_PER_TILE
+  sta LineCount
 
-.IsPlayer:
-  txa
-  sec                       ; always set carry before sub
-  sbc PlayerY
-  cmp PLAYER_HEIGHT
-  bcc .DrawPlayer
-  lda #0                    ; if not draw empty row from sprite
-
-.DrawPlayer:
+.Line:
+  lda Scanline
+  sec
+  sbc PlayerY               ; A = scanline - PlayerY
+  cmp #PLAYER_HEIGHT
+  bcs .NoSprite
   tay
   lda PlayerSprite,Y
+  jmp .Put
+.NoSprite:
+  lda #0
+.Put:
   sta GRP0
-  lda BarMask,X
-  sta GRP1
-  lda HorizontalBarMask,X
-  sta ENAM1
-  sta WSYNC
-
-  sta WSYNC
-  dex
-  bne .EachLine
+  inc Scanline
+  sta WSYNC                 ; end this scanline
+  dec LineCount
+  bne .Line
+  inx
+  cpx #TILE_ROWS
+  bne .Row
 
 ; ------------------------------------------------------------------------------
 ; Overscan
@@ -208,27 +184,24 @@ LoopOverscan:
 ; ------------------------------------------------------------------------------
 ; Input handler
 ; ------------------------------------------------------------------------------
+; Movement is 1 unit per frame. Walls come from the shared room tile map
+; (PlayerHitsMap). The boundary clamps below are only a safety net; the
+; map collision rejects any step into solid tiles.
 CheckP0Up:
   lda #%00010000
   bit SWCHA                 ; compare to joy
   bne CheckP0Down
   lda PlayerY
-  cmp #PLAYER_MAX_Y
-  bcc .MoveUp
-  lda PlayerX
-  cmp #DOOR_MIN_X
+  cmp #PLAYER_MIN_Y         ; up = smaller scanline
   bcc .StopUp
-  cmp #DOOR_MAX_X
-  bcs .StopUp
-.MoveUp:
-  inc PlayerY
+  dec PlayerY
   jsr PlayerHitsMap
   bcc .UpDone
-  dec PlayerY
+  inc PlayerY
 .UpDone:
   jmp CheckP0Down
 .StopUp:
-  lda #PLAYER_MAX_Y
+  lda #PLAYER_MIN_Y
   sta PlayerY
 
 CheckP0Down:
@@ -236,62 +209,30 @@ CheckP0Down:
   bit SWCHA
   bne CheckP0Left
   lda PlayerY
-  cmp #PLAYER_MIN_Y
-  bcs .MoveDown
-  lda PlayerX
-  cmp #DOOR_MIN_X
-  bcc .StopDown
-  cmp #DOOR_MAX_X
+  cmp #PLAYER_MAX_Y         ; down = larger scanline
   bcs .StopDown
-.MoveDown:
-  dec PlayerY
+  inc PlayerY
   jsr PlayerHitsMap
   bcc .DownDone
-  inc PlayerY
+  dec PlayerY
 .DownDone:
   jmp CheckP0Left
 .StopDown:
-  lda #PLAYER_MIN_Y
+  lda #PLAYER_MAX_Y
   sta PlayerY
 
 CheckP0Left:
   lda #%01000000
   bit SWCHA
   bne CheckP0Right
-  lda PlayerY
-  cmp #PLAYER_MIN_Y
-  bcc .TopBottomLeft
-  cmp #EXIT_TOP_Y
-  bcs .TopBottomLeft
-  bne .SideLeft
-.TopBottomLeft:
   lda PlayerX
-  cmp #DOOR_MIN_X
-  beq .StopTopBottomLeft
-  bcc .StopTopBottomLeft
-.SideLeft:
-  lda PlayerX
-  bne .MoveLeft
-  lda PlayerY
-  cmp #DOOR_MIN_Y
+  cmp #PLAYER_MIN_X
   bcc .StopLeft
-  cmp #DOOR_MAX_Y
-  bcs .StopLeft
-  lda #PLAYER_MAX_X
-  sta PlayerX
-  jmp CheckP0Right
-  ; The side opening currently wraps to the opposite edge until room
-  ; transitions are implemented.
-.MoveLeft:
   dec PlayerX
   jsr PlayerHitsMap
   bcc .LeftDone
   inc PlayerX
 .LeftDone:
-  jmp CheckP0Right
-.StopTopBottomLeft:
-  lda #DOOR_MIN_X
-  sta PlayerX
   jmp CheckP0Right
 .StopLeft:
   lda #PLAYER_MIN_X
@@ -301,39 +242,14 @@ CheckP0Right:
   lda #%10000000
   bit SWCHA
   bne EndInputCheck
-  lda PlayerY
-  cmp #PLAYER_MIN_Y
-  bcc .TopBottomRight
-  cmp #EXIT_TOP_Y
-  bcs .TopBottomRight
-  bne .SideRight
-.TopBottomRight:
-  lda PlayerX
-  cmp #DOOR_MAX_X
-  beq .StopTopBottomRight
-  bcs .StopTopBottomRight
-.SideRight:
   lda PlayerX
   cmp #PLAYER_MAX_X
-  bne .MoveRight
-  lda PlayerY
-  cmp #DOOR_MIN_Y
-  bcc .StopRight
-  cmp #DOOR_MAX_Y
   bcs .StopRight
-  lda #PLAYER_MIN_X
-  sta PlayerX
-  jmp EndInputCheck
-.MoveRight:
   inc PlayerX
   jsr PlayerHitsMap
   bcc .RightDone
   dec PlayerX
 .RightDone:
-  jmp EndInputCheck
-.StopTopBottomRight:
-  lda #DOOR_MAX_X
-  sta PlayerX
   jmp EndInputCheck
 .StopRight:
   lda #PLAYER_MAX_X
@@ -345,73 +261,53 @@ EndInputCheck:
 ; ------------------------------------------------------------------------------
 ; Check collisions
 ; ------------------------------------------------------------------------------
-
+; Tests the proposed 8x8 player footprint against the room tile map.
+; Horizontal: room pixel -> tile column via >>3 (8 pixel columns).
+; Vertical:   screen scanline -> tile row via YToCellRow (/12).
+; Returns C=0 if clear, C=1 if blocked.
 PlayerHitsMap:
   lda RoomX
   sta CollisionX
   clc
   adc #PLAYER_WIDTH - 1
-  sta CollisionRight
-  lda RoomY
-  sta CollisionY
-  lda RoomY
-  clc
-  adc #PLAYER_HEIGHT - 1
-  sta CollisionBottom
-
+  lsr
+  lsr
+  lsr
+  sta CollisionEndX          ; right tile column
   lda CollisionX
   lsr
   lsr
-  sta CollisionCellX
-  lda CollisionRight
   lsr
-  lsr
-  sta CollisionEndX
-  lda CollisionY
-  lsr
-  lsr
-  sta CollisionCellY
-  lda CollisionBottom
-  lsr
-  lsr
-  sta CollisionEndY
+  sta CollisionCellX         ; left tile column
+
+  lda PlayerY
+  jsr YToCellRow
+  stx CollisionCellY         ; top tile row
+  clc
+  lda PlayerY
+  adc #PLAYER_HEIGHT - 1
+  jsr YToCellRow
+  stx CollisionEndY          ; bottom tile row
 
 .CheckRow:
-  lda CollisionCellX
-  sta CollisionX
-.CheckCell:
-  ldy CollisionCellY
-  lda MapRowLo,Y
+  ldx CollisionCellY
+  lda RoomRowLo,X
   sta MapPtrLo
-  lda MapRowHi,Y
+  lda RoomRowHi,X
   sta MapPtrHi
-
-  lda CollisionX
-  and #$07
-  tay
-  lda CellMasks,Y
-  sta CollisionMask
-  lda CollisionX
-  lsr
-  lsr
-  lsr
-  tay
+  ldy CollisionCellX
+.CheckCell:
   lda (MapPtrLo),Y
-  and CollisionMask
   bne .MapHit
-
-  inc CollisionX
-  lda CollisionX
-  cmp CollisionEndX
+  iny
+  cpy CollisionEndX
   bcc .CheckCell
   beq .CheckCell
-
   inc CollisionCellY
   lda CollisionCellY
   cmp CollisionEndY
   bcc .CheckRow
   beq .CheckRow
-
   clc
   rts
 
@@ -420,12 +316,22 @@ PlayerHitsMap:
   rts
 
 ; ------------------------------------------------------------------------------
-; Next frame
-; ------------------------------------------------------------------------------
-  jmp StartFrame
-
-; ------------------------------------------------------------------------------
 ; Subroutines
+; ------------------------------------------------------------------------------
+; Convert a screen scanline (0..191) into a tile row index (0..15).
+; A = scanline in, X = tile row out.
+; ------------------------------------------------------------------------------
+YToCellRow subroutine
+  ldx #0
+.Div:
+  cmp #LINES_PER_TILE
+  bcc .Done
+  sbc #LINES_PER_TILE
+  inx
+  bne .Div
+.Done:
+  rts
+
 ; ------------------------------------------------------------------------------
 ; Horizontal positioning conversion
 ; A is the desired room-space X coordinate. TIA conversion happens here.
@@ -447,178 +353,27 @@ SetObjectXPos subroutine
   rts
 
 ; ------------------------------------------------------------------------------
-; Random using Linear-Feedback Shift Register
-; - Generate random number using LFSR
-; ------------------------------------------------------------------------------
-SetRandom subroutine
-  lda Random
-  asl
-  eor Random
-  asl
-  eor Random
-  asl
-  asl
-  eor Random
-  asl
-  rol Random                ; ok we have LFSR random
-
-  rts
-
-; ------------------------------------------------------------------------------
 ; ROM Data
 ; ------------------------------------------------------------------------------
 ; Bitmaps and colors
 ; ------------------------------------------------------------------------------
-CellMasks:
-  .byte $01, $02, $04, $08, $10, $20, $40, $80
-
-MapRowLo:
-  .byte <MapRow00, <MapRow01, <MapRow02, <MapRow03
-  .byte <MapRow04, <MapRow05, <MapRow06, <MapRow07
-  .byte <MapRow08, <MapRow09, <MapRow10, <MapRow11
-  .byte <MapRow12, <MapRow13, <MapRow14, <MapRow15
-  .byte <MapRow16, <MapRow17, <MapRow18, <MapRow19
-  .byte <MapRow20, <MapRow21, <MapRow22, <MapRow23
-
-MapRowHi:
-  .byte >MapRow00, >MapRow01, >MapRow02, >MapRow03
-  .byte >MapRow04, >MapRow05, >MapRow06, >MapRow07
-  .byte >MapRow08, >MapRow09, >MapRow10, >MapRow11
-  .byte >MapRow12, >MapRow13, >MapRow14, >MapRow15
-  .byte >MapRow16, >MapRow17, >MapRow18, >MapRow19
-  .byte >MapRow20, >MapRow21, >MapRow22, >MapRow23
-
-MapRow00: .byte $00, $00, $00, $00, $00
-MapRow01: .byte $00, $00, $00, $00, $00
-MapRow02: .byte $00, $00, $00, $00, $00
-MapRow03: .byte $00, $00, $00, $00, $00
-MapRow04: .byte $00, $00, $00, $00, $00
-MapRow05: .byte $00, $00, $00, $00, $00
-MapRow06: .byte $00, $00, $00, $00, $00
-MapRow07: .byte $81, $01, $00, $00, $00
-MapRow08: .byte $81, $01, $00, $00, $00
-MapRow09: .byte $00, $01, $00, $00, $00
-MapRow10: .byte $00, $01, $00, $00, $00
-MapRow11: .byte $00, $01, $00, $00, $00
-MapRow12: .byte $00, $01, $00, $00, $00
-MapRow13: .byte $00, $01, $00, $00, $00
-MapRow14: .byte $81, $01, $00, $00, $00
-MapRow15: .byte $81, $01, $00, $00, $00
-MapRow16: .byte $00, $00, $00, $00, $00
-MapRow17: .byte $00, $00, $00, $00, $00
-MapRow18: .byte $00, $00, $00, $00, $00
-MapRow19: .byte $00, $00, $00, $00, $00
-MapRow20: .byte $00, $00, $00, $00, $00
-MapRow21: .byte $00, $00, $00, $00, $00
-MapRow22: .byte $00, $00, $00, $00, $00
-MapRow23: .byte $00, $00, $00, $00, $00
-
-  org $f300
-  include "generated/level_001_room_001.asm"
-
-TilePF0:
-  REPEAT 32
-    .byte $00
-  REPEND
-  REPEAT 8
-    .byte $f0
-  REPEND
-  REPEAT 24
-    .byte $10
-  REPEND
-  REPEAT 8
-    .byte $00
-  REPEND
-  REPEAT 24
-    .byte $10
-  REPEND
-  REPEAT 9
-    .byte $f0
-  REPEND
-
-TilePF1:
-  REPEAT 32
-    .byte $00
-  REPEND
-  REPEAT 8
-    .byte $ff
-  REPEND
-  REPEAT 56
-    .byte $00
-  REPEND
-  REPEAT 9
-    .byte $ff
-  REPEND
-
-TilePF2:
-  REPEAT 32
-    .byte $00
-  REPEND
-  REPEAT 8
-    .byte $0f
-  REPEND
-  REPEAT 56
-    .byte $00
-  REPEND
-  REPEAT 9
-    .byte $0f
-  REPEND
-
-TileBackground:
-  REPEAT 32
-    .byte $08
-  REPEND
-  REPEAT 65
-    .byte $00
-  REPEND
-
-  org $f600
-BarMask:
-  REPEAT 48
-    .byte $00
-  REPEND
-  REPEAT 24
-    .byte $ff
-  REPEND
-  REPEAT 25
-    .byte $00
-  REPEND
-
-HorizontalBarMask:
-  REPEAT 64
-    .byte $00
-  REPEND
-  REPEAT 8
-    .byte $02
-  REPEND
-  REPEAT 25
-    .byte $00
-  REPEND
+    org $f300
+    include "generated/level_001_room_001.asm"
 
 PlayerSprite:
-  .byte #%00000000
-  .byte #%01001000
-  .byte #%11111100
-  .byte #%01111000
-  .byte #%10000000
-  .byte #%10101000
-  .byte #%10000000
-  .byte #%01111000
-
-PlayerColors:
-  .byte $00
-  .byte $96
-  .byte $96
-  .byte $1c
-  .byte $1c
-  .byte $1c
-  .byte $1c
-  .byte $1c
+  .byte #%11111111
+  .byte #%11111111
+  .byte #%11111111
+  .byte #%11111111
+  .byte #%11111111
+  .byte #%11111111
+  .byte #%11111111
+  .byte #%11111111
 
 ; ------------------------------------------------------------------------------
 ; Fill ROM to exactly 4kb
 ; ------------------------------------------------------------------------------
 
-  org $fffc
+    org $fffc
   .word Start     ; tell atari where to start when we reset
   .word Start     ; interupt at $fffe - unused by vcs but makes 4kb

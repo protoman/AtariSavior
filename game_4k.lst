@@ -388,7 +388,7 @@
       7  0000 ????						; Setup variables
       8  0000 ????						; ------------------------------------------------------------------------------
       9  0000 ????
-     10 U0085 ????				      seg.u	Variables
+     10 U008c ????				      seg.u	Variables
      11 U0080					      org	$80
      12 U0080
      13 U0080		       00	   RoomX      byte.b
@@ -396,52 +396,44 @@
      15 U0082		       00	   OldX       byte.b
      16 U0083		       00	   OldY       byte.b
      17 U0084		       00	   Random     byte.b
-     18 U0085
-     19 U0085							; ------------------------------------------------------------------------------
-     20 U0085							; Setup consts
-     21 U0085							; ------------------------------------------------------------------------------
-     22 U0085		       00 08	   PLAYER_HEIGHT =	8
-     23 U0085		       00 08	   PLAYER_WIDTH =	8
-     24 U0085		       00 00	   ROOM_X_MIN =	0
-     25 U0085		       00 8c	   ROOM_X_MAX =	140
-     26 U0085		       00 05	   ROOM_Y_MIN =	5
-     27 U0085		       00 54	   ROOM_Y_MAX =	84
-     28 U0085		       00 05	   ROOM_TOP_BORDER_END =	5
-     29 U0085		       00 5d	   ROOM_BOTTOM_BORDER_START =	93
-     30 U0085		       00 38	   TOP_EXIT_X_MIN =	56
-     31 U0085		       00 50	   TOP_EXIT_X_MAX =	80
-     32 U0085		       00 27	   SIDE_EXIT_Y_MIN =	39
-     33 U0085		       00 3c	   SIDE_EXIT_Y_MAX =	60
-     34 U0085		       00 27	   SIDE_EXIT_ORIGIN_MIN =	SIDE_EXIT_Y_MIN
-     35 U0085		       00 35	   SIDE_EXIT_ORIGIN_MAX =	SIDE_EXIT_Y_MAX - PLAYER_HEIGHT + 1
-     36 U0085		       00 1c	   BAR_X      =	28
-     37 U0085		       00 08	   BAR_WIDTH  =	8
-     38 U0085		       00 1e	   BAR_Y      =	30
-     39 U0085		       00 20	   BAR_HEIGHT =	32
-     40 U0085		       00 0e	   BAR_GAP_MIN =	14
-     41 U0085		       00 11	   BAR_GAP_MAX =	17
-     42 U0085
-     43 U0085		       00 80	   PlayerX    =	RoomX
-     44 U0085		       00 81	   PlayerY    =	RoomY
-     45 U0085		       00 00	   PLAYER_MIN_X =	ROOM_X_MIN
-     46 U0085		       00 8c	   PLAYER_MAX_X =	ROOM_X_MAX
-     47 U0085		       00 05	   PLAYER_MIN_Y =	ROOM_Y_MIN
-     48 U0085		       00 54	   PLAYER_MAX_Y =	ROOM_Y_MAX
-     49 U0085		       00 38	   DOOR_MIN_X =	TOP_EXIT_X_MIN
-     50 U0085		       00 50	   DOOR_MAX_X =	TOP_EXIT_X_MAX
-     51 U0085		       00 27	   DOOR_MIN_Y =	SIDE_EXIT_ORIGIN_MIN
-     52 U0085		       00 35	   DOOR_MAX_Y =	SIDE_EXIT_ORIGIN_MAX
-     53 U0085		       00 4c	   EXIT_TOP_Y =	ROOM_Y_MAX - PLAYER_HEIGHT
-     54 U0085
-     55 U0085
-     56 U0085							; ------------------------------------------------------------------------------
-     57 U0085							; Setup rom
-     58 U0085							; ------------------------------------------------------------------------------
-     59 U0085
-     60  10000 ????				       seg	code
-     61  f000					      org	$f000	; define the code origin at $f000 - start of the ROM
-     62  f000
-     63  f000				   Start
+     18 U0085		       00	   MapPtrLo   byte.b
+     19 U0086		       00	   MapPtrHi   byte.b
+     20 U0087		       00	   CollisionX byte.b
+     21 U0088		       00	   CollisionCellX byte.b
+     22 U0089		       00	   CollisionCellY byte.b
+     23 U008a		       00	   CollisionEndX byte.b
+     24 U008b		       00	   CollisionEndY byte.b
+     25 U008c
+     26 U008c							; ------------------------------------------------------------------------------
+     27 U008c							; Setup consts
+     28 U008c							; ------------------------------------------------------------------------------
+     29 U008c		       00 08	   PLAYER_HEIGHT =	8
+     30 U008c		       00 08	   PLAYER_WIDTH =	8
+     31 U008c		       00 08	   SCANLINES_PER_TILE =	8
+     32 U008c		       00 04	   KERNEL_ROWS_PER_TILE =	4
+     33 U008c		       00 14	   TILE_COLUMNS =	20
+     34 U008c		       00 18	   TILE_ROWS  =	24
+     35 U008c		       00 10	   MAP_TILE_ROWS =	16
+     36 U008c		       00 08	   MENU_TILE_ROWS =	8
+     37 U008c		       00 1c	   BAR_X      =	28
+     38 U008c		       00 58	   HORIZONTAL_BAR_X =	88
+     39 U008c		       00 08	   PLAYER_MIN_X =	8
+     40 U008c		       00 97	   PLAYER_MAX_X =	151
+     41 U008c		       00 25	   PLAYER_MIN_Y =	37
+     42 U008c		       00 55	   PLAYER_MAX_Y =	85
+     43 U008c
+     44 U008c		       00 80	   PlayerX    =	RoomX
+     45 U008c		       00 81	   PlayerY    =	RoomY
+     46 U008c
+     47 U008c
+     48 U008c							; ------------------------------------------------------------------------------
+     49 U008c							; Setup rom
+     50 U008c							; ------------------------------------------------------------------------------
+     51 U008c
+     52  10000 ????				       seg	code
+     53  f000					      org	$f000	; define the code origin at $f000 - start of the ROM
+     54  f000
+     55  f000				   Start
       0  f000					      CLEAN_START
       1  f000		       78		      sei
       2  f001		       d8		      cld
@@ -454,619 +446,809 @@
       9  f008		       48		      pha
      10  f009		       d0 fb		      bne	.CLEAR_STACK
      11  f00b
-     65  f00b
-     66  f00b							; ------------------------------------------------------------------------------
-     67  f00b							; Init Variables
-     68  f00b							; ------------------------------------------------------------------------------
-     69  f00b		       a9 32		      lda	#50
-     70  f00d		       85 80		      sta	RoomX
-     71  f00f		       85 81		      sta	RoomY
-     72  f011
-     73  f011							; ------------------------------------------------------------------------------
-     74  f011							; Render
-     75  f011							; ------------------------------------------------------------------------------
-     76  f011				   StartFrame
-     77  f011
-     78  f011							; ------------------------------------------------------------------------------
-     79  f011							; Init VSYNC and VBLANK
-     80  f011							; ------------------------------------------------------------------------------
-     81  f011
-     82  f011		       a9 02		      lda	#2
-     83  f013		       85 01		      sta	VBLANK
-     84  f015		       85 00		      sta	VSYNC
-     85  f017
-     86  f017					      repeat	3
-     87  f017		       85 02		      sta	WSYNC
-     86  f017					      repend
-     87  f019		       85 02		      sta	WSYNC
-     86  f019					      repend
-     87  f01b		       85 02		      sta	WSYNC
-     88  f01d					      repend
-     89  f01d
-     90  f01d		       a9 00		      lda	#0
-     91  f01f		       85 00		      sta	VSYNC	; turn off VSYNC
-     92  f021
-     93  f021							; ------------------------------------------------------------------------------
-     94  f021							; Calculations run before VBLANK
-     95  f021							; ------------------------------------------------------------------------------
-     96  f021		       a5 80		      lda	RoomX
-     97  f023		       a0 00		      ldy	#0
-     98  f025		       20 ce f1 	      jsr	SetObjectXPos	; set player0 x position
-     99  f028		       a9 1c		      lda	#BAR_X
-    100  f02a		       a0 01		      ldy	#1
-    101  f02c		       20 ce f1 	      jsr	SetObjectXPos	; set player1 bar position
-    102  f02f
-    103  f02f		       85 02		      sta	WSYNC
-    104  f031		       85 2a		      sta	HMOVE	; apply the horizontal offets we just set
-    105  f033
-    106  f033							; ------------------------------------------------------------------------------
-    107  f033							; 37 lines of VBLANK minus 2 used above
-    108  f033							; ------------------------------------------------------------------------------
-    109  f033
-    110  f033		       a2 23		      ldx	#35
-    111  f035				   LoopVBlank
-    112  f035		       85 02		      sta	WSYNC
-    113  f037		       ca		      dex
-    114  f038		       d0 fb		      bne	LoopVBlank
-    115  f03a
-    116  f03a		       a9 00		      lda	#0
-    117  f03c		       85 01		      sta	VBLANK	; turn off VBLANK
-    118  f03e
-    119  f03e							; ------------------------------------------------------------------------------
-    120  f03e							; 192 visible scanlines
-    121  f03e							; ------------------------------------------------------------------------------
-    122  f03e
-    123  f03e							; ------------------------------------------------------------------------------
-    124  f03e							; 2-line kernel
-    125  f03e							; ------------------------------------------------------------------------------
-    126  f03e		       a9 00		      lda	#$00	; black room interior
-    127  f040		       85 09		      sta	COLUBK
-    128  f042		       a9 2a		      lda	#$2a	; orange room border
-    129  f044		       85 08		      sta	COLUPF
-    130  f046		       85 07		      sta	COLUP1
-    131  f048		       a9 01		      lda	#$01	; reflected playfield
-    132  f04a		       85 0a		      sta	CTRLPF
-    133  f04c
-    134  f04c		       a2 60		      ldx	#96	; scanline counter
-    135  f04e				   .EachLine
-    136  f04e				   .DrawRoom
-    137  f04e		       8a		      txa
-    138  f04f		       c9 5d		      cmp	#ROOM_BOTTOM_BORDER_START	; top border
-    139  f051		       b0 24		      bcs	.SolidBorder
-    140  f053		       c9 05		      cmp	#ROOM_TOP_BORDER_END	; bottom border
-    141  f055		       90 20		      bcc	.SolidBorder
-    142  f057		       c9 27		      cmp	#SIDE_EXIT_Y_MIN	; left/right doorway
-    143  f059		       90 04		      bcc	.SideBorder
-    144  f05b		       c9 3d		      cmp	#SIDE_EXIT_Y_MAX + 1
-    145  f05d		       90 0d		      bcc	.Doorway
-    146  f05f
-    147  f05f				   .SideBorder
-    148  f05f		       a9 10		      lda	#$10	; narrow side walls only
-    149  f061		       85 0d		      sta	PF0
-    150  f063		       a9 00		      lda	#$00
-    151  f065		       85 0e		      sta	PF1
-    152  f067		       85 0f		      sta	PF2
-    153  f069		       4c 83 f0 	      jmp	.IsPlayer
-    154  f06c
-    155  f06c				   .Doorway
-    156  f06c		       a9 00		      lda	#$00	; opening through both side walls
-    157  f06e		       85 0d		      sta	PF0
-    158  f070		       85 0e		      sta	PF1
-    159  f072		       85 0f		      sta	PF2
-    160  f074		       4c 83 f0 	      jmp	.IsPlayer
-    161  f077
-    162  f077				   .SolidBorder
-    163  f077		       a9 f0		      lda	#$f0
-    164  f079		       85 0d		      sta	PF0
-    165  f07b		       a9 ff		      lda	#$ff
-    166  f07d		       85 0e		      sta	PF1
-    167  f07f		       a9 0f		      lda	#$0f	; leave a central opening in top/bottom walls
-    168  f081		       85 0f		      sta	PF2
-    169  f083
-    170  f083				   .IsPlayer
-    171  f083		       8a		      txa
-    172  f084		       38		      sec		; always set carry before sub
-    173  f085		       e5 81		      sbc	PlayerY
-    174  f087		       c5 08		      cmp	PLAYER_HEIGHT
-    175  f089		       90 02		      bcc	.DrawPlayer
-    176  f08b		       a9 00		      lda	#0	; if not draw empty row from sprite
-    177  f08d
-    178  f08d				   .DrawPlayer
-    179  f08d		       a8		      tay
-    180  f08e		       b9 53 f2 	      lda	PlayerSprite,Y
-    181  f091		       85 1b		      sta	GRP0
-    182  f093		       b9 5b f2 	      lda	PlayerColors,Y
-    183  f096		       85 06		      sta	COLUP0
-    184  f098
-    185  f098		       a9 00		      lda	#$00
-    186  f09a		       85 1c		      sta	GRP1
-    187  f09c		       bd f2 f1 	      lda	BarMask,X
-    188  f09f		       85 1c		      sta	GRP1
-    189  f0a1		       85 02		      sta	WSYNC
-    190  f0a3
-    191  f0a3		       85 02		      sta	WSYNC
-    192  f0a5		       ca		      dex
-    193  f0a6		       d0 a6		      bne	.EachLine
-    194  f0a8
-    195  f0a8							; ------------------------------------------------------------------------------
-    196  f0a8							; Overscan
-    197  f0a8							; ------------------------------------------------------------------------------
-    198  f0a8
-    199  f0a8		       a9 02		      lda	#2
-    200  f0aa		       85 01		      sta	VBLANK
-    201  f0ac
-    202  f0ac		       a2 1e		      ldx	#30
-    203  f0ae				   LoopOverscan
-    204  f0ae		       85 02		      sta	WSYNC
-    205  f0b0		       ca		      dex
-    206  f0b1		       d0 fb		      bne	LoopOverscan
-    207  f0b3
-    208  f0b3		       a9 00		      lda	#0
-    209  f0b5		       85 01		      sta	VBLANK
-    210  f0b7
-    211  f0b7							; ------------------------------------------------------------------------------
-    212  f0b7							; Input handler
-    213  f0b7							; ------------------------------------------------------------------------------
-    214  f0b7				   CheckP0Up
-    215  f0b7		       a9 10		      lda	#%00010000
-    216  f0b9		       2c 80 02 	      bit	SWCHA	; compare to joy
-    217  f0bc		       d0 20		      bne	CheckP0Down
-    218  f0be		       a5 81		      lda	PlayerY
-    219  f0c0		       c9 54		      cmp	#PLAYER_MAX_Y
-    220  f0c2		       90 0a		      bcc	.MoveUp
-    221  f0c4		       a5 80		      lda	PlayerX
-    222  f0c6		       c9 38		      cmp	#DOOR_MIN_X
-    223  f0c8		       90 10		      bcc	.StopUp
-    224  f0ca		       c9 50		      cmp	#DOOR_MAX_X
-    225  f0cc		       b0 0c		      bcs	.StopUp
-    226  f0ce				   .MoveUp
-    227  f0ce		       e6 81		      inc	PlayerY
-    228  f0d0		       20 97 f1 	      jsr	PlayerHitsBar
-    229  f0d3		       90 02		      bcc	.UpDone
-    230  f0d5		       c6 81		      dec	PlayerY
-    231  f0d7				   .UpDone
-    232  f0d7		       4c de f0 	      jmp	CheckP0Down
-    233  f0da				   .StopUp
-    234  f0da		       a9 54		      lda	#PLAYER_MAX_Y
-    235  f0dc		       85 81		      sta	PlayerY
-    236  f0de
-    237  f0de				   CheckP0Down
-    238  f0de		       a9 20		      lda	#%00100000
-    239  f0e0		       2c 80 02 	      bit	SWCHA
-    240  f0e3		       d0 20		      bne	CheckP0Left
-    241  f0e5		       a5 81		      lda	PlayerY
-    242  f0e7		       c9 05		      cmp	#PLAYER_MIN_Y
-    243  f0e9		       b0 0a		      bcs	.MoveDown
-    244  f0eb		       a5 80		      lda	PlayerX
-    245  f0ed		       c9 38		      cmp	#DOOR_MIN_X
-    246  f0ef		       90 10		      bcc	.StopDown
-    247  f0f1		       c9 50		      cmp	#DOOR_MAX_X
-    248  f0f3		       b0 0c		      bcs	.StopDown
-    249  f0f5				   .MoveDown
-    250  f0f5		       c6 81		      dec	PlayerY
-    251  f0f7		       20 97 f1 	      jsr	PlayerHitsBar
-    252  f0fa		       90 02		      bcc	.DownDone
-    253  f0fc		       e6 81		      inc	PlayerY
-    254  f0fe				   .DownDone
-    255  f0fe		       4c 05 f1 	      jmp	CheckP0Left
-    256  f101				   .StopDown
-    257  f101		       a9 05		      lda	#PLAYER_MIN_Y
-    258  f103		       85 81		      sta	PlayerY
-    259  f105
-    260  f105				   CheckP0Left
-    261  f105		       a9 40		      lda	#%01000000
-    262  f107		       2c 80 02 	      bit	SWCHA
-    263  f10a		       d0 42		      bne	CheckP0Right
-    264  f10c		       a5 81		      lda	PlayerY
-    265  f10e		       c9 05		      cmp	#PLAYER_MIN_Y
-    266  f110		       90 06		      bcc	.TopBottomLeft
-    267  f112		       c9 4c		      cmp	#EXIT_TOP_Y
-    268  f114		       b0 02		      bcs	.TopBottomLeft
-    269  f116		       d0 08		      bne	.SideLeft
-    270  f118				   .TopBottomLeft
-    271  f118		       a5 80		      lda	PlayerX
-    272  f11a		       c9 38		      cmp	#DOOR_MIN_X
-    273  f11c		       f0 25		      beq	.StopTopBottomLeft
-    274  f11e		       90 23		      bcc	.StopTopBottomLeft
-    275  f120				   .SideLeft
-    276  f120		       a5 80		      lda	PlayerX
-    277  f122		       c9 00		      cmp	#PLAYER_MIN_X
-    278  f124		       d0 11		      bne	.MoveLeft
-    279  f126		       a5 81		      lda	PlayerY
-    280  f128		       c9 27		      cmp	#DOOR_MIN_Y
-    281  f12a		       90 1e		      bcc	.StopLeft
-    282  f12c		       c9 35		      cmp	#DOOR_MAX_Y
-    283  f12e		       b0 1a		      bcs	.StopLeft
-    284  f130		       a9 8c		      lda	#PLAYER_MAX_X
-    285  f132		       85 80		      sta	PlayerX
-    286  f134		       4c 4e f1 	      jmp	CheckP0Right
-    287  f137							; The side opening currently wraps to the opposite edge until room
-    288  f137							; transitions are implemented.
-    289  f137				   .MoveLeft
-    290  f137		       c6 80		      dec	PlayerX
-    291  f139		       20 97 f1 	      jsr	PlayerHitsBar
-    292  f13c		       90 02		      bcc	.LeftDone
-    293  f13e		       e6 80		      inc	PlayerX
-    294  f140				   .LeftDone
-    295  f140		       4c 4e f1 	      jmp	CheckP0Right
-    296  f143				   .StopTopBottomLeft
-    297  f143		       a9 38		      lda	#DOOR_MIN_X
-    298  f145		       85 80		      sta	PlayerX
-    299  f147		       4c 4e f1 	      jmp	CheckP0Right
-    300  f14a				   .StopLeft
-    301  f14a		       a9 00		      lda	#PLAYER_MIN_X
-    302  f14c		       85 80		      sta	PlayerX
-    303  f14e
-    304  f14e				   CheckP0Right
-    305  f14e		       a9 80		      lda	#%10000000
-    306  f150		       2c 80 02 	      bit	SWCHA
-    307  f153		       d0 42		      bne	EndInputCheck
-    308  f155		       a5 81		      lda	PlayerY
-    309  f157		       c9 05		      cmp	#PLAYER_MIN_Y
-    310  f159		       90 06		      bcc	.TopBottomRight
-    311  f15b		       c9 4c		      cmp	#EXIT_TOP_Y
-    312  f15d		       b0 02		      bcs	.TopBottomRight
-    313  f15f		       d0 08		      bne	.SideRight
-    314  f161				   .TopBottomRight
-    315  f161		       a5 80		      lda	PlayerX
-    316  f163		       c9 50		      cmp	#DOOR_MAX_X
-    317  f165		       f0 25		      beq	.StopTopBottomRight
-    318  f167		       b0 23		      bcs	.StopTopBottomRight
-    319  f169				   .SideRight
-    320  f169		       a5 80		      lda	PlayerX
-    321  f16b		       c9 8c		      cmp	#PLAYER_MAX_X
-    322  f16d		       d0 11		      bne	.MoveRight
-    323  f16f		       a5 81		      lda	PlayerY
-    324  f171		       c9 27		      cmp	#DOOR_MIN_Y
-    325  f173		       90 1e		      bcc	.StopRight
-    326  f175		       c9 35		      cmp	#DOOR_MAX_Y
-    327  f177		       b0 1a		      bcs	.StopRight
-    328  f179		       a9 00		      lda	#PLAYER_MIN_X
-    329  f17b		       85 80		      sta	PlayerX
-    330  f17d		       4c 97 f1 	      jmp	EndInputCheck
-    331  f180				   .MoveRight
-    332  f180		       e6 80		      inc	PlayerX
-    333  f182		       20 97 f1 	      jsr	PlayerHitsBar
-    334  f185		       90 02		      bcc	.RightDone
-    335  f187		       c6 80		      dec	PlayerX
-    336  f189				   .RightDone
-    337  f189		       4c 97 f1 	      jmp	EndInputCheck
-    338  f18c				   .StopTopBottomRight
-    339  f18c		       a9 50		      lda	#DOOR_MAX_X
-    340  f18e		       85 80		      sta	PlayerX
-    341  f190		       4c 97 f1 	      jmp	EndInputCheck
-    342  f193				   .StopRight
-    343  f193		       a9 8c		      lda	#PLAYER_MAX_X
-    344  f195		       85 80		      sta	PlayerX
-    345  f197
-    346  f197				   EndInputCheck
-    347  f197
-    348  f197							; ------------------------------------------------------------------------------
-    349  f197							; Check collisions
-    350  f197							; ------------------------------------------------------------------------------
-    351  f197
-    352  f197							; Returns carry set when the player rectangle overlaps either solid segment of
-    353  f197							; the internal bar. The gap is part of the bar geometry, not a movement hack.
-    354  f197				   PlayerHitsBar
-    355  f197		       a5 80		      lda	PlayerX
-    356  f199		       18		      clc
-    357  f19a		       69 07		      adc	#PLAYER_WIDTH - 1
-    358  f19c		       c9 1c		      cmp	#BAR_X
-    359  f19e		       90 29		      bcc	.NoBarHit
-    360  f1a0		       a5 80		      lda	PlayerX
-    361  f1a2		       c9 24		      cmp	#BAR_X + BAR_WIDTH
-    362  f1a4		       b0 23		      bcs	.NoBarHit
-    363  f1a6
-    364  f1a6		       a5 81		      lda	PlayerY
-    365  f1a8		       18		      clc
-    366  f1a9		       69 07		      adc	#PLAYER_HEIGHT - 1
-    367  f1ab		       c9 1e		      cmp	#BAR_Y
-    368  f1ad		       90 1a		      bcc	.NoBarHit
-    369  f1af		       a5 81		      lda	PlayerY
-    370  f1b1		       c9 2c		      cmp	#BAR_Y + BAR_GAP_MIN
-    371  f1b3		       b0 03		      bcs	.CheckBarLowerSegment
-    372  f1b5		       4c c7 f1 	      jmp	.BarHit
-    373  f1b8
-    374  f1b8				   .CheckBarLowerSegment
-    375  f1b8		       a5 81		      lda	PlayerY
-    376  f1ba		       18		      clc
-    377  f1bb		       69 07		      adc	#PLAYER_HEIGHT - 1
-    378  f1bd		       c9 30		      cmp	#BAR_Y + BAR_GAP_MAX + 1
-    379  f1bf		       90 08		      bcc	.NoBarHit
-    380  f1c1		       a5 81		      lda	PlayerY
-    381  f1c3		       c9 3e		      cmp	#BAR_Y + BAR_HEIGHT
-    382  f1c5		       b0 02		      bcs	.NoBarHit
-    383  f1c7
-    384  f1c7				   .BarHit
-    385  f1c7		       38		      sec
-    386  f1c8		       60		      rts
-    387  f1c9
-    388  f1c9				   .NoBarHit
-    389  f1c9		       18		      clc
-    390  f1ca		       60		      rts
-    391  f1cb
-    392  f1cb							; ------------------------------------------------------------------------------
-    393  f1cb							; Next frame
-    394  f1cb							; ------------------------------------------------------------------------------
-    395  f1cb		       4c 11 f0 	      jmp	StartFrame
-    396  f1ce
-    397  f1ce							; ------------------------------------------------------------------------------
-    398  f1ce							; Subroutines
-    399  f1ce							; ------------------------------------------------------------------------------
-    400  f1ce							; Horizontal positioning conversion
-    401  f1ce							; A is the desired room-space X coordinate. TIA conversion happens here.
-    402  f1ce							; Y is the object type
-    403  f1ce							;   0 = player0, 1 = player1, 2 = missile0, 3 = missile1, 4 = ball
-    404  f1ce							; ------------------------------------------------------------------------------
-    405  f1ce				   SetObjectXPos subroutine
-    406  f1ce		       85 02		      sta	WSYNC	; start new scanline
-    407  f1d0		       38		      sec		; ensure carry flag
-    408  f1d1				   .Div15Loop
-    409  f1d1		       e9 0f		      sbc	#15	; sub 15 from desired X to get coarse location
-    410  f1d3		       b0 fc		      bcs	.Div15Loop	; loop until carry is clear
-    411  f1d5		       49 07		      eor	#7	; put in range -8 to 7
-    412  f1d7					      repeat	4	; shift left 4 times, only want top 4 bits
-    413  f1d7		       0a		      asl
-    412  f1d7					      repend
-    413  f1d8		       0a		      asl
-    412  f1d8					      repend
-    413  f1d9		       0a		      asl
-    412  f1d9					      repend
-    413  f1da		       0a		      asl
-    414  f1db					      repend
-    415  f1db		       99 20 00 	      sta	HMP0,Y	; store the fine offset
-    416  f1de		       99 10 00 	      sta	RESP0,Y	; store the coarse offset
-    417  f1e1		       60		      rts
-    418  f1e2
-    419  f1e2							; ------------------------------------------------------------------------------
-    420  f1e2							; Random using Linear-Feedback Shift Register
-    421  f1e2							; - Generate random number using LFSR
-    422  f1e2							; ------------------------------------------------------------------------------
-    423  f1e2				   SetRandom  subroutine
-    424  f1e2		       a5 84		      lda	Random
-    425  f1e4		       0a		      asl
-    426  f1e5		       45 84		      eor	Random
-    427  f1e7		       0a		      asl
-    428  f1e8		       45 84		      eor	Random
-    429  f1ea		       0a		      asl
-    430  f1eb		       0a		      asl
-    431  f1ec		       45 84		      eor	Random
-    432  f1ee		       0a		      asl
-    433  f1ef		       26 84		      rol	Random	; ok we have LFSR random
-    434  f1f1
-    435  f1f1		       60		      rts
-    436  f1f2
-    437  f1f2							; ------------------------------------------------------------------------------
-    438  f1f2							; ROM Data
-    439  f1f2							; ------------------------------------------------------------------------------
-    440  f1f2							; Bitmaps and colors
-    441  f1f2							; ------------------------------------------------------------------------------
-    442  f1f2				   BarMask
-    443  f1f2					      REPEAT	BAR_Y
-    444  f1f2		       00		      .byte.b	$00
-    443  f1f2					      REPEND
-    444  f1f3		       00		      .byte.b	$00
-    443  f1f3					      REPEND
-    444  f1f4		       00		      .byte.b	$00
-    443  f1f4					      REPEND
-    444  f1f5		       00		      .byte.b	$00
-    443  f1f5					      REPEND
-    444  f1f6		       00		      .byte.b	$00
-    443  f1f6					      REPEND
-    444  f1f7		       00		      .byte.b	$00
-    443  f1f7					      REPEND
-    444  f1f8		       00		      .byte.b	$00
-    443  f1f8					      REPEND
-    444  f1f9		       00		      .byte.b	$00
-    443  f1f9					      REPEND
-    444  f1fa		       00		      .byte.b	$00
-    443  f1fa					      REPEND
-    444  f1fb		       00		      .byte.b	$00
-    443  f1fb					      REPEND
-    444  f1fc		       00		      .byte.b	$00
-    443  f1fc					      REPEND
-    444  f1fd		       00		      .byte.b	$00
-    443  f1fd					      REPEND
-    444  f1fe		       00		      .byte.b	$00
-    443  f1fe					      REPEND
-    444  f1ff		       00		      .byte.b	$00
-    443  f1ff					      REPEND
-    444  f200		       00		      .byte.b	$00
-    443  f200					      REPEND
-    444  f201		       00		      .byte.b	$00
-    443  f201					      REPEND
-    444  f202		       00		      .byte.b	$00
-    443  f202					      REPEND
-    444  f203		       00		      .byte.b	$00
-    443  f203					      REPEND
-    444  f204		       00		      .byte.b	$00
-    443  f204					      REPEND
-    444  f205		       00		      .byte.b	$00
-    443  f205					      REPEND
-    444  f206		       00		      .byte.b	$00
-    443  f206					      REPEND
-    444  f207		       00		      .byte.b	$00
-    443  f207					      REPEND
-    444  f208		       00		      .byte.b	$00
-    443  f208					      REPEND
-    444  f209		       00		      .byte.b	$00
-    443  f209					      REPEND
-    444  f20a		       00		      .byte.b	$00
-    443  f20a					      REPEND
-    444  f20b		       00		      .byte.b	$00
-    443  f20b					      REPEND
-    444  f20c		       00		      .byte.b	$00
-    443  f20c					      REPEND
-    444  f20d		       00		      .byte.b	$00
-    443  f20d					      REPEND
-    444  f20e		       00		      .byte.b	$00
-    443  f20e					      REPEND
-    444  f20f		       00		      .byte.b	$00
-    445  f210					      REPEND
-    446  f210					      REPEAT	BAR_GAP_MIN
-    447  f210		       ff		      .byte.b	$ff
-    446  f210					      REPEND
-    447  f211		       ff		      .byte.b	$ff
-    446  f211					      REPEND
-    447  f212		       ff		      .byte.b	$ff
-    446  f212					      REPEND
-    447  f213		       ff		      .byte.b	$ff
-    446  f213					      REPEND
-    447  f214		       ff		      .byte.b	$ff
-    446  f214					      REPEND
-    447  f215		       ff		      .byte.b	$ff
-    446  f215					      REPEND
-    447  f216		       ff		      .byte.b	$ff
-    446  f216					      REPEND
-    447  f217		       ff		      .byte.b	$ff
-    446  f217					      REPEND
-    447  f218		       ff		      .byte.b	$ff
-    446  f218					      REPEND
-    447  f219		       ff		      .byte.b	$ff
-    446  f219					      REPEND
-    447  f21a		       ff		      .byte.b	$ff
-    446  f21a					      REPEND
-    447  f21b		       ff		      .byte.b	$ff
-    446  f21b					      REPEND
-    447  f21c		       ff		      .byte.b	$ff
-    446  f21c					      REPEND
-    447  f21d		       ff		      .byte.b	$ff
-    448  f21e					      REPEND
-    449  f21e					      REPEAT	BAR_GAP_MAX - BAR_GAP_MIN + 1
-    450  f21e		       00		      .byte.b	$00
-    449  f21e					      REPEND
-    450  f21f		       00		      .byte.b	$00
-    449  f21f					      REPEND
-    450  f220		       00		      .byte.b	$00
-    449  f220					      REPEND
-    450  f221		       00		      .byte.b	$00
-    451  f222					      REPEND
-    452  f222					      REPEAT	BAR_HEIGHT - BAR_GAP_MAX - 1
-    453  f222		       ff		      .byte.b	$ff
-    452  f222					      REPEND
-    453  f223		       ff		      .byte.b	$ff
-    452  f223					      REPEND
-    453  f224		       ff		      .byte.b	$ff
-    452  f224					      REPEND
-    453  f225		       ff		      .byte.b	$ff
-    452  f225					      REPEND
-    453  f226		       ff		      .byte.b	$ff
-    452  f226					      REPEND
-    453  f227		       ff		      .byte.b	$ff
-    452  f227					      REPEND
-    453  f228		       ff		      .byte.b	$ff
-    452  f228					      REPEND
-    453  f229		       ff		      .byte.b	$ff
-    452  f229					      REPEND
-    453  f22a		       ff		      .byte.b	$ff
-    452  f22a					      REPEND
-    453  f22b		       ff		      .byte.b	$ff
-    452  f22b					      REPEND
-    453  f22c		       ff		      .byte.b	$ff
-    452  f22c					      REPEND
-    453  f22d		       ff		      .byte.b	$ff
-    452  f22d					      REPEND
-    453  f22e		       ff		      .byte.b	$ff
-    452  f22e					      REPEND
-    453  f22f		       ff		      .byte.b	$ff
-    454  f230					      REPEND
-    455  f230					      REPEAT	96 - BAR_Y - BAR_HEIGHT + 1
-    456  f230		       00		      .byte.b	$00
-    455  f230					      REPEND
-    456  f231		       00		      .byte.b	$00
-    455  f231					      REPEND
-    456  f232		       00		      .byte.b	$00
-    455  f232					      REPEND
-    456  f233		       00		      .byte.b	$00
-    455  f233					      REPEND
-    456  f234		       00		      .byte.b	$00
-    455  f234					      REPEND
-    456  f235		       00		      .byte.b	$00
-    455  f235					      REPEND
-    456  f236		       00		      .byte.b	$00
-    455  f236					      REPEND
-    456  f237		       00		      .byte.b	$00
-    455  f237					      REPEND
-    456  f238		       00		      .byte.b	$00
-    455  f238					      REPEND
-    456  f239		       00		      .byte.b	$00
-    455  f239					      REPEND
-    456  f23a		       00		      .byte.b	$00
-    455  f23a					      REPEND
-    456  f23b		       00		      .byte.b	$00
-    455  f23b					      REPEND
-    456  f23c		       00		      .byte.b	$00
-    455  f23c					      REPEND
-    456  f23d		       00		      .byte.b	$00
-    455  f23d					      REPEND
-    456  f23e		       00		      .byte.b	$00
-    455  f23e					      REPEND
-    456  f23f		       00		      .byte.b	$00
-    455  f23f					      REPEND
-    456  f240		       00		      .byte.b	$00
-    455  f240					      REPEND
-    456  f241		       00		      .byte.b	$00
-    455  f241					      REPEND
-    456  f242		       00		      .byte.b	$00
-    455  f242					      REPEND
-    456  f243		       00		      .byte.b	$00
-    455  f243					      REPEND
-    456  f244		       00		      .byte.b	$00
-    455  f244					      REPEND
-    456  f245		       00		      .byte.b	$00
-    455  f245					      REPEND
-    456  f246		       00		      .byte.b	$00
-    455  f246					      REPEND
-    456  f247		       00		      .byte.b	$00
-    455  f247					      REPEND
-    456  f248		       00		      .byte.b	$00
-    455  f248					      REPEND
-    456  f249		       00		      .byte.b	$00
-    455  f249					      REPEND
-    456  f24a		       00		      .byte.b	$00
-    455  f24a					      REPEND
-    456  f24b		       00		      .byte.b	$00
-    455  f24b					      REPEND
-    456  f24c		       00		      .byte.b	$00
-    455  f24c					      REPEND
-    456  f24d		       00		      .byte.b	$00
-    455  f24d					      REPEND
-    456  f24e		       00		      .byte.b	$00
-    455  f24e					      REPEND
-    456  f24f		       00		      .byte.b	$00
-    455  f24f					      REPEND
-    456  f250		       00		      .byte.b	$00
-    455  f250					      REPEND
-    456  f251		       00		      .byte.b	$00
-    455  f251					      REPEND
-    456  f252		       00		      .byte.b	$00
-    457  f253					      REPEND
-    458  f253
-    459  f253				   PlayerSprite
-    460  f253		       00		      .byte.b	#%00000000
-    461  f254		       48		      .byte.b	#%01001000
-    462  f255		       fc		      .byte.b	#%11111100
-    463  f256		       78		      .byte.b	#%01111000
-    464  f257		       80		      .byte.b	#%10000000
-    465  f258		       a8		      .byte.b	#%10101000
-    466  f259		       80		      .byte.b	#%10000000
-    467  f25a		       78		      .byte.b	#%01111000
-    468  f25b
-    469  f25b				   PlayerColors
-    470  f25b		       00		      .byte.b	$00
-    471  f25c		       96		      .byte.b	$96
-    472  f25d		       96		      .byte.b	$96
-    473  f25e		       1c		      .byte.b	$1c
-    474  f25f		       1c		      .byte.b	$1c
-    475  f260		       1c		      .byte.b	$1c
-    476  f261		       1c		      .byte.b	$1c
-    477  f262		       1c		      .byte.b	$1c
-    478  f263
-    479  f263							; ------------------------------------------------------------------------------
-    480  f263							; Fill ROM to exactly 4kb
-    481  f263							; ------------------------------------------------------------------------------
-    482  f263
-    483  fffc					      org	$fffc
-    484  fffc		       00 f0		      .word.w	Start	; tell atari where to start when we reset
-    485  fffe		       00 f0		      .word.w	Start	; interupt at $fffe - unused by vcs but makes 4kb
+     57  f00b
+     58  f00b							; ------------------------------------------------------------------------------
+     59  f00b							; Init Variables
+     60  f00b							; ------------------------------------------------------------------------------
+     61  f00b		       a9 26		      lda	#38
+     62  f00d		       85 80		      sta	RoomX
+     63  f00f		       a9 3d		      lda	#61
+     64  f011		       85 81		      sta	RoomY
+     65  f013		       a9 30		      lda	#$30	; player 1 single, missile 1 width = 8 pixels
+     66  f015		       85 05		      sta	NUSIZ1
+     67  f017
+     68  f017							; ------------------------------------------------------------------------------
+     69  f017							; Render
+     70  f017							; ------------------------------------------------------------------------------
+     71  f017				   StartFrame
+     72  f017
+     73  f017							; ------------------------------------------------------------------------------
+     74  f017							; Init VSYNC and VBLANK
+     75  f017							; ------------------------------------------------------------------------------
+     76  f017
+     77  f017		       a9 02		      lda	#2
+     78  f019		       85 01		      sta	VBLANK
+     79  f01b		       85 00		      sta	VSYNC
+     80  f01d
+     81  f01d					      repeat	3
+     82  f01d		       85 02		      sta	WSYNC
+     81  f01d					      repend
+     82  f01f		       85 02		      sta	WSYNC
+     81  f01f					      repend
+     82  f021		       85 02		      sta	WSYNC
+     83  f023					      repend
+     84  f023
+     85  f023		       a9 00		      lda	#0
+     86  f025		       85 00		      sta	VSYNC	; turn off VSYNC
+     87  f027
+     88  f027							; ------------------------------------------------------------------------------
+     89  f027							; Calculations run before VBLANK
+     90  f027							; ------------------------------------------------------------------------------
+     91  f027		       a5 80		      lda	RoomX
+     92  f029		       a0 00		      ldy	#0
+     93  f02b		       20 6b f1 	      jsr	SetObjectXPos	; set player0 x position
+     94  f02e		       a9 1c		      lda	#BAR_X
+     95  f030		       a0 01		      ldy	#1
+     96  f032		       20 6b f1 	      jsr	SetObjectXPos	; reserve player1 position for the bar
+     97  f035		       a9 58		      lda	#HORIZONTAL_BAR_X
+     98  f037		       a0 03		      ldy	#3
+     99  f039		       20 6b f1 	      jsr	SetObjectXPos	; position missile1 for the horizontal bar
+    100  f03c		       85 02		      sta	WSYNC
+    101  f03e		       85 2a		      sta	HMOVE	; apply the horizontal offets we just set
+    102  f040
+    103  f040							; ------------------------------------------------------------------------------
+    104  f040							; 37 lines of VBLANK minus 2 used above
+    105  f040							; ------------------------------------------------------------------------------
+    106  f040
+    107  f040		       a2 23		      ldx	#35
+    108  f042				   LoopVBlank
+    109  f042		       85 02		      sta	WSYNC
+    110  f044		       ca		      dex
+    111  f045		       d0 fb		      bne	LoopVBlank
+    112  f047
+    113  f047		       a9 00		      lda	#0
+    114  f049		       85 01		      sta	VBLANK	; turn off VBLANK
+    115  f04b
+    116  f04b							; ------------------------------------------------------------------------------
+    117  f04b							; 192 visible scanlines
+    118  f04b							; ------------------------------------------------------------------------------
+    119  f04b
+    120  f04b							; ------------------------------------------------------------------------------
+    121  f04b							; 2-line kernel
+    122  f04b							; ------------------------------------------------------------------------------
+    123  f04b		       a9 00		      lda	#$00	; black room interior
+    124  f04d		       85 09		      sta	COLUBK
+    125  f04f		       a9 2a		      lda	#$2a	; orange room border
+    126  f051		       85 08		      sta	COLUPF
+    127  f053		       85 07		      sta	COLUP1
+    128  f055		       a9 1c		      lda	#$1c
+    129  f057		       85 06		      sta	COLUP0
+    130  f059		       a9 01		      lda	#$01	; reflected playfield
+    131  f05b		       85 0a		      sta	CTRLPF
+    132  f05d
+    133  f05d		       a2 60		      ldx	#96	; scanline counter
+    134  f05f				   .EachLine
+    135  f05f				   .DrawRoom
+    136  f05f		       bd 83 f5 	      lda	TileBackground,X
+    137  f062		       85 09		      sta	COLUBK
+    138  f064		       bd 60 f4 	      lda	TilePF0,X
+    139  f067		       85 0d		      sta	PF0
+    140  f069		       bd c1 f4 	      lda	TilePF1,X
+    141  f06c		       85 0e		      sta	PF1
+    142  f06e		       bd 22 f5 	      lda	TilePF2,X
+    143  f071		       85 0f		      sta	PF2
+    144  f073
+    145  f073				   .IsPlayer
+    146  f073		       8a		      txa
+    147  f074		       38		      sec		; always set carry before sub
+    148  f075		       e5 81		      sbc	PlayerY
+    149  f077		       c5 08		      cmp	PLAYER_HEIGHT
+    150  f079		       90 02		      bcc	.DrawPlayer
+    151  f07b		       a9 00		      lda	#0	; if not draw empty row from sprite
+    152  f07d
+    153  f07d				   .DrawPlayer
+    154  f07d		       a8		      tay
+    155  f07e		       b9 c2 f6 	      lda	PlayerSprite,Y
+    156  f081		       85 1b		      sta	GRP0
+    157  f083		       bd 00 f6 	      lda	BarMask,X
+    158  f086		       85 1c		      sta	GRP1
+    159  f088		       bd 61 f6 	      lda	HorizontalBarMask,X
+    160  f08b		       85 1e		      sta	ENAM1
+    161  f08d		       85 02		      sta	WSYNC
+    162  f08f
+    163  f08f		       85 02		      sta	WSYNC
+    164  f091		       ca		      dex
+    165  f092		       d0 cb		      bne	.EachLine
+    166  f094
+    167  f094							; ------------------------------------------------------------------------------
+    168  f094							; Overscan
+    169  f094							; ------------------------------------------------------------------------------
+    170  f094
+    171  f094		       a9 02		      lda	#2
+    172  f096		       85 01		      sta	VBLANK
+    173  f098
+    174  f098		       a2 1e		      ldx	#30
+    175  f09a				   LoopOverscan
+    176  f09a		       85 02		      sta	WSYNC
+    177  f09c		       ca		      dex
+    178  f09d		       d0 fb		      bne	LoopOverscan
+    179  f09f
+    180  f09f		       a9 00		      lda	#0
+    181  f0a1		       85 01		      sta	VBLANK
+    182  f0a3
+    183  f0a3							; ------------------------------------------------------------------------------
+    184  f0a3							; Input handler
+    185  f0a3							; ------------------------------------------------------------------------------
+    186  f0a3							; Movement is 1 unit per frame. Walls come from the shared room tile map
+    187  f0a3							; (PlayerHitsMap). The boundary clamps below are only a safety net; the
+    188  f0a3							; map collision rejects any step into solid tiles.
+    189  f0a3				   CheckP0Up
+    190  f0a3		       a9 10		      lda	#%00010000
+    191  f0a5		       2c 80 02 	      bit	SWCHA	; compare to joy
+    192  f0a8		       d0 16		      bne	CheckP0Down
+    193  f0aa		       a5 81		      lda	PlayerY
+    194  f0ac		       c9 55		      cmp	#PLAYER_MAX_Y
+    195  f0ae		       b0 0c		      bcs	.StopUp
+    196  f0b0		       e6 81		      inc	PlayerY
+    197  f0b2		       20 1a f1 	      jsr	PlayerHitsMap
+    198  f0b5		       90 02		      bcc	.UpDone
+    199  f0b7		       c6 81		      dec	PlayerY
+    200  f0b9				   .UpDone
+    201  f0b9		       4c c0 f0 	      jmp	CheckP0Down
+    202  f0bc				   .StopUp
+    203  f0bc		       a9 55		      lda	#PLAYER_MAX_Y
+    204  f0be		       85 81		      sta	PlayerY
+    205  f0c0
+    206  f0c0				   CheckP0Down
+    207  f0c0		       a9 20		      lda	#%00100000
+    208  f0c2		       2c 80 02 	      bit	SWCHA
+    209  f0c5		       d0 16		      bne	CheckP0Left
+    210  f0c7		       a5 81		      lda	PlayerY
+    211  f0c9		       c9 25		      cmp	#PLAYER_MIN_Y
+    212  f0cb		       90 0c		      bcc	.StopDown
+    213  f0cd		       c6 81		      dec	PlayerY
+    214  f0cf		       20 1a f1 	      jsr	PlayerHitsMap
+    215  f0d2		       90 02		      bcc	.DownDone
+    216  f0d4		       e6 81		      inc	PlayerY
+    217  f0d6				   .DownDone
+    218  f0d6		       4c dd f0 	      jmp	CheckP0Left
+    219  f0d9				   .StopDown
+    220  f0d9		       a9 25		      lda	#PLAYER_MIN_Y
+    221  f0db		       85 81		      sta	PlayerY
+    222  f0dd
+    223  f0dd				   CheckP0Left
+    224  f0dd		       a9 40		      lda	#%01000000
+    225  f0df		       2c 80 02 	      bit	SWCHA
+    226  f0e2		       d0 16		      bne	CheckP0Right
+    227  f0e4		       a5 80		      lda	PlayerX
+    228  f0e6		       c9 08		      cmp	#PLAYER_MIN_X
+    229  f0e8		       90 0c		      bcc	.StopLeft
+    230  f0ea		       c6 80		      dec	PlayerX
+    231  f0ec		       20 1a f1 	      jsr	PlayerHitsMap
+    232  f0ef		       90 02		      bcc	.LeftDone
+    233  f0f1		       e6 80		      inc	PlayerX
+    234  f0f3				   .LeftDone
+    235  f0f3		       4c fa f0 	      jmp	CheckP0Right
+    236  f0f6				   .StopLeft
+    237  f0f6		       a9 08		      lda	#PLAYER_MIN_X
+    238  f0f8		       85 80		      sta	PlayerX
+    239  f0fa
+    240  f0fa				   CheckP0Right
+    241  f0fa		       a9 80		      lda	#%10000000
+    242  f0fc		       2c 80 02 	      bit	SWCHA
+    243  f0ff		       d0 16		      bne	EndInputCheck
+    244  f101		       a5 80		      lda	PlayerX
+    245  f103		       c9 97		      cmp	#PLAYER_MAX_X
+    246  f105		       b0 0c		      bcs	.StopRight
+    247  f107		       e6 80		      inc	PlayerX
+    248  f109		       20 1a f1 	      jsr	PlayerHitsMap
+    249  f10c		       90 02		      bcc	.RightDone
+    250  f10e		       c6 80		      dec	PlayerX
+    251  f110				   .RightDone
+    252  f110		       4c 17 f1 	      jmp	EndInputCheck
+    253  f113				   .StopRight
+    254  f113		       a9 97		      lda	#PLAYER_MAX_X
+    255  f115		       85 80		      sta	PlayerX
+    256  f117
+    257  f117				   EndInputCheck
+    258  f117		       4c 17 f0 	      jmp	StartFrame
+    259  f11a
+    260  f11a							; ------------------------------------------------------------------------------
+    261  f11a							; Check collisions
+    262  f11a							; ------------------------------------------------------------------------------
+    263  f11a							; Tests the proposed 8x8 player footprint against the room tile map.
+    264  f11a							; Horizontal: room pixel -> tile column via >>3 (8 pixel columns).
+    265  f11a							; Vertical:   kernel row -> tile row via (96 - kernelRow) >> 2, because the
+    266  f11a							; kernel renders map row 0 at the top (high kernel row) and the map occupies
+    267  f11a							; 64 kernel rows (16 tile rows). Returns C=0 if clear, C=1 if blocked.
+    268  f11a				   PlayerHitsMap
+    269  f11a		       a5 80		      lda	RoomX
+    270  f11c		       85 87		      sta	CollisionX
+    271  f11e		       18		      clc
+    272  f11f		       69 07		      adc	#PLAYER_WIDTH - 1
+    273  f121		       4a		      lsr
+    274  f122		       4a		      lsr
+    275  f123		       4a		      lsr
+    276  f124		       85 8a		      sta	CollisionEndX	; right tile column
+    277  f126		       a5 87		      lda	CollisionX
+    278  f128		       4a		      lsr
+    279  f129		       4a		      lsr
+    280  f12a		       4a		      lsr
+    281  f12b		       85 88		      sta	CollisionCellX	; left tile column
+    282  f12d
+    283  f12d		       a9 60		      lda	#96
+    284  f12f		       38		      sec
+    285  f130		       e5 81		      sbc	RoomY	; distance from map top to player bottom
+    286  f132		       85 8b		      sta	CollisionEndY	; temp
+    287  f134		       38		      sec
+    288  f135		       e9 07		      sbc	#PLAYER_HEIGHT - 1	; distance from map top to player top
+    289  f137		       4a		      lsr
+    290  f138		       4a		      lsr
+    291  f139		       85 89		      sta	CollisionCellY	; top tile row
+    292  f13b		       a5 8b		      lda	CollisionEndY
+    293  f13d		       4a		      lsr
+    294  f13e		       4a		      lsr
+    295  f13f		       85 8b		      sta	CollisionEndY	; bottom tile row
+    296  f141
+    297  f141				   .CheckRow
+    298  f141		       a6 89		      ldx	CollisionCellY
+    299  f143		       bd 40 f4 	      lda	RoomRowLo,X
+    300  f146		       85 85		      sta	MapPtrLo
+    301  f148		       bd 50 f4 	      lda	RoomRowHi,X
+    302  f14b		       85 86		      sta	MapPtrHi
+    303  f14d		       a4 88		      ldy	CollisionCellX
+    304  f14f				   .CheckCell
+    305  f14f		       b1 85		      lda	(MapPtrLo),Y
+    306  f151		       d0 13		      bne	.MapHit
+    307  f153		       c8		      iny
+    308  f154		       c4 8a		      cpy	CollisionEndX
+    309  f156		       90 f7		      bcc	.CheckCell
+    310  f158		       f0 f5		      beq	.CheckCell
+    311  f15a		       e6 89		      inc	CollisionCellY
+    312  f15c		       a5 89		      lda	CollisionCellY
+    313  f15e		       c5 8b		      cmp	CollisionEndY
+    314  f160		       90 df		      bcc	.CheckRow
+    315  f162		       f0 dd		      beq	.CheckRow
+    316  f164		       18		      clc
+    317  f165		       60		      rts
+    318  f166
+    319  f166				   .MapHit
+    320  f166		       38		      sec
+    321  f167		       60		      rts
+    322  f168
+    323  f168							; ------------------------------------------------------------------------------
+    324  f168							; Next frame
+    325  f168							; ------------------------------------------------------------------------------
+    326  f168		       4c 17 f0 	      jmp	StartFrame
+    327  f16b
+    328  f16b							; ------------------------------------------------------------------------------
+    329  f16b							; Subroutines
+    330  f16b							; ------------------------------------------------------------------------------
+    331  f16b							; Horizontal positioning conversion
+    332  f16b							; A is the desired room-space X coordinate. TIA conversion happens here.
+    333  f16b							; Y is the object type
+    334  f16b							;   0 = player0, 1 = player1, 2 = missile0, 3 = missile1, 4 = ball
+    335  f16b							; ------------------------------------------------------------------------------
+    336  f16b				   SetObjectXPos subroutine
+    337  f16b		       85 02		      sta	WSYNC	; start new scanline
+    338  f16d		       38		      sec		; ensure carry flag
+    339  f16e				   .Div15Loop
+    340  f16e		       e9 0f		      sbc	#15	; sub 15 from desired X to get coarse location
+    341  f170		       b0 fc		      bcs	.Div15Loop	; loop until carry is clear
+    342  f172		       49 07		      eor	#7	; put in range -8 to 7
+    343  f174					      repeat	4	; shift left 4 times, only want top 4 bits
+    344  f174		       0a		      asl
+    343  f174					      repend
+    344  f175		       0a		      asl
+    343  f175					      repend
+    344  f176		       0a		      asl
+    343  f176					      repend
+    344  f177		       0a		      asl
+    345  f178					      repend
+    346  f178		       99 20 00 	      sta	HMP0,Y	; store the fine offset
+    347  f17b		       99 10 00 	      sta	RESP0,Y	; store the coarse offset
+    348  f17e		       60		      rts
+    349  f17f
+    350  f17f							; ------------------------------------------------------------------------------
+    351  f17f							; Random using Linear-Feedback Shift Register
+    352  f17f							; - Generate random number using LFSR
+    353  f17f							; ------------------------------------------------------------------------------
+    354  f17f				   SetRandom  subroutine
+    355  f17f		       a5 84		      lda	Random
+    356  f181		       0a		      asl
+    357  f182		       45 84		      eor	Random
+    358  f184		       0a		      asl
+    359  f185		       45 84		      eor	Random
+    360  f187		       0a		      asl
+    361  f188		       0a		      asl
+    362  f189		       45 84		      eor	Random
+    363  f18b		       0a		      asl
+    364  f18c		       26 84		      rol	Random	; ok we have LFSR random
+    365  f18e
+    366  f18e		       60		      rts
+    367  f18f
+    368  f18f							; ------------------------------------------------------------------------------
+    369  f18f							; ROM Data
+    370  f18f							; ------------------------------------------------------------------------------
+    371  f18f							; Bitmaps and colors
+    372  f18f							; ------------------------------------------------------------------------------
+    373  f300					      org	$f300
+------- FILE generated/level_001_room_001.asm LEVEL 3 PASS 2
+      0  f300					      include	"generated/level_001_room_001.asm"
+      1  f300							; Generated from rooms/level_001_room_001.txt. Do not edit by hand.
+      2  f300		       00 14	   ROOM_TILE_COLUMNS =	20
+      3  f300		       00 10	   ROOM_TILE_ROWS =	16
+      4  f300				   RoomTileMap
+      5  f300		       01 01 01 01*	      .byte.b	$01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01
+      6  f314		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+      7  f328		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+      8  f33c		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+      9  f350		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+     10  f364		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+     11  f378		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+     12  f38c		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+     13  f3a0		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+     14  f3b4		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+     15  f3c8		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+     16  f3dc		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+     17  f3f0		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+     18  f404		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+     19  f418		       01 00 00 00*	      .byte.b	$01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
+     20  f42c		       01 01 01 01*	      .byte.b	$01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01
+     21  f440				   RoomRowLo
+     22  f440		       00 14 28 3c*	      .byte.b	< (RoomTileMap+0*20), < (RoomTileMap+1*20), < (RoomTileMap+2*20), < (RoomTileMap+3*20), < (RoomTileMap+4*20), < (RoomTileMap+5*20), < (RoomTileMap+6*20), < (RoomTileMap+7*20), < (RoomTileMap+8*20), < (RoomTileMap+9*20), < (RoomTileMap+10*20), < (RoomTileMap+11*20), < (RoomTileMap+12*20), < (RoomTileMap+13*20), < (RoomTileMap+14*20), < (RoomTileMap+15*20)
+     23  f450				   RoomRowHi
+     24  f450		       f3 f3 f3 f3*	      .byte.b	> (RoomTileMap+0*20), > (RoomTileMap+1*20), > (RoomTileMap+2*20), > (RoomTileMap+3*20), > (RoomTileMap+4*20), > (RoomTileMap+5*20), > (RoomTileMap+6*20), > (RoomTileMap+7*20), > (RoomTileMap+8*20), > (RoomTileMap+9*20), > (RoomTileMap+10*20), > (RoomTileMap+11*20), > (RoomTileMap+12*20), > (RoomTileMap+13*20), > (RoomTileMap+14*20), > (RoomTileMap+15*20)
+     25  f460				   TilePF0
+     26  f460		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+     27  f474		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $f0, $f0, $f0, $f0, $10, $10, $10
+     28  f488		       10 10 10 10*	      .byte.b	$10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10
+     29  f49c		       10 10 10 10*	      .byte.b	$10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10
+     30  f4b0		       10 10 10 10*	      .byte.b	$10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $f0, $f0, $f0, $f0
+     31  f4c1				   TilePF1
+     32  f4c1		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+     33  f4d5		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $ff, $ff, $ff, $ff, $00, $00, $00
+     34  f4e9		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+     35  f4fd		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+     36  f511		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $ff, $ff, $ff, $ff
+     37  f522				   TilePF2
+     38  f522		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+     39  f536		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $ff, $ff, $ff, $ff, $80, $80, $80
+     40  f54a		       80 80 80 80*	      .byte.b	$80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80
+     41  f55e		       80 80 80 80*	      .byte.b	$80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80
+     42  f572		       80 80 80 80*	      .byte.b	$80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $ff, $ff, $ff, $ff
+     43  f583				   TileBackground
+     44  f583		       00 08 08 08*	      .byte.b	$00, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08
+     45  f597		       08 08 08 08*	      .byte.b	$08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $08, $00, $00, $00, $00, $00, $00, $00
+     46  f5ab		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+     47  f5bf		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+     48  f5d3		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
+------- FILE comparison/lo-a-rad-dragon/main.asm
+    375  f5e4
+    376  f600					      org	$f600
+    377  f600				   BarMask
+    378  f600					      REPEAT	48
+    379  f600		       00		      .byte.b	$00
+    378  f600					      REPEND
+    379  f601		       00		      .byte.b	$00
+    378  f601					      REPEND
+    379  f602		       00		      .byte.b	$00
+    378  f602					      REPEND
+    379  f603		       00		      .byte.b	$00
+    378  f603					      REPEND
+    379  f604		       00		      .byte.b	$00
+    378  f604					      REPEND
+    379  f605		       00		      .byte.b	$00
+    378  f605					      REPEND
+    379  f606		       00		      .byte.b	$00
+    378  f606					      REPEND
+    379  f607		       00		      .byte.b	$00
+    378  f607					      REPEND
+    379  f608		       00		      .byte.b	$00
+    378  f608					      REPEND
+    379  f609		       00		      .byte.b	$00
+    378  f609					      REPEND
+    379  f60a		       00		      .byte.b	$00
+    378  f60a					      REPEND
+    379  f60b		       00		      .byte.b	$00
+    378  f60b					      REPEND
+    379  f60c		       00		      .byte.b	$00
+    378  f60c					      REPEND
+    379  f60d		       00		      .byte.b	$00
+    378  f60d					      REPEND
+    379  f60e		       00		      .byte.b	$00
+    378  f60e					      REPEND
+    379  f60f		       00		      .byte.b	$00
+    378  f60f					      REPEND
+    379  f610		       00		      .byte.b	$00
+    378  f610					      REPEND
+    379  f611		       00		      .byte.b	$00
+    378  f611					      REPEND
+    379  f612		       00		      .byte.b	$00
+    378  f612					      REPEND
+    379  f613		       00		      .byte.b	$00
+    378  f613					      REPEND
+    379  f614		       00		      .byte.b	$00
+    378  f614					      REPEND
+    379  f615		       00		      .byte.b	$00
+    378  f615					      REPEND
+    379  f616		       00		      .byte.b	$00
+    378  f616					      REPEND
+    379  f617		       00		      .byte.b	$00
+    378  f617					      REPEND
+    379  f618		       00		      .byte.b	$00
+    378  f618					      REPEND
+    379  f619		       00		      .byte.b	$00
+    378  f619					      REPEND
+    379  f61a		       00		      .byte.b	$00
+    378  f61a					      REPEND
+    379  f61b		       00		      .byte.b	$00
+    378  f61b					      REPEND
+    379  f61c		       00		      .byte.b	$00
+    378  f61c					      REPEND
+    379  f61d		       00		      .byte.b	$00
+    378  f61d					      REPEND
+    379  f61e		       00		      .byte.b	$00
+    378  f61e					      REPEND
+    379  f61f		       00		      .byte.b	$00
+    378  f61f					      REPEND
+    379  f620		       00		      .byte.b	$00
+    378  f620					      REPEND
+    379  f621		       00		      .byte.b	$00
+    378  f621					      REPEND
+    379  f622		       00		      .byte.b	$00
+    378  f622					      REPEND
+    379  f623		       00		      .byte.b	$00
+    378  f623					      REPEND
+    379  f624		       00		      .byte.b	$00
+    378  f624					      REPEND
+    379  f625		       00		      .byte.b	$00
+    378  f625					      REPEND
+    379  f626		       00		      .byte.b	$00
+    378  f626					      REPEND
+    379  f627		       00		      .byte.b	$00
+    378  f627					      REPEND
+    379  f628		       00		      .byte.b	$00
+    378  f628					      REPEND
+    379  f629		       00		      .byte.b	$00
+    378  f629					      REPEND
+    379  f62a		       00		      .byte.b	$00
+    378  f62a					      REPEND
+    379  f62b		       00		      .byte.b	$00
+    378  f62b					      REPEND
+    379  f62c		       00		      .byte.b	$00
+    378  f62c					      REPEND
+    379  f62d		       00		      .byte.b	$00
+    378  f62d					      REPEND
+    379  f62e		       00		      .byte.b	$00
+    378  f62e					      REPEND
+    379  f62f		       00		      .byte.b	$00
+    380  f630					      REPEND
+    381  f630					      REPEAT	24
+    382  f630		       ff		      .byte.b	$ff
+    381  f630					      REPEND
+    382  f631		       ff		      .byte.b	$ff
+    381  f631					      REPEND
+    382  f632		       ff		      .byte.b	$ff
+    381  f632					      REPEND
+    382  f633		       ff		      .byte.b	$ff
+    381  f633					      REPEND
+    382  f634		       ff		      .byte.b	$ff
+    381  f634					      REPEND
+    382  f635		       ff		      .byte.b	$ff
+    381  f635					      REPEND
+    382  f636		       ff		      .byte.b	$ff
+    381  f636					      REPEND
+    382  f637		       ff		      .byte.b	$ff
+    381  f637					      REPEND
+    382  f638		       ff		      .byte.b	$ff
+    381  f638					      REPEND
+    382  f639		       ff		      .byte.b	$ff
+    381  f639					      REPEND
+    382  f63a		       ff		      .byte.b	$ff
+    381  f63a					      REPEND
+    382  f63b		       ff		      .byte.b	$ff
+    381  f63b					      REPEND
+    382  f63c		       ff		      .byte.b	$ff
+    381  f63c					      REPEND
+    382  f63d		       ff		      .byte.b	$ff
+    381  f63d					      REPEND
+    382  f63e		       ff		      .byte.b	$ff
+    381  f63e					      REPEND
+    382  f63f		       ff		      .byte.b	$ff
+    381  f63f					      REPEND
+    382  f640		       ff		      .byte.b	$ff
+    381  f640					      REPEND
+    382  f641		       ff		      .byte.b	$ff
+    381  f641					      REPEND
+    382  f642		       ff		      .byte.b	$ff
+    381  f642					      REPEND
+    382  f643		       ff		      .byte.b	$ff
+    381  f643					      REPEND
+    382  f644		       ff		      .byte.b	$ff
+    381  f644					      REPEND
+    382  f645		       ff		      .byte.b	$ff
+    381  f645					      REPEND
+    382  f646		       ff		      .byte.b	$ff
+    381  f646					      REPEND
+    382  f647		       ff		      .byte.b	$ff
+    383  f648					      REPEND
+    384  f648					      REPEAT	25
+    385  f648		       00		      .byte.b	$00
+    384  f648					      REPEND
+    385  f649		       00		      .byte.b	$00
+    384  f649					      REPEND
+    385  f64a		       00		      .byte.b	$00
+    384  f64a					      REPEND
+    385  f64b		       00		      .byte.b	$00
+    384  f64b					      REPEND
+    385  f64c		       00		      .byte.b	$00
+    384  f64c					      REPEND
+    385  f64d		       00		      .byte.b	$00
+    384  f64d					      REPEND
+    385  f64e		       00		      .byte.b	$00
+    384  f64e					      REPEND
+    385  f64f		       00		      .byte.b	$00
+    384  f64f					      REPEND
+    385  f650		       00		      .byte.b	$00
+    384  f650					      REPEND
+    385  f651		       00		      .byte.b	$00
+    384  f651					      REPEND
+    385  f652		       00		      .byte.b	$00
+    384  f652					      REPEND
+    385  f653		       00		      .byte.b	$00
+    384  f653					      REPEND
+    385  f654		       00		      .byte.b	$00
+    384  f654					      REPEND
+    385  f655		       00		      .byte.b	$00
+    384  f655					      REPEND
+    385  f656		       00		      .byte.b	$00
+    384  f656					      REPEND
+    385  f657		       00		      .byte.b	$00
+    384  f657					      REPEND
+    385  f658		       00		      .byte.b	$00
+    384  f658					      REPEND
+    385  f659		       00		      .byte.b	$00
+    384  f659					      REPEND
+    385  f65a		       00		      .byte.b	$00
+    384  f65a					      REPEND
+    385  f65b		       00		      .byte.b	$00
+    384  f65b					      REPEND
+    385  f65c		       00		      .byte.b	$00
+    384  f65c					      REPEND
+    385  f65d		       00		      .byte.b	$00
+    384  f65d					      REPEND
+    385  f65e		       00		      .byte.b	$00
+    384  f65e					      REPEND
+    385  f65f		       00		      .byte.b	$00
+    384  f65f					      REPEND
+    385  f660		       00		      .byte.b	$00
+    386  f661					      REPEND
+    387  f661
+    388  f661				   HorizontalBarMask
+    389  f661					      REPEAT	64
+    390  f661		       00		      .byte.b	$00
+    389  f661					      REPEND
+    390  f662		       00		      .byte.b	$00
+    389  f662					      REPEND
+    390  f663		       00		      .byte.b	$00
+    389  f663					      REPEND
+    390  f664		       00		      .byte.b	$00
+    389  f664					      REPEND
+    390  f665		       00		      .byte.b	$00
+    389  f665					      REPEND
+    390  f666		       00		      .byte.b	$00
+    389  f666					      REPEND
+    390  f667		       00		      .byte.b	$00
+    389  f667					      REPEND
+    390  f668		       00		      .byte.b	$00
+    389  f668					      REPEND
+    390  f669		       00		      .byte.b	$00
+    389  f669					      REPEND
+    390  f66a		       00		      .byte.b	$00
+    389  f66a					      REPEND
+    390  f66b		       00		      .byte.b	$00
+    389  f66b					      REPEND
+    390  f66c		       00		      .byte.b	$00
+    389  f66c					      REPEND
+    390  f66d		       00		      .byte.b	$00
+    389  f66d					      REPEND
+    390  f66e		       00		      .byte.b	$00
+    389  f66e					      REPEND
+    390  f66f		       00		      .byte.b	$00
+    389  f66f					      REPEND
+    390  f670		       00		      .byte.b	$00
+    389  f670					      REPEND
+    390  f671		       00		      .byte.b	$00
+    389  f671					      REPEND
+    390  f672		       00		      .byte.b	$00
+    389  f672					      REPEND
+    390  f673		       00		      .byte.b	$00
+    389  f673					      REPEND
+    390  f674		       00		      .byte.b	$00
+    389  f674					      REPEND
+    390  f675		       00		      .byte.b	$00
+    389  f675					      REPEND
+    390  f676		       00		      .byte.b	$00
+    389  f676					      REPEND
+    390  f677		       00		      .byte.b	$00
+    389  f677					      REPEND
+    390  f678		       00		      .byte.b	$00
+    389  f678					      REPEND
+    390  f679		       00		      .byte.b	$00
+    389  f679					      REPEND
+    390  f67a		       00		      .byte.b	$00
+    389  f67a					      REPEND
+    390  f67b		       00		      .byte.b	$00
+    389  f67b					      REPEND
+    390  f67c		       00		      .byte.b	$00
+    389  f67c					      REPEND
+    390  f67d		       00		      .byte.b	$00
+    389  f67d					      REPEND
+    390  f67e		       00		      .byte.b	$00
+    389  f67e					      REPEND
+    390  f67f		       00		      .byte.b	$00
+    389  f67f					      REPEND
+    390  f680		       00		      .byte.b	$00
+    389  f680					      REPEND
+    390  f681		       00		      .byte.b	$00
+    389  f681					      REPEND
+    390  f682		       00		      .byte.b	$00
+    389  f682					      REPEND
+    390  f683		       00		      .byte.b	$00
+    389  f683					      REPEND
+    390  f684		       00		      .byte.b	$00
+    389  f684					      REPEND
+    390  f685		       00		      .byte.b	$00
+    389  f685					      REPEND
+    390  f686		       00		      .byte.b	$00
+    389  f686					      REPEND
+    390  f687		       00		      .byte.b	$00
+    389  f687					      REPEND
+    390  f688		       00		      .byte.b	$00
+    389  f688					      REPEND
+    390  f689		       00		      .byte.b	$00
+    389  f689					      REPEND
+    390  f68a		       00		      .byte.b	$00
+    389  f68a					      REPEND
+    390  f68b		       00		      .byte.b	$00
+    389  f68b					      REPEND
+    390  f68c		       00		      .byte.b	$00
+    389  f68c					      REPEND
+    390  f68d		       00		      .byte.b	$00
+    389  f68d					      REPEND
+    390  f68e		       00		      .byte.b	$00
+    389  f68e					      REPEND
+    390  f68f		       00		      .byte.b	$00
+    389  f68f					      REPEND
+    390  f690		       00		      .byte.b	$00
+    389  f690					      REPEND
+    390  f691		       00		      .byte.b	$00
+    389  f691					      REPEND
+    390  f692		       00		      .byte.b	$00
+    389  f692					      REPEND
+    390  f693		       00		      .byte.b	$00
+    389  f693					      REPEND
+    390  f694		       00		      .byte.b	$00
+    389  f694					      REPEND
+    390  f695		       00		      .byte.b	$00
+    389  f695					      REPEND
+    390  f696		       00		      .byte.b	$00
+    389  f696					      REPEND
+    390  f697		       00		      .byte.b	$00
+    389  f697					      REPEND
+    390  f698		       00		      .byte.b	$00
+    389  f698					      REPEND
+    390  f699		       00		      .byte.b	$00
+    389  f699					      REPEND
+    390  f69a		       00		      .byte.b	$00
+    389  f69a					      REPEND
+    390  f69b		       00		      .byte.b	$00
+    389  f69b					      REPEND
+    390  f69c		       00		      .byte.b	$00
+    389  f69c					      REPEND
+    390  f69d		       00		      .byte.b	$00
+    389  f69d					      REPEND
+    390  f69e		       00		      .byte.b	$00
+    389  f69e					      REPEND
+    390  f69f		       00		      .byte.b	$00
+    389  f69f					      REPEND
+    390  f6a0		       00		      .byte.b	$00
+    391  f6a1					      REPEND
+    392  f6a1					      REPEAT	8
+    393  f6a1		       02		      .byte.b	$02
+    392  f6a1					      REPEND
+    393  f6a2		       02		      .byte.b	$02
+    392  f6a2					      REPEND
+    393  f6a3		       02		      .byte.b	$02
+    392  f6a3					      REPEND
+    393  f6a4		       02		      .byte.b	$02
+    392  f6a4					      REPEND
+    393  f6a5		       02		      .byte.b	$02
+    392  f6a5					      REPEND
+    393  f6a6		       02		      .byte.b	$02
+    392  f6a6					      REPEND
+    393  f6a7		       02		      .byte.b	$02
+    392  f6a7					      REPEND
+    393  f6a8		       02		      .byte.b	$02
+    394  f6a9					      REPEND
+    395  f6a9					      REPEAT	25
+    396  f6a9		       00		      .byte.b	$00
+    395  f6a9					      REPEND
+    396  f6aa		       00		      .byte.b	$00
+    395  f6aa					      REPEND
+    396  f6ab		       00		      .byte.b	$00
+    395  f6ab					      REPEND
+    396  f6ac		       00		      .byte.b	$00
+    395  f6ac					      REPEND
+    396  f6ad		       00		      .byte.b	$00
+    395  f6ad					      REPEND
+    396  f6ae		       00		      .byte.b	$00
+    395  f6ae					      REPEND
+    396  f6af		       00		      .byte.b	$00
+    395  f6af					      REPEND
+    396  f6b0		       00		      .byte.b	$00
+    395  f6b0					      REPEND
+    396  f6b1		       00		      .byte.b	$00
+    395  f6b1					      REPEND
+    396  f6b2		       00		      .byte.b	$00
+    395  f6b2					      REPEND
+    396  f6b3		       00		      .byte.b	$00
+    395  f6b3					      REPEND
+    396  f6b4		       00		      .byte.b	$00
+    395  f6b4					      REPEND
+    396  f6b5		       00		      .byte.b	$00
+    395  f6b5					      REPEND
+    396  f6b6		       00		      .byte.b	$00
+    395  f6b6					      REPEND
+    396  f6b7		       00		      .byte.b	$00
+    395  f6b7					      REPEND
+    396  f6b8		       00		      .byte.b	$00
+    395  f6b8					      REPEND
+    396  f6b9		       00		      .byte.b	$00
+    395  f6b9					      REPEND
+    396  f6ba		       00		      .byte.b	$00
+    395  f6ba					      REPEND
+    396  f6bb		       00		      .byte.b	$00
+    395  f6bb					      REPEND
+    396  f6bc		       00		      .byte.b	$00
+    395  f6bc					      REPEND
+    396  f6bd		       00		      .byte.b	$00
+    395  f6bd					      REPEND
+    396  f6be		       00		      .byte.b	$00
+    395  f6be					      REPEND
+    396  f6bf		       00		      .byte.b	$00
+    395  f6bf					      REPEND
+    396  f6c0		       00		      .byte.b	$00
+    395  f6c0					      REPEND
+    396  f6c1		       00		      .byte.b	$00
+    397  f6c2					      REPEND
+    398  f6c2
+    399  f6c2				   PlayerSprite
+    400  f6c2		       00		      .byte.b	#%00000000
+    401  f6c3		       48		      .byte.b	#%01001000
+    402  f6c4		       fc		      .byte.b	#%11111100
+    403  f6c5		       78		      .byte.b	#%01111000
+    404  f6c6		       80		      .byte.b	#%10000000
+    405  f6c7		       a8		      .byte.b	#%10101000
+    406  f6c8		       80		      .byte.b	#%10000000
+    407  f6c9		       78		      .byte.b	#%01111000
+    408  f6ca
+    409  f6ca				   PlayerColors
+    410  f6ca		       00		      .byte.b	$00
+    411  f6cb		       96		      .byte.b	$96
+    412  f6cc		       96		      .byte.b	$96
+    413  f6cd		       1c		      .byte.b	$1c
+    414  f6ce		       1c		      .byte.b	$1c
+    415  f6cf		       1c		      .byte.b	$1c
+    416  f6d0		       1c		      .byte.b	$1c
+    417  f6d1		       1c		      .byte.b	$1c
+    418  f6d2
+    419  f6d2							; ------------------------------------------------------------------------------
+    420  f6d2							; Fill ROM to exactly 4kb
+    421  f6d2							; ------------------------------------------------------------------------------
+    422  f6d2
+    423  fffc					      org	$fffc
+    424  fffc		       00 f0		      .word.w	Start	; tell atari where to start when we reset
+    425  fffe		       00 f0		      .word.w	Start	; interupt at $fffe - unused by vcs but makes 4kb
 ------- FILE game_4k.asm
