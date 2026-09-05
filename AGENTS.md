@@ -380,3 +380,19 @@ Check upstream license and attribution terms before redistributing or reusing su
 - TIA state persists between scanlines. A kernel must write registers at deterministic points and budget every scanline to 76 CPU cycles.
 - `WSYNC` stalls until the end of the current scanline. Code after `WSYNC` must still fit before the next visible portion.
 - A 4K image uses standard/no bankswitching in Stella. An F6 image is 16K and requires F6 bankswitching.
+
+### Verified Adventure Room-Kernel Pattern
+
+- Adventure stores each room as complete `PF0/PF1/PF2` triples, not as separate
+  features layered with `ORA` during rendering.
+- Its kernel reloads all three playfield registers at deterministic scanline
+  boundaries from a room-definition pointer. Each triple represents a fixed
+  vertical strip, so adding walls changes room data without changing the
+  kernel's cycle count.
+- The current prototype should follow this pattern: derive each visible
+  scanline or fixed-height strip from room geometry, then write all playfield
+  registers from that result. Do not OR feature lookup tables into the
+  existing playfield state.
+- With reflected playfield mode, one PF pattern is mirrored by hardware.
+  A right-side-only horizontal feature requires an asymmetric kernel/data
+  strategy; simply adding bits to PF1/PF2 produces a mirrored feature.

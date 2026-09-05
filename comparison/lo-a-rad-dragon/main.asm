@@ -48,6 +48,9 @@ BAR_X = 28
 BAR_Y = 30
 BAR_WIDTH = 8
 BAR_HEIGHT = 32
+HORIZONTAL_BAR_X = 88
+HORIZONTAL_BAR_Y = 60
+HORIZONTAL_BAR_HEIGHT = 8
 MAP_CELL_SIZE = 4
 MAP_ROW_BYTES = 5
 
@@ -80,6 +83,8 @@ Start:
   lda #50
   sta RoomX
   sta RoomY
+  lda #$30                  ; player 1 single, missile 1 width = 8 pixels
+  sta NUSIZ1
 
 ; ------------------------------------------------------------------------------
 ; Render
@@ -110,7 +115,9 @@ StartFrame:
   lda #BAR_X
   ldy #1
   jsr SetObjectXPos         ; reserve player1 position for the bar
-
+  lda #HORIZONTAL_BAR_X
+  ldy #3
+  jsr SetObjectXPos         ; position missile1 for the horizontal bar
   sta WSYNC
   sta HMOVE                 ; apply the horizontal offets we just set
 
@@ -147,37 +154,11 @@ LoopVBlank:
   ldx #96                   ; scanline counter
 .EachLine:
 .DrawRoom:
-  txa
-  cmp #ROOM_BOTTOM_BORDER_START ; top border
-  bcs .SolidBorder
-  cmp #ROOM_TOP_BORDER_END     ; bottom border
-  bcc .SolidBorder
-  cmp #SIDE_EXIT_Y_MIN      ; left/right doorway
-  bcc .SideBorder
-  cmp #SIDE_EXIT_Y_MAX + 1
-  bcc .Doorway
-
-.SideBorder:
-  lda #$10                  ; narrow side walls only
+  lda RoomPF0,X
   sta PF0
-  lda #$00
+  lda RoomPF1,X
   sta PF1
-  sta PF2
-  jmp .IsPlayer
-
-.Doorway:
-  lda #$00                  ; opening through both side walls
-  sta PF0
-  sta PF1
-  sta PF2
-  jmp .IsPlayer
-
-.SolidBorder:
-  lda #$f0
-  sta PF0
-  lda #$ff
-  sta PF1
-  lda #$0f                  ; leave a central opening in top/bottom walls
+  lda RoomPF2,X
   sta PF2
 
 .IsPlayer:
@@ -194,6 +175,8 @@ LoopVBlank:
   sta GRP0
   lda BarMask,X
   sta GRP1
+  lda HorizontalBarMask,X
+  sta ENAM1
   sta WSYNC
 
   sta WSYNC
@@ -525,6 +508,60 @@ MapRow22: .byte $00, $00, $00, $00, $00
 MapRow23: .byte $00, $00, $00, $00, $00
 
   org $f300
+RoomPF0:
+  REPEAT 5
+    .byte $f0
+  REPEND
+  REPEAT 34
+    .byte $10
+  REPEND
+  REPEAT 22
+    .byte $00
+  REPEND
+  REPEAT 32
+    .byte $10
+  REPEND
+  REPEAT 4
+    .byte $f0
+  REPEND
+
+  org $f400
+RoomPF1:
+  REPEAT 5
+    .byte $ff
+  REPEND
+  REPEAT 34
+    .byte $00
+  REPEND
+  REPEAT 22
+    .byte $00
+  REPEND
+  REPEAT 32
+    .byte $00
+  REPEND
+  REPEAT 4
+    .byte $ff
+  REPEND
+
+  org $f500
+RoomPF2:
+  REPEAT 5
+    .byte $0f
+  REPEND
+  REPEAT 34
+    .byte $00
+  REPEND
+  REPEAT 22
+    .byte $00
+  REPEND
+  REPEAT 32
+    .byte $00
+  REPEND
+  REPEAT 4
+    .byte $0f
+  REPEND
+
+  org $f600
 BarMask:
   REPEAT BAR_Y
     .byte $00
@@ -533,6 +570,17 @@ BarMask:
     .byte $ff
   REPEND
   REPEAT 96 - BAR_Y - BAR_HEIGHT + 1
+    .byte $00
+  REPEND
+
+HorizontalBarMask:
+  REPEAT HORIZONTAL_BAR_Y
+    .byte $00
+  REPEND
+  REPEAT HORIZONTAL_BAR_HEIGHT
+    .byte $02
+  REPEND
+  REPEAT 96 - HORIZONTAL_BAR_Y - HORIZONTAL_BAR_HEIGHT + 1
     .byte $00
   REPEND
 
