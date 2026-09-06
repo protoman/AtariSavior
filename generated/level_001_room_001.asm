@@ -1,7 +1,5 @@
-; Generated from rooms/level_001_room_001.txt. Do not edit by hand.
-ROOM_TILE_COLUMNS = 20
-ROOM_TILE_ROWS = 16
-RoomTileMap:
+; Generated from level_001_room_001.txt. Do not edit by hand.
+Room1RoomTileMap:
   .byte $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01
   .byte $01, $01, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
   .byte $01, $01, $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
@@ -18,13 +16,13 @@ RoomTileMap:
   .byte $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $00, $00
   .byte $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $00, $00
   .byte $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $01, $00, $00
-RoomRowLo:
-  .byte < (RoomTileMap+0*20), < (RoomTileMap+1*20), < (RoomTileMap+2*20), < (RoomTileMap+3*20), < (RoomTileMap+4*20), < (RoomTileMap+5*20), < (RoomTileMap+6*20), < (RoomTileMap+7*20), < (RoomTileMap+8*20), < (RoomTileMap+9*20), < (RoomTileMap+10*20), < (RoomTileMap+11*20), < (RoomTileMap+12*20), < (RoomTileMap+13*20), < (RoomTileMap+14*20), < (RoomTileMap+15*20)
-RoomRowHi:
-  .byte > (RoomTileMap+0*20), > (RoomTileMap+1*20), > (RoomTileMap+2*20), > (RoomTileMap+3*20), > (RoomTileMap+4*20), > (RoomTileMap+5*20), > (RoomTileMap+6*20), > (RoomTileMap+7*20), > (RoomTileMap+8*20), > (RoomTileMap+9*20), > (RoomTileMap+10*20), > (RoomTileMap+11*20), > (RoomTileMap+12*20), > (RoomTileMap+13*20), > (RoomTileMap+14*20), > (RoomTileMap+15*20)
-TilePF0:
+Room1RoomRowLo:
+  .byte < (Room1RoomTileMap+0*20), < (Room1RoomTileMap+1*20), < (Room1RoomTileMap+2*20), < (Room1RoomTileMap+3*20), < (Room1RoomTileMap+4*20), < (Room1RoomTileMap+5*20), < (Room1RoomTileMap+6*20), < (Room1RoomTileMap+7*20), < (Room1RoomTileMap+8*20), < (Room1RoomTileMap+9*20), < (Room1RoomTileMap+10*20), < (Room1RoomTileMap+11*20), < (Room1RoomTileMap+12*20), < (Room1RoomTileMap+13*20), < (Room1RoomTileMap+14*20), < (Room1RoomTileMap+15*20)
+Room1RoomRowHi:
+  .byte > (Room1RoomTileMap+0*20), > (Room1RoomTileMap+1*20), > (Room1RoomTileMap+2*20), > (Room1RoomTileMap+3*20), > (Room1RoomTileMap+4*20), > (Room1RoomTileMap+5*20), > (Room1RoomTileMap+6*20), > (Room1RoomTileMap+7*20), > (Room1RoomTileMap+8*20), > (Room1RoomTileMap+9*20), > (Room1RoomTileMap+10*20), > (Room1RoomTileMap+11*20), > (Room1RoomTileMap+12*20), > (Room1RoomTileMap+13*20), > (Room1RoomTileMap+14*20), > (Room1RoomTileMap+15*20)
+Room1TilePF0:
   .byte $f0, $70, $70, $70, $10, $10, $10, $10, $10, $10, $10, $10, $10, $f0, $f0, $f0
-TilePF1:
+Room1TilePF1:
   .byte $ff, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $ff, $ff, $ff
-TilePF2:
+Room1TilePF2:
   .byte $ff, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $3f, $3f, $3f

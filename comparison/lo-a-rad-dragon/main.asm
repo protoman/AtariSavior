@@ -21,6 +21,10 @@ CollisionCellX  byte
 CollisionCellY  byte
 CollisionEndX   byte
 CollisionEndY   byte
+RoomPFDataLo    byte            ; current room's TilePF0 table address
+RoomPFDataHi    byte
+RoomRowMapLo    byte            ; current room's RoomRowLo table address
+RoomRowMapHi    byte
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -74,6 +78,14 @@ Start:
   sta RoomX               ; spawn centered in the open lane (cols 16-18)
   lda #96
   sta RoomY               ; spawn in tile row 8 (open lane)
+  lda #<Room1TilePF0
+  sta RoomPFDataLo
+  lda #>Room1TilePF0
+  sta RoomPFDataHi
+  lda #<Room1RoomRowLo
+  sta RoomRowMapLo
+  lda #>Room1RoomRowLo
+  sta RoomRowMapHi
 
 ; ------------------------------------------------------------------------------
 ; Render
@@ -151,13 +163,29 @@ LoopVBlank:
   sta ENAM1
   sta Scanline
 
+  lda RoomPFDataLo
+  sta MapPtrLo
+  lda RoomPFDataHi
+  sta MapPtrHi
   ldx #0                    ; tile row counter (row 0 at top of screen)
 .Row:
-  lda TilePF0,X
+; The current room's TilePF0/TilePF1/TilePF2 tables are contiguous 16-byte
+; tables, so one base pointer covers all three registers.
+  txa
+  tay
+  lda (MapPtrLo),Y          ; PF0 = row table + 0
   sta PF0                   ; defines the whole line via reflection
-  lda TilePF1,X
+  tya
+  clc
+  adc #16
+  tay
+  lda (MapPtrLo),Y          ; PF1 = row table + 16
   sta PF1
-  lda TilePF2,X
+  tya
+  clc
+  adc #16
+  tay
+  lda (MapPtrLo),Y          ; PF2 = row table + 32
   sta PF2
   lda #LINES_PER_TILE
   sta LineCount
@@ -228,16 +256,21 @@ CheckP0Down:
   bne CheckP0Left
   lda PlayerY
   cmp #PLAYER_MAX_Y         ; down = larger scanline
-  bcs .StopDown
+  bcs .ExitBottom
   inc PlayerY
   jsr PlayerHitsMap
   bcc .DownDone
   dec PlayerY
 .DownDone:
   jmp CheckP0Left
-.StopDown:
-  lda #PLAYER_MAX_Y
+.ExitBottom:
+; Player reached the bottom edge inside the col 18-19 passage (collision keeps
+; them there in both rooms), so descend: load room 2 and warp the sprite to the
+; top of the screen, keeping RoomX so it stays aligned with the passage.
+  jsr ApplyRoom2
+  lda #PLAYER_MIN_Y
   sta PlayerY
+  jmp CheckP0Left
 
 CheckP0Left:
   lda #%01000000
@@ -319,11 +352,27 @@ PlayerHitsMap:
   stx CollisionEndY          ; bottom tile row
 
 .CheckRow:
-  ldx CollisionCellY
-  lda RoomRowLo,X
+; Resolve the room row base for tile row CollisionCellY. The current room's
+; RoomRowLo and RoomRowHi tables are contiguous 16-byte tables, so a single
+; RoomRowMap pointer plus a +16 offset reaches both.
+  ldy CollisionCellY        ; tile row index (0..15)
+  lda RoomRowMapLo
   sta MapPtrLo
-  lda RoomRowHi,X
+  lda RoomRowMapHi
   sta MapPtrHi
+  lda (MapPtrLo),Y          ; room row base lo byte
+  sta CollisionX            ; stash in scratch (rebuilt by .CheckCell if used)
+  lda RoomRowMapLo
+  clc
+  adc #16                   ; RoomRowHi table = RoomRowLo table + 16
+  sta MapPtrLo
+  lda RoomRowMapHi
+  adc #0
+  sta MapPtrHi
+  lda (MapPtrLo),Y          ; room row base hi byte
+  sta MapPtrHi
+  lda CollisionX
+  sta MapPtrLo              ; MapPtr = room row base address
   ldy CollisionCellX         ; Y = playfield block (0..39)
 .CheckCell:
   cpy #TILE_COLUMNS
@@ -372,6 +421,22 @@ YToCellRow subroutine
   inx
   bne .Div
 .Done:
+  rts
+
+; ------------------------------------------------------------------------------
+; Point the kernel and collision data at room 2. Called on the bottom exit of
+; room 1. The caller resets PlayerY to the top edge; RoomX is preserved so the
+; player stays inside the col 18-19 passage shared by both room maps.
+; ------------------------------------------------------------------------------
+ApplyRoom2 subroutine
+  lda #<Room2TilePF0
+  sta RoomPFDataLo
+  lda #>Room2TilePF0
+  sta RoomPFDataHi
+  lda #<Room2RoomRowLo
+  sta RoomRowMapLo
+  lda #>Room2RoomRowLo
+  sta RoomRowMapHi
   rts
 
 ; ------------------------------------------------------------------------------
@@ -426,6 +491,7 @@ fineAdjustTable EQU fineAdjustBegin - %11110001   ; %11110001 = -241 (start basi
 ; ------------------------------------------------------------------------------
     org $f300
     include "generated/level_001_room_001.asm"
+    include "generated/level_001_room_002.asm"
 
 PlayerSprite:
   .byte #%11110000
