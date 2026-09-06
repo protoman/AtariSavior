@@ -30,8 +30,8 @@ PLAYER_WIDTH = 8
 TILE_COLUMNS = 20
 TILE_ROWS = 16
 LINES_PER_TILE = 12
-PLAYER_MIN_X = 8
-PLAYER_MAX_X = 151
+PLAYER_MIN_X = 4
+PLAYER_MAX_X = 148
 PLAYER_MIN_Y = 12
 PLAYER_MAX_Y = 172
 
@@ -81,8 +81,8 @@ StartFrame:
 ; Horizontal positioning (2 scanlines)
 ; ------------------------------------------------------------------------------
   lda RoomX
-  ldy #0
-  jsr SetObjectXPos         ; set player0 x position
+  ldx #0
+  jsr SetObjectXPos         ; set player0 x position (X = object selector)
   sta WSYNC
   sta HMOVE                 ; apply the horizontal offset we just set
 
@@ -262,23 +262,24 @@ EndInputCheck:
 ; Check collisions
 ; ------------------------------------------------------------------------------
 ; Tests the proposed 8x8 player footprint against the room tile map.
-; Horizontal: room pixel -> tile column via >>3 (8 pixel columns).
+; The 20-column room is drawn by a REFLECTED playfield, so on screen it is a
+; mirrored 40-block cave: playfield block q (q = RoomX>>2, 4 px per block)
+; shows text column q in the left half (q 0..19) and text column 39-q in the
+; right half (q 20..39). Collision therefore maps each covered block back to
+; its text column before reading the map.
 ; Vertical:   screen scanline -> tile row via YToCellRow (/12).
 ; Returns C=0 if clear, C=1 if blocked.
 PlayerHitsMap:
   lda RoomX
-  sta CollisionX
+  lsr
+  lsr
+  sta CollisionCellX         ; first playfield block under the sprite
   clc
+  lda RoomX
   adc #PLAYER_WIDTH - 1
   lsr
   lsr
-  lsr
-  sta CollisionEndX          ; right tile column
-  lda CollisionX
-  lsr
-  lsr
-  lsr
-  sta CollisionCellX         ; left tile column
+  sta CollisionEndX          ; last playfield block under the sprite
 
   lda PlayerY
   jsr YToCellRow
@@ -295,10 +296,23 @@ PlayerHitsMap:
   sta MapPtrLo
   lda RoomRowHi,X
   sta MapPtrHi
-  ldy CollisionCellX
+  ldy CollisionCellX         ; Y = playfield block (0..39)
 .CheckCell:
+  cpy #TILE_COLUMNS
+  bcc .LeftBlock             ; q < 20 -> text column = q
+  lda #39
+  sec
+  sty CollisionX
+  sbc CollisionX             ; q >= 20 -> text column = 39 - q (mirror)
+  tay
   lda (MapPtrLo),Y
   bne .MapHit
+  ldy CollisionX
+  jmp .NextCell
+.LeftBlock:
+  lda (MapPtrLo),Y
+  bne .MapHit
+.NextCell:
   iny
   cpy CollisionEndX
   bcc .CheckCell
@@ -335,22 +349,47 @@ YToCellRow subroutine
 ; ------------------------------------------------------------------------------
 ; Horizontal positioning conversion
 ; A is the desired room-space X coordinate. TIA conversion happens here.
-; Y is the object type
-;   0 = player0, 1 = player1, 2 = missile0, 3 = missile1, 4 = ball
+; X is the object type (0 = player0, 1 = player1, ...).
+; Andrew Davie session-24 routine: rolls the divide-by-15 and the delay loop
+; into one unit, and the page-aligned fineAdjustTable guarantees every RESP0
+; write lands on the same clock grid, so the sprite's LEFT edge maps 1:1 to
+; the requested pixel (0..159). Must be followed by HMOVE during HBLANK.
 ; ------------------------------------------------------------------------------
 SetObjectXPos subroutine
-  sta WSYNC                 ; start new scanline
+  sta WSYNC                 ; sync to start of scanline
   sec                       ; ensure carry flag
 .Div15Loop
-  sbc #15                   ; sub 15 from desired X to get coarse location
+  sbc #15                   ; subtract 15: coarse delay + remainder combined
   bcs .Div15Loop            ; loop until carry is clear
-  eor #7                    ; put in range -8 to 7
-  repeat 4                  ; shift left 4 times, only want top 4 bits
-    asl
-  repend
-  sta HMP0,Y                ; store the fine offset
-  sta RESP0,Y               ; store the coarse offset
+  tay                       ; Y = remainder in -15..-1
+  lda fineAdjustTable,Y     ; 5 cycles (page-cross guaranteed) -> fine offset
+  sta HMP0,X                ; store the fine offset
+  sta RESP0,X               ; store the coarse offset
   rts
+
+; ------------------------------------------------------------------------------
+; Fine-adjust table for SetObjectXPos. MUST be page-aligned ($xx00): the
+; indexed load then always crosses a page boundary, provides the 5-cycle
+; timing the routine depends on for a pixel-accurate RESP0 strobe.
+; ------------------------------------------------------------------------------
+    org $f200
+fineAdjustBegin:
+  .byte %01110000           ; left 7
+  .byte %01100000           ; left 6
+  .byte %01010000           ; left 5
+  .byte %01000000           ; left 4
+  .byte %00110000           ; left 3
+  .byte %00100000           ; left 2
+  .byte %00010000           ; left 1
+  .byte %00000000           ; no movement
+  .byte %11110000           ; right 1
+  .byte %11100000           ; right 2
+  .byte %11010000           ; right 3
+  .byte %11000000           ; right 4
+  .byte %10110000           ; right 5
+  .byte %10100000           ; right 6
+  .byte %10010000           ; right 7
+fineAdjustTable EQU fineAdjustBegin - %11110001   ; %11110001 = -241 (start basis)
 
 ; ------------------------------------------------------------------------------
 ; ROM Data
