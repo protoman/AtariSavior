@@ -57,28 +57,30 @@ def pf_values(row: str) -> tuple[int, int, int]:
     return pf0, pf1, pf2
 
 
-def emit(rows: list[str], output: Path) -> None:
+def emit(rows: list[str], output: Path, prefix: str = "", source: str = "room") -> None:
     triples = [pf_values(row) for row in rows]
+    map_name = prefix + "RoomTileMap"
 
     lines = [
-        "; Generated from rooms/level_001_room_001.txt. Do not edit by hand.",
-        f"ROOM_TILE_COLUMNS = {WIDTH}",
-        f"ROOM_TILE_ROWS = {HEIGHT}",
-        "RoomTileMap:",
+        f"; Generated from {source}. Do not edit by hand.",
     ]
+    if not prefix:
+        lines.append(f"ROOM_TILE_COLUMNS = {WIDTH}")
+        lines.append(f"ROOM_TILE_ROWS = {HEIGHT}")
+    lines.append(f"{map_name}:")
     for row in rows:
         bytes_ = [1 if cell == "#" else 0 for cell in row]
         lines.append("  .byte " + ", ".join(f"${b:02x}" for b in bytes_))
 
-    lines.append("RoomRowLo:")
+    lines.append(f"{prefix}RoomRowLo:")
     lines.append("  .byte " + ", ".join(
-        f"< (RoomTileMap+{row}*{WIDTH})" for row in range(HEIGHT)))
-    lines.append("RoomRowHi:")
+        f"< ({map_name}+{row}*{WIDTH})" for row in range(HEIGHT)))
+    lines.append(f"{prefix}RoomRowHi:")
     lines.append("  .byte " + ", ".join(
-        f"> (RoomTileMap+{row}*{WIDTH})" for row in range(HEIGHT)))
+        f"> ({map_name}+{row}*{WIDTH})" for row in range(HEIGHT)))
 
     for name, register in zip(("TilePF0", "TilePF1", "TilePF2"), range(3)):
-        lines.append(f"{name}:")
+        lines.append(f"{prefix}{name}:")
         lines.append("  .byte " + ", ".join(
             f"${triple[register]:02x}" for triple in triples))
 
@@ -86,12 +88,13 @@ def emit(rows: list[str], output: Path) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: convert_room.py INPUT.txt OUTPUT.asm", file=sys.stderr)
+    if len(sys.argv) not in (3, 4):
+        print("usage: convert_room.py INPUT.txt OUTPUT.asm [PREFIX]", file=sys.stderr)
         return 2
+    prefix = sys.argv[3] if len(sys.argv) == 4 else ""
     try:
         rows = read_room(Path(sys.argv[1]))
-        emit(rows, Path(sys.argv[2]))
+        emit(rows, Path(sys.argv[2]), prefix=prefix, source=Path(sys.argv[1]).name)
     except (OSError, ValueError) as error:
         print(error, file=sys.stderr)
         return 1
