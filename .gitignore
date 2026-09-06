@@ -1,0 +1,11 @@
+# Build artifacts
+savior.bin
+*.lst
+*.bin
+a.out
+session.log
+tmp/
+__pycache__/
+tools/editor/cmake-build-debug/
+tools/editor/build/
+.idea/
