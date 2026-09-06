@@ -26,14 +26,28 @@ CollisionEndY   byte
 ; Setup consts
 ; ------------------------------------------------------------------------------
 PLAYER_HEIGHT = 8
-PLAYER_WIDTH = 8
+PLAYER_WIDTH = 4
+; The visible sprite is drawn offset (RoomX - rendered edge) LEFT of the
+; logical RoomX by the TIA fine/coarse positioning (SetObjectXPos). Collision
+; must check the VISIBLE footprint, so the tile-block lookup is shifted by this
+; offset. Fits BOTH earlier debugger reads: left stop RoomX=18 (with offset 6)
+; showed the left edge at ~10-11; right stop RoomX=150 showed the right edge at
+; 146 = RoomX - 7 + 3. So the collision offset is 7.
+PLAYER_X_RENDER_OFFSET = 7
 TILE_COLUMNS = 20
 TILE_ROWS = 16
 LINES_PER_TILE = 12
-PLAYER_MIN_X = 4
-PLAYER_MAX_X = 148
-PLAYER_MIN_Y = 12
-PLAYER_MAX_Y = 172
+; Boundary clamps let the player reach all four screen extremes (rooms will
+; connect on every side). Walls still stop the player via collision; these only
+; permit a fully-visible sprite flush with each edge:
+; - LEFT:   visible left  = RoomX - OFFSET = 0        -> RoomX >= 7
+; - RIGHT:  visible right = RoomX - OFFSET + 3 = 159  -> RoomX <= 163
+; - TOP:    visible top   = PlayerY = 0                -> PlayerY >= 0
+; - BOTTOM: visible bottom = PlayerY + 7 = 191        -> PlayerY <= 184
+PLAYER_MIN_X = 7
+PLAYER_MAX_X = 163
+PLAYER_MIN_Y = 0
+PLAYER_MAX_Y = 184
 
 PlayerX = RoomX
 PlayerY = RoomY
@@ -271,11 +285,15 @@ EndInputCheck:
 ; Returns C=0 if clear, C=1 if blocked.
 PlayerHitsMap:
   lda RoomX
+  sec
+  sbc #PLAYER_X_RENDER_OFFSET  ; convert to visible sprite left edge
   lsr
   lsr
-  sta CollisionCellX         ; first playfield block under the sprite
+  sta CollisionCellX           ; first playfield block under the sprite
   clc
   lda RoomX
+  sec
+  sbc #PLAYER_X_RENDER_OFFSET
   adc #PLAYER_WIDTH - 1
   lsr
   lsr
@@ -400,14 +418,14 @@ fineAdjustTable EQU fineAdjustBegin - %11110001   ; %11110001 = -241 (start basi
     include "generated/level_001_room_001.asm"
 
 PlayerSprite:
-  .byte #%11111111
-  .byte #%11111111
-  .byte #%11111111
-  .byte #%11111111
-  .byte #%11111111
-  .byte #%11111111
-  .byte #%11111111
-  .byte #%11111111
+  .byte #%11110000
+  .byte #%11110000
+  .byte #%11110000
+  .byte #%11110000
+  .byte #%11110000
+  .byte #%11110000
+  .byte #%11110000
+  .byte #%11110000
 
 ; ------------------------------------------------------------------------------
 ; Fill ROM to exactly 4kb

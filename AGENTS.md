@@ -300,6 +300,18 @@ dasm bank3.asm -f3 -obank3.bin
 cat bank0.bin bank1.bin bank2.bin bank3.bin > rom.bin
 ```
 
+## Development Workflow - Baby Steps
+
+This project follows an incremental development approach:
+- Make **small, focused changes** (one fix or feature at a time)
+- **Test after each change** - ask user to verify in Stella before proceeding
+- If something breaks, revert or fix before continuing
+- Document any regressions or side effects found during testing
+- Only add complexity after the current change is confirmed working
+
+This prevents cascading issues common in Atari 2600 development where
+timing, rendering, and input are tightly coupled.
+
 ## Important Conventions
 - All code follows 6502 little-endian conventions
 - DASM syntax: `label: instruction operands ; comment`
