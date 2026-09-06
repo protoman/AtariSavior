@@ -1,7 +1,7 @@
 # Atari 2600 Development Notes
 
 ## CURRENT PROTOTYPE ARCHITECTURE (HERO-direct, supersedes tile-budget notes)
-- `game_4k.asm` -> `comparison/lo-a-rad-dragon/main.asm` + `generated/level_001_room_001.asm`.
+- `game_4k.asm` -> `comparison/lo-a-rad-dragon/main.asm` + `generated/level_001_room_001.asm` + `generated/level_001_room_002.asm`.
 - Exactly HERO's rendering model: **reflected playfield with playfield priority
   (CTRLPF=$05), symmetric cave, player as a plain sprite over it.** No
   asymmetric PF2-right rewrites, no menu region, no 96-row/kernel-units,
@@ -11,15 +11,23 @@
 - `tools/convert_room.py` emits one PF0/PF1/PF2 triple per tile row (kernel
   writes each register ONCE per 12-line band; TIA persists) plus a 1-byte-per-
   tile RoomTileMap + RoomRowLo/Hi for collision. Render and collision both
-  derive from this one file.
+  derive from this one file. Supports a PREFIX argument so multiple rooms can
+  coexist in the same ROM without symbol collisions.
 - Kernel: per scanline `WSYNC`, sprite byte written when `Scanline - PlayerY`
   in 0..7 (inline; WSYNC absorbs jitter, only constraint is GRP0 lands in
   HBLANK, < ~41 cycles). Coordinates are direct: `PlayerY` = scanline 0..191,
   `PlayerX` = room pixel 0..159 -> TIA via `SetObjectXPos`. Tile row from scanline
   = `/12` (YToCellRow), column = `/8`. Tile rows are drawn top-to-bottom (0..15);
   pressing up DECREASES `PlayerY` (scanline 0 is the top of the screen).
-- Constants: PLAYER_MIN_X=8, PLAYER_MAX_X=151, PLAYER_MIN_Y=12, PLAYER_MAX_Y=172
-  (keeps the 8-tall sprite inside open rows 1..14).
+- Constants: PLAYER_MIN_X=4, PLAYER_MAX_X=163, PLAYER_MIN_Y=0, PLAYER_MAX_Y=184
+  (keeps the 8-tall sprite flush with the screen edges in open passages).
+- **Room system:** `RoomDataTable` (ROM, per room: TilePF0 ptr + RoomRowLo ptr)
+  and `RoomConnections` (ROM, per room: up/down/left/right target index, $ff =
+  none). `RoomNo` (ZP) indexes into both. `EnterRoom` loads the pointers for a
+  given room. `ExitRoomUp`/`ExitRoomDown` follow the current room's connection
+  and place the player at the opposite edge. Vertical exits preserve RoomX so
+  the player stays in the aligned passage. `convert_room.py` builds each room
+  file with prefixed symbols (Room1*, Room2*) to avoid collisions.
 
 ## Hardware Architecture
 

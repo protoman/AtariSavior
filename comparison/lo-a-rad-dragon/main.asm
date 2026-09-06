@@ -25,6 +25,7 @@ RoomPFDataLo    byte            ; current room's TilePF0 table address
 RoomPFDataHi    byte
 RoomRowMapLo    byte            ; current room's RoomRowLo table address
 RoomRowMapHi    byte
+RoomNo          byte            ; current room index into RoomDataTable
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -57,6 +58,13 @@ PLAYER_MAX_X = 163
 PLAYER_MIN_Y = 0
 PLAYER_MAX_Y = 184
 
+; Room connection directions: index into each room's RoomConnections entry.
+ROOM_UP = 0
+ROOM_DOWN = 1
+ROOM_LEFT = 2
+ROOM_RIGHT = 3
+ROOM_NONE = $ff
+
 PlayerX = RoomX
 PlayerY = RoomY
 
@@ -78,14 +86,8 @@ Start:
   sta RoomX               ; spawn centered in the open lane (cols 16-18)
   lda #96
   sta RoomY               ; spawn in tile row 8 (open lane)
-  lda #<Room1TilePF0
-  sta RoomPFDataLo
-  lda #>Room1TilePF0
-  sta RoomPFDataHi
-  lda #<Room1RoomRowLo
-  sta RoomRowMapLo
-  lda #>Room1RoomRowLo
-  sta RoomRowMapHi
+  lda #0
+  jsr EnterRoom           ; start in room 0 (room 1 data)
 
 ; ------------------------------------------------------------------------------
 ; Render
@@ -239,16 +241,16 @@ CheckP0Up:
   bne CheckP0Down
   lda PlayerY
   cmp #PLAYER_MIN_Y         ; up = smaller scanline
-  bcc .StopUp
+  beq .ExitTop              ; at the top edge -> try the room's up exit
   dec PlayerY
   jsr PlayerHitsMap
   bcc .UpDone
   inc PlayerY
 .UpDone:
   jmp CheckP0Down
-.StopUp:
-  lda #PLAYER_MIN_Y
-  sta PlayerY
+.ExitTop:
+  jsr ExitRoomUp
+  jmp CheckP0Down
 
 CheckP0Down:
   lda #%00100000
@@ -264,12 +266,10 @@ CheckP0Down:
 .DownDone:
   jmp CheckP0Left
 .ExitBottom:
-; Player reached the bottom edge inside the col 18-19 passage (collision keeps
-; them there in both rooms), so descend: load room 2 and warp the sprite to the
-; top of the screen, keeping RoomX so it stays aligned with the passage.
-  jsr ApplyRoom2
-  lda #PLAYER_MIN_Y
-  sta PlayerY
+; Player reached the bottom edge inside an open passage (collision keeps them
+; there, since reaching the edge requires a clear footprint). Follow the room's
+; down connection; RoomX is preserved to stay aligned with the passage.
+  jsr ExitRoomDown
   jmp CheckP0Left
 
 CheckP0Left:
@@ -424,19 +424,56 @@ YToCellRow subroutine
   rts
 
 ; ------------------------------------------------------------------------------
-; Point the kernel and collision data at room 2. Called on the bottom exit of
-; room 1. The caller resets PlayerY to the top edge; RoomX is preserved so the
-; player stays inside the col 18-19 passage shared by both room maps.
+; EnterRoom: point the kernel and collision data at room A (0-based room index).
+; Sets RoomNo and reloads the PF data and row-map pointers from RoomDataTable.
+; RoomX/RoomY are left to the caller so each exit can pick the entry edge.
 ; ------------------------------------------------------------------------------
-ApplyRoom2 subroutine
-  lda #<Room2TilePF0
+EnterRoom subroutine
+  sta RoomNo
+  asl
+  asl                       ; room * 4 (two .word entries per room)
+  tax
+  lda RoomDataTable,X
   sta RoomPFDataLo
-  lda #>Room2TilePF0
+  lda RoomDataTable+1,X
   sta RoomPFDataHi
-  lda #<Room2RoomRowLo
+  lda RoomDataTable+2,X
   sta RoomRowMapLo
-  lda #>Room2RoomRowLo
+  lda RoomDataTable+3,X
   sta RoomRowMapHi
+  rts
+
+; ------------------------------------------------------------------------------
+; ExitRoomUp / ExitRoomDown: follow the current room's up/down connection. If a
+; target room exists, enter it at the opposite edge; otherwise stay put. Vertical
+; exits preserve RoomX so the player stays in the shared passage.
+; ------------------------------------------------------------------------------
+ExitRoomUp subroutine
+  lda RoomNo
+  asl
+  asl
+  tax
+  lda RoomConnections+ROOM_UP,X
+  cmp #ROOM_NONE
+  beq .NoExit
+  jsr EnterRoom
+  lda #PLAYER_MAX_Y
+  sta PlayerY               ; enter at the bottom edge
+.NoExit:
+  rts
+
+ExitRoomDown subroutine
+  lda RoomNo
+  asl
+  asl
+  tax
+  lda RoomConnections+ROOM_DOWN,X
+  cmp #ROOM_NONE
+  beq .NoExit
+  jsr EnterRoom
+  lda #PLAYER_MIN_Y
+  sta PlayerY               ; enter at the top edge
+.NoExit:
   rts
 
 ; ------------------------------------------------------------------------------
@@ -461,30 +498,6 @@ SetObjectXPos subroutine
   rts
 
 ; ------------------------------------------------------------------------------
-; Fine-adjust table for SetObjectXPos. MUST be page-aligned ($xx00): the
-; indexed load then always crosses a page boundary, provides the 5-cycle
-; timing the routine depends on for a pixel-accurate RESP0 strobe.
-; ------------------------------------------------------------------------------
-    org $f200
-fineAdjustBegin:
-  .byte %01110000           ; left 7
-  .byte %01100000           ; left 6
-  .byte %01010000           ; left 5
-  .byte %01000000           ; left 4
-  .byte %00110000           ; left 3
-  .byte %00100000           ; left 2
-  .byte %00010000           ; left 1
-  .byte %00000000           ; no movement
-  .byte %11110000           ; right 1
-  .byte %11100000           ; right 2
-  .byte %11010000           ; right 3
-  .byte %11000000           ; right 4
-  .byte %10110000           ; right 5
-  .byte %10100000           ; right 6
-  .byte %10010000           ; right 7
-fineAdjustTable EQU fineAdjustBegin - %11110001   ; %11110001 = -241 (start basis)
-
-; ------------------------------------------------------------------------------
 ; ROM Data
 ; ------------------------------------------------------------------------------
 ; Bitmaps and colors
@@ -502,6 +515,49 @@ PlayerSprite:
   .byte #%11110000
   .byte #%11110000
   .byte #%11110000
+
+; ------------------------------------------------------------------------------
+; Room data: one (TilePF0, RoomRowLo) word pair per room, indexed by RoomNo.
+; EntryRoom multiplies by 4 and reads contiguously from here.
+; ------------------------------------------------------------------------------
+RoomDataTable:
+  .word Room1TilePF0, Room1RoomRowLo     ; room 0
+  .word Room2TilePF0, Room2RoomRowLo     ; room 1
+
+; ------------------------------------------------------------------------------
+; Room connections: up/down/left/right target room index per room ($ff = none).
+; Order matches RoomDataTable. Vertical exits preserve RoomX so the player
+; stays in the passage that is horizontally aligned between connected rooms.
+; ------------------------------------------------------------------------------
+RoomConnections:
+  .byte ROOM_NONE, $01,   ROOM_NONE, ROOM_NONE  ; room 0: down -> room 1
+  .byte $00,       ROOM_NONE, ROOM_NONE, ROOM_NONE  ; room 1: up   -> room 0
+
+; ------------------------------------------------------------------------------
+; Fine-adjust table for SetObjectXPos. MUST be page-aligned ($xx00): the
+; indexed load then always crosses a page boundary, provides the 5-cycle
+; timing the routine depends on for a pixel-accurate RESP0 strobe. Placed at
+; $f700 to sit after the room data (room includes + sprite + tables end at
+; ~$f638) and before the interrupt vectors.
+; ------------------------------------------------------------------------------
+    org $f700
+fineAdjustBegin:
+  .byte %01110000           ; left 7
+  .byte %01100000           ; left 6
+  .byte %01010000           ; left 5
+  .byte %01000000           ; left 4
+  .byte %00110000           ; left 3
+  .byte %00100000           ; left 2
+  .byte %00010000           ; left 1
+  .byte %00000000           ; no movement
+  .byte %11110000           ; right 1
+  .byte %11100000           ; right 2
+  .byte %11010000           ; right 3
+  .byte %11000000           ; right 4
+  .byte %10110000           ; right 5
+  .byte %10100000           ; right 6
+  .byte %10010000           ; right 7
+fineAdjustTable EQU fineAdjustBegin - %11110001   ; %11110001 = -241 (start basis)
 
 ; ------------------------------------------------------------------------------
 ; Fill ROM to exactly 4kb
