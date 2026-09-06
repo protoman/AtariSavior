@@ -27,24 +27,28 @@ CollisionEndY   byte
 ; ------------------------------------------------------------------------------
 PLAYER_HEIGHT = 8
 PLAYER_WIDTH = 4
-; The visible sprite is drawn offset (RoomX - rendered edge) LEFT of the
-; logical RoomX by the TIA fine/coarse positioning (SetObjectXPos). Collision
-; must check the VISIBLE footprint, so the tile-block lookup is shifted by this
-; offset. Fits BOTH earlier debugger reads: left stop RoomX=18 (with offset 6)
-; showed the left edge at ~10-11; right stop RoomX=150 showed the right edge at
-; 146 = RoomX - 7 + 3. So the collision offset is 7.
-PLAYER_X_RENDER_OFFSET = 7
+; The visible sprite is drawn OFF SET LEFT of logical RoomX by the TIA
+; fine/coarse positioning (SetObjectXPos). That offset is NOT a constant:
+; verified empirically at the wall stops (mini-map pixel reads + RoomX):
+;   X=8  (thin  left)  visible-left 4  -> offset 4
+;   X=16 (thick left)  visible-left 9  -> offset 7
+;   X=147(thick right) visible-left 140 -> offset 7
+; This matches the coarse/fine model: for the FIRST coarse bin (RoomX < 15)
+; RESP0 lands at pixel 3 (not 0), giving offset 4; for RoomX >= 15 RESP0 lands
+; on the n*15 grid, giving a constant offset 7. So collision must subtract 4
+; below X=15 and 7 at X>=15. See visible-left computation in PlayerHitsMap.
 TILE_COLUMNS = 20
 TILE_ROWS = 16
 LINES_PER_TILE = 12
 ; Boundary clamps let the player reach all four screen extremes (rooms will
 ; connect on every side). Walls still stop the player via collision; these only
 ; permit a fully-visible sprite flush with each edge:
-; - LEFT:   visible left  = RoomX - OFFSET = 0        -> RoomX >= 7
-; - RIGHT:  visible right = RoomX - OFFSET + 3 = 159  -> RoomX <= 163
+; - LEFT:   offset 4 when RoomX<15, 7 when >=15; visible left = 0 at RoomX=4
+; - RIGHT:  offset 7 at RoomX>=15 -> visible right = RoomX - 7 + 3 = 159 -> RoomX <= 163
+;          (160 is the runtime stop; clamp is a wider safety net)
 ; - TOP:    visible top   = PlayerY = 0                -> PlayerY >= 0
 ; - BOTTOM: visible bottom = PlayerY + 7 = 191        -> PlayerY <= 184
-PLAYER_MIN_X = 7
+PLAYER_MIN_X = 4
 PLAYER_MAX_X = 163
 PLAYER_MIN_Y = 0
 PLAYER_MAX_Y = 184
@@ -285,19 +289,25 @@ EndInputCheck:
 ; Returns C=0 if clear, C=1 if blocked.
 PlayerHitsMap:
   lda RoomX
+  cmp #15
+  bcs .VisibleOffset7
   sec
-  sbc #PLAYER_X_RENDER_OFFSET  ; convert to visible sprite left edge
+  sbc #4                    ; RoomX < 15: RESP lands at px 3 -> visible left = X-4
+  jmp .HaveVisibleLeft
+.VisibleOffset7:
+  sec
+  sbc #7                    ; RoomX >= 15: constant offset 7
+.HaveVisibleLeft:
+  sta CollisionX            ; = visible sprite left edge
   lsr
   lsr
-  sta CollisionCellX           ; first playfield block under the sprite
+  sta CollisionCellX        ; first playfield block under the sprite
   clc
-  lda RoomX
-  sec
-  sbc #PLAYER_X_RENDER_OFFSET
+  lda CollisionX
   adc #PLAYER_WIDTH - 1
   lsr
   lsr
-  sta CollisionEndX          ; last playfield block under the sprite
+  sta CollisionEndX         ; last playfield block under the sprite
 
   lda PlayerY
   jsr YToCellRow
