@@ -24,10 +24,11 @@
 - **Room system:** `RoomDataTable` (ROM, per room: TilePF0 ptr + RoomRowLo ptr)
   and `RoomConnections` (ROM, per room: up/down/left/right target index, $ff =
   none). `RoomNo` (ZP) indexes into both. `EnterRoom` loads the pointers for a
-  given room. `ExitRoomUp`/`ExitRoomDown` follow the current room's connection
-  and place the player at the opposite edge. Vertical exits preserve RoomX so
-  the player stays in the aligned passage. `convert_room.py` builds each room
-  file with prefixed symbols (Room1*, Room2*) to avoid collisions.
+  given room. `ExitRoomUp`/`ExitRoomDown`/`ExitRoomLeft`/`ExitRoomRight` follow
+  the current room's connection and place the player at the opposite edge.
+  Vertical exits preserve RoomX, horizontal exits preserve RoomY, so the player
+  stays in the aligned passage. `convert_room.py` builds each room file with
+  prefixed symbols (Room1*, Room2*) to avoid collisions.
 
 ## Hardware Architecture
 
