@@ -1,0 +1,17 @@
+print *$80
+print *$81
+print *$86
+print *$87
+print *$89
+
+saveSes session.log
+
+
+To help you, I redid the testing, for both the thick and thin walls. You can check the session.log for the prints in the same order on the following:
+left thick: player x: 9, wall x: 11
+left thin: player x: 4, wall x: 3
+right thick: player x (right side): 143, wall x: 148
+right thin: x (right side): 151, wall x: 156
+
+
+12,7 writes in 4,6
