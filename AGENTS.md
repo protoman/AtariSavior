@@ -216,6 +216,18 @@ pixel (0..159), so room X coords map 1:1 to visible columns.
 - Keep renderer-specific conversions at the boundary. Collision code should
   never compare against RESP0/HMP0 timing values; it should test the proposed
   room-space player footprint against room-space solids and exits.
+- VERIFIED horizontal scale: the playfield is exactly 40 color-clocks wide
+  (20-bit half, 4 color clocks per bit), but it SPANS the full 160-clock
+  screen (40 blocks x 4 clocks). With reflection (CTRLPF D0=1), playfield
+  block q (0..39) shows text column q in the left half (q 0..19) and text
+  column 39-q in the right half (q 20..39). So a 20-column room renders as a
+  mirrored 40-block full-screen cave, and horizontal collision MUST map the
+  player footprint via RoomX>>2 (not >>3) and mirror blocks >=20 back to
+  39-q before indexing the tile map. The old >>3 (8px/column) mapping was a
+  2x scale error and dislocated left/right collision ~5 tiles to the right.
+- The kernel writes one PF0/PF1/PF2 triple per 12-line band and the TIA
+  persists it, so vertical tile row == scanline/12 is exact; horizontal is
+  the only axis that needs the mirror conversion.
 
 ## Visual Validation
 - Stella launching successfully verifies only that the ROM loads; it does not
