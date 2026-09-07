@@ -671,7 +671,35 @@
                     1,
                     1
                 ],
-                "enemies": [],
+                "enemies": [
+                    {
+                        "type": 0,
+                        "x": 8.0,
+                        "y": 5.0,
+                        "range_min": 5.0,
+                        "range_max": 11.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    },
+                    {
+                        "type": 1,
+                        "x": 17.0,
+                        "y": 5.0,
+                        "range_min": 14.0,
+                        "range_max": 15.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    },
+                    {
+                        "type": 2,
+                        "x": 14.0,
+                        "y": 5.0,
+                        "range_min": 11.0,
+                        "range_max": 15.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    }
+                ],
                 "lamps": []
             },
             {
