@@ -92,14 +92,21 @@ int RoomHeightOf(const hero::RoomData& room) {
 }
 } // namespace
 
-QColor MapCanvas::GetTileColor(int tileType) const {
+QColor MapCanvas::GetTileColor(int tileType, int tileY) const {
     if (!m_levelData) return QColor(30, 30, 30);
 
     switch (static_cast<hero::TileType>(tileType)) {
         case hero::TileType::AIR:
             return QColor(15, 15, 20);
-        case hero::TileType::SOLID_WALL:
+        case hero::TileType::SOLID_WALL: {
+            // Stripe: rows 0-3 use wall color 1, 4-7 wall color 2, 8-11 again
+            // color 1 (mirrors the game kernel's 4-row band pattern).
+            int band = tileY / 4;
+            if (band % 2 == 1) {
+                return QColor(m_levelData->wall2_r, m_levelData->wall2_g, m_levelData->wall2_b);
+            }
             return QColor(m_levelData->wall_r, m_levelData->wall_g, m_levelData->wall_b);
+        }
         case hero::TileType::FRAGILE_WALL:
             return QColor(210, 140, 50);
         case hero::TileType::REINFORCED_WALL:
@@ -142,7 +149,7 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             int tileType = room.tiles[y * roomWidth + x];
             QRect tileRect(dcol * m_tileSize, y * m_tileSize, m_tileSize, m_tileSize);
 
-            QColor color = GetTileColor(tileType);
+            QColor color = GetTileColor(tileType, y);
             painter.fillRect(tileRect, color);
 
             // Draw tile border

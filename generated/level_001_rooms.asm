@@ -1,6 +1,7 @@
 ; Generated from Level 1 (level 1). Do not edit by hand.
 LEVEL1_START_ROOM = 0
 LEVEL1_WALL_COLOR = $b0
+LEVEL1_WALL_COLOR2 = $b4
 LEVEL1_START_X = 64
 LEVEL1_START_Y = 24
 LEVEL1_MINER_ROOM = 2

@@ -26,16 +26,18 @@
   `L{n}R{room}` (level n, room index+1).
 - **Multi-level + miner:** every level is converted from `rooms/level_XXX.json`
   into `generated/level_XXX_rooms.asm` (per-level `LEVEL{n}_START_ROOM/X/Y`,
-  `LEVEL{n}_MINER_ROOM/X/Y`, `LEVEL{n}_WALL_COLOR`, `LEVEL{n}_RoomDataTable`,
-  `LEVEL{n}_RoomConnections`; tile coords * 8 for X, * 12 for Y become pixel
-  bytes). `./build_game_f6.sh` runs `convert_level.py --levels generated/levels.asm`
-  to emit `generated/levels.asm` (includes every level's tables + LEVEL_COUNT +
-  LevelDataTable, one LEVEL_DATA_STRIDE=12 entry per level: start room/x/y,
-  miner room/x/y, wall color, RoomDataTable ptr, RoomConnections ptr) and
-  `generated/levels_data.asm` (includes every level's per-room data). Level
-  numbers come from the input file name (level_002.json -> 2), not `level_id`.
+  `LEVEL{n}_MINER_ROOM/X/Y`, `LEVEL{n}_WALL_COLOR`, `LEVEL{n}_WALL_COLOR2`,
+  `LEVEL{n}_RoomDataTable`, `LEVEL{n}_RoomConnections`; tile coords * 8 for X,
+  * 12 for Y become pixel bytes). **Two wall colors per stage:** the kernel
+  stripes the cave in 4-row bands — tile rows 0-3 and 8-11 use
+  `LEVEL{n}_WALL_COLOR` (= json `wall_r/g/b`), rows 4-7 use `LEVEL{n}_WALL_COLOR2`
+  (= json `wall2_r/g/b`); a small cpx dispatch at the `.Row` top of the kernel
+  switches COLUPF at the row-4/row-8 boundaries. The LevelDataTable entry is
+  8 byte fields (start x3, miner x3, both wall colors) + 2 word pointers =
+  LEVEL_DATA_STRIDE 12.
   The game loads a level via `LoadLevel` (ZP: Level, LevelDataLo/Hi,
-  LevelPFDataLo/Hi, LevelConnLo/Hi, LevelWallColor, LevelMinerRoom, MinerX/Y),
+  LevelPFDataLo/Hi, LevelConnLo/Hi, LevelWallColor, LevelWallColor2,
+  LevelMinerRoom, MinerX/Y),
   `EnterRoom`/exits index `(LevelPFDataLo),Y`/`(LevelConnLo),Y` instead of
   static `RoomDataTable`/`RoomConnections`. The miner is a green ($c6 on
   COLUP1) 4x8 GRP1 square, positioned in VBLANK with `SetObjectXPos` X=1, drawn

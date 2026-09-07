@@ -6,15 +6,13 @@
 LEVEL_DATA_STRIDE = 12
 LEVEL_COUNT = 2
 
-; Per-level entry (stride 12): start room/x/y, miner room/x/y, wall color,
-; then the level's RoomDataTable and RoomConnections base addresses.
+; Per-level entry (stride 12): start room/x/y, miner room/x/y, both wall
+; colors, then the level's RoomDataTable and RoomConnections bases.
 LevelDataTable:
-  .byte LEVEL1_START_ROOM, LEVEL1_START_X, LEVEL1_START_Y, LEVEL1_MINER_ROOM, LEVEL1_MINER_X, LEVEL1_MINER_Y, LEVEL1_WALL_COLOR
+  .byte LEVEL1_START_ROOM, LEVEL1_START_X, LEVEL1_START_Y, LEVEL1_MINER_ROOM, LEVEL1_MINER_X, LEVEL1_MINER_Y, LEVEL1_WALL_COLOR, LEVEL1_WALL_COLOR2
   .word LEVEL1_RoomDataTable, LEVEL1_RoomConnections
-  .byte 0 ; pad to LEVEL_DATA_STRIDE
-  .byte LEVEL2_START_ROOM, LEVEL2_START_X, LEVEL2_START_Y, LEVEL2_MINER_ROOM, LEVEL2_MINER_X, LEVEL2_MINER_Y, LEVEL2_WALL_COLOR
+  .byte LEVEL2_START_ROOM, LEVEL2_START_X, LEVEL2_START_Y, LEVEL2_MINER_ROOM, LEVEL2_MINER_X, LEVEL2_MINER_Y, LEVEL2_WALL_COLOR, LEVEL2_WALL_COLOR2
   .word LEVEL2_RoomDataTable, LEVEL2_RoomConnections
-  .byte 0 ; pad to LEVEL_DATA_STRIDE
 
 ; Per-level enemy table base (LEVEL{n}_RoomEnemies). Indexed by Level.
 LevelEnemyTable:
