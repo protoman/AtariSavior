@@ -43,9 +43,9 @@ static int MirrorColumn(int displayCol, int roomWidth) {
 
 MapCanvas::MapCanvas(QWidget* parent) : QWidget(parent) {
     setMouseTracking(true);
-    // Default 20x16 stage until a room is loaded.
+    // Default 20x12 stage + 4 grey HUD rows until a room is loaded.
     setFixedSize(DisplayColumnsFor(kDefaultRoomWidth) * m_tileSize,
-                 kDefaultRoomHeight * m_tileSize);
+                 (kDefaultRoomHeight + kHudRows) * m_tileSize);
 }
 
 void MapCanvas::SetLevelData(hero::LevelData* levelData, int activeRoomIndex) {
@@ -77,7 +77,10 @@ void MapCanvas::UpdateSizeForRoom() {
         w = room.width > 0 ? room.width : kDefaultRoomWidth;
         h = room.height > 0 ? room.height : kDefaultRoomHeight;
     }
-    setFixedSize(DisplayColumnsFor(w) * m_tileSize, h * m_tileSize);
+    // The canvas shows the room's playable rows plus the grey HUD band the
+    // game draws below the cave (4 tile rows). The band is not editable.
+    setFixedSize(DisplayColumnsFor(w) * m_tileSize,
+                 (h + kHudRows) * m_tileSize);
 }
 
 namespace {
@@ -159,8 +162,18 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
 
     // Draw a seam marker at the mirror axis (between room columns width-1 and width)
     int seamX = roomWidth * m_tileSize;
+    int canvasHeight = (roomHeight + kHudRows) * m_tileSize;
     painter.setPen(QPen(QColor(90, 90, 110), 2));
-    painter.drawLine(seamX, 0, seamX, roomHeight * m_tileSize);
+    painter.drawLine(seamX, 0, seamX, canvasHeight);
+
+    // Grey HUD band below the playable rows (the game renders it in HUD_COLOR
+    // = $06 grey). Non-editable: ApplyBrushAt rejects tileY >= room.height.
+    int hudTop = roomHeight * m_tileSize;
+    painter.fillRect(QRect(0, hudTop, width(), canvasHeight - hudTop),
+                     QColor(144, 144, 144));
+    painter.setPen(QColor(70, 70, 70));
+    painter.drawLine(0, hudTop, width(), hudTop);
+    painter.drawLine(0, canvasHeight - 1, width(), canvasHeight - 1);
 
     // Render Player Start position if in this room
     if (m_levelData->start_room == m_activeRoomIndex) {
@@ -264,8 +277,10 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
     } else if (m_currentBrush == BrushTool::ADD_SPIDER || m_currentBrush == BrushTool::ADD_BAT ||
                m_currentBrush == BrushTool::ADD_SNAKE || m_currentBrush == BrushTool::ADD_TENTACLE ||
                m_currentBrush == BrushTool::ADD_MOTH) {
-        // Entity placement: full stage width, no mirroring.
-        if (entityX < 0 || entityX >= displayColumns) return;
+        // Entity placement: full stage width, no mirroring. Reject the HUD
+        // band (tileY >= room.height) so enemies can't spawn beneath the cave.
+        if (entityX < 0 || entityX >= displayColumns ||
+            tileY < 0 || tileY >= room.height) return;
 
         hero::EnemyData eData;
         if (m_currentBrush == BrushTool::ADD_SPIDER) eData.type = (int)hero::EnemyType::SPIDER;
@@ -293,8 +308,9 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         emit levelModified();
         update();
     } else if (m_currentBrush == BrushTool::ADD_LAMP) {
-        // Entity placement: full stage width, no mirroring.
-        if (entityX < 0 || entityX >= displayColumns) return;
+        // Entity placement: full stage width, no mirroring. No lamps in the HUD band.
+        if (entityX < 0 || entityX >= displayColumns ||
+            tileY < 0 || tileY >= room.height) return;
 
         // Replace any lamp already on this tile, otherwise add a new one
         for (auto& lamp : room.lamps) {

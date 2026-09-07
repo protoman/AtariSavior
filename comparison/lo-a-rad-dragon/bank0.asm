@@ -70,8 +70,10 @@ PLAYER_WIDTH = 4
 ; on the n*15 grid, giving a constant offset 7. So collision must subtract 4
 ; below X=15 and 7 at X>=15. See visible-left computation in PlayerHitsMap.
 TILE_COLUMNS = 20
-TILE_ROWS = 16
+TILE_ROWS = 12              ; playable tile rows (the cave)
+HUD_ROWS = 4                ; grey HUD band below the cave: 4 tile rows x 12 lines
 LINES_PER_TILE = 12
+HUD_COLOR = $06             ; emulator-aware grey (kPalette hue 0 luma 3)
 ; Boundary clamps let the player reach all four screen extremes (rooms will
 ; connect on every side). Walls still stop the player via collision; these only
 ; permit a fully-visible sprite flush with each edge:
@@ -79,11 +81,12 @@ LINES_PER_TILE = 12
 ; - RIGHT:  offset 7 at RoomX>=15 -> visible right = RoomX - 7 + 3 = 159 -> RoomX <= 163
 ;          (160 is the runtime stop; clamp is a wider safety net)
 ; - TOP:    visible top   = PlayerY = 0                -> PlayerY >= 0
-; - BOTTOM: visible bottom = PlayerY + 7 = 191        -> PlayerY <= 184
+; - BOTTOM: the cave is 12 tile rows (144 lines); the HUD is below it, so the
+;          visible bottom must stay inside the cave: PlayerY + 7 <= 143 -> 136
 PLAYER_MIN_X = 4
 PLAYER_MAX_X = 163
 PLAYER_MIN_Y = 0
-PLAYER_MAX_Y = 184
+PLAYER_MAX_Y = 136
 
 ; Room connection directions: index into each room's RoomConnections entry.
 ROOM_UP = 0
@@ -283,6 +286,41 @@ LoopVBlank:
   inx
   cpx #TILE_ROWS
   bne .Row
+
+; ------------------------------------------------------------------------------
+; HUD band: 4 grey rows (48 scanlines) below the cave.
+; Clear the playfield, switch the background to HUD_COLOR and just blank the
+; sprites for the band. The player and every GRP1 object are capped inside the
+; 12 playable rows (PlayerY <= 136, deadly duds), so nothing is ever drawn here.
+; One WSYNC per scanline keeps the frame at exactly 262 lines, unchanged.
+; ------------------------------------------------------------------------------
+  lda #HUD_COLOR
+  sta COLUBK
+  lda #0
+  sta PF0
+  sta PF1
+  sta PF2
+  lda #HUD_ROWS * LINES_PER_TILE
+  sta LineCount
+.HUDLine:
+  lda Scanline
+  sec
+  sbc PlayerY
+  cmp #PLAYER_HEIGHT
+  bcs .HUDNoSprite
+  tay
+  lda PlayerSprite,Y
+  jmp .HUDPut
+.HUDNoSprite:
+  lda #0
+.HUDPut:
+  sta GRP0
+  lda #0
+  sta GRP1
+  inc Scanline
+  sta WSYNC
+  dec LineCount
+  bne .HUDLine
 
 ; ------------------------------------------------------------------------------
 ; Overscan
@@ -890,10 +928,10 @@ SetObjectXPos subroutine
 ; ------------------------------------------------------------------------------
 ; Bitmaps and colors
 ; ------------------------------------------------------------------------------
-; Room/level data is placed after all out-of-line code. $f300 no longer fits
-; (code has grown past it), so data starts at $f400 and ends well before the
-; page-aligned fine-adjust table at $ff00.
-    org $f400
+; Room/level data is placed after all out-of-line code. The HUD band pushed
+; the code past $f400, so data starts at $f600 (~1630 bytes, ending near $fc60)
+; and stays well before the page-aligned fine-adjust table at $ff00.
+    org $f600
     include "generated/levels_data.asm"
 
 PlayerSprite:

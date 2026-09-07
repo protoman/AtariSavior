@@ -52,7 +52,8 @@ public:
 
     // Fallback size used until a room is loaded.
     static constexpr int kDefaultRoomWidth = 20;
-    static constexpr int kDefaultRoomHeight = 16;
+    static constexpr int kDefaultRoomHeight = 12;  // playable rows
+    static constexpr int kHudRows = 4;             // grey HUD band below the cave
 
     void SetLevelData(hero::LevelData* levelData, int activeRoomIndex);
     void SetActiveRoom(int roomIndex);

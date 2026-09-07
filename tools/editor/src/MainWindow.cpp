@@ -38,9 +38,10 @@
 
 namespace editor {
 
-// Savannah Atari prototype room dims: 20 tiles wide (mirrored to 40), 16 tall.
+// Savannah Atari prototype room dims: 20 tiles wide (mirrored to 40), 12 tall
+// (the bottom 4 rows are the grey HUD band).
 static constexpr int kRoomWidth = 20;
-static constexpr int kRoomHeight = 16;
+static constexpr int kRoomHeight = 12;
 // Centered passages carved for room connections.
 static constexpr int kVertExitA = 8;   // vertical exit column range
 static constexpr int kVertExitB = 11;

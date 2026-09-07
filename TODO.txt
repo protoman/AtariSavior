@@ -7,16 +7,30 @@ Now add enemies in the game. Those are already in the editor, just draw them as 
     # giant moth dark orange
 
 
-Add a HUD area, that is all grey at the bottom of the screen.
-It should have the height of 4 tiles, so the map will now be shorter by 4 files.
-Convert existing maps to this new size, and also change the editor to reflect this new height.
+Add a HUD area, that is all grey at the bottom of the screen. It should have the height of 4 tiles, so the map will now be shorter by 4 files.
+Convert existing maps to this new size, remove objets and enemies placed on that area and also change the editor to reflect this new height.
 The game should also consider the bottom as 4 tiles short for effects of leaving the room for the next one on bottom exists.
 
 
 In the editor, the user now should have the option to pick two colors for the stage.
-In the game, the first 4 tile rows, from top to bottom, will be draw with the first color, the next 4 with the second, and the last 4 with the first color again.
+In the game playfield, the first 4 tile rows, from top to bottom, will be draw with the first color, the next 4 with the second, and the last 4 with the first color again.
+
+
+No need to show the HUD in the editor, just show the map area.
+Also, make sure the formar of the map is 4:2 like it will be presented in the screen on the game, so you can make the grid like rectangles instead of squares.
+
+
+Is player made of 4x4 pixels?
+    Add an "eye" to player, so we know witch direction he is facing. The eye is just a non-painted (black) line. And yes, we need to store the direction he is facing (left or right).
+    It should look like this diagram (facing right, just invert when facing left):
+    XXXX
+    XX
+    XXXX
+    XXXX
+
 
 - adicionar gravidade
+
 
 - adicionar laser
 

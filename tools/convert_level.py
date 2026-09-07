@@ -29,7 +29,9 @@ import sys
 import convert_room
 
 WIDTH = 20
-HEIGHT = 16
+# Playable rows per room (the bottom 4 tile rows render as a grey HUD band and
+# are NOT part of room data: rooms store only the playable cave).
+HEIGHT = 12
 ROOM_NONE = 0xFF
 # Byte that renders the editor default (56,104,144 = hue A, luma 2) under the
 # emulator-aware encoding in nearest_byte: (hue << 4) | (luma << 1) = 0xA4.
@@ -246,7 +248,7 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
 
     Enemies are positioned in EDITOR stage coordinates: x is a full-stage
     display column (0..39 across both mirror halves, so the game screens can
-    differ per side) and y is a room row (0..15). Column -> room pixel uses
+    differ per side) and y is a room row (0..11). Column -> room pixel uses
     4 px/column (one playfield block), row -> scanline uses 12 px/row,
     matching the existing level/miner coordinate conversion.
 
