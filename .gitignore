@@ -9,3 +9,5 @@ __pycache__/
 tools/editor/cmake-build-debug/
 tools/editor/build/
 .idea/
+distella
+*.kate-swp
