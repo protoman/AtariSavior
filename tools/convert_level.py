@@ -22,11 +22,15 @@ import convert_room
 WIDTH = 20
 HEIGHT = 16
 ROOM_NONE = 0xFF
-LEVEL_WALL_COLOR_DEFAULT = 0x2A  # level editor default (dark blue, 56,104,144)
+# Byte that renders the editor default (56,104,144 = hue A, luma 2) under the
+# emulator-aware encoding in nearest_byte: (hue << 4) | (luma << 1) = 0xA4.
+LEVEL_WALL_COLOR_DEFAULT = 0xA4
 
 # Atari 2600 TIA NTSC 128-color chart, hue-major: [hue][luma] = (r, g, b).
 # MUST match tools/editor/src/AtariPalette.cpp kPalette exactly (same RGB values
 # are used by the editor's color picker so round-tripping is stable).
+# NOTE: the ROM byte is NOT the classic (luma<<4)|hue; see nearest_byte for the
+# emulator-aware encoding that makes the editor pick display correctly.
 kPalette = [
     # hue 0  grey
     [(0x00, 0x00, 0x00), (0x40, 0x40, 0x40), (0x6c, 0x6c, 0x6c), (0x90, 0x90, 0x90),
@@ -80,7 +84,18 @@ kPalette = [
 
 
 def nearest_byte(r: int, g: int, b: int) -> int:
-    """Closest TIA color byte to an RGB triple (same algorithm as the editor)."""
+    """Emulator-aware TIA color byte closest to an RGB triple.
+
+    Stella 7.0 with TV filtering OFF (tv.filter=0) indexes its 256-entry
+    palette directly by the 8-bit byte, and that palette is stored hue-major
+    with (color, 0) pairs. So the displayed color equals kPalette[hue][luma]
+    only when the ROM byte is (hue << 4) | (luma << 1). The classic
+    (luma << 4) | hue instead displays (byte>>4) as the hue and
+    ((byte&0xf)>>1) as the luma, scrambling colors (picked blue -> orange).
+    Verified empirically on the local Stella with tools/palette_test.asm.
+    Picking cell (hue, luma) in the editor now renders that same classic
+    chart color in the emulator (WYSIWYG).
+    """
     best_byte = 0
     best_dist = None
     for hue in range(16):
@@ -90,7 +105,7 @@ def nearest_byte(r: int, g: int, b: int) -> int:
             dist = dr * dr + dg * dg + db * db
             if best_dist is None or dist < best_dist:
                 best_dist = dist
-                best_byte = (luma << 4) | hue
+                best_byte = (hue << 4) | (luma << 1)
     return best_byte
 
 

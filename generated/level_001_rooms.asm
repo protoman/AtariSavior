@@ -1,6 +1,6 @@
 ; Generated from Level 1. Do not edit by hand.
 LEVEL_START_ROOM = 0
-LEVEL_WALL_COLOR = $2a
+LEVEL_WALL_COLOR = $40
 
 ; Room data: one (TilePF0, RoomRowLo) word pair per room, indexed by RoomNo.
 RoomDataTable:
