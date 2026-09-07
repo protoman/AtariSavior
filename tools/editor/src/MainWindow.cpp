@@ -165,8 +165,10 @@ void MainWindow::SetupUI() {
     nameLayout->addWidget(m_levelNameEdit);
     levelPropLayout->addLayout(nameLayout);
 
-    m_colorBtn = new QPushButton("Cave Wall Color...", this);
+    m_colorBtn = new QPushButton("Cave Color 1...", this);
     levelPropLayout->addWidget(m_colorBtn);
+    m_colorBtn2 = new QPushButton("Cave Color 2...", this);
+    levelPropLayout->addWidget(m_colorBtn2);
 
     col1->addWidget(levelPropBox);
 
@@ -302,6 +304,7 @@ void MainWindow::SetupUI() {
     connect(remRoomBtn, &QPushButton::clicked, this, &MainWindow::RemoveRoom);
 
     connect(m_colorBtn, &QPushButton::clicked, this, &MainWindow::PickWallColor);
+    connect(m_colorBtn2, &QPushButton::clicked, this, &MainWindow::PickWallColor2);
 
     connect(m_toolList, &QListWidget::currentRowChanged, this, [this](int row) {
         QListWidgetItem* item = m_toolList->item(row);
@@ -564,6 +567,9 @@ void MainWindow::NewLevel() {
     m_levelData.wall_r = 180;
     m_levelData.wall_g = 80;
     m_levelData.wall_b = 0;
+    m_levelData.wall2_r = 40;
+    m_levelData.wall2_g = 130;
+    m_levelData.wall2_b = 90;
 
     m_levelData.rooms.clear();
     for (int r = 0; r < 2; ++r) {
@@ -806,6 +812,23 @@ void MainWindow::PickWallColor() {
     }
 }
 
+void MainWindow::PickWallColor2() {
+    QColor curColor(m_levelData.wall2_r, m_levelData.wall2_g, m_levelData.wall2_b);
+    int picked = PickNtscColor(this, curColor);
+    if (picked >= 0) {
+        QColor rgb = NtscRgbForByte(picked);
+        m_levelData.wall2_r = rgb.red();
+        m_levelData.wall2_g = rgb.green();
+        m_levelData.wall2_b = rgb.blue();
+        QString style = QString("background-color: rgb(%1, %2, %3); color: white;")
+                            .arg(rgb.red()).arg(rgb.green()).arg(rgb.blue());
+        m_colorBtn2->setStyleSheet(style);
+        OnLevelModified();
+        RefreshToolIcons();
+        m_canvas->update();
+    }
+}
+
 void MainWindow::OnLevelModified() {
     PushUndoState();
     UpdateRoomDirectionButtons();
@@ -830,6 +853,9 @@ void MainWindow::UpdateUIFromLevel() {
     QString style = QString("background-color: rgb(%1, %2, %3); color: white;")
                         .arg(m_levelData.wall_r).arg(m_levelData.wall_g).arg(m_levelData.wall_b);
     m_colorBtn->setStyleSheet(style);
+    QString style2 = QString("background-color: rgb(%1, %2, %3); color: white;")
+                         .arg(m_levelData.wall2_r).arg(m_levelData.wall2_g).arg(m_levelData.wall2_b);
+    m_colorBtn2->setStyleSheet(style2);
 
     if (m_canvas) {
         m_canvas->SetLevelData(&m_levelData, roomIdx);

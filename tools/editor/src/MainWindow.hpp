@@ -60,6 +60,7 @@ private slots:
     void OnRoomChanged(int index);
     void OnStageSelected(int index);
     void PickWallColor();
+    void PickWallColor2();
 
     void OnLevelModified();
     void OnMouseMovedToTile(int tileX, int tileY);
@@ -100,6 +101,7 @@ private:
     QLineEdit* m_levelNameEdit = nullptr;
     QComboBox* m_roomCombo = nullptr;
     QPushButton* m_colorBtn = nullptr;
+    QPushButton* m_colorBtn2 = nullptr;
 
     // Directional Room Buttons
     QPushButton* m_addUpBtn = nullptr;

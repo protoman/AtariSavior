@@ -1,11 +1,4 @@
 #########################################################################################################################################################################
-Now add enemies in the game. Those are already in the editor, just draw them as rectangles with same size as player for now, with the following colors:
-    # spider dark yellow
-    # bats brown
-    # snakes green
-    # tentacle white
-    # giant moth dark orange
-
 
 Add a HUD area, that is all grey at the bottom of the screen. It should have the height of 4 tiles, so the map will now be shorter by 4 files.
 Convert existing maps to this new size, remove objets and enemies placed on that area and also change the editor to reflect this new height.
@@ -29,10 +22,25 @@ Is player made of 4x4 pixels?
     XXXX
 
 
+Make snake a rectanble that is twice the player width and half the player height.
+Snake needs a direction, so it needs a mouth
+
 - adicionar gravidade
 
-
 - adicionar laser
+
+Spiders go up and down (half a tile) in a web line
+
+Moths go zig-zag (4 tiles) in a senoid up/down movement. it always starts moving first to its right. (simplification)
+
+HUD:
+    Numer of lives
+    Number of bombs
+    Points
+    Timer
+    Upperland Studios Logo
+
+- lamps and dark rooms
 
 - adicionar bomba
 

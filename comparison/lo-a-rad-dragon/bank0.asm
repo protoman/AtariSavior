@@ -33,7 +33,8 @@ LevelPFDataLo   byte            ; active level's RoomDataTable base address
 LevelPFDataHi   byte
 LevelConnLo     byte            ; active level's RoomConnections base address
 LevelConnHi     byte
-LevelWallColor  byte            ; COLUPF byte for the active level's walls
+LevelWallColor  byte            ; COLUPF byte for the active level's walls (rows 0-3, 8-11)
+LevelWallColor2 byte            ; second COLUPF byte (rows 4-7)
 LevelMinerRoom  byte            ; room index holding the miner for the active level
 MinerX          byte            ; miner spawn (logical room pixel coords)
 MinerY          byte
@@ -194,8 +195,8 @@ LoopVBlank:
 ; (playfield priority) hides the player sprite behind walls and shows it in
 ; the openings, exactly like HERO.
 ;
-; Layout: 16 tile rows x 20 columns, each tile 8 color-clocks wide and 12
-; scanlines tall, so the entire 192-line screen IS the cave (no menu region).
+; Layout: 12 playable tile rows x 20 columns (144 cave scanlines), each tile 8
+; color-clocks wide and 12 scanlines tall, followed by a 4-tile grey HUD band.
 ; For each tile row the kernel writes the playfield once (TIA registers
 ; persist), then paints 12 WSYNC-stabilised scanlines. The player sprite is
 ; drawn whenever Scanline - PlayerY is in 0..PLAYER_HEIGHT-1. WSYNC absorbs
@@ -248,6 +249,20 @@ LoopVBlank:
   sta PF2
   lda #LINES_PER_TILE
   sta LineCount
+; Stripe the cave: rows 0-3 are wall color 1, rows 4-7 wall color 2, and
+; rows 8-11 wall color 1 again. COLUPF was already set once for row 0 at
+; frame start, so only the row-4 and row-8 band boundaries need a rewrite.
+  cpx #4
+  beq .BandColor2
+  cpx #8
+  bne .ColorStripeDone
+  lda LevelWallColor
+  bne .ColorStripeApply
+.BandColor2:
+  lda LevelWallColor2
+.ColorStripeApply:
+  sta COLUPF
+.ColorStripeDone:
 
 .Line:
   lda Scanline
@@ -720,6 +735,9 @@ LoadLevel subroutine
   iny
   lda (LevelDataLo),Y       ; wall color
   sta LevelWallColor
+  iny
+  lda (LevelDataLo),Y       ; second wall color
+  sta LevelWallColor2
   iny
   lda (LevelDataLo),Y       ; RoomDataTable base lo
   sta LevelPFDataLo

@@ -105,9 +105,14 @@ struct RoomData {
 struct LevelData {
     int level_id = 1;
     std::string name = "Level 1";
+    // Two wall colors: the playfield's 12 rows render as 4-row stripes
+    // (rows 0-3 and 8-11 use wall_r/g/b, rows 4-7 use wall2_r/g/b).
     int wall_r = 56;
     int wall_g = 104;
     int wall_b = 144;
+    int wall2_r = 40;
+    int wall2_g = 130;
+    int wall2_b = 90;
     
     int start_room = 0;
     float start_x = 8.0f;
@@ -126,6 +131,9 @@ struct LevelData {
            CEREAL_NVP(wall_r),
            CEREAL_NVP(wall_g),
            CEREAL_NVP(wall_b),
+           CEREAL_NVP(wall2_r),
+           CEREAL_NVP(wall2_g),
+           CEREAL_NVP(wall2_b),
            CEREAL_NVP(start_room),
            CEREAL_NVP(start_x),
            CEREAL_NVP(start_y),
