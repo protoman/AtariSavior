@@ -28,6 +28,9 @@ namespace editor {
 // canvas column q to the room's data column: q for q<width, else 2*width-1-q.
 // Editing either half edits the mirrored original tile, keeping rooms symmetric
 // by construction (required by the reflected playfield).
+// Entities (enemies, lamps) are deliberately EXEMPT from the mirror rule: they
+// are positioned/stored/rendered in full-stage columns 0..2*width-1 so each
+// screen half can have its own objects.
 // All geometry is derived from the loaded room's width/height so the editor
 // stays correct for any room size the game data may contain.
 
@@ -227,9 +230,15 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
     }
 }
 
-void MapCanvas::ApplyBrushAt(int tileX, int tileY) {
+void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
     if (!m_levelData || m_activeRoomIndex < 0 || m_activeRoomIndex >= (int)m_levelData->rooms.size()) return;
     auto& room = m_levelData->rooms[m_activeRoomIndex];
+
+    // Tiles are edited through the mirrored column (0..width-1): painting either
+    // half edits the original tile so rooms stay symmetric. Entities (enemies,
+    // lamps) are NOT mirrored — they may be placed on any column of the full
+    // 2x-width stage (entityX, 0..2*width-1) so both screens can differ.
+    int displayColumns = DisplayColumnsFor(RoomWidthOf(room));
 
     if (tileX < 0 || tileX >= room.width || tileY < 0 || tileY >= room.height) return;
 
@@ -255,6 +264,9 @@ void MapCanvas::ApplyBrushAt(int tileX, int tileY) {
     } else if (m_currentBrush == BrushTool::ADD_SPIDER || m_currentBrush == BrushTool::ADD_BAT ||
                m_currentBrush == BrushTool::ADD_SNAKE || m_currentBrush == BrushTool::ADD_TENTACLE ||
                m_currentBrush == BrushTool::ADD_MOTH) {
+        // Entity placement: full stage width, no mirroring.
+        if (entityX < 0 || entityX >= displayColumns) return;
+
         hero::EnemyData eData;
         if (m_currentBrush == BrushTool::ADD_SPIDER) eData.type = (int)hero::EnemyType::SPIDER;
         else if (m_currentBrush == BrushTool::ADD_BAT) eData.type = (int)hero::EnemyType::BAT;
@@ -262,10 +274,10 @@ void MapCanvas::ApplyBrushAt(int tileX, int tileY) {
         else if (m_currentBrush == BrushTool::ADD_TENTACLE) eData.type = (int)hero::EnemyType::TENTACLE;
         else if (m_currentBrush == BrushTool::ADD_MOTH) eData.type = (int)hero::EnemyType::GIANT_MOTH;
 
-        eData.x = (float)tileX;
+        eData.x = (float)entityX;
         eData.y = (float)tileY;
-        eData.range_min = (float)std::max(0, tileX - 3);
-        eData.range_max = (float)std::min(15, tileX + 3);
+        eData.range_min = (float)std::max(0, entityX - 3);
+        eData.range_max = (float)std::min(displayColumns - 1, entityX + 3);
         eData.speed = 1.5f;
         eData.dir = 1;
 
@@ -273,10 +285,13 @@ void MapCanvas::ApplyBrushAt(int tileX, int tileY) {
         emit levelModified();
         update();
     } else if (m_currentBrush == BrushTool::ADD_LAMP) {
+        // Entity placement: full stage width, no mirroring.
+        if (entityX < 0 || entityX >= displayColumns) return;
+
         // Replace any lamp already on this tile, otherwise add a new one
         for (auto& lamp : room.lamps) {
-            if ((int)std::floor(lamp.x) == tileX && (int)std::floor(lamp.y) == tileY) {
-                lamp.x = (float)tileX + 0.5f;
+            if ((int)std::floor(lamp.x) == entityX && (int)std::floor(lamp.y) == tileY) {
+                lamp.x = (float)entityX + 0.5f;
                 lamp.y = (float)tileY + 0.5f;
                 lamp.lit = true;
                 emit levelModified();
@@ -286,16 +301,16 @@ void MapCanvas::ApplyBrushAt(int tileX, int tileY) {
         }
 
         hero::LampData lamp;
-        lamp.x = (float)tileX + 0.5f;
+        lamp.x = (float)entityX + 0.5f;
         lamp.y = (float)tileY + 0.5f;
         lamp.lit = true;
         room.lamps.push_back(lamp);
         emit levelModified();
         update();
     } else if (m_currentBrush == BrushTool::DELETE_ENTITY) {
-        // Remove enemy or lamp near tileX, tileY
+        // Entities live in full stage coordinates (no mirroring)
         for (auto it = room.enemies.begin(); it != room.enemies.end(); ++it) {
-            if ((int)std::floor(it->x) == tileX && (int)std::floor(it->y) == tileY) {
+            if ((int)std::floor(it->x) == entityX && (int)std::floor(it->y) == tileY) {
                 room.enemies.erase(it);
                 emit levelModified();
                 update();
@@ -303,7 +318,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int tileY) {
             }
         }
         for (auto it = room.lamps.begin(); it != room.lamps.end(); ++it) {
-            if ((int)std::floor(it->x) == tileX && (int)std::floor(it->y) == tileY) {
+            if ((int)std::floor(it->x) == entityX && (int)std::floor(it->y) == tileY) {
                 room.lamps.erase(it);
                 emit levelModified();
                 update();
@@ -334,7 +349,9 @@ void MapCanvas::MouseToTile(const QPointF& pos, bool apply) {
     int tileY = (int)(pos.y() / m_tileSize);
     emit mouseMovedToTile(tileX, tileY);
     if (apply)
-        ApplyBrushAt(tileX, tileY);
+        // tileX is the mirrored room column for tiles; displayCol is the raw
+        // full-stage column (0..2*width-1) used by ApplyBrushAt for entities.
+        ApplyBrushAt(tileX, displayCol, tileY);
 }
 
 } // namespace editor

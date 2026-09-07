@@ -217,7 +217,69 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
         lines.append(
             f"  .byte {hex_or_none(up)}, {hex_or_none(down)}, "
             f"{hex_or_none(left_)}, {hex_or_none(right)} ; room {index}")
+    lines += _enemy_tables(prefix, rooms)
     output.write_text("\n".join(lines) + "\n")
+
+
+# A room may hold up to this many enemies (matches the editor's own cap).
+MAX_ENEMIES = 4
+# Per-enemy byte layout in LEVEL{n}_EnemyDataTable (see _enemy_tables).
+ENEMY_STRIDE = 6
+
+
+def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
+    """Emit the level's flat enemy table and the per-room enemy records.
+
+    Enemies are positioned in EDITOR stage coordinates: x is a full-stage
+    display column (0..39 across both mirror halves, so the game screens can
+    differ per side) and y is a room row (0..15). Column -> room pixel uses
+    4 px/column (one playfield block), row -> scanline uses 12 px/row,
+    matching the existing level/miner coordinate conversion.
+
+    LEVEL{n}_EnemyDataTable is a flat list of ENEMY_STRIDE-byte records:
+    type, x, y, range_min, range_max, dir (range/speed are reserved for
+    future patrolling; only type/x/y are consumed today).
+    LEVEL{n}_RoomEnemies has one 4-byte record per room:
+    ptr_lo, ptr_hi, count, pad.
+    """
+    flat: list[tuple[int, int, int, int, int, int]] = []
+    counts: list[int] = []
+    for index, room in enumerate(rooms):
+        enemies = [e for e in (room.get("enemies") or [])][:MAX_ENEMIES]
+        counts.append(len(enemies))
+        for enemy in enemies:
+            flat.append((
+                int(enemy.get("type", 0)),
+                px(float(enemy.get("x", 0)), 4),
+                px(float(enemy.get("y", 0)), 12),
+                px(float(enemy.get("range_min", 0)), 4),
+                px(float(enemy.get("range_max", 0)), 4),
+                int(enemy.get("dir", 1)),
+            ))
+    lines = [""]
+    lines += [
+        f"; Enemy data: {len(flat)} enemy records across {len(rooms)} rooms, "
+        f"{ENEMY_STRIDE} bytes each (type,x,y,range_min,range_max,dir).",
+        f"{prefix}_EnemyDataTable:",
+    ]
+    for type_, x, y, rmin, rmax, dir_ in flat:
+        lines.append(f"  .byte {type_}, {x}, {y}, {rmin}, {rmax}, {dir_}")
+    lines += [
+        "",
+        "; Per-room enemy records: ptr_lo, ptr_hi, count, pad.",
+        f"{prefix}_RoomEnemies:",
+    ]
+    for index, count in enumerate(counts):
+        if count:
+            start = sum(counts[:index]) * ENEMY_STRIDE
+            lines.append(
+                f"  .byte <({prefix}_EnemyDataTable+{start}), "
+                f">({prefix}_EnemyDataTable+{start}), {count}, 0 ; room {index}")
+        else:
+            lines.append(
+                f"  .byte <({prefix}_EnemyDataTable), "
+                f">({prefix}_EnemyDataTable), 0, 0 ; room {index}")
+    return lines
 
 
 def write_levels_index(output: Path, json_paths: list[Path]) -> None:
@@ -262,6 +324,13 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
             f"  .word {prefix}_RoomDataTable, {prefix}_RoomConnections",
             "  .byte 0 ; pad to LEVEL_DATA_STRIDE",
         ]
+    table_lines += [
+        "",
+        "; Per-level enemy table base (LEVEL{n}_RoomEnemies). Indexed by Level.",
+        "LevelEnemyTable:",
+    ]
+    for level_n, _level in levels:
+        table_lines.append(f"  .word LEVEL{level_n}_RoomEnemies")
     output.write_text("\n".join(table_lines) + "\n")
 
 
