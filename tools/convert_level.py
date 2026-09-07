@@ -172,6 +172,20 @@ def px(value, per_tile: int) -> int:
     return int(round(float(value) * per_tile))
 
 
+def enemy_x_px(column: float) -> int:
+    """Full-stage display column (0..39) -> requested sprite X (game pixels).
+
+    SetObjectXPos pins the sprite's requested X, but the TIA coarse/fine grid
+    renders its visible LEFT edge with an offset: 4 px below X=15 and 7 px from
+    X=15 up (the same offsets PlayerHitsMap compensates for). Without a
+    correction every enemy square shows one playfield block (4 px) further left
+    than the editor column it was placed on. Request X = target + offset so the
+    visible square lands exactly on the chosen column (4 px per block).
+    """
+    target = px(column, 4)
+    return target + 4 if target < 11 else target + 7
+
+
 def level_number_from_path(path: Path) -> int:
     """Level number from the input file name (level_002.json -> 2), else 0."""
     match = re.search(r"level_(\d+)", path.stem, re.IGNORECASE)
@@ -250,7 +264,7 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
         for enemy in enemies:
             flat.append((
                 int(enemy.get("type", 0)),
-                px(float(enemy.get("x", 0)), 4),
+                enemy_x_px(enemy.get("x", 0)),
                 px(float(enemy.get("y", 0)), 12),
                 px(float(enemy.get("range_min", 0)), 4),
                 px(float(enemy.get("range_max", 0)), 4),

@@ -44,8 +44,12 @@
   `LEVEL{n}_RoomEnemies` (ptr_lo, ptr_hi, count, pad), indexed from a top-level
   `LevelEnemyTable` (one `.word` per level, loaded by `LoadLevel`; `EnterRoom`
   pulls the active room's ptr+count). Editor enemy coordinates are FULL-STAGE
-  display columns (x 0..39 across both mirror halves), so pixel X = x*4 (one
-  playfield block), pixel Y = y*12, matching the player's room-space units.
+  display columns (x 0..39 across both mirror halves), so pixel X = x*4 PLUS
+  the coarse/fine visible-left offset (`enemy_x_px` in convert_level.py: +4
+  when the requested X < 15, else +7) so the square's VISIBLE position lands
+  on the editor's column — without this every enemy renders one playfield
+  block left of where it was placed (SetObjectXPos pins the requested X, not
+  the visible edge); pixel Y = y*12, matching the player's room-space units.
   Rendering: the TIA has one GRP1 sprite, so each frame `SelectActiveObject`
   rotates the GRP1 slot among [miner?] + room enemies ([EnemyIndex]/[EnemyCount]/
   [EnemyDataLoHi]=[ActiveObjectX/Y]=[ActiveObjectOn]) and sets COLUP1 from
