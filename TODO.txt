@@ -1,3 +1,27 @@
+#########################################################################################################################################################################
+- arrumar cor estágio
+
+- adicionar mineiro (quadrado verde)
+
+- adicionar inimigos (estáticos por hora)
+
+- dividir a fase em faixas de cores
+
+- adicionar gravidade
+
+- adicionar laser
+
+- adicionar bomba
+
+- adicionar paredes de lava
+
+- adicionar lago de lava
+
+- adicionar parede quebrável
+
+
+#########################################################################################################################################################################
+
 print *$80
 print *$81
 print *$86

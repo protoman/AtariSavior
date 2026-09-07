@@ -238,6 +238,25 @@ pixel (0..159), so room X coords map 1:1 to visible columns.
   persists it, so vertical tile row == scanline/12 is exact; horizontal is
   the only axis that needs the mirror conversion.
 
+## Color Bytes and Stella Rendering
+
+- Editor and converter share one hue-major 128-color RGB table
+  (`tools/convert_level.py` kPalette === `tools/editor/src/AtariPalette.cpp`);
+  the editor only stores wall RGB, never a byte, so round trip is stable.
+- **Stella 7.0 with TV filtering OFF (`tv.filter=0`, the local default) does NOT
+  interpret TIA bytes as the real chip does.** It renders `myPalette[byte]` by
+  direct 8-bit index into a hue-major `(color, 0)`-interleaved 256-entry table.
+  Hence the displayed color equals the classic chart `kPalette[hue][luma]` ONLY
+  when the ROM byte is `(hue << 4) | (luma << 1)`. The textbook `(luma<<4)|hue`
+  scrambles: `$2A`/`$17` render orange/gold instead of blue/purple.
+- `convert_level.py` `nearest_byte()` therefore emits the emulator-aware byte
+  `(hue << 4) | (luma << 1)`. Verified empirically with
+  `tools/palette_test.asm` (button-cycled full-screen COLUPF probe); all 8 probe
+  bytes matched the direct-index mapping exactly.
+- To re-verify colors on a changed Stella/config, rebuild the probe
+  (`dasm tools/palette_test.asm -f3 -opalette_test.bin`) and compare the user's
+  per-step report against Stella's own palette order, not the classic chart.
+
 ## Visual Validation
 - Stella launching successfully verifies only that the ROM loads; it does not
   verify rendering, timing, blinking, scrolling, or sprite placement.
