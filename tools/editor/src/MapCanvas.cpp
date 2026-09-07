@@ -281,6 +281,14 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         eData.speed = 1.5f;
         eData.dir = 1;
 
+        // Refuse to stack a second enemy on an occupied tile (same cell, full
+        // stage coordinates) - duplicate records make the shared GRP1 object
+        // flicker worse and are never intentional.
+        for (const auto& e : room.enemies) {
+            if ((int)std::floor(e.x) == entityX && (int)std::floor(e.y) == tileY)
+                return;
+        }
+
         room.enemies.push_back(eData);
         emit levelModified();
         update();

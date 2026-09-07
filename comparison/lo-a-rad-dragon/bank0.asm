@@ -49,6 +49,10 @@ ActiveObjectX   byte            ; GRP1 object X (room pixel 0..159): miner or se
 ActiveObjectY   byte            ; GRP1 object Y (scanline 0..191)
 EnemyIndex      byte            ; selected enemy's index within the room's enemy data
 Temp            byte            ; general scratch (level*stride in LoadLevel)
+LevelStartRoom  byte            ; active level's origin room (spawn + enemy-hit teleport)
+LevelStartX     byte            ; active level's origin X
+LevelStartY     byte            ; active level's origin Y
+EnemyLoopCount  byte            ; CheckEnemyHit loop counter
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -91,6 +95,13 @@ ROOM_NONE = $ff
 ; Enemy records in LEVEL{n}_EnemyDataTable (emitted by convert_level.py):
 ; type, x, y, range_min, range_max, dir.
 ENEMY_DATA_STRIDE = 6
+
+; Overscan TIM64T value: locks every frame to exactly 262 scanlines.
+; Fixed lines = 3 (vsync) + 3 (positioning) + 35 (vblank) + 192 (kernel) = 233,
+; so the overscan gap must be 29 lines = 2204 cycles. The gap is
+; 24 + 64*T + eps (24 = timer set + jmp + StartFrame's LDA/STA + WSYNC write);
+; T=33 gives 2136..2142, whose next 76-cycle boundary is always 2204 -> 262.
+OVSCAN_TIME = 33
 
 PlayerX = RoomX
 PlayerY = RoomY
@@ -276,18 +287,17 @@ LoopVBlank:
 ; ------------------------------------------------------------------------------
 ; Overscan
 ; ------------------------------------------------------------------------------
-
+; Game logic (input, movement, exits, miner pickup) runs INSIDE this TIM64T
+; window. The spin below then waits for INTIM==0, so the overscan gap is
+; exactly 2204 cycles (29 lines) no matter how long the logic took: the timer
+; always expires at a fixed cycle after the kernel and the first WSYNC of the
+; next StartFrame aligns to the same boundary every frame. VBLANK stays on
+; during the whole overscan so the logic's TIA writes are blanked.
   lda #2
   sta VBLANK
 
-  ldx #30
-LoopOverscan:
-  sta WSYNC
-  dex
-  bne LoopOverscan
-
-  lda #0
-  sta VBLANK
+  lda #OVSCAN_TIME
+  sta TIM64T
 
 ; ------------------------------------------------------------------------------
 ; Input handler
@@ -405,7 +415,71 @@ CheckMinerPickup:
 .LoadIt:
   jsr LoadLevel
 .NoPickup:
+  jsr CheckEnemyHit
+WaitOverscan:
+  lda INTIM
+  bne WaitOverscan
   jmp StartFrame
+
+; ------------------------------------------------------------------------------
+; CheckEnemyHit: if the player's footprint overlaps ANY enemy in the current
+; room, teleport to the level's start room and start point.
+; Each enemy record (LEVEL{n}_EnemyDataTable) is: type, x, y, range_min,
+; range_max, dir. The overlap test uses LOGICAL coordinates for both, exactly
+; like CheckMinerPickup (the TIA left-edge offsets cancel for player and enemy).
+; Timing absorbs into the overscan TIM64T window, so the frame stays 262 lines.
+; Clobbers: A, X, Y, MapPtrLo/Hi, EnemyLoopCount.
+; ------------------------------------------------------------------------------
+CheckEnemyHit subroutine
+  lda EnemyCount
+  beq .HitDone
+  sta EnemyLoopCount
+  lda EnemyDataLo
+  sta MapPtrLo
+  lda EnemyDataHi
+  sta MapPtrHi
+.ENext:
+  ldy #1
+  lda (MapPtrLo),Y          ; enemy x
+  sec
+  sbc RoomX
+  bcs .EXge                 ; enemy x >= player x
+  eor #$ff
+  clc
+  adc #1
+.EXge:
+  cmp #PLAYER_WIDTH
+  bcs .ENextEnemy
+  ldy #2
+  lda (MapPtrLo),Y          ; enemy y
+  sec
+  sbc RoomY
+  bcs .EYge
+  eor #$ff
+  clc
+  adc #1
+.EYge:
+  cmp #PLAYER_HEIGHT
+  bcs .ENextEnemy
+  lda LevelStartRoom        ; HIT: respawn at the level origin
+  jsr EnterRoom
+  lda LevelStartX
+  sta RoomX
+  lda LevelStartY
+  sta RoomY
+  rts
+.ENextEnemy:
+  lda MapPtrLo
+  clc
+  adc #ENEMY_DATA_STRIDE
+  sta MapPtrLo
+  bcc .EAdvance
+  inc MapPtrHi
+.EAdvance:
+  dec EnemyLoopCount
+  bne .ENext
+.HitDone:
+  rts
 
 ; ------------------------------------------------------------------------------
 ; Check collisions
@@ -587,12 +661,15 @@ LoadLevel subroutine
   ldy #0
   lda (LevelDataLo),Y       ; start room
   sta Temp
+  sta LevelStartRoom
   iny
   lda (LevelDataLo),Y       ; start x
   sta RoomX
+  sta LevelStartX
   iny
   lda (LevelDataLo),Y       ; start y
   sta RoomY
+  sta LevelStartY
   iny
   lda (LevelDataLo),Y       ; miner room
   sta LevelMinerRoom
@@ -780,12 +857,11 @@ SelectActiveObject subroutine
   lda #$66                  ; miner purple (kPalette hue 6 luma 3)
   sta COLUP1
 .SelectDone:
-  lda ActiveObjectOn
-  beq .SelectPositioned
   lda ActiveObjectX
   ldx #1
-  jsr SetObjectXPos         ; position the GRP1 object (player1)
-.SelectPositioned:
+  jsr SetObjectXPos         ; position the GRP1 object (player1), ALWAYS: even
+                            ; with no object it keeps the frame at 262 lines
+                            ; (the sprite is blanked by ActiveObjectOn=0).
   rts
 
 ; ------------------------------------------------------------------------------

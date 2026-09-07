@@ -4,7 +4,7 @@ LEVEL1_WALL_COLOR = $b0
 LEVEL1_START_X = 64
 LEVEL1_START_Y = 24
 LEVEL1_MINER_ROOM = 2
-LEVEL1_MINER_X = 20
+LEVEL1_MINER_X = 12
 LEVEL1_MINER_Y = 156
 
 ; Room data: one (L1R<n>TilePF0, ...RoomRowLo) word pair per room, indexed by RoomNo.
@@ -21,10 +21,10 @@ LEVEL1_RoomConnections:
 
 ; Enemy data: 4 enemy records across 3 rooms, 6 bytes each (type,x,y,range_min,range_max,dir).
 LEVEL1_EnemyDataTable:
-  .byte 0, 116, 96, 104, 128, 1
-  .byte 1, 124, 120, 112, 136, 1
-  .byte 2, 12, 48, 0, 24, 1
-  .byte 2, 4, 36, 0, 16, 1
+  .byte 0, 123, 96, 104, 128, 1
+  .byte 1, 131, 120, 112, 136, 1
+  .byte 2, 19, 48, 0, 24, 1
+  .byte 2, 83, 36, 64, 88, 1
 
 ; Per-room enemy records: ptr_lo, ptr_hi, count, pad.
 LEVEL1_RoomEnemies:
