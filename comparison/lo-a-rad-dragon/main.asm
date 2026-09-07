@@ -26,6 +26,18 @@ RoomPFDataHi    byte
 RoomRowMapLo    byte            ; current room's RoomRowLo table address
 RoomRowMapHi    byte
 RoomNo          byte            ; current room index into RoomDataTable
+Level           byte            ; current level index (0 = first level)
+LevelDataLo     byte            ; pointer into LevelDataTable (LevelDataHi+LevelDataLo)
+LevelDataHi     byte
+LevelPFDataLo   byte            ; active level's RoomDataTable base address
+LevelPFDataHi   byte
+LevelConnLo     byte            ; active level's RoomConnections base address
+LevelConnHi     byte
+LevelWallColor  byte            ; COLUPF byte for the active level's walls
+LevelMinerRoom  byte            ; room index holding the miner for the active level
+MinerX          byte            ; miner spawn (logical room pixel coords)
+MinerY          byte
+Temp            byte            ; general scratch (level*stride in LoadLevel)
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -82,12 +94,8 @@ Start:
 ; ------------------------------------------------------------------------------
 ; Init Variables
 ; ------------------------------------------------------------------------------
-  lda #132
-  sta RoomX               ; spawn centered in the open lane (cols 16-18)
-  lda #96
-  sta RoomY               ; spawn in tile row 8 (open lane)
-  lda #LEVEL_START_ROOM
-  jsr EnterRoom           ; start in the level's entry room
+  lda #0
+  jsr LoadLevel           ; start at level 0's origin (start room/x/y from the level data)
 
 ; ------------------------------------------------------------------------------
 ; Render
@@ -110,13 +118,20 @@ StartFrame:
   sta VSYNC                 ; turn off VSYNC
 
 ; ------------------------------------------------------------------------------
-; Horizontal positioning (2 scanlines)
+; Horizontal positioning (2-3 scanlines)
 ; ------------------------------------------------------------------------------
   lda RoomX
   ldx #0
-  jsr SetObjectXPos         ; set player0 x position (X = object selector)
+  jsr SetObjectXPos         ; position player0 (miner uses object 1)
+  lda RoomNo
+  cmp LevelMinerRoom
+  bne .Player1Done
+  lda MinerX
+  ldx #1
+  jsr SetObjectXPos         ; position the miner sprite (player1)
+.Player1Done:
   sta WSYNC
-  sta HMOVE                 ; apply the horizontal offset we just set
+  sta HMOVE                 ; apply the horizontal offsets we just set
 
 ; ------------------------------------------------------------------------------
 ; Remaining VBLANK (35 scanlines)
@@ -151,15 +166,20 @@ LoopVBlank:
 ; ------------------------------------------------------------------------------
   lda #$00                  ; black cave interior
   sta COLUBK
-  lda #LEVEL_WALL_COLOR        ; wall color (TIA byte, set by the level converter)
+  lda LevelWallColor        ; wall color (TIA byte, from the active level's data)
   sta COLUPF
   lda #$1c                  ; player color
   sta COLUP0
+  lda #$c6                  ; miner color (green, emulator-aware encoding)
+  sta COLUP1
   lda #$05                  ; D0=1 reflect, D2=1 playfield priority
   sta CTRLPF
   lda #$00                  ; one copy, not flipped, no missiles/ball
   sta NUSIZ0
+  sta NUSIZ1
   sta REFP0
+  sta REFP1
+  sta GRP0
   sta GRP1
   sta ENAM0
   sta ENAM1
@@ -205,6 +225,23 @@ LoopVBlank:
   lda #0
 .Put:
   sta GRP0
+; Draw the miner (an 8x8 green square, same footprint as the player) on GRP1,
+; but only inside its own room. Playfield priority (CTRLPF D2=1) hides it
+; behind walls just like the player.
+  lda LevelMinerRoom
+  cmp RoomNo
+  bne .NoMiner
+  lda Scanline
+  sec
+  sbc MinerY
+  cmp #PLAYER_HEIGHT
+  bcs .NoMiner
+  lda #%11110000
+  jmp .MinerPut
+.NoMiner:
+  lda #0
+.MinerPut:
+  sta GRP1
   inc Scanline
   sta WSYNC                 ; end this scanline
   dec LineCount
@@ -307,6 +344,44 @@ CheckP0Right:
   jmp EndInputCheck
 
 EndInputCheck:
+; ------------------------------------------------------------------------------
+; Miner pickup
+; ------------------------------------------------------------------------------
+; If the player overlaps the miner (same room, footprint within one sprite),
+; advance to the next level (wrapping past the last) and spawn at its origin.
+; ------------------------------------------------------------------------------
+CheckMinerPickup:
+  lda LevelMinerRoom
+  cmp RoomNo
+  bne .NoPickup
+  lda PlayerX
+  sec
+  sbc MinerX
+  bpl .XPos
+  eor #$ff
+  clc
+  adc #1
+.XPos:
+  cmp #PLAYER_WIDTH
+  bcs .NoPickup
+  lda PlayerY
+  sec
+  sbc MinerY
+  bpl .YPos
+  eor #$ff
+  clc
+  adc #1
+.YPos:
+  cmp #PLAYER_HEIGHT
+  bcs .NoPickup
+  inc Level
+  lda Level
+  cmp #LEVEL_COUNT
+  bcc .LoadIt
+  lda #0                    ; wrapped past the last level -> back to the first
+.LoadIt:
+  jsr LoadLevel
+.NoPickup:
   jmp StartFrame
 
 ; ------------------------------------------------------------------------------
@@ -425,23 +500,88 @@ YToCellRow subroutine
 
 ; ------------------------------------------------------------------------------
 ; EnterRoom: point the kernel and collision data at room A (0-based room index).
-; Sets RoomNo and reloads the PF data and row-map pointers from RoomDataTable.
-; RoomX/RoomY are left to the caller so each exit can pick the entry edge.
+; Sets RoomNo and reloads the PF data and row-map pointers from the active
+; level's RoomDataTable (LevelPFData). RoomX/RoomY are left to the caller so
+; each exit can pick the entry edge.
 ; ------------------------------------------------------------------------------
 EnterRoom subroutine
   sta RoomNo
   asl
   asl                       ; room * 4 (two .word entries per room)
-  tax
-  lda RoomDataTable,X
+  tay
+  lda (LevelPFDataLo),Y
   sta RoomPFDataLo
-  lda RoomDataTable+1,X
+  iny
+  lda (LevelPFDataLo),Y
   sta RoomPFDataHi
-  lda RoomDataTable+2,X
+  iny
+  lda (LevelPFDataLo),Y
   sta RoomRowMapLo
-  lda RoomDataTable+3,X
+  iny
+  lda (LevelPFDataLo),Y
   sta RoomRowMapHi
   rts
+
+; ------------------------------------------------------------------------------
+; LoadLevel: load the game state for level index A (0-based).
+; Reads the LEVEL_DATA_STRIDE entry for A from LevelDataTable, points the room
+; data / connections / wall color at the level's tables, spawns the player at
+; the level's origin and enters its start room.
+; ------------------------------------------------------------------------------
+LoadLevel subroutine
+  sta Level
+  tax
+  txa
+  asl
+  asl                       ; A = level * 4
+  sta Temp
+  txa
+  asl
+  asl
+  asl                       ; A = level * 8
+  clc
+  adc Temp                  ; A = level * LEVEL_DATA_STRIDE
+  clc
+  adc #<LevelDataTable
+  sta LevelDataLo
+  lda #>LevelDataTable
+  adc #0
+  sta LevelDataHi
+  ldy #0
+  lda (LevelDataLo),Y       ; start room
+  sta Temp
+  iny
+  lda (LevelDataLo),Y       ; start x
+  sta RoomX
+  iny
+  lda (LevelDataLo),Y       ; start y
+  sta RoomY
+  iny
+  lda (LevelDataLo),Y       ; miner room
+  sta LevelMinerRoom
+  iny
+  lda (LevelDataLo),Y       ; miner x
+  sta MinerX
+  iny
+  lda (LevelDataLo),Y       ; miner y
+  sta MinerY
+  iny
+  lda (LevelDataLo),Y       ; wall color
+  sta LevelWallColor
+  iny
+  lda (LevelDataLo),Y       ; RoomDataTable base lo
+  sta LevelPFDataLo
+  iny
+  lda (LevelDataLo),Y       ; RoomDataTable base hi
+  sta LevelPFDataHi
+  iny
+  lda (LevelDataLo),Y       ; RoomConnections base lo
+  sta LevelConnLo
+  iny
+  lda (LevelDataLo),Y       ; RoomConnections base hi
+  sta LevelConnHi
+  lda Temp
+  jmp EnterRoom
 
 ; ------------------------------------------------------------------------------
 ; ExitRoomUp / ExitRoomDown: follow the current room's up/down connection. If a
@@ -452,8 +592,8 @@ ExitRoomUp subroutine
   lda RoomNo
   asl
   asl
-  tax
-  lda RoomConnections+ROOM_UP,X
+  tay
+  lda (LevelConnLo),Y         ; +ROOM_UP = 0
   cmp #ROOM_NONE
   beq .NoExit
   jsr EnterRoom
@@ -466,8 +606,9 @@ ExitRoomDown subroutine
   lda RoomNo
   asl
   asl
-  tax
-  lda RoomConnections+ROOM_DOWN,X
+  tay
+  iny
+  lda (LevelConnLo),Y         ; +ROOM_DOWN = 1
   cmp #ROOM_NONE
   beq .NoExit
   jsr EnterRoom
@@ -485,8 +626,10 @@ ExitRoomLeft subroutine
   lda RoomNo
   asl
   asl
-  tax
-  lda RoomConnections+ROOM_LEFT,X
+  tay
+  iny
+  iny
+  lda (LevelConnLo),Y         ; +ROOM_LEFT = 2
   cmp #ROOM_NONE
   beq .NoExit
   jsr EnterRoom
@@ -499,8 +642,11 @@ ExitRoomRight subroutine
   lda RoomNo
   asl
   asl
-  tax
-  lda RoomConnections+ROOM_RIGHT,X
+  tay
+  iny
+  iny
+  iny
+  lda (LevelConnLo),Y         ; +ROOM_RIGHT = 3
   cmp #ROOM_NONE
   beq .NoExit
   jsr EnterRoom
@@ -536,7 +682,7 @@ SetObjectXPos subroutine
 ; Bitmaps and colors
 ; ------------------------------------------------------------------------------
     org $f300
-    include "generated/level_001_rooms_data.asm"
+    include "generated/levels_data.asm"
 
 PlayerSprite:
   .byte #%11110000
@@ -548,9 +694,9 @@ PlayerSprite:
   .byte #%11110000
   .byte #%11110000
 
-; Room data table (RoomDataTable + RoomConnections + LEVEL_* constants) is
-; generated by tools/convert_level.py from the editor's JSON level file.
-    include "generated/level_001_rooms.asm"
+; Level data (per-level tables + LevelDataTable + LEVEL_COUNT) is generated by
+; tools/convert_level.py --levels from the editor's JSON level files.
+    include "generated/levels.asm"
 
 ; ------------------------------------------------------------------------------
 ; Fine-adjust table for SetObjectXPos. MUST be page-aligned ($xx00): the
