@@ -1,7 +1,17 @@
 #########################################################################################################################################################################
 - adicionar mineiro (quadrado verde)
+    # change miner color to purple
 
-- adicionar inimigos (estáticos por hora)
+- enemy and object placement in the editor should not follow the mirroring rule, we should be able to position it on any part of both screens.
+
+
+- Add enemies in the game. Those are already in the editor, just draw them as rectangles for now, with the following colors:
+    # spider dark yellow
+    # bats brown
+    # snakes green
+    # tentacle white
+    # giant moth dark orange
+
 
 - dividir a fase em faixas de cores
     # usuário deve escolher duas

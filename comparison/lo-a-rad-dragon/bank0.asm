@@ -85,10 +85,24 @@ PlayerY = RoomY
 ; Setup rom
 ; ------------------------------------------------------------------------------
 
+; ------------------------------------------------------------------------------
+; F6 landing pad (bank0, window $F000 / physical offset $0000)
+; ------------------------------------------------------------------------------
+; Every bankswitch bank (bank1/bank2/bank3) begins with a 5-byte stub:
+;     lda #0
+;     sta $1FF6       ; select bank0
+; The 6502's fetch AFTER that store comes from bank0 at window $F005 (the
+; selected bank changes immediately), so bank0 keeps an identical-size landing
+; pad and a `jmp Main` at $F005-$F007. Whatever bank an emulator/console powers
+; up in, execution always continues at bank0's Main.
+; ------------------------------------------------------------------------------
     seg code
-    org $f000       ; define the code origin at $f000 - start of the ROM
+    org $f000       ; bank0 origin (window $F000 = F6 physical offset $0000)
 
-Start:
+    ds.b 5          ; $F000-$F004: pad matching the startup stub length (unused)
+    jmp Main        ; $F005-$F007: execution lands here after any bank powers up
+
+Main:
   CLEAN_START
 
 ; ------------------------------------------------------------------------------
@@ -729,5 +743,5 @@ fineAdjustTable EQU fineAdjustBegin - %11110001   ; %11110001 = -241 (start basi
 ; ------------------------------------------------------------------------------
 
     org $fffc
-  .word Start     ; tell atari where to start when we reset
-  .word Start     ; interupt at $fffe - unused by vcs but makes 4kb
+  .word Main      ; tell atari where to start when we reset (bank0's own entry)
+  .word Main      ; interupt at $fffe - unused by vcs but makes 4kb

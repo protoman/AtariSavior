@@ -315,7 +315,7 @@ def main(argv: list[str]) -> int:
 
         # Emit a file that includes every per-room data file, so the game
         # assembler needs only this single include and picks up rooms added
-        # in the editor without editing main.asm. Include paths are relative
+        # in the editor without editing bank0.asm. Include paths are relative
         # to the build working directory (the repo root), matching the style
         # used elsewhere.
         data_include = generated_dir / f"level_{level_n:03d}_rooms_data.asm"

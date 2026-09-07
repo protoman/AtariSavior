@@ -1,7 +1,13 @@
 # Atari 2600 Development Notes
 
 ## CURRENT PROTOTYPE ARCHITECTURE (HERO-direct, supersedes tile-budget notes)
-- `game_4k.asm` -> `comparison/lo-a-rad-dragon/main.asm` + `generated/level_001_room_001.asm` + `generated/level_001_room_002.asm`.
+- **F6 bankswitching (16K, 4 banks):** game code lives in `comparison/lo-a-rad-dragon/bank0.asm`
+  (landing pad + `Main` + kernel + room/level data + vectors at $FFFC). Bank0 begins
+  with a 5-byte pad (`ds.b 5`) + `jmp Main`; F6 powers up in bank3, whose stub
+  (`lda #0; sta $1FF6`) selects bank0 and lands on that pad. Banks 1-3 are placeholders
+  (same stub; bank3 holds the reset vector at physical $3FFC). Output is the 4 bank
+  binaries concatenated via `./build_game_f6.sh` into `savior.bin`.
+- `bank0.asm` includes `generated/level_001_room_001.asm` + `generated/level_001_room_002.asm`.
 - Exactly HERO's rendering model: **reflected playfield with playfield priority
   (CTRLPF=$05), symmetric cave, player as a plain sprite over it.** No
   asymmetric PF2-right rewrites, no menu region, no 96-row/kernel-units,
@@ -18,7 +24,7 @@
   into `generated/level_XXX_rooms.asm` (per-level `LEVEL{n}_START_ROOM/X/Y`,
   `LEVEL{n}_MINER_ROOM/X/Y`, `LEVEL{n}_WALL_COLOR`, `LEVEL{n}_RoomDataTable`,
   `LEVEL{n}_RoomConnections`; tile coords * 8 for X, * 12 for Y become pixel
-  bytes). `./build_game_4k.sh` runs `convert_level.py --levels generated/levels.asm`
+  bytes). `./build_game_f6.sh` runs `convert_level.py --levels generated/levels.asm`
   to emit `generated/levels.asm` (includes every level's tables + LEVEL_COUNT +
   LevelDataTable, one LEVEL_DATA_STRIDE=12 entry per level: start room/x/y,
   miner room/x/y, wall color, RoomDataTable ptr, RoomConnections ptr) and
@@ -186,7 +192,7 @@ that is PAGE-ALIGNED so the taken `bpl` crosses a page (3 cycles), making the
 loop 5 cycles (15 clocks). RESP0 is written at the end of the delay loop.
 HMOVE is applied later (at kernel entry, during HBLANK).
 
-IMPLEMENTED IN THIS PROTOTYPE (`SetObjectXPos`, main.asm): Andrew Davie's
+IMPLEMENTED IN THIS PROTOTYPE (`SetObjectXPos`, bank0.asm): Andrew Davie's
 session-24 routine (docs/tutorial/session-24.html), which is the same
 precision without the hand-aligned loop: `sta WSYNC; sec; sbc #15; bcs` then
 `tay; lda fineAdjustTable,y; sta HMP0,x; sta RESP0,x`. The coarse loop burns
@@ -341,12 +347,23 @@ Once in the debugger (backtick or -debug flag):
 
 ## Build Process
 ```bash
-dasm bank0.asm -f3 -obank0.bin
-dasm bank1.asm -f3 -obank1.bin
-dasm bank2.asm -f3 -obank2.bin
-dasm bank3.asm -f3 -obank3.bin
-cat bank0.bin bank1.bin bank2.bin bank3.bin > rom.bin
+./build_game_f6.sh        # runs the level converters + assembles all 4 banks
+# equal to:
+dasm comparison/lo-a-rad-dragon/bank0.asm -f3 -ocomparison/lo-a-rad-dragon/bank0.bin
+dasm comparison/lo-a-rad-dragon/bank1.asm -f3 -ocomparison/lo-a-rad-dragon/bank1.bin
+dasm comparison/lo-a-rad-dragon/bank2.asm -f3 -ocomparison/lo-a-rad-dragon/bank2.bin
+dasm comparison/lo-a-rad-dragon/bank3.asm -f3 -ocomparison/lo-a-rad-dragon/bank3.bin
+cat comparison/lo-a-rad-dragon/bank0.bin comparison/lo-a-rad-dragon/bank1.bin \
+    comparison/lo-a-rad-dragon/bank2.bin comparison/lo-a-rad-dragon/bank3.bin > savior.bin
 ```
+
+Notes:
+- Assemble from the repo root (bank0's `include "generated/..."` paths are root-relative),
+  not from inside `comparison/lo-a-rad-dragon/`.
+- F6 power-up bank is bank3; its stub (`lda #0; sta $1FF6`) switches to bank0. All four
+  banks start with the same 5-byte stub so any startup bank reaches `Main`. DASM here
+  requires every mnemonic/directive to be indented (column-1 tokens are labels) AND
+  requires `processor 6502` (indented) or it reports "Unknown Mnemonic".
 
 ## Development Workflow - Baby Steps
 
@@ -533,9 +550,10 @@ requiring us to reuse its game data or assets:
   entry edge. This is a better foundation for HERO-style connected rooms than
   trying to scroll the playfield first.
 
-For this project, the active `game_4k.asm` is a clean-room minimal movement
-implementation inspired by these hardware techniques. It intentionally does not
-copy Adventure's room data, graphics, object tables, or game-specific logic.
+For this project, `comparison/lo-a-rad-dragon/bank0.asm` is a clean-room minimal
+movement implementation inspired by these hardware techniques. It intentionally
+does not copy Adventure's room data, graphics, object tables, or game-specific
+logic.
 
 ## Knowledge Management
 When discovering new information about the Atari 2600 hardware, register behavior,
