@@ -5,7 +5,7 @@ LEVEL1_START_X = 64
 LEVEL1_START_Y = 24
 LEVEL1_MINER_ROOM = 2
 LEVEL1_MINER_X = 12
-LEVEL1_MINER_Y = 156
+LEVEL1_MINER_Y = 108
 
 ; Room data: one (L1R<n>TilePF0, ...RoomRowLo) word pair per room, indexed by RoomNo.
 LEVEL1_RoomDataTable:

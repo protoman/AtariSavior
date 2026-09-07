@@ -12,17 +12,13 @@ L2R1RoomTileMap:
   .byte $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
   .byte $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
   .byte $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
-  .byte $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
-  .byte $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
-  .byte $01, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $01
-  .byte $01, $01, $01, $01, $01, $01, $01, $01, $00, $00, $00, $00, $01, $01, $01, $01, $01, $01, $01, $01
 L2R1RoomRowLo:
-  .byte < (L2R1RoomTileMap+0*20), < (L2R1RoomTileMap+1*20), < (L2R1RoomTileMap+2*20), < (L2R1RoomTileMap+3*20), < (L2R1RoomTileMap+4*20), < (L2R1RoomTileMap+5*20), < (L2R1RoomTileMap+6*20), < (L2R1RoomTileMap+7*20), < (L2R1RoomTileMap+8*20), < (L2R1RoomTileMap+9*20), < (L2R1RoomTileMap+10*20), < (L2R1RoomTileMap+11*20), < (L2R1RoomTileMap+12*20), < (L2R1RoomTileMap+13*20), < (L2R1RoomTileMap+14*20), < (L2R1RoomTileMap+15*20)
+  .byte < (L2R1RoomTileMap+0*20), < (L2R1RoomTileMap+1*20), < (L2R1RoomTileMap+2*20), < (L2R1RoomTileMap+3*20), < (L2R1RoomTileMap+4*20), < (L2R1RoomTileMap+5*20), < (L2R1RoomTileMap+6*20), < (L2R1RoomTileMap+7*20), < (L2R1RoomTileMap+8*20), < (L2R1RoomTileMap+9*20), < (L2R1RoomTileMap+10*20), < (L2R1RoomTileMap+11*20), < (L2R1RoomTileMap+0*20), < (L2R1RoomTileMap+0*20), < (L2R1RoomTileMap+0*20), < (L2R1RoomTileMap+0*20)
 L2R1RoomRowHi:
-  .byte > (L2R1RoomTileMap+0*20), > (L2R1RoomTileMap+1*20), > (L2R1RoomTileMap+2*20), > (L2R1RoomTileMap+3*20), > (L2R1RoomTileMap+4*20), > (L2R1RoomTileMap+5*20), > (L2R1RoomTileMap+6*20), > (L2R1RoomTileMap+7*20), > (L2R1RoomTileMap+8*20), > (L2R1RoomTileMap+9*20), > (L2R1RoomTileMap+10*20), > (L2R1RoomTileMap+11*20), > (L2R1RoomTileMap+12*20), > (L2R1RoomTileMap+13*20), > (L2R1RoomTileMap+14*20), > (L2R1RoomTileMap+15*20)
+  .byte > (L2R1RoomTileMap+0*20), > (L2R1RoomTileMap+1*20), > (L2R1RoomTileMap+2*20), > (L2R1RoomTileMap+3*20), > (L2R1RoomTileMap+4*20), > (L2R1RoomTileMap+5*20), > (L2R1RoomTileMap+6*20), > (L2R1RoomTileMap+7*20), > (L2R1RoomTileMap+8*20), > (L2R1RoomTileMap+9*20), > (L2R1RoomTileMap+10*20), > (L2R1RoomTileMap+11*20), > (L2R1RoomTileMap+0*20), > (L2R1RoomTileMap+0*20), > (L2R1RoomTileMap+0*20), > (L2R1RoomTileMap+0*20)
 L2R1TilePF0:
-  .byte $f0, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $f0
+  .byte $f0, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $10, $00, $00, $00, $00
 L2R1TilePF1:
-  .byte $ff, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $f0
+  .byte $ff, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
 L2R1TilePF2:
-  .byte $ff, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $ff
+  .byte $ff, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $80, $00, $00, $00, $00

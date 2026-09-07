@@ -11,9 +11,13 @@
 - Exactly HERO's rendering model: **reflected playfield with playfield priority
   (CTRLPF=$05), symmetric cave, player as a plain sprite over it.** No
   asymmetric PF2-right rewrites, no menu region, no 96-row/kernel-units,
-  no 20x24 tile budget. Rooms are 20x16 text grids (`rooms/*.txt`), each tile
-  = 8 color-clocks wide x 12 scanlines tall; the whole 192-line screen IS the
-  cave. Rows MUST be left-right palindromes (the TIA mirrors the 20-bit half).
+  no 20x24 tile budget. Rooms are 20x12 text grids (`rooms/*.txt`): 12 playable
+  rows each tile = 8 color-clocks wide x 12 scanlines tall = 144 cave lines,
+  then a 4-row (48-line) grey HUD band at the bottom of the 192-line screen.
+  Rooms store ONLY the playable rows; the HUD is kernel-side (COLUBK=$06 grey,
+  PFs cleared). Row/per-tile tables are still emitted PADDED to 16 bytes so
+  bank0's +16/+16/+32 table offsets work; only the first 12 entries are drawn.
+  Rows MUST be left-right palindromes (the TIA mirrors the 20-bit half).
 - `tools/convert_room.py` emits one PF0/PF1/PF2 triple per tile row (kernel
   writes each register ONCE per 12-line band; TIA persists) plus a 1-byte-per-
   tile RoomTileMap + RoomRowLo/Hi for collision. Render and collision both
@@ -64,8 +68,9 @@
   `PlayerX` = room pixel 0..159 -> TIA via `SetObjectXPos`. Tile row from scanline
   = `/12` (YToCellRow), column = `/8`. Tile rows are drawn top-to-bottom (0..15);
   pressing up DECREASES `PlayerY` (scanline 0 is the top of the screen).
-- Constants: PLAYER_MIN_X=4, PLAYER_MAX_X=163, PLAYER_MIN_Y=0, PLAYER_MAX_Y=184
-  (keeps the 8-tall sprite flush with the screen edges in open passages).
+- Constants: PLAYER_MIN_X=4, PLAYER_MAX_X=163, PLAYER_MIN_Y=0, PLAYER_MAX_Y=136
+  (keeps the 8-tall sprite flush with the cave edges; the cave's last visible
+  row is scanline 143, the grey HUD band starts at 144).
 - **Room system:** `RoomDataTable` (ROM, per room: TilePF0 ptr + RoomRowLo ptr)
   and `RoomConnections` (ROM, per room: up/down/left/right target index, $ff =
   none). `RoomNo` (ZP) indexes into both. `EnterRoom` loads the pointers for a
@@ -624,12 +629,13 @@ Check upstream license and attribution terms before redistributing or reusing su
 
 ### Room Tile Budget
 
-- The target logical room layout is fixed at **20 columns x 24 rows**.
-- Each logical tile represents **8x8 pixels**.
-- The upper **16 tile rows** are the playable map.
-- The lower **8 tile rows** are reserved for the menu.
-- Room text files and future editor output must stay within this 20x24 budget;
-  do not add map rows or columns to solve rendering problems.
+- The target logical room layout is fixed at **20 columns x 16 rows total**:
+  **12 tile rows** are the playable map (144 scanlines), **4 tile rows** are a
+  grey HUD band (48 scanlines) drawn by the kernel below the cave.
+- Each logical tile represents **8x8 pixels** (12 scanlines tall) and spans
+  4 color-clocks horizontally.
+- Room text files and editor output must stay within this 20x12 budget; the
+  HUD band is not editable (entity placement with y>=12 is rejected).
 - Room data is converted at build time into assembler data. The 6502 kernel
   must consume compact precomputed tables and must not parse text or perform
   expensive tile conversion during visible scanlines.
