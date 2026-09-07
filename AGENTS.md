@@ -39,6 +39,21 @@
   player; touching it (footprint overlap) increments Level (wrapping) and calls
   LoadLevel, respawning at the next level's origin. Playfield priority hides
   the miner behind walls like the player.
+- **Enemies:** `convert_level.py` emits a flat per-level `LEVEL{n}_EnemyDataTable`
+  (stride 6/record: type, x, y, range_min, range_max, dir) plus per-room records
+  `LEVEL{n}_RoomEnemies` (ptr_lo, ptr_hi, count, pad), indexed from a top-level
+  `LevelEnemyTable` (one `.word` per level, loaded by `LoadLevel`; `EnterRoom`
+  pulls the active room's ptr+count). Editor enemy coordinates are FULL-STAGE
+  display columns (x 0..39 across both mirror halves), so pixel X = x*4 (one
+  playfield block), pixel Y = y*12, matching the player's room-space units.
+  Rendering: the TIA has one GRP1 sprite, so each frame `SelectActiveObject`
+  rotates the GRP1 slot among [miner?] + room enemies ([EnemyIndex]/[EnemyCount]/
+  [EnemyDataLoHi]=[ActiveObjectX/Y]=[ActiveObjectOn]) and sets COLUP1 from
+  `EnemyColorTable[type]` (emulator-aware bytes: spider `$14` dark yellow, bat
+  `$F2` brown, snake `$C4` green, tentacle `$0E` white, moth `$22` dark orange);
+  with N slots each object flickers at 60/N fps. Enemies are static squares (no
+  patrolling/collision yet — range/speed/dir are reserved). Only some types are
+  hardcoded; derive any new color from `kPalette[hue][luma]` as `(hue<<4)|(luma<<1)`.
 - Kernel: per scanline `WSYNC`, sprite byte written when `Scanline - PlayerY`
   in 0..7 (inline; WSYNC absorbs jitter, only constraint is GRP0 lands in
   HBLANK, < ~41 cycles). Coordinates are direct: `PlayerY` = scanline 0..191,
@@ -282,6 +297,14 @@ pixel (0..159), so room X coords map 1:1 to visible columns.
 - To re-verify colors on a changed Stella/config, rebuild the probe
   (`dasm tools/palette_test.asm -f3 -opalette_test.bin`) and compare the user's
   per-step report against Stella's own palette order, not the classic chart.
+- **Hardcoded color bytes must be looked up in the shared kPalette hue-major
+  table, not the classic chart.** Two traps bit us: (a) the byte must be the
+  emulator-aware `(hue << 4) | (luma << 1)` (e.g. miner green was `$c6` =
+  hue C luma 3); (b) the hue INDEX is not the intuitive one — in kPalette,
+  hue 4 = red, hue 5 = magenta, hue 6 = purple, hue 7 = blue-violet. Using
+  `$46` (hue 4) for "purple" rendered RED; the miner is now `$66` (hue 6,
+  luma 3 = purple). When a color is hardcoded in bank0.asm, derive the byte
+  from `kPalette[hue][luma]` via `(hue << 4) | (luma << 1)`.
 
 ## Visual Validation
 - Stella launching successfully verifies only that the ROM loads; it does not

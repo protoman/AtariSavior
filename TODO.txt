@@ -1,11 +1,5 @@
 #########################################################################################################################################################################
-- adicionar mineiro (quadrado verde)
-    # change miner color to purple
-
-- enemy and object placement in the editor should not follow the mirroring rule, we should be able to position it on any part of both screens.
-
-
-- Add enemies in the game. Those are already in the editor, just draw them as rectangles for now, with the following colors:
+Now add enemies in the game. Those are already in the editor, just draw them as rectangles with same size as player for now, with the following colors:
     # spider dark yellow
     # bats brown
     # snakes green
@@ -13,8 +7,14 @@
     # giant moth dark orange
 
 
-- dividir a fase em faixas de cores
-    # usuário deve escolher duas
+Add a HUD area, that is all grey at the bottom of the screen.
+It should have the height of 4 tiles, so the map will now be shorter by 4 files.
+Convert existing maps to this new size, and also change the editor to reflect this new height.
+The game should also consider the bottom as 4 tiles short for effects of leaving the room for the next one on bottom exists.
+
+
+In the editor, the user now should have the option to pick two colors for the stage.
+In the game, the first 4 tile rows, from top to bottom, will be draw with the first color, the next 4 with the second, and the last 4 with the first color again.
 
 - adicionar gravidade
 

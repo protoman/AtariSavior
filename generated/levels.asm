@@ -15,3 +15,8 @@ LevelDataTable:
   .byte LEVEL2_START_ROOM, LEVEL2_START_X, LEVEL2_START_Y, LEVEL2_MINER_ROOM, LEVEL2_MINER_X, LEVEL2_MINER_Y, LEVEL2_WALL_COLOR
   .word LEVEL2_RoomDataTable, LEVEL2_RoomConnections
   .byte 0 ; pad to LEVEL_DATA_STRIDE
+
+; Per-level enemy table base (LEVEL{n}_RoomEnemies). Indexed by Level.
+LevelEnemyTable:
+  .word LEVEL1_RoomEnemies
+  .word LEVEL2_RoomEnemies

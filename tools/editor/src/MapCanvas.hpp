@@ -72,7 +72,7 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
 
 private:
-    void ApplyBrushAt(int tileX, int tileY);
+    void ApplyBrushAt(int tileX, int entityX, int tileY);
     void MouseToTile(const QPointF& pos, bool apply);
     QColor GetTileColor(int tileType) const;
     void UpdateSizeForRoom();

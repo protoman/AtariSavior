@@ -37,6 +37,17 @@ LevelWallColor  byte            ; COLUPF byte for the active level's walls
 LevelMinerRoom  byte            ; room index holding the miner for the active level
 MinerX          byte            ; miner spawn (logical room pixel coords)
 MinerY          byte
+LevelEnemyLo    byte            ; active level's RoomEnemies table base (per-room ptr/count)
+LevelEnemyHi    byte
+EnemyDataLo     byte            ; current room's enemy data base address (first enemy record)
+EnemyDataHi     byte
+EnemyCount      byte            ; number of enemies in the current room (0..MAX_ENEMIES)
+FlickerFrame    byte            ; GRP1 slot index for this frame (0..ObjectCount-1)
+ObjectCount     byte            ; Enemies + (1 if this is the miner's room)
+ActiveObjectOn  byte            ; 1 when the current room owns the GRP1 object this frame
+ActiveObjectX   byte            ; GRP1 object X (room pixel 0..159): miner or selected enemy
+ActiveObjectY   byte            ; GRP1 object Y (scanline 0..191)
+EnemyIndex      byte            ; selected enemy's index within the room's enemy data
 Temp            byte            ; general scratch (level*stride in LoadLevel)
 
 ; ------------------------------------------------------------------------------
@@ -76,6 +87,10 @@ ROOM_DOWN = 1
 ROOM_LEFT = 2
 ROOM_RIGHT = 3
 ROOM_NONE = $ff
+
+; Enemy records in LEVEL{n}_EnemyDataTable (emitted by convert_level.py):
+; type, x, y, range_min, range_max, dir.
+ENEMY_DATA_STRIDE = 6
 
 PlayerX = RoomX
 PlayerY = RoomY
@@ -136,14 +151,10 @@ StartFrame:
 ; ------------------------------------------------------------------------------
   lda RoomX
   ldx #0
-  jsr SetObjectXPos         ; position player0 (miner uses object 1)
-  lda RoomNo
-  cmp LevelMinerRoom
-  bne .Player1Done
-  lda MinerX
-  ldx #1
-  jsr SetObjectXPos         ; position the miner sprite (player1)
-.Player1Done:
+  jsr SetObjectXPos         ; position player0 (GRP0)
+; Pick the single GRP1 object for this frame (miner or one enemy) and position
+; it. See SelectActiveObject below.
+  jsr SelectActiveObject
   sta WSYNC
   sta HMOVE                 ; apply the horizontal offsets we just set
 
@@ -184,8 +195,6 @@ LoopVBlank:
   sta COLUPF
   lda #$1c                  ; player color
   sta COLUP0
-  lda #$c6                  ; miner color (green, emulator-aware encoding)
-  sta COLUP1
   lda #$05                  ; D0=1 reflect, D2=1 playfield priority
   sta CTRLPF
   lda #$00                  ; one copy, not flipped, no missiles/ball
@@ -239,22 +248,22 @@ LoopVBlank:
   lda #0
 .Put:
   sta GRP0
-; Draw the miner (an 8x8 green square, same footprint as the player) on GRP1,
-; but only inside its own room. Playfield priority (CTRLPF D2=1) hides it
-; behind walls just like the player.
-  lda LevelMinerRoom
-  cmp RoomNo
-  bne .NoMiner
+; Draw the single GRP1 object chosen this frame (the miner or one enemy) as a
+; square the same size as the player, only while this scanline is inside its
+; 8-row footprint. Playfield priority (CTRLPF D2=1) hides it behind walls
+; just like the player.
+  lda ActiveObjectOn
+  beq .NoObject
   lda Scanline
   sec
-  sbc MinerY
+  sbc ActiveObjectY
   cmp #PLAYER_HEIGHT
-  bcs .NoMiner
+  bcs .NoObject
   lda #%11110000
-  jmp .MinerPut
-.NoMiner:
+  jmp .ObjectPut
+.NoObject:
   lda #0
-.MinerPut:
+.ObjectPut:
   sta GRP1
   inc Scanline
   sta WSYNC                 ; end this scanline
@@ -534,6 +543,20 @@ EnterRoom subroutine
   iny
   lda (LevelPFDataLo),Y
   sta RoomRowMapHi
+; Load the current room's enemy data pointer + count from the level's
+; per-room record (ptr_lo, ptr_hi, count, pad).
+  lda RoomNo
+  asl
+  asl
+  tay
+  lda (LevelEnemyLo),Y
+  sta EnemyDataLo
+  iny
+  lda (LevelEnemyLo),Y
+  sta EnemyDataHi
+  iny
+  lda (LevelEnemyLo),Y
+  sta EnemyCount
   rts
 
 ; ------------------------------------------------------------------------------
@@ -594,6 +617,14 @@ LoadLevel subroutine
   iny
   lda (LevelDataLo),Y       ; RoomConnections base hi
   sta LevelConnHi
+  lda Level
+  asl
+  tay
+  lda LevelEnemyTable,Y     ; active level's RoomEnemies base
+  sta LevelEnemyLo
+  iny
+  lda LevelEnemyTable,Y
+  sta LevelEnemyHi
   lda Temp
   jmp EnterRoom
 
@@ -670,6 +701,94 @@ ExitRoomRight subroutine
   rts
 
 ; ------------------------------------------------------------------------------
+; SelectActiveObject: choose the single GRP1 object to draw this frame.
+; The TIA has one GRP1 sprite, so the object list is the miner (when this is
+; its room) followed by the room's enemies (from EnemyCount/EnemyDataLo/Hi).
+; Each frame the slot pointer advances: with N slots every object flickers at
+; 60/N fps. Rooms with no objects leave ActiveObjectOn = 0 so GRP1 stays off.
+; Sets COLUP1, then positions GRP1 when an object is present.
+; Clobbers: A, X, Y, MapPtrLo/MapPtrHi, EnemyIndex.
+; ------------------------------------------------------------------------------
+SelectActiveObject subroutine
+  lda EnemyCount
+  sta ObjectCount
+  lda LevelMinerRoom
+  cmp RoomNo
+  bne .SelectGotCount
+  inc ObjectCount           ; miner owns slot 0 when this is its room
+.SelectGotCount:
+  lda ObjectCount
+  bne .SelectRotate
+  lda #0
+  sta ActiveObjectOn
+  jmp .SelectDone
+.SelectRotate:
+  inc FlickerFrame
+  lda FlickerFrame
+  cmp ObjectCount
+  bcc .SelectPicked
+  lda #0
+  sta FlickerFrame
+.SelectPicked:
+  lda #1
+  sta ActiveObjectOn
+  ldy FlickerFrame
+  lda LevelMinerRoom
+  cmp RoomNo
+  bne .SelectEnemy          ; no miner here: Y is already an enemy index
+  cpy #0
+  beq .SelectMiner
+  dey                       ; miner room, Y>=1: enemy index = Y-1
+.SelectEnemy:
+  sty EnemyIndex
+  ldy #0                    ; byte offset = EnemyIndex * ENEMY_DATA_STRIDE
+  ldx #0                    ; counter: 0..EnemyIndex
+.SelectEnemyOffset:
+  cpx EnemyIndex
+  beq .SelectEnemyHave
+  inx
+  tya
+  clc
+  adc #ENEMY_DATA_STRIDE
+  tay
+  jmp .SelectEnemyOffset
+.SelectEnemyHave:
+  tya
+  clc
+  adc EnemyDataLo           ; MapPtr = EnemyData base + index * stride
+  sta MapPtrLo
+  lda #0
+  adc EnemyDataHi
+  sta MapPtrHi
+  ldy #0
+  lda (MapPtrLo),Y          ; type -> color
+  tay
+  lda EnemyColorTable,Y
+  sta COLUP1
+  ldy #1
+  lda (MapPtrLo),Y          ; x (room pixel 0..159)
+  sta ActiveObjectX
+  ldy #2
+  lda (MapPtrLo),Y          ; y (scanline 0..191)
+  sta ActiveObjectY
+  jmp .SelectDone
+.SelectMiner:
+  ldx MinerX
+  stx ActiveObjectX
+  ldx MinerY
+  stx ActiveObjectY
+  lda #$66                  ; miner purple (kPalette hue 6 luma 3)
+  sta COLUP1
+.SelectDone:
+  lda ActiveObjectOn
+  beq .SelectPositioned
+  lda ActiveObjectX
+  ldx #1
+  jsr SetObjectXPos         ; position the GRP1 object (player1)
+.SelectPositioned:
+  rts
+
+; ------------------------------------------------------------------------------
 ; Horizontal positioning conversion
 ; A is the desired room-space X coordinate. TIA conversion happens here.
 ; X is the object type (0 = player0, 1 = player1, ...).
@@ -695,7 +814,10 @@ SetObjectXPos subroutine
 ; ------------------------------------------------------------------------------
 ; Bitmaps and colors
 ; ------------------------------------------------------------------------------
-    org $f300
+; Room/level data is placed after all out-of-line code. $f300 no longer fits
+; (code has grown past it), so data starts at $f400 and ends well before the
+; page-aligned fine-adjust table at $ff00.
+    org $f400
     include "generated/levels_data.asm"
 
 PlayerSprite:
@@ -707,6 +829,22 @@ PlayerSprite:
   .byte #%11110000
   .byte #%11110000
   .byte #%11110000
+
+; Enemy rectangle colors indexed by enemy type (editor EnemyType enum).
+; All bytes are emulator-aware (hue << 4) | (luma << 1), taken from the
+; shared kPalette hue-major table (hue 0 = greys, 1 = gold, 2 = orange,
+; C = green, F = brown):
+;   type 0 spider     dark yellow   hue 1 luma 2 -> $14
+;   type 1 bat        brown         hue F luma 1 -> $F2
+;   type 2 snake      green         hue C luma 2 -> $C4
+;   type 3 tentacle   white         hue 0 luma 7 -> $0E
+;   type 4 giant moth dark orange   hue 2 luma 1 -> $22
+EnemyColorTable:
+  .byte $14
+  .byte $F2
+  .byte $C4
+  .byte $0E
+  .byte $22
 
 ; Level data (per-level tables + LevelDataTable + LEVEL_COUNT) is generated by
 ; tools/convert_level.py --levels from the editor's JSON level files.

@@ -18,3 +18,16 @@ LEVEL1_RoomConnections:
   .byte ROOM_NONE, $01, ROOM_NONE, ROOM_NONE ; room 0
   .byte $00, $02, ROOM_NONE, ROOM_NONE ; room 1
   .byte $01, ROOM_NONE, ROOM_NONE, ROOM_NONE ; room 2
+
+; Enemy data: 4 enemy records across 3 rooms, 6 bytes each (type,x,y,range_min,range_max,dir).
+LEVEL1_EnemyDataTable:
+  .byte 0, 116, 96, 104, 128, 1
+  .byte 1, 124, 120, 112, 136, 1
+  .byte 2, 12, 48, 0, 24, 1
+  .byte 2, 4, 36, 0, 16, 1
+
+; Per-room enemy records: ptr_lo, ptr_hi, count, pad.
+LEVEL1_RoomEnemies:
+  .byte <(LEVEL1_EnemyDataTable+0), >(LEVEL1_EnemyDataTable+0), 1, 0 ; room 0
+  .byte <(LEVEL1_EnemyDataTable+6), >(LEVEL1_EnemyDataTable+6), 2, 0 ; room 1
+  .byte <(LEVEL1_EnemyDataTable+18), >(LEVEL1_EnemyDataTable+18), 1, 0 ; room 2

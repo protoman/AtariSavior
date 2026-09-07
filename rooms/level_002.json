@@ -340,7 +340,17 @@
                     1,
                     1
                 ],
-                "enemies": [],
+                "enemies": [
+                    {
+                        "type": 4,
+                        "x": 28.0,
+                        "y": 8.0,
+                        "range_min": 25.0,
+                        "range_max": 31.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    }
+                ],
                 "lamps": []
             },
             {
@@ -671,7 +681,17 @@
                     1,
                     1
                 ],
-                "enemies": [],
+                "enemies": [
+                    {
+                        "type": 3,
+                        "x": 3.0,
+                        "y": 14.0,
+                        "range_min": 0.0,
+                        "range_max": 6.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    }
+                ],
                 "lamps": []
             }
         ]
