@@ -12,7 +12,27 @@
   writes each register ONCE per 12-line band; TIA persists) plus a 1-byte-per-
   tile RoomTileMap + RoomRowLo/Hi for collision. Render and collision both
   derive from this one file. Supports a PREFIX argument so multiple rooms can
-  coexist in the same ROM without symbol collisions.
+  coexist in the same ROM without symbol collisions; `convert_level.py` uses
+  `L{n}R{room}` (level n, room index+1).
+- **Multi-level + miner:** every level is converted from `rooms/level_XXX.json`
+  into `generated/level_XXX_rooms.asm` (per-level `LEVEL{n}_START_ROOM/X/Y`,
+  `LEVEL{n}_MINER_ROOM/X/Y`, `LEVEL{n}_WALL_COLOR`, `LEVEL{n}_RoomDataTable`,
+  `LEVEL{n}_RoomConnections`; tile coords * 8 for X, * 12 for Y become pixel
+  bytes). `./build_game_4k.sh` runs `convert_level.py --levels generated/levels.asm`
+  to emit `generated/levels.asm` (includes every level's tables + LEVEL_COUNT +
+  LevelDataTable, one LEVEL_DATA_STRIDE=12 entry per level: start room/x/y,
+  miner room/x/y, wall color, RoomDataTable ptr, RoomConnections ptr) and
+  `generated/levels_data.asm` (includes every level's per-room data). Level
+  numbers come from the input file name (level_002.json -> 2), not `level_id`.
+  The game loads a level via `LoadLevel` (ZP: Level, LevelDataLo/Hi,
+  LevelPFDataLo/Hi, LevelConnLo/Hi, LevelWallColor, LevelMinerRoom, MinerX/Y),
+  `EnterRoom`/exits index `(LevelPFDataLo),Y`/`(LevelConnLo),Y` instead of
+  static `RoomDataTable`/`RoomConnections`. The miner is a green ($c6 on
+  COLUP1) 4x8 GRP1 square, positioned in VBLANK with `SetObjectXPos` X=1, drawn
+  only when `RoomNo == LevelMinerRoom` by the same per-scanline test as the
+  player; touching it (footprint overlap) increments Level (wrapping) and calls
+  LoadLevel, respawning at the next level's origin. Playfield priority hides
+  the miner behind walls like the player.
 - Kernel: per scanline `WSYNC`, sprite byte written when `Scanline - PlayerY`
   in 0..7 (inline; WSYNC absorbs jitter, only constraint is GRP0 lands in
   HBLANK, < ~41 cycles). Coordinates are direct: `PlayerY` = scanline 0..191,

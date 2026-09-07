@@ -1,11 +1,10 @@
 #########################################################################################################################################################################
-- arrumar cor estágio
-
 - adicionar mineiro (quadrado verde)
 
 - adicionar inimigos (estáticos por hora)
 
 - dividir a fase em faixas de cores
+    # usuário deve escolher duas
 
 - adicionar gravidade
 
@@ -18,6 +17,18 @@
 - adicionar lago de lava
 
 - adicionar parede quebrável
+
+- optimização:
+    # só precisa colocar na memória do playfield as paredes que existem
+    # salas que foram iguais, podem ser guardadas uma única vez no jogo, e usadas em diferentes fases.
+
+- fazer rom 8 ou 16k
+
+- adicionar suporte a partes async nas fases
+
+- adicionar inimigos m[oveis (traça e cobra)
+
+]
 
 
 #########################################################################################################################################################################
