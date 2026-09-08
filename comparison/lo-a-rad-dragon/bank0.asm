@@ -155,6 +155,13 @@ GRAVITY = $0008
 JET_MAX = $20
 MAX_FALL = $0200
 
+; Jet sound (audio channel 0, written each frame in overscan while JetPower>0):
+; AUDC0 = JET_AUDC (a low noise "engine" tone), AUDF0 sweeps
+; JET_AUDF_BASE - JetPower/4 so the engine spools up and down with the throttle.
+JET_AUDC = $06
+JET_AUDF_BASE = $18
+JET_AUDV = $07
+
 ; Room connection directions: index into each room's RoomConnections entry.
 ROOM_UP = 0
 ROOM_DOWN = 1
@@ -651,6 +658,32 @@ CheckMinerPickup:
   jsr LoadLevel
 .NoPickup:
   jsr CheckEnemyHit
+
+; ------------------------------------------------------------------------------
+; Jet sound: a low noise "engine" on audio channel 0 while the jet burns
+; (JetPower > 0). The pitch follows the throttle (AUDF0 drops as JetPower
+; ramps up, so the engine spools up/down), which also gives a short wind-down
+; tail when Up is released. AUDV0 = 0 silences the channel the rest of the
+; time. Written once per frame in overscan (TIA audio is latched per frame).
+; ------------------------------------------------------------------------------
+UpdateJetSound:
+  lda JetPower
+  beq .JetSilent
+  lda #JET_AUDV
+  sta AUDV0
+  lda #JET_AUDC
+  sta AUDC0
+  lda JetPower
+  lsr
+  lsr                      ; JetPower/4 -> 0..$08 (full thrust)
+  sta Temp
+  lda #JET_AUDF_BASE
+  sec
+  sbc Temp
+  sta AUDF0                ; AUDF0 = base - thrust: pitches down as it spools up
+  jmp WaitOverscan
+.JetSilent:
+  sta AUDV0                ; A = 0: kill channel 0
 WaitOverscan:
   lda INTIM
   bne WaitOverscan
