@@ -102,7 +102,10 @@
   (max 1 px up / 2 px down), keeping the overscan inside its TIM64T window.
   Fresh spawns (LoadLevel, enemy-hit teleport) zero `vy`/`JetPower`/`PlayerYSub`;
   room exits deliberately KEEP momentum so the player flies naturally through
-  passages.
+  passages. While the jet burns (`JetPower > 0`, gated in `UpdateJetSound` each
+  overscan) audio channel 0 plays a low noise "engine" (`AUDC0=$06`, `AUDV0=$07`)
+  whose pitch follows the throttle: `AUDF0 = JET_AUDF_BASE - JetPower/4`
+  (base `$18`) so the engine spools up/down; `AUDV0=0` silences it otherwise.
 
 ## Hardware Architecture
 
