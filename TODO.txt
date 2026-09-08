@@ -1,28 +1,26 @@
 #########################################################################################################################################################################
 
-In the editor, the user now should have the option to pick two colors for the stage.
-In the game playfield, the first 4 tile rows, from top to bottom, will be draw with the first color, the next 4 with the second, and the last 4 with the first color again.
-
-No need to show the HUD in the editor, just show the map area.
-Also, make sure the format of the map in the editor is 4:3 like it will be presented in the screen on the game, so you can make the grid like rectangles instead of squares.
-
-Cleanup code. There are a lot of old code that is deprecated or just not used anymore. Try to cleanup as much as possible keeping the engine working. For example, I saw some jetpack code,
-that we are not using anymore, and will re-add later.
-And while doing that, try to document the source code as mush as possible.
-
-Is player made of 4x4 pixels?
-    Add an "eye" to player, so we know witch direction he is facing. The eye is just a non-painted (black) line. And yes, we need to store the direction he is facing (left or right).
-    It should look like this diagram (facing right, just invert when facing left):
+I want to add an "eye" to player, so we know witch direction he is facing. The eye is just a non-painted (black) line.
+Because of that, we will also need to store the direction he is facing (left or right).
+    It should look something like this diagram (this is for facing right, it should invert when facing left):
+    XXXX
     XXXX
     XX
     XXXX
     XXXX
+    XXXX
+    XXXX
+    XXXX
+
+
+Now, I want to add gravity, that will make the player fall.
+And add back the jetpack logic, that makes the user move up, with some initial inertia, when he holds the up direction in the joystick.
 
 
 Make snake a rectanble that is twice the player width and half the player height.
 Snake needs a direction, so it needs a mouth
 
-- adicionar gravidade
+
 
 - adicionar laser
 
