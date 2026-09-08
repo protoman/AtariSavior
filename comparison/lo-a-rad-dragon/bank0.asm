@@ -53,6 +53,7 @@
 
 RoomX           byte
 RoomY           byte
+PlayerDir       byte            ; sprite eye facing: FACING_RIGHT (0) or FACING_LEFT
 Scanline        byte
 LineCount       byte
 MapPtrLo        byte
@@ -129,6 +130,11 @@ PLAYER_MIN_X = 4
 PLAYER_MAX_X = 163
 PLAYER_MIN_Y = 0
 PLAYER_MAX_Y = 136
+; Facing direction of the player sprite's eye (0 = right, nonzero = left). The
+; kernel picks the matching sprite table and the input handler updates it on
+; every left/right press, so the eye always points where movement is attempted.
+FACING_RIGHT = 0
+FACING_LEFT = 1
 
 ; Room connection directions: index into each room's RoomConnections entry.
 ROOM_UP = 0
@@ -313,7 +319,14 @@ LoopVBlank:
   cmp #PLAYER_HEIGHT
   bcs .NoSprite
   tay
-  lda PlayerSprite,Y
+; The player sprite has a 2-pixel black "eye" notch (3rd row) that sits on the
+; side the player faces. Select the table by PlayerDir inside HBLANK.
+  lda PlayerDir
+  beq .FaceRight
+  lda PlayerSpriteLeft,Y
+  jmp .Put
+.FaceRight:
+  lda PlayerSpriteRight,Y
   jmp .Put
 .NoSprite:
   lda #0
@@ -366,7 +379,12 @@ LoopVBlank:
   cmp #PLAYER_HEIGHT
   bcs .HUDNoSprite
   tay
-  lda PlayerSprite,Y
+  lda PlayerDir
+  beq .HUDFaceRight
+  lda PlayerSpriteLeft,Y
+  jmp .HUDPut
+.HUDFaceRight:
+  lda PlayerSpriteRight,Y
   jmp .HUDPut
 .HUDNoSprite:
   lda #0
@@ -441,6 +459,8 @@ CheckP0Left:
   lda #%01000000
   bit SWCHA
   bne CheckP0Right
+  lda #FACING_LEFT
+  sta PlayerDir             ; turn the eye left, even if the move is blocked
   lda PlayerX
   cmp #PLAYER_MIN_X
   beq .ExitLeft             ; at the left edge -> try the room's left exit
@@ -458,6 +478,8 @@ CheckP0Right:
   lda #%10000000
   bit SWCHA
   bne EndInputCheck
+  lda #FACING_RIGHT
+  sta PlayerDir             ; turn the eye right, even if the move is blocked
   lda PlayerX
   cmp #PLAYER_MAX_X
   beq .ExitRight            ; at the right edge -> try the room's right exit
@@ -994,10 +1016,31 @@ SetObjectXPos subroutine
     org $f600
     include "generated/levels_data.asm"
 
-PlayerSprite:
+; Player sprites, one per facing. 8 rows x 4 pixels (PLAYER_HEIGHT x
+; PLAYER_WIDTH); X is a painted pixel, . a black pixel.
+;   .X..  <- the 3rd row (row 2) is the "eye": a 2-pixel black notch on the
+;   XXXX      side the player faces, made by clearing the paint there
+;   XXXX
+; .X..          facing RIGHT: notch on the right half
+;   XXXX
+;   XXXX
+;   XXXX
+;   XXXX
+PlayerSpriteRight:
+  .byte #%11110000
+  .byte #%11110000
+  .byte #%11000000           ; eye on the right
   .byte #%11110000
   .byte #%11110000
   .byte #%11110000
+  .byte #%11110000
+  .byte #%11110000
+; Same sprite mirrored horizontally: the eye notch sits on the LEFT half. The
+; kernel indexes either table with the row offset (scanline - PlayerY).
+PlayerSpriteLeft:
+  .byte #%11110000
+  .byte #%11110000
+  .byte #%00110000           ; eye on the left
   .byte #%11110000
   .byte #%11110000
   .byte #%11110000
