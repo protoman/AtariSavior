@@ -81,6 +81,18 @@
   Vertical exits preserve RoomX, horizontal exits preserve RoomY, so the player
   stays in the aligned passage. `convert_room.py` builds each room file with
   prefixed symbols (Room1*, Room2*) to avoid collisions.
+- **Jetpack movement (planned re-add, formerly in the removed root prototype):**
+  movement is currently positional-only (see Input handler); the HERO-style jet
+  was implemented in the old pre-F6 `bank0.asm` (kept in git history) and is
+  slated to return. The reference parameters were:
+  - `jetPower` thrust accumulator, ramps `+1`/frame while Up is held (capped
+    `$20`) and decays `-1`/frame otherwise;
+  - gravity adds `$0010`/frame to velocity `vyLo/vyHi`, the jet subtracts
+    `jetPower`, and downward velocity is clamped to `$0200`;
+  - Y position integrates velocity per frame through a subpixel accumulator
+    (`playerYSub`), like the current X movement integrates whole pixels/frame.
+  When re-adding, drop the old hardcoded screen-border clamps (scanlines 8/176)
+  in favor of the room-map collision used by the current engine.
 
 ## Hardware Architecture
 
@@ -331,8 +343,8 @@ pixel (0..159), so room X coords map 1:1 to visible columns.
 
 ## Stella Emulator Tips
 - Stelladaptor / 2600-daptor for real controller input
-- Use `stella rom.bin` to run
-- Debugger: `stella -debug rom.bin`
+- Use `stella savior.bin` to run
+- Debugger: `stella -debug savior.bin`
 - In-game: Press ` (backtick) to enter debugger; Alt+Enter for fullscreen
 
 ### Stella Debugger Commands

@@ -1,7 +1,48 @@
   processor 6502
 
-    include "vcs.h"
-    include "macro.h"
+; The game must be assembled from the REPO ROOT: DASM resolves all includes
+; against the current working directory, so both the support headers below and
+; the generated/ room data further down are given paths relative to the root.
+    include "comparison/lo-a-rad-dragon/vcs.h"
+    include "comparison/lo-a-rad-dragon/macro.h"
+
+; ==============================================================================
+; SAVIOR 2600 - bank0 (F6 16K cartridge, physical offset $0000)
+; ==============================================================================
+; Bank0 carries ALL game code and ROM data (kernel, room tables, sprite/color
+; tables). Banks 1-3 are F6 placeholders whose startup stubs just switch to
+; this bank (see AGENTS.md "Bankswitching - F6"), so the whole game lives here
+; in the $F000 window.
+;
+; Frame timeline (262 scanlines, locked by the overscan TIM64T, OVSCAN_TIME):
+;   VSYNC        3 lines
+;   Positioning  3 lines   SetObjectXPos for GRP0 (player) + GRP1 object, HMOVE
+;   VBLANK      35 lines   blanked wait
+;   Kernel      192 lines  12 playable tile rows x 12 scanlines + 4-row HUD band
+;   Overscan     29 lines  input, movement, room exits, miner pickup, enemy hits
+;
+; Rendering model (identical to HERO / Adventure):
+;   - REFLECTED playfield (CTRLPF D0=1) + playfield priority (D2=1). The kernel
+;     writes ONE PF0/PF1/PF2 triple per 12-scanline tile row; the TIA mirrors
+;     the 20-bit half into a full-screen 40-cell cave, and the player sprite is
+;     hidden behind solid walls by playfield priority (like HERO).
+;   - Rooms are 20 columns x 12 rows; each tile is one playfield bit (4 color
+;     clocks = one screen cell) wide and 12 scanlines tall.
+;   - GRP0 = player (a plain square), GRP1 = the shared per-frame object slot
+;     (the miner or one enemy) rotated by SelectActiveObject at 60/N fps.
+;
+; Data flow (build-time, run by build_game_f6.sh):
+;   rooms/level_XXX.json -> tools/convert_level.py -> generated/*.asm
+;   Per-level tables + LevelDataTable are included at data start ($f600) and
+;   indexed at runtime through LoadLevel / EnterRoom.
+;
+; Zero-page is organized in three groups (see the block below):
+;   - current room render/collision scratch
+;   - the active level's table pointers and wall colors
+;   - the GRP1/flicker object bookkeeping
+;
+; Full architecture and hardware references: AGENTS.md
+; ==============================================================================
 
 ; ------------------------------------------------------------------------------
 ; Setup variables
@@ -195,8 +236,9 @@ LoopVBlank:
 ; (playfield priority) hides the player sprite behind walls and shows it in
 ; the openings, exactly like HERO.
 ;
-; Layout: 12 playable tile rows x 20 columns (144 cave scanlines), each tile 8
-; color-clocks wide and 12 scanlines tall, followed by a 4-tile grey HUD band.
+; Layout: 12 playable tile rows x 20 columns (144 cave scanlines). Each tile
+; is one playfield bit (4 color clocks = one screen cell) wide and 12 scanlines
+; tall, followed by a 4-tile grey HUD band.
 ; For each tile row the kernel writes the playfield once (TIA registers
 ; persist), then paints 12 WSYNC-stabilised scanlines. The player sprite is
 ; drawn whenever Scanline - PlayerY is in 0..PLAYER_HEIGHT-1. WSYNC absorbs
