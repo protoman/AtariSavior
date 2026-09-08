@@ -81,18 +81,28 @@
   Vertical exits preserve RoomX, horizontal exits preserve RoomY, so the player
   stays in the aligned passage. `convert_room.py` builds each room file with
   prefixed symbols (Room1*, Room2*) to avoid collisions.
-- **Jetpack movement (planned re-add, formerly in the removed root prototype):**
-  movement is currently positional-only (see Input handler); the HERO-style jet
-  was implemented in the old pre-F6 `bank0.asm` (kept in git history) and is
-  slated to return. The reference parameters were:
-  - `jetPower` thrust accumulator, ramps `+1`/frame while Up is held (capped
-    `$20`) and decays `-1`/frame otherwise;
-  - gravity adds `$0010`/frame to velocity `vyLo/vyHi`, the jet subtracts
-    `jetPower`, and downward velocity is clamped to `$0200`;
-  - Y position integrates velocity per frame through a subpixel accumulator
-    (`playerYSub`), like the current X movement integrates whole pixels/frame.
-  When re-adding, drop the old hardcoded screen-border clamps (scanlines 8/176)
-  in favor of the room-map collision used by the current engine.
+- **Jetpack movement (re-added, replacing the positional up/down Input handler):**
+  HERO-style vertical physics. `UpdateP0Vertical` runs first in overscan; Down is
+  unused (gravity handles descent, as in the old prototype). Reference parameters:
+  - `JetPower` thrust accumulator ramps `+1`/frame while Up is held (cap `$20`)
+    and decays `-1`/frame otherwise (the ramp = the jet's initial inertia);
+  - gravity adds `$0008`/frame to signed 16-bit `vyLo/vyHi` (+ = down; halved
+    from the reference `$0010` so free-fall accelerates more slowly and the
+    jet can brake a fall, HERO-like), the jet subtracts `JetPower`, and
+    downward velocity is clamped to `$0200`;
+  - Y position integrates velocity through the subpixel accumulator
+    `PlayerYSub` (`whole-pixel displacement = carry + vyHi`).
+  Since the old hardcoded screen-border clamps are gone, the displacement is
+  instead **walked one pixel at a time with `PlayerHitsMap`** (`StepDown`/`StepUp`):
+  a blocked pixel lands/ceiling-stops the player and zeroes `vy`; reaching
+  `PLAYER_MAX_Y`/`PLAYER_MIN_Y` follows the room's down/up connection, so
+  doorways behave exactly like the old positional edges. An **upward clamp at
+  -$0100** was added (not in the old reference) so the jet cannot accelerate
+  without limit through open rooms and the per-frame step count stays bounded
+  (max 1 px up / 2 px down), keeping the overscan inside its TIM64T window.
+  Fresh spawns (LoadLevel, enemy-hit teleport) zero `vy`/`JetPower`/`PlayerYSub`;
+  room exits deliberately KEEP momentum so the player flies naturally through
+  passages.
 
 ## Hardware Architecture
 
