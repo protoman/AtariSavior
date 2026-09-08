@@ -54,6 +54,11 @@
 RoomX           byte
 RoomY           byte
 PlayerDir       byte            ; sprite eye facing: FACING_RIGHT (0) or FACING_LEFT
+vyLo            byte            ; Y velocity low byte (subpixel; signed 16-bit, + = down)
+vyHi            byte            ; Y velocity high byte (whole pixels per frame, signed)
+PlayerYSub      byte            ; subpixel accumulator for Y velocity integration
+JetPower        byte            ; jet thrust 0..JET_MAX; ramps +1/frame while Up is held
+StepsLeft       byte            ; per-frame Y pixel steps remaining (vertical physics loop)
 Scanline        byte
 LineCount       byte
 MapPtrLo        byte
@@ -135,6 +140,20 @@ PLAYER_MAX_Y = 136
 ; every left/right press, so the eye always points where movement is attempted.
 FACING_RIGHT = 0
 FACING_LEFT = 1
+
+; Vertical physics (HERO-style jet, for the re-added gravity + jetpack):
+;   vy is a signed 16-bit velocity, += down, in pixels/frame (high byte) +
+;   subpixel (low byte). Each frame gravity adds GRAVITY; while Up is held the
+;   jet subtracts JetPower (thrust ramps +1/frame -> initial inertia, cap
+;   JET_MAX); the fall speed clamps at MAX_FALL. GRAVITY was halved (was
+;   $0010) so the player accelerates in free-fall more slowly and can brake
+;   the fall with the jet, closer to HERO's feel. An upward clamp (magnitude
+;   MAX_RISE, not in the original reference) keeps the jet from accelerating
+;   without limit through open rooms and bounds the per-frame step count so
+;   the overscan can never overrun its TIM64T window.
+GRAVITY = $0008
+JET_MAX = $20
+MAX_FALL = $0200
 
 ; Room connection directions: index into each room's RoomConnections entry.
 ROOM_UP = 0
@@ -415,44 +434,97 @@ LoopVBlank:
 ; ------------------------------------------------------------------------------
 ; Input handler
 ; ------------------------------------------------------------------------------
-; Movement is 1 unit per frame. Walls come from the shared room tile map
-; (PlayerHitsMap). The boundary clamps below are only a safety net; the
-; map collision rejects any step into solid tiles.
-CheckP0Up:
+; Horizontal movement stays positional (1 px/frame + map collision, below).
+; Vertical movement is physical: gravity pulls the player down when no floor
+; is underneath, and holding Up fires the jetpack (JetPower ramps with an
+; initial inertia) to push him up. The frame's velocity is integrated through
+; PlayerYSub and walked one pixel at a time via StepDown/StepUp so the room
+; tile map stops the sprite flush at walls and doorway edges, using the same
+; collision model as before.
+UpdateP0Vertical:
+; --- Jet thrust accumulator: +1/frame while Up is held (cap JET_MAX),
+;     -1/frame otherwise. The ramp gives the jet its initial inertia. ---
   lda #%00010000
-  bit SWCHA                 ; compare to joy
-  bne CheckP0Down
-  lda PlayerY
-  cmp #PLAYER_MIN_Y         ; up = smaller scanline
-  beq .ExitTop              ; at the top edge -> try the room's up exit
-  dec PlayerY
-  jsr PlayerHitsMap
-  bcc .UpDone
-  inc PlayerY
-.UpDone:
-  jmp CheckP0Down
-.ExitTop:
-  jsr ExitRoomUp
-  jmp CheckP0Down
-
-CheckP0Down:
-  lda #%00100000
   bit SWCHA
-  bne CheckP0Left
-  lda PlayerY
-  cmp #PLAYER_MAX_Y         ; down = larger scanline
-  bcs .ExitBottom
-  inc PlayerY
-  jsr PlayerHitsMap
-  bcc .DownDone
-  dec PlayerY
-.DownDone:
-  jmp CheckP0Left
-.ExitBottom:
-; Player reached the bottom edge inside an open passage (collision keeps them
-; there, since reaching the edge requires a clear footprint). Follow the room's
-; down connection; RoomX is preserved to stay aligned with the passage.
-  jsr ExitRoomDown
+  bne .JetDecay
+  lda JetPower
+  cmp #JET_MAX
+  bcs .JetCapped
+  clc
+  adc #1
+  jmp .JetSet
+.JetCapped:
+  lda #JET_MAX
+.JetSet:
+  sta JetPower
+  jmp .Gravity
+.JetDecay:
+  lda JetPower
+  beq .Gravity
+  dec JetPower
+
+; --- Physics: vy += GRAVITY (gravity), vy -= JetPower (jet thrust). ---
+.Gravity:
+  clc
+  lda vyLo
+  adc #<GRAVITY
+  sta vyLo
+  lda vyHi
+  adc #>GRAVITY
+  sta vyHi
+  sec
+  lda vyLo
+  sbc JetPower
+  sta vyLo
+  lda vyHi
+  sbc #0
+  sta vyHi
+
+; --- Clamp fall speed: down at MAX_FALL, up at -$0100 (see constants). ---
+  lda vyHi
+  bmi .RiseClamp
+  cmp #>MAX_FALL
+  bcc .Integrate
+  lda #>MAX_FALL
+  sta vyHi
+  lda #<MAX_FALL
+  sta vyLo
+  jmp .Integrate
+.RiseClamp:
+  cmp #$ff                  ; vyHi == $ff -> |vy| <= $0100, keep it
+  bcs .Integrate
+  lda #$ff
+  sta vyHi
+  lda #$00
+  sta vyLo                  ; vy = -$0100
+
+; --- Signed whole-pixel displacement this frame = carry + vyHi, where the
+;     subpixel accumulator already consumed vyLo. ---
+.Integrate:
+  clc
+  lda PlayerYSub
+  adc vyLo
+  sta PlayerYSub
+  lda #0
+  adc vyHi
+  beq .NoVMove
+  bmi .UpSteps
+  sta StepsLeft             ; positive = falling (down)
+.JFalling:
+  jsr StepDown
+  dec StepsLeft
+  bne .JFalling
+  jmp .NoVMove
+.UpSteps:
+  eor #$ff
+  clc
+  adc #1                    ; magnitude of upward displacement
+  sta StepsLeft
+.JRising:
+  jsr StepUp
+  dec StepsLeft
+  bne .JRising
+.NoVMove:
   jmp CheckP0Left
 
 CheckP0Left:
@@ -492,6 +564,52 @@ CheckP0Right:
 .ExitRight:
   jsr ExitRoomRight
   jmp EndInputCheck
+
+; ------------------------------------------------------------------------------
+; StepDown: try one pixel of downward movement (called once per pixel of vy).
+; A pixel is rejected when the footprint enters a solid tile (the player lands
+; on the floor and vy is zeroed). At PLAYER_MAX_Y the sprite stands entirely
+; inside an open passage - only reachable through a clear footprint - so the
+; room's down connection is followed (ExitRoomDown leaves the player in place
+; if there is no such connection).
+; ------------------------------------------------------------------------------
+StepDown subroutine
+  lda PlayerY
+  cmp #PLAYER_MAX_Y
+  bcs .SDBottom
+  inc PlayerY
+  jsr PlayerHitsMap
+  bcc .SDDone
+  dec PlayerY
+  lda #0
+  sta vyLo
+  sta vyHi
+.SDDone:
+  rts
+.SDBottom:
+  jsr ExitRoomDown
+  rts
+
+; ------------------------------------------------------------------------------
+; StepUp: one pixel of upward movement. Symmetric to StepDown: a solid tile
+; above stops the sprite and zeroes vy (ceiling); at the top edge the room's
+; up connection is followed (ExitRoomUp leaves the player in place if none).
+; ------------------------------------------------------------------------------
+StepUp subroutine
+  lda PlayerY
+  beq .SUTop
+  dec PlayerY
+  jsr PlayerHitsMap
+  bcc .SUDone
+  inc PlayerY
+  lda #0
+  sta vyLo
+  sta vyHi
+.SUDone:
+  rts
+.SUTop:
+  jsr ExitRoomUp
+  rts
 
 EndInputCheck:
 ; ------------------------------------------------------------------------------
@@ -584,6 +702,11 @@ CheckEnemyHit subroutine
   sta RoomX
   lda LevelStartY
   sta RoomY
+  lda #0                    ; respawn with no velocity or thrust
+  sta vyLo
+  sta vyHi
+  sta PlayerYSub
+  sta JetPower
   rts
 .ENextEnemy:
   lda MapPtrLo
@@ -758,6 +881,11 @@ EnterRoom subroutine
 ; ------------------------------------------------------------------------------
 LoadLevel subroutine
   sta Level
+  lda #0                    ; fresh spawn: no falling/jetting momentum
+  sta vyLo
+  sta vyHi
+  sta PlayerYSub
+  sta JetPower
   tax
   txa
   asl
