@@ -1,17 +1,14 @@
 #########################################################################################################################################################################
 
-Add a HUD area, that is all grey at the bottom of the screen. It should have the height of 4 tiles, so the map will now be shorter by 4 files.
-Convert existing maps to this new size, remove objets and enemies placed on that area and also change the editor to reflect this new height.
-The game should also consider the bottom as 4 tiles short for effects of leaving the room for the next one on bottom exists.
-
-
 In the editor, the user now should have the option to pick two colors for the stage.
 In the game playfield, the first 4 tile rows, from top to bottom, will be draw with the first color, the next 4 with the second, and the last 4 with the first color again.
 
-
 No need to show the HUD in the editor, just show the map area.
-Also, make sure the formar of the map is 4:2 like it will be presented in the screen on the game, so you can make the grid like rectangles instead of squares.
+Also, make sure the format of the map in the editor is 4:3 like it will be presented in the screen on the game, so you can make the grid like rectangles instead of squares.
 
+Cleanup code. There are a lot of old code that is deprecated or just not used anymore. Try to cleanup as much as possible keeping the engine working. For example, I saw some jetpack code,
+that we are not using anymore, and will re-add later.
+And while doing that, try to document the source code as mush as possible.
 
 Is player made of 4x4 pixels?
     Add an "eye" to player, so we know witch direction he is facing. The eye is just a non-painted (black) line. And yes, we need to store the direction he is facing (left or right).
@@ -40,6 +37,23 @@ HUD:
     Timer
     Upperland Studios Logo
 
+
+Create a start creen for a game for the Atari 2600 (it should run on original hardware, so create it with the given constrains).
+It should contain a drawing of a guy with a helmet and jetpack (the game is baed on Activision's HERO), and text:
+    SAVIOR 2600
+    Version 0.1.b1
+    (c) 2026 Upperland Studios
+    Based on Lo! A rad dragon!
+    Made with AI assistance
+
+
+- Start screen (criar desenho)
+    SAVIOR 2600
+    Version 0.1.b1
+    (c) 2026 Upperland Studios
+    Based on Lo! A rad dragon!
+    Made with AI
+
 - lamps and dark rooms
 
 - adicionar bomba
@@ -54,13 +68,13 @@ HUD:
     # só precisa colocar na memória do playfield as paredes que existem
     # salas que foram iguais, podem ser guardadas uma única vez no jogo, e usadas em diferentes fases.
 
-- fazer rom 8 ou 16k
-
 - adicionar suporte a partes async nas fases
 
-- adicionar inimigos m[oveis (traça e cobra)
+- adicionar movimentação aos inimigos
 
-]
+- refazer do zero, clean-room v2
+
+
 
 
 #########################################################################################################################################################################

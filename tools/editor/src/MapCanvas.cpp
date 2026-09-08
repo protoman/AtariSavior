@@ -41,11 +41,22 @@ static int MirrorColumn(int displayCol, int roomWidth) {
     return (displayCol < roomWidth) ? displayCol : (displayCols - 1 - displayCol);
 }
 
+// Tile height so the whole visible map (DisplayColumnsFor(roomWidth) columns x
+// roomHeight rows) renders at a 4:3 aspect, matching its proportions on the
+// game screen. Cells are therefore rectangles, not squares.
+static int CellHeightFor(int cellWidth, int displayCols, int roomHeight) {
+    if (roomHeight <= 0 || displayCols <= 0) return cellWidth;
+    return std::max(1, (int)std::lround(cellWidth * (double)displayCols * 3.0 /
+                                        (double)(roomHeight * 4)));
+}
+
 MapCanvas::MapCanvas(QWidget* parent) : QWidget(parent) {
     setMouseTracking(true);
-    // Default 20x12 stage + 4 grey HUD rows until a room is loaded.
+    // Default 20x12 stage until a room is loaded. The map area only: the grey
+    // HUD band is drawn by the game kernel and is not shown/edited here.
     setFixedSize(DisplayColumnsFor(kDefaultRoomWidth) * m_tileSize,
-                 (kDefaultRoomHeight + kHudRows) * m_tileSize);
+                 kDefaultRoomHeight * CellHeightFor(m_tileSize,
+                     DisplayColumnsFor(kDefaultRoomWidth), kDefaultRoomHeight));
 }
 
 void MapCanvas::SetLevelData(hero::LevelData* levelData, int activeRoomIndex) {
@@ -77,10 +88,11 @@ void MapCanvas::UpdateSizeForRoom() {
         w = room.width > 0 ? room.width : kDefaultRoomWidth;
         h = room.height > 0 ? room.height : kDefaultRoomHeight;
     }
-    // The canvas shows the room's playable rows plus the grey HUD band the
-    // game draws below the cave (4 tile rows). The band is not editable.
-    setFixedSize(DisplayColumnsFor(w) * m_tileSize,
-                 (h + kHudRows) * m_tileSize);
+    // The canvas shows the room's playable rows only (no grey HUD band; the
+    // game renders that below the cave but the editor doesn't display it).
+    // Tile heights are scaled so the map keeps its on-screen 4:3 format.
+    int cellH = CellHeightFor(m_tileSize, DisplayColumnsFor(w), h);
+    setFixedSize(DisplayColumnsFor(w) * m_tileSize, h * cellH);
 }
 
 namespace {
@@ -141,13 +153,17 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
     const int roomWidth = RoomWidthOf(room);
     const int roomHeight = RoomHeightOf(room);
     const int displayCols = DisplayColumnsFor(roomWidth);
+    // Rectangular cells: cell width is m_tileSize, cell height keeps the whole
+    // map at the 4:3 aspect it has on the game screen.
+    const int cellW = m_tileSize;
+    const int cellH = CellHeightFor(m_tileSize, displayCols, roomHeight);
 
     // Render Grid & Tiles (full mirrored stage)
     for (int y = 0; y < roomHeight; ++y) {
         for (int dcol = 0; dcol < displayCols; ++dcol) {
             int x = MirrorColumn(dcol, roomWidth);
             int tileType = room.tiles[y * roomWidth + x];
-            QRect tileRect(dcol * m_tileSize, y * m_tileSize, m_tileSize, m_tileSize);
+            QRect tileRect(dcol * cellW, y * cellH, cellW, cellH);
 
             QColor color = GetTileColor(tileType, y);
             painter.fillRect(tileRect, color);
@@ -169,23 +185,14 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
 
     // Draw a seam marker at the mirror axis (between room columns width-1 and width)
     int seamX = roomWidth * m_tileSize;
-    int canvasHeight = (roomHeight + kHudRows) * m_tileSize;
+    int canvasHeight = roomHeight * cellH;
     painter.setPen(QPen(QColor(90, 90, 110), 2));
     painter.drawLine(seamX, 0, seamX, canvasHeight);
 
-    // Grey HUD band below the playable rows (the game renders it in HUD_COLOR
-    // = $06 grey). Non-editable: ApplyBrushAt rejects tileY >= room.height.
-    int hudTop = roomHeight * m_tileSize;
-    painter.fillRect(QRect(0, hudTop, width(), canvasHeight - hudTop),
-                     QColor(144, 144, 144));
-    painter.setPen(QColor(70, 70, 70));
-    painter.drawLine(0, hudTop, width(), hudTop);
-    painter.drawLine(0, canvasHeight - 1, width(), canvasHeight - 1);
-
     // Render Player Start position if in this room
     if (m_levelData->start_room == m_activeRoomIndex) {
-        int px = (int)(m_levelData->start_x * m_tileSize);
-        int py = (int)(m_levelData->start_y * m_tileSize);
+        int px = (int)(m_levelData->start_x * cellW);
+        int py = (int)(m_levelData->start_y * cellH);
         QRect playerRect(px - 12, py - 12, 24, 24);
 
         painter.setBrush(QColor(255, 220, 0));
@@ -196,8 +203,8 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
 
     // Render Miner Goal position if in this room
     if (m_levelData->miner_room == m_activeRoomIndex) {
-        int mx = (int)(m_levelData->miner_x * m_tileSize);
-        int my = (int)(m_levelData->miner_y * m_tileSize);
+        int mx = (int)(m_levelData->miner_x * cellW);
+        int my = (int)(m_levelData->miner_y * cellH);
         QRect minerRect(mx - 12, my - 12, 24, 24);
 
         painter.setBrush(QColor(255, 140, 180));
@@ -208,8 +215,8 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
 
     // Render Lamps in room
     for (const auto& lamp : room.lamps) {
-        int lx = (int)(lamp.x * m_tileSize);
-        int ly = (int)(lamp.y * m_tileSize);
+        int lx = (int)(lamp.x * cellW);
+        int ly = (int)(lamp.y * cellH);
         int bulbSize = 12;
 
         // Glowing bulb
@@ -229,9 +236,14 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
 
     // Render Enemies in room
     for (const auto& enemy : room.enemies) {
-        int ex = (int)(enemy.x * m_tileSize);
-        int ey = (int)(enemy.y * m_tileSize);
-        QRect enemyRect(ex, ey, m_tileSize - 4, m_tileSize - 4);
+        int ex = (int)(enemy.x * cellW);
+        int ey = (int)(enemy.y * cellH);
+        // Keep the marker square (based on cell width) centered in the cell so
+        // it reads clearly inside the taller 4:3-scaled grid rectangles.
+        int markerSize = qMax(12, m_tileSize - 6);
+        QRect enemyRect(ex + (cellW - markerSize) / 2,
+                        ey + (cellH - markerSize) / 2,
+                        markerSize, markerSize);
 
         QColor eColor;
         QString label;
@@ -371,13 +383,17 @@ void MapCanvas::mouseMoveEvent(QMouseEvent* event) {
 
 void MapCanvas::MouseToTile(const QPointF& pos, bool apply) {
     int roomWidth = kDefaultRoomWidth;
+    int roomHeight = kDefaultRoomHeight;
     if (m_levelData && m_activeRoomIndex >= 0 &&
-        m_activeRoomIndex < (int)m_levelData->rooms.size())
+        m_activeRoomIndex < (int)m_levelData->rooms.size()) {
         roomWidth = RoomWidthOf(m_levelData->rooms[m_activeRoomIndex]);
+        roomHeight = RoomHeightOf(m_levelData->rooms[m_activeRoomIndex]);
+    }
 
+    int cellH = CellHeightFor(m_tileSize, DisplayColumnsFor(roomWidth), roomHeight);
     int displayCol = (int)(pos.x() / m_tileSize);
     int tileX = MirrorColumn(displayCol, roomWidth);
-    int tileY = (int)(pos.y() / m_tileSize);
+    int tileY = (int)(pos.y() / cellH);
     emit mouseMovedToTile(tileX, tileY);
     if (apply)
         // tileX is the mirrored room column for tiles; displayCol is the raw

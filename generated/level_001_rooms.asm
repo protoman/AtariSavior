@@ -1,7 +1,7 @@
 ; Generated from Level 1 (level 1). Do not edit by hand.
 LEVEL1_START_ROOM = 0
 LEVEL1_WALL_COLOR = $b0
-LEVEL1_WALL_COLOR2 = $b4
+LEVEL1_WALL_COLOR2 = $b2
 LEVEL1_START_X = 64
 LEVEL1_START_Y = 24
 LEVEL1_MINER_ROOM = 2
@@ -22,7 +22,7 @@ LEVEL1_RoomConnections:
 
 ; Enemy data: 4 enemy records across 3 rooms, 6 bytes each (type,x,y,range_min,range_max,dir).
 LEVEL1_EnemyDataTable:
-  .byte 0, 123, 96, 104, 128, 1
+  .byte 0, 131, 60, 112, 136, 1
   .byte 1, 131, 120, 112, 136, 1
   .byte 2, 19, 48, 0, 24, 1
   .byte 2, 83, 36, 64, 88, 1
