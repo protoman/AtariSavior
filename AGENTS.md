@@ -407,6 +407,11 @@ This project follows an incremental development approach:
 - If something breaks, revert or fix before continuing
 - Document any regressions or side effects found during testing
 - Only add complexity after the current change is confirmed working
+- **When a data format changes (new/moved fields in `rooms/level_XXX.json`,
+  tile dimensions, entity layout, etc.), ALWAYS migrate every existing stage and
+  room data file to the new format as part of the same change.** Do not leave
+  legacy data riding on old defaults — the editors, converters, and the ROM all
+  consume the same JSON, so a format only exists in one version at a time.
 
 This prevents cascading issues common in Atari 2600 development where
 timing, rendering, and input are tightly coupled.
