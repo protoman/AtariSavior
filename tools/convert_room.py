@@ -11,8 +11,8 @@ PF0/PF1/PF2 triple per tile row, written once per 12-line band.
 Emitted data:
   - RoomTileMap + RoomRowLo/Hi: one byte per tile for the 6502 collision code.
   - TilePF0/TilePF1/TilePF2: one byte per tile row for the kernel.
-All per-row tables (PF triples and row pointers) are PADDED to 16 bytes so
-bank0's table arithmetic (+16 / +16 / +32) works unchanged; only the first
+All per-row tables (PF triples and row pointers) are PADDED to 12 bytes so
+bank0's table arithmetic (+12 / +12 / +24) works unchanged; only the first
 12 entries are drawn/read.
 """
 
@@ -21,7 +21,7 @@ import sys
 
 WIDTH = 20
 HEIGHT = 12                 # playable tile rows (rows 12-15 are the HUD band)
-TABLE_STRIDE = 16           # padded per-row table size (bank0 index math)
+TABLE_STRIDE = 12           # padded per-row table size (bank0 index math)
 
 
 def read_room(path: Path) -> list[str]:
@@ -79,8 +79,8 @@ def emit(rows: list[str], output: Path, prefix: str = "", source: str = "room") 
         lines.append("  .byte " + ", ".join(f"${b:02x}" for b in bytes_))
 
     # Row pointer tables are padded to the table stride (bank0 indexes them
-    # with (+0 lo, +16 hi)); padding rows are never dereferenced (the player
-    # stays within the 12 playable rows) but keep the +16 offset valid.
+    # with (+0 lo, +12 hi)); padding rows are never dereferenced (the player
+    # stays within the 12 playable rows) but keep the +12 offset valid.
     row_los = [f"< ({map_name}+{row}*{WIDTH})" for row in range(len(rows))]
     row_los += [row_los[0]] * (stride - len(row_los))
     row_his = [f"> ({map_name}+{row}*{WIDTH})" for row in range(len(rows))]

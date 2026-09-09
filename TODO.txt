@@ -52,9 +52,10 @@ All text, except for the game name "SAVIOR 2600" should use this format, inclusi
 
 #########################################################################################################################################################################
 
+In the editor, I can´t place the miner in the right side of the screen.
 
-When touching the miner, it is just going back to same level 1, instead of advancing to level 2.
 
+Why are you still using this file? comparison/lo-a-rad-dragon/bank0.asm
 
 Make snake a rectanble that is twice the player width and half the player height.
 Snake needs a direction, so it needs a mouth

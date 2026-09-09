@@ -16,91 +16,24 @@ PF1 bits 7-0, PF2 bits 0-7; right 20 cells -> same mapping). Six 192-byte
 tables are emitted, each page-aligned so the kernel's indexed loads never
 cross a page.
 
-Fonts (all hand-designed bitmaps, 1 cell per dot - NOT column-derivations):
-  F5x7  title font, 1-cell letterspacing (SAVIOR / 2600, colored orange)
-  F3x5  body font, 1-cell letterspacing (copyright / studio credits)
-  F34   small thin prompt font, 1-cell letterspacing (PRESS FIRE / TO START)
+Font: the SAME lowercase 13_plus2 sprite font as the HUD (tools/font.py,
+3x5 glyphs, 1-cell letterspacing). The title/2600 are drawn at scale 3,
+the copyright line at scale 2, the prompt at scale 2 - matching the
+uppercase fonts they replace, so the menu and HUD share one letterform.
 """
 
 from pathlib import Path
+
+from font import glyph_rows, PRIORITY
 
 ROWS = 192
 COLS = 40
 
 
-# ---------------------------------------------------------------------------
-# F5x7 title font (rows are single strings of X and .). Used for SAVIOR/2600.
-# ---------------------------------------------------------------------------
-F5 = {
-    "A": ("..X..", ".X.X.", "X...X", "XXXXX", "X...X", "X...X", "X...X"),
-    "I": ("XXXXX", "..X..", "..X..", "..X..", "..X..", "..X..", "XXXXX"),
-    "O": ("XXXXX", "X...X", "X...X", "X...X", "X...X", "X...X", "XXXXX"),
-    "R": ("XXXX.", "X...X", "X...X", "XXXX.", "X.X..", "X..X.", "X...X"),
-    "S": (".XXX.", "X...X", "X....", ".XXX.", "....X", "X...X", ".XXX."),
-    "V": ("X...X", "X...X", "X...X", "X...X", "X...X", ".X.X.", "..X.."),
-    "0": ("XXXXX", "X...X", "X...X", "X...X", "X...X", "X...X", "XXXXX"),
-    "2": ("XXXXX", "....X", "...X.", "..X..", ".X...", "X....", "XXXXX"),
-    "6": ("XXXXX", "X....", "X....", "XXXXX", "X...X", "X...X", "XXXXX"),
-    " ": (".....", ".....", ".....", ".....", ".....", ".....", "....."),
-}
+# The lowercase 13_plus2 font shared with the HUD (font.py), 3x5 glyphs.
+LC = {c: glyph_rows(c) for c in PRIORITY}
 
-
-# ---------------------------------------------------------------------------
-# F3x5 body font (3 columns x 5 rows), 1-cell letterspacing at render time.
-# ---------------------------------------------------------------------------
-F3 = {
-    "A": (".X.", "X.X", "XXX", "X.X", "X.X"),
-    "B": ("XX.", "X.X", "XX.", "X.X", "XX."),
-    "C": ("XX.", "X..", "X..", "X..", "XX."),
-    "D": ("XX.", "X.X", "X.X", "X.X", "XX."),
-    "E": ("XXX", "X..", "XXX", "X..", "XXX"),
-    "F": ("XXX", "X..", "XXX", "X..", "X.."),
-    "I": ("XXX", ".X.", ".X.", ".X.", "XXX"),
-    "L": ("X..", "X..", "X..", "X..", "XXX"),
-    "M": ("X.X", "XXX", "XXX", "X.X", "X.X"),
-    "N": ("X.X", "XXX", "XX.", "X.X", "X.X"),
-    "O": ("XXX", "X.X", "X.X", "X.X", "XXX"),
-    "P": ("XX.", "X.X", "XX.", "X..", "X.."),
-    "R": ("XX.", "X.X", "XXX", "X.X", "X.X"),
-    "S": ("XXX", "X..", "XXX", "..X", "XXX"),
-    "T": ("XXX", ".X.", ".X.", ".X.", ".X."),
-    "U": ("X.X", "X.X", "X.X", "X.X", "XXX"),
-    "V": ("X.X", "X.X", "X.X", "X.X", ".X."),
-    "W": ("X.X", "XXX", "XXX", "X.X", "X.X"),
-    "0": ("XXX", "X.X", "X.X", "X.X", "XXX"),
-    "2": ("XXX", "..X", "XXX", "X..", "XXX"),
-    "6": ("XX.", "X..", "XXX", "X.X", "XXX"),
-    "(": (".X.", "X..", "X..", "X..", ".X."),
-    ")": (".X.", "..X", "..X", "..X", ".X."),
-    "/": ("..X", "..X", ".X.", "X..", "X.."),
-    " ": ("...", "...", "...", "...", "..."),
-}
-
-
-# ---------------------------------------------------------------------------
-# F3x4 prompt font (3 columns x 4 rows), 1-cell letterspacing: smaller and
-# thinner than F3 ("PRESS FIRE" / "TO START" at scale 3 = 12 rows tall).
-# ---------------------------------------------------------------------------
-F34 = {
-    "A": (".X.", "X.X", "XXX", "X.X"),
-    "E": ("XXX", "X..", "XX.", "XXX"),
-    "F": ("XXX", "X..", "XX.", "X.."),
-    "I": ("XXX", ".X.", ".X.", "XXX"),
-    "O": ("XXX", "X.X", "X.X", "XXX"),
-    "P": ("XXX", "X.X", "X.X", "XX."),
-    "R": ("XXX", "X.X", "XX.", "X.X"),
-    "S": ("XXX", "X..", "..X", "XXX"),
-    "T": ("XXX", ".X.", ".X.", ".X."),
-    " ": ("...", "...", "...", "..."),
-}
-
-# vscale for the prompt. Each playfield cell is hardwired 4px wide (4 color
-# clocks), so a 1-scanline dot reads as a 4:1 horizontal smear no matter how
-# narrow the font is. vscale 3 = near-square dots; vscale 2 = a thin font
-# whose dots are still 2:1 wide (the classic TIA look). We use 2.
-PROMPT_SCALE = 2
-
-# White for the non-title text, orange (hue 2 luma 4 => $28) for SAVIOR/2600.
+# White for the non-title text, orange (hue 2 luma 4 => $28) for the title.
 COLOR_PLAIN = 0x0E
 COLOR_TITLE = 0x28
 
@@ -191,7 +124,7 @@ def build():
     def center(rows, w):
         return (COLS - w) // 2
 
-    def place(text, font, y, scale, gap=0):
+    def place(text, font, y, scale, gap=1):
         rows, w = line_text(text, font, gap)
         scaled = []
         for r in rows:
@@ -199,22 +132,20 @@ def build():
         poke(grid, scaled, center(rows, w), y)
         return len(scaled)
 
-    # --- title: SAVIOR / 2600, big font (orange band rows 4..48) ---
-    place("SAVIOR", F5, 4, 3, gap=1)
-    place("2600", F5, 28, 3, gap=1)
+    # --- title: savior / 2600 in the lowercase HUD font (orange band 4..48) ---
+    place("savior", LC, 4, 3)
+    place("2600", LC, 26, 3)
 
     # --- copyright ---
-    place("(C) 2026", F3, 58, 3, gap=1)
-    place("UPPERLAND", F3, 76, 3, gap=1)
+    place("(c) 2026", LC, 58, 2)
+    place("upperland", LC, 72, 2)
 
     # --- hero art ---
     poke(grid, hero_art(), 0, 98)
 
     # --- fine menu text ---
-    # Draw smaller prompt using the F34 font (3 columns, gap=1) split across
-    # two lines so it fits the 40-column playfield perfectly.
-    place("PRESS FIRE", F34, 136, PROMPT_SCALE, gap=1)
-    place("TO START", F34, 148, PROMPT_SCALE, gap=1)
+    place("press fire", LC, 140, 2)
+    place("to start", LC, 154, 2)
 
     colors = [COLOR_TITLE if 4 <= y <= 48 else COLOR_PLAIN for y in range(ROWS)]
     return ["".join(r) for r in grid], colors
