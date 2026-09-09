@@ -17,7 +17,7 @@
 ; Frame timeline (262 scanlines, locked by the overscan TIM64T, OVSCAN_TIME):
 ;   VSYNC        3 lines
 ;   Positioning  3 lines   SetObjectXPos for GRP0 (player) + GRP1 object, HMOVE
-;   VBLANK      35 lines   blanked wait
+;   VBLANK      35 lines   HudCopy (preload Level, ~7 lines) + 29-line blanked wait
 ;   Kernel      192 lines  12 playable tile rows x 12 scanlines + 4-row HUD band
 ;   Overscan     29 lines  input, movement, room exits, miner pickup, enemy hits
 ;
@@ -102,6 +102,9 @@ LevelStartX     byte            ; active level's origin X
 LevelStartY     byte            ; active level's origin Y
 EnemyLoopCount  byte            ; CheckEnemyHit loop counter
 GameMode        byte            ; 0 = start screen (bank1), nonzero = game (bank0)
+HudSlotsRam     ds.b 40         ; 13_plus2 HUD text sprite slots: charp..charg ($b3..$da)
+HudPtrLo        byte            ; HudCopy source pointer (HudSlots_* ROM table)
+HudPtrHi        byte
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -123,6 +126,16 @@ TILE_ROWS = 12              ; playable tile rows (the cave)
 HUD_ROWS = 4                ; grey HUD band below the cave: 4 tile rows x 12 lines
 LINES_PER_TILE = 12
 HUD_COLOR = $06             ; emulator-aware grey (kPalette hue 0 luma 3)
+; 13_plus2 HUD sprite-slot addresses inside HudSlotsRam, in the order the
+; RenderText macro reads them (demo's charp..charg, 5 row bytes per slot).
+charp = HudSlotsRam
+chara = charp + 5
+charb = chara + 5
+charc = charb + 5
+chard = charc + 5
+chare = chard + 5
+charf = chare + 5
+charg = charf + 5
 ; Boundary clamps let the player reach all four screen extremes (rooms will
 ; connect on every side). Walls still stop the player via collision; these only
 ; permit a fully-visible sprite flush with each edge:
@@ -257,10 +270,18 @@ StartFrame:
   sta WSYNC
   sta HMOVE                 ; apply the horizontal offsets we just set
 
+; Preload the first HUD text (Level) into the ZP sprite slots while VBLANK is
+; still on. HudCopy runs ~6 scanlines, so the blank wait drops to 29 lines.
+  lda #<HudSlots_Level
+  sta HudPtrLo
+  lda #>HudSlots_Level
+  sta HudPtrHi
+  jsr HudCopy
+
 ; ------------------------------------------------------------------------------
-; Remaining VBLANK (35 scanlines)
+; Remaining VBLANK (29 more scanlines after the HudCopy)
 ; ------------------------------------------------------------------------------
-  ldx #35
+  ldx #29
 LoopVBlank:
   sta WSYNC
   dex
@@ -306,6 +327,9 @@ LoopVBlank:
   sta GRP1
   sta ENAM0
   sta ENAM1
+  sta ENABL
+  sta VDELP0
+  sta VDELP1
   sta Scanline
 
   lda RoomPFDataLo
@@ -314,7 +338,7 @@ LoopVBlank:
   sta MapPtrHi
   ldx #0                    ; tile row counter (row 0 at top of screen)
 .Row:
-; The current room's TilePF0/TilePF1/TilePF2 tables are contiguous 16-byte
+; The current room's TilePF0/TilePF1/TilePF2 tables are contiguous 12-byte
 ; tables, so one base pointer covers all three registers.
   txa
   tay
@@ -322,15 +346,15 @@ LoopVBlank:
   sta PF0                   ; defines the whole line via reflection
   tya
   clc
-  adc #16
+  adc #12
   tay
-  lda (MapPtrLo),Y          ; PF1 = row table + 16
+  lda (MapPtrLo),Y          ; PF1 = row table + 12
   sta PF1
   tya
   clc
-  adc #16
+  adc #12
   tay
-  lda (MapPtrLo),Y          ; PF2 = row table + 32
+  lda (MapPtrLo),Y          ; PF2 = row table + 24
   sta PF2
   lda #LINES_PER_TILE
   sta LineCount
@@ -395,44 +419,15 @@ LoopVBlank:
   bne .Row
 
 ; ------------------------------------------------------------------------------
-; HUD band: 4 grey rows (48 scanlines) below the cave.
-; Clear the playfield, switch the background to HUD_COLOR and just blank the
-; sprites for the band. The player and every GRP1 object are capped inside the
-; 12 playable rows (PlayerY <= 136, deadly duds), so nothing is ever drawn here.
-; One WSYNC per scanline keeps the frame at exactly 262 lines, unchanged.
+; HUD band (144..191, 48 scanlines): grey background with the four 13_plus2
+; sprite-font texts (Level / Score / Lives / Time), vertically aligned.
+; HudBand owns the whole band: it clears the cave's PF/sprite leftovers,
+; configures the text sprite objects (fixed RESP/HMP, NUSIZ0=$03, VDELP),
+; renders the preloaded Level line, then copies + renders Score, Lives and
+; Time from their ROM slot tables. Each text row is one 76-cycle macro = one
+; line-locked scanline, so the text is upright (no per-row drift).
 ; ------------------------------------------------------------------------------
-  lda #HUD_COLOR
-  sta COLUBK
-  lda #0
-  sta PF0
-  sta PF1
-  sta PF2
-  lda #HUD_ROWS * LINES_PER_TILE
-  sta LineCount
-.HUDLine:
-  lda Scanline
-  sec
-  sbc PlayerY
-  cmp #PLAYER_HEIGHT
-  bcs .HUDNoSprite
-  tay
-  lda PlayerDir
-  beq .HUDFaceRight
-  lda PlayerSpriteLeft,Y
-  jmp .HUDPut
-.HUDFaceRight:
-  lda PlayerSpriteRight,Y
-  jmp .HUDPut
-.HUDNoSprite:
-  lda #0
-.HUDPut:
-  sta GRP0
-  lda #0
-  sta GRP1
-  inc Scanline
-  sta WSYNC
-  dec LineCount
-  bne .HUDLine
+  jsr HudBand
 
 ; ------------------------------------------------------------------------------
 ; Overscan
@@ -809,8 +804,8 @@ PlayerHitsMap:
 
 .CheckRow:
 ; Resolve the room row base for tile row CollisionCellY. The current room's
-; RoomRowLo and RoomRowHi tables are contiguous 16-byte tables, so a single
-; RoomRowMap pointer plus a +16 offset reaches both.
+; RoomRowLo and RoomRowHi tables are contiguous 12-byte tables, so a single
+; RoomRowMap pointer plus a +12 offset reaches both.
   ldy CollisionCellY        ; tile row index (0..15)
   lda RoomRowMapLo
   sta MapPtrLo
@@ -820,7 +815,7 @@ PlayerHitsMap:
   sta CollisionX            ; stash in scratch (rebuilt by .CheckCell if used)
   lda RoomRowMapLo
   clc
-  adc #16                   ; RoomRowHi table = RoomRowLo table + 16
+  adc #12                   ; RoomRowHi table = RoomRowLo table + 12
   sta MapPtrLo
   lda RoomRowMapHi
   adc #0
@@ -1263,21 +1258,397 @@ EnemyColorTable:
 ; starts them in one bank and continues the same instruction stream in the
 ; other. The `jmp` operands are fixed window addresses (MenuMain = $f540 in
 ; bank1, GameStart = $f500 here), so both assemblies emit identical bytes.
-;     $fd00 ToMenuStub  lda #1 / sta $1FF7 / jmp MenuMain   (game -> start screen)
-;     $fe00 ToGameStub  lda #0 / sta $1FF6 / jmp GameStart  (menu -> game)
+;     $fc68 ToMenuStub  lda #1 / sta $1FF7 / jmp MenuMain   (game -> start screen)
+;     $fc70 ToGameStub  lda #0 / sta $1FF6 / jmp GameStart  (menu -> game)
 ; ------------------------------------------------------------------------------
 MenuMain = $f540           ; bank1's menu entry (not present as code in bank0)
-    org $fd00
+    org $fc68
 ToMenuStub:
     lda #1
     sta $1FF7               ; select bank1 (start screen)
-    jmp MenuMain            ; next fetch at $fd05 comes from bank1: jmp $f540
-    org $fe00
+    jmp MenuMain            ; next fetch at $fc6d comes from bank1: jmp $f540
+    org $fc70
 ToGameStub:
     lda #0
     sta $1FF6               ; select bank0 (game code)
-    jmp GameStart           ; next fetch at $fe05 comes from bank0: jmp $f500
+    jmp GameStart           ; next fetch at $fc75 comes from bank0: jmp $f500
 
+; ------------------------------------------------------------------------------
+; HUD sprite font (13_plus2 TEXTDISP macros).
+;
+; RenderText draws one text line already staged in HudSlotsRam: a leading
+; WSYNC pins the first row to a scanline start, then five TEXTDISP macro rows
+; run back-to-back. Each macro is exactly 76 cycles = one full scanline, so
+; the rows land on consecutive scanlines with no per-row drift (the demo
+; slewed because of inter-row nops; we omit them -> upright text). The macro
+; write order and RESP/HMP object placement replicate 13_plus2 byte-for-byte,
+; so the staged slot bytes (hud_slots.asm, simulated from the demo's push
+; stream) display exactly as the demo's screen text.
+; ------------------------------------------------------------------------------
+    org $fc78
+RenderText:
+  sta WSYNC                 ; pin row 0 to the next scanline start
+; row 0
+  lda #11
+  sta NUSIZ1
+  sta VDELP1
+  lda charg
+  sta ENAM0
+  lsr
+  sta ENAM1
+  lsr
+  sta ENABL
+  lda charf
+  sta GRP0
+  lda chare
+  sta GRP1
+  nop
+  lda chard
+  sta GRP0
+  lda charc
+  ldy charb
+  ldx chara
+  sta GRP1
+  sty GRP0
+  stx GRP1
+  sta VDELP1
+  lda #4
+  sta NUSIZ1
+  lda charp
+  sta GRP1
+; row 1
+  lda #11
+  sta NUSIZ1
+  sta VDELP1
+  lda charg+1
+  sta ENAM0
+  lsr
+  sta ENAM1
+  lsr
+  sta ENABL
+  lda charf+1
+  sta GRP0
+  lda chare+1
+  sta GRP1
+  nop
+  lda chard+1
+  sta GRP0
+  lda charc+1
+  ldy charb+1
+  ldx chara+1
+  sta GRP1
+  sty GRP0
+  stx GRP1
+  sta VDELP1
+  lda #4
+  sta NUSIZ1
+  lda charp+1
+  sta GRP1
+; row 2
+  lda #11
+  sta NUSIZ1
+  sta VDELP1
+  lda charg+2
+  sta ENAM0
+  lsr
+  sta ENAM1
+  lsr
+  sta ENABL
+  lda charf+2
+  sta GRP0
+  lda chare+2
+  sta GRP1
+  nop
+  lda chard+2
+  sta GRP0
+  lda charc+2
+  ldy charb+2
+  ldx chara+2
+  sta GRP1
+  sty GRP0
+  stx GRP1
+  sta VDELP1
+  lda #4
+  sta NUSIZ1
+  lda charp+2
+  sta GRP1
+; row 3
+  lda #11
+  sta NUSIZ1
+  sta VDELP1
+  lda charg+3
+  sta ENAM0
+  lsr
+  sta ENAM1
+  lsr
+  sta ENABL
+  lda charf+3
+  sta GRP0
+  lda chare+3
+  sta GRP1
+  nop
+  lda chard+3
+  sta GRP0
+  lda charc+3
+  ldy charb+3
+  ldx chara+3
+  sta GRP1
+  sty GRP0
+  stx GRP1
+  sta VDELP1
+  lda #4
+  sta NUSIZ1
+  lda charp+3
+  sta GRP1
+; row 4
+  lda #11
+  sta NUSIZ1
+  sta VDELP1
+  lda charg+4
+  sta ENAM0
+  lsr
+  sta ENAM1
+  lsr
+  sta ENABL
+  lda charf+4
+  sta GRP0
+  lda chare+4
+  sta GRP1
+  nop
+  lda chard+4
+  sta GRP0
+  lda charc+4
+  ldy charb+4
+  ldx chara+4
+  sta GRP1
+  sty GRP0
+  stx GRP1
+  sta VDELP1
+  lda #4
+  sta NUSIZ1
+  lda charp+4
+  sta GRP1
+; clear the sprite leftovers (VDELP1 off kills the delayed charc blip)
+  lda #0
+  sta GRP0
+  sta GRP1
+  sta GRP0
+  sta ENAM0
+  sta ENAM1
+  sta ENABL
+  sta VDELP1
+  rts
+
+; ------------------------------------------------------------------------------
+; HudCopy: copy one 40-byte HudSlots_* ROM table into the ZP sprite slots
+; (charp..charg). Fully unrolled: 128 bytes, 448 cycles (~6 scanlines).
+; ------------------------------------------------------------------------------
+HudCopy:
+  ldy #39
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  dey
+  lda (HudPtrLo),Y
+  sta charp,Y
+  rts
+
+; ------------------------------------------------------------------------------
+; HudBand: the grey HUD band (144..191). Clears the cave's leftovers, sets the
+; 13_plus2 text object config, renders Level (preloaded in VBLANK), then
+; copies + renders Score, Lives and Time. Four pad WSYNCs after the last text
+; land line 191 exactly, so the overscan TIM64T frame lock is unchanged.
+; ------------------------------------------------------------------------------
+HudBand:
+; copies + renders Score, Lives and Time. Four pad WSYNCs after the last text
+; land line 191 exactly, so the overscan TIM64T frame lock is unchanged.
+; ------------------------------------------------------------------------------
+HudBand:
+  lda #0
+  sta PF0
+  sta PF1
+  sta PF2
+  sta GRP0
+  sta GRP1
+  sta ENAM0
+  sta ENAM1
+  sta ENABL
+  lda #HUD_COLOR
+  sta COLUBK
+  lda #$0e                  ; emulator-aware white text (kPalette hue 0 luma 7)
+  sta COLUP0
+  sta COLUP1
+  lda #$03                  ; both players: 3 wide copies (13_plus2 text look)
+  sta NUSIZ0
+  sta NUSIZ1
+  lda #$01                  ; vertical delay on, then the sprite/missile strobes
+  sta VDELP0
+  sta RESM0
+  sta RESM1
+  sta VDELP1
+  sta RESBL
+  sta RESP0
+  sta RESP1
+  lda #%11110000            ; 13_plus2 fine offsets, byte-identical
+  sta HMP1
+  lda #%11100000
+  sta HMP0
+  lda #%10000000
+  sta HMBL
+  lda #%10110000
+  sta HMM0
+  lda #%01010000
+  sta HMM1
+  sta WSYNC
+  sta HMOVE
+
+  jsr RenderText            ; Level (already in the slots from VBLANK)
+
+  lda #<HudSlots_Score
+  sta HudPtrLo
+  lda #>HudSlots_Score
+  sta HudPtrHi
+  jsr HudCopy
+  jsr RenderText
+
+  lda #<HudSlots_Lives
+  sta HudPtrLo
+  lda #>HudSlots_Lives
+  sta HudPtrHi
+  jsr HudCopy
+  jsr RenderText
+
+  lda #<HudSlots_Time
+  sta HudPtrLo
+  lda #>HudSlots_Time
+  sta HudPtrHi
+  jsr HudCopy
+  jsr RenderText
+
+; 4 pad WSYNCs end lines 188..191 so the overscan timer sees line 192.
+  ldx #4
+.Pad:
+  sta WSYNC
+  dex
+  bne .Pad
+  rts
+
+; ------------------------------------------------------------------------------
+; HUD text slot tables (40 bytes per line, one per 13_plus2 text on the HUD).
+; Generated by tools/font.py (slots mode) into the ZP slot order charp..charg.
 ; ------------------------------------------------------------------------------
 ; Fine-adjust table for SetObjectXPos. MUST be page-aligned ($xx00): the
 ; indexed load then always crosses a page boundary, provides the 5-cycle
@@ -1303,6 +1674,13 @@ fineAdjustBegin:
   .byte %10100000           ; right 6
   .byte %10010000           ; right 7
 fineAdjustTable EQU fineAdjustBegin - %11110001   ; %11110001 = -241 (start basis)
+
+; ------------------------------------------------------------------------------
+; HUD text slot tables (40 bytes per line, one per 13_plus2 text on the HUD).
+; Generated by tools/font.py (slots mode) into the ZP slot order charp..charg.
+; ------------------------------------------------------------------------------
+    org $ff10
+    include "generated/hud_slots.asm"
 
 ; ------------------------------------------------------------------------------
 ; Fill ROM to exactly 4kb
