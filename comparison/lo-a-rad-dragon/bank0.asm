@@ -930,12 +930,11 @@ LoadLevel subroutine
   sta vyHi
   sta PlayerYSub
   sta JetPower
-  tax
-  txa
+  lda Level
   asl
   asl                       ; A = level * 4
   sta Temp
-  txa
+  lda Level
   asl
   asl
   asl                       ; A = level * 8

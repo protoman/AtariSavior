@@ -16,90 +16,16 @@ PF1 bits 7-0, PF2 bits 0-7; right 20 cells -> same mapping). Six 192-byte
 tables are emitted, each page-aligned so the kernel's indexed loads never
 cross a page.
 
-In addition to the playfield canvas the bank1 menu draws ONE or more lines of
-THIN SPRITE TEXT using the "text24" technique (see docs/examples/text24.asm:
-two 8-px sprites, NUSIZ=$06 double size, VDEL shadow registers, two frames
-that alternate the 24 character slots -> 1-color-clock text resolution). This
-script pulls the 5-row glyph strips out of the reference font table and emits
-them as StartText24Left/StartText24Right (same layout as text24.asm's
-left_text/right_text: one glyph's 5 rows contiguous, char code = index*5),
-plus the padded 24-byte tag strings MenuPromptText/MenuCreditsText.
-
 Fonts (all hand-designed bitmaps, 1 cell per dot - NOT column-derivations):
   F5x7  title font, 1-cell letterspacing (SAVIOR / 2600, colored orange)
   F3x5  body font, 1-cell letterspacing (copyright / studio credits)
   F34   small thin prompt font, 1-cell letterspacing (PRESS FIRE / TO START)
 """
 
-import re
 from pathlib import Path
 
 ROWS = 192
 COLS = 40
-
-# text24 sprite-text reference: its font tables live in docs/examples/text24.asm
-# (part of the johnidm/asm-atari-2600 collection; see docs/README.md). We read
-# the ordered glyph names + 5-row strips here so the ROM's 5-byte char codes
-# match the reference kernel's expectations exactly.
-TEXT24_SRC = Path(__file__).resolve().parent.parent / "docs/examples/text24.asm"
-
-# Two 24-slot sprite-text lines: the credited studio line and the fire prompt.
-# The reference renders 24 character slots per line; short strings are padded
-# with spaces so all lines occupy the same centered slot span (slots 3..20).
-# "(C) 2026 UPPERLAND" and "PRESS FIRE TO START" are both 18 glyphs.
-MENU_LINES = {
-    "credits": "(C) 2026 UPPERLAND",
-    "prompt": "PRESS FIRE TO START",
-}
-MENU_LINE_SLOTS = 24
-
-
-def load_text24_font(src: Path):
-    """Parse text24.asm's text_data section: ordered (char, code, [5 rows],
-    [5 rows]) per glyph. Code = index*5 like the reference."""
-    text = src.read_text()
-    lines = text.splitlines()
-
-    def line_of(pat):
-        for i, ln in enumerate(lines):
-            if re.match(pat, ln):
-                return i
-        raise ValueError(f"{pat!r} not found in {src.name}")
-
-    seg = lines[line_of(r"^left_text$") : line_of(r"^right_text$")]
-    seg = [ln.split(";")[0] for ln in seg]       # ignore commented glyphs
-    seg_text = "\n".join(seg)
-    labels = re.findall(r"^\s*(\w+)\s*=\s*\*\s*-\s*text_data", seg_text, re.M)
-    strips = [int(b, 2) for b in re.findall(r"\.byte\s+%([01]+)", seg_text)]
-    labels = [l for l in labels if l != "text_data_height"]
-    assert len(labels) == len(strips) // 5, (len(labels), len(strips))
-    left_rows = [strips[i * 5 : i * 5 + 5] for i in range(len(labels))]
-
-    # same glyphs, right strips, from the right_text section (no height
-    # constant there; the strip column ends at the final ROM-banner ECHO)
-    r0 = line_of(r"^right_text$")
-    r1 = line_of(r"^.*ECHO ")
-    seg_r = [ln.split(";")[0] for ln in lines[r0:r1]]
-    strips_r = [int(b, 2) for b in re.findall(r"\.byte\s+%([01]+)", "\n".join(seg_r))]
-    assert len(labels) == len(strips_r) // 5, (len(labels), len(strips_r))
-
-    # label -> output char
-    def ch(lab):
-        if lab.startswith("__") and len(lab) == 3:
-            return lab[2]                      # __A .. __Z, __0 .. __9
-        return {
-            "_sp": " ", "_pd": ".", "_qu": "?", "_ex": "!",
-            "_cm": ",", "_hy": "-", "_pl": "+", "_ap": "'",
-            "_lp": "(", "_rp": ")", "_co": ":", "_sl": "/",
-            "_eq": "=", "_qt": '"', "_tr": "^",
-        }.get(lab)
-    chars = []
-    for i, lab in enumerate(labels):
-        right = strips_r[i * 5 : i * 5 + 5]
-        c = ch(lab)
-        assert c is not None, lab
-        chars.append((c, i * 5, left_rows[i], right))
-    return chars
 
 
 # ---------------------------------------------------------------------------
@@ -322,21 +248,15 @@ def pf_bytes(row):
     return out
 
 
-def emit(rows: list[str], output: Path,
-         t24: list[int], strings: dict[str, str]) -> None:
-    """Emit the bank1 tables.
+def emit(rows: list[str], output: Path) -> None:
+    """Emit the bank1 start-screen tables.
 
-    ROM budget (F6 bank, fold pads at $fd00/$fe00 force everything into the
-    $f000..$fcff window): the playfield tables are emitted for rows 0..139
-    ONLY (rows 140..191 are a blank canvas - the menu kernel runs the text24
-    band at 140..149 and hardcodes the blank rows 150..191, so no bytes are
-    spent on them). The title COLOR is derived in the kernel from the row
-    number (rows 4..48 orange), so there is NO per-scanline color table.
-    The sprite-text font is trimmed to the glyphs the menu lines need and
-    merged into ONE 220-byte page-aligned table (left half = glyph code*1,
-    right half at offset T24_FONT_RIGHT), so the band's indexed loads reach
-    at most offset 219 and can never cross their page.
-    """
+    All 192 rows are emitted as six scanline tables (PF0L/PF1L/PF2L for the
+    left half, PF0R/PF1R/PF2R for the right), each page-aligned so the
+    kernel's indexed loads never cross a page. The title color is derived in
+    the kernel from the row number (rows 4..48 orange), so there is NO
+    per-scanline color table; StartScreenColors is kept as a single 192-byte
+    row-color table the kernel reads once per scanline."""
     assert len(rows) > 0
     tables = {"PF0L": [], "PF1L": [], "PF2L": [], "PF0R": [], "PF1R": [], "PF2R": []}
     for row in rows:
@@ -353,9 +273,6 @@ def emit(rows: list[str], output: Path,
         "; Start screen: full-width asymmetric playfield bitmap, one entry per",
         "; playfield scanline. The menu kernel writes the left table during",
         "; HBLANK and the right table mid-line after the left half has been drawn.",
-        "; Rows 0..139 are emitted (title band + credits + hero art); rows 140..",
-        f"; {ROWS} on screen are a blank canvas, so this file holds no bytes for",
-        "; them (the text24 band covers 140..149, the kernel hardcodes 150..191).",
         "; COLUPF is NOT table-driven: the menu kernel derives it from the row",
         f"; number (orange {COLOR_TITLE:02X} for rows 4..48, else {COLOR_PLAIN:02X}).",
         "; Generated by tools/start_screen.py - do not edit by hand.",
@@ -377,79 +294,12 @@ def emit(rows: list[str], output: Path,
         chunk = colors[i : i + 16]
         lines.append("    .byte " + ",".join(f"${b:02X}" for b in chunk))
     lines.append("")
-
-    # --- merged text24 sprite-text font (trimmed to the menu's glyphs) ---
-    # One glyph = 5 contiguous rows; char code = index*5 (0..105 for 22 glyphs).
-    # StartText24Font holds the LEFT strips at offsets 0..109 and the RIGHT
-    # strips at offsets T24_FONT_RIGHT..T24_FONT_RIGHT+109. The band loads
-    # `lda StartText24Font+{row},x` and `ora StartText24Font+{row}+T24_FONT_RIGHT`
-    # with x = char code, so every load stays inside offsets 0..219 < 256, and
-    # the single page-aligned table can never cross a page (the band's per-scan
-    # cycle budget depends on that).
-    glyphs = _T24_GLYPHS
-    assert 0 < len(glyphs) * 5 == len(t24) // 2
-    lines += [
-        f"; text24 thin sprite text (docs/examples/text24.asm), trimmed to the",
-        f"; {len(glyphs)} glyphs the menu lines use. Char code = index*5.",
-        f"T24_FONT_RIGHT = {len(glyphs) * 5}",
-    ]
-    lines.append("    align 256")
-    lines.append("StartText24Font:")
-    for i in range(0, len(t24), 16):
-        chunk = t24[i : i + 16]
-        lines.append("    .byte " + ",".join(f"${b:02X}" for b in chunk))
-    lines.append("")
-
-    # --- 28-byte text-window tables (one per line) ---
-    # The single-band kernel ALWAYS reads slot base 0 from the ZP TextBuf, so
-    # the menu copies a 24-byte window into TextBuf every VBLANK:
-    #   odd  Clock -> copy String[0..23]  (slot bases {0,1,4,5,...}  visible)
-    #   even Clock -> copy String[2..25]  (slot bases {2,3,6,7,...}  visible)
-    # String = 2 leading spaces + centered 24 chars + 2 trailing spaces.
-    for label, text in strings.items():
-        n = len(text)
-        left_pad = (MENU_LINE_SLOTS - n) // 2
-        padded = [" "] * left_pad + list(text) + [" "] * (MENU_LINE_SLOTS - n - left_pad)
-        assert len(padded) == MENU_LINE_SLOTS, len(padded)
-        codes = [" "] * 2 + padded + [" "] * 2
-        assert len(codes) == MENU_LINE_SLOTS + 4
-        final = []
-        for c in codes:
-            for entry in glyphs:
-                if entry[0] == c:
-                    final.append(entry[1])
-                    break
-            else:
-                raise ValueError(f"char {c!r} not in text24 font for {label}")
-        lines += [
-            f"; text24 window {label!r}: {text!r} centered in {MENU_LINE_SLOTS} chars",
-            f"; + 2-space margins. Odd frames copy [0..24), even [2..26).",
-            f"Menu{label[0].upper()}{label[1:]}String:",
-            "    .byte " + ",".join(f"${c:02X}" for c in final),
-            "",
-        ]
     output.write_text("\n".join(lines) + "\n")
 
 
-# filled by main(); kept module-level so emit() can look up char codes
-_T24_GLYPHS: list = []
-
-
 if __name__ == "__main__":
-    _T24_GLYPHS.extend(load_text24_font(TEXT24_SRC))
-    # trim the font down to the glyphs the two menu lines actually use (the
-    # F6 bank has no room for 51*2*5 = 510 bytes of unused glyph strips)
-    needed = {c for line in MENU_LINES.values() for c in line} | {" "}
-    _T24_GLYPHS = [g for g in _T24_GLYPHS if g[0] in needed]
-    assert len(_T24_GLYPHS) <= 51
-    # merged table: left strips then right strips
-    t24 = [r for _, _, left, _ in _T24_GLYPHS for r in left] + \
-          [r for _, _, _, right in _T24_GLYPHS for r in right]
-    assert len(t24) == 2 * len(_T24_GLYPHS) * 5
-    strings = {name: MENU_LINES[name] for name in MENU_LINES}
     grid, _ = build()
     out = Path("generated/start_screen.asm")
     out.parent.mkdir(exist_ok=True)
-    emit(grid[:ROWS], out, t24, strings)
-    print(f"start screen: {out} ({out.stat().st_size} bytes)"
-          f", text24 glyphs={len(_T24_GLYPHS)}, lines={list(strings)}")
+    emit(grid[:ROWS], out)
+    print(f"start screen: {out} ({out.stat().st_size} bytes)")
