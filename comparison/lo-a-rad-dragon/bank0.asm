@@ -102,9 +102,13 @@ LevelStartX     byte            ; active level's origin X
 LevelStartY     byte            ; active level's origin Y
 EnemyLoopCount  byte            ; CheckEnemyHit loop counter
 GameMode        byte            ; 0 = start screen (bank1), nonzero = game (bank0)
-HudSlotsRam     ds.b 40         ; 13_plus2 HUD text sprite slots: charp..charg ($b3..$da)
-HudPtrLo        byte            ; HudCopy source pointer (HudSlots_* ROM table)
-HudPtrHi        byte
+FontP0          ds.b 5          ; P0 character font data (5 rows) for flicker HUD
+FontP1          ds.b 5          ; P1 character font data (5 rows) for flicker HUD
+FontPtrLo       byte            ; indirect pointer for font ROM lookup (fonthi)
+FontPtrHi       byte
+FontPtrLo2      byte            ; second pointer for fontlo table
+FontPtrHi2      byte
+frame_phase     byte            ; flicker phase counter: 0, 1, 2, 0, 1, ...
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -126,16 +130,6 @@ TILE_ROWS = 12              ; playable tile rows (the cave)
 HUD_ROWS = 4                ; grey HUD band below the cave: 4 tile rows x 12 lines
 LINES_PER_TILE = 12
 HUD_COLOR = $06             ; emulator-aware grey (kPalette hue 0 luma 3)
-; 13_plus2 HUD sprite-slot addresses inside HudSlotsRam, in the order the
-; RenderText macro reads them (demo's charp..charg, 5 row bytes per slot).
-charp = HudSlotsRam
-chara = charp + 5
-charb = chara + 5
-charc = charb + 5
-chard = charc + 5
-chare = chard + 5
-charf = chare + 5
-charg = charf + 5
 ; Boundary clamps let the player reach all four screen extremes (rooms will
 ; connect on every side). Walls still stop the player via collision; these only
 ; permit a fully-visible sprite flush with each edge:
@@ -225,8 +219,8 @@ Main:
 ; ------------------------------------------------------------------------------
 ; Init Variables
 ; ------------------------------------------------------------------------------
-  lda #0
-  sta GameMode            ; boot into the start screen (bank1), not the cave
+  lda #1
+  sta GameMode            ; boot directly into the cave (skip start screen for testing)
   jsr LoadLevel           ; start at level 0's origin (start room/x/y from the level data)
 
 ; ------------------------------------------------------------------------------
@@ -270,22 +264,30 @@ StartFrame:
   sta WSYNC
   sta HMOVE                 ; apply the horizontal offsets we just set
 
-; Preload the first HUD text (Level) into the ZP sprite slots while VBLANK is
-; still on. HudCopy runs ~6 scanlines, so the blank wait drops to 29 lines.
-  lda #<HudSlots_Level
-  sta HudPtrLo
-  lda #>HudSlots_Level
-  sta HudPtrHi
-  jsr HudCopy
-
 ; ------------------------------------------------------------------------------
-; Remaining VBLANK (29 more scanlines after the HudCopy)
+; Remaining VBLANK (~33 scanlines + font pre-load)
+; Font data is pre-loaded here during VBLANK (invisible) so the HudBand
+; preamble only needs TIA setup (~0.5 scanlines), not ~4.7 scanlines of
+; font loading.  This matches test_pf_min.asm's architecture where RESP
+; fires in VBLANK with blank scanlines before GRP writes.
 ; ------------------------------------------------------------------------------
-  ldx #29
+  ldx #33
 LoopVBlank:
   sta WSYNC
   dex
   bne LoopVBlank
+
+; Pre-load combined font data for current flicker phase.  The font tables
+; (hud_font_fonthi/fontlo) are in the same ROM page so indirect reads
+; never cross a page boundary.  LoadFontP0/P1 clobber A/X/Y and the
+; FontPtr scratch vars — all safe here during VBLANK.
+; ALWAYS call both loaders (same cycle count every frame = no vertical jitter).
+  ldx frame_phase
+  lda PhaseChar0,x
+  jsr LoadFontP0
+  ldx frame_phase
+  lda PhaseChar1,x
+  jsr LoadFontP1
 
   lda #0
   sta VBLANK                ; turn off VBLANK
@@ -419,13 +421,10 @@ LoopVBlank:
   bne .Row
 
 ; ------------------------------------------------------------------------------
-; HUD band (144..191, 48 scanlines): grey background with the four 13_plus2
-; sprite-font texts (Level / Score / Lives / Time), vertically aligned.
-; HudBand owns the whole band: it clears the cave's PF/sprite leftovers,
-; configures the text sprite objects (fixed RESP/HMP, NUSIZ0=$03, VDELP),
-; renders the preloaded Level line, then copies + renders Score, Lives and
-; Time from their ROM slot tables. Each text row is one 76-cycle macro = one
-; line-locked scanline, so the text is upright (no per-row drift).
+; HUD band (144..191, 48 scanlines): grey background with flicker-rendered
+; text. Uses 3-phase flicker: each frame shows 2 characters (P0+P1),
+; cycling through phases 0->1->2. Cycle-counted RESP positioning places
+; each character at a precise pixel using px = write_cycle * 3 - 63.
 ; ------------------------------------------------------------------------------
   jsr HudBand
 
@@ -690,6 +689,15 @@ UpdateJetSound:
   jmp WaitOverscan
 .JetSilent:
   sta AUDV0                ; A = 0: kill channel 0
+
+; Advance flicker phase: 0 -> 1 -> 2 -> 0
+  inc frame_phase
+  lda frame_phase
+  cmp #3
+  bcc WaitOverscan
+  lda #0
+  sta frame_phase
+
 WaitOverscan:
   lda INTIM
   bne WaitOverscan
@@ -1250,6 +1258,7 @@ EnemyColorTable:
 ; Level data (per-level tables + LevelDataTable + LEVEL_COUNT) is generated by
 ; tools/convert_level.py --levels from the editor's JSON level files.
     include "generated/levels.asm"
+    include "generated/hud_font.asm"
 
 ; ------------------------------------------------------------------------------
 ; F6 cross-bank fold pads - MUST match bank1's copies at these addresses.
@@ -1274,381 +1283,308 @@ ToGameStub:
     jmp GameStart           ; next fetch at $fc75 comes from bank0: jmp $f500
 
 ; ------------------------------------------------------------------------------
-; HUD sprite font (13_plus2 TEXTDISP macros).
+; ------------------------------------------------------------------------------
+; Flicker HUD: 3-phase character rendering for "LEVEL" text.
 ;
-; RenderText draws one text line already staged in HudSlotsRam: a leading
-; WSYNC pins the first row to a scanline start, then five TEXTDISP macro rows
-; run back-to-back. Each macro is exactly 76 cycles = one full scanline, so
-; the rows land on consecutive scanlines with no per-row drift (the demo
-; slewed because of inter-row nops; we omit them -> upright text). The macro
-; write order and RESP/HMP object placement replicate 13_plus2 byte-for-byte,
-; so the staged slot bytes (hud_slots.asm, simulated from the demo's push
-; stream) display exactly as the demo's screen text.
+; Uses the same cycle-counted RESP technique as test_pf_min.asm:
+;   px = write_cycle * 3 - 63
+; HMP adjusts ±1 pixel for fine positioning.
+;
+; Phase 0: P0=L@px68, P1=E@px83   (15px apart)
+; Phase 1: P0=V@px73, P1=E@px88   (15px apart)
+; Phase 2: P0=L@px78, P1=blank
+;
+; Character grid: 5px spacing, centered at px68 for "LEVEL" (5 chars).
+; RESP timing (CPU cycles from scanline start):
+;   px68 -> C=44, HMP=$10 (left 1)   -> 21 nops + bit $80 (3cy)
+;   px68 -> C=44, HMP=$10 (left 1)   -> 18 nops
+;   px98 -> C=54, HMP=$10 (left 1)   -> 21 nops
+;   px113 -> C=59, HMP=$10 (left 1)  -> nop gap
+;   px128 -> C=64, HMP=$10 (left 1)  -> 25 nops + bit $80
 ; ------------------------------------------------------------------------------
     org $fc78
-RenderText:
-  sta WSYNC                 ; pin row 0 to the next scanline start
-; row 0
-  lda #11
-  sta NUSIZ1
-  sta VDELP1
-  lda charg
-  sta ENAM0
-  lsr
-  sta ENAM1
-  lsr
-  sta ENABL
-  lda charf
-  sta GRP0
-  lda chare
-  sta GRP1
-  nop
-  lda chard
-  sta GRP0
-  lda charc
-  ldy charb
-  ldx chara
-  sta GRP1
-  sty GRP0
-  stx GRP1
-  sta VDELP1
-  lda #4
-  sta NUSIZ1
-  lda charp
-  sta GRP1
-; row 1
-  lda #11
-  sta NUSIZ1
-  sta VDELP1
-  lda charg+1
-  sta ENAM0
-  lsr
-  sta ENAM1
-  lsr
-  sta ENABL
-  lda charf+1
-  sta GRP0
-  lda chare+1
-  sta GRP1
-  nop
-  lda chard+1
-  sta GRP0
-  lda charc+1
-  ldy charb+1
-  ldx chara+1
-  sta GRP1
-  sty GRP0
-  stx GRP1
-  sta VDELP1
-  lda #4
-  sta NUSIZ1
-  lda charp+1
-  sta GRP1
-; row 2
-  lda #11
-  sta NUSIZ1
-  sta VDELP1
-  lda charg+2
-  sta ENAM0
-  lsr
-  sta ENAM1
-  lsr
-  sta ENABL
-  lda charf+2
-  sta GRP0
-  lda chare+2
-  sta GRP1
-  nop
-  lda chard+2
-  sta GRP0
-  lda charc+2
-  ldy charb+2
-  ldx chara+2
-  sta GRP1
-  sty GRP0
-  stx GRP1
-  sta VDELP1
-  lda #4
-  sta NUSIZ1
-  lda charp+2
-  sta GRP1
-; row 3
-  lda #11
-  sta NUSIZ1
-  sta VDELP1
-  lda charg+3
-  sta ENAM0
-  lsr
-  sta ENAM1
-  lsr
-  sta ENABL
-  lda charf+3
-  sta GRP0
-  lda chare+3
-  sta GRP1
-  nop
-  lda chard+3
-  sta GRP0
-  lda charc+3
-  ldy charb+3
-  ldx chara+3
-  sta GRP1
-  sty GRP0
-  stx GRP1
-  sta VDELP1
-  lda #4
-  sta NUSIZ1
-  lda charp+3
-  sta GRP1
-; row 4
-  lda #11
-  sta NUSIZ1
-  sta VDELP1
-  lda charg+4
-  sta ENAM0
-  lsr
-  sta ENAM1
-  lsr
-  sta ENABL
-  lda charf+4
-  sta GRP0
-  lda chare+4
-  sta GRP1
-  nop
-  lda chard+4
-  sta GRP0
-  lda charc+4
-  ldy charb+4
-  ldx chara+4
-  sta GRP1
-  sty GRP0
-  stx GRP1
-  sta VDELP1
-  lda #4
-  sta NUSIZ1
-  lda charp+4
-  sta GRP1
-; clear the sprite leftovers (VDELP1 off kills the delayed charc blip)
-  lda #0
-  sta GRP0
-  sta GRP1
-  sta GRP0
-  sta ENAM0
-  sta ENAM1
-  sta ENABL
-  sta VDELP1
-  rts
-
-; ------------------------------------------------------------------------------
-; HudCopy: copy one 40-byte HudSlots_* ROM table into the ZP sprite slots
-; (charp..charg). Fully unrolled: 128 bytes, 448 cycles (~6 scanlines).
-; ------------------------------------------------------------------------------
-HudCopy:
-  ldy #39
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  dey
-  lda (HudPtrLo),Y
-  sta charp,Y
-  rts
-
-; ------------------------------------------------------------------------------
-; HudBand: the grey HUD band (144..191). Clears the cave's leftovers, sets the
-; 13_plus2 text object config, renders Level (preloaded in VBLANK), then
-; copies + renders Score, Lives and Time. Four pad WSYNCs after the last text
-; land line 191 exactly, so the overscan TIM64T frame lock is unchanged.
-; ------------------------------------------------------------------------------
-HudBand:
-; copies + renders Score, Lives and Time. Four pad WSYNCs after the last text
-; land line 191 exactly, so the overscan TIM64T frame lock is unchanged.
-; ------------------------------------------------------------------------------
 HudBand:
   lda #0
   sta PF0
   sta PF1
   sta PF2
-  sta GRP0
-  sta GRP1
   sta ENAM0
   sta ENAM1
   sta ENABL
-  lda #HUD_COLOR
-  sta COLUBK
-  lda #$0e                  ; emulator-aware white text (kPalette hue 0 luma 7)
-  sta COLUP0
-  sta COLUP1
-  lda #$03                  ; both players: 3 wide copies (13_plus2 text look)
   sta NUSIZ0
   sta NUSIZ1
-  lda #$01                  ; vertical delay on, then the sprite/missile strobes
   sta VDELP0
-  sta RESM0
-  sta RESM1
   sta VDELP1
-  sta RESBL
-  sta RESP0
-  sta RESP1
-  lda #%11110000            ; 13_plus2 fine offsets, byte-identical
-  sta HMP1
-  lda #%11100000
-  sta HMP0
-  lda #%10000000
-  sta HMBL
-  lda #%10110000
-  sta HMM0
-  lda #%01010000
-  sta HMM1
-  sta WSYNC
-  sta HMOVE
+  lda #HUD_COLOR
+  sta COLUBK
+  lda #$0e                  ; white text (kPalette hue 0 luma 7)
+  sta COLUP0
+  sta COLUP1
 
-  jsr RenderText            ; Level (already in the slots from VBLANK)
-
-  lda #<HudSlots_Score
-  sta HudPtrLo
-  lda #>HudSlots_Score
-  sta HudPtrHi
-  jsr HudCopy
-  jsr RenderText
-
-  lda #<HudSlots_Lives
-  sta HudPtrLo
-  lda #>HudSlots_Lives
-  sta HudPtrHi
-  jsr HudCopy
-  jsr RenderText
-
-  lda #<HudSlots_Time
-  sta HudPtrLo
-  lda #>HudSlots_Time
-  sta HudPtrHi
-  jsr HudCopy
-  jsr RenderText
-
-; 4 pad WSYNCs end lines 188..191 so the overscan timer sees line 192.
-  ldx #4
-.Pad:
+; Font data pre-loaded during VBLANK — skip straight to rendering.
+; 1 text line x 12 scanlines = 12, pad 36 = 48 total
+  jsr HudFlickerLine
+  ldx #36
+.HudPad:
   sta WSYNC
   dex
-  bne .Pad
+  bne .HudPad
   rts
 
 ; ------------------------------------------------------------------------------
-; HUD text slot tables (40 bytes per line, one per 13_plus2 text on the HUD).
-; Generated by tools/font.py (slots mode) into the ZP slot order charp..charg.
+; HudFlickerLine: render one flicker text line (12 scanlines).
+; Font data must be pre-loaded in FontP0/FontP1 before calling.
+; Matches test_pf_min.asm timing: HMP + GRP clear set BEFORE WSYNC, fixed nops
+; after WSYNC, HMOVE on next scanline, then font rows as fast ZP reads.
+;
+; Each phase shows characters at their FINAL fixed positions (no inter-frame
+; shift).  3 frames × 2 sprites = 6 character slots for 5-char "LEVEL":
+;   Phase 0: P0=L@px68,  P1=E@px83   (chars 0,1)
+;   Phase 1: P0=V@px98,  P1=E@px113  (chars 2,3)
+;   Phase 2: P0=L@px128, P1=off      (char 4)
+;
+; Cycle math (px = write_cycle * 3 - 63, HMP=$10 left 1 adjusts -1):
+; Branch overhead: ldx+beq(3+3)=6, ldx+beq+cpx+beq(3+2+2+3)=10, fall-through=9
+; Phase 0: RESP0@44 (6+36+2), RESP1@49 (+5), HMP=$10/$10
+; Phase 1: RESP0@54 (10+42+2), RESP1@59 (+5), HMP=$10/$10
+; Phase 2: RESP0@64 (9+50+3+2), HMP=$10
+; ------------------------------------------------------------------------------
+HudFlickerLine:
+; Set HMP values AND clear GRP BEFORE WSYNC (saves 8 cycles in HBLANK)
+  ldx frame_phase
+  lda PhaseHMP0,x
+  sta HMP0
+  lda PhaseHMP1,x
+  sta HMP1
+  lda #0
+  sta GRP0
+  sta GRP1
+
+; RESP positioning scanline
+  sta WSYNC
+
+; Branch to phase-specific RESP code (fixed nops, like test_pf_min.asm)
+  ldx frame_phase
+  beq .HudPhase0
+  cpx #1
+  beq .HudPhase1
+
+; -- Phase 2: P0=L@px128, P1=off --
+; After WSYNC: ldx(3)+beq(2)+cpx(2)+beq(2) = 9cy
+; 25 nops=50 + bit $80=3 + sta RESP0=3 -> total 64 -> px129, HMP left 1 -> px128
+  nop                       ; 2
+  nop                       ; 4
+  nop                       ; 6
+  nop                       ; 8
+  nop                       ; 10
+  nop                       ; 12
+  nop                       ; 14
+  nop                       ; 16
+  nop                       ; 18
+  nop                       ; 20
+  nop                       ; 22
+  nop                       ; 24
+  nop                       ; 26
+  nop                       ; 28
+  nop                       ; 30
+  nop                       ; 32
+  nop                       ; 34
+  nop                       ; 36
+  nop                       ; 38
+  nop                       ; 40
+  nop                       ; 42
+  nop                       ; 44
+  nop                       ; 46
+  nop                       ; 48
+  nop                       ; 50
+  bit $80                   ; ZP,3cy -> 53
+  sta RESP0                 ; 9+50+3+3=65 total -> write@64 -> px129, HMP left 1 -> px128
+  jmp .HudApplyHmove
+
+.HudPhase0:
+; -- Phase 0: P0=L@px68, P1=E@px83 --
+; After WSYNC: ldx(3)+beq(3,taken) = 6cy
+; 18 nops=36 + sta RESP0=3 -> total 44 -> px69, HMP left 1 -> px68
+; gap: nop(2)+sta RESP1(3)=5 -> RESP1@49 -> px84, HMP left 1 -> px83
+  nop                       ; 2
+  nop                       ; 4
+  nop                       ; 6
+  nop                       ; 8
+  nop                       ; 10
+  nop                       ; 12
+  nop                       ; 14
+  nop                       ; 16
+  nop                       ; 18
+  nop                       ; 20
+  nop                       ; 22
+  nop                       ; 24
+  nop                       ; 26
+  nop                       ; 28
+  nop                       ; 30
+  nop                       ; 32
+  nop                       ; 34
+  nop                       ; 36
+  sta RESP0                 ; write@39 -> CC117... 5+36+3=44 -> px69, HMP left 1 -> px68
+  nop                       ; gap 2cy
+  sta RESP1                 ; +3cy -> 49 -> px84, HMP left 1 -> px83
+  jmp .HudApplyHmove
+
+.HudPhase1:
+; -- Phase 1: P0=V@px98, P1=E@px113 --
+; After WSYNC: ldx(3)+beq(2)+cpx(2)+beq(3,taken) = 10cy
+; 21 nops=42 + sta RESP0=3 -> total 54 -> px99, HMP left 1 -> px98
+; gap: nop(2)+sta RESP1(3)=5 -> RESP1@59 -> px114, HMP left 1 -> px113
+  nop                       ; 2
+  nop                       ; 4
+  nop                       ; 6
+  nop                       ; 8
+  nop                       ; 10
+  nop                       ; 12
+  nop                       ; 14
+  nop                       ; 16
+  nop                       ; 18
+  nop                       ; 20
+  nop                       ; 22
+  nop                       ; 24
+  nop                       ; 26
+  nop                       ; 28
+  nop                       ; 30
+  nop                       ; 32
+  nop                       ; 34
+  nop                       ; 36
+  nop                       ; 38
+  nop                       ; 40
+  nop                       ; 42
+  sta RESP0                 ; 10+42+3=55 start, write@55? ... 10+42=52 start, write@54 -> px99, HMP left 1 -> px98
+  nop                       ; gap 2cy
+  sta RESP1                 ; +3cy -> 59 -> px114, HMP left 1 -> px113
+
+.HudApplyHmove:
+  sta WSYNC
+  sta HMOVE                 ; apply horizontal motion (during HBLANK)
+
+; --- Font rows 0-4 ---
+  lda FontP0                ; fast ZP read - pre-loaded font row 0
+  sta GRP0
+  lda FontP1
+  sta GRP1
+
+  ldx #1
+.HudFontLoop:
+  sta WSYNC
+  lda FontP0,x
+  sta GRP0
+  lda FontP1,x
+  sta GRP1
+  inx
+  cpx #5
+  bne .HudFontLoop
+
+; --- Blank lines (spacing) ---
+; Clear GRP on first blank scanline (after WSYNC = in HBLANK, safe to write)
+  ldx #6
+.HudBlankLoop:
+  sta WSYNC
+  lda #0
+  sta GRP0
+  sta GRP1
+  dex
+  bne .HudBlankLoop
+  rts
+
+; ------------------------------------------------------------------------------
+; LoadFontP0: load 5 bytes of combined font data for char code A into FontP0.
+; Reads fonthi (left 3 bits at 7,6,5) and fontlo (right 3 bits at 3,2,1),
+; shifts fontlo left 1 (→ bits 4,3,2) to fill the gap, then ORs for full glyph.
+; Loads rows in REVERSE order (ROM row 4→FontP0+0 ... row 0→FontP0+4) because
+; the 13_plus2 font data is stored in stack-push order (bottom-to-top).
+; Clobbers: A, X, Y, FontPtrLo/Hi.
+; ------------------------------------------------------------------------------
+LoadFontP0:
+  pha                           ; save char code
+  clc
+  adc #<hud_font_fonthi
+  sta FontPtrLo
+  lda #0
+  adc #>hud_font_fonthi
+  sta FontPtrHi
+  pla                           ; restore char code
+  ldy #4
+  lda (FontPtrLo),Y
+  sta FontP0
+  dey
+  lda (FontPtrLo),Y
+  sta FontP0+1
+  dey
+  lda (FontPtrLo),Y
+  sta FontP0+2
+  dey
+  lda (FontPtrLo),Y
+  sta FontP0+3
+  dey
+  lda (FontPtrLo),Y
+  sta FontP0+4
+  rts
+
+; ------------------------------------------------------------------------------
+; LoadFontP1: load 5 bytes of font data for char code A into FontP1.
+; Same as LoadFontP0 but writes to FontP1.
+; ------------------------------------------------------------------------------
+LoadFontP1:
+  pha
+  clc
+  adc #<hud_font_fonthi
+  sta FontPtrLo
+  lda #0
+  adc #>hud_font_fonthi
+  sta FontPtrHi
+  pla
+  ldy #4
+  lda (FontPtrLo),Y
+  sta FontP1
+  dey
+  lda (FontPtrLo),Y
+  sta FontP1+1
+  dey
+  lda (FontPtrLo),Y
+  sta FontP1+2
+  dey
+  lda (FontPtrLo),Y
+  sta FontP1+3
+  dey
+  lda (FontPtrLo),Y
+  sta FontP1+4
+  rts
+
+; ------------------------------------------------------------------------------
+; Phase data tables for "LEVEL" flicker rendering.
+;
+; PhaseChar0/1: glyph codes (index * 5 into hud_font_fonthi).
+;   CH_HUD_6C=15 (l), CH_HUD_65=10 (e), CH_HUD_76=40 (v)
+; PhaseHMP0/1: horizontal motion nibbles for each phase.
+;   $ff in PhaseChar1 = P1 invisible this phase.
+; RESP timing is hardcoded in HudFlickerLine (fixed nops per phase).
+; ------------------------------------------------------------------------------
+PhaseChar0:
+  .byte CH_HUD_6C           ; phase 0: L
+  .byte CH_HUD_76           ; phase 1: V
+  .byte CH_HUD_6C           ; phase 2: L
+
+PhaseChar1:
+  .byte CH_HUD_65           ; phase 0: E
+  .byte CH_HUD_65           ; phase 1: E
+  .byte CH_HUD_20           ; phase 2: space (blank glyph, keeps VBLANK timing constant)
+
+PhaseHMP0:
+  .byte $10                  ; phase 0: px68  -> left 1
+  .byte $10                  ; phase 1: px98  -> left 1
+  .byte $10                  ; phase 2: px128 -> left 1
+
+PhaseHMP1:
+  .byte $10                  ; phase 0: px83  -> left 1
+  .byte $10                  ; phase 1: px113 -> left 1
+  .byte $00                  ; phase 2: not used
+
 ; ------------------------------------------------------------------------------
 ; Fine-adjust table for SetObjectXPos. MUST be page-aligned ($xx00): the
 ; indexed load then always crosses a page boundary, provides the 5-cycle
@@ -1674,13 +1610,6 @@ fineAdjustBegin:
   .byte %10100000           ; right 6
   .byte %10010000           ; right 7
 fineAdjustTable EQU fineAdjustBegin - %11110001   ; %11110001 = -241 (start basis)
-
-; ------------------------------------------------------------------------------
-; HUD text slot tables (40 bytes per line, one per 13_plus2 text on the HUD).
-; Generated by tools/font.py (slots mode) into the ZP slot order charp..charg.
-; ------------------------------------------------------------------------------
-    org $ff10
-    include "generated/hud_slots.asm"
 
 ; ------------------------------------------------------------------------------
 ; Fill ROM to exactly 4kb
