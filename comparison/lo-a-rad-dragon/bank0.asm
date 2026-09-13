@@ -106,8 +106,8 @@ FontP0          ds.b 5          ; P0 character font data (5 rows) for flicker HU
 FontP1          ds.b 5          ; P1 character font data (5 rows) for flicker HUD
 FontPtrLo       byte            ; indirect pointer for font ROM lookup (fonthi)
 FontPtrHi       byte
-FontPtrLo2      byte            ; second pointer for fontlo table
-FontPtrHi2      byte
+FontPtrLo2      byte            ; reused: tens digit glyph code for LEVEL display
+FontPtrHi2      byte            ; reused: ones digit glyph code for LEVEL display
 frame_phase     byte            ; flicker phase counter: 0, 1, 2, 0, 1, ...
 
 ; ------------------------------------------------------------------------------
@@ -277,17 +277,44 @@ LoopVBlank:
   dex
   bne LoopVBlank
 
-; Pre-load combined font data for current flicker phase.  The font tables
-; (hud_font_fonthi/fontlo) are in the same ROM page so indirect reads
-; never cross a page boundary.  LoadFontP0/P1 clobber A/X/Y and the
-; FontPtr scratch vars — all safe here during VBLANK.
-; ALWAYS call both loaders (same cycle count every frame = no vertical jitter).
+; Pre-load font data for current flicker phase.  For "LVxx" display:
+;   Phase 0: L, V (static)
+;   Phase 1: tens digit, ones digit (dynamic from Level variable)
+;   Phase 2: space, space (both off)
+; Level is 0-indexed; display as Level+1 (1-indexed).
+  lda Level
+  clc
+  adc #1                          ; A = Level + 1
+  ldx #CH_HUD_30                  ; default tens = '0' glyph
+  cmp #10
+  bcc .gotTens
+  ldx #CH_HUD_31                  ; tens = '1' glyph
+  sbc #10                         ; A = ones digit (C=1 from cmp)
+.gotTens:
+  ; A = ones digit (0-9), X = tens glyph code
+  ; Convert ones digit to glyph: CH_HUD_30 + digit*5
+  sta Temp
+  asl                             ; *2
+  asl                             ; *4
+  adc Temp                        ; *5
+  adc #CH_HUD_30                  ; + glyph base
+  stx FontPtrLo2                  ; tens glyph
+  sta FontPtrHi2                  ; ones glyph
+
   ldx frame_phase
   lda PhaseChar0,x
+  cpx #1
+  bne .P0noOverride
+  lda FontPtrLo2                  ; phase 1: tens digit
+.P0noOverride:
   jsr LoadFontP0
-  ldx frame_phase
-  lda PhaseChar1,x
+  lda PhaseChar1,x                ; X still = frame_phase
+  cpx #1
+  bne .P1noOverride
+  lda FontPtrHi2                  ; phase 1: ones digit
+.P1noOverride:
   jsr LoadFontP1
+
 
   lda #0
   sta VBLANK                ; turn off VBLANK
@@ -320,11 +347,9 @@ LoopVBlank:
   sta COLUP0
   lda #$05                  ; D0=1 reflect, D2=1 playfield priority
   sta CTRLPF
-  lda #$00                  ; one copy, not flipped, no missiles/ball
-  sta NUSIZ0
+  lda #$00                  ; not flipped, no missiles/ball
   sta NUSIZ1
   sta REFP0
-  sta REFP1
   sta GRP0
   sta GRP1
   sta ENAM0
@@ -1194,6 +1219,8 @@ GameStart:
     sta PlayerYSub
     sta PlayerDir
     sta StepsLeft
+    sta NUSIZ0              ; single copy (was per-frame, moved here to save bytes)
+    sta REFP1               ; no flip (same)
     jsr LoadLevel           ; A is still 0 -> level 0
     jmp StartFrame
 
@@ -1308,13 +1335,6 @@ HudBand:
   sta PF0
   sta PF1
   sta PF2
-  sta ENAM0
-  sta ENAM1
-  sta ENABL
-  sta NUSIZ0
-  sta NUSIZ1
-  sta VDELP0
-  sta VDELP1
   lda #HUD_COLOR
   sta COLUBK
   lda #$0e                  ; white text (kPalette hue 0 luma 7)
@@ -1339,15 +1359,15 @@ HudBand:
 ;
 ; Each phase shows characters at their FINAL fixed positions (no inter-frame
 ; shift).  3 frames x 2 sprites = 6 character slots for 5-char "LEVEL":
-;   Phase 0: P0=L@px71,  P1=E@px75   (chars 0,1)
-;   Phase 1: P0=V@px79,  P1=E@px83   (chars 2,3)
-;   Phase 2: P0=L@px87,  P1=off      (char 4)
+;   Phase 0: P0=L@px5,   P1=E@px9    (chars 0,1)
+;   Phase 1: P0=V@px13,  P1=E@px17   (chars 2,3)
+;   Phase 2: P0=L@px21,  P1=off      (char 4)
 ;
 ; Cycle math (px = write_cycle * 3 - 63):
 ; Branch overhead: ldx+beq(3+3)=6, ldx+beq+cpx+beq(3+2+2+3)=10, fall-through=9
-; Phase 0: RESP0@45 (6+34+3+2), RESP1@48 (+3), HMP0=$10(-1) HMP1=$60(-6)
-; Phase 1: RESP0@47 (10+32+3+2), RESP1@50 (+3), HMP0=$F0(+1) HMP1=$40(-4)
-; Phase 2: RESP0@50 (9+36+3+2), HMP0=$00
+; Phase 0: RESP0@23 (6+14+3+2), RESP1@26 (+3), HMP0=$10(-1) HMP1=$60(-6)
+; Phase 1: RESP0@25 (10+10+3+2), RESP1@28 (+3), HMP0=$F0(+1) HMP1=$40(-4)
+; Phase 2: RESP0@28 (9+14+3+2), HMP0=$00
 ; ------------------------------------------------------------------------------
 HudFlickerLine:
 ; Set HMP values AND clear GRP BEFORE WSYNC (saves 8 cycles in HBLANK)
@@ -1369,9 +1389,9 @@ HudFlickerLine:
   cpx #1
   beq .HudPhase1
 
-; -- Phase 2: P0=L@px87, P1=off --
+; -- Phase 2: P0=L@px21, P1=off --
 ; After WSYNC: ldx(3)+beq(2)+cpx(2)+beq(2) = 9cy
-; 18 nops=36 + bit $80=3 + sta RESP0=3 -> total 50 -> write@50 -> px87
+; 7 nops=14 + bit $80=3 + sta RESP0=3 -> total 28 -> write@28 -> px21
   nop                       ; 2
   nop                       ; 4
   nop                       ; 6
@@ -1379,72 +1399,39 @@ HudFlickerLine:
   nop                       ; 10
   nop                       ; 12
   nop                       ; 14
-  nop                       ; 16
-  nop                       ; 18
-  nop                       ; 20
-  nop                       ; 22
-  nop                       ; 24
-  nop                       ; 26
-  nop                       ; 28
-  nop                       ; 30
-  nop                       ; 32
-  nop                       ; 34
-  nop                       ; 36
-  bit $80                   ; ZP,3cy -> 39
-  sta RESP0                 ; 9+36+3+3=51 total -> write@50 -> px87
+  bit $80                   ; ZP,3cy -> 17
+  sta RESP0                 ; 9+14+3+3=29 total -> write@28 -> px21
   jmp .HudApplyHmove
 
 .HudPhase0:
-; -- Phase 0: P0=L@px71, P1=E@px75 --
+; -- Phase 0: P0=L@px5, P1=E@px9 --
 ; After WSYNC: ldx(3)+beq(3,taken) = 6cy
-; 17 nops=34 + bit $80=3 + sta RESP0=3 -> total 45 -> write@45 -> px72, HMP left 1 -> px71
-; gap: sta RESP1(3)=3 -> RESP1@48 -> px81, HMP left 6 -> px75
+; 6 nops=12 + bit $80=3 + sta RESP0=3 -> total 23 -> write@23 -> px6, HMP left 1 -> px5
+; gap: sta RESP1(3)=3 -> RESP1@26 -> px15, HMP left 6 -> px9
   nop                       ; 2
   nop                       ; 4
   nop                       ; 6
   nop                       ; 8
   nop                       ; 10
   nop                       ; 12
-  nop                       ; 14
-  nop                       ; 16
-  nop                       ; 18
-  nop                       ; 20
-  nop                       ; 22
-  nop                       ; 24
-  nop                       ; 26
-  nop                       ; 28
-  nop                       ; 30
-  nop                       ; 32
-  nop                       ; 34
-  bit $80                   ; ZP,3cy -> 37
-  sta RESP0                 ; 6+34+3+3=46 total -> write@45 -> px72, HMP left 1 -> px71
-  sta RESP1                 ; +3cy -> 48 -> px81, HMP left 6 -> px75
+  bit $80                   ; ZP,3cy -> 15
+  sta RESP0                 ; 6+12+3+3=24 total -> write@23 -> px6, HMP left 1 -> px5
+  sta RESP1                 ; +3cy -> 26 -> px15, HMP left 6 -> px9
   jmp .HudApplyHmove
 
 .HudPhase1:
-; -- Phase 1: P0=V@px79, P1=E@px83 --
+; -- Phase 1: P0=V@px13, P1=E@px17 --
 ; After WSYNC: ldx(3)+beq(2)+cpx(2)+beq(3,taken) = 10cy
-; 16 nops=32 + bit $80=3 + sta RESP0=3 -> total 47 -> write@47 -> px78, HMP right 1 -> px79
-; gap: sta RESP1(3)=3 -> RESP1@50 -> px87, HMP left 4 -> px83
+; 5 nops=10 + bit $80=3 + sta RESP0=3 -> total 25 -> write@25 -> px12, HMP right 1 -> px13
+; gap: sta RESP1(3)=3 -> RESP1@28 -> px21, HMP left 4 -> px17
   nop                       ; 2
   nop                       ; 4
   nop                       ; 6
   nop                       ; 8
   nop                       ; 10
-  nop                       ; 12
-  nop                       ; 14
-  nop                       ; 16
-  nop                       ; 18
-  nop                       ; 20
-  nop                       ; 22
-  nop                       ; 24
-  nop                       ; 26
-  nop                       ; 28
-  nop                       ; 30
-  nop                       ; 32
-  bit $80                   ; ZP,3cy -> 35
-  sta RESP0                 ; 10+32+3+3=48 total -> write@47 -> px78, HMP right 1 -> px79
-  sta RESP1                 ; +3cy -> 50 -> px87, HMP left 4 -> px83
+  bit $80                   ; ZP,3cy -> 13
+  sta RESP0                 ; 10+10+3+3=26 total -> write@25 -> px12, HMP right 1 -> px13
+  sta RESP1                 ; +3cy -> 28 -> px21, HMP left 4 -> px17
 
 .HudApplyHmove:
   sta WSYNC
@@ -1554,22 +1541,22 @@ LoadFontP1:
 ; ------------------------------------------------------------------------------
 PhaseChar0:
   .byte CH_HUD_6C           ; phase 0: L
-  .byte CH_HUD_76           ; phase 1: V
-  .byte CH_HUD_6C           ; phase 2: L
+  .byte CH_HUD_20           ; phase 1: placeholder (overridden by tens digit)
+  .byte CH_HUD_20           ; phase 2: space (P0 off)
 
 PhaseChar1:
-  .byte CH_HUD_65           ; phase 0: E
-  .byte CH_HUD_65           ; phase 1: E
-  .byte CH_HUD_20           ; phase 2: space (blank glyph, keeps VBLANK timing constant)
+  .byte CH_HUD_76           ; phase 0: V
+  .byte CH_HUD_20           ; phase 1: placeholder (overridden by ones digit)
+  .byte CH_HUD_20           ; phase 2: space (P1 off)
 
 PhaseHMP0:
-  .byte $10                  ; phase 0: px72 -> left 1 -> px71
-  .byte $F0                  ; phase 1: px78 -> right 1 -> px79
-  .byte $00                  ; phase 2: px87 -> no adjust
+  .byte $10                  ; phase 0: px6 -> left 1 -> px5
+  .byte $F0                  ; phase 1: px12 -> right 1 -> px13
+  .byte $00                  ; phase 2: px21 -> no adjust
 
 PhaseHMP1:
-  .byte $60                  ; phase 0: px81 -> left 6 -> px75
-  .byte $40                  ; phase 1: px87 -> left 4 -> px83
+  .byte $60                  ; phase 0: px15 -> left 6 -> px9
+  .byte $40                  ; phase 1: px21 -> left 4 -> px17
   .byte $00                  ; phase 2: not used
 
 ; ------------------------------------------------------------------------------
