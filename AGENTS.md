@@ -1,5 +1,79 @@
 # Atari 2600 Development Notes
 
+## **CRITICAL RULE (4th violation — 2026-09-12): FINISH THE DEMO FIRST**
+**You MUST finish test_pf_min.asm 100% — "TEST" rendering cleanly — with the USER'S explicit assertion that it works, before touching ANY game code (bank0.asm, bank1.asm, build scripts, generated files, tools).** This is the fourth time this rule has been violated. Do NOT run the game ROM, do NOT build the full ROM, do NOT work on HUD integration, do NOT look at bank0.asm — until the user says the demo is done and verified.
+
+## **MANDATORY: Log every test result in the skill section below**
+**Every time you run a test in test_pf_min.asm (build, screenshot, ASCII verify), you MUST immediately update the "13_plus2 Demo: What Worked and What Failed" section with what you tried, what happened, and whether it passed or failed.** This prevents running in circles, re-trying failed approaches, and second-guessing data that already worked. If you skip this logging, you WILL repeat the same mistakes.
+
+## STRICT PATH: 13_plus2 text rendering
+**We build up text rendering incrementally in test_pf_min.asm ONLY.**
+1. Fix test_pf_min.asm with 2 letters ("T","E") — proper spacing, no duplicates
+2. Add 3rd letter
+3. Keep going until "TEST" renders cleanly
+4. Only THEN integrate into the game HUD
+**Do NOT touch bank0.asm HUD code until test_pf_min.asm is verified working.**
+**Do NOT jump ahead. Baby steps. Test after every change.**
+
+## 13_plus2 Demo: What Worked and What Failed (2026-09-12)
+
+### WORKED
+- **Simple single-sprite test (034.png):** P0=T at pixel 32, NUSIZ0=$00, RESP0/HMP0 positioning. Shows T correctly.
+- **Two-sprite test (035.png):** P0=T (single) + P1=S (3 copies far, NUSIZ=$07, VDELP1=1). Shows T + S copies.
+- **T+E single sprites (036.png):** P0=T (single, pixel 32, HMP0=$40) + P1=E (single, pixel 60, HMP1=$10). **THIS IS THE WORKING BASELINE.** Shows T and E with good spacing.
+
+### FAILED — Do Not Repeat
+- **Mid-scanline GRP1 rewrite without VDELP:** Attempted to change P1 graphic between copies within one scanline. Both copies showed the same character (S). The GRP1 shift register latches data at the start; mid-scanline writes don't affect already-queued copies.
+- **VDELP=1 alone for multi-char-per-sprite:** VDELP delays ALL GRP writes by one scanline. Cannot show different characters on different copies within the same scanline. Only useful for the full 13_plus2 pipeline.
+- **13_plus2 port from tutorial (multiple attempts):**
+  - Copied `docs/tutorial/13_plus2.asm` exactly, fixed include path (`"comparison/lo-a-rad-dragon/vcs.h"`), added `processor 6502`, fixed TEXTA/TEXTB macros to use `<` low-byte operator. **Still showed blank screen.**
+  - Modified TEXT macro to show just "T,E,S". **Still blank.**
+  - Key learning: The original tutorial assembles but shows nothing in Stella as a standalone 4K ROM. The `SLEEP` macro uses `REPEAT`/`REPEND` (DASM built-in). ZP layout: charp=$80, charg=$a3, chars=$a7. Stack pushes fill ZP via mirroring ($100+SP mirrors to SP on 2600's 128-byte RAM).
+  - **Root cause unknown** — the tutorial ROM produces a valid binary but renders blank. Needs further debugging (possibly SLEEP timing, or the font/text alignment is wrong after text simplification).
+- **Attempted to use game ROM (savior.bin):** VIOLATION of strict path. Do NOT do this. Only test in test_pf_min.asm.
+- **Attempted to use generated/menu_13plus2.asm as base:** Missing `processor 6502`, had unresolved symbols (GameStart, GameMode, NO_ILLEGAL_OPCODES). Not a clean standalone test.
+- **charp equ value confusion:** Tutorial uses charp=$80, menu_13plus2 uses charp=$80. Both correct — ZP layout is charp($80)..charg($a3), SP starts at chars($a7) and grows down.
+- **TEXTA/TEXTB low-byte:** Original tutorial TEXTA/TEXTB use `byte {1},{2}...` but DASM needs `byte <{1},<{2}...` to extract low byte of label addresses. Without `<`, values exceed 255. The generated/menu_13plus2.asm already has this fix.
+
+### KEY LESSONS
+- **Only 2 player sprites exist.** To show more than 2 different characters, must use the full 13_plus2 technique (P0×3 copies + P1×3 copies + missiles + ball = 13+2 objects).
+- **NUSIZ copies show the SAME sprite data.** Cannot show different characters via copies alone.
+- **RESPx positions the sprite's LEFT edge.** HMPx fine-tunes. The SetObjectXPos routine from bank0.asm (Andrew Davie's algorithm) is correct.
+- **GRP0 must be written during HBLANK** (color clocks 0-68) or sprite renders partially/glitched.
+
+## STOP RULE — READ THIS BEFORE EVERY RESPONSE
+If the user asks you to do X, you do X and ONLY X. You do NOT:
+- Fix related things you "noticed"
+- Refactor nearby code
+- "Improve" anything not explicitly requested
+- Jump to a later step in a plan before finishing the current step
+- Touch files the user did not mention
+- Add features, abstractions, or comments not asked for
+
+When you finish X, STOP. Report what you did. Wait for the next instruction.
+If you are unsure whether something falls under X, ASK before doing it.
+Breaking this rule wastes the user's time and trust.
+
+## Stella screenshots
+I CAN run Stella and take screenshots. But ASK the user first or warn them,
+because Stella pops up on their desktop and can interrupt what they're doing.
+Pattern: warn → launch → sleep → spectacle → killall stella → show result.
+
+**NEVER launch Stella without telling the user FIRST.** Always say "Launching Stella now" 
+and wait a moment, or ask "Can I launch Stella?" before doing it. The user's desktop
+is not mine to interrupt.
+
+## MANDATORY: Verify screenshots with ASCII before claiming correctness
+After EVERY Stella screenshot, run `python3 tools/screenshot_to_ascii.py <file>` and
+READ the output. Do NOT trust analysis scripts that count bright pixels — they can
+misidentify characters and give wrong spacing. The ASCII art shows the ACTUAL pixel
+pattern so you can visually confirm:
+1. Which characters are rendering (compare against font bitmaps line by line)
+2. Whether the correct font data is showing on each player/copy
+3. Character spacing — is it proportional? Half char width = ~2 TIA clocks
+**NEVER claim a screenshot is "clean" or "correct" without reading the ASCII output first.**
+This tool exists because previous analysis scripts confidently reported wrong results.
+
 ## CURRENT PROTOTYPE ARCHITECTURE (HERO-direct, supersedes tile-budget notes)
 - **F6 bankswitching (16K, 4 banks):** game code lives in `comparison/lo-a-rad-dragon/bank0.asm`
   (landing pad + `Main` + kernel + room/level data + vectors at $FFFC). Bank0 begins
@@ -515,6 +589,18 @@ Notes:
   creates extra NUSIZ player/missile/ball copies; the demo hides unwanted copies
   with `PF0=$FF`, `PF1=$F0`, `PF2=$00`, `CTRLPF=$05`, and black `COLUPF`. Removing
   that mask for a text-only screen exposes repeated fragments across the line.
+- **13_plus2 timing model:** visible glyphs are not ordinary sprite writes. The
+  kernel first builds a 40-byte stack window: one solo glyph plus seven packed
+  glyph pairs, pushed in reverse order into `charp..charg`. It then runs five
+  `TEXTDISP` rows immediately. Each row is 76 cycles, but the FIRST row's
+  horizontal phase is also critical: `RESP/HMP/HMM/HMBL`, `NUSIZ1`, and the
+  stack-build cycle count together determine where GRP0/GRP1/missile/ball pieces
+  land. A byte-identical `TEXTDISP` preceded by `HudCopy` plus `WSYNC` is NOT
+  visually equivalent; it produces displaced or missing pieces.
+- **HUD status:** HUD now intentionally renders one `Level` line using
+  `HudCopy` followed by a 43-cycle phase delay and the same five TEXTDISP rows;
+  remaining HUD lines are padded black. This is a known small proof step before
+  adding dynamic Score/Lives/Time with the same phase-correct path.
 
 ## Development Workflow - Baby Steps
 
@@ -524,6 +610,9 @@ This project follows an incremental development approach:
 - If something breaks, revert or fix before continuing
 - Document any regressions or side effects found during testing
 - Only add complexity after the current change is confirmed working
+- **Do NOT change data formats (room JSON schema, tile dimensions, entity layout,
+  ROM data layout, generated file structure) without explicit user acceptance.**
+  Propose the change, explain the impact, and wait for approval before editing.
 - **When a data format changes (new/moved fields in `rooms/level_XXX.json`,
   tile dimensions, entity layout, etc.), ALWAYS migrate every existing stage and
   room data file to the new format as part of the same change.** Do not leave
@@ -654,6 +743,80 @@ $DC00:  STA WSYNC
 - Rescue hostages from collapsing mine
 - Timer-based gameplay
 - The jet has an initial resistance before it reaches full thrust (inertia)
+
+## HERO HUD Text Rendering (from disassembly + debugging)
+
+Full disassembly saved at `docs/hero/hero_bank0.asm` and `docs/hero/hero_bank1.asm`.
+
+### How HERO renders text on screen
+
+HERO uses **GRP0/GRP1 sprites** for text (NOT playfield). The second kernel at
+`$DE00` writes GRP0/GRP1 at specific cycle positions within each scanline, with
+HMOVE adjustments between writes. This is the 13_plus2 technique.
+
+**Key mechanism (second kernel at $DE00-$DE58):**
+- RESP fires ONCE during setup (not per-scanline)
+- 6 font pointers read via `(zp),Y` — one per scanline row
+- 6 GRP writes per scanline (GRP0×3, GRP1×3) at different cycle positions
+- HMOVE written mid-scanline between GRP writes
+- HMBL written mid-scanline
+- Counter = 5 iterations (5 rows of text per character)
+- 75 cycles per iteration = exactly 1 scanline
+
+**Font data:** Stored in zero-page RAM at runtime (not ROM). Font pointers
+($85-$8F) point to ZP addresses where character data is loaded during VBLANK.
+The font format is 5 bytes per character row (one byte per scanline).
+
+### Verified via Stella debugger
+
+Using `stella -debug` on the test ROM (`test_pf_min.bin`), we confirmed:
+- **GRP0 must be loaded BEFORE RESP0 fires** — if RESP0 fires with GRP0=0,
+  the sprite renders blank for that scanline (distortion)
+- The correct pattern is: load font → write GRP0/GRP1 → fire RESP
+- Font data is pre-loaded into ZP during VBLANK for fast access
+- RESP fires once during setup; GRP0/GRP1 are updated per scanline
+
+### Working approach (test_pf_min.asm)
+
+1. **VBLANK:** Load font data into ZP (10 bytes: 2 chars × 5 rows)
+2. **Setup:** Load first font row into GRP0/GRP1, THEN fire RESP0/RESP1
+3. **Kernel loop:** Load font row for current scanline into GRP0/GRP1
+   - Font loaded BEFORE any RESP (RESP already fired during setup)
+   - Shift register has correct data from prior GRP write
+4. **HMP values** control horizontal spacing between characters
+
+### Constraints
+- Font data MUST be pre-loaded into ZP during VBLANK (too slow to load per-scanline)
+- GRP0/GRP1 MUST be written BEFORE RESP fires (causes distortion if empty)
+- RESP fires once during setup; GRP updated per scanline
+- Scanline check adds ~11 cycles, making RESP fire past HBLANK if done first
+- Solution: load font FIRST in kernel loop, then check scanline range
+
+### Disassembly details
+- `$DC00`: Main cave kernel (PF write per scanline, ~61 cycles/line)
+- `$DC6A/$DC6C/$DC77`: PF0/PF2/PF1 lookup tables (8 entries each)
+- `$DC80-$DCFF`: Font/text PF bitmap data (cave patterns, NOT sprite font)
+- `$DE00`: Second kernel (jetpack/score/HUD text rendering via GRP)
+- `$DDA0-$DDE0`: Additional data tables (sprite patterns, colors)
+- `$DFF0-$DFF8`: Font data (character bitmaps as PF values)
+
+### Working test: test_pf_min.asm
+
+Two characters ("T" and "E") rendered using the 13_plus2 technique:
+
+**What works:**
+- Font pre-loaded into ZP during VBLANK (FontRowT at $90, FontRowE at $95)
+- GRP0/GRP1 loaded BEFORE RESP0 fires (no distortion)
+- RESP0 at cycle 2 (HBLANK), RESP1 after delay loop
+- HMP0=$40, HMP1=$10 for horizontal spacing
+- Characters are readable and correctly shaped
+
+**What still needs fixing:**
+- Duplicate fragments at top (setup code loads font row 0 before RESP0)
+- RESP1 timing could be tighter for better character spacing
+- Need to integrate into game HUD (bank0.asm)
+
+**Stella automation:** `stella test_pf_min.bin &` + `spectacle -b -a -o file.png`
 
 ## Standard Coding Patterns
 

@@ -1,39 +1,79 @@
-00: ................................
-01: ............XXXXXXXXX...........
-02: ..........XXX.......XXX.........
-03: ..........XX.........XX.........
-04: ..........XX....X....XX.........    <- eye
-05: ..........XX....X....XX.........
-06: ..........XX.........XX.........
-07: ...........XXX.....XXX..........
-08: .............XXXXXXX............
-09: ..................XX............
-10: ..........XXXXXXXXXXXX..........    <- torso top
-11: ...XXXXX..XX..........XX........    <- jetpack + torso
-12: ..XX...XX.XX..XXXXX...XX........
-13: ..XX...XX.XX..XX...X...XX....X..
-14: ..XX...XX.XX..XX.......XX...XXX.    <- arm
-15: ..XX...XX.XX..XX.......XX..XXXX.
-16: ..XX...XX.XX..XX.......XX..XXXX.
-17: ..XX...XX.XX..XX.......XX...XXX.
-18: ..XX...XX.XX..XX.......XX....X..
-19: ..XX...XX.XXXX.XXXX.XXXX........
-20: ..XX...XX.XXXX.XXXX.XXXX........
-21: ...XXXXX.XXXX...XXXXXXX.........
-22: .....XX.XXXX....................
-23: .....XX.XXXX....................
-24: ....XXXX.XXXX...XXXX............
-25: ....XXXX.XXXX...XXXX............
-26: ....XXXX..XX....XXXX............
-27: ....XXXXX.XX....XXXX............
-28: .....XXXXX.XX...XXXX............
-29: ......XXX..XX...XXX.............     <- then legs:
-30: .......X...XX..XXXX.............
-31: ...........XXXX..XXXX...........
-32: ...........XXXXX..XXXXX.........
+#########################################################################################################################################################################
+BATARI
+#########################################################################################################################################################################
+Som
+não consegue mais andar quando emc ima de uma plataforma
+
+
+Since we were having lots of issues with creating a new kernel for the game I want to build,
+I decided to give a try using Batari, the basic for Atari 2600 development kit.
+Batari, is located at /mnt/ExtraData/programas/bB/.
+The goal is to create a clone of the Activision HERO game for the Atari 2600, and it should run on the original hardware.
+There is a level and room editor already in place, it is a project in C++ with Qt library and Cmake build system.
+    # You can create scripts to convert the stages to some file-format bAtari can read.
+The game should have a HUD like the screenshot located in docs/HERO.
+Create an AGENTS.md file to store game structure, code findings and other useful information.
+Implement in an incremental way. Implement some feature, like for example the level map, or the HUD,
+stop, ask the user to validate, if all is right, commit and go to the next feature. Add this instruction to AGENTS.md by the way.
+The kernel to be used should be the standard kernel or the DPC+ kernel, find out witch one will better fit or requirements.
+Feel free to investigate about the HERO game bAtari and other information, and store the findings into the docs folder for future use.
+
+
+
+
+
+
+
+
 
 
 #########################################################################################################################################################################
+
+openrouter.ai
+REDACTED_API_KEY
+
+#########################################################################################################################################################################
+REFACTOR
+#########################################################################################################################################################################
+Since we are having a lot of issues with the fonts and text, let's stop working on the game for a while, and create another little application.
+
+Study and document into a skill named text, both ./docs/examples/text24.asm, ./docs/tutorial/13_plus2.asm and the documents
+about the 32 char solution in the ./docs/tutorial.
+
+Then I want you to come up with a solution for drawing small-size text in the Atari 2600 hardware.
+    # it should be generic enough that we add it into a start screen and inside game and it won't break due to timing issues
+    # it should be possible to position it any part of the screen without breaking
+    # it can have restrains such as limit for characters in a line (minimal of 8 otherwise it becomes very difficult to write anything), numer of lines (minimal 2) or colors
+    # it might have a low refresh rate such as 30 fps, and flicker, if that helps
+    # you can ask if you find out that any other constrain is required
+    # you can create a new application for testing, call it font_manager
+
+At the end, present a high level explanation of how that system you planned works.
+
+
+
+=========================================================================================================================================================================
+
+I want to try to make an Atari 2600 game. But doing the whole kernel is making this really hard, so I want to create a Batari version of the game, that is based upon Activision HERO. It uses an editor and json files that are converted to binary, and I want to preserve that part. So please port it to Batari, that is located at /mnt/ExtraData/programas/bB/ and use the sub-folder savior_batari for that.
+
+=========================================================================================================================================================================
+
+- estudar a fundo o sistema que o cara criou de 13 caracteres e o de 24 caracteres e elaborar um
+    # fazer separado para simplificar o desenvolvimento
+    # deve ser o mais genérico possível para funcionar numa tela de intro e dentro do jogo.
+    # criar uma skill para o sistema de fonte
+- tirar tudo do lo-dragon
+- documentar todo  o código e as escolhas usadas
+    # pedir para a IA que partes podem se tornar skills
+
+#########################################################################################################################################################################
+
+In the editor, in stage 2, room 2, I can't add a new exit to the bottom area.
+
+
+
+=========================================================================================================================================================================
+
 Why are you writing to these files? Edit comparison/lo-a-rad-dragon/bank1.asm
 
 
@@ -44,24 +84,25 @@ And add back the jetpack logic, that makes the user move up, with some initial i
 Add sound similar of a jet engine when player pressed up in the joystick.
 
 
-#########################################################################################################################################################################
-Refactor later
-#########################################################################################################################################################################
-I saved a good example for small fonts, I want to use. Look at docs/tutorial/13_plus2.asm.
-All text, except for the game name "SAVIOR 2600" should use this format, inclusing the HUD in-game.
-
-#########################################################################################################################################################################
 
 In the editor, I can´t place the miner in the right side of the screen.
+
+In the editor, the proportion of the grid should take account the existence of the HUD,
+we previously removed the area of it in the editor, but the size was kept the same, including the area that the HUD used.
 
 
 Why are you still using this file? comparison/lo-a-rad-dragon/bank0.asm
 
 Make snake a rectanble that is twice the player width and half the player height.
-Snake needs a direction, so it needs a mouth
+Snake needs a direction, so it needs a mouth like the player
 
 
-
+OPTIMIZTION:
+ No need to store empty space - it they are being used like this now
+ Room Model
+    # The editor should now have two tabs, Model and Stage
+    # In the Model, you edit only the playfield, with empty spaces or terrain types (Solid Wall, Breakable Wall, Lava Wall, Water Pool, Lava Pool, Magma Fall)
+    # A aba de stages permite escolher o modelo, a cor da fase, e inserir posição de início do player, inimigos, tiles assimétricos, mineiro, etc.
 
 - adicionar laser
 
@@ -106,27 +147,8 @@ HUD:
 
 - adicionar movimentação aos inimigos
 
-- refazer do zero, clean-room v2
-
 
 
 
 #########################################################################################################################################################################
-
-print *$80
-print *$81
-print *$86
-print *$87
-print *$89
-
-saveSes session.log
-
-
-To help you, I redid the testing, for both the thick and thin walls. You can check the session.log for the prints in the same order on the following:
-left thick: player x: 9, wall x: 11
-left thin: player x: 4, wall x: 3
-right thick: player x (right side): 143, wall x: 148
-right thin: x (right side): 151, wall x: 156
-
-
-12,7 writes in 4,6
+Adicionar doc com agradecimentos ao jogo usado como base e exemplos.
