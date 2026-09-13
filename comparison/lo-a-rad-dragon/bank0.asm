@@ -1338,16 +1338,16 @@ HudBand:
 ; after WSYNC, HMOVE on next scanline, then font rows as fast ZP reads.
 ;
 ; Each phase shows characters at their FINAL fixed positions (no inter-frame
-; shift).  3 frames × 2 sprites = 6 character slots for 5-char "LEVEL":
-;   Phase 0: P0=L@px68,  P1=E@px83   (chars 0,1)
-;   Phase 1: P0=V@px98,  P1=E@px113  (chars 2,3)
-;   Phase 2: P0=L@px128, P1=off      (char 4)
+; shift).  3 frames x 2 sprites = 6 character slots for 5-char "LEVEL":
+;   Phase 0: P0=L@px71,  P1=E@px75   (chars 0,1)
+;   Phase 1: P0=V@px79,  P1=E@px83   (chars 2,3)
+;   Phase 2: P0=L@px87,  P1=off      (char 4)
 ;
-; Cycle math (px = write_cycle * 3 - 63, HMP=$10 left 1 adjusts -1):
+; Cycle math (px = write_cycle * 3 - 63):
 ; Branch overhead: ldx+beq(3+3)=6, ldx+beq+cpx+beq(3+2+2+3)=10, fall-through=9
-; Phase 0: RESP0@44 (6+36+2), RESP1@49 (+5), HMP=$10/$10
-; Phase 1: RESP0@54 (10+42+2), RESP1@59 (+5), HMP=$10/$10
-; Phase 2: RESP0@64 (9+50+3+2), HMP=$10
+; Phase 0: RESP0@45 (6+34+3+2), RESP1@48 (+3), HMP0=$10(-1) HMP1=$60(-6)
+; Phase 1: RESP0@47 (10+32+3+2), RESP1@50 (+3), HMP0=$F0(+1) HMP1=$40(-4)
+; Phase 2: RESP0@50 (9+36+3+2), HMP0=$00
 ; ------------------------------------------------------------------------------
 HudFlickerLine:
 ; Set HMP values AND clear GRP BEFORE WSYNC (saves 8 cycles in HBLANK)
@@ -1369,9 +1369,9 @@ HudFlickerLine:
   cpx #1
   beq .HudPhase1
 
-; -- Phase 2: P0=L@px128, P1=off --
+; -- Phase 2: P0=L@px87, P1=off --
 ; After WSYNC: ldx(3)+beq(2)+cpx(2)+beq(2) = 9cy
-; 25 nops=50 + bit $80=3 + sta RESP0=3 -> total 64 -> px129, HMP left 1 -> px128
+; 18 nops=36 + bit $80=3 + sta RESP0=3 -> total 50 -> write@50 -> px87
   nop                       ; 2
   nop                       ; 4
   nop                       ; 6
@@ -1390,22 +1390,15 @@ HudFlickerLine:
   nop                       ; 32
   nop                       ; 34
   nop                       ; 36
-  nop                       ; 38
-  nop                       ; 40
-  nop                       ; 42
-  nop                       ; 44
-  nop                       ; 46
-  nop                       ; 48
-  nop                       ; 50
-  bit $80                   ; ZP,3cy -> 53
-  sta RESP0                 ; 9+50+3+3=65 total -> write@64 -> px129, HMP left 1 -> px128
+  bit $80                   ; ZP,3cy -> 39
+  sta RESP0                 ; 9+36+3+3=51 total -> write@50 -> px87
   jmp .HudApplyHmove
 
 .HudPhase0:
-; -- Phase 0: P0=L@px68, P1=E@px83 --
+; -- Phase 0: P0=L@px71, P1=E@px75 --
 ; After WSYNC: ldx(3)+beq(3,taken) = 6cy
-; 18 nops=36 + sta RESP0=3 -> total 44 -> px69, HMP left 1 -> px68
-; gap: nop(2)+sta RESP1(3)=5 -> RESP1@49 -> px84, HMP left 1 -> px83
+; 17 nops=34 + bit $80=3 + sta RESP0=3 -> total 45 -> write@45 -> px72, HMP left 1 -> px71
+; gap: sta RESP1(3)=3 -> RESP1@48 -> px81, HMP left 6 -> px75
   nop                       ; 2
   nop                       ; 4
   nop                       ; 6
@@ -1423,17 +1416,16 @@ HudFlickerLine:
   nop                       ; 30
   nop                       ; 32
   nop                       ; 34
-  nop                       ; 36
-  sta RESP0                 ; write@39 -> CC117... 5+36+3=44 -> px69, HMP left 1 -> px68
-  nop                       ; gap 2cy
-  sta RESP1                 ; +3cy -> 49 -> px84, HMP left 1 -> px83
+  bit $80                   ; ZP,3cy -> 37
+  sta RESP0                 ; 6+34+3+3=46 total -> write@45 -> px72, HMP left 1 -> px71
+  sta RESP1                 ; +3cy -> 48 -> px81, HMP left 6 -> px75
   jmp .HudApplyHmove
 
 .HudPhase1:
-; -- Phase 1: P0=V@px98, P1=E@px113 --
+; -- Phase 1: P0=V@px79, P1=E@px83 --
 ; After WSYNC: ldx(3)+beq(2)+cpx(2)+beq(3,taken) = 10cy
-; 21 nops=42 + sta RESP0=3 -> total 54 -> px99, HMP left 1 -> px98
-; gap: nop(2)+sta RESP1(3)=5 -> RESP1@59 -> px114, HMP left 1 -> px113
+; 16 nops=32 + bit $80=3 + sta RESP0=3 -> total 47 -> write@47 -> px78, HMP right 1 -> px79
+; gap: sta RESP1(3)=3 -> RESP1@50 -> px87, HMP left 4 -> px83
   nop                       ; 2
   nop                       ; 4
   nop                       ; 6
@@ -1450,14 +1442,9 @@ HudFlickerLine:
   nop                       ; 28
   nop                       ; 30
   nop                       ; 32
-  nop                       ; 34
-  nop                       ; 36
-  nop                       ; 38
-  nop                       ; 40
-  nop                       ; 42
-  sta RESP0                 ; 10+42+3=55 start, write@55? ... 10+42=52 start, write@54 -> px99, HMP left 1 -> px98
-  nop                       ; gap 2cy
-  sta RESP1                 ; +3cy -> 59 -> px114, HMP left 1 -> px113
+  bit $80                   ; ZP,3cy -> 35
+  sta RESP0                 ; 10+32+3+3=48 total -> write@47 -> px78, HMP right 1 -> px79
+  sta RESP1                 ; +3cy -> 50 -> px87, HMP left 4 -> px83
 
 .HudApplyHmove:
   sta WSYNC
@@ -1576,13 +1563,13 @@ PhaseChar1:
   .byte CH_HUD_20           ; phase 2: space (blank glyph, keeps VBLANK timing constant)
 
 PhaseHMP0:
-  .byte $10                  ; phase 0: px68  -> left 1
-  .byte $10                  ; phase 1: px98  -> left 1
-  .byte $10                  ; phase 2: px128 -> left 1
+  .byte $10                  ; phase 0: px72 -> left 1 -> px71
+  .byte $F0                  ; phase 1: px78 -> right 1 -> px79
+  .byte $00                  ; phase 2: px87 -> no adjust
 
 PhaseHMP1:
-  .byte $10                  ; phase 0: px83  -> left 1
-  .byte $10                  ; phase 1: px113 -> left 1
+  .byte $60                  ; phase 0: px81 -> left 6 -> px75
+  .byte $40                  ; phase 1: px87 -> left 4 -> px83
   .byte $00                  ; phase 2: not used
 
 ; ------------------------------------------------------------------------------
