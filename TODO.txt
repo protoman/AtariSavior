@@ -1,70 +1,51 @@
 #########################################################################################################################################################################
-BATARI
+TEXT
 #########################################################################################################################################################################
-Som
-não consegue mais andar quando emc ima de uma plataforma
+Each time player finishes a stage, ad 255 points to the score.
 
+=========================================================================================================================================================================
 
-Since we were having lots of issues with creating a new kernel for the game I want to build,
-I decided to give a try using Batari, the basic for Atari 2600 development kit.
-Batari, is located at /mnt/ExtraData/programas/bB/.
-The goal is to create a clone of the Activision HERO game for the Atari 2600, and it should run on the original hardware.
-There is a level and room editor already in place, it is a project in C++ with Qt library and Cmake build system.
-    # You can create scripts to convert the stages to some file-format bAtari can read.
-The game should have a HUD like the screenshot located in docs/HERO.
-Create an AGENTS.md file to store game structure, code findings and other useful information.
-Implement in an incremental way. Implement some feature, like for example the level map, or the HUD,
-stop, ask the user to validate, if all is right, commit and go to the next feature. Add this instruction to AGENTS.md by the way.
-The kernel to be used should be the standard kernel or the DPC+ kernel, find out witch one will better fit or requirements.
-Feel free to investigate about the HERO game bAtari and other information, and store the findings into the docs folder for future use.
+The score is working very well without any flicker, is it possible to use the same technique to draw the level (LV01) text so we have no flicker on it also?
 
+=========================================================================================================================================================================
+Se a anterior não der certo:
+We are drawing each half of the text at a time with the flicker technique, right?
+To improve readbility, we could use a technique that we instead, draw half the lines in one update, and the other half in the other,
+like a TV interlaced more.
+=========================================================================================================================================================================
 
+Add laser and allow to kill enemies.
+When player pushes the fire button, a laser beam, that is a solid line starting from the "eye" in the player sprite,
+must appear. And if this line touches any enemy, the enemy must be removed from the room, and the player gets 50 score points.
 
+=========================================================================================================================================================================
+Bomb
+=========================================================================================================================================================================
 
+=========================================================================================================================================================================
+Fragile Wall
+=========================================================================================================================================================================
 
-
+=========================================================================================================================================================================
+Fix editor Exists being disabled
+=========================================================================================================================================================================
 
 
 
 
 #########################################################################################################################################################################
-
-openrouter.ai
-REDACTED_API_KEY
 
 #########################################################################################################################################################################
 REFACTOR
 #########################################################################################################################################################################
-Since we are having a lot of issues with the fonts and text, let's stop working on the game for a while, and create another little application.
-
-Study and document into a skill named text, both ./docs/examples/text24.asm, ./docs/tutorial/13_plus2.asm and the documents
-about the 32 char solution in the ./docs/tutorial.
-
-Then I want you to come up with a solution for drawing small-size text in the Atari 2600 hardware.
-    # it should be generic enough that we add it into a start screen and inside game and it won't break due to timing issues
-    # it should be possible to position it any part of the screen without breaking
-    # it can have restrains such as limit for characters in a line (minimal of 8 otherwise it becomes very difficult to write anything), numer of lines (minimal 2) or colors
-    # it might have a low refresh rate such as 30 fps, and flicker, if that helps
-    # you can ask if you find out that any other constrain is required
-    # you can create a new application for testing, call it font_manager
-
-At the end, present a high level explanation of how that system you planned works.
+Why are you writing to these files? "Edit comparison/lo-a-rad-dragon/bank1.asm".
+Please refactor the code to be better organized and placed only under a "src" folder and use logical names like main, kernel_game, kernel_hud, kernel_score,
+data_tables, font_tables, etc.
 
 
 
 =========================================================================================================================================================================
 
-I want to try to make an Atari 2600 game. But doing the whole kernel is making this really hard, so I want to create a Batari version of the game, that is based upon Activision HERO. It uses an editor and json files that are converted to binary, and I want to preserve that part. So please port it to Batari, that is located at /mnt/ExtraData/programas/bB/ and use the sub-folder savior_batari for that.
-
-=========================================================================================================================================================================
-
-- estudar a fundo o sistema que o cara criou de 13 caracteres e o de 24 caracteres e elaborar um
-    # fazer separado para simplificar o desenvolvimento
-    # deve ser o mais genérico possível para funcionar numa tela de intro e dentro do jogo.
-    # criar uma skill para o sistema de fonte
-- tirar tudo do lo-dragon
-- documentar todo  o código e as escolhas usadas
-    # pedir para a IA que partes podem se tornar skills
 
 #########################################################################################################################################################################
 
@@ -74,7 +55,6 @@ In the editor, in stage 2, room 2, I can't add a new exit to the bottom area.
 
 =========================================================================================================================================================================
 
-Why are you writing to these files? Edit comparison/lo-a-rad-dragon/bank1.asm
 
 
 Now, I want to add gravity, that will make the player fall when not on ground.

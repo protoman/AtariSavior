@@ -115,6 +115,8 @@ ScoreTe         byte            ; score tens digit (0-9, BCD)
 ScoreOn         byte            ; score ones digit (0-9, BCD)
 ScoreDigit2     ds.b 5          ; sprite rows for digit 2 (populated during gap)
 ScoreDigit3     ds.b 5          ; sprite rows for digit 3 (populated during gap)
+LaserActive     byte            ; 0 = inactive, nonzero = frames remaining
+LaserY          byte            ; scanline where the laser beam is drawn
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -225,9 +227,9 @@ Main:
 ; ------------------------------------------------------------------------------
 ; Init Variables
 ; ------------------------------------------------------------------------------
-  lda #1
-  sta GameMode            ; boot directly into the cave (skip start screen for testing)
+  lda #0
   jsr LoadLevel           ; start at level 0's origin (start room/x/y from the level data)
+  inc GameMode            ; boot directly into the cave (skip start screen for testing)
 
 ; ------------------------------------------------------------------------------
 ; Render
