@@ -498,32 +498,25 @@ pixel (0..159), so room X coords map 1:1 to visible columns.
   The classic `$1c` (hue 1, luma 6) renders as grey in Stella — hue 1 palette
   values are all desaturated. For white, use `$0e` (hue 0, luma 7).
 
-## Laser Feature (2026-09-14)
-- **Fire button**: INPT4 bit 7 (active low). When pressed and no laser active,
-  sets `LaserActive=10` (10-frame timer) and `LaserY=PlayerY+2` (eye position).
-- **Rendering**: Missile 0 (ENAM0) enabled at `LaserY` scanline during kernel.
-  NUSIZ0=$00 (single copy, 1-clock width). Missile positioned at player X.
-- **Collision**: CXM0P bit 7 detects missile0-player1 hit. When hit, the active
-  enemy is marked dead (Y=255 in data table) and +50 BCD points added.
-- **Bank2 overflow**: Laser fire check + collision detection run in bank2
-  via fold-pad trampoline at `$FF10`. Fold pad bytes must be identical in
-  both banks. Bank2 includes `vcs.h` and ZP equates for shared variables.
-- **Code space**: bank0 was 97% full (1237/1272 bytes). Moving laser logic
-  to bank2 freed ~40 bytes. CheckEnemyHit was removed to make room.
-- **ZP variables**: `LaserActive` ($D0), `LaserY` ($D1), `LaserEnemyLo/Hi`
-  ($D2/$D3). `PlayerY` ($81), `ScoreHu` ($C3) shared with bank0.
-
 ## Visual Validation
 - Stella launching successfully verifies only that the ROM loads; it does not
   verify rendering, timing, blinking, scrolling, or sprite placement.
 - After any visual change, ask the user to confirm what is actually visible
   before treating the change as fixed. Do not infer visual correctness from a
   successful assembly or emulator startup.
-- **Do NOT try to capture screenshots by running Stella** in this environment:
-  the model cannot view images, and screenshot capture keeps getting aborted.
-  When a visual (e.g. a HERO screen, menu, or sprite) must be examined, ask the
-  user to either provide an ASCII representation of what they see or take a
-  screenshot themselves and describe it.
+- **MANDATORY: Use `tools/analyze_screenshot.py` after EVERY build.** It checks
+  for playfield (cave_green), HUD background (hud_grey), HUD text (white_text),
+  and player sprite. A PASS means all 4 elements are present. A FAIL means the
+  game is broken. NEVER claim the game works without a PASS from this tool.
+- **Screenshot analysis pitfalls:**
+  - Gold/yellow score text needs low threshold (R>150, G>150, B<100), not the
+    default 180+ which only catches white.
+  - Cave walls at certain Y positions look like "two columns" — this is normal,
+    not a bug. Check multiple Y positions to see the full cave pattern.
+  - Player at top-right (x>600, y<100) may indicate the player flew up —
+    verify by taking screenshots at different times.
+  - White text at top (y<100) vs bottom (y>500) tells you whether the start
+    screen or game HUD is showing.
 
 ## Stella Emulator Tips
 - Stelladaptor / 2600-daptor for real controller input
