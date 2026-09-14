@@ -458,7 +458,21 @@ pixel (0..159), so room X coords map 1:1 to visible columns.
   hue 4 = red, hue 5 = magenta, hue 6 = purple, hue 7 = blue-violet. Using
   `$46` (hue 4) for "purple" rendered RED; the miner is now `$66` (hue 6,
   luma 3 = purple). When a color is hardcoded in bank0.asm, derive the byte
-  from `kPalette[hue][luma]` via `(hue << 4) | (luma << 1)`.
+   from `kPalette[hue][luma]` via `(hue << 4) | (luma << 1)`.
+
+## Score Rendering (2026-09-14)
+- **Packed sprite font**: Score uses 4 digits packed into 2 sprites (P0="12", P1="34").
+  Each digit is 3 pixels wide in bits 7-5 of a byte. Two digits packed with a
+  2px gap: `composed = digit_left | (digit_right >> 5)`. Bits layout:
+  `[AAA 00 BBB]` where AAA=left digit, 00=gap, BBB=right digit.
+- **Font data**: `ScoreSpriteFont` stores 10 digits × 8 bytes (5 meaningful + 3
+  blank). Combined at runtime via composition loop into FontP0/FontP1.
+- **Colors**: Player = `$2e` (yellow), LEVEL text = `$0e` (white), Score = `$0e`
+  (white). All three use COLUP0 but at different frame positions (cave kernel
+  vs HUD band).
+- **Main boot path**: `Main` at $F008 initializes game directly (bypasses
+  `GameStart` at $F500). Score init must happen per-frame in HudBand before
+  digit loading, not in GameStart.
 
 ## Visual Validation
 - Stella launching successfully verifies only that the ROM loads; it does not
