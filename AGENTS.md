@@ -473,6 +473,30 @@ pixel (0..159), so room X coords map 1:1 to visible columns.
 - **Main boot path**: `Main` at $F008 initializes game directly (bypasses
   `GameStart` at $F500). Score init must happen per-frame in HudBand before
   digit loading, not in GameStart.
+- **ScoreKernel timing** (8 scanlines total):
+  - SetObjectXPos(P0): 1 WSYNC (positioning scanline)
+  - SetObjectXPos(P1): 1 WSYNC (positioning scanline)
+  - sta WSYNC + sta HMOVE: 1 WSYNC (HMOVE scanline)
+  - ScoreBand loop: 5 WSYNCs (5 font rows)
+  - Clear sprites: 1 WSYNC
+  - Total: 8 WSYNCs = 8 scanlines
+- **HUD band budget** (48 scanlines: scanlines 144-191):
+  - HudFlickerLine: 12 scanlines (LEVEL text)
+  - Gap + digit loading + composition: ~14 scanlines (no WSYNC, visible time)
+  - ScoreKernel: 8 scanlines
+  - Padding: 24 WSYNCs
+  - WSYNC total: 12 + 4 + 8 + 24 = 48 ✓
+- **Score positioning**: P0 at px68, P1 at px78 (10px apart). Each packed pair
+  is 8px wide (3px digit + 2px gap + 3px digit). The 10px spacing gives 2px
+  gap between the two packed pairs.
+- **Composition formula**: For each row Y (0..4):
+  `FontP0[Y] = FontP0[Y] | (FontP1[Y] >> 5)` → packed "12"
+  `FontP1[Y] = ScoreDigit2[Y] | (ScoreDigit3[Y] >> 5)` → packed "34"
+- **Font digit format**: 3 pixels in bits 7-5, bits 4-0 = 0. Example digit "0":
+  `###` ($E0), `#.#` ($A0), `#.#` ($A0), `#.#` ($A0), `###` ($E0).
+- **Score detection trick**: For gold/yellow player, use `$2e` (hue 2, luma 7).
+  The classic `$1c` (hue 1, luma 6) renders as grey in Stella — hue 1 palette
+  values are all desaturated. For white, use `$0e` (hue 0, luma 7).
 
 ## Visual Validation
 - Stella launching successfully verifies only that the ROM loads; it does not
