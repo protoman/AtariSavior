@@ -115,6 +115,10 @@ ScoreTe         byte            ; score tens digit (0-9, BCD)
 ScoreOn         byte            ; score ones digit (0-9, BCD)
 ScoreDigit2     ds.b 5          ; sprite rows for digit 2 (populated during gap)
 ScoreDigit3     ds.b 5          ; sprite rows for digit 3 (populated during gap)
+LaserActive     byte            ; 0 = inactive, nonzero = frames remaining
+LaserY          byte            ; scanline where the laser beam is drawn
+LaserEnemyLo    byte            ; pointer to active enemy record (set by SelectActiveObject)
+LaserEnemyHi    byte
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -353,7 +357,7 @@ LoopVBlank:
   sta COLUP0
   lda #$05                  ; D0=1 reflect, D2=1 playfield priority
   sta CTRLPF
-  lda #$00                  ; not flipped, no missiles/ball
+  lda #$00
   sta NUSIZ1
   sta REFP0
   sta GRP0
@@ -426,6 +430,16 @@ LoopVBlank:
   lda #0
 .Put:
   sta GRP0
+; --- Laser beam: enable missile 0 when scanline matches laser Y ---
+  lda #0
+  ldx LaserActive
+  beq .NoLaser
+  ldx Scanline
+  cpx LaserY
+  bne .NoLaser
+  lda #$ff                  ; enable missile 0 (solid line)
+.NoLaser:
+  sta ENAM0
 ; Draw the single GRP1 object chosen this frame (the miner or one enemy) as a
 ; square the same size as the player, only while this scanline is inside its
 ; 8-row footprint. Playfield priority (CTRLPF D2=1) hides it behind walls
@@ -654,6 +668,17 @@ StepUp subroutine
   jsr ExitRoomUp
   rts
 
+; ------------------------------------------------------------------------------
+; Fire button: launch laser beam from the player's eye
+; ------------------------------------------------------------------------------
+; INPT4 bit 7 is low when the fire button is held.  When pressed and no laser
+; is active, record the laser Y (player's eye = PlayerY + 2) and start a
+; 10-frame laser timer.  Each frame the timer ticks down; when it reaches
+; zero the laser disappears.
+; ------------------------------------------------------------------------------
+CheckFire:
+  jsr LaserTrampoline       ; bankswitch to bank2: fire check + collision
+
 EndInputCheck:
 ; ------------------------------------------------------------------------------
 ; Miner pickup
@@ -693,7 +718,6 @@ CheckMinerPickup:
 .LoadIt:
   jsr LoadLevel
 .NoPickup:
-  jsr CheckEnemyHit
 
 ; ------------------------------------------------------------------------------
 ; Jet sound: a low noise "engine" on audio channel 0 while the jet burns
@@ -734,71 +758,6 @@ WaitOverscan:
   lda INTIM
   bne WaitOverscan
   jmp StartFrame
-
-; ------------------------------------------------------------------------------
-; CheckEnemyHit: if the player's footprint overlaps ANY enemy in the current
-; room, teleport to the level's start room and start point.
-; Each enemy record (LEVEL{n}_EnemyDataTable) is: type, x, y, range_min,
-; range_max, dir. The overlap test uses LOGICAL coordinates for both, exactly
-; like CheckMinerPickup (the TIA left-edge offsets cancel for player and enemy).
-; Timing absorbs into the overscan TIM64T window, so the frame stays 262 lines.
-; Clobbers: A, X, Y, MapPtrLo/Hi, EnemyLoopCount.
-; ------------------------------------------------------------------------------
-CheckEnemyHit subroutine
-  lda EnemyCount
-  beq .HitDone
-  sta EnemyLoopCount
-  lda EnemyDataLo
-  sta MapPtrLo
-  lda EnemyDataHi
-  sta MapPtrHi
-.ENext:
-  ldy #1
-  lda (MapPtrLo),Y          ; enemy x
-  sec
-  sbc RoomX
-  bcs .EXge                 ; enemy x >= player x
-  eor #$ff
-  clc
-  adc #1
-.EXge:
-  cmp #PLAYER_WIDTH
-  bcs .ENextEnemy
-  ldy #2
-  lda (MapPtrLo),Y          ; enemy y
-  sec
-  sbc RoomY
-  bcs .EYge
-  eor #$ff
-  clc
-  adc #1
-.EYge:
-  cmp #PLAYER_HEIGHT
-  bcs .ENextEnemy
-  lda LevelStartRoom        ; HIT: respawn at the level origin
-  jsr EnterRoom
-  lda LevelStartX
-  sta RoomX
-  lda LevelStartY
-  sta RoomY
-  lda #0                    ; respawn with no velocity or thrust
-  sta vyLo
-  sta vyHi
-  sta PlayerYSub
-  sta JetPower
-  rts
-.ENextEnemy:
-  lda MapPtrLo
-  clc
-  adc #ENEMY_DATA_STRIDE
-  sta MapPtrLo
-  bcc .EAdvance
-  inc MapPtrHi
-.EAdvance:
-  dec EnemyLoopCount
-  bne .ENext
-.HitDone:
-  rts
 
 ; ------------------------------------------------------------------------------
 ; Check collisions
@@ -1163,6 +1122,10 @@ SelectActiveObject subroutine
   lda #0
   adc EnemyDataHi
   sta MapPtrHi
+  lda MapPtrLo
+  sta LaserEnemyLo            ; save enemy pointer for laser collision
+  lda MapPtrHi
+  sta LaserEnemyHi
   ldy #0
   lda (MapPtrLo),Y          ; type -> color
   tay
@@ -1337,8 +1300,10 @@ ScoreSpriteFont:
 ; bank1, GameStart = $f500 here), so both assemblies emit identical bytes.
 ;     $fc68 ToMenuStub  lda #1 / sta $1FF7 / jmp MenuMain   (game -> start screen)
 ;     $fc70 ToGameStub  lda #0 / sta $1FF6 / jmp GameStart  (menu -> game)
+;     $fc58 LaserTrampoline  sta $1FF8 / jsr LaserCollision / sta $1FF6 / rts
 ; ------------------------------------------------------------------------------
 MenuMain = $f540           ; bank1's menu entry (not present as code in bank0)
+LaserBank2 = $f005         ; LaserCollision in bank2's window (after Reset stub)
     org $fc68
 ToMenuStub:
     lda #1
@@ -1824,6 +1789,19 @@ fineAdjustBegin:
   .byte %10100000           ; right 6
   .byte %10010000           ; right 7
 fineAdjustTable EQU fineAdjustBegin - %11110001   ; %11110001 = -241 (start basis)
+
+; ------------------------------------------------------------------------------
+; Laser trampoline: bankswitch to bank2 for fire check + collision detection.
+; Must be at an address that exists in both bank0 and bank2 (fold pad pattern).
+; Placed here between fineAdjustTable and vectors.
+; ------------------------------------------------------------------------------
+LaserBank2 = $f005         ; LaserCollision in bank2's window
+    org $ff10
+LaserTrampoline:
+    sta $1FF8               ; select bank2
+    jsr LaserBank2          ; call LaserCollision in bank2
+    sta $1FF6               ; select bank0 (bank2's RTS returns here)
+    rts                     ; return to caller in bank0
 
 ; ------------------------------------------------------------------------------
 ; Fill ROM to exactly 4kb
