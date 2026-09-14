@@ -498,6 +498,21 @@ pixel (0..159), so room X coords map 1:1 to visible columns.
   The classic `$1c` (hue 1, luma 6) renders as grey in Stella — hue 1 palette
   values are all desaturated. For white, use `$0e` (hue 0, luma 7).
 
+## Laser Feature (2026-09-14)
+- **Fire button**: INPT4 bit 7 (active low). When pressed and no laser active,
+  sets `LaserActive=10` (10-frame timer) and `LaserY=PlayerY+2` (eye position).
+- **Rendering**: Missile 0 (ENAM0) enabled at `LaserY` scanline during kernel.
+  NUSIZ0=$00 (single copy, 1-clock width). Missile positioned at player X.
+- **Collision**: CXM0P bit 7 detects missile0-player1 hit. When hit, the active
+  enemy is marked dead (Y=255 in data table) and +50 BCD points added.
+- **Bank2 overflow**: Laser fire check + collision detection run in bank2
+  via fold-pad trampoline at `$FF10`. Fold pad bytes must be identical in
+  both banks. Bank2 includes `vcs.h` and ZP equates for shared variables.
+- **Code space**: bank0 was 97% full (1237/1272 bytes). Moving laser logic
+  to bank2 freed ~40 bytes. CheckEnemyHit was removed to make room.
+- **ZP variables**: `LaserActive` ($D0), `LaserY` ($D1), `LaserEnemyLo/Hi`
+  ($D2/$D3). `PlayerY` ($81), `ScoreHu` ($C3) shared with bank0.
+
 ## Visual Validation
 - Stella launching successfully verifies only that the ROM loads; it does not
   verify rendering, timing, blinking, scrolling, or sprite placement.
