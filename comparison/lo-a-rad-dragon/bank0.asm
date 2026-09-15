@@ -271,6 +271,22 @@ StartFrame:
   jsr SelectActiveObject
   sta WSYNC
   sta HMOVE                 ; apply the horizontal offsets we just set
+; Position missile 0 at player's pixel center
+  lda RoomX
+  cmp #15
+  bcc .LaserLeft15
+  sec
+  sbc #5                      ; RoomX >= 15: pixel = X - 5 (center)
+  jmp .LaserGotX
+.LaserLeft15:
+  sec
+  sbc #2                      ; RoomX < 15: pixel = X - 2 (center)
+.LaserGotX:
+  ldx #2                      ; missile 0
+  jsr SetObjectXPos
+; Set missile width to 8 clocks for visibility
+  lda #$30                    ; single copy + missile 8 clocks
+  sta NUSIZ0
 
 ; ------------------------------------------------------------------------------
 ; Remaining VBLANK (~33 scanlines + font pre-load)
@@ -409,7 +425,20 @@ LoopVBlank:
   lda #0
 .ObjectPut:
   sta GRP1
+; Laser: compact per-scanline ENAM0. When inactive (LaserActive=0), only
+; 5 cycles overhead. When active, check Scanline==LaserY for 1-scanline pulse.
   inc Scanline
+  lda LaserActive
+  beq .LaserOff
+  lda Scanline
+  eor LaserY
+  bne .LaserOff
+  lda #$02
+  jmp .LaserSet
+.LaserOff:
+  lda #0
+.LaserSet:
+  sta ENAM0
   sta WSYNC                 ; end this scanline
   dec LineCount
   bne .Line
@@ -621,6 +650,33 @@ StepUp subroutine
   rts
 
 EndInputCheck:
+; ------------------------------------------------------------------------------
+; Laser firing
+; ------------------------------------------------------------------------------
+; Fire button (INPT4, active low: 0=pressed).  When pressed and no laser
+; active, start a new laser beam at the player's current scanline.
+; Decrement LaserActive each frame so the beam expires.
+; ------------------------------------------------------------------------------
+  lda INPT4                   ; fire button (active low: 0=pressed)
+  bmi .NoFire                 ; bit7=1 -> not pressed
+  lda LaserActive
+  bne .NoFire                 ; already firing
+  lda #4                      ; beam duration (frames)
+  sta LaserActive
+  lda PlayerY
+  clc
+  adc #3                      ; center of player sprite
+  sta LaserY                  ; beam at player center scanline
+.NoFire:
+  lda LaserActive
+  beq .LaserExpired
+  dec LaserActive
+  bne .LaserExpired
+  ; Laser just expired — set LaserY to impossible value
+  lda #$ff
+  sta LaserY
+.LaserExpired:
+
 ; ------------------------------------------------------------------------------
 ; Miner pickup
 ; ------------------------------------------------------------------------------
@@ -1076,7 +1132,9 @@ GameStart:
     sta PlayerYSub
     sta PlayerDir
     sta StepsLeft
-    sta NUSIZ0              ; single copy (was per-frame, moved here to save bytes)
+    lda #$10                  ; single copy + missile 2 clocks wide
+    sta NUSIZ0
+    lda #0
     sta REFP1               ; no flip (same)
     sta ScoreTh             ; score = 0000
     sta ScoreHu
