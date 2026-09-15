@@ -390,9 +390,11 @@ StartFrame:
   bpl .FillInner
 
   ; --- Phase 3: fill remaining VBLANK with WSYNC waits ---
-  ; Phases 1+2 take ~5-6 scanlines; positioning took ~3.  We need ~33 total
-  ; scanlines inside VBLANK.  Remaining: ~25.
-  ldx #25
+  ; Phases 1+2 take ~8 scanlines; positioning took ~3.  We need enough
+  ; scanlines to fill VBLANK (37 total, minus VSYNC's 3 = 34 after VSYNC).
+  ; .Row WSYNC adds 12 extra scanlines to the kernel (12 rows * 1 WSYNC),
+  ; so the frame is 270 with ldx #25.  Reduce to ldx #18 to hit 262.
+  ldx #18
 .VblankWait:
   sta WSYNC
   dex
@@ -463,8 +465,8 @@ StartFrame:
   sta WSYNC                 ; 3  PF setup on this scanline, .Line on NEXT
 
 .Line:
-; --- GRP1 FIRST: fires at cycle ~17, within HBLANK ---
-; Object sprite (miner or enemy). Written before GRP0 so the shift register
+; --- GRP1 FIRST: fires at cycle ~6, well within HBLANK ---
+; Object sprite (miner or enemy). Written first to ensure the shift register
 ; starts with the correct value at cycle 68 (first visible pixel).
   lda Scanline              ; 3
   cmp ObjTop                ; 3
@@ -475,9 +477,9 @@ StartFrame:
   .byte $2c                 ; 4  BIT skip: skips next lda #0
 .NoObject:
   lda #0                    ; 2
-  sta GRP1                  ; 3  ← cycle ~17, SAFE (within HBLANK)
+  sta GRP1                  ; 3  ← cycle ~6, SAFE (within HBLANK)
 
-; --- GRP0 SECOND: fires at cycle ~38, within HBLANK ---
+; --- GRP0 SECOND: fires at cycle ~28, within HBLANK ---
 ; Player sprite via pre-computed pointer. Written after GRP1 but still
 ; within HBLANK (shift register starts at cycle 68).
   lda Scanline              ; 3
@@ -491,7 +493,7 @@ StartFrame:
 .NoSprite:
   lda #0                    ; 2
 .Put:
-  sta GRP0                  ; 3  ← cycle ~38, SAFE (within HBLANK)
+  sta GRP0                  ; 3
 
 ; --- ENAM0: pre-computed scanline match (17 cycles active / 14 not) ---
   lda Scanline              ; 3
