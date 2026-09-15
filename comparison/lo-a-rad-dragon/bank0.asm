@@ -118,6 +118,18 @@ ScoreDigit3     ds.b 5          ; sprite rows for digit 3 (populated during gap)
 LaserActive     byte            ; 0 = inactive, nonzero = frames remaining
 LaserY          byte            ; scanline where the laser beam is drawn
 
+; PF/color ZP buffers (copied from ROM during VBLANK, read by kernel)
+PF0Buf          ds.b 12         ; $B0-$BB: TilePF0 values (12 tile rows)
+PF1Buf          ds.b 12         ; $BC-$C7: TilePF1 values (12 tile rows)
+PF2Buf          ds.b 12         ; $C8-$D3: TilePF2 values (12 tile rows)
+ColupfBuf       ds.b 12         ; $D4-$DF: COLUPF per tile row (stripe colors)
+
+; Kernel scratch aliases (reused from collision vars — only accessed in overscan)
+Grp0Ptr         = CollisionX       ; $8c — GRP0 sprite table pointer (low at $8c, high at $8d)
+ObjTop          = CollisionCellY   ; $8e — object visible top scanline
+ObjBot          = CollisionEndX    ; $8f — object visible bottom scanline
+LaserScanline   = CollisionEndY    ; $90 — laser match scanline (or $FF = inactive)
+
 ; ------------------------------------------------------------------------------
 ; Setup consts
 ; ------------------------------------------------------------------------------
@@ -289,20 +301,102 @@ StartFrame:
   sta NUSIZ0
 
 ; ------------------------------------------------------------------------------
-; Remaining VBLANK (~33 scanlines + font pre-load)
-; Font data is pre-loaded here during VBLANK (invisible) so the HudBand
-; preamble only needs TIA setup (~0.5 scanlines), not ~4.7 scanlines of
-; font loading.  This matches test_pf_min.asm's architecture where RESP
-; fires in VBLANK with blank scanlines before GRP writes.
+; VBLANK pre-computation: set up kernel scratch values
+; Grp0Ptr, ObjTop/ObjBot, LaserScanline are reused from collision-scratch
+; ZP bytes ($8C-$90) which are only accessed in overscan.
 ; ------------------------------------------------------------------------------
-  ldx #33
-LoopVBlank:
+  ; --- GRP0 sprite table pointer (eliminates PlayerDir branch in kernel) ---
+  ldy #>PlayerSpriteRight
+  ldx #<PlayerSpriteRight
+  lda PlayerDir
+  beq .UseRightSprite
+  ldy #>PlayerSpriteLeft
+  ldx #<PlayerSpriteLeft
+.UseRightSprite:
+  stx Grp0Ptr
+  sty Grp0Ptr+1
+  ; --- Object scanline range (eliminates subtraction in GRP1 kernel check) ---
+  lda ActiveObjectOn
+  beq .NoObjPrep
+  lda ActiveObjectY
+  sta ObjTop
+  clc
+  adc #PLAYER_HEIGHT
+  sta ObjBot
+  jmp .ObjPrepDone
+.NoObjPrep:
+  lda #$ff                    ; all scanlines < $ff → bcc always taken
+  sta ObjTop                  ;   → NoObject path
+.ObjPrepDone:
+  ; --- Laser scanline (eliminates multi-step check in ENAM0 kernel) ---
+  lda LaserActive
+  beq .NoLaserPrep
+  lda LaserY
+  sta LaserScanline
+  jmp .LaserPrepDone
+.NoLaserPrep:
+  lda #$ff                    ; impossible scanline → never matches
+  sta LaserScanline
+.LaserPrepDone:
+
+; ------------------------------------------------------------------------------
+; Remaining VBLANK (~33 scanlines)
+; Phase 1: Copy PF0/PF1/PF2 tables (12 bytes each) from ROM to ZP buffers.
+; Phase 2: Fill COLUPF buffer with band stripe colors.
+; Phase 3: WSYNC wait to fill remaining VBLANK time.
+; NOTE: The stack page ($0100-$01FF) mirrors ZP ($80-$FF) on the 2600.
+;       We CANNOT use it as a separate buffer — writing there corrupts ZP.
+; ------------------------------------------------------------------------------
+  ; --- Phase 1: PF ZP buffers from ROM (via room pointer) ---
+  lda RoomPFDataLo
+  sta MapPtrLo
+  lda RoomPFDataHi
+  sta MapPtrHi
+  ldx #0
+.CopyPF:
+  txa
+  tay
+  lda (MapPtrLo),y          ; PF0 = row table + 0
+  sta PF0Buf,x
+  tya
+  clc
+  adc #12
+  tay
+  lda (MapPtrLo),y          ; PF1 = row table + 12
+  sta PF1Buf,x
+  tya
+  clc
+  adc #12
+  tay
+  lda (MapPtrLo),y          ; PF2 = row table + 24
+  sta PF2Buf,x
+  inx
+  cpx #TILE_ROWS
+  bne .CopyPF
+
+  ; --- Phase 2: COLUPF buffer (band stripe colors) ---
+  ldx #11
+  lda LevelWallColor
+.FillOuter:
+  sta ColupfBuf,x
+  dex
+  cpx #7
+  bne .FillOuter
+  ldx #7
+  lda LevelWallColor2
+.FillInner:
+  sta ColupfBuf,x
+  dex
+  bpl .FillInner
+
+  ; --- Phase 3: fill remaining VBLANK with WSYNC waits ---
+  ; Phases 1+2 take ~5-6 scanlines; positioning took ~3.  We need ~33 total
+  ; scanlines inside VBLANK.  Remaining: ~25.
+  ldx #25
+.VblankWait:
   sta WSYNC
   dex
-  bne LoopVBlank
-
-  ; HUD font pre-loading removed — bank2 handles its own font data.
-
+  bne .VblankWait
 
   lda #0
   sta VBLANK                ; turn off VBLANK
@@ -329,8 +423,6 @@ LoopVBlank:
 ; ------------------------------------------------------------------------------
   lda #$00                  ; black cave interior
   sta COLUBK
-  lda LevelWallColor        ; wall color (TIA byte, from the active level's data)
-  sta COLUPF
   lda #$2e                  ; player color (yellow/orange)
   sta COLUP0
   lda #$05                  ; D0=1 reflect, D2=1 playfield priority
@@ -347,104 +439,75 @@ LoopVBlank:
   sta VDELP1
   sta Scanline
 
-  lda RoomPFDataLo
-  sta MapPtrLo
-  lda RoomPFDataHi
-  sta MapPtrHi
+; GRP0: conditional per-scanline check against PlayerY.
+; PF0/PF1/PF2 written ONCE per tile row from ZP buffers (TIA persists).
+; COLUPF written ONCE per tile row from ColupfBuf.
+; GRP1 and ENAM0 retain their compact conditional checks.
+; WSYNC at END of each scanline (like the original kernel).
+
   ldx #0                    ; tile row counter (row 0 at top of screen)
 .Row:
-; The current room's TilePF0/TilePF1/TilePF2 tables are contiguous 12-byte
-; tables, so one base pointer covers all three registers.
-  txa
-  tay
-  lda (MapPtrLo),Y          ; PF0 = row table + 0
-  sta PF0                   ; defines the whole line via reflection
-  tya
-  clc
-  adc #12
-  tay
-  lda (MapPtrLo),Y          ; PF1 = row table + 12
-  sta PF1
-  tya
-  clc
-  adc #12
-  tay
-  lda (MapPtrLo),Y          ; PF2 = row table + 24
-  sta PF2
+; --- PF from ZP buffers (once per tile row, TIA persists) ---
+  lda PF0Buf,x              ; 4
+  sta PF0                   ; 3
+  lda PF1Buf,x              ; 4
+  sta PF1                   ; 3
+  lda PF2Buf,x              ; 4
+  sta PF2                   ; 3
+; --- COLUPF from buffer (once per tile row) ---
+  lda ColupfBuf,x           ; 4
+  sta COLUPF                ; 3
   lda #LINES_PER_TILE
   sta LineCount
-; Stripe the cave: rows 0-3 are wall color 1, rows 4-7 wall color 2, and
-; rows 8-11 wall color 1 again. COLUPF was already set once for row 0 at
-; frame start, so only the row-4 and row-8 band boundaries need a rewrite.
-  cpx #4
-  beq .BandColor2
-  cpx #8
-  bne .ColorStripeDone
-  lda LevelWallColor
-  bne .ColorStripeApply
-.BandColor2:
-  lda LevelWallColor2
-.ColorStripeApply:
-  sta COLUPF
-.ColorStripeDone:
+  inc Scanline              ; 5  account for the PF-setup scanline
+  sta WSYNC                 ; 3  PF setup on this scanline, .Line on NEXT
 
 .Line:
-  lda Scanline
-  sec
-  sbc PlayerY               ; A = scanline - PlayerY
-  cmp #PLAYER_HEIGHT
-  bcs .NoSprite
-  tay
-; The player sprite has a 2-pixel black "eye" notch (3rd row) that sits on the
-; side the player faces. Select the table by PlayerDir inside HBLANK.
-  lda PlayerDir
-  beq .FaceRight
-  lda PlayerSpriteLeft,Y
-  jmp .Put
-.FaceRight:
-  lda PlayerSpriteRight,Y
-  jmp .Put
+; --- GRP0: use pre-computed pointer (25 cycles visible / 18 not) ---
+  lda Scanline              ; 3
+  sec                       ; 2
+  sbc PlayerY               ; 3  A = scanline - PlayerY
+  cmp #PLAYER_HEIGHT        ; 2
+  bcs .NoSprite             ; 2³
+  tay                       ; 2
+  lda (Grp0Ptr),Y           ; 5  ← indirect indexed, no PlayerDir branch
+  jmp .Put                  ; 3
 .NoSprite:
-  lda #0
+  lda #0                    ; 2
 .Put:
-  sta GRP0
-; Draw the single GRP1 object chosen this frame (the miner or one enemy) as a
-; square the same size as the player, only while this scanline is inside its
-; 8-row footprint. Playfield priority (CTRLPF D2=1) hides it behind walls
-; just like the player.
-  lda ActiveObjectOn
-  beq .NoObject
-  lda Scanline
-  sec
-  sbc ActiveObjectY
-  cmp #PLAYER_HEIGHT
-  bcs .NoObject
-  lda #%11110000
-  jmp .ObjectPut
+  sta GRP0                  ; 3
+
+; --- GRP1: pre-computed range check (22 cycles visible / 14 not) ---
+  lda Scanline              ; 3
+  cmp ObjTop                ; 3
+  bcc .NoObject             ; 2³  below top → not visible
+  cmp ObjBot                ; 3
+  bcs .NoObject             ; 2³  at/past bottom → not visible
+  lda #$f0                  ; 2
+  .byte $2c                 ; 4  BIT skip: skips next lda #0
 .NoObject:
-  lda #0
-.ObjectPut:
-  sta GRP1
-; Laser: compact per-scanline ENAM0. When inactive (LaserActive=0), only
-; 5 cycles overhead. When active, check Scanline==LaserY for 1-scanline pulse.
-  inc Scanline
-  lda LaserActive
-  beq .LaserOff
-  lda Scanline
-  eor LaserY
-  bne .LaserOff
-  lda #$02
-  jmp .LaserSet
+  lda #0                    ; 2
+  sta GRP1                  ; 3
+
+; --- ENAM0: pre-computed scanline match (17 cycles active / 14 not) ---
+  lda Scanline              ; 3
+  cmp LaserScanline         ; 3
+  bne .LaserOff             ; 2³
+  lda #$02                  ; 2
+  .byte $2c                 ; 4  BIT skip: skips next lda #0
 .LaserOff:
-  lda #0
-.LaserSet:
-  sta ENAM0
-  sta WSYNC                 ; end this scanline
-  dec LineCount
-  bne .Line
-  inx
-  cpx #TILE_ROWS
-  bne .Row
+  lda #0                    ; 2
+  sta ENAM0                 ; 3
+
+; --- loop control ---
+  inc Scanline              ; 5
+  sta WSYNC                 ; wait for next scanline
+  dec LineCount             ; 5
+  bne .Line                 ; 3²
+
+  inx                       ; 2
+  cpx #TILE_ROWS            ; 2
+  bne .Row                  ; 3²
 
 ; ------------------------------------------------------------------------------
 ; HUD band (144..191, 48 scanlines): grey background with flicker-rendered
@@ -452,7 +515,7 @@ LoopVBlank:
 ; cycling through phases 0->1->2. Cycle-counted RESP positioning places
 ; each character at a precise pixel using px = write_cycle * 3 - 63.
 ; ------------------------------------------------------------------------------
-  jsr ToBank2               ; trampoline to bank2 for HUD rendering
+  jsr ToBank2         ; trampoline to bank2 for HUD rendering
 
 ; ------------------------------------------------------------------------------
 ; Overscan

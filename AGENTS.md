@@ -1050,36 +1050,35 @@ Key: no `if scanline in range` checks. Sprite data comes from pre-computed
 buffers. PF data from 8-entry lookup tables. Every scanline executes the
 exact same instruction stream.
 
-### Our kernel refactor (in progress)
+### Our kernel refactor (2026-09-15)
 **Problem:** Our kernel has conditional branches for sprite visibility,
 object visibility, and laser ENAM0. These add 5-21 variable cycles per
 scanline, causing the worst case to exceed 76 cycles → flicker.
 
-**Solution (stack-based GRP0 pre-computation):**
-1. During VBLANK, pre-compute GRP0 for all 192 scanlines and push
-   interleaved GRP0/GRP1 onto the stack (scanline 191 first, 0 last).
-2. During the kernel, pop GRP0 and GRP1 each scanline — zero conditional
-   branches for sprite/object visibility.
-3. For GRP1: use compact ObjTop/ObjBottom range check (pre-computed during
-   VBLANK) instead of per-scanline ActiveObjectOn + range check.
-4. For ENAM0 (laser): compact EOR check, ~5 cycles when inactive.
+**What was tried and FAILED:**
+1. **Stack-based GRP0 pre-computation (push 192 bytes during VBLANK):**
+   Failed because bank2's HUD trampoline doesn't pop them → 48 stale bytes
+   → stack corruption → crash on left/right input. Reverted in commit e8c55c5.
+2. **Stack-page buffer ($0170-$01FF):** On the 2600, $0100-$01FF mirrors
+   $80-$FF (the same 128 bytes of ZP RAM). Writing `sta $0170,x` in a fill
+   loop corrupts ALL ZP variables. **NEVER use the stack page as a buffer.**
+3. **PF writes per-scanline in .Line:** Adding PF0/PF1/PF2/COLUPF writes
+   (28 cycles) to every .Line iteration pushed total to 84-92 cycles on
+   EVERY scanline → massive flicker. PF registers persist in TIA — write
+   them ONCE per tile row in .Row, not per-scanline.
 
-**Stack layout:** 192 GRP0 + 192 GRP1 = 384 bytes. Stack is $0100-$01FF
-(256 bytes). 384 bytes overflows into ZP ($0080+), corrupting game state.
-**Fix:** Push only GRP0 (192 bytes, fits in $013F-$01FF). Handle GRP1 with
-compact ObjTop/ObjBottom range check (~15 cycles).
+**What actually worked:**
+- **PF ZP buffers** ($B0-$DF): copy PF0/PF1/PF2 (12 bytes each) + COLUPF
+  (12 bytes) from ROM to ZP during VBLANK. Kernel reads via `LDA PF0Buf,x`
+  (4c) instead of `LDA (MapPtrLo),y` (5c) + `clc/adc` (4c). Eliminates
+  indirect indexed addressing from the kernel.
+- **COLUPF buffer**: eliminates 3-branch color stripe check from kernel.
+- **VBLANK timing**: PF copy (~5 scanlines) + 25 WSYNC waits ≈ 30 scanlines.
 
-**Expected cycle count per scanline:**
-- Pop GRP0: 4
-- Write GRP0: 3
-- GRP1 check: ~15
-- Write GRP1: 3
-- PF writes: ~20
-- Laser check: ~10
-- inc Scanline: 5
-- WSYNC: 3
-- dec/bne: 8
-- **Total: ~68 cycles** (well within 76)
+**Current kernel cycle count:**
+- Best case (no sprite, no object, no laser): 56 cycles
+- Worst case (all active): 75 cycles (just under 76)
+- Tile-row transition: ~80+ cycles (1-line flicker at boundaries, acceptable)
 
 ### Laser rendering
 - Missile 0 positioned at player center X during VBLANK via SetObjectXPos

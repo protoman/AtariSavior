@@ -1,4 +1,66 @@
 #########################################################################################################################################################################
+
+First, tell me what features are stored in each bank, 0, 1 and 2?
+
+OK, because there was so much done moving parts around from 0 to 2 to free up some space, it is difficult to detect the root cause.
+So let's take note on what did you needed to move around between banks and go back to a functional state before the changes.
+Run the game to check that version is OK.
+After that, before adding the laser feature, let's do the moving and free spacing, each change at a time, testing each step, before adding the laser feature.
+
+#########################################################################################################################################################################
+Is there now, enough free space in the banks to implement the laser feature?
+
+
+Minimal data: 8 cave patterns baked into lookup tables, not per-room conversion.
+    # can we, intead of storing each tile, during the conversion, convert data to rectangles? That way we would save a lot of data.
+
+So, continuing what you said about how HERO rom uses less space:
+Simpler rendering: one PF write per scanline, one sprite for player, one for objects
+    # Can you better explain this?
+
+No complex text rendering (HERO uses pre-computed PF patterns for score/timer)
+    # I do have no problem if we change to that technique.
+
+No per-room enemy data tables — enemies are hardcoded per screen
+    # I do not mind if the build script does that, but it could make things a bit more complex.
+
+
+My analysis of the screenshot is:
+
+Game area starts in 80, 76 and has size of 640, 456.
+There are 3 areas:
+    # in 80, 76 with size of 80, 456 there is a green band.
+    # in 160, 76 with size of 480, 456 there is a black band.
+    # in 640, 76 with size of 80, 456 there is a green band.
+Now, tell me again, how the player, hud, LEVEL, SCORE and playfield are present on this screenshot?
+
+I want you to build a script, that checks a screenshot for the elements that should be there (you can use player_y4.png) and show me the results.
+The script should look for, the playfield area (ignore its color, just look for the format, you have the level data to compare to),
+the player (again, colors may change look for the format a sequare with a small black rectangle in ons of the sides),
+the HUD area, a gray rectangle at the bottom of the screen,
+level is a bit tricky because fklicker, so just look for some white or lightgray (more light than the HUD itself) on the top left area of the panel,
+and score should be 1234 numbers at the middle center of ther HUD area.
+
+
+
+You said the cave is correct because there are walls in both sides, but this is an invalid check.
+The playfield of the level 0 room 0 is something like this (ignore the number of points, this is just to show you, use player_y4.png if you need a real base):\\
+############################################
+####....................................####
+####....................................####
+####....................................####
+##........................................##
+##........................................##
+##........................................##
+##........................................##
+###################....#####################
+###################....#####################
+###################....#####################
+###################....#####################
+You need to check if the room has this actual shape too.
+
+
+#########################################################################################################################################################################
 TEXT
 #########################################################################################################################################################################
 Each time player finishes a stage, ad 255 points to the score.
