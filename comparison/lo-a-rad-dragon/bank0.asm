@@ -289,17 +289,11 @@ StartFrame:
   sta NUSIZ0
 
 ; ------------------------------------------------------------------------------
-; Remaining VBLANK (~33 scanlines + font pre-load)
-; Font data is pre-loaded here during VBLANK (invisible) so the HudBand
-; preamble only needs TIA setup (~0.5 scanlines), not ~4.7 scanlines of
-; font loading.  This matches test_pf_min.asm's architecture where RESP
-; fires in VBLANK with blank scanlines before GRP writes.
+; Remaining VBLANK (~37 scanlines)
+; Push GRP0 pre-computation fills most of VBLANK. The push loop takes ~35
+; scanlines (192 iterations × ~14 cycles average), fitting within the 37
+; scanline VBLANK budget after the 3-scanline VSYNC + positioning overhead.
 ; ------------------------------------------------------------------------------
-  ldx #33
-LoopVBlank:
-  sta WSYNC
-  dex
-  bne LoopVBlank
 
 ; Pre-compute GRP0 for all 192 scanlines, push onto stack.
 ; Push in REVERSE order (scanline 191 first) so kernel pops scanline 0 first.
