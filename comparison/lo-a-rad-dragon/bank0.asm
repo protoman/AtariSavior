@@ -289,37 +289,19 @@ StartFrame:
   sta NUSIZ0
 
 ; ------------------------------------------------------------------------------
-; Remaining VBLANK (~37 scanlines)
-; Push GRP0 pre-computation fills most of VBLANK. The push loop takes ~35
-; scanlines (192 iterations × ~14 cycles average), fitting within the 37
-; scanline VBLANK budget after the 3-scanline VSYNC + positioning overhead.
+; Remaining VBLANK (~33 scanlines + font pre-load)
+; Font data is pre-loaded here during VBLANK (invisible) so the HudBand
+; preamble only needs TIA setup (~0.5 scanlines), not ~4.7 scanlines of
+; font loading.  This matches test_pf_min.asm's architecture where RESP
+; fires in VBLANK with blank scanlines before GRP writes.
 ; ------------------------------------------------------------------------------
-
-; Pre-compute GRP0 for all 192 scanlines, push onto stack.
-; Push in REVERSE order (scanline 191 first) so kernel pops scanline 0 first.
-; 192 bytes fits within the 256-byte stack ($0100-$01FF).
-  ldx #191                 ; scanline counter (high to low)
-.PushLoop:
-  txa
-  sec
-  sbc PlayerY              ; A = scanline - PlayerY
-  bcc .PushZero
-  cmp #PLAYER_HEIGHT
-  bcs .PushZero
-  tay
-  lda PlayerDir
-  beq .PushRight
-  lda PlayerSpriteLeft,Y
-  jmp .PushVal
-.PushRight:
-  lda PlayerSpriteRight,Y
-  jmp .PushVal
-.PushZero:
-  lda #0
-.PushVal:
-  pha                       ; push GRP0 value for this scanline
+  ldx #33
+LoopVBlank:
+  sta WSYNC
   dex
-  bpl .PushLoop
+  bne LoopVBlank
+
+  ; HUD font pre-loading removed — bank2 handles its own font data.
 
 
   lda #0
@@ -407,10 +389,29 @@ StartFrame:
 .ColorStripeDone:
 
 .Line:
-; Pop pre-computed GRP0 from stack (192 bytes pushed during VBLANK)
-  pla
+  lda Scanline
+  sec
+  sbc PlayerY               ; A = scanline - PlayerY
+  cmp #PLAYER_HEIGHT
+  bcs .NoSprite
+  tay
+; The player sprite has a 2-pixel black "eye" notch (3rd row) that sits on the
+; side the player faces. Select the table by PlayerDir inside HBLANK.
+  lda PlayerDir
+  beq .FaceRight
+  lda PlayerSpriteLeft,Y
+  jmp .Put
+.FaceRight:
+  lda PlayerSpriteRight,Y
+  jmp .Put
+.NoSprite:
+  lda #0
+.Put:
   sta GRP0
-; GRP1: compact check — object visible for 8 scanlines around ActiveObjectY
+; Draw the single GRP1 object chosen this frame (the miner or one enemy) as a
+; square the same size as the player, only while this scanline is inside its
+; 8-row footprint. Playfield priority (CTRLPF D2=1) hides it behind walls
+; just like the player.
   lda ActiveObjectOn
   beq .NoObject
   lda Scanline
@@ -418,13 +419,14 @@ StartFrame:
   sbc ActiveObjectY
   cmp #PLAYER_HEIGHT
   bcs .NoObject
-  lda #$F0
+  lda #%11110000
   jmp .ObjectPut
 .NoObject:
   lda #0
 .ObjectPut:
   sta GRP1
-; Laser: ENAM0 written BEFORE WSYNC so TIA latches it for NEXT scanline
+; Laser: compact per-scanline ENAM0. When inactive (LaserActive=0), only
+; 5 cycles overhead. When active, check Scanline==LaserY for 1-scanline pulse.
   inc Scanline
   lda LaserActive
   beq .LaserOff
@@ -437,7 +439,7 @@ StartFrame:
   lda #0
 .LaserSet:
   sta ENAM0
-  sta WSYNC
+  sta WSYNC                 ; end this scanline
   dec LineCount
   bne .Line
   inx
