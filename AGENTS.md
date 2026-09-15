@@ -769,36 +769,30 @@ Key: no `if scanline in range` checks. Sprite data comes from pre-computed
 buffers. PF data from 8-entry lookup tables. Every scanline executes the
 exact same instruction stream.
 
-### Our kernel refactor (in progress)
+### Our kernel refactor (attempted, reverted)
 **Problem:** Our kernel has conditional branches for sprite visibility,
 object visibility, and laser ENAM0. These add 5-21 variable cycles per
 scanline, causing the worst case to exceed 76 cycles → flicker.
 
-**Solution (stack-based GRP0 pre-computation):**
-1. During VBLANK, pre-compute GRP0 for all 192 scanlines and push
-   interleaved GRP0/GRP1 onto the stack (scanline 191 first, 0 last).
-2. During the kernel, pop GRP0 and GRP1 each scanline — zero conditional
-   branches for sprite/object visibility.
-3. For GRP1: use compact ObjTop/ObjBottom range check (pre-computed during
-   VBLANK) instead of per-scanline ActiveObjectOn + range check.
-4. For ENAM0 (laser): compact EOR check, ~5 cycles when inactive.
+**Attempted solution (stack-based GRP0 pre-computation) — REVERTED:**
+Push 192 GRP0 bytes onto stack during VBLANK, pop in kernel.
+This failed because:
+1. The cave kernel pops 144 bytes (12 rows × 12 lines) but the push
+   loop pushes 192. The HUD band goes to bank2 via trampoline, which
+   does NOT pop from the stack. 48 stale bytes remain → stack
+   corruption → crash on input (invalid instruction in Stella).
+2. The push loop runs without WSYNC (~35 scanlines), making VBLANK
+   end point depend on PlayerY. Frame-to-frame jitter.
+3. The stack conflicts with any JSR/RTS in bank2 or overscan.
 
-**Stack layout:** 192 GRP0 + 192 GRP1 = 384 bytes. Stack is $0100-$01FF
-(256 bytes). 384 bytes overflows into ZP ($0080+), corrupting game state.
-**Fix:** Push only GRP0 (192 bytes, fits in $013F-$01FF). Handle GRP1
-with compact ObjTop/ObjBottom range check (~15 cycles).
+**Current status:** Per-scanline GRP0 computation (conditional branches).
+Variable cycle count is 44-56, well under 76. Flicker source is unknown.
 
-**Expected cycle count per scanline:**
-- Pop GRP0: 4
-- Write GRP0: 3
-- GRP1 check: ~15
-- Write GRP1: 3
-- PF writes: ~20
-- Laser check: ~10
-- inc Scanline: 5
-- WSYNC: 3
-- dec/bne: 8
-- **Total: ~68 cycles** (well within 76)
+**Future approach:** Pre-compute GRP0 into a fixed ZP buffer (not the
+stack) during VBLANK. The buffer is 192 bytes — too large for ZP ($80-$FF
+is only 128 bytes). Alternative: use `(zp),Y` indirect indexed addressing
+like HERO does — pre-load font pointers into ZP during VBLANK, then read
+via `(pointer),Y` in the kernel. This avoids both stack and ZP overflow.
 
 ### Laser rendering
 - Missile 0 positioned at player center X during VBLANK via SetObjectXPos
