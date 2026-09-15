@@ -70,8 +70,8 @@ CollisionEndX   byte
 CollisionEndY   byte
 RoomPFDataLo    byte            ; current room's TilePF0 table address
 RoomPFDataHi    byte
-RoomRowMapLo    byte            ; current room's RoomRowLo table address
-RoomRowMapHi    byte
+RoomRectsLo     byte            ; current room's rectangle collision data address
+RoomRectsHi     byte
 RoomNo          byte            ; current room index into RoomDataTable
 Level           byte            ; current level index (0 = first level)
 LevelDataLo     byte            ; pointer into LevelDataTable (LevelDataHi+LevelDataLo)
@@ -803,118 +803,11 @@ CheckEnemyHit subroutine
   rts
 
 ; ------------------------------------------------------------------------------
-; Check collisions
-; ------------------------------------------------------------------------------
-; Tests the proposed 8x8 player footprint against the room tile map.
-; The 20-column room is drawn by a REFLECTED playfield, so on screen it is a
-; mirrored 40-block cave: playfield block q (q = RoomX>>2, 4 px per block)
-; shows text column q in the left half (q 0..19) and text column 39-q in the
-; right half (q 20..39). Collision therefore maps each covered block back to
-; its text column before reading the map.
-; Vertical:   screen scanline -> tile row via YToCellRow (/12).
-; Returns C=0 if clear, C=1 if blocked.
-PlayerHitsMap:
-  lda RoomX
-  cmp #15
-  bcs .VisibleOffset7
-  sec
-  sbc #4                    ; RoomX < 15: RESP lands at px 3 -> visible left = X-4
-  jmp .HaveVisibleLeft
-.VisibleOffset7:
-  sec
-  sbc #7                    ; RoomX >= 15: constant offset 7
-.HaveVisibleLeft:
-  sta CollisionX            ; = visible sprite left edge
-  lsr
-  lsr
-  sta CollisionCellX        ; first playfield block under the sprite
-  clc
-  lda CollisionX
-  adc #PLAYER_WIDTH - 1
-  lsr
-  lsr
-  sta CollisionEndX         ; last playfield block under the sprite
-
-  lda PlayerY
-  jsr YToCellRow
-  stx CollisionCellY         ; top tile row
-  clc
-  lda PlayerY
-  adc #PLAYER_HEIGHT - 1
-  jsr YToCellRow
-  stx CollisionEndY          ; bottom tile row
-
-.CheckRow:
-; Resolve the room row base for tile row CollisionCellY. The current room's
-; RoomRowLo and RoomRowHi tables are contiguous 12-byte tables, so a single
-; RoomRowMap pointer plus a +12 offset reaches both.
-  ldy CollisionCellY        ; tile row index (0..15)
-  lda RoomRowMapLo
-  sta MapPtrLo
-  lda RoomRowMapHi
-  sta MapPtrHi
-  lda (MapPtrLo),Y          ; room row base lo byte
-  sta CollisionX            ; stash in scratch (rebuilt by .CheckCell if used)
-  lda RoomRowMapLo
-  clc
-  adc #12                   ; RoomRowHi table = RoomRowLo table + 12
-  sta MapPtrLo
-  lda RoomRowMapHi
-  adc #0
-  sta MapPtrHi
-  lda (MapPtrLo),Y          ; room row base hi byte
-  sta MapPtrHi
-  lda CollisionX
-  sta MapPtrLo              ; MapPtr = room row base address
-  ldy CollisionCellX         ; Y = playfield block (0..39)
-.CheckCell:
-  cpy #TILE_COLUMNS
-  bcc .LeftBlock             ; q < 20 -> text column = q
-  lda #39
-  sec
-  sty CollisionX
-  sbc CollisionX             ; q >= 20 -> text column = 39 - q (mirror)
-  tay
-  lda (MapPtrLo),Y
-  bne .MapHit
-  ldy CollisionX
-  jmp .NextCell
-.LeftBlock:
-  lda (MapPtrLo),Y
-  bne .MapHit
-.NextCell:
-  iny
-  cpy CollisionEndX
-  bcc .CheckCell
-  beq .CheckCell
-  inc CollisionCellY
-  lda CollisionCellY
-  cmp CollisionEndY
-  bcc .CheckRow
-  beq .CheckRow
-  clc
-  rts
-
-.MapHit:
-  sec
-  rts
-
-; ------------------------------------------------------------------------------
 ; Subroutines
 ; ------------------------------------------------------------------------------
-; Convert a screen scanline (0..191) into a tile row index (0..15).
-; A = scanline in, X = tile row out.
+; PlayerHitsMap and YToCellRow are placed after GameStart (see below) to
+; fit within the $f000-$f500 code section.
 ; ------------------------------------------------------------------------------
-YToCellRow subroutine
-  ldx #0
-.Div:
-  cmp #LINES_PER_TILE
-  bcc .Done
-  sbc #LINES_PER_TILE
-  inx
-  bne .Div
-.Done:
-  rts
 
 ; ------------------------------------------------------------------------------
 ; EnterRoom: point the kernel and collision data at room A (0-based room index).
@@ -934,10 +827,10 @@ EnterRoom subroutine
   sta RoomPFDataHi
   iny
   lda (LevelPFDataLo),Y
-  sta RoomRowMapLo
+  sta RoomRectsLo
   iny
   lda (LevelPFDataLo),Y
-  sta RoomRowMapHi
+  sta RoomRectsHi
 ; Load the current room's enemy data pointer + count from the level's
 ; per-room record (ptr_lo, ptr_hi, count, pad).
   lda RoomNo
@@ -1244,6 +1137,163 @@ GameStart:
     sta ScoreOn
     jsr LoadLevel           ; A is still 0 -> level 0
     jmp StartFrame
+
+; ------------------------------------------------------------------------------
+; Collision subroutines (placed here to fit within the ROM layout)
+; ------------------------------------------------------------------------------
+
+; Convert a screen scanline (0..191) into a tile row index (0..15).
+; A = scanline in, X = tile row out.
+; ------------------------------------------------------------------------------
+YToCellRow subroutine
+  ldx #0
+.Div:
+  cmp #LINES_PER_TILE
+  bcc .Done
+  sbc #LINES_PER_TILE
+  inx
+  bne .Div
+.Done:
+  rts
+
+; ------------------------------------------------------------------------------
+; Check collisions (rectangle-based)
+; ------------------------------------------------------------------------------
+; Checks the player's bounding box against the room's solid rectangle list.
+; Rectangles are in tile coordinates (column 0-19, row 0-11, width/height in
+; tiles).  The playfield is REFLECTED, so every block q maps to text column
+; q if q<20 or 39-q if q>=20.  The player's blocks are converted to text
+; columns first, then checked against rectangles in tile space.
+; Returns C=0 if clear, C=1 if blocked.
+PlayerHitsMap:
+; --- Tile row range (top, bottom) ---
+  lda PlayerY
+  jsr YToCellRow
+  stx CollisionCellY          ; top tile row
+  clc
+  lda PlayerY
+  adc #PLAYER_HEIGHT - 1
+  jsr YToCellRow
+  stx CollisionEndY           ; bottom tile row
+
+; --- Visible left pixel -> text column range ---
+  sec
+  lda RoomX
+  cmp #15
+  bcs .off7
+  sbc #4                      ; RoomX < 15: visible left = X - 4
+  jmp .gotVL
+.off7:
+  sbc #7                      ; RoomX >= 15: visible left = X - 7
+.gotVL:
+  ; first block = visible_left / 4 -> text column
+  tay                         ; Y = visible_left
+  lsr
+  lsr
+  cmp #TILE_COLUMNS
+  bcc .firstOk
+  sta CollisionX
+  lda #39
+  sec
+  sbc CollisionX
+.firstOk:
+  sta CollisionEndX           ; min text column
+
+  ; last block = (visible_left + PLAYER_WIDTH - 1) / 4 -> text column
+  tya                         ; A = visible_left
+  clc
+  adc #PLAYER_WIDTH - 1
+  lsr
+  lsr
+  cmp #TILE_COLUMNS
+  bcc .lastOk
+  sta CollisionX
+  lda #39
+  sec
+  sbc CollisionX
+.lastOk:
+  sta CollisionCellX           ; max text column
+
+  ; Ensure min <= max (blocks 20+ reverse the column order)
+  lda CollisionEndX
+  cmp CollisionCellX
+  bcc .colsOk
+  ldx CollisionCellX
+  stx CollisionEndX
+  sta CollisionCellX
+.colsOk:
+
+; --- Walk rectangle list ---
+  lda RoomRectsLo
+  sta MapPtrLo
+  lda RoomRectsHi
+  sta MapPtrHi
+  ldy #0
+  lda (MapPtrLo),Y            ; rectangle count
+  bne .HasRects
+  clc
+  rts                         ; no rectangles -> not hit
+.HasRects:
+  sta EnemyLoopCount
+  iny                         ; Y=1, first rect byte
+
+.RectLoop:
+  tya
+  pha                         ; save rect base offset (Y = byte offset of rect.x)
+
+; Column overlap: max_col >= rect.x AND min_col < rect.x + rect.w
+  lda (MapPtrLo),Y            ; rect.x (Y = base)
+  cmp CollisionCellX           ; rect.x > max_col?
+  beq .colOk
+  bcc .colOk
+  jmp .nextRect
+.colOk:
+  sta CollisionX              ; save rect.x for addition
+  iny
+  iny                         ; Y = base + 2 (rect.w)
+  clc
+  lda (MapPtrLo),Y            ; rect.w
+  adc CollisionX              ; rect.x + rect.w
+  cmp CollisionEndX            ; (rect.x+w) <= min_col?
+  beq .nextRect
+  bcc .nextRect
+
+; Row overlap: bottom_row >= rect.y AND top_row < rect.y + rect.h
+  dey                         ; Y = base + 1 (rect.y)
+  lda (MapPtrLo),Y            ; rect.y
+  cmp CollisionEndY            ; rect.y > bottom_row?
+  beq .rowOk
+  bcc .rowOk
+  jmp .nextRect
+.rowOk:
+  iny
+  iny                         ; Y = base + 3 (rect.h)
+  clc
+  lda (MapPtrLo),Y            ; rect.h
+  dey
+  dey                         ; Y = base + 1 (rect.y)
+  adc (MapPtrLo),Y            ; rect.y + rect.h
+  cmp CollisionCellY           ; (rect.y+h) <= top_row?
+  beq .nextRect
+  bcc .nextRect
+
+; HIT — player is blocked
+  pla
+  sec
+  rts
+
+.nextRect:
+  pla
+  clc
+  adc #4                      ; advance past this rect (4 bytes each)
+  tay
+  dec EnemyLoopCount
+  beq .NoHit
+  jmp .RectLoop
+
+.NoHit:
+  clc
+  rts
 
 ; ------------------------------------------------------------------------------
 ; ROM Data

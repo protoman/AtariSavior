@@ -224,13 +224,13 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
         "",
     ]
     lines.append(
-        f"; Room data: one ({room_prefix}<n>TilePF0, ...RoomRowLo) word pair per room,"
+        f"; Room data: one ({room_prefix}<n>TilePF0, ...RoomRects) word pair per room,"
         " indexed by RoomNo.")
     lines.append(f"{prefix}_RoomDataTable:")
     for index, room in enumerate(rooms):
         lines.append(
             f"  .word {room_prefix}{index + 1}TilePF0, "
-            f"{room_prefix}{index + 1}RoomRowLo ; room {index}")
+            f"{room_prefix}{index + 1}RoomRects ; room {index}")
     lines.append("")
     lines.append(
         "; Room connections: up/down/left/right target room index per room ($ff = none).")
