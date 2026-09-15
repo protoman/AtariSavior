@@ -8,10 +8,10 @@ LEVEL2_MINER_ROOM = 1
 LEVEL2_MINER_X = 44
 LEVEL2_MINER_Y = 72
 
-; Room data: one (L2R<n>TilePF0, ...RoomRowLo) word pair per room, indexed by RoomNo.
+; Room data: one (L2R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo.
 LEVEL2_RoomDataTable:
-  .word L2R1TilePF0, L2R1RoomRowLo ; room 0
-  .word L2R2TilePF0, L2R2RoomRowLo ; room 1
+  .word L2R1TilePF0, L2R1RoomRects ; room 0
+  .word L2R2TilePF0, L2R2RoomRects ; room 1
 
 ; Room connections: up/down/left/right target room index per room ($ff = none).
 LEVEL2_RoomConnections:

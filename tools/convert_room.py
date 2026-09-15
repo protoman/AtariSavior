@@ -9,11 +9,14 @@ bottom 48 of the 192-line screen. The TIA reflects the 20-bit playfield
 PF0/PF1/PF2 triple per tile row, written once per 12-line band.
 
 Emitted data:
-  - RoomTileMap + RoomRowLo/Hi: one byte per tile for the 6502 collision code.
+  - RoomRects: compressed rectangle list for the 6502 collision code.
+    Format: 1 byte count, then count * 4 bytes (x, y, width, height) in tile
+    coordinates.  The collision routine mirrors each rectangle to the right
+    half at runtime, so only the left-half (0-19 column) layout is stored.
   - TilePF0/TilePF1/TilePF2: one byte per tile row for the kernel.
-All per-row tables (PF triples and row pointers) are PADDED to 12 bytes so
+All per-row tables (PF triples) are PADDED to 12 bytes so
 bank0's table arithmetic (+12 / +12 / +24) works unchanged; only the first
-12 entries are drawn/read.
+12 entries are drawn.
 """
 
 from pathlib import Path
@@ -62,9 +65,45 @@ def pf_values(row: str) -> tuple[int, int, int]:
     return pf0, pf1, pf2
 
 
+def find_rectangles(rows: list[str]) -> list[tuple[int, int, int, int]]:
+    """Find rectangular blocks of solid tiles in the room.
+
+    Returns a list of (x, y, width, height) tuples for each solid rectangle.
+    Uses a greedy algorithm: scan left-to-right, top-to-bottom; when a solid
+    tile is found, extend right then down to form the largest possible rectangle.
+    """
+    height = len(rows)
+    width = len(rows[0])
+    visited = [[False] * width for _ in range(height)]
+    rects = []
+
+    for row in range(height):
+        for col in range(width):
+            if rows[row][col] != "#" or visited[row][col]:
+                continue
+            w = 1
+            while col + w < width and rows[row][col + w] == "#" and not visited[row][col + w]:
+                w += 1
+            h = 1
+            while row + h < height:
+                ok = True
+                for c in range(col, col + w):
+                    if rows[row + h][c] != "#" or visited[row + h][c]:
+                        ok = False
+                        break
+                if not ok:
+                    break
+                h += 1
+            for r in range(row, row + h):
+                for c in range(col, col + w):
+                    visited[r][c] = True
+            rects.append((col, row, w, h))
+
+    return rects
+
+
 def emit(rows: list[str], output: Path, prefix: str = "", source: str = "room") -> None:
     triples = [pf_values(row) for row in rows]
-    map_name = prefix + "RoomTileMap"
     stride = max(TABLE_STRIDE, len(rows))
 
     lines = [
@@ -73,22 +112,13 @@ def emit(rows: list[str], output: Path, prefix: str = "", source: str = "room") 
     if not prefix:
         lines.append(f"ROOM_TILE_COLUMNS = {WIDTH}")
         lines.append(f"ROOM_TILE_ROWS = {len(rows)}")
-    lines.append(f"{map_name}:")
-    for row in rows:
-        bytes_ = [1 if cell == "#" else 0 for cell in row]
-        lines.append("  .byte " + ", ".join(f"${b:02x}" for b in bytes_))
 
-    # Row pointer tables are padded to the table stride (bank0 indexes them
-    # with (+0 lo, +12 hi)); padding rows are never dereferenced (the player
-    # stays within the 12 playable rows) but keep the +12 offset valid.
-    row_los = [f"< ({map_name}+{row}*{WIDTH})" for row in range(len(rows))]
-    row_los += [row_los[0]] * (stride - len(row_los))
-    row_his = [f"> ({map_name}+{row}*{WIDTH})" for row in range(len(rows))]
-    row_his += [row_his[0]] * (stride - len(row_his))
-    lines.append(f"{prefix}RoomRowLo:")
-    lines.append("  .byte " + ", ".join(row_los))
-    lines.append(f"{prefix}RoomRowHi:")
-    lines.append("  .byte " + ", ".join(row_his))
+    rects = find_rectangles(rows)
+    rect_name = prefix + "RoomRects"
+    lines.append(f"{rect_name}:")
+    lines.append(f"  .byte {len(rects)}                  ; number of rectangles")
+    for x, y, w, h in rects:
+        lines.append(f"  .byte {x}, {y}, {w}, {h}  ; x, y, width, height")
 
     for name, register in zip(("TilePF0", "TilePF1", "TilePF2"), range(3)):
         lines.append(f"{prefix}{name}:")
