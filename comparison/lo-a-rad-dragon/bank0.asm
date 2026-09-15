@@ -102,13 +102,13 @@ LevelStartX     byte            ; active level's origin X
 LevelStartY     byte            ; active level's origin Y
 EnemyLoopCount  byte            ; CheckEnemyHit loop counter
 GameMode        byte            ; 0 = start screen (bank1), nonzero = game (bank0)
-FontP0          ds.b 5          ; P0 character font data (5 rows) for flicker HUD
-FontP1          ds.b 5          ; P1 character font data (5 rows) for flicker HUD
-FontPtrLo       byte            ; indirect pointer for font ROM lookup (fonthi)
+FontP0          ds.b 5          ; P0 character font data (5 rows) — used by bank2
+FontP1          ds.b 5          ; P1 character font data (5 rows) — used by bank2
+FontPtrLo       byte            ; reserved (ZP address kept for bank2 sync)
 FontPtrHi       byte
-FontPtrLo2      byte            ; reused: tens digit glyph code for LEVEL display
-FontPtrHi2      byte            ; reused: ones digit glyph code for LEVEL display
-frame_phase     byte            ; flicker phase counter: 0, 1, 2, 0, 1, ...
+FontPtrLo2      byte            ; reserved
+FontPtrHi2      byte
+frame_phase     byte            ; reserved
 ScoreTh         byte            ; score thousands digit (0-9, BCD)
 ScoreHu         byte            ; score hundreds digit (0-9, BCD)
 ScoreTe         byte            ; score tens digit (0-9, BCD)
@@ -683,18 +683,9 @@ UpdateJetSound:
   sec
   sbc Temp
   sta AUDF0                ; AUDF0 = base - thrust: pitches down as it spools up
-  jmp .AdvancePhase
+  jmp WaitOverscan
 .JetSilent:
   sta AUDV0                ; A = 0: kill channel 0
-
-; Advance flicker phase: 0 -> 1 -> 2 -> 0
-.AdvancePhase:
-  inc frame_phase
-  lda frame_phase
-  cmp #3
-  bcc WaitOverscan
-  lda #0
-  sta frame_phase
 
 WaitOverscan:
   lda INTIM
