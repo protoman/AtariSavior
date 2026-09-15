@@ -734,6 +734,86 @@ $DC00:  STA WSYNC
 - Our `rooms/level_001_room_001.txt` pattern (`#...##...##...##...#`) is already
   center-symmetric, so CTRLPF=$01 alone makes it read as one continuous cave.
 
+## Kernel Architecture (2026-09-15)
+
+### Fixed-time kernel principle
+The 2600 TV frame is 262 scanlines at 60Hz. Each scanline is exactly 76 CPU
+cycles. If the kernel loop takes MORE than 76 cycles on any scanline, WSYNC
+stalls until the END of the NEXT scanline, making the frame longer than 262
+lines. NTSC TVs interpret this as flicker. **The kernel MUST execute the same
+number of cycles every scanline, with no conditional branches that change
+the cycle count.**
+
+### HERO's approach (reference implementation)
+HERO's kernel at $DC00 executes exactly 61 cycles per scanline with ZERO
+conditional branches:
+```
+$DC00:  STA WSYNC           ; 3
+        STA RESMP1          ; 3
+        LDA ($91),Y         ; 5  ← sprite data via indirect indexed
+        STA GRP0            ; 3
+        STA GRP1            ; 3
+        STA GRP0            ; 3  ← VDEL double-write
+        LDA ($95),Y         ; 5
+        STA COLUP0          ; 3
+        STA COLUP1          ; 3
+        LDA $DC6C,X         ; 4  ← PF data from table
+        STA PF2             ; 3
+        LDA $DC6A,X         ; 4
+        STA PF0             ; 3
+        LDA $DC77,X         ; 4
+        STA PF1             ; 3
+        DEY / BPL           ; 4
+```
+Key: no `if scanline in range` checks. Sprite data comes from pre-computed
+buffers. PF data from 8-entry lookup tables. Every scanline executes the
+exact same instruction stream.
+
+### Our kernel refactor (in progress)
+**Problem:** Our kernel has conditional branches for sprite visibility,
+object visibility, and laser ENAM0. These add 5-21 variable cycles per
+scanline, causing the worst case to exceed 76 cycles → flicker.
+
+**Solution (stack-based GRP0 pre-computation):**
+1. During VBLANK, pre-compute GRP0 for all 192 scanlines and push
+   interleaved GRP0/GRP1 onto the stack (scanline 191 first, 0 last).
+2. During the kernel, pop GRP0 and GRP1 each scanline — zero conditional
+   branches for sprite/object visibility.
+3. For GRP1: use compact ObjTop/ObjBottom range check (pre-computed during
+   VBLANK) instead of per-scanline ActiveObjectOn + range check.
+4. For ENAM0 (laser): compact EOR check, ~5 cycles when inactive.
+
+**Stack layout:** 192 GRP0 + 192 GRP1 = 384 bytes. Stack is $0100-$01FF
+(256 bytes). 384 bytes overflows into ZP ($0080+), corrupting game state.
+**Fix:** Push only GRP0 (192 bytes, fits in $013F-$01FF). Handle GRP1
+with compact ObjTop/ObjBottom range check (~15 cycles).
+
+**Expected cycle count per scanline:**
+- Pop GRP0: 4
+- Write GRP0: 3
+- GRP1 check: ~15
+- Write GRP1: 3
+- PF writes: ~20
+- Laser check: ~10
+- inc Scanline: 5
+- WSYNC: 3
+- dec/bne: 8
+- **Total: ~68 cycles** (well within 76)
+
+### Laser rendering
+- Missile 0 positioned at player center X during VBLANK via SetObjectXPos
+- ENAM0 set after kernel setup (once per frame), cleared by kernel setup
+- Per-scanline ENAM0 check adds variable cycles → causes flicker
+- **Better approach:** pre-compute ENAM0 value during VBLANK, push onto
+  stack with GRP0/GRP1. Or use compact ObjTop/ObjBottom-style range check.
+
+### HUD rendering (bank2)
+- Moved from bank0 to bank2 via fold-pad trampoline at $fc78/$fc80
+- Fold pads must be byte-identical in both banks
+- bank2 has own SetObjectXPos copy + fineAdjustTable at $ff00
+- ZP variables shared across banks (FontP0/P1, ScoreTh/Hu/Te/On, etc.)
+- Simplified technique: packed "LV" in P0, packed digits in P1, ScoreKernel
+
 ### Verified: the playfield mirror is never broken; asymmetry = objects
 - Byte-scanned all of hero.bin for every PF write (`STA $0D/$0E/$0F`): 14 sites
   in bank0, 0 in bank1, one write per register per scanline in every kernel.
@@ -940,3 +1020,83 @@ Check upstream license and attribution terms before redistributing or reusing su
 - Room data is converted at build time into assembler data. The 6502 kernel
   must consume compact precomputed tables and must not parse text or perform
   expensive tile conversion during visible scanlines.
+
+## Kernel Architecture (2026-09-15)
+
+### Fixed-time kernel principle
+The 2600 TV frame is 262 scanlines at 60Hz. Each scanline is exactly 76 CPU
+cycles. If the kernel loop takes MORE than 76 cycles on any scanline, WSYNC
+stalls until the END of the NEXT scanline, making the frame longer than 262
+lines. NTSC TVs interpret this as flicker. **The kernel MUST execute the same
+number of cycles every scanline, with no conditional branches that change
+the cycle count.**
+
+### HERO's approach (reference implementation)
+HERO's kernel at $DC00 executes exactly 61 cycles per scanline with ZERO
+conditional branches:
+```
+$DC00:  STA WSYNC           ; 3
+        STA RESMP1          ; 3
+        LDA ($91),Y         ; 5  ← sprite data via indirect indexed
+        STA GRP0            ; 3
+        STA GRP1            ; 3
+        STA GRP0            ; 3  ← VDEL double-write
+        LDA ($95),Y         ; 5
+        STA COLUP0          ; 3
+        STA COLUP1          ; 3
+        LDA $DC6C,X         ; 4  ← PF data from table
+        STA PF2             ; 3
+        LDA $DC6A,X         ; 4
+        STA PF0             ; 3
+        LDA $DC77,X         ; 4
+        STA PF1             ; 3
+        DEY / BPL           ; 4
+```
+Key: no `if scanline in range` checks. Sprite data comes from pre-computed
+buffers. PF data from 8-entry lookup tables. Every scanline executes the
+exact same instruction stream.
+
+### Our kernel refactor (in progress)
+**Problem:** Our kernel has conditional branches for sprite visibility,
+object visibility, and laser ENAM0. These add 5-21 variable cycles per
+scanline, causing the worst case to exceed 76 cycles → flicker.
+
+**Solution (stack-based GRP0 pre-computation):**
+1. During VBLANK, pre-compute GRP0 for all 192 scanlines and push
+   interleaved GRP0/GRP1 onto the stack (scanline 191 first, 0 last).
+2. During the kernel, pop GRP0 and GRP1 each scanline — zero conditional
+   branches for sprite/object visibility.
+3. For GRP1: use compact ObjTop/ObjBottom range check (pre-computed during
+   VBLANK) instead of per-scanline ActiveObjectOn + range check.
+4. For ENAM0 (laser): compact EOR check, ~5 cycles when inactive.
+
+**Stack layout:** 192 GRP0 + 192 GRP1 = 384 bytes. Stack is $0100-$01FF
+(256 bytes). 384 bytes overflows into ZP ($0080+), corrupting game state.
+**Fix:** Push only GRP0 (192 bytes, fits in $013F-$01FF). Handle GRP1 with
+compact ObjTop/ObjBottom range check (~15 cycles).
+
+**Expected cycle count per scanline:**
+- Pop GRP0: 4
+- Write GRP0: 3
+- GRP1 check: ~15
+- Write GRP1: 3
+- PF writes: ~20
+- Laser check: ~10
+- inc Scanline: 5
+- WSYNC: 3
+- dec/bne: 8
+- **Total: ~68 cycles** (well within 76)
+
+### Laser rendering
+- Missile 0 positioned at player center X during VBLANK via SetObjectXPos
+- ENAM0 set after kernel setup (once per frame), cleared by kernel setup
+- Per-scanline ENAM0 check adds variable cycles → causes flicker
+- **Better approach:** pre-compute ENAM0 value during VBLANK, push onto
+  stack with GRP0/GRP1. Or use compact ObjTop/ObjBottom-style range check.
+
+### HUD rendering (bank2)
+- Moved from bank0 to bank2 via fold-pad trampoline at $fc78/$fc80
+- Fold pads must be byte-identical in both banks
+- bank2 has own SetObjectXPos + fineAdjustTable copies
+- ZP variables shared across banks (FontP0/P1, ScoreTh/Hu/Te/On, etc.)
+- Simplified technique: packed "LV" in P0, packed digits in P1, ScoreKernel
