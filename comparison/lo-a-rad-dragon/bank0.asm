@@ -390,9 +390,10 @@ StartFrame:
   bpl .FillInner
 
   ; --- Phase 3: fill remaining VBLANK with WSYNC waits ---
-  ; Phases 1+2 take ~5-6 scanlines; positioning took ~3.  We need ~33 total
-  ; scanlines inside VBLANK.  Remaining: ~25.
-  ldx #25
+  ; Phases 1+2 take ~5-6 scanlines; positioning took ~3.  We need ~21 total
+  ; scanlines inside VBLANK (reduced by12 to compensate for .Row WSYNC
+  ; adding 12 scanlines to the cave kernel).  Remaining: ~13.
+  ldx #13
 .VblankWait:
   sta WSYNC
   dex
@@ -459,9 +460,8 @@ StartFrame:
   sta COLUPF                ; 3
   lda #LINES_PER_TILE
   sta LineCount
-  ; NOTE: .Row PF setup runs on the same scanline as first .Line iteration.
-  ; This can push total to ~86c on the first scanline of each tile row,
-  ; causing 1-line flicker at tile boundaries. Acceptable trade-off.
+  inc Scanline              ; 5  account for the PF-setup scanline
+  sta WSYNC                 ; 3  PF setup on this scanline, .Line on NEXT
 
 .Line:
 ; --- GRP1 FIRST: fires at cycle ~16, within HBLANK ---
