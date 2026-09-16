@@ -111,6 +111,10 @@ Grp1Value       = $cb            ; pre-computed GRP1 value ($f0 when object visi
 Enam0Value      = $cc            ; pre-computed ENAM0 value ($02 when laser active, 0 otherwise)
 LaserActive     byte            ; 0 = inactive, nonzero = frames remaining
 LaserY          byte            ; scanline where the laser beam is drawn
+ScoreTh         byte            ; score thousands digit (0-9, BCD)
+ScoreHu         byte            ; score hundreds digit (0-9, BCD)
+ScoreTe         byte            ; score tens digit (0-9, BCD)
+ScoreOn         byte            ; score ones digit (0-9, BCD)
 
 ; PF/color ZP buffers (copied from ROM during VBLANK, read by kernel)
 PF0Buf          ds.b 12         ; $B0-$BB: TilePF0 values (12 tile rows)
@@ -791,6 +795,7 @@ CheckMinerPickup:
   jsr LoadLevel
 .NoPickup:
   jsr CheckEnemyHit
+  jsr CheckLaserEnemyHit
 
 ; ------------------------------------------------------------------------------
 ; Jet sound: a low noise "engine" on audio channel 0 while the jet burns
@@ -886,6 +891,54 @@ CheckEnemyHit subroutine
   dec EnemyLoopCount
   bne .ENext
 .HitDone:
+  rts
+
+; ------------------------------------------------------------------------------
+; CheckLaserEnemyHit: if the laser (ENAM0 at LaserScanline) overlaps any enemy,
+; remove the enemy and add 50 points to the score.
+; Laser is active when LaserActive != 0, positioned at LaserScanline.
+; Enemy overlap: LaserScanline >= ActiveObjectY AND LaserScanline < ActiveObjectY+8
+; ------------------------------------------------------------------------------
+CheckLaserEnemyHit:
+  lda LaserActive
+  beq .LEHDone               ; laser not active → skip
+  lda ActiveObjectOn
+  beq .LEHDone               ; no object active → skip
+  ; Check if laser scanline overlaps with active object
+  lda LaserScanline
+  sec
+  sbc ActiveObjectY          ; A = LaserScanline - ActiveObjectY
+  bcc .LEHDone               ; laser above object
+  cmp #PLAYER_HEIGHT         ; object is PLAYER_HEIGHT tall
+  bcs .LEHDone               ; laser below object
+  ; HIT! Remove enemy and add 50 points
+  lda #0
+  sta ActiveObjectOn         ; remove enemy from screen
+  sta EnemyCount             ; clear enemy count
+  ; Add 50 points to score (BCD)
+  ; ScoreOn (ones): add 0
+  ; ScoreTe (tens): add 5
+  clc
+  lda ScoreTe
+  adc #5
+  cmp #$0a
+  bcc .NoTensCarry
+  sbc #$0a                    ; subtract 10, keep lower nibble
+  inc ScoreHu                 ; carry to hundreds
+  lda ScoreHu
+  cmp #$0a
+  bcc .NoHundredsCarry
+  sbc #$0a
+  inc ScoreTh
+.NoHundredsCarry:
+.NoTensCarry:
+  sta ScoreTe
+  ; Reset laser
+  lda #0
+  sta LaserActive
+  lda #$ff
+  sta LaserY
+.LEHDone:
   rts
 
 ; ------------------------------------------------------------------------------
