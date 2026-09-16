@@ -109,12 +109,8 @@ FontPtrHi       byte
 FontPtrLo2      byte            ; reserved
 FontPtrHi2      byte
 frame_phase     byte            ; reserved
-ScoreTh         byte            ; score thousands digit (0-9, BCD)
-ScoreHu         byte            ; score hundreds digit (0-9, BCD)
-ScoreTe         byte            ; score tens digit (0-9, BCD)
-ScoreOn         byte            ; score ones digit (0-9, BCD)
-ScoreDigit2     ds.b 5          ; sprite rows for digit 2 (populated during gap)
-ScoreDigit3     ds.b 5          ; sprite rows for digit 3 (populated during gap)
+ScoreDigit2     = $c6            ; address constant (space reused by PlayerGrp0 during kernel)
+ScoreDigit3     = $cb            ; address constant (space unused, reserved for HUD rebuild)
 LaserActive     byte            ; 0 = inactive, nonzero = frames remaining
 LaserY          byte            ; scanline where the laser beam is drawn
 
@@ -129,6 +125,7 @@ Grp0Ptr         = CollisionX       ; $8c — GRP0 sprite table pointer (low at $
 ObjTop          = CollisionCellY   ; $8e — object visible top scanline
 ObjBot          = CollisionEndX    ; $8f — object visible bottom scanline
 LaserScanline   = CollisionEndY    ; $90 — laser match scanline (or $FF = inactive)
+PlayerGrp0      = ScoreDigit2      ; $C6 — 8 bytes: player sprite rows (reused from freed ScoreDigit2/3 space)
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -315,6 +312,15 @@ StartFrame:
 .UseRightSprite:
   stx Grp0Ptr
   sty Grp0Ptr+1
+  ; --- Copy player sprite data (8 bytes) from ROM to ZP ---
+  ; PlayerGrp0 ($96-$9D) reuses Level vars — safe during kernel.
+  ldy #0
+.CopyPlayerGrp:
+  lda (Grp0Ptr),y
+  sta PlayerGrp0,y
+  iny
+  cpy #PLAYER_HEIGHT
+  bne .CopyPlayerGrp
   ; --- Object scanline range (eliminates subtraction in GRP1 kernel check) ---
   lda ActiveObjectOn
   beq .NoObjPrep
@@ -480,15 +486,17 @@ StartFrame:
   sta GRP1                  ; 3  ← cycle ~6, SAFE (within HBLANK)
 
 ; --- GRP0 SECOND: fires at cycle ~28, within HBLANK ---
-; Player sprite via pre-computed pointer. Written after GRP1 but still
-; within HBLANK (shift register starts at cycle 68).
+; Player sprite from pre-loaded ZP buffer (PlayerGrp0). Written after GRP1 but
+; still within HBLANK (shift register starts at cycle 68).
+; PlayerGrp0 is filled during VBLANK from ROM via Grp0Ptr — saves 1 cycle
+; per scanline vs (Grp0Ptr),Y because ZP-indexed is 4c vs indirect 5c.
   lda Scanline              ; 3
   sec                       ; 2
   sbc PlayerY               ; 3  A = scanline - PlayerY
   cmp #PLAYER_HEIGHT        ; 2
   bcs .NoSprite             ; 2³
   tay                       ; 2
-  lda (Grp0Ptr),Y           ; 5  ← indirect indexed, no PlayerDir branch
+  lda PlayerGrp0,Y          ; 4  ← ZP indexed: 4c (was 5c with indirect)
   jmp .Put                  ; 3
 .NoSprite:
   lda #0                    ; 2
@@ -1205,18 +1213,6 @@ GameStart:
     sta NUSIZ0
     lda #0
     sta REFP1               ; no flip (same)
-    sta ScoreTh             ; score = 0000
-    sta ScoreHu
-    sta ScoreTe
-    sta ScoreOn
-    lda #1                  ; TEMP TEST: set score to 1234
-    sta ScoreTh
-    lda #2
-    sta ScoreHu
-    lda #3
-    sta ScoreTe
-    lda #4
-    sta ScoreOn
     jsr LoadLevel           ; A is still 0 -> level 0
     jmp StartFrame
 

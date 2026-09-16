@@ -15,13 +15,14 @@ HUD_COLOR = $06
 Level           = $96
 FontP0          = $b3
 FontP1          = $b8
+PF0ScoreBuf     = $b3          ; reused from FontP0 after level rendering
+PF1ScoreBuf     = $b8          ; reused from FontP1 after level rendering
+PF2ScoreBuf     = $c6          ; reused from ScoreDigit2 (no longer needed)
 Temp            = $ad
 ScoreTh         = $c2
 ScoreHu         = $c3
 ScoreTe         = $c4
 ScoreOn         = $c5
-ScoreDigit2     = $c6
-ScoreDigit3     = $cb
 
     seg code
     org $f000
@@ -64,78 +65,8 @@ Bank2HudEntry:
 ; Layout matches score: P0 at px10, P1 at px28.
 ; ============================================================================
 
-    ; --- Compute Level+1 tens and ones ---
-    lda Level
-    clc
-    adc #1
-    ldx #0
-.Div10:
-    cmp #10
-    bcc .GotLevel
-    sbc #10
-    inx
-    jmp .Div10
-.GotLevel:
-    ; A = ones, X = tens
-    pha
-    txa
-    asl
-    asl
-    asl                     ; *8
-    tax
-    ldy #0
-.LoadTensDigit:
-    lda ScoreSpriteFont,X
-    sta ScoreDigit2,Y       ; tens digit rows
-    inx
-    iny
-    cpy #5
-    bne .LoadTensDigit
-
-    pla                     ; A = ones
-    asl
-    asl
-    asl
-    tax
-    ldy #0
-.LoadOnesDigit:
-    lda ScoreSpriteFont,X
-    sta ScoreDigit3,Y       ; ones digit rows
-    inx
-    iny
-    cpy #5
-    bne .LoadOnesDigit
-
-    ; --- Pack "LV" into FontP0, "01" into FontP1 ---
-    ldy #0
-.PackLoop:
-    ; P0 = FontL | (FontV >> 5)  →  "LV"
-    lda FontV,Y
-    lsr
-    lsr
-    lsr
-    lsr
-    lsr                     ; V in bits 2-0
-    sta Temp
-    lda FontL,Y
-    ora Temp
-    sta FontP0,Y
-
-    ; P1 = tens | (ones >> 5)  →  "01"
-    lda ScoreDigit3,Y
-    lsr
-    lsr
-    lsr
-    lsr
-    lsr                     ; ones in bits 2-0
-    sta Temp
-    lda ScoreDigit2,Y
-    ora Temp
-    sta FontP1,Y
-
-    iny
-    cpy #5
-    bne .PackLoop
+    ; --- Level digits pre-computed in bank0 VBLANK ---
+    ; FontP0/FontP1 already contain packed "LV" and level number.
 
     ; --- Position and render (matches score layout) ---
     lda #10
@@ -164,143 +95,117 @@ Bank2HudEntry:
     cpy #5
     bne .LVRender
 
-    ; Clear sprites
+        ; Clear sprites
     sta WSYNC
     lda #0
     sta GRP0
     sta GRP1
 
 ; ============================================================================
-; Line 3: Score "nnnn" — left-aligned
+; Pre-compute score PF values into buffers (runs during level scanlines,
+; before score section). PF registers are free here (level uses GRP0/GRP1).
+;
+; PF0ScoreBuf[row] = PFDigitFont[ScoreTh*5+Y] << 4
+; PF1ScoreBuf[row] = PFDigitFont[ScoreHu*5+Y] << 5
+; PF2ScoreBuf[row] = PFDigitFont[ScoreTe*5+Y] | (PFDigitFont[ScoreOn*5+Y] << 4)
 ; ============================================================================
-    ; Load all 4 digits, compose packed pairs
-    ; Digit 0 (thousands) -> FontP0
-    lda ScoreTh
-    asl
-    asl
-    asl
-    tax
+
     ldy #0
-.LoadD0:
-    lda ScoreSpriteFont,X
-    sta FontP0,Y
-    inx
-    iny
-    cpy #5
-    bne .LoadD0
+.ScorePreComp:
+    ; --- PF0 from ScoreTh ---
+    ldx ScoreTh               ; 3
+    lda DigitTimes5,X         ; 4
+    sta Temp                  ; 3
+    tya                       ; 2
+    clc                       ; 2
+    adc Temp                  ; 3
+    tax                       ; 2
+    lda PFDigitFont,X         ; 4
+    asl                       ; 2
+    asl                       ; 2
+    asl                       ; 2
+    asl                       ; 2
+    sta PF0ScoreBuf,Y         ; 5
 
-    ; Digit 1 (hundreds) -> FontP1
-    lda ScoreHu
-    asl
-    asl
-    asl
-    tax
+    ; --- PF1 from ScoreHu ---
+    ldx ScoreHu               ; 3
+    lda DigitTimes5,X         ; 4
+    sta Temp                  ; 3
+    tya                       ; 2
+    clc                       ; 2
+    adc Temp                  ; 3
+    tax                       ; 2
+    lda PFDigitFont,X         ; 4
+    asl                       ; 2
+    asl                       ; 2
+    asl                       ; 2
+    asl                       ; 2
+    asl                       ; 2
+    sta PF1ScoreBuf,Y         ; 5
+
+    ; --- PF2 from ScoreTe + ScoreOn ---
+    ; Digit 3 first (no shift)
+    ldx ScoreTe               ; 3
+    lda DigitTimes5,X         ; 4
+    sta Temp                  ; 3
+    tya                       ; 2
+    clc                       ; 2
+    adc Temp                  ; 3
+    tax                       ; 2
+    lda PFDigitFont,X         ; 4
+    pha                       ; 3  save digit3 pattern on stack
+
+    ; Digit 4 (shift left 4)
+    ldx ScoreOn               ; 3
+    lda DigitTimes5,X         ; 4
+    sta Temp                  ; 3
+    tya                       ; 2
+    clc                       ; 2
+    adc Temp                  ; 3
+    tax                       ; 2
+    lda PFDigitFont,X         ; 4
+    asl                       ; 2
+    asl                       ; 2
+    asl                       ; 2
+    asl                       ; 2
+    sta Temp                  ; 3  save shifted digit4
+
+    pla                       ; 4  restore digit3 pattern
+    ora Temp                  ; 3
+    sta PF2ScoreBuf,Y         ; 5
+
+    iny                       ; 2
+    cpy #5                    ; 2
+    bne .ScorePreComp         ; 3
+
+; ============================================================================
+; Line 3: Score "nnnn" — PF-based rendering from pre-computed buffers
+; ============================================================================
+
     ldy #0
-.LoadD1:
-    lda ScoreSpriteFont,X
-    sta FontP1,Y
-    inx
-    iny
-    cpy #5
-    bne .LoadD1
-
-    ; Digit 2 (tens) -> ScoreDigit2
-    lda ScoreTe
-    asl
-    asl
-    asl
-    tax
-    ldy #0
-.LoadD2:
-    lda ScoreSpriteFont,X
-    sta ScoreDigit2,Y
-    inx
-    iny
-    cpy #5
-    bne .LoadD2
-
-    ; Digit 3 (ones) -> ScoreDigit3
-    lda ScoreOn
-    asl
-    asl
-    asl
-    tax
-    ldy #0
-.LoadD3:
-    lda ScoreSpriteFont,X
-    sta ScoreDigit3,Y
-    inx
-    iny
-    cpy #5
-    bne .LoadD3
-
-    ; Compose packed pairs:
-    ;   FontP0[row] = FontP0[row] | (FontP1[row] >> 5)  -> "12"
-    ;   FontP1[row] = ScoreDigit2[row] | (ScoreDigit3[row] >> 5) -> "34"
-    ldy #0
-.Compose:
-    lda FontP1,Y
-    lsr
-    lsr
-    lsr
-    lsr
-    lsr                 ; >> 5
-    sta Temp
-    lda FontP0,Y
-    ora Temp
-    sta FontP0,Y
-
-    lda ScoreDigit3,Y
-    lsr
-    lsr
-    lsr
-    lsr
-    lsr                 ; >> 5
-    ora ScoreDigit2,Y
-    sta FontP1,Y
-
-    iny
-    cpy #5
-    bne .Compose
-
-    ; Position P0 at px10, P1 at px28 (left-aligned)
-    lda #10
-    ldx #0
-    jsr SetObjectXPos_b2
-    lda #28
-    ldx #1
-    jsr SetObjectXPos_b2
-    sta WSYNC
-    sta HMOVE
-
-    ; Render 5 scanlines — write GRP BEFORE WSYNC
-    lda FontP0            ; row 0
-    ldy #1
-    sta WSYNC
-    sta GRP0
-    lda FontP1
-    sta GRP1
 .ScoreRender:
-    sta WSYNC
-    lda FontP0,Y
-    sta GRP0
-    lda FontP1,Y
-    sta GRP1
-    iny
-    cpy #5
-    bne .ScoreRender
+    lda PF0ScoreBuf,Y         ; 4
+    sta PF0                    ; 3
+    lda PF1ScoreBuf,Y         ; 4
+    sta PF1                    ; 3
+    lda PF2ScoreBuf,Y         ; 4
+    sta PF2                    ; 3
+    sta WSYNC                  ; 3
+    iny                        ; 2
+    cpy #5                     ; 2
+    bne .ScoreRender           ; 3
 
-    ; Clear sprites
+    ; Clear PF after score to prevent persistence into padding
     sta WSYNC
     lda #0
-    sta GRP0
-    sta GRP1
+    sta PF0
+    sta PF1
+    sta PF2
 
-; ============================================================================
 ; Padding: fill remaining scanlines to reach 48 total
-; Used: 8 (LV+packed) + 8 (score) = 16.  Need 32 more.
-; ============================================================================
-    ldx #32
+; Used: 8 (LV) + 9 (score: PF render with computation) = 17.
+; Need 31 more.
+    ldx #26
 .HudPad:
     sta WSYNC
     dex
@@ -328,25 +233,26 @@ SetObjectXPos_b2:
     rts
 
 ; ============================================================================
-; Font data — row 0 = TOP of glyph
+; PF Digit Font — pattern in bits 0-2 (3 pixels wide)
+; 10 digits × 5 rows. Each byte has the glyph in bits 0-2.
+; Shifted at runtime: PF0 = pattern<<4, PF1 = pattern<<5, PF2 = pattern
 ; ============================================================================
 
-FontL:
-    .byte $80, $80, $80, $80, $e0   ; bottom-to-top: #.. #.. #.. #.. ###
-FontV:
-    .byte $a0, $a0, $a0, $a0, $40   ; top-to-bottom: #.# #.# #.# #.# .#.
+PFDigitFont:
+  .byte %00000111, %00000101, %00000101, %00000101, %00000111  ; 0
+  .byte %00000010, %00000110, %00000010, %00000010, %00000111  ; 1
+  .byte %00000111, %00000001, %00000111, %00000100, %00000111  ; 2
+  .byte %00000111, %00000001, %00000111, %00000001, %00000111  ; 3
+  .byte %00000101, %00000101, %00000111, %00000001, %00000001  ; 4
+  .byte %00000111, %00000100, %00000111, %00000001, %00000111  ; 5
+  .byte %00000111, %00000100, %00000111, %00000101, %00000111  ; 6
+  .byte %00000111, %00000001, %00000001, %00000001, %00000001  ; 7
+  .byte %00000111, %00000101, %00000111, %00000101, %00000111  ; 8
+  .byte %00000111, %00000101, %00000111, %00000001, %00000111  ; 9
 
-ScoreSpriteFont:
-  .byte  $e0, $a0, $a0, $a0, $e0, $00, $00, $00  ; 0
-  .byte  $40, $c0, $40, $40, $e0, $00, $00, $00  ; 1
-  .byte  $e0, $20, $e0, $80, $e0, $00, $00, $00  ; 2
-  .byte  $e0, $20, $e0, $20, $e0, $00, $00, $00  ; 3
-  .byte  $a0, $a0, $e0, $20, $20, $00, $00, $00  ; 4
-  .byte  $e0, $80, $e0, $20, $e0, $00, $00, $00  ; 5
-  .byte  $e0, $80, $e0, $a0, $e0, $00, $00, $00  ; 6
-  .byte  $e0, $20, $40, $40, $40, $00, $00, $00  ; 7
-  .byte  $e0, $a0, $e0, $a0, $e0, $00, $00, $00  ; 8
-  .byte  $e0, $a0, $e0, $20, $e0, $00, $00, $00  ; 9
+; Lookup table: digit × 5 (for PFDigitFont indexing)
+DigitTimes5:
+  .byte 0, 5, 10, 15, 20, 25, 30, 35, 40, 45
 
 ; ============================================================================
 ; Fold pads (byte-identical in bank0 and bank2)
