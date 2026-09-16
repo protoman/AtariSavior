@@ -319,6 +319,16 @@ StartFrame:
   iny
   cpy #PLAYER_HEIGHT
   bne .CopyPlayerGrp
+  ; --- Add laser beam to sprite if active (row 3) ---
+  ; Laser is at PlayerY+3, always within sprite range.
+  ; Modify row 3 of PlayerGrp0: clear bit 7 to show laser beam notch.
+  ; This eliminates ENAM0 check from kernel (saves 17 cycles).
+  lda LaserActive
+  beq .NoLaserSprite
+  lda PlayerGrp0+3            ; row 3 of sprite
+  and #$7f                    ; clear bit 7 (leftmost pixel)
+  sta PlayerGrp0+3            ; laser beam notch
+.NoLaserSprite:
   ; --- Object scanline range (eliminates subtraction in GRP1 kernel check) ---
   lda ActiveObjectOn
   beq .NoObjPrep
@@ -332,16 +342,6 @@ StartFrame:
   lda #$ff                    ; all scanlines < $ff → bcc always taken
   sta ObjTop                  ;   → NoObject path
 .ObjPrepDone:
-  ; --- Laser scanline (eliminates multi-step check in ENAM0 kernel) ---
-  lda LaserActive
-  beq .NoLaserPrep
-  lda LaserY
-  sta LaserScanline
-  jmp .LaserPrepDone
-.NoLaserPrep:
-  lda #$ff                    ; impossible scanline → never matches
-  sta LaserScanline
-.LaserPrepDone:
 
 ; ------------------------------------------------------------------------------
 ; Remaining VBLANK (~33 scanlines)
@@ -501,15 +501,11 @@ StartFrame:
 .Put:
   sta GRP0                  ; 3
 
-; --- ENAM0: pre-computed scanline match (17 cycles active / 14 not) ---
-  lda Scanline              ; 3
-  cmp LaserScanline         ; 3
-  bne .LaserOff             ; 2³
-  lda #$02                  ; 2
-  .byte $2c                 ; 4  BIT skip: skips next lda #0
-.LaserOff:
-  lda #0                    ; 2
-  sta ENAM0                 ; 3
+; --- ENAM0: laser rendered as part of player sprite (no check needed) ---
+; Laser beam is included in PlayerGrp0 row 3 when active.
+; ENAM0 is no longer used — always 0.
+  lda #0                      ; 2
+  sta ENAM0                   ; 3
 
 ; --- loop control ---
   inc Scanline              ; 5
@@ -931,6 +927,9 @@ EnterRoom subroutine
   iny
   lda (LevelEnemyLo),Y
   sta EnemyCount
+  ; Reset laser on room change
+  lda #0
+  sta LaserActive
   rts
 
 ; ------------------------------------------------------------------------------
