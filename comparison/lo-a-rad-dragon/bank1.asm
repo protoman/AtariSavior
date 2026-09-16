@@ -7,7 +7,7 @@
 ; of docs/tutorial/13_plus2.asm. It keeps the demo's timing, font, orange PF
 ; mask/borders, centered text, and 13_plus2 TEXTDISP sequence.
 GameMode = $b2
-GameStart = $f550
+GameStart = $f520
 
     seg code
     org $f000

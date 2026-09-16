@@ -795,7 +795,42 @@ CheckMinerPickup:
   jsr LoadLevel
 .NoPickup:
   jsr CheckEnemyHit
-  jsr CheckLaserEnemyHit
+  ; Laser-enemy collision: if laser active and overlaps enemy, kill it + 50 pts
+  lda LaserActive
+  beq .NoLaserHit
+  lda ActiveObjectOn
+  beq .NoLaserHit
+  lda LaserScanline
+  sec
+  sbc ActiveObjectY
+  bcc .NoLaserHit
+  cmp #PLAYER_HEIGHT
+  bcs .NoLaserHit
+  ; Laser Y-overlaps enemy. Kill it.
+  lda #0
+  sta ActiveObjectOn
+  sta EnemyCount
+  ; +50 BCD points
+  lda ScoreTe
+  clc
+  adc #$50
+  cmp #$a0
+  bcc .ScoreOK
+  sbc #$a0
+  inc ScoreHu
+  lda ScoreHu
+  cmp #$a0
+  bcc .ScoreOK
+  sbc #$a0
+  inc ScoreTh
+.ScoreOK:
+  sta ScoreTe
+  ; reset laser
+  lda #0
+  sta LaserActive
+  lda #$ff
+  sta LaserY
+.NoLaserHit:
 
 ; ------------------------------------------------------------------------------
 ; Jet sound: a low noise "engine" on audio channel 0 while the jet burns
@@ -894,67 +929,10 @@ CheckEnemyHit subroutine
   rts
 
 ; ------------------------------------------------------------------------------
-; CheckLaserEnemyHit: if the laser (ENAM0 at LaserScanline) overlaps any enemy,
-; remove the enemy and add 50 points to the score.
-; Laser is active when LaserActive != 0, positioned at LaserScanline.
-; Enemy overlap: LaserScanline >= ActiveObjectY AND LaserScanline < ActiveObjectY+8
-; ------------------------------------------------------------------------------
-CheckLaserEnemyHit:
-  lda LaserActive
-  beq .LEHDone               ; laser not active → skip
-  lda ActiveObjectOn
-  beq .LEHDone               ; no object active → skip
-  ; Check Y overlap: LaserScanline >= ActiveObjectY
-  lda LaserScanline
-  sec
-  sbc ActiveObjectY          ; A = LaserScanline - ActiveObjectY
-  bcc .LEHDone               ; laser above object
-  cmp #PLAYER_HEIGHT         ; object is PLAYER_HEIGHT tall
-  bcs .LEHDone               ; laser below object
-  ; Check X overlap: |PlayerX - ActiveObjectX| < PLAYER_WIDTH
-  lda PlayerX
-  sec
-  sbc ActiveObjectX          ; A = PlayerX - ActiveObjectX
-  bcs .LEXge                 ; PlayerX >= ActiveObjectX
-  eor #$ff
-  clc
-  adc #1                     ; A = |PlayerX - ActiveObjectX|
-.LEXge:
-  cmp #PLAYER_WIDTH
-  bcs .LEHDone               ; no X overlap
-  ; HIT! Remove enemy and add 50 points
-  lda #0
-  sta ActiveObjectOn
-  sta EnemyCount
-  ; Add 50 points to score (BCD)
-  clc
-  lda ScoreTe
-  adc #5
-  cmp #$0a
-  bcc .NoTensCarry
-  sbc #$0a
-  inc ScoreHu
-  lda ScoreHu
-  cmp #$0a
-  bcc .NoHundredsCarry
-  sbc #$0a
-  inc ScoreTh
-.NoHundredsCarry:
-.NoTensCarry:
-  sta ScoreTe
-  ; Reset laser
-  lda #0
-  sta LaserActive
-  lda #$ff
-  sta LaserY
-.LEHDone:
-  rts
-
-; ------------------------------------------------------------------------------
 ; Subroutines
 ; ------------------------------------------------------------------------------
-; PlayerHitsMap and YToCellRow are placed after GameStart (see below) to
-; fit within the $f000-$f500 code section.
+; PlayerHitsMap, YToCellRow, and CheckLaserEnemyHit are placed after GameStart
+; to fit within the $f000-$f500 code section.
 ; ------------------------------------------------------------------------------
 
 ; ------------------------------------------------------------------------------
@@ -1260,7 +1238,7 @@ SetObjectXPos subroutine
 ; movement state. The address is FIXED at $f500 via the org below so bank1's
 ; fold stub (`jmp GameStart`, GameStart = $f500) assembles to identical bytes.
 ; ------------------------------------------------------------------------------
-    org $f500
+    org $f520
 GameStart:
     lda #0
     sta vyLo
