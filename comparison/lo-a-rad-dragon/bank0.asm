@@ -104,13 +104,11 @@ EnemyLoopCount  byte            ; CheckEnemyHit loop counter
 GameMode        byte            ; 0 = start screen (bank1), nonzero = game (bank0)
 FontP0          ds.b 5          ; P0 character font data (5 rows) — used by bank2
 FontP1          ds.b 5          ; P1 character font data (5 rows) — used by bank2
-FontPtrLo       byte            ; reserved (ZP address kept for bank2 sync)
-FontPtrHi       byte
-FontPtrLo2      byte            ; reserved
-FontPtrHi2      byte
-frame_phase     byte            ; reserved
+; FontPtrLo/Hi, FontPtrLo2/Hi2, frame_phase removed — HUD low priority
 ScoreDigit2     = $c6            ; address constant (space reused by PlayerGrp0 during kernel)
-ScoreDigit3     = $cb            ; address constant (space unused, reserved for HUD rebuild)
+ScoreDigit3     = $cb            ; address constant (space reused by Grp1Value + Enam0Value)
+Grp1Value       = $cb            ; pre-computed GRP1 value ($f0 when object visible, 0 otherwise)
+Enam0Value      = $cc            ; pre-computed ENAM0 value ($02 when laser active, 0 otherwise)
 LaserActive     byte            ; 0 = inactive, nonzero = frames remaining
 LaserY          byte            ; scanline where the laser beam is drawn
 
@@ -321,6 +319,14 @@ StartFrame:
   iny
   cpy #PLAYER_HEIGHT
   bne .CopyPlayerGrp
+  ; --- Pre-compute GRP1 value (eliminates conditional in kernel) ---
+  lda #0
+  sta Grp1Value          ; default: no object
+  lda ActiveObjectOn
+  beq .NoGrp1Prep
+  lda #$f0
+  sta Grp1Value          ; object active → $f0
+.NoGrp1Prep:
   ; --- Object scanline range (eliminates subtraction in GRP1 kernel check) ---
   lda ActiveObjectOn
   beq .NoObjPrep
@@ -344,6 +350,14 @@ StartFrame:
   lda #$ff                    ; impossible scanline → never matches
   sta LaserScanline
 .LaserPrepDone:
+  ; --- Pre-compute ENAM0 value (eliminates conditional in kernel) ---
+  lda #0
+  sta Enam0Value         ; default: no laser
+  lda LaserActive
+  beq .NoEnam0Prep
+  lda #$02
+  sta Enam0Value         ; laser active → $02
+.NoEnam0Prep:
 
 ; ------------------------------------------------------------------------------
 ; Remaining VBLANK (~33 scanlines)
@@ -472,18 +486,11 @@ StartFrame:
 
 .Line:
 ; --- GRP1 FIRST: fires at cycle ~6, well within HBLANK ---
-; Object sprite (miner or enemy). Written first to ensure the shift register
-; starts with the correct value at cycle 68 (first visible pixel).
-  lda Scanline              ; 3
-  cmp ObjTop                ; 3
-  bcc .NoObject             ; 2³  below top → not visible
-  cmp ObjBot                ; 3
-  bcs .NoObject             ; 2³  at/past bottom → not visible
-  lda #$f0                  ; 2
-  .byte $2c                 ; 4  BIT skip: skips next lda #0
-.NoObject:
-  lda #0                    ; 2
-  sta GRP1                  ; 3  ← cycle ~6, SAFE (within HBLANK)
+; Object sprite from pre-computed ZP value (Grp1Value). Written first to ensure
+; the shift register starts with the correct value at cycle 68 (first visible pixel).
+; Grp1Value is $f0 when object visible, 0 otherwise — set during VBLANK.
+  lda Grp1Value              ; 3c
+  sta GRP1                   ; 3c
 
 ; --- GRP0 SECOND: fires at cycle ~28, within HBLANK ---
 ; Player sprite from pre-loaded ZP buffer (PlayerGrp0). Written after GRP1 but
@@ -503,15 +510,10 @@ StartFrame:
 .Put:
   sta GRP0                  ; 3
 
-; --- ENAM0: pre-computed scanline match (17 cycles active / 14 not) ---
-  lda Scanline              ; 3
-  cmp LaserScanline         ; 3
-  bne .LaserOff             ; 2³
-  lda #$02                  ; 2
-  .byte $2c                 ; 4  BIT skip: skips next lda #0
-.LaserOff:
-  lda #0                    ; 2
-  sta ENAM0                 ; 3
+; --- ENAM0: load pre-computed value (6 cycles, was 17) ---
+; Enam0Value is $02 when laser active, 0 otherwise — set during VBLANK.
+  lda Enam0Value              ; 3c
+  sta ENAM0                   ; 3c
 
 ; --- loop control ---
   inc Scanline              ; 5
