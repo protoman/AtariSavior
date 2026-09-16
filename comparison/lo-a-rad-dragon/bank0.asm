@@ -904,27 +904,36 @@ CheckLaserEnemyHit:
   beq .LEHDone               ; laser not active → skip
   lda ActiveObjectOn
   beq .LEHDone               ; no object active → skip
-  ; Check if laser scanline overlaps with active object
+  ; Check Y overlap: LaserScanline >= ActiveObjectY
   lda LaserScanline
   sec
   sbc ActiveObjectY          ; A = LaserScanline - ActiveObjectY
   bcc .LEHDone               ; laser above object
   cmp #PLAYER_HEIGHT         ; object is PLAYER_HEIGHT tall
   bcs .LEHDone               ; laser below object
+  ; Check X overlap: |PlayerX - ActiveObjectX| < PLAYER_WIDTH
+  lda PlayerX
+  sec
+  sbc ActiveObjectX          ; A = PlayerX - ActiveObjectX
+  bcs .LEXge                 ; PlayerX >= ActiveObjectX
+  eor #$ff
+  clc
+  adc #1                     ; A = |PlayerX - ActiveObjectX|
+.LEXge:
+  cmp #PLAYER_WIDTH
+  bcs .LEHDone               ; no X overlap
   ; HIT! Remove enemy and add 50 points
   lda #0
-  sta ActiveObjectOn         ; remove enemy from screen
-  sta EnemyCount             ; clear enemy count
+  sta ActiveObjectOn
+  sta EnemyCount
   ; Add 50 points to score (BCD)
-  ; ScoreOn (ones): add 0
-  ; ScoreTe (tens): add 5
   clc
   lda ScoreTe
   adc #5
   cmp #$0a
   bcc .NoTensCarry
-  sbc #$0a                    ; subtract 10, keep lower nibble
-  inc ScoreHu                 ; carry to hundreds
+  sbc #$0a
+  inc ScoreHu
   lda ScoreHu
   cmp #$0a
   bcc .NoHundredsCarry
