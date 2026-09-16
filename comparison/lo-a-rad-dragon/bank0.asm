@@ -105,7 +105,7 @@ GameMode        byte            ; 0 = start screen (bank1), nonzero = game (bank
 FontP0          ds.b 5          ; P0 character font data (5 rows) — used by bank2
 FontP1          ds.b 5          ; P1 character font data (5 rows) — used by bank2
 ; FontPtrLo/Hi, FontPtrLo2/Hi2, frame_phase removed — HUD low priority
-ScoreDigit2     = $c6            ; address constant (space reused by PlayerGrp0 during kernel)
+ScoreDigit2     = $c6            ; address constant (score digit — NOT reused by PlayerGrp0 anymore)
 ScoreDigit3     = $cb            ; address constant (space reused by Grp1Value + Enam0Value)
 Grp1Value       = $cb            ; pre-computed GRP1 value ($f0 when object visible, 0 otherwise)
 Enam0Value      = $cc            ; pre-computed ENAM0 value ($02 when laser active, 0 otherwise)
@@ -127,7 +127,7 @@ Grp0Ptr         = CollisionX       ; $8c — GRP0 sprite table pointer (low at $
 ObjTop          = CollisionCellY   ; $8e — object visible top scanline
 ObjBot          = CollisionEndX    ; $8f — object visible bottom scanline
 LaserScanline   = CollisionEndY    ; $90 — laser match scanline (or $FF = inactive)
-PlayerGrp0      = ScoreDigit2      ; $C6 — 8 bytes: player sprite rows (reused from freed ScoreDigit2/3 space)
+PlayerGrp0      = $f8           ; 8 bytes: player sprite rows (safe — after ColupfBuf at $E7-$F2)
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -303,26 +303,11 @@ StartFrame:
 ; VBLANK pre-computation: set up kernel scratch values
 ; Grp0Ptr, ObjTop/ObjBot, LaserScanline are reused from collision-scratch
 ; ZP bytes ($8C-$90) which are only accessed in overscan.
+;
+; IMPORTANT: PlayerGrp0 ($C6) overlaps with PF1Buf ($BC-$C7) and PF2Buf
+; ($C8-$D3). The PF buffer copy MUST happen BEFORE the player sprite copy,
+; otherwise the PF data overwrites the player sprite data.
 ; ------------------------------------------------------------------------------
-  ; --- GRP0 sprite table pointer (eliminates PlayerDir branch in kernel) ---
-  ldy #>PlayerSpriteRight
-  ldx #<PlayerSpriteRight
-  lda PlayerDir
-  beq .UseRightSprite
-  ldy #>PlayerSpriteLeft
-  ldx #<PlayerSpriteLeft
-.UseRightSprite:
-  stx Grp0Ptr
-  sty Grp0Ptr+1
-  ; --- Copy player sprite data (8 bytes) from ROM to ZP ---
-  ; PlayerGrp0 ($96-$9D) reuses Level vars — safe during kernel.
-  ldy #0
-.CopyPlayerGrp:
-  lda (Grp0Ptr),y
-  sta PlayerGrp0,y
-  iny
-  cpy #PLAYER_HEIGHT
-  bne .CopyPlayerGrp
   ; --- Object scanline range (eliminates subtraction in GRP1 kernel check) ---
   lda ActiveObjectOn
   beq .NoObjPrep
@@ -351,9 +336,12 @@ StartFrame:
 ; Remaining VBLANK (~33 scanlines)
 ; Phase 1: Copy PF0/PF1/PF2 tables (12 bytes each) from ROM to ZP buffers.
 ; Phase 2: Fill COLUPF buffer with band stripe colors.
-; Phase 3: WSYNC wait to fill remaining VBLANK time.
+; Phase 3: Copy player sprite data LAST (after PF buffers, avoids overwrite).
+; Phase 4: WSYNC wait to fill remaining VBLANK time.
 ; NOTE: The stack page ($0100-$01FF) mirrors ZP ($80-$FF) on the 2600.
 ;       We CANNOT use it as a separate buffer — writing there corrupts ZP.
+; NOTE: PlayerGrp0 ($C6-$CD) overlaps PF1Buf end / PF2Buf start.
+;       Sprite copy MUST come after PF buffer writes.
 ; ------------------------------------------------------------------------------
   ; --- Phase 1: PF ZP buffers from ROM (via room pointer) ---
   lda RoomPFDataLo
@@ -397,12 +385,32 @@ StartFrame:
   dex
   bpl .FillInner
 
-  ; --- Phase 3: fill remaining VBLANK with WSYNC waits ---
-  ; Phases 1+2 take ~8 scanlines; positioning took ~3.  We need enough
+  ; --- Phase 3: Copy player sprite data AFTER PF buffers ---
+  ; PlayerGrp0 ($C6) sits inside PF1Buf/PF2Buf range, so this MUST come
+  ; after the PF copy to avoid being overwritten.
+  ldy #>PlayerSpriteRight
+  ldx #<PlayerSpriteRight
+  lda PlayerDir
+  beq .UseRightSprite
+  ldy #>PlayerSpriteLeft
+  ldx #<PlayerSpriteLeft
+.UseRightSprite:
+  stx Grp0Ptr
+  sty Grp0Ptr+1
+  ldy #0
+.CopyPlayerGrp:
+  lda (Grp0Ptr),y
+  sta PlayerGrp0,y
+  iny
+  cpy #PLAYER_HEIGHT
+  bne .CopyPlayerGrp
+
+  ; --- Phase 4: fill remaining VBLANK with WSYNC waits ---
+  ; Phases 1-3 take ~12 scanlines; positioning took ~3.  We need enough
   ; scanlines to fill VBLANK (37 total, minus VSYNC's 3 = 34 after VSYNC).
   ; .Row WSYNC adds 12 extra scanlines to the kernel (12 rows * 1 WSYNC),
-  ; so the frame is 270 with ldx #25.  Reduce to ldx #18 to hit 262.
-  ldx #18
+  ; so the frame is 270 with ldx #25.  Reduce to ldx #14 to hit 262.
+  ldx #14
 .VblankWait:
   sta WSYNC
   dex
