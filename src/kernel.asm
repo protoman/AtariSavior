@@ -59,9 +59,9 @@ HMM1    = $23
 HMBL    = $24
 VDELP0  = $25
 VDELP1  = $26
-HMOVE   = $2B
-HMCLR   = $2C
-CXCLR   = $2D
+HMOVE   = $2A
+HMCLR   = $2B
+CXCLR   = $2C
 
 ; --- TIA read addresses ---
 SWCHA   = $0280
@@ -141,10 +141,14 @@ GameStart:
     bne .ClearZP
 
     ; --- Initialize game state ---
-    lda #80
-    sta RoomX                   ; player starts near center
+    lda #100
+    sta RoomX                   ; player starts in open area
     lda #64
     sta RoomY                   ; player starts near center
+
+    ; --- Set player color ---
+    lda #COLOR_PLAYER
+    sta COLUP0
 
     ; --- Set playfield to reflected mode ---
     lda #$01
@@ -177,11 +181,14 @@ StartFrame:
     lda #43
     sta TIM64T
 
-    ; --- Position player sprite (GRP0) ---
-    ; SetObjectXPos: coarse position via RESP0, fine via HMP0
-    ; Simplified: just set RESP0 at a fixed position for now
-    ldy RoomY
-    jsr SetObjectYPos           ; vertical positioning via kernel timing
+    ; --- Position player sprite horizontally ---
+    lda RoomX
+    ldx #0                      ; X=0 = player0
+    jsr SetObjectXPos
+
+    ; --- Apply horizontal motion during VBLANK ---
+    sta WSYNC                   ; sync to next scanline (still in VBLANK)
+    sta HMOVE                   ; latch fine motion — takes effect when VBLANK ends
 
     ; --- Wait for VBLANK timer ---
 .WaitVBLANK:
@@ -292,7 +299,7 @@ StartFrame:
 
     ; --- Read joystick ---
     ; SWCHA bits: D4=up, D5=down, D6=left, D7=right (0=pressed)
-    ; After 4x LSR: D0=left, D1=right, D2=up, D3=down
+    ; After 4x LSR: D0=up, D1=down, D2=left, D3=right
     lda SWCHA
     lsr                         ; shift joystick 0 bits to D0-D3
     lsr
@@ -300,8 +307,27 @@ StartFrame:
     lsr
     sta Temp                    ; save shifted joystick bits
 
-    ; --- Move left (D0) ---
-    and #$01                    ; test D0 (left)
+    ; --- Move up (D0) ---
+    and #$01                    ; test D0 (up)
+    bne .NotUp
+    lda RoomY
+    beq .NotUp
+    dec RoomY
+.NotUp:
+
+    ; --- Move down (D1) ---
+    lda Temp
+    and #$02                    ; test D1 (down)
+    bne .NotDown
+    lda RoomY
+    cmp #PLAYER_MAX_Y
+    beq .NotDown
+    inc RoomY
+.NotDown:
+
+    ; --- Move left (D2) ---
+    lda Temp
+    and #$04                    ; test D2 (left)
     bne .NotLeft
     lda RoomX
     cmp #PLAYER_MIN_X
@@ -309,34 +335,15 @@ StartFrame:
     dec RoomX
 .NotLeft:
 
-    ; --- Move right (D1) ---
+    ; --- Move right (D3) ---
     lda Temp
-    and #$02                    ; test D1 (right)
+    and #$08                    ; test D3 (right)
     bne .NotRight
     lda RoomX
     cmp #PLAYER_MAX_X
     beq .NotRight
     inc RoomX
 .NotRight:
-
-    ; --- Move up (D2) — jetpack ---
-    lda Temp
-    and #$04                    ; test D2 (up)
-    bne .NotUp
-    lda RoomY
-    beq .NotUp
-    dec RoomY
-.NotUp:
-
-    ; --- Move down (D3) — gravity ---
-    lda Temp
-    and #$08                    ; test D3 (down)
-    bne .NotDown
-    lda RoomY
-    cmp #PLAYER_MAX_Y
-    beq .NotDown
-    inc RoomY
-.NotDown:
 
     ; --- Wait for overscan timer ---
 .WaitOverscan:
@@ -346,14 +353,25 @@ StartFrame:
     jmp StartFrame
 
 ; ==============================================================================
-; SetObjectYPos — vertical positioning for player sprite
+; SetObjectXPos — horizontal positioning via RESP0/HMP0
 ; ==============================================================================
-; Simplified vertical positioning: waits until the beam reaches RoomY,
-; then the kernel's .Line loop picks up rendering from there.
-; For now, this is a no-op — vertical position is handled by the kernel's
-; scanline counter matching RoomY.
+; Andrew Davie session-24 routine:
+; Rolls the divide-by-15 and the delay loop into one unit.
+; The page-aligned fineAdjustTable ($FF00) guarantees every RESP0 write lands
+; on the same clock grid, mapping the sprite 1:1 to pixel (0..159).
+; Input: A = horizontal position (0-159 color clocks)
+;        X = object selector (0 = player0, 1 = player1)
 ; ==============================================================================
-SetObjectYPos:
+SetObjectXPos subroutine
+    sta WSYNC                   ; sync to start of scanline
+    sec                         ; ensure carry flag
+.Div15Loop:
+    sbc #15                     ; coarse delay (15 clocks / 5 cycles per loop)
+    bcs .Div15Loop              ; loop until carry clear (remainder in -15..-1)
+    tay                         ; Y = remainder in -15..-1
+    lda fineAdjustTable,Y       ; 5 cycles (page-cross guaranteed) -> fine offset
+    sta HMP0,X                  ; store fine offset
+    sta RESP0,X                 ; store coarse offset
     rts
 
 ; ==============================================================================
@@ -414,6 +432,32 @@ CavePF2:
     .byte $00, $00, $00             ; Row 1-3: open
     .byte $00, $00, $00, $00       ; Row 4-7: open
     .byte $3F, $3F, $3F, $3F       ; Row 8-11: wall (2px gap at center)
+
+; ==============================================================================
+; Fine-adjust table for SetObjectXPos — MUST be page-aligned ($xx00)
+; ==============================================================================
+; The indexed load `lda fineAdjustTable,Y` must always cross a page boundary
+; to guarantee 5-cycle timing. Placed at $FF00 (top of last page).
+; Y = remainder from div15 loop (-15..-1), maps to HMP0 value.
+; ==============================================================================
+    org $FF00
+fineAdjustBegin:
+    .byte %01110000               ; left 7
+    .byte %01100000               ; left 6
+    .byte %01010000               ; left 5
+    .byte %01000000               ; left 4
+    .byte %00110000               ; left 3
+    .byte %00100000               ; left 2
+    .byte %00010000               ; left 1
+    .byte %00000000               ; no movement
+    .byte %11110000               ; right 1
+    .byte %11100000               ; right 2
+    .byte %11010000               ; right 3
+    .byte %11000000               ; right 4
+    .byte %10110000               ; right 5
+    .byte %10100000               ; right 6
+    .byte %10010000               ; right 7
+fineAdjustTable EQU fineAdjustBegin - %11110001   ; = fineAdjustBegin - 241
 
 ; ==============================================================================
 ; Interrupt vectors
