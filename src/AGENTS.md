@@ -8,6 +8,8 @@
 
 **When something works in HERO, do NOT tell the user that following that idea will not work.** If HERO uses a technique for a specific feature (e.g., 3 lives, 5 bombs), and it works, then implement it the same way. Do not suggest alternatives or claim the approach has limitations. The fact that HERO does it proves it works.
 
+**Before claiming how HERO implements something, ALWAYS look at the actual code first.** Do not suppose or assume based on partial understanding. Check hero_bank1.asm, the comparison code, and data tables (especially lookup tables like LFF3E for NUSIZ values, LFF6D for positioning, LFF96 for sprite data). If the code contradicts your assumption, the code wins — update your understanding and tell the user what you found, not what you thought.
+
 **What we already use from HERO (keep these, do NOT replace):**
 - Reflected playfield (CTRLPF D0=1) — symmetric cave design
 - PF registers written ONCE per tile row (TIA persists across scanlines)
