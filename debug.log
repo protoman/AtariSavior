@@ -1,0 +1,19 @@
+Stella 7.0
+> autoExec():
+script file '~/.config/stella/autoexec.script' not found
+script file '~/savior.script' not found
+config file '~/.config/stella/cfg/savior.cfg' not found
+list file 'savior.lst' not found
+symbol file 'savior.sym' not found
+> watch _scan
+added watch "_scan"
+BAD WATCH 1: _scan
+> run
+BAD WATCH 1: _scan
+> _scan
+No such command (try "help")
+BAD WATCH 1: _scan
+> print _scan
+CXM0P(R) / VSYNC(W): $00 %00000000 #0
+BAD WATCH 1: _scan
+> saveSes debug.log
