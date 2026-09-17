@@ -291,31 +291,43 @@ StartFrame:
     sta COLUBK
 
     ; ========================================================================
-    ; Timer bar: 8 scanlines, ~70% width yellow PF bar (margins both sides)
-    ; Left 20 pixels: ####......########## (6px margin + 14px bar)
-    ; Mirrored: total 28px bar in 40px screen = 70%
+    ; Timer bar: 8 scanlines, ~70% width yellow PF bar
     ; ========================================================================
     lda #COLOR_TIMER
     sta COLUPF
     ldx #8
 .HudTimer:
     lda #$00
-    sta PF0                      ; pixels 0-3 OFF (margin)
+    sta PF0
     lda #$3F
-    sta PF1                      ; pixels 4-5 OFF (margin), 6-11 ON (bar)
+    sta PF1
     lda #$FF
-    sta PF2                      ; pixels 12-19 ON (bar)
+    sta PF2
     sta WSYNC
     dex
     bne .HudTimer
 
     ; ========================================================================
+    ; Spacer: 2 scanlines
+    ; ========================================================================
+    lda #COLOR_HUD_BG
+    sta COLUBK
+    lda #$00
+    sta PF0
+    sta PF1
+    sta PF2
+    ldx #2
+.HudSpacer1:
+    sta WSYNC
+    dex
+    bne .HudSpacer1
+
+    ; ========================================================================
     ; Lives: 8 scanlines, 3 green squares (NUSIZ0 = 3 copies close)
-    ; RESP0/HMP0 fired at start, then 8 scanlines of GRP0 rendering
     ; ========================================================================
     lda #COLOR_LIVES
     sta COLUP0
-    lda #$00
+    lda #COLOR_HUD_BG
     sta COLUBK
     lda #$00
     sta PF0
@@ -341,12 +353,24 @@ StartFrame:
     sta GRP0
 
     ; ========================================================================
-    ; Bombs: 8 scanlines, 3 red squares (NUSIZ1 = 3 copies close)
+    ; Spacer: 2 scanlines
+    ; ========================================================================
+    ldx #2
+.HudSpacer2:
+    sta WSYNC
+    dex
+    bne .HudSpacer2
+
+    ; ========================================================================
+    ; Bombs: 8 scanlines, 5 red squares
+    ; Pass 1 (4 lines): NUSIZ1 = 3 copies close → 3 squares
+    ; Pass 2 (4 lines): NUSIZ1 = 2 copies close → 2 more squares
     ; ========================================================================
     lda #COLOR_BOMBS
     sta COLUP1
-    lda #$00
+    lda #COLOR_HUD_BG
     sta COLUBK
+    ; --- Pass 1: 3 copies close ---
     lda #$03                      ; NUSIZ1 = 3 copies close
     sta NUSIZ1
     lda #$10                      ; HMP1 = right 1
@@ -354,45 +378,72 @@ StartFrame:
     sta WSYNC
     sta RESP1
     sta HMOVE
-    ldx #8
-.BombsSprite:
-    lda #$F0                      ; 4-pixel-wide sprite
+    ldx #4
+.BombsPass1:
+    lda #$F0
     sta GRP1
     sta WSYNC
     dex
-    bne .BombsSprite
+    bne .BombsPass1
+    ; --- Pass 2: 2 copies close for remaining 2 squares ---
+    lda #$01                      ; NUSIZ1 = 2 copies close
+    sta NUSIZ1
+    lda #$C0                      ; HMP1 = right 4
+    sta HMP1
+    sta WSYNC
+    sta RESP1
+    sta HMOVE
+    ldx #4
+.BombsPass2:
+    lda #$F0
+    sta GRP1
+    sta WSYNC
+    dex
+    bne .BombsPass2
     lda #0
     sta GRP1
 
     ; ========================================================================
-    ; Score: 5 scanlines, "0000" via PF registers (5-line digit font)
-    ; Font: each digit is 4px wide, 1px gaps between digits
-    ;   Line 0: ####.####.####.####.  (top)
-    ;   Line 1: #..#.#..#.#..#.#..#.  (sides)
-    ;   Line 2: #..#.#..#.#..#.#..#.  (sides)
-    ;   Line 3: #..#.#..#.#..#.#..#.  (sides)
-    ;   Line 4: ####.####.####.####.  (bottom)
+    ; Spacer: 2 scanlines
+    ; ========================================================================
+    ldx #2
+.HudSpacer3:
+    sta WSYNC
+    dex
+    bne .HudSpacer3
+
+    ; ========================================================================
+    ; Score: 8 scanlines, "0000" via PF registers (5-line font, centered)
     ; ========================================================================
     lda #COLOR_SCORE
     sta COLUPF
-    lda #$00
+    lda #COLOR_HUD_BG
     sta COLUBK
-    ; --- Point to score font data ---
-    ldy #0                        ; font line counter
+    ldy #0
+    ldx #8
 .HudScore:
+    cpy #5
+    bcs .HudScoreBlank
     lda ScoreFontPF0,Y
     sta PF0
     lda ScoreFontPF1,Y
     sta PF1
     lda ScoreFontPF2,Y
     sta PF2
+    jmp .HudScoreDone
+.HudScoreBlank:
+    lda #$00
+    sta PF0
+    sta PF1
+    sta PF2
+.HudScoreDone:
     iny
     sta WSYNC
-    cpy #5                        ; 5 lines of font
+    dex
     bne .HudScore
 
     ; ========================================================================
-    ; Spacer: remaining scanlines (grey background)
+    ; Spacer: remaining scanlines
     ; ========================================================================
     lda #COLOR_HUD_BG
     sta COLUBK
@@ -400,11 +451,11 @@ StartFrame:
     sta PF0
     sta PF1
     sta PF2
-    ldx #19
-.HudSpacer:
+    ldx #10
+.HudSpacer4:
     sta WSYNC
     dex
-    bne .HudSpacer
+    bne .HudSpacer4
 
 ; ==============================================================================
 ; Overscan (30 scanlines) — input handling + game logic
