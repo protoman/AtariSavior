@@ -1,8 +1,12 @@
     processor 6502
 ; ==============================================================================
-; bank1 — HUD rendering (F6 bankswitch)
+; bank1 — HUD rendering (F6 bankswitch, $F000-$FFFF)
 ; ==============================================================================
-; Simple HUD: PF timer bar + sprite copies for lives/bombs + 13+2 score text
+; Follows HERO/comparison pattern exactly:
+; - GRP0/GRP1 for indicator sprites (lives, bombs)
+; - PF registers for score digits (pre-computed)
+; - SetObjectXPos for precise positioning
+; - Returns via fold-pad at $FC70
 
 VBLANK  = $01
 WSYNC   = $02
@@ -24,87 +28,54 @@ ENAM1   = $1E
 ENABL   = $1F
 HMP0    = $20
 HMP1    = $21
+HMOVE   = $2A
+REFP0   = $0B
+REFP1   = $0C
+CTRLPF  = $0A
 VDELP0  = $25
 VDELP1  = $26
-HMOVE   = $2A
-
-; ZP for 13+2 score rendering
-charp   = $80
-chara   = $85
-charb   = $8A
-charc   = $8F
-chard   = $94
-chare   = $99
-charf   = $9E
-charg   = $A3
-
-; 13+2 TEXTDISP macro
-   MAC TEXTDISP
-    lda #11
-    sta NUSIZ1
-    sta VDELP1
-    lda charg+{1}
-    sta ENAM0
-    lsr
-    sta ENAM1
-    lsr
-    sta ENABL
-    lda charf+{1}
-    sta GRP0
-    lda chare+{1}
-    sta GRP1
-    nop
-    lda chard+{1}
-    sta GRP0
-    lda charc+{1}
-    ldy charb+{1}
-    ldx chara+{1}
-    sta GRP1
-    sty GRP0
-    stx GRP1
-    sta VDELP1
-    lda #4
-    sta NUSIZ1
-    lda charp+{1}
-    sta GRP1
-   ENDM
 
     org $F000
 
-    .ds $F540 - *, 0
+    ; Bank0 power-up stub: lda #0 / sta $1FF6 → lands here, jumps to GameStart
+    jmp $F008
 
+    org $F540
 MenuMain:
-    ; --- Grey background for HUD band ---
-    lda #$06
-    sta COLUBK
+    ; ========================================================================
+    ; HUD entry point — called from bank0 via fold-pad at $FC68
+    ; Follows comparison/lo-a-rad-dragon/bank2.asm pattern exactly
+    ; ========================================================================
 
-    ; --- Clear playfield ---
+    ; --- Setup (same as comparison bank2) ---
     lda #0
     sta PF0
     sta PF1
     sta PF2
+    lda #$06            ; grey background
+    sta COLUBK
+    lda #$0e            ; white sprites
+    sta COLUP0
+    sta COLUP1
+    lda #0
+    sta NUSIZ0
+    sta NUSIZ1
+    sta VDELP0
+    sta VDELP1
+    sta REFP0
+    sta REFP1
 
-    ; --- Clear all sprites ---
-    sta GRP0
-    sta GRP1
-
-    ; ========================================
-    ; LINE 1: Timer bar (PF-based, 6 scanlines)
-    ; Centered yellow bar (~70% width)
-    ; ========================================
-    lda #$1E        ; yellow
+    ; ====================================================================
+    ; Line 1: Timer bar (PF-based, yellow, ~70% centered)
+    ; ====================================================================
+    lda #$1E            ; yellow
     sta COLUPF
 
-    ; In reflected mode: PF0 bits4-7=pixels0-3, PF1=pixels4-11, PF2=pixels12-19
-    ; Mirror gives pixels20-27=PF2, 28-35=PF1, 36-39=PF0
-    ; PF0=$00: outer 4px each side OFF
-    ; PF1=$FF: pixels4-11 ON, mirrored 28-35 ON
-    ; PF2=$FF: pixels12-19 ON, mirrored 20-27 ON
-    ; Result: solid bar from pixel4 to pixel35 (~70% centered)
-    lda #$00
+    lda #$00            ; PF0: pixels 0-3 OFF
     sta PF0
-    lda #$FF
+    lda #$FF            ; PF1: pixels 4-11 ON
     sta PF1
+    lda #$FF            ; PF2: pixels 12-19 ON
     sta PF2
 
     ldx #6
@@ -113,139 +84,198 @@ MenuMain:
     dex
     bne .TimerLoop
 
-    ; Clear PF after bar
     lda #0
     sta PF0
     sta PF1
     sta PF2
 
-    ; 2 scanline gap
-    sta WSYNC
+    ; --- 1 scanline gap ---
     sta WSYNC
 
-    ; ========================================
-    ; LINE 2: Lives — 3 green blocks (5 scanlines)
-    ; ========================================
-    lda #$C6        ; green
+    ; ====================================================================
+    ; Line 2: Lives — 3 green squares via GRP0 (3 copies)
+    ; NUSIZ0=$03 (3 copies close), green, solid block pattern
+    ; ====================================================================
+    lda #$C6            ; green
     sta COLUP0
-    lda #$FF
-    sta GRP0         ; solid block pattern
 
-    ; NUSIZ0 = 3 copies close
-    lda #$03
-    sta NUSIZ0
-
-    ; Position P0 using WSYNC + delay for coarse position
-    ; Want 3 copies spread: ~32, ~48, ~64 color clocks from left
-    ; RESP0 during HBLANK at cycle ~8 = color clock ~24
-    sta WSYNC
-    lda #$00        ; fine motion = 0
-    sta HMP0
-    ldx #8
-.Resp0Delay:
-    dex
-    bne .Resp0Delay
-    sta RESP0        ; coarse position ~24 color clocks
+    ; Position P0: use SetObjectXPos from bank0
+    ; For now, inline RESP positioning (matching comparison pattern)
+    lda #10
+    ldx #0
+    jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
 
-    ; 5 scanlines of green blocks
-    ldx #5
-.LivesLoop:
-    sta WSYNC
-    dex
-    bne .LivesLoop
+    ; P0 = 3 copies close, show solid block
+    lda #$03
+    sta NUSIZ0
 
-    ; Clear
+    ; Render 5 scanlines of solid green blocks
+    ldy #1
+    lda #$FF            ; solid block pattern
+    sta WSYNC
+    sta GRP0
+.LivesRender:
+    sta WSYNC
+    sta GRP0
+    iny
+    cpy #5
+    bne .LivesRender
+
+    ; Clear sprites
+    sta WSYNC
     lda #0
     sta GRP0
     sta NUSIZ0
 
-    ; 2 scanline gap
-    sta WSYNC
+    ; --- 1 scanline gap ---
     sta WSYNC
 
-    ; ========================================
-    ; LINE 3: Bombs — 3 red blocks (5 scanlines)
-    ; ========================================
-    lda #$46        ; red
+    ; ====================================================================
+    ; Line 3: Bombs — 5 red squares via P0(2 copies) + P1(3 copies)
+    ; ====================================================================
+    lda #$46            ; red
+    sta COLUP0
     sta COLUP1
-    lda #$FF
-    sta GRP1         ; solid block pattern
 
-    ; NUSIZ1 = 3 copies close
-    lda #$03
-    sta NUSIZ1
+    ; Position P0 for 2 copies
+    lda #10
+    ldx #0
+    jsr SetObjectXPos_b1
 
-    ; Position P1 to the right of P0 lives
-    sta WSYNC
-    lda #$00
-    sta HMP1
-    ldx #8
-.Resp1Delay:
-    dex
-    bne .Resp1Delay
-    sta RESP1
+    ; Position P1 for 3 copies, offset right of P0 copies
+    ; P0 copies at 10, 26 — P1 needs to start at 42+ to avoid overlap
+    lda #42
+    ldx #1
+    jsr SetObjectXPos_b1
+
     sta WSYNC
     sta HMOVE
 
-    ; 5 scanlines of red blocks
-    ldx #5
-.BombLoop:
-    sta WSYNC
-    dex
-    bne .BombLoop
-
-    ; Clear
-    lda #0
-    sta GRP1
-    sta NUSIZ1
-
-    ; 2 scanline gap
-    sta WSYNC
-    sta WSYNC
-
-    ; ========================================
-    ; LINE 4: Skip score for now — just pad
-    ; ========================================
-    ldx #10
-.ScorePad:
-    sta WSYNC
-    dex
-    bne .ScorePad
-
-    ; --- Clear sprites ---
-    lda #0
-    sta GRP0
-    sta GRP1
-    sta GRP0
-    sta ENAM0
-    sta ENAM1
-    sta ENABL
-
-    ; --- Restore cave kernel settings ---
-    lda #$10
+    ; P0 = 2 copies close, P1 = 3 copies close
+    lda #$01            ; NUSIZ0 = 2 copies close
     sta NUSIZ0
-    lda #0
+    lda #$03            ; NUSIZ1 = 3 copies close
     sta NUSIZ1
-    sta VDELP0
-    sta VDELP1
 
-    ; --- Pad remaining HUD scanlines ---
-    ; Timer(6)+gap(2)+Lives(5)+gap(2)+Bombs(5)+gap(2)+Skip(10) = 32
-    ; 48 - 32 = 16 remaining
-    ldx #16
-.PadLoop:
+    ; Render 5 scanlines
+    ldy #1
+    lda #$FF
+    sta WSYNC
+    sta GRP0
+    sta GRP1
+.BombRender:
+    sta WSYNC
+    sta GRP0
+    sta GRP1
+    iny
+    cpy #5
+    bne .BombRender
+
+    ; Clear sprites
+    sta WSYNC
+    lda #0
+    sta GRP0
+    sta GRP1
+    sta NUSIZ0
+    sta NUSIZ1
+
+    ; --- 1 scanline gap ---
+    sta WSYNC
+
+    ; ====================================================================
+    ; Line 4: Score "0000" — PF-based from pre-computed buffers
+    ; (simplified: just render PF digits directly)
+    ; ====================================================================
+    lda #$0E            ; white
+    sta COLUPF
+
+    ldy #0
+.ScoreRender:
+    ; PF0 = ScoreTh digit pattern << 4
+    ldx ScoreTh
+    lda PFDigitFontPF0,X
+    sta PF0
+    ; PF1 = ScoreHu digit pattern << 5
+    ldx ScoreHu
+    lda PFDigitFontPF1,X
+    sta PF1
+    ; PF2 = ScoreTe | (ScoreOn << 4)
+    ldx ScoreTe
+    lda PFDigitFontPF2,X
+    ldx ScoreOn
+    ora PFDigitFontPF2Shifted,X
+    sta PF2
+    sta WSYNC
+    iny
+    cpy #5
+    bne .ScoreRender
+
+    ; Clear PF
+    sta WSYNC
+    lda #0
+    sta PF0
+    sta PF1
+    sta PF2
+
+    ; ====================================================================
+    ; Pad remaining scanlines (48 total: 1gap+6bar+1gap+5lives+1gap+5bombs+1gap+5score+23pad)
+    ; ====================================================================
+    ldx #23
+.HudPad:
     sta WSYNC
     dex
-    bne .PadLoop
+    bne .HudPad
 
-    ; --- Return to bank0 via fold-pad at $FC70 ---
+    ; --- Return to bank0 via fold-pad ---
     jmp $FC70
 
-; ==============================================================================
+; ========================================================================
+; SetObjectXPos — Andrew Davie algorithm (page-aligned table)
+; X=0 positions P0, X=1 positions P1
+; A = pixel position (0-159)
+; ========================================================================
+SetObjectXPos_b1:
+    sta WSYNC
+    sec
+.Div15Loop:
+    sbc #15
+    bcs .Div15Loop
+    tay
+    lda fineAdjustTable_b1,Y
+    sta HMP0,X
+    sta RESP0,X
+    rts
+
+; ========================================================================
+; Score digit font — PF-based (from comparison bank2)
+; PFDigitFontPF0: digit pattern << 4 (for PF0 bits 4-7)
+; PFDigitFontPF1: digit pattern << 5 (for PF1 bits)
+; PFDigitFontPF2: digit pattern (for PF2 bits)
+; PFDigitFontPF2Shifted: digit pattern << 4 (for second PF2 digit)
+; ========================================================================
+PFDigitFontPF0:
+  .byte $70, $50, $70, $70, $50, $70, $70, $70, $70, $70  ; 0-9 << 4
+
+PFDigitFontPF1:
+  .byte $E0, $C0, $A0, $C0, $A0, $E0, $E0, $C0, $E0, $E0  ; 0-9 << 5
+
+PFDigitFontPF2:
+  .byte $07, $02, $07, $07, $05, $07, $07, $03, $07, $07  ; 0-9
+
+PFDigitFontPF2Shifted:
+  .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; 0-9 << 4
+
+; Score ZP variables
+ScoreTh = $C2
+ScoreHu = $C3
+ScoreTe = $C4
+ScoreOn = $C5
+
+; ========================================================================
 ; Fold-pad stubs (byte-identical to bank0)
-; ==============================================================================
+; ========================================================================
     .ds $FC68 - *, 0
     lda #1
     sta $1FF7
@@ -256,17 +286,31 @@ MenuMain:
     sta $1FF6
     jmp $F0A4
 
-; ==============================================================================
-; Score slot data — "0000" pre-computed
-; ==============================================================================
-HudSlots_Score:
-    .byte $00, $00, $00, $00, $00, $40, $A0, $A0
-    .byte $A0, $40, $44, $AA, $AA, $AA, $44, $46
-    .byte $A0, $A0, $A0, $40, $04, $0A, $0A, $0A
-    .byte $04, $CE, $A8, $CC, $A8, $AE, $64, $8A
-    .byte $8A, $8A, $64, $06, $08, $04, $02, $0C
+; ========================================================================
+; Fine-adjust table (page-aligned at $FF00)
+; ========================================================================
+    org $FF00
+fineAdjustBegin_b1:
+  .byte %01110000
+  .byte %01100000
+  .byte %01010000
+  .byte %01000000
+  .byte %00110000
+  .byte %00100000
+  .byte %00010000
+  .byte %00000000
+  .byte %11110000
+  .byte %11100000
+  .byte %11010000
+  .byte %11000000
+  .byte %10110000
+  .byte %10100000
+  .byte %10010000
+fineAdjustTable_b1 EQU fineAdjustBegin_b1 - %11110001
 
-; ==============================================================================
+; ========================================================================
+; Interrupt vectors
+; ========================================================================
     .ds $FFFA - *, 0
     .word $F000
     .word $F000
