@@ -220,10 +220,20 @@ MenuMain:
 
     ; ====================================================================
     ; Pad remaining scanlines to reach exactly 48 total
-    ; Current: 7top+6bar+1gap+9lives+1gap+15bombs+1gap+5score = 45
-    ; Need: 48 - 45 = 3 pad scanlines
+    ; Budget (LivesCount=3):
+    ;   Timer:    6 scanlines
+    ;   Gap:      1
+    ;   Lives:    3 icons × 3 = 9 (SetObjectXPos WSYNC + 2 WSYNCs)
+    ;   Clear:    1
+    ;   Gap:      1
+    ;   Bombs:    5 icons × 3 = 15
+    ;   Clear:    1
+    ;   Gap:      1
+    ;   Score:    5 render + 1 clear = 6
+    ;   TOTAL:    6+1+9+1+1+15+1+1+6 = 41
+    ;   Pad:      48 - 41 = 7
     ; ====================================================================
-    ldx #3
+    ldx #7
 .HudPad:
     sta WSYNC
     dex
@@ -263,13 +273,9 @@ RenderLifeIcon:
     jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
-    ; Render 3 scanlines
-    ldy #3
-.RenderLoop:
-    sta WSYNC
+    ; Render 1 scanline
     sta GRP0
-    dey
-    bne .RenderLoop
+    sta WSYNC
     rts
 
 ; ========================================================================
