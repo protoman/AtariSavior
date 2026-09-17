@@ -89,12 +89,17 @@ MenuMain:
     sta PF1
     sta PF2
 
+    ; --- Initialize HUD variables ---
+    lda #3              ; default 3 lives
+    sta LivesCount
+
     ; --- 1 scanline gap ---
     sta WSYNC
 
     ; ====================================================================
-    ; Line 2: Lives — 3 green squares, each on its own scanline
+    ; Line 2: Lives — N green squares, each on its own scanline
     ; Individual RESP positioning for 4px gaps (HERO approach)
+    ; LivesCount = number of lives to show (1-6)
     ; ====================================================================
     lda #$C6            ; green
     sta COLUP0
@@ -102,20 +107,23 @@ MenuMain:
     sta NUSIZ0
     lda #$F0            ; 4-pixel-wide block pattern
 
-    ; Life 1 at pixel 10
-    ldx #10
-    stx LifeX
+    ldx LivesCount
+    beq .LivesDone
+    ldy #0              ; icon index
+.LivesLoop:
+    ; Calculate X position: 10 + (index * 8)
+    tya
+    asl
+    asl
+    asl                 ; index * 8
+    clc
+    adc #10             ; + base offset
+    sta LifeX
     jsr RenderLifeIcon
-
-    ; Life 2 at pixel 18 (10 + 4px block + 4px gap)
-    ldx #18
-    stx LifeX
-    jsr RenderLifeIcon
-
-    ; Life 3 at pixel 26 (18 + 8)
-    ldx #26
-    stx LifeX
-    jsr RenderLifeIcon
+    iny
+    cpy LivesCount
+    bne .LivesLoop
+.LivesDone:
 
     ; Clear sprites
     sta WSYNC
@@ -212,8 +220,8 @@ MenuMain:
 
     ; ====================================================================
     ; Pad remaining scanlines (48 total: 7top+6bar+1gap+9lives+1gap+15bombs+1gap+5score+6pad)
-    ; Lives: 3 icons × 3 scanlines = 9
-    ; Bombs: 5 icons × 3 scanlines = 15
+    ; Lives: up to 6 icons × 3 scanlines = 18 max
+    ; Bombs: up to 9 icons × 3 scanlines = 27 max
     ; ====================================================================
     ldx #6
 .HudPad:
@@ -247,6 +255,7 @@ SetObjectXPos_b1:
 ; A = pattern ($F0 for blocks)
 ; ========================================================================
 LifeX = $A8
+LivesCount = $A9       ; number of lives to show (1-6, default 3)
 
 RenderLifeIcon:
     ldx LifeX
