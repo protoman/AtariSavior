@@ -111,9 +111,9 @@ MenuMain:
     lda #$03
     sta NUSIZ0
 
-    ; Render 5 scanlines of solid green blocks
+    ; Render 5 scanlines of solid green blocks (4px wide)
     ldy #1
-    lda #$FF            ; solid block pattern
+    lda #$F0            ; 4-pixel-wide block pattern
     sta WSYNC
     sta GRP0
 .LivesRender:
@@ -159,9 +159,9 @@ MenuMain:
     lda #$03            ; NUSIZ1 = 3 copies close
     sta NUSIZ1
 
-    ; Render 5 scanlines
+    ; Render 5 scanlines (4px wide)
     ldy #1
-    lda #$FF
+    lda #$F0            ; 4-pixel-wide block pattern
     sta WSYNC
     sta GRP0
     sta GRP1
