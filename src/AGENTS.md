@@ -1,5 +1,27 @@
 # Savior Kernel — Architecture
 
+## Key Principle: Always Follow HERO First
+
+**When implementing any feature, ALWAYS look at how HERO does it first and follow that approach.** HERO is the reference architecture. If there are multiple ways to implement something, HERO's way is the default choice. Only deviate from HERO's approach if there is a clear technical reason documented in this file. This applies to: rendering, HUD elements, sprite techniques, positioning, collision, sound, and every other aspect of the game.
+
+**What we already use from HERO (keep these, do NOT replace):**
+- Reflected playfield (CTRLPF D0=1) — symmetric cave design
+- PF registers written ONCE per tile row (TIA persists across scanlines)
+- Fixed-time kernel with unconditional inner loop (no per-scanline branches)
+- Andrew Davie's session-24 horizontal positioning (SetObjectXPos with div15 loop + page-aligned fineAdjustTable)
+- HMOVE applied during HBLANK after RESP0/HMP0 are set
+- Joystick read from SWCHA with 4× LSR to shift bits to D0-D3
+- Frame timing: 3 VSYNC + 37 VBLANK + 192 kernel + 30 overscan = 262 scanlines
+- F6 bankswitching (16K, 4 banks × 4K)
+
+**What we have NOT yet implemented from HERO (implement these next):**
+- 13+2 sprite technique for HUD text/indicators (P0×3 + P1×3 + ball = 13 character columns)
+- Per-scanline PF lookup tables for cave patterns (HERO uses 8-entry tables at $DC6A/$DC6C/$DC77)
+- Second kernel for HUD rendering (HERO calls JSR $DE00 after cave kernel)
+- VDELP0/VDELP1 vertical delay pipeline for multi-sprite text
+- Font data loaded into zero-page RAM during VBLANK for fast (zp),Y access
+- Ball (ENABL) for HUD indicators
+
 ## Overview
 
 A from-scratch Atari 2600 game kernel modeled after Activision's HERO (1984). Built
@@ -151,9 +173,11 @@ stella -debug savior.bin # debugger
 - [ ] Multiple enemy types
 
 ### Phase 6: HUD Display
+**ALWAYS follow HERO's approach for HUD rendering.** HERO uses the 13+2 sprite technique (P0×3 copies + P1×3 copies + ball) for ALL HUD elements — text, lives, bombs, timer. Simple NUSIZ copies are insufficient for multi-element HUDs (e.g., 5 bombs, 9 lives). The 13+2 technique is the correct solution.
 - [ ] Score display (3 digits)
-- [ ] Lives display
-- [ ] Timer display
+- [ ] Lives display (up to 9)
+- [ ] Bombs display (5)
+- [ ] Timer bar
 - [ ] Level indicator
 - [ ] HUD rendering in the 48-line band
 
