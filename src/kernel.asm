@@ -308,7 +308,7 @@ StartFrame:
     bne .HudTimer
 
     ; ========================================================================
-    ; Spacer: 2 scanlines
+    ; Spacer: 4 scanlines (gap after timer bar)
     ; ========================================================================
     lda #COLOR_HUD_BG
     sta COLUBK
@@ -316,7 +316,7 @@ StartFrame:
     sta PF0
     sta PF1
     sta PF2
-    ldx #2
+    ldx #4
 .HudSpacer1:
     sta WSYNC
     dex
@@ -362,15 +362,14 @@ StartFrame:
     bne .HudSpacer2
 
     ; ========================================================================
-    ; Bombs: 8 scanlines, 5 red squares
-    ; Pass 1 (4 lines): NUSIZ1 = 3 copies close → 3 squares
-    ; Pass 2 (4 lines): NUSIZ1 = 2 copies close → 2 more squares
+    ; Bombs: 8 scanlines, 3 red squares (NUSIZ1 = 3 copies close)
+    ; NOTE: 5 bombs aligned requires the 13+2 sprite technique (HERO approach).
+    ;       Simple NUSIZ1 can only do 3 copies. Implementing 13+2 next.
     ; ========================================================================
     lda #COLOR_BOMBS
     sta COLUP1
     lda #COLOR_HUD_BG
     sta COLUBK
-    ; --- Pass 1: 3 copies close ---
     lda #$03                      ; NUSIZ1 = 3 copies close
     sta NUSIZ1
     lda #$10                      ; HMP1 = right 1
@@ -378,28 +377,13 @@ StartFrame:
     sta WSYNC
     sta RESP1
     sta HMOVE
-    ldx #4
-.BombsPass1:
-    lda #$F0
+    ldx #8
+.BombsSprite:
+    lda #$F0                      ; 4-pixel-wide sprite
     sta GRP1
     sta WSYNC
     dex
-    bne .BombsPass1
-    ; --- Pass 2: 2 copies close for remaining 2 squares ---
-    lda #$01                      ; NUSIZ1 = 2 copies close
-    sta NUSIZ1
-    lda #$C0                      ; HMP1 = right 4
-    sta HMP1
-    sta WSYNC
-    sta RESP1
-    sta HMOVE
-    ldx #4
-.BombsPass2:
-    lda #$F0
-    sta GRP1
-    sta WSYNC
-    dex
-    bne .BombsPass2
+    bne .BombsSprite
     lda #0
     sta GRP1
 
@@ -413,7 +397,7 @@ StartFrame:
     bne .HudSpacer3
 
     ; ========================================================================
-    ; Score: 8 scanlines, "0000" via PF registers (5-line font, centered)
+    ; Score: 8 scanlines, "0000" via PF registers (5-line font)
     ; ========================================================================
     lda #COLOR_SCORE
     sta COLUPF
@@ -443,7 +427,7 @@ StartFrame:
     bne .HudScore
 
     ; ========================================================================
-    ; Spacer: remaining scanlines
+    ; Spacer: remaining scanlines (grey background)
     ; ========================================================================
     lda #COLOR_HUD_BG
     sta COLUBK
@@ -451,7 +435,7 @@ StartFrame:
     sta PF0
     sta PF1
     sta PF2
-    ldx #10
+    ldx #8
 .HudSpacer4:
     sta WSYNC
     dex
