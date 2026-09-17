@@ -214,6 +214,15 @@ StartFrame:
 ; The inner .Line loop has NO PF writes — only sprite rendering.
 ; ==============================================================================
 
+    ; --- Reset TIA state for cave rendering ---
+    ; HUD may have changed NUSIZ0/1, COLUP0/1 — must restore
+    lda #$10                      ; NUSIZ0 = single copy (was 3 for HUD lives)
+    sta NUSIZ0
+    lda #$00                      ; NUSIZ1 = single copy (was 3 for HUD bombs)
+    sta NUSIZ1
+    lda #COLOR_PLAYER             ; restore player color (was green for HUD lives)
+    sta COLUP0
+
     lda #0
     sta Scanline
     ldx #0                      ; tile row counter (0-11)
@@ -282,18 +291,20 @@ StartFrame:
     sta COLUBK
 
     ; ========================================================================
-    ; Timer bar: 8 scanlines, full-width yellow PF bar
+    ; Timer bar: 8 scanlines, ~70% width yellow PF bar (margins both sides)
+    ; Left 20 pixels: ####......########## (6px margin + 14px bar)
+    ; Mirrored: total 28px bar in 40px screen = 70%
     ; ========================================================================
     lda #COLOR_TIMER
     sta COLUPF
     ldx #8
 .HudTimer:
-    lda #$F0
-    sta PF0
+    lda #$00
+    sta PF0                      ; pixels 0-3 OFF (margin)
+    lda #$3F
+    sta PF1                      ; pixels 4-5 OFF (margin), 6-11 ON (bar)
     lda #$FF
-    sta PF1
-    lda #$FF
-    sta PF2
+    sta PF2                      ; pixels 12-19 ON (bar)
     sta WSYNC
     dex
     bne .HudTimer
@@ -321,7 +332,7 @@ StartFrame:
     sta HMOVE
     ldx #8
 .LivesSprite:
-    lda #$FF
+    lda #$F0                      ; 4-pixel-wide sprite
     sta GRP0
     sta WSYNC
     dex
@@ -345,7 +356,7 @@ StartFrame:
     sta HMOVE
     ldx #8
 .BombsSprite:
-    lda #$FF
+    lda #$F0                      ; 4-pixel-wide sprite
     sta GRP1
     sta WSYNC
     dex
@@ -354,22 +365,30 @@ StartFrame:
     sta GRP1
 
     ; ========================================================================
-    ; Score: 8 scanlines, "0000" via PF registers
+    ; Score: 5 scanlines, "0000" via PF registers (5-line digit font)
+    ; Font: each digit is 4px wide, 1px gaps between digits
+    ;   Line 0: ####.####.####.####.  (top)
+    ;   Line 1: #..#.#..#.#..#.#..#.  (sides)
+    ;   Line 2: #..#.#..#.#..#.#..#.  (sides)
+    ;   Line 3: #..#.#..#.#..#.#..#.  (sides)
+    ;   Line 4: ####.####.####.####.  (bottom)
     ; ========================================================================
     lda #COLOR_SCORE
     sta COLUPF
     lda #$00
     sta COLUBK
-    ldx #8
+    ; --- Point to score font data ---
+    ldy #0                        ; font line counter
 .HudScore:
-    lda #$F0
+    lda ScoreFontPF0,Y
     sta PF0
-    lda #$7B
+    lda ScoreFontPF1,Y
     sta PF1
-    lda #$7D
+    lda ScoreFontPF2,Y
     sta PF2
+    iny
     sta WSYNC
-    dex
+    cpy #5                        ; 5 lines of font
     bne .HudScore
 
     ; ========================================================================
@@ -381,7 +400,7 @@ StartFrame:
     sta PF0
     sta PF1
     sta PF2
-    ldx #16
+    ldx #19
 .HudSpacer:
     sta WSYNC
     dex
@@ -534,6 +553,36 @@ CavePF2:
     .byte $00, $00, $00             ; Row 1-3: open
     .byte $00, $00, $00, $00       ; Row 4-7: open
     .byte $3F, $3F, $3F, $3F       ; Row 8-11: wall (2px gap at center)
+
+; ==============================================================================
+; Score font data: "0000" rendered as 5-line PF patterns
+; Each digit is 4px wide with 1px gaps between digits:
+;   Line 0: ####.####.####.####.  (top)
+;   Line 1: #..#.#..#.#..#.#..#.  (sides)
+;   Line 2: #..#.#..#.#..#.#..#.  (sides)
+;   Line 3: #..#.#..#.#..#.#..#.  (sides)
+;   Line 4: ####.####.####.####.  (bottom)
+; ==============================================================================
+ScoreFontPF0:
+    .byte $F0                       ; Line 0: pixels 0-3 ON
+    .byte $90                       ; Line 1: pixels 0,3 ON
+    .byte $90                       ; Line 2: pixels 0,3 ON
+    .byte $90                       ; Line 3: pixels 0,3 ON
+    .byte $F0                       ; Line 4: pixels 0-3 ON
+
+ScoreFontPF1:
+    .byte $7B                       ; Line 0: pixels 5-8 ON, 10-11 ON
+    .byte $4A                       ; Line 1: pixels 5,8,10 ON
+    .byte $4A                       ; Line 2: pixels 5,8,10 ON
+    .byte $4A                       ; Line 3: pixels 5,8,10 ON
+    .byte $7B                       ; Line 4: pixels 5-8 ON, 10-11 ON
+
+ScoreFontPF2:
+    .byte $7D                       ; Line 0: pixels 12-13,15-18 ON
+    .byte $4C                       ; Line 1: pixels 13,15,18 ON
+    .byte $4C                       ; Line 2: pixels 13,15,18 ON
+    .byte $4C                       ; Line 3: pixels 13,15,18 ON
+    .byte $7D                       ; Line 4: pixels 12-13,15-18 ON
 
 ; ==============================================================================
 ; Fine-adjust table for SetObjectXPos — MUST be page-aligned ($xx00)
