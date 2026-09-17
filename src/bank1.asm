@@ -219,11 +219,11 @@ MenuMain:
     sta VDELP1
 
     ; ====================================================================
-    ; Pad remaining scanlines (48 total: 7top+6bar+1gap+9lives+1gap+15bombs+1gap+5score+6pad)
-    ; Lives: up to 6 icons × 3 scanlines = 18 max
-    ; Bombs: up to 9 icons × 3 scanlines = 27 max
+    ; Pad remaining scanlines to reach exactly 48 total
+    ; Current: 7top+6bar+1gap+9lives+1gap+15bombs+1gap+5score = 45
+    ; Need: 48 - 45 = 3 pad scanlines
     ; ====================================================================
-    ldx #6
+    ldx #3
 .HudPad:
     sta WSYNC
     dex
