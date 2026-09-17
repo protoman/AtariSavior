@@ -93,93 +93,76 @@ MenuMain:
     sta WSYNC
 
     ; ====================================================================
-    ; Line 2: Lives — 3 green squares via GRP0 (3 copies)
-    ; NUSIZ0=$03 (3 copies close), green, solid block pattern
+    ; Line 2: Lives — 3 green squares, each on its own scanline
+    ; Individual RESP positioning for 4px gaps (HERO approach)
     ; ====================================================================
     lda #$C6            ; green
     sta COLUP0
-
-    ; Position P0: use SetObjectXPos from bank0
-    ; For now, inline RESP positioning (matching comparison pattern)
-    lda #10
-    ldx #0
-    jsr SetObjectXPos_b1
-    sta WSYNC
-    sta HMOVE
-
-    ; P0 = 3 copies close (HERO pattern for 3 lives)
-    lda #$03
+    lda #$00            ; single copy
     sta NUSIZ0
-
-    ; Render 5 scanlines of solid green blocks (4px wide)
-    ldy #1
     lda #$F0            ; 4-pixel-wide block pattern
-    sta WSYNC
-    sta GRP0
-.LivesRender:
-    sta WSYNC
-    sta GRP0
-    iny
-    cpy #5
-    bne .LivesRender
+
+    ; Life 1 at pixel 10
+    ldx #10
+    stx LifeX
+    jsr RenderLifeIcon
+
+    ; Life 2 at pixel 18 (10 + 4px block + 4px gap)
+    ldx #18
+    stx LifeX
+    jsr RenderLifeIcon
+
+    ; Life 3 at pixel 26 (18 + 8)
+    ldx #26
+    stx LifeX
+    jsr RenderLifeIcon
 
     ; Clear sprites
     sta WSYNC
     lda #0
     sta GRP0
-    sta NUSIZ0
 
     ; --- 1 scanline gap ---
     sta WSYNC
 
     ; ====================================================================
-    ; Line 3: Bombs — 5 red squares via P0(2 copies) + P1(3 copies)
+    ; Line 3: Bombs — 5 red squares, each on its own scanline
     ; ====================================================================
     lda #$46            ; red
     sta COLUP0
-    sta COLUP1
-
-    ; Position P0 for 2 copies
-    lda #10
-    ldx #0
-    jsr SetObjectXPos_b1
-
-    ; Position P1 for 3 copies, offset right of P0 copies
-    ; P0 copies at 10, 26 — P1 needs to start at 42+ to avoid overlap
-    lda #42
-    ldx #1
-    jsr SetObjectXPos_b1
-
-    sta WSYNC
-    sta HMOVE
-
-    ; P0 = 2 copies close, P1 = 3 copies close
-    lda #$01            ; NUSIZ0 = 2 copies close
+    lda #$00            ; single copy
     sta NUSIZ0
-    lda #$03            ; NUSIZ1 = 3 copies close
-    sta NUSIZ1
-
-    ; Render 5 scanlines (4px wide)
-    ldy #1
     lda #$F0            ; 4-pixel-wide block pattern
-    sta WSYNC
-    sta GRP0
-    sta GRP1
-.BombRender:
-    sta WSYNC
-    sta GRP0
-    sta GRP1
-    iny
-    cpy #5
-    bne .BombRender
+
+    ; Bomb 1 at pixel 10
+    ldx #10
+    stx LifeX
+    jsr RenderLifeIcon
+
+    ; Bomb 2 at pixel 18
+    ldx #18
+    stx LifeX
+    jsr RenderLifeIcon
+
+    ; Bomb 3 at pixel 26
+    ldx #26
+    stx LifeX
+    jsr RenderLifeIcon
+
+    ; Bomb 4 at pixel 34
+    ldx #34
+    stx LifeX
+    jsr RenderLifeIcon
+
+    ; Bomb 5 at pixel 42
+    ldx #42
+    stx LifeX
+    jsr RenderLifeIcon
 
     ; Clear sprites
     sta WSYNC
     lda #0
     sta GRP0
-    sta GRP1
-    sta NUSIZ0
-    sta NUSIZ1
 
     ; --- 1 scanline gap ---
     sta WSYNC
@@ -220,9 +203,11 @@ MenuMain:
     sta PF2
 
     ; ====================================================================
-    ; Pad remaining scanlines (48 total: 1gap+6bar+1gap+5lives+1gap+5bombs+1gap+5score+23pad)
+    ; Pad remaining scanlines (48 total: 7top+6bar+1gap+9lives+1gap+15bombs+1gap+5score+6pad)
+    ; Lives: 3 icons × 3 scanlines = 9
+    ; Bombs: 5 icons × 3 scanlines = 15
     ; ====================================================================
-    ldx #23
+    ldx #6
 .HudPad:
     sta WSYNC
     dex
@@ -246,6 +231,28 @@ SetObjectXPos_b1:
     lda fineAdjustTable_b1,Y
     sta HMP0,X
     sta RESP0,X
+    rts
+
+; ========================================================================
+; RenderLifeIcon — render a single 4px-wide, 4px-tall icon
+; LifeX = pixel position for this icon
+; A = pattern ($F0 for blocks)
+; ========================================================================
+LifeX = $A8
+
+RenderLifeIcon:
+    ldx LifeX
+    ldy #0
+    jsr SetObjectXPos_b1
+    sta WSYNC
+    sta HMOVE
+    ; Render 3 scanlines
+    ldy #3
+.RenderLoop:
+    sta WSYNC
+    sta GRP0
+    dey
+    bne .RenderLoop
     rts
 
 ; ========================================================================
