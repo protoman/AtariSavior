@@ -98,6 +98,25 @@ every scanline to avoid flicker. The2600 TV frame is 262 scanlines at 60Hz;
 each scanline is 76 CPU cycles. If the loop exceeds 76 cycles on any
 scanline, WSYNC stalls until the NEXT scanline, making the frame longer.
 
+### MANDATORY: Budget scanlines BEFORE writing code
+
+**Every `sta WSYNC` in the HUD band costs exactly 1 scanline.** The HUD band is 48 scanlines (144-191). Before writing any HUD code, write out the full scanline budget:
+
+```
+; Example budget (must sum to 48):
+; Timer bar:     6 scanlines
+; Gap:           1 scanline
+; Lives (3):     9 scanlines (3 per icon)
+; Gap:           1 scanline
+; Bombs (5):    15 scanlines (3 per icon)
+; Gap:           1 scanline
+; Score:         5 scanlines
+; Pad:           9 scanlines
+; TOTAL:        48 scanlines
+```
+
+**If the budget exceeds 48, reduce BEFORE coding — not after.** The frame will crash with a grey screen if the HUD band overflows. Each icon rendered on its own scanline (for RESP positioning) costs 3 scanlines: 1 WSYNC in SetObjectXPos + 2 WSYNCs in RenderLifeIcon. Multiply by icon count and add gaps.
+
 ### Structure (HERO pattern)
 
 ```
