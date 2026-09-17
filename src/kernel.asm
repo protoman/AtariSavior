@@ -108,6 +108,10 @@ COLOR_PLAYER    = $1E           ; hue 1 luma 7 = bright yellow
 COLOR_CAVE_BG   = $00           ; black interior
 COLOR_CAVE_WALL = $84           ; hue 8 luma 2 = dark grey-blue
 COLOR_HUD_BG    = $06           ; hue 0 luma 3 = grey
+COLOR_TIMER     = $1E           ; hue 1 luma 7 = yellow
+COLOR_LIVES     = $C6           ; hue 12 luma 3 = green
+COLOR_BOMBS     = $46           ; hue 4 luma 3 = red
+COLOR_SCORE     = $0E           ; hue 0 luma 7 = white
 
 ; ==============================================================================
 ; ROM start — F6 bankswitch (16K, 4 banks × 4K)
@@ -266,25 +270,122 @@ StartFrame:
     bne .Row
 
 ; ==============================================================================
-; HUD band: 48 scanlines (192-239) — grey background, no sprites
+; HUD band: 48 scanlines (144-191)
+; Layout: timer bar (8) + lives (8) + bombs (8) + score (8) + spacer (16)
 ; ==============================================================================
-; The HUD is a simple grey band below the cave. PF is cleared so no
-; playfield artifacts appear. GRP0/GRP1 are zeroed.
-; ==============================================================================
+
+    ; --- Clear sprites and set background ---
     lda #0
-    sta PF0
-    sta PF1
-    sta PF2
     sta GRP0
     sta GRP1
     lda #COLOR_HUD_BG
     sta COLUBK
 
-    ldx #48
-.HudLoop:
+    ; ========================================================================
+    ; Timer bar: 8 scanlines, full-width yellow PF bar
+    ; ========================================================================
+    lda #COLOR_TIMER
+    sta COLUPF
+    ldx #8
+.HudTimer:
+    lda #$F0
+    sta PF0
+    lda #$FF
+    sta PF1
+    lda #$FF
+    sta PF2
     sta WSYNC
     dex
-    bne .HudLoop
+    bne .HudTimer
+
+    ; ========================================================================
+    ; Lives: 8 scanlines, 3 green squares (NUSIZ0 = 3 copies close)
+    ; RESP0/HMP0 fired at start, then 8 scanlines of GRP0 rendering
+    ; ========================================================================
+    lda #COLOR_LIVES
+    sta COLUP0
+    lda #$00
+    sta COLUBK
+    lda #$00
+    sta PF0
+    sta PF1
+    sta PF2
+    lda #$03                      ; NUSIZ0 = 3 copies close
+    sta NUSIZ0
+    lda #$00
+    sta REFP0
+    lda #$F0                      ; HMP0 = left 7
+    sta HMP0
+    sta WSYNC
+    sta RESP0
+    sta HMOVE
+    ldx #8
+.LivesSprite:
+    lda #$FF
+    sta GRP0
+    sta WSYNC
+    dex
+    bne .LivesSprite
+    lda #0
+    sta GRP0
+
+    ; ========================================================================
+    ; Bombs: 8 scanlines, 3 red squares (NUSIZ1 = 3 copies close)
+    ; ========================================================================
+    lda #COLOR_BOMBS
+    sta COLUP1
+    lda #$00
+    sta COLUBK
+    lda #$03                      ; NUSIZ1 = 3 copies close
+    sta NUSIZ1
+    lda #$10                      ; HMP1 = right 1
+    sta HMP1
+    sta WSYNC
+    sta RESP1
+    sta HMOVE
+    ldx #8
+.BombsSprite:
+    lda #$FF
+    sta GRP1
+    sta WSYNC
+    dex
+    bne .BombsSprite
+    lda #0
+    sta GRP1
+
+    ; ========================================================================
+    ; Score: 8 scanlines, "0000" via PF registers
+    ; ========================================================================
+    lda #COLOR_SCORE
+    sta COLUPF
+    lda #$00
+    sta COLUBK
+    ldx #8
+.HudScore:
+    lda #$F0
+    sta PF0
+    lda #$7B
+    sta PF1
+    lda #$7D
+    sta PF2
+    sta WSYNC
+    dex
+    bne .HudScore
+
+    ; ========================================================================
+    ; Spacer: remaining scanlines (grey background)
+    ; ========================================================================
+    lda #COLOR_HUD_BG
+    sta COLUBK
+    lda #$00
+    sta PF0
+    sta PF1
+    sta PF2
+    ldx #16
+.HudSpacer:
+    sta WSYNC
+    dex
+    bne .HudSpacer
 
 ; ==============================================================================
 ; Overscan (30 scanlines) — input handling + game logic
@@ -365,6 +466,7 @@ StartFrame:
 SetObjectXPos subroutine
     sta WSYNC                   ; sync to start of scanline
     sec                         ; ensure carry flag
+    jmp .Div15Loop              ; redirect to page $F1 (avoid bcs page-cross)
 .Div15Loop:
     sbc #15                     ; coarse delay (15 clocks / 5 cycles per loop)
     bcs .Div15Loop              ; loop until carry clear (remainder in -15..-1)
