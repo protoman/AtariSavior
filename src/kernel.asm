@@ -280,164 +280,16 @@ StartFrame:
 
 ; ==============================================================================
 ; HUD band: 48 scanlines (144-191)
-; Temporary PF-based HUD (will be replaced by 13+2 in bank1)
+; Uses 13+2 sprite technique via bank1 (fold-pad trampoline)
 ; ==============================================================================
 
-    ; --- Clear sprites and set background ---
-    lda #0
-    sta GRP0
-    sta GRP1
-    lda #COLOR_HUD_BG
-    sta COLUBK
-
-    ; ========================================================================
-    ; Timer bar: 8 scanlines, ~70% width yellow PF bar
-    ; ========================================================================
-    lda #COLOR_TIMER
-    sta COLUPF
-    ldx #8
-.HudTimer:
-    lda #$00
-    sta PF0
-    lda #$3F
-    sta PF1
-    lda #$FF
-    sta PF2
-    sta WSYNC
-    dex
-    bne .HudTimer
-
-    ; ========================================================================
-    ; Spacer: 4 scanlines
-    ; ========================================================================
-    lda #COLOR_HUD_BG
-    sta COLUBK
-    lda #$00
-    sta PF0
-    sta PF1
-    sta PF2
-    ldx #4
-.HudSpacer1:
-    sta WSYNC
-    dex
-    bne .HudSpacer1
-
-    ; ========================================================================
-    ; Lives: 8 scanlines, 3 green squares (NUSIZ0 = 3 copies close)
-    ; ========================================================================
-    lda #COLOR_LIVES
-    sta COLUP0
-    lda #COLOR_HUD_BG
-    sta COLUBK
-    lda #$00
-    sta PF0
-    sta PF1
-    sta PF2
-    lda #$03
-    sta NUSIZ0
-    lda #$00
-    sta REFP0
-    lda #$F0
-    sta HMP0
-    sta WSYNC
-    sta RESP0
-    sta HMOVE
-    ldx #8
-.LivesSprite:
-    lda #$F0
-    sta GRP0
-    sta WSYNC
-    dex
-    bne .LivesSprite
-    lda #0
-    sta GRP0
-
-    ; ========================================================================
-    ; Spacer: 2 scanlines
-    ; ========================================================================
-    ldx #2
-.HudSpacer2:
-    sta WSYNC
-    dex
-    bne .HudSpacer2
-
-    ; ========================================================================
-    ; Bombs: 8 scanlines, 3 red squares (NUSIZ1 = 3 copies close)
-    ; ========================================================================
-    lda #COLOR_BOMBS
-    sta COLUP1
-    lda #COLOR_HUD_BG
-    sta COLUBK
-    lda #$03
-    sta NUSIZ1
-    lda #$10
-    sta HMP1
-    sta WSYNC
-    sta RESP1
-    sta HMOVE
-    ldx #8
-.BombsSprite:
-    lda #$F0
-    sta GRP1
-    sta WSYNC
-    dex
-    bne .BombsSprite
-    lda #0
-    sta GRP1
-
-    ; ========================================================================
-    ; Spacer: 2 scanlines
-    ; ========================================================================
-    ldx #2
-.HudSpacer3:
-    sta WSYNC
-    dex
-    bne .HudSpacer3
-
-    ; ========================================================================
-    ; Score: 8 scanlines, "0000" via PF registers (5-line font)
-    ; ========================================================================
-    lda #COLOR_SCORE
-    sta COLUPF
-    lda #COLOR_HUD_BG
-    sta COLUBK
-    ldy #0
-    ldx #8
-.HudScore:
-    cpy #5
-    bcs .HudScoreBlank
-    lda ScoreFontPF0,Y
-    sta PF0
-    lda ScoreFontPF1,Y
-    sta PF1
-    lda ScoreFontPF2,Y
-    sta PF2
-    jmp .HudScoreDone
-.HudScoreBlank:
-    lda #$00
-    sta PF0
-    sta PF1
-    sta PF2
-.HudScoreDone:
-    iny
-    sta WSYNC
-    dex
-    bne .HudScore
-
-    ; ========================================================================
-    ; Spacer: remaining scanlines
-    ; ========================================================================
-    lda #COLOR_HUD_BG
-    sta COLUBK
-    lda #$00
-    sta PF0
-    sta PF1
-    sta PF2
-    ldx #8
-.HudSpacer4:
-    sta WSYNC
-    dex
-    bne .HudSpacer4
+    ; --- Call bank1 for 13+2 HUD rendering via fold-pad at $FC68 ---
+    ; The fold-pad at $FC68 has identical bytes in bank0 and bank1:
+    ;   $FC68: lda #1 / sta $1FF7 / jmp $F540
+    ; After sta $1FF7, CPU reads next instruction from bank1 at $FC6D.
+    ; Bank1's $FC6D has the same jmp $F540 → seamless bank switch.
+    jmp $FC68                   ; jump to fold-pad (switches to bank1, runs MenuMain)
+    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp $F0A9
 
 ; ==============================================================================
 ; Overscan (30 scanlines) — input handling + game logic
@@ -618,11 +470,27 @@ ScoreFontPF2:
     .byte $7D                       ; Line 4: pixels 12-13,15-18 ON
 
 ; ==============================================================================
-; Fine-adjust table for SetObjectXPos — MUST be page-aligned ($xx00)
+; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
+; These go BEFORE the fineAdjustTable so org $FC68 doesn't go backwards.
 ; ==============================================================================
-; The indexed load `lda fineAdjustTable,Y` must always cross a page boundary
-; to guarantee 5-cycle timing. Placed at $FF00 (top of last page).
-; Y = remainder from div15 loop (-15..-1), maps to HMP0 value.
+MenuMain = $F540                   ; bank1's HUD entry (not code in bank0)
+    org $FC68
+ToMenuStub:
+    lda #1
+    sta $1FF7                     ; select bank1 (HUD)
+    jmp MenuMain                 ; next fetch from bank1: jmp $F540
+
+    org $FC70
+ToGameStub:
+    lda #0
+    sta $1FF6                     ; select bank0 (game)
+    jmp $F0A4                    ; next fetch from bank0: jmp overscan
+
+; Pad to fineAdjustTable
+    .ds $FF00 - *, 0
+
+; ==============================================================================
+; Fine-adjust table for SetObjectXPos — MUST be page-aligned ($xx00)
 ; ==============================================================================
     org $FF00
 fineAdjustBegin:
