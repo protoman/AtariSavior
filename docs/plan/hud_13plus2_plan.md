@@ -34,14 +34,23 @@ The 13+2 technique uses:
 - Bank1: 13+2 HUD kernel + font data + slot tables + HudCopy/RenderText
 - Bank2-3: reserved for future expansion
 
+**Fold-pad requirements (CRITICAL — must get right):**
+- Fold-pad code in bank0 and bank1 must be at IDENTICAL physical addresses
+- F6 mapping: Bank0 at physical $0000-$0FFF → CPU $F000-$FFFF; Bank1 at physical $1000-$1FFF → CPU $F000-$FFFF
+- Fold-pad pattern: 5-byte stub at known address (e.g., $FC68) that switches banks and jumps
+- Bank0 stub: `lda #1 / sta $1FF7 / jmp MenuMain` (switch to bank1, jump to HUD)
+- Bank1 stub: `lda #0 / sta $1FF6 / jmp GameStart` (switch back to bank0)
+- Both stubs must be at the SAME physical address in the ROM
+
 **Implementation:**
-- [ ] Bank0: add fold-pad trampoline at known address (e.g., $FC68) to jump to bank1's HUD entry
-- [ ] Bank1: stub switches to bank0 on boot, has HUD entry point
-- [ ] Bank0 HUD band: replace PF rendering with `jsr ToBank1` trampoline → bank1 renders HUD → returns to bank0
-- [ ] Move font data + slot tables include to bank1.asm
+- [ ] Choose fold-pad address (e.g., $FC68 — matches existing game convention)
+- [ ] Bank0: add fold-pad stub at chosen address with correct bank-select + jmp
+- [ ] Bank1: add matching stub at SAME address with reverse bank-select + jmp
+- [ ] Verify both banks have identical bytes at fold-pad address
+- [ ] Bank1: add HUD entry point ($F540) with actual rendering code
+- [ ] Bank0 HUD band: replace PF rendering with fold-pad call → bank1 → return
 - [ ] Update build.sh to assemble all 4 banks
-- [ ] Verify fold-pad addresses are byte-identical in both banks
-- [ ] **Test:** Full ROM builds, cave renders, HUD renders via bank switch
+- [ ] **Test:** Full ROM builds, cave renders, HUD renders via bank switch, no crashes
 
 ### Step 1: ZP Layout & Font System
 - [ ] Add 13+2 ZP constants to kernel.asm ($80-$AD)
