@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "context-mode hook copilot-vscode pretooluse",
+        "timeout": 10
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "context-mode hook copilot-vscode posttooluse",
+        "timeout": 10
+      }
+    ],
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "context-mode hook copilot-vscode sessionstart",
+        "timeout": 10
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "context-mode hook copilot-vscode stop",
+        "timeout": 10
+      }
+    ]
+  }
+}

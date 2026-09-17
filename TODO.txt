@@ -1,3 +1,20 @@
+#########################################################################################################################################################################
+A few tasks:
+# position player more to the right, so he is not inside the playfield.
+# the player is moving up when I press left and down when I press right. It should move in all 4 corresponding directions.
+# player sprite color must be yellow (currently black)
+
+# HUD, that already has the grey are on the bottom of the screen, should have those lines, all screen-width centered, with the following formats:
+-----------
+Timer: a yellow horizontal bar, later we will add a timer so part of it starts becoming red.
+Number of Lives: 3 green squares.
+Number of bombs: 5 red squares
+Score: 0000
+-----------
+Remember to follow the architecture of HERO for doing this.
+
+#########################################################################################################################################################################
+
 What is laser made with? A missile, sprites, other?
 I did ask to use player sprite before, because the current implementation does not follow player exact X position, instead it only moves from tile to tile.
 Why did you change it back? Unless you can fix this position problem, we should just change player sprite to draw it.
@@ -83,6 +100,20 @@ The playfield of the level 0 room 0 is something like this (ignore the number of
 ###################....#####################
 ###################....#####################
 You need to check if the room has this actual shape too.
+
+
+############################################
+####....................................####
+####....................................####
+####....................................####
+..##....................................##..
+..##....................................##..
+..##....................................##..
+..##....................................##..
+####################..######################
+####################..######################
+####################..######################
+####################..######################
 
 
 #########################################################################################################################################################################
