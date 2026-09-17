@@ -26,14 +26,22 @@ The 13+2 technique uses:
 
 ## Implementation Steps
 
-### Step 0: Architecture Evaluation (optional — do only if needed)
-- [ ] Check current bank0 ROM size vs 4K limit
-- [ ] Estimate total code size after 13+2 implementation
-- [ ] If >3.5K, plan bank restructuring:
-  - Bank0: kernel + game logic + room data
-  - Bank1: HUD rendering (13+2 kernel + font data + slot tables)
-  - Bank2-3: reserved for future expansion
-- [ ] Decide: implement now or defer to when space runs out
+### Step 0: Bank Restructuring (MANDATORY — bank0 is 100% full)
+**Problem:** bank0 is exactly 4096 bytes. 13+2 needs ~970 bytes (HudCopy ~128B + TEXTDISP ~50B + RenderText ~50B + font ~100B + slot tables ~640B).
+
+**Solution:** Move HUD rendering to bank1 (same pattern as existing game in `comparison/lo-a-rad-dragon/`).
+- Bank0: cave kernel + game logic + player movement (keep as-is)
+- Bank1: 13+2 HUD kernel + font data + slot tables + HudCopy/RenderText
+- Bank2-3: reserved for future expansion
+
+**Implementation:**
+- [ ] Bank0: add fold-pad trampoline at known address (e.g., $FC68) to jump to bank1's HUD entry
+- [ ] Bank1: stub switches to bank0 on boot, has HUD entry point
+- [ ] Bank0 HUD band: replace PF rendering with `jsr ToBank1` trampoline → bank1 renders HUD → returns to bank0
+- [ ] Move font data + slot tables include to bank1.asm
+- [ ] Update build.sh to assemble all 4 banks
+- [ ] Verify fold-pad addresses are byte-identical in both banks
+- [ ] **Test:** Full ROM builds, cave renders, HUD renders via bank switch
 
 ### Step 1: ZP Layout & Font System
 - [ ] Add 13+2 ZP constants to kernel.asm ($80-$AD)
