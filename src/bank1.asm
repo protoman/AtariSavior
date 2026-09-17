@@ -107,7 +107,7 @@ MenuMain:
     sta WSYNC
     sta HMOVE
 
-    ; P0 = 3 copies close, show solid block
+    ; P0 = 3 copies close (HERO pattern for 3 lives)
     lda #$03
     sta NUSIZ0
 
