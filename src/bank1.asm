@@ -202,6 +202,14 @@ MenuMain:
     sta PF1
     sta PF2
 
+    ; --- Restore cave kernel settings ---
+    lda #$10
+    sta NUSIZ0
+    lda #0
+    sta NUSIZ1
+    sta VDELP0
+    sta VDELP1
+
     ; ====================================================================
     ; Pad remaining scanlines (48 total: 7top+6bar+1gap+9lives+1gap+15bombs+1gap+5score+6pad)
     ; Lives: 3 icons × 3 scanlines = 9
