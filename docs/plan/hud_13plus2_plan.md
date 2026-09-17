@@ -15,69 +15,114 @@ The 13+2 technique uses:
 - TEXTDISP macro: 76-cycle render loop per scanline (exactly 1 scanline)
 - HudCopy: unrolled 40-byte copy from ROM slot tables to ZP
 
+## ZP Layout (13+2 slots overlap with cave kernel vars — safe because they run at different times)
+
+| Address | Cave Kernel Use      | 13+2 Use       |
+|---------|---------------------|----------------|
+| $80-$84 | RoomX, RoomY, Scan, LineCt, TileRow | charp (5 bytes) |
+| $85-$87 | Grp0Ptr, Grp0Hi, Temp | chara (first 3 bytes) |
+| $88-$A7 | (unused by cave)    | chara-charg (rest) |
+| $A9-$AD | (unused by cave)    | temp, line, count, textptr, savesp |
+
 ## Implementation Steps
 
-### Phase 1: ZP Layout & Font System
-- [ ] Define ZP layout: charp($80), chara($85), charb($8a), charc($8f), chard($94), chare($99), charf($9e), charg($a3)
-- [ ] Define text slot variables: temp($a9), line($aa), count($ab), textptr($ac), savesp($ad)
-- [ ] Define FontP0($b3) and FontP1($b8) for score digit data
-- [ ] Create score font data (0-9, 5 bytes each) in ROM
-- [ ] Create HUD slot tables (generated/hud_slots.asm already exists — verify format)
+### Step 0: Architecture Evaluation (optional — do only if needed)
+- [ ] Check current bank0 ROM size vs 4K limit
+- [ ] Estimate total code size after 13+2 implementation
+- [ ] If >3.5K, plan bank restructuring:
+  - Bank0: kernel + game logic + room data
+  - Bank1: HUD rendering (13+2 kernel + font data + slot tables)
+  - Bank2-3: reserved for future expansion
+- [ ] Decide: implement now or defer to when space runs out
 
-### Phase 2: HudCopy Routine
-- [ ] Implement HudCopy: unrolled 40-byte copy from ROM slot table to ZP (charp..charg)
-- [ ] Each copy reads (HudPtrLo),Y and writes to charp,Y
+### Step 1: ZP Layout & Font System
+- [ ] Add 13+2 ZP constants to kernel.asm ($80-$AD)
+- [ ] Add score digit font data (0-9, 5 bytes each) to ROM — reuse from `generated/hud_font.asm`
+- [ ] Verify `generated/hud_slots.asm` format matches our kernel needs
+- [ ] **Test:** Assemble, verify ZP addresses don't conflict, check ROM size
+
+### Step 2: HudCopy Routine
+- [ ] Implement unrolled 40-byte copy: `lda (ptr),Y` → `sta charp,Y` × 40
+- [ ] Source: ROM slot table (160 bytes per text line)
+- [ ] Dest: ZP $80-$A7 (charp..charg)
 - [ ] Must complete in ~448 cycles (within one VBLANK section)
-- [ ] Test with a single text line
+- [ ] **Test:** Load "LEVEL" text into ZP, verify bytes with Stella debugger
 
-### Phase 3: TEXTDISP Macro
-- [ ] Implement TEXTDISP macro (76-cycle render loop)
-- [ ] Each TEXTDISP renders one row of characters
-- [ ] Sequence: 5 TEXTDISP rows per text line (5px tall font)
-- [ ] Include NUSIZ1/VDELP1 setup, GRP0/GRP1 writes, HMOVE mid-scanline
-- [ ] Test with a single "TEST" string
+### Step 3: TEXTDISP Macro (76-cycle render loop)
+- [ ] Define TEXTDISP macro matching Paul Slocum's tutorial pattern
+- [ ] Reads 6 font bytes from chara-charg
+- [ ] Writes GRP0/GRP1 at specific cycle positions
+- [ ] Sets NUSIZ1=$03, VDELP1=1, RESP0/RESP1, HMOVE mid-scanline
+- [ ] Exactly 76 cycles = 1 scanline
+- [ ] **Test:** Render single "TEST" string in Stella, verify characters appear
 
-### Phase 4: RenderText Routine
-- [ ] Implement RenderText: leading WSYNC + 5 TEXTDISP rows
-- [ ] Must complete in exactly 12 scanlines per text line
-- [ ] Test rendering one line of text
+### Step 4: RenderText Routine
+- [ ] Leading WSYNC + 5 TEXTDISP rows = one text line in 12 scanlines
+- [ ] Manages charp..charg Y-offset for multi-row font
+- [ ] Clears GRP0/GRP1, ENAM0/ENAM1, ENABL after rendering
+- [ ] **Test:** Render full text line, verify 12-scanline timing
 
-### Phase 5: HUD Integration
-- [ ] Replace current PF-based HUD with 13+2 rendering
-- [ ] Timer bar: yellow bar (may keep PF approach for simplicity)
-- [ ] Lives: "LIVES: 9" text via 13+2
-- [ ] Bombs: "BOMBS: 5" text via 13+2
-- [ ] Score: "SCORE: 0000" text via 13+2
-- [ ] Ensure total HUD fits in 48 scanlines
+### Step 5a: Timer Bar (keep PF approach)
+- [ ] Keep current PF-based timer bar (simple, no text needed)
+- [ ] Yellow bar, 70% width, 8 scanlines
+- [ ] **Test:** Verify timer bar still renders correctly
 
-### Phase 6: Testing & Polish
-- [ ] Verify no frame drops (262 scanline budget)
-- [ ] Test with Stella debugger — check scanline counts
-- [ ] Test lives increase (3→9) and bomb count changes
-- [ ] Verify score updates correctly
+### Step 5b: Lives Display (13+2 text)
+- [ ] Generate slot table for "LIVES: 9" (or dynamic count)
+- [ ] HudCopy → ZP during VBLANK
+- [ ] RenderText in HUD band (12 scanlines)
+- [ ] Green color via COLUP0/COLUP1
+- [ ] **Test:** Lives count updates (3→9), text renders correctly
+
+### Step 5c: Bombs Display (13+2 text)
+- [ ] Generate slot table for "BOMBS: 5" (or dynamic count)
+- [ ] HudCopy → ZP during VBLANK
+- [ ] RenderText in HUD band (12 scanlines)
+- [ ] Red color via COLUP0/COLUP1
+- [ ] **Test:** Bomb count updates, text renders correctly
+
+### Step 5d: Score Display (13+2 text)
+- [ ] Generate slot table for "SCORE: 0000"
+- [ ] HudCopy → ZP during VBLANK
+- [ ] RenderText in HUD band (12 scanlines)
+- [ ] White color via COLUP0/COLUP1
+- [ ] **Test:** Score updates, text renders correctly
+
+### Step 6: Testing & Polish
+- [ ] Verify 262-scanline budget — no frame drops
+- [ ] Stella debugger: check scanline counts per HUD element
+- [ ] Test edge cases: 0 lives, 9 lives, 0 bombs, max score
+- [ ] Verify HUD fits in 48 scanlines total
 - [ ] Adjust colors (green lives, red bombs, yellow timer, white score)
 - [ ] Commit and merge to main
+
+## Cycle Budget (48 scanlines)
+- Timer bar (PF): 8 scanlines
+- Spacer: 2 scanlines
+- Lives text (13+2): 12 scanlines
+- Spacer: 2 scanlines
+- Bombs text (13+2): 12 scanlines
+- Spacer: 2 scanlines
+- Score text (13+2): 12 scanlines
+- Remaining: 2 scanlines
+- **Total: 48 scanlines**
 
 ## Key References
 - `docs/tutorial/13_plus2.asm` — Paul Slocum's original tutorial
 - `generated/menu_13plus2.asm` — ported version for menu (bank1)
 - `generated/hud_slots.asm` — precomputed slot tables
+- `generated/hud_font.asm` — compact sprite font (21 glyphs)
 - `comparison/lo-a-rad-dragon/bank0.asm` — HudBand, RenderText, HudCopy
 - `comparison/lo-a-rad-dragon/bank2.asm` — FontP0/FontP1, ScoreKernel
 
-## Cycle Budget
-- 48 scanlines total for HUD band
-- Timer bar: ~8 scanlines (PF approach)
-- Lives text: ~12 scanlines (5 TEXTDISP + setup)
-- Bombs text: ~12 scanlines (5 TEXTDISP + setup)
-- Score text: ~12 scanlines (5 TEXTDISP + setup)
-- Spacers: ~4 scanlines
-- Total: ~36 scanlines (leaves margin)
-
 ## Status
-- [ ] Phase 1: ZP Layout & Font System
-- [ ] Phase 2: HudCopy Routine
-- [ ] Phase 3: TEXTDISP Macro
-- [ ] Phase 4: RenderText Routine
-- [ ] Phase 5: HUD Integration
-- [ ] Phase 6: Testing & Polish
+- [ ] Step 0: Architecture Evaluation
+- [ ] Step 1: ZP Layout & Font System
+- [ ] Step 2: HudCopy Routine
+- [ ] Step 3: TEXTDISP Macro
+- [ ] Step 4: RenderText Routine
+- [ ] Step 5a: Timer Bar
+- [ ] Step 5b: Lives Display
+- [ ] Step 5c: Bombs Display
+- [ ] Step 5d: Score Display
+- [ ] Step 6: Testing & Polish
