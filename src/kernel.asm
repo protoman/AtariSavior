@@ -280,7 +280,7 @@ StartFrame:
 
 ; ==============================================================================
 ; HUD band: 48 scanlines (144-191)
-; Layout: timer bar (8) + lives (8) + bombs (8) + score (8) + spacer (16)
+; Temporary PF-based HUD (will be replaced by 13+2 in bank1)
 ; ==============================================================================
 
     ; --- Clear sprites and set background ---
@@ -308,7 +308,7 @@ StartFrame:
     bne .HudTimer
 
     ; ========================================================================
-    ; Spacer: 4 scanlines (gap after timer bar)
+    ; Spacer: 4 scanlines
     ; ========================================================================
     lda #COLOR_HUD_BG
     sta COLUBK
@@ -333,18 +333,18 @@ StartFrame:
     sta PF0
     sta PF1
     sta PF2
-    lda #$03                      ; NUSIZ0 = 3 copies close
+    lda #$03
     sta NUSIZ0
     lda #$00
     sta REFP0
-    lda #$F0                      ; HMP0 = left 7
+    lda #$F0
     sta HMP0
     sta WSYNC
     sta RESP0
     sta HMOVE
     ldx #8
 .LivesSprite:
-    lda #$F0                      ; 4-pixel-wide sprite
+    lda #$F0
     sta GRP0
     sta WSYNC
     dex
@@ -363,23 +363,21 @@ StartFrame:
 
     ; ========================================================================
     ; Bombs: 8 scanlines, 3 red squares (NUSIZ1 = 3 copies close)
-    ; NOTE: 5 bombs aligned requires the 13+2 sprite technique (HERO approach).
-    ;       Simple NUSIZ1 can only do 3 copies. Implementing 13+2 next.
     ; ========================================================================
     lda #COLOR_BOMBS
     sta COLUP1
     lda #COLOR_HUD_BG
     sta COLUBK
-    lda #$03                      ; NUSIZ1 = 3 copies close
+    lda #$03
     sta NUSIZ1
-    lda #$10                      ; HMP1 = right 1
+    lda #$10
     sta HMP1
     sta WSYNC
     sta RESP1
     sta HMOVE
     ldx #8
 .BombsSprite:
-    lda #$F0                      ; 4-pixel-wide sprite
+    lda #$F0
     sta GRP1
     sta WSYNC
     dex
@@ -427,7 +425,7 @@ StartFrame:
     bne .HudScore
 
     ; ========================================================================
-    ; Spacer: remaining scanlines (grey background)
+    ; Spacer: remaining scanlines
     ; ========================================================================
     lda #COLOR_HUD_BG
     sta COLUBK
