@@ -92,6 +92,11 @@ MenuMain:
     ; --- Initialize HUD variables ---
     lda #3              ; default 3 lives
     sta LivesCount
+    lda #0              ; initialize score digits to 0
+    sta ScoreTh
+    sta ScoreHu
+    sta ScoreTe
+    sta ScoreOn
 
     ; --- 1 scanline gap ---
     sta WSYNC
