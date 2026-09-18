@@ -200,10 +200,16 @@ ScoreOn     = $C5       ; score ones digit
     stx VDELP1
     stx REFP0
     stx REFP1
-    stx RESP0            ; position P0
-    stx RESP1            ; position P1
-    stx HMP0
-    stx HMP1
+    ; Position P0 at pixel 72, P1 at pixel 80
+    ; P0 copies: 72, 88 (NUSIZ0=1, 16px apart)
+    ; P1 at 80 (NUSIZ1=0, 1 copy)
+    ; GRP writes at pixels 24, 48, 72, 81 — all before sprite renders
+    lda #72
+    ldx #0
+    jsr SetObjectXPos_b1
+    lda #80
+    ldx #1
+    jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
 
