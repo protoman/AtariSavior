@@ -211,11 +211,7 @@ ScoreOn     = $C5       ; score ones digit
     sta WSYNC
     sta HMOVE
 
-    ; Set up digit pointers one at a time for debugging
-    lda #>DigitGfx
-    sta DigitPtr1+1
-    lda #<(DigitGfx + (0*8))
-    sta DigitPtr1
+    ; No pointer writes - testing if positioning alone is safe
 
     ; Stub: consume remaining scanlines
     ldx #8
