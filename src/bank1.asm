@@ -238,12 +238,31 @@ ScoreOn     = $C5       ; score ones digit
     sta GRP1
     sta WSYNC           ; sync before render loop
 
-    ; Render 8 rows (stub for now — just WSYNCs)
-    ldx #8
+    ; Render loop — 48-pixel sprite technique
+    ldy #7
+    sty RowCnt
 .ScoreLoop:
-    sta WSYNC
-    dex
-    bne .ScoreLoop
+    ldy RowCnt             ; 3c
+    lda (DigitPtr6),Y      ; 5c — Load digit 5 (blank)
+    tax                    ; 2c — X = blank
+    sta WSYNC              ; 3c — start of scanline
+    lda (DigitPtr1),Y      ; 5c — Load digit 0
+    sta.w GRP0             ; 4c — Buffer digit 0
+    lda (DigitPtr2),Y      ; 5c — Load digit 1
+    sta GRP1               ; 3c — Buffer digit 1
+    lda (DigitPtr3),Y      ; 5c — Load digit 2
+    sta GRP0               ; 3c — Buffer digit 2
+    lda (DigitPtr4),Y      ; 5c — Load digit 3
+    sta Temp               ; 3c — Cache digit 3
+    lda (DigitPtr5),Y      ; 5c — Load digit 4
+    ldy Temp               ; 3c — Y = digit 3
+    stx GRP1               ; 3c — Buffer blank (digit 5)
+    sty GRP0               ; 3c — Buffer digit 3
+    sta GRP1               ; 3c — Buffer digit 4
+    sta GRP0               ; 3c — Final push
+    dec RowCnt             ; 5c
+    ldy RowCnt             ; 3c
+    bpl .ScoreLoop         ; 2c
 
     ; --- Restore cave kernel settings ---
     lda #$05            ; CTRLPF: reflect + priority (cave mode)
