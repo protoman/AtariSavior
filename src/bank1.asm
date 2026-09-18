@@ -186,27 +186,28 @@ ScoreOn     = $C5       ; score ones digit
 
     ; ====================================================================
     ; Line 4: Score — 48-pixel sprite technique
-    ; Positioning must match score48pix.asm exactly: both RESP on same scanline
+    ; EXACT match to score48pix.asm setup timing
     ; ====================================================================
+    sta WSYNC            ; sync to start of scanline
+    lda #0
+    sta REFP0
+    sta REFP1
+    lda #$01
+    sta CTRLPF
     lda #$0E            ; white
     sta COLUP0
     sta COLUP1
-
-    ; Match score48pix.asm positioning exactly
-    lda #$10            ; HMP0 = -1 (fine adjust left)
+    lda #$10            ; HMP0 = -1
     sta HMP0
-    lda #$20            ; HMP1 = -2 (fine adjust left)
+    lda #$20            ; HMP1 = -2
     sta HMP1
     lda #$03            ; NUSIZ = 3 copies close
     sta NUSIZ0
     sta NUSIZ1
-    sta RESP0            ; RESP0 at pixel ~56
-    sta RESP1            ; RESP1 at pixel ~72
-    sta VDELP0           ; vertical delay ON (after RESP)
+    sta RESP0            ; RESP0 at cycle 40
+    sta RESP1            ; RESP1 at cycle 43
+    sta VDELP0           ; vertical delay ON
     sta VDELP1
-    lda #0
-    sta REFP0
-    sta REFP1
     sta WSYNC
     sta HMOVE
 
