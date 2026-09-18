@@ -236,27 +236,27 @@ ScoreOn     = $C5       ; score ones digit
     sta GRP0
     sta GRP1
 
-    ; Render loop — exact copy of burger8e.asm ScoreLoop
-    ; 5 digit pointers: DigitPtr1=blank, DigitPtr2=1, DigitPtr3=2, DigitPtr4=3, DigitPtr5=4
+    ; Render loop — burger8e.asm style with extra WSYNC for timing
     ldy #7
     sty RowCnt
 .ScoreLoop:
     sta WSYNC
-    lda (DigitPtr1),Y      ; load digit 0 (blank)
-    sta GRP0               ; blank -> GRP0
-    sta GRP1               ; blank -> GRP1, blank -> GRP0A
-    lda (DigitPtr2),Y      ; load digit 1 ("1")
-    sta GRP0               ; "1" -> GRP0, blank -> GRP1A
-    lda (DigitPtr3),Y      ; load digit 2 ("2")
-    tax                    ; X = "2"
-    lda (DigitPtr4),Y      ; load digit 3 ("3")
-    sta Temp               ; Temp = "3"
-    lda (DigitPtr5),Y      ; load digit 4 ("4")
-    ldy Temp               ; Y = "3"
-    stx GRP1               ; "2" -> GRP1, "1" -> GRP0A
-    sty GRP0               ; "3" -> GRP0, "2" -> GRP1A
-    sta GRP1               ; "4" -> GRP1, "3" -> GRP0A
-    sta GRP0               ; "4" -> GRP0 (final push)
+    lda (DigitPtr1),Y      ; load digit 0
+    sta GRP0               ; digit 0 -> GRP0
+    sta GRP1               ; digit 0 -> GRP1
+    lda (DigitPtr2),Y      ; load digit 1
+    sta GRP0               ; digit 1 -> GRP0
+    sta WSYNC              ; extra sync for timing
+    lda (DigitPtr3),Y      ; load digit 2
+    tax                    ; X = digit 2
+    lda (DigitPtr4),Y      ; load digit 3
+    sta Temp               ; Temp = digit 3
+    lda (DigitPtr5),Y      ; load digit 4
+    ldy Temp               ; Y = digit 3
+    stx GRP1               ; digit 2 -> GRP1
+    sty GRP0               ; digit 3 -> GRP0
+    sta GRP1               ; digit 4 -> GRP1
+    sta GRP0               ; digit 4 -> GRP0
     dec RowCnt
     ldy RowCnt
     bpl .ScoreLoop
