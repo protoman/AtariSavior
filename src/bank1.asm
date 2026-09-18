@@ -97,10 +97,13 @@ MenuMain:
     sta PF2
 
     ; --- Initialize HUD variables ---
-    lda #0              ; initialize score digits to 0
+    lda #1              ; initial score = 1234
     sta ScoreTh
+    lda #2
     sta ScoreHu
+    lda #3
     sta ScoreTe
+    lda #4
     sta ScoreOn
 
     ; --- 1 scanline gap ---
