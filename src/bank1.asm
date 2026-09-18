@@ -65,55 +65,20 @@ MenuMain:
     sta REFP0
     sta REFP1
 
-; ZP variables for score rendering (HERO pattern)
-PF0ScoreBuf = $B3       ; 5 bytes: PF0 values for each scanline row
-PF1ScoreBuf = $B8       ; 5 bytes: PF1 values for each scanline row
-PF2ScoreBuf = $C6       ; 5 bytes: PF2 values for each scanline row (3x5 font)
+; ZP variables for score rendering
+PF0ScoreBuf = $B3       ; 5 bytes: PF0 values (unused with sprite approach)
+PF1ScoreBuf = $B8       ; 5 bytes: PF1 values (unused with sprite approach)
+PF2ScoreBuf = $C6       ; 5 bytes: PF2 values (unused with sprite approach)
     Temp        = $AD       ; scratch variable
+    RowCnt      = $AE       ; score render row counter (0-7)
+    DigitPtr1   = $E0       ; pointer to digit 0 font data
+    DigitPtr2   = $E2       ; pointer to digit 1 font data
+    DigitPtr3   = $E4       ; pointer to digit 2 font data
+    DigitPtr4   = $E6       ; pointer to digit 3 font data
 ScoreTh     = $C2       ; score thousands digit
 ScoreHu     = $C3       ; score hundreds digit
 ScoreTe     = $C4       ; score tens digit
 ScoreOn     = $C5       ; score ones digit
-
-    ; --- Score PF buffers (3×5 font, temporary until 48px sprite implementation) ---
-    ; PF0: digit1 << 4 (reversed bits), PF1: (digit2 << 5) | (digit3 << 1), PF2: digit4 reversed
-    ; Digit 1=1, Digit 2=2, Digit 3=3, Digit 4=4
-
-    ; PF0 (digit1 reversed <<4): %010→$20, %011→$30, %010→$20, %010→$20, %111→$70
-    lda #$20
-    sta PF0ScoreBuf+0
-    lda #$30
-    sta PF0ScoreBuf+1
-    lda #$20
-    sta PF0ScoreBuf+2
-    lda #$20
-    sta PF0ScoreBuf+3
-    lda #$70
-    sta PF0ScoreBuf+4
-
-    ; PF1 (digit2<<5 | digit3<<1): $EE,$22,$EE,$82,$EE
-    lda #$EE
-    sta PF1ScoreBuf+0
-    lda #$22
-    sta PF1ScoreBuf+1
-    lda #$EE
-    sta PF1ScoreBuf+2
-    lda #$82
-    sta PF1ScoreBuf+3
-    lda #$EE
-    sta PF1ScoreBuf+4
-
-    ; PF2 (digit4 reversed): %101→$05, %101→$05, %111→$07, %100→$04, %100→$04
-    lda #$05
-    sta PF2ScoreBuf+0
-    lda #$05
-    sta PF2ScoreBuf+1
-    lda #$07
-    sta PF2ScoreBuf+2
-    lda #$04
-    sta PF2ScoreBuf+3
-    lda #$04
-    sta PF2ScoreBuf+4
 
     ; --- Top gap: 4 scanlines (lower HUD elements) ---
     ldx #4
@@ -218,39 +183,92 @@ ScoreOn     = $C5       ; score ones digit
     sta WSYNC
 
     ; ====================================================================
-    ; Line 4: Score — PF0+PF1+PF2 for "1234" (bumbershootsoft method)
-    ; CTRLPF=$02: SCORE mode — left half uses COLUP0, right half uses COLUP1
-    ; COLUP1 = background color to hide right-half duplicate
+    ; Line 4: Score — 48-pixel sprite technique (4 digits)
+    ; NUSIZ0=1 (2 copies) + NUSIZ1=1 (2 copies) = 4 digit slots
+    ; VDELP0=1 + VDELP1=1 enables cross-buffer GRP mechanism
+    ; Font: 8x8 pixels, page-aligned, MSB-first
     ; ====================================================================
-    ; Setup CTRLPF/COLUP during current scanline (after gap WSYNC)
-    ; Then WSYNC so PF writes land at start of NEXT scanline (during HBLANK)
-    lda #$02            ; SCORE mode (avoids doubled score in reflected mode)
-    sta CTRLPF
-    lda #$0E            ; white for left half (COLUP0)
-    sta COLUP0
-    lda #$06            ; grey for right half (COLUP1 = background, hides duplicate)
-    sta COLUP1
-    sta WSYNC           ; sync — PF writes below land at start of next scanline
 
-    ; PF writes must happen during HBLANK (first ~22 cycles) for clean rendering
-    ldy #0
-.ScoreRender:
-    lda PF0ScoreBuf,Y
-    sta PF0
-    lda PF1ScoreBuf,Y
-    sta PF1
-    lda PF2ScoreBuf,Y
-    sta PF2
+    ; Set up score rendering
+    lda #$0E            ; white
+    sta COLUP0
+    sta COLUP1
+    lda #$01            ; NUSIZ = 2 copies close (16px apart)
+    sta NUSIZ0
+    sta NUSIZ1
+    lda #1
+    sta VDELP0          ; vertical delay ON
+    sta VDELP1          ; vertical delay ON
+    sta REFP0           ; no reflection
+    sta REFP1
+
+    ; Position P0 at pixel 64, P1 at pixel 72
+    ; Digits: 64(P0), 72(P1), 80(P0), 88(P1) — 8px spacing
+    lda #64
+    ldx #0
+    jsr SetObjectXPos_b1
+    lda #72
+    ldx #1
+    jsr SetObjectXPos_b1
     sta WSYNC
-    iny
-    cpy #5              ; 5 rows for 3×5 font
-    bne .ScoreRender
-    ; Clear PF after last row
+    sta HMOVE
+
+    ; Set up digit pointers (high byte = page of DigitGfx)
+    lda #>DigitGfx
+    sta DigitPtr1+1
+    sta DigitPtr2+1
+    sta DigitPtr3+1
+    sta DigitPtr4+1
+
+    ; Low bytes = base + (digit × 8)
+    ; Score: 1-2-3-4 → thousands=1, hundreds=2, tens=3, ones=4
+    lda #<(DigitGfx + (1*8))   ; digit 1
+    sta DigitPtr1
+    lda #<(DigitGfx + (2*8))   ; digit 2
+    sta DigitPtr2
+    lda #<(DigitGfx + (3*8))   ; digit 3
+    sta DigitPtr3
+    lda #<(DigitGfx + (4*8))   ; digit 4
+    sta DigitPtr4
+
+    ; Clear sprites before loop
     lda #0
-    sta PF0
-    sta PF1
-    sta PF2
-    sta WSYNC
+    sta GRP0
+    sta GRP1
+
+    ; Render 8 rows of 4 digits
+    ldy #7
+    sty RowCnt
+.ScoreLoop:
+    ; Load last digit first (before WSYNC, for timing)
+    ldy RowCnt
+    lda (DigitPtr3),Y      ; load digit 2
+    tax                     ; X = digit 2
+    lda (DigitPtr4),Y      ; load digit 3
+    sta Temp                ; Temp = digit 3
+    sta WSYNC               ; start of scanline
+
+    lda (DigitPtr1),Y      ; load digit 0
+    sta GRP0                ; buffer digit 0
+    lda (DigitPtr2),Y      ; load digit 1
+    sta GRP1                ; buffer digit 1
+    stx GRP0                ; buffer digit 2
+    ldx Temp
+    stx GRP1                ; buffer digit 3
+    sta GRP0                ; final push
+
+    dec RowCnt
+    ldy RowCnt
+    bpl .ScoreLoop
+
+    ; Clear sprites after score
+    lda #0
+    sta GRP0
+    sta GRP1
+    sta VDELP0
+    sta VDELP1
+    sta NUSIZ0
+    sta NUSIZ1
 
     ; --- Restore cave kernel settings ---
     lda #$05            ; CTRLPF: reflect + priority (cave mode)
@@ -268,15 +286,15 @@ ScoreOn     = $C5       ; score ones digit
     ;   Top gap:  4 scanlines
     ;   Timer:    6 scanlines
     ;   Gap:      1
-    ;   Lives:    7 (SetObjectXPos 1 + setup 1 + render 5)
+    ;   Lives:    7 (SetObjectXPos 1 + HMOVE 1 + render 5)
     ;   Gap:      1
-    ;   Bombs:    8 (SetObjectXPos×2 2 + setup 1 + render 5)
-    ;   Gap:      1
-    ;   Score:    5 render + 1 clear = 6
-    ;   TOTAL:    4+6+1+7+1+8+1+6 = 34
-    ;   Pad:      48 - 34 = 14
+    ;   Bombs:    8 (SetObjectXPos×2 2 + HMOVE 1 + render 5)
+    ;   Gap:      3
+    ;   Score:    11 (SetObjectXPos×2 2 + HMOVE 1 + render 8)
+    ;   TOTAL:    4+6+1+7+1+8+3+11 = 41
+    ;   Pad:      48 - 41 = 7
     ; ====================================================================
-    ldx #11
+    ldx #7
 .HudPad:
     sta WSYNC
     dex
@@ -314,6 +332,113 @@ SetObjectXPos_b1:
     lda #0
     sta $1FF6
     jmp $F0A4
+
+; ========================================================================
+; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing
+; 10 digits (0-9), 8 bytes each = 80 bytes
+; MSB-first: bit7 = leftmost pixel
+; ========================================================================
+    org $FD00
+DigitGfx:
+    ; Digit 0
+    .byte %0
+    .byte %01111100
+    .byte %11000110
+    .byte %11000110
+    .byte %11000110
+    .byte %11000110
+    .byte %11000110
+    .byte %01111100
+
+    ; Digit 1
+    .byte %0
+    .byte %00011000
+    .byte %00011000
+    .byte %00011000
+    .byte %00011000
+    .byte %01011000
+    .byte %00111000
+    .byte %00011000
+
+    ; Digit 2
+    .byte %0
+    .byte %11111110
+    .byte %11000000
+    .byte %01100000
+    .byte %00011000
+    .byte %00000110
+    .byte %11000110
+    .byte %01111100
+
+    ; Digit 3
+    .byte %0
+    .byte %11111100
+    .byte %00000110
+    .byte %00000110
+    .byte %00111100
+    .byte %00000110
+    .byte %00000110
+    .byte %11111100
+
+    ; Digit 4
+    .byte %0
+    .byte %00001100
+    .byte %00001100
+    .byte %11111110
+    .byte %11001100
+    .byte %11001100
+    .byte %11001100
+    .byte %11000000
+
+    ; Digit 5
+    .byte %0
+    .byte %11111100
+    .byte %00000110
+    .byte %00000110
+    .byte %11111100
+    .byte %11000000
+    .byte %11000000
+    .byte %11111110
+
+    ; Digit 6
+    .byte %0
+    .byte %01111100
+    .byte %11000110
+    .byte %11000110
+    .byte %11111100
+    .byte %11000000
+    .byte %11000010
+    .byte %01111100
+
+    ; Digit 7
+    .byte %0
+    .byte %01100000
+    .byte %00110000
+    .byte %00011000
+    .byte %00001100
+    .byte %00000110
+    .byte %00000110
+    .byte %11111110
+
+    ; Digit 8
+    .byte %0
+    .byte %01111100
+    .byte %11000110
+    .byte %11000110
+    .byte %01111100
+    .byte %11000110
+    .byte %11000110
+    .byte %01111100
+
+    ; Digit 9
+    .byte %0
+    .byte %01111100
+    .byte %10000110
+    .byte %00000110
+    .byte %01111110
+    .byte %11000110
+    .byte %11000110
+    .byte %01111100
 
 ; ========================================================================
 ; Fine-adjust table (page-aligned at $FF00)
