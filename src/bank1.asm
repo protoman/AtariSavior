@@ -239,16 +239,6 @@ ScoreOn     = $C5       ; score ones digit
     iny
     cpy #5
     bne .ScoreRender
-    lda PF0ScoreBuf,Y
-    sta PF0
-    lda PF1ScoreBuf,Y
-    sta PF1
-    lda PF2ScoreBuf,Y
-    sta PF2
-    sta WSYNC
-    iny
-    cpy #5
-    bne .ScoreRender
 
     ; Clear PF
     sta WSYNC
