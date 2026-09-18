@@ -186,8 +186,11 @@ ScoreOn     = $C5       ; score ones digit
 
     ; ====================================================================
     ; Line 4: Score — incremental test
-    ; Step 1: NUSIZ + VDELP + REFP register writes only (no WSYNC)
+    ; Step 2: NUSIZ + VDELP + REFP + COLUP
     ; ====================================================================
+    lda #$0E            ; white
+    sta COLUP0
+    sta COLUP1
     lda #$03            ; NUSIZ = 3 copies close
     sta NUSIZ0
     sta NUSIZ1
