@@ -90,8 +90,6 @@ MenuMain:
     sta PF2
 
     ; --- Initialize HUD variables ---
-    lda #3              ; default 3 lives
-    sta LivesCount
     lda #0              ; initialize score digits to 0
     sta ScoreTh
     sta ScoreHu
@@ -102,84 +100,67 @@ MenuMain:
     sta WSYNC
 
     ; ====================================================================
-    ; Line 2: Lives — N green squares, each on its own scanline
-    ; Individual RESP positioning for 4px gaps (HERO approach)
-    ; LivesCount = number of lives to show (1-6)
+    ; Line 2: Lives — 3 green squares on ONE line
+    ; P0 with NUSIZ=$03 (3 copies, 16 clocks apart)
+    ; $FF pattern = 8px squares, 8px gaps (one square between)
+    ; Squares at X, X+16, X+32
     ; ====================================================================
     lda #$C6            ; green
     sta COLUP0
-    lda #$00            ; single copy
+    lda #$03            ; NUSIZ0 = 3 copies close
     sta NUSIZ0
-    lda #$F0            ; 4-pixel-wide block pattern
-
-    ldx LivesCount
-    beq .LivesDone
-    ldy #0              ; icon index
-.LivesLoop:
-    ; Calculate X position: 10 + (index * 8)
-    tya
-    asl
-    asl
-    asl                 ; index * 8
-    clc
-    adc #10             ; + base offset
-    sta LifeX
-    tya
-    pha                 ; save Y (loop counter) — SetObjectXPos clobbers it
-    jsr RenderLifeIcon
-    pla
-    tay                 ; restore Y
-    iny
-    cpy LivesCount
-    bne .LivesLoop
-.LivesDone:
-
-    ; Clear sprites
+    lda #12             ; base X: squares at 12, 28, 44
+    ldx #0
+    jsr SetObjectXPos_b1
     sta WSYNC
+    sta HMOVE
+    lda #$E0            ; 3-color-clock-wide square pattern
+    sta GRP0
+    ldy #5              ; 5 scanlines tall
+.LivesLoop:
+    sta WSYNC
+    dey
+    bne .LivesLoop
     lda #0
     sta GRP0
+    sta NUSIZ0
 
     ; --- 1 scanline gap ---
     sta WSYNC
 
     ; ====================================================================
-    ; Line 3: Bombs — 5 red squares, each on its own scanline
+    ; Line 3: Bombs — 5 red squares on ONE line
+    ; P0 (3 copies) + P1 (2 copies), all 16 clocks apart
+    ; Squares at 12, 28, 44 (P0) + 60, 76 (P1)
     ; ====================================================================
     lda #$46            ; red
     sta COLUP0
-    lda #$00            ; single copy
+    sta COLUP1
+    lda #$03            ; NUSIZ0 = 3 copies
     sta NUSIZ0
-    lda #$F0            ; 4-pixel-wide block pattern
-
-    ; Bomb 1 at pixel 10
-    ldx #10
-    stx LifeX
-    jsr RenderLifeIcon
-
-    ; Bomb 2 at pixel 18
-    ldx #18
-    stx LifeX
-    jsr RenderLifeIcon
-
-    ; Bomb 3 at pixel 26
-    ldx #26
-    stx LifeX
-    jsr RenderLifeIcon
-
-    ; Bomb 4 at pixel 34
-    ldx #34
-    stx LifeX
-    jsr RenderLifeIcon
-
-    ; Bomb 5 at pixel 42
-    ldx #42
-    stx LifeX
-    jsr RenderLifeIcon
-
-    ; Clear sprites
+    lda #$01            ; NUSIZ1 = 2 copies
+    sta NUSIZ1
+    lda #12             ; P0 at 12: copies at 12, 28, 44
+    ldx #0
+    jsr SetObjectXPos_b1
+    lda #60             ; P1 at 60: copies at 60, 76
+    ldx #1
+    jsr SetObjectXPos_b1
     sta WSYNC
+    sta HMOVE
+    lda #$E0            ; 3-color-clock-wide square pattern
+    sta GRP0
+    sta GRP1
+    ldy #5
+.BombsLoop:
+    sta WSYNC
+    dey
+    bne .BombsLoop
     lda #0
     sta GRP0
+    sta GRP1
+    sta NUSIZ0
+    sta NUSIZ1
 
     ; --- 1 scanline gap ---
     sta WSYNC
@@ -229,20 +210,18 @@ MenuMain:
 
     ; ====================================================================
     ; Pad remaining scanlines to reach exactly 48 total
-    ; Budget (LivesCount=3):
+    ; Budget:
     ;   Timer:    6 scanlines
     ;   Gap:      1
-    ;   Lives:    3 icons × 3 = 9 (SetObjectXPos WSYNC + 2 WSYNCs)
-    ;   Clear:    1
+    ;   Lives:    7 (SetObjectXPos 1 + setup 1 + render 5)
     ;   Gap:      1
-    ;   Bombs:    5 icons × 3 = 15
-    ;   Clear:    1
+    ;   Bombs:    8 (SetObjectXPos×2 2 + setup 1 + render 5)
     ;   Gap:      1
     ;   Score:    5 render + 1 clear = 6
-    ;   TOTAL:    6+1+9+1+1+15+1+1+6 = 41
-    ;   Pad:      48 - 41 = 7
+    ;   TOTAL:    6+1+7+1+8+1+6 = 30
+    ;   Pad:      48 - 30 = 18
     ; ====================================================================
-    ldx #7
+    ldx #18
 .HudPad:
     sta WSYNC
     dex
@@ -266,26 +245,6 @@ SetObjectXPos_b1:
     lda fineAdjustTable_b1,Y
     sta HMP0,X
     sta RESP0,X
-    rts
-
-; ========================================================================
-; RenderLifeIcon — render a single 4px-wide, 4px-tall icon
-; LifeX = pixel position for this icon
-; A = pattern ($F0 for blocks)
-; ========================================================================
-LifeX = $A8
-LivesCount = $A9       ; number of lives to show (1-6, default 3)
-
-RenderLifeIcon:
-    pha                 ; save block pattern ($F0) on stack
-    lda LifeX           ; A = pixel position
-    ldx #0              ; X=0 for player0
-    jsr SetObjectXPos_b1
-    pla                 ; restore block pattern
-    sta WSYNC
-    sta HMOVE
-    sta GRP0
-    sta WSYNC
     rts
 
 ; ========================================================================
