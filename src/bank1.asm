@@ -185,9 +185,20 @@ ScoreOn     = $C5       ; score ones digit
     sta WSYNC
 
     ; ====================================================================
-    ; Line 4: Score — STUB (disabled for debugging)
-    ; Just consume scanlines, no rendering
+    ; Line 4: Score — incremental test
+    ; Step 1: NUSIZ + VDELP + REFP register writes only (no WSYNC)
     ; ====================================================================
+    lda #$03            ; NUSIZ = 3 copies close
+    sta NUSIZ0
+    sta NUSIZ1
+    lda #1
+    sta VDELP0          ; vertical delay ON
+    sta VDELP1
+    lda #0
+    sta REFP0           ; no reflection
+    sta REFP1
+
+    ; Stub: consume remaining scanlines
     ldx #11
 .ScoreStub:
     sta WSYNC
