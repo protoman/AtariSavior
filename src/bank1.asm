@@ -71,15 +71,13 @@ PF1ScoreBuf = $B8       ; 5 bytes: PF1 values (unused with sprite approach)
 PF2ScoreBuf = $C6       ; 5 bytes: PF2 values (unused with sprite approach)
 Temp        = $AD       ; scratch variable
 RowCnt      = $AE       ; score render row counter (0-7)
-DigitPtr1   = $D4       ; pointer to digit 0 font data
-DigitPtr2   = $D6       ; pointer to digit 1 font data
-DigitPtr3   = $D8       ; pointer to digit 2 font data
-DigitPtr4   = $DA       ; pointer to digit 3 font data
-DigitPtr5   = $DC       ; pointer to digit 4 font data
-ScoreTh     = $C2       ; score thousands digit
-ScoreHu     = $C3       ; score hundreds digit
-ScoreTe     = $C4       ; score tens digit
-ScoreOn     = $C5       ; score ones digit
+DigitPtr1   = $F4       ; pointer to digit 0 font data
+DigitPtr2   = $F6       ; pointer to digit 1 font data
+DigitPtr3   = $F8       ; pointer to digit 2 font data
+ScoreTh     = $F0       ; score thousands digit
+ScoreHu     = $F1       ; score hundreds digit
+ScoreTe     = $F2       ; score tens digit
+ScoreOn     = $F3       ; score ones digit
 
     ; --- Top gap: 4 scanlines (lower HUD elements) ---
     ldx #4
@@ -184,74 +182,60 @@ ScoreOn     = $C5       ; score ones digit
     sta WSYNC
 
     ; ====================================================================
-    ; Line 4: Score — EXACT burger8e.asm setup + loop
-    ; NUSIZ0=3 (3 copies) + NUSIZ1=1 (2 copies) = 5 slots
-    ; Digits: blank, 0, 1, 2, blank
+    ; Line 4: Score — 3-character test (0, 1, 2)
+    ; NUSIZ0=1 (2 copies) + NUSIZ1=0 (1 copy) = 3 slots
+    ; VDELP enabled for cross-buffer between P0 copies
     ; ====================================================================
-
-    ; EXACT copy of burger8e.asm score setup (lines 455-482)
-    sta WSYNC
-    ldx #1
-    stx VDELP0
-    stx VDELP1
-    ldx #0
-    stx GRP0
-    stx GRP1
-    stx REFP0
-    stx REFP1
-    ldx #3
-    stx NUSIZ0
-    stx RESP0
-    ldx #1
-    stx NUSIZ1
-    stx RESP1
-    ldx #$E0
-    stx HMP0
-    stx HMP1
-    lda #$0E
+    lda #$0E             ; white
     sta COLUP0
     sta COLUP1
+    ldx #1               ; NUSIZ = 2 copies close
+    stx NUSIZ0
+    ldx #0               ; NUSIZ = 1 copy
+    stx NUSIZ1
+    stx VDELP0           ; VDELP OFF — we know OFF shows "010" correctly
+    stx VDELP1
+    stx REFP0
+    stx REFP1
+    ; Position P0 at pixel 72, P1 at pixel 80
+    lda #72
+    ldx #0
+    jsr SetObjectXPos_b1
+    lda #80
+    ldx #1
+    jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
 
-    ; Set up 5 digit pointers
+    ; Set up 3 digit pointers: 0, 1, 2
     lda #$FD
     sta DigitPtr1+1
     sta DigitPtr2+1
     sta DigitPtr3+1
-    sta DigitPtr4+1
-    sta DigitPtr5+1
-    lda #$00             ; digit 0 (blank row)
+    lda #$00             ; digit "0"
     sta DigitPtr1
     lda #$08             ; digit "1"
     sta DigitPtr2
     lda #$10             ; digit "2"
     sta DigitPtr3
-    lda #$18             ; digit "3"
-    sta DigitPtr4
-    lda #$20             ; digit "4"
-    sta DigitPtr5
 
-    ; EXACT copy of burger8e.asm ScoreLoop (lines 487-508)
+    ; Clear sprites
+    lda #0
+    sta GRP0
+    sta GRP1
+
+    ; Render loop
     ldy #7
     sty RowCnt
 .ScoreLoop:
     sta WSYNC
-    lda (DigitPtr1),Y
-    sta GRP0
-    sta GRP1
-    lda (DigitPtr2),Y
-    sta GRP0
-    lda (DigitPtr3),Y
-    tax
-    lda (DigitPtr4),Y
-    sta Temp
-    lda (DigitPtr5),Y
-    ldy Temp
-    stx GRP1
-    sty GRP0
-    sta GRP1
-    sta GRP0
+    lda (DigitPtr1),Y      ; load digit 0
+    sta GRP0               ; 0 -> GRP0
+    lda (DigitPtr2),Y      ; load digit 1
+    sta GRP1               ; 1 -> GRP1
+    lda (DigitPtr3),Y      ; load digit 2
+    sta GRP0               ; 2 -> GRP0
+    sta GRP1               ; dummy
     dec RowCnt
     ldy RowCnt
     bpl .ScoreLoop

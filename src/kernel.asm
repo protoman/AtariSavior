@@ -88,10 +88,10 @@ Grp0PtrHi       byte            ; pointer to player sprite data (hi)
 Temp            byte            ; general scratch
 
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match)
-ScoreTh         = $C2           ; score thousands digit (0-9)
-ScoreHu         = $C3           ; score hundreds digit (0-9)
-ScoreTe         = $C4           ; score tens digit (0-9)
-ScoreOn         = $C5           ; score ones digit (0-9)
+ScoreTh         = $F0           ; score thousands digit (0-9) — moved to avoid PF1Buf overlap
+ScoreHu         = $F1           ; score hundreds digit (0-9)
+ScoreTe         = $F2           ; score tens digit (0-9)
+ScoreOn         = $F3           ; score ones digit (0-9)
 PF0ScoreBuf     = $B3           ; 5 bytes: PF0 values for score rows 0-4
 PF1ScoreBuf     = $B8           ; 5 bytes: PF1 values for score rows 0-4
 PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
