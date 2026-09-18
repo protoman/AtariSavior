@@ -106,95 +106,7 @@ ScoreOn     = $C5       ; score ones digit
     sta PF1
     sta PF2
 
-    ; --- Pre-compute score PF buffers from actual score variables ---
-    ; ScoreRow = row counter (0-4)
-    ; PF0[row] = reverse_bits(PFDigitFont[ScoreTh*5+row]) << 4
-    ; PF1[row] = (PFDigitFont[ScoreHu*5+row] << 5) | (PFDigitFont[ScoreTe*5+row] << 1)
-    ; PF2[row] = reverse_bits(PFDigitFont[ScoreOn*5+row])
-
-    ScoreRow = $AE
-
-    lda #0
-    sta ScoreRow
-.PreCompLoop:
-    ; --- PF0 from ScoreTh (with bit reversal, then <<4) ---
-    ldx ScoreTh
-    lda DigitTimes5_b1,X
-    clc
-    adc ScoreRow        ; A = ScoreTh*5 + row
-    tax
-    lda PFDigitFont_b1,X
-    jsr ReverseBits3    ; A = reversed bits 0-2
-    asl
-    asl
-    asl
-    asl                 ; <<4 for PF0 position
-    ldx ScoreRow
-    sta PF0ScoreBuf,X
-
-    ; --- PF1 from ScoreHu <<5 | ScoreTe <<1 (no reversal) ---
-    ldx ScoreHu
-    lda DigitTimes5_b1,X
-    clc
-    adc ScoreRow
-    tax
-    lda PFDigitFont_b1,X
-    asl
-    asl
-    asl
-    asl
-    asl                 ; <<5
-    sta Temp            ; save high part
-
-    ldx ScoreTe
-    lda DigitTimes5_b1,X
-    clc
-    adc ScoreRow
-    tax
-    lda PFDigitFont_b1,X
-    asl                 ; <<1
-    ora Temp            ; combine
-    ldx ScoreRow
-    sta PF1ScoreBuf,X
-
-    ; --- PF2 from ScoreOn (with bit reversal, no shift) ---
-    ldx ScoreOn
-    lda DigitTimes5_b1,X
-    clc
-    adc ScoreRow
-    tax
-    lda PFDigitFont_b1,X
-    jsr ReverseBits3    ; A = reversed bits 0-2
-    ldx ScoreRow
-    sta PF2ScoreBuf,X
-
-    inc ScoreRow
-    lda ScoreRow
-    cmp #5
-    bne .PreCompLoop
-    jmp .ScorePreCompDone
-
-; ========================================================================
-; ReverseBits3 — reverse bits 0-2 of A (XYZ → ZYX)
-; ========================================================================
-ReverseBits3:
-    tay                 ; Y = original pattern
-    and #$04            ; extract bit2
-    lsr
-    lsr                 ; shift to bit0 position
-    sta Temp
-    tya
-    and #$01            ; extract bit0
-    asl
-    asl                 ; shift to bit2 position
-    ora Temp
-    sta Temp
-    tya
-    and #$02            ; bit1 stays in place
-    ora Temp
-    rts
-
-.ScorePreCompDone:
+    ; Score PF buffers pre-computed in bank0 VBLANK — just render from them
 
 
     ; --- 1 scanline gap ---
@@ -347,24 +259,6 @@ SetObjectXPos_b1:
     sta HMP0,X
     sta RESP0,X
     rts
-
-; ========================================================================
-; Score digit font (copy from bank0/kernel.asm for bank1 access)
-; ========================================================================
-PFDigitFont_b1:
-  .byte %00000111, %00000101, %00000101, %00000101, %00000111  ; 0
-  .byte %00000010, %00000110, %00000010, %00000010, %00000111  ; 1
-  .byte %00000111, %00000001, %00000111, %00000100, %00000111  ; 2
-  .byte %00000111, %00000001, %00000111, %00000001, %00000111  ; 3
-  .byte %00000101, %00000101, %00000111, %00000001, %00000001  ; 4
-  .byte %00000111, %00000100, %00000111, %00000001, %00000111  ; 5
-  .byte %00000111, %00000100, %00000111, %00000101, %00000111  ; 6
-  .byte %00000111, %00000001, %00000001, %00000001, %00000001  ; 7
-  .byte %00000111, %00000101, %00000111, %00000101, %00000111  ; 8
-  .byte %00000111, %00000101, %00000111, %00000001, %00000111  ; 9
-
-DigitTimes5_b1:
-  .byte 0, 5, 10, 15, 20, 25, 30, 35, 40, 45
 
 ; ========================================================================
 ; Fold-pad stubs (byte-identical to bank0)

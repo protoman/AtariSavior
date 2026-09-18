@@ -86,6 +86,7 @@ TileRow         byte            ; current tile row (0-11)
 Grp0Ptr         byte            ; pointer to player sprite data (lo)
 Grp0PtrHi       byte            ; pointer to player sprite data (hi)
 Temp            byte            ; general scratch
+ScoreRow        byte            ; score pre-comp row counter (0-4)
 
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match)
 ScoreTh         = $C2           ; score thousands digit (0-9)
@@ -202,6 +203,99 @@ StartFrame:
     ; --- Apply horizontal motion during VBLANK ---
     sta WSYNC                   ; sync to next scanline (still in VBLANK)
     sta HMOVE                   ; latch fine motion — takes effect when VBLANK ends
+
+    ; --- Pre-compute score PF buffers during VBLANK ---
+    ; PF0[row] = reverse_bits(PFDigitFont[ScoreTh*5+row]) << 4
+    ; PF1[row] = (PFDigitFont[ScoreHu*5+row] << 5) | (PFDigitFont[ScoreTe*5+row] << 1)
+    ; PF2[row] = reverse_bits(PFDigitFont[ScoreOn*5+row])
+    ; Font bit2=leftmost, PF0/PF2 are LSB-first → need reversal
+    lda #0
+    sta ScoreRow
+.ScorePreComp:
+    ; --- PF0 from ScoreTh (with bit reversal, then <<4) ---
+    ldx ScoreTh
+    lda DigitTimes5,X
+    clc
+    adc ScoreRow
+    tax
+    lda PFDigitFont,X
+    ; Reverse bits 0-2: XYZ → ZYX
+    tay
+    and #$04
+    lsr
+    lsr
+    sta Temp
+    tya
+    and #$01
+    asl
+    asl
+    ora Temp
+    sta Temp
+    tya
+    and #$02
+    ora Temp
+    asl
+    asl
+    asl
+    asl                     ; <<4 for PF0 position
+    ldx ScoreRow
+    sta PF0ScoreBuf,X
+
+    ; --- PF1 from ScoreHu <<5 | ScoreTe <<1 (no reversal needed) ---
+    ldx ScoreHu
+    lda DigitTimes5,X
+    clc
+    adc ScoreRow
+    tax
+    lda PFDigitFont,X
+    asl
+    asl
+    asl
+    asl
+    asl                     ; <<5
+    sta Temp
+
+    ldx ScoreTe
+    lda DigitTimes5,X
+    clc
+    adc ScoreRow
+    tax
+    lda PFDigitFont,X
+    asl                     ; <<1
+    ora Temp
+    ldx ScoreRow
+    sta PF1ScoreBuf,X
+
+    ; --- PF2 from ScoreOn (with bit reversal, no shift) ---
+    ldx ScoreOn
+    lda DigitTimes5,X
+    clc
+    adc ScoreRow
+    tax
+    lda PFDigitFont,X
+    ; Reverse bits 0-2: XYZ → ZYX
+    tay
+    and #$04
+    lsr
+    lsr
+    sta Temp
+    tya
+    and #$01
+    asl
+    asl
+    ora Temp
+    sta Temp
+    tya
+    and #$02
+    ora Temp
+    ldx ScoreRow
+    sta PF2ScoreBuf,X
+
+    ; Next row
+    inc ScoreRow
+    lda ScoreRow
+    cmp #5
+    bne .ScorePreComp
 
     ; --- Wait for VBLANK timer ---
 .WaitVBLANK:
