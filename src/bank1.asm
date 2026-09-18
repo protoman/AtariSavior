@@ -273,8 +273,8 @@ LifeX = $A8
 LivesCount = $A9       ; number of lives to show (1-6, default 3)
 
 RenderLifeIcon:
-    ldx LifeX
-    ldy #0
+    lda LifeX           ; A = pixel position
+    ldx #0              ; X=0 for player0
     jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
