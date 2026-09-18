@@ -75,51 +75,44 @@ ScoreHu     = $C3       ; score hundreds digit
 ScoreTe     = $C4       ; score tens digit
 ScoreOn     = $C5       ; score ones digit
 
-    ; --- Score PF buffers (2-pixel-wide digits, HERO-style) ---
-    ; PF0=$00 (padding), PF1=digits 0-2, PF2=digit 3
-    ; PF1 layout (MSB-first): [d0L][d0R][gap][d1L][d1R][gap][d2L][d2R]
-    ; PF2 layout (LSB-first): [d3L][d3R][pad*6]
-    ; Font byte: bit1=left column, bit0=right column
-    ; Score "1234": digit1=1($01), digit2=2(%10), digit3=3(%10), digit4=4(%01)
+    ; --- Score PF buffers (3×5 font, temporary until 48px sprite implementation) ---
+    ; PF0: digit1 << 4 (reversed bits), PF1: (digit2 << 5) | (digit3 << 1), PF2: digit4 reversed
+    ; Digit 1=1, Digit 2=2, Digit 3=3, Digit 4=4
 
-    ; PF0 = all padding
-    lda #$00
+    ; PF0 (digit1 reversed <<4): %010→$20, %011→$30, %010→$20, %010→$20, %111→$70
+    lda #$20
     sta PF0ScoreBuf+0
+    lda #$30
     sta PF0ScoreBuf+1
+    lda #$20
     sta PF0ScoreBuf+2
+    lda #$20
     sta PF0ScoreBuf+3
+    lda #$70
     sta PF0ScoreBuf+4
 
-    ; PF1: digit1=1→$01, digit2=2→%10, digit3=3→%10
-    ; Row 0: d1=$01, d2=%10, d3=%10 → (1<<7)|(0<<6) | (1<<4)|(0<<3) | (1<<1)|(0<<0) = $92
-    ; Row 1: d1=$01, d2=%01, d3=%01 → (1<<7)|(0<<6) | (0<<4)|(1<<3) | (0<<1)|(1<<0) = $89
-    ; Row 2: d1=$01, d2=%10, d3=%10 → same as row 0 = $92
-    ; Row 3: d1=$01, d2=%10, d3=%01 → (1<<7)|(0<<6) | (1<<4)|(0<<3) | (0<<1)|(1<<0) = $91
-    ; Row 4: d1=$01, d2=%10, d3=%10 → same as row 0 = $92
-    lda #$92
+    ; PF1 (digit2<<5 | digit3<<1): $EE,$22,$EE,$82,$EE
+    lda #$EE
     sta PF1ScoreBuf+0
-    lda #$89
+    lda #$22
     sta PF1ScoreBuf+1
-    lda #$92
+    lda #$EE
     sta PF1ScoreBuf+2
-    lda #$91
+    lda #$82
     sta PF1ScoreBuf+3
-    lda #$92
+    lda #$EE
     sta PF1ScoreBuf+4
 
-    ; PF2: digit4=4→%01 (bit1=0,bit0=1)
-    ; Row 0: d4=%01 → (0<<1)|(1<<0) = $01
-    ; Row 1: d4=%01 → $01
-    ; Row 2: d4=%10 → (1<<1)|(0<<0) = $02
-    ; Row 3: d4=%01 → $01
-    ; Row 4: d4=%01 → $01
-    lda #$01
+    ; PF2 (digit4 reversed): %101→$05, %101→$05, %111→$07, %100→$04, %100→$04
+    lda #$05
     sta PF2ScoreBuf+0
+    lda #$05
     sta PF2ScoreBuf+1
-    lda #$02
+    lda #$07
     sta PF2ScoreBuf+2
-    lda #$01
+    lda #$04
     sta PF2ScoreBuf+3
+    lda #$04
     sta PF2ScoreBuf+4
 
     ; --- Top gap: 4 scanlines (lower HUD elements) ---
