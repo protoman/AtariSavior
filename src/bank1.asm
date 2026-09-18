@@ -75,42 +75,51 @@ ScoreHu     = $C3       ; score hundreds digit
 ScoreTe     = $C4       ; score tens digit
 ScoreOn     = $C5       ; score ones digit
 
-    ; --- Pre-compute score PF buffers (runs before WSYNCs, no scanline cost) ---
-    ; PF0 = reverse_bits(digit1) << 4, PF1 = (digit2 << 5) | (digit3 << 1), PF2 = reverse_bits(digit4)
-    ; Digit 1: %010,%110,%010,%010,%111  Digit 2: %111,%001,%111,%100,%111
-    ; Digit 3: %111,%001,%111,%001,%111  Digit 4: %101,%101,%111,%001,%001
-    ; PF0 (digit1 reversed <<4): %010→$20, %011→$30, %010→$20, %010→$20, %111→$70
-    lda #$20
+    ; --- Score PF buffers (2-pixel-wide digits, HERO-style) ---
+    ; PF0=$00 (padding), PF1=digits 0-2, PF2=digit 3
+    ; PF1 layout (MSB-first): [d0L][d0R][gap][d1L][d1R][gap][d2L][d2R]
+    ; PF2 layout (LSB-first): [d3L][d3R][pad*6]
+    ; Font byte: bit1=left column, bit0=right column
+    ; Score "1234": digit1=1($01), digit2=2(%10), digit3=3(%10), digit4=4(%01)
+
+    ; PF0 = all padding
+    lda #$00
     sta PF0ScoreBuf+0
-    lda #$30
     sta PF0ScoreBuf+1
-    lda #$20
     sta PF0ScoreBuf+2
-    lda #$20
     sta PF0ScoreBuf+3
-    lda #$70
     sta PF0ScoreBuf+4
-    ; PF1 (digit2<<5 | digit3<<1): $EE,$22,$EE,$82,$EE
-    lda #$EE
+
+    ; PF1: digit1=1→$01, digit2=2→%10, digit3=3→%10
+    ; Row 0: d1=$01, d2=%10, d3=%10 → (1<<7)|(0<<6) | (1<<4)|(0<<3) | (1<<1)|(0<<0) = $92
+    ; Row 1: d1=$01, d2=%01, d3=%01 → (1<<7)|(0<<6) | (0<<4)|(1<<3) | (0<<1)|(1<<0) = $89
+    ; Row 2: d1=$01, d2=%10, d3=%10 → same as row 0 = $92
+    ; Row 3: d1=$01, d2=%10, d3=%01 → (1<<7)|(0<<6) | (1<<4)|(0<<3) | (0<<1)|(1<<0) = $91
+    ; Row 4: d1=$01, d2=%10, d3=%10 → same as row 0 = $92
+    lda #$92
     sta PF1ScoreBuf+0
-    lda #$22
+    lda #$89
     sta PF1ScoreBuf+1
-    lda #$EE
+    lda #$92
     sta PF1ScoreBuf+2
-    lda #$82
+    lda #$91
     sta PF1ScoreBuf+3
-    lda #$EE
+    lda #$92
     sta PF1ScoreBuf+4
-    ; PF2 (digit4 reversed): %101→$05, %101→$05, %111→$07, %100→$04, %100→$04
-    lda #$05
+
+    ; PF2: digit4=4→%01 (bit1=0,bit0=1)
+    ; Row 0: d4=%01 → (0<<1)|(1<<0) = $01
+    ; Row 1: d4=%01 → $01
+    ; Row 2: d4=%10 → (1<<1)|(0<<0) = $02
+    ; Row 3: d4=%01 → $01
+    ; Row 4: d4=%01 → $01
+    lda #$01
     sta PF2ScoreBuf+0
-    lda #$05
     sta PF2ScoreBuf+1
-    lda #$07
+    lda #$02
     sta PF2ScoreBuf+2
-    lda #$04
+    lda #$01
     sta PF2ScoreBuf+3
-    lda #$04
     sta PF2ScoreBuf+4
 
     ; --- Top gap: 4 scanlines (lower HUD elements) ---
@@ -210,7 +219,9 @@ ScoreOn     = $C5       ; score ones digit
     sta NUSIZ0
     sta NUSIZ1
 
-    ; --- 1 scanline gap ---
+    ; --- 3 scanline gap (moved score down to avoid bomb collision) ---
+    sta WSYNC
+    sta WSYNC
     sta WSYNC
 
     ; ====================================================================
@@ -218,14 +229,17 @@ ScoreOn     = $C5       ; score ones digit
     ; CTRLPF=$02: SCORE mode — left half uses COLUP0, right half uses COLUP1
     ; COLUP1 = background color to hide right-half duplicate
     ; ====================================================================
+    ; Setup CTRLPF/COLUP during current scanline (after gap WSYNC)
+    ; Then WSYNC so PF writes land at start of NEXT scanline (during HBLANK)
     lda #$02            ; SCORE mode (avoids doubled score in reflected mode)
     sta CTRLPF
     lda #$0E            ; white for left half (COLUP0)
     sta COLUP0
     lda #$06            ; grey for right half (COLUP1 = background, hides duplicate)
     sta COLUP1
+    sta WSYNC           ; sync — PF writes below land at start of next scanline
 
-    ; Simple loop: read PF0/PF1/PF2 values from pre-computed buffers
+    ; PF writes must happen during HBLANK (first ~22 cycles) for clean rendering
     ldy #0
 .ScoreRender:
     lda PF0ScoreBuf,Y
@@ -269,7 +283,7 @@ ScoreOn     = $C5       ; score ones digit
     ;   TOTAL:    4+6+1+7+1+8+1+6 = 34
     ;   Pad:      48 - 34 = 14
     ; ====================================================================
-    ldx #14
+    ldx #11
 .HudPad:
     sta WSYNC
     dex
