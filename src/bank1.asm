@@ -185,29 +185,28 @@ ScoreOn     = $C5       ; score ones digit
     sta WSYNC
 
     ; ====================================================================
-    ; Line 4: Score — incremental test
-    ; Step 4: + digit pointer setup
+    ; Line 4: Score — 48-pixel sprite technique
+    ; Positioning must match score48pix.asm exactly: both RESP on same scanline
     ; ====================================================================
     lda #$0E            ; white
     sta COLUP0
     sta COLUP1
+
+    ; Match score48pix.asm positioning exactly
+    lda #$10            ; HMP0 = -1 (fine adjust left)
+    sta HMP0
+    lda #$20            ; HMP1 = -2 (fine adjust left)
+    sta HMP1
     lda #$03            ; NUSIZ = 3 copies close
     sta NUSIZ0
     sta NUSIZ1
-    lda #1
-    sta VDELP0          ; vertical delay ON
+    sta RESP0            ; RESP0 at pixel ~56
+    sta RESP1            ; RESP1 at pixel ~72
+    sta VDELP0           ; vertical delay ON (after RESP)
     sta VDELP1
     lda #0
-    sta REFP0           ; no reflection
+    sta REFP0
     sta REFP1
-
-    ; Position P0 at pixel 56, P1 at pixel 72
-    lda #56
-    ldx #0
-    jsr SetObjectXPos_b1
-    lda #72
-    ldx #1
-    jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
 
