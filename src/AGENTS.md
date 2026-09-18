@@ -208,14 +208,17 @@ stella -debug savior.bin # debugger
 - [ ] Level indicator
 - [ ] HUD rendering in the 48-line band
 
-**Score rendering notes (from comparison/lo-a-rad-dragon/bank2.asm):**
-- Score uses PF registers (PF0/PF1/PF2) with PFDigitFont (3-bit-wide glyphs)
-- Pre-computed into PF0ScoreBuf/PF1ScoreBuf/PF2ScoreBuf during cave kernel (PF is free while GRP0/GRP1 render level)
+**Score rendering notes (from bumbershootsoft.wordpress.com + HERO analysis):**
+- Score uses **PF2 only** (not PF0/PF1) — each digit is 3 pixels wide in PF2 bits
+- **CTRLPF=$02 (SCORE mode)** — uses COLUP0 for left half, COLUP1 for right half (avoids doubled score in reflected mode)
+- Font is **3×6 bricks** (not 3×5), stored bottom-to-top for efficient loop indexing
+- Score stored as **BCD** (Binary Coded Decimal) — e.g., 57 stored as hex $57
+- Graphics should be in **final 256 bytes** of ROM for easy address math (high byte = $FF)
+- Font data: left/middle/right columns as bits 1/2/4, combined with OR into single byte, mirrored in both halves
+- Render loop: combine tens+ones digits per scanline, write to PF2, then WSYNC
 - Level text uses GRP0/GRP1 sprites (FontP0/FontP1), NOT PF
 - Score render loop: writes PF0/PF1/PF2 per scanline, then `sta WSYNC`
-- Comparison game's level text uses packed sprites ("LV" in P0, digits in P1), positioned via SetObjectXPos
 - The 13+2 technique is used for the 32-char text demo (bank1), but the game HUD uses simpler sprite+PF approach
-- Need to study HERO's bank1 second kernel ($DE00) for the actual 13+2 implementation
 
 ### Phase 7: Gameplay
 - [ ] Laser/weapon system (missile 0)
