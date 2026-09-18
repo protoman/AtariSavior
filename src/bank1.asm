@@ -186,30 +186,29 @@ ScoreOn     = $C5       ; score ones digit
 
     ; ====================================================================
     ; Line 4: Score — 48-pixel sprite technique
-    ; EXACT match to score48pix.asm setup timing
+    ; EXACT match to score48pix.asm timing (every cycle counts!)
     ; ====================================================================
-    sta WSYNC            ; sync to start of scanline
-    lda #0
-    sta REFP0
-    sta REFP1
-    lda #$01
-    sta CTRLPF
-    lda #$0E            ; white
-    sta COLUP0
-    sta COLUP1
-    lda #$10            ; HMP0 = -1
-    sta HMP0
-    lda #$20            ; HMP1 = -2
-    sta HMP1
-    lda #$03            ; NUSIZ = 3 copies close
-    sta NUSIZ0
-    sta NUSIZ1
-    sta RESP0            ; RESP0 at cycle 40
-    sta RESP1            ; RESP1 at cycle 43
-    sta VDELP0           ; vertical delay ON
-    sta VDELP1
-    sta WSYNC
-    sta HMOVE
+    sta WSYNC            ; sync
+    sta REFP0            ;3 [3]
+    sta REFP1            ;3  [6]
+    lda #$01             ;2  [8]
+    sta CTRLPF           ;3 [11]
+    lda #$0E             ;2 [13] white
+    sta COLUP0           ;3 [16]
+    sta COLUP1           ;3 [19]
+    lda #$10             ;2 [21] HMP0 = -1
+    sta HMP0             ;3 [24]
+    lda #$20             ;2 [26] HMP1 = -2
+    sta HMP1             ;3 [29]
+    lda #$03             ;2 [31] NUSIZ = 3 copies
+    sta NUSIZ0           ;3 [34]
+    sta NUSIZ1           ;3 [37]
+    sta RESP0            ;3 *40* RESP0
+    sta RESP1            ;3 *43* RESP1
+    sta VDELP0           ;3 [46] vertical delay ON
+    sta VDELP1           ;3 [49]
+    sta WSYNC            ; sync
+    sta HMOVE            ;3 [52]
 
     ; Set up digit pointers
     lda #>DigitGfx
