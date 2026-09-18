@@ -124,7 +124,11 @@ MenuMain:
     clc
     adc #10             ; + base offset
     sta LifeX
+    tya
+    pha                 ; save Y (loop counter) — SetObjectXPos clobbers it
     jsr RenderLifeIcon
+    pla
+    tay                 ; restore Y
     iny
     cpy LivesCount
     bne .LivesLoop
