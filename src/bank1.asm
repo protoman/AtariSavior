@@ -273,12 +273,13 @@ LifeX = $A8
 LivesCount = $A9       ; number of lives to show (1-6, default 3)
 
 RenderLifeIcon:
+    pha                 ; save block pattern ($F0) on stack
     lda LifeX           ; A = pixel position
     ldx #0              ; X=0 for player0
     jsr SetObjectXPos_b1
+    pla                 ; restore block pattern
     sta WSYNC
     sta HMOVE
-    ; Render 1 scanline
     sta GRP0
     sta WSYNC
     rts
