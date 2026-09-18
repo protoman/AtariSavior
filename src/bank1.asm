@@ -69,14 +69,14 @@ MenuMain:
 PF0ScoreBuf = $B3       ; 5 bytes: PF0 values (unused with sprite approach)
 PF1ScoreBuf = $B8       ; 5 bytes: PF1 values (unused with sprite approach)
 PF2ScoreBuf = $C6       ; 5 bytes: PF2 values (unused with sprite approach)
-    Temp        = $AD       ; scratch variable
-    RowCnt      = $AE       ; score render row counter (0-7)
-    DigitPtr1   = $89       ; pointer to digit 0 font data
-    DigitPtr2   = $8B       ; pointer to digit 1 font data
-    DigitPtr3   = $8D       ; pointer to digit 2 font data
-    DigitPtr4   = $8F       ; pointer to digit 3 font data
-    DigitPtr5   = $91       ; pointer to digit 4 font data
-    DigitPtr6   = $93       ; pointer to digit 5 font data
+Temp        = $AD       ; scratch variable
+RowCnt      = $AE       ; score render row counter (0-7)
+DigitPtr1   = $89       ; pointer to digit 0 font data
+DigitPtr2   = $8B       ; pointer to digit 1 font data
+DigitPtr3   = $8D       ; pointer to digit 2 font data
+DigitPtr4   = $8F       ; pointer to digit 3 font data
+DigitPtr5   = $91       ; pointer to digit 4 font data
+DigitPtr6   = $93       ; pointer to digit 5 font data
 ScoreTh     = $C2       ; score thousands digit
 ScoreHu     = $C3       ; score hundreds digit
 ScoreTe     = $C4       ; score tens digit
@@ -211,7 +211,11 @@ ScoreOn     = $C5       ; score ones digit
     sta WSYNC
     sta HMOVE
 
-    ; No pointer writes - testing if positioning alone is safe
+    ; Set up digit pointers one at a time for debugging
+    lda #>DigitGfx
+    sta DigitPtr1+1
+    lda #<(DigitGfx + (0*8))
+    sta DigitPtr1
 
     ; Stub: consume remaining scanlines
     ldx #8
