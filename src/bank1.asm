@@ -186,7 +186,7 @@ ScoreOn     = $C5       ; score ones digit
 
     ; ====================================================================
     ; Line 4: Score — incremental test
-    ; Step 3: NUSIZ + VDELP + REFP + COLUP + RESP positioning + HMOVE
+    ; Step 4: + digit pointer setup
     ; ====================================================================
     lda #$0E            ; white
     sta COLUP0
@@ -210,6 +210,29 @@ ScoreOn     = $C5       ; score ones digit
     jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
+
+    ; Set up digit pointers (high byte = page of DigitGfx)
+    lda #>DigitGfx
+    sta DigitPtr1+1
+    sta DigitPtr2+1
+    sta DigitPtr3+1
+    sta DigitPtr4+1
+    sta DigitPtr5+1
+    sta DigitPtr6+1
+
+    ; Low bytes = base + (digit × 8)
+    lda #<(DigitGfx + (0*8))   ; digit 0 = blank
+    sta DigitPtr1
+    lda #<(DigitGfx + (1*8))   ; digit 1 = "1"
+    sta DigitPtr2
+    lda #<(DigitGfx + (2*8))   ; digit 2 = "2"
+    sta DigitPtr3
+    lda #<(DigitGfx + (3*8))   ; digit 3 = "3"
+    sta DigitPtr4
+    lda #<(DigitGfx + (4*8))   ; digit 4 = "4"
+    sta DigitPtr5
+    lda #<(DigitGfx + (0*8))   ; digit 5 = blank
+    sta DigitPtr6
 
     ; Stub: consume remaining scanlines
     ldx #8
