@@ -264,6 +264,15 @@ ScoreOn     = $C5       ; score ones digit
     ldy RowCnt             ; 3c
     bpl .ScoreLoop         ; 2c
 
+    ; Clear sprites after score
+    lda #0
+    sta GRP0
+    sta GRP1
+    sta VDELP0
+    sta VDELP1
+    sta NUSIZ0
+    sta NUSIZ1
+
     ; --- Restore cave kernel settings ---
     lda #$05            ; CTRLPF: reflect + priority (cave mode)
     sta CTRLPF
