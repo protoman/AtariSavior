@@ -195,7 +195,8 @@ ScoreOn     = $C5       ; score ones digit
     stx NUSIZ0
     ldx #0               ; NUSIZ = 1 copy
     stx NUSIZ1
-    stx VDELP0           ; vertical delay ON (needed for 3+ digits)
+    ldx #1               ; VDELP = ON (needed for cross-buffer between P0 copies)
+    stx VDELP0
     stx VDELP1
     stx REFP0
     stx REFP1
