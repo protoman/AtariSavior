@@ -109,48 +109,55 @@ ScoreOn     = $C5       ; score ones digit
     ; --- Initialize score buffers for "1234" ---
     ; Font: 3x5 from PFDigitFont (same as comparison/bank2.asm)
     ; PF0ScoreBuf[row] = PFDigitFont[ScoreTh*5+row] << 4
-    ; PF1ScoreBuf[row] = PFDigitFont[ScoreHu*5+row] << 5
-    ; PF2ScoreBuf[row] = PFDigitFont[ScoreTe*5+row] | (PFDigitFont[ScoreOn*5+row] << 4)
+    ; PF1ScoreBuf[row] = (PFDigitFont[ScoreHu*5+row] << 5) | (PFDigitFont[ScoreTe*5+row] << 1)
+    ; PF2ScoreBuf[row] = PFDigitFont[ScoreOn*5+row]
+    ;
+    ; PF0: D1 in bits 4-6 (MSB-first, bit4=leftmost), bit7=gap
+    ; PF1: D2 in bits 7-5 (MSB-first, bit7=leftmost), bit4=gap, D3 in bits 3-1, bit0=gap
+    ; PF2: D4 in bits 0-2 (LSB-first, bit0=leftmost), bits 3-7=padding
     ;
     ; Digit 1: %010,%110,%010,%010,%111
     ; Digit 2: %111,%001,%111,%100,%111
     ; Digit 3: %111,%001,%111,%001,%111
     ; Digit 4: %101,%101,%111,%001,%001
 
-    ; PF0 buffer (digit 1 << 4)
-    lda #$20            ; row 0: %010 << 4
+    ; PF0 buffer (digit 1 << 4, with bit reversal for PF0's LSB-first serialization)
+    ; Font bit2=leftmost, but PF0 bit4=leftmost, so reverse bits 0-2 before shift
+    lda #$20            ; row 0: %010 → rev %010 << 4 = $20
     sta PF0ScoreBuf+0
-    lda #$60            ; row 1: %110 << 4
+    lda #$30            ; row 1: %110 → rev %011 << 4 = $30
     sta PF0ScoreBuf+1
-    lda #$20            ; row 2: %010 << 4
+    lda #$20            ; row 2: %010 → rev %010 << 4 = $20
     sta PF0ScoreBuf+2
-    lda #$20            ; row 3: %010 << 4
+    lda #$20            ; row 3: %010 → rev %010 << 4 = $20
     sta PF0ScoreBuf+3
-    lda #$70            ; row 4: %111 << 4
+    lda #$70            ; row 4: %111 → rev %111 << 4 = $70
     sta PF0ScoreBuf+4
 
-    ; PF1 buffer (digit 2 << 5)
-    lda #$E0            ; row 0: %111 << 5
+    ; PF1 buffer (digit 2 << 5) | (digit 3 << 1) — no reversal needed
+    ; PF1 is MSB-first (bit7=leftmost), matching font bit2=leftmost
+    lda #$EE            ; row 0: %111<<5 | %111<<1 = $E0|$0E
     sta PF1ScoreBuf+0
-    lda #$20            ; row 1: %001 << 5
+    lda #$22            ; row 1: %001<<5 | %001<<1 = $20|$02
     sta PF1ScoreBuf+1
-    lda #$E0            ; row 2: %111 << 5
+    lda #$EE            ; row 2: %111<<5 | %111<<1 = $E0|$0E
     sta PF1ScoreBuf+2
-    lda #$80            ; row 3: %100 << 5
+    lda #$82            ; row 3: %100<<5 | %001<<1 = $80|$02
     sta PF1ScoreBuf+3
-    lda #$E0            ; row 4: %111 << 5
+    lda #$EE            ; row 4: %111<<5 | %111<<1 = $E0|$0E
     sta PF1ScoreBuf+4
 
-    ; PF2 buffer (digit 3 | (digit 4 << 4))
-    lda #$57            ; row 0: %111 | (%101 << 4) = $07|$50
+    ; PF2 buffer (digit 4 only, with bit reversal for PF2's LSB-first serialization)
+    ; Font bit2=leftmost, but PF2 bit0=leftmost, so reverse bits 0-2
+    lda #$05            ; row 0: %101 → rev %101 = $05
     sta PF2ScoreBuf+0
-    lda #$51            ; row 1: %001 | (%101 << 4) = $01|$50
+    lda #$05            ; row 1: %101 → rev %101 = $05
     sta PF2ScoreBuf+1
-    lda #$77            ; row 2: %111 | (%111 << 4) = $07|$70
+    lda #$07            ; row 2: %111 → rev %111 = $07
     sta PF2ScoreBuf+2
-    lda #$11            ; row 3: %001 | (%001 << 4) = $01|$10
+    lda #$04            ; row 3: %001 → rev %100 = $04
     sta PF2ScoreBuf+3
-    lda #$17            ; row 4: %111 | (%001 << 4) = $07|$10
+    lda #$04            ; row 4: %001 → rev %100 = $04
     sta PF2ScoreBuf+4
 
     ; --- 1 scanline gap ---
