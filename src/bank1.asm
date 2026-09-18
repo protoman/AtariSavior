@@ -186,7 +186,7 @@ ScoreOn     = $C5       ; score ones digit
 
     ; ====================================================================
     ; Line 4: Score — incremental test
-    ; Step 2: NUSIZ + VDELP + REFP + COLUP
+    ; Step 3: NUSIZ + VDELP + REFP + COLUP + RESP positioning + HMOVE
     ; ====================================================================
     lda #$0E            ; white
     sta COLUP0
@@ -201,8 +201,18 @@ ScoreOn     = $C5       ; score ones digit
     sta REFP0           ; no reflection
     sta REFP1
 
+    ; Position P0 at pixel 56, P1 at pixel 72
+    lda #56
+    ldx #0
+    jsr SetObjectXPos_b1
+    lda #72
+    ldx #1
+    jsr SetObjectXPos_b1
+    sta WSYNC
+    sta HMOVE
+
     ; Stub: consume remaining scanlines
-    ldx #11
+    ldx #8
 .ScoreStub:
     sta WSYNC
     dex
