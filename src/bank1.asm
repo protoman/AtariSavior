@@ -184,69 +184,76 @@ ScoreOn     = $C5       ; score ones digit
     sta WSYNC
 
     ; ====================================================================
-    ; Line 4: Score — 3-character test (0, 1, 2)
-    ; NUSIZ0=1 (2 copies) + NUSIZ1=0 (1 copy) = 3 slots
-    ; VDELP enabled to change GRP0 between P0 copies
+    ; Line 4: Score — EXACT burger8e.asm setup + loop
+    ; NUSIZ0=3 (3 copies) + NUSIZ1=1 (2 copies) = 5 slots
+    ; Digits: blank, 0, 1, 2, blank
     ; ====================================================================
-    lda #$0E             ; white
-    sta COLUP0
-    sta COLUP1
-    ldx #1               ; NUSIZ = 2 copies close
-    stx NUSIZ0
-    ldx #0               ; NUSIZ = 1 copy
-    stx NUSIZ1
-    ldx #1               ; VDELP = ON (needed for cross-buffer between P0 copies)
+
+    ; EXACT copy of burger8e.asm score setup (lines 455-482)
+    sta WSYNC
+    ldx #1
     stx VDELP0
     stx VDELP1
+    ldx #0
+    stx GRP0
+    stx GRP1
     stx REFP0
     stx REFP1
-    ; Position P0 at pixel 72, P1 at pixel 80
-    ; P0 copies: 72, 88 (NUSIZ0=1, 16px apart)
-    ; P1 at 80 (NUSIZ1=0, 1 copy)
-    ; GRP writes at pixels 24, 48, 72, 81 — all before sprite renders
-    lda #72
-    ldx #0
-    jsr SetObjectXPos_b1
-    lda #80
+    ldx #3
+    stx NUSIZ0
+    stx RESP0
     ldx #1
-    jsr SetObjectXPos_b1
+    stx NUSIZ1
+    stx RESP1
+    ldx #$E0
+    stx HMP0
+    stx HMP1
+    lda #$0E
+    sta COLUP0
+    sta COLUP1
     sta WSYNC
     sta HMOVE
 
-    ; Set up 3 digit pointers: 0, 1, 2
+    ; Set up 5 digit pointers
     lda #$FD
     sta DigitPtr1+1
     sta DigitPtr2+1
     sta DigitPtr3+1
-    lda #$00             ; digit "0"
+    sta DigitPtr4+1
+    sta DigitPtr5+1
+    lda #$00             ; digit 0 (blank row)
     sta DigitPtr1
     lda #$08             ; digit "1"
     sta DigitPtr2
     lda #$10             ; digit "2"
     sta DigitPtr3
+    lda #$18             ; digit "3"
+    sta DigitPtr4
+    lda #$20             ; digit "4"
+    sta DigitPtr5
 
-    ; Clear sprites
-    lda #0
-    sta GRP0
-    sta GRP1
-
-    ; Render 8 rows of 3 characters
-    ; P0 copies: digit 0, digit 2
-    ; P1 copy: digit 1
-    ; VDELP changes GRP0 between P0 copies
+    ; EXACT copy of burger8e.asm ScoreLoop (lines 487-508)
     ldy #7
     sty RowCnt
 .ScoreLoop:
-    ldy RowCnt
-    lda (DigitPtr1),Y      ; load digit 0 (BEFORE WSYNC!)
-    sta GRP0               ; 0 -> GRP0 (sets up P0 copy 1)
-    sta WSYNC              ; sync — sprites start rendering
-    lda (DigitPtr2),Y      ; load digit 1
-    sta GRP1               ; 1 -> GRP1 (P1, triggers GRP0A=0)
-    lda (DigitPtr3),Y      ; load digit 2
-    sta GRP0               ; 2 -> GRP0 (triggers GRP1A=1)
-    sta GRP1               ; dummy: triggers GRP0A=2
+    sta WSYNC
+    lda (DigitPtr1),Y
+    sta GRP0
+    sta GRP1
+    lda (DigitPtr2),Y
+    sta GRP0
+    lda (DigitPtr3),Y
+    tax
+    lda (DigitPtr4),Y
+    sta Temp
+    lda (DigitPtr5),Y
+    ldy Temp
+    stx GRP1
+    sty GRP0
+    sta GRP1
+    sta GRP0
     dec RowCnt
+    ldy RowCnt
     bpl .ScoreLoop
 
     ; Clear
