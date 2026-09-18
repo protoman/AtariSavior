@@ -184,17 +184,18 @@ ScoreOn     = $C5       ; score ones digit
     sta WSYNC
 
     ; ====================================================================
-    ; Line 4: Score — SIMPLE 2-character test (0 and 1)
-    ; NUSIZ0=0 (1 copy) + NUSIZ1=0 (1 copy) = 2 slots
-    ; No VDELP, no cross-buffer — just direct GRP writes
+    ; Line 4: Score — 3-character test (0, 1, 2)
+    ; NUSIZ0=1 (2 copies) + NUSIZ1=0 (1 copy) = 3 slots
+    ; VDELP enabled to change GRP0 between P0 copies
     ; ====================================================================
     lda #$0E             ; white
     sta COLUP0
     sta COLUP1
-    ldx #0               ; 1 copy each, no delay, no reflect
+    ldx #1               ; NUSIZ = 2 copies close
     stx NUSIZ0
+    ldx #0               ; NUSIZ = 1 copy
     stx NUSIZ1
-    stx VDELP0
+    stx VDELP0           ; vertical delay ON (needed for 3+ digits)
     stx VDELP1
     stx REFP0
     stx REFP1
@@ -205,29 +206,37 @@ ScoreOn     = $C5       ; score ones digit
     sta WSYNC
     sta HMOVE
 
-    ; Set up 2 digit pointers: 0 and 1
+    ; Set up 3 digit pointers: 0, 1, 2
     lda #$FD
     sta DigitPtr1+1
     sta DigitPtr2+1
+    sta DigitPtr3+1
     lda #$00             ; digit "0"
     sta DigitPtr1
     lda #$08             ; digit "1"
     sta DigitPtr2
+    lda #$10             ; digit "2"
+    sta DigitPtr3
 
     ; Clear sprites
     lda #0
     sta GRP0
     sta GRP1
 
-    ; Render 8 rows of 2 characters
+    ; Render 8 rows of 3 characters
+    ; P0 copies: digit 0, digit 2
+    ; P1 copy: digit 1
+    ; VDELP changes GRP0 between P0 copies
     ldy #7
     sty RowCnt
 .ScoreLoop:
     sta WSYNC
     lda (DigitPtr1),Y      ; load digit 0
-    sta GRP0               ; show on P0
+    sta GRP0               ; 0 -> GRP0 (for P0 copy 1)
     lda (DigitPtr2),Y      ; load digit 1
-    sta GRP1               ; show on P1
+    sta GRP1               ; 1 -> GRP1 (for P1)
+    lda (DigitPtr3),Y      ; load digit 2
+    sta GRP0               ; 2 -> GRP0 (for P0 copy 2)
     dec RowCnt
     ldy RowCnt
     bpl .ScoreLoop
@@ -238,6 +247,8 @@ ScoreOn     = $C5       ; score ones digit
     sta GRP1
     sta NUSIZ0
     sta NUSIZ1
+    sta VDELP0
+    sta VDELP1
 
     ; --- Restore cave kernel settings ---
     lda #$05            ; CTRLPF: reflect + priority (cave mode)
