@@ -76,7 +76,6 @@ DigitPtr2   = $8B       ; pointer to digit 1 font data
 DigitPtr3   = $8D       ; pointer to digit 2 font data
 DigitPtr4   = $8F       ; pointer to digit 3 font data
 DigitPtr5   = $91       ; pointer to digit 4 font data
-DigitPtr6   = $93       ; pointer to digit 5 font data
 ScoreTh     = $C2       ; score thousands digit
 ScoreHu     = $C3       ; score hundreds digit
 ScoreTe     = $C4       ; score tens digit
@@ -186,82 +185,81 @@ ScoreOn     = $C5       ; score ones digit
 
     ; ====================================================================
     ; Line 4: Score — 48-pixel sprite technique
-    ; EXACT match to score48pix.asm timing (every cycle counts!)
+    ; Using burger8e.asm setup (known working in a complete game)
+    ; NUSIZ0=3 (3 copies) + NUSIZ1=1 (2 copies) = 5 slots
+    ; Digit 0 = blank (we only show 4 digits: 1,2,3,4)
     ; ====================================================================
-    sta WSYNC            ; sync
-    sta REFP0            ;3 [3]
-    sta REFP1            ;3  [6]
-    lda #$01             ;2  [8]
-    sta CTRLPF           ;3 [11]
-    lda #$0E             ;2 [13] white
-    sta COLUP0           ;3 [16]
-    sta COLUP1           ;3 [19]
-    lda #$10             ;2 [21] HMP0 = -1
-    sta HMP0             ;3 [24]
-    lda #$20             ;2 [26] HMP1 = -2
-    sta HMP1             ;3 [29]
-    lda #$03             ;2 [31] NUSIZ = 3 copies
-    sta NUSIZ0           ;3 [34]
-    sta NUSIZ1           ;3 [37]
-    sta RESP0            ;3 *40* RESP0
-    sta RESP1            ;3 *43* RESP1
-    sta VDELP0           ;3 [46] vertical delay ON
-    sta VDELP1           ;3 [49]
-    sta WSYNC            ; sync
-    sta HMOVE            ;3 [52]
+    ldx #1
+    stx VDELP0           ; vertical delay ON
+    stx VDELP1
+    ldx #0
+    stx GRP0             ; clear player0
+    stx GRP1             ; clear player1
+    stx REFP0            ; no reflection
+    stx REFP1
+    ldx #3               ; 3 copies close
+    stx NUSIZ0
+    stx RESP0            ; player0 at pixel 54
+    ldx #1               ; 2 copies close
+    stx NUSIZ1
+    stx RESP1            ; player1 at pixel 78
+    ldx #$E0             ; HMP0 = +2 left
+    stx HMP0
+    ldx #0               ; HMP1 = 0
+    stx HMP1
+    lda #$0E             ; white
+    sta COLUP0
+    sta COLUP1
+    sta WSYNC
+    sta HMOVE
 
-    ; Set up digit pointers
-    lda #>DigitGfx
+    ; Set up digit pointers — hardcoded low bytes for reliability
+    lda #$FD             ; high byte of DigitGfx ($FD00)
     sta DigitPtr1+1
     sta DigitPtr2+1
     sta DigitPtr3+1
     sta DigitPtr4+1
     sta DigitPtr5+1
-    sta DigitPtr6+1
-    lda #<(DigitGfx + (0*8))
+    lda #$00             ; DigitGfx+0 = $FD00 (digit 0 = blank row)
     sta DigitPtr1
-    lda #<(DigitGfx + (1*8))
+    lda #$08             ; DigitGfx+8 = $FD08 (digit "1")
     sta DigitPtr2
-    lda #<(DigitGfx + (2*8))
+    lda #$10             ; DigitGfx+16 = $FD10 (digit "2")
     sta DigitPtr3
-    lda #<(DigitGfx + (3*8))
+    lda #$18             ; DigitGfx+24 = $FD18 (digit "3")
     sta DigitPtr4
-    lda #<(DigitGfx + (4*8))
+    lda #$20             ; DigitGfx+32 = $FD20 (digit "4")
     sta DigitPtr5
-    lda #<(DigitGfx + (0*8))
-    sta DigitPtr6
 
     ; Clear sprites before loop
     lda #0
     sta GRP0
     sta GRP1
-    sta WSYNC           ; sync before render loop
 
-    ; Render loop — 48-pixel sprite technique
+    ; Render loop — exact copy of burger8e.asm ScoreLoop
+    ; 5 digit pointers: DigitPtr1=blank, DigitPtr2=1, DigitPtr3=2, DigitPtr4=3, DigitPtr5=4
     ldy #7
     sty RowCnt
 .ScoreLoop:
-    ldy RowCnt             ; 3c
-    lda (DigitPtr6),Y      ; 5c — Load digit 5 (blank)
-    tax                    ; 2c — X = blank
-    sta WSYNC              ; 3c — start of scanline
-    lda (DigitPtr1),Y      ; 5c — Load digit 0
-    sta.w GRP0             ; 4c — Buffer digit 0
-    lda (DigitPtr2),Y      ; 5c — Load digit 1
-    sta GRP1               ; 3c — Buffer digit 1
-    lda (DigitPtr3),Y      ; 5c — Load digit 2
-    sta GRP0               ; 3c — Buffer digit 2
-    lda (DigitPtr4),Y      ; 5c — Load digit 3
-    sta Temp               ; 3c — Cache digit 3
-    lda (DigitPtr5),Y      ; 5c — Load digit 4
-    ldy Temp               ; 3c — Y = digit 3
-    stx GRP1               ; 3c — Buffer blank (digit 5)
-    sty GRP0               ; 3c — Buffer digit 3
-    sta GRP1               ; 3c — Buffer digit 4
-    sta GRP0               ; 3c — Final push
-    dec RowCnt             ; 5c
-    ldy RowCnt             ; 3c
-    bpl .ScoreLoop         ; 2c
+    sta WSYNC
+    lda (DigitPtr1),Y      ; load digit 0 (blank)
+    sta GRP0               ; blank -> GRP0
+    sta GRP1               ; blank -> GRP1, blank -> GRP0A
+    lda (DigitPtr2),Y      ; load digit 1 ("1")
+    sta GRP0               ; "1" -> GRP0, blank -> GRP1A
+    lda (DigitPtr3),Y      ; load digit 2 ("2")
+    tax                    ; X = "2"
+    lda (DigitPtr4),Y      ; load digit 3 ("3")
+    sta Temp               ; Temp = "3"
+    lda (DigitPtr5),Y      ; load digit 4 ("4")
+    ldy Temp               ; Y = "3"
+    stx GRP1               ; "2" -> GRP1, "1" -> GRP0A
+    sty GRP0               ; "3" -> GRP0, "2" -> GRP1A
+    sta GRP1               ; "4" -> GRP1, "3" -> GRP0A
+    sta GRP0               ; "4" -> GRP0 (final push)
+    dec RowCnt
+    ldy RowCnt
+    bpl .ScoreLoop
 
     ; Clear sprites after score
     lda #0
