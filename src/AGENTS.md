@@ -278,6 +278,25 @@ stella -debug savior.bin # debugger
 4. **Horizontal Positioning**: RESP0 for coarse (every 15 color clocks),
    HMP0 for fine (-8 to +7). HMOVE applied during HBLANK.
 
+5. **CRITICAL: ZP Address Conflicts Between Banks** — All banks share the
+   same 128 bytes of zero-page RAM ($80-$FF). Writing to a ZP address in
+   one bank corrupts the value for ALL banks. Before defining new ZP
+   variables in any bank, ALWAYS check that the addresses don't conflict
+   with variables used by other banks. The ZP map in kernel.asm shows
+   bank0's usage; bank1 must use addresses that don't overlap. Known
+   safe unused ranges: check kernel.asm ZP allocation before adding new
+   variables. Example: $E0-$EB was used by bank0's level data pointers,
+   causing crashes when bank1 wrote digit pointers there.
+
+6. **Incremental Development** — When making big changes, ALWAYS divide
+   the work into small steps and test after each one. Each step should
+   add only one piece of functionality. This makes it much easier to
+   catch and fix issues early, before the full code is in place. If a
+   step breaks something, you know exactly which change caused it.
+   Example: building the 48px score renderer required 10+ incremental
+   steps (registers → color → positioning → pointers → render loop)
+   rather than writing the whole thing at once.
+
 5. **Vertical Positioning**: Kernel scanline counter matches player Y.
    Sprite rendered when scanline falls within player's 8-line range.
 
