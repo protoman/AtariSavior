@@ -206,6 +206,14 @@ stella -debug savior.bin # debugger
 - [ ] Level indicator
 - [ ] HUD rendering in the 48-line band
 
+**Score rendering notes:**
+- Score uses PF registers (PF0/PF1/PF2) with pre-computed font patterns
+- PFDigitFont has 3-bit-wide glyphs (%00000111 format), shifted at runtime
+- PF0 = pattern<<4, PF1 = pattern<<5, PF2 = pattern
+- The font appears larger than HERO's because PF register timing may be off
+- HERO's score "75" in the reference screenshot is much smaller/thinner than our implementation
+- Need to investigate HERO's exact score rendering timing and font data
+
 ### Phase 7: Gameplay
 - [ ] Laser/weapon system (missile 0)
 - [ ] Bomb system (ball)
