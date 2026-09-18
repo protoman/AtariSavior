@@ -106,59 +106,96 @@ ScoreOn     = $C5       ; score ones digit
     sta PF1
     sta PF2
 
-    ; --- Initialize score buffers for "1234" ---
-    ; Font: 3x5 from PFDigitFont (same as comparison/bank2.asm)
-    ; PF0ScoreBuf[row] = PFDigitFont[ScoreTh*5+row] << 4
-    ; PF1ScoreBuf[row] = (PFDigitFont[ScoreHu*5+row] << 5) | (PFDigitFont[ScoreTe*5+row] << 1)
-    ; PF2ScoreBuf[row] = PFDigitFont[ScoreOn*5+row]
-    ;
-    ; PF0: D1 in bits 4-6 (MSB-first, bit4=leftmost), bit7=gap
-    ; PF1: D2 in bits 7-5 (MSB-first, bit7=leftmost), bit4=gap, D3 in bits 3-1, bit0=gap
-    ; PF2: D4 in bits 0-2 (LSB-first, bit0=leftmost), bits 3-7=padding
-    ;
-    ; Digit 1: %010,%110,%010,%010,%111
-    ; Digit 2: %111,%001,%111,%100,%111
-    ; Digit 3: %111,%001,%111,%001,%111
-    ; Digit 4: %101,%101,%111,%001,%001
+    ; --- Pre-compute score PF buffers from actual score variables ---
+    ; ScoreRow = row counter (0-4)
+    ; PF0[row] = reverse_bits(PFDigitFont[ScoreTh*5+row]) << 4
+    ; PF1[row] = (PFDigitFont[ScoreHu*5+row] << 5) | (PFDigitFont[ScoreTe*5+row] << 1)
+    ; PF2[row] = reverse_bits(PFDigitFont[ScoreOn*5+row])
 
-    ; PF0 buffer (digit 1 << 4, with bit reversal for PF0's LSB-first serialization)
-    ; Font bit2=leftmost, but PF0 bit4=leftmost, so reverse bits 0-2 before shift
-    lda #$20            ; row 0: %010 → rev %010 << 4 = $20
-    sta PF0ScoreBuf+0
-    lda #$30            ; row 1: %110 → rev %011 << 4 = $30
-    sta PF0ScoreBuf+1
-    lda #$20            ; row 2: %010 → rev %010 << 4 = $20
-    sta PF0ScoreBuf+2
-    lda #$20            ; row 3: %010 → rev %010 << 4 = $20
-    sta PF0ScoreBuf+3
-    lda #$70            ; row 4: %111 → rev %111 << 4 = $70
-    sta PF0ScoreBuf+4
+    ScoreRow = $AE
 
-    ; PF1 buffer (digit 2 << 5) | (digit 3 << 1) — no reversal needed
-    ; PF1 is MSB-first (bit7=leftmost), matching font bit2=leftmost
-    lda #$EE            ; row 0: %111<<5 | %111<<1 = $E0|$0E
-    sta PF1ScoreBuf+0
-    lda #$22            ; row 1: %001<<5 | %001<<1 = $20|$02
-    sta PF1ScoreBuf+1
-    lda #$EE            ; row 2: %111<<5 | %111<<1 = $E0|$0E
-    sta PF1ScoreBuf+2
-    lda #$82            ; row 3: %100<<5 | %001<<1 = $80|$02
-    sta PF1ScoreBuf+3
-    lda #$EE            ; row 4: %111<<5 | %111<<1 = $E0|$0E
-    sta PF1ScoreBuf+4
+    lda #0
+    sta ScoreRow
+.PreCompLoop:
+    ; --- PF0 from ScoreTh (with bit reversal, then <<4) ---
+    ldx ScoreTh
+    lda DigitTimes5_b1,X
+    clc
+    adc ScoreRow        ; A = ScoreTh*5 + row
+    tax
+    lda PFDigitFont_b1,X
+    jsr ReverseBits3    ; A = reversed bits 0-2
+    asl
+    asl
+    asl
+    asl                 ; <<4 for PF0 position
+    ldx ScoreRow
+    sta PF0ScoreBuf,X
 
-    ; PF2 buffer (digit 4 only, with bit reversal for PF2's LSB-first serialization)
-    ; Font bit2=leftmost, but PF2 bit0=leftmost, so reverse bits 0-2
-    lda #$05            ; row 0: %101 → rev %101 = $05
-    sta PF2ScoreBuf+0
-    lda #$05            ; row 1: %101 → rev %101 = $05
-    sta PF2ScoreBuf+1
-    lda #$07            ; row 2: %111 → rev %111 = $07
-    sta PF2ScoreBuf+2
-    lda #$04            ; row 3: %001 → rev %100 = $04
-    sta PF2ScoreBuf+3
-    lda #$04            ; row 4: %001 → rev %100 = $04
-    sta PF2ScoreBuf+4
+    ; --- PF1 from ScoreHu <<5 | ScoreTe <<1 (no reversal) ---
+    ldx ScoreHu
+    lda DigitTimes5_b1,X
+    clc
+    adc ScoreRow
+    tax
+    lda PFDigitFont_b1,X
+    asl
+    asl
+    asl
+    asl
+    asl                 ; <<5
+    sta Temp            ; save high part
+
+    ldx ScoreTe
+    lda DigitTimes5_b1,X
+    clc
+    adc ScoreRow
+    tax
+    lda PFDigitFont_b1,X
+    asl                 ; <<1
+    ora Temp            ; combine
+    ldx ScoreRow
+    sta PF1ScoreBuf,X
+
+    ; --- PF2 from ScoreOn (with bit reversal, no shift) ---
+    ldx ScoreOn
+    lda DigitTimes5_b1,X
+    clc
+    adc ScoreRow
+    tax
+    lda PFDigitFont_b1,X
+    jsr ReverseBits3    ; A = reversed bits 0-2
+    ldx ScoreRow
+    sta PF2ScoreBuf,X
+
+    inc ScoreRow
+    lda ScoreRow
+    cmp #5
+    bne .PreCompLoop
+    jmp .ScorePreCompDone
+
+; ========================================================================
+; ReverseBits3 — reverse bits 0-2 of A (XYZ → ZYX)
+; ========================================================================
+ReverseBits3:
+    tay                 ; Y = original pattern
+    and #$04            ; extract bit2
+    lsr
+    lsr                 ; shift to bit0 position
+    sta Temp
+    tya
+    and #$01            ; extract bit0
+    asl
+    asl                 ; shift to bit2 position
+    ora Temp
+    sta Temp
+    tya
+    and #$02            ; bit1 stays in place
+    ora Temp
+    rts
+
+.ScorePreCompDone:
+
 
     ; --- 1 scanline gap ---
     sta WSYNC
@@ -312,9 +349,22 @@ SetObjectXPos_b1:
     rts
 
 ; ========================================================================
-; Score digit font — from bank0 (PFDigitFont + DigitTimes5)
-; Pre-computed PF0ScoreBuf/PF1ScoreBuf/PF2ScoreBuf in ZP at $B3/$B8/$C6
+; Score digit font (copy from bank0/kernel.asm for bank1 access)
 ; ========================================================================
+PFDigitFont_b1:
+  .byte %00000111, %00000101, %00000101, %00000101, %00000111  ; 0
+  .byte %00000010, %00000110, %00000010, %00000010, %00000111  ; 1
+  .byte %00000111, %00000001, %00000111, %00000100, %00000111  ; 2
+  .byte %00000111, %00000001, %00000111, %00000001, %00000111  ; 3
+  .byte %00000101, %00000101, %00000111, %00000001, %00000001  ; 4
+  .byte %00000111, %00000100, %00000111, %00000001, %00000111  ; 5
+  .byte %00000111, %00000100, %00000111, %00000101, %00000111  ; 6
+  .byte %00000111, %00000001, %00000001, %00000001, %00000001  ; 7
+  .byte %00000111, %00000101, %00000111, %00000101, %00000111  ; 8
+  .byte %00000111, %00000101, %00000111, %00000001, %00000111  ; 9
+
+DigitTimes5_b1:
+  .byte 0, 5, 10, 15, 20, 25, 30, 35, 40, 45
 
 ; ========================================================================
 ; Fold-pad stubs (byte-identical to bank0)
