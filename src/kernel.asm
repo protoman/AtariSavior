@@ -159,16 +159,6 @@ GameStart:
     lda #64
     sta RoomY                   ; player starts near center
 
-    ; --- Initialize score to "1234" ---
-    lda #1
-    sta ScoreTh
-    lda #2
-    sta ScoreHu
-    lda #3
-    sta ScoreTe
-    lda #4
-    sta ScoreOn
-
     ; --- Set player color ---
     lda #COLOR_PLAYER
     sta COLUP0
