@@ -68,8 +68,8 @@ MenuMain:
 ; ZP variables for score rendering (HERO pattern)
 PF0ScoreBuf = $B3       ; 5 bytes: PF0 values for each scanline row
 PF1ScoreBuf = $B8       ; 5 bytes: PF1 values for each scanline row
-PF2ScoreBuf = $C6       ; 5 bytes: PF2 values for each scanline row
-Temp        = $AD       ; scratch variable
+PF2ScoreBuf = $C6       ; 5 bytes: PF2 values for each scanline row (3x5 font)
+    Temp        = $AD       ; scratch variable
 ScoreTh     = $C2       ; score thousands digit
 ScoreHu     = $C3       ; score hundreds digit
 ScoreTe     = $C4       ; score tens digit
@@ -107,49 +107,50 @@ ScoreOn     = $C5       ; score ones digit
     sta PF2
 
     ; --- Initialize score buffers for "1234" ---
-    ; Hardcoded PFDigitFont row data for digits 1-4
-    ; Digit 1: %00000010,%00000110,%00000010,%00000010,%00000111
-    ; Digit 2: %00000111,%00000001,%00000111,%00000100,%00000111
-    ; Digit 3: %00000111,%00000001,%00000111,%00000001,%00000111
-    ; Digit 4: %00000101,%00000101,%00000111,%00000001,%00000001
+    ; Font: 3x5 from PFDigitFont (same as comparison/bank2.asm)
+    ; PF0ScoreBuf[row] = PFDigitFont[ScoreTh*5+row] << 4
+    ; PF1ScoreBuf[row] = PFDigitFont[ScoreHu*5+row] << 5
+    ; PF2ScoreBuf[row] = PFDigitFont[ScoreTe*5+row] | (PFDigitFont[ScoreOn*5+row] << 4)
+    ;
+    ; Digit 1: %010,%110,%010,%010,%111
+    ; Digit 2: %111,%001,%111,%100,%111
+    ; Digit 3: %111,%001,%111,%001,%111
+    ; Digit 4: %101,%101,%111,%001,%001
 
-    ; Digit 1 rows (for PF0 << 4)
-    lda #%00100000     ; row 0: %00000010 << 4
+    ; PF0 buffer (digit 1 << 4)
+    lda #$20            ; row 0: %010 << 4
     sta PF0ScoreBuf+0
-    lda #%01100000     ; row 1: %00000110 << 4
+    lda #$60            ; row 1: %110 << 4
     sta PF0ScoreBuf+1
-    lda #%00100000     ; row 2
+    lda #$20            ; row 2: %010 << 4
     sta PF0ScoreBuf+2
-    lda #%00100000     ; row 3
+    lda #$20            ; row 3: %010 << 4
     sta PF0ScoreBuf+3
-    lda #%01110000     ; row 4: %00000111 << 4
+    lda #$70            ; row 4: %111 << 4
     sta PF0ScoreBuf+4
 
-    ; Digit 2 rows (for PF1 << 5)
-    lda #%11100000     ; row 0: %00000111 << 5
+    ; PF1 buffer (digit 2 << 5)
+    lda #$E0            ; row 0: %111 << 5
     sta PF1ScoreBuf+0
-    lda #%00100000     ; row 1: %00000001 << 5
+    lda #$20            ; row 1: %001 << 5
     sta PF1ScoreBuf+1
-    lda #%11100000     ; row 2
+    lda #$E0            ; row 2: %111 << 5
     sta PF1ScoreBuf+2
-    lda #%10000000     ; row 3: %00000100 << 5
+    lda #$80            ; row 3: %100 << 5
     sta PF1ScoreBuf+3
-    lda #%11100000     ; row 4
+    lda #$E0            ; row 4: %111 << 5
     sta PF1ScoreBuf+4
 
-    ; Digit 3 rows (for PF2 digit 3) | Digit 4 rows (for PF2 digit 4 << 4)
-    ; Digit 3: %00000111, %00000001, %00000111, %00000001, %00000111
-    ; Digit 4: %00000101, %00000101, %00000111, %00000001, %00000001
-    ; PF2 = digit3 | (digit4 << 4)
-    lda #$07|$50        ; row 0: $07 | ($05<<4) = $07|$50
+    ; PF2 buffer (digit 3 | (digit 4 << 4))
+    lda #$57            ; row 0: %111 | (%101 << 4) = $07|$50
     sta PF2ScoreBuf+0
-    lda #$01|$50        ; row 1: $01 | ($05<<4) = $01|$50
+    lda #$51            ; row 1: %001 | (%101 << 4) = $01|$50
     sta PF2ScoreBuf+1
-    lda #$07|$70        ; row 2: $07 | ($07<<4) = $07|$70
+    lda #$77            ; row 2: %111 | (%111 << 4) = $07|$70
     sta PF2ScoreBuf+2
-    lda #$01|$10        ; row 3: $01 | ($01<<4) = $01|$10
+    lda #$11            ; row 3: %001 | (%001 << 4) = $01|$10
     sta PF2ScoreBuf+3
-    lda #$07|$10        ; row 4: $07 | ($01<<4) = $07|$10
+    lda #$17            ; row 4: %111 | (%001 << 4) = $07|$10
     sta PF2ScoreBuf+4
 
     ; --- 1 scanline gap ---
@@ -222,11 +223,18 @@ ScoreOn     = $C5       ; score ones digit
     sta WSYNC
 
     ; ====================================================================
-    ; Line 4: Score — PF-based from pre-computed buffers
+    ; Line 4: Score — PF0+PF1+PF2 for "1234" (bumbershootsoft method)
+    ; CTRLPF=$02: SCORE mode — left half uses COLUP0, right half uses COLUP1
+    ; COLUP1 = background color to hide right-half duplicate
     ; ====================================================================
-    lda #$0E            ; white
-    sta COLUPF
+    lda #$02            ; SCORE mode (avoids doubled score in reflected mode)
+    sta CTRLPF
+    lda #$0E            ; white for left half (COLUP0)
+    sta COLUP0
+    lda #$06            ; grey for right half (COLUP1 = background, hides duplicate)
+    sta COLUP1
 
+    ; Simple loop: read PF0/PF1/PF2 values from pre-computed buffers
     ldy #0
 .ScoreRender:
     lda PF0ScoreBuf,Y
@@ -237,17 +245,18 @@ ScoreOn     = $C5       ; score ones digit
     sta PF2
     sta WSYNC
     iny
-    cpy #5
+    cpy #5              ; 5 rows for 3×5 font
     bne .ScoreRender
-
-    ; Clear PF
-    sta WSYNC
+    ; Clear PF after last row
     lda #0
     sta PF0
     sta PF1
     sta PF2
+    sta WSYNC
 
     ; --- Restore cave kernel settings ---
+    lda #$05            ; CTRLPF: reflect + priority (cave mode)
+    sta CTRLPF
     lda #$10
     sta NUSIZ0
     lda #0
