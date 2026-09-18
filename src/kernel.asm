@@ -87,6 +87,15 @@ Grp0Ptr         byte            ; pointer to player sprite data (lo)
 Grp0PtrHi       byte            ; pointer to player sprite data (hi)
 Temp            byte            ; general scratch
 
+; Score ZP variables (shared with bank1 HUD — addresses MUST match)
+ScoreTh         = $C2           ; score thousands digit (0-9)
+ScoreHu         = $C3           ; score hundreds digit (0-9)
+ScoreTe         = $C4           ; score tens digit (0-9)
+ScoreOn         = $C5           ; score ones digit (0-9)
+PF0ScoreBuf     = $B3           ; 5 bytes: PF0 values for score rows 0-4
+PF1ScoreBuf     = $B8           ; 5 bytes: PF1 values for score rows 0-4
+PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
+
 ; ==============================================================================
 ; Constants
 ; ==============================================================================
@@ -468,6 +477,25 @@ ScoreFontPF2:
     .byte $4C                       ; Line 2: pixels 13,15,18 ON
     .byte $4C                       ; Line 3: pixels 13,15,18 ON
     .byte $7D                       ; Line 4: pixels 12-13,15-18 ON
+
+; ==============================================================================
+; HERO-style score font — 10 digits × 5 rows, 3 bits wide (bits 0-2)
+; Used by VBLANK pre-computation to fill PF0ScoreBuf/PF1ScoreBuf/PF2ScoreBuf
+; ==============================================================================
+PFDigitFont:
+  .byte %00000111, %00000101, %00000101, %00000101, %00000111  ; 0
+  .byte %00000010, %00000110, %00000010, %00000010, %00000111  ; 1
+  .byte %00000111, %00000001, %00000111, %00000100, %00000111  ; 2
+  .byte %00000111, %00000001, %00000111, %00000001, %00000111  ; 3
+  .byte %00000101, %00000101, %00000111, %00000001, %00000001  ; 4
+  .byte %00000111, %00000100, %00000111, %00000001, %00000111  ; 5
+  .byte %00000111, %00000100, %00000111, %00000101, %00000111  ; 6
+  .byte %00000111, %00000001, %00000001, %00000001, %00000001  ; 7
+  .byte %00000111, %00000101, %00000111, %00000101, %00000111  ; 8
+  .byte %00000111, %00000101, %00000111, %00000001, %00000111  ; 9
+
+DigitTimes5:
+  .byte 0, 5, 10, 15, 20, 25, 30, 35, 40, 45
 
 ; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.

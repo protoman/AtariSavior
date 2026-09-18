@@ -65,6 +65,16 @@ MenuMain:
     sta REFP0
     sta REFP1
 
+; ZP variables for score rendering (HERO pattern)
+PF0ScoreBuf = $B3       ; 5 bytes: PF0 values for each scanline row
+PF1ScoreBuf = $B8       ; 5 bytes: PF1 values for each scanline row
+PF2ScoreBuf = $C6       ; 5 bytes: PF2 values for each scanline row
+Temp        = $AD       ; scratch variable
+ScoreTh     = $C2       ; score thousands digit
+ScoreHu     = $C3       ; score hundreds digit
+ScoreTe     = $C4       ; score tens digit
+ScoreOn     = $C5       ; score ones digit
+
     ; --- Top gap: 4 scanlines (lower HUD elements) ---
     ldx #4
 .TopGap:
@@ -96,15 +106,51 @@ MenuMain:
     sta PF1
     sta PF2
 
-    ; --- Initialize HUD variables ---
-    lda #1              ; initial score = 1234
-    sta ScoreTh
-    lda #2
-    sta ScoreHu
-    lda #3
-    sta ScoreTe
-    lda #4
-    sta ScoreOn
+    ; --- Initialize score buffers for "1234" ---
+    ; Hardcoded PFDigitFont row data for digits 1-4
+    ; Digit 1: %00000010,%00000110,%00000010,%00000010,%00000111
+    ; Digit 2: %00000111,%00000001,%00000111,%00000100,%00000111
+    ; Digit 3: %00000111,%00000001,%00000111,%00000001,%00000111
+    ; Digit 4: %00000101,%00000101,%00000111,%00000001,%00000001
+
+    ; Digit 1 rows (for PF0 << 4)
+    lda #%00100000     ; row 0: %00000010 << 4
+    sta PF0ScoreBuf+0
+    lda #%01100000     ; row 1: %00000110 << 4
+    sta PF0ScoreBuf+1
+    lda #%00100000     ; row 2
+    sta PF0ScoreBuf+2
+    lda #%00100000     ; row 3
+    sta PF0ScoreBuf+3
+    lda #%01110000     ; row 4: %00000111 << 4
+    sta PF0ScoreBuf+4
+
+    ; Digit 2 rows (for PF1 << 5)
+    lda #%11100000     ; row 0: %00000111 << 5
+    sta PF1ScoreBuf+0
+    lda #%00100000     ; row 1: %00000001 << 5
+    sta PF1ScoreBuf+1
+    lda #%11100000     ; row 2
+    sta PF1ScoreBuf+2
+    lda #%10000000     ; row 3: %00000100 << 5
+    sta PF1ScoreBuf+3
+    lda #%11100000     ; row 4
+    sta PF1ScoreBuf+4
+
+    ; Digit 3 rows (for PF2 digit 3) | Digit 4 rows (for PF2 digit 4 << 4)
+    ; Digit 3: %00000111, %00000001, %00000111, %00000001, %00000111
+    ; Digit 4: %00000101, %00000101, %00000111, %00000001, %00000001
+    ; PF2 = digit3 | (digit4 << 4)
+    lda #$07|$50        ; row 0: $07 | ($05<<4) = $07|$50
+    sta PF2ScoreBuf+0
+    lda #$01|$50        ; row 1: $01 | ($05<<4) = $01|$50
+    sta PF2ScoreBuf+1
+    lda #$07|$70        ; row 2: $07 | ($07<<4) = $07|$70
+    sta PF2ScoreBuf+2
+    lda #$01|$10        ; row 3: $01 | ($01<<4) = $01|$10
+    sta PF2ScoreBuf+3
+    lda #$07|$10        ; row 4: $07 | ($01<<4) = $07|$10
+    sta PF2ScoreBuf+4
 
     ; --- 1 scanline gap ---
     sta WSYNC
@@ -176,27 +222,28 @@ MenuMain:
     sta WSYNC
 
     ; ====================================================================
-    ; Line 4: Score "0000" — PF-based from pre-computed buffers
-    ; (simplified: just render PF digits directly)
+    ; Line 4: Score — PF-based from pre-computed buffers
     ; ====================================================================
     lda #$0E            ; white
     sta COLUPF
 
     ldy #0
 .ScoreRender:
-    ; PF0 = ScoreTh digit pattern << 4
-    ldx ScoreTh
-    lda PFDigitFontPF0,X
+    lda PF0ScoreBuf,Y
     sta PF0
-    ; PF1 = ScoreHu digit pattern << 5
-    ldx ScoreHu
-    lda PFDigitFontPF1,X
+    lda PF1ScoreBuf,Y
     sta PF1
-    ; PF2 = ScoreTe | (ScoreOn << 4)
-    ldx ScoreTe
-    lda PFDigitFontPF2,X
-    ldx ScoreOn
-    ora PFDigitFontPF2Shifted,X
+    lda PF2ScoreBuf,Y
+    sta PF2
+    sta WSYNC
+    iny
+    cpy #5
+    bne .ScoreRender
+    lda PF0ScoreBuf,Y
+    sta PF0
+    lda PF1ScoreBuf,Y
+    sta PF1
+    lda PF2ScoreBuf,Y
     sta PF2
     sta WSYNC
     iny
@@ -259,29 +306,9 @@ SetObjectXPos_b1:
     rts
 
 ; ========================================================================
-; Score digit font — PF-based (from comparison bank2)
-; PFDigitFontPF0: digit pattern << 4 (for PF0 bits 4-7)
-; PFDigitFontPF1: digit pattern << 5 (for PF1 bits)
-; PFDigitFontPF2: digit pattern (for PF2 bits)
-; PFDigitFontPF2Shifted: digit pattern << 4 (for second PF2 digit)
+; Score digit font — from bank0 (PFDigitFont + DigitTimes5)
+; Pre-computed PF0ScoreBuf/PF1ScoreBuf/PF2ScoreBuf in ZP at $B3/$B8/$C6
 ; ========================================================================
-PFDigitFontPF0:
-  .byte $70, $50, $70, $70, $50, $70, $70, $70, $70, $70  ; 0-9 << 4
-
-PFDigitFontPF1:
-  .byte $E0, $C0, $A0, $C0, $A0, $E0, $E0, $C0, $E0, $E0  ; 0-9 << 5
-
-PFDigitFontPF2:
-  .byte $07, $02, $07, $07, $05, $07, $07, $03, $07, $07  ; 0-9
-
-PFDigitFontPF2Shifted:
-  .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $00  ; 0-9 << 4
-
-; Score ZP variables
-ScoreTh = $C2
-ScoreHu = $C3
-ScoreTe = $C4
-ScoreOn = $C5
 
 ; ========================================================================
 ; Fold-pad stubs (byte-identical to bank0)
