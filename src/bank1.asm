@@ -106,7 +106,46 @@ ScoreOn     = $C5       ; score ones digit
     sta PF1
     sta PF2
 
-    ; Score PF buffers pre-computed in bank0 VBLANK — just render from them
+    ; Score PF buffers — hardcoded for "1234" with correct bit reversal
+    ; PF0 = reverse_bits(digit1) << 4, PF1 = (digit2 << 5) | (digit3 << 1), PF2 = reverse_bits(digit4)
+    ; Digit 1: %010,%110,%010,%010,%111  Digit 2: %111,%001,%111,%100,%111
+    ; Digit 3: %111,%001,%111,%001,%111  Digit 4: %101,%101,%111,%001,%001
+
+    ; PF0 (digit1 reversed <<4): %010→$20, %110→rev%011→$30, %010→$20, %010→$20, %111→$70
+    lda #$20
+    sta PF0ScoreBuf+0
+    lda #$30
+    sta PF0ScoreBuf+1
+    lda #$20
+    sta PF0ScoreBuf+2
+    lda #$20
+    sta PF0ScoreBuf+3
+    lda #$70
+    sta PF0ScoreBuf+4
+
+    ; PF1 (digit2<<5 | digit3<<1, no reversal): $EE,$22,$EE,$82,$EE
+    lda #$EE
+    sta PF1ScoreBuf+0
+    lda #$22
+    sta PF1ScoreBuf+1
+    lda #$EE
+    sta PF1ScoreBuf+2
+    lda #$82
+    sta PF1ScoreBuf+3
+    lda #$EE
+    sta PF1ScoreBuf+4
+
+    ; PF2 (digit4 reversed): %101→$05, %101→$05, %111→$07, %001→rev%100→$04, %001→$04
+    lda #$05
+    sta PF2ScoreBuf+0
+    lda #$05
+    sta PF2ScoreBuf+1
+    lda #$07
+    sta PF2ScoreBuf+2
+    lda #$04
+    sta PF2ScoreBuf+3
+    lda #$04
+    sta PF2ScoreBuf+4
 
 
     ; --- 1 scanline gap ---
