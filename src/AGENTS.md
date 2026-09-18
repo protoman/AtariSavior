@@ -154,6 +154,15 @@ This saves 36 cycles per scanline (3 writes × 12 cycles each).
 
 Requires: `dasm` (6502 cross-assembler)
 
+### DASM Assembly Gotchas
+
+- **`=` definitions MUST start at column 1** — DASM treats indented `=` as
+  unknown mnemonics and silently fails. Example: `    Temp = $AD` fails but
+  `Temp = $AD` works. This caused bank1 to silently use stale .bin files.
+- **ALWAYS verify bank1.bin is actually rebuilt** — if DASM fails but the
+  build script catches the error (via `|| echo`), the old .bin is reused.
+  Check file timestamps after building.
+
 ## Testing
 
 Run in Stella:
