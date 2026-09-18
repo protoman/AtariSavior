@@ -65,6 +65,13 @@ MenuMain:
     sta REFP0
     sta REFP1
 
+    ; --- Top gap: 4 scanlines (lower HUD elements) ---
+    ldx #4
+.TopGap:
+    sta WSYNC
+    dex
+    bne .TopGap
+
     ; ====================================================================
     ; Line 1: Timer bar (PF-based, yellow, ~70% centered)
     ; ====================================================================
@@ -211,6 +218,7 @@ MenuMain:
     ; ====================================================================
     ; Pad remaining scanlines to reach exactly 48 total
     ; Budget:
+    ;   Top gap:  4 scanlines
     ;   Timer:    6 scanlines
     ;   Gap:      1
     ;   Lives:    7 (SetObjectXPos 1 + setup 1 + render 5)
@@ -218,10 +226,10 @@ MenuMain:
     ;   Bombs:    8 (SetObjectXPos×2 2 + setup 1 + render 5)
     ;   Gap:      1
     ;   Score:    5 render + 1 clear = 6
-    ;   TOTAL:    6+1+7+1+8+1+6 = 30
-    ;   Pad:      48 - 30 = 18
+    ;   TOTAL:    4+6+1+7+1+8+1+6 = 34
+    ;   Pad:      48 - 34 = 14
     ; ====================================================================
-    ldx #18
+    ldx #14
 .HudPad:
     sta WSYNC
     dex
