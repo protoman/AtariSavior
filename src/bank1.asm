@@ -236,13 +236,14 @@ ScoreOn     = $C5       ; score ones digit
     lda #0
     sta GRP0
     sta GRP1
+    sta WSYNC           ; sync before render loop
 
-    ; Stub: consume remaining scanlines
+    ; Render 8 rows (stub for now — just WSYNCs)
     ldx #8
-.ScoreStub:
+.ScoreLoop:
     sta WSYNC
     dex
-    bne .ScoreStub
+    bne .ScoreLoop
 
     ; --- Restore cave kernel settings ---
     lda #$05            ; CTRLPF: reflect + priority (cave mode)
