@@ -193,7 +193,8 @@ ScoreOn     = $F3       ; score ones digit
     stx NUSIZ0
     ldx #0               ; NUSIZ = 1 copy
     stx NUSIZ1
-    stx VDELP0           ; VDELP OFF — we know OFF shows "010" correctly
+    ldx #1               ; VDELP = ON
+    stx VDELP0
     stx VDELP1
     stx REFP0
     stx REFP1
