@@ -232,6 +232,11 @@ ScoreOn     = $C5       ; score ones digit
     lda #<(DigitGfx + (0*8))
     sta DigitPtr6
 
+    ; Clear sprites before loop
+    lda #0
+    sta GRP0
+    sta GRP1
+
     ; Stub: consume remaining scanlines
     ldx #8
 .ScoreStub:
