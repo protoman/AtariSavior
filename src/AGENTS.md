@@ -10,6 +10,8 @@
 
 **Before claiming how HERO implements something, ALWAYS look at the actual code first.** Do not suppose or assume based on partial understanding. Check hero_bank1.asm, the comparison code, and data tables (especially lookup tables like LFF3E for NUSIZ values, LFF6D for positioning, LFF96 for sprite data). If the code contradicts your assumption, the code wins — update your understanding and tell the user what you found, not what you thought.
 
+**Why this rule exists:** In this session, the agent was told HERO uses NUSIZ copies for lives/bombs but kept insisting it was wrong and suggested 13+2 instead. Later found LFF3E=$30,$30,$20,$20 proving HERO uses NUSIZ. The agent was also told HERO uses PF for score but kept suggesting sprites. The pattern: the agent reads a PART of the code, forms an assumption, then defends it instead of reading more. The fix: read the FULL relevant section, trace the data flow, and verify against the actual disassembly before responding.
+
 **What we already use from HERO (keep these, do NOT replace):**
 - Reflected playfield (CTRLPF D0=1) — symmetric cave design
 - PF registers written ONCE per tile row (TIA persists across scanlines)
@@ -206,13 +208,14 @@ stella -debug savior.bin # debugger
 - [ ] Level indicator
 - [ ] HUD rendering in the 48-line band
 
-**Score rendering notes:**
-- Score uses PF registers (PF0/PF1/PF2) with pre-computed font patterns
-- PFDigitFont has 3-bit-wide glyphs (%00000111 format), shifted at runtime
-- PF0 = pattern<<4, PF1 = pattern<<5, PF2 = pattern
-- The font appears larger than HERO's because PF register timing may be off
-- HERO's score "75" in the reference screenshot is much smaller/thinner than our implementation
-- Need to investigate HERO's exact score rendering timing and font data
+**Score rendering notes (from comparison/lo-a-rad-dragon/bank2.asm):**
+- Score uses PF registers (PF0/PF1/PF2) with PFDigitFont (3-bit-wide glyphs)
+- Pre-computed into PF0ScoreBuf/PF1ScoreBuf/PF2ScoreBuf during cave kernel (PF is free while GRP0/GRP1 render level)
+- Level text uses GRP0/GRP1 sprites (FontP0/FontP1), NOT PF
+- Score render loop: writes PF0/PF1/PF2 per scanline, then `sta WSYNC`
+- Comparison game's level text uses packed sprites ("LV" in P0, digits in P1), positioned via SetObjectXPos
+- The 13+2 technique is used for the 32-char text demo (bank1), but the game HUD uses simpler sprite+PF approach
+- Need to study HERO's bank1 second kernel ($DE00) for the actual 13+2 implementation
 
 ### Phase 7: Gameplay
 - [ ] Laser/weapon system (missile 0)
