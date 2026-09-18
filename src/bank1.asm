@@ -211,11 +211,26 @@ ScoreOn     = $C5       ; score ones digit
     sta WSYNC
     sta HMOVE
 
-    ; Set up digit pointers one at a time for debugging
+    ; Set up digit pointers
     lda #>DigitGfx
     sta DigitPtr1+1
+    sta DigitPtr2+1
+    sta DigitPtr3+1
+    sta DigitPtr4+1
+    sta DigitPtr5+1
+    sta DigitPtr6+1
     lda #<(DigitGfx + (0*8))
     sta DigitPtr1
+    lda #<(DigitGfx + (1*8))
+    sta DigitPtr2
+    lda #<(DigitGfx + (2*8))
+    sta DigitPtr3
+    lda #<(DigitGfx + (3*8))
+    sta DigitPtr4
+    lda #<(DigitGfx + (4*8))
+    sta DigitPtr5
+    lda #<(DigitGfx + (0*8))
+    sta DigitPtr6
 
     ; Stub: consume remaining scanlines
     ldx #8
