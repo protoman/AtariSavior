@@ -184,89 +184,58 @@ ScoreOn     = $C5       ; score ones digit
     sta WSYNC
 
     ; ====================================================================
-    ; Line 4: Score — 48-pixel sprite technique
-    ; Using burger8e.asm setup (known working in a complete game)
-    ; NUSIZ0=3 (3 copies) + NUSIZ1=1 (2 copies) = 5 slots
-    ; Digit 0 = blank (we only show 4 digits: 1,2,3,4)
+    ; Line 4: Score — SIMPLE 2-character test (0 and 1)
+    ; NUSIZ0=0 (1 copy) + NUSIZ1=0 (1 copy) = 2 slots
+    ; No VDELP, no cross-buffer — just direct GRP writes
     ; ====================================================================
-    ldx #1
-    stx VDELP0           ; vertical delay ON
-    stx VDELP1
-    ldx #0
-    stx GRP0             ; clear player0
-    stx GRP1             ; clear player1
-    stx REFP0            ; no reflection
-    stx REFP1
-    ldx #3               ; 3 copies close
-    stx NUSIZ0
-    stx RESP0            ; player0 at pixel 54
-    ldx #1               ; 2 copies close
-    stx NUSIZ1
-    stx RESP1            ; player1 at pixel 78
-    ldx #$E0             ; HMP0 = +2 left
-    stx HMP0
-    ldx #0               ; HMP1 = 0
-    stx HMP1
     lda #$0E             ; white
     sta COLUP0
     sta COLUP1
+    ldx #0               ; 1 copy each, no delay, no reflect
+    stx NUSIZ0
+    stx NUSIZ1
+    stx VDELP0
+    stx VDELP1
+    stx REFP0
+    stx REFP1
+    stx RESP0            ; position P0
+    stx RESP1            ; position P1
+    stx HMP0
+    stx HMP1
     sta WSYNC
     sta HMOVE
 
-    ; Set up digit pointers — hardcoded low bytes for reliability
-    lda #$FD             ; high byte of DigitGfx ($FD00)
+    ; Set up 2 digit pointers: 0 and 1
+    lda #$FD
     sta DigitPtr1+1
     sta DigitPtr2+1
-    sta DigitPtr3+1
-    sta DigitPtr4+1
-    sta DigitPtr5+1
-    lda #$00             ; DigitGfx+0 = $FD00 (digit 0 = blank row)
+    lda #$00             ; digit "0"
     sta DigitPtr1
-    lda #$08             ; DigitGfx+8 = $FD08 (digit "1")
+    lda #$08             ; digit "1"
     sta DigitPtr2
-    lda #$10             ; DigitGfx+16 = $FD10 (digit "2")
-    sta DigitPtr3
-    lda #$18             ; DigitGfx+24 = $FD18 (digit "3")
-    sta DigitPtr4
-    lda #$20             ; DigitGfx+32 = $FD20 (digit "4")
-    sta DigitPtr5
 
-    ; Clear sprites before loop
+    ; Clear sprites
     lda #0
     sta GRP0
     sta GRP1
 
-    ; Render loop — burger8e.asm style with extra WSYNC for timing
+    ; Render 8 rows of 2 characters
     ldy #7
     sty RowCnt
 .ScoreLoop:
     sta WSYNC
     lda (DigitPtr1),Y      ; load digit 0
-    sta GRP0               ; digit 0 -> GRP0
-    sta GRP1               ; digit 0 -> GRP1
+    sta GRP0               ; show on P0
     lda (DigitPtr2),Y      ; load digit 1
-    sta GRP0               ; digit 1 -> GRP0
-    sta WSYNC              ; extra sync for timing
-    lda (DigitPtr3),Y      ; load digit 2
-    tax                    ; X = digit 2
-    lda (DigitPtr4),Y      ; load digit 3
-    sta Temp               ; Temp = digit 3
-    lda (DigitPtr5),Y      ; load digit 4
-    ldy Temp               ; Y = digit 3
-    stx GRP1               ; digit 2 -> GRP1
-    sty GRP0               ; digit 3 -> GRP0
-    sta GRP1               ; digit 4 -> GRP1
-    sta GRP0               ; digit 4 -> GRP0
+    sta GRP1               ; show on P1
     dec RowCnt
     ldy RowCnt
     bpl .ScoreLoop
 
-    ; Clear sprites after score
+    ; Clear
     lda #0
     sta GRP0
     sta GRP1
-    sta VDELP0
-    sta VDELP1
     sta NUSIZ0
     sta NUSIZ1
 
