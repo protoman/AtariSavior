@@ -208,16 +208,26 @@ stella -debug savior.bin # debugger
 - [ ] Level indicator
 - [ ] HUD rendering in the 48-line band
 
-**Score rendering notes (from bumbershootsoft.wordpress.com + HERO analysis):**
-- Score uses **PF2 only** (not PF0/PF1) — each digit is 3 pixels wide in PF2 bits
-- **CTRLPF=$02 (SCORE mode)** — uses COLUP0 for left half, COLUP1 for right half (avoids doubled score in reflected mode)
-- Font is **3×6 bricks** (not 3×5), stored bottom-to-top for efficient loop indexing
-- Score stored as **BCD** (Binary Coded Decimal) — e.g., 57 stored as hex $57
-- Graphics should be in **final 256 bytes** of ROM for easy address math (high byte = $FF)
-- Font data: left/middle/right columns as bits 1/2/4, combined with OR into single byte, mirrored in both halves
-- Render loop: combine tens+ones digits per scanline, write to PF2, then WSYNC
-- Level text uses GRP0/GRP1 sprites (FontP0/FontP1), NOT PF
-- Score render loop: writes PF0/PF1/PF2 per scanline, then `sta WSYNC`
+**Score rendering notes (from HERO disassembly + bumbershootsoft):**
+
+**HERO's actual architecture (follow this):**
+- HERO uses **per-scanline PF lookup tables** — NOT a font array + runtime computation
+- Each scanline gets its own complete PF0/PF1/PF2 value from ROM tables (LFA00/LFB00/LFC00/LFD00)
+- Font data is **baked directly into the PF register values** — there is no separate PFDigitFont
+- The score kernel loads ONE source byte per scanline, then ANDs it with per-scanline masks ($BF for PF1, $C2 for PF2) to extract each PF register's portion
+- Masks vary per scanline because different rows need different bits masked off
+- This eliminates serialization overhead — each scanline's PF values are loaded directly from ROM
+- The PF values encode both the digit shape AND the pixel positioning in the PF register bit layout
+- Score is 4 scanlines tall (not 5), using 2-pixel-wide digits (not 3)
+- The key trick: one source byte encodes PF0 raw, PF1 via AND mask, PF2 via AND mask — saves ROM space and simplifies the kernel
+
+**Why this matters:** HERO's digits look small because the PF lookup tables pre-compute the exact pixel pattern for every scanline. Our approach of computing PF values at runtime from a font array introduces overhead and makes digits wider. To match HERO's look, we should use the same PF-table approach.
+
+**What we currently use (bumbershootsoft approach, works but wider):**
+- CTRLPF=$02 (SCORE mode) — uses COLUP0 for left half, COLUP1 for right half
+- Font stored as separate PFDigitFont array (3 pixels wide, 5 rows)
+- PF values computed at runtime from font data
+- Score render loop: writes PF0/PF1/PF2 per scanline from pre-computed buffers
 - The 13+2 technique is used for the 32-char text demo (bank1), but the game HUD uses simpler sprite+PF approach
 
 ### Phase 7: Gameplay
