@@ -233,11 +233,12 @@ ScoreOn     = $C5       ; score ones digit
 .ScoreLoop:
     sta WSYNC
     lda (DigitPtr1),Y      ; load digit 0
-    sta GRP0               ; 0 -> GRP0 (for P0 copy 1)
+    sta GRP0               ; 0 -> GRP0 (P0 copy 1 shows this)
     lda (DigitPtr2),Y      ; load digit 1
-    sta GRP1               ; 1 -> GRP1 (for P1)
+    sta GRP1               ; 1 -> GRP1 (P1 shows this, triggers GRP0A=0)
     lda (DigitPtr3),Y      ; load digit 2
-    sta GRP0               ; 2 -> GRP0 (for P0 copy 2)
+    sta GRP0               ; 2 -> GRP0 (P0 copy 2 shows this AFTER next GRP1 write)
+    sta GRP1               ; dummy: triggers GRP0A = old GRP0 = 2
     dec RowCnt
     ldy RowCnt
     bpl .ScoreLoop
