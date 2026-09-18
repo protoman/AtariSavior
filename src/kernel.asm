@@ -86,7 +86,6 @@ TileRow         byte            ; current tile row (0-11)
 Grp0Ptr         byte            ; pointer to player sprite data (lo)
 Grp0PtrHi       byte            ; pointer to player sprite data (hi)
 Temp            byte            ; general scratch
-ScoreRow        byte            ; score pre-comp row counter (0-4)
 
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match)
 ScoreTh         = $C2           ; score thousands digit (0-9)
