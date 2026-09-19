@@ -183,7 +183,7 @@ ScoreOn     = $F3       ; score ones digit
     sta WSYNC
 
     ; ====================================================================
-    ; Line 4: Score — 6-digit test ("012345") — 48-pixel sprite technique
+    ; Line 4: Score — 6-digit test ("012389") — 48-pixel sprite technique
     ; NUSIZ0=3 (3 copies close) + NUSIZ1=3 (3 copies close)
     ; Interleaved: P0c1 P1c1 P0c2 P1c2 P0c3 P1c3 = 6 digit slots
     ; VDELP0=1, VDELP1=1 for cross-buffer pipeline
@@ -210,12 +210,11 @@ ScoreOn     = $F3       ; score ones digit
     sta REFP1
 
     ; --- Position P0 and P1 for interleaved 6-digit layout ---
-    ; P0 at pixel 56, P1 at pixel 64 (8px gap → interleaved)
-    ; Copies: P0@56, P1@64, P0@72, P1@80, P0@88, P1@96
-    lda #56
+    ; P0 at pixel 60, P1 at pixel 68 (shifted 4px right to fix pipeline timing)
+    lda #60
     ldx #0
     jsr SetObjectXPos_b1
-    lda #64
+    lda #68
     ldx #1
     jsr SetObjectXPos_b1
     sta WSYNC
@@ -229,17 +228,17 @@ ScoreOn     = $F3       ; score ones digit
     sta scorePtr4+1
     sta scorePtr5+1
     sta scorePtr6+1
-    lda #$00             ; digit "0" (offset 0*8)
+    lda #$48             ; digit "9" (offset 9*8)
     sta scorePtr1
-    lda #$08             ; digit "1" (offset 1*8)
+    lda #$40             ; digit "8" (offset 8*8)
     sta scorePtr2
-    lda #$10             ; digit "2" (offset 2*8)
+    lda #$38             ; digit "7" (offset 7*8)
     sta scorePtr3
-    lda #$18             ; digit "3" (offset 3*8)
+    lda #$30             ; digit "6" (offset 6*8)
     sta scorePtr4
-    lda #$20             ; digit "4" (offset 4*8)
-    sta scorePtr5
     lda #$28             ; digit "5" (offset 5*8)
+    sta scorePtr5
+    lda #$20             ; digit "4" (offset 4*8)
     sta scorePtr6
 
     ; --- Clear sprites before loop (3-write pattern for VDELP) ---
