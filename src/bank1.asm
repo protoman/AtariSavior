@@ -1,10 +1,10 @@
     processor 6502
 ; ==============================================================================
-; bank1 — HUD rendering (F6 bankswitch, $F000-$FFFF)
+; bank1 — HUD rendering + 6-digit score (F6 bankswitch, $F000-$FFFF)
 ; ==============================================================================
 ; Follows HERO/comparison pattern exactly:
 ; - GRP0/GRP1 for indicator sprites (lives, bombs)
-; - PF registers for score digits (pre-computed)
+; - 48-pixel sprite technique for score (NUSIZ copies + VDELP cross-buffer)
 ; - SetObjectXPos for precise positioning
 ; - Returns via fold-pad at $FC70
 
@@ -65,15 +65,16 @@ MenuMain:
     sta REFP0
     sta REFP1
 
-; ZP variables for score rendering
-PF0ScoreBuf = $B3       ; 5 bytes: PF0 values (unused with sprite approach)
-PF1ScoreBuf = $B8       ; 5 bytes: PF1 values (unused with sprite approach)
-PF2ScoreBuf = $C6       ; 5 bytes: PF2 values (unused with sprite approach)
+; ZP variables for score rendering (48-pixel sprite technique)
+scorePtr1   = $E0       ; pointer to digit 1 font data (hundred-thousands)
+scorePtr2   = $E2       ; pointer to digit 2 font data (ten-thousands)
+scorePtr3   = $E4       ; pointer to digit 3 font data (thousands)
+scorePtr4   = $E6       ; pointer to digit 4 font data (hundreds)
+scorePtr5   = $E8       ; pointer to digit 5 font data (tens)
+scorePtr6   = $EA       ; pointer to digit 6 font data (ones)
+scbrdCnt    = $EC       ; score render loop counter (7..0)
+scbrdTmp    = $ED       ; mid-scanline temp cache
 Temp        = $AD       ; scratch variable
-RowCnt      = $AE       ; score render row counter (0-7)
-DigitPtr1   = $F4       ; pointer to digit 0 font data
-DigitPtr2   = $F6       ; pointer to digit 1 font data
-DigitPtr3   = $F8       ; pointer to digit 2 font data
 ScoreTh     = $F0       ; score thousands digit
 ScoreHu     = $F1       ; score hundreds digit
 ScoreTe     = $F2       ; score tens digit
@@ -182,66 +183,93 @@ ScoreOn     = $F3       ; score ones digit
     sta WSYNC
 
     ; ====================================================================
-    ; Line 4: Score — 3-character test (0, 1, 2)
-    ; NUSIZ0=1 (2 copies) + NUSIZ1=0 (1 copy) = 3 slots
-    ; VDELP enabled for cross-buffer between P0 copies
+    ; Line 4: Score — 6-digit test ("012345") — 48-pixel sprite technique
+    ; NUSIZ0=3 (3 copies close) + NUSIZ1=3 (3 copies close)
+    ; Interleaved: P0c1 P1c1 P0c2 P1c2 P0c3 P1c3 = 6 digit slots
+    ; VDELP0=1, VDELP1=1 for cross-buffer pipeline
     ; ====================================================================
+
+    ; --- Setup sprites ---
     lda #$0E             ; white
     sta COLUP0
     sta COLUP1
-    ldx #1               ; NUSIZ = 2 copies close
-    stx NUSIZ0
-    ldx #0               ; NUSIZ = 1 copy
-    stx NUSIZ1
-    ldx #1               ; VDELP = ON
-    stx VDELP0
-    stx VDELP1
-    stx REFP0
-    stx REFP1
-    ; Position P0 at pixel 72, P1 at pixel 80
-    lda #72
+    lda #3               ; NUSIZ = 3 copies close
+    sta NUSIZ0
+    sta NUSIZ1
+    lda #1               ; VDELP = ON (cross-buffer active)
+    sta VDELP0
+    sta VDELP1
+    lda #0               ; no reflection
+    sta REFP0
+    sta REFP1
+
+    ; --- Position P0 and P1 for interleaved 6-digit layout ---
+    ; P0 at pixel 56, P1 at pixel 64 (8px gap → interleaved)
+    ; Copies: P0@56, P1@64, P0@72, P1@80, P0@88, P1@96
+    lda #56
     ldx #0
     jsr SetObjectXPos_b1
-    lda #80
+    lda #64
     ldx #1
     jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
 
-    ; Set up 3 digit pointers: 0, 1, 2
-    lda #$FD
-    sta DigitPtr1+1
-    sta DigitPtr2+1
-    sta DigitPtr3+1
-    lda #$00             ; digit "0"
-    sta DigitPtr1
-    lda #$08             ; digit "1"
-    sta DigitPtr2
-    lda #$10             ; digit "2"
-    sta DigitPtr3
+    ; --- Set up 6 digit pointers (hardcoded test: 0,1,2,3,4,5) ---
+    lda #>DigitGfx       ; high byte = $FD for all pointers
+    sta scorePtr1+1
+    sta scorePtr2+1
+    sta scorePtr3+1
+    sta scorePtr4+1
+    sta scorePtr5+1
+    sta scorePtr6+1
+    lda #$00             ; digit "0" (offset 0*8)
+    sta scorePtr1
+    lda #$08             ; digit "1" (offset 1*8)
+    sta scorePtr2
+    lda #$10             ; digit "2" (offset 2*8)
+    sta scorePtr3
+    lda #$18             ; digit "3" (offset 3*8)
+    sta scorePtr4
+    lda #$20             ; digit "4" (offset 4*8)
+    sta scorePtr5
+    lda #$28             ; digit "5" (offset 5*8)
+    sta scorePtr6
 
-    ; Clear sprites
+    ; --- Clear sprites before loop ---
     lda #0
     sta GRP0
     sta GRP1
 
-    ; Render loop
+    ; ====================================================================
+    ; 8-scanline render loop (exactly 71 cycles + WSYNC = 74 per line)
+    ; Proven kernel from score48pix.asm
+    ; ====================================================================
     ldy #7
-    sty RowCnt
+    sty scbrdCnt
 .ScoreLoop:
-    sta WSYNC
-    lda (DigitPtr1),Y      ; load digit 0
-    sta GRP0               ; 0 -> GRP0
-    lda (DigitPtr2),Y      ; load digit 1
-    sta GRP1               ; 1 -> GRP1
-    lda (DigitPtr3),Y      ; load digit 2
-    sta GRP0               ; 2 -> GRP0
-    sta GRP1               ; dummy
-    dec RowCnt
-    ldy RowCnt
-    bpl .ScoreLoop
+    ldy <scbrdCnt          ; 3c
+    lda (scorePtr6),Y      ; 5c — pre-load LAST digit (digit 6)
+    tax                    ; 2c — cache in X
+    sta WSYNC              ; 3c
+    lda (scorePtr1),Y      ; 5c — load digit 1
+    sta.w GRP0             ; 4c — digit 1 -> GRP0A buffer
+    lda (scorePtr2),Y      ; 5c — load digit 2
+    sta GRP1               ; 3c — digit 2 -> GRP1A, digit 1 live on P0c1
+    lda (scorePtr3),Y      ; 5c — load digit 3
+    sta GRP0               ; 3c — digit 3 -> GRP0A, digit 2 live on P1c1
+    lda (scorePtr4),Y      ; 5c — load digit 4
+    sta <scbrdTmp          ; 3c — cache digit 4
+    lda (scorePtr5),Y      ; 5c — load digit 5
+    ldy <scbrdTmp          ; 3c — Y = digit 4
+    sty GRP1               ; 3c — digit 4 -> GRP1A, digit 3 live on P0c2
+    sta GRP0               ; 3c — digit 5 -> GRP0A, digit 4 live on P1c2
+    stx GRP1               ; 3c — digit 6 -> GRP1A, digit 5 live on P0c3
+    stx GRP0               ; 3c — digit 6 -> GRP0A, digit 6 live on P1c3
+    dec <scbrdCnt          ; 5c
+    bne .ScoreLoop         ; 3c
 
-    ; Clear
+    ; --- Cleanup ---
     lda #0
     sta GRP0
     sta GRP1
@@ -262,7 +290,7 @@ ScoreOn     = $F3       ; score ones digit
 
     ; ====================================================================
     ; Pad remaining scanlines to reach exactly 48 total
-    ; Budget:
+    ; Budget (6-digit score):
     ;   Top gap:  4 scanlines
     ;   Timer:    6 scanlines
     ;   Gap:      1
@@ -270,11 +298,11 @@ ScoreOn     = $F3       ; score ones digit
     ;   Gap:      1
     ;   Bombs:    8 (SetObjectXPos×2 2 + HMOVE 1 + render 5)
     ;   Gap:      3
-    ;   Score:    12 (SetObjectXPos×2 2 + HMOVE 1 + sync 1 + render 8)
-    ;   TOTAL:    4+6+1+7+1+8+3+12 = 42
-    ;   Pad:      48 - 42 = 6
+    ;   Score:   13 (SetObjectXPos×2 2 + HMOVE 1 + setup 2 + render 8)
+    ;   TOTAL:   4+6+1+7+1+8+3+13 = 43
+    ;   Pad:     48 - 43 = 5
     ; ====================================================================
-    ldx #6
+    ldx #5
 .HudPad:
     sta WSYNC
     dex
