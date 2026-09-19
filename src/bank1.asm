@@ -199,7 +199,13 @@ ScoreOn     = $F3       ; score ones digit
     lda #1               ; VDELP = ON (cross-buffer active)
     sta VDELP0
     sta VDELP1
-    lda #0               ; no reflection
+    ; Flush both VDELP buffers + live registers to 0.
+    ; Without this, stale buffer data from previous frame shows as
+    ; white ghost copies during the positioning scanlines.
+    lda #0
+    sta GRP0             ; GRP0A (buffer) = 0
+    sta GRP1             ; GRP1A (buffer) = 0, GRP0 live = GRP0A = 0
+    sta GRP0             ; GRP1 live = GRP1A = 0
     sta REFP0
     sta REFP1
 
@@ -236,10 +242,11 @@ ScoreOn     = $F3       ; score ones digit
     lda #$28             ; digit "5" (offset 5*8)
     sta scorePtr6
 
-    ; --- Clear sprites before loop ---
+    ; --- Clear sprites before loop (3-write pattern for VDELP) ---
     lda #0
     sta GRP0
     sta GRP1
+    sta GRP0
 
     ; ====================================================================
     ; 8-scanline render loop (exactly 71 cycles + WSYNC = 74 per line)
