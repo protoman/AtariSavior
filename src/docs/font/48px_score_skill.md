@@ -152,12 +152,40 @@ The 48-pixel sprite technique is SHARPER than PF-based rendering because:
 - Sprites can be positioned at any X coordinate
 - Sprites have per-pixel color control
 
+### Known Bug: "212" Instead of "012"
+
+**Root cause:** Wrong GRP write sequence. The trailing `sta GRP1` in the
+3-digit loop writes the same digit2 data to GRP1A AND triggers GRP0A→GRP0,
+making digit2 live on P0. Both P0 copies show digit2.
+
+**Example (broken 3-digit loop):**
+```asm
+    lda (DigitPtr1),Y      ; load digit 0
+    sta GRP0               ; digit 0 → GRP0A buffer
+    lda (DigitPtr2),Y      ; load digit 1
+    sta GRP1               ; digit 1 → GRP1A, digit 0 live on P0
+    lda (DigitPtr3),Y      ; load digit 2
+    sta GRP0               ; digit 2 → GRP0A, digit 1 live on P1
+    sta GRP1               ; BUG: digit 2 → GRP1A, digit 2 live on P0!
+```
+
+**The fix:** Use the proven 6-digit kernel from score48pix.asm. The critical
+difference is pre-loading the LAST digit in X before WSYNC, then using 8 GRP
+writes in the correct cross-buffer sequence. See the render loop above.
+
+**Why wider spacing doesn't help:** Increasing gap between characters shifts
+the latch points but doesn't fix the wrong write sequence. The fundamental
+issue is that the last `sta GRP1` commits the wrong value to live GRP0.
+
 ### Implementation Order
 
-1. Create 8×8 font data (10 digits, page-aligned)
+1. Create 8x8 font data (10 digits, page-aligned)
 2. Set up NUSIZ0/NUSIZ1, VDELP0/VDELP1
-3. Position RESP0/RESP1 for 4-digit layout
-4. Implement 4-digit render loop
+3. Position RESP0/RESP1 for 6-digit interleaved layout
+4. Implement 6-digit render loop (from score48pix.asm)
 5. Set up digit pointer calculation from score variables
-6. Test with hardcoded "1234"
-7. Add dynamic score update
+6. Test with hardcoded "012345"
+7. Test edge cases: "000000", "999999", "901827"
+8. Connect to dynamic ScoreTh/Hu/Te/On variables
+9. Add score increment on fire button for testing
+10. Fine-tune positioning and color

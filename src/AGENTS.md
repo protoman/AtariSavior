@@ -373,3 +373,8 @@ Use `breakLabel` at two addresses, subtract Scn values:
 - `_scan` does NOT work — resolves to $00 (CXM0P)
 - `breakif {_scan == N}` is UNRELIABLE
 - Use `breakLabel` + Scn field instead
+
+## Skill References
+
+- `docs/zp_layout_skill.md` — Complete zero-page memory map for all banks (bank0/bank1/bank2), with conflict detection rules and historical crash lessons
+- `docs/font/48px_score_skill.md` — 48-pixel sprite score technique (NUSIZ copies + VDELP cross-buffer), known bugs, and implementation guide
