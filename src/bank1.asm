@@ -408,7 +408,7 @@ SetObjectXPos_b1:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F0A4
+    jmp $F0AC
 
 ; ========================================================================
 ; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing

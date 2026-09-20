@@ -1,3 +1,35 @@
+1. The comparison code uses jetpack physics for vertical movement (StepDown/StepUp), while we use simple bounds checks
+2. The comparison code has room exit handling (ExitLeft, ExitRight, ExitUp, ExitDown), while we don't
+3. The comparison code has facing direction (PlayerDir), while we don't
+
+
+
+#########################################################################################################################################################################
+I placed an project for an editor for the game stages. It is based on C++, with Qt library and cmake build system.
+But I want to refactor it, so it better fills the needs of our currenct version.
+First thing, answer me, how is a playfield stored in data?
+I want that the output of the editor is as much as close to the way playfields are stored, as possible.
+For example, if the game uses rectangles as PF data, we should also store it was rectangles,
+even if I can create it tile by tile in the interface,
+the editor runs on a PC with enough CPU to calculate rectangles in the most optimized way,
+so leave to the editor to use a data format that better adjust to what we will use in the game.
+=========================================================================================================================================================================
+Also, check that the editor is using our actual playfield correct size - remember, it is mirrored and the editor already supports this.
+=========================================================================================================================================================================
+Let's do a bit of cleanup. Remove from the "Tile and Object Tools" Fragile Wall, Reinforced wall, Lava Pool, Water Pooll.
+=========================================================================================================================================================================
+Also, the room exits buttons sometimes are disabled, even when there is not an exit there yet, so I can't add it. We need to fix this.
+=========================================================================================================================================================================
+One thing, player start position should be hardcoded, so no need to keep it in data files.
+Also, I want the main window to have two tabs. One called Model, will be the room editor, where I can only edit the playfield (walls and hot/lava-walls).
+In th Levels editor, I will not be able to edit the room playfield itself, but I will be able to select a room model to use (that will determine its playffield from the model),
+place enemies and the miner.
+=========================================================================================================================================================================
+
+
+#########################################################################################################################################################################
+
+
 Hey, if you can't figure out looking at the code, your plan can consist of tests using the Stella debugger. Just make sure that you understand, braking points is not good for fine tuning. We need to find a group of instructions in the diassembly and then unse runto pc there, and then I take screenshots with the variables and TIA values.
 
 
