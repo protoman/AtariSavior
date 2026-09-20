@@ -75,10 +75,12 @@ scorePtr6   = $EA       ; pointer to digit 6 font data (ones)
 scbrdCnt    = $EC       ; score render loop counter (7..0)
 scbrdTmp    = $ED       ; mid-scanline temp cache
 Temp        = $AD       ; scratch variable
-ScoreTh     = $F0       ; score thousands digit
-ScoreHu     = $F1       ; score hundreds digit
-ScoreTe     = $F2       ; score tens digit
-ScoreOn     = $F3       ; score ones digit
+ScoreTh     = $BF       ; score thousands digit (must match bank0)
+ScoreHu     = $C0       ; score hundreds digit
+ScoreTe     = $C1       ; score tens+ones packed BCD
+ScoreOn     = $C2       ; score ones digit (unused by game, available)
+
+INPT4       = $0C       ; fire button (active low, bit 7)
 
     ; --- Top gap: 4 scanlines (lower HUD elements) ---
     ldx #4
@@ -220,25 +222,86 @@ ScoreOn     = $F3       ; score ones digit
     sta WSYNC
     sta HMOVE
 
-    ; --- Set up 6 digit pointers (hardcoded test: 0,1,2,3,4,5) ---
-    lda #>DigitGfx       ; high byte = $FD for all pointers
+    ; --- Initialize score to 0 on first frame ---
+    lda Temp
+    bne .scoreInitDone
+    inc Temp
+    lda #0
+    sta ScoreTh
+    sta ScoreHu
+    lda #$00
+    sta ScoreTe
+.scoreInitDone:
+
+    ; --- Fire button: +50 BCD (same logic as bank0 collision code) ---
+    lda INPT4
+    bmi .noFire
+    lda ScoreTe
+    clc
+    adc #$50              ; add 50 BCD
+    cmp #$a0              ; overflow past 99?
+    bcc .scoreDone        ; no → store and done
+    sbc #$a0              ; wrap ScoreTe
+    inc ScoreHu           ; carry to hundreds
+    lda ScoreHu
+    cmp #$a0              ; overflow past 99?
+    bcc .scoreDone        ; no → store and done
+    sbc #$a0              ; wrap ScoreHu
+    inc ScoreTh           ; carry to thousands
+.scoreDone:
+    sta ScoreTe
+.noFire:
+
+    ; --- Set up 6 digit pointers ---
+    ; Font at $FD00, each digit = 8 bytes, offset = digit * 8
+    ; ScoreTh/Hu = single digits (0-9), ScoreTe = packed BCD (tens*16+ones)
+    ; Display: ScoreTh ScoreHu tens ones blank blank
+
+    ; High bytes first (all $FD)
+    lda #>DigitGfx
     sta scorePtr1+1
     sta scorePtr2+1
     sta scorePtr3+1
     sta scorePtr4+1
     sta scorePtr5+1
     sta scorePtr6+1
-    lda #$48             ; digit "9" (offset 9*8)
+
+    ; scorePtr1 = ScoreTh * 8
+    lda ScoreTh
+    asl
+    asl
+    asl
     sta scorePtr1
-    lda #$40             ; digit "8" (offset 8*8)
+
+    ; scorePtr2 = ScoreHu * 8
+    lda ScoreHu
+    asl
+    asl
+    asl
     sta scorePtr2
-    lda #$38             ; digit "7" (offset 7*8)
+
+    ; scorePtr3 = (ScoreTe >> 4) * 8  (tens digit)
+    lda ScoreTe
+    lsr
+    lsr
+    lsr
+    lsr                   ; tens digit in low nibble
+    asl
+    asl
+    asl
     sta scorePtr3
-    lda #$30             ; digit "6" (offset 6*8)
+
+    ; scorePtr4 = (ScoreTe & $0F) * 8  (ones digit)
+    lda ScoreTe
+    and #$0F
+    asl
+    asl
+    asl
     sta scorePtr4
-    lda #$28             ; digit "5" (offset 5*8)
+
+    ; scorePtr5..6 = blank (digit "0", offset $00)
+    lda #0
     sta scorePtr5
-    lda #$20             ; digit "4" (offset 4*8)
     sta scorePtr6
 
     ; --- Clear sprites before loop (3-write pattern for VDELP) ---
