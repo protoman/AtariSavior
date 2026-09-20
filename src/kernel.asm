@@ -80,12 +80,25 @@ INTIM   = $0284
 
 RoomX           byte            ; player X position (0-159)
 RoomY           byte            ; player Y position (0-191)
+PlayerDir       byte            ; sprite eye facing: FACING_RIGHT (0) or FACING_LEFT
 Scanline        byte            ; current scanline counter (0-191)
 LineCount       byte            ; scanlines remaining in current tile row
 TileRow         byte            ; current tile row (0-11)
 Grp0Ptr         byte            ; pointer to player sprite data (lo)
 Grp0PtrHi       byte            ; pointer to player sprite data (hi)
 Temp            byte            ; general scratch
+
+; Collision ZP variables (from comparison/lo-a-rad-dragon/bank0.asm)
+MapPtrLo        byte            ; pointer into rectangle list (low)
+MapPtrHi        byte            ; pointer into rectangle list (high)
+CollisionX      byte            ; scratch for mirror calc
+CollisionCellX  byte            ; player max tile column
+CollisionCellY  byte            ; player top tile row
+CollisionEndX   byte            ; player min tile column
+CollisionEndY   byte            ; player bottom tile row
+RoomRectsLo     byte            ; pointer to room rectangle data (low)
+RoomRectsHi     byte            ; pointer to room rectangle data (high)
+RectCount       byte            ; rectangle loop counter
 
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match)
 ScoreTh         = $F0           ; score thousands digit (0-9) — moved to avoid PF1Buf overlap
@@ -100,6 +113,8 @@ PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
 ; Constants
 ; ==============================================================================
 PLAYER_HEIGHT   = 8             ; sprite height in scanlines
+PLAYER_WIDTH    = 4             ; sprite width in pixels
+TILE_COLUMNS    = 20            ; columns per half (reflected playfield)
 TILE_ROWS       = 12            ; number of playable tile rows
 LINES_PER_TILE  = 12            ; scanlines per tile row
 HUD_ROWS        = 4             ; HUD tile rows (48 scanlines)
@@ -107,10 +122,14 @@ CAVE_LINES      = 144           ; TILE_ROWS × LINES_PER_TILE
 VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × LINES_PER_TILE)
 
 ; Player bounds (must stay inside cave walls)
-PLAYER_MIN_X    = 32            ; inside left wall (wall ends at pixel 15)
-PLAYER_MAX_X    = 120           ; inside right wall (wall starts at pixel 144)
+PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
+PLAYER_MAX_X    = 163           ; sprite flush with right edge (HERO)
 PLAYER_MIN_Y    = 0
-PLAYER_MAX_Y    = 135           ; CAVE_LINES - PLAYER_HEIGHT
+PLAYER_MAX_Y    = 136           ; CAVE_LINES - PLAYER_HEIGHT + 1
+
+; Facing direction of the player sprite's eye
+FACING_RIGHT    = 0
+FACING_LEFT     = 1
 
 ; Colors (emulator-aware: hue<<4 | luma<<1)
 COLOR_PLAYER    = $1E           ; hue 1 luma 7 = bright yellow
@@ -158,6 +177,12 @@ GameStart:
     sta RoomX                   ; player starts in open area
     lda #64
     sta RoomY                   ; player starts near center
+
+    ; --- Initialize collision pointer to cave rectangle data ---
+    lda #<CaveRects
+    sta RoomRectsLo
+    lda #>CaveRects
+    sta RoomRectsHi
 
     ; --- Set player color ---
     lda #COLOR_PLAYER
@@ -298,7 +323,7 @@ StartFrame:
     ; After sta $1FF7, CPU reads next instruction from bank1 at $FC6D.
     ; Bank1's $FC6D has the same jmp $F540 → seamless bank switch.
     jmp $FC68                   ; jump to fold-pad (switches to bank1, runs MenuMain)
-    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp $F0A9
+    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp $F0AC
 
 ; ==============================================================================
 ; Overscan (30 scanlines) — input handling + game logic
@@ -321,43 +346,87 @@ StartFrame:
     lsr
     sta Temp                    ; save shifted joystick bits
 
-    ; --- Move up (D0) ---
-    and #$01                    ; test D0 (up)
-    bne .NotUp
+; ------------------------------------------------------------------------------
+; Vertical movement (up/down) — simple joystick, 1 px/frame + collision
+; ------------------------------------------------------------------------------
+CheckP0Up:
+    lda #%00000001              ; test D0 (up)
+    bit Temp
+    bne CheckP0Down
+    lda #FACING_LEFT            ; facing up = left eye (matches HERO convention)
+    sta PlayerDir
     lda RoomY
-    beq .NotUp
+    beq .ExitUp                 ; at top edge -> room exit
     dec RoomY
-.NotUp:
+    jsr PlayerHitsMap
+    bcc .UpDone
+    inc RoomY                   ; collision -> undo
+.UpDone:
+    jmp CheckP0Left
+.ExitUp:
+    jsr ExitRoomUp
+    jmp CheckP0Left
 
-    ; --- Move down (D1) ---
-    lda Temp
-    and #$02                    ; test D1 (down)
-    bne .NotDown
+CheckP0Down:
+    lda #%00000010              ; test D1 (down)
+    bit Temp
+    bne CheckP0Left
+    lda #FACING_LEFT            ; facing down = left eye (matches HERO convention)
+    sta PlayerDir
     lda RoomY
     cmp #PLAYER_MAX_Y
-    beq .NotDown
+    beq .ExitDown               ; at bottom edge -> room exit
     inc RoomY
-.NotDown:
+    jsr PlayerHitsMap
+    bcc .DownDone
+    dec RoomY                   ; collision -> undo
+.DownDone:
+    jmp CheckP0Left
+.ExitDown:
+    jsr ExitRoomDown
+    jmp CheckP0Left
 
-    ; --- Move left (D2) ---
-    lda Temp
-    and #$04                    ; test D2 (left)
-    bne .NotLeft
+; ------------------------------------------------------------------------------
+; Horizontal movement (left/right) — 1 px/frame + collision
+; ------------------------------------------------------------------------------
+CheckP0Left:
+    lda #%00000100              ; test D2 (left)
+    bit Temp
+    bne CheckP0Right
+    lda #FACING_LEFT
+    sta PlayerDir               ; turn the eye left, even if the move is blocked
     lda RoomX
     cmp #PLAYER_MIN_X
-    beq .NotLeft
+    beq .ExitLeft               ; at left edge -> room exit
     dec RoomX
-.NotLeft:
+    jsr PlayerHitsMap
+    bcc .LeftDone
+    inc RoomX                   ; collision -> undo
+.LeftDone:
+    jmp CheckP0Right
+.ExitLeft:
+    jsr ExitRoomLeft
+    jmp CheckP0Right
 
-    ; --- Move right (D3) ---
-    lda Temp
-    and #$08                    ; test D3 (right)
-    bne .NotRight
+CheckP0Right:
+    lda #%00001000              ; test D3 (right)
+    bit Temp
+    bne EndInputCheck
+    lda #FACING_RIGHT
+    sta PlayerDir               ; turn the eye right, even if the move is blocked
     lda RoomX
     cmp #PLAYER_MAX_X
-    beq .NotRight
+    beq .ExitRight              ; at right edge -> room exit
     inc RoomX
-.NotRight:
+    jsr PlayerHitsMap
+    bcc .RightDone
+    dec RoomX                   ; collision -> undo
+.RightDone:
+    jmp EndInputCheck
+.ExitRight:
+    jsr ExitRoomRight
+
+EndInputCheck:
 
     ; --- Wait for overscan timer ---
 .WaitOverscan:
@@ -365,6 +434,20 @@ StartFrame:
     bne .WaitOverscan
 
     jmp StartFrame
+
+; ==============================================================================
+; Room exit stubs — reposition player to start (100, 64)
+; TODO: implement proper room transitions
+; ==============================================================================
+ExitRoomUp:
+ExitRoomDown:
+ExitRoomLeft:
+ExitRoomRight:
+    lda #100
+    sta RoomX
+    lda #64
+    sta RoomY
+    rts
 
 ; ==============================================================================
 ; SetObjectXPos — horizontal positioning via RESP0/HMP0
@@ -448,6 +531,14 @@ CavePF2:
     .byte $00, $00, $00, $00       ; Row 4-7: open
     .byte $3F, $3F, $3F, $3F       ; Row 8-11: wall (2px gap at center)
 
+; --- Cave wall rectangles (tile coordinates, left half only — reflection mirrors) ---
+; Format: count byte, then 4 bytes per rect: x, y, width, height
+CaveRects:
+    .byte 3                            ; 3 rectangles
+    .byte 0, 0, 4, 4                   ; rows 0-3, cols 0-3 (thick walls)
+    .byte 0, 4, 2, 4                   ; rows 4-7, cols 0-1 (thin walls)
+    .byte 0, 8, 18, 4                  ; rows 8-11, cols 0-17 (bottom wall)
+
 ; ==============================================================================
 ; Score font data: "0000" rendered as 5-line PF patterns
 ; Each digit is 4px wide with 1px gaps between digits:
@@ -499,6 +590,160 @@ DigitTimes5:
   .byte 0, 5, 10, 15, 20, 25, 30, 35, 40, 45
 
 ; ==============================================================================
+; YToCellRow — convert scanline (0-191) to tile row (0-11)
+; ==============================================================================
+; Identical to comparison/lo-a-rad-dragon/bank0.asm.
+; Input: A = scanline. Output: X = tile row.
+YToCellRow subroutine
+    ldx #0
+.Div:
+    cmp #LINES_PER_TILE
+    bcc .Done
+    sbc #LINES_PER_TILE
+    inx
+    bne .Div
+.Done:
+    rts
+
+; ==============================================================================
+; PlayerHitsMap — check player bounding box against room rectangle list
+; ==============================================================================
+; Identical to comparison/lo-a-rad-dragon/bank0.asm.
+; Rectangles are in tile coordinates (col 0-19, row 0-11, w/h in tiles).
+; The playfield is reflected, so tiles >= 20 mirror via 39-col.
+; Returns C=0 if clear, C=1 if blocked.
+PlayerHitsMap:
+; --- Tile row range (top, bottom) ---
+    lda RoomY
+    jsr YToCellRow
+    stx CollisionCellY          ; top tile row
+    clc
+    lda RoomY
+    adc #PLAYER_HEIGHT - 1
+    jsr YToCellRow
+    stx CollisionEndY           ; bottom tile row
+
+; --- Visible left pixel -> text column range ---
+; RESP0 offset: RoomX < 15 -> offset 4; RoomX >= 15 -> offset 7
+    sec
+    lda RoomX
+    cmp #15
+    bcs .off7
+    sbc #4                      ; RoomX < 15: visible left = X - 4
+    jmp .gotVL
+.off7:
+    sbc #7                      ; RoomX >= 15: visible left = X - 7
+.gotVL:
+    ; first block = visible_left / 4 -> text column
+    tay                         ; Y = visible_left
+    lsr
+    lsr
+    cmp #TILE_COLUMNS
+    bcc .firstOk
+    sta CollisionX
+    lda #39
+    sec
+    sbc CollisionX
+.firstOk:
+    sta CollisionEndX           ; min text column
+
+    ; last block = (visible_left + PLAYER_WIDTH - 1) / 4 -> text column
+    tya                         ; A = visible_left
+    clc
+    adc #PLAYER_WIDTH - 1
+    lsr
+    lsr
+    cmp #TILE_COLUMNS
+    bcc .lastOk
+    sta CollisionX
+    lda #39
+    sec
+    sbc CollisionX
+.lastOk:
+    sta CollisionCellX          ; max text column
+
+    ; Ensure min <= max (blocks 20+ reverse the column order)
+    lda CollisionEndX
+    cmp CollisionCellX
+    bcc .colsOk
+    ldx CollisionCellX
+    stx CollisionEndX
+    sta CollisionCellX
+.colsOk:
+
+; --- Walk rectangle list ---
+    lda RoomRectsLo
+    sta MapPtrLo
+    lda RoomRectsHi
+    sta MapPtrHi
+    ldy #0
+    lda (MapPtrLo),Y            ; rectangle count
+    bne .HasRects
+    clc
+    rts                         ; no rectangles -> not hit
+.HasRects:
+    sta RectCount               ; rectangle loop counter
+    iny                         ; Y=1, first rect byte
+
+.RectLoop:
+    tya
+    pha                         ; save rect base offset
+
+; Column overlap: max_col >= rect.x AND min_col < rect.x + rect.w
+    lda (MapPtrLo),Y            ; rect.x (Y = base)
+    cmp CollisionCellX          ; rect.x > max_col?
+    beq .colOk
+    bcc .colOk
+    jmp .nextRect
+.colOk:
+    sta CollisionX              ; save rect.x for addition
+    iny
+    iny                         ; Y = base + 2 (rect.w)
+    clc
+    lda (MapPtrLo),Y            ; rect.w
+    adc CollisionX              ; rect.x + rect.w
+    cmp CollisionEndX           ; (rect.x+w) <= min_col?
+    beq .nextRect
+    bcc .nextRect
+
+; Row overlap: bottom_row >= rect.y AND top_row < rect.y + rect.h
+    dey                         ; Y = base + 1 (rect.y)
+    lda (MapPtrLo),Y            ; rect.y
+    cmp CollisionEndY           ; rect.y > bottom_row?
+    beq .rowOk
+    bcc .rowOk
+    jmp .nextRect
+.rowOk:
+    iny
+    iny                         ; Y = base + 3 (rect.h)
+    clc
+    lda (MapPtrLo),Y            ; rect.h
+    dey
+    dey                         ; Y = base + 1 (rect.y)
+    adc (MapPtrLo),Y            ; rect.y + rect.h
+    cmp CollisionCellY          ; (rect.y+h) <= top_row?
+    beq .nextRect
+    bcc .nextRect
+
+; HIT — player is blocked
+    pla
+    sec
+    rts
+
+.nextRect:
+    pla
+    clc
+    adc #4                      ; advance past this rect (4 bytes each)
+    tay
+    dec RectCount
+    beq .NoHit
+    jmp .RectLoop
+
+.NoHit:
+    clc
+    rts
+
+; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
 ; These go BEFORE the fineAdjustTable so org $FC68 doesn't go backwards.
 ; ==============================================================================
@@ -513,7 +758,7 @@ ToMenuStub:
 ToGameStub:
     lda #0
     sta $1FF6                     ; select bank0 (game)
-    jmp $F0A4                    ; next fetch from bank0: jmp overscan
+    jmp $F0AC                    ; next fetch from bank0: jmp overscan
 
 ; Pad to fineAdjustTable
     .ds $FF00 - *, 0
