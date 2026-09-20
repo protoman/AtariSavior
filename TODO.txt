@@ -1,3 +1,6 @@
+Hey, if you can't figure out looking at the code, your plan can consist of tests using the Stella debugger. Just make sure that you understand, braking points is not good for fine tuning. We need to find a group of instructions in the diassembly and then unse runto pc there, and then I take screenshots with the variables and TIA values.
+
+
 #########################################################################################################################################################################
 A few tasks:
 # position player more to the right, so he is not inside the playfield.
