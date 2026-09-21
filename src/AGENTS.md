@@ -311,6 +311,13 @@ stella -debug savior.bin # debugger
    Example: building the 48px score renderer required 10+ incremental
    steps (registers → color → positioning → pointers → render loop)
    rather than writing the whole thing at once.
+7. **Build-Test-Build** — When implementing a feature, write the plan
+   as small, testable pieces. After EACH piece, ask the user to test
+   in Stella before moving to the next piece. Do NOT implement the
+   entire feature at once — a bug buried in 500 lines is 10x harder
+   to find than a bug in 20 lines. Pattern: implement → build → user
+   tests → fix if needed → next piece. This is MANDATORY for any
+   feature touching the kernel, movement, collision, or room system.
 
 5. **Vertical Positioning**: Kernel scanline counter matches player Y.
    Sprite rendered when scanline falls within player's 8-line range.
