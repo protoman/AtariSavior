@@ -287,6 +287,12 @@ stella -debug savior.bin # debugger
 4. **Horizontal Positioning**: RESP0 for coarse (every 15 color clocks),
    HMP0 for fine (-8 to +7). HMOVE applied during HBLANK.
 
+   **CRITICAL: SetObjectXPos must match the comparison branch EXACTLY.**
+   A `jmp .Div15Loop` before the div15 loop added 3 cycles (1 pixel) to
+   RESP0 timing, causing collision misalignment. This took 2 days to find.
+   NEVER add timing-changing instructions to SetObjectXPos without
+   verifying pixel-perfect alignment with the comparison branch.
+
 5. **CRITICAL: ZP Address Conflicts Between Banks** — All banks share the
    same 128 bytes of zero-page RAM ($80-$FF). Writing to a ZP address in
    one bank corrupts the value for ALL banks. Before defining new ZP
@@ -373,6 +379,24 @@ Use `breakLabel` at two addresses, subtract Scn values:
 - `_scan` does NOT work — resolves to $00 (CXM0P)
 - `breakif {_scan == N}` is UNRELIABLE
 - Use `breakLabel` + Scn field instead
+
+### Lessons Learned
+
+**Collision misalignment (2026-09-21):** A `jmp .Div15Loop` in SetObjectXPos
+added 3 cycles (1 pixel) to RESP0 timing, shifting the sprite's pixel position
+right while the collision code expected it left. This caused the player to stop
+1+ pixels away from walls. **Fix:** Remove any extra instructions before the
+div15 loop — the comparison branch's SetObjectXPos is the reference.
+
+**PF0 bit order (2026-09-21):** TIA PF0 has bit 4 = leftmost pixel, NOT bit 7.
+The mapping `0x10 << col` is correct. Do NOT "fix" this — it was verified
+empirically and matches the comparison branch.
+
+**When debugging collision misalignment:**
+1. First check if SetObjectXPos matches the comparison branch exactly
+2. Check if the fineAdjustTable is identical
+3. Check if the PF0/PF1/PF2 data matches what the TIA renders
+4. Use Stella to measure actual sprite pixel position vs expected
 
 ## Skill References
 

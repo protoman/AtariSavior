@@ -46,14 +46,14 @@ def pf_values(row: str) -> tuple[int, int, int]:
 
     With reflection, column c is playfield pixel c of the left half:
       cols 0-3   -> PF0 bits 4-7 (bit 4 = leftmost)
-      cols 4-11  -> PF1 bits 7-0
-      cols 12-19 -> PF2 bits 0-7 (bit 0 = leftmost)
+      cols 4-11  -> PF1 bits 7-0 (bit 7 = pixel 4)
+      cols 12-19 -> PF2 bits 0-7 (bit 0 = pixel 12)
     """
     solid = [cell == "#" for cell in row]
     pf0 = 0
     for col in range(4):
         if solid[col]:
-            pf0 |= 0x10 << col   # col0 → bit4, col1 → bit5, etc.
+            pf0 |= 0x10 << col   # col0 -> bit4 (leftmost), col1 -> bit5, etc.
     pf1 = 0
     for col in range(4, 12):
         if solid[col]:
