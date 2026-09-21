@@ -100,6 +100,13 @@ RoomRectsLo     byte            ; pointer to room rectangle data (low)
 RoomRectsHi     byte            ; pointer to room rectangle data (high)
 RectCount       byte            ; rectangle loop counter
 
+; Jetpack ZP variables
+vyLo            byte            ; Y velocity low byte (subpixel; signed 16-bit, + = down)
+vyHi            byte            ; Y velocity high byte (whole pixels per frame, signed)
+PlayerYSub      byte            ; subpixel accumulator for Y velocity integration
+JetPower        byte            ; jet thrust 0..JET_MAX; ramps +1/frame while Up is held
+StepsLeft       byte            ; per-frame Y pixel steps remaining (vertical physics loop)
+
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match)
 ScoreTh         = $F0           ; score thousands digit (0-9) — moved to avoid PF1Buf overlap
 ScoreHu         = $F1           ; score hundreds digit (0-9)
@@ -126,6 +133,11 @@ PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
 PLAYER_MAX_X    = 163           ; sprite flush with right edge (HERO)
 PLAYER_MIN_Y    = 0
 PLAYER_MAX_Y    = 136           ; CAVE_LINES - PLAYER_HEIGHT + 1
+
+; Jetpack physics constants (HERO-style)
+GRAVITY         = $0008         ; gravity per frame (signed 16-bit, + = down)
+JET_MAX         = $20           ; max jet thrust accumulator
+MAX_FALL        = $0200         ; max fall speed (positive = down)
 
 ; Facing direction of the player sprite's eye
 FACING_RIGHT    = 0
@@ -349,43 +361,97 @@ StartFrame:
     sta Temp                    ; save shifted joystick bits
 
 ; ------------------------------------------------------------------------------
-; Vertical movement (up/down) — simple joystick, 1 px/frame + collision
+; Vertical movement — HERO-style jetpack physics
 ; ------------------------------------------------------------------------------
-CheckP0Up:
-    lda #%00000001              ; test D0 (up)
+; Gravity pulls down, holding Up fires jetpack (JetPower ramps with inertia).
+; Velocity is integrated through PlayerYSub and walked pixel-by-pixel via
+; StepDown/StepUp so collision stops flush at walls/doorways.
+; ------------------------------------------------------------------------------
+UpdateP0Vertical:
+; --- Jet thrust accumulator: +1/frame while Up is held (cap JET_MAX),
+;     -1/frame otherwise. The ramp gives the jet its initial inertia. ---
+    lda #%00000001              ; test D0 (up, after 4x LSR)
     bit Temp
-    bne CheckP0Down
-    lda #FACING_LEFT            ; facing up = left eye (matches HERO convention)
+    bne .JetDecay
+    lda #FACING_LEFT            ; facing up = left eye
     sta PlayerDir
-    lda RoomY
-    beq .ExitUp                 ; at top edge -> room exit
-    dec RoomY
-    jsr PlayerHitsMap
-    bcc .UpDone
-    inc RoomY                   ; collision -> undo
-.UpDone:
-    jmp CheckP0Left
-.ExitUp:
-    jsr ExitRoomUp
-    jmp CheckP0Left
+    lda JetPower
+    cmp #JET_MAX
+    bcs .JetCapped
+    clc
+    adc #1
+    jmp .JetSet
+.JetCapped:
+    lda #JET_MAX
+.JetSet:
+    sta JetPower
+    jmp .Gravity
+.JetDecay:
+    lda JetPower
+    beq .Gravity
+    dec JetPower
 
-CheckP0Down:
-    lda #%00000010              ; test D1 (down)
-    bit Temp
-    bne CheckP0Left
-    lda #FACING_LEFT            ; facing down = left eye (matches HERO convention)
-    sta PlayerDir
-    lda RoomY
-    cmp #PLAYER_MAX_Y
-    beq .ExitDown               ; at bottom edge -> room exit
-    inc RoomY
-    jsr PlayerHitsMap
-    bcc .DownDone
-    dec RoomY                   ; collision -> undo
-.DownDone:
-    jmp CheckP0Left
-.ExitDown:
-    jsr ExitRoomDown
+; --- Physics: vy += GRAVITY (gravity), vy -= JetPower (jet thrust). ---
+.Gravity:
+    clc
+    lda vyLo
+    adc #<GRAVITY
+    sta vyLo
+    lda vyHi
+    adc #>GRAVITY
+    sta vyHi
+    sec
+    lda vyLo
+    sbc JetPower
+    sta vyLo
+    lda vyHi
+    sbc #0
+    sta vyHi
+
+; --- Clamp fall speed: down at MAX_FALL, up at -$0100. ---
+    lda vyHi
+    bmi .RiseClamp
+    cmp #>MAX_FALL
+    bcc .Integrate
+    lda #>MAX_FALL
+    sta vyHi
+    lda #<MAX_FALL
+    sta vyLo
+    jmp .Integrate
+.RiseClamp:
+    cmp #$ff                  ; vyHi == $ff -> |vy| <= $0100, keep it
+    bcs .Integrate
+    lda #$ff
+    sta vyHi
+    lda #$00
+    sta vyLo                  ; vy = -$0100
+
+; --- Signed whole-pixel displacement this frame = carry + vyHi. ---
+.Integrate:
+    clc
+    lda PlayerYSub
+    adc vyLo
+    sta PlayerYSub
+    lda #0
+    adc vyHi
+    beq .NoVMove
+    bmi .UpSteps
+    sta StepsLeft             ; positive = falling (down)
+.JFalling:
+    jsr StepDown
+    dec StepsLeft
+    bne .JFalling
+    jmp .NoVMove
+.UpSteps:
+    eor #$ff
+    clc
+    adc #1                    ; magnitude of upward displacement
+    sta StepsLeft
+.JRising:
+    jsr StepUp
+    dec StepsLeft
+    bne .JRising
+.NoVMove:
     jmp CheckP0Left
 
 ; ------------------------------------------------------------------------------
@@ -436,6 +502,48 @@ EndInputCheck:
     bne .WaitOverscan
 
     jmp StartFrame
+
+; ------------------------------------------------------------------------------
+; StepDown: try one pixel of downward movement (called per pixel of vy).
+; A pixel is rejected when the footprint enters a solid tile (player lands
+; and vy is zeroed). At PLAYER_MAX_Y the room's down connection is followed.
+; ------------------------------------------------------------------------------
+StepDown subroutine
+    lda RoomY
+    cmp #PLAYER_MAX_Y
+    bcs .SDBottom
+    inc RoomY
+    jsr PlayerHitsMap
+    bcc .SDDone
+    dec RoomY
+    lda #0
+    sta vyLo
+    sta vyHi
+.SDDone:
+    rts
+.SDBottom:
+    jsr ExitRoomDown
+    rts
+
+; ------------------------------------------------------------------------------
+; StepUp: one pixel of upward movement. Solid tile above stops the sprite
+; and zeroes vy. At the top edge the room's up connection is followed.
+; ------------------------------------------------------------------------------
+StepUp subroutine
+    lda RoomY
+    beq .SUTop
+    dec RoomY
+    jsr PlayerHitsMap
+    bcc .SUDone
+    inc RoomY
+    lda #0
+    sta vyLo
+    sta vyHi
+.SUDone:
+    rts
+.SUTop:
+    jsr ExitRoomUp
+    rts
 
 ; ==============================================================================
 ; Room exit stubs — reposition player to start (100, 64)
