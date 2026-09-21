@@ -109,8 +109,12 @@ StepsLeft       byte            ; per-frame Y pixel steps remaining (vertical ph
 
 ; Room management ZP variables
 RoomNo          byte            ; current room index (0-based)
-RoomPFDataLo    byte            ; pointer to current room's TilePF0 (low)
-RoomPFDataHi    byte            ; pointer to current room's TilePF0 (high)
+RoomPF0Lo       byte            ; pointer to current room's TilePF0 (low)
+RoomPF0Hi       byte            ; pointer to current room's TilePF0 (high)
+RoomPF1Lo       byte            ; pointer to current room's TilePF1 (low)
+RoomPF1Hi       byte            ; pointer to current room's TilePF1 (high)
+RoomPF2Lo       byte            ; pointer to current room's TilePF2 (low)
+RoomPF2Hi       byte            ; pointer to current room's TilePF2 (high)
 LevelPFDataLo   byte            ; pointer to level's RoomDataTable (low)
 LevelPFDataHi   byte            ; pointer to level's RoomDataTable (high)
 LevelConnLo     byte            ; pointer to level's RoomConnections (low)
@@ -576,12 +580,27 @@ EnterRoom subroutine
     asl                         ; room * 4 (two .word entries per room)
     asl
     tay
-    ; Load PF data pointer (first .word)
+    ; Load PF0 data pointer (first .word)
     lda (LevelPFDataLo),Y
-    sta RoomPFDataLo
+    sta RoomPF0Lo
     iny
     lda (LevelPFDataLo),Y
-    sta RoomPFDataHi
+    sta RoomPF0Hi
+    ; Pre-compute PF1 and PF2 pointers (+12 bytes each)
+    clc
+    lda RoomPF0Lo
+    adc #12
+    sta RoomPF1Lo
+    lda RoomPF0Hi
+    adc #0
+    sta RoomPF1Hi
+    clc
+    lda RoomPF1Lo
+    adc #12
+    sta RoomPF2Lo
+    lda RoomPF1Hi
+    adc #0
+    sta RoomPF2Hi
     iny
     ; Load collision rects pointer (second .word)
     lda (LevelPFDataLo),Y
