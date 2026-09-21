@@ -9,16 +9,41 @@
         "wall2_g": 124,
         "wall2_b": 64,
         "start_room": 0,
-        "start_x": 9.5,
-        "start_y": 3.0,
         "miner_room": 1,
         "miner_x": 5.5,
         "miner_y": 6.0,
         "rooms": [
             {
                 "room_id": 0,
+                "model_id": 0,
                 "room_x": 0,
                 "room_y": 0,
+                "enemies": [],
+                "lamps": []
+            },
+            {
+                "room_id": 1,
+                "model_id": 1,
+                "room_x": 0,
+                "room_y": 1,
+                "enemies": [
+                    {
+                        "type": 0,
+                        "x": 30.0,
+                        "y": 5.0,
+                        "range_min": 27.0,
+                        "range_max": 33.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    }
+                ],
+                "lamps": []
+            }
+        ],
+        "models": [
+            {
+                "id": 0,
+                "name": "Model 1",
                 "width": 20,
                 "height": 12,
                 "tiles": [
@@ -262,14 +287,11 @@
                     1,
                     0,
                     0
-                ],
-                "enemies": [],
-                "lamps": []
+                ]
             },
             {
-                "room_id": 1,
-                "room_x": 0,
-                "room_y": 1,
+                "id": 1,
+                "name": "Model 2",
                 "width": 20,
                 "height": 12,
                 "tiles": [
@@ -513,19 +535,7 @@
                     1,
                     1,
                     1
-                ],
-                "enemies": [
-                    {
-                        "type": 0,
-                        "x": 30.0,
-                        "y": 5.0,
-                        "range_min": 27.0,
-                        "range_max": 33.0,
-                        "speed": 1.5,
-                        "dir": 1
-                    }
-                ],
-                "lamps": []
+                ]
             }
         ]
     }
