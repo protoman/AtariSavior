@@ -52,9 +52,6 @@ GRP1    = $1C
 ENAM0   = $1D
 ENAM1   = $1E
 ENABL   = $1F
-AUDC0   = $15
-AUDF0   = $16
-AUDV0   = $19
 HMP0    = $20
 HMP1    = $21
 HMM0    = $22
@@ -142,10 +139,7 @@ GRAVITY         = $0008         ; gravity per frame (signed 16-bit, + = down)
 JET_MAX         = $20           ; max jet thrust accumulator
 MAX_FALL        = $0200         ; max fall speed (positive = down)
 
-; Jet sound constants (audio channel 0)
-JET_AUDC        = $06           ; noise waveform (engine tone)
-JET_AUDF_BASE   = $18           ; base pitch (drops as thrust increases)
-JET_AUDV        = $07           ; volume when jet is burning
+
 
 ; Facing direction of the player sprite's eye
 FACING_RIGHT    = 0
@@ -503,30 +497,6 @@ CheckP0Right:
     jsr ExitRoomRight
 
 EndInputCheck:
-
-; ------------------------------------------------------------------------------
-; Jet sound: low noise "engine" on channel 0 while jet burns (JetPower > 0).
-; Pitch follows throttle — AUDF0 drops as thrust ramps up, giving a wind-down
-; tail when Up is released. Written once per frame (TIA audio is latched).
-; ------------------------------------------------------------------------------
-UpdateJetSound:
-    lda JetPower
-    beq .JetSilent
-    lda #JET_AUDV
-    sta AUDV0
-    lda #JET_AUDC
-    sta AUDC0
-    lda JetPower
-    lsr
-    lsr                         ; JetPower/4 -> 0..$08 (full thrust)
-    sta Temp
-    lda #JET_AUDF_BASE
-    sec
-    sbc Temp
-    sta AUDF0                   ; AUDF0 = base - thrust: pitches down as it spools up
-    jmp .WaitOverscan
-.JetSilent:
-    sta AUDV0                   ; A = 0: silence channel 0
 
     ; --- Wait for overscan timer ---
 .WaitOverscan:
