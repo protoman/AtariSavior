@@ -1,4 +1,13 @@
-# Player Sprite Bug Investigation
+# Player Sprite Bug Investigation — RESOLVED
+
+## Root Cause (FOUND)
+PlayerGrp0 buffer at $F8-$FF overlaps with the2600's stack page ($0100-$01FF mirrors to $80-$FF). JSR pushes return addresses to $FF-$FE, overwriting sprite data that was copied there BEFORE the JSR calls.
+
+## Fix
+Moved sprite copy loop to AFTER LoadPFBuffer and SelectActiveObject JSR calls, just before VBLANK timer wait. Committed as `a08fa76`.
+
+## Key Rule (added to AGENTS.md item 6)
+Copy to ZP buffers at $F8-$FF ONLY AFTER all JSR calls are done.
 
 ## Symptoms
 - Player sprite has extra "bleeding" pixels to the RIGHT of the main body

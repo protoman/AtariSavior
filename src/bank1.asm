@@ -14,6 +14,7 @@ NUSIZ0  = $04
 NUSIZ1  = $05
 COLUP0  = $06
 COLUP1  = $07
+PlayerLives = $AC
 COLUPF  = $08
 COLUBK  = $09
 PF0     = $0D
@@ -117,23 +118,34 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta WSYNC
 
     ; ====================================================================
-    ; Line 2: Lives — 3 green squares on ONE line
-    ; P0 with NUSIZ=$03 (3 copies, 16 clocks apart)
-    ; $FF pattern = 8px squares, 8px gaps (one square between)
-    ; Squares at X, X+16, X+32
+    ; Line 2: Lives — green squares, count based on PlayerLives
+    ; P0 with NUSIZ based on lives: $03=3 copies, $01=2, $00=1
     ; ====================================================================
-    lda #$C6            ; green
-    sta COLUP0
-    lda #$03            ; NUSIZ0 = 3 copies close
+    lda PlayerLives
+    beq .NoLives                ; 0 lives = skip
+    cmp #3
+    bne .LivesNot3
+    lda #$03                    ; 3 copies close
+    jmp .LivesSetNusiz
+.LivesNot3:
+    cmp #2
+    bne .LivesNot2
+    lda #$01                    ; 2 copies close
+    jmp .LivesSetNusiz
+.LivesNot2:
+    lda #$00                    ; 1 copy
+.LivesSetNusiz:
     sta NUSIZ0
-    lda #12             ; base X: squares at 12, 28, 44
+    lda #$C6                    ; green
+    sta COLUP0
+    lda #12                     ; base X
     ldx #0
     jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
-    lda #$E0            ; 3-color-clock-wide square pattern
+    lda #$E0                    ; 3-color-clock-wide square pattern
     sta GRP0
-    ldy #5              ; 5 scanlines tall
+    ldy #5                      ; 5 scanlines tall
 .LivesLoop:
     sta WSYNC
     dey
@@ -141,6 +153,17 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     lda #0
     sta GRP0
     sta NUSIZ0
+    jmp .LivesDone
+.NoLives:
+    lda #0
+    sta GRP0
+    sta NUSIZ0
+    ldy #5
+.LivesBlankLoop:
+    sta WSYNC
+    dey
+    bne .LivesBlankLoop
+.LivesDone:
 
     ; --- 1 scanline gap ---
     sta WSYNC

@@ -130,6 +130,7 @@ LevelStartX     byte            ; level origin X
 LevelStartY     byte            ; level origin Y
 LevelWallColor  byte            ; wall color 1 (rows 0-3, 8-11)
 LevelWallColor2 byte            ; wall color 2 (rows 4-7)
+PlayerLives     byte            ; lives remaining (0 = game over, reset)
 
 ; Enemy ZP variables
 LevelEnemyLo    byte            ; pointer to level's RoomEnemies table (low)
@@ -143,6 +144,7 @@ ActiveObjectOn  byte            ; 1 when current object is active this frame
 ActiveObjectX   byte            ; active object X (room pixel coords)
 ActiveObjectY   byte            ; active object Y (scanline coords)
 EnemyIndex      byte            ; current enemy index in room enemy list
+DeadEnemyIdx    byte            ; index of killed enemy ($FF = none)
 
 ; Object rendering ZP (set by SelectActiveObject during VBLANK)
 ObjTop          byte            ; top scanline of active object (for GRP1 visibility)
@@ -242,6 +244,10 @@ GameStart:
     ; --- Initialize game state ---
     lda #0
     sta Level
+    lda #3
+    sta PlayerLives
+    lda #$FF
+    sta DeadEnemyIdx
 
     ; --- Load first level ---
     jsr LoadLevel
@@ -712,6 +718,24 @@ EnterRoom subroutine
     iny
     lda (LevelPFDataLo),Y
     sta RoomRectsHi
+
+    ; Load enemy data for this room from LevelEnemyLo/Hi table
+    ; Per-room record: ptr_lo, ptr_hi, count, pad (4 bytes per room)
+    lda RoomNo
+    asl                         ; room * 4
+    asl
+    tay
+    lda (LevelEnemyLo),Y        ; enemy data pointer lo
+    sta EnemyDataLo
+    iny
+    lda (LevelEnemyLo),Y        ; enemy data pointer hi
+    sta EnemyDataHi
+    iny
+    lda (LevelEnemyLo),Y        ; enemy count
+    sta EnemyCount
+    lda #$FF
+    sta DeadEnemyIdx            ; no dead enemies in new room
+
     jsr LoadPFBuffer
     rts
 
@@ -988,25 +1012,23 @@ SelectActiveObject:
     sta ActiveObjectOn
     jmp .SODone
 .SOEnemyValid:
-    ; Compute EnemyData pointer: LevelEnemyLo/Hi + index * ENEMY_DATA_STRIDE
+    ; Skip if this enemy is dead
     lda EnemyIndex
-    ldy #0
-    sty Temp                    ; Temp = high byte accumulator
+    cmp DeadEnemyIdx
+    beq .SOEnemySkip
+    ; Enemy data pointer was loaded by EnterRoom into EnemyDataLo/Hi
+    ; Enemy record: type(+0), x(+1), y(+2), range_min(+3), range_max(+4), dir(+5)
+    ; Offset into the record = EnemyIndex * ENEMY_DATA_STRIDE (6)
+    lda EnemyIndex
     ; multiply by 6: x6 = x2 + x4
+    sta Temp                    ; save index
     asl                         ; *2
     sta Temp+1                  ; save *2
     asl                         ; *4
     clc
     adc Temp+1                  ; *6
-    ; add to LevelEnemyLo
-    clc
-    adc LevelEnemyLo
-    sta EnemyDataLo
-    lda #0
-    adc LevelEnemyHi
-    sta EnemyDataHi
+    tay                         ; Y = byte offset into enemy data
     ; Read enemy record: type(+0), x(+1), y(+2), range_min(+3), range_max(+4), dir(+5)
-    ldy #0
     lda (EnemyDataLo),Y         ; type
     pha                         ; save type
     iny
@@ -1026,6 +1048,11 @@ SelectActiveObject:
     jsr SetObjectXPos
     ; Object is visible
     lda #1
+    sta ActiveObjectOn
+    jmp .SODone
+
+.SOEnemySkip:
+    lda #0
     sta ActiveObjectOn
 
 .SODone:
@@ -1062,29 +1089,38 @@ EnemyColorTable:
     .byte $22                   ; moth — hue 2 luma 1 = dark orange
 
 ; ==============================================================================
-; CheckEnemyHit — player overlaps an enemy → teleport to level start
+; CheckEnemyHit — player overlaps an enemy → remove enemy, lose life
 ; ------------------------------------------------------------------------------
 CheckEnemyHit:
     ; Walk enemy list, check footprint overlap with each
+    lda EnemyCount
+    bne CEH_HasEnemies
+    jmp CEH_NoHit              ; no enemies
+CEH_HasEnemies:
     ldy #0
-    sty EnemyIndex
-.CEH_Loop:
+CEH_Loop:
     cpy EnemyCount
-    bcs .CEH_NoHit              ; walked all enemies, no hit
-    ; Read enemy x, y from (LevelEnemyLo),Y*stride
+    bcc CEH_HasMore
+    jmp CEH_NoHit              ; walked all enemies, no hit
+CEH_HasMore:
+    sty EnemyIndex
+    ; Skip dead enemies
+    cpy DeadEnemyIdx
+    beq CEHNext
+    ; Compute byte offset = index * 6
     tya
-    ; *6 = *2 + *4
-    asl
+    asl                         ; *2
     sta Temp
-    asl
+    asl                         ; *4
     clc
-    adc Temp
-    tay                         ; Y = index * ENEMY_DATA_STRIDE
+    adc Temp                    ; *6
+    tay                         ; Y = byte offset into enemy data
+    ; Read enemy x, y
     iny                         ; +1 = x
-    lda (LevelEnemyLo),Y
+    lda (EnemyDataLo),Y
     sta ActiveObjectX
     iny                         ; +2 = y
-    lda (LevelEnemyLo),Y
+    lda (EnemyDataLo),Y
     sta ActiveObjectY
     ; Check X overlap: |RoomX - ActiveObjectX| < PLAYER_WIDTH
     lda RoomX
@@ -1096,7 +1132,7 @@ CheckEnemyHit:
     adc #1
 .CEHXAbs:
     cmp #PLAYER_WIDTH
-    bcs .CEHNext                ; no X overlap
+    bcs CEHNext                ; no X overlap
     ; Check Y overlap
     lda RoomY
     sec
@@ -1107,24 +1143,53 @@ CheckEnemyHit:
     adc #1
 .CEHYAbs:
     cmp #PLAYER_HEIGHT
-    bcs .CEHNext                ; no Y overlap
-    ; Hit! Teleport to level start
-    lda LevelStartRoom
-    jsr EnterRoom
-    lda LevelStartX
-    sta RoomX
-    lda LevelStartY
-    sta RoomY
+    bcs CEHNext                ; no Y overlap
+    ; Hit! Mark this enemy as dead
+    lda EnemyIndex
+    sta DeadEnemyIdx
+    ; Lose a life
+    dec PlayerLives
+    bpl CEH_Stay
+    ; Lives exhausted — reset level (all enemies back, 3 lives)
+    lda #$FF
+    sta DeadEnemyIdx            ; clear dead enemy
+    lda #3
+    sta PlayerLives
+    jsr ReloadLevel
+    rts
+CEH_Stay:
+    ; Still have lives — just zero velocity, stay at current position
     lda #0
     sta vyLo
     sta vyHi
     sta JetPower
     sta PlayerYSub
     rts
-.CEHNext:
-    inc EnemyIndex
+CEHNext:
     ldy EnemyIndex
-    jmp .CEH_Loop
+    iny
+    jmp CEH_Loop
+CEH_NoHit:
+    rts
+
+; ------------------------------------------------------------------------------
+; ------------------------------------------------------------------------------
+; ReloadLevel — reset level to initial state (all enemies back, 3 lives).
+; Reloads level data from ROM and respawns player at start.
+; ------------------------------------------------------------------------------
+ReloadLevel:
+    lda #3
+    sta PlayerLives
+    lda Level
+    jsr LoadLevel
+    lda #0
+    sta vyLo
+    sta vyHi
+    sta JetPower
+    sta PlayerYSub
+    rts
+    ldy EnemyIndex
+    jmp CEH_Loop
 .CEH_NoHit:
     rts
 
