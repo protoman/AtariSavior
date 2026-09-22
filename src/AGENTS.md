@@ -30,6 +30,17 @@
 - Font data loaded into zero-page RAM during VBLANK for fast (zp),Y access
 - Ball (ENABL) for HUD indicators
 
+## Critical Rule: NEVER Delete Files Without User Permission
+
+**Deleting files (rm, git rm, moving files to /dev/null, or any operation that removes a tracked or untracked source file) is FORBIDDEN without explicit user approval.** This includes:
+- Source files (.asm, .py, .cpp, .hpp, .json, .txt, .sh, etc.)
+- Generated files (if they are part of the build pipeline and re-creatable, ask first)
+- Config files, build scripts, tool scripts
+
+**What to do instead:** When a file needs to be removed or replaced, tell the user what you want to delete and why. Wait for explicit confirmation. If you accidentally created a file that shouldn't exist, explain which file and ask to delete it.
+
+**Why this rule exists:** On 2026-09-22, the editor source files (MainWindow.hpp, MainWindow.cpp, MapCanvas.hpp, MapCanvas.cpp, LevelData.hpp, DataSerializer.cpp) were lost because they were never added to git, then overwritten without warning. The user's work was destroyed. This must never happen again.
+
 ## Overview
 
 A from-scratch Atari 2600 game kernel modeled after Activision's HERO (1984). Built
@@ -303,7 +314,19 @@ stella -debug savior.bin # debugger
    variables. Example: $E0-$EB was used by bank0's level data pointers,
    causing crashes when bank1 wrote digit pointers there.
 
-6. **Incremental Development** — When making big changes, ALWAYS divide
+6. **CRITICAL: ZP Stack Collision ($F8-$FF)** — The2600's128-byte RAM
+   mirrors at $0100-$01FF (stack page). The stack pointer starts at $FF
+   and grows downward. Any ZP buffer at $F8-$FF (like PlayerGrp0) shares
+   physical RAM with the stack. **JSR pushes return addresses to $FF-$FE,
+   overwriting data at those ZP addresses.** If you copy data to a ZP
+   buffer and then call JSR, the return address overwrites the buffer.
+   Rule: copy to ZP buffers at $F8-$FF ONLY AFTER all JSR calls are done,
+   just before the code that reads the buffer. Example: player sprite data
+   was copied to PlayerGrp0 ($F8-$FF) before LoadPFBuffer/SelectActiveObject
+   JSR calls — the return addresses overwrote sprite rows 6-7, causing
+   extra rendering artifacts.
+
+7. **Incremental Development** — When making big changes, ALWAYS divide
    the work into small steps and test after each one. Each step should
    add only one piece of functionality. This makes it much easier to
    catch and fix issues early, before the full code is in place. If a
