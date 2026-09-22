@@ -120,6 +120,34 @@ LevelPFDataHi   byte            ; pointer to level's RoomDataTable (high)
 LevelConnLo     byte            ; pointer to level's RoomConnections (low)
 LevelConnHi     byte            ; pointer to level's RoomConnections (high)
 
+; Level/miner ZP variables
+Level           byte            ; current level index (0-based)
+LevelMinerRoom  byte            ; room index holding the miner for current level
+MinerX          byte            ; miner X position (room pixel coords)
+MinerY          byte            ; miner Y position (room pixel coords)
+LevelStartRoom  byte            ; level origin room (spawn + enemy-hit teleport)
+LevelStartX     byte            ; level origin X
+LevelStartY     byte            ; level origin Y
+LevelWallColor  byte            ; wall color 1 (rows 0-3, 8-11)
+LevelWallColor2 byte            ; wall color 2 (rows 4-7)
+
+; Enemy ZP variables
+LevelEnemyLo    byte            ; pointer to level's RoomEnemies table (low)
+LevelEnemyHi    byte            ; pointer to level's RoomEnemies table (high)
+EnemyDataLo     byte            ; pointer to current room enemy data (low)
+EnemyDataHi     byte            ; pointer to current room enemy data (high)
+EnemyCount      byte            ; number of enemies in current room
+FlickerFrame    byte            ; GRP1 slot index for flicker
+ObjectCount     byte            ; total objects (enemies + miner if in miner room)
+ActiveObjectOn  byte            ; 1 when current object is active this frame
+ActiveObjectX   byte            ; active object X (room pixel coords)
+ActiveObjectY   byte            ; active object Y (scanline coords)
+EnemyIndex      byte            ; current enemy index in room enemy list
+
+; Object rendering ZP (set by SelectActiveObject during VBLANK)
+ObjTop          byte            ; top scanline of active object (for GRP1 visibility)
+ObjBot          byte            ; bottom scanline of active object (ObjTop + PLAYER_HEIGHT)
+
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match)
 ScoreTh         = $F0           ; score thousands digit (0-9)
 ScoreHu         = $F1           ; score hundreds digit (0-9)
@@ -137,6 +165,9 @@ PF0Buf          = $C3           ; 12 bytes: TilePF0 values per row
 PF1Buf          = $CF           ; 12 bytes: TilePF1 values per row
 PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row
 ColupfBuf       = $E7           ; 12 bytes: COLUPF stripe colors per row
+
+; Player sprite ZP buffer (copied from ROM during VBLANK, read by kernel)
+PlayerGrp0      = $F8           ; 8 bytes: player sprite rows (computed per frame)
 
 ; ==============================================================================
 ; Constants
@@ -209,24 +240,11 @@ GameStart:
     bne .ClearZP
 
     ; --- Initialize game state ---
-    lda #L1_START_X
-    sta RoomX
-    lda #L1_START_Y
-    sta RoomY
+    lda #0
+    sta Level
 
-    ; --- Initialize room management pointers ---
-    lda #<L1_RoomDataTable
-    sta LevelPFDataLo
-    lda #>L1_RoomDataTable
-    sta LevelPFDataHi
-    lda #<L1_RoomConnections
-    sta LevelConnLo
-    lda #>L1_RoomConnections
-    sta LevelConnHi
-
-    ; --- Load starting room ---
-    lda #L1_START_ROOM
-    jsr EnterRoom
+    ; --- Load first level ---
+    jsr LoadLevel
 
     ; --- Set player color ---
     lda #COLOR_PLAYER
@@ -274,8 +292,30 @@ StartFrame:
     sta WSYNC                   ; sync to next scanline (still in VBLANK)
     sta HMOVE                   ; latch fine motion — takes effect when VBLANK ends
 
+    ; --- Copy player sprite to ZP (select right/left based on PlayerDir) ---
+    lda PlayerDir
+    bne .CopyLeft
+    lda #<PlayerSpriteRight
+    ldy #>PlayerSpriteRight
+    jmp .DoCopySprite
+.CopyLeft:
+    lda #<PlayerSpriteLeft
+    ldy #>PlayerSpriteLeft
+.DoCopySprite:
+    sta Grp0Ptr
+    sty Grp0PtrHi
+    ldy #7
+.CopySpriteLoop:
+    lda (Grp0Ptr),Y
+    sta PlayerGrp0,Y
+    dey
+    bpl .CopySpriteLoop
+
     ; --- Refresh PF buffers (bank1 corrupts them during HUD band) ---
     jsr LoadPFBuffer
+
+    ; --- Select which object GRP1 draws this frame (miner or enemy) ---
+    jsr SelectActiveObject
 
     ; --- Wait for VBLANK timer ---
 .WaitVBLANK:
@@ -305,6 +345,9 @@ StartFrame:
     sta NUSIZ1
     lda #COLOR_PLAYER             ; restore player color (was green for HUD lives)
     sta COLUP0
+    lda #0                        ; clear VDELP0/VDELP1 (bank1 HUD sets them to 1)
+    sta VDELP0
+    sta VDELP1
 
     lda #0
     sta Scanline
@@ -322,7 +365,16 @@ StartFrame:
     ; --- Set tile row colors ---
     lda #COLOR_CAVE_BG
     sta COLUBK
-    lda #COLOR_CAVE_WALL
+    ; Stripe: rows 0-3 + 8-11 = wall color 1, rows 4-7 = wall color 2
+    cpx #4
+    bcc .UseWallColor1
+    cpx #8
+    bcs .UseWallColor1
+    lda LevelWallColor2
+    jmp .SetWallColor
+.UseWallColor1:
+    lda LevelWallColor
+.SetWallColor:
     sta COLUPF
 
     ; --- Init scanline counter for this row ---
@@ -333,22 +385,39 @@ StartFrame:
     sta WSYNC
 
 .Line:
-    ; --- Player sprite (GRP0) ---
+    ; --- GRP0 FIRST (must be within HBLANK, ~22 cycles) ---
     ; Check if current scanline is within player's 8-pixel range.
-    ; off-screen: 16 cycles | on-screen: 19 cycles
-    ; Both well within 76-cycle budget.
+    ; off-screen: 12 cycles | on-screen: 15 cycles
+    ; Both within HBLANK budget.
     lda Scanline
     sec
     sbc RoomY                   ; A = Scanline - RoomY
     cmp #PLAYER_HEIGHT
     bcs .NoSprite               ; branch if A >= PLAYER_HEIGHT (not visible)
     tay                         ; Y = sprite row index (0-7)
-    lda PlayerSprite,Y          ; 4c — ZP indexed read
+    lda PlayerGrp0,Y            ; 4c — ZP indexed read
     jmp .WriteGrp0
 .NoSprite:
     lda #0
 .WriteGrp0:
     sta GRP0
+
+    ; --- GRP1 SECOND (object/enemy sprite) ---
+    ; Rendered after GRP0. Written late but only affects object, not player.
+    ; ObjectOn, ObjTop, ObjBot are set by SelectActiveObject in VBLANK.
+    lda ActiveObjectOn
+    beq .NoObject
+    lda Scanline
+    cmp ObjTop
+    bcc .NoObject
+    cmp ObjBot
+    bcs .NoObject
+    lda #$f0                  ; show object sprite (4 pixels wide)
+    jmp .WriteGrp1
+.NoObject:
+    lda #0
+.WriteGrp1:
+    sta GRP1
 
     ; --- Loop control ---
     inc Scanline                ; advance scanline counter
@@ -372,7 +441,7 @@ StartFrame:
     ; After sta $1FF7, CPU reads next instruction from bank1 at $FC6D.
     ; Bank1's $FC6D has the same jmp $F540 → seamless bank switch.
     jmp $FC68                   ; jump to fold-pad (switches to bank1, runs MenuMain)
-    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp $F0AC
+    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp $F0DA
 
 ; ==============================================================================
 ; Overscan (30 scanlines) — input handling + game logic
@@ -409,8 +478,6 @@ UpdateP0Vertical:
     lda #%00000001              ; test D0 (up, after 4x LSR)
     bit Temp
     bne .JetDecay
-    lda #FACING_LEFT            ; facing up = left eye
-    sta PlayerDir
     lda JetPower
     cmp #JET_MAX
     bcs .JetCapped
@@ -531,6 +598,12 @@ CheckP0Right:
     jsr ExitRoomRight
 
 EndInputCheck:
+
+    ; --- Check miner pickup (advances to next level) ---
+    jsr CheckMinerPickup
+
+    ; --- Check enemy collision (teleport to level start) ---
+    jsr CheckEnemyHit
 
     ; --- Wait for overscan timer ---
 .WaitOverscan:
@@ -712,6 +785,350 @@ ExitRoomRight:
     rts
 
 ; ==============================================================================
+; Level management
+; ==============================================================================
+; LoadLevel: read LevelDataTable entry for current Level, init pointers, enter room.
+; LevelDataTable stride: 12 bytes
+;   +0..+2: start_room, start_x, start_y
+;   +3..+5: miner_room, miner_x, miner_y
+;   +6..+7: pfdata ptr (lo, hi)
+;   +8..+9: conn ptr (lo, hi)
+;  +10..+11: enemy ptr (lo, hi)
+; ------------------------------------------------------------------------------
+LoadLevel:
+    ; Compute LevelDataTable pointer: base + Level * 14
+    ; Stride 14: start(3) + miner(3) + wall_colors(2) + ptrs(3×2)
+    lda Level
+    asl                         ; *2
+    sta Temp                    ; Temp = L * 2
+    asl                         ; *4
+    asl                         ; *8
+    clc
+    adc Temp                    ; *10
+    adc Temp                    ; *12
+    adc Temp                    ; *14
+    tay                         ; Y = Level * 14
+
+    ; +0..+2: start room, x, y
+    lda LevelDataTable,Y
+    sta LevelStartRoom
+    iny
+    lda LevelDataTable,Y
+    sta LevelStartX
+    iny
+    lda LevelDataTable,Y
+    sta LevelStartY
+    iny
+    ; +3..+5: miner room, x, y
+    lda LevelDataTable,Y
+    sta LevelMinerRoom
+    iny
+    lda LevelDataTable,Y
+    sta MinerX
+    iny
+    lda LevelDataTable,Y
+    sta MinerY
+    iny
+    ; +6..+7: wall colors
+    lda LevelDataTable,Y
+    sta LevelWallColor
+    iny
+    lda LevelDataTable,Y
+    sta LevelWallColor2
+    iny
+    ; +8..+9: pfdata ptr
+    lda LevelDataTable,Y
+    sta LevelPFDataLo
+    iny
+    lda LevelDataTable,Y
+    sta LevelPFDataHi
+    iny
+    ; +10..+11: conn ptr
+    lda LevelDataTable,Y
+    sta LevelConnLo
+    iny
+    lda LevelDataTable,Y
+    sta LevelConnHi
+    iny
+    ; +12..+13: enemy ptr
+    lda LevelDataTable,Y
+    sta LevelEnemyLo
+    iny
+    lda LevelDataTable,Y
+    sta LevelEnemyHi
+
+    ; Enter the starting room
+    lda LevelStartRoom
+    jsr EnterRoom
+
+    ; Place player at level start
+    lda LevelStartX
+    sta RoomX
+    lda LevelStartY
+    sta RoomY
+
+    ; Zero jetpack state
+    lda #0
+    sta vyLo
+    sta vyHi
+    sta JetPower
+    sta PlayerYSub
+    rts
+
+; ==============================================================================
+; Miner pickup — check if player overlaps miner, advance to next level
+; ==============================================================================
+CheckMinerPickup:
+    lda RoomNo
+    cmp LevelMinerRoom
+    bne .CMPDone                ; not in miner's room
+    ; Check X overlap: |RoomX - MinerX| < PLAYER_WIDTH
+    lda RoomX
+    sec
+    sbc MinerX
+    bcs .CMPXAbs
+    eor #$ff
+    clc
+    adc #1
+.CMPXAbs:
+    cmp #PLAYER_WIDTH
+    bcs .CMPDone                ; no X overlap
+    ; Check Y overlap: |RoomY - MinerY| < PLAYER_HEIGHT
+    lda RoomY
+    sec
+    sbc MinerY
+    bcs .CMPYAbs
+    eor #$ff
+    clc
+    adc #1
+.CMPYAbs:
+    cmp #PLAYER_HEIGHT
+    bcs .CMPDone                ; no Y overlap
+    ; Pickup! Advance to next level
+    inc Level
+    lda Level
+    cmp #LEVEL_COUNT
+    bne .CMPNotWrap
+    lda #0                      ; wrap past last level
+    sta Level
+.CMPNotWrap:
+    jsr LoadLevel
+.CMPDone:
+    rts
+
+; ==============================================================================
+; SelectActiveObject — choose the single GRP1 object to draw this frame.
+; The TIA has one GRP1 sprite, so objects flicker by rotating slots each frame.
+; Sets ActiveObjectOn, ActiveObjectX, ActiveObjectY, ObjTop, ObjBot, COLUP1.
+; ObjectCount = EnemyCount + (1 if miner in this room).
+; ------------------------------------------------------------------------------
+SelectActiveObject:
+    ; Count objects: enemies + miner if in miner's room
+    lda EnemyCount
+    sta ObjectCount
+    lda RoomNo
+    cmp LevelMinerRoom
+    bne .SONoMiner
+    inc ObjectCount             ; miner counts as a slot
+.SONoMiner:
+    ; FlickerFrame = (FlickerFrame + 1) mod ObjectCount
+    inc FlickerFrame
+    lda ObjectCount
+    bne .SONotNothing
+    jmp .SONothing              ; no objects at all
+.SONotNothing:
+    ; modulo: while FlickerFrame >= ObjectCount, subtract
+.SOModLoop:
+    lda FlickerFrame
+    cmp ObjectCount
+    bcc .SOModDone
+    sec
+    sbc ObjectCount
+    sta FlickerFrame
+    jmp .SOModLoop
+.SOModDone:
+    ; FlickerFrame is now 0..ObjectCount-1
+    ; Check if slot 0 is the miner
+    lda FlickerFrame
+    bne .SOEnemy
+    lda RoomNo
+    cmp LevelMinerRoom
+    bne .SOEnemy
+    ; This slot is the miner
+    lda #1
+    sta ActiveObjectOn
+    lda MinerX
+    sta ActiveObjectX
+    lda MinerY
+    sta ActiveObjectY
+    lda MinerX                 ; A = X position for SetObjectXPos
+    ldx #1
+    jsr SetObjectXPos
+    lda #$66                    ; purple (hue 6, luma 3)
+    sta COLUP1
+    jmp .SODone
+
+.SOEnemy:
+    ; Walk enemy list: find the (FlickerFrame - (miner_offset))th enemy
+    ; If miner room and FlickerFrame > 0, subtract 1 for miner slot
+    lda FlickerFrame
+    ldx RoomNo
+    cpx LevelMinerRoom
+    bne .SOEnemyNoMinerOffset
+    sec
+    sbc #1                      ; skip miner slot
+.SOEnemyNoMinerOffset:
+    ; A = enemy index in list
+    sta EnemyIndex
+    ; Check if index < EnemyCount
+    cmp EnemyCount
+    bcc .SOEnemyValid
+    ; Out of range — no object this slot
+    lda #0
+    sta ActiveObjectOn
+    jmp .SODone
+.SOEnemyValid:
+    ; Compute EnemyData pointer: LevelEnemyLo/Hi + index * ENEMY_DATA_STRIDE
+    lda EnemyIndex
+    ldy #0
+    sty Temp                    ; Temp = high byte accumulator
+    ; multiply by 6: x6 = x2 + x4
+    asl                         ; *2
+    sta Temp+1                  ; save *2
+    asl                         ; *4
+    clc
+    adc Temp+1                  ; *6
+    ; add to LevelEnemyLo
+    clc
+    adc LevelEnemyLo
+    sta EnemyDataLo
+    lda #0
+    adc LevelEnemyHi
+    sta EnemyDataHi
+    ; Read enemy record: type(+0), x(+1), y(+2), range_min(+3), range_max(+4), dir(+5)
+    ldy #0
+    lda (EnemyDataLo),Y         ; type
+    pha                         ; save type
+    iny
+    lda (EnemyDataLo),Y         ; x
+    sta ActiveObjectX
+    iny
+    lda (EnemyDataLo),Y         ; y
+    sta ActiveObjectY
+    ; Set COLUP1 from EnemyColorTable[type]
+    pla
+    tax
+    lda EnemyColorTable,X
+    sta COLUP1
+    ; Position GRP1
+    lda ActiveObjectX            ; A = X position for SetObjectXPos
+    ldx #1                      ; X=1 = player1
+    jsr SetObjectXPos
+    ; Object is visible
+    lda #1
+    sta ActiveObjectOn
+
+.SODone:
+    ; Set ObjTop/ObjBot for kernel GRP1 visibility check
+    lda ActiveObjectOn
+    beq .SONoObj
+    lda ActiveObjectY
+    sta ObjTop
+    clc
+    adc #PLAYER_HEIGHT
+    sta ObjBot
+    rts
+.SONoObj:
+    lda #0
+    sta ObjTop
+    sta ObjBot
+    rts
+
+.SONothing:
+    lda #0
+    sta ActiveObjectOn
+    sta ObjTop
+    sta ObjBot
+    rts
+
+; ==============================================================================
+; Enemy color table (emulator-aware: hue<<4 | luma<<1)
+; ==============================================================================
+EnemyColorTable:
+    .byte $14                   ; spider — hue 1 luma 2 = dark yellow
+    .byte $f2                   ; bat — hue 15 luma 7 = brown
+    .byte $c4                   ; snake — hue 12 luma 2 = green
+    .byte $0e                   ; tentacle — hue 0 luma 7 = white
+    .byte $22                   ; moth — hue 2 luma 1 = dark orange
+
+; ==============================================================================
+; CheckEnemyHit — player overlaps an enemy → teleport to level start
+; ------------------------------------------------------------------------------
+CheckEnemyHit:
+    ; Walk enemy list, check footprint overlap with each
+    ldy #0
+    sty EnemyIndex
+.CEH_Loop:
+    cpy EnemyCount
+    bcs .CEH_NoHit              ; walked all enemies, no hit
+    ; Read enemy x, y from (LevelEnemyLo),Y*stride
+    tya
+    ; *6 = *2 + *4
+    asl
+    sta Temp
+    asl
+    clc
+    adc Temp
+    tay                         ; Y = index * ENEMY_DATA_STRIDE
+    iny                         ; +1 = x
+    lda (LevelEnemyLo),Y
+    sta ActiveObjectX
+    iny                         ; +2 = y
+    lda (LevelEnemyLo),Y
+    sta ActiveObjectY
+    ; Check X overlap: |RoomX - ActiveObjectX| < PLAYER_WIDTH
+    lda RoomX
+    sec
+    sbc ActiveObjectX
+    bcs .CEHXAbs
+    eor #$ff
+    clc
+    adc #1
+.CEHXAbs:
+    cmp #PLAYER_WIDTH
+    bcs .CEHNext                ; no X overlap
+    ; Check Y overlap
+    lda RoomY
+    sec
+    sbc ActiveObjectY
+    bcs .CEHYAbs
+    eor #$ff
+    clc
+    adc #1
+.CEHYAbs:
+    cmp #PLAYER_HEIGHT
+    bcs .CEHNext                ; no Y overlap
+    ; Hit! Teleport to level start
+    lda LevelStartRoom
+    jsr EnterRoom
+    lda LevelStartX
+    sta RoomX
+    lda LevelStartY
+    sta RoomY
+    lda #0
+    sta vyLo
+    sta vyHi
+    sta JetPower
+    sta PlayerYSub
+    rts
+.CEHNext:
+    inc EnemyIndex
+    ldy EnemyIndex
+    jmp .CEH_Loop
+.CEH_NoHit:
+    rts
+
+; ==============================================================================
 ; SetObjectXPos — horizontal positioning via RESP0/HMP0
 ; ==============================================================================
 ; Andrew Davie session-24 routine:
@@ -737,13 +1154,22 @@ SetObjectXPos subroutine
 ; Data tables
 ; ==============================================================================
 
-; --- Player sprite: 8×8 square ---
-; 4 pixels wide (bits 7-4), 8 rows tall
-; Each byte: MSB = leftmost pixel
-PlayerSprite:
+; --- Player sprites: 8×8, 4 pixels wide (bits 7-4) ---
+; Row 2 has the "eye" notch to show facing direction.
+PlayerSpriteRight:
     .byte %11110000             ; row 0
     .byte %11110000             ; row 1
-    .byte %11110000             ; row 2
+    .byte %11000000             ; row 2 — eye on right
+    .byte %11110000             ; row 3
+    .byte %11110000             ; row 4
+    .byte %11110000             ; row 5
+    .byte %11110000             ; row 6
+    .byte %11110000             ; row 7
+
+PlayerSpriteLeft:
+    .byte %11110000             ; row 0
+    .byte %11110000             ; row 1
+    .byte %00110000             ; row 2 — eye on left
     .byte %11110000             ; row 3
     .byte %11110000             ; row 4
     .byte %11110000             ; row 5
@@ -751,9 +1177,18 @@ PlayerSprite:
     .byte %11110000             ; row 7
 
 ; --- Level data ---
-; Generated from level JSON via tools/generate_level_asm.py.
+; Generated from level JSON via tools/convert_level.py.
 ; Do not edit by hand — regenerate with build.sh.
-    include "generated/level_001.asm"
+    include "generated/levels_data.asm"
+
+; --- Level constants ---
+ENEMY_SPIDER = 0
+ENEMY_BAT    = 1
+ENEMY_SNAKE  = 2
+ENEMY_DATA_STRIDE = 6
+
+; --- Level table + connections (generated) ---
+    include "generated/levels.asm"
 
 ; ==============================================================================
 ; Score font data: "0000" rendered as 5-line PF patterns

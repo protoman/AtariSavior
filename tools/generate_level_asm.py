@@ -94,22 +94,43 @@ def infer_connections(rooms):
 
 
 def main():
-    if len(sys.argv) not in (3, 4):
-        print("Usage: generate_level_asm.py <level.json> <output.asm> [PREFIX]",
+    if len(sys.argv) not in (3, 4, 5):
+        print("Usage: generate_level_asm.py <level.json> <output.asm> [PREFIX] [models.json]",
               file=sys.stderr)
         return 2
 
     level_path = Path(sys.argv[1])
     output_path = Path(sys.argv[2])
-    prefix = sys.argv[3] if len(sys.argv) == 4 else ""
+    prefix = sys.argv[3] if len(sys.argv) >= 4 and not sys.argv[3].endswith(".json") else ""
+    models_path = None
+    if len(sys.argv) == 5:
+        models_path = Path(sys.argv[4])
+    elif len(sys.argv) == 4 and sys.argv[3].endswith(".json"):
+        models_path = Path(sys.argv[3])
 
     with open(level_path) as f:
         data = json.load(f)
 
     level = data["level"]
     level_id = level["level_id"]
-    models = level.get("models", [])
     rooms = level.get("rooms", [])
+
+    # Load models from separate file, or from level JSON (backward compat)
+    models = []
+    if models_path and models_path.exists():
+        with open(models_path) as f:
+            models_data = json.load(f)
+        models = models_data.get("models_file", models_data).get("models", [])
+    else:
+        # Try to find models.json relative to level file
+        candidate = level_path.parent / "models" / "models.json"
+        if candidate.exists():
+            with open(candidate) as f:
+                models_data = json.load(f)
+            models = models_data.get("models_file", models_data).get("models", [])
+        else:
+            # Backward compat: models in level JSON
+            models = level.get("models", [])
 
     if not models or not rooms:
         print(f"Error: no models or rooms in {level_path}", file=sys.stderr)
@@ -118,14 +139,17 @@ def main():
     lines = []
     lines.append(f"; Generated from {level_path.name}. Do not edit by hand.")
     lines.append(f"{prefix}START_ROOM = {level.get('start_room', 0)}")
-    lines.append(f"{prefix}START_X = {int(level.get('start_x', 8) * 4)}")
-    lines.append(f"{prefix}START_Y = {int(level.get('start_y', 2) * 12)}")
+    lines.append(f"{prefix}START_X = 32")
+    lines.append(f"{prefix}START_Y = 24")
     lines.append(f"{prefix}MINER_ROOM = {level.get('miner_room', 0)}")
     lines.append(f"{prefix}MINER_X = {int(level.get('miner_x', 8) * 4)}")
     lines.append(f"{prefix}MINER_Y = {int(level.get('miner_y', 9) * 12)}")
     lines.append(f"{prefix}NUM_MODELS = {len(models)}")
     lines.append(f"{prefix}NUM_ROOMS = {len(rooms)}")
     lines.append("")
+
+    # Build model lookup by ID
+    model_by_id = {m["id"]: m for m in models}
 
     # Emit per-model PF data and rectangles
     for model in models:
@@ -159,7 +183,9 @@ def main():
     lines.append(f"{prefix}RoomDataTable:")
     for r in rooms:
         mid = r["model_id"]
-        tag = f"{prefix}M{mid + 1}"
+        # Use model index (position in models list) for tag generation
+        model_idx = next((i for i, m in enumerate(models) if m["id"] == mid), 0)
+        tag = f"{prefix}M{model_idx + 1}"
         lines.append(f"  .word {tag}TilePF0, {tag}RoomRects ; room {r['room_id']}")
     lines.append("")
 
