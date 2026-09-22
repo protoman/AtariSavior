@@ -643,17 +643,72 @@ EnterRoom subroutine
     rts
 
 ; ==============================================================================
-; Room exit stubs — reposition player to start (100, 64)
-; TODO: implement proper room transitions
+; Room exit handlers — check connection table, switch rooms, reposition player
 ; ==============================================================================
-ExitRoomUp:
+; Connection table: 4 bytes per room (up, down, left, right), $FF = no exit.
+; After transition: player is placed at the OPPOSITE edge of the new room.
+; Jetpack velocity carries over (matches comparison/hero pattern).
+; ------------------------------------------------------------------------------
 ExitRoomDown:
+    lda RoomNo
+    asl
+    asl                     ; A = RoomNo * 4
+    tay
+    iny                     ; +1 = down direction
+    lda (LevelConnLo),Y
+    cmp #$ff
+    beq .NoDown
+    jsr EnterRoom
+    lda #PLAYER_MIN_Y
+    sta RoomY               ; enter at the top edge
+.NoDown:
+    rts
+
+ExitRoomUp:
+    lda RoomNo
+    asl
+    asl                     ; A = RoomNo * 4 + 0 = up direction
+    tay
+    lda (LevelConnLo),Y
+    cmp #$ff
+    beq .NoUp
+    jsr EnterRoom
+    lda #PLAYER_MAX_Y
+    sta RoomY               ; enter at the bottom edge
+.NoUp:
+    rts
+
 ExitRoomLeft:
+    lda RoomNo
+    asl
+    asl
+    tay
+    iny
+    iny                     ; +2 = left direction
+    lda (LevelConnLo),Y
+    cmp #$ff
+    beq .NoLeft
+    jsr EnterRoom
+    lda #PLAYER_MAX_X
+    sta RoomX               ; enter at the right edge
+.NoLeft:
+    rts
+
 ExitRoomRight:
-    lda #100
-    sta RoomX
-    lda #64
-    sta RoomY
+    lda RoomNo
+    asl
+    asl
+    tay
+    iny
+    iny
+    iny                     ; +3 = right direction
+    lda (LevelConnLo),Y
+    cmp #$ff
+    beq .NoRight
+    jsr EnterRoom
+    lda #PLAYER_MIN_X
+    sta RoomX               ; enter at the left edge
+.NoRight:
     rts
 
 ; ==============================================================================
