@@ -121,13 +121,22 @@ LevelConnLo     byte            ; pointer to level's RoomConnections (low)
 LevelConnHi     byte            ; pointer to level's RoomConnections (high)
 
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match)
-ScoreTh         = $F0           ; score thousands digit (0-9) — moved to avoid PF1Buf overlap
+ScoreTh         = $F0           ; score thousands digit (0-9)
 ScoreHu         = $F1           ; score hundreds digit (0-9)
 ScoreTe         = $F2           ; score tens digit (0-9)
 ScoreOn         = $F3           ; score ones digit (0-9)
 PF0ScoreBuf     = $B3           ; 5 bytes: PF0 values for score rows 0-4
 PF1ScoreBuf     = $B8           ; 5 bytes: PF1 values for score rows 0-4
 PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
+
+; PF cave buffers (copied from ROM during VBLANK, read by kernel via absolute indexed)
+; These share ZP space with bank1's HUD variables — safe because bank1
+; runs AFTER the cave kernel. Bank1 overwrites them during HUD band;
+; VBLANK re-populates them before the next kernel frame.
+PF0Buf          = $C3           ; 12 bytes: TilePF0 values per row
+PF1Buf          = $CF           ; 12 bytes: TilePF1 values per row
+PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row
+ColupfBuf       = $E7           ; 12 bytes: COLUPF stripe colors per row
 
 ; ==============================================================================
 ; Constants
@@ -265,6 +274,9 @@ StartFrame:
     sta WSYNC                   ; sync to next scanline (still in VBLANK)
     sta HMOVE                   ; latch fine motion — takes effect when VBLANK ends
 
+    ; --- Refresh PF buffers (bank1 corrupts them during HUD band) ---
+    jsr LoadPFBuffer
+
     ; --- Wait for VBLANK timer ---
 .WaitVBLANK:
     lda INTIM
@@ -300,11 +312,11 @@ StartFrame:
 
 .Row:
     ; --- Set PF registers for this tile row (TIA persists) ---
-    lda L1_M1TilePF0,X
+    lda PF0Buf,X
     sta PF0
-    lda L1_M1TilePF1,X
+    lda PF1Buf,X
     sta PF1
-    lda L1_M1TilePF2,X
+    lda PF2Buf,X
     sta PF2
 
     ; --- Set tile row colors ---
@@ -365,6 +377,7 @@ StartFrame:
 ; ==============================================================================
 ; Overscan (30 scanlines) — input handling + game logic
 ; ==============================================================================
+Overscan:
     lda #2
     sta VBLANK                  ; turn on VBLANK during overscan
 
@@ -571,6 +584,24 @@ StepUp subroutine
 ; ==============================================================================
 ; Room management
 ; ==============================================================================
+; LoadPFBuffer: copy PF data from ROM to ZP buffers (12 bytes × 3 registers).
+; Called every frame during VBLANK because bank1's HUD corrupts the buffers.
+; Uses RoomPF0Lo/Hi, RoomPF1Lo/Hi, RoomPF2Lo/Hi (set by EnterRoom).
+; ------------------------------------------------------------------------------
+LoadPFBuffer:
+    ldy #0
+.LPB_Loop:
+    lda (RoomPF0Lo),Y
+    sta PF0Buf,Y
+    lda (RoomPF1Lo),Y
+    sta PF1Buf,Y
+    lda (RoomPF2Lo),Y
+    sta PF2Buf,Y
+    iny
+    cpy #12
+    bne .LPB_Loop
+    rts
+
 ; EnterRoom: load PF data and collision rectangles for room A (0-based index).
 ; Sets RoomNo, RoomPFDataLo/Hi, and RoomRectsLo/Hi.
 ; RoomX/RoomY are NOT changed — caller (exit handlers) sets them.
@@ -608,6 +639,7 @@ EnterRoom subroutine
     iny
     lda (LevelPFDataLo),Y
     sta RoomRectsHi
+    jsr LoadPFBuffer
     rts
 
 ; ==============================================================================
@@ -887,7 +919,7 @@ ToMenuStub:
 ToGameStub:
     lda #0
     sta $1FF6                     ; select bank0 (game)
-    jmp $F0B9                     ; return to bank0 after HUD band
+    jmp Overscan                 ; return to bank0 after HUD band
 
 ; Pad to fineAdjustTable
     .ds $FF00 - *, 0
