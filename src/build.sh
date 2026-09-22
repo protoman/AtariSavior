@@ -11,9 +11,14 @@ ROOT="$(cd "$DIR/.." && pwd)"
 
 echo "Building F6 ROM (4 banks)..."
 
-# Generate room data from text files
-echo "  Generating room data..."
-python3 "$ROOT/tools/convert_room.py" "$DIR/rooms/level_001_room_001.txt" "$DIR/generated/level_001_room_001.asm"
+# Generate level data from JSON
+echo "  Generating level data..."
+python3 "$ROOT/tools/convert_level.py" "$DIR/rooms/level_001.json" "$DIR/generated/level_001" "$DIR/rooms"
+python3 "$ROOT/tools/convert_level.py" "$DIR/rooms/level_002.json" "$DIR/generated/level_002" "$DIR/rooms"
+
+# Generate levels index (LevelDataTable with all levels)
+python3 "$ROOT/tools/convert_level.py" --levels "$DIR/generated/levels.asm" \
+    "$DIR/rooms/level_001.json" "$DIR/rooms/level_002.json"
 
 # Assemble each bank (from src/ so include paths resolve)
 cd "$DIR"
