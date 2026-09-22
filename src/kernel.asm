@@ -253,7 +253,7 @@ GameStart:
     ; --- Set playfield to reflected mode + priority ---
     ; D0=1 = reflect (left half mirrors to right)
     ; D2=1 = playfield priority (player drawn BEHIND walls, like HERO)
-    lda #$05
+    lda #$05                      ; CTRLPF: reflect + priority (cave mode)
     sta CTRLPF
 
 ; ==============================================================================
@@ -292,7 +292,15 @@ StartFrame:
     sta WSYNC                   ; sync to next scanline (still in VBLANK)
     sta HMOVE                   ; latch fine motion — takes effect when VBLANK ends
 
-    ; --- Copy player sprite to ZP (select right/left based on PlayerDir) ---
+    ; --- No sprite copy needed — kernel reads directly from ROM ---
+
+    ; --- Refresh PF buffers (bank1 corrupts them during HUD band) ---
+    jsr LoadPFBuffer
+
+    ; --- Select which object GRP1 draws this frame (miner or enemy) ---
+    jsr SelectActiveObject
+
+    ; --- Copy player sprite to ZP (AFTER JSR calls to avoid stack overwrite) ---
     lda PlayerDir
     bne .CopyLeft
     lda #<PlayerSpriteRight
@@ -310,12 +318,6 @@ StartFrame:
     sta PlayerGrp0,Y
     dey
     bpl .CopySpriteLoop
-
-    ; --- Refresh PF buffers (bank1 corrupts them during HUD band) ---
-    jsr LoadPFBuffer
-
-    ; --- Select which object GRP1 draws this frame (miner or enemy) ---
-    jsr SelectActiveObject
 
     ; --- Wait for VBLANK timer ---
 .WaitVBLANK:
@@ -339,15 +341,18 @@ StartFrame:
 
     ; --- Reset TIA state for cave rendering ---
     ; HUD may have changed NUSIZ0/1, COLUP0/1 — must restore
-    lda #$10                      ; NUSIZ0 = single copy (was 3 for HUD lives)
+    lda #$00                      ; NUSIZ0 = single copy, no missile
     sta NUSIZ0
-    lda #$00                      ; NUSIZ1 = single copy (was 3 for HUD bombs)
+    lda #$00                      ; NUSIZ1 = single copy
     sta NUSIZ1
     lda #COLOR_PLAYER             ; restore player color (was green for HUD lives)
     sta COLUP0
     lda #0                        ; clear VDELP0/VDELP1 (bank1 HUD sets them to 1)
     sta VDELP0
     sta VDELP1
+    sta ENAM0                     ; disable missile 0
+    sta ENAM1                     ; disable missile 1
+    sta ENABL                     ; disable ball
 
     lda #0
     sta Scanline
@@ -386,9 +391,6 @@ StartFrame:
 
 .Line:
     ; --- GRP0 FIRST (must be within HBLANK, ~22 cycles) ---
-    ; Check if current scanline is within player's 8-pixel range.
-    ; off-screen: 12 cycles | on-screen: 15 cycles
-    ; Both within HBLANK budget.
     lda Scanline
     sec
     sbc RoomY                   ; A = Scanline - RoomY
@@ -403,8 +405,6 @@ StartFrame:
     sta GRP0
 
     ; --- GRP1 SECOND (object/enemy sprite) ---
-    ; Rendered after GRP0. Written late but only affects object, not player.
-    ; ObjectOn, ObjTop, ObjBot are set by SelectActiveObject in VBLANK.
     lda ActiveObjectOn
     beq .NoObject
     lda Scanline
@@ -412,7 +412,7 @@ StartFrame:
     bcc .NoObject
     cmp ObjBot
     bcs .NoObject
-    lda #$f0                  ; show object sprite (4 pixels wide)
+    lda #$f0
     jmp .WriteGrp1
 .NoObject:
     lda #0

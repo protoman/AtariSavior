@@ -350,7 +350,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; --- Restore cave kernel settings ---
     lda #$05            ; CTRLPF: reflect + priority (cave mode)
     sta CTRLPF
-    lda #$10
+    lda #0
     sta NUSIZ0
     lda #0
     sta NUSIZ1
