@@ -469,6 +469,29 @@ Verified against `docs/hero/hero_bank0.asm` + screenshots `screenshots/hero_001.
 
 **Full plan: `docs/power_bar_plan.md`**
 
+### Power bar: H3c dual-path + H3d yellow-line fix (2026-09-23)
+
+**Architecture (bank1 MenuMain):**
+- Setup (PF shape, grey `COLUPF=$06`, GRP0/NUSIZ0, `CTRLPF=$05`) runs **before**
+  TopGap — grey-on-grey over the 4 gap lines, so no visible line above the bar.
+- After ball `SetObjectXPos` + `sta WSYNC` / `sta HMOVE`: only `lda #1 / sta ENABL`
+  + `ldy BarLevel / cpy #BAR_MAX` + path dispatch. **HMOVE-line content ≤51c**
+  (must stay ≤76 or the next bar line is skipped → doubled yellow + HUD shift).
+- Yellow `COLUPF=$1C` is written **only** on the 3 bar lines. Gap/`BarGap` uses grey.
+- Dispatch: `bne .BarRedSetup`; F=0 falls into `.BarRedF0`; `beq .BarRedF1` for F=1;
+  `jmp .BarRedFull` for F=2,3,4 (avoid `bne .BarRedFull` page-cross F5→F6).
+- Tables: `BarDelayTable` / `BarFineTable` / `BallXTable` (121 entries, B=0..120).
+  Fine ∈ {0,1,2,3,4}; BallX = actual body pixel `3*cycles-69` per path.
+  **Always regenerate tables from path cycle counts in a script** — hand transcription
+  caused 9 mismatches once.
+
+**H3d roots:** (1) yellow `COLUPF`+PF on the HMOVE line = permanent 1px yellow
+above bar; (2) red-path setup on that line ≥78c = skipped line = thickness doubles
+and HUD rows push down. Fix = move setup before TopGap; keep HMOVE line short.
+
+**Future (user):** smaller px/step + more steps/s (plan **H4**) — redesign tables
+under the same ≤73c path budget before changing the tick.
+
 ## Skill References
 
 - `docs/zp_layout_skill.md` — Complete zero-page memory map for all banks (bank0/bank1/bank2), with conflict detection rules and historical crash lessons
