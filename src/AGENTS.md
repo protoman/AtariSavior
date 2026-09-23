@@ -428,6 +428,47 @@ empirically and matches the comparison branch.
 3. Check if the PF0/PF1/PF2 data matches what the TIA renders
 4. Use Stella to measure actual sprite pixel position vs expected
 
+### HERO Power Bar Analysis (2026-09-22)
+
+Verified against `docs/hero/hero_bank0.asm` + screenshots `screenshots/hero_001.png`..`hero_007.png`
+(bar region x=242..702, y=444..464).
+
+**Visual behavior (measured from screenshots):**
+- Single continuous bar, NOT mirrored/symmetric. Yellow (remaining) left,
+  red (consumed) right. Red grows right→left as time depletes.
+- Orange single-pixel separator at the yellow/red boundary (ball sprite).
+- Margins at screen edges (grey background outside the bar).
+- Bar height: 3 scanlines (HERO's setup loop runs 3 iterations: X=8→4→0, DEX×4).
+- Full→empty progression: hero_001 (100% yellow, 0 red) → hero_007 (3% yellow, 440px red).
+
+**HERO's CTRLPF writes (decoded from raw bytes in hero_bank0.asm):**
+- `LDA #$34 / STA CTRLPF` before bar: %00110100 = reflect OFF (D0=0),
+  priority ON (D2=1), ball 8 clocks (D4-D5=%11).
+- `LDA #$30 / STA CTRLPF` after bar: %00110000 = reflect OFF, priority OFF,
+  ball 8 clocks.
+- Hero enables ball during bar: `LDA #$90 / STA ENABL` (ball ON) +
+  `STA HMM0` (missile/ball horizontal motion).
+
+**Bar setup loop (3 scanlines):**
+- `LDA #$D0 / LDX #$08 / SEC`, then per iteration: WSYNC, store A to $87,X,
+  SBC #8, store A to $85,X, SBC #8, DEX×4, BPL. Produces values
+  $D0,$C8,$C0,$B8,$B0,$A8 in ZP $85-$8F — cycle-count data for the
+  mid-scanline COLUPF change (early shutoff technique).
+
+**Color bytes for our bar (kPalette, `(hue<<4)|(luma<<1)`):**
+- Yellow: hue 1 luma 6 = **$1C** → RGB(232,232,92) ≈ screenshot (224,224,80).
+- Red: hue 4 luma 2 = **$44** → RGB(176,60,60) ≈ screenshot (176,48,48).
+- Existing HUD greys/greens unchanged: lives=$C6, bombs=$46, grey BG=$06.
+
+**Our implementation plan (HERO Method 2: playfield + ball):**
+- Reflect mode CTRLPF=$05 + PF0=$70 (bit4 OFF) gives margins at both screen edges.
+- PF1=$FF, PF2=$FF for solid bar body.
+- Mid-scanline `STA COLUPF` from yellow→red at BarLevel-derived cycle delay.
+- Ball (ENABL) at boundary for sub-block smooth edge (step 2).
+- BarLevel 0-16, TickCounter max 255 (single byte) ≈ 68 s total (approximation accepted).
+
+**Full plan: `docs/power_bar_plan.md`**
+
 ## Skill References
 
 - `docs/zp_layout_skill.md` — Complete zero-page memory map for all banks (bank0/bank1/bank2), with conflict detection rules and historical crash lessons
