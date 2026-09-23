@@ -73,7 +73,10 @@ and `docs/hero/hero_bank0.asm`.
 - [x] **2d.** Ball width = BarLevel mod 4 (1/2/4/8 clocks).
       CTRLPF = ((BarLevel&3)<<4) | \$05. DASM: bare \`asl\` (not \`asl a\`).
       visual_check PASS on power_bar_2d.png.
-- [ ] **2e.** Build, user tests: smooth sub-block edge at boundary.
+- [x] **2e.** Build, user tests: smooth sub-block edge at boundary.
+      Automated: t12 all-yellow, t25 Y/O/R split, boundary moves with
+      BarLevel, orange stripe 60px (accepted in 2c), ball width = BarLevel&3.
+      Screenshots: power_bar_2e_t12.png, power_bar_2e_t25.png.
 
 ### Step 3: Timer speed
 
@@ -82,7 +85,10 @@ and `docs/hero/hero_bank0.asm`.
       stays ~68 s after life loss / level change.
 - [x] **3b.** Result: 16 × 255 = 4080 frames ≈ 68 seconds
       (single-byte approximation accepted).
-- [ ] **3c.** Build, user tests: timer expires ≈68 s → loses a life.
+- [x] **3c.** Build, user tests: timer expires ≈68 s → loses a life.
+      Verified: near@66s bar 12% yellow; exp@71s bar full (reset) and
+      lives green px 90→60 (one life lost). Screenshots:
+      power_bar_3c_near/exp/post.png.
 
 ---
 
