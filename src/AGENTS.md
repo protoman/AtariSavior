@@ -461,7 +461,7 @@ Verified against `docs/hero/hero_bank0.asm` + screenshots `screenshots/hero_001.
 - Existing HUD greys/greens unchanged: lives=$C6, bombs=$46, grey BG=$06.
 
 **Our implementation plan (HERO Method 2: playfield + ball):**
-- Reflect mode CTRLPF=$05 + PF0=$70 (bit4 OFF) gives margins at both screen edges.
+- Reflect mode CTRLPF=$05 + PF0=$E0 (bit4 OFF) gives margins at both screen edges.
 - PF1=$FF, PF2=$FF for solid bar body.
 - Mid-scanline `STA COLUPF` from yellow→red at BarLevel-derived cycle delay.
 - Ball (ENABL) at boundary for sub-block smooth edge (step 2).

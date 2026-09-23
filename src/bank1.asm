@@ -109,8 +109,8 @@ INPT4       = $0C       ; fire button (active low, bit 7)
 
     ; ====================================================================
     ; Line 1: Timer bar — PF body, mid-scanline COLUPF yellow→red
-    ; PF0=$70 margins, PF1/PF2=$FF. Each line: yellow, delay(BarLevel),
-    ; red. B=0 → all red; B>=11 → all yellow; B=1..10 → split.
+    ; PF0=$E0 margins (bit4 leftmost OFF), PF1/PF2=$FF. Each line: yellow,
+    ; delay(BarLevel), red. B=0 → all red; B>=11 → all yellow; B=1..10 → split.
     ; Clear PF on the gap line (after WSYNC) so line 3 is not truncated.
     ; ====================================================================
 
@@ -127,7 +127,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta CTRLPF
     lda #$1C            ; pre-set yellow (setup line must not keep wall color)
     sta COLUPF
-    lda #$70            ; margins (bit 4 = leftmost 4 clocks OFF)
+    lda #$E0            ; margins (bit 4 = leftmost 4 clocks OFF)
     sta PF0
     lda #$FF
     sta PF1

@@ -28,7 +28,7 @@ and `docs/hero/hero_bank0.asm`.
 2. **Mid-scanline COLUPF change** (early shutoff): starts yellow, changes to
    red at the BarLevel-derived cycle position.
 3. **Ball sprite** at boundary for sub-block precision (step 2).
-4. **Reflect mode** (CTRLPF=$05) + PF0=$70 (bit 4 OFF) gives margins at both
+4. **Reflect mode** (CTRLPF=$05) + PF0=$E0 (bit 4 OFF) gives margins at both
    screen edges.
 
 ## Colors (kPalette, `(hue<<4)|(luma<<1)`)
