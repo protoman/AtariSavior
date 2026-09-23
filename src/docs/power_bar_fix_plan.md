@@ -116,8 +116,9 @@ B=0 stays immediate red. Ball X recomputed from the same `red@` model.
 
 - [x] **E1.** Clamp every `BallXTable` entry to 4..155 (after A's $E0).
       Done in C3: entries clamped 4..155.
-- [ ] **E2.** Build + screenshot: no ball pixel in grey margins at B=0/16.
-- [ ] **E3.** Commit `Power bar fix E: clamp ball X inside bar body`.
+- [x] **E2.** Build + screenshot: no ball pixel in grey margins at B=0/16.
+      User verified live: no ball in margins, all working.
+- [x] **E3.** Commit `Power bar fix E: clamp ball X inside bar body`.
 
 ---
 
