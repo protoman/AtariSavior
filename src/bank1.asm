@@ -18,6 +18,7 @@ COLUPF  = $08
 COLUBK  = $09
 PlayerLives = $AC
 BarLevel = $AE
+BAR_MAX = 16             ; full bar (G raises to 120 with 1s steps)
 COLUPF  = $08
 COLUBK  = $09
 PF0     = $0D
@@ -109,8 +110,9 @@ INPT4       = $0C       ; fire button (active low, bit 7)
 
     ; ====================================================================
     ; Line 1: Timer bar — PF body, mid-scanline COLUPF yellow→red
-    ; PF0=$E0 margins (bit4 leftmost OFF), PF1/PF2=$FF. Each line: yellow,
-    ; delay(BarLevel), red. A=table[B]; B=0 → all red; B=16 → tiny red right.
+    ; PF0=$E0 margins (bit4 leftmost OFF), PF1/PF2=$FF.
+    ; Full (BarLevel=BAR_MAX): pure yellow, no red write (no stripes).
+    ; Else: yellow, delay(A), red. A=0 → all red; A≤9 → ≤73c.
     ; Clear PF on the gap line (after WSYNC) so line 3 is not truncated.
     ; ====================================================================
 
@@ -133,24 +135,40 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta PF1
     sta PF2
 
+    ldy BarLevel
+    cpy #BAR_MAX
+    beq .BarYellowOnly   ; full → 3× yellow only (no red write)
+
     ldx #3
 .TimerLoop:
     sta WSYNC
     lda #$1C            ; yellow (hue 1, luma 6)
     sta COLUPF
-    ldy BarLevel        ; 0-16
-    lda BarDelayTable,Y ; delay iterations A (0..10)
+    ldy BarLevel        ; 0..BAR_MAX-1 on this path
+    lda BarDelayTable,Y ; delay A (0..9 → ≤73c)
     beq .BarRed         ; A=0 → immediate red (all red)
     tay
 .BarDelay:
     dey                 ; 2c
     bne .BarDelay       ; 3c taken / 2c last → 5A-1
-    ; red@ = 16 + (5A-1) + 5 = 5A+20; total ≤75 (A=10)
+    ; red@ = 16 + (5A-1) + 5 = 5A+20; A≤9 → total ≤73c
 .BarRed:
     lda #$44            ; red (hue 4, luma 2)
     sta COLUPF
     dex
     bne .TimerLoop
+    jmp .BarGap
+
+.BarYellowOnly:         ; full bar: pure yellow, ~20c/line (no overrun)
+    ldx #3
+.YLoop:
+    sta WSYNC
+    lda #$1C
+    sta COLUPF
+    dex
+    bne .YLoop
+
+.BarGap:
 
     ; --- gap: end bar line 3, clear PF + ball during gap HBLANK ---
     sta WSYNC
@@ -477,12 +495,11 @@ SetObjectXPos_b1:
     sta $1FF6
     jmp $F107           ; Overscan in bank0 (must match bank0 ToGameStub)
 
-; Bar delay iterations A(B)=round(B*10/16), monotonic 0..10
-; red@ = 5A+20 (A>0); total loop ≤75c (A=10). B≥1 always writes red.
-; DATA — not in execution path.
+; Bar delay iterations A(B): B=0 → 0 (all red); B=1..15 → A≤9 (≤73c).
+; B=BAR_MAX never indexes here (full-bar branch skips red path).
 BarDelayTable:          ; B=0..16 → A
     .byte 0
-    .byte 1,1,2,2,3,4,4,5,6,6,7,8,8,9,9,10
+    .byte 1,1,2,2,3,4,4,5,6,6,7,8,8,9,9,9
 
 ; Ball X at yellow/red boundary: px=(red@-23)*160/53, clamped 4..155
 BallXTable:             ; B=0..16
