@@ -131,6 +131,8 @@ LevelStartY     byte            ; level origin Y
 LevelWallColor  byte            ; wall color 1 (rows 0-3, 8-11)
 LevelWallColor2 byte            ; wall color 2 (rows 4-7)
 PlayerLives     byte            ; lives remaining (0 = game over, reset)
+TickCounter     byte            ; frame counter (0..27, decrements BarLevel when reaching 28)
+BarLevel        byte            ; timer bar level (16=full, 0=empty)
 
 ; Enemy ZP variables
 LevelEnemyLo    byte            ; pointer to level's RoomEnemies table (low)
@@ -248,6 +250,11 @@ GameStart:
     sta PlayerLives
     lda #$FF
     sta DeadEnemyIdx
+    ; Initialize timer: 28 frames per bar level (fast for testing)
+    lda #28
+    sta TickCounter
+    lda #16
+    sta BarLevel                ; bar starts full
 
     ; --- Load first level ---
     jsr LoadLevel
@@ -608,8 +615,42 @@ EndInputCheck:
     ; --- Check miner pickup (advances to next level) ---
     jsr CheckMinerPickup
 
-    ; --- Check enemy collision (teleport to level start) ---
+    ; --- Check enemy collision (lose life on hit) ---
     jsr CheckEnemyHit
+
+    ; --- Decrement game timer (single-byte: 28 frames per bar level) ---
+    dec TickCounter
+    bne .TimerDone              ; not zero yet — continue
+    ; Tick reached 0 — decrement bar level and reset tick
+    lda #28
+    sta TickCounter
+    dec BarLevel
+    beq .TimerExpired           ; bar empty — time's up!
+    jmp .TimerDone
+.TimerExpired:
+    ; Time's up! Lose a life (same as enemy hit)
+    dec PlayerLives
+    bpl .TimerReset
+    ; Lives exhausted — reset level
+    lda #3
+    sta PlayerLives
+    lda #$FF
+    sta DeadEnemyIdx
+    jsr ReloadLevel
+    jmp .TimerDone
+.TimerReset:
+    ; Reset bar for retry
+    lda #16
+    sta BarLevel
+    lda #28
+    sta TickCounter
+    ; Zero velocity, stay at current position
+    lda #0
+    sta vyLo
+    sta vyHi
+    sta JetPower
+    sta PlayerYSub
+.TimerDone:
 
     ; --- Wait for overscan timer ---
 .WaitOverscan:
@@ -937,6 +978,11 @@ CheckMinerPickup:
     sta Level
 .CMPNotWrap:
     jsr LoadLevel
+    ; Reset timer for new level
+    lda #16
+    sta BarLevel
+    lda #28
+    sta TickCounter
 .CMPDone:
     rts
 
