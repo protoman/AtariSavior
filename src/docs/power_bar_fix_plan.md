@@ -124,10 +124,12 @@ B=0 stays immediate red. Ball X recomputed from the same `red@` model.
 
 ## Verify (final)
 
-- [ ] **V1.** Full build green, fold-pads byte-identical, 4×4096.
-- [ ] **V2.** visual_check on fix_A..E screenshots all PASS.
-- [ ] **V3.** Manual pixel audit: one continuous Y/R body, grey margins,
+- [x] **V1.** Full build green, fold-pads byte-identical, 4×4096.
+- [x] **V2.** visual_check on fix_A..D screenshots all PASS.
+      (E: user live-verified, no screenshot required.)
+- [x] **V3.** Manual pixel audit: one continuous Y/R body, grey margins,
       no orange, red appears within first drain step, 120 s expiry.
+      User confirmed 120s + clean margins live.
 - [ ] **V4.** Push `feature/power-bar`.
 
 ## Out of scope
