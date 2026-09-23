@@ -14,7 +14,10 @@ NUSIZ0  = $04
 NUSIZ1  = $05
 COLUP0  = $06
 COLUP1  = $07
+COLUPF  = $08
+COLUBK  = $09
 PlayerLives = $AC
+BarLevel = $AE
 COLUPF  = $08
 COLUBK  = $09
 PF0     = $0D
@@ -91,18 +94,45 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     bne .TopGap
 
     ; ====================================================================
-    ; Line 1: Timer bar (PF-based, yellow, ~70% centered)
+    ; Line 1: Timer bar (PF-based, green=remaining time)
+    ; BarLevel (0-16) determines how many pixels are filled
+    ; Empty part shows as background (black)
     ; ====================================================================
-    lda #$1E            ; yellow
-    sta COLUPF
 
-    lda #$00            ; PF0: pixels 0-3 OFF
+    lda #$05            ; CTRLPF: reflect + priority
+    sta CTRLPF
+    lda #$B6            ; green (hue $B luma 5)
+    sta COLUPF
+    lda #$00
     sta PF0
-    lda #$FF            ; PF1: pixels 4-11 ON
+
+    ; Calculate PF1 (pixels 4-11) based on BarLevel
+    ldx BarLevel
+    cpx #8
+    bcc .BarPF1Partial
+    lda #$FF            ; BarLevel >= 8: all 8 pixels
+    jmp .BarPF1Done
+.BarPF1Partial:
+    lda BarPF1Table,X   ; lookup table for 0-7 pixels
+.BarPF1Done:
     sta PF1
-    lda #$FF            ; PF2: pixels 12-19 ON
+
+    ; Calculate PF2 (pixels 12-19) based on BarLevel
+    ldx BarLevel
+    cpx #8
+    bcc .BarPF2None
+    txa
+    sec
+    sbc #8              ; offset into PF2 table (0-8)
+    tax
+    lda BarPF2Table,X
+    jmp .BarPF2Done
+.BarPF2None:
+    lda #$00
+.BarPF2Done:
     sta PF2
 
+    ; Draw bar (6 scanlines)
     ldx #6
 .TimerLoop:
     sta WSYNC
@@ -561,6 +591,60 @@ fineAdjustBegin_b1:
   .byte %10100000
   .byte %10010000
 fineAdjustTable_b1 EQU fineAdjustBegin_b1 - %11110001
+
+; ========================================================================
+; Timer bar lookup tables
+; BarLevel 0-8 maps to PF1 (pixels 4-11), bit 7=leftmost
+; BarLevel 0-8 maps to PF2 (pixels 12-19), bit 0=leftmost (reversed)
+; ========================================================================
+
+; PF1 green values (filled pixels, left-aligned)
+BarPF1Table:
+    .byte $00                   ; 0 pixels
+    .byte $80                   ; 1 pixel
+    .byte $C0                   ; 2 pixels
+    .byte $E0                   ; 3 pixels
+    .byte $F0                   ; 4 pixels
+    .byte $F8                   ; 5 pixels
+    .byte $FC                   ; 6 pixels
+    .byte $FE                   ; 7 pixels
+    .byte $FF                   ; 8 pixels
+
+; PF1 red values (empty pixels, right-aligned) = ~PF1 green
+BarPF1RedTable:
+    .byte $FF                   ; 0 green = all red
+    .byte $7F                   ; 1 green
+    .byte $3F                   ; 2 green
+    .byte $1F                   ; 3 green
+    .byte $0F                   ; 4 green
+    .byte $07                   ; 5 green
+    .byte $03                   ; 6 green
+    .byte $01                   ; 7 green
+    .byte $00                   ; 8 green = no red
+
+; PF2 green values (filled pixels, left-aligned in reversed bits)
+BarPF2Table:
+    .byte $00                   ; 0 pixels
+    .byte $01                   ; 1 pixel
+    .byte $03                   ; 2 pixels
+    .byte $07                   ; 3 pixels
+    .byte $0F                   ; 4 pixels
+    .byte $1F                   ; 5 pixels
+    .byte $3F                   ; 6 pixels
+    .byte $7F                   ; 7 pixels
+    .byte $FF                   ; 8 pixels
+
+; PF2 red values (empty pixels) = ~PF2 green
+BarPF2RedTable:
+    .byte $FF                   ; 0 green = all red
+    .byte $FE                   ; 1 green
+    .byte $FC                   ; 2 green
+    .byte $F8                   ; 3 green
+    .byte $F0                   ; 4 green
+    .byte $E0                   ; 5 green
+    .byte $C0                   ; 6 green
+    .byte $80                   ; 7 green
+    .byte $00                   ; 8 green = no red
 
 ; ========================================================================
 ; Interrupt vectors
