@@ -103,7 +103,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     lda #0
     sta GRP0            ; clear cave player sprite
     sta NUSIZ0
-    lda #$05            ; CTRLPF: reflect + priority
+    lda #$35            ; CTRLPF: reflect + priority + ball 8 clocks (D4-D5=%11)
     sta CTRLPF
     lda #$1C            ; pre-set yellow (setup line must not keep wall color)
     sta COLUPF

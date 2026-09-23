@@ -53,7 +53,8 @@ and `docs/hero/hero_bank0.asm`.
       - B>=11 skips red write (delay would overrun 76c line).
       - Verified: boot all-yellow; after timer = yellow left / red right.
 - [x] **1d.** After bar: clear PF0/PF1/PF2, restore COLUPF for HUD.
-- [ ] **1e.** Remove unused `BarPF*Table` lookups (lines 595-647).
+- [x] **1e.** Remove unused `BarPF*Table` lookups (lines 595-647).
+      Deleted 4 tables (56 lines), 0 references. Fold-pads OK.
 - [x] **1f.** Scanline budget: bar 6→3 lines (saves 3, HUD band ≤48).
       Pad ldx #11; both lives paths = 48.
 - [x] **1g.** Build + Stella screenshot (`power_bar_1a.png`): yellow 3-line
@@ -61,7 +62,7 @@ and `docs/hero/hero_bank0.asm`.
 
 ### Step 2: Ball at boundary
 
-- [ ] **2a.** CTRLPF ball bits: $05 → $35 (add ball 8 clocks, keep
+- [x] **2a.** CTRLPF ball bits: $05 → $35 (add ball 8 clocks, keep
       reflect+priority) or match HERO's $34 (reflect OFF for ball section).
 - [ ] **2b.** Enable ENABL, position ball at boundary via RESPBL/HMPBL.
 - [ ] **2c.** Ball color = orange (kPalette hue 2/3).
