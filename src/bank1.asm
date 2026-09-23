@@ -110,7 +110,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; ====================================================================
     ; Line 1: Timer bar — PF body, mid-scanline COLUPF yellow→red
     ; PF0=$E0 margins (bit4 leftmost OFF), PF1/PF2=$FF. Each line: yellow,
-    ; delay(BarLevel), red. B=0 → all red; B>=12 → all yellow; B=1..11 → split.
+    ; delay(BarLevel), red. A=table[B]; B=0 → all red; B=16 → tiny red right.
     ; Clear PF on the gap line (after WSYNC) so line 3 is not truncated.
     ; ====================================================================
 
@@ -138,18 +138,17 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta WSYNC
     lda #$1C            ; yellow (hue 1, luma 6)
     sta COLUPF
-    lda BarLevel        ; 0-16
+    ldy BarLevel        ; 0-16
+    lda BarDelayTable,Y ; delay iterations A (0..10)
+    beq .BarRed         ; A=0 → immediate red (all red)
     tay
-    beq .BarRed         ; B=0 → immediate red (all red)
-    cpy #12
-    bcs .NoRed          ; B>=12 → skip delay+red (all yellow; delay would overrun)
 .BarDelay:
     dey                 ; 2c
-    bne .BarDelay       ; 3c taken / 2c last → 5Y-1
+    bne .BarDelay       ; 3c taken / 2c last → 5A-1
+    ; red@ = 16 + (5A-1) + 5 = 5A+20; total ≤75 (A=10)
 .BarRed:
     lda #$44            ; red (hue 4, luma 2)
     sta COLUPF
-.NoRed:
     dex
     bne .TimerLoop
 
@@ -478,12 +477,17 @@ SetObjectXPos_b1:
     sta $1FF6
     jmp $F0DA
 
-; Ball X from BarLevel — boundary pixel (red@ = 5B+20 → px=(red@-23)*160/53)
-; DATA — not in execution path (MenuMain falls through past here only via code)
-BallXTable:
-    .byte 0             ; B=0 all red
-    .byte 6,21,36,51,66,82,97,112,127,142  ; B=1..10
-    .byte 159,159,159,159,159,159,159      ; B=11..16 all yellow
+; Bar delay iterations A(B)=round(B*10/16), monotonic 0..10
+; red@ = 5A+20 (A>0); total loop ≤75c (A=10). B≥1 always writes red.
+; DATA — not in execution path.
+BarDelayTable:          ; B=0..16 → A
+    .byte 0
+    .byte 1,1,2,2,3,4,4,5,6,6,7,8,8,9,9,10
+
+; Ball X at yellow/red boundary: px=(red@-23)*160/53, clamped 4..155
+BallXTable:             ; B=0..16
+    .byte 4             ; B=0 all red → left edge of body
+    .byte 6,6,21,21,36,51,51,66,82,82,97,112,112,127,127,142
 
 ; ========================================================================
 ; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing

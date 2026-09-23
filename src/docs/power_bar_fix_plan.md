@@ -56,13 +56,13 @@ B=0 stays immediate red. Ball X recomputed from the same `red@` model.
 
 ### Step B — Yellow/red only (no orange)
 
-- [ ] **B1.** Delete `lda #$2A` + `sta COLUPF` before `.BarRed`.
-- [ ] **B2.** Threshold `cpy #11` → `cpy #12` (B=11 fits at
+- [x] **B1.** Delete `lda #$2A` + `sta COLUPF` before `.BarRed`.
+- [x] **B2.** Threshold `cpy #11` → `cpy #12` (B=11 fits at
       `red@=5·11+20=75 ≤ 76` until Step C replaces the delay).
-- [ ] **B3.** Build + fold-pad check.
-- [ ] **B4.** Screenshot `power_bar_fix_B.png`: zero orange-classified
+- [x] **B3.** Build + fold-pad check.
+- [x] **B4.** Screenshot `power_bar_fix_B.png`: zero orange-classified
       pixels on bar rows; Y→R hard edge; visual_check PASS.
-- [ ] **B5.** Commit `Power bar fix B: remove orange COLUPF stripe`.
+- [x] **B5.** Commit `Power bar fix B: remove orange COLUPF stripe`.
 
 ### Step C — Delay table (red from first drain steps) + BallXTable
 
