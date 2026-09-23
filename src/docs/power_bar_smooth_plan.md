@@ -190,12 +190,38 @@ step size ~60px. → Step H.
       Fine ∈ {0,1,2,3,4} (F=1 = slim + 2c nop/line fills 3px gaps);
       tables regenerated from path cycle counts. Build: fold MATCH, 0 XCs,
       ball==body 0 mismatches, mono, stick≤4, jumps **3/6 only**, content≤71.
-      **User retest #2:** no stripes; monotonic red (no back-and-forth);
-      step ≤6px every ≤4s; ball on edge; full = all-yellow. Report pass/fail.
+       **User retest #2:** no stripes; monotonic red (no back-and-forth);
+       step ≤6px every ≤4s; ball on edge; full = all-yellow. Report pass/fail.
+
+### Step H3d — Yellow line above bar (thickness bug)
+
+- [x] **H3d.** **User pass** (2026-09-23): thin yellow line above bar always
+      (never doubles); HUD elements stay put. See H3d-1/H3d-2.
+
+- [x] **H3d-1.** Root cause: yellow `COLUPF` + PF written on HMOVE/setup line
+      → 1px yellow above bar. When red-path setup on that line exceeded 76c
+      (F1≈78, F2≈79) → skipped line → doubled thickness + HUD push.
+- [x] **H3d-2.** Fix: PF0/1/2 + `COLUPF=$06` grey + GRP0/NUSIZ0/CTRLPF moved
+      **before** TopGap (grey-on-grey, invisible for 4 gap lines). HMOVE line
+      = `HMOVE + ENABL + dispatch` only (max 51c ≤76). Yellow `COLUPF` only
+      on the 3 bar lines. `bne .BarRedFull` page-cross fixed via
+      `beq .BarRedF1 / jmp .BarRedFull`. Build: fold MATCH, 4×4096, 0 XCs,
+      HMOVE-line F0=43 / F1=49 / F2+=51 / Yellow=20.
+
+**Commit H3d** after H3d user pass. [x]
 
 **Commit H3** after H3b (if any code change).
 
 **Commit G+H** when G8 replaced by H1e pass: combined message OK if needed.
+
+---
+
+## Future (user, 2026-09-23) — finer drain steps
+
+- [ ] **H4.** Decrease pixels-per-step and increase steps/sec (finer granularity
+      than current ~1s / multi-px jump). Needs new (A,F,BallX) table design
+      under the same ≤73c path budget; do not change tick formula until tables
+      are regenerated and cycle-verified.
 
 ---
 

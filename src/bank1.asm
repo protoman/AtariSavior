@@ -89,6 +89,21 @@ ScoreOn     = $C2       ; score ones digit (unused by game, available)
 
 INPT4       = $0C       ; fire button (active low, bit 7)
 
+    ; --- Bar PF setup before TopGap (grey-on-grey: invisible) ---
+    ; Yellow COLUPF only on the 3 bar lines; HMOVE line stays short.
+    lda #$E0            ; margins (bit 4 = leftmost 4 clocks OFF)
+    sta PF0
+    lda #$FF
+    sta PF1
+    sta PF2
+    lda #$06            ; grey (same as COLUBK)
+    sta COLUPF
+    lda #0
+    sta GRP0            ; clear cave player sprite
+    sta NUSIZ0
+    lda #$05            ; CTRLPF: reflect + priority + 1-clock ball.
+    sta CTRLPF
+
     ; --- Top gap: 4 scanlines (lower HUD elements) ---
     ldx #4
 .TopGap:
@@ -107,55 +122,30 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
-    lda #1              ; ENABL D0=1 (ball on)
+    lda #1              ; ENABL D0=1 (ball on; grey-on-grey until bar paints)
     sta ENABL
 
     ; ====================================================================
     ; Line 1: Timer bar — PF body, mid-scanline COLUPF yellow→red
-    ; PF0=$E0 margins (bit4 leftmost OFF), PF1/PF2=$FF.
     ; Full (BarLevel=BAR_MAX): pure yellow, no red write (no stripes).
-    ; H3c: dual path — Fine=0 slim (no dispatch, ≤67c) / Fine≠0 (≤72c).
-    ; red@ = 15*A + 3*Fine - 15; BallX = red@ (aligned, no desync).
-    ; Clear PF on the gap line (after WSYNC) so line 3 is not truncated.
+    ; H3c dual path: F=0 slim / F=1 slim+nop / F=2,3,4 full dispatch.
+    ; BallX = actual body pixel (3*cycles-69) per path.
+    ; HMOVE-line budget: HMOVE+ENABL+dispatch ≤73c to first bar WSYNC.
     ; ====================================================================
-
-    lda #0
-    sta GRP0            ; clear cave player sprite
-    sta NUSIZ0
-    lda #$05            ; CTRLPF: reflect + priority + 1-clock ball.
-    sta CTRLPF          ;   ($00 had D0=0 → no reflect: right half REPEATS
-                        ;    → center notch; also no PF priority)
-    lda #$1C            ; pre-set yellow (setup line must not keep wall color)
-    sta COLUPF
-    lda #$E0            ; margins (bit 4 = leftmost 4 clocks OFF)
-    sta PF0
-    lda #$FF
-    sta PF1
-    sta PF2
-
     ldy BarLevel
     cpy #BAR_MAX
-    bne .BarRedPath     ; not full → skips YellowOnly + pad (0 extra cycles)
-
-.BarYellowOnly:         ; full bar: pure yellow, ~20c/line (no overrun)
+    bne .BarRedSetup    ; not full → red path (short fwd branch)
+    ; Full bar: pure yellow, 3 lines only (no red write).
     ldx #3
 .YLoop:
     sta WSYNC
-    lda #$1C
+    lda #$1C            ; yellow (hue 1, luma 6)
     sta COLUPF
     dex
     bne .YLoop
     jmp .BarGap
 
-    ; H3b: +25B never-executed pad (bne already jumps over it). Shifts
-    ; line-2 beq .R2 (f5f8+f5fc → f60c) off the F5→F6 page boundary
-    ; (+1c taken = 3 clocks late red on middle bar line = horizontal
-    ; stripes). Must NOT be a jmp in the taken path — that pushed setup
-    ; to 78c (>76). +6 over .ds 19: branch+2 must reach f600.
-    .ds 25
-
-.BarRedPath:
-    ; H3c: preload A + Fine; Y := red for sty (3c vs lda+sta 5c).
+.BarRedSetup:
     lda BarDelayTable,Y
     sta DelayCnt
     lda BarFineTable,Y
@@ -201,7 +191,8 @@ INPT4       = $0C       ; fire button (active low, bit 7)
 
 .NotF0:
     cmp #1
-    bne .BarRedFull     ; F=2,3,4 → dispatch
+    beq .BarRedF1       ; F=1 → slim+nop (avoids page-cross on bne .BarRedFull)
+    jmp .BarRedFull     ; F=2,3,4 → dispatch
     ; --- Fine=1: slim + 2c nop/line (fills 3px gaps) ---
 .BarRedF1:
     sta WSYNC
@@ -311,7 +302,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     jmp .R3
 .R3:
     sty COLUPF
-    ; fall through to .BarGap
+    jmp .BarGap
 
 .BarGap:
 
