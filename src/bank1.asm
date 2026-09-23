@@ -94,52 +94,31 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     bne .TopGap
 
     ; ====================================================================
-    ; Line 1: Timer bar (player sprite, double-size, green, HERO-style)
-    ; BarLevel (0-16) determines if bar is shown
-    ; Single non-mirrored bar, double-size player = 8 TIA px = 32 emu px
+    ; Line 1: Timer bar — playfield, static yellow, 3 scanlines, edge margins
+    ; PF0=$70 (bit4 OFF = 4-clock margin each side, reflected)
+    ; PF1=$FF, PF2=$FF solid body. Mid-scanline red comes in next step.
     ; ====================================================================
 
+    lda #0
+    sta GRP0            ; clear cave player sprite
+    sta NUSIZ0
     lda #$05            ; CTRLPF: reflect + priority
     sta CTRLPF
-    lda #$B6            ; green (hue $B luma 5)
-    sta COLUP0           ; player color = bar color
-    lda #$00
+    lda #$1C            ; yellow (hue 1, luma 6)
+    sta COLUPF
+    lda #$70            ; margins (bit 4 = leftmost 4 clocks OFF)
     sta PF0
+    lda #$FF
     sta PF1
     sta PF2
 
-    ; Position player at left edge of bar area
-    lda #20
-    ldx #0              ; X=0 = player0
-    jsr SetObjectXPos_b1
-
-    ; Draw bar per-scanline (6 scanlines)
-    ; Each scanline: enable player with double-size if BarLevel > 0
-    ldx #6
+    ldx #3
 .TimerLoop:
-    lda BarLevel
-    beq .NoBarLine
-    ; BarLevel > 0: show player double-size
-    lda #$05            ; NUSIZ0 = double size
-    sta NUSIZ0
-    lda #$FF            ; solid 8-pixel block
-    sta GRP0
-    jmp .BarLineDone
-.NoBarLine:
-    lda #0
-    sta NUSIZ0
-    sta GRP0
-.BarLineDone:
     sta WSYNC
     dex
     bne .TimerLoop
 
-    sta WSYNC
-    sta HMOVE
-
     lda #0
-    sta GRP0
-    sta NUSIZ0
     sta PF0
     sta PF1
     sta PF2
@@ -193,6 +172,8 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta WSYNC
     dey
     bne .LivesBlankLoop
+    sta WSYNC            ; match lives path: SetObjectXPos + HMOVE
+    sta WSYNC
 .LivesDone:
 
     ; --- 1 scanline gap ---
@@ -412,19 +393,17 @@ INPT4       = $0C       ; fire button (active low, bit 7)
 
     ; ====================================================================
     ; Pad remaining scanlines to reach exactly 48 total
-    ; Budget (6-digit score):
-    ;   Top gap:  4 scanlines
-    ;   Timer:    6 scanlines
-    ;   Gap:      1
-    ;   Lives:    7 (SetObjectXPos 1 + HMOVE 1 + render 5)
-    ;   Gap:      1
-    ;   Bombs:    8 (SetObjectXPos×2 2 + HMOVE 1 + render 5)
-    ;   Gap:      3
-    ;   Score:   13 (SetObjectXPos×2 2 + HMOVE 1 + setup 2 + render 8)
-    ;   TOTAL:   4+6+1+7+1+8+3+13 = 43
-    ;   Pad:     48 - 43 = 5
+    ; Path A (PlayerLives > 0) — execution count:
+    ;   Top gap:  4
+    ;   Timer:    3 loop + 1 gap = 4
+    ;   Lives:    1 SetObjectXPos + 1 HMOVE + 5 render + 1 gap = 8
+    ;   Bombs:    2 SetObjectXPos + 1 HMOVE + 5 render + 3 gap = 11
+    ;   Score:    2 SetObjectXPos + 1 HMOVE + 7 ScoreLoop = 10
+    ;   Subtotal: 4+4+8+11+10 = 37
+    ;   Pad:      48 - 37 = 11
+    ; .NoLives blank path pads +2 WSYNC so both paths total 48.
     ; ====================================================================
-    ldx #5
+    ldx #11
 .HudPad:
     sta WSYNC
     dex

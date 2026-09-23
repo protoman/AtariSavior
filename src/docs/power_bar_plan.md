@@ -43,18 +43,19 @@ and `docs/hero/hero_bank0.asm`.
 
 ### Step 1: Playfield-only two-color bar (no ball)
 
-- [ ] **1a.** Replace timer bar section in `src/bank1.asm` (lines 96-148):
+- [x] **1a.** Replace timer bar section in `src/bank1.asm` (lines 96-148):
       remove player-sprite loop (NUSIZ0/GRP0), keep CTRLPF=$05.
-- [ ] **1b.** Set PF0=$70, PF1=$FF, PF2=$FF (bar shape with edge margins).
+- [x] **1b.** Set PF0=$70, PF1=$FF, PF2=$FF (bar shape with edge margins).
 - [ ] **1c.** Per scanline (×3): WSYNC → COLUPF=#$1C (yellow) →
       delay loop keyed to BarLevel → STA COLUPF (red).
       - BarLevel 16 = delay past bar end = all yellow.
       - BarLevel 0 = immediate red = all red.
-- [ ] **1d.** After bar: clear PF0/PF1/PF2, restore COLUPF for HUD.
+- [x] **1d.** After bar: clear PF0/PF1/PF2, restore COLUPF for HUD.
 - [ ] **1e.** Remove unused `BarPF*Table` lookups (lines 595-647).
-- [ ] **1f.** Scanline budget: bar 6→3 lines (saves 3, HUD band ≤48).
-- [ ] **1g.** Build (`./build.sh`), user tests in Stella:
-      full yellow → drains right→left with red, margins visible.
+- [x] **1f.** Scanline budget: bar 6→3 lines (saves 3, HUD band ≤48).
+      Pad ldx #11; both lives paths = 48.
+- [x] **1g.** Build + Stella screenshot (`power_bar_1a.png`): yellow 3-line
+      bar with margins, cave/map/HUD intact. visual_check PASS.
 
 ### Step 2: Ball at boundary
 

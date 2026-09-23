@@ -59,15 +59,30 @@ def content_bounds(px, w, h, thr=40):
 
 
 def find_hud_band(px, w, x0, x1, y0, y1):
+    """Longest contiguous grey run (>=15px). Ignores stray grey rows at edges."""
     grey_rows = []
     span = max(1, (x1 - x0) // 3)
     for y in range(y0, y1 + 1):
         grey = sum(1 for x in range(x0, x1 + 1, 3) if is_grey(px[x, y]))
-        if grey > span * 0.5:
-            grey_rows.append(y)
-    if len(grey_rows) < 15:
+        grey_rows.append(grey > span * 0.5)
+    best = None
+    run_start = None
+    for i, ok in enumerate(grey_rows):
+        y = y0 + i
+        if ok and run_start is None:
+            run_start = y
+        elif not ok and run_start is not None:
+            length = y - run_start
+            if best is None or length > (best[1] - best[0] + 1):
+                best = (run_start, y - 1)
+            run_start = None
+    if run_start is not None:
+        length = y1 - run_start + 1
+        if best is None or length > (best[1] - best[0] + 1):
+            best = (run_start, y1)
+    if not best or (best[1] - best[0] + 1) < 15:
         return None
-    return grey_rows[0], grey_rows[-1]
+    return best
 
 
 def color_hist(px, x0, y0, x1, y1, step=2):
