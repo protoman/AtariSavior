@@ -220,28 +220,17 @@ void MainWindow::SetupUI() {
     QVBoxLayout* stageLayout = new QVBoxLayout(stageBox);
     m_stageCombo = new QComboBox(this);
     stageLayout->addWidget(m_stageCombo);
-    QPushButton* changeDirBtn = new QPushButton("Data Folder...", this);
-    stageLayout->addWidget(changeDirBtn);
     levelTabLayout->addWidget(stageBox);
 
     // Level Settings
     QGroupBox* levelPropBox = new QGroupBox("Level Settings", this);
     QVBoxLayout* levelPropLayout = new QVBoxLayout(levelPropBox);
-    QHBoxLayout* idLayout = new QHBoxLayout();
-    idLayout->addWidget(new QLabel("ID:"));
-    m_levelIdSpin = new QSpinBox(this);
-    m_levelIdSpin->setRange(1, 99);
-    idLayout->addWidget(m_levelIdSpin);
-    levelPropLayout->addLayout(idLayout);
-    QHBoxLayout* nameLayout = new QHBoxLayout();
-    nameLayout->addWidget(new QLabel("Name:"));
-    m_levelNameEdit = new QLineEdit(this);
-    nameLayout->addWidget(m_levelNameEdit);
-    levelPropLayout->addLayout(nameLayout);
-    m_colorBtn = new QPushButton("Cave Color 1...", this);
-    levelPropLayout->addWidget(m_colorBtn);
-    m_colorBtn2 = new QPushButton("Cave Color 2...", this);
-    levelPropLayout->addWidget(m_colorBtn2);
+    QHBoxLayout* colorLayout = new QHBoxLayout();
+    m_colorBtn = new QPushButton("Color 1", this);
+    colorLayout->addWidget(m_colorBtn);
+    m_colorBtn2 = new QPushButton("Color 2", this);
+    colorLayout->addWidget(m_colorBtn2);
+    levelPropLayout->addLayout(colorLayout);
     levelTabLayout->addWidget(levelPropBox);
 
     // Room Navigation
@@ -253,15 +242,15 @@ void MainWindow::SetupUI() {
     roomNavLayout->addWidget(m_roomCombo);
     roomLayout->addLayout(roomNavLayout);
     QGroupBox* dirBox = new QGroupBox("Add Room:", this);
-    QGridLayout* dirGrid = new QGridLayout(dirBox);
+    QHBoxLayout* dirRow = new QHBoxLayout(dirBox);
+    m_addLeftBtn = new QPushButton("<", this);
     m_addUpBtn = new QPushButton("^", this);
     m_addDownBtn = new QPushButton("v", this);
-    m_addLeftBtn = new QPushButton("<", this);
     m_addRightBtn = new QPushButton(">", this);
-    dirGrid->addWidget(m_addUpBtn, 0, 1);
-    dirGrid->addWidget(m_addLeftBtn, 1, 0);
-    dirGrid->addWidget(m_addRightBtn, 1, 2);
-    dirGrid->addWidget(m_addDownBtn, 2, 1);
+    dirRow->addWidget(m_addLeftBtn);
+    dirRow->addWidget(m_addUpBtn);
+    dirRow->addWidget(m_addDownBtn);
+    dirRow->addWidget(m_addRightBtn);
     roomLayout->addWidget(dirBox);
     QPushButton* remRoomBtn = new QPushButton("Remove Room", this);
     roomLayout->addWidget(remRoomBtn);
@@ -303,6 +292,14 @@ void MainWindow::SetupUI() {
         m_levelToolList->addItem(item);
     }
     levelToolLayout->addWidget(m_levelToolList);
+
+    m_facingBtn = new QPushButton("Initial facing: → (F)", this);
+    m_facingBtn->setToolTip(
+        "Direction new enemies face (snake/moth first move).\n"
+        "F on canvas or this button toggles. Click an existing enemy with an "
+        "enemy brush to flip it.");
+    levelToolLayout->addWidget(m_facingBtn);
+
     levelTabLayout->addWidget(levelToolBox);
 
     m_tabWidget->addTab(levelTab, "Level");
@@ -340,11 +337,12 @@ void MainWindow::SetupUI() {
     // Connections
     connect(m_canvas, &MapCanvas::levelModified, this, &MainWindow::OnLevelModified);
     connect(m_canvas, &MapCanvas::mouseMovedToTile, this, &MainWindow::OnMouseMovedToTile);
+    connect(m_canvas, &MapCanvas::facingChanged, this, &MainWindow::OnFacingChanged);
+    connect(m_facingBtn, &QPushButton::clicked, this, &MainWindow::ToggleInitialFacing);
     connect(m_stageCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::OnStageSelected);
     connect(m_roomCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::OnRoomChanged);
     connect(m_modelAssignCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::OnModelAssignmentChanged);
     connect(m_tabWidget, &QTabWidget::currentChanged, this, &MainWindow::OnTabChanged);
-    connect(changeDirBtn, &QPushButton::clicked, this, &MainWindow::SelectGameDataDir);
     connect(m_addUpBtn, &QPushButton::clicked, this, &MainWindow::AddRoomAbove);
     connect(m_addDownBtn, &QPushButton::clicked, this, &MainWindow::AddRoomBelow);
     connect(m_addLeftBtn, &QPushButton::clicked, this, &MainWindow::AddRoomLeft);
@@ -371,19 +369,6 @@ void MainWindow::SetupUI() {
     if (m_modelToolList->count() > 0) {
         m_modelToolList->setCurrentRow(0);
     }
-
-    connect(m_levelIdSpin, &QSpinBox::valueChanged, this, [this](int val) {
-        if (val != m_levelData.level_id) {
-            m_levelData.level_id = val;
-            OnLevelModified();
-        }
-    });
-    connect(m_levelNameEdit, &QLineEdit::textChanged, this, [this](const QString& text) {
-        if (text.toStdString() != m_levelData.name) {
-            m_levelData.name = text.toStdString();
-            OnLevelModified();
-        }
-    });
 
     // Start in Model mode
     SwitchEditMode(EditMode::MODEL_EDIT);
@@ -970,11 +955,20 @@ void MainWindow::OnMouseMovedToTile(int tileX, int tileY) {
     statusBar()->showMessage(QString("Tile: (%1, %2)").arg(tileX).arg(tileY));
 }
 
+void MainWindow::OnFacingChanged(int dir) {
+    if (m_facingBtn)
+        m_facingBtn->setText(dir >= 0 ? "Initial facing: → (F)"
+                                      : "Initial facing: ← (F)");
+}
+
+void MainWindow::ToggleInitialFacing() {
+    if (!m_canvas) return;
+    m_canvas->SetInitialFacing(-m_canvas->InitialFacing());
+    OnFacingChanged(m_canvas->InitialFacing());
+}
+
 void MainWindow::UpdateUIFromLevel() {
     m_ignoreComboEvents = true;
-
-    m_levelIdSpin->setValue(m_levelData.level_id);
-    m_levelNameEdit->setText(QString::fromStdString(m_levelData.name));
 
     int roomIdx = m_canvas ? std::min(m_roomCombo ? m_roomCombo->currentIndex() : 0, (int)m_levelData.rooms.size() - 1) : 0;
     if (roomIdx < 0) roomIdx = 0;

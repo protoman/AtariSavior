@@ -10,15 +10,25 @@
         "wall2_b": 20,
         "start_room": 0,
         "miner_room": 1,
-        "miner_x": 4.5,
-        "miner_y": 7.0,
+        "miner_x": 5.5,
+        "miner_y": 6.0,
         "rooms": [
             {
                 "room_id": 0,
                 "model_id": 0,
                 "room_x": 0,
                 "room_y": 0,
-                "enemies": [],
+                "enemies": [
+                    {
+                        "type": 2,
+                        "x": 1.0,
+                        "y": 5.0,
+                        "range_min": 0.0,
+                        "range_max": 4.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    }
+                ],
                 "lamps": []
             },
             {
@@ -28,13 +38,13 @@
                 "room_y": 1,
                 "enemies": [
                     {
-                        "type": 1,
-                        "x": 29.0,
-                        "y": 6.0,
-                        "range_min": 26.0,
-                        "range_max": 32.0,
+                        "type": 0,
+                        "x": 30.0,
+                        "y": 5.0,
+                        "range_min": 27.0,
+                        "range_max": 33.0,
                         "speed": 1.5,
-                        "dir": 1
+                        "dir": -1
                     }
                 ],
                 "lamps": []

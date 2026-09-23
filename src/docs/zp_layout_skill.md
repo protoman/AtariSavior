@@ -81,16 +81,19 @@ documented here to prevent future confusion.
 | $B3-$B7 | FontP0 | P0 character font data (5 rows) — used by bank2 |
 | $B8-$BC | FontP1 | P1 character font data (5 rows) — used by bank2 |
 
-### $BD-$C2: Laser + Score Digits (6 bytes)
+### $BD-$C2: Enemy RAM shadow (6 bytes)
 
 | Addr | Name | Purpose |
 |------|------|---------|
-| $BD | LaserActive | 0 = inactive, nonzero = frames remaining |
-| $BE | LaserY | Scanline where the laser beam is drawn |
-| $BF | ScoreTh | Score thousands digit (0-9, BCD) |
-| $C0 | ScoreHu | Score hundreds digit (0-9, BCD) |
-| $C1 | ScoreTe | Score tens digit (0-9, BCD) |
-| $C2 | ScoreOn | Score ones digit (0-9, BCD) |
+| $BD-$C0 | EnemyRamX | Live X per enemy (4 bytes; MAX_ENEMIES=4) |
+| $C1 | EnemyRamD | Packed dir: bit0-3 = enemy 0-3 (1=right, 0=left) |
+| $C2 | EnemyRamP | Packed flags: bits0-3 moth phase; bits4-7 spider vdir |
+
+**Score digits moved off this range (2026-09-23):** bank1 `ScoreTh..ScoreOn`
+now live at **$F3-$F6** (matches bank0 Score* EQUs). Old $BF-$C2 home collided
+with EnemyRamX[2]/[3]/EnemyRamD/EnemyRamP — bank1 HUD writes score every game
+frame (fire BCD + digit pointer math), which corrupted enemy X[2], X[3], and
+dir mid-frame (snake jump/blink-back).
 
 ### $C3-$F2: PF/Color Buffers (48 bytes)
 
@@ -101,9 +104,15 @@ documented here to prevent future confusion.
 | $DB-$E6 | PF2Buf | TilePF2 values (12 bytes, one per tile row) |
 | $E7-$F2 | ColupfBuf | COLUPF per tile row, stripe colors (12 bytes) |
 
-### $F3-$F7: FREE (5 bytes)
+### $F3-$F7: Bank1 score + spare (5 bytes)
 
-No bank0 variables allocated here. Safe for bank1 to use.
+| Addr | Name | Purpose |
+|------|------|---------|
+| $F3-$F6 | ScoreTh..ScoreOn | Bank1 HUD score digits (written every game frame) |
+| $F7 | free | Unused (old EnemyRamSpare move-gate removed) |
+
+**Enemy Y is not shadowed** — stays in ROM (stride +2) until S5 spider needs
+live Y; $F3-$F6 cannot hold EnemyRamY while bank1 score lives there.
 
 ### $F8-$FF: Player Sprite (8 bytes)
 
@@ -140,10 +149,13 @@ that overlap bank0's PF buffers.
 | $B3 | PF0ScoreBuf | Unused with sprite approach (to be removed) | Yes (bank0 FontP0) |
 | $B8 | PF1ScoreBuf | Unused with sprite approach (to be removed) | Yes (bank0 FontP1) |
 | $C6 | PF2ScoreBuf | Unused with sprite approach (to be removed) | Yes (bank0 PF0Buf+3) |
-| $F0 | ScoreTh | Thousands digit | No bank0 var here |
-| $F1 | ScoreHu | Hundreds digit | No bank0 var here |
-| $F2 | ScoreTe | Tens digit | No bank0 var here |
-| $F3 | ScoreOn | Ones digit | No bank0 var here |
+| $F0 | ScoreTh | **MOVED → $F3** (was here; old alias removed) |
+| $F1 | ScoreHu | **MOVED → $F4** |
+| $F2 | ScoreTe | **MOVED → $F5** |
+| $F3 | ScoreOn | Thousands digit (bank1 ScoreTh now $F3) |
+| $F4 | ScoreHu | Hundreds digit |
+| $F5 | ScoreTe | Tens+ones packed BCD |
+| $F6 | ScoreOn | Ones digit (unused by game) |
 | $F4 | DigitPtr1 | Old digit 0 pointer (to be removed) | No bank0 var here |
 | $F6 | DigitPtr2 | Old digit 1 pointer (to be removed) | No bank0 var here |
 | $F8 | DigitPtr3 | Old digit 2 pointer (to be removed) | Yes (bank0 PlayerGrp0) |
