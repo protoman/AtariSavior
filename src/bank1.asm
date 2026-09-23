@@ -140,6 +140,8 @@ INPT4       = $0C       ; fire button (active low, bit 7)
 .BarDelay:
     dey                 ; 2c
     bne .BarDelay       ; 3c taken / 2c last → 5Y-1
+    lda #$2A            ; orange (hue 2, luma 5) — ball/PF boundary stripe
+    sta COLUPF          ; +5c; B=10 red@ = 5B+25 = 75 (fits 76)
 .BarRed:
     lda #$44            ; red (hue 4, luma 2)
     sta COLUPF
