@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<!-- saved from url=(0080)https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html -->
+<html lang="en"><!--<![endif]--><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<!-- Google tag (gtag.js) -->
+<script async="" src="./Atari 2600 Programming for Newbies - Session 22_ Sprites, Horizontal Positioning (Part 2)_files/js"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 22: Sprites, Horizontal Positioning (Part 2)</title>
+
+<link href="./Atari 2600 Programming for Newbies - Session 22_ Sprites, Horizontal Positioning (Part 2)_files/fluid.css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 22_ Sprites, Horizontal Positioning (Part 2)_files/fluid(1).css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 22_ Sprites, Horizontal Positioning (Part 2)_files/rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 22_ Sprites, Horizontal Positioning (Part 2)_files/rt_stylesheet(1).css" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 22: Sprites, Horizontal Positioning (Part 2)">
+<meta name="description" content="Session 22: Sprites, Horizontal Positioning (Part 2)">
+<meta name="twitter:description" content="Session 22: Sprites, Horizontal Positioning (Part 2)">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="./Atari 2600 Programming for Newbies - Session 22_ Sprites, Horizontal Positioning (Part 2)_files/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="https://www.randomterrain.com/index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="https://www.randomterrain.com/futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="https://www.randomterrain.com/favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="https://www.randomterrain.com/game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="https://www.randomterrain.com/personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="https://www.randomterrain.com/index.html">Home</a> &gt; <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">#Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 22: Sprites, Horizontal Positioning (Part 2)</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">Thanks to Matt Jernigan for compiling and contributing this page.</p>
+<p align="center"><span style="font-weight:normal; font-size:14px;">(Adapted by Duane Alan Hahn, a.k.a. Random Terrain.)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#fine_tuning_horizontal_position">Fine Tuning Horizontal Position</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#horizontal_motion_registers">Horizontal Motion Registers</a></p>
+
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#horizontal_motion">Horizontal Motion</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#hmp0_hmp1_hmm0_hmm1_hmbl">HMP0 (HMP1, HMM0, HMM1, HMBL)</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#undocumented_quirk">Undocumented Quirk</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#river_raid_example_code">River Raid Example Code</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#summary">Summary</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#session_links">Session Links</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#useful_links">Useful Links</a></p>
+</div>
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/32896-session-22-sprites-horizontal-positioning-part-1/?do=findComment&amp;comment=4629544">Original Session 22 (part 2) at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>For those looking for the missing part 2, here is Matt Jernigan's interpretation of what it was set to cover (more or less).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="fine_tuning_horizontal_position">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#fine_tuning_horizontal_position">Fine Tuning Horizontal Position</a></p>
+<p>This section is taken from the <a class="offsite" href="https://alienbill.com/2600/101/docs/stella.html">Stella Programmer's Guide by Steve Wright 12/03/79</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="horizontal_motion_registers">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#horizontal_motion_registers">Horizontal Motion Registers</a></p>
+
+<div style="overflow: auto;">
+<table cellspacing="0" style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-size:17px; line-height:32px; margin-left:24px; text-align:center;">
+<tbody><tr bgcolor="#EBEBEB">
+<td width="90" class="bbtdbot02 bbtdside02 bbtdtop02"><strong>Address</strong></td><td width="65" class="bbtdbot02 bbtdside02 bbtdtop02"><strong>Name</strong></td><td width="17" class="bbtdbot02 bbtdside02 bbtdtop02"><strong>7</strong></td><td width="17" class="bbtdbot02 bbtdside02 bbtdtop02"><strong>6</strong></td><td width="17" class="bbtdbot02 bbtdside02 bbtdtop02"><strong>5</strong></td><td width="17" class="bbtdbot02 bbtdside02 bbtdtop02"><strong>4</strong></td><td width="17" class="bbtdbot02 bbtdside02 bbtdtop02"><strong>3</strong></td><td width="17" class="bbtdbot02 bbtdside02 bbtdtop02"><strong>2</strong></td><td width="17" class="bbtdbot02 bbtdside02 bbtdtop02"><strong>1</strong></td><td width="17" class="bbtdbot02 bbtdside02 bbtdtop02"><strong>0</strong></td><td width="300" class="bbtdbot02 bbtdside02 bbtdtop02 bbtdright02" style="text-align:left; padding-left:12px;"><strong>Function</strong></td></tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">20</td>
+<td class="bbtdbot02 bbtdside02">HMP0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02 bbtdright02" style="text-align:left; padding-left:12px;">Horizontal Motion Player 0</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">21</td>
+<td class="bbtdbot02 bbtdside02">HMP1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02 bbtdright02" style="text-align:left; padding-left:12px;">Horizontal Motion Player 1</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">22</td>
+<td class="bbtdbot02 bbtdside02">HMM0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02 bbtdright02" style="text-align:left; padding-left:12px;">Horizontal Motion Missile 0</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">23</td>
+<td class="bbtdbot02 bbtdside02">HMM1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02 bbtdright02" style="text-align:left; padding-left:12px;">Horizontal Motion Missile 1</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">24</td>
+<td class="bbtdbot02 bbtdside02">HMBL</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02">.</td>
+<td class="bbtdbot02 bbtdside02 bbtdright02" style="text-align:left; padding-left:12px;">Horizontal Motion Ball</td>
+</tr>
+</tbody></table>
+</div>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="horizontal_motion">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#horizontal_motion">Horizontal Motion</a></p>
+<p>Horizontal motion allows the programmer to move any of the 5 graphics objects relative to their current horizontal position. Each object has a 4 bit horizontal motion register (HMP0, HMP1, HMM0, HMM1, HMBL) that can be loaded with a value in the range of +7 to -8 (negative values are expressed in two's complement from). This motion is not executed until the HMOVE register is written to, at which time all motion registers move their respective objects. Objects can be moved repeatedly by simply executing HMOVE. Any object that is not to move must have a 0 in its motion register. With the horizontal positioning command confined to positioning objects at 15 color clock intervals, the motion registers fills in the gaps by moving objects +7 to -8 color clocks. Objects can not be placed at any color clock position across the screen. All 5 motion registers can be set to zero simultaneously by writing to the horizontal motion clear register (HMCLR).</p>
+<p>&nbsp;</p>
+<p>There are timing constraints for the HMOVE command. The HMOVE command must immediately follow a WSYNC (Wait for SYNC) to insure the HMOVE operation occurs during horizontal blanking. This is to allow sufficient time for the motion registers to do their thing before the electron beam starts drawing the next scan line. Also, for mysterious internal hardware considerations, the motion registers should not be modified for at least 24 machine cycles after an HMOVE command.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="hmp0_hmp1_hmm0_hmm1_hmbl">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#hmp0_hmp1_hmm0_hmm1_hmbl">HMP0 (HMP1, HMM0, HMM1, HMBL)</a></p>
+<p>These addresses write data (horizontal motion values) into the horizontal motion registers. These registers will cause horizontal motion only when commanded to do so by the horiz. move command HMOVE. The motion values are coded as shown below:</p>
+<p>&nbsp;</p>
+<div style="overflow: auto;">
+<table cellspacing="0" style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-size:17px; line-height:32px; margin-left:24px; text-align:center;">
+<tbody><tr bgcolor="#EBEBEB">
+<td width="32" class="bbtdbot02 bbtdside02 bbtdtop02">D7</td>
+<td width="32" class="bbtdbot02 bbtdside02 bbtdtop02">D6</td>
+<td width="32" class="bbtdbot02 bbtdside02 bbtdtop02">D5</td>
+<td width="32" class="bbtdbot02 bbtdside02 bbtdtop02">D4</td>
+<td width="75" class="bbtdbot02 bbtdside02 bbtdtop02">Clocks</td>
+<td width="400" class="bbtdbot02 bbtdside02 bbtdtop02 bbtdright02" style="text-align:left; padding-left:12px;">Effect</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">+7</td>
+<td rowspan="7" class="bbtdbot02 bbtdside02 bbtdright02" style="text-align:left; padding-left:12px;">Move left indicated number of clocks</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">+6</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">+5</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">+4</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">+3</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">+2</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">+1</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02 bbtdright02" style="text-align:left; padding-left:12px;">No Motion</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">-1</td>
+<td rowspan="8" class="bbtdbot02 bbtdside02 bbtdright02" style="text-align:left; padding-left:12px;">Move right indicated number of clocks</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">-2</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">-3</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">-4</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">-5</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">-6</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">-7</td>
+</tr>
+<tr class="mytrhover">
+<td class="bbtdbot02 bbtdside02">1</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">0</td>
+<td class="bbtdbot02 bbtdside02">-8</td>
+</tr>
+</tbody></table>
+</div>
+<p>&nbsp;</p>
+<p><span class="bbwarn">Warning:</span> These motion registers should not be modified during the 24 computer cycles immediately following an HMOVE command. Unpredictable motion values may result.</p>
+</div>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="undocumented_quirk">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#undocumented_quirk">Undocumented Quirk</a></p>
+<p>Not all objects position exactly the same. Double-wide and quad-wide player sprites shift +1 color clock. Missiles and the ball shift -1 color clock.</p>
+<p>&nbsp;</p>
+<p>For example, to compensate for this, the quad-wide bridge sprite in River Raid is curiously set to an x-position of 63 (instead of 64) before its fine-positioning subroutine is called. This quirk will shift the bridge +1 color clock and draw it at the intended x-position of 64.</p>
+<p>&nbsp;</p>
+<p>This quirk is discussed in more detail here:</p>
+<p>&nbsp;</p>
+<p><a class="offsite" href="https://atariage.com/forums/topic/239890-respx-nusizx-and-player-positioning/?do=findComment&amp;comment=3268494">RESPx, NUSIZx, and Player Positioning</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="river_raid_example_code">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#river_raid_example_code">River Raid Example Code</a></p>
+<p>Below is example code from <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-history-1982.html#river_raid">River Raid</a> with comments from <a class="offsite" href="https://atariage.com/forums/topic/32896-session-22-sprites-horizontal-positioning-part-1/?do=findComment&amp;comment=4630213">Matt Jernigan and Thomas Jentzsch</a>:</p>
+
+
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+
+<div style="margin:0px; padding:0px; max-width:100%;">
+<pre class="bbborder">
+       INX                      ; 2             x = 0! (player jet)
+...
+       LDY    playerX           ; 3             y = player's x-pos
+...
+       TYA                      ; 2             a = y
+       JSR    SetPosX           ; 6             x-position player jet
+       INX                      ; 2             x = 1 (enemy object)
+...
+       INX                      ; 2             x = 2 (player missile)
+       LDA    missileX          ; 3             a = missile's x-pos
+       JSR    SetPosX           ; 6             x-position missile
+       JSR    DoHMove           ; 6             do HMOVE
+
+...
+
+SetPosX SUBROUTINE
+; calculates the values and positions objects:
+; INPUT:
+;   A = x-position
+;   X = object to position (0=P0, 1=P1, 2=M0, 3=M1, 4=BL)
+       JSR    CalcPosX          ; 6 $FAEF
+SetPosX2:
+       STA    HMP0,X            ; 4             fine position the object specified in X
+       INY                      ; 2             get past the 68 pixels of horizontal blank
+       INY                      ; 2
+       INY                      ; 2
+       STA    WSYNC             ; 3             wait for sync; wait for TIA to finish line
+.waitPos:
+       DEY                      ; 2
+       BPL    .waitPos          ; 2/3           5-cycle loop = 15 TIA color clocks (pixels)
+       STA    RESP0,X           ; 4
+       RTS                      ; 6
+
+...
+
+CalcPosX SUBROUTINE
+; calculates values for fine x-positioning:
+;
+; Basically, divides pos by 15 and stores the int result of that.
+; Then, the mod of that is adjusted to equal 6 + HMP1.
+;   HMPx bits 4..7: Offset value:
+;     0000 ($00): No offset
+;     0001 ($10): Left 1 clock
+;     0010 ($20): Left 2 clocks
+;     0011 ($30): Left 3 clocks
+;     0100 ($40): Left 4 clocks
+;     0101 ($50): Left 5 clocks
+;     0110 ($60): Left 6 clocks
+;     0111 ($70): Left 7 clocks
+;     1000 ($80): Right 8 clocks
+;     1001 ($90): Right 7 clocks
+;     1010 ($A0): Right 6 clocks
+;     1011 ($B0): Right 5 clocks
+;     1100 ($C0): Right 4 clocks
+;     1101 ($D0): Right 3 clocks
+;     1110 ($E0): Right 2 clocks
+;     1111 ($F0): Right 1 clock
+;
+; INPUT:
+;   A = x-position
+; RETURN:
+;   Y = coarse value for delay loop (shifted to lower 4 bits), 1 loop = 5 clocks = 15 pixels
+;   A = fine value for HMPx, HMMx, or HMBL
+    TAY             ; 2 $FDD8 Y = A
+    INY             ; 2       Y++ (setup for div 15; causes 15 to overflow)
+    TYA             ; 2       A = Y
+    AND    #$0F     ; 2       A chopped to lower 4 bits 00001111 (fine pos value + 1)
+    STA    temp2    ; 3  $ED  temp2 = A  (fine pos value + 1)
+    TYA             ; 2       A = Y
+    LSR             ; 2       A chopped to upper 4 bits and shifted to lower 4 bits (A div 16)
+    LSR             ; 2
+    LSR             ; 2
+    LSR             ; 2
+    TAY             ; 2   Y = A, backup shifted bits to Y
+    CLC             ; 2   CF = 0
+    ADC    temp2    ; 3   A=A+temp2 (shifted bits added to change this from div 16 to div 15)
+    CMP    #15      ; 2   is A &lt; 15? (look for div 15 overflow)
+    BCC    .skipIny ; 2   yes, skip to EOR  (no div 15 overflow)
+    SBC    #15      ; 2   no, A = A - 15  (CF = 1 but not needed here)
+    INY             ; 2   Y++ (yes on the div 15 overflow so one-up Y)
+.skipIny:
+    EOR    #$07     ; 2   A = A XOR 00000111, 7's complement, sets offset for 6 + HMPx
+; NOTE: Any JSR here will use 20 cycles instead of 8
+; but saves 1 byte of code overall (3 bytes instead of 4).
+Mult16:
+    ASL             ; 2   A's lower 4 bits shifted to upper 4
+    ASL             ; 2
+    ASL             ; 2
+    ASL             ; 2
+Wait12:
+    RTS             ; 6
+
+...
+
+DoHMove:
+    STA    WSYNC    ; 3   wait for sync; wait for TIA to finish line
+    STA    HMOVE    ; 3   must follow WSYNC if horizontal motion desired
+    RTS             ; 6
+
+</pre>
+
+</div>
+<div class="f728max">
+  <p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#summary">Summary</a></p>
+<p>Hopefully, after this, <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-24.html">Session 24</a> will make more sense, which discusses other algorithms for horizontal positioning.</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tbody><tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-23.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</tbody></table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefulloff">Session 22: Sprites, Horizontal Positioning (Part 2)</p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder"><div class="jumpid" id="useful_links">&nbsp;</div>
+<p class="sectiontitle03"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#useful_links">Useful Links</a></p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Easy+6502+by+skilldrick">Easy 6502 by Nick Morgan</a></p>
+<p>How to get started writing 6502 assembly language. Includes a JavaScript 6502 assembler and simulator.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Atari+Roots+atariarchives.org">Atari Roots by Mark Andrews (Online Book)</a></p>
+<p>This book was written in English, not computerese. It's written for Atari users, not for professional programmers (though they might find it useful).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+atariarchives.org">Machine Language For Beginners by Richard Mansfield (Online Book)</a></p>
+<p style="margin-bottom:16px;">This book only assumes a working knowledge of BASIC. It was designed to speak directly to the amateur programmer, the part-time computerist. It should help you make the transition from BASIC to machine language with relative ease.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+Chapter+6+atariarchives.org">The Six Instruction Groups</a></p>
+<p style="margin-bottom:16px;">The 6502 Instruction Set broken down into 6 groups.</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+%22Appendix+A%22+ADC+atariarchives.org">6502 Instruction Set</a></p>
+<p>Nice, simple instruction set in little boxes (not made out of ticky-tacky).</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=The+Second+Book+Of+Machine+Language+atariarchives.org">The Second Book Of Machine Language by Richard Mansfield (Online Book)</a></p>
+<p style="margin-bottom:16px;">This book shows how to put together a large machine language program. All of the fundamentals were covered in <a class="offsite" href="https://www.google.com/search?q=Machine+Language+For+Beginners+atariarchives.org">Machine Language for Beginners</a>. What remains is to put the rules to use by constructing a working program, to take the theory into the field and show how machine language is done.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=The+Second+Book+Of+Machine+Language+%22Chapter+10%22+%226502+Instruction+Set%22+atariarchives.org">6502 Instruction Set</a></p>
+<p>An easy-to-read page from <b>The Second Book Of Machine Language</b>.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=alp%2Fappendix_1+Appendix+One+atariarchives.org">6502 Instruction Set with Examples</a></p>
+<p>A useful page from <a class="offsite" href="https://www.google.com/search?q=Assembly+Language+Programming+for+the+Atari+Computers+atariarchives.org">Assembly Language Programming for the Atari Computers</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=6502.org">6502.org</a></p>
+<p style="margin-bottom:16px;">Continually strives to remain the largest and most complete source for 6502-related information in the world.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=NMOS+6502+Opcodes+6502.org">NMOS 6502 Opcodes</a></p>
+<p>By John Pickens. Updated by Bruce Clark.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150630043454/http://www.obelisk.demon.co.uk/6502/index.html">Guide to 6502 Assembly Language Programming by Andrew Jacobs</a></p>
+<p style="margin-bottom:16px;">Below are direct links to the most important pages.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://web.archive.org/web/20150525012005/http://www.obelisk.demon.co.uk/6502/registers.html">Registers</a></p>
+<p style="margin-bottom:16px;">Goes over each of the internal registers and their use.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150516053257/http://www.obelisk.demon.co.uk/6502/instructions.html">Instruction Set</a></p>
+<p style="margin-bottom:16px;">Gives a summary of whole instruction set.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150514221544/http://www.obelisk.demon.co.uk/6502/addressing.html">Addressing Modes</a></p>
+<p style="margin-bottom:16px;">Describes each of the 6502 memory addressing modes.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150630114921/http://www.obelisk.demon.co.uk/6502/reference.html">Instruction Reference</a></p>
+<p>Describes the complete instruction set in detail.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Stella+Programmer%27s+Guide+HTML">Stella Programmer's Guide</a></p>
+<p>HTMLified version.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html">Nick Bensema's Guide to Cycle Counting on the Atari 2600</a></p>
+<p>Cycle counting is an important aspect of Atari 2600 programming. It makes possible the positioning of sprites, the drawing of six-digit scores, non-mirrored playfield graphics and many other cool TIA tricks that keep every game from looking like Combat.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-how-to-draw-a-playfield.html">How to Draw A Playfield by Nick Bensema</a></p>
+<p>Atari 2600 programming is different from any other kind of programming in many ways. Just one of these ways is the flow of the program.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Cart+Sizes+and+Bankswitching+Methods+by+Kevin+Horton">Cart Sizes and Bankswitching Methods by Kevin Horton</a></p>
+<p>The "bankswitching bible." Also check out the <a class="offsite" href="https://atariage.com/2600/archives/funfacts.html?SystemID=2600">Atari 2600 Fun Facts and Information Guide</a> and <a class="offsite" href="https://atariage.com/forums/topic/83915-bank-switching-best-practices/?do=findComment&amp;comment=1022361">this post about bankswitching by SeaGtGruff at AtariAge</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=%22Atari+2600+Specifications%22">Atari 2600 Specifications</a></p>
+<p>Atari 2600 programming specs (HTML version).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://atariage.com/2600/programming/index.html">Atari 2600 Programming Page (AtariAge)</a></p>
+<p>Links to useful information, tools, source code, and documentation.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=%22MiniDig%22+%22Best+of+Stella%22">MiniDig</a></p>
+<p>Atari 2600 programming site based on Garon's "The Dig," which is now dead.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tia-color-charts.html">TIA Color Charts and Tools</a></p>
+<p>Includes interactive color charts, an NTSC/PAL color conversion tool, and Atari 2600 color compatibility tools that can help you quickly find colors that go great together.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-music-and-sound.html">The Atari 2600 Music and Sound Page</a></p>
+<p>Adapted information and charts related to Atari 2600 music and sound.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-standards-and-procedures.html">Game Standards and Procedures</a></p>
+<p>A guide and a check list for finished carts.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Stella+multi-platform+Atari+2600+VCS+emulator">Stella</a></p>
+<p>A multi-platform Atari 2600 VCS emulator. It has a built-in debugger to help you with your works in progress or you can use it to study classic games. Stella finally got Atari 2600 quality sound in December of 2018. Until version 6.0, the game sounds in Stella were mostly OK, but not great. Now it's almost impossible to tell the difference between the sound effects in Stella and a real Atari 2600.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=JAVATARI">JAVATARI</a></p>
+<p>A very good emulator that can also be embedded on your own web site so people can play the games you make online. It's much better than JStella.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html">batari Basic Commands</a></p>
+<p>If assembly language seems a little too hard, don't worry. You can always try to make Atari 2600 games the faster, easier way with batari Basic.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder"><div data-nosnippet="">
+<div class="jumpid" id="affirmations">&nbsp;</div>
+<p class="littlegreentitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#affirmations">Affirmations</a></p>
+<div class="yellowbox">
+<p>I'm a money magnet. Good things happen to me. I get things done. I'm happy. I'm healthy. I'm smart. I'm creative. I'm a nice person. I'm successful. I'm good with money. I'm honest. I'm trustworthy. I'm responsible. I'm wise. I'm easygoing. I'm clear-minded. I'm sober. I'm calm. I'm thankful. I'm satisfied. I'm forgiving. I'm confident. I'm kind. I'm considerate. I'm likeable. I'm friendly. I'm loving. I'm loveable. I'm joyful. I'm playful. I'm full of energy. I'm fun to be around. I'm a good friend. I'm eternal. I'm powerful. I'm a being of light. I'm a spirit wearing a body.</p>
+</div>
+<div class="jumpid" id="in_case_you_did_not_know">&nbsp;</div>
+<p class="littlebluetitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#in_case_you_did_not_know">In Case You Didn't Know</a></p>
+<div class="yellowbox">
+<div class="jumpid" id="icydnk_litterbugs">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#icydnk_litterbugs">Litterbugs = Bad</a></p>
+<p><a class="offsite" href="https://www.randomterrain.com/favorite-quotes-littering.html">Never litter</a>. Toss your trash in a bin or take it home with you instead of throwing it on the ground. Never throw anything out of a vehicle window, including fast-food packaging, drink cups, water bottles, cigarette butts, or any other trash.</p>
+<p>&nbsp;</p>
+<p>It is illegal and completely unacceptable to dump large items like furniture, appliances, mattresses, tires, or construction debris by the side of the road, in forests, ditches, or on any public or private land. Please take all bulk waste to an authorized landfill or your local residential transfer station or recycling center. This strict rule applies to everyone, whether you are a lifelong resident or a newcomer adjusting to local waste management systems.</p>
+<p>&nbsp;</p>
+<p>Remember that responsible people clean up after themselves at home, in public, at campsites, and everywhere else. <a class="offsite" href="https://www.google.com/search?&amp;q=Leave+it+better+than+you+found+it">Leave it better than you found it</a>. In fact, keeping an area clean actually stops a chain reaction of bad behavior before it starts. Research shows that people are much less likely to litter in a region that seems to be spotless. By taking care of your surroundings today, you are silently reminding the next person to do the same.</p>
+<p>&nbsp;</p>
+<p>You might think that if you didn't drop the trash, it isn't your job to clean it up, but ignoring the problem can come back to haunt the whole neighborhood. If you have time for a daily walk or jog, you can easily catch blowing trash early through an eco-friendly fitness trend called <a class="offsite" href="https://www.google.com/search?&amp;q=Leave+it+better+than+you+found+it">plogging</a>, where people pick up litter while walking or jogging. All you need is a trash bag, <a class="offsite" href="https://amzn.to/2qzyS2f">Grabbers (#ad)</a>, and <a class="offsite" href="https://amzn.to/2O8xkoZ">nitrile gloves (#ad)</a> or <a class="offsite" href="https://amzn.to/2CXKdfb">work gloves (#ad)</a>. Catching that trash early keeps it from mixing with organic debris and clogging up the storm drains. However, if the drains in your area are already clogged with heavy layers of mud, twigs, leaves, and trash, that requires a dedicated, separate task. If you feel you are qualified, put on thick work gloves, grab a shovel, your trusty grabbers, and a trash bag (since you will probably find trash) and carefully get to work. Stay hyper-aware of traffic and step out of the street whenever a car approaches. Taking care of your surroundings directly protects your own home and your neighbors from unnecessary flood damage.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_b_vitamins">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#icydnk_b_vitamins">B Vitamins = Good</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22vitamin+B%22+mental+health">Vitamin B deficiencies</a> can produce symptoms that look like mental illness, including mood swings, irritability, irrational behavior, and even psychosis-like states in some people. Once the deficiency is corrected, the symptoms frequently clear up. Years ago, I heard from someone online whose wife had severe mood swings and explosive behavior that improved dramatically after she started taking a B-complex.</p>
+<p>&nbsp;</p>
+<p>It makes you wonder how many people struggling with severe psychiatric conditions, including schizophrenia, might find some relief just by addressing an underlying nutrient deficiency. Of course, a B-complex isn't a cure-all and shouldn't replace a doctor's care, but checking blood levels for B12 or folate seems like such a simple, logical place to start.</p>
+<p>&nbsp;</p>
+<p>I've taken <a class="offsite" href="https://amzn.to/2QLBO6z">Jarrow B-Right (#ad)</a> for many years. It reliably lifts my mood and virtually eliminates the arm pain I used to get from using a computer mouse (which had been bordering on carpal tunnel syndrome). I take it five days a week and skip two days to limit long-term B6 exposure.  (This is personal experience, not medical advice.)</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_negative_ions">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#icydnk_negative_ions">Negative Ions = Good</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22negative+ions+are+good%22">Negative ions</a> are highly beneficial for our health and well-being. When choosing an air purifier, you generally want to avoid ozone generators, which can irritate your lungs. Some air cleaners give off ozone by mistake, so you have to be careful when choosing one. While a basic air cleaner is better than nothing, a high-quality unit that specifically produces negative ions actually refreshes the room on a molecular level. The one I have makes the air in my bedroom feel noticeably fresher, easier to breathe, and consistently helps to brighten my mood.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_soybeans">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#icydnk_soybeans">Soy = Bad</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22Why+Soy+is+Bad%22&amp;num=100">Unfermented soy</a> is bad! “<a class="offsite" href="https://www.optimumchoices.com/Soy.htm">When she stopped eating soy, the mental problems went away</a>.” Fermented soy doesn't bother me, but the various versions of unfermented soy (soy flour, soybean oil, and so on) that are used in all kinds of products these days causes a negative mental health reaction in me that a vitamin B complex can't tame. The sinister encroachment of soy has made the careful reading of ingredients a necessity.</p>
+<p>&nbsp;</p>
+<p>I wouldn't be surprised to find out that unfermented soy is a driving factor behind a lot of the constant irritability, hair-trigger anger, and social hostility we see in modern culture. If I unknowingly eat something with unfermented soy in it, I become angry and aggressive, so it is absolutely not a placebo effect. Scientists in the future will likely confirm that widespread unfermented soy consumption alters human behavior. We already know that <a class="offsite" href="https://www.google.com/search?q=%22food+sensitivities+cause+mood+changes%22&amp;num=100">food sensitivities cause mood changes</a>. It took me over a decade to figure out that unfermented soy was hijacking my mood. What if millions of people are having a similar severe reaction to soy and don't even know it? Countless people eat it and drink it every single day.</p>
+<p>&nbsp;</p>
+<p>It's common for people who adopt heavy soy-based diets to experience intense mood swings and irrational emotional outbursts. What would happen if the most chronically angry people in our society stopped consuming soy sludge and started taking a B-complex? Would a significant number of them suddenly calm down and find emotional balance?</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_wheat">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#icydnk_wheat">Wheat = Bad</a></p>
+<p>If you are overweight, have type 2 diabetes, or are worried about the condition of your heart, check out the videos by <a class="offsite" href="https://www.youtube.com/c/KenDBerryMD/videos">Ken D Berry</a>, <a class="offsite" href="https://www.youtube.com/user/wheatbelly/videos">William Davis</a>, and <a class="offsite" href="https://www.youtube.com/channel/UCPn4FsiQP15nudug9FDhluA/videos">Ivor Cummins</a>. It seems that most people should avoid wheat, not just those who have a wheat allergy or celiac disease. Check out these books: <a class="offsite" href="https://amzn.to/2D2mw5c">Undoctored (#ad)</a>, <a class="offsite" href="https://amzn.to/2OubcnP">Wheat Belly (#ad)</a>, and <a class="offsite" href="https://amzn.to/2Xwhuau">Eat Rich, Live Long (#ad)</a>.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+
+<div class="jumpid" id="icydnk_climate_change">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html#icydnk_climate_change">Climate Change Cash Grab = Bad</a></p>
+<p>Seems like more people than ever finally care about water, land, and air pollution, but the climate change cash grab scam is designed to put more of your money into the bank accounts of greedy politicians. Those power-hungry schemers try to trick us with <a class="offsite" href="https://www.commentary.org/john-steele-gordon/climate-global-warming-data-locations/">bad data</a> and lies about <a class="offsite" href="https://www.pop.org/debunking-the-myth-of-overpopulation/">overpopulation</a> while pretending to be caring do-gooders. Trying to eliminate pollution is a good thing, but the carbon emissions of the average law-abiding human right now are actually making the planet greener instead of killing it.</p>
+<p>&nbsp;</p>
+<p>Eliminating farms and ranches, eating bugs, getting locked down in 15-minute cities, owning nothing, using digital currency with expiration dates that is tied to your social credit score, and paying higher taxes will not make things better and “save the Earth.” All that stuff is part of an <a class="offsite" href="https://twitter.com/Random_Terrain/status/1609836575755755521">agenda</a> that has nothing to do with making the world a better place for the average person. It's all about control, depopulation, and making things better for the <a class="offsite" href="https://www.bitchute.com/video/M6naRq5vtgyA/">ultra-rich</a>. They just want enough peasants left alive to keep things running smoothly.</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:14px;">Watch these two videos for more information:</p>
+<p class="moffsitefull"><a href="https://www.bitchute.com/video/uQ8WLJxu9Q4R/">CO2 is Greening The Earth</a></p>
+<p class="offsitefull"><a href="https://www.bitchute.com/video/IBJ2uiqUec5F/">The Climate Agenda</a></p>
+</div>
+</div>
+</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="https://www.randomterrain.com/index.html">Home</a> <a href="https://www.randomterrain.com/futuristic-inventions-cool-stuff.html">Inventions</a> <a href="https://www.randomterrain.com/favorite-quotes.html">Quotations</a> <a href="https://www.randomterrain.com/game-design.html">Game Design</a> <a href="https://www.randomterrain.com/atari-2600-memories.html">Atari Memories</a> <a href="https://www.randomterrain.com/personal.html">Personal Pages</a> <a href="https://www.randomterrain.com/about.html">About</a> <a href="https://www.randomterrain.com/sitemap.html">Site Map</a> <a href="https://www.randomterrain.com/contact.html">Contact</a> <a href="https://www.randomterrain.com/privacy.html">Privacy Policy</a> <a href="https://www.randomterrain.com/rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+
+
+</body></html>

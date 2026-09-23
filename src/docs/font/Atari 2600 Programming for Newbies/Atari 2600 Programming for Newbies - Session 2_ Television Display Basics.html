@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<!-- saved from url=(0079)https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html -->
+<html lang="en"><!--<![endif]--><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<!-- Google tag (gtag.js) -->
+<script async="" src="./Atari 2600 Programming for Newbies - Session 2_ Television Display Basics_files/js"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 2: Television Display Basics</title>
+
+<link href="./Atari 2600 Programming for Newbies - Session 2_ Television Display Basics_files/fluid.css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 2_ Television Display Basics_files/fluid(1).css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 2_ Television Display Basics_files/rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 2_ Television Display Basics_files/rt_stylesheet(1).css" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 2: Television Display Basics">
+<meta name="description" content="Session 2: Television Display Basics">
+<meta name="twitter:description" content="Session 2: Television Display Basics">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="./Atari 2600 Programming for Newbies - Session 2_ Television Display Basics_files/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="https://www.randomterrain.com/index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="https://www.randomterrain.com/futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="https://www.randomterrain.com/favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="https://www.randomterrain.com/game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="https://www.randomterrain.com/personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="https://www.randomterrain.com/index.html">Home</a> &gt; <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">#Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 2: Television Display Basics</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#ntsc_pal_secam">NTSC, PAL, and SECAM</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#images_per_second">Images Per Second</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#scanline">Scanline</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#interlacing">Interlacing</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#color_encoding">Color Encoding</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#summary">Summary</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#session_links">Session Links</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#useful_links">Useful Links</a></p>
+</div>
+
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/27187-session-2-television-display-basics/">Original Session 2 at AtariAge</a></p>
+</div>
+
+</div>
+<div id="fcontent728">
+<p>Hopefully you've been through the first part and have your editor, assembler, emulator and  documentation ready to go. What we're going to look at now is a basic overview of how a television  works, and why this is absolutely necessary prerequisite knowledge for the '2600 programmer. We're  not going to cover a lot of '2600 specific stuff this time, but this is most definitely stuff you NEED TO KNOW!</p>
+<p>&nbsp;</p>
+<p>Television has been around longer than you probably realize. Early mechanical television pictures were  successfully broadcast in the '20s and '30s (yes, really!<span style="padding-left:2px; padding-right:2px;">—</span>see <a class="offsite" href="https://www.google.com/search?q=tvdawn.com">tvdawn.com</a>). The  mechanical 'scanning' technology utilized in these early television systems are no doubt the  predecessors to the 'scanning' employed in our modern televisions.</p>
+<p>&nbsp;</p>
+<p>A television doesn't display a continuous moving image. In fact, television displays static  (non-moving) images in rapid succession<span style="padding-left:2px; padding-right:2px;">—</span>changing between images so quickly that the human eye  perceives any movement as continuous. And even those static images aren't what they seem<span style="padding-left:2px; padding-right:2px;">—</span>they are  really composed of lots of separate lines, each drawn one after the other by your TV, in rapid  succession. So quick, in fact, that hundreds of them are drawn every image, and many images are drawn  every second. In fact, the actual numbers are very important, so we'll have a look at those right now.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="ntsc_pal_secam">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#ntsc_pal_secam">NTSC, PAL, and SECAM</a></p>
+<p>The Atari 2600 console was released in many different countries around the world. Not all of these  countries use the same television 'system'<span style="padding-left:2px; padding-right:2px;">—</span>in fact there are three variations of TV systems (and  there are three totally different variations of Atari 2600 hardware to support these systems). These  systems are called NTSC, PAL, and SECAM. NTSC is used for the USA and Japan, PAL for many European  countries, and Australia, and SECAM is used in France, some ex-French colonies (for example,&nbsp;Vietnam), and Russia. SECAM is very similar to PAL (625/50Hz), but I won't spend  much time talking about it, as Atari SECAM units are incredibly rare, and little if any development is done for that format anyway. Interestingly, the differences in requirements for displaying a valid TV  image for these systems leads to the incompatibility between cartridges made for NTSC, PAL and SECAM  Atari units. We'll understand why, shortly!</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="images_per_second">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#images_per_second">Images Per Second (Frequency)</a></p>
+<p>A television signal contains either 60 images per second (on NTSC systems) or 50 images per second (on  PAL systems). This is closely tied to the frequency of mains AC power in the countries which use these  systems<span style="padding-left:2px; padding-right:2px;">—</span>and this is probably for historical reasons. In any case, it's important to understand that  there are differences. Furthermore, NTSC images are 525 scanlines deep, and PAL images are 625  scanlines deep. From this, it follows that PAL images have more detail<span style="padding-left:2px; padding-right:2px;">—</span>but are displayed less  frequently<span style="padding-left:2px; padding-right:2px;">—</span>or alternatively, NTSC images have less detail but are displayed more often. In practice,  TV looks pretty much the same in both systems.</p>
+<p>&nbsp;</p>
+<p>But from the '2600 point of view, the difference in frequency (50Hz vs. 60Hz) and resolution (625  scanlines vs. 525 scanlines) is important<span style="padding-left:2px; padding-right:2px;">—</span>very important<span style="padding-left:2px; padding-right:2px;">—</span>because it is the PROGRAMMER who has to  control the data going to the TV. It is not done by the '2600 (!!)<span style="padding-left:2px; padding-right:2px;">—</span>the '2600 only generates a signal  for a single scanline.</p>
+<p>&nbsp;</p>
+<p>This is completely at odds with how all other consoles work, and what makes programming the '2600 so  much 'fun'. Not only does the programmer have to worry about game mechanics<span style="padding-left:2px; padding-right:2px;">—</span>but he or she also has to  worry about what the TV is doing (for example, what scanline it is drawing, and when it needs to start a new  image, etc.).</p>
+<p>&nbsp;</p>
+<p>Let's have a look at how a single image is drawn by a TV…</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="scanline">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#scanline">Scanline</a></p>
+<p>A television is a pretty amazing piece of 1930's technology. It forms the images we see by shining an electron beam (or 3, for color TVs) onto a phosphor coating on the front of the picture tube. When  the beam strikes the phosphor, the phosphor starts to glow<span style="padding-left:2px; padding-right:2px;">—</span>and that glow slowly decreases in  brightness until the phosphor is next hit by the electron beam. The TV 'sweeps' the electron beam  across the screen to form 'scanlines'<span style="padding-left:2px; padding-right:2px;">—</span>at the same time as it sweeps, adjusting the intensity of the  beam, so the phosphor it strikes glow brightly or dimly. When the beam gets to the end of a scanline,  it is turned off, and the deflection circuitry (which controls the beam) is adjusted so that the beam  will next start a little bit down, and at the start (far left-hand-side) of the next scanline. And it  will then turn on, and sweep left-to-right to draw the next scanline. When the last scanline is drawn,  the electron beam is turned off, and the deflection circuitry is reset so that the beam's position will  next be at the top left of the TV screen<span style="padding-left:2px; padding-right:2px;">—</span>ready to draw the first scanline of the next frame.</p>
+<p>&nbsp;</p>
+<p>This 'turning-off' and repositioning process<span style="padding-left:2px; padding-right:2px;">—</span>at the end of a scanline, and at the end of an image<span style="padding-left:2px; padding-right:2px;">—</span>is not instantaneous<span style="padding-left:2px; padding-right:2px;">—</span>it takes a certain amount of time for the electronics to do this repositioning,  and we'll understand this when we come to talk about the horizontal blank (when the beam is resetting  to the left of the next scanline) and the vertical blank (when the beam is resetting to the top left  scanline on the screen). I'll leave that for a later session, but when we do come to it, you'll  understand what the TV is doing at these points.</p>
+<p>&nbsp;</p>
+<p>A fairly complex<span style="padding-left:2px; padding-right:2px;">—</span>but nonetheless simple-to-understand analog signal controls the sweeping of the  electron beam across the face of the TV. First it tells the TV to do the repositioning to the start of  the top left line of the screen, then it includes color and intensity information for the electron  beam as it sweeps across that line, then it tells the TV to reposition to the start of the next  scanline, etc., right down to the last scanline on the screen. Then it starts again with another  reposition to the start…  That's pretty much all we need to know about how that works.</p>
+<p>&nbsp;</p>
+<p>The Atari 2600 sends the TV the "color and intensity information for the electron beam as it  sweeps across that line", and a signal for the start of each new line. The '2600 programmer needs to feed the TV the signal to start the image frame.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="interlacing">&nbsp;</div>
+<p class="bbtertiary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#interlacing">Interlacing</a></p>
+<p>A little side-track, here. Although I stated that the vertical resolution of a TV image is 625 lines  (PAL) and 525 lines (NTSC), television employs another 'trick' called interlacing. Interlacing  involves building up an image out of two separate 'frames'<span style="padding-left:2px; padding-right:2px;">—</span>each frame being either the odd scanlines,  or the even scanlines of that image. Each frame is displayed every 1/30th of a second (30Hz)  for NTSC, or every 1/25th of a second (25Hz) for PAL. By offsetting the vertical position of the start  of the first scanline by half a scanline, and due to the persistence of the phosphor coating on the  TV, the eye/brain combines these frames displaying alternate lines into a single image of greater  vertical resolution than each frame. It's tricky and messy, but a glorious 'hack' solution to the  problem of lack of bandwidth in a TV signal.</p>
+<p>&nbsp;</p>
+<p>The upshot of this is that a single FRAME of a TV image is actually only half of the vertical  resolution of the image. Thus, a NTSC frame is 525/2 = 262.5 lines deep, and a PAL frame is 625/2 =  312.5 lines deep. The extra .5 of a line is used to indicate to the TV if a frame is the first (even  lines) or second (odd lines) of an image. An aside: about a year ago, the #stella community discussed  this very aspect of TV images, and if it would be possible for the Atari to exploit this to generate a  fully interlaced TV frame<span style="padding-left:2px; padding-right:2px;">—</span>and, in fact, it is possible. So some 25 years after the machine was first  released, some clever programmers discovered how to double the resolution of the graphics.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>Back to basics, though. We just worked out that a single frame on a TV is 262.5 (NTSC) and 312.5 (PAL)  lines deep. And that extra .5 scanline was used to tell the TV if the frame was odd or even. So  the actual depth of a single frame is 262 (NTSC) and 312 (PAL) lines. Now, if TV's aren't told that a  frame is odd, they don't offset the first scanline by half a scanline's depth<span style="padding-left:2px; padding-right:2px;">—</span>and so, scanlines on  successive frames are exactly aligned. We have a non-interlaced image, displayed at 60Hz (NTSC) or  50Hz (PAL). And this is the 'standard' format of an Atari 2600 frame sent to a TV.</p>
+<p>&nbsp;</p>
+<p>In summary, an Atari 2600 frame consists of 262 scanlines (NTSC) or 312 scanlines (PAL), sent at 60Hz  (NTSC) or 50Hz (PAL) frequency. It is the job of the '2600 programmer to make sure that the correct number of scanlines are sent to the TV at the right time, with the right graphics data, and appropriate control signals to indicate the end of the frame are also included.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="color_encoding">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#color_encoding">Color Encoding</a></p>
+<p>One other aspect of the difference between TV standards<span style="padding-left:2px; padding-right:2px;">—</span>and a consequence of the incremental  development of television technology (first we had black and white, then color was added<span style="padding-left:2px; padding-right:2px;">—</span>but our  black and white TVs could still display a color TV signal<span style="padding-left:2px; padding-right:2px;">—</span>in black and white)<span style="padding-left:2px; padding-right:2px;">—</span>is that color  information is encoded in different places in the signal for NTSC and PAL (and SECAM) systems. So,  even though the programmer is fully-responsible for controlling the number of scanlines per frame, and  the frequency at which frames are generated, it is the Atari itself which encodes the color  information into the TV signal.</p>
+<p>&nbsp;</p>
+<p>This is the fundamental reason why there are NTSC, PAL, and SECAM Atari systems<span style="padding-left:2px; padding-right:2px;">—</span>the encoding of the  color information for the TV signal!  We get some interesting combinations of Atari and games, for  example…</p>
+<p>&nbsp;</p>
+<p>If we plug a NTSC cartridge into a PAL '2600, then we know that the NTSC game is generating frames  which are 262 lines deep, at 60Hz. But a PAL TV expects frames 312 lines deep, at 50Hz. So the image  is only 262/312 of the correct depth, and also images are arriving 60/50 times faster than expected. If we were viewing on a NTSC TV, then the PAL console would be placing the color information for the  TV signal in a completely different place than the TV is expecting<span style="padding-left:2px; padding-right:2px;">—</span>so we would see our game in black  and white.</p>
+<p>&nbsp;</p>
+<p>There are several combinations you can play with<span style="padding-left:2px; padding-right:2px;">—</span>but the essence is that if you use a different '2600  variant than TV, you will only get black and white (for example, NTSC '2600 with PAL TV or PAL '2600 with NTSC  TV) as the color information is not in at the correct frequency band of the signal. And if you plug in a different cartridge than TV (NTSC cart with PAL TV or vice-versa) then  what you see depends on the television's capability to synchronize with the signal being generated<span style="padding-left:2px; padding-right:2px;">—</span>as  it is not only the incorrect frequency, but also the incorrect number of scanlines.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#summary">Summary</a></p>
+<p>All of this may sound complicated<span style="padding-left:2px; padding-right:2px;">—</span>but really all we need to do is create a 'kernel' (which is the name for your section of an Atari 2600 program which generates the TV frame) which does the drawing correctly<span style="padding-left:2px; padding-right:2px;">—</span>and once that's working, we don't really need to worry too much about the TV<span style="padding-left:2px; padding-right:2px;">—</span>we can abstract that out and just think about what we want to draw.</p>
+<p>&nbsp;</p>
+<p>Well, I lie, but don't want to scare you off TOO early. <img src="./Atari 2600 Programming for Newbies - Session 2_ Television Display Basics_files/icon_wink.gif" width="15" height="15" alt="Wink" style="border:0; vertical-align:middle;"></p>
+<p>&nbsp;</p>
+<p>Next time, let's have a look how the processor interacts with hardware, I/O and memory.</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tbody><tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-03.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</tbody></table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefulloff">Session 2: Television Display Basics</p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder"><div class="jumpid" id="useful_links">&nbsp;</div>
+<p class="sectiontitle03"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#useful_links">Useful Links</a></p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Easy+6502+by+skilldrick">Easy 6502 by Nick Morgan</a></p>
+<p>How to get started writing 6502 assembly language. Includes a JavaScript 6502 assembler and simulator.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Atari+Roots+atariarchives.org">Atari Roots by Mark Andrews (Online Book)</a></p>
+<p>This book was written in English, not computerese. It's written for Atari users, not for professional programmers (though they might find it useful).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+atariarchives.org">Machine Language For Beginners by Richard Mansfield (Online Book)</a></p>
+<p style="margin-bottom:16px;">This book only assumes a working knowledge of BASIC. It was designed to speak directly to the amateur programmer, the part-time computerist. It should help you make the transition from BASIC to machine language with relative ease.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+Chapter+6+atariarchives.org">The Six Instruction Groups</a></p>
+<p style="margin-bottom:16px;">The 6502 Instruction Set broken down into 6 groups.</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+%22Appendix+A%22+ADC+atariarchives.org">6502 Instruction Set</a></p>
+<p>Nice, simple instruction set in little boxes (not made out of ticky-tacky).</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=The+Second+Book+Of+Machine+Language+atariarchives.org">The Second Book Of Machine Language by Richard Mansfield (Online Book)</a></p>
+<p style="margin-bottom:16px;">This book shows how to put together a large machine language program. All of the fundamentals were covered in <a class="offsite" href="https://www.google.com/search?q=Machine+Language+For+Beginners+atariarchives.org">Machine Language for Beginners</a>. What remains is to put the rules to use by constructing a working program, to take the theory into the field and show how machine language is done.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=The+Second+Book+Of+Machine+Language+%22Chapter+10%22+%226502+Instruction+Set%22+atariarchives.org">6502 Instruction Set</a></p>
+<p>An easy-to-read page from <b>The Second Book Of Machine Language</b>.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=alp%2Fappendix_1+Appendix+One+atariarchives.org">6502 Instruction Set with Examples</a></p>
+<p>A useful page from <a class="offsite" href="https://www.google.com/search?q=Assembly+Language+Programming+for+the+Atari+Computers+atariarchives.org">Assembly Language Programming for the Atari Computers</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=6502.org">6502.org</a></p>
+<p style="margin-bottom:16px;">Continually strives to remain the largest and most complete source for 6502-related information in the world.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=NMOS+6502+Opcodes+6502.org">NMOS 6502 Opcodes</a></p>
+<p>By John Pickens. Updated by Bruce Clark.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150630043454/http://www.obelisk.demon.co.uk/6502/index.html">Guide to 6502 Assembly Language Programming by Andrew Jacobs</a></p>
+<p style="margin-bottom:16px;">Below are direct links to the most important pages.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://web.archive.org/web/20150525012005/http://www.obelisk.demon.co.uk/6502/registers.html">Registers</a></p>
+<p style="margin-bottom:16px;">Goes over each of the internal registers and their use.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150516053257/http://www.obelisk.demon.co.uk/6502/instructions.html">Instruction Set</a></p>
+<p style="margin-bottom:16px;">Gives a summary of whole instruction set.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150514221544/http://www.obelisk.demon.co.uk/6502/addressing.html">Addressing Modes</a></p>
+<p style="margin-bottom:16px;">Describes each of the 6502 memory addressing modes.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150630114921/http://www.obelisk.demon.co.uk/6502/reference.html">Instruction Reference</a></p>
+<p>Describes the complete instruction set in detail.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Stella+Programmer%27s+Guide+HTML">Stella Programmer's Guide</a></p>
+<p>HTMLified version.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html">Nick Bensema's Guide to Cycle Counting on the Atari 2600</a></p>
+<p>Cycle counting is an important aspect of Atari 2600 programming. It makes possible the positioning of sprites, the drawing of six-digit scores, non-mirrored playfield graphics and many other cool TIA tricks that keep every game from looking like Combat.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-how-to-draw-a-playfield.html">How to Draw A Playfield by Nick Bensema</a></p>
+<p>Atari 2600 programming is different from any other kind of programming in many ways. Just one of these ways is the flow of the program.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Cart+Sizes+and+Bankswitching+Methods+by+Kevin+Horton">Cart Sizes and Bankswitching Methods by Kevin Horton</a></p>
+<p>The "bankswitching bible." Also check out the <a class="offsite" href="https://atariage.com/2600/archives/funfacts.html?SystemID=2600">Atari 2600 Fun Facts and Information Guide</a> and <a class="offsite" href="https://atariage.com/forums/topic/83915-bank-switching-best-practices/?do=findComment&amp;comment=1022361">this post about bankswitching by SeaGtGruff at AtariAge</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=%22Atari+2600+Specifications%22">Atari 2600 Specifications</a></p>
+<p>Atari 2600 programming specs (HTML version).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://atariage.com/2600/programming/index.html">Atari 2600 Programming Page (AtariAge)</a></p>
+<p>Links to useful information, tools, source code, and documentation.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=%22MiniDig%22+%22Best+of+Stella%22">MiniDig</a></p>
+<p>Atari 2600 programming site based on Garon's "The Dig," which is now dead.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tia-color-charts.html">TIA Color Charts and Tools</a></p>
+<p>Includes interactive color charts, an NTSC/PAL color conversion tool, and Atari 2600 color compatibility tools that can help you quickly find colors that go great together.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-music-and-sound.html">The Atari 2600 Music and Sound Page</a></p>
+<p>Adapted information and charts related to Atari 2600 music and sound.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-standards-and-procedures.html">Game Standards and Procedures</a></p>
+<p>A guide and a check list for finished carts.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Stella+multi-platform+Atari+2600+VCS+emulator">Stella</a></p>
+<p>A multi-platform Atari 2600 VCS emulator. It has a built-in debugger to help you with your works in progress or you can use it to study classic games. Stella finally got Atari 2600 quality sound in December of 2018. Until version 6.0, the game sounds in Stella were mostly OK, but not great. Now it's almost impossible to tell the difference between the sound effects in Stella and a real Atari 2600.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=JAVATARI">JAVATARI</a></p>
+<p>A very good emulator that can also be embedded on your own web site so people can play the games you make online. It's much better than JStella.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html">batari Basic Commands</a></p>
+<p>If assembly language seems a little too hard, don't worry. You can always try to make Atari 2600 games the faster, easier way with batari Basic.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fsidebar">
+
+<p class="bblittlegreentitle">Atari 2600 BASIC</p>
+<div class="yellowbox">
+<p>If assembly language is too hard for you, try <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html">batari Basic</a>. It's a BASIC-like language for creating Atari 2600 games. It's the faster, easier way to make Atari 2600 games.</p>
+
+<div style="width:208px; height:66px; margin-top:12px; margin-left:33px;">
+<a href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html" style="border-style: none; display: block; background-color: transparent;"><img src="./Atari 2600 Programming for Newbies - Session 2_ Television Display Basics_files/topbar988-batari.png" alt="Try batari Basic" height="66" width="208" style="border:0;"></a>
+</div>
+</div>
+
+<a href="https://www.amazon.com/s?k=the+courage+to+face+covid-19+dr.+peter+mccullough&amp;linkCode=ll2&amp;tag=randterr-20&amp;linkId=aefe76cee204d05379778517d5fe4798&amp;language=en_US&amp;ref_=as_li_ss_tl1" target="_blank"><img src="./Atari 2600 Programming for Newbies - Session 2_ Television Display Basics_files/z_amz_book_courage.png" style="border:none;" alt="THE COURAGE TO FACE COVID-19"></a>
+<a href="https://www.amazon.com/s?k=2000+Mules+DVD+D%27Souza&amp;linkCode=ll2&amp;tag=randterr-20&amp;linkId=4782ca11902ddf1777431a6bd7533f15&amp;language=en_US&amp;ref_=as_li_ss_tl" target="_blank"><img src="./Atari 2600 Programming for Newbies - Session 2_ Television Display Basics_files/z_amz_book_2000.png" style="border:none;" alt="2000 Mules DVD"></a>
+<a href="https://www.amazon.com/s?k=the+great+awakening+alex+jones&amp;linkCode=ll2&amp;tag=randterr-20&amp;linkId=e73261c0ed66bfff3ef2a3bdaa73123d&amp;language=en_US&amp;ref_=as_li_ss_tl" target="_blank"><img src="./Atari 2600 Programming for Newbies - Session 2_ Television Display Basics_files/z_amz_book_great_awake.png" style="border:none;" alt="The Great Awakening"></a>
+
+</div>
+
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder"><div data-nosnippet="">
+<div class="jumpid" id="affirmations">&nbsp;</div>
+<p class="littlegreentitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#affirmations">Affirmations</a></p>
+<div class="yellowbox">
+<p>I'm a money magnet. Good things happen to me. I get things done. I'm happy. I'm healthy. I'm smart. I'm creative. I'm a nice person. I'm successful. I'm good with money. I'm honest. I'm trustworthy. I'm responsible. I'm wise. I'm easygoing. I'm clear-minded. I'm sober. I'm calm. I'm thankful. I'm satisfied. I'm forgiving. I'm confident. I'm kind. I'm considerate. I'm likeable. I'm friendly. I'm loving. I'm loveable. I'm joyful. I'm playful. I'm full of energy. I'm fun to be around. I'm a good friend. I'm eternal. I'm powerful. I'm a being of light. I'm a spirit wearing a body.</p>
+</div>
+<div class="jumpid" id="in_case_you_did_not_know">&nbsp;</div>
+<p class="littlebluetitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#in_case_you_did_not_know">In Case You Didn't Know</a></p>
+<div class="yellowbox">
+<div class="jumpid" id="icydnk_litterbugs">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#icydnk_litterbugs">Litterbugs = Bad</a></p>
+<p><a class="offsite" href="https://www.randomterrain.com/favorite-quotes-littering.html">Never litter</a>. Toss your trash in a bin or take it home with you instead of throwing it on the ground. Never throw anything out of a vehicle window, including fast-food packaging, drink cups, water bottles, cigarette butts, or any other trash.</p>
+<p>&nbsp;</p>
+<p>It is illegal and completely unacceptable to dump large items like furniture, appliances, mattresses, tires, or construction debris by the side of the road, in forests, ditches, or on any public or private land. Please take all bulk waste to an authorized landfill or your local residential transfer station or recycling center. This strict rule applies to everyone, whether you are a lifelong resident or a newcomer adjusting to local waste management systems.</p>
+<p>&nbsp;</p>
+<p>Remember that responsible people clean up after themselves at home, in public, at campsites, and everywhere else. <a class="offsite" href="https://www.google.com/search?&amp;q=Leave+it+better+than+you+found+it">Leave it better than you found it</a>. In fact, keeping an area clean actually stops a chain reaction of bad behavior before it starts. Research shows that people are much less likely to litter in a region that seems to be spotless. By taking care of your surroundings today, you are silently reminding the next person to do the same.</p>
+<p>&nbsp;</p>
+<p>You might think that if you didn't drop the trash, it isn't your job to clean it up, but ignoring the problem can come back to haunt the whole neighborhood. If you have time for a daily walk or jog, you can easily catch blowing trash early through an eco-friendly fitness trend called <a class="offsite" href="https://www.google.com/search?&amp;q=Leave+it+better+than+you+found+it">plogging</a>, where people pick up litter while walking or jogging. All you need is a trash bag, <a class="offsite" href="https://amzn.to/2qzyS2f">Grabbers (#ad)</a>, and <a class="offsite" href="https://amzn.to/2O8xkoZ">nitrile gloves (#ad)</a> or <a class="offsite" href="https://amzn.to/2CXKdfb">work gloves (#ad)</a>. Catching that trash early keeps it from mixing with organic debris and clogging up the storm drains. However, if the drains in your area are already clogged with heavy layers of mud, twigs, leaves, and trash, that requires a dedicated, separate task. If you feel you are qualified, put on thick work gloves, grab a shovel, your trusty grabbers, and a trash bag (since you will probably find trash) and carefully get to work. Stay hyper-aware of traffic and step out of the street whenever a car approaches. Taking care of your surroundings directly protects your own home and your neighbors from unnecessary flood damage.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_b_vitamins">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#icydnk_b_vitamins">B Vitamins = Good</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22vitamin+B%22+mental+health">Vitamin B deficiencies</a> can produce symptoms that look like mental illness, including mood swings, irritability, irrational behavior, and even psychosis-like states in some people. Once the deficiency is corrected, the symptoms frequently clear up. Years ago, I heard from someone online whose wife had severe mood swings and explosive behavior that improved dramatically after she started taking a B-complex.</p>
+<p>&nbsp;</p>
+<p>It makes you wonder how many people struggling with severe psychiatric conditions, including schizophrenia, might find some relief just by addressing an underlying nutrient deficiency. Of course, a B-complex isn't a cure-all and shouldn't replace a doctor's care, but checking blood levels for B12 or folate seems like such a simple, logical place to start.</p>
+<p>&nbsp;</p>
+<p>I've taken <a class="offsite" href="https://amzn.to/2QLBO6z">Jarrow B-Right (#ad)</a> for many years. It reliably lifts my mood and virtually eliminates the arm pain I used to get from using a computer mouse (which had been bordering on carpal tunnel syndrome). I take it five days a week and skip two days to limit long-term B6 exposure.  (This is personal experience, not medical advice.)</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_negative_ions">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#icydnk_negative_ions">Negative Ions = Good</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22negative+ions+are+good%22">Negative ions</a> are highly beneficial for our health and well-being. When choosing an air purifier, you generally want to avoid ozone generators, which can irritate your lungs. Some air cleaners give off ozone by mistake, so you have to be careful when choosing one. While a basic air cleaner is better than nothing, a high-quality unit that specifically produces negative ions actually refreshes the room on a molecular level. The one I have makes the air in my bedroom feel noticeably fresher, easier to breathe, and consistently helps to brighten my mood.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_soybeans">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#icydnk_soybeans">Soy = Bad</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22Why+Soy+is+Bad%22&amp;num=100">Unfermented soy</a> is bad! “<a class="offsite" href="https://www.optimumchoices.com/Soy.htm">When she stopped eating soy, the mental problems went away</a>.” Fermented soy doesn't bother me, but the various versions of unfermented soy (soy flour, soybean oil, and so on) that are used in all kinds of products these days causes a negative mental health reaction in me that a vitamin B complex can't tame. The sinister encroachment of soy has made the careful reading of ingredients a necessity.</p>
+<p>&nbsp;</p>
+<p>I wouldn't be surprised to find out that unfermented soy is a driving factor behind a lot of the constant irritability, hair-trigger anger, and social hostility we see in modern culture. If I unknowingly eat something with unfermented soy in it, I become angry and aggressive, so it is absolutely not a placebo effect. Scientists in the future will likely confirm that widespread unfermented soy consumption alters human behavior. We already know that <a class="offsite" href="https://www.google.com/search?q=%22food+sensitivities+cause+mood+changes%22&amp;num=100">food sensitivities cause mood changes</a>. It took me over a decade to figure out that unfermented soy was hijacking my mood. What if millions of people are having a similar severe reaction to soy and don't even know it? Countless people eat it and drink it every single day.</p>
+<p>&nbsp;</p>
+<p>It's common for people who adopt heavy soy-based diets to experience intense mood swings and irrational emotional outbursts. What would happen if the most chronically angry people in our society stopped consuming soy sludge and started taking a B-complex? Would a significant number of them suddenly calm down and find emotional balance?</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_wheat">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#icydnk_wheat">Wheat = Bad</a></p>
+<p>If you are overweight, have type 2 diabetes, or are worried about the condition of your heart, check out the videos by <a class="offsite" href="https://www.youtube.com/c/KenDBerryMD/videos">Ken D Berry</a>, <a class="offsite" href="https://www.youtube.com/user/wheatbelly/videos">William Davis</a>, and <a class="offsite" href="https://www.youtube.com/channel/UCPn4FsiQP15nudug9FDhluA/videos">Ivor Cummins</a>. It seems that most people should avoid wheat, not just those who have a wheat allergy or celiac disease. Check out these books: <a class="offsite" href="https://amzn.to/2D2mw5c">Undoctored (#ad)</a>, <a class="offsite" href="https://amzn.to/2OubcnP">Wheat Belly (#ad)</a>, and <a class="offsite" href="https://amzn.to/2Xwhuau">Eat Rich, Live Long (#ad)</a>.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+
+<div class="jumpid" id="icydnk_climate_change">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html#icydnk_climate_change">Climate Change Cash Grab = Bad</a></p>
+<p>Seems like more people than ever finally care about water, land, and air pollution, but the climate change cash grab scam is designed to put more of your money into the bank accounts of greedy politicians. Those power-hungry schemers try to trick us with <a class="offsite" href="https://www.commentary.org/john-steele-gordon/climate-global-warming-data-locations/">bad data</a> and lies about <a class="offsite" href="https://www.pop.org/debunking-the-myth-of-overpopulation/">overpopulation</a> while pretending to be caring do-gooders. Trying to eliminate pollution is a good thing, but the carbon emissions of the average law-abiding human right now are actually making the planet greener instead of killing it.</p>
+<p>&nbsp;</p>
+<p>Eliminating farms and ranches, eating bugs, getting locked down in 15-minute cities, owning nothing, using digital currency with expiration dates that is tied to your social credit score, and paying higher taxes will not make things better and “save the Earth.” All that stuff is part of an <a class="offsite" href="https://twitter.com/Random_Terrain/status/1609836575755755521">agenda</a> that has nothing to do with making the world a better place for the average person. It's all about control, depopulation, and making things better for the <a class="offsite" href="https://www.bitchute.com/video/M6naRq5vtgyA/">ultra-rich</a>. They just want enough peasants left alive to keep things running smoothly.</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:14px;">Watch these two videos for more information:</p>
+<p class="moffsitefull"><a href="https://www.bitchute.com/video/uQ8WLJxu9Q4R/">CO2 is Greening The Earth</a></p>
+<p class="offsitefull"><a href="https://www.bitchute.com/video/IBJ2uiqUec5F/">The Climate Agenda</a></p>
+</div>
+</div>
+</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="https://www.randomterrain.com/index.html">Home</a> <a href="https://www.randomterrain.com/futuristic-inventions-cool-stuff.html">Inventions</a> <a href="https://www.randomterrain.com/favorite-quotes.html">Quotations</a> <a href="https://www.randomterrain.com/game-design.html">Game Design</a> <a href="https://www.randomterrain.com/atari-2600-memories.html">Atari Memories</a> <a href="https://www.randomterrain.com/personal.html">Personal Pages</a> <a href="https://www.randomterrain.com/about.html">About</a> <a href="https://www.randomterrain.com/sitemap.html">Site Map</a> <a href="https://www.randomterrain.com/contact.html">Contact</a> <a href="https://www.randomterrain.com/privacy.html">Privacy Policy</a> <a href="https://www.randomterrain.com/rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+
+
+</body></html>

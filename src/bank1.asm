@@ -94,52 +94,52 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     bne .TopGap
 
     ; ====================================================================
-    ; Line 1: Timer bar (PF-based, green=remaining time)
-    ; BarLevel (0-16) determines how many pixels are filled
-    ; Empty part shows as background (black)
+    ; Line 1: Timer bar (player sprite, double-size, green, HERO-style)
+    ; BarLevel (0-16) determines if bar is shown
+    ; Single non-mirrored bar, double-size player = 8 TIA px = 32 emu px
     ; ====================================================================
 
     lda #$05            ; CTRLPF: reflect + priority
     sta CTRLPF
     lda #$B6            ; green (hue $B luma 5)
-    sta COLUPF
+    sta COLUP0           ; player color = bar color
     lda #$00
     sta PF0
-
-    ; Calculate PF1 (pixels 4-11) based on BarLevel
-    ldx BarLevel
-    cpx #8
-    bcc .BarPF1Partial
-    lda #$FF            ; BarLevel >= 8: all 8 pixels
-    jmp .BarPF1Done
-.BarPF1Partial:
-    lda BarPF1Table,X   ; lookup table for 0-7 pixels
-.BarPF1Done:
     sta PF1
-
-    ; Calculate PF2 (pixels 12-19) based on BarLevel
-    ldx BarLevel
-    cpx #8
-    bcc .BarPF2None
-    txa
-    sec
-    sbc #8              ; offset into PF2 table (0-8)
-    tax
-    lda BarPF2Table,X
-    jmp .BarPF2Done
-.BarPF2None:
-    lda #$00
-.BarPF2Done:
     sta PF2
 
-    ; Draw bar (6 scanlines)
+    ; Position player at left edge of bar area
+    lda #20
+    ldx #0              ; X=0 = player0
+    jsr SetObjectXPos_b1
+
+    ; Draw bar per-scanline (6 scanlines)
+    ; Each scanline: enable player with double-size if BarLevel > 0
     ldx #6
 .TimerLoop:
+    lda BarLevel
+    beq .NoBarLine
+    ; BarLevel > 0: show player double-size
+    lda #$05            ; NUSIZ0 = double size
+    sta NUSIZ0
+    lda #$FF            ; solid 8-pixel block
+    sta GRP0
+    jmp .BarLineDone
+.NoBarLine:
+    lda #0
+    sta NUSIZ0
+    sta GRP0
+.BarLineDone:
     sta WSYNC
     dex
     bne .TimerLoop
 
+    sta WSYNC
+    sta HMOVE
+
     lda #0
+    sta GRP0
+    sta NUSIZ0
     sta PF0
     sta PF1
     sta PF2

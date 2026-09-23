@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<!-- saved from url=(0079)https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html -->
+<html lang="en"><!--<![endif]--><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<!-- Google tag (gtag.js) -->
+<script async="" src="./Atari 2600 Programming for Newbies - Session 19_ Addressing Modes_files/js"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 19: Addressing Modes</title>
+
+<link href="./Atari 2600 Programming for Newbies - Session 19_ Addressing Modes_files/fluid.css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 19_ Addressing Modes_files/fluid(1).css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 19_ Addressing Modes_files/rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 19_ Addressing Modes_files/rt_stylesheet(1).css" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 19: Addressing Modes">
+<meta name="description" content="Session 19: Addressing Modes">
+<meta name="twitter:description" content="Session 19: Addressing Modes">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="./Atari 2600 Programming for Newbies - Session 19_ Addressing Modes_files/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="https://www.randomterrain.com/index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="https://www.randomterrain.com/futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="https://www.randomterrain.com/favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="https://www.randomterrain.com/game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="https://www.randomterrain.com/personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="https://www.randomterrain.com/index.html">Home</a> &gt; <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">#Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 19: Addressing Modes</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#a_x_y_registers">A, X, and Y Registers</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#absolute_addressing">Absolute Addressing</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#zero_page_addressing">Zero-Page Addressing</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#absolute_x">Absolute,X … Zero Page,Y</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#absolute_indexed_addressing_modes">Absolute Indexed Addressing</a></p>
+
+<p class="tocsec2"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#summary">Summary</a></p>
+<p class="tocsec2"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#exercises">Exercises</a></p>
+<p class="tocsec2"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#session_links">Session Links</a></p>
+<p class="tocsec2"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#useful_links">Useful Links</a></p>
+</div>
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/29572-session-19-addressing-modes/">Original Session 19 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>Are we having fun, yet?</p>
+<p>&nbsp;</p>
+<p>We're already familiar with a few ways of loading numbers into the 6502's registers, and storing numbers from those registers into RAM or TIA registers. We'll re-visit those methods we know about, learn some new ones (not all of the 6502's addressing modes, but enough to get by with).</p>
+<p>&nbsp;</p>
+<p>This session we're going to have a bit of a look at the various ways that the 6502 can address memory, and how to write these in source code.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="a_x_y_registers">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#a_x_y_registers">A, X, and Y Registers</a></p>
+<p>As you should be aware by now, the 6502 has three registers<span style="padding-left:2px; padding-right:2px;">—</span>A, X, and Y. 'A' is our workhorse register, and we use this to do most of our loading, storing, and calculations. X and Y are index registers, and we generally use these for looping, and counting operations. They also allow us to access 'lists' or tables of data in memory.</p>
+<p>&nbsp;</p>
+<p>Let's start with the basics. To load and store actual values to and from registers, we can use the following…</p>
+
+<pre class="bbborder">
+    lda #$80    ; load accumulator with the number $80
+                ; (=128 decimal)
+
+    lda $80     ; load accumulator with contents of
+                ; memory location $80
+
+
+
+    sta #$80    ; meaningless!  DASM will kick a fit.
+                ; You can't store to a number!
+
+    sta $80     ; store accumulator's contents to
+                ; memory location $80
+
+
+
+
+
+    ldx #$80    ; load x-register with the number $80
+
+
+
+   ; etc..
+
+</pre>
+
+<p>All registers can load numbers directly (called 'immediate values'). The above examples show the accumulator being loaded with #$80 (the number 128) and also the X register being loaded with the same value. You can do this with the Y register, too.</p>
+<p>&nbsp;</p>
+<p>You can't STORE the accumulator to an immediate value. This is a meaningless concept. It's like me asking you to put a letter in your three. You may have a post-box numbered 'three', but you don't have a 'three'.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="absolute_addressing">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#absolute_addressing">Absolute Addressing</a></p>
+<p>All registers can load and store values to memory addresses by specifying the location of that address (or, of course, a label which equates to the location of that address). For example, the following two sections of code are equivalent…</p>
+
+<pre class="bbborder">
+    lda $F000  ; load accumulator with contents of $F000
+
+
+
+
+    ; or. . .
+
+
+
+where = $F000
+
+
+
+
+
+    lda where   ; ditto (correction made 7/7/2003)
+
+</pre>
+
+<p>As noted, the above will work for X and Y registers, too. This form of addressing (addressing means "how we access memory") is called 'absolute addressing'. Earlier we covered how the 6502 addresses code over a 16-bit memory range (that is, there are 2^16 distinct addresses that the 6502 can access, ranging from 0 to $FFFF). To form a 16-bit address, the 6502 uses pairs of bytes<span style="padding-left:2px; padding-right:2px;">—</span>and these are always stored in little-endian format (which means that we put the low-byte first, and the high-byte last). Thus, the address $F023 would be stored in memory as two bytes in this order … $23, $F0.</p>
+<p>&nbsp;</p>
+<p>Now, when DASM is assembling our code, it converts the mnemonic we write for an instruction (eg: 'lda') into an opcode (a number) which is the 6502's way of understanding what each instruction is meant to do. We already encountered the mnemonic 'nop' which converted into $EA. Whenever the 6502 encountered an $EA as an instruction, it performed a 2-cycle delay (it 'executed' the NOP).</p>
+<p>&nbsp;</p>
+<p>We've briefly covered how each 6502 instruction may have one or two additional parameters<span style="padding-left:2px; padding-right:2px;">—</span>that is, there's always an opcode<span style="padding-left:2px; padding-right:2px;">—</span>but there may be one or two additional bytes following the opcode. These bytes hold things such as address data, or numeric data. For example, when we write 'lda #$56', DASM will place the bytes $A9, $56 into the binary. The 6502 retrieves the $A9, recognizes this as a 'lda' instruction, then fetches the next byte $56 and transfers this value into the accumulator.</p>
+<p>&nbsp;</p>
+<p>To signify absolute addresses, the two bytes of the address are placed in little-endian format following the opcode. If we write 'ldy $F023'<span style="padding-left:2px; padding-right:2px;">—</span>indicating we wish to load the contents of memory location $F023 into the Y register, then DASM will put the bytes $AC, $23, $F0 into our binary. And the 6502 when executing will retrieve the $AC, recognize it as a 'ldy' instruction which requires a two-byte address<span style="padding-left:2px; padding-right:2px;">—</span>and then fetches the address from the next two bytes, giving $F023<span style="padding-left:2px; padding-right:2px;">—</span>and THEN retrieving the contents of that memory location and transferring it into the y register.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="zero_page_addressing">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#zero_page_addressing">Zero-Page Addressing</a></p>
+<p>As you can see, this division of 16-bit addresses into low and high byte pairs essentially divides the memory map into 256 'pages' of 256 bytes each. The very first page (with the high-byte equal to 0) is known as 'zero-page', and this is treated a bit differently to the rest of memory. To optimize the space required for our binary, the 6502 designers decided that they would include a special version of memory addressing where, if the access was to zero page (and thus the high byte of the memory address is 0), then you could use a different opcode for the instruction and only include the low-byte of the address in the binary. This form of addressing is known as zero-page addressing.</p>
+<p>&nbsp;</p>
+<p>As with our above example, if we were accessing memory location $80 (which is the same as $0080<span style="padding-left:2px; padding-right:2px;">—</span>remember, leading zeroes are superfluous when writing numbers), then we *COULD* have an absolute access to this location (with the bytes $AC, $80, $00<span style="padding-left:2px; padding-right:2px;">—</span>interpreted in a similar fashion as described above). But DASM is smart<span style="padding-left:2px; padding-right:2px;">—</span>and it knows that when we are accessing zero-page addresses, it uses the more efficient (both smaller code-size and faster execution) form of the instruction, and instead places the following in our binary … $A4, $80. The 6502 recognizes the opcode $A4 as a 'ldy' instruction (as was the $AC) but in this case only one byte is retrieved to form the low byte of the address, and the high byte is assumed to be 0.</p>
+<p>&nbsp;</p>
+</div>
+<p>Mostly we can rely on DASM to choose the best form of addressing for us.</p>
+<p>&nbsp;</p>
+<p>So far, we have seen that what we can do with all the registers is essentially the same. Unfortunately, this is not the case with all the <a class="offsite" href="http://www.obelisk.demon.co.uk/6502/addressing.html">addressing modes</a>!  The 6502 is not <span class="dropt">'orthogonal'<span style="width:300px;">The registers aren't all equal. Some operations require certain registers. For example, you can only do math with the <b>A</b> register and if you want to set the stack pointer, you have to use the <b>X</b> register. There are many examples.<br>(Adapted from a post by Ed Fries)</span></span><span style="padding-left:2px; padding-right:2px;">—</span>and this has some bearing on our choice of which register to use for which purpose, when designing our kernel.</p>
+<p>&nbsp;</p>
+<p>OK, so now we should know what is meant by 'absolute addresses' and 'zero page addresses'. Pretty simple, really. Both refer to the address of memory that the 6502 can theoretically access<span style="padding-left:2px; padding-right:2px;">—</span>and zero page addresses are those in the range $0000 to $00FF inclusive.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="absolute_x">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#absolute_x">Absolute,X, Absolute,Y, Zero Page,X, and Zero Page,Y</a></p>
+<p>The session discussing <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-12.html">Initialization</a> introduced an efficient way of clearing memory in a loop, using a register to run through 256 bytes, and storing 0 to the memory location formed by adding the contents of the x register to a fixed memory address. These addressing modes (using the X or Y register to add to a fixed memory address, giving a final address for access) are known as 'Absolute,X'  and 'Absolute,Y' and 'Zero Page,X' and 'Zero Page,Y'. It is probably a good idea now to track down a good 6502 book</p>
+
+<pre class="bbborder">
+    ldx #1
+
+    lda $23,x    ; load accumulator with contents of 
+                 ; location 36 (=$24)
+
+    ldy $23,x    ; load Y register with contents of
+                 ; location %100100
+
+
+
+    ldy #2
+
+    ldx $23,y    ; load X register with contents of
+                 ; location $25
+
+    lda $23,y    ; load accumulator with contents of
+                 ; location $25
+
+</pre>
+
+<p>That last line is interesting<span style="padding-left:2px; padding-right:2px;">—</span>an example of the non-orthogonality of our instruction set. All of the above examples deal with zero-page addresses (that is, the high byte of the address is 0). Theoretically, these instructions don't need to include the high-byte in the address parameters in the binary. However, there is no 'zero page,y' load for the accumulator!  There is a zero page,x one, though. Its a bit bizarre :)</p>
+<p>&nbsp;</p>
+<p>So DASM will assemble 'ldx $23,y' to a zero page,y instruction<span style="padding-left:2px; padding-right:2px;">—</span>2 bytes long<span style="padding-left:2px; padding-right:2px;">—</span>but it will assemble 'lda $23,y' to an absolute,y instruction<span style="padding-left:2px; padding-right:2px;">—</span>3 bytes long. Such is life.</p>
+<p>&nbsp;</p>
+<p>These zero page indexed instructions have a catch<span style="padding-left:2px; padding-right:2px;">—</span>the final address is always always always a zero page address. So in the following example…</p>
+
+<pre class="bbborder">
+    ldy #1
+
+    lda $FF,y
+
+</pre>
+
+<p>Since (as we just discussed) this is an absolute indexed instruction, the accumulator is loaded with the contents of memory location $100. However, the following…</p>
+
+<pre class="bbborder">
+    ldy #1
+
+    ldx $FF,y
+
+</pre>
+
+<p>Since this will assemble to a zero page indexed instruction, the final address is always zero-page (the high byte is set to 0 after the index register is added)<span style="padding-left:2px; padding-right:2px;">—</span>so we will actually be accessing the contents of memory location 0 (!!). That is, the address is formed by adding the y register and the address ($FF+1 = $100) and dropping the high-byte. Something to be very aware of!</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="absolute_indexed_addressing_modes">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#absolute_indexed_addressing_modes">Absolute Indexed Addressing Modes</a></p>
+<p>Absolute indexed addressing modes are handy for loading values from data tables in ROM. They allow us to use an index register to step (for example) the line number in a kernel, and use the same register to access playfield values from tables. Consider this (mockup) code…</p>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+
+<div style="margin:0px; padding:0px; max-width:840px;">
+<div class="bbpageindent">
+<pre class="bbborder">
+      ldx #0   ; line #
+
+Display
+
+      lda MyPF0,x     ; load a value from the data table "MyPF0"
+
+      sta PF0
+
+      lda MyPF1,x     ; use table "MyPF1"
+
+      sta PF1
+
+      lda MyPF2,x     ; use table "MyPF2"
+
+      sta PF2
+
+
+
+      sta WSYNC
+
+      inx
+
+      cpx #192
+
+      bne Display
+
+
+
+     ; other stuff here
+
+
+
+      jmp StartOfFrame
+
+
+
+
+
+MyPF0
+
+      .byte 1,2,3,4,5,6  ;...etc 192 bytes of data here, giving data
+                         ; for PF0
+
+MyPF1
+
+      .byte 234,24,1,23,41,2 ; PF 1 data (should be 192 bytes long)
+
+MyPF2
+
+      .byte 64,244,31,73,43,2,0,0 ; PF 2 data (should be 192 bytes long)
+
+</pre>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+<div class="f728max">
+<div class="bbpageindent">
+<p>The above code fragment uses tables of data in our ROM. These tables contain the values which should be written to the playfield registers for each scanline. The x register increments once for each scanline, and our absolute,x load for each playfield register will load consecutive values from the appropriate tables.</p>
+<p>&nbsp;</p>
+<p>Then, creating pretty graphics becomes simply a matter of putting the right values into those tables MyPF0, MyPF1, and MyPF2. This is where building tools to convert from images to data tables becomes extremely useful!  We'll cover more of this way of doing things when we complete our sessions on asymmetrical playfields. The plan is to use a tool to create these data tables, and simplify our kernel by using data tables to display just about any asymmetrical image we want!</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#summary">Summary</a></p>
+<p>Soon we'll cover the remaining 6502 addressing modes, and also discuss the 6502's stack.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="exercises">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#exercises">Exercises</a></p>
+<ol class="bbpageol" style="margin-top:0px; margin-bottom:0px;">
+<li class="normalli">Use this method of absolute,x table access to modify or create a kernel which loads the graphics data from tables. Separate each playfield register into its own table, as above.</li>
+<li class="normalli">Can you extend this system to asymmetrical playfield?  Don't worry, we're going to give a complete asymmetrical playfield kernel (and tools!) in the next session.</li>
+<li class="normalli">How would you incorporate color changes into this system (ie: if you wanted clouds on the left, sun on the right)?</li>
+<li class="normalli">Each table requires 1 byte of ROM per PF register per scanline. Can you think of ways to reduce this requirement?  What trade-offs are necessary when reducing the table size?</li>
+<li class="normalli">Find a 6502 cycle-timing reference, and try to calculate exactly how many cycles each instruction in your kernel is taking. Add-up all the instructions on each line, and work out just how much time you have left to do "all the other stuff". Such as sprite drawing!</li>
+</ol>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tbody><tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-17.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-20.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</tbody></table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefulloff">Session 19: Addressing Modes</p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder"><div class="jumpid" id="useful_links">&nbsp;</div>
+<p class="sectiontitle03"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#useful_links">Useful Links</a></p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Easy+6502+by+skilldrick">Easy 6502 by Nick Morgan</a></p>
+<p>How to get started writing 6502 assembly language. Includes a JavaScript 6502 assembler and simulator.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Atari+Roots+atariarchives.org">Atari Roots by Mark Andrews (Online Book)</a></p>
+<p>This book was written in English, not computerese. It's written for Atari users, not for professional programmers (though they might find it useful).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+atariarchives.org">Machine Language For Beginners by Richard Mansfield (Online Book)</a></p>
+<p style="margin-bottom:16px;">This book only assumes a working knowledge of BASIC. It was designed to speak directly to the amateur programmer, the part-time computerist. It should help you make the transition from BASIC to machine language with relative ease.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+Chapter+6+atariarchives.org">The Six Instruction Groups</a></p>
+<p style="margin-bottom:16px;">The 6502 Instruction Set broken down into 6 groups.</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+%22Appendix+A%22+ADC+atariarchives.org">6502 Instruction Set</a></p>
+<p>Nice, simple instruction set in little boxes (not made out of ticky-tacky).</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=The+Second+Book+Of+Machine+Language+atariarchives.org">The Second Book Of Machine Language by Richard Mansfield (Online Book)</a></p>
+<p style="margin-bottom:16px;">This book shows how to put together a large machine language program. All of the fundamentals were covered in <a class="offsite" href="https://www.google.com/search?q=Machine+Language+For+Beginners+atariarchives.org">Machine Language for Beginners</a>. What remains is to put the rules to use by constructing a working program, to take the theory into the field and show how machine language is done.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=The+Second+Book+Of+Machine+Language+%22Chapter+10%22+%226502+Instruction+Set%22+atariarchives.org">6502 Instruction Set</a></p>
+<p>An easy-to-read page from <b>The Second Book Of Machine Language</b>.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=alp%2Fappendix_1+Appendix+One+atariarchives.org">6502 Instruction Set with Examples</a></p>
+<p>A useful page from <a class="offsite" href="https://www.google.com/search?q=Assembly+Language+Programming+for+the+Atari+Computers+atariarchives.org">Assembly Language Programming for the Atari Computers</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=6502.org">6502.org</a></p>
+<p style="margin-bottom:16px;">Continually strives to remain the largest and most complete source for 6502-related information in the world.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=NMOS+6502+Opcodes+6502.org">NMOS 6502 Opcodes</a></p>
+<p>By John Pickens. Updated by Bruce Clark.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150630043454/http://www.obelisk.demon.co.uk/6502/index.html">Guide to 6502 Assembly Language Programming by Andrew Jacobs</a></p>
+<p style="margin-bottom:16px;">Below are direct links to the most important pages.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://web.archive.org/web/20150525012005/http://www.obelisk.demon.co.uk/6502/registers.html">Registers</a></p>
+<p style="margin-bottom:16px;">Goes over each of the internal registers and their use.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150516053257/http://www.obelisk.demon.co.uk/6502/instructions.html">Instruction Set</a></p>
+<p style="margin-bottom:16px;">Gives a summary of whole instruction set.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150514221544/http://www.obelisk.demon.co.uk/6502/addressing.html">Addressing Modes</a></p>
+<p style="margin-bottom:16px;">Describes each of the 6502 memory addressing modes.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150630114921/http://www.obelisk.demon.co.uk/6502/reference.html">Instruction Reference</a></p>
+<p>Describes the complete instruction set in detail.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Stella+Programmer%27s+Guide+HTML">Stella Programmer's Guide</a></p>
+<p>HTMLified version.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html">Nick Bensema's Guide to Cycle Counting on the Atari 2600</a></p>
+<p>Cycle counting is an important aspect of Atari 2600 programming. It makes possible the positioning of sprites, the drawing of six-digit scores, non-mirrored playfield graphics and many other cool TIA tricks that keep every game from looking like Combat.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-how-to-draw-a-playfield.html">How to Draw A Playfield by Nick Bensema</a></p>
+<p>Atari 2600 programming is different from any other kind of programming in many ways. Just one of these ways is the flow of the program.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Cart+Sizes+and+Bankswitching+Methods+by+Kevin+Horton">Cart Sizes and Bankswitching Methods by Kevin Horton</a></p>
+<p>The "bankswitching bible." Also check out the <a class="offsite" href="https://atariage.com/2600/archives/funfacts.html?SystemID=2600">Atari 2600 Fun Facts and Information Guide</a> and <a class="offsite" href="https://atariage.com/forums/topic/83915-bank-switching-best-practices/?do=findComment&amp;comment=1022361">this post about bankswitching by SeaGtGruff at AtariAge</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=%22Atari+2600+Specifications%22">Atari 2600 Specifications</a></p>
+<p>Atari 2600 programming specs (HTML version).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://atariage.com/2600/programming/index.html">Atari 2600 Programming Page (AtariAge)</a></p>
+<p>Links to useful information, tools, source code, and documentation.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=%22MiniDig%22+%22Best+of+Stella%22">MiniDig</a></p>
+<p>Atari 2600 programming site based on Garon's "The Dig," which is now dead.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tia-color-charts.html">TIA Color Charts and Tools</a></p>
+<p>Includes interactive color charts, an NTSC/PAL color conversion tool, and Atari 2600 color compatibility tools that can help you quickly find colors that go great together.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-music-and-sound.html">The Atari 2600 Music and Sound Page</a></p>
+<p>Adapted information and charts related to Atari 2600 music and sound.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-standards-and-procedures.html">Game Standards and Procedures</a></p>
+<p>A guide and a check list for finished carts.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Stella+multi-platform+Atari+2600+VCS+emulator">Stella</a></p>
+<p>A multi-platform Atari 2600 VCS emulator. It has a built-in debugger to help you with your works in progress or you can use it to study classic games. Stella finally got Atari 2600 quality sound in December of 2018. Until version 6.0, the game sounds in Stella were mostly OK, but not great. Now it's almost impossible to tell the difference between the sound effects in Stella and a real Atari 2600.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=JAVATARI">JAVATARI</a></p>
+<p>A very good emulator that can also be embedded on your own web site so people can play the games you make online. It's much better than JStella.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html">batari Basic Commands</a></p>
+<p>If assembly language seems a little too hard, don't worry. You can always try to make Atari 2600 games the faster, easier way with batari Basic.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder"><div data-nosnippet="">
+<div class="jumpid" id="affirmations">&nbsp;</div>
+<p class="littlegreentitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#affirmations">Affirmations</a></p>
+<div class="yellowbox">
+<p>I'm a money magnet. Good things happen to me. I get things done. I'm happy. I'm healthy. I'm smart. I'm creative. I'm a nice person. I'm successful. I'm good with money. I'm honest. I'm trustworthy. I'm responsible. I'm wise. I'm easygoing. I'm clear-minded. I'm sober. I'm calm. I'm thankful. I'm satisfied. I'm forgiving. I'm confident. I'm kind. I'm considerate. I'm likeable. I'm friendly. I'm loving. I'm loveable. I'm joyful. I'm playful. I'm full of energy. I'm fun to be around. I'm a good friend. I'm eternal. I'm powerful. I'm a being of light. I'm a spirit wearing a body.</p>
+</div>
+<div class="jumpid" id="in_case_you_did_not_know">&nbsp;</div>
+<p class="littlebluetitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#in_case_you_did_not_know">In Case You Didn't Know</a></p>
+<div class="yellowbox">
+<div class="jumpid" id="icydnk_litterbugs">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#icydnk_litterbugs">Litterbugs = Bad</a></p>
+<p><a class="offsite" href="https://www.randomterrain.com/favorite-quotes-littering.html">Never litter</a>. Toss your trash in a bin or take it home with you instead of throwing it on the ground. Never throw anything out of a vehicle window, including fast-food packaging, drink cups, water bottles, cigarette butts, or any other trash.</p>
+<p>&nbsp;</p>
+<p>It is illegal and completely unacceptable to dump large items like furniture, appliances, mattresses, tires, or construction debris by the side of the road, in forests, ditches, or on any public or private land. Please take all bulk waste to an authorized landfill or your local residential transfer station or recycling center. This strict rule applies to everyone, whether you are a lifelong resident or a newcomer adjusting to local waste management systems.</p>
+<p>&nbsp;</p>
+<p>Remember that responsible people clean up after themselves at home, in public, at campsites, and everywhere else. <a class="offsite" href="https://www.google.com/search?&amp;q=Leave+it+better+than+you+found+it">Leave it better than you found it</a>. In fact, keeping an area clean actually stops a chain reaction of bad behavior before it starts. Research shows that people are much less likely to litter in a region that seems to be spotless. By taking care of your surroundings today, you are silently reminding the next person to do the same.</p>
+<p>&nbsp;</p>
+<p>You might think that if you didn't drop the trash, it isn't your job to clean it up, but ignoring the problem can come back to haunt the whole neighborhood. If you have time for a daily walk or jog, you can easily catch blowing trash early through an eco-friendly fitness trend called <a class="offsite" href="https://www.google.com/search?&amp;q=Leave+it+better+than+you+found+it">plogging</a>, where people pick up litter while walking or jogging. All you need is a trash bag, <a class="offsite" href="https://amzn.to/2qzyS2f">Grabbers (#ad)</a>, and <a class="offsite" href="https://amzn.to/2O8xkoZ">nitrile gloves (#ad)</a> or <a class="offsite" href="https://amzn.to/2CXKdfb">work gloves (#ad)</a>. Catching that trash early keeps it from mixing with organic debris and clogging up the storm drains. However, if the drains in your area are already clogged with heavy layers of mud, twigs, leaves, and trash, that requires a dedicated, separate task. If you feel you are qualified, put on thick work gloves, grab a shovel, your trusty grabbers, and a trash bag (since you will probably find trash) and carefully get to work. Stay hyper-aware of traffic and step out of the street whenever a car approaches. Taking care of your surroundings directly protects your own home and your neighbors from unnecessary flood damage.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_b_vitamins">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#icydnk_b_vitamins">B Vitamins = Good</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22vitamin+B%22+mental+health">Vitamin B deficiencies</a> can produce symptoms that look like mental illness, including mood swings, irritability, irrational behavior, and even psychosis-like states in some people. Once the deficiency is corrected, the symptoms frequently clear up. Years ago, I heard from someone online whose wife had severe mood swings and explosive behavior that improved dramatically after she started taking a B-complex.</p>
+<p>&nbsp;</p>
+<p>It makes you wonder how many people struggling with severe psychiatric conditions, including schizophrenia, might find some relief just by addressing an underlying nutrient deficiency. Of course, a B-complex isn't a cure-all and shouldn't replace a doctor's care, but checking blood levels for B12 or folate seems like such a simple, logical place to start.</p>
+<p>&nbsp;</p>
+<p>I've taken <a class="offsite" href="https://amzn.to/2QLBO6z">Jarrow B-Right (#ad)</a> for many years. It reliably lifts my mood and virtually eliminates the arm pain I used to get from using a computer mouse (which had been bordering on carpal tunnel syndrome). I take it five days a week and skip two days to limit long-term B6 exposure.  (This is personal experience, not medical advice.)</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_negative_ions">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#icydnk_negative_ions">Negative Ions = Good</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22negative+ions+are+good%22">Negative ions</a> are highly beneficial for our health and well-being. When choosing an air purifier, you generally want to avoid ozone generators, which can irritate your lungs. Some air cleaners give off ozone by mistake, so you have to be careful when choosing one. While a basic air cleaner is better than nothing, a high-quality unit that specifically produces negative ions actually refreshes the room on a molecular level. The one I have makes the air in my bedroom feel noticeably fresher, easier to breathe, and consistently helps to brighten my mood.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_soybeans">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#icydnk_soybeans">Soy = Bad</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22Why+Soy+is+Bad%22&amp;num=100">Unfermented soy</a> is bad! “<a class="offsite" href="https://www.optimumchoices.com/Soy.htm">When she stopped eating soy, the mental problems went away</a>.” Fermented soy doesn't bother me, but the various versions of unfermented soy (soy flour, soybean oil, and so on) that are used in all kinds of products these days causes a negative mental health reaction in me that a vitamin B complex can't tame. The sinister encroachment of soy has made the careful reading of ingredients a necessity.</p>
+<p>&nbsp;</p>
+<p>I wouldn't be surprised to find out that unfermented soy is a driving factor behind a lot of the constant irritability, hair-trigger anger, and social hostility we see in modern culture. If I unknowingly eat something with unfermented soy in it, I become angry and aggressive, so it is absolutely not a placebo effect. Scientists in the future will likely confirm that widespread unfermented soy consumption alters human behavior. We already know that <a class="offsite" href="https://www.google.com/search?q=%22food+sensitivities+cause+mood+changes%22&amp;num=100">food sensitivities cause mood changes</a>. It took me over a decade to figure out that unfermented soy was hijacking my mood. What if millions of people are having a similar severe reaction to soy and don't even know it? Countless people eat it and drink it every single day.</p>
+<p>&nbsp;</p>
+<p>It's common for people who adopt heavy soy-based diets to experience intense mood swings and irrational emotional outbursts. What would happen if the most chronically angry people in our society stopped consuming soy sludge and started taking a B-complex? Would a significant number of them suddenly calm down and find emotional balance?</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_wheat">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#icydnk_wheat">Wheat = Bad</a></p>
+<p>If you are overweight, have type 2 diabetes, or are worried about the condition of your heart, check out the videos by <a class="offsite" href="https://www.youtube.com/c/KenDBerryMD/videos">Ken D Berry</a>, <a class="offsite" href="https://www.youtube.com/user/wheatbelly/videos">William Davis</a>, and <a class="offsite" href="https://www.youtube.com/channel/UCPn4FsiQP15nudug9FDhluA/videos">Ivor Cummins</a>. It seems that most people should avoid wheat, not just those who have a wheat allergy or celiac disease. Check out these books: <a class="offsite" href="https://amzn.to/2D2mw5c">Undoctored (#ad)</a>, <a class="offsite" href="https://amzn.to/2OubcnP">Wheat Belly (#ad)</a>, and <a class="offsite" href="https://amzn.to/2Xwhuau">Eat Rich, Live Long (#ad)</a>.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+
+<div class="jumpid" id="icydnk_climate_change">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html#icydnk_climate_change">Climate Change Cash Grab = Bad</a></p>
+<p>Seems like more people than ever finally care about water, land, and air pollution, but the climate change cash grab scam is designed to put more of your money into the bank accounts of greedy politicians. Those power-hungry schemers try to trick us with <a class="offsite" href="https://www.commentary.org/john-steele-gordon/climate-global-warming-data-locations/">bad data</a> and lies about <a class="offsite" href="https://www.pop.org/debunking-the-myth-of-overpopulation/">overpopulation</a> while pretending to be caring do-gooders. Trying to eliminate pollution is a good thing, but the carbon emissions of the average law-abiding human right now are actually making the planet greener instead of killing it.</p>
+<p>&nbsp;</p>
+<p>Eliminating farms and ranches, eating bugs, getting locked down in 15-minute cities, owning nothing, using digital currency with expiration dates that is tied to your social credit score, and paying higher taxes will not make things better and “save the Earth.” All that stuff is part of an <a class="offsite" href="https://twitter.com/Random_Terrain/status/1609836575755755521">agenda</a> that has nothing to do with making the world a better place for the average person. It's all about control, depopulation, and making things better for the <a class="offsite" href="https://www.bitchute.com/video/M6naRq5vtgyA/">ultra-rich</a>. They just want enough peasants left alive to keep things running smoothly.</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:14px;">Watch these two videos for more information:</p>
+<p class="moffsitefull"><a href="https://www.bitchute.com/video/uQ8WLJxu9Q4R/">CO2 is Greening The Earth</a></p>
+<p class="offsitefull"><a href="https://www.bitchute.com/video/IBJ2uiqUec5F/">The Climate Agenda</a></p>
+</div>
+</div>
+</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="https://www.randomterrain.com/index.html">Home</a> <a href="https://www.randomterrain.com/futuristic-inventions-cool-stuff.html">Inventions</a> <a href="https://www.randomterrain.com/favorite-quotes.html">Quotations</a> <a href="https://www.randomterrain.com/game-design.html">Game Design</a> <a href="https://www.randomterrain.com/atari-2600-memories.html">Atari Memories</a> <a href="https://www.randomterrain.com/personal.html">Personal Pages</a> <a href="https://www.randomterrain.com/about.html">About</a> <a href="https://www.randomterrain.com/sitemap.html">Site Map</a> <a href="https://www.randomterrain.com/contact.html">Contact</a> <a href="https://www.randomterrain.com/privacy.html">Privacy Policy</a> <a href="https://www.randomterrain.com/rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+
+
+</body></html>

@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<!-- saved from url=(0078)https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html -->
+<html lang="en"><!--<![endif]--><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<!-- Google tag (gtag.js) -->
+<script async="" src="./Guide to Cycle Counting on the Atari 2600_files/js"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Guide to Cycle Counting on the Atari 2600</title>
+
+<link href="./Guide to Cycle Counting on the Atari 2600_files/fluid.css" rel="stylesheet" type="text/css">
+<link href="./Guide to Cycle Counting on the Atari 2600_files/fluid(1).css" rel="stylesheet" type="text/css">
+<link href="./Guide to Cycle Counting on the Atari 2600_files/rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="./Guide to Cycle Counting on the Atari 2600_files/rt_stylesheet(1).css" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Guide to Cycle Counting on the Atari 2600">
+<meta name="twitter:title" content="Guide to Cycle Counting on the Atari 2600">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="By Nick Bensema.">
+<meta name="description" content="By Nick Bensema.">
+<meta name="twitter:description" content="By Nick Bensema.">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="./Guide to Cycle Counting on the Atari 2600_files/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="https://www.randomterrain.com/index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="https://www.randomterrain.com/futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="https://www.randomterrain.com/favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="https://www.randomterrain.com/game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="https://www.randomterrain.com/personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="https://www.randomterrain.com/index.html">Home</a> &gt; <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">#Assembly</a> &gt; <span style="font-weight:bold;">Guide to Cycle Counting on the Atari 2600</span></p>
+<h1 style="text-align:center;">Guide to Cycle Counting on the Atari 2600</h1>
+<h2 style="text-align:center;">By <a class="offsite" href="https://web.archive.org/web/20130206230733/http://www.prismnet.com/~nickb/atari/docs.html">Nick Bensema</a> <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></h2>
+
+
+<p class="amazoninfo" style="margin-top:18px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#concepts_of_counting">Concepts of Counting</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#cpu_cycles_screen_pixels">CPU Cycles and Screen Pixels</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#how_to_remember">How to Remember</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#branching_instructions">Branching Instructions</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#fast_math_instructions">Fast Math Instructions</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#storage_instructions">Storage Instructions</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#weenie_instructions">Weenie Instructions</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#slow_math_instructions">Slow Math Instructions</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#stack_instructions">Stack Instructions</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#other_instructions">Other Instructions</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#cycle_counting_in_practice">Cycle Counting In Practice</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#multiple_possibilities">Multiple Possibilities</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#indirect_y">How to Tame (Indirect),Y</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#dey-bne_loop">The DEY-BNE Loop</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#conclusion">Conclusion</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#useful_links">Useful Links</a></p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<p class="littlebluetitle">Original Document</p>
+<div class="yellowbox">
+<p>Original document available at:</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20070527231206/http://www.prismnet.com/~nickb/atari/docs.html">Nick Bensema's Atari 2600 Programming Page</a></p>
+</div>
+</div>
+<div id="fcontent728">
+<p>Cycle counting is an important aspect of Atari 2600 programming. It makes possible the positioning of sprites, the drawing of six-digit scores, non-mirrored playfield graphics and many other cool TIA tricks that keep every game from looking like Combat. In fact, even Combat makes use of some cycle counting to position the tanks and to draw the scores into the playfield, though its methods aren't quite as precise as your typical Activision game.</p>
+<p>&nbsp;</p>
+<p>Cycle counting's uses don't end at silly screen hacks. It is also useful for optimizing code to fit within a vertical blank, or a scanline, or a horizontal blank.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="concepts_of_counting">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#concepts_of_counting">Concepts of Counting</a></p>
+<p>Programming the Atari requires one to modify one's perceptions of space and time, because the Atari observes some sort of <a class="offsite" href="https://www.google.com/search?q=Alexander+Abian+Equivalence+of+Time+and+Mass">Abian</a> physics where space is time. One frame is 1/60 of a second. One scanline is 1/20000 of a second. You get the idea. It is important to know how much code can be executed in the amount of time it takes to draw the screen. The unit of time we use is cycles.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="cpu_cycles_screen_pixels">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#cpu_cycles_screen_pixels">CPU Cycles in Relation to Screen Pixels</a></p>
+<p>The CPU clock works at a somewhat slow pace compared to the TIA. The TIA draws three pixels in the time it takes to execute one CPU cycle. A WSYNC command will halt the processor until the horizontal blank, which lasts about 20 CPU cycles, after which the electron beam turns on and begins to draw the picture once again. Therefore the X position of the electron beam is determined like this:</p>
+<p>&nbsp;</p>
+<p style="font-size:18px; font-weight:bold;">X = (CYCLES - 20) * 3</p>
+<p>&nbsp;</p>
+<p>where CYCLES is the number of cycles that have elapsed since the horizontal blank. But the text I have states that registers are only read every five cycles, so the equation must be adjusted to account for that. For now, let's just assume that we round up to the next multiple of 15. The examples we use will involve RESP0, because I know the rule applies to that register.</p>
+<p>&nbsp;</p>
+<p>If X is a negative number, a RESP0 will put player 0 on the left edge of the screen.</p>
+<p>&nbsp;</p>
+<p>Let's look at a sample nonsense routine:</p>
+<pre class="bbborder">
+BEGIN: STA WSYNC    ;I begin counting here.
+       NOP          ; 0 +2 = [2]    (Weenie instruction)
+       LDA #0       ; 2 +3 = [5]    (Fast math, immediate)
+       STA $FFFF    ; 5 +4 = [9]    (Storage, absolute)
+       ROL $FFFE,X  ; 9 +7 = [16]   (Slow math, Absolute,X)
+       ROL A        ; 16+2 = [18]   (Slow math, accumulator)
+       STA RESP0    ; 18+3 = *21*   (Storage, zero page)
+       DEY          ; 21+2 = [23]   (Weenie)
+       BNE BEGIN    ; 23+3 = [26]   (Branch)
+
+</pre>
+<p>The number on the left is the number of cycles that have elapsed since WSYNC at the beginning of each instruction, it is only there to illustrate the addition of cycles. The number in brackets is the number of cycles that have elapsed at the end of each instruction. It is better to keep track of this number because writes to TIA registers occur on this cycle.</p>
+<p>&nbsp;</p>
+<p>Note the number 22 next to RESP0 is in asterisks, signifying a write to a TIA register. (22-20)*3 == 6, and since it is RESP0 we round up to 15 and that is where Player 0 goes.</p>
+<p>&nbsp;</p>
+<p>The cycle count is especially important to RESP0, but almost all writes to TIA registers are affected in some way by the cycle count. A player or missile modification too late in the scanline will cause the player to shift up one scanline as it moves away from the left side of the screen. Writes to the playfield must be timed to occur in the center of the screen if one wishes to produce an asymmetrical playfield. The number between these asterisks is very important to the program, and you may find yourself spending hours getting that number to be just what you need it to be for your particular application.</p>
+<p>&nbsp;</p>
+<p>I usually put relevant comment outside the counting column, but this isn't relevant code so I decided to illustrate the mnemonic device I used to determine the cycles for each instruction.</p>
+</div>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="how_to_remember">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#how_to_remember">How to Remember What Takes How Long</a></p>
+<p>One cannot be expected to look at a table for every instruction they use, lest they go mad. Many instructions, however, have similar characteristics, and so general rules can be followed in order to estimate the time of each instruction.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="branching_instructions">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#branching_instructions">Branching Instructions</a></p>
+<p>Branching instructions like BNE and BCC are easier than they seem. All branch instructions take two cycles, plus one extra cycle if the branch is taken, plus another extra cycle if said branch crosses the page boundary.</p>
+<p>&nbsp;</p>
+<p>When writing time-sensitive code, I recommend that branch instructions only be used at or near the end of a loop that begins in STA WSYNC, or in tight loops that are designed to waste a certain number of cycles. DEY-BNE loops, which are a common way of accomplishing this, will be covered later.</p>
+<p>&nbsp;</p>
+<p>Let's just say for now that the decision of whether to branch should be generally constant throughout at least the time-sensitive portions of your routine.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="fast_math_instructions">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#fast_math_instructions">Fast Math Instructions</a></p>
+<p>The 6502 has a family of "fast math" opcodes that have similar characteristics, and consequently they have the same cycle counts. These fast math opcodes do little more than alter registers or flags using bits from memory. This family consists of ADC, AND, BIT, CMP, CPX, CPY, EOR, LDA, LDX, LDY, ORA, and SBC. Not all of these instructions have all of the following address modes, but these rules apply to whichever modes are available. I will use ADC as an example:</p>
+<pre class="bbborder">
+        ADC #$01        ; +2    Immediate
+        ADC $99         ; +3    Zero Page
+        ADC $99,X       ; +4    Zero Page,X  (or ,Y)
+        ADC $1234       ; +4    Absolute
+        ADC $1234,X     ; +4*   Absolute,X  (or ,Y)
+        ADC ($AA,X)     ; +6    (Indirect,X)
+        ADC ($CC),Y     ; +5*   (Indirect),Y
+
+</pre>
+
+<p>The asterisk (*) signifies that if the instruction indexes across a page boundary, add one cycle. In some cases, just one cycle might not matter.</p>
+<p>&nbsp;</p>
+<p>Also note that Zero Page, Y addressing is only available for LDX and STX.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="storage_instructions">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#storage_instructions">Storage Instructions</a></p>
+<p>The instructions STA, STX, and STY have the same timing as fast math instructions, but in the case of Absolute, XY and (Indirect),Y addressing, the extra cycle is always added.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="weenie_instructions">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#weenie_instructions">Weenie Instructions</a></p>
+<p>These weenie instructions don't even alter memory, only registers and flags. They are CLC, CLD, CLI, CLV, DEX, DEY, INX, INY, NOP, SEC, SED, SEI, TAX, TAY, TSX, TXA, TXS, and TYA. They take two cycles.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="slow_math_instructions">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#slow_math_instructions">Slow Math Instructions</a></p>
+<p>There are certain instructions that take more clock cycles than simple math instructions. Some of these instructions can work with the accumulator, but when given an address to work with, they modify memory directly. The slow math instructions are ASL, DEC, INC, LSR, ROL, and ROR.</p>
+
+<pre class="bbborder">
+        ROR A           ; +2  Accumulator
+        ROR $99         ; +5  Zero Page
+        ROR $99,X       ; +6  Zero Page,X
+        ROR $1234       ; +6  Absolute
+        ROR $1234,X     ; +7  Absolute,X
+
+</pre>
+
+<p>Note that when these instructions work with the accumulator, they shrink down to two cycles and become Weenie Instructions.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="stack_instructions">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#stack_instructions">Stack Instructions</a></p>
+<p>The two push instructions, PHA and PHP, each take three cycles. The two pull instructions, PLA and PLP, each take four cycles.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="other_instructions">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#other_instructions">Other Instructions<br><span style="font-size:15px;">(A.K.A. Instructions You Have No Business Using In Time-sensitive Code)</span></a></p>
+<p>JSR takes 6 cycles. JMP takes 3 cycles in absolute mode, and 5 cycles in absolute indirect mode, but absolute indirect mode is for machines that have a kernel. RTI and RTS take 6 cycles each. But with only a few dozen instructions available per scanline, you don't have time to bounce all over the cartridge executing subroutines.</p>
+</div>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="cycle_counting_in_practice">&nbsp;</div>
+<p class="bbmain" style="margin-bottom:16px;"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#cycle_counting_in_practice">Cycle Counting In Practice</a></p>
+<div class="bbpageindent">
+<div class="jumpid" id="multiple_possibilities">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#multiple_possibilities">Multiple Possibilities</a></p>
+<p>This is how I would handle wishy-washy code that uses a branch:</p>
+<pre class="bbborder">
+BEGIN   STA WSYNC       ;CYCLES...
+        NOP             ; [0]   +2
+        BIT $CC         ; [2]   +3
+        BMI STUPID      ; [5]   +2 if not taken...
+        NOP             ; [7]   +2   Pretend everything's
+        NOP             ; [9]   +2   just smurfy, until...
+        NOP             ; [11]  +2
+	NOP             ; [13]
+	NOP             ; [15]
+	NOP		; [17]
+        NOP             ; [19]  +2  IF BRANCHED
+STUPID  LDA $F0         ; [21]  +3   [8]  (BMI takes +3 now)
+        STA GRP0        ; *24*  +3   *11*
+        LDA $F1         ; [27]  +3   [14]
+        STA ENAM0       ; *30*  +3   *17*
+        STA RESP0       ; *33*  +3   *20*
+        STA WSYNC
+
+</pre>
+<p>I have to count both possibilities, side by side. Perhaps there is a shorter way to do this, but this way if I have to keep track of a long list, I won't have to page up in the code to figure out what the difference is.</p>
+<p>&nbsp;</p>
+<p>If you can guess what this code does, congratulations. If you can't, I'll tell you. This code checks bit 8 of location $CC. If it is set, it goes immediately to set player 0's registers, setting its position at cycle 20. If it is clear, then the branch isn't taken so that saves us one cycle, but fourteen more cycles are taken by NOPs, making a net gain of 13 cycles. Now it takes 33 cycles to reset player 0.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="indirect_y">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#indirect_y">How to Tame the Mighty (Indirect),Y</a></p>
+<p>Recall that if an (Indirect),Y instruction indexes across a page boundary, the CPU takes an extra cycle. This means that depending on the value of Y, the instruction might take four or five cycles.</p>
+<p>&nbsp;</p>
+<p>In six-column or other high resolution display routines, as many as six (Indirect),Y instructions appear in one scanline. This adds up to six extra cycles that may or may not be taken. This could throw off your timing unless your data is properly arranged.</p>
+<p>&nbsp;</p>
+<p>Make sure when putting graphics into your program, to arrange the data so that they either NEVER cross page boundaries, or ALWAYS cross page boundaries. As long as you can predict when that extra cycle is going to pop up, you'll be OK. You might need to play around with the assembler and the source code to make sure all the bytes in each graphics table are in the same page of memory.</p>
+<p>&nbsp;</p>
+<p>In contrast, one could conceivably use either (Indirect),Y or Absolute, XY addressing as part of some sick, twisted timing loop with single-cycle precision, but most TIA applications only have a need for three-cycle precision.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="dey-bne_loop">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#dey-bne_loop">The DEY-BNE Loop and Its Applications</a></p>
+<p>The DEY-BNE loop is a useful delay loop. How useful, I won't know until I see it applied where Y equals a variable. I did see it applied to a constant in this code from Defender:</p>
+<pre class="bbborder">
+       STA    WSYNC   ;               Cycle count:
+       STA    PF2     ;Clear PF2       [0]  +3
+       LDA    $EA     ;                [3]  +3
+       STA    COLUP0  ;                [6]  +3
+       STA    COLUP1  ;                [9]  +3
+       LDY    #$08    ;                [12] +2  Y is set here
+       STA    RESP0   ;                *14* +3
+LF867: DEY            ;When 8 (17), when 0 (52)  }
+       BNE    LF867   ;At end of loop, (54)      } +39
+       STA    RESP1   ;                *56* +3
+        ; End result: players are 42 CPU cycles apart.
+
+</pre>
+<p>RESP0 occurs at 14 cycles, which is still within the horizontal blank, so player 0 appears at the left side of the screen. RESP1 occurs at 56 cycles, and (56-20)*3 = 108 pixels. Stella. txt says I'm supposed to round that up to a multiple of 15, so that's.... 120. If player 1 is in triple repeat mode, that would put it on the right edge of the screen. And since this is the routine that sets the TIA up to display the number of remaining lives and smart bombs in Defender, that's a distinct possibility.</p>
+<p>&nbsp;</p>
+<p>You can see how I came to the above conclusion if we unroll the loop:</p>
+<pre class="bbborder">
+LF867: DEY           ; Y becomes 7          +2 }
+       BNE    LF867  ; Branch is taken.     +3 } 5
+LF867: DEY           ; Y becomes 6          +2
+       BNE    LF867  ; Branch is taken.     +3 } 5
+LF867: DEY           ; Y becomes 5          +2
+       BNE    LF867  ; Branch is taken.     +3 } 5
+LF867: DEY           ; Y becomes 4          +2
+       BNE    LF867  ; Branch is taken.     +3 } 5
+LF867: DEY           ; Y becomes 3          +2
+       BNE    LF867  ; Branch is taken.     +3 } 5
+LF867: DEY           ; Y becomes 2          +2
+       BNE    LF867  ; Branch is taken.     +3 } 5
+LF867: DEY           ; Y becomes 1          +2
+       BNE    LF867  ; Branch is taken.     +3 } 5
+LF867: DEY           ; Y becomes 0          +2
+       BNE    LF867  ; Branch is NOT taken. +2 } 4
+
+</pre>
+<p>Each time through the loop where Y0, DEY takes two cycles and BNE takes three cycles (due to the branch). The last time through the loop, when Y=0, the branch is not taken so the BNE only takes two cycles.</p>
+<p>&nbsp;</p>
+<p>From this, we can build a model for the DEY-BNE loop:</p>
+<pre class="bbborder">
+       LDY #NUM ; +2
+        ; extra code possible here
+DEYBNE DEY        ; }
+       BNE DEYBNE ; } + NUM*5-1
+
+</pre>
+<p>Note that each iteration takes 5 CPU cycles, or 15 pixels. This is as close as it gets to perfect for our needs, since the TIA will only let you set up a player with RESP0 on a multiple of 15.</p>
+<p>&nbsp;</p>
+<p>The X register can also be used to this end, but hey, it needs a name, doesn't it?</p>
+</div>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="conclusion">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#conclusion">Conclusion</a></p>
+<p>Keep your code clean and tight. Make sure your display kernel routines use the same number of scanlines no matter what happens.</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<p>&nbsp;</p>
+
+<div id="footer-asm-links-placeholder"><div class="jumpid" id="useful_links">&nbsp;</div>
+<p class="sectiontitle03"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#useful_links">Useful Links</a></p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Easy+6502+by+skilldrick">Easy 6502 by Nick Morgan</a></p>
+<p>How to get started writing 6502 assembly language. Includes a JavaScript 6502 assembler and simulator.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Atari+Roots+atariarchives.org">Atari Roots by Mark Andrews (Online Book)</a></p>
+<p>This book was written in English, not computerese. It's written for Atari users, not for professional programmers (though they might find it useful).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+atariarchives.org">Machine Language For Beginners by Richard Mansfield (Online Book)</a></p>
+<p style="margin-bottom:16px;">This book only assumes a working knowledge of BASIC. It was designed to speak directly to the amateur programmer, the part-time computerist. It should help you make the transition from BASIC to machine language with relative ease.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+Chapter+6+atariarchives.org">The Six Instruction Groups</a></p>
+<p style="margin-bottom:16px;">The 6502 Instruction Set broken down into 6 groups.</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+%22Appendix+A%22+ADC+atariarchives.org">6502 Instruction Set</a></p>
+<p>Nice, simple instruction set in little boxes (not made out of ticky-tacky).</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=The+Second+Book+Of+Machine+Language+atariarchives.org">The Second Book Of Machine Language by Richard Mansfield (Online Book)</a></p>
+<p style="margin-bottom:16px;">This book shows how to put together a large machine language program. All of the fundamentals were covered in <a class="offsite" href="https://www.google.com/search?q=Machine+Language+For+Beginners+atariarchives.org">Machine Language for Beginners</a>. What remains is to put the rules to use by constructing a working program, to take the theory into the field and show how machine language is done.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=The+Second+Book+Of+Machine+Language+%22Chapter+10%22+%226502+Instruction+Set%22+atariarchives.org">6502 Instruction Set</a></p>
+<p>An easy-to-read page from <b>The Second Book Of Machine Language</b>.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=alp%2Fappendix_1+Appendix+One+atariarchives.org">6502 Instruction Set with Examples</a></p>
+<p>A useful page from <a class="offsite" href="https://www.google.com/search?q=Assembly+Language+Programming+for+the+Atari+Computers+atariarchives.org">Assembly Language Programming for the Atari Computers</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=6502.org">6502.org</a></p>
+<p style="margin-bottom:16px;">Continually strives to remain the largest and most complete source for 6502-related information in the world.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=NMOS+6502+Opcodes+6502.org">NMOS 6502 Opcodes</a></p>
+<p>By John Pickens. Updated by Bruce Clark.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150630043454/http://www.obelisk.demon.co.uk/6502/index.html">Guide to 6502 Assembly Language Programming by Andrew Jacobs</a></p>
+<p style="margin-bottom:16px;">Below are direct links to the most important pages.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://web.archive.org/web/20150525012005/http://www.obelisk.demon.co.uk/6502/registers.html">Registers</a></p>
+<p style="margin-bottom:16px;">Goes over each of the internal registers and their use.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150516053257/http://www.obelisk.demon.co.uk/6502/instructions.html">Instruction Set</a></p>
+<p style="margin-bottom:16px;">Gives a summary of whole instruction set.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150514221544/http://www.obelisk.demon.co.uk/6502/addressing.html">Addressing Modes</a></p>
+<p style="margin-bottom:16px;">Describes each of the 6502 memory addressing modes.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150630114921/http://www.obelisk.demon.co.uk/6502/reference.html">Instruction Reference</a></p>
+<p>Describes the complete instruction set in detail.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Stella+Programmer%27s+Guide+HTML">Stella Programmer's Guide</a></p>
+<p>HTMLified version.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html">Nick Bensema's Guide to Cycle Counting on the Atari 2600</a></p>
+<p>Cycle counting is an important aspect of Atari 2600 programming. It makes possible the positioning of sprites, the drawing of six-digit scores, non-mirrored playfield graphics and many other cool TIA tricks that keep every game from looking like Combat.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-how-to-draw-a-playfield.html">How to Draw A Playfield by Nick Bensema</a></p>
+<p>Atari 2600 programming is different from any other kind of programming in many ways. Just one of these ways is the flow of the program.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Cart+Sizes+and+Bankswitching+Methods+by+Kevin+Horton">Cart Sizes and Bankswitching Methods by Kevin Horton</a></p>
+<p>The "bankswitching bible." Also check out the <a class="offsite" href="https://atariage.com/2600/archives/funfacts.html?SystemID=2600">Atari 2600 Fun Facts and Information Guide</a> and <a class="offsite" href="https://atariage.com/forums/topic/83915-bank-switching-best-practices/?do=findComment&amp;comment=1022361">this post about bankswitching by SeaGtGruff at AtariAge</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=%22Atari+2600+Specifications%22">Atari 2600 Specifications</a></p>
+<p>Atari 2600 programming specs (HTML version).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://atariage.com/2600/programming/index.html">Atari 2600 Programming Page (AtariAge)</a></p>
+<p>Links to useful information, tools, source code, and documentation.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=%22MiniDig%22+%22Best+of+Stella%22">MiniDig</a></p>
+<p>Atari 2600 programming site based on Garon's "The Dig," which is now dead.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tia-color-charts.html">TIA Color Charts and Tools</a></p>
+<p>Includes interactive color charts, an NTSC/PAL color conversion tool, and Atari 2600 color compatibility tools that can help you quickly find colors that go great together.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-music-and-sound.html">The Atari 2600 Music and Sound Page</a></p>
+<p>Adapted information and charts related to Atari 2600 music and sound.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-standards-and-procedures.html">Game Standards and Procedures</a></p>
+<p>A guide and a check list for finished carts.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Stella+multi-platform+Atari+2600+VCS+emulator">Stella</a></p>
+<p>A multi-platform Atari 2600 VCS emulator. It has a built-in debugger to help you with your works in progress or you can use it to study classic games. Stella finally got Atari 2600 quality sound in December of 2018. Until version 6.0, the game sounds in Stella were mostly OK, but not great. Now it's almost impossible to tell the difference between the sound effects in Stella and a real Atari 2600.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=JAVATARI">JAVATARI</a></p>
+<p>A very good emulator that can also be embedded on your own web site so people can play the games you make online. It's much better than JStella.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html">batari Basic Commands</a></p>
+<p>If assembly language seems a little too hard, don't worry. You can always try to make Atari 2600 games the faster, easier way with batari Basic.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fsidebar">
+
+<p class="bblittlegreentitle">Atari 2600 BASIC</p>
+<div class="yellowbox">
+<p>If assembly language is too hard for you, try <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html">batari Basic</a>. It's a BASIC-like language for creating Atari 2600 games. It's the faster, easier way to make Atari 2600 games.</p>
+
+<div style="width:208px; height:66px; margin-top:12px; margin-left:33px;">
+<a href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html" style="border-style: none; display: block; background-color: transparent;"><img src="./Guide to Cycle Counting on the Atari 2600_files/topbar988-batari.png" alt="Try batari Basic" height="66" width="208" style="border:0;"></a>
+</div>
+</div>
+
+<a href="https://www.amazon.com/s?k=the+courage+to+face+covid-19+dr.+peter+mccullough&amp;linkCode=ll2&amp;tag=randterr-20&amp;linkId=aefe76cee204d05379778517d5fe4798&amp;language=en_US&amp;ref_=as_li_ss_tl1" target="_blank"><img src="./Guide to Cycle Counting on the Atari 2600_files/z_amz_book_courage.png" style="border:none;" alt="THE COURAGE TO FACE COVID-19"></a>
+<a href="https://www.amazon.com/s?k=2000+Mules+DVD+D%27Souza&amp;linkCode=ll2&amp;tag=randterr-20&amp;linkId=4782ca11902ddf1777431a6bd7533f15&amp;language=en_US&amp;ref_=as_li_ss_tl" target="_blank"><img src="./Guide to Cycle Counting on the Atari 2600_files/z_amz_book_2000.png" style="border:none;" alt="2000 Mules DVD"></a>
+<a href="https://www.amazon.com/s?k=the+great+awakening+alex+jones&amp;linkCode=ll2&amp;tag=randterr-20&amp;linkId=e73261c0ed66bfff3ef2a3bdaa73123d&amp;language=en_US&amp;ref_=as_li_ss_tl" target="_blank"><img src="./Guide to Cycle Counting on the Atari 2600_files/z_amz_book_great_awake.png" style="border:none;" alt="The Great Awakening"></a>
+
+</div>
+
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder"><div data-nosnippet="">
+<div class="jumpid" id="affirmations">&nbsp;</div>
+<p class="littlegreentitle"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#affirmations">Affirmations</a></p>
+<div class="yellowbox">
+<p>I'm a money magnet. Good things happen to me. I get things done. I'm happy. I'm healthy. I'm smart. I'm creative. I'm a nice person. I'm successful. I'm good with money. I'm honest. I'm trustworthy. I'm responsible. I'm wise. I'm easygoing. I'm clear-minded. I'm sober. I'm calm. I'm thankful. I'm satisfied. I'm forgiving. I'm confident. I'm kind. I'm considerate. I'm likeable. I'm friendly. I'm loving. I'm loveable. I'm joyful. I'm playful. I'm full of energy. I'm fun to be around. I'm a good friend. I'm eternal. I'm powerful. I'm a being of light. I'm a spirit wearing a body.</p>
+</div>
+<div class="jumpid" id="in_case_you_did_not_know">&nbsp;</div>
+<p class="littlebluetitle"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#in_case_you_did_not_know">In Case You Didn't Know</a></p>
+<div class="yellowbox">
+<div class="jumpid" id="icydnk_litterbugs">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#icydnk_litterbugs">Litterbugs = Bad</a></p>
+<p><a class="offsite" href="https://www.randomterrain.com/favorite-quotes-littering.html">Never litter</a>. Toss your trash in a bin or take it home with you instead of throwing it on the ground. Never throw anything out of a vehicle window, including fast-food packaging, drink cups, water bottles, cigarette butts, or any other trash.</p>
+<p>&nbsp;</p>
+<p>It is illegal and completely unacceptable to dump large items like furniture, appliances, mattresses, tires, or construction debris by the side of the road, in forests, ditches, or on any public or private land. Please take all bulk waste to an authorized landfill or your local residential transfer station or recycling center. This strict rule applies to everyone, whether you are a lifelong resident or a newcomer adjusting to local waste management systems.</p>
+<p>&nbsp;</p>
+<p>Remember that responsible people clean up after themselves at home, in public, at campsites, and everywhere else. <a class="offsite" href="https://www.google.com/search?&amp;q=Leave+it+better+than+you+found+it">Leave it better than you found it</a>. In fact, keeping an area clean actually stops a chain reaction of bad behavior before it starts. Research shows that people are much less likely to litter in a region that seems to be spotless. By taking care of your surroundings today, you are silently reminding the next person to do the same.</p>
+<p>&nbsp;</p>
+<p>You might think that if you didn't drop the trash, it isn't your job to clean it up, but ignoring the problem can come back to haunt the whole neighborhood. If you have time for a daily walk or jog, you can easily catch blowing trash early through an eco-friendly fitness trend called <a class="offsite" href="https://www.google.com/search?&amp;q=Leave+it+better+than+you+found+it">plogging</a>, where people pick up litter while walking or jogging. All you need is a trash bag, <a class="offsite" href="https://amzn.to/2qzyS2f">Grabbers (#ad)</a>, and <a class="offsite" href="https://amzn.to/2O8xkoZ">nitrile gloves (#ad)</a> or <a class="offsite" href="https://amzn.to/2CXKdfb">work gloves (#ad)</a>. Catching that trash early keeps it from mixing with organic debris and clogging up the storm drains. However, if the drains in your area are already clogged with heavy layers of mud, twigs, leaves, and trash, that requires a dedicated, separate task. If you feel you are qualified, put on thick work gloves, grab a shovel, your trusty grabbers, and a trash bag (since you will probably find trash) and carefully get to work. Stay hyper-aware of traffic and step out of the street whenever a car approaches. Taking care of your surroundings directly protects your own home and your neighbors from unnecessary flood damage.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_b_vitamins">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#icydnk_b_vitamins">B Vitamins = Good</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22vitamin+B%22+mental+health">Vitamin B deficiencies</a> can produce symptoms that look like mental illness, including mood swings, irritability, irrational behavior, and even psychosis-like states in some people. Once the deficiency is corrected, the symptoms frequently clear up. Years ago, I heard from someone online whose wife had severe mood swings and explosive behavior that improved dramatically after she started taking a B-complex.</p>
+<p>&nbsp;</p>
+<p>It makes you wonder how many people struggling with severe psychiatric conditions, including schizophrenia, might find some relief just by addressing an underlying nutrient deficiency. Of course, a B-complex isn't a cure-all and shouldn't replace a doctor's care, but checking blood levels for B12 or folate seems like such a simple, logical place to start.</p>
+<p>&nbsp;</p>
+<p>I've taken <a class="offsite" href="https://amzn.to/2QLBO6z">Jarrow B-Right (#ad)</a> for many years. It reliably lifts my mood and virtually eliminates the arm pain I used to get from using a computer mouse (which had been bordering on carpal tunnel syndrome). I take it five days a week and skip two days to limit long-term B6 exposure.  (This is personal experience, not medical advice.)</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_negative_ions">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#icydnk_negative_ions">Negative Ions = Good</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22negative+ions+are+good%22">Negative ions</a> are highly beneficial for our health and well-being. When choosing an air purifier, you generally want to avoid ozone generators, which can irritate your lungs. Some air cleaners give off ozone by mistake, so you have to be careful when choosing one. While a basic air cleaner is better than nothing, a high-quality unit that specifically produces negative ions actually refreshes the room on a molecular level. The one I have makes the air in my bedroom feel noticeably fresher, easier to breathe, and consistently helps to brighten my mood.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_soybeans">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#icydnk_soybeans">Soy = Bad</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22Why+Soy+is+Bad%22&amp;num=100">Unfermented soy</a> is bad! “<a class="offsite" href="https://www.optimumchoices.com/Soy.htm">When she stopped eating soy, the mental problems went away</a>.” Fermented soy doesn't bother me, but the various versions of unfermented soy (soy flour, soybean oil, and so on) that are used in all kinds of products these days causes a negative mental health reaction in me that a vitamin B complex can't tame. The sinister encroachment of soy has made the careful reading of ingredients a necessity.</p>
+<p>&nbsp;</p>
+<p>I wouldn't be surprised to find out that unfermented soy is a driving factor behind a lot of the constant irritability, hair-trigger anger, and social hostility we see in modern culture. If I unknowingly eat something with unfermented soy in it, I become angry and aggressive, so it is absolutely not a placebo effect. Scientists in the future will likely confirm that widespread unfermented soy consumption alters human behavior. We already know that <a class="offsite" href="https://www.google.com/search?q=%22food+sensitivities+cause+mood+changes%22&amp;num=100">food sensitivities cause mood changes</a>. It took me over a decade to figure out that unfermented soy was hijacking my mood. What if millions of people are having a similar severe reaction to soy and don't even know it? Countless people eat it and drink it every single day.</p>
+<p>&nbsp;</p>
+<p>It's common for people who adopt heavy soy-based diets to experience intense mood swings and irrational emotional outbursts. What would happen if the most chronically angry people in our society stopped consuming soy sludge and started taking a B-complex? Would a significant number of them suddenly calm down and find emotional balance?</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_wheat">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#icydnk_wheat">Wheat = Bad</a></p>
+<p>If you are overweight, have type 2 diabetes, or are worried about the condition of your heart, check out the videos by <a class="offsite" href="https://www.youtube.com/c/KenDBerryMD/videos">Ken D Berry</a>, <a class="offsite" href="https://www.youtube.com/user/wheatbelly/videos">William Davis</a>, and <a class="offsite" href="https://www.youtube.com/channel/UCPn4FsiQP15nudug9FDhluA/videos">Ivor Cummins</a>. It seems that most people should avoid wheat, not just those who have a wheat allergy or celiac disease. Check out these books: <a class="offsite" href="https://amzn.to/2D2mw5c">Undoctored (#ad)</a>, <a class="offsite" href="https://amzn.to/2OubcnP">Wheat Belly (#ad)</a>, and <a class="offsite" href="https://amzn.to/2Xwhuau">Eat Rich, Live Long (#ad)</a>.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+
+<div class="jumpid" id="icydnk_climate_change">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html#icydnk_climate_change">Climate Change Cash Grab = Bad</a></p>
+<p>Seems like more people than ever finally care about water, land, and air pollution, but the climate change cash grab scam is designed to put more of your money into the bank accounts of greedy politicians. Those power-hungry schemers try to trick us with <a class="offsite" href="https://www.commentary.org/john-steele-gordon/climate-global-warming-data-locations/">bad data</a> and lies about <a class="offsite" href="https://www.pop.org/debunking-the-myth-of-overpopulation/">overpopulation</a> while pretending to be caring do-gooders. Trying to eliminate pollution is a good thing, but the carbon emissions of the average law-abiding human right now are actually making the planet greener instead of killing it.</p>
+<p>&nbsp;</p>
+<p>Eliminating farms and ranches, eating bugs, getting locked down in 15-minute cities, owning nothing, using digital currency with expiration dates that is tied to your social credit score, and paying higher taxes will not make things better and “save the Earth.” All that stuff is part of an <a class="offsite" href="https://twitter.com/Random_Terrain/status/1609836575755755521">agenda</a> that has nothing to do with making the world a better place for the average person. It's all about control, depopulation, and making things better for the <a class="offsite" href="https://www.bitchute.com/video/M6naRq5vtgyA/">ultra-rich</a>. They just want enough peasants left alive to keep things running smoothly.</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:14px;">Watch these two videos for more information:</p>
+<p class="moffsitefull"><a href="https://www.bitchute.com/video/uQ8WLJxu9Q4R/">CO2 is Greening The Earth</a></p>
+<p class="offsitefull"><a href="https://www.bitchute.com/video/IBJ2uiqUec5F/">The Climate Agenda</a></p>
+</div>
+</div>
+</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+<p>&nbsp;</p>
+
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="https://www.randomterrain.com/index.html">Home</a> <a href="https://www.randomterrain.com/futuristic-inventions-cool-stuff.html">Inventions</a> <a href="https://www.randomterrain.com/favorite-quotes.html">Quotations</a> <a href="https://www.randomterrain.com/game-design.html">Game Design</a> <a href="https://www.randomterrain.com/atari-2600-memories.html">Atari Memories</a> <a href="https://www.randomterrain.com/personal.html">Personal Pages</a> <a href="https://www.randomterrain.com/about.html">About</a> <a href="https://www.randomterrain.com/sitemap.html">Site Map</a> <a href="https://www.randomterrain.com/contact.html">Contact</a> <a href="https://www.randomterrain.com/privacy.html">Privacy Policy</a> <a href="https://www.randomterrain.com/rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+
+
+</body></html>
