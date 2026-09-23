@@ -20,6 +20,7 @@
 
 #include <QWidget>
 #include <QPointF>
+#include <QKeyEvent>
 #include "LevelData.hpp"
 
 namespace editor {
@@ -62,20 +63,27 @@ public:
 
     BrushTool GetCurrentBrush() const { return m_currentBrush; }
 
+    // Initial facing for newly placed enemies: +1 = right, -1 = left.
+    void SetInitialFacing(int dir) { m_initialFacing = (dir < 0) ? -1 : 1; }
+    int InitialFacing() const { return m_initialFacing; }
+
 signals:
     void levelModified();
     void mouseMovedToTile(int tileX, int tileY);
+    void facingChanged(int dir);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
+    void keyPressEvent(QKeyEvent* event) override;
 
 private:
     void ApplyBrushAt(int tileX, int entityX, int tileY);
     void MouseToTile(const QPointF& pos, bool apply);
     QColor GetTileColor(int tileType, int tileY) const;
     void UpdateSizeForRoom();
+    void DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int dir) const;
 
     hero::LevelData* m_levelData = nullptr;
     std::vector<hero::ModelData>* m_models = nullptr;
@@ -84,6 +92,7 @@ private:
     bool m_modelMode = true;
     BrushTool m_currentBrush = BrushTool::SOLID_WALL;
     int m_tileSize = 24;
+    int m_initialFacing = 1;
 };
 
 } // namespace editor

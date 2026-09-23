@@ -20,14 +20,13 @@
 
 #include <QMainWindow>
 #include <QComboBox>
-#include <QSpinBox>
-#include <QLineEdit>
 #include <QLabel>
 #include <QPushButton>
 #include <QListWidget>
 #include <QSettings>
 #include <QDir>
 #include <QAction>
+#include <QTabWidget>
 #include <vector>
 
 #include "MapCanvas.hpp"
@@ -70,6 +69,8 @@ private slots:
 
     void OnLevelModified();
     void OnMouseMovedToTile(int tileX, int tileY);
+    void OnFacingChanged(int dir);
+    void ToggleInitialFacing();
     void OnTabChanged(int index);
 
     void AddModel();
@@ -115,8 +116,6 @@ private:
     MapCanvas* m_canvas = nullptr;
 
     QComboBox* m_stageCombo = nullptr;
-    QSpinBox* m_levelIdSpin = nullptr;
-    QLineEdit* m_levelNameEdit = nullptr;
     QComboBox* m_roomCombo = nullptr;
     QPushButton* m_colorBtn = nullptr;
     QPushButton* m_colorBtn2 = nullptr;
@@ -137,6 +136,7 @@ private:
     // Level tab widgets
     QComboBox* m_modelAssignCombo = nullptr;
     QListWidget* m_levelToolList = nullptr;
+    QPushButton* m_facingBtn = nullptr;
 };
 
 } // namespace editor

@@ -152,11 +152,12 @@ DeadEnemyIdx    byte            ; index of killed enemy ($FF = none)
 ObjTop          byte            ; top scanline of active object (for GRP1 visibility)
 ObjBot          byte            ; bottom scanline of active object (ObjTop + PLAYER_HEIGHT)
 
-; Score ZP variables (shared with bank1 HUD — addresses MUST match)
-ScoreTh         = $F0           ; score thousands digit (0-9)
-ScoreHu         = $F1           ; score hundreds digit (0-9)
-ScoreTe         = $F2           ; score tens digit (0-9)
-ScoreOn         = $F3           ; score ones digit (0-9)
+; Score ZP variables (shared with bank1 HUD — addresses MUST match bank1)
+; $F3-$F6 only — bank0 does not use these at runtime (dead aliases).
+ScoreTh         = $F3           ; score thousands digit (0-9)
+ScoreHu         = $F4           ; score hundreds digit (0-9)
+ScoreTe         = $F5           ; score tens digit (0-9)
+ScoreOn         = $F6           ; score ones digit (0-9)
 PF0ScoreBuf     = $B3           ; 5 bytes: PF0 values for score rows 0-4
 PF1ScoreBuf     = $B8           ; 5 bytes: PF1 values for score rows 0-4
 PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
@@ -173,11 +174,22 @@ ColupfBuf       = $E7           ; 12 bytes: COLUPF stripe colors per row
 ; Player sprite ZP buffer (copied from ROM during VBLANK, read by kernel)
 PlayerGrp0      = $F8           ; 8 bytes: player sprite rows (computed per frame)
 
+; Enemy RAM shadow — live X/(packed flags). ROM records are read-only.
+; Sequential vars end at $BC; free ZP is $BD-$C2 (6) + $F7 (1).
+; Y is NOT shadowed: $F3-$F6 is bank1 score (ScoreTh..ScoreOn) — bank1
+; HUD writes score every game frame (fire button + digit pointers), so
+; those addresses are NOT free. SelectActiveObject/CheckEnemyHit read Y
+; from ROM (enemy Y is static until S5 spider).
+EnemyRamX       = $BD           ; 4 bytes: live X per enemy ($BD-$C0)
+EnemyRamD       = $C1           ; dir bits 0-3 = enemy 0-3 (1=right, 0=left)
+EnemyRamP       = $C2           ; bits0-3 moth phase; bits4-7 spider vdir (1=down)
+
 ; ==============================================================================
 ; Constants
 ; ==============================================================================
 PLAYER_HEIGHT   = 8             ; sprite height in scanlines
 PLAYER_WIDTH    = 4             ; sprite width in pixels
+ENEMY_WIDTH     = 4             ; snake GRP1 width ($f0 = 4 px) — flush-out span
 TILE_COLUMNS    = 20            ; columns per half (reflected playfield)
 TILE_ROWS       = 12            ; number of playable tile rows
 LINES_PER_TILE  = 12            ; scanlines per tile row
@@ -301,17 +313,20 @@ StartFrame:
     ldx #0                      ; X=0 = player0
     jsr SetObjectXPos
 
-    ; --- Apply horizontal motion during VBLANK ---
-    sta WSYNC                   ; sync to next scanline (still in VBLANK)
-    sta HMOVE                   ; latch fine motion — takes effect when VBLANK ends
-
     ; --- No sprite copy needed — kernel reads directly from ROM ---
+    ; Do NOT HMOVE here: wait until P1 is positioned too. An early HMOVE
+    ; applied stale bank1 HMP1 (score), and a second HMOVE after SelectActiveObject
+    ; applied HMP0 twice → player fine-adjust doubled (visual teleport/jitter).
 
     ; --- Refresh PF buffers (bank1 corrupts them during HUD band) ---
     jsr LoadPFBuffer
 
     ; --- Select which object GRP1 draws this frame (miner or enemy) ---
     jsr SelectActiveObject
+
+    ; --- Single HMOVE: apply P0 (player) + P1 (enemy) fine motion once ---
+    sta WSYNC
+    sta HMOVE
 
     ; --- Copy player sprite to ZP (AFTER JSR calls to avoid stack overwrite) ---
     lda PlayerDir
@@ -612,6 +627,9 @@ CheckP0Right:
 
 EndInputCheck:
 
+    ; --- Move live enemies (snake first; other types no-op until S5+) ---
+    jsr UpdateEnemies
+
     ; --- Check miner pickup (advances to next level) ---
     jsr CheckMinerPickup
 
@@ -776,7 +794,159 @@ EnterRoom subroutine
     lda #$FF
     sta DeadEnemyIdx            ; no dead enemies in new room
 
+    jsr LoadEnemyRam            ; copy ROM x/dir → live RAM shadow
     jsr LoadPFBuffer
+    rts
+
+; ------------------------------------------------------------------------------
+; LoadEnemyRam — copy each ROM enemy's x,dir into the RAM shadow.
+; ROM stride 6: type(+0), x(+1), y(+2), range_min(+3), range_max(+4), dir(+5).
+; Y is NOT shadowed (stays in ROM until S5) — $F3-$F6 is bank1 score.
+; dir ROM: +1 / $FF. Packed: EnemyRamD bit=1 right, 0 left.
+; EnemyRamP bits4-7 init to %1111 (all spiders start moving down).
+; ------------------------------------------------------------------------------
+LoadEnemyRam:
+    lda #0
+    sta EnemyRamD
+    lda #$F0                    ; spider vdir bits 4-7 = 1 (down) for slots 0-3
+    sta EnemyRamP
+    ldx #0
+LER_Loop:
+    cpx EnemyCount
+    bcs LER_Done
+    txa                         ; Y = X * 6 (= x2 + x4)
+    asl
+    sta Temp
+    asl
+    clc
+    adc Temp
+    tay
+    iny                         ; +1 = x
+    lda (EnemyDataLo),Y
+    sta EnemyRamX,X
+    iny                         ; +2 = y (ROM only — not shadowed)
+    iny                         ; +3 range_min
+    iny                         ; +4 range_max
+    iny                         ; +5 dir
+    lda (EnemyDataLo),Y
+    bmi LER_Left                ; $FF = face left
+    lda EnemyBitTable,X         ; face right → set bit
+    ora EnemyRamD
+    sta EnemyRamD
+    jmp LER_Next
+LER_Left:
+    lda EnemyBitTable,X         ; face left → clear bit
+    eor #$FF
+    and EnemyRamD
+    sta EnemyRamD
+LER_Next:
+    inx
+    jmp LER_Loop
+LER_Done:
+    rts
+
+EnemyBitTable:
+    .byte $01, $02, $04, $08
+
+; ------------------------------------------------------------------------------
+; UpdateEnemies — per-type live motion from RAM shadow (overscan).
+; Speed: 1 px / 2 frames (TickCounter parity gate).
+; Snake patrol: bounds relative to ROM spawn X ± ENEMY_WIDTH (4 = $f0 sprite),
+; side chosen by ROM dir (initial facing). Ignores editor range_* per user
+; 2026-09-23. First move = facing (live dir from LoadEnemyRam). No wall collision.
+; ------------------------------------------------------------------------------
+UpdateEnemies:
+    lda EnemyCount
+    bne UE_Gate
+    rts
+UE_Gate:
+    lda TickCounter         ; 1 px / 4 frames (half of previous 1/2)
+    and #3
+    bne UE_Exit
+    ldx #0
+UE_Loop:
+    cpx EnemyCount
+    bcs UE_Exit
+    cpx DeadEnemyIdx
+    beq UE_Next                  ; dead enemy does not move
+    ; ROM type at offset X*6
+    txa
+    asl
+    sta Temp
+    asl
+    clc
+    adc Temp
+    tay                          ; Y = X*6 = type offset
+    lda (EnemyDataLo),Y
+    cmp #ENEMY_SNAKE
+    bne UE_Next                  ; only snake moves
+    ; live dir bit: 1 = right, 0 = left
+    lda EnemyBitTable,X
+    and EnemyRamD
+    bne UE_SnakeRight
+UE_SnakeLeft:
+    dec EnemyRamX,X
+    iny                          ; +1 = ROM spawn X
+    lda (EnemyDataLo),Y
+    sta Temp
+    iny
+    iny
+    iny
+    iny                          ; +5 = ROM dir
+    lda (EnemyDataLo),Y
+    bmi UE_LeftInitL             ; initial face left → rmin = spawn - 8
+    lda Temp                     ; initial face right → rmin = spawn
+    jmp UE_LeftChk
+UE_LeftInitL:
+    sec
+    lda Temp
+    sbc #ENEMY_WIDTH
+UE_LeftChk:
+    sta Temp
+    lda EnemyRamX,X
+    cmp Temp
+    bcs UE_Next                  ; X >= rmin OK
+    lda Temp
+    sta EnemyRamX,X              ; clamp to exact bound
+    jsr UE_FlipDir               ; below min → turn right
+    jmp UE_Next
+UE_SnakeRight:
+    inc EnemyRamX,X
+    iny                          ; +1 = ROM spawn X
+    lda (EnemyDataLo),Y
+    sta Temp
+    iny
+    iny
+    iny
+    iny                          ; +5 = ROM dir
+    lda (EnemyDataLo),Y
+    bmi UE_RightInitL            ; initial face left → rmax = spawn
+    clc
+    lda Temp                     ; initial face right → rmax = spawn + 8
+    adc #ENEMY_WIDTH
+    jmp UE_RightChk
+UE_RightInitL:
+    lda Temp
+UE_RightChk:
+    sta Temp
+    lda EnemyRamX,X
+    cmp Temp
+    bcc UE_Next                  ; X < rmax OK
+    beq UE_Next                  ; X == rmax OK
+    lda Temp
+    sta EnemyRamX,X              ; clamp to exact bound
+    jsr UE_FlipDir               ; past max → turn left
+UE_Next:
+    inx
+    jmp UE_Loop
+UE_Exit:
+    rts
+
+; Flip dir bit for enemy X (right↔left).
+UE_FlipDir:
+    lda EnemyBitTable,X
+    eor EnemyRamD
+    sta EnemyRamD
     rts
 
 ; ==============================================================================
@@ -1061,9 +1231,11 @@ SelectActiveObject:
     lda EnemyIndex
     cmp DeadEnemyIdx
     beq .SOEnemySkip
-    ; Enemy data pointer was loaded by EnterRoom into EnemyDataLo/Hi
-    ; Enemy record: type(+0), x(+1), y(+2), range_min(+3), range_max(+4), dir(+5)
-    ; Offset into the record = EnemyIndex * ENEMY_DATA_STRIDE (6)
+    ; Live X from RAM; Y from ROM (stride +2) — not shadowed
+    ldx EnemyIndex
+    lda EnemyRamX,X
+    sta ActiveObjectX
+    ; Type/Y offset = EnemyIndex * 6
     lda EnemyIndex
     ; multiply by 6: x6 = x2 + x4
     sta Temp                    ; save index
@@ -1073,20 +1245,14 @@ SelectActiveObject:
     clc
     adc Temp+1                  ; *6
     tay                         ; Y = byte offset into enemy data
-    ; Read enemy record: type(+0), x(+1), y(+2), range_min(+3), range_max(+4), dir(+5)
     lda (EnemyDataLo),Y         ; type
-    pha                         ; save type
-    iny
-    lda (EnemyDataLo),Y         ; x
-    sta ActiveObjectX
-    iny
-    lda (EnemyDataLo),Y         ; y
-    sta ActiveObjectY
-    ; Set COLUP1 from EnemyColorTable[type]
-    pla
     tax
     lda EnemyColorTable,X
     sta COLUP1
+    iny
+    iny                         ; +2 = y
+    lda (EnemyDataLo),Y
+    sta ActiveObjectY
     ; Position GRP1
     lda ActiveObjectX            ; A = X position for SetObjectXPos
     ldx #1                      ; X=1 = player1
@@ -1152,21 +1318,21 @@ CEH_HasMore:
     ; Skip dead enemies
     cpy DeadEnemyIdx
     beq CEHNext
-    ; Compute byte offset = index * 6
-    tya
-    asl                         ; *2
-    sta Temp
-    asl                         ; *4
-    clc
-    adc Temp                    ; *6
-    tay                         ; Y = byte offset into enemy data
-    ; Read enemy x, y
-    iny                         ; +1 = x
-    lda (EnemyDataLo),Y
+    ; Live X from RAM; Y from ROM (stride +2) — Y not shadowed
+    lda EnemyRamX,Y
     sta ActiveObjectX
+    tya                         ; A = enemy index → offset = index*6
+    asl
+    sta Temp
+    asl
+    clc
+    adc Temp
+    tay                         ; Y = byte offset into enemy data
+    iny
     iny                         ; +2 = y
     lda (EnemyDataLo),Y
     sta ActiveObjectY
+    ldy EnemyIndex              ; restore loop index
     ; Check X overlap: |RoomX - ActiveObjectX| < PLAYER_WIDTH
     lda RoomX
     sec
@@ -1292,9 +1458,11 @@ PlayerSpriteLeft:
     include "generated/levels_data.asm"
 
 ; --- Level constants ---
-ENEMY_SPIDER = 0
-ENEMY_BAT    = 1
-ENEMY_SNAKE  = 2
+ENEMY_SPIDER   = 0
+ENEMY_BAT      = 1
+ENEMY_SNAKE    = 2
+ENEMY_TENTACLE = 3
+ENEMY_MOTH     = 4
 ENEMY_DATA_STRIDE = 6
 
 ; --- Level table + connections (generated) ---

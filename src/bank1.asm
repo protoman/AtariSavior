@@ -82,10 +82,12 @@ scbrdTmp    = $ED       ; mid-scanline temp cache
 DelayCnt    = $EE       ; bar delay A preloaded once per frame (bank1; ColupfBuf+7)
 FineCnt     = $EF       ; bar fine delay cycles 0/2/3/4 (H3; bank1 only)
 Temp        = $AD       ; scratch variable
-ScoreTh     = $BF       ; score thousands digit (must match bank0)
-ScoreHu     = $C0       ; score hundreds digit
-ScoreTe     = $C1       ; score tens+ones packed BCD
-ScoreOn     = $C2       ; score ones digit (unused by game, available)
+; Score digits live at $F3-$F6 — MUST match bank0 Score* EQUs.
+; Old home $BF-$C2 collided with EnemyRamX[2]/[3]/D/P during game HUD.
+ScoreTh     = $F3       ; score thousands digit (must match bank0)
+ScoreHu     = $F4       ; score hundreds digit
+ScoreTe     = $F5       ; score tens+ones packed BCD
+ScoreOn     = $F6       ; score ones digit (unused by game, available)
 
 INPT4       = $0C       ; fire button (active low, bit 7)
 

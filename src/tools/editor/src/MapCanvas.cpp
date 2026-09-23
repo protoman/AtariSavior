@@ -19,6 +19,8 @@
 #include "MapCanvas.hpp"
 #include <QPainter>
 #include <QMouseEvent>
+#include <QKeyEvent>
+#include <QPolygonF>
 #include <cmath>
 
 namespace editor {
@@ -52,6 +54,7 @@ static int CellHeightFor(int cellWidth, int displayCols, int roomHeight) {
 
 MapCanvas::MapCanvas(QWidget* parent) : QWidget(parent) {
     setMouseTracking(true);
+    setFocusPolicy(Qt::StrongFocus);  // F toggles initial facing
     // Default 20x12 stage until a room is loaded. The map area only: the grey
     // HUD band is drawn by the game kernel and is not shown/edited here.
     setFixedSize(DisplayColumnsFor(kDefaultRoomWidth) * m_tileSize,
@@ -272,8 +275,32 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             painter.setPen(Qt::black);
             painter.drawRoundedRect(enemyRect, 6, 6);
             painter.drawText(enemyRect, Qt::AlignCenter, label);
+            DrawFacingArrow(painter, enemyRect, enemy.dir);
         }
     } // end level-mode entity rendering
+}
+
+void MapCanvas::DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int dir) const {
+    // White triangle beside the marker: tip points the way the enemy faces.
+    const int cy = enemyRect.center().y();
+    const int halfH = enemyRect.height() / 3;
+    QPolygonF tri;
+    if (dir >= 0) {
+        const int tipX = enemyRect.right() + 9;
+        const int baseX = enemyRect.right() + 2;
+        tri << QPointF(tipX, cy)
+            << QPointF(baseX, cy - halfH)
+            << QPointF(baseX, cy + halfH);
+    } else {
+        const int tipX = enemyRect.left() - 9;
+        const int baseX = enemyRect.left() - 2;
+        tri << QPointF(tipX, cy)
+            << QPointF(baseX, cy - halfH)
+            << QPointF(baseX, cy + halfH);
+    }
+    painter.setBrush(QColor(255, 255, 255));
+    painter.setPen(QPen(QColor(20, 20, 20), 1));
+    painter.drawPolygon(tri);
 }
 
 void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
@@ -338,14 +365,16 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         eData.range_min = (float)std::max(0, entityX - 3);
         eData.range_max = (float)std::min(displayColumns - 1, entityX + 3);
         eData.speed = 1.5f;
-        eData.dir = 1;
+        eData.dir = m_initialFacing;
 
-        // Refuse to stack a second enemy on an occupied tile (same cell, full
-        // stage coordinates) - duplicate records make the shared GRP1 object
-        // flicker worse and are never intentional.
-        for (const auto& e : room->enemies) {
-            if ((int)std::floor(e.x) == entityX && (int)std::floor(e.y) == tileY)
+        // Occupied tile: flip existing enemy facing instead of stacking.
+        for (auto& e : room->enemies) {
+            if ((int)std::floor(e.x) == entityX && (int)std::floor(e.y) == tileY) {
+                e.dir = (e.dir >= 0) ? -1 : 1;
+                emit levelModified();
+                update();
                 return;
+            }
         }
 
         room->enemies.push_back(eData);
@@ -404,6 +433,17 @@ void MapCanvas::mousePressEvent(QMouseEvent* event) {
 
 void MapCanvas::mouseMoveEvent(QMouseEvent* event) {
     MouseToTile(event->position(), event->buttons() & Qt::LeftButton);
+}
+
+void MapCanvas::keyPressEvent(QKeyEvent* event) {
+    if (event->key() == Qt::Key_F) {
+        m_initialFacing = -m_initialFacing;
+        emit facingChanged(m_initialFacing);
+        update();
+        event->accept();
+        return;
+    }
+    QWidget::keyPressEvent(event);
 }
 
 void MapCanvas::MouseToTile(const QPointF& pos, bool apply) {
