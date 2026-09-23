@@ -110,7 +110,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; ====================================================================
     ; Line 1: Timer bar — PF body, mid-scanline COLUPF yellow→red
     ; PF0=$E0 margins (bit4 leftmost OFF), PF1/PF2=$FF. Each line: yellow,
-    ; delay(BarLevel), red. B=0 → all red; B>=11 → all yellow; B=1..10 → split.
+    ; delay(BarLevel), red. B=0 → all red; B>=12 → all yellow; B=1..11 → split.
     ; Clear PF on the gap line (after WSYNC) so line 3 is not truncated.
     ; ====================================================================
 
@@ -141,13 +141,11 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     lda BarLevel        ; 0-16
     tay
     beq .BarRed         ; B=0 → immediate red (all red)
-    cpy #11
-    bcs .NoRed          ; B>=11 → skip delay+red (all yellow; delay would overrun)
+    cpy #12
+    bcs .NoRed          ; B>=12 → skip delay+red (all yellow; delay would overrun)
 .BarDelay:
     dey                 ; 2c
     bne .BarDelay       ; 3c taken / 2c last → 5Y-1
-    lda #$2A            ; orange (hue 2, luma 5) — ball/PF boundary stripe
-    sta COLUPF          ; +5c; B=10 red@ = 5B+25 = 75 (fits 76)
 .BarRed:
     lda #$44            ; red (hue 4, luma 2)
     sta COLUPF
