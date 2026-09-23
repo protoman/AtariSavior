@@ -33,7 +33,8 @@ B=0 stays immediate red. Ball X recomputed from the same `red@` model.
 
 ## ZP / budget constraints
 
-- Tick high byte: **`$F3`** (`TickHi`) — free in `zp_layout_skill.md` ($F3–$F7).
+- Tick high byte: **`$F4`** (`TickHi`) — free in `zp_layout_skill.md` ($F3–$F7);
+  `$F3` is `ScoreOn` EQU in kernel.asm (do not use $F3).
 - HUD band still exactly **48** scanlines (no new WSYNC).
 - Fold-pads `$FC68` / `$FC70` byte-identical after every bank1 change.
 - New delay table: 17 bytes — place after `BallXTable` (post fold-pad data).
@@ -66,26 +67,28 @@ B=0 stays immediate red. Ball X recomputed from the same `red@` model.
 
 ### Step C — Delay table (red from first drain steps) + BallXTable
 
-- [ ] **C1.** Design 17-entry `BarDelayTable` (B=0..16), each D≤50,
+- [x] **C1.** Design 17-entry `BarDelayTable` (B=0..16), each D≤50,
       monotonic; document `red@(B)=16+D(B)+5` in comment.
-- [ ] **C2.** Replace `.BarDelay` loop with indexed load
-      (`ldx BarLevel / lda BarDelayTable,X`) + branch-if-zero skip;
+      Actual: A=round(B*10/16) ∈ 0..10, red@=5A+20 ≤70, total ≤75c.
+- [x] **C2.** Replace `.BarDelay` loop with indexed load
+      (`ldy BarLevel / lda BarDelayTable,Y`) + branch-if-zero skip;
       keep B=0 → immediate red, B≥1 always writes red.
-- [ ] **C3.** Recompute `BallXTable[17]` from `red@` → visible px
+- [x] **C3.** Recompute `BallXTable[17]` from `red@` → visible px
       (same formula as bank1 comment); keep entries in 4..155.
-- [ ] **C4.** Place both tables after fold-pads (data, not execution path).
-- [ ] **B/C shared:** Build + fold-pad + resolve-symbol check.
-- [ ] **C5.** Screenshot at boot (B=16): tiny red sliver at right edge
+- [x] **C4.** Place both tables after fold-pads (data, not execution path).
+- [x] **B/C shared:** Build + fold-pad + resolve-symbol check.
+- [x] **C5.** Screenshot at boot (B=16): tiny red sliver at right edge
       (not full yellow). Screenshot mid-drain: red advances every level.
-- [ ] **C6.** visual_check PASS + manual Y/R/O pixel runs (O must be 0).
-- [ ] **C7.** Commit `Power bar fix C: delay table + BallXTable`.
+      → `power_bar_fix_C_boot.png`: Y492+R116, continuous, no gaps.
+- [x] **C6.** visual_check PASS + manual Y/R/O pixel runs (O must be 0).
+- [x] **C7.** Commit `Power bar fix C: delay table + BallXTable`.
 
 ### Step D — 120 second timer
 
-- [ ] **D1.** ZP: `TickHi = $F3` in kernel.asm + bank1 (if HUD needs it);
-      grep all banks for `$F3` before use.
-- [ ] **D2.** Init: `TickCounter=255`, `TickHi=1`, `BarLevel=16`.
-- [ ] **D3.** Overscan tick:
+- [x] **D1.** ZP: `TickHi = $F4` in kernel.asm + bank1 (if HUD needs it);
+      grep all banks for `$F4` before use. ($F3=ScoreOn — blocked.)
+- [x] **D2.** Init: `TickCounter=255`, `TickHi=1`, `BarLevel=16`.
+- [x] **D3.** Overscan tick:
       ```
       dec TickCounter
       bne .TimerDone
@@ -100,12 +103,13 @@ B=0 stays immediate red. Ball X recomputed from the same `red@` model.
       dec BarLevel
       beq .TimerExpired
       ```
-- [ ] **D4.** Same reload pattern at life-reset + level-change sites
+- [x] **D4.** Same reload pattern at life-reset + level-change sites
       (currently `lda #255 / sta TickCounter` ×3 after init).
-- [ ] **D5.** Build; confirm no new ZP conflicts (`zp_layout_skill.md`).
-- [ ] **D6.** Stella stopwatch: first red sliver ≤ ~8 s; bar empty +
-      life lost at **120 s ± 2 s** (screenshots `power_bar_fix_D_60.png`,
-      `power_bar_fix_D_115.png`, `power_bar_fix_D_120.png`).
+- [x] **D5.** Build; confirm no new ZP conflicts (`zp_layout_skill.md`).
+      Fold-pad FC70 fixed: bank1 `jmp $F107` matches bank0 Overscan.
+- [x] **D6.** Stella stopwatch: first red sliver ≤ ~8 s; bar empty +
+      life lost at **120 s ± 2 s**. User verified live: 120s works.
+      Boot shot `power_bar_fix_D_boot.png` PASS (Y+R continuous, no orange).
 - [ ] **D7.** Commit `Power bar fix D: 120s two-phase tick (450 frames/level)`.
 
 ### Step E — Ball never in margin

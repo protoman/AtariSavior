@@ -157,6 +157,7 @@ ScoreTh         = $F0           ; score thousands digit (0-9)
 ScoreHu         = $F1           ; score hundreds digit (0-9)
 ScoreTe         = $F2           ; score tens digit (0-9)
 ScoreOn         = $F3           ; score ones digit (0-9)
+TickHi          = $F4           ; timer high phase (0/1); 255+195=450 frames/level
 PF0ScoreBuf     = $B3           ; 5 bytes: PF0 values for score rows 0-4
 PF1ScoreBuf     = $B8           ; 5 bytes: PF1 values for score rows 0-4
 PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
@@ -250,9 +251,11 @@ GameStart:
     sta PlayerLives
     lda #$FF
     sta DeadEnemyIdx
-    ; Initialize timer: 255 frames per bar level (~68s for 16 levels)
+    ; Initialize timer: 450 frames per bar level (16×450=7200=120.0s)
     lda #255
     sta TickCounter
+    lda #1
+    sta TickHi
     lda #16
     sta BarLevel                ; bar starts full
 
@@ -454,7 +457,7 @@ StartFrame:
     ; After sta $1FF7, CPU reads next instruction from bank1 at $FC6D.
     ; Bank1's $FC6D has the same jmp $F540 → seamless bank switch.
     jmp $FC68                   ; jump to fold-pad (switches to bank1, runs MenuMain)
-    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp $F0DA
+    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp Overscan ($F107)
 
 ; ==============================================================================
 ; Overscan (30 scanlines) — input handling + game logic
@@ -618,10 +621,22 @@ EndInputCheck:
     ; --- Check enemy collision (lose life on hit) ---
     jsr CheckEnemyHit
 
-    ; --- Decrement game timer (single-byte: 255 frames per bar level) ---
+    ; --- Decrement game timer (two-phase: 450 frames per bar level = 120s) ---
     dec TickCounter
     bne .TimerDone              ; not zero yet — continue
-    ; Tick reached 0 — decrement bar level and reset tick
+    ; TickCounter hit 0 — phase check
+    lda TickHi
+    beq .LevelTick              ; phase 2 done → dec BarLevel
+    ; Phase 1 → phase 2: 195 more frames (195+255=450)
+    lda #0
+    sta TickHi
+    lda #195
+    sta TickCounter
+    jmp .TimerDone
+.LevelTick:
+    ; Phase 2 done — advance bar level
+    lda #1
+    sta TickHi
     lda #255
     sta TickCounter
     dec BarLevel
@@ -644,6 +659,8 @@ EndInputCheck:
     sta BarLevel
     lda #255
     sta TickCounter
+    lda #1
+    sta TickHi
     ; Zero velocity, stay at current position
     lda #0
     sta vyLo
@@ -983,6 +1000,8 @@ CheckMinerPickup:
     sta BarLevel
     lda #255
     sta TickCounter
+    lda #1
+    sta TickHi
 .CMPDone:
     rts
 
