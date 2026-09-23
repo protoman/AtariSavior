@@ -77,8 +77,10 @@ and `docs/hero/hero_bank0.asm`.
 
 ### Step 3: Timer speed
 
-- [ ] **3a.** `src/kernel.asm` line 625: `lda #28` → `lda #255`.
-- [ ] **3b.** Result: 16 × 255 = 4080 frames ≈ 68 seconds
+- [x] **3a.** `src/kernel.asm` line 625: `lda #28` → `lda #255`.
+      Also lines 254, 645, 984 (all TickCounter reloads) so timer
+      stays ~68 s after life loss / level change.
+- [x] **3b.** Result: 16 × 255 = 4080 frames ≈ 68 seconds
       (single-byte approximation accepted).
 - [ ] **3c.** Build, user tests: timer expires ≈68 s → loses a life.
 
