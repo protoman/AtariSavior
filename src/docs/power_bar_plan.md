@@ -64,7 +64,9 @@ and `docs/hero/hero_bank0.asm`.
 
 - [x] **2a.** CTRLPF ball bits: $05 → $35 (add ball 8 clocks, keep
       reflect+priority) or match HERO's $34 (reflect OFF for ball section).
-- [ ] **2b.** Enable ENABL, position ball at boundary via RESPBL/HMPBL.
+- [x] **2b.** Enable ENABL, position ball at boundary via RESPBL/HMPBL.
+      BallXTable after fold-pads (data, not in MenuMain path).
+      SetObjectXPos X=4 → HMBL/RESPBL. Pad 11→9. visual_check PASS.
 - [ ] **2c.** Ball color = orange (kPalette hue 2/3).
 - [ ] **2d.** Ball width = BarLevel mod 4 (1/2/4/8 clocks).
 - [ ] **2e.** Build, user tests: smooth sub-block edge at boundary.
