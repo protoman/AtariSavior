@@ -44,15 +44,15 @@ B=0 stays immediate red. Ball X recomputed from the same `red@` model.
 
 ### Step A — Continuous bar + real margins
 
-- [ ] **A1.** `src/bank1.asm`: `lda #$70` → `lda #$E0` for bar PF0;
+- [x] **A1.** `src/bank1.asm`: `lda #$70` → `lda #$E0` for bar PF0;
       update comment (bit4=OFF = leftmost margin).
-- [ ] **A2.** Fix stale “$70 = bit4 OFF” notes in
+- [x] **A2.** Fix stale “$70 = bit4 OFF” notes in
       `docs/power_bar_plan.md` + AGENTS.md power-bar section (pointer only).
-- [ ] **A3.** Build (`rm -f bank1.lst && ./build.sh`); verify 4×4096 +
+- [x] **A3.** Build (`rm -f bank1.lst && ./build.sh`); verify 4×4096 +
       fold-pads `$FC68/$FC70` match.
-- [ ] **A4.** Stella screenshot `power_bar_fix_A.png`; pixel runs must be
+- [x] **A4.** Stella screenshot `power_bar_fix_A.png`; pixel runs must be
       `[G][Y body continuous][G]` with **no** inner gaps; visual_check PASS.
-- [ ] **A5.** Commit `Power bar fix A: PF0=$E0 continuous body + margins`.
+- [x] **A5.** Commit `Power bar fix A: PF0=$E0 continuous body + margins`.
 
 ### Step B — Yellow/red only (no orange)
 
