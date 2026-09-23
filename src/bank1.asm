@@ -94,6 +94,20 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     bne .TopGap
 
     ; ====================================================================
+    ; Ball position at yellow/red boundary (RESPBL/HMBL via X=4)
+    ; SetObjectXPos: HMP0+4=$24=HMBL, RESP0+4=$14=RESPBL
+    ; +2 scanlines (SetObjectXPos WSYNC + HMOVE) → pad 11→9
+    ; ====================================================================
+    ldy BarLevel
+    lda BallXTable,Y
+    ldx #4
+    jsr SetObjectXPos_b1
+    sta WSYNC
+    sta HMOVE
+    lda #1              ; ENABL D0=1 (ball on)
+    sta ENABL
+
+    ; ====================================================================
     ; Line 1: Timer bar — PF body, mid-scanline COLUPF yellow→red
     ; PF0=$70 margins, PF1/PF2=$FF. Each line: yellow, delay(BarLevel),
     ; red. B=0 → all red; B>=11 → all yellow; B=1..10 → split.
@@ -133,12 +147,13 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     dex
     bne .TimerLoop
 
-    ; --- gap: end bar line 3, clear PF during gap HBLANK ---
+    ; --- gap: end bar line 3, clear PF + ball during gap HBLANK ---
     sta WSYNC
     lda #0
     sta PF0
     sta PF1
     sta PF2
+    sta ENABL           ; ball off after bar
 
     ; ====================================================================
     ; Line 2: Lives — green squares, count based on PlayerLives
@@ -409,15 +424,16 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; Pad remaining scanlines to reach exactly 48 total
     ; Path A (PlayerLives > 0) — execution count:
     ;   Top gap:  4
+    ;   Ball pos: 1 SetObjectXPos + 1 HMOVE = 2
     ;   Timer:    3 loop + 1 gap = 4
     ;   Lives:    1 SetObjectXPos + 1 HMOVE + 5 render + 1 gap = 8
     ;   Bombs:    2 SetObjectXPos + 1 HMOVE + 5 render + 3 gap = 11
     ;   Score:    2 SetObjectXPos + 1 HMOVE + 7 ScoreLoop = 10
-    ;   Subtotal: 4+4+8+11+10 = 37
-    ;   Pad:      48 - 37 = 11
+    ;   Subtotal: 4+2+4+8+11+10 = 39
+    ;   Pad:      48 - 39 = 9
     ; .NoLives blank path pads +2 WSYNC so both paths total 48.
     ; ====================================================================
-    ldx #11
+    ldx #9
 .HudPad:
     sta WSYNC
     dex
@@ -455,6 +471,13 @@ SetObjectXPos_b1:
     lda #0
     sta $1FF6
     jmp $F0DA
+
+; Ball X from BarLevel — boundary pixel (red@ = 5B+20 → px=(red@-23)*160/53)
+; DATA — not in execution path (MenuMain falls through past here only via code)
+BallXTable:
+    .byte 0             ; B=0 all red
+    .byte 6,21,36,51,66,82,97,112,127,142  ; B=1..10
+    .byte 159,159,159,159,159,159,159      ; B=11..16 all yellow
 
 ; ========================================================================
 ; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing
