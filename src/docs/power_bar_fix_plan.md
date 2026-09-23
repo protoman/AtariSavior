@@ -110,11 +110,12 @@ B=0 stays immediate red. Ball X recomputed from the same `red@` model.
 - [x] **D6.** Stella stopwatch: first red sliver ≤ ~8 s; bar empty +
       life lost at **120 s ± 2 s**. User verified live: 120s works.
       Boot shot `power_bar_fix_D_boot.png` PASS (Y+R continuous, no orange).
-- [ ] **D7.** Commit `Power bar fix D: 120s two-phase tick (450 frames/level)`.
+- [x] **D7.** Commit `Power bar fix D: 120s two-phase tick (450 frames/level)`.
 
 ### Step E — Ball never in margin
 
-- [ ] **E1.** Clamp every `BallXTable` entry to 4..155 (after A’s $E0).
+- [x] **E1.** Clamp every `BallXTable` entry to 4..155 (after A's $E0).
+      Done in C3: entries clamped 4..155.
 - [ ] **E2.** Build + screenshot: no ball pixel in grey margins at B=0/16.
 - [ ] **E3.** Commit `Power bar fix E: clamp ball X inside bar body`.
 
