@@ -475,7 +475,7 @@ SetObjectXPos_b1:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F0DA
+    jmp $F107           ; Overscan in bank0 (must match bank0 ToGameStub)
 
 ; Bar delay iterations A(B)=round(B*10/16), monotonic 0..10
 ; red@ = 5A+20 (A>0); total loop ≤75c (A=10). B≥1 always writes red.
