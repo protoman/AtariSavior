@@ -95,8 +95,8 @@ INPT4       = $0C       ; fire button (active low, bit 7)
 
     ; ====================================================================
     ; Line 1: Timer bar — PF body, mid-scanline COLUPF yellow→red
-    ; PF0=$70 margins, PF1/PF2=$FF. Each line: yellow, delay(BarLevel/2),
-    ; red. B=0 → immediate red (all red); B=16 → Y=8, red near line end.
+    ; PF0=$70 margins, PF1/PF2=$FF. Each line: yellow, delay(BarLevel),
+    ; red. B=0 → all red; B>=11 → all yellow; B=1..10 → split.
     ; Clear PF on the gap line (after WSYNC) so line 3 is not truncated.
     ; ====================================================================
 
@@ -584,60 +584,6 @@ fineAdjustBegin_b1:
   .byte %10100000
   .byte %10010000
 fineAdjustTable_b1 EQU fineAdjustBegin_b1 - %11110001
-
-; ========================================================================
-; Timer bar lookup tables
-; BarLevel 0-8 maps to PF1 (pixels 4-11), bit 7=leftmost
-; BarLevel 0-8 maps to PF2 (pixels 12-19), bit 0=leftmost (reversed)
-; ========================================================================
-
-; PF1 green values (filled pixels, left-aligned)
-BarPF1Table:
-    .byte $00                   ; 0 pixels
-    .byte $80                   ; 1 pixel
-    .byte $C0                   ; 2 pixels
-    .byte $E0                   ; 3 pixels
-    .byte $F0                   ; 4 pixels
-    .byte $F8                   ; 5 pixels
-    .byte $FC                   ; 6 pixels
-    .byte $FE                   ; 7 pixels
-    .byte $FF                   ; 8 pixels
-
-; PF1 red values (empty pixels, right-aligned) = ~PF1 green
-BarPF1RedTable:
-    .byte $FF                   ; 0 green = all red
-    .byte $7F                   ; 1 green
-    .byte $3F                   ; 2 green
-    .byte $1F                   ; 3 green
-    .byte $0F                   ; 4 green
-    .byte $07                   ; 5 green
-    .byte $03                   ; 6 green
-    .byte $01                   ; 7 green
-    .byte $00                   ; 8 green = no red
-
-; PF2 green values (filled pixels, left-aligned in reversed bits)
-BarPF2Table:
-    .byte $00                   ; 0 pixels
-    .byte $01                   ; 1 pixel
-    .byte $03                   ; 2 pixels
-    .byte $07                   ; 3 pixels
-    .byte $0F                   ; 4 pixels
-    .byte $1F                   ; 5 pixels
-    .byte $3F                   ; 6 pixels
-    .byte $7F                   ; 7 pixels
-    .byte $FF                   ; 8 pixels
-
-; PF2 red values (empty pixels) = ~PF2 green
-BarPF2RedTable:
-    .byte $FF                   ; 0 green = all red
-    .byte $FE                   ; 1 green
-    .byte $FC                   ; 2 green
-    .byte $F8                   ; 3 green
-    .byte $F0                   ; 4 green
-    .byte $E0                   ; 5 green
-    .byte $C0                   ; 6 green
-    .byte $80                   ; 7 green
-    .byte $00                   ; 8 green = no red
 
 ; ========================================================================
 ; Interrupt vectors
