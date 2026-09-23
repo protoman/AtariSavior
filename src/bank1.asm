@@ -94,9 +94,10 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     bne .TopGap
 
     ; ====================================================================
-    ; Line 1: Timer bar — playfield, static yellow, 3 scanlines, edge margins
-    ; PF0=$70 (bit4 OFF = 4-clock margin each side, reflected)
-    ; PF1=$FF, PF2=$FF solid body. Mid-scanline red comes in next step.
+    ; Line 1: Timer bar — PF body, mid-scanline COLUPF yellow→red
+    ; PF0=$70 margins, PF1/PF2=$FF. Each line: yellow, delay(BarLevel/2),
+    ; red. B=0 → immediate red (all red); B=16 → Y=8, red near line end.
+    ; Clear PF on the gap line (after WSYNC) so line 3 is not truncated.
     ; ====================================================================
 
     lda #0
@@ -104,7 +105,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta NUSIZ0
     lda #$05            ; CTRLPF: reflect + priority
     sta CTRLPF
-    lda #$1C            ; yellow (hue 1, luma 6)
+    lda #$1C            ; pre-set yellow (setup line must not keep wall color)
     sta COLUPF
     lda #$70            ; margins (bit 4 = leftmost 4 clocks OFF)
     sta PF0
@@ -115,16 +116,29 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ldx #3
 .TimerLoop:
     sta WSYNC
+    lda #$1C            ; yellow (hue 1, luma 6)
+    sta COLUPF
+    lda BarLevel        ; 0-16
+    tay
+    beq .BarRed         ; B=0 → immediate red (all red)
+    cpy #11
+    bcs .NoRed          ; B>=11 → skip delay+red (all yellow; delay would overrun)
+.BarDelay:
+    dey                 ; 2c
+    bne .BarDelay       ; 3c taken / 2c last → 5Y-1
+.BarRed:
+    lda #$44            ; red (hue 4, luma 2)
+    sta COLUPF
+.NoRed:
     dex
     bne .TimerLoop
 
+    ; --- gap: end bar line 3, clear PF during gap HBLANK ---
+    sta WSYNC
     lda #0
     sta PF0
     sta PF1
     sta PF2
-
-    ; --- 1 scanline gap ---
-    sta WSYNC
 
     ; ====================================================================
     ; Line 2: Lives — green squares, count based on PlayerLives
