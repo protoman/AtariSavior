@@ -67,8 +67,12 @@ and `docs/hero/hero_bank0.asm`.
 - [x] **2b.** Enable ENABL, position ball at boundary via RESPBL/HMPBL.
       BallXTable after fold-pads (data, not in MenuMain path).
       SetObjectXPos X=4 → HMBL/RESPBL. Pad 11→9. visual_check PASS.
-- [ ] **2c.** Ball color = orange (kPalette hue 2/3).
-- [ ] **2d.** Ball width = BarLevel mod 4 (1/2/4/8 clocks).
+- [x] **2c.** Ball color = orange (kPalette hue 2/3).
+      COLUPF #\$2A (hue2 luma5) stripe after delay, then red. Ball shares
+      COLUPF. visual_check PASS on power_bar_2c.png (orange 60px @ boundary).
+- [x] **2d.** Ball width = BarLevel mod 4 (1/2/4/8 clocks).
+      CTRLPF = ((BarLevel&3)<<4) | \$05. DASM: bare \`asl\` (not \`asl a\`).
+      visual_check PASS on power_bar_2d.png.
 - [ ] **2e.** Build, user tests: smooth sub-block edge at boundary.
 
 ### Step 3: Timer speed
