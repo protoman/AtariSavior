@@ -131,8 +131,8 @@ LevelStartY     byte            ; level origin Y
 LevelWallColor  byte            ; wall color 1 (rows 0-3, 8-11)
 LevelWallColor2 byte            ; wall color 2 (rows 4-7)
 PlayerLives     byte            ; lives remaining (0 = game over, reset)
-TickCounter     byte            ; frame counter (0..254, decrements BarLevel when reaching 0)
-BarLevel        byte            ; timer bar level (16=full, 0=empty)
+TickCounter     byte            ; frame counter (60 frames = 1 bar step = 1s)
+BarLevel        byte            ; timer bar level (120=full, 0=empty)
 
 ; Enemy ZP variables
 LevelEnemyLo    byte            ; pointer to level's RoomEnemies table (low)
@@ -157,7 +157,6 @@ ScoreTh         = $F0           ; score thousands digit (0-9)
 ScoreHu         = $F1           ; score hundreds digit (0-9)
 ScoreTe         = $F2           ; score tens digit (0-9)
 ScoreOn         = $F3           ; score ones digit (0-9)
-TickHi          = $F4           ; timer high phase (0/1); 255+195=450 frames/level
 PF0ScoreBuf     = $B3           ; 5 bytes: PF0 values for score rows 0-4
 PF1ScoreBuf     = $B8           ; 5 bytes: PF1 values for score rows 0-4
 PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
@@ -251,12 +250,10 @@ GameStart:
     sta PlayerLives
     lda #$FF
     sta DeadEnemyIdx
-    ; Initialize timer: 450 frames per bar level (16×450=7200=120.0s)
-    lda #255
+    ; Initialize timer: 60 frames/step × 120 = 7200 = 120.0s
+    lda #60
     sta TickCounter
-    lda #1
-    sta TickHi
-    lda #16
+    lda #120
     sta BarLevel                ; bar starts full
 
     ; --- Load first level ---
@@ -457,7 +454,7 @@ StartFrame:
     ; After sta $1FF7, CPU reads next instruction from bank1 at $FC6D.
     ; Bank1's $FC6D has the same jmp $F540 → seamless bank switch.
     jmp $FC68                   ; jump to fold-pad (switches to bank1, runs MenuMain)
-    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp Overscan ($F107)
+    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp Overscan ($F103)
 
 ; ==============================================================================
 ; Overscan (30 scanlines) — input handling + game logic
@@ -621,23 +618,10 @@ EndInputCheck:
     ; --- Check enemy collision (lose life on hit) ---
     jsr CheckEnemyHit
 
-    ; --- Decrement game timer (two-phase: 450 frames per bar level = 120s) ---
+    ; --- Decrement game timer (60 frames/step × 120 = 120s) ---
     dec TickCounter
-    bne .TimerDone              ; not zero yet — continue
-    ; TickCounter hit 0 — phase check
-    lda TickHi
-    beq .LevelTick              ; phase 2 done → dec BarLevel
-    ; Phase 1 → phase 2: 195 more frames (195+255=450)
-    lda #0
-    sta TickHi
-    lda #195
-    sta TickCounter
-    jmp .TimerDone
-.LevelTick:
-    ; Phase 2 done — advance bar level
-    lda #1
-    sta TickHi
-    lda #255
+    bne .TimerDone              ; not 1s yet
+    lda #60
     sta TickCounter
     dec BarLevel
     beq .TimerExpired           ; bar empty — time's up!
@@ -655,12 +639,10 @@ EndInputCheck:
     jmp .TimerDone
 .TimerReset:
     ; Reset bar for retry
-    lda #16
+    lda #120
     sta BarLevel
-    lda #255
+    lda #60
     sta TickCounter
-    lda #1
-    sta TickHi
     ; Zero velocity, stay at current position
     lda #0
     sta vyLo
@@ -996,12 +978,10 @@ CheckMinerPickup:
 .CMPNotWrap:
     jsr LoadLevel
     ; Reset timer for new level
-    lda #16
+    lda #120
     sta BarLevel
-    lda #255
+    lda #60
     sta TickCounter
-    lda #1
-    sta TickHi
 .CMPDone:
     rts
 

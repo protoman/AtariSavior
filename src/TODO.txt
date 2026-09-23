@@ -1,3 +1,6 @@
+After you do this investigation and thinking, if you cannot find the cause of the big then small again bar, I can try to debug, to see the values that bar is actually using.
+
+
 - inimigos
 - morte
 

@@ -155,6 +155,8 @@ that overlap bank0's PF buffers.
 | $E0-$EB | scorePtr1-6 | 6 digit font pointers (2 bytes each, 12 total) | Yes (PF2Buf+ColupfBuf) — safe |
 | $EC | scbrdCnt | Loop counter (7 to 0) | Yes (ColupfBuf) — safe |
 | $ED | scbrdTmp | Mid-scanline temp cache | Yes (ColupfBuf) — safe |
+| $EE | DelayCnt | Bar delay A preloaded once per HUD frame (bank1 only) | Yes (ColupfBuf+7) — safe; VBLANK reloads ColupfBuf |
+| $EF | FineCnt | Bar fine delay cycles 0/2/3/4 (bank1 H3 only) | Yes (gap before ScoreTh $F0) — safe |
 | $F0 | ScoreTh | Thousands digit | No conflict |
 | $F1 | ScoreHu | Hundreds digit | No conflict |
 | $F2 | ScoreTe | Tens digit | No conflict |
