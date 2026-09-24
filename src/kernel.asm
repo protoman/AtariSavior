@@ -242,6 +242,10 @@ COLOR_LIVES     = $C6           ; hue 12 luma 3 = green
 COLOR_BOMBS     = $46           ; hue 4 luma 3 = red
 COLOR_SCORE     = $0E           ; hue 0 luma 7 = white
 
+; Dark room (lamp crashed): medium grey objects, black PF; fuse PF dark grey
+COLOR_DARK_OBJ  = $0A           ; hue 0 luma 5 = medium grey (lamp + enemies)
+COLOR_DARK_PF   = $04           ; hue 0 luma 2 = very dark grey (bomb fuse walls)
+
 ; Explosion blink COLUBK cycle (BombState=2): black → yellow → red
 COLOR_BLINK_Y   = $1C           ; hue 1 luma 6 = yellow (power bar)
 COLOR_BLINK_R   = $44           ; hue 4 luma 2 = red (power bar)
@@ -356,10 +360,16 @@ StartFrame:
 
     ; --- Cave COLUBK for this frame → Temp (free until overscan) ---
     ; state=2: blink (60-BombTimer)%3 → black/yellow/red; else COLOR_CAVE_BG
+    ; Dark room: black except the existing explosion blink (state=2).
     lda BombPacked
     and #%00000011
     cmp #2
-    bne .BgIdle
+    beq .BgBlink
+    jsr IsRoomDark
+    beq .BgIdle                 ; lit room → COLOR_CAVE_BG
+    lda #COLOR_CAVE_BG          ; dark → black
+    jmp .BgStore
+.BgBlink:
     lda #60
     sec
     sbc BombTimer
@@ -1012,7 +1022,8 @@ EnterRoom subroutine
 ; EnemyRamP bits4-7 init to %1111 (all spiders start moving down).
 ; ------------------------------------------------------------------------------
 LoadEnemyRam:
-    lda #0
+    lda EnemyRamD
+    and #$F0                    ; preserve RoomDarkMask bits 4-7 (rooms 0-3)
     sta EnemyRamD
     lda #$F0                    ; spider vdir bits 4-7 = 1 (down) for slots 0-3
     sta EnemyRamP
@@ -1241,6 +1252,7 @@ LoadLevel:
     sta RoomWallMask
     sta BombPacked              ; so EnterRoom's save writes 0, not stale mask
     sta BombTimer
+    sta EnemyRamD               ; clear dir + RoomDarkMask (bits 4-7) — level reset
     lda #BOMBS_MAX
     sta PlayerBombs
     ; Compute LevelDataTable pointer: base + Level * 14
@@ -1481,10 +1493,17 @@ SelectActiveObject:
     clc
     adc Temp+1                  ; *6
     tay                         ; Y = byte offset into enemy data
-    lda (EnemyDataLo),Y         ; type
+    jsr IsRoomDark              ; clobbers X — Y still = type offset
+    beq .SOEnemyLit
+    lda #COLOR_DARK_OBJ         ; dark room: lamp + enemies medium grey
+    sta COLUP1
+    jmp .SOEnemyColorDone
+.SOEnemyLit:
+    lda (EnemyDataLo),Y         ; reload type (X was clobbered by IsRoomDark)
     tax
     lda EnemyColorTable,X
     sta COLUP1
+.SOEnemyColorDone:
     iny
     iny                         ; +2 = y
     lda (EnemyDataLo),Y
@@ -1534,6 +1553,7 @@ EnemyColorTable:
     .byte $c4                   ; snake — hue 12 luma 2 = green
     .byte $0e                   ; tentacle — hue 0 luma 7 = white
     .byte $22                   ; moth — hue 2 luma 1 = dark orange
+    .byte $0e                   ; lamp (type 5) — white; dark rooms override to grey
 
 ; ==============================================================================
 ; CheckEnemyHit — player overlaps an enemy → remove enemy, lose life
@@ -1591,6 +1611,18 @@ CEH_HasMore:
 .CEHYAbs:
     cmp #PLAYER_HEIGHT
     bcs CEHNext                ; no Y overlap
+        ; Lamp (type 5): crash → RoomDarkMask; lamp stays in rotation (grey), no life
+    ldx EnemyIndex
+    txa
+    asl
+    sta Temp                    ; save index
+    asl
+    clc
+    adc Temp                    ; *6
+    tay
+    lda (EnemyDataLo),Y         ; type
+    cmp #LAMP
+    beq CEH_Lamp
     ; Hit! Mark this enemy as dead
     lda EnemyIndex
     sta DeadEnemyIdx
@@ -1603,6 +1635,10 @@ CEH_HasMore:
     lda #3
     sta PlayerLives
     jsr ReloadLevel
+    rts
+CEH_Lamp:
+    ; Only fire once (bit already set → no-op); no life loss, not DeadEnemyIdx
+    jsr SetRoomDark
     rts
 CEH_Stay:
     ; Still have lives — just zero velocity, stay at current position
@@ -2018,6 +2054,10 @@ BombBlinkColors:
 BombMaskBit:
     .byte $08, $10, $20, $40
 
+; Bit masks for IsRoomDark/SetRoomDark (indexed 0-7; bits 4-7 used for rooms 0-3)
+BitMaskTable:
+    .byte $01, $02, $04, $08, $10, $20, $40, $80
+
 ; AND-mask to clear col 0-19's PF bit (inverse of convert_room.pf_values):
 ;   col 0-3   → PF0 bits 4-7; col 4-11 → PF1 bits 7-0; col 12-19 → PF2 bits 0-7
 BombClearMask:
@@ -2058,6 +2098,7 @@ ENEMY_BAT      = 1
 ENEMY_SNAKE    = 2
 ENEMY_TENTACLE = 3
 ENEMY_MOTH     = 4
+LAMP           = 5             ; type-5 enemy record = editor lamp (white square)
 ENEMY_DATA_STRIDE = 6
 
 ; --- Level table + connections (generated) ---
@@ -2413,6 +2454,42 @@ LoseLifeHot:
     rts
 
 ; ------------------------------------------------------------------------------
+; IsRoomDark — Z=1 if current room's dark flag is clear (lit), Z=0 if dark.
+; RoomDarkMask lives in EnemyRamD bits 4-7 (bit4=room0 … bit7=room3).
+; Clobbers A and X only. Y preserved. Callers must NOT rely on X after return.
+; ------------------------------------------------------------------------------
+IsRoomDark:
+    lda RoomNo
+    cmp #4
+    bcs .IRDlit                 ; rooms 4+ never dark (mask only covers 0-3)
+    clc
+    adc #4                      ; bit index = 4 + RoomNo
+    tax
+    lda BitMaskTable,X
+    and EnemyRamD               ; Z=1 → lit (bit clear), Z=0 → dark
+    rts
+.IRDlit:
+    lda #0                      ; Z=1 → lit
+    rts
+
+; ------------------------------------------------------------------------------
+; SetRoomDark — set dark flag for current RoomNo (bits 4-7 of EnemyRamD).
+; Clobbers A/X. Cleared only by LoadLevel (level end/reload).
+; ------------------------------------------------------------------------------
+SetRoomDark:
+    lda RoomNo
+    cmp #4
+    bcs .SRDdone                ; rooms 4+ unsupported
+    clc
+    adc #4
+    tax
+    lda BitMaskTable,X
+    ora EnemyRamD
+    sta EnemyRamD
+.SRDdone:
+    rts
+
+; ------------------------------------------------------------------------------
 ; LoadRoomBottomColor — A = RoomEnemies pad color for RoomNo (0 = band off).
 ; Clobbers A, Y. ROM record: ptr_lo, ptr_hi, count, bottom_color (4 bytes).
 ; ------------------------------------------------------------------------------
@@ -2559,6 +2636,25 @@ BuildColupF:
     dec RectCount
     bne .BCFrect
 .BCFdone:
+    ; --- Dark room: walls black; fuse (state=1) walls dark grey ---
+    jsr IsRoomDark
+    beq .BCFdarkDone            ; lit → keep stripe/hot colors
+    lda BombPacked
+    and #%00000011
+    cmp #1
+    bne .BCFdarkBlack
+    lda #COLOR_DARK_PF          ; bomb fuse active → dark grey walls
+    jmp .BCFdarkFill
+.BCFdarkBlack:
+    lda #COLOR_CAVE_BG          ; black walls (matches black background)
+.BCFdarkFill:
+    ldx #0
+.BCFdarkLoop:
+    sta ColupfBuf,X
+    inx
+    cpx #TILE_ROWS
+    bne .BCFdarkLoop
+.BCFdarkDone:
     rts
 
 ; Pad to fineAdjustTable

@@ -1,7 +1,8 @@
 - lamps and dark rooms
 
-Let's implement the lamp object. In the game it should appear as a white square (same size as the player, enemies, etc).
-When the player touches the lamp, it crashes, causing the room to become dark.
+Let's implement the lamp object that already exists in the editor.
+In the game, it should appear as a white square (same size as the player, enemies, etc).
+When the player touches the lamp, it crashes, causing the room to become dark and the lamp and enemies shows as a medium grey color.
 When the room is dark, playfield to become black, like the background.
 The lamp should remain crashed, until level is finished or the player looses all his lifes.
 When a bomb is active in a dark room, the playfield should appear as dark grey until it exploded, when it goes back to black.
