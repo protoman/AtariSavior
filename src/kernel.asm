@@ -149,7 +149,7 @@ EnemyCount      byte            ; number of enemies in current room
 FlickerFrame    byte            ; GRP1 slot index for flicker
 BombPacked      byte            ; bomb state at $B5 (was ephemeral ObjectCount):
                                 ;   b0-1 state 0=none,1=fuse,2=explode
-                                ;   b2 DownPrev edge, b3-6 WallMask, b7 spare
+                                ;   b2 DownPrev edge, b3-6 WallMask, b7 OnGround
 ActiveObjectOn  byte            ; 1 when current object is active this frame
 ActiveObjectX   byte            ; active object X (room pixel coords)
 ActiveObjectY   byte            ; active object Y (scanline coords)
@@ -166,6 +166,9 @@ BombTimer       = $F7           ; fuse/explode countdown (frames)
 PlayerBombs     = $F0           ; bombs left 0..5 (ColupfBuf+9; never written by VBLANK/bank1 score)
 BOMBS_MAX       = 5             ; starting / reload bomb count
 BombSnd         = $F1           ; frames of bomb audio left (0=silent; bank1 must not write)
+RoomWallMask    = $F2           ; packed destroyed-wall mask, until stage leave:
+                                ;   bits0-3 room0 rects, bits4-7 room1 rects
+                                ;   (BombPacked b3-6 saved here on EnterRoom)
 
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match bank1)
 ; $F3-$F5 live score only — $F6 is BombX (bank1 ScoreOn is unused).
@@ -184,7 +187,7 @@ PF0Buf          = $C3           ; 12 bytes: TilePF0 values per row
 PF1Buf          = $CF           ; 12 bytes: TilePF1 values per row
 PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row
 ColupfBuf       = $E7           ; 12 bytes reserved (NOT written — kernel uses LevelWallColor*)
-                                ; $E7-$EF bank1 score/bar; $F0 = PlayerBombs; $F1 = BombSnd; $F2 free
+                                ; $E7-$EF bank1 score/bar; $F0 = PlayerBombs; $F1 = BombSnd; $F2 = RoomWallMask
 
 ; Player sprite ZP buffer (copied from ROM during VBLANK, read by kernel)
 PlayerGrp0      = $F8           ; 8 bytes: player sprite rows (computed per frame)
@@ -554,6 +557,9 @@ Overscan:
     bne .BombMarkDown           ; bomb already active: just set DownPrev
     lda PlayerBombs
     beq .BombMarkDown           ; no bombs left: swallow edge, keep DownPrev
+    lda BombPacked
+    and #%10000000              ; b7 OnGround — drop only when standing
+    beq .BombMarkDown           ; flying/falling: swallow edge, keep DownPrev
     dec PlayerBombs
     lda BombPacked              ; rising edge, state=0 → drop
     ora #%00000101              ; state=1 + DownPrev
@@ -765,6 +771,7 @@ EndInputCheck:
 ; StepDown: try one pixel of downward movement (called per pixel of vy).
 ; A pixel is rejected when the footprint enters a solid tile (player lands
 ; and vy is zeroed). At PLAYER_MAX_Y the room's down connection is followed.
+; Sets BombPacked b7 (OnGround) on land / floor; clears when free-falling.
 ; ------------------------------------------------------------------------------
 StepDown subroutine
     lda RoomY
@@ -772,20 +779,38 @@ StepDown subroutine
     bcs .SDBottom
     inc RoomY
     jsr PlayerHitsMap
-    bcc .SDDone
+    bcc .SDAir
     dec RoomY
+    lda #0
+    sta vyLo
+    sta vyHi
+    lda BombPacked
+    ora #%10000000              ; landed — OnGround
+    sta BombPacked
+    rts
+.SDAir:
+    lda BombPacked
+    and #%01111111              ; still falling — not ground
+    sta BombPacked
+    rts
+.SDBottom:
+    jsr ExitRoomDown
+    lda RoomY
+    cmp #PLAYER_MAX_Y
+    bne .SDDone                  ; changed room (EnterRoom cleared b7)
+    lda BombPacked
+    ora #%10000000              ; no down exit — standing on floor
+    sta BombPacked
     lda #0
     sta vyLo
     sta vyHi
 .SDDone:
     rts
-.SDBottom:
-    jsr ExitRoomDown
-    rts
 
 ; ------------------------------------------------------------------------------
 ; StepUp: one pixel of upward movement. Solid tile above stops the sprite
 ; and zeroes vy. At the top edge the room's up connection is followed.
+; Clears OnGround (b7) — jet/lift is not standing.
 ; ------------------------------------------------------------------------------
 StepUp subroutine
     lda RoomY
@@ -798,9 +823,15 @@ StepUp subroutine
     sta vyLo
     sta vyHi
 .SUDone:
+    lda BombPacked
+    and #%01111111              ; rising/blocked-up — not ground
+    sta BombPacked
     rts
 .SUTop:
     jsr ExitRoomUp
+    lda BombPacked
+    and #%01111111              ; ceiling / enter-from-below — not ground
+    sta BombPacked
     rts
 
 ; ==============================================================================
@@ -829,6 +860,33 @@ LoadPFBuffer:
 ; RoomX/RoomY are NOT changed — caller (exit handlers) sets them.
 ; ------------------------------------------------------------------------------
 EnterRoom subroutine
+    ; Persist outgoing room WallMask into RoomWallMask (permanent until LoadLevel)
+    pha                         ; save new room index
+    lda BombPacked
+    and #%01111000              ; mask bits only
+    lsr
+    lsr
+    lsr                         ; A = rect nibble (b0-3)
+    ldx RoomNo                  ; OLD room (still valid)
+    beq .ERSaveR0
+    asl
+    asl
+    asl
+    asl                         ; room1: nibble → high
+    sta Temp
+    lda RoomWallMask
+    and #$0F
+    ora Temp
+    sta RoomWallMask
+    jmp .ERGotRoom
+.ERSaveR0:
+    sta Temp
+    lda RoomWallMask
+    and #$F0
+    ora Temp
+    sta RoomWallMask
+.ERGotRoom:
+    pla                         ; new room
     sta RoomNo
     asl                         ; room * 4 (two .word entries per room)
     asl
@@ -879,16 +937,35 @@ EnterRoom subroutine
     lda #$FF
     sta DeadEnemyIdx            ; no dead enemies in new room
 
-    ; Bomb reset: state/mask/down-prev/sound cleared on every room entry
+    ; Bomb reset: clear state/timer/sound (incl. OnGround b7); RELOAD mask
+    ; (destroyed thin walls persist across room leave/re-enter until stage leave)
     lda #0
     sta BombPacked
     sta BombTimer
     sta BombSnd
     sta AUDV0
+    ldx RoomNo
+    beq .ERLoadR0
+    lda RoomWallMask
+    and #$F0
+    beq .ERMaskDone
+    lsr                         ; high nibble → b3-6
+    jmp .ERMaskOr
+.ERLoadR0:
+    lda RoomWallMask
+    and #$0F
+    beq .ERMaskDone
+    asl
+    asl
+    asl                         ; low nibble → b3-6
+.ERMaskOr:
+    ora BombPacked
+    sta BombPacked
+.ERMaskDone:
 
     jsr LoadEnemyRam            ; copy ROM x/dir → live RAM shadow
     jsr LoadPFBuffer
-    jsr ApplyBombWalls          ; mask just cleared — no-op; keeps call sites uniform
+    jsr ApplyBombWalls          ; re-punch holes from restored mask
     rts
 
 ; ------------------------------------------------------------------------------
@@ -1123,6 +1200,13 @@ ExitRoomRight:
 ;  +10..+11: enemy ptr (lo, hi)
 ; ------------------------------------------------------------------------------
 LoadLevel:
+    ; Stage leave/reload/advance: walls return + bombs refill to 5
+    lda #0
+    sta RoomWallMask
+    sta BombPacked              ; so EnterRoom's save writes 0, not stale mask
+    sta BombTimer
+    lda #BOMBS_MAX
+    sta PlayerBombs
     ; Compute LevelDataTable pointer: base + Level * 14
     ; Stride 14: start(3) + miner(3) + wall_colors(2) + ptrs(3×2)
     lda Level
@@ -1521,7 +1605,7 @@ ReloadLevel:
 ; ------------------------------------------------------------------------------
 ; BombTick — per-frame state machine (overscan).
 ;   state1 fuse: dec BombTimer, at 0 → state=2 timer=60 (blast = S5/S6/S9)
-;   state2: dec BombTimer, at 0 → state=0 (mask stays until EnterRoom)
+;   state2: dec BombTimer, at 0 → state=0 (mask stays; saved on EnterRoom)
 ; ------------------------------------------------------------------------------
 BombTick subroutine
     lda BombPacked
@@ -1549,7 +1633,7 @@ BombTick subroutine
     sta BombTimer
     jsr BombMarkWalls           ; S6.3: set WallMask for w==1 rects in blast
     jsr BombEnemyBlast          ; S9: kill enemy ±1 col any Y (before player — reload clears)
-    jsr BombPlayerBlast         ; S5: player ±1 col any Y → life (may ReloadLevel/clear mask)
+    jsr BombPlayerBlast         ; S5: player ±1 col any Y → life (may ReloadLevel → clears masks)
     jsr BombSndExplode          ; S10: noise burst
 .BTDone:
     rts
@@ -1629,7 +1713,7 @@ BombPlayerBlast:
     sta PlayerLives
     lda #$FF
     sta DeadEnemyIdx
-    jsr ReloadLevel              ; LoadLevel → EnterRoom clears bomb
+    jsr ReloadLevel              ; LoadLevel → clears RoomWallMask + bomb state
     rts
 .BPBStay:
     lda #0
@@ -1680,6 +1764,7 @@ UpdateBombSound:
 ; ------------------------------------------------------------------------------
 ; BombMarkWalls — on 1→2 edge: walk RoomRects, set WallMask bit for each
 ;   w==1 rect whose x is in blast cols (bomb left-half col ±1, clamped 0..19).
+;   Skip x==0: screen cols 0 and 39 (both = stored col 0 under reflection).
 ; Bits b3-6 of BombPacked = rect index 0..3 (rooms have ≤4 rects).
 ; ------------------------------------------------------------------------------
 BombMarkWalls:
@@ -1728,6 +1813,7 @@ BombMarkWalls:
     tya
     pha                         ; save base
     lda (MapPtrLo),Y            ; rect.x
+    beq .BMWNext                ; x==0 = screen L/R border — never destroy
     cmp CollisionEndX
     bcc .BMWNext                ; x < lo
     cmp CollisionCellX
