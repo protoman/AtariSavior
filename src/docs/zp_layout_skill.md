@@ -112,19 +112,24 @@ Sequential allocation ends at `$BC` (next would be `$BD`).
 | $C3-$CE | PF0Buf | TilePF0 (12) |
 | $CF-$DA | PF1Buf | TilePF1 (12) |
 | $DB-$E6 | PF2Buf | TilePF2 (12) |
-| $E7-$F1 | ColupfBuf | COLUPF stripes (11 of 12; last slot reused) |
+| $E7-$F2 | ColupfBuf | Final COLUPF × 12 rows (stripe+hot). **Overlaps $F0-$F2 bombs:** `BuildColupF` saves PlayerBombs/BombSnd/RoomWallMask → CollisionCellY/EndX/EndY; `.AfterRows` restores before HUD. Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds. |
 | $F3 | ScoreTh | Shared with bank1 score |
 | $F4 | ScoreHu | |
 | $F5 | ScoreTe | |
 | $F6 | **BombX** | Bomb drop X snapshot (bank1 must not write) |
 | $F7 | **BombTimer** | Fuse/explode frames |
-| $F0 | **PlayerBombs** | Bombs left 0..5 (S8; ColupfBuf+9, never VBLANK-written) |
-| $F1 | **BombSnd** | Frames of bomb audio left (S10; 0=silent) |
-| $F2 | **RoomWallMask** | Packed destroyed thin-wall mask until stage leave: bits0-3 room0 rects, bits4-7 room1 rects (b3-6 of BombPacked saved/restored in EnterRoom; LoadLevel zeros it) |
+| $F0 | **PlayerBombs** | Bombs left 0..5 — bytes $F0-$F2 also ColupfBuf[9..11]; kernel restores from collision temps at `.AfterRows` |
+| $F1 | **BombSnd** | Frames of bomb audio left (S10; 0=silent); same save/restore |
+| $F2 | **RoomWallMask** | Packed destroyed thin-wall mask until stage leave: bits0-3 room0 rects, bits4-7 room1 rects (b3-6 of BombPacked saved/restored in EnterRoom; LoadLevel zeros it); same save/restore |
 | $F8-$FF | PlayerGrp0 | 8 player rows **+ stack mirror** — copy only after last JSR |
 
 Bank1 HUD `$E0-$EF` score ptrs/bar temps overlap ColupfBuf — safe because
-bank1 runs after cave kernel; VBLANK reloads ColupfBuf via `LoadPFBuffer`.
+bank1 runs after cave kernel (bombs already restored); VBLANK rebuilds ColupfBuf.
+
+**Save-temp lifetime:** CollisionCellY/EndX/EndY hold bomb copies from
+`BuildColupF` (VBLANK) through cave kernel until `.AfterRows`. First reuse for
+collision is overscan `PlayerHitsMap`/`BombMarkWalls` — after restore.
+Do not run those between `BuildColupF` and `.AfterRows`.
 
 ## Bank1 ZP (menu / HUD) — verified EQUs
 
@@ -139,6 +144,7 @@ bank1 runs after cave kernel; VBLANK reloads ColupfBuf via `LoadPFBuffer`.
 | $EE | DelayCnt | Power-bar delay | ColupfBuf overlap OK |
 | $EF | FineCnt | Power-bar fine | ColupfBuf overlap OK |
 | $F3-$F5 | ScoreTh/Hu/Te | Score digits | shared |
+| $8D/$8E/$8F | CollisionCellY/EndX/EndY | Bank0 collision temps; bomb save slots during VBLANK+kernel only | bank1 must not use |
 | — | GameMode | Fold-pad mode flag | check `bank1.asm` before use |
 | — | HUD slots | `HudSlotsRam` etc. | see bank1 / HUD notes |
 

@@ -121,8 +121,12 @@ def nearest_byte(r: int, g: int, b: int) -> int:
 
 
 def tile_to_char(value: int) -> str:
-    """Editor tiles: AIR stays open, everything else becomes solid #."""
-    return "." if value == 0 else "#"
+    """Editor tiles: AIR open, HOT_ROCK_WALL 'H', everything else solid #."""
+    if value == 0:
+        return "."
+    if value == 8:
+        return "H"
+    return "#"
 
 
 def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:

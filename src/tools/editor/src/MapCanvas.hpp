@@ -26,9 +26,10 @@
 namespace editor {
 
 enum class BrushTool {
-    // Model tab: tile brushes (values 0-7 match TileType for tile editing)
+    // Model tab: tile brushes (values match TileType for tile editing)
     ERASE_AIR = 0,
     SOLID_WALL = 1,
+    HOT_ROCK_WALL = 8,
     // Level tab: entity brushes
     SET_MINER_GOAL = 9,
     ADD_SPIDER = 10,

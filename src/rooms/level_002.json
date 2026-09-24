@@ -15,7 +15,7 @@
         "rooms": [
             {
                 "room_id": 0,
-                "model_id": 0,
+                "model_id": 2,
                 "room_x": 0,
                 "room_y": 0,
                 "enemies": [],

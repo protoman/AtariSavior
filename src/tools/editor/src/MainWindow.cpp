@@ -197,6 +197,7 @@ void MainWindow::SetupUI() {
     struct ToolInfo { BrushTool tool; QString text; };
     ToolInfo modelTools[] = {
         { BrushTool::SOLID_WALL, "1. Solid Rock Wall" },
+        { BrushTool::HOT_ROCK_WALL, "2. Hot Rock Wall" },
         { BrushTool::ERASE_AIR, "0. Air (Erase)" },
     };
     for (const auto& t : modelTools) {
@@ -824,6 +825,14 @@ QIcon MainWindow::MakeToolIcon(BrushTool tool) const {
             QColor c(m_levelData.wall_r, m_levelData.wall_g, m_levelData.wall_b);
             p.fillRect(r, c);
             p.setPen(c.darker(160));
+            for (int y = r.top() + r.height() / 3; y < r.bottom(); y += r.height() / 3) {
+                p.drawLine(r.left(), y, r.right(), y);
+            }
+            break;
+        }
+        case BrushTool::HOT_ROCK_WALL: {
+            p.fillRect(r, QColor(255, 80, 20));
+            p.setPen(QColor(255, 220, 80));
             for (int y = r.top() + r.height() / 3; y < r.bottom(); y += r.height() / 3) {
                 p.drawLine(r.left(), y, r.right(), y);
             }
