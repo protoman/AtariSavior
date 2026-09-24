@@ -91,7 +91,7 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 - **Thin wall remove:** walk `RoomRects` (`count`, then `x,y,w,h` ×N):
   - if `w==1` and `x` in blast cols → `BombWallMask |= 1<<index`.
   - **Collision:** `PlayerHitsMap` skips rect when mask bit set (add 3–4 cycles in rect loop — measure; if tight, pre-clear by copying count… prefer bit test at `.RectLoop` start).
-  - **Visual:** after each `LoadPFBuffer` in VBLANK, `ApplyBombWalls` clears PF bits for every col that was removed, for **all 12 rows** (clear bit in `PF0Buf`/`PF1Buf`/`PF2Buf` same mapping as `convert_room.pf_values` inverse). `LoadPFBuffer` runs every frame → must re-apply mask every frame (cheap: 12 rows × ≤3 col clears).
+  - **Visual:** after each `LoadPFBuffer` in VBLANK, `ApplyBombWalls` clears PF bits for the masked col **only on rows `rect.y .. rect.y+h-1`** (not all 12). Thin rects from `convert_room.find_rectangles` stop before a wider horizontal join so the thick part is a separate `w>1` rect and is never marked. `LoadPFBuffer` runs every frame → re-apply mask every frame.
 
 ### Reset / room change
 

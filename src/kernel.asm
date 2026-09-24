@@ -1673,7 +1673,8 @@ BombMarkWalls:
 
 ; ------------------------------------------------------------------------------
 ; ApplyBombWalls — after LoadPFBuffer: for each masked rect, clear its col
-;   bit in PF0Buf/PF1Buf/PF2Buf for all 12 rows (full height, reflected).
+;   bit in PF0Buf/PF1Buf/PF2Buf only for rows rect.y .. rect.y+h-1
+;   (thin segment only — not into a wider join below/above).
 ; Early-out when WallMask=0 (common case).
 ; ------------------------------------------------------------------------------
 ApplyBombWalls:
@@ -1703,8 +1704,21 @@ ApplyBombWalls:
     lda BombMaskBit,X
     and BombPacked
     beq .ABWAdv
-    lda (MapPtrLo),Y            ; rect.x (Y still base)
-    jsr ClearPFColumn
+    lda (MapPtrLo),Y            ; rect.x
+    sta CollisionX              ; col (saved; Y will move)
+    iny
+    lda (MapPtrLo),Y            ; rect.y → first row
+    sta Temp
+    iny
+    iny                         ; Y → h
+    lda (MapPtrLo),Y            ; rect.h
+    clc
+    adc Temp
+    sec
+    sbc #1
+    sta CollisionCellX          ; last row = y+h-1
+    lda CollisionX              ; col
+    jsr ClearPFColumn           ; A=col, Temp=first, CollisionCellX=last
 .ABWAdv:
     pla
     clc
@@ -1716,18 +1730,18 @@ ApplyBombWalls:
     rts
 
 ; ------------------------------------------------------------------------------
-; ClearPFColumn — A = left-half col 0..19; AND-clear that col's PF bit in
-;   all 12 rows of the matching PF*Buf. Inverse of convert_room.pf_values.
-; Clobbers A/X/Y/Temp/CollisionX.
+; ClearPFColumn — A = left-half col 0..19; Temp = first row; CollisionCellX =
+;   last row (inclusive). AND-clear that col's PF bit in those rows only.
+;   Inverse of convert_room.pf_values. Clobbers A/X/Y/CollisionX. Preserves
+;   RectCount/MapPtr (caller restores Y from stack).
 ; ------------------------------------------------------------------------------
 ClearPFColumn:
-    sta Temp                    ; col
-    tay
+    tay                         ; Y = col
     lda BombClearMask,Y
     sta CollisionX              ; AND mask (clear bit)
-    ldx #11
+    ldx Temp                    ; first row
 .CPCLoop:
-    lda Temp
+    tya                         ; col
     cmp #4
     bcc .CPC0
     cmp #12
@@ -1746,8 +1760,11 @@ ClearPFColumn:
     and CollisionX
     sta PF1Buf,X
 .CPCNext:
-    dex
-    bpl .CPCLoop
+    cpx CollisionCellX
+    beq .CPCDone
+    inx
+    bne .CPCLoop               ; rows 0..11; X never wraps here
+.CPCDone:
     rts
 
 ; ==============================================================================

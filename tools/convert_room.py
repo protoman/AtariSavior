@@ -93,6 +93,13 @@ def find_rectangles(rows: list[str]) -> list[tuple[int, int, int, int]]:
                         break
                 if not ok:
                     break
+                # Thin (w==1) must stop before a row that joins a wider run
+                # so the bomb only removes the truly 1-wide segment.
+                if w == 1:
+                    left = col > 0 and rows[row + h][col - 1] == "#"
+                    right = col + 1 < width and rows[row + h][col + 1] == "#"
+                    if left or right:
+                        break
                 h += 1
             for r in range(row, row + h):
                 for c in range(col, col + w):
