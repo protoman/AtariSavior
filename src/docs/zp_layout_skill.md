@@ -148,6 +148,14 @@ Do not run those between `BuildColupF` and `.AfterRows`.
 | — | GameMode | Fold-pad mode flag | check `bank1.asm` before use |
 | — | HUD slots | `HudSlotsRam` etc. | see bank1 / HUD notes |
 
+## Bottom band (2026-09-24)
+
+- **No dedicated ZP.** Original plan used `$EC`, but that is inside `ColupfBuf`
+  (`$E7–$F2`, row 5) — `BuildColupF` overwrites it every VBLANK before the kernel.
+- Band color is the RoomEnemies per-room 4th byte (`ptr_lo, ptr_hi, count, bottom_color`).
+  Read via `LoadRoomBottomColor` (kernel `.Row` X==11 + overscan `CheckBandTouch`).
+- Sequential map remains full after bomb work; do not add a new `$xx` EQU for band color.
+
 **Removed / do not reintroduce:** bank1 `ScoreOn` at `$F6` (now BombX);
 old DigitPtr* at `$F4/$F6/$F8`.
 

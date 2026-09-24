@@ -104,6 +104,12 @@ struct RoomData {
     int room_y = 0;
     std::vector<EnemyData> enemies;
     std::vector<LampData> lamps;
+    // Bottom band: optional colored strip on tile row 11 (scanlines 132-143).
+    // bottom_band=false or color byte 0 in ROM = off.
+    bool bottom_band = false;
+    int bottom_r = 0;
+    int bottom_g = 0;
+    int bottom_b = 0;
 
     template <class Archive>
     void serialize(Archive& ar) {
@@ -112,7 +118,11 @@ struct RoomData {
            CEREAL_NVP(room_x),
            CEREAL_NVP(room_y),
            CEREAL_NVP(enemies),
-           CEREAL_NVP(lamps));
+           CEREAL_NVP(lamps),
+           CEREAL_NVP(bottom_band),
+           CEREAL_NVP(bottom_r),
+           CEREAL_NVP(bottom_g),
+           CEREAL_NVP(bottom_b));
     }
 };
 
