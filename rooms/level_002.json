@@ -514,7 +514,17 @@
                     1,
                     1
                 ],
-                "enemies": [],
+                "enemies": [
+                    {
+                        "type": 0,
+                        "x": 30.0,
+                        "y": 5.0,
+                        "range_min": 27.0,
+                        "range_max": 33.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    }
+                ],
                 "lamps": []
             }
         ]

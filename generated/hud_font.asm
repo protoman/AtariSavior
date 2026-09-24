@@ -77,12 +77,3 @@ hud_font_fontlo:
 
 hud_text_level:
   .byte 15, 10, 40, 10, 15, 0
-
-hud_text_score_00.000:
-  .byte 30, 5, 45, 25, 10, 95, 45, 45, 100, 45, 45, 45, 0
-
-hud_text_lives_3_bombs_4:
-  .byte 15, 50, 40, 10, 30, 95, 60, 95, 0, 45, 20, 0, 30, 95, 65, 0
-
-hud_text_time_200:
-  .byte 35, 50, 20, 10, 95, 55, 45, 45, 0

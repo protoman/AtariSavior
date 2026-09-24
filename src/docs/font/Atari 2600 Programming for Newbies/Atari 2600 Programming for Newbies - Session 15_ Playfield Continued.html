@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<!-- saved from url=(0079)https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html -->
+<html lang="en"><!--<![endif]--><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<!-- Google tag (gtag.js) -->
+<script async="" src="./Atari 2600 Programming for Newbies - Session 15_ Playfield Continued_files/js"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 15: Playfield Continued</title>
+
+<link href="./Atari 2600 Programming for Newbies - Session 15_ Playfield Continued_files/fluid.css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 15_ Playfield Continued_files/fluid(1).css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 15_ Playfield Continued_files/rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 15_ Playfield Continued_files/rt_stylesheet(1).css" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 15: Playfield Continued">
+<meta name="description" content="Session 15: Playfield Continued">
+<meta name="twitter:description" content="Session 15: Playfield Continued">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="./Atari 2600 Programming for Newbies - Session 15_ Playfield Continued_files/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="https://www.randomterrain.com/index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="https://www.randomterrain.com/futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="https://www.randomterrain.com/favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="https://www.randomterrain.com/game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="https://www.randomterrain.com/personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="https://www.randomterrain.com/index.html">Home</a> &gt; <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">#Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 15: Playfield Continued</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#playfield_mirroring">Playfield Mirroring</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#ctrlpf">CTRLPF</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#d0">D0 (Reflection)</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#d1">D1 (Two Colors)</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#d2">D2 (Playfield Priority)</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#shadow_register">Shadow Register</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#and_or">AND and OR</a></p>
+<p class="tocsub" style="margin-left:36px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#playfield_reflection">Playfield Reflection</a></p>
+
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#summary">Summary</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#exercises">Exercises</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#session_links">Session Links</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#useful_links">Useful Links</a></p>
+</div>
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/28219-session-15-playfield-continued/">Original Session 15 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>We've had a bit of time to think about the playfield, and hopefully have a go at some of the exercises. Admittedly I  threw you in the deep end with the last session<span style="padding-left:2px; padding-right:2px;">—</span>so we'll go back a step and walk through exactly what all this playfield oddity is about. We'll also tackle some of the exercises to show that there's more than one way to skin a fish.</p>
+<p>&nbsp;</p>
+<p>Last session we learned that the playfield registers PF0 and PF2 are reversed. Specifically, the order of pixels in the playfield registers (one bit per pixel, remember!) is backward, compared to the order for the first playfield register we encountered<span style="padding-left:2px; padding-right:2px;">—</span>PF1. This backward ordering is rather confusing, but that's just the way it is. Have a close look at the  diagram presented in the last session and try and understand exactly the "playfield register/bit" to "pixel position on the scanline" correspondence.</p>
+<div class="bbpageindent">
+<div style="overflow: auto;">
+<div style="background-image:url('files_andrew_davie_sessions/tia_pf_02.png'); background-repeat:no-repeat; padding:0px; margin: 16px 0px 0px 0px; width:640px; height:480px; border:1px solid black;">
+<img src="./Atari 2600 Programming for Newbies - Session 15_ Playfield Continued_files/please_do_not_hotlink.gif" width="640" height="480" alt="Playfield Wierdness" style="border:0;">
+</div>
+</div>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="playfield_mirroring">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#playfield_mirroring">Playfield Mirroring</a></p>
+<p>There's one new playfield-related capability of the '2600 which I'd like to introduce now<span style="padding-left:2px; padding-right:2px;">—</span>playfield mirroring. I've  already introduced this to you when I stated that the right hand side of the playfield was a copy of the left hand side  (that is, the left 20 pixels come from the 20 playfield bits held in the TIA registers PF0, PF1 and PF2<span style="padding-left:2px; padding-right:2px;">—</span>and the right  20 bits are a copy of the same bits). That copy can be displayed 'normally'<span style="padding-left:2px; padding-right:2px;">—</span>or 'mirrored'. When mirrored, the bits  are literally a mirrored copy of the left side of the playfield.</p>
+<p>&nbsp;</p>
+<p>We're already familiar with two 'types' of TIA register. There's the strobe-type, where a write of any value to the  register causes something to happen, independent of the value written (an example is WSYNC, which halts the 6502 until  the TIA starts the next scanline). A second type is the normal register to which we write a byte, and the TIA uses that byte for some internal purpose (examples of these are the playfield registers PF0, PF1 and PF2). PF0 was a special-case  of this type, where<span style="padding-left:2px; padding-right:2px;">—</span>though we wrote a byte<span style="padding-left:2px; padding-right:2px;">—</span>only four of the bits were actually used by the TIA. The remaining bits  were discarded/ignored (have a look at the PF0 register in the diagram in the last session<span style="padding-left:2px; padding-right:2px;">—</span>the X for each bit position  in bits D0-D3 indicates those bits are not used).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="ctrlpf">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#ctrlpf">CTRLPF</a></p>
+<p>The third type of register (they're not really 'types'<span style="padding-left:2px; padding-right:2px;">—</span>but I want you to understand the difference between the way  we're writing data to the TIA) is where we are interested in just the state of a single BIT in a register. Time to  introduce a new TIA register, called CTRLPF. It's located at address 10 ($A)</p>
+<pre class="bbborder">
+CTRLPF
+
+     This address is used to write into the playfield control
+
+     register (a logic 1 causes action as described below)
+
+
+
+     D0 = REF (reflect playfield)
+
+
+
+     D1 = SCORE (left half of playfield gets color of
+
+     player 0, right half gets color of player 1)
+
+
+
+     D2 = PFP (playfield gets priority over players so they
+
+     can move behind the playfield)
+
+
+
+     D4 &amp; D5 = BALL SIZE
+
+               D5   D4   Width
+
+               0    0    1 clock
+
+               0    1    2 clocks
+
+               1    0    4 clocks
+
+               1    1    8 clocks
+
+</pre>
+<p>Wow!  This register has a lot of different stuff associated with it!  Most of it is related to playfield display (bits  D0, D1, D2) but bits D4 and D5 control the 'BALL SIZE'<span style="padding-left:2px; padding-right:2px;">—</span>we'll worry about those bits later :)</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="d0">&nbsp;</div>
+<p class="bbtertiary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#d0">D0 (Reflection)</a></p>
+<p>Bit D0 controls the reflection (mirroring) of our playfield. If this bit is 0, then we have a 'normal' non-mirrored  playfield, and that's what we've been seeing so far in our demos. If we set this bit to 1, then the '2600 will display a  reflected playfield (that is, the right-side of the playfield is a mirror-image of the left-side, instead of a copy). Note that only a single bit is used to control this feature<span style="padding-left:2px; padding-right:2px;">—</span>if we wrote a byte with this bit set (ie: %00000001) to  CTRLPF we would also be setting those other bits to 0<span style="padding-left:2px; padding-right:2px;">—</span>and we should be very sure this is what we want. In fact, it's  often NOT what we want, so when we are writing to registers such as this (which contain many bits controlling different  parts of the TIA hardware/display), we should be very careful to keep all the bits exactly as we need them. Sometimes  this is done with a 'shadow' register<span style="padding-left:2px; padding-right:2px;">—</span>a RAM copy of our current register state, and by first setting or clearing the  appropriate bit in the shadow register, and THEN writing the shadow register to the TIA register. This is necessary  because many/most of the TIA registers are only writable<span style="padding-left:2px; padding-right:2px;">—</span>that is, you cannot successfully read their contents and  expect to get the value last written.</p>
+<p>&nbsp;</p>
+<p>Let's have a quick look at those other bits in this register, related to playfield…</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="d1">&nbsp;</div>
+<p class="bbtertiary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#d1">D1 (Two Colors)</a></p>
+<p>D1 = SCORE. This is interesting. Setting this bit causes the playfield to have two colors instead of one. The left  side of the playfield will be displayed using the color of sprite 0 (register COLUP0), and the right side of the  playfield will be displayed using the color of sprite 1 (register COLUP1). We won't play with this for now<span style="padding-left:2px; padding-right:2px;">—</span>but keep  in mind that it is possible. Remember, this machine was designed for PONG-style games, so this sort of effect makes  sense in that context.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="d2">&nbsp;</div>
+<p class="bbtertiary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#d2">D2 (Playfield Priority)</a></p>
+<p>D2 = PFP. Playfield priority. You may have the playfield appear in front of, or behind, sprites. If you set this bit,  then the playfield will be displayed in front, and all sprites will appear to go behind the playfield pixels. If this  bit is not set, then all sprites appear to go in front of the playfield pixels.</p>
+<p>&nbsp;</p>
+<p>That's a very quick rundown of this register. We know now that it controls the playfield mirroring (=reflection), the  playfield color control for left/right halves, the playfield priority (if sprites go in front of or behind the  playfield), and finally it does something with the 'BALL SIZE' which we're not worrying about yet.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="shadow_register">&nbsp;</div>
+<p class="bbtertiary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#shadow_register">Shadow Register</a></p>
+<p>I've indicated that it's useful to have a 'shadow' copy of the register in RAM, so that we can easily keep track of the  state of this sort of register. In practice, this is rarely done<span style="padding-left:2px; padding-right:2px;">—</span>as we generally just set the reflection on or off,  the score coloring on or off, the priority on or off, and the ball size as appropriate… and then forget it. But if, for example, you were doing a game where you were changing the priority on the fly (so your sprites went behind SOME bits  background, but not other bits) then you'd need to know what those other values should be.</p>
+<p>&nbsp;</p>
+<p>In any case, the point of this is to introduce you slowly to more TIA capabilities, and at the same time build your  proficiency with 6502 programming. Here's how we set and clear bits with 6502.</p>
+</div>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+
+<div style="margin:0px; padding:0px; max-width:780px;">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<pre class="bbborder">
+  CTRLPF_shadow = $82 ; a RAM location for our shadow register
+
+
+
+  lda #%00000000
+
+  sta CTRLPF_shadow   ; init our shadow register as required
+
+
+
+   ; lots of code here
+
+
+
+
+
+  lda CTRLPF_shadow
+
+  sta CTRLPF          ; copy shadow register to TIA register
+
+</pre>
+</div>
+</div>
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<p>The above code snippet shows the general form of shadow register usage. The shadow register is initialised<span style="padding-left:2px; padding-right:2px;">—</span>and at some  point later in the code, we copy it to the TIA register. Now for the fun bit<span style="padding-left:2px; padding-right:2px;">—</span>setting and clearing individual bits in  the shadow register…</p>
+</div>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+
+<div style="margin:0px; padding:0px; max-width:780px;">
+<div class="bbpageindent">
+<div class="bbpageindent">
+
+<pre class="bbborder" style="margin-bottom:0px;">
+   ; how to set a single bit in a byte
+
+
+
+   lda CTRLPF_shadow  ; load the shadow register from RAM
+
+   ora #%00000001     ; SET bit 0 (D0 = 1)
+
+   sta CTRLPF_shadow  ; save new register value back to RAM
+
+
+
+
+
+   ; how to clear a single bit in a byte
+
+
+
+   lda CTRLPF_shadow
+
+   and #%11111110  ; keep all bits BUT the one we want to clear
+
+   sta CTRLPF_shadow
+
+</pre>
+</div>
+</div>
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="and_or">&nbsp;</div>
+<p class="bbtertiary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#and_or">AND and OR</a></p>
+<p>OK, that's not too difficult to understand. The two new 6502 instructions we have just used are 'ORA', which does a  logical-OR (that is, combines the accumulator with the immediate value bit-by-bit using a OR operation)<span style="padding-left:2px; padding-right:2px;">—</span>and the 'AND',  which does a logical-AND (again, combines the accumulator with the immediate value bit-by-bit using an AND operation). Now this is getting into pretty basic binary math<span style="padding-left:2px; padding-right:2px;">—</span>and you should read up on this stuff if you don't already know.</p>
+<div class="bbpageindent">
+<div style="overflow: auto; margin-bottom:32px;">
+<div class="sidebox01" style="margin-top:24px; padding:8px; width:550px;">
+<p style="font-size:17px;"><b>A bit is like a simple light switch. It can be on or off.</b></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:4px; white-space: nowrap;"><span style="font-size:22px; font-weight:bold;">AND = OFF</span> &nbsp;&nbsp;&nbsp;&nbsp; (<span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">0</span> <span style="font-size:17px; font-weight:bold;">= OFF</span> &nbsp;&nbsp; <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">1</span> <span style="font-size:17px; font-weight:bold;">= UNTOUCHED)</span></p>
+<p style="white-space: nowrap;">Use <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">0</span> to make sure the light switch is off.</p>
+<p style="white-space: nowrap;">Use <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">1</span> to leave it as it is.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:4px; white-space: nowrap;"><span style="font-size:22px; font-weight:bold;">OR = ON</span> &nbsp;&nbsp;&nbsp;&nbsp; (<span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">1</span> <span style="font-size:17px; font-weight:bold;">= ON</span> &nbsp;&nbsp; <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">0</span> <span style="font-size:17px; font-weight:bold;">= UNTOUCHED)</span></p>
+<p style="white-space: nowrap;">Use <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">1</span> to make sure the light switch is on.</p>
+<p style="white-space: nowrap;">Use <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">0</span> to leave it as it is.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:4px; white-space: nowrap;"><span style="font-size:22px; font-weight:bold;">XOR = FLIP</span> &nbsp;&nbsp;&nbsp;&nbsp; (<span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">1</span> <span style="font-size:17px; font-weight:bold;">= FLIP</span> &nbsp;&nbsp; <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">0</span> <span style="font-size:17px; font-weight:bold;">= UNTOUCHED)</span></p>
+<p style="white-space: nowrap;">Use <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">1</span> to reverse the position of the light switch.</p>
+<p style="white-space: nowrap;">Use <span style="font-family: 'Droid Sans Mono Slashed', 'Droid Sans Mono Dotted', 'Courier New', monospace; font-weight:bold; font-size:18px;">0</span> to leave it as it is.</p>
+<p>&nbsp;</p>
+
+</div>
+</div>
+</div>
+<p>Here are some truth tables for you…</p>
+<pre class="bbborder">OR operation
+
+
+
+ BIT |   0     1
+
+-----+------------
+
+  0  |   0     1
+
+     |
+
+  1  |   1     1
+
+
+
+
+
+AND operation
+
+
+
+ BIT |   0     1
+
+-----+------------
+
+  0  |   0     0
+
+     |
+
+  1  |   0     1
+
+</pre>
+<p>Basically the above two tables give you the result FOR A SINGLE BIT POSITION, where you either OR or AND together two  bits. For example, if I 'OR' together 1 and 0, the resultant value (bit) is 1. Likewise, if I 'AND' together a 1 and 0,  I get a 0. This logical operation is performed on each bit of the accumulator, with the corresponding bit of the  immediate value as part of the instruction. So 'ora #%00000001' will actually leave the accumulator with the lowest bit  SET. No matter what. Likewise, 'and #%11111110' will leave the accumulator with the lowest bit CLEAR. No matter what. And in the other bits, their value will remain unchanged. You should try some values and check this out, because  understanding this binary logical operation on bits is pretty fundamental to '2600 programming.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<div class="jumpid" id="playfield_reflection">&nbsp;</div>
+<p class="bbtertiary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#playfield_reflection">Playfield Reflection</a></p>
+<p>In the initialization section of your current kernel, add the following lines…</p>
+<pre class="bbborder">
+    lda #%00000001
+
+    sta CTRLPF
+
+</pre>
+<p>That's our playfield reflection in operation<span style="padding-left:2px; padding-right:2px;">—</span>if you're running any sort of playfield code, you will see that the  right-side is now a mirror-image of the left-side. Now have a think about the exercise I offered in session 14…</p>
+<div class="bbpageindent">
+<div style="overflow: auto; margin-bottom:32px;">
+<div class="sidebox01" style="margin-top:24px;">
+<div class="bbpageindent">
+<ol start="5">
+<li class="normalli" style="margin-top:16px;">How would you make a 'wall' which was 8 scanlines high, full screen width, followed by left and right walls just 1  pixel wide each, at extreme left/right edges of the screen, 176 scanlines high, followed by another horizontal 'wall',  full screen width and 8 scanlines high? Note: this would form a 'box' border around the entire playfield.<br></li>
+</ol>
+</div>
+</div>
+</div>
+</div>
+<p>It should be apparent, now, that in this sort of situation we really only need to worry about the left side of the  playfield!  If we let the '2600 reflect the right side, we will get a symmetrical copy of the left, and we'll have our  box if only we do the left-side borders. This is a <strong>huge advantage</strong> to the programmer, because we suddenly don't  have to write new PF0, PF1, PF2 values each scanline. Remember (and I'll drum this into you until the very last  session!) we only have 76 cycles per scanline<span style="padding-left:2px; padding-right:2px;">—</span>the less we have to do on any line, the better. At the very least,  rewriting PF0, PF1 and PF2 twice per scanline would cost 30 cycles IF you were being clever. That's almost half the  available time JUST to draw background<span style="padding-left:2px; padding-right:2px;">—</span>and there's still colors, sprites, balls and missiles to worry about!  However,  if you just use a reflected playfield, then we are only looking at single writes to PF0, PF1, PF2, cutting our playfield  update to only 15 cycles per line (eg:  lda #value / sta PF0 / lda #value2 / sta PF1 / lda #value3 / sta PF2).</p>
+<p>&nbsp;</p>
+<p>Just an aside, here<span style="padding-left:2px; padding-right:2px;">—</span>some people have been posting code IN UPPERCASE. It is quite acceptable to use upper or lowercase  for the mnemonics of your 6502 code. I prefer lowercase, as I find it easier to read and LESS LIKE SHOUTING!  But its  totally up to you<span style="padding-left:2px; padding-right:2px;">—</span>you will typically (but not always) find my code is lowercase, and you may feel free to adopt a style  that suits you. I make my constants UPPERCASE, my variables typically a mixture, and my mnemonics lower-case. Your  mileage may vary.</p>
+<p>&nbsp;</p>
+<p>So, let's get down to it<span style="padding-left:2px; padding-right:2px;">—</span>here's a solution for exercise 5, of session 14…</p>
+</div>
+</div>
+</div>
+<div style="clear:both; font-size:0px;">&nbsp;</div>
+
+<div style="margin:0px; padding:0px; max-width:930px;">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<pre class="bbborder">
+; '2600 for Newbies
+; Session 15 - Playfield Continued
+; This kernel draws a simple box around the screen border
+; Introduces playfield reflection 
+
+
+
+
+
+                processor 6502
+
+                include "vcs.h"
+
+                include "macro.h"
+
+
+;----------------------------------------------------------------------------
+
+
+
+                SEG
+
+                ORG $F000
+
+
+
+Reset
+
+
+
+   ; Clear RAM and all TIA registers
+
+
+
+                ldx #0 
+
+                lda #0 
+
+Clear           sta 0,x 
+
+                inx 
+
+                bne Clear
+
+
+
+       ;------------------------------------------------
+
+       ; Once-only initialization. . .
+
+
+
+                lda #$45
+
+                sta COLUPF             ; set the playfield color
+
+
+
+                lda #%00000001
+
+                sta CTRLPF             ; reflect playfield
+
+
+
+       ;------------------------------------------------
+
+
+
+StartOfFrame
+
+
+
+   ; Start of new frame
+
+   ; Start of vertical blank processing
+
+
+
+                lda #0
+
+                sta VBLANK
+
+
+
+                lda #2
+
+                sta VSYNC
+
+
+
+                sta WSYNC
+
+                sta WSYNC
+
+                sta WSYNC               ; 3 scanlines of VSYNC signal
+
+
+
+                lda #0
+
+                sta VSYNC
+
+                
+
+       ;------------------------------------------------
+
+       ; 37 scanlines of vertical blank. . .
+
+            
+
+                ldx #0
+
+VerticalBlank   sta WSYNC
+
+                inx
+
+                cpx #37
+
+                bne VerticalBlank
+
+
+
+       ;------------------------------------------------
+
+       ; Do 192 scanlines of color-changing (our picture)
+
+
+
+                ldx #0                 ; this counts our scanline number
+
+
+
+                lda #%11111111
+
+                sta PF0
+
+                sta PF1
+
+                sta PF2
+
+
+
+   ; We won't bother rewriting PF0-PF2 every scanline of the
+   ; top 8 lines - they never change!
+
+
+Top8Lines     sta WSYNC
+
+              inx
+
+              cpx #8                 ; Are we at line 8?
+
+              bne Top8Lines          ; No, so do another
+
+
+
+                   ; Now we want 176 lines of "wall"
+
+                   ; Note: 176 (middle) + 8 (top) + 8 (bottom) = 192 lines
+
+
+
+              lda #%00010000  ; PF0 is mirrored &lt;-- direction,
+                              ; low 4 bits ignored
+              sta PF0
+
+              lda #0
+
+              sta PF1
+
+              sta PF2
+
+
+
+                ; Again, we don't bother writing PF0-PF2 every
+                ; scanline - they never change!
+
+
+
+
+MiddleLines   sta WSYNC
+
+              inx
+
+              cpx #184
+
+              bne MiddleLines
+
+
+
+             ; Finally, our bottom 8 scanlines - the same as the top 8
+
+             ; AGAIN, we aren't going to bother writing PF0-PF2 mid scanline!
+
+
+
+              lda #%11111111
+
+              sta PF0
+
+              sta PF1
+
+              sta PF2
+
+
+
+Bottom8Lines  sta WSYNC
+
+              inx
+
+              cpx #192
+
+              bne Bottom8Lines
+
+
+
+       ;------------------------------------------------
+
+
+
+ 
+
+              lda #%01000010
+
+              sta VBLANK          ; end of screen - enter blanking
+
+
+
+   ; 30 scanlines of overscan. . .
+
+
+
+              ldx #0
+
+Overscan      sta WSYNC
+
+              inx
+
+              cpx #30
+
+              bne Overscan
+
+
+
+              jmp StartOfFrame
+
+
+
+
+;----------------------------------------------------------------------------
+
+
+
+            ORG $FFFA
+
+
+
+InterruptVectors
+
+
+
+            .word Reset          ; NMI
+
+            .word Reset          ; RESET
+
+            .word Reset          ; IRQ
+
+
+
+      END
+
+</pre>
+</div>
+</div>
+</div>
+<div class="f728max">
+<div class="bbpageindent">
+<div class="bbpageindent">
+<p>This kernel is interesting in that it achieves the box effect by writing the playfield registers BEFORE the scanline  loops to do the appropriate section. It uses the knowledge that the TIA has an internal state and will keep displaying  whatever it already has in the playfield registers. So, in fact, the actual cost (in cycles) of drawing the 'box' playfield on each scanline is 0 cycles<span style="padding-left:2px; padding-right:2px;">—</span>ie; it's free. We just had that short initial load before each section (taking  a few cycles out of the very first scanline of each section). This is how you need to think about '2600 programming<span style="padding-left:2px; padding-right:2px;">—</span>how to remove cycles from your scanlines<span style="padding-left:2px; padding-right:2px;">—</span>and do the absolute minimal necessary.</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:8px;">Here's a screenshot:</p>
+<div class="bbpageindent">
+<div style="background-image:url('files_andrew_davie_sessions/kernel_15.png'); background-repeat:no-repeat; padding:0px; margin: 16px 0px 48px 0px; width:336px; height:241px;">
+<img src="./Atari 2600 Programming for Newbies - Session 15_ Playfield Continued_files/please_do_not_hotlink.gif" width="336" height="241" alt="Kernel 15" style="border:0;">
+</div>
+</div>
+
+<p style="margin-bottom:8px;">Here's the .bin file to use with an emulator:</p>
+<p class="bonsitefull"><a style="font-weight:bold;" href="https://www.randomterrain.com/files_andrew_davie_sessions/kernel_15.bin">kernel_15.bin</a></p>
+</div>
+</div>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#summary">Summary</a></p>
+<p>That will do for today's session. We've had an introduction to controlling individual TIA register bits, and seen how to achieve a reflected playfield at next to no cost. We've had a brief introduction to the CTRLPF register, and seen how it has a myriad (well, more than 3) uses. Although some of the previous sessions have asked you to think about tricky subjects like horizontal scrolling, and asymmetrical playfields<span style="padding-left:2px; padding-right:2px;">—</span>now is not the time to actually discuss these tricky areas. So until next time (when we'll develop our playfield skills a bit more)… ciao!</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="exercises">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#exercises">Exercises</a></p>
+<ol class="bbpageol" style="margin-top:0px; margin-bottom:0px;">
+<li class="normalli">Introduce a RAM shadow of the CTRLPF register, and modify it differently in each section of the kernel. For example turn reflection on and off partway through the midsection of the box, and see what happens.</li>
+<li class="normalli">Have a play with the SCORE bit in the CTRLPF register, and in conjunction with that the COLUP0 and COLUP1 color registers. Note how this SCORE bit changes where the color for the playfield comes from.</li>
+</ol>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tbody><tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-14.html">&lt; Previous Session</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-16.html">Next Session &gt;</a></p>
+</td>
+</tr>
+</tbody></table>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#session_links">Session Links</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html">Session 1: Start Here</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefulloff">Session 15: Playfield Continued</p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder"><div class="jumpid" id="useful_links">&nbsp;</div>
+<p class="sectiontitle03"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#useful_links">Useful Links</a></p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Easy+6502+by+skilldrick">Easy 6502 by Nick Morgan</a></p>
+<p>How to get started writing 6502 assembly language. Includes a JavaScript 6502 assembler and simulator.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Atari+Roots+atariarchives.org">Atari Roots by Mark Andrews (Online Book)</a></p>
+<p>This book was written in English, not computerese. It's written for Atari users, not for professional programmers (though they might find it useful).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+atariarchives.org">Machine Language For Beginners by Richard Mansfield (Online Book)</a></p>
+<p style="margin-bottom:16px;">This book only assumes a working knowledge of BASIC. It was designed to speak directly to the amateur programmer, the part-time computerist. It should help you make the transition from BASIC to machine language with relative ease.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+Chapter+6+atariarchives.org">The Six Instruction Groups</a></p>
+<p style="margin-bottom:16px;">The 6502 Instruction Set broken down into 6 groups.</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+%22Appendix+A%22+ADC+atariarchives.org">6502 Instruction Set</a></p>
+<p>Nice, simple instruction set in little boxes (not made out of ticky-tacky).</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=The+Second+Book+Of+Machine+Language+atariarchives.org">The Second Book Of Machine Language by Richard Mansfield (Online Book)</a></p>
+<p style="margin-bottom:16px;">This book shows how to put together a large machine language program. All of the fundamentals were covered in <a class="offsite" href="https://www.google.com/search?q=Machine+Language+For+Beginners+atariarchives.org">Machine Language for Beginners</a>. What remains is to put the rules to use by constructing a working program, to take the theory into the field and show how machine language is done.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=The+Second+Book+Of+Machine+Language+%22Chapter+10%22+%226502+Instruction+Set%22+atariarchives.org">6502 Instruction Set</a></p>
+<p>An easy-to-read page from <b>The Second Book Of Machine Language</b>.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=alp%2Fappendix_1+Appendix+One+atariarchives.org">6502 Instruction Set with Examples</a></p>
+<p>A useful page from <a class="offsite" href="https://www.google.com/search?q=Assembly+Language+Programming+for+the+Atari+Computers+atariarchives.org">Assembly Language Programming for the Atari Computers</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=6502.org">6502.org</a></p>
+<p style="margin-bottom:16px;">Continually strives to remain the largest and most complete source for 6502-related information in the world.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=NMOS+6502+Opcodes+6502.org">NMOS 6502 Opcodes</a></p>
+<p>By John Pickens. Updated by Bruce Clark.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150630043454/http://www.obelisk.demon.co.uk/6502/index.html">Guide to 6502 Assembly Language Programming by Andrew Jacobs</a></p>
+<p style="margin-bottom:16px;">Below are direct links to the most important pages.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://web.archive.org/web/20150525012005/http://www.obelisk.demon.co.uk/6502/registers.html">Registers</a></p>
+<p style="margin-bottom:16px;">Goes over each of the internal registers and their use.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150516053257/http://www.obelisk.demon.co.uk/6502/instructions.html">Instruction Set</a></p>
+<p style="margin-bottom:16px;">Gives a summary of whole instruction set.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150514221544/http://www.obelisk.demon.co.uk/6502/addressing.html">Addressing Modes</a></p>
+<p style="margin-bottom:16px;">Describes each of the 6502 memory addressing modes.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150630114921/http://www.obelisk.demon.co.uk/6502/reference.html">Instruction Reference</a></p>
+<p>Describes the complete instruction set in detail.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Stella+Programmer%27s+Guide+HTML">Stella Programmer's Guide</a></p>
+<p>HTMLified version.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html">Nick Bensema's Guide to Cycle Counting on the Atari 2600</a></p>
+<p>Cycle counting is an important aspect of Atari 2600 programming. It makes possible the positioning of sprites, the drawing of six-digit scores, non-mirrored playfield graphics and many other cool TIA tricks that keep every game from looking like Combat.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-how-to-draw-a-playfield.html">How to Draw A Playfield by Nick Bensema</a></p>
+<p>Atari 2600 programming is different from any other kind of programming in many ways. Just one of these ways is the flow of the program.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Cart+Sizes+and+Bankswitching+Methods+by+Kevin+Horton">Cart Sizes and Bankswitching Methods by Kevin Horton</a></p>
+<p>The "bankswitching bible." Also check out the <a class="offsite" href="https://atariage.com/2600/archives/funfacts.html?SystemID=2600">Atari 2600 Fun Facts and Information Guide</a> and <a class="offsite" href="https://atariage.com/forums/topic/83915-bank-switching-best-practices/?do=findComment&amp;comment=1022361">this post about bankswitching by SeaGtGruff at AtariAge</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=%22Atari+2600+Specifications%22">Atari 2600 Specifications</a></p>
+<p>Atari 2600 programming specs (HTML version).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://atariage.com/2600/programming/index.html">Atari 2600 Programming Page (AtariAge)</a></p>
+<p>Links to useful information, tools, source code, and documentation.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=%22MiniDig%22+%22Best+of+Stella%22">MiniDig</a></p>
+<p>Atari 2600 programming site based on Garon's "The Dig," which is now dead.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tia-color-charts.html">TIA Color Charts and Tools</a></p>
+<p>Includes interactive color charts, an NTSC/PAL color conversion tool, and Atari 2600 color compatibility tools that can help you quickly find colors that go great together.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-music-and-sound.html">The Atari 2600 Music and Sound Page</a></p>
+<p>Adapted information and charts related to Atari 2600 music and sound.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-standards-and-procedures.html">Game Standards and Procedures</a></p>
+<p>A guide and a check list for finished carts.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Stella+multi-platform+Atari+2600+VCS+emulator">Stella</a></p>
+<p>A multi-platform Atari 2600 VCS emulator. It has a built-in debugger to help you with your works in progress or you can use it to study classic games. Stella finally got Atari 2600 quality sound in December of 2018. Until version 6.0, the game sounds in Stella were mostly OK, but not great. Now it's almost impossible to tell the difference between the sound effects in Stella and a real Atari 2600.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=JAVATARI">JAVATARI</a></p>
+<p>A very good emulator that can also be embedded on your own web site so people can play the games you make online. It's much better than JStella.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html">batari Basic Commands</a></p>
+<p>If assembly language seems a little too hard, don't worry. You can always try to make Atari 2600 games the faster, easier way with batari Basic.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#top">Back to Top</a></p>
+<p>&nbsp;</p>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder"><div data-nosnippet="">
+<div class="jumpid" id="affirmations">&nbsp;</div>
+<p class="littlegreentitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#affirmations">Affirmations</a></p>
+<div class="yellowbox">
+<p>I'm a money magnet. Good things happen to me. I get things done. I'm happy. I'm healthy. I'm smart. I'm creative. I'm a nice person. I'm successful. I'm good with money. I'm honest. I'm trustworthy. I'm responsible. I'm wise. I'm easygoing. I'm clear-minded. I'm sober. I'm calm. I'm thankful. I'm satisfied. I'm forgiving. I'm confident. I'm kind. I'm considerate. I'm likeable. I'm friendly. I'm loving. I'm loveable. I'm joyful. I'm playful. I'm full of energy. I'm fun to be around. I'm a good friend. I'm eternal. I'm powerful. I'm a being of light. I'm a spirit wearing a body.</p>
+</div>
+<div class="jumpid" id="in_case_you_did_not_know">&nbsp;</div>
+<p class="littlebluetitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#in_case_you_did_not_know">In Case You Didn't Know</a></p>
+<div class="yellowbox">
+<div class="jumpid" id="icydnk_litterbugs">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#icydnk_litterbugs">Litterbugs = Bad</a></p>
+<p><a class="offsite" href="https://www.randomterrain.com/favorite-quotes-littering.html">Never litter</a>. Toss your trash in a bin or take it home with you instead of throwing it on the ground. Never throw anything out of a vehicle window, including fast-food packaging, drink cups, water bottles, cigarette butts, or any other trash.</p>
+<p>&nbsp;</p>
+<p>It is illegal and completely unacceptable to dump large items like furniture, appliances, mattresses, tires, or construction debris by the side of the road, in forests, ditches, or on any public or private land. Please take all bulk waste to an authorized landfill or your local residential transfer station or recycling center. This strict rule applies to everyone, whether you are a lifelong resident or a newcomer adjusting to local waste management systems.</p>
+<p>&nbsp;</p>
+<p>Remember that responsible people clean up after themselves at home, in public, at campsites, and everywhere else. <a class="offsite" href="https://www.google.com/search?&amp;q=Leave+it+better+than+you+found+it">Leave it better than you found it</a>. In fact, keeping an area clean actually stops a chain reaction of bad behavior before it starts. Research shows that people are much less likely to litter in a region that seems to be spotless. By taking care of your surroundings today, you are silently reminding the next person to do the same.</p>
+<p>&nbsp;</p>
+<p>You might think that if you didn't drop the trash, it isn't your job to clean it up, but ignoring the problem can come back to haunt the whole neighborhood. If you have time for a daily walk or jog, you can easily catch blowing trash early through an eco-friendly fitness trend called <a class="offsite" href="https://www.google.com/search?&amp;q=Leave+it+better+than+you+found+it">plogging</a>, where people pick up litter while walking or jogging. All you need is a trash bag, <a class="offsite" href="https://amzn.to/2qzyS2f">Grabbers (#ad)</a>, and <a class="offsite" href="https://amzn.to/2O8xkoZ">nitrile gloves (#ad)</a> or <a class="offsite" href="https://amzn.to/2CXKdfb">work gloves (#ad)</a>. Catching that trash early keeps it from mixing with organic debris and clogging up the storm drains. However, if the drains in your area are already clogged with heavy layers of mud, twigs, leaves, and trash, that requires a dedicated, separate task. If you feel you are qualified, put on thick work gloves, grab a shovel, your trusty grabbers, and a trash bag (since you will probably find trash) and carefully get to work. Stay hyper-aware of traffic and step out of the street whenever a car approaches. Taking care of your surroundings directly protects your own home and your neighbors from unnecessary flood damage.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_b_vitamins">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#icydnk_b_vitamins">B Vitamins = Good</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22vitamin+B%22+mental+health">Vitamin B deficiencies</a> can produce symptoms that look like mental illness, including mood swings, irritability, irrational behavior, and even psychosis-like states in some people. Once the deficiency is corrected, the symptoms frequently clear up. Years ago, I heard from someone online whose wife had severe mood swings and explosive behavior that improved dramatically after she started taking a B-complex.</p>
+<p>&nbsp;</p>
+<p>It makes you wonder how many people struggling with severe psychiatric conditions, including schizophrenia, might find some relief just by addressing an underlying nutrient deficiency. Of course, a B-complex isn't a cure-all and shouldn't replace a doctor's care, but checking blood levels for B12 or folate seems like such a simple, logical place to start.</p>
+<p>&nbsp;</p>
+<p>I've taken <a class="offsite" href="https://amzn.to/2QLBO6z">Jarrow B-Right (#ad)</a> for many years. It reliably lifts my mood and virtually eliminates the arm pain I used to get from using a computer mouse (which had been bordering on carpal tunnel syndrome). I take it five days a week and skip two days to limit long-term B6 exposure.  (This is personal experience, not medical advice.)</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_negative_ions">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#icydnk_negative_ions">Negative Ions = Good</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22negative+ions+are+good%22">Negative ions</a> are highly beneficial for our health and well-being. When choosing an air purifier, you generally want to avoid ozone generators, which can irritate your lungs. Some air cleaners give off ozone by mistake, so you have to be careful when choosing one. While a basic air cleaner is better than nothing, a high-quality unit that specifically produces negative ions actually refreshes the room on a molecular level. The one I have makes the air in my bedroom feel noticeably fresher, easier to breathe, and consistently helps to brighten my mood.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_soybeans">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#icydnk_soybeans">Soy = Bad</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22Why+Soy+is+Bad%22&amp;num=100">Unfermented soy</a> is bad! “<a class="offsite" href="https://www.optimumchoices.com/Soy.htm">When she stopped eating soy, the mental problems went away</a>.” Fermented soy doesn't bother me, but the various versions of unfermented soy (soy flour, soybean oil, and so on) that are used in all kinds of products these days causes a negative mental health reaction in me that a vitamin B complex can't tame. The sinister encroachment of soy has made the careful reading of ingredients a necessity.</p>
+<p>&nbsp;</p>
+<p>I wouldn't be surprised to find out that unfermented soy is a driving factor behind a lot of the constant irritability, hair-trigger anger, and social hostility we see in modern culture. If I unknowingly eat something with unfermented soy in it, I become angry and aggressive, so it is absolutely not a placebo effect. Scientists in the future will likely confirm that widespread unfermented soy consumption alters human behavior. We already know that <a class="offsite" href="https://www.google.com/search?q=%22food+sensitivities+cause+mood+changes%22&amp;num=100">food sensitivities cause mood changes</a>. It took me over a decade to figure out that unfermented soy was hijacking my mood. What if millions of people are having a similar severe reaction to soy and don't even know it? Countless people eat it and drink it every single day.</p>
+<p>&nbsp;</p>
+<p>It's common for people who adopt heavy soy-based diets to experience intense mood swings and irrational emotional outbursts. What would happen if the most chronically angry people in our society stopped consuming soy sludge and started taking a B-complex? Would a significant number of them suddenly calm down and find emotional balance?</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_wheat">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#icydnk_wheat">Wheat = Bad</a></p>
+<p>If you are overweight, have type 2 diabetes, or are worried about the condition of your heart, check out the videos by <a class="offsite" href="https://www.youtube.com/c/KenDBerryMD/videos">Ken D Berry</a>, <a class="offsite" href="https://www.youtube.com/user/wheatbelly/videos">William Davis</a>, and <a class="offsite" href="https://www.youtube.com/channel/UCPn4FsiQP15nudug9FDhluA/videos">Ivor Cummins</a>. It seems that most people should avoid wheat, not just those who have a wheat allergy or celiac disease. Check out these books: <a class="offsite" href="https://amzn.to/2D2mw5c">Undoctored (#ad)</a>, <a class="offsite" href="https://amzn.to/2OubcnP">Wheat Belly (#ad)</a>, and <a class="offsite" href="https://amzn.to/2Xwhuau">Eat Rich, Live Long (#ad)</a>.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+
+<div class="jumpid" id="icydnk_climate_change">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html#icydnk_climate_change">Climate Change Cash Grab = Bad</a></p>
+<p>Seems like more people than ever finally care about water, land, and air pollution, but the climate change cash grab scam is designed to put more of your money into the bank accounts of greedy politicians. Those power-hungry schemers try to trick us with <a class="offsite" href="https://www.commentary.org/john-steele-gordon/climate-global-warming-data-locations/">bad data</a> and lies about <a class="offsite" href="https://www.pop.org/debunking-the-myth-of-overpopulation/">overpopulation</a> while pretending to be caring do-gooders. Trying to eliminate pollution is a good thing, but the carbon emissions of the average law-abiding human right now are actually making the planet greener instead of killing it.</p>
+<p>&nbsp;</p>
+<p>Eliminating farms and ranches, eating bugs, getting locked down in 15-minute cities, owning nothing, using digital currency with expiration dates that is tied to your social credit score, and paying higher taxes will not make things better and “save the Earth.” All that stuff is part of an <a class="offsite" href="https://twitter.com/Random_Terrain/status/1609836575755755521">agenda</a> that has nothing to do with making the world a better place for the average person. It's all about control, depopulation, and making things better for the <a class="offsite" href="https://www.bitchute.com/video/M6naRq5vtgyA/">ultra-rich</a>. They just want enough peasants left alive to keep things running smoothly.</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:14px;">Watch these two videos for more information:</p>
+<p class="moffsitefull"><a href="https://www.bitchute.com/video/uQ8WLJxu9Q4R/">CO2 is Greening The Earth</a></p>
+<p class="offsitefull"><a href="https://www.bitchute.com/video/IBJ2uiqUec5F/">The Climate Agenda</a></p>
+</div>
+</div>
+</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+
+
+<p>&nbsp;</p>
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="https://www.randomterrain.com/index.html">Home</a> <a href="https://www.randomterrain.com/futuristic-inventions-cool-stuff.html">Inventions</a> <a href="https://www.randomterrain.com/favorite-quotes.html">Quotations</a> <a href="https://www.randomterrain.com/game-design.html">Game Design</a> <a href="https://www.randomterrain.com/atari-2600-memories.html">Atari Memories</a> <a href="https://www.randomterrain.com/personal.html">Personal Pages</a> <a href="https://www.randomterrain.com/about.html">About</a> <a href="https://www.randomterrain.com/sitemap.html">Site Map</a> <a href="https://www.randomterrain.com/contact.html">Contact</a> <a href="https://www.randomterrain.com/privacy.html">Privacy Policy</a> <a href="https://www.randomterrain.com/rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+
+
+</body></html>

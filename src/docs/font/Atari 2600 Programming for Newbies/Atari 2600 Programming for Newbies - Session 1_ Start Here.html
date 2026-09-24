@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<!-- saved from url=(0079)https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html -->
+<html lang="en"><!--<![endif]--><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<!-- Google tag (gtag.js) -->
+<script async="" src="./Atari 2600 Programming for Newbies - Session 1_ Start Here_files/js"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-23W5RPE0Q4');
+</script>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Atari 2600 Programming for Newbies - Session 1: Start Here</title>
+
+<link href="./Atari 2600 Programming for Newbies - Session 1_ Start Here_files/fluid.css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 1_ Start Here_files/fluid(1).css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 1_ Start Here_files/rt_stylesheet.css" rel="stylesheet" type="text/css">
+<link href="./Atari 2600 Programming for Newbies - Session 1_ Start Here_files/rt_stylesheet(1).css" rel="stylesheet" type="text/css">
+
+<link rel="icon" type="image/png" href="https://www.randomterrain.com/favicon_new.png">
+
+
+<meta property="fb:admins" content="100000124414660">
+<meta property="og:title" content="Atari 2600 Programming for Newbies">
+<meta name="twitter:title" content="Atari 2600 Programming for Newbies">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html">
+<meta property="og:image" content="https://www.randomterrain.com/filesframe/topbar_fb3.png">
+<meta property="og:description" content="Session 1: Start Here">
+<meta name="description" content="Session 1: Start Here">
+<meta name="twitter:description" content="Session 1: Start Here">
+
+<meta name="twitter:site" content="@Random_Terrain">
+<meta name="twitter:creator" content="@Random_Terrain">
+<meta name="twitter:image" content="https://www.randomterrain.com/z_twitter_card_small.png">
+
+
+
+
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script src="./Atari 2600 Programming for Newbies - Session 1_ Start Here_files/respond.min.js"></script>
+</head>
+
+<body>
+<div class="jumpid" id="top">&nbsp;</div>
+<div class="gridaContainer clearfix">
+<a href="https://www.randomterrain.com/index.html" title="Random Terrain"><div id="flogo" style="cursor: pointer;"></div></a>
+<div id="fnavinvent" class="ionsitefull"><a href="https://www.randomterrain.com/futuristic-inventions-cool-stuff.html">Useful<br>Inventions</a></div>
+<div id="fnavquotes" class="qonsitefull"><a href="https://www.randomterrain.com/favorite-quotes.html">Favorite<br>Quotes</a></div>
+<div id="fnavgame" class="gonsitefull"><a href="https://www.randomterrain.com/game-design.html">Game<br>Design</a></div>
+<div id="fnavatari" class="atonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories.html">Atari<br>Memories</a></div>
+<div id="fnavpersonal" class="prsonsitefull"><a href="https://www.randomterrain.com/personal.html">Personal<br>Pages</a></div>
+<div id="fhorizbartop" class="ataribar"></div>
+
+<div id="fheading">
+<p class="breadcrumb"><a class="offsite" href="https://www.randomterrain.com/index.html">Home</a> &gt; <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html">Atari Memories</a> &gt; <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">#Assembly</a> &gt; <span style="font-weight:bold;">Atari 2600 Programming for Newbies</span></p>
+<h1 style="text-align:center;">Atari 2600 Programming for Newbies</h1>
+<h2 style="font-size:20px; margin-bottom:8px; text-align:center;">Session 1: Start Here</h2>
+<p style="font-size:17px; font-weight:bold; text-align:center;">By Andrew Davie <span style="font-weight:normal; font-size:14px;">(adapted by Duane Alan Hahn, a.k.a. Random Terrain)</span></p>
+
+<p class="amazoninfo" style="margin-top:32px; text-align:center;">As an <a class="offsite" href="https://amzn.to/35ibrsK">Amazon</a> Associate I earn from qualifying purchases.</p>
+</div>
+
+<div id="ptoc">
+<p class="littlegreentitle">Page Table of Contents</p>
+<div class="yellowbox">
+<p class="tocsec" style="margin-top:0px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#basics">The Basics</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#basics_cpu">The CPU</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#basics-memory">Memory</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#basics_input_output">Input/Output</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#development">The Development Process</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#development_source_code">Source Code</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#development_text_editor">Text Editor</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#development_assembler">Assembler</a></p>
+<p class="tocsub" style="margin-left:18px;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#development_emulator">Emulator</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#documentation">Documentation</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#summary">Summary</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#session_links">Session Links</a></p>
+<p class="tocsec"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#useful_links">Useful Links</a></p>
+</div>
+
+<p class="littlebluetitle">Original Session</p>
+<div class="yellowbox">
+<p class="offsitefull"><a href="https://atariage.com/forums/topic/27186-session-1-start-here">Original Session 1 at AtariAge</a></p>
+</div>
+
+
+</div>
+<div id="fcontent728">
+<p>So, you want to program the Atari 2600 and don't know where to start?</p>
+<p>&nbsp;</p>
+<p>Welcome to the first installment of "000001010 00101000 00000000 1100101"<span style="padding-left:2px; padding-right:2px;">—</span>which at first glance is a  rather odd name for a programming tutorial<span style="padding-left:2px; padding-right:2px;">—</span>but on closer examination is appropriate, as it is closely involved with what it's like to program the Atari 2600. The string of 0's and 1's is actually a binary  representation of "2600 101".</p>
+<p>&nbsp;</p>
+<p>I'm Andrew Davie, and I've been developing games for various computers and consoles since the late  1970s. Really!  What I plan to do with this tutorial is introduce you to the arcane world of  programming the '2600, and slowly build up your skill base so that you can start to develop your own  games. We'll take this in slow easy stages.</p>
+<p>&nbsp;</p>
+<p>Developing for the Atari 2600 is much simpler today than it was when the machine was a force in the  marketplace (back in the 1980s). We have a helpful online community of dedicated programmers, readily  available documentation, tools, and sample code<span style="padding-left:2px; padding-right:2px;">—</span>and online forums where we can pose questions and get  almost instant feedback and answers. So don't be scared<span style="padding-left:2px; padding-right:2px;">—</span>with a bit of effort, anyone can do this!</p>
+<p>&nbsp;</p>
+<p>It is this online community which makes developing for the machine 'fun'<span style="padding-left:2px; padding-right:2px;">—</span>though I use that in the  broadest sense of the word. My 'fun' may be another man's 'torture'. For programming this machine is  tricky at best<span style="padding-left:2px; padding-right:2px;">—</span>and not for the feint of heart. But the rewards are great<span style="padding-left:2px; padding-right:2px;">—</span>making this simple  hardware do anything at all is quite an achievement<span style="padding-left:2px; padding-right:2px;">—</span>and making it do something new and interesting  gives one a warm fuzzy feeling inside.</p>
+<p>&nbsp;</p>
+<p>So, let's get right into it … here's your first installment of "2600 101". We're going to assume that  you know how to program *something*, but not much more than that. We'll walk through binary  arithmetic, hexadecimal, machine architecture, assemblers, graphics, and whatever else gets in our way. And we'll probably divert on tangential issues here and there. But hopefully we'll come out of it  with a greater understanding of this little machine, and appreciation for the work of those brilliant  programmers who have developed the classics for this system.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="basics">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#basics">The Basics</a></p>
+<p>A game on the '2600 comes in the form of a cartridge (or 'tape') which is plugged into the console  itself. This cartridge consists of a circuit board containing a ROM (or EPROM) which is basically just  a silicon chip containing a program and graphics for displaying the game on your TV set. This program  (and graphics) are really just a lot of numbers stored on the ROM which are interpreted by the CPU (the  processor) inside your '2600 just like a program on any other computer. What makes the '2600 special  is … nothing. It's a computer, just like any other!</p>
+<p>&nbsp;</p>
+<p>A computer typically consists of a CPU, memory, and some input/output (I/O) systems. The '2600 has a  CPU (a 6507), memory (RAM for the program's calculations, ROM to hold the program and graphics), and  I/O systems (joystick and paddles for input, and output to your TV).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="basics_cpu">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#basics_cpu">The CPU</a></p>
+<p>The CPU of the '2600 is a variant of a processor used in computers such as the Apple II, the Nintendo  NES, the Super Nintendo, and Atari home computers (and others). It's used in all these machines  because it is cheap to manufacture, it's simple to program, but also effective<span style="padding-left:2px; padding-right:2px;">—</span>the famous '6502'. In  this course we will learn how to program the 6502 microprocessor … but don't panic, we'll take that in  easy stages (and besides, it's not as hard as it looks).</p>
+<p>&nbsp;</p>
+<p>The '2600 actually uses a 6507 microprocessor<span style="padding-left:2px; padding-right:2px;">—</span>but this is really just a 6502 dressed in sheep's  clothing. The 6507 is able to address less memory than the 6502 but is in all other respects the same. I refer to the '2600 CPU as a 6502 purely as a matter of convenience.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="basics-memory">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#basics-memory">Memory</a></p>
+<p>Memory is severely restricted on the '2600. When the machine was developed, memory (both ROM and RAM)  were very expensive, so we don't have much of either. In fact, there's only 128 BYTES of RAM (and we  can't even use all of that!)<span style="padding-left:2px; padding-right:2px;">—</span>and typically (depending on the capabilities of the cartridge we're  going to be using for our final game) only about 4K of ROM. So, then, here's our first introduction to  the 'limitations' of the machine. We may all have great ideas for '2600 games, but we must keep in  mind the limited amount of RAM and ROM!</p>
+<p>&nbsp;</p>
+<p>[If you'd like to create and sell games with a lot more ROM and RAM, check out the <a class="offsite" href="https://www.google.com/search?q=site:www.atariage.com+%22What+is+a+Melody+Board%3F%22">Melody boards at AtariAge</a>. And be sure to pick up a <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-harmony-cartridge.html">Harmony Cartridge</a> for testing your games on a real Atari 2600.]</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="basics_input_output">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#basics_input_output">Input/Output</a></p>
+<p>Input to the '2600 is through interaction by the users with joystick and paddle controllers, and  various switches and buttons on the console itself. There are also additional control devices such as  keypads<span style="padding-left:2px; padding-right:2px;">—</span>but we won't delve much into those. Output is invariably through a television picture with  sound (the game that we see on our TV).</p>
+</div>
+<p>&nbsp;</p>
+<p>So, there's not really much to it so far<span style="padding-left:2px; padding-right:2px;">—</span>we have a microprocessor running a program from ROM, using  RAM, as required, for the storage of data<span style="padding-left:2px; padding-right:2px;">—</span>and the output of our program being displayed on a TV set. What could be simpler?</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="development">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#development">The Development Process</a></p>
+<p>Developing a game for the '2600 is an iterative process involving editing source code, assembling the  code, and testing the resulting binary (usually with an emulator). Our first step is to gather together the tools necessary to perform these tasks.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="bbpageindent">
+<div class="jumpid" id="development_source_code">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#development_source_code">Source Code</a></p>
+<p>'Source code' is simply one or more text files (created by the programmer and/or tools) containing a  list of instructions (and 'encoded' graphics) which make up a game. These data are converted by the  assembler into a binary which is the actual data placed on a ROM in a cartridge, and is run by the  '2600 itself.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="development_text_editor">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#development_text_editor">Text Editor</a></p>
+<p>To edit your source code, you need a text editor<span style="padding-left:2px; padding-right:2px;">—</span>and here the choice is entirely up to you. I use  Microsoft Developer Studio myself, as I like its features<span style="padding-left:2px; padding-right:2px;">—</span>but any text editor is fine. Packages  integrating the development process (edit/assemble/test) into your text editor are available, and this  integration makes the process much quicker and easier (for example, Developer-Studio integration allows  a double-click on an error line reported by the assembler, and the editor will position you on the very  line in the source code causing the error).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="development_assembler">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#development_assembler">Assembler</a></p>
+<p>To convert your source code into a binary form, we use an 'assembler'. An assembler is a program which  converts assembly language into binary format (and in particular, since the '2600 uses a 6502-variant  processor, we need an assembler that knows how to convert 6502 assembly code into binary). Pretty much  all '2600 development these days is done using the excellent <span class="dropt">cross-platform<span style="width:300px;">Available for multiple machines such as Mac, Linux, Windows, etc.</span></span> assembler 'DASM' which was written by Matt  Dillon in about 1988.</p>
+<p>&nbsp;</p>
+<p>DASM is available <a class="offsite" href="https://www.google.com/search?q=%22official+home+of+dasm%22+macro+assembler">online</a>. It would be  a good idea to go there now and get a copy of DASM, and the associated support-files for '2600  development. In this course, we will be using DASM exclusively. We'll learn how to setup and use DASM  shortly. [DASM is also included with <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html#gettingstarted">batari Basic</a>, so you could get it there if you don't trust other sources.]</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="development_emulator">&nbsp;</div>
+<p class="bbsecondary"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#development_emulator">Emulator</a></p>
+<p>Development of a game in the 1980s consisted of creating a <span class="dropt">binary image<span style="text-align:center;">Write&nbsp;source&nbsp;code,&nbsp;assemble&nbsp;into&nbsp;binary.</span></span> and then physically 'burning' the binary onto an EPROM, putting that EPROM onto a  cartridge and plugging it into a '2600. This was an inherently slow process (trust me, I did this for  NES development!) and it sometimes took 15 minutes just to see a change!</p>
+<p>&nbsp;</p>
+<p>Nowadays, we are able to see changes to code almost immediately because of the availability of good emulators. An emulator is a program which pretends to be another machine/program. For example, a '2600 emulator is able to 'run' binary ROM images and display the results just as if you'd actually  plugged a cartridge containing a ROM with that binary into an actual '2600 console. Today's '2600  emulators are very good indeed.</p>
+<p>&nbsp;</p>
+<p>So, instead of actually burning a ROM, we're just going to pretend we've burned one<span style="padding-left:2px; padding-right:2px;">—</span>and look at the  results by running this pretend-ROM on an emulator. And if there's a problem, we go back and edit our  source code, assemble it to a binary, and run the binary on the emulator again. That's our iterative  development process in action.</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:8px;">There are quite a few '2600 emulators available, but two of note are:</p>
+<p style="margin-bottom:8px;"><a class="offsite" href="https://www.google.com/search?q=Stella+%22multi-platform+Atari+2600+VCS+emulator%22">Stella</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=z26+%22Atari+2600+Emulator%22">z26</a></p>
+
+<p>&nbsp;</p>
+<p>Stella is your best choice if you're programming on non-Windows platform. I use Z26 for Windows  development, as it is quite fast and appears to be very accurate. Either of these emulators is fine,  and it's handy to be able to cross-check results on either.</p>
+<p>&nbsp;</p>
+<p>We'll learn how to use these emulators later<span style="padding-left:2px; padding-right:2px;">—</span>but right now let's continue with the gathering of  things we need…</p>
+<p>&nbsp;</p>
+</div>
+<p style="margin-bottom:8px;">Now that we have an editor, an assembler, and an emulator<span style="padding-left:2px; padding-right:2px;">—</span>the next important things are documentation  and sources for information. There are many places on the 'net where you can find information for  programming '2600, but perhaps the most important are:</p>
+<p style="margin-bottom:8px;"> <a class="offsite" href="https://www.google.com/search?q=%22Stella+Mailing+List+Interface%22+%22Stella+Archives%22">The Stella List</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=AtariAge">AtariAge</a></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="documentation">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#documentation">Documentation</a></p>
+<p style="margin-bottom:14px;">And finally, documentation. A copy of the technical specifications of the '2600 hardware (the Stella  Programmer's Guide) is essential…</p>
+<p style="margin-bottom:8px;"><b>Stella Programmer's Guide</b></p>
+<p style="margin-bottom:8px;">- <a class="offsite" href="https://www.google.com/search?q=%22Stella+Programmer%27s+Guide%22+html">HTML Version</a></p>
+<p>- <a class="offsite" href="https://www.google.com/search?q=%22Stella+Programmer%27s+Guide%22+pdf">PDF version</a></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div class="jumpid" id="summary">&nbsp;</div>
+<p class="bbmain"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#summary">Summary</a></p>
+<p>OK, that's all we need. Here's a summary of what you should have…</p>
+<ul class="bbpageul">
+<li class="normalli" style="margin-bottom:8px;">Text editor of your choice.</li>
+<li class="normalli" style="margin-bottom:8px;">DASM assembler and '2600 support files.</li>
+<li class="normalli" style="margin-bottom:8px;">Emulator (Z26 or Stella)</li>
+<li class="normalli" style="margin-bottom:8px;">Stella Programmer's Guide</li>
+<li class="normalli">Bookmarks to AtariAge and the #Stella mailing list.</li>
+</ul>
+<p>&nbsp;</p>
+<p>That's it for this session. Have a read of the Stella Programmer's Guide (don't worry about  understanding it yet), and try installing your emulator (and play a few games for 'research' purposes). Next time we will make sure that our development environment is setup correctly, and start to discuss  the principles of programming a '2600 game.</p>
+<p>&nbsp;</p>
+<p>P.S. I can't promise to complete this 'course'<span style="padding-left:2px; padding-right:2px;">—</span>but hopefully what I do write will be interesting and helpful.</p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+<p class="littlebluetitle">Other Assembly Language Tutorials</p>
+<div class="yellowbox">
+<p>Be sure to check out the other <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#assembly_language">assembly language tutorials</a> and the <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories.html#general_programming">general programming pages</a> on this web site.</p>
+</div>
+
+<div class="jumpid" id="amazon_stuff">&nbsp;</div>
+<p class="littlebluetitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#amazon_stuff">Amazon Stuff</a></p>
+<div class="yellowbox">
+<p class="moffsitefull"><a href="https://amzn.to/2sbUNwX">Amazon: Atari 2600 Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2DaWZH4">Amazon: 6502 Assembly Language Programming (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2KMEwVL">Atari 2600 Programming for Newbies (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/2rh2CRy">Making Games for the Atari 2600 (#ad)</a></p>
+<p class="moffsitefull"><a href="https://amzn.to/3fz837V">Atari T-Shirt (#ad)</a></p>
+<p class="offsitefull"><a href="https://amzn.to/2RqH7XK">I Paused My Game to Be Here T-Shirt (#ad)</a></p>
+</div>
+
+<table style="border-top-width:2px; border-top-color:rgb(255,189,14); border-top-style:solid; border-bottom-width:2px; border-bottom-color:rgb(255,189,14); border-bottom-style:solid; width:100%;">
+<tbody><tr>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p>&nbsp;</p>
+<p style="line-height:6px;">&nbsp;</p>
+</td>
+<td style="width:50%; text-align:left; vertical-align:top;">
+<p style="line-height:11px;">&nbsp;</p>
+<p class="bonsitefull" style="text-align:right;"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html">Next Session &gt;</a></p>
+<p style="line-height:6px;">&nbsp;</p>
+
+</td>
+</tr>
+</tbody></table>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+
+
+
+
+
+<div class="jumpid" id="session_links">&nbsp;</div>
+<p class="sectiontitle02"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#session_links">Session Links</a></p>
+<p class="bonsitefulloff">Session 1: Start Here</p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-02.html">Session 2: Television Display Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-03.html">Sessions 3 &amp; 6: The TIA and the 6502</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-04.html">Session 4: The TIA</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-05.html">Session 5: Memory Architecture</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-07.html">Session 7: The TV and our Kernel</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-08.html">Session 8: Our First Kernel</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-09.html">Session 9: 6502 and DASM - Assembling the Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-10.html">Session 10: Orgasm</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-11.html">Session 11: Colorful Colors</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-12.html">Session 12: Initialization</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-13.html">Session 13: Playfield Basics</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-14.html">Session 14: Playfield Weirdness</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-15.html">Session 15: Playfield Continued</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-16.html">Session 16: Letting the Assembler do the Work</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-17.html">Sessions 17 &amp; 18: Asymmetrical Playfields (Parts 1 &amp; 2)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-19.html">Session 19: Addressing Modes</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-20.html">Session 20: Asymmetrical Playfields (Part 3)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-21.html">Session 21: Sprites</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22.html">Session 22: Sprites, Horizontal Positioning (Part 1)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-22b.html">Session 22: Sprites, Horizontal Positioning (Part 2)</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-23.html">Session 23: Moving Sprites Vertically</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-24.html">Session 24: Some Nice Code</a></p>
+<p class="bonsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-25.html">Session 25: Advanced Timeslicing</a></p>
+
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<div id="footer-asm-links-placeholder"><div class="jumpid" id="useful_links">&nbsp;</div>
+<p class="sectiontitle03"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#useful_links">Useful Links</a></p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Easy+6502+by+skilldrick">Easy 6502 by Nick Morgan</a></p>
+<p>How to get started writing 6502 assembly language. Includes a JavaScript 6502 assembler and simulator.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Atari+Roots+atariarchives.org">Atari Roots by Mark Andrews (Online Book)</a></p>
+<p>This book was written in English, not computerese. It's written for Atari users, not for professional programmers (though they might find it useful).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+atariarchives.org">Machine Language For Beginners by Richard Mansfield (Online Book)</a></p>
+<p style="margin-bottom:16px;">This book only assumes a working knowledge of BASIC. It was designed to speak directly to the amateur programmer, the part-time computerist. It should help you make the transition from BASIC to machine language with relative ease.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+Chapter+6+atariarchives.org">The Six Instruction Groups</a></p>
+<p style="margin-bottom:16px;">The 6502 Instruction Set broken down into 6 groups.</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Machine+Language+For+Beginners+%22Appendix+A%22+ADC+atariarchives.org">6502 Instruction Set</a></p>
+<p>Nice, simple instruction set in little boxes (not made out of ticky-tacky).</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=The+Second+Book+Of+Machine+Language+atariarchives.org">The Second Book Of Machine Language by Richard Mansfield (Online Book)</a></p>
+<p style="margin-bottom:16px;">This book shows how to put together a large machine language program. All of the fundamentals were covered in <a class="offsite" href="https://www.google.com/search?q=Machine+Language+For+Beginners+atariarchives.org">Machine Language for Beginners</a>. What remains is to put the rules to use by constructing a working program, to take the theory into the field and show how machine language is done.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=The+Second+Book+Of+Machine+Language+%22Chapter+10%22+%226502+Instruction+Set%22+atariarchives.org">6502 Instruction Set</a></p>
+<p>An easy-to-read page from <b>The Second Book Of Machine Language</b>.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=alp%2Fappendix_1+Appendix+One+atariarchives.org">6502 Instruction Set with Examples</a></p>
+<p>A useful page from <a class="offsite" href="https://www.google.com/search?q=Assembly+Language+Programming+for+the+Atari+Computers+atariarchives.org">Assembly Language Programming for the Atari Computers</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=6502.org">6502.org</a></p>
+<p style="margin-bottom:16px;">Continually strives to remain the largest and most complete source for 6502-related information in the world.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://www.google.com/search?q=NMOS+6502+Opcodes+6502.org">NMOS 6502 Opcodes</a></p>
+<p>By John Pickens. Updated by Bruce Clark.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150630043454/http://www.obelisk.demon.co.uk/6502/index.html">Guide to 6502 Assembly Language Programming by Andrew Jacobs</a></p>
+<p style="margin-bottom:16px;">Below are direct links to the most important pages.</p>
+<div class="bbpageindent">
+<p class="offsitefull"><a href="https://web.archive.org/web/20150525012005/http://www.obelisk.demon.co.uk/6502/registers.html">Registers</a></p>
+<p style="margin-bottom:16px;">Goes over each of the internal registers and their use.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150516053257/http://www.obelisk.demon.co.uk/6502/instructions.html">Instruction Set</a></p>
+<p style="margin-bottom:16px;">Gives a summary of whole instruction set.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150514221544/http://www.obelisk.demon.co.uk/6502/addressing.html">Addressing Modes</a></p>
+<p style="margin-bottom:16px;">Describes each of the 6502 memory addressing modes.</p>
+<p class="offsitefull"><a href="https://web.archive.org/web/20150630114921/http://www.obelisk.demon.co.uk/6502/reference.html">Instruction Reference</a></p>
+<p>Describes the complete instruction set in detail.</p>
+</div>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Stella+Programmer%27s+Guide+HTML">Stella Programmer's Guide</a></p>
+<p>HTMLified version.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-guide-to-cycle-counting.html">Nick Bensema's Guide to Cycle Counting on the Atari 2600</a></p>
+<p>Cycle counting is an important aspect of Atari 2600 programming. It makes possible the positioning of sprites, the drawing of six-digit scores, non-mirrored playfield graphics and many other cool TIA tricks that keep every game from looking like Combat.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-how-to-draw-a-playfield.html">How to Draw A Playfield by Nick Bensema</a></p>
+<p>Atari 2600 programming is different from any other kind of programming in many ways. Just one of these ways is the flow of the program.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Cart+Sizes+and+Bankswitching+Methods+by+Kevin+Horton">Cart Sizes and Bankswitching Methods by Kevin Horton</a></p>
+<p>The "bankswitching bible." Also check out the <a class="offsite" href="https://atariage.com/2600/archives/funfacts.html?SystemID=2600">Atari 2600 Fun Facts and Information Guide</a> and <a class="offsite" href="https://atariage.com/forums/topic/83915-bank-switching-best-practices/?do=findComment&amp;comment=1022361">this post about bankswitching by SeaGtGruff at AtariAge</a>.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=%22Atari+2600+Specifications%22">Atari 2600 Specifications</a></p>
+<p>Atari 2600 programming specs (HTML version).</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://atariage.com/2600/programming/index.html">Atari 2600 Programming Page (AtariAge)</a></p>
+<p>Links to useful information, tools, source code, and documentation.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=%22MiniDig%22+%22Best+of+Stella%22">MiniDig</a></p>
+<p>Atari 2600 programming site based on Garon's "The Dig," which is now dead.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-tia-color-charts.html">TIA Color Charts and Tools</a></p>
+<p>Includes interactive color charts, an NTSC/PAL color conversion tool, and Atari 2600 color compatibility tools that can help you quickly find colors that go great together.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-music-and-sound.html">The Atari 2600 Music and Sound Page</a></p>
+<p>Adapted information and charts related to Atari 2600 music and sound.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-standards-and-procedures.html">Game Standards and Procedures</a></p>
+<p>A guide and a check list for finished carts.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=Stella+multi-platform+Atari+2600+VCS+emulator">Stella</a></p>
+<p>A multi-platform Atari 2600 VCS emulator. It has a built-in debugger to help you with your works in progress or you can use it to study classic games. Stella finally got Atari 2600 quality sound in December of 2018. Until version 6.0, the game sounds in Stella were mostly OK, but not great. Now it's almost impossible to tell the difference between the sound effects in Stella and a real Atari 2600.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.google.com/search?q=JAVATARI">JAVATARI</a></p>
+<p>A very good emulator that can also be embedded on your own web site so people can play the games you make online. It's much better than JStella.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p class="offsitefull"><a href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html">batari Basic Commands</a></p>
+<p>If assembly language seems a little too hard, don't worry. You can always try to make Atari 2600 games the faster, easier way with batari Basic.</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+
+</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-asm-links.html');
+    if (!response.ok) throw new Error('Failed to load ASM links');
+    const html = await response.text();
+    document.getElementById('footer-asm-links-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load ASM links section:', err);
+    document.getElementById('footer-asm-links-placeholder').innerHTML = 
+      '<p style="color: darkred;">(ASM links temporarily unavailable)</p>';
+  }
+</script>
+</div>
+
+<div id="fsidebar">
+<p class="bblittlegreentitle">Atari 2600 BASIC</p>
+<div class="yellowbox">
+<p>If assembly language is too hard for you, try <a class="offsite" href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html">batari Basic</a>. It's a BASIC-like language for creating Atari 2600 games. It's the faster, easier way to make Atari 2600 games.</p>
+
+<div style="width:208px; height:66px; margin-top:12px; margin-left:33px;">
+<a href="https://www.randomterrain.com/atari-2600-memories-batari-basic-commands.html" style="border-style: none; display: block; background-color: transparent;"><img src="./Atari 2600 Programming for Newbies - Session 1_ Start Here_files/topbar988-batari.png" alt="Try batari Basic" height="66" width="208" style="border:0;"></a>
+</div>
+</div>
+
+<a href="https://www.amazon.com/s?k=the+courage+to+face+covid-19+dr.+peter+mccullough&amp;linkCode=ll2&amp;tag=randterr-20&amp;linkId=aefe76cee204d05379778517d5fe4798&amp;language=en_US&amp;ref_=as_li_ss_tl1" target="_blank"><img src="./Atari 2600 Programming for Newbies - Session 1_ Start Here_files/z_amz_book_courage.png" style="border:none;" alt="THE COURAGE TO FACE COVID-19"></a>
+<a href="https://www.amazon.com/s?k=2000+Mules+DVD+D%27Souza&amp;linkCode=ll2&amp;tag=randterr-20&amp;linkId=4782ca11902ddf1777431a6bd7533f15&amp;language=en_US&amp;ref_=as_li_ss_tl" target="_blank"><img src="./Atari 2600 Programming for Newbies - Session 1_ Start Here_files/z_amz_book_2000.png" style="border:none;" alt="2000 Mules DVD"></a>
+<a href="https://www.amazon.com/s?k=the+great+awakening+alex+jones&amp;linkCode=ll2&amp;tag=randterr-20&amp;linkId=e73261c0ed66bfff3ef2a3bdaa73123d&amp;language=en_US&amp;ref_=as_li_ss_tl" target="_blank"><img src="./Atari 2600 Programming for Newbies - Session 1_ Start Here_files/z_amz_book_great_awake.png" style="border:none;" alt="The Great Awakening"></a>
+
+</div>
+
+
+<div id="fdisclaimer">
+<p class="backtotop"><a class="onpage" href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#top">Back to Top</a></p>
+<p>&nbsp;</p>
+
+<video style="width:100%; min-height:100px;" poster="z_video_media_lies_snapshot.jpg" controls="">
+<source src="z_video_media_lies.mp4" type="video/mp4">
+Your browser does not support HTML video.
+</video>
+<div style="clear:both; font-size:0px; line-height:50px;">&nbsp;</div>
+<!-- google_ad_section_start(weight=ignore) -->
+<div id="footer-icy-dk-placeholder"><div data-nosnippet="">
+<div class="jumpid" id="affirmations">&nbsp;</div>
+<p class="littlegreentitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#affirmations">Affirmations</a></p>
+<div class="yellowbox">
+<p>I'm a money magnet. Good things happen to me. I get things done. I'm happy. I'm healthy. I'm smart. I'm creative. I'm a nice person. I'm successful. I'm good with money. I'm honest. I'm trustworthy. I'm responsible. I'm wise. I'm easygoing. I'm clear-minded. I'm sober. I'm calm. I'm thankful. I'm satisfied. I'm forgiving. I'm confident. I'm kind. I'm considerate. I'm likeable. I'm friendly. I'm loving. I'm loveable. I'm joyful. I'm playful. I'm full of energy. I'm fun to be around. I'm a good friend. I'm eternal. I'm powerful. I'm a being of light. I'm a spirit wearing a body.</p>
+</div>
+<div class="jumpid" id="in_case_you_did_not_know">&nbsp;</div>
+<p class="littlebluetitle"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#in_case_you_did_not_know">In Case You Didn't Know</a></p>
+<div class="yellowbox">
+<div class="jumpid" id="icydnk_litterbugs">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#icydnk_litterbugs">Litterbugs = Bad</a></p>
+<p><a class="offsite" href="https://www.randomterrain.com/favorite-quotes-littering.html">Never litter</a>. Toss your trash in a bin or take it home with you instead of throwing it on the ground. Never throw anything out of a vehicle window, including fast-food packaging, drink cups, water bottles, cigarette butts, or any other trash.</p>
+<p>&nbsp;</p>
+<p>It is illegal and completely unacceptable to dump large items like furniture, appliances, mattresses, tires, or construction debris by the side of the road, in forests, ditches, or on any public or private land. Please take all bulk waste to an authorized landfill or your local residential transfer station or recycling center. This strict rule applies to everyone, whether you are a lifelong resident or a newcomer adjusting to local waste management systems.</p>
+<p>&nbsp;</p>
+<p>Remember that responsible people clean up after themselves at home, in public, at campsites, and everywhere else. <a class="offsite" href="https://www.google.com/search?&amp;q=Leave+it+better+than+you+found+it">Leave it better than you found it</a>. In fact, keeping an area clean actually stops a chain reaction of bad behavior before it starts. Research shows that people are much less likely to litter in a region that seems to be spotless. By taking care of your surroundings today, you are silently reminding the next person to do the same.</p>
+<p>&nbsp;</p>
+<p>You might think that if you didn't drop the trash, it isn't your job to clean it up, but ignoring the problem can come back to haunt the whole neighborhood. If you have time for a daily walk or jog, you can easily catch blowing trash early through an eco-friendly fitness trend called <a class="offsite" href="https://www.google.com/search?&amp;q=Leave+it+better+than+you+found+it">plogging</a>, where people pick up litter while walking or jogging. All you need is a trash bag, <a class="offsite" href="https://amzn.to/2qzyS2f">Grabbers (#ad)</a>, and <a class="offsite" href="https://amzn.to/2O8xkoZ">nitrile gloves (#ad)</a> or <a class="offsite" href="https://amzn.to/2CXKdfb">work gloves (#ad)</a>. Catching that trash early keeps it from mixing with organic debris and clogging up the storm drains. However, if the drains in your area are already clogged with heavy layers of mud, twigs, leaves, and trash, that requires a dedicated, separate task. If you feel you are qualified, put on thick work gloves, grab a shovel, your trusty grabbers, and a trash bag (since you will probably find trash) and carefully get to work. Stay hyper-aware of traffic and step out of the street whenever a car approaches. Taking care of your surroundings directly protects your own home and your neighbors from unnecessary flood damage.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_b_vitamins">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#icydnk_b_vitamins">B Vitamins = Good</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22vitamin+B%22+mental+health">Vitamin B deficiencies</a> can produce symptoms that look like mental illness, including mood swings, irritability, irrational behavior, and even psychosis-like states in some people. Once the deficiency is corrected, the symptoms frequently clear up. Years ago, I heard from someone online whose wife had severe mood swings and explosive behavior that improved dramatically after she started taking a B-complex.</p>
+<p>&nbsp;</p>
+<p>It makes you wonder how many people struggling with severe psychiatric conditions, including schizophrenia, might find some relief just by addressing an underlying nutrient deficiency. Of course, a B-complex isn't a cure-all and shouldn't replace a doctor's care, but checking blood levels for B12 or folate seems like such a simple, logical place to start.</p>
+<p>&nbsp;</p>
+<p>I've taken <a class="offsite" href="https://amzn.to/2QLBO6z">Jarrow B-Right (#ad)</a> for many years. It reliably lifts my mood and virtually eliminates the arm pain I used to get from using a computer mouse (which had been bordering on carpal tunnel syndrome). I take it five days a week and skip two days to limit long-term B6 exposure.  (This is personal experience, not medical advice.)</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_negative_ions">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#icydnk_negative_ions">Negative Ions = Good</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22negative+ions+are+good%22">Negative ions</a> are highly beneficial for our health and well-being. When choosing an air purifier, you generally want to avoid ozone generators, which can irritate your lungs. Some air cleaners give off ozone by mistake, so you have to be careful when choosing one. While a basic air cleaner is better than nothing, a high-quality unit that specifically produces negative ions actually refreshes the room on a molecular level. The one I have makes the air in my bedroom feel noticeably fresher, easier to breathe, and consistently helps to brighten my mood.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_soybeans">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#icydnk_soybeans">Soy = Bad</a></p>
+<p><a class="offsite" href="https://www.google.com/search?q=%22Why+Soy+is+Bad%22&amp;num=100">Unfermented soy</a> is bad! “<a class="offsite" href="https://www.optimumchoices.com/Soy.htm">When she stopped eating soy, the mental problems went away</a>.” Fermented soy doesn't bother me, but the various versions of unfermented soy (soy flour, soybean oil, and so on) that are used in all kinds of products these days causes a negative mental health reaction in me that a vitamin B complex can't tame. The sinister encroachment of soy has made the careful reading of ingredients a necessity.</p>
+<p>&nbsp;</p>
+<p>I wouldn't be surprised to find out that unfermented soy is a driving factor behind a lot of the constant irritability, hair-trigger anger, and social hostility we see in modern culture. If I unknowingly eat something with unfermented soy in it, I become angry and aggressive, so it is absolutely not a placebo effect. Scientists in the future will likely confirm that widespread unfermented soy consumption alters human behavior. We already know that <a class="offsite" href="https://www.google.com/search?q=%22food+sensitivities+cause+mood+changes%22&amp;num=100">food sensitivities cause mood changes</a>. It took me over a decade to figure out that unfermented soy was hijacking my mood. What if millions of people are having a similar severe reaction to soy and don't even know it? Countless people eat it and drink it every single day.</p>
+<p>&nbsp;</p>
+<p>It's common for people who adopt heavy soy-based diets to experience intense mood swings and irrational emotional outbursts. What would happen if the most chronically angry people in our society stopped consuming soy sludge and started taking a B-complex? Would a significant number of them suddenly calm down and find emotional balance?</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+<div class="jumpid" id="icydnk_wheat">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#icydnk_wheat">Wheat = Bad</a></p>
+<p>If you are overweight, have type 2 diabetes, or are worried about the condition of your heart, check out the videos by <a class="offsite" href="https://www.youtube.com/c/KenDBerryMD/videos">Ken D Berry</a>, <a class="offsite" href="https://www.youtube.com/user/wheatbelly/videos">William Davis</a>, and <a class="offsite" href="https://www.youtube.com/channel/UCPn4FsiQP15nudug9FDhluA/videos">Ivor Cummins</a>. It seems that most people should avoid wheat, not just those who have a wheat allergy or celiac disease. Check out these books: <a class="offsite" href="https://amzn.to/2D2mw5c">Undoctored (#ad)</a>, <a class="offsite" href="https://amzn.to/2OubcnP">Wheat Belly (#ad)</a>, and <a class="offsite" href="https://amzn.to/2Xwhuau">Eat Rich, Live Long (#ad)</a>.</p>
+<p style="border-top: 1px #E6E4BF solid; line-height:12px; margin-top:28px; margin-bottom:16px;">&nbsp;</p>
+
+<div class="jumpid" id="icydnk_climate_change">&nbsp;</div>
+<p class="bigtext"><a href="https://www.randomterrain.com/atari-2600-memories-tutorial-andrew-davie-01.html#icydnk_climate_change">Climate Change Cash Grab = Bad</a></p>
+<p>Seems like more people than ever finally care about water, land, and air pollution, but the climate change cash grab scam is designed to put more of your money into the bank accounts of greedy politicians. Those power-hungry schemers try to trick us with <a class="offsite" href="https://www.commentary.org/john-steele-gordon/climate-global-warming-data-locations/">bad data</a> and lies about <a class="offsite" href="https://www.pop.org/debunking-the-myth-of-overpopulation/">overpopulation</a> while pretending to be caring do-gooders. Trying to eliminate pollution is a good thing, but the carbon emissions of the average law-abiding human right now are actually making the planet greener instead of killing it.</p>
+<p>&nbsp;</p>
+<p>Eliminating farms and ranches, eating bugs, getting locked down in 15-minute cities, owning nothing, using digital currency with expiration dates that is tied to your social credit score, and paying higher taxes will not make things better and “save the Earth.” All that stuff is part of an <a class="offsite" href="https://twitter.com/Random_Terrain/status/1609836575755755521">agenda</a> that has nothing to do with making the world a better place for the average person. It's all about control, depopulation, and making things better for the <a class="offsite" href="https://www.bitchute.com/video/M6naRq5vtgyA/">ultra-rich</a>. They just want enough peasants left alive to keep things running smoothly.</p>
+<p>&nbsp;</p>
+<p style="margin-bottom:14px;">Watch these two videos for more information:</p>
+<p class="moffsitefull"><a href="https://www.bitchute.com/video/uQ8WLJxu9Q4R/">CO2 is Greening The Earth</a></p>
+<p class="offsitefull"><a href="https://www.bitchute.com/video/IBJ2uiqUec5F/">The Climate Agenda</a></p>
+</div>
+</div>
+</div>
+
+<script type="module">
+  try {
+    const response = await fetch('footer-icy-dk.html');
+    if (!response.ok) throw new Error('Failed to load ICYDK');
+    const html = await response.text();
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = html;
+  } catch (err) {
+    console.error('Could not load In Case You Didn\'t Know section:', err);
+    document.getElementById('footer-icy-dk-placeholder').innerHTML = 
+      '<p style="color: darkred;">(In Case You Didn\'t Know section temporarily unavailable)</p>';
+  }
+</script>
+<!-- google_ad_section_end -->
+
+<p class="disclaimertitle">Disclaimer</p>
+<p>View this page and any external web sites at your own risk. I am not responsible for any possible spiritual, emotional, physical, financial or any other damage to you, your friends, family, ancestors, or descendants in the past, present, or future, living or dead, in this dimension or any other.</p>
+<p>&nbsp;</p>
+<p>Use any example programs at your own risk. I am not responsible if they blow up your computer or melt your Atari 2600. Use assembly language at your own risk. I am not responsible if assembly language makes you cry or gives you brain damage.</p>
+<p>&nbsp;</p>
+
+</div>
+<div id="fhorizbarbottom01" class="ataribar"></div>
+<div id="fbotnav">
+<p class="fbnavbottom"><a href="https://www.randomterrain.com/index.html">Home</a> <a href="https://www.randomterrain.com/futuristic-inventions-cool-stuff.html">Inventions</a> <a href="https://www.randomterrain.com/favorite-quotes.html">Quotations</a> <a href="https://www.randomterrain.com/game-design.html">Game Design</a> <a href="https://www.randomterrain.com/atari-2600-memories.html">Atari Memories</a> <a href="https://www.randomterrain.com/personal.html">Personal Pages</a> <a href="https://www.randomterrain.com/about.html">About</a> <a href="https://www.randomterrain.com/sitemap.html">Site Map</a> <a href="https://www.randomterrain.com/contact.html">Contact</a> <a href="https://www.randomterrain.com/privacy.html">Privacy Policy</a> <a href="https://www.randomterrain.com/rt-tj.html">Tip Jar</a></p>
+</div>
+<div id="fhorizbarbottom02" class="ataribar"></div>
+</div>
+
+
+
+
+
+
+
+</body></html>

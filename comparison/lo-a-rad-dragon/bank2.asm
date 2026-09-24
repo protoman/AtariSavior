@@ -20,6 +20,24 @@ ENEMY_DATA_STRIDE = 6
 ; Houses laser fire check + collision detection.
 ; ------------------------------------------------------------------------------
 
+    include "comparison/lo-a-rad-dragon/vcs.h"
+    include "comparison/lo-a-rad-dragon/macro.h"
+
+HUD_COLOR = $06
+
+; ZP variable addresses (must match bank0's declarations exactly)
+Level           = $96
+FontP0          = $b3
+FontP1          = $b8
+PF0ScoreBuf     = $b3          ; reused from FontP0 after level rendering
+PF1ScoreBuf     = $b8          ; reused from FontP1 after level rendering
+PF2ScoreBuf     = $c6          ; reused from ScoreDigit2 (no longer needed)
+Temp            = $ad
+ScoreTh         = $c2
+ScoreHu         = $c3
+ScoreTe         = $c4
+ScoreOn         = $c5
+
     seg code
     org $f000
 

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "/home/iuri/.local/bin/tokless copilot-hook codegraph-index",
+        "timeout": 120
+      }
+    ]
+  }
+}

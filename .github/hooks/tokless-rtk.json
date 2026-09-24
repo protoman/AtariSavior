@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "type": "command",
+        "command": "/home/iuri/.local/bin/tokless rtk-hook copilot",
+        "timeout": 10
+      }
+    ],
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "/home/iuri/.local/bin/tokless rtk-hook copilot",
+        "timeout": 10
+      }
+    ]
+  }
+}

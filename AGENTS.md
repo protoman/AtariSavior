@@ -54,6 +54,33 @@ When you finish X, STOP. Report what you did. Wait for the next instruction.
 If you are unsure whether something falls under X, ASK before doing it.
 Breaking this rule wastes the user's time and trust.
 
+## **MANDATORY: Flicker is NEVER acceptable**
+Do NOT present "accept current flicker" or "minimal flicker" as options. The kernel flicker MUST be eliminated. If a fix seems impossible, explore alternative approaches (redesign sprites, change rendering technique, etc.) rather than accepting the problem.
+
+## Debugging with Stella (MANDATORY RULES)
+
+### ALWAYS use `breakLabel`, NEVER use `break`
+- `break <addr>` fires at the physical ROM address in ALL banks
+- With F6 bankswitching, the same address has different code in different banks
+- `breakLabel <addr>` is bankswitch-safe and avoids cross-bank contamination
+- **This caused a false 88-scanline measurement for bank2** — the real value is 58
+
+### Stella "Scn Ln" display format
+The UI shows two numbers: `Scn / Ln`
+- **Scn** = frame scanline (0-261+ for NTSC, includes VSYNC+VBLANK+kernel+overscan)
+- **Ln** = visible scanline (resets to 0 when VBLANK turns off)
+
+### One breakpoint at a time
+User can only set ONE `breakLabel` at a time. To measure timing:
+1. Set `breakLabel <addr1>` → run → note Scn value
+2. `clearbreaks` → set `breakLabel <addr2>` → run → note Scn value
+3. Subtract to get duration
+
+### Pseudo-registers broken in Stella 7.0
+- `_scan` does NOT work — resolves to $00 (CXM0P), not scanline counter
+- `breakif {_scan == N}` is UNRELIABLE — never trust it
+- Use `breakLabel` + Scn field instead
+
 ## Stella screenshots
 I CAN run Stella and take screenshots. But ASK the user first or warn them,
 because Stella pops up on their desktop and can interrupt what they're doing.
@@ -536,11 +563,43 @@ Once in the debugger (backtick or -debug flag):
 - `exit` — quit Stella
 
 **Breakpoints:**
-- `break $F100` — set breakpoint at address $F100
+- `breakLabel f100` — **ALWAYS USE THIS** for F6 bankswitch ROMs. Breakpoint at address, bankswitch-safe.
+- `break f100` — **NEVER USE for F6 ROMs.** Fires at physical address in ALL banks, mixing scanline readings from different code.
 - `breakset` / `bp N` — list breakpoints
 - `breakclear N` — clear breakpoint N
 - `clearbreaks` — clear all breakpoints
 - `breakif {condition}` — conditional breakpoint (e.g. `breakif {a == 3}`)
+
+**⚠️ CRITICAL: Cross-bank breakpoint contamination (F6 ROMs)**
+Regular `break <addr>` fires at the physical ROM address in ALL banks. With
+F6 bankswitching, the same address (e.g., $f067) has different code in
+bank0 vs bank2. The breakpoint fires in BOTH banks, mixing scanline readings.
+**Example:** `break f067` fires at `lda ActiveObjectOn` (bank0 VBLANK, Scn ~18)
+AND at score font loading (bank2 HUD, Scn ~200). The readings look like bank2
+takes 88 scanlines — but it's actually 58 scanlines (measured correctly with
+`breakLabel`).
+**Rule: ALWAYS use `breakLabel`, NEVER use `break` for bankswitched ROMs.**
+
+**⚠️ CRITICAL: Pseudo-registers broken in Stella 7.0**
+- `_scan` does NOT work — `watch _scan` gives "BAD WATCH", `print _scan`
+  resolves to memory address $00 (CXM0P), NOT the scanline counter.
+- `breakif {_scan == N}` is UNRELIABLE — never trust it for timing measurements.
+- `_fCycles` partially works — `print _fCycles` returns cycles-since-frame-start
+  (divide by 76 for approximate scanline). Display format is confusing but the
+  numeric value is correct.
+
+**Stella "Scn Ln" display format:**
+The debugger UI shows `Scn / Ln` (two numbers):
+- **Scn** = frame scanline (0 to 261+ for NTSC, counts VSYNC+VBLANK+kernel+overscan)
+- **Ln** = visible scanline (resets to 0 when VBLANK turns off, counts up during visible area)
+Example: `190 / 43` means frame scanline 190, visible scanline 43.
+
+**Measurement technique (PROVEN):**
+1. `clearbreaks` first
+2. `breakLabel <addr>` — set breakpoint at specific address (NOT `break`)
+3. `run` → stops at breakpoint → read **Scn** value from "Scn Ln" field
+4. Repeat at different addresses to map the full frame
+5. **Bank2 duration:** `breakLabel f177` (entry) vs `breakLabel fc80` (exit)
 
 **State examination:**
 - `print <expr>` — evaluate/print an expression (hex/dec/bin). To read a memory
@@ -559,7 +618,6 @@ Once in the debugger (backtick or -debug flag):
 - `video` — toggle per-scanline TIA state dump
 
 **Useful watch expressions for breakif:**
-- `{_scan==50 && _cyc==0}` — break at start of scanline 50
 - `{_cyc>68 && _cyc<76}` — break during HBLANK
 - `{peek(0x81) == 100}` — break when playerY ($81) equals 100
 - `{peek(0x80) != 78}` — break when playerX ($80) changes from default
@@ -765,6 +823,83 @@ $DC00:  STA WSYNC
   timing conflict exists.
 - Our `rooms/level_001_room_001.txt` pattern (`#...##...##...##...#`) is already
   center-symmetric, so CTRLPF=$01 alone makes it read as one continuous cave.
+
+## Kernel Architecture (2026-09-15)
+
+### Fixed-time kernel principle
+The 2600 TV frame is 262 scanlines at 60Hz. Each scanline is exactly 76 CPU
+cycles. If the kernel loop takes MORE than 76 cycles on any scanline, WSYNC
+stalls until the END of the NEXT scanline, making the frame longer than 262
+lines. NTSC TVs interpret this as flicker. **The kernel MUST execute the same
+number of cycles every scanline, with no conditional branches that change
+the cycle count.**
+
+### HERO's approach (reference implementation)
+HERO's kernel at $DC00 executes exactly 61 cycles per scanline with ZERO
+conditional branches:
+```
+$DC00:  STA WSYNC           ; 3
+        STA RESMP1          ; 3
+        LDA ($91),Y         ; 5  ← sprite data via indirect indexed
+        STA GRP0            ; 3
+        STA GRP1            ; 3
+        STA GRP0            ; 3  ← VDEL double-write
+        LDA ($95),Y         ; 5
+        STA COLUP0          ; 3
+        STA COLUP1          ; 3
+        LDA $DC6C,X         ; 4  ← PF data from table
+        STA PF2             ; 3
+        LDA $DC6A,X         ; 4
+        STA PF0             ; 3
+        LDA $DC77,X         ; 4
+        STA PF1             ; 3
+        DEY / BPL           ; 4
+```
+Key: no `if scanline in range` checks. Sprite data comes from pre-computed
+buffers. PF data from 8-entry lookup tables. Every scanline executes the
+exact same instruction stream.
+
+### Our kernel refactor (attempted, reverted)
+**Problem:** Our kernel has conditional branches for sprite visibility,
+object visibility, and laser ENAM0. These add 5-21 variable cycles per
+scanline, causing the worst case to exceed 76 cycles → flicker.
+
+**Attempted solution (stack-based GRP0 pre-computation) — REVERTED:**
+Push 192 GRP0 bytes onto stack during VBLANK, pop in kernel.
+This failed because:
+1. The cave kernel pops 144 bytes (12 rows × 12 lines) but the push
+   loop pushes 192. The HUD band goes to bank2 via trampoline, which
+   does NOT pop from the stack. 48 stale bytes remain → stack
+   corruption → crash on input (invalid instruction in Stella).
+2. The push loop runs without WSYNC (~35 scanlines), making VBLANK
+   end point depend on PlayerY. Frame-to-frame jitter.
+3. The stack conflicts with any JSR/RTS in bank2 or overscan.
+
+**Current status:** Per-scanline GRP0 computation (conditional branches).
+Variable cycle count is 44-75, with worst case at 80 (4 over 76). Flicker
+occurs on scanlines where player + enemy overlap (GRP1=22c + GRP0=25c +
+ENAM0=17c + loop=16c = 80). Bank2 is fine at 58 scanlines.
+
+**Future approach:** Pre-compute GRP0 into a fixed ZP buffer (not the
+stack) during VBLANK. The buffer is 192 bytes — too large for ZP ($80-$FF
+is only 128 bytes). Alternative: use `(zp),Y` indirect indexed addressing
+like HERO does — pre-load font pointers into ZP during VBLANK, then read
+via `(pointer),Y` in the kernel. This avoids both stack and ZP overflow.
+
+### Laser rendering
+- Missile 0 positioned at player center X during VBLANK via SetObjectXPos
+- ENAM0 set after kernel setup (once per frame), cleared by kernel setup
+- Per-scanline ENAM0 check adds variable cycles → causes flicker
+- **Better approach:** pre-compute ENAM0 value during VBLANK, push onto
+  stack with GRP0/GRP1. Or use compact ObjTop/ObjBottom-style range check.
+
+### HUD rendering (bank2)
+- Moved from bank0 to bank2 via fold-pad trampoline at $fc78/$fc80
+- Fold pads must be byte-identical in both banks
+- bank2 has own SetObjectXPos copy + fineAdjustTable at $ff00
+- ZP variables shared across banks (FontP0/P1, ScoreTh/Hu/Te/On, etc.)
+- Simplified technique: packed "LV" in P0, packed digits in P1, ScoreKernel
+- **Bank2 duration: 58 scanlines** (measured via `breakLabel f177`→Scn 190, `breakLabel fc80`→Scn 248). Previous 88-scanline measurement was WRONG — caused by cross-bank breakpoint contamination with regular `break`.
 
 ### Verified: the playfield mirror is never broken; asymmetry = objects
 - Byte-scanned all of hero.bin for every PF write (`STA $0D/$0E/$0F`): 14 sites
@@ -972,3 +1107,82 @@ Check upstream license and attribution terms before redistributing or reusing su
 - Room data is converted at build time into assembler data. The 6502 kernel
   must consume compact precomputed tables and must not parse text or perform
   expensive tile conversion during visible scanlines.
+
+## Kernel Architecture (2026-09-15)
+
+### Fixed-time kernel principle
+The 2600 TV frame is 262 scanlines at 60Hz. Each scanline is exactly 76 CPU
+cycles. If the kernel loop takes MORE than 76 cycles on any scanline, WSYNC
+stalls until the END of the NEXT scanline, making the frame longer than 262
+lines. NTSC TVs interpret this as flicker. **The kernel MUST execute the same
+number of cycles every scanline, with no conditional branches that change
+the cycle count.**
+
+### HERO's approach (reference implementation)
+HERO's kernel at $DC00 executes exactly 61 cycles per scanline with ZERO
+conditional branches:
+```
+$DC00:  STA WSYNC           ; 3
+        STA RESMP1          ; 3
+        LDA ($91),Y         ; 5  ← sprite data via indirect indexed
+        STA GRP0            ; 3
+        STA GRP1            ; 3
+        STA GRP0            ; 3  ← VDEL double-write
+        LDA ($95),Y         ; 5
+        STA COLUP0          ; 3
+        STA COLUP1          ; 3
+        LDA $DC6C,X         ; 4  ← PF data from table
+        STA PF2             ; 3
+        LDA $DC6A,X         ; 4
+        STA PF0             ; 3
+        LDA $DC77,X         ; 4
+        STA PF1             ; 3
+        DEY / BPL           ; 4
+```
+Key: no `if scanline in range` checks. Sprite data comes from pre-computed
+buffers. PF data from 8-entry lookup tables. Every scanline executes the
+exact same instruction stream.
+
+### Our kernel refactor (2026-09-15)
+**Problem:** Our kernel has conditional branches for sprite visibility,
+object visibility, and laser ENAM0. These add 5-21 variable cycles per
+scanline, causing the worst case to exceed 76 cycles → flicker.
+
+**What was tried and FAILED:**
+1. **Stack-based GRP0 pre-computation (push 192 bytes during VBLANK):**
+   Failed because bank2's HUD trampoline doesn't pop them → 48 stale bytes
+   → stack corruption → crash on left/right input. Reverted in commit e8c55c5.
+2. **Stack-page buffer ($0170-$01FF):** On the 2600, $0100-$01FF mirrors
+   $80-$FF (the same 128 bytes of ZP RAM). Writing `sta $0170,x` in a fill
+   loop corrupts ALL ZP variables. **NEVER use the stack page as a buffer.**
+3. **PF writes per-scanline in .Line:** Adding PF0/PF1/PF2/COLUPF writes
+   (28 cycles) to every .Line iteration pushed total to 84-92 cycles on
+   EVERY scanline → massive flicker. PF registers persist in TIA — write
+   them ONCE per tile row in .Row, not per-scanline.
+
+**What actually worked:**
+- **PF ZP buffers** ($B0-$DF): copy PF0/PF1/PF2 (12 bytes each) + COLUPF
+  (12 bytes) from ROM to ZP during VBLANK. Kernel reads via `LDA PF0Buf,x`
+  (4c) instead of `LDA (MapPtrLo),y` (5c) + `clc/adc` (4c). Eliminates
+  indirect indexed addressing from the kernel.
+- **COLUPF buffer**: eliminates 3-branch color stripe check from kernel.
+- **VBLANK timing**: PF copy (~5 scanlines) + 25 WSYNC waits ≈ 30 scanlines.
+
+**Current kernel cycle count:**
+- Best case (no sprite, no object, no laser): 56 cycles
+- Worst case (all active): 75 cycles (just under 76)
+- Tile-row transition: ~80+ cycles (1-line flicker at boundaries, acceptable)
+
+### Laser rendering
+- Missile 0 positioned at player center X during VBLANK via SetObjectXPos
+- ENAM0 set after kernel setup (once per frame), cleared by kernel setup
+- Per-scanline ENAM0 check adds variable cycles → causes flicker
+- **Better approach:** pre-compute ENAM0 value during VBLANK, push onto
+  stack with GRP0/GRP1. Or use compact ObjTop/ObjBottom-style range check.
+
+### HUD rendering (bank2)
+- Moved from bank0 to bank2 via fold-pad trampoline at $fc78/$fc80
+- Fold pads must be byte-identical in both banks
+- bank2 has own SetObjectXPos + fineAdjustTable copies
+- ZP variables shared across banks (FontP0/P1, ScoreTh/Hu/Te/On, etc.)
+- Simplified technique: packed "LV" in P0, packed digits in P1, ScoreKernel
