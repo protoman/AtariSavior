@@ -115,19 +115,12 @@ ScoreTh         byte            ; score thousands digit (0-9, BCD)
 ScoreHu         byte            ; score hundreds digit (0-9, BCD)
 ScoreTe         byte            ; score tens digit (0-9, BCD)
 ScoreOn         byte            ; score ones digit (0-9, BCD)
-
-; PF/color ZP buffers (copied from ROM during VBLANK, read by kernel)
-PF0Buf          ds.b 12         ; $B0-$BB: TilePF0 values (12 tile rows)
-PF1Buf          ds.b 12         ; $BC-$C7: TilePF1 values (12 tile rows)
-PF2Buf          ds.b 12         ; $C8-$D3: TilePF2 values (12 tile rows)
-ColupfBuf       ds.b 12         ; $D4-$DF: COLUPF per tile row (stripe colors)
-
-; Kernel scratch aliases (reused from collision vars — only accessed in overscan)
-Grp0Ptr         = CollisionX       ; $8c — GRP0 sprite table pointer (low at $8c, high at $8d)
-ObjTop          = CollisionCellY   ; $8e — object visible top scanline
-ObjBot          = CollisionEndX    ; $8f — object visible bottom scanline
-LaserScanline   = CollisionEndY    ; $90 — laser match scanline (or $FF = inactive)
-PlayerGrp0      = $f8           ; 8 bytes: player sprite rows (safe — after ColupfBuf at $E7-$F2)
+ScoreDigit2     ds.b 5          ; sprite rows for digit 2 (populated during gap)
+ScoreDigit3     ds.b 5          ; sprite rows for digit 3 (populated during gap)
+LaserActive     byte            ; 0 = inactive, nonzero = frames remaining
+LaserY          byte            ; scanline where the laser beam is drawn
+LaserEnemyLo    byte            ; pointer to active enemy record (for laser kill)
+LaserEnemyHi    byte
 
 ; ------------------------------------------------------------------------------
 ; Setup consts
@@ -511,27 +504,41 @@ StartFrame:
 .NoSprite:
   lda #0                    ; 2
 .Put:
-  sta GRP0                  ; 3
-
-; --- ENAM0: pre-computed scanline match (17 cycles active / 14 not) ---
-  lda Scanline              ; 3
-  cmp LaserScanline         ; 3
-  bne .LaserOff             ; 2³
-  lda #$02                  ; 2
-  .byte $2c                 ; 4  BIT skip: skips next lda #0
-.LaserOff:
-  lda #0                    ; 2
-  sta ENAM0                 ; 3
-
-; --- loop control ---
-  inc Scanline              ; 5
-  sta WSYNC                 ; wait for next scanline
-  dec LineCount             ; 5
-  bne .Line                 ; 3²
-
-  inx                       ; 2
-  cpx #TILE_ROWS            ; 2
-  bne .Row                  ; 3²
+  sta GRP0
+; --- Laser beam: enable missile 0 when scanline matches laser Y ---
+  lda #0
+  ldx LaserActive
+  beq .NoLaser
+  ldx Scanline
+  cpx LaserY
+  bne .NoLaser
+  lda #$ff                  ; enable missile 0 (solid line)
+.NoLaser:
+  sta ENAM0
+; Draw the single GRP1 object chosen this frame (the miner or one enemy) as a
+; square the same size as the player, only while this scanline is inside its
+; 8-row footprint. Playfield priority (CTRLPF D2=1) hides it behind walls
+; just like the player.
+  lda ActiveObjectOn
+  beq .NoObject
+  lda Scanline
+  sec
+  sbc ActiveObjectY
+  cmp #PLAYER_HEIGHT
+  bcs .NoObject
+  lda #%11110000
+  jmp .ObjectPut
+.NoObject:
+  lda #0
+.ObjectPut:
+  sta GRP1
+  inc Scanline
+  sta WSYNC                 ; end this scanline
+  dec LineCount
+  bne .Line
+  inx
+  cpx #TILE_ROWS
+  bne .Row
 
 ; ------------------------------------------------------------------------------
 ; HUD band (144..191, 48 scanlines): grey background with flicker-rendered
@@ -736,6 +743,10 @@ StepUp subroutine
   jsr ExitRoomUp
   rts
 
+; --- Fire button + laser collision: bankswitch to bank2 ---
+CheckFire:
+  jsr LaserTrampoline
+
 EndInputCheck:
 ; ------------------------------------------------------------------------------
 ; Laser firing
@@ -802,43 +813,7 @@ CheckMinerPickup:
 .LoadIt:
   jsr LoadLevel
 .NoPickup:
-  jsr CheckEnemyHit
-  ; Laser-enemy collision: if laser active and overlaps enemy, kill it + 50 pts
-  lda LaserActive
-  beq .NoLaserHit
-  lda ActiveObjectOn
-  beq .NoLaserHit
-  lda LaserScanline
-  sec
-  sbc ActiveObjectY
-  bcc .NoLaserHit
-  cmp #PLAYER_HEIGHT
-  bcs .NoLaserHit
-  ; Laser Y-overlaps enemy. Kill it.
-  lda #0
-  sta ActiveObjectOn
-  sta EnemyCount
-  ; +50 BCD points
-  lda ScoreTe
-  clc
-  adc #$50
-  cmp #$a0
-  bcc .ScoreOK
-  sbc #$a0
-  inc ScoreHu
-  lda ScoreHu
-  cmp #$a0
-  bcc .ScoreOK
-  sbc #$a0
-  inc ScoreTh
-.ScoreOK:
-  sta ScoreTe
-  ; reset laser
-  lda #0
-  sta LaserActive
-  lda #$ff
-  sta LaserY
-.NoLaserHit:
+; CheckEnemyHit removed — collision detection runs in bank2 via LaserCheck
 
 ; ------------------------------------------------------------------------------
 ; Jet sound: a low noise "engine" on audio channel 0 while the jet burns
@@ -872,68 +847,100 @@ WaitOverscan:
   jmp StartFrame
 
 ; ------------------------------------------------------------------------------
-; CheckEnemyHit: if the player's footprint overlaps ANY enemy in the current
-; room, teleport to the level's start room and start point.
-; Each enemy record (LEVEL{n}_EnemyDataTable) is: type, x, y, range_min,
-; range_max, dir. The overlap test uses LOGICAL coordinates for both, exactly
-; like CheckMinerPickup (the TIA left-edge offsets cancel for player and enemy).
-; Timing absorbs into the overscan TIM64T window, so the frame stays 262 lines.
-; Clobbers: A, X, Y, MapPtrLo/Hi, EnemyLoopCount.
+; Check collisions
 ; ------------------------------------------------------------------------------
-CheckEnemyHit subroutine
-  lda EnemyCount
-  beq .HitDone
-  sta EnemyLoopCount
-  lda EnemyDataLo
+; Tests the proposed 8x8 player footprint against the room tile map.
+; The 20-column room is drawn by a REFLECTED playfield, so on screen it is a
+; mirrored 40-block cave: playfield block q (q = RoomX>>2, 4 px per block)
+; shows text column q in the left half (q 0..19) and text column 39-q in the
+; right half (q 20..39). Collision therefore maps each covered block back to
+; its text column before reading the map.
+; Vertical:   screen scanline -> tile row via YToCellRow (/12).
+; Returns C=0 if clear, C=1 if blocked.
+PlayerHitsMap:
+  lda RoomX
+  cmp #15
+  bcs .VisibleOffset7
+  sec
+  sbc #4                    ; RoomX < 15: RESP lands at px 3 -> visible left = X-4
+  jmp .HaveVisibleLeft
+.VisibleOffset7:
+  sec
+  sbc #7                    ; RoomX >= 15: constant offset 7
+.HaveVisibleLeft:
+  sta CollisionX            ; = visible sprite left edge
+  lsr
+  lsr
+  sta CollisionCellX        ; first playfield block under the sprite
+  clc
+  lda CollisionX
+  adc #PLAYER_WIDTH - 1
+  lsr
+  lsr
+  sta CollisionEndX         ; last playfield block under the sprite
+
+  lda PlayerY
+  jsr YToCellRow
+  stx CollisionCellY         ; top tile row
+  clc
+  lda PlayerY
+  adc #PLAYER_HEIGHT - 1
+  jsr YToCellRow
+  stx CollisionEndY          ; bottom tile row
+
+.CheckRow:
+; Resolve the room row base for tile row CollisionCellY. The current room's
+; RoomRowLo and RoomRowHi tables are contiguous 12-byte tables, so a single
+; RoomRowMap pointer plus a +12 offset reaches both.
+  ldy CollisionCellY        ; tile row index (0..15)
+  lda RoomRowMapLo
   sta MapPtrLo
-  lda EnemyDataHi
+  lda RoomRowMapHi
   sta MapPtrHi
-.ENext:
-  ldy #1
-  lda (MapPtrLo),Y          ; enemy x
-  sec
-  sbc RoomX
-  bcs .EXge                 ; enemy x >= player x
-  eor #$ff
+  lda (MapPtrLo),Y          ; room row base lo byte
+  sta CollisionX            ; stash in scratch (rebuilt by .CheckCell if used)
+  lda RoomRowMapLo
   clc
-  adc #1
-.EXge:
-  cmp #PLAYER_WIDTH
-  bcs .ENextEnemy
-  ldy #2
-  lda (MapPtrLo),Y          ; enemy y
-  sec
-  sbc RoomY
-  bcs .EYge
-  eor #$ff
-  clc
-  adc #1
-.EYge:
-  cmp #PLAYER_HEIGHT
-  bcs .ENextEnemy
-  lda LevelStartRoom        ; HIT: respawn at the level origin
-  jsr EnterRoom
-  lda LevelStartX
-  sta RoomX
-  lda LevelStartY
-  sta RoomY
-  lda #0                    ; respawn with no velocity or thrust
-  sta vyLo
-  sta vyHi
-  sta PlayerYSub
-  sta JetPower
-  rts
-.ENextEnemy:
-  lda MapPtrLo
-  clc
-  adc #ENEMY_DATA_STRIDE
+  adc #12                   ; RoomRowHi table = RoomRowLo table + 12
   sta MapPtrLo
-  bcc .EAdvance
-  inc MapPtrHi
-.EAdvance:
-  dec EnemyLoopCount
-  bne .ENext
-.HitDone:
+  lda RoomRowMapHi
+  adc #0
+  sta MapPtrHi
+  lda (MapPtrLo),Y          ; room row base hi byte
+  sta MapPtrHi
+  lda CollisionX
+  sta MapPtrLo              ; MapPtr = room row base address
+  ldy CollisionCellX         ; Y = playfield block (0..39)
+.CheckCell:
+  cpy #TILE_COLUMNS
+  bcc .LeftBlock             ; q < 20 -> text column = q
+  lda #39
+  sec
+  sty CollisionX
+  sbc CollisionX             ; q >= 20 -> text column = 39 - q (mirror)
+  tay
+  lda (MapPtrLo),Y
+  bne .MapHit
+  ldy CollisionX
+  jmp .NextCell
+.LeftBlock:
+  lda (MapPtrLo),Y
+  bne .MapHit
+.NextCell:
+  iny
+  cpy CollisionEndX
+  bcc .CheckCell
+  beq .CheckCell
+  inc CollisionCellY
+  lda CollisionCellY
+  cmp CollisionEndY
+  bcc .CheckRow
+  beq .CheckRow
+  clc
+  rts
+
+.MapHit:
+  sec
   rts
 
 ; ------------------------------------------------------------------------------
@@ -1593,6 +1600,16 @@ fineAdjustBegin:
   .byte %10100000           ; right 6
   .byte %10010000           ; right 7
 fineAdjustTable EQU fineAdjustBegin - %11110001   ; %11110001 = -241 (start basis)
+
+; Laser trampoline: bankswitch to bank2 for collision detection.
+; Fold pad at $FF10 must be byte-identical in bank0 and bank2.
+LaserBank2 = $f005
+    org $ff10
+LaserTrampoline:
+    sta $1FF8               ; select bank2
+    jsr LaserBank2          ; call LaserCheck in bank2
+    sta $1FF6               ; select bank0 (bank2's RTS returns here)
+    rts
 
 ; ------------------------------------------------------------------------------
 ; Fill ROM to exactly 4kb
