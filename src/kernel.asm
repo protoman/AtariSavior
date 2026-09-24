@@ -83,7 +83,7 @@ RoomY           byte            ; player Y position (0-191)
 PlayerDir       byte            ; sprite eye facing: FACING_RIGHT (0) or FACING_LEFT
 Scanline        byte            ; current scanline counter (0-191)
 LineCount       byte            ; scanlines remaining in current tile row
-TileRow         byte            ; current tile row (0-11)
+BombY           byte            ; bomb drop Y (was dead TileRow; scanline snapshot)
 Grp0Ptr         byte            ; pointer to player sprite data (lo)
 Grp0PtrHi       byte            ; pointer to player sprite data (hi)
 Temp            byte            ; general scratch
@@ -141,7 +141,9 @@ EnemyDataLo     byte            ; pointer to current room enemy data (low)
 EnemyDataHi     byte            ; pointer to current room enemy data (high)
 EnemyCount      byte            ; number of enemies in current room
 FlickerFrame    byte            ; GRP1 slot index for flicker
-ObjectCount     byte            ; total objects (enemies + miner if in miner room)
+BombPacked      byte            ; bomb state at $B5 (was ephemeral ObjectCount):
+                                ;   b0-1 state 0=none,1=fuse,2=explode
+                                ;   b2 DownPrev edge, b3-6 WallMask, b7 spare
 ActiveObjectOn  byte            ; 1 when current object is active this frame
 ActiveObjectX   byte            ; active object X (room pixel coords)
 ActiveObjectY   byte            ; active object Y (scanline coords)
@@ -152,12 +154,15 @@ DeadEnemyIdx    byte            ; index of killed enemy ($FF = none)
 ObjTop          byte            ; top scanline of active object (for GRP1 visibility)
 ObjBot          byte            ; bottom scanline of active object (ObjTop + PLAYER_HEIGHT)
 
+; Bomb X/Y/timer live at $F6/$F7 + BombY=$85 (see top of ZP map)
+BombX           = $F6           ; bomb drop X (RoomX snapshot; bank1 does not write $F6)
+BombTimer       = $F7           ; fuse/explode countdown (frames)
+
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match bank1)
-; $F3-$F6 only — bank0 does not use these at runtime (dead aliases).
+; $F3-$F5 live score only — $F6 is BombX (bank1 ScoreOn is unused).
 ScoreTh         = $F3           ; score thousands digit (0-9)
 ScoreHu         = $F4           ; score hundreds digit (0-9)
 ScoreTe         = $F5           ; score tens digit (0-9)
-ScoreOn         = $F6           ; score ones digit (0-9)
 PF0ScoreBuf     = $B3           ; 5 bytes: PF0 values for score rows 0-4
 PF1ScoreBuf     = $B8           ; 5 bytes: PF1 values for score rows 0-4
 PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
@@ -175,11 +180,9 @@ ColupfBuf       = $E7           ; 12 bytes: COLUPF stripe colors per row
 PlayerGrp0      = $F8           ; 8 bytes: player sprite rows (computed per frame)
 
 ; Enemy RAM shadow — live X/(packed flags). ROM records are read-only.
-; Sequential vars end at $BC; free ZP is $BD-$C2 (6) + $F7 (1).
-; Y is NOT shadowed: $F3-$F6 is bank1 score (ScoreTh..ScoreOn) — bank1
-; HUD writes score every game frame (fire button + digit pointers), so
-; those addresses are NOT free. SelectActiveObject/CheckEnemyHit read Y
-; from ROM (enemy Y is static until S5 spider).
+; Sequential vars end at $BC; free ZP is $BD-$C2 (6) used by EnemyRam*.
+; Score lives at $F3-$F5 only ($F6/$F7 = BombX/BombTimer). SelectActiveObject/
+; CheckEnemyHit read Y from ROM (enemy Y is static until S5 spider).
 EnemyRamX       = $BD           ; 4 bytes: live X per enemy ($BD-$C0)
 EnemyRamD       = $C1           ; dir bits 0-3 = enemy 0-3 (1=right, 0=left)
 EnemyRamP       = $C2           ; bits0-3 moth phase; bits4-7 spider vdir (1=down)
@@ -223,6 +226,10 @@ COLOR_TIMER     = $1E           ; hue 1 luma 7 = yellow
 COLOR_LIVES     = $C6           ; hue 12 luma 3 = green
 COLOR_BOMBS     = $46           ; hue 4 luma 3 = red
 COLOR_SCORE     = $0E           ; hue 0 luma 7 = white
+
+; Explosion blink COLUBK cycle (BombState=2): black → yellow → red
+COLOR_BLINK_Y   = $1C           ; hue 1 luma 6 = yellow (power bar)
+COLOR_BLINK_R   = $44           ; hue 4 luma 2 = red (power bar)
 
 ; ==============================================================================
 ; ROM start — F6 bankswitch (16K, 4 banks × 4K)
@@ -320,9 +327,34 @@ StartFrame:
 
     ; --- Refresh PF buffers (bank1 corrupts them during HUD band) ---
     jsr LoadPFBuffer
+    jsr ApplyBombWalls          ; S6.1: re-apply thin-wall holes every frame
 
     ; --- Select which object GRP1 draws this frame (miner or enemy) ---
     jsr SelectActiveObject
+
+    ; --- Cave COLUBK for this frame → Temp (free until overscan) ---
+    ; state=2: blink (60-BombTimer)%3 → black/yellow/red; else COLOR_CAVE_BG
+    lda BombPacked
+    and #%00000011
+    cmp #2
+    bne .BgIdle
+    lda #60
+    sec
+    sbc BombTimer
+.BgMod3:
+    cmp #3
+    bcc .BgModDone
+    sec
+    sbc #3
+    bne .BgMod3                 ; A=0 exits via bcc, not this
+.BgModDone:
+    tay
+    lda BombBlinkColors,Y
+    jmp .BgStore
+.BgIdle:
+    lda #COLOR_CAVE_BG
+.BgStore:
+    sta Temp
 
     ; --- Single HMOVE: apply P0 (player) + P1 (enemy) fine motion once ---
     sta WSYNC
@@ -395,8 +427,8 @@ StartFrame:
     lda PF2Buf,X
     sta PF2
 
-    ; --- Set tile row colors ---
-    lda #COLOR_CAVE_BG
+    ; --- Set tile row colors (Temp = this frame's COLUBK, set in VBLANK) ---
+    lda Temp
     sta COLUBK
     ; Stripe: rows 0-3 + 8-11 = wall color 1, rows 4-7 = wall color 2
     cpx #4
@@ -469,7 +501,7 @@ StartFrame:
     ; After sta $1FF7, CPU reads next instruction from bank1 at $FC6D.
     ; Bank1's $FC6D has the same jmp $F540 → seamless bank switch.
     jmp $FC68                   ; jump to fold-pad (switches to bank1, runs MenuMain)
-    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp Overscan ($F103)
+    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp Overscan ($F127)
 
 ; ==============================================================================
 ; Overscan (30 scanlines) — input handling + game logic
@@ -492,6 +524,37 @@ Overscan:
     lsr
     lsr
     sta Temp                    ; save shifted joystick bits
+
+    ; --- Bomb: edge-detect Down (D1, 0=pressed) ---
+    lda Temp
+    and #%00000010
+    beq .BombHeld
+    lda BombPacked              ; released: clear DownPrev (b2), keep state/mask
+    and #%11111011
+    sta BombPacked
+    jmp .BombInDone
+.BombHeld:
+    lda BombPacked
+    and #%00000100
+    bne .BombInDone             ; held since last frame — no edge
+    lda BombPacked
+    and #%00000011
+    bne .BombMarkDown           ; bomb already active: just set DownPrev
+    lda BombPacked              ; rising edge, state=0 → drop
+    ora #%00000101              ; state=1 + DownPrev
+    sta BombPacked
+    lda RoomX
+    sta BombX
+    lda RoomY
+    sta BombY
+    lda #180
+    sta BombTimer
+    jmp .BombInDone
+.BombMarkDown:
+    lda BombPacked
+    ora #%00000100
+    sta BombPacked
+.BombInDone:
 
 ; ------------------------------------------------------------------------------
 ; Vertical movement — HERO-style jetpack physics
@@ -635,6 +698,9 @@ EndInputCheck:
 
     ; --- Check enemy collision (lose life on hit) ---
     jsr CheckEnemyHit
+
+    ; --- Bomb fuse/explode tick (frames) ---
+    jsr BombTick
 
     ; --- Decrement game timer (60 frames/step × 120 = 120s) ---
     dec TickCounter
@@ -794,8 +860,14 @@ EnterRoom subroutine
     lda #$FF
     sta DeadEnemyIdx            ; no dead enemies in new room
 
+    ; Bomb reset: state/mask/down-prev cleared on every room entry
+    lda #0
+    sta BombPacked
+    sta BombTimer
+
     jsr LoadEnemyRam            ; copy ROM x/dir → live RAM shadow
     jsr LoadPFBuffer
+    jsr ApplyBombWalls          ; mask just cleared — no-op; keeps call sites uniform
     rts
 
 ; ------------------------------------------------------------------------------
@@ -1159,34 +1231,57 @@ CheckMinerPickup:
 ; SelectActiveObject — choose the single GRP1 object to draw this frame.
 ; The TIA has one GRP1 sprite, so objects flicker by rotating slots each frame.
 ; Sets ActiveObjectOn, ActiveObjectX, ActiveObjectY, ObjTop, ObjBot, COLUP1.
-; ObjectCount = EnemyCount + (1 if miner in this room).
+; Slot count (enemies + miner?) lives in Temp for this VBLANK only.
+; Bomb fuse (state=1): low-priority — bomb only when (BombTimer&3)==0
+; (~15 Hz); other frames normal miner/enemy rotation (FlickerFrame alone).
+; One GRP1: cannot draw bomb + entity same frame.
 ; ------------------------------------------------------------------------------
 SelectActiveObject:
-    ; Count objects: enemies + miner if in miner's room
+    inc FlickerFrame            ; advance every frame (bomb + enemy paths)
+    ; --- Bomb fuse (state=1): 1 of 4 frames = bomb (enemies keep priority) ---
+    lda BombPacked
+    and #%00000011
+    cmp #1
+    bne .SOCount
+    lda BombTimer
+    and #3
+    bne .SOCount                ; 3 of 4 → miner/enemy
+    lda #1
+    sta ActiveObjectOn
+    lda BombX
+    sta ActiveObjectX
+    lda BombY
+    sta ActiveObjectY
+    lda BombX                    ; A = X for SetObjectXPos
+    ldx #1
+    jsr SetObjectXPos
+    lda #COLOR_BOMBS             ; $46 red
+    sta COLUP1
+    jmp .SODone                  ; ObjTop/Bot from ActiveObjectY
+.SOCount:
+    ; Count objects: enemies + miner if in miner's room (Temp = count; VBLANK-safe)
     lda EnemyCount
-    sta ObjectCount
+    sta Temp
     lda RoomNo
     cmp LevelMinerRoom
     bne .SONoMiner
-    inc ObjectCount             ; miner counts as a slot
+    inc Temp                    ; miner counts as a slot
 .SONoMiner:
-    ; FlickerFrame = (FlickerFrame + 1) mod ObjectCount
-    inc FlickerFrame
-    lda ObjectCount
+    lda Temp
     bne .SONotNothing
     jmp .SONothing              ; no objects at all
 .SONotNothing:
-    ; modulo: while FlickerFrame >= ObjectCount, subtract
+    ; FlickerFrame already advanced at entry — modulo into 0..(slot count-1)
 .SOModLoop:
     lda FlickerFrame
-    cmp ObjectCount
+    cmp Temp
     bcc .SOModDone
     sec
-    sbc ObjectCount
+    sbc Temp
     sta FlickerFrame
     jmp .SOModLoop
 .SOModDone:
-    ; FlickerFrame is now 0..ObjectCount-1
+    ; FlickerFrame is now 0..(slot count-1)
     ; Check if slot 0 is the miner
     lda FlickerFrame
     bne .SOEnemy
@@ -1399,9 +1494,260 @@ ReloadLevel:
     sta JetPower
     sta PlayerYSub
     rts
-    ldy EnemyIndex
-    jmp CEH_Loop
-.CEH_NoHit:
+
+; ------------------------------------------------------------------------------
+; BombTick — per-frame state machine (overscan).
+;   state1 fuse: dec BombTimer, at 0 → state=2 timer=60 (blast = S5/S6 stub)
+;   state2: dec BombTimer, at 0 → state=0 (mask stays until EnterRoom)
+; ------------------------------------------------------------------------------
+BombTick subroutine
+    lda BombPacked
+    and #%00000011              ; state
+    beq .BTDone                 ; none
+    cmp #1
+    beq .BTFuse
+    ; state 2 — exploding
+    dec BombTimer
+    bne .BTDone
+    lda BombPacked              ; clear state bits only (keep mask + DownPrev)
+    and #%11111100
+    sta BombPacked
+    lda #0
+    sta BombTimer
+    rts
+.BTFuse:
+    dec BombTimer
+    bne .BTDone
+    lda BombPacked              ; 1 → 2
+    and #%11111100
+    ora #%00000010
+    sta BombPacked
+    lda #60
+    sta BombTimer
+    jsr BombMarkWalls           ; S6.3: set WallMask for w==1 rects in blast
+    jsr BombPlayerBlast         ; S5: player ±1 tile → life (may ReloadLevel/clear mask)
+.BTDone:
+    rts
+
+; ------------------------------------------------------------------------------
+; BombPlayerBlast — on explode, if player tile in ±1 col/±1 row of bomb tile:
+;   lose 1 life (same path as CEH_Stay / timer expiry).
+; Cols = px/4 (0..39 screen); rows via YToCellRow (0..11).
+; ------------------------------------------------------------------------------
+BombPlayerBlast:
+    lda BombY
+    jsr YToCellRow
+    stx Temp                    ; bomb row
+    lda RoomY
+    jsr YToCellRow              ; X = player row
+    txa
+    sec
+    sbc Temp
+    bcs .BPBRowAbs
+    eor #$ff
+    clc
+    adc #1
+.BPBRowAbs:
+    cmp #2                      ; |drow| < 2 → same or adjacent row
+    bcs .BPBMiss
+    lda BombX
+    lsr
+    lsr                         ; bomb col = BombX/4
+    sta Temp
+    lda RoomX
+    lsr
+    lsr                         ; player col = RoomX/4
+    sec
+    sbc Temp
+    bcs .BPBColAbs
+    eor #$ff
+    clc
+    adc #1
+.BPBColAbs:
+    cmp #2                      ; |dcol| < 2
+    bcs .BPBMiss
+    ; Hit — same life path as enemy/timer
+    dec PlayerLives
+    bpl .BPBStay
+    lda #3
+    sta PlayerLives
+    lda #$FF
+    sta DeadEnemyIdx
+    jsr ReloadLevel              ; LoadLevel → EnterRoom clears bomb
+    rts
+.BPBStay:
+    lda #0
+    sta vyLo
+    sta vyHi
+    sta JetPower
+    sta PlayerYSub
+.BPBMiss:
+    rts
+
+; ------------------------------------------------------------------------------
+; BombMarkWalls — on 1→2 edge: walk RoomRects, set WallMask bit for each
+;   w==1 rect whose x is in blast cols (bomb left-half col ±1, clamped 0..19).
+; Bits b3-6 of BombPacked = rect index 0..3 (rooms have ≤4 rects).
+; ------------------------------------------------------------------------------
+BombMarkWalls:
+    lda BombX
+    lsr
+    lsr                         ; screen col = BombX/4 (0..39)
+    cmp #TILE_COLUMNS
+    bcc .BMWCol
+    sta Temp
+    lda #39
+    sec
+    sbc Temp                    ; mirror right-half → left-half col
+.BMWCol:
+    sta Temp                    ; bomb left-half col
+    ; blast lo = max(col-1, 0)
+    lda Temp
+    beq .BMWLo0
+    sec
+    sbc #1
+    bcs .BMWStoreLo
+.BMWLo0:
+    lda #0
+.BMWStoreLo:
+    sta CollisionEndX           ; blast_lo (free: overscan, after movement)
+    ; blast hi = min(col+1, 19)
+    lda Temp
+    cmp #19
+    bcs .BMWHi19
+    clc
+    adc #1
+    bcc .BMWStoreHi
+.BMWHi19:
+    lda #19
+.BMWStoreHi:
+    sta CollisionCellX          ; blast_hi
+    lda RoomRectsLo
+    sta MapPtrLo
+    lda RoomRectsHi
+    sta MapPtrHi
+    ldy #0
+    lda (MapPtrLo),Y            ; rect count
+    beq .BMWDone
+    sta RectCount
+    iny                         ; Y = base of first rect (1)
+.BMWLoop:
+    tya
+    pha                         ; save base
+    lda (MapPtrLo),Y            ; rect.x
+    cmp CollisionEndX
+    bcc .BMWNext                ; x < lo
+    cmp CollisionCellX
+    beq .BMWCheckW              ; x == hi → in blast
+    bcs .BMWNext                ; x > hi
+.BMWCheckW:
+    pla
+    pha
+    clc
+    adc #2
+    tay
+    lda (MapPtrLo),Y            ; rect.w
+    cmp #1
+    bne .BMWNext
+    pla                         ; base
+    pha
+    sec
+    sbc #1
+    lsr
+    lsr                         ; index = (base-1)/4
+    tax
+    cpx #4
+    bcs .BMWNext
+    lda BombMaskBit,X
+    ora BombPacked
+    sta BombPacked               ; set WallMask bit (keeps state+DownPrev)
+.BMWNext:
+    pla
+    clc
+    adc #4
+    tay
+    dec RectCount
+    bne .BMWLoop
+.BMWDone:
+    rts
+
+; ------------------------------------------------------------------------------
+; ApplyBombWalls — after LoadPFBuffer: for each masked rect, clear its col
+;   bit in PF0Buf/PF1Buf/PF2Buf for all 12 rows (full height, reflected).
+; Early-out when WallMask=0 (common case).
+; ------------------------------------------------------------------------------
+ApplyBombWalls:
+    lda BombPacked
+    and #%01111000              ; WallMask b3-6 only
+    beq .ABWDone
+    lda RoomRectsLo
+    sta MapPtrLo
+    lda RoomRectsHi
+    sta MapPtrHi
+    ldy #0
+    lda (MapPtrLo),Y
+    beq .ABWDone
+    sta RectCount
+    iny
+.ABWLoop:
+    tya
+    pha                         ; save base
+    tya
+    sec
+    sbc #1
+    lsr
+    lsr                         ; index
+    tax
+    cpx #4
+    bcs .ABWAdv
+    lda BombMaskBit,X
+    and BombPacked
+    beq .ABWAdv
+    lda (MapPtrLo),Y            ; rect.x (Y still base)
+    jsr ClearPFColumn
+.ABWAdv:
+    pla
+    clc
+    adc #4
+    tay
+    dec RectCount
+    bne .ABWLoop
+.ABWDone:
+    rts
+
+; ------------------------------------------------------------------------------
+; ClearPFColumn — A = left-half col 0..19; AND-clear that col's PF bit in
+;   all 12 rows of the matching PF*Buf. Inverse of convert_room.pf_values.
+; Clobbers A/X/Y/Temp/CollisionX.
+; ------------------------------------------------------------------------------
+ClearPFColumn:
+    sta Temp                    ; col
+    tay
+    lda BombClearMask,Y
+    sta CollisionX              ; AND mask (clear bit)
+    ldx #11
+.CPCLoop:
+    lda Temp
+    cmp #4
+    bcc .CPC0
+    cmp #12
+    bcc .CPC1
+    lda PF2Buf,X
+    and CollisionX
+    sta PF2Buf,X
+    jmp .CPCNext
+.CPC0:
+    lda PF0Buf,X
+    and CollisionX
+    sta PF0Buf,X
+    jmp .CPCNext
+.CPC1:
+    lda PF1Buf,X
+    and CollisionX
+    sta PF1Buf,X
+.CPCNext:
+    dex
+    bpl .CPCLoop
     rts
 
 ; ==============================================================================
@@ -1429,6 +1775,23 @@ SetObjectXPos subroutine
 ; ==============================================================================
 ; Data tables
 ; ==============================================================================
+
+; --- Explosion blink COLUBK: index = (60-BombTimer) % 3 ---
+BombBlinkColors:
+    .byte COLOR_CAVE_BG         ; 0 black
+    .byte COLOR_BLINK_Y         ; 1 yellow
+    .byte COLOR_BLINK_R         ; 2 red
+
+; WallMask bit for rect index 0-3 (BombPacked b3-6)
+BombMaskBit:
+    .byte $08, $10, $20, $40
+
+; AND-mask to clear col 0-19's PF bit (inverse of convert_room.pf_values):
+;   col 0-3   → PF0 bits 4-7; col 4-11 → PF1 bits 7-0; col 12-19 → PF2 bits 0-7
+BombClearMask:
+    .byte $EF, $DF, $BF, $7F                    ; col 0-3  (PF0)
+    .byte $7F, $BF, $DF, $EF, $F7, $FB, $FD, $FE ; col 4-11 (PF1)
+    .byte $FE, $FD, $FB, $F7, $EF, $DF, $BF, $7F ; col 12-19 (PF2)
 
 ; --- Player sprites: 8×8, 4 pixels wide (bits 7-4) ---
 ; Row 2 has the "eye" notch to show facing direction.
@@ -1617,6 +1980,20 @@ PlayerHitsMap:
 .RectLoop:
     tya
     pha                         ; save rect base offset
+
+; S6.2: skip rects destroyed by a bomb (WallMask bit for this index)
+    tya
+    sec
+    sbc #1
+    lsr
+    lsr                         ; index = (base-1)/4
+    tax
+    cpx #4
+    bcs .MaskOk                 ; index ≥4 never masked
+    lda BombMaskBit,X
+    and BombPacked
+    bne .nextRect               ; destroyed → not solid
+.MaskOk:
 
 ; Column overlap: max_col >= rect.x AND min_col < rect.x + rect.w
     lda (MapPtrLo),Y            ; rect.x (Y = base)

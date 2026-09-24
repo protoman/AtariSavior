@@ -87,7 +87,7 @@ Temp        = $AD       ; scratch variable
 ScoreTh     = $F3       ; score thousands digit (must match bank0)
 ScoreHu     = $F4       ; score hundreds digit
 ScoreTe     = $F5       ; score tens+ones packed BCD
-ScoreOn     = $F6       ; score ones digit (unused by game, available)
+; $F6 is NOT ScoreOn — bank0 uses it as BombX. Do not write $F6 here.
 
 INPT4       = $0C       ; fire button (active low, bit 7)
 
@@ -665,7 +665,7 @@ BallXTable:             ; B=0..120; = max(4, actual body red@); mono
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F103           ; Overscan in bank0 (must match bank0 ToGameStub)
+    jmp $F127           ; Overscan in bank0 (must match bank0 ToGameStub)
 
 ; ========================================================================
 ; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing
