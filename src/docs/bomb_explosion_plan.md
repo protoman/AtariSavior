@@ -17,7 +17,8 @@ No room-JSON schema change. **Do not commit** until user says so.
 | 6 | Player **in blast** → lose 1 life (same path as enemy hit: `dec PlayerLives`, zero vy; 0 lives → `ReloadLevel`). |
 | 7 | **Thin wall** = `RoomRect` with **`w == 1`**. If that rect’s `x` is in blast cols → remove **entire rect** (full height). No JSON flag — geometry only. |
 
-Out of scope (unless user asks later): HUD bomb **count** stays static 5 icons; enemy killed by blast; FRAGILE-only tiles; sound.
+Out of scope (unless user asks later): enemy killed by blast; FRAGILE-only tiles; sound.
+(HUD bomb **count** was requested 2026-09-23 — implemented as S8.)
 
 ---
 
@@ -175,6 +176,15 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 - [x] **S7.6** `zp_layout_skill.md` + this file checkboxes updated.
 - [x] **S7.7** **User full pass** of S1–S6 behaviors → then ask to commit.
 
+### S8 — HUD bomb count (user request 2026-09-23)
+
+- [x] **S8.1** ZP: `PlayerBombs = $F0` (never-written ColupfBuf tail; bank1 score uses `$E0–$EF` only). `BOMBS_MAX = 5`. EQU in kernel + bank1.
+- [x] **S8.2** `GameStart` + `ReloadLevel`: `PlayerBombs = 5`. Room change does **not** refill.
+- [x] **S8.3** Drop: `PlayerBombs == 0` → swallow edge (set DownPrev, no drop); else `dec PlayerBombs` then drop.
+- [x] **S8.4** bank1 HUD bombs line: NUSIZ0/NUSIZ1 + GRP from count; same 11-scanline budget (2×pos + HMOVE + 5 + 3 gap).
+- [x] **S8.5** Build green (4×4096, folds match; Overscan moved `$F127`→`$F12B` after GameStart +4 — bank1 `jmp` synced).
+- [x] **S8.6** **User:** icons 5→0 across drops; no 6th drop; reload → 5; HUD/lives/score timing unchanged.
+
 ---
 
 ## Risks (watch early)
@@ -197,4 +207,4 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 - Destroyed thin walls **reset on room re-entry**.
 - Blast uses **tile overlap** (±1 col, ±1 row), not raw pixel radius.
 - Vertical blast height = ±1 tile row (12 px), not ±1 player-height.
-- HUD bomb icons unchanged (always show 5).
+- HUD bomb icons track `PlayerBombs` (5→0); refill only on `GameStart`/`ReloadLevel`.
