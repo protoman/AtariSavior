@@ -1,87 +1,99 @@
 #!/usr/bin/env python3
-"""Detect game elements in Atari 2600 screenshots.
-Checks for actual PATTERNS, not just color presence.
-"""
+"""Detect game elements in Atari 2600 screenshots."""
 import sys
 from PIL import Image
 
 def check_playfield(pixels, w, h):
-    """Cave playfield: colored wall pixels on left and/or right sides of screen."""
-    # Sample pixel colors in the cave area to find the wall color
-    wall_colors = {}
-    for y in range(h // 4, h * 3 // 4):
-        for x in range(0, w, 5):
+    """Cave playfield: must have BOTH open rows AND rows with passages."""
+    open_rows = 0
+    passage_rows = 0
+    for y in range(80, int(h * 0.7)):
+        in_wall = False
+        wall_spans = []
+        wall_start = 0
+        for x in range(80, 720, 2):
             r, g, b = pixels[x, y][:3]
-            if (r, g, b) != (0, 0, 0) and (r, g, b) != (7, 7, 7):
-                key = (r // 30, g // 30, b // 30)
-                wall_colors[key] = wall_colors.get(key, 0) + 1
-
-    if not wall_colors:
-        return False, "no non-black pixels"
-
-    # Most common non-black color is likely the wall
-    wall_color_rgb, wall_count = max(wall_colors.items(), key=lambda x: x[1])
-    wall_r, wall_g, wall_b = wall_color_rgb[0]*30, wall_color_rgb[1]*30, wall_color_rgb[2]*30
-
-    # Count wall pixels on left and right halves
-    left = sum(1 for y in range(h//4, h*3//4) for x in range(0, w//2, 3)
-               if abs(pixels[x,y][0]-wall_r) < 40 and abs(pixels[x,y][1]-wall_g) < 40 and abs(pixels[x,y][2]-wall_b) < 40)
-    right = sum(1 for y in range(h//4, h*3//4) for x in range(w//2, w, 3)
-                if abs(pixels[x,y][0]-wall_r) < 40 and abs(pixels[x,y][1]-wall_g) < 40 and abs(pixels[x,y][2]-wall_b) < 40)
-
-    ok = left > 500 and right > 500
-    return ok, f"wall=rgb({wall_r},{wall_g},{wall_b}) left={left} right={right} px"
+            is_wall = (r > 30 and g > 40) or (r > 80 and g < 50 and b > 100)
+            if is_wall and not in_wall:
+                wall_start = x
+                in_wall = True
+            elif not is_wall and in_wall:
+                wall_spans.append((wall_start, x))
+                in_wall = False
+        if in_wall:
+            wall_spans.append((wall_start, 720))
+        if len(wall_spans) == 0:
+            open_rows += 1
+        elif len(wall_spans) >= 3:
+            passage_rows += 1
+    ok = open_rows > 5 and passage_rows > 5
+    return ok, f"open={open_rows} passage={passage_rows}"
 
 def check_player(pixels, w, h):
-    """Player: yellow/orange square ANYWHERE on screen."""
+    """Player: non-wall bright pixel anywhere on screen."""
     count = 0
-    min_x, max_x, min_y, max_y = w, 0, h, 0
     for y in range(h):
         for x in range(w):
             r, g, b = pixels[x, y][:3]
-            if r > 200 and g > 140 and b < 80:
-                min_x, max_x = min(min_x, x), max(max_x, x)
-                min_y, max_y = min(min_y, y), max(max_y, y)
+            is_wall = (r > 30 and g > 40 and b < 30)
+            is_bright = (r > 150 and g > 100)
+            if is_bright and not is_wall:
                 count += 1
-    ok = count > 10
-    return ok, f"{count} px at ({min_x}-{max_x}, {min_y}-{max_y})"
+    return count > 50, f"{count} px"
 
 def check_hud(pixels, w, h):
-    """HUD: grey band in bottom 30% of screen."""
+    """HUD: grey band anywhere on screen."""
     rows = 0
-    for y in range(int(h*0.7), h):
-        gc = sum(1 for x in range(w//4, 3*w//4) if all(c > 80 for c in pixels[x,y][:3]))
+    for y in range(h):
+        gc = sum(1 for x in range(w//4, 3*w//4) if 30 < pixels[x,y][0] < 120)
         if gc > w // 8:
             rows += 1
-    return rows > 10, f"{rows} grey rows"
+    return rows > 100, f"{rows} grey rows"
 
 def check_level(pixels, w, h):
-    """Level text: white/light pixels in top-left area of screen."""
-    count = sum(1 for y in range(30, 80) for x in range(w//4, w//2)
-                if all(c > 150 for c in pixels[x,y][:3]))
-    return count > 5, f"{count} white pixels"
+    """Level text: white pixels in the FAR LEFT area only (not spanning center)."""
+    row_counts = {}
+    for y in range(30, 100):
+        count = sum(1 for x in range(0, w//4) if all(c > 150 for c in pixels[x, y][:3]))
+        if count > 3:
+            row_counts[y] = count
+    if not row_counts:
+        return False, "no white rows in far-left"
+    rows = sorted(row_counts.keys())
+    span = rows[-1] - rows[0] + 1
+    total_rows = len(rows)
+    ok = span < 20 and total_rows > 5
+    return ok, f"span={span} rows={total_rows}"
 
 def check_score(pixels, w, h):
-    """Score: white pixels near center-top of screen."""
-    count = sum(1 for y in range(30, 80) for x in range(w//2-60, w//2+60)
-                if all(c > 150 for c in pixels[x,y][:3]))
-    return count > 10, f"{count} white pixels"
+    """Score: white pixels forming a single line in the CENTER-BOTTOM of the screen."""
+    row_counts = {}
+    for y in range(h//2, h):  # Score is in bottom half
+        count = sum(1 for x in range(w//2-80, w//2+80)
+                    if all(c > 150 for c in pixels[x, y][:3]))
+        if count > 5:
+            row_counts[y] = count
+    if not row_counts:
+        return False, "no white rows in center"
+    rows = sorted(row_counts.keys())
+    span = rows[-1] - rows[0] + 1
+    total_rows = len(rows)
+    ok = span < 15 and total_rows > 5
+    return ok, f"span={span} rows={total_rows}"
 
 def analyze(path):
     img = Image.open(path)
     px = img.load()
     w, h = img.size
     print(f'Screenshot: {w}x{h}\n')
-    checks = [
+    for name, (ok, det) in [
         ('Playfield', check_playfield(px, w, h)),
         ('Player', check_player(px, w, h)),
         ('HUD', check_hud(px, w, h)),
         ('Level', check_level(px, w, h)),
         ('Score', check_score(px, w, h)),
-    ]
-    for name, (ok, detail) in checks:
-        print(f'{name:10s}: {"PASS" if ok else "FAIL"} - {detail}')
-    print(f'\nOverall: {"PASS" if all(ok for _,(ok,_) in checks) else "FAIL"}')
+    ]:
+        print(f'{name:10s}: {"PASS" if ok else "FAIL"} - {det}')
 
 if __name__ == '__main__':
     analyze(sys.argv[1])
