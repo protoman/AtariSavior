@@ -1,31 +1,28 @@
-After you do this investigation and thinking, if you cannot find the cause of the big then small again bar, I can try to debug, to see the values that bar is actually using.
+- lamps and dark rooms
 
+- hot walls
 
-- inimigos
-- morte
+- water and lava in room
 
-- tempo/barra
-
-
-- bombas
 - laser
-- vidas
+
+- points killing enemies
+
+- points finishing stage
+
+- moth movement
 
 
-#########################################################################################################################################################################
-A few tasks:
-# position player more to the right, so he is not inside the playfield.
-# the player is moving up when I press left and down when I press right. It should move in all 4 corresponding directions.
-# player sprite color must be yellow (currently black)
+Editor:
+não pode ter mais que 2 elementos (inimigo, mineiro, balsa) na mesma tela.
+Não pode ter mais de 1 elemento na mesma linha.
 
-# HUD, that already has the grey are on the bottom of the screen, should have those lines, all screen-width centered, with the following formats:
------------
-Timer: a yellow horizontal bar, later we will add a timer so part of it starts becoming red.
-Number of Lives: 3 green squares.
-Number of bombs: 5 red squares
-Score: 0000
------------
-Remember to follow the architecture of HERO for doing this.
+
+# laser to kill the enemies and show a beam coming from the player eye (we tried this before and was tricky, that is why we started a new kernel from the scratch).
+# add in editor's magma walls terrain that blink and kill the player if he touches it
+# add option in editor's room that will show lava or water at the bottom of it as a different background color (if player touches it, he will die)
+# enemy movement and distinct sprite colors
+Or do you have any other ideas to implement first?
 
 #########################################################################################################################################################################
 
@@ -36,19 +33,6 @@ Why did you change it back? Unless you can fix this position problem, we should 
 - laser facing
 
 - laser touch enemy
-
-#########################################################################################################################################################################
-Player sprit do not look like a rectangle with an eye anymore.
-
-Player facing the last direction stopped working, it is always facing right.
-
-
-#########################################################################################################################################################################
-
-Stopped. The flicker on Phase B/C lines means the phase boundary checks are adding cycles that push those scanlines past 76. When you're ready to continue, we can either:
-1. Tune the phase checks (reduce overhead per scanline)
-2. Free more space and go back to the 3-loop-per-tile approach (separate loops with hardcoded GRP0, no phase checks inside loops)
-Waiting for your direction on space freeing.
 
 #########################################################################################################################################################################
 
@@ -89,18 +73,6 @@ like a TV interlaced more.
 Add laser and allow to kill enemies.
 When player pushes the fire button, a laser beam, that is a solid line starting from the "eye" in the player sprite,
 must appear. And if this line touches any enemy, the enemy must be removed from the room, and the player gets 50 score points.
-
-=========================================================================================================================================================================
-Bomb
-=========================================================================================================================================================================
-
-=========================================================================================================================================================================
-Fragile Wall
-=========================================================================================================================================================================
-
-=========================================================================================================================================================================
-Fix editor Exists being disabled
-=========================================================================================================================================================================
 
 
 
@@ -149,17 +121,6 @@ Make snake a rectanble that is twice the player width and half the player height
 Snake needs a direction, so it needs a mouth like the player
 
 
-OPTIMIZTION:
- No need to store empty space - it they are being used like this now
- Room Model
-    # The editor should now have two tabs, Model and Stage
-    # In the Model, you edit only the playfield, with empty spaces or terrain types (Solid Wall, Breakable Wall, Lava Wall, Water Pool, Lava Pool, Magma Fall)
-    # A aba de stages permite escolher o modelo, a cor da fase, e inserir posição de início do player, inimigos, tiles assimétricos, mineiro, etc.
-
-- adicionar laser
-
-- bomba
-
 Spiders go up and down (half a tile) in a web line
 
 Moths go zig-zag (4 tiles) in a senoid up/down movement. it always starts moving first to its right. (simplification)
@@ -181,11 +142,7 @@ HUD:
     Based on Lo! A rad dragon!
     Made with AI
 
-- lamps and dark rooms
 
-- adicionar bomba
-
-- adicionar paredes de lava
 
 - adicionar lago de lava
 
