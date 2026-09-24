@@ -1,8 +1,9 @@
-- lamps and dark rooms
-
-- hot walls
+Now, I want to add an option in the room
 
 - water and lava in room
+
+
+- lamps and dark rooms
 
 - laser
 
@@ -11,6 +12,8 @@
 - points finishing stage
 
 - moth movement
+
+- non mirrored walls
 
 
 Editor:
