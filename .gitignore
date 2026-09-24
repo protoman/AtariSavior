@@ -11,3 +11,5 @@ tools/editor/build/
 .idea/
 distella
 *.kate-swp
+src/docs/hero/
+src/screenshots/
