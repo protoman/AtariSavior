@@ -1626,6 +1626,8 @@ CEH_HasMore:
     ; Hit! Mark this enemy as dead
     lda EnemyIndex
     sta DeadEnemyIdx
+    lda #$50              ; +50 points per kill
+    jsr AddScore
     ; Lose a life
     dec PlayerLives
     bpl CEH_Stay
@@ -1653,25 +1655,6 @@ CEHNext:
     iny
     jmp CEH_Loop
 CEH_NoHit:
-    rts
-
-; ------------------------------------------------------------------------------
-; ------------------------------------------------------------------------------
-; ReloadLevel — reset level to initial state (all enemies back, 3 lives).
-; Reloads level data from ROM and respawns player at start.
-; ------------------------------------------------------------------------------
-ReloadLevel:
-    lda #3
-    sta PlayerLives
-    lda #BOMBS_MAX
-    sta PlayerBombs
-    lda Level
-    jsr LoadLevel
-    lda #0
-    sta vyLo
-    sta vyHi
-    sta JetPower
-    sta PlayerYSub
     rts
 
 ; ------------------------------------------------------------------------------
@@ -1749,6 +1732,8 @@ BombEnemyBlast:
     bcs .BEBNext
     lda EnemyIndex
     sta DeadEnemyIdx            ; kill (single slot — first hit wins)
+    lda #$50                    ; +50 points per kill
+    jsr AddScore
     rts
 .BEBNext:
     inc EnemyIndex
@@ -1910,8 +1895,13 @@ BombMarkWalls:
     cpx #4
     bcs .BMWNext
     lda BombMaskBit,X
+    and BombPacked              ; already broken?
+    bne .BMWNext                ; yes → no double score
+    lda BombMaskBit,X
     ora BombPacked
     sta BombPacked               ; set WallMask bit (keeps state+DownPrev)
+    lda #$75                    ; +75 points per broken wall
+    jsr AddScore
 .BMWNext:
     pla
     clc
@@ -2355,6 +2345,59 @@ ToGameStub:
     lda #0
     sta $1FF6                     ; select bank0 (game)
     jmp Overscan                 ; return to bank0 after HUD band
+
+; ------------------------------------------------------------------------------
+; AddScore — add BCD amount in A (e.g. #$50, #$75) to HUD score.
+; ScoreTh/ScoreHu = binary digits 0-9; ScoreTe = packed BCD (tens*16+ones).
+; Carry: ScoreTe >= $a0 → wrap and inc ScoreHu; ScoreHu >= 10 → wrap and
+; inc ScoreTh; ScoreTh >= 10 → cap at 9 (display is 4 digits).
+; Clobbers A. After fold pads so $FC68 org stays valid.
+; ------------------------------------------------------------------------------
+AddScore:
+    clc
+    adc ScoreTe
+    cmp #$a0
+    bcc .ASstoreTe
+    sbc #$a0
+    pha                         ; save wrapped ScoreTe
+    inc ScoreHu
+    lda ScoreHu
+    cmp #10
+    bcc .AShuOk
+    lda #0
+    sta ScoreHu
+    inc ScoreTh
+    lda ScoreTh
+    cmp #10
+    bcc .ASthOk
+    lda #9
+    sta ScoreTh
+.ASthOk:
+.AShuOk:
+    pla
+.ASstoreTe:
+    sta ScoreTe
+    rts
+
+; ------------------------------------------------------------------------------
+; ReloadLevel — reset level to initial state (all enemies back, 3 lives).
+; Reloads level data from ROM and respawns player at start.
+; Score is NOT reset (persists across deaths).
+; After fold pads to keep main code under $FC68.
+; ------------------------------------------------------------------------------
+ReloadLevel:
+    lda #3
+    sta PlayerLives
+    lda #BOMBS_MAX
+    sta PlayerBombs
+    lda Level
+    jsr LoadLevel
+    lda #0
+    sta vyLo
+    sta vyHi
+    sta JetPower
+    sta PlayerYSub
+    rts
 
 ; ------------------------------------------------------------------------------
 ; HotOverlapFlag — if the player's proposed tile range (CollisionCell*) overlaps

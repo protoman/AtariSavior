@@ -85,6 +85,15 @@ private:
     QColor GetTileColor(int tileType, int tileY) const;
     void UpdateSizeForRoom();
     void DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int dir) const;
+    // Miner + enemies + lamps in the active room (flicker budget).
+    int CountRoomElements() const;
+    // False + warning dialog if adding would exceed kMaxRoomElements.
+    bool AllowAddElement();
+    // True if any miner/enemy/lamp already occupies this tile row (room space).
+    bool ElementInRow(int tileY) const;
+    // False + warning if row already has an element (except optional ignoreY
+    // for the miner's current row when re-placing the miner in the same room).
+    bool AllowElementInRow(int tileY, int ignoreY = -1);
 
     hero::LevelData* m_levelData = nullptr;
     std::vector<hero::ModelData>* m_models = nullptr;
@@ -94,6 +103,9 @@ private:
     BrushTool m_currentBrush = BrushTool::SOLID_WALL;
     int m_tileSize = 24;
     int m_initialFacing = 1;
+
+    // GRP1 flicker budget: miner + enemies + lamps share one sprite slot.
+    static constexpr int kMaxRoomElements = 3;
 };
 
 } // namespace editor

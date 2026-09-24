@@ -293,7 +293,6 @@ void MainWindow::SetupUI() {
         { BrushTool::ADD_MOTH, "W. Moth" },
         { BrushTool::ADD_LAMP, "L. Lamp" },
         { BrushTool::ADD_RAFT, "R. Raft" },
-        { BrushTool::ADD_MAGMA, "A. Magma" },
         { BrushTool::DELETE_ENTITY, "X. Delete" }
     };
     for (const auto& t : levelTools) {
