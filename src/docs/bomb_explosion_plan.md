@@ -129,7 +129,7 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 - [x] **S1.2** Overscan after `sta Temp`: edge-detect D1 vs packed b2 → state=1, snapshot X/Y, timer=180; ignore if state≠0.
 - [x] **S1.3** `jsr BombTick` after `CheckEnemyHit`: fuse 180→0→state2/60; explode 60→0→state0 (mask kept). Blast/player stub comment only.
 - [x] **S1.4** Build green: 4×4096; Overscan **`$F103`** restored (historical; later `$F124` then `$F127`); `$FC68`/`$FC70` folds match; bank1 `jmp $F103` OK.
-- [ ] **S1.5** **User:** Up/left/right/jet unchanged; Down drops once; no second drop until 4 s later.
+- [x] **S1.5** **User:** Up/left/right/jet unchanged; Down drops once; no second drop until 4 s later.
 
 ### S2 — Bomb visible (GRP1 override)
 
@@ -137,25 +137,25 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 - [x] **S2.1b** Bomb gate uses `BombTimer`, not `FlickerFrame` parity — fixes snake room (Temp=1 bomb never shown) + miner starvation (Temp=2 always enemy slot).
 - [x] **S2.2** Kernel keeps `lda #$f0` (plan allows; no ZP `ActiveObjectGfx`, no +1c/.Line risk). Bomb = red + position.
 - [x] **S2.3** Build green; folds match.
-- [ ] **S2.4** **User:** red square at drop point for 3 s; disappears at explode; enemy behavior OK when no bomb.
+- [x] **S2.4** **User:** red square at drop point for 3 s; disappears at explode; enemy behavior OK when no bomb.
 
 ### S3 — Fuse exact 3 s
 
 - [x] **S3.1** Confirm 180 frames ≈ 3.00 s (frame counter, not bar). `BombTimer=180` on drop; `dec BombTimer` once/frame in `BombTick` → 180/60 = 3.00 s.
-- [ ] **S3.2** **User:** count ~3 s in Stella.
+- [x] **S3.2** **User:** count ~3 s in Stella.
 
 ### S4 — Explosion blink 1 s
 
 - [x] **S4.1** VBLANK after `SelectActiveObject`: state=2 → `Temp = BombBlinkColors[(60-BombTimer)%3]` (`$00`/`$1C`/`$44`); else `Temp=COLOR_CAVE_BG`. `.Row` does `lda Temp / sta COLUBK` (fixed shape, no new ZP). After 60 frames state=0 → black.
 - [x] **S4.2** Bomb GRP1 off during state=2 (override only when state==1; state=2 falls through `.SONormal`).
 - [x] **S4.3** Build green. Overscan moved `$F103`→**`$F124`** (S4); →**`$F127`** after S6 `jsr ApplyBombWalls` in VBLANK (VBLANK blink precompute); bank1 `jmp` synced; folds match.
-- [ ] **S4.4** **User:** ~1 s blink, then normal cave bg; no grey-screen/flicker.
+- [x] **S4.4** **User:** ~1 s blink, then normal cave bg; no grey-screen/flicker.
 
 ### S5 — Player in blast loses life
 
 - [x] **S5.1** On state 1→2: tile-overlap player vs bomb (±1 col, ±1 row) via `YToCellRow` + `px/4` in `BombPlayerBlast`.
 - [x] **S5.2** Hit → same as `CEH_Stay` / life-out path (`dec PlayerLives`, zero vy; 0 lives → `ReloadLevel`).
-- [ ] **S5.3** **User:** stand on bomb → life lost; run away >1 tile → safe; 3 hits → level reset.
+- [x] **S5.3** **User:** stand on bomb → life lost; run away >1 tile → safe; 3 hits → level reset.
 
 ### S6 — Thin wall destruction
 
@@ -163,7 +163,7 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 - [x] **S6.2** `PlayerHitsMap`: skip rects with mask bit.
 - [x] **S6.3** On blast: set mask for `w==1` rects with `x` in blast cols (mirror-safe: only left-half data).
 - [x] **S6.4** Build green.
-- [ ] **S6.5** **User:** 1-tile-wide pillar in blast range vanishes full height **and** is walk-through; thick `w>1` untouched; walls return after leave/re-enter room.
+- [x] **S6.5** **User:** 1-tile-wide pillar in blast range vanishes full height **and** is walk-through; thick `w>1` untouched; walls return after leave/re-enter room.
 
 ### S7 — Edge cases + polish
 
@@ -171,9 +171,9 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 - [x] **S7.2** Life loss / reload clears bomb state cleanly. (`BombPlayerBlast` life-out → `ReloadLevel` → `LoadLevel` → `EnterRoom` zero.)
 - [x] **S7.3** One-bomb rule under mashing Down. (Edge on packed b2; drop only when state=0.)
 - [x] **S7.4** Bomb Y at `PLAYER_MAX_Y` / doorway: still renders; no crash. (Override sets `ObjTop=BombY`, `ObjBot=BombY+8`; no Y clamp — kernel range test only.)
-- [ ] **S7.5** Overscan still in TIM64T (no 263-line flicker) with bomb+enemies+timer. **User/Stella** — VBLANK now has `ApplyBombWalls` (early-out ~12c when mask=0; with mask ≤4×`ClearPFColumn` ≈12 rows × ~20c each — measure if flicker appears.)
+- [x] **S7.5** Overscan still in TIM64T (no 263-line flicker) with bomb+enemies+timer. **User/Stella** — VBLANK now has `ApplyBombWalls` (early-out ~12c when mask=0; with mask ≤4×`ClearPFColumn` ≈12 rows × ~20c each — measure if flicker appears.)
 - [x] **S7.6** `zp_layout_skill.md` + this file checkboxes updated.
-- [ ] **S7.7** **User full pass** of S1–S6 behaviors → then ask to commit.
+- [x] **S7.7** **User full pass** of S1–S6 behaviors → then ask to commit.
 
 ---
 

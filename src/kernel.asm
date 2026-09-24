@@ -646,7 +646,7 @@ UpdateP0Vertical:
     dec StepsLeft
     bne .JRising
 .NoVMove:
-    jmp CheckP0Left
+    ; fall through to CheckP0Left (removed redundant jmp — target was next insn, 3c/frame)
 
 ; ------------------------------------------------------------------------------
 ; Horizontal movement (left/right) — 1 px/frame + collision
@@ -668,7 +668,7 @@ CheckP0Left:
     jmp CheckP0Right
 .ExitLeft:
     jsr ExitRoomLeft
-    jmp CheckP0Right
+    ; fall through to CheckP0Right (removed redundant jmp — target was next insn, 3c)
 
 CheckP0Right:
     lda #%00001000              ; test D3 (right)
@@ -1901,18 +1901,34 @@ DigitTimes5:
 ; ==============================================================================
 ; YToCellRow — convert scanline (0-191) to tile row (0-11)
 ; ==============================================================================
-; Identical to comparison/lo-a-rad-dragon/bank0.asm.
 ; Input: A = scanline. Output: X = tile row.
+; Lookup table: constant-time. Subtract loop grew linearly with RoomY and
+; made 3× PlayerHitsMap (fall 2 + L/R 1) exceed overscan TIM64T=35 (~2240c)
+; in 4-rect rooms → frame >262 lines → vertical roll when strafing while falling.
 YToCellRow subroutine
-    ldx #0
-.Div:
-    cmp #LINES_PER_TILE
-    bcc .Done
-    sbc #LINES_PER_TILE
-    inx
-    bne .Div
-.Done:
+    tay
+    lda YToRowTable,Y
+    tax
     rts
+
+; 192 entries: A/12 for A=0..191 (matches old loop for full scanline range).
+YToRowTable:
+    .byte 0,0,0,0,0,0,0,0,0,0,0,0
+    .byte 1,1,1,1,1,1,1,1,1,1,1,1
+    .byte 2,2,2,2,2,2,2,2,2,2,2,2
+    .byte 3,3,3,3,3,3,3,3,3,3,3,3
+    .byte 4,4,4,4,4,4,4,4,4,4,4,4
+    .byte 5,5,5,5,5,5,5,5,5,5,5,5
+    .byte 6,6,6,6,6,6,6,6,6,6,6,6
+    .byte 7,7,7,7,7,7,7,7,7,7,7,7
+    .byte 8,8,8,8,8,8,8,8,8,8,8,8
+    .byte 9,9,9,9,9,9,9,9,9,9,9,9
+    .byte 10,10,10,10,10,10,10,10,10,10,10,10
+    .byte 11,11,11,11,11,11,11,11,11,11,11,11
+    .byte 12,12,12,12,12,12,12,12,12,12,12,12
+    .byte 13,13,13,13,13,13,13,13,13,13,13,13
+    .byte 14,14,14,14,14,14,14,14,14,14,14,14
+    .byte 15,15,15,15,15,15,15,15,15,15,15,15
 
 ; ==============================================================================
 ; PlayerHitsMap — check player bounding box against room rectangle list

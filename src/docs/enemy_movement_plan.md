@@ -154,8 +154,43 @@ ROM is not writable. Movement needs live X/Y/(dir/phase).
       inside wall `[0,7]` visible-left≈4, flush=8 needs travel **4**; `+8`
       overshot → gap between wall and snake (user measured up to 8px game).
       Fix: `ENEMY_WIDTH=4` matches `$f0`. **Lesson below — moth is at risk.**
-- [ ] **S4.8** **User:** snake patrols ±4px from spawn (flush with wall edge,
+- [x] **S4.8** **User:** snake patrols ±4px from spawn (flush with wall edge,
       no gap), half speed, still no wall collision, no blink.
+- [x] **S4.9** **User:** fall while holding left/right past snake — no
+      flicker/roll (2026-09-23, after YToRowTable + redundant-jmp cut).
+
+---
+
+### Overscan roll with fall+L/R (diagnosed 2026-09-23)
+
+**Symptom:** falling + holding left/right near enemy row → screen flickers /
+rolls up. Pure fall does not.
+
+**Cause:** overscan `TIM64T=35` (~2240c). Fall = 2× `StepDown` = 2×
+`PlayerHitsMap`; L/R adds a 3rd PHM. Room 0 has **4 rects**; `YToCellRow`
+subtract loop cost grew with `RoomY` (~140c each at y=136, 2 calls/PHM).
+Worst case ≈ 3×627 + fixed ≈ **2400c > 2240c** → frame >262 lines → roll.
+Pure fall (2× PHM ≈ 1733c) stays under budget.
+
+**Fix:** `YToCellRow` → `YToRowTable` (192-byte ROM lookup, `tay/lda
+YToRowTable,Y/tax` at `$F983`, table `$F989`). Constant ~20c/call. Same A/X
+interface (callers: `PlayerHitsMap` ×2, `BombPlayerBlast` ×2).
+
+**Measured (emulator, corrected table addrs + post-jmp-cut):**
+| Path | Cycles | Budget 2240 |
+|------|--------|-------------|
+| Pure fall (2× PHM) | 1644 | ok (−596) |
+| Fall+L (3× PHM, snake-move frame) | **2234** | ok (−6) |
+| Fall+R (3× PHM, snake-move frame) | **2235** | ok (−5) |
+| Fall+L tick1 bar1 (TimerExpired) | 2168 | ok (−72) |
+
+Worst = fall+R tick=0/4 x=150 y=120 (4-rect room0, UE moves snake).
+Snake moves on `TickCounter & 3 == 0` (ticks 0/4). Margin only **5c** —
+do not add overscan work without a matching cut.
+
+**Redundant jmps removed (−6c):** `.NoVMove` no longer `jmp CheckP0Left`
+(target was next insn); `.ExitLeft` no longer `jmp CheckP0Right` after
+`jsr ExitRoomLeft` (same).
 
 ---
 
