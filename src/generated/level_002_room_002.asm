@@ -5,6 +5,7 @@ L2R2RoomRects:
   .byte 0, 4, 1, 4  ; x, y, width, height
   .byte 0, 8, 8, 4  ; x, y, width, height
   .byte 9, 8, 11, 4  ; x, y, width, height
+  .byte 0              ; number of hot rectangles
 L2R2TilePF0:
   .byte $f0, $f0, $f0, $f0, $10, $10, $10, $10, $f0, $f0, $f0, $f0
 L2R2TilePF1:

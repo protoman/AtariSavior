@@ -163,7 +163,7 @@ ObjBot          byte            ; bottom scanline of active object (ObjTop + PLA
 ; Bomb X/Y/timer live at $F6/$F7 + BombY=$85 (see top of ZP map)
 BombX           = $F6           ; bomb drop X (RoomX snapshot; bank1 does not write $F6)
 BombTimer       = $F7           ; fuse/explode countdown (frames)
-PlayerBombs     = $F0           ; bombs left 0..5 (ColupfBuf+9; never written by VBLANK/bank1 score)
+PlayerBombs     = $F0           ; bombs left 0..5 (never written by VBLANK/bank1 score)
 BOMBS_MAX       = 5             ; starting / reload bomb count
 BombSnd         = $F1           ; frames of bomb audio left (0=silent; bank1 must not write)
 RoomWallMask    = $F2           ; packed destroyed-wall mask, until stage leave:
@@ -185,9 +185,11 @@ PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
 ; VBLANK re-populates them before the next kernel frame.
 PF0Buf          = $C3           ; 12 bytes: TilePF0 values per row
 PF1Buf          = $CF           ; 12 bytes: TilePF1 values per row
-PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row
-ColupfBuf       = $E7           ; 12 bytes reserved (NOT written — kernel uses LevelWallColor*)
-                                ; $E7-$EF bank1 score/bar; $F0 = PlayerBombs; $F1 = BombSnd; $F2 = RoomWallMask
+PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row ($DB-$E6)
+                                ; $E7-$F2 = ColupfBuf (12) — overlaps bombs
+                                ; $F0-$F2: saved to CollisionCellY/EndX/EndY
+                                ; during VBLANK+kernel, restored before HUD.
+ColupfBuf       = $E7           ; 12 bytes: final COLUPF per tile row (stripe+hot)
 
 ; Player sprite ZP buffer (copied from ROM during VBLANK, read by kernel)
 PlayerGrp0      = $F8           ; 8 bytes: player sprite rows (computed per frame)
@@ -243,6 +245,10 @@ COLOR_SCORE     = $0E           ; hue 0 luma 7 = white
 ; Explosion blink COLUBK cycle (BombState=2): black → yellow → red
 COLOR_BLINK_Y   = $1C           ; hue 1 luma 6 = yellow (power bar)
 COLOR_BLINK_R   = $44           ; hue 4 luma 2 = red (power bar)
+
+; Hot rock pulse (COLUPF yellow ↔ red), phase from TickCounter bit 4
+COLOR_HOT_Y     = COLOR_BLINK_Y
+COLOR_HOT_R     = COLOR_BLINK_R
 
 ; ==============================================================================
 ; ROM start — F6 bankswitch (16K, 4 banks × 4K)
@@ -343,6 +349,7 @@ StartFrame:
     ; --- Refresh PF buffers (bank1 corrupts them during HUD band) ---
     jsr LoadPFBuffer
     jsr ApplyBombWalls          ; S6.1: re-apply thin-wall holes every frame
+    jsr BuildColupF            ; stripe+hot COLUPF bytes into ColupfBuf ($E7-$F2)
 
     ; --- Select which object GRP1 draws this frame (miner or enemy) ---
     jsr SelectActiveObject
@@ -445,16 +452,9 @@ StartFrame:
     ; --- Set tile row colors (Temp = this frame's COLUBK, set in VBLANK) ---
     lda Temp
     sta COLUBK
-    ; Stripe: rows 0-3 + 8-11 = wall color 1, rows 4-7 = wall color 2
-    cpx #4
-    bcc .UseWallColor1
-    cpx #8
-    bcs .UseWallColor1
-    lda LevelWallColor2
-    jmp .SetWallColor
-.UseWallColor1:
-    lda LevelWallColor
-.SetWallColor:
+    ; COLUPF precomputed by BuildColupF (stripe + hot pulse) — one ZP load.
+    ; Inline stripe+hot test was 84-109c; budget is 76c/scanline.
+    lda ColupfBuf,X
     sta COLUPF
 
     ; --- Init scanline counter for this row ---
@@ -503,7 +503,17 @@ StartFrame:
     ; --- Advance to next tile row ---
     inx
     cpx #TILE_ROWS
-    bne .Row
+    beq .AfterRows
+    jmp .Row
+.AfterRows:
+
+    ; --- Restore bombs clobbered by ColupfBuf ($F0-$F2) before HUD/overscan ---
+    lda CollisionCellY          ; saved PlayerBombs
+    sta PlayerBombs
+    lda CollisionEndX           ; saved BombSnd
+    sta BombSnd
+    lda CollisionEndY           ; saved RoomWallMask
+    sta RoomWallMask
 
 ; ==============================================================================
 ; HUD band: 48 scanlines (144-191)
@@ -516,7 +526,7 @@ StartFrame:
     ; After sta $1FF7, CPU reads next instruction from bank1 at $FC6D.
     ; Bank1's $FC6D has the same jmp $F540 → seamless bank switch.
     jmp $FC68                   ; jump to fold-pad (switches to bank1, runs MenuMain)
-    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp Overscan ($F12B)
+    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp Overscan
 
 ; ==============================================================================
 ; Overscan (30 scanlines) — input handling + game logic
@@ -586,6 +596,11 @@ Overscan:
 ; StepDown/StepUp so collision stops flush at walls/doorways.
 ; ------------------------------------------------------------------------------
 UpdateP0Vertical:
+; --- Clear HotBump (Temp b7) — set again only if this frame bumps hot rock ---
+    lda Temp
+    and #%01111111
+    sta Temp
+
 ; --- Jet thrust accumulator: +1/frame while Up is held (cap JET_MAX),
 ;     -1/frame otherwise. The ramp gives the jet its initial inertia. ---
     lda #%00000001              ; test D0 (up, after 4x LSR)
@@ -711,6 +726,12 @@ CheckP0Right:
     jsr ExitRoomRight
 
 EndInputCheck:
+
+    ; --- Hot rock touch (bump into H cell this frame) → lose life ---
+    lda Temp
+    bpl .NoHotBump
+    jsr LoseLifeHot
+.NoHotBump:
 
     ; --- Move live enemies (snake first; other types no-op until S5+) ---
     jsr UpdateEnemies
@@ -2245,6 +2266,7 @@ PlayerHitsMap:
 
 ; HIT — player is blocked
     pla
+    jsr HotOverlapFlag          ; set Temp b7 if proposed cells include hot rock
     sec
     rts
 
@@ -2277,6 +2299,193 @@ ToGameStub:
     lda #0
     sta $1FF6                     ; select bank0 (game)
     jmp Overscan                 ; return to bank0 after HUD band
+
+; ------------------------------------------------------------------------------
+; HotOverlapFlag — if the player's proposed tile range (CollisionCell*) overlaps
+;   any hot-only rect, set Temp bit 7 (HotBump). Called from PlayerHitsMap HIT
+;   while CollisionCell* still describe the rejected position. Clobbers A/X/Y/
+;   MapPtr/RectCount (PlayerHitsMap returns immediately after).
+; Hot section: after solid count + N*4 solid bytes → hot count + M*4 hot bytes.
+; ------------------------------------------------------------------------------
+HotOverlapFlag:
+    lda RoomRectsLo
+    sta MapPtrLo
+    lda RoomRectsHi
+    sta MapPtrHi
+    ldy #0
+    lda (MapPtrLo),Y            ; solid count
+    asl
+    asl                         ; *4
+    clc
+    adc #1                      ; +1 count byte → hot count offset
+    tay
+    lda (MapPtrLo),Y
+    beq .HOVdone                ; no hot rects
+    sta RectCount
+    iny                         ; first hot rect base
+.HOVloop:
+    tya
+    pha
+    ; Column overlap (same tests as PlayerHitsMap)
+    lda (MapPtrLo),Y            ; rect.x
+    cmp CollisionCellX
+    beq .HOVcolOk
+    bcc .HOVcolOk
+    jmp .HOVnext
+.HOVcolOk:
+    sta CollisionX
+    iny
+    iny                         ; Y = base+2 (w)
+    clc
+    lda (MapPtrLo),Y
+    adc CollisionX
+    cmp CollisionEndX
+    beq .HOVnext
+    bcc .HOVnext
+    ; Row overlap — same dey count as PlayerHitsMap (base+2 → base+1).
+    ; Extra deys here read the hot-count byte as rect.y → death zone shifted up.
+    dey                         ; Y = base+1 (y)
+    lda (MapPtrLo),Y
+    cmp CollisionEndY
+    beq .HOVrowOk
+    bcc .HOVrowOk
+    jmp .HOVnext
+.HOVrowOk:
+    iny
+    iny                         ; Y = base+3 (h)
+    clc
+    lda (MapPtrLo),Y
+    dey
+    dey                         ; Y = base+1 (y)
+    adc (MapPtrLo),Y            ; y+h
+    cmp CollisionCellY
+    beq .HOVnext
+    bcc .HOVnext
+    ; Hot hit
+    pla
+    lda Temp
+    ora #%10000000
+    sta Temp
+    rts
+.HOVnext:
+    pla
+    clc
+    adc #4
+    tay
+    dec RectCount
+    bne .HOVloop
+.HOVdone:
+    rts
+
+; ------------------------------------------------------------------------------
+; LoseLifeHot — same life path as enemy/timer hit (Temp b7 already set).
+; ------------------------------------------------------------------------------
+LoseLifeHot:
+    dec PlayerLives
+    bpl .LLHstay
+    lda #3
+    sta PlayerLives
+    lda #$FF
+    sta DeadEnemyIdx
+    jsr ReloadLevel
+    rts
+.LLHstay:
+    lda #0
+    sta vyLo
+    sta vyHi
+    sta JetPower
+    sta PlayerYSub
+    rts
+
+; ------------------------------------------------------------------------------
+; BuildColupF — 12-byte final COLUPF image at ColupfBuf ($E7-$F2).
+;   Stripe: rows 0-3,8-11 = LevelWallColor; rows 4-7 = LevelWallColor2.
+;   Hot rows overwrite with TickCounter-bit4 pulse (COLOR_HOT_Y/R).
+;   $E7-$F2 overlaps PlayerBombs/BombSnd/RoomWallMask ($F0-$F2): save those
+;   to collision temps (free until overscan), restore at .AfterRows.
+;   Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds every frame.
+; ------------------------------------------------------------------------------
+BuildColupF:
+    lda PlayerBombs
+    sta CollisionCellY          ; save $F0
+    lda BombSnd
+    sta CollisionEndX           ; save $F1
+    lda RoomWallMask
+    sta CollisionEndY           ; save $F2
+    ; --- stripe fill ---
+    ldx #0
+.BCFstripe:
+    cpx #4
+    bcc .BCFc1
+    cpx #8
+    bcs .BCFc1
+    lda LevelWallColor2
+    jmp .BCFstore
+.BCFc1:
+    lda LevelWallColor
+.BCFstore:
+    sta ColupfBuf,X
+    inx
+    cpx #TILE_ROWS
+    bne .BCFstripe
+    ; --- pulse color → Temp (free until .BgStore) ---
+    lda TickCounter
+    and #$10
+    beq .BCFpulseY
+    lda #COLOR_HOT_R
+    jmp .BCFpulse
+.BCFpulseY:
+    lda #COLOR_HOT_Y
+.BCFpulse:
+    sta Temp
+    ; --- walk hot rects, overwrite those rows ---
+    lda RoomRectsLo
+    sta MapPtrLo
+    lda RoomRectsHi
+    sta MapPtrHi
+    ldy #0
+    lda (MapPtrLo),Y
+    asl
+    asl
+    clc
+    adc #1
+    tay                         ; Y → hot count
+    lda (MapPtrLo),Y
+    beq .BCFdone
+    sta RectCount
+    iny
+.BCFrect:
+    tya
+    pha
+    iny                         ; Y = base+1 (y)
+    lda (MapPtrLo),Y
+    sta CollisionCellX          ; first row
+    iny
+    iny                         ; Y = base+3 (h)
+    clc
+    lda (MapPtrLo),Y
+    adc CollisionCellX
+    sta CollisionX              ; one-past last row
+    ldx CollisionCellX
+.BCFrow:
+    cpx #TILE_ROWS
+    bcs .BCFrectDone
+    cpx #12
+    bcs .BCFrectDone
+    lda Temp
+    sta ColupfBuf,X
+    inx
+    cpx CollisionX
+    bne .BCFrow
+.BCFrectDone:
+    pla
+    clc
+    adc #4
+    tay
+    dec RectCount
+    bne .BCFrect
+.BCFdone:
+    rts
 
 ; Pad to fineAdjustTable
     .ds $FF00 - *, 0

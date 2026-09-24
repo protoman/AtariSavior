@@ -34,7 +34,8 @@ enum class TileType : int {
     LAVA = 4,            // Instant death
     WATER = 5,           // Instant death/drown
     RAFT = 6,            // Floating raft on water/lava
-    MAGMA_FALL = 7       // Periodic dropping hazard
+    MAGMA_FALL = 7,      // Periodic dropping hazard
+    HOT_ROCK_WALL = 8    // Solid wall; pulses yellow/red, kills on touch
 };
 
 enum class EnemyType : int {

@@ -142,6 +142,8 @@ QColor MapCanvas::GetTileColor(int tileType, int tileY) const {
             return QColor(140, 80, 20);
         case hero::TileType::MAGMA_FALL:
             return QColor(255, 100, 0);
+        case hero::TileType::HOT_ROCK_WALL:
+            return QColor(255, 80, 20);
         default:
             return QColor(15, 15, 20);
     }
@@ -327,7 +329,8 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
 
     int brushVal = static_cast<int>(m_currentBrush);
 
-    if (m_currentBrush == BrushTool::SOLID_WALL || m_currentBrush == BrushTool::ERASE_AIR) {
+    if (m_currentBrush == BrushTool::SOLID_WALL || m_currentBrush == BrushTool::ERASE_AIR ||
+        m_currentBrush == BrushTool::HOT_ROCK_WALL) {
         model->tiles[tileY * roomWidth + tileX] = brushVal;
         emit levelModified();
         update();
