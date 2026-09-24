@@ -2,8 +2,8 @@
 L2R2RoomRects:
   .byte 4                  ; number of rectangles
   .byte 0, 0, 18, 4  ; x, y, width, height
-  .byte 0, 4, 1, 8  ; x, y, width, height
-  .byte 1, 8, 7, 4  ; x, y, width, height
+  .byte 0, 4, 1, 4  ; x, y, width, height
+  .byte 0, 8, 8, 4  ; x, y, width, height
   .byte 9, 8, 11, 4  ; x, y, width, height
 L2R2TilePF0:
   .byte $f0, $f0, $f0, $f0, $10, $10, $10, $10, $f0, $f0, $f0, $f0
