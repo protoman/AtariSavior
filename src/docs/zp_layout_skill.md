@@ -1,238 +1,169 @@
 # Zero-Page Layout — Skill Reference
 
+**Authoritative source:** sequential `byte` labels + `EQU`/`=` in `src/kernel.asm`
+(verified against `bank0.lst` 2026-09-23 after bomb work). Bank1 EQUs from
+`src/bank1.asm`. Do not trust older alias tables below this line's date.
+
 ## Overview
 
 The Atari 2600 has 128 bytes of zero-page RAM ($80-$FF). All F6 banks share the
 same physical ZP. Writing to a ZP address in one bank corrupts the value for
-ALL banks. This document maps every byte to prevent cross-bank conflicts.
+ALL banks.
 
-## Critical Rule
+**Exception:** Bank1 (menu) and bank0 (game) never run simultaneously.
+Fold-pad handoff + bank0 VBLANK (`LoadPFBuffer`, game re-init) re-establishes
+bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 
-**ZP is shared across ALL banks.** Before defining new ZP variables in any bank,
-check that addresses don't conflict with variables used by other banks.
+## Critical Rules
 
-**Exception:** Bank1 (start screen) and bank0 (game) never run simultaneously.
-Fold-pad handoff reinitializes bank0's ZP during VBLANK. So bank1 can safely
-use addresses that overlap bank0's PF buffers — but the addresses must be
-documented here to prevent future confusion.
+1. **Never use $100-$1FF as a buffer.** Mirrors $80-$FF (same 128 bytes).
+2. **Never remove a middle sequential `byte`** — shifts every later address
+   and breaks bank1 EQUs / fold-pad assumptions. Rename in place.
+3. **New bank0 sequential vars go after `$BC`.** Free: `$BD-$C2` only if
+   EnemyRam is relocated (currently occupied). After bomb work there is
+   **no free sequential bank0 byte** — reuse scratch (`Temp`, collision
+   temps) or steal a documented bank1-only address.
+4. **Grep all `bank*.asm` before defining `$xx` EQU** in any bank.
+5. **Do not touch from bank1 (live score/bomb):** `$F3-$F5` score,
+   `$F6` BombX, `$F7` BombTimer, `$F8-$FF` PlayerGrp0 + stack mirror,
+   `$AD` bank1 `Temp` (bank0 `TickCounter`), `$BD-$C2` EnemyRam,
+   `$B5` BombPacked, `$85` BombY.
 
-## Bank0 ZP Map (Game Code)
-
-### $80-$B2: Game Variables (51 bytes)
-
-| Addr | Name | Purpose |
-|------|------|---------|
-| $80 | RoomX | Player X position (0-159), alias PlayerX |
-| $81 | RoomY | Player Y position (0-191), alias PlayerY |
-| $82 | PlayerDir | Sprite eye facing: FACING_RIGHT(0) or FACING_LEFT(1) |
-| $83 | vyLo | Y velocity low byte (subpixel; signed 16-bit, +=down) |
-| $84 | vyHi | Y velocity high byte (whole pixels/frame, signed) |
-| $85 | PlayerYSub | Subpixel accumulator for Y velocity integration |
-| $86 | JetPower | Jet thrust 0..JET_MAX; ramps +1/frame while Up held |
-| $87 | StepsLeft | Per-frame Y pixel steps remaining (vertical physics) |
-| $88 | Scanline | Current kernel scanline counter |
-| $89 | LineCount | Scanlines remaining in current tile row |
-| $8A | MapPtrLo | Room tile map pointer (low) |
-| $8B | MapPtrHi | Room tile map pointer (high) |
-| $8C | CollisionX | Collision check X coord, alias Grp0Ptr (low) |
-| $8D | CollisionCellX | Collision check cell X, alias Grp0Ptr (high) |
-| $8E | CollisionCellY | Collision check cell Y, alias ObjTop |
-| $8F | CollisionEndX | Collision check end X, alias ObjBot |
-| $90 | CollisionEndY | Collision check end Y, alias LaserScanline |
-| $91 | RoomPFDataLo | Current room TilePF0 table address (low) |
-| $92 | RoomPFDataHi | Current room TilePF0 table address (high) |
-| $93 | RoomRectsLo | Current room rectangle collision data (low) |
-| $94 | RoomRectsHi | Current room rectangle collision data (high) |
-| $95 | RoomNo | Current room index into RoomDataTable |
-| $96 | Level | Current level index (0 = first level) |
-| $97 | LevelDataLo | Pointer into LevelDataTable (low) |
-| $98 | LevelDataHi | Pointer into LevelDataTable (high) |
-| $99 | LevelPFDataLo | Active level RoomDataTable base (low) |
-| $9A | LevelPFDataHi | Active level RoomDataTable base (high) |
-| $9B | LevelConnLo | Active level RoomConnections base (low) |
-| $9C | LevelConnHi | Active level RoomConnections base (high) |
-| $9D | LevelWallColor | COLUPF for walls rows 0-3, 8-11 (emulator-aware) |
-| $9E | LevelWallColor2 | COLUPF for walls rows 4-7 (emulator-aware) |
-| $9F | LevelMinerRoom | Room index holding the miner for active level |
-| $A0 | MinerX | Miner spawn X (logical room pixel coords) |
-| $A1 | MinerY | Miner spawn Y |
-| $A2 | LevelEnemyLo | Active level RoomEnemies table base (low) |
-| $A3 | LevelEnemyHi | Active level RoomEnemies table base (high) |
-| $A4 | EnemyDataLo | Current room enemy data base address (low) |
-| $A5 | EnemyDataHi | Current room enemy data base address (high) |
-| $A6 | EnemyCount | Number of enemies in current room (0..MAX_ENEMIES) |
-| $A7 | FlickerFrame | GRP1 slot index for this frame |
-| $A8 | ObjectCount | Enemies + (1 if miner's room) |
-| $A9 | ActiveObjectOn | 1 when current room owns GRP1 object this frame |
-| $AA | ActiveObjectX | GRP1 object X (room pixel 0..159) |
-| $AB | ActiveObjectY | GRP1 object Y (scanline 0..191) |
-| $AC | EnemyIndex | Selected enemy index within room's enemy data |
-| $AD | Temp | General scratch |
-| $AE | LevelStartRoom | Active level origin room (spawn + enemy-hit teleport) |
-| $AF | LevelStartX | Active level origin X |
-| $B0 | LevelStartY | Active level origin Y |
-| $B1 | EnemyLoopCount | CheckEnemyHit loop counter |
-| $B2 | GameMode | 0 = start screen (bank1), nonzero = game (bank0) |
-
-### $B3-$BC: Font Data (10 bytes)
+## Bank0 Sequential ZP ($80-$BC) — verified
 
 | Addr | Name | Purpose |
 |------|------|---------|
-| $B3-$B7 | FontP0 | P0 character font data (5 rows) — used by bank2 |
-| $B8-$BC | FontP1 | P1 character font data (5 rows) — used by bank2 |
+| $80 | RoomX | Player X (0-159) |
+| $81 | RoomY | Player Y (0-191) |
+| $82 | PlayerDir | Eye facing 0/1 |
+| $83 | Scanline | Kernel scanline (0-191) |
+| $84 | LineCount | Scanlines left in tile row |
+| $85 | BombY | Bomb drop Y (scanline snapshot) |
+| $86 | Grp0Ptr | Player sprite ptr lo (scratch) |
+| $87 | Grp0PtrHi | Player sprite ptr hi (scratch) |
+| $88 | Temp | General scratch (VBLANK COLUBK, ObjectCount, …) |
+| $89 | MapPtrLo | Rect-list walk ptr lo |
+| $8A | MapPtrHi | Rect-list walk ptr hi |
+| $8B | CollisionX | Collision/mirror scratch |
+| $8C | CollisionCellX | Player max tile col |
+| $8D | CollisionCellY | Player top tile row |
+| $8E | CollisionEndX | Player min tile col |
+| $8F | CollisionEndY | Player bottom tile row |
+| $90 | RoomRectsLo | Room rect list ptr lo |
+| $91 | RoomRectsHi | Room rect list ptr hi |
+| $92 | RectCount | Rect loop counter |
+| $93 | vyLo | Y velocity lo (signed 16) |
+| $94 | vyHi | Y velocity hi |
+| $95 | PlayerYSub | Y subpixel accumulator |
+| $96 | JetPower | Jet thrust 0..JET_MAX |
+| $97 | StepsLeft | Vertical step budget |
+| $98 | RoomNo | Current room index |
+| $99 | RoomPF0Lo | TilePF0 ptr lo |
+| $9A | RoomPF0Hi | TilePF0 ptr hi |
+| $9B | RoomPF1Lo | TilePF1 ptr lo |
+| $9C | RoomPF1Hi | TilePF1 ptr hi |
+| $9D | RoomPF2Lo | TilePF2 ptr lo |
+| $9E | RoomPF2Hi | TilePF2 ptr hi |
+| $9F | LevelPFDataLo | Level RoomDataTable lo |
+| $A0 | LevelPFDataHi | Level RoomDataTable hi |
+| $A1 | LevelConnLo | RoomConnections lo |
+| $A2 | LevelConnHi | RoomConnections hi |
+| $A3 | Level | Level index |
+| $A4 | LevelMinerRoom | Miner room index |
+| $A5 | MinerX | Miner X |
+| $A6 | MinerY | Miner Y |
+| $A7 | LevelStartRoom | Spawn/teleport room |
+| $A8 | LevelStartX | Spawn/teleport X |
+| $A9 | LevelStartY | Spawn/teleport Y |
+| $AA | LevelWallColor | COLUPF rows 0-3, 8-11 |
+| $AB | LevelWallColor2 | COLUPF rows 4-7 |
+| $AC | PlayerLives | Lives 0-3 |
+| $AD | TickCounter | 1s power-bar step |
+| $AE | BarLevel | Power bar 0-16 |
+| $AF | LevelEnemyLo | Level enemy table lo |
+| $B0 | LevelEnemyHi | Level enemy table hi |
+| $B1 | EnemyDataLo | Room enemy data lo |
+| $B2 | EnemyDataHi | Room enemy data hi |
+| $B3 | EnemyCount | Enemies in room |
+| $B4 | FlickerFrame | GRP1 slot index |
+| $B5 | **BombPacked** | b0-1 state, b2 DownPrev, b3-6 WallMask, b7 spare |
+| $B6 | ActiveObjectOn | GRP1 object visible |
+| $B7 | ActiveObjectX | GRP1 object X |
+| $B8 | ActiveObjectY | GRP1 object Y |
+| $B9 | EnemyIndex | Selected enemy slot |
+| $BA | DeadEnemyIdx | Killed enemy / $FF |
+| $BB | ObjTop | GRP1 top scanline |
+| $BC | ObjBot | GRP1 bottom scanline |
 
-### $BD-$C2: Enemy RAM shadow (6 bytes)
+Sequential allocation ends at `$BC` (next would be `$BD`).
 
-| Addr | Name | Purpose |
-|------|------|---------|
-| $BD-$C0 | EnemyRamX | Live X per enemy (4 bytes; MAX_ENEMIES=4) |
-| $C1 | EnemyRamD | Packed dir: bit0-3 = enemy 0-3 (1=right, 0=left) |
-| $C2 | EnemyRamP | Packed flags: bits0-3 moth phase; bits4-7 spider vdir |
+## Bank0 EQUs (fixed addresses, no sequential byte)
 
-**Score digits moved off this range (2026-09-23):** bank1 `ScoreTh..ScoreOn`
-now live at **$F3-$F6** (matches bank0 Score* EQUs). Old $BF-$C2 home collided
-with EnemyRamX[2]/[3]/EnemyRamD/EnemyRamP — bank1 HUD writes score every game
-frame (fire BCD + digit pointer math), which corrupted enemy X[2], X[3], and
-dir mid-frame (snake jump/blink-back).
+| Addr | Name | Notes |
+|------|------|-------|
+| $B3 | PF0ScoreBuf | Alias into EnemyCount area — score buffers (legacy name) |
+| $B8 | PF1ScoreBuf | Alias |
+| $C6 | PF2ScoreBuf | Alias (within PF0Buf) |
+| $BD | EnemyRamX | 4 bytes live enemy X |
+| $C1 | EnemyRamD | Packed dir bits 0-3 |
+| $C2 | EnemyRamP | Packed moth/spider flags |
+| $C3-$CE | PF0Buf | TilePF0 (12) |
+| $CF-$DA | PF1Buf | TilePF1 (12) |
+| $DB-$E6 | PF2Buf | TilePF2 (12) |
+| $E7-$F2 | ColupfBuf | COLUPF stripes (12) |
+| $F3 | ScoreTh | Shared with bank1 score |
+| $F4 | ScoreHu | |
+| $F5 | ScoreTe | |
+| $F6 | **BombX** | Bomb drop X snapshot (bank1 must not write) |
+| $F7 | **BombTimer** | Fuse/explode frames |
+| $F8-$FF | PlayerGrp0 | 8 player rows **+ stack mirror** — copy only after last JSR |
 
-### $C3-$F2: PF/Color Buffers (48 bytes)
+Bank1 HUD `$E0-$EF` score ptrs/bar temps overlap ColupfBuf — safe because
+bank1 runs after cave kernel; VBLANK reloads ColupfBuf via `LoadPFBuffer`.
 
-| Addr | Name | Purpose |
-|------|------|---------|
-| $C3-$CE | PF0Buf | TilePF0 values (12 bytes, one per tile row) |
-| $CF-$DA | PF1Buf | TilePF1 values (12 bytes, one per tile row) |
-| $DB-$E6 | PF2Buf | TilePF2 values (12 bytes, one per tile row) |
-| $E7-$F2 | ColupfBuf | COLUPF per tile row, stripe colors (12 bytes) |
+## Bank1 ZP (menu / HUD) — verified EQUs
 
-### $F3-$F7: Bank1 score + spare (5 bytes)
-
-| Addr | Name | Purpose |
-|------|------|---------|
-| $F3-$F6 | ScoreTh..ScoreOn | Bank1 HUD score digits (written every game frame) |
-| $F7 | free | Unused (old EnemyRamSpare move-gate removed) |
-
-**Enemy Y is not shadowed** — stays in ROM (stride +2) until S5 spider needs
-live Y; $F3-$F6 cannot hold EnemyRamY while bank1 score lives there.
-
-### $F8-$FF: Player Sprite (8 bytes)
-
-| Addr | Name | Purpose |
-|------|------|---------|
-| $F8-$FF | PlayerGrp0 | Player sprite rows (8 bytes, computed per frame) |
-
-### EQU Aliases (no bytes allocated, just name aliases)
-
-| Alias | Address | Notes |
-|-------|---------|-------|
-| ScoreDigit2 | $C6 | Within PF0Buf range — leftover, not used at runtime |
-| ScoreDigit3 | $CB | Within PF1Buf range — leftover |
-| Grp1Value | $CB | Pre-computed GRP1 value ($F0 when visible, 0 otherwise) |
-| Enam0Value | $CC | Pre-computed ENAM0 value ($02 when laser active, 0 otherwise) |
-| Grp0Ptr | $8C | Alias for CollisionX (low byte of GRP0 sprite table pointer) |
-| ObjTop | $8E | Alias for CollisionCellY |
-| ObjBot | $8F | Alias for CollisionEndX |
-| LaserScanline | $90 | Alias for CollisionEndY |
-
-## Bank1 ZP Map (Start Screen)
-
-Bank1 runs the start screen independently of bank0. Since bank0 and bank1
-never run simultaneously (fold-pad trampoline switches between them, and
-bank0 reinitializes its ZP during VBLANK), bank1 can safely use addresses
-that overlap bank0's PF buffers.
-
-### Current Bank1 ZP Allocation
-
-| Addr | Name | Purpose | Overlaps bank0? |
+| Addr | Name | Purpose | Bank0 conflict |
 |------|------|---------|----------------|
-| $AD | Temp | Scratch variable | Yes (bank0 Temp) — safe, bank0 reinit |
-| $AE | RowCnt | Score render row counter (old, to be removed) | Yes (bank0 LevelStartRoom) |
-| $B3 | PF0ScoreBuf | Unused with sprite approach (to be removed) | Yes (bank0 FontP0) |
-| $B8 | PF1ScoreBuf | Unused with sprite approach (to be removed) | Yes (bank0 FontP1) |
-| $C6 | PF2ScoreBuf | Unused with sprite approach (to be removed) | Yes (bank0 PF0Buf+3) |
-| $F0 | ScoreTh | **MOVED → $F3** (was here; old alias removed) |
-| $F1 | ScoreHu | **MOVED → $F4** |
-| $F2 | ScoreTe | **MOVED → $F5** |
-| $F3 | ScoreOn | Thousands digit (bank1 ScoreTh now $F3) |
-| $F4 | ScoreHu | Hundreds digit |
-| $F5 | ScoreTe | Tens+ones packed BCD |
-| $F6 | ScoreOn | Ones digit (unused by game) |
-| $F4 | DigitPtr1 | Old digit 0 pointer (to be removed) | No bank0 var here |
-| $F6 | DigitPtr2 | Old digit 1 pointer (to be removed) | No bank0 var here |
-| $F8 | DigitPtr3 | Old digit 2 pointer (to be removed) | Yes (bank0 PlayerGrp0) |
+| $AC | PlayerLives | Shared lives | same |
+| $AD | Temp | Bank1 scratch | bank0 TickCounter (different phase) |
+| $AE | BarLevel | Shared bar | same |
+| $E0-$EB | scorePtr1-6 | 6 digit ptrs | ColupfBuf/PF2Buf overlap OK |
+| $EC | scbrdCnt | Score loop | ColupfBuf overlap OK |
+| $ED | scbrdTmp | Score temp | ColupfBuf overlap OK |
+| $EE | DelayCnt | Power-bar delay | ColupfBuf overlap OK |
+| $EF | FineCnt | Power-bar fine | ColupfBuf overlap OK |
+| $F3-$F5 | ScoreTh/Hu/Te | Score digits | shared |
+| — | GameMode | Fold-pad mode flag | check `bank1.asm` before use |
+| — | HUD slots | `HudSlotsRam` etc. | see bank1 / HUD notes |
 
-### Proposed Bank1 ZP for 6-Digit Score Kernel
+**Removed / do not reintroduce:** bank1 `ScoreOn` at `$F6` (now BombX);
+old DigitPtr* at `$F4/$F6/$F8`.
 
-| Addr | Name | Purpose | Overlaps bank0? |
-|------|------|---------|----------------|
-| $E0-$EB | scorePtr1-6 | 6 digit font pointers (2 bytes each, 12 total) | Yes (PF2Buf+ColupfBuf) — safe |
-| $EC | scbrdCnt | Loop counter (7 to 0) | Yes (ColupfBuf) — safe |
-| $ED | scbrdTmp | Mid-scanline temp cache | Yes (ColupfBuf) — safe |
-| $EE | DelayCnt | Bar delay A preloaded once per HUD frame (bank1 only) | Yes (ColupfBuf+7) — safe; VBLANK reloads ColupfBuf |
-| $EF | FineCnt | Bar fine delay cycles 0/2/3/4 (bank1 H3 only) | Yes (gap before ScoreTh $F0) — safe |
-| $F0 | ScoreTh | Thousands digit | No conflict |
-| $F1 | ScoreHu | Hundreds digit | No conflict |
-| $F2 | ScoreTe | Tens digit | No conflict |
-| $F3 | ScoreOn | Ones digit | No conflict |
+## Bank2 (legacy HUD trampoline)
 
-**Why $E0-$ED is safe for bank1:** These addresses fall within bank0's
-PF2Buf ($DB-$E6) and ColupfBuf ($E7-$F2) ranges. But bank0 only reads
-these during the cave kernel, which runs in bank0 frames. Bank1 (start
-screen) never reaches the cave kernel. When control returns to bank0 via
-fold pad, VBLANK reinitializes all PF/Colupf buffers from ROM before the
-cave kernel reads them.
+Bank2 is not in the current F6 game path for score (HUD lives in bank0
+`HudBand` + bank1 menu). If bank2 is re-enabled, it may only **reuse** bank0
+PF buffers / score EQUs — never allocate new ZP addresses.
 
-## Bank2 ZP Map (Game HUD)
+## Historical Crashes
 
-Bank2 is called from bank0's kernel via fold-pad trampoline at $FC78.
-It shares bank0's ZP fully (runs within the same frame as bank0).
+- **$E0-$EB conflict (fixed):** bank1 digit pointers overwrote bank0 level
+  pointers → crash on start→game.
+- **Stack page as buffer (reverted e8c55c5):** `$0170-$01FF` mirrors ZP.
+- **Score vs EnemyRam ($BF-$C2):** bank1 score corrupted enemy X[2]/dir;
+  moved score to `$F3+`.
+- **`TileRow` delete shifted `$86+`:** rename only; keep sequential slots.
+- **`ObjectCount` at `$B5`:** freed for `BombPacked`; count kept in
+  registers during `SelectActiveObject` only.
 
-| Addr | Name | Purpose |
-|------|------|---------|
-| $B3-$B7 | FontP0 | Reused from bank0 (P0 font data for Level line) |
-| $B8-$BC | FontP1 | Reused from bank0 (P1 font data for Level line) |
-| $C3-$CE | PF0ScoreBuf | Score PF0 values (reuses PF0Buf after Level done) |
-| $CF-$DA | PF1ScoreBuf | Score PF1 values (reuses PF1Buf) |
-| $DB-$E6 | PF2ScoreBuf | Score PF2 values (reuses PF2Buf) |
-| $C2 | ScoreTh | Thousands digit (alias into bank0 PF0Buf range) |
-| $C3 | ScoreHu | Hundreds digit (alias into bank0 PF0Buf range) |
-| $C4 | ScoreTe | Tens digit |
-| $C5 | ScoreOn | Ones digit |
-| $AD | Temp | Scratch (same as bank0) |
+## Bomb vars (2026-09-23)
 
-## ZP Allocation Rules
+| Var | Addr | Reset |
+|-----|------|-------|
+| BombPacked | $B5 | `EnterRoom` (state+DownPrev+WallMask) |
+| BombY | $85 | snapshot on drop |
+| BombX | $F6 EQU | snapshot on drop |
+| BombTimer | $F7 EQU | 180 fuse / 60 explode |
 
-1. **Never use $100-$1FF as a buffer.** On the 2600, this mirrors $80-$FF
-   (same 128 bytes). Writing `STA $0170,X` corrupts ALL ZP variables.
-
-2. **New bank0 variables go AFTER existing ones.** Current end is $F2
-   (ColupfBuf). Free range: $F3-$F7 (5 bytes only). PlayerGrp0 at $F8-$FF
-   is computed per-frame and not safe for persistent storage.
-
-3. **Bank1 variables at $E0-$ED are safe** because bank1 and bank0 never
-   run simultaneously. Document any new bank1 allocations here.
-
-4. **Bank2 variables must not add new ZP addresses.** Bank2 reuses bank0's
-   PF buffers after the Level line is rendered (the buffers are no longer
-   needed for cave rendering at that point in the frame).
-
-5. **Before defining a new ZP variable, grep all bank*.asm files** for the
-   target address to check for conflicts. A symbol defined as an EQU
-   (`= $xx`) does not allocate a byte but will cause assembler errors if
-   duplicated.
-
-## Historical Crashes (Lessons Learned)
-
-- **$E0-$EB conflict (fixed):** Bank1 previously wrote digit pointers to
-  $E0-$EB which overlapped bank0's level data pointers. Caused crashes when
-  switching from start screen to game. Fixed by moving bank0 level pointers
-  to sequential allocation within the $97-$A5 range.
-
-- **Stack page as buffer (reverted):** Attempted to use $0170-$01FF as a
-  GRP pre-computation buffer. On the 2600, $0100-$01FF mirrors $80-$FF,
-  so writing there corrupted ALL ZP variables. Crashed the game on left/right
-  input. Reverted in commit e8c55c5.
-
-- **Cross-bank ZP writes:** Any new variable added to bank0 must be checked
-  against bank1's allocations and vice versa. The fold-pad trampoline
-  does not save/restore ZP — both banks write freely and rely on
-  reinitialization at entry.
+WallMask bits b3-6 = rect index 0-3 (`BombMaskBit` ROM table `$08,$10,$20,$40`).
