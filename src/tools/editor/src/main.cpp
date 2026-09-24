@@ -1,6 +1,6 @@
 /*
- * Savior SDL - H.E.R.O. Level Editor
- * Copyright (C) 2026 Savior SDL Team
+ * Savior AI - Level Editor
+ * Copyright (C) 2026 Savior AI Team
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
-    app.setApplicationName("Savior SDL Level Editor");
+    app.setApplicationName("Savior AI Level Editor");
     app.setOrganizationName("SaviorSDL");
 
     editor::MainWindow window;
