@@ -26,7 +26,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 4. **Grep all `bank*.asm` before defining `$xx` EQU** in any bank.
 5. **Do not touch from bank1 (live score/bomb):** `$F3-$F5` score,
    `$F6` BombX, `$F7` BombTimer, `$F0` PlayerBombs (read-only in bank1 HUD),
-   `$F1` BombSnd (bank1 must not write),
+   `$F1` BombSnd (bank1 must not write), `$F2` RoomWallMask (bank1 must not write),
    `$F8-$FF` PlayerGrp0 + stack mirror,
    `$AD` bank1 `Temp` (bank0 `TickCounter`), `$BD-$C2` EnemyRam,
    `$B5` BombPacked, `$85` BombY.
@@ -88,7 +88,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $B2 | EnemyDataHi | Room enemy data hi |
 | $B3 | EnemyCount | Enemies in room |
 | $B4 | FlickerFrame | GRP1 slot index |
-| $B5 | **BombPacked** | b0-1 state, b2 DownPrev, b3-6 WallMask, b7 spare |
+| $B5 | **BombPacked** | b0-1 state, b2 DownPrev, b3-6 WallMask, b7 OnGround |
 | $B6 | ActiveObjectOn | GRP1 object visible |
 | $B7 | ActiveObjectX | GRP1 object X |
 | $B8 | ActiveObjectY | GRP1 object Y |
@@ -112,7 +112,7 @@ Sequential allocation ends at `$BC` (next would be `$BD`).
 | $C3-$CE | PF0Buf | TilePF0 (12) |
 | $CF-$DA | PF1Buf | TilePF1 (12) |
 | $DB-$E6 | PF2Buf | TilePF2 (12) |
-| $E7-$F2 | ColupfBuf | COLUPF stripes (12) |
+| $E7-$F1 | ColupfBuf | COLUPF stripes (11 of 12; last slot reused) |
 | $F3 | ScoreTh | Shared with bank1 score |
 | $F4 | ScoreHu | |
 | $F5 | ScoreTe | |
@@ -120,7 +120,7 @@ Sequential allocation ends at `$BC` (next would be `$BD`).
 | $F7 | **BombTimer** | Fuse/explode frames |
 | $F0 | **PlayerBombs** | Bombs left 0..5 (S8; ColupfBuf+9, never VBLANK-written) |
 | $F1 | **BombSnd** | Frames of bomb audio left (S10; 0=silent) |
-| $F2 | free | ColupfBuf tail (unused) |
+| $F2 | **RoomWallMask** | Packed destroyed thin-wall mask until stage leave: bits0-3 room0 rects, bits4-7 room1 rects (b3-6 of BombPacked saved/restored in EnterRoom; LoadLevel zeros it) |
 | $F8-$FF | PlayerGrp0 | 8 player rows **+ stack mirror** — copy only after last JSR |
 
 Bank1 HUD `$E0-$EF` score ptrs/bar temps overlap ColupfBuf — safe because
@@ -166,9 +166,11 @@ PF buffers / score EQUs — never allocate new ZP addresses.
 
 | Var | Addr | Reset |
 |-----|------|-------|
-| BombPacked | $B5 | `EnterRoom` (state+DownPrev+WallMask) |
+| BombPacked | $B5 | state+DownPrev only on room change; WallMask saved to `$F2` |
 | BombY | $85 | snapshot on drop |
 | BombX | $F6 EQU | snapshot on drop |
 | BombTimer | $F7 EQU | 180 fuse / 60 explode |
+| RoomWallMask | $F2 EQU | pack both rooms' WallMask; **zeroed only by `LoadLevel`** |
 
 WallMask bits b3-6 = rect index 0-3 (`BombMaskBit` ROM table `$08,$10,$20,$40`).
+EnterRoom pack: old room0 → `$F2` b0-3; old room1 → `$F2` b4-7; restore inverse into BombPacked b3-6.

@@ -41,7 +41,7 @@ Out of scope (unless user asks later): FRAGILE-only tiles.
 
 On state 0→1: `BombX=RoomX`, `BombY=RoomY`, `BombTimer=180`.
 On 1→2: run **blast once** (life + thin walls), `BombTimer=60`.
-On 2→0: clear state/timer; destroyed walls **stay** destroyed for this room visit (rebuild only on `EnterRoom` / `LoadLevel`).
+On 2→0: clear state/timer; destroyed walls **stay** destroyed across room leave/re-enter until stage leave (`LoadLevel` — user 2026-09-24).
 
 ### ZP budget — S0.1 RESOLVED (2026-09-23)
 
@@ -53,9 +53,9 @@ Authoritative map = `bank0.lst` + `kernel.asm` sequential (`org $80` → `ObjBot
 | `BombX` | **`$F6`** | `ScoreOn` | bank1.asm:90 marks “unused by game, available”; score is `ScoreTh/Hu/Te` only (`ScoreTe` holds packed ones). No `lda/sta ScoreOn` anywhere. |
 | `BombY` | **`$85`** | `TileRow` | Sequential `byte` — **zero reads/writes** in all bank*.asm (definition only). Rename in place; do **not** delete the slot (would shift `$86+` and break bank1 EQUs). |
 | `BombTimer` | **`$F7`** | free | Documented spare; not in any bank*.asm. |
-| `BombPacked` bits | — | — | b0–1 state (0/1/2), b2 `DownPrev`, b3–6 `WallMask` (≤8 rects; rooms have ≤4), b7 spare. |
+| `BombPacked` bits | — | — | b0–1 state (0/1/2), b2 `DownPrev`, b3–6 `WallMask` (≤8 rects; rooms have ≤4), b7 `OnGround` (drop gate). |
 
-**Do not touch:** `$F3–$F5` (live score), `$F8–$FF` (`PlayerGrp0` + stack mirror), `$AD` (bank1 `Temp` + bank0 `TickCounter`), `$BD–$C2` (EnemyRam), `$C3–$F2` (PF/Colupf — bank1 HUD uses `$E0–$EF` during same game frame).
+**Do not touch:** `$F3–$F5` (live score), `$F8–$FF` (`PlayerGrp0` + stack mirror), `$AD` (bank1 `Temp` + bank0 `TickCounter`), `$BD–$C2` (EnemyRam), `$C3–$EF` (PF/Colupf — bank1 HUD uses `$E0–$EF` during same game frame). `$F0` PlayerBombs, `$F1` BombSnd, `$F2` RoomWallMask.
 
 **Asm order for S1:** add EQUs/`byte` renames first → build green → only then input logic. `ObjectCount` refactor is a **separate micro-step** before bomb code reads `$B5`.
 
@@ -90,12 +90,14 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
   - No vertical distance check for player/enemy death.
 - **Thin wall remove:** walk `RoomRects` (`count`, then `x,y,w,h` ×N):
   - if `w==1` and `x` in blast cols → `BombWallMask |= 1<<index`.
+  - **Screen border (user 2026-09-24):** skip `x==0` — stored col 0 is playfield cols 0 **and** 39 (reflection); never destroy.
   - **Collision:** `PlayerHitsMap` skips rect when mask bit set (add 3–4 cycles in rect loop — measure; if tight, pre-clear by copying count… prefer bit test at `.RectLoop` start).
   - **Visual:** after each `LoadPFBuffer` in VBLANK, `ApplyBombWalls` clears PF bits for the masked col **only on rows `rect.y .. rect.y+h-1`** (not all 12). Thin rects from `convert_room.find_rectangles` stop before a wider horizontal join so the thick part is a separate `w>1` rect and is never marked. `LoadPFBuffer` runs every frame → re-apply mask every frame.
 
 ### Reset / room change
 
-- `EnterRoom` / `LoadLevel`: `BombState=0`, `BombWallMask=0`, `BombDownPrev=0` (mask reset → walls return when you leave/re-enter — **accepted** unless user wants permanent destroy).
+- `EnterRoom`: clear `BombState`/`BombTimer`/`BombDownPrev`; **save** outgoing `BombWallMask` into `RoomWallMask` (`$F2`) and **restore** incoming room's mask (permanent until stage leave).
+- `LoadLevel`: `RoomWallMask=0`, `BombPacked=0` (stage leave/reload/miner advance → walls return), then `EnterRoom`.
 - Do **not** clear mask mid-room on life loss without `ReloadLevel`.
 
 ### Timing / frame safety
@@ -164,11 +166,11 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 - [x] **S6.2** `PlayerHitsMap`: skip rects with mask bit.
 - [x] **S6.3** On blast: set mask for `w==1` rects with `x` in blast cols (mirror-safe: only left-half data).
 - [x] **S6.4** Build green.
-- [x] **S6.5** **User:** 1-tile-wide pillar in blast range vanishes full height **and** is walk-through; thick `w>1` untouched; walls return after leave/re-enter room.
+- [x] **S6.5** **User:** 1-tile-wide pillar in blast range vanishes full height **and** is walk-through; thick `w>1` untouched; (mask persistence changed 2026-09-24 — see S11).
 
 ### S7 — Edge cases + polish
 
-- [x] **S7.1** Room change / `LoadLevel` clears bomb + mask + down-prev. (`EnterRoom` clears `BombPacked`+`BombTimer`; mask bits live in `BombPacked`.)
+- [x] **S7.1** Room change / `LoadLevel` clears bomb state. (`EnterRoom` clears `BombPacked` state bits + `BombTimer`; WallMask save/restore added S11.)
 - [x] **S7.2** Life loss / reload clears bomb state cleanly. (`BombPlayerBlast` life-out → `ReloadLevel` → `LoadLevel` → `EnterRoom` zero.)
 - [x] **S7.3** One-bomb rule under mashing Down. (Edge on packed b2; drop only when state=0.)
 - [x] **S7.4** Bomb Y at `PLAYER_MAX_Y` / doorway: still renders; no crash. (Override sets `ObjTop=BombY`, `ObjBot=BombY+8`; no Y clamp — kernel range test only.)
@@ -179,8 +181,8 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 ### S8 — HUD bomb count (user request 2026-09-23)
 
 - [x] **S8.1** ZP: `PlayerBombs = $F0` (never-written ColupfBuf tail; bank1 score uses `$E0–$EF` only). `BOMBS_MAX = 5`. EQU in kernel + bank1.
-- [x] **S8.2** `GameStart` + `ReloadLevel`: `PlayerBombs = 5`. Room change does **not** refill.
-- [x] **S8.3** Drop: `PlayerBombs == 0` → swallow edge (set DownPrev, no drop); else `dec PlayerBombs` then drop.
+- [x] **S8.2** `GameStart` + `ReloadLevel` + **`LoadLevel`** (miner advance): `PlayerBombs = 5`. Room change does **not** refill. (LoadLevel refill = user 2026-09-24.)
+- [x] **S8.3** Drop: `PlayerBombs == 0` → swallow edge (set DownPrev, no drop); else if **not OnGround (b7)** → swallow; else `dec PlayerBombs` then drop. (OnGround gate = user 2026-09-24: drop only when standing.)
 - [x] **S8.4** bank1 HUD bombs line: NUSIZ0/NUSIZ1 + GRP from count; same 11-scanline budget (2×pos + HMOVE + 5 + 3 gap).
 - [x] **S8.5** Build green (4×4096, folds match; Overscan moved `$F127`→`$F12B` after GameStart +4 — bank1 `jmp` synced).
 - [x] **S8.6** **User:** icons 5→0 across drops; no 6th drop; reload → 5; HUD/lives/score timing unchanged.
@@ -197,7 +199,25 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 - [x] **S10.1** ZP: `BombSnd = $F1` (free ColupfBuf tail). Drop edge → 6-frame blip; explode edge → 30-frame noise (`AUDC0=8`). Per-overscan: `dec BombSnd` → 0 silences `AUDV0`. No new `.Line` cost. AUD EQUs added (`$15/$17/$19`).
 - [x] **S10.2** `EnterRoom` clears `BombSnd` + `AUDV0=0`. GameStart ZP wipe already zeros `$F1`.
 - [x] **S10.3** Build green; folds match; Overscan still `$F12B`.
-- [ ] **S10.4** **User:** short blip on drop; noise burst on explosion; silence after; jet/HUD unchanged.
+- [x] **S10.4** **User:** short blip on drop; noise burst on explosion; silence after; jet/HUD unchanged. (pending user confirm — code done S10.3)
+
+### S11 — Permanent thin-wall destroy until stage leave (user 2026-09-24)
+
+User: "keep destroyed until leaving the stage, otherwise the player can't go back from where he came."
+
+- [x] **S11.1** ZP: `RoomWallMask = $F2` (was free ColupfBuf tail). Packed: bits0-3 room0 WallMask nibble, bits4-7 room1 (both levels = 2 rooms).
+- [x] **S11.2** `EnterRoom`: save outgoing `BombPacked` b3-6 → nibble for **old** RoomNo in `$F2` (before `sta RoomNo`); clear state/timer/snd; restore incoming room's nibble into b3-6; `ApplyBombWalls` re-punches holes.
+- [x] **S11.3** `LoadLevel`: zero `$F2` + `BombPacked` + `BombTimer` **before** pointer math/`EnterRoom` (covers start, death reload, miner stage advance — stage leave resets walls).
+- [x] **S11.4** Build green + asserts (4×4096, folds match, Overscan `$F12B`, bank1 no `$F2` writes + `jmp $F12B`, X-only blast, LoadLevel clear-before-EnterRoom).
+- [ ] **S11.5** **User:** destroy thin wall → leave room → return → still gone; death/reload/next stage → walls restored; bomb fuse state still cleared on room change.
+
+### S12 — Border thin walls immune (user 2026-09-24)
+
+User: "thin walls that are next to the borders of the screen, should not be destroyed" / clarify: "leftmost column and rightmost column in playfield."
+
+- [x] **S12.1** `BombMarkWalls`: after load `rect.x`, `beq .BMWNext` when `x==0` (stored col 0 = screen cols 0+39 under reflection).
+- [x] **S12.2** Build green + assert: MarkWalls has border skip; non-border `w==1` (e.g. L1R1 `x=17`) still markable; L2R2 `(0,4,1,4)` never marked.
+- [ ] **S12.3** **User:** bomb next to side thin wall → wall stays; interior pillar (col 17) still vanishes.
 
 ---
 
@@ -218,7 +238,9 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 ## Open defaults (change only if user overrides)
 
 - Bomb priority over GRP1 enemy for whole fuse → **changed 2026-09-23:** fuse uses `BombTimer&3==0` (1/4 frames) so miner/enemies keep 3/4 priority; never gate bomb on `FlickerFrame` (Temp=1/2 desync).
-- Destroyed thin walls **reset on room re-entry**.
+- Destroyed thin walls **persist across room leave/re-enter until stage leave** (`LoadLevel` — user 2026-09-24). Packed in `RoomWallMask` `$F2` (room0 low nibble, room1 high nibble).
 - Blast uses **X-ONLY col overlap** (±1 col, any Y) for player/enemy death (user 2026-09-24); **thin walls still use full 2D** (MarkWalls X-cols + ApplyBombWalls row range).
 - Blast cols = `BombCol-1..BombCol+1` (clamp 0..19).
-- HUD bomb icons track `PlayerBombs` (5→0); refill only on `GameStart`/`ReloadLevel`.
+- **Border thin walls (`x==0`) never destroyed** (user 2026-09-24) — screen cols 0 and 39.
+- HUD bomb icons track `PlayerBombs` (5→0); refill on `GameStart`/`ReloadLevel`/`LoadLevel` (level advance).
+- Bomb drop **only when OnGround** (`BombPacked` b7): `StepDown` land/floor sets b7; free-fall + `StepUp` clear it; `EnterRoom`/`LoadLevel` zero it.
