@@ -293,11 +293,24 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
     flat: list[tuple[int, int, int, int, int, int]] = []
     counts: list[int] = []
     bottoms: list[int] = []
+    # Lamp entries are merged into the enemy table as type=5 (kernel LAMP).
+    # Same 6-byte stride / RoomEnemies records — no separate lamp table.
+    LAMP_TYPE = 5
     for index, room in enumerate(rooms):
-        enemies = [e for e in (room.get("enemies") or [])][:MAX_ENEMIES]
-        counts.append(len(enemies))
+        entities = [e for e in (room.get("enemies") or [])]
+        for lamp in (room.get("lamps") or []):
+            entities.append({
+                "type": LAMP_TYPE,
+                "x": lamp.get("x", 0),
+                "y": lamp.get("y", 0),
+                "range_min": 0,
+                "range_max": 0,
+                "dir": 1,
+            })
+        entities = entities[:MAX_ENEMIES]
+        counts.append(len(entities))
         bottoms.append(_room_bottom_color(room))
-        for enemy in enemies:
+        for enemy in entities:
             flat.append((
                 int(enemy.get("type", 0)),
                 enemy_x_px(enemy.get("x", 0)),
