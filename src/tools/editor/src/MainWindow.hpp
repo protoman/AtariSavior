@@ -22,6 +22,7 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QPushButton>
+#include <QCheckBox>
 #include <QListWidget>
 #include <QSettings>
 #include <QDir>
@@ -66,6 +67,8 @@ private slots:
     void OnModelSelected(int index);
     void PickWallColor();
     void PickWallColor2();
+    void PickBandColor();
+    void OnBottomBandToggled(bool checked);
 
     void OnLevelModified();
     void OnMouseMovedToTile(int tileX, int tileY);
@@ -119,6 +122,8 @@ private:
     QComboBox* m_roomCombo = nullptr;
     QPushButton* m_colorBtn = nullptr;
     QPushButton* m_colorBtn2 = nullptr;
+    QCheckBox* m_bottomBandCheck = nullptr;
+    QPushButton* m_bandColorBtn = nullptr;
 
     // Directional Room Buttons
     QPushButton* m_addUpBtn = nullptr;

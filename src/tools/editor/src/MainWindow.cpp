@@ -255,6 +255,16 @@ void MainWindow::SetupUI() {
     roomLayout->addWidget(dirBox);
     QPushButton* remRoomBtn = new QPushButton("Remove Room", this);
     roomLayout->addWidget(remRoomBtn);
+
+    // Bottom band: optional colored strip on tile row 11 of current room
+    QHBoxLayout* bandLayout = new QHBoxLayout();
+    m_bottomBandCheck = new QCheckBox("Bottom band", this);
+    m_bottomBandCheck->setToolTip("Colored death band on the room's bottom tile row");
+    bandLayout->addWidget(m_bottomBandCheck);
+    m_bandColorBtn = new QPushButton("Band color", this);
+    m_bandColorBtn->setToolTip("NTSC color for the bottom band (when enabled)");
+    bandLayout->addWidget(m_bandColorBtn);
+    roomLayout->addLayout(bandLayout);
     levelTabLayout->addWidget(roomBox);
 
     // Model Assignment
@@ -351,6 +361,8 @@ void MainWindow::SetupUI() {
     connect(remRoomBtn, &QPushButton::clicked, this, &MainWindow::RemoveRoom);
     connect(m_colorBtn, &QPushButton::clicked, this, &MainWindow::PickWallColor);
     connect(m_colorBtn2, &QPushButton::clicked, this, &MainWindow::PickWallColor2);
+    connect(m_bandColorBtn, &QPushButton::clicked, this, &MainWindow::PickBandColor);
+    connect(m_bottomBandCheck, &QCheckBox::toggled, this, &MainWindow::OnBottomBandToggled);
     connect(addModelBtn, &QPushButton::clicked, this, &MainWindow::AddModel);
     connect(remModelBtn, &QPushButton::clicked, this, &MainWindow::RemoveModel);
     connect(m_modelList, &QListWidget::currentRowChanged, this, &MainWindow::OnModelSelected);
@@ -804,6 +816,15 @@ void MainWindow::OnRoomChanged(int index) {
         }
         m_ignoreComboEvents = false;
     }
+    // Sync bottom-band controls to newly selected room
+    if (index < (int)m_levelData.rooms.size()) {
+        const auto& room = m_levelData.rooms[index];
+        m_bottomBandCheck->setChecked(room.bottom_band);
+        QString bandStyle = QString("background-color: rgb(%1, %2, %3); color: white;")
+                                .arg(room.bottom_r).arg(room.bottom_g).arg(room.bottom_b);
+        m_bandColorBtn->setStyleSheet(bandStyle);
+        m_bandColorBtn->setEnabled(room.bottom_band);
+    }
     UpdateRoomDirectionButtons();
 }
 
@@ -949,6 +970,39 @@ void MainWindow::PickWallColor2() {
     }
 }
 
+void MainWindow::PickBandColor() {
+    int roomIdx = m_roomCombo ? m_roomCombo->currentIndex() : -1;
+    if (roomIdx < 0 || roomIdx >= (int)m_levelData.rooms.size()) return;
+    auto& room = m_levelData.rooms[roomIdx];
+    QColor curColor(room.bottom_r, room.bottom_g, room.bottom_b);
+    int picked = PickNtscColor(this, curColor);
+    if (picked >= 0) {
+        QColor rgb = NtscRgbForByte(picked);
+        room.bottom_r = rgb.red();
+        room.bottom_g = rgb.green();
+        room.bottom_b = rgb.blue();
+        room.bottom_band = true;
+        if (m_bottomBandCheck) m_bottomBandCheck->setChecked(true);
+        QString style = QString("background-color: rgb(%1, %2, %3); color: white;")
+                            .arg(rgb.red()).arg(rgb.green()).arg(rgb.blue());
+        m_bandColorBtn->setStyleSheet(style);
+        OnLevelModified();
+        m_canvas->update();
+    }
+}
+
+void MainWindow::OnBottomBandToggled(bool checked) {
+    if (m_bandColorBtn) m_bandColorBtn->setEnabled(checked);
+    if (m_ignoreComboEvents) return;
+    int roomIdx = m_roomCombo ? m_roomCombo->currentIndex() : -1;
+    if (roomIdx < 0 || roomIdx >= (int)m_levelData.rooms.size()) return;
+    auto& room = m_levelData.rooms[roomIdx];
+    if (room.bottom_band == checked) return;
+    room.bottom_band = checked;
+    OnLevelModified();
+    m_canvas->update();
+}
+
 void MainWindow::OnLevelModified() {
     if (m_editMode == EditMode::MODEL_EDIT) {
         // Model edits: save global models file
@@ -1000,6 +1054,16 @@ void MainWindow::UpdateUIFromLevel() {
     QString style2 = QString("background-color: rgb(%1, %2, %3); color: white;")
                          .arg(m_levelData.wall2_r).arg(m_levelData.wall2_g).arg(m_levelData.wall2_b);
     m_colorBtn2->setStyleSheet(style2);
+
+    // Sync bottom-band controls to current room
+    if (roomIdx >= 0 && roomIdx < (int)m_levelData.rooms.size()) {
+        const auto& room = m_levelData.rooms[roomIdx];
+        m_bottomBandCheck->setChecked(room.bottom_band);
+        QString bandStyle = QString("background-color: rgb(%1, %2, %3); color: white;")
+                                .arg(room.bottom_r).arg(room.bottom_g).arg(room.bottom_b);
+        m_bandColorBtn->setStyleSheet(bandStyle);
+        m_bandColorBtn->setEnabled(room.bottom_band);
+    }
 
     if (m_canvas) {
         m_canvas->SetLevelData(&m_levelData, &m_models, roomIdx);

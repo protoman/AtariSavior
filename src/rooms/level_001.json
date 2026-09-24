@@ -29,7 +29,11 @@
                         "dir": 1
                     }
                 ],
-                "lamps": []
+                "lamps": [],
+                "bottom_band": false,
+                "bottom_r": 0,
+                "bottom_g": 0,
+                "bottom_b": 0
             },
             {
                 "room_id": 1,
@@ -47,7 +51,11 @@
                         "dir": -1
                     }
                 ],
-                "lamps": []
+                "lamps": [],
+                "bottom_band": false,
+                "bottom_r": 0,
+                "bottom_g": 0,
+                "bottom_b": 0
             }
         ]
     }

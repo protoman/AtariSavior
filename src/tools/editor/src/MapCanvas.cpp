@@ -200,6 +200,12 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             QRect tileRect(dcol * cellW, y * cellH, cellW, cellH);
 
             QColor color = GetTileColor(tileType, y);
+            // Bottom band: air on last row shows the room's band COLUBK
+            // (walls stay wall-colored — matches game: COLUBK only in open PF).
+            if (room && room->bottom_band && y == roomHeight - 1 &&
+                tileType == (int)hero::TileType::AIR) {
+                color = QColor(room->bottom_r, room->bottom_g, room->bottom_b);
+            }
             painter.fillRect(tileRect, color);
 
             painter.setPen(QColor(40, 40, 50));

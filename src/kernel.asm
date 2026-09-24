@@ -456,6 +456,18 @@ StartFrame:
     ; Inline stripe+hot test was 84-109c; budget is 76c/scanline.
     lda ColupfBuf,X
     sta COLUPF
+    ; --- Bottom band: row 11 only, open PF shows COLUBK band color ---
+    ; Blink (BombPacked state=2) keeps Temp; color 0 = band off.
+    cpx #TILE_ROWS-1
+    bne .RowSkipBand
+    lda BombPacked
+    and #%00000011
+    cmp #2
+    beq .RowSkipBand
+    jsr LoadRoomBottomColor
+    beq .RowSkipBand
+    sta COLUBK
+.RowSkipBand:
 
     ; --- Init scanline counter for this row ---
     lda #LINES_PER_TILE
@@ -732,6 +744,9 @@ EndInputCheck:
     bpl .NoHotBump
     jsr LoseLifeHot
 .NoHotBump:
+
+    ; --- Bottom band touch (RoomY in row 11 + band color on) → lose life ---
+    jsr CheckBandTouch
 
     ; --- Move live enemies (snake first; other types no-op until S5+) ---
     jsr UpdateEnemies
@@ -2395,6 +2410,65 @@ LoseLifeHot:
     sta vyHi
     sta JetPower
     sta PlayerYSub
+    rts
+
+; ------------------------------------------------------------------------------
+; LoadRoomBottomColor — A = RoomEnemies pad color for RoomNo (0 = band off).
+; Clobbers A, Y. ROM record: ptr_lo, ptr_hi, count, bottom_color (4 bytes).
+; ------------------------------------------------------------------------------
+LoadRoomBottomColor:
+    lda RoomNo
+    asl                         ; room * 4
+    asl
+    tay
+    iny
+    iny
+    iny                         ; +3 = bottom_color
+    lda (LevelEnemyLo),Y
+    rts
+
+; ------------------------------------------------------------------------------
+; CheckBandTouch — overscan: if band on and RoomY in bottom tile row → life.
+; Bottom row starts at scanline 132; sprite origin RoomY >= 125 enters it
+; (125 + PLAYER_HEIGHT - 1 = 132). Same path as hot/enemy: lose life, then
+; respawn 12 scanlines up (min 0).
+; ------------------------------------------------------------------------------
+CheckBandTouch:
+    jsr LoadRoomBottomColor
+    beq .CBTdone                ; band off
+    lda RoomY
+    cmp #125
+    bcc .CBTdone                ; above band
+    jsr LoseLifeBand
+.CBTdone:
+    rts
+
+; ------------------------------------------------------------------------------
+; LoseLifeBand — life path + RoomY -= 12 (min 0). Full reload skips the shift
+; (LoadLevel already places the player safely).
+; ------------------------------------------------------------------------------
+LoseLifeBand:
+    dec PlayerLives
+    bpl .LLBstay
+    lda #3
+    sta PlayerLives
+    lda #$FF
+    sta DeadEnemyIdx
+    jsr ReloadLevel
+    rts
+.LLBstay:
+    lda #0
+    sta vyLo
+    sta vyHi
+    sta JetPower
+    sta PlayerYSub
+    lda RoomY
+    sec
+    sbc #LINES_PER_TILE
+    bcs .LLBstore
+    lda #0
+.LLBstore:
+    sta RoomY
     rts
 
 ; ------------------------------------------------------------------------------

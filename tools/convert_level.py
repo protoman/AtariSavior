@@ -264,6 +264,17 @@ MAX_ENEMIES = 4
 ENEMY_STRIDE = 6
 
 
+def _room_bottom_color(room: dict) -> int:
+    """Bottom-band TIA color byte for a room (0 = band off)."""
+    if not room.get("bottom_band"):
+        return 0
+    color = nearest_byte(
+        int(room.get("bottom_r", 0)),
+        int(room.get("bottom_g", 0)),
+        int(room.get("bottom_b", 0)))
+    return color if color != 0 else 1  # never emit 0 when band is on
+
+
 def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
     """Emit the level's flat enemy table and the per-room enemy records.
 
@@ -277,13 +288,15 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
     type, x, y, range_min, range_max, dir (range/speed are reserved for
     future patrolling; only type/x/y are consumed today).
     LEVEL{n}_RoomEnemies has one 4-byte record per room:
-    ptr_lo, ptr_hi, count, pad.
+    ptr_lo, ptr_hi, count, bottom_color (0 = no bottom band).
     """
     flat: list[tuple[int, int, int, int, int, int]] = []
     counts: list[int] = []
+    bottoms: list[int] = []
     for index, room in enumerate(rooms):
         enemies = [e for e in (room.get("enemies") or [])][:MAX_ENEMIES]
         counts.append(len(enemies))
+        bottoms.append(_room_bottom_color(room))
         for enemy in enemies:
             flat.append((
                 int(enemy.get("type", 0)),
@@ -303,19 +316,21 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
         lines.append(f"  .byte {type_}, {x}, {y}, {rmin}, {rmax}, {dir_}")
     lines += [
         "",
-        "; Per-room enemy records: ptr_lo, ptr_hi, count, pad.",
+        "; Per-room enemy records: ptr_lo, ptr_hi, count, bottom_color.",
         f"{prefix}_RoomEnemies:",
     ]
     for index, count in enumerate(counts):
+        color = bottoms[index]
+        color_hex = f"${color:02x}"
         if count:
             start = sum(counts[:index]) * ENEMY_STRIDE
             lines.append(
                 f"  .byte <({prefix}_EnemyDataTable+{start}), "
-                f">({prefix}_EnemyDataTable+{start}), {count}, 0 ; room {index}")
+                f">({prefix}_EnemyDataTable+{start}), {count}, {color_hex} ; room {index}")
         else:
             lines.append(
                 f"  .byte <({prefix}_EnemyDataTable), "
-                f">({prefix}_EnemyDataTable), 0, 0 ; room {index}")
+                f">{prefix}_EnemyDataTable), 0, {color_hex} ; room {index}")
     return lines
 
 
