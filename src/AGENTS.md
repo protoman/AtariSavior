@@ -492,6 +492,60 @@ and HUD rows push down. Fix = move setup before TopGap; keep HMOVE line short.
 **Future (user):** smaller px/step + more steps/s (plan **H4**) — redesign tables
 under the same ≤73c path budget before changing the tick.
 
+### php/pla X-preserve sets decimal mode (2026-09-23) — NEVER repeat
+
+**Bug:** To keep `EnemyIndex` in X across `jsr IsRoomDark`, code used
+`php / tax / <call> / pla / tax / plp`. After `pla`, X still held the **saved
+flags** (from `php`), not the saved X. The following `plp` then restored **X
+into the flags**. When X happened to have bit 3 set, **D (decimal mode) was
+enabled** — every subsequent `ADC`/`SBC` became BCD math. Symptoms: stuck
+player, vertical-rectangle miner, black playfield, garbage collision.
+
+**Fix:** Do **not** preserve X across a call with php/pla/tax/plp. Make the
+callee clobber-safe and reload the value in the **caller** instead:
+`jsr IsRoomDark` (clobbers A/X only, Y safe) then
+`lda (EnemyDataLo),Y / tax` to reload type before `EnemyColorTable,X`.
+
+**Rule:** Never invent stack-preserving register dances. If a routine must
+return a value, put it in A (or a documented ZP temp). Callers reload.
+
+### Origin Reverse-indexed: bank0 code must end before $FC68 (2026-09-23)
+
+F6 fold pads live at fixed `org $FC68` / `org $FC70`. DASM errors
+`Origin Reverse-indexed` if main code (everything before those orgs) grows
+past `$FC68`.
+
+**When adding bank0 routines that push the end over `$FC68`:** move **leaf
+helpers** (not the fold pads themselves) **after** `org $FC70` — same pattern
+as existing `HotOverlapFlag` / `AddScore` / `ReloadLevel`. `jsr` is absolute,
+so post-pad placement is fine. Never move `Overscan` without syncing
+bank1's `jmp $Fxxx` (ToGameStub at `$FC70` must match).
+
+**This session:** `AddScore` alone overflowed (fc68→fc72). Fixed by moving
+`AddScore` + `ReloadLevel` after the pads. Build green: 4×4096, folds match,
+Overscan still `$F14D`.
+
+### Score rewards (2026-09-23): +50 kill, +75 wall, no fire hack
+
+- **Removed** bank1 fire-button `INPT4` → `+$50` hack (was demo-only).
+- **`AddScore`** (after fold pads): A = BCD amount (`#$50`/`#$75`).
+  `ScoreTe` packed BCD (`tens*16+ones`), `ScoreTh`/`ScoreHu` binary 0-9.
+  Overflow: `$a0` wrap → inc Hu; Hu≥10 → wrap, inc Th; Th≥10 → cap 9.
+- **Call sites (bank0 overscan):**
+  - `CheckEnemyHit` after `sta DeadEnemyIdx` (non-lamp) → `#$50`
+  - `BombEnemyBlast` after kill → `#$50`
+  - `BombMarkWalls` only when WallMask bit **was clear** → `#$75`
+    (and-ora with existing mask; already-broken → skip score)
+- **Score persists** across `ReloadLevel` (not cleared on death).
+- Score display is 4 meaningful digits (Th Hu tens ones); ptrs 5-6 blank.
+
+### Editor flicker budget (2026-09-23)
+
+`MapCanvas`: **max 3 elements/room** (`kMaxRoomElements`) and **max 1 element
+per row** (miner/enemy/lamp share a row budget). Warnings via `QMessageBox`.
+Rationale: GRP1 is one sprite — more simultaneous objects → more flicker
+(rotating `SelectActiveObject`). Restrict at authoring time.
+
 ## Skill References
 
 - `docs/zp_layout_skill.md` — Complete zero-page memory map for all banks (bank0/bank1/bank2), with conflict detection rules and historical crash lessons

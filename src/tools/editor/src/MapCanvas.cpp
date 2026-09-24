@@ -20,6 +20,7 @@
 #include <QPainter>
 #include <QMouseEvent>
 #include <QKeyEvent>
+#include <QMessageBox>
 #include <QPolygonF>
 #include <cmath>
 
@@ -311,6 +312,62 @@ void MapCanvas::DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int d
     painter.drawPolygon(tri);
 }
 
+int MapCanvas::CountRoomElements() const {
+    if (!m_levelData || m_activeRoomIndex < 0 ||
+        m_activeRoomIndex >= (int)m_levelData->rooms.size())
+        return 0;
+    const hero::RoomData& room = m_levelData->rooms[m_activeRoomIndex];
+    int n = (int)room.enemies.size() + (int)room.lamps.size();
+    if (m_levelData->miner_room == m_activeRoomIndex) n++;
+    const hero::ModelData* model =
+        GetModelForRoom(const_cast<hero::LevelData*>(m_levelData),
+                        const_cast<std::vector<hero::ModelData>*>(m_models),
+                        m_activeRoomIndex);
+    if (model) {
+        for (int t : model->tiles) {
+            if (t == (int)hero::TileType::RAFT || t == (int)hero::TileType::MAGMA_FALL)
+                n++;
+        }
+    }
+    return n;
+}
+
+bool MapCanvas::AllowAddElement() {
+    if (CountRoomElements() < kMaxRoomElements) return true;
+    QMessageBox::warning(
+        nullptr, QObject::tr("Element Limit"),
+        QObject::tr("Maximum of 3 elements per room (miner, enemies, lamps, raft, magma, ...).\n"
+                    "Restricting the number of elements to avoid too much flicker."));
+    return false;
+}
+
+bool MapCanvas::ElementInRow(int tileY) const {
+    if (!m_levelData || m_activeRoomIndex < 0 ||
+        m_activeRoomIndex >= (int)m_levelData->rooms.size())
+        return false;
+    const hero::RoomData& room = m_levelData->rooms[m_activeRoomIndex];
+    for (const auto& e : room.enemies) {
+        if ((int)std::floor(e.y) == tileY) return true;
+    }
+    for (const auto& lamp : room.lamps) {
+        if ((int)std::floor(lamp.y) == tileY) return true;
+    }
+    if (m_levelData->miner_room == m_activeRoomIndex &&
+        (int)std::floor(m_levelData->miner_y) == tileY)
+        return true;
+    return false;
+}
+
+bool MapCanvas::AllowElementInRow(int tileY, int ignoreY) {
+    if (tileY == ignoreY) return true;
+    if (!ElementInRow(tileY)) return true;
+    QMessageBox::warning(
+        nullptr, QObject::tr("Row Limit"),
+        QObject::tr("Only one element (miner, enemy, lamp) allowed per row.\n"
+                    "This helps eliminate flicker in the game."));
+    return false;
+}
+
 void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
     hero::ModelData* model = nullptr;
     hero::RoomData* room = nullptr;
@@ -341,14 +398,24 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         emit levelModified();
         update();
     } else if (m_currentBrush == BrushTool::ADD_RAFT) {
-        model->tiles[tileY * roomWidth + tileX] = (int)hero::TileType::RAFT;
+        int idx = tileY * roomWidth + tileX;
+        if (model->tiles[idx] != (int)hero::TileType::RAFT && room && !AllowAddElement()) return;
+        model->tiles[idx] = (int)hero::TileType::RAFT;
         emit levelModified();
         update();
     } else if (m_currentBrush == BrushTool::ADD_MAGMA) {
-        model->tiles[tileY * roomWidth + tileX] = (int)hero::TileType::MAGMA_FALL;
+        int idx = tileY * roomWidth + tileX;
+        if (model->tiles[idx] != (int)hero::TileType::MAGMA_FALL && room && !AllowAddElement()) return;
+        model->tiles[idx] = (int)hero::TileType::MAGMA_FALL;
         emit levelModified();
         update();
     } else if (!m_modelMode && room && m_currentBrush == BrushTool::SET_MINER_GOAL) {
+        if (m_levelData->miner_room != m_activeRoomIndex && !AllowAddElement()) return;
+        // Same room: ignore miner's current row (re-place frees it first).
+        int ignoreY = (m_levelData->miner_room == m_activeRoomIndex)
+                          ? (int)std::floor(m_levelData->miner_y)
+                          : -1;
+        if (!AllowElementInRow(tileY, ignoreY)) return;
         m_levelData->miner_room = m_activeRoomIndex;
         m_levelData->miner_x = (float)tileX + 0.5f;
         m_levelData->miner_y = (float)tileY;
@@ -386,6 +453,8 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
             }
         }
 
+        if (!AllowElementInRow(tileY)) return;
+        if (!AllowAddElement()) return;
         room->enemies.push_back(eData);
         emit levelModified();
         update();
@@ -406,6 +475,8 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
             }
         }
 
+        if (!AllowElementInRow(tileY)) return;
+        if (!AllowAddElement()) return;
         hero::LampData lamp;
         lamp.x = (float)entityX + 0.5f;
         lamp.y = (float)tileY + 0.5f;

@@ -506,29 +506,10 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta ScoreTe
 .scoreInitDone:
 
-    ; --- Fire button: +50 BCD (same logic as bank0 collision code) ---
-    lda INPT4
-    bmi .noFire
-    lda ScoreTe
-    clc
-    adc #$50              ; add 50 BCD
-    cmp #$a0              ; overflow past 99?
-    bcc .scoreDone        ; no → store and done
-    sbc #$a0              ; wrap ScoreTe
-    inc ScoreHu           ; carry to hundreds
-    lda ScoreHu
-    cmp #$a0              ; overflow past 99?
-    bcc .scoreDone        ; no → store and done
-    sbc #$a0              ; wrap ScoreHu
-    inc ScoreTh           ; carry to thousands
-.scoreDone:
-    sta ScoreTe
-.noFire:
-
     ; --- Set up 6 digit pointers ---
     ; Font at $FD00, each digit = 8 bytes, offset = digit * 8
     ; ScoreTh/Hu = single digits (0-9), ScoreTe = packed BCD (tens*16+ones)
-    ; Display: ScoreTh ScoreHu tens ones blank blank
+    ; Display (right-aligned): 0 0 ScoreTh ScoreHu tens ones → "000075"
 
     ; High bytes first (all $FD)
     lda #>DigitGfx
@@ -539,21 +520,26 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta scorePtr5+1
     sta scorePtr6+1
 
-    ; scorePtr1 = ScoreTh * 8
+    ; scorePtr1..2 = leading zeros
+    lda #0
+    sta scorePtr1
+    sta scorePtr2
+
+    ; scorePtr3 = ScoreTh * 8
     lda ScoreTh
     asl
     asl
     asl
-    sta scorePtr1
+    sta scorePtr3
 
-    ; scorePtr2 = ScoreHu * 8
+    ; scorePtr4 = ScoreHu * 8
     lda ScoreHu
     asl
     asl
     asl
-    sta scorePtr2
+    sta scorePtr4
 
-    ; scorePtr3 = (ScoreTe >> 4) * 8  (tens digit)
+    ; scorePtr5 = (ScoreTe >> 4) * 8  (tens digit)
     lda ScoreTe
     lsr
     lsr
@@ -562,19 +548,14 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     asl
     asl
     asl
-    sta scorePtr3
+    sta scorePtr5
 
-    ; scorePtr4 = (ScoreTe & $0F) * 8  (ones digit)
+    ; scorePtr6 = (ScoreTe & $0F) * 8  (ones digit)
     lda ScoreTe
     and #$0F
     asl
     asl
     asl
-    sta scorePtr4
-
-    ; scorePtr5..6 = blank (digit "0", offset $00)
-    lda #0
-    sta scorePtr5
     sta scorePtr6
 
     ; --- Clear sprites before loop (3-write pattern for VDELP) ---
