@@ -537,7 +537,8 @@ Overscan still `$F14D`.
   - `BombMarkWalls` only when WallMask bit **was clear** → `#$75`
     (and-ora with existing mask; already-broken → skip score)
 - **Score persists** across `ReloadLevel` (not cleared on death).
-- Score display is 4 meaningful digits (Th Hu tens ones); ptrs 5-6 blank.
+- Score display is 6 digits, right-aligned: `0 0 ScoreTh ScoreHu tens ones` → "000075" for 75 points.
+  ptrs 1-2 = leading zero; ptrs 3-6 = value. Max 9999 → "009999".
 
 ### Editor flicker budget (2026-09-23)
 
@@ -545,6 +546,19 @@ Overscan still `$F14D`.
 per row** (miner/enemy/lamp share a row budget). Warnings via `QMessageBox`.
 Rationale: GRP1 is one sprite — more simultaneous objects → more flicker
 (rotating `SelectActiveObject`). Restrict at authoring time.
+
+### Pending for next session
+
+- **Lamp W6:** user Stella verify not done yet — ask before launching.
+- **TODO.txt** was modified (reordered, added "better sprites") — not by us;
+  check with user before staging.
+- **BombEnemyBlast can kill lamps** (type 5): pre-existing bug — no type
+  check in the blast loop. Not touched this session.
+- **Cross-bank Temp conflict:** bank1 uses `Temp` ($AD) as score-init flag
+  (first frame = 0, set to 1 after init). bank0 also uses `Temp` for joystick
+  scratch. If bank0 leaves `Temp` ≠ 0 before bank1 runs, score won't init to
+  zero on first frame. Currently safe (bank0 uses `Temp` in overscan, bank1
+  reads it during HUD band after overscan), but fragile if code order changes.
 
 ## Skill References
 
