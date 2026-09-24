@@ -4,6 +4,10 @@ Special Aerial Vehicle Infiltration Operations Rescue
 Eorley Savior.
 
 #########################################################################################################################################################################
+Chegar no mineiro, 1000
+Tempo quase cheio - 1510
+Cada bomba: 50
+Pontos, cada pedaço da barra de power, 160
 
 
 OK, we are carring a lot of information in this session, maybe it is time to cleanup and start a new one.
@@ -28,7 +32,49 @@ Anything you want to record before closing this session, information that could 
 
 - non mirrored walls
 
-- better sprites.
+- better sprites
+    # what is the size, in pixels, of the player, enemies and objects on the game?
+    # is it possible for the sprites to be bigger and have shapes, like for example, for the player:
+    ..###.
+    .##...
+    ..###.
+    .####.
+    ###.##
+    ##..##
+    ###..#
+    .####.
+    ..##..
+    ..##..
+    ..#...
+    ..#...
+
+
+..####..   RED
+.######.   RED
+.####...   YELLOW
+..####..   RED
+.#####..   GRAY
+##.####.   RED
+##.####.   RED
+...###..   RED
+...##...   RED
+...##...   RED
+...###..   BLACK
+..####..   BLACK
+
+..####..   RED
+.######.   RED
+.####...   YELLOW
+..####..   RED
+.#####..   GRAY
+##.####.   RED
+##.####.   RED
+##.###..   RED
+.#.##...   RED
+...##...   RED
+...###..   BLACK
+..####..   BLACK
+
 
 - moth animation
 
@@ -37,6 +83,28 @@ Anything you want to record before closing this session, information that could 
 - bat animation (2px up down)
 
 #########################################################################################################################################################################
+
+In the 1984 Atari 2600 classic H.E.R.O., the iconic "wave effect" seen on the glowing magma walls and flowing lava rivers is achieved through a brilliant hardware exploit called color cycle manipulation combined with a localized horizontal sync offset.Because the Atari 2600’s graphics chip—the TIA (Television Interface Adaptor)—lacked the memory to process traditional frame-by-frame sprite animations for large background elements, programmer John Van Ryzin had to "trick" the television hardware into creating the illusion of motion.
+
+How the Wave Effect Works Under the HoodThe movement of the lava isn't moving pixels; it is an illusion generated line-by-line using two core techniques:
+
+1. Color Phase Shifting (The "Glow" Effect)
+The TIA generates colors on an NTSC or PAL television by altering the phase of the video signal relative to a color burst reference signal.
+The game's code dynamically modifies the COLUBK (Background Color) or COLUPF (Playfield Color) registers in the middle of rendering a frame.
+By rapidly incrementing or decrementing the color values on successive horizontal scanlines, the game creates a shimmering gradient of red, orange, and yellow.
+
+2. Scanline Shifting (The "Wavy" Motion)To make the lava look like it is physically flowing or undulating, the engine relies on a technique known as HMOVE (Horizontal Motion).
+On the Atari 2600, the background (playfield) is normally rigid. However, by writing to the HMOVE register on specific horizontal scanlines,
+a programmer can force the TIA to shift the graphics on that specific line slightly to the left or right by a few pixels.
+H.E.R.O. uses a small math loop (or an internal lookup table) that acts like a simplified sine wave generator.
+As the TV draws the screen from top to bottom, the code shifts line 1 right by 1 pixel, line 2 right by 2 pixels, line 3 right by 1 pixel, line 4 by 0, and so on.
+By advancing the starting point of this mathematical wave on every frame, the stationary blocks of color appear to ripple like liquid.
+
+
+
+#########################################################################################################################################################################
+
+
 
 # laser to kill the enemies and show a beam coming from the player eye (we tried this before and was tricky, that is why we started a new kernel from the scratch).
 # add in editor's magma walls terrain that blink and kill the player if he touches it
