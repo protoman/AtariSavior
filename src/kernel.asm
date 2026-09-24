@@ -62,6 +62,12 @@ VDELP1  = $26
 HMOVE   = $2A
 HMCLR   = $2B
 CXCLR   = $2C
+AUDC0   = $15
+AUDC1   = $16
+AUDF0   = $17
+AUDF1   = $18
+AUDV0   = $19
+AUDV1   = $1A
 
 ; --- TIA read addresses ---
 SWCHA   = $0280
@@ -159,6 +165,7 @@ BombX           = $F6           ; bomb drop X (RoomX snapshot; bank1 does not wr
 BombTimer       = $F7           ; fuse/explode countdown (frames)
 PlayerBombs     = $F0           ; bombs left 0..5 (ColupfBuf+9; never written by VBLANK/bank1 score)
 BOMBS_MAX       = 5             ; starting / reload bomb count
+BombSnd         = $F1           ; frames of bomb audio left (0=silent; bank1 must not write)
 
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match bank1)
 ; $F3-$F5 live score only — $F6 is BombX (bank1 ScoreOn is unused).
@@ -177,7 +184,7 @@ PF0Buf          = $C3           ; 12 bytes: TilePF0 values per row
 PF1Buf          = $CF           ; 12 bytes: TilePF1 values per row
 PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row
 ColupfBuf       = $E7           ; 12 bytes reserved (NOT written — kernel uses LevelWallColor*)
-                                ; $E7-$EF bank1 score/bar; $F0 = PlayerBombs; $F1-$F2 free
+                                ; $E7-$EF bank1 score/bar; $F0 = PlayerBombs; $F1 = BombSnd; $F2 free
 
 ; Player sprite ZP buffer (copied from ROM during VBLANK, read by kernel)
 PlayerGrp0      = $F8           ; 8 bytes: player sprite rows (computed per frame)
@@ -557,6 +564,7 @@ Overscan:
     sta BombY
     lda #180
     sta BombTimer
+    jsr BombSndDrop          ; S10: short blip on place
     jmp .BombInDone
 .BombMarkDown:
     lda BombPacked
@@ -709,6 +717,9 @@ EndInputCheck:
 
     ; --- Bomb fuse/explode tick (frames) ---
     jsr BombTick
+
+    ; --- Bomb audio: hold registers while BombSnd > 0, else silence ---
+    jsr UpdateBombSound
 
     ; --- Decrement game timer (60 frames/step × 120 = 120s) ---
     dec TickCounter
@@ -868,10 +879,12 @@ EnterRoom subroutine
     lda #$FF
     sta DeadEnemyIdx            ; no dead enemies in new room
 
-    ; Bomb reset: state/mask/down-prev cleared on every room entry
+    ; Bomb reset: state/mask/down-prev/sound cleared on every room entry
     lda #0
     sta BombPacked
     sta BombTimer
+    sta BombSnd
+    sta AUDV0
 
     jsr LoadEnemyRam            ; copy ROM x/dir → live RAM shadow
     jsr LoadPFBuffer
@@ -1507,7 +1520,7 @@ ReloadLevel:
 
 ; ------------------------------------------------------------------------------
 ; BombTick — per-frame state machine (overscan).
-;   state1 fuse: dec BombTimer, at 0 → state=2 timer=60 (blast = S5/S6 stub)
+;   state1 fuse: dec BombTimer, at 0 → state=2 timer=60 (blast = S5/S6/S9)
 ;   state2: dec BombTimer, at 0 → state=0 (mask stays until EnterRoom)
 ; ------------------------------------------------------------------------------
 BombTick subroutine
@@ -1535,31 +1548,64 @@ BombTick subroutine
     lda #60
     sta BombTimer
     jsr BombMarkWalls           ; S6.3: set WallMask for w==1 rects in blast
-    jsr BombPlayerBlast         ; S5: player ±1 tile → life (may ReloadLevel/clear mask)
+    jsr BombEnemyBlast          ; S9: kill enemy ±1 col any Y (before player — reload clears)
+    jsr BombPlayerBlast         ; S5: player ±1 col any Y → life (may ReloadLevel/clear mask)
+    jsr BombSndExplode          ; S10: noise burst
 .BTDone:
     rts
 
 ; ------------------------------------------------------------------------------
-; BombPlayerBlast — on explode, if player tile in ±1 col/±1 row of bomb tile:
-;   lose 1 life (same path as CEH_Stay / timer expiry).
-; Cols = px/4 (0..39 screen); rows via YToCellRow (0..11).
+; BombEnemyBlast — on explode, walk live enemies; X-only (±1 col, any Y)
+;   → DeadEnemyIdx = index. One kill slot (same as CheckEnemyHit); rooms ≤1 enemy.
+; Call after BombMarkWalls, before BombPlayerBlast (ReloadLevel resets dead list).
 ; ------------------------------------------------------------------------------
-BombPlayerBlast:
-    lda BombY
-    jsr YToCellRow
-    stx Temp                    ; bomb row
-    lda RoomY
-    jsr YToCellRow              ; X = player row
-    txa
+BombEnemyBlast:
+    lda EnemyCount
+    bne .BEB1
+    rts
+.BEB1:
+    lda BombX
+    lsr
+    lsr
+    sta CollisionCellX          ; bomb screen col
+    lda #0
+    sta EnemyIndex
+.BEBLoop:
+    lda EnemyIndex
+    cmp EnemyCount
+    bcs .BEBDone
+    cmp DeadEnemyIdx
+    beq .BEBNext                ; already dead
+    ; Live X from RAM (no Y needed for X-only check)
+    ldy EnemyIndex
+    lda EnemyRamX,Y
+    ; |dcol| < 2 (col = px/4) — ignore Y entirely
+    lsr
+    lsr
     sec
-    sbc Temp
-    bcs .BPBRowAbs
+    sbc CollisionCellX
+    bcs .BEBAbsCol
     eor #$ff
     clc
     adc #1
-.BPBRowAbs:
-    cmp #2                      ; |drow| < 2 → same or adjacent row
-    bcs .BPBMiss
+.BEBAbsCol:
+    cmp #2
+    bcs .BEBNext
+    lda EnemyIndex
+    sta DeadEnemyIdx            ; kill (single slot — first hit wins)
+    rts
+.BEBNext:
+    inc EnemyIndex
+    jmp .BEBLoop
+.BEBDone:
+    rts
+
+; ------------------------------------------------------------------------------
+; BombPlayerBlast — on explode, if player col in ±1 col of bomb col (any Y):
+;   lose 1 life (same path as CEH_Stay / timer expiry).
+; Cols = px/4 (0..39 screen). Y ignored.
+; ------------------------------------------------------------------------------
+BombPlayerBlast:
     lda BombX
     lsr
     lsr                         ; bomb col = BombX/4
@@ -1574,7 +1620,7 @@ BombPlayerBlast:
     clc
     adc #1
 .BPBColAbs:
-    cmp #2                      ; |dcol| < 2
+    cmp #2                      ; |dcol| < 2 → any Y kills
     bcs .BPBMiss
     ; Hit — same life path as enemy/timer
     dec PlayerLives
@@ -1592,6 +1638,43 @@ BombPlayerBlast:
     sta JetPower
     sta PlayerYSub
 .BPBMiss:
+    rts
+
+; ------------------------------------------------------------------------------
+; Bomb audio (channel 0). BombSnd = frames remaining; UpdateBombSound decs
+; each overscan and silences AUDV0 at 0. Drop = square blip; explode = noise.
+; ------------------------------------------------------------------------------
+BombSndDrop:
+    lda #6
+    sta BombSnd
+    lda #4                      ; square
+    sta AUDC0
+    lda #10
+    sta AUDF0
+    lda #8
+    sta AUDV0
+    rts
+
+BombSndExplode:
+    lda #30
+    sta BombSnd
+    lda #8                      ; noise
+    sta AUDC0
+    lda #0
+    sta AUDF0
+    lda #10
+    sta AUDV0
+    rts
+
+UpdateBombSound:
+    lda BombSnd
+    beq .UBSSilence
+    dec BombSnd
+    bne .UBSDone
+.UBSSilence:
+    lda #0
+    sta AUDV0
+.UBSDone:
     rts
 
 ; ------------------------------------------------------------------------------

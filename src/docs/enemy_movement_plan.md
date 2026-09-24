@@ -174,7 +174,7 @@ Pure fall (2× PHM ≈ 1733c) stays under budget.
 
 **Fix:** `YToCellRow` → `YToRowTable` (192-byte ROM lookup, `tay/lda
 YToRowTable,Y/tax` at `$F983`, table `$F989`). Constant ~20c/call. Same A/X
-interface (callers: `PlayerHitsMap` ×2, `BombPlayerBlast` ×2).
+interface (callers: `PlayerHitsMap` ×2; `BombPlayerBlast` no longer calls `PlayerHitsMap` — X-only col check).
 
 **Measured (emulator, corrected table addrs + post-jmp-cut):**
 | Path | Cycles | Budget 2240 |

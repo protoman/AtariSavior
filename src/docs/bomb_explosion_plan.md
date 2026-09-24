@@ -13,12 +13,13 @@ No room-JSON schema change. **Do not commit** until user says so.
 | 2 | Bomb = **red square**, same look as HUD bomb icons (`$46`, `GRP` `$E0`-style block). |
 | 3 | Fuse **3 s = 180 frames**. Then explode. |
 | 4 | Explosion **1 s = 60 frames**: `COLUBK` blinks **black → yellow → red** (cycle). |
-| 5 | Blast radius **1 tile each side** of bomb tile (cols bomb−1..bomb+1; row check same). |
+| 5 | Blast for **player/enemy death**: **X-ONLY**, cols bomb−1..bomb+1, **any Y** (user 2026-09-24). Thin walls still full-rect (X cols × full height). |
 | 6 | Player **in blast** → lose 1 life (same path as enemy hit: `dec PlayerLives`, zero vy; 0 lives → `ReloadLevel`). |
 | 7 | **Thin wall** = `RoomRect` with **`w == 1`**. If that rect’s `x` is in blast cols → remove **entire rect** (full height). No JSON flag — geometry only. |
 
-Out of scope (unless user asks later): enemy killed by blast; FRAGILE-only tiles; sound.
+Out of scope (unless user asks later): FRAGILE-only tiles.
 (HUD bomb **count** was requested 2026-09-23 — implemented as S8.)
+(Enemy killed by blast + bomb sound requested 2026-09-24 — S9/S10.)
 
 ---
 
@@ -83,12 +84,10 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 
 - Tile col of bomb: same mapping as `PlayerHitsMap` — visible-left ≈ `RoomX-4` or `RoomX-7`, `col = px/4` (RoomX is color clocks; **1 tile col = 4 px** in collision math).
 - Prefer: `BombCol = BombX / 4` then clamp 0..19 (mirror side mirrors by hardware — only edit left-half data).
-- Tile row: `BombRow = BombY / 12` (0..11).
 - Blast cols: `BombCol-1, BombCol+0, BombCol+1` (clamp 0..19).
-- **Player in blast:** `|RoomX - BombX| < blast_px` and `|RoomY - BombY| < blast_px_v`.
-  - Horizontal: 1 tile = **4** in col space → in RoomX use **8 px** (2 cols × 4) as conservative half-width, or exact: player col in `[BombCol-1, BombCol+1]`.
-  - Vertical: 1 tile row = **12** scanlines → player rows overlap if within ±12 of `BombY`.
-  - Implement as **tile-overlap** (reuse `YToCellRow` + col/4) so it matches walls, not raw pixel guess.
+- **Death check is X-ONLY (user 2026-09-24):** `|dcol| < 2` (cols `px/4`); **Y ignored** — player/enemy above bomb dies regardless of vertical distance. Walls still use full 2D (MarkWalls X-cols + ApplyBombWalls rows).
+  - Horizontal: 1 tile = **4** in col space → player/enemy col in `[BombCol-1, BombCol+1]`.
+  - No vertical distance check for player/enemy death.
 - **Thin wall remove:** walk `RoomRects` (`count`, then `x,y,w,h` ×N):
   - if `w==1` and `x` in blast cols → `BombWallMask |= 1<<index`.
   - **Collision:** `PlayerHitsMap` skips rect when mask bit set (add 3–4 cycles in rect loop — measure; if tight, pre-clear by copying count… prefer bit test at `.RectLoop` start).
@@ -154,7 +153,8 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 
 ### S5 — Player in blast loses life
 
-- [x] **S5.1** On state 1→2: tile-overlap player vs bomb (±1 col, ±1 row) via `YToCellRow` + `px/4` in `BombPlayerBlast`.
+- [x] **S5.1** On state 1→2: **X-only** col overlap player vs bomb (`|dcol| < 2`, any Y) via `px/4` in `BombPlayerBlast` (no `YToCellRow`).
+  → **2026-09-24:** death check X-ONLY — user: "distance check for the death by bomb should be on X axis only. If the enemy or player is above the bomb, no matter how distant (y-wise), he should die."
 - [x] **S5.2** Hit → same as `CEH_Stay` / life-out path (`dec PlayerLives`, zero vy; 0 lives → `ReloadLevel`).
 - [x] **S5.3** **User:** stand on bomb → life lost; run away >1 tile → safe; 3 hits → level reset.
 
@@ -185,6 +185,20 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 - [x] **S8.5** Build green (4×4096, folds match; Overscan moved `$F127`→`$F12B` after GameStart +4 — bank1 `jmp` synced).
 - [x] **S8.6** **User:** icons 5→0 across drops; no 6th drop; reload → 5; HUD/lives/score timing unchanged.
 
+### S9 — Enemy killed by blast (user request 2026-09-24)
+
+- [x] **S9.1** On explode (state 1→2): walk live enemies; **X-only** col overlap (`|dcol| < 2`, any Y) → `DeadEnemyIdx = index`. One kill slot (`$FF` none) matches `CheckEnemyHit`; rooms currently ≤1 enemy. Call **after** `BombMarkWalls`, **before** `BombPlayerBlast` (life loss → `ReloadLevel` resets dead list).
+  → **2026-09-24:** same as player, X-only — user: "distance check for the death by bomb should be on X axis only."
+- [x] **S9.2** Build green (4×4096, folds match; Overscan still `$F12B` — no pad move).
+- [ ] **S9.3** **User:** enemy in blast vanishes (no life loss from kill alone); enemy outside blast lives; dead enemy not drawn/moved/collided; player-in-blast still loses life.
+
+### S10 — Bomb sound (user request 2026-09-24)
+
+- [x] **S10.1** ZP: `BombSnd = $F1` (free ColupfBuf tail). Drop edge → 6-frame blip; explode edge → 30-frame noise (`AUDC0=8`). Per-overscan: `dec BombSnd` → 0 silences `AUDV0`. No new `.Line` cost. AUD EQUs added (`$15/$17/$19`).
+- [x] **S10.2** `EnterRoom` clears `BombSnd` + `AUDV0=0`. GameStart ZP wipe already zeros `$F1`.
+- [x] **S10.3** Build green; folds match; Overscan still `$F12B`.
+- [ ] **S10.4** **User:** short blip on drop; noise burst on explosion; silence after; jet/HUD unchanged.
+
 ---
 
 ## Risks (watch early)
@@ -205,6 +219,6 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 
 - Bomb priority over GRP1 enemy for whole fuse → **changed 2026-09-23:** fuse uses `BombTimer&3==0` (1/4 frames) so miner/enemies keep 3/4 priority; never gate bomb on `FlickerFrame` (Temp=1/2 desync).
 - Destroyed thin walls **reset on room re-entry**.
-- Blast uses **tile overlap** (±1 col, ±1 row), not raw pixel radius.
-- Vertical blast height = ±1 tile row (12 px), not ±1 player-height.
+- Blast uses **X-ONLY col overlap** (±1 col, any Y) for player/enemy death (user 2026-09-24); **thin walls still use full 2D** (MarkWalls X-cols + ApplyBombWalls row range).
+- Blast cols = `BombCol-1..BombCol+1` (clamp 0..19).
 - HUD bomb icons track `PlayerBombs` (5→0); refill only on `GameStart`/`ReloadLevel`.
