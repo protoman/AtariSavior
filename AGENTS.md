@@ -500,6 +500,30 @@ pixel (0..159), so room X coords map 1:1 to visible columns.
 - **Main boot path**: `Main` at $F008 initializes game directly (bypasses
   `GameStart` at $F500). Score init must happen per-frame in HudBand before
   digit loading, not in GameStart.
+- **ScoreKernel timing** (8 scanlines total):
+  - SetObjectXPos(P0): 1 WSYNC (positioning scanline)
+  - SetObjectXPos(P1): 1 WSYNC (positioning scanline)
+  - sta WSYNC + sta HMOVE: 1 WSYNC (HMOVE scanline)
+  - ScoreBand loop: 5 WSYNCs (5 font rows)
+  - Clear sprites: 1 WSYNC
+  - Total: 8 WSYNCs = 8 scanlines
+- **HUD band budget** (48 scanlines: scanlines 144-191):
+  - HudFlickerLine: 12 scanlines (LEVEL text)
+  - Gap + digit loading + composition: ~14 scanlines (no WSYNC, visible time)
+  - ScoreKernel: 8 scanlines
+  - Padding: 24 WSYNCs
+  - WSYNC total: 12 + 4 + 8 + 24 = 48 ✓
+- **Score positioning**: P0 at px68, P1 at px78 (10px apart). Each packed pair
+  is 8px wide (3px digit + 2px gap + 3px digit). The 10px spacing gives 2px
+  gap between the two packed pairs.
+- **Composition formula**: For each row Y (0..4):
+  `FontP0[Y] = FontP0[Y] | (FontP1[Y] >> 5)` → packed "12"
+  `FontP1[Y] = ScoreDigit2[Y] | (ScoreDigit3[Y] >> 5)` → packed "34"
+- **Font digit format**: 3 pixels in bits 7-5, bits 4-0 = 0. Example digit "0":
+  `###` ($E0), `#.#` ($A0), `#.#` ($A0), `#.#` ($A0), `###` ($E0).
+- **Score detection trick**: For gold/yellow player, use `$2e` (hue 2, luma 7).
+  The classic `$1c` (hue 1, luma 6) renders as grey in Stella — hue 1 palette
+  values are all desaturated. For white, use `$0e` (hue 0, luma 7).
 
 ## Visual Validation
 - Stella launching successfully verifies only that the ROM loads; it does not
@@ -507,11 +531,19 @@ pixel (0..159), so room X coords map 1:1 to visible columns.
 - After any visual change, ask the user to confirm what is actually visible
   before treating the change as fixed. Do not infer visual correctness from a
   successful assembly or emulator startup.
-- **Do NOT try to capture screenshots by running Stella** in this environment:
-  the model cannot view images, and screenshot capture keeps getting aborted.
-  When a visual (e.g. a HERO screen, menu, or sprite) must be examined, ask the
-  user to either provide an ASCII representation of what they see or take a
-  screenshot themselves and describe it.
+- **MANDATORY: Use `tools/analyze_screenshot.py` after EVERY build.** It checks
+  for playfield (cave_green), HUD background (hud_grey), HUD text (white_text),
+  and player sprite. A PASS means all 4 elements are present. A FAIL means the
+  game is broken. NEVER claim the game works without a PASS from this tool.
+- **Screenshot analysis pitfalls:**
+  - Gold/yellow score text needs low threshold (R>150, G>150, B<100), not the
+    default 180+ which only catches white.
+  - Cave walls at certain Y positions look like "two columns" — this is normal,
+    not a bug. Check multiple Y positions to see the full cave pattern.
+  - Player at top-right (x>600, y<100) may indicate the player flew up —
+    verify by taking screenshots at different times.
+  - White text at top (y<100) vs bottom (y>500) tells you whether the start
+    screen or game HUD is showing.
 
 ## Stella Emulator Tips
 - Stelladaptor / 2600-daptor for real controller input
