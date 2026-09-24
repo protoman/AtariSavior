@@ -157,6 +157,8 @@ ObjBot          byte            ; bottom scanline of active object (ObjTop + PLA
 ; Bomb X/Y/timer live at $F6/$F7 + BombY=$85 (see top of ZP map)
 BombX           = $F6           ; bomb drop X (RoomX snapshot; bank1 does not write $F6)
 BombTimer       = $F7           ; fuse/explode countdown (frames)
+PlayerBombs     = $F0           ; bombs left 0..5 (ColupfBuf+9; never written by VBLANK/bank1 score)
+BOMBS_MAX       = 5             ; starting / reload bomb count
 
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match bank1)
 ; $F3-$F5 live score only — $F6 is BombX (bank1 ScoreOn is unused).
@@ -174,7 +176,8 @@ PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
 PF0Buf          = $C3           ; 12 bytes: TilePF0 values per row
 PF1Buf          = $CF           ; 12 bytes: TilePF1 values per row
 PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row
-ColupfBuf       = $E7           ; 12 bytes: COLUPF stripe colors per row
+ColupfBuf       = $E7           ; 12 bytes reserved (NOT written — kernel uses LevelWallColor*)
+                                ; $E7-$EF bank1 score/bar; $F0 = PlayerBombs; $F1-$F2 free
 
 ; Player sprite ZP buffer (copied from ROM during VBLANK, read by kernel)
 PlayerGrp0      = $F8           ; 8 bytes: player sprite rows (computed per frame)
@@ -267,6 +270,8 @@ GameStart:
     sta Level
     lda #3
     sta PlayerLives
+    lda #BOMBS_MAX
+    sta PlayerBombs
     lda #$FF
     sta DeadEnemyIdx
     ; Initialize timer: 60 frames/step × 120 = 7200 = 120.0s
@@ -501,7 +506,7 @@ StartFrame:
     ; After sta $1FF7, CPU reads next instruction from bank1 at $FC6D.
     ; Bank1's $FC6D has the same jmp $F540 → seamless bank switch.
     jmp $FC68                   ; jump to fold-pad (switches to bank1, runs MenuMain)
-    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp Overscan ($F127)
+    ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF6 / jmp Overscan ($F12B)
 
 ; ==============================================================================
 ; Overscan (30 scanlines) — input handling + game logic
@@ -540,6 +545,9 @@ Overscan:
     lda BombPacked
     and #%00000011
     bne .BombMarkDown           ; bomb already active: just set DownPrev
+    lda PlayerBombs
+    beq .BombMarkDown           ; no bombs left: swallow edge, keep DownPrev
+    dec PlayerBombs
     lda BombPacked              ; rising edge, state=0 → drop
     ora #%00000101              ; state=1 + DownPrev
     sta BombPacked
@@ -1486,6 +1494,8 @@ CEH_NoHit:
 ReloadLevel:
     lda #3
     sta PlayerLives
+    lda #BOMBS_MAX
+    sta PlayerBombs
     lda Level
     jsr LoadLevel
     lda #0

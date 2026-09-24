@@ -25,7 +25,8 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
    temps) or steal a documented bank1-only address.
 4. **Grep all `bank*.asm` before defining `$xx` EQU** in any bank.
 5. **Do not touch from bank1 (live score/bomb):** `$F3-$F5` score,
-   `$F6` BombX, `$F7` BombTimer, `$F8-$FF` PlayerGrp0 + stack mirror,
+   `$F6` BombX, `$F7` BombTimer, `$F0` PlayerBombs (read-only in bank1 HUD),
+   `$F8-$FF` PlayerGrp0 + stack mirror,
    `$AD` bank1 `Temp` (bank0 `TickCounter`), `$BD-$C2` EnemyRam,
    `$B5` BombPacked, `$85` BombY.
 
@@ -116,6 +117,8 @@ Sequential allocation ends at `$BC` (next would be `$BD`).
 | $F5 | ScoreTe | |
 | $F6 | **BombX** | Bomb drop X snapshot (bank1 must not write) |
 | $F7 | **BombTimer** | Fuse/explode frames |
+| $F0 | **PlayerBombs** | Bombs left 0..5 (S8; ColupfBuf+9, never VBLANK-written) |
+| $F1-$F2 | free | ColupfBuf tail (unused) |
 | $F8-$FF | PlayerGrp0 | 8 player rows **+ stack mirror** — copy only after last JSR |
 
 Bank1 HUD `$E0-$EF` score ptrs/bar temps overlap ColupfBuf — safe because

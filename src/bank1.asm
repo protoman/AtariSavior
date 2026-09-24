@@ -17,6 +17,7 @@ COLUP1  = $07
 COLUPF  = $08
 COLUBK  = $09
 PlayerLives = $AC
+PlayerBombs = $F0
 BarLevel = $AE
 BAR_MAX = 120            ; full bar (60 frames/step × 120 = 120s)
 COLUPF  = $08
@@ -370,28 +371,76 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta WSYNC
 
     ; ====================================================================
-    ; Line 3: Bombs — 5 red squares on ONE line
-    ; P0 (3 copies) + P1 (2 copies), all 16 clocks apart
-    ; Squares at 12, 28, 44 (P0) + 60, 76 (P1)
+    ; Line 3: Bombs — red squares, count = PlayerBombs (0..5)
+    ; P0 at 12: NUSIZ0 $00/$01/$03 → 1/2/3 copies
+    ; P1 at 60: NUSIZ1 $00/$01 → 1/2 copies (only if count >= 4)
+    ; Always same WSYNC structure (2×pos + HMOVE + 5 + 3 gap = 11)
     ; ====================================================================
     lda #$46            ; red
     sta COLUP0
     sta COLUP1
-    lda #$03            ; NUSIZ0 = 3 copies
+    lda PlayerBombs
+    cmp #5
+    bne .BmNot5
+    lda #$03
     sta NUSIZ0
-    lda #$01            ; NUSIZ1 = 2 copies
+    lda #$01
     sta NUSIZ1
-    lda #12             ; P0 at 12: copies at 12, 28, 44
+    jmp .BmNusizDone
+.BmNot5:
+    cmp #4
+    bne .BmNot4
+    lda #$03
+    sta NUSIZ0
+    lda #$00
+    sta NUSIZ1
+    jmp .BmNusizDone
+.BmNot4:
+    cmp #3
+    bne .BmNot3
+    lda #$03
+    sta NUSIZ0
+    jmp .BmP1off
+.BmNot3:
+    cmp #2
+    bne .BmNot2
+    lda #$01
+    sta NUSIZ0
+    jmp .BmP1off
+.BmNot2:
+    lda #$00            ; 0 or 1 bomb
+    sta NUSIZ0
+.BmP1off:
+    lda #$00
+    sta NUSIZ1
+.BmNusizDone:
+    lda #12             ; P0 base
     ldx #0
     jsr SetObjectXPos_b1
-    lda #60             ; P1 at 60: copies at 60, 76
+    lda #60             ; P1 base
     ldx #1
     jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
-    lda #$E0            ; 3-color-clock-wide square pattern
+    lda PlayerBombs
+    beq .BmBlank
+    cmp #4
+    bcs .BmBoth
+    lda #$E0
+    sta GRP0
+    lda #0
+    sta GRP1
+    jmp .BmDraw
+.BmBoth:
+    lda #$E0
     sta GRP0
     sta GRP1
+    jmp .BmDraw
+.BmBlank:
+    lda #0
+    sta GRP0
+    sta GRP1
+.BmDraw:
     ldy #5
 .BombsLoop:
     sta WSYNC
@@ -665,7 +714,7 @@ BallXTable:             ; B=0..120; = max(4, actual body red@); mono
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F127           ; Overscan in bank0 (must match bank0 ToGameStub)
+    jmp $F12B           ; Overscan in bank0 (must match bank0 ToGameStub)
 
 ; ========================================================================
 ; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing
