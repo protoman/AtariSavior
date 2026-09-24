@@ -1,70 +1,204 @@
-#########################################################################################################################################################################
-BATARI
-#########################################################################################################################################################################
-Som
-não consegue mais andar quando emc ima de uma plataforma
-
-
-Since we were having lots of issues with creating a new kernel for the game I want to build,
-I decided to give a try using Batari, the basic for Atari 2600 development kit.
-Batari, is located at /mnt/ExtraData/programas/bB/.
-The goal is to create a clone of the Activision HERO game for the Atari 2600, and it should run on the original hardware.
-There is a level and room editor already in place, it is a project in C++ with Qt library and Cmake build system.
-    # You can create scripts to convert the stages to some file-format bAtari can read.
-The game should have a HUD like the screenshot located in docs/HERO.
-Create an AGENTS.md file to store game structure, code findings and other useful information.
-Implement in an incremental way. Implement some feature, like for example the level map, or the HUD,
-stop, ask the user to validate, if all is right, commit and go to the next feature. Add this instruction to AGENTS.md by the way.
-The kernel to be used should be the standard kernel or the DPC+ kernel, find out witch one will better fit or requirements.
-Feel free to investigate about the HERO game bAtari and other information, and store the findings into the docs folder for future use.
-
-
-
-
-
-
-
+1. The comparison code uses jetpack physics for vertical movement (StepDown/StepUp), while we use simple bounds checks
+2. The comparison code has room exit handling (ExitLeft, ExitRight, ExitUp, ExitDown), while we don't
+3. The comparison code has facing direction (PlayerDir), while we don't
 
 
 
 #########################################################################################################################################################################
+I placed an project for an editor for the game stages. It is based on C++, with Qt library and cmake build system.
+But I want to refactor it, so it better fills the needs of our currenct version.
+First thing, answer me, how is a playfield stored in data?
+I want that the output of the editor is as much as close to the way playfields are stored, as possible.
+For example, if the game uses rectangles as PF data, we should also store it was rectangles,
+even if I can create it tile by tile in the interface,
+the editor runs on a PC with enough CPU to calculate rectangles in the most optimized way,
+so leave to the editor to use a data format that better adjust to what we will use in the game.
+=========================================================================================================================================================================
+Also, check that the editor is using our actual playfield correct size - remember, it is mirrored and the editor already supports this.
+=========================================================================================================================================================================
+Let's do a bit of cleanup. Remove from the "Tile and Object Tools" Fragile Wall, Reinforced wall, Lava Pool, Water Pooll.
+=========================================================================================================================================================================
+Also, the room exits buttons sometimes are disabled, even when there is not an exit there yet, so I can't add it. We need to fix this.
+=========================================================================================================================================================================
+One thing, player start position should be hardcoded, so no need to keep it in data files.
+Also, I want the main window to have two tabs. One called Model, will be the room editor, where I can only edit the playfield (walls and hot/lava-walls).
+In th Levels editor, I will not be able to edit the room playfield itself, but I will be able to select a room model to use (that will determine its playffield from the model),
+place enemies and the miner.
+=========================================================================================================================================================================
 
-openrouter.ai
-REDACTED_API_KEY
+
+#########################################################################################################################################################################
+
+
+Hey, if you can't figure out looking at the code, your plan can consist of tests using the Stella debugger. Just make sure that you understand, braking points is not good for fine tuning. We need to find a group of instructions in the diassembly and then unse runto pc there, and then I take screenshots with the variables and TIA values.
+
+
+#########################################################################################################################################################################
+A few tasks:
+# position player more to the right, so he is not inside the playfield.
+# the player is moving up when I press left and down when I press right. It should move in all 4 corresponding directions.
+# player sprite color must be yellow (currently black)
+
+# HUD, that already has the grey are on the bottom of the screen, should have those lines, all screen-width centered, with the following formats:
+-----------
+Timer: a yellow horizontal bar, later we will add a timer so part of it starts becoming red.
+Number of Lives: 3 green squares.
+Number of bombs: 5 red squares
+Score: 0000
+-----------
+Remember to follow the architecture of HERO for doing this.
+
+#########################################################################################################################################################################
+
+What is laser made with? A missile, sprites, other?
+I did ask to use player sprite before, because the current implementation does not follow player exact X position, instead it only moves from tile to tile.
+Why did you change it back? Unless you can fix this position problem, we should just change player sprite to draw it.
+
+- laser facing
+
+- laser touch enemy
+
+#########################################################################################################################################################################
+Player sprit do not look like a rectangle with an eye anymore.
+
+Player facing the last direction stopped working, it is always facing right.
+
+
+#########################################################################################################################################################################
+
+Stopped. The flicker on Phase B/C lines means the phase boundary checks are adding cycles that push those scanlines past 76. When you're ready to continue, we can either:
+1. Tune the phase checks (reduce overhead per scanline)
+2. Free more space and go back to the 3-loop-per-tile approach (separate loops with hardcoded GRP0, no phase checks inside loops)
+Waiting for your direction on space freeing.
+
+#########################################################################################################################################################################
+
+So, before implementing this feature, write a detailed plan into a MD file, split in clear steps, each with a checkbox,
+so that, if we have an issue, we can later resume from that point, following that plan. For both options 2 and 3.
+And let me know where the MD file is stored.
+After that, start following the option 2.
+
+
+
+#########################################################################################################################################################################
+
+First, tell me what features are stored in each bank, 0, 1 and 2?
+
+OK, because there was so much done moving parts around from 0 to 2 to free up some space, it is difficult to detect the root cause.
+So let's take note on what did you needed to move around between banks and go back to a functional state before the changes.
+Run the game to check that version is OK.
+After that, before adding the laser feature, let's do the moving and free spacing, each change at a time, testing each step, before adding the laser feature.
+
+#########################################################################################################################################################################
+Is there now, enough free space in the banks to implement the laser feature?
+
+
+For example, continuing what you said about how HERO rom uses less space, there are some cases you told me about earlier:
+Simpler rendering: one PF write per scanline, one sprite for player, one for objects
+    # Can you better explain this? Don't we already do this?
+
+So, continuing what you said about how HERO rom uses less space, there are some cases you told me about earlier:
+No per-room enemy data tables — enemies are hardcoded per screen:
+# I do not mind if the build script that converts data from the editor does that, but that could make things a bit more complex as it would require the script to write into actual code.
+
+
+My analysis of the screenshot is:
+
+Game area starts in 80, 76 and has size of 640, 456.
+There are 3 areas:
+    # in 80, 76 with size of 80, 456 there is a green band.
+    # in 160, 76 with size of 480, 456 there is a black band.
+    # in 640, 76 with size of 80, 456 there is a green band.
+Now, tell me again, how the player, hud, LEVEL, SCORE and playfield are present on this screenshot?
+
+I want you to build a script, that checks a screenshot for the elements that should be there (you can use player_y4.png) and show me the results.
+The script should look for, the playfield area (ignore its color, just look for the format, you have the level data to compare to),
+the player (again, colors may change look for the format a sequare with a small black rectangle in ons of the sides),
+the HUD area, a gray rectangle at the bottom of the screen,
+level is a bit tricky because fklicker, so just look for some white or lightgray (more light than the HUD itself) on the top left area of the panel,
+and score should be 1234 numbers at the middle center of ther HUD area.
+
+
+
+You said the cave is correct because there are walls in both sides, but this is an invalid check.
+The playfield of the level 0 room 0 is something like this (ignore the number of points, this is just to show you, use player_y4.png if you need a real base):\\
+############################################
+####....................................####
+####....................................####
+####....................................####
+##........................................##
+##........................................##
+##........................................##
+##........................................##
+###################....#####################
+###################....#####################
+###################....#####################
+###################....#####################
+You need to check if the room has this actual shape too.
+
+
+############################################
+####....................................####
+####....................................####
+####....................................####
+..##....................................##..
+..##....................................##..
+..##....................................##..
+..##....................................##..
+####################..######################
+####################..######################
+####################..######################
+####################..######################
+
+
+#########################################################################################################################################################################
+TEXT
+#########################################################################################################################################################################
+Each time player finishes a stage, ad 255 points to the score.
+
+=========================================================================================================================================================================
+
+The score is working very well without any flicker, is it possible to use the same technique to draw the level (LV01) text so we have no flicker on it also?
+
+=========================================================================================================================================================================
+Se a anterior não der certo:
+We are drawing each half of the text at a time with the flicker technique, right?
+To improve readbility, we could use a technique that we instead, draw half the lines in one update, and the other half in the other,
+like a TV interlaced more.
+=========================================================================================================================================================================
+
+Add laser and allow to kill enemies.
+When player pushes the fire button, a laser beam, that is a solid line starting from the "eye" in the player sprite,
+must appear. And if this line touches any enemy, the enemy must be removed from the room, and the player gets 50 score points.
+
+=========================================================================================================================================================================
+Bomb
+=========================================================================================================================================================================
+
+=========================================================================================================================================================================
+Fragile Wall
+=========================================================================================================================================================================
+
+=========================================================================================================================================================================
+Fix editor Exists being disabled
+=========================================================================================================================================================================
+
+
+
+
+#########################################################################################################################################################################
 
 #########################################################################################################################################################################
 REFACTOR
 #########################################################################################################################################################################
-Since we are having a lot of issues with the fonts and text, let's stop working on the game for a while, and create another little application.
-
-Study and document into a skill named text, both ./docs/examples/text24.asm, ./docs/tutorial/13_plus2.asm and the documents
-about the 32 char solution in the ./docs/tutorial.
-
-Then I want you to come up with a solution for drawing small-size text in the Atari 2600 hardware.
-    # it should be generic enough that we add it into a start screen and inside game and it won't break due to timing issues
-    # it should be possible to position it any part of the screen without breaking
-    # it can have restrains such as limit for characters in a line (minimal of 8 otherwise it becomes very difficult to write anything), numer of lines (minimal 2) or colors
-    # it might have a low refresh rate such as 30 fps, and flicker, if that helps
-    # you can ask if you find out that any other constrain is required
-    # you can create a new application for testing, call it font_manager
-
-At the end, present a high level explanation of how that system you planned works.
+Why are you writing to these files? "Edit comparison/lo-a-rad-dragon/bank1.asm".
+Please refactor the code to be better organized and placed only under a "src" folder and use logical names like main, kernel_game, kernel_hud, kernel_score,
+data_tables, font_tables, etc.
 
 
 
 =========================================================================================================================================================================
 
-I want to try to make an Atari 2600 game. But doing the whole kernel is making this really hard, so I want to create a Batari version of the game, that is based upon Activision HERO. It uses an editor and json files that are converted to binary, and I want to preserve that part. So please port it to Batari, that is located at /mnt/ExtraData/programas/bB/ and use the sub-folder savior_batari for that.
-
-=========================================================================================================================================================================
-
-- estudar a fundo o sistema que o cara criou de 13 caracteres e o de 24 caracteres e elaborar um
-    # fazer separado para simplificar o desenvolvimento
-    # deve ser o mais genérico possível para funcionar numa tela de intro e dentro do jogo.
-    # criar uma skill para o sistema de fonte
-- tirar tudo do lo-dragon
-- documentar todo  o código e as escolhas usadas
-    # pedir para a IA que partes podem se tornar skills
 
 #########################################################################################################################################################################
 
@@ -74,7 +208,6 @@ In the editor, in stage 2, room 2, I can't add a new exit to the bottom area.
 
 =========================================================================================================================================================================
 
-Why are you writing to these files? Edit comparison/lo-a-rad-dragon/bank1.asm
 
 
 Now, I want to add gravity, that will make the player fall when not on ground.

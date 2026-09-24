@@ -70,8 +70,8 @@ CollisionEndX   byte
 CollisionEndY   byte
 RoomPFDataLo    byte            ; current room's TilePF0 table address
 RoomPFDataHi    byte
-RoomRowMapLo    byte            ; current room's RoomRowLo table address
-RoomRowMapHi    byte
+RoomRectsLo     byte            ; current room's rectangle collision data address
+RoomRectsHi     byte
 RoomNo          byte            ; current room index into RoomDataTable
 Level           byte            ; current level index (0 = first level)
 LevelDataLo     byte            ; pointer into LevelDataTable (LevelDataHi+LevelDataLo)
@@ -102,13 +102,15 @@ LevelStartX     byte            ; active level's origin X
 LevelStartY     byte            ; active level's origin Y
 EnemyLoopCount  byte            ; CheckEnemyHit loop counter
 GameMode        byte            ; 0 = start screen (bank1), nonzero = game (bank0)
-FontP0          ds.b 5          ; P0 character font data (5 rows) for flicker HUD
-FontP1          ds.b 5          ; P1 character font data (5 rows) for flicker HUD
-FontPtrLo       byte            ; indirect pointer for font ROM lookup (fonthi)
-FontPtrHi       byte
-FontPtrLo2      byte            ; reused: tens digit glyph code for LEVEL display
-FontPtrHi2      byte            ; reused: ones digit glyph code for LEVEL display
-frame_phase     byte            ; flicker phase counter: 0, 1, 2, 0, 1, ...
+FontP0          ds.b 5          ; P0 character font data (5 rows) — used by bank2
+FontP1          ds.b 5          ; P1 character font data (5 rows) — used by bank2
+; FontPtrLo/Hi, FontPtrLo2/Hi2, frame_phase removed — HUD low priority
+ScoreDigit2     = $c6            ; address constant (score digit — NOT reused by PlayerGrp0 anymore)
+ScoreDigit3     = $cb            ; address constant (space reused by Grp1Value + Enam0Value)
+Grp1Value       = $cb            ; pre-computed GRP1 value ($f0 when object visible, 0 otherwise)
+Enam0Value      = $cc            ; pre-computed ENAM0 value ($02 when laser active, 0 otherwise)
+LaserActive     byte            ; 0 = inactive, nonzero = frames remaining
+LaserY          byte            ; scanline where the laser beam is drawn
 ScoreTh         byte            ; score thousands digit (0-9, BCD)
 ScoreHu         byte            ; score hundreds digit (0-9, BCD)
 ScoreTe         byte            ; score tens digit (0-9, BCD)
@@ -229,9 +231,9 @@ Main:
 ; ------------------------------------------------------------------------------
 ; Init Variables
 ; ------------------------------------------------------------------------------
-  lda #1
-  sta GameMode            ; boot directly into the cave (skip start screen for testing)
+  lda #0
   jsr LoadLevel           ; start at level 0's origin (start room/x/y from the level data)
+  inc GameMode            ; boot directly into the cave (skip start screen for testing)
 
 ; ------------------------------------------------------------------------------
 ; Render
@@ -273,58 +275,139 @@ StartFrame:
   jsr SelectActiveObject
   sta WSYNC
   sta HMOVE                 ; apply the horizontal offsets we just set
+; Position missile 0 at player's pixel center
+  lda RoomX
+  cmp #15
+  bcc .LaserLeft15
+  sec
+  sbc #5                      ; RoomX >= 15: pixel = X - 5 (center)
+  jmp .LaserGotX
+.LaserLeft15:
+  sec
+  sbc #2                      ; RoomX < 15: pixel = X - 2 (center)
+.LaserGotX:
+  ldx #2                      ; missile 0
+  jsr SetObjectXPos
+; Set missile width to 8 clocks for visibility
+  lda #$30                    ; single copy + missile 8 clocks
+  sta NUSIZ0
 
 ; ------------------------------------------------------------------------------
-; Remaining VBLANK (~33 scanlines + font pre-load)
-; Font data is pre-loaded here during VBLANK (invisible) so the HudBand
-; preamble only needs TIA setup (~0.5 scanlines), not ~4.7 scanlines of
-; font loading.  This matches test_pf_min.asm's architecture where RESP
-; fires in VBLANK with blank scanlines before GRP writes.
+; VBLANK pre-computation: set up kernel scratch values
+; Grp0Ptr, ObjTop/ObjBot, LaserScanline are reused from collision-scratch
+; ZP bytes ($8C-$90) which are only accessed in overscan.
+;
+; IMPORTANT: PlayerGrp0 ($C6) overlaps with PF1Buf ($BC-$C7) and PF2Buf
+; ($C8-$D3). The PF buffer copy MUST happen BEFORE the player sprite copy,
+; otherwise the PF data overwrites the player sprite data.
 ; ------------------------------------------------------------------------------
-  ldx #33
-LoopVBlank:
+  ; --- Object scanline range (eliminates subtraction in GRP1 kernel check) ---
+  lda ActiveObjectOn
+  beq .NoObjPrep
+  lda ActiveObjectY
+  sta ObjTop
+  clc
+  adc #PLAYER_HEIGHT
+  sta ObjBot
+  jmp .ObjPrepDone
+.NoObjPrep:
+  lda #$ff                    ; all scanlines < $ff → bcc always taken
+  sta ObjTop                  ;   → NoObject path
+.ObjPrepDone:
+  ; --- Laser scanline (eliminates multi-step check in ENAM0 kernel) ---
+  lda LaserActive
+  beq .NoLaserPrep
+  lda LaserY
+  sta LaserScanline
+  jmp .LaserPrepDone
+.NoLaserPrep:
+  lda #$ff                    ; impossible scanline → never matches
+  sta LaserScanline
+.LaserPrepDone:
+
+; ------------------------------------------------------------------------------
+; Remaining VBLANK (~33 scanlines)
+; Phase 1: Copy PF0/PF1/PF2 tables (12 bytes each) from ROM to ZP buffers.
+; Phase 2: Fill COLUPF buffer with band stripe colors.
+; Phase 3: Copy player sprite data LAST (after PF buffers, avoids overwrite).
+; Phase 4: WSYNC wait to fill remaining VBLANK time.
+; NOTE: The stack page ($0100-$01FF) mirrors ZP ($80-$FF) on the 2600.
+;       We CANNOT use it as a separate buffer — writing there corrupts ZP.
+; NOTE: PlayerGrp0 ($C6-$CD) overlaps PF1Buf end / PF2Buf start.
+;       Sprite copy MUST come after PF buffer writes.
+; ------------------------------------------------------------------------------
+  ; --- Phase 1: PF ZP buffers from ROM (via room pointer) ---
+  lda RoomPFDataLo
+  sta MapPtrLo
+  lda RoomPFDataHi
+  sta MapPtrHi
+  ldx #0
+.CopyPF:
+  txa
+  tay
+  lda (MapPtrLo),y          ; PF0 = row table + 0
+  sta PF0Buf,x
+  tya
+  clc
+  adc #12
+  tay
+  lda (MapPtrLo),y          ; PF1 = row table + 12
+  sta PF1Buf,x
+  tya
+  clc
+  adc #12
+  tay
+  lda (MapPtrLo),y          ; PF2 = row table + 24
+  sta PF2Buf,x
+  inx
+  cpx #TILE_ROWS
+  bne .CopyPF
+
+  ; --- Phase 2: COLUPF buffer (band stripe colors) ---
+  ldx #11
+  lda LevelWallColor
+.FillOuter:
+  sta ColupfBuf,x
+  dex
+  cpx #7
+  bne .FillOuter
+  ldx #7
+  lda LevelWallColor2
+.FillInner:
+  sta ColupfBuf,x
+  dex
+  bpl .FillInner
+
+  ; --- Phase 3: Copy player sprite data AFTER PF buffers ---
+  ; PlayerGrp0 ($C6) sits inside PF1Buf/PF2Buf range, so this MUST come
+  ; after the PF copy to avoid being overwritten.
+  ldy #>PlayerSpriteRight
+  ldx #<PlayerSpriteRight
+  lda PlayerDir
+  beq .UseRightSprite
+  ldy #>PlayerSpriteLeft
+  ldx #<PlayerSpriteLeft
+.UseRightSprite:
+  stx Grp0Ptr
+  sty Grp0Ptr+1
+  ldy #0
+.CopyPlayerGrp:
+  lda (Grp0Ptr),y
+  sta PlayerGrp0,y
+  iny
+  cpy #PLAYER_HEIGHT
+  bne .CopyPlayerGrp
+
+  ; --- Phase 4: fill remaining VBLANK with WSYNC waits ---
+  ; Phases 1-3 take ~12 scanlines; positioning took ~3.  We need enough
+  ; scanlines to fill VBLANK (37 total, minus VSYNC's 3 = 34 after VSYNC).
+  ; .Row WSYNC adds 12 extra scanlines to the kernel (12 rows * 1 WSYNC),
+  ; so the frame is 270 with ldx #25.  Reduce to ldx #14 to hit 262.
+  ldx #14
+.VblankWait:
   sta WSYNC
   dex
-  bne LoopVBlank
-
-; Pre-load font data for current flicker phase.  For "LVxx" display:
-;   Phase 0: L, V (static)
-;   Phase 1: tens digit, ones digit (dynamic from Level variable)
-;   Phase 2: space, space (both off)
-; Level is 0-indexed; display as Level+1 (1-indexed).
-  lda Level
-  clc
-  adc #1                          ; A = Level + 1
-  ldx #CH_HUD_30                  ; default tens = '0' glyph
-  cmp #10
-  bcc .gotTens
-  ldx #CH_HUD_31                  ; tens = '1' glyph
-  sbc #10                         ; A = ones digit (C=1 from cmp)
-.gotTens:
-  ; A = ones digit (0-9), X = tens glyph code
-  ; Convert ones digit to glyph: CH_HUD_30 + digit*5
-  sta Temp
-  asl                             ; *2
-  asl                             ; *4
-  adc Temp                        ; *5
-  adc #CH_HUD_30                  ; + glyph base
-  stx FontPtrLo2                  ; tens glyph
-  sta FontPtrHi2                  ; ones glyph
-
-  ldx frame_phase
-  lda PhaseChar0,x
-  cpx #1
-  bne .P0noOverride
-  lda FontPtrLo2                  ; phase 1: tens digit
-.P0noOverride:
-  jsr LoadFontP0
-  lda PhaseChar1,x                ; X still = frame_phase
-  cpx #1
-  bne .P1noOverride
-  lda FontPtrHi2                  ; phase 1: ones digit
-.P1noOverride:
-  jsr LoadFontP1
-
+  bne .VblankWait
 
   lda #0
   sta VBLANK                ; turn off VBLANK
@@ -351,8 +434,6 @@ LoopVBlank:
 ; ------------------------------------------------------------------------------
   lda #$00                  ; black cave interior
   sta COLUBK
-  lda LevelWallColor        ; wall color (TIA byte, from the active level's data)
-  sta COLUPF
   lda #$2e                  ; player color (yellow/orange)
   sta COLUP0
   lda #$05                  ; D0=1 reflect, D2=1 playfield priority
@@ -369,65 +450,59 @@ LoopVBlank:
   sta VDELP1
   sta Scanline
 
-  lda RoomPFDataLo
-  sta MapPtrLo
-  lda RoomPFDataHi
-  sta MapPtrHi
+; GRP0: conditional per-scanline check against PlayerY.
+; PF0/PF1/PF2 written ONCE per tile row from ZP buffers (TIA persists).
+; COLUPF written ONCE per tile row from ColupfBuf.
+; GRP1 and ENAM0 retain their compact conditional checks.
+; WSYNC at END of each scanline (like the original kernel).
+
   ldx #0                    ; tile row counter (row 0 at top of screen)
 .Row:
-; The current room's TilePF0/TilePF1/TilePF2 tables are contiguous 12-byte
-; tables, so one base pointer covers all three registers.
-  txa
-  tay
-  lda (MapPtrLo),Y          ; PF0 = row table + 0
-  sta PF0                   ; defines the whole line via reflection
-  tya
-  clc
-  adc #12
-  tay
-  lda (MapPtrLo),Y          ; PF1 = row table + 12
-  sta PF1
-  tya
-  clc
-  adc #12
-  tay
-  lda (MapPtrLo),Y          ; PF2 = row table + 24
-  sta PF2
+; --- PF from ZP buffers (once per tile row, TIA persists) ---
+  lda PF0Buf,x              ; 4
+  sta PF0                   ; 3
+  lda PF1Buf,x              ; 4
+  sta PF1                   ; 3
+  lda PF2Buf,x              ; 4
+  sta PF2                   ; 3
+; --- COLUPF from buffer (once per tile row) ---
+  lda ColupfBuf,x           ; 4
+  sta COLUPF                ; 3
   lda #LINES_PER_TILE
   sta LineCount
-; Stripe the cave: rows 0-3 are wall color 1, rows 4-7 wall color 2, and
-; rows 8-11 wall color 1 again. COLUPF was already set once for row 0 at
-; frame start, so only the row-4 and row-8 band boundaries need a rewrite.
-  cpx #4
-  beq .BandColor2
-  cpx #8
-  bne .ColorStripeDone
-  lda LevelWallColor
-  bne .ColorStripeApply
-.BandColor2:
-  lda LevelWallColor2
-.ColorStripeApply:
-  sta COLUPF
-.ColorStripeDone:
+  inc Scanline              ; 5  account for the PF-setup scanline
+  sta WSYNC                 ; 3  PF setup on this scanline, .Line on NEXT
 
 .Line:
-  lda Scanline
-  sec
-  sbc PlayerY               ; A = scanline - PlayerY
-  cmp #PLAYER_HEIGHT
-  bcs .NoSprite
-  tay
-; The player sprite has a 2-pixel black "eye" notch (3rd row) that sits on the
-; side the player faces. Select the table by PlayerDir inside HBLANK.
-  lda PlayerDir
-  beq .FaceRight
-  lda PlayerSpriteLeft,Y
-  jmp .Put
-.FaceRight:
-  lda PlayerSpriteRight,Y
-  jmp .Put
+; --- GRP1 FIRST: fires at cycle ~6, well within HBLANK ---
+; Object sprite (miner or enemy). Written first to ensure the shift register
+; starts with the correct value at cycle 68 (first visible pixel).
+  lda Scanline              ; 3
+  cmp ObjTop                ; 3
+  bcc .NoObject             ; 2³  below top → not visible
+  cmp ObjBot                ; 3
+  bcs .NoObject             ; 2³  at/past bottom → not visible
+  lda #$f0                  ; 2
+  .byte $2c                 ; 4  BIT skip: skips next lda #0
+.NoObject:
+  lda #0                    ; 2
+  sta GRP1                  ; 3  ← cycle ~6, SAFE (within HBLANK)
+
+; --- GRP0 SECOND: fires at cycle ~28, within HBLANK ---
+; Player sprite from pre-loaded ZP buffer (PlayerGrp0). Written after GRP1 but
+; still within HBLANK (shift register starts at cycle 68).
+; PlayerGrp0 is filled during VBLANK from ROM via Grp0Ptr — saves 1 cycle
+; per scanline vs (Grp0Ptr),Y because ZP-indexed is 4c vs indirect 5c.
+  lda Scanline              ; 3
+  sec                       ; 2
+  sbc PlayerY               ; 3  A = scanline - PlayerY
+  cmp #PLAYER_HEIGHT        ; 2
+  bcs .NoSprite             ; 2³
+  tay                       ; 2
+  lda PlayerGrp0,Y          ; 4  ← ZP indexed: 4c (was 5c with indirect)
+  jmp .Put                  ; 3
 .NoSprite:
-  lda #0
+  lda #0                    ; 2
 .Put:
   sta GRP0
 ; --- Laser beam: enable missile 0 when scanline matches laser Y ---
@@ -471,7 +546,7 @@ LoopVBlank:
 ; cycling through phases 0->1->2. Cycle-counted RESP positioning places
 ; each character at a precise pixel using px = write_cycle * 3 - 63.
 ; ------------------------------------------------------------------------------
-  jsr HudBand
+  jsr ToBank2         ; trampoline to bank2 for HUD rendering
 
 ; ------------------------------------------------------------------------------
 ; Overscan
@@ -674,6 +749,33 @@ CheckFire:
 
 EndInputCheck:
 ; ------------------------------------------------------------------------------
+; Laser firing
+; ------------------------------------------------------------------------------
+; Fire button (INPT4, active low: 0=pressed).  When pressed and no laser
+; active, start a new laser beam at the player's current scanline.
+; Decrement LaserActive each frame so the beam expires.
+; ------------------------------------------------------------------------------
+  lda INPT4                   ; fire button (active low: 0=pressed)
+  bmi .NoFire                 ; bit7=1 -> not pressed
+  lda LaserActive
+  bne .NoFire                 ; already firing
+  lda #4                      ; beam duration (frames)
+  sta LaserActive
+  lda PlayerY
+  clc
+  adc #3                      ; center of player sprite
+  sta LaserY                  ; beam at player center scanline
+.NoFire:
+  lda LaserActive
+  beq .LaserExpired
+  dec LaserActive
+  bne .LaserExpired
+  ; Laser just expired — set LaserY to impossible value
+  lda #$ff
+  sta LaserY
+.LaserExpired:
+
+; ------------------------------------------------------------------------------
 ; Miner pickup
 ; ------------------------------------------------------------------------------
 ; If the player overlaps the miner (same room, footprint within one sprite),
@@ -735,18 +837,9 @@ UpdateJetSound:
   sec
   sbc Temp
   sta AUDF0                ; AUDF0 = base - thrust: pitches down as it spools up
-  jmp .AdvancePhase
+  jmp WaitOverscan
 .JetSilent:
   sta AUDV0                ; A = 0: kill channel 0
-
-; Advance flicker phase: 0 -> 1 -> 2 -> 0
-.AdvancePhase:
-  inc frame_phase
-  lda frame_phase
-  cmp #3
-  bcc WaitOverscan
-  lda #0
-  sta frame_phase
 
 WaitOverscan:
   lda INTIM
@@ -853,19 +946,9 @@ PlayerHitsMap:
 ; ------------------------------------------------------------------------------
 ; Subroutines
 ; ------------------------------------------------------------------------------
-; Convert a screen scanline (0..191) into a tile row index (0..15).
-; A = scanline in, X = tile row out.
+; PlayerHitsMap, YToCellRow, and CheckLaserEnemyHit are placed after GameStart
+; to fit within the $f000-$f500 code section.
 ; ------------------------------------------------------------------------------
-YToCellRow subroutine
-  ldx #0
-.Div:
-  cmp #LINES_PER_TILE
-  bcc .Done
-  sbc #LINES_PER_TILE
-  inx
-  bne .Div
-.Done:
-  rts
 
 ; ------------------------------------------------------------------------------
 ; EnterRoom: point the kernel and collision data at room A (0-based room index).
@@ -885,10 +968,10 @@ EnterRoom subroutine
   sta RoomPFDataHi
   iny
   lda (LevelPFDataLo),Y
-  sta RoomRowMapLo
+  sta RoomRectsLo
   iny
   lda (LevelPFDataLo),Y
-  sta RoomRowMapHi
+  sta RoomRectsHi
 ; Load the current room's enemy data pointer + count from the level's
 ; per-room record (ptr_lo, ptr_hi, count, pad).
   lda RoomNo
@@ -1170,7 +1253,7 @@ SetObjectXPos subroutine
 ; movement state. The address is FIXED at $f500 via the org below so bank1's
 ; fold stub (`jmp GameStart`, GameStart = $f500) assembles to identical bytes.
 ; ------------------------------------------------------------------------------
-    org $f500
+    org $f520
 GameStart:
     lda #0
     sta vyLo
@@ -1179,22 +1262,169 @@ GameStart:
     sta PlayerYSub
     sta PlayerDir
     sta StepsLeft
-    sta NUSIZ0              ; single copy (was per-frame, moved here to save bytes)
+    lda #$10                  ; single copy + missile 2 clocks wide
+    sta NUSIZ0
+    lda #0
     sta REFP1               ; no flip (same)
-    sta ScoreTh             ; score = 0000
-    sta ScoreHu
-    sta ScoreTe
-    sta ScoreOn
-    lda #1                  ; TEMP TEST: set score to 1234
-    sta ScoreTh
-    lda #2
-    sta ScoreHu
-    lda #3
-    sta ScoreTe
-    lda #4
-    sta ScoreOn
     jsr LoadLevel           ; A is still 0 -> level 0
     jmp StartFrame
+
+; ------------------------------------------------------------------------------
+; Collision subroutines (placed here to fit within the ROM layout)
+; ------------------------------------------------------------------------------
+
+; Convert a screen scanline (0..191) into a tile row index (0..15).
+; A = scanline in, X = tile row out.
+; ------------------------------------------------------------------------------
+YToCellRow subroutine
+  ldx #0
+.Div:
+  cmp #LINES_PER_TILE
+  bcc .Done
+  sbc #LINES_PER_TILE
+  inx
+  bne .Div
+.Done:
+  rts
+
+; ------------------------------------------------------------------------------
+; Check collisions (rectangle-based)
+; ------------------------------------------------------------------------------
+; Checks the player's bounding box against the room's solid rectangle list.
+; Rectangles are in tile coordinates (column 0-19, row 0-11, width/height in
+; tiles).  The playfield is REFLECTED, so every block q maps to text column
+; q if q<20 or 39-q if q>=20.  The player's blocks are converted to text
+; columns first, then checked against rectangles in tile space.
+; Returns C=0 if clear, C=1 if blocked.
+PlayerHitsMap:
+; --- Tile row range (top, bottom) ---
+  lda PlayerY
+  jsr YToCellRow
+  stx CollisionCellY          ; top tile row
+  clc
+  lda PlayerY
+  adc #PLAYER_HEIGHT - 1
+  jsr YToCellRow
+  stx CollisionEndY           ; bottom tile row
+
+; --- Visible left pixel -> text column range ---
+  sec
+  lda RoomX
+  cmp #15
+  bcs .off7
+  sbc #4                      ; RoomX < 15: visible left = X - 4
+  jmp .gotVL
+.off7:
+  sbc #7                      ; RoomX >= 15: visible left = X - 7
+.gotVL:
+  ; first block = visible_left / 4 -> text column
+  tay                         ; Y = visible_left
+  lsr
+  lsr
+  cmp #TILE_COLUMNS
+  bcc .firstOk
+  sta CollisionX
+  lda #39
+  sec
+  sbc CollisionX
+.firstOk:
+  sta CollisionEndX           ; min text column
+
+  ; last block = (visible_left + PLAYER_WIDTH - 1) / 4 -> text column
+  tya                         ; A = visible_left
+  clc
+  adc #PLAYER_WIDTH - 1
+  lsr
+  lsr
+  cmp #TILE_COLUMNS
+  bcc .lastOk
+  sta CollisionX
+  lda #39
+  sec
+  sbc CollisionX
+.lastOk:
+  sta CollisionCellX           ; max text column
+
+  ; Ensure min <= max (blocks 20+ reverse the column order)
+  lda CollisionEndX
+  cmp CollisionCellX
+  bcc .colsOk
+  ldx CollisionCellX
+  stx CollisionEndX
+  sta CollisionCellX
+.colsOk:
+
+; --- Walk rectangle list ---
+  lda RoomRectsLo
+  sta MapPtrLo
+  lda RoomRectsHi
+  sta MapPtrHi
+  ldy #0
+  lda (MapPtrLo),Y            ; rectangle count
+  bne .HasRects
+  clc
+  rts                         ; no rectangles -> not hit
+.HasRects:
+  sta EnemyLoopCount
+  iny                         ; Y=1, first rect byte
+
+.RectLoop:
+  tya
+  pha                         ; save rect base offset (Y = byte offset of rect.x)
+
+; Column overlap: max_col >= rect.x AND min_col < rect.x + rect.w
+  lda (MapPtrLo),Y            ; rect.x (Y = base)
+  cmp CollisionCellX           ; rect.x > max_col?
+  beq .colOk
+  bcc .colOk
+  jmp .nextRect
+.colOk:
+  sta CollisionX              ; save rect.x for addition
+  iny
+  iny                         ; Y = base + 2 (rect.w)
+  clc
+  lda (MapPtrLo),Y            ; rect.w
+  adc CollisionX              ; rect.x + rect.w
+  cmp CollisionEndX            ; (rect.x+w) <= min_col?
+  beq .nextRect
+  bcc .nextRect
+
+; Row overlap: bottom_row >= rect.y AND top_row < rect.y + rect.h
+  dey                         ; Y = base + 1 (rect.y)
+  lda (MapPtrLo),Y            ; rect.y
+  cmp CollisionEndY            ; rect.y > bottom_row?
+  beq .rowOk
+  bcc .rowOk
+  jmp .nextRect
+.rowOk:
+  iny
+  iny                         ; Y = base + 3 (rect.h)
+  clc
+  lda (MapPtrLo),Y            ; rect.h
+  dey
+  dey                         ; Y = base + 1 (rect.y)
+  adc (MapPtrLo),Y            ; rect.y + rect.h
+  cmp CollisionCellY           ; (rect.y+h) <= top_row?
+  beq .nextRect
+  bcc .nextRect
+
+; HIT — player is blocked
+  pla
+  sec
+  rts
+
+.nextRect:
+  pla
+  clc
+  adc #4                      ; advance past this rect (4 bytes each)
+  tay
+  dec EnemyLoopCount
+  beq .NoHit
+  jmp .RectLoop
+
+.NoHit:
+  clc
+  rts
 
 ; ------------------------------------------------------------------------------
 ; ROM Data
@@ -1323,436 +1553,29 @@ ToGameStub:
 ;   px113 -> C=59, HMP=$10 (left 1)  -> nop gap
 ;   px128 -> C=64, HMP=$10 (left 1)  -> 25 nops + bit $80
 ; ------------------------------------------------------------------------------
+; (old HUD code removed — now in bank2 via trampoline at $fc78)
+
+; Bank2 HUD entry point (fixed address, must match bank2.asm)
+Bank2HudEntry = $f010
+
+; ------------------------------------------------------------------------------
+; Fold pads for bank0 <-> bank2 HUD trampoline.
+; Bank2 has byte-identical copies at the same addresses.
+; $fc78: bank0 calls bank2 (jsr $fc78 -> switches to bank2, runs HUD)
+; $fc80: bank2 returns to bank0 (switches back, rts to caller)
+; ------------------------------------------------------------------------------
     org $fc78
-HudBand:
-  lda #0
-  sta PF0
-  sta PF1
-  sta PF2
-  lda #HUD_COLOR
-  sta COLUBK
-  lda #$0e                  ; white text (kPalette hue 0 luma 7)
-  sta COLUP0
-  sta COLUP1
+ToBank2:
+    lda #2
+    sta $1FF8           ; select bank2
+    jmp Bank2HudEntry   ; bank2 address (same window in both banks)
 
-; Font data pre-loaded during VBLANK — skip straight to rendering.
-; Layout: 1 text line (12) + gap (4) + score (8) + pad (24) = 48 total
-; Gap pre-loads score digit sprite rows from ScoreSpriteFont into ZP.
-  jsr HudFlickerLine         ; 12 scanlines: LVxx
+    org $fc80
+ToBank0:
+    lda #0
+    sta $1FF6           ; select bank0
+    rts                 ; pop return address from jsr ToBank2, jump back
 
-; --- Gap: pre-load score digit sprite rows into ZP (4 scanlines) ---
-; Each digit = 5 bytes from ScoreSpriteFont (8 bytes per digit in ROM).
-; Uses FontP0/FontP1 for digits 0/1, ScoreDigit2/ScoreDigit3 for digits 2/3.
-; FontPtrLo/Hi used as temp pointer during loads.
-  ldx #4
-.HudGap:
-  sta WSYNC
-  dex
-  bne .HudGap
-
-  ; --- TEMP: set score to 1234 (Main boot path doesn't init score) ---
-  lda #1
-  sta ScoreTh
-  lda #2
-  sta ScoreHu
-  lda #3
-  sta ScoreTe
-  lda #4
-  sta ScoreOn
-
-  ; --- Load digit 0 into FontP0 (5 bytes) ---
-  lda ScoreTh
-  asl
-  asl
-  asl                           ; *8
-  clc
-  adc #<ScoreSpriteFont
-  sta FontPtrLo
-  lda #>ScoreSpriteFont
-  adc #0
-  sta FontPtrHi
-  ldy #0
-  jsr .LoadScoreDigit           ; FontP0 = digit0 rows
-  ; --- Load digit 1 into FontP1 (5 bytes) ---
-  lda ScoreHu
-  asl
-  asl
-  asl
-  clc
-  adc #<ScoreSpriteFont
-  sta FontPtrLo
-  lda #>ScoreSpriteFont
-  adc #0
-  sta FontPtrHi
-  ldy #0
-  ldx #0
-  jsr .LoadScoreDigitX          ; FontP1 = digit1 rows
-  ; --- Load digit 2 into ScoreDigit2 (5 bytes) ---
-  lda ScoreTe
-  asl
-  asl
-  asl
-  clc
-  adc #<ScoreSpriteFont
-  sta FontPtrLo
-  lda #>ScoreSpriteFont
-  adc #0
-  sta FontPtrHi
-  ldy #0
-  ldx #0
-  jsr .LoadScoreDigitX2         ; ScoreDigit2 = digit2 rows
-  ; --- Load digit 3 into ScoreDigit3 (5 bytes) ---
-  lda ScoreOn
-  asl
-  asl
-  asl
-  clc
-  adc #<ScoreSpriteFont
-  sta FontPtrLo
-  lda #>ScoreSpriteFont
-  adc #0
-  sta FontPtrHi
-  ldy #0
-  ldx #0
-  jsr .LoadScoreDigitX3         ; ScoreDigit3 = digit3 rows
-
-; --- Compose packed digits: FontP0 = digit0|digit1, FontP1 = digit2|digit3 ---
-; Each digit is in bits 7-5 (3 pixels). Pack two into one byte with 2px gap:
-;   FontP0[row] = FontP0[row] | (FontP1[row] >> 5)   → "12"
-;   FontP1[row] = ScoreDigit2[row] | (ScoreDigit3[row] >> 5) → "34"
-;   bits: [AAA 00 BBB] where AAA=left, 00=gap, BBB=right
-  ldy #0
-.compose:
-  lda FontP1,Y       ; digit1 row (bits 7-5)
-  lsr
-  lsr
-  lsr
-  lsr
-  lsr                  ; >> 5 → bits 2-0
-  sta Temp
-  lda FontP0,Y       ; digit0 row (bits 7-5)
-  ora Temp
-  sta FontP0,Y       ; packed "12"
-
-  lda ScoreDigit3,Y  ; digit3 row (bits 7-5)
-  lsr
-  lsr
-  lsr
-  lsr
-  lsr                  ; >> 5 → bits 2-0
-  ora ScoreDigit2,Y  ; digit2 row (bits 7-5)
-  sta FontP1,Y       ; packed "34"
-
-  iny
-  cpy #5
-  bne .compose
-
-; --- Score kernel: single 5-scanline band showing 4 digits ---
-  jsr ScoreKernel
-
-; --- Padding to fill 48-line HUD band ---
-  ldx #24
-.HudPad:
-  sta WSYNC
-  dex
-  bne .HudPad
-  rts
-
-; --- Subroutines to load 5 bytes from (FontPtrLo) into ZP targets ---
-; LoadScoreDigit: loads into FontP0 (Y=0..4)
-.LoadScoreDigit:
-  lda (FontPtrLo),Y
-  sta FontP0,Y
-  iny
-  cpy #5
-  bne .LoadScoreDigit
-  rts
-; LoadScoreDigitX: loads into FontP1 (X=0..4)
-.LoadScoreDigitX:
-  lda (FontPtrLo),Y
-  sta FontP1,X
-  inx
-  iny
-  cpx #5
-  bne .LoadScoreDigitX
-  rts
-; LoadScoreDigitX2: loads into ScoreDigit2 (X=0..4)
-.LoadScoreDigitX2:
-  lda (FontPtrLo),Y
-  sta ScoreDigit2,X
-  inx
-  iny
-  cpx #5
-  bne .LoadScoreDigitX2
-  rts
-; LoadScoreDigitX3: loads into ScoreDigit3 (X=0..4)
-.LoadScoreDigitX3:
-  lda (FontPtrLo),Y
-  sta ScoreDigit3,X
-  inx
-  iny
-  cpx #5
-  bne .LoadScoreDigitX3
-  rts
-
-; ------------------------------------------------------------------------------
-; HudFlickerLine: render one flicker text line (12 scanlines).
-; Font data must be pre-loaded in FontP0/FontP1 before calling.
-; Matches test_pf_min.asm timing: HMP + GRP clear set BEFORE WSYNC, fixed nops
-; after WSYNC, HMOVE on next scanline, then font rows as fast ZP reads.
-;
-; Each phase shows characters at their FINAL fixed positions (no inter-frame
-; shift).  3 frames x 2 sprites = 6 character slots for 5-char "LEVEL":
-;   Phase 0: P0=L@px5,   P1=E@px9    (chars 0,1)
-;   Phase 1: P0=V@px13,  P1=E@px17   (chars 2,3)
-;   Phase 2: P0=L@px21,  P1=off      (char 4)
-;
-; Cycle math (px = write_cycle * 3 - 63):
-; Branch overhead: ldx+beq(3+3)=6, ldx+beq+cpx+beq(3+2+2+3)=10, fall-through=9
-; Phase 0: RESP0@23 (6+14+3+2), RESP1@26 (+3), HMP0=$10(-1) HMP1=$60(-6)
-; Phase 1: RESP0@25 (10+10+3+2), RESP1@28 (+3), HMP0=$F0(+1) HMP1=$40(-4)
-; Phase 2: RESP0@28 (9+14+3+2), HMP0=$00
-; ------------------------------------------------------------------------------
-HudFlickerLine:
-; Set HMP values AND clear GRP BEFORE WSYNC (saves 8 cycles in HBLANK)
-  ldx frame_phase
-  lda PhaseHMP0,x
-  sta HMP0
-  lda PhaseHMP1,x
-  sta HMP1
-  lda #0
-  sta GRP0
-  sta GRP1
-
-; RESP positioning scanline
-  sta WSYNC
-
-; Branch to phase-specific RESP code (fixed nops, like test_pf_min.asm)
-  ldx frame_phase
-  beq .HudPhase0
-  cpx #1
-  beq .HudPhase1
-
-; -- Phase 2: P0=L@px21, P1=off --
-; After WSYNC: ldx(3)+beq(2)+cpx(2)+beq(2) = 9cy
-; 7 nops=14 + bit $80=3 + sta RESP0=3 -> total 28 -> write@28 -> px21
-  nop                       ; 2
-  nop                       ; 4
-  nop                       ; 6
-  nop                       ; 8
-  nop                       ; 10
-  nop                       ; 12
-  nop                       ; 14
-  bit $80                   ; ZP,3cy -> 17
-  sta RESP0                 ; 9+14+3+3=29 total -> write@28 -> px21
-  jmp .HudApplyHmove
-
-.HudPhase0:
-; -- Phase 0: P0=L@px5, P1=E@px9 --
-; After WSYNC: ldx(3)+beq(3,taken) = 6cy
-; 6 nops=12 + bit $80=3 + sta RESP0=3 -> total 23 -> write@23 -> px6, HMP left 1 -> px5
-; gap: sta RESP1(3)=3 -> RESP1@26 -> px15, HMP left 6 -> px9
-  nop                       ; 2
-  nop                       ; 4
-  nop                       ; 6
-  nop                       ; 8
-  nop                       ; 10
-  nop                       ; 12
-  bit $80                   ; ZP,3cy -> 15
-  sta RESP0                 ; 6+12+3+3=24 total -> write@23 -> px6, HMP left 1 -> px5
-  sta RESP1                 ; +3cy -> 26 -> px15, HMP left 6 -> px9
-  jmp .HudApplyHmove
-
-.HudPhase1:
-; -- Phase 1: P0=V@px13, P1=E@px17 --
-; After WSYNC: ldx(3)+beq(2)+cpx(2)+beq(3,taken) = 10cy
-; 5 nops=10 + bit $80=3 + sta RESP0=3 -> total 25 -> write@25 -> px12, HMP right 1 -> px13
-; gap: sta RESP1(3)=3 -> RESP1@28 -> px21, HMP left 4 -> px17
-  nop                       ; 2
-  nop                       ; 4
-  nop                       ; 6
-  nop                       ; 8
-  nop                       ; 10
-  bit $80                   ; ZP,3cy -> 13
-  sta RESP0                 ; 10+10+3+3=26 total -> write@25 -> px12, HMP right 1 -> px13
-  sta RESP1                 ; +3cy -> 28 -> px21, HMP left 4 -> px17
-
-.HudApplyHmove:
-  sta WSYNC
-  sta HMOVE                 ; apply horizontal motion (during HBLANK)
-
-; --- Font rows 0-4 ---
-  lda FontP0                ; fast ZP read - pre-loaded font row 0
-  sta GRP0
-  lda FontP1
-  sta GRP1
-
-  ldx #1
-.HudFontLoop:
-  sta WSYNC
-  lda FontP0,x
-  sta GRP0
-  lda FontP1,x
-  sta GRP1
-  inx
-  cpx #5
-  bne .HudFontLoop
-
-; --- Blank lines (spacing) ---
-; Clear GRP on first blank scanline (after WSYNC = in HBLANK, safe to write)
-  ldx #6
-.HudBlankLoop:
-  sta WSYNC
-  lda #0
-  sta GRP0
-  sta GRP1
-  dex
-  bne .HudBlankLoop
-  rts
-
-; ------------------------------------------------------------------------------
-; ScoreKernel: render 4-digit score in a single 5-scanline band.
-; FontP0 = packed "12" (digit0 high nibble | digit1 low nibble)
-; FontP1 = packed "34" (digit2 high nibble | digit3 low nibble)
-; Single copy (NUSIZ=$00), no VDEL.
-; P0 at px68, P1 at px76 (8px apart — packed pairs touch).
-; Total: 8 scanlines (2 positioning + 5 band + 1 clear).
-; ------------------------------------------------------------------------------
-ScoreKernel:
-  ; Single copy, no VDEL
-  lda #0
-  sta NUSIZ0
-  sta NUSIZ1
-  sta VDELP0
-  sta VDELP1
-  ; Score color
-  lda #$0e              ; white (kPalette hue 0 luma 7)
-  sta COLUP0
-  sta COLUP1
-
-  ; Position P0 at px68, P1 at px78 (10px apart — 2px gap between packed pairs)
-  lda #68
-  ldx #0
-  jsr SetObjectXPos
-  lda #78
-  ldx #1
-  jsr SetObjectXPos
-  sta WSYNC
-  sta HMOVE
-
-  ; Single band: packed "12" (P0) and "34" (P1) — 5 scanlines
-  ldy #0
-.ScoreBand:
-  sta WSYNC
-  lda FontP0,Y
-  ldx FontP1,Y
-  sta GRP0
-  stx GRP1
-  iny
-  cpy #5
-  bcc .ScoreBand
-
-  ; Clear sprites (1 scanline)
-  sta WSYNC
-  lda #0
-  sta GRP0
-  sta GRP1
-  rts
-
-; ------------------------------------------------------------------------------
-; LoadFontP0: load 5 bytes of combined font data for char code A into FontP0.
-; Reads fonthi (left 3 bits at 7,6,5) and fontlo (right 3 bits at 3,2,1),
-; shifts fontlo left 1 (→ bits 4,3,2) to fill the gap, then ORs for full glyph.
-; Loads rows in REVERSE order (ROM row 4→FontP0+0 ... row 0→FontP0+4) because
-; the 13_plus2 font data is stored in stack-push order (bottom-to-top).
-; Clobbers: A, X, Y, FontPtrLo/Hi.
-; ------------------------------------------------------------------------------
-LoadFontP0:
-  pha                           ; save char code
-  clc
-  adc #<hud_font_fonthi
-  sta FontPtrLo
-  lda #0
-  adc #>hud_font_fonthi
-  sta FontPtrHi
-  pla                           ; restore char code
-  ldy #4
-  lda (FontPtrLo),Y
-  sta FontP0
-  dey
-  lda (FontPtrLo),Y
-  sta FontP0+1
-  dey
-  lda (FontPtrLo),Y
-  sta FontP0+2
-  dey
-  lda (FontPtrLo),Y
-  sta FontP0+3
-  dey
-  lda (FontPtrLo),Y
-  sta FontP0+4
-  rts
-
-; ------------------------------------------------------------------------------
-; LoadFontP1: load 5 bytes of font data for char code A into FontP1.
-; Same as LoadFontP0 but writes to FontP1.
-; ------------------------------------------------------------------------------
-LoadFontP1:
-  pha
-  clc
-  adc #<hud_font_fonthi
-  sta FontPtrLo
-  lda #0
-  adc #>hud_font_fonthi
-  sta FontPtrHi
-  pla
-  ldy #4
-  lda (FontPtrLo),Y
-  sta FontP1
-  dey
-  lda (FontPtrLo),Y
-  sta FontP1+1
-  dey
-  lda (FontPtrLo),Y
-  sta FontP1+2
-  dey
-  lda (FontPtrLo),Y
-  sta FontP1+3
-  dey
-  lda (FontPtrLo),Y
-  sta FontP1+4
-  rts
-
-; ------------------------------------------------------------------------------
-; Phase data tables for "LEVEL" flicker rendering.
-;
-; PhaseChar0/1: glyph codes (index * 5 into hud_font_fonthi).
-;   CH_HUD_6C=15 (l), CH_HUD_65=10 (e), CH_HUD_76=40 (v)
-; PhaseHMP0/1: horizontal motion nibbles for each phase.
-;   $ff in PhaseChar1 = P1 invisible this phase.
-; RESP timing is hardcoded in HudFlickerLine (fixed nops per phase).
-; ------------------------------------------------------------------------------
-PhaseChar0:
-  .byte CH_HUD_6C           ; phase 0: L
-  .byte CH_HUD_20           ; phase 1: placeholder (overridden by tens digit)
-  .byte CH_HUD_20           ; phase 2: space (P0 off)
-
-PhaseChar1:
-  .byte CH_HUD_76           ; phase 0: V
-  .byte CH_HUD_20           ; phase 1: placeholder (overridden by ones digit)
-  .byte CH_HUD_20           ; phase 2: space (P1 off)
-
-PhaseHMP0:
-  .byte $10                  ; phase 0: px6 -> left 1 -> px5
-  .byte $F0                  ; phase 1: px12 -> right 1 -> px13
-  .byte $00                  ; phase 2: px21 -> no adjust
-
-PhaseHMP1:
-  .byte $60                  ; phase 0: px15 -> left 6 -> px9
-  .byte $40                  ; phase 1: px21 -> left 4 -> px17
-  .byte $00                  ; phase 2: not used
-
-; ------------------------------------------------------------------------------
 ; Fine-adjust table for SetObjectXPos. MUST be page-aligned ($xx00): the
 ; indexed load then always crosses a page boundary, provides the 5-cycle
 ; timing the routine depends on for a pixel-accurate RESP0 strobe. Placed at

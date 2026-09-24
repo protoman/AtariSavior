@@ -1,0 +1,206 @@
+After you do this investigation and thinking, if you cannot find the cause of the big then small again bar, I can try to debug, to see the values that bar is actually using.
+
+
+- inimigos
+- morte
+
+- tempo/barra
+
+
+- bombas
+- laser
+- vidas
+
+
+#########################################################################################################################################################################
+A few tasks:
+# position player more to the right, so he is not inside the playfield.
+# the player is moving up when I press left and down when I press right. It should move in all 4 corresponding directions.
+# player sprite color must be yellow (currently black)
+
+# HUD, that already has the grey are on the bottom of the screen, should have those lines, all screen-width centered, with the following formats:
+-----------
+Timer: a yellow horizontal bar, later we will add a timer so part of it starts becoming red.
+Number of Lives: 3 green squares.
+Number of bombs: 5 red squares
+Score: 0000
+-----------
+Remember to follow the architecture of HERO for doing this.
+
+#########################################################################################################################################################################
+
+What is laser made with? A missile, sprites, other?
+I did ask to use player sprite before, because the current implementation does not follow player exact X position, instead it only moves from tile to tile.
+Why did you change it back? Unless you can fix this position problem, we should just change player sprite to draw it.
+
+- laser facing
+
+- laser touch enemy
+
+#########################################################################################################################################################################
+Player sprit do not look like a rectangle with an eye anymore.
+
+Player facing the last direction stopped working, it is always facing right.
+
+
+#########################################################################################################################################################################
+
+Stopped. The flicker on Phase B/C lines means the phase boundary checks are adding cycles that push those scanlines past 76. When you're ready to continue, we can either:
+1. Tune the phase checks (reduce overhead per scanline)
+2. Free more space and go back to the 3-loop-per-tile approach (separate loops with hardcoded GRP0, no phase checks inside loops)
+Waiting for your direction on space freeing.
+
+#########################################################################################################################################################################
+
+So, before implementing this feature, write a detailed plan into a MD file, split in clear steps, each with a checkbox,
+so that, if we have an issue, we can later resume from that point, following that plan. For both options 2 and 3.
+And let me know where the MD file is stored.
+After that, start following the option 2.
+
+
+
+#########################################################################################################################################################################
+
+First, tell me what features are stored in each bank, 0, 1 and 2?
+
+OK, because there was so much done moving parts around from 0 to 2 to free up some space, it is difficult to detect the root cause.
+So let's take note on what did you needed to move around between banks and go back to a functional state before the changes.
+Run the game to check that version is OK.
+After that, before adding the laser feature, let's do the moving and free spacing, each change at a time, testing each step, before adding the laser feature.
+
+#########################################################################################################################################################################
+
+#########################################################################################################################################################################
+TEXT
+#########################################################################################################################################################################
+Each time player finishes a stage, ad 255 points to the score.
+
+=========================================================================================================================================================================
+
+The score is working very well without any flicker, is it possible to use the same technique to draw the level (LV01) text so we have no flicker on it also?
+
+=========================================================================================================================================================================
+Se a anterior não der certo:
+We are drawing each half of the text at a time with the flicker technique, right?
+To improve readbility, we could use a technique that we instead, draw half the lines in one update, and the other half in the other,
+like a TV interlaced more.
+=========================================================================================================================================================================
+
+Add laser and allow to kill enemies.
+When player pushes the fire button, a laser beam, that is a solid line starting from the "eye" in the player sprite,
+must appear. And if this line touches any enemy, the enemy must be removed from the room, and the player gets 50 score points.
+
+=========================================================================================================================================================================
+Bomb
+=========================================================================================================================================================================
+
+=========================================================================================================================================================================
+Fragile Wall
+=========================================================================================================================================================================
+
+=========================================================================================================================================================================
+Fix editor Exists being disabled
+=========================================================================================================================================================================
+
+
+
+
+#########################################################################################################################################################################
+
+#########################################################################################################################################################################
+REFACTOR
+#########################################################################################################################################################################
+Why are you writing to these files? "Edit comparison/lo-a-rad-dragon/bank1.asm".
+Please refactor the code to be better organized and placed only under a "src" folder and use logical names like main, kernel_game, kernel_hud, kernel_score,
+data_tables, font_tables, etc.
+
+
+
+=========================================================================================================================================================================
+
+
+#########################################################################################################################################################################
+
+In the editor, in stage 2, room 2, I can't add a new exit to the bottom area.
+
+
+
+=========================================================================================================================================================================
+
+
+
+Now, I want to add gravity, that will make the player fall when not on ground.
+And add back the jetpack logic, that makes the user move up, with some initial inertia, when he holds the up direction in the joystick.
+
+
+Add sound similar of a jet engine when player pressed up in the joystick.
+
+
+
+In the editor, I can´t place the miner in the right side of the screen.
+
+In the editor, the proportion of the grid should take account the existence of the HUD,
+we previously removed the area of it in the editor, but the size was kept the same, including the area that the HUD used.
+
+
+Why are you still using this file? comparison/lo-a-rad-dragon/bank0.asm
+
+Make snake a rectanble that is twice the player width and half the player height.
+Snake needs a direction, so it needs a mouth like the player
+
+
+OPTIMIZTION:
+ No need to store empty space - it they are being used like this now
+ Room Model
+    # The editor should now have two tabs, Model and Stage
+    # In the Model, you edit only the playfield, with empty spaces or terrain types (Solid Wall, Breakable Wall, Lava Wall, Water Pool, Lava Pool, Magma Fall)
+    # A aba de stages permite escolher o modelo, a cor da fase, e inserir posição de início do player, inimigos, tiles assimétricos, mineiro, etc.
+
+- adicionar laser
+
+- bomba
+
+Spiders go up and down (half a tile) in a web line
+
+Moths go zig-zag (4 tiles) in a senoid up/down movement. it always starts moving first to its right. (simplification)
+
+HUD:
+    Numer of lives
+    Number of bombs
+    Points
+    Timer
+    Upperland Studios Logo
+
+
+
+
+- Start screen (criar desenho)
+    SAVIOR 2600
+    Version 0.1.b1
+    (c) 2026 Upperland Studios
+    Based on Lo! A rad dragon!
+    Made with AI
+
+- lamps and dark rooms
+
+- adicionar bomba
+
+- adicionar paredes de lava
+
+- adicionar lago de lava
+
+- adicionar parede quebrável
+
+- optimização:
+    # só precisa colocar na memória do playfield as paredes que existem
+    # salas que foram iguais, podem ser guardadas uma única vez no jogo, e usadas em diferentes fases.
+
+- adicionar suporte a partes async nas fases
+
+- adicionar movimentação aos inimigos
+
+
+
+
+#########################################################################################################################################################################
+Adicionar doc com agradecimentos ao jogo usado como base e exemplos.

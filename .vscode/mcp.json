@@ -1,0 +1,25 @@
+{
+  "servers": {
+    "codegraph": {
+      "type": "stdio",
+      "command": "/home/iuri/.local/bin/codegraph",
+      "args": [
+        "serve",
+        "--mcp"
+      ]
+    },
+    "context-mode": {
+      "type": "stdio",
+      "command": "/home/iuri/.local/bin/tokless",
+      "args": [
+        "run-mcp",
+        "--context-mode",
+        "/home/iuri/.local/bin/context-mode"
+      ],
+      "env": {
+        "CONTEXT_MODE_PLATFORM": "copilot-vscode",
+        "CONTEXT_MODE_COPILOT_PLUGIN": "1"
+      }
+    }
+  }
+}

@@ -125,9 +125,19 @@ def tile_to_char(value: int) -> str:
     return "." if value == 0 else "#"
 
 
-def rows_from_json(room: dict) -> list[str]:
-    tiles = room.get("tiles", [])
-    width = room.get("width", WIDTH)
+def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
+    # If room has model_id and models are available, look up tiles from model
+    if models_by_id and "model_id" in room:
+        model = models_by_id.get(room["model_id"])
+        if model:
+            tiles = model.get("tiles", [])
+            width = model.get("width", WIDTH)
+        else:
+            tiles = room.get("tiles", [])
+            width = room.get("width", WIDTH)
+    else:
+        tiles = room.get("tiles", [])
+        width = room.get("width", WIDTH)
     if width != WIDTH:
         raise ValueError(f"room {room.get('room_id')}: width {width} != {WIDTH}")
     if len(tiles) != WIDTH * HEIGHT:
@@ -216,21 +226,21 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
         f"{prefix}_START_ROOM = {level.get('start_room', 0)}",
         f"{prefix}_WALL_COLOR = ${wall:02x}",
         f"{prefix}_WALL_COLOR2 = ${wall2:02x}",
-        f"{prefix}_START_X = {px(level.get('start_x', 0), 8)}",
-        f"{prefix}_START_Y = {px(level.get('start_y', 0), 12)}",
+        f"{prefix}_START_X = 32",
+        f"{prefix}_START_Y = 24",
         f"{prefix}_MINER_ROOM = {level.get('miner_room', 0)}",
         f"{prefix}_MINER_X = {px(level.get('miner_x', 0), 8)}",
         f"{prefix}_MINER_Y = {px(level.get('miner_y', 0), 12)}",
         "",
     ]
     lines.append(
-        f"; Room data: one ({room_prefix}<n>TilePF0, ...RoomRowLo) word pair per room,"
+        f"; Room data: one ({room_prefix}<n>TilePF0, ...RoomRects) word pair per room,"
         " indexed by RoomNo.")
     lines.append(f"{prefix}_RoomDataTable:")
     for index, room in enumerate(rooms):
         lines.append(
             f"  .word {room_prefix}{index + 1}TilePF0, "
-            f"{room_prefix}{index + 1}RoomRowLo ; room {index}")
+            f"{room_prefix}{index + 1}RoomRects ; room {index}")
     lines.append("")
     lines.append(
         "; Room connections: up/down/left/right target room index per room ($ff = none).")
@@ -331,7 +341,9 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
 
     table_lines += [
         "",
-        "LEVEL_DATA_STRIDE = 12",
+        "ROOM_NONE = $ff",
+        "",
+        "LEVEL_DATA_STRIDE = 14",
         f"LEVEL_COUNT = {len(levels)}",
         "",
         "; Per-level entry (stride 12): start room/x/y, miner room/x/y, both wall",
@@ -344,15 +356,9 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
             f"  .byte {prefix}_START_ROOM, {prefix}_START_X, {prefix}_START_Y, "
             f"{prefix}_MINER_ROOM, {prefix}_MINER_X, {prefix}_MINER_Y, "
             f"{prefix}_WALL_COLOR, {prefix}_WALL_COLOR2",
-            f"  .word {prefix}_RoomDataTable, {prefix}_RoomConnections",
+            f"  .word {prefix}_RoomDataTable, {prefix}_RoomConnections, {prefix}_RoomEnemies",
         ]
-    table_lines += [
-        "",
-        "; Per-level enemy table base (LEVEL{n}_RoomEnemies). Indexed by Level.",
-        "LevelEnemyTable:",
-    ]
-    for level_n, _level in levels:
-        table_lines.append(f"  .word LEVEL{level_n}_RoomEnemies")
+    table_lines += [""]
     output.write_text("\n".join(table_lines) + "\n")
 
 
@@ -390,10 +396,21 @@ def main(argv: list[str]) -> int:
         print(f"failed to parse {json_path}: {error}", file=sys.stderr)
         return 1
 
+    # Load models from models/models.json relative to the level file
+    models_by_id = {}
+    models_path = json_path.parent / "models" / "models.json"
+    if models_path.exists():
+        try:
+            models_data = json.loads(models_path.read_text())
+            models_list = models_data.get("models_file", models_data).get("models", [])
+            models_by_id = {m["id"]: m for m in models_list}
+        except (OSError, ValueError, KeyError):
+            pass  # No models file or invalid format — fall back to room tiles
+
     level_n = level_number_from_path(json_path) or int(level.get("level_id", 1))
     try:
         for index, room in enumerate(rooms):
-            rows = rows_from_json(room)
+            rows = rows_from_json(room, models_by_id)
             txt = rooms_dir / f"level_{level_n:03d}_room_{index + 1:03d}.txt"
             asm = generated_dir / f"level_{level_n:03d}_room_{index + 1:03d}.asm"
             txt.write_text("\n".join(rows) + "\n")

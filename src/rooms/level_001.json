@@ -1,0 +1,54 @@
+{
+    "level": {
+        "level_id": 1,
+        "name": "Level 1",
+        "wall_r": 112,
+        "wall_g": 40,
+        "wall_b": 0,
+        "wall2_r": 132,
+        "wall2_g": 68,
+        "wall2_b": 20,
+        "start_room": 0,
+        "miner_room": 1,
+        "miner_x": 5.5,
+        "miner_y": 6.0,
+        "rooms": [
+            {
+                "room_id": 0,
+                "model_id": 0,
+                "room_x": 0,
+                "room_y": 0,
+                "enemies": [
+                    {
+                        "type": 2,
+                        "x": 1.0,
+                        "y": 5.0,
+                        "range_min": 0.0,
+                        "range_max": 4.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    }
+                ],
+                "lamps": []
+            },
+            {
+                "room_id": 1,
+                "model_id": 1,
+                "room_x": 0,
+                "room_y": 1,
+                "enemies": [
+                    {
+                        "type": 0,
+                        "x": 30.0,
+                        "y": 5.0,
+                        "range_min": 27.0,
+                        "range_max": 33.0,
+                        "speed": 1.5,
+                        "dir": -1
+                    }
+                ],
+                "lamps": []
+            }
+        ]
+    }
+}
