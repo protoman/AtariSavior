@@ -22,7 +22,7 @@
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("Savior AI Level Editor");
-    app.setOrganizationName("SaviorSDL");
+    app.setOrganizationName("SaviorAI");
 
     editor::MainWindow window;
     window.show();

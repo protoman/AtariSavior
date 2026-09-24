@@ -71,7 +71,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 MainWindow::~MainWindow() {}
 
 void MainWindow::InitGameDataDir() {
-    QSettings settings("SaviorSDL", "LevelEditor");
+    QSettings settings("SaviorAI", "LevelEditor");
     m_gameDataDir = settings.value("gameDataDir").toString();
 
     if (m_gameDataDir.isEmpty() || !QDir(m_gameDataDir).exists()) {
@@ -116,7 +116,7 @@ void MainWindow::SelectGameDataDir() {
 
     if (!dir.isEmpty()) {
         m_gameDataDir = dir;
-        QSettings settings("SaviorSDL", "LevelEditor");
+        QSettings settings("SaviorAI", "LevelEditor");
         settings.setValue("gameDataDir", m_gameDataDir);
         LoadModels();
         PopulateStageCombo();
