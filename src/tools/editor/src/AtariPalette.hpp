@@ -1,5 +1,5 @@
 /*
- * Savior SDL - H.E.R.O. Level Editor
+ * Savior AI - Level Editor
  * Atari 2600 TIA NTSC color palette (128 colors) and picker dialog.
  *
  * The 2600's TIA color byte is structured as `(luminance << 4) | hue`:

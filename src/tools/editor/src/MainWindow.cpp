@@ -1,5 +1,5 @@
 /*
- * Savior SDL - H.E.R.O. Level Editor
+ * Savior AI - Level Editor
  * Copyright (C) 2026 Savior SDL Team
  *
  * This program is free software: you can redistribute it and/or modify
@@ -163,7 +163,7 @@ void MainWindow::SaveModels() {
 }
 
 void MainWindow::SetupUI() {
-    setWindowTitle("Savior SDL - H.E.R.O. Level Editor");
+    setWindowTitle("Savior AI - Level Editor");
     resize(1200, 800);
 
     QWidget* centralWidget = new QWidget(this);
@@ -618,7 +618,7 @@ void MainWindow::PerformUndo() {
 
 void MainWindow::UpdateWindowTitleAndUndoState() {
     bool modified = IsModified();
-    QString title = "Savior SDL - H.E.R.O. Level Editor";
+    QString title = "Savior AI - Level Editor";
     if (!m_currentFilePath.isEmpty()) {
         title += " - " + m_currentFilePath;
     }
@@ -744,7 +744,7 @@ void MainWindow::NewLevel() {
 }
 
 void MainWindow::OpenLevel() {
-    QString path = QFileDialog::getOpenFileName(this, "Open H.E.R.O. Level JSON", m_gameDataDir, "JSON Level Files (*.json)");
+    QString path = QFileDialog::getOpenFileName(this, "Open S.A.V.I.O.R. Level JSON", m_gameDataDir, "JSON Level Files (*.json)");
     if (path.isEmpty()) return;
 
     hero::LevelData loaded;
@@ -775,7 +775,7 @@ void MainWindow::SaveLevel() {
 
 void MainWindow::SaveLevelAs() {
     QString defaultName = QString("level_%1.json").arg(m_levelData.level_id, 2, 10, QChar('0'));
-    QString path = QFileDialog::getSaveFileName(this, "Save H.E.R.O. Level JSON", QDir(m_gameDataDir).filePath(defaultName), "JSON Level Files (*.json)");
+    QString path = QFileDialog::getSaveFileName(this, "Save S.A.V.I.O.R. Level JSON", QDir(m_gameDataDir).filePath(defaultName), "JSON Level Files (*.json)");
     if (path.isEmpty()) return;
 
     m_currentFilePath = path;

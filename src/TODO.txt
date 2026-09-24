@@ -1,27 +1,42 @@
-- lamps and dark rooms
+#########################################################################################################################################################################
+Special Aerial Vehicle Infiltration Operations Rescue
+#########################################################################################################################################################################
+Eorley Savior.
 
-Let's implement the lamp object that already exists in the editor.
-In the game, it should appear as a white square (same size as the player, enemies, etc).
-When the player touches the lamp, it crashes, causing the room to become dark and the lamp and enemies shows as a medium grey color.
-When the room is dark, playfield to become black, like the background.
-The lamp should remain crashed, until level is finished or the player looses all his lifes.
-When a bomb is active in a dark room, the playfield should appear as dark grey until it exploded, when it goes back to black.
+#########################################################################################################################################################################
+
+
+OK, we are carring a lot of information in this session, maybe it is time to cleanup and start a new one.
+Do you think it is a good idea?
+Anything you want to record before closing this session, information that could be useful for the future development?
+
+
+- fly sound
+    # Add sound similar of an old two-stroke combustion engine, when player pressed up in the joystick.
+    # fix sounds tone
 
 - laser
-
-- points killing enemies
+    # sound
+    # player facing direction
+    # kill enemies on touch
 
 - points finishing stage
 
-- moth movement
+- moth movement (4 tiles left/right)
+
+- spider movement (1 tile up/downb)
 
 - non mirrored walls
 
+- better sprites.
 
-Editor:
-não pode ter mais que 2 elementos (inimigo, mineiro, balsa) na mesma tela.
-Não pode ter mais de 1 elemento na mesma linha.
+- moth animation
 
+- tentacle animation
+
+- bat animation (2px up down)
+
+#########################################################################################################################################################################
 
 # laser to kill the enemies and show a beam coming from the player eye (we tried this before and was tricky, that is why we started a new kernel from the scratch).
 # add in editor's magma walls terrain that blink and kill the player if he touches it
@@ -50,30 +65,10 @@ After that, start following the option 2.
 
 #########################################################################################################################################################################
 
-First, tell me what features are stored in each bank, 0, 1 and 2?
-
-OK, because there was so much done moving parts around from 0 to 2 to free up some space, it is difficult to detect the root cause.
-So let's take note on what did you needed to move around between banks and go back to a functional state before the changes.
-Run the game to check that version is OK.
-After that, before adding the laser feature, let's do the moving and free spacing, each change at a time, testing each step, before adding the laser feature.
-
-#########################################################################################################################################################################
 
 #########################################################################################################################################################################
 TEXT
 #########################################################################################################################################################################
-Each time player finishes a stage, ad 255 points to the score.
-
-=========================================================================================================================================================================
-
-The score is working very well without any flicker, is it possible to use the same technique to draw the level (LV01) text so we have no flicker on it also?
-
-=========================================================================================================================================================================
-Se a anterior não der certo:
-We are drawing each half of the text at a time with the flicker technique, right?
-To improve readbility, we could use a technique that we instead, draw half the lines in one update, and the other half in the other,
-like a TV interlaced more.
-=========================================================================================================================================================================
 
 Add laser and allow to kill enemies.
 When player pushes the fire button, a laser beam, that is a solid line starting from the "eye" in the player sprite,
@@ -87,30 +82,7 @@ must appear. And if this line touches any enemy, the enemy must be removed from 
 #########################################################################################################################################################################
 REFACTOR
 #########################################################################################################################################################################
-Why are you writing to these files? "Edit comparison/lo-a-rad-dragon/bank1.asm".
-Please refactor the code to be better organized and placed only under a "src" folder and use logical names like main, kernel_game, kernel_hud, kernel_score,
-data_tables, font_tables, etc.
 
-
-
-=========================================================================================================================================================================
-
-
-#########################################################################################################################################################################
-
-In the editor, in stage 2, room 2, I can't add a new exit to the bottom area.
-
-
-
-=========================================================================================================================================================================
-
-
-
-Now, I want to add gravity, that will make the player fall when not on ground.
-And add back the jetpack logic, that makes the user move up, with some initial inertia, when he holds the up direction in the joystick.
-
-
-Add sound similar of a jet engine when player pressed up in the joystick.
 
 
 
