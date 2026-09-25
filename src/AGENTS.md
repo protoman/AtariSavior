@@ -188,7 +188,7 @@ stella -debug savior.bin # debugger
 - [x] VSYNC/VBLANK/Overscan frame timing
 - [x] Kernel: 12 tile rows × 12 scanlines + 48 HUD band
 - [x] Cave playfield with reflected mode (CTRLPF D0=1)
-- [x] Player sprite (GRP0) — 8×8 square
+- [x] Player sprite (GRP0) — 8×12, per-row colors, 2-frame jet animation, REFP0 mirror
 - [x] Joystick movement (up/down/left/right)
 - [ ] Fix cave shape (currently vertical bars — needs proper walls)
 - [ ] Proper wall collision bounds
@@ -314,17 +314,16 @@ stella -debug savior.bin # debugger
    variables. Example: $E0-$EB was used by bank0's level data pointers,
    causing crashes when bank1 wrote digit pointers there.
 
-6. **CRITICAL: ZP Stack Collision ($F8-$FF)** — The2600's128-byte RAM
+ 6. **CRITICAL: ZP Stack Collision ($F8-$FF)** — The2600's128-byte RAM
    mirrors at $0100-$01FF (stack page). The stack pointer starts at $FF
-   and grows downward. Any ZP buffer at $F8-$FF (like PlayerGrp0) shares
+   and grows downward. Any ZP buffer at $F8-$FF shares
    physical RAM with the stack. **JSR pushes return addresses to $FF-$FE,
    overwriting data at those ZP addresses.** If you copy data to a ZP
    buffer and then call JSR, the return address overwrites the buffer.
-   Rule: copy to ZP buffers at $F8-$FF ONLY AFTER all JSR calls are done,
-   just before the code that reads the buffer. Example: player sprite data
-   was copied to PlayerGrp0 ($F8-$FF) before LoadPFBuffer/SelectActiveObject
-   JSR calls — the return addresses overwrote sprite rows 6-7, causing
-   extra rendering artifacts.
+   Rule: do NOT put buffers at $F8-$FF at all — the stack owns it.
+   (Historical: the old PlayerGrp0 buffer sat there and JSRs overwrote
+   sprite rows 6-7; removed 2026-09-24 — kernel now reads ROM via
+   `Grp0Ptr` with no ZP copy.)
 
 7. **Incremental Development** — When making big changes, ALWAYS divide
    the work into small steps and test after each one. Each step should
@@ -373,7 +372,7 @@ PF0/PF1/PF2 define the left half; TIA mirrors the right.
 |---------|------|-------------|
 | ROM size | 8K (F8 bankswitch) | 16K (F6 bankswitch) |
 | PF writes | Per-scanline (ROM tables) | Per-tile-row (simpler) |
-| Sprite data | `(zp),Y` from ROM | ZP indexed (`PlayerGrp0,Y`) |
+| Sprite data | `(zp),Y` from ROM | `(zp),Y` from ROM (`(Grp0Ptr),Y`, frame picked in VBLANK) |
 | VDEL | Used for sprite pipeline | Not used (simpler) |
 | Enemies | Yes (miner + enemies) | Not yet |
 | Rooms | Multiple connected rooms | Single hardcoded room |
@@ -421,6 +420,31 @@ div15 loop — the comparison branch's SetObjectXPos is the reference.
 **PF0 bit order (2026-09-21):** TIA PF0 has bit 4 = leftmost pixel, NOT bit 7.
 The mapping `0x10 << col` is correct. Do NOT "fix" this — it was verified
 empirically and matches the comparison branch.
+
+**WSYNC off-by-one overrun — RECURRENCE (2026-09-25):** This exact bug class
+has bitten us multiple times (see the `.Line` comment history: "jmp on the hot
+path" double-height sprite, and now this). One-cycle-late `sta WSYNC` in the
+kernel `.Line` loop stalls a FULL scanline per affected line.
+
+- **Symptom → cause map:** player on same row as enemy/snake → that cave row
+  stretches down, HUD pushed down, enemy renders 2× tall (duplicated scanlines);
+  GRP1 object flicker (`SelectActiveObject` rotation) makes the overlap
+  present only on SOME frames → frame length alternates 262/274 → screen
+  oscillates up/down by ~12 lines (one tile) until the object disappears
+  (e.g. bomb explodes). If you see these, suspect cycle overrun FIRST.
+- **Root cause:** worst path (player sprite in-range + GRP1 object in-range)
+  body was 66c, but the `.Line` budget comment claimed 60c — `sta WSYNC`
+  started at c74 and its write landed on cycle 76 = one cycle late. The
+  comment had an off-by-one; nobody recounted after the sprite code grew.
+- **Fix:** running-Y — seed `Y = A0 = Scanline - RoomY` ONCE at kernel entry
+  (`sec/sbc RoomY/tay`), let `.Line`'s `iny` advance it (Y after the graphics
+  write = next line's A0). Drops the per-line `lda Scanline/sec/sbc/tay`
+  (−10c): worst path 66c → 56c, WSYNC write ≈ c66 (10c margin). Row-11 band
+  jsr clobbers Y → `tya/pha ... pla/tay` around it (stack balanced).
+- **RULE: never trust cycle counts written in comments.** After ANY change to
+  `.Line`/kernel, recount the worst path from `bank0.lst` (instruction
+  addresses, include branch page-cross) and keep the WSYNC write ≤ c73.
+  Comment budget that is stale by 6 cycles = bug shipped twice.
 
 **When debugging collision misalignment:**
 1. First check if SetObjectXPos matches the comparison branch exactly

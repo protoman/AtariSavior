@@ -27,7 +27,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 5. **Do not touch from bank1 (live score/bomb):** `$F3-$F5` score,
    `$F6` BombX, `$F7` BombTimer, `$F0` PlayerBombs (read-only in bank1 HUD),
    `$F1` BombSnd (bank1 must not write), `$F2` RoomWallMask (bank1 must not write),
-   `$F8-$FF` PlayerGrp0 + stack mirror,
+    `$F8-$FF` stack mirror only (PlayerGrp0 buffer removed 2026-09-24 — never buffer here),
    `$AD` bank1 `Temp` (bank0 `TickCounter`), `$BD-$C2` EnemyRam,
    `$B5` BombPacked, `$85` BombY.
 
@@ -121,7 +121,7 @@ Sequential allocation ends at `$BC` (next would be `$BD`).
 | $F0 | **PlayerBombs** | Bombs left 0..5 — bytes $F0-$F2 also ColupfBuf[9..11]; kernel restores from collision temps at `.AfterRows` |
 | $F1 | **BombSnd** | Frames of bomb audio left (S10; 0=silent); same save/restore |
 | $F2 | **RoomWallMask** | Packed destroyed thin-wall mask until stage leave: bits0-3 room0 rects, bits4-7 room1 rects (b3-6 of BombPacked saved/restored in EnterRoom; LoadLevel zeros it); same save/restore |
-| $F8-$FF | PlayerGrp0 | 8 player rows **+ stack mirror** — copy only after last JSR |
+| $F8-$FF | *(free)* | **stack mirror only** — PlayerGrp0 removed (kernel reads ROM via `Grp0Ptr`); never put a buffer here |
 
 Bank1 HUD `$E0-$EF` score ptrs/bar temps overlap ColupfBuf — safe because
 bank1 runs after cave kernel (bombs already restored); VBLANK rebuilds ColupfBuf.
