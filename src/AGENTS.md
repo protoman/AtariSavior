@@ -549,7 +549,6 @@ Rationale: GRP1 is one sprite — more simultaneous objects → more flicker
 
 ### Pending for next session
 
-- **Lamp W6:** user Stella verify not done yet — ask before launching.
 - **TODO.txt** was modified (reordered, added "better sprites") — not by us;
   check with user before staging.
 - **BombEnemyBlast can kill lamps** (type 5): pre-existing bug — no type

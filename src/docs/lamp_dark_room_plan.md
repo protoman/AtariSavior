@@ -65,7 +65,7 @@ VBLANK Temp: if dark → `$00` except existing state=2 blink path.
 - [x] **W3** `SelectActiveObject` dark grey for enemies/lamp; `CheckEnemyHit` type-5 path (`CEH_Lamp` = `SetRoomDark`+`rts`, no `DeadEnemyIdx`/life).
 - [x] **W4** VBLANK Temp dark → black (state=2 blink still wins); `BuildColupF` dark → all rows `$00`/fuse `$04`.
 - [x] **W5** `./build.sh` green + assert pack ALL PASS — Overscan moved `$F143`→**`$F14D`**, bank1 `jmp $F14D` synced, folds byte-identical, sizes 4×4096+16384, converter lamp probe, no new ZP EQU.
-- [ ] **W6** User Stella verify (ask before launch). **No lamp in any room yet** — place one in editor + rebuild first.
+- [x] **W6** User Stella verify — **done** (2026-09-24).
 
 ## Ambiguities (defaults chosen)
 
