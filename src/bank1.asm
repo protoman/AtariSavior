@@ -695,7 +695,7 @@ BallXTable:             ; B=0..120; = max(4, actual body red@); mono
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F14D           ; Overscan in bank0 (must match bank0 ToGameStub)
+    jmp $F15D           ; Overscan in bank0 (must match bank0 ToGameStub)
 
 ; ========================================================================
 ; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing

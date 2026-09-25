@@ -191,9 +191,6 @@ PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row ($DB-$E6)
                                 ; during VBLANK+kernel, restored before HUD.
 ColupfBuf       = $E7           ; 12 bytes: final COLUPF per tile row (stripe+hot)
 
-; Player sprite ZP buffer (copied from ROM during VBLANK, read by kernel)
-PlayerGrp0      = $F8           ; 8 bytes: player sprite rows (computed per frame)
-
 ; Enemy RAM shadow — live X/(packed flags). ROM records are read-only.
 ; Sequential vars end at $BC; free ZP is $BD-$C2 (6) used by EnemyRam*.
 ; Score lives at $F3-$F5 only ($F6/$F7 = BombX/BombTimer). SelectActiveObject/
@@ -205,8 +202,9 @@ EnemyRamP       = $C2           ; bits0-3 moth phase; bits4-7 spider vdir (1=dow
 ; ==============================================================================
 ; Constants
 ; ==============================================================================
-PLAYER_HEIGHT   = 8             ; sprite height in scanlines
-PLAYER_WIDTH    = 4             ; sprite width in pixels
+PLAYER_HEIGHT   = 8             ; GRP1 object (enemy/miner) height; player uses PLAYER_SPRITE_H
+PLAYER_SPRITE_H = 12            ; player sprite height in scanlines (8x12)
+PLAYER_WIDTH    = 8             ; player sprite width in pixels (8x12)
 ENEMY_WIDTH     = 4             ; snake GRP1 width ($f0 = 4 px) — flush-out span
 TILE_COLUMNS    = 20            ; columns per half (reflected playfield)
 TILE_ROWS       = 12            ; number of playable tile rows
@@ -217,9 +215,9 @@ VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × LINES_PER_TILE)
 
 ; Player bounds (must stay inside cave walls)
 PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
-PLAYER_MAX_X    = 163           ; sprite flush with right edge (HERO)
+PLAYER_MAX_X    = 159           ; width-8 sprite: visible right edge = RoomX -> 159
 PLAYER_MIN_Y    = 0
-PLAYER_MAX_Y    = 136           ; CAVE_LINES - PLAYER_HEIGHT + 1
+PLAYER_MAX_Y    = 132           ; CAVE_LINES - PLAYER_SPRITE_H
 
 ; Jetpack physics constants (HERO-style)
 GRAVITY         = $0008         ; gravity per frame (signed 16-bit, + = down)
@@ -235,7 +233,13 @@ FACING_RIGHT    = 0
 FACING_LEFT     = 1
 
 ; Colors (emulator-aware: hue<<4 | luma<<1)
-COLOR_PLAYER    = $1E           ; hue 1 luma 7 = bright yellow
+COLOR_PLAYER    = $48           ; red = sprite row0: stale VBLANK color on the
+                                ; line before the sprite must match row0 or a
+                                ; gold fringe shows above the sprite
+; Player sprite per-row colors (PlayerColTable)
+COLOR_P_RED     = $48           ; hue 4 luma 4 = red body
+COLOR_P_YELLOW  = $1E           ; hue 1 luma 7 = yellow face
+COLOR_P_GRAY    = $08           ; hue 0 luma 4 = grey pack + boots
 COLOR_CAVE_BG   = $00           ; black interior
 COLOR_CAVE_WALL = $84           ; hue 8 luma 2 = dark grey-blue
 COLOR_HUD_BG    = $06           ; hue 0 luma 3 = grey
@@ -394,24 +398,29 @@ StartFrame:
     sta WSYNC
     sta HMOVE
 
-    ; --- Copy player sprite to ZP (AFTER JSR calls to avoid stack overwrite) ---
+    ; --- Facing: mirror sprite in hardware via REFP0 bit3 ---
+    ; bank1 HUD writes REFP0=0 during the HUD band, so rewrite it every frame.
     lda PlayerDir
-    bne .CopyLeft
-    lda #<PlayerSpriteRight
-    ldy #>PlayerSpriteRight
-    jmp .DoCopySprite
-.CopyLeft:
-    lda #<PlayerSpriteLeft
-    ldy #>PlayerSpriteLeft
-.DoCopySprite:
+    asl
+    asl
+    asl                         ; FACING_LEFT(1) -> $08, FACING_RIGHT(0) -> $00
+    sta REFP0
+
+    ; --- Sprite frame: legs flutter at 15 Hz while the jet burns ---
+    lda JetPower
+    beq .FrameA
+    lda TickCounter
+    and #%00000100
+    beq .FrameA
+    lda #<PlayerSpriteB
+    ldy #>PlayerSpriteB
+    jmp .SetGrpPtr
+.FrameA:
+    lda #<PlayerSpriteA
+    ldy #>PlayerSpriteA
+.SetGrpPtr:
     sta Grp0Ptr
     sty Grp0PtrHi
-    ldy #7
-.CopySpriteLoop:
-    lda (Grp0Ptr),Y
-    sta PlayerGrp0,Y
-    dey
-    bpl .CopySpriteLoop
 
     ; --- Wait for VBLANK timer ---
 .WaitVBLANK:
@@ -450,6 +459,10 @@ StartFrame:
 
     lda #0
     sta Scanline
+    sec
+    sbc RoomY                   ; A = -RoomY = A0 at scanline 0
+    tay                         ; running-Y: Y = A0 for the next .Line (10c/line
+                                ; cheaper than recomputing Scanline-RoomY each line)
     ldx #0                      ; tile row counter (0-11)
 
 .Row:
@@ -476,9 +489,14 @@ StartFrame:
     and #%00000011
     cmp #2
     beq .RowSkipBand
+    tya
+    pha                         ; running-Y: LoadRoomBottomColor clobbers Y
     jsr LoadRoomBottomColor
-    beq .RowSkipBand
+    beq .BandRestoreY           ; band off (0): keep Temp, no store
     sta COLUBK
+.BandRestoreY:
+    pla
+    tay
 .RowSkipBand:
 
     ; --- Init scanline counter for this row ---
@@ -489,19 +507,33 @@ StartFrame:
     sta WSYNC
 
 .Line:
-    ; --- GRP0 FIRST (must be within HBLANK, ~22 cycles) ---
-    lda Scanline
-    sec
-    sbc RoomY                   ; A = Scanline - RoomY
-    cmp #PLAYER_HEIGHT
-    bcs .NoSprite               ; branch if A >= PLAYER_HEIGHT (not visible)
-    tay                         ; Y = sprite row index (0-7)
-    lda PlayerGrp0,Y            ; 4c — ZP indexed read
-    jmp .WriteGrp0
-.NoSprite:
-    lda #0
-.WriteGrp0:
+    ; --- Player sprite: color for THIS line, graphics byte for NEXT line ---
+    ; GRP0 written on line S displays on line S+1 (latched at the sprite's
+    ; window start after the write) — index graphics with A0+1 ($ff wraps
+    ; to 0 = row0 on the line before the sprite).
+    ; Running-Y: Y = A0 = Scanline - RoomY is computed ONCE at kernel entry
+    ; (sec/sbc RoomY/tay); .Line's iny advances it (Y = A0+1 after the
+    ; graphics write = A0 of the next line). Nothing between rows may touch
+    ; Y — the row-11 band jsr (LoadRoomBottomColor clobbers Y) pushes/pops it.
+    ; Cycle budget from .Line (body starts c8, dec/bne already paid):
+    ;   color+graphics hot = 25c, GRP1-in-range = 26c, inc = 5c
+    ;   worst = 56c -> sta WSYNC at c64 (write c66) — 10c margin. FITS.
+    ; The old Scanline/sec/sbc/tay prefix cost 10c more (body 66c -> WSYNC
+    ; write on cycle 76 = one cycle late): WSYNC stalled a full line per
+    ; overlapping scanline — stretched cave row, HUD pushed down, and with
+    ; GRP1 flicker rotation the frame length alternated (one-tile oscillation).
+    ; Keep the hot path at <= ~68c: an overrun duplicates the scanline.
+    cpy #PLAYER_SPRITE_H
+    bcs .GrpSkip                ; A0 >= 12 (incl $ff): no color this line
+    lda PlayerColTable,Y        ; 4c — per-row color from ROM
+    sta COLUP0                  ; COLUP0 has no latch: applies to this line
+.GrpSkip:
+    iny                         ; Y = A0+1 ($ff wraps to 0 = sprite row 0)
+    cpy #PLAYER_SPRITE_H
+    bcs .GrpZero                ; Y >= 12: blank (row11 shows via line10)
+    lda (Grp0Ptr),Y             ; 5c — byte for the NEXT scanline
     sta GRP0
+.Grp1:
 
     ; --- GRP1 SECOND (object/enemy sprite) ---
     lda ActiveObjectOn
@@ -529,6 +561,10 @@ StartFrame:
     cpx #TILE_ROWS
     beq .AfterRows
     jmp .Row
+.GrpZero:                       ; dead space: entered only by bcs from .Line
+    lda #0                      ; (nothing falls through `jmp .Row`)
+    sta GRP0
+    jmp .Grp1
 .AfterRows:
 
     ; --- Restore bombs clobbered by ColupfBuf ($F0-$F2) before HUD/overscan ---
@@ -1346,27 +1382,23 @@ CheckMinerPickup:
     lda RoomNo
     cmp LevelMinerRoom
     bne .CMPDone                ; not in miner's room
-    ; Check X overlap: |RoomX - MinerX| < PLAYER_WIDTH
+    ; X overlap: player [RoomX, +7] vs miner [MinerX, +3] — exact asymmetric
+    ; accept iff RoomX - MinerX in [-7, +3]  (add 7, compare 11)
     lda RoomX
     sec
     sbc MinerX
-    bcs .CMPXAbs
-    eor #$ff
     clc
-    adc #1
-.CMPXAbs:
-    cmp #PLAYER_WIDTH
+    adc #PLAYER_WIDTH - 1
+    cmp #PLAYER_WIDTH + ENEMY_WIDTH - 1
     bcs .CMPDone                ; no X overlap
-    ; Check Y overlap: |RoomY - MinerY| < PLAYER_HEIGHT
+    ; Y overlap: player [RoomY, +11] vs miner [MinerY, +7]
+    ; accept iff RoomY - MinerY in [-11, +7]  (add 11, compare 19)
     lda RoomY
     sec
     sbc MinerY
-    bcs .CMPYAbs
-    eor #$ff
     clc
-    adc #1
-.CMPYAbs:
-    cmp #PLAYER_HEIGHT
+    adc #PLAYER_SPRITE_H - 1
+    cmp #PLAYER_SPRITE_H + PLAYER_HEIGHT - 1
     bcs .CMPDone                ; no Y overlap
     ; Pickup! Advance to next level
     inc Level
@@ -1594,27 +1626,21 @@ CEH_HasMore:
     lda (EnemyDataLo),Y
     sta ActiveObjectY
     ldy EnemyIndex              ; restore loop index
-    ; Check X overlap: |RoomX - ActiveObjectX| < PLAYER_WIDTH
+    ; X overlap: player [RoomX, +7] vs enemy [ActiveObjectX, +3] — exact
     lda RoomX
     sec
     sbc ActiveObjectX
-    bcs .CEHXAbs
-    eor #$ff
     clc
-    adc #1
-.CEHXAbs:
-    cmp #PLAYER_WIDTH
+    adc #PLAYER_WIDTH - 1
+    cmp #PLAYER_WIDTH + ENEMY_WIDTH - 1
     bcs CEHNext                ; no X overlap
-    ; Check Y overlap
+    ; Y overlap: player [RoomY, +11] vs enemy [ActiveObjectY, +7] — exact
     lda RoomY
     sec
     sbc ActiveObjectY
-    bcs .CEHYAbs
-    eor #$ff
     clc
-    adc #1
-.CEHYAbs:
-    cmp #PLAYER_HEIGHT
+    adc #PLAYER_SPRITE_H - 1
+    cmp #PLAYER_SPRITE_H + PLAYER_HEIGHT - 1
     bcs CEHNext                ; no Y overlap
         ; Lamp (type 5): crash → RoomDarkMask; lamp stays in rotation (grey), no life
     ldx EnemyIndex
@@ -1810,17 +1836,6 @@ BombSndExplode:
     sta AUDF0
     lda #10
     sta AUDV0
-    rts
-
-UpdateBombSound:
-    lda BombSnd
-    beq .UBSSilence
-    dec BombSnd
-    bne .UBSDone
-.UBSSilence:
-    lda #0
-    sta AUDV0
-.UBSDone:
     rts
 
 ; ------------------------------------------------------------------------------
@@ -2060,27 +2075,41 @@ BombClearMask:
     .byte $7F, $BF, $DF, $EF, $F7, $FB, $FD, $FE ; col 4-11 (PF1)
     .byte $FE, $FD, $FB, $F7, $EF, $DF, $BF, $7F ; col 12-19 (PF2)
 
-; --- Player sprites: 8×8, 4 pixels wide (bits 7-4) ---
-; Row 2 has the "eye" notch to show facing direction.
-PlayerSpriteRight:
-    .byte %11110000             ; row 0
-    .byte %11110000             ; row 1
-    .byte %11000000             ; row 2 — eye on right
-    .byte %11110000             ; row 3
-    .byte %11110000             ; row 4
-    .byte %11110000             ; row 5
-    .byte %11110000             ; row 6
-    .byte %11110000             ; row 7
+; --- Player sprites: 8x12, all 8 pixels wide (bit7 = leftmost pixel) ---
+; Frame A = normal, frame B = jet legs (rows 7-8 differ; 3 pixels changed).
+; Per-row colors in PlayerColTable (RED/RED/YELLOW/RED/GRAY/RED/.../BLACK/BLACK).
+PlayerSpriteA:
+    .byte %00111100             ; row 0
+    .byte %01111110             ; row 1
+    .byte %01111000             ; row 2 — yellow face
+    .byte %00111100             ; row 3
+    .byte %01111100             ; row 4 — grey pack
+    .byte %11011110             ; row 5
+    .byte %11011110             ; row 6
+    .byte %00011100             ; row 7 — frame A
+    .byte %00011000             ; row 8 — frame A
+    .byte %00011000             ; row 9
+    .byte %00011100             ; row 10 — black boots
+    .byte %00111100             ; row 11 — black boots
 
-PlayerSpriteLeft:
-    .byte %11110000             ; row 0
-    .byte %11110000             ; row 1
-    .byte %00110000             ; row 2 — eye on left
-    .byte %11110000             ; row 3
-    .byte %11110000             ; row 4
-    .byte %11110000             ; row 5
-    .byte %11110000             ; row 6
-    .byte %11110000             ; row 7
+PlayerSpriteB:
+    .byte %00111100             ; row 0
+    .byte %01111110             ; row 1
+    .byte %01111000             ; row 2 — yellow face
+    .byte %00111100             ; row 3
+    .byte %01111100             ; row 4
+    .byte %11011110             ; row 5
+    .byte %11011110             ; row 6
+    .byte %11011100             ; row 7 — frame B
+    .byte %01011000             ; row 8 — frame B
+    .byte %00011000             ; row 9
+    .byte %00011100             ; row 10
+    .byte %00111100             ; row 11
+
+PlayerColTable:
+    .byte COLOR_P_RED, COLOR_P_RED, COLOR_P_YELLOW, COLOR_P_RED
+    .byte COLOR_P_GRAY, COLOR_P_RED, COLOR_P_RED, COLOR_P_RED
+    .byte COLOR_P_RED, COLOR_P_RED, COLOR_P_GRAY, COLOR_P_GRAY
 
 ; --- Level data ---
 ; Generated from level JSON via tools/convert_level.py.
@@ -2195,7 +2224,7 @@ PlayerHitsMap:
     stx CollisionCellY          ; top tile row
     clc
     lda RoomY
-    adc #PLAYER_HEIGHT - 1
+    adc #PLAYER_SPRITE_H - 1
     jsr YToCellRow
     stx CollisionEndY           ; bottom tile row
 
@@ -2284,7 +2313,7 @@ PlayerHitsMap:
     cmp CollisionCellX          ; rect.x > max_col?
     beq .colOk
     bcc .colOk
-    jmp .nextRect
+    bcs .nextRect               ; A > X here (flags unchanged by beq/bcc)
 .colOk:
     sta CollisionX              ; save rect.x for addition
     iny
@@ -2302,7 +2331,7 @@ PlayerHitsMap:
     cmp CollisionEndY           ; rect.y > bottom_row?
     beq .rowOk
     bcc .rowOk
-    jmp .nextRect
+    bcs .nextRect               ; A > Y here (flags unchanged by beq/bcc)
 .rowOk:
     iny
     iny                         ; Y = base + 3 (rect.h)
@@ -2594,15 +2623,15 @@ LoadRoomBottomColor:
 
 ; ------------------------------------------------------------------------------
 ; CheckBandTouch — overscan: if band on and RoomY in bottom tile row → life.
-; Bottom row starts at scanline 132; sprite origin RoomY >= 125 enters it
-; (125 + PLAYER_HEIGHT - 1 = 132). Same path as hot/enemy: lose life, then
+; Bottom row starts at scanline 132; sprite origin RoomY >= 121 enters it
+; (121 + PLAYER_SPRITE_H - 1 = 132). Same path as hot/enemy: lose life, then
 ; respawn 12 scanlines up (min 0).
 ; ------------------------------------------------------------------------------
 CheckBandTouch:
     jsr LoadRoomBottomColor
     beq .CBTdone                ; band off
     lda RoomY
-    cmp #125
+    cmp #121
     bcc .CBTdone                ; above band
     jsr LoseLifeBand
 .CBTdone:
@@ -2743,6 +2772,18 @@ BuildColupF:
     cpx #TILE_ROWS
     bne .BCFdarkLoop
 .BCFdarkDone:
+    rts
+
+; Moved here (after fold pads) to keep pre-pad code under $FC68.
+UpdateBombSound:
+    lda BombSnd
+    beq .UBSSilence
+    dec BombSnd
+    bne .UBSDone
+.UBSSilence:
+    lda #0
+    sta AUDV0
+.UBSDone:
     rts
 
 ; Pad to fineAdjustTable
