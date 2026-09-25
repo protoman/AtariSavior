@@ -225,6 +225,8 @@ PLAYER_MAX_Y    = 136           ; CAVE_LINES - PLAYER_HEIGHT + 1
 GRAVITY         = $0008         ; gravity per frame (signed 16-bit, + = down)
 JET_MAX         = $20           ; max jet thrust accumulator
 MAX_FALL        = $0200         ; max fall speed (positive = down)
+JET_AUD_BASE    = $0F           ; engine AUDF base: freq = base - JetPower/8 - sputter
+JET_AUD_VOL     = $08           ; engine volume while Up is held
 
 
 
@@ -772,6 +774,9 @@ EndInputCheck:
 
     ; --- Bomb audio: hold registers while BombSnd > 0, else silence ---
     jsr UpdateBombSound
+
+    ; --- Jet engine audio (channel 1): buzz while Up is held ---
+    jsr UpdateJetSound
 
     ; --- Decrement game timer (60 frames/step × 120 = 120s) ---
     dec TickCounter
@@ -2345,6 +2350,46 @@ ToGameStub:
     lda #0
     sta $1FF6                     ; select bank0 (game)
     jmp Overscan                 ; return to bank0 after HUD band
+
+; ------------------------------------------------------------------------------
+; Jet engine audio (channel 1) — old two-stroke combustion buzz.
+; Re-reads SWCHA directly (Temp may be clobbered by overscan subroutines).
+; AUDF = JET_AUD_BASE - JetPower/8 - (TickCounter&1):
+;   - JetPower/8 (0..4) revs the pitch up as thrust ramps
+;   - frame-parity wobble (+0/+1) gives the put-put sputter at 30 Hz
+; Channel 0 stays free for bomb blips.
+; After fold pads to keep main code under $FC68.
+; ------------------------------------------------------------------------------
+UpdateJetSound:
+    lda SWCHA
+    and #%00010000              ; D4 = up (0 = pressed)
+    beq .JetOn
+    lda #0                      ; throttle off -> mute engine
+    sta AUDV1
+    rts
+.JetOn:
+    lda #1                      ; 4-bit poly = raspy engine buzz
+    sta AUDC1
+    lda JetPower
+    lsr
+    lsr
+    lsr                         ; JetPower/8 = 0..4 (revs with thrust)
+    eor #$ff
+    clc
+    adc #1                      ; A = -(JetPower/8)
+    clc
+    adc #JET_AUD_BASE           ; A = base - JetPower/8
+    tax
+    lda TickCounter
+    and #1
+    beq .JetWob
+    dex                         ; parity wobble -1 every other frame (30 Hz sputter)
+.JetWob:
+    txa
+    sta AUDF1
+    lda #JET_AUD_VOL
+    sta AUDV1
+    rts
 
 ; ------------------------------------------------------------------------------
 ; AddScore — add BCD amount in A (e.g. #$50, #$75) to HUD score.
