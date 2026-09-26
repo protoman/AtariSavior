@@ -5,13 +5,14 @@ LEVEL2_WALL_COLOR2 = $c4
 LEVEL2_START_X = 32
 LEVEL2_START_Y = 24
 LEVEL2_MINER_ROOM = 1
-LEVEL2_MINER_X = 44
+LEVEL2_MINER_X = 51
 LEVEL2_MINER_Y = 72
 
-; Room data: one (L2R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo.
+; Room data: one (L2R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
+; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
 LEVEL2_RoomDataTable:
-  .word L2R1TilePF0, L2R1RoomRects ; room 0
-  .word L2R2TilePF0, L2R2RoomRects ; room 1
+  .word M2TilePF0, M2RoomRects ; room 0 (model 2)
+  .word M3TilePF0, M3RoomRects ; room 1 (model 3)
 
 ; Room connections: up/down/left/right target room index per room ($ff = none).
 LEVEL2_RoomConnections:

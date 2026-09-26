@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Convert a 20x12 text room into a HERO-style reflected room include.
+"""Convert a 20x3 text room into a HERO-style reflected room include.
 
-Grid: 20 columns x 12 playable rows + a 4-row grey HUD band below (drawn by
-the kernel, not stored in room data). Each tile is 8 color-clocks wide and 12
-scanlines tall, so the 12 playable rows fill the top 144 lines and the HUD the
+Grid: 20 columns x 3 playable bands + a 48-line grey HUD band below (drawn by
+the kernel, not stored in room data). Each tile is 8 color-clocks wide and 48
+scanlines tall, so the 3 playable bands fill the top 144 lines and the HUD the
 bottom 48 of the 192-line screen. The TIA reflects the 20-bit playfield
 (CTRLPF D0=1), so rooms must be left-right symmetric; the kernel emits one
-PF0/PF1/PF2 triple per tile row, written once per 12-line band.
+PF0/PF1/PF2 triple per tile row, written once per 48-line band.
 
 Emitted data:
   - RoomRects: compressed rectangle list for the 6502 collision code.
@@ -16,14 +16,14 @@ Emitted data:
   - TilePF0/TilePF1/TilePF2: one byte per tile row for the kernel.
 All per-row tables (PF triples) are PADDED to 12 bytes so
 bank0's table arithmetic (+12 / +12 / +24) works unchanged; only the first
-12 entries are drawn.
+3 entries are drawn.
 """
 
 from pathlib import Path
 import sys
 
 WIDTH = 20
-HEIGHT = 12                 # playable tile rows (rows 12-15 are the HUD band)
+HEIGHT = 3                  # playable color bands (HUD is drawn separately)
 TABLE_STRIDE = 12           # padded per-row table size (bank0 index math)
 
 
@@ -120,37 +120,42 @@ def find_rectangles(rows: list[str], solids: str = "#") -> list[tuple[int, int, 
     return rects
 
 
-def emit(rows: list[str], output: Path, prefix: str = "", source: str = "room") -> None:
+def lines(rows: list[str], prefix: str = "", source: str = "room") -> list[str]:
+    """Build the asm lines for a grid (shared by per-room and per-model emission)."""
     triples = [pf_values(row) for row in rows]
     stride = max(TABLE_STRIDE, len(rows))
 
-    lines = [
+    out = [
         f"; Generated from {source}. Do not edit by hand.",
     ]
     if not prefix:
-        lines.append(f"ROOM_TILE_COLUMNS = {WIDTH}")
-        lines.append(f"ROOM_TILE_ROWS = {len(rows)}")
+        out.append(f"ROOM_TILE_COLUMNS = {WIDTH}")
+        out.append(f"ROOM_TILE_ROWS = {len(rows)}")
 
     rects = find_rectangles(rows, solids="#H")
     hot_rects = find_rectangles(rows, solids="H")
     rect_name = prefix + "RoomRects"
-    lines.append(f"{rect_name}:")
-    lines.append(f"  .byte {len(rects)}                  ; number of rectangles")
+    out.append(f"{rect_name}:")
+    out.append(f"  .byte {len(rects)}                  ; number of rectangles")
     for x, y, w, h in rects:
-        lines.append(f"  .byte {x}, {y}, {w}, {h}  ; x, y, width, height")
+        out.append(f"  .byte {x}, {y}, {w}, {h}  ; x, y, width, height")
     # Hot-only block after solid rects: death + pulse. Walks of solid rects
     # must stop at the count byte and never enter this section.
-    lines.append(f"  .byte {len(hot_rects)}              ; number of hot rectangles")
+    out.append(f"  .byte {len(hot_rects)}              ; number of hot rectangles")
     for x, y, w, h in hot_rects:
-        lines.append(f"  .byte {x}, {y}, {w}, {h}  ; hot x, y, width, height")
+        out.append(f"  .byte {x}, {y}, {w}, {h}  ; hot x, y, width, height")
 
     for name, register in zip(("TilePF0", "TilePF1", "TilePF2"), range(3)):
-        lines.append(f"{prefix}{name}:")
+        out.append(f"{prefix}{name}:")
         table = [f"${triple[register]:02x}" for triple in triples]
         table += ["$00"] * (stride - len(table))
-        lines.append("  .byte " + ", ".join(table))
+        out.append("  .byte " + ", ".join(table))
 
-    output.write_text("\n".join(lines) + "\n")
+    return out
+
+
+def emit(rows: list[str], output: Path, prefix: str = "", source: str = "room") -> None:
+    output.write_text("\n".join(lines(rows, prefix, source)) + "\n")
 
 
 def main() -> int:

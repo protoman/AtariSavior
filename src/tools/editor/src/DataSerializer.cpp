@@ -21,6 +21,8 @@
 #include <iostream>
 #include <filesystem>
 #include <map>
+#include <sstream>
+#include <iterator>
 
 namespace hero {
 
@@ -41,7 +43,21 @@ bool DataSerializer::LoadLevelFromFile(LevelData& level, const std::string& file
     try {
         std::ifstream is(filepath);
         if (!is.is_open()) return false;
-        cereal::JSONInputArchive archive(is);
+        std::string json((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
+        if (json.find("\"cereal_class_version\"") == std::string::npos) {
+            const size_t levelName = json.find("\"level\"");
+            const size_t objectStart = levelName == std::string::npos
+                                           ? std::string::npos
+                                           : json.find('{', levelName);
+            if (objectStart != std::string::npos) {
+                const auto version = json.find("\"miner_dir\"") == std::string::npos ? 0 : 1;
+                json.insert(objectStart + 1,
+                            "\n        \"cereal_class_version\": " +
+                                std::to_string(version) + ",");
+            }
+        }
+        std::istringstream input(json);
+        cereal::JSONInputArchive archive(input);
         archive(cereal::make_nvp("level", level));
         return true;
     } catch (const std::exception& e) {
@@ -109,15 +125,15 @@ static ModelData CreateDefaultModel(int modelId) {
     model.id = modelId;
     model.name = "Model " + std::to_string(modelId + 1);
     model.width = 20;
-    model.height = 12;
-    model.tiles.resize(20 * 12, (int)TileType::AIR);
+    model.height = 3;
+    model.tiles.resize(20 * 3, (int)TileType::AIR);
 
     // Standard border walls
     for (int x = 0; x < 20; ++x) {
         model.tiles[0 * 20 + x] = (int)TileType::SOLID_WALL;
-        model.tiles[11 * 20 + x] = (int)TileType::SOLID_WALL;
+        model.tiles[2 * 20 + x] = (int)TileType::SOLID_WALL;
     }
-    for (int y = 0; y < 12; ++y) {
+    for (int y = 0; y < 3; ++y) {
         model.tiles[y * 20 + 0] = (int)TileType::SOLID_WALL;
         model.tiles[y * 20 + 19] = (int)TileType::SOLID_WALL;
     }
@@ -165,7 +181,7 @@ void DataSerializer::GenerateAll20DefaultLevels(const std::string& outputDirecto
             // Open shaft connection between vertical rooms
             if (r < numRooms - 1) {
                 for (int x = 8; x <= 11; ++x) {
-                    model.tiles[11 * 20 + x] = (int)TileType::AIR;
+                    model.tiles[2 * 20 + x] = (int)TileType::AIR;
                 }
             }
             if (r > 0) {
@@ -176,15 +192,15 @@ void DataSerializer::GenerateAll20DefaultLevels(const std::string& outputDirecto
 
             if (r == 0) {
                 for (int x = 8; x <= 11; ++x) {
-                    model.tiles[11 * 20 + x] = (int)TileType::AIR;
+                    model.tiles[2 * 20 + x] = (int)TileType::AIR;
                 }
             } else if (r == numRooms - 1) {
                 for (int x = 8; x <= 11; ++x) {
-                    model.tiles[11 * 20 + x] = (int)TileType::AIR;
+                    model.tiles[2 * 20 + x] = (int)TileType::AIR;
                 }
             } else {
-                model.tiles[5 * 20 + 4] = (int)TileType::SOLID_WALL;
-                model.tiles[5 * 20 + 12] = (int)TileType::SOLID_WALL;
+                model.tiles[1 * 20 + 4] = (int)TileType::SOLID_WALL;
+                model.tiles[1 * 20 + 12] = (int)TileType::SOLID_WALL;
             }
 
             allModels.push_back(model);

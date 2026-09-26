@@ -1,15 +1,5 @@
-Editor:
-Do not create a new model for each new room, use the first one available. Only create if there is none.
-
-Clicking on the room after switching to the level edit tab is still editing the model, it should change mode once you change tab,
-and instead, add what ios selected in entity tools
-
-Miner should be placed in both left and right sides od the mirror map, like the enemies
-
-File, New Level is not wiorking.
-
 #########################################################################################################################################################################
-Special Aerial Vehicle Infiltration Operations Rescue
+Strategic Aerial Vehicle Infiltration Operations Rescue
 #########################################################################################################################################################################
 Eorley Savior.
 
@@ -18,6 +8,20 @@ Chegar no mineiro, 1000
 Tempo quase cheio - 1510
 Cada bomba: 50
 Pontos, cada pedaço da barra de power, 160
+
+
+=========================================================================================================================================================================
+When I use the laser, all enemies and objects in the screen dissappear. That is why I suggested using missile instead of sprites for the laser.
+Why did you used sprites instead?
+=========================================================================================================================================================================
+
+Add laser action.
+When player pushes the fire button, a laser beam, that is a line starting from the "eye" in the player sprite,
+must appear ahead of the player, in the same direction player is facing, and on the Y position of the yellow line of his sprite.
+And if this line touches any enemy, the enemy must be removed from the room, and the player gets 50 score points.
+The laser can use missile with high speed movement to simulate a line, but if there are better options, let me know,
+but I do believe we are not using missiles as of now, so it can be a good option.
+The laser width should be 3 times the player sprite width.
 
 
 - fly sound
@@ -33,6 +37,9 @@ Now I would like to change the player sprite, to have this format and colors.
 There are two, because when flying he should show a mittle animation switching between those two sprites. B
 But if you notice, there are only 3 pixels different between the two sprites, so we only need to store the first, and the 3 ones, or maybe the two rows where those are.
 Of course, the collision should take in account the bigger size for the player, if not already does.
+
+
+Now, back to changing enemies and objects sprites. Keep the size and color, just add a "design"for the sprites.
 
 Moth:
 #..#
@@ -84,7 +91,6 @@ Bat:
 #..#
 ....
 
-
 Miner (facing left):
 #...
 #.##
@@ -97,14 +103,14 @@ Miner (facing left):
 
 
 Bomb:
-...#    %0001
-..#.    %0010
-..#.    %0010
-.##.    %0110
-####    %1111
-####    %1111
-####    %1111
-.##.    %0110
+...#
+..#.
+..#.
+.##.
+####
+####
+####
+.##.
 
 
 ..####..   RED
@@ -236,9 +242,7 @@ After that, start following the option 2.
 TEXT
 #########################################################################################################################################################################
 
-Add laser and allow to kill enemies.
-When player pushes the fire button, a laser beam, that is a solid line starting from the "eye" in the player sprite,
-must appear. And if this line touches any enemy, the enemy must be removed from the room, and the player gets 50 score points.
+
 
 
 

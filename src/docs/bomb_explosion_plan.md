@@ -110,7 +110,7 @@ Reuse **GRP1 object slot** (`SelectActiveObject` / `ObjTop`/`ObjBot` / `ActiveOb
 
 1. `cd src/ && rm -f bank*.bin && ./build.sh` → 4×4096 + folds match (`$FC68`/`$FC70` byte-identical bank0/bank1).
 2. Optional: `python3 tools/visual_check.py` if present.
-3. No `tools/editor` parent deletes, no `hero/`, no screenshots in any accidental commit.
+3. No `src/tools/editor` parent deletes, no `hero/`, no screenshots in any accidental commit.
 4. User Stella check marked `[x]` only after **they** confirm.
 
 ---

@@ -78,9 +78,9 @@ No JSON schema change (`dir` already in `EnemyData`).
       visible on every enemy**; facing flips when changed; reopen file keeps
       facing + arrows.
 
-**Files:** `tools/editor/src/MapCanvas.cpp/.hpp`, `MainWindow.cpp/.hpp`.
+**Files:** `src/tools/editor/src/MapCanvas.cpp/.hpp`, `MainWindow.cpp/.hpp`.
 
-**Build:** `cmake --build tools/editor/cmake-build-debug --target savior_editor`
+**Build:** `cmake --build src/tools/editor/cmake-build-debug --target savior_editor`
 — OK (2026-09-23).
 
 ---
@@ -284,7 +284,7 @@ Breakpoints also hide timing-only bugs; measure gap in **game pixels**
 
 | Area | Files |
 |------|--------|
-| Editor facing | `tools/editor/src/MapCanvas.cpp`, `MapCanvas.hpp`, maybe `MainWindow.cpp` |
+| Editor facing | `src/tools/editor/src/MapCanvas.cpp`, `MapCanvas.hpp`, maybe `MainWindow.cpp` |
 | Game move + RAM | `src/kernel.asm` (`EnterRoom`, `SelectActiveObject`, `CheckEnemyHit`, new `UpdateEnemies`) |
 | ZP doc | `src/docs/zp_layout_skill.md` |
 | Colors (likely none) | `EnemyColorTable` in `kernel.asm` |

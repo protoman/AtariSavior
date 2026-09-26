@@ -1,5 +1,6 @@
 {
     "level": {
+        "cereal_class_version": 1,
         "level_id": 1,
         "name": "Level 1",
         "wall_r": 112,
@@ -10,8 +11,9 @@
         "wall2_b": 20,
         "start_room": 0,
         "miner_room": 1,
-        "miner_x": 5.5,
-        "miner_y": 6.0,
+        "miner_x": 2.5,
+        "miner_y": 7.0,
+        "miner_dir": 1,
         "rooms": [
             {
                 "room_id": 0,
