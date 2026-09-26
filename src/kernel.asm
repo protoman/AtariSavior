@@ -150,7 +150,7 @@ FlickerFrame    byte            ; GRP1 slot index for flicker
 BombPacked      byte            ; bomb state at $B5 (was ephemeral ObjectCount):
                                 ;   b0-1 state 0=none,1=fuse,2=explode
                                 ;   b2 DownPrev edge, b3-6 WallMask, b7 OnGround
-ActiveObjectOn  byte            ; 1 when current object is active this frame
+ActiveObjectOn  byte            ; GRP1 pattern byte ($f0/$ff), 0 = no object
 ActiveObjectX   byte            ; active object X (room pixel coords)
 ActiveObjectY   byte            ; active object Y (scanline coords)
 EnemyIndex      byte            ; current enemy index in room enemy list
@@ -205,7 +205,8 @@ EnemyRamP       = $C2           ; bits0-3 moth phase; bits4-7 spider vdir (1=dow
 PLAYER_HEIGHT   = 8             ; GRP1 object (enemy/miner) height; player uses PLAYER_SPRITE_H
 PLAYER_SPRITE_H = 12            ; player sprite height in scanlines (8x12)
 PLAYER_WIDTH    = 8             ; player sprite width in pixels (8x12)
-ENEMY_WIDTH     = 4             ; snake GRP1 width ($f0 = 4 px) — flush-out span
+ENEMY_WIDTH     = 8             ; snake GRP1 width ($ff = 8 px) — flush-out span
+SNAKE_PATROL    = 4             ; patrol half-span from spawn X (was ENEMY_WIDTH)
 TILE_COLUMNS    = 20            ; columns per half (reflected playfield)
 TILE_ROWS       = 12            ; number of playable tile rows
 LINES_PER_TILE  = 12            ; scanlines per tile row
@@ -536,14 +537,12 @@ StartFrame:
 .Grp1:
 
     ; --- GRP1 SECOND (object/enemy sprite) ---
-    lda ActiveObjectOn
-    beq .NoObject
     lda Scanline
     cmp ObjTop
     bcc .NoObject
     cmp ObjBot
     bcs .NoObject
-    lda #$f0
+    lda ActiveObjectOn          ; GRP1 pattern: $f0 normal / $ff snake (0 = off)
     jmp .WriteGrp1
 .NoObject:
     lda #0
@@ -1109,8 +1108,8 @@ EnemyBitTable:
 ; ------------------------------------------------------------------------------
 ; UpdateEnemies — per-type live motion from RAM shadow (overscan).
 ; Speed: 1 px / 2 frames (TickCounter parity gate).
-; Snake patrol: bounds relative to ROM spawn X ± ENEMY_WIDTH (4 = $f0 sprite),
-; side chosen by ROM dir (initial facing). Ignores editor range_* per user
+; Snake patrol: bounds relative to ROM spawn X ± SNAKE_PATROL (6 px, was
+; ± ENEMY_WIDTH = overshoot), side chosen by ROM dir (initial facing). Ignores editor range_* per user
 ; 2026-09-23. First move = facing (live dir from LoadEnemyRam). No wall collision.
 ; ------------------------------------------------------------------------------
 UpdateEnemies:
@@ -1152,13 +1151,13 @@ UE_SnakeLeft:
     iny
     iny                          ; +5 = ROM dir
     lda (EnemyDataLo),Y
-    bmi UE_LeftInitL             ; initial face left → rmin = spawn - 8
+    bmi UE_LeftInitL             ; initial face left → rmin = spawn - 6
     lda Temp                     ; initial face right → rmin = spawn
     jmp UE_LeftChk
 UE_LeftInitL:
     sec
     lda Temp
-    sbc #ENEMY_WIDTH
+    sbc #SNAKE_PATROL
 UE_LeftChk:
     sta Temp
     lda EnemyRamX,X
@@ -1180,8 +1179,8 @@ UE_SnakeRight:
     lda (EnemyDataLo),Y
     bmi UE_RightInitL            ; initial face left → rmax = spawn
     clc
-    lda Temp                     ; initial face right → rmax = spawn + 8
-    adc #ENEMY_WIDTH
+    lda Temp                     ; initial face right → rmax = spawn + 6
+    adc #SNAKE_PATROL
     jmp UE_RightChk
 UE_RightInitL:
     lda Temp
@@ -1190,21 +1189,13 @@ UE_RightChk:
     lda EnemyRamX,X
     cmp Temp
     bcc UE_Next                  ; X < rmax OK
-    beq UE_Next                  ; X == rmax OK
     lda Temp
     sta EnemyRamX,X              ; clamp to exact bound
-    jsr UE_FlipDir               ; past max → turn left
+    jsr UE_FlipDir               ; at or past max → turn left
 UE_Next:
     inx
     jmp UE_Loop
 UE_Exit:
-    rts
-
-; Flip dir bit for enemy X (right↔left).
-UE_FlipDir:
-    lda EnemyBitTable,X
-    eor EnemyRamD
-    sta EnemyRamD
     rts
 
 ; ==============================================================================
@@ -1436,7 +1427,7 @@ SelectActiveObject:
     lda BombTimer
     and #3
     bne .SOCount                ; 3 of 4 → miner/enemy
-    lda #1
+    lda #$f0                    ; bomb GRP1 pattern
     sta ActiveObjectOn
     lda BombX
     sta ActiveObjectX
@@ -1479,7 +1470,7 @@ SelectActiveObject:
     cmp LevelMinerRoom
     bne .SOEnemy
     ; This slot is the miner
-    lda #1
+    lda #$f0
     sta ActiveObjectOn
     lda MinerX
     sta ActiveObjectX
@@ -1534,12 +1525,23 @@ SelectActiveObject:
     beq .SOEnemyLit
     lda #COLOR_DARK_OBJ         ; dark room: lamp + enemies medium grey
     sta COLUP1
-    jmp .SOEnemyColorDone
+    lda (EnemyDataLo),Y         ; reload type
+    tax
+    jmp .SOEnemyPattern
 .SOEnemyLit:
     lda (EnemyDataLo),Y         ; reload type (X was clobbered by IsRoomDark)
     tax
     lda EnemyColorTable,X
     sta COLUP1
+.SOEnemyPattern:
+    cpx #ENEMY_SNAKE
+    beq .SOSnakePattern
+    lda #$f0
+    bne .SOSetPattern
+.SOSnakePattern:
+    lda #$ff
+.SOSetPattern:
+    sta ActiveObjectOn
 .SOEnemyColorDone:
     iny
     iny                         ; +2 = y
@@ -1549,9 +1551,6 @@ SelectActiveObject:
     lda ActiveObjectX            ; A = X position for SetObjectXPos
     ldx #1                      ; X=1 = player1
     jsr SetObjectXPos
-    ; Object is visible
-    lda #1
-    sta ActiveObjectOn
     jmp .SODone
 
 .SOEnemySkip:
@@ -1840,14 +1839,24 @@ BombSndExplode:
 
 ; ------------------------------------------------------------------------------
 ; BombMarkWalls — on 1→2 edge: walk RoomRects, set WallMask bit for each
-;   w==1 rect whose x is in blast cols (bomb left-half col ±1, clamped 0..19).
+;   w==1 rect whose x is in blast cols (bomb left-half col ±2, clamped 0..19).
 ;   Skip x==0: screen cols 0 and 39 (both = stored col 0 under reflection).
 ; Bits b3-6 of BombPacked = rect index 0..3 (rooms have ≤4 rects).
 ; ------------------------------------------------------------------------------
 BombMarkWalls:
+    ; visible-left mapping identical to PlayerHitsMap: the bomb is drawn from
+    ; BombX via SetObjectXPos, so its left edge is BombX-5 / BombX-7, not BombX.
+    sec
     lda BombX
+    cmp #15
+    bcs .BMWoff7
+    sbc #4                      ; visible left = BombX - 5 (CMP clears carry)
+    jmp .BMWVL
+.BMWoff7:
+    sbc #7                      ; visible left = BombX - 7
+.BMWVL:
     lsr
-    lsr                         ; screen col = BombX/4 (0..39)
+    lsr                         ; screen col = visible_left/4 (0..39)
     cmp #TILE_COLUMNS
     bcc .BMWCol
     sta Temp
@@ -1856,22 +1865,23 @@ BombMarkWalls:
     sbc Temp                    ; mirror right-half → left-half col
 .BMWCol:
     sta Temp                    ; bomb left-half col
-    ; blast lo = max(col-1, 0)
+    ; blast lo = max(col-2, 0)   (±2: player is 8px wide, so a bomb dropped
+    ; blast hi = min(col+2, 19)    flush-left sits 2 cols from the wall)
     lda Temp
-    beq .BMWLo0
+    cmp #2
+    bcc .BMWLo0
     sec
-    sbc #1
+    sbc #2
     bcs .BMWStoreLo
 .BMWLo0:
     lda #0
 .BMWStoreLo:
     sta CollisionEndX           ; blast_lo (free: overscan, after movement)
-    ; blast hi = min(col+1, 19)
     lda Temp
-    cmp #19
+    cmp #18
     bcs .BMWHi19
     clc
-    adc #1
+    adc #2
     bcc .BMWStoreHi
 .BMWHi19:
     lda #19
@@ -1988,44 +1998,6 @@ ApplyBombWalls:
     dec RectCount
     bne .ABWLoop
 .ABWDone:
-    rts
-
-; ------------------------------------------------------------------------------
-; ClearPFColumn — A = left-half col 0..19; Temp = first row; CollisionCellX =
-;   last row (inclusive). AND-clear that col's PF bit in those rows only.
-;   Inverse of convert_room.pf_values. Clobbers A/X/Y/CollisionX. Preserves
-;   RectCount/MapPtr (caller restores Y from stack).
-; ------------------------------------------------------------------------------
-ClearPFColumn:
-    tay                         ; Y = col
-    lda BombClearMask,Y
-    sta CollisionX              ; AND mask (clear bit)
-    ldx Temp                    ; first row
-.CPCLoop:
-    tya                         ; col
-    cmp #4
-    bcc .CPC0
-    cmp #12
-    bcc .CPC1
-    lda PF2Buf,X
-    and CollisionX
-    sta PF2Buf,X
-    jmp .CPCNext
-.CPC0:
-    lda PF0Buf,X
-    and CollisionX
-    sta PF0Buf,X
-    jmp .CPCNext
-.CPC1:
-    lda PF1Buf,X
-    and CollisionX
-    sta PF1Buf,X
-.CPCNext:
-    cpx CollisionCellX
-    beq .CPCDone
-    inx
-    bne .CPCLoop               ; rows 0..11; X never wraps here
-.CPCDone:
     rts
 
 ; ==============================================================================
@@ -2379,6 +2351,53 @@ ToGameStub:
     lda #0
     sta $1FF6                     ; select bank0 (game)
     jmp Overscan                 ; return to bank0 after HUD band
+
+; Flip dir bit for enemy X (right↔left).
+; After fold pads to keep main code under $FC68 (leaf, jsr-safe from bank0).
+UE_FlipDir:
+    lda EnemyBitTable,X
+    eor EnemyRamD
+    sta EnemyRamD
+    rts
+
+; ------------------------------------------------------------------------------
+; ClearPFColumn — A = left-half col 0..19; Temp = first row; CollisionCellX =
+;   last row (inclusive). AND-clear that col's PF bit in those rows only.
+;   Inverse of convert_room.pf_values. Clobbers A/X/Y/CollisionX. Preserves
+;   RectCount/MapPtr (caller restores Y from stack).
+; After fold pads to keep main code under $FC68 (leaf, jsr-safe from bank0).
+; ------------------------------------------------------------------------------
+ClearPFColumn:
+    tay                         ; Y = col
+    lda BombClearMask,Y
+    sta CollisionX              ; AND mask (clear bit)
+    ldx Temp                    ; first row
+.CPCLoop:
+    tya                         ; col
+    cmp #4
+    bcc .CPC0
+    cmp #12
+    bcc .CPC1
+    lda PF2Buf,X
+    and CollisionX
+    sta PF2Buf,X
+    jmp .CPCNext
+.CPC0:
+    lda PF0Buf,X
+    and CollisionX
+    sta PF0Buf,X
+    jmp .CPCNext
+.CPC1:
+    lda PF1Buf,X
+    and CollisionX
+    sta PF1Buf,X
+.CPCNext:
+    cpx CollisionCellX
+    beq .CPCDone
+    inx
+    bne .CPCLoop               ; rows 0..11; X never wraps here
+.CPCDone:
+    rts
 
 ; ------------------------------------------------------------------------------
 ; Jet engine audio (channel 1) — old two-stroke combustion buzz.

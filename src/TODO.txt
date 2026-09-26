@@ -1,3 +1,13 @@
+Editor:
+Do not create a new model for each new room, use the first one available. Only create if there is none.
+
+Clicking on the room after switching to the level edit tab is still editing the model, it should change mode once you change tab,
+and instead, add what ios selected in entity tools
+
+Miner should be placed in both left and right sides od the mirror map, like the enemies
+
+File, New Level is not wiorking.
+
 #########################################################################################################################################################################
 Special Aerial Vehicle Infiltration Operations Rescue
 #########################################################################################################################################################################
@@ -10,14 +20,141 @@ Cada bomba: 50
 Pontos, cada pedaço da barra de power, 160
 
 
-OK, we are carring a lot of information in this session, maybe it is time to cleanup and start a new one.
-Do you think it is a good idea?
-Anything you want to record before closing this session, information that could be useful for the future development?
-
-
 - fly sound
-    # Add sound similar of an old two-stroke combustion engine, when player pressed up in the joystick.
+    # Add sound similar of an old two-stroke combustion engine, when player is playing (up in joystick).
     # fix sounds tone
+
+
+- better sprites
+    # what is the size, in pixels, of the player, enemies and objects on the game?
+    # is it possible for the sprites to be bigger and have shapes, like for example, for the player (colors names for the row are on the right side)
+
+Now I would like to change the player sprite, to have this format and colors.
+There are two, because when flying he should show a mittle animation switching between those two sprites. B
+But if you notice, there are only 3 pixels different between the two sprites, so we only need to store the first, and the 3 ones, or maybe the two rows where those are.
+Of course, the collision should take in account the bigger size for the player, if not already does.
+
+Moth:
+#..#
+.##.
+####
+####
+.##.
+#..#
+.##.
+.##.
+
+Spider:
+.##.
+####
+####
+.##.
+#..#
+.##.
+#..#
+#..#
+
+Lamp:
+####
+####
+.##.
+.##.
+####
+####
+####
+.##.
+
+Tentacle:
+.##.
+#..#
+#...
+.##.
+..##
+..##
+..##
+..##
+
+Bat:
+#..#
+.##.
+####
+.##.
+.##.
+#..#
+#..#
+....
+
+
+Miner (facing left):
+#...
+#.##
+..##
+.###
+.###
+####
+####
+....
+
+
+Bomb:
+...#    %0001
+..#.    %0010
+..#.    %0010
+.##.    %0110
+####    %1111
+####    %1111
+####    %1111
+.##.    %0110
+
+
+..####..   RED
+.######.   RED
+.####...   YELLOW
+..####..   RED
+.#####..   GRAY
+##.####.   RED
+##.####.   RED
+...###..   RED
+...##...   RED
+...##...   RED
+...###..   GRAY
+..####..   GRAY
+
+..####..   RED
+.######.   RED
+.####...   YELLOW
+..####..   RED
+.#####..   GRAY
+##.####.   RED
+##.####.   RED
+##.###..   RED
+.#.##...   RED
+...##...   RED
+...###..   GRAY
+..####..   GRAY
+
+
+
+
+..####.   RED
+..####.   RED
+.######   YELLOW
+.###....  RED
+..####.   GRAY
+.#####.   RED
+##.####   RED
+##.####   RED
+...###.   RED
+...##..   RED
+...##..   GRAY
+..###..   GRAY
+
+
+
+
+
+
+
 
 - laser
     # sound
@@ -32,48 +169,7 @@ Anything you want to record before closing this session, information that could 
 
 - non mirrored walls
 
-- better sprites
-    # what is the size, in pixels, of the player, enemies and objects on the game?
-    # is it possible for the sprites to be bigger and have shapes, like for example, for the player:
-    ..###.
-    .##...
-    ..###.
-    .####.
-    ###.##
-    ##..##
-    ###..#
-    .####.
-    ..##..
-    ..##..
-    ..#...
-    ..#...
 
-
-..####..   RED
-.######.   RED
-.####...   YELLOW
-..####..   RED
-.#####..   GRAY
-##.####.   RED
-##.####.   RED
-...###..   RED
-...##...   RED
-...##...   RED
-...###..   BLACK
-..####..   BLACK
-
-..####..   RED
-.######.   RED
-.####...   YELLOW
-..####..   RED
-.#####..   GRAY
-##.####.   RED
-##.####.   RED
-##.###..   RED
-.#.##...   RED
-...##...   RED
-...###..   BLACK
-..####..   BLACK
 
 
 - moth animation
@@ -81,6 +177,8 @@ Anything you want to record before closing this session, information that could 
 - tentacle animation
 
 - bat animation (2px up down)
+
+- improve hot walls animation (add orange)
 
 #########################################################################################################################################################################
 
@@ -206,3 +304,68 @@ HUD:
 
 #########################################################################################################################################################################
 Adicionar doc com agradecimentos ao jogo usado como base e exemplos.
+
+#########################################################################################################################################################################
+
+Putting this just in case people think this is a direct copy...
+
+=========================================================================================================================================================================
+
+Análise direta e honesta do código de Savior comparado ao disassembly de H.E.R.O. (disponível em docs/hero/ e hero/hero.bin):
+  ──────
+  ### Veredito: É uma recriação inspirada na arquitetura e design, NÃO uma cópia de código (ROM clone / copy-paste).
+
+  O código-fonte de Savior foi escrito do zero, com convenções modernas (DASM estruturado com nomes descritivos, rotinas modulares, lógica de subpixel própria), mas
+  reproduz deliberadamente as regras de design, limites físicos e decisões técnicas da engenharia de H.E.R.O.
+
+  Abaixo estão os fatos técnicos comprovando isso:
+  ──────
+  ### 1. Onde as implementações são completamente diferentes (Código próprio)
+
+  • O Kernel de Renderização:
+      • H.E.R.O. (hero_bank0.asm / hero_bank1.asm):
+      Utiliza escrita em registradores de Playfield linha a linha via tabelas de lookup compactadas na ROM ($DC66, $DC61, etc.), intercalando leitura de dados com AND de
+      máscaras para desenhar paredes e teto.
+      • Savior (kernel.asm:453-525):
+      Utiliza PF por tile-row (12 scanlines por tile), onde PF0, PF1 e PF2 são escritos apenas uma vez no topo do tile (.Row) e o TIA mantém o registrador persistente
+      durante o loop de 12 scanlines (.Line), que cuida puramente dos sprites GRP0 e GRP1. O kernel de Savior é muito mais simples e direto estruturalmente.
+  • Física e Movimento do Jogador:
+      • H.E.R.O.: Tem rotinas complexas e não-lineares de inércia, colisão por hardware TIA e lógica vertical acoplada ao motor de tela.
+      • Savior (kernel.asm:110-115):
+      Implementa um modelo limpo de física 16-bit com ponto fixo subpixel (vyLo, vyHi, PlayerYSub), gravidade constante (GRAVITY = $0008), acumulador de empuxo linear
+      (JetPower) e verificação de colisões por bounding boxes / retângulos contra o mapa da sala (PlayerHitsMap).
+  • Posicionamento Horizontal (SetObjectXPos):
+      • H.E.R.O. (hero_bank0.asm#L16-L40):
+      Usa um loop de divisão por 15 baseado em rotações aritméticas e cálculo inline de deslocamento fino:
+        SBC #$0F / BCS ... / EOR #$0F / ASL / ASL / ASL / ASL / ADC #$80 / STA RESP0,X / STA WSYNC / STA HMP0,X
+
+      • Savior (kernel.asm:2021-2031):
+      Usa a técnica clássica de Andrew Davie (tutorial do AtariAge, sessão 24), baseada em lookup table alinhada em página (fineAdjustTable em $FF00), economizando
+      ciclos em relação ao algoritmo matemático de H.E.R.O.
+  • Estrutura de Memória e ROM (Bankswitching):
+      • H.E.R.O.: Cartucho de 8K com bankswitching F8 (2 bancos de 4K, hot spots $1FF8 / $1FF9).
+      • Savior: Cartucho de 16K com bankswitching F6 (4 bancos de 4K, hot spots $1FF6 a $1FF9). Além disso, toda a alocação de Zero-Page de Savior tem layout próprio e
+      documentado em seg.u Variables.
+
+  ──────
+  ### 2. Onde há inspiração direta ou cópia das especificações/técnicas
+
+  • Power Bar (Barra de Energia / Tempo):
+      • Foi feita engenharia reversa visual e de comportamento do H.E.R.O. (inclusive documentado em power_bar_plan.md). O Savior busca ter o mesmo comportamento:
+      margens cinzas via PF0=$E0, corpo contínuo via PF1/PF2=$FF, troca de cor no meio do scanline (amarelo para vermelho) e uma separação suave de 1 pixel usando a Ball
+      (ENABL).
+  • Display de Vidas e Bombas:
+      • Uso do truque de cópias NUSIZ (3 cópias espaçadas/médias para vidas e bombas) em vez de escrever texto ou criar dígitos, espelhando a convenção de H.E.R.O.
+  • Score (Pontuação):
+      • Em vez da tabela PF de H.E.R.O., Savior usou no banco 1 o algoritmo clássico de 48-pixel sprite multiplexer (conhecido da comunidade homebrew).
+  • Parâmetros e Regras do Mundo:
+      • Paredes simétricas com CTRLPF espelhado (D0=1).
+      • Dimensões de tela e áreas visíveis (144 scanlines de caverna + 48 de HUD).
+      • Limites de tela do herói (PLAYER_MIN_X = 4, PLAYER_MAX_X = 163).
+
+  ──────
+  ### Conclusão
+
+  Não é cópia do código binário ou assembly. Nenhuma sub-rotina do binário de H.E.R.O. foi extraída e colocada no Savior intacta. É uma re-implementação "clean-room" com
+  engenharia reversa comportamental: o autor estudou o comportamento do jogo original no Stella e no disassembly, aprendeu as limitações do TIA que a Activision resolveu
+  na época, e escreveu código 6502 novo em cima dos mesmos conceitos.

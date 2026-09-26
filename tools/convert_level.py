@@ -343,7 +343,7 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
         else:
             lines.append(
                 f"  .byte <({prefix}_EnemyDataTable), "
-                f">{prefix}_EnemyDataTable), 0, {color_hex} ; room {index}")
+                f">({prefix}_EnemyDataTable), 0, {color_hex} ; room {index}")
     return lines
 
 

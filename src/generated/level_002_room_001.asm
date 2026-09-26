@@ -4,11 +4,11 @@ L2R1RoomRects:
   .byte 0, 0, 5, 4  ; x, y, width, height
   .byte 17, 0, 1, 8  ; x, y, width, height
   .byte 0, 4, 2, 8  ; x, y, width, height
-  .byte 2, 8, 16, 4  ; x, y, width, height
+  .byte 4, 8, 14, 4  ; x, y, width, height
   .byte 1              ; number of hot rectangles
   .byte 17, 4, 1, 4  ; hot x, y, width, height
 L2R1TilePF0:
-  .byte $f0, $f0, $f0, $f0, $30, $30, $30, $30, $f0, $f0, $f0, $f0
+  .byte $f0, $f0, $f0, $f0, $30, $30, $30, $30, $30, $30, $30, $30
 L2R1TilePF1:
   .byte $80, $80, $80, $80, $00, $00, $00, $00, $ff, $ff, $ff, $ff
 L2R1TilePF2:
