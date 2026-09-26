@@ -8,8 +8,9 @@ Checks:
   ROM   - 4x4096 banks, fold pads byte-identical ($FC68/$FC70),
           fold jmp target == real Overscan, non-zero reset vectors,
           pre-pad headroom from bank0.lst.
-  Level - rooms <=4 (IsRoomDark mask), <=4 enemies+lamps (silent converter
-          truncation), room_id/grid/start/miner validity, enemy bounds/types,
+  Level - rooms <=4 (IsRoomDark mask), <=3 enemies+lamps (silent converter
+          truncation; slot 3 would collide with LaserState at $C0),
+          room_id/grid/start/miner validity, enemy bounds/types,
           model_id exists, generated room .txt shape.
 
 Usage: verify_build.py [src_dir]
@@ -105,6 +106,40 @@ def check_rom(src: Path) -> bytes | None:
             break
     else:
         err("`org $FC68` directive not found in bank0.lst")
+
+    # Fixed-time kernel / positioning contracts — enforced from bank0.lst
+    # (AGENTS rule: never trust cycle counts written in comments).
+    # 1) SetObjectXPos .Div15Loop: `bcs .Div15Loop` must share a page with its
+    #    target (3c taken = 5c per /15 iteration). A page-cross adds 1c per
+    #    iteration, so RESP0 fires 3 color-clocks late per coarse step: every
+    #    sprite drifts right ~3*(X/15) px, and positions past 160 wrap to the
+    #    left edge (laser S1 bug: spider jumped to the left wall).
+    div15 = None
+    bcs_at = None
+    for addr, text in rows:
+        t = text.strip()
+        if t == ".Div15Loop":
+            div15 = addr
+        if (not t.startswith(";")) and "bcs" in t and ".Div15Loop" in t:
+            bcs_at = addr
+    if div15 is None or bcs_at is None:
+        err("SetObjectXPos .Div15Loop/bcs not found in bank0.lst")
+    elif (bcs_at + 2) >> 8 != div15 >> 8:
+        err(f"SetObjectXPos bcs page-cross: bcs at ${bcs_at:04X} targets "
+            f"${div15:04X} (6c/iteration, contract 5c) -> sprite X drift")
+    elif not (0xFF12 <= div15 <= 0xFF1B):
+        # Routine must sit between the fineAdjust table ($FF00-$FF0E, 15 bytes)
+        # and org $FF20: whole routine inside one page = bcs contract safe.
+        err(f"SetObjectXPos .Div15Loop at ${div15:04X} outside the "
+            f"$FF10-$FF1F gap (expected ${0xFF12:04X}-${0xFF1B:04X})")
+    # 2) Kernel GRP1 fetch: `lda ObjSprites,X` (X <= 71) must stay in-page
+    #    (4c) or the .Line loop gains 1c on object rows (row-stretch risk).
+    obj = labels.get("ObjSprites")
+    if obj is None:
+        err("ObjSprites label not found in bank0.lst")
+    elif (obj + 71) >> 8 != obj >> 8:
+        err(f"ObjSprites ${obj:04X}+71 crosses a page -> kernel "
+            f"lda ObjSprites,X costs 5c (budget assumes 4c)")
     return pad0
 
 
@@ -201,9 +236,10 @@ def check_levels(src: Path) -> None:
 
             enemies = r.get("enemies") or []
             lamps = r.get("lamps") or []
-            if len(enemies) + len(lamps) > 4:
-                err(f"{label}: {len(enemies)} enemies + {len(lamps)} lamps > 4 "
-                    f"(MAX_ENEMIES=4, converter truncates silently)")
+            if len(enemies) + len(lamps) > 3:
+                err(f"{label}: {len(enemies)} enemies + {len(lamps)} lamps > 3 "
+                    f"(MAX_ENEMIES=3, converter truncates silently; slot 3 "
+                    f"would collide with LaserState at $C0)")
 
             for i, e in enumerate(enemies):
                 el = f"{label} enemy {i}"

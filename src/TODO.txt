@@ -11,8 +11,15 @@ Pontos, cada pedaço da barra de power, 160
 
 
 =========================================================================================================================================================================
-When I use the laser, all enemies and objects in the screen dissappear. That is why I suggested using missile instead of sprites for the laser.
+Now, about the laser....
+That issue of the collision shift already happen before, there was no note about it in AGENTDS.md or other MD files?
+
+When I use the laser, all enemies and objects in the screen dissappear.
+That is exactly why I suggested using missile instead of sprites for the laser beam.
 Why did you used sprites instead?
+
+
+
 =========================================================================================================================================================================
 
 Add laser action.

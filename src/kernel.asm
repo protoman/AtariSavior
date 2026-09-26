@@ -72,7 +72,8 @@ AUDV1   = $1A
 ; --- TIA read addresses ---
 SWCHA   = $0280
 SWCHB   = $0282
-INPT4   = $028C
+INPT4   = $0C                    ; fire button, D7: 0=pressed, 1=released
+                                 ; (HERO reads BIT $0C; must match bank1 EQU)
 
 ; --- RIOT addresses ---
 TIM64T  = $0296
@@ -196,10 +197,17 @@ PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row ($DB-$E6)
 ColupfBuf       = $E7           ; 12 bytes: final COLUPF per tile row (stripe+hot)
 
 ; Enemy RAM shadow — live X/(packed flags). ROM records are read-only.
-; Sequential vars end at $BC; free ZP is $BD-$C2 (6) used by EnemyRam*.
+; Sequential vars end at $BC; EnemyRam occupies $BD-$BF + $C1-$C2 (5);
+; $C0 = LaserState (the one free byte — see docs/zp_layout_skill.md).
 ; Score lives at $F3-$F5 only ($F6/$F7 = BombX/BombTimer). SelectActiveObject/
 ; CheckEnemyHit read Y from ROM (enemy Y is static until S5 spider).
-EnemyRamX       = $BD           ; 4 bytes: live X per enemy ($BD-$C0)
+EnemyRamX       = $BD           ; 3 bytes: live X per enemy ($BD-$BF, slots 0-2
+                                ; only — enemies+lamps capped at 3 by editor
+                                ; kMaxRoomElements, convert_level MAX_ENEMIES,
+                                ; verify_build; slot 3 would collide with $C0)
+LaserState      = $C0           ; laser (S1): b7 fire held this frame,
+                                ;   b6 fire held last frame, b5-4 spare,
+                                ;   b1-0 sweep phase (0..3 = 0/8/16/8 px)
 EnemyRamD       = $C1           ; dir bits 0-3 = enemy 0-3 (1=right, 0=left)
 EnemyRamP       = $C2           ; bits0-3 moth phase; bits4-7 spider vdir (1=down)
 
@@ -249,6 +257,12 @@ JET_AUD_VOL     = $08           ; engine volume while Up is held
 ; Facing direction of the player sprite's eye
 FACING_RIGHT    = 0
 FACING_LEFT     = 1
+
+; LaserState bits (laser_implementation_plan S1)
+LASER_HELD      = %10000000     ; b7: fire pressed this frame (INPT4 D7=0)
+LASER_PREV      = %01000000     ; b6: fire pressed last frame
+LASER_PHASE     = %00000011     ; b1-0: sweep phase 0..3 -> M0 offsets 0/8/16/8 px
+LASER_HP        = %11000000     ; held + prev (state while fire stays held)
 
 ; Colors (emulator-aware: hue<<4 | luma<<1)
 COLOR_PLAYER    = $48           ; red = sprite row0: stale VBLANK color on the
@@ -540,8 +554,9 @@ StartFrame:
     ; from bank0.lst (worst = player hot + object draw):
     ;   color+graphics hot = 25c, GRP1 design row = 26c, inc = 5c
     ;   worst = 56c -> sta WSYNC at c64 (write c66) — 7c margin. FITS.
-    ; ObjSprites = $FEA1: $FEA1+71 = $FEE8 < page end → lda ObjSprites,X
-    ; never page-crosses (4c). Branch targets all same-page (3c taken).
+    ; ObjSprites+71 must stay in the $FExx page (else lda ObjSprites,X
+    ; page-crosses, +1c on the GRP1 fetch) — verify_build enforces this.
+    ; Branch targets all same-page (3c taken).
     ; GRP1 object section clobbers X (ObjSprites index) — row counter lives in
     ; RowIdx and X is reloaded after bne. Row-advance +6c on the .Row setup
     ; scanline (segment 63c -> 69c <= 76c): frame length unchanged.
@@ -680,6 +695,9 @@ Overscan:
     ora #%00000100
     sta BombPacked
 .BombInDone:
+
+    ; --- Laser (S1): fire input + 24-px sweep phase (body after fold pads) ---
+    jsr LaserInput             ; A+X only; Temp (joystick) untouched; no TIA writes
 
 ; ------------------------------------------------------------------------------
 ; Vertical movement — HERO-style jetpack physics
@@ -2044,28 +2062,6 @@ ApplyBombWalls:
     rts
 
 ; ==============================================================================
-; SetObjectXPos — horizontal positioning via RESP0/HMP0
-; ==============================================================================
-; Andrew Davie session-24 routine:
-; Rolls the divide-by-15 and the delay loop into one unit.
-; The page-aligned fineAdjustTable ($FF00) guarantees every RESP0 write lands
-; on the same clock grid, mapping the sprite 1:1 to pixel (0..159).
-; Input: A = horizontal position (0-159 color clocks)
-;        X = object selector (0 = player0, 1 = player1)
-; ==============================================================================
-SetObjectXPos subroutine
-    sta WSYNC                   ; sync to start of scanline
-    sec                         ; ensure carry flag
-.Div15Loop:
-    sbc #15                     ; coarse delay (15 clocks / 5 cycles per loop)
-    bcs .Div15Loop              ; loop until carry clear (remainder in -15..-1)
-    tay                         ; Y = remainder in -15..-1
-    lda fineAdjustTable,Y       ; 5 cycles (page-cross guaranteed) -> fine offset
-    sta HMP0,X                  ; store fine offset
-    sta RESP0,X                 ; store coarse offset
-    rts
-
-; ==============================================================================
 ; Data tables
 ; ==============================================================================
 
@@ -2850,6 +2846,34 @@ UpdateBombSound:
 .UBSDone:
     rts
 
+; Moved here (after fold pads) to keep pre-pad code under $FC68.
+; ------------------------------------------------------------------------------
+; LaserInput (S1) — fire input state + 24-px sweep phase. No beam rendering yet.
+; ------------------------------------------------------------------------------
+; INPT4 ($0C) D7: 0 = pressed, 1 = released (HERO reads BIT $0C / BMI).
+; LaserState ($C0): b7 = held now, b6 = held last frame, b1-0 = sweep phase.
+; Every held frame advances phase 0->1->2->3->0 (S3 maps these to M0 offsets
+; 0/8/16/8 px ahead of the eye — full triangle covered either starting parity);
+; release clears held and resets phase. Uses A+X only — Temp (joystick) intact.
+LaserInput:
+    ldx LaserState             ; X = old state (b7 held, b6 prev, b1-0 phase)
+    txa
+    and #LASER_HELD
+    lsr                         ; old held (b7) -> new prev (b6)
+    sta LaserState              ; stage prev (phase/held written back below)
+    lda INPT4                   ; active-low fire button, D7: 0 = pressed
+    bmi .LaserDone              ; released: prev set, held=0, phase=0 -> done
+    txa
+    and #LASER_PHASE
+    clc
+    adc #1
+    and #LASER_PHASE            ; phase advances every held frame (incl. press)
+    ora LaserState              ; + prev
+    ora #LASER_HELD             ; + held
+    sta LaserState
+.LaserDone:
+    rts
+
 ; ------------------------------------------------------------------------------
 ; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
 ; Row r displays on scanline ObjTop+r (GRP1 write latching, same as before).
@@ -2890,6 +2914,36 @@ fineAdjustBegin:
     .byte %10100000               ; right 6
     .byte %10010000               ; right 7
 fineAdjustTable EQU fineAdjustBegin - %11110001   ; = fineAdjustBegin - 241
+
+; ==============================================================================
+; SetObjectXPos — horizontal positioning via RESP0/HMP0
+; ==============================================================================
+; Andrew Davie session-24 routine:
+; Rolls the divide-by-15 and the delay loop into one unit.
+; The page-aligned fineAdjustTable ($FF00) guarantees every RESP0 write lands
+; on the same clock grid, mapping the sprite 1:1 to pixel (0..159).
+; Input: A = horizontal position (0-159 color clocks)
+;        X = object selector (0 = player0, 1 = player1)
+;
+; Lives in the $FF10-$FF1F gap (exactly 16 bytes, before org $FF20) — moved
+; here 2026-09-26 (laser S1): the `jsr LaserInput` (+3 pre-pad) had pushed
+; .Div15Loop across the $F8/$F9 page, turning `bcs .Div15Loop` from 3c into
+; 4c = 6c per /15 iteration (contract: 5c). RESP0 then fired 3 color-clocks
+; late per coarse step -> sprites drifted right ~3*(X/15) px and wrapped past
+; 160 (spider appeared at the left edge). Placement inside ONE page makes the
+; 5c contract structurally safe; verify_build asserts the exact range.
+; DO NOT move this routine to an address where bcs and .Div15Loop differ in page.
+SetObjectXPos subroutine
+    sta WSYNC                   ; sync to start of scanline
+    sec                         ; ensure carry flag
+.Div15Loop:
+    sbc #15                     ; coarse delay (15 clocks / 5 cycles per loop)
+    bcs .Div15Loop              ; loop until carry clear (remainder in -15..-1)
+    tay                         ; Y = remainder in -15..-1
+    lda fineAdjustTable,Y       ; 5 cycles (page-cross guaranteed) -> fine offset
+    sta HMP0,X                  ; store fine offset
+    sta RESP0,X                 ; store coarse offset
+    rts
 
     org $FF20
 
