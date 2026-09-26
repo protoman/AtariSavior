@@ -104,7 +104,11 @@ CollisionEndX   byte            ; player min tile column
 CollisionEndY   byte            ; player bottom tile row
 RoomRectsLo     byte            ; pointer to room rectangle data (low)
 RoomRectsHi     byte            ; pointer to room rectangle data (high)
-RectCount       byte            ; rectangle loop counter
+RectCount       byte            ; rectangle loop counter (kernel also uses it as
+                                ; RowIdx — tile-row counter, re-init at kernel entry)
+RowIdx          = $92           ; kernel tile-row counter; aliases RectCount.
+                                ; RectCount users all run post-kernel (overscan)
+                                ; and store before their own loops, so no conflict.
 
 ; Jetpack ZP variables
 vyLo            byte            ; Y velocity low byte (subpixel; signed 16-bit, + = down)
@@ -150,7 +154,7 @@ FlickerFrame    byte            ; GRP1 slot index for flicker
 BombPacked      byte            ; bomb state at $B5 (was ephemeral ObjectCount):
                                 ;   b0-1 state 0=none,1=fuse,2=explode
                                 ;   b2 DownPrev edge, b3-6 WallMask, b7 OnGround
-ActiveObjectOn  byte            ; GRP1 pattern byte ($f0/$ff), 0 = no object
+ObjBase         byte            ; GRP1 sprite base offset into ObjSprites (0 = off)
 ActiveObjectX   byte            ; active object X (room pixel coords)
 ActiveObjectY   byte            ; active object Y (scanline coords)
 EnemyIndex      byte            ; current enemy index in room enemy list
@@ -213,6 +217,17 @@ LINES_PER_TILE  = 12            ; scanlines per tile row
 HUD_ROWS        = 4             ; HUD tile rows (48 scanlines)
 CAVE_LINES      = 144           ; TILE_ROWS × LINES_PER_TILE
 VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × LINES_PER_TILE)
+
+; GRP1 sprite design offsets into ObjSprites (8 bytes each; 0 = blank/off)
+OBJ_NONE        = 0
+OBJ_MOTH        = 8
+OBJ_SPIDER      = 16
+OBJ_LAMP        = 24
+OBJ_TENTACLE    = 32
+OBJ_BAT         = 40
+OBJ_SNAKE       = 48
+OBJ_MINER       = 56
+OBJ_BOMB        = 64
 
 ; Player bounds (must stay inside cave walls)
 PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
@@ -460,6 +475,7 @@ StartFrame:
 
     lda #0
     sta Scanline
+    sta RowIdx                  ; tile-row counter (0-11); object section clobbers X
     sec
     sbc RoomY                   ; A = -RoomY = A0 at scanline 0
     tay                         ; running-Y: Y = A0 for the next .Line (10c/line
@@ -516,9 +532,15 @@ StartFrame:
     ; (sec/sbc RoomY/tay); .Line's iny advances it (Y = A0+1 after the
     ; graphics write = A0 of the next line). Nothing between rows may touch
     ; Y — the row-11 band jsr (LoadRoomBottomColor clobbers Y) pushes/pops it.
-    ; Cycle budget from .Line (body starts c8, dec/bne already paid):
-    ;   color+graphics hot = 25c, GRP1-in-range = 26c, inc = 5c
-    ;   worst = 56c -> sta WSYNC at c64 (write c66) — 10c margin. FITS.
+    ; Cycle budget from .Line (body starts c8, dec/bne already paid), recounted
+    ; from bank0.lst (worst = player hot + object draw):
+    ;   color+graphics hot = 25c, GRP1 design row = 26c, inc = 5c
+    ;   worst = 56c -> sta WSYNC at c64 (write c66) — 7c margin. FITS.
+    ; ObjSprites = $FEA1: $FEA1+71 = $FEE8 < page end → lda ObjSprites,X
+    ; never page-crosses (4c). Branch targets all same-page (3c taken).
+    ; GRP1 object section clobbers X (ObjSprites index) — row counter lives in
+    ; RowIdx and X is reloaded after bne. Row-advance +6c on the .Row setup
+    ; scanline (segment 63c -> 69c <= 76c): frame length unchanged.
     ; The old Scanline/sec/sbc/tay prefix cost 10c more (body 66c -> WSYNC
     ; write on cycle 76 = one cycle late): WSYNC stalled a full line per
     ; overlapping scanline — stretched cave row, HUD pushed down, and with
@@ -536,18 +558,20 @@ StartFrame:
     sta GRP0
 .Grp1:
 
-    ; --- GRP1 SECOND (object/enemy sprite) ---
+    ; --- GRP1 SECOND (object/enemy sprite): one design row per scanline ---
+    ; ObjTop..ObjTop+7 window → row byte from ObjSprites[ObjBase + offset].
+    ; Object off: ObjBase=0 → blank rows. Bounds via C after cmp (no sec/clc).
     lda Scanline
-    cmp ObjTop
-    bcc .NoObject
-    cmp ObjBot
-    bcs .NoObject
-    lda ActiveObjectOn          ; GRP1 pattern: $f0 normal / $ff snake (0 = off)
-    jmp .WriteGrp1
-.NoObject:
-    lda #0
-.WriteGrp1:
+    sec
+    sbc ObjTop                  ; A = Scanline - ObjTop (C=1 in range)
+    bcc .ObjZero                ; above object
+    cmp #PLAYER_HEIGHT
+    bcs .ObjZero                ; at/below object bottom (C=0 here → adc adds exact ObjBase)
+    adc ObjBase
+    tax
+    lda ObjSprites,X
     sta GRP1
+.AfterObj:
 
     ; --- Loop control ---
     inc Scanline                ; advance scanline counter
@@ -555,8 +579,10 @@ StartFrame:
     dec LineCount               ; decrement scanlines remaining in row
     bne .Line                   ; loop if more scanlines in this row
 
-    ; --- Advance to next tile row ---
+    ; --- Advance to next tile row (X clobbered by object section: reload) ---
+    ldx RowIdx
     inx
+    stx RowIdx
     cpx #TILE_ROWS
     beq .AfterRows
     jmp .Row
@@ -564,6 +590,10 @@ StartFrame:
     lda #0                      ; (nothing falls through `jmp .Row`)
     sta GRP0
     jmp .Grp1
+.ObjZero:
+    lda #0
+    sta GRP1
+    jmp .AfterObj
 .AfterRows:
 
     ; --- Restore bombs clobbered by ColupfBuf ($F0-$F2) before HUD/overscan ---
@@ -1411,7 +1441,7 @@ CheckMinerPickup:
 ; ==============================================================================
 ; SelectActiveObject — choose the single GRP1 object to draw this frame.
 ; The TIA has one GRP1 sprite, so objects flicker by rotating slots each frame.
-; Sets ActiveObjectOn, ActiveObjectX, ActiveObjectY, ObjTop, ObjBot, COLUP1.
+; Sets ObjBase, ActiveObjectX, ActiveObjectY, ObjTop, ObjBot, COLUP1.
 ; Slot count (enemies + miner?) lives in Temp for this VBLANK only.
 ; Bomb fuse (state=1): low-priority — bomb only when (BombTimer&3)==0
 ; (~15 Hz); other frames normal miner/enemy rotation (FlickerFrame alone).
@@ -1427,8 +1457,8 @@ SelectActiveObject:
     lda BombTimer
     and #3
     bne .SOCount                ; 3 of 4 → miner/enemy
-    lda #$f0                    ; bomb GRP1 pattern
-    sta ActiveObjectOn
+    lda #OBJ_BOMB               ; bomb design offset into ObjSprites
+    sta ObjBase
     lda BombX
     sta ActiveObjectX
     lda BombY
@@ -1470,8 +1500,8 @@ SelectActiveObject:
     cmp LevelMinerRoom
     bne .SOEnemy
     ; This slot is the miner
-    lda #$f0
-    sta ActiveObjectOn
+    lda #OBJ_MINER              ; miner design offset into ObjSprites
+    sta ObjBase
     lda MinerX
     sta ActiveObjectX
     lda MinerY
@@ -1500,7 +1530,7 @@ SelectActiveObject:
     bcc .SOEnemyValid
     ; Out of range — no object this slot
     lda #0
-    sta ActiveObjectOn
+    sta ObjBase
     jmp .SODone
 .SOEnemyValid:
     ; Skip if this enemy is dead
@@ -1534,14 +1564,8 @@ SelectActiveObject:
     lda EnemyColorTable,X
     sta COLUP1
 .SOEnemyPattern:
-    cpx #ENEMY_SNAKE
-    beq .SOSnakePattern
-    lda #$f0
-    bne .SOSetPattern
-.SOSnakePattern:
-    lda #$ff
-.SOSetPattern:
-    sta ActiveObjectOn
+    lda ObjSpriteOffTable,X     ; type → ObjSprites design offset
+    sta ObjBase
 .SOEnemyColorDone:
     iny
     iny                         ; +2 = y
@@ -1555,11 +1579,11 @@ SelectActiveObject:
 
 .SOEnemySkip:
     lda #0
-    sta ActiveObjectOn
+    sta ObjBase
 
 .SODone:
     ; Set ObjTop/ObjBot for kernel GRP1 visibility check
-    lda ActiveObjectOn
+    lda ObjBase
     beq .SONoObj
     lda ActiveObjectY
     sta ObjTop
@@ -1575,7 +1599,7 @@ SelectActiveObject:
 
 .SONothing:
     lda #0
-    sta ActiveObjectOn
+    sta ObjBase
     sta ObjTop
     sta ObjBot
     rts
@@ -1590,6 +1614,15 @@ EnemyColorTable:
     .byte $0e                   ; tentacle — hue 0 luma 7 = white
     .byte $22                   ; moth — hue 2 luma 1 = dark orange
     .byte $0e                   ; lamp (type 5) — white; dark rooms override to grey
+
+; Enemy type → ObjSprites design offset (index = ENEMY_* type)
+ObjSpriteOffTable:
+    .byte OBJ_SPIDER            ; 0
+    .byte OBJ_BAT               ; 1
+    .byte OBJ_SNAKE             ; 2
+    .byte OBJ_TENTACLE          ; 3
+    .byte OBJ_MOTH              ; 4
+    .byte OBJ_LAMP              ; 5 (LAMP)
 
 ; ==============================================================================
 ; CheckEnemyHit — player overlaps an enemy → remove enemy, lose life
@@ -2804,6 +2837,22 @@ UpdateBombSound:
     sta AUDV0
 .UBSDone:
     rts
+
+; ------------------------------------------------------------------------------
+; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
+; Row r displays on scanline ObjTop+r (GRP1 write latching, same as before).
+; Offset = OBJ_* constant; index 0 = blank (object off).
+; ------------------------------------------------------------------------------
+ObjSprites:
+    .byte 0,0,0,0,0,0,0,0          ; OBJ_NONE
+    .byte $90,$60,$f0,$f0,$60,$90,$60,$60   ; OBJ_MOTH
+    .byte $60,$f0,$f0,$60,$90,$60,$90,$90   ; OBJ_SPIDER
+    .byte $f0,$f0,$60,$60,$f0,$f0,$f0,$60   ; OBJ_LAMP
+    .byte $60,$90,$80,$60,$30,$30,$30,$30   ; OBJ_TENTACLE
+    .byte $90,$60,$f0,$60,$60,$90,$90,$00   ; OBJ_BAT
+    .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff   ; OBJ_SNAKE (8 px)
+    .byte $80,$b0,$30,$70,$70,$f0,$f0,$00   ; OBJ_MINER (facing left)
+    .byte $10,$20,$20,$60,$f0,$f0,$f0,$60   ; OBJ_BOMB
 
 ; Pad to fineAdjustTable
     .ds $FF00 - *, 0

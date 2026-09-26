@@ -20,13 +20,13 @@
                 "room_y": 0,
                 "enemies": [
                     {
-                        "type": 2,
-                        "x": 1.0,
+                        "type": 4,
+                        "x": 35.0,
                         "y": 5.0,
-                        "range_min": 0.0,
-                        "range_max": 4.0,
+                        "range_min": 32.0,
+                        "range_max": 38.0,
                         "speed": 1.5,
-                        "dir": 1
+                        "dir": -1
                     }
                 ],
                 "lamps": [],
