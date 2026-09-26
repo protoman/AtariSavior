@@ -56,11 +56,11 @@ static int CellHeightFor(int cellWidth, int displayCols, int roomHeight) {
 MapCanvas::MapCanvas(QWidget* parent) : QWidget(parent) {
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);  // F toggles initial facing
-    // Default 20x12 stage until a room is loaded. The map area only: the grey
+    // Default 20x3 stage until a room is loaded. The map area only: the grey
     // HUD band is drawn by the game kernel and is not shown/edited here.
     setFixedSize(DisplayColumnsFor(kDefaultRoomWidth) * m_tileSize,
-                 kDefaultRoomHeight * CellHeightFor(m_tileSize,
-                     DisplayColumnsFor(kDefaultRoomWidth), kDefaultRoomHeight));
+                 kDefaultRoomHeight * 4 * CellHeightFor(m_tileSize,
+                     DisplayColumnsFor(kDefaultRoomWidth), kDefaultRoomHeight * 4));
 }
 
 void MapCanvas::SetLevelData(hero::LevelData* levelData, std::vector<hero::ModelData>* models, int activeRoomIndex) {
@@ -112,8 +112,9 @@ void MapCanvas::UpdateSizeForRoom() {
     // The canvas shows the room's playable rows only (no grey HUD band; the
     // game renders that below the cave but the editor doesn't display it).
     // Tile heights are scaled so the map keeps its on-screen 4:3 format.
-    int cellH = CellHeightFor(m_tileSize, DisplayColumnsFor(w), h);
-    setFixedSize(DisplayColumnsFor(w) * m_tileSize, h * cellH);
+    int displayRows = h * 4;
+    int cellH = CellHeightFor(m_tileSize, DisplayColumnsFor(w), displayRows);
+    setFixedSize(DisplayColumnsFor(w) * m_tileSize, displayRows * cellH);
 }
 
 QColor MapCanvas::GetTileColor(int tileType, int tileY) const {
@@ -123,10 +124,8 @@ QColor MapCanvas::GetTileColor(int tileType, int tileY) const {
         case hero::TileType::AIR:
             return QColor(15, 15, 20);
         case hero::TileType::SOLID_WALL: {
-            // Stripe: rows 0-3 use wall color 1, 4-7 wall color 2, 8-11 again
-            // color 1 (mirrors the game kernel's 4-row band pattern).
-            int band = tileY / 4;
-            if (band % 2 == 1) {
+            // One model row represents one full color band.
+            if (tileY % 2 == 1) {
                 return QColor(m_levelData->wall2_r, m_levelData->wall2_g, m_levelData->wall2_b);
             }
             return QColor(m_levelData->wall_r, m_levelData->wall_g, m_levelData->wall_b);
@@ -191,19 +190,21 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
 
     const int displayCols = DisplayColumnsFor(roomWidth);
     const int cellW = m_tileSize;
-    const int cellH = CellHeightFor(m_tileSize, displayCols, roomHeight);
+    const int displayRows = roomHeight * 4;
+    const int cellH = CellHeightFor(m_tileSize, displayCols, displayRows);
 
     // Render Grid & Tiles (full mirrored stage)
-    for (int y = 0; y < roomHeight; ++y) {
+    for (int y = 0; y < displayRows; ++y) {
         for (int dcol = 0; dcol < displayCols; ++dcol) {
             int x = MirrorColumn(dcol, roomWidth);
-            int tileType = model->tiles[y * roomWidth + x];
+            int modelY = y / 4;
+            int tileType = model->tiles[modelY * roomWidth + x];
             QRect tileRect(dcol * cellW, y * cellH, cellW, cellH);
 
-            QColor color = GetTileColor(tileType, y);
+            QColor color = GetTileColor(tileType, modelY);
             // Bottom band: air on last row shows the room's band COLUBK
             // (walls stay wall-colored — matches game: COLUBK only in open PF).
-            if (room && room->bottom_band && y == roomHeight - 1 &&
+            if (room && room->bottom_band && modelY == roomHeight - 1 &&
                 tileType == (int)hero::TileType::AIR) {
                 color = QColor(room->bottom_r, room->bottom_g, room->bottom_b);
             }
@@ -224,7 +225,7 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
 
     // Draw seam marker at mirror axis
     int seamX = roomWidth * m_tileSize;
-    int canvasHeight = roomHeight * cellH;
+    int canvasHeight = displayRows * cellH;
     painter.setPen(QPen(QColor(90, 90, 110), 2));
     painter.drawLine(seamX, 0, seamX, canvasHeight);
 
@@ -232,7 +233,7 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
     if (!m_modelMode && room && m_levelData) {
         // Render Miner Goal position if in this room
         if (m_levelData->miner_room == m_activeRoomIndex) {
-            int mx = (int)(m_levelData->miner_x * cellW);
+            int mx = (int)(m_levelData->miner_x * 2 * cellW);
             int my = (int)(m_levelData->miner_y * cellH);
             QRect minerRect(mx - 12, my - 12, 24, 24);
 
@@ -240,6 +241,7 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             painter.setPen(Qt::black);
             painter.drawEllipse(minerRect);
             painter.drawText(minerRect, Qt::AlignCenter, "M");
+            DrawFacingArrow(painter, minerRect, m_levelData->miner_dir);
         }
 
         // Render Lamps in room
@@ -386,30 +388,41 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
 
     int roomWidth = model->width;
     int roomHeight = model->height;
+    int displayRows = roomHeight * 4;
+    int modelY = tileY / 4;
     int displayColumns = DisplayColumnsFor(roomWidth);
 
-    if (tileX < 0 || tileX >= roomWidth || tileY < 0 || tileY >= roomHeight) return;
+    if (tileX < 0 || tileX >= roomWidth || tileY < 0 || tileY >= displayRows) return;
 
     int brushVal = static_cast<int>(m_currentBrush);
 
     if (m_currentBrush == BrushTool::SOLID_WALL || m_currentBrush == BrushTool::ERASE_AIR ||
         m_currentBrush == BrushTool::HOT_ROCK_WALL) {
-        model->tiles[tileY * roomWidth + tileX] = brushVal;
+        model->tiles[modelY * roomWidth + tileX] = brushVal;
         emit levelModified();
         update();
     } else if (m_currentBrush == BrushTool::ADD_RAFT) {
-        int idx = tileY * roomWidth + tileX;
+        int idx = modelY * roomWidth + tileX;
         if (model->tiles[idx] != (int)hero::TileType::RAFT && room && !AllowAddElement()) return;
         model->tiles[idx] = (int)hero::TileType::RAFT;
         emit levelModified();
         update();
     } else if (m_currentBrush == BrushTool::ADD_MAGMA) {
-        int idx = tileY * roomWidth + tileX;
+        int idx = modelY * roomWidth + tileX;
         if (model->tiles[idx] != (int)hero::TileType::MAGMA_FALL && room && !AllowAddElement()) return;
         model->tiles[idx] = (int)hero::TileType::MAGMA_FALL;
         emit levelModified();
         update();
     } else if (!m_modelMode && room && m_currentBrush == BrushTool::SET_MINER_GOAL) {
+        if (entityX < 0 || entityX >= displayColumns) return;
+        if (m_levelData->miner_room == m_activeRoomIndex &&
+            (int)std::floor(m_levelData->miner_x * 2.0f) == entityX &&
+            (int)std::floor(m_levelData->miner_y) == tileY) {
+            m_levelData->miner_dir = m_levelData->miner_dir >= 0 ? -1 : 1;
+            emit levelModified();
+            update();
+            return;
+        }
         if (m_levelData->miner_room != m_activeRoomIndex && !AllowAddElement()) return;
         // Same room: ignore miner's current row (re-place frees it first).
         int ignoreY = (m_levelData->miner_room == m_activeRoomIndex)
@@ -417,17 +430,18 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                           : -1;
         if (!AllowElementInRow(tileY, ignoreY)) return;
         m_levelData->miner_room = m_activeRoomIndex;
-        m_levelData->miner_x = (float)tileX + 0.5f;
+        m_levelData->miner_x = (float)entityX / 2.0f;
         m_levelData->miner_y = (float)tileY;
+        m_levelData->miner_dir = m_initialFacing;
         emit levelModified();
         update();
     } else if (!m_modelMode && room && (m_currentBrush == BrushTool::ADD_SPIDER || m_currentBrush == BrushTool::ADD_BAT ||
                m_currentBrush == BrushTool::ADD_SNAKE || m_currentBrush == BrushTool::ADD_TENTACLE ||
                m_currentBrush == BrushTool::ADD_MOTH)) {
-        // Entity placement: full stage width, no mirroring. Reject the HUD
-        // band (tileY >= roomHeight) so enemies can't spawn beneath the cave.
+        // Entity placement: full stage width, no mirroring. Reject rows beyond
+        // the cave (tileY >= displayRows) so enemies can't spawn in the HUD.
         if (entityX < 0 || entityX >= displayColumns ||
-            tileY < 0 || tileY >= roomHeight) return;
+            tileY < 0 || tileY >= displayRows) return;
 
         hero::EnemyData eData;
         if (m_currentBrush == BrushTool::ADD_SPIDER) eData.type = (int)hero::EnemyType::SPIDER;
@@ -461,7 +475,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
     } else if (!m_modelMode && room && m_currentBrush == BrushTool::ADD_LAMP) {
         // Entity placement: full stage width, no mirroring. No lamps in the HUD band.
         if (entityX < 0 || entityX >= displayColumns ||
-            tileY < 0 || tileY >= roomHeight) return;
+            tileY < 0 || tileY >= displayRows) return;
 
         // Replace any lamp already on this tile, otherwise add a new one
         for (auto& lamp : room->lamps) {
@@ -535,7 +549,7 @@ void MapCanvas::MouseToTile(const QPointF& pos, bool apply) {
         roomHeight = RoomHeightOf(m_levelData, m_models, m_activeRoomIndex);
     }
 
-    int cellH = CellHeightFor(m_tileSize, DisplayColumnsFor(roomWidth), roomHeight);
+    int cellH = CellHeightFor(m_tileSize, DisplayColumnsFor(roomWidth), roomHeight * 4);
     int displayCol = (int)(pos.x() / m_tileSize);
     int tileX = MirrorColumn(displayCol, roomWidth);
     int tileY = (int)(pos.y() / cellH);

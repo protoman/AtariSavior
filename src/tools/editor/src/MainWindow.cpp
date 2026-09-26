@@ -38,15 +38,14 @@
 
 namespace editor {
 
-// Savannah Atari prototype room dims: 20 tiles wide (mirrored to 40), 12 tall
-// (the bottom 4 rows are the grey HUD band).
+// Savannah Atari prototype room dims: 20 tiles wide (mirrored to 40), 3 bands tall.
 static constexpr int kRoomWidth = 20;
-static constexpr int kRoomHeight = 12;
+static constexpr int kRoomHeight = 3;
 // Centered passages carved for room connections.
 static constexpr int kVertExitA = 8;   // vertical exit column range
 static constexpr int kVertExitB = 11;
-static constexpr int kHorizExitA = 6;  // horizontal exit row range
-static constexpr int kHorizExitB = 9;
+static constexpr int kHorizExitA = 1;  // middle color band
+static constexpr int kHorizExitB = 1;
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     SetupUI();
@@ -135,13 +134,13 @@ void MainWindow::LoadModels() {
             defaultModel.id = 0;
             defaultModel.name = "Default Cave";
             defaultModel.width = 20;
-            defaultModel.height = 12;
-            defaultModel.tiles.resize(20 * 12, (int)hero::TileType::AIR);
+            defaultModel.height = kRoomHeight;
+            defaultModel.tiles.resize(kRoomWidth * kRoomHeight, (int)hero::TileType::AIR);
             for (int x = 0; x < 20; ++x) {
                 defaultModel.tiles[0 * 20 + x] = (int)hero::TileType::SOLID_WALL;
-                defaultModel.tiles[11 * 20 + x] = (int)hero::TileType::SOLID_WALL;
+                defaultModel.tiles[(kRoomHeight - 1) * 20 + x] = (int)hero::TileType::SOLID_WALL;
             }
-            for (int y = 0; y < 12; ++y) {
+            for (int y = 0; y < kRoomHeight; ++y) {
                 defaultModel.tiles[y * 20 + 0] = (int)hero::TileType::SOLID_WALL;
                 defaultModel.tiles[y * 20 + 19] = (int)hero::TileType::SOLID_WALL;
             }
@@ -256,7 +255,7 @@ void MainWindow::SetupUI() {
     QPushButton* remRoomBtn = new QPushButton("Remove Room", this);
     roomLayout->addWidget(remRoomBtn);
 
-    // Bottom band: optional colored strip on tile row 11 of current room
+    // Bottom band: optional colored strip on model row 2 of current room
     QHBoxLayout* bandLayout = new QHBoxLayout();
     m_bottomBandCheck = new QCheckBox("Bottom band", this);
     m_bottomBandCheck->setToolTip("Colored death band on the room's bottom tile row");
@@ -305,9 +304,9 @@ void MainWindow::SetupUI() {
 
     m_facingBtn = new QPushButton("Initial facing: → (F)", this);
     m_facingBtn->setToolTip(
-        "Direction new enemies face (snake/moth first move).\n"
-        "F on canvas or this button toggles. Click an existing enemy with an "
-        "enemy brush to flip it.");
+        "Direction new miners and enemies face (snake/moth first move).\n"
+        "F on canvas or this button toggles. Click an existing marker with its "
+        "tool to flip it.");
     levelToolLayout->addWidget(m_facingBtn);
 
     levelTabLayout->addWidget(levelToolBox);
@@ -389,20 +388,19 @@ void MainWindow::SetupUI() {
 void MainWindow::SwitchEditMode(EditMode mode) {
     m_editMode = mode;
     m_canvas->SetEditMode(mode == EditMode::MODEL_EDIT);
+    QListWidget* tools = mode == EditMode::MODEL_EDIT ? m_modelToolList : m_levelToolList;
     if (mode == EditMode::MODEL_EDIT) {
         m_tabWidget->setCurrentIndex(0);
         // Select first model tool if none selected
-        if (m_modelToolList->currentRow() < 0 && m_modelToolList->count() > 0) {
-            m_modelToolList->setCurrentRow(0);
-        }
+        if (tools->currentRow() < 0 && tools->count() > 0) tools->setCurrentRow(0);
     } else {
         m_tabWidget->setCurrentIndex(1);
         UpdateRoomDirectionButtons();
         // Select first level tool if none selected
-        if (m_levelToolList->currentRow() < 0 && m_levelToolList->count() > 0) {
-            m_levelToolList->setCurrentRow(0);
-        }
+        if (tools->currentRow() < 0 && tools->count() > 0) tools->setCurrentRow(0);
     }
+    if (QListWidgetItem* item = tools->currentItem())
+        m_canvas->SetCurrentBrush(static_cast<BrushTool>(item->data(Qt::UserRole).toInt()));
 }
 
 void MainWindow::OnTabChanged(int index) {
@@ -431,13 +429,13 @@ void MainWindow::AddModel() {
     newModel.id = (int)m_models.size();
     newModel.name = "Model " + std::to_string(newModel.id + 1);
     newModel.width = 20;
-    newModel.height = 12;
-    newModel.tiles.resize(20 * 12, (int)hero::TileType::AIR);
+    newModel.height = kRoomHeight;
+    newModel.tiles.resize(kRoomWidth * kRoomHeight, (int)hero::TileType::AIR);
     for (int x = 0; x < 20; ++x) {
         newModel.tiles[0 * 20 + x] = (int)hero::TileType::SOLID_WALL;
-        newModel.tiles[11 * 20 + x] = (int)hero::TileType::SOLID_WALL;
+        newModel.tiles[(kRoomHeight - 1) * 20 + x] = (int)hero::TileType::SOLID_WALL;
     }
-    for (int y = 0; y < 12; ++y) {
+    for (int y = 0; y < kRoomHeight; ++y) {
         newModel.tiles[y * 20 + 0] = (int)hero::TileType::SOLID_WALL;
         newModel.tiles[y * 20 + 19] = (int)hero::TileType::SOLID_WALL;
     }
@@ -550,26 +548,29 @@ void MainWindow::CreateRoomInDirection(int dirX, int dirY) {
         for (int y = kHorizExitA; y <= kHorizExitB; ++y) curModel.tiles[y * kRoomWidth + (kRoomWidth - 1)] = (int)hero::TileType::AIR;
     }
 
-    // Create new model for the new room
-    int newModelId = (int)m_models.size();
-    hero::ModelData newModel;
-    newModel.id = newModelId;
-    newModel.name = "Model " + std::to_string(newModelId + 1);
-    newModel.width = kRoomWidth;
-    newModel.height = kRoomHeight;
-    newModel.tiles.resize(kRoomWidth * kRoomHeight, (int)hero::TileType::AIR);
-
-    // Border walls
-    for (int x = 0; x < kRoomWidth; ++x) {
-        newModel.tiles[0 * kRoomWidth + x] = (int)hero::TileType::SOLID_WALL;
-        newModel.tiles[(kRoomHeight - 1) * kRoomWidth + x] = (int)hero::TileType::SOLID_WALL;
+    // Reuse the first available model for the new room; create one only if none exist.
+    if (m_models.empty()) {
+        hero::ModelData newModel;
+        newModel.id = 0;
+        newModel.name = "Model 1";
+        newModel.width = kRoomWidth;
+        newModel.height = kRoomHeight;
+        newModel.tiles.resize(kRoomWidth * kRoomHeight, (int)hero::TileType::AIR);
+        for (int x = 0; x < kRoomWidth; ++x) {
+            newModel.tiles[0 * kRoomWidth + x] = (int)hero::TileType::SOLID_WALL;
+            newModel.tiles[(kRoomHeight - 1) * kRoomWidth + x] = (int)hero::TileType::SOLID_WALL;
+        }
+        for (int y = 0; y < kRoomHeight; ++y) {
+            newModel.tiles[y * kRoomWidth + 0] = (int)hero::TileType::SOLID_WALL;
+            newModel.tiles[y * kRoomWidth + (kRoomWidth - 1)] = (int)hero::TileType::SOLID_WALL;
+        }
+        m_models.push_back(newModel);
+        SaveModels();
     }
-    for (int y = 0; y < kRoomHeight; ++y) {
-        newModel.tiles[y * kRoomWidth + 0] = (int)hero::TileType::SOLID_WALL;
-        newModel.tiles[y * kRoomWidth + (kRoomWidth - 1)] = (int)hero::TileType::SOLID_WALL;
-    }
+    int newModelId = 0;
+    auto& newModel = m_models[newModelId];
 
-    // Carve entry in new room
+    // Carve entry in reused model (side facing the current room)
     if (dirY == -1) {
         for (int x = kVertExitA; x <= kVertExitB; ++x) newModel.tiles[(kRoomHeight - 1) * kRoomWidth + x] = (int)hero::TileType::AIR;
     } else if (dirY == 1) {
@@ -579,11 +580,9 @@ void MainWindow::CreateRoomInDirection(int dirX, int dirY) {
     } else if (dirX == 1) {
         for (int y = kHorizExitA; y <= kHorizExitB; ++y) newModel.tiles[y * kRoomWidth + 0] = (int)hero::TileType::AIR;
     }
+    SaveModels(); // Save global models after carving the entry
 
-    m_models.push_back(newModel);
-    SaveModels(); // Save global models after adding new model and carving exits
-
-    // Create room referencing new model
+    // Create room referencing the reused model
     hero::RoomData newRoom;
     newRoom.room_id = (int)m_levelData.rooms.size();
     newRoom.model_id = newModelId;
@@ -708,6 +707,7 @@ void MainWindow::PopulateRoomCombo() {
 }
 
 void MainWindow::NewLevel() {
+    SwitchEditMode(EditMode::LEVEL_EDIT);
     m_levelData = hero::LevelData();
     m_levelData.level_id = 1;
     m_levelData.name = "New Level";
@@ -737,7 +737,9 @@ void MainWindow::NewLevel() {
     m_levelData.miner_room = 1;
     m_levelData.miner_x = 13.0f;
     m_levelData.miner_y = 10.0f;
+    m_levelData.miner_dir = m_canvas->InitialFacing();
 
+    m_stageCombo->setCurrentIndex(-1);
     m_currentFilePath.clear();
     ResetUndoStack();
     UpdateUIFromLevel();

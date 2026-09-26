@@ -8,7 +8,7 @@ ROOM_NONE = $ff
 LEVEL_DATA_STRIDE = 14
 LEVEL_COUNT = 2
 
-; Per-level entry (stride 12): start room/x/y, miner room/x/y, both wall
+; Per-level entry (stride 14): start room/x/y, miner room/x/y, both wall
 ; colors, then the level's RoomDataTable and RoomConnections bases.
 LevelDataTable:
   .byte LEVEL1_START_ROOM, LEVEL1_START_X, LEVEL1_START_Y, LEVEL1_MINER_ROOM, LEVEL1_MINER_X, LEVEL1_MINER_Y, LEVEL1_WALL_COLOR, LEVEL1_WALL_COLOR2

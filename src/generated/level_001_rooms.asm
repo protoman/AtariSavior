@@ -4,14 +4,15 @@ LEVEL1_WALL_COLOR = $20
 LEVEL1_WALL_COLOR2 = $22
 LEVEL1_START_X = 32
 LEVEL1_START_Y = 24
-LEVEL1_MINER_ROOM = 1
-LEVEL1_MINER_X = 44
-LEVEL1_MINER_Y = 72
+LEVEL1_MINER_ROOM = 129
+LEVEL1_MINER_X = 27
+LEVEL1_MINER_Y = 84
 
-; Room data: one (L1R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo.
+; Room data: one (L1R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
+; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
 LEVEL1_RoomDataTable:
-  .word L1R1TilePF0, L1R1RoomRects ; room 0
-  .word L1R2TilePF0, L1R2RoomRects ; room 1
+  .word M0TilePF0, M0RoomRects ; room 0 (model 0)
+  .word M1TilePF0, M1RoomRects ; room 1 (model 1)
 
 ; Room connections: up/down/left/right target room index per room ($ff = none).
 LEVEL1_RoomConnections:
@@ -22,7 +23,7 @@ LEVEL1_RoomConnections:
 LEVEL1_EnemyDataTable:
   .byte 4, 147, 60, 128, 152, -1
   .byte 0, 127, 60, 108, 132, -1
-  .byte 5, 81, 30, 0, 0, 1
+  .byte 5, 79, 30, 0, 0, 1
 
 ; Per-room enemy records: ptr_lo, ptr_hi, count, bottom_color.
 LEVEL1_RoomEnemies:

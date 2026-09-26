@@ -8,7 +8,7 @@
 ; Architecture:
 ;   - 4K ROM at $F000-$FFFF (no bankswitching)
 ;   - Kernel renders 192 visible scanlines: 144 cave + 48 HUD
-;   - Cave: 12 tile rows × 12 scanlines each
+;   - Cave: 3 tile rows × 48 scanlines each
 ;   - Reflected playfield (CTRLPF D0=1) — symmetric cave
 ;   - GRP0 = player (square sprite), GRP1 = future objects
 ;   - Per-scanline kernel with WSYNC for stable timing
@@ -132,14 +132,14 @@ LevelConnHi     byte            ; pointer to level's RoomConnections (high)
 
 ; Level/miner ZP variables
 Level           byte            ; current level index (0-based)
-LevelMinerRoom  byte            ; room index holding the miner for current level
+LevelMinerRoom  byte            ; room index; b7 means miner faces right
 MinerX          byte            ; miner X position (room pixel coords)
 MinerY          byte            ; miner Y position (room pixel coords)
 LevelStartRoom  byte            ; level origin room (spawn + enemy-hit teleport)
 LevelStartX     byte            ; level origin X
 LevelStartY     byte            ; level origin Y
-LevelWallColor  byte            ; wall color 1 (rows 0-3, 8-11)
-LevelWallColor2 byte            ; wall color 2 (rows 4-7)
+LevelWallColor  byte            ; wall color 1 (bands 0 and 2)
+LevelWallColor2 byte            ; wall color 2 (band 1)
 PlayerLives     byte            ; lives remaining (0 = game over, reset)
 TickCounter     byte            ; frame counter (60 frames = 1 bar step = 1s)
 BarLevel        byte            ; timer bar level (120=full, 0=empty)
@@ -208,13 +208,15 @@ EnemyRamP       = $C2           ; bits0-3 moth phase; bits4-7 spider vdir (1=dow
 ; ==============================================================================
 PLAYER_HEIGHT   = 8             ; GRP1 object (enemy/miner) height; player uses PLAYER_SPRITE_H
 PLAYER_SPRITE_H = 12            ; player sprite height in scanlines (8x12)
-PLAYER_WIDTH    = 8             ; player sprite width in pixels (8x12)
+PLAYER_WIDTH    = 7             ; lit player sprite spans 7 pixels; REFP0 shift handled
 ENEMY_WIDTH     = 8             ; snake GRP1 width ($ff = 8 px) — flush-out span
+LAMP_WIDTH      = 4             ; OBJ_LAMP uses GRP1's leftmost 4 lit pixels
+MINER_WIDTH     = 4             ; OBJ_MINER spans 4 lit GRP1 pixels
 SNAKE_PATROL    = 4             ; patrol half-span from spawn X (was ENEMY_WIDTH)
 TILE_COLUMNS    = 20            ; columns per half (reflected playfield)
-TILE_ROWS       = 12            ; number of playable tile rows
-LINES_PER_TILE  = 12            ; scanlines per tile row
-HUD_ROWS        = 4             ; HUD tile rows (48 scanlines)
+TILE_ROWS       = 3             ; number of playable color bands
+LINES_PER_TILE  = 48            ; scanlines per tile row
+HUD_ROWS        = 1             ; HUD band (48 scanlines)
 CAVE_LINES      = 144           ; TILE_ROWS × LINES_PER_TILE
 VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × LINES_PER_TILE)
 
@@ -231,7 +233,7 @@ OBJ_BOMB        = 64
 
 ; Player bounds (must stay inside cave walls)
 PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
-PLAYER_MAX_X    = 159           ; width-8 sprite: visible right edge = RoomX -> 159
+PLAYER_MAX_X    = 159           ; horizontal logical-position clamp
 PLAYER_MIN_Y    = 0
 PLAYER_MAX_Y    = 132           ; CAVE_LINES - PLAYER_SPRITE_H
 
@@ -364,6 +366,8 @@ StartFrame:
 
     ; --- Position player sprite horizontally ---
     lda RoomX
+    sec
+    sbc PlayerDir              ; counter REFP0's one-pixel shift when reflected
     ldx #0                      ; X=0 = player0
     jsr SetObjectXPos
 
@@ -451,8 +455,8 @@ StartFrame:
 ; Kernel: 192 visible scanlines
 ; ==============================================================================
 ; Structure:
-;   .Row (×12): set PF registers once per tile row, init scanline counter
-;   .Line (×12): render one scanline — sprite check + loop control
+;   .Row (×3): set PF registers once per color band, init scanline counter
+;   .Line (×48): render one scanline — sprite check + loop control
 ;
 ; PF registers persist in TIA, so writing once per tile row is sufficient.
 ; The inner .Line loop has NO PF writes — only sprite rendering.
@@ -475,12 +479,12 @@ StartFrame:
 
     lda #0
     sta Scanline
-    sta RowIdx                  ; tile-row counter (0-11); object section clobbers X
+    sta RowIdx                  ; tile-row counter (0-2); object section clobbers X
     sec
     sbc RoomY                   ; A = -RoomY = A0 at scanline 0
     tay                         ; running-Y: Y = A0 for the next .Line (10c/line
                                 ; cheaper than recomputing Scanline-RoomY each line)
-    ldx #0                      ; tile row counter (0-11)
+    ldx #0                      ; tile row counter (0-2)
 
 .Row:
     ; --- Set PF registers for this tile row (TIA persists) ---
@@ -498,7 +502,7 @@ StartFrame:
     ; Inline stripe+hot test was 84-109c; budget is 76c/scanline.
     lda ColupfBuf,X
     sta COLUPF
-    ; --- Bottom band: row 11 only, open PF shows COLUBK band color ---
+    ; --- Bottom band: row 2 only, open PF shows COLUBK band color ---
     ; Blink (BombPacked state=2) keeps Temp; color 0 = band off.
     cpx #TILE_ROWS-1
     bne .RowSkipBand
@@ -822,7 +826,7 @@ EndInputCheck:
     jsr LoseLifeHot
 .NoHotBump:
 
-    ; --- Bottom band touch (RoomY in row 11 + band color on) → lose life ---
+    ; --- Bottom band touch (RoomY in row 2 + band color on) → lose life ---
     jsr CheckBandTouch
 
     ; --- Move live enemies (snake first; other types no-op until S5+) ---
@@ -1301,9 +1305,9 @@ ExitRoomRight:
 ; Level management
 ; ==============================================================================
 ; LoadLevel: read LevelDataTable entry for current Level, init pointers, enter room.
-; LevelDataTable stride: 12 bytes
+; LevelDataTable stride: 14 bytes
 ;   +0..+2: start_room, start_x, start_y
-;   +3..+5: miner_room, miner_x, miner_y
+;   +3..+5: miner_room (b7 = faces right), miner_x, miner_y
 ;   +6..+7: pfdata ptr (lo, hi)
 ;   +8..+9: conn ptr (lo, hi)
 ;  +10..+11: enemy ptr (lo, hi)
@@ -1400,17 +1404,18 @@ LoadLevel:
 ; Miner pickup — check if player overlaps miner, advance to next level
 ; ==============================================================================
 CheckMinerPickup:
-    lda RoomNo
-    cmp LevelMinerRoom
+    lda LevelMinerRoom
+    and #$7f
+    cmp RoomNo
     bne .CMPDone                ; not in miner's room
-    ; X overlap: player [RoomX, +7] vs miner [MinerX, +3] — exact asymmetric
-    ; accept iff RoomX - MinerX in [-7, +3]  (add 7, compare 11)
+    ; X overlap: player [RoomX, +6] vs 4px miner.
+    ; Accept iff RoomX - MinerX in [-6, +3].
     lda RoomX
     sec
     sbc MinerX
     clc
     adc #PLAYER_WIDTH - 1
-    cmp #PLAYER_WIDTH + ENEMY_WIDTH - 1
+    cmp #PLAYER_WIDTH + MINER_WIDTH - 1
     bcs .CMPDone                ; no X overlap
     ; Y overlap: player [RoomY, +11] vs miner [MinerY, +7]
     ; accept iff RoomY - MinerY in [-11, +7]  (add 11, compare 19)
@@ -1473,8 +1478,9 @@ SelectActiveObject:
     ; Count objects: enemies + miner if in miner's room (Temp = count; VBLANK-safe)
     lda EnemyCount
     sta Temp
-    lda RoomNo
-    cmp LevelMinerRoom
+    lda LevelMinerRoom
+    and #$7f
+    cmp RoomNo
     bne .SONoMiner
     inc Temp                    ; miner counts as a slot
 .SONoMiner:
@@ -1496,9 +1502,9 @@ SelectActiveObject:
     ; Check if slot 0 is the miner
     lda FlickerFrame
     bne .SOEnemy
-    lda RoomNo
-    cmp LevelMinerRoom
-    bne .SOEnemy
+    lda Temp
+    cmp EnemyCount
+    beq .SOEnemy               ; no miner slot in this room
     ; This slot is the miner
     lda #OBJ_MINER              ; miner design offset into ObjSprites
     sta ObjBase
@@ -1516,14 +1522,14 @@ SelectActiveObject:
 .SOEnemy:
     ; Walk enemy list: find the (FlickerFrame - (miner_offset))th enemy
     ; If miner room and FlickerFrame > 0, subtract 1 for miner slot
-    lda FlickerFrame
-    ldx RoomNo
-    cpx LevelMinerRoom
-    bne .SOEnemyNoMinerOffset
-    sec
-    sbc #1                      ; skip miner slot
+    ldx FlickerFrame
+    lda Temp
+    cmp EnemyCount
+    beq .SOEnemyNoMinerOffset
+    dex                         ; skip miner slot
 .SOEnemyNoMinerOffset:
     ; A = enemy index in list
+    txa
     sta EnemyIndex
     ; Check if index < EnemyCount
     cmp EnemyCount
@@ -1582,6 +1588,7 @@ SelectActiveObject:
     sta ObjBase
 
 .SODone:
+    jsr SetObjReflection
     ; Set ObjTop/ObjBot for kernel GRP1 visibility check
     lda ObjBase
     beq .SONoObj
@@ -1600,9 +1607,7 @@ SelectActiveObject:
 .SONothing:
     lda #0
     sta ObjBase
-    sta ObjTop
-    sta ObjBot
-    rts
+    jmp .SODone
 
 ; ==============================================================================
 ; Enemy color table (emulator-aware: hue<<4 | luma<<1)
@@ -1658,7 +1663,7 @@ CEH_HasMore:
     lda (EnemyDataLo),Y
     sta ActiveObjectY
     ldy EnemyIndex              ; restore loop index
-    ; X overlap: player [RoomX, +7] vs enemy [ActiveObjectX, +3] — exact
+    ; Broad object bounds; lamp gets its 4px lit-width check after Y overlap.
     lda RoomX
     sec
     sbc ActiveObjectX
@@ -1666,6 +1671,7 @@ CEH_HasMore:
     adc #PLAYER_WIDTH - 1
     cmp #PLAYER_WIDTH + ENEMY_WIDTH - 1
     bcs CEHNext                ; no X overlap
+    sta CollisionX              ; keep x-overlap span for lamp's narrower box
     ; Y overlap: player [RoomY, +11] vs enemy [ActiveObjectY, +7] — exact
     lda RoomY
     sec
@@ -1702,6 +1708,10 @@ CEH_HasMore:
     jsr ReloadLevel
     rts
 CEH_Lamp:
+    ; Broad overlap guarantees lower bound; narrow to lamp's 4 lit pixels.
+    lda CollisionX
+    cmp #PLAYER_WIDTH + LAMP_WIDTH - 1
+    bcs CEHNext
     ; Only fire once (bit already set → no-op); no life loss, not DeadEnemyIdx
     jsr SetRoomDark
     rts
@@ -2184,7 +2194,7 @@ DigitTimes5:
   .byte 0, 5, 10, 15, 20, 25, 30, 35, 40, 45
 
 ; ==============================================================================
-; YToCellRow — convert scanline (0-191) to tile row (0-11)
+; YToCellRow — convert scanline (0-191) to 48-line band row (0-3)
 ; ==============================================================================
 ; Input: A = scanline. Output: X = tile row.
 ; Lookup table: constant-time. Subtract loop grew linearly with RoomY and
@@ -2196,30 +2206,30 @@ YToCellRow subroutine
     tax
     rts
 
-; 192 entries: A/12 for A=0..191 (matches old loop for full scanline range).
+; 192 entries: A/48 for A=0..191 (band 3 is the HUD, outside room data).
 YToRowTable:
     .byte 0,0,0,0,0,0,0,0,0,0,0,0
+    .byte 0,0,0,0,0,0,0,0,0,0,0,0
+    .byte 0,0,0,0,0,0,0,0,0,0,0,0
+    .byte 0,0,0,0,0,0,0,0,0,0,0,0
+    .byte 1,1,1,1,1,1,1,1,1,1,1,1
+    .byte 1,1,1,1,1,1,1,1,1,1,1,1
+    .byte 1,1,1,1,1,1,1,1,1,1,1,1
     .byte 1,1,1,1,1,1,1,1,1,1,1,1
     .byte 2,2,2,2,2,2,2,2,2,2,2,2
+    .byte 2,2,2,2,2,2,2,2,2,2,2,2
+    .byte 2,2,2,2,2,2,2,2,2,2,2,2
+    .byte 2,2,2,2,2,2,2,2,2,2,2,2
     .byte 3,3,3,3,3,3,3,3,3,3,3,3
-    .byte 4,4,4,4,4,4,4,4,4,4,4,4
-    .byte 5,5,5,5,5,5,5,5,5,5,5,5
-    .byte 6,6,6,6,6,6,6,6,6,6,6,6
-    .byte 7,7,7,7,7,7,7,7,7,7,7,7
-    .byte 8,8,8,8,8,8,8,8,8,8,8,8
-    .byte 9,9,9,9,9,9,9,9,9,9,9,9
-    .byte 10,10,10,10,10,10,10,10,10,10,10,10
-    .byte 11,11,11,11,11,11,11,11,11,11,11,11
-    .byte 12,12,12,12,12,12,12,12,12,12,12,12
-    .byte 13,13,13,13,13,13,13,13,13,13,13,13
-    .byte 14,14,14,14,14,14,14,14,14,14,14,14
-    .byte 15,15,15,15,15,15,15,15,15,15,15,15
+    .byte 3,3,3,3,3,3,3,3,3,3,3,3
+    .byte 3,3,3,3,3,3,3,3,3,3,3,3
+    .byte 3,3,3,3,3,3,3,3,3,3,3,3
 
 ; ==============================================================================
 ; PlayerHitsMap — check player bounding box against room rectangle list
 ; ==============================================================================
 ; Identical to comparison/lo-a-rad-dragon/bank0.asm.
-; Rectangles are in tile coordinates (col 0-19, row 0-11, w/h in tiles).
+; Rectangles are in tile coordinates (col 0-19, row 0-2, w/h in bands).
 ; The playfield is reflected, so tiles >= 20 mirror via 39-col.
 ; Returns C=0 if clear, C=1 if blocked.
 PlayerHitsMap:
@@ -2234,16 +2244,20 @@ PlayerHitsMap:
     stx CollisionEndY           ; bottom tile row
 
 ; --- Visible left pixel -> text column range ---
-; RESP0 positions sprite relative to RoomX. Offset varies by coarse bin.
+; RESP0 target is RoomX-PlayerDir; offset varies by its coarse bin.
     sec
     lda RoomX
+    sbc PlayerDir
     cmp #15
     bcs .off7
-    sbc #4                      ; RoomX < 15: visible left = X - 4
+    sec
+    sbc #4                      ; P0 target <15: visible left = X - 4
     jmp .gotVL
 .off7:
-    sbc #7                      ; RoomX >= 15: visible left = X - 7
+    sbc #7                      ; P0 target >=15: visible left = X - 7
 .gotVL:
+    clc
+    adc PlayerDir              ; reflected sprite's first lit bit is column 1
     ; first block = visible_left / 4 -> text column
     tay                         ; Y = visible_left
     lsr
@@ -2428,7 +2442,7 @@ ClearPFColumn:
     cpx CollisionCellX
     beq .CPCDone
     inx
-    bne .CPCLoop               ; rows 0..11; X never wraps here
+    bne .CPCLoop               ; rows 0..2; X never wraps here
 .CPCDone:
     rts
 
@@ -2674,23 +2688,23 @@ LoadRoomBottomColor:
     rts
 
 ; ------------------------------------------------------------------------------
-; CheckBandTouch — overscan: if band on and RoomY in bottom tile row → life.
-; Bottom row starts at scanline 132; sprite origin RoomY >= 121 enters it
-; (121 + PLAYER_SPRITE_H - 1 = 132). Same path as hot/enemy: lose life, then
-; respawn 12 scanlines up (min 0).
+; CheckBandTouch — overscan: if band on and RoomY in bottom color band → life.
+; Bottom band starts at scanline 96; sprite origin RoomY >= 85 enters it
+; (85 + PLAYER_SPRITE_H - 1 = 96). Same path as hot/enemy: lose life, then
+; respawn 48 scanlines up (min 0).
 ; ------------------------------------------------------------------------------
 CheckBandTouch:
     jsr LoadRoomBottomColor
     beq .CBTdone                ; band off
     lda RoomY
-    cmp #121
+    cmp #85
     bcc .CBTdone                ; above band
     jsr LoseLifeBand
 .CBTdone:
     rts
 
 ; ------------------------------------------------------------------------------
-; LoseLifeBand — life path + RoomY -= 12 (min 0). Full reload skips the shift
+; LoseLifeBand — life path + RoomY -= 48 (min 0). Full reload skips the shift
 ; (LoadLevel already places the player safely).
 ; ------------------------------------------------------------------------------
 LoseLifeBand:
@@ -2719,7 +2733,7 @@ LoseLifeBand:
 
 ; ------------------------------------------------------------------------------
 ; BuildColupF — 12-byte final COLUPF image at ColupfBuf ($E7-$F2).
-;   Stripe: rows 0-3,8-11 = LevelWallColor; rows 4-7 = LevelWallColor2.
+;   Stripe: rows 0,2 = LevelWallColor; row 1 = LevelWallColor2.
 ;   Hot rows overwrite with TickCounter-bit4 pulse (COLOR_HOT_Y/R).
 ;   $E7-$F2 overlaps PlayerBombs/BombSnd/RoomWallMask ($F0-$F2): save those
 ;   to collision temps (free until overscan), restore at .AfterRows.
@@ -2735,10 +2749,8 @@ BuildColupF:
     ; --- stripe fill ---
     ldx #0
 .BCFstripe:
-    cpx #4
-    bcc .BCFc1
-    cpx #8
-    bcs .BCFc1
+    cpx #1
+    bne .BCFc1
     lda LevelWallColor2
     jmp .BCFstore
 .BCFc1:
@@ -2878,6 +2890,22 @@ fineAdjustBegin:
     .byte %10100000               ; right 6
     .byte %10010000               ; right 7
 fineAdjustTable EQU fineAdjustBegin - %11110001   ; = fineAdjustBegin - 241
+
+    org $FF20
+
+; Set REFP1/NUSIZ1 each frame; bank1 HUD may have changed both registers.
+SetObjReflection:
+    lda #0
+    sta REFP1
+    lda ObjBase
+    cmp #OBJ_MINER
+    bne .SORdone
+    lda LevelMinerRoom
+    bpl .SORdone
+    lda #$08
+    sta REFP1
+.SORdone:
+    rts
 
 ; ==============================================================================
 ; Interrupt vectors

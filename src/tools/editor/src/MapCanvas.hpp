@@ -51,14 +51,14 @@ public:
 
     // Fallback size used until a room is loaded.
     static constexpr int kDefaultRoomWidth = 20;
-    static constexpr int kDefaultRoomHeight = 12;  // playable rows
+    static constexpr int kDefaultRoomHeight = 3;   // 48-scanline color bands
 
     void SetLevelData(hero::LevelData* levelData, std::vector<hero::ModelData>* models, int activeRoomIndex);
     void SetActiveRoom(int roomIndex);
     void SetTileSize(int size);
     int TileSize() const { return m_tileSize; }
     void SetCurrentBrush(BrushTool brush) { m_currentBrush = brush; }
-    void SetEditMode(bool modelMode) { m_modelMode = modelMode; }
+    void SetEditMode(bool modelMode) { m_modelMode = modelMode; update(); }
     void SetActiveModel(int modelIndex);
     void SetModels(std::vector<hero::ModelData>* models) { m_models = models; }
 
