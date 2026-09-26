@@ -19,16 +19,21 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 1. **Never use $100-$1FF as a buffer.** Mirrors $80-$FF (same 128 bytes).
 2. **Never remove a middle sequential `byte`** — shifts every later address
    and breaks bank1 EQUs / fold-pad assumptions. Rename in place.
-3. **New bank0 sequential vars go after `$BC`.** Free: `$BD-$C2` only if
-   EnemyRam is relocated (currently occupied). After bomb work there is
-   **no free sequential bank0 byte** — reuse scratch (`Temp`, collision
-   temps) or steal a documented bank1-only address.
+3. **New bank0 sequential vars go after `$BC`.** Laser S1 (2026-09-26) took
+   the last byte: `EnemyRamX` shrank to 3 slots ($BD-$BF) and freed
+   **`$C0 = LaserState`**. The 3-slot bound is enforced three ways — editor
+   `kMaxRoomElements=3`, `convert_level.MAX_ENEMIES=3`, `verify_build`
+   enemies+lamps ≤3 (was a stale 4) — because `EnemyRamX[3]` would collide
+   with `$C0`. After laser work there is **no free sequential bank0 byte**
+   again — reuse scratch (`Temp`, collision temps) or steal a documented
+   bank1-only address.
 4. **Grep all `bank*.asm` before defining `$xx` EQU** in any bank.
 5. **Do not touch from bank1 (live score/bomb):** `$F3-$F5` score,
    `$F6` BombX, `$F7` BombTimer, `$F0` PlayerBombs (read-only in bank1 HUD),
    `$F1` BombSnd (bank1 must not write), `$F2` RoomWallMask (bank1 must not write),
     `$F8-$FF` stack mirror only (PlayerGrp0 buffer removed 2026-09-24 — never buffer here),
-   `$AD` bank1 `Temp` (bank0 `TickCounter`), `$BD-$C2` EnemyRam,
+   `$AD` bank1 `Temp` (bank0 `TickCounter`), `$BD-$BF`+`$C1-$C2` EnemyRam,
+   `$C0` LaserState (bank0 laser S1),
    `$B5` BombPacked, `$85` BombY.
 
 ## Bank0 Sequential ZP ($80-$BC) — verified
@@ -106,7 +111,8 @@ Sequential allocation ends at `$BC` (next would be `$BD`).
 | $B3 | PF0ScoreBuf | Alias into EnemyCount area — score buffers (legacy name) |
 | $B8 | PF1ScoreBuf | Alias |
 | $C6 | PF2ScoreBuf | Alias (within PF0Buf) |
-| $BD | EnemyRamX | 4 bytes live enemy X |
+| $BD | EnemyRamX | 3 bytes live enemy X ($BD-$BF, slots 0-2 only) |
+| $C0 | LaserState | laser S1: b7 held, b6 prev, b1-0 sweep phase |
 | $C1 | EnemyRamD | Packed dir bits 0-3 |
 | $C2 | EnemyRamP | Packed moth/spider flags |
 | $C3-$CE | PF0Buf | TilePF0 (12) |

@@ -279,8 +279,10 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
     output.write_text("\n".join(lines) + "\n")
 
 
-# A room may hold up to this many enemies (matches the editor's own cap).
-MAX_ENEMIES = 4
+# A room may hold up to this many enemies (matches the editor's own cap:
+# MapCanvas kMaxRoomElements = 3). EnemyRamX has only 3 runtime slots —
+# slot 3 would collide with LaserState at $C0 (docs/zp_layout_skill.md).
+MAX_ENEMIES = 3
 # Per-enemy byte layout in LEVEL{n}_EnemyDataTable (see _enemy_tables).
 ENEMY_STRIDE = 6
 
