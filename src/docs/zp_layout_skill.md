@@ -53,7 +53,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $8F | CollisionEndY | Player bottom tile row |
 | $90 | RoomRectsLo | Room rect list ptr lo |
 | $91 | RoomRectsHi | Room rect list ptr hi |
-| $92 | RectCount | Rect loop counter |
+| $92 | RectCount / RowIdx | Rect loop counter (post-kernel); kernel tile-row index (alias, re-inited at kernel entry) |
 | $93 | vyLo | Y velocity lo (signed 16) |
 | $94 | vyHi | Y velocity hi |
 | $95 | PlayerYSub | Y subpixel accumulator |
@@ -89,7 +89,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $B3 | EnemyCount | Enemies in room |
 | $B4 | FlickerFrame | GRP1 slot index |
 | $B5 | **BombPacked** | b0-1 state, b2 DownPrev, b3-6 WallMask, b7 OnGround |
-| $B6 | ActiveObjectOn | GRP1 object visible |
+| $B6 | ObjBase | GRP1 design offset into ObjSprites (0 = off; was ActiveObjectOn) |
 | $B7 | ActiveObjectX | GRP1 object X |
 | $B8 | ActiveObjectY | GRP1 object Y |
 | $B9 | EnemyIndex | Selected enemy slot |
