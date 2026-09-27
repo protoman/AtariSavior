@@ -3000,25 +3000,48 @@ LaserInput:
     beq .LaserReleased
     lda #$02
     sta LaserBeamOn             ; .Line BeamMask AND passes rows 2-3
-    ; --- S2.3: eye X + facing sign. Art faces RIGHT unreflected (REFP0=0):
-    ; yellow face rows 2-3 span cols 1-4, front/eye = col 4. Facing left =
-    ; REFP0 mirror -> front col 3, bar extends left (7 px) -> left edge
-    ; RoomX-4. Right: bar left edge RoomX+4. Args in [0,163] (RoomX
-    ; 4..159) = always safe for SetObjectXPos (no clamp needed).
+    ; --- S3 sweep: phase 0..3 -> offset 0/8/16/8 px AHEAD of the eye
+    ; (triangle: 0->8->16->8->0 each held frame), sign = facing.
+    ; Eye: art faces right unreflected (REFP0=0), yellow face rows 2-3
+    ; cols 1-4 -> front col 4; REFP0 mirror -> front col 3 (bar extends
+    ; left, left edge = RoomX-4). Args clamped to [0,159] — TIA position
+    ; past 159 is unverified for SetObjectXPos (wrap vs hide).
     lda PlayerDir
     bne .LaserEyeL
+    ; right: X = RoomX + 4 + off
+    lda LaserState
+    and #LASER_PHASE
+    tax
     lda RoomX
     clc
-    adc #4                      ; eye col 4; bar spans +4..+11 (front/right)
+    adc #4
+    clc
+    adc SweepOff,X
+    cmp #160
+    bcc .LaserPos
+    lda #159                    ; clamp: sweep stops at right screen edge
     jmp .LaserPos
 .LaserEyeL:
+    ; left: X = RoomX - 4 - off (RoomX>=PLAYER_MIN_X=4 -> base >=0;
+    ; off may borrow below 0 -> carry clear -> clamp 0)
+    lda LaserState
+    and #LASER_PHASE
+    tax
     lda RoomX
     sec
-    sbc #4                      ; bar spans -4..+3, right edge at eye col 3
+    sbc #4
+    sec
+    sbc SweepOff,X
+    bcs .LaserPos
+    lda #0                      ; clamp: sweep stops at left screen edge
 .LaserPos:
     ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
     jsr SetObjectXPos           ; HMM0 applies at next frame's VBLANK HMOVE
     rts
+
+; SweepOff — M0 offset ahead of the eye per sweep phase (LaserState b1-0).
+SweepOff:
+    .byte 0,8,16,8
 .LaserReleased:
     lda #0
     sta LaserBeamOn             ; beam off (S2.2r2: bar was visible w/o fire)

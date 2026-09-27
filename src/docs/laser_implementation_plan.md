@@ -1,9 +1,9 @@
 # Laser Implementation Plan
 
-Status: **S1 COMPLETE (user-validated 2026-09-26). S2.1 COMPLETE
-(user-validated 2026-09-26). S2.2 COMPLETE (round-2 fixes validated
-2026-09-26, commit `1b1d11c`). S2.3 implemented + build green — awaiting
-full-S2 user gate.**
+Status: **S1 COMPLETE (user-validated 2026-09-26). S2 COMPLETE — S2.1
+validated, S2.2 round-2 validated (`1b1d11c`), S2.3 validated as solid
+eye-aligned bar (`b84b71b`; "pulse" = S3 sweep, not yet built). S3
+implemented + build green — awaiting phosphor sweep validation.**
 
 Use one Missile 0 (`M0`), 8×2 pixels, moving 8 pixels per frame across a 24-pixel span and back while fire is held. CRT/phosphor persistence supplies visual trail. Keep P1 free for enemies and objects. INPT4 is active-low at `$0C`; bank0 currently disables M0/M1/ball in cave and does not otherwise position missiles. Bank1 uses ball later in HUD, after cave rendering.
 
@@ -188,12 +188,28 @@ routine can flip a branch's page — always re-check page contracts from
       unchanged; beam gone on release.
 - [ ] STOP → user validates before S3 (8 px/frame sweep).
 
-### S3 — Fast back-and-forth sweep
+### S3 — Fast back-and-forth sweep ✅ (code) / gate pending
 
-- [ ] While held, move M0 through positions 0, 8, 16 pixels ahead of eye, then back; repeat. Use facing direction to choose horizontal sign.
-- [ ] Disable M0 immediately on fire release. Keep M1, ball, and P1 out of laser rendering.
-- [ ] Build and run `verify_build.py`.
-- [ ] **User validation:** test both facing directions in Stella with phosphor/trail enabled. Check visible sweep spans about 24 pixels, tracks eye row, stops on release, leaves enemies/snake visible, and does not disturb wall collision or frame timing.
+- [x] While held, M0 sweeps eye+0/8/16/8 px ahead — `LaserState` b1-0 phase
+      (already advancing every held frame since S1) indexes `SweepOff`
+      (`.byte 0,8,16,8` at `$FF8A`); sign = facing (`PlayerDir` bne).
+      Release already resets phase to 0 (S1) + zeroes `LaserBeamOn`/`HMM0`
+      (S2.2r2) → M0 disabled immediately, sweep restarts fresh next press.
+- [x] M1, ball, P1 untouched by laser code (verified: LaserInput writes only
+      ENAM0-gate, RESM0/HMM0, LaserState).
+- [x] Edge clamps: right `cmp #160 → 159`, left carry-clear → 0 (TIA
+      position past 159 unverified for SetObjectXPos — clamp keeps args in
+      the tested range; sweep visibly stops at screen edge).
+- [x] Build + `verify_build.py` green: `Overscan` `$F167` unchanged,
+      LaserInput branches same $FFxx page, BeamMask/SweepOff in `$FFxx`,
+      `.Line` guards untouched (post-`$FF20` only).
+- [ ] **User validation:** phosphor/trail ON in Stella; hold fire in BOTH
+      facing directions. Check: (1) trail sweeps back and forth ~24 px
+      from the eye (triangle 0→8→16→8 px ahead, ~8 px/frame @60Hz);
+      (2) tracks the yellow face row while moving; (3) stops/restarts
+      cleanly on release/press; (4) bar stops at screen edges (no
+      wrap-around ghost on the other side); (5) enemies/snake visible,
+      no frame roll, collision/bombs/map unchanged.
 - [ ] Stop and ask user before S4.
 
 ### S4 — Swept enemy collision and score
