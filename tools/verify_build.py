@@ -140,6 +140,56 @@ def check_rom(src: Path) -> bytes | None:
     elif (obj + 71) >> 8 != obj >> 8:
         err(f"ObjSprites ${obj:04X}+71 crosses a page -> kernel "
             f"lda ObjSprites,X costs 5c (budget assumes 4c)")
+    # 3) Laser S2.2: every relative branch inside the .Line hot loop
+    #    (.Line .. bne .Line) must share a page with its target (3c taken
+    #    budgeted; a cross costs 4c -> WSYNC one cycle late -> duplicated
+    #    scanline / frame-length oscillation).
+    line_at = None
+    bne_at = None
+    for addr, text in rows:
+        t = text.strip()
+        if t == ".Line":
+            line_at = addr
+        if (line_at is not None and addr > line_at
+                and re.match(r"^(?:[0-9a-f]{2}[ \t])+\s*b[a-z]{2}\s+\.Line\b", t)):
+            bne_at = addr
+    if line_at is None or bne_at is None:
+        err(".Line / bne .Line not found in bank0.lst (branch guard)")
+    else:
+        for addr, text in rows:
+            if not (line_at <= addr <= bne_at):
+                continue
+            t = text.strip()
+            m = re.match(r"^((?:[0-9a-f]{2}[ \t])+)\s*b[a-z]{2}\s", t)
+            if not m:
+                continue
+            bs = m.group(1).split()
+            if len(bs) != 2:  # relative branches are exactly 2 bytes
+                continue
+            off = int(bs[1], 16)
+            if off > 127:
+                off -= 256
+            tgt = (addr + 2 + off) & 0xFFFF
+            if (addr + 2) >> 8 != tgt >> 8:
+                err(f".Line branch page-cross: {t.split(';')[0].strip()} at "
+                    f"${addr:04X} targets ${tgt:04X} (4c, budget 3c) -> "
+                    f"WSYNC overrun")
+    # 4) Laser S2.2: `lda BeamMask,Y` fetch budgeted at 5c = 4c + cross
+    #    ($F1xx kernel -> $FFxx table). Table moved onto the kernel's own
+    #    page would make the comment/budget stale; keep it in $FFxx.
+    for addr, text in rows:
+        t = text.strip()
+        if t.startswith(";"):
+            continue
+        m = re.match(r"^((?:[0-9a-f]{2}[ \t])+)\s*lda\s+BeamMask,Y\b", t)
+        if m:
+            bs = m.group(1).split()
+            if len(bs) != 3 or int(bs[2], 16) != 0xFF:
+                err(f"BeamMask fetch operand ${''.join(bs[-2:])} at "
+                    f"${addr:04X} not in $FFxx (budget assumes 5c cross)")
+            break
+    else:
+        err("lda BeamMask,Y not found in bank0.lst")
     return pad0
 
 
