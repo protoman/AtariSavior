@@ -43,7 +43,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $80 | RoomX | Player X (0-159) |
 | $81 | RoomY | Player Y (0-191) |
 | $82 | PlayerDir | Eye facing 0/1 |
-| $83 | Scanline | Kernel scanline (0-191) |
+| $83 | LaserBeamOn | S2.2r2 beam gate: $02 held / $00 else (was Scanline, dead since S2.2) |
 | $84 | LineCount | Scanlines left in tile row |
 | $85 | BombY | Bomb drop Y (scanline snapshot) |
 | $86 | Grp0Ptr | Player sprite ptr lo (scratch) |
