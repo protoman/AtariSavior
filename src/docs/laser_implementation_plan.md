@@ -1,7 +1,8 @@
 # Laser Implementation Plan
 
-Status: **S1 COMPLETE (user-validated 2026-09-26). S2.1 implemented + build
-green — awaiting user Stella validation.**
+Status: **S1 COMPLETE (user-validated 2026-09-26). S2.1 COMPLETE
+(user-validated 2026-09-26). S2.2 implemented + build green — awaiting
+user Stella validation.**
 
 Use one Missile 0 (`M0`), 8×2 pixels, moving 8 pixels per frame across a 24-pixel span and back while fire is held. CRT/phosphor persistence supplies visual trail. Keep P1 free for enemies and objects. INPT4 is active-low at `$0C`; bank0 currently disables M0/M1/ball in cave and does not otherwise position missiles. Bank1 uses ball later in HUD, after cave rendering.
 
@@ -91,7 +92,7 @@ routine can flip a branch's page — always re-check page contracts from
 
 ### S2 — Static M0 pulse at eye row (split into S2.1/S2.2/S2.3)
 
-#### S2.1 — M0 at RoomX, width 8, fire-gated, FULL HEIGHT ✅ (code) / gate pending
+#### S2.1 — M0 at RoomX, width 8, fire-gated, FULL HEIGHT ✅ (user-validated 2026-09-26)
 
 - [x] Position M0 via `SetObjectXPos` selector 2 (`sta RESP0,X`→`RESM0`,
       `sta HMP0,X`→`HMM0` with X=2). Logic lives in `LaserInput` (post-pad,
@@ -113,23 +114,45 @@ routine can flip a branch's page — always re-check page contracts from
       re-checked from `bank0.lst`: `.Line` branches all $F1xx, `.Div15Loop`
       $FF12/bcs $FF14 same page, `ObjSprites=$FE9D` (+71=$FEE2 in-page),
       `PlayerColTable` fetch cross unchanged, `LaserInput=$FF33` (<$FFFA).
-- [ ] **User validation:** press and hold fire. Check: (1) an 8-px-wide
-      full-height vertical bar appears at the player's X and vanishes on
-      release; (2) snake/enemies/miner never disappear (P1 untouched);
-      (3) no frame roll/jitter while holding fire (overscan gained 1 WSYNC
-      + ~45c — TIM64T=35 must still cover it); (4) wall collision, bombs,
-      map unchanged; (5) bar may flicker width over the HUD band (bank1
-      NUSIZ0) — expected at this step.
-- [ ] STOP → user validates before S2.2.
+- [x] **User validation (2026-09-26): CONFIRMED WORKING** — "Tests all pass,
+      even your forecast of some HUD flicker" (HUD flicker = expected at S2.1,
+      fixed by S2.2's BeamMask ownership).
+- [x] S2.1 complete → S2.2.
 
-#### S2.2 — Restrict beam to 2 scanlines at RoomY+2 (risky `.Line` edit)
+#### S2.2 — Restrict beam to 2 scanlines at RoomY+2 (risky `.Line` edit) ✅ (code) / gate pending
 
-- [ ] Enable ENAM0 only for scanlines `RoomY+2..RoomY+3` (the cycle-tuned
-      `.Line` edit — done alone, full worst-path cycle recount from
-      `bank0.lst`, keep WSYNC write ≤ c73, new page-contract guard if a
-      branch crosses).
-- [ ] Build + `verify_build.py` + user gate (thin 2px line on yellow face
-      row, frame stable, objects visible).
+- [x] `ObjTop` now stores RoomY-relative value in `.SODone`
+      (`ActiveObjectY - RoomY + 1`); `ActiveObjectY` itself unchanged
+      (`CheckEnemyHit` reads real scanline coords). `ObjBot` write-only/dead.
+- [x] `.Line` object section: `lda Scanline/sec/sbc/bcc` replaced by
+      `tya/sec/sbc ObjTop/cmp #PLAYER_HEIGHT/bcs .ObjZero` — Y at `.Grp1`
+      = A0+1, so `Y - ObjTopRel` = `Scanline - ObjTop` exactly (mod 256;
+      negatives ≥ 8 → `.ObjZero`; C=0 in range → `adc ObjBase` exact).
+      `inc Scanline` and init `sta Scanline` removed — **`Scanline` is dead**
+      (ZP byte $82 kept, never removed from middle of sequential map).
+- [x] Beam enable in `.Line` color path (in-window only, Y = A0):
+      `lda BeamMask,Y / sta ENAM0`; `BeamMask` = 12 bytes
+      `{0,0,2,2,0,0,0,0,0,0,0,0}` (ON at A0=2,3 = RoomY+2..3), placed at
+      `$FF5B` (post-pad `$FF20` region). Outside window ENAM0 keeps last
+      in-window write ($00 at A0=11) → no HUD artifact (S2.1 flicker gone).
+      `LaserInput` no longer writes ENAM0 (positioning only).
+- [x] Full worst-path cycle recount from `bank0.lst`: color+beam+GRP0 = 34c,
+      object in-range = 24c → **worst 58c → WSYNC at c66, write c68 ≤ c73
+      (5c margin)**; obj-above path write c64; outside-window write c52.
+      All `.Line` branches same-page $F1 (`.GrpSkip` $F11D, `.GrpZero` $F148,
+      `.ObjZero` $F14F, `bne .Line` $F13A→$F10F).
+- [x] **New verify_build guards** (negative-tested, fire on violation):
+      (3) every relative branch in `.Line..bne .Line` must share a page with
+      its target; (4) `lda BeamMask,Y` operand must be `$FFxx` (5c cross
+      budgeted).
+- [x] Build green: 4×4096, fold pads byte-identical (`Overscan` `$F167→$F165`,
+      bank1 `jmp $F165` synced), pre-pad ends `$FC56` (18 bytes free, WARN).
+- [ ] **User validation:** hold fire. Check: (1) thin 2-px-high 8-px-wide
+      line at RoomX, rows RoomY+2..3 (yellow face row) — NOT a full-height
+      bar; (2) HUD band no longer flickers while held; (3) frame stable (no
+      roll/stretch of cave rows), objects/enemies visible; (4) wall
+      collision, bombs, map unchanged; (5) beam gone on release.
+- [ ] STOP → user validates before S2.3.
 
 #### S2.3 — Fine X: eye pixel + facing sign, then full S2 gate
 

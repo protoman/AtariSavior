@@ -487,13 +487,15 @@ StartFrame:
     lda #0                        ; clear VDELP0/VDELP1 (bank1 HUD sets them to 1)
     sta VDELP0
     sta VDELP1
-    ; ENAM0 NOT cleared here: LaserInput owns it (writes every overscan)
+    ; ENAM0 NOT cleared here: kernel .Line owns it (BeamMask write per
+    ; in-window line; state is $00 from the previous frame's A0=11 write)
     sta ENAM1                     ; disable missile 1
     sta ENABL                     ; disable ball
 
     lda #0
-    sta Scanline
     sta RowIdx                  ; tile-row counter (0-2); object section clobbers X
+                                ; (Scanline no longer maintained — S2.2 removed
+                                ;  its only reader in .Line)
     sec
     sbc RoomY                   ; A = -RoomY = A0 at scanline 0
     tay                         ; running-Y: Y = A0 for the next .Line (10c/line
@@ -551,12 +553,14 @@ StartFrame:
     ; graphics write = A0 of the next line). Nothing between rows may touch
     ; Y — the row-11 band jsr (LoadRoomBottomColor clobbers Y) pushes/pops it.
     ; Cycle budget from .Line (body starts c8, dec/bne already paid), recounted
-    ; from bank0.lst (worst = player hot + object draw):
-    ;   color+graphics hot = 25c, GRP1 design row = 26c, inc = 5c
-    ;   worst = 56c -> sta WSYNC at c64 (write c66) — 7c margin. FITS.
+    ; from bank0.lst (worst = in-window color/beam/GRP0 + object in-range):
+    ;   color+beam+GRP0 (cpy..sta GRP0 incl BeamMask fetch) = 34c
+    ;   object (tya..sta GRP1) = 24c
+    ;   worst = 58c -> sta WSYNC at c66 (write c68) — 5c margin vs c73. FITS.
     ; ObjSprites+71 must stay in the $FExx page (else lda ObjSprites,X
     ; page-crosses, +1c on the GRP1 fetch) — verify_build enforces this.
-    ; Branch targets all same-page (3c taken).
+    ; Branch targets all same-page (3c taken) and BeamMask operand in $FFxx
+    ; (5c fetch budgeted) — both enforced by verify_build (S2.2 guards).
     ; GRP1 object section clobbers X (ObjSprites index) — row counter lives in
     ; RowIdx and X is reloaded after bne. Row-advance +6c on the .Row setup
     ; scanline (segment 63c -> 69c <= 76c): frame length unchanged.
@@ -569,6 +573,13 @@ StartFrame:
     bcs .GrpSkip                ; A0 >= 12 (incl $ff): no color this line
     lda PlayerColTable,Y        ; 4c — per-row color from ROM
     sta COLUP0                  ; COLUP0 has no latch: applies to this line
+    ; --- Laser S2.2: ENAM0 = beam mask for THIS line (in-window only) ---
+    ; BeamMask = {0,0,2,2,0,...} → ENAM0 on exactly RoomY+2..RoomY+3.
+    ; In-window path is the only safe place (Y<12 guaranteed); outside the
+    ; window ENAM0 keeps its last in-window write ($00 at A0=11) — no HUD
+    ; artifact. Table lives in $FFxx (cross = deterministic 5c): +8c/line.
+    lda BeamMask,Y              ; 5c (cross $F1→$FF) — table MUST stay $FFxx
+    sta ENAM0                   ; 3c
 .GrpSkip:
     iny                         ; Y = A0+1 ($ff wraps to 0 = sprite row 0)
     cpy #PLAYER_SPRITE_H
@@ -579,13 +590,16 @@ StartFrame:
 
     ; --- GRP1 SECOND (object/enemy sprite): one design row per scanline ---
     ; ObjTop..ObjTop+7 window → row byte from ObjSprites[ObjBase + offset].
-    ; Object off: ObjBase=0 → blank rows. Bounds via C after cmp (no sec/clc).
-    lda Scanline
+    ; Object off: ObjBase=0 → blank rows. S2.2: ObjTop is RoomY-relative;
+    ; Y here = A0+1 = next line's A0, so `Y - ObjTopRel` = Scanline - ObjTop
+    ; (mod 256, exact). In-object iff result 0..7 → `cmp #8/bcs` (C=0 in
+    ; range → adc adds exact ObjBase). Replaces `lda Scanline/sec/sbc/bcc`
+    ; (−6c in-range) and the `inc Scanline` (−5c) — Scanline now unused.
+    tya
     sec
-    sbc ObjTop                  ; A = Scanline - ObjTop (C=1 in range)
-    bcc .ObjZero                ; above object
+    sbc ObjTop                  ; A = Y - ObjTopRel (= Scanline - ObjTop, mod 256)
     cmp #PLAYER_HEIGHT
-    bcs .ObjZero                ; at/below object bottom (C=0 here → adc adds exact ObjBase)
+    bcs .ObjZero                ; above (negative mod ≥65) or at/below bottom
     adc ObjBase
     tax
     lda ObjSprites,X
@@ -593,7 +607,6 @@ StartFrame:
 .AfterObj:
 
     ; --- Loop control ---
-    inc Scanline                ; advance scanline counter
     sta WSYNC                   ; wait for end of this scanline
     dec LineCount               ; decrement scanlines remaining in row
     bne .Line                   ; loop if more scanlines in this row
@@ -1607,10 +1620,19 @@ SelectActiveObject:
 
 .SODone:
     jsr SetObjReflection
-    ; Set ObjTop/ObjBot for kernel GRP1 visibility check
+    ; Set ObjTop/ObjBot for kernel GRP1 visibility check.
+    ; S2.2: ObjTop stored RoomY-relative (ObjTopRel = ActiveObjectY-RoomY+1) so
+    ; the kernel compares against running-Y (`tya`) instead of `lda Scanline`
+    ; — frees 9c/line (lda Scanline + inc Scanline) for the laser beam write.
+    ; Kernel .Grp1 does: tya / sec / sbc ObjTop / cmp #8 / bcs .ObjZero.
+    ; ObjBot mirrors ObjTop+8 (write-only; no readers).
     lda ObjBase
     beq .SONoObj
     lda ActiveObjectY
+    sec
+    sbc RoomY
+    clc
+    adc #1                      ; A = ActiveObjectY - RoomY + 1 (mod 256)
     sta ObjTop
     clc
     adc #PLAYER_HEIGHT
@@ -2848,7 +2870,9 @@ UpdateBombSound:
 
 ; ------------------------------------------------------------------------------
 ; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
-; Row r displays on scanline ObjTop+r (GRP1 write latching, same as before).
+; Row r displays on scanline RoomY+ObjTop-1+r (ObjTop is RoomY-relative since
+; S2.2; .Grp1 checks r = Y-ObjTop where Y = running A0+1). GRP1 write
+; latching, same as before.
 ; Offset = OBJ_* constant; index 0 = blank (object off).
 ; ------------------------------------------------------------------------------
 ObjSprites:
@@ -2944,7 +2968,8 @@ SetObjReflection:
 ; Every held frame advances phase 0->1->2->3->0 (S3 maps these to M0 offsets
 ; 0/8/16/8 px ahead of the eye — full triangle covered either starting parity);
 ; release clears held and resets phase. Temp (joystick) intact.
-; S2.1: after state update, positions M0 (selector 2) and owns ENAM0.
+; S2.1: after state update, positions M0 (selector 2). S2.2: ENAM0 enable
+; moved into kernel .Line (BeamMask) — no TIA writes here anymore.
 ; Overscan: VBLANK on, end waits on TIM64T — SetObjectXPos's WSYNC costs 1
 ; of 30 lines. Y/X dead until next reload (ldy #0 / ldx RoomNo) — safe.
 LaserInput:
@@ -2964,20 +2989,27 @@ LaserInput:
     ora #LASER_HELD             ; + held
     sta LaserState
 .LaserDone:
-    ; --- S2.1: full-height 8-px M0 bar at RoomX while fire held ---
+    ; --- S2.1 positioning: M0 X while fire held (S2.2: ENAM0 enable moved
+    ; into the kernel .Line via BeamMask — LaserInput no longer touches TIA
+    ; enable registers, only RESM0/HMM0 positioning) ---
     lda LaserState
     and #LASER_HELD
-    beq .LaserBeamOff
+    beq .LaserNoBeam
     lda RoomX                   ; coarse X = player X (S2.3: eye + facing sign)
     ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
     jsr SetObjectXPos           ; HMM0 applies at next frame's VBLANK HMOVE
-    lda #2
-    sta ENAM0                   ; missile on — every cave scanline (S2.3: 2 lines)
+.LaserNoBeam:
     rts
-.LaserBeamOff:
-    lda #0
-    sta ENAM0                   ; ENAM0 owned here — kernel entry does NOT clear
-    rts
+
+; ------------------------------------------------------------------------------
+; BeamMask — per-scanline ENAM0 values for the in-window kernel path (S2.2).
+; Indexed by Y = A0 = Scanline - RoomY, rows 0-11 only.
+; Rows 2-3 = $02 (beam on: RoomY+2..RoomY+3 = eye rows); all others $00.
+; MUST live in the $FFxx page: `lda BeamMask,Y` in .Line ($F1xx) relies on
+; the deterministic 5c page-cross (4c+1). verify_build enforces the page.
+; ------------------------------------------------------------------------------
+BeamMask:
+    .byte 0,0,2,2,0,0,0,0,0,0,0,0
 
 ; ==============================================================================
 ; Interrupt vectors
