@@ -1,5 +1,5 @@
 /*
- * Savior SDL - H.E.R.O. Level Editor
+ * Savior AI - Level Editor
  * Atari 2600 TIA NTSC color palette (128 colors) and picker dialog.
  *
  * RGB values derived from the classic Stella NTSC 128-color chart

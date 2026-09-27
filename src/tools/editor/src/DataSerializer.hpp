@@ -1,5 +1,5 @@
 /*
- * Savior SDL - H.E.R.O. Atari 2600 Remake
+ * Savior AI - Atari 2600 Remake
  * Copyright (C) 2026 Savior SDL Team
  *
  * This program is free software: you can redistribute it and/or modify

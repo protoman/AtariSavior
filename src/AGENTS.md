@@ -41,6 +41,10 @@
 
 **Why this rule exists:** On 2026-09-22, the editor source files (MainWindow.hpp, MainWindow.cpp, MapCanvas.hpp, MapCanvas.cpp, LevelData.hpp, DataSerializer.cpp) were lost because they were never added to git, then overwritten without warning. The user's work was destroyed. This must never happen again.
 
+## File-Format Changes Require Data Migration
+
+When changing a serialized or generated data format, update all existing project data and its generators in the same change. Preserve compatibility with older files through an explicit version/default migration, or migrate those files before requiring the new format. Verify both legacy loading and new-format round trips; never leave checked-in data behind the code's schema.
+
 ## Overview
 
 A from-scratch Atari 2600 game kernel modeled after Activision's HERO (1984). Built
@@ -188,7 +192,7 @@ stella -debug savior.bin # debugger
 - [x] VSYNC/VBLANK/Overscan frame timing
 - [x] Kernel: 12 tile rows × 12 scanlines + 48 HUD band
 - [x] Cave playfield with reflected mode (CTRLPF D0=1)
-- [x] Player sprite (GRP0) — 8×8 square
+- [x] Player sprite (GRP0) — 8×12, per-row colors, 2-frame jet animation, REFP0 mirror
 - [x] Joystick movement (up/down/left/right)
 - [ ] Fix cave shape (currently vertical bars — needs proper walls)
 - [ ] Proper wall collision bounds
@@ -314,17 +318,16 @@ stella -debug savior.bin # debugger
    variables. Example: $E0-$EB was used by bank0's level data pointers,
    causing crashes when bank1 wrote digit pointers there.
 
-6. **CRITICAL: ZP Stack Collision ($F8-$FF)** — The2600's128-byte RAM
+ 6. **CRITICAL: ZP Stack Collision ($F8-$FF)** — The2600's128-byte RAM
    mirrors at $0100-$01FF (stack page). The stack pointer starts at $FF
-   and grows downward. Any ZP buffer at $F8-$FF (like PlayerGrp0) shares
+   and grows downward. Any ZP buffer at $F8-$FF shares
    physical RAM with the stack. **JSR pushes return addresses to $FF-$FE,
    overwriting data at those ZP addresses.** If you copy data to a ZP
    buffer and then call JSR, the return address overwrites the buffer.
-   Rule: copy to ZP buffers at $F8-$FF ONLY AFTER all JSR calls are done,
-   just before the code that reads the buffer. Example: player sprite data
-   was copied to PlayerGrp0 ($F8-$FF) before LoadPFBuffer/SelectActiveObject
-   JSR calls — the return addresses overwrote sprite rows 6-7, causing
-   extra rendering artifacts.
+   Rule: do NOT put buffers at $F8-$FF at all — the stack owns it.
+   (Historical: the old PlayerGrp0 buffer sat there and JSRs overwrote
+   sprite rows 6-7; removed 2026-09-24 — kernel now reads ROM via
+   `Grp0Ptr` with no ZP copy.)
 
 7. **Incremental Development** — When making big changes, ALWAYS divide
    the work into small steps and test after each one. Each step should
@@ -373,7 +376,7 @@ PF0/PF1/PF2 define the left half; TIA mirrors the right.
 |---------|------|-------------|
 | ROM size | 8K (F8 bankswitch) | 16K (F6 bankswitch) |
 | PF writes | Per-scanline (ROM tables) | Per-tile-row (simpler) |
-| Sprite data | `(zp),Y` from ROM | ZP indexed (`PlayerGrp0,Y`) |
+| Sprite data | `(zp),Y` from ROM | `(zp),Y` from ROM (`(Grp0Ptr),Y`, frame picked in VBLANK) |
 | VDEL | Used for sprite pipeline | Not used (simpler) |
 | Enemies | Yes (miner + enemies) | Not yet |
 | Rooms | Multiple connected rooms | Single hardcoded room |
@@ -412,15 +415,131 @@ Use `breakLabel` at two addresses, subtract Scn values:
 
 ### Lessons Learned
 
+**`TickCounter` is the 60-frame GAME timer — never derive periodic motion from
+it beyond `& 7` (2026-09-27, E-gate: spider teleport):** it decrements 60→1
+and reloads, so any `>>3` gate only ever sees 0..7 and counts DOWN (0→7 wrap =
+sprite jumps to the bottom once per second). Symptom signature: sprite descends
+N pixels then **instantly teleports** back to spawn, forever. Fix: free-running
+frame clock — `inc EnemyRamP` ($C2, was reserved for moth flags) once per
+frame in `RefreshEnemyY`; all derive gates index off it. Alignment rule: the
+motion phase period must divide 256 (the clock's wrap) or the wrap shows as a
+jump — 48-step phases are impossible; 64-step (gate ÷4) works, and a **dwell
+zone** (delta 0 at the wrap landing) hides it entirely. Bat gate = `clock>>1`
+(1 px/2f), tentacle bob = `clock>>3`, spider = `clock>>2` + dwell.
+
+**`PlayerHitsMap` clobbers X — save/restore the caller's X around it
+(2026-09-27, E-gate: tentacle X frozen):** PHM calls `YToCellRow`, which does
+`tax` (X = bottom tile row). `UE_Tentacle` documented "X preserved" and used
+X after the probe: `sta EnemyRamX,X` wrote the candidate into
+`EnemyRamX[row]` (out of the slot), so the tentacle's real X never changed —
+sprite bobs vertically (Y is derived) but never moves horizontally, with NO
+error and no crash. Symptom signature: one axis works, the other silently
+does nothing after a `jsr` collision helper. Rule: any routine that calls
+`PlayerHitsMap`/`YToCellRow` must push/pop X (`txa/pha ... pla/tax` — PLA
+does not disturb C, so probe carry survives) unless it provably does not use
+X after the call. Static PHM simulation (rect walk at the spawn box) showed
+CLEAR — the position math was fine; the register was the bug.
+
+**Kernel row splits must preserve per-pass line totals exactly (2026-09-27,
+water strip):** each `.Row` pass costs 1 setup line (ends `sta WSYNC`) + N
+`.Line` bodies. Splitting row 2's 48 bodies into 36 + a `.WaterRow` pass
+(setup + 11) keeps `1+48 = (1+36) + (1+11)` — frame length unchanged. Adding
+a pass with 12 bodies would add one scanline/frame (roll risk). When editing
+kernel structure, count WSYNC executions before/after; comment cycle counts
+are stale the moment code changes.
+
+**Bank0 space discipline (2026-09-27, E1-E3): main ends ≤ `$FC68`, post-pad
+is full — compress DATA before building fold machinery:** `DeriveEnemyY` +
+tentacle arm overflowed main (over by 34B). Cheapest fix = compress lookup
+tables with **floor-nesting**: `YToRowTable` was 192B indexed by A (A/48);
+reindexed by `A>>2` = 48B table — `floor(floor(A/4)/12) == floor(A/48)`, cost
++4c/call. Freed 144B (headroom 4→106B) with zero behavior change. When a
+growing dispatch hits the assembler's 127-byte branch limit, do NOT pad
+branches — extract a `jsr` subroutine (`UE_Tentacle` after `UE_Exit`, jsr is
+absolute) and put the NEW type check FIRST in the dispatch so existing
+branches keep their original (short) ranges. E4 moth needs ~95B vs ~33B free:
+space options (fold machinery vs more compression vs shared probe helper)
+must be decided with the user. Also verified: all overscan `Temp` consumers
+(input/hot-bump) run BEFORE `jsr UpdateEnemies`, so UE's probe may own Temp.
+
+**ZP alias lifetime — an alias over a per-frame-refreshed buffer needs its
+OWN writer in your read window (2026-09-26, enemy Y at $C3):** `EnemyRamY`
+was aliased over `PF0Buf` rows 0-2. The E0 design listed overscan as the
+writer and VBLANK as a reader, but `LoadPFBuffer` ALSO writes $C3 every
+VBLANK — so after the first frame, draw read PF garbage: **symptom = object
+renders for one frame, then vanishes forever** (not a draw/collision bug).
+Fix: `RefreshEnemyY` rewrites the alias at overscan entry every frame.
+**Rule before choosing an alias address:** map EVERY writer to those bytes
+across the whole frame (including periodic refreshers like `LoadPFBuffer`
+and the bank1 HUD), then make sure one of YOUR writers runs after the last
+foreign writer and before your next read — every frame, not just at init.
+Encode the ordering in verify_build/test (guards exist for exactly this).
+Same family as the documented $F0-$F2 bomb-save ↔ ColupfBuf alias: that one
+works because both phases save/restore deliberately.
+
 **Collision misalignment (2026-09-21):** A `jmp .Div15Loop` in SetObjectXPos
 added 3 cycles (1 pixel) to RESP0 timing, shifting the sprite's pixel position
 right while the collision code expected it left. This caused the player to stop
 1+ pixels away from walls. **Fix:** Remove any extra instructions before the
 div15 loop — the comparison branch's SetObjectXPos is the reference.
 
+**Branch page-cross in a cycle-tuned loop (2026-09-26, laser S1) — recurrence
+of the 2026-09-21 family, via a different mechanism:** a 3-byte `jsr LaserInput`
+inserted before SetObjectXPos moved it `$F8F7→$F8FA`, pushing
+`bcs .Div15Loop` across the $F8/$F9 page. A taken branch costs 4c across a page
+vs 3c within one, so the div15 loop ran at **6c per iteration instead of the
+5c contract** — each "15 color-clock" coarse step burned 18, and RESP0 fired
+3 color-clocks late **per step** (amplified by the loop, up to ~10 iterations).
+- **Symptom signature (recognize BEFORE hunting logic):** sprites render right
+  of their logical X by ~3×(X/15) px — drift **grows with X**; far-right
+  objects (X≈140) overflow the 160-px window and the position counter wraps
+  to the **left edge** (looks like an enemy "teleported across the map");
+  player visually ghosts through walls although logical (RoomX) collision is
+  intact. "Enemy on wrong side of screen + wall pass-through" = positioning
+  TIMING, not collision/enemy code.
+- **Rule: ANY size change (even one `jsr`) placed before cycle-tuned code can
+  flip a taken branch's page.** After adding/removing bytes in bank0 pre-pad
+  code, recheck page contracts from `bank0.lst` — never from comments (the
+  ObjSprites comment had already gone stale). Kernel `.Line` fetches to recheck:
+  `lda ObjSprites,X` (abs,X), `lda PlayerColTable,Y` (abs,Y),
+  `lda (Grp0Ptr),Y` (zp,Y), plus SetObjectXPos's `bcs`.
+- **Fix:** SetObjectXPos relocated (byte-identical, address-only) into the
+  single-page `$FF10-$FF1F` gap (between the 15-byte fineAdjust table at $FF00
+  and `org $FF20`) — the 5c contract is now structural. Note the post-pad
+  region was already at 100% capacity (ObjSprites ended exactly at $FF00), so
+  that gap was the only free code space.
+- **Guards (verify_build.py fails the build):** (1) `bcs .Div15Loop` must
+  share a page with `.Div15Loop`; (2) `.Div15Loop` must be in `$FF12-$FF1B`;
+  (3) `ObjSprites+71` must stay in-page. Do not weaken these.
+
 **PF0 bit order (2026-09-21):** TIA PF0 has bit 4 = leftmost pixel, NOT bit 7.
 The mapping `0x10 << col` is correct. Do NOT "fix" this — it was verified
 empirically and matches the comparison branch.
+
+**WSYNC off-by-one overrun — RECURRENCE (2026-09-25):** This exact bug class
+has bitten us multiple times (see the `.Line` comment history: "jmp on the hot
+path" double-height sprite, and now this). One-cycle-late `sta WSYNC` in the
+kernel `.Line` loop stalls a FULL scanline per affected line.
+
+- **Symptom → cause map:** player on same row as enemy/snake → that cave row
+  stretches down, HUD pushed down, enemy renders 2× tall (duplicated scanlines);
+  GRP1 object flicker (`SelectActiveObject` rotation) makes the overlap
+  present only on SOME frames → frame length alternates 262/274 → screen
+  oscillates up/down by ~12 lines (one tile) until the object disappears
+  (e.g. bomb explodes). If you see these, suspect cycle overrun FIRST.
+- **Root cause:** worst path (player sprite in-range + GRP1 object in-range)
+  body was 66c, but the `.Line` budget comment claimed 60c — `sta WSYNC`
+  started at c74 and its write landed on cycle 76 = one cycle late. The
+  comment had an off-by-one; nobody recounted after the sprite code grew.
+- **Fix:** running-Y — seed `Y = A0 = Scanline - RoomY` ONCE at kernel entry
+  (`sec/sbc RoomY/tay`), let `.Line`'s `iny` advance it (Y after the graphics
+  write = next line's A0). Drops the per-line `lda Scanline/sec/sbc/tay`
+  (−10c): worst path 66c → 56c, WSYNC write ≈ c66 (10c margin). Row-11 band
+  jsr clobbers Y → `tya/pha ... pla/tay` around it (stack balanced).
+- **RULE: never trust cycle counts written in comments.** After ANY change to
+  `.Line`/kernel, recount the worst path from `bank0.lst` (instruction
+  addresses, include branch page-cross) and keep the WSYNC write ≤ c73.
+  Comment budget that is stale by 6 cycles = bug shipped twice.
 
 **When debugging collision misalignment:**
 1. First check if SetObjectXPos matches the comparison branch exactly
@@ -491,6 +610,73 @@ and HUD rows push down. Fix = move setup before TopGap; keep HMOVE line short.
 
 **Future (user):** smaller px/step + more steps/s (plan **H4**) — redesign tables
 under the same ≤73c path budget before changing the tick.
+
+### php/pla X-preserve sets decimal mode (2026-09-23) — NEVER repeat
+
+**Bug:** To keep `EnemyIndex` in X across `jsr IsRoomDark`, code used
+`php / tax / <call> / pla / tax / plp`. After `pla`, X still held the **saved
+flags** (from `php`), not the saved X. The following `plp` then restored **X
+into the flags**. When X happened to have bit 3 set, **D (decimal mode) was
+enabled** — every subsequent `ADC`/`SBC` became BCD math. Symptoms: stuck
+player, vertical-rectangle miner, black playfield, garbage collision.
+
+**Fix:** Do **not** preserve X across a call with php/pla/tax/plp. Make the
+callee clobber-safe and reload the value in the **caller** instead:
+`jsr IsRoomDark` (clobbers A/X only, Y safe) then
+`lda (EnemyDataLo),Y / tax` to reload type before `EnemyColorTable,X`.
+
+**Rule:** Never invent stack-preserving register dances. If a routine must
+return a value, put it in A (or a documented ZP temp). Callers reload.
+
+### Origin Reverse-indexed: bank0 code must end before $FC68 (2026-09-23)
+
+F6 fold pads live at fixed `org $FC68` / `org $FC70`. DASM errors
+`Origin Reverse-indexed` if main code (everything before those orgs) grows
+past `$FC68`.
+
+**When adding bank0 routines that push the end over `$FC68`:** move **leaf
+helpers** (not the fold pads themselves) **after** `org $FC70` — same pattern
+as existing `HotOverlapFlag` / `AddScore` / `ReloadLevel`. `jsr` is absolute,
+so post-pad placement is fine. Never move `Overscan` without syncing
+bank1's `jmp $Fxxx` (ToGameStub at `$FC70` must match).
+
+**This session:** `AddScore` alone overflowed (fc68→fc72). Fixed by moving
+`AddScore` + `ReloadLevel` after the pads. Build green: 4×4096, folds match,
+Overscan still `$F14D`.
+
+### Score rewards (2026-09-23): +50 kill, +75 wall, no fire hack
+
+- **Removed** bank1 fire-button `INPT4` → `+$50` hack (was demo-only).
+- **`AddScore`** (after fold pads): A = BCD amount (`#$50`/`#$75`).
+  `ScoreTe` packed BCD (`tens*16+ones`), `ScoreTh`/`ScoreHu` binary 0-9.
+  Overflow: `$a0` wrap → inc Hu; Hu≥10 → wrap, inc Th; Th≥10 → cap 9.
+- **Call sites (bank0 overscan):**
+  - `CheckEnemyHit` after `sta DeadEnemyIdx` (non-lamp) → `#$50`
+  - `BombEnemyBlast` after kill → `#$50`
+  - `BombMarkWalls` only when WallMask bit **was clear** → `#$75`
+    (and-ora with existing mask; already-broken → skip score)
+- **Score persists** across `ReloadLevel` (not cleared on death).
+- Score display is 6 digits, right-aligned: `0 0 ScoreTh ScoreHu tens ones` → "000075" for 75 points.
+  ptrs 1-2 = leading zero; ptrs 3-6 = value. Max 9999 → "009999".
+
+### Editor flicker budget (2026-09-23)
+
+`MapCanvas`: **max 3 elements/room** (`kMaxRoomElements`) and **max 1 element
+per row** (miner/enemy/lamp share a row budget). Warnings via `QMessageBox`.
+Rationale: GRP1 is one sprite — more simultaneous objects → more flicker
+(rotating `SelectActiveObject`). Restrict at authoring time.
+
+### Pending for next session
+
+- **TODO.txt** was modified (reordered, added "better sprites") — not by us;
+  check with user before staging.
+- **BombEnemyBlast can kill lamps** (type 5): pre-existing bug — no type
+  check in the blast loop. Not touched this session.
+- **Cross-bank Temp conflict:** bank1 uses `Temp` ($AD) as score-init flag
+  (first frame = 0, set to 1 after init). bank0 also uses `Temp` for joystick
+  scratch. If bank0 leaves `Temp` ≠ 0 before bank1 runs, score won't init to
+  zero on first frame. Currently safe (bank0 uses `Temp` in overscan, bank1
+  reads it during HUD band after overscan), but fragile if code order changes.
 
 ## Skill References
 

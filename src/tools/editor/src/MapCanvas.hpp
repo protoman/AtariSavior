@@ -1,5 +1,5 @@
 /*
- * Savior SDL - H.E.R.O. Level Editor
+ * Savior AI - Level Editor
  * Copyright (C) 2026 Savior SDL Team
  *
  * This program is free software: you can redistribute it and/or modify
@@ -26,9 +26,10 @@
 namespace editor {
 
 enum class BrushTool {
-    // Model tab: tile brushes (values 0-7 match TileType for tile editing)
+    // Model tab: tile brushes (values match TileType for tile editing)
     ERASE_AIR = 0,
     SOLID_WALL = 1,
+    HOT_ROCK_WALL = 8,
     // Level tab: entity brushes
     SET_MINER_GOAL = 9,
     ADD_SPIDER = 10,
@@ -50,14 +51,14 @@ public:
 
     // Fallback size used until a room is loaded.
     static constexpr int kDefaultRoomWidth = 20;
-    static constexpr int kDefaultRoomHeight = 12;  // playable rows
+    static constexpr int kDefaultRoomHeight = 3;   // 48-scanline color bands
 
     void SetLevelData(hero::LevelData* levelData, std::vector<hero::ModelData>* models, int activeRoomIndex);
     void SetActiveRoom(int roomIndex);
     void SetTileSize(int size);
     int TileSize() const { return m_tileSize; }
     void SetCurrentBrush(BrushTool brush) { m_currentBrush = brush; }
-    void SetEditMode(bool modelMode) { m_modelMode = modelMode; }
+    void SetEditMode(bool modelMode) { m_modelMode = modelMode; update(); }
     void SetActiveModel(int modelIndex);
     void SetModels(std::vector<hero::ModelData>* models) { m_models = models; }
 
@@ -84,6 +85,15 @@ private:
     QColor GetTileColor(int tileType, int tileY) const;
     void UpdateSizeForRoom();
     void DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int dir) const;
+    // Miner + enemies + lamps in the active room (flicker budget).
+    int CountRoomElements() const;
+    // False + warning dialog if adding would exceed kMaxRoomElements.
+    bool AllowAddElement();
+    // True if any miner/enemy/lamp already occupies this tile row (room space).
+    bool ElementInRow(int tileY) const;
+    // False + warning if row already has an element (except optional ignoreY
+    // for the miner's current row when re-placing the miner in the same room).
+    bool AllowElementInRow(int tileY, int ignoreY = -1);
 
     hero::LevelData* m_levelData = nullptr;
     std::vector<hero::ModelData>* m_models = nullptr;
@@ -93,6 +103,9 @@ private:
     BrushTool m_currentBrush = BrushTool::SOLID_WALL;
     int m_tileSize = 24;
     int m_initialFacing = 1;
+
+    // GRP1 flicker budget: miner + enemies + lamps share one sprite slot.
+    static constexpr int kMaxRoomElements = 3;
 };
 
 } // namespace editor

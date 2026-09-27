@@ -19,16 +19,21 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 1. **Never use $100-$1FF as a buffer.** Mirrors $80-$FF (same 128 bytes).
 2. **Never remove a middle sequential `byte`** — shifts every later address
    and breaks bank1 EQUs / fold-pad assumptions. Rename in place.
-3. **New bank0 sequential vars go after `$BC`.** Free: `$BD-$C2` only if
-   EnemyRam is relocated (currently occupied). After bomb work there is
-   **no free sequential bank0 byte** — reuse scratch (`Temp`, collision
-   temps) or steal a documented bank1-only address.
+3. **New bank0 sequential vars go after `$BC`.** Laser S1 (2026-09-26) took
+   the last byte: `EnemyRamX` shrank to 3 slots ($BD-$BF) and freed
+   **`$C0 = LaserState`**. The 3-slot bound is enforced three ways — editor
+   `kMaxRoomElements=3`, `convert_level.MAX_ENEMIES=3`, `verify_build`
+   enemies+lamps ≤3 (was a stale 4) — because `EnemyRamX[3]` would collide
+   with `$C0`. After laser work there is **no free sequential bank0 byte**
+   again — reuse scratch (`Temp`, collision temps) or steal a documented
+   bank1-only address.
 4. **Grep all `bank*.asm` before defining `$xx` EQU** in any bank.
 5. **Do not touch from bank1 (live score/bomb):** `$F3-$F5` score,
    `$F6` BombX, `$F7` BombTimer, `$F0` PlayerBombs (read-only in bank1 HUD),
    `$F1` BombSnd (bank1 must not write), `$F2` RoomWallMask (bank1 must not write),
-   `$F8-$FF` PlayerGrp0 + stack mirror,
-   `$AD` bank1 `Temp` (bank0 `TickCounter`), `$BD-$C2` EnemyRam,
+    `$F8-$FF` stack mirror only (PlayerGrp0 buffer removed 2026-09-24 — never buffer here),
+   `$AD` bank1 `Temp` (bank0 `TickCounter`), `$BD-$BF`+`$C1-$C2` EnemyRam,
+   `$C0` LaserState (bank0 laser S1),
    `$B5` BombPacked, `$85` BombY.
 
 ## Bank0 Sequential ZP ($80-$BC) — verified
@@ -38,7 +43,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $80 | RoomX | Player X (0-159) |
 | $81 | RoomY | Player Y (0-191) |
 | $82 | PlayerDir | Eye facing 0/1 |
-| $83 | Scanline | Kernel scanline (0-191) |
+| $83 | LaserBeamOn | S2.2r2 beam gate: $02 held / $00 else (was Scanline, dead since S2.2) |
 | $84 | LineCount | Scanlines left in tile row |
 | $85 | BombY | Bomb drop Y (scanline snapshot) |
 | $86 | Grp0Ptr | Player sprite ptr lo (scratch) |
@@ -53,7 +58,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $8F | CollisionEndY | Player bottom tile row |
 | $90 | RoomRectsLo | Room rect list ptr lo |
 | $91 | RoomRectsHi | Room rect list ptr hi |
-| $92 | RectCount | Rect loop counter |
+| $92 | RectCount / RowIdx | Rect loop counter (post-kernel); kernel tile-row index (alias, re-inited at kernel entry) |
 | $93 | vyLo | Y velocity lo (signed 16) |
 | $94 | vyHi | Y velocity hi |
 | $95 | PlayerYSub | Y subpixel accumulator |
@@ -89,11 +94,11 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $B3 | EnemyCount | Enemies in room |
 | $B4 | FlickerFrame | GRP1 slot index |
 | $B5 | **BombPacked** | b0-1 state, b2 DownPrev, b3-6 WallMask, b7 OnGround |
-| $B6 | ActiveObjectOn | GRP1 object visible |
+| $B6 | ObjBase | GRP1 design offset into ObjSprites (0 = off; was ActiveObjectOn) |
 | $B7 | ActiveObjectX | GRP1 object X |
 | $B8 | ActiveObjectY | GRP1 object Y |
 | $B9 | EnemyIndex | Selected enemy slot |
-| $BA | DeadEnemyIdx | Killed enemy / $FF |
+| $BA | EnemyDeadMask | per-enemy dead bits b0-2 (0 = alive; was DeadEnemyIdx $FF=none) |
 | $BB | ObjTop | GRP1 top scanline |
 | $BC | ObjBot | GRP1 bottom scanline |
 
@@ -106,25 +111,31 @@ Sequential allocation ends at `$BC` (next would be `$BD`).
 | $B3 | PF0ScoreBuf | Alias into EnemyCount area — score buffers (legacy name) |
 | $B8 | PF1ScoreBuf | Alias |
 | $C6 | PF2ScoreBuf | Alias (within PF0Buf) |
-| $BD | EnemyRamX | 4 bytes live enemy X |
+| $BD | EnemyRamX | 3 bytes live enemy X ($BD-$BF, slots 0-2 only) |
+| $C0 | LaserState | laser S1: b7 held, b6 prev, b1-0 sweep phase |
 | $C1 | EnemyRamD | Packed dir bits 0-3 |
-| $C2 | EnemyRamP | Packed moth/spider flags |
+| $C2 | EnemyRamP | Free-running frame clock (`inc` once/frame in RefreshEnemyY; gates bat/spider/tentacle derives; init `$F0` on room load = harmless seed) |
 | $C3-$CE | PF0Buf | TilePF0 (12) |
 | $CF-$DA | PF1Buf | TilePF1 (12) |
 | $DB-$E6 | PF2Buf | TilePF2 (12) |
-| $E7-$F1 | ColupfBuf | COLUPF stripes (11 of 12; last slot reused) |
+| $E7-$F2 | ColupfBuf | Final COLUPF × 12 rows (stripe+hot). **Overlaps $F0-$F2 bombs:** `BuildColupF` saves PlayerBombs/BombSnd/RoomWallMask → CollisionCellY/EndX/EndY; `.AfterRows` restores before HUD. Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds. |
 | $F3 | ScoreTh | Shared with bank1 score |
 | $F4 | ScoreHu | |
 | $F5 | ScoreTe | |
 | $F6 | **BombX** | Bomb drop X snapshot (bank1 must not write) |
 | $F7 | **BombTimer** | Fuse/explode frames |
-| $F0 | **PlayerBombs** | Bombs left 0..5 (S8; ColupfBuf+9, never VBLANK-written) |
-| $F1 | **BombSnd** | Frames of bomb audio left (S10; 0=silent) |
-| $F2 | **RoomWallMask** | Packed destroyed thin-wall mask until stage leave: bits0-3 room0 rects, bits4-7 room1 rects (b3-6 of BombPacked saved/restored in EnterRoom; LoadLevel zeros it) |
-| $F8-$FF | PlayerGrp0 | 8 player rows **+ stack mirror** — copy only after last JSR |
+| $F0 | **PlayerBombs** | Bombs left 0..5 — bytes $F0-$F2 also ColupfBuf[9..11]; kernel restores from collision temps at `.AfterRows` |
+| $F1 | **BombSnd** | Frames of bomb audio left (S10; 0=silent); same save/restore |
+| $F2 | **RoomWallMask** | Packed destroyed thin-wall mask until stage leave: bits0-3 room0 rects, bits4-7 room1 rects (b3-6 of BombPacked saved/restored in EnterRoom; LoadLevel zeros it); same save/restore |
+| $F8-$FF | *(free)* | **stack mirror only** — PlayerGrp0 removed (kernel reads ROM via `Grp0Ptr`); never put a buffer here |
 
 Bank1 HUD `$E0-$EF` score ptrs/bar temps overlap ColupfBuf — safe because
-bank1 runs after cave kernel; VBLANK reloads ColupfBuf via `LoadPFBuffer`.
+bank1 runs after cave kernel (bombs already restored); VBLANK rebuilds ColupfBuf.
+
+**Save-temp lifetime:** CollisionCellY/EndX/EndY hold bomb copies from
+`BuildColupF` (VBLANK) through cave kernel until `.AfterRows`. First reuse for
+collision is overscan `PlayerHitsMap`/`BombMarkWalls` — after restore.
+Do not run those between `BuildColupF` and `.AfterRows`.
 
 ## Bank1 ZP (menu / HUD) — verified EQUs
 
@@ -139,8 +150,17 @@ bank1 runs after cave kernel; VBLANK reloads ColupfBuf via `LoadPFBuffer`.
 | $EE | DelayCnt | Power-bar delay | ColupfBuf overlap OK |
 | $EF | FineCnt | Power-bar fine | ColupfBuf overlap OK |
 | $F3-$F5 | ScoreTh/Hu/Te | Score digits | shared |
+| $8D/$8E/$8F | CollisionCellY/EndX/EndY | Bank0 collision temps; bomb save slots during VBLANK+kernel only | bank1 must not use |
 | — | GameMode | Fold-pad mode flag | check `bank1.asm` before use |
 | — | HUD slots | `HudSlotsRam` etc. | see bank1 / HUD notes |
+
+## Bottom band (2026-09-24)
+
+- **No dedicated ZP.** Original plan used `$EC`, but that is inside `ColupfBuf`
+  (`$E7–$F2`, row 5) — `BuildColupF` overwrites it every VBLANK before the kernel.
+- Band color is the RoomEnemies per-room 4th byte (`ptr_lo, ptr_hi, count, bottom_color`).
+  Read via `LoadRoomBottomColor` (kernel `.Row` X==11 + overscan `CheckBandTouch`).
+- Sequential map remains full after bomb work; do not add a new `$xx` EQU for band color.
 
 **Removed / do not reintroduce:** bank1 `ScoreOn` at `$F6` (now BombX);
 old DigitPtr* at `$F4/$F6/$F8`.

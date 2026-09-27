@@ -1,5 +1,5 @@
 /*
- * Savior SDL - H.E.R.O. Level Editor
+ * Savior AI - Level Editor
  * Atari 2600 NTSC colour picker dialog.
  */
 
