@@ -478,7 +478,7 @@ StartFrame:
 
     ; --- Reset TIA state for cave rendering ---
     ; HUD may have changed NUSIZ0/1, COLUP0/1 — must restore
-    lda #$00                      ; NUSIZ0 = single copy, no missile
+    lda #$30                      ; NUSIZ0 = single copy P0 + M0 width 8 (laser S2.1)
     sta NUSIZ0
     lda #$00                      ; NUSIZ1 = single copy
     sta NUSIZ1
@@ -487,7 +487,7 @@ StartFrame:
     lda #0                        ; clear VDELP0/VDELP1 (bank1 HUD sets them to 1)
     sta VDELP0
     sta VDELP1
-    sta ENAM0                     ; disable missile 0
+    ; ENAM0 NOT cleared here: LaserInput owns it (writes every overscan)
     sta ENAM1                     ; disable missile 1
     sta ENABL                     ; disable ball
 
@@ -696,8 +696,8 @@ Overscan:
     sta BombPacked
 .BombInDone:
 
-    ; --- Laser (S1): fire input + 24-px sweep phase (body after fold pads) ---
-    jsr LaserInput             ; A+X only; Temp (joystick) untouched; no TIA writes
+    ; --- Laser (S1+S2.1): fire state + M0 beam position (body after fold pads) ---
+    jsr LaserInput             ; state + RESM0/HMM0/ENAM0; Temp (joystick) untouched
 
 ; ------------------------------------------------------------------------------
 ; Vertical movement — HERO-style jetpack physics
@@ -2846,34 +2846,6 @@ UpdateBombSound:
 .UBSDone:
     rts
 
-; Moved here (after fold pads) to keep pre-pad code under $FC68.
-; ------------------------------------------------------------------------------
-; LaserInput (S1) — fire input state + 24-px sweep phase. No beam rendering yet.
-; ------------------------------------------------------------------------------
-; INPT4 ($0C) D7: 0 = pressed, 1 = released (HERO reads BIT $0C / BMI).
-; LaserState ($C0): b7 = held now, b6 = held last frame, b1-0 = sweep phase.
-; Every held frame advances phase 0->1->2->3->0 (S3 maps these to M0 offsets
-; 0/8/16/8 px ahead of the eye — full triangle covered either starting parity);
-; release clears held and resets phase. Uses A+X only — Temp (joystick) intact.
-LaserInput:
-    ldx LaserState             ; X = old state (b7 held, b6 prev, b1-0 phase)
-    txa
-    and #LASER_HELD
-    lsr                         ; old held (b7) -> new prev (b6)
-    sta LaserState              ; stage prev (phase/held written back below)
-    lda INPT4                   ; active-low fire button, D7: 0 = pressed
-    bmi .LaserDone              ; released: prev set, held=0, phase=0 -> done
-    txa
-    and #LASER_PHASE
-    clc
-    adc #1
-    and #LASER_PHASE            ; phase advances every held frame (incl. press)
-    ora LaserState              ; + prev
-    ora #LASER_HELD             ; + held
-    sta LaserState
-.LaserDone:
-    rts
-
 ; ------------------------------------------------------------------------------
 ; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
 ; Row r displays on scanline ObjTop+r (GRP1 write latching, same as before).
@@ -2959,6 +2931,52 @@ SetObjReflection:
     lda #$08
     sta REFP1
 .SORdone:
+    rts
+
+; ------------------------------------------------------------------------------
+; LaserInput (S1 fire state + S2.1 M0 beam) — runs every overscan.
+; ------------------------------------------------------------------------------
+; Lives after $FF20: the pre-$FF00 region is 100% full (ObjSprites + zero pad),
+; so any addition here must go past SetObjReflection. Pre-pad code size is
+; unchanged (call site jsr unchanged) — page contracts in the kernel untouched.
+; INPT4 ($0C) D7: 0 = pressed, 1 = released (HERO reads BIT $0C / BMI).
+; LaserState ($C0): b7 = held now, b6 = held last frame, b1-0 = sweep phase.
+; Every held frame advances phase 0->1->2->3->0 (S3 maps these to M0 offsets
+; 0/8/16/8 px ahead of the eye — full triangle covered either starting parity);
+; release clears held and resets phase. Temp (joystick) intact.
+; S2.1: after state update, positions M0 (selector 2) and owns ENAM0.
+; Overscan: VBLANK on, end waits on TIM64T — SetObjectXPos's WSYNC costs 1
+; of 30 lines. Y/X dead until next reload (ldy #0 / ldx RoomNo) — safe.
+LaserInput:
+    ldx LaserState             ; X = old state (b7 held, b6 prev, b1-0 phase)
+    txa
+    and #LASER_HELD
+    lsr                         ; old held (b7) -> new prev (b6)
+    sta LaserState              ; stage prev (phase/held written back below)
+    lda INPT4                   ; active-low fire button, D7: 0 = pressed
+    bmi .LaserDone              ; released: prev set, held=0, phase=0 -> done
+    txa
+    and #LASER_PHASE
+    clc
+    adc #1
+    and #LASER_PHASE            ; phase advances every held frame (incl. press)
+    ora LaserState              ; + prev
+    ora #LASER_HELD             ; + held
+    sta LaserState
+.LaserDone:
+    ; --- S2.1: full-height 8-px M0 bar at RoomX while fire held ---
+    lda LaserState
+    and #LASER_HELD
+    beq .LaserBeamOff
+    lda RoomX                   ; coarse X = player X (S2.3: eye + facing sign)
+    ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
+    jsr SetObjectXPos           ; HMM0 applies at next frame's VBLANK HMOVE
+    lda #2
+    sta ENAM0                   ; missile on — every cave scanline (S2.3: 2 lines)
+    rts
+.LaserBeamOff:
+    lda #0
+    sta ENAM0                   ; ENAM0 owned here — kernel entry does NOT clear
     rts
 
 ; ==============================================================================
