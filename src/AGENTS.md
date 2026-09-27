@@ -415,6 +415,53 @@ Use `breakLabel` at two addresses, subtract Scn values:
 
 ### Lessons Learned
 
+**`TickCounter` is the 60-frame GAME timer — never derive periodic motion from
+it beyond `& 7` (2026-09-27, E-gate: spider teleport):** it decrements 60→1
+and reloads, so any `>>3` gate only ever sees 0..7 and counts DOWN (0→7 wrap =
+sprite jumps to the bottom once per second). Symptom signature: sprite descends
+N pixels then **instantly teleports** back to spawn, forever. Fix: free-running
+frame clock — `inc EnemyRamP` ($C2, was reserved for moth flags) once per
+frame in `RefreshEnemyY`; all derive gates index off it. Alignment rule: the
+motion phase period must divide 256 (the clock's wrap) or the wrap shows as a
+jump — 48-step phases are impossible; 64-step (gate ÷4) works, and a **dwell
+zone** (delta 0 at the wrap landing) hides it entirely. Bat gate = `clock>>1`
+(1 px/2f), tentacle bob = `clock>>3`, spider = `clock>>2` + dwell.
+
+**`PlayerHitsMap` clobbers X — save/restore the caller's X around it
+(2026-09-27, E-gate: tentacle X frozen):** PHM calls `YToCellRow`, which does
+`tax` (X = bottom tile row). `UE_Tentacle` documented "X preserved" and used
+X after the probe: `sta EnemyRamX,X` wrote the candidate into
+`EnemyRamX[row]` (out of the slot), so the tentacle's real X never changed —
+sprite bobs vertically (Y is derived) but never moves horizontally, with NO
+error and no crash. Symptom signature: one axis works, the other silently
+does nothing after a `jsr` collision helper. Rule: any routine that calls
+`PlayerHitsMap`/`YToCellRow` must push/pop X (`txa/pha ... pla/tax` — PLA
+does not disturb C, so probe carry survives) unless it provably does not use
+X after the call. Static PHM simulation (rect walk at the spawn box) showed
+CLEAR — the position math was fine; the register was the bug.
+
+**Kernel row splits must preserve per-pass line totals exactly (2026-09-27,
+water strip):** each `.Row` pass costs 1 setup line (ends `sta WSYNC`) + N
+`.Line` bodies. Splitting row 2's 48 bodies into 36 + a `.WaterRow` pass
+(setup + 11) keeps `1+48 = (1+36) + (1+11)` — frame length unchanged. Adding
+a pass with 12 bodies would add one scanline/frame (roll risk). When editing
+kernel structure, count WSYNC executions before/after; comment cycle counts
+are stale the moment code changes.
+
+**Bank0 space discipline (2026-09-27, E1-E3): main ends ≤ `$FC68`, post-pad
+is full — compress DATA before building fold machinery:** `DeriveEnemyY` +
+tentacle arm overflowed main (over by 34B). Cheapest fix = compress lookup
+tables with **floor-nesting**: `YToRowTable` was 192B indexed by A (A/48);
+reindexed by `A>>2` = 48B table — `floor(floor(A/4)/12) == floor(A/48)`, cost
++4c/call. Freed 144B (headroom 4→106B) with zero behavior change. When a
+growing dispatch hits the assembler's 127-byte branch limit, do NOT pad
+branches — extract a `jsr` subroutine (`UE_Tentacle` after `UE_Exit`, jsr is
+absolute) and put the NEW type check FIRST in the dispatch so existing
+branches keep their original (short) ranges. E4 moth needs ~95B vs ~33B free:
+space options (fold machinery vs more compression vs shared probe helper)
+must be decided with the user. Also verified: all overscan `Temp` consumers
+(input/hot-bump) run BEFORE `jsr UpdateEnemies`, so UE's probe may own Temp.
+
 **ZP alias lifetime — an alias over a per-frame-refreshed buffer needs its
 OWN writer in your read window (2026-09-26, enemy Y at $C3):** `EnemyRamY`
 was aliased over `PF0Buf` rows 0-2. The E0 design listed overscan as the

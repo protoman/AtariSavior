@@ -12,22 +12,25 @@ Pontos, cada pedaço da barra de power, 160
 
 =========================================================================================================================================================================
 
-- moth movement (4 tiles left/right)
+Now let's implement movement for enemies besides snake that already have one.
+Create a plan for implementing each at a time, so we can test it properly and avoid bugs/
 
-- spider movement (1 tile up/downb)
+# Spider:
+    moves slowly down and back up, 2 tiles max, as it hanging by a web wire.
+# Moth:
+    Moves into direction it is facing then back. It should move about 6 tiles, and stop and invert direction if hits a wall.
+    While moving horizontally, vertically it should move in sine wave of about 1 tile updown.
+# Bat:
+    moves fast down and back up, just 2 pixels, as it is claping its wings
+# Tentacle:
+    Only move horizontally, tries to follow player, but moves at half of the player speed.
+    Moves vertically, up and down slowly, 2 pixels.
+
 
 - non mirrored walls
 
+- water movement (3 px up, 3px down, slow)
 
-
-
-- moth animation
-
-- tentacle animation
-
-- bat animation (2px up down)
-
-- improve hot walls animation (add orange)
 
 
 =========================================================================================================================================================================

@@ -202,9 +202,11 @@ ColupfBuf       = $E7           ; 12 bytes: final COLUPF per tile row (stripe+ho
 ; Sequential vars end at $BC; EnemyRam occupies $BD-$BF + $C1-$C2 (5);
 ; $C0 = LaserState (the one free byte — see docs/zp_layout_skill.md).
 ; Score lives at $F3-$F5 only ($F6/$F7 = BombX/BombTimer).
-; EnemyRamY ($C3, 3B) ALIASES PF0Buf rows 0-2 — E0 contract:
-;   writers: RefreshEnemyY (overscan entry, EVERY frame — VBLANK LoadPFBuffer
-;            clobbers $C3 each frame) + LoadEnemyRam (EnterRoom init);
+; EnemyRamY ($C3, 3B) ALIASES PF0Buf rows 0-2 — E0/E1 contract:
+;   writers: RefreshEnemyY via DeriveEnemyY (overscan entry, EVERY frame —
+;            VBLANK LoadPFBuffer clobbers $C3 each frame; bat Y is derived
+;            from ROM spawn + TickCounter, no stored movement state) +
+;            LoadEnemyRam (EnterRoom init);
 ;   readers: SelectActiveObject (VBLANK — MUST run BEFORE LoadPFBuffer),
 ;            CheckEnemyHit + LaserHitTest (overscan, after the refresh).
 ;   Ordering guards live in verify_build.py (VBLANK + EnterRoom + bank1).
@@ -530,26 +532,17 @@ StartFrame:
     ; Inline stripe+hot test was 84-109c; budget is 76c/scanline.
     lda ColupfBuf,X
     sta COLUPF
-    ; --- Bottom band: row 2 only, open PF shows COLUBK band color ---
-    ; Blink (BombPacked state=2) keeps Temp; color 0 = band off.
+    ; --- Scanlines this pass: rows 0/1 = 48; row 2 = 36 bodies. The bottom
+    ; water strip (last ~12 lines, bottom_band_plan rule 2) renders in
+    ; .WaterRow after this pass — its own setup line + 11 bodies keeps the
+    ; row-2 total at 49 lines (setup+48) exactly as before the split.
     cpx #TILE_ROWS-1
-    bne .RowSkipBand
-    lda BombPacked
-    and #%00000011
-    cmp #2
-    beq .RowSkipBand
-    tya
-    pha                         ; running-Y: LoadRoomBottomColor clobbers Y
-    jsr LoadRoomBottomColor
-    beq .BandRestoreY           ; band off (0): keep Temp, no store
-    sta COLUBK
-.BandRestoreY:
-    pla
-    tay
-.RowSkipBand:
-
-    ; --- Init scanline counter for this row ---
+    bne .RowLines48
+    lda #LINES_PER_TILE-12       ; row 2: 36 bodies
+    bne .RowLinesLC              ; always (36 != 0)
+.RowLines48:
     lda #LINES_PER_TILE
+.RowLinesLC:
     sta LineCount
 
     ; --- Sync to next scanline ---
@@ -563,7 +556,8 @@ StartFrame:
     ; Running-Y: Y = A0 = Scanline - RoomY is computed ONCE at kernel entry
     ; (sec/sbc RoomY/tay); .Line's iny advances it (Y = A0+1 after the
     ; graphics write = A0 of the next line). Nothing between rows may touch
-    ; Y — the row-11 band jsr (LoadRoomBottomColor clobbers Y) pushes/pops it.
+    ; Y — the water-strip jsr (.WaterRow LoadRoomBottomColor clobbers Y)
+    ; pushes/pops it.
     ; Cycle budget from .Line (body starts c8, dec/bne already paid), recounted
     ; from bank0.lst (worst = in-window color/beam/GRP0 + object in-range):
     ;   color+beam+GRP0 (cpy..sta GRP0 incl BeamMask+gate) = 37c
@@ -629,8 +623,31 @@ StartFrame:
     inx
     stx RowIdx
     cpx #TILE_ROWS
-    beq .AfterRows
+    beq .WaterRow                ; row 2 done -> water strip pass
+    cpx #TILE_ROWS+1
+    beq .AfterRows               ; water pass done (RowIdx wrapped to 4)
     jmp .Row
+.WaterRow:
+    ; PF0/1/2 + COLUPF + COLUBK(Temp) from row 2's setup persist — the strip
+    ; overlays the same cells, so only the band color + 11 lines are needed.
+    ; Band color: blink (BombPacked state=2) keeps Temp; 0 = band off.
+    lda BombPacked
+    and #%00000011
+    cmp #2
+    beq .WRSkip
+    tya
+    pha                         ; running-Y: LoadRoomBottomColor clobbers Y
+    jsr LoadRoomBottomColor
+    beq .WRRestore              ; band off (0): keep Temp, no store
+    sta COLUBK
+.WRRestore:
+    pla
+    tay
+.WRSkip:
+    lda #11                     ; bodies: setup line + 11 = 12-line strip
+    sta LineCount
+    sta WSYNC
+    jmp .Line
 .GrpZero:                       ; dead space: entered only by bcs from .Line
     lda #0                      ; (nothing falls through `jmp .Row`)
     sta GRP0
@@ -1140,13 +1157,13 @@ EnterRoom subroutine
 ; ROM stride 6: type(+0), x(+1), y(+2), range_min(+3), range_max(+4), dir(+5).
 ; Y is NOT shadowed (stays in ROM until S5) — $F3-$F6 is bank1 score.
 ; dir ROM: +1 / $FF. Packed: EnemyRamD bit=1 right, 0 left.
-; EnemyRamP bits4-7 init to %1111 (all spiders start moving down).
+; EnemyRamP = free-running frame clock — seed value here is arbitrary.
 ; ------------------------------------------------------------------------------
 LoadEnemyRam:
     lda EnemyRamD
     and #$F0                    ; preserve RoomDarkMask bits 4-7 (rooms 0-3)
     sta EnemyRamD
-    lda #$F0                    ; spider vdir bits 4-7 = 1 (down) for slots 0-3
+    lda #$F0                    ; EnemyRamP clock seed (arbitrary phase)
     sta EnemyRamP
     ldx #0
 LER_Loop:
@@ -1208,17 +1225,15 @@ UE_Loop:
     lda EnemyDeadMask
     and EnemyBitTable,X
     bne UE_Next                  ; dead enemy does not move
-    ; ROM type at offset X*6
-    txa
-    asl
-    sta Temp
-    asl
-    clc
-    adc Temp
-    tay                          ; Y = X*6 = type offset
+    ldy EnemyOffTable,X          ; Y = X*6 = type offset
     lda (EnemyDataLo),Y
+    cmp #ENEMY_TENTACLE
+    bne .UENotTent
+    jsr UE_Tentacle              ; far target — subroutine avoids branch range
+    jmp UE_Next
+.UENotTent:
     cmp #ENEMY_SNAKE
-    bne UE_Next                  ; only snake moves (E1-E4 extend dispatch)
+    bne UE_Next                  ; other types: no X motion (Y is derived)
     lda TickCounter              ; snake: 1 px / 4 frames (was the global gate)
     and #3
     bne UE_Next
@@ -1283,6 +1298,128 @@ UE_Next:
 UE_Exit:
     rts
 
+; ------------------------------------------------------------------------------
+; UE_Tentacle — chase RoomX: 1 px toward the player every 4th frame, gated by
+; a wall probe. Probe reuses PlayerHitsMap via RoomX/RoomY swap (plan spec):
+; save player xy on stack, put candidate X + live tentacle Y, call, restore
+; ALWAYS (PLA/PLA do not disturb C), commit only when C=0 (clear).
+; Slot X is ALSO saved (PHM clobbers X via YToCellRow's `tax` — E3 gate bug:
+; the commit wrote to EnemyRamX[row] instead of EnemyRamX[slot] → frozen X).
+; Candidate >= 160 (incl. wrap 255) rejected before probe — room edge hold.
+; In: X = enemy slot. Clobbers A/Y/Temp/X (X restored around the probe).
+; Returns via .TentOut on every path.
+; ------------------------------------------------------------------------------
+UE_Tentacle:
+    lda TickCounter
+    and #3                       ; ÷4 gate: 1 px / 4 frames (half of E-gate r1)
+    bne .TentOut
+    lda EnemyRamX,X
+    cmp RoomX
+    beq .TentOut                 ; aligned with player X → hold
+    bcc .TentRight
+    sec
+    sbc #1                       ; step left
+    jmp .TentProbe
+.TentRight:
+    clc
+    adc #1                       ; step right
+.TentProbe:
+    cmp #160                     ; 160..255 = off right edge or wrap → hold
+    bcs .TentOut
+    sta Temp                     ; Temp = candidate X (free in overscan)
+    lda RoomX
+    pha                          ; save player position across the probe
+    lda RoomY
+    pha
+    lda Temp
+    sta RoomX                    ; probe as the tentacle (candidate x)
+    lda EnemyRamY,X
+    sta RoomY                    ; live tentacle y (refreshed this overscan)
+    txa                          ; save slot: PlayerHitsMap->YToCellRow does
+    pha                          ; `tax` (X = bottom row) — slot was lost here
+    jsr PlayerHitsMap
+    pla
+    tax                          ; X = slot again (PLA/tax preserve C)
+    pla
+    sta RoomY                    ; restore player Y (C survives PLA)
+    pla
+    sta RoomX                    ; restore player X
+    bcs .TentOut                 ; wall → hold position
+    lda Temp
+    sta EnemyRamX,X              ; clear → commit candidate step
+.TentOut:
+    rts
+
+; ------------------------------------------------------------------------------
+; DeriveEnemyY — live Y for enemy slot X. Moving types are DERIVED, not stored:
+; the EnemyRamY alias ($C3) is clobbered by every VBLANK's LoadPFBuffer, and
+; there is no free ZP byte to persist movement state, so the formula is
+; re-evaluated from ROM spawn + the EnemyRamP frame clock at each refresh.
+; Bat:     spawn..spawn+2, 1 px / 2 frames, triangle(EnemyRamP>>1 & 3).
+; Tentacle: spawn..spawn+2, 1 px / 8 frames, triangle(EnemyRamP>>3 & 3).
+; Spider:  spawn..spawn+24, 1 px / 4 frames, p=(EnemyRamP>>2)&63,
+;          down first with dwell at top: delta = p<25 ? p : (p<48 ? 48-p : 0).
+;          Gate ÷4 (not spec ÷8): phase period must divide the 256-step clock
+;          wrap — 48-step÷8 phases never align (teleport), 64-step÷4 does.
+;          Dwell absorbs the 256 mod 64 leftover (wrap lands in dwell zone).
+; Clock:   EnemyRamP, inc'd once per frame in RefreshEnemyY (TickCounter is
+;          the 60-frame game timer — gates from it wrap every second).
+; Other types: straight ROM y (their movement stages come later).
+; In: X = enemy slot. Out: A = live Y. Clobbers A/Y.
+; ------------------------------------------------------------------------------
+DeriveEnemyY:
+    ldy EnemyOffTable,X
+    lda (EnemyDataLo),Y         ; type
+    cmp #ENEMY_BAT
+    beq .DEYTickNoShift
+    cmp #ENEMY_TENTACLE
+    beq .DEYTickShift
+    cmp #ENEMY_SPIDER
+    beq .DEYSpiderTick
+    iny
+    iny
+    lda (EnemyDataLo),Y         ; static types: ROM y
+    rts
+.DEYTickNoShift:
+    lda EnemyRamP
+    lsr                         ; ÷2: 1 px / 2 frames (bat half speed, E-gate fix)
+    jmp .DEYBobTick
+.DEYTickShift:
+    lda EnemyRamP
+    lsr
+    lsr
+    lsr                         ; ÷8 gate
+.DEYBobTick:                    ; shared bob delta: triangle(p&3) = 0,1,2,1
+    and #3
+    cmp #3
+    bne .DEYDelta
+    lda #1                      ; 3 -> 1
+    jmp .DEYDelta
+.DEYDelta:                      ; A = delta, then add ROM spawn y
+    sta Temp
+    iny
+    iny
+    lda (EnemyDataLo),Y         ; ROM spawn y
+    clc
+    adc Temp
+    rts
+.DEYSpiderTick:
+    lda EnemyRamP
+    lsr
+    lsr                         ; ÷4 gate (1 px per 4 frames)
+    and #$3F                    ; p = 0..63
+    cmp #48
+    bcc .DEYSUp
+    lda #0                      ; dwell: p 48..63 (clock wrap lands here)
+    beq .DEYDelta               ; always
+.DEYSUp:
+    cmp #25
+    bcc .DEYDelta               ; p <= 24: delta = p (down, 0..24)
+    eor #$FF
+    sec
+    sbc #$CF                    ; 48-p = (255-p)-207, up phase (p 25..47)
+    jmp .DEYDelta
+
 ; ==============================================================================
 ; Room exit handlers — check connection table, switch rooms, reposition player
 ; ==============================================================================
@@ -1290,11 +1427,15 @@ UE_Exit:
 ; After transition: player is placed at the OPPOSITE edge of the new room.
 ; Jetpack velocity carries over (matches comparison/hero pattern).
 ; ------------------------------------------------------------------------------
-ExitRoomDown:
+GetConnIdx:                 ; A/Y = RoomNo * 4 (exit handlers add dir offset)
     lda RoomNo
     asl
-    asl                     ; A = RoomNo * 4
+    asl
     tay
+    rts
+
+ExitRoomDown:
+    jsr GetConnIdx
     iny                     ; +1 = down direction
     lda (LevelConnLo),Y
     cmp #$ff
@@ -1306,10 +1447,7 @@ ExitRoomDown:
     rts
 
 ExitRoomUp:
-    lda RoomNo
-    asl
-    asl                     ; A = RoomNo * 4 + 0 = up direction
-    tay
+    jsr GetConnIdx          ; +0 = up direction
     lda (LevelConnLo),Y
     cmp #$ff
     beq .NoUp
@@ -1320,10 +1458,7 @@ ExitRoomUp:
     rts
 
 ExitRoomLeft:
-    lda RoomNo
-    asl
-    asl
-    tay
+    jsr GetConnIdx
     iny
     iny                     ; +2 = left direction
     lda (LevelConnLo),Y
@@ -1336,10 +1471,7 @@ ExitRoomLeft:
     rts
 
 ExitRoomRight:
-    lda RoomNo
-    asl
-    asl
-    tay
+    jsr GetConnIdx
     iny
     iny
     iny                     ; +3 = right direction
@@ -1599,16 +1731,7 @@ SelectActiveObject:
     ldx EnemyIndex
     lda EnemyRamX,X
     sta ActiveObjectX
-    ; Type/Y offset = EnemyIndex * 6
-    lda EnemyIndex
-    ; multiply by 6: x6 = x2 + x4
-    sta Temp                    ; save index
-    asl                         ; *2
-    sta Temp+1                  ; save *2
-    asl                         ; *4
-    clc
-    adc Temp+1                  ; *6
-    tay                         ; Y = byte offset into enemy data
+    ldy EnemyOffTable,X         ; Y = EnemyIndex * 6 = type offset
     jsr IsRoomDark              ; clobbers X — Y still = type offset
     beq .SOEnemyLit
     lda #COLOR_DARK_OBJ         ; dark room: lamp + enemies medium grey
@@ -1733,13 +1856,7 @@ CEH_HasMore:
     bcs CEHNext                ; no Y overlap
         ; Lamp (type 5): crash → RoomDarkMask; lamp stays in rotation (grey), no life
     ldx EnemyIndex
-    txa
-    asl
-    sta Temp                    ; save index
-    asl
-    clc
-    adc Temp                    ; *6
-    tay
+    ldy EnemyOffTable,X         ; Y = EnemyIndex * 6
     lda (EnemyDataLo),Y         ; type
     cmp #LAMP
     beq CEH_Lamp
@@ -2111,10 +2228,6 @@ BombBlinkColors:
 BombMaskBit:
     .byte $08, $10, $20, $40
 
-; Bit masks for IsRoomDark/SetRoomDark (indexed 0-7; bits 4-7 used for rooms 0-3)
-BitMaskTable:
-    .byte $01, $02, $04, $08, $10, $20, $40, $80
-
 ; AND-mask to clear col 0-19's PF bit (inverse of convert_room.pf_values):
 ;   col 0-3   → PF0 bits 4-7; col 4-11 → PF1 bits 7-0; col 12-19 → PF2 bits 0-7
 BombClearMask:
@@ -2232,29 +2345,22 @@ DigitTimes5:
 ; Lookup table: constant-time. Subtract loop grew linearly with RoomY and
 ; made 3× PlayerHitsMap (fall 2 + L/R 1) exceed overscan TIM64T=35 (~2240c)
 ; in 4-rect rooms → frame >262 lines → vertical roll when strafing while falling.
+; Indexed by A>>2 (48-entry table): floor(floor(A/4)/12) = floor(A/48).
+; Costs +4c/call vs the 192-entry table, saves 144 ROM bytes.
+; Max A = PLAYER_MAX_Y+11 = 143 → index 35 (fits 48 entries).
 YToCellRow subroutine
+    lsr
+    lsr                 ; A = scanline >> 2
     tay
     lda YToRowTable,Y
     tax
     rts
 
-; 192 entries: A/48 for A=0..191 (band 3 is the HUD, outside room data).
+; 48 entries: 12 each of 0,1,2,3 (value = index/12 = scanline/48).
 YToRowTable:
     .byte 0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 1,1,1,1,1,1,1,1,1,1,1,1
-    .byte 1,1,1,1,1,1,1,1,1,1,1,1
-    .byte 1,1,1,1,1,1,1,1,1,1,1,1
     .byte 1,1,1,1,1,1,1,1,1,1,1,1
     .byte 2,2,2,2,2,2,2,2,2,2,2,2
-    .byte 2,2,2,2,2,2,2,2,2,2,2,2
-    .byte 2,2,2,2,2,2,2,2,2,2,2,2
-    .byte 2,2,2,2,2,2,2,2,2,2,2,2
-    .byte 3,3,3,3,3,3,3,3,3,3,3,3
-    .byte 3,3,3,3,3,3,3,3,3,3,3,3
-    .byte 3,3,3,3,3,3,3,3,3,3,3,3
     .byte 3,3,3,3,3,3,3,3,3,3,3,3
 
 ; ==============================================================================
@@ -2572,21 +2678,26 @@ ReloadLevel:
     rts
 
 ; ------------------------------------------------------------------------------
-; RefreshEnemyY — copy ROM y → EnemyRamY (every slot, live or dead).
+; RefreshEnemyY — write live Y → EnemyRamY (every slot, live or dead).
 ; The alias ($C3) is clobbered by VBLANK's LoadPFBuffer every frame, so
 ; overscan must rewrite it AFTER the HUD band and BEFORE LaserInput /
 ; CheckEnemyHit / next frame's SelectActiveObject read it.
+; E1: moving types (bat) get ROM spawn + TickCounter-derived offset via
+; DeriveEnemyY — no persistent movement state exists in RAM.
 ; Clobbers A/X/Y. Post-fold-pad leaf (fits ReloadLevel→HotOverlapFlag gap).
 ; ------------------------------------------------------------------------------
 RefreshEnemyY:
+    inc EnemyRamP                ; free-running frame clock (wraps 0-255).
+                                 ; TickCounter is the 60-frame GAME timer
+                                 ; (decrements 60->1, reloads) — gates derived
+                                 ; from it wrapped every second (spider
+                                 ; "teleported": (TC>>3)&63 only ever saw
+                                 ; 0..7 and counted DOWN 0->7 = jump).
     ldx #0
 .REYLoop:
     cpx EnemyCount
     bcs .REYDone
-    ldy EnemyOffTable,X
-    iny
-    iny                         ; +2 = y
-    lda (EnemyDataLo),Y
+    jsr DeriveEnemyY            ; A = live Y (ROM copy, or derived for bat)
     sta EnemyRamY,X
     inx
     jmp .REYLoop
@@ -2742,23 +2853,24 @@ LoadRoomBottomColor:
     rts
 
 ; ------------------------------------------------------------------------------
-; CheckBandTouch — overscan: if band on and RoomY in bottom color band → life.
-; Bottom band starts at scanline 96; sprite origin RoomY >= 85 enters it
-; (85 + PLAYER_SPRITE_H - 1 = 96). Same path as hot/enemy: lose life, then
-; respawn 48 scanlines up (min 0).
+; CheckBandTouch — overscan: if band on and sprite touches the water strip →
+; life. Strip = bottom ~12 lines of the cave (bottom_band_plan rule 2);
+; sprite origin RoomY >= 125 enters it (125 + PLAYER_SPRITE_H - 1 = 136).
+; Same path as hot/enemy: lose life, then respawn 12 scanlines up (min 0).
 ; ------------------------------------------------------------------------------
 CheckBandTouch:
     jsr LoadRoomBottomColor
     beq .CBTdone                ; band off
     lda RoomY
-    cmp #85
-    bcc .CBTdone                ; above band
+    cmp #125
+    bcc .CBTdone                ; above strip
     jsr LoseLifeBand
 .CBTdone:
     rts
 
 ; ------------------------------------------------------------------------------
-; LoseLifeBand — life path + RoomY -= 48 (min 0). Full reload skips the shift
+; LoseLifeBand — life path + RoomY -= 12 (min 0; spec: respawn just above
+; the water strip). Full reload skips the shift
 ; (LoadLevel already places the player safely).
 ; ------------------------------------------------------------------------------
 LoseLifeBand:
@@ -2778,7 +2890,7 @@ LoseLifeBand:
     sta PlayerYSub
     lda RoomY
     sec
-    sbc #LINES_PER_TILE
+    sbc #12                     ; clear the strip (spec: -= 12, not whole band)
     bcs .LLBstore
     lda #0
 .LLBstore:
@@ -3151,6 +3263,11 @@ LaserHitTest:
 
 EnemyOffTable:
     .byte 0,6,12                ; enemy index * 6 (offset into enemy data)
+
+; Bit masks for IsRoomDark/SetRoomDark (indexed 0-7; bits 4-7 used for rooms 0-3)
+; (moved here from the data section: main code must end ≤ $FC68)
+BitMaskTable:
+    .byte $01, $02, $04, $08, $10, $20, $40, $80
 
 ; ==============================================================================
 ; Interrupt vectors
