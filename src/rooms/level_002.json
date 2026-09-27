@@ -1,5 +1,6 @@
 {
     "level": {
+        "cereal_class_version": 1,
         "level_id": 1,
         "name": "New Level",
         "wall_r": 52,
@@ -12,14 +13,19 @@
         "miner_room": 1,
         "miner_x": 5.5,
         "miner_y": 6.0,
+        "miner_dir": -1,
         "rooms": [
             {
                 "room_id": 0,
-                "model_id": 0,
+                "model_id": 2,
                 "room_x": 0,
                 "room_y": 0,
                 "enemies": [],
-                "lamps": []
+                "lamps": [],
+                "bottom_band": false,
+                "bottom_r": 0,
+                "bottom_g": 0,
+                "bottom_b": 0
             },
             {
                 "room_id": 1,
@@ -35,9 +41,22 @@
                         "range_max": 33.0,
                         "speed": 1.5,
                         "dir": 1
+                    },
+                    {
+                        "type": 3,
+                        "x": 16.0,
+                        "y": 11.0,
+                        "range_min": 13.0,
+                        "range_max": 19.0,
+                        "speed": 1.5,
+                        "dir": 1
                     }
                 ],
-                "lamps": []
+                "lamps": [],
+                "bottom_band": true,
+                "bottom_r": 0,
+                "bottom_g": 0,
+                "bottom_b": 136
             }
         ]
     }

@@ -1,5 +1,5 @@
 /*
- * Savior SDL - H.E.R.O. Level Editor
+ * Savior AI - Level Editor
  * Copyright (C) 2026 Savior SDL Team
  *
  * This program is free software: you can redistribute it and/or modify
@@ -38,15 +38,14 @@
 
 namespace editor {
 
-// Savannah Atari prototype room dims: 20 tiles wide (mirrored to 40), 12 tall
-// (the bottom 4 rows are the grey HUD band).
+// Savannah Atari prototype room dims: 20 tiles wide (mirrored to 40), 3 bands tall.
 static constexpr int kRoomWidth = 20;
-static constexpr int kRoomHeight = 12;
+static constexpr int kRoomHeight = 3;
 // Centered passages carved for room connections.
 static constexpr int kVertExitA = 8;   // vertical exit column range
 static constexpr int kVertExitB = 11;
-static constexpr int kHorizExitA = 6;  // horizontal exit row range
-static constexpr int kHorizExitB = 9;
+static constexpr int kHorizExitA = 1;  // middle color band
+static constexpr int kHorizExitB = 1;
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     SetupUI();
@@ -71,7 +70,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 MainWindow::~MainWindow() {}
 
 void MainWindow::InitGameDataDir() {
-    QSettings settings("SaviorSDL", "LevelEditor");
+    QSettings settings("SaviorAI", "LevelEditor");
     m_gameDataDir = settings.value("gameDataDir").toString();
 
     if (m_gameDataDir.isEmpty() || !QDir(m_gameDataDir).exists()) {
@@ -116,7 +115,7 @@ void MainWindow::SelectGameDataDir() {
 
     if (!dir.isEmpty()) {
         m_gameDataDir = dir;
-        QSettings settings("SaviorSDL", "LevelEditor");
+        QSettings settings("SaviorAI", "LevelEditor");
         settings.setValue("gameDataDir", m_gameDataDir);
         LoadModels();
         PopulateStageCombo();
@@ -135,13 +134,13 @@ void MainWindow::LoadModels() {
             defaultModel.id = 0;
             defaultModel.name = "Default Cave";
             defaultModel.width = 20;
-            defaultModel.height = 12;
-            defaultModel.tiles.resize(20 * 12, (int)hero::TileType::AIR);
+            defaultModel.height = kRoomHeight;
+            defaultModel.tiles.resize(kRoomWidth * kRoomHeight, (int)hero::TileType::AIR);
             for (int x = 0; x < 20; ++x) {
                 defaultModel.tiles[0 * 20 + x] = (int)hero::TileType::SOLID_WALL;
-                defaultModel.tiles[11 * 20 + x] = (int)hero::TileType::SOLID_WALL;
+                defaultModel.tiles[(kRoomHeight - 1) * 20 + x] = (int)hero::TileType::SOLID_WALL;
             }
-            for (int y = 0; y < 12; ++y) {
+            for (int y = 0; y < kRoomHeight; ++y) {
                 defaultModel.tiles[y * 20 + 0] = (int)hero::TileType::SOLID_WALL;
                 defaultModel.tiles[y * 20 + 19] = (int)hero::TileType::SOLID_WALL;
             }
@@ -163,7 +162,7 @@ void MainWindow::SaveModels() {
 }
 
 void MainWindow::SetupUI() {
-    setWindowTitle("Savior SDL - H.E.R.O. Level Editor");
+    setWindowTitle("Savior AI - Level Editor");
     resize(1200, 800);
 
     QWidget* centralWidget = new QWidget(this);
@@ -197,6 +196,7 @@ void MainWindow::SetupUI() {
     struct ToolInfo { BrushTool tool; QString text; };
     ToolInfo modelTools[] = {
         { BrushTool::SOLID_WALL, "1. Solid Rock Wall" },
+        { BrushTool::HOT_ROCK_WALL, "2. Hot Rock Wall" },
         { BrushTool::ERASE_AIR, "0. Air (Erase)" },
     };
     for (const auto& t : modelTools) {
@@ -254,6 +254,16 @@ void MainWindow::SetupUI() {
     roomLayout->addWidget(dirBox);
     QPushButton* remRoomBtn = new QPushButton("Remove Room", this);
     roomLayout->addWidget(remRoomBtn);
+
+    // Bottom band: optional colored strip on model row 2 of current room
+    QHBoxLayout* bandLayout = new QHBoxLayout();
+    m_bottomBandCheck = new QCheckBox("Bottom band", this);
+    m_bottomBandCheck->setToolTip("Colored death band on the room's bottom tile row");
+    bandLayout->addWidget(m_bottomBandCheck);
+    m_bandColorBtn = new QPushButton("Band color", this);
+    m_bandColorBtn->setToolTip("NTSC color for the bottom band (when enabled)");
+    bandLayout->addWidget(m_bandColorBtn);
+    roomLayout->addLayout(bandLayout);
     levelTabLayout->addWidget(roomBox);
 
     // Model Assignment
@@ -282,7 +292,6 @@ void MainWindow::SetupUI() {
         { BrushTool::ADD_MOTH, "W. Moth" },
         { BrushTool::ADD_LAMP, "L. Lamp" },
         { BrushTool::ADD_RAFT, "R. Raft" },
-        { BrushTool::ADD_MAGMA, "A. Magma" },
         { BrushTool::DELETE_ENTITY, "X. Delete" }
     };
     for (const auto& t : levelTools) {
@@ -295,9 +304,9 @@ void MainWindow::SetupUI() {
 
     m_facingBtn = new QPushButton("Initial facing: → (F)", this);
     m_facingBtn->setToolTip(
-        "Direction new enemies face (snake/moth first move).\n"
-        "F on canvas or this button toggles. Click an existing enemy with an "
-        "enemy brush to flip it.");
+        "Direction new miners and enemies face (snake/moth first move).\n"
+        "F on canvas or this button toggles. Click an existing marker with its "
+        "tool to flip it.");
     levelToolLayout->addWidget(m_facingBtn);
 
     levelTabLayout->addWidget(levelToolBox);
@@ -350,6 +359,8 @@ void MainWindow::SetupUI() {
     connect(remRoomBtn, &QPushButton::clicked, this, &MainWindow::RemoveRoom);
     connect(m_colorBtn, &QPushButton::clicked, this, &MainWindow::PickWallColor);
     connect(m_colorBtn2, &QPushButton::clicked, this, &MainWindow::PickWallColor2);
+    connect(m_bandColorBtn, &QPushButton::clicked, this, &MainWindow::PickBandColor);
+    connect(m_bottomBandCheck, &QCheckBox::toggled, this, &MainWindow::OnBottomBandToggled);
     connect(addModelBtn, &QPushButton::clicked, this, &MainWindow::AddModel);
     connect(remModelBtn, &QPushButton::clicked, this, &MainWindow::RemoveModel);
     connect(m_modelList, &QListWidget::currentRowChanged, this, &MainWindow::OnModelSelected);
@@ -377,20 +388,19 @@ void MainWindow::SetupUI() {
 void MainWindow::SwitchEditMode(EditMode mode) {
     m_editMode = mode;
     m_canvas->SetEditMode(mode == EditMode::MODEL_EDIT);
+    QListWidget* tools = mode == EditMode::MODEL_EDIT ? m_modelToolList : m_levelToolList;
     if (mode == EditMode::MODEL_EDIT) {
         m_tabWidget->setCurrentIndex(0);
         // Select first model tool if none selected
-        if (m_modelToolList->currentRow() < 0 && m_modelToolList->count() > 0) {
-            m_modelToolList->setCurrentRow(0);
-        }
+        if (tools->currentRow() < 0 && tools->count() > 0) tools->setCurrentRow(0);
     } else {
         m_tabWidget->setCurrentIndex(1);
         UpdateRoomDirectionButtons();
         // Select first level tool if none selected
-        if (m_levelToolList->currentRow() < 0 && m_levelToolList->count() > 0) {
-            m_levelToolList->setCurrentRow(0);
-        }
+        if (tools->currentRow() < 0 && tools->count() > 0) tools->setCurrentRow(0);
     }
+    if (QListWidgetItem* item = tools->currentItem())
+        m_canvas->SetCurrentBrush(static_cast<BrushTool>(item->data(Qt::UserRole).toInt()));
 }
 
 void MainWindow::OnTabChanged(int index) {
@@ -419,13 +429,13 @@ void MainWindow::AddModel() {
     newModel.id = (int)m_models.size();
     newModel.name = "Model " + std::to_string(newModel.id + 1);
     newModel.width = 20;
-    newModel.height = 12;
-    newModel.tiles.resize(20 * 12, (int)hero::TileType::AIR);
+    newModel.height = kRoomHeight;
+    newModel.tiles.resize(kRoomWidth * kRoomHeight, (int)hero::TileType::AIR);
     for (int x = 0; x < 20; ++x) {
         newModel.tiles[0 * 20 + x] = (int)hero::TileType::SOLID_WALL;
-        newModel.tiles[11 * 20 + x] = (int)hero::TileType::SOLID_WALL;
+        newModel.tiles[(kRoomHeight - 1) * 20 + x] = (int)hero::TileType::SOLID_WALL;
     }
-    for (int y = 0; y < 12; ++y) {
+    for (int y = 0; y < kRoomHeight; ++y) {
         newModel.tiles[y * 20 + 0] = (int)hero::TileType::SOLID_WALL;
         newModel.tiles[y * 20 + 19] = (int)hero::TileType::SOLID_WALL;
     }
@@ -538,26 +548,29 @@ void MainWindow::CreateRoomInDirection(int dirX, int dirY) {
         for (int y = kHorizExitA; y <= kHorizExitB; ++y) curModel.tiles[y * kRoomWidth + (kRoomWidth - 1)] = (int)hero::TileType::AIR;
     }
 
-    // Create new model for the new room
-    int newModelId = (int)m_models.size();
-    hero::ModelData newModel;
-    newModel.id = newModelId;
-    newModel.name = "Model " + std::to_string(newModelId + 1);
-    newModel.width = kRoomWidth;
-    newModel.height = kRoomHeight;
-    newModel.tiles.resize(kRoomWidth * kRoomHeight, (int)hero::TileType::AIR);
-
-    // Border walls
-    for (int x = 0; x < kRoomWidth; ++x) {
-        newModel.tiles[0 * kRoomWidth + x] = (int)hero::TileType::SOLID_WALL;
-        newModel.tiles[(kRoomHeight - 1) * kRoomWidth + x] = (int)hero::TileType::SOLID_WALL;
+    // Reuse the first available model for the new room; create one only if none exist.
+    if (m_models.empty()) {
+        hero::ModelData newModel;
+        newModel.id = 0;
+        newModel.name = "Model 1";
+        newModel.width = kRoomWidth;
+        newModel.height = kRoomHeight;
+        newModel.tiles.resize(kRoomWidth * kRoomHeight, (int)hero::TileType::AIR);
+        for (int x = 0; x < kRoomWidth; ++x) {
+            newModel.tiles[0 * kRoomWidth + x] = (int)hero::TileType::SOLID_WALL;
+            newModel.tiles[(kRoomHeight - 1) * kRoomWidth + x] = (int)hero::TileType::SOLID_WALL;
+        }
+        for (int y = 0; y < kRoomHeight; ++y) {
+            newModel.tiles[y * kRoomWidth + 0] = (int)hero::TileType::SOLID_WALL;
+            newModel.tiles[y * kRoomWidth + (kRoomWidth - 1)] = (int)hero::TileType::SOLID_WALL;
+        }
+        m_models.push_back(newModel);
+        SaveModels();
     }
-    for (int y = 0; y < kRoomHeight; ++y) {
-        newModel.tiles[y * kRoomWidth + 0] = (int)hero::TileType::SOLID_WALL;
-        newModel.tiles[y * kRoomWidth + (kRoomWidth - 1)] = (int)hero::TileType::SOLID_WALL;
-    }
+    int newModelId = 0;
+    auto& newModel = m_models[newModelId];
 
-    // Carve entry in new room
+    // Carve entry in reused model (side facing the current room)
     if (dirY == -1) {
         for (int x = kVertExitA; x <= kVertExitB; ++x) newModel.tiles[(kRoomHeight - 1) * kRoomWidth + x] = (int)hero::TileType::AIR;
     } else if (dirY == 1) {
@@ -567,11 +580,9 @@ void MainWindow::CreateRoomInDirection(int dirX, int dirY) {
     } else if (dirX == 1) {
         for (int y = kHorizExitA; y <= kHorizExitB; ++y) newModel.tiles[y * kRoomWidth + 0] = (int)hero::TileType::AIR;
     }
+    SaveModels(); // Save global models after carving the entry
 
-    m_models.push_back(newModel);
-    SaveModels(); // Save global models after adding new model and carving exits
-
-    // Create room referencing new model
+    // Create room referencing the reused model
     hero::RoomData newRoom;
     newRoom.room_id = (int)m_levelData.rooms.size();
     newRoom.model_id = newModelId;
@@ -606,7 +617,7 @@ void MainWindow::PerformUndo() {
 
 void MainWindow::UpdateWindowTitleAndUndoState() {
     bool modified = IsModified();
-    QString title = "Savior SDL - H.E.R.O. Level Editor";
+    QString title = "Savior AI - Level Editor";
     if (!m_currentFilePath.isEmpty()) {
         title += " - " + m_currentFilePath;
     }
@@ -696,6 +707,7 @@ void MainWindow::PopulateRoomCombo() {
 }
 
 void MainWindow::NewLevel() {
+    SwitchEditMode(EditMode::LEVEL_EDIT);
     m_levelData = hero::LevelData();
     m_levelData.level_id = 1;
     m_levelData.name = "New Level";
@@ -725,14 +737,16 @@ void MainWindow::NewLevel() {
     m_levelData.miner_room = 1;
     m_levelData.miner_x = 13.0f;
     m_levelData.miner_y = 10.0f;
+    m_levelData.miner_dir = m_canvas->InitialFacing();
 
+    m_stageCombo->setCurrentIndex(-1);
     m_currentFilePath.clear();
     ResetUndoStack();
     UpdateUIFromLevel();
 }
 
 void MainWindow::OpenLevel() {
-    QString path = QFileDialog::getOpenFileName(this, "Open H.E.R.O. Level JSON", m_gameDataDir, "JSON Level Files (*.json)");
+    QString path = QFileDialog::getOpenFileName(this, "Open S.A.V.I.O.R. Level JSON", m_gameDataDir, "JSON Level Files (*.json)");
     if (path.isEmpty()) return;
 
     hero::LevelData loaded;
@@ -763,7 +777,7 @@ void MainWindow::SaveLevel() {
 
 void MainWindow::SaveLevelAs() {
     QString defaultName = QString("level_%1.json").arg(m_levelData.level_id, 2, 10, QChar('0'));
-    QString path = QFileDialog::getSaveFileName(this, "Save H.E.R.O. Level JSON", QDir(m_gameDataDir).filePath(defaultName), "JSON Level Files (*.json)");
+    QString path = QFileDialog::getSaveFileName(this, "Save S.A.V.I.O.R. Level JSON", QDir(m_gameDataDir).filePath(defaultName), "JSON Level Files (*.json)");
     if (path.isEmpty()) return;
 
     m_currentFilePath = path;
@@ -803,6 +817,15 @@ void MainWindow::OnRoomChanged(int index) {
         }
         m_ignoreComboEvents = false;
     }
+    // Sync bottom-band controls to newly selected room
+    if (index < (int)m_levelData.rooms.size()) {
+        const auto& room = m_levelData.rooms[index];
+        m_bottomBandCheck->setChecked(room.bottom_band);
+        QString bandStyle = QString("background-color: rgb(%1, %2, %3); color: white;")
+                                .arg(room.bottom_r).arg(room.bottom_g).arg(room.bottom_b);
+        m_bandColorBtn->setStyleSheet(bandStyle);
+        m_bandColorBtn->setEnabled(room.bottom_band);
+    }
     UpdateRoomDirectionButtons();
 }
 
@@ -824,6 +847,14 @@ QIcon MainWindow::MakeToolIcon(BrushTool tool) const {
             QColor c(m_levelData.wall_r, m_levelData.wall_g, m_levelData.wall_b);
             p.fillRect(r, c);
             p.setPen(c.darker(160));
+            for (int y = r.top() + r.height() / 3; y < r.bottom(); y += r.height() / 3) {
+                p.drawLine(r.left(), y, r.right(), y);
+            }
+            break;
+        }
+        case BrushTool::HOT_ROCK_WALL: {
+            p.fillRect(r, QColor(255, 80, 20));
+            p.setPen(QColor(255, 220, 80));
             for (int y = r.top() + r.height() / 3; y < r.bottom(); y += r.height() / 3) {
                 p.drawLine(r.left(), y, r.right(), y);
             }
@@ -940,6 +971,39 @@ void MainWindow::PickWallColor2() {
     }
 }
 
+void MainWindow::PickBandColor() {
+    int roomIdx = m_roomCombo ? m_roomCombo->currentIndex() : -1;
+    if (roomIdx < 0 || roomIdx >= (int)m_levelData.rooms.size()) return;
+    auto& room = m_levelData.rooms[roomIdx];
+    QColor curColor(room.bottom_r, room.bottom_g, room.bottom_b);
+    int picked = PickNtscColor(this, curColor);
+    if (picked >= 0) {
+        QColor rgb = NtscRgbForByte(picked);
+        room.bottom_r = rgb.red();
+        room.bottom_g = rgb.green();
+        room.bottom_b = rgb.blue();
+        room.bottom_band = true;
+        if (m_bottomBandCheck) m_bottomBandCheck->setChecked(true);
+        QString style = QString("background-color: rgb(%1, %2, %3); color: white;")
+                            .arg(rgb.red()).arg(rgb.green()).arg(rgb.blue());
+        m_bandColorBtn->setStyleSheet(style);
+        OnLevelModified();
+        m_canvas->update();
+    }
+}
+
+void MainWindow::OnBottomBandToggled(bool checked) {
+    if (m_bandColorBtn) m_bandColorBtn->setEnabled(checked);
+    if (m_ignoreComboEvents) return;
+    int roomIdx = m_roomCombo ? m_roomCombo->currentIndex() : -1;
+    if (roomIdx < 0 || roomIdx >= (int)m_levelData.rooms.size()) return;
+    auto& room = m_levelData.rooms[roomIdx];
+    if (room.bottom_band == checked) return;
+    room.bottom_band = checked;
+    OnLevelModified();
+    m_canvas->update();
+}
+
 void MainWindow::OnLevelModified() {
     if (m_editMode == EditMode::MODEL_EDIT) {
         // Model edits: save global models file
@@ -991,6 +1055,16 @@ void MainWindow::UpdateUIFromLevel() {
     QString style2 = QString("background-color: rgb(%1, %2, %3); color: white;")
                          .arg(m_levelData.wall2_r).arg(m_levelData.wall2_g).arg(m_levelData.wall2_b);
     m_colorBtn2->setStyleSheet(style2);
+
+    // Sync bottom-band controls to current room
+    if (roomIdx >= 0 && roomIdx < (int)m_levelData.rooms.size()) {
+        const auto& room = m_levelData.rooms[roomIdx];
+        m_bottomBandCheck->setChecked(room.bottom_band);
+        QString bandStyle = QString("background-color: rgb(%1, %2, %3); color: white;")
+                                .arg(room.bottom_r).arg(room.bottom_g).arg(room.bottom_b);
+        m_bandColorBtn->setStyleSheet(bandStyle);
+        m_bandColorBtn->setEnabled(room.bottom_band);
+    }
 
     if (m_canvas) {
         m_canvas->SetLevelData(&m_levelData, &m_models, roomIdx);

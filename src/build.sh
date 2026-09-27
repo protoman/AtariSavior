@@ -22,10 +22,14 @@ python3 "$ROOT/tools/convert_level.py" --levels "$DIR/generated/levels.asm" \
 
 # Assemble each bank (from src/ so include paths resolve)
 cd "$DIR"
-dasm kernel.asm -f3 -obank0.bin -lbank0.lst && echo "  bank0: OK" || echo "  bank0: FAILED"
-dasm bank1.asm -f3 -obank1.bin && echo "  bank1: OK" || echo "  bank1: FAILED"
-dasm bank2.asm -f3 -obank2.bin && echo "  bank2: OK" || echo "  bank2: FAILED"
-dasm bank3.asm -f3 -obank3.bin && echo "  bank3: OK" || echo "  bank3: FAILED"
+dasm kernel.asm -f3 -obank0.bin -lbank0.lst
+echo "  bank0: OK"
+dasm bank1.asm -f3 -obank1.bin
+echo "  bank1: OK"
+dasm bank2.asm -f3 -obank2.bin
+echo "  bank2: OK"
+dasm bank3.asm -f3 -obank3.bin
+echo "  bank3: OK"
 
 # Pad each bank to exactly 4K (DASM doesn't emit trailing zeros)
 for i in 0 1 2 3; do
@@ -41,6 +45,9 @@ for i in 0 1 2 3; do
         exit 1
     fi
 done
+
+# Verify banks + level data BEFORE shipping (errors abort via set -e)
+python3 "$ROOT/tools/verify_build.py" "$DIR"
 
 # Concatenate into 16K ROM
 cat bank0.bin bank1.bin bank2.bin bank3.bin > "$OUTPUT"

@@ -1,5 +1,5 @@
 /*
- * Savior SDL - H.E.R.O. Level Editor
+ * Savior AI - Level Editor
  * Copyright (C) 2026 Savior SDL Team
  *
  * This program is free software: you can redistribute it and/or modify

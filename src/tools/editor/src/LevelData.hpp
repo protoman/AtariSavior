@@ -1,5 +1,5 @@
 /*
- * Savior SDL - H.E.R.O. Atari 2600 Remake
+ * Savior AI - Atari 2600
  * Copyright (C) 2026 Savior SDL Team
  *
  * This program is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 #include <cereal/archives/json.hpp>
 #include <cereal/types/vector.hpp>
 #include <cereal/types/string.hpp>
@@ -34,7 +35,8 @@ enum class TileType : int {
     LAVA = 4,            // Instant death
     WATER = 5,           // Instant death/drown
     RAFT = 6,            // Floating raft on water/lava
-    MAGMA_FALL = 7       // Periodic dropping hazard
+    MAGMA_FALL = 7,      // Periodic dropping hazard
+    HOT_ROCK_WALL = 8    // Solid wall; pulses yellow/red, kills on touch
 };
 
 enum class EnemyType : int {
@@ -83,7 +85,7 @@ struct ModelData {
     int id = 0;
     std::string name = "Model";
     int width = 20;
-    int height = 12;
+    int height = 3;
     std::vector<int> tiles;
 
     template <class Archive>
@@ -103,6 +105,12 @@ struct RoomData {
     int room_y = 0;
     std::vector<EnemyData> enemies;
     std::vector<LampData> lamps;
+    // Bottom band: optional colored strip on model row 2 (scanlines 96-143).
+    // bottom_band=false or color byte 0 in ROM = off.
+    bool bottom_band = false;
+    int bottom_r = 0;
+    int bottom_g = 0;
+    int bottom_b = 0;
 
     template <class Archive>
     void serialize(Archive& ar) {
@@ -111,15 +119,18 @@ struct RoomData {
            CEREAL_NVP(room_x),
            CEREAL_NVP(room_y),
            CEREAL_NVP(enemies),
-           CEREAL_NVP(lamps));
+           CEREAL_NVP(lamps),
+           CEREAL_NVP(bottom_band),
+           CEREAL_NVP(bottom_r),
+           CEREAL_NVP(bottom_g),
+           CEREAL_NVP(bottom_b));
     }
 };
 
 struct LevelData {
     int level_id = 1;
     std::string name = "Level 1";
-    // Two wall colors: the playfield's 12 rows render as 4-row stripes
-    // (rows 0-3 and 8-11 use wall_r/g/b, rows 4-7 use wall2_r/g/b).
+    // Two wall colors: model rows 0 and 2 use wall_r/g/b; row 1 uses wall2.
     int wall_r = 56;
     int wall_g = 104;
     int wall_b = 144;
@@ -132,11 +143,12 @@ struct LevelData {
     int miner_room = 0;
     float miner_x = 8.0f;
     float miner_y = 9.0f;
+    int miner_dir = -1; // -1 = left, +1 = right; existing miner sprite faces left
 
     std::vector<RoomData> rooms;
 
     template <class Archive>
-    void serialize(Archive& ar) {
+    void serialize(Archive& ar, std::uint32_t version) {
         ar(CEREAL_NVP(level_id),
            CEREAL_NVP(name),
            CEREAL_NVP(wall_r),
@@ -148,8 +160,10 @@ struct LevelData {
            CEREAL_NVP(start_room),
            CEREAL_NVP(miner_room),
            CEREAL_NVP(miner_x),
-           CEREAL_NVP(miner_y),
-           CEREAL_NVP(rooms));
+           CEREAL_NVP(miner_y));
+        if (version >= 1) ar(CEREAL_NVP(miner_dir));
+        else miner_dir = -1;
+        ar(CEREAL_NVP(rooms));
     }
 };
 
@@ -164,3 +178,5 @@ struct ModelsFile {
 };
 
 } // namespace hero
+
+CEREAL_CLASS_VERSION(hero::LevelData, 1)

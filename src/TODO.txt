@@ -1,21 +1,211 @@
-- lamps and dark rooms
+#########################################################################################################################################################################
+Strategic Aerial Vehicle Infiltration Operations Rescue
+#########################################################################################################################################################################
+Eorley Savior.
 
-- hot walls
+#########################################################################################################################################################################
+Chegar no mineiro, 1000
+Tempo quase cheio - 1510
+Cada bomba: 50
+Pontos, cada pedaço da barra de power, 160
 
-- water and lava in room
 
-- laser
+=========================================================================================================================================================================
 
-- points killing enemies
+Now let's implement movement for enemies besides snake that already have one.
+Create a plan for implementing each at a time, so we can test it properly and avoid bugs/
+
+# Spider:
+    moves slowly down and back up, 2 tiles max, as it hanging by a web wire.
+# Moth:
+    Moves into direction it is facing then back. It should move about 6 tiles, and stop and invert direction if hits a wall.
+    While moving horizontally, vertically it should move in sine wave of about 1 tile updown.
+# Bat:
+    moves fast down and back up, just 2 pixels, as it is claping its wings
+# Tentacle:
+    Only move horizontally, tries to follow player, but moves at half of the player speed.
+    Moves vertically, up and down slowly, 2 pixels.
+
+
+- non mirrored walls
+
+- water movement (3 px up, 3px down, slow)
+
+
+
+=========================================================================================================================================================================
+
+Add laser action.
+When player pushes the fire button, a laser beam, that is a line starting from the "eye" in the player sprite,
+must appear ahead of the player, in the same direction player is facing, and on the Y position of the yellow line of his sprite.
+And if this line touches any enemy, the enemy must be removed from the room, and the player gets 50 score points.
+The laser can use missile with high speed movement to simulate a line, but if there are better options, let me know,
+but I do believe we are not using missiles as of now, so it can be a good option.
+The laser width should be 3 times the player sprite width.
+
+
+- fly sound
+    # Add sound similar of an old two-stroke combustion engine, when player is playing (up in joystick).
+    # fix sounds tone
+
+
+- better sprites
+    # what is the size, in pixels, of the player, enemies and objects on the game?
+    # is it possible for the sprites to be bigger and have shapes, like for example, for the player (colors names for the row are on the right side)
+
+Now I would like to change the player sprite, to have this format and colors.
+There are two, because when flying he should show a mittle animation switching between those two sprites. B
+But if you notice, there are only 3 pixels different between the two sprites, so we only need to store the first, and the 3 ones, or maybe the two rows where those are.
+Of course, the collision should take in account the bigger size for the player, if not already does.
+
+
+Now, back to changing enemies and objects sprites. Keep the size and color, just add a "design"for the sprites.
+
+Moth:
+#..#
+.##.
+####
+####
+.##.
+#..#
+.##.
+.##.
+
+Spider:
+.##.
+####
+####
+.##.
+#..#
+.##.
+#..#
+#..#
+
+Lamp:
+####
+####
+.##.
+.##.
+####
+####
+####
+.##.
+
+Tentacle:
+.##.
+#..#
+#...
+.##.
+..##
+..##
+..##
+..##
+
+Bat:
+#..#
+.##.
+####
+.##.
+.##.
+#..#
+#..#
+....
+
+Miner (facing left):
+#...
+#.##
+..##
+.###
+.###
+####
+####
+....
+
+
+Bomb:
+...#
+..#.
+..#.
+.##.
+####
+####
+####
+.##.
+
+
+..####..   RED
+.######.   RED
+.####...   YELLOW
+..####..   RED
+.#####..   GRAY
+##.####.   RED
+##.####.   RED
+...###..   RED
+...##...   RED
+...##...   RED
+...###..   GRAY
+..####..   GRAY
+
+..####..   RED
+.######.   RED
+.####...   YELLOW
+..####..   RED
+.#####..   GRAY
+##.####.   RED
+##.####.   RED
+##.###..   RED
+.#.##...   RED
+...##...   RED
+...###..   GRAY
+..####..   GRAY
+
+
+
+
+..####.   RED
+..####.   RED
+.######   YELLOW
+.###....  RED
+..####.   GRAY
+.#####.   RED
+##.####   RED
+##.####   RED
+...###.   RED
+...##..   RED
+...##..   GRAY
+..###..   GRAY
+
+
+
+
+
+
 
 - points finishing stage
 
-- moth movement
+
+#########################################################################################################################################################################
+
+In the 1984 Atari 2600 classic H.E.R.O., the iconic "wave effect" seen on the glowing magma walls and flowing lava rivers is achieved through a brilliant hardware exploit called color cycle manipulation combined with a localized horizontal sync offset.Because the Atari 2600’s graphics chip—the TIA (Television Interface Adaptor)—lacked the memory to process traditional frame-by-frame sprite animations for large background elements, programmer John Van Ryzin had to "trick" the television hardware into creating the illusion of motion.
+
+How the Wave Effect Works Under the HoodThe movement of the lava isn't moving pixels; it is an illusion generated line-by-line using two core techniques:
+
+1. Color Phase Shifting (The "Glow" Effect)
+The TIA generates colors on an NTSC or PAL television by altering the phase of the video signal relative to a color burst reference signal.
+The game's code dynamically modifies the COLUBK (Background Color) or COLUPF (Playfield Color) registers in the middle of rendering a frame.
+By rapidly incrementing or decrementing the color values on successive horizontal scanlines, the game creates a shimmering gradient of red, orange, and yellow.
+
+2. Scanline Shifting (The "Wavy" Motion)To make the lava look like it is physically flowing or undulating, the engine relies on a technique known as HMOVE (Horizontal Motion).
+On the Atari 2600, the background (playfield) is normally rigid. However, by writing to the HMOVE register on specific horizontal scanlines,
+a programmer can force the TIA to shift the graphics on that specific line slightly to the left or right by a few pixels.
+H.E.R.O. uses a small math loop (or an internal lookup table) that acts like a simplified sine wave generator.
+As the TV draws the screen from top to bottom, the code shifts line 1 right by 1 pixel, line 2 right by 2 pixels, line 3 right by 1 pixel, line 4 by 0, and so on.
+By advancing the starting point of this mathematical wave on every frame, the stationary blocks of color appear to ripple like liquid.
 
 
-Editor:
-não pode ter mais que 2 elementos (inimigo, mineiro, balsa) na mesma tela.
-Não pode ter mais de 1 elemento na mesma linha.
+
+#########################################################################################################################################################################
+
 
 
 # laser to kill the enemies and show a beam coming from the player eye (we tried this before and was tricky, that is why we started a new kernel from the scratch).
@@ -45,34 +235,12 @@ After that, start following the option 2.
 
 #########################################################################################################################################################################
 
-First, tell me what features are stored in each bank, 0, 1 and 2?
-
-OK, because there was so much done moving parts around from 0 to 2 to free up some space, it is difficult to detect the root cause.
-So let's take note on what did you needed to move around between banks and go back to a functional state before the changes.
-Run the game to check that version is OK.
-After that, before adding the laser feature, let's do the moving and free spacing, each change at a time, testing each step, before adding the laser feature.
-
-#########################################################################################################################################################################
 
 #########################################################################################################################################################################
 TEXT
 #########################################################################################################################################################################
-Each time player finishes a stage, ad 255 points to the score.
 
-=========================================================================================================================================================================
 
-The score is working very well without any flicker, is it possible to use the same technique to draw the level (LV01) text so we have no flicker on it also?
-
-=========================================================================================================================================================================
-Se a anterior não der certo:
-We are drawing each half of the text at a time with the flicker technique, right?
-To improve readbility, we could use a technique that we instead, draw half the lines in one update, and the other half in the other,
-like a TV interlaced more.
-=========================================================================================================================================================================
-
-Add laser and allow to kill enemies.
-When player pushes the fire button, a laser beam, that is a solid line starting from the "eye" in the player sprite,
-must appear. And if this line touches any enemy, the enemy must be removed from the room, and the player gets 50 score points.
 
 
 
@@ -82,30 +250,7 @@ must appear. And if this line touches any enemy, the enemy must be removed from 
 #########################################################################################################################################################################
 REFACTOR
 #########################################################################################################################################################################
-Why are you writing to these files? "Edit comparison/lo-a-rad-dragon/bank1.asm".
-Please refactor the code to be better organized and placed only under a "src" folder and use logical names like main, kernel_game, kernel_hud, kernel_score,
-data_tables, font_tables, etc.
 
-
-
-=========================================================================================================================================================================
-
-
-#########################################################################################################################################################################
-
-In the editor, in stage 2, room 2, I can't add a new exit to the bottom area.
-
-
-
-=========================================================================================================================================================================
-
-
-
-Now, I want to add gravity, that will make the player fall when not on ground.
-And add back the jetpack logic, that makes the user move up, with some initial inertia, when he holds the up direction in the joystick.
-
-
-Add sound similar of a jet engine when player pressed up in the joystick.
 
 
 
@@ -161,3 +306,68 @@ HUD:
 
 #########################################################################################################################################################################
 Adicionar doc com agradecimentos ao jogo usado como base e exemplos.
+
+#########################################################################################################################################################################
+
+Putting this just in case people think this is a direct copy...
+
+=========================================================================================================================================================================
+
+Análise direta e honesta do código de Savior comparado ao disassembly de H.E.R.O. (disponível em docs/hero/ e hero/hero.bin):
+  ──────
+  ### Veredito: É uma recriação inspirada na arquitetura e design, NÃO uma cópia de código (ROM clone / copy-paste).
+
+  O código-fonte de Savior foi escrito do zero, com convenções modernas (DASM estruturado com nomes descritivos, rotinas modulares, lógica de subpixel própria), mas
+  reproduz deliberadamente as regras de design, limites físicos e decisões técnicas da engenharia de H.E.R.O.
+
+  Abaixo estão os fatos técnicos comprovando isso:
+  ──────
+  ### 1. Onde as implementações são completamente diferentes (Código próprio)
+
+  • O Kernel de Renderização:
+      • H.E.R.O. (hero_bank0.asm / hero_bank1.asm):
+      Utiliza escrita em registradores de Playfield linha a linha via tabelas de lookup compactadas na ROM ($DC66, $DC61, etc.), intercalando leitura de dados com AND de
+      máscaras para desenhar paredes e teto.
+      • Savior (kernel.asm:453-525):
+      Utiliza PF por tile-row (12 scanlines por tile), onde PF0, PF1 e PF2 são escritos apenas uma vez no topo do tile (.Row) e o TIA mantém o registrador persistente
+      durante o loop de 12 scanlines (.Line), que cuida puramente dos sprites GRP0 e GRP1. O kernel de Savior é muito mais simples e direto estruturalmente.
+  • Física e Movimento do Jogador:
+      • H.E.R.O.: Tem rotinas complexas e não-lineares de inércia, colisão por hardware TIA e lógica vertical acoplada ao motor de tela.
+      • Savior (kernel.asm:110-115):
+      Implementa um modelo limpo de física 16-bit com ponto fixo subpixel (vyLo, vyHi, PlayerYSub), gravidade constante (GRAVITY = $0008), acumulador de empuxo linear
+      (JetPower) e verificação de colisões por bounding boxes / retângulos contra o mapa da sala (PlayerHitsMap).
+  • Posicionamento Horizontal (SetObjectXPos):
+      • H.E.R.O. (hero_bank0.asm#L16-L40):
+      Usa um loop de divisão por 15 baseado em rotações aritméticas e cálculo inline de deslocamento fino:
+        SBC #$0F / BCS ... / EOR #$0F / ASL / ASL / ASL / ASL / ADC #$80 / STA RESP0,X / STA WSYNC / STA HMP0,X
+
+      • Savior (kernel.asm:2021-2031):
+      Usa a técnica clássica de Andrew Davie (tutorial do AtariAge, sessão 24), baseada em lookup table alinhada em página (fineAdjustTable em $FF00), economizando
+      ciclos em relação ao algoritmo matemático de H.E.R.O.
+  • Estrutura de Memória e ROM (Bankswitching):
+      • H.E.R.O.: Cartucho de 8K com bankswitching F8 (2 bancos de 4K, hot spots $1FF8 / $1FF9).
+      • Savior: Cartucho de 16K com bankswitching F6 (4 bancos de 4K, hot spots $1FF6 a $1FF9). Além disso, toda a alocação de Zero-Page de Savior tem layout próprio e
+      documentado em seg.u Variables.
+
+  ──────
+  ### 2. Onde há inspiração direta ou cópia das especificações/técnicas
+
+  • Power Bar (Barra de Energia / Tempo):
+      • Foi feita engenharia reversa visual e de comportamento do H.E.R.O. (inclusive documentado em power_bar_plan.md). O Savior busca ter o mesmo comportamento:
+      margens cinzas via PF0=$E0, corpo contínuo via PF1/PF2=$FF, troca de cor no meio do scanline (amarelo para vermelho) e uma separação suave de 1 pixel usando a Ball
+      (ENABL).
+  • Display de Vidas e Bombas:
+      • Uso do truque de cópias NUSIZ (3 cópias espaçadas/médias para vidas e bombas) em vez de escrever texto ou criar dígitos, espelhando a convenção de H.E.R.O.
+  • Score (Pontuação):
+      • Em vez da tabela PF de H.E.R.O., Savior usou no banco 1 o algoritmo clássico de 48-pixel sprite multiplexer (conhecido da comunidade homebrew).
+  • Parâmetros e Regras do Mundo:
+      • Paredes simétricas com CTRLPF espelhado (D0=1).
+      • Dimensões de tela e áreas visíveis (144 scanlines de caverna + 48 de HUD).
+      • Limites de tela do herói (PLAYER_MIN_X = 4, PLAYER_MAX_X = 163).
+
+  ──────
+  ### Conclusão
+
+  Não é cópia do código binário ou assembly. Nenhuma sub-rotina do binário de H.E.R.O. foi extraída e colocada no Savior intacta. É uma re-implementação "clean-room" com
+  engenharia reversa comportamental: o autor estudou o comportamento do jogo original no Stella e no disassembly, aprendeu as limitações do TIA que a Activision resolveu
+  na época, e escreveu código 6502 novo em cima dos mesmos conceitos.

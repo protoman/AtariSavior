@@ -29,9 +29,8 @@ import sys
 import convert_room
 
 WIDTH = 20
-# Playable rows per room (the bottom 4 tile rows render as a grey HUD band and
-# are NOT part of room data: rooms store only the playable cave).
-HEIGHT = 12
+# Playable color bands per room (the bottom 48 scanlines render as HUD).
+HEIGHT = 3
 ROOM_NONE = 0xFF
 # Byte that renders the editor default (56,104,144 = hue A, luma 2) under the
 # emulator-aware encoding in nearest_byte: (hue << 4) | (luma << 1) = 0xA4.
@@ -121,8 +120,24 @@ def nearest_byte(r: int, g: int, b: int) -> int:
 
 
 def tile_to_char(value: int) -> str:
-    """Editor tiles: AIR stays open, everything else becomes solid #."""
-    return "." if value == 0 else "#"
+    """Editor tiles: AIR open, HOT_ROCK_WALL 'H', everything else solid #."""
+    if value == 0:
+        return "."
+    if value == 8:
+        return "H"
+    return "#"
+
+
+def load_models(models_path: Path) -> dict:
+    """models/models.json -> {id: model}; {} when missing/invalid."""
+    if not models_path.exists():
+        return {}
+    try:
+        models_data = json.loads(models_path.read_text())
+        models_list = models_data.get("models_file", models_data).get("models", [])
+        return {m["id"]: m for m in models_list}
+    except (OSError, ValueError, KeyError):
+        return {}
 
 
 def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
@@ -205,11 +220,10 @@ def level_number_from_path(path: Path) -> int:
 
 
 def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
-                 output: Path, level_n: int) -> None:
+                 output: Path, level_n: int, models_by_id: dict = None) -> None:
     prefix = f"LEVEL{level_n}"
     room_prefix = f"L{level_n}R"
-    # Two wall colors: the playfield's 12 tile rows are drawn in 4-row stripes:
-    # rows 0-3 color 1, rows 4-7 color 2, rows 8-11 color 1 again.
+    # Two wall colors: bands 0 and 2 use color 1; band 1 uses color 2.
     wall = nearest_byte(
         int(level.get('wall_r', 56)),
         int(level.get('wall_g', 104)),
@@ -218,6 +232,9 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
         int(level.get('wall2_r', 40)),
         int(level.get('wall2_g', 130)),
         int(level.get('wall2_b', 90)))
+    miner_room = int(level.get("miner_room", 0))
+    if int(level.get("miner_dir", -1)) > 0:
+        miner_room |= 0x80  # kernel uses bit 7 as miner-facing-right flag
     lines = [
         f"; Generated from {level.get('name', 'level')} (level {level_n}). "
         "Do not edit by hand."
@@ -228,19 +245,27 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
         f"{prefix}_WALL_COLOR2 = ${wall2:02x}",
         f"{prefix}_START_X = 32",
         f"{prefix}_START_Y = 24",
-        f"{prefix}_MINER_ROOM = {level.get('miner_room', 0)}",
-        f"{prefix}_MINER_X = {px(level.get('miner_x', 0), 8)}",
+        f"{prefix}_MINER_ROOM = {miner_room}",
+        f"{prefix}_MINER_X = {enemy_x_px(float(level.get('miner_x', 0)) * 2)}",
         f"{prefix}_MINER_Y = {px(level.get('miner_y', 0), 12)}",
         "",
     ]
     lines.append(
         f"; Room data: one ({room_prefix}<n>TilePF0, ...RoomRects) word pair per room,"
-        " indexed by RoomNo.")
+        " indexed by RoomNo. Rooms pointing at a model share that model's")
+    lines.append(
+        "; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).")
     lines.append(f"{prefix}_RoomDataTable:")
     for index, room in enumerate(rooms):
-        lines.append(
-            f"  .word {room_prefix}{index + 1}TilePF0, "
-            f"{room_prefix}{index + 1}RoomRects ; room {index}")
+        model = models_by_id.get(room.get("model_id")) if models_by_id else None
+        if model is not None:
+            mid = model["id"]
+            lines.append(
+                f"  .word M{mid}TilePF0, M{mid}RoomRects ; room {index} (model {mid})")
+        else:
+            lines.append(
+                f"  .word {room_prefix}{index + 1}TilePF0, "
+                f"{room_prefix}{index + 1}RoomRects ; room {index}")
     lines.append("")
     lines.append(
         "; Room connections: up/down/left/right target room index per room ($ff = none).")
@@ -254,10 +279,23 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
     output.write_text("\n".join(lines) + "\n")
 
 
-# A room may hold up to this many enemies (matches the editor's own cap).
-MAX_ENEMIES = 4
+# A room may hold up to this many enemies (matches the editor's own cap:
+# MapCanvas kMaxRoomElements = 3). EnemyRamX has only 3 runtime slots —
+# slot 3 would collide with LaserState at $C0 (docs/zp_layout_skill.md).
+MAX_ENEMIES = 3
 # Per-enemy byte layout in LEVEL{n}_EnemyDataTable (see _enemy_tables).
 ENEMY_STRIDE = 6
+
+
+def _room_bottom_color(room: dict) -> int:
+    """Bottom-band TIA color byte for a room (0 = band off)."""
+    if not room.get("bottom_band"):
+        return 0
+    color = nearest_byte(
+        int(room.get("bottom_r", 0)),
+        int(room.get("bottom_g", 0)),
+        int(room.get("bottom_b", 0)))
+    return color if color != 0 else 1  # never emit 0 when band is on
 
 
 def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
@@ -267,23 +305,43 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
     display column (0..39 across both mirror halves, so the game screens can
     differ per side) and y is a room row (0..11). Column -> room pixel uses
     4 px/column (one playfield block), row -> scanline uses 12 px/row,
-    matching the existing level/miner coordinate conversion.
+    matching the existing level/miner coordinate conversion. Lamp x is stored
+    at the tile center and shifted left by half its 4px sprite width.
 
     LEVEL{n}_EnemyDataTable is a flat list of ENEMY_STRIDE-byte records:
     type, x, y, range_min, range_max, dir (range/speed are reserved for
     future patrolling; only type/x/y are consumed today).
     LEVEL{n}_RoomEnemies has one 4-byte record per room:
-    ptr_lo, ptr_hi, count, pad.
+    ptr_lo, ptr_hi, count, bottom_color (0 = no bottom band).
     """
     flat: list[tuple[int, int, int, int, int, int]] = []
     counts: list[int] = []
+    bottoms: list[int] = []
+    # Lamp entries are merged into the enemy table as type=5 (kernel LAMP).
+    # Same 6-byte stride / RoomEnemies records — no separate lamp table.
+    LAMP_TYPE = 5
     for index, room in enumerate(rooms):
-        enemies = [e for e in (room.get("enemies") or [])][:MAX_ENEMIES]
-        counts.append(len(enemies))
-        for enemy in enemies:
+        entities = [e for e in (room.get("enemies") or [])]
+        for lamp in (room.get("lamps") or []):
+            entities.append({
+                "type": LAMP_TYPE,
+                "x": lamp.get("x", 0),
+                "y": lamp.get("y", 0),
+                "range_min": 0,
+                "range_max": 0,
+                "dir": 1,
+            })
+        entities = entities[:MAX_ENEMIES]
+        counts.append(len(entities))
+        bottoms.append(_room_bottom_color(room))
+        for enemy in entities:
+            type_ = int(enemy.get("type", 0))
+            x = float(enemy.get("x", 0))
+            if type_ == LAMP_TYPE:
+                x -= 0.5  # editor stores lamp center; GRP1 data is left-aligned
             flat.append((
-                int(enemy.get("type", 0)),
-                enemy_x_px(enemy.get("x", 0)),
+                type_,
+                enemy_x_px(x),
                 px(float(enemy.get("y", 0)), 12),
                 px(float(enemy.get("range_min", 0)), 4),
                 px(float(enemy.get("range_max", 0)), 4),
@@ -299,44 +357,66 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
         lines.append(f"  .byte {type_}, {x}, {y}, {rmin}, {rmax}, {dir_}")
     lines += [
         "",
-        "; Per-room enemy records: ptr_lo, ptr_hi, count, pad.",
+        "; Per-room enemy records: ptr_lo, ptr_hi, count, bottom_color.",
         f"{prefix}_RoomEnemies:",
     ]
     for index, count in enumerate(counts):
+        color = bottoms[index]
+        color_hex = f"${color:02x}"
         if count:
             start = sum(counts[:index]) * ENEMY_STRIDE
             lines.append(
                 f"  .byte <({prefix}_EnemyDataTable+{start}), "
-                f">({prefix}_EnemyDataTable+{start}), {count}, 0 ; room {index}")
+                f">({prefix}_EnemyDataTable+{start}), {count}, {color_hex} ; room {index}")
         else:
             lines.append(
                 f"  .byte <({prefix}_EnemyDataTable), "
-                f">({prefix}_EnemyDataTable), 0, 0 ; room {index}")
+                f">({prefix}_EnemyDataTable), 0, {color_hex} ; room {index}")
     return lines
 
 
 def write_levels_index(output: Path, json_paths: list[Path]) -> None:
-    """Emit levels_data.asm (per-room includes) + levels.asm (tables/LevelDataTable).
+    """Emit models_data.asm + levels_data.asm (includes) + levels.asm (tables).
 
-    The game reads LevelDataTable[Level] to start a level and place the miner:
-      offset 0..7 start_room, start_x, start_y, miner_room, miner_x, miner_y,
-      wall_color, wall_color2; offset 8..11 the level's RoomDataTable and
-      RoomConnections base addresses. Entry stride is LEVEL_DATA_STRIDE (=12).
+    The game reads LevelDataTable[Level] to start a level and place the miner.
+    miner_room's high bit carries miner-facing-right; low 7 bits remain room id.
+    The entry contains 8 scalar bytes followed by three word pointers (stride14).
+
+    models_data.asm holds each referenced model's PF/rect data ONCE, shared by
+    every room (across all levels) whose RoomDataTable points at that model.
     """
     generated = output.parent
     data_lines = ["; Generated by convert_level.py --levels. Do not edit by hand.", ""]
     table_lines = ["; Generated by convert_level.py --levels. Do not edit by hand.", ""]
     levels = []
+    referenced: set = set()
+    models_by_id = load_models(json_paths[0].parent / "models" / "models.json")
     for path in json_paths:
         level = json.loads(path.read_text())
         if "level" in level:          # cereal wraps the level in an NVP
             level = level["level"]
         level_n = level_number_from_path(path) or int(level.get("level_id", 1))
         levels.append((level_n, level))
+        for room in level["rooms"]:
+            if models_by_id.get(room.get("model_id")) is not None:
+                referenced.add(models_by_id[room["model_id"]]["id"])
         rel = generated.name
         data_lines.append(f'    include "{rel}/level_{level_n:03d}_rooms_data.asm"')
         table_lines.append(f'    include "{rel}/level_{level_n:03d}_rooms.asm"')
     data_lines.append("")
+
+    # Shared model playfield + collision data, emitted once for all levels.
+    model_lines = ["; Generated by convert_level.py --levels. Do not edit by hand."]
+    for mid in sorted(referenced):
+        model = models_by_id[mid]
+        model_lines.append("")
+        model_lines += convert_room.lines(
+            rows_from_json({"model_id": mid, "tiles": model.get("tiles"),
+                            "width": model.get("width", WIDTH)}, models_by_id),
+            prefix=f"M{mid}", source=f"models.json model {mid}")
+    model_lines.append("")
+    (generated / "models_data.asm").write_text("\n".join(model_lines) + "\n")
+    data_lines.insert(2, f'    include "{generated.name}/models_data.asm"')
     (generated / "levels_data.asm").write_text("\n".join(data_lines) + "\n")
 
     table_lines += [
@@ -346,7 +426,7 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         "LEVEL_DATA_STRIDE = 14",
         f"LEVEL_COUNT = {len(levels)}",
         "",
-        "; Per-level entry (stride 12): start room/x/y, miner room/x/y, both wall",
+        "; Per-level entry (stride 14): start room/x/y, miner room/x/y, both wall",
         "; colors, then the level's RoomDataTable and RoomConnections bases.",
         "LevelDataTable:",
     ]
@@ -397,41 +477,40 @@ def main(argv: list[str]) -> int:
         return 1
 
     # Load models from models/models.json relative to the level file
-    models_by_id = {}
-    models_path = json_path.parent / "models" / "models.json"
-    if models_path.exists():
-        try:
-            models_data = json.loads(models_path.read_text())
-            models_list = models_data.get("models_file", models_data).get("models", [])
-            models_by_id = {m["id"]: m for m in models_list}
-        except (OSError, ValueError, KeyError):
-            pass  # No models file or invalid format — fall back to room tiles
+    models_by_id = load_models(json_path.parent / "models" / "models.json")
 
     level_n = level_number_from_path(json_path) or int(level.get("level_id", 1))
     try:
+        room_asms = []
         for index, room in enumerate(rooms):
             rows = rows_from_json(room, models_by_id)
             txt = rooms_dir / f"level_{level_n:03d}_room_{index + 1:03d}.txt"
-            asm = generated_dir / f"level_{level_n:03d}_room_{index + 1:03d}.asm"
             txt.write_text("\n".join(rows) + "\n")
-            convert_room.emit(rows, asm, prefix=f"L{level_n}R{index + 1}",
-                              source=txt.name)
+            # Rooms with a model get their PF/rect data from the shared
+            # M<id>* symbols in models_data.asm — no per-room copy.
+            if models_by_id.get(room.get("model_id")) is None:
+                asm = generated_dir / f"level_{level_n:03d}_room_{index + 1:03d}.asm"
+                convert_room.emit(rows, asm, prefix=f"L{level_n}R{index + 1}",
+                                  source=txt.name)
+                room_asms.append(asm)
 
         connections = connection_bytes(rooms)
         tables = Path(str(out_prefix) + "_rooms.asm")
-        write_tables(level, rooms, connections, tables, level_n)
+        write_tables(level, rooms, connections, tables, level_n, models_by_id)
 
-        # Emit a file that includes every per-room data file, so the game
-        # assembler needs only this single include and picks up rooms added
-        # in the editor without editing bank0.asm. Include paths are relative
-        # to the build working directory (the repo root), matching the style
-        # used elsewhere.
+        # Include list for every per-room data file still emitted (rooms
+        # without a model). The game assembler needs only this single include
+        # and picks up rooms added in the editor without editing bank0.asm.
+        # Include paths are relative to the build working directory (the repo
+        # root), matching the style used elsewhere.
         data_include = generated_dir / f"level_{level_n:03d}_rooms_data.asm"
-        data_include.write_text(
-            "\n".join(f'    include "{generated_dir.name}/{asm.name}"'
-                      for asm in sorted(
-                          (generated_dir / f"level_{level_n:03d}_room_{i + 1:03d}.asm"
-                           for i in range(len(rooms)))) ) + "\n")
+        if room_asms:
+            data_include.write_text(
+                "\n".join(f'    include "{generated_dir.name}/{asm.name}"'
+                          for asm in room_asms) + "\n")
+        else:
+            data_include.write_text(
+                "; All rooms use shared model data (models_data.asm).\n")
 
         print(f"wrote {len(rooms)} room grids and tables -> {tables}")
     except (OSError, ValueError) as error:
