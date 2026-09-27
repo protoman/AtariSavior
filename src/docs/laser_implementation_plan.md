@@ -1,10 +1,8 @@
 # Laser Implementation Plan
 
-Status: **S1 COMPLETE (user-validated 2026-09-26). S2 COMPLETE — S2.1
-validated, S2.2 round-2 validated (`1b1d11c`), S2.3 validated as solid
-eye-aligned bar (`b84b71b`; "pulse" = S3 sweep). S3 COMPLETE —
-user-validated 5/5 (2026-09-26, `ceb9dfe`). S4 code done + build green +
-assert checks pass — awaiting user gate (uncommitted).**
+Status: **COMPLETE (2026-09-26) — S1-S5 all user-validated in Stella.
+Laser: swept 8×2 M0 (0/8/16/8 px @8px/frame), per-enemy dead mask,
++50/kill, lamp crash = room dark. Last code commit `54d5101` (S4).**
 
 Use one Missile 0 (`M0`), 8×2 pixels, moving 8 pixels per frame across a 24-pixel span and back while fire is held. CRT/phosphor persistence supplies visual trail. Keep P1 free for enemies and objects. INPT4 is active-low at `$0C`; bank0 currently disables M0/M1/ball in cave and does not otherwise position missiles. Bank1 uses ball later in HUD, after cave rendering.
 
@@ -220,11 +218,11 @@ routine can flip a branch's page — always re-check page contracts from
 - [x] Call existing `AddScore` with `#$50` exactly once per removed enemy (laser hit, CEH, bomb blast all mask-bit guarded).
 - [x] Add assert-based checks for sweep interval / enemy overlap and dead-state behavior (`tools/test_laser_s4.py`, all pass).
 - [x] Build and run `verify_build.py` (green; main ends $FC66, `LaserHitTest $FFA6`, `EnemyOffTable $FFE8`).
-- [ ] **User validation:** hit enemies at both ends and between sweep positions; verify each removed once, +50 per hit, no resurrection after another hit, **lamp on laser = room dark (SetRoomDark, same as player-body touch — no kill, no score; user amendment 2026-09-26)**, P1/snake continue rendering, and no frame roll. *(Items 1-4 PASSED 2026-09-26; item 5 re-run pending after lamp handling amended.)*
-- [ ] Stop and ask user before S5.
+- [x] **User validation:** hit enemies at both ends and between sweep positions; verify each removed once, +50 per hit, no resurrection after another hit, **lamp on laser = room dark (SetRoomDark, same as player-body touch — no kill, no score; user amendment 2026-09-26)**, P1/snake continue rendering, and no frame roll. **PASSED (items 1-4 2026-09-26; lamp item "big pass" same day; committed `54d5101`).**
+- [x] Stop and ask user before S5.
 
 ### S5 — Final regression
 
-- [ ] Rebuild editor and ROM; check bank sizes, fold pads, level generation, and zero-page notes.
-- [ ] **User validation:** full Stella pass: both directions, wall contact, snake/object visibility, fire release, repeated shots, score, room transitions, and bombs.
-- [ ] Mark complete only after user confirms.
+- [x] Rebuild editor and ROM; check bank sizes, fold pads, level generation, and zero-page notes. *(2026-09-26: editor ninja up-to-date; ROM 4×4096 exact; verify_build OK, folds match, main $FC66; generated level asm identical to committed; zp doc updated.)*
+- [x] **User validation:** full Stella pass: both directions, wall contact, snake/object visibility, fire release, repeated shots, score, room transitions, and bombs. **PASSED 2026-09-26.**
+- [x] Mark complete only after user confirms. **CONFIRMED 2026-09-26 — S5 COMPLETE, laser feature done (S1-S5 all user-validated).**
