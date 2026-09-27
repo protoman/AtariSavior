@@ -98,7 +98,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $B7 | ActiveObjectX | GRP1 object X |
 | $B8 | ActiveObjectY | GRP1 object Y |
 | $B9 | EnemyIndex | Selected enemy slot |
-| $BA | DeadEnemyIdx | Killed enemy / $FF |
+| $BA | EnemyDeadMask | per-enemy dead bits b0-2 (0 = alive; was DeadEnemyIdx $FF=none) |
 | $BB | ObjTop | GRP1 top scanline |
 | $BC | ObjBot | GRP1 bottom scanline |
 

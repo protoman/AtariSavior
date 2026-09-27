@@ -2,8 +2,9 @@
 
 Status: **S1 COMPLETE (user-validated 2026-09-26). S2 COMPLETE — S2.1
 validated, S2.2 round-2 validated (`1b1d11c`), S2.3 validated as solid
-eye-aligned bar (`b84b71b`; "pulse" = S3 sweep, not yet built). S3
-implemented + build green — awaiting phosphor sweep validation.**
+eye-aligned bar (`b84b71b`; "pulse" = S3 sweep). S3 COMPLETE —
+user-validated 5/5 (2026-09-26, `ceb9dfe`). S4 code done + build green +
+assert checks pass — awaiting user gate (uncommitted).**
 
 Use one Missile 0 (`M0`), 8×2 pixels, moving 8 pixels per frame across a 24-pixel span and back while fire is held. CRT/phosphor persistence supplies visual trail. Keep P1 free for enemies and objects. INPT4 is active-low at `$0C`; bank0 currently disables M0/M1/ball in cave and does not otherwise position missiles. Bank1 uses ball later in HUD, after cave rendering.
 
@@ -181,14 +182,14 @@ routine can flip a branch's page — always re-check page contracts from
       args ∈ [0,163]; SetObjectXPos div15 remainder always −15..−1 ✓.
       Lives entirely in post-`$FF20` LaserInput — pre-pad/Overscan/folds
       untouched (`Overscan` stays `$F167`).
-- [ ] **Full S2 user gate:** yellow 8×2 pulse BEGINS AT THE EYE and extends
+- [x] **Full S2 user gate:** yellow 8×2 pulse BEGINS AT THE EYE and extends
       forward (right when facing right, left when facing left); Y matches
       yellow face row (RoomY+2..3); nothing before first press; P1
       enemies/snake visible; no frame roll; wall collision/bombs/map
       unchanged; beam gone on release.
-- [ ] STOP → user validates before S3 (8 px/frame sweep).
+- [x] STOP → user validates before S3 (8 px/frame sweep).
 
-### S3 — Fast back-and-forth sweep ✅ (code) / gate pending
+### S3 — Fast back-and-forth sweep ✅ COMPLETE (user-validated, `ceb9dfe`)
 
 - [x] While held, M0 sweeps eye+0/8/16/8 px ahead — `LaserState` b1-0 phase
       (already advancing every held frame since S1) indexes `SweepOff`
@@ -203,23 +204,23 @@ routine can flip a branch's page — always re-check page contracts from
 - [x] Build + `verify_build.py` green: `Overscan` `$F167` unchanged,
       LaserInput branches same $FFxx page, BeamMask/SweepOff in `$FFxx`,
       `.Line` guards untouched (post-`$FF20` only).
-- [ ] **User validation:** phosphor/trail ON in Stella; hold fire in BOTH
+- [x] **User validation:** phosphor/trail ON in Stella; hold fire in BOTH
       facing directions. Check: (1) trail sweeps back and forth ~24 px
       from the eye (triangle 0→8→16→8 px ahead, ~8 px/frame @60Hz);
       (2) tracks the yellow face row while moving; (3) stops/restarts
       cleanly on release/press; (4) bar stops at screen edges (no
       wrap-around ghost on the other side); (5) enemies/snake visible,
-      no frame roll, collision/bombs/map unchanged.
-- [ ] Stop and ask user before S4.
+      no frame roll, collision/bombs/map unchanged. **PASSED 5/5.**
+- [x] Stop and ask user before S4.
 
-### S4 — Swept enemy collision and score
+### S4 — Swept enemy collision and score (code + tests green; gate pending)
 
-- [ ] Test enemy vertical overlap against the two laser scanlines and horizontal overlap against the full swept interval, including missile width. Handle screen-edge clipping.
-- [ ] Replace the single `DeadEnemyIdx` kill slot with per-enemy persistent dead state; all draw, movement, player-hit, and bomb-hit paths must skip laser-killed enemies so later shots cannot revive earlier kills.
-- [ ] Call existing `AddScore` with `#$50` exactly once per removed enemy.
-- [ ] Add assert-based checks for sweep interval / enemy overlap and dead-state behavior.
-- [ ] Build and run `verify_build.py`.
-- [ ] **User validation:** hit enemies at both ends and between sweep positions; verify each removed once, +50 per hit, no resurrection after another hit, no lamp side effects, P1/snake continue rendering, and no frame roll.
+- [x] Test enemy vertical overlap against the two laser scanlines and horizontal overlap against the full swept interval, including missile width. Handle screen-edge clipping.
+- [x] Replace the single `DeadEnemyIdx` kill slot with per-enemy persistent dead state (`EnemyDeadMask` b0-2, $BA); all draw, movement, player-hit, and bomb-hit paths must skip laser-killed enemies so later shots cannot revive earlier kills.
+- [x] Call existing `AddScore` with `#$50` exactly once per removed enemy (laser hit, CEH, bomb blast all mask-bit guarded).
+- [x] Add assert-based checks for sweep interval / enemy overlap and dead-state behavior (`tools/test_laser_s4.py`, all pass).
+- [x] Build and run `verify_build.py` (green; main ends $FC66, `LaserHitTest $FFA6`, `EnemyOffTable $FFE8`).
+- [ ] **User validation:** hit enemies at both ends and between sweep positions; verify each removed once, +50 per hit, no resurrection after another hit, **lamp on laser = room dark (SetRoomDark, same as player-body touch — no kill, no score; user amendment 2026-09-26)**, P1/snake continue rendering, and no frame roll. *(Items 1-4 PASSED 2026-09-26; item 5 re-run pending after lamp handling amended.)*
 - [ ] Stop and ask user before S5.
 
 ### S5 — Final regression

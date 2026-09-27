@@ -160,7 +160,7 @@ ObjBase         byte            ; GRP1 sprite base offset into ObjSprites (0 = o
 ActiveObjectX   byte            ; active object X (room pixel coords)
 ActiveObjectY   byte            ; active object Y (scanline coords)
 EnemyIndex      byte            ; current enemy index in room enemy list
-DeadEnemyIdx    byte            ; index of killed enemy ($FF = none)
+EnemyDeadMask   byte            ; per-enemy dead bits b0-2 (0 = alive; was DeadEnemyIdx)
 
 ; Object rendering ZP (set by SelectActiveObject during VBLANK)
 ObjTop          byte            ; top scanline of active object (for GRP1 visibility)
@@ -331,8 +331,8 @@ GameStart:
     sta PlayerLives
     lda #BOMBS_MAX
     sta PlayerBombs
-    lda #$FF
-    sta DeadEnemyIdx
+    lda #$00
+    sta EnemyDeadMask
     ; Initialize timer: 60 frames/step × 120 = 7200 = 120.0s
     lda #60
     sta TickCounter
@@ -896,8 +896,8 @@ EndInputCheck:
     ; Lives exhausted — reset level
     lda #3
     sta PlayerLives
-    lda #$FF
-    sta DeadEnemyIdx
+    lda #$00
+    sta EnemyDeadMask
     jsr ReloadLevel
     jmp .TimerDone
 .TimerReset:
@@ -1088,8 +1088,8 @@ EnterRoom subroutine
     iny
     lda (LevelEnemyLo),Y        ; enemy count
     sta EnemyCount
-    lda #$FF
-    sta DeadEnemyIdx            ; no dead enemies in new room
+    lda #$00
+    sta EnemyDeadMask            ; no dead enemies in new room
 
     ; Bomb reset: clear state/timer/sound (incl. OnGround b7); RELOAD mask
     ; (destroyed thin walls persist across room leave/re-enter until stage leave)
@@ -1192,8 +1192,9 @@ UE_Gate:
 UE_Loop:
     cpx EnemyCount
     bcs UE_Exit
-    cpx DeadEnemyIdx
-    beq UE_Next                  ; dead enemy does not move
+    lda EnemyDeadMask
+    and EnemyBitTable,X
+    bne UE_Next                  ; dead enemy does not move
     ; ROM type at offset X*6
     txa
     asl
@@ -1573,10 +1574,11 @@ SelectActiveObject:
     sta ObjBase
     jmp .SODone
 .SOEnemyValid:
-    ; Skip if this enemy is dead
-    lda EnemyIndex
-    cmp DeadEnemyIdx
-    beq .SOEnemySkip
+    ; Skip if this enemy is dead (mask bit = index); A already = EnemyIndex
+    tax
+    lda EnemyDeadMask
+    and EnemyBitTable,X
+    bne .SOEnemySkip
     ; Live X from RAM; Y from ROM (stride +2) — not shadowed
     ldx EnemyIndex
     lda EnemyRamX,X
@@ -1689,8 +1691,9 @@ CEH_Loop:
 CEH_HasMore:
     sty EnemyIndex
     ; Skip dead enemies
-    cpy DeadEnemyIdx
-    beq CEHNext
+    lda EnemyDeadMask
+    and EnemyBitTable,Y
+    bne CEHNext
     ; Live X from RAM; Y from ROM (stride +2) — Y not shadowed
     lda EnemyRamX,Y
     sta ActiveObjectX
@@ -1735,17 +1738,18 @@ CEH_HasMore:
     lda (EnemyDataLo),Y         ; type
     cmp #LAMP
     beq CEH_Lamp
-    ; Hit! Mark this enemy as dead
-    lda EnemyIndex
-    sta DeadEnemyIdx
+    ; Hit! Mark this enemy dead (bit = index)
+    lda EnemyDeadMask
+    ora EnemyBitTable,X         ; X = EnemyIndex (set at CEH hit)
+    sta EnemyDeadMask
     lda #$50              ; +50 points per kill
     jsr AddScore
     ; Lose a life
     dec PlayerLives
     bpl CEH_Stay
     ; Lives exhausted — reset level (all enemies back, 3 lives)
-    lda #$FF
-    sta DeadEnemyIdx            ; clear dead enemy
+    lda #$00
+    sta EnemyDeadMask            ; clear dead enemy
     lda #3
     sta PlayerLives
     jsr ReloadLevel
@@ -1755,7 +1759,7 @@ CEH_Lamp:
     lda CollisionX
     cmp #PLAYER_WIDTH + LAMP_WIDTH - 1
     bcs CEHNext
-    ; Only fire once (bit already set → no-op); no life loss, not DeadEnemyIdx
+    ; Only fire once (bit already set → no-op); no life loss, not EnemyDeadMask
     jsr SetRoomDark
     rts
 CEH_Stay:
@@ -1811,7 +1815,8 @@ BombTick subroutine
 
 ; ------------------------------------------------------------------------------
 ; BombEnemyBlast — on explode, walk live enemies; X-only (±1 col, any Y)
-;   → DeadEnemyIdx = index. One kill slot (same as CheckEnemyHit); rooms ≤1 enemy.
+;   → sets dead bit in EnemyDeadMask (per-enemy, shared with CheckEnemyHit
+;   and LaserHitTest); first live enemy per blast.
 ; Call after BombMarkWalls, before BombPlayerBlast (ReloadLevel resets dead list).
 ; ------------------------------------------------------------------------------
 BombEnemyBlast:
@@ -1826,14 +1831,14 @@ BombEnemyBlast:
     lda #0
     sta EnemyIndex
 .BEBLoop:
-    lda EnemyIndex
-    cmp EnemyCount
+    ldx EnemyIndex
+    cpx EnemyCount
     bcs .BEBDone
-    cmp DeadEnemyIdx
-    beq .BEBNext                ; already dead
+    lda EnemyDeadMask
+    and EnemyBitTable,X
+    bne .BEBNext                ; already dead
     ; Live X from RAM (no Y needed for X-only check)
-    ldy EnemyIndex
-    lda EnemyRamX,Y
+    lda EnemyRamX,X
     ; |dcol| < 2 (col = px/4) — ignore Y entirely
     lsr
     lsr
@@ -1846,8 +1851,9 @@ BombEnemyBlast:
 .BEBAbsCol:
     cmp #2
     bcs .BEBNext
-    lda EnemyIndex
-    sta DeadEnemyIdx            ; kill (single slot — first hit wins)
+    lda EnemyDeadMask
+    ora EnemyBitTable,X          ; X = EnemyIndex
+    sta EnemyDeadMask            ; kill (first overlapping enemy per blast)
     lda #$50                    ; +50 points per kill
     jsr AddScore
     rts
@@ -1884,8 +1890,8 @@ BombPlayerBlast:
     bpl .BPBStay
     lda #3
     sta PlayerLives
-    lda #$FF
-    sta DeadEnemyIdx
+    lda #$00
+    sta EnemyDeadMask
     jsr ReloadLevel              ; LoadLevel → clears RoomWallMask + bomb state
     rts
 .BPBStay:
@@ -2645,8 +2651,8 @@ LoseLifeHot:
     bpl .LLHstay
     lda #3
     sta PlayerLives
-    lda #$FF
-    sta DeadEnemyIdx
+    lda #$00
+    sta EnemyDeadMask
     jsr ReloadLevel
     rts
 .LLHstay:
@@ -2733,8 +2739,8 @@ LoseLifeBand:
     bpl .LLBstay
     lda #3
     sta PlayerLives
-    lda #$FF
-    sta DeadEnemyIdx
+    lda #$00
+    sta EnemyDeadMask
     jsr ReloadLevel
     rts
 .LLBstay:
@@ -3035,8 +3041,10 @@ LaserInput:
     bcs .LaserPos
     lda #0                      ; clamp: sweep stops at left screen edge
 .LaserPos:
+    sta CollisionX              ; S4: cur arg for LaserHitTest (held path only)
     ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
     jsr SetObjectXPos           ; HMM0 applies at next frame's VBLANK HMOVE
+    jsr LaserHitTest            ; S4: swept kill — needs CollisionX + LaserState
     rts
 
 ; SweepOff — M0 offset ahead of the eye per sweep phase (LaserState b1-0).
@@ -3058,6 +3066,67 @@ SweepOff:
 ; ------------------------------------------------------------------------------
 BeamMask:
     .byte 0,0,2,2,0,0,0,0,0,0,0,0
+
+; ------------------------------------------------------------------------------
+; LaserHitTest (S4) — swept laser kill. CollisionX = cur M0 arg, stored by
+; LaserInput .LaserPos (held path only). Interval = [cur, cur+7] (8 px
+; missile); sweep steps are 8 px = missile width, so consecutive frames tile
+; gap-free — no prev-frame storage needed. Vertical: beam rows [RoomY+2,
+; RoomY+3] vs enemy [Y,+7] -> (RoomY-Y)+3 in [0..8]. Horizontal (request
+; space, same convention as CheckEnemyHit): |eLo-lo| <= 7 via (d+7) in [0..14];
+; arg clamped [0,159] by LaserInput = screen-edge clip.
+; First live enemy in span: dead bit + #$50 + rts (next frame the mask skips
+; it — no resurrection, no double score). Lamp: overlap instead crashes the
+; lamp = SetRoomDark (same effect as player-body touch; no kill, no score).
+; Does NOT touch Temp (joystick still live at the call site).
+; ------------------------------------------------------------------------------
+LaserHitTest:
+    ldx #0
+.LHLoop:
+    cpx EnemyCount
+    bcs .LHTOut
+    lda EnemyDeadMask
+    and EnemyBitTable,X
+    bne .LHNext
+    ldy EnemyOffTable,X         ; Y*6 = type offset (no Temp math)
+    iny
+    iny                         ; +2 = enemy y
+    lda RoomY
+    sec
+    sbc (EnemyDataLo),Y
+    clc
+    adc #3                      ; (RoomY-eY)+3 in [0..8] = eY in [RoomY-5, RoomY+3]
+    cmp #9                      ; out of beam rows RoomY+2..3
+    bcs .LHNext
+    lda EnemyRamX,X
+    sec
+    sbc CollisionX
+    clc
+    adc #7
+    cmp #15                     ; (eLo-lo)+7 <=14 -> |d| <=7 = overlap w/ 8px missile
+    bcs .LHNext
+.LHHit:
+    ldy EnemyOffTable,X         ; re-fetch type (Y advanced for y-offset)
+    lda (EnemyDataLo),Y
+    cmp #LAMP
+    beq .LHLamp
+    lda EnemyDeadMask
+    ora EnemyBitTable,X
+    sta EnemyDeadMask
+    lda #$50
+    jsr AddScore
+    rts
+.LHLamp:
+    jsr SetRoomDark             ; crash lamp = same as player-body touch:
+    rts                         ; no kill bit, no score (idempotent no-op)
+.LHNext:
+    inx
+    bne .LHLoop
+.LHTOut:
+    rts
+
+EnemyOffTable:
+    .byte 0,6,12                ; enemy index * 6 (offset into enemy data)
 
 ; ==============================================================================
 ; Interrupt vectors
