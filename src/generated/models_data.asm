@@ -52,12 +52,12 @@ M3RoomRects:
   .byte 4, 0, 14, 1  ; x, y, width, height
   .byte 12, 1, 1, 1  ; x, y, width, height
   .byte 2, 2, 8, 1  ; x, y, width, height
-  .byte 11, 2, 9, 1  ; x, y, width, height
+  .byte 11, 2, 3, 1  ; x, y, width, height
   .byte 0              ; number of hot rectangles
 M3TilePF0:
   .byte $30, $30, $f0, $00, $00, $00, $00, $00, $00, $00, $00, $00
 M3TilePF1:
   .byte $ff, $00, $fd, $00, $00, $00, $00, $00, $00, $00, $00, $00
 M3TilePF2:
-  .byte $3f, $01, $ff, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $3f, $01, $03, $00, $00, $00, $00, $00, $00, $00, $00, $00
 

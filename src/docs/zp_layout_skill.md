@@ -114,7 +114,7 @@ Sequential allocation ends at `$BC` (next would be `$BD`).
 | $BD | EnemyRamX | 3 bytes live enemy X ($BD-$BF, slots 0-2 only) |
 | $C0 | LaserState | laser S1: b7 held, b6 prev, b1-0 sweep phase |
 | $C1 | EnemyRamD | Packed dir bits 0-3 |
-| $C2 | EnemyRamP | Packed moth/spider flags |
+| $C2 | EnemyRamP | Free-running frame clock (`inc` once/frame in RefreshEnemyY; gates bat/spider/tentacle derives; init `$F0` on room load = harmless seed) |
 | $C3-$CE | PF0Buf | TilePF0 (12) |
 | $CF-$DA | PF1Buf | TilePF1 (12) |
 | $DB-$E6 | PF2Buf | TilePF2 (12) |
