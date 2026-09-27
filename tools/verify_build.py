@@ -12,6 +12,9 @@ Checks:
           truncation; slot 3 would collide with LaserState at $C0),
           room_id/grid/start/miner validity, enemy bounds/types,
           model_id exists, generated room .txt shape.
+  E0    - EnemyRamY ($C3) alias contract: SelectActiveObject before the
+          first LoadPFBuffer (VBLANK), LoadEnemyRam after the last
+          LoadPFBuffer (EnterRoom), bank1 never writes $C3-$C5.
 
 Usage: verify_build.py [src_dir]
 """
@@ -193,6 +196,40 @@ def check_rom(src: Path) -> bytes | None:
     return pad0
 
 
+def check_enemy_alias(src: Path) -> None:
+    """E0: EnemyRamY ($C3) aliases PF0Buf rows 0-2 — ordering contract."""
+    kernel = (src / "kernel.asm").read_text(encoding="utf-8")
+    bank1 = (src / "bank1.asm").read_text(encoding="utf-8")
+    lines = kernel.splitlines()
+
+    def first_line(rx: str) -> int:
+        pat = re.compile(rx)
+        return next((i for i, ln in enumerate(lines) if pat.search(ln)), -1)
+
+    sel = first_line(r"^\s*jsr\s+SelectActiveObject\b")
+    lpfs = [i for i, ln in enumerate(lines)
+            if re.match(r"\s*jsr\s+LoadPFBuffer\b", ln)]
+    ler = first_line(r"^\s*jsr\s+LoadEnemyRam\b")
+    if sel < 0 or not lpfs or ler < 0:
+        err("enemy-alias: SelectActiveObject/LoadPFBuffer/LoadEnemyRam "
+            "jsr not found in kernel.asm")
+        return
+    # VBLANK: draw reads EnemyRamY BEFORE the PF refresh overwrites $C3.
+    if sel > min(lpfs):
+        err(f"enemy-alias: SelectActiveObject (line {sel + 1}) must run before "
+            f"the first jsr LoadPFBuffer (line {min(lpfs) + 1}) — "
+            f"EnemyRamY=$C3 reads PF0Buf rows 0-2")
+    # EnterRoom: LoadEnemyRam writes EnemyRamY AFTER the PF refresh,
+    # otherwise the refresh clobbers freshly loaded Y before the kernel.
+    if ler < max(lpfs):
+        err(f"enemy-alias: jsr LoadEnemyRam (line {ler + 1}) must run after "
+            f"the last jsr LoadPFBuffer (line {max(lpfs) + 1}) — PF refresh "
+            f"would clobber EnemyRamY")
+    # bank1 (HUD band) must never write the alias bytes.
+    for m in re.finditer(r"sta\s+(\$C[3-5]|EnemyRamY)\b", bank1):
+        err(f"enemy-alias: bank1.asm writes {m.group(1)} (EnemyRamY alias)")
+
+
 def check_room_txt(path: Path, label: str) -> None:
     if not path.exists():
         err(f"{label}: generated room txt missing ({path.name})")
@@ -333,6 +370,7 @@ def main() -> int:
            else Path(__file__).resolve().parent.parent / "src")
     check_rom(src)
     check_levels(src)
+    check_enemy_alias(src)
 
     for w in WARNS:
         print(f"  WARN: {w}")

@@ -1,304 +1,163 @@
-# Enemy Movement Plan
-
-Per-type behaviors (user spec 2026-09-23) + editor initial facing.
-Baby steps: implement → build → **user validates in Stella** → next.
-No room-JSON schema change (`dir` already exists). **Do not commit** until user says so.
-
-**Editor requirement (user):** every placed enemy **must show facing direction** on the
-canvas (arrow/icon ←/→), not only a hidden `dir` field — so the designer can see
-which way snake/moth will move first.
-
----
-
-## Spec
-
-| Type | ID | Movement | Facing (`dir`) |
-|------|----|----------|----------------|
-| Spider | 0 | Vertical only: hang from web line (placement Y), bob **2× player height = 16 px** down and back. X fixed. | Unused for motion |
-| Bat | 1 | **No movement.** | Unused |
-| Snake | 2 | Horizontal L/R, **patrol span = visible GRP1 width (4px, `$f0`)**: spawn ↔ spawn±4, side = initial facing (out full width, back full width). **May sit in walls** (no wall collision). **First move = facing.** **1 px / 2 frames.** Ignores `range_*` (user 2026-09-23). | Required |
-| Tentacle | 3 | Horizontal only: **follow player X at ½ player speed**. No vertical move. | Unused |
-| Giant moth | 4 | Horizontal span ~**10× sprite width** (use `range_*` as limits). **First move = facing.** Vertical = **sine** on placement Y, amplitude = sprite height (8 px); phase advances with horizontal motion. | Required |
-
-**Colors (already in `EnemyColorTable` — verify only, no change expected):**
-
-| Type | Byte | Look |
-|------|------|------|
-| Spider | `$14` | dark yellow |
-| Bat | `$F2` | brown |
-| Snake | `$C4` | green |
-| Tentacle | `$0E` | white |
-| Moth | `$22` | dark orange |
-
-**Constants / existing facts:**
-
-- `MAX_ENEMIES = 4` per room (`convert_level.py`).
-- ROM record stride 6: `type, x, y, range_min, range_max, dir`.
-- `dir` already in JSON: `+1` right, `-1` left. Editor currently always writes `1`.
-- `range_*` stored as `px(column, 4)` — **no** `enemy_x_px` offset. Bounce limits must be converted to the same X space as live enemy X (apply `enemy_x_px` at load, or compare in column space).
-- `enemy_x_px`: `target = column*4`; return `target+4` if `target<11` else `target+7`.
-- Player height = 8, width used in hit tests = `PLAYER_WIDTH` / `PLAYER_HEIGHT`.
-- Horizontal player ≈ **1 px/frame** when held (confirm in S3). Tentacle = **1 px every 2 frames**.
-- GRP1 snake/miner = **4×8** (`$f0` / `PLAYER_WIDTH`); `ENEMY_WIDTH=4` for patrol span (was wrongly 8 → 4px gap past wall flush).
-- `SelectActiveObject` + `CheckEnemyHit` **read ROM** today → must read **RAM shadow** after S2.
-- ZP shared all banks — new RAM must be checked against `docs/zp_layout_skill.md` before allocating.
-
----
-
-## Open defaults (change only if user overrides)
-
-- **S1 spider:** `Y ∈ [y0, y0+16]`, bounce, 1 px every 2 frames (web at top).
-- **S1 tentacle:** 1 px / 2 frames toward `RoomX` (½ of 1 px/frame).
-- **S1 moth sine:** 16-step table, amplitude 8; `phase += 1` each time X moves 1 px; period = 16 px horizontal.
-- **S1 speed default:** 1 px / 2 frames for snake/moth unless range span feels too fast.
-
----
-
-## Steps
-
-### S0 — Plan + research ✅
-
-- [x] Spec captured; ROM/RAM, `dir`, ranges, colors, `MAX_ENEMIES=4` documented.
-
----
-
-### S1 — Editor: initial facing
-
-No JSON schema change (`dir` already in `EnemyData`).
-
-- [x] **S1.1** Facing control: button **“Initial facing: → (F)”** under tools +
-      **F** on canvas toggles →/←. Default → (`dir=1`).
-- [x] **S1.2** Place uses `m_initialFacing` (`eData.dir = ±1`), not hardcoded `1`.
-- [x] **S1.3** **Facing indicator:** white **▶/◀** triangle beside every enemy
-      marker on canvas; updates on flip + after reload (`dir` from JSON).
-- [x] **S1.4** Click existing enemy with enemy brush **flips** `dir` (no stack).
-      F / button flips the *next* placement facing.
-- [x] **S1.5** Save/load: `dir` round-trips in JSON (cereal already serializes it).
-- [ ] **S1.6** **User validates editor:** place snake/moth left and right; **arrows
-      visible on every enemy**; facing flips when changed; reopen file keeps
-      facing + arrows.
-
-**Files:** `src/tools/editor/src/MapCanvas.cpp/.hpp`, `MainWindow.cpp/.hpp`.
-
-**Build:** `cmake --build src/tools/editor/cmake-build-debug --target savior_editor`
-— OK (2026-09-23).
-
----
-
-### S2 — RAM shadow (no behavior change)
-
-ROM is not writable. Movement needs live X/Y/(dir/phase).
-
-- [x] **S2.1** Free ZP found: sequential vars end `$BC`; free `$BD-$C2` (6).
-      Packed layout:
-      - `EnemyRamX[4]` = `$BD`
-      - ~~`EnemyRamY[4]` = `$F3`~~ **removed 2026-09-23** — `$F3-$F6` is bank1
-        score (`ScoreTh..ScoreOn`); bank1 HUD writes it every game frame.
-        Y stays in ROM (stride +2) until S5 spider needs live Y.
-      - `EnemyRamD` = `$C1` (dir bits 0-3)
-      - `EnemyRamP` = `$C2` (moth phase + spider vdir)
-      - ~~`$F7` spare / move gate~~ **removed** — snake now 1 px/frame.
-      ~~Overlap `$BF-$C2` = bank1 score~~ **false** — bank1 score moved to
-      `$F3-$F6`; `$BF-$C2` is enemy-only. Recorded in `zp_layout_skill.md`.
-- [x] **S2.2** `EnterRoom` → `LoadEnemyRam`: copy ROM `x,y,dir` → RAM.
-      Spider vdir init `%1111` (down). Bounce limits stay in ROM (convert at S4).
-- [x] **S2.3** `SelectActiveObject`: X/Y from RAM; type still ROM (color).
-- [x] **S2.4** `CheckEnemyHit`: X from RAM; **Y from ROM** (not shadowed).
-- [x] **S2.5** Build + fold-pads + 4×4096 — OK (2026-09-23). **User:** game plays
-      as before (enemies static, hit still works, colors same).
-
----
-
-### S3 — Player horizontal speed baseline
-
-- [x] **S3.1** Code read (`CheckP0Left`/`CheckP0Right`, `kernel.asm` l.587–620):
-      **1 px/frame held** — one `dec/inc RoomX` per overscan when stick held
-      (collision undoes). Matches expect.
-- [x] **S3.2** Documented: player X = **1 px/frame held**. Snake = same
-      (gate removed in S4.6). Tentacle remains ½ player → 1 px / 2 frames
-      (separate gate when S7 lands).
-
----
-
-### S4 — Snake patrol (first moving type)
-
-- [x] **S4.1** Overscan `UpdateEnemies` (after `EndInputCheck`, before miner/hit):
-      snake `X += dir` (packed `EnemyRamD`); bounce vs `range_min`/`range_max`
-      **converted on the fly** (`UE_ConvRange`: rom+4 if <11 else +7) — live-X
-      space matches `enemy_x_px` spawn.
-- [x] **S4.2** **First move = facing:** dir only from ROM at `LoadEnemyRam`; not forced.
-- [x] **S4.3** **No wall collision** for snake (by design — can live in walls).
-- [x] **S4.4** Bounce: **on-the-fly** `UE_ConvRange` (no RAM for range arrays).
-- [x] **S4.6** **Snake blink-back fix (2026-09-23):**
-      1. bank1 `ScoreTh..On` `$BF-$C2` → **`$F3-$F6`** (was corrupting
-         `EnemyRamX[2]/[3]/D/P` every HUD frame via fire BCD + digit math).
-      2. **`sta WSYNC` / `sta HMOVE` after `SelectActiveObject`** — P1 HMP
-         was set but never latched; stale HMP1 (bank1 score P1@68) caused
-         coarse 15px jumps / blink to wrong X.
-      3. **Removed 1px/2f gate** (`EnemyRamSpare`) — snake moves **1 px/frame**
-         like player and HERO (`INC`/`DEC` per frame).
-      4. `EnemyRamY` dropped; Y from ROM in Select/CheckEnemyHit.
-- [x] **S4.5** **User validated:** snake slides L/R smoothly, no blink,
-      reverses at range, first move = editor facing, passes through walls.
-- [x] **S4.7** **User adjustments (2026-09-23, post-S4.5):**
-      1. **Patrol span = visible GRP1 width** — not editor `range_*`.
-         Bounds: ROM spawn X ↔ spawn ± `ENEMY_WIDTH`, side from ROM dir
-         (initial facing). Path: out full width, back full width to spawn.
-      2. **No wall collision** — confirmed already true (no `PlayerHitsMap`
-         for snake; can sit in walls / move inside open playfield freely).
-      3. **Half speed** — 1 px / 2 frames via `TickCounter & 1` gate in
-         `UpdateEnemies` (even frames only). `UE_ConvRange` removed from
-         snake path (deleted — no other callers).
-- [x] **S4.7b** **Width bug + flush stop (2026-09-23, snake_001/002):**
-      `ENEMY_WIDTH` was 8 but snake draws `GRP1=$f0` = **4px**. From spawn
-      inside wall `[0,7]` visible-left≈4, flush=8 needs travel **4**; `+8`
-      overshot → gap between wall and snake (user measured up to 8px game).
-      Fix: `ENEMY_WIDTH=4` matches `$f0`. **Lesson below — moth is at risk.**
-- [x] **S4.8** **User:** snake patrols ±4px from spawn (flush with wall edge,
-      no gap), half speed, still no wall collision, no blink.
-- [x] **S4.9** **User:** fall while holding left/right past snake — no
-      flicker/roll (2026-09-23, after YToRowTable + redundant-jmp cut).
-
----
-
-### Overscan roll with fall+L/R (diagnosed 2026-09-23)
-
-**Symptom:** falling + holding left/right near enemy row → screen flickers /
-rolls up. Pure fall does not.
-
-**Cause:** overscan `TIM64T=35` (~2240c). Fall = 2× `StepDown` = 2×
-`PlayerHitsMap`; L/R adds a 3rd PHM. Room 0 has **4 rects**; `YToCellRow`
-subtract loop cost grew with `RoomY` (~140c each at y=136, 2 calls/PHM).
-Worst case ≈ 3×627 + fixed ≈ **2400c > 2240c** → frame >262 lines → roll.
-Pure fall (2× PHM ≈ 1733c) stays under budget.
-
-**Fix:** `YToCellRow` → `YToRowTable` (192-byte ROM lookup, `tay/lda
-YToRowTable,Y/tax` at `$F983`, table `$F989`). Constant ~20c/call. Same A/X
-interface (callers: `PlayerHitsMap` ×2; `BombPlayerBlast` no longer calls `PlayerHitsMap` — X-only col check).
-
-**Measured (emulator, corrected table addrs + post-jmp-cut):**
-| Path | Cycles | Budget 2240 |
-|------|--------|-------------|
-| Pure fall (2× PHM) | 1644 | ok (−596) |
-| Fall+L (3× PHM, snake-move frame) | **2234** | ok (−6) |
-| Fall+R (3× PHM, snake-move frame) | **2235** | ok (−5) |
-| Fall+L tick1 bar1 (TimerExpired) | 2168 | ok (−72) |
-
-Worst = fall+R tick=0/4 x=150 y=120 (4-rect room0, UE moves snake).
-Snake moves on `TickCounter & 3 == 0` (ticks 0/4). Margin only **5c** —
-do not add overscan work without a matching cut.
-
-**Redundant jmps removed (−6c):** `.NoVMove` no longer `jmp CheckP0Left`
-(target was next insn); `.ExitLeft` no longer `jmp CheckP0Right` after
-`jsr ExitRoomLeft` (same).
-
----
-
-### Lessons learned (apply to moth / any span-based mover)
-
-**L1 — Span constant MUST equal the drawn GRP1 bitmap width, not a guessed “8×8”.**
-Snake lesson (S4.7b): `ENEMY_WIDTH=8` vs `lda #$f0` (bits 7–4 only = **4px**)
-gave a gap of (8−4)=4px past wall flush (looked like 8px on scaled Stella shots).
-Moth plan says “~**10× sprite width**”: if moth is also `$f0`, span = **40px**,
-not 80. Before coding moth bounds, open the `GRP1` value in the kernel and
-count set bits × NUSIZ copies. Update `ENEMY_WIDTH` / `MOTH_SPAN` from that
-number only.
-
-**L2 — “Fully out of wall” ≠ spawn+span if spawn is already near the exit.**
-Flush position = first X where **visible left edge** is past the last wall
-pixel. `enemy_x_px` adds +4/+7 so the **editor column** matches the visible
-edge; runtime bounds must use the same logical X as `EnemyRamX` /
-`SetObjectXPos`. Do not mix raw playfield-column pixels with `EnemyRamX`
-without applying the same offset. When a mover starts inside a wall, verify:
-`visible(spawn) + drawn_width == visible(rmax)` lands on `wall_last+1`.
-
-**L3 — User screenshots beat “logic is clean in Stella”.**
-`UpdateEnemies` can be perfect while the **drawn** width/offset is wrong.
-Breakpoints also hide timing-only bugs; measure gap in **game pixels**
-(Stella scale), not raw PNG pixels (`screenshots/snake_001.png`).
-
-**L4 — Moth checklist (before S8):**
-1. Confirm moth `GRP1` width (and NUSIZ if multi-copy).
-2. `span = 10 * drawn_width` (40 if `$f0`).
-3. `range_*` in ROM are `px(column,4)` — convert to `EnemyRamX` space or
-   compare in column space consistently (old `UE_ConvRange` lesson).
-4. Sine Y amplitude = **drawn height** (8), not a guessed size.
-5. Snap test: start, max L, max R — gap to wall must be 0 when “fully out”.
-
----
-
-### S5 — Spider vertical bob
-
-- [ ] **S5.1** Spider: ignore horizontal; `Y` oscillates `y0 .. y0+16`, bounce, flip internal dir bit.
-- [ ] **S5.2** Speed: 1 px / 2 frames (adjust after user look).
-- [ ] **S5.3** Collision uses live Y (already from S2).
-- [ ] **S5.4** **User:** spider hangs under web line, walks down 16 px and back; no X drift; hit box follows.
-
----
-
-### S6 — Bat
-
-- [ ] **S6.1** Explicit no-op in `UpdateEnemies` (or skip type=1).
-- [ ] **S6.2** **User:** bat frozen; color `$F2` distinct from others.
-
----
-
-### S7 — Tentacle follows player
-
-- [ ] **S7.1** Every 2 frames: `X` step 1 px toward `RoomX` (0 when equal).
-- [ ] **S7.2** No Y change. No range clamp required (follows player) unless user wants arena limits later.
-- [ ] **S7.3** **User:** tentacle tracks player horizontally, visibly slower than player; white `$0E`.
-
----
-
-### S8 — Moth: horizontal + sine Y
-
-- [ ] **S8.1** Horizontal like snake (`range_*`, first move = facing).
-- [ ] **S8.2** Sine table (16 entries, amplitude 8) in ROM; `Y = y0 + SineTable[phase & 15]` (or centered `y0-4+offset` — pick one, comment; default **y0 + table[0..8..0]** hanging from placement).
-- [ ] **S8.3** `phase++` when X changes (or every frame — prefer with X so wave ties to flight).
-- [ ] **S8.4** **User:** moth flies ~10× width (range), undulates smoothly, first move = facing, orange `$22`.
-
----
-
-### S9 — Colors + polish pass
-
-- [ ] **S9.1** Confirm all 5 types on screen together (or sequential rooms): five distinct hues, no swap.
-- [ ] **S9.2** Overscan still within TIM64T (no frame-length flicker) with 4 moving enemies.
-- [ ] **S9.3** Dead enemy (`DeadEnemyIdx`) does not move / not drawn.
-- [ ] **S9.4** Room change reloads RAM (positions reset to spawn — correct for revisit).
-
----
-
-### S10 — Final validation
-
-- [ ] **V1** Full build green, fold MATCH, 4×4096, 0 new page-crosses in game path.
-- [ ] **V2** Editor: facing set/visible/persist.
-- [ ] **V3** All five behaviors match spec (user checklist above).
-- [ ] **V4** No kernel flicker / HUD shift / power-bar regression.
-- [ ] **V5** Update `zp_layout_skill.md` + `AGENTS.md` enemy bullet (movement now live).
-- [ ] **V6** Commit only when user approves.
-
----
-
-## Files likely touched
-
-| Area | Files |
-|------|--------|
-| Editor facing | `src/tools/editor/src/MapCanvas.cpp`, `MapCanvas.hpp`, maybe `MainWindow.cpp` |
-| Game move + RAM | `src/kernel.asm` (`EnterRoom`, `SelectActiveObject`, `CheckEnemyHit`, new `UpdateEnemies`) |
-| ZP doc | `src/docs/zp_layout_skill.md` |
-| Colors (likely none) | `EnemyColorTable` in `kernel.asm` |
-| Converter (likely none) | `convert_level.py` already emits `dir` |
-
-**Not in scope:** laser, bombs, magma/lava data format, sprite art beyond current squares, enemy death by laser.
-
----
-
-## Risks
-
-1. **ZP tight** — 12-byte shadow may collide; resolve before S2.1 coding.
-2. **`range` vs `enemy_x_px` space** — bounce off-by-4/7 if forgotten (S4.4).
-3. **Overscan budget** — 4 enemies × types; keep `UpdateEnemies` simple; measure S9.2.
-4. **`dir=-1` in DASM** — `.byte -1` → `$FF`; converter already `int(dir)`; verify listing.
-5. **Snake in wall** — hit test is footprint vs player only (OK); do not “fix” with wall collision.
-6. **Editor facing UX** — if F-key vs checkbox unclear, user redirects in S1.6.
+# Enemy Movement Implementation Plan
+
+Status: **E0 COMPLETE (user-validated 2026-09-26). E1-E5 not started.**
+E0 shipped with one bug found in gate: the $C3 alias was clobbered by
+VBLANK's `LoadPFBuffer` every frame after init — fixed by `RefreshEnemyY`
+at overscan entry (lesson recorded in AGENTS.md "Lessons Learned").
+
+Workflow: implement stage → build green (`build.sh` + `verify_build.py` +
+assert checks) → user tests in Stella → user says "pass" → commit → next stage.
+
+## Specs (confirmed with user 2026-09-26)
+
+| Type | ID | Movement |
+|------|----|----------|
+| Spider | 0 | Slowly down and back up, 2 tiles max (24 px), hanging from a web. Down first. |
+| Bat | 1 | Fast down and back up, only 2 px (wing-flap). Down first. |
+| Snake | 2 | Unchanged: patrol 1 px/4 frames, ±`SNAKE_PATROL` from spawn. |
+| Tentacle | 3 | Horizontal: chase player at half player speed (1 px / 2 frames), **stops at walls**. Vertical: slow bob, 2 px (1 px / 8 frames). |
+| Moth | 4 | Horizontal: patrol spawn ±48 px (6 tiles), ping-pong; **invert immediately at wall**. Vertical: sine ≈ 1 tile total (±6 px) around spawn. |
+| Lamp | 5 | Never moves. |
+
+Speeds (accepted): bat every frame; spider ÷8; tentacle X ÷2 / Y ÷8;
+moth X ÷2 (+ phase tick ÷2); snake ÷4 (unchanged). Gate = `TickCounter` low bits.
+
+User answers: moth sine = ±6 px (1 tile total travel); moth range =
+spawn ±48 patrol; tentacle stops at walls + has the slow 2 px vertical bob.
+
+## Architecture facts
+
+- ROM record stride 6: `type, x, y, range_min, range_max, dir`
+  (`convert_level.py`, editor `EnemyData` already has range/dir fields —
+  **no editor changes needed**; we use spawn-relative constants like snake).
+- RAM shadow: `EnemyRamX` $BD-$BF (live X), `EnemyRamD` $C1 (b0-3 h-dir,
+  b4-7 RoomDarkMask), `EnemyRamP` $C2 (b0-3 reserved moth phase, b4-7 reserved
+  vdir — init `#$F0` = all down), `EnemyDeadMask` $BA, `LaserState` $C0.
+  Live Y does NOT exist yet: draw/CEH/LaserHitTest read ROM y (static today).
+- `UpdateEnemies` (overscan, L867): global `TickCounter & 3` gate, dead-skip,
+  type dispatch by `cmp #ENEMY_SNAKE / bne UE_Next`, snake-only bounds logic.
+  Temp is free here (joystick last read before this call).
+- Player collision helper `PlayerHitsMap` (L2262): reads globals
+  `RoomX/RoomY/PlayerDir`, box = `PLAYER_WIDTH × PLAYER_SPRITE_H` (7×12),
+  walks `RoomRects`, C=1 blocked. Reuse for enemy wall checks by temporarily
+  swapping RoomX/RoomY with the enemy position (restore on every path).
+  **Known cycle risk:** 3 player calls already nearly overflowed overscan
+  TIM64T=35 once (YToCellRow fix, L2228) — enemy calls must be measured per
+  stage; fallback = lighter `EnemyProbe` (8×8 box, no PlayerDir/hot-rock).
+
+## E0 design: live Y shadow (`EnemyRamY`)
+
+ZP has **no free bytes** ($80-$BC sequential full; $BD-$C5 used; $C3-$E6 =
+PF/Colupf buffers; $F8-$FF = stack). Design (mirrors the existing $F0-$F2
+bomb-save alias pattern):
+
+- `EnemyRamY = $C3-$C5` (3 slots) — aliases PF0Buf rows 0-2.
+- Who runs when (per frame): overscan movement **writes** Y →
+  VBLANK draw **reads** Y → VBLANK `LoadPFBuffer` **overwrites** with PF →
+  kernel reads PF. This works ONLY with two order changes:
+  1. **VBLANK:** move `jsr SelectActiveObject` BEFORE `jsr LoadPFBuffer`
+     (currently L395 LoadPF → L400 Select; swap after verifying
+     SelectActiveObject does not read PF buffers).
+  2. **EnterRoom tail (L1120):** currently `LoadEnemyRam` then
+     `LoadPFBuffer` — swap to `LoadPFBuffer → ApplyBombWalls → LoadEnemyRam`
+     so the PF refresh happens before the Y load.
+- bank1 must not write $C3-$C5: `PF2ScoreBuf` starts $C6 ✓ (verify —
+  add a `verify_build` guard).
+- Writers: `LoadEnemyRam`, `UpdateEnemies` (both overscan).
+  Readers: `SelectActiveObject` (VBLANK), `CheckEnemyHit`,
+  `LaserHitTest` (overscan). All documented in the ZP map comment.
+
+## Stages
+
+### E0 — Infrastructure (no visible change) ✅ COMPLETE (user-validated)
+
+- [x] `EnemyRamY = $C3` decl + ZP-map comment update (alias contract).
+- [x] VBLANK swap (`SelectActiveObject` before `LoadPFBuffer`) + EnterRoom
+      tail reorder (PF first, `LoadEnemyRam` last).
+- [x] `LoadEnemyRam`: copy ROM y → `EnemyRamY` for every slot (incl. lamp).
+      **+ `RefreshEnemyY` at overscan entry (gate-found bug: VBLANK
+      `LoadPFBuffer` clobbers $C3 every frame → enemies vanished after 1
+      frame; lesson in AGENTS.md).**
+- [x] Y readers switch to RAM: `SelectActiveObject` (`.SOEnemyPattern` — reload
+      slot via `EnemyIndex`, `lda EnemyRamY,X`), `CheckEnemyHit`
+      (ActiveObjectY source), `LaserHitTest` (vertical test).
+- [x] `UpdateEnemies` restructure: drop global ÷4 gate; dispatch skeleton
+      (snake arm + `UE_Next` fallthrough — E1-E4 add arms); snake handler
+      gets its own `& 3` gate (behavior byte-identical).
+- [x] `verify_build` guards: VBLANK order + EnterRoom order (source-order
+      regex) + bank1 never writes $C3-$C5.
+- [x] Assert checks: `tools/test_enemy_movement.py` (constants sync: gates,
+      ranges, dispatch types; Y-alias address; refresh placement).
+- [x] **User gate:** snake patrol identical; laser kills identical (spider and
+      moth Y now live but static until E1/E4); lamp dark works; CEH/bomb/score
+      unchanged; no frame roll; room transitions reload Y correctly.
+      **PASSED 2026-09-26 (round 2, after RefreshEnemyY fix).**
+- [x] Stop and ask user before E1.
+
+### E1 — Bat (type 1, simplest mover — proves Y pipeline end-to-end)
+
+- [ ] Handler: every frame, `inc/dec EnemyRamY,slot`; bounds [spawn, spawn+2],
+      flip via vdir bit (`EnemyRamP` b4-7, shared spider/bat/tentacle, init
+      down); no wall check (spec = range only).
+- [ ] Extends `tools/test_enemy_movement.py` (bat bounds/flip math).
+- [ ] **User gate:** bat bobs 2 px fast, up-down flapping at spawn X; laser +
+      player collision follow the bob (no ghost hits at spawn Y); snake/spider
+      otherwise unchanged; no frame roll.
+- [ ] Stop and ask user before E2.
+
+### E2 — Spider (type 0)
+
+- [ ] Handler: ÷8 gate; bounds [spawn, spawn+24] (2 tiles down), flip vdir,
+      down first (init already `%1111`); no wall check (spec = range only —
+      if it visibly clips a wall at range end, report and we adjust).
+- [ ] Web = motion only, no wire sprite (v1).
+- [ ] **User gate:** slow descent/ascent over 24 px from spawn; collision +
+      laser track it; death/score unchanged; no roll.
+- [ ] Stop and ask user before E3.
+
+### E3 — Tentacle (type 3)
+
+- [ ] X handler: ÷2 gate; move 1 px toward `RoomX`; candidate step →
+      swap RoomX/RoomY → `jsr PlayerHitsMap` → restore; blocked = hold
+      position (player keeps approaching). Room-edge clamp via same check.
+- [ ] Y handler: ÷8 gate; bob [spawn, spawn+2] via vdir bit.
+- [ ] Measure overscan budget (Stella: no frame roll while chasing in
+      4-rect rooms with fall + strafe) — if roll: implement `EnemyProbe`
+      fallback (light rect walk, 8×8 box).
+- [ ] **User gate:** tentacle chases at half player speed, stops against
+      walls it cannot cross, slow 2 px bob visible, laser/collision track,
+      no roll.
+- [ ] Stop and ask user before E4.
+
+### E4 — Moth (type 4, hardest)
+
+- [ ] X handler: ÷2 gate; 1 px along live dir; bounds spawn ±48 AND
+      wall probe (same swap+`PlayerHitsMap` as E3); either hit → clamp +
+      `jsr UE_FlipDir`.
+- [ ] Y: `EnemyRamY = spawnY + TriTable[phase]`, triangle ±6 px, 16 steps;
+      phase = `EnemyRamP` b0-3, `++` per moth tick (shared phase — all moths
+      in a room bob in sync; ≤3 elements per room, acceptable, documented).
+      Recompute from spawn each tick (drift-proof).
+- [ ] Cycle measure (moth + tentacle + player can each call
+      `PlayerHitsMap` same frame — worst case vs TIM64T=35; fallback =
+      `EnemyProbe` as in E3).
+- [ ] **User gate:** moth patrols 6 tiles each way, turns at wall AND at
+      range, visible ±6 px wave, collision/laser track both axes, no roll.
+- [ ] Stop and ask user before E5.
+
+### E5 — Final regression
+
+- [ ] Rebuild editor + ROM; bank sizes, fold pads, level regen, ZP doc
+      (`docs/zp_layout_skill.md`: EnemyRamY alias + writer/reader contract).
+- [ ] Plan status finalized; `tools/test_enemy_movement.py` all green.
+- [ ] **User gate:** full Stella pass — all 4 movers + snake + laser sweep
+      kills + bombs + room transitions + score + lamp dark + no flicker/roll.
+- [ ] Mark complete only after user confirms.
+
+## Notes / accepted approximations
+
+- Enemy wall box reuses player footprint (7×12 vs enemy 8×8, ±1 px via
+  `PlayerDir`): coarse but walls are full tile bands; refine only if visible.
+- Bat/spider have no wall check by spec (range from spawn only).
+- Moth shared phase = synced bobbing across moths in one room.
+- Editor unchanged (range/dir fields exist; constants used instead).
