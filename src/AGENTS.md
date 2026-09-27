@@ -421,6 +421,35 @@ right while the collision code expected it left. This caused the player to stop
 1+ pixels away from walls. **Fix:** Remove any extra instructions before the
 div15 loop — the comparison branch's SetObjectXPos is the reference.
 
+**Branch page-cross in a cycle-tuned loop (2026-09-26, laser S1) — recurrence
+of the 2026-09-21 family, via a different mechanism:** a 3-byte `jsr LaserInput`
+inserted before SetObjectXPos moved it `$F8F7→$F8FA`, pushing
+`bcs .Div15Loop` across the $F8/$F9 page. A taken branch costs 4c across a page
+vs 3c within one, so the div15 loop ran at **6c per iteration instead of the
+5c contract** — each "15 color-clock" coarse step burned 18, and RESP0 fired
+3 color-clocks late **per step** (amplified by the loop, up to ~10 iterations).
+- **Symptom signature (recognize BEFORE hunting logic):** sprites render right
+  of their logical X by ~3×(X/15) px — drift **grows with X**; far-right
+  objects (X≈140) overflow the 160-px window and the position counter wraps
+  to the **left edge** (looks like an enemy "teleported across the map");
+  player visually ghosts through walls although logical (RoomX) collision is
+  intact. "Enemy on wrong side of screen + wall pass-through" = positioning
+  TIMING, not collision/enemy code.
+- **Rule: ANY size change (even one `jsr`) placed before cycle-tuned code can
+  flip a taken branch's page.** After adding/removing bytes in bank0 pre-pad
+  code, recheck page contracts from `bank0.lst` — never from comments (the
+  ObjSprites comment had already gone stale). Kernel `.Line` fetches to recheck:
+  `lda ObjSprites,X` (abs,X), `lda PlayerColTable,Y` (abs,Y),
+  `lda (Grp0Ptr),Y` (zp,Y), plus SetObjectXPos's `bcs`.
+- **Fix:** SetObjectXPos relocated (byte-identical, address-only) into the
+  single-page `$FF10-$FF1F` gap (between the 15-byte fineAdjust table at $FF00
+  and `org $FF20`) — the 5c contract is now structural. Note the post-pad
+  region was already at 100% capacity (ObjSprites ended exactly at $FF00), so
+  that gap was the only free code space.
+- **Guards (verify_build.py fails the build):** (1) `bcs .Div15Loop` must
+  share a page with `.Div15Loop`; (2) `.Div15Loop` must be in `$FF12-$FF1B`;
+  (3) `ObjSprites+71` must stay in-page. Do not weaken these.
+
 **PF0 bit order (2026-09-21):** TIA PF0 has bit 4 = leftmost pixel, NOT bit 7.
 The mapping `0x10 << col` is correct. Do NOT "fix" this — it was verified
 empirically and matches the comparison branch.

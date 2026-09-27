@@ -1,6 +1,7 @@
 # Laser Implementation Plan
 
-Status: **S1 implemented; build.sh + verify_build green — awaiting user Stella validation before S2.**
+Status: **S1 COMPLETE (user-validated 2026-09-26). S2.1 implemented + build
+green — awaiting user Stella validation.**
 
 Use one Missile 0 (`M0`), 8×2 pixels, moving 8 pixels per frame across a 24-pixel span and back while fire is held. CRT/phosphor persistence supplies visual trail. Keep P1 free for enemies and objects. INPT4 is active-low at `$0C`; bank0 currently disables M0/M1/ball in cave and does not otherwise position missiles. Bank1 uses ball later in HUD, after cave rendering.
 
@@ -83,18 +84,59 @@ headroom 4 → 20 bytes.
 routine can flip a branch's page — always re-check page contracts from
 `bank0.lst` after size changes; verify_build now enforces the two critical ones.
 
-- [ ] **User re-validation:** spider back on the right side; player stops at
-      walls/thin wall visually correct in both directions; frame stable;
-      fire state still updates at `$C0`.
+- [x] **User re-validation (2026-09-26): CONFIRMED WORKING** — spider renders
+      on the right side again; player stops at walls/thin wall correctly;
+      fire state updates at `$C0`. Root cause + guards recorded in
+      `AGENTS.md` → Lessons Learned ("Branch page-cross in a cycle-tuned loop").
 
-### S2 — Static M0 pulse at eye row
+### S2 — Static M0 pulse at eye row (split into S2.1/S2.2/S2.3)
 
-- [ ] Position M0 from player eye using `SetObjectXPos` selector 2 (`RESM0/HMM0`); set missile width to 8 using NUSIZ0 missile-width bits only.
-- [ ] Enable M0 for exactly two scanlines at `RoomY+2`; keep P1 object selection and enemy drawing unchanged.
-- [ ] Verify VBLANK/scanline timing; account for `SetObjectXPos` WSYNC cost.
-- [ ] Build and run `verify_build.py`.
-- [ ] **User validation:** press fire once. Check yellow 8×2 pulse begins at eye, Y matches yellow face row, P1 enemies remain visible, and frame does not roll.
-- [ ] Stop and ask user before S3.
+#### S2.1 — M0 at RoomX, width 8, fire-gated, FULL HEIGHT ✅ (code) / gate pending
+
+- [x] Position M0 via `SetObjectXPos` selector 2 (`sta RESP0,X`→`RESM0`,
+      `sta HMP0,X`→`HMM0` with X=2). Logic lives in `LaserInput` (post-pad,
+      now relocated past `org $FF20` after `SetObjReflection` — the pre-$FF00
+      region is 100% full, ObjSprites + zero pad), called every overscan:
+      RESP/HMP set during overscan persist into the next frame; VBLANK's
+      single `sta HMOVE` applies the fine offset.
+- [x] Missile width 8: kernel entry `lda #$00→#$30` for NUSIZ0 (bits4-5 =
+      M0 width, copy bits0-2 stay 0 = single-copy P0). Restored every frame
+      (bank1 HUD NUSIZ0 writes undone by kernel entry).
+- [x] Fire gating: `LaserInput` beam section — held → position + `ENAM0=2`;
+      released → `ENAM0=0`. Kernel entry **no longer clears ENAM0**
+      (`sta ENAM0` removed — LaserInput owns it every overscan).
+- [x] **Zero `.Line` edits, zero pre-pad size change for the laser logic**
+      (call site unchanged at 3 bytes). Kernel entry −3 bytes (`sta ENAM0`
+      removed) → `Overscan` `$F169→$F167`, bank1 `jmp $F167` synced.
+- [x] Build + `verify_build.py` green: 4×4096, fold pads byte-identical,
+      pre-pad ends `$FC52` (22 bytes free, WARN), guards pass. Page contracts
+      re-checked from `bank0.lst`: `.Line` branches all $F1xx, `.Div15Loop`
+      $FF12/bcs $FF14 same page, `ObjSprites=$FE9D` (+71=$FEE2 in-page),
+      `PlayerColTable` fetch cross unchanged, `LaserInput=$FF33` (<$FFFA).
+- [ ] **User validation:** press and hold fire. Check: (1) an 8-px-wide
+      full-height vertical bar appears at the player's X and vanishes on
+      release; (2) snake/enemies/miner never disappear (P1 untouched);
+      (3) no frame roll/jitter while holding fire (overscan gained 1 WSYNC
+      + ~45c — TIM64T=35 must still cover it); (4) wall collision, bombs,
+      map unchanged; (5) bar may flicker width over the HUD band (bank1
+      NUSIZ0) — expected at this step.
+- [ ] STOP → user validates before S2.2.
+
+#### S2.2 — Restrict beam to 2 scanlines at RoomY+2 (risky `.Line` edit)
+
+- [ ] Enable ENAM0 only for scanlines `RoomY+2..RoomY+3` (the cycle-tuned
+      `.Line` edit — done alone, full worst-path cycle recount from
+      `bank0.lst`, keep WSYNC write ≤ c73, new page-contract guard if a
+      branch crosses).
+- [ ] Build + `verify_build.py` + user gate (thin 2px line on yellow face
+      row, frame stable, objects visible).
+
+#### S2.3 — Fine X: eye pixel + facing sign, then full S2 gate
+
+- [ ] X = eye pixel offset from `RoomX`, sign = facing (`PlayerDir`).
+- [ ] Full S2 user gate: yellow 8×2 pulse begins at eye, Y matches yellow
+      face row, P1 enemies visible, no roll.
+- [ ] STOP → user validates before S3.
 
 ### S3 — Fast back-and-forth sweep
 
