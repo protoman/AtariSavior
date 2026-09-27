@@ -11,13 +11,23 @@ Pontos, cada pedaço da barra de power, 160
 
 
 =========================================================================================================================================================================
-Now, about the laser....
-That issue of the collision shift already happen before, there was no note about it in AGENTDS.md or other MD files?
 
-When I use the laser, all enemies and objects in the screen dissappear.
-That is exactly why I suggested using missile instead of sprites for the laser beam.
-Why did you used sprites instead?
+- moth movement (4 tiles left/right)
 
+- spider movement (1 tile up/downb)
+
+- non mirrored walls
+
+
+
+
+- moth animation
+
+- tentacle animation
+
+- bat animation (2px up down)
+
+- improve hot walls animation (add orange)
 
 
 =========================================================================================================================================================================
@@ -168,30 +178,8 @@ Bomb:
 
 
 
-
-- laser
-    # sound
-    # player facing direction
-    # kill enemies on touch
-
 - points finishing stage
 
-- moth movement (4 tiles left/right)
-
-- spider movement (1 tile up/downb)
-
-- non mirrored walls
-
-
-
-
-- moth animation
-
-- tentacle animation
-
-- bat animation (2px up down)
-
-- improve hot walls animation (add orange)
 
 #########################################################################################################################################################################
 
