@@ -415,6 +415,21 @@ Use `breakLabel` at two addresses, subtract Scn values:
 
 ### Lessons Learned
 
+**ZP alias lifetime — an alias over a per-frame-refreshed buffer needs its
+OWN writer in your read window (2026-09-26, enemy Y at $C3):** `EnemyRamY`
+was aliased over `PF0Buf` rows 0-2. The E0 design listed overscan as the
+writer and VBLANK as a reader, but `LoadPFBuffer` ALSO writes $C3 every
+VBLANK — so after the first frame, draw read PF garbage: **symptom = object
+renders for one frame, then vanishes forever** (not a draw/collision bug).
+Fix: `RefreshEnemyY` rewrites the alias at overscan entry every frame.
+**Rule before choosing an alias address:** map EVERY writer to those bytes
+across the whole frame (including periodic refreshers like `LoadPFBuffer`
+and the bank1 HUD), then make sure one of YOUR writers runs after the last
+foreign writer and before your next read — every frame, not just at init.
+Encode the ordering in verify_build/test (guards exist for exactly this).
+Same family as the documented $F0-$F2 bomb-save ↔ ColupfBuf alias: that one
+works because both phases save/restore deliberately.
+
 **Collision misalignment (2026-09-21):** A `jmp .Div15Loop` in SetObjectXPos
 added 3 cycles (1 pixel) to RESP0 timing, shifting the sprite's pixel position
 right while the collision code expected it left. This caused the player to stop

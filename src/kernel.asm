@@ -190,6 +190,7 @@ PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
 ; runs AFTER the cave kernel. Bank1 overwrites them during HUD band;
 ; VBLANK re-populates them before the next kernel frame.
 PF0Buf          = $C3           ; 12 bytes: TilePF0 values per row
+                                ; (rows 0-2 alias EnemyRamY — see contract)
 PF1Buf          = $CF           ; 12 bytes: TilePF1 values per row
 PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row ($DB-$E6)
                                 ; $E7-$F2 = ColupfBuf (12) — overlaps bombs
@@ -197,11 +198,16 @@ PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row ($DB-$E6)
                                 ; during VBLANK+kernel, restored before HUD.
 ColupfBuf       = $E7           ; 12 bytes: final COLUPF per tile row (stripe+hot)
 
-; Enemy RAM shadow — live X/(packed flags). ROM records are read-only.
+; Enemy RAM shadow — live X/Y + packed flags. ROM records are read-only.
 ; Sequential vars end at $BC; EnemyRam occupies $BD-$BF + $C1-$C2 (5);
 ; $C0 = LaserState (the one free byte — see docs/zp_layout_skill.md).
-; Score lives at $F3-$F5 only ($F6/$F7 = BombX/BombTimer). SelectActiveObject/
-; CheckEnemyHit read Y from ROM (enemy Y is static until S5 spider).
+; Score lives at $F3-$F5 only ($F6/$F7 = BombX/BombTimer).
+; EnemyRamY ($C3, 3B) ALIASES PF0Buf rows 0-2 — E0 contract:
+;   writers: RefreshEnemyY (overscan entry, EVERY frame — VBLANK LoadPFBuffer
+;            clobbers $C3 each frame) + LoadEnemyRam (EnterRoom init);
+;   readers: SelectActiveObject (VBLANK — MUST run BEFORE LoadPFBuffer),
+;            CheckEnemyHit + LaserHitTest (overscan, after the refresh).
+;   Ordering guards live in verify_build.py (VBLANK + EnterRoom + bank1).
 EnemyRamX       = $BD           ; 3 bytes: live X per enemy ($BD-$BF, slots 0-2
                                 ; only — enemies+lamps capped at 3 by editor
                                 ; kMaxRoomElements, convert_level MAX_ENEMIES,
@@ -210,7 +216,10 @@ LaserState      = $C0           ; laser (S1): b7 fire held this frame,
                                 ;   b6 fire held last frame, b5-4 spare,
                                 ;   b1-0 sweep phase (0..3 = 0/8/16/8 px)
 EnemyRamD       = $C1           ; dir bits 0-3 = enemy 0-3 (1=right, 0=left)
-EnemyRamP       = $C2           ; bits0-3 moth phase; bits4-7 spider vdir (1=down)
+EnemyRamP       = $C2           ; bits0-3 moth phase (shared/sync); bits4-7
+                                ;   vdir for spider/bat/tentacle (1=down)
+EnemyRamY       = $C3           ; 3 bytes: live Y per enemy — ALIAS over
+                                ;   PF0Buf[0..2]; see contract above
 
 ; ==============================================================================
 ; Constants
@@ -391,13 +400,14 @@ StartFrame:
     ; applied stale bank1 HMP1 (score), and a second HMOVE after SelectActiveObject
     ; applied HMP0 twice → player fine-adjust doubled (visual teleport/jitter).
 
+    ; --- Select which object GRP1 draws this frame (miner or enemy) ---
+    ; MUST run before LoadPFBuffer: reads EnemyRamY ($C3 = PF0Buf rows 0-2).
+    jsr SelectActiveObject
+
     ; --- Refresh PF buffers (bank1 corrupts them during HUD band) ---
     jsr LoadPFBuffer
     jsr ApplyBombWalls          ; S6.1: re-apply thin-wall holes every frame
     jsr BuildColupF            ; stripe+hot COLUPF bytes into ColupfBuf ($E7-$F2)
-
-    ; --- Select which object GRP1 draws this frame (miner or enemy) ---
-    jsr SelectActiveObject
 
     ; --- Cave COLUBK for this frame → Temp (free until overscan) ---
     ; state=2: blink (60-BombTimer)%3 → black/yellow/red; else COLOR_CAVE_BG
@@ -663,6 +673,9 @@ Overscan:
     ; 30 × 76 ÷ 64 ≈ 35
     lda #35
     sta TIM64T
+
+    ; --- Rewrite EnemyRamY ($C3 alias was clobbered by VBLANK PF refresh) ---
+    jsr RefreshEnemyY
 
     ; --- Read joystick ---
     ; SWCHA bits: D4=up, D5=down, D6=left, D7=right (0=pressed)
@@ -1117,10 +1130,10 @@ EnterRoom subroutine
     sta BombPacked
 .ERMaskDone:
 
-    jsr LoadEnemyRam            ; copy ROM x/dir → live RAM shadow
     jsr LoadPFBuffer
     jsr ApplyBombWalls          ; re-punch holes from restored mask
-    rts
+    jsr LoadEnemyRam            ; LAST: writes EnemyRamY ($C3 alias) — must
+    rts                         ; follow the PF refresh, not precede it
 
 ; ------------------------------------------------------------------------------
 ; LoadEnemyRam — copy each ROM enemy's x,dir into the RAM shadow.
@@ -1149,7 +1162,9 @@ LER_Loop:
     iny                         ; +1 = x
     lda (EnemyDataLo),Y
     sta EnemyRamX,X
-    iny                         ; +2 = y (ROM only — not shadowed)
+    iny                         ; +2 = y
+    lda (EnemyDataLo),Y
+    sta EnemyRamY,X
     iny                         ; +3 range_min
     iny                         ; +4 range_max
     iny                         ; +5 dir
@@ -1175,19 +1190,17 @@ EnemyBitTable:
 
 ; ------------------------------------------------------------------------------
 ; UpdateEnemies — per-type live motion from RAM shadow (overscan).
-; Speed: 1 px / 2 frames (TickCounter parity gate).
+; E0: loop runs EVERY frame; each type carries its own speed gate (snake
+; ÷4 here; bat ungated, spider ÷8, tentacle ÷2/÷8, moth ÷2 in E1-E4).
 ; Snake patrol: bounds relative to ROM spawn X ± SNAKE_PATROL (6 px, was
 ; ± ENEMY_WIDTH = overshoot), side chosen by ROM dir (initial facing). Ignores editor range_* per user
 ; 2026-09-23. First move = facing (live dir from LoadEnemyRam). No wall collision.
 ; ------------------------------------------------------------------------------
 UpdateEnemies:
     lda EnemyCount
-    bne UE_Gate
+    bne UE_Start
     rts
-UE_Gate:
-    lda TickCounter         ; 1 px / 4 frames (half of previous 1/2)
-    and #3
-    bne UE_Exit
+UE_Start:
     ldx #0
 UE_Loop:
     cpx EnemyCount
@@ -1205,7 +1218,10 @@ UE_Loop:
     tay                          ; Y = X*6 = type offset
     lda (EnemyDataLo),Y
     cmp #ENEMY_SNAKE
-    bne UE_Next                  ; only snake moves
+    bne UE_Next                  ; only snake moves (E1-E4 extend dispatch)
+    lda TickCounter              ; snake: 1 px / 4 frames (was the global gate)
+    and #3
+    bne UE_Next
     ; live dir bit: 1 = right, 0 = left
     lda EnemyBitTable,X
     and EnemyRamD
@@ -1579,7 +1595,7 @@ SelectActiveObject:
     lda EnemyDeadMask
     and EnemyBitTable,X
     bne .SOEnemySkip
-    ; Live X from RAM; Y from ROM (stride +2) — not shadowed
+    ; Live X from RAM; Y from RAM (EnemyRamY) at .SOEnemyColorDone
     ldx EnemyIndex
     lda EnemyRamX,X
     sta ActiveObjectX
@@ -1609,9 +1625,8 @@ SelectActiveObject:
     lda ObjSpriteOffTable,X     ; type → ObjSprites design offset
     sta ObjBase
 .SOEnemyColorDone:
-    iny
-    iny                         ; +2 = y
-    lda (EnemyDataLo),Y
+    ldx EnemyIndex
+    lda EnemyRamY,X             ; live Y (E0: EnemyRamY alias, was ROM +2)
     sta ActiveObjectY
     ; Position GRP1
     lda ActiveObjectX            ; A = X position for SetObjectXPos
@@ -1694,21 +1709,11 @@ CEH_HasMore:
     lda EnemyDeadMask
     and EnemyBitTable,Y
     bne CEHNext
-    ; Live X from RAM; Y from ROM (stride +2) — Y not shadowed
+    ; Live X and Y from RAM shadow (Y = slot here)
     lda EnemyRamX,Y
     sta ActiveObjectX
-    tya                         ; A = enemy index → offset = index*6
-    asl
-    sta Temp
-    asl
-    clc
-    adc Temp
-    tay                         ; Y = byte offset into enemy data
-    iny
-    iny                         ; +2 = y
-    lda (EnemyDataLo),Y
+    lda EnemyRamY,Y
     sta ActiveObjectY
-    ldy EnemyIndex              ; restore loop index
     ; Broad object bounds; lamp gets its 4px lit-width check after Y overlap.
     lda RoomX
     sec
@@ -2567,6 +2572,28 @@ ReloadLevel:
     rts
 
 ; ------------------------------------------------------------------------------
+; RefreshEnemyY — copy ROM y → EnemyRamY (every slot, live or dead).
+; The alias ($C3) is clobbered by VBLANK's LoadPFBuffer every frame, so
+; overscan must rewrite it AFTER the HUD band and BEFORE LaserInput /
+; CheckEnemyHit / next frame's SelectActiveObject read it.
+; Clobbers A/X/Y. Post-fold-pad leaf (fits ReloadLevel→HotOverlapFlag gap).
+; ------------------------------------------------------------------------------
+RefreshEnemyY:
+    ldx #0
+.REYLoop:
+    cpx EnemyCount
+    bcs .REYDone
+    ldy EnemyOffTable,X
+    iny
+    iny                         ; +2 = y
+    lda (EnemyDataLo),Y
+    sta EnemyRamY,X
+    inx
+    jmp .REYLoop
+.REYDone:
+    rts
+
+; ------------------------------------------------------------------------------
 ; HotOverlapFlag — if the player's proposed tile range (CollisionCell*) overlaps
 ;   any hot-only rect, set Temp bit 7 (HotBump). Called from PlayerHitsMap HIT
 ;   while CollisionCell* still describe the rejected position. Clobbers A/X/Y/
@@ -3088,12 +3115,9 @@ LaserHitTest:
     lda EnemyDeadMask
     and EnemyBitTable,X
     bne .LHNext
-    ldy EnemyOffTable,X         ; Y*6 = type offset (no Temp math)
-    iny
-    iny                         ; +2 = enemy y
     lda RoomY
     sec
-    sbc (EnemyDataLo),Y
+    sbc EnemyRamY,X
     clc
     adc #3                      ; (RoomY-eY)+3 in [0..8] = eY in [RoomY-5, RoomY+3]
     cmp #9                      ; out of beam rows RoomY+2..3
