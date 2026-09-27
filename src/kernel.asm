@@ -88,7 +88,8 @@ INTIM   = $0284
 RoomX           byte            ; player X position (0-159)
 RoomY           byte            ; player Y position (0-191)
 PlayerDir       byte            ; sprite eye facing: FACING_RIGHT (0) or FACING_LEFT
-Scanline        byte            ; current scanline counter (0-191)
+LaserBeamOn     byte            ; S2.2r2: $02 while fire held else $00 —
+                                ; .Line beam gate (reuses dead Scanline byte)
 LineCount       byte            ; scanlines remaining in current tile row
 BombY           byte            ; bomb drop Y (was dead TileRow; scanline snapshot)
 Grp0Ptr         byte            ; pointer to player sprite data (lo)
@@ -487,8 +488,9 @@ StartFrame:
     lda #0                        ; clear VDELP0/VDELP1 (bank1 HUD sets them to 1)
     sta VDELP0
     sta VDELP1
-    ; ENAM0 NOT cleared here: kernel .Line owns it (BeamMask write per
-    ; in-window line; state is $00 from the previous frame's A0=11 write)
+    ; ENAM0 NOT cleared here: kernel .Line owns it (BeamMask AND LaserBeamOn
+    ; per in-window line; LaserBeamOn boots $00 via .ClearZP = beam off
+    ; until first fire press)
     sta ENAM1                     ; disable missile 1
     sta ENABL                     ; disable ball
 
@@ -554,9 +556,9 @@ StartFrame:
     ; Y — the row-11 band jsr (LoadRoomBottomColor clobbers Y) pushes/pops it.
     ; Cycle budget from .Line (body starts c8, dec/bne already paid), recounted
     ; from bank0.lst (worst = in-window color/beam/GRP0 + object in-range):
-    ;   color+beam+GRP0 (cpy..sta GRP0 incl BeamMask fetch) = 34c
+    ;   color+beam+GRP0 (cpy..sta GRP0 incl BeamMask+gate) = 37c
     ;   object (tya..sta GRP1) = 24c
-    ;   worst = 58c -> sta WSYNC at c66 (write c68) — 5c margin vs c73. FITS.
+    ;   worst = 61c -> sta WSYNC at c69 (write c71) — 2c margin vs c73. FITS.
     ; ObjSprites+71 must stay in the $FExx page (else lda ObjSprites,X
     ; page-crosses, +1c on the GRP1 fetch) — verify_build enforces this.
     ; Branch targets all same-page (3c taken) and BeamMask operand in $FFxx
@@ -579,7 +581,8 @@ StartFrame:
     ; window ENAM0 keeps its last in-window write ($00 at A0=11) — no HUD
     ; artifact. Table lives in $FFxx (cross = deterministic 5c): +8c/line.
     lda BeamMask,Y              ; 5c (cross $F1→$FF) — table MUST stay $FFxx
-    sta ENAM0                   ; 3c
+    and LaserBeamOn             ; 3c — S2.2r2 gate: $02 only while fire held
+    sta ENAM0                   ; 3c (bar showed without fire before this)
 .GrpSkip:
     iny                         ; Y = A0+1 ($ff wraps to 0 = sprite row 0)
     cpy #PLAYER_SPRITE_H
@@ -2990,15 +2993,22 @@ LaserInput:
     sta LaserState
 .LaserDone:
     ; --- S2.1 positioning: M0 X while fire held (S2.2: ENAM0 enable moved
-    ; into the kernel .Line via BeamMask — LaserInput no longer touches TIA
-    ; enable registers, only RESM0/HMM0 positioning) ---
+    ; into the kernel .Line via BeamMask — LaserInput sets the gate byte and
+    ; RESM0/HMM0 positioning only) ---
     lda LaserState
     and #LASER_HELD
-    beq .LaserNoBeam
+    beq .LaserReleased
+    lda #$02
+    sta LaserBeamOn             ; .Line BeamMask AND passes rows 2-3
     lda RoomX                   ; coarse X = player X (S2.3: eye + facing sign)
     ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
     jsr SetObjectXPos           ; HMM0 applies at next frame's VBLANK HMOVE
-.LaserNoBeam:
+    rts
+.LaserReleased:
+    lda #0
+    sta LaserBeamOn             ; beam off (S2.2r2: bar was visible w/o fire)
+    sta HMM0                    ; S2.2r2: HMOVE re-applied stale fine offset
+                                ; every frame -> bars slid across screen
     rts
 
 ; ------------------------------------------------------------------------------

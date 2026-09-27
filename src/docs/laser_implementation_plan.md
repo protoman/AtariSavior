@@ -147,11 +147,26 @@ routine can flip a branch's page — always re-check page contracts from
       budgeted).
 - [x] Build green: 4×4096, fold pads byte-identical (`Overscan` `$F167→$F165`,
       bank1 `jmp $F165` synced), pre-pad ends `$FC56` (18 bytes free, WARN).
-- [ ] **User validation:** hold fire. Check: (1) thin 2-px-high 8-px-wide
-      line at RoomX, rows RoomY+2..3 (yellow face row) — NOT a full-height
-      bar; (2) HUD band no longer flickers while held; (3) frame stable (no
-      roll/stretch of cave rows), objects/enemies visible; (4) wall
-      collision, bombs, map unchanged; (5) beam gone on release.
+- [ ] **User validation round 1 (2026-09-26): items 2-4 PASS; item 1 FAIL —**
+      bar visible at boot without fire (replicated 4×, blinking), inside
+      player rather than in front, follows player Y, slides across whole
+      screen after release.
+      - "inside player" → **S2.3 by design** (eye + facing), not a bug.
+      - "follows player Y" → **by design** (beam at RoomY+2 = eye row).
+      - **S2.2r2 fixes (root causes):** (a) `.Line` BeamMask wrote ENAM0
+        unconditionally — added `and LaserBeamOn` gate ($83, reuses dead
+        Scanline byte; `LaserInput` sets $02 held / $00 released; boots $00
+        → invisible until first press); (b) release kept stale `HMM0` fine
+        offset → VBLANK HMOVE slid M0 every frame — `LaserInput` released
+        path now `sta HMM0`=0. Recount: color+beam+GRP0 37c + object 24c
+        = worst 61c → WSYNC write **c71 ≤ c73** (2c margin); `Overscan`
+        `$F165→$F167` (and zp +2 bytes), bank1 jmp re-synced; pre-pad
+        ends `$FC58` (16 bytes free).
+- [ ] **User validation round 2:** (1) nothing at screen before first fire
+      press; (2) single 8×2 bar at player after press (still inside player
+      until S2.3 — expected); (3) bar stationary after release (invisible,
+      no screen-crossing drift); (4) items 2-4 still pass. If a "4×
+      blinking" bar appears WHILE HOLDING fire, send screenshot.
 - [ ] STOP → user validates before S2.3.
 
 #### S2.3 — Fine X: eye pixel + facing sign, then full S2 gate
