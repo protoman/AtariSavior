@@ -1,8 +1,9 @@
 # Laser Implementation Plan
 
 Status: **S1 COMPLETE (user-validated 2026-09-26). S2.1 COMPLETE
-(user-validated 2026-09-26). S2.2 implemented + build green — awaiting
-user Stella validation.**
+(user-validated 2026-09-26). S2.2 COMPLETE (round-2 fixes validated
+2026-09-26, commit `1b1d11c`). S2.3 implemented + build green — awaiting
+full-S2 user gate.**
 
 Use one Missile 0 (`M0`), 8×2 pixels, moving 8 pixels per frame across a 24-pixel span and back while fire is held. CRT/phosphor persistence supplies visual trail. Keep P1 free for enemies and objects. INPT4 is active-low at `$0C`; bank0 currently disables M0/M1/ball in cave and does not otherwise position missiles. Bank1 uses ball later in HUD, after cave rendering.
 
@@ -162,19 +163,30 @@ routine can flip a branch's page — always re-check page contracts from
         = worst 61c → WSYNC write **c71 ≤ c73** (2c margin); `Overscan`
         `$F165→$F167` (and zp +2 bytes), bank1 jmp re-synced; pre-pad
         ends `$FC58` (16 bytes free).
-- [ ] **User validation round 2:** (1) nothing at screen before first fire
-      press; (2) single 8×2 bar at player after press (still inside player
-      until S2.3 — expected); (3) bar stationary after release (invisible,
-      no screen-crossing drift); (4) items 2-4 still pass. If a "4×
-      blinking" bar appears WHILE HOLDING fire, send screenshot.
-- [ ] STOP → user validates before S2.3.
+- [x] **User validation round 2 (2026-09-26): ALL PASS** (clean before
+      first press, single bar at player, gone+stationary after release,
+      items 2-4 held). Committed `1b1d11c`.
+- [x] S2.2 complete → S2.3.
 
-#### S2.3 — Fine X: eye pixel + facing sign, then full S2 gate
+#### S2.3 — Fine X: eye pixel + facing sign ✅ (code) / gate pending
 
-- [ ] X = eye pixel offset from `RoomX`, sign = facing (`PlayerDir`).
-- [ ] Full S2 user gate: yellow 8×2 pulse begins at eye, Y matches yellow
-      face row, P1 enemies visible, no roll.
-- [ ] STOP → user validates before S3.
+- [x] Eye column derived from sprite art (unreflected = facing right, REFP0=0):
+      yellow face rows 2-3 = cols 1-4, front/eye = **col 4**; REFP0 mirror
+      (facing left) → front col 3, bar extends left 7 px → left edge = eye-7.
+      M0 X: right = `RoomX+4` (spans +4..+11), left = `RoomX-4` (spans
+      -4..+3, right edge at eye). Sprite visual left = `RoomX` both dirs
+      (P0 arg `RoomX-PlayerDir` + REFP0 1-px compensation; collision uses
+      `[RoomX, RoomX+6]`).
+- [x] No clamps needed: `RoomX` ∈ [`PLAYER_MIN_X`=4, `PLAYER_MAX_X`=159] →
+      args ∈ [0,163]; SetObjectXPos div15 remainder always −15..−1 ✓.
+      Lives entirely in post-`$FF20` LaserInput — pre-pad/Overscan/folds
+      untouched (`Overscan` stays `$F167`).
+- [ ] **Full S2 user gate:** yellow 8×2 pulse BEGINS AT THE EYE and extends
+      forward (right when facing right, left when facing left); Y matches
+      yellow face row (RoomY+2..3); nothing before first press; P1
+      enemies/snake visible; no frame roll; wall collision/bombs/map
+      unchanged; beam gone on release.
+- [ ] STOP → user validates before S3 (8 px/frame sweep).
 
 ### S3 — Fast back-and-forth sweep
 

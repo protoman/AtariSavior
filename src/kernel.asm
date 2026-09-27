@@ -3000,7 +3000,22 @@ LaserInput:
     beq .LaserReleased
     lda #$02
     sta LaserBeamOn             ; .Line BeamMask AND passes rows 2-3
-    lda RoomX                   ; coarse X = player X (S2.3: eye + facing sign)
+    ; --- S2.3: eye X + facing sign. Art faces RIGHT unreflected (REFP0=0):
+    ; yellow face rows 2-3 span cols 1-4, front/eye = col 4. Facing left =
+    ; REFP0 mirror -> front col 3, bar extends left (7 px) -> left edge
+    ; RoomX-4. Right: bar left edge RoomX+4. Args in [0,163] (RoomX
+    ; 4..159) = always safe for SetObjectXPos (no clamp needed).
+    lda PlayerDir
+    bne .LaserEyeL
+    lda RoomX
+    clc
+    adc #4                      ; eye col 4; bar spans +4..+11 (front/right)
+    jmp .LaserPos
+.LaserEyeL:
+    lda RoomX
+    sec
+    sbc #4                      ; bar spans -4..+3, right edge at eye col 3
+.LaserPos:
     ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
     jsr SetObjectXPos           ; HMM0 applies at next frame's VBLANK HMOVE
     rts
