@@ -192,11 +192,27 @@ PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
 PF0Buf          = $C3           ; 12 bytes: TilePF0 values per row
                                 ; (rows 0-2 alias EnemyRamY — see contract)
 PF1Buf          = $CF           ; 12 bytes: TilePF1 values per row
+RoomBandColor   = $D1           ; ALIAS PF1Buf[2] — per-frame band-color cache
+                                ; (level_bank_plan P2.5). Writer: VBLANK stage
+                                ; AFTER LoadPFBuffer/BuildColupF (fold from
+                                ; LevelEnemy+RoomNo*4+3). Readers: kernel
+                                ; .WaterRow (via LoadRoomBottomColor) +
+                                ; overscan CheckBandTouch. Window: written
+                                ; post-buffers → survives VBLANK, kernel,
+                                ; bank1 HUD ($E0-$EF only); overscan physics
+                                ; never touches $D1; next VBLANK restages.
 PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row ($DB-$E6)
                                 ; $E7-$F2 = ColupfBuf (12) — overlaps bombs
                                 ; $F0-$F2: saved to CollisionCellY/EndX/EndY
                                 ; during VBLANK+kernel, restored before HUD.
 ColupfBuf       = $E7           ; 12 bytes: final COLUPF per tile row (stripe+hot)
+FetchPtr        = $E0           ; fold-indirect pointer ($E0 lo, $E1 hi) —
+                                ; ALIAS over PF2Buf rows 5-6. Contract (fold
+                                ; wins): stage addr immediately before a
+                                ; FoldIndirect batch; no foreign writer in
+                                ; the VBLANK/overscan stage→use window
+                                ; (bank1 scorePtr1 rebuilds in HUD band,
+                                ; after both windows).
 
 ; Enemy RAM shadow — live X/Y + packed flags. ROM records are read-only.
 ; Sequential vars end at $BC; EnemyRam occupies $BD-$BF + $C1-$C2 (5);
@@ -410,6 +426,23 @@ StartFrame:
     jsr LoadPFBuffer
     jsr ApplyBombWalls          ; S6.1: re-apply thin-wall holes every frame
     jsr BuildColupF            ; stripe+hot COLUPF bytes into ColupfBuf ($E7-$F2)
+
+    ; --- Band-color cache → RoomBandColor ($D1) for kernel+overscan (P2.5) ---
+    ; ROM now lives in bank2: kernel-time fold is cycle-impossible on the
+    ; .WaterRow line, so fold HERE (VBLANK, timer-paced) and hand the kernel
+    ; a plain zp load. Stage FetchPtr immediately before the fold.
+    lda RoomNo
+    asl
+    asl
+    ora #3                      ; Y = RoomNo*4+3 (RoomNo*4 low bits are 0)
+    tay
+    lda LevelEnemyLo
+    sta FetchPtr
+    lda LevelEnemyHi
+    sta FetchPtr+1
+    ldx #0
+    jsr FoldIndirect
+    sta RoomBandColor
 
     ; --- Cave COLUBK for this frame → Temp (free until overscan) ---
     ; state=2: blink (60-BombTimer)%3 → black/yellow/red; else COLOR_CAVE_BG
@@ -635,14 +668,11 @@ StartFrame:
     and #%00000011
     cmp #2
     beq .WRSkip
-    tya
-    pha                         ; running-Y: LoadRoomBottomColor clobbers Y
-    jsr LoadRoomBottomColor
+    jsr LoadRoomBottomColor     ; cache read — A only, Y preserved (was saved:
+                                ; old ROM body clobbered Y)
     beq .WRRestore              ; band off (0): keep Temp, no store
     sta COLUBK
 .WRRestore:
-    pla
-    tay
 .WRSkip:
     lda #11                     ; bodies: setup line + 11 = 12-line strip
     sta LineCount
@@ -1072,14 +1102,21 @@ EnterRoom subroutine
 .ERGotRoom:
     pla                         ; new room
     sta RoomNo
-    asl                         ; room * 4 (two .word entries per room)
+    asl
     asl
     tay
+    ; --- Fold batch (P2.6): room pointers live in bank2's RoomDataTable.
+    ; Stage FetchPtr = LevelPFData immediately before the batch; X = bank2.
+    lda LevelPFDataLo
+    sta FetchPtr
+    lda LevelPFDataHi
+    sta FetchPtr+1
+    ldx #0
     ; Load PF0 data pointer (first .word)
-    lda (LevelPFDataLo),Y
+    jsr FoldIndirect
     sta RoomPF0Lo
     iny
-    lda (LevelPFDataLo),Y
+    jsr FoldIndirect
     sta RoomPF0Hi
     ; Pre-compute PF1 and PF2 pointers (+12 bytes each)
     clc
@@ -1098,10 +1135,10 @@ EnterRoom subroutine
     sta RoomPF2Hi
     iny
     ; Load collision rects pointer (second .word)
-    lda (LevelPFDataLo),Y
+    jsr FoldIndirect
     sta RoomRectsLo
     iny
-    lda (LevelPFDataLo),Y
+    jsr FoldIndirect
     sta RoomRectsHi
 
     ; Load enemy data for this room from LevelEnemyLo/Hi table
@@ -1110,13 +1147,19 @@ EnterRoom subroutine
     asl                         ; room * 4
     asl
     tay
-    lda (LevelEnemyLo),Y        ; enemy data pointer lo
+    ; --- Fold batch (P2.6): re-stage FetchPtr = LevelEnemy for this batch ---
+    lda LevelEnemyLo
+    sta FetchPtr
+    lda LevelEnemyHi
+    sta FetchPtr+1
+    ldx #0
+    jsr FoldIndirect            ; enemy data pointer lo
     sta EnemyDataLo
     iny
-    lda (LevelEnemyLo),Y        ; enemy data pointer hi
+    jsr FoldIndirect            ; enemy data pointer hi
     sta EnemyDataHi
     iny
-    lda (LevelEnemyLo),Y        ; enemy count
+    jsr FoldIndirect            ; enemy count
     sta EnemyCount
     lda #$00
     sta EnemyDeadMask            ; no dead enemies in new room
@@ -1432,12 +1475,20 @@ GetConnIdx:                 ; A/Y = RoomNo * 4 (exit handlers add dir offset)
     asl
     asl
     tay
+    ; --- Fold batch (P2.7): conn table lives in bank2. Stage FetchPtr here
+    ; so all four direction handlers fold with Y set by their iny path.
+    ; X = bank2 select; handlers do nothing between this and their fold. ---
+    lda LevelConnLo
+    sta FetchPtr
+    lda LevelConnHi
+    sta FetchPtr+1
+    ldx #0
     rts
 
 ExitRoomDown:
     jsr GetConnIdx
     iny                     ; +1 = down direction
-    lda (LevelConnLo),Y
+    jsr FoldIndirect
     cmp #$ff
     beq .NoDown
     jsr EnterRoom
@@ -1448,7 +1499,7 @@ ExitRoomDown:
 
 ExitRoomUp:
     jsr GetConnIdx          ; +0 = up direction
-    lda (LevelConnLo),Y
+    jsr FoldIndirect
     cmp #$ff
     beq .NoUp
     jsr EnterRoom
@@ -1461,7 +1512,7 @@ ExitRoomLeft:
     jsr GetConnIdx
     iny
     iny                     ; +2 = left direction
-    lda (LevelConnLo),Y
+    jsr FoldIndirect
     cmp #$ff
     beq .NoLeft
     jsr EnterRoom
@@ -1475,7 +1526,7 @@ ExitRoomRight:
     iny
     iny
     iny                     ; +3 = right direction
-    lda (LevelConnLo),Y
+    jsr FoldIndirect
     cmp #$ff
     beq .NoRight
     jsr EnterRoom
@@ -1517,52 +1568,62 @@ LoadLevel:
     adc Temp                    ; *14
     tay                         ; Y = Level * 14
 
+    ; --- Fold batch (P2.7): LevelDataTable lives in bank2 at the frozen
+    ; address. Stage FetchPtr immediately before the batch; X = 0 selects
+    ; bank2; FoldIndirect preserves Y (iny flow below unchanged), returns
+    ; the byte in A. LoadLevel never touches X, so one ldx suffices.
+    lda #<LEVEL_DATA_ADDR
+    sta FetchPtr
+    lda #>LEVEL_DATA_ADDR
+    sta FetchPtr+1
+    ldx #0
+
     ; +0..+2: start room, x, y
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta LevelStartRoom
     iny
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta LevelStartX
     iny
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta LevelStartY
     iny
     ; +3..+5: miner room, x, y
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta LevelMinerRoom
     iny
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta MinerX
     iny
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta MinerY
     iny
     ; +6..+7: wall colors
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta LevelWallColor
     iny
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta LevelWallColor2
     iny
     ; +8..+9: pfdata ptr
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta LevelPFDataLo
     iny
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta LevelPFDataHi
     iny
     ; +10..+11: conn ptr
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta LevelConnLo
     iny
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta LevelConnHi
     iny
     ; +12..+13: enemy ptr
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta LevelEnemyLo
     iny
-    lda LevelDataTable,Y
+    jsr FoldIndirect
     sta LevelEnemyHi
 
     ; Enter the starting room
@@ -2274,7 +2335,9 @@ PlayerColTable:
 ; --- Level data ---
 ; Generated from level JSON via tools/convert_level.py.
 ; Do not edit by hand — regenerate with build.sh.
-    include "generated/levels_data.asm"
+; NOTE: data payload moved to bank2 (level_bank_plan P2, frozen addresses
+; $F9D9-$FB1E); pointer values are unchanged. kernel keeps only the EQUs
+; it consumes (LEVEL_COUNT) — sync asserted by test_level_bank.py.
 
 ; --- Level constants ---
 ENEMY_SPIDER   = 0
@@ -2284,9 +2347,10 @@ ENEMY_TENTACLE = 3
 ENEMY_MOTH     = 4
 LAMP           = 5             ; type-5 enemy record = editor lamp (white square)
 ENEMY_DATA_STRIDE = 6
-
-; --- Level table + connections (generated) ---
-    include "generated/levels.asm"
+LEVEL_COUNT    = 2             ; hand copy of generated LEVEL_COUNT (cmp in
+                                ; LoadLevel advance guard — test asserts sync)
+LEVEL_DATA_ADDR = $FB03        ; frozen address of bank2's LevelDataTable
+                                ; (test asserts bank2.lst label == this)
 
 ; ==============================================================================
 ; Score font data: "0000" rendered as 5-line PF patterns
@@ -2838,18 +2902,14 @@ SetRoomDark:
     rts
 
 ; ------------------------------------------------------------------------------
-; LoadRoomBottomColor — A = RoomEnemies pad color for RoomNo (0 = band off).
-; Clobbers A, Y. ROM record: ptr_lo, ptr_hi, count, bottom_color (4 bytes).
+; LoadRoomBottomColor — A = band color for RoomNo (0 = band off). Reads the
+; VBLANK-staged cache (RoomBandColor = PF1Buf[2], alias contract at decl):
+; the LevelEnemy ROM record moved to bank2, and a kernel-time fold overruns
+; the .WaterRow line (fold body 20c + stage on top of a ~74c line).
+; Clobbers A only (Y preserved — .WaterRow no longer needs its save).
 ; ------------------------------------------------------------------------------
 LoadRoomBottomColor:
-    lda RoomNo
-    asl                         ; room * 4
-    asl
-    tay
-    iny
-    iny
-    iny                         ; +3 = bottom_color
-    lda (LevelEnemyLo),Y
+    lda RoomBandColor
     rts
 
 ; ------------------------------------------------------------------------------
@@ -2989,11 +3049,11 @@ BuildColupF:
     lda BombPacked
     and #%00000011
     cmp #1
-    bne .BCFdarkBlack
-    lda #COLOR_DARK_PF          ; bomb fuse active → dark grey walls
-    jmp .BCFdarkFill
-.BCFdarkBlack:
+    beq .BCFFuseGrey            ; bomb fuse active → dark grey walls
     lda #COLOR_CAVE_BG          ; black walls (matches black background)
+    beq .BCFdarkFill            ; A=$00 (COLOR_CAVE_BG) → always taken
+.BCFFuseGrey:
+    lda #COLOR_DARK_PF          ; hue 0 luma 2 = very dark grey walls
 .BCFdarkFill:
     ldx #0
 .BCFdarkLoop:
@@ -3033,6 +3093,22 @@ ObjSprites:
     .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff   ; OBJ_SNAKE (8 px)
     .byte $80,$b0,$30,$70,$70,$f0,$f0,$00   ; OBJ_MINER (facing left)
     .byte $10,$20,$20,$60,$f0,$f0,$f0,$60   ; OBJ_BOMB
+
+; ------------------------------------------------------------------------------
+; FoldIndirect — cross-bank data fetch (HERO fold, write-triggered;
+; level_bank_plan §0.1). Pad lands $FEF6-$FEFF (last byte ≤ $FEFF — $FF00
+; stays the fineAdjust anchor). Bytes must be byte-identical in bank2
+; (guard: verify_build) — after `sta $1FF8,X` the CPU fetches the remainder
+; from the data bank at the same PC.
+; Contract: X=0 → $1FF8 (bank2) / X=1 → $1FF9 (bank3); Y=index;
+; A = junk in, data out (`sta $1FF6` switches back, A preserved).
+; ------------------------------------------------------------------------------
+    .ds $FEF6 - *, 0            ; pin address (main size drift must not move it)
+FoldIndirect:
+    sta $1FF8,X
+    lda (FetchPtr),Y
+    sta $1FF6
+    rts
 
 ; Pad to fineAdjustTable
     .ds $FF00 - *, 0

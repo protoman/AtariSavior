@@ -8,6 +8,9 @@ Checks:
   ROM   - 4x4096 banks, fold pads byte-identical ($FC68/$FC70),
           fold jmp target == real Overscan, non-zero reset vectors,
           pre-pad headroom from bank0.lst.
+  Fold  - FoldIndirect ($FEF6): byte-identical block in bank0/bank2,
+          expected opcodes, 1B zero margin before the $FF00 anchor,
+          label address in both listings (level_bank_plan §0.1).
   Level - rooms <=4 (IsRoomDark mask), <=3 enemies+lamps (silent converter
           truncation; slot 3 would collide with LaserState at $C0),
           room_id/grid/start/miner validity, enemy bounds/types,
@@ -196,6 +199,48 @@ def check_rom(src: Path) -> bytes | None:
     return pad0
 
 
+FOLD_ADDR = 0xFEF6
+# sta $1FF8,X / lda (FetchPtr),Y / sta $1FF6 / rts — plan §0.1, hand-copy
+# forbidden: change the block → change these bytes + plan together.
+FOLD_BYTES = bytes([0x9D, 0xF8, 0x1F, 0xB1, 0xE0, 0x8D, 0xF6, 0x1F, 0x60])
+
+
+def check_fold_block(src: Path) -> None:
+    regions: dict[int, bytes] = {}
+    off = FOLD_ADDR - 0xF000
+    for idx in (0, 2):
+        p = src / f"bank{idx}.bin"
+        if not p.exists():
+            err(f"bank{idx}.bin missing (fold block check)")
+            return
+        data = p.read_bytes()
+        if len(data) == 4096:
+            regions[idx] = data[off:off + 10]
+    if len(regions) < 2:
+        return
+    b0, b2 = regions[0], regions[2]
+    if b0[:len(FOLD_BYTES)] != FOLD_BYTES:
+        err(f"bank0 fold block {b0[:len(FOLD_BYTES)].hex()} != expected "
+            f"{FOLD_BYTES.hex()} (block changed — update verify + plan §0.1)")
+    if b0 != b2:
+        err(f"fold block bank0[{FOLD_ADDR:04X}] {b0.hex()} != bank2 {b2.hex()} "
+            "(byte-identity broken — data bank would execute different code)")
+    if len(b0) == 10 and b0[9] != 0:
+        err(f"fold margin byte ${FOLD_ADDR + 9:04X} non-zero — block grew "
+            "toward the $FF00 fineAdjust anchor")
+    for idx in (0, 2):
+        lp = src / f"bank{idx}.lst"
+        if not lp.exists():
+            err(f"bank{idx}.lst missing (FoldIndirect label check)")
+            continue
+        labels, _ = parse_lst(lp.read_text(errors="replace").splitlines())
+        addr = labels.get("FoldIndirect")
+        if addr != FOLD_ADDR:
+            shown = f"${addr:04X}" if addr is not None else "None"
+            err(f"FoldIndirect at {shown}, expected "
+                f"${FOLD_ADDR:04X} (bank{idx})")
+
+
 def check_enemy_alias(src: Path) -> None:
     """E0: EnemyRamY ($C3) aliases PF0Buf rows 0-2 — ordering contract."""
     kernel = (src / "kernel.asm").read_text(encoding="utf-8")
@@ -369,6 +414,7 @@ def main() -> int:
     src = (Path(sys.argv[1]) if len(sys.argv) > 1
            else Path(__file__).resolve().parent.parent / "src")
     check_rom(src)
+    check_fold_block(src)
     check_levels(src)
     check_enemy_alias(src)
 

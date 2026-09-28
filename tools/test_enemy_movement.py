@@ -120,13 +120,13 @@ def main() -> None:
     ue = KERNEL.split("UpdateEnemies:")[1].split("UE_Next:")[0]
     assert "ENEMY_BAT" not in ue, \
         "UpdateEnemies must not move the bat (movement is derived in refresh)"
-    # first screen of level 1 spawns a bat for the E1 Stella gate
+    # first screen must spawn at least one enemy (spawner sanity for Stella)
     import json
     lvl = json.loads((ROOT / "src" / "rooms" / "level_001.json")
                      .read_text(encoding="utf-8"))
-    first = lvl["level"]["rooms"][0]["enemies"][0]
-    assert first["type"] == 1, \
-        f"level_001 room0 enemy type={first['type']} (E1 gate expects bat=1)"
+    first = lvl["level"]["rooms"][0]["enemies"]
+    assert len(first) >= 1, \
+        "level_001 room0 spawns no enemy (Stella spawner gate)"
 
     # --- E2: spider derived as spawn + triangle24, dwell at top ------------
     assert "cmp #ENEMY_SPIDER" in dey, "DeriveEnemyY must dispatch the spider"

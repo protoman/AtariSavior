@@ -26,7 +26,7 @@ dasm kernel.asm -f3 -obank0.bin -lbank0.lst
 echo "  bank0: OK"
 dasm bank1.asm -f3 -obank1.bin
 echo "  bank1: OK"
-dasm bank2.asm -f3 -obank2.bin
+dasm bank2.asm -f3 -obank2.bin -lbank2.lst
 echo "  bank2: OK"
 dasm bank3.asm -f3 -obank3.bin
 echo "  bank3: OK"
