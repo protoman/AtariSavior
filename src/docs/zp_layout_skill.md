@@ -116,7 +116,7 @@ Sequential allocation ends at `$BC` (next would be `$BD`).
 | $C1 | EnemyRamD | Packed dir bits 0-3 |
 | $C2 | EnemyRamP | Free-running frame clock (`inc` once/frame in RefreshEnemyY; gates bat/spider/tentacle derives; init `$F0` on room load = harmless seed) |
 | $C3-$CE | PF0Buf | TilePF0 (12) |
-| $CF-$DA | PF1Buf | TilePF1 (12) |
+| $CF-$DA | PF1Buf | TilePF1 (12). **$D1 = `RoomBandColor` alias (PF1Buf[2]):** band-color cache (level_bank_plan P2.5). Writer: VBLANK stage after `BuildColupF` (fold from LevelEnemy record, RoomNo\*4+3) — every frame, so ordering is structural. Readers: kernel `.WaterRow` via `LoadRoomBottomColor`, overscan `CheckBandTouch`. Kernel reads PF1Buf[2] only during group-0 render (before water); bank1 HUD owns `$E0-$EF` only; no physics touch. |
 | $DB-$E6 | PF2Buf | TilePF2 (12) |
 | $E7-$F2 | ColupfBuf | Final COLUPF × 12 rows (stripe+hot). **Overlaps $F0-$F2 bombs:** `BuildColupF` saves PlayerBombs/BombSnd/RoomWallMask → CollisionCellY/EndX/EndY; `.AfterRows` restores before HUD. Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds. |
 | $F3 | ScoreTh | Shared with bank1 score |
