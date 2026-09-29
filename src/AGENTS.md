@@ -41,6 +41,14 @@
 
 **Why this rule exists:** On 2026-09-22, the editor source files (MainWindow.hpp, MainWindow.cpp, MapCanvas.hpp, MapCanvas.cpp, LevelData.hpp, DataSerializer.cpp) were lost because they were never added to git, then overwritten without warning. The user's work was destroyed. This must never happen again.
 
+## Critical Rule: NEVER Read or Write TODO.txt
+
+**`src/TODO.txt` is the user's private file. Never open it, grep it, search it, or write it.** Do not use `cat`, `Read`, `Grep`, `Glob` matches, or any tool that would expose its contents. Exclude it from searches. When a commit includes it (user's instruction), `git add TODO.txt` blindly — never inspect contents.
+
+**Data rule:** measurement/debug values come ONLY from screenshots the user provides or from code the agent verified directly. Values that leaked from TODO.txt are forbidden and must be discarded.
+
+**Why this rule exists:** On 2026-09-27 a grep over `src/` surfaced TODO.txt lines containing Stella INTIM readings; those values polluted the timing analysis. The user's TODO file is off-limits — full stop.
+
 ## File-Format Changes Require Data Migration
 
 When changing a serialized or generated data format, update all existing project data and its generators in the same change. Preserve compatibility with older files through an explicit version/default migration, or migrate those files before requiring the new format. Verify both legacy loading and new-format round trips; never leave checked-in data behind the code's schema.
@@ -328,6 +336,14 @@ stella -debug savior.bin # debugger
    (Historical: the old PlayerGrp0 buffer sat there and JSRs overwrote
    sprite rows 6-7; removed 2026-09-24 — kernel now reads ROM via
    `Grp0Ptr` with no ZP copy.)
+   **The real boundary is the MEASURED deepest SP, not $F8** (2026-09-28):
+   nested jsr chains (frame → StepDown → PlayerHitsMap → rect-walk →
+   FoldIndirect = 5 levels) drive SP down to **$F6**, stomping $F6/$F7.
+   Any new jsr level in a deep path moves the line down by 2 bytes.
+   Guard (build gate, `sim_bomb_fuse.py` via `build.sh`): gameplay min
+   SP ≥ $F8, whole-run ≥ $F7 (a push writes AT SP then decrements — SP $F7
+   = lowest byte written $F8 = boundary kept; SP $F6 = $F7 stomped).
+   Never assume "$F6 is free" — check the measured depth first.
 
 7. **Incremental Development** — When making big changes, ALWAYS divide
    the work into small steps and test after each one. Each step should
@@ -407,6 +423,40 @@ Use `breakLabel` at two addresses, subtract Scn values:
 **NEVER use `break`** — it fires at the physical ROM address in ALL banks
 (causes cross-bank contamination with bankswitched ROMs).
 
+**`print *$XX` DEREFERENCES — it is NOT a raw byte read (2026-09-28):**
+`*` is Stella's pointer operator: `print *$B5` uses the byte AT `$B5` as an
+address and shows THAT cell (observed: `print *$B5` → `ram_81` because
+`[$B5]=$81`; `print *$F7` → `CXBLPF|$30(R)` because `[$F7]=$35` pointed at
+the TIA collision register at `$35`). Reading a ZP variable raw:
+- `watch $XX` — prints the raw byte before every prompt (preferred), or
+- `ram` — full ZP dump, or
+- click the `00xx` RIOT grid cell (row = high nibble, col = low nibble).
+Symptom of having used `*` by accident: output names a *different* address
+(TIA register or `ram_XX`) than the one you typed.
+
+### Scn Ln fields (TIA info panel) — source: Stella `TiaInfoWidget.cxx`
+
+The row labeled `Scanline` (short form **`Scn Ln`**) holds TWO value boxes
+(comment line 32: "current and the last-frame scanline counts, which share a
+row"). Box order is fixed by reflow (line 199-200: `{myScanlineCount,
+myScanlineCountLast}`) — **left box first, right box second:**
+
+| Box | Widget | Source | Meaning (tooltip) |
+|-----|--------|--------|-------------------|
+| **LEFT** | `myScanlineCount` | `tia.scanlines()` = `myCurrentFrameTotalLines` | "Current scanline of this frame" — 0 at frame start, +1 per scanline |
+| **RIGHT** | `myScanlineCountLast` | `tia.scanlinesLastFrame()` = `myCurrentFrameFinalLines` | "Number of scanlines of last frame" — frozen; updates ONLY at frame boundary |
+
+- Frame boundary = `notifyFrameComplete()` (AbstractFrameManager.cxx:91) →
+  RIGHT = totalLines at that instant, LEFT resets to 0. Fired by: VSYNC
+  falling edge (≥2-line pulse), or timeout paths (`myVsyncLineCount > 50`).
+- So `Scn 45|301` = line 45 of the CURRENT frame; last completed frame was
+  301 lines long.
+- Cross-checks: `Frame Cycles` ≈ LEFT×76 + Scn Cycle (tooltip: "CPU cycles
+  executed this frame"); `Frame` = boundary counter.
+- NEVER conclude "frame is N lines" from LEFT — LEFT is a position, not a
+  total. Only RIGHT is a frame total, and only right after a boundary it
+  actually belongs to.
+
 ### Pseudo-registers (Stella 7.0)
 
 - `_scan` does NOT work — resolves to $00 (CXM0P)
@@ -414,6 +464,27 @@ Use `breakLabel` at two addresses, subtract Scn values:
 - Use `breakLabel` + Scn field instead
 
 ### Lessons Learned
+
+**Stack pushes are INVISIBLE to byte-audits — audit stack DEPTH, not operand
+bytes (2026-09-28, bomb never explodes in level 2):** BombTimer ($F7) went
+down then bounced back up forever ($33↔$3B), fuse never reached 0, state
+stuck at 1, bomb consumed but never exploded. Root cause: the CPU stack page
+$0100-$01FF **mirrors** ZP $80-$FF, and the deep call chain
+`frame → StepDown → PlayerHitsMap → rect-walk → jsr FoldIndirect` (5 levels)
+drove SP to **$F6** — so JSR return-address bytes ($3B = PCL) were pushed
+onto $01F7/$01F6 = physically BombTimer/BombX. The fuse `dec` dragged the
+byte down, the next frame's stomp shoved it back → the exact bounce the grid
+watch showed. **A byte-audit can NEVER find this**: JSR pushes are hardware
+writes to $01xx, not instructions with $F7 in their operands. And repeated
+pushes of the SAME value (same call site → same PCL) look like no-ops, which
+is why the watch showed "unchanging" bytes for a while. The P3.6 fold
+refactor added one jsr level per fold — each level moves the danger line
+down 2 bytes; the old inline `lda (MapPtrLo),Y` walks had zero extra stack.
+**Rule:** any ZP variable at or above the MEASURED deepest SP is unsafe —
+measure min-SP in a headless sim (`sim_bomb_fuse.py` write-tracking +
+push-trace), never infer safety from "no instruction writes that address".
+Symptom signature: a counter/modulo that counts down, then JUMPS back up in
+a stable bounce band, while related state machines never complete.
 
 **`TickCounter` is the 60-frame GAME timer — never derive periodic motion from
 it beyond `& 7` (2026-09-27, E-gate: spider teleport):** it decrements 60→1
