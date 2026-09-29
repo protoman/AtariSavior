@@ -2688,15 +2688,15 @@ PlayerHitsMap:
     lda (FetchPtr),Y            ; rect.w
     adc CollisionX              ; rect.x + rect.w
     cmp CollisionEndX           ; (rect.x+w) <= min_col?
-    beq .nextRect
-    bcc .nextRect
+    beq .nrmCol                 ; Y=base+2 here — normalize before advance
+    bcc .nrmCol
 
 ; Row overlap: bottom_row >= rect.y AND top_row < rect.y + rect.h
     dey                         ; Y = base + 1 (rect.y)
     lda (FetchPtr),Y            ; rect.y
     cmp CollisionEndY           ; rect.y > bottom_row?
     beq .rowOk
-    bcs .nextRect               ; C1&Z0 = y > bottom (C0 falls to .rowOk)
+    bcs .nrmRow                 ; Y=base+1 — normalize before advance
 .rowOk:
     iny
     iny                         ; Y = base + 3 (rect.h)
@@ -2708,8 +2708,8 @@ PlayerHitsMap:
     lda (FetchPtr),Y            ; rect.y (re-read for y+h)
     adc CollisionX              ; rect.y + rect.h
     cmp CollisionCellY          ; (rect.y+h) <= top_row?
-    beq .nextRect
-    bcc .nextRect
+    beq .nrmRow                 ; Y=base+1 — normalize before advance
+    bcc .nrmRow
 
 ; HIT — player is blocked
     ; TAIL-CALL (stack depth guard): HotOverlapFlag's exits sec, so its rts
@@ -2721,6 +2721,13 @@ PlayerHitsMap:
     ; Any new caller of HotOverlapFlag MUST account for it returning C=1.
     jmp HotOverlapFlag          ; set Temp b7 if proposed cells include hot rock
 
+; Exit-Y discipline: mask/col-x exits leave Y = rect base (correct); col-end
+; exits leave Y = base+2 and row exits base+1. The advance below is Y+4 FROM
+; BASE — without normalizing, one late exit skews every later rect read
+; (P3.4 regression: rects drifted into PF1Buf/PF2Buf bytes = garbage walls).
+.nrmCol:
+    dey
+    dey                         ; base+2 -> base, fall into advance
 .nextRect:
     dec RectCount
     beq .NoHit                  ; last rect done -> clear
@@ -2735,6 +2742,10 @@ PlayerHitsMap:
     lda #RcW2                   ; window2: $CB + Y8..15 = $D3-$DA
     sta FetchPtr                ; (FetchPtr+1 already $00)
     jmp .RectLoop
+
+.nrmRow:
+    dey                         ; base+1 -> base
+    bpl .nextRect               ; always taken (Y <= 16 -> N clear)
 
 .Stage3:
 ; rect4 = last solid rect (M3 rooms only, count=5) — its cache fields are
