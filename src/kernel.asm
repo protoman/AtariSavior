@@ -97,8 +97,9 @@ Grp0PtrHi       byte            ; pointer to player sprite data (hi)
 Temp            byte            ; general scratch
 
 ; Collision ZP variables (from comparison/lo-a-rad-dragon/bank0.asm)
-MapPtrLo        byte            ; RETIRED by P3.6 rect fold (walks use FetchPtr)
-MapPtrHi        byte            ; RETIRED by P3.6 rect fold (kept: ZP addresses frozen)
+MapPtrLo        byte            ; rect cache slot: rect4.x (P3.4 — EnterRoom copies;
+                                ; was RETIRED by P3.6 fold; addresses frozen)
+MapPtrHi        byte            ; rect cache slot: rect4.y (P3.4 — see MapPtrLo)
 CollisionX      byte            ; scratch for mirror calc
 CollisionCellX  byte            ; player max tile column
 CollisionCellY  byte            ; player top tile row
@@ -183,7 +184,25 @@ ScoreHu         = $F4           ; score hundreds digit (0-9)
 ScoreTe         = $F5           ; score tens digit (0-9)
 PF0ScoreBuf     = $B3           ; 5 bytes: PF0 values for score rows 0-4
 PF1ScoreBuf     = $B8           ; 5 bytes: PF1 values for score rows 0-4
-PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4
+PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4 (legacy; no users)
+
+; P3.4 rect cache — solid rect list copied once per EnterRoom, walked directly
+; by PlayerHitsMap with NO bank2 fold (fold mid-function switched the EXECUTION
+; bank; only byte-identical pad code may span a switch). Windows (Y is the
+; global rect offset: count read first, rect0 base Y=0):
+;   $C6      count        (RcBase+0; also RcBase)
+;   $C7-$CE  rect0, rect1 (window1: FetchPtr=$C7, Y=0..7)
+;   $D3-$DA  rect2, rect3 (window2: FetchPtr=$CB, Y=8..15)
+;   $89/$8A  rect4.x/y    (MapPtrLo/MapPtrHi; .Stage3 fixed addresses)
+;   $DE/$DF  rect4.w/h    (PF2Buf rows 3-4, fill-only)
+; All four targets are fill-only/retired — see docs/zp_layout_skill.md alias
+; rule: LoadPFBuffer writes rows 0-2 only, kernel .Row reads X=0..2, bank1
+; touches $E0-$EF only, MapPtr* has no other user.
+RcBase          = $C6           ; rect cache count + window1 base marker
+RcW1            = $C7           ; window1 FetchPtr lo (rect0 x at Y=0)
+RcW2            = $CB           ; FetchPtr lo for window2 ($CB + Y=8 = $D3)
+Rc4W            = $DE           ; rect4.w cache (PF2Buf+3)
+Rc4H            = $DF           ; rect4.h cache (PF2Buf+4)
 
 ; PF cave buffers (copied from ROM during VBLANK, read by kernel via absolute indexed)
 ; These share ZP space with bank1's HUD variables — safe because bank1
@@ -412,10 +431,11 @@ StartFrame:
     sta VBLANK                  ; turn on VBLANK
 
     ; --- Set TIM64T for VBLANK ---
-    ; Pre-P3.3 setup measured 3439c; P3.3 fold LoadPFBuffer adds ~1120c →
-    ; ≈4560c. #75 = 4800c ≈ 240c headroom. (#43 expired pre-fix = Bug A.)
-    ; Re-measure in P3.4 §T; trim timer after VBLANK work moves out.
-    lda #75
+    ; P3.4 measured: VBLANK work worst 1311c (mean 1235c) after the rect
+    ; cache (enter-copy + direct walk). #23 = 1472c = 161c headroom.
+    ; Frame budget: V(#23) + O(#50) = 73 TIM64T units → 3 + 19.4 + 197.5 +
+    ; 42.1 = 262 lines. (#75 was the pre-trim 293-line frame.)
+    lda #23
     sta TIM64T
 
     ; --- Position player sprite horizontally ---
@@ -728,9 +748,11 @@ Overscan:
     lda #2
     sta VBLANK                  ; turn on VBLANK during overscan
 
-    ; --- Set TIM64T for 30 scanlines ---
-    ; 30 × 76 ÷ 64 ≈ 35
-    lda #35
+    ; --- Set TIM64T for overscan ---
+    ; P3.4: overscan work worst 2104c (heavy, enemy room, rect cache in) →
+    ; #50 = 3200c = 1096c headroom (was #35 = 2240c = 136c — positive but
+    ; too tight for transition frames). V(#23)+O(#50) = 73 units = 262 lines.
+    lda #50
     sta TIM64T
 
     ; --- Rewrite EnemyRamY ($C3 alias was clobbered by VBLANK PF refresh) ---
@@ -1190,6 +1212,38 @@ EnterRoom subroutine
     iny
     jsr FoldIndirect
     sta RoomRectsHi
+
+    ; --- P3.4: copy solid rect list → ZP cache (21 bytes always; rooms with
+    ; count<5 leave garbage in unused tail slots — the walk stops at count).
+    ; Runs per room change only (cheap). Source order: count, x,y,w,h × 5. ---
+    lda RoomRectsLo
+    sta FetchPtr
+    lda RoomRectsHi
+    sta FetchPtr+1
+    ldy #0
+    jsr FoldIndirect            ; count
+    sta RcBase
+    iny                         ; Y=1, first rect byte
+.rcW1: jsr FoldIndirect
+    sta RcBase,Y                ; $C7-$CE (Y=1..8 = rect0, rect1)
+    iny
+    cpy #9
+    bne .rcW1
+.rcW2: jsr FoldIndirect
+    sta RcBase+4,Y              ; $D3-$DA (Y=9..16 = rect2, rect3)
+    iny
+    cpy #17
+    bne .rcW2
+.rcW3: jsr FoldIndirect
+    sta $78,Y                   ; $89-$8A (Y=17..18 = rect4 x,y) = MapPtr*
+    iny
+    cpy #19
+    bne .rcW3
+.rcW4: jsr FoldIndirect
+    sta $CB,Y                   ; $DE-$DF (Y=19..20 = rect4 w,h)
+    iny
+    cpy #21
+    bne .rcW4
 
     ; Load enemy data for this room from LevelEnemyLo/Hi table
     ; Per-room record: ptr_lo, ptr_hi, count, pad (4 bytes per room)
@@ -2579,50 +2633,46 @@ PlayerHitsMap:
     sta CollisionCellX
 .colsOk:
 
-; --- Walk rectangle list ---
-    lda RoomRectsLo
+; --- Walk rectangle list (P3.4: ZP cache, direct reads — NO fold) ---
+; A fold mid-function is only safe inside the byte-identical pad block:
+; after `sta $1FF8` the NEXT opcode is fetched from the same address in the
+; NEW bank. The earlier bank2-once walk fetched bank2's bytes at $FB6B and
+; jumped into bank2's entry code (frozen player, 2026-09-29). EnterRoom
+; copies the list into the fragmented ZP cache instead; Y = global rect
+; offset (rect0 base Y=0, mask index = Y>>2), windows switch at Y=8/Y=16.
+    lda RcBase                  ; count (cached; empty room -> clear)
+    bne .wrGo
+    jmp .NoHit
+.wrGo:
+    sta RectCount
+    lda #RcW1                   ; window1: $C7 + Y0..7 = $C7-$CE
     sta FetchPtr
-    lda RoomRectsHi
+    lda #$00
     sta FetchPtr+1
     ldy #0
-    jsr FoldIndirect            ; rectangle count (P3.6: bank2 fold)
-    bne .HasRects
-    clc
-    rts                         ; no rectangles -> not hit
-.HasRects:
-    sta RectCount               ; rectangle loop counter
-    iny                         ; Y=1, first rect byte
 
 .RectLoop:
+; S6.2: skip rects destroyed by a bomb (WallMask bit for this index;
+; index = base/4 — rect0..3 only; rect4 = .Stage3 is never masked)
     tya
-    pha                         ; save rect base offset
-
-; S6.2: skip rects destroyed by a bomb (WallMask bit for this index)
-    tya
-    sec
-    sbc #1
     lsr
-    lsr                         ; index = (base-1)/4
+    lsr
     tax
-    cpx #4
-    bcs .MaskOk                 ; index ≥4 never masked
     lda BombMaskBit,X
     and BombPacked
     bne .nextRect               ; destroyed → not solid
-.MaskOk:
 
 ; Column overlap: max_col >= rect.x AND min_col < rect.x + rect.w
-    jsr FoldIndirect            ; rect.x (Y = base)
+    lda (FetchPtr),Y            ; rect.x
     cmp CollisionCellX          ; rect.x > max_col?
     beq .colOk
-    bcc .colOk
-    bcs .nextRect               ; A > X here (flags unchanged by beq/bcc)
+    bcs .nextRect               ; C1&Z0 = x > max (C0 falls to .colOk)
 .colOk:
     sta CollisionX              ; save rect.x for addition
     iny
     iny                         ; Y = base + 2 (rect.w)
     clc
-    jsr FoldIndirect            ; rect.w
+    lda (FetchPtr),Y            ; rect.w
     adc CollisionX              ; rect.x + rect.w
     cmp CollisionEndX           ; (rect.x+w) <= min_col?
     beq .nextRect
@@ -2630,27 +2680,25 @@ PlayerHitsMap:
 
 ; Row overlap: bottom_row >= rect.y AND top_row < rect.y + rect.h
     dey                         ; Y = base + 1 (rect.y)
-    jsr FoldIndirect            ; rect.y
+    lda (FetchPtr),Y            ; rect.y
     cmp CollisionEndY           ; rect.y > bottom_row?
     beq .rowOk
-    bcc .rowOk
-    bcs .nextRect               ; A > Y here (flags unchanged by beq/bcc)
+    bcs .nextRect               ; C1&Z0 = y > bottom (C0 falls to .rowOk)
 .rowOk:
     iny
     iny                         ; Y = base + 3 (rect.h)
     clc
-    jsr FoldIndirect            ; rect.h
+    lda (FetchPtr),Y            ; rect.h
     sta CollisionX
     dey
     dey                         ; Y = base + 1 (rect.y)
-    jsr FoldIndirect            ; rect.y
+    lda (FetchPtr),Y            ; rect.y (re-read for y+h)
     adc CollisionX              ; rect.y + rect.h
     cmp CollisionCellY          ; (rect.y+h) <= top_row?
     beq .nextRect
     bcc .nextRect
 
 ; HIT — player is blocked
-    pla
     ; TAIL-CALL (stack depth guard): HotOverlapFlag's exits sec, so its rts
     ; completes PlayerHitsMap with C=1. Replacing jsr+sec+rts with this jmp
     ; removes one push level: deepest chain (StepDown -> PlayerHitsMap ->
@@ -2661,13 +2709,48 @@ PlayerHitsMap:
     jmp HotOverlapFlag          ; set Temp b7 if proposed cells include hot rock
 
 .nextRect:
-    pla
-    clc
-    adc #4                      ; advance past this rect (4 bytes each)
-    tay
     dec RectCount
-    beq .NoHit
+    beq .NoHit                  ; last rect done -> clear
+    tya
+    clc
+    adc #4                      ; next rect base (global Y)
+    tay
+    cpy #16
+    beq .Stage3                 ; rect4: fixed-address cache slots
+    cpy #8
+    bcc .RectLoop               ; Y<8: still window1
+    lda #RcW2                   ; window2: $CB + Y8..15 = $D3-$DA
+    sta FetchPtr                ; (FetchPtr+1 already $00)
     jmp .RectLoop
+
+.Stage3:
+; rect4 = last solid rect (M3 rooms only, count=5) — its cache fields are
+; not contiguous ($89/$8A = x,y; $DE/$DF = w,h), so compare inline at
+; fixed addresses. No mask (index 4 never masked), no Y, no push.
+    lda MapPtrLo                ; rect4.x
+    cmp CollisionCellX
+    beq .s3c
+    bcs .NoHit                  ; x > max
+.s3c:
+    sta CollisionX
+    clc
+    lda Rc4W                    ; rect4.w
+    adc CollisionX
+    cmp CollisionEndX
+    beq .NoHit
+    bcc .NoHit                  ; x+w <= min
+    lda MapPtrHi                ; rect4.y
+    cmp CollisionEndY
+    beq .s3r
+    bcs .NoHit                  ; y > bottom
+.s3r:
+    clc
+    lda Rc4H                    ; rect4.h
+    adc MapPtrHi                ; y + h
+    cmp CollisionCellY
+    beq .NoHit
+    bcc .NoHit                  ; y+h <= top
+    jmp HotOverlapFlag          ; blocked (C set inside)
 
 .NoHit:
     clc
