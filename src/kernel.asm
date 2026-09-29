@@ -1492,6 +1492,13 @@ UE_Tentacle:
     cmp #160                     ; 160..255 = off right edge or wrap → hold
     bcs .TentOut
     sta Temp                     ; Temp = candidate X (free in overscan)
+    ; Same-column cull: committed X is always probe-clear, so a candidate in
+    ; the same 4px column covers the same collision cells → result is known
+    ; (C=0) and the full PlayerHitsMap swap/probe can be skipped.
+    lda Temp
+    eor EnemyRamX,X
+    and #$FC
+    beq .TentCommit
     lda RoomX
     pha                          ; save player position across the probe
     lda RoomY
@@ -1510,6 +1517,7 @@ UE_Tentacle:
     pla
     sta RoomX                    ; restore player X
     bcs .TentOut                 ; wall → hold position
+.TentCommit:
     lda Temp
     sta EnemyRamX,X              ; clear → commit candidate step
 .TentOut:
