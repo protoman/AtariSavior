@@ -423,6 +423,14 @@ Use `breakLabel` at two addresses, subtract Scn values:
 **NEVER use `break`** — it fires at the physical ROM address in ALL banks
 (causes cross-bank contamination with bankswitched ROMs).
 
+**py65 PC traces MUST filter the execution bank (2026-09-29):** bank0/bank1
+share the $F000-$FFFF address space — a raw PC counter sees bank1 HUD code at
+the SAME address as a bank0 routine (tentacle's `beq .TentCommit` at $F5A5 =
+bank1's `lda BarDelayTable,Y`), silently mixing them: counts came out ~5× too
+high and the "probe path" PCs were bar-red delay instructions. Rule: pair
+every `(pc, ...)` count with `mem.bank` (measure's `hpc[(pc,bank)]` does);
+a lone hex PC is ambiguous.
+
 **`print *$XX` DEREFERENCES — it is NOT a raw byte read (2026-09-28):**
 `*` is Stella's pointer operator: `print *$B5` uses the byte AT `$B5` as an
 address and shows THAT cell (observed: `print *$B5` → `ram_81` because
