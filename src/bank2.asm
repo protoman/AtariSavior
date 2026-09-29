@@ -20,13 +20,14 @@ FetchPtr = $E0                   ; must match kernel.asm (operand baked in)
 
 ; ------------------------------------------------------------------------------
 ; FoldIndirect — byte-identical copy of kernel.asm's block (same $FEF6
-; address). bank0 executes bytes 1-4 (`sta $1FF8,X`) then fetches bytes 5-9
+; address). bank0 executes bytes 1-3 (`sta $1FF8`, absolute — P3.1 deviation,
+; see kernel.asm) then fetches bytes 4-9
 ; here (data bank active); `sta $1FF6` switches back, rts fetched from bank0.
 ; Guard: verify_build compares bank0/bank2 regions byte-for-byte.
 ; ------------------------------------------------------------------------------
     .ds $FEF6 - *, 0
 FoldIndirect:
-    sta $1FF8,X
+    sta $1FF8
     lda (FetchPtr),Y
     sta $1FF6
     rts

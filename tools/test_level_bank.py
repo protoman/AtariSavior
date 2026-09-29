@@ -4,9 +4,10 @@
 Source-shape contract for the cross-bank fold (HERO fold, write-triggered):
 
   - FoldIndirect block exists in kernel.asm AND bank2.asm with exactly the
-    four contracted instructions in order (sta $1FF8,X / lda (FetchPtr),Y /
+    four contracted instructions in order (sta $1FF8 / lda (FetchPtr),Y /
     sta $1FF6 / rts) — hand-edited drift in one bank breaks execution at
-    the switch point.
+    the switch point. P3.1: bank select absolute (X preserved; was
+    sta $1FF8,X).
   - FetchPtr = $E0 defined in both files (operand is baked per file).
   - kernel.asm: block sits right before `.ds $FF00 - *, 0` (margin directive
     to the $FF00 fineAdjust anchor — an assembler error, not silent growth).
@@ -31,7 +32,7 @@ BANK1 = (ROOT / "src" / "bank1.asm").read_text(encoding="utf-8")
 BANK2 = (ROOT / "src" / "bank2.asm").read_text(encoding="utf-8")
 
 BLOCK = [
-    "sta $1FF8,X",
+    "sta $1FF8",
     "lda (FetchPtr),Y",
     "sta $1FF6",
     "rts",
@@ -78,17 +79,26 @@ def main() -> None:
     assert not re.search(r"sta\s+\$E0\b", KERNEL), \
         "kernel.asm writes $E0 raw — use the FetchPtr EQU for alias clarity"
 
-    # --- P2: no cold (pre-fold) reads of relocated tables ------------------
-    for tbl in ("LevelPFDataLo", "LevelEnemyLo", "LevelConnLo"):
+    # --- P2/P3.1: no direct reads of relocated tables ----------------------
+    for tbl in ("LevelPFDataLo", "LevelEnemyLo", "LevelConnLo", "EnemyDataLo"):
         assert not re.search(rf"lda \({tbl}\),Y", KERNEL), \
             f"kernel.asm still reads ({tbl}),Y directly — route via FoldIndirect"
-    assert KERNEL.count("jsr FoldIndirect") >= 14, \
-        f"expected >=14 fold call sites (LoadLevel 14), " \
-        f"got {KERNEL.count('jsr FoldIndirect')}"
+    assert KERNEL.count("jsr FoldIndirect") >= 41, \
+        f"expected >=41 fold call sites (P2: band/EnterRoom/conn/LoadLevel 26, " \
+        f"P3.1: enemy reads 15), got {KERNEL.count('jsr FoldIndirect')}"
+    # every fold batch stages FetchPtr immediately before its reads
+    stages = len(re.findall(r"^\s+sta FetchPtr\+?1?\s*$", KERNEL, re.M))
+    assert stages >= 22, \
+        f"expected >=22 sta FetchPtr lines (11 stage pairs), got {stages}"
 
     # --- P2.5: band-color cache contract ----------------------------------
-    assert re.search(r"^RoomBandColor\s*=\s*\$D1\b", KERNEL, re.M), \
-        "RoomBandColor = $D1 (PF1Buf[2] alias) missing"
+    # FIX 2026-09-28: was $D1 = PF1Buf[2] — collides with kernel .Row
+    # `lda PF1Buf,X` (X=2); band color rendered as the bottom-band PF1 wall
+    # pattern (phase_1: $D1=00 vs model $ff → mid-wall gap). $D2 = dead row.
+    assert re.search(r"^RoomBandColor\s*=\s*\$D2\b", KERNEL, re.M), \
+        "RoomBandColor = $D2 (dead PF1Buf[3] alias) missing"
+    assert not re.search(r"^RoomBandColor\s*=\s*\$D1\b", KERNEL, re.M), \
+        "RoomBandColor must not alias PF1Buf[2] ($D1) — kernel reads it"
     m = re.search(r"^LoadRoomBottomColor:\s*\n((?:[ \t].*\n)+)", KERNEL, re.M)
     assert m and "lda RoomBandColor" in m.group(1), \
         "LoadRoomBottomColor must read the VBLANK-staged cache"

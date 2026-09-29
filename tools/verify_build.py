@@ -200,9 +200,10 @@ def check_rom(src: Path) -> bytes | None:
 
 
 FOLD_ADDR = 0xFEF6
-# sta $1FF8,X / lda (FetchPtr),Y / sta $1FF6 / rts — plan §0.1, hand-copy
+# sta $1FF8 / lda (FetchPtr),Y / sta $1FF6 / rts — plan §0.1, hand-copy
 # forbidden: change the block → change these bytes + plan together.
-FOLD_BYTES = bytes([0x9D, 0xF8, 0x1F, 0xB1, 0xE0, 0x8D, 0xF6, 0x1F, 0x60])
+# P3.1: bank select is absolute (was sta $1FF8,X) — see kernel.asm deviation.
+FOLD_BYTES = bytes([0x8D, 0xF8, 0x1F, 0xB1, 0xE0, 0x8D, 0xF6, 0x1F, 0x60])
 
 
 def check_fold_block(src: Path) -> None:

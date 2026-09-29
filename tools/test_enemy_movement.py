@@ -101,8 +101,8 @@ def main() -> None:
     assert "cmp #ENEMY_BAT" in dey, "DeriveEnemyY must special-case the bat"
     assert "sta Temp" in dey and "adc Temp" in dey, \
         "bat delta must be added to ROM spawn y"
-    assert "lda EnemyRamP" in dey and "lda (EnemyDataLo),Y" in dey, \
-        "bat path needs ROM spawn y and the frame clock (EnemyRamP)"
+    assert "lda EnemyRamP" in dey and "jsr FoldIndirect" in dey, \
+        "bat path needs ROM spawn y (via P3.1 fold) and the clock (EnemyRamP)"
     assert "lda TickCounter" not in dey, \
         "TickCounter wraps every 60 frames — derives must use EnemyRamP"
     # clock advances once per frame in RefreshEnemyY

@@ -16,24 +16,24 @@ Nothing moves on until the previous step's checks are green.
 
 ## 0. Frozen contracts (read before touching anything)
 
-1. **Fold block — exact bytes (final design, do not redesign mid-implementation):**
+1. **Fold block — exact bytes (P3.1 revision — deviation note after the block):**
 
 ```
-; Caller contract: X = bank select (0 → $1FF8/bank2, 1 → $1FF9/bank3),
-;                  Y = index, A = junk in / data out.
+; Caller contract: bank select is ABSOLUTE `sta $1FF8` (bank2) — X and Y are
+;                  both preserved, A = junk in / data out.
 ; Address FOLD_ADDR = $FEF6, region = 9 code bytes + 1B zero margin
 ; (realized: both banks assemble the SAME source — byte-identical region,
 ;  simpler than the original split-filler sketch; execution is identical
 ;  because the inactive bank's bytes are never fetched).
 ;
 ; region bytes ($FEF6-$FEFF):
-;   +0..2: sta $1FF8,X   (3B)   ← fetched/executed in bank0
+;   +0..2: sta $1FF8     (3B)   ← fetched/executed in bank0
 ;   +3..4: lda (FetchPtr),Y (2B) ← fetched after switch → runs in DATA bank
 ;   +5..7: sta $1FF6     (3B)   ← runs in DATA bank; switches back, A kept
 ;   +8:    rts           (1B)   ← fetched back in bank0
 ;   +9:    zero margin   (1B)   ← guard asserts 0 (growth detector)
 ;
-; Flow: bank0 jsr FOLD_ADDR → sta $1FF8,X switches bank at instruction end →
+; Flow: bank0 jsr FOLD_ADDR → sta $1FF8 switches bank at instruction end →
 ; PC+3 fetched from DATA bank: lda (FetchPtr),Y (read ROM there) →
 ; sta $1FF6 writes result byte to hotspot → switches back to bank0, A is
 ; preserved by sta → PC+8 fetched from bank0 = rts → caller.
@@ -44,6 +44,15 @@ Nothing moves on until the previous step's checks are green.
    - **Never reorder/insert anything in the 9-byte region in bank0 without
      doing the same in bank2/bank3.** `verify_build.py` guard enforces this
      (byte-identity + opcode bytes + label address + zero margin).
+   - **P3.1 deviation (2026-09-27):** bank select changed from
+     `sta $1FF8,X` (X=0/1 → bank2/bank3) to absolute `sta $1FF8`.
+     Reason: every enemy loop keeps the **slot in X**, and the X
+     save/restore dance has no free temp (DEY/snake hold `Temp` live across
+     the read). All level data is bank2 — X-selection was dead weight.
+     bank3 data (P4) must get a **second entry point** (`sta $1FF9`, another
+     9B pad) — do NOT reuse this block. Updated in lockstep: both source
+     copies, `verify_build FOLD_BYTES` (`8d f8 1f ...`),
+     `test_level_bank BLOCK`, §0.3 below.
 
 2. **`FetchPtr` = ZP pair `$E0/$E1`** (alias over `PF2Buf[5]/[6]`, same
    family as the documented `$F0-$F2` bomb-save alias). Contract to preserve:
@@ -56,8 +65,9 @@ Nothing moves on until the previous step's checks are green.
    - Rule (E0 lesson): set FetchPtr **immediately before** the fold batch,
      never rely on it surviving across a `jsr` that writes `$E0/$E1`.
 
-3. **Bank-select constants:** `BANK2_SEL X=0` (`$1FF8`), `BANK3_SEL X=1`
-   (`$1FF9`). bank3 also holds the power-up reset stub (`$F000`) + vectors
+3. **Bank-select addresses:** bank2 = `$1FF8` (FoldIndirect, absolute
+   select); bank3 = `$1FF9` (unused until P4 — needs its own fold entry).
+   bank3 also holds the power-up reset stub (`$F000`) + vectors
    (`$FFFA`) — data `org`s around them; these 14 bytes never move.
 
 4. **Addresses that guards already protect (never break):**
@@ -176,15 +186,18 @@ pointers) therefore keep their **values unchanged** — only the bank behind
 them changes. If data wouldn't fit the original addresses in bank2 (stub
 `$F000-$F007` is far below; vectors far above — it fits), stop and rethink.
 
-- [ ] **P2.1 — measure the data block**
+- [x] **P2.1 — measure the data block** *(done — recorded in S2 log)*
   - From P0 baseline lst: record start/end of the two include regions
     (`levels_data.asm` include at `kernel.asm:2277` covers models + rooms +
     levels; `levels.asm` include at `:2289`). Write both addr ranges here
-    during implementation: `DATA_RANGE = $A-$B`.
+    during implementation: `DATA_RANGE = $F9D9-$FB1E` (326B; verified —
+    `bank2.lst` shows both includes spanning exactly this range).
   - Check: `python3` script sums byte lengths of
     `generated/*.asm` payloads == `B-A+1`.
 
-- [ ] **P2.2 — build.sh: generate data for bank2, not bank0**
+- [x] **P2.2 — build.sh: generate data for bank2, not bank0** *(done — S2:
+  `convert_level.py` outputs byte-identical; only WHERE the includes live
+  changed; `-lbank2.lst` added to build.sh in P1.2)*
   - Keep `convert_level.py` outputs byte-identical (payload change only in
     WHERE included). Add nothing to JSON flow.
   - Edit `build.sh`: bank2 dasm line unchanged; the generated includes move
@@ -192,7 +205,9 @@ them changes. If data wouldn't fit the original addresses in bank2 (stub
     confirm `verify_build.py` "generated level asm identical to committed"
     still runs.
 
-- [ ] **P2.3 — bank2 emits data at the frozen addresses**
+- [x] **P2.3 — bank2 emits data at the frozen addresses** *(done — S2:
+  `bank2.lst` shows `M0TilePF0` etc. at the frozen `$F9D9-$FB1E` addresses;
+  pointer values unchanged, only the bank behind them differs)*
   - `bank2.asm`:
     ```
     org $F000
@@ -273,50 +288,68 @@ them changes. If data wouldn't fit the original addresses in bank2 (stub
 
 > Read §0.1 timing contract first. Run §T before and after.
 
-- [ ] **P3.0 — §T timing baseline**
-  - Measure at **current build** (post-P2): (a) TIM64T value at end of
-    VBLANK (breakLabel at cave-kernel entry, read `t`/TIM64T in Stella);
-    (b) TIM64T remaining at overscan end; (c) total frame lines
-    (breakLabel Overscan start vs next frame — or `scanline` diff).
+- [ ] **P3.0 — §T timing baseline** *(revised at P3.1: a pre-P3.1 baseline
+  is INVALID — enemy type reads returned bank0 garbage, so dispatch
+  branches ran different paths than correct-data timing will. First clean
+  baseline = post-P3.1 build; P3.0 and P3.2 merge into one measurement.)*
+  - Measure at **post-P3.1 build**: (a) TIM64T at VBLANK end (breakLabel
+    `.WaitVBLANK` = `$F0CB`, read INTIM on first entry); (b) TIM64T
+    remaining at overscan end (breakLabel `.WaitOverscan`, read INTIM);
+    (c) frame lines (Scn diff between two `Overscan` hits = `$F18A`,
+    must be 262).
   - Record numbers in this file: `VBLANK_LEFT=__c OVERSCAN_LEFT=__c LINES=__`.
 
-- [ ] **P3.1 — enemy record reads (overscan, ~16 sites)**
-  - Sites list (kernel.asm line refs from P0 — re-grep): `1180,1183,1188,
-    1229,1247,1253,1273,1279,1372,1381,1402,1739,1743,1860,3246` region
-    owners: `RefreshEnemyY`/`LoadEnemyRam` (VBLANK or overscan — **verify
-    call phase of each owner first**), `DeriveEnemyY`, `CheckEnemyHit`,
-    reload paths.
-  - Each owning routine (NOT each site): stage FetchPtr = `EnemyDataLo/Hi`
-    once at top, replace `lda (EnemyDataLo),Y` → `jsr FoldIndirect`
-    (+`ldx #0` once; X preserved across body ✓ — body only clobbers A).
-  - Careful: routines that clobber X (e.g. known `PlayerHitsMap` tax) —
-    re-establish X=0 before each fold if a `jsr` between could have changed it.
-  - Check: build + tests; `test_enemy_movement.py` **asserts updated**:
-    replace `lda (EnemyDataLo),Y` expectations with `jsr FoldIndirect`
-    where applicable (keep every behavioral assert — bat gates, tentacle
-    save/restore, spider dwell — those live in derive/dispatch, unchanged).
+- [x] **P3.1 — enemy record reads (overscan, 15 sites)** *(done 2026-09-27)*
+  - **Contract change (§0.1 deviation):** fold bank select is absolute
+    (`sta $1FF8`) — X preserved, so slot-in-X loops fold directly; the
+    plan's original "`ldx #0` once" scheme was impossible (no free temp).
+  - Stage sites (6): `LoadEnemyRam` top, `UpdateEnemies/UE_Start`,
+    `DeriveEnemyY` entry (per call — caller's slot X survives),
+    `SelectActiveObject` (before `jsr IsRoomDark`), `CEH_HasEnemies`,
+    `LaserHitTest` entry. Closure-checked: no callee between stage and
+    fold writes `FetchPtr`/`$E0`/`EnemyDataLo`.
+  - Reads folded: LER 3, UE 5, DEY 3, SO 2, CEH 1, Laser 1 = **15**
+    (41 `jsr FoldIndirect` total = 26 P2 + 15).
+  - Follow-up fixes hit: `UE_Loop` exit → `bcc UE_Alive / jmp UE_Exit`
+    (stage+reads pushed `bcs UE_Exit` 131B > range); `EnemyOffTable` +
+    `BitMaskTable` moved from `$FF20` tail to end of main (laser stage
+    +9B overflowed `$FFFA`; main now ends `$FB9F`, ~105B free).
+  - Guards updated: `test_level_bank` (+`EnemyDataLo`, ≥41 folds, ≥22
+    stage lines, BLOCK `sta $1FF8`), `test_enemy_movement` DEY fold
+    expectation, stale "X = bank2" comments rewritten.
+  - Checks: build green, verify_build 0 warnings, all 3 suites green.
 
-- [ ] **P3.2 — timing re-measure §T (overscan half)**
-  - Overscan budget: TIM64T=35 ≈2240c; expect +10..16 folds × ≈30c ≈
-    +300-500c. Pass criterion: overscan-end TIM64T remaining ≥ baseline −
-    expected, **and** no frame-length change.
+- [ ] **P3.2 — timing re-measure §T (overscan half)** *(merged with revised
+  P3.0 — one post-P3.1 measurement covers both)*
+  - Overscan budget: TIM64T=35 ≈2240c; P3.1 added 15 folds × ≈26c +
+    6 stages × ≈14c ≈ +474c worst case. Pass criterion: overscan-end
+    TIM64T remaining > 0 with margin, **and** frame lines = 262.
   - FAIL path: reduce (fold only active-slot reads; hoist duplicate folds of
     the same Y offset; consider M3 leaf-copy upgrade for the worst routine —
     re-enter plan design, do not hack cycles).
 
-- [ ] **P3.3 — `LoadPFBuffer` per-read fold (VBLANK)**
-  - 36 `lda (RoomPFxLo),Y` → fold. Structure:
-    ```
-    ; once: stage FetchPtr = RoomPF0Lo  (ptrs contiguous: PF0+12=PF1, +24=PF2)
-    ; rows 0..11: PF0: set FetchPtr=RoomPF0Lo (re-set each row AFTER r≥5 —
-    ;   because dest PF2Buf row r-5 hits $E0 when r>=5 for the PF2 phase)
-    ```
-    Concretely: loop by register phase — phase0: stage PF0 ptr once (dest
-    `$C3-$CE` never touches `$E0`), 12 folds; phase1: stage PF1, 12 folds
-    (dest `$CF-$DA` safe); phase2: **per-row** stage PF2 ptr (dest hits
-    `$E0` at row5+), 12 folds. +`ldx #0` per phase/row.
+- [ ] **P3.3 — `LoadPFBuffer` per-read fold (VBLANK)** *(code done 2026-09-28;
+  checkbox waits on user wall validation)*
+  - Implemented as 3 register phases, **3 bytes each** (not 12): kernel `.Row`
+    reads X=0..2 and `ClearPFColumn` walks rows 0..2 — buffer bytes 3-11 are
+    fill-only dead weight (all generated models have 00 there; bank1 score
+    uses its own `$B3`/`$C6` buffers). Stage FetchPtr once per phase; the
+    original plan's per-row PF2 re-stage (dest `$E0` at row5+) is moot at
+    rows 0-2. Runtime cost ≈ 9 folds + 3 stages ≈ 300c (plan estimated 36
+    folds ≈ 1120c — the fill-12 structure it assumed was itself dead weight).
+  - **Phase_1 dump verdict (step4/step5):** PF0/PF1[0..1]/PF2 rows all match
+    `models_data` exactly → fold data path correct. Two alias bytes explained:
+    `$E0/$E1` = staged pointer (PF2Buf rows 5-6, never read → harmless),
+    `$D1` = RoomBandColor clobbering PF1Buf[2] → **real bug** (bottom-band PF1
+    wall rendered as band color: room 0 band=$00 vs model=$ff → mid-wall gap
+    + cell-map collision mismatch = user's "collision incorrect"/"gaps").
+  - **Fix 2026-09-28: `RoomBandColor` `$D1` → `$D2`** (PF1Buf[3], dead row;
+    bank1 has no `$D2` EQU). Guards: `test_level_bank.py` asserts `$D2` and
+    rejects `$D1`; `zp_layout_skill.md` updated. Fill trimmed to 3 in the
+    same edit (stops the fill clobbering `$D2`).
   - Check: build green; PF buffers visually identical in Stella (walls
-    correct = data path proof).
+    correct = data path proof) **+ bottom-band wall now complete (the $D2
+    fix's visual signature: row 2 PF1 = $ff).**
 
 - [ ] **P3.4 — timing re-measure §T (VBLANK half) + frame gate**
   - Expect ≈ +750-900c vs post-P2 baseline. Pass: VBLANK-end TIM64T still
@@ -413,7 +446,7 @@ them changes. If data wouldn't fit the original addresses in bank2 (stub
 | FetchPtr alias clobber (E0 lesson family) | P1.3/P2.6 | staging-immediately-before rule + writer table in zp doc |
 | bank1 jmp Overscan drift | P2.4/P3 | existing fold guard; fix bank1 |
 | Page contracts (ObjSprites/Div15) | P2.4 | existing guards; read every warning |
-| X clobbered between stage and fold | P3.1 | re-`ldx #0` after any jsr (tax offenders) |
+| X clobbered between stage and fold | P3.1 | **obsolete** — fold is X-agnostic (`sta $1FF8` absolute); X and Y preserved |
 | Generator emits absolute ptrs | P4.1 | check labels-vs-numbers before moving level_002 |
 
 ## Session log (append while implementing)
@@ -457,3 +490,20 @@ them changes. If data wouldn't fit the original addresses in bank2 (stub
   - Gate order corrected (P2.8 needs P3.1/P3.3 first — walls/enemy/rect
     readers still raw). All suites green, verify_build 0 warnings.
   - Next: P3.0 §T baseline → P3.1 → P3.3 → P2.8+P3.5 gate.
+
+- **S3 (2026-09-27):** P3.1 done — fold contract revised (absolute select).
+  - **§0 contract change:** `sta $1FF8,X` → `sta $1FF8` (absolute). The
+    plan's X=0 scheme collided with enemy loops holding the **slot in X**;
+    no free temp for X save/restore (DEY/snake keep `Temp` live across the
+    read). Lockstep: kernel.asm + bank2.asm copies, `verify_build FOLD_BYTES`
+    (0x9D→0x8D), `test_level_bank BLOCK`, §0 doc.
+  - 6 stage sites + 15 reads folded (41 total); stage windows
+    closure-verified (no callee writes FetchPtr/$E0/EnemyDataLo).
+  - Two size failures fixed: `bcs UE_Exit` 131B out of range →
+    `bcc UE_Alive / jmp UE_Exit`; `$FF20` tail overflowed `$FFFA` by 3B →
+    `EnemyOffTable`+`BitMaskTable` relocated to end of main (`$FB9F`).
+  - P3.0 revised: pre-P3.1 baseline invalid (garbage types changed branch
+    paths) — P3.0+P3.2 = one post-P3.1 Stella measurement
+    (`.WaitVBLANK $F0CB`, `.WaitOverscan`, `Overscan $F18A` ×2 = 262 lines).
+  - Build green, verify_build 0 warnings, all 3 suites green.
+    Uncommitted (user rule). Next: user §T measurement → P3.3.

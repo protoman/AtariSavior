@@ -116,7 +116,7 @@ Sequential allocation ends at `$BC` (next would be `$BD`).
 | $C1 | EnemyRamD | Packed dir bits 0-3 |
 | $C2 | EnemyRamP | Free-running frame clock (`inc` once/frame in RefreshEnemyY; gates bat/spider/tentacle derives; init `$F0` on room load = harmless seed) |
 | $C3-$CE | PF0Buf | TilePF0 (12) |
-| $CF-$DA | PF1Buf | TilePF1 (12). **$D1 = `RoomBandColor` alias (PF1Buf[2]):** band-color cache (level_bank_plan P2.5). Writer: VBLANK stage after `BuildColupF` (fold from LevelEnemy record, RoomNo\*4+3) — every frame, so ordering is structural. Readers: kernel `.WaterRow` via `LoadRoomBottomColor`, overscan `CheckBandTouch`. Kernel reads PF1Buf[2] only during group-0 render (before water); bank1 HUD owns `$E0-$EF` only; no physics touch. |
+| $CF-$DA | PF1Buf | TilePF1 (12). **Only rows 0-2 are read** (kernel `.Row` X=0..2, `ClearPFColumn` rows 0..2); rows 3-11 are fill-only. **$D2 = `RoomBandColor` alias (PF1Buf[3], dead row):** band-color cache (level_bank_plan P2.5). Writer: VBLANK stage after `BuildColupF` (fold from LevelEnemy record, RoomNo\*4+3) — every frame, so ordering is structural. Readers: kernel `.WaterRow` via `LoadRoomBottomColor`, overscan `CheckBandTouch`. **FIX 2026-09-28:** was `$D1` = PF1Buf[2] — that collided with the kernel's `lda PF1Buf,X` (X=2): the band color (room 0 = `$00`) rendered as the bottom band's PF1 wall pattern every frame → mid-wall gap + cell-map collision mismatch (phase_1 dumps showed `$D1=00` vs model `$ff`). bank1 has no `$D2` EQU; bank1 HUD owns `$E0-$EF` only; no physics touch. |
 | $DB-$E6 | PF2Buf | TilePF2 (12) |
 | $E7-$F2 | ColupfBuf | Final COLUPF × 12 rows (stripe+hot). **Overlaps $F0-$F2 bombs:** `BuildColupF` saves PlayerBombs/BombSnd/RoomWallMask → CollisionCellY/EndX/EndY; `.AfterRows` restores before HUD. Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds. |
 | $F3 | ScoreTh | Shared with bank1 score |
@@ -156,11 +156,15 @@ Do not run those between `BuildColupF` and `.AfterRows`.
 
 ## Bottom band (2026-09-24)
 
-- **No dedicated ZP.** Original plan used `$EC`, but that is inside `ColupfBuf`
-  (`$E7–$F2`, row 5) — `BuildColupF` overwrites it every VBLANK before the kernel.
+- **Home = `$D2` (2026-09-28)** — alias of `PF1Buf[3]`, a fill-only dead row
+  (kernel `.Row` reads X=0..2; `ClearPFColumn` rows 0..2; bank1 has no `$D2`
+  EQU). First attempt `$EC` failed (inside `ColupfBuf` row 5); then `$D1` =
+  `PF1Buf[2]` failed (kernel `lda PF1Buf,X` X=2 rendered the band color as the
+  bottom-band PF1 wall — phase_1 dump `$D1=00` vs model `$ff`).
 - Band color is the RoomEnemies per-room 4th byte (`ptr_lo, ptr_hi, count, bottom_color`).
-  Read via `LoadRoomBottomColor` (kernel `.Row` X==11 + overscan `CheckBandTouch`).
-- Sequential map remains full after bomb work; do not add a new `$xx` EQU for band color.
+  Read via `LoadRoomBottomColor` (`.WaterRow` band strip + overscan `CheckBandTouch`).
+- Sequential map remains full after bomb work; do not add a new sequential
+  `byte` for band color — use an alias EQU over a dead fill row (as `$D2`).
 
 **Removed / do not reintroduce:** bank1 `ScoreOn` at `$F6` (now BombX);
 old DigitPtr* at `$F4/$F6/$F8`.

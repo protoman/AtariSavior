@@ -49,6 +49,22 @@ done
 # Verify banks + level data BEFORE shipping (errors abort via set -e)
 python3 "$ROOT/tools/verify_build.py" "$DIR"
 
+# Headless py65 sim: bomb lifecycle + stack-depth guard (AGENTS.md stack rule).
+# Hard-fails the build on regression; skips with a warning only if py65 is absent.
+SIM_PY="${SIM_PY:-/home/iuri/python3/bin/python3}"
+if "$SIM_PY" -c "import py65" 2>/dev/null; then
+    echo "  sim_bomb_fuse: running..."
+    "$SIM_PY" "$DIR/sim_bomb_fuse.py" > /tmp/sim_bomb_fuse.out 2>&1 || {
+        echo "SIM FAILED — last lines:"
+        tail -20 /tmp/sim_bomb_fuse.out
+        exit 1
+    }
+    echo "  sim_bomb_fuse: OK"
+else
+    echo "  WARNING: py65 not importable via $SIM_PY — sim_bomb_fuse SKIPPED"
+    echo "           (enable: $SIM_PY -m pip install py65)"
+fi
+
 # Concatenate into 16K ROM
 cat bank0.bin bank1.bin bank2.bin bank3.bin > "$OUTPUT"
 
