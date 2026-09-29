@@ -365,6 +365,10 @@ COLOR_HOT_R     = COLOR_BLINK_R
     lda #0
     sta $1FF6                       ; ensure bank0 selected (idempotent)
     jmp GameStart                   ; jump over pad to init code
+                                    ; (NOT deletable: $F008 = GameStart is a
+                                    ;  hardcoded cross-bank entry — bank1
+                                    ;  stub `jmp $F008`; this jmp also keeps
+                                    ;  $F18A Overscan + F0xx landmarks fixed)
 
 GameStart:
     sei                         ; disable interrupts
@@ -1561,7 +1565,8 @@ DeriveEnemyY:
     cmp #3
     bne .DEYDelta
     lda #1                      ; 3 -> 1
-    jmp .DEYDelta
+                                ; (dead `jmp .DEYDelta` removed — target was
+                                ;  the very next instruction)
 .DEYDelta:                      ; A = delta, then add ROM spawn y
     sta Temp
     iny
