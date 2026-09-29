@@ -305,8 +305,10 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     jmp .R3
 .R3:
     sty COLUPF
-    jmp .BarGap
-
+    ; no jmp here: .BarGap is the next instruction — the old `jmp .BarGap`
+    ; cost 3c AFTER the red boundary write and pushed line-3 content to 76c
+    ; (BarGap WSYNC started at c76 → full-line stall → HUD band 51→52 lines
+    ; → frame 263 on Fine2/3/4 frames). Lines 1/2 enter their WSYNC at c73.
 .BarGap:
 
     ; --- gap: end bar line 3, clear PF + ball during gap HBLANK ---

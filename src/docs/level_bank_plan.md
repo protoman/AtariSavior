@@ -351,15 +351,16 @@ them changes. If data wouldn't fit the original addresses in bank2 (stub
     correct = data path proof) **+ bottom-band wall now complete (the $D2
     fix's visual signature: row 2 PF1 = $ff).**
 
-- [ ] **P3.4 — timing re-measure §T (VBLANK half) + frame gate**
-  - Expect ≈ +750-900c vs post-P2 baseline. Pass: VBLANK-end TIM64T still
-    > 0 with margin ≥ ~100c and frame lines unchanged.
-  - FAIL path (documented decision point): fall back to
-    **Pattern A impossible in bank0** (needs body-sized hole ≈45B — we do
-    not have it; per investigation §6). Options then: (1) reduce per-frame
-    PF reload (stop bank1 HUD corrupting buffers → VBLANK-only-on-room-change
-    load — HUD workspace relocation study), (2) split LoadPFBuffer staging
-    tighter, (3) revisit. **Stop and ask user on FAIL.**
+- [x] **P3.4 — timing re-measure §T (VBLANK half) + frame gate** (2026-09-29)
+  - Pass. Measured (py65 `measure_p34.py`, 900 heavy frames): VBLANK work
+    worst 1311c / overscan work worst 2104c, 0 overruns, margins +161c /
+    +1096c. Timers trimmed `#75→#23` + `#35→#50` (73 units = 262 lines);
+    frame lens all 262.x except rare 266/275 transition spikes.
+  - Bonus root-cause: the old 263.x line cluster = bank1 power-bar
+    `.BarRedFull` line-3 tail 76c stall (dead `jmp .BarGap` after the
+    boundary write) — deleted in bank1.asm. See
+    `src/docs/frame_timing_investigation.md` ("Still open (P3.4)").
+  - FAIL path not taken.
 
 - [ ] **P3.5 — runtime gate P3 (full regression = E5-style)**
   - Stella: all 4 movers + snake + laser sweep + bombs + walls destruction +

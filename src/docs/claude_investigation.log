@@ -1,0 +1,263 @@
+  Now let me look at the actual problem more carefully. The user says "there was a problem" — let me re-read what the investigation specifically identifies as the
+  current problem requiring a fix:
+
+  Looking at frame_timing_investigation.md §2 — the current issues:
+
+  1. Issue 1: 442/20 anomalous frames
+  2. Issue 5: playfield still broken (P3.x intermediate state)
+  3. Issue 6: frame ≈281, target 262
+
+  And §4 "What needs to be fixed" says P3.3 is explicitly listed as a remaining step.
+
+  The user says "Current phase: P3.x; uncommitted through P3.1, there was a problem." So the problem is specifically that after P3.1, things are broken and need fixing
+  before proceeding to P3.3.
+
+  Let me look more carefully at what's wrong. The investigation says issue 5 is about playfield — BUT wait, the plan says P3.3 (LoadPFBuffer fold) is NOT done yet. So
+  the playfield is expected to be broken at this stage.
+
+  But re-reading: "P3.x folds left playfield in intermediate state until P3.3" — so the broken playfield IS the expected state. The actual "problem" is:
+
+  Issue 1: frame anomalies (442, 20) appearing alongside the 281-line good frame.
+
+  These need to be diagnosed. The investigation already analyzes this but doesn't have Stella measurement data. Let me look at whether there's something I can actually
+  fix in code right now.
+
+  Looking at the investigation §4 action items:
+
+  1. Prove fix is live (user task, needs Stella)
+  2. Eliminate 442 — locate which timer expires
+  3. Explain 20 (G2/G3)
+  4. Trim to 262
+
+  Items 1-3 require user to run Stella. Item 4 is code work.
+
+  Let me reconsider what I can do. Looking at the frame math:
+
+  • Frame is 281. Target 262. Delta = 19.
+  • Kernel: +3 (structural)
+  • VBLANK: +13.5 (setup grew too large for 37-line budget)
+
+  The MOST impactful fix: move LoadPFBuffer out of VBLANK into overscan.
+
+  LoadPFBuffer costs: 12 × (6 lda-indirect + 3 sta + 6 lda-indirect + 3 sta + 6 lda-indirect + 3 sta + 3 iny + 5 cpy + 3 bne) ≈ 12 × (6+3+6+3+6+3+3+5+3) = 12 × 38 =
+  456c. Plus JSR/RTS = 12c. Total ≈ 468c.
+
+  Wait but it's currently using DIRECT reads (pre-P3.3), not fold. So it's 3 direct reads × 5c each + 3 stores × 3c each + iny 2c + cpy 2c + bne 3c ≈ (5+3)×3 + 7 = 31c
+  per iteration × 12 = 372c + jsr/rts 12c = 384c.
+
+  Moving 384c from VBLANK to overscan:
+
+  • New VBLANK setup: 3439 - 384 = 3055c
+  • Timer can be: 3055 ÷ 64 = #48 → 3072c (17c headroom). Risky. Use #50 = 3200c (145c headroom).
+  • VBLANK duration: 3200c ÷ 76 = 42.1 lines. Down from 50.5 → saves 8.4 lines.
+  • New frame: 3 + 42.1 + 147 + 51 + 30 = 273 lines. Still +11 over 262.
+
+  If we also move SelectActiveObject to overscan... but it MUST run before LoadPFBuffer (reads EnemyRamY = PF0Buf alias). So SelectActiveObject can't move after
+  LoadPFBuffer without restructuring.
+
+  Actually there's a better approach: move SelectActiveObject + LoadPFBuffer together to overscan. SelectActiveObject must run before LoadPFBuffer, but BOTH can be in
+  overscan if ordering is maintained.
+
+  But then overscan gets more work: +384c (LPB) + ~SelectActiveObject cost. That might overflow overscan timer.
+
+  Let me look at this differently. The real question is: what is the user's immediate problem that needs fixing?
+
+  The investigation document says the problem is the 442/20 anomalies. Given my analysis in §3, the most likely explanation is that 442/20 were from a pre-fix session
+  (OLD #43 timer). The #60 fix already handles this.
+
+  If the 442/20 were actually from a POST-fix session, then something else is wrong. But based on the investigation doc's G4 analysis, the user just needs to verify
+  that post-fix runs show only ~281-line frames.
+
+  So the main thing to FIX (not just investigate) is:
+
+  1. The playfield — implement P3.3 so the walls render correctly
+  2. The frame overrun — needs trimming
+
+  But P3.3 requires implementing the fold for LoadPFBuffer, which per my §9 analysis will make the VBLANK even longer (need to raise timer to #70+). That makes the
+  frame 290+ lines.
+
+  The plan says implement P3.3 before P3.4 (timing re-measure). So the order is:
+
+  1. P3.3: LoadPFBuffer fold (playfield fix)
+  2. Timer adjustment
+  3. P3.4: timing measurement
+  4. P3.5: full regression
+
+  Let me now implement P3.3. First, let me look at the exact LoadPFBuffer code and ZP layout to make sure I understand the aliasing problem:
+
+● Read(~/Desenvolvimento/atari_2600/ai_savior/src/kernel.asm) (ctrl+o to expand)
+
+  Now I see the critical alias:
+
+  • PF2Buf = $DB (12 bytes: DB -E6)
+  • FetchPtr = $E0 (alias PF2Buf rows 5-6: E0 =DB+5, E1 =DB+6)
+
+  So when LoadPFBuffer writes PF2Buf[5], it writes to $E0 = FetchPtr. That's why P3.3 needs per-row staging for PF2.
+
+  Now let me check the plan's note about re-staging per row:
+
+  From level_bank_plan.md P3.3:
+
+  │ rows 0..11: PF0: set FetchPtr=RoomPF0Lo (re-set each row AFTER r≥5 — because dest PF2Buf row r-5 hits $E0 when r>=5 for the PF2 phase)
+
+  Wait — this is confusing. The issue is in the PF2 phase, not the PF0 phase. PF0Buf = C3, sowritesgotoC3 -CE. Never touches E0.PF1Buf = CF, writestoCF -DA. Never
+  touches E0()E0 > $DA). PF2Buf = DB, writestoDB -E6. Row 5 writes $DB+5 = $E0 = FetchPtr.
+
+  So the aliasing problem is ONLY in the PF2 phase, starting at row 5. The plan's description was a bit confusing.
+
+  Let me now implement P3.3. I'll modify LoadPFBuffer to use fold calls. For PF0 and PF1 phases, stage once and loop. For PF2 phase, re-stage at the start of each loop
+  iteration (the simple correct approach):
+● Read(~/Desenvolvimento/atari_2600/ai_savior/src/kernel.asm) (ctrl+o to expand)
+  Good. Now let me also check what's happening in the VBLANK section specifically when LoadPFBuffer is called — does anything between SelectActiveObject and
+  LoadPFBuffer use X? Yes, SetObjectXPos uses X. After LoadPFBuffer we have ApplyBombWalls, BuildColupF, then band-color fold. The LoadPFBuffer fold needs to preserve X
+  and Y for the surrounding context.
+
+  Looking at the current call:
+
+    jsr SelectActiveObject    ; reads EnemyRamY (must run BEFORE LoadPFBuffer)
+    jsr LoadPFBuffer          ; ← P3.3: convert to fold-based
+    jsr ApplyBombWalls
+    jsr BuildColupF
+
+  LoadPFBuffer doesn't use X (loop uses Y). After the change it will use FetchPtr which is also used by SelectActiveObject. Let me check what SelectActiveObject does to
+  FetchPtr:
+
+● Read(~/Desenvolvimento/atari_2600/ai_savior/src/kernel.asm)
+● Bash(grep -n "SelectActiveObject\|FetchPtr\|sta FetchPtr\|lda FetchPtr" /home/iuri/Desenvolvimento/atari_2600/ai_savior/src/kernel.asm | grep -v "^[...) (ctrl+o to
+expand)
+
+  So SelectActiveObject writes to FetchPtr at lines 1821 and 1916. Then the VBLANK code writes to FetchPtr at line 441/443 (the band-color fold). After jsr
+  SelectActiveObject, the VBLANK code does:
+
+    jsr LoadPFBuffer    ← P3.3 will write FetchPtr here
+
+  Then after LoadPFBuffer, the band-color fold stages FetchPtr at lines 441/443. Since LoadPFBuffer stages FetchPtr immediately before each fold batch, and the staging
+  at 441/443 happens AFTER LoadPFBuffer returns, there's no ordering conflict. The rule is "stage immediately before the batch" — LoadPFBuffer will stage at the top of
+  each fold batch, which is fine.
+
+  Let me look at SelectActiveObject to confirm what FetchPtr state it leaves behind (doesn't matter since LoadPFBuffer will restage):
+
+  The E0 lesson says: "set FetchPtr immediately before the fold batch, never rely on it surviving across a jsr". LoadPFBuffer will follow this rule — it'll stage
+  FetchPtr at the start of each phase.
+
+  Now let me implement P3.3. The key insight:
+
+  PF0 phase: dest = PF0Buf + Y = C3 + 0..11 = C3 -CE. Never touches $E0. Stage once.
+
+  PF1 phase: dest = PF1Buf + Y = CF + 0..11 = CF -DA. Never touches $E0. Stage once.
+
+  PF2 phase: dest = PF2Buf + Y = DB + 0..11 = DB -E6. At Y=5: $E0 = FetchPtr. At Y=6: $E1 = FetchPtr+1. Must re-stage before the fold call, because the PREVIOUS
+  iteration's sta PF2Buf,Y may have clobbered FetchPtr.
+
+  The clean approach: re-stage at the TOP of each PF2 loop iteration:
+
+    ldy #0
+    .LPB_PF2:
+        lda RoomPF2Lo      ; re-stage FetchPtr every iteration (safe, ~14c overhead)
+        sta FetchPtr
+        lda RoomPF2Hi
+        sta FetchPtr+1
+        jsr FoldIndirect   ; reads PF2[Y] from bank2, returns byte in A
+        sta PF2Buf,Y
+        iny
+        cpy #12
+        bne .LPB_PF2
+
+  This costs 14c extra per iteration × 12 = 168c extra vs staging once. But it's safe regardless of where Y is.
+
+  Actually we can optimize: only re-stage when Y = 5 (FetchPtr lo clobbered) and Y = 6 (FetchPtr hi clobbered). But the simpler always-re-stage approach is cleaner. Let
+  me go with always-re-stage for safety.
+
+  Now let me also check: does the PF2 fold alias problem only affect FetchPtr, or also ColupfBuf? ColupfBuf = E7 -F2 = PF2Buf rows 12-27. We only write rows 0-11 (12
+  bytes), so max write = $DB+11 = $E6. ColupfBuf starts at $E7. No collision. ✓
+
+  Now let me implement. I need to replace LoadPFBuffer (lines 1059-1071) with the 3-phase fold version. I also need to raise the VBLANK timer because the new
+  LoadPFBuffer will be much slower.
+
+  Cycle cost estimate of new LoadPFBuffer:
+
+  PF0 phase:
+
+  • Stage: 4×(lda+sta) = 4×(3+3) = 24c overhead once
+  • ldy #0: 2c
+  • Loop body × 12: jsr FoldIndirect (~25c) + sta PF0Buf,Y (4c, abs indexed) + iny (2c) + cpy (2c) + bne (3c) = 36c × 12 = 432c
+  • Total PF0: ~458c
+
+  PF1 phase:
+
+  • Stage (4c×2): 24c
+  • ldy #0: 2c
+  • Loop body × 12: same 36c × 12 = 432c
+  • Total PF1: ~458c
+
+  PF2 phase (re-stage every iter):
+
+  • ldy #0: 2c
+  • Loop body × 12: (lda RoomPF2Lo 3c + sta FetchPtr 3c + lda RoomPF2Hi 3c + sta FetchPtr+1 3c) + jsr FoldIndirect 25c + sta PF2Buf,Y 4c + iny 2c + cpy 2c + bne 3c =
+  (12 + 25 + 11) = 48c × 12 = 576c
+  • Total PF2: ~578c
+
+  JSR/RTS for LoadPFBuffer call: 12c
+
+  New LoadPFBuffer total ≈ 458 + 458 + 578 + 12 = ~1506c
+
+  Old LoadPFBuffer: 12 × (5+3+5+3+5+3+2+2+3) = 12 × 31 = 372c + 12 = 384c
+
+  Increase: 1506 - 384 = +1122c in VBLANK
+
+  With current VBLANK setup at 3439c and timer #60 (3840c, headroom 401c):
+  New setup: 3439 + 1122 = 4561c — DEFINITELY overflows #60 (3840c).
+
+  Need timer: 4561 ÷ 64 = #71.3 → use #73 = 4672c, headroom 111c. Or use #75 = 4800c, headroom 239c.
+
+  Let me use #75 for safety.
+
+  With #75 (4800c) VBLANK timer:
+
+  • VBLANK section: 4800c + ~6c = 4806c ÷ 76 = 63.2 lines
+  • Frame total: 3 + 63.2 + 147 + 51 + 30 = 294 lines
+
+  That's getting quite long. But the playfield will be correct, which is the priority.
+
+  Actually wait — I should reconsider. Can I use a tighter re-stage approach for PF2 to reduce the cost?
+
+  Optimized PF2: Stage once before loop for rows 0-4, then re-stage at rows 5 and 6:
+
+    ; Stage for PF2 (initial)
+    lda RoomPF2Lo
+    sta FetchPtr
+    lda RoomPF2Hi
+    sta FetchPtr+1
+    ldy #0
+    .LPB_PF2:
+        cpy #5             ; row 5 hits $E0 (FetchPtr lo) — re-stage
+        bne .LPB_PF2_check6
+        lda RoomPF2Lo
+        sta FetchPtr
+        lda RoomPF2Hi
+        sta FetchPtr+1
+        jmp .LPB_PF2_fold
+    .LPB_PF2_check6:
+        cpy #6             ; row 6 hits $E1 (FetchPtr hi) — re-stage
+        bne .LPB_PF2_fold
+        lda RoomPF2Lo
+        sta FetchPtr
+        lda RoomPF2Hi
+        sta FetchPtr+1
+    .LPB_PF2_fold:
+        jsr FoldIndirect
+        sta PF2Buf,Y
+        iny
+        cpy #12
+        bne .LPB_PF2
+
+  But this is complex and has branches that change cycle count. The re-stage-every-iteration is simpler and only costs 168c more. Given that we're already adding
+  ~1000c, 168c is noise. Let's keep it simple.
+
+  Actually, let me reconsider the whole approach. The plan doc says about P3.3:
+
+  │ "phase2: per-row stage PF2 ptr (dest hits $E0 at row5+), 12 folds."
+
+  This means re-stage for each row in phase 2 — which is what the always-re-stage approach does. The plan explicitly says per-row staging for PF2. Let's follow it.
+
+  Now let me implement P3.3 and raise the VBLANK timer. I'll do this as a single surgical edit:

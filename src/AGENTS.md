@@ -611,6 +611,18 @@ kernel `.Line` loop stalls a FULL scanline per affected line.
   `.Line`/kernel, recount the worst path from `bank0.lst` (instruction
   addresses, include branch page-cross) and keep the WSYNC write ≤ c73.
   Comment budget that is stale by 6 cycles = bug shipped twice.
+- **Recurrence #3 (2026-09-29, bank1 HUD +1 line → 263-line frames):**
+  `.BarRedFull` (power-bar Fine∈{2,3,4}) line-3 tail = 76c → `.BarGap`
+  WSYNC started at c76 = full-line stall → HUD band 51→52 lines →
+  frame 262→263 on ~48% of frames (only bar-red frames). Killed by deleting
+  `.R3`'s `jmp .BarGap` (jumped to the NEXT instruction, after the red
+  boundary write). Bisect method that found it: per-frame landmarks
+  k1=`.Row $F0F4` / k2=`jmp $FC68 $F187` / k3=`Overscan $F18A` + WSYNC-site
+  PCs + cycle gaps per WSYNC index — integer segment sums isolate WHICH
+  band grew; WSYNC-count constant ⇒ line SKIP (overrun), not structure.
+  **Bar rule: content AFTER `sty COLUPF` (post-boundary) is
+  table-independent (trim freely); content BEFORE it is table-coupled
+  (BarDelay/BarFine/BallX regeneration required).**
 
 **When debugging collision misalignment:**
 1. First check if SetObjectXPos matches the comparison branch exactly
