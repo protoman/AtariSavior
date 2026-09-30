@@ -1410,8 +1410,7 @@ UE_Alive:
     jsr FoldIndirect             ; type
     cmp #ENEMY_TENTACLE
     bne .UENotTent
-    jsr UE_Tentacle              ; far target — subroutine avoids branch range
-    jmp UE_Next
+    jmp UE_Tentacle              ; tail jmp: saves 2 push bytes (stack guard)
 .UENotTent:
     cmp #ENEMY_SNAKE
     bne UE_Next                  ; other types: no X motion (Y is derived)
@@ -1482,13 +1481,17 @@ UE_Exit:
 ; ------------------------------------------------------------------------------
 ; UE_Tentacle — chase RoomX: 1 px toward the player every 4th frame, gated by
 ; a wall probe. Probe reuses PlayerHitsMap via RoomX/RoomY swap (plan spec):
-; save player xy on stack, put candidate X + live tentacle Y, call, restore
-; ALWAYS (PLA/PLA do not disturb C), commit only when C=0 (clear).
-; Slot X is ALSO saved (PHM clobbers X via YToCellRow's `tax` — E3 gate bug:
-; the commit wrote to EnemyRamX[row] instead of EnemyRamX[slot] → frozen X).
+; save player xy in ActiveObjectX/Y scratch (NOT the stack — 3 pha drove SP to
+; $F4 and jsr return bytes stomped BombTimer $F7 / BombX $F6 every 4th frame,
+; so the fuse never reached 0), put candidate X + live tentacle Y, call,
+; restore from scratch (lda/sta do not disturb C), commit only when C=0.
+; Slot X likewise saved in EnemyIndex (PHM clobbers X via YToCellRow's `tax`
+; — E3 gate bug: the commit wrote to EnemyRamX[row] instead of
+; EnemyRamX[slot] → frozen X). All three bytes are write-before-read for
+; every reader (SelectActiveObject/CheckEnemyHit rewrite before reading).
 ; Candidate >= 160 (incl. wrap 255) rejected before probe — room edge hold.
 ; In: X = enemy slot. Clobbers A/Y/Temp/X (X restored around the probe).
-; Returns via .TentOut on every path.
+; Entered via JMP from the dispatch; every path exits .TentOut → jmp UE_Next.
 ; ------------------------------------------------------------------------------
 UE_Tentacle:
     lda TickCounter
@@ -1516,28 +1519,27 @@ UE_Tentacle:
     and #$FC
     beq .TentCommit
     lda RoomX
-    pha                          ; save player position across the probe
-    lda RoomY
-    pha
+    sta ActiveObjectX            ; save player position in ZP scratch (was pha:
+    lda RoomY                    ; the 3-pha path hit min SP $F4 → bomb stomp)
+    sta ActiveObjectY
     lda Temp
     sta RoomX                    ; probe as the tentacle (candidate x)
     lda EnemyRamY,X
     sta RoomY                    ; live tentacle y (refreshed this overscan)
-    txa                          ; save slot: PlayerHitsMap->YToCellRow does
-    pha                          ; `tax` (X = bottom row) — slot was lost here
+    stx EnemyIndex               ; save slot: PlayerHitsMap->YToCellRow does
+                                 ; `tax` (X = bottom row) — slot was lost here
     jsr PlayerHitsMap
-    pla
-    tax                          ; X = slot again (PLA/tax preserve C)
-    pla
-    sta RoomY                    ; restore player Y (C survives PLA)
-    pla
+    ldx EnemyIndex               ; X = slot again (ldx/sta preserve C)
+    lda ActiveObjectY
+    sta RoomY                    ; restore player Y (lda/sta preserve C)
+    lda ActiveObjectX
     sta RoomX                    ; restore player X
     bcs .TentOut                 ; wall → hold position
 .TentCommit:
     lda Temp
     sta EnemyRamX,X              ; clear → commit candidate step
 .TentOut:
-    rts
+    jmp UE_Next                  ; tail exit (rts would need a dispatch jsr)
 
 ; ------------------------------------------------------------------------------
 ; DeriveEnemyY — live Y for enemy slot X. Moving types are DERIVED, not stored:

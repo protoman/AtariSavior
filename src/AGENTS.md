@@ -473,6 +473,22 @@ myScanlineCountLast}`) — **left box first, right box second:**
 
 ### Lessons Learned
 
+**Explosion flicker = VBL overrun from elapsed-counter loops + per-frame full
+PF rebuild (2026-09-29):** the bomb explosion flickered (263-line frames) only
+late in state2's 60 frames. Three costs compounded: (1) old `.BgBlink` was an
+elapsed/3 subtract loop whose iteration count grew 0→~19 (≈171c) as the
+animation aged; (2) `ApplyBombWalls` thin-wall punch +224c per blast; (3) a
+full `LoadPFBuffer` (9 folds ≈384c) ran EVERY frame. Worst VBL 1539c >
+`TIM64T #23` = 1472c window → VBL ended after the timer → 263-line frame →
+flicker. Fixes: constant-time blink `and #3 / tay / lda BombBlinkColors,Y`
+(60 frames = 15 exact phase cycles — iteration count fixed forever);
+`LoadPFBuffer` split so VBL calls `LoadPF0Only` (3 folds ≈130c, −254c/frame)
+and the full rebuild runs only on `EnterRoom` (tail-jmp keeps the stack
+guard). Worst VBL 1539→1235c, margin +237c. **Rule:** budget VBL at the
+worst path × the LATEST-in-animation iteration count, not the first frame;
+elapsed-counter/subtract loops are forbidden in VBL (they age) — use a table
+index gated by frame phase. Recount from `bank0.lst` after any VBL growth.
+
 **Stack pushes are INVISIBLE to byte-audits — audit stack DEPTH, not operand
 bytes (2026-09-28, bomb never explodes in level 2):** BombTimer ($F7) went
 down then bounced back up forever ($33↔$3B), fuse never reached 0, state
