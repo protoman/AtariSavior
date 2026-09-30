@@ -16,8 +16,9 @@ Checks:
           room_id/grid/start/miner validity, enemy bounds/types,
           model_id exists, generated room .txt shape.
   E0    - EnemyRamY ($C3) alias contract: SelectActiveObject before the
-          first LoadPFBuffer (VBLANK), LoadEnemyRam after the last
-          LoadPFBuffer (EnterRoom), bank1 never writes $C3-$C5.
+          first LoadPF0Only (VBLANK PF0 repair) / LoadPFBuffer,
+          LoadEnemyRam after the full LoadPFBuffer (EnterRoom),
+          bank1 never writes $C3-$C5.
 
 Usage: verify_build.py [src_dir]
 """
@@ -254,23 +255,25 @@ def check_enemy_alias(src: Path) -> None:
 
     sel = first_line(r"^\s*jsr\s+SelectActiveObject\b")
     lpfs = [i for i, ln in enumerate(lines)
-            if re.match(r"\s*jsr\s+LoadPFBuffer\b", ln)]
+            if re.match(r"\s*jsr\s+LoadPF(?:0Only|Buffer)\b", ln)]
     ler = first_line(r"^\s*jsr\s+LoadEnemyRam\b")
     if sel < 0 or not lpfs or ler < 0:
-        err("enemy-alias: SelectActiveObject/LoadPFBuffer/LoadEnemyRam "
-            "jsr not found in kernel.asm")
+        err("enemy-alias: SelectActiveObject/LoadPF0Only/LoadPFBuffer/"
+            "LoadEnemyRam jsr not found in kernel.asm")
         return
     # VBLANK: draw reads EnemyRamY BEFORE the PF refresh overwrites $C3.
+    # (VBLANK calls LoadPF0Only — 3-fold PF0 repair; EnterRoom calls the
+    # full LoadPFBuffer, which begins with the same PF0 phase.)
     if sel > min(lpfs):
         err(f"enemy-alias: SelectActiveObject (line {sel + 1}) must run before "
-            f"the first jsr LoadPFBuffer (line {min(lpfs) + 1}) — "
+            f"the first jsr LoadPF0Only/LoadPFBuffer (line {min(lpfs) + 1}) — "
             f"EnemyRamY=$C3 reads PF0Buf rows 0-2")
     # EnterRoom: LoadEnemyRam writes EnemyRamY AFTER the PF refresh,
     # otherwise the refresh clobbers freshly loaded Y before the kernel.
     if ler < max(lpfs):
         err(f"enemy-alias: jsr LoadEnemyRam (line {ler + 1}) must run after "
-            f"the last jsr LoadPFBuffer (line {max(lpfs) + 1}) — PF refresh "
-            f"would clobber EnemyRamY")
+            f"the last jsr LoadPF0Only/LoadPFBuffer (line {max(lpfs) + 1}) — "
+            f"PF refresh would clobber EnemyRamY")
     # bank1 (HUD band) must never write the alias bytes.
     for m in re.finditer(r"sta\s+(\$C[3-5]|EnemyRamY)\b", bank1):
         err(f"enemy-alias: bank1.asm writes {m.group(1)} (EnemyRamY alias)")
