@@ -15,6 +15,9 @@ ASSERTIONS (exit 1 on any failure):
                     stack-owned zone. SP $F6 = wrote $F7 = BombTimer/BombX
                     physically stomped by return bytes (the 2026-09-28 bug,
                     invisible to any byte-audit of instruction operands).
+  5. tentacle  — coverage guard: a live tentacle is poked into the spawn
+                 room so the UE_Tentacle probe chain runs (without it the
+                 min-SP guard never sees the deepest gameplay path).
 
 TIA/RIOT stubs: INTIM always reads 0 (all `lda INTIM` waits exit at once),
 WSYNC/TIM64T writes ignored, SWCHA scripted, INPT4 = released ($40).
@@ -95,9 +98,13 @@ calls = []                  # dynamic jsr chain: [(pc, ret)]
 
 def step():
     global prev_pc, min_sp, min_sp_pc, min_sp_calls, min_sp_frame, \
-        min_sp_game, min_sp_gpc, min_sp_gframe, min_sp_gcalls
+        min_sp_game, min_sp_gpc, min_sp_gframe, min_sp_gcalls, probe_ran
     prev_pc = mpu.pc
-    op = mem[mpu.pc]
+    op = mem[prev_pc]
+    # stx EnemyIndex (opcode $86, operand $B9) exists ONLY in the UE_Tentacle
+    # probe's slot save — every other EnemyIndex writer uses sta/sty/inc.
+    if op == 0x86 and mem[prev_pc + 1] == 0xB9:
+        probe_ran = True
     mpu.step()
     if op == 0x20:                          # JSR: entered a subroutine
         calls.append(prev_pc)
@@ -121,6 +128,20 @@ while mpu.pc != PC_INIT_LOAD:
     if guard > 200000: sys.exit(f'never reached init LoadLevel (pc=${mpu.pc:04X})')
 mem.ram[IDX_A3] = 1                      # Level = 1 (second level)
 print(f'Level forced to 2 before jsr LoadLevel at ${PC_INIT_LOAD:04X}')
+
+# ---- tentacle coverage ----
+# Boot EnterRoom loads room0 with EnemyCount=0, so UpdateEnemies early-outs
+# and the UE_Tentacle probe chain — the deepest gameplay stack path — is never
+# exercised: the min-SP guard would pass blind to the 2026-09-30 bug class
+# (3x pha in the probe drove SP to $F4, jsr return bytes stomped BombTimer/
+# BombX every 4th frame, fuse never reached 0). Poke room1's 2 enemy records
+# live (record1 = tentacle type3) and put slot1 at x36: its first chase step
+# 36->35 crosses a 4px column boundary, defeating the same-column cull and
+# forcing the full PlayerHitsMap probe. Slot0 (snake @spawn 127) runs too.
+POKE_ENEMYCOUNT = 0x33          # EnemyCount     (ZP $B3 & $7F, bank0.lst U00b3)
+POKE_TENT_X     = 0x3E          # EnemyRamX slot1 (ZP $BE & $7F; tentacle $BD+1)
+poked = False
+probe_ran = False               # UE_Tentacle reached the PlayerHitsMap probe
 
 # ---- frame loop: press Down only AFTER the player has landed (OnGround b7) ----
 f7_log, b5_log = [], []                  # (frame, writer_pc, old, new, tag)
@@ -152,6 +173,13 @@ while frame < 420:
         prev_b5 = mem.ram[IDX_B5]
     if mpu.pc == PC_STARTFRAME:
         frame += 1
+        if not poked:
+            # boot EnterRoom already ran (EnemyCount was 0) and the sim never
+            # changes room, so these pokes persist for the whole run
+            mem.ram[POKE_ENEMYCOUNT] = 2
+            mem.ram[POKE_TENT_X] = 36
+            poked = True
+            print(f'tentacle coverage poked at f{frame}: EnemyCount=2, slot1 X=36')
         st = mem.ram[IDX_B5] & 3
         states_seen.append((frame, st))
         if drop_frame is None and mem.ram[IDX_F0] < 5:
@@ -174,6 +202,7 @@ while frame < 420:
 print(f'\nlanded f{landed_frame}; drop f{drop_frame}; '
       f'min SP whole-run=${min_sp:02X} (f{min_sp_frame}, pc=${min_sp_pc:04X}), '
       f'min SP gameplay=${min_sp_game:02X}')
+print(f'tentacle probe ran: {probe_ran}; EnemyCount final={mem.ram[POKE_ENEMYCOUNT]}')
 if min_sp < 0xF8 or min_sp_game < 0xF8:
     print(f'  deepest chain (whole): {chain_str(min_sp_calls)}')
     print(f'  deepest chain (gameplay): f{min_sp_gframe} pc=${min_sp_gpc:04X} '
@@ -219,6 +248,8 @@ checks = [
     ('returned to idle (state=0 after blast)', saw_idle_after),
     (f'min SP gameplay >= $F8 (actual ${min_sp_game:02X})', min_sp_game >= 0xF8),
     (f'min SP whole-run >= $F7 (actual ${min_sp:02X})', min_sp >= 0xF7),
+    ('tentacle coverage (probe ran + EnemyCount live)',
+     probe_ran and mem.ram[POKE_ENEMYCOUNT] == 2),
 ]
 print('\n== assertions ==')
 ok = True
