@@ -249,12 +249,14 @@ FetchPtr        = $E0           ; fold-indirect pointer ($E0 lo, $E1 hi) —
 ; Score lives at $F3-$F5 only ($F6/$F7 = BombX/BombTimer).
 ; EnemyRamY ($C3, 3B) ALIASES PF0Buf rows 0-2 — E0/E1 contract:
 ;   writers: RefreshEnemyY via DeriveEnemyY (overscan entry, EVERY frame —
-;            VBLANK LoadPFBuffer clobbers $C3 each frame; bat Y is derived
+;            VBLANK LoadPF0Only clobbers $C3 each frame; bat Y is derived
 ;            from ROM spawn + TickCounter, no stored movement state) +
 ;            LoadEnemyRam (EnterRoom init);
-;   readers: SelectActiveObject (VBLANK — MUST run BEFORE LoadPFBuffer),
+;   readers: SelectActiveObject (VBLANK — MUST run BEFORE LoadPF0Only),
 ;            CheckEnemyHit + LaserHitTest (overscan, after the refresh).
 ;   Ordering guards live in verify_build.py (VBLANK + EnterRoom + bank1).
+;   PF1/PF2 rows 0-2 have NO per-frame stomp → full LoadPFBuffer runs only
+;   on EnterRoom; VBLANK does the 3-fold PF0 repair (LoadPF0Only).
 EnemyRamX       = $BD           ; 3 bytes: live X per enemy ($BD-$BF, slots 0-2
                                 ; only — enemies+lamps capped at 3 by editor
                                 ; kMaxRoomElements, convert_level MAX_ENEMIES,
@@ -368,7 +370,7 @@ COLOR_HOT_R     = COLOR_BLINK_R
                                     ; (NOT deletable: $F008 = GameStart is a
                                     ;  hardcoded cross-bank entry — bank1
                                     ;  stub `jmp $F008`; this jmp also keeps
-                                    ;  $F18A Overscan + F0xx landmarks fixed)
+                                    ;  $F183 Overscan + F0xx landmarks fixed)
 
 GameStart:
     sei                         ; disable interrupts
@@ -455,11 +457,15 @@ StartFrame:
     ; applied HMP0 twice → player fine-adjust doubled (visual teleport/jitter).
 
     ; --- Select which object GRP1 draws this frame (miner or enemy) ---
-    ; MUST run before LoadPFBuffer: reads EnemyRamY ($C3 = PF0Buf rows 0-2).
+    ; MUST run before LoadPF0Only: reads EnemyRamY ($C3 = PF0Buf rows 0-2).
     jsr SelectActiveObject
 
-    ; --- Refresh PF buffers (bank1 corrupts them during HUD band) ---
-    jsr LoadPFBuffer
+    ; --- PF0 repair (the ONLY per-frame refresh; 3 folds ≈ 130c vs 384c) ---
+    ; $C3-$C5 (PF0 rows 0-2) are stomped every frame by EnemyRamY; PF1/PF2
+    ; rows 0-2 have NO per-frame writer (bank1 touches $E0-$EF only; rect
+    ; caches + RoomBandColor live in dead rows 3-11) — full 9-fold rebuild
+    ; only needed on EnterRoom.
+    jsr LoadPF0Only
     jsr ApplyBombWalls          ; S6.1: re-apply thin-wall holes every frame
     jsr BuildColupF            ; stripe+hot COLUPF bytes into ColupfBuf ($E7-$F2)
 
@@ -481,7 +487,7 @@ StartFrame:
     sta RoomBandColor
 
     ; --- Cave COLUBK for this frame → Temp (free until overscan) ---
-    ; state=2: blink (60-BombTimer)%3 → black/yellow/red; else COLOR_CAVE_BG
+    ; state=2: blink (60-BombTimer)&3 → black/yellow/red/yellow; else COLOR_CAVE_BG
     ; Dark room: black except the existing explosion blink (state=2).
     lda BombPacked
     and #%00000011
@@ -492,16 +498,15 @@ StartFrame:
     lda #COLOR_CAVE_BG          ; dark → black
     jmp .BgStore
 .BgBlink:
+    ; Constant-time phase: the old %3 subtract loop ran (elapsed)/3 iterations
+    ; (up to 19 × 9c ≈ 171c) and GREW every frame for 60 frames — with a thin
+    ; wall punched (ApplyBombWalls +224c) it blew the #23 VBL window late in
+    ; state2 → 263-line frames → explosion flicker (2026-09-29). &3 = 4-phase,
+    ; 60 frames = exact 15 cycles, starts black at explosion.
     lda #60
     sec
     sbc BombTimer
-.BgMod3:
-    cmp #3
-    bcc .BgModDone
-    sec
-    sbc #3
-    bne .BgMod3                 ; A=0 exits via bcc, not this
-.BgModDone:
+    and #3
     tay
     lda BombBlinkColors,Y
     jmp .BgStore
@@ -1089,8 +1094,12 @@ StepUp subroutine
 ; ==============================================================================
 ; Room management
 ; ==============================================================================
-; LoadPFBuffer: copy PF data from ROM to ZP buffers (3 bytes × 3 registers).
-; Called every frame during VBLANK because bank1's HUD corrupts the buffers.
+; LoadPF0Only (VBLANK, every frame): PF0 phase only — 3 folds ≈ 130c.
+;   Repairs the per-frame EnemyRamY stomp of $C3-$C5 (PF0 rows 0-2).
+; LoadPFBuffer (EnterRoom only): full 3-phase rebuild, 9 folds ≈ 384c.
+;   PF1/PF2 rows 0-2 have no per-frame writer, so they only need rebuilding
+;   once per room (bank1 touches $E0-$EF only; rect caches + RoomBandColor
+;   live in dead rows 3-11).
 ; Uses RoomPF0Lo/Hi, RoomPF1Lo/Hi, RoomPF2Lo/Hi (set by EnterRoom).
 ; ------------------------------------------------------------------------------
 ; P3.3: per-phase fold reads (level data lives in bank2). Stage FetchPtr
@@ -1102,7 +1111,10 @@ StepUp subroutine
 ; setup (the #75 timer had only ~273c headroom → variable setup blew it and
 ; the expired-timer garbage wait scattered frame lengths) and stops the fill
 ; from clobbering RoomBandColor = $D2 (PF1Buf[3]).
-LoadPFBuffer:
+; Split 2026-09-29: VBLANK calls LoadPF0Only instead of LoadPFBuffer
+; (-254c/frame) — level-1 object rooms + wall mask blew the #23 window
+; (worst 1539c, -67 → constant 263-line frames ≈ 1s after blast).
+LoadPF0Only:
     ; --- Phase 0: PF0 → $C3-$C5 — stage once ---
     lda RoomPF0Lo
     sta FetchPtr
@@ -1115,7 +1127,9 @@ LoadPFBuffer:
     iny
     cpy #3
     bne .LPB_PF0
+    rts
 
+LoadPFBuffer:               ; EnterRoom only — full rebuild (all 3 phases)
     ; --- Phase 1: PF1 → $CF-$D1 — stage once ---
     lda RoomPF1Lo
     sta FetchPtr
@@ -1142,7 +1156,9 @@ LoadPFBuffer:
     iny
     cpy #3
     bne .LPB_PF2
-    rts
+    jmp LoadPF0Only           ; tail: PF0 phase + rts — jsr here would cost
+                              ; +1 stack level (EnterRoom path hit SP $F5,
+                              ; stomping BombTimer $F7; sim_bomb_fuse gate)
 
 ; EnterRoom: load PF data and collision rectangles for room A (0-based index).
 ; Sets RoomNo, RoomPFDataLo/Hi, and RoomRectsLo/Hi.
@@ -2310,20 +2326,19 @@ BombMarkWalls:
 .BMWHi19:
     lda #19
 .BMWStoreHi:
-    sta CollisionCellX          ; blast_hi
-    lda RoomRectsLo
-    sta FetchPtr
-    lda RoomRectsHi
-    sta FetchPtr+1
-    ldy #0
-    jsr FoldIndirect            ; rect count (P3.6: bank2 fold)
+    sta CollisionCellX          ; blast_hi (loop compares rect.x against it)
+    lda RcBase                  ; cached rect count
     beq .BMWDone
-    sta RectCount
-    iny                         ; Y = base of first rect (1)
+    cmp #4
+    bcc .BMWCountOk
+    lda #4                      ; rooms with >4 rects: only rects 0-3 maskable
+.BMWCountOk:
+    tax                         ; X = rect count (1..4)
+    dex                         ; X = 3..0
 .BMWLoop:
-    tya
-    pha                         ; save base
-    jsr FoldIndirect            ; rect.x
+    lda ABWXTab,X
+    tay
+    lda 0,Y                     ; rect.x
     beq .BMWNext                ; x==0 = screen L/R border — never destroy
     cmp CollisionEndX
     bcc .BMWNext                ; x < lo
@@ -2331,23 +2346,11 @@ BombMarkWalls:
     beq .BMWCheckW              ; x == hi → in blast
     bcs .BMWNext                ; x > hi
 .BMWCheckW:
-    pla
-    pha
-    clc
-    adc #2
+    lda ABWWTab,X
     tay
-    jsr FoldIndirect            ; rect.w
+    lda 0,Y                     ; rect.w
     cmp #1
     bne .BMWNext
-    pla                         ; base
-    pha
-    sec
-    sbc #1
-    lsr
-    lsr                         ; index = (base-1)/4
-    tax
-    cpx #4
-    bcs .BMWNext
     lda BombMaskBit,X
     and BombPacked              ; already broken?
     bne .BMWNext                ; yes → no double score
@@ -2357,12 +2360,8 @@ BombMarkWalls:
     lda #$75                    ; +75 points per broken wall
     jsr AddScore
 .BMWNext:
-    pla
-    clc
-    adc #4
-    tay
-    dec RectCount
-    bne .BMWLoop
+    dex
+    bpl .BMWLoop
 .BMWDone:
     rts
 
@@ -2371,58 +2370,54 @@ BombMarkWalls:
 ;   bit in PF0Buf/PF1Buf/PF2Buf only for rows rect.y .. rect.y+h-1
 ;   (thin segment only — not into a wider join below/above).
 ; Early-out when WallMask=0 (common case).
+; Reads rect x/y/h directly from ZP rect cache (no FoldIndirect):
+;   Rect 0: x=$C7, y=$C8, h=$CA
+;   Rect 1: x=$CB, y=$CC, h=$CE
+;   Rect 2: x=$D3, y=$D4, h=$D6
+;   Rect 3: x=$D7, y=$D8, h=$DA
 ; ------------------------------------------------------------------------------
 ApplyBombWalls:
     lda BombPacked
     and #%01111000              ; WallMask b3-6 only
     beq .ABWDone
-    lda RoomRectsLo
-    sta FetchPtr
-    lda RoomRectsHi
-    sta FetchPtr+1
-    ldy #0
-    jsr FoldIndirect
-    beq .ABWDone
-    sta RectCount
-    iny
+    ldx #3                      ; rect index 3..0 (descending)
 .ABWLoop:
-    tya
-    pha                         ; save base
-    tya
-    sec
-    sbc #1
-    lsr
-    lsr                         ; index
-    tax
-    cpx #4
-    bcs .ABWAdv
     lda BombMaskBit,X
     and BombPacked
-    beq .ABWAdv
-    jsr FoldIndirect            ; rect.x
-    sta CollisionX              ; col (saved; Y will move)
-    iny
-    jsr FoldIndirect            ; rect.y → first row
+    beq .ABWNext
+    lda ABWXTab,X               ; ZP address of rect.x
+    tay
+    lda 0,Y                     ; rect.x (direct ZP read via Y pointer)
+    sta CollisionX
+    lda ABWYTab,X               ; ZP address of rect.y
+    tay
+    lda 0,Y                     ; rect.y = first row
     sta Temp
-    iny
-    iny                         ; Y → h
-    jsr FoldIndirect            ; rect.h
+    lda ABWHTab,X               ; ZP address of rect.h
+    tay
+    lda 0,Y                     ; rect.h
     clc
     adc Temp
     sec
     sbc #1
     sta CollisionCellX          ; last row = y+h-1
+    txa
+    pha                         ; rect index — ClearPFColumn clobbers X
     lda CollisionX              ; col
     jsr ClearPFColumn           ; A=col, Temp=first, CollisionCellX=last
-.ABWAdv:
     pla
-    clc
-    adc #4
-    tay
-    dec RectCount
-    bne .ABWLoop
+    tax
+.ABWNext:
+    dex
+    bpl .ABWLoop
 .ABWDone:
     rts
+
+; ZP address tables for ApplyBombWalls/BombMarkWalls rect cache (rects 0-3)
+ABWXTab: .byte $C7, $CB, $D3, $D7  ; rect.x ZP addresses
+ABWYTab: .byte $C8, $CC, $D4, $D8  ; rect.y ZP addresses
+ABWWTab: .byte $C9, $CD, $D5, $D9  ; rect.w ZP addresses
+ABWHTab: .byte $CA, $CE, $D6, $DA  ; rect.h ZP addresses
 
 ; ==============================================================================
 ; Data tables
@@ -2433,6 +2428,7 @@ BombBlinkColors:
     .byte COLOR_CAVE_BG         ; 0 black
     .byte COLOR_BLINK_Y         ; 1 yellow
     .byte COLOR_BLINK_R         ; 2 red
+    .byte COLOR_BLINK_Y         ; 3 yellow (4-phase blink: b/y/r/y)
 
 ; WallMask bit for rect index 0-3 (BombPacked b3-6)
 BombMaskBit:
@@ -2585,14 +2581,21 @@ YToRowTable:
 ; Returns C=0 if clear, C=1 if blocked.
 PlayerHitsMap:
 ; --- Tile row range (top, bottom) ---
+; Inlined YToCellRow: saves 2 JSR stack push levels (4B on stack) to keep SP >= $F8
     lda RoomY
-    jsr YToCellRow
-    stx CollisionCellY          ; top tile row
+    lsr
+    lsr                         ; A = scanline >> 2
+    tay
+    lda YToRowTable,Y
+    sta CollisionCellY          ; top tile row
     clc
     lda RoomY
     adc #PLAYER_SPRITE_H - 1
-    jsr YToCellRow
-    stx CollisionEndY           ; bottom tile row
+    lsr
+    lsr
+    tay
+    lda YToRowTable,Y
+    sta CollisionEndY           ; bottom tile row
 
 ; --- Visible left pixel -> text column range ---
 ; RESP0 target is RoomX-PlayerDir; offset varies by its coarse bin.
