@@ -101,7 +101,10 @@ AUDV1       = $1A
 SWCHA       = $0280
 BombSnd     = $F1
 JetPower    = $96
-TickCounter = $AC
+TickCounter = $AD               ; kernel's 60-frame timer ($AC = PlayerLives!).
+                                ; Was $AC (stale) — jet wobble at `lda
+                                ; TickCounter` read PlayerLives. Guard:
+                                ; verify_build check_equ_sync (S3.0).
 LaserState  = $C0       ; b7 fire held this frame (kernel.asm LaserState)
 EnemyRamP   = $C2       ; free-running frame clock (bank0 RefreshEnemyY incs)
 RoomNo      = $98

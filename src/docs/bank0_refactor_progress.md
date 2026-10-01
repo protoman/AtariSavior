@@ -52,12 +52,33 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
       Re-enable ONLY after S3.1 moves ColupfBuf rows 0-2 out of bank1's
       $E0-$EF stomp zone.
 
-## Phase 3 — ZP re-plan (atomic, high risk)
+## Phase 3 — ZP re-plan (sliced execution — atomicity traded for the S3.0 guard)
 
+Execution order: S3.0 → S3.0b → S3.4 → S3.1/S3.2 → S2.1 → S3.5.
+Each slice: edit → `./build.sh` + 4 tests → commit → (address movers also
+get a Stella checkpoint before the next slice).
+
+- [x] S3.0 cross-bank EQU sync guard (`check_equ_sync` in verify_build;
+      kernel authority = sequential `Name byte` walk + `Name = $XX`; hex
+      only; allowlist for documented aliases e.g. bank1 `Temp=$AD`)
+      → done: caught a LIVE bug on day one — bank1 `TickCounter = $AC`
+      read **PlayerLives** in the jet-sound wobble (`bank1.asm:770`,
+      `and #1` parity) → fixed `$AC`→`$AD` (30 Hz sputter now works).
+      Also deleted dead legacy EQUs `PF0ScoreBuf`/`PF1ScoreBuf` (decl-only,
+      zero references — 48px sprite score never used PF buffers).
+      Negative-tested (corrupt EQU → guard fails).
+- [ ] S3.0b dead-path deletions: bomb save/restore audit (BCF writes rows
+      0-2 only, never `$F0-$F2` → save/restore likely vestigial), dead
+      `ObjBot byte` decl (last sequential → no shift, frees `$BC`)
 - [ ] S3.1 shrink PF/Colup buffers 12→3 rows, contiguous rect cache
 - [ ] S3.2 single rect-copy loop; delete `.Stage3`, window switch, ABW tables
-- [ ] S3.3 hot rects into ZP cache → fold-free `HotOverlapFlag` (−2 SP levels)
+- [x] S3.3 hot rects into ZP cache → fold-free `HotOverlapFlag` (−2 SP levels)
+      → **obsolete: S5.1/S5.3 delivered it differently** — HOF body now
+      lives in bank2 reading level ROM directly (fold-free, bank2-local);
+      bank2 BuildColupF same. No ZP hot cache needed.
 - [ ] S3.4 private `EnemyRamY` → delete `LoadPF0Only` + alias guards
+      (target `$E2-$E4` — timing-verified: all Y reads land between the
+      overscan write and the next HUD stomp)
 - [ ] S3.5 rewrite `docs/zp_layout_skill.md`, re-measure min SP
 
 ## Phase 4 — data format
@@ -144,6 +165,7 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
 | 5 | S5.2 BombMarkWalls → bank1, count-return + caller score loop | −102 (3512→3410) | build+sim+3 tests OK | (this) |
 | 6 | S5.3 HotOverlapFlag → bank2 ($FE80 tramp, fold-free, ReturnPad exit) | −107 (3410→3303) | build+sim+3 tests OK + guard negative-test | (this) |
 | 7 | S5.4 LaserHitTest → bank2 ($FE86 tramp, A-result protocol) | −57 (3303→3246) | build+sim+4 tests OK + guard negative-test | (this) |
+| 8 | S3.0 cross-bank EQU guard + bank1 TickCounter fix + dead score EQUs | 0 B (bank1 operand swap) | build+sim+4 tests OK + guard negative-test | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 
