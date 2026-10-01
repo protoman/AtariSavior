@@ -473,6 +473,56 @@ myScanlineCountLast}`) — **left box first, right box second:**
 
 ### Lessons Learned
 
+**F6 hotspot MIRROR zone = $FFF6-$FFF9 — no fetched byte may ever live there
+(2026-09-30, E4 moth exit tramp frame-3 crash):** Stella's
+`CartridgeEnhanced::peek` (`CartEnh.cxx:157`,
+`if(hotspot() >= 0x80 && checkSwitchBank(address & ADDR_MASK, 0) && myRandomHotspots)`,
+`ADDR_MASK=$1FFF`, F6 `hotspot()=$1FF6`) calls `checkSwitchBank` on **reads** —
+the side effect fires even when `myRandomHotspots` is false (the `&&` already
+evaluated it). So ANY instruction fetch at `$FFF6-$FFF9` (the only addresses in
+code space with `addr & $1FFF ∈ $1FF6-$1FF9`) switches banks MID-INSTRUCTION.
+Real F6 is write-only (reads don't switch), so this bites Stella only — but the
+frame died exactly like hardware: the E4 moth exit pad at $FFF2 was
+`sta $1FF6 / jmp UE_Next`; the `jmp`'s operand fetches at $FFF6/$FFF7 flipped
+bank0→bank1 → operand hi read as $00 → `jmp $007D` → bank1 FF-fill runaway →
+HUD ran a 2nd time (+48 lines = 359/360-line frames) → each rogue Overscan
+re-entry leaked ~5 stack bytes → SP decayed $FF→$E1 over ~6 passes (~3 frames)
+→ `jsr RefreshEnemyY`'s return address (pushed at $01E0/$01E1) was the
+FetchPtr mirror, clobbered by DeriveEnemyY staging $FAC5 → `rts` → font data →
+SLO/JAM at $FAC9. **py65 could never see this** (its F6 mapper peeks pure ROM).
+Fix: exit pad moved to $FC49 (main headroom, `.ds $FC49 - *, 0` pin);
+guard `check_moth_tramp` now asserts `$FFF2-$FFF9` = fill in bank0/bank2.
+**Rule: treat `$xFFF6-$xFFF9` as reserved; before placing ANY code near
+$FFFx, check `addr & $1FFF` against $1FF6-$1FF9.** Recognize this bug family:
+sprite/enemy "teleports" + wall pass-through + odd frame lengths + a counter
+that decays in steps then never completes → look for a hidden bank flip, then
+for stack decay from mid-frame re-entries.
+
+**Tagged Stella trace recipe (needed to SEE addresses):** the pc column only
+prints when `disasm.list` has a tag ≥ pc; that list loads when the debugger
+prompt first shows (`loadListFile` from `PromptWidget::_firstTime`), which also
+runs the ROM-dir script. **The two trace scripts are kept RENAMED to
+`*.tracebak` by default** — `src/savior.script.tracebak` and
+`~/.config/stella/autoexec.script.tracebak` (both = `logTrace` + `run`); while
+active they trace EVERY instruction (millions of lines) and make the game
+crawl. To trace: `mv` both back to their exact names (`savior.script` /
+`autoexec.script`), run `timeout --signal=KILL 10 stella -debug -loglevel 2
+-logtoconsole 1 savior.bin`, then rename them to `*.tracebak` again.
+**Stella 7 persists settings in `~/.config/stella/stella.sqlite3` (table
+`settings`, no .ini)** — `logTrace` writes `dbg.logtrace=1` there and it
+survives sessions, so plain runs keep tracing after a trace session. Reset
+after any trace (python sqlite UPDATE): `dbg.logtrace=0`, `logtoconsole=0`,
+`loglevel=0`. Symptom of a dirty db: `stella savior.bin` prints a `trace` line
+per instruction (game crawls).
+— do NOT add `-dbg.logtrace 1` on the CLI (with `-debug` it produced zero trace
+lines). Health check WITHOUT addresses (no scripts, no debugger):
+`timeout 10 stella -loglevel 2 -logtoconsole 1 -dbg.logtrace 1 savior.bin` —
+gives frame/scn/A/X/Y/SP only. Bytes/disasm columns come from the stale
+`src/savior.lst` (Sep 16) — trust only
+the address + bank columns (bank = `getBank(pc)` at trace time; during the HUD
+band, `1/f57d` = the score loop, not the dispatch). Health check: per-frame max
+scn must be 262 and min SP ≥ $F9 after boot.
+
 **Explosion flicker = VBL overrun from elapsed-counter loops + per-frame full
 PF rebuild (2026-09-29):** the bomb explosion flickered (263-line frames) only
 late in state2's 60 frames. Three costs compounded: (1) old `.BgBlink` was an
