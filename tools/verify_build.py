@@ -19,6 +19,8 @@ Checks:
           first LoadPF0Only (VBLANK PF0 repair) / LoadPFBuffer,
           LoadEnemyRam after the full LoadPFBuffer (EnterRoom),
           bank1 never writes $C3-$C5.
+  Frozen - LEVEL_DATA_ADDR literal == bank2.lst LevelDataTable (models_data
+           regeneration shifts bank2 labels; stale literal = empty rect cache).
 
 Usage: verify_build.py [src_dir]
 """
@@ -436,6 +438,33 @@ def check_enemy_alias(src: Path) -> None:
         err(f"enemy-alias: bank1.asm writes {m.group(1)} (EnemyRamY alias)")
 
 
+def check_frozen_addrs(src: Path) -> None:
+    """Frozen cross-bank addresses must track the regenerated layout.
+
+    models_data growth shifts every bank2 label after it; LEVEL_DATA_ADDR
+    is a hardcoded literal in kernel.asm and silently reads shifted records
+    (empty rect cache, RoomX=0) when it goes stale.
+    """
+    kernel = src / "kernel.asm"
+    lst2 = src / "bank2.lst"
+    if not kernel.exists() or not lst2.exists():
+        err("kernel.asm/bank2.lst missing (frozen addr check)")
+        return
+    m = re.search(r"^LEVEL_DATA_ADDR\s*=\s*\$([0-9A-Fa-f]{4})",
+                  kernel.read_text(encoding="utf-8"), re.M)
+    if not m:
+        err("LEVEL_DATA_ADDR not found in kernel.asm")
+        return
+    want = int(m.group(1), 16)
+    labels2, _ = parse_lst(lst2.read_text(encoding="utf-8").splitlines())
+    got = labels2.get("LevelDataTable")
+    if got is None:
+        err("LevelDataTable label not found in bank2.lst")
+    elif got != want:
+        err(f"LEVEL_DATA_ADDR=${want:04X} but bank2 LevelDataTable=${got:04X} "
+            f"(bank2 layout shifted — update the frozen literal)")
+
+
 def check_room_txt(path: Path, label: str) -> None:
     if not path.exists():
         err(f"{label}: generated room txt missing ({path.name})")
@@ -580,6 +609,7 @@ def main() -> int:
     check_callpads(src)
     check_levels(src)
     check_enemy_alias(src)
+    check_frozen_addrs(src)
 
     for w in WARNS:
         print(f"  WARN: {w}")

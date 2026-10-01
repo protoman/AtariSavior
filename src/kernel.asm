@@ -594,20 +594,35 @@ StartFrame:
 
 .Row:
     ; --- Set PF registers for this tile row (TIA persists) ---
+    ; Store ORDER is cycle-critical (thin-yellow-line fix, 2026-10-01): the
+    ; stores land mid-visible (advance block then these pairs), so on the
+    ; row1→row2 band-transition line the left half must keep the OLD band's
+    ; PF+color while the right half may show the NEW band. Write cycles
+    ; (cN = CPU cycles on the setup line, x = pixel at 4x, HBLANK ends c22.7):
+    ;   PF0 w c34 x136 | PF1 w c41 x222 | COLUPF w c48 x296 |
+    ;   COLUBK w c54 (Temp = frame const, invisible) | PF2 w c61 x460
+    ; COLUPF 3rd: color flips at x296 = past ALL left ON-pixels (PF1 ends
+    ; x187, PF2 cell17 ends x287); cells18-19 (x288-319) are never ON in any
+    ; model row (PF2 bits6/7 always 0) so the flip there is invisible (BG =
+    ; COLUBK). PF2 LAST: store lands past every right-half PF2 pixel (x449)
+    ; → right PF2 keeps OLD band (= BG post-blast = no yellow; pre-blast
+    ; cell17 = new pattern's wall = looks new). Old order (PF2 3rd = w c48,
+    ; COLUPF last = w c61 x447) painted right PF2 (x350-446) NEW pattern
+    ; under OLD hot color = the blinking thin yellow line at y191/192.
     lda PF0Buf,X
     sta PF0
     lda PF1Buf,X
     sta PF1
-    lda PF2Buf,X
-    sta PF2
-
-    ; --- Set tile row colors (Temp = this frame's COLUBK, set in VBLANK) ---
-    lda Temp
-    sta COLUBK
     ; COLUPF precomputed by BuildColupF (stripe + hot pulse) — one ZP load.
     ; Inline stripe+hot test was 84-109c; budget is 76c/scanline.
     lda ColupfBuf,X
     sta COLUPF
+
+    ; --- Set tile row colors (Temp = this frame's COLUBK, set in VBLANK) ---
+    lda Temp
+    sta COLUBK
+    lda PF2Buf,X
+    sta PF2
     ; --- Scanlines this pass: rows 0/1 = 48; row 2 = 36 bodies. The bottom
     ; water strip (last ~12 lines, bottom_band_plan rule 2) renders in
     ; .WaterRow after this pass — its own setup line + 11 bodies keeps the
@@ -2464,7 +2479,7 @@ LAMP           = 5             ; type-5 enemy record = editor lamp (white square
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 2             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $FB03        ; frozen address of bank2's LevelDataTable
+LEVEL_DATA_ADDR = $FB04        ; frozen address of bank2's LevelDataTable
                                 ; (test asserts bank2.lst label == this)
 
 ; ==============================================================================
@@ -2889,7 +2904,10 @@ ReloadLevel:
 ;   any hot-only rect, set Temp bit 7 (HotBump). Called from PlayerHitsMap HIT
 ;   while CollisionCell* still describe the rejected position. Clobbers A/X/Y/
 ;   FetchPtr/RectCount (PlayerHitsMap returns immediately after).
-; Hot section: after solid count + N*4 solid bytes → hot count + M*4 hot bytes.
+; Hot section: after solid count + N*4 solid bytes → hot count + M*5 hot bytes.
+; Hot record = parent mask, x, y, w, h: parent mask = BombMaskBit of the
+; containing wall rect ($00 = no blastable parent); mask & BombPacked != 0 =
+; that wall was blasted → this hot piece is dead (hot_rock_wall_plan rule 4).
 ; TAIL-CALLED (jmp) from PlayerHitsMap HIT — no jsr level, stack depth guard:
 ;   the old jsr pushed the deepest chain to 9 (SP $F6) where $F6/$F7 =
 ;   BombX/BombTimer got stomped by return bytes (fuse never reached 0).
@@ -2914,38 +2932,42 @@ HotOverlapFlag:
 .HOVloop:
     tya
     pha
+    ; Parent gate — skip if the containing wall piece was already blasted.
+    jsr FoldIndirect            ; hot parent mask ($00 = never dies)
+    and BombPacked
+    bne .HOVnext
+    iny                         ; Y = base+1 (x)
     ; Column overlap (same tests as PlayerHitsMap)
     jsr FoldIndirect            ; rect.x
     cmp CollisionCellX
     beq .HOVcolOk
     bcc .HOVcolOk
-    jmp .HOVnext
+    bne .HOVnext                ; A > cellX → Z=0 (was jmp, -1B)
 .HOVcolOk:
     sta CollisionX
     iny
-    iny                         ; Y = base+2 (w)
+    iny                         ; Y = base+3 (w)
     clc
     jsr FoldIndirect
     adc CollisionX
     cmp CollisionEndX
     beq .HOVnext
     bcc .HOVnext
-    ; Row overlap — same dey count as PlayerHitsMap (base+2 → base+1).
-    ; Extra deys here read the hot-count byte as rect.y → death zone shifted up.
-    dey                         ; Y = base+1 (y)
+    ; Row overlap (base+3 → base+2 = y, same as PlayerHitsMap dey).
+    dey                         ; Y = base+2 (y)
     jsr FoldIndirect
     cmp CollisionEndY
     beq .HOVrowOk
     bcc .HOVrowOk
-    jmp .HOVnext
+    bne .HOVnext                ; A > endY → Z=0 (was jmp, -1B)
 .HOVrowOk:
     iny
-    iny                         ; Y = base+3 (h)
+    iny                         ; Y = base+4 (h)
     clc
     jsr FoldIndirect
     sta CollisionX
     dey
-    dey                         ; Y = base+1 (y)
+    dey                         ; Y = base+2 (y)
     jsr FoldIndirect
     adc CollisionX              ; y+h
     cmp CollisionCellY
@@ -2961,7 +2983,7 @@ HotOverlapFlag:
 .HOVnext:
     pla
     clc
-    adc #4
+    adc #5
     tay
     dec RectCount
     bne .HOVloop
@@ -3105,11 +3127,12 @@ BuildColupF:
 .BCFrect:
     tya
     pha
-    iny                         ; Y = base+1 (y)
+    iny
+    iny                         ; Y = base+2 (y; record = mask, x, y, w, h)
     jsr FoldIndirect
     sta CollisionCellX          ; first row
     iny
-    iny                         ; Y = base+3 (h)
+    iny                         ; Y = base+4 (h)
     clc
     jsr FoldIndirect
     adc CollisionCellX
@@ -3128,7 +3151,7 @@ BuildColupF:
 .BCFrectDone:
     pla
     clc
-    adc #4
+    adc #5
     tay
     dec RectCount
     bne .BCFrect
