@@ -2776,96 +2776,18 @@ ReloadLevel:
     rts
 
 ; ------------------------------------------------------------------------------
-; HotOverlapFlag — if the player's proposed tile range (CollisionCell*) overlaps
-;   any hot-only rect, set Temp bit 7 (HotBump). Called from PlayerHitsMap HIT
-;   while CollisionCell* still describe the rejected position. Clobbers A/X/Y/
-;   FetchPtr/RectCount (PlayerHitsMap returns immediately after).
-; Hot section: after solid count + N*4 solid bytes → hot count + M*5 hot bytes.
-; Hot record = parent mask, x, y, w, h: parent mask = BombMaskBit of the
-; containing wall rect ($00 = no blastable parent); mask & BombPacked != 0 =
-; that wall was blasted → this hot piece is dead (hot_rock_wall_plan rule 4).
-; TAIL-CALLED (jmp) from PlayerHitsMap HIT — no jsr level, stack depth guard:
-;   the old jsr pushed the deepest chain to 9 (SP $F6) where $F6/$F7 =
-;   BombX/BombTimer got stomped by return bytes (fuse never reached 0).
-;   Contract: every rts here returns C=1 (sec at both exits).
+; HotOverlapFlag — moved to bank2 (S5.3): fold-free body (HotOverlapBody)
+;   reads RoomRects directly via (FetchPtr),Y — 7 folds → 7 direct reads
+;   (one less push level on the hot path too). Entry tramp pinned $FE80
+;   (byte-identical bank0/bank2, moth pattern — the $FBF8-$FC48 pad window
+;   is full: 5 B left, a stub needs 6 B). Call sites below keep
+;   `jmp HotOverlapFlag` (tail: 0 push) and the C=1 contract: body ends
+;   `sec / jmp $FBF8` (ReturnPad), so the pad's rts pops the ORIGINAL
+;   caller's return. Full behavior docs moved with the body.
+;   Behavior: if the player's proposed tile range (CollisionCell*) overlaps
+;   any hot-only rect, set Temp bit 7 (HotBump), called from PlayerHitsMap
+;   HIT while CollisionCell* still describe the rejected position.
 ; ------------------------------------------------------------------------------
-HotOverlapFlag:
-    lda RoomRectsLo
-    sta FetchPtr
-    lda RoomRectsHi
-    sta FetchPtr+1
-    ldy #0
-    jsr FoldIndirect            ; solid count (P3.6: bank2 fold)
-    asl
-    asl                         ; *4
-    clc
-    adc #1                      ; +1 count byte → hot count offset
-    tay
-    jsr FoldIndirect
-    beq .HOVdone                ; no hot rects
-    sta RectCount
-    iny                         ; first hot rect base
-.HOVloop:
-    tya
-    pha
-    ; Parent gate — skip if the containing wall piece was already blasted.
-    jsr FoldIndirect            ; hot parent mask ($00 = never dies)
-    and BombPacked
-    bne .HOVnext
-    iny                         ; Y = base+1 (x)
-    ; Column overlap (same tests as PlayerHitsMap)
-    jsr FoldIndirect            ; rect.x
-    cmp CollisionCellX
-    beq .HOVcolOk
-    bcc .HOVcolOk
-    bne .HOVnext                ; A > cellX → Z=0 (was jmp, -1B)
-.HOVcolOk:
-    sta CollisionX
-    iny
-    iny                         ; Y = base+3 (w)
-    clc
-    jsr FoldIndirect
-    adc CollisionX
-    cmp CollisionEndX
-    beq .HOVnext
-    bcc .HOVnext
-    ; Row overlap (base+3 → base+2 = y, same as PlayerHitsMap dey).
-    dey                         ; Y = base+2 (y)
-    jsr FoldIndirect
-    cmp CollisionEndY
-    beq .HOVrowOk
-    bcc .HOVrowOk
-    bne .HOVnext                ; A > endY → Z=0 (was jmp, -1B)
-.HOVrowOk:
-    iny
-    iny                         ; Y = base+4 (h)
-    clc
-    jsr FoldIndirect
-    sta CollisionX
-    dey
-    dey                         ; Y = base+2 (y)
-    jsr FoldIndirect
-    adc CollisionX              ; y+h
-    cmp CollisionCellY
-    beq .HOVnext
-    bcc .HOVnext
-    ; Hot hit
-    pla
-    lda Temp
-    ora #%10000000
-    sta Temp
-    sec                         ; tail-call contract: return C=1
-    rts
-.HOVnext:
-    pla
-    clc
-    adc #5
-    tay
-    dec RectCount
-    bne .HOVloop
-.HOVdone:
-    sec                         ; tail-call contract: return C=1
-    rts
 
 ; ------------------------------------------------------------------------------
 ; LoseLife — the single life-loss path (enemy hit, timer expiry, bomb blast,
@@ -2993,7 +2915,19 @@ ObjSprites:
 ; other half: bank0 is switched away at $FEF2, bank2 is never entered here.
 ; The 6-byte pad is the only free hole before FoldIndirect's pinned $FEF6.
 ; ------------------------------------------------------------------------------
-    .ds $FEF0 - *, 0            ; fill ObjSprites..tramp gap (drift-proof)
+    .ds $FE80 - *, 0            ; S5.3 HOF entry tramp (byte-identical w/ bank2,
+                                ; guard: check_moth_tramp — pad window full)
+HotOverlapFlag:
+    sta $1FF8                   ; select bank2
+    jmp $FCF0                   ; bank2 HotOverlapBody (dead in bank0; guard
+                                ;   pins bank0/bank2 operands == bank2 label)
+    .ds $FE86 - *, 0            ; S5.4 LHT entry tramp (byte-identical w/ bank2,
+                                ; guard: check_moth_tramp — same pattern)
+LaserHitTest:
+    sta $1FF8                   ; select bank2
+    jmp $FF00                   ; bank2 LaserHitTestBody (dead in bank0; guard
+                                ;   pins operands == bank2.lst label)
+    .ds $FEF0 - *, 0            ; fill tramp..moth gap (drift-proof)
 UE_MothTramp:
     sta $1FF8                   ; select bank2
     jmp $F100                   ; bank2 MothRoutine (dead in bank0; guard pins
@@ -3154,7 +3088,17 @@ LaserInput:
     sta CollisionX              ; S4: cur arg for LaserHitTest (held path only)
     ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
     jsr SetObjectXPos           ; HMM0 applies at next frame's VBLANK HMOVE
-    jsr LaserHitTest            ; S4: swept kill — needs CollisionX + LaserState
+    ; S5.4: body moved to bank2 (pads cannot nest from a pad body — the
+    ; kill/lamp ACTIONS return here: A=0 miss / $50 kill / 1 lamp).
+    jsr LaserHitTest            ; S4: swept kill — result in A (+Z via ReturnPad)
+    beq .LaserNoHit
+    cmp #$50
+    beq .LaserKill
+    jsr CallPad_SetRoomDark     ; lamp crash = player-body touch (no kill, no score)
+    rts
+.LaserKill:
+    jsr CallPad_AddScore        ; A = $50 BCD (dead bit already set in body)
+.LaserNoHit:
     rts
 
 ; SweepOff — M0 offset ahead of the eye per sweep phase (LaserState b1-0).
@@ -3178,65 +3122,16 @@ BeamMask:
     .byte 0,0,2,2,0,0,0,0,0,0,0,0
 
 ; ------------------------------------------------------------------------------
-; LaserHitTest (S4) — swept laser kill. CollisionX = cur M0 arg, stored by
-; LaserInput .LaserPos (held path only). Interval = [cur, cur+7] (8 px
-; missile); sweep steps are 8 px = missile width, so consecutive frames tile
-; gap-free — no prev-frame storage needed. Vertical: beam rows [RoomY+2,
-; RoomY+3] vs enemy [Y,+7] -> (RoomY-Y)+3 in [0..8]. Horizontal (request
-; space, same convention as CheckEnemyHit): |eLo-lo| <= 7 via (d+7) in [0..14];
-; arg clamped [0,159] by LaserInput = screen-edge clip.
-; First live enemy in span: dead bit + #$50 + rts (next frame the mask skips
-; it — no resurrection, no double score). Lamp: overlap instead crashes the
-; lamp = SetRoomDark (same effect as player-body touch; no kill, no score).
-; Does NOT touch Temp (joystick still live at the call site).
+; LaserHitTest — MOVED to bank2 (S5.4, entry tramp $FE86 -> `jmp $FF00`).
+;   Fold-free: enemy records are level data in bank2 (direct (FetchPtr),Y),
+;   and the kill/lamp ACTIONS cannot run from a bank2 body (CallPads are
+;   bank0->bank1 only — pads cannot nest from a pad body). Body returns a
+;   RESULT CODE in A (+Z preserved through ReturnPad's sta/rts): 0 = miss,
+;   #$50 = kill (dead bit already set), 1 = lamp. LaserInput's tail does
+;   `beq / cmp #$50 / jsr CallPad_SetRoomDark | jsr CallPad_AddScore`.
+;   One less push level too (no fold / no pad call inside the body).
+;   Full behavior docs moved with the body.
 ; ------------------------------------------------------------------------------
-LaserHitTest:
-    ; --- Fold batch (P3.1): enemy record staged once — .LHHit reloads type;
-    ; loop writes no FetchPtr. ---
-    lda EnemyDataLo
-    sta FetchPtr
-    lda EnemyDataHi
-    sta FetchPtr+1
-    ldx #0
-.LHLoop:
-    cpx EnemyCount
-    bcs .LHTOut
-    lda EnemyDeadMask
-    and EnemyBitTable,X
-    bne .LHNext
-    lda RoomY
-    sec
-    sbc EnemyRamY,X
-    clc
-    adc #3                      ; (RoomY-eY)+3 in [0..8] = eY in [RoomY-5, RoomY+3]
-    cmp #9                      ; out of beam rows RoomY+2..3
-    bcs .LHNext
-    lda EnemyRamX,X
-    sec
-    sbc CollisionX
-    clc
-    adc #7
-    cmp #15                     ; (eLo-lo)+7 <=14 -> |d| <=7 = overlap w/ 8px missile
-    bcs .LHNext
-.LHHit:
-    ldy EnemyOffTable,X         ; re-fetch type (Y advanced for y-offset)
-    jsr FoldIndirect
-    cmp #LAMP
-    beq .LHLamp
-    lda EnemyDeadMask
-    ora EnemyBitTable,X
-    sta EnemyDeadMask
-    lda #$50
-    jsr CallPad_AddScore
-    rts
-.LHLamp:
-    jsr CallPad_SetRoomDark             ; crash lamp = same as player-body touch:
-    rts                         ; no kill bit, no score (idempotent no-op)
-.LHNext:
-    inx
-    bne .LHLoop
-.LHTOut:
-    rts
 
 ; ==============================================================================
 ; Interrupt vectors ($FFF2-$FFF9 = fill — NEVER put code here: $FFF6-$FFF9

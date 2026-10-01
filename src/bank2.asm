@@ -29,6 +29,10 @@ EnemyRamY = $C3                  ; live Y (refreshed this overscan)
 Rc4W = $DE
 Rc4H = $DF
 TILE_COLUMNS = 20
+RoomY = $81                    ; player Y — LaserHitTest vertical window
+EnemyCount = $B3               ; LaserHitTest loop bound
+EnemyDeadMask = $BA            ; LaserHitTest dead bits (written on kill)
+LAMP = 5                       ; enemy type: editor lamp — kernel LAMP must match
 ; --- BuildColupF (S5.1, moved from bank0) — addresses must match kernel.asm ---
 TILE_ROWS = 3                     ; playable color bands (rows 0-2 of ColupfBuf)
 RoomRectsLo = $90                 ; hot/solid rect stream — read directly here
@@ -480,6 +484,119 @@ BCFDarkMask:
     .byte $10, $20, $40, $80    ; IsRoomDark bits for RoomNo 0-3
 
 ; ------------------------------------------------------------------------------
+; HotOverlapBody — MOVED from bank0 (S5.3, kernel `jmp HotOverlapFlag` at
+; $FE80 tramp -> `jmp $FCF0` here). Fold-free: the hot-rect stream (RoomRects)
+; is level data in THIS bank, so the 7 `jsr FoldIndirect` become direct
+; `lda (FetchPtr),Y` (one less push level on the hot path too).
+; Behavior (full docs moved with the body): if the player's proposed tile
+; range (CollisionCell*) overlaps any hot-only rect, set Temp bit 7 (HotBump).
+; Called from PlayerHitsMap HIT while CollisionCell* still describe the
+; rejected position. Hot record = parent mask, x, y, w, h (5 B); parent mask
+; & BombPacked != 0 = that wall was blasted -> hot piece dead.
+; Contract: TAIL-CALLED from bank0 (`jmp`, 0 push) — every exit must return
+; C=1 to the ORIGINAL PlayerHitsMap caller. Exits therefore end
+; `sec / jmp $FBF8` (ReturnPad: sta $1FF6 switches to bank0, rts pops the
+; pre-tramp return address; sta touches neither A nor flags -> C survives).
+; Clobbers A/X/Y/FetchPtr/RectCount (caller returns immediately after).
+; ------------------------------------------------------------------------------
+    .ds $FCF0 - *, 0            ; pinned: bank0 tramp operand is literal $FCF0
+HotOverlapBody:
+    lda RoomRectsLo
+    sta FetchPtr
+    lda RoomRectsHi
+    sta FetchPtr+1
+    ldy #0
+    lda (FetchPtr),Y            ; solid count (direct read — data in this bank)
+    asl
+    asl                         ; *4
+    clc
+    adc #1                      ; +1 count byte → hot count offset
+    tay
+    lda (FetchPtr),Y            ; hot count
+    beq .HOVdone                ; no hot rects
+    sta RectCount
+    iny                         ; first hot rect base
+.HOVloop:
+    tya
+    pha
+    ; Parent gate — skip if the containing wall piece was already blasted.
+    lda (FetchPtr),Y            ; hot parent mask ($00 = never dies)
+    and BombPacked
+    bne .HOVnext
+    iny                         ; Y = base+1 (x)
+    ; Column overlap (same tests as PlayerHitsMap)
+    lda (FetchPtr),Y            ; rect.x
+    cmp CollisionCellX
+    beq .HOVcolOk
+    bcc .HOVcolOk
+    bne .HOVnext                ; A > cellX → Z=0 (was jmp, -1B)
+.HOVcolOk:
+    sta CollisionX
+    iny
+    iny                         ; Y = base+3 (w)
+    clc
+    lda (FetchPtr),Y            ; rect.w
+    adc CollisionX
+    cmp CollisionEndX
+    beq .HOVnext
+    bcc .HOVnext
+    ; Row overlap (base+3 → base+2 = y, same as PlayerHitsMap dey).
+    dey                         ; Y = base+2 (y)
+    lda (FetchPtr),Y            ; rect.y
+    cmp CollisionEndY
+    beq .HOVrowOk
+    bcc .HOVrowOk
+    bne .HOVnext                ; A > endY → Z=0 (was jmp, -1B)
+.HOVrowOk:
+    iny
+    iny                         ; Y = base+4 (h)
+    clc
+    lda (FetchPtr),Y            ; rect.h
+    sta CollisionX
+    dey
+    dey                         ; Y = base+2 (y)
+    lda (FetchPtr),Y            ; rect.y (re-read for y+h)
+    adc CollisionX              ; y+h
+    cmp CollisionCellY
+    beq .HOVnext
+    bcc .HOVnext
+    ; Hot hit
+    pla
+    lda Temp
+    ora #%10000000
+    sta Temp
+    sec                         ; tail-call contract: return C=1
+    jmp $FBF8                   ; ReturnPad → original caller (C survives)
+.HOVnext:
+    pla
+    clc
+    adc #5
+    tay
+    dec RectCount
+    bne .HOVloop
+.HOVdone:
+    sec                         ; tail-call contract: return C=1
+    jmp $FBF8                   ; ReturnPad → original caller (C survives)
+
+; ------------------------------------------------------------------------------
+; HOF entry tramp ($FE80-$FE85) — byte-identical with kernel.asm's copy
+; (guard: verify_build check_moth_tramp). bank0 executes `sta $1FF8` at
+; $FE80-$FE82; the fetch at $FE83 comes from THIS bank = `jmp $FCF0`. Neither
+; bank runs its other half: bank0 is switched away at $FE82, bank2 never
+; enters at $FE80. Pinned $FE80: the $FBF8-$FC48 pad window is full (5 B
+; left, a stub needs 6 B) and $FE86-$FEEF is the only free hole before the
+; moth tramp's $FEF0.
+; ------------------------------------------------------------------------------
+    .ds $FE80 - *, 0
+HotOverlapFlag:
+    sta $1FF8                   ; dead in bank2 (entry arrives at $FE83)
+    jmp HotOverlapBody          ; == $FCF0 — operand guard vs bank0 literal
+    .ds $FE86 - *, 0            ; S5.4 LHT tramp — byte-identical w/ kernel.asm
+LaserHitTest:
+    sta $1FF8                   ; dead in bank2 (entry arrives at $FE89)
+    jmp LaserHitTestBody        ; == $FF00 — operand guard vs bank0 literal
+
+; ------------------------------------------------------------------------------
 ; FoldIndirect — byte-identical copy of kernel.asm's block (same $FEF6
 ; address). bank0 executes bytes 1-3 (`sta $1FF8`, absolute — P3.1 deviation,
 ; see kernel.asm) then fetches bytes 4-9
@@ -503,6 +620,83 @@ FoldIndirect:
     lda (FetchPtr),Y
     sta $1FF6
     rts
+
+; ------------------------------------------------------------------------------
+; LaserHitTestBody — MOVED from bank0 (S5.4, entry tramp $FE86 -> `jmp $FF00`).
+; Swept laser kill. CollisionX = cur M0 arg, stored by LaserInput .LaserPos
+; (held path only). Interval = [cur, cur+7] (8 px missile); sweep steps are
+; 8 px = missile width, so consecutive frames tile gap-free — no prev-frame
+; storage needed. Vertical: beam rows [RoomY+2, RoomY+3] vs enemy [Y,+7] ->
+; (RoomY-Y)+3 in [0..8]. Horizontal (same convention as CheckEnemyHit):
+; |eLo-lo| <= 7 via (d+7) in [0..14]; arg clamped [0,159] = screen-edge clip.
+; Fold-free: enemy records are level data in THIS bank — stage once, direct
+; `lda (FetchPtr),Y` for the type (was `jsr FoldIndirect`).
+; RESULT PROTOCOL (pads cannot nest from a pad body — the kill/lamp actions
+; stay in bank0's LaserInput): every exit returns A + Z through ReturnPad
+; (sta/rts preserve both): A=0 miss / #$50 kill (dead bit set here, caller
+; scores) / A=1 lamp (caller does CallPad_SetRoomDark — same as player-body
+; touch; no kill, no score). First live enemy in span only (next frame the
+; dead mask skips it — no resurrection, no double score).
+; Does NOT touch Temp (joystick still live at the call site).
+; Clobbers A/X/Y/FetchPtr (caller re-inits X before SetObjectXPos next
+; frame; LaserInput dispatches on A right after the return).
+; ------------------------------------------------------------------------------
+    .ds $FF00 - *, 0            ; pinned: bank0 tramp operand is literal $FF00
+LaserHitTestBody:
+    ; --- Stage (P3.1): enemy record pointer — loop writes no FetchPtr ---
+    lda EnemyDataLo
+    sta FetchPtr
+    lda EnemyDataHi
+    sta FetchPtr+1
+    ldx #0
+.LHLoop:
+    cpx EnemyCount
+    bcs .LHTOut
+    lda EnemyDeadMask
+    and EnemyBitTable,X
+    bne .LHNext
+    lda RoomY
+    sec
+    sbc EnemyRamY,X
+    clc
+    adc #3                      ; (RoomY-eY)+3 in [0..8] = eY in [RoomY-5, RoomY+3]
+    cmp #9                      ; out of beam rows RoomY+2..3
+    bcs .LHNext
+    lda EnemyRamX,X
+    sec
+    sbc CollisionX
+    clc
+    adc #7
+    cmp #15                     ; (eLo-lo)+7 <=14 -> |d| <=7 = overlap w/ 8px missile
+    bcs .LHNext
+.LHHit:
+    ldy EnemyOffTable,X         ; type offset into staged record
+    lda (FetchPtr),Y            ; direct — level data in this bank (was fold)
+    cmp #LAMP
+    beq .LHLamp
+    lda EnemyDeadMask
+    ora EnemyBitTable,X
+    sta EnemyDeadMask
+    lda #$50                    ; result: kill — caller adds #$50 score
+    jmp $FBF8                   ; ReturnPad → bank0 caller (A/Z/C preserved)
+.LHLamp:
+    lda #1                      ; result: lamp — caller crashes the lamp
+    jmp $FBF8
+.LHNext:
+    inx
+    bne .LHLoop
+.LHTOut:
+    lda #0                      ; result: miss (Z set for caller's beq)
+    jmp $FBF8
+
+; Type-offset table (copy of kernel EnemyOffTable: enemy index * 6) and
+; dead-bit table (copy of kernel EnemyBitTable) — bank0 ROM is not visible
+; from here; labels keep the kernel-side test anchors working.
+EnemyOffTable:
+    .byte 0,6,12
+
+EnemyBitTable:
+    .byte $01, $02, $04, $08
 
     ; Pad to vectors at $FFFA ($FFF2-$FFF9 = fill — never code: $FFF6-$FFF9
     ; are F6 hotspot mirrors on peek, see MothExitPad at $FC49)
