@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Enemy-movement E0 reference checks (assert-based, no framework).
+"""Enemy-movement reference checks (assert-based, no framework).
 
-Verifies the EnemyRamY alias contract and E0 dispatch/gate facts directly
+Verifies the EnemyRamY placement contract and dispatch/gate facts directly
 against the sources, so a drift fails this check:
 
-  - EnemyRamY declared at $C3 (alias over PF0Buf rows 0-2)
+  - EnemyRamY declared at $E2 (private 3B since S3.4; sits inside bank1's
+    $E0-$EF HUD stomp zone but every write/read is ordering-safe)
   - VBLANK order: SelectActiveObject before LoadPFBuffer (draw reads Y first)
-  - EnterRoom order: LoadEnemyRam after LoadPFBuffer (PF refresh first)
+  - EnterRoom order: LoadEnemyRam after LoadPFBuffer (source-order legacy;
+    the bytes are disjoint since S3.4 but the order is kept)
   - LoadEnemyRAM copies ROM y into EnemyRamY for every slot
-  - RefreshEnemyY runs at overscan entry, before LaserInput/CEH (the VBLANK
-    LoadPFBuffer clobbers $C3 every frame — without this, enemies render
-    one frame then vanish)
+  - RefreshEnemyY runs at overscan entry, before LaserInput/CEH (writes the
+    safe window: after the HUD score-ptr stomp, before every reader —
+    without it, enemies render stale/vanish)
   - all three Y readers use EnemyRamY (draw, CheckEnemyHit, LaserHitTest)
   - UpdateEnemies: loop ungated, snake carries its own TickCounter & 3 gate
   - speeds per plan: snake &3 (1px/4f); others added in E1-E4
@@ -36,10 +38,10 @@ def line_no(pattern: str, flags: int = 0) -> int:
 
 def main() -> None:
     # --- declarations -----------------------------------------------------
-    m = re.search(r"EnemyRamY\s*=\s*\$C3\b", KERNEL)
-    assert m, "EnemyRamY must be $C3 (PF0Buf rows 0-2 alias)"
+    m = re.search(r"EnemyRamY\s*=\s*\$E2\b", KERNEL)
+    assert m, "EnemyRamY must be $E2 (private since S3.4, was $C3 alias)"
     assert re.search(r"PF0Buf\s*=\s*\$C3\b", KERNEL), \
-        "PF0Buf must stay $C3 (alias base moved — redo E0 contract)"
+        "PF0Buf must stay $C3 (rows 0-2 pure since S3.4)"
 
     # --- ordering ---------------------------------------------------------
     sel = line_no(r"^\s*jsr\s+SelectActiveObject\b")
@@ -52,7 +54,7 @@ def main() -> None:
     assert ler > max(lpfs), \
         f"EnterRoom order broken: LoadEnemyRam@{ler} must follow LoadPF@{max(lpfs)}"
 
-    # --- per-frame refresh (VBLANK LoadPF clobbers the $C3 alias) ---------
+    # --- per-frame refresh (safe window: post-HUD-stomp, pre-read) --------
     rey = line_no(r"^\s*jsr\s+RefreshEnemyY\b")
     laser = line_no(r"^\s*jsr\s+LaserInput\b")
     ceh = line_no(r"^CheckEnemyHit:")

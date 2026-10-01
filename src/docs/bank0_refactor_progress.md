@@ -82,9 +82,18 @@ get a Stella checkpoint before the next slice).
       → **obsolete: S5.1/S5.3 delivered it differently** — HOF body now
       lives in bank2 reading level ROM directly (fold-free, bank2-local);
       bank2 BuildColupF same. No ZP hot cache needed.
-- [ ] S3.4 private `EnemyRamY` → delete `LoadPF0Only` + alias guards
-      (target `$E2-$E4` — timing-verified: all Y reads land between the
-      overscan write and the next HUD stomp)
+- [x] S3.4 private `EnemyRamY` → delete `LoadPF0Only` + alias guards
+      → done: `EnemyRamY` `$C3→$E2-$E4` (inside bank1's HUD stomp zone,
+      ordering-safe: every write is overscan-post-stomp, every read is
+      pre-next-stomp — window diagram in kernel ZP contract). Effect:
+      - `$C3-$C5` pure PF0 → VBL `jsr LoadPF0Only` (3 folds ≈130c/frame)
+        deleted; routine KEPT as `LoadPFBuffer`'s tail jump (EnterRoom
+        full rebuild still needs the PF0 phase).
+      - `check_enemy_alias` guard deleted; `test_enemy_movement` re-pinned
+        to `$E2`; bank2 EQU synced — **negative-tested with the S3.0
+        equ-sync guard** (stale `$C3` in bank2.asm → caught).
+      - Overscan `$F176→$F173` (jsr removal) → bank1 pad + landmark synced.
+      bank0 −3B (jsr), −130c/frame VBL.
 - [ ] S3.5 rewrite `docs/zp_layout_skill.md`, re-measure min SP
 
 ## Phase 4 — data format
@@ -173,6 +182,7 @@ get a Stella checkpoint before the next slice).
 | 7 | S5.4 LaserHitTest → bank2 ($FE86 tramp, A-result protocol) | −57 (3303→3246) | build+sim+4 tests OK + guard negative-test | (this) |
 | 8 | S3.0 cross-bank EQU guard + bank1 TickCounter fix + dead score EQUs | 0 B (bank1 operand swap) | build+sim+4 tests OK + guard negative-test | (this) |
 | 9 | S3.0b bomb save/restore + ObjBot decl deleted; Overscan $F182→$F176 | −12 (3246→3234; bank2 −12) | build+sim+4 tests OK | (this) |
+| 10 | S3.4 EnemyRamY $C3→$E2, VBL LoadPF0Only repair deleted | −3 (3234→3231) | build+sim+4 tests OK + equ-sync negative-test | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 
