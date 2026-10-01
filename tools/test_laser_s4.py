@@ -69,9 +69,17 @@ def main() -> None:
         "held gate bit ($02) must survive the bound packing"
     assert ".LaserBlocked" in text and "jmp .LaserReleased" in text, \
         "fully-occluded beam must take the blocked path (beam off, no kill)"
-    assert "cmp RcBase" in text and "sta RectCount" in text.split(
-        ".LOEye:")[1].split("jsr LaserHitTest")[0], \
-        "occlusion walk must clamp bestEnd over the rect cache"
+    walk = text.split("LaserWallClamp:")[1].split("LaserBoundTable")[0]
+    assert "cmp RcBase" in walk and "sta RectCount" in walk, \
+        "occlusion walk must clamp bestCol over the rect cache"
+    # rect cache is TEXT COLUMNS (0-19) + band rows — path px must be >>2'd,
+    # and each rect's mirrored right-half span must be tested too
+    assert walk.count("lsr") >= 4, \
+        "path endpoints must convert px → columns (lsr lsr each)"
+    assert "lda #39" in walk and "sbc RcW1+1,X" in walk, \
+        "mirror span [39-(x+w-1), 39-x] test missing — right-half walls " \
+        "would not occlude"
+    assert "RcW1+3,X" in walk, "row test must use rect.h (band units)"
     assert "ora EnemyBitTable,X" in hit and "sta EnemyDeadMask" in hit, \
         "kill path changed"
     assert "cmp #LAMP" in hit and ".LHLamp" in hit, \
