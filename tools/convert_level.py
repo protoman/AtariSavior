@@ -284,7 +284,8 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
 # slot 3 would collide with LaserState at $C0 (docs/zp_layout_skill.md).
 MAX_ENEMIES = 3
 # Per-enemy byte layout in LEVEL{n}_EnemyDataTable (see _enemy_tables).
-ENEMY_STRIDE = 6
+ENEMY_STRIDE = 4  # S4.1: was 6 — range_min/range_max dropped from ROM (dead:
+                  # kernel skips them; editor JSON keeps the fields)
 
 
 def _room_bottom_color(room: dict) -> int:
@@ -309,16 +310,16 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
     at the tile center and shifted left by half its 4px sprite width.
 
     LEVEL{n}_EnemyDataTable is a flat list of ENEMY_STRIDE-byte records:
-    type, x, y, range_min, range_max, dir (range/speed are reserved for
-    future patrolling; only type/x/y are consumed today).
+    type, x, y, dir (S4.1 — range_min/range_max dropped from ROM: nothing
+    read them; the editor JSON still carries those fields).
     LEVEL{n}_RoomEnemies has one 4-byte record per room:
     ptr_lo, ptr_hi, count, bottom_color (0 = no bottom band).
     """
-    flat: list[tuple[int, int, int, int, int, int]] = []
+    flat: list[tuple[int, int, int, int]] = []
     counts: list[int] = []
     bottoms: list[int] = []
     # Lamp entries are merged into the enemy table as type=5 (kernel LAMP).
-    # Same 6-byte stride / RoomEnemies records — no separate lamp table.
+    # Same 4-byte stride / RoomEnemies records — no separate lamp table.
     LAMP_TYPE = 5
     for index, room in enumerate(rooms):
         entities = [e for e in (room.get("enemies") or [])]
@@ -327,8 +328,6 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
                 "type": LAMP_TYPE,
                 "x": lamp.get("x", 0),
                 "y": lamp.get("y", 0),
-                "range_min": 0,
-                "range_max": 0,
                 "dir": 1,
             })
         entities = entities[:MAX_ENEMIES]
@@ -343,18 +342,16 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
                 type_,
                 enemy_x_px(x),
                 px(float(enemy.get("y", 0)), 12),
-                px(float(enemy.get("range_min", 0)), 4),
-                px(float(enemy.get("range_max", 0)), 4),
                 int(enemy.get("dir", 1)),
             ))
     lines = [""]
     lines += [
         f"; Enemy data: {len(flat)} enemy records across {len(rooms)} rooms, "
-        f"{ENEMY_STRIDE} bytes each (type,x,y,range_min,range_max,dir).",
+        f"{ENEMY_STRIDE} bytes each (type,x,y,dir).",
         f"{prefix}_EnemyDataTable:",
     ]
-    for type_, x, y, rmin, rmax, dir_ in flat:
-        lines.append(f"  .byte {type_}, {x}, {y}, {rmin}, {rmax}, {dir_}")
+    for type_, x, y, dir_ in flat:
+        lines.append(f"  .byte {type_}, {x}, {y}, {dir_}")
     lines += [
         "",
         "; Per-room enemy records: ptr_lo, ptr_hi, count, bottom_color.",
