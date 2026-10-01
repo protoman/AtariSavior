@@ -58,9 +58,9 @@ def main() -> None:
     assert "adc #7" in hit and "cmp RectCount" in hit, \
         "horizontal window must compare against the staged bound (S6)"
     # --- S6 wall occlusion contract (kernel side) --------------------------
-    assert "LaserBoundTable" in text and \
-        ".byte 8,9,9,11,11,11,11,15" in text, \
-        "LaserBoundTable missing/changed (floor-pow2 W+7 for W=1..8)"
+    assert "LaserFloorTable" in text and \
+        ".byte 1,2,2,4,4,4,4,8" in text, \
+        "LaserFloorTable missing/changed (floor-pow2 drawn width, W=1..8)"
     assert re.search(
         r"lda\s+LaserBeamOn[^\n]*\n\s*and\s+#\$30[^\n]*\n\s*sta\s+NUSIZ0",
         text), \
@@ -69,16 +69,24 @@ def main() -> None:
         "held gate bit ($02) must survive the bound packing"
     assert ".LaserBlocked" in text and "jmp .LaserReleased" in text, \
         "fully-occluded beam must take the blocked path (beam off, no kill)"
-    walk = text.split("LaserWallClamp:")[1].split("LaserBoundTable")[0]
+    walk = text.split("LaserWallClamp:")[1].split(".ds $FE10")[0]
     assert "cmp RcBase" in walk and "sta RectCount" in walk, \
         "occlusion walk must clamp bestCol over the rect cache"
+    # end-flush: floorW → bound (adc #7) and drawLo = wallPx - floorW
+    # (sta CollisionX after the found-check) — the beam must TOUCH the wall
+    assert re.search(r"adc\s+#7[^\n]*\n\s*sta\s+RectCount", walk), \
+        "bound = floorW+7 staging missing"
+    assert re.search(
+        r"sbc\s+RectCount[^\n]*\n\s*sta\s+CollisionX", walk), \
+        "end-flush shift (drawLo = wallPx - floorW) missing — beam would " \
+        "stop short of large walls"
     # rect cache is TEXT COLUMNS (0-19) + band rows — path px must be >>2'd,
     # and each rect's mirrored right-half span must be tested too
     assert walk.count("lsr") >= 4, \
         "path endpoints must convert px → columns (lsr lsr each)"
-    assert "lda #39" in walk and "sbc RcW1+1,X" in walk, \
-        "mirror span [39-(x+w-1), 39-x] test missing — right-half walls " \
-        "would not occlude"
+    assert "lda #39" in walk and "sbc RcW1,X" in walk, \
+        "mirror span [39-(x+w-1), 39-x] test missing (mHi = 39-x reads " \
+        "rect.x at RcW1+0,X — +1 is rect.y!)"
     assert "RcW1+3,X" in walk, "row test must use rect.h (band units)"
     assert "ora EnemyBitTable,X" in hit and "sta EnemyDeadMask" in hit, \
         "kill path changed"
