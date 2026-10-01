@@ -102,6 +102,8 @@ SWCHA       = $0280
 BombSnd     = $F1
 JetPower    = $96
 TickCounter = $AC
+LaserState  = $C0       ; b7 fire held this frame (kernel.asm LaserState)
+EnemyRamP   = $C2       ; free-running frame clock (bank0 RefreshEnemyY incs)
 RoomNo      = $98
 LevelConnLo = $A1
 LevelConnHi = $A2
@@ -720,6 +722,8 @@ BallXTable:             ; B=0..120; = max(4, actual body red@); mono
 
 JET_AUD_BASE = $0F           ; mirrors kernel.asm EQU (value guarded by tests)
 JET_AUD_VOL  = $08
+LASER_AUD_C  = 2             ; mirrors kernel.asm EQU: div-15 tone = low pitch
+LASER_AUD_V  = 9
 
 UpdateBombSound:
     lda BombSnd
@@ -909,6 +913,38 @@ SetRoomDark:
 BitMaskTable:
     .byte $01, $02, $04, $08, $10, $20, $40, $80
 
+; UpdateLaserSound — low "zoom" tone on channel 0 while fire is held.
+; Call order in bank0 overscan: UpdateBombSound, UpdateJetSound, this — so
+; AUDV0 is already forced to 0 by UpdateBombSound when BombSnd = 0, which is
+; exactly what silence-on-release needs (this routine then does nothing).
+; Bomb events own ch0 (BombSnd > 0 -> skip) so blip/explosion stay audible.
+; Pitch sweeps AUDF 4..14 on the free-running frame clock: AUDC=2 divides by
+; 15, so f = 31400/((AUDF+1)*15) = 419..140 Hz (low). Triangle, 8 steps x
+; 8 frames = 1.07 s per cycle, no audible wrap jump.
+; Clobbers A/X; Y preserved. No ZP writes.
+UpdateLaserSound:
+    lda BombSnd
+    bne .ULSOut                 ; bomb event owns channel 0
+    lda LaserState
+    bpl .ULSOut                 ; fire released -> ch0 stays silent
+    lda EnemyRamP
+    lsr
+    lsr
+    lsr                         ; /8 frames per sweep step
+    and #7
+    tax
+    lda LaserFreqTable,X
+    sta AUDF0
+    lda #LASER_AUD_C
+    sta AUDC0
+    lda #LASER_AUD_V
+    sta AUDV0
+.ULSOut:
+    jmp $FBF8
+
+LaserFreqTable:
+    .byte 4,7,10,12,14,12,10,7
+
 ; ========================================================================
 ; Cross-bank call pads — byte-identical to bank0 at these addresses
 ; (docs/leaf_move_plan.md). F6 hotspot ignores the written value, so pads
@@ -945,6 +981,9 @@ CallPad_IsRoomDark:
 CallPad_SetRoomDark:
     sta $1FF7
     jmp $FABE
+CallPad_UpdateLaserSound:
+    sta $1FF7
+    jmp $FADA
 
 ; ========================================================================
 ; Fold-pad stubs (byte-identical to bank0)

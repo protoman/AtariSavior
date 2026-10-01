@@ -8,32 +8,14 @@ Eorley Savior.
 =========================================================================================================================================================================
 BUGS
 =========================================================================================================================================================================
-HERO, a game that is way more complex than ours, can fit the whole game in two 4k banks.
-So, is it code optimization, or there are some things we are doing in a much more complex way, we could simplify? If yes, witch ones?
-
-Can we move, maybe the data tables to bank1 that is currently used by the HUD?
-
-Can we compact the current code? I mean, optimize it in any way to make it take less space?
-
-=========================================================================================================================================================================
+After blasting a thin wall that has hot walls, player dies. I do believe there is a small, 1 or 2px, band vertical displacement that might cause this.
 
 
 Player invert direction to left when changing rooms sometimes
-Sometimes player dies after exploding a hot thin wall.
 
 
 #########################################################################################################################################################################
 
-Now let's implement movement for enemies besides snake that already have one.
-Create a plan for implementing each at a time, so we can test it properly and avoid bugs/
-
-# Moth:
-    Moves into direction it is facing then back. It should move about 6 tiles, and stop and invert direction if hits a wall.
-    While moving horizontally, vertically it should move in sine wave of about 1 tile updown.
-
-=========================================================================================================================================================================
-
-Laser Sound - low pitch buzz
 
 =========================================================================================================================================================================
 
@@ -52,13 +34,9 @@ Player entering the stage when starting, passing level or dying
 
 =========================================================================================================================================================================
 
-
-
 - non mirrored walls
 
 - water movement (3 px up, 3px down, slow)
-
-
 
 =========================================================================================================================================================================
 
