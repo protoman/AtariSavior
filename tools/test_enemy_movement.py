@@ -151,6 +151,67 @@ def main() -> None:
     assert "ENEMY_SPIDER" not in ue, \
         "UpdateEnemies must not move the spider (movement is derived)"
 
+    # --- E4: moth Y arm (MothYDerive in the $FC4F gap, docs/e4_moth_plan) ---
+    assert "bpl .REYLoop" not in KERNEL, \
+        "refresh loop exit must test X, not the derived-Y sign (bpl ran away)"
+    assert re.search(r"txa[^\n]*\n\s*bne \.REYLoop", KERNEL), \
+        "RefreshEnemyY countdown must end with txa/bne (flags from X)"
+    assert ".DEYDelta" not in KERNEL, \
+        "DEYDelta must be a global label (gap leaf cannot jmp a local)"
+    assert "cmp #ENEMY_MOTH" in dey and "jmp MothYDerive" in dey, \
+        "DeriveEnemyY must dispatch the moth to MothYDerive"
+    moth = KERNEL.split("MothYDerive:")[1].split("org $FC68")[0]
+    assert "and #15" in moth and "cmp #8" in moth, \
+        "moth phase must be (P>>2)&15 with triangle mirror at 8"
+    assert moth.count("lsr") >= 2, \
+        "vertical tick = P>>2 (half the X tick — user speed tuning)"
+    assert "lda #6" in moth, "moth delta must clamp tri <= 6 (exact ±6)"
+    assert "adc #$FA" in moth, "moth delta = asl then -6 (x2-6)"
+    assert moth.count("jmp DEYDelta") == 1, \
+        "moth must jump-tail into the shared delta+spawn-y add"
+    assert "sta EnemyRamP" not in moth, "MothYDerive reads the clock only"
+
+    # --- E4 Stage C: bank2 MothRoutine horizontal patrol ---------------------
+    b2 = (ROOT / "src" / "bank2.asm").read_text(encoding="utf-8")
+    mr = b2.split("MothRoutine:")[1].split("MothBitTable:")[0]
+    body = "\n".join(ln.split(";")[0] for ln in mr.splitlines())
+    assert "jsr" not in body, \
+        "bank2 moth must never jsr (mid-bank2 fold = frozen player)"
+    assert "jmp UE_Next" not in body, \
+        "exit only via jmp MothExitPad (bank0's pad half serves UE_Next)"
+    assert "and #1" in body, "gate = EnemyRamP & 1 (1 px / 2 frames)"
+    assert "stx EnemyIndex" in body and "ldx EnemyIndex" in body, \
+        "slot must survive the col swap + rect walk (X clobbers, E3 lesson)"
+    assert "lda EnemyDataLo" in body and "sta FetchPtr" in body, \
+        "every exit must re-stage FetchPtr (the walk overwrites it)"
+    assert body.rstrip().endswith("jmp MothExitPad"), \
+        "tail must jmp MothExitPad"
+    assert "sta EnemyRamX,X" in body, "clear path must commit candidate X"
+    assert "eor EnemyRamD" in body, "turn must flip the live dir bit"
+    assert body.count("(FetchPtr),Y") >= 6, \
+        "spawn + rect-walk reads must be direct (FetchPtr),Y (records in bank2)"
+    assert re.search(r"cmp\s+#160", body), \
+        "wrap/off-screen candidate must turn (plan's mod-256 range passes 255)"
+    assert re.search(r"cmp\s+#33", body) and re.search(r"cmp\s+#224", body), \
+        "range check = spawn ± 8 tiles mod-256 (cmp #33 / cmp #224)"
+    assert body.count("sbc #7") >= 2, \
+        "cols must start at VISIBLE left (Temp-5/-7 bomb convention), not Temp"
+    assert "adc #8" in body and "adc #1" in body, \
+        "rows must be visual Y+1..Y+8 (GRP1 ObjTop+1 window)"
+    assert body.count("MothRowTable,Y") == 2, \
+        "rows must convert via the /48 band table (the old >>4 = /16 gave " \
+        "rows 3-4 = below every rect -> probe never hit -> walked into wall)"
+    mrt = b2.split("MothRowTable:")[1].split("org")[0]
+    mvals = []
+    for byte_line in re.findall(r"\.byte ([\d,]+)", mrt):
+        mvals += [int(v) for v in byte_line.split(",") if v.strip()]
+    assert len(mvals) == 48 and mvals == sorted(mvals), \
+        f"MothRowTable must be 48 ascending /48-band entries, got {len(mvals)}"
+    assert ".byte $01, $02, $04" in b2, \
+        "MothBitTable = per-slot dir bits (bank2-local copy)"
+    assert ".byte $08, $10, $20, $40" in b2, \
+        "MothMaskBit = BombMaskBit copy (destroyed-rect skip)"
+
     # --- space fix: YToCellRow uses the 48-entry (A>>2) table -------------
     ytc = KERNEL.split("YToCellRow subroutine")[1].split("PlayerHitsMap:")[0]
     assert re.search(r"lsr[^\n]*\n\s*lsr[^\n]*\n\s*tay", ytc), \

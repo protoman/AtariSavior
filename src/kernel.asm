@@ -1342,13 +1342,10 @@ LoadEnemyRam:
 LER_Loop:
     cpx EnemyCount
     bcs LER_Done
-    txa                         ; Y = X * 6 (= x2 + x4)
-    asl
-    sta Temp
-    asl
-    clc
-    adc Temp
-    tay
+    ldy EnemyOffTable,X         ; Y = X*6 (table lookup — same as UE_Loop;
+                                ; drops the 9 B txa/asl/sta Temp/asl/clc/adc
+                                ; sequence, -6 B main. No caller reads Temp
+                                ; after this routine.)
     iny                         ; +1 = x
     jsr FoldIndirect
     sta EnemyRamX,X
@@ -1577,6 +1574,10 @@ DeriveEnemyY:
     beq .DEYTickShift
     cmp #ENEMY_SPIDER
     beq .DEYSpiderTick
+    cmp #ENEMY_MOTH             ; E4: Y arm lives in the $FC4F gap
+    bne .DEYStatic
+    jmp MothYDerive
+.DEYStatic:
     iny
     iny
     jsr FoldIndirect            ; static types: ROM y
@@ -1593,11 +1594,11 @@ DeriveEnemyY:
 .DEYBobTick:                    ; shared bob delta: triangle(p&3) = 0,1,2,1
     and #3
     cmp #3
-    bne .DEYDelta
+    bne DEYDelta
     lda #1                      ; 3 -> 1
-                                ; (dead `jmp .DEYDelta` removed — target was
+                                ; (dead `jmp DEYDelta` removed — target was
                                 ;  the very next instruction)
-.DEYDelta:                      ; A = delta, then add ROM spawn y
+DEYDelta:                      ; A = delta, then add ROM spawn y
     sta Temp
     iny
     iny
@@ -1613,14 +1614,14 @@ DeriveEnemyY:
     cmp #48
     bcc .DEYSUp
     lda #0                      ; dwell: p 48..63 (clock wrap lands here)
-    beq .DEYDelta               ; always
+    beq DEYDelta               ; always
 .DEYSUp:
     cmp #25
-    bcc .DEYDelta               ; p <= 24: delta = p (down, 0..24)
+    bcc DEYDelta               ; p <= 24: delta = p (down, 0..24)
     eor #$FF
     sec
     sbc #$CF                    ; 48-p = (255-p)-207, up phase (p 25..47)
-    jmp .DEYDelta
+    jmp DEYDelta
 
 ; ==============================================================================
 ; Room exit handlers — check connection table, switch rooms, reposition player
@@ -2720,16 +2721,17 @@ RefreshEnemyY:
                                  ; from it wrapped every second (spider
                                  ; "teleported": (TC>>3)&63 only ever saw
                                  ; 0..7 and counted DOWN 0->7 = jump).
-    ldx #0
-.REYLoop:
-    cpx EnemyCount
-    bcs .REYDone
+    ldx EnemyCount              ; countdown loop (-2 B vs forward; derive
+    beq .REYDone                ; order n-1..0 — derivations independent,
+.REYLoop:                       ; every reader runs after refresh completes)
+    dex
     jsr DeriveEnemyY            ; A = live Y (ROM copy, or derived for bat)
     sta EnemyRamY,X
-    inx
-    jmp .REYLoop
-.REYDone:
-    rts
+    txa                         ; N/Z must come from X: flags after jsr are
+    bne .REYLoop                ; the sign of the DERIVED Y byte (bpl ran
+.REYDone:                       ; away at X=$FF, writing $1C2/$1C1/... =
+    rts                         ; mirrored EnemyRamP/EnemyRamD/TIA = blink,
+                                ; black rooms, broken PF, invisible sprites)
 
 ; ==============================================================================
 ; E4 moth exit tramp ($FC49-$FC4E) — bank2 executes `sta $1FF6` at $FC49
@@ -2796,6 +2798,32 @@ CallPad_SetRoomDark:
 MothExitPad:
     sta $1FF6                   ; select bank0 (executed from bank2's copy)
     jmp UE_Next                 ; resume dispatch loop (bank0 half)
+
+; ------------------------------------------------------------------------------
+; MothYDerive — E4 Y arm (docs/e4_moth_plan.md). 25 B EXACT: fills the
+; $FC4F-$FC67 gap; 26 B trips org $FC68 reverse-index (loud build error).
+; In: Y = record+0 (type offset), X = slot (preserved). Out: A = live Y.
+; Y sine ±6 px: tri = clamp(triangle((EnemyRamP>>1)&15), 0..6) → ×2−6.
+; Phase period 16 divides the 256 clock exactly (no teleport), continuous
+; at the p15→p0 wrap (both −6). Jump-tail into DEYDelta: stack depth of
+; DeriveEnemyY's caller unchanged (sta Temp / iny iny / fold y / adc / rts).
+; ------------------------------------------------------------------------------
+MothYDerive:
+    lda EnemyRamP               ; free-running frame clock (RefreshEnemyY incs)
+    lsr
+    lsr                         ; ÷4: vertical tick = half the X tick (user tuning:
+    and #15                     ; sine period 32→64 frames = half vertical speed)
+    cmp #8
+    bcc .mUp
+    eor #15                     ; mirror: tri = p<8 ? p : 15-p (0..7)
+.mUp:
+    cmp #7
+    bcc .mOk
+    lda #6                      ; clamp tri ≤ 6 → delta exact ±6
+.mOk:
+    asl                         ; 0..12 (C=0: bit7 clear)
+    adc #$FA                    ; ×2−6 → delta −6..+6 (C=0 → A−6 mod 256)
+    jmp DEYDelta                ; shared tail — A = delta, Y = record+0
 
 ; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
