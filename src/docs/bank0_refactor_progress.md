@@ -59,7 +59,21 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
 
 ## Phase 5 — offload leaves to bank1/bank2 (~2.6KB / ~3.4KB free)
 
-- [ ] S5.1 `BuildColupF` (176B)
+- [x] S5.1 `BuildColupF` → **bank2** (not bank1) via `CallPad_BuildColupF`
+      → done: −144 B (3656→3512). Findings baked into the step:
+      - The shared `$FEF6` fold block ends `sta $1FF6` — once bank2 serves
+        the middle bytes, the switch back to bank0 is **frozen**; a fold
+        inside any non-bank0 body cannot return home. bank2 bodies read
+        rect data directly (`lda (FetchPtr),Y`, moth precedent).
+      - `CallPad_*` stubs switch banks **mid-pad**: the pad's `jmp` is
+        fetched from the TARGET bank (why bank1 mirrors the whole pad
+        block) — bank2 now mirrors the new stub too (fetch at `$FC3B`).
+      - `jsr CallPad_IsRoomDark` cannot nest from a pad body (ReturnPad
+        switches to bank0) → dark check inlined (4B `BCFDarkMask` table).
+      - New first-ever `sta $1FF8` pad: `check_callpads` now looks the
+        jmp target up in `bank2.lst` for `$1FF8` pads (bank1 for `$1FF7`).
+      - Entry save block (`$F0-$F2` → collision temps) moved as-is —
+        still dead (rows 0-2 only, no restore) → follow-up audit.
 - [ ] S5.2 `BombMarkWalls` (124B)
 - [ ] S5.3 `HotOverlapFlag` (117B, tail-call contract via CallPad)
 - [ ] S5.4 `LaserHitTest` (90B)
@@ -78,7 +92,8 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
 | 0 | investigation + report committed | — | build OK | 6f61a20 |
 | 1 | S1.1 LoseLife unification | −93 (3769→3676) | build+sim+3 tests OK | f41800d |
 | 2 | S1.5 inline helper + ObjBot + dead EQUs | −12 (3676→3664) | build+sim+3 tests OK | 02b991c |
-| 3 | S1.6 dead YToCellRow sub + test anchor | −8 (3664→3656) | build+sim+3 tests OK | (this) |
+| 3 | S1.6 dead YToCellRow sub + test anchor | −8 (3664→3656) | build+sim+3 tests OK | a2158f8 |
+| 4 | S5.1 BuildColupF → bank2 via CallPad ($1FF8) | −144 (3656→3512) | build+sim+3 tests OK | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 

@@ -466,7 +466,7 @@ StartFrame:
     ; only needed on EnterRoom.
     jsr LoadPF0Only
     jsr ApplyBombWalls          ; S6.1: re-apply thin-wall holes every frame
-    jsr BuildColupF            ; stripe+hot COLUPF bytes into ColupfBuf ($E7-$F2)
+    jsr CallPad_BuildColupF    ; stripe+hot COLUPF bytes into ColupfBuf ($E7-$F2)
 
     ; --- Band-color cache → RoomBandColor ($D2) for kernel+overscan (P2.5) ---
     ; ROM now lives in bank2: kernel-time fold is cycle-impossible on the
@@ -2759,6 +2759,9 @@ CallPad_SetRoomDark:
 CallPad_UpdateLaserSound:
     sta $1FF7
     jmp $FADA
+CallPad_BuildColupF:
+    sta $1FF8                   ; S5.1: body lives in bank2 (direct rect reads)
+    jmp $FC4F
 
     .ds $FC49 - *, 0             ; pin (main growth past $FC49 = build error)
 MothExitPad:
@@ -3007,105 +3010,16 @@ LoseLifeBand:
 ;   to collision temps (free until overscan), restore at .AfterRows.
 ;   Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds every frame.
 ; ------------------------------------------------------------------------------
-BuildColupF:
-    lda PlayerBombs
-    sta CollisionCellY          ; save $F0
-    lda BombSnd
-    sta CollisionEndX           ; save $F1
-    lda RoomWallMask
-    sta CollisionEndY           ; save $F2
-    ; --- stripe fill ---
-    ldx #0
-.BCFstripe:
-    cpx #1
-    bne .BCFc1
-    lda LevelWallColor2
-    jmp .BCFstore
-.BCFc1:
-    lda LevelWallColor
-.BCFstore:
-    sta ColupfBuf,X
-    inx
-    cpx #TILE_ROWS
-    bne .BCFstripe
-    ; --- pulse color → Temp (free until .BgStore) ---
-    lda TickCounter
-    and #$10
-    beq .BCFpulseY
-    lda #COLOR_HOT_R
-    jmp .BCFpulse
-.BCFpulseY:
-    lda #COLOR_HOT_Y
-.BCFpulse:
-    sta Temp
-    ; --- walk hot rects, overwrite those rows ---
-    lda RoomRectsLo
-    sta FetchPtr
-    lda RoomRectsHi
-    sta FetchPtr+1
-    ldy #0
-    jsr FoldIndirect            ; solid count (P3.6: bank2 fold)
-    asl
-    asl
-    clc
-    adc #1
-    tay                         ; Y → hot count
-    jsr FoldIndirect
-    beq .BCFdone
-    sta RectCount
-    iny
-.BCFrect:
-    tya
-    pha
-    iny
-    iny                         ; Y = base+2 (y; record = mask, x, y, w, h)
-    jsr FoldIndirect
-    sta CollisionCellX          ; first row
-    iny
-    iny                         ; Y = base+4 (h)
-    clc
-    jsr FoldIndirect
-    adc CollisionCellX
-    sta CollisionX              ; one-past last row
-    ldx CollisionCellX
-.BCFrow:
-    cpx #TILE_ROWS
-    bcs .BCFrectDone
-    cpx #12
-    bcs .BCFrectDone
-    lda Temp
-    sta ColupfBuf,X
-    inx
-    cpx CollisionX
-    bne .BCFrow
-.BCFrectDone:
-    pla
-    clc
-    adc #5
-    tay
-    dec RectCount
-    bne .BCFrect
-.BCFdone:
-    ; --- Dark room: walls black; fuse (state=1) walls dark grey ---
-    jsr CallPad_IsRoomDark
-    beq .BCFdarkDone            ; lit → keep stripe/hot colors
-    lda BombPacked
-    and #%00000011
-    cmp #1
-    beq .BCFFuseGrey            ; bomb fuse active → dark grey walls
-    lda #COLOR_CAVE_BG          ; black walls (matches black background)
-    beq .BCFdarkFill            ; A=$00 (COLOR_CAVE_BG) → always taken
-.BCFFuseGrey:
-    lda #COLOR_DARK_PF          ; hue 0 luma 2 = very dark grey walls
-.BCFdarkFill:
-    ldx #0
-.BCFdarkLoop:
-    sta ColupfBuf,X
-    inx
-    cpx #TILE_ROWS
-    bne .BCFdarkLoop
-.BCFdarkDone:
-    rts
+; ------------------------------------------------------------------------------
+; BuildColupF — MOVED to bank2 (S5.1) — CallPad_BuildColupF.
+;   Hot-rect data (RoomRects) lives in bank2, so the body reads it with
+;   direct (FetchPtr),Y — the shared $FEF6 fold block's sta $1FF6 always
+;   returns to bank0, so a fold inside a bank1 body could not work.
+;   The dark check is inlined there too: CallPad_IsRoomDark cannot nest
+;   from a pad body (ReturnPad switches to bank0 mid-call).
+;   Body: bank2.asm, pinned at $FC4F. Entry save block ($F0-$F2 → collision
+;   temps) moved as-is — still dead (rows 0-2 only, no restore); follow-up.
+; ------------------------------------------------------------------------------
 
 ; UpdateBombSound moved to bank1 (leaf_move_plan batch A) — CallPad_UpdateBombSound.
 

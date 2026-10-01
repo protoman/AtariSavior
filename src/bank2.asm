@@ -29,6 +29,22 @@ EnemyRamY = $C3                  ; live Y (refreshed this overscan)
 Rc4W = $DE
 Rc4H = $DF
 TILE_COLUMNS = 20
+; --- BuildColupF (S5.1, moved from bank0) — addresses must match kernel.asm ---
+TILE_ROWS = 3                     ; playable color bands (rows 0-2 of ColupfBuf)
+RoomRectsLo = $90                 ; hot/solid rect stream — read directly here
+RoomRectsHi = $91
+RoomNo      = $98
+LevelWallColor = $AA              ; stripe rows 0+2
+LevelWallColor2 = $AB             ; stripe row 1
+TickCounter = $AD                 ; 60-frame game timer — hot-pulse phase bit 4
+PlayerBombs = $F0                 ; ColupfBuf-overlap save block (see body)
+BombSnd     = $F1
+RoomWallMask = $F2
+ColupfBuf   = $E7                 ; 12-byte COLUPF image (rows 0-2 used)
+COLOR_CAVE_BG = $00
+COLOR_DARK_PF = $04               ; dark-room fuse walls
+COLOR_HOT_Y = $1C                 ; kernel COLOR_BLINK_Y
+COLOR_HOT_R = $44                 ; kernel COLOR_BLINK_R
 
     ; --- 5-byte stub ---
     lda #0
@@ -309,6 +325,27 @@ MothRowTable:
     include "generated/levels.asm"
 
 ; ------------------------------------------------------------------------------
+; ReturnPad ($FBF8) — byte-identical to kernel.asm's copy (sta $1FF6 / rts).
+; S5.1 pad bodies (BuildColupF) tail-jmp here: sta switches this bank to
+; bank0, the rts is then fetched from bank0's identical copy, and the stack
+; still holds the bank0 jsr CallPad_* return address.
+; ------------------------------------------------------------------------------
+    .ds $FBF8 - *, 0
+ReturnPad:
+    sta $1FF6
+    rts
+
+; ------------------------------------------------------------------------------
+; CallPad_BuildColupF — byte-identical stub. Execution starts in bank0; after
+; `sta $1FF8` the pad's `jmp $FC4F` is FETCHED FROM THIS BANK (the switch
+; happens mid-pad, same reason bank1 mirrors the whole pad block).
+; ------------------------------------------------------------------------------
+    .ds $FC38 - *, 0
+CallPad_BuildColupF:
+    sta $1FF8
+    jmp $FC4F
+
+; ------------------------------------------------------------------------------
 ; E4 moth exit tramp ($FC49-$FC4B) — byte-identical slice with kernel.asm's
 ; MothExitPad (guard: verify_build check_moth_tramp). bank2 executes
 ; `sta $1FF6`; the fetch at $FC4C comes from bank0 = `jmp UE_Next`
@@ -320,6 +357,127 @@ MothRowTable:
     .ds $FC49 - *, 0
 MothExitPad:
     sta $1FF6
+
+; ------------------------------------------------------------------------------
+; BuildColupF — MOVED from bank0 (S5.1, CallPad_BuildColupF -> jmp $FC4F).
+; Body as it was in kernel.asm, with S5.1 adaptations:
+;   - jsr FoldIndirect x4 -> lda (FetchPtr),Y: the rect stream lives in
+;     THIS bank (direct read, same pattern as the moth records).
+;     (The shared $FEF6 fold's sta $1FF6 always returns to bank0, so a
+;     fold inside ANY other bank's body cannot work.)
+;   - jsr CallPad_IsRoomDark -> inlined below: pads cannot nest (ReturnPad
+;     switches to bank0; rts would resume at this address in bank0).
+;   - rts -> jmp $FBF8 (ReturnPad) for the bank0 VBLANK caller.
+; ------------------------------------------------------------------------------
+    .ds $FC4F - *, 0
+BuildColupF:
+    lda PlayerBombs
+    sta CollisionCellY          ; save $F0
+    lda BombSnd
+    sta CollisionEndX           ; save $F1
+    lda RoomWallMask
+    sta CollisionEndY           ; save $F2
+    ; --- stripe fill ---
+    ldx #0
+.BCFstripe:
+    cpx #1
+    bne .BCFc1
+    lda LevelWallColor2
+    jmp .BCFstore
+.BCFc1:
+    lda LevelWallColor
+.BCFstore:
+    sta ColupfBuf,X
+    inx
+    cpx #TILE_ROWS
+    bne .BCFstripe
+    ; --- pulse color → Temp (free until .BgStore) ---
+    lda TickCounter
+    and #$10
+    beq .BCFpulseY
+    lda #COLOR_HOT_R
+    jmp .BCFpulse
+.BCFpulseY:
+    lda #COLOR_HOT_Y
+.BCFpulse:
+    sta Temp
+    ; --- walk hot rects, overwrite those rows ---
+    lda RoomRectsLo
+    sta FetchPtr
+    lda RoomRectsHi
+    sta FetchPtr+1
+    ldy #0
+    lda (FetchPtr),Y            ; solid count (direct read — data in bank2)
+    asl
+    asl
+    clc
+    adc #1
+    tay                         ; Y → hot count
+    lda (FetchPtr),Y
+    beq .BCFdone
+    sta RectCount
+    iny
+.BCFrect:
+    tya
+    pha
+    iny
+    iny                         ; Y = base+2 (y; record = mask, x, y, w, h)
+    lda (FetchPtr),Y
+    sta CollisionCellX          ; first row
+    iny
+    iny                         ; Y = base+4 (h)
+    clc
+    lda (FetchPtr),Y
+    adc CollisionCellX
+    sta CollisionX              ; one-past last row
+    ldx CollisionCellX
+.BCFrow:
+    cpx #TILE_ROWS
+    bcs .BCFrectDone
+    cpx #12
+    bcs .BCFrectDone
+    lda Temp
+    sta ColupfBuf,X
+    inx
+    cpx CollisionX
+    bne .BCFrow
+.BCFrectDone:
+    pla
+    clc
+    adc #5
+    tay
+    dec RectCount
+    bne .BCFrect
+.BCFdone:
+    ; --- Dark room: walls black; fuse (state=1) walls dark grey ---
+    ; Inlined bank1 IsRoomDark: rooms 4+ never dark; EnemyRamD bits 4-7 =
+    ; dark flag for rooms 0-3 (bit set = dark).
+    lda RoomNo
+    cmp #4
+    bcs .BCFdarkDone            ; rooms 4+ never dark (mask covers 0-3)
+    tax
+    lda BCFDarkMask,X           ; $10/$20/$40/$80 = BitMaskTable[4+RoomNo]
+    and EnemyRamD
+    beq .BCFdarkDone            ; lit → keep stripe/hot colors
+    lda BombPacked
+    and #%00000011
+    cmp #1
+    beq .BCFFuseGrey            ; bomb fuse active → dark grey walls
+    lda #COLOR_CAVE_BG          ; black walls (matches black background)
+    beq .BCFdarkFill            ; A=$00 (COLOR_CAVE_BG) → always taken
+.BCFFuseGrey:
+    lda #COLOR_DARK_PF          ; hue 0 luma 2 = very dark grey walls
+.BCFdarkFill:
+    ldx #0
+.BCFdarkLoop:
+    sta ColupfBuf,X
+    inx
+    cpx #TILE_ROWS
+    bne .BCFdarkLoop
+.BCFdarkDone:
+    jmp $FBF8                   ; ReturnPad → bank0 VBLANK caller
+BCFDarkMask:
+    .byte $10, $20, $40, $80    ; IsRoomDark bits for RoomNo 0-3
 
 ; ------------------------------------------------------------------------------
 ; FoldIndirect — byte-identical copy of kernel.asm's block (same $FEF6
