@@ -282,6 +282,16 @@ execute without a fresh, explicit user request tied to a real need
   blocked = `LaserBeamOn=$00` + skip LHT. HERO has no laser code —
   original design. Scratch: ActiveObjectX/Y + RectCount (window-safe:
   every later reader writes first). Overscan +~500c, VBL +2c.
+  **First attempt (same session) failed: the walk compared PIXEL path
+  coords against column-unit rects** (rect cache = text columns 0-19 +
+  band rows — that's why large walls hid via CTRLPF priority but thin
+  walls + kills sailed through). Fix: path px → `>>2` real columns, test
+  BOTH spans per rect (left-half `[x,x+w-1]` + mirror `[39-(x+w-1),39-x]` —
+  reflected playfield means every wall exists twice), `bestCol*4 - lo` for
+  the pixel width (sign also handles eye-gap/blocked). White-box sim in the
+  commit validated: flush thin wall → W=4/bound11, gap burst → 0,
+  mirror cases → correct, open → 8; `test_laser_s4` now asserts the
+  column conversion + mirror-span presence.
   Overscan moved `$F173→$F175` (VBL +2B) → bank1 pad synced (4th time —
   AGENTS lesson updated). Post-pad slack 316→142B (`LaserWallClamp` lives
   at $FCD4). `test_laser_s4` extended (bound contract, NUSIZ/VBL chain,

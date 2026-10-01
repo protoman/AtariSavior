@@ -2876,15 +2876,26 @@ LaserWallClamp:
     bcs .LOPh                   ; lo+7 ≥ eye → pathHi = lo+7
     lda ActiveObjectY           ; eye > lo+7 → pathHi = eye
 .LOPh:
-    sta ActiveObjectY
-    lda CollisionX              ; bestEnd (exclusive) = min(lo+8, 160)
-    clc
-    adc #8
+    sta ActiveObjectY           ; pathHi (px)
+    ; --- px → REAL columns (rect cache is TEXT COLUMNS + band rows, NOT px!).
+    ; Columns are 4px, wall-aligned; each rect also exists mirrored in the
+    ; right half, so both spans are tested (no half bookkeeping needed).
+    lda ActiveObjectY
     cmp #160
-    bcc .LOBest
-    lda #160                    ; off right edge: nothing visible past 159
-.LOBest:
-    sta RectCount
+    bcc .LOpHiC
+    lda #159                    ; cap at screen edge before >>2
+.LOpHiC:
+    lsr
+    lsr
+    sta ActiveObjectY           ; pHi col (0..39)
+    lda ActiveObjectX
+    lsr
+    lsr
+    sta ActiveObjectX           ; pLo col (0..39)
+    lda ActiveObjectY
+    clc
+    adc #1
+    sta RectCount               ; bestCol = pHi+1 (no wall found yet)
     lda RcBase
     beq .LODone                 ; room has no rects → nothing blocks
     ldx #0
@@ -2918,21 +2929,41 @@ LaserWallClamp:
     cmp RcW1+1,X                ; (b1-rh) vs ry
     bcs .LONext                 ; ry ≤ b1-rh → ry+rh ≤ b1 → no overlap
 .LOX:
-    ; x: rect.x+w > pathLo ?
+    ; --- span1 = rect's left-half copy [x, x+w-1] vs path [pLo, pHi] ---
+    lda RcW1+1,X                ; sLo = x
+    cmp ActiveObjectY           ; vs pHi → overlap needs sLo ≤ pHi
+    beq .LOs1
+    bcs .LOs2                   ; sLo > pHi → span1 clear → try the mirror
+.LOs1:
     clc
-    lda RcW1+2,X                ; rect.w
-    adc RcW1+1,X                ; + rect.x
-    cmp ActiveObjectX           ; rx+rw vs pathLo
-    beq .LONext
-    bcc .LONext                 ; rx+rw ≤ pathLo → left of the path
-    ; rect.x ≤ pathHi ?
-    lda ActiveObjectY           ; pathHi
-    cmp RcW1+1,X                ; pathHi vs rx → C=1 iff rx ≤ pathHi
-    bcc .LONext                 ; rx > pathHi → past the path
-    ; occluded: bestEnd = min(bestEnd, rect.x)
-    lda RcW1+1,X
+    lda RcW1+2,X                ; w
+    adc RcW1+1,X                ; + x
+    sec
+    sbc #1                      ; sHi = x+w-1
+    cmp ActiveObjectX           ; vs pLo → overlap needs sHi ≥ pLo
+    bcc .LOs2                   ; span1 clear
+    lda RcW1+1,X                ; candidate = sLo (first occluding col;
+    cmp RectCount               ;  sign in .LODone handles eye-gap/blocking)
+    bcs .LOs2                   ; not nearer than current best
+    sta RectCount
+.LOs2:
+    ; --- span2 = mirrored copy [39-(x+w-1), 39-x] ---
+    lda #39
+    sec
+    sbc RcW1+1,X                ; mHi = 39-x
+    cmp ActiveObjectX           ; mHi ≥ pLo ?
+    bcc .LONext                 ; span2 clear
+    sec
+    sbc RcW1+2,X                ; mHi - w
+    clc
+    adc #1                      ; mLo = mHi-w+1
+    cmp ActiveObjectY           ; mLo ≤ pHi ?
+    beq .LOc2
+    bcc .LOc2
+    bcs .LONext
+.LOc2:
     cmp RectCount
-    bcs .LONext                 ; rx ≥ bestEnd → keep current
+    bcs .LONext
     sta RectCount
 .LONext:
     txa
@@ -2941,12 +2972,14 @@ LaserWallClamp:
     tax
     jmp .LOLoop
 .LODone:
-    ; visible width = bestEnd - lo (0..8); SBC C=0 ⇔ burst behind the wall
+    ; visible width = bestCol*4 - lo: ≤0 = burst behind/in the wall → off
     lda RectCount
+    asl
+    asl                         ; bestCol << 2 (≤160: pHi+1 ≤ 40)
     sec
     sbc CollisionX
-    beq .LWoff                  ; wall at the burst start → no beam
-    bcc .LWoff                  ; burst starts past the wall → no beam
+    beq .LWoff
+    bcc .LWoff
     cmp #9
     bcc .LORange
     lda #8                      ; clamp to the 8px missile
