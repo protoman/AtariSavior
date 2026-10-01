@@ -23,6 +23,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 KERNEL = (ROOT / "src" / "kernel.asm").read_text(encoding="utf-8")
+# S5.4: LaserHitTest body moved to bank2 (entry tramp stays in kernel.asm)
+BANK2 = (ROOT / "src" / "bank2.asm").read_text(encoding="utf-8")
 
 
 def line_no(pattern: str, flags: int = 0) -> int:
@@ -77,7 +79,7 @@ def main() -> None:
     ceh_body = KERNEL.split("CEH_HasMore:")[1].split("CEHNext:")[0]
     assert "lda EnemyRamY,Y" in ceh_body, "CheckEnemyHit must read EnemyRamY"
     assert "sta ActiveObjectY" in ceh_body
-    laser = KERNEL.split("LaserHitTest:")[1].split("EnemyOffTable:")[0]
+    laser = BANK2.split("LaserHitTestBody:")[1].split("EnemyOffTable:")[0]
     assert "sbc EnemyRamY,X" in laser, "LaserHitTest must read EnemyRamY"
     assert "(EnemyDataLo),Y" not in laser.split(".LHHit")[0], \
         "LaserHitTest vertical test still reads ROM y"

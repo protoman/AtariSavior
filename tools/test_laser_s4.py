@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Laser S4 reference checks (assert-based, no framework).
 
-Mirrors kernel.asm LaserHitTest formulas exactly and verifies the source
-constants they depend on, so a formula/asm drift fails this check:
+Mirrors the LaserHitTest formulas exactly (S5.4: body lives in
+src/bank2.asm — LaserHitTestBody; the kill/lamp actions dispatch in
+kernel.asm LaserInput) and verifies the source constants they depend
+on, so a formula/asm drift fails this check:
 
   vertical:  (RoomY - eY) + 3 < 9     <=> eY in [RoomY-5, RoomY+3]
              (beam rows RoomY+2..3 vs enemy [eY, eY+7])
@@ -43,15 +45,25 @@ def main() -> None:
     # --- asm constants: formulas must match the source --------------------
     src = Path(__file__).resolve().parents[1] / "src" / "kernel.asm"
     text = src.read_text(encoding="utf-8")
+    b2 = (Path(__file__).resolve().parents[1] / "src" / "bank2.asm")
+    text2 = b2.read_text(encoding="utf-8")
     assert re.search(r"ENEMY_WIDTH\s*=\s*8\b", text), "ENEMY_WIDTH != 8"
     assert ".byte 0,8,16,8" in text, "SweepOff triangle changed"
-    hit = text.split("LaserHitTest:")[1].split("EnemyOffTable:")[0]
+    hit = text2.split("LaserHitTestBody:")[1].split("EnemyOffTable:")[0]
     assert "adc #3" in hit and "cmp #9" in hit, "vertical window changed"
     assert "adc #7" in hit and "cmp #15" in hit, "horizontal window changed"
     assert "ora EnemyBitTable,X" in hit and "sta EnemyDeadMask" in hit, \
         "kill path changed"
-    assert "cmp #LAMP" in hit and "jsr SetRoomDark" in hit, \
+    assert "cmp #LAMP" in hit and ".LHLamp" in hit, \
         "lamp crash path changed"
+    # S5.4 result protocol: body returns A (0/$50/1), LaserInput dispatches
+    # the actions (pads cannot nest from a pad body)
+    assert "lda #$50" in hit and "lda #0" in hit and "jmp $FBF8" in hit, \
+        "body must return its result through ReturnPad"
+    assert re.search(r"jsr\s+LaserHitTest[^\n]*\n\s*beq\s+\.\w+", text), \
+        "LaserInput must dispatch on the returned A"
+    assert "jsr CallPad_SetRoomDark" in text and "jsr CallPad_AddScore" in text, \
+        "kill/lamp actions must run in bank0 LaserInput"
 
     # --- sweep tiling: frames at offsets 0,8,16,8 cover 0..24 continuous --
     covered = set()

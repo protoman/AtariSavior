@@ -85,8 +85,35 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
         TickCounter) — BMW scratch renamed `BMWScratch = $88` (kernel Temp).
       - `ABWXTab`/`ABWWTab`/`BombMaskBit` duplicated into bank1 (ROM is
         per-bank; the ZP rect cache itself is shared RAM).
-- [ ] S5.3 `HotOverlapFlag` (117B, tail-call contract via CallPad)
-- [ ] S5.4 `LaserHitTest` (90B)
+- [x] S5.3 `HotOverlapFlag` (117B, tail-call contract via CallPad)
+      → done: −107 B (3410→3303, same lst-span delta measured HEAD vs now).
+      NOT a CallPad: the $FBF8-$FC48
+      pad window is full (5 B left, stub needs 6 B) → moth-pattern entry
+      tramp pinned $FE80 instead. Body moved to bank2.asm `HotOverlapBody`
+      at $FCF0, fold-free (7 `jsr FoldIndirect` → direct `lda (FetchPtr),Y`
+      — RoomRects level data lives in bank2; +1 fewer push level on the hot
+      path). Exits `sec / jmp $FBF8` (ReturnPad) keep the tail-call C=1
+      contract (sta touches neither A nor flags). `check_moth_tramp` extended:
+      $FE80 byte-identity bank0/bank2 + jmp operand == bank2.lst
+      `HotOverlapBody` + bank0 `HotOverlapFlag` label pin.
+- [x] S5.4 `LaserHitTest` (90B) → **bank2** at $FF00 via $FE86 tramp
+      → done: −57 B (3303→3246, lst-span delta measured HEAD vs now).
+      Constraints handled:
+      - Kill/lamp ACTIONS cannot run from a bank2 body (`CallPad_AddScore`/
+        `CallPad_SetRoomDark` are bank0→bank1 only — pads cannot nest from
+        a pad body, S5.2 lesson) → body returns a RESULT CODE in A through
+        ReturnPad (sta/rts preserve A/Z/C): 0 miss / #$50 kill / 1 lamp;
+        LaserInput tail does `beq / cmp #$50 / jsr CallPad_*`.
+      - Enemy type read: fold → direct `lda (FetchPtr),Y` (records are
+        bank2 level data); `EnemyBitTable`/`EnemyOffTable` copied into
+        bank2 (bank0 ROM invisible; same labels keep test anchors).
+      - Tramp pinned $FE86 (free $FE86-$FEEF hole in BOTH banks, same
+        pattern as the S5.3 HOF tramp); `check_moth_tramp` extended with
+        the same 4 checks (byte-identity, sta prefix, operand == bank2
+        label, bank0 label pin) — negative-tested.
+      - `test_enemy_movement` + `test_laser_s4` re-anchored to bank2 body;
+        `test_laser_s4`'s stale `jsr SetRoomDark` assert (broken since the
+        bank1 leaf move — pre-existing) fixed to the CallPad form.
 
 ## Phase 6 — gameplay cuts (optional, one at a time, user test each)
 
@@ -105,6 +132,8 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
 | 3 | S1.6 dead YToCellRow sub + test anchor | −8 (3664→3656) | build+sim+3 tests OK | a2158f8 |
 | 4 | S5.1 BuildColupF → bank2 via CallPad ($1FF8) | −144 (3656→3512) | build+sim+3 tests OK | 5103f6a |
 | 5 | S5.2 BombMarkWalls → bank1, count-return + caller score loop | −102 (3512→3410) | build+sim+3 tests OK | (this) |
+| 6 | S5.3 HotOverlapFlag → bank2 ($FE80 tramp, fold-free, ReturnPad exit) | −107 (3410→3303) | build+sim+3 tests OK + guard negative-test | (this) |
+| 7 | S5.4 LaserHitTest → bank2 ($FE86 tramp, A-result protocol) | −57 (3303→3246) | build+sim+4 tests OK + guard negative-test | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 

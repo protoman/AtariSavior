@@ -251,6 +251,13 @@ MOTH_EXIT = 0xFC49
 MOTH_STA18 = bytes([0x8D, 0xF8, 0x1F])
 MOTH_STA16 = bytes([0x8D, 0xF6, 0x1F])
 
+# S5.3 HOF entry tramp — same pattern as the moth entry: bank0 executes
+# `sta $1FF8` at $FE80, the fetch at $FE83 comes from bank2 = `jmp` target.
+HOF_ENTRY = 0xFE80
+# S5.4 LaserHitTest entry tramp — same pattern: `sta $1FF8` at $FE86,
+# fetch at $FE89 from bank2 = `jmp LaserHitTestBody`.
+LHT_ENTRY = 0xFE86
+
 
 def check_moth_tramp(src: Path) -> None:
     """E4: moth code-fold tramps — byte-identity slices + address pins.
@@ -306,6 +313,52 @@ def check_moth_tramp(src: Path) -> None:
         shown = f"${tramp:04X}" if tramp is not None else "None"
         err(f"UE_MothTramp at {shown}, expected ${MOTH_ENTRY:04X} "
             "(dispatch jmp target moved off the pad)")
+
+    # S5.3 HOF tramp ($FE80) — same discipline as the moth entry above.
+    hoff = HOF_ENTRY - 0xF000
+    g0 = banks[0][hoff:hoff + 6]
+    g2 = banks[2][hoff:hoff + 6]
+    if g0[:3] != MOTH_STA18:
+        err(f"bank0 HOF entry ${HOF_ENTRY:04X} = {g0.hex()} "
+            f"(expected {MOTH_STA18.hex()} + jmp)")
+    if g0 != g2:
+        err(f"HOF entry bank0[${HOF_ENTRY:04X}] {g0.hex()} != bank2 "
+            f"{g2.hex()} (byte-identity broken)")
+    hof = labels2.get("HotOverlapBody")
+    hof_tgt = (g0[4] | (g0[5] << 8)) if len(g0) == 6 else None
+    if hof is None:
+        err("HotOverlapBody label not found in bank2.lst")
+    elif hof_tgt != hof:
+        err(f"HOF entry jmp ${hof_tgt if hof_tgt is not None else 0:04X} != "
+            f"bank2 HotOverlapBody ${hof:04X} (tramp operand stale)")
+    hof_tramp = labels0.get("HotOverlapFlag")
+    if hof_tramp != HOF_ENTRY:
+        shown = f"${hof_tramp:04X}" if hof_tramp is not None else "None"
+        err(f"HotOverlapFlag at {shown}, expected ${HOF_ENTRY:04X} "
+            "(PlayerHitsMap jmp target moved off the pad)")
+
+    # S5.4 LaserHitTest tramp ($FE86) — same discipline again.
+    loff = LHT_ENTRY - 0xF000
+    t0 = banks[0][loff:loff + 6]
+    t2 = banks[2][loff:loff + 6]
+    if t0[:3] != MOTH_STA18:
+        err(f"bank0 LHT entry ${LHT_ENTRY:04X} = {t0.hex()} "
+            f"(expected {MOTH_STA18.hex()} + jmp)")
+    if t0 != t2:
+        err(f"LHT entry bank0[${LHT_ENTRY:04X}] {t0.hex()} != bank2 "
+            f"{t2.hex()} (byte-identity broken)")
+    lht = labels2.get("LaserHitTestBody")
+    lht_tgt = (t0[4] | (t0[5] << 8)) if len(t0) == 6 else None
+    if lht is None:
+        err("LaserHitTestBody label not found in bank2.lst")
+    elif lht_tgt != lht:
+        err(f"LHT entry jmp ${lht_tgt if lht_tgt is not None else 0:04X} != "
+            f"bank2 LaserHitTestBody ${lht:04X} (tramp operand stale)")
+    lht_tramp = labels0.get("LaserHitTest")
+    if lht_tramp != LHT_ENTRY:
+        shown = f"${lht_tramp:04X}" if lht_tramp is not None else "None"
+        err(f"LaserHitTest at {shown}, expected ${LHT_ENTRY:04X} "
+            "(LaserInput jsr target moved off the pad)")
 
     xoff = MOTH_EXIT - 0xF000
     x0 = banks[0][xoff:xoff + 3]
