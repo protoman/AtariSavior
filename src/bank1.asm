@@ -113,8 +113,8 @@ LevelConnHi = $A2
 FetchPtr    = $E0
 EnemyRamD   = $C1
 PF0Buf      = $C3
-PF1Buf      = $CF
-PF2Buf      = $DB
+PF1Buf      = $C6                ; packed rows 0-2 (S3.1; was $CF)
+PF2Buf      = $C9                ; packed rows 0-2 (S3.1; was $DB)
 CollisionX  = $8B
 CollisionCellX = $8C
 ; bank0's LineCount — do NOT confuse with bank1's Temp ($AD) HUD scratch above.
@@ -126,7 +126,8 @@ LineCount   = $84
 ; --- BombMarkWalls (S5.2, moved from bank0) — must match kernel.asm ---
 BombX      = $F6                ; read-only here (see $F6 note above)
 BMWScratch = $88                ; kernel Temp — NOT bank1's Temp ($AD)
-RcBase     = $C6                ; rect cache count
+RcBase     = $CC                ; rect cache count (S3.1: was $C6)
+RcW1       = $CD                ; rect0.x — cache base for ABW tables
 BombPacked = $B5                ; state+DownPrev+WallMask (b3-6)
 CollisionEndX = $8E             ; blast lo
 TILE_COLUMNS = 20
@@ -1054,8 +1055,8 @@ BombMarkWalls:
     lda CollisionX              ; A = walls newly broken
     jmp $FBF8                   ; ReturnPad → bank0 caller
 
-ABWXTab: .byte $C7, $CB, $D3, $D7  ; rect.x ZP addresses (dup of bank0)
-ABWWTab: .byte $C9, $CD, $D5, $D9  ; rect.w ZP addresses (dup of bank0)
+ABWXTab: .byte RcW1, RcW1+4, RcW1+8, RcW1+12      ; rect.x (EQU-derived S3.1)
+ABWWTab: .byte RcW1+2, RcW1+6, RcW1+10, RcW1+14   ; rect.w
 BombMaskBit:
     .byte $08, $10, $20, $40      ; WallMask bit per rect index (dup of bank0)
 

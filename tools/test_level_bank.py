@@ -95,8 +95,8 @@ def main() -> None:
     # FIX 2026-09-28: was $D1 = PF1Buf[2] — collides with kernel .Row
     # `lda PF1Buf,X` (X=2); band color rendered as the bottom-band PF1 wall
     # pattern (phase_1: $D1=00 vs model $ff → mid-wall gap). $D2 = dead row.
-    assert re.search(r"^RoomBandColor\s*=\s*\$D2\b", KERNEL, re.M), \
-        "RoomBandColor = $D2 (dead PF1Buf[3] alias) missing"
+    assert re.search(r"^RoomBandColor\s*=\s*\$BC\b", KERNEL, re.M), \
+        "RoomBandColor = $BC (own byte since S3.1; was $D2 = PF1Buf[3] alias)"
     assert not re.search(r"^RoomBandColor\s*=\s*\$D1\b", KERNEL, re.M), \
         "RoomBandColor must not alias PF1Buf[2] ($D1) — kernel reads it"
     assert "lda RoomBandColor" in KERNEL, \
