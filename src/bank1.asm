@@ -126,8 +126,10 @@ LineCount   = $84
 ; --- BombMarkWalls (S5.2, moved from bank0) — must match kernel.asm ---
 BombX      = $F6                ; read-only here (see $F6 note above)
 BMWScratch = $88                ; kernel Temp — NOT bank1's Temp ($AD)
-RcBase     = $CC                ; rect cache count (S3.1: was $C6)
-RcW1       = $CD                ; rect0.x — cache base for ABW tables
+RcBase     = $89                ; rect cache count (S3.2-fix: count sits on
+                                 ; the $89 pad so rects fit $CC-$DF — clear
+                                 ; of bank1's $E0 stomp that ate rect4.h)
+RcW1       = $CC                ; rect0.x — cache base for ABW tables
 BombPacked = $B5                ; state+DownPrev+WallMask (b3-6)
 CollisionEndX = $8E             ; blast lo
 TILE_COLUMNS = 20

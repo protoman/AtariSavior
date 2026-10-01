@@ -49,8 +49,8 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $86 | Grp0Ptr | Player sprite ptr lo (scratch) |
 | $87 | Grp0PtrHi | Player sprite ptr hi (scratch) |
 | $88 | Temp | General scratch (VBLANK COLUBK, ObjectCount, …) |
-| $89 | MapPtrPad0 | Was MapPtrLo (rect4.x) — rect4 moved into the cache (S3.2); pad keeps the sequential block from shifting |
-| $8A | MapPtrPad1 | Was MapPtrHi (rect4.y) — same (pad) |
+| $89 | RcBase | Rect cache **count** (sequential decl — was MapPtrLo; the $89 slot now hosts the count so the 20 rect bytes fit $CC-$DF clear of bank1's $E0 stomp — S3.2-fix, see cache row) |
+| $8A | MapPtrPad1 | Was MapPtrHi (rect4.y) — dead pad, keeps the sequential block from shifting |
 | $8B | CollisionX | Collision/mirror scratch |
 | $8C | CollisionCellX | Player max tile col |
 | $8D | CollisionCellY | Player top tile row |
@@ -117,7 +117,7 @@ sequential byte would be `$BC`, but `$BD+` are explicit EQUs).
 | $C3-$C5 | PF0Buf | TilePF0 rows 0-2 (**packed S3.1**, was `$C3-$CE`). Rows 0-2 pure since S3.4 (Y → `$E2`); pattern written by EnterRoom `LoadPFBuffer` only, never stomped. |
 | $C6-$C8 | PF1Buf | TilePF1 rows 0-2 (**packed S3.1**, was `$CF`). Kernel `.Row` X=0..2 + bank1 `ClearPFColumn`. |
 | $C9-$CB | PF2Buf | TilePF2 rows 0-2 (**packed S3.1**, was `$DB`). |
-| $CC-$E0 | Rect cache | **count + rects0-4 UNIFORM (S3.2)** — `RcBase=$CC`, walk base `RcW1=$CD`, stride 4 for all five rects (Y=0..19): no windows, no `.Stage3` (both deleted), mask index4 = `$00` table entry (rect4 never in WallMask). rect4 x,y,w,h = `$DD-$E0`. ABW tables EQU-derived (`.byte RcW1, RcW1+4, …`) — cannot go stale. `$E0` was freed by moving FetchPtr → `$E5` (its fold operand is byte-guarded: FOLD_BYTES). |
+| $89 + $CC-$DF | Rect cache | **count + rects0-4 UNIFORM (S3.2)** — count `RcBase=$89` (sequential decl), walk base `RcW1=$CC`, stride 4 for all five rects (Y=0..19): no windows, no `.Stage3` (both deleted), mask index4 = `$00` table entry (rect4 never in WallMask). rect4 x,y,w,h = `$DC-$DF`. ABW tables EQU-derived — cannot go stale. **STOMP-ZONE RULE:** every persistent byte here must stay < `$E0` — the first S3.2 layout ended at `$E0` and bank1's `scorePtr1` lo (leading zero) zeroed rect4.h every HUD frame → probes passed through rect4 walls (tentacle walked inside walls). Guarded by `check_equ_sync` (`RcW1+19 ≤ $DF`). FetchPtr lives at `$E5` (fold operand byte-guarded: FOLD_BYTES). |
 | $E2-$E4 | EnemyRamY | Live Y, private 3B (S3.4) — sits in the bank1 stomp zone but window-safe (write/read between stomps — kernel ZP contract block). |
 | $E7-$F2 | ColupfBuf | Final COLUPF × 12 rows — but only rows 0-2 ($E7-$E9) are ever written (TILE_ROWS=3; rows 9-11 are the bombs' own bytes, no overlap machinery since S3.0b). Bank1 clobbers $E7-$EF during HUD; VBLANK rebuilds every frame (S2.1 blocker, see progress doc). |
 | $F3 | ScoreTh | Shared with bank1 score |
