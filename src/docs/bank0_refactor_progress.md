@@ -33,8 +33,10 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
       (`LASER_PREV`, `LASER_HP`, `PF2ScoreBuf`) → done: −12 B.
       Overscan moved $F183→$F182 (inline was BEFORE it) → bank1 ToGameStub
       `jmp` synced + landmark comment updated.
-- [ ] S1.6 dead `YToCellRow` subroutine removal + `test_enemy_movement.py`
-      anchor update (deferred: test text-slices on the label)
+- [x] S1.6 dead `YToCellRow` subroutine removal + `test_enemy_movement.py`
+      → done: −8 B. Test anchor switched from the sub label to the inlined
+      lookup at `PlayerHitsMap:`; kernel comments updated (PHM clobbers X
+      via rect walk, not the dead `tax`).
 
 ## Phase 2 — cycles (no format change)
 
@@ -75,7 +77,8 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
 |------|--------|---------------|-------|--------|
 | 0 | investigation + report committed | — | build OK | 6f61a20 |
 | 1 | S1.1 LoseLife unification | −93 (3769→3676) | build+sim+3 tests OK | f41800d |
-| 2 | S1.5 inline helper + ObjBot + dead EQUs | −12 (3676→3664) | build+sim+3 tests OK | (this) |
+| 2 | S1.5 inline helper + ObjBot + dead EQUs | −12 (3676→3664) | build+sim+3 tests OK | 02b991c |
+| 3 | S1.6 dead YToCellRow sub + test anchor | −8 (3664→3656) | build+sim+3 tests OK | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 
