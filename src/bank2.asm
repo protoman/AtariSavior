@@ -39,11 +39,8 @@ RoomRectsLo = $90                 ; hot/solid rect stream — read directly here
 RoomRectsHi = $91
 RoomNo      = $98
 LevelWallColor = $AA              ; stripe rows 0+2
-LevelWallColor2 = $AB             ; stripe row 1
+LevelWallColor2 = $AB              ; stripe row 1
 TickCounter = $AD                 ; 60-frame game timer — hot-pulse phase bit 4
-PlayerBombs = $F0                 ; ColupfBuf-overlap save block (see body)
-BombSnd     = $F1
-RoomWallMask = $F2
 ColupfBuf   = $E7                 ; 12-byte COLUPF image (rows 0-2 used)
 COLOR_CAVE_BG = $00
 COLOR_DARK_PF = $04               ; dark-room fuse walls
@@ -375,12 +372,9 @@ MothExitPad:
 ; ------------------------------------------------------------------------------
     .ds $FC4F - *, 0
 BuildColupF:
-    lda PlayerBombs
-    sta CollisionCellY          ; save $F0
-    lda BombSnd
-    sta CollisionEndX           ; save $F1
-    lda RoomWallMask
-    sta CollisionEndY           ; save $F2
+    ; Bomb save ($F0-$F2 → collision temps) deleted S3.0b: this body writes
+    ; ColupfBuf rows 0-2 only — it never reached $F0-$F2 (vestigial from
+    ; the 12-row era; kernel .AfterRows restore deleted in the same commit).
     ; --- stripe fill ---
     ldx #0
 .BCFstripe:
