@@ -25,7 +25,8 @@ RcW2 = $CB
 EnemyRamX = $BD
 EnemyRamD = $C1                  ; dir bits: 1 = right, 0 = left
 EnemyRamP = $C2                  ; free-running frame clock
-EnemyRamY = $C3                  ; live Y (refreshed this overscan)
+EnemyRamY = $E2                  ; live Y (refreshed this overscan — after
+                                 ; the bank1 HUD score-ptr stomp; S3.4)
 Rc4W = $DE
 Rc4H = $DF
 TILE_COLUMNS = 20

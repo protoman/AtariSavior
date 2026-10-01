@@ -102,40 +102,40 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $BB | ObjTop | GRP1 top scanline |
 | $BC | ObjBot | GRP1 bottom scanline |
 
-Sequential allocation ends at `$BC` (next would be `$BD`).
+Sequential allocation ends at `$BB` (ObjBot `$BC` removed S3.0b; next
+sequential byte would be `$BC`, but `$BD+` are explicit EQUs).
 
 ## Bank0 EQUs (fixed addresses, no sequential byte)
 
 | Addr | Name | Notes |
 |------|------|-------|
-| $B3 | PF0ScoreBuf | Alias into EnemyCount area — score buffers (legacy name) |
-| $B8 | PF1ScoreBuf | Alias |
-| $C6 | PF2ScoreBuf | Alias (within PF0Buf) |
 | $BD | EnemyRamX | 3 bytes live enemy X ($BD-$BF, slots 0-2 only) |
 | $C0 | LaserState | laser S1: b7 held, b6 prev, b1-0 sweep phase |
 | $C1 | EnemyRamD | Packed dir bits 0-3 |
 | $C2 | EnemyRamP | Free-running frame clock (`inc` once/frame in RefreshEnemyY; gates bat/spider/tentacle derives; init `$F0` on room load = harmless seed) |
-| $C3-$CE | PF0Buf | TilePF0 (12) |
+| $C3-$CE | PF0Buf | TilePF0 (12). **Rows 0-2 pure since S3.4** — `EnemyRamY` moved out to `$E2`; the per-frame `LoadPF0Only` repair was deleted (rows 0-2 never stomped, pattern = EnterRoom `LoadPFBuffer` only). |
 | $CF-$DA | PF1Buf | TilePF1 (12). **Only rows 0-2 are read** (kernel `.Row` X=0..2, `ClearPFColumn` rows 0..2); rows 3-11 are fill-only. **$D2 = `RoomBandColor` alias (PF1Buf[3], dead row):** band-color cache (level_bank_plan P2.5). Writer: VBLANK stage after `BuildColupF` (fold from LevelEnemy record, RoomNo\*4+3) — every frame, so ordering is structural. Readers: kernel `.WaterRow` via `LoadRoomBottomColor`, overscan `CheckBandTouch`. **FIX 2026-09-28:** was `$D1` = PF1Buf[2] — that collided with the kernel's `lda PF1Buf,X` (X=2): the band color (room 0 = `$00`) rendered as the bottom band's PF1 wall pattern every frame → mid-wall gap + cell-map collision mismatch (phase_1 dumps showed `$D1=00` vs model `$ff`). bank1 has no `$D2` EQU; bank1 HUD owns `$E0-$EF` only; no physics touch. |
-| $DB-$E6 | PF2Buf | TilePF2 (12) |
-| $E7-$F2 | ColupfBuf | Final COLUPF × 12 rows (stripe+hot). **Overlaps $F0-$F2 bombs:** `BuildColupF` saves PlayerBombs/BombSnd/RoomWallMask → CollisionCellY/EndX/EndY; `.AfterRows` restores before HUD. Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds. |
+| $DB-$E6 | PF2Buf | TilePF2 (12). Rows 7-11 dead → **$E2-$E4 = `EnemyRamY` (S3.4)**: live Y overlay on dead rows, inside the bank1 stomp zone but ordering-safe (write/read all land between the HUD stomp and the next one — see kernel ZP contract). |
+| $E7-$F2 | ColupfBuf | Final COLUPF × 12 rows — but only rows 0-2 ($E7-$E9) are ever written (TILE_ROWS=3; rows 9-11 are the bombs' own bytes, no overlap machinery since S3.0b). Bank1 clobbers $E7-$EF during HUD; VBLANK rebuilds every frame (S2.1 blocker, see progress doc). |
 | $F3 | ScoreTh | Shared with bank1 score |
 | $F4 | ScoreHu | |
 | $F5 | ScoreTe | |
 | $F6 | **BombX** | Bomb drop X snapshot (bank1 must not write) |
 | $F7 | **BombTimer** | Fuse/explode frames |
-| $F0 | **PlayerBombs** | Bombs left 0..5 — bytes $F0-$F2 also ColupfBuf[9..11]; kernel restores from collision temps at `.AfterRows` |
-| $F1 | **BombSnd** | Frames of bomb audio left (S10; 0=silent); same save/restore |
-| $F2 | **RoomWallMask** | Packed destroyed thin-wall mask until stage leave: bits0-3 room0 rects, bits4-7 room1 rects (b3-6 of BombPacked saved/restored in EnterRoom; LoadLevel zeros it); same save/restore |
+| $F0 | **PlayerBombs** | Bombs left 0..5 (lives at `$F0` physically = old ColupfBuf[9]; nothing writes it but bomb logic since S3.0b) |
+| $F1 | **BombSnd** | Frames of bomb audio left (S10; 0=silent) |
+| $F2 | **RoomWallMask** | Packed destroyed thin-wall mask until stage leave: bits0-3 room0 rects, bits4-7 room1 rects (b3-6 of BombPacked saved/restored in EnterRoom; LoadLevel zeros it) |
 | $F8-$FF | *(free)* | **stack mirror only** — PlayerGrp0 removed (kernel reads ROM via `Grp0Ptr`); never put a buffer here |
 
-Bank1 HUD `$E0-$EF` score ptrs/bar temps overlap ColupfBuf — safe because
-bank1 runs after cave kernel (bombs already restored); VBLANK rebuilds ColupfBuf.
+Bank1 HUD `$E0-$EF` (score ptrs + bar temps) stomps ColupfBuf rows 0-2 and
+the `EnemyRamY` overlay every frame. Safe because: Colupf is rebuilt every
+VBLANK (before the next kernel read), and `EnemyRamY` is rewritten at
+overscan entry — every Y read sits between the write and the next stomp
+(window diagram in kernel.asm's ZP contract block).
 
-**Save-temp lifetime:** CollisionCellY/EndX/EndY hold bomb copies from
-`BuildColupF` (VBLANK) through cave kernel until `.AfterRows`. First reuse for
-collision is overscan `PlayerHitsMap`/`BombMarkWalls` — after restore.
-Do not run those between `BuildColupF` and `.AfterRows`.
+**Save-temp lifetime (obsolete since S3.0b):** the bomb save/restore into
+`CollisionCellY/EndX/EndY` was deleted — `BuildColupF` writes rows 0-2
+only and nothing else touched `$F0-$F2` between save and restore.
 
 ## Bank1 ZP (menu / HUD) — verified EQUs
 
@@ -144,13 +144,13 @@ Do not run those between `BuildColupF` and `.AfterRows`.
 | $AC | PlayerLives | Shared lives | same |
 | $AD | Temp | Bank1 scratch | bank0 TickCounter (different phase) |
 | $AE | BarLevel | Shared bar | same |
-| $E0-$EB | scorePtr1-6 | 6 digit ptrs | ColupfBuf/PF2Buf overlap OK |
-| $EC | scbrdCnt | Score loop | ColupfBuf overlap OK |
-| $ED | scbrdTmp | Score temp | ColupfBuf overlap OK |
-| $EE | DelayCnt | Power-bar delay | ColupfBuf overlap OK |
-| $EF | FineCnt | Power-bar fine | ColupfBuf overlap OK |
+| $E0-$EB | scorePtr1-6 | 6 digit ptrs | stomps ColupfBuf[0-2] ($E7-$E9) + EnemyRamY ($E2-$E4) every frame — both safe by rebuild/write window (see above) |
+| $EC | scbrdCnt | Score loop | ColupfBuf dead-row overlap OK |
+| $ED | scbrdTmp | Score temp | ColupfBuf dead-row overlap OK |
+| $EE | DelayCnt | Power-bar delay | ColupfBuf dead-row overlap OK |
+| $EF | FineCnt | Power-bar fine | ColupfBuf dead-row overlap OK |
 | $F3-$F5 | ScoreTh/Hu/Te | Score digits | shared |
-| $8D/$8E/$8F | CollisionCellY/EndX/EndY | Bank0 collision temps; bomb save slots during VBLANK+kernel only | bank1 must not use |
+| $8D/$8E/$8F | CollisionCellY/EndX/EndY | Bank0 collision temps (bomb save slots deleted S3.0b) | bank1 must not use |
 | — | GameMode | Fold-pad mode flag | check `bank1.asm` before use |
 | — | HUD slots | `HudSlotsRam` etc. | see bank1 / HUD notes |
 

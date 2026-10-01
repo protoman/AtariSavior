@@ -209,7 +209,7 @@ Rc4H            = $DF           ; rect4.h cache (PF2Buf+4)
 ; runs AFTER the cave kernel. Bank1 overwrites them during HUD band;
 ; VBLANK re-populates them before the next kernel frame.
 PF0Buf          = $C3           ; 12 bytes: TilePF0 values per row
-                                ; (rows 0-2 alias EnemyRamY — see contract)
+                                ; (rows 0-2 pure since S3.4 — Y moved to $E2)
 PF1Buf          = $CF           ; 12 bytes: TilePF1 values per row
                                 ; (only rows 0-2 are ever read: kernel .Row
                                 ; X=0..2 and ClearPFColumn rows 0..2)
@@ -247,16 +247,23 @@ FetchPtr        = $E0           ; fold-indirect pointer ($E0 lo, $E1 hi) —
 ; Sequential vars end at $BC; EnemyRam occupies $BD-$BF + $C1-$C2 (5);
 ; $C0 = LaserState (the one free byte — see docs/zp_layout_skill.md).
 ; Score lives at $F3-$F5 only ($F6/$F7 = BombX/BombTimer).
-; EnemyRamY ($C3, 3B) ALIASES PF0Buf rows 0-2 — E0/E1 contract:
+; EnemyRamY ($E2, 3B) — private bytes since S3.4 (was an alias over
+; PF0Buf rows 0-2). It deliberately sits INSIDE bank1's HUD stomp zone
+; ($E0-$EF score ptrs, written every frame) because every write and every
+; read land inside one safe window:
+;   [HUD stomp $E2-$E4] → [overscan: RefreshEnemyY/LoadEnemyRam WRITE]
+;   → [CEH / Laser / moth READ] → [next VBL: SelectActiveObject READ]
+;   → [HUD stomp ...]. No reader ever sits between the stomp and the write.
 ;   writers: RefreshEnemyY via DeriveEnemyY (overscan entry, EVERY frame —
-;            VBLANK LoadPF0Only clobbers $C3 each frame; bat Y is derived
-;            from ROM spawn + TickCounter, no stored movement state) +
-;            LoadEnemyRam (EnterRoom init);
-;   readers: SelectActiveObject (VBLANK — MUST run BEFORE LoadPF0Only),
-;            CheckEnemyHit + LaserHitTest (overscan, after the refresh).
-;   Ordering guards live in verify_build.py (VBLANK + EnterRoom + bank1).
-;   PF1/PF2 rows 0-2 have NO per-frame stomp → full LoadPFBuffer runs only
-;   on EnterRoom; VBLANK does the 3-fold PF0 repair (LoadPF0Only).
+;            live Y is derived from ROM spawn + EnemyRamP clock, no stored
+;            movement state) + LoadEnemyRam (EnterRoom init);
+;   readers: SelectActiveObject (VBLANK), CheckEnemyHit + LaserHitTest +
+;            moth walk (overscan, after the refresh).
+; Effect: $C3-$C5 = pure PF0Buf rows 0-2, never stomped → the per-frame
+;   VBL repair (LoadPF0Only, ~130c + 3 folds) is deleted; full
+;   LoadPFBuffer runs only on EnterRoom (PF1/PF2 rows 0-2 likewise have
+;   no per-frame writer). bank1 owns $E0-$EF during HUD; bank0 never keeps
+;   other persistent state there (FetchPtr $E0/$E1 = staged only).
 EnemyRamX       = $BD           ; 3 bytes: live X per enemy ($BD-$BF, slots 0-2
                                 ; only — enemies+lamps capped at 3 by editor
                                 ; kMaxRoomElements, convert_level MAX_ENEMIES,
@@ -267,8 +274,8 @@ LaserState      = $C0           ; laser (S1): b7 fire held this frame,
 EnemyRamD       = $C1           ; dir bits 0-3 = enemy 0-3 (1=right, 0=left)
 EnemyRamP       = $C2           ; bits0-3 moth phase (shared/sync); bits4-7
                                 ;   vdir for spider/bat/tentacle (1=down)
-EnemyRamY       = $C3           ; 3 bytes: live Y per enemy — ALIAS over
-                                ;   PF0Buf[0..2]; see contract above
+EnemyRamY       = $E2           ; 3 bytes: live Y per enemy ($E2-$E4) —
+                                ;   private since S3.4; see contract above
 
 ; ==============================================================================
 ; Constants
@@ -370,7 +377,7 @@ COLOR_HOT_R     = COLOR_BLINK_R
                                     ; (NOT deletable: $F008 = GameStart is a
                                     ;  hardcoded cross-bank entry — bank1
                                     ;  stub `jmp $F008`; this jmp also keeps
-                                    ;  $F176 Overscan (S3.0b) + F0xx landmarks fixed)
+                                    ;  $F173 Overscan (S3.4) + F0xx landmarks fixed)
 
 GameStart:
     sei                         ; disable interrupts
@@ -457,15 +464,14 @@ StartFrame:
     ; applied HMP0 twice → player fine-adjust doubled (visual teleport/jitter).
 
     ; --- Select which object GRP1 draws this frame (miner or enemy) ---
-    ; MUST run before LoadPF0Only: reads EnemyRamY ($C3 = PF0Buf rows 0-2).
+    ; Reads EnemyRamY ($E2) — no VBL writer of $E2 exists (Y writers are
+    ; overscan-only, score ptrs are HUD-only), so no ordering constraint.
     jsr SelectActiveObject
 
-    ; --- PF0 repair (the ONLY per-frame refresh; 3 folds ≈ 130c vs 384c) ---
-    ; $C3-$C5 (PF0 rows 0-2) are stomped every frame by EnemyRamY; PF1/PF2
-    ; rows 0-2 have NO per-frame writer (bank1 touches $E0-$EF only; rect
-    ; caches + RoomBandColor live in dead rows 3-11) — full 9-fold rebuild
-    ; only needed on EnterRoom.
-    jsr LoadPF0Only
+    ; --- PF0: NO per-frame refresh since S3.4 — EnemyRamY moved to $E2-$E4,
+    ; so $C3-$C5 keep the EnterRoom pattern forever (the old LoadPF0Only
+    ; repair = 3 folds ≈ 130c/frame is deleted). PF1/PF2 rows 0-2 likewise
+    ; have no per-frame writer; full 9-fold rebuild only on EnterRoom.
     jsr ApplyBombWalls          ; S6.1: re-apply thin-wall holes every frame
     jsr CallPad_BuildColupF    ; stripe+hot COLUPF bytes into ColupfBuf ($E7-$F2)
 
@@ -772,7 +778,8 @@ Overscan:
     lda #50
     sta TIM64T
 
-    ; --- Rewrite EnemyRamY ($C3 alias was clobbered by VBLANK PF refresh) ---
+    ; --- Write live Y → EnemyRamY ($E2-$E4; window-safe since S3.4: this
+    ; runs after the HUD score-ptr stomp, before every reader) ---
     jsr RefreshEnemyY
 
     ; --- Read joystick ---
@@ -1089,8 +1096,11 @@ StepUp subroutine
 ; ==============================================================================
 ; Room management
 ; ==============================================================================
-; LoadPF0Only (VBLANK, every frame): PF0 phase only — 3 folds ≈ 130c.
-;   Repairs the per-frame EnemyRamY stomp of $C3-$C5 (PF0 rows 0-2).
+; LoadPF0Only: PF0 phase (3 folds ≈ 130c) — now reached ONLY via
+;   LoadPFBuffer's tail jump (EnterRoom full rebuild).
+;   History: was also called every VBLANK frame to repair the per-frame
+;   EnemyRamY stomp of $C3-$C5; that repair entry + jsr were deleted in
+;   S3.4 when EnemyRamY moved to $E2-$E4 (PF0 rows 0-2 are never stomped).
 ; LoadPFBuffer (EnterRoom only): full 3-phase rebuild, 9 folds ≈ 384c.
 ;   PF1/PF2 rows 0-2 have no per-frame writer, so they only need rebuilding
 ;   once per room (bank1 touches $E0-$EF only; rect caches + RoomBandColor
@@ -1313,8 +1323,8 @@ EnterRoom subroutine
 
     jsr LoadPFBuffer
     jsr ApplyBombWalls          ; re-punch holes from restored mask
-    jsr LoadEnemyRam            ; LAST: writes EnemyRamY ($C3 alias) — must
-    rts                         ; follow the PF refresh, not precede it
+    jsr LoadEnemyRam            ; writes EnemyRamX/Y/D ($E2 disjoint from PF
+    rts                         ; buffers since S3.4 — order now cosmetic)
 
 ; ------------------------------------------------------------------------------
 ; LoadEnemyRam — copy each ROM enemy's x,dir into the RAM shadow.
@@ -1541,8 +1551,8 @@ UE_Tentacle:
 
 ; ------------------------------------------------------------------------------
 ; DeriveEnemyY — live Y for enemy slot X. Moving types are DERIVED, not stored:
-; the EnemyRamY alias ($C3) is clobbered by every VBLANK's LoadPFBuffer, and
-; there is no free ZP byte to persist movement state, so the formula is
+; there is no free ZP byte for per-slot movement state (phase/direction live
+; in the shared EnemyRamP/EnemyRamD bitfields), so the formula is
 ; re-evaluated from ROM spawn + the EnemyRamP frame clock at each refresh.
 ; Bat:     spawn..spawn+2, 1 px / 2 frames, triangle(EnemyRamP>>1 & 3).
 ; Tentacle: spawn..spawn+2, 1 px / 8 frames, triangle(EnemyRamP>>3 & 3).
@@ -1959,7 +1969,7 @@ SelectActiveObject:
     sta ObjBase
 .SOEnemyColorDone:
     ldx EnemyIndex
-    lda EnemyRamY,X             ; live Y (E0: EnemyRamY alias, was ROM +2)
+    lda EnemyRamY,X             ; live Y from $E2 (private since S3.4)
     sta ActiveObjectY
     ; Position GRP1
     lda ActiveObjectX            ; A = X position for SetObjectXPos
@@ -2592,9 +2602,9 @@ EnemyOffTable:
 
 ; ------------------------------------------------------------------------------
 ; RefreshEnemyY — write live Y → EnemyRamY (every slot, live or dead).
-; The alias ($C3) is clobbered by VBLANK's LoadPFBuffer every frame, so
-; overscan must rewrite it AFTER the HUD band and BEFORE LaserInput /
-; CheckEnemyHit / next frame's SelectActiveObject read it.
+; Runs at overscan entry: inside the safe window (after the HUD score-ptr
+; stomp of $E2-$E4, before LaserInput / CheckEnemyHit / moth / next frame's
+; SelectActiveObject read it) — see the EnemyRamY contract at the ZP map.
 ; E1: moving types (bat) get ROM spawn + TickCounter-derived offset via
 ; DeriveEnemyY — no persistent movement state exists in RAM.
 ; Clobbers A/X/Y. End-of-main leaf (moved 2026-09-28: P3.6 rect folds grew
