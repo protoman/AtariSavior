@@ -8,10 +8,12 @@ Eorley Savior.
 =========================================================================================================================================================================
 BUGS
 =========================================================================================================================================================================
-How HERO, a game that is way more complex than ours, can fit the whole game in two 4k banks?
-Is it optimization, or there are some things we are doing in a much more complex way, we could simplify? If yes, witch ones?
+HERO, a game that is way more complex than ours, can fit the whole game in two 4k banks.
+So, is it code optimization, or there are some things we are doing in a much more complex way, we could simplify? If yes, witch ones?
 
 Can we move, maybe the data tables to bank1 that is currently used by the HUD?
+
+Can we compact the current code? I mean, optimize it in any way to make it take less space?
 
 =========================================================================================================================================================================
 
