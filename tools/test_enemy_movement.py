@@ -97,7 +97,9 @@ def main() -> None:
     assert "sta EnemyDeadMask" in KERNEL, "dead-mask kill path intact"
 
     # --- E1/E-gates: derives read the free-running clock EnemyRamP ---------
-    dey = KERNEL.split("DeriveEnemyY:")[1].split("GetConnIdx:")[0]
+    # end marker: GetConnIdx moved to bank1 (leaf_move_plan); its old label
+    # was the slice terminator — ExitRoomDown now sits at that spot.
+    dey = KERNEL.split("DeriveEnemyY:")[1].split("ExitRoomDown:")[0]
     assert "cmp #ENEMY_BAT" in dey, "DeriveEnemyY must special-case the bat"
     assert "sta Temp" in dey and "adc Temp" in dey, \
         "bat delta must be added to ROM spawn y"
@@ -168,27 +170,41 @@ def main() -> None:
         "tentacle bob gate must be clock >> 3"
     tent = KERNEL.split("UE_Tentacle:")[1].split(".TentOut:")[0]
     assert "and #3" in tent, "tentacle X gate must be TickCounter & 3 (÷4)"
-    assert len(re.findall(r"\bpha\b", tent)) == 3 \
-        and len(re.findall(r"\bpla\b", tent)) == 3, \
-        "probe must save/restore player RoomX+RoomY AND slot X in pairs"
+    # ZP-scratch probe (6140f5a): the old 3-pha path hit min SP $F4 = bomb
+    # stomp — pha/pla are banned here; the swap uses ActiveObjectX/Y + EnemyIndex.
+    tent_code = "\n".join(l.split(";")[0] for l in tent.splitlines())
+    assert not re.search(r"\bpha\b|\bpla\b", tent_code), \
+        "probe must use ZP scratch (ActiveObjectX/Y + EnemyIndex), not pha/pla"
     phm = tent.index("jsr PlayerHitsMap")
-    # slot X must be pushed before the probe and popped right after it:
+    # slot X must be saved before the probe and popped right after it:
     # PlayerHitsMap->YToCellRow does `tax` (X = bottom row), so without the
     # save the commit wrote EnemyRamX[row] — tentacle X froze (E-gate bug).
-    save_x = tent.rindex("txa", 0, phm)
-    load_x = tent.index("tax", phm)
+    save_x = tent.rindex("stx EnemyIndex", 0, phm)
+    load_x = tent.index("ldx EnemyIndex", phm)
     assert save_x < phm < load_x, \
         "slot X must be saved before / restored after PlayerHitsMap"
     restore = tent.rindex("sta RoomX")           # player restore AFTER probe
     commit = tent.index("sta EnemyRamX,X")
     assert phm < load_x < restore < commit, \
         "probe order must be: PHM -> restore X -> restore player -> commit"
-    assert "jmp UE_Next" not in tent, \
-        "UE_Tentacle is a subroutine — must return via .TentOut, not UE_Next"
+    assert "sta ActiveObjectX" in tent and "sta ActiveObjectY" in tent, \
+        "probe must save player RoomX/RoomY into ZP scratch"
+    # tail architecture: the ONLY exit is .TentOut -> jmp UE_Next
+    tent_out = KERNEL.split(".TentOut:")[1].splitlines()[1]
+    assert tent_out.split(";")[0].strip() == "jmp UE_Next", \
+        "every path must exit via .TentOut -> jmp UE_Next (tail jmp, no rts)"
     ue = KERNEL.split("UpdateEnemies:")[1].split("UE_Exit:")[0]
-    assert "jsr UE_Tentacle" in ue, "dispatch must call the tentacle subroutine"
+    assert "jmp UE_Tentacle" in ue, \
+        "dispatch must tail-jmp the tentacle (jsr costs 2 stack bytes)"
     assert ue.index("cmp #ENEMY_TENTACLE") < ue.index("cmp #ENEMY_SNAKE"), \
         "tentacle check must come first (keeps snake branches in range)"
+    # --- E4: moth dispatched via the $FEF0 bank2 code-fold tramp ------------
+    assert "cmp #ENEMY_MOTH" in ue, "dispatch must test the moth"
+    assert "jmp UE_MothTramp" in ue, \
+        "moth must tail-jmp the entry tramp (0 push — stack guard)"
+    assert (ue.index("cmp #ENEMY_TENTACLE") < ue.index("cmp #ENEMY_MOTH")
+            < ue.index("cmp #ENEMY_SNAKE")), \
+        "dispatch order must stay tentacle -> moth -> snake"
 
     # --- water strip: bottom 1/4 of the bottom band, split pass ------------
     assert ".WaterRow:" in KERNEL, "water strip pass missing"

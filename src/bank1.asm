@@ -90,6 +90,31 @@ ScoreHu     = $F4       ; score hundreds digit
 ScoreTe     = $F5       ; score tens+ones packed BCD
 ; $F6 is NOT ScoreOn — bank0 uses it as BombX. Do not write $F6 here.
 
+; --- TIA/RIOT + ZP mirrors for relocated leaf routines (leaf_move_plan) ---
+;     MUST match kernel.asm decls (hardware-fixed or frozen ZP addresses).
+AUDC0       = $15
+AUDC1       = $16
+AUDF0       = $17
+AUDF1       = $18
+AUDV0       = $19
+AUDV1       = $1A
+SWCHA       = $0280
+BombSnd     = $F1
+JetPower    = $96
+TickCounter = $AC
+RoomNo      = $98
+LevelConnLo = $A1
+LevelConnHi = $A2
+FetchPtr    = $E0
+EnemyRamD   = $C1
+PF0Buf      = $C3
+PF1Buf      = $CF
+PF2Buf      = $DB
+CollisionX  = $8B
+CollisionCellX = $8C
+; bank0's Temp — do NOT confuse with bank1's Temp ($AD) HUD scratch above.
+Temp088     = $88
+
 INPT4       = $0C       ; fire button (active low, bit 7)
 
     ; --- Bar PF setup before TopGap (grey-on-grey: invisible) ---
@@ -685,6 +710,241 @@ BallXTable:             ; B=0..120; = max(4, actual body red@); mono
     .byte 96,99,99,99,102,102,102,108,108,108,108,111,111,111,114,114
     .byte 114,117,117,117,123,123,123,126,126,126,129,129,129,132,132,132
     .byte 132,138,138,138,141,141,141,144,144
+
+; ========================================================================
+; Leaf routines relocated from bank0 — batch A, sounds (leaf_move_plan)
+; Entry targets for bank0 CallPads; every tail jmps ReturnPad at $FBF8
+; (byte-identical pad in both banks — pha/lda/sta/pla/rts).
+; ========================================================================
+    .ds $F9C0 - *, 0
+
+JET_AUD_BASE = $0F           ; mirrors kernel.asm EQU (value guarded by tests)
+JET_AUD_VOL  = $08
+
+UpdateBombSound:
+    lda BombSnd
+    beq .UBSSilence
+    dec BombSnd
+    bne .UBSDone
+.UBSSilence:
+    lda #0
+    sta AUDV0
+.UBSDone:
+    jmp $FBF8
+
+UpdateJetSound:
+    lda SWCHA
+    and #%00010000              ; D4 = up (0 = pressed)
+    beq .JetOn
+    lda #0                      ; throttle off -> mute engine
+    sta AUDV1
+    jmp $FBF8
+.JetOn:
+    lda #1                      ; 4-bit poly = raspy engine buzz
+    sta AUDC1
+    lda JetPower
+    lsr
+    lsr
+    lsr                         ; JetPower/8 = 0..4 (revs with thrust)
+    eor #$ff
+    clc
+    adc #1                      ; A = -(JetPower/8)
+    clc
+    adc #JET_AUD_BASE           ; A = base - JetPower/8
+    tax
+    lda TickCounter
+    and #1
+    beq .JetWob
+    dex                         ; parity wobble -1 every other frame (30 Hz sputter)
+.JetWob:
+    txa
+    sta AUDF1
+    lda #JET_AUD_VOL
+    sta AUDV1
+    jmp $FBF8
+
+BombSndDrop:
+    lda #6
+    sta BombSnd
+    lda #4                      ; square
+    sta AUDC0
+    lda #10
+    sta AUDF0
+    lda #8
+    sta AUDV0
+    jmp $FBF8
+
+BombSndExplode:
+    lda #30
+    sta BombSnd
+    lda #8                      ; noise
+    sta AUDC0
+    lda #0
+    sta AUDF0
+    lda #10
+    sta AUDV0
+    jmp $FBF8
+
+; ========================================================================
+; Leaf routines relocated from bank0 — batch B (leaf_move_plan)
+; ========================================================================
+
+; GetConnIdx — stage FetchPtr for the four exit handlers' folds.
+; Conn table lives in bank2; the fold read happens in the bank0 CALLER's
+; jsr FoldIndirect after return. Returns Y = RoomNo*4, X = 0.
+GetConnIdx:
+    lda RoomNo
+    asl
+    asl
+    tay
+    lda LevelConnLo
+    sta FetchPtr
+    lda LevelConnHi
+    sta FetchPtr+1
+    ldx #0
+    jmp $FBF8
+
+; ClearPFColumn — A = left-half col 0..19; Temp088 ($88 = bank0 Temp) =
+;   first row; CollisionCellX = last row (inclusive). AND-clear that col's
+;   PF bit in those rows only. Clobbers A/X/Y/CollisionX.
+ClearPFColumn:
+    tay                         ; Y = col
+    lda BombClearMask,Y
+    sta CollisionX              ; AND mask (clear bit)
+    ldx Temp088                 ; first row
+.CPCLoop:
+    tya                         ; col
+    cmp #4
+    bcc .CPC0
+    cmp #12
+    bcc .CPC1
+    lda PF2Buf,X
+    and CollisionX
+    sta PF2Buf,X
+    jmp .CPCNext
+.CPC0:
+    lda PF0Buf,X
+    and CollisionX
+    sta PF0Buf,X
+    jmp .CPCNext
+.CPC1:
+    lda PF1Buf,X
+    and CollisionX
+    sta PF1Buf,X
+.CPCNext:
+    cpx CollisionCellX
+    beq .CPCDone
+    inx
+    bne .CPCLoop               ; rows 0..2; X never wraps here
+.CPCDone:
+    jmp $FBF8
+
+; AND-mask to clear col 0-19's PF bit (inverse of convert_room.pf_values)
+BombClearMask:
+    .byte $EF, $DF, $BF, $7F                    ; col 0-3  (PF0)
+    .byte $7F, $BF, $DF, $EF, $F7, $FB, $FD, $FE ; col 4-11 (PF1)
+    .byte $FE, $FD, $FB, $F7, $EF, $DF, $BF, $7F ; col 12-19 (PF2)
+
+; AddScore — add BCD amount in A (e.g. #$50, #$75) to HUD score.
+; ScoreTh/ScoreHu = binary 0-9; ScoreTe = packed BCD. Clobbers A.
+AddScore:
+    clc
+    adc ScoreTe
+    cmp #$a0
+    bcc .ASstoreTe
+    sbc #$a0
+    pha                         ; save wrapped ScoreTe
+    inc ScoreHu
+    lda ScoreHu
+    cmp #10
+    bcc .AShuOk
+    lda #0
+    sta ScoreHu
+    inc ScoreTh
+    lda ScoreTh
+    cmp #10
+    bcc .ASthOk
+    lda #9
+    sta ScoreTh
+.ASthOk:
+.AShuOk:
+    pla
+.ASstoreTe:
+    sta ScoreTe
+    jmp $FBF8
+
+; IsRoomDark — Z=1 if lit, Z=0 if dark (RoomDarkMask = EnemyRamD bits 4-7).
+; Clobbers A/X; Y preserved. PLA in ReturnPad re-sets Z from A — contract
+; survives the cross-bank return.
+IsRoomDark:
+    lda RoomNo
+    cmp #4
+    bcs .IRDlit                 ; rooms 4+ never dark (mask only covers 0-3)
+    clc
+    adc #4                      ; bit index = 4 + RoomNo
+    tax
+    lda BitMaskTable,X
+    and EnemyRamD               ; Z=1 → lit (bit clear), Z=0 → dark
+    jmp $FBF8
+.IRDlit:
+    lda #0                      ; Z=1 → lit
+    jmp $FBF8
+
+; SetRoomDark — set dark flag for current RoomNo (bits 4-7 of EnemyRamD).
+; Clobbers A/X. Cleared only by LoadLevel.
+SetRoomDark:
+    lda RoomNo
+    cmp #4
+    bcs .SRDdone                ; rooms 4+ unsupported
+    clc
+    adc #4
+    tax
+    lda BitMaskTable,X
+    ora EnemyRamD
+    sta EnemyRamD
+.SRDdone:
+    jmp $FBF8
+
+; Bit masks for IsRoomDark/SetRoomDark (indexed 0-7; bits 4-7 = rooms 0-3)
+BitMaskTable:
+    .byte $01, $02, $04, $08, $10, $20, $40, $80
+
+; ========================================================================
+; Cross-bank call pads — byte-identical to bank0 at these addresses
+; (docs/leaf_move_plan.md). F6 hotspot ignores the written value, so pads
+; pass A/X/Y/flags through untouched (`sta` does not affect flags).
+; ========================================================================
+    .ds $FBF8 - *, 0
+ReturnPad:
+    sta $1FF6
+    rts
+CallPad_UpdateBombSound:
+    sta $1FF7
+    jmp $F9C0
+CallPad_UpdateJetSound:
+    sta $1FF7
+    jmp $F9CF
+CallPad_BombSndDrop:
+    sta $1FF7
+    jmp $FA00
+CallPad_BombSndExplode:
+    sta $1FF7
+    jmp $FA13
+CallPad_GetConnIdx:
+    sta $1FF7
+    jmp $FA26
+CallPad_ClearPFColumn:
+    sta $1FF7
+    jmp $FA38
+CallPad_AddScore:
+    sta $1FF7
+    jmp $FA7F
+CallPad_IsRoomDark:
+    sta $1FF7
+    jmp $FAA7
+CallPad_SetRoomDark:
+    sta $1FF7
+    jmp $FABE
 
 ; ========================================================================
 ; Fold-pad stubs (byte-identical to bank0)
