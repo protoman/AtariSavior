@@ -243,6 +243,163 @@ def check_fold_block(src: Path) -> None:
                 f"${FOLD_ADDR:04X} (bank{idx})")
 
 
+MOTH_ENTRY = 0xFEF0
+MOTH_EXIT = 0xFC49
+# sta $1FF8 (entry) / sta $1FF6 (exit) — the switch halves of the E4 tramps.
+MOTH_STA18 = bytes([0x8D, 0xF8, 0x1F])
+MOTH_STA16 = bytes([0x8D, 0xF6, 0x1F])
+
+
+def check_moth_tramp(src: Path) -> None:
+    """E4: moth code-fold tramps — byte-identity slices + address pins.
+
+    Entry $FEF0: bank0 runs `sta $1FF8`, bank2 serves `jmp MothRoutine`
+    ($FEF3). Exit $FC49: bank2 runs `sta $1FF6`, bank0 serves `jmp UE_Next`
+    ($FC4C). Each bank only executes its own half, but both halves are written
+    in both sources (FoldIndirect discipline) so a straight byte-compare pins
+    the whole block: operand drift (e.g. bank2's MothRoutine moving while
+    kernel.asm's literal stays) fails loudly.
+    Also asserts $FFF2-$FFF9 stay fill in both banks: $FFF6-$FFF9 are F6
+    hotspot mirrors ((addr & $1FFF) in $1FF6-$1FF9) — Stella peek() calls
+    checkSwitchBank on reads (CartEnh.cxx:157), so any fetched byte there
+    flips banks mid-instruction (the 2026-09-30 frame-3 crash).
+    """
+    banks: dict[int, bytes] = {}
+    for idx in (0, 2):
+        p = src / f"bank{idx}.bin"
+        if not p.exists():
+            err(f"bank{idx}.bin missing (moth tramp check)")
+            return
+        data = p.read_bytes()
+        if len(data) == 4096:
+            banks[idx] = data
+    if len(banks) < 2:
+        return
+
+    lst0_path, lst2_path = src / "bank0.lst", src / "bank2.lst"
+    if not lst0_path.exists() or not lst2_path.exists():
+        err("bank0.lst/bank2.lst missing (moth tramp check)")
+        return
+    labels0, _ = parse_lst(lst0_path.read_text(errors="replace").splitlines())
+    labels2, _ = parse_lst(lst2_path.read_text(errors="replace").splitlines())
+
+    eoff = MOTH_ENTRY - 0xF000
+    e0 = banks[0][eoff:eoff + 6]
+    e2 = banks[2][eoff:eoff + 6]
+    if e0[:3] != MOTH_STA18:
+        err(f"bank0 moth entry ${MOTH_ENTRY:04X} = {e0.hex()} "
+            f"(expected {MOTH_STA18.hex()} + jmp)")
+    if e0 != e2:
+        err(f"moth entry bank0[{MOTH_ENTRY:04X}] {e0.hex()} != bank2 "
+            f"{e2.hex()} (byte-identity broken)")
+    moth = labels2.get("MothRoutine")
+    tgt = (e0[4] | (e0[5] << 8)) if len(e0) == 6 else None
+    if moth is None:
+        err("MothRoutine label not found in bank2.lst")
+    elif tgt != moth:
+        err(f"moth entry jmp ${tgt if tgt is not None else 0:04X} != "
+            f"bank2 MothRoutine ${moth:04X} (entry pad and routine diverged)")
+    tramp = labels0.get("UE_MothTramp")
+    if tramp != MOTH_ENTRY:
+        shown = f"${tramp:04X}" if tramp is not None else "None"
+        err(f"UE_MothTramp at {shown}, expected ${MOTH_ENTRY:04X} "
+            "(dispatch jmp target moved off the pad)")
+
+    xoff = MOTH_EXIT - 0xF000
+    x0 = banks[0][xoff:xoff + 3]
+    x2 = banks[2][xoff:xoff + 3]
+    if x0 != MOTH_STA16 or x2 != MOTH_STA16:
+        err(f"moth exit slice bank0 {x0.hex()} / bank2 {x2.hex()} != "
+            f"{MOTH_STA16.hex()} (sta $1FF6)")
+    if banks[0][xoff + 3] != 0x4C:
+        err(f"bank0 ${MOTH_EXIT + 3:04X} is not a jmp (expected jmp UE_Next)")
+    else:
+        un = labels0.get("UE_Next")
+        op = banks[0][xoff + 4] | (banks[0][xoff + 5] << 8)
+        if un is None:
+            err("UE_Next label not found in bank0.lst")
+        elif op != un:
+            err(f"moth exit jmp ${op:04X} != UE_Next ${un:04X}")
+
+    # F6 hotspot mirror zone: a fetch of $FFF6-$FFF9 peeks a hotspot
+    # (ADDR_MASK=$1FFF) and flips banks mid-instruction (Stella peek side
+    # effect). Must stay fill — no code — in every executing bank.
+    for idx, data in banks.items():
+        zone = data[0xFF2:0xFFA]
+        if any(zone):
+            err(f"bank{idx} $FFF2-$FFF9 = {zone.hex()} (must be fill: "
+                "$FFF6-$FFF9 are F6 hotspot mirrors on peek)")
+
+
+# Cross-bank call pads (leaf_move_plan): ReturnPad + CallPads must be
+# byte-identical in bank0/bank1 (first 5 bytes fetched pre-switch, jmp/pla/
+# rts post-switch), and every CallPad jmp literal must equal the bank1 label.
+PAD_LO, PAD_HI = 0xFBF8, 0xFC49   # inclusive start, exclusive end (FC48 last)
+
+
+def check_callpads(src: Path) -> None:
+    banks: dict[int, bytes] = {}
+    for idx in (0, 1):
+        p = src / f"bank{idx}.bin"
+        if not p.exists():
+            err(f"bank{idx}.bin missing (callpad check)")
+            return
+        data = p.read_bytes()
+        if len(data) == 4096:
+            banks[idx] = data
+    if len(banks) < 2:
+        return
+    b0 = banks[0][PAD_LO - 0xF000:PAD_HI - 0xF000]
+    b1 = banks[1][PAD_LO - 0xF000:PAD_HI - 0xF000]
+    if b0 != b1:
+        first = next((i for i, (x, y) in enumerate(zip(b0, b1)) if x != y), 0)
+        err(f"callpad block bank0[${PAD_LO + first:04X}] != bank1 "
+            "(byte-identity broken — ReturnPad/CallPads must match)")
+
+    labels0: dict[str, int] = {}
+    labels1: dict[str, int] = {}
+    for idx, out in ((0, "labels0"), (1, "labels1")):
+        lp = src / f"bank{idx}.lst"
+        if not lp.exists():
+            err(f"bank{idx}.lst missing (callpad label check)")
+            return
+        labs, _ = parse_lst(lp.read_text(errors="replace").splitlines())
+        if idx == 0:
+            labels0 = labs
+        else:
+            labels1 = labs
+    for side, labs in (("bank0", labels0), ("bank1", labels1)):
+        rp = labs.get("ReturnPad")
+        if rp != PAD_LO:
+            err(f"{side} ReturnPad ${rp if rp is not None else -1:04X} "
+                f"!= ${PAD_LO:04X} (bank1 body tails jmp literal $FBF8)")
+
+    ksrc = (src / "kernel.asm").read_text(errors="replace")
+    # ReturnPad must switch back WITHOUT touching A/flags/stack:
+    # `sta $1FF6 / rts` (F6 hotspot ignores the written value).
+    rp = banks[0][PAD_LO - 0xF000:PAD_LO - 0xF000 + 4]
+    if rp != bytes([0x8D, 0xF6, 0x1F, 0x60]):
+        err(f"ReturnPad bytes {rp.hex()} != sta $1FF6/rts "
+            "(any A-clobbering sequence breaks pad arg/flag pass-through)")
+    pads = re.findall(
+        r"^CallPad_(\w+):\s*\n((?:[^\n]*\n){1,3}?)\s*jmp \$([0-9A-Fa-f]{4})",
+        ksrc, re.M)
+    if not pads:
+        err("no CallPad_* definitions found in kernel.asm")
+        return
+    for name, body, hexv in pads:
+        if re.search(r"\b(lda|tax|tay|txa|tya|pha|pla)\b", body):
+            err(f"CallPad_{name}: pad body clobbers A/X/Y/stack — pads must "
+                "be `sta $1FF7 / jmp` only (value ignored by F6 hotspot)")
+        want = int(hexv, 16)
+        got = labels1.get(name)
+        if got is None:
+            err(f"CallPad_{name}: jmp ${want:04X} but {name} not in bank1.lst")
+        elif got != want:
+            err(f"CallPad_{name}: jmp ${want:04X} != bank1 {name} "
+                f"${got:04X} (stale literal — pads must be byte-identical)")
+
+
 def check_enemy_alias(src: Path) -> None:
     """E0: EnemyRamY ($C3) aliases PF0Buf rows 0-2 — ordering contract."""
     kernel = (src / "kernel.asm").read_text(encoding="utf-8")
@@ -419,6 +576,8 @@ def main() -> int:
            else Path(__file__).resolve().parent.parent / "src")
     check_rom(src)
     check_fold_block(src)
+    check_moth_tramp(src)
+    check_callpads(src)
     check_levels(src)
     check_enemy_alias(src)
 

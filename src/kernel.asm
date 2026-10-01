@@ -493,7 +493,7 @@ StartFrame:
     and #%00000011
     cmp #2
     beq .BgBlink
-    jsr IsRoomDark
+    jsr CallPad_IsRoomDark
     beq .BgIdle                 ; lit room → COLOR_CAVE_BG
     lda #COLOR_CAVE_BG          ; dark → black
     jmp .BgStore
@@ -807,7 +807,7 @@ Overscan:
     sta BombY
     lda #180
     sta BombTimer
-    jsr BombSndDrop          ; S10: short blip on place
+    jsr CallPad_BombSndDrop          ; S10: short blip on place
     jmp .BombInDone
 .BombMarkDown:
     lda BombPacked
@@ -979,10 +979,10 @@ EndInputCheck:
     jsr BombTick
 
     ; --- Bomb audio: hold registers while BombSnd > 0, else silence ---
-    jsr UpdateBombSound
+    jsr CallPad_UpdateBombSound
 
     ; --- Jet engine audio (channel 1): buzz while Up is held ---
-    jsr UpdateJetSound
+    jsr CallPad_UpdateJetSound
 
     ; --- Decrement game timer (60 frames/step × 120 = 120s) ---
     dec TickCounter
@@ -1412,6 +1412,10 @@ UE_Alive:
     bne .UENotTent
     jmp UE_Tentacle              ; tail jmp: saves 2 push bytes (stack guard)
 .UENotTent:
+    cmp #ENEMY_MOTH              ; E4: moth body runs in bank2 (code fold)
+    bne .UENotMoth
+    jmp UE_MothTramp             ; tail jmp: 0 push (stack guard, like tentacle)
+.UENotMoth:
     cmp #ENEMY_SNAKE
     bne UE_Next                  ; other types: no X motion (Y is derived)
     lda TickCounter              ; snake: 1 px / 4 frames (was the global gate)
@@ -1624,24 +1628,10 @@ DeriveEnemyY:
 ; Connection table: 4 bytes per room (up, down, left, right), $FF = no exit.
 ; After transition: player is placed at the OPPOSITE edge of the new room.
 ; Jetpack velocity carries over (matches comparison/hero pattern).
-; ------------------------------------------------------------------------------
-GetConnIdx:                 ; A/Y = RoomNo * 4 (exit handlers add dir offset)
-    lda RoomNo
-    asl
-    asl
-    tay
-    ; --- Fold batch (P2.7): conn table lives in bank2. Stage FetchPtr here
-    ; so all four direction handlers fold with Y set by their iny path.
-    ; P3.1: fold bank select is absolute — X untouched across FoldIndirect. ---
-    lda LevelConnLo
-    sta FetchPtr
-    lda LevelConnHi
-    sta FetchPtr+1
-    ldx #0
-    rts
+; GetConnIdx moved to bank1 (leaf_move_plan batch B) — CallPad_GetConnIdx.
 
 ExitRoomDown:
-    jsr GetConnIdx
+    jsr CallPad_GetConnIdx
     iny                     ; +1 = down direction
     jsr FoldIndirect
     cmp #$ff
@@ -1653,7 +1643,7 @@ ExitRoomDown:
     rts
 
 ExitRoomUp:
-    jsr GetConnIdx          ; +0 = up direction
+    jsr CallPad_GetConnIdx          ; +0 = up direction
     jsr FoldIndirect
     cmp #$ff
     beq .NoUp
@@ -1664,7 +1654,7 @@ ExitRoomUp:
     rts
 
 ExitRoomLeft:
-    jsr GetConnIdx
+    jsr CallPad_GetConnIdx
     iny
     iny                     ; +2 = left direction
     jsr FoldIndirect
@@ -1677,7 +1667,7 @@ ExitRoomLeft:
     rts
 
 ExitRoomRight:
-    jsr GetConnIdx
+    jsr CallPad_GetConnIdx
     iny
     iny
     iny                     ; +3 = right direction
@@ -1954,7 +1944,7 @@ SelectActiveObject:
     sta FetchPtr
     lda EnemyDataHi
     sta FetchPtr+1
-    jsr IsRoomDark              ; clobbers X — Y still = type offset
+    jsr CallPad_IsRoomDark              ; clobbers X — Y still = type offset
     beq .SOEnemyLit
     lda #COLOR_DARK_OBJ         ; dark room: lamp + enemies medium grey
     sta COLUP1
@@ -2093,7 +2083,7 @@ CEH_HasMore:
     ora EnemyBitTable,X         ; X = EnemyIndex (set at CEH hit)
     sta EnemyDeadMask
     lda #$50              ; +50 points per kill
-    jsr AddScore
+    jsr CallPad_AddScore
     ; Lose a life
     dec PlayerLives
     bpl CEH_Stay
@@ -2110,7 +2100,7 @@ CEH_Lamp:
     cmp #PLAYER_WIDTH + LAMP_WIDTH - 1
     bcs CEHNext
     ; Only fire once (bit already set → no-op); no life loss, not EnemyDeadMask
-    jsr SetRoomDark
+    jsr CallPad_SetRoomDark
     rts
 CEH_Stay:
     ; Still have lives — just zero velocity, stay at current position
@@ -2159,7 +2149,7 @@ BombTick subroutine
     jsr BombMarkWalls           ; S6.3: set WallMask for w==1 rects in blast
     jsr BombEnemyBlast          ; S9: kill enemy ±1 col any Y (before player — reload clears)
     jsr BombPlayerBlast         ; S5: player ±1 col any Y → life (may ReloadLevel → clears masks)
-    jsr BombSndExplode          ; S10: noise burst
+    jsr CallPad_BombSndExplode          ; S10: noise burst
 .BTDone:
     rts
 
@@ -2205,7 +2195,7 @@ BombEnemyBlast:
     ora EnemyBitTable,X          ; X = EnemyIndex
     sta EnemyDeadMask            ; kill (first overlapping enemy per blast)
     lda #$50                    ; +50 points per kill
-    jsr AddScore
+    jsr CallPad_AddScore
     rts
 .BEBNext:
     inc EnemyIndex
@@ -2253,31 +2243,8 @@ BombPlayerBlast:
 .BPBMiss:
     rts
 
-; ------------------------------------------------------------------------------
-; Bomb audio (channel 0). BombSnd = frames remaining; UpdateBombSound decs
-; each overscan and silences AUDV0 at 0. Drop = square blip; explode = noise.
-; ------------------------------------------------------------------------------
-BombSndDrop:
-    lda #6
-    sta BombSnd
-    lda #4                      ; square
-    sta AUDC0
-    lda #10
-    sta AUDF0
-    lda #8
-    sta AUDV0
-    rts
-
-BombSndExplode:
-    lda #30
-    sta BombSnd
-    lda #8                      ; noise
-    sta AUDC0
-    lda #0
-    sta AUDF0
-    lda #10
-    sta AUDV0
-    rts
+; Bomb audio bodies (BombSndDrop/BombSndExplode) moved to bank1
+; (leaf_move_plan batch A) — called via CallPad_BombSnd*.
 
 ; ------------------------------------------------------------------------------
 ; BombMarkWalls — on 1→2 edge: walk RoomRects, set WallMask bit for each
@@ -2360,7 +2327,7 @@ BombMarkWalls:
     ora BombPacked
     sta BombPacked               ; set WallMask bit (keeps state+DownPrev)
     lda #$75                    ; +75 points per broken wall
-    jsr AddScore
+    jsr CallPad_AddScore
 .BMWNext:
     dex
     bpl .BMWLoop
@@ -2406,7 +2373,7 @@ ApplyBombWalls:
     txa
     pha                         ; rect index — ClearPFColumn clobbers X
     lda CollisionX              ; col
-    jsr ClearPFColumn           ; A=col, Temp=first, CollisionCellX=last
+    jsr CallPad_ClearPFColumn           ; A=col, Temp=first, CollisionCellX=last
     pla
     tax
 .ABWNext:
@@ -2436,12 +2403,7 @@ BombBlinkColors:
 BombMaskBit:
     .byte $08, $10, $20, $40
 
-; AND-mask to clear col 0-19's PF bit (inverse of convert_room.pf_values):
-;   col 0-3   → PF0 bits 4-7; col 4-11 → PF1 bits 7-0; col 12-19 → PF2 bits 0-7
-BombClearMask:
-    .byte $EF, $DF, $BF, $7F                    ; col 0-3  (PF0)
-    .byte $7F, $BF, $DF, $EF, $F7, $FB, $FD, $FE ; col 4-11 (PF1)
-    .byte $FE, $FD, $FB, $F7, $EF, $DF, $BF, $7F ; col 12-19 (PF2)
+; BombClearMask moved to bank1 with ClearPFColumn (leaf_move_plan batch B).
 
 ; --- Player sprites: 8x12, all 8 pixels wide (bit7 = leftmost pixel) ---
 ; Frame A = normal, frame B = jet legs (rows 7-8 differ; 3 pixels changed).
@@ -2498,56 +2460,6 @@ LEVEL_COUNT    = 2             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
 LEVEL_DATA_ADDR = $FB03        ; frozen address of bank2's LevelDataTable
                                 ; (test asserts bank2.lst label == this)
-
-; ==============================================================================
-; Score font data: "0000" rendered as 5-line PF patterns
-; Each digit is 4px wide with 1px gaps between digits:
-;   Line 0: ####.####.####.####.  (top)
-;   Line 1: #..#.#..#.#..#.#..#.  (sides)
-;   Line 2: #..#.#..#.#..#.#..#.  (sides)
-;   Line 3: #..#.#..#.#..#.#..#.  (sides)
-;   Line 4: ####.####.####.####.  (bottom)
-; ==============================================================================
-ScoreFontPF0:
-    .byte $F0                       ; Line 0: pixels 0-3 ON
-    .byte $90                       ; Line 1: pixels 0,3 ON
-    .byte $90                       ; Line 2: pixels 0,3 ON
-    .byte $90                       ; Line 3: pixels 0,3 ON
-    .byte $F0                       ; Line 4: pixels 0-3 ON
-
-ScoreFontPF1:
-    .byte $7B                       ; Line 0: pixels 5-8 ON, 10-11 ON
-    .byte $4A                       ; Line 1: pixels 5,8,10 ON
-    .byte $4A                       ; Line 2: pixels 5,8,10 ON
-    .byte $4A                       ; Line 3: pixels 5,8,10 ON
-    .byte $7B                       ; Line 4: pixels 5-8 ON, 10-11 ON
-
-ScoreFontPF2:
-    .byte $7D                       ; Line 0: pixels 12-13,15-18 ON
-    .byte $4C                       ; Line 1: pixels 13,15,18 ON
-    .byte $4C                       ; Line 2: pixels 13,15,18 ON
-    .byte $4C                       ; Line 3: pixels 13,15,18 ON
-    .byte $7D                       ; Line 4: pixels 12-13,15-18 ON
-
-; ==============================================================================
-; HERO-style score font — 10 digits × 5 rows, 3 bits wide (bits 0-2)
-; Score digit font — 3 pixels wide, 5 rows per digit (PF-based, temporary)
-; Will be replaced by 8×8 sprite font when 48-pixel technique is implemented
-; ==============================================================================
-PFDigitFont:
-  .byte %00000111, %00000101, %00000101, %00000101, %00000111  ; 0
-  .byte %00000010, %00000110, %00000010, %00000010, %00000111  ; 1
-  .byte %00000111, %00000001, %00000111, %00000100, %00000111  ; 2
-  .byte %00000111, %00000001, %00000111, %00000001, %00000111  ; 3
-  .byte %00000101, %00000101, %00000111, %00000001, %00000001  ; 4
-  .byte %00000111, %00000100, %00000111, %00000001, %00000111  ; 5
-  .byte %00000111, %00000100, %00000111, %00000101, %00000111  ; 6
-  .byte %00000111, %00000001, %00000001, %00000001, %00000001  ; 7
-  .byte %00000111, %00000101, %00000111, %00000101, %00000111  ; 8
-  .byte %00000111, %00000101, %00000111, %00000001, %00000111  ; 9
-
-DigitTimes5:
-  .byte 0, 5, 10, 15, 20, 25, 30, 35, 40, 45
 
 ; ==============================================================================
 ; YToCellRow — convert scanline (0-191) to 48-line band row (0-3)
@@ -2788,11 +2700,7 @@ PlayerHitsMap:
 EnemyOffTable:
     .byte 0,6,12                ; enemy index * 6 (offset into enemy data)
 
-; Bit masks for IsRoomDark/SetRoomDark (indexed 0-7; bits 4-7 used for rooms 0-3)
-; (tail of main — P3.1's laser stage pushed the $FF20 region past $FFFA,
-; and main has pad slack here.)
-BitMaskTable:
-    .byte $01, $02, $04, $08, $10, $20, $40, $80
+; BitMaskTable moved to bank1 with IsRoomDark/SetRoomDark (leaf_move_plan).
 
 ; ------------------------------------------------------------------------------
 ; RefreshEnemyY — write live Y → EnemyRamY (every slot, live or dead).
@@ -2824,6 +2732,72 @@ RefreshEnemyY:
     rts
 
 ; ==============================================================================
+; E4 moth exit tramp ($FC49-$FC4E) — bank2 executes `sta $1FF6` at $FC49
+; (byte-identical slice, guard: verify_build), then the fetch at $FC4C comes
+; from bank0 = `jmp UE_Next` (real label here — no cross-bank address sync).
+; bank0's `sta $1FF6` copy never runs; bank2's bytes from $FC4C never run.
+;
+; MUST stay off $FFF6-$FFF9: those are the ONLY addresses in code space where
+; (addr & $1FFF) lands in $1FF6-$1FF9 = F6 hotspot mirrors. Stella's
+; CartridgeEnhanced::peek (CartEnh.cxx:157, ADDR_MASK=$1FFF) calls
+; checkSwitchBank on READS — the old $FFF2 placement fetched the `jmp`
+; operands at $FFF6/$FFF7 and flipped banks mid-instruction (operand hi from
+; bank1 = $00 -> jmp $007D -> HUD runaway, 359/360-line frames, 5-byte stack
+; leak per rogue Overscan entry -> SP decayed to $E1 -> frame-3 crash where
+; jsr RefreshEnemyY's return landed on FetchPtr). Real F6 is write-only, but
+; no fetched byte may ever sit in the mirror zone.
+; ==============================================================================
+; ==============================================================================
+; Cross-bank call pads (docs/leaf_move_plan.md) — byte-identical copies live in
+; bank1 at the SAME addresses. F6 hotspots switch on ANY write — the written
+; value is ignored (proven by FoldIndirect's `sta $1FF6` carrying data bytes) —
+; so the pads `sta $1FF7`/`sta $1FF6` with A AS-IS: A/X/Y/flags pass through
+; unchanged, making the pad equivalent to the original inlined `jsr`.
+; (2026-09-30 bug: `lda #1` before `sta $1FF7` clobbered A — ClearPFColumn
+; punched col 1 instead of the bomb's col, AddScore added +1 instead of
+; +50/+75. Hole appeared at screen col 1 + mirror col 18 = "second tile from
+; each edge"; collision stayed correct because WallMask is separate.)
+; `sta` does not touch flags — IsRoomDark's `beq` contract survives the
+; return. Carry survives. No stack use.
+; ==============================================================================
+    .ds $FBF8 - *, 0
+ReturnPad:
+    sta $1FF6
+    rts
+CallPad_UpdateBombSound:
+    sta $1FF7
+    jmp $F9C0
+CallPad_UpdateJetSound:
+    sta $1FF7
+    jmp $F9CF
+CallPad_BombSndDrop:
+    sta $1FF7
+    jmp $FA00
+CallPad_BombSndExplode:
+    sta $1FF7
+    jmp $FA13
+CallPad_GetConnIdx:
+    sta $1FF7
+    jmp $FA26
+CallPad_ClearPFColumn:
+    sta $1FF7
+    jmp $FA38
+CallPad_AddScore:
+    sta $1FF7
+    jmp $FA7F
+CallPad_IsRoomDark:
+    sta $1FF7
+    jmp $FAA7
+CallPad_SetRoomDark:
+    sta $1FF7
+    jmp $FABE
+
+    .ds $FC49 - *, 0             ; pin (main growth past $FC49 = build error)
+MothExitPad:
+    sta $1FF6                   ; select bank0 (executed from bank2's copy)
+    jmp UE_Next                 ; resume dispatch loop (bank0 half)
+
+; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
 ; These go BEFORE the fineAdjustTable so org $FC68 doesn't go backwards.
 ; ==============================================================================
@@ -2848,117 +2822,11 @@ UE_FlipDir:
     sta EnemyRamD
     rts
 
-; ------------------------------------------------------------------------------
-; ClearPFColumn — A = left-half col 0..19; Temp = first row; CollisionCellX =
-;   last row (inclusive). AND-clear that col's PF bit in those rows only.
-;   Inverse of convert_room.pf_values. Clobbers A/X/Y/CollisionX. Preserves
-;   RectCount/FetchPtr (caller restores Y from stack).
-; After fold pads to keep main code under $FC68 (leaf, jsr-safe from bank0).
-; ------------------------------------------------------------------------------
-ClearPFColumn:
-    tay                         ; Y = col
-    lda BombClearMask,Y
-    sta CollisionX              ; AND mask (clear bit)
-    ldx Temp                    ; first row
-.CPCLoop:
-    tya                         ; col
-    cmp #4
-    bcc .CPC0
-    cmp #12
-    bcc .CPC1
-    lda PF2Buf,X
-    and CollisionX
-    sta PF2Buf,X
-    jmp .CPCNext
-.CPC0:
-    lda PF0Buf,X
-    and CollisionX
-    sta PF0Buf,X
-    jmp .CPCNext
-.CPC1:
-    lda PF1Buf,X
-    and CollisionX
-    sta PF1Buf,X
-.CPCNext:
-    cpx CollisionCellX
-    beq .CPCDone
-    inx
-    bne .CPCLoop               ; rows 0..2; X never wraps here
-.CPCDone:
-    rts
+; ClearPFColumn + BombClearMask moved to bank1 (leaf_move_plan batch B).
 
-; ------------------------------------------------------------------------------
-; Jet engine audio (channel 1) — old two-stroke combustion buzz.
-; Re-reads SWCHA directly (Temp may be clobbered by overscan subroutines).
-; AUDF = JET_AUD_BASE - JetPower/8 - (TickCounter&1):
-;   - JetPower/8 (0..4) revs the pitch up as thrust ramps
-;   - frame-parity wobble (+0/+1) gives the put-put sputter at 30 Hz
-; Channel 0 stays free for bomb blips.
-; After fold pads to keep main code under $FC68.
-; ------------------------------------------------------------------------------
-UpdateJetSound:
-    lda SWCHA
-    and #%00010000              ; D4 = up (0 = pressed)
-    beq .JetOn
-    lda #0                      ; throttle off -> mute engine
-    sta AUDV1
-    rts
-.JetOn:
-    lda #1                      ; 4-bit poly = raspy engine buzz
-    sta AUDC1
-    lda JetPower
-    lsr
-    lsr
-    lsr                         ; JetPower/8 = 0..4 (revs with thrust)
-    eor #$ff
-    clc
-    adc #1                      ; A = -(JetPower/8)
-    clc
-    adc #JET_AUD_BASE           ; A = base - JetPower/8
-    tax
-    lda TickCounter
-    and #1
-    beq .JetWob
-    dex                         ; parity wobble -1 every other frame (30 Hz sputter)
-.JetWob:
-    txa
-    sta AUDF1
-    lda #JET_AUD_VOL
-    sta AUDV1
-    rts
+; UpdateJetSound moved to bank1 (leaf_move_plan batch A) — CallPad_UpdateJetSound.
 
-; ------------------------------------------------------------------------------
-; AddScore — add BCD amount in A (e.g. #$50, #$75) to HUD score.
-; ScoreTh/ScoreHu = binary digits 0-9; ScoreTe = packed BCD (tens*16+ones).
-; Carry: ScoreTe >= $a0 → wrap and inc ScoreHu; ScoreHu >= 10 → wrap and
-; inc ScoreTh; ScoreTh >= 10 → cap at 9 (display is 4 digits).
-; Clobbers A. After fold pads so $FC68 org stays valid.
-; ------------------------------------------------------------------------------
-AddScore:
-    clc
-    adc ScoreTe
-    cmp #$a0
-    bcc .ASstoreTe
-    sbc #$a0
-    pha                         ; save wrapped ScoreTe
-    inc ScoreHu
-    lda ScoreHu
-    cmp #10
-    bcc .AShuOk
-    lda #0
-    sta ScoreHu
-    inc ScoreTh
-    lda ScoreTh
-    cmp #10
-    bcc .ASthOk
-    lda #9
-    sta ScoreTh
-.ASthOk:
-.AShuOk:
-    pla
-.ASstoreTe:
-    sta ScoreTe
-    rts
+; AddScore moved to bank1 (leaf_move_plan batch B) — CallPad_AddScore.
 
 ; ------------------------------------------------------------------------------
 ; ReloadLevel — reset level to initial state (all enemies back, 3 lives).
@@ -3085,41 +2953,7 @@ LoseLifeHot:
     sta PlayerYSub
     rts
 
-; ------------------------------------------------------------------------------
-; IsRoomDark — Z=1 if current room's dark flag is clear (lit), Z=0 if dark.
-; RoomDarkMask lives in EnemyRamD bits 4-7 (bit4=room0 … bit7=room3).
-; Clobbers A and X only. Y preserved. Callers must NOT rely on X after return.
-; ------------------------------------------------------------------------------
-IsRoomDark:
-    lda RoomNo
-    cmp #4
-    bcs .IRDlit                 ; rooms 4+ never dark (mask only covers 0-3)
-    clc
-    adc #4                      ; bit index = 4 + RoomNo
-    tax
-    lda BitMaskTable,X
-    and EnemyRamD               ; Z=1 → lit (bit clear), Z=0 → dark
-    rts
-.IRDlit:
-    lda #0                      ; Z=1 → lit
-    rts
-
-; ------------------------------------------------------------------------------
-; SetRoomDark — set dark flag for current RoomNo (bits 4-7 of EnemyRamD).
-; Clobbers A/X. Cleared only by LoadLevel (level end/reload).
-; ------------------------------------------------------------------------------
-SetRoomDark:
-    lda RoomNo
-    cmp #4
-    bcs .SRDdone                ; rooms 4+ unsupported
-    clc
-    adc #4
-    tax
-    lda BitMaskTable,X
-    ora EnemyRamD
-    sta EnemyRamD
-.SRDdone:
-    rts
+; IsRoomDark / SetRoomDark + BitMaskTable moved to bank1 (leaf_move_plan B).
 
 ; ------------------------------------------------------------------------------
 ; LoadRoomBottomColor — A = band color for RoomNo (0 = band off). Reads the
@@ -3264,7 +3098,7 @@ BuildColupF:
     bne .BCFrect
 .BCFdone:
     ; --- Dark room: walls black; fuse (state=1) walls dark grey ---
-    jsr IsRoomDark
+    jsr CallPad_IsRoomDark
     beq .BCFdarkDone            ; lit → keep stripe/hot colors
     lda BombPacked
     and #%00000011
@@ -3284,17 +3118,10 @@ BuildColupF:
 .BCFdarkDone:
     rts
 
-; Moved here (after fold pads) to keep pre-pad code under $FC68.
-UpdateBombSound:
-    lda BombSnd
-    beq .UBSSilence
-    dec BombSnd
-    bne .UBSDone
-.UBSSilence:
-    lda #0
-    sta AUDV0
-.UBSDone:
-    rts
+; UpdateBombSound moved to bank1 (leaf_move_plan batch A) — CallPad_UpdateBombSound.
+
+    .ds $FE10 - *, 0            ; keep ObjSprites in $FE page (lda ObjSprites,X
+                                 ; must not cross a page — 5c vs 4c kernel budget)
 
 ; ------------------------------------------------------------------------------
 ; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
@@ -3327,6 +3154,17 @@ ObjSprites:
 ; Temp live across the read). All level data is bank2, so X-selection is
 ; dead weight; bank3 data later needs a second entry `sta $1FF9` pad.
 ; ------------------------------------------------------------------------------
+; E4 moth entry tramp ($FEF0-$FEF5) — byte-identical with bank2's copy
+; (guard: verify_build check_moth_tramp). bank0 executes `sta $1FF8`; the next
+; fetch ($FEF3) comes from bank2 = `jmp MothRoutine`. Neither bank runs its
+; other half: bank0 is switched away at $FEF2, bank2 is never entered here.
+; The 6-byte pad is the only free hole before FoldIndirect's pinned $FEF6.
+; ------------------------------------------------------------------------------
+    .ds $FEF0 - *, 0            ; fill ObjSprites..tramp gap (drift-proof)
+UE_MothTramp:
+    sta $1FF8                   ; select bank2
+    jmp $F100                   ; bank2 MothRoutine (dead in bank0; guard pins
+                                ;   bank0/bank2 operands == bank2.lst label)
     .ds $FEF6 - *, 0            ; pin address (main size drift must not move it)
 FoldIndirect:
     sta $1FF8
@@ -3556,10 +3394,10 @@ LaserHitTest:
     ora EnemyBitTable,X
     sta EnemyDeadMask
     lda #$50
-    jsr AddScore
+    jsr CallPad_AddScore
     rts
 .LHLamp:
-    jsr SetRoomDark             ; crash lamp = same as player-body touch:
+    jsr CallPad_SetRoomDark             ; crash lamp = same as player-body touch:
     rts                         ; no kill bit, no score (idempotent no-op)
 .LHNext:
     inx
@@ -3568,7 +3406,9 @@ LaserHitTest:
     rts
 
 ; ==============================================================================
-; Interrupt vectors
+; Interrupt vectors ($FFF2-$FFF9 = fill — NEVER put code here: $FFF6-$FFF9
+; decode as F6 hotspot mirrors on peek (see MothExitPad comment at $FC49))
+; ==============================================================================
 ; ==============================================================================
     .ds $FFFA - *, 0               ; pad to vectors at $FFFA
 
