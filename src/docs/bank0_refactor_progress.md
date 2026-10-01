@@ -15,11 +15,24 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
       redundant `TickCounter` reload (already 60 on entry). C-flag contract:
       C=1 exhausted (ReloadLevel done), C=0 stay (physics zeroed).
 - [ ] S1.2 `LoadLevel` 14 unrolled folds → loop + dest table
+      → **deferred to Phase 3**: dest vars are NOT contiguous in source
+      order (131-134, 137-145, 151-152) and `bank1.asm:108` hardcodes
+      `LevelConnLo = $A1` — a safe loop needs the ZP decl reorder first
+      (contiguous dests, then ≈ −75 B with no ROM table).
 - [ ] S1.3 `ExitRoomUp/Down/Left/Right` → one direction-parameterised routine
+      → **verified no-win, skipped**: direction must survive
+      `CallPad_GetConnIdx` (which sets X=0), so a unified body needs a ZP
+      temp (none free: Temp/LineCount/Collision*/MapPtr all live or
+      contract-bound) or a table dispatch that costs ≥ the 4× edge
+      sequences it saves (best-safe merge ≈ 78B vs current 79B).
 - [ ] S1.4 share `EnemyData*` staging across one overscan pass
-- [ ] S1.5 mechanical: unused EQUs (`LASER_PREV`, `LASER_HP`, `PF2ScoreBuf`),
-      unreferenced labels (`UE_SnakeLeft`, `UpdateP0Vertical`), inline
-      `LoadRoomBottomColor` (`lda`/`rts` behind `jsr`)
+      → **skipped**: violates the stage-FetchPtr-immediately-before-batch
+      contract (`$E0/$E1` alias family, test enforces ≥22 stage lines).
+- [x] S1.5 mechanical: inline `LoadRoomBottomColor` (2 sites), drop
+      write-only `ObjBot` stores + dead `clc/adc`, dead EQUs
+      (`LASER_PREV`, `LASER_HP`, `PF2ScoreBuf`) → done: −12 B.
+      Overscan moved $F183→$F182 (inline was BEFORE it) → bank1 ToGameStub
+      `jmp` synced + landmark comment updated.
 - [ ] S1.6 dead `YToCellRow` subroutine removal + `test_enemy_movement.py`
       anchor update (deferred: test text-slices on the label)
 
@@ -61,4 +74,16 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
 | Step | Change | bank0 Δ bytes | Tests | Commit |
 |------|--------|---------------|-------|--------|
 | 0 | investigation + report committed | — | build OK | 6f61a20 |
-| 1 | S1.1 LoseLife unification | −93 (3769→3676) | build+sim+3 tests OK | (this) |
+| 1 | S1.1 LoseLife unification | −93 (3769→3676) | build+sim+3 tests OK | f41800d |
+| 2 | S1.5 inline helper + ObjBot + dead EQUs | −12 (3676→3664) | build+sim+3 tests OK | (this) |
+
+## Verified no-win / deferred (Phase 1 findings)
+
+- S1.2 deferred to Phase 3 (needs contiguous dests = ZP reorder).
+- S1.3 skipped: 6502 scratch cost ≥ duplication (79B → best-safe 78B).
+- S1.4 skipped: stage-before-batch contract is load-bearing.
+- Snake left/right mirror dedup (investigation D-finding, not a checkbox):
+  shared fetch saves ≈13 B but needs php/plp + face/movement flag dance —
+  same bug family as the php/pla lesson. **Not worth ≈9 B net.**
+- Unreferenced labels (`UE_SnakeLeft`, `UpdateP0Vertical`): 0 B (code is
+  fall-through reachable; label text costs nothing) — left alone.

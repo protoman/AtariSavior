@@ -99,11 +99,12 @@ def main() -> None:
         "RoomBandColor = $D2 (dead PF1Buf[3] alias) missing"
     assert not re.search(r"^RoomBandColor\s*=\s*\$D1\b", KERNEL, re.M), \
         "RoomBandColor must not alias PF1Buf[2] ($D1) — kernel reads it"
-    m = re.search(r"^LoadRoomBottomColor:\s*\n((?:[ \t].*\n)+)", KERNEL, re.M)
-    assert m and "lda RoomBandColor" in m.group(1), \
-        "LoadRoomBottomColor must read the VBLANK-staged cache"
+    assert "lda RoomBandColor" in KERNEL, \
+        "kernel/overscan must read the VBLANK-staged cache (inlined)"
     assert "sta RoomBandColor" in KERNEL, \
         "VBLANK stage (sta RoomBandColor) missing"
+    assert "jsr LoadRoomBottomColor" not in KERNEL, \
+        "LoadRoomBottomColor was inlined (S1.5) — reads go direct"
 
     # --- LEVEL_COUNT hand-copy stays in sync with generated data -----------
     gen = (ROOT / "src" / "generated" / "levels.asm").read_text(

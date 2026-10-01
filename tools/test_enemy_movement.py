@@ -278,8 +278,8 @@ def main() -> None:
     wr = KERNEL.split(".WaterRow:")[1].split(".GrpZero:")[0]
     assert re.search(r"lda\s+#11\b", wr), \
         "strip pass: setup line + 11 bodies = 12-line strip"
-    assert "jsr LoadRoomBottomColor" in wr and "sta COLUBK" in wr, \
-        "strip must paint the band color (blink-off path)"
+    assert "lda RoomBandColor" in wr and "sta COLUBK" in wr, \
+        "strip must paint the band color (blink-off path, inlined read)"
     assert wr.rstrip().endswith("jmp .Line"), \
         "strip must continue into the shared .Line loop"
     # death check + respawn follow the strip (bottom_band_plan rules 2/4)

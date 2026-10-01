@@ -999,7 +999,7 @@ CallPad_UpdateLaserSound:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F183           ; Overscan in bank0 (must match bank0 ToGameStub)
+    jmp $F182           ; Overscan in bank0 (must match bank0 ToGameStub)
 
 ; ========================================================================
 ; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing
