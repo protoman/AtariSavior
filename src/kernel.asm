@@ -310,6 +310,8 @@ JET_MAX         = $20           ; max jet thrust accumulator
 MAX_FALL        = $0200         ; max fall speed (positive = down)
 JET_AUD_BASE    = $0F           ; engine AUDF base: freq = base - JetPower/8 - sputter
 JET_AUD_VOL     = $08           ; engine volume while Up is held
+LASER_AUD_C     = 2             ; laser ch0 control: div-15 tone = low pitch
+LASER_AUD_V     = 9             ; laser ch0 volume while fire held
 
 
 
@@ -983,6 +985,9 @@ EndInputCheck:
 
     ; --- Jet engine audio (channel 1): buzz while Up is held ---
     jsr CallPad_UpdateJetSound
+
+    ; --- Laser audio (channel 0): low zoom while fire held; ch0 is free ---
+    jsr CallPad_UpdateLaserSound
 
     ; --- Decrement game timer (60 frames/step × 120 = 120s) ---
     dec TickCounter
@@ -2793,6 +2798,9 @@ CallPad_IsRoomDark:
 CallPad_SetRoomDark:
     sta $1FF7
     jmp $FABE
+CallPad_UpdateLaserSound:
+    sta $1FF7
+    jmp $FADA
 
     .ds $FC49 - *, 0             ; pin (main growth past $FC49 = build error)
 MothExitPad:
