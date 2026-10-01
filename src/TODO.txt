@@ -4,34 +4,40 @@ Strategic Aerial Vehicle Infiltration Operations Rescue
 Eorley Savior.
 
 #########################################################################################################################################################################
-Chegar no mineiro, 1000
-Tempo quase cheio - 1510
-Cada bomba: 50
-Pontos, cada pedaço da barra de power, 160
+
+=========================================================================================================================================================================
+BUGS
+=========================================================================================================================================================================
+
+=========================================================================================================================================================================
+Where our code can be simplified? No need to compare with HERO, just looking at 6507 code, what could be done better and take less space?
+List functionalities that can benefit from a refactory, even if we need to change level data-format a bit or simplify gameplay.
+=========================================================================================================================================================================
+
+
+#########################################################################################################################################################################
 
 
 =========================================================================================================================================================================
 
-Now let's implement movement for enemies besides snake that already have one.
-Create a plan for implementing each at a time, so we can test it properly and avoid bugs/
+Points counting when finishing a level:
+    Chegar no mineiro, 1000
+    Tempo quase cheio - 1510
+    Cada bomba: 50
+    Pontos, cada pedaço da barra de power, 160
 
-# Spider:
-    moves slowly down and back up, 2 tiles max, as it hanging by a web wire.
-# Moth:
-    Moves into direction it is facing then back. It should move about 6 tiles, and stop and invert direction if hits a wall.
-    While moving horizontally, vertically it should move in sine wave of about 1 tile updown.
-# Bat:
-    moves fast down and back up, just 2 pixels, as it is claping its wings
-# Tentacle:
-    Only move horizontally, tries to follow player, but moves at half of the player speed.
-    Moves vertically, up and down slowly, 2 pixels.
+=========================================================================================================================================================================
 
+Player entering the stage when starting, passing level or dying
+    Comes down from the top
+    Ignore walls
+    Makes engine sound
+
+=========================================================================================================================================================================
 
 - non mirrored walls
 
 - water movement (3 px up, 3px down, slow)
-
-
 
 =========================================================================================================================================================================
 

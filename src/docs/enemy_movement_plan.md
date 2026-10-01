@@ -177,12 +177,14 @@ machinery if E4 overflows).
 **Design notes (implemented):**
 - Y bob = derived (`DeriveEnemyY` `.DEYTickShift`): same bat triangle
   (0,1,2,1) gated ÷8 → spawn..spawn+2, no vdir state.
-- X chase lives in `UpdateEnemies` as a **subroutine `UE_Tentacle`** (jsr,
-  not inline branch): the inline arm pushed snake's `UE_Next` branches past
-  the 127-byte range. Dispatch checks tentacle FIRST, then snake (keeps the
-  original short snake branches).
-- Probe = plan-exact swap+`PlayerHitsMap`: PHA/PHA save player xy, put
-  candidate X + live `EnemyRamY,X`, call, PLA/PLA restore (C survives PLA),
+- X chase lives in `UpdateEnemies` as a **subroutine `UE_Tentacle`** (tail
+  jmp from dispatch, not inline branch): the inline arm pushed snake's
+  `UE_Next` branches past the 127-byte range. Dispatch checks tentacle FIRST,
+  then snake (keeps the original short snake branches).
+- Probe = plan-exact swap+`PlayerHitsMap`: `ActiveObjectX/Y` scratch saves
+  player xy (NOT the stack — the original 3×PHA drove SP to $F4 and jsr
+  return bytes stomped BombTimer/BombX every 4th frame), put candidate X +
+  live `EnemyRamY,X`, call, scratch restore (`lda`/`sta` keep C),
   commit `EnemyRamX,X` only on C=0. Candidate ≥160 (incl. wrap 255) rejected
   pre-probe = room-edge hold. Temp use verified safe (all overscan Temp
   consumers run before `jsr UpdateEnemies`).

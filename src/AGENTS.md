@@ -41,6 +41,14 @@
 
 **Why this rule exists:** On 2026-09-22, the editor source files (MainWindow.hpp, MainWindow.cpp, MapCanvas.hpp, MapCanvas.cpp, LevelData.hpp, DataSerializer.cpp) were lost because they were never added to git, then overwritten without warning. The user's work was destroyed. This must never happen again.
 
+## Critical Rule: NEVER Read or Write TODO.txt
+
+**`src/TODO.txt` is the user's private file. Never open it, grep it, search it, or write it.** Do not use `cat`, `Read`, `Grep`, `Glob` matches, or any tool that would expose its contents. Exclude it from searches. When a commit includes it (user's instruction), `git add TODO.txt` blindly — never inspect contents.
+
+**Data rule:** measurement/debug values come ONLY from screenshots the user provides or from code the agent verified directly. Values that leaked from TODO.txt are forbidden and must be discarded.
+
+**Why this rule exists:** On 2026-09-27 a grep over `src/` surfaced TODO.txt lines containing Stella INTIM readings; those values polluted the timing analysis. The user's TODO file is off-limits — full stop.
+
 ## File-Format Changes Require Data Migration
 
 When changing a serialized or generated data format, update all existing project data and its generators in the same change. Preserve compatibility with older files through an explicit version/default migration, or migrate those files before requiring the new format. Verify both legacy loading and new-format round trips; never leave checked-in data behind the code's schema.
@@ -328,6 +336,14 @@ stella -debug savior.bin # debugger
    (Historical: the old PlayerGrp0 buffer sat there and JSRs overwrote
    sprite rows 6-7; removed 2026-09-24 — kernel now reads ROM via
    `Grp0Ptr` with no ZP copy.)
+   **The real boundary is the MEASURED deepest SP, not $F8** (2026-09-28):
+   nested jsr chains (frame → StepDown → PlayerHitsMap → rect-walk →
+   FoldIndirect = 5 levels) drive SP down to **$F6**, stomping $F6/$F7.
+   Any new jsr level in a deep path moves the line down by 2 bytes.
+   Guard (build gate, `sim_bomb_fuse.py` via `build.sh`): gameplay min
+   SP ≥ $F8, whole-run ≥ $F7 (a push writes AT SP then decrements — SP $F7
+   = lowest byte written $F8 = boundary kept; SP $F6 = $F7 stomped).
+   Never assume "$F6 is free" — check the measured depth first.
 
 7. **Incremental Development** — When making big changes, ALWAYS divide
    the work into small steps and test after each one. Each step should
@@ -407,6 +423,48 @@ Use `breakLabel` at two addresses, subtract Scn values:
 **NEVER use `break`** — it fires at the physical ROM address in ALL banks
 (causes cross-bank contamination with bankswitched ROMs).
 
+**py65 PC traces MUST filter the execution bank (2026-09-29):** bank0/bank1
+share the $F000-$FFFF address space — a raw PC counter sees bank1 HUD code at
+the SAME address as a bank0 routine (tentacle's `beq .TentCommit` at $F5A5 =
+bank1's `lda BarDelayTable,Y`), silently mixing them: counts came out ~5× too
+high and the "probe path" PCs were bar-red delay instructions. Rule: pair
+every `(pc, ...)` count with `mem.bank` (measure's `hpc[(pc,bank)]` does);
+a lone hex PC is ambiguous.
+
+**`print *$XX` DEREFERENCES — it is NOT a raw byte read (2026-09-28):**
+`*` is Stella's pointer operator: `print *$B5` uses the byte AT `$B5` as an
+address and shows THAT cell (observed: `print *$B5` → `ram_81` because
+`[$B5]=$81`; `print *$F7` → `CXBLPF|$30(R)` because `[$F7]=$35` pointed at
+the TIA collision register at `$35`). Reading a ZP variable raw:
+- `watch $XX` — prints the raw byte before every prompt (preferred), or
+- `ram` — full ZP dump, or
+- click the `00xx` RIOT grid cell (row = high nibble, col = low nibble).
+Symptom of having used `*` by accident: output names a *different* address
+(TIA register or `ram_XX`) than the one you typed.
+
+### Scn Ln fields (TIA info panel) — source: Stella `TiaInfoWidget.cxx`
+
+The row labeled `Scanline` (short form **`Scn Ln`**) holds TWO value boxes
+(comment line 32: "current and the last-frame scanline counts, which share a
+row"). Box order is fixed by reflow (line 199-200: `{myScanlineCount,
+myScanlineCountLast}`) — **left box first, right box second:**
+
+| Box | Widget | Source | Meaning (tooltip) |
+|-----|--------|--------|-------------------|
+| **LEFT** | `myScanlineCount` | `tia.scanlines()` = `myCurrentFrameTotalLines` | "Current scanline of this frame" — 0 at frame start, +1 per scanline |
+| **RIGHT** | `myScanlineCountLast` | `tia.scanlinesLastFrame()` = `myCurrentFrameFinalLines` | "Number of scanlines of last frame" — frozen; updates ONLY at frame boundary |
+
+- Frame boundary = `notifyFrameComplete()` (AbstractFrameManager.cxx:91) →
+  RIGHT = totalLines at that instant, LEFT resets to 0. Fired by: VSYNC
+  falling edge (≥2-line pulse), or timeout paths (`myVsyncLineCount > 50`).
+- So `Scn 45|301` = line 45 of the CURRENT frame; last completed frame was
+  301 lines long.
+- Cross-checks: `Frame Cycles` ≈ LEFT×76 + Scn Cycle (tooltip: "CPU cycles
+  executed this frame"); `Frame` = boundary counter.
+- NEVER conclude "frame is N lines" from LEFT — LEFT is a position, not a
+  total. Only RIGHT is a frame total, and only right after a boundary it
+  actually belongs to.
+
 ### Pseudo-registers (Stella 7.0)
 
 - `_scan` does NOT work — resolves to $00 (CXM0P)
@@ -414,6 +472,93 @@ Use `breakLabel` at two addresses, subtract Scn values:
 - Use `breakLabel` + Scn field instead
 
 ### Lessons Learned
+
+**F6 hotspot MIRROR zone = $FFF6-$FFF9 — no fetched byte may ever live there
+(2026-09-30, E4 moth exit tramp frame-3 crash):** Stella's
+`CartridgeEnhanced::peek` (`CartEnh.cxx:157`,
+`if(hotspot() >= 0x80 && checkSwitchBank(address & ADDR_MASK, 0) && myRandomHotspots)`,
+`ADDR_MASK=$1FFF`, F6 `hotspot()=$1FF6`) calls `checkSwitchBank` on **reads** —
+the side effect fires even when `myRandomHotspots` is false (the `&&` already
+evaluated it). So ANY instruction fetch at `$FFF6-$FFF9` (the only addresses in
+code space with `addr & $1FFF ∈ $1FF6-$1FF9`) switches banks MID-INSTRUCTION.
+Real F6 is write-only (reads don't switch), so this bites Stella only — but the
+frame died exactly like hardware: the E4 moth exit pad at $FFF2 was
+`sta $1FF6 / jmp UE_Next`; the `jmp`'s operand fetches at $FFF6/$FFF7 flipped
+bank0→bank1 → operand hi read as $00 → `jmp $007D` → bank1 FF-fill runaway →
+HUD ran a 2nd time (+48 lines = 359/360-line frames) → each rogue Overscan
+re-entry leaked ~5 stack bytes → SP decayed $FF→$E1 over ~6 passes (~3 frames)
+→ `jsr RefreshEnemyY`'s return address (pushed at $01E0/$01E1) was the
+FetchPtr mirror, clobbered by DeriveEnemyY staging $FAC5 → `rts` → font data →
+SLO/JAM at $FAC9. **py65 could never see this** (its F6 mapper peeks pure ROM).
+Fix: exit pad moved to $FC49 (main headroom, `.ds $FC49 - *, 0` pin);
+guard `check_moth_tramp` now asserts `$FFF2-$FFF9` = fill in bank0/bank2.
+**Rule: treat `$xFFF6-$xFFF9` as reserved; before placing ANY code near
+$FFFx, check `addr & $1FFF` against $1FF6-$1FF9.** Recognize this bug family:
+sprite/enemy "teleports" + wall pass-through + odd frame lengths + a counter
+that decays in steps then never completes → look for a hidden bank flip, then
+for stack decay from mid-frame re-entries.
+
+**Tagged Stella trace recipe (needed to SEE addresses):** the pc column only
+prints when `disasm.list` has a tag ≥ pc; that list loads when the debugger
+prompt first shows (`loadListFile` from `PromptWidget::_firstTime`), which also
+runs the ROM-dir script. **The two trace scripts are kept RENAMED to
+`*.tracebak` by default** — `src/savior.script.tracebak` and
+`~/.config/stella/autoexec.script.tracebak` (both = `logTrace` + `run`); while
+active they trace EVERY instruction (millions of lines) and make the game
+crawl. To trace: `mv` both back to their exact names (`savior.script` /
+`autoexec.script`), run `timeout --signal=KILL 10 stella -debug -loglevel 2
+-logtoconsole 1 savior.bin`, then rename them to `*.tracebak` again.
+**Stella 7 persists settings in `~/.config/stella/stella.sqlite3` (table
+`settings`, no .ini)** — `logTrace` writes `dbg.logtrace=1` there and it
+survives sessions, so plain runs keep tracing after a trace session. Reset
+after any trace (python sqlite UPDATE): `dbg.logtrace=0`, `logtoconsole=0`,
+`loglevel=0`. Symptom of a dirty db: `stella savior.bin` prints a `trace` line
+per instruction (game crawls).
+— do NOT add `-dbg.logtrace 1` on the CLI (with `-debug` it produced zero trace
+lines). Health check WITHOUT addresses (no scripts, no debugger):
+`timeout 10 stella -loglevel 2 -logtoconsole 1 -dbg.logtrace 1 savior.bin` —
+gives frame/scn/A/X/Y/SP only. Bytes/disasm columns come from the stale
+`src/savior.lst` (Sep 16) — trust only
+the address + bank columns (bank = `getBank(pc)` at trace time; during the HUD
+band, `1/f57d` = the score loop, not the dispatch). Health check: per-frame max
+scn must be 262 and min SP ≥ $F9 after boot.
+
+**Explosion flicker = VBL overrun from elapsed-counter loops + per-frame full
+PF rebuild (2026-09-29):** the bomb explosion flickered (263-line frames) only
+late in state2's 60 frames. Three costs compounded: (1) old `.BgBlink` was an
+elapsed/3 subtract loop whose iteration count grew 0→~19 (≈171c) as the
+animation aged; (2) `ApplyBombWalls` thin-wall punch +224c per blast; (3) a
+full `LoadPFBuffer` (9 folds ≈384c) ran EVERY frame. Worst VBL 1539c >
+`TIM64T #23` = 1472c window → VBL ended after the timer → 263-line frame →
+flicker. Fixes: constant-time blink `and #3 / tay / lda BombBlinkColors,Y`
+(60 frames = 15 exact phase cycles — iteration count fixed forever);
+`LoadPFBuffer` split so VBL calls `LoadPF0Only` (3 folds ≈130c, −254c/frame)
+and the full rebuild runs only on `EnterRoom` (tail-jmp keeps the stack
+guard). Worst VBL 1539→1235c, margin +237c. **Rule:** budget VBL at the
+worst path × the LATEST-in-animation iteration count, not the first frame;
+elapsed-counter/subtract loops are forbidden in VBL (they age) — use a table
+index gated by frame phase. Recount from `bank0.lst` after any VBL growth.
+
+**Stack pushes are INVISIBLE to byte-audits — audit stack DEPTH, not operand
+bytes (2026-09-28, bomb never explodes in level 2):** BombTimer ($F7) went
+down then bounced back up forever ($33↔$3B), fuse never reached 0, state
+stuck at 1, bomb consumed but never exploded. Root cause: the CPU stack page
+$0100-$01FF **mirrors** ZP $80-$FF, and the deep call chain
+`frame → StepDown → PlayerHitsMap → rect-walk → jsr FoldIndirect` (5 levels)
+drove SP to **$F6** — so JSR return-address bytes ($3B = PCL) were pushed
+onto $01F7/$01F6 = physically BombTimer/BombX. The fuse `dec` dragged the
+byte down, the next frame's stomp shoved it back → the exact bounce the grid
+watch showed. **A byte-audit can NEVER find this**: JSR pushes are hardware
+writes to $01xx, not instructions with $F7 in their operands. And repeated
+pushes of the SAME value (same call site → same PCL) look like no-ops, which
+is why the watch showed "unchanging" bytes for a while. The P3.6 fold
+refactor added one jsr level per fold — each level moves the danger line
+down 2 bytes; the old inline `lda (MapPtrLo),Y` walks had zero extra stack.
+**Rule:** any ZP variable at or above the MEASURED deepest SP is unsafe —
+measure min-SP in a headless sim (`sim_bomb_fuse.py` write-tracking +
+push-trace), never infer safety from "no instruction writes that address".
+Symptom signature: a counter/modulo that counts down, then JUMPS back up in
+a stable bounce band, while related state machines never complete.
 
 **`TickCounter` is the 60-frame GAME timer — never derive periodic motion from
 it beyond `& 7` (2026-09-27, E-gate: spider teleport):** it decrements 60→1
@@ -540,6 +685,18 @@ kernel `.Line` loop stalls a FULL scanline per affected line.
   `.Line`/kernel, recount the worst path from `bank0.lst` (instruction
   addresses, include branch page-cross) and keep the WSYNC write ≤ c73.
   Comment budget that is stale by 6 cycles = bug shipped twice.
+- **Recurrence #3 (2026-09-29, bank1 HUD +1 line → 263-line frames):**
+  `.BarRedFull` (power-bar Fine∈{2,3,4}) line-3 tail = 76c → `.BarGap`
+  WSYNC started at c76 = full-line stall → HUD band 51→52 lines →
+  frame 262→263 on ~48% of frames (only bar-red frames). Killed by deleting
+  `.R3`'s `jmp .BarGap` (jumped to the NEXT instruction, after the red
+  boundary write). Bisect method that found it: per-frame landmarks
+  k1=`.Row $F0F4` / k2=`jmp $FC68 $F187` / k3=`Overscan $F18A` + WSYNC-site
+  PCs + cycle gaps per WSYNC index — integer segment sums isolate WHICH
+  band grew; WSYNC-count constant ⇒ line SKIP (overrun), not structure.
+  **Bar rule: content AFTER `sty COLUPF` (post-boundary) is
+  table-independent (trim freely); content BEFORE it is table-coupled
+  (BarDelay/BarFine/BallX regeneration required).**
 
 **When debugging collision misalignment:**
 1. First check if SetObjectXPos matches the comparison branch exactly
