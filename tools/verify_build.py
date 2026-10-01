@@ -360,7 +360,8 @@ def check_callpads(src: Path) -> None:
 
     labels0: dict[str, int] = {}
     labels1: dict[str, int] = {}
-    for idx, out in ((0, "labels0"), (1, "labels1")):
+    labels2: dict[str, int] = {}
+    for idx, out in ((0, "labels0"), (1, "labels1"), (2, "labels2")):
         lp = src / f"bank{idx}.lst"
         if not lp.exists():
             err(f"bank{idx}.lst missing (callpad label check)")
@@ -368,8 +369,10 @@ def check_callpads(src: Path) -> None:
         labs, _ = parse_lst(lp.read_text(errors="replace").splitlines())
         if idx == 0:
             labels0 = labs
-        else:
+        elif idx == 1:
             labels1 = labs
+        else:
+            labels2 = labs
     for side, labs in (("bank0", labels0), ("bank1", labels1)):
         rp = labs.get("ReturnPad")
         if rp != PAD_LO:
@@ -392,13 +395,20 @@ def check_callpads(src: Path) -> None:
     for name, body, hexv in pads:
         if re.search(r"\b(lda|tax|tay|txa|tya|pha|pla)\b", body):
             err(f"CallPad_{name}: pad body clobbers A/X/Y/stack — pads must "
-                "be `sta $1FF7 / jmp` only (value ignored by F6 hotspot)")
+                "be `sta $1FFx / jmp` only (value ignored by F6 hotspot)")
         want = int(hexv, 16)
-        got = labels1.get(name)
+        # `sta $1FF8` pads jump to a bank2 body (e.g. BuildColupF: the hot-rect
+        # stream lives in bank2); `sta $1FF7` pads jump to bank1.
+        if "sta $1FF8" in body:
+            tgt_labs, tgt_side = labels2, "bank2"
+        else:
+            tgt_labs, tgt_side = labels1, "bank1"
+        got = tgt_labs.get(name)
         if got is None:
-            err(f"CallPad_{name}: jmp ${want:04X} but {name} not in bank1.lst")
+            err(f"CallPad_{name}: jmp ${want:04X} but {name} not in "
+                f"{tgt_side}.lst")
         elif got != want:
-            err(f"CallPad_{name}: jmp ${want:04X} != bank1 {name} "
+            err(f"CallPad_{name}: jmp ${want:04X} != {tgt_side} {name} "
                 f"${got:04X} (stale literal — pads must be byte-identical)")
 
 

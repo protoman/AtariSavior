@@ -987,6 +987,9 @@ CallPad_SetRoomDark:
 CallPad_UpdateLaserSound:
     sta $1FF7
     jmp $FADA
+CallPad_BuildColupF:
+    sta $1FF8                   ; S5.1: body lives in bank2 (direct rect reads)
+    jmp $FC4F
 
 ; ========================================================================
 ; Fold-pad stubs (byte-identical to bank0)
