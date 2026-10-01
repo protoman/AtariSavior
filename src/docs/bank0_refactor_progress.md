@@ -41,6 +41,16 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
 ## Phase 2 — cycles (no format change)
 
 - [ ] S2.1 `BuildColupF` dirty-flag rebuild (VBL headroom; worst 1311c/1472c)
+      → **blocked on Phase 3 (verified this session):** bank1 HUD writes
+      `scorePtr4+1`/`scorePtr5` = **$E7/$E8/$E9 every frame** (score pointer
+      setup is unconditional in the HUD band), i.e. it stomps ColupfBuf rows
+      0-2 — the ONLY rows the kernel reads (TILE_ROWS=3). The per-frame
+      VBLANK rebuild is the structural stomp repair (zp_layout_skill.md
+      line "VBLANK rebuilds"); a dirty flag would evaluate dirty EVERY
+      frame and skip nothing. A "cheap 3-byte repair" variant would win
+      ~200-300c but needs 3 bytes of cache ZP — none free pre-Phase-3.
+      Re-enable ONLY after S3.1 moves ColupfBuf rows 0-2 out of bank1's
+      $E0-$EF stomp zone.
 
 ## Phase 3 — ZP re-plan (atomic, high risk)
 
