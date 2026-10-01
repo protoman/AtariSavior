@@ -19,9 +19,10 @@ EnemyDataLo = $B1                ; record base — restaged before every exit
 EnemyDataHi = $B2
 BombPacked = $B5                 ; b3-6 WallMask (destroyed rect skip)
 EnemyIndex = $B9                 ; slot save around the col swap + rect walk
-RcBase = $C6
-RcW1 = $C7
-RcW2 = $CB
+RcBase = $CC
+RcW1 = $CD
+RcW2 = $CD                   ; S3.1: ≡ RcW1 (contiguous cache — moth's window
+                              ; jump is a no-op; S3.2 deletes it)
 EnemyRamX = $BD
 EnemyRamD = $C1                  ; dir bits: 1 = right, 0 = left
 EnemyRamP = $C2                  ; free-running frame clock

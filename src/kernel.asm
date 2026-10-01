@@ -188,21 +188,24 @@ ScoreTe         = $F5           ; score tens digit (0-9)
 
 ; P3.4 rect cache — solid rect list copied once per EnterRoom, walked directly
 ; by PlayerHitsMap with NO bank2 fold (fold mid-function switched the EXECUTION
-; bank; only byte-identical pad code may span a switch). Windows (Y is the
-; global rect offset: count read first, rect0 base Y=0):
-;   $C6      count        (RcBase+0; also RcBase)
-;   $C7-$CE  rect0, rect1 (window1: FetchPtr=$C7, Y=0..7)
-;   $D3-$DA  rect2, rect3 (window2: FetchPtr=$CB, Y=8..15)
+; bank; only byte-identical pad code may span a switch). Layout (S3.1:
+; count + rects0-3 CONTIGUOUS at $CC-$DC; rect4 stays split on purpose —
+; MapPtrLo/Hi are sequential decls at $89/$8A, moving them would shift the
+; whole ZP block; rcW3/rcW4 copy tails + .Stage3 keep reading them):
+;   $CC      count        (RcBase)
+;   $CD-$DC  rect0..rect3 (window1 FetchPtr=$CD, Y=0..15 — CONTIGUOUS, so
+;                          the old window2 jump is a no-op: RcW2 ≡ RcW1;
+;                          S3.2 deletes the switch)
 ;   $89/$8A  rect4.x/y    (MapPtrLo/MapPtrHi; .Stage3 fixed addresses)
-;   $DE/$DF  rect4.w/h    (PF2Buf rows 3-4, fill-only)
-; All four targets are fill-only/retired — see docs/zp_layout_skill.md alias
-; rule: LoadPFBuffer writes rows 0-2 only, kernel .Row reads X=0..2, bank1
-; touches $E0-$EF only, MapPtr* has no other user.
-RcBase          = $C6           ; rect cache count + window1 base marker
-RcW1            = $C7           ; window1 FetchPtr lo (rect0 x at Y=0)
-RcW2            = $CB           ; FetchPtr lo for window2 ($CB + Y=8 = $D3)
-Rc4W            = $DE           ; rect4.w cache (PF2Buf+3)
-Rc4H            = $DF           ; rect4.h cache (PF2Buf+4)
+;   $DE/$DF  rect4.w/h    (Rc4W/Rc4H — former PF2Buf rows 3-4, now free
+;                          standing after PF2Buf packed to $C9)
+; Buffers packed: PF0 $C3-$C5, PF1 $C6-$C8, PF2 $C9-$CB (rows 0-2 only —
+; rows 3-11 were never read; their bytes now hold the cache + free pool).
+RcBase          = $CC           ; rect cache count
+RcW1            = $CD           ; walk FetchPtr (rect0 x at Y=0)
+RcW2            = $CD           ; S3.1: ≡ RcW1 (contiguous → jump is a no-op)
+Rc4W            = $DE           ; rect4.w cache (unchanged addr)
+Rc4H            = $DF           ; rect4.h cache (unchanged addr)
 
 ; PF cave buffers (copied from ROM during VBLANK, read by kernel via absolute indexed)
 ; These share ZP space with bank1's HUD variables — safe because bank1
@@ -210,42 +213,33 @@ Rc4H            = $DF           ; rect4.h cache (PF2Buf+4)
 ; VBLANK re-populates them before the next kernel frame.
 PF0Buf          = $C3           ; 12 bytes: TilePF0 values per row
                                 ; (rows 0-2 pure since S3.4 — Y moved to $E2)
-PF1Buf          = $CF           ; 12 bytes: TilePF1 values per row
-                                ; (only rows 0-2 are ever read: kernel .Row
-                                ; X=0..2 and ClearPFColumn rows 0..2)
-RoomBandColor   = $D2           ; ALIAS PF1Buf[3] (dead fill row) — band-color
-                                ; cache (level_bank_plan P2.5). FIX 2026-09-28:
-                                ; was $D1 = PF1Buf[2], which collided with the
-                                ; kernel's `lda PF1Buf,X` (X=2) — the band
-                                ; color (room 0 = $00) overwrote the bottom
-                                ; band's PF1 wall pattern every frame
-                                ; (phase_1 dumps: $D1=00 vs model $ff →
-                                ; mid-wall gap + cell-map collision mismatch).
-                                ; Rows 3-11 of PF1Buf are fill-only: nothing
-                                ; reads them (bank1 has no $D2 EQU). Writer:
-                                ; VBLANK stage AFTER LoadPFBuffer/BuildColupF
-                                ; (fold from LevelEnemy+RoomNo*4+3). Readers:
-                                ; kernel .WaterRow (direct lda RoomBandColor) +
-                                ; overscan CheckBandTouch. Window: written
-                                ; post-buffers → survives VBLANK, kernel,
-                                ; bank1 HUD ($E0-$EF only); overscan physics
-                                ; never touches $D2; next VBLANK restages.
-PF2Buf          = $DB           ; 12 bytes: TilePF2 values per row ($DB-$E6)
-                                ; $E7-$F2 = ColupfBuf (12) — overlaps bombs
-                                ; $F0-$F2: saved to CollisionCellY/EndX/EndY
-                                ; during VBLANK+kernel, restored before HUD.
+PF1Buf          = $C6           ; rows 0-2 only (S3.1 packed; was $CF)
+RoomBandColor   = $BC           ; band-color cache (level_bank_plan P2.5) —
+                                ; own byte since S3.1 (was $D2 = PF1Buf[3];
+                                ; history: FIX 2026-09-28 was $D1 = PF1Buf[2]
+                                ; collision → mid-wall gap; alias class now
+                                ; gone entirely). Writer: VBLANK stage AFTER
+                                ; LoadPFBuffer/BuildColupF (fold from
+                                ; LevelEnemy+RoomNo*4+3). Readers: kernel
+                                ; .WaterRow (direct lda, plain abs = 4c any
+                                ; address) + overscan CheckBandTouch. Window:
+                                ; VBL write → kernel + overscan read same
+                                ; frame ($BC is nobody else's byte) → next
+                                ; VBL restages.
+PF2Buf          = $C9           ; rows 0-2 only (S3.1 packed; was $DB-$E6)
 ColupfBuf       = $E7           ; 12 bytes: final COLUPF per tile row (stripe+hot)
 FetchPtr        = $E0           ; fold-indirect pointer ($E0 lo, $E1 hi) —
-                                ; ALIAS over PF2Buf rows 5-6. Contract (fold
+                                ; own bytes since S3.1 (was an alias over
+                                ; PF2Buf rows 5-6; bank1 scorePtr1 still
+                                ; shares them — time-partitioned: bank0
+                                ; stages in VBL/overscan windows, bank1
+                                ; rebuilds in HUD after both). Contract (fold
                                 ; wins): stage addr immediately before a
-                                ; FoldIndirect batch; no foreign writer in
-                                ; the VBLANK/overscan stage→use window
-                                ; (bank1 scorePtr1 rebuilds in HUD band,
-                                ; after both windows).
+                                ; FoldIndirect batch.
 
 ; Enemy RAM shadow — live X/Y + packed flags. ROM records are read-only.
-; Sequential vars end at $BC; EnemyRam occupies $BD-$BF + $C1-$C2 (5);
-; $C0 = LaserState (the one free byte — see docs/zp_layout_skill.md).
+; Sequential vars end at $BB (ObjBot removed S3.0b); $BC = RoomBandColor,
+; $BD-$BF EnemyRam, $C0 LaserState, $C1-$C2 EnemyRamD/P.
 ; Score lives at $F3-$F5 only ($F6/$F7 = BombX/BombTimer).
 ; EnemyRamY ($E2, 3B) — private bytes since S3.4 (was an alias over
 ; PF0Buf rows 0-2). It deliberately sits INSIDE bank1's HUD stomp zone
@@ -1252,15 +1246,10 @@ EnterRoom subroutine
     sta RcBase
     iny                         ; Y=1, first rect byte
 .rcW1: jsr FoldIndirect
-    sta RcBase,Y                ; $C7-$CE (Y=1..8 = rect0, rect1)
-    iny
-    cpy #9
-    bne .rcW1
-.rcW2: jsr FoldIndirect
-    sta RcBase+4,Y              ; $D3-$DA (Y=9..16 = rect2, rect3)
-    iny
+    sta RcBase,Y                ; $CD-$DC (Y=1..16 = rects0-3 — contiguous
+    iny                         ; since S3.1: ONE loop, was two windows)
     cpy #17
-    bne .rcW2
+    bne .rcW1
 .rcW3: jsr FoldIndirect
     sta $78,Y                   ; $89-$8A (Y=17..18 = rect4 x,y) = MapPtr*
     iny
@@ -2286,10 +2275,10 @@ ApplyBombWalls:
     rts
 
 ; ZP address tables for ApplyBombWalls/BombMarkWalls rect cache (rects 0-3)
-ABWXTab: .byte $C7, $CB, $D3, $D7  ; rect.x ZP addresses
-ABWYTab: .byte $C8, $CC, $D4, $D8  ; rect.y ZP addresses
-ABWWTab: .byte $C9, $CD, $D5, $D9  ; rect.w ZP addresses
-ABWHTab: .byte $CA, $CE, $D6, $DA  ; rect.h ZP addresses
+ABWXTab: .byte RcW1, RcW1+4, RcW1+8, RcW1+12   ; rect.x ZP addrs (EQU-derived
+ABWYTab: .byte RcW1+1, RcW1+5, RcW1+9, RcW1+13 ;  since S3.1 — tables can no
+ABWWTab: .byte RcW1+2, RcW1+6, RcW1+10, RcW1+14 ; longer go stale vs cache)
+ABWHTab: .byte RcW1+3, RcW1+7, RcW1+11, RcW1+15
 
 ; ==============================================================================
 ; Data tables
@@ -2473,7 +2462,7 @@ PlayerHitsMap:
     jmp .NoHit
 .wrGo:
     sta RectCount
-    lda #RcW1                   ; window1: $C7 + Y0..7 = $C7-$CE
+    lda #RcW1                   ; walk base: $CD + Y0..15 = rects0-3
     sta FetchPtr
     lda #$00
     sta FetchPtr+1
@@ -2554,7 +2543,7 @@ PlayerHitsMap:
     beq .Stage3                 ; rect4: fixed-address cache slots
     cpy #8
     bcc .RectLoop               ; Y<8: still window1
-    lda #RcW2                   ; window2: $CB + Y8..15 = $D3-$DA
+    lda #RcW2                   ; S3.1 no-op: RcW2 ≡ RcW1 (contiguous cache)
     sta FetchPtr                ; (FetchPtr+1 already $00)
     jmp .RectLoop
 

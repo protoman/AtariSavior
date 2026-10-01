@@ -76,7 +76,20 @@ get a Stella checkpoint before the next slice).
       literal + kernel landmark comment synced (pad byte-identity guard
       caught it on the spot). Headroom warning stays 1B — structural
       (`.ds $FC4F` pin absorbs main-region deltas, not a growth signal).
-- [ ] S3.1 shrink PF/Colup buffers 12→3 rows, contiguous rect cache
+- [x] S3.1 shrink PF buffers 12→3 rows, contiguous rect cache
+      → done: PF0 `$C3-$C5`, PF1 `$C6-$C8`, PF2 `$C9-$CB` (packed rows
+      0-2 — kernel reads X=0..2 only); cache **count+rects0-3 contiguous
+      at `$CC-$DC`** (`RcBase=$CC`, `RcW1=$CD`); rect4 deliberately SPLIT
+      (x,y at `$89/$8A` — sequential decls, moving them shifts the whole
+      ZP block; w,h at `$DE/$DF`) → `.Stage3` survives into S3.2;
+      `RcW2 ≡ RcW1` (window jump now provably no-op → S3.2 deletes it);
+      `RoomBandColor` `$D2→$BC` (own byte, alias class gone);
+      ABW tables **EQU-derived** (`.byte RcW1, RcW1+4, …`) in bank0+bank1
+      — cannot go stale; EnterRoom copy: 2 windows → 1 loop (Y=1..16);
+      ColupfBuf stays `$E7` (moves only with S2.1).
+      equ-sync guard verified all hand-copied EQUs (bank1 PF1/PF2/RcBase/
+      RcW1, bank2 Rc*) — negative-tested with a stale bank1 RcBase.
+      bank0 −11B. **Stella: wall collision + bomb blast + room entry.**
 - [ ] S3.2 single rect-copy loop; delete `.Stage3`, window switch, ABW tables
 - [x] S3.3 hot rects into ZP cache → fold-free `HotOverlapFlag` (−2 SP levels)
       → **obsolete: S5.1/S5.3 delivered it differently** — HOF body now
@@ -183,6 +196,7 @@ get a Stella checkpoint before the next slice).
 | 8 | S3.0 cross-bank EQU guard + bank1 TickCounter fix + dead score EQUs | 0 B (bank1 operand swap) | build+sim+4 tests OK + guard negative-test | (this) |
 | 9 | S3.0b bomb save/restore + ObjBot decl deleted; Overscan $F182→$F176 | −12 (3246→3234; bank2 −12) | build+sim+4 tests OK | (this) |
 | 10 | S3.4 EnemyRamY $C3→$E2, VBL LoadPF0Only repair deleted | −3 (3234→3231) | build+sim+4 tests OK + equ-sync negative-test | (this) |
+| 11 | S3.1 packed PF buffers + contiguous rect cache $CC-$DC, band→$BC, EQU-derived ABW tables | −11 (3231→3220) | build+sim+4 tests OK + equ-sync negative-test | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 
