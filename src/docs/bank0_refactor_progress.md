@@ -8,6 +8,15 @@ targeted tests → checkbox update → commit. Revert any step with
 Baseline (before step 1): bank0 3769 B emitted (lst-span method), pre-pad ends $FC67,
 verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
 
+> **STATUS 2026-10-01: BACKLOG COMPLETE.** All executable steps done;
+> Phase 6 + S4.3 + S4.4 explicitly skipped by user (no space pressure —
+> gameplay-fidelity trades not worth it). bank0 **−632B vs baseline**
+> (3769 → 3137, doc scale), bank2 −65B walk code (S3.2) and −118B ROM
+> data (S4.1+S4.2), min SP improved to $F9. Guards that paid off this session: `check_equ_sync`
+> (NEW — caught the bank1 `TickCounter=$AC` bug + the tentacle stomp-zone
+> violation), frozen-addr (caught both `LEVEL_DATA_ADDR` shifts), plus
+> NEW HOF/LHT tramp byte-identity checks and the updated fold operand.
+
 ## Phase 1 — pure duplication (no contracts touched)
 
 - [x] S1.1 `LoseLife` unification — 5 life-loss copies + zero-physics blocks
@@ -176,9 +185,19 @@ get a Stella checkpoint before the next slice).
       `LEVEL_DATA_ADDR $FAFA→$FA8E` — **frozen-addr guard fired again**
       (models_data shrank 108B → everything after moved).
       ROM: −108B bank2 data (4 referenced models × 3 tables × 9 bytes);
-      bank0 code Δ0 (operand-size neutral).
+      bank0 code Δ0 (operand-size neutral). **User Stella ✓** — walls
+      render identically (pattern, mirrors, bomb holes, transitions).
 - [ ] S4.3 hot-rect parent-mask removal (needs gameplay OK)
+      → **SKIPPED (user decision 2026-10-01):** no space pressure (same
+      rationale as Phase 6). Both rule options cost gameplay fidelity
+      (hot rock never dies = invisible bump in the blast hole; all die =
+      other rocks lose danger) for ~10B + 1B/hot rect. Reference:
+      investigation F3 — revisit only with a fresh user request.
 - [ ] S4.4 room wall-mask nibble pack → per-room byte (needs gameplay OK)
+      → **SKIPPED (user decision 2026-10-01):** simplest cut = destroyed
+      walls reset on room leave (gameplay change); no-gameplay-change
+      variant needs +1 ZP byte (none free). ~60B. Reference:
+      investigation F4 — revisit only with a fresh user request.
 
 ## Phase 5 — offload leaves to bank1/bank2 (~2.6KB / ~3.4KB free)
 
