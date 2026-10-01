@@ -9,10 +9,6 @@ Eorley Savior.
 BUGS
 =========================================================================================================================================================================
 
-Player invert direction to left when changing rooms sometimes
-=========================================================================================================================================================================
-
-
 =========================================================================================================================================================================
 Where our code can be simplified? No need to compare with HERO, just looking at 6507 code, what could be done better and take less space?
 List functionalities that can benefit from a refactory, even if we need to change level data-format a bit or simplify gameplay.

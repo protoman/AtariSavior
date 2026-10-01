@@ -114,8 +114,11 @@ PF1Buf      = $CF
 PF2Buf      = $DB
 CollisionX  = $8B
 CollisionCellX = $8C
-; bank0's Temp — do NOT confuse with bank1's Temp ($AD) HUD scratch above.
-Temp088     = $88
+; bank0's LineCount — do NOT confuse with bank1's Temp ($AD) HUD scratch above.
+; ApplyBombWalls passes the first-row scratch here, not Temp: EnterRoom runs
+; it mid-input and CheckP0Left/Right read Temp ($88) as held buttons.
+; Dead in overscan — kernel .Row re-inits it every tile row.
+LineCount   = $84
 
 INPT4       = $0C       ; fire button (active low, bit 7)
 
@@ -808,14 +811,14 @@ GetConnIdx:
     ldx #0
     jmp $FBF8
 
-; ClearPFColumn — A = left-half col 0..19; Temp088 ($88 = bank0 Temp) =
-;   first row; CollisionCellX = last row (inclusive). AND-clear that col's
+; ClearPFColumn — A = left-half col 0..19; LineCount ($84) = first row;
+;   CollisionCellX = last row (inclusive). AND-clear that col's
 ;   PF bit in those rows only. Clobbers A/X/Y/CollisionX.
 ClearPFColumn:
     tay                         ; Y = col
     lda BombClearMask,Y
     sta CollisionX              ; AND mask (clear bit)
-    ldx Temp088                 ; first row
+    ldx LineCount               ; first row
 .CPCLoop:
     tya                         ; col
     cmp #4
