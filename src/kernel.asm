@@ -2930,19 +2930,20 @@ LaserWallClamp:
     bcs .LONext                 ; ry ≤ b1-rh → ry+rh ≤ b1 → no overlap
 .LOX:
     ; --- span1 = rect's left-half copy [x, x+w-1] vs path [pLo, pHi] ---
-    lda RcW1+1,X                ; sLo = x
+    ; (rect.x = RcW1+0,X — +1 is rect.y; row tests above legitimately use +1)
+    lda RcW1,X                  ; sLo = x
     cmp ActiveObjectY           ; vs pHi → overlap needs sLo ≤ pHi
     beq .LOs1
     bcs .LOs2                   ; sLo > pHi → span1 clear → try the mirror
 .LOs1:
     clc
     lda RcW1+2,X                ; w
-    adc RcW1+1,X                ; + x
+    adc RcW1,X                  ; + x
     sec
     sbc #1                      ; sHi = x+w-1
     cmp ActiveObjectX           ; vs pLo → overlap needs sHi ≥ pLo
     bcc .LOs2                   ; span1 clear
-    lda RcW1+1,X                ; candidate = sLo (first occluding col;
+    lda RcW1,X                  ; candidate = sLo (first occluding col;
     cmp RectCount               ;  sign in .LODone handles eye-gap/blocking)
     bcs .LOs2                   ; not nearer than current best
     sta RectCount
@@ -2950,7 +2951,7 @@ LaserWallClamp:
     ; --- span2 = mirrored copy [39-(x+w-1), 39-x] ---
     lda #39
     sec
-    sbc RcW1+1,X                ; mHi = 39-x
+    sbc RcW1,X                  ; mHi = 39-x
     cmp ActiveObjectX           ; mHi ≥ pLo ?
     bcc .LONext                 ; span2 clear
     sec
@@ -2972,23 +2973,44 @@ LaserWallClamp:
     tax
     jmp .LOLoop
 .LODone:
-    ; visible width = bestCol*4 - lo: ≤0 = burst behind/in the wall → off
+    ; wall px = bestCol*4 (or (pHi+1)*4 when no wall); raw width = wallPx-lo
+    ; ≤0 = burst behind/in the wall → off
     lda RectCount
     asl
-    asl                         ; bestCol << 2 (≤160: pHi+1 ≤ 40)
+    asl                         ; wall px (pHi+1 ≤ 40 → ≤160)
+    sta ActiveObjectX           ; park wallPx (path cols are done — AO free)
     sec
     sbc CollisionX
     beq .LWoff
     bcc .LWoff
     cmp #9
-    bcc .LORange
+    bcc .LWw
     lda #8                      ; clamp to the 8px missile
-.LORange:
+.LWw:
     sec
     sbc #1
     tay
-    lda LaserBoundTable,Y       ; 8,9,9,11,11,11,11,15 indexed by width-1
-    sta RectCount               ; bound = W+7 for LaserHitTest
+    lda LaserFloorTable,Y       ; 1,2,2,4,4,4,4,8 = floor-pow2 (NUSIZ sizes:
+                                ; 5..7 -> 4 so the sprite never overruns)
+    sta RectCount               ; floorW (1..8)
+    ; wall found? wallPx != (pHi+1)*4 → END-FLUSH: shift the draw so the
+    ; beam's END lands on the wall face (large walls: no floating gap)
+    lda ActiveObjectY
+    clc
+    adc #1
+    asl
+    asl                         ; init px = (pHi+1)*4
+    cmp ActiveObjectX
+    beq .LWpos                  ; no wall in path → draw at lo
+    lda ActiveObjectX
+    sec
+    sbc RectCount               ; drawLo = wallPx - floorW (≥ lo)
+    sta CollisionX              ; M0 position + LHT interval share the shift
+.LWpos:
+    lda RectCount               ; floorW
+    clc
+    adc #7                      ; bound = W+7 ∈ {8,9,11,15}
+    sta RectCount               ; LaserHitTest interval bound
     asl
     asl
     asl
@@ -3211,15 +3233,17 @@ LaserInput:
     lda #0                      ; clamp: sweep stops at left screen edge
 .LaserPos:
     sta CollisionX              ; S4: cur arg for LaserHitTest (held path only)
-    ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
-    jsr SetObjectXPos           ; HMM0 applies at next frame's VBLANK HMOVE
 
     ; --- S6 wall occlusion (subroutine in the post-pad leaf region — the
     ; $FFxx page has no room): clamps the visible beam to the first wall on
-    ; the eye→burst path; stages bound (W+7) in RectCount + packs
+    ; the eye→burst path (column space), END-FLUSH-shifts CollisionX so the
+    ; beam touches the wall, stages bound (W+7) in RectCount + packs
     ; LaserBeamOn ($02 | bound<<4 = NUSIZ width code). A=0 → fully blocked.
+    ; SetObjectXPos runs AFTER it so M0 lands on the (possibly shifted) lo.
     jsr LaserWallClamp
     beq .LaserBlocked
+    ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
+    jsr SetObjectXPos           ; HMM0 applies at next frame's VBLANK HMOVE
     ; S5.4: body moved to bank2 (pads cannot nest from a pad body — the
     ; kill/lamp ACTIONS return here: A=0 miss / $50 kill / 1 lamp).
     jsr LaserHitTest            ; S4: swept kill — result in A (+Z via ReturnPad)
@@ -3255,12 +3279,13 @@ SweepOff:
 BeamMask:
     .byte 0,0,2,2,0,0,0,0,0,0,0,0
 
-; LaserBoundTable — S6 wall occlusion: index = visible width-1 (1..8), value
-; = bound = W+7 fed to LaserHitTest (RectCount) and packed into LaserBeamOn
-; bits5-4 for NUSIZ0 (floor-pow2: NUSIZ can only draw 1/2/4/8 px — floor so
-; the sprite never overruns a wall; width3→2, 5..7→4).
-LaserBoundTable:
-    .byte 8,9,9,11,11,11,11,15
+; LaserFloorTable — S6 wall occlusion: index = raw visible width-1 (1..8) →
+; floor-pow2 drawn width: NUSIZ M0 can only draw 1/2/4/8 px, and floor makes
+; the sprite never overrun a wall (width3→2, 5..7→4); the end-flush shift in
+; LaserWallClamp then lands the beam's END on the wall face so it still
+; visibly touches it. bound = floorW+7 is computed arithmetically.
+LaserFloorTable:
+    .byte 1,2,2,4,4,4,4,8
 
 ; ------------------------------------------------------------------------------
 ; LaserHitTest — MOVED to bank2 (S5.4, entry tramp $FE86 -> `jmp $FF00`).

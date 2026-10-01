@@ -294,7 +294,25 @@ execute without a fresh, explicit user request tied to a real need
   column conversion + mirror-span presence.
   Overscan moved `$F173→$F175` (VBL +2B) → bank1 pad synced (4th time —
   AGENTS lesson updated). Post-pad slack 316→142B (`LaserWallClamp` lives
-  at $FCD4). `test_laser_s4` extended (bound contract, NUSIZ/VBL chain,
+  at $FCD4).
+  → **v3 (user retest: thin walls still crossed, large walls stopped
+  early):** two real bugs, both found by the new **py65 end-to-end probe
+  `tools/test_laser_wall.py`** (boots the ROM, pins the player across
+  X × both facings × all 4 sweep phases with fire held, compares
+  `LaserBeamOn` per frame against an independent column-space reference
+  reading the same runtime rect cache — 1216 samples):
+  1. **field off-by-one**: span tests read `RcW1+1,X` for rect.x but
+     +1 is rect.y → false candidates at cols 0-2 → beams blocked/short
+     near the left, garbage clamps elsewhere (row tests with +1/+3 were
+     correct). Fixed to `RcW1,X` (4 sites).
+  2. **no end-flush**: floor-pow2 (5..7→4) left a 1-3px floating gap at
+     large walls ("stops before it should"). Now `drawLo = wallPx -
+     floorW` shifts CollisionX so the beam's END touches the wall
+     (floor table `LaserFloorTable` 1,2,2,4,4,4,4,8; bound = floorW+7
+     arithmetic; `SetObjectXPos` moved AFTER the clamp so M0 and the LHT
+     interval share the shifted lo).
+  Probe + build + 5-test battery green; probe asserted in `test_laser_s4`
+  (end-flush shift, bound staging, mirror x-at-+0 read). `test_laser_s4` extended (bound contract, NUSIZ/VBL chain,
   blocked path).
 
 ## Log
