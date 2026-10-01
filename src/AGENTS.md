@@ -24,10 +24,13 @@
 
 **What we have NOT yet implemented from HERO (implement these next):**
 - 13+2 sprite technique for HUD text/indicators (P0×3 + P1×3 + ball = 13 character columns)
+  → score DOES use P0×3+P1×3+VDELP (docs/font/48px_score_skill.md); ball/extra columns not yet
 - Per-scanline PF lookup tables for cave patterns (HERO uses 8-entry tables at $DC6A/$DC6C/$DC77)
 - Second kernel for HUD rendering (HERO calls JSR $DE00 after cave kernel)
-- VDELP0/VDELP1 vertical delay pipeline for multi-sprite text
+  → effectively done: bank1 HUD band runs via the $FC68 fold pad after the cave kernel
+- VDELP0/VDELP1 vertical delay pipeline for multi-sprite text → done for score (bank1)
 - Font data loaded into zero-page RAM during VBLANK for fast (zp),Y access
+  → partial: digit ptrs live in ZP (scorePtr1-6), glyphs stay in ROM ($FD00)
 - Ball (ENABL) for HUD indicators
 
 ## Critical Rule: NEVER Delete Files Without User Permission
@@ -91,15 +94,22 @@ Power-up bank is bank3; its reset vector at $FFFC points to the stub which switc
 
 ### Zero-page ($80-$FF, 128 bytes)
 
-| Address | Name       | Purpose |
-|---------|------------|---------|
-| $80     | RoomX      | Player X position (0-159) |
-| $81     | RoomY      | Player Y position (0-191) |
-| $82     | Scanline   | Current scanline counter |
-| $83     | LineCount  | Scanlines remaining in tile row |
-| $84     | TileRow    | Current tile row (0-11) |
-| $85-$86 | Grp0Ptr    | Player sprite pointer (unused yet) |
-| $87     | Temp       | Scratch |
+**Authoritative map: `docs/zp_layout_skill.md`** (machine-checked every build
+by `verify_build.check_equ_sync` — cross-bank hand-copy drift + stomp-zone
+rule). Do NOT copy address tables from this file; it holds only the
+load-bearing invariants:
+
+- Sequential `byte` block runs `$80-$BB`; `$BD+` are explicit EQUs.
+  **No free sequential byte** — inserting one shifts everything after it
+  (bank1/bank2 hand-copied EQUs break silently without the guard).
+- **Stomp-zone rule:** bank1 HUD writes `$E0-$EF` every frame; persistent
+  bank0 state must live below `$E0` (exceptions: `ColupfBuf` `$E7` rebuilt
+  every VBL, `EnemyRamY` `$E2` window-ordered; staged bytes like `FetchPtr`
+  `$E5` OK). Violation symptom: field zeroed/changed every HUD frame.
+- `$F8-$FF`: stack mirror only — never a buffer (pushes write down into it;
+  measured gameplay min SP `$F9`, guard ≥`$F8`).
+- `$81` RoomY, `$88` Temp, `$B5` BombPacked, `$F6/$F7` BombX/BombTimer —
+  the crash-prone names referenced throughout the lessons below.
 
 ### TIA Registers (write-only at $00-$2F)
 
@@ -145,11 +155,16 @@ scanline, WSYNC stalls until the NEXT scanline, making the frame longer.
 ### Structure (HERO pattern)
 
 ```
-.Row (×12):       PF setup — write PF0/PF1/PF2 ONCE per tile row
+.Row (×TILE_ROWS=3): PF setup — write PF0/PF1/PF2 ONCE per 48-line band
                    (TIA registers persist — no need to rewrite per scanline)
-.Line (×12):      Sprite rendering — the tight inner loop
+.Line (×48):      Sprite rendering — the tight inner loop (band 2 runs
+                   36 bodies + the 12-line .WaterRow strip)
                    Unconditional: same instruction stream every scanline
 ```
+
+*(Era note: this was "12 tile rows × 12 scanlines" until the 2026-09-28
+band cut — PF buffers shrink to rows 0-2, `LINES_PER_TILE=48`,
+`YToRowTable = line/48`. The 3-band structure is current.)*
 
 ### Per-scanline cycle budget (76 max)
 
@@ -165,9 +180,10 @@ Both well within 76-cycle limit. No flicker.
 
 ### PF Write Strategy
 
-PF registers (PF0/PF1/PF2) are written ONCE per tile row in `.Row`.
-The TIA persists these values across all 12 scanlines of the row.
-This saves 36 cycles per scanline (3 writes × 12 cycles each).
+PF registers (PF0/PF1/PF2) are written ONCE per band in `.Row`.
+The TIA persists these values across all 48 scanlines of the band.
+This saves three abs-stores per scanline for the whole cave
+(144 lines × 12c ≈ 1.7Kc of VBL/kernel time).
 
 ## Build
 
@@ -196,49 +212,57 @@ stella -debug savior.bin # debugger
 
 ## Development Plan
 
-### Phase 1: Basic Rendering ✅ (in progress)
+### Phase 1: Basic Rendering ✅
 - [x] VSYNC/VBLANK/Overscan frame timing
-- [x] Kernel: 12 tile rows × 12 scanlines + 48 HUD band
+- [x] Kernel: 3 bands × 48 scanlines + 48 HUD band (originally 12×12; band
+      cut 2026-09-28 — `TILE_ROWS=3`, `LINES_PER_TILE=48`)
 - [x] Cave playfield with reflected mode (CTRLPF D0=1)
 - [x] Player sprite (GRP0) — 8×12, per-row colors, 2-frame jet animation, REFP0 mirror
 - [x] Joystick movement (up/down/left/right)
-- [ ] Fix cave shape (currently vertical bars — needs proper walls)
-- [ ] Proper wall collision bounds
+- [x] Fix cave shape — room .txt maps + convert_room (per-room walls, not bars)
+- [x] Proper wall collision bounds (rect walk — see Phase 3)
 
 ### Phase 2: Player Sprite & Positioning
-- [ ] Horizontal positioning via RESP0/HMP0 (Andrew Davie algorithm)
-- [ ] Player sprite art (not just a square)
-- [ ] Smooth movement with proper pixel bounds
-- [ ] Collision box matching visual sprite
+- [x] Horizontal positioning via RESP0/HMP0 (Andrew Davie algorithm;
+      SetObjectXPos pinned to the $FF10 gap + page-cross guards)
+- [x] Player sprite art (jet animation, 2 frames)
+- [x] Smooth movement with proper pixel bounds (PLAYER_MIN/MAX_X clamps)
+- [x] Collision box matching visual sprite (PlayerHitsMap cell range)
 
 ### Phase 3: Collision Detection
-- [ ] Player-to-playfield collision (CXP0FB)
-- [ ] Wall collision prevention (don't walk through walls)
-- [ ] Room boundary checks (don't leave room edges)
-- [ ] Collision response (bounce/stop)
+- [x] Player-to-playfield collision — implemented as the **rect-cache walk**
+      (PlayerHitsMap), NOT TIA CXP0FB: rooms ship x/y/w/h rect lists
+- [x] Wall collision prevention (don't walk through walls)
+- [x] Room boundary checks (don't leave room edges — exit handlers)
+- [x] Collision response (stop + hot-rock bump)
 
 ### Phase 4: Room System
-- [ ] Room data format (20×12 tile grids in ROM)
-- [ ] Room connections (up/down/left/right exits)
-- [ ] Room transitions (load new room on exit)
-- [ ] Multiple rooms per level
-- [ ] Room-specific enemy placement
+- [x] Room data format (rooms/*.txt → convert_level → PF + rect lists in ROM)
+- [x] Room connections (up/down/left/right exits — LevelConn*)
+- [x] Room transitions (load new room on exit — EnterRoom)
+- [x] Multiple rooms per level (2 levels, LEVEL_COUNT guarded)
+- [x] Room-specific enemy placement (JSON enemies + editor 3-slot cap)
 
 ### Phase 5: Enemies (GRP1)
-- [ ] Enemy sprite rendering (GRP1)
-- [ ] Enemy positioning (RESP1/HMP1)
-- [ ] Basic enemy AI (patrol, chase)
-- [ ] Enemy-player collision
-- [ ] Multiple enemy types
+- [x] Enemy sprite rendering (GRP1, ObjSprites bank0)
+- [x] Enemy positioning (RESP1/HMP1 via SetObjectXPos selector 1)
+- [x] Basic enemy AI (patrol/chase — moth walk, tentacle probe, derives)
+- [x] Enemy-player collision (CheckEnemyHit)
+- [x] Multiple enemy types (moth/spider/tentacle/bat/snake/lamp + miner)
 
 ### Phase 6: HUD Display
-**ALWAYS follow HERO's approach for HUD rendering.** HERO uses the 13+2 sprite technique (P0×3 copies + P1×3 copies + ball) for ALL HUD elements — text, lives, bombs, timer. Simple NUSIZ copies are insufficient for multi-element HUDs (e.g., 5 bombs, 9 lives). The 13+2 technique is the correct solution.
-- [ ] Score display (3 digits)
-- [ ] Lives display (up to 9)
-- [ ] Bombs display (5)
-- [ ] Timer bar
+**HERO's HUD per disassembly (corrected — see the "read the FULL section"
+rule at the top):** NUSIZ copies for icon rows (`LFF3E = $30,$30,$20,$20`
+= lives/bombs), 13+2 (P0×3 + P1×3 + ball) for TEXT rows. An earlier
+version of this section claimed HERO used 13+2 for *everything* — that
+was the disproven claim.
+- [x] Score display (6 digits — bank1, 48px technique: NUSIZ×3 P0/P1 +
+      VDELP cross-buffer, `docs/font/48px_score_skill.md`)
+- [x] Lives display (bank1 "Line 2", NUSIZ icons)
+- [x] Bombs display (bank1 "Line 3", red squares, count = PlayerBombs)
+- [x] Timer bar (power bar, bank1 — BarDelay/BarFine/BallX tables)
 - [ ] Level indicator
-- [ ] HUD rendering in the 48-line band
+- [x] HUD rendering in the 48-line band (bank1 via the $FC68 fold pad)
 
 **Score rendering notes (from HERO disassembly + bumbershootsoft):**
 
@@ -255,32 +279,36 @@ stella -debug savior.bin # debugger
 
 **Why this matters:** HERO's digits look small because the PF lookup tables pre-compute the exact pixel pattern for every scanline. Our approach of computing PF values at runtime from a font array introduces overhead and makes digits wider. To match HERO's look, we should use the same PF-table approach.
 
-**What we currently use (bumbershootsoft approach, works but wider):**
-- CTRLPF=$02 (SCORE mode) — uses COLUP0 for left half, COLUP1 for right half
-- Font stored as separate PFDigitFont array (3 pixels wide, 5 rows)
-- PF values computed at runtime from font data
-- Score render loop: writes PF0/PF1/PF2 per scanline from pre-computed buffers
-- The 13+2 technique is used for the 32-char text demo (bank1), but the game HUD uses simpler sprite+PF approach
+**What we currently use (48px sprite score, `docs/font/48px_score_skill.md`):**
+- Score is rendered by **bank1** in the HUD band: NUSIZ0/1 = 3 (P0×3 +
+  P1×3 = 6 digit slots), VDELP0/1 cross-buffer pipeline
+- `scorePtr1-6` ($E0-$EB) → `DigitGfx` ROM font at $FD00, read
+  `lda (scorePtrN),Y` per scanline
+- The old bumbershootsoft PF-compute approach (CTRLPF SCORE mode +
+  `PFDigitFont` + runtime PF values) is **gone** — no `PFDigitFont`
+  reference survives anywhere
+- HERO's per-scanline PF-table trick (bullets above) remains the
+  aspirational reference for pixel-small digits
 
 ### Phase 7: Gameplay
-- [ ] Laser/weapon system (missile 0)
-- [ ] Bomb system (ball)
-- [ ] Wall destruction
-- [ ] Item collection
-- [ ] Level progression
-- [ ] Win/lose conditions
+- [x] Laser/weapon system (missile 0) — LaserInput/ENAM0/BeamMask/LaserHitTest
+- [x] Bomb system (bomb sprite + fuse timer, NOT the ball — BombPacked state machine)
+- [x] Wall destruction (BombMarkWalls/ApplyBombWalls, WallMask b3-6)
+- [x] Item collection (CheckMinerPickup → next level)
+- [x] Level progression (inc Level, wraps at LEVEL_COUNT)
+- [ ] Win/lose conditions — lose (0 lives → game over) exists; no win screen (levels wrap)
 
 ### Phase 8: Jetpack Physics
-- [ ] Gravity (constant downward force)
-- [ ] Thrust (upward force when button held)
-- [ ] Inertia (momentum)
-- [ ] Fuel management
-- [ ] Vertical collision with ceiling
+- [x] Gravity (constant downward force — vyLo/vyHi integration)
+- [x] Thrust (upward force when button held — JetPower ramp)
+- [x] Inertia (momentum — subpixel accumulator PlayerYSub)
+- [ ] Fuel management (no fuel system; the power bar is the game TIMER)
+- [x] Vertical collision with ceiling (StepUp stops flush)
 
 ### Phase 9: Polish
-- [ ] Sound effects (engine, laser, explosions)
+- [x] Sound effects (engine buzz, bomb drop/explode, laser — test_laser_sound.py)
 - [ ] Music (background theme)
-- [ ] Color schemes per level
+- [x] Color schemes per level (LevelWallColor/LevelWallColor2 from level data)
 - [ ] Screen transitions
 - [ ] Title screen
 - [ ] Game over screen
@@ -391,13 +419,13 @@ PF0/PF1/PF2 define the left half; TIA mirrors the right.
 | Feature | HERO | This kernel |
 |---------|------|-------------|
 | ROM size | 8K (F8 bankswitch) | 16K (F6 bankswitch) |
-| PF writes | Per-scanline (ROM tables) | Per-tile-row (simpler) |
+| PF writes | Per-scanline (ROM tables) | Per-band (3 × 48 lines, written once in `.Row`) |
 | Sprite data | `(zp),Y` from ROM | `(zp),Y` from ROM (`(Grp0Ptr),Y`, frame picked in VBLANK) |
-| VDEL | Used for sprite pipeline | Not used (simpler) |
-| Enemies | Yes (miner + enemies) | Not yet |
-| Rooms | Multiple connected rooms | Single hardcoded room |
-| HUD | Score/lives/time text | Grey band only |
-| Jetpack | Physics with gravity | Simple up/down |
+| VDEL | Used for sprite pipeline | Used by bank1 score (48px technique); cave kernel no |
+| Enemies | Yes (miner + enemies) | Yes — moth/spider/tentacle/bat/snake/lamp + miner |
+| Rooms | Multiple connected rooms | Yes — multi-room levels, exit handlers + connections |
+| HUD | Score/lives/time text | Yes — bank1 band via fold pad (score/lives/bombs/bar) |
+| Jetpack | Physics with gravity | Yes — gravity/thrust/inertia (vyLo/vyHi/JetPower) |
 
 ## Debugging
 
@@ -534,7 +562,12 @@ flicker. Fixes: constant-time blink `and #3 / tay / lda BombBlinkColors,Y`
 (60 frames = 15 exact phase cycles — iteration count fixed forever);
 `LoadPFBuffer` split so VBL calls `LoadPF0Only` (3 folds ≈130c, −254c/frame)
 and the full rebuild runs only on `EnterRoom` (tail-jmp keeps the stack
-guard). Worst VBL 1539→1235c, margin +237c. **Rule:** budget VBL at the
+guard). Worst VBL 1539→1235c, margin +237c.
+*[Postscript S3.4: the VBL `LoadPF0Only` call is now GONE entirely —
+`EnemyRamY` moved to `$E2`, so `$C3-$C5` are never stomped and VBL does no
+PF rebuild at all (EnterRoom only). The routine survives as
+`LoadPFBuffer`'s tail jump. Lesson stands.]*
+**Rule:** budget VBL at the
 worst path × the LATEST-in-animation iteration count, not the first frame;
 elapsed-counter/subtract loops are forbidden in VBL (they age) — use a table
 index gated by frame phase. Recount from `bank0.lst` after any VBL growth.
@@ -608,19 +641,26 @@ must be decided with the user. Also verified: all overscan `Temp` consumers
 (input/hot-bump) run BEFORE `jsr UpdateEnemies`, so UE's probe may own Temp.
 
 **ZP alias lifetime — an alias over a per-frame-refreshed buffer needs its
-OWN writer in your read window (2026-09-26, enemy Y at $C3):** `EnemyRamY`
-was aliased over `PF0Buf` rows 0-2. The E0 design listed overscan as the
+OWN writer in your read window (2026-09-26, enemy Y at $C3; mechanism
+retired S3.4 but the rule is permanent):** `EnemyRamY` was aliased over
+`PF0Buf` rows 0-2. The E0 design listed overscan as the
 writer and VBLANK as a reader, but `LoadPFBuffer` ALSO writes $C3 every
 VBLANK — so after the first frame, draw read PF garbage: **symptom = object
 renders for one frame, then vanishes forever** (not a draw/collision bug).
-Fix: `RefreshEnemyY` rewrites the alias at overscan entry every frame.
+Fix was `RefreshEnemyY` rewriting the alias at overscan entry every frame;
+**permanent fix landed in S3.4**: the alias was deleted (Y got private
+bytes `$E2-$E4`) and the `$F0-$F2` bomb-save ↔ ColupfBuf save/restore pair
+was deleted too (S3.0b — it had been a no-op since the 12-row era).
 **Rule before choosing an alias address:** map EVERY writer to those bytes
-across the whole frame (including periodic refreshers like `LoadPFBuffer`
-and the bank1 HUD), then make sure one of YOUR writers runs after the last
+across the whole frame (including periodic refreshers like
+the bank1 HUD), then make sure one of YOUR writers runs after the last
 foreign writer and before your next read — every frame, not just at init.
-Encode the ordering in verify_build/test (guards exist for exactly this).
-Same family as the documented $F0-$F2 bomb-save ↔ ColupfBuf alias: that one
-works because both phases save/restore deliberately.
+Encode the ordering in verify_build/test (guards exist for exactly this),
+and remember the blanket form of this rule: the **stomp-zone rule**
+(`check_equ_sync` enforces it — persistent state below `$E0`, see
+docs/zp_layout_skill.md Critical Rule 6). The tentacle-inside-walls bug
+(2026-10-01) was exactly this family: rect4.h landed on `$E0`, bank1's
+scorePtr1 zeroed it every HUD frame.
 
 **Collision misalignment (2026-09-21):** A `jmp .Div15Loop` in SetObjectXPos
 added 3 cycles (1 pixel) to RESP0 timing, shifting the sprite's pixel position
@@ -691,9 +731,12 @@ kernel `.Line` loop stalls a FULL scanline per affected line.
   frame 262→263 on ~48% of frames (only bar-red frames). Killed by deleting
   `.R3`'s `jmp .BarGap` (jumped to the NEXT instruction, after the red
   boundary write). Bisect method that found it: per-frame landmarks
-  k1=`.Row $F0F4` / k2=`jmp $FC68 $F187` / k3=`Overscan $F18A` + WSYNC-site
+  k1=`.Row` / k2=`jmp $FC68` pad target / k3=`Overscan` + WSYNC-site
   PCs + cycle gaps per WSYNC index — integer segment sums isolate WHICH
   band grew; WSYNC-count constant ⇒ line SKIP (overrun), not structure.
+  **Addresses drift with every code change** (Overscan was $F18A then
+  $F182/$F176/$F173 through the S3.x refactors) — resolve each landmark
+  from `bank0.lst` at use time, never from this file.
   **Bar rule: content AFTER `sty COLUPF` (post-boundary) is
   table-independent (trim freely); content BEFORE it is table-coupled
   (BarDelay/BarFine/BallX regeneration required).**
@@ -793,9 +836,12 @@ past `$FC68`.
 
 **When adding bank0 routines that push the end over `$FC68`:** move **leaf
 helpers** (not the fold pads themselves) **after** `org $FC70` — same pattern
-as existing `HotOverlapFlag` / `AddScore` / `ReloadLevel`. `jsr` is absolute,
-so post-pad placement is fine. Never move `Overscan` without syncing
-bank1's `jmp $Fxxx` (ToGameStub at `$FC70` must match).
+as existing `AddScore` / `ReloadLevel` (S5.x moved `HotOverlapFlag` to
+bank2 instead). `jsr` is absolute, so post-pad placement is fine. Never
+move `Overscan` without syncing bank1's `jmp $Fxxx` (ToGameStub at
+`$FC70` must match) — this fired 3× in the S3.x refactors alone
+($F182→$F176→$F173); the fold-pad byte-identity guard catches it, but
+sync the literal by hand.
 
 **This session:** `AddScore` alone overflowed (fc68→fc72). Fixed by moving
 `AddScore` + `ReloadLevel` after the pads. Build green: 4×4096, folds match,
@@ -823,17 +869,19 @@ per row** (miner/enemy/lamp share a row budget). Warnings via `QMessageBox`.
 Rationale: GRP1 is one sprite — more simultaneous objects → more flicker
 (rotating `SelectActiveObject`). Restrict at authoring time.
 
-### Pending for next session
+### Open items (refresh 2026-10-01)
 
-- **TODO.txt** was modified (reordered, added "better sprites") — not by us;
-  check with user before staging.
 - **BombEnemyBlast can kill lamps** (type 5): pre-existing bug — no type
-  check in the blast loop. Not touched this session.
-- **Cross-bank Temp conflict:** bank1 uses `Temp` ($AD) as score-init flag
-  (first frame = 0, set to 1 after init). bank0 also uses `Temp` for joystick
-  scratch. If bank0 leaves `Temp` ≠ 0 before bank1 runs, score won't init to
-  zero on first frame. Currently safe (bank0 uses `Temp` in overscan, bank1
-  reads it during HUD band after overscan), but fragile if code order changes.
+  check in the blast loop. Last seen 2026-09-23, still unverified/fixed.
+- **Cross-bank Temp conflict (documented, allowlisted):** bank1 `Temp` =
+  `$AD` = bank0's `TickCounter` slot (NOT bank0's `Temp` at `$88`) —
+  bank1 uses it as its score-init first-frame flag (`inc` once). Deliberate;
+  `check_equ_sync.ZP_ALLOW` records it. Fragile if either side's frame
+  phase changes.
+- **Tentacle residual (user-accepted):** probe still lets it enter walls
+  slightly on the left — PHM's entry uses PLAYER origin/width for the
+  candidate box; fix = per-enemy origin offset in `UE_Tentacle`. Details:
+  `docs/bank0_refactor_progress.md` (S3.2 entry).
 
 ## Skill References
 
