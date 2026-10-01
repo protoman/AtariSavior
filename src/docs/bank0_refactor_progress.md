@@ -5,12 +5,15 @@ Method: one step = edit → `./build.sh` (verify_build + sim_bomb_fuse) →
 targeted tests → checkbox update → commit. Revert any step with
 `git revert <sha>`.
 
-Baseline (before step 1): bank0 3768B emitted, pre-pad ends $FC67,
+Baseline (before step 1): bank0 3769 B emitted (lst-span method), pre-pad ends $FC67,
 verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
 
 ## Phase 1 — pure duplication (no contracts touched)
 
-- [ ] S1.1 `LoseLife` unification — 5 life-loss copies + zero-physics blocks
+- [x] S1.1 `LoseLife` unification — 5 life-loss copies + zero-physics blocks
+      → done: −93 B (main −74, post-pad −19). Timer path also dropped a
+      redundant `TickCounter` reload (already 60 on entry). C-flag contract:
+      C=1 exhausted (ReloadLevel done), C=0 stay (physics zeroed).
 - [ ] S1.2 `LoadLevel` 14 unrolled folds → loop + dest table
 - [ ] S1.3 `ExitRoomUp/Down/Left/Right` → one direction-parameterised routine
 - [ ] S1.4 share `EnemyData*` staging across one overscan pass
@@ -57,4 +60,5 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
 
 | Step | Change | bank0 Δ bytes | Tests | Commit |
 |------|--------|---------------|-------|--------|
-| 0 | investigation + report committed | — | build OK | (this) |
+| 0 | investigation + report committed | — | build OK | 6f61a20 |
+| 1 | S1.1 LoseLife unification | −93 (3769→3676) | build+sim+3 tests OK | (this) |

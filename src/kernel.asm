@@ -977,7 +977,7 @@ EndInputCheck:
     ; --- Hot rock touch (bump into H cell this frame) → lose life ---
     lda Temp
     bpl .NoHotBump
-    jsr LoseLifeHot
+    jsr LoseLife
 .NoHotBump:
 
     ; --- Bottom band touch (RoomY in row 2 + band color on) → lose life ---
@@ -1013,28 +1013,12 @@ EndInputCheck:
     beq .TimerExpired           ; bar empty — time's up!
     jmp .TimerDone
 .TimerExpired:
-    ; Time's up! Lose a life (same as enemy hit)
-    dec PlayerLives
-    bpl .TimerReset
-    ; Lives exhausted — reset level
-    lda #3
-    sta PlayerLives
-    lda #$00
-    sta EnemyDeadMask
-    jsr ReloadLevel
-    jmp .TimerDone
-.TimerReset:
-    ; Reset bar for retry
+    ; Time's up! Lose a life (shared path). C=1: lives exhausted +
+    ; ReloadLevel done. C=0: physics zeroed by LoseLife.
+    jsr LoseLife
+    bcs .TimerDone
     lda #120
-    sta BarLevel
-    lda #60
-    sta TickCounter
-    ; Zero velocity, stay at current position
-    lda #0
-    sta vyLo
-    sta vyHi
-    sta JetPower
-    sta PlayerYSub
+    sta BarLevel             ; reset bar for retry
 .TimerDone:
 
     ; --- Wait for overscan timer ---
@@ -2107,16 +2091,8 @@ CEH_HasMore:
     sta EnemyDeadMask
     lda #$50              ; +50 points per kill
     jsr CallPad_AddScore
-    ; Lose a life
-    dec PlayerLives
-    bpl CEH_Stay
-    ; Lives exhausted — reset level (all enemies back, 3 lives)
-    lda #$00
-    sta EnemyDeadMask            ; clear dead enemy
-    lda #3
-    sta PlayerLives
-    jsr ReloadLevel
-    rts
+    ; Lose a life (shared path — tail jmp: its rts returns to caller)
+    jmp LoseLife
 CEH_Lamp:
     ; Broad overlap guarantees lower bound; narrow to lamp's 4 lit pixels.
     lda CollisionX
@@ -2124,14 +2100,6 @@ CEH_Lamp:
     bcs CEHNext
     ; Only fire once (bit already set → no-op); no life loss, not EnemyDeadMask
     jsr CallPad_SetRoomDark
-    rts
-CEH_Stay:
-    ; Still have lives — just zero velocity, stay at current position
-    lda #0
-    sta vyLo
-    sta vyHi
-    sta JetPower
-    sta PlayerYSub
     rts
 CEHNext:
     ldy EnemyIndex
@@ -2228,7 +2196,7 @@ BombEnemyBlast:
 
 ; ------------------------------------------------------------------------------
 ; BombPlayerBlast — on explode, if player col in ±1 col of bomb col (any Y):
-;   lose 1 life (same path as CEH_Stay / timer expiry).
+;   lose 1 life (shared LoseLife path).
 ; Cols = px/4 (0..39 screen). Y ignored.
 ; ------------------------------------------------------------------------------
 BombPlayerBlast:
@@ -2248,21 +2216,7 @@ BombPlayerBlast:
 .BPBColAbs:
     cmp #2                      ; |dcol| < 2 → any Y kills
     bcs .BPBMiss
-    ; Hit — same life path as enemy/timer
-    dec PlayerLives
-    bpl .BPBStay
-    lda #3
-    sta PlayerLives
-    lda #$00
-    sta EnemyDeadMask
-    jsr ReloadLevel              ; LoadLevel → clears RoomWallMask + bomb state
-    rts
-.BPBStay:
-    lda #0
-    sta vyLo
-    sta vyHi
-    sta JetPower
-    sta PlayerYSub
+    jmp LoseLife                ; shared life path (tail: rts to caller)
 .BPBMiss:
     rts
 
@@ -2995,23 +2949,29 @@ HotOverlapFlag:
     rts
 
 ; ------------------------------------------------------------------------------
-; LoseLifeHot — same life path as enemy/timer hit (Temp b7 already set).
+; LoseLife — the single life-loss path (enemy hit, timer expiry, bomb blast,
+; hot rock, band). Returns C=1: lives exhausted, ReloadLevel already done
+; (LoadLevel re-places the player — callers skip their stay action).
+; C=0: still alive — physics zeroed here; caller does its per-site stay
+; action (bar reload, RoomY shift). Tail-callable (`jmp LoseLife`).
 ; ------------------------------------------------------------------------------
-LoseLifeHot:
+LoseLife:
     dec PlayerLives
-    bpl .LLHstay
+    bpl .LLStay
     lda #3
     sta PlayerLives
     lda #$00
     sta EnemyDeadMask
     jsr ReloadLevel
+    sec
     rts
-.LLHstay:
+.LLStay:
     lda #0
     sta vyLo
     sta vyHi
     sta JetPower
     sta PlayerYSub
+    clc
     rts
 
 ; IsRoomDark / SetRoomDark + BitMaskTable moved to bank1 (leaf_move_plan B).
@@ -3049,20 +3009,8 @@ CheckBandTouch:
 ; (LoadLevel already places the player safely).
 ; ------------------------------------------------------------------------------
 LoseLifeBand:
-    dec PlayerLives
-    bpl .LLBstay
-    lda #3
-    sta PlayerLives
-    lda #$00
-    sta EnemyDeadMask
-    jsr ReloadLevel
-    rts
-.LLBstay:
-    lda #0
-    sta vyLo
-    sta vyHi
-    sta JetPower
-    sta PlayerYSub
+    jsr LoseLife
+    bcs .LLBdone               ; exhausted: ReloadLevel placed the player
     lda RoomY
     sec
     sbc #12                     ; clear the strip (spec: -= 12, not whole band)
@@ -3070,6 +3018,7 @@ LoseLifeBand:
     lda #0
 .LLBstore:
     sta RoomY
+.LLBdone:
     rts
 
 ; ------------------------------------------------------------------------------
