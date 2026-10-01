@@ -25,6 +25,7 @@ import sys
 WIDTH = 20
 HEIGHT = 3                  # playable color bands (HUD is drawn separately)
 TABLE_STRIDE = 12           # padded per-row table size (bank0 index math)
+MASK_BITS = (0x08, 0x10, 0x20, 0x40)  # kernel BombMaskBit, wall rects 0-3
 
 
 def read_room(path: Path) -> list[str]:
@@ -141,9 +142,31 @@ def lines(rows: list[str], prefix: str = "", source: str = "room") -> list[str]:
         out.append(f"  .byte {x}, {y}, {w}, {h}  ; x, y, width, height")
     # Hot-only block after solid rects: death + pulse. Walks of solid rects
     # must stop at the count byte and never enter this section.
+    # Record = mask, x, y, w, h (5 bytes). mask = BombMaskBit of the solid
+    # rect that contains this hot rect (kernel's death check skips the hot
+    # piece once that wall is blasted — hot_rock_wall_plan rule 4);
+    # $00 = no blastable parent (parent outside rects 0-3, or none) → never dies.
     out.append(f"  .byte {len(hot_rects)}              ; number of hot rectangles")
-    for x, y, w, h in hot_rects:
-        out.append(f"  .byte {x}, {y}, {w}, {h}  ; hot x, y, width, height")
+    for hx, hy, hw, hh in hot_rects:
+        parent = next(
+            (
+                i
+                for i, (x, y, w, h) in enumerate(rects)
+                if x <= hx and y <= hy and hx + hw <= x + w and hy + hh <= y + h
+            ),
+            None,
+        )
+        if parent is None:
+            print(
+                f"warning: hot rect ({hx},{hy},{hw},{hh}) not inside any wall rect",
+                file=sys.stderr,
+            )
+            mask = 0
+        elif parent < len(MASK_BITS):
+            mask = MASK_BITS[parent]
+        else:
+            mask = 0
+        out.append(f"  .byte ${mask:02x}, {hx}, {hy}, {hw}, {hh}  ; mask, x, y, w, h")
 
     for name, register in zip(("TilePF0", "TilePF1", "TilePF2"), range(3)):
         out.append(f"{prefix}{name}:")

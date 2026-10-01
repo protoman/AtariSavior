@@ -37,7 +37,7 @@ M2RoomRects:
   .byte 0, 1, 2, 2  ; x, y, width, height
   .byte 4, 2, 14, 1  ; x, y, width, height
   .byte 1              ; number of hot rectangles
-  .byte 17, 1, 1, 1  ; hot x, y, width, height
+  .byte $10, 17, 1, 1, 1  ; mask, x, y, w, h
 M2TilePF0:
   .byte $f0, $30, $30, $00, $00, $00, $00, $00, $00, $00, $00, $00
 M2TilePF1:

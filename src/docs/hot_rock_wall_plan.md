@@ -35,10 +35,12 @@ RoomRects:
   .byte n                  ; solid rects (collision + bomb)
   .byte x,y,w,h × n
   .byte n_hot              ; hot-only rects (death + pulse)
-  .byte x,y,w,h × n_hot
+  .byte mask,x,y,w,h × n_hot  ; mask = BombMaskBit of containing wall rect
+                              ; (M2: parent index → $08/$10/$20/$40);
+                              ; $00 = no blastable parent → never dies
 ```
 
-Bomb/PlayerHitsMap walks use **only `n`** (stop before `n_hot`). New hot walk starts at offset `1+4n`.
+Bomb/PlayerHitsMap walks use **only `n`** (stop before `n_hot`). Hot walks start at offset `1+4n`, stride **5**. Death check (rule 4): `mask & BombPacked != 0` → containing wall blasted → skip this hot piece. `BuildColupF` uses only `y`/`h` (mask ignored — pulse where the wall is gone is invisible).
 
 ### Pulse (kernel)
 
