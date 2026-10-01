@@ -41,16 +41,21 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
 ## Phase 2 — cycles (no format change)
 
 - [ ] S2.1 `BuildColupF` dirty-flag rebuild (VBL headroom; worst 1311c/1472c)
-      → **blocked on Phase 3 (verified this session):** bank1 HUD writes
-      `scorePtr4+1`/`scorePtr5` = **$E7/$E8/$E9 every frame** (score pointer
-      setup is unconditional in the HUD band), i.e. it stomps ColupfBuf rows
-      0-2 — the ONLY rows the kernel reads (TILE_ROWS=3). The per-frame
-      VBLANK rebuild is the structural stomp repair (zp_layout_skill.md
-      line "VBLANK rebuilds"); a dirty flag would evaluate dirty EVERY
-      frame and skip nothing. A "cheap 3-byte repair" variant would win
-      ~200-300c but needs 3 bytes of cache ZP — none free pre-Phase-3.
-      Re-enable ONLY after S3.1 moves ColupfBuf rows 0-2 out of bank1's
-      $E0-$EF stomp zone.
+      → **CLOSED: permanently blocked under the current ZP (verified after
+      Phase 3).** Two independent proofs:
+      1. bank1 HUD writes `scorePtr4+1`/`scorePtr5` = **$E7/$E8/$E9 every
+         frame** → stomps ColupfBuf rows 0-2 (the only rows read) → the
+         VBL rebuild is structural stomp repair; a dirty flag is always
+         dirty.
+      2. Post-Phase-3 byte budget: the persistent-below-$E0 region
+         `$C3-$DF` is **exactly full** (PF0 3 + PF1 3 + PF2 3 + rect
+         cache 20 = 29/29); band `$BC`, bombs `$F0-$F2`, stack excluded.
+         Colupf needs 3 persistent non-stomp-zone bytes — none exist.
+         Relocating bank1's ptrs instead is circular (they need the same
+         nonexistent bytes; zone spares `$E0/$E1` = only 2).
+      Only theoretical unblock: bank1 HUD surgery — all 6 score-ptr HI
+      bytes are the constant `$FD`; collapsing them out of ZP would free
+      $E1/$E3/$E5/$E7/$E9/$EB… (separate project, not worth ~200-300c).
 
 ## Phase 3 — ZP re-plan (sliced execution — atomicity traded for the S3.0 guard)
 
@@ -116,6 +121,14 @@ get a Stella checkpoint before the next slice).
       `$DF`, clear of the stomp zone). **New guard** in `check_equ_sync`:
       persistent names (`RcBase/RcW1/PF*/RoomBandColor/BombX/BombTimer`)
       must be < `$E0`, cache span `RcW1+19 ≤ $DF` — negative-tested.
+      → **Known (user-accepted, 2026-10-01):** tentacle STILL enters walls
+      slightly **on the left**. Residual is probe-box geometry, not the
+      cache: PHM's entry derives the column range with PLAYER origin rules
+      (`RoomX-PlayerDir`, then −4/−7, PLAYER_WIDTH) while the tentacle is
+      an 8px GRP1 sprite whose draw origin sits ~5/7px left of A — same
+      family as the documented moth "sat ~7 px inside a wall" issue
+      (e4_moth_plan). Fix = per-enemy origin offset on the candidate in
+      UE_Tentacle before the RoomX swap — deferred, low severity.
 - [x] S3.3 hot rects into ZP cache → fold-free `HotOverlapFlag` (−2 SP levels)
       → **obsolete: S5.1/S5.3 delivered it differently** — HOF body now
       lives in bank2 reading level ROM directly (fold-free, bank2-local);
@@ -132,7 +145,16 @@ get a Stella checkpoint before the next slice).
         equ-sync guard** (stale `$C3` in bank2.asm → caught).
       - Overscan `$F176→$F173` (jsr removal) → bank1 pad + landmark synced.
       bank0 −3B (jsr), −130c/frame VBL.
-- [ ] S3.5 rewrite `docs/zp_layout_skill.md`, re-measure min SP
+- [x] S3.5 rewrite `docs/zp_layout_skill.md`, re-measure min SP
+      → done: doc refreshed (2026-10-01): stomp-zone rule as Critical
+      Rule 6, sequential-block/`$BC` rules corrected, cache/count/FetchPtr/
+      EnemyRamY rows final, Bank2 section rewritten (level data + offload
+      bodies, not "legacy HUD trampoline"), 5-entry mask note, bomb-save
+      obsolescence. min SP re-measured: **gameplay `$F9` (guard ≥$F8,
+      +1 vs historical boundary)**, whole-run `$F7` — recorded in the doc's
+      new "Stack depth" section. NOTE: `AGENTS.md` still documents the
+      old EnemyRamY `$C3` alias + `check_enemy_alias` — user file, needs
+      an update pass (listed for user).
 
 ## Phase 4 — data format
 
@@ -224,6 +246,7 @@ get a Stella checkpoint before the next slice).
 | 11 | S3.1 packed PF buffers + contiguous rect cache $CC-$DC, band→$BC, EQU-derived ABW tables | −11 (3231→3220) | build+sim+4 tests OK + equ-sync negative-test | (this) |
 | 12 | S3.2 uniform stride: rect4 into cache, FetchPtr $E0→$E5, .Stage3 + window jumps deleted (kernel+moth) | −77 (3220→3143; bank2 −65) | build+sim+4 tests OK + fold-guard negative-test | (this) |
 | 13 | S3.2-fix: rect cache out of bank1 stomp zone (count→$89, rects→$CC-$DF) + stomp-zone guard | 0 B (address fix) | build+sim+4 tests OK + zone-guard negative-test | (this) |
+| 14 | S2.1 closed (permanently blocked — byte budget) + S3.5 zp doc rewrite + min SP re-measured ($F9/$F7) | 0 B (docs) | build+sim+4 tests OK | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 
