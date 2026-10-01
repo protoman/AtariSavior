@@ -1487,7 +1487,7 @@ UE_Exit:
 ; $F4 and jsr return bytes stomped BombTimer $F7 / BombX $F6 every 4th frame,
 ; so the fuse never reached 0), put candidate X + live tentacle Y, call,
 ; restore from scratch (lda/sta do not disturb C), commit only when C=0.
-; Slot X likewise saved in EnemyIndex (PHM clobbers X via YToCellRow's `tax`
+; Slot X likewise saved in EnemyIndex (PHM clobbers X in its rect walk
 ; — E3 gate bug: the commit wrote to EnemyRamX[row] instead of
 ; EnemyRamX[slot] → frozen X). All three bytes are write-before-read for
 ; every reader (SelectActiveObject/CheckEnemyHit rewrite before reading).
@@ -1528,8 +1528,8 @@ UE_Tentacle:
     sta RoomX                    ; probe as the tentacle (candidate x)
     lda EnemyRamY,X
     sta RoomY                    ; live tentacle y (refreshed this overscan)
-    stx EnemyIndex               ; save slot: PlayerHitsMap->YToCellRow does
-                                 ; `tax` (X = bottom row) — slot was lost here
+    stx EnemyIndex               ; save slot: PlayerHitsMap clobbers X
+                                 ; (rect walk ldx/dex/tax) — slot was lost here
     jsr PlayerHitsMap
     ldx EnemyIndex               ; X = slot again (ldx/sta preserve C)
     lda ActiveObjectY
@@ -2431,22 +2431,17 @@ LEVEL_DATA_ADDR = $FB04        ; frozen address of bank2's LevelDataTable
                                 ; (test asserts bank2.lst label == this)
 
 ; ==============================================================================
-; YToCellRow — convert scanline (0-191) to 48-line band row (0-3)
+; YToRowTable — convert scanline (0-191) to 48-line band row (0-3), idx A>>2
 ; ==============================================================================
-; Input: A = scanline. Output: X = tile row.
-; Lookup table: constant-time. Subtract loop grew linearly with RoomY and
-; made 3× PlayerHitsMap (fall 2 + L/R 1) exceed overscan TIM64T=35 (~2240c)
-; in 4-rect rooms → frame >262 lines → vertical roll when strafing while falling.
+; The jsr wrapper that used to live here was dead (PlayerHitsMap inlines the
+; lsr/lsr/tay/lda lookup — saves 2 JSR stack push levels to keep SP >= $F8)
+; and was removed in S1.6. Table rationale: the old subtract loop grew
+; linearly with RoomY and made 3× PlayerHitsMap (fall 2 + L/R 1) exceed
+; overscan TIM64T=35 (~2240c) in 4-rect rooms → frame >262 lines → vertical
+; roll when strafing while falling.
 ; Indexed by A>>2 (48-entry table): floor(floor(A/4)/12) = floor(A/48).
 ; Costs +4c/call vs the 192-entry table, saves 144 ROM bytes.
 ; Max A = PLAYER_MAX_Y+11 = 143 → index 35 (fits 48 entries).
-YToCellRow subroutine
-    lsr
-    lsr                 ; A = scanline >> 2
-    tay
-    lda YToRowTable,Y
-    tax
-    rts
 
 ; 48 entries: 12 each of 0,1,2,3 (value = index/12 = scanline/48).
 YToRowTable:
@@ -2464,7 +2459,7 @@ YToRowTable:
 ; Returns C=0 if clear, C=1 if blocked.
 PlayerHitsMap:
 ; --- Tile row range (top, bottom) ---
-; Inlined YToCellRow: saves 2 JSR stack push levels (4B on stack) to keep SP >= $F8
+; Inlined row lookup: saves 2 JSR stack push levels (4B on stack) to keep SP >= $F8
     lda RoomY
     lsr
     lsr                         ; A = scanline >> 2

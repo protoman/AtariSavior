@@ -212,11 +212,13 @@ def main() -> None:
     assert ".byte $08, $10, $20, $40" in b2, \
         "MothMaskBit = BombMaskBit copy (destroyed-rect skip)"
 
-    # --- space fix: YToCellRow uses the 48-entry (A>>2) table -------------
-    ytc = KERNEL.split("YToCellRow subroutine")[1].split("PlayerHitsMap:")[0]
-    assert re.search(r"lsr[^\n]*\n\s*lsr[^\n]*\n\s*tay", ytc), \
-        "YToCellRow must index by scanline>>2"
-    table = ytc.split("YToRowTable:")[1]
+    # --- space fix: row lookup uses the 48-entry (A>>2) table -------------
+    # (the dead YToCellRow jsr wrapper was removed in S1.6; the lookup is
+    # inlined at the top of PlayerHitsMap)
+    ytc = KERNEL.split("\nPlayerHitsMap:")[1].split("CollisionCellY", 1)[0]
+    assert re.search(r"lda RoomY\n\s*lsr[^\n]*\n\s*lsr[^\n]*\n\s*tay", ytc), \
+        "inlined row lookup must index by scanline>>2"
+    table = KERNEL.split("YToRowTable:")[1].split("PlayerHitsMap:")[0]
     operands = []
     for byte_line in re.findall(r"\.byte ([\d,]+)", table):
         operands += [int(v) for v in byte_line.split(",") if v.strip()]
@@ -238,7 +240,7 @@ def main() -> None:
         "probe must use ZP scratch (ActiveObjectX/Y + EnemyIndex), not pha/pla"
     phm = tent.index("jsr PlayerHitsMap")
     # slot X must be saved before the probe and popped right after it:
-    # PlayerHitsMap->YToCellRow does `tax` (X = bottom row), so without the
+    # PlayerHitsMap clobbers X (rect walk ldx/dex + txa/tax), so without the
     # save the commit wrote EnemyRamX[row] — tentacle X froze (E-gate bug).
     save_x = tent.rindex("stx EnemyIndex", 0, phm)
     load_x = tent.index("ldx EnemyIndex", phm)
