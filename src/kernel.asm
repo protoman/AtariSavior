@@ -165,7 +165,7 @@ EnemyDeadMask   byte            ; per-enemy dead bits b0-2 (0 = alive; was DeadE
 
 ; Object rendering ZP (set by SelectActiveObject during VBLANK)
 ObjTop          byte            ; top scanline of active object (for GRP1 visibility)
-ObjBot          byte            ; bottom scanline of active object (ObjTop + PLAYER_HEIGHT)
+ObjBot          byte            ; reserved (was ObjTop+8; write-only, no readers)
 
 ; Bomb X/Y/timer live at $F6/$F7 + BombY=$85 (see top of ZP map)
 BombX           = $F6           ; bomb drop X (RoomX snapshot; bank1 does not write $F6)
@@ -184,7 +184,6 @@ ScoreHu         = $F4           ; score hundreds digit (0-9)
 ScoreTe         = $F5           ; score tens digit (0-9)
 PF0ScoreBuf     = $B3           ; 5 bytes: PF0 values for score rows 0-4
 PF1ScoreBuf     = $B8           ; 5 bytes: PF1 values for score rows 0-4
-PF2ScoreBuf     = $C6           ; 5 bytes: PF2 values for score rows 0-4 (legacy; no users)
 
 ; P3.4 rect cache — solid rect list copied once per EnterRoom, walked directly
 ; by PlayerHitsMap with NO bank2 fold (fold mid-function switched the EXECUTION
@@ -225,7 +224,7 @@ RoomBandColor   = $D2           ; ALIAS PF1Buf[3] (dead fill row) — band-color
                                 ; reads them (bank1 has no $D2 EQU). Writer:
                                 ; VBLANK stage AFTER LoadPFBuffer/BuildColupF
                                 ; (fold from LevelEnemy+RoomNo*4+3). Readers:
-                                ; kernel .WaterRow (via LoadRoomBottomColor) +
+                                ; kernel .WaterRow (direct lda RoomBandColor) +
                                 ; overscan CheckBandTouch. Window: written
                                 ; post-buffers → survives VBLANK, kernel,
                                 ; bank1 HUD ($E0-$EF only); overscan physics
@@ -321,9 +320,7 @@ FACING_LEFT     = 1
 
 ; LaserState bits (laser_implementation_plan S1)
 LASER_HELD      = %10000000     ; b7: fire pressed this frame (INPT4 D7=0)
-LASER_PREV      = %01000000     ; b6: fire pressed last frame
 LASER_PHASE     = %00000011     ; b1-0: sweep phase 0..3 -> M0 offsets 0/8/16/8 px
-LASER_HP        = %11000000     ; held + prev (state while fire stays held)
 
 ; Colors (emulator-aware: hue<<4 | luma<<1)
 COLOR_PLAYER    = $48           ; red = sprite row0: stale VBLANK color on the
@@ -372,7 +369,7 @@ COLOR_HOT_R     = COLOR_BLINK_R
                                     ; (NOT deletable: $F008 = GameStart is a
                                     ;  hardcoded cross-bank entry — bank1
                                     ;  stub `jmp $F008`; this jmp also keeps
-                                    ;  $F183 Overscan + F0xx landmarks fixed)
+                                    ;  $F182 Overscan + F0xx landmarks fixed)
 
 GameStart:
     sei                         ; disable interrupts
@@ -647,8 +644,7 @@ StartFrame:
     ; Running-Y: Y = A0 = Scanline - RoomY is computed ONCE at kernel entry
     ; (sec/sbc RoomY/tay); .Line's iny advances it (Y = A0+1 after the
     ; graphics write = A0 of the next line). Nothing between rows may touch
-    ; Y — the water-strip jsr (.WaterRow LoadRoomBottomColor clobbers Y)
-    ; pushes/pops it.
+    ; Y — the water-strip band-color read is an inlined `lda` (Y untouched).
     ; Cycle budget from .Line (body starts c8, dec/bne already paid), recounted
     ; from bank0.lst (worst = in-window color/beam/GRP0 + object in-range):
     ;   color+beam+GRP0 (cpy..sta GRP0 incl BeamMask+gate) = 37c
@@ -726,8 +722,7 @@ StartFrame:
     and #%00000011
     cmp #2
     beq .WRSkip
-    jsr LoadRoomBottomColor     ; cache read — A only, Y preserved (was saved:
-                                ; old ROM body clobbered Y)
+    lda RoomBandColor           ; inlined band-color read (was a jsr helper)
     beq .WRRestore              ; band off (0): keep Temp, no store
     sta COLUBK
 .WRRestore:
@@ -1842,7 +1837,7 @@ CheckMinerPickup:
 ; ==============================================================================
 ; SelectActiveObject — choose the single GRP1 object to draw this frame.
 ; The TIA has one GRP1 sprite, so objects flicker by rotating slots each frame.
-; Sets ObjBase, ActiveObjectX, ActiveObjectY, ObjTop, ObjBot, COLUP1.
+; Sets ObjBase, ActiveObjectX, ActiveObjectY, ObjTop, COLUP1.
 ; Slot count (enemies + miner?) lives in Temp for this VBLANK only.
 ; Bomb fuse (state=1): low-priority — bomb only when (BombTimer&3)==0
 ; (~15 Hz); other frames normal miner/enemy rotation (FlickerFrame alone).
@@ -1982,12 +1977,12 @@ SelectActiveObject:
 
 .SODone:
     jsr SetObjReflection
-    ; Set ObjTop/ObjBot for kernel GRP1 visibility check.
+    ; Set ObjTop for kernel GRP1 visibility check.
     ; S2.2: ObjTop stored RoomY-relative (ObjTopRel = ActiveObjectY-RoomY+1) so
     ; the kernel compares against running-Y (`tya`) instead of `lda Scanline`
     ; — frees 9c/line (lda Scanline + inc Scanline) for the laser beam write.
     ; Kernel .Grp1 does: tya / sec / sbc ObjTop / cmp #8 / bcs .ObjZero.
-    ; ObjBot mirrors ObjTop+8 (write-only; no readers).
+    ; ObjBot was write-only (no readers) — stores removed, byte reserved (S1.5).
     lda ObjBase
     beq .SONoObj
     lda ActiveObjectY
@@ -1996,14 +1991,10 @@ SelectActiveObject:
     clc
     adc #1                      ; A = ActiveObjectY - RoomY + 1 (mod 256)
     sta ObjTop
-    clc
-    adc #PLAYER_HEIGHT
-    sta ObjBot
     rts
 .SONoObj:
     lda #0
     sta ObjTop
-    sta ObjBot
     rts
 
 .SONothing:
@@ -2977,24 +2968,16 @@ LoseLife:
 ; IsRoomDark / SetRoomDark + BitMaskTable moved to bank1 (leaf_move_plan B).
 
 ; ------------------------------------------------------------------------------
-; LoadRoomBottomColor — A = band color for RoomNo (0 = band off). Reads the
-; VBLANK-staged cache (RoomBandColor = $D2, PF1Buf[3] dead-row alias at decl):
-; the LevelEnemy ROM record moved to bank2, and a kernel-time fold overruns
-; the .WaterRow line (fold body 20c + stage on top of a ~74c line).
-; Clobbers A only (Y preserved — .WaterRow no longer needs its save).
-; ------------------------------------------------------------------------------
-LoadRoomBottomColor:
-    lda RoomBandColor
-    rts
-
-; ------------------------------------------------------------------------------
 ; CheckBandTouch — overscan: if band on and sprite touches the water strip →
 ; life. Strip = bottom ~12 lines of the cave (bottom_band_plan rule 2);
 ; sprite origin RoomY >= 125 enters it (125 + PLAYER_SPRITE_H - 1 = 136).
 ; Same path as hot/enemy: lose life, then respawn 12 scanlines up (min 0).
+; Band color = VBLANK-staged RoomBandColor ($D2, PF1Buf[3] dead-row alias;
+; staged by the VBLANK fold from LevelEnemy+RoomNo*4+3 — a kernel-time fold
+; overruns the .WaterRow line). Read inlined here and in .WaterRow (0 = off).
 ; ------------------------------------------------------------------------------
 CheckBandTouch:
-    jsr LoadRoomBottomColor
+    lda RoomBandColor
     beq .CBTdone                ; band off
     lda RoomY
     cmp #125
