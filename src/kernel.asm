@@ -2128,7 +2128,15 @@ BombTick subroutine
     sta BombPacked
     lda #60
     sta BombTimer
-    jsr BombMarkWalls           ; S6.3: set WallMask for w==1 rects in blast
+    jsr CallPad_BombMarkWalls   ; S6.3: set WallMask; A = #walls newly broken
+    tax
+    beq .BTNoScore
+.BTScore:
+    lda #$75                    ; +75 points per broken wall (moved out of
+    jsr CallPad_AddScore        ;   BMW — pads cannot nest from a pad body)
+    dex
+    bne .BTScore
+.BTNoScore:
     jsr BombEnemyBlast          ; S9: kill enemy ±1 col any Y (before player — reload clears)
     jsr BombPlayerBlast         ; S5: player ±1 col any Y → life (may ReloadLevel → clears masks)
     jsr CallPad_BombSndExplode          ; S10: noise burst
@@ -2215,92 +2223,11 @@ BombPlayerBlast:
 ; (leaf_move_plan batch A) — called via CallPad_BombSnd*.
 
 ; ------------------------------------------------------------------------------
-; BombMarkWalls — on 1→2 edge: walk RoomRects, set WallMask bit for each
-;   w==1 rect whose x is in blast cols (bomb left-half col ±2, clamped 0..19).
-;   Skip x==0: screen cols 0 and 39 (both = stored col 0 under reflection).
-; Bits b3-6 of BombPacked = rect index 0..3 (rooms have ≤4 rects).
+; BombMarkWalls — MOVED to bank1 (S5.2) — CallPad_BombMarkWalls ($FB10).
+;   Returns A = #walls newly broken; the fuse-expiry caller scores +75 each
+;   (pads cannot nest: ReturnPad switches to bank0 mid-call). bank1 keeps
+;   its own copies of ABWXTab/ABWWTab/BombMaskBit (ROM is per-bank).
 ; ------------------------------------------------------------------------------
-BombMarkWalls:
-    ; visible-left mapping identical to PlayerHitsMap: the bomb is drawn from
-    ; BombX via SetObjectXPos, so its left edge is BombX-5 / BombX-7, not BombX.
-    sec
-    lda BombX
-    cmp #15
-    bcs .BMWoff7
-    sbc #4                      ; visible left = BombX - 5 (CMP clears carry)
-    jmp .BMWVL
-.BMWoff7:
-    sbc #7                      ; visible left = BombX - 7
-.BMWVL:
-    lsr
-    lsr                         ; screen col = visible_left/4 (0..39)
-    cmp #TILE_COLUMNS
-    bcc .BMWCol
-    sta Temp
-    lda #39
-    sec
-    sbc Temp                    ; mirror right-half → left-half col
-.BMWCol:
-    sta Temp                    ; bomb left-half col
-    ; blast lo = max(col-2, 0)   (±2: player is 8px wide, so a bomb dropped
-    ; blast hi = min(col+2, 19)    flush-left sits 2 cols from the wall)
-    lda Temp
-    cmp #2
-    bcc .BMWLo0
-    sec
-    sbc #2
-    bcs .BMWStoreLo
-.BMWLo0:
-    lda #0
-.BMWStoreLo:
-    sta CollisionEndX           ; blast_lo (free: overscan, after movement)
-    lda Temp
-    cmp #18
-    bcs .BMWHi19
-    clc
-    adc #2
-    bcc .BMWStoreHi
-.BMWHi19:
-    lda #19
-.BMWStoreHi:
-    sta CollisionCellX          ; blast_hi (loop compares rect.x against it)
-    lda RcBase                  ; cached rect count
-    beq .BMWDone
-    cmp #4
-    bcc .BMWCountOk
-    lda #4                      ; rooms with >4 rects: only rects 0-3 maskable
-.BMWCountOk:
-    tax                         ; X = rect count (1..4)
-    dex                         ; X = 3..0
-.BMWLoop:
-    lda ABWXTab,X
-    tay
-    lda 0,Y                     ; rect.x
-    beq .BMWNext                ; x==0 = screen L/R border — never destroy
-    cmp CollisionEndX
-    bcc .BMWNext                ; x < lo
-    cmp CollisionCellX
-    beq .BMWCheckW              ; x == hi → in blast
-    bcs .BMWNext                ; x > hi
-.BMWCheckW:
-    lda ABWWTab,X
-    tay
-    lda 0,Y                     ; rect.w
-    cmp #1
-    bne .BMWNext
-    lda BombMaskBit,X
-    and BombPacked              ; already broken?
-    bne .BMWNext                ; yes → no double score
-    lda BombMaskBit,X
-    ora BombPacked
-    sta BombPacked               ; set WallMask bit (keeps state+DownPrev)
-    lda #$75                    ; +75 points per broken wall
-    jsr CallPad_AddScore
-.BMWNext:
-    dex
-    bpl .BMWLoop
-.BMWDone:
-    rts
 
 ; ------------------------------------------------------------------------------
 ; ApplyBombWalls — after LoadPFBuffer: for each masked rect, clear its col
@@ -2762,6 +2689,9 @@ CallPad_UpdateLaserSound:
 CallPad_BuildColupF:
     sta $1FF8                   ; S5.1: body lives in bank2 (direct rect reads)
     jmp $FC4F
+CallPad_BombMarkWalls:
+    sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
+    jmp $FB10
 
     .ds $FC49 - *, 0             ; pin (main growth past $FC49 = build error)
 MothExitPad:
