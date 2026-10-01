@@ -120,6 +120,14 @@ CollisionCellX = $8C
 ; Dead in overscan — kernel .Row re-inits it every tile row.
 LineCount   = $84
 
+; --- BombMarkWalls (S5.2, moved from bank0) — must match kernel.asm ---
+BombX      = $F6                ; read-only here (see $F6 note above)
+BMWScratch = $88                ; kernel Temp — NOT bank1's Temp ($AD)
+RcBase     = $C6                ; rect cache count
+BombPacked = $B5                ; state+DownPrev+WallMask (b3-6)
+CollisionEndX = $8E             ; blast lo
+TILE_COLUMNS = 20
+
 INPT4       = $0C       ; fire button (active low, bit 7)
 
     ; --- Bar PF setup before TopGap (grey-on-grey: invisible) ---
@@ -949,6 +957,106 @@ LaserFreqTable:
     .byte 4,7,10,12,14,12,10,7
 
 ; ========================================================================
+; BombMarkWalls (S5.2, moved from bank0) — pinned at $FB10.
+;   On the bomb 1->2 edge: walk the rect cache, set WallMask bit (BombPacked
+;   b3-6) for each w==1 rect whose x is in blast cols (bomb left-half col
+;   +-2, clamped 0..19). Skip x==0 (screen border). Score is NOT done here —
+;   pads cannot nest (ReturnPad switches to bank0), so this returns
+;   A = #walls newly broken and the bank0 caller adds +75 per wall.
+;   ABWXTab/ABWWTab/BombMaskBit duplicate bank0's (ROM is per-bank) —
+;   keep in sync with kernel.asm.
+; ========================================================================
+    .ds $FB10 - *, 0
+BombMarkWalls:
+    ; visible-left mapping identical to PlayerHitsMap: the bomb is drawn from
+    ; BombX via SetObjectXPos, so its left edge is BombX-5 / BombX-7, not BombX.
+    sec
+    lda BombX
+    cmp #15
+    bcs .BMWoff7
+    sbc #4                      ; visible left = BombX - 5 (CMP clears carry)
+    jmp .BMWVL
+.BMWoff7:
+    sbc #7                      ; visible left = BombX - 7
+.BMWVL:
+    lsr
+    lsr                         ; screen col = visible_left/4 (0..39)
+    cmp #TILE_COLUMNS
+    bcc .BMWCol
+    sta BMWScratch
+    lda #39
+    sec
+    sbc BMWScratch               ; mirror right-half → left-half col
+.BMWCol:
+    sta BMWScratch               ; bomb left-half col
+    ; blast lo = max(col-2, 0)   (±2: player is 8px wide, so a bomb dropped
+    ; blast hi = min(col+2, 19)    flush-left sits 2 cols from the wall)
+    lda BMWScratch
+    cmp #2
+    bcc .BMWLo0
+    sec
+    sbc #2
+    bcs .BMWStoreLo
+.BMWLo0:
+    lda #0
+.BMWStoreLo:
+    sta CollisionEndX           ; blast_lo (free: overscan, after movement)
+    lda BMWScratch
+    cmp #18
+    bcs .BMWHi19
+    clc
+    adc #2
+    bcc .BMWStoreHi
+.BMWHi19:
+    lda #19
+.BMWStoreHi:
+    sta CollisionCellX          ; blast_hi (loop compares rect.x against it)
+    lda #0
+    sta CollisionX              ; walls-broken count (returned in A)
+    lda RcBase                  ; cached rect count
+    beq .BMWDone
+    cmp #4
+    bcc .BMWCountOk
+    lda #4                      ; rooms with >4 rects: only rects 0-3 maskable
+.BMWCountOk:
+    tax                         ; X = rect count (1..4)
+    dex                         ; X = 3..0
+.BMWLoop:
+    lda ABWXTab,X
+    tay
+    lda 0,Y                     ; rect.x
+    beq .BMWNext                ; x==0 = screen L/R border — never destroy
+    cmp CollisionEndX
+    bcc .BMWNext                ; x < lo
+    cmp CollisionCellX
+    beq .BMWCheckW              ; x == hi → in blast
+    bcs .BMWNext                ; x > hi
+.BMWCheckW:
+    lda ABWWTab,X
+    tay
+    lda 0,Y                     ; rect.w
+    cmp #1
+    bne .BMWNext
+    lda BombMaskBit,X
+    and BombPacked              ; already broken?
+    bne .BMWNext                ; yes → no double score
+    lda BombMaskBit,X
+    ora BombPacked
+    sta BombPacked               ; set WallMask bit (keeps state+DownPrev)
+    inc CollisionX               ; +1 wall broken (caller scores +75 each)
+.BMWNext:
+    dex
+    bpl .BMWLoop
+.BMWDone:
+    lda CollisionX              ; A = walls newly broken
+    jmp $FBF8                   ; ReturnPad → bank0 caller
+
+ABWXTab: .byte $C7, $CB, $D3, $D7  ; rect.x ZP addresses (dup of bank0)
+ABWWTab: .byte $C9, $CD, $D5, $D9  ; rect.w ZP addresses (dup of bank0)
+BombMaskBit:
+    .byte $08, $10, $20, $40      ; WallMask bit per rect index (dup of bank0)
+
+; ========================================================================
 ; Cross-bank call pads — byte-identical to bank0 at these addresses
 ; (docs/leaf_move_plan.md). F6 hotspot ignores the written value, so pads
 ; pass A/X/Y/flags through untouched (`sta` does not affect flags).
@@ -990,6 +1098,9 @@ CallPad_UpdateLaserSound:
 CallPad_BuildColupF:
     sta $1FF8                   ; S5.1: body lives in bank2 (direct rect reads)
     jmp $FC4F
+CallPad_BombMarkWalls:
+    sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
+    jmp $FB10
 
 ; ========================================================================
 ; Fold-pad stubs (byte-identical to bank0)

@@ -74,7 +74,17 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
         jmp target up in `bank2.lst` for `$1FF8` pads (bank1 for `$1FF7`).
       - Entry save block (`$F0-$F2` → collision temps) moved as-is —
         still dead (rows 0-2 only, no restore) → follow-up audit.
-- [ ] S5.2 `BombMarkWalls` (124B)
+- [x] S5.2 `BombMarkWalls` → **bank1** via `CallPad_BombMarkWalls` ($FB10)
+      → done: −102 B (3512→3410). Constraints handled:
+      - Score could not stay inline (`jsr CallPad_AddScore` from a pad body
+        = ReturnPad switches to bank0 mid-call) → BMW returns
+        **A = #walls newly broken**; the fuse-expiry caller does the +75
+        loop (per-wall semantics preserved; AddScore doesn't read
+        BombPacked, so post-walk scoring is equivalent same-frame).
+      - `Temp` trap: bank1's `Temp` EQU = $AD (HUD scratch, kernel's
+        TickCounter) — BMW scratch renamed `BMWScratch = $88` (kernel Temp).
+      - `ABWXTab`/`ABWWTab`/`BombMaskBit` duplicated into bank1 (ROM is
+        per-bank; the ZP rect cache itself is shared RAM).
 - [ ] S5.3 `HotOverlapFlag` (117B, tail-call contract via CallPad)
 - [ ] S5.4 `LaserHitTest` (90B)
 
@@ -93,7 +103,8 @@ verify_build OK (1 WARN: headroom 1B), sim_bomb_fuse OK.
 | 1 | S1.1 LoseLife unification | −93 (3769→3676) | build+sim+3 tests OK | f41800d |
 | 2 | S1.5 inline helper + ObjBot + dead EQUs | −12 (3676→3664) | build+sim+3 tests OK | 02b991c |
 | 3 | S1.6 dead YToCellRow sub + test anchor | −8 (3664→3656) | build+sim+3 tests OK | a2158f8 |
-| 4 | S5.1 BuildColupF → bank2 via CallPad ($1FF8) | −144 (3656→3512) | build+sim+3 tests OK | (this) |
+| 4 | S5.1 BuildColupF → bank2 via CallPad ($1FF8) | −144 (3656→3512) | build+sim+3 tests OK | 5103f6a |
+| 5 | S5.2 BombMarkWalls → bank1, count-return + caller score loop | −102 (3512→3410) | build+sim+3 tests OK | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 
