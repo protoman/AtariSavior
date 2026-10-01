@@ -264,6 +264,29 @@ Space pressure is gone (bank0 −267B this session); the §5 cuts table in
 execute without a fresh, explicit user request tied to a real need
 (title screen / music / win screen / VBL margin).
 
+## Bugfixes
+
+- **Laser passed through walls** (user, 2026-10-01) — labeled **S6** in
+  code/comments (investigation §S6 "staging noise" is unrelated).
+  Two symptoms fixed by ONE mechanism — wall-clamped visible width:
+  1. *visual*: beam reappeared beyond thin walls (CTRLPF=$05 priority only
+     hides the OVERLAP pixels) and sweep bursts jumped the eye→burst gap;
+  2. *gameplay*: `LaserHitTest` killed through walls (interval was fixed
+     `[lo, lo+7]`).
+  Design: `LaserWallClamp` (post-pad leaf — the $FFxx page is full) walks
+  the rect cache over the path `[min(eye,lo) .. max(eye,lo+7)]`, clamps
+  `bestEnd` to the first wall, returns width→ `bound=floor-pow2(W)+7`
+  staged in `RectCount` (LHT: `cmp RectCount`) and packed into
+  `LaserBeamOn = $02 | bound<<4` → VBL `and #$30 / sta NUSIZ0` picks the
+  M0 width code (1/2/4/8 px; floor so the sprite never overruns), fully
+  blocked = `LaserBeamOn=$00` + skip LHT. HERO has no laser code —
+  original design. Scratch: ActiveObjectX/Y + RectCount (window-safe:
+  every later reader writes first). Overscan +~500c, VBL +2c.
+  Overscan moved `$F173→$F175` (VBL +2B) → bank1 pad synced (4th time —
+  AGENTS lesson updated). Post-pad slack 316→142B (`LaserWallClamp` lives
+  at $FCD4). `test_laser_s4` extended (bound contract, NUSIZ/VBL chain,
+  blocked path).
+
 ## Log
 
 | Step | Change | bank0 Δ bytes | Tests | Commit |
@@ -285,6 +308,7 @@ execute without a fresh, explicit user request tied to a real need
 | 14 | S2.1 closed (permanently blocked — byte budget) + S3.5 zp doc rewrite + min SP re-measured ($F9/$F7) | 0 B (docs) | build+sim+4 tests OK | (this) |
 | 15 | S4.1 enemy stride 6→4 (drop range slots), EnemyOffTable 0/4/8, LEVEL_DATA_ADDR sync | −6 (3143→3137) + −10B ROM | build+sim+4 tests OK (frozen-addr guard fired first) | (this) |
 | 16 | S4.2 PF table stride 12→3 (convert_room + EnterRoom +3 pointers) | 0 B code; −108B bank2 ROM data | build+sim+4 tests OK (frozen-addr guard fired again) | (this) |
+| 17 | Bugfix: laser wall occlusion (`LaserWallClamp` + bound-staged LHT + NUSIZ width) | +174B post-pad (slack 316→142) | build+sim+4 tests OK | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 
