@@ -1,8 +1,10 @@
 # Zero-Page Layout — Skill Reference
 
 **Authoritative source:** sequential `byte` labels + `EQU`/`=` in `src/kernel.asm`
-(verified against `bank0.lst` 2026-09-23 after bomb work). Bank1 EQUs from
-`src/bank1.asm`. Do not trust older alias tables below this line's date.
+(verified against `bank0.lst` 2026-10-01 after Phase 3). Bank1 EQUs from
+`src/bank1.asm`, bank2 from `src/bank2.asm`. Machine-checked every build by
+`verify_build.check_equ_sync` (cross-bank hand-copy drift + stomp-zone rule).
+Do not trust older alias tables below this line's date.
 
 ## Overview
 
@@ -19,15 +21,15 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 1. **Never use $100-$1FF as a buffer.** Mirrors $80-$FF (same 128 bytes).
 2. **Never remove a middle sequential `byte`** — shifts every later address
    and breaks bank1 EQUs / fold-pad assumptions. Rename in place.
-3. **New bank0 sequential vars go after `$BC`.** Laser S1 (2026-09-26) took
-   the last byte: `EnemyRamX` shrank to 3 slots ($BD-$BF) and freed
-   **`$C0 = LaserState`**. The 3-slot bound is enforced three ways — editor
-   `kMaxRoomElements=3`, `convert_level.MAX_ENEMIES=3`, `verify_build`
-   enemies+lamps ≤3 (was a stale 4) — because `EnemyRamX[3]` would collide
-   with `$C0`. After laser work there is **no free sequential bank0 byte**
-   again — reuse scratch (`Temp`, collision temps) or steal a documented
-   bank1-only address.
-4. **Grep all `bank*.asm` before defining `$xx` EQU** in any bank.
+3. **Sequential block ends at `$BB`** (`ObjBot` removed S3.0b — it was the
+   last decl; nothing shifts after it). `$BC` onward are explicit EQUs
+   (`RoomBandColor`, `EnemyRamX`…): you may re-point an EQU, but a NEW
+   sequential `byte` after `$BB` would land on `$BC` = RoomBandColor —
+   there is still **no free sequential bank0 byte**. Reuse scratch
+   (`Temp`, collision temps) or steal a documented bank1-only address.
+4. **Grep all `bank*.asm` before defining `$xx` EQU** in any bank — then
+   let `check_equ_sync` verify it (it compares every shared name against
+   the kernel authority map).
 5. **Do not touch from bank1 (live score/bomb):** `$F3-$F5` score,
    `$F6` BombX, `$F7` BombTimer, `$F0` PlayerBombs (read-only in bank1 HUD),
    `$F1` BombSnd (bank1 must not write), `$F2` RoomWallMask (bank1 must not write),
@@ -35,6 +37,16 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
    `$AD` bank1 `Temp` (bank0 `TickCounter`), `$BD-$BF`+`$C1-$C2` EnemyRam,
    `$C0` LaserState (bank0 laser S1),
    `$B5` BombPacked, `$85` BombY.
+6. **STOMP-ZONE RULE (S3.2, machine-enforced):** bank1 HUD writes `$E0-$EF`
+   every frame (score ptrs + bar temps). Bank0 state written ONCE and read
+   across frames must live **below `$E0`**. Documented exceptions (both
+   window-ordered, both machine-checked ordering): `ColupfBuf` `$E7`
+   (rebuilt every VBLANK before the next kernel read) and `EnemyRamY`
+   `$E2-$E4` (written at overscan entry, every read before the next
+   stomp). Staged-only bytes may sit in the zone (`FetchPtr` `$E5-$E6`:
+   stage→read happens inside one VBL/overscan batch, HUD runs between
+   batches). Violation symptom: field silently zeroed/changed every HUD
+   frame → this is exactly how rect4.h broke the tentacle (S3.2).
 
 ## Bank0 Sequential ZP ($80-$BC) — verified
 
@@ -100,16 +112,16 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $B9 | EnemyIndex | Selected enemy slot |
 | $BA | EnemyDeadMask | per-enemy dead bits b0-2 (0 = alive; was DeadEnemyIdx $FF=none) |
 | $BB | ObjTop | GRP1 top scanline |
-| $BC | ObjBot | GRP1 bottom scanline |
 
 Sequential allocation ends at `$BB` (ObjBot `$BC` removed S3.0b; next
-sequential byte would be `$BC`, but `$BD+` are explicit EQUs).
+sequential byte would be `$BC`, but `$BD+` are explicit EQUs and `$BC` is
+`RoomBandColor`'s EQU).
 
 ## Bank0 EQUs (fixed addresses, no sequential byte)
 
 | Addr | Name | Notes |
 |------|------|-------|
-| $BD | EnemyRamX | 3 bytes live enemy X ($BD-$BF, slots 0-2 only) |
+| $BD | EnemyRamX | 3 bytes live enemy X ($BD-$BF, slots 0-2 only — `EnemyRamX[3]` would collide with `$C0` LaserState; the 3-slot bound is enforced three ways: editor `kMaxRoomElements=3`, `convert_level.MAX_ENEMIES=3`, `verify_build` enemies+lamps ≤3) |
 | $C0 | LaserState | laser S1: b7 held, b6 prev, b1-0 sweep phase |
 | $C1 | EnemyRamD | Packed dir bits 0-3 |
 | $C2 | EnemyRamP | Free-running frame clock (`inc` once/frame in RefreshEnemyY; gates bat/spider/tentacle derives; init `$F0` on room load = harmless seed) |
@@ -119,6 +131,7 @@ sequential byte would be `$BC`, but `$BD+` are explicit EQUs).
 | $C9-$CB | PF2Buf | TilePF2 rows 0-2 (**packed S3.1**, was `$DB`). |
 | $89 + $CC-$DF | Rect cache | **count + rects0-4 UNIFORM (S3.2)** — count `RcBase=$89` (sequential decl), walk base `RcW1=$CC`, stride 4 for all five rects (Y=0..19): no windows, no `.Stage3` (both deleted), mask index4 = `$00` table entry (rect4 never in WallMask). rect4 x,y,w,h = `$DC-$DF`. ABW tables EQU-derived — cannot go stale. **STOMP-ZONE RULE:** every persistent byte here must stay < `$E0` — the first S3.2 layout ended at `$E0` and bank1's `scorePtr1` lo (leading zero) zeroed rect4.h every HUD frame → probes passed through rect4 walls (tentacle walked inside walls). Guarded by `check_equ_sync` (`RcW1+19 ≤ $DF`). FetchPtr lives at `$E5` (fold operand byte-guarded: FOLD_BYTES). |
 | $E2-$E4 | EnemyRamY | Live Y, private 3B (S3.4) — sits in the bank1 stomp zone but window-safe (write/read between stomps — kernel ZP contract block). |
+| $E5-$E6 | FetchPtr | Fold-indirect pointer (moved `$E0→$E5` S3.2 to free `$E0`, then out of the cache entirely). Staged-only: batch stage→read inside one VBL/overscan window; bank1 `scorePtr3+1/scorePtr4` share the bytes in HUD. Fold operand is byte-guarded (`FOLD_BYTES` in verify_build). |
 | $E7-$F2 | ColupfBuf | Final COLUPF × 12 rows — but only rows 0-2 ($E7-$E9) are ever written (TILE_ROWS=3; rows 9-11 are the bombs' own bytes, no overlap machinery since S3.0b). Bank1 clobbers $E7-$EF during HUD; VBLANK rebuilds every frame (S2.1 blocker, see progress doc). |
 | $F3 | ScoreTh | Shared with bank1 score |
 | $F4 | ScoreHu | |
@@ -173,11 +186,14 @@ only and nothing else touched `$F0-$F2` between save and restore.
 **Removed / do not reintroduce:** bank1 `ScoreOn` at `$F6` (now BombX);
 old DigitPtr* at `$F4/$F6/$F8`.
 
-## Bank2 (legacy HUD trampoline)
+## Bank2 (level data + offloaded bodies) — verified EQUs
 
-Bank2 is not in the current F6 game path for score (HUD lives in bank0
-`HudBand` + bank1 menu). If bank2 is re-enabled, it may only **reuse** bank0
-PF buffers / score EQUs — never allocate new ZP addresses.
+Bank2 holds: frozen level data (`$F9D9+`), `MothRoutine` (its own rect
+walk — shares the ZP cache), `BuildColupF`, `HotOverlapBody`,
+`LaserHitTestBody`, the fold block + tramp pads. Its EQUs are hand-copies
+of kernel addresses — **`check_equ_sync` verifies every shared name each
+build** (historical bugs: stale `TickCounter=$AC`, stale `RcBase`). Bank2
+must never allocate a ZP address kernel doesn't define.
 
 ## Historical Crashes
 
@@ -200,5 +216,15 @@ PF buffers / score EQUs — never allocate new ZP addresses.
 | BombTimer | $F7 EQU | 180 fuse / 60 explode |
 | RoomWallMask | $F2 EQU | pack both rooms' WallMask; **zeroed only by `LoadLevel`** |
 
-WallMask bits b3-6 = rect index 0-3 (`BombMaskBit` ROM table `$08,$10,$20,$40`).
+WallMask bits b3-6 = rect index 0-3 (`BombMaskBit` ROM table
+`$08,$10,$20,$40,$00` — 5th entry `$00` since S3.2: the uniform walk
+touches index 4 (rect4), which is never masked).
 EnterRoom pack: old room0 → `$F2` b0-3; old room1 → `$F2` b4-7; restore inverse into BombPacked b3-6.
+
+## Stack depth (re-measured 2026-10-01, after Phase 3)
+
+`sim_bomb_fuse` (every build): **gameplay min SP = `$F9`** (guard ≥ `$F8`),
+whole-run min SP = `$F7` (guard ≥ `$F7`). Phase 3 + S5.x fold removals
+improved the historical `$F8`-boundary gameplay figure by 1 byte — but the
+rule stands: **the stack page mirrors ZP; buffers at `$F8-$FF` are
+forbidden; measure, never infer.**
