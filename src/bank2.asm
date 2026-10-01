@@ -650,11 +650,11 @@ LaserHitTestBody:
     lda #0                      ; result: miss (Z set for caller's beq)
     jmp $FBF8
 
-; Type-offset table (copy of kernel EnemyOffTable: enemy index * 6) and
+; Type-offset table (copy of kernel EnemyOffTable: enemy index * 4; S4.1) and
 ; dead-bit table (copy of kernel EnemyBitTable) — bank0 ROM is not visible
 ; from here; labels keep the kernel-side test anchors working.
 EnemyOffTable:
-    .byte 0,6,12
+    .byte 0,4,8
 
 EnemyBitTable:
     .byte $01, $02, $04, $08

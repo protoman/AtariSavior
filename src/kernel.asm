@@ -1311,7 +1311,8 @@ EnterRoom subroutine
 
 ; ------------------------------------------------------------------------------
 ; LoadEnemyRam — copy each ROM enemy's x,dir into the RAM shadow.
-; ROM stride 6: type(+0), x(+1), y(+2), range_min(+3), range_max(+4), dir(+5).
+; ROM stride 4 (S4.1): type(+0), x(+1), y(+2), dir(+3) — the old
+; range_min/range_max slots are gone (nothing read them).
 ; Y is NOT shadowed (stays in ROM until S5) — $F3-$F6 is bank1 score.
 ; dir ROM: +1 / $FF. Packed: EnemyRamD bit=1 right, 0 left.
 ; EnemyRamP = free-running frame clock — seed value here is arbitrary.
@@ -1332,7 +1333,7 @@ LoadEnemyRam:
 LER_Loop:
     cpx EnemyCount
     bcs LER_Done
-    ldy EnemyOffTable,X         ; Y = X*6 (table lookup — same as UE_Loop;
+    ldy EnemyOffTable,X         ; Y = X*4 (table lookup — same as UE_Loop;
                                 ; drops the 9 B txa/asl/sta Temp/asl/clc/adc
                                 ; sequence, -6 B main. No caller reads Temp
                                 ; after this routine.)
@@ -1342,9 +1343,7 @@ LER_Loop:
     iny                         ; +2 = y
     jsr FoldIndirect
     sta EnemyRamY,X
-    iny                         ; +3 range_min
-    iny                         ; +4 range_max
-    iny                         ; +5 dir
+    iny                         ; +3 = dir (S4.1: range slots dropped)
     jsr FoldIndirect
     bmi LER_Left                ; $FF = face left
     lda EnemyBitTable,X         ; face right → set bit
@@ -1393,7 +1392,7 @@ UE_Alive:
     lda EnemyDeadMask
     and EnemyBitTable,X
     bne UE_Next                  ; dead enemy does not move
-    ldy EnemyOffTable,X          ; Y = X*6 = type offset
+    ldy EnemyOffTable,X          ; Y = X*4 = type offset
     jsr FoldIndirect             ; type
     cmp #ENEMY_TENTACLE
     bne .UENotTent
@@ -1418,9 +1417,7 @@ UE_SnakeLeft:
     jsr FoldIndirect
     sta Temp
     iny
-    iny
-    iny
-    iny                          ; +5 = ROM dir
+    iny                          ; +3 = ROM dir (S4.1: range slots dropped)
     jsr FoldIndirect
     bmi UE_LeftInitL             ; initial face left → rmin = spawn - 6
     lda Temp                     ; initial face right → rmin = spawn
@@ -1444,9 +1441,7 @@ UE_SnakeRight:
     jsr FoldIndirect
     sta Temp
     iny
-    iny
-    iny
-    iny                          ; +5 = ROM dir
+    iny                          ; +3 = ROM dir (S4.1: range slots dropped)
     jsr FoldIndirect
     bmi UE_RightInitL            ; initial face left → rmax = spawn
     clc
@@ -1928,7 +1923,7 @@ SelectActiveObject:
     ldx EnemyIndex
     lda EnemyRamX,X
     sta ActiveObjectX
-    ldy EnemyOffTable,X         ; Y = EnemyIndex * 6 = type offset
+    ldy EnemyOffTable,X         ; Y = EnemyIndex * 4 = type offset
     ; --- Fold batch (P3.1): enemy record staged before IsRoomDark (A-only,
     ; Y and FetchPtr survive the call). ---
     lda EnemyDataLo
@@ -2062,7 +2057,7 @@ CEH_HasMore:
     bcs CEHNext                ; no Y overlap
         ; Lamp (type 5): crash → RoomDarkMask; lamp stays in rotation (grey), no life
     ldx EnemyIndex
-    ldy EnemyOffTable,X         ; Y = EnemyIndex * 6
+    ldy EnemyOffTable,X         ; Y = EnemyIndex * 4
     jsr FoldIndirect            ; type
     cmp #LAMP
     beq CEH_Lamp
@@ -2345,7 +2340,9 @@ LAMP           = 5             ; type-5 enemy record = editor lamp (white square
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 2             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $FB04        ; frozen address of bank2's LevelDataTable
+LEVEL_DATA_ADDR = $FAFA        ; frozen address of bank2's LevelDataTable
+                                ; (S4.1 enemy stride 6→4 moved it $FB04→$FAFA;
+                                ;  check_frozen_addrs enforces)
                                 ; (test asserts bank2.lst label == this)
 
 ; ==============================================================================
@@ -2547,7 +2544,8 @@ PlayerHitsMap:
     rts
 
 EnemyOffTable:
-    .byte 0,6,12                ; enemy index * 6 (offset into enemy data)
+    .byte 0,4,8                 ; enemy index * 4 (stride S4.1; offset into
+                                ; enemy data type,x,y,dir)
 
 ; BitMaskTable moved to bank1 with IsRoomDark/SetRoomDark (leaf_move_plan).
 

@@ -158,7 +158,15 @@ get a Stella checkpoint before the next slice).
 
 ## Phase 4 — data format
 
-- [ ] S4.1 enemy stride 6→4 (drop dead `range_min/range_max`)
+- [x] S4.1 enemy stride 6→4 (drop dead `range_min/range_max`)
+      → done: `ENEMY_STRIDE 6→4` in convert_level (ROM = `type,x,y,dir`;
+      editor JSON keeps range fields — check_levels still validates them);
+      `EnemyOffTable 0,6,12→0,4,8` (kernel + bank2); LoadEnemyRam dir read
+      `+5→+3` (−2 iny), snake ROM-dir reads `+5→+3` ×2 (−4 iny); all "*6"
+      comments updated; `LEVEL_DATA_ADDR $FB04→$FAFA` — **caught by
+      check_frozen_addrs on first build** (rooms_data shrank → LevelDataTable
+      moved). −6B bank0 + 2B/enemy ROM (5 enemies → −10B data).
+      bank0 3143→3137 (doc scale).
 - [ ] S4.2 PF table stride 12→3 (data only)
 - [ ] S4.3 hot-rect parent-mask removal (needs gameplay OK)
 - [ ] S4.4 room wall-mask nibble pack → per-room byte (needs gameplay OK)
@@ -221,12 +229,12 @@ get a Stella checkpoint before the next slice).
         `test_laser_s4`'s stale `jsr SetRoomDark` assert (broken since the
         bank1 leaf move — pre-existing) fixed to the CallPad form.
 
-## Phase 6 — gameplay cuts (optional, one at a time, user test each)
+## Phase 6 — gameplay cuts: **REMOVED from plan (user decision 2026-10-01)**
 
-- [ ] laser sweep phases off
-- [ ] jet inertia ramp off
-- [ ] fixed flicker order (no modulo rotation)
-- [ ] single-frame player sprite
+Space pressure is gone (bank0 −267B this session); the §5 cuts table in
+`bank0_simplification_investigation.md` stays as reference only — do not
+execute without a fresh, explicit user request tied to a real need
+(title screen / music / win screen / VBL margin).
 
 ## Log
 
@@ -247,6 +255,7 @@ get a Stella checkpoint before the next slice).
 | 12 | S3.2 uniform stride: rect4 into cache, FetchPtr $E0→$E5, .Stage3 + window jumps deleted (kernel+moth) | −77 (3220→3143; bank2 −65) | build+sim+4 tests OK + fold-guard negative-test | (this) |
 | 13 | S3.2-fix: rect cache out of bank1 stomp zone (count→$89, rects→$CC-$DF) + stomp-zone guard | 0 B (address fix) | build+sim+4 tests OK + zone-guard negative-test | (this) |
 | 14 | S2.1 closed (permanently blocked — byte budget) + S3.5 zp doc rewrite + min SP re-measured ($F9/$F7) | 0 B (docs) | build+sim+4 tests OK | (this) |
+| 15 | S4.1 enemy stride 6→4 (drop range slots), EnemyOffTable 0/4/8, LEVEL_DATA_ADDR sync | −6 (3143→3137) + −10B ROM | build+sim+4 tests OK (frozen-addr guard fired first) | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 
