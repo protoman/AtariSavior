@@ -182,8 +182,8 @@ RoomWallMask    = $F2           ; packed destroyed-wall mask, until stage leave:
 ScoreTh         = $F3           ; score thousands digit (0-9)
 ScoreHu         = $F4           ; score hundreds digit (0-9)
 ScoreTe         = $F5           ; score tens digit (0-9)
-PF0ScoreBuf     = $B3           ; 5 bytes: PF0 values for score rows 0-4
-PF1ScoreBuf     = $B8           ; 5 bytes: PF1 values for score rows 0-4
+; PF0ScoreBuf/PF1ScoreBuf removed (S3.0): dead legacy EQUs — the 48px
+; sprite score never used PF score buffers (decl-only, zero references).
 
 ; P3.4 rect cache — solid rect list copied once per EnterRoom, walked directly
 ; by PlayerHitsMap with NO bank2 fold (fold mid-function switched the EXECUTION

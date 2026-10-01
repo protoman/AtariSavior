@@ -465,6 +465,71 @@ def check_callpads(src: Path) -> None:
                 f"${got:04X} (stale literal — pads must be byte-identical)")
 
 
+# S3.0: cross-bank EQU sync --------------------------------------------------
+# kernel.asm is the authority: sequential `Name byte` walk (seg.u, org $80)
+# plus every explicit `Name = $XX` hex literal. bank1/bank2 hand-copy the
+# shared names; a stale copy silently reads/writes the WRONG byte with no
+# assembler error (found live this session: bank1 TickCounter = $AC read
+# PlayerLives in the jet-sound wobble at bank1.asm:770).
+# Hex assignments only — decimal constants may legitimately differ per bank.
+ZP_ALLOW: dict[tuple[str, str], str] = {
+    ("bank1", "Temp"):
+        "AGENTS cross-bank Temp: bank1's score-init flag lives in kernel "
+        "TickCounter's slot ($AD); kernel Temp is $88 — different bytes "
+        "on purpose (documented conflict, see AGENTS.md)",
+}
+
+
+def kernel_equ_authority(kernel: str) -> dict[str, int]:
+    """name -> value. Sequential `Name byte` allocates +1 from org $80
+    (decls confined to the seg.u block, verified: no `Name byte` outside
+    lines 85-175); every `Name = $XX` recorded, first definition wins."""
+    names: dict[str, int] = {}
+    addr: int | None = None
+    for line in kernel.splitlines():
+        if re.match(r"\s*org\s+\$80\b", line):
+            addr = 0x80
+            continue
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s+byte\b", line)
+        if m and addr is not None:
+            names.setdefault(m.group(1), addr)
+            addr += 1
+            continue
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\$([0-9A-Fa-f]+)\b",
+                     line)
+        if m:
+            names.setdefault(m.group(1), int(m.group(2), 16))
+    return names
+
+
+def check_equ_sync(src: Path) -> None:
+    """S3.0: every bank1/bank2 `Name = $XX` must equal kernel's value."""
+    kernel = (src / "kernel.asm").read_text(encoding="utf-8")
+    auth = kernel_equ_authority(kernel)
+    if auth.get("TickCounter") is None or auth.get("Temp") is None:
+        err("equ-sync: kernel authority walk lost Temp/TickCounter "
+            "(seg.u/org $80 block moved? re-verify kernel_equ_authority)")
+        return
+    for bank in ("bank1.asm", "bank2.asm"):
+        p = src / bank
+        if not p.exists():
+            err(f"{bank} missing (equ-sync)")
+            continue
+        side = bank.split(".")[0]
+        for line in p.read_text(encoding="utf-8").splitlines():
+            m = re.match(
+                r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\$([0-9A-Fa-f]+)\b", line)
+            if not m:
+                continue
+            name, val = m.group(1), int(m.group(2), 16)
+            if (side, name) in ZP_ALLOW:
+                continue
+            if name in auth and auth[name] != val:
+                err(f"equ-sync: {side} {name} = ${val:02X} != kernel "
+                    f"${auth[name]:02X} (stale hand-copy — reads/writes the "
+                    f"wrong byte)")
+
+
 def check_enemy_alias(src: Path) -> None:
     """E0: EnemyRamY ($C3) aliases PF0Buf rows 0-2 — ordering contract."""
     kernel = (src / "kernel.asm").read_text(encoding="utf-8")
@@ -671,6 +736,7 @@ def main() -> int:
     check_moth_tramp(src)
     check_callpads(src)
     check_levels(src)
+    check_equ_sync(src)
     check_enemy_alias(src)
     check_frozen_addrs(src)
 
