@@ -1116,7 +1116,8 @@ CallPad_BombMarkWalls:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F182           ; Overscan in bank0 (must match bank0 ToGameStub)
+    jmp $F176           ; Overscan in bank0 (must match bank0 ToGameStub;
+                        ; $F176 after S3.0b restore-delete moved it $F182-$C)
 
 ; ========================================================================
 ; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing

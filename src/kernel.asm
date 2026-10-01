@@ -165,7 +165,8 @@ EnemyDeadMask   byte            ; per-enemy dead bits b0-2 (0 = alive; was DeadE
 
 ; Object rendering ZP (set by SelectActiveObject during VBLANK)
 ObjTop          byte            ; top scanline of active object (for GRP1 visibility)
-ObjBot          byte            ; reserved (was ObjTop+8; write-only, no readers)
+; ObjBot removed (S3.0b): dead since S1.5 (stores deleted); was the LAST
+; sequential decl → removal shifts no other ZP address ($BC is now free).
 
 ; Bomb X/Y/timer live at $F6/$F7 + BombY=$85 (see top of ZP map)
 BombX           = $F6           ; bomb drop X (RoomX snapshot; bank1 does not write $F6)
@@ -369,7 +370,7 @@ COLOR_HOT_R     = COLOR_BLINK_R
                                     ; (NOT deletable: $F008 = GameStart is a
                                     ;  hardcoded cross-bank entry — bank1
                                     ;  stub `jmp $F008`; this jmp also keeps
-                                    ;  $F182 Overscan + F0xx landmarks fixed)
+                                    ;  $F176 Overscan (S3.0b) + F0xx landmarks fixed)
 
 GameStart:
     sei                         ; disable interrupts
@@ -740,14 +741,9 @@ StartFrame:
     sta GRP1
     jmp .AfterObj
 .AfterRows:
-
-    ; --- Restore bombs clobbered by ColupfBuf ($F0-$F2) before HUD/overscan ---
-    lda CollisionCellY          ; saved PlayerBombs
-    sta PlayerBombs
-    lda CollisionEndX           ; saved BombSnd
-    sta BombSnd
-    lda CollisionEndY           ; saved RoomWallMask
-    sta RoomWallMask
+    ; Bomb save/restore deleted (S3.0b): BuildColupF writes rows 0-2 only
+    ; (TILE_ROWS=3) — nothing touched $F0-$F2 between the old save and
+    ; restore (window audited: zero writers), so the round trip was a no-op.
 
 ; ==============================================================================
 ; HUD band: 48 scanlines (144-191)
@@ -1982,7 +1978,8 @@ SelectActiveObject:
     ; the kernel compares against running-Y (`tya`) instead of `lda Scanline`
     ; — frees 9c/line (lda Scanline + inc Scanline) for the laser beam write.
     ; Kernel .Grp1 does: tya / sec / sbc ObjTop / cmp #8 / bcs .ObjZero.
-    ; ObjBot was write-only (no readers) — stores removed, byte reserved (S1.5).
+    ; ObjBot (write-only, no readers): stores removed S1.5, decl removed
+    ; S3.0b (was last sequential decl — no address shift).
     lda ObjBase
     beq .SONoObj
     lda ActiveObjectY
@@ -2858,8 +2855,8 @@ LoseLifeBand:
 ; BuildColupF — 12-byte final COLUPF image at ColupfBuf ($E7-$F2).
 ;   Stripe: rows 0,2 = LevelWallColor; row 1 = LevelWallColor2.
 ;   Hot rows overwrite with TickCounter-bit4 pulse (COLOR_HOT_Y/R).
-;   $E7-$F2 overlaps PlayerBombs/BombSnd/RoomWallMask ($F0-$F2): save those
-;   to collision temps (free until overscan), restore at .AfterRows.
+;   $F0-$F2 (bombs) NO LONGER overlap-saved: body writes rows 0-2 only,
+;   save/restore round trip deleted (S3.0b — window audit: zero writers).
 ;   Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds every frame.
 ; ------------------------------------------------------------------------------
 ; ------------------------------------------------------------------------------
@@ -2870,7 +2867,8 @@ LoseLifeBand:
 ;   The dark check is inlined there too: CallPad_IsRoomDark cannot nest
 ;   from a pad body (ReturnPad switches to bank0 mid-call).
 ;   Body: bank2.asm, pinned at $FC4F. Entry save block ($F0-$F2 → collision
-;   temps) moved as-is — still dead (rows 0-2 only, no restore); follow-up.
+;   temps) was dead (rows 0-2 only) — deleted with the .AfterRows restore
+;   in S3.0b.
 ; ------------------------------------------------------------------------------
 
 ; UpdateBombSound moved to bank1 (leaf_move_plan batch A) — CallPad_UpdateBombSound.

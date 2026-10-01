@@ -67,9 +67,15 @@ get a Stella checkpoint before the next slice).
       Also deleted dead legacy EQUs `PF0ScoreBuf`/`PF1ScoreBuf` (decl-only,
       zero references — 48px sprite score never used PF buffers).
       Negative-tested (corrupt EQU → guard fails).
-- [ ] S3.0b dead-path deletions: bomb save/restore audit (BCF writes rows
-      0-2 only, never `$F0-$F2` → save/restore likely vestigial), dead
-      `ObjBot byte` decl (last sequential → no shift, frees `$BC`)
+- [x] S3.0b dead-path deletions: bomb save/restore — **audit: zero writers
+      between VBL save and .AfterRows restore** (BCF writes rows 0-2 only,
+      never `$F0-$F2`; vestigial from the 12-row era) → both deleted
+      (kernel restore −12B, bank2 save −12B); dead `ObjBot byte` decl
+      removed (was last sequential decl → no address shift, `$BC` free).
+      Follow-on: `Overscan` moved `$F182→$F176` → bank1 ToGameStub pad
+      literal + kernel landmark comment synced (pad byte-identity guard
+      caught it on the spot). Headroom warning stays 1B — structural
+      (`.ds $FC4F` pin absorbs main-region deltas, not a growth signal).
 - [ ] S3.1 shrink PF/Colup buffers 12→3 rows, contiguous rect cache
 - [ ] S3.2 single rect-copy loop; delete `.Stage3`, window switch, ABW tables
 - [x] S3.3 hot rects into ZP cache → fold-free `HotOverlapFlag` (−2 SP levels)
@@ -166,6 +172,7 @@ get a Stella checkpoint before the next slice).
 | 6 | S5.3 HotOverlapFlag → bank2 ($FE80 tramp, fold-free, ReturnPad exit) | −107 (3410→3303) | build+sim+3 tests OK + guard negative-test | (this) |
 | 7 | S5.4 LaserHitTest → bank2 ($FE86 tramp, A-result protocol) | −57 (3303→3246) | build+sim+4 tests OK + guard negative-test | (this) |
 | 8 | S3.0 cross-bank EQU guard + bank1 TickCounter fix + dead score EQUs | 0 B (bank1 operand swap) | build+sim+4 tests OK + guard negative-test | (this) |
+| 9 | S3.0b bomb save/restore + ObjBot decl deleted; Overscan $F182→$F176 | −12 (3246→3234; bank2 −12) | build+sim+4 tests OK | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 
