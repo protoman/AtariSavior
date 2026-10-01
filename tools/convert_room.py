@@ -14,9 +14,10 @@ Emitted data:
     coordinates.  The collision routine mirrors each rectangle to the right
     half at runtime, so only the left-half (0-19 column) layout is stored.
   - TilePF0/TilePF1/TilePF2: one byte per tile row for the kernel.
-All per-row tables (PF triples) are PADDED to 12 bytes so
-bank0's table arithmetic (+12 / +12 / +24) works unchanged; only the first
-3 entries are drawn.
+All per-row tables (PF triples) are emitted at TABLE_STRIDE (= 3, the
+playable bands) since S4.2; only the first 3 entries are drawn — the old
+12-byte padding existed for bank0's +12/+12 pointer arithmetic, which
+EnterRoom now does as +3/+3.
 """
 
 from pathlib import Path
@@ -24,7 +25,8 @@ import sys
 
 WIDTH = 20
 HEIGHT = 3                  # playable color bands (HUD is drawn separately)
-TABLE_STRIDE = 12           # padded per-row table size (bank0 index math)
+TABLE_STRIDE = 3            # S4.2: per-row table size = the 3 playable bands
+                            # (was 12 — kernel EnterRoom now does +3/+3)
 MASK_BITS = (0x08, 0x10, 0x20, 0x40)  # kernel BombMaskBit, wall rects 0-3
 
 

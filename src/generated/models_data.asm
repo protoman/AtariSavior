@@ -9,11 +9,11 @@ M0RoomRects:
   .byte 2, 2, 16, 1  ; x, y, width, height
   .byte 0              ; number of hot rectangles
 M0TilePF0:
-  .byte $f0, $30, $f0, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $f0, $30, $f0
 M0TilePF1:
-  .byte $80, $00, $ff, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $80, $00, $ff
 M0TilePF2:
-  .byte $20, $20, $3f, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $20, $20, $3f
 
 ; Generated from models.json model 1. Do not edit by hand.
 M1RoomRects:
@@ -23,11 +23,11 @@ M1RoomRects:
   .byte 3, 2, 17, 1  ; x, y, width, height
   .byte 0              ; number of hot rectangles
 M1TilePF0:
-  .byte $f0, $70, $f0, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $f0, $70, $f0
 M1TilePF1:
-  .byte $ff, $00, $ff, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $ff, $00, $ff
 M1TilePF2:
-  .byte $3f, $00, $ff, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $3f, $00, $ff
 
 ; Generated from models.json model 2. Do not edit by hand.
 M2RoomRects:
@@ -39,11 +39,11 @@ M2RoomRects:
   .byte 1              ; number of hot rectangles
   .byte $10, 17, 1, 1, 1  ; mask, x, y, w, h
 M2TilePF0:
-  .byte $f0, $30, $30, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $f0, $30, $30
 M2TilePF1:
-  .byte $80, $00, $ff, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $80, $00, $ff
 M2TilePF2:
-  .byte $20, $20, $3f, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $20, $20, $3f
 
 ; Generated from models.json model 3. Do not edit by hand.
 M3RoomRects:
@@ -55,9 +55,9 @@ M3RoomRects:
   .byte 11, 2, 3, 1  ; x, y, width, height
   .byte 0              ; number of hot rectangles
 M3TilePF0:
-  .byte $30, $30, $f0, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $30, $30, $f0
 M3TilePF1:
-  .byte $ff, $00, $fd, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $ff, $00, $fd
 M3TilePF2:
-  .byte $3f, $01, $03, $00, $00, $00, $00, $00, $00, $00, $00, $00
+  .byte $3f, $01, $03
 

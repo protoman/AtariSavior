@@ -214,7 +214,7 @@ RcW1            = $CC           ; walk FetchPtr base (rect0 x at Y=0; Y→$DF)
 ; These share ZP space with bank1's HUD variables — safe because bank1
 ; runs AFTER the cave kernel. Bank1 overwrites them during HUD band;
 ; VBLANK re-populates them before the next kernel frame.
-PF0Buf          = $C3           ; 12 bytes: TilePF0 values per row
+PF0Buf          = $C3           ; 3 bytes: TilePF0 rows 0-2 (stride-3 data S4.2)
                                 ; (rows 0-2 pure since S3.4 — Y moved to $E2)
 PF1Buf          = $C6           ; rows 0-2 only (S3.1 packed; was $CF)
 RoomBandColor   = $BC           ; band-color cache (level_bank_plan P2.5) —
@@ -1215,17 +1215,18 @@ EnterRoom subroutine
     iny
     jsr FoldIndirect
     sta RoomPF0Hi
-    ; Pre-compute PF1 and PF2 pointers (+12 bytes each)
+    ; Pre-compute PF1 and PF2 pointers (+3 bytes each — S4.2: tables are
+    ; stride 3 now, was +12 in the 12-row era)
     clc
     lda RoomPF0Lo
-    adc #12
+    adc #3
     sta RoomPF1Lo
     lda RoomPF0Hi
     adc #0
     sta RoomPF1Hi
     clc
     lda RoomPF1Lo
-    adc #12
+    adc #3
     sta RoomPF2Lo
     lda RoomPF1Hi
     adc #0
@@ -2340,9 +2341,9 @@ LAMP           = 5             ; type-5 enemy record = editor lamp (white square
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 2             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $FAFA        ; frozen address of bank2's LevelDataTable
-                                ; (S4.1 enemy stride 6→4 moved it $FB04→$FAFA;
-                                ;  check_frozen_addrs enforces)
+LEVEL_DATA_ADDR = $FA8E        ; frozen address of bank2's LevelDataTable
+                                ; (S4.1 −$FAFA, S4.2 −$FA8E as generated
+                                ;  tables shrank; check_frozen_addrs enforces)
                                 ; (test asserts bank2.lst label == this)
 
 ; ==============================================================================

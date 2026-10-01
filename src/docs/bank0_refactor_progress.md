@@ -167,7 +167,16 @@ get a Stella checkpoint before the next slice).
       check_frozen_addrs on first build** (rooms_data shrank → LevelDataTable
       moved). −6B bank0 + 2B/enemy ROM (5 enemies → −10B data).
       bank0 3143→3137 (doc scale).
-- [ ] S4.2 PF table stride 12→3 (data only)
+- [x] S4.2 PF table stride 12→3 (data only)
+      → done: `TABLE_STRIDE 12→3` in convert_room (both emission paths —
+      models + room-local — share the constant; legacy >3-row grids still
+      pad to their row count via `max()`); kernel EnterRoom PF1/PF2 pointer
+      math `adc #12 → adc #3` (the "+12/+12 bank0 table arithmetic" the
+      old padding existed for); `PF0Buf` comment de-staled.
+      `LEVEL_DATA_ADDR $FAFA→$FA8E` — **frozen-addr guard fired again**
+      (models_data shrank 108B → everything after moved).
+      ROM: −108B bank2 data (4 referenced models × 3 tables × 9 bytes);
+      bank0 code Δ0 (operand-size neutral).
 - [ ] S4.3 hot-rect parent-mask removal (needs gameplay OK)
 - [ ] S4.4 room wall-mask nibble pack → per-room byte (needs gameplay OK)
 
@@ -256,6 +265,7 @@ execute without a fresh, explicit user request tied to a real need
 | 13 | S3.2-fix: rect cache out of bank1 stomp zone (count→$89, rects→$CC-$DF) + stomp-zone guard | 0 B (address fix) | build+sim+4 tests OK + zone-guard negative-test | (this) |
 | 14 | S2.1 closed (permanently blocked — byte budget) + S3.5 zp doc rewrite + min SP re-measured ($F9/$F7) | 0 B (docs) | build+sim+4 tests OK | (this) |
 | 15 | S4.1 enemy stride 6→4 (drop range slots), EnemyOffTable 0/4/8, LEVEL_DATA_ADDR sync | −6 (3143→3137) + −10B ROM | build+sim+4 tests OK (frozen-addr guard fired first) | (this) |
+| 16 | S4.2 PF table stride 12→3 (convert_room + EnterRoom +3 pointers) | 0 B code; −108B bank2 ROM data | build+sim+4 tests OK (frozen-addr guard fired again) | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 
