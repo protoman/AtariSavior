@@ -839,9 +839,9 @@ helpers** (not the fold pads themselves) **after** `org $FC70` — same pattern
 as existing `AddScore` / `ReloadLevel` (S5.x moved `HotOverlapFlag` to
 bank2 instead). `jsr` is absolute, so post-pad placement is fine. Never
 move `Overscan` without syncing bank1's `jmp $Fxxx` (ToGameStub at
-`$FC70` must match) — this fired 3× in the S3.x refactors alone
-($F182→$F176→$F173); the fold-pad byte-identity guard catches it, but
-sync the literal by hand.
+  `$FC70` must match) — this fired 4× in the S3.x refactors + S6 laser fix
+  alone ($F182→$F176→$F173→$F175); the fold-pad byte-identity guard
+  catches it, but sync the literal by hand.
 
 **This session:** `AddScore` alone overflowed (fc68→fc72). Fixed by moving
 `AddScore` + `ReloadLevel` after the pads. Build green: 4×4096, folds match,

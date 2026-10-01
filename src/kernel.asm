@@ -375,7 +375,7 @@ COLOR_HOT_R     = COLOR_BLINK_R
                                     ; (NOT deletable: $F008 = GameStart is a
                                     ;  hardcoded cross-bank entry — bank1
                                     ;  stub `jmp $F008`; this jmp also keeps
-                                    ;  $F173 Overscan (S3.4) + F0xx landmarks fixed)
+                                    ;  $F175 Overscan (S6) + F0xx landmarks fixed)
 
 GameStart:
     sei                         ; disable interrupts
@@ -569,8 +569,9 @@ StartFrame:
 
     ; --- Reset TIA state for cave rendering ---
     ; HUD may have changed NUSIZ0/1, COLUP0/1 — must restore
-    lda #$30                      ; NUSIZ0 = single copy P0 + M0 width 8 (laser S2.1)
-    sta NUSIZ0
+    lda LaserBeamOn             ; S6: bits5-4 carry the wall-clamped M0 width
+    and #$30                    ; code (0/1/2/3 = 1/2/4/8 px); P0 bits0-2
+    sta NUSIZ0                  ; stay 0 = single copy (off = ENAM0 gates M0)
     lda #$00                      ; NUSIZ1 = single copy
     sta NUSIZ1
     lda #COLOR_PLAYER             ; restore player color (was green for HUD lives)
@@ -2220,11 +2221,12 @@ BombPlayerBlast:
 ;   bit in PF0Buf/PF1Buf/PF2Buf only for rows rect.y .. rect.y+h-1
 ;   (thin segment only — not into a wider join below/above).
 ; Early-out when WallMask=0 (common case).
-; Reads rect x/y/h directly from ZP rect cache (no FoldIndirect):
-;   Rect 0: x=$C7, y=$C8, h=$CA
-;   Rect 1: x=$CB, y=$CC, h=$CE
-;   Rect 2: x=$D3, y=$D4, h=$D6
-;   Rect 3: x=$D7, y=$D8, h=$DA
+; Reads rect x/y/h directly from ZP rect cache (no FoldIndirect;
+; cache layout S3.2 — stride 4 from RcW1=$CC):
+;   Rect 0: x=$CC, y=$CD, h=$CF
+;   Rect 1: x=$D0, y=$D1, h=$D3
+;   Rect 2: x=$D4, y=$D5, h=$D7
+;   Rect 3: x=$D8, y=$D9, h=$DB
 ; ------------------------------------------------------------------------------
 ApplyBombWalls:
     lda BombPacked
@@ -2833,6 +2835,139 @@ LoseLifeBand:
 
 ; UpdateBombSound moved to bank1 (leaf_move_plan batch A) — CallPad_UpdateBombSound.
 
+; ------------------------------------------------------------------------------
+; LaserWallClamp (S6, user bug: laser passed through walls) — post-pad leaf
+; (the $FFxx page is full — LaserInput only has room for the jsr). HERO has
+; NO laser (no ENAM/missile/laser code in docs/hero) — original rule.
+; Visible span = path [min(eye, lo) .. max(eye, lo+7)]; the rect cache walk
+; (stride 4 from RcW1=$CC, rows = beam bands RoomY+2..+3) clamps bestEnd to
+; the first wall. Returns A=0 → fully blocked (caller skips LaserHitTest) or
+; the packed LaserBeamOn ($02 | bound<<4, also stored) where
+; bound = floor-pow2(width)+7 ∈ {8,9,11,15}: staged in RectCount for the
+; LHT kill interval AND carried in bits5-4 for NUSIZ0's M0 width (NUSIZ can
+; only draw 1/2/4/8 px — floor so the sprite never overruns a wall).
+; Scratch: ActiveObjectX/Y = pathLo/pathHi, RectCount = bestEnd→bound —
+; every later reader writes first (SO VBL / tentacle save / CEH / HOF / moth).
+; Clobbers A/X/Y.
+; ------------------------------------------------------------------------------
+LaserWallClamp:
+    lda PlayerDir
+    bne .LOEyeL
+    lda RoomX
+    clc
+    adc #4                      ; right eye front edge
+    jmp .LOEye
+.LOEyeL:
+    lda RoomX
+    sec
+    sbc #4                      ; left eye front edge
+.LOEye:
+    sta ActiveObjectY           ; park eyeEdge
+    lda ActiveObjectY           ; pathLo = min(eye, burst lo)
+    cmp CollisionX
+    bcc .LOPl                   ; eye < lo → pathLo = eye (eq = same value)
+    lda CollisionX
+.LOPl:
+    sta ActiveObjectX
+    lda CollisionX              ; pathHi = max(eye, lo+7)
+    clc
+    adc #7
+    cmp ActiveObjectY
+    bcs .LOPh                   ; lo+7 ≥ eye → pathHi = lo+7
+    lda ActiveObjectY           ; eye > lo+7 → pathHi = eye
+.LOPh:
+    sta ActiveObjectY
+    lda CollisionX              ; bestEnd (exclusive) = min(lo+8, 160)
+    clc
+    adc #8
+    cmp #160
+    bcc .LOBest
+    lda #160                    ; off right edge: nothing visible past 159
+.LOBest:
+    sta RectCount
+    lda RcBase
+    beq .LODone                 ; room has no rects → nothing blocks
+    ldx #0
+.LOLoop:
+    txa                         ; i = X>>2; bail when i ≥ rect count
+    lsr
+    lsr
+    cmp RcBase
+    bcs .LODone
+    ; rows: rect.y ≤ band(RoomY+3) ?
+    lda RoomY
+    clc
+    adc #3
+    lsr
+    lsr
+    tay
+    lda YToRowTable,Y           ; b2
+    cmp RcW1+1,X                ; b2 vs rect.y → C=1 iff ry ≤ b2
+    bcc .LONext                 ; ry > b2 → rect below the beam
+    ; rect.y + rect.h > band(RoomY+2) ?
+    lda RoomY
+    clc
+    adc #2
+    lsr
+    lsr
+    tay
+    lda YToRowTable,Y           ; b1
+    sec
+    sbc RcW1+3,X                ; b1 - rect.h → C=0 on borrow = overlap
+    bcc .LOX                    ; borrow: ry+rh > b1 always
+    cmp RcW1+1,X                ; (b1-rh) vs ry
+    bcs .LONext                 ; ry ≤ b1-rh → ry+rh ≤ b1 → no overlap
+.LOX:
+    ; x: rect.x+w > pathLo ?
+    clc
+    lda RcW1+2,X                ; rect.w
+    adc RcW1+1,X                ; + rect.x
+    cmp ActiveObjectX           ; rx+rw vs pathLo
+    beq .LONext
+    bcc .LONext                 ; rx+rw ≤ pathLo → left of the path
+    ; rect.x ≤ pathHi ?
+    lda ActiveObjectY           ; pathHi
+    cmp RcW1+1,X                ; pathHi vs rx → C=1 iff rx ≤ pathHi
+    bcc .LONext                 ; rx > pathHi → past the path
+    ; occluded: bestEnd = min(bestEnd, rect.x)
+    lda RcW1+1,X
+    cmp RectCount
+    bcs .LONext                 ; rx ≥ bestEnd → keep current
+    sta RectCount
+.LONext:
+    txa
+    clc
+    adc #4
+    tax
+    jmp .LOLoop
+.LODone:
+    ; visible width = bestEnd - lo (0..8); SBC C=0 ⇔ burst behind the wall
+    lda RectCount
+    sec
+    sbc CollisionX
+    beq .LWoff                  ; wall at the burst start → no beam
+    bcc .LWoff                  ; burst starts past the wall → no beam
+    cmp #9
+    bcc .LORange
+    lda #8                      ; clamp to the 8px missile
+.LORange:
+    sec
+    sbc #1
+    tay
+    lda LaserBoundTable,Y       ; 8,9,9,11,11,11,11,15 indexed by width-1
+    sta RectCount               ; bound = W+7 for LaserHitTest
+    asl
+    asl
+    asl
+    asl                         ; bound << 4 → NUSIZ0 bits5-4 = M0 width code
+    ora #$02                    ; held gate bit (.Line BeamMask AND)
+    sta LaserBeamOn             ; A = packed value (≠0 → caller proceeds)
+    rts
+.LWoff:
+    lda #0
+    sta LaserBeamOn
+    rts                         ; Z=1 → caller takes .LaserBlocked
+
     .ds $FE10 - *, 0            ; keep ObjSprites in $FE page (lda ObjSprites,X
                                  ; must not cross a page — 5c vs 4c kernel budget)
 
@@ -3006,8 +3141,7 @@ LaserInput:
     lda LaserState
     and #LASER_HELD
     beq .LaserReleased
-    lda #$02
-    sta LaserBeamOn             ; .Line BeamMask AND passes rows 2-3
+    ; (gate LaserBeamOn set AFTER the wall-occlusion walk below — S6)
     ; --- S3 sweep: phase 0..3 -> offset 0/8/16/8 px AHEAD of the eye
     ; (triangle: 0->8->16->8->0 each held frame), sign = facing.
     ; Eye: art faces right unreflected (REFP0=0), yellow face rows 2-3
@@ -3046,6 +3180,13 @@ LaserInput:
     sta CollisionX              ; S4: cur arg for LaserHitTest (held path only)
     ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
     jsr SetObjectXPos           ; HMM0 applies at next frame's VBLANK HMOVE
+
+    ; --- S6 wall occlusion (subroutine in the post-pad leaf region — the
+    ; $FFxx page has no room): clamps the visible beam to the first wall on
+    ; the eye→burst path; stages bound (W+7) in RectCount + packs
+    ; LaserBeamOn ($02 | bound<<4 = NUSIZ width code). A=0 → fully blocked.
+    jsr LaserWallClamp
+    beq .LaserBlocked
     ; S5.4: body moved to bank2 (pads cannot nest from a pad body — the
     ; kill/lamp ACTIONS return here: A=0 miss / $50 kill / 1 lamp).
     jsr LaserHitTest            ; S4: swept kill — result in A (+Z via ReturnPad)
@@ -3058,6 +3199,8 @@ LaserInput:
     jsr CallPad_AddScore        ; A = $50 BCD (dead bit already set in body)
 .LaserNoHit:
     rts
+.LaserBlocked:
+    jmp .LaserReleased          ; beam fully behind/at a wall: off + HMM0 clear
 
 ; SweepOff — M0 offset ahead of the eye per sweep phase (LaserState b1-0).
 SweepOff:
@@ -3078,6 +3221,13 @@ SweepOff:
 ; ------------------------------------------------------------------------------
 BeamMask:
     .byte 0,0,2,2,0,0,0,0,0,0,0,0
+
+; LaserBoundTable — S6 wall occlusion: index = visible width-1 (1..8), value
+; = bound = W+7 fed to LaserHitTest (RectCount) and packed into LaserBeamOn
+; bits5-4 for NUSIZ0 (floor-pow2: NUSIZ can only draw 1/2/4/8 px — floor so
+; the sprite never overruns a wall; width3→2, 5..7→4).
+LaserBoundTable:
+    .byte 8,9,9,11,11,11,11,15
 
 ; ------------------------------------------------------------------------------
 ; LaserHitTest — MOVED to bank2 (S5.4, entry tramp $FE86 -> `jmp $FF00`).

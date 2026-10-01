@@ -8,8 +8,11 @@ on, so a formula/asm drift fails this check:
 
   vertical:  (RoomY - eY) + 3 < 9     <=> eY in [RoomY-5, RoomY+3]
              (beam rows RoomY+2..3 vs enemy [eY, eY+7])
-  horizontal: (eLo - lo) + 7 < 15     <=> |eLo - lo| <= 7
-             (beam [lo, lo+7] (8px M0) vs enemy [eLo, eLo+7])
+  horizontal: (eLo - lo) + 7 < bound  <=> |eLo - lo| <= W-1
+             (bound = W+7 staged in RectCount; W = wall-clamped width)
+  S6 wall occlusion: visible width = first wall on the eye→burst path;
+             NUSIZ floor-pow2 (1/2/4/8) so the sprite never overruns,
+             LHT interval uses the same bound, fully-blocked = beam off
   sweep: offsets 0,8,16,8 (step = missile width) tile frames gap-free
   dead mask: bit-per-enemy set/test/clear, no cross-enemy revival
 
@@ -31,10 +34,11 @@ def vert_hit(room_y: int, enemy_y: int) -> bool:
     return ((a + 3) & 0xFF) < 9
 
 
-def horiz_hit(lo: int, enemy_x: int) -> bool:
-    """Exact mirror of the asm: sec/sbc eLo-lo, clc/adc #7, cmp #15."""
+def horiz_hit(lo: int, enemy_x: int, bound: int = 15) -> bool:
+    """Exact mirror of the asm: sec/sbc eLo-lo, clc/adc #7, cmp bound
+    (bound = W+7; default 15 = the old fixed 8px missile)."""
     a = (enemy_x - lo) & 0xFF
-    return ((a + 7) & 0xFF) < 15
+    return ((a + 7) & 0xFF) < bound
 
 
 def overlap_reference(a_lo, a_hi, b_lo, b_hi) -> bool:
@@ -51,7 +55,23 @@ def main() -> None:
     assert ".byte 0,8,16,8" in text, "SweepOff triangle changed"
     hit = text2.split("LaserHitTestBody:")[1].split("EnemyOffTable:")[0]
     assert "adc #3" in hit and "cmp #9" in hit, "vertical window changed"
-    assert "adc #7" in hit and "cmp #15" in hit, "horizontal window changed"
+    assert "adc #7" in hit and "cmp RectCount" in hit, \
+        "horizontal window must compare against the staged bound (S6)"
+    # --- S6 wall occlusion contract (kernel side) --------------------------
+    assert "LaserBoundTable" in text and \
+        ".byte 8,9,9,11,11,11,11,15" in text, \
+        "LaserBoundTable missing/changed (floor-pow2 W+7 for W=1..8)"
+    assert re.search(
+        r"lda\s+LaserBeamOn[^\n]*\n\s*and\s+#\$30[^\n]*\n\s*sta\s+NUSIZ0",
+        text), \
+        "VBL NUSIZ0 must take the wall-clamped width from LaserBeamOn bits5-4"
+    assert re.search(r"ora\s+#\$02[^\n]*\n\s*sta\s+LaserBeamOn", text), \
+        "held gate bit ($02) must survive the bound packing"
+    assert ".LaserBlocked" in text and "jmp .LaserReleased" in text, \
+        "fully-occluded beam must take the blocked path (beam off, no kill)"
+    assert "cmp RcBase" in text and "sta RectCount" in text.split(
+        ".LOEye:")[1].split("jsr LaserHitTest")[0], \
+        "occlusion walk must clamp bestEnd over the rect cache"
     assert "ora EnemyBitTable,X" in hit and "sta EnemyDeadMask" in hit, \
         "kill path changed"
     assert "cmp #LAMP" in hit and ".LHLamp" in hit, \

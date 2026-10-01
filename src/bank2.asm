@@ -585,11 +585,13 @@ FoldIndirect:
 ; ------------------------------------------------------------------------------
 ; LaserHitTestBody — MOVED from bank0 (S5.4, entry tramp $FE86 -> `jmp $FF00`).
 ; Swept laser kill. CollisionX = cur M0 arg, stored by LaserInput .LaserPos
-; (held path only). Interval = [cur, cur+7] (8 px missile); sweep steps are
-; 8 px = missile width, so consecutive frames tile gap-free — no prev-frame
-; storage needed. Vertical: beam rows [RoomY+2, RoomY+3] vs enemy [Y,+7] ->
-; (RoomY-Y)+3 in [0..8]. Horizontal (same convention as CheckEnemyHit):
-; |eLo-lo| <= 7 via (d+7) in [0..14]; arg clamped [0,159] = screen-edge clip.
+; (held path only). Interval = [cur, cur+W-1] where W = wall-clamped beam
+; width (S6): the kernel stages bound = W+7 in RectCount before this call
+; (was hardcoded 7/15 for the fixed 8px missile); sweep steps are 8 px so
+; consecutive frames tile gap-free — no prev-frame storage needed.
+; Vertical: beam rows [RoomY+2, RoomY+3] vs enemy [Y,+7] ->
+; (RoomY-Y)+3 in [0..8]. Horizontal: |eLo-lo| <= W-1 via (d+7) < bound;
+; arg clamped [0,159] = screen-edge clip.
 ; Fold-free: enemy records are level data in THIS bank — stage once, direct
 ; `lda (FetchPtr),Y` for the type (was `jsr FoldIndirect`).
 ; RESULT PROTOCOL (pads cannot nest from a pad body — the kill/lamp actions
@@ -628,7 +630,8 @@ LaserHitTestBody:
     sbc CollisionX
     clc
     adc #7
-    cmp #15                     ; (eLo-lo)+7 <=14 -> |d| <=7 = overlap w/ 8px missile
+    cmp RectCount               ; (eLo-lo)+7 vs bound=W+7 → hit iff d <= W-1
+                                ; (S6: RectCount staged by kernel LaserInput)
     bcs .LHNext
 .LHHit:
     ldy EnemyOffTable,X         ; type offset into staged record
