@@ -108,6 +108,14 @@ get a Stella checkpoint before the next slice).
       BOTH walkers (kernel + moth).
       bank0 −77B (3220→3143), bank2 −65B (1128→1063).
       **Stella: wall collision + bomb + moth wall-turn + room entry.**
+      → **S3.2 bug found by user (Stella): tentacle walked inside walls.**
+      Root cause: rect4.h landed on `$E0` = bank1 `scorePtr1` lo (leading
+      zero) → HUD zeroed it every frame → rect4 probes passed through.
+      Fix: count moved onto the `$89` pad (`RcBase` = sequential decl at
+      the old MapPtrLo slot), rects shifted to `$CC-$DF` (last byte ≤
+      `$DF`, clear of the stomp zone). **New guard** in `check_equ_sync`:
+      persistent names (`RcBase/RcW1/PF*/RoomBandColor/BombX/BombTimer`)
+      must be < `$E0`, cache span `RcW1+19 ≤ $DF` — negative-tested.
 - [x] S3.3 hot rects into ZP cache → fold-free `HotOverlapFlag` (−2 SP levels)
       → **obsolete: S5.1/S5.3 delivered it differently** — HOF body now
       lives in bank2 reading level ROM directly (fold-free, bank2-local);
@@ -215,6 +223,7 @@ get a Stella checkpoint before the next slice).
 | 10 | S3.4 EnemyRamY $C3→$E2, VBL LoadPF0Only repair deleted | −3 (3234→3231) | build+sim+4 tests OK + equ-sync negative-test | (this) |
 | 11 | S3.1 packed PF buffers + contiguous rect cache $CC-$DC, band→$BC, EQU-derived ABW tables | −11 (3231→3220) | build+sim+4 tests OK + equ-sync negative-test | (this) |
 | 12 | S3.2 uniform stride: rect4 into cache, FetchPtr $E0→$E5, .Stage3 + window jumps deleted (kernel+moth) | −77 (3220→3143; bank2 −65) | build+sim+4 tests OK + fold-guard negative-test | (this) |
+| 13 | S3.2-fix: rect cache out of bank1 stomp zone (count→$89, rects→$CC-$DF) + stomp-zone guard | 0 B (address fix) | build+sim+4 tests OK + zone-guard negative-test | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 

@@ -19,8 +19,8 @@ EnemyDataLo = $B1                ; record base — restaged before every exit
 EnemyDataHi = $B2
 BombPacked = $B5                 ; b3-6 WallMask (destroyed rect skip)
 EnemyIndex = $B9                 ; slot save around the col swap + rect walk
-RcBase = $CC
-RcW1 = $CD                       ; walk base — uniform stride incl. rect4 (S3.2)
+RcBase = $89                    ; count — outside bank1's $E0-$EF stomp zone
+RcW1 = $CC                       ; walk base — uniform stride incl. rect4 (S3.2)
 EnemyRamX = $BD
 EnemyRamD = $C1                  ; dir bits: 1 = right, 0 = left
 EnemyRamP = $C2                  ; free-running frame clock

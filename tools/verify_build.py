@@ -509,6 +509,28 @@ def check_equ_sync(src: Path) -> None:
         err("equ-sync: kernel authority walk lost Temp/TickCounter "
             "(seg.u/org $80 block moved? re-verify kernel_equ_authority)")
         return
+    # Stomp-zone rule: bank1 HUD writes $E0-$EF every frame (score ptrs +
+    # bar temps). Bank0 state that is written ONCE and read across frames
+    # must live BELOW $E0 — the S3.2 tentacle bug: rect4.h landed on $E0,
+    # scorePtr1's leading-zero lo byte zeroed it every HUD frame, and
+    # probes walked through rect4 walls. ColupfBuf ($E7, VBL rebuild) and
+    # EnemyRamY ($E2, window-ordered) are the two documented exceptions.
+    PERSIST_BELOW_E0 = ("RcBase", "RcW1", "PF0Buf", "PF1Buf", "PF2Buf",
+                        "RoomBandColor", "BombX", "BombTimer")
+    for name in PERSIST_BELOW_E0:
+        v = auth.get(name)
+        if v is None:
+            err(f"equ-sync: kernel lost persistent var {name} "
+                f"(rename/move? update PERSIST_BELOW_E0)")
+        elif 0xE0 <= v <= 0xEF:
+            err(f"equ-sync: {name} = ${v:02X} is inside bank1's $E0-$EF "
+                f"stomp zone — HUD will corrupt it every frame")
+    rw1 = auth.get("RcW1")
+    if rw1 is not None and rw1 + 20 > 0xE0:   # exclusive end ≤ $E0 → last byte ≤ $DF
+        err(f"equ-sync: rect cache RcW1=${rw1:02X} spans to "
+            f"${rw1 + 19:02X} — rect bytes would sit in the "
+            f"bank1 stomp zone (tentacle-wall bug family)")
+
     for bank in ("bank1.asm", "bank2.asm"):
         p = src / bank
         if not p.exists():

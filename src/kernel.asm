@@ -97,9 +97,12 @@ Grp0PtrHi       byte            ; pointer to player sprite data (hi)
 Temp            byte            ; general scratch
 
 ; Collision ZP variables (from comparison/lo-a-rad-dragon/bank0.asm)
-MapPtrPad0      byte            ; was MapPtrLo ($89, rect4.x) — rect4 moved
-MapPtrPad1      byte            ; into the cache (S3.2); pads keep the
-                                ; sequential block from shifting ($8A slot)
+RcBase          byte            ; rect cache count ($89 — was MapPtrLo;
+                                ; rect4.x moved into the cache S3.2, and the
+                                ; count needs a byte OUTSIDE bank1's $E0-$EF
+                                ; stomp zone — see cache note below)
+MapPtrPad1      byte            ; was MapPtrHi ($8A, rect4.y) — dead pad,
+                                ; keeps the sequential block from shifting
 CollisionX      byte            ; scratch for mirror calc
 CollisionCellX  byte            ; player max tile column
 CollisionCellY  byte            ; player top tile row
@@ -190,18 +193,22 @@ ScoreTe         = $F5           ; score tens digit (0-9)
 ; by PlayerHitsMap with NO bank2 fold (fold mid-function switched the EXECUTION
 ; bank; only byte-identical pad code may span a switch). Layout (S3.2 —
 ; UNIFORM STRIDE: all 5 rects contiguous, no windows, no .Stage3):
-;   $CC      count        (RcBase)
-;   $CD-$E0  rect0..rect4 (walk: FetchPtr base RcW1=$CD, Y=0..19, stride 4;
+;   $89       count        (RcBase — sequential decl; MUST stay outside
+;                           bank1's $E0-$EF stomp zone: the first attempt
+;                           had count/rect4.h inside it and scorePtr writes
+;                           zeroed rect4.h every HUD frame → probes passed
+;                           through rect4 walls = tentacle walked inside
+;                           walls. Keep ALL persistent cache bytes < $E0.)
+;   $CC-$DF  rect0..rect4 (walk: FetchPtr base RcW1=$CC, Y=0..19, stride 4;
 ;                          mask index = Y>>2, table has a $00 entry for
 ;                          index 4 = rect4 never masked)
-; rect4 x,y,w,h live IN the cache ($DD-$E0) since S3.2 — the old split
-; slots are gone: MapPtrLo/Hi decls remain only as address pads (moving
-; sequential decls would shift the whole ZP block), Rc4W/Rc4H retired.
+; rect4 x,y,w,h live IN the cache ($DC-$DF) since S3.2 — the old split
+; slots are gone (MapPtrPad1 keeps the $8A allocation byte), Rc4W retired.
 ; Buffers packed: PF0 $C3-$C5, PF1 $C6-$C8, PF2 $C9-$CB (rows 0-2 only).
-RcBase          = $CC           ; rect cache count
-RcW1            = $CD           ; walk FetchPtr base (rect0 x at Y=0; Y→$E0)
-; Rc4W/Rc4H retired (S3.2): rect4.w/h = cache bytes $DF/$E0, reached by
-; the uniform stride like every other field.
+; ($E0/$E1 are spare/stomp-zone — never persistent bank0 state.)
+RcW1            = $CC           ; walk FetchPtr base (rect0 x at Y=0; Y→$DF)
+; Rc4W/Rc4H retired (S3.2): rect4.w/h = cache bytes $DE/$DF, reached by
+; the uniform stride like every other field. RcBase is the $89 decl above.
 
 ; PF cave buffers (copied from ROM during VBLANK, read by kernel via absolute indexed)
 ; These share ZP space with bank1's HUD variables — safe because bank1
@@ -1240,10 +1247,10 @@ EnterRoom subroutine
     sta FetchPtr+1
     ldy #0
     jsr FoldIndirect            ; count
-    sta RcBase
+    sta RcBase                  ; → $89 (outside the bank1 stomp zone)
     iny                         ; Y=1, first rect byte
 .rcW1: jsr FoldIndirect
-    sta RcBase,Y                ; $CD-$E0 (Y=1..20 = rects0-4 — UNIFORM
+    sta RcW1-1,Y                ; $CC-$DF (Y=1..20 = rects0-4 — UNIFORM
     iny                         ; stride since S3.2, incl. rect4; was 4 loops)
     cpy #21
     bne .rcW1
@@ -2445,13 +2452,13 @@ PlayerHitsMap:
 ; jumped into bank2's entry code (frozen player, 2026-09-29). EnterRoom
 ; copies the list into the ZP cache instead; Y = global rect offset
 ; (rect0 base Y=0, mask index = Y>>2), UNIFORM stride 4 through rect4
-; (S3.2: no windows, no .Stage3 — cache $CD-$E0).
+; (S3.2: no windows, no .Stage3 — cache $CC-$DF).
     lda RcBase                  ; count (cached; empty room -> clear)
     bne .wrGo
     jmp .NoHit
 .wrGo:
     sta RectCount
-    lda #RcW1                   ; walk base: $CD + Y0..19 = rects0-4
+    lda #RcW1                   ; walk base: $CC + Y0..19 = rects0-4
     sta FetchPtr
     lda #$00
     sta FetchPtr+1
