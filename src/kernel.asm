@@ -97,9 +97,9 @@ Grp0PtrHi       byte            ; pointer to player sprite data (hi)
 Temp            byte            ; general scratch
 
 ; Collision ZP variables (from comparison/lo-a-rad-dragon/bank0.asm)
-MapPtrLo        byte            ; rect cache slot: rect4.x (P3.4 — EnterRoom copies;
-                                ; was RETIRED by P3.6 fold; addresses frozen)
-MapPtrHi        byte            ; rect cache slot: rect4.y (P3.4 — see MapPtrLo)
+MapPtrPad0      byte            ; was MapPtrLo ($89, rect4.x) — rect4 moved
+MapPtrPad1      byte            ; into the cache (S3.2); pads keep the
+                                ; sequential block from shifting ($8A slot)
 CollisionX      byte            ; scratch for mirror calc
 CollisionCellX  byte            ; player max tile column
 CollisionCellY  byte            ; player top tile row
@@ -188,24 +188,20 @@ ScoreTe         = $F5           ; score tens digit (0-9)
 
 ; P3.4 rect cache — solid rect list copied once per EnterRoom, walked directly
 ; by PlayerHitsMap with NO bank2 fold (fold mid-function switched the EXECUTION
-; bank; only byte-identical pad code may span a switch). Layout (S3.1:
-; count + rects0-3 CONTIGUOUS at $CC-$DC; rect4 stays split on purpose —
-; MapPtrLo/Hi are sequential decls at $89/$8A, moving them would shift the
-; whole ZP block; rcW3/rcW4 copy tails + .Stage3 keep reading them):
+; bank; only byte-identical pad code may span a switch). Layout (S3.2 —
+; UNIFORM STRIDE: all 5 rects contiguous, no windows, no .Stage3):
 ;   $CC      count        (RcBase)
-;   $CD-$DC  rect0..rect3 (window1 FetchPtr=$CD, Y=0..15 — CONTIGUOUS, so
-;                          the old window2 jump is a no-op: RcW2 ≡ RcW1;
-;                          S3.2 deletes the switch)
-;   $89/$8A  rect4.x/y    (MapPtrLo/MapPtrHi; .Stage3 fixed addresses)
-;   $DE/$DF  rect4.w/h    (Rc4W/Rc4H — former PF2Buf rows 3-4, now free
-;                          standing after PF2Buf packed to $C9)
-; Buffers packed: PF0 $C3-$C5, PF1 $C6-$C8, PF2 $C9-$CB (rows 0-2 only —
-; rows 3-11 were never read; their bytes now hold the cache + free pool).
+;   $CD-$E0  rect0..rect4 (walk: FetchPtr base RcW1=$CD, Y=0..19, stride 4;
+;                          mask index = Y>>2, table has a $00 entry for
+;                          index 4 = rect4 never masked)
+; rect4 x,y,w,h live IN the cache ($DD-$E0) since S3.2 — the old split
+; slots are gone: MapPtrLo/Hi decls remain only as address pads (moving
+; sequential decls would shift the whole ZP block), Rc4W/Rc4H retired.
+; Buffers packed: PF0 $C3-$C5, PF1 $C6-$C8, PF2 $C9-$CB (rows 0-2 only).
 RcBase          = $CC           ; rect cache count
-RcW1            = $CD           ; walk FetchPtr (rect0 x at Y=0)
-RcW2            = $CD           ; S3.1: ≡ RcW1 (contiguous → jump is a no-op)
-Rc4W            = $DE           ; rect4.w cache (unchanged addr)
-Rc4H            = $DF           ; rect4.h cache (unchanged addr)
+RcW1            = $CD           ; walk FetchPtr base (rect0 x at Y=0; Y→$E0)
+; Rc4W/Rc4H retired (S3.2): rect4.w/h = cache bytes $DF/$E0, reached by
+; the uniform stride like every other field.
 
 ; PF cave buffers (copied from ROM during VBLANK, read by kernel via absolute indexed)
 ; These share ZP space with bank1's HUD variables — safe because bank1
@@ -228,12 +224,13 @@ RoomBandColor   = $BC           ; band-color cache (level_bank_plan P2.5) —
                                 ; VBL restages.
 PF2Buf          = $C9           ; rows 0-2 only (S3.1 packed; was $DB-$E6)
 ColupfBuf       = $E7           ; 12 bytes: final COLUPF per tile row (stripe+hot)
-FetchPtr        = $E0           ; fold-indirect pointer ($E0 lo, $E1 hi) —
-                                ; own bytes since S3.1 (was an alias over
-                                ; PF2Buf rows 5-6; bank1 scorePtr1 still
-                                ; shares them — time-partitioned: bank0
-                                ; stages in VBL/overscan windows, bank1
-                                ; rebuilds in HUD after both). Contract (fold
+FetchPtr        = $E5           ; fold-indirect pointer ($E5 lo, $E6 hi) —
+                                ; MOVED S3.2 to free $E0 for rect4.h (cache
+                                ; $CD-$E0 now uniform). Sits in bank1's
+                                ; stomp zone (scorePtr3-hi/scorePtr4-lo) —
+                                ; time-partitioned: bank0 stages only inside
+                                ; VBL/overscan batches, bank1 rebuilds in
+                                ; HUD after both windows. Contract (fold
                                 ; wins): stage addr immediately before a
                                 ; FoldIndirect batch.
 
@@ -1246,20 +1243,10 @@ EnterRoom subroutine
     sta RcBase
     iny                         ; Y=1, first rect byte
 .rcW1: jsr FoldIndirect
-    sta RcBase,Y                ; $CD-$DC (Y=1..16 = rects0-3 — contiguous
-    iny                         ; since S3.1: ONE loop, was two windows)
-    cpy #17
-    bne .rcW1
-.rcW3: jsr FoldIndirect
-    sta $78,Y                   ; $89-$8A (Y=17..18 = rect4 x,y) = MapPtr*
-    iny
-    cpy #19
-    bne .rcW3
-.rcW4: jsr FoldIndirect
-    sta $CB,Y                   ; $DE-$DF (Y=19..20 = rect4 w,h)
-    iny
+    sta RcBase,Y                ; $CD-$E0 (Y=1..20 = rects0-4 — UNIFORM
+    iny                         ; stride since S3.2, incl. rect4; was 4 loops)
     cpy #21
-    bne .rcW4
+    bne .rcW1
 
     ; Load enemy data for this room from LevelEnemyLo/Hi table
     ; Per-room record: ptr_lo, ptr_hi, count, pad (4 bytes per room)
@@ -2291,9 +2278,10 @@ BombBlinkColors:
     .byte COLOR_BLINK_R         ; 2 red
     .byte COLOR_BLINK_Y         ; 3 yellow (4-phase blink: b/y/r/y)
 
-; WallMask bit for rect index 0-3 (BombPacked b3-6)
+; WallMask bit for rect index 0-3 (BombPacked b3-6); index 4 (rect4) =
+; $00 entry (S3.2) → `and BombPacked` = 0 → never skipped.
 BombMaskBit:
-    .byte $08, $10, $20, $40
+    .byte $08, $10, $20, $40, $00
 
 ; BombClearMask moved to bank1 with ClearPFColumn (leaf_move_plan batch B).
 
@@ -2455,14 +2443,15 @@ PlayerHitsMap:
 ; after `sta $1FF8` the NEXT opcode is fetched from the same address in the
 ; NEW bank. The earlier bank2-once walk fetched bank2's bytes at $FB6B and
 ; jumped into bank2's entry code (frozen player, 2026-09-29). EnterRoom
-; copies the list into the fragmented ZP cache instead; Y = global rect
-; offset (rect0 base Y=0, mask index = Y>>2), windows switch at Y=8/Y=16.
+; copies the list into the ZP cache instead; Y = global rect offset
+; (rect0 base Y=0, mask index = Y>>2), UNIFORM stride 4 through rect4
+; (S3.2: no windows, no .Stage3 — cache $CD-$E0).
     lda RcBase                  ; count (cached; empty room -> clear)
     bne .wrGo
     jmp .NoHit
 .wrGo:
     sta RectCount
-    lda #RcW1                   ; walk base: $CD + Y0..15 = rects0-3
+    lda #RcW1                   ; walk base: $CD + Y0..19 = rects0-4
     sta FetchPtr
     lda #$00
     sta FetchPtr+1
@@ -2470,7 +2459,8 @@ PlayerHitsMap:
 
 .RectLoop:
 ; S6.2: skip rects destroyed by a bomb (WallMask bit for this index;
-; index = base/4 — rect0..3 only; rect4 = .Stage3 is never masked)
+; index = base/4 — rect4's table entry is $00: WallMask b3-6 covers
+; rects0-3 only, so rect4 is never masked (S3.2 — it walks like the rest))
     tya
     lsr
     lsr
@@ -2537,48 +2527,13 @@ PlayerHitsMap:
     beq .NoHit                  ; last rect done -> clear
     tya
     clc
-    adc #4                      ; next rect base (global Y)
-    tay
-    cpy #16
-    beq .Stage3                 ; rect4: fixed-address cache slots
-    cpy #8
-    bcc .RectLoop               ; Y<8: still window1
-    lda #RcW2                   ; S3.1 no-op: RcW2 ≡ RcW1 (contiguous cache)
-    sta FetchPtr                ; (FetchPtr+1 already $00)
+    adc #4                      ; next rect base (global Y, stride 4 —
+    tay                         ; S3.2: uniform through rect4, no switch)
     jmp .RectLoop
 
 .nrmRow:
     dey                         ; base+1 -> base
-    bpl .nextRect               ; always taken (Y <= 16 -> N clear)
-
-.Stage3:
-; rect4 = last solid rect (M3 rooms only, count=5) — its cache fields are
-; not contiguous ($89/$8A = x,y; $DE/$DF = w,h), so compare inline at
-; fixed addresses. No mask (index 4 never masked), no Y, no push.
-    lda MapPtrLo                ; rect4.x
-    cmp CollisionCellX
-    beq .s3c
-    bcs .NoHit                  ; x > max
-.s3c:
-    sta CollisionX
-    clc
-    lda Rc4W                    ; rect4.w
-    adc CollisionX
-    cmp CollisionEndX
-    beq .NoHit
-    bcc .NoHit                  ; x+w <= min
-    lda MapPtrHi                ; rect4.y
-    cmp CollisionEndY
-    beq .s3r
-    bcs .NoHit                  ; y > bottom
-.s3r:
-    clc
-    lda Rc4H                    ; rect4.h
-    adc MapPtrHi                ; y + h
-    cmp CollisionCellY
-    beq .NoHit
-    bcc .NoHit                  ; y+h <= top
-    jmp HotOverlapFlag          ; blocked (C set inside)
+    bpl .nextRect               ; always taken (Y <= 19 -> N clear)
 
 .NoHit:
     clc

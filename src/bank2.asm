@@ -5,10 +5,10 @@
     seg code
     org $F000
 
-FetchPtr = $E0                   ; must match kernel.asm (operand baked in)
+FetchPtr = $E5                   ; must match kernel.asm (operand baked in;
+                                 ; moved S3.2 from $E0 — frees $E0 for
+                                 ; rect4.h in the uniform rect cache)
 Temp = $88
-MapPtrLo = $89                   ; rect4.x cache (P3.4)
-MapPtrHi = $8A                   ; rect4.y cache
 CollisionX = $8B
 CollisionCellX = $8C             ; max text column
 CollisionCellY = $8D             ; top tile row
@@ -20,16 +20,12 @@ EnemyDataHi = $B2
 BombPacked = $B5                 ; b3-6 WallMask (destroyed rect skip)
 EnemyIndex = $B9                 ; slot save around the col swap + rect walk
 RcBase = $CC
-RcW1 = $CD
-RcW2 = $CD                   ; S3.1: ≡ RcW1 (contiguous cache — moth's window
-                              ; jump is a no-op; S3.2 deletes it)
+RcW1 = $CD                       ; walk base — uniform stride incl. rect4 (S3.2)
 EnemyRamX = $BD
 EnemyRamD = $C1                  ; dir bits: 1 = right, 0 = left
 EnemyRamP = $C2                  ; free-running frame clock
 EnemyRamY = $E2                  ; live Y (refreshed this overscan — after
                                  ; the bank1 HUD score-ptr stomp; S3.4)
-Rc4W = $DE
-Rc4H = $DF
 TILE_COLUMNS = 20
 RoomY = $81                    ; player Y — LaserHitTest vertical window
 EnemyCount = $B3               ; LaserHitTest loop bound
@@ -249,42 +245,11 @@ MothRoutine:
     tya
     clc
     adc #4
-    tay
-    cpy #16
-    beq .MwStage3
-    cpy #8
-    bcc .MwLoop
-    lda #RcW2
-    sta FetchPtr
-    jmp .MwLoop
+    tay                         ; S3.2: uniform stride through rect4 —
+    jmp .MwLoop                 ; no window jump, no .MwStage3
 .MwNrmRow:
     dey
-    bpl .MwNext               ; Y <= 16 -> N clear, always taken
-.MwStage3:
-    lda MapPtrLo              ; rect4.x
-    cmp CollisionCellX
-    beq .MwS3c
-    bcs .MothNoHit
-.MwS3c:
-    sta CollisionX
-    clc
-    lda Rc4W
-    adc CollisionX
-    cmp CollisionEndX
-    beq .MothNoHit
-    bcc .MothNoHit
-    lda MapPtrHi              ; rect4.y
-    cmp CollisionEndY
-    beq .MwS3r
-    bcs .MothNoHit
-.MwS3r:
-    clc
-    lda Rc4H
-    adc MapPtrHi
-    cmp CollisionCellY
-    beq .MothNoHit
-    bcc .MothNoHit
-    jmp .MothTurn             ; rect4 hit — flip dir, hold
+    bpl .MwNext               ; Y <= 19 -> N clear, always taken
 .MothNoHit:
     ldx EnemyIndex            ; slot back (walk used X for the mask index)
     lda Temp
@@ -308,9 +273,9 @@ MothBitTable:
     .byte $01, $02, $04
 
 ; Destroyed-rect mask bits, index = global rect offset >> 2 (copy of
-; kernel.asm's BombMaskBit)
+; kernel.asm's BombMaskBit; index 4 = $00 — rect4 never masked, S3.2)
 MothMaskBit:
-    .byte $08, $10, $20, $40
+    .byte $08, $10, $20, $40, $00
 
 ; 48-line band row lookup — copy of kernel's YToRowTable (bank2 cannot read
 ; bank0 ROM). Index = line >> 2, value = floor(line/48) = band row 0-3.

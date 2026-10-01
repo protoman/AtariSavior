@@ -90,7 +90,24 @@ get a Stella checkpoint before the next slice).
       equ-sync guard verified all hand-copied EQUs (bank1 PF1/PF2/RcBase/
       RcW1, bank2 Rc*) — negative-tested with a stale bank1 RcBase.
       bank0 −11B. **Stella: wall collision + bomb blast + room entry.**
-- [ ] S3.2 single rect-copy loop; delete `.Stage3`, window switch, ABW tables
+- [x] S3.2 single rect-copy loop; delete `.Stage3`, window switch, ABW tables
+      → done (supersedes S3.1's split-rect4 note): **uniform stride** —
+      cache now `$CC-$E0` (count + rects0-4), rect4 x,y,w,h IN the cache
+      (`$DD-$E0`); `FetchPtr` moved `$E0→$E5` to free `$E0` (frees the
+      +1-byte gap that forced the split). Deleted: kernel `.Stage3`,
+      window2 jumps in PHM + bank2 moth, moth `.MwStage3`, copy loops
+      `.rcW3/.rcW4` (EnterRoom copy = ONE Y=1..20 loop); `RcW2/Rc4W/Rc4H/
+      MapPtrLo/Hi` EQUs retired (sequential `$89/$8A` kept as pads —
+      moving them shifts the whole ZP block). Mask tables +`$00` 5th
+      entry (index4 = rect4, never in WallMask — BombMaskBit + MothMaskBit;
+      kernel and moth walks otherwise read it uniformly).
+      `FOLD_BYTES` const updated `B1 E0→B1 E5` (byte-identity guard
+      re-verified, negative-tested). `test_phm_walk` rewritten: keeps the
+      exit-Y discipline asserts (nrmCol/nrmRow — still required!) + adds
+      uniform-stride asserts (no `.Stage3`, no `RcW2`, 5-entry masks) for
+      BOTH walkers (kernel + moth).
+      bank0 −77B (3220→3143), bank2 −65B (1128→1063).
+      **Stella: wall collision + bomb + moth wall-turn + room entry.**
 - [x] S3.3 hot rects into ZP cache → fold-free `HotOverlapFlag` (−2 SP levels)
       → **obsolete: S5.1/S5.3 delivered it differently** — HOF body now
       lives in bank2 reading level ROM directly (fold-free, bank2-local);
@@ -197,6 +214,7 @@ get a Stella checkpoint before the next slice).
 | 9 | S3.0b bomb save/restore + ObjBot decl deleted; Overscan $F182→$F176 | −12 (3246→3234; bank2 −12) | build+sim+4 tests OK | (this) |
 | 10 | S3.4 EnemyRamY $C3→$E2, VBL LoadPF0Only repair deleted | −3 (3234→3231) | build+sim+4 tests OK + equ-sync negative-test | (this) |
 | 11 | S3.1 packed PF buffers + contiguous rect cache $CC-$DC, band→$BC, EQU-derived ABW tables | −11 (3231→3220) | build+sim+4 tests OK + equ-sync negative-test | (this) |
+| 12 | S3.2 uniform stride: rect4 into cache, FetchPtr $E0→$E5, .Stage3 + window jumps deleted (kernel+moth) | −77 (3220→3143; bank2 −65) | build+sim+4 tests OK + fold-guard negative-test | (this) |
 
 ## Verified no-win / deferred (Phase 1 findings)
 

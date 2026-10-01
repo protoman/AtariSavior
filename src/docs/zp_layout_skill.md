@@ -49,8 +49,8 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $86 | Grp0Ptr | Player sprite ptr lo (scratch) |
 | $87 | Grp0PtrHi | Player sprite ptr hi (scratch) |
 | $88 | Temp | General scratch (VBLANK COLUBK, ObjectCount, …) |
-| $89 | MapPtrLo | Rect-list walk ptr lo |
-| $8A | MapPtrHi | Rect-list walk ptr hi |
+| $89 | MapPtrPad0 | Was MapPtrLo (rect4.x) — rect4 moved into the cache (S3.2); pad keeps the sequential block from shifting |
+| $8A | MapPtrPad1 | Was MapPtrHi (rect4.y) — same (pad) |
 | $8B | CollisionX | Collision/mirror scratch |
 | $8C | CollisionCellX | Player max tile col |
 | $8D | CollisionCellY | Player top tile row |
@@ -117,7 +117,7 @@ sequential byte would be `$BC`, but `$BD+` are explicit EQUs).
 | $C3-$C5 | PF0Buf | TilePF0 rows 0-2 (**packed S3.1**, was `$C3-$CE`). Rows 0-2 pure since S3.4 (Y → `$E2`); pattern written by EnterRoom `LoadPFBuffer` only, never stomped. |
 | $C6-$C8 | PF1Buf | TilePF1 rows 0-2 (**packed S3.1**, was `$CF`). Kernel `.Row` X=0..2 + bank1 `ClearPFColumn`. |
 | $C9-$CB | PF2Buf | TilePF2 rows 0-2 (**packed S3.1**, was `$DB`). |
-| $CC-$DC | Rect cache | **count + rects0-3 contiguous (S3.1)** — `RcBase=$CC`, walk base `RcW1=$CD` (Y=0..15). rect4 split ON purpose: x,y at `$89/$8A` (sequential decls frozen — moving them shifts the whole ZP block), w,h at `$DE/$DF` (`Rc4W/Rc4H`); `.Stage3` reads them inline. `RcW2 ≡ RcW1` = no-op jump (S3.2 deletes). ABW tables are EQU-derived (`.byte RcW1, RcW1+4, …`) — cannot go stale. |
+| $CC-$E0 | Rect cache | **count + rects0-4 UNIFORM (S3.2)** — `RcBase=$CC`, walk base `RcW1=$CD`, stride 4 for all five rects (Y=0..19): no windows, no `.Stage3` (both deleted), mask index4 = `$00` table entry (rect4 never in WallMask). rect4 x,y,w,h = `$DD-$E0`. ABW tables EQU-derived (`.byte RcW1, RcW1+4, …`) — cannot go stale. `$E0` was freed by moving FetchPtr → `$E5` (its fold operand is byte-guarded: FOLD_BYTES). |
 | $E2-$E4 | EnemyRamY | Live Y, private 3B (S3.4) — sits in the bank1 stomp zone but window-safe (write/read between stomps — kernel ZP contract block). |
 | $E7-$F2 | ColupfBuf | Final COLUPF × 12 rows — but only rows 0-2 ($E7-$E9) are ever written (TILE_ROWS=3; rows 9-11 are the bombs' own bytes, no overlap machinery since S3.0b). Bank1 clobbers $E7-$EF during HUD; VBLANK rebuilds every frame (S2.1 blocker, see progress doc). |
 | $F3 | ScoreTh | Shared with bank1 score |
@@ -147,7 +147,7 @@ only and nothing else touched `$F0-$F2` between save and restore.
 | $AC | PlayerLives | Shared lives | same |
 | $AD | Temp | Bank1 scratch | bank0 TickCounter (different phase) |
 | $AE | BarLevel | Shared bar | same |
-| $E0-$EB | scorePtr1-6 | 6 digit ptrs | stomps ColupfBuf[0-2] ($E7-$E9) + EnemyRamY ($E2-$E4) every frame — both safe by rebuild/write window (see above) |
+| $E0-$EB | scorePtr1-6 | 6 digit ptrs | stomps ColupfBuf[0-2] ($E7-$E9) + EnemyRamY ($E2-$E4) every frame — both safe by rebuild/write window (see above); $E5/$E6 additionally time-partition with kernel `FetchPtr` (S3.2: bank0 stages only in VBL/overscan batches, HUD rebuilds after) |
 | $EC | scbrdCnt | Score loop | ColupfBuf dead-row overlap OK |
 | $ED | scbrdTmp | Score temp | ColupfBuf dead-row overlap OK |
 | $EE | DelayCnt | Power-bar delay | ColupfBuf dead-row overlap OK |

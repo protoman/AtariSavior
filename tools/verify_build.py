@@ -204,7 +204,8 @@ FOLD_ADDR = 0xFEF6
 # sta $1FF8 / lda (FetchPtr),Y / sta $1FF6 / rts — plan §0.1, hand-copy
 # forbidden: change the block → change these bytes + plan together.
 # P3.1: bank select is absolute (was sta $1FF8,X) — see kernel.asm deviation.
-FOLD_BYTES = bytes([0x8D, 0xF8, 0x1F, 0xB1, 0xE0, 0x8D, 0xF6, 0x1F, 0x60])
+FOLD_BYTES = bytes([0x8D, 0xF8, 0x1F, 0xB1, 0xE5, 0x8D, 0xF6, 0x1F, 0x60])
+# 0xE5 = FetchPtr (moved $E0→$E5 in S3.2 to free $E0 for rect4.h)
 
 
 def check_fold_block(src: Path) -> None:

@@ -61,10 +61,10 @@ def main() -> None:
         assert body == BLOCK, \
             f"{name}: FoldIndirect body {body} != contract {BLOCK}"
 
-    # --- FetchPtr operand, both files -------------------------------------
+    # --- FetchPtr operand, both files (moved $E0→$E5 in S3.2) --------------
     for name, src in (("kernel.asm", KERNEL), ("bank2.asm", BANK2)):
-        m = re.search(r"^FetchPtr\s*=\s*\$E0\b", src, re.M)
-        assert m, f"{name}: FetchPtr = $E0 definition missing"
+        m = re.search(r"^FetchPtr\s*=\s*\$E5\b", src, re.M)
+        assert m, f"{name}: FetchPtr = $E5 definition missing"
 
     # --- address pinning ---------------------------------------------------
     assert re.search(r"FoldIndirect:.*?\.ds \$FF00 - \*, 0", KERNEL, re.S), \
@@ -72,12 +72,18 @@ def main() -> None:
     assert re.search(r"\.ds \$FEF6 - \*, 0\s*\nFoldIndirect:", BANK2), \
         "bank2.asm: .ds $FEF6 must pin the block to bank0's address"
 
-    # --- P1.3: $E0/$E1 alias writers (stage-before-batch precondition) ----
-    assert "sta scorePtr1+1" in BANK1 and "sta scorePtr1" in BANK1, \
-        "bank1 must rebuild scorePtr1 ($E0/$E1) — FetchPtr alias family"
-    # kernel must not write $E0 directly (only via FetchPtr staging later)
+    # --- P1.3: FetchPtr ($E5/$E6) partition + stage-before-batch ----------
+    # S3.2: FetchPtr moved $E0→$E5 (frees $E0 = rect4.h in the cache); it
+    # now sits under bank1 scorePtr3-hi/scorePtr4-lo — same time partition:
+    # bank0 stages only inside VBL/overscan batches, bank1 rebuilds in HUD.
+    assert "sta scorePtr3+1" in BANK1 and "sta scorePtr4" in BANK1, \
+        "bank1 must rebuild scorePtr3+1/scorePtr4 — FetchPtr partition pair"
+    # kernel must not write FetchPtr's bytes raw (only via the EQU) and
+    # must not raw-write $E0 (now a rect cache byte — writes go RcBase,Y)
+    assert not re.search(r"sta\s+\$E5\b", KERNEL), \
+        "kernel.asm writes $E5 raw — use the FetchPtr EQU for alias clarity"
     assert not re.search(r"sta\s+\$E0\b", KERNEL), \
-        "kernel.asm writes $E0 raw — use the FetchPtr EQU for alias clarity"
+        "kernel.asm writes $E0 raw — rect cache byte, write via RcBase,Y"
 
     # --- P2/P3.1: no direct reads of relocated tables ----------------------
     for tbl in ("LevelPFDataLo", "LevelEnemyLo", "LevelConnLo", "EnemyDataLo"):
