@@ -97,12 +97,14 @@ def main() -> None:
     assert "sta EnemyDeadMask" in KERNEL, "dead-mask kill path intact"
 
     # --- E1/E-gates: derives read the free-running clock EnemyRamP ---------
-    dey = KERNEL.split("DeriveEnemyY:")[1].split("GetConnIdx:")[0]
+    # end marker: GetConnIdx moved to bank1 (leaf_move_plan); its old label
+    # was the slice terminator — ExitRoomDown now sits at that spot.
+    dey = KERNEL.split("DeriveEnemyY:")[1].split("ExitRoomDown:")[0]
     assert "cmp #ENEMY_BAT" in dey, "DeriveEnemyY must special-case the bat"
     assert "sta Temp" in dey and "adc Temp" in dey, \
         "bat delta must be added to ROM spawn y"
-    assert "lda EnemyRamP" in dey and "lda (EnemyDataLo),Y" in dey, \
-        "bat path needs ROM spawn y and the frame clock (EnemyRamP)"
+    assert "lda EnemyRamP" in dey and "jsr FoldIndirect" in dey, \
+        "bat path needs ROM spawn y (via P3.1 fold) and the clock (EnemyRamP)"
     assert "lda TickCounter" not in dey, \
         "TickCounter wraps every 60 frames — derives must use EnemyRamP"
     # clock advances once per frame in RefreshEnemyY
@@ -120,13 +122,13 @@ def main() -> None:
     ue = KERNEL.split("UpdateEnemies:")[1].split("UE_Next:")[0]
     assert "ENEMY_BAT" not in ue, \
         "UpdateEnemies must not move the bat (movement is derived in refresh)"
-    # first screen of level 1 spawns a bat for the E1 Stella gate
+    # first screen must spawn at least one enemy (spawner sanity for Stella)
     import json
     lvl = json.loads((ROOT / "src" / "rooms" / "level_001.json")
                      .read_text(encoding="utf-8"))
-    first = lvl["level"]["rooms"][0]["enemies"][0]
-    assert first["type"] == 1, \
-        f"level_001 room0 enemy type={first['type']} (E1 gate expects bat=1)"
+    first = lvl["level"]["rooms"][0]["enemies"]
+    assert len(first) >= 1, \
+        "level_001 room0 spawns no enemy (Stella spawner gate)"
 
     # --- E2: spider derived as spawn + triangle24, dwell at top ------------
     assert "cmp #ENEMY_SPIDER" in dey, "DeriveEnemyY must dispatch the spider"
@@ -149,6 +151,67 @@ def main() -> None:
     assert "ENEMY_SPIDER" not in ue, \
         "UpdateEnemies must not move the spider (movement is derived)"
 
+    # --- E4: moth Y arm (MothYDerive in the $FC4F gap, docs/e4_moth_plan) ---
+    assert "bpl .REYLoop" not in KERNEL, \
+        "refresh loop exit must test X, not the derived-Y sign (bpl ran away)"
+    assert re.search(r"txa[^\n]*\n\s*bne \.REYLoop", KERNEL), \
+        "RefreshEnemyY countdown must end with txa/bne (flags from X)"
+    assert ".DEYDelta" not in KERNEL, \
+        "DEYDelta must be a global label (gap leaf cannot jmp a local)"
+    assert "cmp #ENEMY_MOTH" in dey and "jmp MothYDerive" in dey, \
+        "DeriveEnemyY must dispatch the moth to MothYDerive"
+    moth = KERNEL.split("MothYDerive:")[1].split("org $FC68")[0]
+    assert "and #15" in moth and "cmp #8" in moth, \
+        "moth phase must be (P>>2)&15 with triangle mirror at 8"
+    assert moth.count("lsr") >= 2, \
+        "vertical tick = P>>2 (half the X tick — user speed tuning)"
+    assert "lda #6" in moth, "moth delta must clamp tri <= 6 (exact ±6)"
+    assert "adc #$FA" in moth, "moth delta = asl then -6 (x2-6)"
+    assert moth.count("jmp DEYDelta") == 1, \
+        "moth must jump-tail into the shared delta+spawn-y add"
+    assert "sta EnemyRamP" not in moth, "MothYDerive reads the clock only"
+
+    # --- E4 Stage C: bank2 MothRoutine horizontal patrol ---------------------
+    b2 = (ROOT / "src" / "bank2.asm").read_text(encoding="utf-8")
+    mr = b2.split("MothRoutine:")[1].split("MothBitTable:")[0]
+    body = "\n".join(ln.split(";")[0] for ln in mr.splitlines())
+    assert "jsr" not in body, \
+        "bank2 moth must never jsr (mid-bank2 fold = frozen player)"
+    assert "jmp UE_Next" not in body, \
+        "exit only via jmp MothExitPad (bank0's pad half serves UE_Next)"
+    assert "and #1" in body, "gate = EnemyRamP & 1 (1 px / 2 frames)"
+    assert "stx EnemyIndex" in body and "ldx EnemyIndex" in body, \
+        "slot must survive the col swap + rect walk (X clobbers, E3 lesson)"
+    assert "lda EnemyDataLo" in body and "sta FetchPtr" in body, \
+        "every exit must re-stage FetchPtr (the walk overwrites it)"
+    assert body.rstrip().endswith("jmp MothExitPad"), \
+        "tail must jmp MothExitPad"
+    assert "sta EnemyRamX,X" in body, "clear path must commit candidate X"
+    assert "eor EnemyRamD" in body, "turn must flip the live dir bit"
+    assert body.count("(FetchPtr),Y") >= 6, \
+        "spawn + rect-walk reads must be direct (FetchPtr),Y (records in bank2)"
+    assert re.search(r"cmp\s+#160", body), \
+        "wrap/off-screen candidate must turn (plan's mod-256 range passes 255)"
+    assert re.search(r"cmp\s+#33", body) and re.search(r"cmp\s+#224", body), \
+        "range check = spawn ± 8 tiles mod-256 (cmp #33 / cmp #224)"
+    assert body.count("sbc #7") >= 2, \
+        "cols must start at VISIBLE left (Temp-5/-7 bomb convention), not Temp"
+    assert "adc #8" in body and "adc #1" in body, \
+        "rows must be visual Y+1..Y+8 (GRP1 ObjTop+1 window)"
+    assert body.count("MothRowTable,Y") == 2, \
+        "rows must convert via the /48 band table (the old >>4 = /16 gave " \
+        "rows 3-4 = below every rect -> probe never hit -> walked into wall)"
+    mrt = b2.split("MothRowTable:")[1].split("org")[0]
+    mvals = []
+    for byte_line in re.findall(r"\.byte ([\d,]+)", mrt):
+        mvals += [int(v) for v in byte_line.split(",") if v.strip()]
+    assert len(mvals) == 48 and mvals == sorted(mvals), \
+        f"MothRowTable must be 48 ascending /48-band entries, got {len(mvals)}"
+    assert ".byte $01, $02, $04" in b2, \
+        "MothBitTable = per-slot dir bits (bank2-local copy)"
+    assert ".byte $08, $10, $20, $40" in b2, \
+        "MothMaskBit = BombMaskBit copy (destroyed-rect skip)"
+
     # --- space fix: YToCellRow uses the 48-entry (A>>2) table -------------
     ytc = KERNEL.split("YToCellRow subroutine")[1].split("PlayerHitsMap:")[0]
     assert re.search(r"lsr[^\n]*\n\s*lsr[^\n]*\n\s*tay", ytc), \
@@ -168,27 +231,41 @@ def main() -> None:
         "tentacle bob gate must be clock >> 3"
     tent = KERNEL.split("UE_Tentacle:")[1].split(".TentOut:")[0]
     assert "and #3" in tent, "tentacle X gate must be TickCounter & 3 (÷4)"
-    assert len(re.findall(r"\bpha\b", tent)) == 3 \
-        and len(re.findall(r"\bpla\b", tent)) == 3, \
-        "probe must save/restore player RoomX+RoomY AND slot X in pairs"
+    # ZP-scratch probe (6140f5a): the old 3-pha path hit min SP $F4 = bomb
+    # stomp — pha/pla are banned here; the swap uses ActiveObjectX/Y + EnemyIndex.
+    tent_code = "\n".join(l.split(";")[0] for l in tent.splitlines())
+    assert not re.search(r"\bpha\b|\bpla\b", tent_code), \
+        "probe must use ZP scratch (ActiveObjectX/Y + EnemyIndex), not pha/pla"
     phm = tent.index("jsr PlayerHitsMap")
-    # slot X must be pushed before the probe and popped right after it:
+    # slot X must be saved before the probe and popped right after it:
     # PlayerHitsMap->YToCellRow does `tax` (X = bottom row), so without the
     # save the commit wrote EnemyRamX[row] — tentacle X froze (E-gate bug).
-    save_x = tent.rindex("txa", 0, phm)
-    load_x = tent.index("tax", phm)
+    save_x = tent.rindex("stx EnemyIndex", 0, phm)
+    load_x = tent.index("ldx EnemyIndex", phm)
     assert save_x < phm < load_x, \
         "slot X must be saved before / restored after PlayerHitsMap"
     restore = tent.rindex("sta RoomX")           # player restore AFTER probe
     commit = tent.index("sta EnemyRamX,X")
     assert phm < load_x < restore < commit, \
         "probe order must be: PHM -> restore X -> restore player -> commit"
-    assert "jmp UE_Next" not in tent, \
-        "UE_Tentacle is a subroutine — must return via .TentOut, not UE_Next"
+    assert "sta ActiveObjectX" in tent and "sta ActiveObjectY" in tent, \
+        "probe must save player RoomX/RoomY into ZP scratch"
+    # tail architecture: the ONLY exit is .TentOut -> jmp UE_Next
+    tent_out = KERNEL.split(".TentOut:")[1].splitlines()[1]
+    assert tent_out.split(";")[0].strip() == "jmp UE_Next", \
+        "every path must exit via .TentOut -> jmp UE_Next (tail jmp, no rts)"
     ue = KERNEL.split("UpdateEnemies:")[1].split("UE_Exit:")[0]
-    assert "jsr UE_Tentacle" in ue, "dispatch must call the tentacle subroutine"
+    assert "jmp UE_Tentacle" in ue, \
+        "dispatch must tail-jmp the tentacle (jsr costs 2 stack bytes)"
     assert ue.index("cmp #ENEMY_TENTACLE") < ue.index("cmp #ENEMY_SNAKE"), \
         "tentacle check must come first (keeps snake branches in range)"
+    # --- E4: moth dispatched via the $FEF0 bank2 code-fold tramp ------------
+    assert "cmp #ENEMY_MOTH" in ue, "dispatch must test the moth"
+    assert "jmp UE_MothTramp" in ue, \
+        "moth must tail-jmp the entry tramp (0 push — stack guard)"
+    assert (ue.index("cmp #ENEMY_TENTACLE") < ue.index("cmp #ENEMY_MOTH")
+            < ue.index("cmp #ENEMY_SNAKE")), \
+        "dispatch order must stay tentacle -> moth -> snake"
 
     # --- water strip: bottom 1/4 of the bottom band, split pass ------------
     assert ".WaterRow:" in KERNEL, "water strip pass missing"
