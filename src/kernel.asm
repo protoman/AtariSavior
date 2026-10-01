@@ -1198,17 +1198,19 @@ EnterRoom subroutine
     asl
     asl
     asl                         ; room1: nibble → high
-    sta Temp
+    sta LineCount               ; NOT Temp — joystick byte stays live: after
+                                ; EnterRoom the caller resumes CheckP0Right /
+                                ; .NoVMove and reads Temp as held buttons
     lda RoomWallMask
     and #$0F
-    ora Temp
+    ora LineCount
     sta RoomWallMask
     jmp .ERGotRoom
 .ERSaveR0:
-    sta Temp
+    sta LineCount               ; see above — Temp belongs to the input path
     lda RoomWallMask
     and #$F0
-    ora Temp
+    ora LineCount
     sta RoomWallMask
 .ERGotRoom:
     pla                         ; new room
@@ -2382,19 +2384,20 @@ ApplyBombWalls:
     lda ABWYTab,X               ; ZP address of rect.y
     tay
     lda 0,Y                     ; rect.y = first row
-    sta Temp
+    sta LineCount               ; NOT Temp — EnterRoom runs this mid-input and
+                                ; CheckP0Left/Right read Temp as held buttons
     lda ABWHTab,X               ; ZP address of rect.h
     tay
     lda 0,Y                     ; rect.h
     clc
-    adc Temp
+    adc LineCount
     sec
     sbc #1
     sta CollisionCellX          ; last row = y+h-1
     txa
     pha                         ; rect index — ClearPFColumn clobbers X
     lda CollisionX              ; col
-    jsr CallPad_ClearPFColumn           ; A=col, Temp=first, CollisionCellX=last
+    jsr CallPad_ClearPFColumn           ; A=col, LineCount=first, CollisionCellX=last
     pla
     tax
 .ABWNext:
