@@ -10,14 +10,16 @@ BUGS
 =========================================================================================================================================================================
 
 =========================================================================================================================================================================
-Let's do a new investigation:
-Where our code can be simplified or optimized?
-No need to compare with HERO, just looking at out 6507/TIA code, and tell me what could be done better and take less space in bank0?
-List functionalities that can benefit from a refactory, even if we need to change level data-format a bit or simplify gameplay.
+All tests passed.
+Please commit, and then tell me, how much space is free on bank0 now?
 
+OK, for now, this is enough free space, save all findings and status, so we can resume it later,
+as we will still need some of the optimizations in the plan to make the game run faster.
 
 =========================================================================================================================================================================
-- water movement effect (3 px up, 3px down, slow)
+Now, I want to simulate a kind of sea tide with the water background color band.
+The idea is to add a movement effect on it. First it goes 3 pixel down, then it goes back to its position, staty a couple of seconds on that, and resume the movement.
+The movement should not be fast, more like waves into a nice beach.
 
 =========================================================================================================================================================================
 Points counting when finishing a level:
