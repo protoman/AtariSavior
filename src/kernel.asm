@@ -2258,6 +2258,14 @@ ApplyBombWalls:
     jsr CallPad_ClearPFColumn           ; A=col, LineCount=first, CollisionCellX=last
     pla
     tax
+    ; S6.4: flag rect.w b7 = destroyed — both walks (bank0 PHM, bank2 moth)
+    ; skip at their w-read. Single choke point: every-frame VBL re-punch
+    ; + EnterRoom mask-restore run this loop, so b7 tracks WallMask.
+    lda ABWWTab,X
+    tay
+    lda 0,Y
+    ora #$80
+    sta 0,Y
 .ABWNext:
     dex
     bpl .ABWLoop
@@ -2341,9 +2349,11 @@ LAMP           = 5             ; type-5 enemy record = editor lamp (white square
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 2             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $FA8E        ; frozen address of bank2's LevelDataTable
-                                ; (S4.1 −$FAFA, S4.2 −$FA8E as generated
-                                ;  tables shrank; check_frozen_addrs enforces)
+LEVEL_DATA_ADDR = $FA86        ; frozen address of bank2's LevelDataTable
+                                ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
+                                ;  −$FA86 as the ≤2-object room migration
+                                ;  shrank the tables; check_frozen_addrs
+                                ;  enforces)
                                 ; (test asserts bank2.lst label == this)
 
 ; ==============================================================================
@@ -2463,17 +2473,11 @@ PlayerHitsMap:
     ldy #0
 
 .RectLoop:
-; S6.2: skip rects destroyed by a bomb (WallMask bit for this index;
-; index = base/4 — rect4's table entry is $00: WallMask b3-6 covers
-; rects0-3 only, so rect4 is never masked (S3.2 — it walks like the rest))
-    tya
-    lsr
-    lsr
-    tax
-    lda BombMaskBit,X
-    and BombPacked
-    bne .nextRect               ; destroyed → not solid
-
+; S6.4: destroyed-flag = rect.w b7 (set by ApplyBombWalls when this rect's
+; WallMask b3-6 bit is set — blast and EnterRoom-mask-restore both land
+; there). The old per-rect BombMaskBit scan (17c x rects x every walk)
+; is gone; the w-read below skips via bmi before col math uses w.
+; rect4 is never masked (b3-6 = rects0-3) — b7 clear, walks like the rest.
 ; Column overlap: max_col >= rect.x AND min_col < rect.x + rect.w
     lda (FetchPtr),Y            ; rect.x
     cmp CollisionCellX          ; rect.x > max_col?
@@ -2485,6 +2489,7 @@ PlayerHitsMap:
     iny                         ; Y = base + 2 (rect.w)
     clc
     lda (FetchPtr),Y            ; rect.w
+    bmi .nrmCol                 ; S6.4 b7 = destroyed (Y = base+2 → .nrmCol)
     adc CollisionX              ; rect.x + rect.w
     cmp CollisionEndX           ; (rect.x+w) <= min_col?
     beq .nrmCol                 ; Y=base+2 here — normalize before advance

@@ -17,7 +17,7 @@ never from comments.
 | Fact | Where |
 |------|-------|
 | One GRP1 slot, rotated across `FlickerFrame` 0..N-1 (bomb only 1 of 4 frames) | `SelectActiveObject` `kernel.asm:1850` |
-| Slots = enemies + miner (+bomb), N ≤ 4; `kMaxRoomElements=3`, 1 element/room-row → **entities never share a band** | `zp_layout_skill.md` rule 3, editor |
+| Slots = enemies + miner (+bomb), N ≤ 4; `kMaxRoomElements=2`, 1 element/room-row → **entities never share a band** | `zp_layout_skill.md` rule 3, editor |
 | Kernel `.Line` renders one object window `ObjTop..ObjTop+7`, no `jsr` in body (running-Y) | `kernel.asm:627-695`, worst body 61c, WSYNC @c69 |
 | Positioning: `SetObjectXPos` = `sta WSYNC` + div15 (5c/15clk, single page `$FF10-$FF1F`) + `HMP0,X`/`RESP0,X` — **no HMOVE inside**; HMOVE applied once in VBLANK `kernel.asm:521-522` | `kernel.asm:3254` |
 | Double-HMOVE already bit us once (stale HMP1 / doubled P0 fine) | `kernel.asm:457-459` |
@@ -26,7 +26,7 @@ never from comments.
 | M1 (`$1E`) unused in cave; ball free in cave (HUD ball only in HUD band) | |
 | ZP **full** — no free sequential byte; freed bytes must be reuse-in-place | `zp_layout_skill.md` |
 | Stack: kernel already uses `.WaterRow` jsr; one more jsr level inside kernel = SP $FD, guard floor $F8 | AGENTS stack guard |
-| Editor/convert guarantees: ≤3 elements, ≤1 per room-row; `EnemyRamX` 3 slots | |
+| Editor/convert guarantees: ≤2 elements, ≤1 per room-row; `EnemyRamX` 3 slots | |
 
 ## Related finding (do NOT mix into this plan's steps)
 

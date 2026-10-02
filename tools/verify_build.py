@@ -11,7 +11,8 @@ Checks:
   Fold  - FoldIndirect ($FEF6): byte-identical block in bank0/bank2,
           expected opcodes, 1B zero margin before the $FF00 anchor,
           label address in both listings (level_bank_plan §0.1).
-  Level - rooms <=4 (IsRoomDark mask), <=3 enemies+lamps (silent converter
+  Level - rooms <=4 (IsRoomDark mask), <=2 objects/room incl. miner
+  (flicker budget kMaxRoomElements=2; silent converter
           truncation; slot 3 would collide with LaserState at $C0),
           room_id/grid/start/miner validity, enemy bounds/types,
           model_id exists, generated room .txt shape.
@@ -671,10 +672,16 @@ def check_levels(src: Path) -> None:
 
             enemies = r.get("enemies") or []
             lamps = r.get("lamps") or []
-            if len(enemies) + len(lamps) > 3:
-                err(f"{label}: {len(enemies)} enemies + {len(lamps)} lamps > 3 "
-                    f"(MAX_ENEMIES=3, converter truncates silently; slot 3 "
-                    f"would collide with LaserState at $C0)")
+            objs = len(enemies) + len(lamps)
+            if lvl.get("miner_room") == r.get("room_id"):
+                objs += 1
+            if objs > 2:
+                err(f"{label}: {len(enemies)} enemies + {len(lamps)} lamps"
+                    f"{' + miner' if lvl.get('miner_room') == r.get('room_id') else ''}"
+                    f" = {objs} objects > 2 "
+                    f"(flicker budget: editor kMaxRoomElements=2, 2026-10-02; "
+                    f"RAM would still hold 3 slots — slot 3 collides with "
+                    f"LaserState at $C0)")
 
             for i, e in enumerate(enemies):
                 el = f"{label} enemy {i}"

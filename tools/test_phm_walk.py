@@ -13,8 +13,11 @@ S3.2 uniform-stride contract (both walkers, kernel + bank2 moth):
   - cache $CD-$E0 holds count+rects0-4 contiguously; stride 4 walks ALL
     FIVE rects — no window jumps (RcW2 deleted), no .Stage3/.MwStage3
     fixed-address rect4 special case;
-  - mask index = Y>>2 covers index 4 via a $00 table entry (rect4 is
-    never masked — WallMask b3-6 = rects0-3 only).
+  - destroyed-rect skip (S6.4): rect.w b7 set by ApplyBombWalls (single
+    choke point: blast + EnterRoom mask-restore); each walker's w-read
+    bmi's to its .nrmCol (Y = base+2). No per-rect BombMaskBit scan in
+    either walker; BombMaskBit/MothMaskBit tables survive for
+    ApplyBombWalls / LaserWallClamp only (rect4 entry = $00).
 
 Run: python3 tools/test_phm_walk.py
 """
@@ -43,10 +46,15 @@ def main() -> None:
     blk = phm_block()
 
     # --- exits that leave Y = base must target .nextRect directly ---
-    assert re.search(r"bne\s+\.nextRect", blk), \
-        "mask exit must advance from base (target .nextRect)"
     assert re.search(r"bcs\s+\.nextRect", blk), \
         "col-x exit must advance from base (target .nextRect)"
+
+    # --- S6.4: destroyed-rect skip = rect.w b7 at the w-read (Y = base+2) ---
+    assert re.search(
+        r"lda \(FetchPtr\),Y\s*; rect\.w\s*\n\s*bmi\s+\.nrmCol", blk), \
+        "w-read must bmi to .nrmCol on b7 (destroyed skip, Y=base+2)"
+    assert "lda BombMaskBit" not in blk, \
+        "walk must not scan BombMaskBit (S6.4: flag lives in rect.w b7)"
 
     # --- col-end exits leave Y = base+2 -> .nrmCol (two dey) ---
     col = re.search(
@@ -94,6 +102,11 @@ def main() -> None:
         "moth .MwStage3 label must be gone (S3.2)"
     assert "lda #RcW2" not in mblk, "moth window jump must be gone (S3.2)"
     assert re.search(r"adc #4", mblk), "moth advance must be stride 4"
+    assert re.search(
+        r"lda \(FetchPtr\),Y\s*\n\s*bmi\s+\.MwNrmCol", mblk), \
+        "moth w-read must bmi to .MwNrmCol on b7 (S6.4, Y=base+2)"
+    assert "lda MothMaskBit" not in mblk, \
+        "moth walk must not scan MothMaskBit (S6.4: flag in rect.w b7)"
     mm = re.search(r"^MothMaskBit:\s*\n\s*\.byte([^\n]+)", BANK2, re.M)
     assert mm and mm.group(1).split(",")[-1].strip() == "$00", \
         "MothMaskBit[4] must be \$00 (rect4 not masked)"

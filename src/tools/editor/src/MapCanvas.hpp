@@ -105,7 +105,9 @@ private:
     int m_initialFacing = 1;
 
     // GRP1 flicker budget: miner + enemies + lamps share one sprite slot.
-    static constexpr int kMaxRoomElements = 3;
+    // Hard cap 2 objects/room (2026-10-02, user rule): laser + bomb runs
+    // pushed 3-object rooms over the frame budget (screen jump flicker).
+    static constexpr int kMaxRoomElements = 2;
 };
 
 } // namespace editor
