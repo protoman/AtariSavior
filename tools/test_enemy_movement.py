@@ -279,11 +279,11 @@ def main() -> None:
     assert "beq .WaterRow" in adv, "row 2 must hand off to .WaterRow"
     assert "beq .AfterRows" in adv, "water pass must exit to .AfterRows"
     row2 = KERNEL.split("Scanlines this pass")[1].split("sta WSYNC")[0]
-    assert "#LINES_PER_TILE-12" in row2, \
-        "row 2 body count must drop to 36 (12 lines move to the strip)"
+    assert "lda CollisionX" in row2, \
+        "row 2 body count must be the tide value 36+off (CollisionX carrier)"
     wr = KERNEL.split(".WaterRow:")[1].split(".GrpZero:")[0]
-    assert re.search(r"lda\s+#11\b", wr), \
-        "strip pass: setup line + 11 bodies = 12-line strip"
+    assert re.search(r"lda\s+#47\b", wr) and "sbc CollisionX" in wr, \
+        "strip pass: setup line + (47-(36+off)) bodies = 12-off strip"
     assert "lda RoomBandColor" in wr and "sta COLUBK" in wr, \
         "strip must paint the band color (blink-off path, inlined read)"
     assert wr.rstrip().endswith("jmp .Line"), \

@@ -10,29 +10,11 @@ BUGS
 =========================================================================================================================================================================
 
 =========================================================================================================================================================================
-All tests passed.
-Please commit, and then tell me, how much space is free on bank0 now?
-
-OK, for now, this is enough free space, save all findings and status, so we can resume it later,
-as we will still need some of the optimizations in the plan to make the game run faster.
-
-=========================================================================================================================================================================
-Now, I want to simulate a kind of sea tide with the water background color band.
-The idea is to add a movement effect on it. First it goes 3 pixel down, then it goes back to its position, staty a couple of seconds on that, and resume the movement.
-The movement should not be fast, more like waves into a nice beach.
-
-=========================================================================================================================================================================
 Points counting when finishing a level:
     Chegar no mineiro, 1000
     Tempo quase cheio - 1510
     Cada bomba: 50
     Pontos, cada pedaço da barra de power, 160
-
-=========================================================================================================================================================================
-Player entering the stage when starting, passing level or dying
-    Comes down from the top
-    Ignore walls
-    Makes engine sound
 
 =========================================================================================================================================================================
 - non mirrored walls
