@@ -26,6 +26,7 @@ F6 banking: writes to $1FF6-$1FF9 select the 4K bank at $F000-$FFFF.
 NOTE: PC labels in the diagnostic output come from bank0.lst — after moving
 bank0 code, re-check addresses there (assertions do NOT depend on PCs).
 """
+import re
 import sys
 from pathlib import Path
 
@@ -81,12 +82,29 @@ from py65.devices.mpu6502 import MPU
 mpu = MPU(memory=mem)
 mem.pc_obj = mpu
 
-PC_STARTFRAME = 0xF037
-PC_INIT_LOAD  = 0xF02C     # jsr LoadLevel in GameStart (drop-in boot init −2B)
+_LBL = {}
+for _l in open(Path(__file__).with_name('bank0.lst'), errors='replace'):
+    _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+'
+                  r'([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$', _l)
+    if _m:
+        _LBL.setdefault(_m.group(2), int(_m.group(1), 16))
+for _need in ('StartFrame', 'LoadLevel'):
+    if _need not in _LBL:
+        sys.exit(f'label {_need} not found in bank0.lst')
+PC_STARTFRAME = _LBL['StartFrame']
+LOADLEVEL     = _LBL['LoadLevel']
+# jsr LoadLevel inside GameStart: exact opcode+operand match (hand PC
+# constants drifted twice — drop-in −2, title +2 — 2026-10-02 hang)
+def _at_init_jsr():
+    return (mem[mpu.pc] == 0x20
+            and mem[mpu.pc + 1] | (mem[mpu.pc + 2] << 8) == LOADLEVEL
+            and mpu.pc < PC_STARTFRAME)
 IDX_F7, IDX_B5, IDX_F0, IDX_A3 = 0x77, 0x35, 0x70, 0x23
 
 # ---- dynamic call chain + min-SP tracking ----
 frame = -1
+on_title = True                 # title/boot frames excluded from min_sp_game
+                                 # (RESET jsr LoadLevel chain = boot depth $F7)
 min_sp = 0xFF
 min_sp_pc = None
 min_sp_calls = []
@@ -113,7 +131,7 @@ def step():
     if mpu.sp < min_sp:
         min_sp, min_sp_pc, min_sp_frame = mpu.sp, prev_pc, frame
         min_sp_calls = list(calls)
-    if frame >= 1 and mpu.sp < min_sp_game:   # f0 includes level load (jsr LoadLevel chain)
+    if frame >= 1 and not on_title and mpu.sp < min_sp_game:
         min_sp_game = mpu.sp
         min_sp_gpc, min_sp_gframe = prev_pc, frame
         min_sp_gcalls = list(calls)
@@ -123,11 +141,11 @@ def chain_str(chain):
 
 # ---- reach init LoadLevel, force Level = 2 ----
 guard = 0
-while mpu.pc != PC_INIT_LOAD:
+while not _at_init_jsr():
     step(); guard += 1
     if guard > 200000: sys.exit(f'never reached init LoadLevel (pc=${mpu.pc:04X})')
 mem.ram[IDX_A3] = 1                      # Level = 1 (second level)
-print(f'Level forced to 2 before jsr LoadLevel at ${PC_INIT_LOAD:04X}')
+print(f'Level forced to 2 before jsr LoadLevel at ${mpu.pc:04X}')
 
 # ---- tentacle coverage ----
 # Boot EnterRoom loads room0 with EnemyCount=0, so UpdateEnemies early-outs
@@ -140,6 +158,7 @@ print(f'Level forced to 2 before jsr LoadLevel at ${PC_INIT_LOAD:04X}')
 # forcing the full PlayerHitsMap probe. Slot0 (snake @spawn 127) runs too.
 POKE_ENEMYCOUNT = 0x33          # EnemyCount     (ZP $B3 & $7F, bank0.lst U00b3)
 POKE_TENT_X     = 0x3E          # EnemyRamX slot1 (ZP $BE & $7F; tentacle $BD+1)
+POKE_DROP       = 0x0A          # DropTarget ($8A): $FF = title screen
 poked = False
 probe_ran = False               # UE_Tentacle reached the PlayerHitsMap probe
 
@@ -173,9 +192,17 @@ while frame < 420:
         prev_b5 = mem.ram[IDX_B5]
     if mpu.pc == PC_STARTFRAME:
         frame += 1
-        if not poked:
-            # boot EnterRoom already ran (EnemyCount was 0) and the sim never
-            # changes room, so these pokes persist for the whole run
+        # console RESET pulse: title -> game start. frame counter starts at
+        # 1 on the first StartFrame, so f1 stays released (title stores the
+        # sample), f2-3 held = edge on f2, then released.
+        mem.swchb = 0xFE if frame in (2, 3) else 0xFF
+        # title seen at frame START: the RESET edge fires later within this
+        # frame, so its LoadLevel chain is still boot-class work here
+        on_title = mem.ram[POKE_DROP] == 0xFF
+        if not poked and mem.ram[POKE_DROP] != 0xFF:
+            # boot EnterRoom ran under the title (DropTarget=$FF) and the
+            # RESET reload re-derives the room — poke once gameplay is live
+            # (DropTarget a real fall target), after that EnterRoom
             mem.ram[POKE_ENEMYCOUNT] = 2
             mem.ram[POKE_TENT_X] = 36
             poked = True

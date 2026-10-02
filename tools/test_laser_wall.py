@@ -212,6 +212,9 @@ def main() -> None:
         step()
         if mpu.pc == PC_STARTFRAME:
             frame += 1
+            # console RESET pulse: title (DropTarget=$FF) -> game start;
+            # f1 stores the released sample, f2-3 held = edge on f2
+            mem.swchb = 0xFE if frame in (2, 3) else 0xFF
             if mem.ram[I_BOMBP] & 0x80:
                 landed = frame
                 break

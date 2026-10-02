@@ -55,7 +55,7 @@ TRAIL_FRAMES = {int(x) for x in os.environ.get('SIM_TRAIL', '347').split(',')}
 LABELS = {}
 for _l in (SRC / 'bank0.lst').read_text(errors='replace').splitlines():
     _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+'
-                  r'([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*$', _l)
+                  r'([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$', _l)
     if _m:
         LABELS.setdefault(_m.group(2), int(_m.group(1), 16))
 for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row'):
@@ -66,6 +66,7 @@ PC_OVER = LABELS['Overscan']
 PC_ENTER = LABELS['EnterRoom']
 PC_LOADLEVEL = LABELS['LoadLevel']
 PC_ROW = LABELS['.Row']
+PC_VBLT = LABELS['VBLTimer']     # VBL work window: TIM64T #23 armed here
 
 # overscan sub-marks for attribution (which caller eats the timer window)
 OVER_MARKS = {LABELS[_n]: _n for _n in
@@ -194,6 +195,7 @@ def near_label(addr):
 
 
 OBJ_TOP_IDX = zp_byte_addr('ObjTop') - 0x80
+DROP_IDX = zp_byte_addr('DropTarget') - 0x80
 
 # ---- boot pokes: default Level=1/Room=1 (the flicker repro room);
 # SIM_LEVEL=0 keeps the boot defaults (level 0, start_room 0) ----
@@ -201,18 +203,14 @@ if SIM_LEVEL == '0':
     poked_level = poked_room = True
     print('boot defaults kept: level 0 room 0')
 boot_steps = 0
-while not (poked_level and poked_room):
+while not poked_level:
     mpu.step()
     boot_steps += 1
     pc, bk = mpu.pc, mem.bank
-    if not poked_level and bk == 0 and pc == PC_LOADLEVEL:
+    if bk == 0 and pc == PC_LOADLEVEL:
         mem.ram[IDX_LEVEL] = int(SIM_LEVEL)
         poked_level = True
         print(f'Level={SIM_LEVEL} poked at jsr LoadLevel pc=${pc:04X}')
-    if not poked_room and bk == 0 and pc == PC_ENTER:
-        mpu.a = int(SIM_ROOM)              # EnterRoom param
-        poked_room = True
-        print(f'RoomNo={SIM_ROOM} poked at EnterRoom pc=${pc:04X}')
     if boot_steps > 2_000_000:
         sys.exit('never reached boot pokes')
 prev_cycles = mpu.processorCycles          # ignore boot cycles in segment math
@@ -256,6 +254,14 @@ while frame < 440:
     c = step()
     pc, bk = mpu.pc, mem.bank
 
+    # room poke: the boot EnterRoom runs under the title (DropTarget=$FF)
+    # and the console-RESET reload re-derives RoomNo — poke the GAMEPLAY
+    # EnterRoom (DropTarget already a real fall target) instead.
+    if not poked_room and bk == 0 and pc == PC_ENTER and mem.ram[DROP_IDX] != 0xFF:
+        mpu.a = int(SIM_ROOM)              # EnterRoom param
+        poked_room = True
+        print(f'RoomNo={SIM_ROOM} poked at gameplay EnterRoom pc=${pc:04X}')
+
     # -- accumulate into the phase the executed code belonged to --
     if phase == PH_VBL:
         vbl_acc += c
@@ -265,7 +271,13 @@ while frame < 440:
         over_acc += c
 
     # -- phase transitions (landmarks are bank0 labels) --
-    if bk == 0 and pc == PC_ROW and phase == PH_VBL:
+    if bk == 0 and pc == PC_VBLT and phase == PH_VBL:
+        # VBL work window starts at the TIM64T #23 arm. Pre-arm = VSYNC +
+        # fixed entry, whose WSYNC phase slack (up to ~75c) is NOT work and
+        # made the old StartFrame-based measure flap across 1472 (2026-10-02:
+        # title-transition f2 acc 1491 while real span was 1336c).
+        vbl_acc = 0
+    elif bk == 0 and pc == PC_ROW and phase == PH_VBL:
         vbl_val = vbl_acc
         _wall_vbl = mem.wall
         phase = PH_KER
@@ -356,6 +368,11 @@ while frame < 440:
 
     # -- input script per frame boundary --
     if bk == 0 and pc == PC_START and frame_armed:
+        # console RESET pulse: title (DropTarget=$FF) -> game start.
+        # frame0 released (title arms StepsLeft), frames1-2 held (edge on
+        # f1 -> LoadLevel+EnterRoom, excluded from wall assert by f>=2),
+        # then released.
+        mem.swchb = 0xFE if frame in (1, 2) else 0xFF
         if PIN_ROW:
             # attractor (max 3px/frame, no teleport artifacts): slide RoomY
             # toward the enemy window (enemy screen Y = RoomY + ObjTop rel).
@@ -423,7 +440,8 @@ print(f'frames with OVER work > {OVER_BUDGET}: {len(over_over)} '
       f'{[(f, o) for f, o in over_over[:12]]}')
 print(f'bomb states seen: {sorted(bomb_states)}; enemy present: {enemy_seen}; '
       f'fire held frames: {inpt4_frames}')
-
+vbl_hot = [(f, v) for f, o, v in frame_stats if v > 1472]
+print(f'frames with VBL > 1472: {len(vbl_hot)} {vbl_hot[:16]}')
 # -- optional per-frame PC histogram dump (SIM_HIST=169,173) --
 for _fr in [int(x) for x in os.environ.get('SIM_HIST', '').split(',') if x]:
     _h = pc_hist_keep.get(_fr)
