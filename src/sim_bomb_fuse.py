@@ -81,8 +81,8 @@ from py65.devices.mpu6502 import MPU
 mpu = MPU(memory=mem)
 mem.pc_obj = mpu
 
-PC_STARTFRAME = 0xF039
-PC_INIT_LOAD  = 0xF02E     # jsr LoadLevel in GameStart
+PC_STARTFRAME = 0xF037
+PC_INIT_LOAD  = 0xF02C     # jsr LoadLevel in GameStart (drop-in boot init −2B)
 IDX_F7, IDX_B5, IDX_F0, IDX_A3 = 0x77, 0x35, 0x70, 0x23
 
 # ---- dynamic call chain + min-SP tracking ----

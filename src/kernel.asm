@@ -101,8 +101,10 @@ RcBase          byte            ; rect cache count ($89 — was MapPtrLo;
                                 ; rect4.x moved into the cache S3.2, and the
                                 ; count needs a byte OUTSIDE bank1's $E0-$EF
                                 ; stomp zone — see cache note below)
-MapPtrPad1      byte            ; was MapPtrHi ($8A, rect4.y) — dead pad,
-                                ; keeps the sequential block from shifting
+DropTarget      byte            ; spawn drop-in target Y (0 = idle); was
+                                ; MapPtrPad1/MapPtrHi dead pad — repurposed
+                                ; in place, keeps the sequential block from
+                                ; shifting (see DropArm below)
 CollisionX      byte            ; scratch for mirror calc
 CollisionCellX  byte            ; player max tile column
 CollisionCellY  byte            ; player top tile row
@@ -203,7 +205,7 @@ ScoreTe         = $F5           ; score tens digit (0-9)
 ;                          mask index = Y>>2, table has a $00 entry for
 ;                          index 4 = rect4 never masked)
 ; rect4 x,y,w,h live IN the cache ($DC-$DF) since S3.2 — the old split
-; slots are gone (MapPtrPad1 keeps the $8A allocation byte), Rc4W retired.
+; slots are gone (DropTarget $8A keeps the allocation byte), Rc4W retired.
 ; Buffers packed: PF0 $C3-$C5, PF1 $C6-$C8, PF2 $C9-$CB (rows 0-2 only).
 ; ($E0/$E1 are spare/stomp-zone — never persistent bank0 state.)
 RcW1            = $CC           ; walk FetchPtr base (rect0 x at Y=0; Y→$DF)
@@ -375,7 +377,8 @@ COLOR_HOT_R     = COLOR_BLINK_R
                                     ; (NOT deletable: $F008 = GameStart is a
                                     ;  hardcoded cross-bank entry — bank1
                                     ;  stub `jmp $F008`; this jmp also keeps
-                                    ;  $F173 Overscan (S3.4) + F0xx landmarks fixed)
+                                    ;  $F171 Overscan (bank1 stub literal tracks it)
+                                    ;  + F0xx landmarks fixed)
 
 GameStart:
     sei                         ; disable interrupts
@@ -394,12 +397,11 @@ GameStart:
     ; --- Initialize game state ---
     lda #0
     sta Level
+    sta EnemyDeadMask
     lda #3
     sta PlayerLives
     lda #BOMBS_MAX
     sta PlayerBombs
-    lda #$00
-    sta EnemyDeadMask
     ; Initialize timer: 60 frames/step × 120 = 7200 = 120.0s
     lda #60
     sta TickCounter
@@ -790,6 +792,13 @@ Overscan:
     lsr
     sta Temp                    ; save shifted joystick bits
 
+    ; --- Spawn drop-in gate: while falling from the top (DropTarget != 0)
+    ;     ALL input/physics/collision is bypassed -> DropStep only. ---
+    lda DropTarget
+    beq .NormalGame             ; idle -> normal play (adjacent, 3c/2c)
+    jmp DropStep                ; tail-jumps back to OverscanAudio
+.NormalGame:
+
     ; --- Bomb: edge-detect Down (D1, 0=pressed) ---
     lda Temp
     and #%00000010
@@ -988,6 +997,9 @@ EndInputCheck:
     ; --- Check enemy collision (lose life on hit) ---
     jsr CheckEnemyHit
 
+OverscanAudio:                  ; rejoin for the spawn drop-in (DropStep tail):
+    ;     bomb fuse keeps ticking during the fall — only BombPlayerBlast is
+    ;     gated (a mid-fall explosion must not cost a 2nd life/re-drop).
     ; --- Bomb fuse/explode tick (frames) ---
     jsr BombTick
 
@@ -1768,13 +1780,10 @@ LoadLevel:
     lda LevelStartY
     sta RoomY
 
-    ; Zero jetpack state
-    lda #0
-    sta vyLo
-    sta vyHi
-    sta JetPower
-    sta PlayerYSub
-    rts
+    ; Drop-in from the screen top to the start Y (DropArm also zeroes the
+    ; jetpack state + laser — stage start, game over and level advance all
+    ; land here).
+    jmp DropArm
 
 ; ==============================================================================
 ; Miner pickup — check if player overlaps miner, advance to next level
@@ -2185,6 +2194,8 @@ BombEnemyBlast:
 ; Cols = px/4 (0..39 screen). Y ignored.
 ; ------------------------------------------------------------------------------
 BombPlayerBlast:
+    lda DropTarget
+    bne .BPBMiss                ; spawn drop-in: falling = invulnerable
     lda BombX
     lsr
     lsr                         ; bomb col = BombX/4
@@ -2769,13 +2780,8 @@ LoseLife:
     sec
     rts
 .LLStay:
-    lda #0
-    sta vyLo
-    sta vyHi
-    sta JetPower
-    sta PlayerYSub
-    clc
-    rts
+    jmp DropArm                 ; same drop-in code: X/Y stay, fall from top
+                                ; (DropArm zeroes physics + laser, C=0 out)
 
 ; IsRoomDark / SetRoomDark + BitMaskTable moved to bank1 (leaf_move_plan B).
 
@@ -2806,15 +2812,78 @@ CheckBandTouch:
 LoseLifeBand:
     jsr LoseLife
     bcs .LLBdone               ; exhausted: ReloadLevel placed the player
-    lda RoomY
+    lda DropTarget             ; armed death Y (DropArm already zeroed RoomY)
     sec
     sbc #12                     ; clear the strip (spec: -= 12, not whole band)
     bcs .LLBstore
     lda #0
 .LLBstore:
     sta RoomY
+    jmp DropArm                 ; same code, destiny Y = one tile above water
 .LLBdone:
     rts
+
+; ------------------------------------------------------------------------------
+; DropArm / DropStep — the ONE spawn drop-in (user rule: same code for every
+; restart, only the destiny X/Y changes — X is already in RoomX, placed by the
+; caller; Y is animated from the screen top down to it).
+; Triggers: stage start / game over / level advance (LoadLevel tail),
+; enemy/blast/timer/hot death (.LLStay, same position), water (LoseLifeBand,
+; Y-12). All tail-call it -> zero added stack depth (sim_bomb_fuse guard).
+;
+; DropArm (A implied = current RoomY, C=0 out): freezes RoomY as DropTarget,
+; starts the sprite at the top (RoomY=0), zeroes physics + laser state so
+; descent is clean (LaserInput is skipped by the gate; beam gate forced 0).
+;
+; DropStep (runs instead of input/physics/collision while DropTarget != 0):
+; 8.8 accumulator PlayerYSub += DropSpeedTable[DropTarget>>4]; carry ->
+; inc RoomY; arrival (RoomY >= DropTarget) -> DropTarget = 0, normal control
+; resumes next frame. Speed table = Y*256/(60+Y/2) sampled per 16px tier ->
+; fall lasts ~60+Y/2 frames = 1.0-2.2 s (shallow start = quicker arrival).
+; Tail-jumps to OverscanAudio: bomb/laser/input/physics/horizontal/hot/band/
+; miner/enemy-hit/BombTick are all bypassed (enemies + bombs frozen 1-2 s,
+; timer keeps running; bank1 UpdateJetSound hears DropTarget as throttle).
+; ------------------------------------------------------------------------------
+DropArm:
+    lda RoomY
+    sta DropTarget
+    lda #4                      ; 1..7 = jet "burning": VBL flutter runs
+    sta JetPower                ;   (JP/8=0 keeps bank1 pitch at idle base)
+    lda #0
+    sta RoomY
+    sta PlayerYSub
+    sta vyLo
+    sta vyHi
+    sta LaserState
+    sta LaserBeamOn
+    clc
+    rts
+
+DropStep:
+    lda DropTarget
+    beq .DSdone                 ; idle (target 0 = nothing to fall)
+    lsr
+    lsr
+    lsr
+    lsr
+    tay
+    lda DropSpeedTable,y
+    clc
+    adc PlayerYSub
+    sta PlayerYSub
+    bcc .DSdone                 ; subpixel: no whole pixel yet this frame
+    inc RoomY
+    lda RoomY
+    cmp DropTarget
+    bcc .DSdone
+    lda #0
+    sta DropTarget              ; arrived — input/physics resume next frame
+    sta JetPower                ; clean resume (no phantom thrust hop)
+.DSdone:
+    jmp OverscanAudio           ; rejoin past physics/collision (no rts)
+
+DropSpeedTable:                 ; 8.8 px/frame per Y>>4 tier (Y = tier*16+8)
+    .byte 32,85,128,163,192,216,238,255,255
 
 ; ------------------------------------------------------------------------------
 ; BuildColupF — 12-byte final COLUPF image at ColupfBuf ($E7-$F2).
