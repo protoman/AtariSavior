@@ -2571,34 +2571,10 @@ EnemyOffTable:
 ; BitMaskTable moved to bank1 with IsRoomDark/SetRoomDark (leaf_move_plan).
 
 ; ------------------------------------------------------------------------------
-; RefreshEnemyY — write live Y → EnemyRamY (every slot, live or dead).
-; Runs at overscan entry: inside the safe window (after the HUD score-ptr
-; stomp of $E2-$E4, before LaserInput / CheckEnemyHit / moth / next frame's
-; SelectActiveObject read it) — see the EnemyRamY contract at the ZP map.
-; E1: moving types (bat) get ROM spawn + TickCounter-derived offset via
-; DeriveEnemyY — no persistent movement state exists in RAM.
-; Clobbers A/X/Y. End-of-main leaf (moved 2026-09-28: P3.6 rect folds grew
-; the post-pad region past the $FEF6 FoldIndirect pin — end of main has
-; pad slack, post-pad did not).
+; RefreshEnemyY moved post-pad (after TitleWork) — 2026-10-02, so its SELECT
+; → title check costs 0 pre-pad bytes (headroom 1B). Pins .ds $FBF8/$FC49
+; keep every downstream pre-pad address unchanged.
 ; ------------------------------------------------------------------------------
-RefreshEnemyY:
-    inc EnemyRamP                ; free-running frame clock (wraps 0-255).
-                                 ; TickCounter is the 60-frame GAME timer
-                                 ; (decrements 60->1, reloads) — gates derived
-                                 ; from it wrapped every second (spider
-                                 ; "teleported": (TC>>3)&63 only ever saw
-                                 ; 0..7 and counted DOWN 0->7 = jump).
-    ldx EnemyCount              ; countdown loop (-2 B vs forward; derive
-    beq .REYDone                ; order n-1..0 — derivations independent,
-.REYLoop:                       ; every reader runs after refresh completes)
-    dex
-    jsr DeriveEnemyY            ; A = live Y (ROM copy, or derived for bat)
-    sta EnemyRamY,X
-    txa                         ; N/Z must come from X: flags after jsr are
-    bne .REYLoop                ; the sign of the DERIVED Y byte (bpl ran
-.REYDone:                       ; away at X=$FF, writing $1C2/$1C1/... =
-    rts                         ; mirrored EnemyRamP/EnemyRamD/TIA = blink,
-                                ; black rooms, broken PF, invisible sprites)
 
 ; ==============================================================================
 ; E4 moth exit tramp ($FC49-$FC4E) — bank2 executes `sta $1FF6` at $FC49
@@ -2969,6 +2945,51 @@ TitleWork:
     lda INTIM
     bne .TWwait
     jmp StartFrame
+
+; ------------------------------------------------------------------------------
+; RefreshEnemyY — write live Y → EnemyRamY (every slot, live or dead).
+; Runs at overscan entry: inside the safe window (after the HUD score-ptr
+; stomp of $E2-$E4, before LaserInput / CheckEnemyHit / moth / next frame's
+; SelectActiveObject read it) — see the EnemyRamY contract at the ZP map.
+; E1: moving types (bat) get ROM spawn + TickCounter-derived offset via
+; DeriveEnemyY — no persistent movement state exists in RAM.
+; Clobbers A/X/Y. Moved post-pad 2026-10-02 (SELECT → title needs this
+; block after the pads; pre-pad headroom is 1B).
+; ------------------------------------------------------------------------------
+RefreshEnemyY:
+    inc EnemyRamP                ; free-running frame clock (wraps 0-255).
+                                 ; TickCounter is the 60-frame GAME timer
+                                 ; (decrements 60->1, reloads) — gates derived
+                                 ; from it wrapped every second (spider
+                                 ; "teleported": (TC>>3)&63 only ever saw
+                                 ; 0..7 and counted DOWN 0->7 = jump).
+    ldx EnemyCount              ; countdown loop (-2 B vs forward; derive
+    beq .REYDone                ; order n-1..0 — derivations independent,
+.REYLoop:                       ; every reader runs after refresh completes)
+    dex
+    jsr DeriveEnemyY            ; A = live Y (ROM copy, or derived for bat)
+    sta EnemyRamY,X
+    txa                         ; N/Z must come from X: flags after jsr are
+    bne .REYLoop                ; the sign of the DERIVED Y byte (bpl ran
+.REYDone:                       ; away at X=$FF, writing $1C2/$1C1/... =
+                                ; mirrored EnemyRamP/EnemyRamD/TIA = blink,
+                                ; black rooms, broken PF, invisible sprites)
+    ; --- SELECT held → back to the title / level-select screen ---
+    lda DropTarget
+    cmp #$FF
+    beq .REYRts                 ; already title (TitleWork owns SELECT)
+    lda SWCHB
+    sta StepsLeft               ; latch so TitleWork sees "held" (no re-fire)
+    and #%00000010
+    bne .REYRts                 ; SELECT released
+    lda #$FF
+    sta DropTarget              ; title sentinel
+    jsr LoadLevel               ; tail → DropArm .DATitle (score/objects)
+    pla                         ; drop OUR return address (LoadLevel already
+    pla                         ; popped its own) — tail into TitleWork
+    jmp TitleWork
+.REYRts:
+    rts
 
 ; ------------------------------------------------------------------------------
 ; BuildColupF — 12-byte final COLUPF image at ColupfBuf ($E7-$F2).
