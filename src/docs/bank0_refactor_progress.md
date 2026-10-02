@@ -312,7 +312,18 @@ execute without a fresh, explicit user request tied to a real need
      arithmetic; `SetObjectXPos` moved AFTER the clamp so M0 and the LHT
      interval share the shifted lo).
   Probe + build + 5-test battery green; probe asserted in `test_laser_s4`
-  (end-flush shift, bound staging, mirror x-at-+0 read). `test_laser_s4` extended (bound contract, NUSIZ/VBL chain,
+  (end-flush shift, bound staging, mirror x-at-+0 read).
+  → **ROLLBACK (user, after Stella):** v3 shipped "totally out of position
+  and size, even away from walls" — the probe was green (1216/1216) yet
+  the real game was wrong, i.e. **the reference model itself did not
+  capture what the game actually needs** (lesson: a green
+  asm-vs-spec probe only proves asm matches spec, not that the spec is
+  right — Stella is the oracle). Whole clamp saga `e24d9de`+`5ed997a`+
+  `c2450fb` reverted to `a6b94f4` on user request: laser back to fixed
+  8px / full width / crossing walls (the original S6 bug). `tools/
+  test_laser_wall.py` kept on disk (expected-fail until a new clamp
+  lands). **Next attempt: baby steps, thin walls first — one small
+  change → build → battery → Stella test before the next piece.** `test_laser_s4` extended (bound contract, NUSIZ/VBL chain,
   blocked path).
 
 ## Log
