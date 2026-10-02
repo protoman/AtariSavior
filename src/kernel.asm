@@ -377,7 +377,7 @@ COLOR_HOT_R     = COLOR_BLINK_R
                                     ; (NOT deletable: $F008 = GameStart is a
                                     ;  hardcoded cross-bank entry — bank1
                                     ;  stub `jmp $F008`; this jmp also keeps
-                                    ;  $F173 Overscan (bank1 stub literal tracks it)
+                                    ;  $F196 Overscan (bank1 stub literal tracks it)
                                     ;  + F0xx landmarks fixed)
 
 GameStart:
@@ -526,6 +526,36 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
 .BgStore:
     sta Temp
 
+    ; --- Tide row2 body count → CollisionX (kernel carrier; idle during kernel) ---
+    ; Water band surface drifts 0-3 lines down/up. off = triangle(p),
+    ; p = EnemyRamP>>4 (free-running clock, 16 frames per pixel = gentle
+    ; wave speed): p0-3 = down (0→3), p4-7 = back up (3→0), p8-15 = rest
+    ; (~2.1 s at 0). 256-frame period wraps 15→0 with off=0 both sides (no
+    ; jump). Stores 36+off; kernel .Row row2 uses it, .WaterRow derives
+    ; 47-count. CollisionX is overscan-only elsewhere — this VBL write is
+    ; the last before the kernel read (stomp-zone safe, no new ZP byte).
+    lda EnemyRamP
+    and #$F0
+    beq .TideBase            ; p=0 → off 0 (A already 0)
+    lsr
+    lsr
+    lsr
+    lsr                      ; A = p (1..15)
+    cmp #8
+    bcc .TideTri
+    lda #0                   ; rest phase p8-15
+    beq .TideBase            ; always
+.TideTri:
+    cmp #4
+    bcc .TideBase            ; p 1-3: off = p (A holds it)
+    eor #$FF                 ; p 4-7: off = 7-p
+    sec
+    adc #7                   ; ~p + 7 + 1 = 7-p (mod 256)
+.TideBase:
+    clc
+    adc #36
+    sta CollisionX
+
     ; --- Single HMOVE: apply P0 (player) + P1 (enemy) fine motion once ---
     sta WSYNC
     sta HMOVE
@@ -632,16 +662,16 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     sta COLUBK
     lda PF2Buf,X
     sta PF2
-    ; --- Scanlines this pass: rows 0/1 = 48; row 2 = 36 bodies. The bottom
-    ; water strip (last ~12 lines, bottom_band_plan rule 2) renders in
-    ; .WaterRow after this pass — its own setup line + 11 bodies keeps the
-    ; row-2 total at 49 lines (setup+48) exactly as before the split.
+    ; --- Scanlines this pass: rows 0/1 = 48; row 2 = 36+off (tide, CollisionX).
+    ; The bottom water strip (last 12-off lines, bottom_band_plan rule 2)
+    ; renders in .WaterRow after this pass — its own setup line + (11-off)
+    ; bodies keeps the row-2 total at 49 lines (setup+48) exactly.
     cpx #TILE_ROWS-1
-    bne .RowLines48
-    lda #LINES_PER_TILE-12       ; row 2: 36 bodies
-    bne .RowLinesLC              ; always (36 != 0)
-.RowLines48:
+    beq .RowLinesTide        ; row 2: tide count (36+off) from CollisionX
     lda #LINES_PER_TILE
+    bne .RowLinesLC          ; always (48 != 0)
+.RowLinesTide:
+    lda CollisionX           ; 36..39 — VBL tide calc (see VBL comment)
 .RowLinesLC:
     sta LineCount
 
@@ -739,7 +769,9 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     sta COLUBK
 .WRRestore:
 .WRSkip:
-    lda #11                     ; bodies: setup line + 11 = 12-line strip
+    lda #47                     ; strip bodies = 47 - CollisionX (36+off)
+    sec                         ;   = 11-off: total row2 setup+48 unchanged
+    sbc CollisionX
     sta LineCount
     sta WSYNC
     jmp .Line
