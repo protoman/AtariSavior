@@ -1119,8 +1119,8 @@ CallPad_BombMarkWalls:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F175           ; Overscan in bank0 (must match bank0 ToGameStub;
-                        ; $F175 after S6 laser VBL NUSIZ grew +2)
+    jmp $F173           ; Overscan in bank0 (must match bank0 ToGameStub;
+                        ; $F173 after S3.4 removed the VBL LoadPF0Only jsr)
 
 ; ========================================================================
 ; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing
