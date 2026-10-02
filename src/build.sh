@@ -68,5 +68,19 @@ fi
 # Concatenate into 16K ROM
 cat bank0.bin bank1.bin bank2.bin bank3.bin > "$OUTPUT"
 
+# Headless frame-budget sim: worst-case frame (fly + laser held + bomb +
+# 2 objects) must hold 263 lines/frame — hard-fails on flicker regressions.
+if "$SIM_PY" -c "import py65" 2>/dev/null; then
+    echo "  sim_frame_budget: running..."
+    "$SIM_PY" "$DIR/sim_frame_budget.py" > /tmp/sim_frame_budget.out 2>&1 || {
+        echo "SIM FAILED — last lines:"
+        tail -25 /tmp/sim_frame_budget.out
+        exit 1
+    }
+    echo "  sim_frame_budget: OK"
+else
+    echo "  WARNING: py65 not importable via $SIM_PY — sim_frame_budget SKIPPED"
+fi
+
 SIZE=$(wc -c < "$OUTPUT")
 echo "Done: $OUTPUT ($SIZE bytes, F6 bankswitch)"

@@ -747,6 +747,51 @@ kernel `.Line` loop stalls a FULL scanline per affected line.
 3. Check if the PF0/PF1/PF2 data matches what the TIA renders
 4. Use Stella to measure actual sprite pixel position vs expected
 
+### Frame-budget flicker — rules (S6.4-S6.6, 2026-10-01)
+
+Residual flicker investigation will resume later (user-led). Until then,
+these rules PREVENT making it worse:
+
+1. **The invariant is the wall-model**: `sim_frame_budget` frame lines
+   263.0 ±0.15 on every frame ≥2 (Stella-agree). NEVER weaken it. The
+   `OVER` work meter: `> OVER_ABSORB (3222)` = real spike (fail);
+   3201-3222 = INTIM 64-tick poll quantization band — sub-window frames
+   measure 3200 ± ε, and CUTTING work can shift ε across the hard 3200
+   line with the wall-model staying clean (S6.6 did exactly this).
+   Chase wall-model, not the ε. Only change `OVER_ABSORB` with a ledger
+   justification.
+2. **Heavy frames = rect-walk coincidence, not one hot loop.** Every
+   measured spike = enemy-probe walk (~480c = prologue ~140 + 5-rect
+   loop ~340) + an extra player substep walk (+277..390c) landing on the
+   same frame; exit crossings add `EnterRoom` (+1665c, f327 class —
+   still open). One rect walk ≈ 400-600c total; EVERY walker multiplies
+   any new rect, new per-frame probe, or loop-body growth (PHM, moth
+   walk, LWC, LHT kill scan all share the pattern). Before adding any
+   per-frame walk/probe: measure with mark windows + `SIM_HIST`, and
+   count how many walks already run that frame (StepDown substeps,
+   CheckP0Left/Right, enemy probes, LWC).
+3. **Overscan margin at fly+laser baseline is only ~20-220c.** New
+   overscan work must be net-0 bytes/cycles or it needs a measured cut
+   elsewhere in the same change. The gate is `build.sh` (runs the sim);
+   scenario gates: `SIM_LEVEL=0 SIM_FLY={Y,X,M}` (all must be 0-2 bad
+   frames) + default gate + battery `tools/test_*.py` 6/6.
+4. **Walk-cut patterns that worked (reuse before inventing):**
+   destroyed-rect flag in `rect.w` b7 (S6.4, kills per-rect mask scan);
+   col-change gate for enemy probes (S6.5, box-result keyed — walk
+   outcome is a pure function of (col,row) box, so any same-box
+   candidate may skip); row-before-mask in LWC (S6.6, out-of-band rects
+   skip the mask test). Bank2 has ~1.6KB free gap ($F37C-$F9D8) for
+   moved gate/bodies; bank0 pre-pad headroom = 1B (cuts only).
+5. **Reorder/regroup regressions show up in `test_laser_wall.py`, not
+   the sim** (S6.6 bug: mask fall-through jumped to `.LWs1` mid-span
+   with stale A — clamp silently never applied). When moving blocks in
+   a walk, the fall-through target must be an instruction START; run
+   the battery after every structural edit.
+6. **`pc_hist`/trace PCs are bank-aliased** — a hot hex PC may be the
+   fill poll in ANOTHER bank ($F2CF = `bne .WaitOverscan` in bank0, not
+   LWC code). Cross-check bank before blaming a routine (AGENTS py65
+   rule, recurrence).
+
 ### HERO Power Bar Analysis (2026-09-22)
 
 Verified against `docs/hero/hero_bank0.asm` + screenshots `screenshots/hero_001.png`..`hero_007.png`
@@ -864,8 +909,9 @@ Overscan still `$F14D`.
 
 ### Editor flicker budget (2026-09-23)
 
-`MapCanvas`: **max 3 elements/room** (`kMaxRoomElements`) and **max 1 element
-per row** (miner/enemy/lamp share a row budget). Warnings via `QMessageBox`.
+`MapCanvas`: **max 2 elements/room** (`kMaxRoomElements`) and **max 1 element
+per row** (miner/enemy/lamp share a row budget; same ≤2 cap enforced on data
+by `verify_build` objects >2). Warnings via `QMessageBox`.
 Rationale: GRP1 is one sprite — more simultaneous objects → more flicker
 (rotating `SelectActiveObject`). Restrict at authoring time.
 

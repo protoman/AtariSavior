@@ -53,13 +53,7 @@
                         "dir": -1
                     }
                 ],
-                "lamps": [
-                    {
-                        "x": 18.5,
-                        "y": 2.5,
-                        "lit": true
-                    }
-                ],
+                "lamps": [],
                 "bottom_band": false,
                 "bottom_r": 0,
                 "bottom_g": 0,

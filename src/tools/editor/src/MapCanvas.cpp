@@ -338,7 +338,7 @@ bool MapCanvas::AllowAddElement() {
     if (CountRoomElements() < kMaxRoomElements) return true;
     QMessageBox::warning(
         nullptr, QObject::tr("Element Limit"),
-        QObject::tr("Maximum of 3 elements per room (miner, enemies, lamps, raft, magma, ...).\n"
+        QObject::tr("Maximum of 2 elements per room (miner, enemies, lamps, raft, magma, ...).\n"
                     "Restricting the number of elements to avoid too much flicker."));
     return false;
 }

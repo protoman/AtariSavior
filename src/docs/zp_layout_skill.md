@@ -121,7 +121,7 @@ sequential byte would be `$BC`, but `$BD+` are explicit EQUs and `$BC` is
 
 | Addr | Name | Notes |
 |------|------|-------|
-| $BD | EnemyRamX | 3 bytes live enemy X ($BD-$BF, slots 0-2 only — `EnemyRamX[3]` would collide with `$C0` LaserState; the 3-slot bound is enforced three ways: editor `kMaxRoomElements=3`, `convert_level.MAX_ENEMIES=3`, `verify_build` enemies+lamps ≤3) |
+| $BD | EnemyRamX | 3 bytes live enemy X ($BD-$BF, slots 0-2 only — `EnemyRamX[3]` would collide with `$C0` LaserState; slot bound enforced by `convert_level.MAX_ENEMIES=3` (runtime ceiling), while the policy cap is 2 objects/room enforced three ways: editor `kMaxRoomElements=2`, `convert_level` rooms from JSON, `verify_build` enemies+lamps ≤2) |
 | $C0 | LaserState | laser S1: b7 held, b6 prev, b1-0 sweep phase |
 | $C1 | EnemyRamD | Packed dir bits 0-3 |
 | $C2 | EnemyRamP | Free-running frame clock (`inc` once/frame in RefreshEnemyY; gates bat/spider/tentacle derives; init `$F0` on room load = harmless seed) |

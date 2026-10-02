@@ -77,7 +77,7 @@ MothRoutine:
     lda EnemyRamP
     and #1
     beq .MothRun              ; branch-over-jmp (tail labels exceed ±127)
-    jmp .MothExit             ; ÷2 gate: 1 px / 2 frames
+    jmp MothExit             ; ÷2 gate: 1 px / 2 frames
 .MothRun:
     stx EnemyIndex             ; slot — turn/commit paths restore it
     lda EnemyRamD              ; live dir bit
@@ -110,6 +110,9 @@ MothRoutine:
     bcs .MothRangeOk           ; 224..255 = -32..-1 = left half -> in range
     jmp .MothTurn              ; 33..223 = out of spawn ± 8 tiles -> turn
 .MothRangeOk:
+    jmp MothGate               ; S6.5 col-change gate (body lives pre-$F9D9:
+                               ; this region is pinned at $F25A)
+MothDoWalk:
     ; rows: cell space = 48-line BANDS (LINES_PER_TILE=48, TILE_ROWS=3 — the
     ; kernel .Row runs x3 and PHM's YToRowTable = floor(line/48), rects rows
     ; 0-2). The old >>4 (= /16) gave rows 3-4 at the moth's Y 54-82 = BELOW
@@ -197,13 +200,8 @@ MothRoutine:
     sta FetchPtr+1
     ldy #0
 .MwLoop:
-    tya
-    lsr
-    lsr
-    tax
-    lda MothMaskBit,X
-    and BombPacked
-    bne .MwNext               ; destroyed rect -> not solid
+    ; S6.4 (verbatim copy of kernel.asm PHM): destroyed-flag = rect.w b7
+    ; (set by ApplyBombWalls) — old BombMaskBit scan deleted; w-read skips.
     lda (FetchPtr),Y          ; rect.x
     cmp CollisionCellX
     beq .MwColOk
@@ -214,6 +212,7 @@ MothRoutine:
     iny                       ; rect.w
     clc
     lda (FetchPtr),Y
+    bmi .MwNrmCol             ; S6.4 b7 = destroyed (Y = base+2)
     adc CollisionX
     cmp CollisionEndX
     beq .MwNrmCol
@@ -255,13 +254,13 @@ MothRoutine:
     ldx EnemyIndex            ; slot back (walk used X for the mask index)
     lda Temp
     sta EnemyRamX,X           ; clear -> commit candidate step
-    jmp .MothExit
+    jmp MothExit
 .MothTurn:
     ldx EnemyIndex
     lda MothBitTable,X        ; flip dir bit, hold X (no commit)
     eor EnemyRamD
     sta EnemyRamD
-.MothExit:
+MothExit:
     lda EnemyDataLo           ; restage record base (walk overwrote FetchPtr)
     sta FetchPtr
     lda EnemyDataHi
@@ -321,6 +320,8 @@ MothRowTable:
 ; Lives here (bank2 $F260+): bank0 has 1B pre-pad headroom; org $F9D9 below
 ; pins level data (Origin Reverse-indexed if this overflows = build fails).
 ; ------------------------------------------------------------------------------
+    .ds $F25A - *, 0            ; pin LWC entry (sim_frame_budget beam_cols
+                                ; gate + session ledgers key on $F25A)
 LaserWallClamp:
     lda RoomY                   ; beam rows RoomY+2..3 -> band rows
     clc
@@ -347,17 +348,11 @@ LaserWallClamp:
     bne .LWgo
     jmp .LWdone
 .LWgo:
-    sta RectCount
+    tax                         ; X = rect count (frees the zp dec: dex/beq)
 .LWrect:
-    tya                         ; destroyed rect -> treated as empty
-    lsr
-    lsr
-    tax
-    lda MothMaskBit,X
-    and BombPacked
-    beq .LWm1                   ; branch-over-jmp: .LWnext is >127B ahead
-    jmp .LWnext
-.LWm1:
+    ; S6.6: destroyed-mask test moved AFTER the row test (was here) —
+    ; out-of-band rects (row fails) never reach spans, so ~3 of 5 rects
+    ; skip the BombPacked index/test entirely (-7c each, frame-budget cut).
     iny                         ; Y = base+1 (y)
     lda (FetchPtr),Y
     cmp CollisionEndY           ; rect.y <= bottom ?
@@ -379,7 +374,29 @@ LaserWallClamp:
     tya
     and #$FC
     tay                         ; Y = base
+    ; destroyed-mask test (S6.6 moved here: only in-band rects pay it)
+    lda BombPacked
+    and #$78
+    beq .LWs0                   ; no holes -> straight to span walk
+    tya                         ; destroyed rect -> treated as empty
+    lsr
+    lsr
+    tay
+    lda MothMaskBit,Y
+    and BombPacked
+    beq .LWmMask                ; alive -> restore Y = base and continue
+    tya                         ; destroyed -> next rect (Y = idx)
+    asl
+    asl
+    tay
+    jmp .LWnext
+.LWmMask:
+    tya
+    asl
+    asl
+    tay                         ; Y = base restored
     ; --- span1 (left half): [x, x+w-1]
+.LWs0:
     lda (FetchPtr),Y            ; x
     cmp CollisionCellX          ; x <= c1 ?
     beq .LWs1                   ; x == c1: shi >= x >= c0 -> on path
@@ -437,6 +454,14 @@ LaserWallClamp:
     tya
     and #$FC
     tay                         ; Y = base
+    ; Seam invariant (verified: all M*RoomRects x+w <= 20): rect data =
+    ; left half, mirror spans = [40-x-w..39-x] >= 20. Left-half path
+    ; (c1 <= 19) can never hit the mirror -> skip it (~45c/rect saved;
+    ; this is the frame-budget flicker cut, sim_frame_budget). Straddle/
+    ; right paths pay +8c/rect (same line bucket).
+    lda CollisionCellX          ; c1
+    cmp #20
+    bcc .LWnext                 ; left-half path: mirror spans >= 20 -> dead
     lda #39
     sec
     sbc (FetchPtr),Y            ; A = 39-x = shi2
@@ -501,11 +526,35 @@ LaserWallClamp:
     iny
     iny
     iny                         ; Y += 4 -> next rect
-    dec RectCount
+    dex
     beq .LWdone
     jmp .LWrect                 ; body > 127B: branch-over-jump (E1 idiom)
 .LWdone:
     jmp LaserClampDone          ; back to the body (stack depth unchanged)
+
+; S6.5 col-change gate for MothRoutine (see entry at .MothRangeOk): walk
+; result depends only on the (col,row) box. Moth rows are band-constant
+; (Y sine +-6 inside spawn band, MothYDerive) and RAW candidate-col ==
+; committed-col implies equal vl-cols (vl = f(Temp) deterministic; a raw
+; mismatch at coarse edges only OVER-walks, never under-walks). Same-col
+; candidate = the side the moth already arrived from = clear -> commit.
+; Saves the prologue (~140c) + 5-rect loop (~340c) on every moth-run frame
+; that stays in its column: measured +478c spikes inside UpdateEnemies.
+MothGate:
+    lda EnemyRamX,X
+    lsr
+    lsr                     ; committed raw col
+    sta CollisionX           ; scratch (range anchor already consumed)
+    lda Temp
+    lsr
+    lsr                     ; candidate raw col
+    cmp CollisionX
+    bne .MothGateWalk       ; new column -> must probe
+    lda Temp
+    sta EnemyRamX,X          ; same box -> arrival state was clear -> commit
+    jmp MothExit
+.MothGateWalk:
+    jmp MothDoWalk
 
     ; --- Level data (frozen addresses — pointer values must match bank0's
     ;     original layout, level_bank_plan P2.1: $F9D9-$FB1E = 326B) ---
