@@ -62,7 +62,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $87 | Grp0PtrHi | Player sprite ptr hi (scratch) |
 | $88 | Temp | General scratch (VBLANK COLUBK, ObjectCount, …) |
 | $89 | RcBase | Rect cache **count** (sequential decl — was MapPtrLo; the $89 slot now hosts the count so the 20 rect bytes fit $CC-$DF clear of bank1's $E0 stomp — S3.2-fix, see cache row) |
-| $8A | MapPtrPad1 | Was MapPtrHi (rect4.y) — dead pad, keeps the sequential block from shifting |
+| $8A | DropTarget | Spawn drop-in target Y (0 = idle; **$FF = title-screen sentinel**, valid targets ≤ 191). Was MapPtrPad1 dead pad — slot kept so the sequential block doesn't shift |
 | $8B | CollisionX | Collision/mirror scratch |
 | $8C | CollisionCellX | Player max tile col |
 | $8D | CollisionCellY | Player top tile row |

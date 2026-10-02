@@ -377,7 +377,7 @@ COLOR_HOT_R     = COLOR_BLINK_R
                                     ; (NOT deletable: $F008 = GameStart is a
                                     ;  hardcoded cross-bank entry — bank1
                                     ;  stub `jmp $F008`; this jmp also keeps
-                                    ;  $F171 Overscan (bank1 stub literal tracks it)
+                                    ;  $F173 Overscan (bank1 stub literal tracks it)
                                     ;  + F0xx landmarks fixed)
 
 GameStart:
@@ -397,7 +397,6 @@ GameStart:
     ; --- Initialize game state ---
     lda #0
     sta Level
-    sta EnemyDeadMask
     lda #3
     sta PlayerLives
     lda #BOMBS_MAX
@@ -407,6 +406,11 @@ GameStart:
     sta TickCounter
     lda #120
     sta BarLevel                ; bar starts full
+    ; --- Title screen: DropTarget=$FF sentinel (valid fall targets are Y
+    ;     ≤ 191, so $FF never reads as a real drop) → boot lands in the
+    ;     level-select state until console RESET starts the game. ---
+    lda #$FF
+    sta DropTarget
 
     ; --- Load first level ---
     jsr LoadLevel
@@ -448,6 +452,7 @@ StartFrame:
     ; cache (enter-copy + direct walk). #23 = 1472c = 161c headroom.
     ; Frame budget: V(#23) + O(#50) = 73 TIM64T units → 3 + 19.4 + 197.5 +
     ; 42.1 = 262 lines. (#75 was the pre-trim 293-line frame.)
+VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     lda #23
     sta TIM64T
 
@@ -1018,8 +1023,7 @@ OverscanAudio:                  ; rejoin for the spawn drop-in (DropStep tail):
     lda #60
     sta TickCounter
     dec BarLevel
-    beq .TimerExpired           ; bar empty — time's up!
-    jmp .TimerDone
+    bne .TimerDone              ; not empty yet (bne = was beq+jmp, −3B)
 .TimerExpired:
     ; Time's up! Lose a life (shared path). C=1: lives exhausted +
     ; ReloadLevel done. C=0: physics zeroed by LoseLife.
@@ -2845,6 +2849,9 @@ LoseLifeBand:
 ; timer keeps running; bank1 UpdateJetSound hears DropTarget as throttle).
 ; ------------------------------------------------------------------------------
 DropArm:
+    lda DropTarget
+    cmp #$FF
+    beq .DATitle               ; title ($FF sentinel): static pose at start
     lda RoomY
     sta DropTarget
     lda #4                      ; 1..7 = jet "burning": VBL flutter runs
@@ -2858,10 +2865,30 @@ DropArm:
     sta LaserBeamOn
     clc
     rts
+.DATitle:
+    ; Title: player already placed at level start by LoadLevel. Hide all
+    ; GRP1 objects (EnemyCount=0 → SelectActiveObject .SONothing blanks
+    ; ObjBase/ObjTop) and drop the miner slot so SELECT/RESET reloads
+    ; refresh them via EnterRoom. HUD score = level+1 ("000001" = level 0).
+    lda #0
+    sta EnemyCount
+    lda #$FF
+    sta LevelMinerRoom          ; ROOM_NONE: no miner slot, no pickup
+    lda Level
+    clc
+    adc #1
+    sta ScoreTe                 ; ones digit (LEVEL_COUNT ≤ 9 — ≥10 needs
+    lda #0                      ;  a packed-BCD tens digit here)
+    sta ScoreTh
+    sta ScoreHu
+    clc
+    rts
 
 DropStep:
     lda DropTarget
     beq .DSdone                 ; idle (target 0 = nothing to fall)
+    cmp #$FF
+    beq TitleWork               ; title sentinel: select/reset, no fall
     lsr
     lsr
     lsr
@@ -2884,6 +2911,64 @@ DropStep:
 
 DropSpeedTable:                 ; 8.8 px/frame per Y>>4 tier (Y = tier*16+8)
     .byte 32,85,128,163,192,216,238,255,255
+
+; ------------------------------------------------------------------------------
+; TitleWork — level-select screen (DropTarget = $FF sentinel, dispatched from
+; DropStep every frame). Player stands at the level start: no gravity, no
+; enemies (count/miner cleared by DropArm .DATitle), no sound, timer frozen
+; (tail skips the TickCounter/BarLevel block). HUD score = level+1.
+;   SELECT (SWCHB b1, active-low EDGE) → level+1, wrap → 000001, reload room 0
+;   RESET  (SWCHB b0, active-low EDGE) → score 000000, LoadLevel tail arms
+;          the real drop-in → gameplay starts
+; StepsLeft = previous SWCHB sample (physics is skipped on title, so it is
+; title-owned; the first play frame rewrites it as the step budget).
+; Console switches are read again after any jsr (LoadLevel clobbers X/Y/A).
+; ------------------------------------------------------------------------------
+TitleWork:
+    ; --- SELECT edge: prev released (1) & now pressed (0) ---
+    lda StepsLeft
+    and #%00000010
+    beq .TWselDone             ; held from last frame -> no repeat
+    lda SWCHB
+    and #%00000010
+    bne .TWselDone             ; released now -> no press
+    inc Level
+    lda Level
+    cmp #LEVEL_COUNT
+    bne .TWselGo
+    lda #0
+    sta Level                  ; wrap: no level above → back to 000001
+.TWselGo:
+    jsr LoadLevel              ; title arm re-runs → score/objects refreshed
+.TWselDone:
+    ; --- RESET edge ---
+    lda StepsLeft
+    and #%00000001
+    beq .TWrstDone
+    lda SWCHB
+    and #%00000001
+    bne .TWrstDone
+    lda #0
+    sta DropTarget             ; leave title → LoadLevel tail arms real fall
+    sta ScoreTh                ; gameplay score starts at 000000
+    sta ScoreHu
+    sta ScoreTe
+    jsr LoadLevel
+.TWrstDone:
+    lda SWCHB
+    sta StepsLeft              ; remember sample for next frame's edges
+    ; --- Frame audio: ch0 silenced by UpdateBombSound (BombSnd=0); jet
+    ;     channel force-muted here — UpdateJetSound is skipped because
+    ;     $FF would read as "falling" and buzz; laser skipped (LaserState
+    ;     = 0, AUDV0 covered above). ---
+    jsr BombTick
+    jsr CallPad_UpdateBombSound
+    lda #0
+    sta AUDV1
+.TWwait:
+    lda INTIM
+    bne .TWwait
+    jmp StartFrame
 
 ; ------------------------------------------------------------------------------
 ; BuildColupF — 12-byte final COLUPF image at ColupfBuf ($E7-$F2).

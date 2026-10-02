@@ -1122,8 +1122,8 @@ CallPad_BombMarkWalls:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F171           ; Overscan in bank0 (must match bank0 ToGameStub;
-                        ; back to $F171 — VBL flutter done via JetPower seed)
+    jmp $F173           ; Overscan in bank0 (must match bank0 ToGameStub;
+                        ; back to $F173 — VBL flutter done via JetPower seed)
 
 ; ========================================================================
 ; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing

@@ -310,7 +310,7 @@ was the disproven claim.
 - [ ] Music (background theme)
 - [x] Color schemes per level (LevelWallColor/LevelWallColor2 from level data)
 - [ ] Screen transitions
-- [ ] Title screen
+- [x] Title screen (level select: DROP-IN sentinel, SELECT/RESET console switches)
 - [ ] Game over screen
 - [ ] Difficulty settings
 
@@ -773,17 +773,23 @@ these rules PREVENT making it worse:
 3. **Overscan margin at fly+laser baseline is only ~20-220c.** New
    overscan work must be net-0 bytes/cycles or it needs a measured cut
    elsewhere in the same change. The gate is `build.sh` (runs the sim);
-    scenario gates: `SIM_LEVEL=0 SIM_FLY={Y,X,M}` — **post-drop-in numbers
-    (2026-10-02): Y=3, X=5, M=1 bad frames** (was 0/2/0). The spawn
-    drop-in delays gameplay ~73 frames (bomb landed f62→f134), re-phasing
-    every rect-walk coincidence onto different frames; histograms show the
-    same documented family (`.RectLoop` + probe), and the new spikes are
-    milder than pre-drop baseline's own X f327 +14-line EnterRoom spike
-    (gone from the 439-frame window). FLY runs exit SIM FAILED on the
-    VBL/OVER assertions — those failed pre-drop too on level 0 (VBL
-    1505/1494/1480 > 1472); **judge scenario gates by the wall-model
-    bad-frame list only**, never by the exit code. + default gate +
-    battery `tools/test_*.py` 6/6.
+    scenario gates: `SIM_LEVEL=0 SIM_FLY={Y,X,M}` — **post-title numbers
+    (2026-10-02): Y=1 (f138, +1-line EnterRoom), X=0, M=1 (f131, 262.84
+    short) bad frames** (was 3/5/1 pre-title; drop-in + title re-phase
+    every rect-walk coincidence — landed f138 vs pre-title f81;
+    histograms show the same documented family (`.RectLoop` + probe),
+    and the new spikes are milder than pre-drop baseline's own X f327
+    +14-line EnterRoom spike (gone from the 439-frame window). The sim
+    input now includes the console-RESET pulse for the title screen
+    (budget sim: f1 released→held f1-2; bomb-fuse/test_laser_wall:
+    f1 released, held f2-3). FLY=Y still exits SIM FAILED on the VBL
+    assertion (1479 > 1472 — pre-existing class); **judge scenario
+    gates by the wall-model bad-frame list only**, never by the exit
+    code. VBL numbers changed meaning 2026-10-02: the sim measures from
+    `VBLTimer` (TIM64T arm), not StartFrame — the old measure included
+    VSYNC phase slack and flapped across 1472 (title transition f2:
+    acc 1491 while the real timer window was 1336c); old absolutes are
+    not comparable. + default gate + battery `tools/test_*.py` 6/6.
 4. **Walk-cut patterns that worked (reuse before inventing):**
    destroyed-rect flag in `rect.w` b7 (S6.4, kills per-rect mask scan);
    col-change gate for enemy probes (S6.5, box-result keyed — walk
