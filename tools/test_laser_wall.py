@@ -1,22 +1,33 @@
 #!/usr/bin/env python3
-"""Laser wall-clamp end-to-end probe (py65, assert-based).
+"""Laser wall-clamp end-to-end probe (py65, assert-based) — S6.
 
 Boots savior.bin headless, waits until the player lands, kills all enemies
 (no interference), then for BOTH facings sweeps the player across X (fire
 held; RoomY pinned + vy zeroed each frame so inputs are deterministic) and
-compares the asm's LaserBeamOn every frame against an independent
-column-space reference that reads the SAME runtime rect cache ($89 count,
-$CC rects).
+compares, every frame, two things against an independent reference that
+reads the SAME runtime rect cache ($89 count, $CC rects):
 
-Reference = intended behavior (S6 spec):
-  path = [min(eye, lo) .. max(eye, lo+7)] in px, converted to real columns
-  (rect cache = text columns 0-19 + band rows; both the left-half span and
-  the mirrored span of each rect are tested), bestCol = first occluding
-  column, raw width = bestCol*4 - lo (<=0 => beam blocked), width clamped
-  to 8 then floor-pow2 (NUSIZ 1/2/4/8 px), END-FLUSH draw position
-  (beam touches the wall: drawLo = wallPx - width when a wall was found),
-  bound = width + 7 packed into LaserBeamOn = $02 | bound<<4
-  (bits5-4 = NUSIZ M0 width code consumed by the VBL restore).
+  1. CollisionX ($8B) captured at LaserInput's rts = the value
+     LaserWallClamp left there (also the value SetObjectXPos used).
+  2. LaserBeamOn ($83) stays $02 — the beam is an 8px NUSIZ missile; a
+     change here means someone re-introduced the rolled-back width
+     rewrite (e24d9de: out-of-position/size draws).
+
+Reference = S6b spec (docs/laser_s6_log.md; mirrors bank2 LaserWallClamp).
+PIXEL MODEL: drawn M0 = [A-7, A] (SetObjectXPos arg -> box-left arg-7;
+PlayerSpriteA lit cols 0-6; PHM lit-left = arg-7 validated by flush wall
+stops). Kill test = same [A-7, A].
+  raw A: right = min(RoomX+4+off, 159), left = max(RoomX-4-off, 0)
+  path cols: right = [nose_R=RoomX-3, A] >> 2, left = [A-7, nose_L=RoomX-4] >> 2
+  rows = band(RoomY+2)..band(RoomY+3) (exact LHT kill window)
+  per live rect (BombPacked b3-6 clear), spans = [x, x+w-1] and
+  [40-x-w, 39-x]; on-path overlap -> first wall col on travel direction:
+    right: col = max(slo, c0), cand = col*4+2, min-apply (drawn tip)
+    left:  col = min(shi, c1), cand = col*4+9, max-apply (drawn start)
+  PLUS independent invariants (not a mirror): when the first wall W is on
+  the path, right A in [4W, 4W+2] (tip touches wall, <=2px inside, never
+  past face+2), left A in [4W+9, 4W+10] (start <=2px inside the right
+  half); with no wall A must equal raw (no spurious clamp).
 
 Run: /home/iuri/python3/bin/python3 tools/test_laser_wall.py
 """
@@ -40,10 +51,22 @@ PC_STARTFRAME = LABELS["StartFrame"]
 I_ROOMX, I_ROOMY, I_DIR, I_BEAMON = 0x00, 0x01, 0x02, 0x03
 I_BOMBP, I_LSTATE, I_RCBASE = 0x35, 0x40, 0x09
 I_DEADMASK, I_VYLO, I_VYHI = 0x3A, 0x13, 0x14
-I_RECTCOUNT = 0x12              # $92
 I_COLLX = 0x0B                  # $8B
-I_AOX, I_AOY = 0x37, 0x38       # ActiveObjectX/Y = $B7/$B8
 RECTS0 = 0x4C                   # $CC & 0x7F
+
+# LaserInput's own rts sites: capture CollisionX there = post-clamp value
+# (between LHT and those rts only SetObjectXPos / AddScore run — neither
+# writes CollisionX; enemies are all dead in the probe = miss path).
+RANGE_LO = LABELS["LaserInput"]
+RANGE_HI = LABELS["BeamMask"]
+rts_pcs = set()
+for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
+    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(?:[0-9a-f]{2}[ \t]+)+rts\b", _l)
+    if _m:
+        a = int(_m.group(1), 16)
+        if RANGE_LO <= a < RANGE_HI:
+            rts_pcs.add(a)
+assert rts_pcs, "no LaserInput rts found in bank0.lst"
 
 
 class Mem:
@@ -101,57 +124,76 @@ def step():
     mpu.step()
 
 
-def band(line: int) -> int:
-    return line // 48 if line < 192 else 3
+def path_cols(roomx, facing, lo):
+    """S6b path cols (nose-anchored), mirroring kernel .LaserPos staging."""
+    if facing == 0:                          # right: [nose_R, A]
+        return max(0, roomx - 3) >> 2, lo >> 2
+    return max(0, lo - 7) >> 2, (roomx - 4) >> 2   # left: [A-7, nose_L]
 
 
-def spec(roomx, roomy, facing, phase, count, rects):
-    """Return packed LaserBeamOn (0 = blocked/off). Mirrors the S6 spec."""
+def first_wall(c0, c1, facing, rects, top, bottom):
+    """Independent: first solid col on travel direction within [c0, c1]."""
+    cols = range(c0, c1 + 1) if facing == 0 else range(c1, c0 - 1, -1)
+    for col in cols:
+        for (x, y, w, h) in rects:
+            if w <= 0 or h <= 0 or not (y <= bottom and y + h > top):
+                continue
+            for (slo, shi) in ((x, x + w - 1), (40 - x - w, 39 - x)):
+                if slo <= col <= shi:
+                    return col
+    return None
+
+
+def spec(roomx, roomy, facing, phase, rects):
+    """Expected CollisionX after LaserWallClamp (S6b reference)."""
     off = (0, 8, 16, 8)[phase]
     if facing == 0:                          # right
-        eye = roomx + 4
-        lo = eye + off
-        if lo >= 160:
-            lo = 159
+        lo = min(roomx + 4 + off, 159)
     else:                                    # left
-        eye = roomx - 4
-        lo = eye - off
-        if lo < 0:
-            lo = 0
-    path_lo = min(eye, lo)
-    path_hi = max(eye, lo + 7)
-    if path_lo > 159:
-        path_lo = 159
-    if path_hi > 159:
-        path_hi = 159
-    plo, phi = path_lo >> 2, path_hi >> 2
-    best = phi + 1
-    b1, b2 = band(roomy + 2), band(roomy + 3)
+        lo = max(roomx - 4 - off, 0)
+    c0, c1 = path_cols(roomx, facing, lo)
+    top, bottom = (roomy + 2) // 48, (roomy + 3) // 48
     for (x, y, w, h) in rects:
         if w <= 0 or h <= 0:
             continue
-        if not (y <= b2 and y + h > b1):
+        if not (y <= bottom and y + h > top):
             continue                          # rows: band overlap
-        s_lo = x
-        if s_lo <= phi:                       # left-half span
-            if x + w - 1 >= plo and s_lo < best:
-                best = s_lo
-        m_hi = 39 - x                         # mirrored right-half span
-        if m_hi >= plo:
-            m_lo = m_hi - w + 1
-            if m_lo <= phi and m_lo < best:
-                best = m_lo
-    raw = best * 4 - lo
-    if raw <= 0:
-        return 0, lo, 0, 0                    # fully blocked
-    if raw > 8:
-        raw = 8
-    fw = (1, 2, 2, 4, 4, 4, 4, 8)[raw - 1]    # floor-pow2 (NUSIZ)
-    found = best != phi + 1
-    if found:
-        lo = best * 4 - fw                    # end-flush: beam touches wall
-    bound = fw + 7
-    return 0x02 | (bound << 4), lo, fw, bound
+        for (slo, shi) in ((x, x + w - 1), (40 - x - w, 39 - x)):
+            if not (slo <= c1 and shi >= c0):
+                continue                      # span off path
+            if facing == 0:
+                cand = max(max(slo, c0) * 4 + 2, 0)
+                if cand < lo:
+                    lo = cand                 # min-apply (drawn tip A)
+            else:
+                cand = min(shi, c1) * 4 + 9
+                if cand > lo:
+                    lo = cand                 # max-apply (drawn start A-7)
+    return lo
+
+
+def check_invariant(x, y0, facing, phase, rects, actual):
+    """Independent geometry check on the captured CollisionX (S6b)."""
+    raw = spec_raw(x, facing, phase)
+    c0, c1 = path_cols(x, facing, raw)
+    top, bottom = (y0 + 2) // 48, (y0 + 3) // 48
+    W = first_wall(c0, c1, facing, rects, top, bottom)
+    if W is None:
+        if actual != raw:
+            return f"spurious clamp (no wall on path): {actual} != {raw}"
+        return None
+    face = W * 4
+    if facing == 0:
+        if actual > face + 2:
+            return f"PASS: tip {actual} > face+2 {face + 2} (W={W})"
+        if actual < face:
+            return f"GAP: tip {actual} < face {face} (W={W}, short of wall)"
+    else:
+        if actual < face + 9:
+            return f"PASS: start {actual - 7} past wall (A < face+9)"
+        if actual > face + 10:
+            return f"GAP: start {actual - 7} > face+3 (overshot, A={actual})"
+    return None
 
 
 def main() -> None:
@@ -188,20 +230,9 @@ def main() -> None:
     print(f"landed f{landed}: RoomY={y0} rects(count={count})={rects}")
 
     # ---- deterministic sweep: pin RoomX/Y, dir, vy; fire held ----
-    # sub return points: the two `rts` inside LaserWallClamp (state snapshot)
-    rts_pcs = set()
-    lc = LABELS["LaserWallClamp"]
-    for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
-        _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(?:[0-9a-f]{2}[ \t]+)+rts\b",
-                      _l)
-        if _m:
-            a = int(_m.group(1), 16)
-            if lc <= a < lc + 0x140:
-                rts_pcs.add(a)
-    sub_out = None                # captured at the sub's rts
-
     mismatches = []
     checked = 0
+    clamped = 0
     for facing in (0, 1):
         for x in range(4, 156):
             for _ in range(4):                 # 4 frames = full phase cycle
@@ -210,39 +241,53 @@ def main() -> None:
                 mem.ram[I_DIR] = facing
                 mem.ram[I_VYLO] = 0
                 mem.ram[I_VYHI] = 0
-                sub_out = None
-                # run to next frame boundary (LaserInput has run this frame)
+                cap = None
+                # run to next frame boundary; capture at LaserInput's rts
                 while True:
                     step()
                     if mpu.pc in rts_pcs:
-                        sub_out = (mpu.a,                       # packed / 0
-                                   mem.ram[I_RECTCOUNT],        # bound/bestCol
-                                   mem.ram[I_AOX], mem.ram[I_AOY],  # pLo/pHi cols
-                                   mem.ram[I_COLLX])            # lo at entry
+                        cap = (mem.ram[I_COLLX], mem.ram[I_BEAMON])
                     if mpu.pc == PC_STARTFRAME:
                         break
-                phase = mem.ram[I_LSTATE] & 3      # advanced before pos = used
-                expected, draw_lo, fw, bound = spec(
-                    x, y0, facing, phase, count, rects)
-                actual = mem.ram[I_BEAMON]
+                phase = mem.ram[I_LSTATE] & 3
+                expected = spec(x, y0, facing, phase, rects)
                 checked += 1
+                if cap is None:
+                    mismatches.append(f"X={x} dir={facing}: no LaserInput rts")
+                    continue
+                actual, beam = cap
+                if beam != 0x02:
+                    mismatches.append(
+                        f"X={x} dir={facing} phase={phase}: "
+                        f"LaserBeamOn=${beam:02X} != $02 (width rewrite?)")
                 if actual != expected:
                     mismatches.append(
                         f"X={x} dir={facing} phase={phase}: "
-                        f"BeamOn=${actual:02X} exp=${expected:02X} "
-                        f"(sub: A=${sub_out[0]:02X} RectCount={sub_out[1]} "
-                        f"pLo={sub_out[2]} pHi={sub_out[3]} "
-                        f"lo={sub_out[4]}) exp_lo={draw_lo} fw={fw}")
+                        f"CollisionX=${actual:02X} exp=${expected:02X}")
+                inv = check_invariant(x, y0, facing, phase, rects, actual)
+                if inv:
+                    mismatches.append(
+                        f"X={x} dir={facing} phase={phase}: {inv}")
+                if expected != spec_raw(x, facing, phase):
+                    clamped += 1
     if mismatches:
-        print(f"FAIL: {len(mismatches)}/{checked} frames mismatched "
-              f"(spec = column-space clamp + end-flush):")
+        print(f"FAIL: {len(mismatches)} mismatched frames "
+              f"(S6 spec = mid-wall tip clamp):")
         for m in mismatches[:15]:
             print("  " + m)
         if len(mismatches) > 15:
             print(f"  ... and {len(mismatches) - 15} more")
         sys.exit(1)
     print(f"test_laser_wall: OK ({checked} frames, "
-          f"{2 * 152 * 4} pos/dir/phase samples)")
+          f"{clamped} clamped by walls, BeamOn=$02 throughout)")
+
+
+def spec_raw(roomx, facing, phase):
+    """Unclamped lo — for coverage reporting only."""
+    off = (0, 8, 16, 8)[phase]
+    if facing == 0:
+        return min(roomx + 4 + off, 159)
+    return max(roomx - 4 - off, 0)
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ EnemyRamY = $E2                  ; live Y (refreshed this overscan — after
                                  ; the bank1 HUD score-ptr stomp; S3.4)
 TILE_COLUMNS = 20
 RoomY = $81                    ; player Y — LaserHitTest vertical window
+PlayerDir = $82                ; must match kernel.asm — S6 LWC tip direction
 EnemyCount = $B3               ; LaserHitTest loop bound
 EnemyDeadMask = $BA            ; LaserHitTest dead bits (written on kill)
 LAMP = 5                       ; enemy type: editor lamp — kernel LAMP must match
@@ -285,6 +286,226 @@ MothRowTable:
     .byte 1,1,1,1,1,1,1,1,1,1,1,1
     .byte 2,2,2,2,2,2,2,2,2,2,2,2
     .byte 3,3,3,3,3,3,3,3,3,3,3,3
+
+; ------------------------------------------------------------------------------
+; S6 LaserWallClamp (docs/laser_s6_log.md — baby step 1) — sweep-path clamp.
+; The held laser's kill window must never reach past the FIRST wall on the
+; path the swept beam occupies this frame (sweep = 8 px/phase + 8 px missile;
+; without the clamp a phase jump puts the whole beam beyond the wall and it
+; kills enemies straight through it).
+; In (staged by bank0 LaserInput .LaserPos, S6b):
+;   CollisionEndX (c0), CollisionCellX (c1) = path cols px>>2
+;     right (PlayerDir=0): path px = [nose_R=RoomX-3, A]      (A = raw arg)
+;     left  (1):           path px = [A-7, nose_L=RoomX-4]
+;   CollisionX = A (unclamped), RoomY live, rect cache live.
+;   PIXEL MODEL: drawn M0 = [A-7, A] (SetObjectXPos arg -> box-left arg-7;
+;   PlayerSpriteA lit cols0-6, PHM lit-left = arg-7). Kill test = same
+;   [A-7, A] (adc #14 in the body). The raw tip/eye anchoring of S6a missed
+;   the wall at max approach (nose col >= wall col) and left a 1-3px visible
+;   gap + behind-player stub — all three Stella symptoms (2026-10-01).
+; Walks the uniform rect cache ONCE — rows = band(RoomY+2)..band(RoomY+3)
+; (exact LHT kill window), per rect both screen spans of the LEFT-half rect
+; (reflect): [x, x+w-1] and [40-x-w, 39-x]. On-path overlap -> first wall
+; col on the travel direction:
+;   right: col = max(span_lo, c0)  -> tip A   <= col*4+2  -> pull DOWN (min)
+;   left:  col = min(span_hi, c1)  -> start A >= col*4+9  -> pull UP   (max)
+; (col*4 = wall face px; drawn [A-7, A]: right tip lands 2px INSIDE the
+; wall's left half, left start lands 2px inside its right half — visible
+; tip flush at the face (PF has priority over M0, CTRLPF=$05), never past
+; face+3/far side: enemies beyond survive; in/near-wall enemies die.)
+; NO NUSIZ/width/BeamMask change (the e24d9de rollback): beam stays 8 px;
+; only CollisionX moves. Out: CollisionX clamped (never lengthened past the
+; invariant). Clobbers A/X/Y/FetchPtr/RectCount + CollisionCell*/End*.
+; Entered/exited via jmp from/to LaserHitTestBody — stack depth unchanged
+; (SP guard: gameplay >= $F8; laser chain = 2 jsr from overscan = $FB).
+; Lives here (bank2 $F260+): bank0 has 1B pre-pad headroom; org $F9D9 below
+; pins level data (Origin Reverse-indexed if this overflows = build fails).
+; ------------------------------------------------------------------------------
+LaserWallClamp:
+    lda RoomY                   ; beam rows RoomY+2..3 -> band rows
+    clc
+    adc #2
+    lsr
+    lsr
+    tay
+    lda MothRowTable,Y
+    sta CollisionCellY          ; top band row
+    lda RoomY
+    clc
+    adc #3
+    lsr
+    lsr
+    tay
+    lda MothRowTable,Y
+    sta CollisionEndY           ; bottom band row
+    lda #RcW1                   ; uniform rect cache: (x,y,w,h) stride 4
+    sta FetchPtr
+    lda #0
+    sta FetchPtr+1
+    ldy #0
+    lda RcBase                  ; room with no rects -> nothing to clamp
+    bne .LWgo
+    jmp .LWdone
+.LWgo:
+    sta RectCount
+.LWrect:
+    tya                         ; destroyed rect -> treated as empty
+    lsr
+    lsr
+    tax
+    lda MothMaskBit,X
+    and BombPacked
+    beq .LWm1                   ; branch-over-jmp: .LWnext is >127B ahead
+    jmp .LWnext
+.LWm1:
+    iny                         ; Y = base+1 (y)
+    lda (FetchPtr),Y
+    cmp CollisionEndY           ; rect.y <= bottom ?
+    beq .LWrow
+    bcc .LWrow
+    jmp .LWnext
+.LWrow:
+    iny
+    iny                         ; Y = base+3 (h)
+    clc
+    adc (FetchPtr),Y            ; y + h
+    cmp CollisionCellY          ; overlap iff y+h > top (C=1, Z=0)
+    bcc .LWm3
+    beq .LWm3
+    jmp .LWok
+.LWm3:
+    jmp .LWnext
+.LWok:
+    tya
+    and #$FC
+    tay                         ; Y = base
+    ; --- span1 (left half): [x, x+w-1]
+    lda (FetchPtr),Y            ; x
+    cmp CollisionCellX          ; x <= c1 ?
+    beq .LWs1                   ; x == c1: shi >= x >= c0 -> on path
+    bcs .LWs2                   ; x > c1 -> span1 off path (Y=0)
+.LWs1:
+    sec
+    sbc #1
+    iny
+    iny                         ; Y = base+2 (w)
+    clc
+    adc (FetchPtr),Y            ; A = x+w-1 = shi
+    cmp CollisionEndX           ; shi >= c0 ?
+    bcc .LWs2                   ; no -> try mirror (Y=2; .LWs2 normalizes)
+    tya
+    and #$FC
+    tay                         ; Y = base
+    lda PlayerDir
+    beq .LWs1R
+    ; left: first wall traveling left = min(shi, c1)
+    lda (FetchPtr),Y
+    sec
+    sbc #1
+    iny
+    iny
+    clc
+    adc (FetchPtr),Y            ; shi
+    cmp CollisionCellX
+    bcc .LWs1a
+    lda CollisionCellX
+.LWs1a:
+    asl
+    asl
+    clc
+    adc #9                      ; cand = face+9 (start A >= face+9, S6b)
+    cmp CollisionX
+    bcc .LWs2                   ; cand < A -> keep (max-apply)
+    sta CollisionX
+    jmp .LWs2
+.LWs1R:
+    lda (FetchPtr),Y            ; x (Y = base)
+    cmp CollisionEndX           ; max(x, c0)
+    bcs .LWs1b
+    lda CollisionEndX
+.LWs1b:
+    asl
+    asl
+    clc
+    adc #2                      ; cand = face+2 (tip A <= face+2, S6b)
+    cmp CollisionX
+    bcs .LWs2                   ; cand >= A -> no pull (min-apply)
+    sta CollisionX
+    jmp .LWs2
+    ; --- mirror span: [40-x-w, 39-x] (reflected playfield)
+.LWs2:
+    tya
+    and #$FC
+    tay                         ; Y = base
+    lda #39
+    sec
+    sbc (FetchPtr),Y            ; A = 39-x = shi2
+    cmp CollisionEndX           ; shi2 >= c0 ?
+    bcc .LWnext                 ; mirror entirely left of path (Y=0)
+    sec
+    iny
+    iny                         ; Y = base+2 (w)
+    sbc (FetchPtr),Y            ; 39-x-w
+    clc
+    adc #1                      ; A = 40-x-w = slo2
+    cmp CollisionCellX          ; slo2 <= c1 ?
+    beq .LWs2on
+    bcs .LWnext                 ; mirror entirely right of path (Y=2)
+.LWs2on:
+    tya
+    and #$FC
+    tay                         ; Y = base
+    lda PlayerDir
+    beq .LWs2R
+    ; left: min(shi2, c1), shi2 = 39-x
+    lda #39
+    sec
+    sbc (FetchPtr),Y
+    cmp CollisionCellX
+    bcc .LWs2a
+    lda CollisionCellX
+.LWs2a:
+    asl
+    asl
+    clc
+    adc #9                      ; cand = face+9 (S6b)
+    cmp CollisionX
+    bcc .LWnext
+    sta CollisionX
+    jmp .LWnext
+.LWs2R:
+    ; right: max(slo2=40-x-w, c0)
+    lda #40
+    sec
+    sbc (FetchPtr),Y
+    iny
+    iny
+    sec
+    sbc (FetchPtr),Y            ; A = 40-x-w
+    cmp CollisionEndX
+    bcs .LWs2b
+    lda CollisionEndX
+.LWs2b:
+    asl
+    asl
+    clc
+    adc #2                      ; cand = face+2 (S6b)
+    cmp CollisionX
+    bcs .LWnext
+    sta CollisionX
+.LWnext:
+    tya
+    and #$FC
+    tay
+    iny
+    iny
+    iny
+    iny                         ; Y += 4 -> next rect
+    dec RectCount
+    beq .LWdone
+    jmp .LWrect                 ; body > 127B: branch-over-jump (E1 idiom)
+.LWdone:
+    jmp LaserClampDone          ; back to the body (stack depth unchanged)
 
     ; --- Level data (frozen addresses — pointer values must match bank0's
     ;     original layout, level_bank_plan P2.1: $F9D9-$FB1E = 326B) ---
@@ -599,11 +820,19 @@ FoldIndirect:
 ; touch; no kill, no score). First live enemy in span only (next frame the
 ; dead mask skips it — no resurrection, no double score).
 ; Does NOT touch Temp (joystick still live at the call site).
-; Clobbers A/X/Y/FetchPtr (caller re-inits X before SetObjectXPos next
-; frame; LaserInput dispatches on A right after the return).
+; S6 (docs/laser_s6_log.md): the body first tail-jmps to LaserWallClamp,
+; which walks the rect cache against the path cols LaserInput staged
+; (CollisionEndX..CollisionCellX) and pulls CollisionX back to the first
+; wall on the travel path — so this kill window can never reach the far
+; side of that wall. LWC ends `jmp LaserClampDone` (back here): stack
+; depth unchanged. Clobbers A/X/Y/FetchPtr + CollisionCellX/Y,
+; CollisionEndX/Y, RectCount; MODIFIES CollisionX (the clamp).
 ; ------------------------------------------------------------------------------
     .ds $FF00 - *, 0            ; pinned: bank0 tramp operand is literal $FF00
 LaserHitTestBody:
+    jmp LaserWallClamp          ; S6: clamp CollisionX at the first wall on
+                                ; the swept path BEFORE any kill test
+LaserClampDone:
     ; --- Stage (P3.1): enemy record pointer — loop writes no FetchPtr ---
     lda EnemyDataLo
     sta FetchPtr
@@ -627,8 +856,10 @@ LaserHitTestBody:
     sec
     sbc CollisionX
     clc
-    adc #7
-    cmp #15                     ; (eLo-lo)+7 <=14 -> |d| <=7 = overlap w/ 8px missile
+    adc #14                     ; S6b: window = drawn [A-7, A]; hit iff
+                                ; eLo in [A-14, A] ((eLo-A)+14 <= 14)
+    cmp #15                     ; bcs -> miss (was adc #7 = [A, A+7], a 7px
+                                ; invisible extension past the beam tip)
     bcs .LHNext
 .LHHit:
     ldy EnemyOffTable,X         ; type offset into staged record
