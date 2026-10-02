@@ -741,6 +741,7 @@ JET_AUD_BASE = $0F           ; mirrors kernel.asm EQU (value guarded by tests)
 JET_AUD_VOL  = $08
 LASER_AUD_C  = 2             ; mirrors kernel.asm EQU: div-15 tone = low pitch
 LASER_AUD_V  = 9
+DropTarget = $8A             ; hand-copy of kernel ZP byte (spawn drop-in)
 
 UpdateBombSound:
     lda BombSnd
@@ -754,12 +755,13 @@ UpdateBombSound:
     jmp $FBF8
 
 UpdateJetSound:
+    lda DropTarget              ; spawn drop-in: engine buzz while falling
+    bne .JetOn                  ;   (no Up held — DropArm zeroes JetPower)
     lda SWCHA
     and #%00010000              ; D4 = up (0 = pressed)
     beq .JetOn
     lda #0                      ; throttle off -> mute engine
-    sta AUDV1
-    jmp $FBF8
+    beq .JetStore               ; A=0 -> Z set, always taken (byte-neutral)
 .JetOn:
     lda #1                      ; 4-bit poly = raspy engine buzz
     sta AUDC1
@@ -774,13 +776,14 @@ UpdateJetSound:
     adc #JET_AUD_BASE           ; A = base - JetPower/8
     tax
     lda TickCounter
-    and #1
-    beq .JetWob
-    dex                         ; parity wobble -1 every other frame (30 Hz sputter)
+    lsr                         ; C = TickCounter bit0 (was and #1)
+    bcc .JetWob                 ;   parity wobble -1 every other frame (30 Hz)
+    dex                         ; (bcc = old beq; dex when bit0 set)
 .JetWob:
     txa
     sta AUDF1
     lda #JET_AUD_VOL
+.JetStore:
     sta AUDV1
     jmp $FBF8
 
@@ -1119,8 +1122,8 @@ CallPad_BombMarkWalls:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F173           ; Overscan in bank0 (must match bank0 ToGameStub;
-                        ; $F173 after S3.4 removed the VBL LoadPF0Only jsr)
+    jmp $F171           ; Overscan in bank0 (must match bank0 ToGameStub;
+                        ; back to $F171 — VBL flutter done via JetPower seed)
 
 ; ========================================================================
 ; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing
