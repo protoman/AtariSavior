@@ -2970,6 +2970,10 @@ SetObjReflection:
 
 ; ------------------------------------------------------------------------------
 ; LaserInput (S1 fire state + S2.1 M0 beam) — runs every overscan.
+; S6 (docs/laser_s6_log.md): stages the sweep-path column bounds
+; (CollisionEndX..CollisionCellX) and reloads CollisionX after
+; LaserHitTest — bank2's LaserWallClamp pulls it back to the first wall
+; ON the path so the drawn M0 and the kill window share ONE value.
 ; ------------------------------------------------------------------------------
 ; Lives after $FF20: the pre-$FF00 region is 100% full (ObjSprites + zero pad),
 ; so any addition here must go past SetObjReflection. Pre-pad code size is
@@ -3044,11 +3048,51 @@ LaserInput:
     lda #0                      ; clamp: sweep stops at left screen edge
 .LaserPos:
     sta CollisionX              ; S4: cur arg for LaserHitTest (held path only)
-    ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
-    jsr SetObjectXPos           ; HMM0 applies at next frame's VBLANK HMOVE
+    ; --- S6b: sweep-path column bounds for LaserWallClamp (runs first thing
+    ; inside the LHT body). PIXEL MODEL (calibrated: PHM lit-left = arg-7,
+    ; PlayerSpriteA art cols0-6): SetObjectXPos arg A -> drawn M0 = [A-7, A];
+    ; nose (art face col4/col3) = RoomX-3 / RoomX-4. Path anchors the SPRITE
+    ; nose, not the raw tip, so a bar that teleported past the wall (max
+    ; approach: eye col > wall col) still finds it. cols = px>>2:
+    ;   right: [nose_R, A]   left: [A-7, nose_L]
+    ; LWC pulls CollisionX so the drawn tip/start lands 2px INSIDE the first
+    ; wall; kill test uses the SAME [A-7, A] (S6 lock; NO NUSIZ/width change:
+    ; that rewrite is the e24d9de rollback).
+    lda PlayerDir
+    beq .LWpR
+    lda CollisionX              ; left: c0 = drawn-left = A-7
+    sec
+    sbc #7
+    bcs .LWpLz
+    lda #0                      ; A < 7: floor at screen left
+.LWpLz:
+    lsr
+    lsr
+    sta CollisionEndX
+    lda RoomX                   ; left: c1 = nose_L = RoomX-4
+    sec
+    sbc #4
+    jmp .LWpC
+.LWpR:
+    lda RoomX                   ; right: c0 = nose_R = RoomX-3
+    sec
+    sbc #3
+    lsr
+    lsr
+    sta CollisionEndX
+    lda CollisionX              ; right: c1 = drawn tip = A (raw, A <= 159)
+.LWpC:
+    lsr
+    lsr
+    sta CollisionCellX          ; path last col
     ; S5.4: body moved to bank2 (pads cannot nest from a pad body — the
     ; kill/lamp ACTIONS return here: A=0 miss / $50 kill / 1 lamp).
     jsr LaserHitTest            ; S4: swept kill — result in A (+Z via ReturnPad)
+    pha                         ; S6: save result across positioning
+    lda CollisionX              ; S6: CLAMPED by LaserWallClamp (mid-wall tip)
+    ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
+    jsr SetObjectXPos           ; drawn M0 = [CollisionX-7, CollisionX] (S6b)
+    pla                         ; restore result (PLA sets Z from the value)
     beq .LaserNoHit
     cmp #$50
     beq .LaserKill

@@ -32,9 +32,9 @@ def vert_hit(room_y: int, enemy_y: int) -> bool:
 
 
 def horiz_hit(lo: int, enemy_x: int) -> bool:
-    """Exact mirror of the asm: sec/sbc eLo-lo, clc/adc #7, cmp #15."""
+    """Exact mirror of the asm: sec/sbc eLo-lo, clc/adc #14, cmp #15."""
     a = (enemy_x - lo) & 0xFF
-    return ((a + 7) & 0xFF) < 15
+    return ((a + 14) & 0xFF) < 15
 
 
 def overlap_reference(a_lo, a_hi, b_lo, b_hi) -> bool:
@@ -50,8 +50,10 @@ def main() -> None:
     assert re.search(r"ENEMY_WIDTH\s*=\s*8\b", text), "ENEMY_WIDTH != 8"
     assert ".byte 0,8,16,8" in text, "SweepOff triangle changed"
     hit = text2.split("LaserHitTestBody:")[1].split("EnemyOffTable:")[0]
+    hit = "\n".join(l.split(";")[0] for l in hit.splitlines())  # ignore comments
     assert "adc #3" in hit and "cmp #9" in hit, "vertical window changed"
-    assert "adc #7" in hit and "cmp #15" in hit, "horizontal window changed"
+    assert "adc #14" in hit and "cmp #15" in hit, "horizontal window changed"
+    assert "adc #7" not in hit, "old [lo,lo+7] kill window still present"
     assert "ora EnemyBitTable,X" in hit and "sta EnemyDeadMask" in hit, \
         "kill path changed"
     assert "cmp #LAMP" in hit and ".LHLamp" in hit, \
@@ -60,8 +62,31 @@ def main() -> None:
     # the actions (pads cannot nest from a pad body)
     assert "lda #$50" in hit and "lda #0" in hit and "jmp $FBF8" in hit, \
         "body must return its result through ReturnPad"
-    assert re.search(r"jsr\s+LaserHitTest[^\n]*\n\s*beq\s+\.\w+", text), \
-        "LaserInput must dispatch on the returned A"
+    # S6 (docs/laser_s6_log.md): LWC first in the body, entered/left by jmp
+    assert "jmp LaserWallClamp" in hit, \
+        "body must tail-jmp LaserWallClamp before the kill test"
+    assert "LaserClampDone:" in hit, "LWC return label missing in body"
+    assert "LaserWallClamp:" in text2, "LaserWallClamp definition missing"
+    # S6: LaserInput stages the sweep-path cols BEFORE the call, and the
+    # result of LHT survives positioning (pha ... pla) so dispatch still
+    # runs on the returned A.
+    lw = text.split("LaserInput:")[1].split("SweepOff:")[0]
+    lw = "\n".join(l.split(";")[0] for l in lw.splitlines())    # ignore comments
+    assert "sta CollisionEndX" in lw and "sta CollisionCellX" in lw, \
+        "S6: sweep-path cols (c0/c1) not staged before LaserHitTest"
+    # S6b: path anchored at the sprite nose (RoomX-3 / RoomX-4), NOT the
+    # eye (RoomX+4) — eye anchoring missed the wall at max approach.
+    nose = lw.split("sta CollisionEndX")[1].split("sta CollisionCellX")[0]
+    assert "sbc #4" in nose, "left path c1 must be nose_L (RoomX-4)"
+    assert "sbc #3" in lw.split(".LWpR:")[1].split("sta CollisionEndX")[0], \
+        "right path c0 must be nose_R (RoomX-3)"
+    assert "adc #7" not in lw, "stale lo+7 / eye+7 path bound (S6a)"
+    assert re.search(r"sta CollisionX[^\n]*\n(?:[^\n]*\n)*?\s*jsr\s+LaserHitTest",
+                     lw), "CollisionX must be stored before jsr LaserHitTest"
+    assert re.search(
+        r"jsr\s+LaserHitTest[^\n]*\n\s*pha\b.*?^\s*pla\b[^\n]*\n\s*beq\s+\.\w+",
+        lw, re.M | re.S), \
+        "LaserInput must save the result across SetObjectXPos and dispatch on it"
     assert "jsr CallPad_SetRoomDark" in text and "jsr CallPad_AddScore" in text, \
         "kill/lamp actions must run in bank0 LaserInput"
 
@@ -88,13 +113,13 @@ def main() -> None:
 
     # --- horizontal: exact window edges incl missile width ----------------
     lo = 40
-    for ex in range(lo - 7, lo + 8):
+    for ex in range(lo - 14, lo + 1):
         assert horiz_hit(lo, ex), f"must hit eLo={ex}"
-    for ex in (lo - 8, lo + 8):
+    for ex in (lo - 15, lo + 1):
         assert not horiz_hit(lo, ex), f"must miss eLo={ex}"
-    for lo2 in (0, 4, 40, 151, 159):
+    for lo2 in (14, 40, 151, 159):
         for dx in range(-30, 31):
-            want = overlap_reference(lo2, lo2 + MISSILE_W - 1,
+            want = overlap_reference(lo2 - 7, lo2,
                                      lo2 + dx, lo2 + dx + ENEMY_W - 1)
             got = horiz_hit(lo2, lo2 + dx)
             assert got == want, f"horiz mismatch lo={lo2} dx={dx}: {got} vs {want}"
