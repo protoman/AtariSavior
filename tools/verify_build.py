@@ -264,6 +264,10 @@ HOF_ENTRY = 0xFE80
 # S5.4 LaserHitTest entry tramp — same pattern: `sta $1FF8` at $FE86,
 # fetch at $FE89 from bank2 = `jmp LaserHitTestBody`.
 LHT_ENTRY = 0xFE86
+# Tally entry tramp — same pattern: `sta $1FF8` at $FFE6 (after BeamMask,
+# fetch at $FFE9 from bank2 = `jmp TallyEntry`). Ends $FFEB so $FFF2-$FFF9
+# (F6 hotspot mirrors) stay fill.
+TALLY_ENTRY = 0xFFE6
 
 
 def check_moth_tramp(src: Path) -> None:
@@ -366,6 +370,30 @@ def check_moth_tramp(src: Path) -> None:
         shown = f"${lht_tramp:04X}" if lht_tramp is not None else "None"
         err(f"LaserHitTest at {shown}, expected ${LHT_ENTRY:04X} "
             "(LaserInput jsr target moved off the pad)")
+
+    # Tally entry tramp ($FFE6) — same discipline: byte-identity slice in
+    # bank0/bank2 + operand == bank2 TallyEntry + label pin (kernel jsrs).
+    yoff = TALLY_ENTRY - 0xF000
+    y0 = banks[0][yoff:yoff + 6]
+    y2 = banks[2][yoff:yoff + 6]
+    if y0[:3] != MOTH_STA18:
+        err(f"bank0 tally entry ${TALLY_ENTRY:04X} = {y0.hex()} "
+            f"(expected {MOTH_STA18.hex()} + jmp)")
+    if y0 != y2:
+        err(f"tally entry bank0[${TALLY_ENTRY:04X}] {y0.hex()} != bank2 "
+            f"{y2.hex()} (byte-identity broken)")
+    tally = labels2.get("TallyEntry")
+    tally_tgt = (y0[4] | (y0[5] << 8)) if len(y0) == 6 else None
+    if tally is None:
+        err("TallyEntry label not found in bank2.lst")
+    elif tally_tgt != tally:
+        err(f"tally entry jmp ${tally_tgt if tally_tgt is not None else 0:04X} "
+            f"!= bank2 TallyEntry ${tally:04X} (tramp operand stale)")
+    tally_tramp = labels0.get("TallyTramp")
+    if tally_tramp != TALLY_ENTRY:
+        shown = f"${tally_tramp:04X}" if tally_tramp is not None else "None"
+        err(f"TallyTramp at {shown}, expected ${TALLY_ENTRY:04X} "
+            "(CheckMinerPickup/TallyWork jsr target moved off the pad)")
 
     xoff = MOTH_EXIT - 0xF000
     x0 = banks[0][xoff:xoff + 3]
