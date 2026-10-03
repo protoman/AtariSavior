@@ -14,9 +14,10 @@ LWC side (cell_collision_plan 3.1): LaserWallClamp scans display cols
 entry still pinned (labels only, addresses asserted elsewhere), tail
 still `jmp LaserClampDone`; cand constants +9/+2 kept.
 
-Moth side: still the verbatim rect walk (converts at plan phase 4.1) —
-the P3.4 exit-Y discipline + S3.2 uniform stride + S6.4 destroyed-flag
-asserts keep guarding THAT walker until then.
+Moth side (cell_collision_plan 4.1): same cell walk — HIT tail-jmps
+.MothTurn (flip dir, no commit), miss falls to .MothNoHit (commit);
+rect cache gone; the S3.2/S6.4 legacy-absence asserts keep guarding
+against window/stage resurrects.
 
 Run: /home/iuri/python3/bin/python3 tools/test_phm_walk.py
 """
@@ -113,28 +114,36 @@ def main() -> None:
         assert gone not in lb, f"LWC must not touch {gone} (cell walk 3.1)"
     parse_tables(BANK2, "bank2")
 
-    # --- moth: still the rect walk (converts at phase 4.1) ----------------
+    # --- moth: cell walk since phase 4.1 (was the PHM rect walk) ----------
     mblk = moth_block()
     assert not re.search(r"^\.MwStage3:", mblk, re.M), \
         "moth .MwStage3 label must be gone (S3.2)"
     assert "lda #RcW2" not in mblk, "moth window jump must be gone (S3.2)"
-    assert re.search(r"adc #4", mblk), "moth advance must be stride 4"
-    assert re.search(
-        r"lda \(FetchPtr\),Y\s*\n\s*bmi\s+\.MwNrmCol", mblk), \
-        "moth w-read must bmi to .MwNrmCol on b7 (S6.4, Y=base+2)"
+    assert re.search(r"adc\s+ColOff,X", mblk) \
+        and re.search(r"lda\s+PF0Buf,Y", mblk) \
+        and re.search(r"and\s+ColMask,X", mblk), \
+        "moth walk must index the cell map (ColOff/ColMask/PF0Buf, 4.1)"
+    assert re.search(r"^\.MwHit:\s*\n\s*jmp\s+\.MothTurn", mblk, re.M), \
+        "moth HIT must tail-jmp .MothTurn (flip dir, no commit)"
+    assert re.search(r"beq\s+\.MothNoHit", mblk), \
+        "exhausted rows must fall to .MothNoHit (commit candidate)"
+    assert "RcBase" not in mblk and "adc #4" not in mblk, \
+        "rect cache must be gone from the moth walk (plan 4.1) — the " \
+        "single (FetchPtr),Y spawn type read is guarded by " \
+        "test_enemy_movement (==1)"
     assert "lda MothMaskBit" not in mblk, \
         "moth walk must not scan MothMaskBit (S6.4: flag in rect.w b7)"
     assert not re.search(r"^MothMaskBit:", BANK2, re.M), \
         "MothMaskBit label must be gone (orphan of LWC cell swap, plan 3.1)"
 
-    # --- bomb machinery still owns the cache while moth/LWC need it ------
+    # --- BombMaskBit survives until phase 5 (ApplyBombWalls only now) ------
     mb = re.search(r"^BombMaskBit:\s*\n\s*\.byte([^\n]+)", KERNEL, re.M)
     assert mb and len(mb.group(1).split(",")) == 5, \
         "BombMaskBit needs 5 entries (index 4 = $00, rect4 never masked)"
     assert mb.group(1).split(",")[-1].strip() == "$00", \
         "BombMaskBit[4] must be $00 (rect4 not in WallMask)"
 
-    print("test_phm_walk: OK (PHM + LWC cell contracts, moth rect contract)")
+    print("test_phm_walk: OK (PHM + LWC + moth cell contracts)")
 
 
 if __name__ == "__main__":

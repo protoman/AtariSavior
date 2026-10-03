@@ -164,11 +164,29 @@ Tables: `ColOff[c]` = {0×4, 3×8, 6×8} (offset from `$C3+row`), `ColMask[c]` =
 ## Phase 4 — Enemy walkers
 
 - [ ] **4.1 Moth walk** (bank2:192) → `CellSolid`.
-      **Check:** `test_enemy_movement.py` + scripted sim scenario: moth never
-      enters a solid cell across a full run.
+      **Done (code):** walk replaced in place with the PHM-style cell loop
+      (entry after `.MothColsOk` unchanged — prologue mirror/min-max swap
+      already feeds left-half cols; HIT → `.MothTurn`, miss falls into
+      `.MothNoHit` commit; no jsr, no FetchPtr/RcBase/RcW1 left in the
+      walk). `MothDoWalk` gate path re-runs the same prologue+walk.
+      **Scripted parity:** `test_cell_map` now drives bank2's walk at
+      `.MothColsOk` for EVERY valid box (all col pairs × row pairs,
+      11340 boxes × 9 geometries) vs geometry oracle + wiring contract
+      (HIT flips EnemyRamD and never commits Temp; MISS commits and
+      never flips) — PASS. test_enemy_movement asserts flipped to the
+      cell contract (only the spawn record type read stays `(FetchPtr),Y`,
+      ==1); battery 8/8; build green.
+      **Check:** Stella pending: moth patrols, turns at walls, never
+      sits inside one across a run (level_001 has the moth).
 - [ ] **4.2 Probe callers** (tentacle/derives via PHM — likely free after 2.1;
       change only what the 0.1 table shows remains).
-      **Check:** battery + Stella: tentacle/moth patrol clean.
+      **Verified (code):** 0.1 table re-audit — walkers 1-3 converted
+      (2.1/3.1/4.1); 4-5 read the ROM hot stream (never cache); 6-7
+      ApplyBombWalls/BombMarkWalls = Phase 5; 8-9 EnterRoom copy/pack die
+      with the cache (Phase 5/7); 10 explore_laser annotated. Tentacle +
+      derives probe via PHM = cell since 2.1 (Stella-confirmed at 2.2).
+      No other cache reader remains. Check: battery green + 2.2 Stella.
+      **Check:** Stella: tentacle/moth patrol clean (folds into 4.1 gate).
 
 ## Phase 5 — Bombs (decision gate D1)
 

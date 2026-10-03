@@ -2510,7 +2510,7 @@ PlayerHitsMap:
 ; The ZP rect cache ($CC-$DF, 5-slot limit) is gone from THIS walker: the
 ; render buffers PF0/1/2Buf ARE the map (ApplyBombWalls punches bomb holes
 ; into them), so room complexity is unbounded and geometry parity is proven
-; by tools/test_phm_cells.py (box vs geometry, all models/rooms).
+; by tools/test_cell_map.py (box vs geometry, all models/rooms).
 ; Prologue ranges (all left-half space): CollisionCellY = top row,
 ; CollisionEndY = bottom row, CollisionEndX = min col, CollisionCellX = max
 ; col — cols are endpoint-mirrored above, so ALWAYS 0-19 here (no in-loop
