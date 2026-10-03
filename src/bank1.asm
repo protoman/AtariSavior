@@ -1137,8 +1137,8 @@ CallPad_BombMarkWalls:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F17D           ; Overscan in bank0 (must match bank0 ToGameStub;
-                        ; re-synced: VBL frame pick extracted to PickPlayerFrame)
+    jmp $F182           ; Overscan in bank0 (must match bank0 ToGameStub;
+                        ; PROBE build — revert together with the GRP1 probe)
 
 ; ========================================================================
 ; IsRoomDark/SetRoomDark — moved here (post-ToGameStub free space) when the

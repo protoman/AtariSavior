@@ -21,7 +21,7 @@ from pathlib import Path
 
 MISSILE_W = 8   # NUSIZ0=$30 -> 8-clock M0
 ENEMY_W = 8     # kernel.asm ENEMY_WIDTH
-BEAM_ROWS = (2, 3)  # BeamMask rows 2-3 = RoomY+2..3
+BEAM_ROWS = (2, 3)  # BeamMask rows 2-3 = RoomY+2..3 (eye rows)
 SWEEP = (0, 8, 16, 8)
 
 

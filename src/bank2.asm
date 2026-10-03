@@ -34,6 +34,13 @@ PF0Buf = $C3                   ; PF render buffers rows 0-2 ($C3-$CF) —
 PlayerDir = $82                ; must match kernel.asm — S6 LWC tip direction
 EnemyCount = $B3               ; LaserHitTest loop bound
 EnemyDeadMask = $BA            ; LaserHitTest dead bits (written on kill)
+Grp0Ptr = $86                  ; must match kernel.asm (PickPlayerFrame body)
+Grp0PtrHi = $87                ; must match kernel.asm
+SWCHA = $0280                  ; RIOT joystick (same in every bank)
+PlayerSpriteA = $F8BF           ; hand copies (bank0 symbols unreadable here);
+PlayerSpriteB = $F8CB           ; tools/test_miner_colors.py asserts vs bank0.lst
+PlayerWalkA = $FDE7
+PlayerWalkB = $FDF3
 LAMP = 5                       ; enemy type: editor lamp — kernel LAMP must match
 ; --- BuildColupF (S5.1, moved from bank0) — addresses must match kernel.asm ---
 TILE_ROWS = 3                     ; playable color bands (rows 0-2 of ColupfBuf)
@@ -558,6 +565,48 @@ BCFDarkMask:
 
 ; --- Level data (frozen addresses — pointer values must match bank0's
 ;     original layout, level_bank_plan P2.1: $F9D9-$FB1E = 326B) ---
+    .ds $F3C0 - *, 0            ; pin body entry = bank0 tramp's jmp operand
+; ------------------------------------------------------------------------------
+; PickPlayerFrame body — entered from bank0's VBL via the $FDE1 tramp (the
+; jmp operand is fetched from THIS bank). GRP0 frame pick: jet flutter
+; (PlayerSpriteA/B) > ground walk (PlayerWalkA/B, phase EnemyRamP&$08) >
+; static A. Clobbers A/Y; sets Grp0Ptr/Grp0PtrHi; tail-jmps ReturnPad so the
+; VBL jsr returns in bank0 (pads must not nest — no rts here).
+; ------------------------------------------------------------------------------
+PickPlayerFrame:
+    lda JetPower
+    bne .Jet                   ; jet burning -> A/B flutter (existing)
+    lda BombPacked
+    bpl .FrameA                ; b7 OnGround clear (airborne) -> static
+    lda SWCHA
+    and #%11000000             ; D7 right / D6 left, active LOW
+    cmp #%11000000
+    beq .FrameA                ; neither held -> standing
+    lda EnemyRamP              ; free-running clock: bit3 = 8-frame
+    and #%00001000             ; half-cycle -> 16-frame full walk cycle
+    beq .WalkA                 ; (double speed of the 32-frame bit4 version)
+    lda #<PlayerWalkB
+    ldy #>PlayerWalkB
+    jmp .SetGrpPtr
+.WalkA:
+    lda #<PlayerWalkA
+    ldy #>PlayerWalkA
+    jmp .SetGrpPtr
+.Jet:
+    lda TickCounter
+    and #%00000100
+    beq .FrameA
+    lda #<PlayerSpriteB
+    ldy #>PlayerSpriteB
+    jmp .SetGrpPtr
+.FrameA:
+    lda #<PlayerSpriteA
+    ldy #>PlayerSpriteA
+.SetGrpPtr:
+    sta Grp0Ptr
+    sty Grp0PtrHi
+    jmp ReturnPad              ; sta $1FF6 (via ReturnPad) + rts -> VBL
+
     org $F9D9
     include "generated/levels_data.asm"
     include "generated/levels.asm"
@@ -794,11 +843,18 @@ HotOverlapBody:
 ; left, a stub needs 6 B) and $FE86-$FEEF is the only free hole before the
 ; moth tramp's $FEF0.
 ; ------------------------------------------------------------------------------
-    .ds $FE80 - *, 0
+    .ds $FDE1 - *, 0            ; PickPlayerFrame tramp mirror (byte-identical
+                                 ; with kernel.asm's copy — verify_frame_tramp)
+PickPlayerFrameTramp:
+    sta $1FF8                   ; executed only as the post-switch fetch image
+    jmp $F3C0                   ; bank2 PickPlayerFrame body (this bank)
+
+    .ds $FE90 - *, 0
 HotOverlapFlag:
     sta $1FF8                   ; dead in bank2 (entry arrives at $FE83)
     jmp HotOverlapBody          ; == $FCF0 — operand guard vs bank0 literal
-    .ds $FE86 - *, 0            ; S5.4 LHT tramp — byte-identical w/ kernel.asm
+    .ds $FE96 - *, 0            ; S5.4 LHT tramp — byte-identical w/ kernel.asm
+                                ; (shifted +$10 with kernel's tables)
 LaserHitTest:
     sta $1FF8                   ; dead in bank2 (entry arrives at $FE89)
     jmp LaserHitTestBody        ; == $FF00 — operand guard vs bank0 literal

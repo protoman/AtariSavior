@@ -683,8 +683,8 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ;   worst = 61c -> sta WSYNC at c69 (write c71) — 2c margin vs c73. FITS.
     ; ObjSprites+71 must stay in the $FExx page (else lda ObjSprites,X
     ; page-crosses, +1c on the GRP1 fetch) — verify_build enforces this.
-    ; Branch targets all same-page (3c taken) and BeamMask operand in $FFxx
-    ; (5c fetch budgeted) — both enforced by verify_build (S2.2 guards).
+    ; Branch targets all same-page (3c taken) and BeamMask operand in $FExx
+    ; (4c fetch, no-cross — verify_build S2.2 guard).
     ; GRP1 object section clobbers X (ObjSprites index) — row counter lives in
     ; RowIdx and X is reloaded after bne. Row-advance +6c on the .Row setup
     ; scanline (segment 63c -> 69c <= 76c): frame length unchanged.
@@ -698,7 +698,9 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     lda PlayerColTable,Y        ; 4c — per-row color from ROM
     sta COLUP0                  ; COLUP0 has no latch: applies to this line
     ; --- Laser S2.2: ENAM0 = beam mask for THIS line (in-window only) ---
-    ; BeamMask = {0,0,2,2,0,...} → ENAM0 on exactly RoomY+2..RoomY+3.
+    ; BeamMask = {0,0,2,2,0...} → ENAM0 on RoomY+2..RoomY+3 (eye rows,
+    ; original S2.2 position — reverted per user: the single-color detour
+    ; (rows 5,6 then 0,1) broke kill geometry for no real benefit).
     ; In-window path is the only safe place (Y<12 guaranteed); outside the
     ; window ENAM0 keeps its last in-window write ($00 at A0=11) — no HUD
     ; artifact. Table lives in $FFxx (cross = deterministic 5c): +8c/line.
@@ -729,6 +731,10 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     tax
     lda ObjSprites,X
     sta GRP1
+    lda ObjColorTab,X      ; per-row object color (+5c cross — the cycle sum
+                           ; equals the probe's proven pass: 5c beam + 4c
+                           ; color before the BeamMask same-page move)
+    sta COLUP1
 .AfterObj:
 
     ; --- Loop control ---
@@ -1678,6 +1684,9 @@ LoadLevel:
     sta BombPacked              ; state + WallMask bits (D1-B: no $F2 mirror)
     sta BombTimer
     sta EnemyRamD               ; clear dir + RoomDarkMask (bits 4-7) — level reset
+    sta PlayerDir               ; face right on every stage entry (new stage,
+                                ;  game-over restart = LoseLife->ReloadLevel->
+                                ;  here; same-stage respawn keeps facing)
     lda LaserState
     and #%11000111              ; clear RoomDarkMask rooms 4-7 (LaserState b5-2)
     sta LaserState
@@ -1871,6 +1880,10 @@ SelectActiveObject:
     lda MinerX
     sta ActiveObjectX
     lda MinerY
+    clc
+    adc #3                      ; draw 3px below data Y (miner_position.png —
+                                ; sprite floated above the floor line; tuning
+                                ; constant — pickup box still uses MinerY)
     sta ActiveObjectY
     lda MinerX                 ; A = X position for SetObjectXPos
     ldx #1
@@ -2898,49 +2911,19 @@ ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
             .byte $01,$02,$04,$08,$10,$20,$40,$80
 
 ; ------------------------------------------------------------------------------
-; PickPlayerFrame — GRP0 frame pick. Extracted from VBL (pre-pad headroom was
-; 1B; the ground-walk gate does not fit inline). Priority:
-;   jet flutter (JetPower>0, PlayerSpriteA/B) > walk cycle (OnGround b7 +
-;   L/R held, PlayerWalkA/B) > static A.
-; Phase: TickCounter&4 (15 Hz — same counter/period the jet flutter always
-; used). Frame A is forced whenever NOT walking so standing never twitch-walks.
-; Called from VBL; clobbers A/Y; sets Grp0Ptr/Grp0PtrHi. Lives in the
-; ColMask→ObjSprites pad (ObjSprites starts $FE38: start+71 stays in-page and
-; ends exactly at $FE80 = HOF_ENTRY pin).
+; PickPlayerFrame — VBL entry tramp: the VBL `jsr` lands here (bank0), `sta
+; $1FF8` switches to bank2, the `jmp` is fetched from bank2's byte-identical
+; mirror at this same address and lands on bank2's body ($F3C0). The body
+; tail-jmps ReturnPad ($FBF8) -> `sta $1FF6/rts` returns to the VBL jsr
+; (BuildColupF pad pattern; 0 extra stack depth).
+; Guards: verify_build check_frame_tramp (byte-identity + operand = bank2
+; label). Body logic: jet flutter (PlayerSpriteA/B) > walk (PlayerWalkA/B) >
+; static A; phase EnemyRamP&$08 (walk, 16-frame) / TickCounter&4 (jet).
 ; ------------------------------------------------------------------------------
 PickPlayerFrame:
-    lda JetPower
-    bne .Jet                   ; jet burning -> A/B flutter (existing)
-    lda BombPacked
-    bpl .FrameA                ; b7 OnGround clear (airborne) -> static
-    lda SWCHA
-    and #%11000000             ; D7 right / D6 left, active LOW
-    cmp #%11000000
-    beq .FrameA                ; neither held -> standing
-    lda EnemyRamP              ; free-running clock: bit3 = 8-frame
-    and #%00001000             ; half-cycle -> 16-frame full walk cycle
-    beq .WalkA                 ; (double speed of the 32-frame bit4 version)
-    lda #<PlayerWalkB
-    ldy #>PlayerWalkB
-    jmp .SetGrpPtr
-.WalkA:
-    lda #<PlayerWalkA
-    ldy #>PlayerWalkA
-    jmp .SetGrpPtr
-.Jet:
-    lda TickCounter
-    and #%00000100
-    beq .FrameA
-    lda #<PlayerSpriteB
-    ldy #>PlayerSpriteB
-    jmp .SetGrpPtr
-.FrameA:
-    lda #<PlayerSpriteA
-    ldy #>PlayerSpriteA
-.SetGrpPtr:
-    sta Grp0Ptr
-    sty Grp0PtrHi
-    rts
+    sta $1FF8                   ; select bank2
+    jmp $F3C0                   ; bank2 PickPlayerFrame body (operand pinned
+                                ;   by verify_frame_tramp = bank2.lst label)
 
 ; ------------------------------------------------------------------------------
 ; PlayerWalkA/B — dedicated ground-walk frames (sprites.png 2026-10-03,
@@ -2979,9 +2962,33 @@ PlayerWalkB:
     .byte %00001100             ; row 10 boots together (passing)
     .byte %00001100             ; row 11 boots together
 
-    .ds $FE38 - *, 0            ; ObjSprites starts $FE38: start+71 = $FE7F stays
-                                 ; in the $FE page (lda ObjSprites,X 5c vs 4c),
-                                 ; end = $FE80 = HOF_ENTRY pin (check_moth_tramp)
+
+
+
+    .ds $FE00 - *, 0            ; ObjColorTab $FE00-$FE47, ObjSprites $FE48-$FE8F:
+                                 ; BOTH same-page 4c fetches (verify guards);
+                                 ; end $FE8F -> HOF tramp $FE90 (shifted +$10,
+                                 ; mirrors+HOF_ENTRY/LHT_ENTRY synced)
+; ------------------------------------------------------------------------------
+; ObjColorTab — per-scanline GRP1 object colors, stride 8 = ObjSprites
+; stride; indexed by the same X = ObjBase + r in .Grp1 at $FE00 (4c, same
+; page for all 72 B — the passing +7 probe's exact cycle sum). Row colors
+; per OBJ_* slot: type color x8 (matches EnemyColorTable /
+; SelectActiveObject frame colors — no visual change for enemies/lamp/bomb);
+; MINER slot = miner.png purple/pink/grey -> nearest NTSC $54/$4A/$08.
+; NOTE: dark rooms no longer force grey objects — the frame-level $0A write
+; is overridden per row (no budget for a dark skip flag; see .Line probe).
+; ------------------------------------------------------------------------------
+ObjColorTab:
+    .byte $00,$00,$00,$00,$00,$00,$00,$00   ; 0 NONE (blank GRP1)
+    .byte $22,$22,$22,$22,$22,$22,$22,$22   ; 1 MOTH   ($22 dark orange)
+    .byte $14,$14,$14,$14,$14,$14,$14,$14   ; 2 SPIDER ($14 dark yellow)
+    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 3 LAMP   ($0e white)
+    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 4 TENTACLE ($0e white)
+    .byte $f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2   ; 5 BAT    ($f2 brown)
+    .byte $c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4   ; 6 SNAKE  ($c4 green)
+    .byte $54,$54,$4a,$54,$54,$08,$54,$54   ; 7 MINER  purple/pink face/grey tool
+    .byte $46,$46,$46,$46,$46,$46,$46,$46   ; 8 BOMB   ($46 red)
 
 ; ------------------------------------------------------------------------------
 ; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
@@ -2998,7 +3005,8 @@ ObjSprites:
     .byte $60,$90,$80,$60,$30,$30,$30,$30   ; OBJ_TENTACLE
     .byte $90,$60,$f0,$60,$60,$90,$90,$00   ; OBJ_BAT
     .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff   ; OBJ_SNAKE (8 px)
-    .byte $80,$b0,$30,$70,$70,$f0,$f0,$00   ; OBJ_MINER (facing left)
+    .byte $0c,$1c,$4c,$36,$0f,$07,$3f,$6e   ; OBJ_MINER (miner.png 2026-10-03,
+                                 ; mirrored — faces left; r2 pink face, r5 grey)
     .byte $10,$20,$20,$60,$f0,$f0,$f0,$60   ; OBJ_BOMB
 
 ; ------------------------------------------------------------------------------
@@ -3020,14 +3028,15 @@ ObjSprites:
 ; other half: bank0 is switched away at $FEF2, bank2 is never entered here.
 ; The 6-byte pad is the only free hole before FoldIndirect's pinned $FEF6.
 ; ------------------------------------------------------------------------------
-    .ds $FE80 - *, 0            ; S5.3 HOF entry tramp (byte-identical w/ bank2,
-                                ; guard: check_moth_tramp — pad window full)
+    .ds $FE90 - *, 0            ; S5.3 HOF entry tramp (byte-identical w/ bank2,
+                                ; guard: check_moth_tramp — shifted +$10 for
+                                ; the aligned color/sprite tables)
 HotOverlapFlag:
     sta $1FF8                   ; select bank2
     jmp $FCF0                   ; bank2 HotOverlapBody (dead in bank0; guard
                                 ;   pins bank0/bank2 operands == bank2 label)
-    .ds $FE86 - *, 0            ; S5.4 LHT entry tramp (byte-identical w/ bank2,
-                                ; guard: check_moth_tramp — same pattern)
+    .ds $FE96 - *, 0            ; S5.4 LHT entry tramp (byte-identical w/ bank2,
+                                ; guard: check_moth_tramp — shifted +$10)
 LaserHitTest:
     sta $1FF8                   ; select bank2
     jmp $FF00                   ; bank2 LaserHitTestBody (dead in bank0; guard
@@ -3076,6 +3085,20 @@ TallyWork:
     lda INTIM
     bne .TWait
     jmp StartFrame
+
+; ------------------------------------------------------------------------------
+; BeamMask — per-scanline ENAM0 values for the in-window kernel path (S2.2).
+; Indexed by Y = A0 = Scanline - RoomY, rows 0-11 only.
+; Rows 2-3 = $02 (beam on: RoomY+2..RoomY+3 = eye rows — yellow face row 2 +
+; red row 3 = two-tone beam; kept per user decision: single-red rows could
+; not also reach floor-standing enemies without kill-window churn); rest $00.
+; Lives in the $FExx page: `lda BeamMask,Y` from .Line ($F1xx) fetches in
+; 4c when operand+11 stays in-page (1c reclaim toward the ObjColorTab
+; write; verify_build asserts the no-cross operand range).
+; ------------------------------------------------------------------------------
+BeamMask:
+    .byte 0,0,2,2,0,0,0,0,0,0,0,0
+
 
     .ds $FEF0 - *, 0            ; fill tramp..moth gap (drift-proof)
 UE_MothTramp:
@@ -3310,16 +3333,8 @@ SweepOff:
                                 ; every frame -> bars slid across screen
     rts
 
-; ------------------------------------------------------------------------------
-; BeamMask — per-scanline ENAM0 values for the in-window kernel path (S2.2).
-; Indexed by Y = A0 = Scanline - RoomY, rows 0-11 only.
-; Rows 2-3 = $02 (beam on: RoomY+2..RoomY+3 = eye rows); all others $00.
-; MUST live in the $FFxx page: `lda BeamMask,Y` in .Line ($F1xx) relies on
-; the deterministic 5c page-cross (4c+1). verify_build enforces the page.
-; ------------------------------------------------------------------------------
-BeamMask:
-    .byte 0,0,2,2,0,0,0,0,0,0,0,0
-
+    .ds $FFE6 - *, 0            ; pin TallyTramp (BeamMask moved to $FExx
+                                 ; freed 12B here — drift must not move it)
 ; ------------------------------------------------------------------------------
 ; TallyTramp ($FFE6, byte-identical with bank2 — guard: check_moth_tramp).
 ; bank0 jsr's here (CheckMinerPickup arm / TallyWork step): `sta $1FF8`

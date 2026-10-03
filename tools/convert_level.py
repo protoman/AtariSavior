@@ -37,7 +37,7 @@ ROOM_NONE = 0xFF
 LEVEL_WALL_COLOR_DEFAULT = 0xA4
 
 # Atari 2600 TIA NTSC 128-color chart, hue-major: [hue][luma] = (r, g, b).
-# MUST match tools/editor/src/AtariPalette.cpp kPalette exactly (same RGB values
+# MUST match src/tools/editor/src/AtariPalette.cpp kPalette exactly (same RGB values
 # are used by the editor's color picker so round-tripping is stable).
 # NOTE: the ROM byte is NOT the classic (luma<<4)|hue; see nearest_byte for the
 # emulator-aware encoding that makes the editor pick display correctly.

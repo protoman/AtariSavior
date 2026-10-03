@@ -233,9 +233,15 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
     if (!m_modelMode && room && m_levelData) {
         // Render Miner Goal position if in this room
         if (m_levelData->miner_room == m_activeRoomIndex) {
+            // Cell origin (miner_x*2, miner_y = display col/row of the cell).
+            // Center the marker INSIDE the cell like enemies/lamps do — the
+            // old (mx-12, my-12) rect drew it on the grid lines (corner).
             int mx = (int)(m_levelData->miner_x * 2 * cellW);
             int my = (int)(m_levelData->miner_y * cellH);
-            QRect minerRect(mx - 12, my - 12, 24, 24);
+            int markerSize = qMax(12, m_tileSize - 6);
+            QRect minerRect(mx + (cellW - markerSize) / 2,
+                            my + (cellH - markerSize) / 2,
+                            markerSize, markerSize);
 
             painter.setBrush(QColor(255, 140, 180));
             painter.setPen(Qt::black);
