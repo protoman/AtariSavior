@@ -44,9 +44,21 @@ LevelWallColor2 = $AB              ; stripe row 1
 TickCounter = $AD                 ; 60-frame game timer — hot-pulse phase bit 4
 ColupfBuf   = $E7                 ; 12-byte COLUPF image (rows 0-2 used)
 COLOR_CAVE_BG = $00
-COLOR_DARK_PF = $04               ; dark-room fuse walls
-COLOR_HOT_Y = $1C                 ; kernel COLOR_BLINK_Y
-COLOR_HOT_R = $44                 ; kernel COLOR_BLINK_R
+COLOR_DARK_PF = $04             ; dark-room fuse walls
+COLOR_HOT_Y = $1C               ; kernel COLOR_BLINK_Y
+COLOR_HOT_R = $44               ; kernel COLOR_BLINK_R
+; --- TallyEntry (level-bonus tally) — hand-copies, check_equ_sync guarded ---
+TallyTicks = $F2                ; countdown, 50-pt units (kernel EQU)
+DropTarget = $8A                ; $FE = tally sentinel (hand-copy kernel byte)
+BarLevel = $AE                  ; time bonus input (120 = full)
+PlayerBombs = $F0               ; 50 pts each unspent
+PlayerLives = $AC               ; 100 pts each remaining
+JetPower = $96                  ; cleared at arm (no thrust flutter)
+LaserBeamOn = $83               ; cleared at arm (no stale beam)
+BombSnd = $F1                   ; coin hold — bank1 UpdateBombSound decs it
+AUDC0 = $15                     ; TIA — coin tone regs (any bank may write)
+AUDF0 = $17
+AUDV0 = $19
 
     ; --- 5-byte stub ---
     lda #0
@@ -417,8 +429,87 @@ MothGate:
 .MothGateWalk:
     jmp MothDoWalk
 
-    ; --- Level data (frozen addresses — pointer values must match bank0's
-    ;     original layout, level_bank_plan P2.1: $F9D9-$FB1E = 326B) ---
+; ------------------------------------------------------------------------------
+; TallyEntry — level-bonus tally body (user spec 2026-10-02). Entered from
+; bank0's TallyTramp ($FFE6) via jsr; tail-jmps ReturnPad ($FBF8) so A (and
+; Z) survive back to the bank0 caller.
+;   DropTarget == 0 (pickup frame) -> ARM: snapshot the bonus into TallyTicks
+;     in 50-pt units — 20 = miner (1000), (BarLevel+3)/6 = remaining time
+;     (50% -> 10 ticks -> 500), 1/bomb, 2/life — then arm the 4-frame pace
+;     divider (TickCounter), clear jet/beam, set DropTarget = $FE.
+;   DropTarget == $FE (every frame) -> STEP: dec TickCounter; on 0 reload 4,
+;     dec TallyTicks. Event A: b0 = add 50, b1 = coin tone written here
+;     (AUDC/F/V + BombSnd=8; bank0 TallyWork's UpdateBombSound holds it,
+;     coin = every 4 ticks = 200 pts), b2 = done (last tick consumed).
+; Pinned $F310 (org $F9D9 below: level data pins the overflow = build fails).
+; ------------------------------------------------------------------------------
+    .ds $F310 - *, 0
+TallyEntry:
+    lda DropTarget
+    beq .TEArm
+    dec TickCounter             ; pace: 1 tick per 4 frames
+    bne .TEIdle
+    lda #4
+    sta TickCounter
+    dec TallyTicks
+    beq .TEFinal                ; last unit: event = tick+coin+done
+    lda TallyTicks
+    and #3
+    bne .TEOne                  ; tick only
+    lda #8                      ; --- coin blip (200 pts = every 4th tick)
+    sta BombSnd
+    lda #4
+    sta AUDC0                   ; square
+    lda #24
+    sta AUDF0                   ; high pitch — distinct from bomb drop ($0A)
+    lda #8
+    sta AUDV0
+    lda #3                      ; tick + coin
+    jmp $FBF8
+.TEOne:
+    lda #1                      ; tick only
+    jmp $FBF8
+.TEFinal:
+    lda #7                      ; tick + coin + done
+    jmp $FBF8
+.TEIdle:
+    lda #0                      ; no event (Z set for bank0 beq)
+    jmp $FBF8
+.TEArm:
+    lda BarLevel
+    clc
+    adc #3                      ; round-to-nearest: (BarLevel+3)/6
+    ldx #0
+.TEDiv:
+    cmp #6
+    bcc .TEDivSum
+    sec
+    sbc #6
+    inx                         ; X = time ticks (0..20; BarLevel <= 120)
+    bne .TEDiv
+.TEDivSum:
+    txa
+    clc
+    adc #20                     ; miner reach = 1000 pts
+    adc PlayerBombs             ; + 50 per unspent bomb (chain carry ok)
+    sta TallyTicks
+    lda PlayerLives
+    asl                         ; + 100 per life = 2 ticks
+    clc
+    adc TallyTicks
+    sta TallyTicks
+    lda #4
+    sta TickCounter             ; fresh pace divider
+    lda #0
+    sta JetPower                ; frozen frame: no thrust flutter
+    sta LaserBeamOn             ; drop any live beam
+    lda #$FE
+    sta DropTarget
+    lda #0
+    jmp $FBF8
+
+; --- Level data (frozen addresses — pointer values must match bank0's
+;     original layout, level_bank_plan P2.1: $F9D9-$FB1E = 326B) ---
     org $F9D9
     include "generated/levels_data.asm"
     include "generated/levels.asm"
@@ -799,6 +890,14 @@ EnemyOffTable:
 
 EnemyBitTable:
     .byte $01, $02, $04, $08
+
+; Tally entry tramp slice ($FFE6-$FFEB, byte-identical with kernel.asm —
+; guard: check_moth_tramp). bank0 executes `sta $1FF8`; the fetch at $FFE9
+; comes from THIS bank = `jmp TallyEntry`. Neither bank runs its other half.
+    .ds $FFE6 - *, 0
+TallyTramp:
+    sta $1FF8
+    jmp TallyEntry
 
     ; Pad to vectors at $FFFA ($FFF2-$FFF9 = fill — never code: $FFF6-$FFF9
     ; are F6 hotspot mirrors on peek, see MothExitPad at $FC49)

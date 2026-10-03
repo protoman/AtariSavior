@@ -179,7 +179,8 @@ BombTimer       = $F7           ; fuse/explode countdown (frames)
 PlayerBombs     = $F0           ; bombs left 0..5 (never written by VBLANK/bank1 score)
 BOMBS_MAX       = 5             ; starting / reload bomb count
 BombSnd         = $F1           ; frames of bomb audio left (0=silent; bank1 must not write)
-; $F2 = FREE (was RoomWallMask — D1-B, plan 5.2: no cross-room hole state)
+TallyTicks = $F2               ; level-bonus countdown, 50-pt units (tally)
+; (was RoomWallMask $F2 — D1-B, plan 5.2: no cross-room hole state)
 
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match bank1)
 ; $F3-$F5 live score only — $F6 is BombX (bank1 ScoreOn is unused).
@@ -1807,20 +1808,11 @@ CheckMinerPickup:
     adc #PLAYER_SPRITE_H - 1
     cmp #PLAYER_SPRITE_H + PLAYER_HEIGHT - 1
     bcs .CMPDone                ; no Y overlap
-    ; Pickup! Advance to next level
-    inc Level
-    lda Level
-    cmp #LEVEL_COUNT
-    bne .CMPNotWrap
-    lda #0                      ; wrap past last level
-    sta Level
-.CMPNotWrap:
-    jsr LoadLevel
-    ; Reset timer for new level
-    lda #120
-    sta BarLevel
-    lda #60
-    sta TickCounter
+    ; Pickup! Arm the level-bonus tally (frozen count-up, then advance).
+    ; TallyArm (bank2, via TallyTramp) snapshots time/bombs/lives into
+    ; TallyTicks and sets DropTarget=$FE; each frame's dispatch then runs
+    ; TallyWork, whose done path does the old tail (level++/LoadLevel/bar).
+    jsr TallyTramp
 .CMPDone:
     rts
 
@@ -2748,6 +2740,10 @@ DropStep:
     beq .DSdone                 ; idle (target 0 = nothing to fall)
     cmp #$FF
     beq TitleWork               ; title sentinel: select/reset, no fall
+    cmp #$FE
+    bne .DSfall
+    jmp TallyWork               ; level-bonus tally sentinel (bank2 step)
+.DSfall:
     lsr
     lsr
     lsr
@@ -2966,6 +2962,51 @@ LaserHitTest:
     sta $1FF8                   ; select bank2
     jmp $FF00                   ; bank2 LaserHitTestBody (dead in bank0; guard
                                 ;   pins operands == bank2.lst label)
+
+; ------------------------------------------------------------------------------
+; TallyWork — level-bonus count-up (user spec 2026-10-02): reaching the miner
+; freezes the frame (dispatch bypasses input/physics/enemies via DropTarget
+; $FE), bank2 TallyEntry adds +50 every 4 frames and writes the coin tone
+; (every 200 pts); when TallyTicks hits 0 the done path advances the level
+; exactly like the old CheckMinerPickup tail, then rejoins OverscanAudio.
+;   Event bits in A (through ReturnPad sta/rts): b0 = add 50, b2 = done.
+;   Tail mirrors TitleWork: UpdateBombSound holds the coin (BombSnd>0), jet
+;   muted, own INTIM wait -> StartFrame: timer block skipped = frozen scene.
+; Lives in the $FE8C LHT..moth fill (bank0 has no pre-pad headroom).
+; ------------------------------------------------------------------------------
+TallyWork:
+    jsr TallyTramp              ; A = event (bank2 TallyEntry step)
+    tay
+    and #1
+    beq .TNoScore
+    lda #$50                    ; BCD +50 per tick (pack is $50 exactly)
+    jsr CallPad_AddScore
+.TNoScore:
+    tya
+    and #4
+    beq .TLive
+    inc Level                   ; --- done: advance (old CheckMinerPickup tail)
+    lda Level
+    cmp #LEVEL_COUNT
+    bne .TNotWrap
+    lda #0                      ; wrap past last level
+    sta Level
+.TNotWrap:
+    jsr LoadLevel
+    lda #120                    ; reset timer for new level
+    sta BarLevel
+    lda #60
+    sta TickCounter
+    jmp OverscanAudio           ; normal sounds + timer resume
+.TLive:
+    jsr CallPad_UpdateBombSound ; hold/silence ch0 for the coin blip
+    lda #0
+    sta AUDV1                   ; jet muted (UpdateJetSound skipped)
+.TWait:
+    lda INTIM
+    bne .TWait
+    jmp StartFrame
+
     .ds $FEF0 - *, 0            ; fill tramp..moth gap (drift-proof)
 UE_MothTramp:
     sta $1FF8                   ; select bank2
@@ -3208,6 +3249,19 @@ SweepOff:
 ; ------------------------------------------------------------------------------
 BeamMask:
     .byte 0,0,2,2,0,0,0,0,0,0,0,0
+
+; ------------------------------------------------------------------------------
+; TallyTramp ($FFE6, byte-identical with bank2 — guard: check_moth_tramp).
+; bank0 jsr's here (CheckMinerPickup arm / TallyWork step): `sta $1FF8`
+; selects bank2, then the jmp operand is fetched from bank2's image at the
+; same PC (FoldIndirect discipline). The bank2 body tail-jmps ReturnPad
+; ($FBF8) -> rts back to the bank0 jsr. Ends $FFEB — $FFF2-$FFF9 stay fill
+; (F6 hotspot mirrors).
+; ------------------------------------------------------------------------------
+TallyEntry = $F310              ; bank2 TallyEntry — operand must match label
+TallyTramp:
+    sta $1FF8
+    jmp TallyEntry
 
 ; ------------------------------------------------------------------------------
 ; LaserHitTest — MOVED to bank2 (S5.4, entry tramp $FE86 -> `jmp $FF00`).
