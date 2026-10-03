@@ -3,6 +3,15 @@
 Spec (user 2026-09-23) + baby steps. Implement → `./build.sh` green → **user validates in Stella** when back.
 No room-JSON schema change. **Do not commit** until user says so.
 
+> **SUPERSEDED design sections (2026-10-02):** the "Render" and "Reset / room
+> change" sections below describe the old D1-A design (per-frame
+> `ApplyBombWalls` re-apply + `RoomWallMask` `$F2` save/restore). D1-B landed
+> instead: the punch is **once, at the bomb 1→2 edge**, inside
+> `BombMarkWalls` (`ClearPFColumn`), mask bits live in `BombPacked` b3-6 for
+> the room only, and `$F2` is deleted. Current truth:
+> `docs/cell_collision_plan.md` Phase 5. Keep this file for the S1–S6
+> history/timing lessons; trust the cell plan for punch/reset semantics.
+
 ---
 
 ## Spec

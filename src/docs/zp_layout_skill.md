@@ -32,7 +32,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
    the kernel authority map).
 5. **Do not touch from bank1 (live score/bomb):** `$F3-$F5` score,
    `$F6` BombX, `$F7` BombTimer, `$F0` PlayerBombs (read-only in bank1 HUD),
-   `$F1` BombSnd (bank1 must not write), `$F2` RoomWallMask (bank1 must not write),
+   `$F1` BombSnd (bank1 must not write),
     `$F8-$FF` stack mirror only (PlayerGrp0 buffer removed 2026-09-24 — never buffer here),
    `$AD` bank1 `Temp` (bank0 `TickCounter`), `$BD-$BF`+`$C1-$C2` EnemyRam,
    `$C0` LaserState (bank0 laser S1),
@@ -140,7 +140,7 @@ sequential byte would be `$BC`, but `$BD+` are explicit EQUs and `$BC` is
 | $F7 | **BombTimer** | Fuse/explode frames |
 | $F0 | **PlayerBombs** | Bombs left 0..5 (lives at `$F0` physically = old ColupfBuf[9]; nothing writes it but bomb logic since S3.0b) |
 | $F1 | **BombSnd** | Frames of bomb audio left (S10; 0=silent) |
-| $F2 | **RoomWallMask** | Packed destroyed thin-wall mask until stage leave: bits0-3 room0 rects, bits4-7 room1 rects (b3-6 of BombPacked saved/restored in EnterRoom; LoadLevel zeros it) |
+| $F2 | *(free)* | **FREE since plan 5.2 (was RoomWallMask)** — D1-B: no cross-room hole state; EnterRoom pack/restore + LoadLevel zero all deleted 2026-10-02 |
 | $F8-$FF | *(free)* | **stack mirror only** — PlayerGrp0 removed (kernel reads ROM via `Grp0Ptr`); never put a buffer here |
 
 Bank1 HUD `$E0-$EF` (score ptrs + bar temps) stomps ColupfBuf rows 0-2 and
@@ -210,16 +210,19 @@ must never allocate a ZP address kernel doesn't define.
 
 | Var | Addr | Reset |
 |-----|------|-------|
-| BombPacked | $B5 | state+DownPrev only on room change; WallMask saved to `$F2` |
+| BombPacked | $B5 | state+DownPrev only on room change; b3-6 WallMask live in-room only (pack/restore deleted, plan 5.2) |
 | BombY | $85 | snapshot on drop |
 | BombX | $F6 EQU | snapshot on drop |
 | BombTimer | $F7 EQU | 180 fuse / 60 explode |
-| RoomWallMask | $F2 EQU | pack both rooms' WallMask; **zeroed only by `LoadLevel`** |
+| ~~RoomWallMask~~ | ~~$F2 EQU~~ | **deleted, plan 5.2 (D1-B)** — `$F2` now FREE |
 
 WallMask bits b3-6 = rect index 0-3 (`BombMaskBit` ROM table
 `$08,$10,$20,$40,$00` — 5th entry `$00` since S3.2: the uniform walk
-touches index 4 (rect4), which is never masked).
-EnterRoom pack: old room0 → `$F2` b0-3; old room1 → `$F2` b4-7; restore inverse into BombPacked b3-6.
+touches index 4 (rect4), which is never masked). Kernel copy deleted with
+`ApplyBombWalls` (5.2); **bank1 copy lives** — hot parent-mask AND reads
+b3-6 until Phase 6.
+EnterRoom pack/restore into `$F2` deleted (5.2, D1-B): holes reset on
+room change, persist in-room via BombPacked b3-6.
 
 ## Stack depth (re-measured 2026-10-01, after Phase 3)
 

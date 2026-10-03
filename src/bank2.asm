@@ -249,9 +249,10 @@ MothBitTable:
     .byte $01, $02, $04
 
 ; MothMaskBit deleted (cell_collision_plan 3.1): its only reader was
-; LWC's destroyed-rect scan, retired with the cell walk. The moth walk
-; uses the rect.w b7 flag (S6.4); ApplyBombWalls keeps kernel's
-; BombMaskBit until phase 5.
+; LWC's destroyed-rect scan, retired with the cell walk. The moth walk is
+; cell-based now (plan 4.1); rect.w b7 + kernel BombMaskBit died with
+; ApplyBombWalls (plan 5.2) — bank1 BombMaskBit stays for the bomb walk
+; + hot parent-mask AND.
 
 ; 48-line band row lookup — copy of kernel's YToRowTable (bank2 cannot read
 ; bank0 ROM). Index = line >> 2, value = floor(line/48) = band row 0-3.
@@ -273,7 +274,7 @@ MothRowTable:
 ;     right (PlayerDir=0): path px = [nose_R=RoomX-3, A]      (A = raw arg)
 ;     left  (1):           path px = [A-7, nose_L=RoomX-4]
 ;   CollisionX = A (unclamped), RoomY live, PF0/1/2Buf live (the map —
-;   ApplyBombWalls-punched holes read as air for free).
+;   BombMarkWalls-punched holes read as air for free).
 ;   PIXEL MODEL: drawn M0 = [A-7, A] (SetObjectXPos arg -> box-left arg-7;
 ;   PlayerSpriteA lit cols0-6, PHM lit-left = arg-7). Kill test = same
 ;   [A-7, A] (adc #14 in the body). The raw tip/eye anchoring of S6a missed

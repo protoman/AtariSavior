@@ -19,6 +19,11 @@ Moth side (cell_collision_plan 4.1): same cell walk — HIT tail-jmps
 rect cache gone; the S3.2/S6.4 legacy-absence asserts keep guarding
 against window/stage resurrects.
 
+Bomb side (cell_collision_plan 5.1/5.2): kernel ApplyBombWalls +
+RoomWallMask are gone (D1-B); bank1 BombMarkWalls punches at the match
+via jsr ClearPFColumn; BombMaskBit survives bank1-only (bomb walk +
+hot parent-mask AND until phase 6).
+
 Run: /home/iuri/python3/bin/python3 tools/test_phm_walk.py
 """
 import re
@@ -27,6 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 KERNEL = (ROOT / "src" / "kernel.asm").read_text(encoding="utf-8")
+BANK1 = (ROOT / "src" / "bank1.asm").read_text(encoding="utf-8")
 BANK2 = (ROOT / "src" / "bank2.asm").read_text(encoding="utf-8")
 
 MASK_SPEC = [0x10, 0x20, 0x40, 0x80,
@@ -136,12 +142,22 @@ def main() -> None:
     assert not re.search(r"^MothMaskBit:", BANK2, re.M), \
         "MothMaskBit label must be gone (orphan of LWC cell swap, plan 3.1)"
 
-    # --- BombMaskBit survives until phase 5 (ApplyBombWalls only now) ------
-    mb = re.search(r"^BombMaskBit:\s*\n\s*\.byte([^\n]+)", KERNEL, re.M)
-    assert mb and len(mb.group(1).split(",")) == 5, \
-        "BombMaskBit needs 5 entries (index 4 = $00, rect4 never masked)"
-    assert mb.group(1).split(",")[-1].strip() == "$00", \
-        "BombMaskBit[4] must be $00 (rect4 not in WallMask)"
+    # --- plan 5.1/5.2: punch lives in bank1, persistence machinery dead ----
+    assert not re.search(r"^ApplyBombWalls:", KERNEL, re.M), \
+        "kernel ApplyBombWalls must be gone (plan 5.1: punch in BMW)"
+    assert "jsr ApplyBombWalls" not in KERNEL, \
+        "no caller may re-punch (VBL re-apply + EnterRoom restore deleted)"
+    assert not re.search(r"^RoomWallMask", KERNEL, re.M), \
+        "RoomWallMask $F2 must be gone (D1-B: no cross-room hole state)"
+    mb = re.search(r"^BombMaskBit:\s*\n\s*\.byte([^\n]+)", BANK1, re.M)
+    assert mb and len(mb.group(1).split(",")) == 4, \
+        "bank1 BombMaskBit needs 4 entries (rect0-3; bomb walk + hot AND)"
+    bmc = re.search(r"^BombMarkWalls:.*?^ABWXTab", BANK1, re.S | re.M)
+    assert bmc and "jsr ClearPFColumn" in bmc.group(0), \
+        "BMW must punch at the match via jsr ClearPFColumn (plan 5.1)"
+    cpc = re.search(r"^\.CPCDone:\s*\n\s*(\S+)", BANK1, re.M)
+    assert cpc and cpc.group(1) == "rts", \
+        "ClearPFColumn must tail rts, not ReturnPad (same-bank, plan 5.1)"
 
     print("test_phm_walk: OK (PHM + LWC + moth cell contracts)")
 

@@ -119,10 +119,13 @@ PF1Buf      = $C6                ; packed rows 0-2 (S3.1; was $CF)
 PF2Buf      = $C9                ; packed rows 0-2 (S3.1; was $DB)
 CollisionX  = $8B
 CollisionCellX = $8C
+CollisionCellY = $8D            ; plan 5.1 punch: rect idx save across ClearPFColumn
+CollisionEndY = $8F             ; plan 5.1 punch: last row (ClearPFColumn contract)
 ; bank0's LineCount — do NOT confuse with bank1's Temp ($AD) HUD scratch above.
-; ApplyBombWalls passes the first-row scratch here, not Temp: EnterRoom runs
-; it mid-input and CheckP0Left/Right read Temp ($88) as held buttons.
-; Dead in overscan — kernel .Row re-inits it every tile row.
+; ClearPFColumn's first-row arg — passed by BombMarkWalls (plan 5.1 punch),
+; NOT Temp: EnterRoom no longer runs ClearPFColumn (restore deleted, D1-B)
+; and the old mid-input constraint is gone. Dead in overscan otherwise —
+; kernel .Row re-inits it every tile row.
 LineCount   = $84
 
 ; --- BombMarkWalls (S5.2, moved from bank0) — must match kernel.asm ---
@@ -831,12 +834,15 @@ GetConnIdx:
     jmp $FBF8
 
 ; ClearPFColumn — A = left-half col 0..19; LineCount ($84) = first row;
-;   CollisionCellX = last row (inclusive). AND-clear that col's
-;   PF bit in those rows only. Clobbers A/X/Y/CollisionX.
+;   CollisionEndY = last row (inclusive). AND-clear that col's
+;   PF bit in those rows only. Clobbers A/X/Y/Temp ($AD) — NO CollisionX
+;   (plan 5.1: BombMarkWalls keeps its broken-wall count there across the
+;   call). Same-bank rts tail: BombMarkWalls jsrs this directly; the old
+;   CallPad_ClearPFColumn path died with ApplyBombWalls (dead pad kept).
 ClearPFColumn:
     tay                         ; Y = col
     lda BombClearMask,Y
-    sta CollisionX              ; AND mask (clear bit)
+    sta Temp                    ; AND mask (clear bit; NOT CollisionX)
     ldx LineCount               ; first row
 .CPCLoop:
     tya                         ; col
@@ -845,25 +851,25 @@ ClearPFColumn:
     cmp #12
     bcc .CPC1
     lda PF2Buf,X
-    and CollisionX
+    and Temp
     sta PF2Buf,X
     jmp .CPCNext
 .CPC0:
     lda PF0Buf,X
-    and CollisionX
+    and Temp
     sta PF0Buf,X
     jmp .CPCNext
 .CPC1:
     lda PF1Buf,X
-    and CollisionX
+    and Temp
     sta PF1Buf,X
 .CPCNext:
-    cpx CollisionCellX
+    cpx CollisionEndY
     beq .CPCDone
     inx
     bne .CPCLoop               ; rows 0..2; X never wraps here
 .CPCDone:
-    jmp $FBF8
+    rts                        ; plan 5.1: same-bank subroutine (was pad tail)
 
 ; AND-mask to clear col 0-19's PF bit (inverse of convert_room.pf_values)
 BombClearMask:
@@ -938,8 +944,12 @@ LaserFreqTable:
 ;   +-2, clamped 0..19). Skip x==0 (screen border). Score is NOT done here —
 ;   pads cannot nest (ReturnPad switches to bank0), so this returns
 ;   A = #walls newly broken and the bank0 caller adds +75 per wall.
-;   ABWXTab/ABWWTab/BombMaskBit duplicate bank0's (ROM is per-bank) —
-;   keep in sync with kernel.asm.
+;   Plan 5.1: each newly broken rect is punched here immediately (jsr
+;   ClearPFColumn) — the old VBL ApplyBombWalls re-apply + EnterRoom
+;   restore are deleted (D1-B). WallMask b3-6 survives only in-room: the
+;   hot parent-mask AND (HotOverlapBody) still reads it until phase 6.
+;   ABW tables + BombMaskBit are bank1-only now (kernel copies died with
+;   ApplyBombWalls).
 ; ========================================================================
     .ds $FB10 - *, 0
 BombMarkWalls:
@@ -1019,6 +1029,29 @@ BombMarkWalls:
     ora BombPacked
     sta BombPacked               ; set WallMask bit (keeps state+DownPrev)
     inc CollisionX               ; +1 wall broken (caller scores +75 each)
+    ; --- plan 5.1: punch this rect's cells NOW (col x, rows y..y+h-1).
+    ;   Same cell set the old VBL ApplyBombWalls (S6.1 every-frame
+    ;   re-apply) punched from these same bits — bits set iff match, so
+    ;   punch-on-set is byte-identical geometry. ClearPFColumn is
+    ;   same-bank rts — jsr legal (no pad nesting), SP -2 for ~40c.
+    stx CollisionCellY          ; save rect idx (ClearPFColumn clobbers X)
+    lda ABWYTab,X
+    tay
+    lda 0,Y
+    sta LineCount               ; first row
+    lda ABWHTab,X
+    tay
+    lda 0,Y
+    clc
+    adc LineCount
+    sec
+    sbc #1
+    sta CollisionEndY           ; last row (inclusive)
+    lda ABWXTab,X
+    tay
+    lda 0,Y                     ; A = col (ClearPFColumn arg)
+    jsr ClearPFColumn
+    ldx CollisionCellY          ; restore rect idx
 .BMWNext:
     dex
     bpl .BMWLoop
@@ -1028,8 +1061,11 @@ BombMarkWalls:
 
 ABWXTab: .byte RcW1, RcW1+4, RcW1+8, RcW1+12      ; rect.x (EQU-derived S3.1)
 ABWWTab: .byte RcW1+2, RcW1+6, RcW1+10, RcW1+14   ; rect.w
+ABWYTab: .byte RcW1+1, RcW1+5, RcW1+9, RcW1+13    ; rect.y (plan 5.1 punch)
+ABWHTab: .byte RcW1+3, RcW1+7, RcW1+11, RcW1+15   ; rect.h (plan 5.1 punch)
 BombMaskBit:
-    .byte $08, $10, $20, $40      ; WallMask bit per rect index (dup of bank0)
+    .byte $08, $10, $20, $40      ; WallMask bit per rect index (kernel copy
+                                  ;  died with ApplyBombWalls, plan 5.2)
 
 ; ========================================================================
 ; Cross-bank call pads — byte-identical to bank0 at these addresses
@@ -1060,7 +1096,7 @@ CallPad_ClearPFColumn:
     jmp $FA38
 CallPad_AddScore:
     sta $1FF7
-    jmp $FA7F
+    jmp $FA7D
 CallPad_IsRoomDark:
     sta $1FF7
     jmp $FC78
@@ -1069,7 +1105,7 @@ CallPad_SetRoomDark:
     jmp $FC9E
 CallPad_UpdateLaserSound:
     sta $1FF7
-    jmp $FAA7
+    jmp $FAA5
 CallPad_BuildColupF:
     sta $1FF8                   ; S5.1: body lives in bank2 (direct rect reads)
     jmp $FC4F
@@ -1088,8 +1124,8 @@ CallPad_BombMarkWalls:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F196           ; Overscan in bank0 (must match bank0 ToGameStub;
-                        ; back to $F196 — VBL flutter done via JetPower seed)
+    jmp $F193           ; Overscan in bank0 (must match bank0 ToGameStub;
+                        ; re-synced plan 5.2 — VBL jsr ApplyBombWalls deleted)
 
 ; ========================================================================
 ; IsRoomDark/SetRoomDark — moved here (post-ToGameStub free space) when the

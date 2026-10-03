@@ -179,9 +179,7 @@ BombTimer       = $F7           ; fuse/explode countdown (frames)
 PlayerBombs     = $F0           ; bombs left 0..5 (never written by VBLANK/bank1 score)
 BOMBS_MAX       = 5             ; starting / reload bomb count
 BombSnd         = $F1           ; frames of bomb audio left (0=silent; bank1 must not write)
-RoomWallMask    = $F2           ; packed destroyed-wall mask, until stage leave:
-                                ;   bits0-3 room0 rects, bits4-7 room1 rects
-                                ;   (BombPacked b3-6 saved here on EnterRoom)
+; $F2 = FREE (was RoomWallMask — D1-B, plan 5.2: no cross-room hole state)
 
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match bank1)
 ; $F3-$F5 live score only — $F6 is BombX (bank1 ScoreOn is unused).
@@ -479,7 +477,8 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; so $C3-$C5 keep the EnterRoom pattern forever (the old LoadPF0Only
     ; repair = 3 folds ≈ 130c/frame is deleted). PF1/PF2 rows 0-2 likewise
     ; have no per-frame writer; full 9-fold rebuild only on EnterRoom.
-    jsr ApplyBombWalls          ; S6.1: re-apply thin-wall holes every frame
+    ; Plan 5.1: the S6.1 every-frame ApplyBombWalls re-apply is GONE —
+    ; BombMarkWalls punches holes once at the fuse 1->2 edge.
     jsr CallPad_BuildColupF    ; stripe+hot COLUPF bytes into ColupfBuf ($E7-$F2)
 
     ; --- Band-color cache → RoomBandColor ($D2) for kernel+overscan (P2.5) ---
@@ -1218,35 +1217,9 @@ LoadPFBuffer:               ; EnterRoom only — full rebuild (all 3 phases)
 ; RoomX/RoomY are NOT changed — caller (exit handlers) sets them.
 ; ------------------------------------------------------------------------------
 EnterRoom subroutine
-    ; Persist outgoing room WallMask into RoomWallMask (permanent until LoadLevel)
-    pha                         ; save new room index
-    lda BombPacked
-    and #%01111000              ; mask bits only
-    lsr
-    lsr
-    lsr                         ; A = rect nibble (b0-3)
-    ldx RoomNo                  ; OLD room (still valid)
-    beq .ERSaveR0
-    asl
-    asl
-    asl
-    asl                         ; room1: nibble → high
-    sta LineCount               ; NOT Temp — joystick byte stays live: after
-                                ; EnterRoom the caller resumes CheckP0Right /
-                                ; .NoVMove and reads Temp as held buttons
-    lda RoomWallMask
-    and #$0F
-    ora LineCount
-    sta RoomWallMask
-    jmp .ERGotRoom
-.ERSaveR0:
-    sta LineCount               ; see above — Temp belongs to the input path
-    lda RoomWallMask
-    and #$F0
-    ora LineCount
-    sta RoomWallMask
-.ERGotRoom:
-    pla                         ; new room
+    ; Plan 5.1/5.2 (D1-B): no WallMask persistence across room changes.
+    ; The old save-into-RoomWallMask block is deleted — holes die with the
+    ; BombPacked=0 reset below, and LoadPFBuffer rebuilds the pattern.
     sta RoomNo
     asl
     asl
@@ -1329,34 +1302,17 @@ EnterRoom subroutine
     lda #$00
     sta EnemyDeadMask            ; no dead enemies in new room
 
-    ; Bomb reset: clear state/timer/sound (incl. OnGround b7); RELOAD mask
-    ; (destroyed thin walls persist across room leave/re-enter until stage leave)
+    ; Bomb reset: clear state/timer/sound (incl. OnGround b7) — wall bits
+    ; b3-6 die with it: D1-B, holes do not survive room change (the old
+    ; RoomWallMask nibble restore is deleted; LoadPFBuffer below rebuilds
+    ; the whole pattern from ROM).
     lda #0
     sta BombPacked
     sta BombTimer
     sta BombSnd
     sta AUDV0
-    ldx RoomNo
-    beq .ERLoadR0
-    lda RoomWallMask
-    and #$F0
-    beq .ERMaskDone
-    lsr                         ; high nibble → b3-6
-    jmp .ERMaskOr
-.ERLoadR0:
-    lda RoomWallMask
-    and #$0F
-    beq .ERMaskDone
-    asl
-    asl
-    asl                         ; low nibble → b3-6
-.ERMaskOr:
-    ora BombPacked
-    sta BombPacked
-.ERMaskDone:
 
     jsr LoadPFBuffer
-    jsr ApplyBombWalls          ; re-punch holes from restored mask
     jsr LoadEnemyRam            ; writes EnemyRamX/Y/D ($E2 disjoint from PF
     rts                         ; buffers since S3.4 — order now cosmetic)
 
@@ -1731,8 +1687,7 @@ ExitRoomRight:
 LoadLevel:
     ; Stage leave/reload/advance: walls return + bombs refill to 5
     lda #0
-    sta RoomWallMask
-    sta BombPacked              ; so EnterRoom's save writes 0, not stale mask
+    sta BombPacked              ; state + WallMask bits (D1-B: no $F2 mirror)
     sta BombTimer
     sta EnemyRamD               ; clear dir + RoomDarkMask (bits 4-7) — level reset
     lda LaserState
@@ -2263,72 +2218,11 @@ BombPlayerBlast:
 ; ------------------------------------------------------------------------------
 ; BombMarkWalls — MOVED to bank1 (S5.2) — CallPad_BombMarkWalls ($FB10).
 ;   Returns A = #walls newly broken; the fuse-expiry caller scores +75 each
-;   (pads cannot nest: ReturnPad switches to bank0 mid-call). bank1 keeps
-;   its own copies of ABWXTab/ABWWTab/BombMaskBit (ROM is per-bank).
+;   (pads cannot nest: ReturnPad switches to bank0 mid-call). bank1 owns the
+;   ABW tables + BombMaskBit now (plan 5.2 deleted the kernel copies along
+;   with ApplyBombWalls).
 ; ------------------------------------------------------------------------------
 
-; ------------------------------------------------------------------------------
-; ApplyBombWalls — after LoadPFBuffer: for each masked rect, clear its col
-;   bit in PF0Buf/PF1Buf/PF2Buf only for rows rect.y .. rect.y+h-1
-;   (thin segment only — not into a wider join below/above).
-; Early-out when WallMask=0 (common case).
-; Reads rect x/y/h directly from ZP rect cache (no FoldIndirect):
-;   Rect 0: x=$C7, y=$C8, h=$CA
-;   Rect 1: x=$CB, y=$CC, h=$CE
-;   Rect 2: x=$D3, y=$D4, h=$D6
-;   Rect 3: x=$D7, y=$D8, h=$DA
-; ------------------------------------------------------------------------------
-ApplyBombWalls:
-    lda BombPacked
-    and #%01111000              ; WallMask b3-6 only
-    beq .ABWDone
-    ldx #3                      ; rect index 3..0 (descending)
-.ABWLoop:
-    lda BombMaskBit,X
-    and BombPacked
-    beq .ABWNext
-    lda ABWXTab,X               ; ZP address of rect.x
-    tay
-    lda 0,Y                     ; rect.x (direct ZP read via Y pointer)
-    sta CollisionX
-    lda ABWYTab,X               ; ZP address of rect.y
-    tay
-    lda 0,Y                     ; rect.y = first row
-    sta LineCount               ; NOT Temp — EnterRoom runs this mid-input and
-                                ; CheckP0Left/Right read Temp as held buttons
-    lda ABWHTab,X               ; ZP address of rect.h
-    tay
-    lda 0,Y                     ; rect.h
-    clc
-    adc LineCount
-    sec
-    sbc #1
-    sta CollisionCellX          ; last row = y+h-1
-    txa
-    pha                         ; rect index — ClearPFColumn clobbers X
-    lda CollisionX              ; col
-    jsr CallPad_ClearPFColumn           ; A=col, LineCount=first, CollisionCellX=last
-    pla
-    tax
-    ; S6.4: flag rect.w b7 = destroyed — both walks (bank0 PHM, bank2 moth)
-    ; skip at their w-read. Single choke point: every-frame VBL re-punch
-    ; + EnterRoom mask-restore run this loop, so b7 tracks WallMask.
-    lda ABWWTab,X
-    tay
-    lda 0,Y
-    ora #$80
-    sta 0,Y
-.ABWNext:
-    dex
-    bpl .ABWLoop
-.ABWDone:
-    rts
-
-; ZP address tables for ApplyBombWalls/BombMarkWalls rect cache (rects 0-3)
-ABWXTab: .byte RcW1, RcW1+4, RcW1+8, RcW1+12   ; rect.x ZP addrs (EQU-derived
-ABWYTab: .byte RcW1+1, RcW1+5, RcW1+9, RcW1+13 ;  since S3.1 — tables can no
-ABWWTab: .byte RcW1+2, RcW1+6, RcW1+10, RcW1+14 ; longer go stale vs cache)
-ABWHTab: .byte RcW1+3, RcW1+7, RcW1+11, RcW1+15
 
 ; ==============================================================================
 ; Data tables
@@ -2341,10 +2235,7 @@ BombBlinkColors:
     .byte COLOR_BLINK_R         ; 2 red
     .byte COLOR_BLINK_Y         ; 3 yellow (4-phase blink: b/y/r/y)
 
-; WallMask bit for rect index 0-3 (BombPacked b3-6); index 4 (rect4) =
-; $00 entry (S3.2) → `and BombPacked` = 0 → never skipped.
-BombMaskBit:
-    .byte $08, $10, $20, $40, $00
+; BombMaskBit: bank1-only now (plan 5.2 — kernel copy died with ApplyBombWalls).
 
 ; BombClearMask moved to bank1 with ClearPFColumn (leaf_move_plan batch B).
 
@@ -2508,7 +2399,7 @@ PlayerHitsMap:
 
 ; --- Cell walk (cell_collision_plan 2.1): test the PF buffers directly ---
 ; The ZP rect cache ($CC-$DF, 5-slot limit) is gone from THIS walker: the
-; render buffers PF0/1/2Buf ARE the map (ApplyBombWalls punches bomb holes
+; render buffers PF0/1/2Buf ARE the map (BombMarkWalls punches bomb holes
 ; into them), so room complexity is unbounded and geometry parity is proven
 ; by tools/test_cell_map.py (box vs geometry, all models/rooms).
 ; Prologue ranges (all left-half space): CollisionCellY = top row,
@@ -2618,7 +2509,7 @@ CallPad_ClearPFColumn:
     jmp $FA38
 CallPad_AddScore:
     sta $1FF7
-    jmp $FA7F
+    jmp $FA7D
 CallPad_IsRoomDark:
     sta $1FF7
     jmp $FC78
@@ -2627,7 +2518,7 @@ CallPad_SetRoomDark:
     jmp $FC9E
 CallPad_UpdateLaserSound:
     sta $1FF7
-    jmp $FAA7
+    jmp $FAA5
 CallPad_BuildColupF:
     sta $1FF8                   ; S5.1: body lives in bank2 (direct rect reads)
     jmp $FC4F
