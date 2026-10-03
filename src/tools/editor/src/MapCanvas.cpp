@@ -473,6 +473,17 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         emit levelModified();
         update();
     } else if (!m_modelMode && room && m_currentBrush == BrushTool::ADD_LAMP) {
+        // Darkness mask covers rooms 0-7 only — a lamp beyond that could
+        // never darken its room (game treats rooms 8+ as always lit).
+        if (m_activeRoomIndex >= kDarkMaskRooms) {
+            QMessageBox::warning(
+                nullptr, QObject::tr("Lamp Limit"),
+                QObject::tr("Lamps only work in rooms 0-7 (the darkness mask "
+                            "is 8 bits).\nRoom %1 stays permanently lit, so "
+                            "no lamp was placed.")
+                    .arg(m_activeRoomIndex + 1));
+            return;
+        }
         // Entity placement: full stage width, no mirroring. No lamps in the HUD band.
         if (entityX < 0 || entityX >= displayColumns ||
             tileY < 0 || tileY >= displayRows) return;

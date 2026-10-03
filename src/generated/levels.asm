@@ -2,11 +2,12 @@
 
     include "generated/level_001_rooms.asm"
     include "generated/level_002_rooms.asm"
+    include "generated/level_003_rooms.asm"
 
 ROOM_NONE = $ff
 
 LEVEL_DATA_STRIDE = 14
-LEVEL_COUNT = 2
+LEVEL_COUNT = 3
 
 ; Per-level entry (stride 14): start room/x/y, miner room/x/y, both wall
 ; colors, then the level's RoomDataTable and RoomConnections bases.
@@ -15,4 +16,6 @@ LevelDataTable:
   .word LEVEL1_RoomDataTable, LEVEL1_RoomConnections, LEVEL1_RoomEnemies
   .byte LEVEL2_START_ROOM, LEVEL2_START_X, LEVEL2_START_Y, LEVEL2_MINER_ROOM, LEVEL2_MINER_X, LEVEL2_MINER_Y, LEVEL2_WALL_COLOR, LEVEL2_WALL_COLOR2
   .word LEVEL2_RoomDataTable, LEVEL2_RoomConnections, LEVEL2_RoomEnemies
+  .byte LEVEL3_START_ROOM, LEVEL3_START_X, LEVEL3_START_Y, LEVEL3_MINER_ROOM, LEVEL3_MINER_X, LEVEL3_MINER_Y, LEVEL3_WALL_COLOR, LEVEL3_WALL_COLOR2
+  .word LEVEL3_RoomDataTable, LEVEL3_RoomConnections, LEVEL3_RoomEnemies
 

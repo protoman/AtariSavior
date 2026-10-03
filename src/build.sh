@@ -11,23 +11,28 @@ ROOT="$(cd "$DIR/.." && pwd)"
 
 echo "Building F6 ROM (4 banks)..."
 
-# Generate level data from JSON
+# Generate level data from JSON (every rooms/level_XXX.json — no hardcode)
 echo "  Generating level data..."
-python3 "$ROOT/tools/convert_level.py" "$DIR/rooms/level_001.json" "$DIR/generated/level_001" "$DIR/rooms"
-python3 "$ROOT/tools/convert_level.py" "$DIR/rooms/level_002.json" "$DIR/generated/level_002" "$DIR/rooms"
+LEVELS=("$DIR"/rooms/level_[0-9][0-9][0-9].json)
+for J in "${LEVELS[@]}"; do
+    python3 "$ROOT/tools/convert_level.py" "$J" "$DIR/generated/$(basename "$J" .json)" "$DIR/rooms"
+done
 
 # Generate levels index (LevelDataTable with all levels)
 python3 "$ROOT/tools/convert_level.py" --levels "$DIR/generated/levels.asm" \
-    "$DIR/rooms/level_001.json" "$DIR/rooms/level_002.json"
+    "${LEVELS[@]}"
 
 # Assemble each bank (from src/ so include paths resolve)
+# bank2 FIRST: its LevelDataTable address is synced into kernel.asm
+# (frozen-literal self-heal) before bank0 bakes it into an immediate.
 cd "$DIR"
+dasm bank2.asm -f3 -obank2.bin -lbank2.lst
+echo "  bank2: OK"
+python3 "$ROOT/tools/verify_build.py" --sync "$DIR"
 dasm kernel.asm -f3 -obank0.bin -lbank0.lst
 echo "  bank0: OK"
 dasm bank1.asm -f3 -obank1.bin -lbank1.lst
 echo "  bank1: OK"
-dasm bank2.asm -f3 -obank2.bin -lbank2.lst
-echo "  bank2: OK"
 dasm bank3.asm -f3 -obank3.bin
 echo "  bank3: OK"
 
