@@ -9,208 +9,16 @@ Eorley Savior.
 BUGS
 =========================================================================================================================================================================
 
+better and bigger miner sprite
 =========================================================================================================================================================================
-Points counting when finishing a level:
-    Chegar no mineiro, 1000
-    Tempo quase cheio - 1510
-    Cada bomba: 50
-    Pontos, cada pedaço da barra de power, 160
-
+player walking animation
 =========================================================================================================================================================================
-- non mirrored walls
-
-
-
+non mirrored walls
 =========================================================================================================================================================================
-
-Add laser action.
-When player pushes the fire button, a laser beam, that is a line starting from the "eye" in the player sprite,
-must appear ahead of the player, in the same direction player is facing, and on the Y position of the yellow line of his sprite.
-And if this line touches any enemy, the enemy must be removed from the room, and the player gets 50 score points.
-The laser can use missile with high speed movement to simulate a line, but if there are better options, let me know,
-but I do believe we are not using missiles as of now, so it can be a good option.
-The laser width should be 3 times the player sprite width.
-
-
-- fly sound
-    # Add sound similar of an old two-stroke combustion engine, when player is playing (up in joystick).
-    # fix sounds tone
-
-
-- better sprites
-    # what is the size, in pixels, of the player, enemies and objects on the game?
-    # is it possible for the sprites to be bigger and have shapes, like for example, for the player (colors names for the row are on the right side)
-
-Now I would like to change the player sprite, to have this format and colors.
-There are two, because when flying he should show a mittle animation switching between those two sprites. B
-But if you notice, there are only 3 pixels different between the two sprites, so we only need to store the first, and the 3 ones, or maybe the two rows where those are.
-Of course, the collision should take in account the bigger size for the player, if not already does.
-
-
-Now, back to changing enemies and objects sprites. Keep the size and color, just add a "design"for the sprites.
-
-Moth:
-#..#
-.##.
-####
-####
-.##.
-#..#
-.##.
-.##.
-
-Spider:
-.##.
-####
-####
-.##.
-#..#
-.##.
-#..#
-#..#
-
-Lamp:
-####
-####
-.##.
-.##.
-####
-####
-####
-.##.
-
-Tentacle:
-.##.
-#..#
-#...
-.##.
-..##
-..##
-..##
-..##
-
-Bat:
-#..#
-.##.
-####
-.##.
-.##.
-#..#
-#..#
-....
-
-Miner (facing left):
-#...
-#.##
-..##
-.###
-.###
-####
-####
-....
-
-
-Bomb:
-...#
-..#.
-..#.
-.##.
-####
-####
-####
-.##.
-
-
-..####..   RED
-.######.   RED
-.####...   YELLOW
-..####..   RED
-.#####..   GRAY
-##.####.   RED
-##.####.   RED
-...###..   RED
-...##...   RED
-...##...   RED
-...###..   GRAY
-..####..   GRAY
-
-..####..   RED
-.######.   RED
-.####...   YELLOW
-..####..   RED
-.#####..   GRAY
-##.####.   RED
-##.####.   RED
-##.###..   RED
-.#.##...   RED
-...##...   RED
-...###..   GRAY
-..####..   GRAY
-
-
-
-
-..####.   RED
-..####.   RED
-.######   YELLOW
-.###....  RED
-..####.   GRAY
-.#####.   RED
-##.####   RED
-##.####   RED
-...###.   RED
-...##..   RED
-...##..   GRAY
-..###..   GRAY
-
-
-
-
-
-
-
-- points finishing stage
-
-
-#########################################################################################################################################################################
-
-In the 1984 Atari 2600 classic H.E.R.O., the iconic "wave effect" seen on the glowing magma walls and flowing lava rivers is achieved through a brilliant hardware exploit called color cycle manipulation combined with a localized horizontal sync offset.Because the Atari 2600’s graphics chip—the TIA (Television Interface Adaptor)—lacked the memory to process traditional frame-by-frame sprite animations for large background elements, programmer John Van Ryzin had to "trick" the television hardware into creating the illusion of motion.
-
-How the Wave Effect Works Under the HoodThe movement of the lava isn't moving pixels; it is an illusion generated line-by-line using two core techniques:
-
-1. Color Phase Shifting (The "Glow" Effect)
-The TIA generates colors on an NTSC or PAL television by altering the phase of the video signal relative to a color burst reference signal.
-The game's code dynamically modifies the COLUBK (Background Color) or COLUPF (Playfield Color) registers in the middle of rendering a frame.
-By rapidly incrementing or decrementing the color values on successive horizontal scanlines, the game creates a shimmering gradient of red, orange, and yellow.
-
-2. Scanline Shifting (The "Wavy" Motion)To make the lava look like it is physically flowing or undulating, the engine relies on a technique known as HMOVE (Horizontal Motion).
-On the Atari 2600, the background (playfield) is normally rigid. However, by writing to the HMOVE register on specific horizontal scanlines,
-a programmer can force the TIA to shift the graphics on that specific line slightly to the left or right by a few pixels.
-H.E.R.O. uses a small math loop (or an internal lookup table) that acts like a simplified sine wave generator.
-As the TV draws the screen from top to bottom, the code shifts line 1 right by 1 pixel, line 2 right by 2 pixels, line 3 right by 1 pixel, line 4 by 0, and so on.
-By advancing the starting point of this mathematical wave on every frame, the stationary blocks of color appear to ripple like liquid.
-
-
-
-#########################################################################################################################################################################
-
-
-
-# laser to kill the enemies and show a beam coming from the player eye (we tried this before and was tricky, that is why we started a new kernel from the scratch).
-# add in editor's magma walls terrain that blink and kill the player if he touches it
-# add option in editor's room that will show lava or water at the bottom of it as a different background color (if player touches it, he will die)
-# enemy movement and distinct sprite colors
-Or do you have any other ideas to implement first?
-
-#########################################################################################################################################################################
-
-What is laser made with? A missile, sprites, other?
-I did ask to use player sprite before, because the current implementation does not follow player exact X position, instead it only moves from tile to tile.
-Why did you change it back? Unless you can fix this position problem, we should just change player sprite to draw it.
-
-- laser facing
-
-- laser touch enemy
+tentacle pull player
+=========================================================================================================================================================================
+logo in score like activision?
+=========================================================================================================================================================================
 
 #########################################################################################################################################################################
 
@@ -225,75 +33,21 @@ After that, start following the option 2.
 
 
 #########################################################################################################################################################################
-TEXT
-#########################################################################################################################################################################
-
-
-
-
-
-
-#########################################################################################################################################################################
-
-#########################################################################################################################################################################
 REFACTOR
 #########################################################################################################################################################################
 
 
-
-
-In the editor, I can´t place the miner in the right side of the screen.
-
-In the editor, the proportion of the grid should take account the existence of the HUD,
-we previously removed the area of it in the editor, but the size was kept the same, including the area that the HUD used.
-
-
-Why are you still using this file? comparison/lo-a-rad-dragon/bank0.asm
-
-Make snake a rectanble that is twice the player width and half the player height.
-Snake needs a direction, so it needs a mouth like the player
-
-
-Spiders go up and down (half a tile) in a web line
-
-Moths go zig-zag (4 tiles) in a senoid up/down movement. it always starts moving first to its right. (simplification)
-
-HUD:
-    Numer of lives
-    Number of bombs
-    Points
-    Timer
-    Upperland Studios Logo
-
-
-
-
-- Start screen (criar desenho)
-    SAVIOR 2600
-    Version 0.1.b1
-    (c) 2026 Upperland Studios
-    Based on Lo! A rad dragon!
-    Made with AI
-
-
-
-- adicionar lago de lava
-
-- adicionar parede quebrável
-
-- optimização:
-    # só precisa colocar na memória do playfield as paredes que existem
-    # salas que foram iguais, podem ser guardadas uma única vez no jogo, e usadas em diferentes fases.
-
 - adicionar suporte a partes async nas fases
-
-- adicionar movimentação aos inimigos
 
 
 
 
 #########################################################################################################################################################################
+Adicionar license.txt (GPL v2)
 Adicionar doc com agradecimentos ao jogo usado como base e exemplos.
+modelo limpo de física 16-bit com ponto fixo subpixel (vyLo, vyHi, PlayerYSub)
+técnica clássica de Andrew Davie, baseada em lookup table alinhada em página (fineAdjustTable em $FF00)
+truque de cópias NUSIZ (3 cópias espaçadas/médias para vidas e bombas)
 
 #########################################################################################################################################################################
 
