@@ -1137,8 +1137,8 @@ CallPad_BombMarkWalls:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F193           ; Overscan in bank0 (must match bank0 ToGameStub;
-                        ; re-synced plan 5.2 — VBL jsr ApplyBombWalls deleted)
+    jmp $F17D           ; Overscan in bank0 (must match bank0 ToGameStub;
+                        ; re-synced: VBL frame pick extracted to PickPlayerFrame)
 
 ; ========================================================================
 ; IsRoomDark/SetRoomDark — moved here (post-ToGameStub free space) when the
