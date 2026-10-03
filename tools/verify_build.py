@@ -189,9 +189,9 @@ def check_rom(src: Path) -> bytes | None:
                 err(f".Line branch page-cross: {t.split(';')[0].strip()} at "
                     f"${addr:04X} targets ${tgt:04X} (4c, budget 3c) -> "
                     f"WSYNC overrun")
-    # 4) Laser S2.2: `lda BeamMask,Y` fetch budgeted at 5c = 4c + cross
-    #    ($F1xx kernel -> $FFxx table). Table moved onto the kernel's own
-    #    page would make the comment/budget stale; keep it in $FFxx.
+    # 4) Laser S2.2: `lda BeamMask,Y` fetch budgeted at 4c = no page-cross
+    #    (kernel $F1xx -> table $FExx, operand + Y(<=11) must stay in $FExx).
+    #    A cross would add 1c to the object-path worst case (WSYNC guard).
     for addr, text in rows:
         t = text.strip()
         if t.startswith(";"):
@@ -199,9 +199,9 @@ def check_rom(src: Path) -> bytes | None:
         m = re.match(r"^((?:[0-9a-f]{2}[ \t])+)\s*lda\s+BeamMask,Y\b", t)
         if m:
             bs = m.group(1).split()
-            if len(bs) != 3 or int(bs[2], 16) != 0xFF:
+            if len(bs) != 3 or int(bs[2], 16) != 0xFE or int(bs[1], 16) > 0xF4:
                 err(f"BeamMask fetch operand ${''.join(bs[-2:])} at "
-                    f"${addr:04X} not in $FFxx (budget assumes 5c cross)")
+                    f"${addr:04X} not no-cross in $FExx (budget assumes 4c)")
             break
     else:
         err("lda BeamMask,Y not found in bank0.lst")
@@ -259,11 +259,13 @@ MOTH_STA18 = bytes([0x8D, 0xF8, 0x1F])
 MOTH_STA16 = bytes([0x8D, 0xF6, 0x1F])
 
 # S5.3 HOF entry tramp — same pattern as the moth entry: bank0 executes
-# `sta $1FF8` at $FE80, the fetch at $FE83 comes from bank2 = `jmp` target.
-HOF_ENTRY = 0xFE80
-# S5.4 LaserHitTest entry tramp — same pattern: `sta $1FF8` at $FE86,
+# `sta $1FF8` at $FE90, the fetch at $FE93 comes from bank2 = `jmp` target.
+# (shifted +$10 from $FE80 when the aligned ObjColorTab/ObjSprites pair
+#  took $FE00-$FE8F; mirrors in both banks moved together.)
+HOF_ENTRY = 0xFE90
+# S5.4 LaserHitTest entry tramp — same pattern: `sta $1FF8` at $FE96,
 # fetch at $FE89 from bank2 = `jmp LaserHitTestBody`.
-LHT_ENTRY = 0xFE86
+LHT_ENTRY = 0xFE96
 # Tally entry tramp — same pattern: `sta $1FF8` at $FFE6 (after BeamMask,
 # fetch at $FFE9 from bank2 = `jmp TallyEntry`). Ends $FFEB so $FFF2-$FFF9
 # (F6 hotspot mirrors) stay fill.
@@ -325,7 +327,7 @@ def check_moth_tramp(src: Path) -> None:
         err(f"UE_MothTramp at {shown}, expected ${MOTH_ENTRY:04X} "
             "(dispatch jmp target moved off the pad)")
 
-    # S5.3 HOF tramp ($FE80) — same discipline as the moth entry above.
+    # S5.3 HOF tramp ($FE90) — same discipline as the moth entry above.
     hoff = HOF_ENTRY - 0xF000
     g0 = banks[0][hoff:hoff + 6]
     g2 = banks[2][hoff:hoff + 6]
@@ -425,6 +427,52 @@ def check_moth_tramp(src: Path) -> None:
 # byte-identical in bank0/bank1 (first 5 bytes fetched pre-switch, jmp/pla/
 # rts post-switch), and every CallPad jmp literal must equal the bank1 label.
 PAD_LO, PAD_HI = 0xFBF8, 0xFC49   # inclusive start, exclusive end (FC48 last)
+
+
+
+def check_frame_tramp(src: Path) -> None:
+    """PickPlayerFrame VBL tramp: bank0/bank2 byte-identity + operand = body.
+
+    bank0 executes `sta $1FF8` at labels0['PickPlayerFrame'] ($FDE1); the
+    following `jmp` is FETCHED from bank2's mirror at the same address
+    (FoldIndirect discipline), so all 6 bytes must match and the operand
+    must equal bank2's PickPlayerFrame body label (pinned $F3C0 by .ds).
+    """
+    bins: dict[int, bytes] = {}
+    for idx in (0, 2):
+        p = src / f"bank{idx}.bin"
+        if not p.exists():
+            err(f"bank{idx}.bin missing (frame tramp check)")
+            return
+        d = p.read_bytes()
+        if len(d) == 4096:
+            bins[idx] = d
+    if len(bins) < 2:
+        return
+    l0p, l2p = src / "bank0.lst", src / "bank2.lst"
+    if not l0p.exists() or not l2p.exists():
+        err("bank0.lst/bank2.lst missing (frame tramp check)")
+        return
+    labels0, _ = parse_lst(l0p.read_text(errors="replace").splitlines())
+    labels2, _ = parse_lst(l2p.read_text(errors="replace").splitlines())
+    tramp = labels0.get("PickPlayerFrame")
+    body = labels2.get("PickPlayerFrame")
+    if tramp is None or body is None:
+        err("PickPlayerFrame label missing (bank0 tramp / bank2 body)")
+        return
+    off = tramp - 0xF000
+    b0 = bins[0][off:off + 6]
+    b2 = bins[2][off:off + 6]
+    if len(b0) == 6 and b0[:3] != bytes((0x8D, 0xF8, 0x1F)):
+        err(f"bank0 frame tramp ${tramp:04X} = {b0.hex()} (expected 8df81f + jmp)")
+    if b0 != b2:
+        err(f"frame tramp bank0[${tramp:04X}] {b0.hex()} != bank2 {b2.hex()} "
+            f"(byte-identity broken)")
+    if len(b0) == 6:
+        tgt = b0[4] | (b0[5] << 8)
+        if tgt != body:
+            err(f"frame tramp jmp ${tgt:04X} != bank2 PickPlayerFrame "
+                f"${body:04X} (operand stale)")
 
 
 def check_callpads(src: Path) -> None:
@@ -861,6 +909,7 @@ def main() -> int:
     check_rom(src)
     check_fold_block(src)
     check_moth_tramp(src)
+    check_frame_tramp(src)
     check_callpads(src)
     check_levels(src)
     check_model_rects(src)

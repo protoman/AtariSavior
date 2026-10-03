@@ -58,7 +58,9 @@ RECTS0 = 0x4C                   # $CC & 0x7F
 # (between LHT and those rts only SetObjectXPos / AddScore run — neither
 # writes CollisionX; enemies are all dead in the probe = miss path).
 RANGE_LO = LABELS["LaserInput"]
-RANGE_HI = LABELS["BeamMask"]
+# end marker: TallyTramp ($FFE6+) — BeamMask no longer works (it moved to
+# the $FExx hole, BELOW LaserInput, when the aligned color table landed)
+RANGE_HI = LABELS.get("TallyTramp", 0xFFF0)
 rts_pcs = set()
 for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(?:[0-9a-f]{2}[ \t]+)+rts\b", _l)

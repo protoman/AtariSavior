@@ -11,9 +11,9 @@
         "wall2_b": 64,
         "start_room": 0,
         "miner_room": 1,
-        "miner_x": 5.5,
-        "miner_y": 6.0,
-        "miner_dir": -1,
+        "miner_x": 1.5,
+        "miner_y": 7.0,
+        "miner_dir": 1,
         "rooms": [
             {
                 "room_id": 0,
