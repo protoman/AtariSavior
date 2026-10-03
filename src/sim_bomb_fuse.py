@@ -18,6 +18,9 @@ ASSERTIONS (exit 1 on any failure):
   5. tentacle  — coverage guard: a live tentacle is poked into the spawn
                  room so the UE_Tentacle probe chain runs (without it the
                  min-SP guard never sees the deepest gameplay path).
+  6. hole      — at the blast edge PF0/1/2Buf ($C3-$CB) gain cleared bits
+                 and none set (visible window), WallMask b3-6 selected —
+                 plan 5.1 punch -> ClearPFColumn path.
 
 TIA/RIOT stubs: INTIM always reads 0 (all `lda INTIM` waits exit at once),
 WSYNC/TIM64T writes ignored, SWCHA scripted, INPT4 = released ($40).
@@ -172,6 +175,10 @@ drop_frame = None
 states_seen = []                         # (frame, B5&3) sampled per frame
 saw_fuse_zero = False
 snapshots = []
+# ---- hole probe (plan 5.1): PF buffers $C3-$CB + WallMask b3-6 ----
+pre_pf = post_pf = None
+pre_b5 = post_b5 = None
+blast_frame = None
 
 while frame < 420:
     step()
@@ -205,14 +212,30 @@ while frame < 420:
             # (DropTarget a real fall target), after that EnterRoom
             mem.ram[POKE_ENEMYCOUNT] = 2
             mem.ram[POKE_TENT_X] = 36
+            # room1's only maskable rect (17,0,1,2) sits at c17, but the
+            # spawn bomb blasts c4-8 (c18-19 = cave mouth, no floor, so the
+            # player can't stand over there either). Poke rect1 -> the
+            # floor stub (5,2,1,1): same bits PF renders there (band2 c5=1),
+            # blast c4-8 reaches x=5, w==1 maskable — exercises the plan 5.1
+            # BombMarkWalls -> ClearPFColumn punch end to end.
+            mem.ram[0x50:0x54] = bytes((5, 2, 1, 1))
             poked = True
-            print(f'tentacle coverage poked at f{frame}: EnemyCount=2, slot1 X=36')
+            print(f'tentacle coverage poked at f{frame}: EnemyCount=2, '
+                  f'slot1 X=36, rect1=(5,2,1,1)')
         st = mem.ram[IDX_B5] & 3
         states_seen.append((frame, st))
         if drop_frame is None and mem.ram[IDX_F0] < 5:
             drop_frame = frame
+            pre_pf = bytes(mem.ram[0x43:0x4C])     # PF0/1/2Buf rows 0-2
+            pre_b5 = mem.ram[IDX_B5]
             print(f'drop detected f{frame}: bombs={mem.ram[IDX_F0]} '
                   f'F7=${mem.ram[IDX_F7]:02X} B5=${mem.ram[IDX_B5]:02X}')
+        # blast edge (fuse 1->2) = BombMarkWalls punch moment; sample after
+        if blast_frame is None and st == 2:
+            blast_frame = frame
+        if blast_frame is not None and frame >= blast_frame + 5 and post_pf is None:
+            post_pf = bytes(mem.ram[0x43:0x4C])
+            post_b5 = mem.ram[IDX_B5]
         # input: land-detect then hold Down 4 frames
         if landed_frame is None and (mem.ram[IDX_B5] & 0x80):
             landed_frame = frame
@@ -262,6 +285,27 @@ rle(b5_log, '$B5 BombPacked')
 stack_hits = [e for e in f7_log if e[4] == 'STACK']
 print(f'\nstack stomps on $F7: {len(stack_hits)}; bomb-code writes: {len(f7_log) - len(stack_hits)}')
 
+# ---- hole probe report (plan 5.1: punch -> ClearPFColumn -> PF buffers) ----
+print(f'\n== hole probe (PF bufs $C3-$CB, blast f{blast_frame}) ==')
+hole_pf = hole_mask = False
+if pre_pf is not None and post_pf is not None:
+    cleared = setb = 0
+    for i, (a, b) in enumerate(zip(pre_pf, post_pf)):
+        if a & ~b:
+            cleared += 1
+            print(f'  ${0xC3 + i:02X}: ${a:02X} -> ${b:02X}  (hole)')
+        if b & ~a:
+            setb += 1
+            print(f'  ${0xC3 + i:02X}: ${a:02X} -> ${b:02X}  (SET - unexpected)')
+    mask_new = (post_b5 & ~pre_b5) & 0x78 if pre_b5 is not None else 0
+    print(f'  cleared bytes={cleared}, set bytes={setb}, '
+          f'WallMask new bits=${mask_new:02X}')
+    hole_pf = cleared > 0 and setb == 0
+    hole_mask = mask_new != 0
+else:
+    print(f'  pre={pre_pf is not None} post={post_pf is not None} '
+          f'blast={blast_frame}')
+
 states = [s for _, s in states_seen]
 saw_drop = drop_frame is not None
 saw_explode = 2 in states
@@ -277,6 +321,8 @@ checks = [
     (f'min SP whole-run >= $F7 (actual ${min_sp:02X})', min_sp >= 0xF7),
     ('tentacle coverage (probe ran + EnemyCount live)',
      probe_ran and mem.ram[POKE_ENEMYCOUNT] == 2),
+    ('hole: PF bits cleared at blast, none set (window visible)', hole_pf),
+    ('hole: WallMask b3-6 selected at blast (BombMarkWalls ran)', hole_mask),
 ]
 print('\n== assertions ==')
 ok = True

@@ -190,21 +190,41 @@ Tables: `ColOff[c]` = {0×4, 3×8, 6×8} (offset from `$C3+row`), `ColMask[c]` =
 
 ## Phase 5 — Bombs (decision gate D1)
 
-- [ ] **5.0 User decision D1** (from 0.3a): hole persistence across room
-      leave —
-      **(A)** new representation (punched-col bitmap; ~3-5 ZP bytes, none
-      currently free → needs a storage decision), or
-      **(B)** holes reset on room leave/re-enter (behavior change, ~zero
-      cost, no ZP).
-      Present exact costs; user picks.
-- [ ] **5.1 `BombMarkWalls` punch** → cell-based (punch PF bits at blast
-      cells, reuse `ClearPFColumn`); `BombMaskBit`/`rect.w b7`/rect-index
-      WallMask deleted or shrunk per D1.
-      **Check:** `sim_bomb_fuse` + `test_laser_wall` + Stella: bomb through
-      wall, hole visible, laser through hole.
-- [ ] **5.2 `EnterRoom` restore** per D1 + delete rect-cache load if nothing
-      needs it (hot may still — 0.3b).
-      **Check:** leave/re-enter room → hole state matches D1; battery + sims.
+- [x] **5.0 User decision D1** (from 0.3a): user picked **(B)** — holes
+      reset on room leave/re-enter; persist while staying in the room
+      (`BombPacked` b3-6), zero ZP cost.
+- [x] **5.1 `BombMarkWalls` punch** — **deviation, recorded:** not the
+      planned free cell-walk; punch is **cache-driven at the walk match**
+      (in the BMW match block after `inc CollisionX`: rect idx saved in
+      `CollisionCellY`, rows via `LineCount`/`CollisionEndY`, col → A,
+      `jsr ClearPFColumn` — retargeted to `Temp`/`CollisionEndY`/`rts`,
+      same-bank; new `ABWYTab`/`ABWHTab` in bank1). Punches exactly the
+      rect set the old VBL `ApplyBombWalls` re-apply did (bits set iff
+      match) = geometry-identical; ≤4-rect breakable cap unchanged.
+      Cell-native punch follows the cache walk's death (6/7).
+      Kernel `BombMaskBit` deleted; bank1 copy stays (hot parent-mask AND
+      consumes b3-6 until 6.1). Pad literals resynced after the −2B shift
+      (`CallPad_AddScore $FA7D`, `CallPad_UpdateLaserSound $FAA5`, bank1
+      `ToGameStub jmp $F193`).
+      **Check:** `sim_bomb_fuse` ✓ + `test_laser_wall` ✓ + battery 8/8 ✓;
+      Stella visual gate (hole visible / laser through hole) = user.
+- [x] **5.2 `EnterRoom` restore** per D1(B) = reset: save/restore blocks
+      deleted (boot `BombPacked=0` already), LoadLevel `sta RoomWallMask`
+      deleted, VBL `jsr ApplyBombWalls` deleted, `ApplyBombWalls` routine +
+      kernel ABW tables deleted (tombstone comments). `RoomWallMask` EQU →
+      **$F2 FREE** (zp_layout doc updated). Rect-cache load NOT deleted —
+      walkers still need it (hot = 6, cache death = 7).
+      **Check:** battery + both sims ✓; hole state on re-enter = clean
+      (D1-B) — Stella user gate shared with 5.1.
+
+> **Gate note (2026-10-02):** the phase-5 work exposed that
+> `sim_frame_budget`'s VBL number on non-overflow frames was
+> `1472 − wsync_stall_slack + tick_quant + tail` (pure scanline-phase,
+> zero work sensitivity) and flapped across 1472 on any boot byte-count
+> change (base 1421 / phase-5 1478 while real work fell 594 → 574; also
+> the documented `FLY=Y` 1479 "pre-existing class"). Root-fixed: `vbl_val`
+> now = pure work, arm → `.WaitVBLANK` entry. All gates green afterwards
+> (default + `SIM_LEVEL=0 SIM_FLY={Y,X,M}` all SIM OK).
 
 ## Phase 6 — Hot rocks
 
