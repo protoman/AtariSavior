@@ -570,21 +570,8 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     asl                         ; FACING_LEFT(1) -> $08, FACING_RIGHT(0) -> $00
     sta REFP0
 
-    ; --- Sprite frame: legs flutter at 15 Hz while the jet burns ---
-    lda JetPower
-    beq .FrameA
-    lda TickCounter
-    and #%00000100
-    beq .FrameA
-    lda #<PlayerSpriteB
-    ldy #>PlayerSpriteB
-    jmp .SetGrpPtr
-.FrameA:
-    lda #<PlayerSpriteA
-    ldy #>PlayerSpriteA
-.SetGrpPtr:
-    sta Grp0Ptr
-    sty Grp0PtrHi
+    ; --- Sprite frame: jet flutter / ground walk cycle (leaf at $FDFx pad) ---
+    jsr PickPlayerFrame
 
     ; --- Wait for VBLANK timer ---
 .WaitVBLANK:
@@ -2235,32 +2222,32 @@ BombBlinkColors:
 ; Frame A = normal, frame B = jet legs (rows 7-8 differ; 3 pixels changed).
 ; Per-row colors in PlayerColTable (RED/RED/YELLOW/RED/GRAY/RED/.../BLACK/BLACK).
 PlayerSpriteA:
-    .byte %00111100             ; row 0
-    .byte %01111110             ; row 1
-    .byte %01111000             ; row 2 — yellow face
-    .byte %00111100             ; row 3
-    .byte %01111100             ; row 4 — grey pack
-    .byte %11011110             ; row 5
-    .byte %11011110             ; row 6
-    .byte %00011100             ; row 7 — frame A
-    .byte %00011000             ; row 8 — frame A
-    .byte %00011000             ; row 9
-    .byte %00011100             ; row 10 — black boots
-    .byte %00111100             ; row 11 — black boots
+    .byte %00011110             ; row 0 (sprites.png 2026-10-03)
+    .byte %00111111             ; row 1
+    .byte %00111110             ; row 2 — yellow face
+    .byte %00111111             ; row 3
+    .byte %00111110             ; row 4 — grey pack
+    .byte %01111111             ; row 5
+    .byte %01111111             ; row 6
+    .byte %00011111             ; row 7 — jet frame A
+    .byte %00011111             ; row 8
+    .byte %00001010             ; row 9
+    .byte %00001010             ; row 10 — grey boots
+    .byte %00001010             ; row 11
 
 PlayerSpriteB:
-    .byte %00111100             ; row 0
-    .byte %01111110             ; row 1
-    .byte %01111000             ; row 2 — yellow face
-    .byte %00111100             ; row 3
-    .byte %01111100             ; row 4
-    .byte %11011110             ; row 5
-    .byte %11011110             ; row 6
-    .byte %11011100             ; row 7 — frame B
-    .byte %01011000             ; row 8 — frame B
-    .byte %00011000             ; row 9
-    .byte %00011100             ; row 10
-    .byte %00111100             ; row 11
+    .byte %00011110             ; row 0
+    .byte %00111111             ; row 1
+    .byte %00111110             ; row 2 — yellow face
+    .byte %00111111             ; row 3
+    .byte %00111110             ; row 4 — grey pack
+    .byte %01111111             ; row 5
+    .byte %01111111             ; row 6
+    .byte %10111111             ; row 7 — jet frame B (+3 px vs A)
+    .byte %01011111             ; row 8
+    .byte %00001010             ; row 9
+    .byte %00001010             ; row 10
+    .byte %00001010             ; row 11
 
 PlayerColTable:
     .byte COLOR_P_RED, COLOR_P_RED, COLOR_P_YELLOW, COLOR_P_RED
@@ -2910,8 +2897,91 @@ ColOff:     .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
 ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
             .byte $01,$02,$04,$08,$10,$20,$40,$80
 
-    .ds $FE10 - *, 0            ; keep ObjSprites in $FE page (lda ObjSprites,X
-                                 ; must not cross a page — 5c vs 4c kernel budget)
+; ------------------------------------------------------------------------------
+; PickPlayerFrame — GRP0 frame pick. Extracted from VBL (pre-pad headroom was
+; 1B; the ground-walk gate does not fit inline). Priority:
+;   jet flutter (JetPower>0, PlayerSpriteA/B) > walk cycle (OnGround b7 +
+;   L/R held, PlayerWalkA/B) > static A.
+; Phase: TickCounter&4 (15 Hz — same counter/period the jet flutter always
+; used). Frame A is forced whenever NOT walking so standing never twitch-walks.
+; Called from VBL; clobbers A/Y; sets Grp0Ptr/Grp0PtrHi. Lives in the
+; ColMask→ObjSprites pad (ObjSprites starts $FE38: start+71 stays in-page and
+; ends exactly at $FE80 = HOF_ENTRY pin).
+; ------------------------------------------------------------------------------
+PickPlayerFrame:
+    lda JetPower
+    bne .Jet                   ; jet burning -> A/B flutter (existing)
+    lda BombPacked
+    bpl .FrameA                ; b7 OnGround clear (airborne) -> static
+    lda SWCHA
+    and #%11000000             ; D7 right / D6 left, active LOW
+    cmp #%11000000
+    beq .FrameA                ; neither held -> standing
+    lda EnemyRamP              ; free-running clock: bit3 = 8-frame
+    and #%00001000             ; half-cycle -> 16-frame full walk cycle
+    beq .WalkA                 ; (double speed of the 32-frame bit4 version)
+    lda #<PlayerWalkB
+    ldy #>PlayerWalkB
+    jmp .SetGrpPtr
+.WalkA:
+    lda #<PlayerWalkA
+    ldy #>PlayerWalkA
+    jmp .SetGrpPtr
+.Jet:
+    lda TickCounter
+    and #%00000100
+    beq .FrameA
+    lda #<PlayerSpriteB
+    ldy #>PlayerSpriteB
+    jmp .SetGrpPtr
+.FrameA:
+    lda #<PlayerSpriteA
+    ldy #>PlayerSpriteA
+.SetGrpPtr:
+    sta Grp0Ptr
+    sty Grp0PtrHi
+    rts
+
+; ------------------------------------------------------------------------------
+; PlayerWalkA/B — dedicated ground-walk frames (sprites.png 2026-10-03,
+; extracted pixel-exact; torso rows 0-6 identical to the jet pair).
+;   A = boots apart (stride, rows 10-11 spread to cols 2+7 / 4+5)
+;   B = boots together (passing pose, rows 10-11 = cols 4+5)
+; Legs rows 7-9 identical in both — only the boots move. Standing forces
+; PlayerSpriteA; walk cycle alternates A<->B every 8 frames (EnemyRamP&$08,
+; 16-frame full cycle) while grounded + L/R held.
+; ------------------------------------------------------------------------------
+PlayerWalkA:
+    .byte %00011110             ; row 0 torso (sprites.png 2026-10-03)
+    .byte %00111111             ; row 1
+    .byte %00111110             ; row 2 — yellow face
+    .byte %00111111             ; row 3
+    .byte %00111110             ; row 4 — grey pack
+    .byte %01111111             ; row 5
+    .byte %01111111             ; row 6
+    .byte %00011111             ; row 7  legs
+    .byte %00011111             ; row 8
+    .byte %00001010             ; row 9
+    .byte %00010001             ; row 10 boots apart (spread)
+    .byte %00100001             ; row 11 boots apart
+
+PlayerWalkB:
+    .byte %00011110             ; row 0 torso (sprites.png 2026-10-03)
+    .byte %00111111             ; row 1
+    .byte %00111110             ; row 2 — yellow face
+    .byte %00111111             ; row 3
+    .byte %00111110             ; row 4 — grey pack
+    .byte %01111111             ; row 5
+    .byte %01111111             ; row 6
+    .byte %00011111             ; row 7  legs
+    .byte %00011111             ; row 8
+    .byte %00001010             ; row 9
+    .byte %00001100             ; row 10 boots together (passing)
+    .byte %00001100             ; row 11 boots together
+
+    .ds $FE38 - *, 0            ; ObjSprites starts $FE38: start+71 = $FE7F stays
+                                 ; in the $FE page (lda ObjSprites,X 5c vs 4c),
+                                 ; end = $FE80 = HOF_ENTRY pin (check_moth_tramp)
 
 ; ------------------------------------------------------------------------------
 ; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
