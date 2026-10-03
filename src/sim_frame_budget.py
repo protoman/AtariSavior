@@ -8,7 +8,7 @@ every frame) + bomb dropped (falling fuse + explosion mid-run), 1 enemy +
 miner in the room (post-migration 2-object cap).
 
 MEASUREMENT (py65 = pure CPU work; WSYNC/TIM64T/INTIM stubbed):
-  VBL      StartFrame -> first .Row        must be <= VBL_BUDGET   (TIM64T #23)
+  VBL      TIM64T arm -> WaitVBLANK entry (pure work) <= VBL_BUDGET (TIM64T #23)
   OVER     Overscan   -> next StartFrame   must be <= OVER_BUDGET  (TIM64T #50)
   KERNEL   every WSYNC-to-WSYNC gap (cave + HUD band) <= 76 cycles
            (a >76 body = line spills to the next scanline on hardware =
@@ -58,7 +58,8 @@ for _l in (SRC / 'bank0.lst').read_text(errors='replace').splitlines():
                   r'([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$', _l)
     if _m:
         LABELS.setdefault(_m.group(2), int(_m.group(1), 16))
-for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row'):
+for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row',
+              '.WaitVBLANK'):
     if _need not in LABELS:
         sys.exit(f'label {_need} not found in bank0.lst')
 PC_START = LABELS['StartFrame']
@@ -67,6 +68,7 @@ PC_ENTER = LABELS['EnterRoom']
 PC_LOADLEVEL = LABELS['LoadLevel']
 PC_ROW = LABELS['.Row']
 PC_VBLT = LABELS['VBLTimer']     # VBL work window: TIM64T #23 armed here
+PC_WAIT = LABELS['.WaitVBLANK']  # INTIM poll entry = end of pure VBL work
 
 # overscan sub-marks for attribution (which caller eats the timer window)
 OVER_MARKS = {LABELS[_n]: _n for _n in
@@ -224,6 +226,7 @@ gap = 0
 kwsync = 0
 frame_armed = False                       # first StartFrame seen
 vbl_val = over_val = None
+vbl_pre = None                 # work: arm -> WaitVBLANK entry (see close)
 kwsync_frame = None
 frame_bad = []
 
@@ -270,6 +273,25 @@ while frame < 440:
     elif phase == PH_OVER:
         over_acc += c
 
+    # -- pure VBL work ends when the INTIM poll is first entered --
+    # WHY (2026-10-02 root cause of the boot "VBL work > 1472" flakes):
+    # measuring arm -> .Row includes the INTIM poll, and on every frame
+    # where work does NOT overflow the window the poll waits out the timer,
+    # so the close lands at exactly
+    #     1472 - wsync_stall_slack + tick_quant + tail   (tail = 54c)
+    # = a scanline-phase function with ZERO work sensitivity.  The stall
+    # slack depends on wall-clock phase at each WSYNC (measured: 108c boot
+    # phase-5 baseline vs 52c after the 5.1/5.2 byte deletions), so ANY
+    # code-size change near boot flips the sign of tail+q-slack and the
+    # number flaps across 1472 (base 1421 pass / phase-5 1478 fail while
+    # real work went DOWN 594 -> 574; same family as the documented
+    # FLY=Y 1479 "pre-existing class").  Overrun frames still fail: work
+    # that outlives the deadline reaches the poll late, so vbl_pre alone
+    # exceeds the budget.  Frame-length consequences stay covered by the
+    # wall-model assert (263 lines).
+    if bk == 0 and pc == PC_WAIT and phase == PH_VBL and vbl_pre is None:
+        vbl_pre = vbl_acc
+
     # -- phase transitions (landmarks are bank0 labels) --
     if bk == 0 and pc == PC_VBLT and phase == PH_VBL:
         # VBL work window starts at the TIM64T #23 arm. Pre-arm = VSYNC +
@@ -277,8 +299,9 @@ while frame < 440:
         # made the old StartFrame-based measure flap across 1472 (2026-10-02:
         # title-transition f2 acc 1491 while real span was 1336c).
         vbl_acc = 0
+        vbl_pre = None
     elif bk == 0 and pc == PC_ROW and phase == PH_VBL:
-        vbl_val = vbl_acc
+        vbl_val = vbl_pre if vbl_pre is not None else vbl_acc
         _wall_vbl = mem.wall
         phase = PH_KER
         gap = 0
@@ -330,6 +353,7 @@ while frame < 440:
         frame_armed = True
         phase = PH_VBL
         vbl_acc = 0
+        vbl_pre = None
         pc_cycles = {}
         _wall_start = mem.wall
 
