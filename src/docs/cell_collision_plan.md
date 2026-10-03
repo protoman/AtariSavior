@@ -126,10 +126,10 @@ Tables: `ColOff[c]` = {0×4, 3×8, 6×8} (offset from `$C3+row`), `ColMask[c]` =
       `tools/test_phm_walk.py` PHM section re-aimed at cell contract (moth
       rect asserts kept until 4.1); battery **8/8**; `build.sh` green
       (**sim_bomb_fuse min-SP guard passed unchanged**).
-- [ ] **2.2 Stella gate (user).** level_003 rooms 2/3 with ORIGINAL 6-rect
+- [x] **2.2 Stella gate (user).** level_003 rooms 2/3 with ORIGINAL 6-rect
       models (A1) + one old level: walls, exits, subpixel slide, tentacle
       probe, DropStep spawn fall.
-      **Check:** user confirms → A1 part 1 done → commit.
+      **Check:** user passed → A1 part 1 done → commit aff5aa7.
       Scope note: moth (bank2) and laser clamp still cache-walk → their
       rooms/behaviors get full gates at 4.1 / 3.1; 2.2 covers player +
       static geometry + tentacle probe (PHM-shared).
@@ -138,11 +138,28 @@ Tables: `ColOff[c]` = {0×4, 3×8, 6×8} (offset from `$C3+row`), `ColMask[c]` =
 
 - [ ] **3.1 `LaserWallClamp`** (bank2 ROM walk) → cell tests along beam
       columns; update `explore_laser.py` reference model to match.
-      **Check:** `test_laser_wall.py` + `test_laser_s4.py` + battery; Stella:
-      beam stops at walls incl. thin-wall/hole columns.
-- [ ] **3.2 `LaserHitTest` kill scan** — wall-related rect use → cells;
+      **Done (code):** walk replaced in place — entry still pinned $F25A
+      (sim beam_cols gate), candidates stay DISPLAY px (+9/+2, max/min
+      apply), right-half cols mirror source=39-d only for the buffer
+      lookup; `ColOff`/`ColMask` bank2 copies after `.LWdone`;
+      `MothMaskBit` orphan deleted (asserts flipped in test_phm_walk +
+      test_enemy_movement); `PF0Buf = $C3` EQU added to bank2.
+      `test_laser_wall` identical result (1216 f / 419 clamped) = the
+      equivalence proof; battery 8/8; build green.
+      **Deviation:** `explore_laser.py` NOT rewritten — it is the
+      retired LaserThinClamp corruption-hunt forensic tool ("temporary,
+      not part of the battery") whose watches target the now-dead
+      $89/$CC-$DF cache reads; docstring annotated stale instead of
+      porting a one-off debugger.
+      **Check:** Stella pending: beam stops at walls incl. thin-wall/
+      hole columns; enemy BEHIND wall survives, enemy in/near wall dies.
+- [x] **3.2 `LaserHitTest` kill scan** — wall-related rect use → cells;
       enemy-only → documented no-op.
-      **Check:** `test_laser_s4.py` + battery + Stella kill-through-corridor.
+      **Verified:** LHT body (bank2 `$FF00+`) walks ENEMY records only;
+      the wall clamp IS 3.1 (tail-jmp into LWC, `LaserClampDone` returns
+      into the enemy loop). No rect consumer left in the kill scan.
+      Check result: `test_laser_s4` + battery green; Stella kill-window
+      check folded into the 3.1 gate.
 
 ## Phase 4 — Enemy walkers
 
