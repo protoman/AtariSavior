@@ -11,17 +11,24 @@ Checks:
   Fold  - FoldIndirect ($FEF6): byte-identical block in bank0/bank2,
           expected opcodes, 1B zero margin before the $FF00 anchor,
           label address in both listings (level_bank_plan §0.1).
-  Level - rooms <=4 (IsRoomDark mask), <=2 objects/room incl. miner
+  Level - unlimited room count (darkness mask covers rooms 0-7; rooms
+  8+ stay lit), <=2 objects/room incl. miner
   (flicker budget kMaxRoomElements=2; silent converter
           truncation; slot 3 would collide with LaserState at $C0),
           room_id/grid/start/miner validity, enemy bounds/types,
           model_id exists, generated room .txt shape.
+  Models - solid-rect count <= 5 per model (ZP rect cache; EnterRoom copies
+          5 but RcBase keeps the raw count -> walker reads $E0+ garbage).
   EQU   - cross-bank `Name = $XX` sync vs kernel authority (S3.0); allows
           documented aliases (ZP_ALLOW: bank1 Temp = $AD).
   Frozen - LEVEL_DATA_ADDR literal == bank2.lst LevelDataTable (models_data
            regeneration shifts bank2 labels; stale literal = empty rect cache).
+           Build self-heals first: `verify_build.py --sync SRC` patches the
+           hand-copied kernel literals (LEVEL_DATA_ADDR, LEVEL_COUNT) from
+           fresh sources; the checks below still verify the final ROM.
 
 Usage: verify_build.py [src_dir]
+       verify_build.py --sync [src_dir]   (pre-bank0 literal self-heal)
 """
 import json
 import re
@@ -633,8 +640,9 @@ def check_levels(src: Path) -> None:
         if n == 0:
             err(f"{name}: level has no rooms")
             continue
-        if n > 4:
-            err(f"{name}: {n} rooms > 4 (IsRoomDark darkness mask covers rooms 0-3 only)")
+        # Room count is unlimited: the 8-bit RoomDarkMask (EnemyRamD b4-7 +
+        # LaserState b5-2) covers rooms 0-7 only; rooms 8+ simply stay lit
+        # (IsRoomDark returns lit, SetRoomDark no-ops — never crashes).
 
         ids = [r.get("room_id") for r in rooms]
         if sorted(ids) != list(range(n)):
@@ -701,6 +709,11 @@ def check_levels(src: Path) -> None:
                 if e.get("dir") not in (-1, 1):
                     err(f"{el}: dir={e.get('dir')!r} must be -1 or 1")
 
+            if lamps and int(r.get("room_id", 0)) >= 8:
+                warn(f"{label}: room {r.get('room_id')} has {len(lamps)} "
+                     "lamp(s) but the darkness mask covers rooms 0-7 only "
+                     "— room stays lit")
+
             for i, lamp in enumerate(lamps):
                 ll = f"{label} lamp {i}"
                 try:
@@ -720,14 +733,109 @@ def check_levels(src: Path) -> None:
                 rooms_dir / f"level_{level_n:03d}_room_{rid + 1:03d}.txt", label)
 
 
+def sync_kernel_literals(src: Path) -> int:
+    """Pre-assembly self-heal (build.sh: after level gen + bank2, before bank0).
+
+    Patches kernel.asm hand-copied literals whose values the assembler bakes
+    into bank0 immediates and that move whenever level data changes:
+      LEVEL_DATA_ADDR <- bank2.lst LevelDataTable
+      LEVEL_COUNT     <- generated/levels.asm
+    Safety nets stay: check_frozen_addrs + test_level_bank verify afterwards.
+    """
+    kernel_p = src / "kernel.asm"
+    if not kernel_p.exists():
+        print("sync: kernel.asm missing", file=sys.stderr)
+        return 1
+    text = kernel_p.read_text(encoding="utf-8")
+    changed: list[str] = []
+
+    lst2 = src / "bank2.lst"
+    if not lst2.exists():
+        print("sync: bank2.lst missing — assemble bank2 first", file=sys.stderr)
+        return 1
+    labels2, _ = parse_lst(lst2.read_text(errors="replace").splitlines())
+    got = labels2.get("LevelDataTable")
+    if got is None:
+        print("sync: LevelDataTable label not in bank2.lst", file=sys.stderr)
+        return 1
+    m = re.search(r"^LEVEL_DATA_ADDR = \$([0-9A-Fa-f]{4})", text, re.M)
+    if not m:
+        print("sync: LEVEL_DATA_ADDR literal not found in kernel.asm",
+              file=sys.stderr)
+        return 1
+    if int(m.group(1), 16) != got:
+        text = text[:m.start()] + f"LEVEL_DATA_ADDR = ${got:04X}" + text[m.end():]
+        changed.append(f"LEVEL_DATA_ADDR ${int(m.group(1), 16):04X} -> ${got:04X}")
+
+    levels_asm = src / "generated" / "levels.asm"
+    if levels_asm.exists():
+        mg = re.search(r"^LEVEL_COUNT = (\d+)",
+                       levels_asm.read_text(encoding="utf-8"), re.M)
+        mk = re.search(r"^LEVEL_COUNT\s*=\s*(\d+)", text, re.M)
+        if mg and mk and int(mg.group(1)) != int(mk.group(1)):
+            text = text[:mk.start()] + f"LEVEL_COUNT    = {mg.group(1)}" + text[mk.end():]
+            changed.append(f"LEVEL_COUNT {mk.group(1)} -> {mg.group(1)}")
+
+    if changed:
+        kernel_p.write_text(text, encoding="utf-8")
+        print("sync: " + "; ".join(changed))
+    return 0
+
+
+def check_model_rects(src: Path) -> None:
+    """Every model's solid-rect count must fit the game's ZP rect cache.
+
+    The cache is 5 uniform slots ($CC-$DF, walk Y=0..19). EnterRoom copies
+    exactly 5 rects but stores the RAW count in RcBase — a 6-rect model
+    loses its last rect (no collision under it) AND the walker's 6th
+    iteration reads $E0+ (bank1 scorePtr garbage) as a phantom rect.
+    Seen 2026-10-02: level_003 room 3 / model 6 needed 6 rects for its
+    geometry; the player fell through the bottom band.
+    """
+    mp = src / "rooms" / "models" / "models.json"
+    if not mp.exists():
+        return
+    try:
+        md = json.loads(mp.read_text())
+    except ValueError as exc:
+        err(f"models.json: {exc}")
+        return
+    ml = md.get("models_file", md).get("models", [])
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from convert_level import rows_from_json          # noqa: PLC0415
+    from convert_room import find_rectangles          # noqa: PLC0415
+    by_id = {m.get("id"): m for m in ml}
+    for m in ml:
+        try:
+            rows = rows_from_json({"model_id": m.get("id")}, by_id)
+        except (KeyError, TypeError, ValueError) as exc:
+            err(f"model {m.get('id')}: {exc}")
+            continue
+        rects = find_rectangles(rows, solids="#")
+        if len(rects) > 5:
+            # Transition (cell_collision_plan): >5 rects only SAFE once every
+            # cache walker is cell-based (PHM 2.1, LWC 3.1, moth 4.1, bombs 5.x).
+            # During the swap this stays a WARN so sims/battery can gate each
+            # step; the whole check dies at phase 7.1 (rect cache retired).
+            warn(f"model {m.get('id')}: {len(rects)} wall rects > 5 — "
+                 f"cell-swap must cover all cache walkers before release; "
+                 f"rects={rects}")
+
+
 def main() -> int:
-    src = (Path(sys.argv[1]) if len(sys.argv) > 1
+    argv = sys.argv[1:]
+    if argv and argv[0] == "--sync":
+        src = (Path(argv[1]) if len(argv) > 1
+               else Path(__file__).resolve().parent.parent / "src")
+        return sync_kernel_literals(src)
+    src = (Path(argv[0]) if argv
            else Path(__file__).resolve().parent.parent / "src")
     check_rom(src)
     check_fold_block(src)
     check_moth_tramp(src)
     check_callpads(src)
     check_levels(src)
+    check_model_rects(src)
     check_equ_sync(src)
     check_frozen_addrs(src)
 

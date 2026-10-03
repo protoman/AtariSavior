@@ -51,13 +51,78 @@ M3RoomRects:
   .byte 0, 0, 2, 3  ; x, y, width, height
   .byte 4, 0, 14, 1  ; x, y, width, height
   .byte 12, 1, 1, 1  ; x, y, width, height
-  .byte 2, 2, 8, 1  ; x, y, width, height
-  .byte 11, 2, 3, 1  ; x, y, width, height
+  .byte 2, 2, 6, 1  ; x, y, width, height
+  .byte 12, 2, 2, 1  ; x, y, width, height
   .byte 0              ; number of hot rectangles
 M3TilePF0:
   .byte $30, $30, $f0
 M3TilePF1:
-  .byte $ff, $00, $fd
+  .byte $ff, $00, $f0
 M3TilePF2:
   .byte $3f, $01, $03
+
+; Generated from models.json model 4. Do not edit by hand.
+M4RoomRects:
+  .byte 4                  ; number of rectangles
+  .byte 0, 0, 18, 1  ; x, y, width, height
+  .byte 0, 1, 3, 2  ; x, y, width, height
+  .byte 3, 2, 1, 1  ; x, y, width, height
+  .byte 6, 2, 14, 1  ; x, y, width, height
+  .byte 0              ; number of hot rectangles
+M4TilePF0:
+  .byte $f0, $70, $f0
+M4TilePF1:
+  .byte $ff, $00, $3f
+M4TilePF2:
+  .byte $3f, $00, $ff
+
+; Generated from models.json model 5. Do not edit by hand.
+M5RoomRects:
+  .byte 6                  ; number of rectangles
+  .byte 0, 0, 4, 1  ; x, y, width, height
+  .byte 6, 0, 14, 1  ; x, y, width, height
+  .byte 0, 1, 2, 2  ; x, y, width, height
+  .byte 10, 1, 10, 1  ; x, y, width, height
+  .byte 2, 2, 6, 1  ; x, y, width, height
+  .byte 12, 2, 8, 1  ; x, y, width, height
+  .byte 0              ; number of hot rectangles
+M5TilePF0:
+  .byte $f0, $30, $f0
+M5TilePF1:
+  .byte $3f, $03, $f0
+M5TilePF2:
+  .byte $ff, $ff, $ff
+
+; Generated from models.json model 6. Do not edit by hand.
+M6RoomRects:
+  .byte 6                  ; number of rectangles
+  .byte 0, 0, 8, 1  ; x, y, width, height
+  .byte 12, 0, 8, 1  ; x, y, width, height
+  .byte 0, 1, 4, 1  ; x, y, width, height
+  .byte 14, 1, 6, 2  ; x, y, width, height
+  .byte 0, 2, 2, 1  ; x, y, width, height
+  .byte 6, 2, 8, 1  ; x, y, width, height
+  .byte 0              ; number of hot rectangles
+M6TilePF0:
+  .byte $f0, $f0, $30
+M6TilePF1:
+  .byte $f0, $00, $3f
+M6TilePF2:
+  .byte $ff, $fc, $ff
+
+; Generated from models.json model 7. Do not edit by hand.
+M7RoomRects:
+  .byte 5                  ; number of rectangles
+  .byte 0, 0, 2, 3  ; x, y, width, height
+  .byte 6, 0, 14, 1  ; x, y, width, height
+  .byte 2, 1, 1, 1  ; x, y, width, height
+  .byte 16, 1, 1, 1  ; x, y, width, height
+  .byte 2, 2, 16, 1  ; x, y, width, height
+  .byte 0              ; number of hot rectangles
+M7TilePF0:
+  .byte $30, $70, $f0
+M7TilePF1:
+  .byte $3f, $00, $ff
+M7TilePF2:
+  .byte $ff, $10, $3f
 

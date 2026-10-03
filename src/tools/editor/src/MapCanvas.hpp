@@ -108,6 +108,9 @@ private:
     // Hard cap 2 objects/room (2026-10-02, user rule): laser + bomb runs
     // pushed 3-object rooms over the frame budget (screen jump flicker).
     static constexpr int kMaxRoomElements = 2;
+    // Game darkness mask = 8 bits (rooms 0-7; EnemyRamD + LaserState).
+    // Lamps in rooms >= 8 would never darken — refuse placement there.
+    static constexpr int kDarkMaskRooms = 8;
 };
 
 } // namespace editor

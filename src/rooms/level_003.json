@@ -1,0 +1,159 @@
+{
+    "level": {
+        "cereal_class_version": 1,
+        "level_id": 1,
+        "name": "New Level",
+        "wall_r": 28,
+        "wall_g": 56,
+        "wall_b": 144,
+        "wall2_r": 80,
+        "wall2_g": 112,
+        "wall2_b": 188,
+        "start_room": 0,
+        "miner_room": 5,
+        "miner_x": 2.0,
+        "miner_y": 7.0,
+        "miner_dir": 1,
+        "rooms": [
+            {
+                "room_id": 0,
+                "model_id": 0,
+                "room_x": 0,
+                "room_y": 0,
+                "enemies": [],
+                "lamps": [],
+                "bottom_band": false,
+                "bottom_r": 0,
+                "bottom_g": 0,
+                "bottom_b": 0
+            },
+            {
+                "room_id": 1,
+                "model_id": 4,
+                "room_x": 0,
+                "room_y": 1,
+                "enemies": [
+                    {
+                        "type": 0,
+                        "x": 32.0,
+                        "y": 4.0,
+                        "range_min": 29.0,
+                        "range_max": 35.0,
+                        "speed": 1.5,
+                        "dir": -1
+                    }
+                ],
+                "lamps": [
+                    {
+                        "x": 21.5,
+                        "y": 1.5,
+                        "lit": true
+                    }
+                ],
+                "bottom_band": false,
+                "bottom_r": 0,
+                "bottom_g": 0,
+                "bottom_b": 0
+            },
+            {
+                "room_id": 2,
+                "model_id": 5,
+                "room_x": 0,
+                "room_y": 2,
+                "enemies": [
+                    {
+                        "type": 1,
+                        "x": 30.0,
+                        "y": 5.0,
+                        "range_min": 27.0,
+                        "range_max": 33.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    }
+                ],
+                "lamps": [
+                    {
+                        "x": 5.5,
+                        "y": 1.5,
+                        "lit": true
+                    }
+                ],
+                "bottom_band": false,
+                "bottom_r": 0,
+                "bottom_g": 0,
+                "bottom_b": 0
+            },
+            {
+                "room_id": 3,
+                "model_id": 6,
+                "room_x": 0,
+                "room_y": 3,
+                "enemies": [
+                    {
+                        "type": 0,
+                        "x": 4.0,
+                        "y": 9.0,
+                        "range_min": 1.0,
+                        "range_max": 7.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    },
+                    {
+                        "type": 2,
+                        "x": 24.0,
+                        "y": 5.0,
+                        "range_min": 21.0,
+                        "range_max": 27.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    }
+                ],
+                "lamps": [],
+                "bottom_band": false,
+                "bottom_r": 0,
+                "bottom_g": 0,
+                "bottom_b": 0
+            },
+            {
+                "room_id": 4,
+                "model_id": 7,
+                "room_x": 0,
+                "room_y": 4,
+                "enemies": [
+                    {
+                        "type": 4,
+                        "x": 8.0,
+                        "y": 5.0,
+                        "range_min": 5.0,
+                        "range_max": 11.0,
+                        "speed": 1.5,
+                        "dir": 1
+                    }
+                ],
+                "lamps": [
+                    {
+                        "x": 5.5,
+                        "y": 1.5,
+                        "lit": true
+                    }
+                ],
+                "bottom_band": false,
+                "bottom_r": 0,
+                "bottom_g": 0,
+                "bottom_b": 0
+            },
+            {
+                "room_id": 5,
+                "model_id": 1,
+                "room_x": 0,
+                "room_y": 5,
+                "enemies": [],
+                "lamps": [],
+                "bottom_band": false,
+                "bottom_r": 0,
+                "bottom_g": 0,
+                "bottom_b": 0
+            }
+        ]
+    }
+}

@@ -105,7 +105,9 @@ TickCounter = $AD               ; kernel's 60-frame timer ($AC = PlayerLives!).
                                 ; Was $AC (stale) — jet wobble at `lda
                                 ; TickCounter` read PlayerLives. Guard:
                                 ; verify_build check_equ_sync (S3.0).
-LaserState  = $C0       ; b7 fire held this frame (kernel.asm LaserState)
+LaserState  = $C0       ; b7 fire held this frame, b5-2 = RoomDarkMask rooms
+                        ; 4-7 (kernel.asm LaserState; laser b7/b6/b1-0 must
+                        ; preserve b5-2 — see LaserInput/DropArm)
 EnemyRamP   = $C2       ; free-running frame clock (bank0 RefreshEnemyY incs)
 RoomNo      = $98
 LevelConnLo = $A1
@@ -897,42 +899,6 @@ AddScore:
     sta ScoreTe
     jmp $FBF8
 
-; IsRoomDark — Z=1 if lit, Z=0 if dark (RoomDarkMask = EnemyRamD bits 4-7).
-; Clobbers A/X; Y preserved. PLA in ReturnPad re-sets Z from A — contract
-; survives the cross-bank return.
-IsRoomDark:
-    lda RoomNo
-    cmp #4
-    bcs .IRDlit                 ; rooms 4+ never dark (mask only covers 0-3)
-    clc
-    adc #4                      ; bit index = 4 + RoomNo
-    tax
-    lda BitMaskTable,X
-    and EnemyRamD               ; Z=1 → lit (bit clear), Z=0 → dark
-    jmp $FBF8
-.IRDlit:
-    lda #0                      ; Z=1 → lit
-    jmp $FBF8
-
-; SetRoomDark — set dark flag for current RoomNo (bits 4-7 of EnemyRamD).
-; Clobbers A/X. Cleared only by LoadLevel.
-SetRoomDark:
-    lda RoomNo
-    cmp #4
-    bcs .SRDdone                ; rooms 4+ unsupported
-    clc
-    adc #4
-    tax
-    lda BitMaskTable,X
-    ora EnemyRamD
-    sta EnemyRamD
-.SRDdone:
-    jmp $FBF8
-
-; Bit masks for IsRoomDark/SetRoomDark (indexed 0-7; bits 4-7 = rooms 0-3)
-BitMaskTable:
-    .byte $01, $02, $04, $08, $10, $20, $40, $80
-
 ; UpdateLaserSound — low "zoom" tone on channel 0 while fire is held.
 ; Call order in bank0 overscan: UpdateBombSound, UpdateJetSound, this — so
 ; AUDV0 is already forced to 0 by UpdateBombSound when BombSnd = 0, which is
@@ -1097,13 +1063,13 @@ CallPad_AddScore:
     jmp $FA7F
 CallPad_IsRoomDark:
     sta $1FF7
-    jmp $FAA7
+    jmp $FC78
 CallPad_SetRoomDark:
     sta $1FF7
-    jmp $FABE
+    jmp $FC9E
 CallPad_UpdateLaserSound:
     sta $1FF7
-    jmp $FADA
+    jmp $FAA7
 CallPad_BuildColupF:
     sta $1FF8                   ; S5.1: body lives in bank2 (direct rect reads)
     jmp $FC4F
@@ -1124,6 +1090,72 @@ CallPad_BombMarkWalls:
     sta $1FF6
     jmp $F196           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; back to $F196 — VBL flutter done via JetPower seed)
+
+; ========================================================================
+; IsRoomDark/SetRoomDark — moved here (post-ToGameStub free space) when the
+; mask grew to 8 bits: the $F9C0-$FB10 body span had only ~19 B headroom.
+; CallPad jmp literals live in BOTH kernel.asm and bank1.asm — verify_build
+; check_callpads asserts they equal these labels.
+; ------------------------------------------------------------------------
+; IsRoomDark — Z=1 if lit, Z=0 if dark (RoomDarkMask = 8-bit split:
+; rooms 0-3 = EnemyRamD bits 4-7, rooms 4-7 = LaserState bits 2-5.
+; Rooms 8+ have no bit → always lit, never crash.)
+; Clobbers A/X; Y preserved. PLA in ReturnPad re-sets Z from A — contract
+; survives the cross-bank return.
+IsRoomDark:
+    lda RoomNo
+    cmp #4
+    bcs .IRDhi
+    clc
+    adc #4                      ; bit index = 4 + RoomNo
+    tax
+    lda BitMaskTable,X
+    and EnemyRamD               ; Z=1 → lit (bit clear), Z=0 → dark
+    jmp $FBF8
+.IRDhi:
+    cmp #8
+    bcs .IRDlit                 ; rooms 8+ never dark (no mask bit)
+    tax
+    lda BitMaskTable,X          ; $10/$20/$40/$80
+    lsr
+    lsr                         ; → $04/$08/$10/$20 = LaserState b2-5
+    and LaserState
+    jmp $FBF8
+.IRDlit:
+    lda #0                      ; Z=1 → lit
+    jmp $FBF8
+
+; SetRoomDark — set dark flag for current RoomNo (rooms 0-3 → EnemyRamD
+; bits 4-7, rooms 4-7 → LaserState bits 2-5; rooms 8+ = no-op, room
+; simply stays lit). Cleared only by LoadLevel.
+SetRoomDark:
+    lda RoomNo
+    cmp #4
+    bcs .SRDhi
+    clc
+    adc #4
+    tax
+    lda BitMaskTable,X
+    ora EnemyRamD
+    sta EnemyRamD
+    jmp $FBF8
+.SRDhi:
+    cmp #8
+    bcs .SRDdone                ; rooms 8+: no bit to set (no crash)
+    tax
+    lda BitMaskTable,X
+    lsr
+    lsr
+    ora LaserState
+    sta LaserState
+.SRDdone:
+    jmp $FBF8
+
+; Bit masks for IsRoomDark/SetRoomDark. Index 4+room for EnemyRamD
+; (rooms 0-3 → bits 4-7); index = room for LaserState (rooms 4-7 →
+; bits 4-7 of the table, lsr×2 down to bits 2-5 = LaserState spare).
+BitMaskTable:
+    .byte $01, $02, $04, $08, $10, $20, $40, $80
 
 ; ========================================================================
 ; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing

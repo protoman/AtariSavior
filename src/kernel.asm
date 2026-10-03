@@ -269,7 +269,8 @@ EnemyRamX       = $BD           ; 3 bytes: live X per enemy ($BD-$BF, slots 0-2
                                 ; kMaxRoomElements, convert_level MAX_ENEMIES,
                                 ; verify_build; slot 3 would collide with $C0)
 LaserState      = $C0           ; laser (S1): b7 fire held this frame,
-                                ;   b6 fire held last frame, b5-4 spare,
+                                ;   b6 fire held last frame,
+                                ;   b5-2 RoomDarkMask rooms 4-7,
                                 ;   b1-0 sweep phase (0..3 = 0/8/16/8 px)
 EnemyRamD       = $C1           ; dir bits 0-3 = enemy 0-3 (1=right, 0=left)
 EnemyRamP       = $C2           ; bits0-3 moth phase (shared/sync); bits4-7
@@ -329,6 +330,7 @@ FACING_LEFT     = 1
 ; LaserState bits (laser_implementation_plan S1)
 LASER_HELD      = %10000000     ; b7: fire pressed this frame (INPT4 D7=0)
 LASER_PHASE     = %00000011     ; b1-0: sweep phase 0..3 -> M0 offsets 0/8/16/8 px
+LASER_DARK      = %00111100     ; b5-2: RoomDarkMask rooms 4-7 (IsRoomDark/SetRoomDark)
 
 ; Colors (emulator-aware: hue<<4 | luma<<1)
 COLOR_PLAYER    = $48           ; red = sprite row0: stale VBLANK color on the
@@ -1733,6 +1735,9 @@ LoadLevel:
     sta BombPacked              ; so EnterRoom's save writes 0, not stale mask
     sta BombTimer
     sta EnemyRamD               ; clear dir + RoomDarkMask (bits 4-7) — level reset
+    lda LaserState
+    and #%11000111              ; clear RoomDarkMask rooms 4-7 (LaserState b5-2)
+    sta LaserState
     lda #BOMBS_MAX
     sta PlayerBombs
     ; Compute LevelDataTable pointer: base + Level * 14
@@ -2394,9 +2399,9 @@ ENEMY_TENTACLE = 3
 ENEMY_MOTH     = 4
 LAMP           = 5             ; type-5 enemy record = editor lamp (white square)
 ENEMY_DATA_STRIDE = 6
-LEVEL_COUNT    = 2             ; hand copy of generated LEVEL_COUNT (cmp in
+LEVEL_COUNT    = 3             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $FA86        ; frozen address of bank2's LevelDataTable
+LEVEL_DATA_ADDR = $FB6E        ; frozen address of bank2's LevelDataTable
                                 ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
                                 ;  −$FA86 as the ≤2-object room migration
                                 ;  shrank the tables; check_frozen_addrs
@@ -2424,11 +2429,12 @@ YToRowTable:
     .byte 3,3,3,3,3,3,3,3,3,3,3,3
 
 ; ==============================================================================
-; PlayerHitsMap — check player bounding box against room rectangle list
+; PlayerHitsMap — check player bounding box against the room's PF map
 ; ==============================================================================
-; Identical to comparison/lo-a-rad-dragon/bank0.asm.
-; Rectangles are in tile coordinates (col 0-19, row 0-2, w/h in bands).
-; The playfield is reflected, so tiles >= 20 mirror via 39-col.
+; Boxes are in tile coordinates (col 0-19, row 0-2); the walk tests the
+; PF0/1/2Buf cell bits directly (cell_collision_plan 2.1) — no rect cache,
+; no rect-count limit. The playfield is reflected, so right-half display
+; cols mirror via 39-col IN THE PROLOGUE (walk sees left-half only).
 ; Returns C=0 if clear, C=1 if blocked.
 PlayerHitsMap:
 ; --- Tile row range (top, bottom) ---
@@ -2500,99 +2506,50 @@ PlayerHitsMap:
     sta CollisionCellX
 .colsOk:
 
-; --- Walk rectangle list (P3.4: ZP cache, direct reads — NO fold) ---
-; A fold mid-function is only safe inside the byte-identical pad block:
-; after `sta $1FF8` the NEXT opcode is fetched from the same address in the
-; NEW bank. The earlier bank2-once walk fetched bank2's bytes at $FB6B and
-; jumped into bank2's entry code (frozen player, 2026-09-29). EnterRoom
-; copies the list into the ZP cache instead; Y = global rect offset
-; (rect0 base Y=0, mask index = Y>>2), UNIFORM stride 4 through rect4
-; (S3.2: no windows, no .Stage3 — cache $CC-$DF).
-    lda RcBase                  ; count (cached; empty room -> clear)
-    bne .wrGo
-    jmp .NoHit
-.wrGo:
+; --- Cell walk (cell_collision_plan 2.1): test the PF buffers directly ---
+; The ZP rect cache ($CC-$DF, 5-slot limit) is gone from THIS walker: the
+; render buffers PF0/1/2Buf ARE the map (ApplyBombWalls punches bomb holes
+; into them), so room complexity is unbounded and geometry parity is proven
+; by tools/test_phm_cells.py (box vs geometry, all models/rooms).
+; Prologue ranges (all left-half space): CollisionCellY = top row,
+; CollisionEndY = bottom row, CollisionEndX = min col, CollisionCellX = max
+; col — cols are endpoint-mirrored above, so ALWAYS 0-19 here (no in-loop
+; mirror; bank2 display-space walkers add their own when they convert).
+; RectCount = running row, CollisionX = running col (both were walk temps
+; before — same ZP, no new allocation).
+; Exits: HIT -> jmp HotOverlapFlag (tail, C=1 contract preserved);
+;        miss -> clc / rts. Stack depth during the walk = old walk exactly
+;        (no jsr added — sim_bomb_fuse gameplay min-SP guard stays $F8).
+    lda CollisionCellY
     sta RectCount
-    lda #RcW1                   ; walk base: $CC + Y0..19 = rects0-4
-    sta FetchPtr
-    lda #$00
-    sta FetchPtr+1
-    ldy #0
-
-.RectLoop:
-; S6.4: destroyed-flag = rect.w b7 (set by ApplyBombWalls when this rect's
-; WallMask b3-6 bit is set — blast and EnterRoom-mask-restore both land
-; there). The old per-rect BombMaskBit scan (17c x rects x every walk)
-; is gone; the w-read below skips via bmi before col math uses w.
-; rect4 is never masked (b3-6 = rects0-3) — b7 clear, walks like the rest.
-; Column overlap: max_col >= rect.x AND min_col < rect.x + rect.w
-    lda (FetchPtr),Y            ; rect.x
-    cmp CollisionCellX          ; rect.x > max_col?
-    beq .colOk
-    bcs .nextRect               ; C1&Z0 = x > max (C0 falls to .colOk)
-.colOk:
-    sta CollisionX              ; save rect.x for addition
-    iny
-    iny                         ; Y = base + 2 (rect.w)
-    clc
-    lda (FetchPtr),Y            ; rect.w
-    bmi .nrmCol                 ; S6.4 b7 = destroyed (Y = base+2 → .nrmCol)
-    adc CollisionX              ; rect.x + rect.w
-    cmp CollisionEndX           ; (rect.x+w) <= min_col?
-    beq .nrmCol                 ; Y=base+2 here — normalize before advance
-    bcc .nrmCol
-
-; Row overlap: bottom_row >= rect.y AND top_row < rect.y + rect.h
-    dey                         ; Y = base + 1 (rect.y)
-    lda (FetchPtr),Y            ; rect.y
-    cmp CollisionEndY           ; rect.y > bottom_row?
-    beq .rowOk
-    bcs .nrmRow                 ; Y=base+1 — normalize before advance
-.rowOk:
-    iny
-    iny                         ; Y = base + 3 (rect.h)
-    clc
-    lda (FetchPtr),Y            ; rect.h
+.CWRow:
+    lda CollisionEndX
     sta CollisionX
-    dey
-    dey                         ; Y = base + 1 (rect.y)
-    lda (FetchPtr),Y            ; rect.y (re-read for y+h)
-    adc CollisionX              ; rect.y + rect.h
-    cmp CollisionCellY          ; (rect.y+h) <= top_row?
-    beq .nrmRow                 ; Y=base+1 — normalize before advance
-    bcc .nrmRow
-
-; HIT — player is blocked
-    ; TAIL-CALL (stack depth guard): HotOverlapFlag's exits sec, so its rts
-    ; completes PlayerHitsMap with C=1. Replacing jsr+sec+rts with this jmp
-    ; removes one push level: deepest chain (StepDown -> PlayerHitsMap ->
-    ; -> HotOverlapFlag -> FoldIndirect + pha) was 9 pushes = SP $F6, and
-    ; SP $F6/$F7 is physically BombX/BombTimer — stack pushes stomped the
-    ; bomb fuse (see AGENTS.md "Stack pushes are INVISIBLE to byte-audits").
-    ; Any new caller of HotOverlapFlag MUST account for it returning C=1.
-    jmp HotOverlapFlag          ; set Temp b7 if proposed cells include hot rock
-
-; Exit-Y discipline: mask/col-x exits leave Y = rect base (correct); col-end
-; exits leave Y = base+2 and row exits base+1. The advance below is Y+4 FROM
-; BASE — without normalizing, one late exit skews every later rect read
-; (P3.4 regression: rects drifted into PF1Buf/PF2Buf bytes = garbage walls).
-.nrmCol:
-    dey
-    dey                         ; base+2 -> base, fall into advance
-.nextRect:
-    dec RectCount
-    beq .NoHit                  ; last rect done -> clear
+.CWCol:
+    lda CollisionX
+    tax
+    ldy RectCount
     tya
     clc
-    adc #4                      ; next rect base (global Y, stride 4 —
-    tay                         ; S3.2: uniform through rect4, no switch)
-    jmp .RectLoop
-
-.nrmRow:
-    dey                         ; base+1 -> base
-    bpl .nextRect               ; always taken (Y <= 19 -> N clear)
-
-.NoHit:
+    adc ColOff,X            ; PF0/PF1/PF2 group offset (0/3/6)
+    tay
+    lda PF0Buf,Y            ; $C3+row+off — the byte the kernel renders
+    and ColMask,X           ; bit for this source col
+    bne .CWHit              ; solid (Z=0)
+    lda CollisionX
+    cmp CollisionCellX      ; col == max?
+    beq .CWRowDone
+    inc CollisionX
+    bne .CWCol              ; always (col never wraps to 0)
+.CWRowDone:
+    lda RectCount
+    cmp CollisionEndY       ; row == bottom?
+    beq .CWNoHit
+    inc RectCount
+    bne .CWRow              ; always (row never wraps to 0)
+.CWHit:
+    jmp HotOverlapFlag      ; C=1 contract; hot rects unchanged (ROM stream)
+.CWNoHit:
     clc
     rts
 
@@ -2664,13 +2621,13 @@ CallPad_AddScore:
     jmp $FA7F
 CallPad_IsRoomDark:
     sta $1FF7
-    jmp $FAA7
+    jmp $FC78
 CallPad_SetRoomDark:
     sta $1FF7
-    jmp $FABE
+    jmp $FC9E
 CallPad_UpdateLaserSound:
     sta $1FF7
-    jmp $FADA
+    jmp $FAA7
 CallPad_BuildColupF:
     sta $1FF8                   ; S5.1: body lives in bank2 (direct rect reads)
     jmp $FC4F
@@ -2869,7 +2826,10 @@ DropArm:
     sta PlayerYSub
     sta vyLo
     sta vyHi
-    sta LaserState
+    lda LaserState
+    and #LASER_DARK             ; reset laser, keep rooms 4-7 dark (parity:
+    sta LaserState              ; EnemyRamD bits survive DropArm too)
+    lda #0                      ; A out = 0 (DropArm contract, was sta LaserState)
     sta LaserBeamOn
     clc
     rts
@@ -3045,6 +3005,24 @@ RefreshEnemyY:
 
 ; UpdateBombSound moved to bank1 (leaf_move_plan batch A) — CallPad_UpdateBombSound.
 
+; ------------------------------------------------------------------------------
+; ColOff/ColMask — cell-walk lookup tables (cell_collision_plan).
+;   Indexed by LEFT-HALF source col 0-19 (PHM prologue mirrors right-half
+;   ranges before the walk; bank2 display-space walkers mirror first too).
+;   ColOff: byte offset from PF0Buf+row ($C3+row) to the register holding
+;   that col (0/3/6 = PF0/PF1/PF2 row byte). ColMask: the col's bit in that
+;   byte — PF0 bit4+col (cols 0-3), PF1 MSB-first (4-11), PF2 LSB-first
+;   (12-19); matches convert_room.pf_values (plan 0.2 spec, proven by
+;   tools/test_cell_map.py).
+;   (The standalone CellSolid leaf that lived here moved INTO
+;   PlayerHitsMap's walk as inline code — a jsr in the walk cost 2B of
+;   stack depth and would break sim_bomb_fuse's gameplay min-SP >= $F8
+;   guard; the post-pad slot keeps these tables abs,X-reachable.)
+; ------------------------------------------------------------------------------
+ColOff:     .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
+ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
+            .byte $01,$02,$04,$08,$10,$20,$40,$80
+
     .ds $FE10 - *, 0            ; keep ObjSprites in $FE page (lda ObjSprites,X
                                  ; must not cross a page — 5c vs 4c kernel budget)
 
@@ -3200,11 +3178,16 @@ SetObjReflection:
 ; Overscan: VBLANK on, end waits on TIM64T — SetObjectXPos's WSYNC costs 1
 ; of 30 lines. Y/X dead until next reload (ldy #0 / ldx RoomNo) — safe.
 LaserInput:
-    ldx LaserState             ; X = old state (b7 held, b6 prev, b1-0 phase)
+    ldx LaserState             ; X = old state (b7 held, b6 prev, b1-0 phase,
+                               ;     b5-2 dark rooms 4-7)
+    txa
+    and #LASER_DARK            ; keep dark bits (else this store wipes them)
+    sta LaserState
     txa
     and #LASER_HELD
     lsr                         ; old held (b7) -> new prev (b6)
-    sta LaserState              ; stage prev (phase/held written back below)
+    ora LaserState              ; stage prev (phase/held written back below)
+    sta LaserState
     lda INPT4                   ; active-low fire button, D7: 0 = pressed
     bmi .LaserDone              ; released: prev set, held=0, phase=0 -> done
     txa
