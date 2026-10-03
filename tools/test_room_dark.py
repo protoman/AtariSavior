@@ -6,6 +6,9 @@ split mask: rooms 0-3 = EnemyRamD bits 4-7, rooms 4-7 = LaserState bits
 5-2 (LaserState b7/b6/b1-0 preserved), rooms 8+ = always lit and
 SetRoomDark no-op (never crashes). Static asserts cover the kernel-side
 preservers (LaserInput/DropArm keep dark bits, LoadLevel clears them).
+Also drives bank2 BuildColupF (BCFDarkRun tail): ColupfBuf must go black
+/ fuse-grey for a dark room 4 (UI room 5 — the stale 4-room inline that
+left the level-003 lamp looking dead, 2026-10-03).
 
 Run: /home/iuri/python3/bin/python3 tools/test_room_dark.py
 """
@@ -15,6 +18,7 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 BANK1 = (SRC / "bank1.bin").read_bytes()
+BANK2 = (SRC / "bank2.bin").read_bytes()
 KERNEL = (SRC / "kernel.asm").read_text(encoding="utf-8")
 BANK1_SRC = (SRC / "bank1.asm").read_text(encoding="utf-8")
 
@@ -29,19 +33,38 @@ for need in ("IsRoomDark", "SetRoomDark", "ReturnPad"):
         sys.exit(f"label {need} missing from bank1.lst")
 ADDR = {k: labels[k] for k in ("IsRoomDark", "SetRoomDark", "ReturnPad")}
 
+labels2 = {}
+for line in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
+    m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+"
+                 r"([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$", line)
+    if m:
+        labels2.setdefault(m.group(2), int(m.group(1), 16))
+for need in ("BuildColupF", "ReturnPad"):
+    if need not in labels2:
+        sys.exit(f"label {need} missing from bank2.lst")
+ADDR2 = {k: labels2[k] for k in ("BuildColupF", "ReturnPad")}
+
 ROOM_NO = 0x98
 ENEMY_RAM_D = 0xC1
 LASER_STATE = 0xC0
+# BuildColupF / BCFDarkRun inputs (addr & $7F)
+COLUPF_BUF = 0xE7
+WALL1, WALL2 = 0xAA, 0xAB
+TICK = 0xAD
+BOMB_PACKED = 0xB5
+RECTS_LO, RECTS_HI = 0x90, 0x91
+STRIPE1, STRIPE2 = 0x1C, 0x44
 
 
 class Mem:
-    def __init__(self):
+    def __init__(self, rom=BANK1):
+        self.rom = rom
         self.ram = bytearray(128)
 
     def __getitem__(self, a):
         a &= 0xFFFF
         if 0xF000 <= a <= 0xFFFF:
-            return BANK1[a - 0xF000]
+            return self.rom[a - 0xF000]
         if 0x80 <= a <= 0xFF or 0x180 <= a <= 0x1FF:
             return self.ram[a & 0x7F]
         return 0
@@ -86,6 +109,35 @@ def set_dark(room_no, d, ls):
     return d2, ls2
 
 
+def run_bcf(room_no, d, ls, bomb=0):
+    """Run bank2 BuildColupF; return ColupfBuf rows 0-2.
+
+    Rect stream at $00A0: solid count 0, hot count 0 → the hot walk
+    beq's straight to the dark check (no ROM stream needed).
+    """
+    mem = Mem(rom=BANK2)
+    r = mem.ram
+    r[ROOM_NO - 0x80] = room_no
+    r[ENEMY_RAM_D - 0x80] = d
+    r[LASER_STATE - 0x80] = ls
+    r[BOMB_PACKED - 0x80] = bomb
+    r[WALL1 - 0x80] = STRIPE1
+    r[WALL2 - 0x80] = STRIPE2
+    r[TICK - 0x80] = 0
+    r[RECTS_LO - 0x80] = 0xA0          # stream lo in ZP ($00A0)
+    r[RECTS_HI - 0x80] = 0x00          # stream hi — RAM, not ROM
+    r[0xA0 - 0x80] = 0                 # solid count
+    r[0xA1 - 0x80] = 0                 # hot count → skip walk
+    mpu = MPU(memory=mem)
+    mpu.pc = ADDR2["BuildColupF"]
+    mpu.sp = 0xFF
+    for _ in range(128):
+        mpu.step()
+        if mpu.pc == ADDR2["ReturnPad"]:
+            return [r[COLUPF_BUF - 0x80 + i] for i in range(3)]
+    sys.exit(f"BuildColupF never returned (pc=${mpu.pc:04X})")
+
+
 def main() -> int:
     # --- rooms 0-3: EnemyRamD bits 4-7 -----------------------------------
     assert not is_dark(0, 0x00, 0x00), "room0 lit when mask clear"
@@ -110,6 +162,23 @@ def main() -> int:
         assert not is_dark(room, 0xFF, 0xFF), f"room{room} must stay lit"
         d, ls = set_dark(room, 0x37, 0x3D)
         assert (d, ls) == (0x37, 0x3D), f"room{room} SetRoomDark must be a no-op"
+
+    # --- bank2 BuildColupF dark override (BCFDarkRun) ----------------------
+    stripes = [STRIPE1, STRIPE2, STRIPE1]
+    assert run_bcf(4, 0x00, 0x00) == stripes, \
+        "room4 lit must keep stripe colors"
+    assert run_bcf(4, 0x00, 0x04) == [0x00, 0x00, 0x00], \
+        "room4 dark (UI room 5 lamp) must blacken walls"
+    assert run_bcf(4, 0x00, 0x04, bomb=1) == [0x04, 0x04, 0x04], \
+        "room4 dark + fuse: dark grey walls"
+    assert run_bcf(4, 0x00, 0x04, bomb=2) == [0x00, 0x00, 0x00], \
+        "room4 dark + explode: black walls (blink is bg-only)"
+    assert run_bcf(1, 0x20, 0x00) == [0x00, 0x00, 0x00], \
+        "room1 dark (EnemyRamD b5) must blacken walls"
+    assert run_bcf(1, 0x00, 0x00) == stripes, \
+        "room1 lit must keep stripe colors"
+    assert run_bcf(8, 0xFF, 0xFF) == stripes, \
+        "room8 must stay lit"
 
     # --- kernel-side preservers (static) ---------------------------------
     assert KERNEL.count("and #LASER_DARK") >= 2, \

@@ -22,6 +22,7 @@ EnemyIndex = $B9                 ; slot save around the col swap + rect walk
 RcBase = $89                    ; count — outside bank1's $E0-$EF stomp zone
 RcW1 = $CC                       ; walk base — uniform stride incl. rect4 (S3.2)
 EnemyRamX = $BD
+LaserState = $C0                  ; b5-2 = RoomDarkMask rooms 4-7 (BCFDarkRun)
 EnemyRamD = $C1                  ; dir bits: 1 = right, 0 = left
 EnemyRamP = $C2                  ; free-running frame clock
 EnemyRamY = $E2                  ; live Y (refreshed this overscan — after
@@ -508,6 +509,53 @@ TallyEntry:
     lda #0
     jmp $FBF8
 
+; ------------------------------------------------------------------------------
+; BCFDarkRun — BuildColupF's dark-room override (moved here from BCF's tail:
+; the $FCF0 pin left <8 B there when the mask grew to rooms 4-7). Same pad
+; rules as the inline it replaces: no folds/pads (ReturnPad switches to
+; bank0), tail ends at ReturnPad. 8-bit RoomDarkMask mirrors bank1
+; IsRoomDark: rooms 0-3 = EnemyRamD b4-7, rooms 4-7 = LaserState b2-5,
+; rooms 8+ = lit.
+BCFDarkRun:
+    lda RoomNo
+    cmp #4
+    bcs .BCFhi
+    tax
+    lda BCFDarkMask,X           ; rooms 0-3: $10/$20/$40/$80
+    and EnemyRamD
+    beq .BCFdarkDone            ; lit → keep stripe/hot colors
+    bne .BCFon                  ; dark (Z clear — beq just fell through)
+.BCFhi:
+    cmp #8
+    bcs .BCFdarkDone            ; rooms 8+ never dark (no mask bit)
+    tax
+    lda BCFDarkMask,X           ; rooms 4-7: $10/$20/$40/$80
+    lsr
+    lsr                         ; → $04/$08/$10/$20 = LaserState b2-5
+    and LaserState
+    beq .BCFdarkDone            ; lit → keep stripe/hot colors
+.BCFon:
+    lda BombPacked
+    and #%00000011
+    cmp #1
+    beq .BCFFuseGrey            ; bomb fuse active → dark grey walls
+    lda #COLOR_CAVE_BG          ; black walls (matches black background)
+    beq .BCFdarkFill            ; A=$00 (COLOR_CAVE_BG) → always taken
+.BCFFuseGrey:
+    lda #COLOR_DARK_PF          ; hue 0 luma 2 = very dark grey walls
+.BCFdarkFill:
+    ldx #0
+.BCFdarkLoop:
+    sta ColupfBuf,X
+    inx
+    cpx #TILE_ROWS
+    bne .BCFdarkLoop
+.BCFdarkDone:
+    jmp $FBF8                   ; ReturnPad → bank0 VBLANK caller
+BCFDarkMask:
+    .byte $10, $20, $40, $80    ; rooms 0-3 → EnemyRamD bits 4-7
+    .byte $10, $20, $40, $80    ; rooms 4-7 → lsr×2 = LaserState bits 2-5
+
 ; --- Level data (frozen addresses — pointer values must match bank0's
 ;     original layout, level_bank_plan P2.1: $F9D9-$FB1E = 326B) ---
     org $F9D9
@@ -555,8 +603,8 @@ MothExitPad:
 ;     THIS bank (direct read, same pattern as the moth records).
 ;     (The shared $FEF6 fold's sta $1FF6 always returns to bank0, so a
 ;     fold inside ANY other bank's body cannot work.)
-;   - jsr CallPad_IsRoomDark -> inlined below: pads cannot nest (ReturnPad
-;     switches to bank0; rts would resume at this address in bank0).
+;   - jsr CallPad_IsRoomDark -> BCFDarkRun (pre-level-data gap; pads cannot
+;     nest: ReturnPad switches to bank0, so rts would resume in bank0).
 ;   - rts -> jmp $FBF8 (ReturnPad) for the bank0 VBLANK caller.
 ; ------------------------------------------------------------------------------
     .ds $FC4F - *, 0
@@ -637,34 +685,10 @@ BuildColupF:
     bne .BCFrect
 .BCFdone:
     ; --- Dark room: walls black; fuse (state=1) walls dark grey ---
-    ; Inlined bank1 IsRoomDark: rooms 4+ never dark; EnemyRamD bits 4-7 =
-    ; dark flag for rooms 0-3 (bit set = dark).
-    lda RoomNo
-    cmp #4
-    bcs .BCFdarkDone            ; rooms 4+ never dark (mask covers 0-3)
-    tax
-    lda BCFDarkMask,X           ; $10/$20/$40/$80 = BitMaskTable[4+RoomNo]
-    and EnemyRamD
-    beq .BCFdarkDone            ; lit → keep stripe/hot colors
-    lda BombPacked
-    and #%00000011
-    cmp #1
-    beq .BCFFuseGrey            ; bomb fuse active → dark grey walls
-    lda #COLOR_CAVE_BG          ; black walls (matches black background)
-    beq .BCFdarkFill            ; A=$00 (COLOR_CAVE_BG) → always taken
-.BCFFuseGrey:
-    lda #COLOR_DARK_PF          ; hue 0 luma 2 = very dark grey walls
-.BCFdarkFill:
-    ldx #0
-.BCFdarkLoop:
-    sta ColupfBuf,X
-    inx
-    cpx #TILE_ROWS
-    bne .BCFdarkLoop
-.BCFdarkDone:
-    jmp $FBF8                   ; ReturnPad → bank0 VBLANK caller
-BCFDarkMask:
-    .byte $10, $20, $40, $80    ; IsRoomDark bits for RoomNo 0-3
+    ; Moved to BCFDarkRun (pre-level-data gap): the $FCF0 pin left <8 B
+    ; here once the dark mask grew to rooms 4-7. Still inlined in THIS
+    ; bank — pads cannot nest (ReturnPad switches to bank0).
+    jmp BCFDarkRun
 
 ; ------------------------------------------------------------------------------
 ; HotOverlapBody — MOVED from bank0 (S5.3, kernel `jmp HotOverlapFlag` at
