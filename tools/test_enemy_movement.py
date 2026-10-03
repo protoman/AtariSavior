@@ -213,8 +213,8 @@ def main() -> None:
         f"MothRowTable must be 48 ascending /48-band entries, got {len(mvals)}"
     assert ".byte $01, $02, $04" in b2, \
         "MothBitTable = per-slot dir bits (bank2-local copy)"
-    assert ".byte $08, $10, $20, $40" in b2, \
-        "MothMaskBit = BombMaskBit copy (destroyed-rect skip)"
+    assert not re.search(r"^MothMaskBit:", b2, re.M), \
+        "MothMaskBit orphan must stay deleted (LWC cell swap, plan 3.1)"
 
     # --- space fix: row lookup uses the 48-entry (A>>2) table -------------
     # (the dead YToCellRow jsr wrapper was removed in S1.6; the lookup is

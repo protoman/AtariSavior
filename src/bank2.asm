@@ -28,6 +28,8 @@ EnemyRamY = $E2                  ; live Y (refreshed this overscan — after
                                  ; the bank1 HUD score-ptr stomp; S3.4)
 TILE_COLUMNS = 20
 RoomY = $81                    ; player Y — LaserHitTest vertical window
+PF0Buf = $C3                   ; PF render buffers rows 0-2 ($C3-$CF) —
+                                ; cell map read here; must match kernel.asm
 PlayerDir = $82                ; must match kernel.asm — S6 LWC tip direction
 EnemyCount = $B3               ; LaserHitTest loop bound
 EnemyDeadMask = $BA            ; LaserHitTest dead bits (written on kill)
@@ -272,10 +274,10 @@ MothExit:
 MothBitTable:
     .byte $01, $02, $04
 
-; Destroyed-rect mask bits, index = global rect offset >> 2 (copy of
-; kernel.asm's BombMaskBit; index 4 = $00 — rect4 never masked, S3.2)
-MothMaskBit:
-    .byte $08, $10, $20, $40, $00
+; MothMaskBit deleted (cell_collision_plan 3.1): its only reader was
+; LWC's destroyed-rect scan, retired with the cell walk. The moth walk
+; uses the rect.w b7 flag (S6.4); ApplyBombWalls keeps kernel's
+; BombMaskBit until phase 5.
 
 ; 48-line band row lookup — copy of kernel's YToRowTable (bank2 cannot read
 ; bank0 ROM). Index = line >> 2, value = floor(line/48) = band row 0-3.
@@ -296,18 +298,19 @@ MothRowTable:
 ;   CollisionEndX (c0), CollisionCellX (c1) = path cols px>>2
 ;     right (PlayerDir=0): path px = [nose_R=RoomX-3, A]      (A = raw arg)
 ;     left  (1):           path px = [A-7, nose_L=RoomX-4]
-;   CollisionX = A (unclamped), RoomY live, rect cache live.
+;   CollisionX = A (unclamped), RoomY live, PF0/1/2Buf live (the map —
+;   ApplyBombWalls-punched holes read as air for free).
 ;   PIXEL MODEL: drawn M0 = [A-7, A] (SetObjectXPos arg -> box-left arg-7;
 ;   PlayerSpriteA lit cols0-6, PHM lit-left = arg-7). Kill test = same
 ;   [A-7, A] (adc #14 in the body). The raw tip/eye anchoring of S6a missed
 ;   the wall at max approach (nose col >= wall col) and left a 1-3px visible
 ;   gap + behind-player stub — all three Stella symptoms (2026-10-01).
-; Walks the uniform rect cache ONCE — rows = band(RoomY+2)..band(RoomY+3)
-; (exact LHT kill window), per rect both screen spans of the LEFT-half rect
-; (reflect): [x, x+w-1] and [40-x-w, 39-x]. On-path overlap -> first wall
+; Walks the cell map ONCE (cell_collision_plan 3.1) — rows =
+; band(RoomY+2)..band(RoomY+3) (exact LHT kill window), every DISPLAY col
+; in [c0..c1] (right-half cols mirror 39-d into the buffers). First solid
 ; col on the travel direction:
-;   right: col = max(span_lo, c0)  -> tip A   <= col*4+2  -> pull DOWN (min)
-;   left:  col = min(span_hi, c1)  -> start A >= col*4+9  -> pull UP   (max)
+;   right: col -> tip A   <= col*4+2  -> pull DOWN (min)
+;   left:  col -> start A >= col*4+9  -> pull UP   (max)
 ; (col*4 = wall face px; drawn [A-7, A]: right tip lands 2px INSIDE the
 ; wall's left half, left start lands 2px inside its right half — visible
 ; tip flush at the face (PF has priority over M0, CTRLPF=$05), never past
@@ -339,198 +342,81 @@ LaserWallClamp:
     tay
     lda MothRowTable,Y
     sta CollisionEndY           ; bottom band row
-    lda #RcW1                   ; uniform rect cache: (x,y,w,h) stride 4
+    ; --- cell walk (cell_collision_plan 3.1): scan every display col on
+    ; the path against the PF render buffers (bomb holes = air for free;
+    ; the rect cache + destroyed-mask scan are gone from THIS walker). Candidates are DISPLAY px (kill window is display space);
+    ; only the buffer lookup mirrors right-half cols (source = 39-d).
+    ; FetchPtr = running display col (no indirect reads here — the LHT
+    ; body restages FetchPtr after LaserClampDone), RectCount = running
+    ; band row (overscan-only alias of RowIdx, kernel idle).
+    lda CollisionEndX          ; c0 (display space, staged by LaserInput)
     sta FetchPtr
-    lda #0
-    sta FetchPtr+1
-    ldy #0
-    lda RcBase                  ; room with no rects -> nothing to clamp
-    bne .LWgo
-    jmp .LWdone
-.LWgo:
-    tax                         ; X = rect count (frees the zp dec: dex/beq)
-.LWrect:
-    ; S6.6: destroyed-mask test moved AFTER the row test (was here) —
-    ; out-of-band rects (row fails) never reach spans, so ~3 of 5 rects
-    ; skip the BombPacked index/test entirely (-7c each, frame-budget cut).
-    iny                         ; Y = base+1 (y)
-    lda (FetchPtr),Y
-    cmp CollisionEndY           ; rect.y <= bottom ?
-    beq .LWrow
-    bcc .LWrow
-    jmp .LWnext
-.LWrow:
-    iny
-    iny                         ; Y = base+3 (h)
-    clc
-    adc (FetchPtr),Y            ; y + h
-    cmp CollisionCellY          ; overlap iff y+h > top (C=1, Z=0)
-    bcc .LWm3
-    beq .LWm3
-    jmp .LWok
-.LWm3:
-    jmp .LWnext
-.LWok:
-    tya
-    and #$FC
-    tay                         ; Y = base
-    ; destroyed-mask test (S6.6 moved here: only in-band rects pay it)
-    lda BombPacked
-    and #$78
-    beq .LWs0                   ; no holes -> straight to span walk
-    tya                         ; destroyed rect -> treated as empty
-    lsr
-    lsr
-    tay
-    lda MothMaskBit,Y
-    and BombPacked
-    beq .LWmMask                ; alive -> restore Y = base and continue
-    tya                         ; destroyed -> next rect (Y = idx)
-    asl
-    asl
-    tay
-    jmp .LWnext
-.LWmMask:
-    tya
-    asl
-    asl
-    tay                         ; Y = base restored
-    ; --- span1 (left half): [x, x+w-1]
-.LWs0:
-    lda (FetchPtr),Y            ; x
-    cmp CollisionCellX          ; x <= c1 ?
-    beq .LWs1                   ; x == c1: shi >= x >= c0 -> on path
-    bcs .LWs2                   ; x > c1 -> span1 off path (Y=0)
-.LWs1:
-    sec
-    sbc #1
-    iny
-    iny                         ; Y = base+2 (w)
-    clc
-    adc (FetchPtr),Y            ; A = x+w-1 = shi
-    cmp CollisionEndX           ; shi >= c0 ?
-    bcc .LWs2                   ; no -> try mirror (Y=2; .LWs2 normalizes)
-    tya
-    and #$FC
-    tay                         ; Y = base
-    lda PlayerDir
-    beq .LWs1R
-    ; left: first wall traveling left = min(shi, c1)
-    lda (FetchPtr),Y
-    sec
-    sbc #1
-    iny
-    iny
-    clc
-    adc (FetchPtr),Y            ; shi
-    cmp CollisionCellX
-    bcc .LWs1a
-    lda CollisionCellX
-.LWs1a:
-    asl
-    asl
-    clc
-    adc #9                      ; cand = face+9 (start A >= face+9, S6b)
-    cmp CollisionX
-    bcc .LWs2                   ; cand < A -> keep (max-apply)
-    sta CollisionX
-    jmp .LWs2
-.LWs1R:
-    lda (FetchPtr),Y            ; x (Y = base)
-    cmp CollisionEndX           ; max(x, c0)
-    bcs .LWs1b
-    lda CollisionEndX
-.LWs1b:
-    asl
-    asl
-    clc
-    adc #2                      ; cand = face+2 (tip A <= face+2, S6b)
-    cmp CollisionX
-    bcs .LWs2                   ; cand >= A -> no pull (min-apply)
-    sta CollisionX
-    jmp .LWs2
-    ; --- mirror span: [40-x-w, 39-x] (reflected playfield)
-.LWs2:
-    tya
-    and #$FC
-    tay                         ; Y = base
-    ; Seam invariant (verified: all M*RoomRects x+w <= 20): rect data =
-    ; left half, mirror spans = [40-x-w..39-x] >= 20. Left-half path
-    ; (c1 <= 19) can never hit the mirror -> skip it (~45c/rect saved;
-    ; this is the frame-budget flicker cut, sim_frame_budget). Straddle/
-    ; right paths pay +8c/rect (same line bucket).
-    lda CollisionCellX          ; c1
+.LWcol:
+    lda FetchPtr
     cmp #20
-    bcc .LWnext                 ; left-half path: mirror spans >= 20 -> dead
+    bcc .LWsrc                 ; left-half display col = source col
     lda #39
     sec
-    sbc (FetchPtr),Y            ; A = 39-x = shi2
-    cmp CollisionEndX           ; shi2 >= c0 ?
-    bcc .LWnext                 ; mirror entirely left of path (Y=0)
-    sec
-    iny
-    iny                         ; Y = base+2 (w)
-    sbc (FetchPtr),Y            ; 39-x-w
+    sbc FetchPtr               ; right-half: mirrored source col 39-d
+.LWsrc:
+    tax                        ; X = source col 0-19
+    lda CollisionCellY
+    sta RectCount
+.LWrow:
+    lda RectCount
     clc
-    adc #1                      ; A = 40-x-w = slo2
-    cmp CollisionCellX          ; slo2 <= c1 ?
-    beq .LWs2on
-    bcs .LWnext                 ; mirror entirely right of path (Y=2)
-.LWs2on:
-    tya
-    and #$FC
-    tay                         ; Y = base
+    adc ColOff,X
+    tay
+    lda PF0Buf,Y
+    and ColMask,X
+    bne .LWsolid
+    lda RectCount
+    cmp CollisionEndY
+    beq .LWnext                ; bottom row tested -> col is clear
+    inc RectCount
+    bne .LWrow                 ; always (RectCount <= 2, never wraps to 0)
+.LWsolid:
+    ; first solid display col on the travel path folds into CollisionX:
+    ;   right: cand = col*4+2, min-apply (tip lands 2px inside the wall)
+    ;   left:  cand = col*4+9, max-apply (start lands 2px inside)
+    ; max/min fold = order independent, ascending scan is fine.
     lda PlayerDir
-    beq .LWs2R
-    ; left: min(shi2, c1), shi2 = 39-x
-    lda #39
-    sec
-    sbc (FetchPtr),Y
-    cmp CollisionCellX
-    bcc .LWs2a
-    lda CollisionCellX
-.LWs2a:
+    beq .LWsR
+    lda FetchPtr               ; left
     asl
     asl
     clc
-    adc #9                      ; cand = face+9 (S6b)
+    adc #9                     ; cand = face+9 (start A >= face+9, S6b)
     cmp CollisionX
-    bcc .LWnext
+    bcc .LWnext                ; cand < A -> keep (max-apply)
     sta CollisionX
     jmp .LWnext
-.LWs2R:
-    ; right: max(slo2=40-x-w, c0)
-    lda #40
-    sec
-    sbc (FetchPtr),Y
-    iny
-    iny
-    sec
-    sbc (FetchPtr),Y            ; A = 40-x-w
-    cmp CollisionEndX
-    bcs .LWs2b
-    lda CollisionEndX
-.LWs2b:
+.LWsR:
+    lda FetchPtr               ; right
     asl
     asl
     clc
-    adc #2                      ; cand = face+2 (S6b)
+    adc #2                     ; cand = face+2 (tip A <= face+2, S6b)
     cmp CollisionX
-    bcs .LWnext
+    bcs .LWnext                ; cand >= A -> no pull (min-apply)
     sta CollisionX
 .LWnext:
-    tya
-    and #$FC
-    tay
-    iny
-    iny
-    iny
-    iny                         ; Y += 4 -> next rect
-    dex
+    lda FetchPtr
+    cmp CollisionCellX         ; just processed c1?
     beq .LWdone
-    jmp .LWrect                 ; body > 127B: branch-over-jump (E1 idiom)
+    inc FetchPtr
+    jmp .LWcol
 .LWdone:
     jmp LaserClampDone          ; back to the body (stack depth unchanged)
+
+; Cell-map lookup copies (bank2 cannot read bank0 ROM) — cell_collision_plan
+; 0.2 bit spec, byte-identical to kernel.asm's ColOff/ColMask: group offset
+; 0/3/6 + per-col bit (PF0 LSB-first nibble, PF1 MSB-first, PF2 LSB-first).
+ColOff:
+    .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
+ColMask:
+    .byte $10,$20,$40,$80, $80,$40,$20,$10,$08,$04,$02,$01
+    .byte $01,$02,$04,$08, $10,$20,$40,$80
 
 ; S6.5 col-change gate for MothRoutine (see entry at .MothRangeOk): walk
 ; result depends only on the (col,row) box. Moth rows are band-constant

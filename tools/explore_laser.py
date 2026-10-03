@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Laser clamp forensic explorer (temporary tool, not part of the battery).
 
+STALE — historical only (cell_collision_plan 3.1): its subject
+LaserThinClamp no longer exists, LWC is a cell walk over PF0/1/2Buf, and
+the watched rect cache reads are gone. Kept as the record of the past
+corruption hunt; not ported (plan deviation noted there).
+
 Random-walks the ROM headless (fire held, RoomY swept for band coverage) and
 instruments LaserThinClamp's rts plus a HARD WRITE-WATCH on the rect cache
 ($89 count, $CC-$DF rects). Every clamp call is checked against an
