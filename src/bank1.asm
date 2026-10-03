@@ -879,12 +879,25 @@ BombClearMask:
 
 ; AddScore — add BCD amount in A (e.g. #$50, #$75) to HUD score.
 ; ScoreTh/ScoreHu = binary 0-9; ScoreTe = packed BCD. Clobbers A.
+; Real 6502 BCD add — SED/ADC/CLD straight-line: D is cleared before any
+; jsr, the 2600 has no interrupts, and nothing here restores D via plp
+; (the 2026-09-23 decimal-mode rule). The old BINARY `cmp #$A0 / sbc #$A0`
+; fix-up missed nibble-level overflow: $25+$75 = $9A stored raw -> ones
+; digit A -> glyph index 10 -> DigitGfx+80 (past the 10-glyph font) =
+; the solid-block score digit (screenshots/score_issue_002.png).
+; C=1 = BCD carry (sum >= 100) -> ScoreHu path.
+; SIZE PIN: routine runs $FA7D..$FAA4 exactly (UpdateLaserSound's pad
+; target is $FAA5). Old head = clc/adc/cmp/bcc/sbc = 9 bytes, new head =
+; sed/clc/adc/cld/bcc = 7, so the two nops restore the exact length —
+; without them every pad below shifts silently.
 AddScore:
+    sed
     clc
     adc ScoreTe
-    cmp #$a0
+    cld
     bcc .ASstoreTe
-    sbc #$a0
+    nop                         ; byte-pin (see SIZE PIN above)
+    nop                         ; byte-pin
     pha                         ; save wrapped ScoreTe
     inc ScoreHu
     lda ScoreHu
