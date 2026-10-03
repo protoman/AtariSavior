@@ -189,69 +189,43 @@ MothDoWalk:
     sta CollisionCellX
 .MothColsOk:
 
-; --- Walk rectangle list (verbatim copy of PlayerHitsMap's P3.4 walk;
-;     HIT jumps to .MothTurn instead of bank0's HotOverlapFlag) ---
-    lda RcBase
-    bne .MwGo
-    jmp .MothNoHit
-.MwGo:
+; --- Cell walk (cell_collision_plan 4.1): test the PF buffers directly ---
+; Same walk as PlayerHitsMap 2.1: the prologue already mirrors cols to
+; the left half (and swaps min/max after mirror), so no in-loop mirror.
+; The rect cache is gone from THIS walker — bomb holes read as air for
+; free. RectCount = running row, CollisionX = running col (walk temps
+; before — same ZP, no new allocation). HIT -> jmp .MothTurn (flip dir,
+; hold position); miss falls into .MothNoHit (commit candidate). No jsr
+; (bank2 moth never jsrs; stack depth = old walk exactly).
+    lda CollisionCellY
     sta RectCount
-    lda #RcW1
-    sta FetchPtr
-    lda #$00
-    sta FetchPtr+1
-    ldy #0
-.MwLoop:
-    ; S6.4 (verbatim copy of kernel.asm PHM): destroyed-flag = rect.w b7
-    ; (set by ApplyBombWalls) — old BombMaskBit scan deleted; w-read skips.
-    lda (FetchPtr),Y          ; rect.x
-    cmp CollisionCellX
-    beq .MwColOk
-    bcs .MwNext
-.MwColOk:
+.MwRow:
+    lda CollisionEndX
     sta CollisionX
-    iny
-    iny                       ; rect.w
-    clc
-    lda (FetchPtr),Y
-    bmi .MwNrmCol             ; S6.4 b7 = destroyed (Y = base+2)
-    adc CollisionX
-    cmp CollisionEndX
-    beq .MwNrmCol
-    bcc .MwNrmCol
-    dey                       ; rect.y
-    lda (FetchPtr),Y
-    cmp CollisionEndY
-    beq .MwRowOk
-    bcs .MwNrmRow
-.MwRowOk:
-    iny
-    iny                       ; rect.h
-    clc
-    lda (FetchPtr),Y
-    sta CollisionX
-    dey
-    dey
-    lda (FetchPtr),Y
-    adc CollisionX
-    cmp CollisionCellY
-    beq .MwNrmRow
-    bcc .MwNrmRow
-    jmp .MothTurn             ; HIT — wall: flip dir, hold position
-.MwNrmCol:
-    dey
-    dey
-.MwNext:
-    dec RectCount
-    beq .MothNoHit
+.MwCol:
+    lda CollisionX
+    tax
+    ldy RectCount
     tya
     clc
-    adc #4
-    tay                         ; S3.2: uniform stride through rect4 —
-    jmp .MwLoop                 ; no window jump, no .MwStage3
-.MwNrmRow:
-    dey
-    bpl .MwNext               ; Y <= 19 -> N clear, always taken
+    adc ColOff,X            ; PF0/PF1/PF2 group offset (0/3/6)
+    tay
+    lda PF0Buf,Y            ; $C3+row+off — the byte the kernel renders
+    and ColMask,X           ; bit for this source col
+    bne .MwHit              ; solid (Z=0)
+    lda CollisionX
+    cmp CollisionCellX      ; col == max?
+    beq .MwRowDone
+    inc CollisionX
+    bne .MwCol              ; always (col never wraps to 0)
+.MwRowDone:
+    lda RectCount
+    cmp CollisionEndY       ; row == bottom?
+    beq .MothNoHit
+    inc RectCount
+    bne .MwRow              ; always (row never wraps to 0)
+.MwHit:
+    jmp .MothTurn           ; wall: flip dir, hold position (no commit)
 .MothNoHit:
     ldx EnemyIndex            ; slot back (walk used X for the mask index)
     lda Temp

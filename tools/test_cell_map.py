@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PlayerHitsMap cell-walk parity vs room geometry (cell_collision_plan 1.1+2.1).
+"""PlayerHitsMap + moth-walk cell parity vs room geometry (plan 1.1+2.1+4.1).
 
 Drives bank0 PlayerHitsMap headless (py65) for every model: RoomX 4..159 x
 representative RoomY (one per distinct top/bottom row pair) x both facing
@@ -10,6 +10,12 @@ endpoint mirror, min/max swap, YToRow rows).
 Hit path runs the real bank2 HotOverlapBody (Mem emulates the F6 $1FF8
 switch, RoomRects pointed at a known hot-count-0 stream) — so the C=1
 tail contract is exercised too.
+
+Moth side (plan 4.1): drives bank2's moth cell walk directly at
+.MothColsOk (post-prologue = walk entry) for EVERY valid box (all col
+pairs x row pairs) and asserts the wiring contract: HIT flips EnemyRamD
+and does NOT commit Temp; MISS commits Temp to EnemyRamX[0] and leaves
+the dir bit — both paths exit via MothExitPad -> bank0 UE_Next.
 
 Also asserts generated M*TilePF0/1/2 bytes == pf_values(geometry) so the
 generator can't drift from collision truth.
@@ -40,7 +46,17 @@ def parse_labels(path: Path, names: set[str]) -> dict[str, int]:
     rx_zp = re.compile(
         r"^\s*\d+\s+U([0-9a-f]{4})\s+[0-9a-f]{2}+\s+"
         r"([A-Za-z_.][A-Za-z0-9_.]*)\s+byte")
+    # EQU decls anchor on the PREVIOUS cell (U00bc) — value is after '=';
+    # the U-line shows both anchor and value bytes ("00 bd"), hence the
+    # repeated hex pair before the name.
+    rx_equ = re.compile(
+        r"^\s*\d+\s+U[0-9a-fA-F]{4}\s+(?:[0-9a-f]{2}\s+)+"
+        r"([A-Za-z_.][A-Za-z0-9_.]*)\s+=\s+\$([0-9a-fA-F]+)")
     for line in path.read_text(errors="replace").splitlines():
+        m = rx_equ.match(line)
+        if m and m.group(1) in names and m.group(1) not in out:
+            out[m.group(1)] = int(m.group(2), 16)
+            continue
         for rx in (rx_code, rx_zp):
             m = rx.match(line)
             if m and m.group(2) in names and m.group(2) not in out:
@@ -50,17 +66,20 @@ def parse_labels(path: Path, names: set[str]) -> dict[str, int]:
 
 
 need0 = {"PlayerHitsMap", "RoomX", "RoomY", "PlayerDir", "BombPacked",
-         "RoomRectsLo", "RoomRectsHi"}
+         "RoomRectsLo", "RoomRectsHi", "Temp", "CollisionCellX",
+         "CollisionCellY", "CollisionEndX", "CollisionEndY",
+         "EnemyDataLo", "EnemyDataHi", "EnemyIndex", "EnemyRamX",
+         "EnemyRamD", "UE_Next"}
 L0 = parse_labels(SRC / "bank0.lst", need0)
 missing = need0 - L0.keys()
 if missing:
     sys.exit(f"bank0.lst labels missing: {sorted(missing)}")
 PHM = L0["PlayerHitsMap"]
 
-need2 = {"M5RoomRects"}
+need2 = {"M5RoomRects", ".MothColsOk"}
 L2 = parse_labels(SRC / "bank2.lst", need2)
 if not need2 <= L2.keys():
-    sys.exit("bank2.lst: M5RoomRects missing")
+    sys.exit(f"bank2.lst labels missing: {sorted(need2 - L2.keys())}")
 
 PF0_BUF = 0xC3
 YTOROW = [i // 12 for i in range(48)]        # kernel YToRowTable (rows 0-3)
@@ -98,6 +117,7 @@ from py65.devices.mpu6502 import MPU  # noqa: E402
 
 def run_phm(mem: Mem, room_x: int, room_y: int, player_dir: int) -> bool:
     """Drive PlayerHitsMap; return C (True = blocked)."""
+    mem.bank = 0
     mpu = MPU(memory=mem)
     mpu.pc = PHM
     mpu.a = mpu.x = mpu.y = 0
@@ -137,13 +157,55 @@ def row_range(room_y: int) -> tuple[int, int]:
             YTOROW[((room_y + 11) >> 2) & 0x3F])
 
 
+def box_hit(rows: list[str], lo: int, hi: int, top: int, bot: int) -> bool:
+    assert 0 <= lo <= hi <= 19, f"col range {lo}..{hi} out of spec"
+    assert 0 <= top <= bot <= 2, f"row range {top}..{bot} out of spec"
+    return any(rows[r][c] in "#H" for r in range(top, bot + 1)
+               for c in range(lo, hi + 1))
+
+
+def run_moth(mem: Mem, lo: int, hi: int, top: int, bot: int,
+             temp: int) -> bool:
+    """Drive bank2's moth cell walk at .MothColsOk (post-prologue = walk
+    entry); return True = HIT. Asserts the exit wiring contract: HIT flips
+    EnemyRamD ($00->$01, MothBitTable[0]) and must NOT commit Temp;
+    MISS commits Temp to EnemyRamX[0] and leaves the dir bit."""
+    mem.bank = 2
+    r = mem.ram
+    r[L0["CollisionEndX"] - 0x80] = lo
+    r[L0["CollisionCellX"] - 0x80] = hi
+    r[L0["CollisionCellY"] - 0x80] = top
+    r[L0["CollisionEndY"] - 0x80] = bot
+    r[L0["Temp"] - 0x80] = temp
+    r[L0["EnemyIndex"] - 0x80] = 0
+    r[L0["EnemyRamX"] - 0x80] = 0xAA        # untouched sentinel
+    r[L0["EnemyRamD"] - 0x80] = 0x00
+    r[L0["EnemyDataLo"] - 0x80] = 0x00      # restage-only on exit
+    r[L0["EnemyDataHi"] - 0x80] = 0x00
+    mpu = MPU(memory=mem)
+    mpu.pc = L2[".MothColsOk"]
+    mpu.a = mpu.x = mpu.y = 0
+    mpu.sp = 0xFD
+    for _ in range(5000):
+        mpu.step()
+        if mem.bank == 0 and mpu.pc == L0["UE_Next"]:
+            break
+    else:
+        sys.exit(f"moth walk(box {lo}..{hi},{top}..{bot}) never exited "
+                 f"(pc=${mpu.pc:04X}, bank={mem.bank})")
+    hit = r[L0["EnemyRamD"] - 0x80] == 0x01
+    committed = r[L0["EnemyRamX"] - 0x80] == temp
+    assert (hit and not committed) or (not hit and committed), (
+        f"moth wiring: box {lo}..{hi},{top}..{bot}: "
+        f"EnemyRamD={r[L0['EnemyRamD'] - 0x80]:02X} "
+        f"EnemyRamX={r[L0['EnemyRamX'] - 0x80]:02X} temp={temp:02X}")
+    return hit
+
+
 def expected_hit(rows: list[str], rx: int, rd: int, ry: int) -> bool:
     lo, hi = visible_range(rx, rd)
     top, bot = row_range(ry)
-    assert 0 <= lo <= hi <= 19, f"col range {lo}..{hi} out of spec (X={rx} d={rd})"
-    assert 0 <= top <= bot <= 2, f"row range {top}..{bot} out of spec (Y={ry})"
-    return any(rows[r][c] in "#H" for r in range(top, bot + 1)
-               for c in range(lo, hi + 1))
+    return box_hit(rows, lo, hi, top, bot)
 
 
 def load_case(mem: Mem, rows: list[str]) -> None:
@@ -187,6 +249,8 @@ def main() -> int:
     # (1,1) Y48-84, (1,2) Y85-95, (2,2) Y96-132 — one rep each.
     y_reps = (0, 40, 60, 90, 120)
     checks = 0
+    moth_checks = 0
+    temp = 0x42                        # candidate != sentinel 0xAA
     for name, rows in cases:
         assert len(rows) == 3 and all(len(r) == 20 for r in rows), name
         mem = Mem()
@@ -205,7 +269,19 @@ def main() -> int:
                         f"(box cols {visible_range(rx, rd)} rows "
                         f"{row_range(ry)})")
                     checks += 1
-    print(f"test_cell_map: OK ({checks} PHM boxes, {len(cases)} geometries)")
+        # --- moth walk: every valid box (plan 4.1), wiring asserted ------
+        for lo in range(20):
+            for hi in range(lo, 20):
+                for top in range(3):
+                    for bot in range(top, 3):
+                        want = box_hit(rows, lo, hi, top, bot)
+                        got = run_moth(mem, lo, hi, top, bot, temp)
+                        assert got == want, (
+                            f"{name} moth box cols {lo}..{hi} rows "
+                            f"{top}..{bot}: HIT={got} want {want}")
+                        moth_checks += 1
+    print(f"test_cell_map: OK ({checks} PHM boxes, {moth_checks} moth "
+          f"boxes, {len(cases)} geometries)")
     return 0
 
 

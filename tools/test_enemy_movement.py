@@ -187,13 +187,19 @@ def main() -> None:
     assert "stx EnemyIndex" in body and "ldx EnemyIndex" in body, \
         "slot must survive the col swap + rect walk (X clobbers, E3 lesson)"
     assert "lda EnemyDataLo" in body and "sta FetchPtr" in body, \
-        "every exit must re-stage FetchPtr (the walk overwrites it)"
+        "every exit must re-stage FetchPtr (MothExit discipline)"
     assert body.rstrip().endswith("jmp MothExitPad"), \
         "tail must jmp MothExitPad"
     assert "sta EnemyRamX,X" in body, "clear path must commit candidate X"
     assert "eor EnemyRamD" in body, "turn must flip the live dir bit"
-    assert body.count("(FetchPtr),Y") >= 6, \
-        "spawn + rect-walk reads must be direct (FetchPtr),Y (records in bank2)"
+    assert body.count("(FetchPtr),Y") == 1, \
+        "only the spawn record type read stays direct (walk converts to " \
+        "cell tests, plan 4.1 — rect reads must be gone)"
+    assert "adc ColOff,X" in body and "and ColMask,X" in body \
+        and "lda PF0Buf,Y" in body, \
+        "moth walk must be the PHM-style cell walk (plan 4.1)"
+    assert "RcBase" not in body and "RcW1" not in body, \
+        "rect cache must be gone from the moth walk (plan 4.1)"
     assert re.search(r"cmp\s+#160", body), \
         "wrap/off-screen candidate must turn (plan's mod-256 range passes 255)"
     assert re.search(r"cmp\s+#33", body) and re.search(r"cmp\s+#224", body), \
