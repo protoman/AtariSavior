@@ -132,20 +132,26 @@ def find_rectangles(rows: list[str], solids: str = "#") -> list[tuple[int, int, 
 
 
 def lines(rows: list[str], prefix: str = "", source: str = "room",
-          asym_rows: list[str] | None = None) -> list[str]:
+          asym_rows: list[str] | None = None,
+          asym_ball_x: int = 0) -> list[str]:
     """Build the asm lines for a grid (shared by per-room and per-model emission).
 
     asym_rows (D2/D3, models only): resolved right-half rows in right_col
     order (col 0 = center-adjacent) when the model carries asym_patches.
-    Emitted after the TilePF tables as:
-        M<id>AsymFlag:  .byte 1
+    asym_ball_x: D6 ball x (SetObjectXPos arg, drawn clocks [A-7, A]) from
+    resolve_asym_patches — emitted with the flag.
+    After the TilePF tables EVERY model gets the 2-byte meta the kernel
+    reads blindly at TilePF0+9/+10:
+        M<id>AsymFlag:  .byte 0|1    (0 = symmetric: runtime skips ball)
+        M<id>BallX:     .byte 0|87+8*right_col
+    Asym models continue with:
         M<id>RightPF0/1/2:  3 bytes (stride 3; D4: pf_values(reversed(B)))
         M<id>RightRects:    same stream shape as RoomRects; x/w in
                             right-half cell space x2 (x=0 center-adjacent,
                             4px cols), y/band rows; hard-fails above the
                             WallMask budget (4 maskable rects, Risk 1).
-    Symmetric models (asym_rows=None) emit byte-identically to pre-D7/Phase-1
-    output — flag presence IS the flag (no per-model flag byte for them).
+    Symmetric models (asym_rows=None) emit meta .byte 0,0 and no Right*
+    block — otherwise byte-identical to pre-D7/Phase-1 output.
     """
     triples = [pf_values(row) for row in rows]
     stride = max(TABLE_STRIDE, len(rows))
@@ -200,6 +206,18 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         table += ["$00"] * (stride - len(table))
         out.append("  .byte " + ", ".join(table))
 
+    # Asym meta at TilePF0+9/+10 — ALWAYS present (VBL reads blindly).
+    out.append(f"{prefix}AsymFlag:")
+    if asym_rows is None:
+        out.append("  .byte 0                  ; 0 = symmetric (mirror cave)")
+        out.append(f"{prefix}BallX:")
+        out.append("  .byte 0                  ; ball x unused when symmetric")
+    else:
+        out.append("  .byte 1                  ; 1 = asymmetric (D6 ball mask)")
+        out.append(f"{prefix}BallX:")
+        out.append(f"  .byte ${asym_ball_x:02x}                  "
+                   f"; D6 ball x = 87+8*right_col ({asym_ball_x})")
+
     if asym_rows is not None:
         if len(asym_rows) != len(rows) or any(
                 len(r) != WIDTH for r in asym_rows):
@@ -208,8 +226,6 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         # D4 reflect: stored right trio = pf_values(reversed(B)); B is in
         # right_col order (col 0 = center-adjacent).
         r_triples = [pf_values(r[::-1]) for r in asym_rows]
-        out.append(f"{prefix}AsymFlag:")
-        out.append("  .byte 1                  ; 1 = asymmetric (D1: per model)")
         for name, register in zip(("RightPF0", "RightPF1", "RightPF2"), range(3)):
             out.append(f"{prefix}{name}:")
             out.append("  .byte " + ", ".join(

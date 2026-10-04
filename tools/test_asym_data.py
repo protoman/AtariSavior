@@ -40,12 +40,15 @@ def make_model(patches=None, tiles=None):
 
 
 def emitted(model):
-    """resolve + emit -> asm lines list (the convert path Phase 2/3 read)."""
+    """resolve + emit -> (asm lines list, (right rows, ball x) | None)."""
     left = convert_level.rows_from_json({"model_id": model["id"]},
                                         {model["id"]: model})
-    asym = convert_level.resolve_asym_patches(model, left)
-    return convert_room.lines(left, prefix=f"M{model['id']}",
-                              source="test", asym_rows=asym), asym
+    res = convert_level.resolve_asym_patches(model, left)
+    asym, ball_x = res if res else (None, 0)
+    lines = convert_room.lines(left, prefix=f"M{model['id']}",
+                               source="test", asym_rows=asym,
+                               asym_ball_x=ball_x)
+    return lines, res
 
 
 def byte_line(lines, label):
@@ -80,12 +83,22 @@ def main() -> int:
     #             -> $CF
     #   band2: same as band0 -> $00, $00, $C0
     model = make_model(patches=[[0, 0, 1], [1, 0, 1], [2, 0, 1]])
-    lines, asym = emitted(model)
-    assert asym is not None and len(asym) == 3
+    lines, res = emitted(model)
+    assert res is not None
+    asym, ball_x = res
+    assert len(asym) == 3
+    assert ball_x == 87, f"ball x {ball_x} != 87 (right_col 0 = 87+8*0)"
     assert asym[0] == "#........." and asym[1] == "#.########" \
         and asym[2] == "#.........", asym
     flag = byte_line(lines, "M90AsymFlag:")
     assert flag == [1], f"AsymFlag {flag} != [1]"
+    assert byte_line(lines, "M90BallX:") == [87], \
+        f"BallX {byte_line(lines, 'M90BallX:')} != [87]"
+    # meta sits directly after TilePF2 (kernel reads TilePF0+9/+10)
+    assert lines.index("M90AsymFlag:") == lines.index("M90TilePF2:") + 2, \
+        "AsymFlag must be the byte right after TilePF2's .byte line"
+    assert lines.index("M90BallX:") == lines.index("M90AsymFlag:") + 2, \
+        "BallX must be the byte right after AsymFlag's .byte line"
     assert byte_line(lines, "M90RightPF0:") == [0x00, 0xF0, 0x00]
     assert byte_line(lines, "M90RightPF1:") == [0x00, 0xFF, 0x00]
     assert byte_line(lines, "M90RightPF2:") == [0xC0, 0xCF, 0xC0]
@@ -94,15 +107,17 @@ def main() -> int:
     rc = byte_line(lines, "M90RightRects:")
     assert rc[0] == 2, f"right rect count {rc[0]} != 2"
 
-    # --- 2. legacy model (no field): byte-identical, no asym block ------
+    # --- 2. legacy model (no field): meta 0,0, no Right block ------------
     legacy = make_model(patches=None)
-    out_a, asym_a = emitted(legacy)
-    assert asym_a is None
+    out_a, res_a = emitted(legacy)
+    assert res_a is None
     left = convert_level.rows_from_json({"model_id": 90}, {90: legacy})
     out_b = convert_room.lines(left, prefix="M90", source="test")
     assert out_a == out_b, "legacy emission must be byte-identical"
-    assert not any("Asym" in l or "Right" in l for l in out_a), \
-        "legacy emission must contain no asym block"
+    assert byte_line(out_a, "M90AsymFlag:") == [0]
+    assert byte_line(out_a, "M90BallX:") == [0]
+    assert not any("RightPF" in l or "RightRects" in l for l in out_a), \
+        "legacy emission must contain no Right block"
 
     # --- 3. envelope rejects --------------------------------------------
     # subtractive: band0 is open, its mirror at right_col0 is open too —

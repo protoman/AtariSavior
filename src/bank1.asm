@@ -653,7 +653,8 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta VDELP1
 
     ; --- Restore cave kernel settings ---
-    lda #$05            ; CTRLPF: reflect + priority (cave mode)
+    lda #$35            ; CTRLPF: reflect + priority + 8-clk ball (cave mode
+                        ; since D6 — bank1 bar overwrote $05 during its band)
     sta CTRLPF
     lda #0
     sta NUSIZ0
@@ -1138,7 +1139,7 @@ CallPad_BombMarkWalls:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F182           ; Overscan in bank0 (must match bank0 ToGameStub;
+    jmp $F190           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; PROBE build — revert together with the GRP1 probe)
 
 ; ========================================================================

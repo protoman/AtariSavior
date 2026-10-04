@@ -13,6 +13,10 @@ M0TilePF1:
   .byte $00, $00, $ff
 M0TilePF2:
   .byte $00, $00, $3f
+M0AsymFlag:
+  .byte 0                  ; 0 = symmetric (mirror cave)
+M0BallX:
+  .byte 0                  ; ball x unused when symmetric
 
 ; Generated from models.json model 1. Do not edit by hand.
 M1RoomRects:
@@ -27,6 +31,10 @@ M1TilePF1:
   .byte $ff, $00, $ff
 M1TilePF2:
   .byte $3f, $00, $ff
+M1AsymFlag:
+  .byte 0                  ; 0 = symmetric (mirror cave)
+M1BallX:
+  .byte 0                  ; ball x unused when symmetric
 
 ; Generated from models.json model 2. Do not edit by hand.
 M2RoomRects:
@@ -41,6 +49,10 @@ M2TilePF1:
   .byte $00, $00, $ff
 M2TilePF2:
   .byte $00, $00, $3f
+M2AsymFlag:
+  .byte 0                  ; 0 = symmetric (mirror cave)
+M2BallX:
+  .byte 0                  ; ball x unused when symmetric
 
 ; Generated from models.json model 3. Do not edit by hand.
 M3RoomRects:
@@ -56,6 +68,10 @@ M3TilePF1:
   .byte $ff, $00, $f0
 M3TilePF2:
   .byte $3f, $00, $03
+M3AsymFlag:
+  .byte 0                  ; 0 = symmetric (mirror cave)
+M3BallX:
+  .byte 0                  ; ball x unused when symmetric
 
 ; Generated from models.json model 4. Do not edit by hand.
 M4RoomRects:
@@ -71,6 +87,10 @@ M4TilePF1:
   .byte $ff, $00, $3f
 M4TilePF2:
   .byte $3f, $00, $ff
+M4AsymFlag:
+  .byte 0                  ; 0 = symmetric (mirror cave)
+M4BallX:
+  .byte 0                  ; ball x unused when symmetric
 
 ; Generated from models.json model 5. Do not edit by hand.
 M5RoomRects:
@@ -88,6 +108,10 @@ M5TilePF1:
   .byte $3f, $03, $f0
 M5TilePF2:
   .byte $ff, $ff, $ff
+M5AsymFlag:
+  .byte 0                  ; 0 = symmetric (mirror cave)
+M5BallX:
+  .byte 0                  ; ball x unused when symmetric
 
 ; Generated from models.json model 6. Do not edit by hand.
 M6RoomRects:
@@ -105,6 +129,10 @@ M6TilePF1:
   .byte $f0, $00, $3f
 M6TilePF2:
   .byte $ff, $fc, $ff
+M6AsymFlag:
+  .byte 0                  ; 0 = symmetric (mirror cave)
+M6BallX:
+  .byte 0                  ; ball x unused when symmetric
 
 ; Generated from models.json model 7. Do not edit by hand.
 M7RoomRects:
@@ -119,4 +147,8 @@ M7TilePF1:
   .byte $3f, $00, $ff
 M7TilePF2:
   .byte $ff, $00, $3f
+M7AsymFlag:
+  .byte 0                  ; 0 = symmetric (mirror cave)
+M7BallX:
+  .byte 0                  ; ball x unused when symmetric
 

@@ -165,11 +165,17 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
     return rows
 
 
-def resolve_asym_patches(model: dict, left_rows: list[str]) -> list[str] | None:
-    """D3 asym_patches -> resolved right-half rows, or None if symmetric.
+def resolve_asym_patches(model: dict,
+                         left_rows: list[str]) -> tuple[list[str], int] | None:
+    """D3 asym_patches -> (resolved right-half rows, ball x), or None.
 
     Right rows are in right_col order (col 0 = center-adjacent); they start
     as the mirror of the left rows and get the patches applied on top.
+
+    ball x (D6, Phase 2): one SetObjectXPos arg for the whole cave frame.
+    Calibrated object model (kernel S6b): arg A draws clocks [A-7, A];
+    right_col c occupies clocks [80+8c, 87+8c] (2 display cols x 4 clks,
+    right half starts at 80) -> A = 87 + 8c (c=0..9 -> 87..159).
 
     D6 envelope (plan Phase 1 item 4 — fail loudly):
       - patch = [row, right_col, tile] with row in bands, right_col in 0..9;
@@ -211,7 +217,8 @@ def resolve_asym_patches(model: dict, left_rows: list[str]) -> list[str] | None:
             f"model {mid}: asym patches span columns {sorted(cols)} — D6 "
             f"envelope allows exactly ONE column-x (single ball x; a run "
             f"wider than 1 cell needs >1 column and is rejected too)")
-    return right
+    col = next(iter(cols))
+    return right, 87 + 8 * col
 
 
 def connection_bytes(rooms: list[dict]) -> list[list[int]]:
@@ -460,10 +467,11 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         left_rows = rows_from_json({"model_id": mid, "tiles": model.get("tiles"),
                                     "width": model.get("width", WIDTH)},
                                    models_by_id)
-        asym = resolve_asym_patches(model, left_rows)
+        res = resolve_asym_patches(model, left_rows)
+        asym, ball_x = res if res else (None, 0)
         model_lines += convert_room.lines(
             left_rows, prefix=f"M{mid}", source=f"models.json model {mid}",
-            asym_rows=asym)
+            asym_rows=asym, asym_ball_x=ball_x)
     model_lines.append("")
     (generated / "models_data.asm").write_text("\n".join(model_lines) + "\n")
     data_lines.insert(2, f'    include "{generated.name}/models_data.asm"')
