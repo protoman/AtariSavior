@@ -1,17 +1,14 @@
-done, CHECK 0 green. Summary:
-Probe (tools/probe_row_phases.py) — real setup-line phases: PF0@28/30, PF1@35/37, COLUPF@42/44, COLUBK@48/50, PF2@55/57, WSYNC@70. Comment kernel.asm:630 stale by −6c. Free window after PF2 = 14-15c — RAM trio needs 24c, ROM 36c. Cave body lines: zero PF writes.
-D5 dead (recorded in plan): setup-line late write only splits transition line — body lines re-paint both halves from persistent registers → mirror. Persistent band asymmetry = all 6 reg writes/line = 48c floor (plan's "15c" was wrong); .Line 61+48 = 109 ≫ 76. Dedicated lean line fits (56c) but leaves ~20c for sprites = enemies don't fit.
-Also done:
-HERO SELECT×0-4 mode sweep: 5 modes × 420 frames — all identical boundary-only cave signature, bodies write-free. Screenshot edge forensics: ±1 cell = within grid-origin noise; disputed "wall" x470-514 = exactly ball width (8 clks = 2 cells) — overlay hypothesis.
-ZP audit: no contiguous 9B ($F2 only free byte); `$E0-$E8` = viable via ColupfBuf time-partition (FetchPtr `$E5-$E6` caveat for Phase 2); `$E7-$EF` not free (ColupfBuf rows).
-Dispatch shape: jsr CallPad_* bank2 (1B headroom, mechanism-independent).
-tools/test_asym_encoder.py: D4 proven — pf_values(reverse(B)) + reflect render, hand-derived ($F0,$FF,$3F)/($F0,$FF,$E7).
-Build green, battery 12/12, sims OK. Plan appended "Phase 0 results"; D5 marked SUPERSEDED.
-Fork — your call before Phases 2/3:
-O1 dedicated lean band (HERO-HUD style per-line writes; frame rebalance + flicker, effectively kernel redesign)
-O2 ball-mask overlay (zero .Line growth — bomb uses GRP1, ball free, X set in VBL; only diffs ≤2 cells at fixed x — matches HERO.png exactly)
-O3 re-examine goal: every reachable HERO frame says caves are boundary-only (only HERO HUD does per-line); screenshot asymmetry within measurement noise — HERO may have no asymmetric caves
-Phase 1 (data pipeline, byte-identical regen) is mechanism-independent — can start at CHECK 0 sign-off.
+Why did I ask that? because this is the exact behavior in HERO.
+It can have two 1-columns in different X positions, ot on 2-column (like you said was possible) assymetric tiles.
+And it uses any PF color, even hot-walls blinking. And it is always in the middle-screen band.
+So I want to know if it is possible to have the same behavior than HERO with plan 2 and a 10-column playfield.
+
+What other advantages we get by halfing the PF this way, more free PFs or something like that?
+
+OK, let's change it to 10. The reason is that the player sprite does not even fit a thin gap with the current 20 column system. The onl
+Just make sure the plan adds a check for the thin walls that now will be twice the pixel size, even if it is still a single column.
+
+
 
 #########################################################################################################################################################################
 Strategic Aerial Vehicle Infiltration Operations Rescue
@@ -23,7 +20,11 @@ Eorley Savior.
 =========================================================================================================================================================================
 BUGS
 =========================================================================================================================================================================
-
+Once the game starts, the bar already looses a chunk (turns red).
+It should take the same time each chunk needs, for the first one to appear as red.
+Also, that chunk seems to be very big, something like 2 to 4 (sorry, I can't measure it well) than a normal chunk.
+=========================================================================================================================================================================
+ponta do laser voltou a não matar inimigos
 =========================================================================================================================================================================
 better and bigger miner sprite 12x8
 
