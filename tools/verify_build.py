@@ -695,19 +695,28 @@ def check_levels(src: Path) -> None:
             err(f"models.json: {exc}")
 
     # D6 envelope + asym emission guards (asymmetric_pf_plan Phase 1
-    # items 2+4): resolve every model's asym_patches through the SAME
-    # envelope convert uses (independent gate at verify time), then
-    # cross-check the emitted models_data.asm against the resolution.
+    # items 2+4 / Phase 2 meta): resolve every model's asym_patches
+    # through the SAME envelope convert uses (independent gate at verify
+    # time), then cross-check the emitted models_data.asm — meta bytes
+    # at TilePF0+9/+10 (always present: VBL reads them blindly), right
+    # rows stride 3, ball x = 87+8*right_col, right-rect budget.
     if models:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from convert_level import resolve_asym_patches, rows_from_json  # noqa: PLC0415
         from convert_room import pf_values  # noqa: PLC0415
         gen = src / "generated" / "models_data.asm"
         mda = gen.read_text() if gen.exists() else ""
+
+        def meta_byte(mid_, label):
+            hit = re.search(
+                rf"^{re.escape(f'M{mid_}{label}')}:\s*\n\s*\.byte\s+\$?([0-9a-fA-F]+)",
+                mda, re.M)
+            return int(hit.group(1), 16) if hit else None
+
         for mid, model in sorted(models.items()):
             try:
                 left = rows_from_json({"model_id": mid}, models)
-                asym = resolve_asym_patches(model, left)
+                res = resolve_asym_patches(model, left)
             except ValueError as exc:
                 err(f"models.json model {mid}: {exc}")
                 continue
@@ -716,12 +725,26 @@ def check_levels(src: Path) -> None:
                 continue
             if f"M{mid}TilePF0:" not in mda:
                 continue                      # model not referenced by any room
-            if asym is None:
-                if f"M{mid}AsymFlag:" in mda:
-                    err(f"model {mid}: symmetric but M{mid}AsymFlag emitted")
+            asym, ball_x = res if res else (None, 0)
+            flag = meta_byte(mid, "AsymFlag")
+            bx = meta_byte(mid, "BallX")
+            if flag is None or bx is None:
+                err(f"model {mid}: AsymFlag/BallX meta missing "
+                    f"(must sit at TilePF0+9/+10 for every model)")
                 continue
-            if f"M{mid}AsymFlag:" not in mda:
-                err(f"model {mid}: asym model missing M{mid}AsymFlag in models_data.asm")
+            if asym is None:
+                if flag != 0 or bx != 0:
+                    err(f"model {mid}: symmetric but meta = "
+                        f"(flag={flag}, ballx={bx}), want (0, 0)")
+                if re.search(rf"^M{mid}RightPF\d:", mda, re.M):
+                    err(f"model {mid}: symmetric but RightPF block emitted")
+                continue
+            if flag != 1:
+                err(f"model {mid}: asym but AsymFlag={flag}, want 1")
+            if bx != ball_x:
+                err(f"model {mid}: BallX={bx}, want {ball_x} (87+8*right_col)")
+            if f"M{mid}RightPF0:" not in mda:
+                err(f"model {mid}: asym model missing RightPF block")
             for reg in range(3):
                 label = f"M{mid}RightPF{reg}"
                 hit = re.search(

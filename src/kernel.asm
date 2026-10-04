@@ -378,7 +378,8 @@ COLOR_HOT_R     = COLOR_BLINK_R
                                     ; (NOT deletable: $F008 = GameStart is a
                                     ;  hardcoded cross-bank entry — bank1
                                     ;  stub `jmp $F008`; this jmp also keeps
-                                    ;  $F196 Overscan (bank1 stub literal tracks it)
+                                    ;  $F190 Overscan (bank1 stub literal tracks it —
+                                    ;  fold-pad byte guard fires when it moves)
                                     ;  + F0xx landmarks fixed)
 
 GameStart:
@@ -423,7 +424,9 @@ GameStart:
     ; --- Set playfield to reflected mode + priority ---
     ; D0=1 = reflect (left half mirrors to right)
     ; D2=1 = playfield priority (player drawn BEHIND walls, like HERO)
-    lda #$05                      ; CTRLPF: reflect + priority (cave mode)
+    ; D5-D4=%11 = 8-clock ball (D6 overlay mask; Phase 2 — ball stays
+    ; disabled at kernel entry, size only matters once Phase 3 enables it)
+    lda #$35                      ; CTRLPF: reflect + priority + ball 8 clk
     sta CTRLPF
 
 ; ==============================================================================
@@ -463,6 +466,21 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     sbc PlayerDir              ; counter REFP0's one-pixel shift when reflected
     ldx #0                      ; X=0 = player0
     jsr SetObjectXPos
+
+    ; --- D6 ball staging (asym Phase 2): position ball at patch column ---
+    ; Model meta lives at TilePF0+9/+10 (AsymFlag, BallX — convert always
+    ; emits both; symmetric = 0,0). flag=0: no RESPBL/HMBL write, no WSYNC
+    ; — symmetric frames stay bit-identical. flag=1: SetObjectXPos arg =
+    ; ball x (drawn clocks [A-7,A] = right_col cell, 8 clk). ENABL stays 0
+    ; until Phase 3's per-band setup-line writes.
+    ldy #9
+    lda (RoomPF0Lo),Y           ; AsymFlag
+    beq .AsymBallSkip
+    iny
+    lda (RoomPF0Lo),Y           ; BallX
+    ldx #4                      ; selector 4: HMP0+4=HMBL, RESP0+4=RESPBL
+    jsr SetObjectXPos
+.AsymBallSkip:
 
     ; --- No sprite copy needed — kernel reads directly from ROM ---
     ; Do NOT HMOVE here: wait until P1 is positioned too. An early HMOVE
@@ -608,7 +626,10 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; per in-window line; LaserBeamOn boots $00 via .ClearZP = beam off
     ; until first fire press)
     sta ENAM1                     ; disable missile 1
-    sta ENABL                     ; disable ball
+    sta ENABL                     ; disable ball — Phase 2: ball OFF for both
+                                  ; flag paths (D6: Phase 3 moves flag=1's
+                                  ; enable onto band setup lines; probe
+                                  ; invariant "ENABL stays 0 during cave")
 
     lda #0
     sta RowIdx                  ; tile-row counter (0-2); object section clobbers X
@@ -2284,7 +2305,7 @@ LAMP           = 5             ; type-5 enemy record = editor lamp (white square
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 3             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $FB55        ; frozen address of bank2's LevelDataTable
+LEVEL_DATA_ADDR = $FB65        ; frozen address of bank2's LevelDataTable
                                 ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
                                 ;  −$FA86 as the ≤2-object room migration
                                 ;  shrank the tables; check_frozen_addrs
@@ -3144,8 +3165,10 @@ fineAdjustTable EQU fineAdjustBegin - %11110001   ; = fineAdjustBegin - 241
 ; Rolls the divide-by-15 and the delay loop into one unit.
 ; The page-aligned fineAdjustTable ($FF00) guarantees every RESP0 write lands
 ; on the same clock grid, mapping the sprite 1:1 to pixel (0..159).
-; Input: A = horizontal position (0-159 color clocks)
-;        X = object selector (0 = player0, 1 = player1)
+; Input: A = horizontal position (0-159 color clocks); drawn = [A-7, A]
+;        X = object selector (0 = HMP0/RESP0 player, 1 = HMP1/RESP1 object,
+;            2 = HMM0/RESM0 laser, 4 = HMBL/RESPBL ball — bank1 bar already
+;            uses 4; HMP0+4=$24=HMBL, RESP0+4=$14=RESPBL)
 ;
 ; Lives in the $FF10-$FF1F gap (exactly 16 bytes, before org $FF20) — moved
 ; here 2026-09-26 (laser S1): the `jsr LaserInput` (+3 pre-pad) had pushed
