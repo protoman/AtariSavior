@@ -959,8 +959,10 @@ LaserFreqTable:
 ;   in 4px display cols; a thin wall is exactly one cell = 2 cols). Skip x==0 (screen border). Score is NOT done here —
 ;   pads cannot nest (ReturnPad switches to bank0), so this returns
 ;   A = #walls newly broken and the bank0 caller adds +75 per wall.
-;   Plan 5.1: each newly broken rect is punched here immediately (jsr
-;   ClearPFColumn) — the old VBL ApplyBombWalls re-apply + EnterRoom
+;   Plan 5.1: each newly broken rect is punched here immediately —
+;   ClearPFColumn on col x AND col x+1 (D7 thin wall w = 2 display cols;
+;   the single-col punch left half the wall standing behind a set mask bit)
+;   — the old VBL ApplyBombWalls re-apply + EnterRoom
 ;   restore are deleted (D1-B). WallMask b3-6 survives only in-room: the
 ;   hot parent-mask AND (HotOverlapBody) still reads it until phase 6.
 ;   ABW tables + BombMaskBit are bank1-only now (kernel copies died with
@@ -1044,11 +1046,12 @@ BombMarkWalls:
     ora BombPacked
     sta BombPacked               ; set WallMask bit (keeps state+DownPrev)
     inc CollisionX               ; +1 wall broken (caller scores +75 each)
-    ; --- plan 5.1: punch this rect's cells NOW (col x, rows y..y+h-1).
-    ;   Same cell set the old VBL ApplyBombWalls (S6.1 every-frame
-    ;   re-apply) punched from these same bits — bits set iff match, so
-    ;   punch-on-set is byte-identical geometry. ClearPFColumn is
-    ;   same-bank rts — jsr legal (no pad nesting), SP -2 for ~40c.
+    ; --- plan 5.1: punch this rect's cells NOW (D7 thin wall w=2 = cols
+    ;   x AND x+1, rows y..y+h-1). Single-col punch was a D7 regression:
+    ;   it cleared only col x, and the just-set mask bit then blocked any
+    ;   re-blast of the surviving col x+1 (user test 2026-10-04 — "removes
+    ;   only half, remaining wall can't be blasted at all"). ClearPFColumn is
+    ;   same-bank rts — jsr legal (no pad nesting), SP -2 for ~40c each.
     stx CollisionCellY          ; save rect idx (ClearPFColumn clobbers X)
     lda ABWYTab,X
     tay
@@ -1066,7 +1069,12 @@ BombMarkWalls:
     tay
     lda 0,Y                     ; A = col (ClearPFColumn arg)
     jsr ClearPFColumn
-    ldx CollisionCellY          ; restore rect idx
+    ldx CollisionCellY          ; restore rect idx (ClearPFColumn clobbers X)
+    lda ABWXTab,X
+    clc
+    adc #1                      ; col x+1 — second half of the D7 thin wall
+    jsr ClearPFColumn
+    ldx CollisionCellY          ; restore rect idx for .BMWNext's dex
 .BMWNext:
     dex
     bpl .BMWLoop
