@@ -86,8 +86,10 @@ def main() -> None:
         "solid cell must branch to .CWHit"
     assert re.search(r"^\.CWHit:\s*\n\s*jmp\s+HotOverlapFlag", blk, re.M), \
         "hit must tail-jmp HotOverlapFlag (C=1 contract)"
-    assert re.search(r"^\.CWNoHit:\s*\n\s*clc\s*\n\s*rts", blk, re.M), \
-        "miss exit must be clc/rts"
+    assert re.search(r"^\.CWNoHit:", blk, re.M) \
+        and re.search(r"jmp\s+OverlayTramp", blk), \
+        "miss exit must tail-jmp OverlayTramp (Phase 4 asym gate; the tramp " \
+        "returns clc/rts for sym and bank2 PHMOverlay for asym)"
     assert "RcBase" not in blk, \
         "PHM must not consult the rect cache count (cache retired here)"
     assert "FetchPtr" not in blk, \
