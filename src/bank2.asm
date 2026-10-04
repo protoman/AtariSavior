@@ -46,8 +46,8 @@ EnemyDeadMask = $BA            ; LaserHitTest dead bits (written on kill)
 Grp0Ptr = $86                  ; must match kernel.asm (PickPlayerFrame body)
 Grp0PtrHi = $87                ; must match kernel.asm
 SWCHA = $0280                  ; RIOT joystick (same in every bank)
-PlayerSpriteA = $F8CA           ; hand copies (bank0 symbols unreadable here);
-PlayerSpriteB = $F8D6           ; tools/test_miner_colors.py asserts vs bank0.lst
+PlayerSpriteA = $F8D0           ; hand copies (bank0 symbols unreadable here);
+PlayerSpriteB = $F8DC           ; tools/test_miner_colors.py asserts vs bank0.lst
 PlayerWalkA = $FDE7
 PlayerWalkB = $FDF3
 LAMP = 5                       ; enemy type: editor lamp — kernel LAMP must match
@@ -681,7 +681,7 @@ StageBandTab:
 .SBTPack:
     jmp $FBF8                   ; ReturnPad → bank0 VBLANK caller
 
-    .ds $F9B1 - *, 0            ; Phase 4 overlay tramp twin (kernel.asm's
+    .ds $F9B8 - *, 0            ; Phase 4 overlay tramp twin (kernel.asm's
                                  ; copy sits at the same address — bank0
                                  ; executes +0..+6, the bank2 fetch starts
                                  ; at the jmp; the clc/rts tail is bank0-only)
