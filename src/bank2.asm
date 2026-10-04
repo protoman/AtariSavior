@@ -9,6 +9,10 @@ FetchPtr = $E5                   ; must match kernel.asm (operand baked in;
                                  ; moved S3.2 from $E0 — frees $E0 for
                                  ; rect4.h in the uniform rect cache)
 Temp = $88
+RoomX = $80                      ; PHMOverlay visible_left math (Phase 4)
+PlayerDir = $82
+LineCount = $84                  ; OverlayTramp gate — packed byte copied
+                                 ; from $8F at bank1 HUD entry each frame
 RoomPF0Lo = $99                 ; TilePF0 pointer (EnterRoom stages; models
                                  ; data lives in THIS bank — bank0 cannot
                                  ; read it, see StageBandTab)
@@ -638,7 +642,57 @@ StageBandTab:
     iny
     lda (RoomPF0Lo),Y
     sta BandTab+2
+    ; --- Phase 4: pack collision overlay byte → CollisionEndY ($8F) ---
+    ; b4-b7 = right_col+1, b0-2 = band mask, 0 = symmetric. Cave never
+    ; writes $8F; bank1 HUD entry copies it to LineCount ($84 — cave .Row
+    ; clobbers it) before overscan PHM reads. BallX in Temp stays raw (the
+    ; kernel's ball block reads it later this VBL).
+    lda #0
+    sta CollisionEndY
+    lda Temp
+    beq .SBTPack                ; symmetric → leave 0
+    sec
+    sbc #87
+    lsr
+    lsr
+    lsr                         ; right_col 0..9
+    asl
+    asl
+    asl
+    asl
+    clc
+    adc #$10                    ; (right_col+1) into b4-b7
+    sta CollisionEndY
+    lda #0
+    bit BandTab
+    bpl .SBTp0
+    ora #$01
+.SBTp0:
+    bit BandTab+1
+    bpl .SBTp1
+    ora #$02
+.SBTp1:
+    bit BandTab+2
+    bpl .SBTp2
+    ora #$04
+.SBTp2:
+    ora CollisionEndY
+    sta CollisionEndY
+.SBTPack:
     jmp $FBF8                   ; ReturnPad → bank0 VBLANK caller
+
+    .ds $F9B1 - *, 0            ; Phase 4 overlay tramp twin (kernel.asm's
+                                 ; copy sits at the same address — bank0
+                                 ; executes +0..+6, the bank2 fetch starts
+                                 ; at the jmp; the clc/rts tail is bank0-only)
+OverlayTramp:
+    lda LineCount                ; dead in bank2 (entry arrives at +7)
+    beq .OTsym
+    sta $1FF8
+    jmp PHMOverlay
+.OTsym:
+    clc
+    rts
 
     org $F9D9
     include "generated/levels_data.asm"
@@ -881,6 +935,71 @@ HotOverlapBody:
 PickPlayerFrameTramp:
     sta $1FF8                   ; executed only as the post-switch fetch image
     jmp $F3C0                   ; bank2 PickPlayerFrame body (this bank)
+
+    .ds $FE00 - *, 0            ; PHMOverlay pinned: bank0's dead jmp operand
+                                 ; is the literal $FE00 (moth-style dead bytes;
+                                 ; body only ever runs bank2-side)
+PHMOverlay:
+    ; Phase 4 asym-patch collision (entered via OverlayTramp, 0 pushes).
+    ; LineCount packed: b4-b7 = right_col+1, b0-2 = bands with the painted
+    ; ball-strip ($ff BandTab entries). D6 envelope: ONE right column
+    ; [BallX-7, BallX] px, BallX = 87+8*rc — overlay is additive (cells
+    ; painted only where the mirrored cell is open, never hot).
+    ; Exact visible_left (same math as PHM's prologue), then px overlap of
+    ; [vl, vl+7] with the patch column, then band-mask x row-range overlap.
+    sec
+    lda RoomX
+    sbc PlayerDir
+    cmp #15
+    bcs .Ov7
+    sec
+    sbc #4
+    jmp .OvVL
+.Ov7:
+    sbc #7
+.OvVL:
+    clc
+    adc PlayerDir               ; A = visible_left px
+    sta CollisionX              ; walk temps are free on the miss path
+    lda LineCount
+    lsr
+    lsr
+    lsr
+    lsr                         ; n = right_col+1 (1..10)
+    asl
+    asl
+    asl                         ; 8n
+    clc
+    adc #79                     ; BallX = 79+8n = 87+8*rc (patch right edge)
+    sta CollisionCellX
+    lda CollisionX
+    cmp CollisionCellX          ; vl vs BallX
+    bcc .OvT2
+    beq .OvT2
+    bcs .OvClear                ; vl > BallX → player fully right of patch
+.OvT2:
+    lda CollisionCellX
+    sec
+    sbc #14                     ; BallX-14
+    cmp CollisionX              ; vs vl: overlap iff BallX-14 <= vl
+    bcc .OvBand
+    beq .OvBand
+.OvClear:
+    clc
+    jmp $FBF8                   ; ReturnPad: sta $1FF6 / rts (C survives)
+.OvBand:
+    ldx CollisionCellY
+    lda OvHead,X                ; bits >= row
+    ldx CollisionEndY
+    and OvTail,X                ; bits <= row
+    and LineCount               ; active-band mask (b0-2)
+    beq .OvClear                ; patch not painted in any player row
+    sec
+    jmp $FBF8
+OvHead:
+    .byte 7,6,4                 ; rows 0..2 → mask bits >= row
+OvTail:
+    .byte 1,3,7                 ; rows 0..2 → mask bits <= row
 
     .ds $FE90 - *, 0
 HotOverlapFlag:

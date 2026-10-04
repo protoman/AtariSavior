@@ -69,7 +69,7 @@ need0 = {"PlayerHitsMap", "RoomX", "RoomY", "PlayerDir", "BombPacked",
          "RoomRectsLo", "RoomRectsHi", "Temp", "CollisionCellX",
          "CollisionCellY", "CollisionEndX", "CollisionEndY",
          "EnemyDataLo", "EnemyDataHi", "EnemyIndex", "EnemyRamX",
-         "EnemyRamD", "UE_Next"}
+         "EnemyRamD", "UE_Next", "LineCount"}
 L0 = parse_labels(SRC / "bank0.lst", need0)
 missing = need0 - L0.keys()
 if missing:
@@ -210,6 +210,57 @@ def expected_hit(rows: list[str], rx: int, rd: int, ry: int) -> bool:
     return box_hit(rows, lo, hi, top, bot)
 
 
+def visible_left_px(rx: int, rd: int) -> int:
+    """PHMOverlay's visible_left (same 8-bit math as the prologue)."""
+    a = (rx - rd) & 0xFF
+    a = a - 7 if a >= 15 else a - 4
+    return (a + rd) & 0xFF
+
+
+def overlay_hit(rx: int, rd: int, ry: int, packed: int) -> bool:
+    """Spec of bank2 PHMOverlay: packed = (right_col+1)<<4 | band mask."""
+    if packed == 0 or (packed >> 4) == 0:
+        return False
+    vl = visible_left_px(rx, rd)
+    bx = 79 + 8 * (packed >> 4)          # BallX = 87+8*rc (patch right edge)
+    if not (vl <= bx and vl + 7 >= bx - 7):
+        return False
+    top, bot = row_range(ry)
+    mask = packed & 7
+    return any(mask & (1 << r) for r in range(top, bot + 1))
+
+
+def asym_checks(rows: list[str]) -> int:
+    """Full-X sweep with LineCount packed — exercises the OverlayTramp
+    crossing (bank0 $F9B1 -> bank2 PHMOverlay $FE00 -> ReturnPad)."""
+    mem = Mem()
+    load_case(mem, rows)
+    # packed configs: (right_col, band mask); 0 = symmetric control
+    configs = [(0, 0), (0, 1), (5, 4), (9, 7), (9, 4)]
+    checks = 0
+    for rc, mask in configs:
+        packed = 0 if rc == 0 and mask == 0 else ((rc + 1) << 4) | mask
+        mem.ram[L0["LineCount"] - 0x80] = packed
+        for rd in (0, 1):
+            for rx in range(4, 160):
+                for ry in (0, 60, 120):
+                    mem.ram[L0["RoomX"] - 0x80] = rx
+                    mem.ram[L0["PlayerDir"] - 0x80] = rd
+                    mem.ram[L0["RoomY"] - 0x80] = ry
+                    want = expected_hit(rows, rx, rd, ry) \
+                        or overlay_hit(rx, rd, ry, packed)
+                    got = run_phm(mem, rx, ry, rd)
+                    assert got == want, (
+                        f"asym packed=${packed:02X} (rc={rc} mask={mask}) "
+                        f"X={rx} Y={ry} dir={rd}: PHM C={int(got)} want "
+                        f"{int(want)} (base={expected_hit(rows, rx, rd, ry)} "
+                        f"ovl={overlay_hit(rx, rd, ry, packed)}, "
+                        f"vl={visible_left_px(rx, rd)})")
+                    checks += 1
+    mem.ram[L0["LineCount"] - 0x80] = 0
+    return checks
+
+
 def load_case(mem: Mem, rows: list[str]) -> None:
     for r, row in enumerate(rows):
         pf0, pf1, pf2 = pf_values(row)
@@ -284,8 +335,10 @@ def main() -> int:
                             f"{name} moth box cols {lo}..{hi} rows "
                             f"{top}..{bot}: HIT={got} want {want}")
                         moth_checks += 1
+    # --- Phase 4: asym overlay (packed LineCount) — crossing + px/band ---
+    asym = asym_checks(cases[0][1])
     print(f"test_cell_map: OK ({checks} PHM boxes, {moth_checks} moth "
-          f"boxes, {len(cases)} geometries)")
+          f"boxes, {asym} asym overlay, {len(cases)} geometries)")
     return 0
 
 

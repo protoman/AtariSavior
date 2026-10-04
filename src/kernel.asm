@@ -2483,8 +2483,14 @@ PlayerHitsMap:
 .CWHit:
     jmp HotOverlapFlag      ; C=1 contract; hot rects unchanged (ROM stream)
 .CWNoHit:
-    clc
-    rts
+    ; Phase 4: miss → asym-patch overlay (push-neutral tramp, moth pattern).
+    ; OverlayTramp gates on LineCount ($84 = packed byte, VBL/$8F staged):
+    ; symmetric rooms pay +8c and return here-shaped clc/rts; asym rooms
+    ; cross to bank2 PHMOverlay (patch column + band mask), exit via
+    ; ReturnPad $FBF8 — rts pops THIS call's return (0 pushes total, SP
+    ; guard unchanged). Overlay sets C itself (plain sec — patch cells are
+    ; envelope-guaranteed non-hot, so HotOverlapFlag must not run).
+    jmp OverlayTramp
 
 EnemyOffTable:
     .byte 0,4,8                 ; enemy index * 4 (stride S4.1; offset into
@@ -2527,6 +2533,19 @@ EnemyOffTable:
 ; `sta` does not touch flags — IsRoomDark's `beq` contract survives the
 ; return. Carry survives. No stack use.
 ; ==============================================================================
+    .ds $F9B1 - *, 0            ; Phase 4 overlay tramp — shared address with
+                                 ; bank2's twin image (40B bank2 hole before
+                                 ; org $F9D9); F6-safe ($F9B1 & $1FFF ∉ hotspots)
+OverlayTramp:
+    lda LineCount                ; packed asym byte (0 = symmetric)
+    beq .OTsym                   ; sym: clc/rts in bank0, never switches
+    sta $1FF8                    ; select bank2 (F6 ignores the value)
+    jmp $FE00                    ; bank2 PHMOverlay (dead in bank0 — the
+                                 ; twin's jmp operand is the live one)
+.OTsym:
+    clc
+    rts
+
     .ds $FBF8 - *, 0
 ReturnPad:
     sta $1FF6

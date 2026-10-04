@@ -155,6 +155,11 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta NUSIZ0
     lda #$05            ; CTRLPF: reflect + priority + 1-clock ball.
     sta CTRLPF
+    ; --- Phase 4: copy the VBL-packed asym byte ($8F) → LineCount ($84) ---
+    ; Cave .Row clobbered $84; this runs after the cave and before the
+    ; score-ptr stomp window; overscan PHM reads $84 (OverlayTramp gate).
+    lda CollisionEndY
+    sta LineCount
 
     ; --- Top gap: 6 scanlines (lower HUD elements) ---
     ; 4 + the 2 lines the removed ball-at-boundary block used to occupy:

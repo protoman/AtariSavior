@@ -251,6 +251,13 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
             raise ValueError(
                 f"{source}: {len(r_rects)} right wall rects > WallMask budget 4 "
                 f"(Risk 1 — do not silently wrap)")
+        if len(rects) + len(r_rects) > 4:
+            # Phase 4 item 2: the bomb WallMask has 4 slots TOTAL — right-half
+            # rects consume the same slots once they enter the runtime cache.
+            raise ValueError(
+                f"{source}: combined wall rects {len(rects)} left + "
+                f"{len(r_rects)} right > WallMask budget 4 across both halves "
+                f"(Risk 1 — do not silently wrap)")
         r_hot = find_rectangles(asym_rows, solids="H")
         out.append(f"{prefix}RightRects:")
         out.append(f"  .byte {len(r_rects)}                  ; number of rectangles")

@@ -165,8 +165,21 @@ def main() -> int:
     else:
         raise AssertionError("5 right wall rects must hard-fail (Risk 1)")
 
+    # --- 5. combined left+right wall-rect budget (Phase 4 item 2) --------
+    # BASE_TILES left = 1 wall rect (band1 cols0-7) + 4 right rects = 5
+    # > 4 shared WallMask slots → hard-fail across both halves.
+    four_right = ["#.#.#.#...", "..........", ".........."]
+    try:
+        convert_room.lines(left, prefix="M90", source="test",
+                           asym_rows=four_right)
+    except ValueError as exc:
+        assert "both halves" in str(exc), f"combined reason: {exc}"
+    else:
+        raise AssertionError(
+            "left 1 + right 4 wall rects must hard-fail (combined budget)")
+
     print("test_asym_data: OK (valid + partial bands + legacy + "
-          "6 envelope rejects + budget)")
+          "6 envelope rejects + right budget + combined budget)")
     return 0
 
 
