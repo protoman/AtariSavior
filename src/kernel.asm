@@ -1343,6 +1343,16 @@ EnterRoom subroutine
     iny
     jsr FoldIndirect            ; enemy count
     sta EnemyCount
+    iny                         ; +3 = bottom-band color (same byte the VBL
+                                ; fold stages per frame). Restage it HERE or
+                                ; CheckBandTouch kills with the SOURCE room's
+                                ; band on the transition frame: up-exits spawn
+                                ; at Y=PLAYER_MAX_Y=132 >= 125, and level 1
+                                ; room 1 is the only band-on room — leaving it
+                                ; upward with its stale ON color = instant
+                                ; death in the band-less target room.
+    jsr FoldIndirect
+    sta RoomBandColor
     lda #$00
     sta EnemyDeadMask            ; no dead enemies in new room
 
@@ -2533,7 +2543,7 @@ EnemyOffTable:
 ; `sta` does not touch flags — IsRoomDark's `beq` contract survives the
 ; return. Carry survives. No stack use.
 ; ==============================================================================
-    .ds $F9B1 - *, 0            ; Phase 4 overlay tramp — shared address with
+    .ds $F9B8 - *, 0            ; Phase 4 overlay tramp — shared address with
                                  ; bank2's twin image (40B bank2 hole before
                                  ; org $F9D9); F6-safe ($F9B1 & $1FFF ∉ hotspots)
 OverlayTramp:
