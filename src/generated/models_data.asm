@@ -2,8 +2,9 @@
 
 ; Generated from models.json model 0. Do not edit by hand.
 M0RoomRects:
-  .byte 3                  ; number of rectangles
+  .byte 4                  ; number of rectangles
   .byte 0, 0, 4, 1  ; x, y, width, height (4px cols)
+  .byte 16, 0, 2, 2  ; x, y, width, height (4px cols)
   .byte 0, 1, 2, 1  ; x, y, width, height (4px cols)
   .byte 0, 2, 18, 1  ; x, y, width, height (4px cols)
   .byte 0              ; number of hot rectangles
@@ -12,11 +13,17 @@ M0TilePF0:
 M0TilePF1:
   .byte $00, $00, $ff
 M0TilePF2:
-  .byte $00, $00, $3f
+  .byte $30, $30, $3f
 M0AsymFlag:
   .byte 0                  ; 0 = symmetric (mirror cave)
 M0BallX:
   .byte 0                  ; ball x unused when symmetric
+M0Band0:
+  .byte $00                  ; band 0 ENABL gate ($ff = ball band)
+M0Band1:
+  .byte $00                  ; band 1 ENABL gate ($ff = ball band)
+M0Band2:
+  .byte $00                  ; band 2 ENABL gate ($ff = ball band)
 
 ; Generated from models.json model 1. Do not edit by hand.
 M1RoomRects:
@@ -35,6 +42,12 @@ M1AsymFlag:
   .byte 0                  ; 0 = symmetric (mirror cave)
 M1BallX:
   .byte 0                  ; ball x unused when symmetric
+M1Band0:
+  .byte $00                  ; band 0 ENABL gate ($ff = ball band)
+M1Band1:
+  .byte $00                  ; band 1 ENABL gate ($ff = ball band)
+M1Band2:
+  .byte $00                  ; band 2 ENABL gate ($ff = ball band)
 
 ; Generated from models.json model 2. Do not edit by hand.
 M2RoomRects:
@@ -53,6 +66,12 @@ M2AsymFlag:
   .byte 0                  ; 0 = symmetric (mirror cave)
 M2BallX:
   .byte 0                  ; ball x unused when symmetric
+M2Band0:
+  .byte $00                  ; band 0 ENABL gate ($ff = ball band)
+M2Band1:
+  .byte $00                  ; band 1 ENABL gate ($ff = ball band)
+M2Band2:
+  .byte $00                  ; band 2 ENABL gate ($ff = ball band)
 
 ; Generated from models.json model 3. Do not edit by hand.
 M3RoomRects:
@@ -72,6 +91,12 @@ M3AsymFlag:
   .byte 0                  ; 0 = symmetric (mirror cave)
 M3BallX:
   .byte 0                  ; ball x unused when symmetric
+M3Band0:
+  .byte $00                  ; band 0 ENABL gate ($ff = ball band)
+M3Band1:
+  .byte $00                  ; band 1 ENABL gate ($ff = ball band)
+M3Band2:
+  .byte $00                  ; band 2 ENABL gate ($ff = ball band)
 
 ; Generated from models.json model 4. Do not edit by hand.
 M4RoomRects:
@@ -91,6 +116,12 @@ M4AsymFlag:
   .byte 0                  ; 0 = symmetric (mirror cave)
 M4BallX:
   .byte 0                  ; ball x unused when symmetric
+M4Band0:
+  .byte $00                  ; band 0 ENABL gate ($ff = ball band)
+M4Band1:
+  .byte $00                  ; band 1 ENABL gate ($ff = ball band)
+M4Band2:
+  .byte $00                  ; band 2 ENABL gate ($ff = ball band)
 
 ; Generated from models.json model 5. Do not edit by hand.
 M5RoomRects:
@@ -112,6 +143,12 @@ M5AsymFlag:
   .byte 0                  ; 0 = symmetric (mirror cave)
 M5BallX:
   .byte 0                  ; ball x unused when symmetric
+M5Band0:
+  .byte $00                  ; band 0 ENABL gate ($ff = ball band)
+M5Band1:
+  .byte $00                  ; band 1 ENABL gate ($ff = ball band)
+M5Band2:
+  .byte $00                  ; band 2 ENABL gate ($ff = ball band)
 
 ; Generated from models.json model 6. Do not edit by hand.
 M6RoomRects:
@@ -133,6 +170,12 @@ M6AsymFlag:
   .byte 0                  ; 0 = symmetric (mirror cave)
 M6BallX:
   .byte 0                  ; ball x unused when symmetric
+M6Band0:
+  .byte $00                  ; band 0 ENABL gate ($ff = ball band)
+M6Band1:
+  .byte $00                  ; band 1 ENABL gate ($ff = ball band)
+M6Band2:
+  .byte $00                  ; band 2 ENABL gate ($ff = ball band)
 
 ; Generated from models.json model 7. Do not edit by hand.
 M7RoomRects:
@@ -151,4 +194,10 @@ M7AsymFlag:
   .byte 0                  ; 0 = symmetric (mirror cave)
 M7BallX:
   .byte 0                  ; ball x unused when symmetric
+M7Band0:
+  .byte $00                  ; band 0 ENABL gate ($ff = ball band)
+M7Band1:
+  .byte $00                  ; band 1 ENABL gate ($ff = ball band)
+M7Band2:
+  .byte $00                  ; band 2 ENABL gate ($ff = ball band)
 

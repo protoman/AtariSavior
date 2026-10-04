@@ -11,11 +11,20 @@ Assertions (gameplay frames >= 2 where the cave kernel runs):
     never position the ball (bank1 HUD bar ball writes are expected and
     excluded);
   * bit-identical: the new ROM's TIA write sequence (frame >= 2) equals
-    the baseline ROM's with every CTRLPF ($0A) write dropped. CTRLPF is
-    the only intended Phase 2 delta; with the ball disabled $35 vs $05
-    is invisible.
+    the baseline ROM's with CTRLPF ($0A), ENABL ($1F) and COLUBK ($09)
+    writes dropped. Intended deltas: CTRLPF $35 (Phase 2), Phase 3's
+    per-band ENABL gate (writes 0 in sym runs) + COLUBK moved from per-band
+    .Row stores to one VBL .BgStore store (same values).
 
-Baseline: P2_BASELINE env var, default /tmp/opencode/savior_phase1.bin.
+Baseline: P2_BASELINE env var, default /tmp/opencode/savior_phase1.bin
+(phase1-code build). The bit-identical leg compares PF writes too, so the
+baseline MUST embed the SAME room/model content as the working tree — any
+content edit in src/rooms/ invalidates it. Regenerate:
+  git worktree add /tmp/opencode/p1base a8fb32e
+  cp -r src/rooms/. /tmp/opencode/p1base/src/rooms/
+  (cd /tmp/opencode/p1base/src && ./build.sh)
+  cp /tmp/opencode/p1base/src/savior.bin /tmp/opencode/savior_phase1.bin
+  git worktree remove --force /tmp/opencode/p1base
 If missing, the bit-identical leg is skipped (invariants still run).
 
 Run: /home/iuri/python3/bin/python3 tools/test_phase2_ball.py
@@ -154,19 +163,33 @@ def run(rom: Path) -> dict:
     )
 
 
-def check(r: dict, want_ctrlpf: int) -> list[str]:
+def check(r: dict, want_ctrlpf: int, log_fallback: bool = False) -> list[str]:
+    """log_fallback: for the baseline ROM — its .Row address differs from
+    the current bank0.lst parse (pre-pad code shifted), so the breakpoint
+    never fires there; validate via any-bank CTRLPF writes in the log
+    (phase1 baseline: bank1 HUD is the only writer, all $05)."""
     fails = []
     rows = r["ctrlpf"]
-    if not rows:
+    if rows:
+        bad = sorted({v for v in rows if v != want_ctrlpf})
+        if bad:
+            fails.append(f"CTRLPF at cave entry = "
+                         + ", ".join(f"${v:02X}" for v in bad)
+                         + f", want ${want_ctrlpf:02X}")
+        if len(set(rows)) != 1:
+            fails.append(f"CTRLPF not constant: {sorted(set(rows))}")
+    elif log_fallback:
+        # baseline phase1: CTRLPF was written by bank1 HUD only (no bank0
+        # VBL site yet) — any-bank writes, all must equal want.
+        vals = [v for f, b, a, v in r["log"] if f >= 2 and a == CTRLPF]
+        if not vals:
+            fails.append("baseline: no CTRLPF writes in log")
+        elif set(vals) != {want_ctrlpf}:
+            fails.append("baseline CTRLPF writes = "
+                         + ", ".join(f"${v:02X}" for v in sorted(set(vals)))
+                         + f", want ${want_ctrlpf:02X}")
+    else:
         fails.append("cave kernel (.Row) never reached")
-        return fails
-    bad = sorted({v for v in rows if v != want_ctrlpf})
-    if bad:
-        fails.append(f"CTRLPF at cave entry = "
-                     + ", ".join(f"${v:02X}" for v in bad)
-                     + f", want ${want_ctrlpf:02X}")
-    if len(set(rows)) != 1:
-        fails.append(f"CTRLPF not constant: {sorted(set(rows))}")
     ea = [v for v in r["enabl_at_row"] if v != 0]
     if ea:
         fails.append(f"ENABL at cave entry != 0: {sorted(set(ea))}")
@@ -190,12 +213,13 @@ def main() -> int:
     base_path = Path(os.environ.get(
         "P2_BASELINE", "/tmp/opencode/savior_phase1.bin"))
     trace = [(a, v) for f, b, a, v in r["log"] if f >= 2]
-    stripped = [(a, v) for a, v in trace if a != CTRLPF]
+    _strip = (CTRLPF, ENABL, 0x09)          # CTRLPF + Phase 3 ENABL/COLUBK
+    stripped = [(a, v) for a, v in trace if a not in _strip]
     if base_path.exists():
         b = run(base_path)
-        fails += check(b, 0x05)
+        fails += check(b, 0x05, log_fallback=True)
         b_stripped = [(a, v) for f, bb, a, v in b["log"]
-                      if f >= 2 and a != CTRLPF]
+                      if f >= 2 and a not in _strip]
         if stripped != b_stripped:
             n = min(len(stripped), len(b_stripped))
             i = next((k for k in range(n) if stripped[k] != b_stripped[k]), n)
@@ -206,7 +230,7 @@ def main() -> int:
                 f"len {len(stripped)} vs {len(b_stripped)})")
         else:
             print(f"bit-identical vs baseline: {len(stripped)} TIA writes "
-                  f"(CTRLPF dropped) match over {FRAMES} frames")
+                  f"(CTRLPF/ENABL/COLUBK dropped) match over {FRAMES} frames")
     else:
         print(f"NOTE: baseline {base_path} missing — bit-identical leg skipped")
 

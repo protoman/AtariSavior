@@ -1139,7 +1139,7 @@ CallPad_BombMarkWalls:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F190           ; Overscan in bank0 (must match bank0 ToGameStub;
+    jmp $F18D           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; PROBE build — revert together with the GRP1 probe)
 
 ; ========================================================================

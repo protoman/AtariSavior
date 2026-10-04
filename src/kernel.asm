@@ -241,6 +241,14 @@ FetchPtr        = $E5           ; fold-indirect pointer ($E5 lo, $E6 hi) —
                                 ; HUD after both windows. Contract (fold
                                 ; wins): stage addr immediately before a
                                 ; FoldIndirect batch.
+BandTab         = $ED           ; Phase 3 asym ball: staged Band0/1/2
+                                ; ($ff = ball band, $00 = mirror). Written
+                                ; by bank2 StageBandTab (BuildColupF tail,
+                                ; every VBL) BEFORE this frame's cave; read
+                                ; by .Row's ENABL gate; bank1 HUD stomps
+                                ; $ED-$EF (scbrdTmp etc.) only AFTER the
+                                ; cave read — staged-only window, like
+                                ; FetchPtr. Next VBL restages.
 
 ; Enemy RAM shadow — live X/Y + packed flags. ROM records are read-only.
 ; Sequential vars end at $BB (ObjBot removed S3.0b); $BC = RoomBandColor,
@@ -467,20 +475,10 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ldx #0                      ; X=0 = player0
     jsr SetObjectXPos
 
-    ; --- D6 ball staging (asym Phase 2): position ball at patch column ---
-    ; Model meta lives at TilePF0+9/+10 (AsymFlag, BallX — convert always
-    ; emits both; symmetric = 0,0). flag=0: no RESPBL/HMBL write, no WSYNC
-    ; — symmetric frames stay bit-identical. flag=1: SetObjectXPos arg =
-    ; ball x (drawn clocks [A-7,A] = right_col cell, 8 clk). ENABL stays 0
-    ; until Phase 3's per-band setup-line writes.
-    ldy #9
-    lda (RoomPF0Lo),Y           ; AsymFlag
-    beq .AsymBallSkip
-    iny
-    lda (RoomPF0Lo),Y           ; BallX
-    ldx #4                      ; selector 4: HMP0+4=HMBL, RESP0+4=RESPBL
-    jsr SetObjectXPos
-.AsymBallSkip:
+    ; --- D6/D7 ball staging MOVED after .BgStore (Phase 3): the meta block
+    ; lives in bank2's models_data — a bank0 (RoomPF0Lo) read fetched bank0's
+    ; $F9xx zero pad (flag always 0). bank2 StageBandTab (BuildColupF tail)
+    ; now stages BallX into Temp; this block reads the staged copy. ---
 
     ; --- No sprite copy needed — kernel reads directly from ROM ---
     ; Do NOT HMOVE here: wait until P1 is positioned too. An early HMOVE
@@ -517,9 +515,13 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     jsr FoldIndirect
     sta RoomBandColor
 
-    ; --- Cave COLUBK for this frame → Temp (free until overscan) ---
+    ; --- Cave COLUBK for this frame → written DIRECTLY (Phase 3) ---
     ; state=2: blink (60-BombTimer)&3 → black/yellow/red/yellow; else COLOR_CAVE_BG
     ; Dark room: black except the existing explosion blink (state=2).
+    ; Phase 3: .Row no longer re-stores Temp→COLUBK per band (the slot now
+    ; holds the BandTab ENABL gate), so this store IS the cave's COLUBK.
+    ; Temp is free here onward for the staged BallX (bank2 StageBandTab) —
+    ; no reader between this point and overscan's own `sta Temp` (joystick).
     lda BombPacked
     and #%00000011
     cmp #2
@@ -544,7 +546,19 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
 .BgIdle:
     lda #COLOR_CAVE_BG
 .BgStore:
-    sta Temp
+    sta COLUBK
+
+    ; --- D6 ball positioning (asym): staged BallX in Temp (bank2 reads) ---
+    ; Temp=0 ⇔ symmetric (verify_build: sym meta = BallX 0) → skip: no
+    ; RESPBL/HMBL write, sym frames stay bit-identical. Temp≠0: SetObjectXPos
+    ; arg = ball x (drawn clocks [A-7,A] = right_col cell, 8 clk), selector 4
+    ; = HMBL/RESPBL. Runs before the single HMOVE below. Per-band ENABL comes
+    ; from BandTab at each .Row setup line.
+    lda Temp
+    beq .AsymBallSkip
+    ldx #4                      ; selector 4: HMP0+4=HMBL, RESP0+4=RESPBL
+    jsr SetObjectXPos
+.AsymBallSkip:
 
     ; --- Tide row2 body count → CollisionX (kernel carrier; idle during kernel) ---
     ; Water band surface drifts 0-3 lines down/up. off = triangle(p),
@@ -626,10 +640,9 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; per in-window line; LaserBeamOn boots $00 via .ClearZP = beam off
     ; until first fire press)
     sta ENAM1                     ; disable missile 1
-    sta ENABL                     ; disable ball — Phase 2: ball OFF for both
-                                  ; flag paths (D6: Phase 3 moves flag=1's
-                                  ; enable onto band setup lines; probe
-                                  ; invariant "ENABL stays 0 during cave")
+    sta ENABL                     ; default 0 — .Row row0's BandTab gate
+                                  ; overwrites before any body line;
+                                  ; .AfterRows clears it before the HUD band
 
     lda #0
     sta RowIdx                  ; tile-row counter (0-2); object section clobbers X
@@ -649,7 +662,8 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; PF+color while the right half may show the NEW band. Write cycles
     ; (cN = CPU cycles on the setup line, x = pixel at 4x, HBLANK ends c22.7):
     ;   PF0 w c34 x136 | PF1 w c41 x222 | COLUPF w c48 x296 |
-    ;   COLUBK w c54 (Temp = frame const, invisible) | PF2 w c61 x460
+    ;   ENABL w c55 (BandTab gate, +1c vs the old COLUBK pair) |
+    ;   PF2 w c62 x464 (moved +1c — still past right-half PF2 pixels x449)
     ; COLUPF 3rd: color flips at x296 = past ALL left ON-pixels (PF1 ends
     ; x187, PF2 cell17 ends x287); cells18-19 (x288-319) are never ON in any
     ; model row (PF2 bits6/7 always 0) so the flip there is invisible (BG =
@@ -667,9 +681,16 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     lda ColupfBuf,X
     sta COLUPF
 
-    ; --- Set tile row colors (Temp = this frame's COLUBK, set in VBLANK) ---
-    lda Temp
-    sta COLUBK
+    ; --- Per-band ball gate (Phase 3): BandTab[row] $ff/$00 → ENABL ---
+    ; Takes the slot of the per-band `lda Temp / sta COLUBK` (VBL writes
+    ; COLUBK once now) — same position, +1c (7c gate vs 6c pair), PF2 shifts
+    ; c61→c62 (later = right half keeps OLD band even longer, thin-yellow fix
+    ; intact). TIA latches ENABL per line: set on this setup line → ball on
+    ; from the band's first body line; water + HUD inherit row2's value
+    ; (.AfterRows clears ENABL before the HUD band; the HUD bar enables
+    ; its own ball).
+    lda BandTab,X
+    sta ENABL
     lda PF2Buf,X
     sta PF2
     ; --- Scanlines this pass: rows 0/1 = 48; row 2 = 36+off (tide, CollisionX).
@@ -767,15 +788,17 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ldx RowIdx
     inx
     stx RowIdx
+    ; Phase 3: single cpx + bcs replaces `cpx #TILE_ROWS / cpx #TILE_ROWS+1`
+    ; (−2B, −2c on rows 1/2 setup lines; X=3 already branched, X=4 → C=1).
     cpx #TILE_ROWS
     beq .WaterRow                ; row 2 done -> water strip pass
-    cpx #TILE_ROWS+1
-    beq .AfterRows               ; water pass done (RowIdx wrapped to 4)
+    bcs .AfterRows               ; X=4 (C=1,Z=0): water pass done
     jmp .Row
 .WaterRow:
-    ; PF0/1/2 + COLUPF + COLUBK(Temp) from row 2's setup persist — the strip
+    ; PF0/1/2 + COLUPF persist from row 2's setup; COLUBK = the VBL .BgStore
+    ; value (Phase 3: .Row no longer re-stores it per band) — the strip
     ; overlays the same cells, so only the band color + 11 lines are needed.
-    ; Band color: blink (BombPacked state=2) keeps Temp; 0 = band off.
+    ; Band color: blink (BombPacked state=2) keeps COLUBK; 0 = band off.
     lda BombPacked
     and #%00000011
     cmp #2
@@ -800,6 +823,12 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     sta GRP1
     jmp .AfterObj
 .AfterRows:
+    ; Phase 3: cave may leave the ball on (band2 BandTab=$ff) — clear ENABL
+    ; at the very start of the HUD line, before bank1's first WSYNC and
+    ; before the ball's x pixel on this line (bank1 has no pre-pin room for
+    ; the clear: +2B tripped .ds $F9C0).
+    lda #0
+    sta ENABL
     ; Bomb save/restore deleted (S3.0b): BuildColupF writes rows 0-2 only
     ; (TILE_ROWS=3) — nothing touched $F0-$F2 between the old save and
     ; restore (window audited: zero writers), so the round trip was a no-op.
@@ -2305,7 +2334,7 @@ LAMP           = 5             ; type-5 enemy record = editor lamp (white square
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 3             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $FB65        ; frozen address of bank2's LevelDataTable
+LEVEL_DATA_ADDR = $FB81        ; frozen address of bank2's LevelDataTable
                                 ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
                                 ;  −$FA86 as the ≤2-object room migration
                                 ;  shrank the tables; check_frozen_addrs

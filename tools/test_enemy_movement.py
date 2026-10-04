@@ -283,7 +283,8 @@ def main() -> None:
     assert ".WaterRow:" in KERNEL, "water strip pass missing"
     adv = KERNEL.split("Advance to next tile row")[1].split(".AfterRows:")[0]
     assert "beq .WaterRow" in adv, "row 2 must hand off to .WaterRow"
-    assert "beq .AfterRows" in adv, "water pass must exit to .AfterRows"
+    assert "bcs .AfterRows" in adv, \
+        "water pass must exit .AfterRows (X=4 bcs after cpx #TILE_ROWS)"
     row2 = KERNEL.split("Scanlines this pass")[1].split("sta WSYNC")[0]
     assert "lda CollisionX" in row2, \
         "row 2 body count must be the tide value 36+off (CollisionX carrier)"
