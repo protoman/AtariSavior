@@ -1089,10 +1089,15 @@ LaserClampDone:
     sec
     sbc CollisionX
     clc
-    adc #14                     ; S6b: window = drawn [A-7, A]; hit iff
-                                ; eLo in [A-14, A] ((eLo-A)+14 <= 14)
-    cmp #15                     ; bcs -> miss (was adc #7 = [A, A+7], a 7px
-                                ; invisible extension past the beam tip)
+    adc #7                      ; kill == drawn overlap: beam [A-7,A] x
+                                ; enemy [eX-7,eX] (SAME arg-box convention
+                                ; CheckEnemyHit uses for RoomX vs eX) ->
+                                ; eX in [A-7, A+7] <=> (eX-A)+7 in [0..14].
+                                ; S6b's adc #14 was a 7px-LEFT shift: it
+                                ; killed empty space left of the beam and
+                                ; missed every enemy overlapping the tip
+                                ; from the right (laser_collision_tip_bug).
+    cmp #15                     ; bcs -> miss
     bcs .LHNext
 .LHHit:
     ldy EnemyOffTable,X         ; type offset into staged record

@@ -52,8 +52,13 @@ def main() -> None:
     hit = text2.split("LaserHitTestBody:")[1].split("EnemyOffTable:")[0]
     hit = "\n".join(l.split(";")[0] for l in hit.splitlines())  # ignore comments
     assert "adc #3" in hit and "cmp #9" in hit, "vertical window changed"
-    assert "adc #14" in hit and "cmp #15" in hit, "horizontal window changed"
-    assert "adc #7" not in hit, "old [lo,lo+7] kill window still present"
+    # kill == drawn overlap (beam [A-7,A] x enemy [eX-7,eX] — the arg-box
+    # convention CheckEnemyHit proves) -> eX in [A-7, A+7] = adc #7.
+    # S6b's adc #14 (eX in [A-14, A]) was a 7px-LEFT shift: missed enemies
+    # overlapping the tip, killed empty space — laser_collision_tip_bug;
+    # window behavior is asserted end-to-end by test_laser_kill_window.
+    assert "adc #7" in hit and "cmp #15" in hit, "horizontal window changed"
+    assert "adc #14" not in hit, "S6b left-shifted kill window still present"
     assert "ora EnemyBitTable,X" in hit and "sta EnemyDeadMask" in hit, \
         "kill path changed"
     assert "cmp #LAMP" in hit and ".LHLamp" in hit, \
