@@ -45,7 +45,9 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
    `$E2-$E4` (written at overscan entry, every read before the next
    stomp). Staged-only bytes may sit in the zone (`FetchPtr` `$E5-$E6`:
    stage→read happens inside one VBL/overscan batch, HUD runs between
-   batches). Violation symptom: field silently zeroed/changed every HUD
+   batches; `BandTab` `$ED`: bank2 `StageBandTab` stages it in VBL, the
+   cave `.Row` gate reads it, bank1 `scbrdTmp` stomps only after the cave
+   is done). Violation symptom: field silently zeroed/changed every HUD
    frame → this is exactly how rect4.h broke the tentacle (S3.2).
 
 ## Bank0 Sequential ZP ($80-$BC) — verified
@@ -132,6 +134,7 @@ sequential byte would be `$BC`, but `$BD+` are explicit EQUs and `$BC` is
 | $89 + $CC-$DF | Rect cache | **count + rects0-4 UNIFORM (S3.2)** — count `RcBase=$89` (sequential decl), walk base `RcW1=$CC`, stride 4 for all five rects (Y=0..19): no windows, no `.Stage3` (both deleted), mask index4 = `$00` table entry (rect4 never in WallMask). rect4 x,y,w,h = `$DC-$DF`. ABW tables EQU-derived — cannot go stale. **STOMP-ZONE RULE:** every persistent byte here must stay < `$E0` — the first S3.2 layout ended at `$E0` and bank1's `scorePtr1` lo (leading zero) zeroed rect4.h every HUD frame → probes passed through rect4 walls (tentacle walked inside walls). Guarded by `check_equ_sync` (`RcW1+19 ≤ $DF`). FetchPtr lives at `$E5` (fold operand byte-guarded: FOLD_BYTES). |
 | $E2-$E4 | EnemyRamY | Live Y, private 3B (S3.4) — sits in the bank1 stomp zone but window-safe (write/read between stomps — kernel ZP contract block). |
 | $E5-$E6 | FetchPtr | Fold-indirect pointer (moved `$E0→$E5` S3.2 to free `$E0`, then out of the cache entirely). Staged-only: batch stage→read inside one VBL/overscan window; bank1 `scorePtr3+1/scorePtr4` share the bytes in HUD. Fold operand is byte-guarded (`FOLD_BYTES` in verify_build). |
+| $ED | BandTab | Phase 3 asym-ball band gate bytes (3B, `$ff` = ball band). Staged by bank2 `StageBandTab` (BuildColupF tail) every VBL; read by `.Row`'s `lda BandTab,X / sta ENABL`; bank1 HUD `scbrdTmp` stomps `$ED` only after the cave read (staged-only, rule 6). Bank2 mirrors the EQU (`check_equ_sync` pins both to kernel). |
 | $E7-$F2 | ColupfBuf | Final COLUPF × 12 rows — but only rows 0-2 ($E7-$E9) are ever written (TILE_ROWS=3; rows 9-11 are the bombs' own bytes, no overlap machinery since S3.0b). Bank1 clobbers $E7-$EF during HUD; VBLANK rebuilds every frame (S2.1 blocker, see progress doc). |
 | $F3 | ScoreTh | Shared with bank1 score |
 | $F4 | ScoreHu | |
@@ -162,7 +165,7 @@ only and nothing else touched `$F0-$F2` between save and restore.
 | $AE | BarLevel | Shared bar | same |
 | $E0-$EB | scorePtr1-6 | 6 digit ptrs | stomps ColupfBuf[0-2] ($E7-$E9) + EnemyRamY ($E2-$E4) every frame — both safe by rebuild/write window (see above); $E5/$E6 additionally time-partition with kernel `FetchPtr` (S3.2: bank0 stages only in VBL/overscan batches, HUD rebuilds after) |
 | $EC | scbrdCnt | Score loop | ColupfBuf dead-row overlap OK |
-| $ED | scbrdTmp | Score temp | ColupfBuf dead-row overlap OK |
+| $ED | scbrdTmp | Score temp | ColupfBuf dead-row overlap OK; also kernel `BandTab` (Phase 3 band gate bytes) — staged every VBL and read by the cave BEFORE this HUD stomp, so the time-partition is safe (staged-only, see rule 6) |
 | $EE | DelayCnt | Power-bar delay | ColupfBuf dead-row overlap OK |
 | $EF | FineCnt | Power-bar fine | ColupfBuf dead-row overlap OK |
 | $F3-$F5 | ScoreTh/Hu/Te | Score digits | shared |

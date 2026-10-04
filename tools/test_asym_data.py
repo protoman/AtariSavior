@@ -94,11 +94,19 @@ def main() -> int:
     assert flag == [1], f"AsymFlag {flag} != [1]"
     assert byte_line(lines, "M90BallX:") == [87], \
         f"BallX {byte_line(lines, 'M90BallX:')} != [87]"
-    # meta sits directly after TilePF2 (kernel reads TilePF0+9/+10)
+    # meta sits directly after TilePF2 (kernel reads TilePF0+9..+13)
     assert lines.index("M90AsymFlag:") == lines.index("M90TilePF2:") + 2, \
         "AsymFlag must be the byte right after TilePF2's .byte line"
     assert lines.index("M90BallX:") == lines.index("M90AsymFlag:") + 2, \
         "BallX must be the byte right after AsymFlag's .byte line"
+    # Phase 3 band gate bytes: all three bands patched in this fixture
+    assert lines.index("M90Band0:") == lines.index("M90BallX:") + 2, \
+        "Band0 must be the byte right after BallX's .byte line"
+    assert byte_line(lines, "M90Band0:") == [0xFF], "band0 must be $ff"
+    assert byte_line(lines, "M90Band1:") == [0xFF], "band1 must be $ff"
+    assert byte_line(lines, "M90Band2:") == [0xFF], "band2 must be $ff"
+    assert lines.index("M90RightPF0:") == lines.index("M90Band2:") + 2, \
+        "RightPF0 must follow Band2 (meta = 5 bytes, RightPF at +14)"
     assert byte_line(lines, "M90RightPF0:") == [0x00, 0xF0, 0x00]
     assert byte_line(lines, "M90RightPF1:") == [0x00, 0xFF, 0x00]
     assert byte_line(lines, "M90RightPF2:") == [0xC0, 0xCF, 0xC0]
@@ -116,8 +124,21 @@ def main() -> int:
     assert out_a == out_b, "legacy emission must be byte-identical"
     assert byte_line(out_a, "M90AsymFlag:") == [0]
     assert byte_line(out_a, "M90BallX:") == [0]
+    assert byte_line(out_a, "M90Band0:") == [0], "sym Band0 must be $00"
+    assert byte_line(out_a, "M90Band1:") == [0], "sym Band1 must be $00"
+    assert byte_line(out_a, "M90Band2:") == [0], "sym Band2 must be $00"
+    assert out_a.index("M90Band0:") == out_a.index("M90BallX:") + 2, \
+        "sym Band0 must still sit after BallX (5-byte meta always present)"
     assert not any("RightPF" in l or "RightRects" in l for l in out_a), \
         "legacy emission must contain no Right block"
+
+    # --- 2b. partial bands: only band0 patched -> $ff, $00, $00 ----------
+    partial = make_model(patches=[[0, 0, 1]])
+    out_p, res_p = emitted(partial)
+    assert res_p is not None
+    assert byte_line(out_p, "M90Band0:") == [0xFF], "patched band0 = $ff"
+    assert byte_line(out_p, "M90Band1:") == [0x00], "mirror band1 = $00"
+    assert byte_line(out_p, "M90Band2:") == [0x00], "mirror band2 = $00"
 
     # --- 3. envelope rejects --------------------------------------------
     # subtractive: band0 is open, its mirror at right_col0 is open too —
@@ -144,7 +165,8 @@ def main() -> int:
     else:
         raise AssertionError("5 right wall rects must hard-fail (Risk 1)")
 
-    print("test_asym_data: OK (valid + legacy + 6 envelope rejects + budget)")
+    print("test_asym_data: OK (valid + partial bands + legacy + "
+          "6 envelope rejects + budget)")
     return 0
 
 

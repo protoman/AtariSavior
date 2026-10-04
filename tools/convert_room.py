@@ -140,17 +140,22 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     order (col 0 = center-adjacent) when the model carries asym_patches.
     asym_ball_x: D6 ball x (SetObjectXPos arg, drawn clocks [A-7, A]) from
     resolve_asym_patches — emitted with the flag.
-    After the TilePF tables EVERY model gets the 2-byte meta the kernel
-    reads blindly at TilePF0+9/+10:
+    After the TilePF tables EVERY model gets the 5-byte meta block:
         M<id>AsymFlag:  .byte 0|1    (0 = symmetric: runtime skips ball)
-        M<id>BallX:     .byte 0|87+8*right_col
-    Asym models continue with:
+        M<id>BallX:     .byte 0|87+8*right_col  (staged to Temp, bank2)
+        M<id>Band0/1/2: .byte 00|ff  (TilePF0+11..+13; Phase 3 ENABL gate:
+                        $ff = band differs from its mirror = ball band,
+                        $00 = plain mirror; staged to BandTab $ED-$EF)
+    bank2 reads this block (StageBandTab in the BuildColupF tail) — a bank0
+    (RoomPF0Lo) read would fetch bank0's $F9xx zero pad. BallX doubles as
+    the flag (0 ⇔ symmetric, enforced by verify_build).
+    Asym models continue with (RightPF0 now at TilePF0+14):
         M<id>RightPF0/1/2:  3 bytes (stride 3; D4: pf_values(reversed(B)))
         M<id>RightRects:    same stream shape as RoomRects; x/w in
                             right-half cell space x2 (x=0 center-adjacent,
                             4px cols), y/band rows; hard-fails above the
                             WallMask budget (4 maskable rects, Risk 1).
-    Symmetric models (asym_rows=None) emit meta .byte 0,0 and no Right*
+    Symmetric models (asym_rows=None) emit meta 0,0,0,0,0 and no Right*
     block — otherwise byte-identical to pre-D7/Phase-1 output.
     """
     triples = [pf_values(row) for row in rows]
@@ -206,7 +211,8 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         table += ["$00"] * (stride - len(table))
         out.append("  .byte " + ", ".join(table))
 
-    # Asym meta at TilePF0+9/+10 — ALWAYS present (VBL reads blindly).
+    # Asym meta at TilePF0+9..+13 — ALWAYS present (bank2 StageBandTab
+    # reads blindly; bank0 gets the staged copies in ZP).
     out.append(f"{prefix}AsymFlag:")
     if asym_rows is None:
         out.append("  .byte 0                  ; 0 = symmetric (mirror cave)")
@@ -217,6 +223,16 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         out.append(f"{prefix}BallX:")
         out.append(f"  .byte ${asym_ball_x:02x}                  "
                    f"; D6 ball x = 87+8*right_col ({asym_ball_x})")
+
+    # Phase 3 per-band ENABL gate bytes (TilePF0+11..+13). $ff = this band's
+    # right row is NOT the plain mirror of the left row (has an asym patch),
+    # $00 = plain mirror.
+    for band in range(3):
+        on = asym_rows is not None and \
+            asym_rows[band] != rows[band][::-1]
+        out.append(f"{prefix}Band{band}:")
+        out.append(f"  .byte ${0xff if on else 0:02x}                  "
+                   f"; band {band} ENABL gate ($ff = ball band)")
 
     if asym_rows is not None:
         if len(asym_rows) != len(rows) or any(

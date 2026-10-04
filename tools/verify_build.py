@@ -732,6 +732,20 @@ def check_levels(src: Path) -> None:
                 err(f"model {mid}: AsymFlag/BallX meta missing "
                     f"(must sit at TilePF0+9/+10 for every model)")
                 continue
+            # Phase 3: Band0/1/2 at TilePF0+11..+13 ($ff = right row is not
+            # the plain left-row mirror = ball band; staged by StageBandTab).
+            for bidx in range(3):
+                got = meta_byte(mid, f"Band{bidx}")
+                if asym is None:
+                    want = 0
+                else:
+                    want = 0xFF if asym[bidx] != left[bidx][::-1] else 0
+                if got is None:
+                    err(f"model {mid}: Band{bidx} meta missing "
+                        f"(must sit at TilePF0+{11 + bidx} for every model)")
+                elif got != want:
+                    err(f"model {mid}: Band{bidx}=${got:02X}, want ${want:02X} "
+                        f"($ff iff band differs from its mirror)")
             if asym is None:
                 if flag != 0 or bx != 0:
                     err(f"model {mid}: symmetric but meta = "

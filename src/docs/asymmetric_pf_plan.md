@@ -208,6 +208,44 @@ model (temp patch in `models.json`) shows an off-center wall strip
 exactly where painted, only in painted bands, hidden where the mirrored
 cell is already wall; collision with that strip = CHECK 4.
 
+**Landed 2026-10-04 — final shape (differs from the sketch above):**
+1. convert emits 3 extra meta bytes/model: `Band0/1/2` (`$ff` = the
+   right row is not the plain left-row mirror) at TilePF0+11..13;
+   `BallX` at +10 (0 ⇔ symmetric, verify_build enforces; `87+8*right_col`
+   under the D6 envelope). Symmetric models emit 0/0/0.
+2. **Staging runs in bank2**, not inline: `BCFDarkRun` (BuildColupF
+   tail) now `jmp StageBandTab` → copies BallX→Temp ($88) and
+   Band0-2→BandTab ($ED-$EF) every VBL, then `jmp $FBF8` ReturnPad
+   (pads never nest, SP depth unchanged). WHY bank2: `models_data` lives
+   there — a bank0 `(RoomPF0Lo),Y` read fetches bank0's $F9xx zero pad
+   (Phase 2's ball block silently read zeros; passed only because
+   sym = 0).
+3. VBL ball block moved after `.BgStore` (which now does the single
+   per-frame `sta COLUBK`): `lda Temp / beq skip / ldx #4 / jsr
+   SetObjectXPos` → RESPBL/HMBL only when BallX ≠ 0, before the one
+   HMOVE. Sym runs skip (bit-identical leg strips CTRLPF/ENABL/COLUBK).
+4. `.Row` gate: the freed `lda Temp/sta COLUBK` slot (between COLUPF
+   and PF2) does `lda BandTab,X / sta ENABL` — 7c (+1c vs the 6c pair),
+   PF2 shifts c61→c62 (still past the right-half x449 pixel: thin-yellow
+   fix intact). ENABL latches per line: on from each band's first body
+   line, water inherits row2, `.AfterRows` starts the HUD line with
+   `lda #0 / sta ENABL` (bank1 got no entry clear — +2B tripped
+   `.ds $F9C0`; the HUD bar writes its own ENABL anyway).
+5. Row advance restructured: `cpx #TILE_ROWS / beq .WaterRow / bcs
+   .AfterRows / jmp .Row` (−2B, −2c). Probe_row_phases: setup WSYNC
+   writes 71/71/70 (≤73 safe).
+6. Hand-sync fallout: bank1 `jmp $F18D` (Overscan moved −3), bank2
+   `PlayerSpriteA/B = $F8CA/$F8D6` (pre-pad net −3), `BandTab = $ED`
+   mirrored in kernel+bank2 (check_equ_sync pins both).
+
+**CHECK 3 automated gates (2026-10-04):** `tools/test_phase3_ball.py`
+(py65, pokes all 32 meta bytes — bands $ff + BallX=100): ENABL ∈
+{00,ff} with ≥3 ff/frame, RESPBL+HMBL every frame (proves the bank2
+staging ran), frame lines 263 constant, min SP $FB. probe_row_phases
+71/71/70, battery **15/15**, both sims OK, Stella smoke 550 frames
+worst 262 / min SP $FB. **User test still pending** (CHECK 3 text
+above: symmetric unchanged + forced-patch visual).
+
 ### Phase 4 — collision & gameplay on patch cells
 1. `convert_room` emits right-half rects for asymmetric models; **under
    D6 the patch column is PF-mirror-open but visually wall — those cells

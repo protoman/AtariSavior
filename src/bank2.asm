@@ -9,6 +9,11 @@ FetchPtr = $E5                   ; must match kernel.asm (operand baked in;
                                  ; moved S3.2 from $E0 — frees $E0 for
                                  ; rect4.h in the uniform rect cache)
 Temp = $88
+RoomPF0Lo = $99                 ; TilePF0 pointer (EnterRoom stages; models
+                                 ; data lives in THIS bank — bank0 cannot
+                                 ; read it, see StageBandTab)
+BandTab = $ED                   ; Phase 3 band gate bytes — staged here,
+                                 ; read by kernel .Row in bank0
 CollisionX = $8B
 CollisionCellX = $8C             ; max text column
 CollisionCellY = $8D             ; top tile row
@@ -37,8 +42,8 @@ EnemyDeadMask = $BA            ; LaserHitTest dead bits (written on kill)
 Grp0Ptr = $86                  ; must match kernel.asm (PickPlayerFrame body)
 Grp0PtrHi = $87                ; must match kernel.asm
 SWCHA = $0280                  ; RIOT joystick (same in every bank)
-PlayerSpriteA = $F8CD           ; hand copies (bank0 symbols unreadable here);
-PlayerSpriteB = $F8D9           ; tools/test_miner_colors.py asserts vs bank0.lst
+PlayerSpriteA = $F8CA           ; hand copies (bank0 symbols unreadable here);
+PlayerSpriteB = $F8D6           ; tools/test_miner_colors.py asserts vs bank0.lst
 PlayerWalkA = $FDE7
 PlayerWalkB = $FDF3
 LAMP = 5                       ; enemy type: editor lamp — kernel LAMP must match
@@ -558,7 +563,8 @@ BCFDarkRun:
     cpx #TILE_ROWS
     bne .BCFdarkLoop
 .BCFdarkDone:
-    jmp $FBF8                   ; ReturnPad → bank0 VBLANK caller
+    jmp StageBandTab            ; Phase 3: stage ball meta, then ReturnPad
+                                ; (was `jmp $FBF8`; same 3 B, no pad growth)
 BCFDarkMask:
     .byte $10, $20, $40, $80    ; rooms 0-3 → EnemyRamD bits 4-7
     .byte $10, $20, $40, $80    ; rooms 4-7 → lsr×2 = LaserState bits 2-5
@@ -606,6 +612,33 @@ PickPlayerFrame:
     sta Grp0Ptr
     sty Grp0PtrHi
     jmp ReturnPad              ; sta $1FF6 (via ReturnPad) + rts -> VBL
+
+; ------------------------------------------------------------------------------
+; StageBandTab — Phase 3 asym ball: copy model meta into bank0 ZP for the cave.
+; Reached from BuildColupF's tail (BCFDarkRun jmp here); ends at ReturnPad so
+; the VBL jsr returns to bank0 (pads must not nest — no rts here).
+; WHY here: models_data lives in THIS bank — a bank0 (RoomPF0Lo),Y read
+; fetches bank0's $F9xx zero pad (the Phase 2 ball block silently read zeros).
+;   BandTab ($ED-$EF) <- TilePF0+11..13 — .Row's per-band ENABL gate.
+;   Temp    ($88)     <- TilePF0+10 (BallX) — VBL ball block after .BgStore
+;                        (0 ⇔ symmetric → skip; verify_build enforces).
+; Window: staged every VBL → read by cave → bank1 HUD stomps $ED-$EF after
+; the cave read → overscan rewrites $88 (joystick) after the ball read.
+; ------------------------------------------------------------------------------
+StageBandTab:
+    ldy #10
+    lda (RoomPF0Lo),Y
+    sta Temp                    ; BallX (doubles as the asym flag)
+    ldy #11
+    lda (RoomPF0Lo),Y
+    sta BandTab
+    iny
+    lda (RoomPF0Lo),Y
+    sta BandTab+1
+    iny
+    lda (RoomPF0Lo),Y
+    sta BandTab+2
+    jmp $FBF8                   ; ReturnPad → bank0 VBLANK caller
 
     org $F9D9
     include "generated/levels_data.asm"
