@@ -158,9 +158,11 @@ def row_range(room_y: int) -> tuple[int, int]:
 
 
 def box_hit(rows: list[str], lo: int, hi: int, top: int, bot: int) -> bool:
+    """lo/hi are 4px display cols (0..19, walker space); D7 logical cell =
+    col pair, so cell = col >> 1 (bit-pairing in pf_values)."""
     assert 0 <= lo <= hi <= 19, f"col range {lo}..{hi} out of spec"
     assert 0 <= top <= bot <= 2, f"row range {top}..{bot} out of spec"
-    return any(rows[r][c] in "#H" for r in range(top, bot + 1)
+    return any(rows[r][c >> 1] in "#H" for r in range(top, bot + 1)
                for c in range(lo, hi + 1))
 
 
@@ -252,7 +254,7 @@ def main() -> int:
     moth_checks = 0
     temp = 0x42                        # candidate != sentinel 0xAA
     for name, rows in cases:
-        assert len(rows) == 3 and all(len(r) == 20 for r in rows), name
+        assert len(rows) == 3 and all(len(r) == 10 for r in rows), name
         mem = Mem()
         load_case(mem, rows)
         for rd in (0, 1):                 # FACING_RIGHT / FACING_LEFT
@@ -270,6 +272,8 @@ def main() -> int:
                         f"{row_range(ry)})")
                     checks += 1
         # --- moth walk: every valid box (plan 4.1), wiring asserted ------
+        # lo/hi stay display cols (walker space, 0..19); box_hit maps to
+        # D7 logical cells via col >> 1.
         for lo in range(20):
             for hi in range(lo, 20):
                 for top in range(3):

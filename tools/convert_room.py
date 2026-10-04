@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""Convert a 20x3 text room into a HERO-style reflected room include.
+"""Convert a 10x3 text room into a HERO-style reflected room include.
 
-Grid: 20 columns x 3 playable bands + a 48-line grey HUD band below (drawn by
-the kernel, not stored in room data). Each tile is 8 color-clocks wide and 48
-scanlines tall, so the 3 playable bands fill the top 144 lines and the HUD the
-bottom 48 of the 192-line screen. The TIA reflects the 20-bit playfield
-(CTRLPF D0=1), so rooms must be left-right symmetric; the kernel emits one
-PF0/PF1/PF2 triple per tile row, written once per 48-line band.
+Grid (D7, plan asymmetric_pf_plan): 10 logical columns x 3 playable bands +
+a 48-line grey HUD band below (drawn by the kernel, not stored in room
+data). One logical cell = 2 hardware PF pixels (8 color clocks); the TIA
+reflects the 40-pixel playfield (CTRLPF D0=1), so rooms must be left-right
+symmetric; the kernel emits one PF0/PF1/PF2 triple per tile row, written
+once per 48-line band.
 
 Emitted data:
   - RoomRects: compressed rectangle list for the 6502 collision code.
-    Format: 1 byte count, then count * 4 bytes (x, y, width, height) in tile
-    coordinates.  The collision routine mirrors each rectangle to the right
-    half at runtime, so only the left-half (0-19 column) layout is stored.
-  - TilePF0/TilePF1/TilePF2: one byte per tile row for the kernel.
+    Format: 1 byte count, then count * 4 bytes (x, y, width, height).
+    Coordinates are DISPLAY columns (4 color clocks each, left half =
+    columns 0-19) — the runtime compares them against px/4 text columns
+    directly, so logical cell c is emitted as x=2c, w=2*cell_w (D7 pair).
+    The collision routine mirrors each rectangle to the right half at
+    runtime, so only the left-half layout is stored.
+  - TilePF0/TilePF1/TilePF2: one byte per tile row for the kernel; each
+    logical cell sets a PF bit PAIR (encoder bit-pairing, D7).
 All per-row tables (PF triples) are emitted at TABLE_STRIDE (= 3, the
 playable bands) since S4.2; only the first 3 entries are drawn — the old
 12-byte padding existed for bank0's +12/+12 pointer arithmetic, which
@@ -23,7 +27,7 @@ EnterRoom now does as +3/+3.
 from pathlib import Path
 import sys
 
-WIDTH = 20
+WIDTH = 10                  # D7: logical cells per half (was 20 pre-D7)
 HEIGHT = 3                  # playable color bands (HUD is drawn separately)
 TABLE_STRIDE = 3            # S4.2: per-row table size = the 3 playable bands
                             # (was 12 — kernel EnterRoom now does +3/+3)
@@ -51,26 +55,30 @@ def _is_solid(cell: str, solids: str) -> bool:
 
 
 def pf_values(row: str) -> tuple[int, int, int]:
-    """Map a 20-column text row to PF0/PF1/PF2 bytes.
+    """Map a 10-column logical row (D7 grid) to PF0/PF1/PF2 bytes.
 
-    With reflection, column c is playfield pixel c of the left half:
-      cols 0-3   -> PF0 bits 7-4 (bit 7 = pixel 0 = leftmost)
-      cols 4-11  -> PF1 bits 7-0 (bit 7 = pixel 4)
-      cols 12-19 -> PF2 bits 0-7 (bit 0 = pixel 12)
+    Each logical cell c sets the hardware bit PAIR (2c, 2c+1). Display-col
+    mapping with reflection (left half, 4 color clocks per PF bit):
+      expanded cols 0-3   -> PF0 bits 4-7 (bit 4 = leftmost)
+      expanded cols 4-11  -> PF1 bits 7-0 (bit 7 = display col 4)
+      expanded cols 12-19 -> PF2 bits 0-7 (bit 0 = display col 12)
     Hot rock (H) is solid for the playfield, same as #.
     """
     solid = [cell in "#H" for cell in row]
+    if len(solid) != WIDTH:
+        raise ValueError(f"pf_values: expected {WIDTH} columns, got {len(row)}")
+    s20 = [s for s in solid for _ in (0, 1)]   # D7 bit-pairing
     pf0 = 0
     for col in range(4):
-        if solid[col]:
+        if s20[col]:
             pf0 |= 0x10 << col   # PF0: col0->bit4 (leftmost), col1->bit5, col2->bit6, col3->bit7
     pf1 = 0
     for col in range(4, 12):
-        if solid[col]:
+        if s20[col]:
             pf1 |= 0x80 >> (col - 4)
     pf2 = 0
     for col in range(12, 20):
-        if solid[col]:
+        if s20[col]:
             pf2 |= 0x01 << (col - 12)
     return pf0, pf1, pf2
 
@@ -137,11 +145,13 @@ def lines(rows: list[str], prefix: str = "", source: str = "room") -> list[str]:
 
     rects = find_rectangles(rows, solids="#H")
     hot_rects = find_rectangles(rows, solids="H")
+    # find_rectangles works in logical cells (0..9); the runtime compares
+    # rect x/w against 4-px display columns, so emit x/w in pairs (D7).
     rect_name = prefix + "RoomRects"
     out.append(f"{rect_name}:")
     out.append(f"  .byte {len(rects)}                  ; number of rectangles")
     for x, y, w, h in rects:
-        out.append(f"  .byte {x}, {y}, {w}, {h}  ; x, y, width, height")
+        out.append(f"  .byte {2 * x}, {y}, {2 * w}, {h}  ; x, y, width, height (4px cols)")
     # Hot-only block after solid rects: death + pulse. Walks of solid rects
     # must stop at the count byte and never enter this section.
     # Record = mask, x, y, w, h (5 bytes). mask = BombMaskBit of the solid
@@ -168,7 +178,7 @@ def lines(rows: list[str], prefix: str = "", source: str = "room") -> list[str]:
             mask = MASK_BITS[parent]
         else:
             mask = 0
-        out.append(f"  .byte ${mask:02x}, {hx}, {hy}, {hw}, {hh}  ; mask, x, y, w, h")
+        out.append(f"  .byte ${mask:02x}, {2 * hx}, {hy}, {2 * hw}, {hh}  ; mask, x, y, w, h (4px cols)")
 
     for name, register in zip(("TilePF0", "TilePF1", "TilePF2"), range(3)):
         out.append(f"{prefix}{name}:")

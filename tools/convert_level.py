@@ -28,7 +28,7 @@ import sys
 
 import convert_room
 
-WIDTH = 20
+WIDTH = 10                  # D7: logical cells per half (was 20 pre-D7)
 # Playable color bands per room (the bottom 48 scanlines render as HUD).
 HEIGHT = 3
 ROOM_NONE = 0xFF
