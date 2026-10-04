@@ -694,6 +694,53 @@ def check_levels(src: Path) -> None:
         except Exception as exc:  # noqa: BLE001 - report, don't crash verifier
             err(f"models.json: {exc}")
 
+    # D6 envelope + asym emission guards (asymmetric_pf_plan Phase 1
+    # items 2+4): resolve every model's asym_patches through the SAME
+    # envelope convert uses (independent gate at verify time), then
+    # cross-check the emitted models_data.asm against the resolution.
+    if models:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from convert_level import resolve_asym_patches, rows_from_json  # noqa: PLC0415
+        from convert_room import pf_values  # noqa: PLC0415
+        gen = src / "generated" / "models_data.asm"
+        mda = gen.read_text() if gen.exists() else ""
+        for mid, model in sorted(models.items()):
+            try:
+                left = rows_from_json({"model_id": mid}, models)
+                asym = resolve_asym_patches(model, left)
+            except ValueError as exc:
+                err(f"models.json model {mid}: {exc}")
+                continue
+            except (KeyError, TypeError) as exc:
+                err(f"models.json model {mid}: bad geometry ({exc})")
+                continue
+            if f"M{mid}TilePF0:" not in mda:
+                continue                      # model not referenced by any room
+            if asym is None:
+                if f"M{mid}AsymFlag:" in mda:
+                    err(f"model {mid}: symmetric but M{mid}AsymFlag emitted")
+                continue
+            if f"M{mid}AsymFlag:" not in mda:
+                err(f"model {mid}: asym model missing M{mid}AsymFlag in models_data.asm")
+            for reg in range(3):
+                label = f"M{mid}RightPF{reg}"
+                hit = re.search(
+                    rf"^{re.escape(label)}:\s*\n\s*\.byte([^\n]+)", mda, re.M)
+                if not hit:
+                    err(f"model {mid}: {label} missing from models_data.asm")
+                    continue
+                got = [int(b.strip().lstrip("$"), 16)
+                       for b in hit.group(1).split(",")]
+                want = [pf_values(r[::-1])[reg] for r in asym]
+                if got != want:
+                    err(f"model {mid}: {label} = {got}, want {want} (stride 3)")
+            hit = re.search(
+                rf"^M{mid}RightRects:\s*\n\s*\.byte\s+(\d+)", mda, re.M)
+            if not hit:
+                err(f"model {mid}: M{mid}RightRects missing from models_data.asm")
+            elif int(hit.group(1)) > 4:
+                err(f"model {mid}: {hit.group(1)} right rects > WallMask budget 4")
+
     level_files = sorted(rooms_dir.glob("level_[0-9][0-9][0-9].json"))
     if not level_files:
         err("no level_XXX.json files found in rooms/")

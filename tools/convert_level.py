@@ -165,6 +165,55 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
     return rows
 
 
+def resolve_asym_patches(model: dict, left_rows: list[str]) -> list[str] | None:
+    """D3 asym_patches -> resolved right-half rows, or None if symmetric.
+
+    Right rows are in right_col order (col 0 = center-adjacent); they start
+    as the mirror of the left rows and get the patches applied on top.
+
+    D6 envelope (plan Phase 1 item 4 — fail loudly):
+      - patch = [row, right_col, tile] with row in bands, right_col in 0..9;
+      - ALL patches share ONE right_col (one ball x for the whole cave
+        frame; per-band visibility = same col across bands);
+      - subtractive patches rejected (target open where the mirror cell is
+        wall — the ball can only ADD paint);
+      - a run wider than 1 cell needs >1 column, so it is rejected by the
+        single-column rule too.
+    """
+    patches = model.get("asym_patches") or []
+    if not patches:
+        return None
+    mid = model.get("id")
+    cols: set[int] = set()
+    right = ["".join(left_rows[y][WIDTH - 1 - k] for k in range(WIDTH))
+             for y in range(HEIGHT)]
+    for p in patches:
+        if not (isinstance(p, (list, tuple)) and len(p) == 3
+                and all(isinstance(v, int) for v in p)):
+            raise ValueError(
+                f"model {mid}: asym patch {p!r} must be [row, right_col, tile]")
+        row, col, tile = p
+        if not 0 <= row < HEIGHT:
+            raise ValueError(f"model {mid}: patch row {row} out of 0..{HEIGHT - 1}")
+        if not 0 <= col < WIDTH:
+            raise ValueError(
+                f"model {mid}: patch right_col {col} out of 0..{WIDTH - 1} (D7 grid)")
+        char = tile_to_char(tile)
+        mirror = left_rows[row][WIDTH - 1 - col]
+        if char == "." and mirror in "#H":
+            raise ValueError(
+                f"model {mid}: subtractive patch at row {row} col {col} "
+                f"(opens a cell whose mirror is wall — D6 is additive-only)")
+        cols.add(col)
+        right[row] = right[row][:col] + char + right[row][col + 1:]
+    if len(cols) > 1:
+        raise ValueError(
+            f"model {mid}: asym patches span columns {sorted(cols)} — D6 "
+            f"envelope allows exactly ONE column-x (single ball x; a run "
+            f"wider than 1 cell needs >1 column and is rejected too)")
+    return right
+
+
 def connection_bytes(rooms: list[dict]) -> list[list[int]]:
     """Per-room [up, down, left, right] neighbours, by room_x/room_y adjacency."""
     twelve = ROOM_NONE
@@ -408,10 +457,13 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
     for mid in sorted(referenced):
         model = models_by_id[mid]
         model_lines.append("")
+        left_rows = rows_from_json({"model_id": mid, "tiles": model.get("tiles"),
+                                    "width": model.get("width", WIDTH)},
+                                   models_by_id)
+        asym = resolve_asym_patches(model, left_rows)
         model_lines += convert_room.lines(
-            rows_from_json({"model_id": mid, "tiles": model.get("tiles"),
-                            "width": model.get("width", WIDTH)}, models_by_id),
-            prefix=f"M{mid}", source=f"models.json model {mid}")
+            left_rows, prefix=f"M{mid}", source=f"models.json model {mid}",
+            asym_rows=asym)
     model_lines.append("")
     (generated / "models_data.asm").write_text("\n".join(model_lines) + "\n")
     data_lines.insert(2, f'    include "{generated.name}/models_data.asm"')

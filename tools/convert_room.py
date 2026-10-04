@@ -131,8 +131,22 @@ def find_rectangles(rows: list[str], solids: str = "#") -> list[tuple[int, int, 
     return rects
 
 
-def lines(rows: list[str], prefix: str = "", source: str = "room") -> list[str]:
-    """Build the asm lines for a grid (shared by per-room and per-model emission)."""
+def lines(rows: list[str], prefix: str = "", source: str = "room",
+          asym_rows: list[str] | None = None) -> list[str]:
+    """Build the asm lines for a grid (shared by per-room and per-model emission).
+
+    asym_rows (D2/D3, models only): resolved right-half rows in right_col
+    order (col 0 = center-adjacent) when the model carries asym_patches.
+    Emitted after the TilePF tables as:
+        M<id>AsymFlag:  .byte 1
+        M<id>RightPF0/1/2:  3 bytes (stride 3; D4: pf_values(reversed(B)))
+        M<id>RightRects:    same stream shape as RoomRects; x/w in
+                            right-half cell space x2 (x=0 center-adjacent,
+                            4px cols), y/band rows; hard-fails above the
+                            WallMask budget (4 maskable rects, Risk 1).
+    Symmetric models (asym_rows=None) emit byte-identically to pre-D7/Phase-1
+    output — flag presence IS the flag (no per-model flag byte for them).
+    """
     triples = [pf_values(row) for row in rows]
     stride = max(TABLE_STRIDE, len(rows))
 
@@ -185,6 +199,50 @@ def lines(rows: list[str], prefix: str = "", source: str = "room") -> list[str]:
         table = [f"${triple[register]:02x}" for triple in triples]
         table += ["$00"] * (stride - len(table))
         out.append("  .byte " + ", ".join(table))
+
+    if asym_rows is not None:
+        if len(asym_rows) != len(rows) or any(
+                len(r) != WIDTH for r in asym_rows):
+            raise ValueError(
+                f"{source}: asym rows must be {len(rows)}x{WIDTH} like the left rows")
+        # D4 reflect: stored right trio = pf_values(reversed(B)); B is in
+        # right_col order (col 0 = center-adjacent).
+        r_triples = [pf_values(r[::-1]) for r in asym_rows]
+        out.append(f"{prefix}AsymFlag:")
+        out.append("  .byte 1                  ; 1 = asymmetric (D1: per model)")
+        for name, register in zip(("RightPF0", "RightPF1", "RightPF2"), range(3)):
+            out.append(f"{prefix}{name}:")
+            out.append("  .byte " + ", ".join(
+                f"${t[register]:02x}" for t in r_triples))
+        r_rects = find_rectangles(asym_rows, solids="#H")
+        if len(r_rects) > 4:
+            raise ValueError(
+                f"{source}: {len(r_rects)} right wall rects > WallMask budget 4 "
+                f"(Risk 1 — do not silently wrap)")
+        r_hot = find_rectangles(asym_rows, solids="H")
+        out.append(f"{prefix}RightRects:")
+        out.append(f"  .byte {len(r_rects)}                  ; number of rectangles")
+        for x, y, w, h in r_rects:
+            out.append(f"  .byte {2 * x}, {y}, {2 * w}, {h}  ; x(right_col*2), y, w, h")
+        out.append(f"  .byte {len(r_hot)}              ; number of hot rectangles")
+        for hx, hy, hw, hh in r_hot:
+            parent = next(
+                (
+                    i
+                    for i, (x, y, w, h) in enumerate(r_rects)
+                    if x <= hx and y <= hy and hx + hw <= x + w and hy + hh <= y + h
+                ),
+                None,
+            )
+            if parent is None:
+                print(f"warning: hot rect ({hx},{hy},{hw},{hh}) not inside any "
+                      f"right wall rect", file=sys.stderr)
+                mask = 0
+            elif parent < len(MASK_BITS):
+                mask = MASK_BITS[parent]
+            else:
+                mask = 0
+            out.append(f"  .byte ${mask:02x}, {2 * hx}, {hy}, {2 * hw}, {hh}  ; mask, x, y, w, h")
 
     return out
 
