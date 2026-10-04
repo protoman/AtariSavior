@@ -156,33 +156,20 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     lda #$05            ; CTRLPF: reflect + priority + 1-clock ball.
     sta CTRLPF
 
-    ; --- Top gap: 4 scanlines (lower HUD elements) ---
-    ldx #4
+    ; --- Top gap: 6 scanlines (lower HUD elements) ---
+    ; 4 + the 2 lines the removed ball-at-boundary block used to occupy:
+    ; bar/lives/bombs/score keep their exact scanlines (HudPad stays 9).
+    ldx #6
 .TopGap:
     sta WSYNC
     dex
     bne .TopGap
 
     ; ====================================================================
-    ; Ball position at yellow/red boundary (RESPBL/HMBL via X=4)
-    ; SetObjectXPos: HMP0+4=$24=HMBL, RESP0+4=$14=RESPBL
-    ; +2 scanlines (SetObjectXPos WSYNC + HMOVE) → pad 11→9
-    ; ====================================================================
-    ldy BarLevel
-    lda BallXTable,Y
-    ldx #4
-    jsr SetObjectXPos_b1
-    sta WSYNC
-    sta HMOVE
-    lda #1              ; ENABL D0=1 (ball on; grey-on-grey until bar paints)
-    sta ENABL
-
-    ; ====================================================================
     ; Line 1: Timer bar — PF body, mid-scanline COLUPF yellow→red
     ; Full (BarLevel=BAR_MAX): pure yellow, no red write (no stripes).
     ; H3c dual path: F=0 slim / F=1 slim+nop / F=2,3,4 full dispatch.
-    ; BallX = actual body pixel (3*cycles-69) per path.
-    ; HMOVE-line budget: HMOVE+ENABL+dispatch ≤73c to first bar WSYNC.
+    ; dispatch ≤73c from the TopGap WSYNC to the first bar WSYNC.
     ; ====================================================================
     ldy BarLevel
     cpy #BAR_MAX
@@ -360,13 +347,15 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; → frame 263 on Fine2/3/4 frames). Lines 1/2 enter their WSYNC at c73.
 .BarGap:
 
-    ; --- gap: end bar line 3, clear PF + ball during gap HBLANK ---
+    ; --- gap: end bar line 3, clear PF during gap HBLANK ---
+    ; (no ENABL write: the boundary-ball was removed — nothing in the HUD
+    ; enables the ball anymore; .AfterRows already cleared it for the cave
+    ; gate's benefit.)
     sta WSYNC
     lda #0
     sta PF0
     sta PF1
     sta PF2
-    sta ENABL           ; ball off after bar
 
     ; ====================================================================
     ; Line 2: Lives — green squares, count based on PlayerLives
@@ -666,13 +655,12 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; ====================================================================
     ; Pad remaining scanlines to reach exactly 48 total
     ; Path A (PlayerLives > 0) — execution count:
-    ;   Top gap:  4
-    ;   Ball pos: 1 SetObjectXPos + 1 HMOVE = 2
+    ;   Top gap:  6 (4 + 2 former ball-pos lines — elements keep lines)
     ;   Timer:    3 loop + 1 gap = 4
     ;   Lives:    1 SetObjectXPos + 1 HMOVE + 5 render + 1 gap = 8
     ;   Bombs:    2 SetObjectXPos + 1 HMOVE + 5 render + 3 gap = 11
     ;   Score:    2 SetObjectXPos + 1 HMOVE + 7 ScoreLoop = 10
-    ;   Subtotal: 4+2+4+8+11+10 = 39
+    ;   Subtotal: 6+4+8+11+10 = 39
     ;   Pad:      48 - 39 = 9
     ; .NoLives blank path pads +2 WSYNC so both paths total 48.
     ; ====================================================================
@@ -705,7 +693,6 @@ SetObjectXPos_b1:
 ; Bar H3c tables (B=0..120): content ≤71c (WSYNC 3c fits in 76).
 ; Paths (cycles after WSYNC → sty red): F=0 slim 12+5A; F=1 slim+nop 14+5A;
 ; F=2 full 20+5A; F=3 full 30+5A; F=4 full 31+5A (A=0 special-cased).
-; pixel = 3*cycles-69; BallX = max(4,pixel) so ball == body edge (mono).
 BarDelayTable:          ; B=0..120
     .byte 0,0,2,2,2,1,1,1,3,3,3,3,3,3,3,2
     .byte 2,2,0,0,0,0,0,0,4,4,4,1,1,1,1,1
@@ -725,16 +712,6 @@ BarFineTable:           ; B=0..120; ∈{0,1,2,3,4}; path = f(F)
     .byte 3,4,4,4,0,0,0,1,1,1,1,3,3,3,4,4
     .byte 4,0,0,0,1,1,1,3,3,3,4,4,4,0,0,0
     .byte 0,1,1,1,3,3,3,4,4
-
-BallXTable:             ; B=0..120; = max(4, actual body red@); mono
-    .byte 4,4,4,4,4,6,6,6,12,12,12,12,18,18,18,21
-    .byte 21,21,27,27,27,30,30,30,33,33,33,36,36,36,39,39
-    .byte 39,39,42,42,42,48,48,48,51,51,51,54,54,54,57,57
-    .byte 57,63,63,63,63,66,66,66,69,69,69,72,72,72,78,78
-    .byte 78,81,81,81,84,84,84,84,87,87,87,93,93,93,96,96
-    .byte 96,99,99,99,102,102,102,108,108,108,108,111,111,111,114,114
-    .byte 114,117,117,117,123,123,123,126,126,126,129,129,129,132,132,132
-    .byte 132,138,138,138,141,141,141,144,144
 
 ; ========================================================================
 ; Leaf routines relocated from bank0 — batch A, sounds (leaf_move_plan)

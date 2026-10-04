@@ -11,10 +11,13 @@ Assertions (gameplay frames >= 2 where the cave kernel runs):
     never position the ball (bank1 HUD bar ball writes are expected and
     excluded);
   * bit-identical: the new ROM's TIA write sequence (frame >= 2) equals
-    the baseline ROM's with CTRLPF ($0A), ENABL ($1F) and COLUBK ($09)
-    writes dropped. Intended deltas: CTRLPF $35 (Phase 2), Phase 3's
-    per-band ENABL gate (writes 0 in sym runs) + COLUBK moved from per-band
-    .Row stores to one VBL .BgStore store (same values).
+    the baseline ROM's with CTRLPF ($0A), ENABL ($1F), COLUBK ($09),
+    RESBL ($14), HMBL ($24), HMOVE ($2A) and WSYNC ($02) writes dropped.
+    Intended
+    deltas: CTRLPF $35 (Phase 2), Phase 3's per-band ENABL gate (writes
+    0 in sym runs) + COLUBK moved from per-band .Row stores to one VBL
+    .BgStore store, and the removed HUD boundary-ball (RESBL/HMBL/HMOVE;
+    its 2 lines folded into TopGap so the WSYNC sequence stays aligned).
 
 Baseline: P2_BASELINE env var, default /tmp/opencode/savior_phase1.bin
 (phase1-code build). The bit-identical leg compares PF writes too, so the
@@ -51,6 +54,7 @@ PC_OVER = LABELS["Overscan"]
 
 FRAMES = 60
 CTRLPF, ENABL, RESBL, HMBL = 0x0A, 0x1F, 0x14, 0x24
+HMOVE = 0x2A                     # project equate (kernel.asm:62)
 
 
 class Mem:
@@ -213,7 +217,14 @@ def main() -> int:
     base_path = Path(os.environ.get(
         "P2_BASELINE", "/tmp/opencode/savior_phase1.bin"))
     trace = [(a, v) for f, b, a, v in r["log"] if f >= 2]
-    _strip = (CTRLPF, ENABL, 0x09)          # CTRLPF + Phase 3 ENABL/COLUBK
+    # Intended deltas (all stripped): CTRLPF $35 (Phase 2); Phase 3's
+    # per-band ENABL gate + COLUBK moved to one VBL store; the removed
+    # HUD boundary-ball (its RESBL/HMBL/HMOVE writes + the 2 lines folded
+    # into TopGap). WSYNC ($02) is stripped too: its write VALUE is just
+    # the leftover A (hardware-ignored) and the ball block carried
+    # BallXTable/fine-adjust junk in A — line COUNT stays asserted by the
+    # wall-model sim, not here.
+    _strip = (CTRLPF, ENABL, 0x09, RESBL, HMBL, HMOVE, 0x02)
     stripped = [(a, v) for a, v in trace if a not in _strip]
     if base_path.exists():
         b = run(base_path)
