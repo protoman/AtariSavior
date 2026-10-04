@@ -212,16 +212,18 @@ while frame < 420:
             # (DropTarget a real fall target), after that EnterRoom
             mem.ram[POKE_ENEMYCOUNT] = 2
             mem.ram[POKE_TENT_X] = 36
-            # room1's only maskable rect (17,0,1,2) sits at c17, but the
+            # room1's only maskable rect was (17,0,1,2), but the
             # spawn bomb blasts c4-8 (c18-19 = cave mouth, no floor, so the
             # player can't stand over there either). Poke rect1 -> the
-            # floor stub (5,2,1,1): same bits PF renders there (band2 c5=1),
-            # blast c4-8 reaches x=5, w==1 maskable — exercises the plan 5.1
-            # BombMarkWalls -> ClearPFColumn punch end to end.
-            mem.ram[0x50:0x54] = bytes((5, 2, 1, 1))
+            # floor stub (4,2,2,1): same bits PF renders there (band2
+            # display cols4-5 = D7 cell2 pair set by M3 row2 wall cols0-7),
+            # blast c4-8 reaches x=4, w==2 maskable (D7 thin wall = 1 cell =
+            # 2 display cols) — exercises the plan 5.1 BombMarkWalls ->
+            # ClearPFColumn punch end to end.
+            mem.ram[0x50:0x54] = bytes((4, 2, 2, 1))
             poked = True
             print(f'tentacle coverage poked at f{frame}: EnemyCount=2, '
-                  f'slot1 X=36, rect1=(5,2,1,1)')
+                  f'slot1 X=36, rect1=(4,2,2,1)')
         st = mem.ram[IDX_B5] & 3
         states_seen.append((frame, st))
         if drop_frame is None and mem.ram[IDX_F0] < 5:

@@ -2284,7 +2284,7 @@ LAMP           = 5             ; type-5 enemy record = editor lamp (white square
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 3             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $FB6E        ; frozen address of bank2's LevelDataTable
+LEVEL_DATA_ADDR = $FB55        ; frozen address of bank2's LevelDataTable
                                 ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
                                 ;  −$FA86 as the ≤2-object room migration
                                 ;  shrank the tables; check_frozen_addrs

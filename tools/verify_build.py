@@ -670,8 +670,8 @@ def check_room_txt(path: Path, label: str) -> None:
     if len(rows) != 3:
         err(f"{label}: room txt has {len(rows)} rows, expected 3")
     for li, row in enumerate(rows):
-        if len(row) != 20:
-            err(f"{label}: row {li} is {len(row)} chars, expected 20")
+        if len(row) != 10:
+            err(f"{label}: row {li} is {len(row)} chars, expected 10")
         bad = set(row) - set(".,#H")
         if bad:
             err(f"{label}: row {li} has invalid chars {sorted(bad)}")
@@ -687,10 +687,10 @@ def check_levels(src: Path) -> None:
             ml = md.get("models_file", md).get("models", [])
             models = {m["id"]: m for m in ml}
             for model in ml:
-                if model.get("width") != 20 or model.get("height") != 3:
-                    err(f"models.json model {model.get('id')}: expected 20x3 geometry")
-                if len(model.get("tiles", [])) != 60:
-                    err(f"models.json model {model.get('id')}: expected 60 band tiles")
+                if model.get("width") != 10 or model.get("height") != 3:
+                    err(f"models.json model {model.get('id')}: expected 10x3 geometry")
+                if len(model.get("tiles", [])) != 30:
+                    err(f"models.json model {model.get('id')}: expected 30 band tiles")
         except Exception as exc:  # noqa: BLE001 - report, don't crash verifier
             err(f"models.json: {exc}")
 
@@ -738,7 +738,7 @@ def check_levels(src: Path) -> None:
 
         try:
             if not 0 <= float(lvl.get("miner_x", -1)) < 20:
-                err(f"{name}: miner_x={lvl.get('miner_x')} out of tile columns 0..19")
+                err(f"{name}: miner_x={lvl.get('miner_x')} out of display columns 0..19")
             if not 0 <= float(lvl.get("miner_y", -1)) <= 11:
                 err(f"{name}: miner_y={lvl.get('miner_y')} out of tile rows 0..11")
             if lvl.get("miner_dir", -1) not in (-1, 1):

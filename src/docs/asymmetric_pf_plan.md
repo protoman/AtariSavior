@@ -1,14 +1,18 @@
 # Asymmetric Playfield Plan — phased implementation
 
 Goal: rooms whose right half does NOT mirror the left (HERO-style off-center
-gaps). Method = HERO's double-phase PF write (verified in
-`docs/hero_asymmetric_rooms.md`): a `STA PFx` with CPU phase ≤ ~44 paints the
-LEFT half, phase ≥ ~50 (after color clock 147) paints only the RIGHT half.
+gaps/walls).
 
-Our kernel writes PF once per 48-line band → halves always equal. This plan
-adds a *late* right-trio write on each row's setup line, plus the data to feed
-it — **without regressing the 262-line frame, the 76-cycle `.Line`, the 1B
-bank0 headroom, or symmetric rooms' ROM size**.
+**Current mechanism = D6 / O2 ball-mask overlay** (fork resolution
+2026-10-04, HERO-verified — see "HERO verification" and "O2/D6 envelope"
+below): keep the mirrored PF, paint the difference with the TIA ball
+(COLUPF-colored, PFP-hidden under real walls, exactly 1 cell = 8 clks at
+one x per cave frame under the D7 10-col grid, additive-only). The original double-phase late right-trio write
+(D5, method from `docs/hero_asymmetric_rooms.md`) is **dead — superseded**;
+its O1 analysis survives as the recorded fallback.
+
+The invariants every phase must keep: the 262-line frame, the 76-cycle
+`.Line`, the 1B bank0 headroom, and symmetric rooms' ROM size.
 
 ## Measured baseline (2026-10-03)
 
@@ -47,7 +51,8 @@ rects + 1 flag). The expensive parts are timing and collision, not ROM.
   applied over the mirrored right half. JSON size unchanged for symmetric
   models; legacy files load with `[]` (explicit default = migration rule
   satisfied); convert resolves patches → right rows; editor = overlay paint
-  on a right-half pane (right_col 0–19, 0 = the column adjacent to center).
+  on a right-half pane (right_col 0–9 under D7 — 0 = the column
+  adjacent to center; 0–19 was the pre-D7 20-col grid).
   ROM never sees patches, only resolved rows.
   (Option A — width-40 models — recorded as rejected alternative: more
   editor/serializer work; ROM zero-growth could have been kept either way.)
@@ -65,6 +70,34 @@ rects + 1 flag). The expensive parts are timing and collision, not ROM.
   transition line — body lines re-paint both halves from the persistent
   register state, so bands stay mirror-symmetric; and the free window is
   14-15c < even the RAM trio). See "Phase 0 results" fork O1-O3.
+- **D7 — grid = 10 columns per half, 3 bands × 48 lines (user decision
+  2026-10-04, "the HERO way").** 1 logical cell = 2 hardware PF pixels
+  (8 clks = 32 screen px at 4px/clk); the encoder sets both bits of each
+  pair identically.
+  - Kernel/frame/CPU: **unchanged** — still 3 PF stores per band, PF
+    persists, `.Line` untouched; only bit-pairing inside the bytes
+    differs. Bands stay 3 × 48 (the 4-band variant was evaluated and
+    rejected same day: medium cost, ZP reshuffle, full map re-row).
+  - Ball = 8 clks = **exactly 1 cell** → every patch is cell-aligned;
+    D6's "≤2 cells" was stated in the old 4-clk grid and means **1 cell**
+    with the ball, 2 cells (16 clks) only with the parked M1 upgrade.
+  - Player = 8 clks = 1 cell wide → 1-cell passages are exact-fit
+    (HERO-tight); draw unit = ball unit = collision-rect unit.
+  - Coarser cells merge wall runs → fewer rects per model → eases the
+    WallMask 4-slot overflow (Risk 1).
+  - **Migration (repo rule — all data + generators in one change):**
+    `rooms/*.txt` (20-col → 10), `models.json` grids, editor MapCanvas
+    cell size, convert/verify width constants, X-side cell division in
+    collision, and all fixtures (`test_cell_map`, `test_asym_encoder`,
+    `test_asym_data`). Legacy 20-col input must fail loudly after the
+    flip (no silent width guessing). **Sub-decision RESOLVED
+    2026-10-04 = (a) auto pair-merge**, user reviews rendered stages
+    later. Merge rule = **open-wins** (pair → open if either member is
+    open): every ≥2-old-col passage survives by construction (any open
+    member keeps the pair open — misaligned runs widen instead of
+    closing); cost = walls adjacent to passages thin by ≤1 old col
+    (visual, user reviews). Wall-wins was rejected: it kills
+    pair-misaligned 2-col corridors that the old grid could pass.
 
 ## Fallback F1 — if the setup line cannot fit (decide only after Phase 0 probe)
 
@@ -100,8 +133,8 @@ before the next phase when the phase touches kernel/timing/data format)
 in ROM yet — fixture is a new test only).
 
 ### Phase 1 — data pipeline (convert only; ROM byte-identical for current content)
-1. `convert_room.py`/`convert_level.py`: accept `asym_patches` (Option B) or
-   40-col models (Option A — whichever D3 resolves to); detect symmetry;
+1. `convert_room.py`/`convert_level.py`: accept `asym_patches` (Option B —
+   D3 resolved; Option A/40-col rejected); detect symmetry;
    emit flag + right rows + right rect list **only for asymmetric models**.
 2. `verify_build.py`: guard — symmetric models' emitted bytes must match the
    pre-change output exactly; asymmetric models must have flag + right rows
@@ -109,39 +142,80 @@ in ROM yet — fixture is a new test only).
 3. New `tools/test_asym_data.py`: synthetic asymmetric model → expected
    ROM bytes (fixture from CHECK 0) + legacy `models.json` (no field) →
    byte-identical output.
+4. **D6 envelope guards** (added 2026-10-04, fail loudly in convert +
+   `verify_build`): all patches of a model must share ONE column-x and
+   fit ≤1 cell (8 clks — the ball; 2 cells only with M1); subtractive
+   patches (target open where mirror = wall) rejected; fixtures:
+   subtractive model must fail, multi-column model must fail, >1-cell
+   run must fail, valid 1-cell single-column model must pass.
+5. **D7 grid migration (2026-10-04):** flip width 20 → 10 everywhere in
+   the pipeline — `rooms/*.txt`, `models.json`, convert/verify width
+   constants, encoder bit-pairing (1 logical cell → 2 PF bits), X-side
+   collision cell division, `test_cell_map`/`test_asym_encoder`/
+   `test_asym_data` fixtures, editor `MapCanvas` cell size (Phase 5
+   implements the UI side). Legacy 20-col input → hard error.
+   Migration = one-time in-place transform (rooms + models committed at
+   10-col) using D7's resolved rule: **pair-merge, open-wins**;
+   convert does not carry legacy-width support.
 
-**CHECK 1:** regenerate all levels → `git diff generated/` **empty**
-(proves zero growth for current content); new test passes; battery 11/11.
+**CHECK 1:** one-time D7 regeneration committed (all rooms/models on the
+10-col grid; `git diff generated/` empty on every run **after** that
+flip — proves stability, not zero growth); D6 envelope fixtures pass;
+battery 11/11.
 
-### Phase 2 — kernel staging (load only; rendering unchanged)
-1. EnterRoom (bank2 body / fold as needed): load flag + right rows per D2
-   (RAM home from CHECK 0 or set the ROM right-rows pointer).
-2. No PF write changes yet — symmetric rendering must be bit-identical.
+### Phase 2 — ball staging (D6; symmetric rendering bit-identical)
+1. Cave CTRLPF `$05` → **`$35`** (kernel.asm:426): D5-D4=%11 = 8-clk
+   ball; PFP D2 already set. Bank1 HUD keeps its own `$05` writes (1-clk
+   bar separator unchanged).
+2. `SetObjectXPos`: add selector 4 (RESPBL/HMBL — table lives in the
+   pinned `$FF10` gap with page-cross guards; recount bytes and re-run
+   the verify_build guards after ANY growth). If the gap has no room:
+   inline VBL div15 for the ball instead. **Never touch the existing
+   div15 loop's timing (AGENTS rule).**
+3. VBL: position ball X from patch data — flag-gated; symmetric rooms
+   skip (bit-identical).
+4. Kernel entry: keep today's `sta ENABL` (A=0, kernel.asm:611) as the
+   flag=0 path; flag=1 path leaves the enable to Phase 3's setup-line
+   writes (no enable in Phase 2 yet).
+5. No PF write changes.
 
-**CHECK 2:** build green, `sim_frame_budget` 263.0±0.15 every frame,
-battery 11/11, Stella smoke ≤262 / min SP ≥$F8 (one run only — no loops);
-user plays one stage: nothing visible changed.
+**CHECK 2:** build green; `sim_frame_budget` 263.0±0.15 every frame;
+battery 11/11; Stella smoke ≤262 / min SP ≥$F8 (one run); py65 probe on
+a cave frame: CTRLPF reads `$35` during the cave, ENABL stays 0,
+symmetric rooms bit-identical; user plays one stage: nothing visible
+changed.
 
-### Phase 3 — the late right-trio write (flag/staging-gated)
-1. Implement D5's block on the row setup line (Phase 0 shape): left trio
-   early as today, right trio at phase ≥50, `sta WSYNC` still ≤73 (recount
-   from `bank0.lst`/`bank2.lst`, never from comments).
-2. For symmetric staging (same bytes) the block may run unconditionally;
-   for distinct right rows it is flag-gated via the CallPad dispatch.
-3. Verify with a py65 render probe: capture PF register values at clock 100
-   (left) and clock 200 (right) for one line of an asymmetric test room →
-   right ≠ left; for a symmetric room → right shows mirror as today.
+### Phase 3 — the patch (flag-gated ENABL on band setup lines)
+1. Per-band setup line: enable/disable ENABL in the Phase 0 measured
+   free window (14–15c; `lda #imm` + `sta ENABL` ≈ 6c) — on when the
+   band shows the patch at ball-x, off otherwise. Flag-gated: symmetric
+   rooms execute no ENABL writes (bit-identical). All-bands-patched =
+   single enable at kernel entry (HERO's degenerate 2-write latch).
+2. Patch-x source: prefer convert-time static byte (1B ball-x; zero
+   runtime cost) derived while emitting the right rows — decide against
+   EnterRoom derivation by byte budget at Phase 2.
+3. py65 render probe: forced-asymmetric test model → RESBL/HMBL phase
+   matches ball-x, ENABL set on exactly the patched bands' lines and 0
+   elsewhere, left/right pixels differ at ball-x only; symmetric room →
+   ENABL never set, pixels mirror as today.
+4. Envelope guards from Phase 1 item 4 are live (convert + verify_build
+   fail loudly).
 
-**CHECK 3:** phase probe passes (right write ≥50, WSYNC ≤73, frame 262,
-sim invariant, battery 11/11). **User test (mandatory):** symmetric rooms
-look unchanged; one forced-asymmetric test model (temp patch in
-`models.json`) shows an off-center gap exactly where painted.
+**CHECK 3:** probe passes (ball-x phase, ENABL band gating, CTRLPF
+`$35`, frame 262, sim invariant, battery 11/11). **User test
+(mandatory):** symmetric rooms look unchanged; one forced-patch test
+model (temp patch in `models.json`) shows an off-center wall strip
+exactly where painted, only in painted bands, hidden where the mirrored
+cell is already wall; collision with that strip = CHECK 4.
 
-### Phase 4 — collision & gameplay on right-half walls
-1. `convert_room` emits right-half rects for asymmetric models; PHM skips
-   the endpoint-mirror prologue (`kernel.asm:2320`) when the flag is set and
-   walks both rect lists instead (X-preserve rule around `PlayerHitsMap`
-   applies; PLA preserves carry — keep probe carry semantics).
+### Phase 4 — collision & gameplay on patch cells
+1. `convert_room` emits right-half rects for asymmetric models; **under
+   D6 the patch column is PF-mirror-open but visually wall — those cells
+   MUST be in the right rect list** or the player walks through the
+   painted strip. PHM skips the endpoint-mirror prologue
+   (`kernel.asm:2320`) when the flag is set and walks both rect lists
+   instead (X-preserve rule around `PlayerHitsMap` applies; PLA
+   preserves carry — keep probe carry semantics).
 2. Bomb wall destruction: `BombMarkWalls`/`ApplyBombWalls` use WallMask
    bits — right-half wall rects consume the same 4 mask slots → enforce
    `wall_rects ≤ 4` across BOTH halves at convert time (fail loudly).
@@ -153,11 +227,13 @@ look unchanged; one forced-asymmetric test model (temp patch in
 asymmetric room: expected hit/miss cells on both halves); wall-bomb tests
 (`test_laser_wall.py`, bomb tests) pass with an asymmetric fixture; battery
 11/11. **User test:** walk into both halves' walls, bomb a right-half wall,
-laser a right-half enemy behind an off-center gap.
+laser a right-half enemy behind the painted wall strip.
 
-### Phase 5 — editor UX (D3's chosen option)
+### Phase 5 — editor UX (D3's chosen option + D7 grid)
 1. Option B: right-half overlay pane + patch paint/save/load (round-trip);
    Option A: 40-col models + width migration (both loaders + verify).
+   **D7: cell grid doubles in size (20→10 cols — same wall art,
+   chunkier cells); envelope = 1-cell patches painted on the pane.**
 2. `verify_build.check_room_txt`/models checks updated for the new field/
    width; regenerate every level from the editor and confirm
    `git diff generated/` is still empty for untouched content.
@@ -168,7 +244,8 @@ room end-to-end.
 
 ### Phase 6 — QA sweep
 Battery, both sims, one Stella smoke run, user screenshot pass: off-center
-gap room, bombs, laser, enemies, HUD, dark rooms (flag must not disturb
+patch (wall-strip) room, bombs, laser, enemies, HUD, dark rooms (flag must not
+disturb
 ColupfBuf/`BuildColupF`), title/drop-in, level advance.
 
 **CHECK 6:** user sign-off → commit (with TODO.txt per repo rule).
@@ -180,8 +257,12 @@ ColupfBuf/`BuildColupF`), title/drop-in, level advance.
    work — convert must hard-fail `wall_rects > 4` per model once flag-gated
    masks exist. Do not silently wrap.
 2. **bank0 = 1B.** Anything grown inline in pre-pad code must be net-cut
-   elsewhere or relocated to bank2 via pads. `.Row` is pre-pad — D5's block
-   needs the CHECK 0 byte budget first.
+   elsewhere or relocated to bank2 via pads. `.Row` is pre-pad — under D6
+   the ENABL gate (`lda #imm / sta ENABL` ≈ 6c + flag test) must fit the
+   Phase 0 measured 14–15c window **inline**; the flag dispatch may need
+   the CHECK 0 CallPad shape, but mid-kernel fold/jsr-into-bank2 is NOT
+   yet proven — prefer a kernel-entry latch or an inline ZP-table read
+   (`lda Tab,Y / sta ENABL`) decided at Phase 3 byte budget.
 3. **Setup-line overrun = skipped scanline** (the 2026-09-25/29 bug family).
    Any WSYNC landing ≥74 doubles a row and pushes the frame to 263+ → the
    sim wall-model + `bank0.lst` cycle recount are mandatory gates, not
@@ -192,8 +273,8 @@ ColupfBuf/`BuildColupF`), title/drop-in, level advance.
    staging in ROM.
 5. **Bank-aliased PCs:** py65 probe must pair (pc, bank) — `$Fxxx` addresses
    are ambiguous across banks (AGENTS py65 rule).
-6. **D3 is a user decision** (Option B vs A) — do not start Phase 1 until
-   it is answered.
+6. **D3 was a user decision — ANSWERED 2026-10-03 = Option B**
+   (`asym_patches` field, see Design decisions). Phase 1 unblocked.
 
 ## Phase 0 results (2026-10-03)
 
@@ -295,6 +376,12 @@ D5 is dead; the probe + timing math leave three real options:
   exactly 2 cells = ball width, wall-colored = invisible overlay). ENABL
   per-line gating costs +9c on `.Line` (61→70, WSYNC@76 = over) → must be
   row-constant or moved to the setup line.
+  **SUPERSEDED detail (2026-10-04):** per-line ENABL gating is never
+  needed — CTRLPF PFP priority (D2) hides the ball under real walls
+  automatically (Stella order PF > BL; s1/s2 screenshots show exactly
+  this). Per-band visibility = ENABL written on band **setup lines**
+  (Phase 0 measured 14–15c free window there ≫ the 6c block), as the
+  D6 fork resolution states; whole-cave latch = HERO's degenerate case.
 - **O3 — re-examine the goal.** Every reachable HERO frame (5 game modes ×
   420 frames, all boundary-only, body write-free) contradicts the doc's
   "HERO writes PF twice per scanline" claim for caves (only HERO's *HUD*
@@ -307,3 +394,152 @@ D5 is dead; the probe + timing math leave three real options:
 Phase 1 (data pipeline: `asym_patches` → flag + right rows, byte-identical
 regeneration) is mechanism-independent and can start at CHECK 0 sign-off;
 Phases 2-3 are blocked on O1/O2/O3.
+
+## Fork resolution (2026-10-04, user)
+
+- **D6 — mechanism = O2 (ball-mask overlay).** Selected as primary: zero
+  `.Line` growth, no frame rebalance, bomb owns GRP1 so ball is free, one
+  ENABL store `#$80` vs `#0`, ball X set once in VBL.
+  **Constraint:** patch ≤2 cells wide (ball 8 color clocks, CTRLPF `$35`
+  D5-D4=%11) at **one ball X for the whole cave frame** — HERO never
+  repositions the ball inside the cave (single RESBL at line 50, verified
+  across every probe frame/screenshot); per-band **visibility** comes from
+  ENABL writes on band setup lines (not per-band X). Under D7's 10-col
+  grid the ball is exactly **1 cell**, so the envelope is cell-aligned.
+  Full capability envelope + additive-only rule: see "O2/D6 envelope"
+  below.
+- **O1 (dedicated lean band) = recorded fallback**, to be revived if O2
+  fails verification or its ≤2-cell/fixed-x constraint blocks real content.
+  All O1 analysis in §2 stays valid for that revival.
+- Phases 2-3 rewrite under D6 (ball setup in VBL, ENABL gating on setup
+  line, no PF write changes); Phase 4 collision work still required (mask
+  cells differ from mirrored rects). Phase 1 unchanged. O3 dropped.
+
+## HERO verification (2026-10-04, py65 dynamic probe)
+
+Deep re-investigation (static disasm + live `tools/probe_hero_overlay.py`
+runs, PC-logged TIA writes) — D6 mechanism **confirmed on real HERO code**,
+plus one upgrade:
+
+1. **Ball overlay = HERO's asymmetric mechanism (dynamic proof).**
+   - Positioner call `$d11c`: `LDA $a0` → Davie div15 routine, **X=4 →
+     RESBL** at cave line 50, HMBL line 51. Ball X = ZP `$a0` = 61 → clk60
+     → x240-271 = `s_Hero_1` disputed tile, exact match (`rom[$FF77]=61`).
+   - **ENABL written twice per frame only:** `$FF` at line 56, `$00` at
+     line 174 — TIA latch = stripe **lines 56-173 (full cave height)**.
+     No per-line ENABL gating in HERO → O2's "row-constant / setup-line"
+     ENABL requirement is exactly what HERO does (0 `.Line` growth).
+   - Width = CTRLPF `$35` (D5-D4=%11 = 8 clks), PFP priority (behind
+     walls), **color = COLUPF** → wall rows/shading/blink track for free.
+2. **M1 = second programmable patch (exists dynamically).** ENAM1 net
+   (last write per line) nonzero on lines **59-104** in ~40% of frames;
+   RESM1 fired in overscan (line 242, HMM1 ∈ {$00,$51}) → X programmable
+   per frame. Laser owns M0 → M1 is free. **Two 1-col patches = ball+M1;
+   adjacent pair = one 2-col patch.** `s_Hero_2`'s wall-colored region =
+   **x64-111 (48px = 12 clks, cells 4-6), y90-167 (band B only)** —
+   per-x uniform: 74 rows band shade ($24) + 4 accent rows ($20) on every
+   x → two hardware objects side-by-side (ball 8 + missile 4, or 8+8
+   overlapping; ball alone can't exceed 8 clks, sprites can't be 4 clks =
+   16px). Cells 4-6 = wall in bands A/C, open in band B → visible only in
+   B; right-half duplicate x384-431 = real wall (symmetric cells 15) →
+   the patch is NOT mirrored → object paint, not reflect-OFF. The 4-clk
+   part needs COLUP1 = wall shades incl. accent on those lines — hero
+   writes COLUP1 every cave line (probe default = enemy shading; a state
+   with idle P1 could write wall defaults — unverified). Ball X `$a0` has
+   gameplay writers (`$d69e/$d6ac/$d992/$f6b0`) → ball may sit at clk16
+   in this state (or hidden behind walls at clk60 — cells 15-16 are wall
+   in band B, PFP priority hides it). State not reproduced (probe stalls
+   before `$d735`) — screenshot-level evidence only.
+3. **Cave PF = band-boundary writes only** (lines 53-58, 96-97, 135-136,
+   175-176). The per-scanline-PF claim holds for HERO's HUD only, not the
+   cave. (Matches §5/O3.)
+4. **Per-game tables at boot:** index X = `mem[$80] & 127` →
+   `f5=$FF6D[X]` (held-LEFT boot → 147, RIGHT → 44, verified), `a4=$FF6A[X]`
+   ∈ {32,192,144,0,4,147,…}. Ball X does **not** follow the index (always
+   61 across 128 boot variants).
+5. **Probe operation notes:** frame-end = `$d9df → $dff2` data fallthrough
+   → `$FFF5 JMP $f042` (switch/title loop). SWCHB active-low: **RESET =
+   `$FE`** → `$f075` reboot (`$ba=0, JMP $f007`); SELECT = `$FD` → `$f083`
+   sets `$ba=255`. Probe RAM starts 0 = all switches pressed → must write
+   `$282=$FF` from frame 0 or every frame reboots. Player = **P1/GRP1**,
+   X = `$9b` (moved 32→13 by held direction). Menu gate `$f2` has no
+   store — it opens via `DEC $f2` underflow (`$d930`, player within 15 of
+   `$bb`); restore reloads (`$d7b0/$d942/$d7ae JSR $d9f1`, table `$da04`)
+   need the `$ab` countdown + `$81 & $3f == 0`, never reached in probe.
+
+6. **Screenshot forensics (all three, re-derived 2026-10-04):**
+   - **All 3 = REFLECT ON** (mirror 0.925/0.893/0.986 vs dup 0.623/0.725/
+     0.729). Proof, not score: mirror windows sample the *same* PF cell
+     and offsets (639-x maps cell j offset r → cell j offset 15-r…same
+     set) → pure PF cannot mismatch there; a mismatch = non-mirrored
+     object over an open cell. Reflect OFF would force dup=1.0 for pure
+     PF — measured dup breaks exactly at asymmetric wall cells → ON with
+     asymmetric rooms. **No reflect-OFF band exists** (band B of s2
+     checked directly: duplicate region = real wall, patch = object).
+   - **Mirror-mismatch = object detector** (under ON). Overlay
+     visibility = cell open in that band + partner cell rule; PF walls
+     always mirror-match.
+   - Overlays found: s1 = ball 8 clks x240-271 (= probe clk60, `$a0`=61);
+     s2 = 12-clk pair x64-111 (item 2); s3 = none. Plus non-mirrored
+     sprites: hero = P1/GRP1 multicolor 8×13 (blue 112,199,255 /
+     white / magenta / yellow / dark), X = `$9b`; enemies grey-green /
+     orange / yellow.
+   - Cave PF per band written ONCE at boundaries (lines 53-58 taper,
+     96-97, 135-136, 175-178 taper; CTRLPF `$35` at 58/97/136),
+     COLUPF shades $22/$24/$26 per band + accent $20 (line95/134),
+     border gradients top $2a→$24, bottom $26→$2c. Three screenshots =
+     three different rooms (band patterns differ; probe default room
+     matches none — s1/s2 band B match probe `11110000000000000000`).
+   - HUD band separate: CTRLPF `$30` (reflect OFF), grey bg, power bar
+     = PF+ball at y260-269 (yellow (255,244,86) + red + orange
+     separator).
+
+**D6 constraint update (verified):** ball alone ≤2 cells (8 clks, as D6
+says — under D7's grid = exactly **1 cell**); **two-object pair observed
+= 12 clks (≤16 clks max) = ≤2 D7-cells at one x** — relax the cap if
+Phase 3 wires M1 (exact 8+4 vs 8+8 split pending state repro). Color and
+per-line gating constraints drop: HERO uses COLUPF auto-tracking and a
+setup-line-only ENABL latch. O1 fallback unchanged.
+
+## O2/D6 envelope (verified 2026-10-04, Stella TIA source + screenshots)
+
+Ball capability, from Stella source (`src/emucore/tia/TIA.cxx`) and the
+three screenshots:
+
+- **Ball color = COLUPF only.** `TIA::poke` case `COLUPF` calls
+  `myPlayfield.setColor(value); myBall.setColor(value);` — COLUP0/COLUP1
+  pokes never touch the ball. Mid-line COLUPF writes apply immediately
+  ("Playfield/ball color may have changed mid-line") → the ball
+  auto-tracks per-band shades and accent lines (exactly what s1/s2 show:
+  band `$24` + accent `$20` on every painted pixel).
+- **PFP order (CTRLPF D2=1):** `PF → BL → P0/M0 → P1/M1 → BK`, and
+  **D1 (score mode) is ignored** under D2=1 ("case Priority::pfp:
+  CTRLPF D2=1, D1=ignored") → score mode can never corrupt cave colors.
+  Ball hidden under real walls, visible over open cells.
+- **Additive-only — CONFIRMED, user-accepted (2026-10-04).** The ball can
+  ADD wall color over open mirror cells; it can never punch a hole: its
+  only color register is COLUPF (not COLUBK), and under PFP it is behind
+  real walls anyway. Score mode gives the ball no alternative color
+  source either. Every HERO screenshot patch is additive (s1, s2).
+- **Achievable shape per cave frame:**
+  - ONE ball X for the whole frame (either half — paint lands at
+    absolute x; D3's right-half patches position the ball on the right
+    column, left half stays mirror-open → asymmetry both directions).
+  - **Exactly 1 logical cell wide (8 clks)** under D7 — ball width =
+    cell width; the parked M1 upgrade doubles the span to 2 cells
+    (16 clks).
+  - Per-band visibility via ENABL on band setup lines (D6 resolution;
+    Phase 0 free window 14–15c ≥ ~6c block) → any band may or may not
+    show the patch; a whole-cave latch (HERO, 2 writes/frame) only
+    works when every open cell of column x in every band is patched or
+    already wall.
+  - **M1 upgrade path (parked):** second object → ≤16 clks / two
+    columns (12 clks observed in s2); needs COLUP1 = wall-shade writes
+    on the patched lines (probe default state writes enemy shading
+    instead — mechanism unverified). Investigate only if content
+    exceeds this envelope.
+- **Convert guards (Phase 1, fail loudly):** reject subtractive patches
+  (target open where mirror = wall), patches spanning >1 column-x, runs
+  wider than the ball (1 cell; 2 with M1), and any patch whose ball-x
+  would differ between bands. Editor paints outside the envelope →
+  warn. Content that cannot fit → O1 revival (recorded fallback).

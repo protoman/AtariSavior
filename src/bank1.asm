@@ -953,8 +953,9 @@ LaserFreqTable:
 ; ========================================================================
 ; BombMarkWalls (S5.2, moved from bank0) — pinned at $FB10.
 ;   On the bomb 1->2 edge: walk the rect cache, set WallMask bit (BombPacked
-;   b3-6) for each w==1 rect whose x is in blast cols (bomb left-half col
-;   +-2, clamped 0..19). Skip x==0 (screen border). Score is NOT done here —
+;   b3-6) for each w==2 rect whose x is in blast cols (bomb left-half col
+;   +-2, clamped 0..19). w==2 = one D7 logical cell (rect x/w are emitted
+;   in 4px display cols; a thin wall is exactly one cell = 2 cols). Skip x==0 (screen border). Score is NOT done here —
 ;   pads cannot nest (ReturnPad switches to bank0), so this returns
 ;   A = #walls newly broken and the bank0 caller adds +75 per wall.
 ;   Plan 5.1: each newly broken rect is punched here immediately (jsr
@@ -1033,7 +1034,7 @@ BombMarkWalls:
     lda ABWWTab,X
     tay
     lda 0,Y                     ; rect.w
-    cmp #1
+    cmp #2                      ; thin wall = 1 D7 cell = 2 display cols
     bne .BMWNext
     lda BombMaskBit,X
     and BombPacked              ; already broken?
