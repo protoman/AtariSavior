@@ -136,6 +136,10 @@ RcBase     = $89                ; rect cache count (S3.2-fix: count sits on
                                  ; of bank1's $E0 stomp that ate rect4.h)
 RcW1       = $CC                ; rect0.x — cache base for ABW tables
 BombPacked = $B5                ; state+DownPrev+WallMask (b3-6)
+EnemyDeadMask = $BA             ; b0-2 enemy kills (hand-copy of kernel's
+                                 ; decl — check_equ_sync pair); b3 = D6 strip
+                                 ; destroyed (StripBlastCheck, dies with the
+                                 ; room via EnterRoom's zero)
 CollisionEndX = $8E             ; blast lo
 TILE_COLUMNS = 20
 
@@ -718,6 +722,59 @@ BarFineTable:           ; B=0..120; ∈{0,1,2,3,4}; path = f(F)
     .byte 4,0,0,0,1,1,1,3,3,3,4,4,4,0,0,0
     .byte 0,1,1,1,3,3,3,4,4
 
+; ------------------------------------------------------------------------------
+; StripBlastCheck — Phase 4: bomb blast vs the D6 patch strip (user: blasting
+; the strip must work). Tail-jumped from BombMarkWalls .BMWDone (jmp, no
+; push: the jsr+pha version measured SP $F7 < the $F8 gameplay guard, and
+; the pha leaked on the early-exit path -> runaway work -> 309-line frames
+; in Stella 2026-10-04). Every exit ends in ReturnPad with A = count.
+; In: BMWScratch = strip left col pL in RIGHT-half space ($FF = none/sym,
+; captured before the punch loop), CollisionEndX/CellX = blast window in
+; LEFT-half space (bomb col mirrored at BMW entry), CollisionX = count.
+; Overlap after mirroring (39-x) with the strip not yet dead → set
+; EnemyDeadMask b3 and inc the count (caller's +75 loop scores it). The
+; kill bit dies with the room (EnterRoom zeroes EnemyDeadMask) — same
+; lifecycle as WallMask holes (D1-B).
+; ------------------------------------------------------------------------------
+StripBlastCheck:
+    ; BMW blast cols are LEFT-frame; strip pL is RIGHT-frame → mirror the
+    ; window here (space is free in this gap): lo_r = 39-hi_l,
+    ; hi_r = 39-lo_l. Y holds hi_r (no stack push).
+    clc
+    lda CollisionEndX           ; lo_l
+    eor #$FF
+    adc #40                     ; hi_r = 39-lo_l
+    tay
+    clc
+    lda CollisionCellX          ; hi_l
+    eor #$FF
+    adc #40                     ; lo_r = 39-hi_l
+    sta CollisionEndX           ; EndX := lo_r
+    sty CollisionCellX          ; CellX := hi_r
+    lda CollisionCellX          ; hi
+    sec
+    sbc BMWScratch              ; hi - pL
+    bcc .SBdone                 ; hi < pL → strip right of the blast
+    lda CollisionEndX           ; lo
+    cmp BMWScratch
+    bcc .SBtake                 ; lo < pL (blast reaches right, hi >= pL)
+    beq .SBtake                 ; lo == pL
+    sec
+    sbc #1
+    cmp BMWScratch
+    bne .SBdone                 ; lo >= pL+2 → blast ends left of the strip
+.SBtake:
+    lda EnemyDeadMask
+    and #$08
+    bne .SBdone                 ; already destroyed → no double score
+    lda #$08
+    ora EnemyDeadMask
+    sta EnemyDeadMask           ; b3 = strip destroyed (in-room persistent)
+    inc CollisionX              ; +1 wall for the caller's score loop
+.SBdone:
+    lda CollisionX              ; A = walls newly broken (caller contract)
+    jmp $FBF8                   ; ReturnPad → bank0 caller (0 push)
+
 ; ========================================================================
 ; Leaf routines relocated from bank0 — batch A, sounds (leaf_move_plan)
 ; Entry targets for bank0 CallPads; every tail jmps ReturnPad at $FBF8
@@ -995,6 +1052,24 @@ BombMarkWalls:
     lda #19
 .BMWStoreHi:
     sta CollisionCellX          ; blast_hi (loop compares rect.x against it)
+    ; --- Phase 4: capture the strip's left col BEFORE the punch loop
+    ; (ClearPFColumn overwrites LineCount with rect rows). pL = 18+2n,
+    ; n = packed nibble (right_col+1); $FF = symmetric/none. BMWScratch is
+    ; free here (bomb col already folded into blast lo/hi).
+    lda LineCount
+    beq .SBnocap
+    lsr
+    lsr
+    lsr
+    lsr                         ; n = right_col+1
+    asl
+    clc
+    adc #18                     ; pL = 20+2*right_col
+    jmp .SBst
+.SBnocap:
+    lda #$FF
+.SBst:
+    sta BMWScratch
     lda #0
     sta CollisionX              ; walls-broken count (returned in A)
     lda RcBase                  ; cached rect count
@@ -1061,8 +1136,8 @@ BombMarkWalls:
     dex
     bpl .BMWLoop
 .BMWDone:
-    lda CollisionX              ; A = walls newly broken
-    jmp $FBF8                   ; ReturnPad → bank0 caller
+    jmp StripBlastCheck         ; Phase 4 tail (0 push — SP guard unchanged):
+                                ; the check ends in ReturnPad with A = count
 
 ABWXTab: .byte RcW1, RcW1+4, RcW1+8, RcW1+12      ; rect.x (EQU-derived S3.1)
 ABWWTab: .byte RcW1+2, RcW1+6, RcW1+10, RcW1+14   ; rect.w

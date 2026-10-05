@@ -28,6 +28,9 @@ EnemyDataLo = $B1                ; record base — restaged before every exit
 EnemyDataHi = $B2
 BombPacked = $B5                 ; b3-6 WallMask (destroyed rect skip)
 EnemyIndex = $B9                 ; slot save around the col swap + rect walk
+EnemyDeadMask = $BA              ; b0-2 enemy kills; b3 = strip destroyed
+                                 ; (bank1 StripBlastCheck — check_equ_sync
+                                 ; pairs this with kernel's decl)
 RcBase = $89                    ; count — outside bank1's $E0-$EF stomp zone
 RcW1 = $CC                       ; walk base — uniform stride incl. rect4 (S3.2)
 EnemyRamX = $BD
@@ -686,6 +689,18 @@ StageBandTab:
     iny
     lda (RoomPF0Lo),Y
     sta BandTab+2
+    ; --- strip destroyed by a bomb? (EnemyDeadMask b3 — StripBlastCheck
+    ; set it this overscan) → blank all band gates so the cave renders no
+    ; strip; the pack below then emits mask 0 → every overlay stays
+    ; transparent too. BandTab restages from ROM next room entry. ---
+    lda EnemyDeadMask
+    and #$08
+    beq .SBTstripAlive
+    lda #0
+    sta BandTab
+    sta BandTab+1
+    sta BandTab+2
+.SBTstripAlive:
     ; --- Phase 4: pack collision overlay byte → CollisionEndY ($8F) ---
     ; b4-b7 = right_col+1, b0-2 = band mask, 0 = symmetric. Cave never
     ; writes $8F; bank1 HUD entry copies it to LineCount ($84 — cave .Row
