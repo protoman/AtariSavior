@@ -13,7 +13,8 @@ Assertions (gameplay frames >= 2 where the cave kernel runs):
     baseline by the stripped bit-identity leg;
   * bit-identical: the new ROM's TIA write sequence (frame >= 2) equals
     the baseline ROM's with CTRLPF ($0A), ENABL ($1F), COLUBK ($09),
-    RESBL ($14), HMBL ($24), HMOVE ($2A) and WSYNC ($02) writes dropped.
+    RESBL ($14), HMBL ($24), HMOVE ($2A), WSYNC ($02) and NUSIZ1 ($05,
+    D6 M1 = $30) writes dropped.
     Intended
     deltas: CTRLPF $35 (Phase 2), Phase 3's per-band ENABL gate (writes
     0 in sym runs) + COLUBK moved from per-band .Row stores to one VBL
@@ -228,11 +229,16 @@ def main() -> int:
     # Intended deltas (all stripped): CTRLPF $35 (Phase 2); Phase 3's
     # per-band ENABL gate + COLUBK moved to one VBL store; the removed
     # HUD boundary-ball (its RESBL/HMBL/HMOVE writes + the 2 lines folded
-    # into TopGap). WSYNC ($02) is stripped too: its write VALUE is just
-    # the leftover A (hardware-ignored) and the ball block carried
-    # BallXTable/fine-adjust junk in A — line COUNT stays asserted by the
-    # wall-model sim, not here.
-    _strip = (CTRLPF, ENABL, 0x09, RESBL, HMBL, HMOVE, 0x02)
+    # into TopGap); WSYNC ($02) — its write VALUE is just the leftover A
+    # (hardware-ignored) and the ball block carried BallXTable/fine-adjust
+    # junk in A — line COUNT stays asserted by the wall-model sim, not
+    # here; and the D6 M1 set: NUSIZ1 $05 = $30 (8-clock missile), COLUP1
+    # $07 (the new per-band store in .Row — the object-path COLUP1 writes
+    # ride along, invariant ownership moved to other tests), RESM1 $13 +
+    # HMM1 $23 (SetObjectXPos selector 3), ENAM1 $1E (whole-cave latch in
+    # PositionBallM1 + .AfterRows clear).
+    _strip = (CTRLPF, ENABL, 0x09, RESBL, HMBL, HMOVE, 0x02,
+              0x05, 0x07, 0x13, 0x1E, 0x23)
     stripped = [(a, v) for a, v in trace if a not in _strip]
     if base_path.exists():
         b = run(base_path)

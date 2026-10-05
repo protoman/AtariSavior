@@ -285,9 +285,16 @@ def main() -> None:
     assert "beq .WaterRow" in adv, "row 2 must hand off to .WaterRow"
     assert "bcs .AfterRows" in adv, \
         "water pass must exit .AfterRows (X=4 bcs after cpx #TILE_ROWS)"
-    row2 = KERNEL.split("Scanlines this pass")[1].split("sta WSYNC")[0]
-    assert "lda CollisionX" in row2, \
+    gate = KERNEL.split("Scanlines this pass")[1].split(".Line:")[0]
+    assert "lda CollisionX" in gate, \
         "row 2 body count must be the tide value 36+off (CollisionX carrier)"
+    # split tail (2026-10-05): rows 0/1 store 48 + WSYNC + `jmp .Line` BEFORE
+    # the tide block; row 2 loads CollisionX then falls from its own WSYNC
+    # straight into .Line (row1 setup gap 77->74c = the +1 line/frame stall)
+    assert gate.index(".RowLinesTide:") > gate.index("jmp .Line"), \
+        "split tail: tide block must come after rows 0/1's WSYNC jmp"
+    assert gate.rstrip().endswith("sta WSYNC"), \
+        "row 2 must fall straight into .Line from its WSYNC"
     wr = KERNEL.split(".WaterRow:")[1].split(".GrpZero:")[0]
     assert re.search(r"lda\s+#47\b", wr) and "sbc CollisionX" in wr, \
         "strip pass: setup line + (47-(36+off)) bodies = 12-off strip"

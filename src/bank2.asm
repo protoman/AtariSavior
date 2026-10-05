@@ -49,8 +49,8 @@ EnemyDeadMask = $BA            ; LaserHitTest dead bits (written on kill)
 Grp0Ptr = $86                  ; must match kernel.asm (PickPlayerFrame body)
 Grp0PtrHi = $87                ; must match kernel.asm
 SWCHA = $0280                  ; RIOT joystick (same in every bank)
-PlayerSpriteA = $F8D0           ; hand copies (bank0 symbols unreadable here);
-PlayerSpriteB = $F8DC           ; tools/test_miner_colors.py asserts vs bank0.lst
+PlayerSpriteA = $F8D1           ; hand copies (bank0 symbols unreadable here);
+PlayerSpriteB = $F8DD           ; tools/test_miner_colors.py asserts vs bank0.lst
 PlayerWalkA = $FDE7
 PlayerWalkB = $FDF3
 LAMP = 5                       ; enemy type: editor lamp — kernel LAMP must match
@@ -701,6 +701,16 @@ StageBandTab:
     sta BandTab+1
     sta BandTab+2
 .SBTstripAlive:
+    ; --- D6 M1 (left-col block): TilePF0+14 = M1X -> CollisionEndX ($8E) ---
+    ; 0 = no M1 patch. Window: this VBL write -> PositionBallM1 reads it
+    ; later the same VBL (staged-file pattern like Temp/BallX). Overscan
+    ; routines (PHM/LWC/blast/laser) restage their own CollisionEndX values
+    ; AFTER the cave read, so the alias never crosses a frame boundary.
+    ; NOT zeroed with BandTab on strip kill — M1 is a whole-cave latch and
+    ; convert guarantees its cell is solid/unpatched (wall) where it must hide.
+    ldy #14
+    lda (RoomPF0Lo),Y
+    sta CollisionEndX
     ; --- Phase 4: pack collision overlay byte → CollisionEndY ($8F) ---
     ; b4-b7 = right_col+1, b0-2 = band mask, 0 = symmetric. Cave never
     ; writes $8F; bank1 HUD entry copies it to LineCount ($84 — cave .Row

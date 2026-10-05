@@ -133,30 +133,36 @@ def find_rectangles(rows: list[str], solids: str = "#") -> list[tuple[int, int, 
 
 def lines(rows: list[str], prefix: str = "", source: str = "room",
           asym_rows: list[str] | None = None,
-          asym_ball_x: int = 0) -> list[str]:
+          asym_ball_x: int = 0,
+          asym_m1_x: int = 0) -> list[str]:
     """Build the asm lines for a grid (shared by per-room and per-model emission).
 
     asym_rows (D2/D3, models only): resolved right-half rows in right_col
     order (col 0 = center-adjacent) when the model carries asym_patches.
     asym_ball_x: D6 ball x (SetObjectXPos arg, drawn clocks [A-7, A]) from
     resolve_asym_patches — emitted with the flag.
-    After the TilePF tables EVERY model gets the 5-byte meta block:
+    asym_m1_x: D6 M1 x (left-col block, SetObjectXPos arg) — 0 = no M1.
+    After the TilePF tables EVERY model gets the 6-byte meta block:
         M<id>AsymFlag:  .byte 0|1    (0 = symmetric: runtime skips ball)
         M<id>BallX:     .byte 0|87+8*right_col  (staged to Temp, bank2)
         M<id>Band0/1/2: .byte 00|ff  (TilePF0+11..+13; Phase 3 ENABL gate:
                         $ff = band differs from its mirror = ball band,
                         $00 = plain mirror; staged to BandTab $ED-$EF)
+        M<id>M1X:       .byte 0|7+8*left_col  (TilePF0+14; staged to
+                        CollisionEndX $8E by StageBandTab, read by
+                        PositionBallM1 the same VBL; 0 = no M1 patch)
     bank2 reads this block (StageBandTab in the BuildColupF tail) — a bank0
     (RoomPF0Lo) read would fetch bank0's $F9xx zero pad. BallX doubles as
     the flag (0 ⇔ symmetric, enforced by verify_build).
-    Asym models continue with (RightPF0 now at TilePF0+14):
+    Asym models continue with (RightPF0 now at TilePF0+15):
         M<id>RightPF0/1/2:  3 bytes (stride 3; D4: pf_values(reversed(B)))
         M<id>RightRects:    same stream shape as RoomRects; x/w in
                             right-half cell space x2 (x=0 center-adjacent,
                             4px cols), y/band rows; hard-fails above the
                             WallMask budget (4 maskable rects, Risk 1).
-    Symmetric models (asym_rows=None) emit meta 0,0,0,0,0 and no Right*
-    block — otherwise byte-identical to pre-D7/Phase-1 output.
+    Symmetric models (asym_rows=None) emit meta 0,0,0,0,0,0 and no Right*
+    block — otherwise byte-identical to pre-D7/Phase-1 output (the M1X byte
+    is the only layout change: always emitted, 0 when no M1 patch).
     """
     triples = [pf_values(row) for row in rows]
     stride = max(TABLE_STRIDE, len(rows))
@@ -211,7 +217,7 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         table += ["$00"] * (stride - len(table))
         out.append("  .byte " + ", ".join(table))
 
-    # Asym meta at TilePF0+9..+13 — ALWAYS present (bank2 StageBandTab
+    # Asym meta at TilePF0+9..+14 — ALWAYS present (bank2 StageBandTab
     # reads blindly; bank0 gets the staged copies in ZP).
     out.append(f"{prefix}AsymFlag:")
     if asym_rows is None:
@@ -233,6 +239,15 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         out.append(f"{prefix}Band{band}:")
         out.append(f"  .byte ${0xff if on else 0:02x}                  "
                    f"; band {band} ENABL gate ($ff = ball band)")
+
+    # D6 M1 x (TilePF0+14) — ALWAYS emitted so StageBandTab's blind `ldy #14`
+    # read never runs off the end of a sym model's meta into the next model.
+    out.append(f"{prefix}M1X:")
+    if asym_m1_x:
+        out.append(f"  .byte ${asym_m1_x:02x}                  "
+                   f"; D6 M1 x = 7+8*left_col ({asym_m1_x})")
+    else:
+        out.append("  .byte 0                  ; no M1 patch (ENAM1 stays off)")
 
     if asym_rows is not None:
         if len(asym_rows) != len(rows) or any(

@@ -548,17 +548,14 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
 .BgStore:
     sta COLUBK
 
-    ; --- D6 ball positioning (asym): staged BallX in Temp (bank2 reads) ---
-    ; Temp=0 ⇔ symmetric (verify_build: sym meta = BallX 0) → skip: no
-    ; RESPBL/HMBL write, sym frames stay bit-identical. Temp≠0: SetObjectXPos
-    ; arg = ball x (drawn clocks [A-7,A] = right_col cell, 8 clk), selector 4
-    ; = HMBL/RESPBL. Runs before the single HMOVE below. Per-band ENABL comes
-    ; from BandTab at each .Row setup line.
-    lda Temp
-    beq .AsymBallSkip
-    ldx #4                      ; selector 4: HMP0+4=HMBL, RESP0+4=RESPBL
-    jsr SetObjectXPos
-.AsymBallSkip:
+    ; --- D6 objects (asym ball + M1): ONE VBL call (pre-pad = 1B headroom) ---
+    ; PositionBallM1 (fill hole at $F9C4, bank0-only) reads Temp (staged
+    ; BallX; 0 ⇔ symmetric → no RESPBL/HMBL, sym frames bit-identical) and
+    ; CollisionEndX (staged M1X; 0 → no M1) — ball selector 4, M1 selector 3,
+    ; ENAM1 latched on when M1X≠0. Runs before the single HMOVE below
+    ; (HMP0+X shadow registers accumulate). Per-band ENABL comes from BandTab
+    ; at each .Row setup line; .AfterRows clears ENABL+ENAM1 before the HUD.
+    jsr PositionBallM1
 
     ; --- Tide row2 body count → CollisionX (kernel carrier; idle during kernel) ---
     ; Water band surface drifts 0-3 lines down/up. off = triangle(p),
@@ -629,8 +626,9 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; HUD may have changed NUSIZ0/1, COLUP0/1 — must restore
     lda #$30                      ; NUSIZ0 = single copy P0 + M0 width 8 (laser S2.1)
     sta NUSIZ0
-    lda #$00                      ; NUSIZ1 = single copy
-    sta NUSIZ1
+    lda #$30                      ; NUSIZ1 = single copy P1 (bits0-2=0) +
+    sta NUSIZ1                    ;   M1 width 8 (bits4-5 — same encoding as
+                                  ;   NUSIZ0's laser M0; D6 block = 8 clk)
     lda #COLOR_PLAYER             ; restore player color (was green for HUD lives)
     sta COLUP0
     lda #0                        ; clear VDELP0/VDELP1 (bank1 HUD sets them to 1)
@@ -639,7 +637,8 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; ENAM0 NOT cleared here: kernel .Line owns it (BeamMask AND LaserBeamOn
     ; per in-window line; LaserBeamOn boots $00 via .ClearZP = beam off
     ; until first fire press)
-    sta ENAM1                     ; disable missile 1
+    ; ENAM1 NOT cleared here either: PositionBallM1 latches it in VBL when
+    ; the room has an M1 patch (0 → keep previous value = 0 from .AfterRows)
     sta ENABL                     ; default 0 — .Row row0's BandTab gate
                                   ; overwrites before any body line;
                                   ; .AfterRows clears it before the HUD band
@@ -662,8 +661,11 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; PF+color while the right half may show the NEW band. Write cycles
     ; (cN = CPU cycles on the setup line, x = pixel at 4x, HBLANK ends c22.7):
     ;   PF0 w c34 x136 | PF1 w c41 x222 | COLUPF w c48 x296 |
-    ;   ENABL w c55 (BandTab gate, +1c vs the old COLUBK pair) |
-    ;   PF2 w c62 x464 (moved +1c — still past right-half PF2 pixels x449)
+    ;   COLUP1 w c51 x332 (D6 M1 band color — AFTER the left half, so the
+    ;     transition line keeps the OLD band's M1/P1 color on the left, same
+    ;     rule as COLUPF) |
+    ;   ENABL w c58 (BandTab gate, +1c vs the old COLUBK pair) |
+    ;   PF2 w c65 x500 (moved +3c — still past right-half PF2 pixels x449)
     ; COLUPF 3rd: color flips at x296 = past ALL left ON-pixels (PF1 ends
     ; x187, PF2 cell17 ends x287); cells18-19 (x288-319) are never ON in any
     ; model row (PF2 bits6/7 always 0) so the flip there is invisible (BG =
@@ -680,6 +682,9 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; Inline stripe+hot test was 84-109c; budget is 76c/scanline.
     lda ColupfBuf,X
     sta COLUPF
+    sta COLUP1                    ; D6: M1 band color (left-col block) — A
+                                  ; unchanged from COLUPF; P1 inherits it
+                                  ; until .Line's object path rewrites
 
     ; --- Per-band ball gate (Phase 3): BandTab[row] $ff/$00 → ENABL ---
     ; Takes the slot of the per-band `lda Temp / sta COLUBK` (VBL writes
@@ -697,16 +702,24 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; The bottom water strip (last 12-off lines, bottom_band_plan rule 2)
     ; renders in .WaterRow after this pass — its own setup line + (11-off)
     ; bodies keeps the row-2 total at 49 lines (setup+48) exactly.
+    ; Split tail (2026-10-05, row1 setup gap 77→74): row1 gate used to pay
+    ; `bne` 3c to skip the tide load AND share the WSYNC — gap was 77 (stall,
+    ; +1 line/frame). Rows 0/1 now store+WSYNC before the tide block, then
+    ; jmp over it (+3c charged to the FIRST body line = 66max+3jmp+3WSYNC
+    ; = 72 ≤76). Row2 path byte-identical in cost (cpx/beqT/lda/sta/WSYNC
+    ; = 11+3 = 76, zero margin — the `beq` target is 9 bytes ahead, same
+    ; page, T=3c; do not let this block grow toward a page edge).
     cpx #TILE_ROWS-1
     beq .RowLinesTide        ; row 2: tide count (36+off) from CollisionX
     lda #LINES_PER_TILE
-    bne .RowLinesLC          ; always (48 != 0)
+    sta LineCount
+    ; --- Sync to next scanline (rows 0/1) ---
+    sta WSYNC
+    jmp .Line
 .RowLinesTide:
     lda CollisionX           ; 36..39 — VBL tide calc (see VBL comment)
-.RowLinesLC:
     sta LineCount
-
-    ; --- Sync to next scanline ---
+    ; --- Sync to next scanline (row 2; falls straight into .Line) ---
     sta WSYNC
 
 .Line:
@@ -829,6 +842,9 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; the clear: +2B tripped .ds $F9C0).
     lda #0
     sta ENABL
+    sta ENAM1                    ; D6: end M1 whole-cave latch (HERO writes
+                                 ; the ball latch twice per frame — same
+                                 ; discipline; bank1 HUD has no room for it)
     ; Bomb save/restore deleted (S3.0b): BuildColupF writes rows 0-2 only
     ; (TILE_ROWS=3) — nothing touched $F0-$F2 between the old save and
     ; restore (window audited: zero writers), so the round trip was a no-op.
@@ -2344,7 +2360,7 @@ LAMP           = 5             ; type-5 enemy record = editor lamp (white square
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 3             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $FB98        ; frozen address of bank2's LevelDataTable
+LEVEL_DATA_ADDR = $FBA0        ; frozen address of bank2's LevelDataTable
                                 ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
                                 ;  −$FA86 as the ≤2-object room migration
                                 ;  shrank the tables; check_frozen_addrs
@@ -2554,6 +2570,39 @@ OverlayTramp:
                                  ; twin's jmp operand is the live one)
 .OTsym:
     clc
+    rts
+
+; ------------------------------------------------------------------------------
+; PositionBallM1 — D6 asymmetric objects, BOTH positioned in one VBL call.
+; WHY here: pre-pad headroom is 1B — inline ball+m1 (22B) cannot live in the
+; VBL block, so the ball block became this jsr and the body sits in the
+; $F9C4..$FBF7 fill (ReturnPad pin at $FBF8 unaffected; F6-safe:
+; $F9C4 & $1FFF = $19C4 ∉ $1FF6-$1FF9; bank0-only, not a fold twin).
+;   Temp          = staged BallX (bank2 StageBandTab): 0 = symmetric → skip.
+;                   selector 4 = HMBL/RESPBL, ball x drawn clocks [A-7,A].
+;   CollisionEndX = staged M1X (TilePF0+14): 0 = no M1 patch → skip.
+;                   selector 3 = HMM1/RESM1, left-col block x = 7+8*col.
+;                   ENAM1 latched #$02 for the whole cave (hero-style: 2
+;                   ENAM writes/frame — enable here, clear in .AfterRows);
+;                   walls hide the parked M1 in unpatched bands (PF > M1 in
+;                   the priority chain — convert enforces the solid cell).
+; Runs before the single HMOVE (HMP0+X shadow registers accumulate).
+; Sym path cost: jsr+rts overhead only — no RESP/HMP write, frames stay
+; bit-identical to the pre-D6 build.
+; ------------------------------------------------------------------------------
+PositionBallM1:
+    lda Temp
+    beq .M1
+    ldx #4                      ; selector 4: HMP0+4=HMBL, RESP0+4=RESPBL
+    jsr SetObjectXPos
+.M1:
+    lda CollisionEndX
+    beq .Done
+    ldx #3                      ; selector 3: HMP0+3=HMM1, RESP0+3=RESM1
+    jsr SetObjectXPos
+    lda #$02                    ; missile enable D1 (same encoding the laser
+    sta ENAM1                   ;   beam uses for ENAM0)
+.Done:
     rts
 
     .ds $FBF8 - *, 0
