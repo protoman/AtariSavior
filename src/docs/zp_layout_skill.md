@@ -68,7 +68,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $8B | CollisionX | Collision/mirror scratch |
 | $8C | CollisionCellX | Player max tile col |
 | $8D | CollisionCellY | Player top tile row |
-| $8E | CollisionEndX | Player min tile col |
+| $8E | CollisionEndX | Player min tile col; **time-partitioned**: overscan PHM/LWC/blast/laser stage+read their own min-col, and VBL `StageBandTab` stages the D6 M1X (TilePF0+14, 0=none) for `PositionBallM1`'s same-VBL read — window closes before overscan restages, so the alias never crosses frames |
 | $8F | CollisionEndY | Player bottom tile row |
 | $90 | RoomRectsLo | Room rect list ptr lo |
 | $91 | RoomRectsHi | Room rect list ptr hi |

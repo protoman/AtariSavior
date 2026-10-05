@@ -23,6 +23,8 @@ M0Band1:
   .byte $ff                  ; band 1 ENABL gate ($ff = ball band)
 M0Band2:
   .byte $00                  ; band 2 ENABL gate ($ff = ball band)
+M0M1X:
+  .byte 0                  ; no M1 patch (ENAM1 stays off)
 M0RightPF0:
   .byte $f0, $30, $f0
 M0RightPF1:
@@ -60,6 +62,8 @@ M1Band1:
   .byte $00                  ; band 1 ENABL gate ($ff = ball band)
 M1Band2:
   .byte $00                  ; band 2 ENABL gate ($ff = ball band)
+M1M1X:
+  .byte 0                  ; no M1 patch (ENAM1 stays off)
 
 ; Generated from models.json model 2. Do not edit by hand.
 M2RoomRects:
@@ -84,6 +88,8 @@ M2Band1:
   .byte $00                  ; band 1 ENABL gate ($ff = ball band)
 M2Band2:
   .byte $00                  ; band 2 ENABL gate ($ff = ball band)
+M2M1X:
+  .byte 0                  ; no M1 patch (ENAM1 stays off)
 
 ; Generated from models.json model 3. Do not edit by hand.
 M3RoomRects:
@@ -109,6 +115,8 @@ M3Band1:
   .byte $00                  ; band 1 ENABL gate ($ff = ball band)
 M3Band2:
   .byte $00                  ; band 2 ENABL gate ($ff = ball band)
+M3M1X:
+  .byte 0                  ; no M1 patch (ENAM1 stays off)
 
 ; Generated from models.json model 4. Do not edit by hand.
 M4RoomRects:
@@ -134,6 +142,8 @@ M4Band1:
   .byte $00                  ; band 1 ENABL gate ($ff = ball band)
 M4Band2:
   .byte $00                  ; band 2 ENABL gate ($ff = ball band)
+M4M1X:
+  .byte 0                  ; no M1 patch (ENAM1 stays off)
 
 ; Generated from models.json model 5. Do not edit by hand.
 M5RoomRects:
@@ -161,6 +171,8 @@ M5Band1:
   .byte $00                  ; band 1 ENABL gate ($ff = ball band)
 M5Band2:
   .byte $00                  ; band 2 ENABL gate ($ff = ball band)
+M5M1X:
+  .byte 0                  ; no M1 patch (ENAM1 stays off)
 
 ; Generated from models.json model 6. Do not edit by hand.
 M6RoomRects:
@@ -188,6 +200,8 @@ M6Band1:
   .byte $00                  ; band 1 ENABL gate ($ff = ball band)
 M6Band2:
   .byte $00                  ; band 2 ENABL gate ($ff = ball band)
+M6M1X:
+  .byte 0                  ; no M1 patch (ENAM1 stays off)
 
 ; Generated from models.json model 7. Do not edit by hand.
 M7RoomRects:
@@ -212,4 +226,6 @@ M7Band1:
   .byte $00                  ; band 1 ENABL gate ($ff = ball band)
 M7Band2:
   .byte $00                  ; band 2 ENABL gate ($ff = ball band)
+M7M1X:
+  .byte 0                  ; no M1 patch (ENAM1 stays off)
 

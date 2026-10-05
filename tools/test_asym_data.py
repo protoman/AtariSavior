@@ -94,7 +94,7 @@ def main() -> int:
     assert flag == [1], f"AsymFlag {flag} != [1]"
     assert byte_line(lines, "M90BallX:") == [87], \
         f"BallX {byte_line(lines, 'M90BallX:')} != [87]"
-    # meta sits directly after TilePF2 (kernel reads TilePF0+9..+13)
+    # meta sits directly after TilePF2 (kernel reads TilePF0+9..+14)
     assert lines.index("M90AsymFlag:") == lines.index("M90TilePF2:") + 2, \
         "AsymFlag must be the byte right after TilePF2's .byte line"
     assert lines.index("M90BallX:") == lines.index("M90AsymFlag:") + 2, \
@@ -105,8 +105,14 @@ def main() -> int:
     assert byte_line(lines, "M90Band0:") == [0xFF], "band0 must be $ff"
     assert byte_line(lines, "M90Band1:") == [0xFF], "band1 must be $ff"
     assert byte_line(lines, "M90Band2:") == [0xFF], "band2 must be $ff"
-    assert lines.index("M90RightPF0:") == lines.index("M90Band2:") + 2, \
-        "RightPF0 must follow Band2 (meta = 5 bytes, RightPF at +14)"
+    # D6 M1 byte (TilePF0+14, always emitted so StageBandTab's blind
+    # `ldy #14` never runs past a sym model's meta): 0 = no M1 patch yet
+    # (side/2-col envelope is a later phase).
+    assert lines.index("M90M1X:") == lines.index("M90Band2:") + 2, \
+        "M1X must be the byte right after Band2's .byte line"
+    assert byte_line(lines, "M90M1X:") == [0], "fixture has no M1 -> M1X 0"
+    assert lines.index("M90RightPF0:") == lines.index("M90M1X:") + 2, \
+        "RightPF0 must follow M1X (meta = 6 bytes, RightPF at +15)"
     assert byte_line(lines, "M90RightPF0:") == [0x00, 0xF0, 0x00]
     assert byte_line(lines, "M90RightPF1:") == [0x00, 0xFF, 0x00]
     assert byte_line(lines, "M90RightPF2:") == [0xC0, 0xCF, 0xC0]
@@ -127,8 +133,9 @@ def main() -> int:
     assert byte_line(out_a, "M90Band0:") == [0], "sym Band0 must be $00"
     assert byte_line(out_a, "M90Band1:") == [0], "sym Band1 must be $00"
     assert byte_line(out_a, "M90Band2:") == [0], "sym Band2 must be $00"
+    assert byte_line(out_a, "M90M1X:") == [0], "sym M1X must be $00"
     assert out_a.index("M90Band0:") == out_a.index("M90BallX:") + 2, \
-        "sym Band0 must still sit after BallX (5-byte meta always present)"
+        "sym Band0 must still sit after BallX (6-byte meta always present)"
     assert not any("RightPF" in l or "RightRects" in l for l in out_a), \
         "legacy emission must contain no Right block"
 
