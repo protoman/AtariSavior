@@ -5,11 +5,12 @@ bit-identity against the Phase 1 baseline ROM.
 Assertions (gameplay frames >= 2 where the cave kernel runs):
   * last CTRLPF ($0A) write before cave entry (.Row) == $35 on the new
     ROM, == $05 on the baseline ROM, constant across frames;
-  * last ENABL ($1F) write at .Row == 0; no bank0 ENABL write != 0
-    anywhere (bank1 HUD bar writes are excluded via the log's bank tag);
-  * zero bank0 RESBL ($14) / HMBL ($24) writes — symmetric models must
-    never position the ball (bank1 HUD bar ball writes are expected and
-    excluded);
+  * last ENABL ($1F) write at .Row == 0; bank0 ENABL writes are only
+    $00/$FF (Phase 3 gate — model 0 became the asymmetric test model
+    2026-10-04, so $FF band-gate writes are legitimate);
+  * bank0 RESPBL/HMBL (D6 ball positioning) may fire while an asym room
+    is active — presence is owned by test_phase3_ball, equality vs the
+    baseline by the stripped bit-identity leg;
   * bit-identical: the new ROM's TIA write sequence (frame >= 2) equals
     the baseline ROM's with CTRLPF ($0A), ENABL ($1F), COLUBK ($09),
     RESBL ($14), HMBL ($24), HMOVE ($2A) and WSYNC ($02) writes dropped.
@@ -194,18 +195,25 @@ def check(r: dict, want_ctrlpf: int, log_fallback: bool = False) -> list[str]:
                          + f", want ${want_ctrlpf:02X}")
     else:
         fails.append("cave kernel (.Row) never reached")
-    ea = [v for v in r["enabl_at_row"] if v != 0]
+    # ENABL sampled at every .Row entry: kernel-entry default 0 AND loop
+    # re-entries after the band gate ($FF in the asym test room) — values
+    # must stay in {00, ff}.
+    ea = sorted({v for v in r["enabl_at_row"] if v not in (0, 0xFF)})
     if ea:
-        fails.append(f"ENABL at cave entry != 0: {sorted(set(ea))}")
+        fails.append("ENABL at .Row outside {00,ff}: "
+                     + ", ".join(f"${v:02X}" for v in ea))
     bank0 = [(f, a, v) for f, b, a, v in r["log"] if f >= 2 and b == 0]
-    for f, a, v in bank0:
-        if a == ENABL and v != 0:
-            fails.append(f"bank0 ENABL write ${v:02X} at frame {f} (want only 0)")
-            break
-    ball = [(f, a, v) for f, a, v in bank0 if a in (RESBL, HMBL)]
-    if ball:
-        fails.append(f"bank0 ball-reg writes in symmetric run: {ball[:6]} "
-                     f"(count {len(ball)})")
+    # ENABL: only 0 (off) or $FF (Phase 3 band gate — model 0 is an
+    # asymmetric test model since 2026-10-04, so $FF writes are legitimate).
+    bad_enabl = sorted({v for f, a, v in bank0
+                        if a == ENABL and v not in (0, 0xFF)})
+    if bad_enabl:
+        fails.append("bank0 ENABL values outside {00,ff}: "
+                     + ", ".join(f"${v:02X}" for v in bad_enabl))
+    # bank0 RESPBL/HMBL (the D6 ball positioning) are EXPECTED while an
+    # asymmetric room is active — presence/absence is owned by
+    # test_phase2... by test_phase3_ball; equality vs baseline is covered
+    # by the stripped bit-identity leg.
     return fails
 
 

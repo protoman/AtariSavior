@@ -37,7 +37,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-BANKS = [open(SRC / f"bank{i}.bin", "rb").read() for i in range(4)]
+BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
+
+# Phase 4: model 0 is the asymmetric test room (strip at right_col 2) —
+# force its meta symmetric in THIS run's ROM image so the wall-path spec
+# measures pure wall clamps (the strip clamp has its own fixture in
+# test_laser_kill_window). BallX=0 ⇔ sym (staging skips everything).
+_L2 = {}
+for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
+    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(M0(?:BallX|Band[012]))\s*$", _l)
+    if _m:
+        _L2[_m.group(2)] = int(_m.group(1), 16)
+assert len(_L2) == 4, f"bank2 M0 meta labels missing: {sorted(_L2)}"
+for _n in ("M0BallX", "M0Band0", "M0Band1", "M0Band2"):
+    BANKS[2][_L2[_n] - 0xF000] = 0
 
 # labels from bank0.lst (addresses move every commit)
 LABELS = {}

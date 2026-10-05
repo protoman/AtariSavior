@@ -251,13 +251,13 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
             raise ValueError(
                 f"{source}: {len(r_rects)} right wall rects > WallMask budget 4 "
                 f"(Risk 1 — do not silently wrap)")
-        if len(rects) + len(r_rects) > 4:
-            # Phase 4 item 2: the bomb WallMask has 4 slots TOTAL — right-half
-            # rects consume the same slots once they enter the runtime cache.
-            raise ValueError(
-                f"{source}: combined wall rects {len(rects)} left + "
-                f"{len(r_rects)} right > WallMask budget 4 across both halves "
-                f"(Risk 1 — do not silently wrap)")
+        # Phase 4 item 2's COMBINED left+right <= 4 is deferred: plan 4.2
+        # gates it on 'once flag-gated masks exist' (right rects entering the
+        # runtime cache). RightRects are ROM-only today (cell-walk PHM + ball
+        # render consume no mask slots), and every real model's mirror
+        # fragments to 3-6 rects — combined<=4 would block all asym content
+        # (measured 2026-10-04: models 1-7 sum 6..12). Re-add when a cache
+        # loader lands.
         r_hot = find_rectangles(asym_rows, solids="H")
         out.append(f"{prefix}RightRects:")
         out.append(f"  .byte {len(r_rects)}                  ; number of rectangles")
