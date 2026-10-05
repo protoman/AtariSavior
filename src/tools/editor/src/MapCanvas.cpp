@@ -37,11 +37,28 @@ namespace editor {
 // All geometry is derived from the loaded room's width/height so the editor
 // stays correct for any room size the game data may contain.
 
-static int DisplayColumnsFor(int roomWidth) { return roomWidth * 2; }
+// Full-stage display columns (4px each): D7 cells are 8px = 2 display cols
+// per model cell, both halves -> width*4 (10 cells/half -> 40 cols, the
+// game's stage). Pre-D7 (1 col/cell) was width*2.
+static int DisplayColumnsFor(int roomWidth) { return roomWidth * 4; }
 
+// display col -> MODEL cell index (0..width-1), left-frame. Left half =
+// first width*2 display cols; right half mirrors pixel-wise (39-dcol),
+// then the 2-cols-per-cell pair collapses via >>1.
 static int MirrorColumn(int displayCol, int roomWidth) {
     int displayCols = DisplayColumnsFor(roomWidth);
-    return (displayCol < roomWidth) ? displayCol : (displayCols - 1 - displayCol);
+    int half = displayCols / 2;
+    int src = (displayCol < half) ? displayCol : (displayCols - 1 - displayCol);
+    return src >> 1;
+}
+
+// Patch lookup: [row, right_col, tile] triples; returns index or -1.
+static int FindPatch(const hero::ModelData& m, int row, int rightCol) {
+    for (int i = 0; i < (int)m.asym_patches.size(); ++i) {
+        const auto& p = m.asym_patches[i];
+        if ((int)p.size() == 3 && p[0] == row && p[1] == rightCol) return i;
+    }
+    return -1;
 }
 
 // Tile height so the whole visible map (DisplayColumnsFor(roomWidth) columns x
@@ -193,12 +210,22 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
     const int displayRows = roomHeight * 4;
     const int cellH = CellHeightFor(m_tileSize, displayCols, displayRows);
 
-    // Render Grid & Tiles (full mirrored stage)
+    // Render Grid & Tiles (full mirrored stage + painted asym patches)
+    const int half = displayCols / 2;
     for (int y = 0; y < displayRows; ++y) {
         for (int dcol = 0; dcol < displayCols; ++dcol) {
             int x = MirrorColumn(dcol, roomWidth);
             int modelY = y / 4;
             int tileType = model->tiles[modelY * roomWidth + x];
+            // Right half: a painted patch overrides the mirror (wall where
+            // the mirror is open) — drawn with a cyan outline so patches
+            // read as patches, not mirrored walls.
+            bool patch = false;
+            if (dcol >= half) {
+                int rc = (dcol - half) >> 1;
+                patch = FindPatch(*model, modelY, rc) >= 0;
+                if (patch) tileType = (int)hero::TileType::SOLID_WALL;
+            }
             QRect tileRect(dcol * cellW, y * cellH, cellW, cellH);
 
             QColor color = GetTileColor(tileType, modelY);
@@ -212,6 +239,10 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
 
             painter.setPen(QColor(40, 40, 50));
             painter.drawRect(tileRect);
+            if (patch) {
+                painter.setPen(QPen(QColor(0, 210, 255), 2));
+                painter.drawRect(tileRect);
+            }
 
             if (tileType == (int)hero::TileType::FRAGILE_WALL) {
                 painter.setPen(QColor(140, 90, 30));
@@ -224,7 +255,7 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
     }
 
     // Draw seam marker at mirror axis
-    int seamX = roomWidth * m_tileSize;
+    int seamX = half * m_tileSize;
     int canvasHeight = displayRows * cellH;
     painter.setPen(QPen(QColor(90, 90, 110), 2));
     painter.drawLine(seamX, 0, seamX, canvasHeight);
@@ -407,6 +438,50 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         model->tiles[modelY * roomWidth + tileX] = brushVal;
         emit levelModified();
         update();
+    } else if (m_currentBrush == BrushTool::ASYM_PATCH) {
+        // D6 patch = RIGHT half only (full-stage display col >= half).
+        if (!model) return;
+        const int halfCols = displayColumns / 2;
+        if (entityX < halfCols || entityX >= displayColumns) return;
+        const int rc = (entityX - halfCols) >> 1;
+        if (rc < 0 || rc >= roomWidth) return;
+        const int mirrorIdx = modelY * roomWidth + (roomWidth - 1 - rc);
+        const int existing = FindPatch(*model, modelY, rc);
+        if (existing < 0) {
+            // Paint only where the mirror is OPEN — wall-on-wall renders
+            // identically to the mirror (no band, no ball = invisible).
+            if (model->tiles[mirrorIdx] != (int)hero::TileType::AIR) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Asym Patch"),
+                    QObject::tr("Mirror cell (row %1, col %2) is already a "
+                                "wall — the strip would be invisible in the "
+                                "game.\nPaint where the LEFT half is open.")
+                        .arg(modelY + 1)
+                        .arg(roomWidth - 1 - rc + 1));
+                return;
+            }
+            // Single-column envelope: all patches share one right_col (one
+            // ball-x per cave frame; convert hard-fails mixed columns).
+            for (const auto& p : model->asym_patches) {
+                if ((int)p.size() == 3 && p[1] != rc) {
+                    QMessageBox::warning(
+                        nullptr, QObject::tr("Asym Patch"),
+                        QObject::tr("One strip column per model (single "
+                                    "ball-x envelope).\nExisting patches sit "
+                                    "at right column %1 — erase them first, "
+                                    "or paint at column %1.")
+                            .arg(p[1] + 1));
+                    return;
+                }
+            }
+            model->asym_patches.push_back(
+                {modelY, rc, (int)hero::TileType::SOLID_WALL});
+        } else {
+            // Second click on the same cell = remove the patch (toggle).
+            model->asym_patches.erase(model->asym_patches.begin() + existing);
+        }
+        emit levelModified();
+        update();
     } else if (m_currentBrush == BrushTool::ADD_RAFT) {
         int idx = modelY * roomWidth + tileX;
         if (model->tiles[idx] != (int)hero::TileType::RAFT && room && !AllowAddElement()) return;
@@ -572,8 +647,9 @@ void MapCanvas::MouseToTile(const QPointF& pos, bool apply) {
     int tileY = (int)(pos.y() / cellH);
     emit mouseMovedToTile(tileX, tileY);
     if (apply)
-        // tileX is the mirrored room column for tiles; displayCol is the raw
-        // full-stage column (0..2*width-1) used by ApplyBrushAt for entities.
+        // tileX is the mirrored model cell for tiles; displayCol is the raw
+        // full-stage column (0..4*width-1) used by ApplyBrushAt for entities
+        // and the asym-patch brush.
         ApplyBrushAt(tileX, displayCol, tileY);
 }
 

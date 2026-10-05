@@ -38,8 +38,9 @@
 
 namespace editor {
 
-// Savannah Atari prototype room dims: 20 tiles wide (mirrored to 40), 3 bands tall.
-static constexpr int kRoomWidth = 20;
+// D7 grid: 10 cells per half (8px each = 20 display cols/half, 40 total),
+// 3 bands tall. (Pre-D7 was 20 cells/half at 4px.)
+static constexpr int kRoomWidth = 10;
 static constexpr int kRoomHeight = 3;
 // Centered passages carved for room connections.
 static constexpr int kVertExitA = 8;   // vertical exit column range
@@ -133,16 +134,16 @@ void MainWindow::LoadModels() {
             hero::ModelData defaultModel;
             defaultModel.id = 0;
             defaultModel.name = "Default Cave";
-            defaultModel.width = 20;
+            defaultModel.width = kRoomWidth;
             defaultModel.height = kRoomHeight;
             defaultModel.tiles.resize(kRoomWidth * kRoomHeight, (int)hero::TileType::AIR);
-            for (int x = 0; x < 20; ++x) {
-                defaultModel.tiles[0 * 20 + x] = (int)hero::TileType::SOLID_WALL;
-                defaultModel.tiles[(kRoomHeight - 1) * 20 + x] = (int)hero::TileType::SOLID_WALL;
+            for (int x = 0; x < kRoomWidth; ++x) {
+                defaultModel.tiles[0 * kRoomWidth + x] = (int)hero::TileType::SOLID_WALL;
+                defaultModel.tiles[(kRoomHeight - 1) * kRoomWidth + x] = (int)hero::TileType::SOLID_WALL;
             }
             for (int y = 0; y < kRoomHeight; ++y) {
-                defaultModel.tiles[y * 20 + 0] = (int)hero::TileType::SOLID_WALL;
-                defaultModel.tiles[y * 20 + 19] = (int)hero::TileType::SOLID_WALL;
+                defaultModel.tiles[y * kRoomWidth + 0] = (int)hero::TileType::SOLID_WALL;
+                defaultModel.tiles[y * kRoomWidth + (kRoomWidth - 1)] = (int)hero::TileType::SOLID_WALL;
             }
             m_models.push_back(defaultModel);
             SaveModels();
@@ -198,6 +199,7 @@ void MainWindow::SetupUI() {
         { BrushTool::SOLID_WALL, "1. Solid Rock Wall" },
         { BrushTool::HOT_ROCK_WALL, "2. Hot Rock Wall" },
         { BrushTool::ERASE_AIR, "0. Air (Erase)" },
+        { BrushTool::ASYM_PATCH, "4. Asym Patch (right half)" },
     };
     for (const auto& t : modelTools) {
         QListWidgetItem* item = new QListWidgetItem(t.text);
@@ -428,16 +430,16 @@ void MainWindow::AddModel() {
     hero::ModelData newModel;
     newModel.id = (int)m_models.size();
     newModel.name = "Model " + std::to_string(newModel.id + 1);
-    newModel.width = 20;
+    newModel.width = kRoomWidth;
     newModel.height = kRoomHeight;
     newModel.tiles.resize(kRoomWidth * kRoomHeight, (int)hero::TileType::AIR);
-    for (int x = 0; x < 20; ++x) {
-        newModel.tiles[0 * 20 + x] = (int)hero::TileType::SOLID_WALL;
-        newModel.tiles[(kRoomHeight - 1) * 20 + x] = (int)hero::TileType::SOLID_WALL;
+    for (int x = 0; x < kRoomWidth; ++x) {
+        newModel.tiles[0 * kRoomWidth + x] = (int)hero::TileType::SOLID_WALL;
+        newModel.tiles[(kRoomHeight - 1) * kRoomWidth + x] = (int)hero::TileType::SOLID_WALL;
     }
     for (int y = 0; y < kRoomHeight; ++y) {
-        newModel.tiles[y * 20 + 0] = (int)hero::TileType::SOLID_WALL;
-        newModel.tiles[y * 20 + 19] = (int)hero::TileType::SOLID_WALL;
+        newModel.tiles[y * kRoomWidth + 0] = (int)hero::TileType::SOLID_WALL;
+        newModel.tiles[y * kRoomWidth + (kRoomWidth - 1)] = (int)hero::TileType::SOLID_WALL;
     }
     m_models.push_back(newModel);
     SaveModels();
@@ -912,6 +914,13 @@ QIcon MainWindow::MakeToolIcon(BrushTool tool) const {
         case BrushTool::ADD_MAGMA:
             p.fillRect(r, QColor(255, 100, 0));
             break;
+        case BrushTool::ASYM_PATCH: {
+            QColor c(m_levelData.wall_r, m_levelData.wall_g, m_levelData.wall_b);
+            p.fillRect(r, c);
+            p.setPen(QPen(QColor(0, 210, 255), 3));
+            p.drawRect(r);
+            break;
+        }
         case BrushTool::DELETE_ENTITY:
             p.setPen(QColor(70, 70, 85));
             p.drawRect(pix.rect().adjusted(1, 1, -1, -1));
