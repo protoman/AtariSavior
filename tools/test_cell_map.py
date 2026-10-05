@@ -69,7 +69,7 @@ need0 = {"PlayerHitsMap", "RoomX", "RoomY", "PlayerDir", "BombPacked",
          "RoomRectsLo", "RoomRectsHi", "Temp", "CollisionCellX",
          "CollisionCellY", "CollisionEndX", "CollisionEndY",
          "EnemyDataLo", "EnemyDataHi", "EnemyIndex", "EnemyRamX",
-         "EnemyRamD", "UE_Next", "LineCount"}
+         "EnemyRamD", "UE_Next", "LineCount", "FetchPtr"}
 L0 = parse_labels(SRC / "bank0.lst", need0)
 missing = need0 - L0.keys()
 if missing:
@@ -261,6 +261,44 @@ def asym_checks(rows: list[str]) -> int:
     return checks
 
 
+def moth_strip_checks() -> int:
+    """Phase 4: moth vs the D6 patch strip (bank2 .MothColsOk overlay).
+
+    run_moth enters at .MothColsOk (post-prologue), so the fixture stashes
+    vl into FetchPtr exactly like the prologue's new `sta FetchPtr` would.
+    Rows fully open => the mirrored walk always misses; only the overlay
+    can turn the moth. Strip: right_col 9 (px 152..159, BallX=159),
+    band row 1."""
+    mem = Mem()
+    load_case(mem, [".........."] * 3)
+    top = bot = 1
+    packed = (9 + 1) << 4 | 0x02       # right_col+1 in b4-7, band1 bit
+    inactive = (9 + 1) << 4 | 0x01     # band0 only -> strip transparent here
+    checks = 0
+
+    def probe(temp: int, line_count: int) -> bool:
+        r = mem.ram
+        r[L0["LineCount"] - 0x80] = line_count
+        vl = temp - 5 if temp < 15 else temp - 7   # prologue .MvlA math
+        r[L0["FetchPtr"] - 0x80] = vl & 0xFF
+        return run_moth(mem, 0, 19, top, bot, temp)
+
+    # in-strip candidate (vl=150 in [145,159]) -> overlay turns
+    assert probe(157, packed), "active strip must block the moth at px157"
+    checks += 1
+    # left of strip (vl=133 < 145) -> mirrored walk (open rows) commits
+    assert not probe(140, packed), "moth left of strip must walk through"
+    checks += 1
+    # symmetric control: no overlay, same candidate -> commits
+    assert not probe(157, 0), "sym run must not turn at the strip"
+    checks += 1
+    # inactive band: strip painted elsewhere -> transparent
+    assert not probe(157, inactive), "inactive-band strip must be transparent"
+    checks += 1
+    mem.ram[L0["LineCount"] - 0x80] = 0
+    return checks
+
+
 def load_case(mem: Mem, rows: list[str]) -> None:
     for r, row in enumerate(rows):
         pf0, pf1, pf2 = pf_values(row)
@@ -337,8 +375,10 @@ def main() -> int:
                         moth_checks += 1
     # --- Phase 4: asym overlay (packed LineCount) — crossing + px/band ---
     asym = asym_checks(cases[0][1])
+    strip = moth_strip_checks()
     print(f"test_cell_map: OK ({checks} PHM boxes, {moth_checks} moth "
-          f"boxes, {asym} asym overlay, {len(cases)} geometries)")
+          f"boxes, {asym} asym overlay, {strip} moth-strip, "
+          f"{len(cases)} geometries)")
     return 0
 
 

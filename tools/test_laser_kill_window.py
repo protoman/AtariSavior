@@ -36,7 +36,7 @@ SRC = ROOT / "src"
 
 need0 = {"EnemyCount", "EnemyDeadMask", "EnemyRamX", "EnemyRamY", "RoomY",
          "CollisionX", "CollisionEndX", "CollisionCellX", "RcBase",
-         "EnemyDataLo", "EnemyDataHi", "PlayerDir"}
+         "EnemyDataLo", "EnemyDataHi", "PlayerDir", "LineCount"}
 L0 = parse_labels(SRC / "bank0.lst", need0)
 need2 = {"LaserHitTestBody", "LEVEL1_EnemyDataTable"}
 L2 = parse_labels(SRC / "bank2.lst", need2)
@@ -103,8 +103,43 @@ def main() -> int:
     assert kill_y == want_y, (
         f"kill Y window {kill_y} != beam-row overlap {want_y}")
 
+    # --- LWC patch-strip clamp (Phase 4): strip cols 38-39 (right_col 9)
+    # in an active band must clamp the swept tip; inactive/sym must not.
+    def lwc_clamp(packed: int) -> int:
+        r = mem.ram
+        r[L0["EnemyCount"] - 0x80] = 0          # no enemies -> clean exit
+        r[L0["LineCount"] - 0x80] = packed
+        r[L0["RoomY"] - 0x80] = BEAM_Y          # beam rows -> band 1
+        r[L0["CollisionX"] - 0x80] = 159        # unclamped tip
+        r[L0["CollisionEndX"] - 0x80] = 20      # path cols: full right half
+        r[L0["CollisionCellX"] - 0x80] = 39
+        r[L0["RcBase"] - 0x80] = 0              # empty cache: buffer = map
+        r[L0["PlayerDir"] - 0x80] = 0
+        mem.bank = 2
+        mpu = MPU(memory=mem)
+        mpu.pc = L2["LaserHitTestBody"]
+        mpu.a = mpu.x = mpu.y = 0
+        mpu.sp = 0xFD
+        mem[0x1FF] = 0x01
+        mem[0x1FE] = 0x00
+        for _ in range(5000):
+            mpu.step()
+            if mpu.pc == RTS_SENTINEL:
+                return r[L0["CollisionX"] - 0x80]
+        sys.exit("LWC clamp run never returned")
+    # packed: (right_col+1)<<4 | band mask; band 1 active only
+    active = (9 + 1) << 4 | 0x02
+    inactive = (9 + 1) << 4 | 0x01
+    assert lwc_clamp(active) == 38 * 4 + 2, (
+        f"active strip must clamp tip to face+2 (got {lwc_clamp(active)})")
+    assert lwc_clamp(0) == 159, (
+        f"symmetric run must not clamp (got {lwc_clamp(0)})")
+    assert lwc_clamp(inactive) == 159, (
+        f"inactive-band strip must stay transparent (got {lwc_clamp(inactive)})")
+
     print(f"test_laser_kill_window: OK (X window {kill_x[0]}..{kill_x[-1]} "
-          f"= [A-7,A+7], Y window {kill_y[0]}..{kill_y[-1]})")
+          f"= [A-7,A+7], Y window {kill_y[0]}..{kill_y[-1]}, LWC clamp "
+          f"active/sym/inactive)")
     return 0
 
 
