@@ -15,15 +15,28 @@ M0TilePF1:
 M0TilePF2:
   .byte $30, $30, $3f
 M0AsymFlag:
-  .byte 0                  ; 0 = symmetric (mirror cave)
+  .byte 1                  ; 1 = asymmetric (D6 ball mask)
 M0BallX:
-  .byte 0                  ; ball x unused when symmetric
+  .byte $67                  ; D6 ball x = 87+8*right_col (103)
 M0Band0:
-  .byte $00                  ; band 0 ENABL gate ($ff = ball band)
+  .byte $ff                  ; band 0 ENABL gate ($ff = ball band)
 M0Band1:
-  .byte $00                  ; band 1 ENABL gate ($ff = ball band)
+  .byte $ff                  ; band 1 ENABL gate ($ff = ball band)
 M0Band2:
   .byte $00                  ; band 2 ENABL gate ($ff = ball band)
+M0RightPF0:
+  .byte $f0, $30, $f0
+M0RightPF1:
+  .byte $00, $00, $ff
+M0RightPF2:
+  .byte $3c, $3c, $3f
+M0RightRects:
+  .byte 4                  ; number of rectangles
+  .byte 2, 0, 4, 3  ; x(right_col*2), y, w, h
+  .byte 16, 0, 4, 1  ; x(right_col*2), y, w, h
+  .byte 18, 1, 2, 1  ; x(right_col*2), y, w, h
+  .byte 6, 2, 14, 1  ; x(right_col*2), y, w, h
+  .byte 0              ; number of hot rectangles
 
 ; Generated from models.json model 1. Do not edit by hand.
 M1RoomRects:
