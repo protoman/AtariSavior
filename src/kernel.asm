@@ -2992,7 +2992,7 @@ ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
 ; ------------------------------------------------------------------------------
 ; PickPlayerFrame — VBL entry tramp: the VBL `jsr` lands here (bank0), `sta
 ; $1FF8` switches to bank2, the `jmp` is fetched from bank2's byte-identical
-; mirror at this same address and lands on bank2's body ($F3C0). The body
+; mirror at this same address and lands on bank2's body ($F3C4). The body
 ; tail-jmps ReturnPad ($FBF8) -> `sta $1FF6/rts` returns to the VBL jsr
 ; (BuildColupF pad pattern; 0 extra stack depth).
 ; Guards: verify_build check_frame_tramp (byte-identity + operand = bank2
@@ -3001,7 +3001,7 @@ ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
 ; ------------------------------------------------------------------------------
 PickPlayerFrame:
     sta $1FF8                   ; select bank2
-    jmp $F3C0                   ; bank2 PickPlayerFrame body (operand pinned
+    jmp $F3C4                   ; bank2 PickPlayerFrame body (operand pinned
                                 ;   by verify_frame_tramp = bank2.lst label)
 
 ; ------------------------------------------------------------------------------
@@ -3424,7 +3424,7 @@ SweepOff:
 ; ($FBF8) -> rts back to the bank0 jsr. Ends $FFEB — $FFF2-$FFF9 stay fill
 ; (F6 hotspot mirrors).
 ; ------------------------------------------------------------------------------
-TallyEntry = $F310              ; bank2 TallyEntry — operand must match label
+TallyEntry = $F313              ; bank2 TallyEntry — operand must match label
 TallyTramp:
     sta $1FF8
     jmp TallyEntry

@@ -179,6 +179,8 @@ MothDoWalk:
 .Mvl7a:
     sbc #7                     ; C=1 -> Temp - 7
 .MvlA:
+    sta FetchPtr              ; Phase 4: raw vl px (overlay reuses it; walk
+                              ; never touches FetchPtr, MothExit restages)
     lsr
     lsr                        ; first block = vl >> 2
     cmp #TILE_COLUMNS
@@ -218,6 +220,42 @@ MothDoWalk:
     sta CollisionCellX
 .MothColsOk:
 
+; --- Phase 4: patch-strip block (mirror-free, BEFORE the mirrored walk) ---
+; The walk sees the strip as air (PF = mirror), so the candidate's RAW box
+; (vl stashed in FetchPtr by the prologue) is tested against the strip px
+; [BallX-7, BallX] (BallX = 87+8*rc, PHMOverlay envelope) x band mask on
+; the moth's rows (OvHead/OvTail). Overlap -> turn; else mirrored walk runs
+; unchanged (left-half walls still block). LineCount=0 → mask&bits=0 → skip.
+    ldx CollisionCellY
+    lda OvHead,X
+    ldx CollisionEndY
+    and OvTail,X
+    and LineCount
+    beq .MwSym                ; strip not painted in the moth's band rows
+    lda LineCount
+    lsr
+    lsr
+    lsr
+    lsr                       ; n = right_col+1
+    asl
+    asl
+    asl                       ; 8n
+    clc
+    adc #79                   ; BallX = 79+8n = 87+8*rc
+    sta CollisionX            ; walk re-inits CollisionX at .MwRow — free
+    lda FetchPtr              ; raw vl (prologue stash)
+    cmp CollisionX            ; vl vs BallX
+    beq .MovT2
+    bcc .MovT2
+    bcs .MwSym                ; vl > BallX → box fully right of strip
+.MovT2:
+    lda CollisionX
+    sec
+    sbc #14                   ; BallX-14
+    cmp FetchPtr              ; vs vl
+    bcc .MothTurn             ; (BallX-14) < vl → overlap
+    beq .MothTurn
+.MwSym:
 ; --- Cell walk (cell_collision_plan 4.1): test the PF buffers directly ---
 ; Same walk as PlayerHitsMap 2.1: the prologue already mirrors cols to
 ; the left half (and swaps min/max after mirror), so no in-loop mirror.
@@ -355,7 +393,11 @@ LaserWallClamp:
     ; band row (overscan-only alias of RowIdx, kernel idle).
     lda CollisionEndX          ; c0 (display space, staged by LaserInput)
     sta FetchPtr
-.LWcol:
+    ; --- Phase 4: patch-strip setup+test (out-of-line @ $F600 — the
+    ; pre-TallyEntry fill is ~0B; 12B inline overflowed the $F310 pin).
+    jmp LWpSetup               ; gap: decode + strip test, tails to the
+                               ; globals LWpSolid / LWpNotPatch below
+LWpNotPatch:                   ; global: gap test's miss target
     lda FetchPtr
     cmp #20
     bcc .LWsrc                 ; left-half display col = source col
@@ -373,13 +415,13 @@ LaserWallClamp:
     tay
     lda PF0Buf,Y
     and ColMask,X
-    bne .LWsolid
+    bne LWpSolid
     lda RectCount
     cmp CollisionEndY
-    beq .LWnext                ; bottom row tested -> col is clear
+    beq LWpNext                ; bottom row tested -> col is clear
     inc RectCount
     bne .LWrow                 ; always (RectCount <= 2, never wraps to 0)
-.LWsolid:
+LWpSolid:                      ; global: gap test's strip target
     ; first solid display col on the travel path folds into CollisionX:
     ;   right: cand = col*4+2, min-apply (tip lands 2px inside the wall)
     ;   left:  cand = col*4+9, max-apply (start lands 2px inside)
@@ -392,9 +434,9 @@ LaserWallClamp:
     clc
     adc #9                     ; cand = face+9 (start A >= face+9, S6b)
     cmp CollisionX
-    bcc .LWnext                ; cand < A -> keep (max-apply)
+    bcc LWpNext                ; cand < A -> keep (max-apply)
     sta CollisionX
-    jmp .LWnext
+    jmp LWpNext
 .LWsR:
     lda FetchPtr               ; right
     asl
@@ -402,14 +444,14 @@ LaserWallClamp:
     clc
     adc #2                     ; cand = face+2 (tip A <= face+2, S6b)
     cmp CollisionX
-    bcs .LWnext                ; cand >= A -> no pull (min-apply)
+    bcs LWpNext                ; cand >= A -> no pull (min-apply)
     sta CollisionX
-.LWnext:
+LWpNext:                       ; global: loop end (row-loop + clamp targets)
     lda FetchPtr
     cmp CollisionCellX         ; just processed c1?
     beq .LWdone
     inc FetchPtr
-    jmp .LWcol
+    jmp LWpTest
 .LWdone:
     jmp LaserClampDone          ; back to the body (stack depth unchanged)
 
@@ -458,9 +500,11 @@ MothGate:
 ;     dec TallyTicks. Event A: b0 = add 50, b1 = coin tone written here
 ;     (AUDC/F/V + BombSnd=8; bank0 TallyWork's UpdateBombSound holds it,
 ;     coin = every 4 ticks = 200 pts), b2 = done (last tick consumed).
-; Pinned $F310 (org $F9D9 below: level data pins the overflow = build fails).
+; Pinned $F313 (org $F9D9 below: level data pins the overflow = build fails).
+; Was $F310 — +3 for the Phase 4 LWC patch-strip walk-head (kernel
+; TallyEntry EQU moves with it; both jmp operands are symbolic).
 ; ------------------------------------------------------------------------------
-    .ds $F310 - *, 0
+    .ds $F313 - *, 0
 TallyEntry:
     lda DropTarget
     beq .TEArm
@@ -575,7 +619,7 @@ BCFDarkMask:
 
 ; --- Level data (frozen addresses — pointer values must match bank0's
 ;     original layout, level_bank_plan P2.1: $F9D9-$FB1E = 326B) ---
-    .ds $F3C0 - *, 0            ; pin body entry = bank0 tramp's jmp operand
+    .ds $F3C4 - *, 0            ; pin body entry = bank0 tramp's jmp operand
 ; ------------------------------------------------------------------------------
 ; PickPlayerFrame body — entered from bank0's VBL via the $FDE1 tramp (the
 ; jmp operand is fetched from THIS bank). GRP0 frame pick: jet flutter
@@ -680,6 +724,47 @@ StageBandTab:
     sta CollisionEndY
 .SBTPack:
     jmp $FBF8                   ; ReturnPad → bank0 VBLANK caller
+
+    .ds $F600 - *, 0            ; Phase 4 LWC patch-strip setup+test (out-of-
+                                 ; line: the pre-TallyEntry fill is ~0B)
+LWpSetup:
+    ; Marker = pL = 18+2*right_col (patch strip LEFT display col) when the
+    ; strip is solid for SOME tested band row, else $FC (d-$FC >= 4 for all
+    ; display cols — never matches the {0,1} strip test).
+    ; Band-active = LineCount mask x OvHead[top] & OvTail[bottom] (same
+    ; tables as PHMOverlay): an inactive band keeps the strip transparent.
+    lda LineCount
+    beq .LWpNone
+    ldx CollisionCellY
+    lda OvHead,X
+    ldx CollisionEndY
+    and OvTail,X
+    and LineCount
+    beq .LWpNone
+    lda LineCount
+    lsr
+    lsr
+    lsr
+    lsr                         ; n = right_col+1
+    asl                         ; 2n
+    clc
+    adc #18                     ; 18+2n = 20+2*(n-1) = pL
+    jmp .LWpSet
+.LWpNone:
+    lda #$FC
+.LWpSet:
+    sta CollisionEndX           ; marker (c0 already consumed by LWC entry)
+LWpTest:
+    ; d - marker in {0,1} = display col pL or pL+1 → solid (clamp folds
+    ; exactly like a real 2-col wall); borrow/none land >=2.
+    lda FetchPtr
+    sec
+    sbc CollisionEndX
+    cmp #2
+    bcc .LWhit
+    jmp LWpNotPatch             ; miss → mirror/row walk (LWC, same bank)
+.LWhit:
+    jmp LWpSolid                ; strip col → clamp fold (LWC, same bank)
 
     .ds $F9B8 - *, 0            ; Phase 4 overlay tramp twin (kernel.asm's
                                  ; copy sits at the same address — bank0
@@ -934,7 +1019,7 @@ HotOverlapBody:
                                  ; with kernel.asm's copy — verify_frame_tramp)
 PickPlayerFrameTramp:
     sta $1FF8                   ; executed only as the post-switch fetch image
-    jmp $F3C0                   ; bank2 PickPlayerFrame body (this bank)
+    jmp $F3C4                   ; bank2 PickPlayerFrame body (this bank)
 
     .ds $FE00 - *, 0            ; PHMOverlay pinned: bank0's dead jmp operand
                                  ; is the literal $FE00 (moth-style dead bytes;
