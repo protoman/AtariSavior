@@ -725,13 +725,22 @@ def check_levels(src: Path) -> None:
                 continue
             if f"M{mid}TilePF0:" not in mda:
                 continue                      # model not referenced by any room
-            asym, ball_x = res if res else (None, 0)
+            asym, ball_x, m1_x = res if res else (None, 0, 0)
             flag = meta_byte(mid, "AsymFlag")
             bx = meta_byte(mid, "BallX")
             if flag is None or bx is None:
                 err(f"model {mid}: AsymFlag/BallX meta missing "
                     f"(must sit at TilePF0+9/+10 for every model)")
                 continue
+            # Phase A: M1X at TilePF0+14 (staged to CollisionEndX by
+            # StageBandTab; 0 = no M1 patch, 7+8*left_col otherwise).
+            got_m1x = meta_byte(mid, "M1X")
+            if got_m1x is None:
+                err(f"model {mid}: M1X meta missing "
+                    f"(must sit at TilePF0+14 for every model)")
+            elif got_m1x != m1_x:
+                err(f"model {mid}: M1X=${got_m1x:02X}, want ${m1_x:02X} "
+                    f"(7+8*left_col, 0 = no M1 patch)")
             # Phase 3: Band0/1/2 at TilePF0+11..+13 ($ff = right row is not
             # the plain left-row mirror = ball band; staged by StageBandTab).
             for bidx in range(3):

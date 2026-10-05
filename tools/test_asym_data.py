@@ -10,8 +10,11 @@ Covers:
      is byte-identical to the plain symmetric call;
   3. envelope rejects (fail loudly): subtractive patch, patches spanning
      >1 column (also the >1-cell run case), out-of-range row/col, malformed
-     patch;
-  4. convert-side right-rect budget: >4 right wall rects raises (Risk 1).
+     patch, M1 side=2/open-tile/two-left-cols, M1 wall-hide guard
+     (patch-on-wall + open-unpatched);
+  4. convert-side right-rect budget: >4 right wall rects raises (Risk 1);
+  5. M1-only model (side=1, no ball) + case 3 fixture (side-by-side
+     ball+M1, ball_x=143, m1_x=71).
 
 Run: /home/iuri/python3/bin/python3 tools/test_asym_data.py
 """
@@ -40,14 +43,14 @@ def make_model(patches=None, tiles=None):
 
 
 def emitted(model):
-    """resolve + emit -> (asm lines list, (right rows, ball x) | None)."""
+    """resolve + emit -> (asm lines list, (right rows, ball x, m1 x) | None)."""
     left = convert_level.rows_from_json({"model_id": model["id"]},
                                         {model["id"]: model})
     res = convert_level.resolve_asym_patches(model, left)
-    asym, ball_x = res if res else (None, 0)
+    asym, ball_x, m1_x = res if res else (None, 0, 0)
     lines = convert_room.lines(left, prefix=f"M{model['id']}",
                                source="test", asym_rows=asym,
-                               asym_ball_x=ball_x)
+                               asym_ball_x=ball_x, asym_m1_x=m1_x)
     return lines, res
 
 
@@ -85,9 +88,10 @@ def main() -> int:
     model = make_model(patches=[[0, 0, 1], [1, 0, 1], [2, 0, 1]])
     lines, res = emitted(model)
     assert res is not None
-    asym, ball_x = res
+    asym, ball_x, m1_x = res
     assert len(asym) == 3
     assert ball_x == 87, f"ball x {ball_x} != 87 (right_col 0 = 87+8*0)"
+    assert m1_x == 0, f"m1 x {m1_x} != 0 (no side-1 patches)"
     assert asym[0] == "#........." and asym[1] == "#.########" \
         and asym[2] == "#.........", asym
     flag = byte_line(lines, "M90AsymFlag:")
@@ -147,6 +151,44 @@ def main() -> int:
     assert byte_line(out_p, "M90Band1:") == [0x00], "mirror band1 = $00"
     assert byte_line(out_p, "M90Band2:") == [0x00], "mirror band2 = $00"
 
+    # --- 2c. M1-only (side=1, no ball): case 2 stack ---------------------
+    # BASE tiles: cell3 open in bands 0/2, wall in band1 -> patch bands {0,2}.
+    m1_only = make_model(patches=[[0, 3, 1, 1], [2, 3, 1, 1]])
+    out_m, res_m = emitted(m1_only)
+    assert res_m is not None
+    asym_m, bx_m, m1x_m = res_m
+    assert asym_m is None, "M1-only keeps the right half a plain mirror"
+    assert bx_m == 0, f"ball x {bx_m} != 0 (no right patches)"
+    assert m1x_m == 31, f"m1 x {m1x_m} != 31 (left col 3 = 7+8*3)"
+    assert byte_line(out_m, "M90AsymFlag:") == [0], "M1-only flag = 0"
+    assert byte_line(out_m, "M90BallX:") == [0], "M1-only BallX = 0"
+    assert byte_line(out_m, "M90M1X:") == [31], "M1X = 7+8*3"
+    assert not any("RightPF" in l or "RightRects" in l for l in out_m), \
+        "M1-only: right half is mirror, no Right block"
+    # Band bytes are the BALL gate (ENABL) only -> all off for an M1-only
+    # model; M1 visibility comes from the wall-hide guard, not BandTab.
+    for b in range(3):
+        assert byte_line(out_m, f"M90Band{b}:") == [0], \
+            f"M1-only Band{b} must be $00"
+
+    # --- 2d. case 3: side-by-side same band, different x (ball + M1) -----
+    # tiles: band0 all open; bands 1/2 wall at cell 8 (M1 wall-hide).
+    case3_tiles = [0] * 10 + [1] * 9 + [0] + [1] * 9 + [0]
+    case3 = make_model(patches=[[0, 7, 1], [0, 8, 1, 1]], tiles=case3_tiles)
+    out_c, res_c = emitted(case3)
+    assert res_c is not None
+    asym_c, bx_c, m1x_c = res_c
+    assert asym_c is not None, "ball patch present -> right rows emitted"
+    assert bx_c == 143, f"ball x {bx_c} != 143 (right_col 7 = 87+8*7)"
+    assert m1x_c == 71, f"m1 x {m1x_c} != 71 (left col 8 = 7+8*8)"
+    assert byte_line(out_c, "M90BallX:") == [143]
+    assert byte_line(out_c, "M90M1X:") == [71]
+    assert byte_line(out_c, "M90Band0:") == [0xFF], "patched band0 = $ff"
+    assert byte_line(out_c, "M90Band1:") == [0x00]
+    assert byte_line(out_c, "M90Band2:") == [0x00]
+    rc3 = byte_line(out_c, "M90RightRects:")
+    assert 0 < rc3[0] <= 4, f"case3 right rects {rc3[0]} outside 1..4"
+
     # --- 3. envelope rejects --------------------------------------------
     # subtractive: band0 is open, its mirror at right_col0 is open too —
     # use band1 (wall) mirrored: right_col8 mirrors left cell1 = wall.
@@ -158,9 +200,22 @@ def main() -> int:
                   "ONE column")
     # out-of-range
     expect_reject(make_model(patches=[[3, 0, 1]]), "row 3")
-    expect_reject(make_model(patches=[[1, 10, 1]]), "right_col 10")
+    expect_reject(make_model(patches=[[1, 10, 1]]), "col 10")
     # malformed patch
-    expect_reject(make_model(patches=[[1, 0]]), "must be [row, right_col, tile]")
+    expect_reject(make_model(patches=[[1, 0]]), "must be [row, col, tile]")
+    # M1-side envelope: side out of range, open tile, two left columns
+    expect_reject(make_model(patches=[[0, 0, 1, 2]]),
+                  "not in 0 (right/ball)")
+    expect_reject(make_model(patches=[[0, 3, 0, 1]]), "wall tile")
+    expect_reject(
+        make_model(patches=[[0, 3, 1, 1], [2, 3, 1, 1], [0, 4, 1, 1]]),
+        "ONE column")
+    # M1 wall-hide guard (whole-cave ENAM1 latch):
+    # cell3 open in band 2 with no patch -> latch would paint it
+    expect_reject(make_model(patches=[[0, 3, 1, 1]]), "wall-hide guard")
+    # cell3 wall in a patched band -> latch would hide the patch
+    expect_reject(make_model(patches=[[0, 3, 1, 1], [1, 3, 1, 1]]),
+                  "hide the patch")
 
     # --- 4. convert-side right-rect budget (Risk 1) ----------------------
     five_rects = ["#.#.#.#.#.", "..........", ".........."]
@@ -185,8 +240,8 @@ def main() -> int:
             f"combined 1+4 must emit while right<=4 (deferral): {exc}")
     assert any("M90RightRects:" in l for l in emit_lines), "right block missing"
 
-    print("test_asym_data: OK (valid + partial bands + legacy + "
-          "6 envelope rejects + right budget + combined deferred)")
+    print("test_asym_data: OK (valid + partial bands + M1-only + case3 + "
+          "legacy + 11 envelope rejects + right budget + combined deferred)")
     return 0
 
 

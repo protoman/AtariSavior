@@ -166,59 +166,116 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
 
 
 def resolve_asym_patches(model: dict,
-                         left_rows: list[str]) -> tuple[list[str], int] | None:
-    """D3 asym_patches -> (resolved right-half rows, ball x), or None.
+                         left_rows: list[str]
+                         ) -> tuple[list[str] | None, int, int] | None:
+    """D3 asym_patches -> (right rows|None, ball x, m1 x), or None (no patches).
 
     Right rows are in right_col order (col 0 = center-adjacent); they start
     as the mirror of the left rows and get the patches applied on top.
+    None (first element) = no right-side patches at all (the right half
+    stays the plain mirror — no ball asymmetry, no Right* block emitted).
 
     ball x (D6, Phase 2): one SetObjectXPos arg for the whole cave frame.
     Calibrated object model (kernel S6b): arg A draws clocks [A-7, A];
     right_col c occupies clocks [80+8c, 87+8c] (2 display cols x 4 clks,
     right half starts at 80) -> A = 87 + 8c (c=0..9 -> 87..159).
 
-    D6 envelope (plan Phase 1 item 4 — fail loudly):
-      - patch = [row, right_col, tile] with row in bands, right_col in 0..9;
-      - ALL patches share ONE right_col (one ball x for the whole cave
-        frame; per-band visibility = same col across bands);
-      - subtractive patches rejected (target open where the mirror cell is
-        wall — the ball can only ADD paint);
-      - a run wider than 1 cell needs >1 column, so it is rejected by the
-        single-column rule too.
+    m1 x (D6, Phase A): left cell l occupies clocks [8l, 8l+7] ->
+    SetObjectXPos arg A = 7 + 8l (0 = no M1 patch). ENAM1 is a whole-cave
+    latch (PositionBallM1), so per-band visibility comes from the WALL-HIDE
+    guard below, not a band gate.
+
+    Patch formats (JSON arrays of ints — the editor round-trips them):
+      [row, col, tile]            right side (ball) — legacy, unchanged
+      [row, col, tile, side]      side 0 = right (ball), 1 = left (M1)
+
+    D6/D6+M1 envelope (fail loudly):
+      - row in bands 0..2, col in 0..9 (D7 grid), side in {0, 1};
+      - ONE column per side: all right patches share one right_col (single
+        ball x), all left patches share one left cell (single M1 x); the
+        two sides may use different columns (case 3: side-by-side blocks);
+      - ball patches additive-only (target open where the mirror cell is
+        wall — the ball can only ADD paint); a run wider than 1 cell needs
+        >1 column, so the single-column rule rejects it too;
+      - M1 patches must PAINT (tile solid — M1 only adds color) and pass
+        the wall-hide guard: because ENAM1 latches the whole cave, the M1
+        cell must be wall (#/H) in every band WITHOUT an M1 patch (PF
+        priority hides the parked M1 there) and open in every band WITH
+        one (a wall cell would hide the patch it claims to show).
+        Ball mask and M1 mask may differ.
     """
     patches = model.get("asym_patches") or []
     if not patches:
         return None
     mid = model.get("id")
-    cols: set[int] = set()
+    right_cols: set[int] = set()
+    left_cols: set[int] = set()
+    left_patch_rows: set[int] = set()
+    has_right = False
     right = ["".join(left_rows[y][WIDTH - 1 - k] for k in range(WIDTH))
              for y in range(HEIGHT)]
     for p in patches:
-        if not (isinstance(p, (list, tuple)) and len(p) == 3
+        if not (isinstance(p, (list, tuple)) and len(p) in (3, 4)
                 and all(isinstance(v, int) for v in p)):
             raise ValueError(
-                f"model {mid}: asym patch {p!r} must be [row, right_col, tile]")
-        row, col, tile = p
+                f"model {mid}: asym patch {p!r} must be [row, col, tile] or "
+                f"[row, col, tile, side] (side 0 = right/ball, 1 = left/M1)")
+        side = p[3] if len(p) == 4 else 0
+        if side not in (0, 1):
+            raise ValueError(
+                f"model {mid}: patch {p!r} side {side} not in 0 (right/ball) "
+                f"1 (left/M1)")
+        row, col, tile = p[0], p[1], p[2]
         if not 0 <= row < HEIGHT:
             raise ValueError(f"model {mid}: patch row {row} out of 0..{HEIGHT - 1}")
         if not 0 <= col < WIDTH:
             raise ValueError(
-                f"model {mid}: patch right_col {col} out of 0..{WIDTH - 1} (D7 grid)")
+                f"model {mid}: patch col {col} out of 0..{WIDTH - 1} (D7 grid)")
         char = tile_to_char(tile)
+        if side == 1:
+            # M1: paints wall-colored color over an OPEN left cell.
+            if char not in "#H":
+                raise ValueError(
+                    f"model {mid}: M1 patch at row {row} col {col} must paint "
+                    f"a wall tile (M1 only adds color, tile {tile!r} is open)")
+            left_cols.add(col)
+            left_patch_rows.add(row)
+            continue
         mirror = left_rows[row][WIDTH - 1 - col]
         if char == "." and mirror in "#H":
             raise ValueError(
                 f"model {mid}: subtractive patch at row {row} col {col} "
                 f"(opens a cell whose mirror is wall — D6 is additive-only)")
-        cols.add(col)
+        right_cols.add(col)
+        has_right = True
         right[row] = right[row][:col] + char + right[row][col + 1:]
-    if len(cols) > 1:
+    if len(right_cols) > 1:
         raise ValueError(
-            f"model {mid}: asym patches span columns {sorted(cols)} — D6 "
-            f"envelope allows exactly ONE column-x (single ball x; a run "
-            f"wider than 1 cell needs >1 column and is rejected too)")
-    col = next(iter(cols))
-    return right, 87 + 8 * col
+            f"model {mid}: ball patches span columns {sorted(right_cols)} — "
+            f"envelope allows exactly ONE column-x per side (single ball x; "
+            f"a run wider than 1 cell needs >1 column and is rejected too)")
+    if len(left_cols) > 1:
+        raise ValueError(
+            f"model {mid}: M1 patches span columns {sorted(left_cols)} — "
+            f"envelope allows exactly ONE column-x per side (single M1 x)")
+    m1_x = 0
+    if left_cols:
+        m1_col = next(iter(left_cols))
+        for b in range(HEIGHT):
+            cell = left_rows[b][m1_col]
+            if b in left_patch_rows and cell in "#H":
+                raise ValueError(
+                    f"model {mid}: M1 patch band {b} col {m1_col} is wall — "
+                    f"the whole-cave ENAM1 latch would hide the patch "
+                    f"(wall-hide guard)")
+            if b not in left_patch_rows and cell not in "#H":
+                raise ValueError(
+                    f"model {mid}: M1 cell col {m1_col} is open in band {b} "
+                    f"with no patch — the whole-cave ENAM1 latch would paint "
+                    f"it (wall-hide guard: wall the cell or patch the band)")
+        m1_x = 7 + 8 * m1_col
+    ball_x = 87 + 8 * next(iter(right_cols)) if has_right else 0
+    return (right if has_right else None), ball_x, m1_x
 
 
 def connection_bytes(rooms: list[dict]) -> list[list[int]]:
@@ -468,10 +525,10 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
                                     "width": model.get("width", WIDTH)},
                                    models_by_id)
         res = resolve_asym_patches(model, left_rows)
-        asym, ball_x = res if res else (None, 0)
+        asym, ball_x, m1_x = res if res else (None, 0, 0)
         model_lines += convert_room.lines(
             left_rows, prefix=f"M{mid}", source=f"models.json model {mid}",
-            asym_rows=asym, asym_ball_x=ball_x)
+            asym_rows=asym, asym_ball_x=ball_x, asym_m1_x=m1_x)
     model_lines.append("")
     (generated / "models_data.asm").write_text("\n".join(model_lines) + "\n")
     data_lines.insert(2, f'    include "{generated.name}/models_data.asm"')
