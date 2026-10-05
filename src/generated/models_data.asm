@@ -2,9 +2,8 @@
 
 ; Generated from models.json model 0. Do not edit by hand.
 M0RoomRects:
-  .byte 4                  ; number of rectangles
+  .byte 3                  ; number of rectangles
   .byte 0, 0, 4, 1  ; x, y, width, height (4px cols)
-  .byte 16, 0, 2, 2  ; x, y, width, height (4px cols)
   .byte 0, 1, 2, 1  ; x, y, width, height (4px cols)
   .byte 0, 2, 18, 1  ; x, y, width, height (4px cols)
   .byte 0              ; number of hot rectangles
@@ -13,7 +12,7 @@ M0TilePF0:
 M0TilePF1:
   .byte $00, $00, $ff
 M0TilePF2:
-  .byte $30, $30, $3f
+  .byte $00, $00, $3f
 M0AsymFlag:
   .byte 1                  ; 1 = asymmetric (D6 ball mask)
 M0BallX:
@@ -29,13 +28,13 @@ M0RightPF0:
 M0RightPF1:
   .byte $00, $00, $ff
 M0RightPF2:
-  .byte $3c, $3c, $3f
+  .byte $0c, $0c, $3f
 M0RightRects:
   .byte 4                  ; number of rectangles
-  .byte 2, 0, 4, 3  ; x(right_col*2), y, w, h
+  .byte 4, 0, 2, 2  ; x(right_col*2), y, w, h
   .byte 16, 0, 4, 1  ; x(right_col*2), y, w, h
   .byte 18, 1, 2, 1  ; x(right_col*2), y, w, h
-  .byte 6, 2, 14, 1  ; x(right_col*2), y, w, h
+  .byte 2, 2, 18, 1  ; x(right_col*2), y, w, h
   .byte 0              ; number of hot rectangles
 
 ; Generated from models.json model 1. Do not edit by hand.
