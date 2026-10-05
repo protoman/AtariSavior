@@ -87,6 +87,11 @@ struct ModelData {
     int width = 20;
     int height = 3;
     std::vector<int> tiles;
+    // D6 asymmetric patches: [row, right_col, tile] triples; right_col is
+    // the right-half cell (0 = center-adjacent). Empty = symmetric model.
+    // Optional in the file: symmetric models predate the key and must stay
+    // key-less (convert treats missing/[] as symmetric).
+    std::vector<std::vector<int>> asym_patches;
 
     template <class Archive>
     void serialize(Archive& ar) {
@@ -95,6 +100,15 @@ struct ModelData {
            CEREAL_NVP(width),
            CEREAL_NVP(height),
            CEREAL_NVP(tiles));
+        if (Archive::is_loading::value) {
+            try {
+                ar(CEREAL_NVP(asym_patches));
+            } catch (const cereal::Exception&) {
+                asym_patches.clear();   // no key in an older file
+            }
+        } else if (!asym_patches.empty()) {
+            ar(CEREAL_NVP(asym_patches));
+        }
     }
 };
 

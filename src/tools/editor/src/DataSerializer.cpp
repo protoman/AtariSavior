@@ -124,18 +124,18 @@ static ModelData CreateDefaultModel(int modelId) {
     ModelData model;
     model.id = modelId;
     model.name = "Model " + std::to_string(modelId + 1);
-    model.width = 20;
+    model.width = 10;   // D7 grid: 10 cells per half
     model.height = 3;
-    model.tiles.resize(20 * 3, (int)TileType::AIR);
+    model.tiles.resize(10 * 3, (int)TileType::AIR);
 
     // Standard border walls
-    for (int x = 0; x < 20; ++x) {
-        model.tiles[0 * 20 + x] = (int)TileType::SOLID_WALL;
-        model.tiles[2 * 20 + x] = (int)TileType::SOLID_WALL;
+    for (int x = 0; x < 10; ++x) {
+        model.tiles[0 * 10 + x] = (int)TileType::SOLID_WALL;
+        model.tiles[2 * 10 + x] = (int)TileType::SOLID_WALL;
     }
     for (int y = 0; y < 3; ++y) {
-        model.tiles[y * 20 + 0] = (int)TileType::SOLID_WALL;
-        model.tiles[y * 20 + 19] = (int)TileType::SOLID_WALL;
+        model.tiles[y * 10 + 0] = (int)TileType::SOLID_WALL;
+        model.tiles[y * 10 + 9] = (int)TileType::SOLID_WALL;
     }
     return model;
 }

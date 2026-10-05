@@ -40,7 +40,11 @@ enum class BrushTool {
     ADD_LAMP = 15,
     ADD_RAFT = 16,
     ADD_MAGMA = 17,
-    DELETE_ENTITY = 18
+    DELETE_ENTITY = 18,
+    // Model tab: D6 asymmetric patch on the RIGHT half (wall where the
+    // mirror is open; toggle with a second click). One right_col per model
+    // (single ball-x envelope — convert hard-fails mixed columns).
+    ASYM_PATCH = 19
 };
 
 class MapCanvas : public QWidget {
@@ -50,7 +54,7 @@ public:
     explicit MapCanvas(QWidget* parent = nullptr);
 
     // Fallback size used until a room is loaded.
-    static constexpr int kDefaultRoomWidth = 20;
+    static constexpr int kDefaultRoomWidth = 10;  // D7 grid (cells/half)
     static constexpr int kDefaultRoomHeight = 3;   // 48-scanline color bands
 
     void SetLevelData(hero::LevelData* levelData, std::vector<hero::ModelData>* models, int activeRoomIndex);
