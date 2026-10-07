@@ -2392,6 +2392,8 @@ LEVEL_DATA_ADDR = $FBA6        ; frozen address of bank2's LevelDataTable
                                 ;  shrank the tables; check_frozen_addrs
                                 ;  enforces)
                                 ; (test asserts bank2.lst label == this)
+COPYRIGHT_BAND_ADDR = $F8B0    ; frozen address of bank2's CopyrightBand
+                                ; (.ds $F8B0 pin — check_frozen_addrs)
 
 ; ==============================================================================
 ; YToRowTable — convert scanline (0-191) to 48-line band row (0-3), idx A>>2
@@ -2668,10 +2670,13 @@ KernelInit:
 ; ------------------------------------------------------------------------------
 ; TitleKernel — start screen (DropTarget=$FF): black + "S.A.V.I.O.R." top via
 ; the 48px sprite technique (NUSIZ3+VDEL cross-buffer, P0@60/P1@68 — same
-; pipeline as bank1 score). Jet art + copyright: later pieces.
-; Frame length: 198 visible WSYNCs (text band 20 + art band 60
-; + 118 pad) → wall 263 = cave+HUD (parity: cave
-; pays 3 HUD stall lines, title pays 3 clean pad lines). jmp Overscan.
+; pipeline as bank1 score). Helmet art disabled 2026-10-07 (blank rows keep
+; the 60-WSYNC band for timing); copyright "© 2026 IURI FIEDORUK" bottom
+; right via bank2 CopyrightBand (same technique, P0@108/P1@116).
+; Frame length: 198 visible WSYNCs (entry 1 + text 20 + gap 61 + art 60 +
+; pos 3 + band 53 [pad45 + glyph7 + close1] = 56 after art = old pad56)
+; → wall 263 = cave+HUD (parity: cave pays 3 HUD stall lines, title pays
+; 3 clean pad lines). jmp Overscan.
 ; ZP: LineCount ($84) + Temp ($88) as loop counter/tmp — idle on title frames
 ; (cave kernel not running; bank1 HUD not running; overscan probes bypassed).
 ; ------------------------------------------------------------------------------
@@ -2791,20 +2796,17 @@ TPtr6 = $EA
     dex
     bne .TkGap
     jsr ArtFold                  ; bank2: art setup+60 WSYNCs, ReturnPad
-    lda #0
-    sta VDELP0                   ; VDELP still 1 from scn20 — GRP0/1=0 would
-    sta VDELP1                   ;   only fill the DELAYED slot; the LIVE slot
-    sta GRP0                     ;   keeps the stale text glyph (its 2 lit
-    sta GRP1                     ;   bits = the solid pad stripe). VDEL off
-    sta ENAM0                    ;   FIRST, then GRP=0 hits the live slot.
-    sta ENAM1                    ; art leaves missiles enabled — pad would
-    sta ENABL                    ;   draw two stale vertical lines
-    ldx #56                      ; trailing pad: 117 - 61 gap (band sum fixed)
-.TkPad:
+    lda #108                     ; copyright windows — position AFTER art
+    ldx #0                       ;   (ArtLine strobes RESP every row; any
+    jsr SetObjectXPos            ;   position set earlier is long gone)
+    lda #116
+    ldx #1
+    jsr SetObjectXPos
     sta WSYNC
-    dex
-    bne .TkPad
-    jmp Overscan
+    sta HMOVE
+    jsr CopyrightFold            ; bank2 CopyrightBand: ptrs + colors/NUSIZ
+    jmp Overscan                 ;   (first pad line) + pad45 + glyph7 +
+                                 ;   close (VDEL off FIRST — stripe rule)
 
     .ds $FB00 - *, 0
 ; ------------------------------------------------------------------------------
@@ -2950,6 +2952,10 @@ ArtFold:                        ; TitleKernel -> bank2 ArtLine (title art band)
     jmp $F7F1                   ; bank2 ArtLine — operand fetch happens in bank2 (twin at
                                 ;   same address). Literal = bank2 ArtLine —
                                 ;   patched after bank2 build (two-pass).
+
+CopyrightFold:                  ; TitleKernel -> bank2 CopyrightBand (frozen
+    sta $1FF8                   ;   literal — check_frozen_addrs pins it)
+    jmp COPYRIGHT_BAND_ADDR     ; fetch in bank2; twin at same address $FBE6
 
     .ds $FBF8 - *, 0
 ReturnPad:

@@ -22,6 +22,9 @@ GRP0    = $1B
 GRP1    = $1C
 ENAM0   = $1D
 ENAM1   = $1E
+ENABL   = $1F
+VDELP0  = $25
+VDELP1  = $26
 Temp = $88
 RoomX = $80                      ; PHMOverlay visible_left math (Phase 4)
 PlayerDir = $82
@@ -998,6 +1001,102 @@ ArtLine:
 .ALdone:
     jmp $FBF8                   ; ReturnPad twin -> original jsr caller
 
+; ------------------------------------------------------------------------------
+; Copyright band (intro screen, 2026-10-07) — "© 2026 IURI FIEDORUK" bottom
+; right via the 48px technique: 6 x 8px windows (NUSIZ3 P0@108/P1@116),
+; 7 scanlines, same VDEL cross-buffer pipeline as TitleKernel's text band.
+; Entered from TitleKernel via CopyrightFold ($FBE6 twin) after the pos block
+; (positions must run AFTER ArtLine's RESP strobes). Layout: ptrs on the
+; entry line, colors/NUSIZ/VDEL staged on pad line 1, pad45, glyph7, close
+; (VDEL off FIRST — live-slot stripe rule), jmp $FBF8 ReturnPad (0 pushes).
+; ZP: LineCount $84 + Temp $88 + TPtr $E0-$EB (title-transient, score ptrs
+; never built on title frames).
+; ------------------------------------------------------------------------------
+COLOR_COPY = $64                ; hue 6 luma 2 — darker purple (target rgb
+                                ;   67,0,109 vs title text $6A)
+TPtr1 = $E0                     ; font ptrs lo/hi (mirror of kernel's
+TPtr2 = $E2                     ;   TitleKernel declarations — title-only,
+TPtr3 = $E4                     ;   score ptrs never built on title frames)
+TPtr4 = $E6
+TPtr5 = $E8
+TPtr6 = $EA
+
+    .ds $F880 - *, 0            ; font single-page ($F8xx): (ptr),Y +7
+                                ;   never wraps (slices $F880..$F8AF)
+    include "generated/copyright_font.asm"
+
+    .ds $F8B0 - *, 0            ; frozen: kernel COPYRIGHT_BAND_ADDR literal
+CopyrightBand:
+    lda #>CopyrightFont
+    sta TPtr1+1
+    sta TPtr2+1
+    sta TPtr3+1
+    sta TPtr4+1
+    sta TPtr5+1
+    sta TPtr6+1
+    lda #<CopyrightFont
+    sta TPtr1
+    lda #<CopyrightFont+8
+    sta TPtr2
+    lda #<CopyrightFont+16
+    sta TPtr3
+    lda #<CopyrightFont+24
+    sta TPtr4
+    lda #<CopyrightFont+32
+    sta TPtr5
+    lda #<CopyrightFont+40
+    sta TPtr6
+    ldx #45
+.CbPad:
+    sta WSYNC
+    cpx #45                     ; pad line 1: stage colors/modes (art left
+    bne .CbNoSet                ;   COLUP red, NUSIZ 0 from blank rows)
+    lda #COLOR_COPY
+    sta COLUP0
+    sta COLUP1
+    lda #3
+    sta NUSIZ0
+    sta NUSIZ1
+    lda #1
+    sta VDELP0
+    sta VDELP1
+.CbNoSet:
+    dex
+    bne .CbPad
+    ldx #7
+    stx LineCount               ; rows left (7..1 — byte0 blank, text parity)
+.CbLoop:
+    ldy LineCount
+    lda (TPtr6),Y               ; slot 6 = rightmost 8px window
+    tax                         ; cache slot 6
+    sta WSYNC
+    lda (TPtr1),Y
+    sta.w GRP0                  ; same VDEL cross-buffer pipeline as .TkLoop
+    lda (TPtr2),Y
+    sta GRP1
+    lda (TPtr3),Y
+    sta GRP0
+    lda (TPtr4),Y
+    sta Temp                    ; cache digit 4
+    lda (TPtr5),Y
+    ldy Temp
+    sty GRP1
+    sta GRP0
+    stx GRP1
+    stx GRP0
+    dec LineCount
+    bne .CbLoop
+    sta WSYNC                   ; close last glyph line (display = line 192
+    lda #0                      ;   pad span — old pad56 parity)
+    sta VDELP0                  ; VDEL off FIRST, then GRP=0 hits the LIVE
+    sta VDELP1                  ;   slot (stripe rule, kernel AGENTS)
+    sta GRP0
+    sta GRP1
+    sta ENAM0                   ; belt: blank-art rows already ENAM=0
+    sta ENAM1
+    sta ENABL
+    jmp $FBF8                   ; ReturnPad twin -> rts to TitleKernel
+
     .ds $F970 - *, 0            ; pinned: bank1 .BMWDone jmp operand ($F970)
 M1StripBlast:
     ; Phase 4 M1 strip blast — entered from bank1 BombMarkWalls .BMWDone
@@ -1082,6 +1181,9 @@ OverlayTramp:
     .ds $FBE0 - *, 0
     sta $1FF8                   ; ArtFold twin (bank0 fetches these bytes
     jmp ArtLine                 ;   AFTER its sta $1FF8 switched banks)
+
+    sta $1FF8                   ; CopyrightFold twin (bank0's $FBE6 stub —
+    jmp CopyrightBand           ;   byte-identity: verify_build)
 
     .ds $FBF8 - *, 0
 ReturnPad:
