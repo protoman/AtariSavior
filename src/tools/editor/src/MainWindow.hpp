@@ -65,6 +65,7 @@ private slots:
     void OnRoomChanged(int index);
     void OnStageSelected(int index);
     void OnModelSelected(int index);
+    void OnMidBandChanged(int index);
     void PickWallColor();
     void PickWallColor2();
     void PickBandColor();
@@ -137,6 +138,7 @@ private:
     // Model tab widgets
     QListWidget* m_modelList = nullptr;
     QListWidget* m_modelToolList = nullptr;
+    QComboBox* m_midBandCombo = nullptr;
 
     // Level tab widgets
     QComboBox* m_modelAssignCombo = nullptr;

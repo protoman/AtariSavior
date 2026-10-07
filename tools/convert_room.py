@@ -134,7 +134,8 @@ def find_rectangles(rows: list[str], solids: str = "#") -> list[tuple[int, int, 
 def lines(rows: list[str], prefix: str = "", source: str = "room",
           asym_rows: list[str] | None = None,
           asym_ball_x: int = 0,
-          asym_m1_x: int = 0) -> list[str]:
+          asym_m1_x: int = 0,
+          hot_m1: list[tuple[int, int]] | None = None) -> list[str]:
     """Build the asm lines for a grid (shared by per-room and per-model emission).
 
     asym_rows (D2/D3, models only): resolved right-half rows in right_col
@@ -142,6 +143,13 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     asym_ball_x: D6 ball x (SetObjectXPos arg, drawn clocks [A-7, A]) from
     resolve_asym_patches — emitted with the flag.
     asym_m1_x: D6 M1 x (left-col block, SetObjectXPos arg) — 0 = no M1.
+    hot_m1: (row, col) cells of side-1 (M1) patches that sit on the hot
+    band (mid_band_type) — emitted as mask-$00 hot records in the LEFT
+    stream: the M1 cell is PF-open by envelope so it never lands in
+    find_rectangles(rows, "H") — without this record touching the block
+    on a hot band never ran the hot-death check (and a hot-only model
+    would not even pulse its band). $00 = no blastable parent → never
+    dies with a wall (the strip dies via EnemyDeadMask b4 instead).
     After the TilePF tables EVERY model gets the 6-byte meta block:
         M<id>AsymFlag:  .byte 0|1    (0 = symmetric: runtime skips ball)
         M<id>BallX:     .byte 0|87+8*right_col  (staged to Temp, bank2)
@@ -189,7 +197,9 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     # rect that contains this hot rect (kernel's death check skips the hot
     # piece once that wall is blasted — hot_rock_wall_plan rule 4);
     # $00 = no blastable parent (parent outside rects 0-3, or none) → never dies.
-    out.append(f"  .byte {len(hot_rects)}              ; number of hot rectangles")
+    m1_hot = list(hot_m1 or ())
+    out.append(f"  .byte {len(hot_rects) + len(m1_hot)}              "
+               f"; number of hot rectangles")
     for hx, hy, hw, hh in hot_rects:
         parent = next(
             (
@@ -210,6 +220,13 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         else:
             mask = 0
         out.append(f"  .byte ${mask:02x}, {2 * hx}, {hy}, {2 * hw}, {hh}  ; mask, x, y, w, h (4px cols)")
+
+    # M1 patch cells on the hot band (PF-open by envelope → not in the 'H'
+    # walk): mask $00 = never dies with a wall; the strip itself dies via
+    # EnemyDeadMask b4 (OvM1Block skips the block path before the hot check).
+    for mrow, mcol in m1_hot:
+        out.append(f"  .byte $00, {2 * mcol}, {mrow}, 2, 1  "
+                   f"; mask, x, y, w, h (M1 block cell, hot band)")
 
     for name, register in zip(("TilePF0", "TilePF1", "TilePF2"), range(3)):
         out.append(f"{prefix}{name}:")

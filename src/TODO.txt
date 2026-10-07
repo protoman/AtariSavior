@@ -1,12 +1,35 @@
-Why did I ask that? because this is the exact behavior in HERO.
-It can have two 1-columns in different X positions, ot on 2-column (like you said was possible) assymetric tiles.
-And it uses any PF color, even hot-walls blinking. And it is always in the middle-screen band.
-So I want to know if it is possible to have the same behavior than HERO with plan 2 and a 10-column playfield.
+#########################################################################################################################################################################
+Strategic Aerial Vehicle Infiltration Operations Rescue
+#########################################################################################################################################################################
 
-What other advantages we get by halfing the PF this way, more free PFs or something like that?
 
-OK, let's change it to 10. The reason is that the player sprite does not even fit a thin gap with the current 20 column system. The onl
-Just make sure the plan adds a check for the thin walls that now will be twice the pixel size, even if it is still a single column.
+Now, I want a short answer. There is a band on the async block, in the enemy Y position, with the enemy color. And in case there is no enemy
+
+
+1. Kill the 10c restore — biggest single win, ~1.5–2.5h
+.Row already loads band color (lda ColupfBuf,X). Add one sta Temp there, restore becomes lda Temp / sta COLUP1 = −4c, drops X-reload hazard too. Combined with fall-through layout (−3c): 78 → 71 ✓ margin under 73.
+- costs: 1 ZP byte (Temp $88, must verify kernel doesn't use it mid-frame), +3c on .Row setup line (row2 margin unmeasured — measure first, 15 min)
+- headroom: −4B −1B = +5B free (1 → 6B) — future edits stop being 1-byte-tight
+
+2. One-time debt paydown, ~1h (can defer)
+Move a leaf routine to bank2's 1.6KB free gap → 30–50B headroom. Automate fold-pad Overscan literal (today's $F194→$F195 sync = recurring trap). Makes every future feature cheaper.
+
+3. Product-level cuts (only if you want visual simplification)
+- Single-color jet (−7c × 12 lines = −84c/frame baseline slack — the real "features become cheap" move)
+- Single-color enemies (helps window lines, not this bug)
+
+4. Reject
+- New kernel (weeks)
+- Weakening sim invariant (forbidden, = TV artifact)
+- Beam gate hacks (risky, no ZP)
+Recommendation
+Do option 1 now: measure → temp restore + fall-through → build → sim. 1.5–2.5h, ends with 71c line AND 6B headroom — both day-burners gone. Option 2 after, or together if you want today's remaining time to compound.
+Agree? Or want option 3 (single-color jet) discussed first — bigger cut, but changes the look.
+
+
+Option F: The structural simplification — reduce what runs per line.
+HERO's own approach: per-scanline PF tables, minimal sprite logic. Our line: color(7) + beam(10) + GRP0(14) + GRP1(12) + loop(8) + WSYNC(3) = 54 typical, +restore on bad lines.
+
 
 
 
@@ -20,25 +43,21 @@ Eorley Savior.
 =========================================================================================================================================================================
 BUGS
 =========================================================================================================================================================================
+
+ONGOING - non mirrored walls
+=========================================================================================================================================================================
+
 Once the game starts, the bar already looses a chunk (turns red).
 It should take the same time each chunk needs, for the first one to appear as red.
 Also, that chunk seems to be very big, something like 2 to 4 (sorry, I can't measure it well) than a normal chunk.
 =========================================================================================================================================================================
-ponta do laser voltou a não matar inimigos
-=========================================================================================================================================================================
-better and bigger miner sprite 12x8
 
-
-
-
-
-=========================================================================================================================================================================
-non mirrored walls
-=========================================================================================================================================================================
 tentacle pull player
 =========================================================================================================================================================================
+
 raft
 =========================================================================================================================================================================
+
 logo in score like activision?
 Or SAVIOR as (part of) the playfield on the start screen?
 =========================================================================================================================================================================

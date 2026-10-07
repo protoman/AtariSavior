@@ -39,18 +39,34 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
-# Phase 4: model 0 is the asymmetric test room (strip at right_col 2) —
-# force its meta symmetric in THIS run's ROM image so the wall-path spec
-# measures pure wall clamps (the strip clamp has its own fixture in
-# test_laser_kill_window). BallX=0 ⇔ sym (staging skips everything).
+# Phase 4: model 0 is the asymmetric test room — force its meta symmetric
+# in THIS run's ROM image so the wall-path spec measures pure wall clamps
+# (the ball strip clamp has its own fixture in test_laser_kill_window; the
+# M1 strip is excluded here by M1X=0, not modelled by the reference).
+# BallX=0 AND M1X=0 ⇔ sym: with M1X staged the pack now seeds b3 (Phase 4
+# M1 presence) even when BallX=0, the OverlayTramp crosses, and OvM1Block
+# legitimately blocks the M1 cells — which is NOT a wall clamp.
 _L2 = {}
 for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
-    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(M0(?:BallX|Band[012]))\s*$", _l)
+    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(M0(?:BallX|Band[012]|M1X))\s*$",
+                  _l)
     if _m:
         _L2[_m.group(2)] = int(_m.group(1), 16)
-assert len(_L2) == 4, f"bank2 M0 meta labels missing: {sorted(_L2)}"
-for _n in ("M0BallX", "M0Band0", "M0Band1", "M0Band2"):
+assert len(_L2) == 5, f"bank2 M0 meta labels missing: {sorted(_L2)}"
+for _n in ("M0BallX", "M0Band0", "M0Band1", "M0Band2", "M0M1X"):
     BANKS[2][_L2[_n] - 0xF000] = 0
+
+# Hot (mid_band_type, 2026-10-05) death would corrupt the deterministic
+# sweep — zero model 0's hot-rect count in THIS run's ROM image too (hot
+# stream = RoomRects label + 1 + 4*solid_count).
+for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
+    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+M0RoomRects\s*$", _l)
+    if _m:
+        _a = int(_m.group(1), 16) - 0xF000
+        BANKS[2][_a + 1 + 4 * BANKS[2][_a]] = 0   # hot count = 0
+        break
+else:
+    sys.exit("M0RoomRects label missing in bank2.lst")
 
 # labels from bank0.lst (addresses move every commit)
 LABELS = {}
@@ -227,9 +243,9 @@ def main() -> None:
         step()
         if mpu.pc == PC_STARTFRAME:
             frame += 1
-            # console RESET pulse: title (DropTarget=$FF) -> game start;
-            # f1 stores the released sample, f2-3 held = edge on f2
-            mem.swchb = 0xFE if frame in (2, 3) else 0xFF
+            # console RESET pulses (intro 2026-10-06): f2 edge leaves the
+            # $FD intro, f5 edge hits TitleWork RESET -> game start
+            mem.swchb = 0xFE if frame in (2, 5) else 0xFF
             if mem.ram[I_BOMBP] & 0x80:
                 landed = frame
                 break

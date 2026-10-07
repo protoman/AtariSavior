@@ -48,9 +48,10 @@ def parse_labels(path: Path, names: set[str]) -> dict[str, int]:
         r"([A-Za-z_.][A-Za-z0-9_.]*)\s+byte")
     # EQU decls anchor on the PREVIOUS cell (U00bc) — value is after '=';
     # the U-line shows both anchor and value bytes ("00 bd"), hence the
-    # repeated hex pair before the name.
+    # repeated hex pair before the name. bank2 top-of-file EQUs emit the
+    # address as a plain `f000` (no U prefix) — both forms accepted.
     rx_equ = re.compile(
-        r"^\s*\d+\s+U[0-9a-fA-F]{4}\s+(?:[0-9a-f]{2}\s+)+"
+        r"^\s*\d+\s+U?[0-9a-fA-F]{4}\s+(?:[0-9a-f]{2}\s+)+"
         r"([A-Za-z_.][A-Za-z0-9_.]*)\s+=\s+\$([0-9a-fA-F]+)")
     for line in path.read_text(errors="replace").splitlines():
         m = rx_equ.match(line)
@@ -69,14 +70,16 @@ need0 = {"PlayerHitsMap", "RoomX", "RoomY", "PlayerDir", "BombPacked",
          "RoomRectsLo", "RoomRectsHi", "Temp", "CollisionCellX",
          "CollisionCellY", "CollisionEndX", "CollisionEndY",
          "EnemyDataLo", "EnemyDataHi", "EnemyIndex", "EnemyRamX",
-         "EnemyRamD", "UE_Next", "LineCount", "FetchPtr"}
+         "EnemyRamD", "UE_Next", "LineCount", "FetchPtr",
+         "EnemyDeadMask"}
 L0 = parse_labels(SRC / "bank0.lst", need0)
 missing = need0 - L0.keys()
 if missing:
     sys.exit(f"bank0.lst labels missing: {sorted(missing)}")
 PHM = L0["PlayerHitsMap"]
 
-need2 = {"M5RoomRects", ".MothColsOk"}
+need2 = {"M5RoomRects", "M0RoomRects", ".MothColsOk", "M0TilePF0",
+         "RoomPF0Lo"}
 L2 = parse_labels(SRC / "bank2.lst", need2)
 if not need2 <= L2.keys():
     sys.exit(f"bank2.lst labels missing: {sorted(need2 - L2.keys())}")
@@ -223,41 +226,79 @@ def overlay_hit(rx: int, rd: int, ry: int, packed: int) -> bool:
         return False
     vl = visible_left_px(rx, rd)
     bx = 79 + 8 * (packed >> 4)          # BallX = 87+8*rc (patch right edge)
-    if not (vl <= bx and vl + 7 >= bx - 7):
+    if not (vl <= bx and vl + 6 >= bx - 7):   # lit span = 7px [vl, vl+6]
         return False
     top, bot = row_range(ry)
     mask = packed & 7
     return any(mask & (1 << r) for r in range(top, bot + 1))
 
 
+def m1_overlay_hit(rx: int, rd: int, ry: int, rows: list[str],
+                   m1x: int, dead: int) -> bool:
+    """Spec of bank2 OvM1Block (Phase 4 M1/left strip overlay).
+
+    Reached only when the tramp crossed (packed != 0 — checked by the
+    caller). Kill-aware (EnemyDeadMask b4); px overlap of [vl, vl+6]
+    (PLAYER_WIDTH=7 lit) with [M1X-7, M1X] = vl in [M1X-13, M1X] (the
+    M1X<13 second-test skip is covered by vl >= 0); band test = any player
+    row with PF-open cell at col ℓ (wall-hide envelope: open ⟺ M1-patched)."""
+    if dead or m1x == 0:
+        return False
+    vl = visible_left_px(rx, rd)
+    if vl > m1x:
+        return False
+    if m1x >= 13 and vl < m1x - 13:
+        return False
+    ell = (m1x - 7) >> 3
+    top, bot = row_range(ry)
+    return any(rows[r][ell] == "." for r in range(top, bot + 1))
+
+
 def asym_checks(rows: list[str]) -> int:
     """Full-X sweep with LineCount packed — exercises the OverlayTramp
-    crossing (bank0 $F9B1 -> bank2 PHMOverlay $FE00 -> ReturnPad)."""
+    crossing (bank0 $F9B1 -> bank2 PHMOverlay $FE00 -> ReturnPad) for
+    BOTH strips: the right ball strip (packed) and the left M1 strip
+    (OvM1Block: M1X meta via the RoomPF0Lo pointer + b4 kill knob)."""
     mem = Mem()
     load_case(mem, rows)
+    r = mem.ram
+    # OvM1Block reads TilePF0+14 (M1X) through RoomPF0Lo — bank2 ROM.
+    m1x = BANK2[L2["M0TilePF0"] - 0xF000 + 14]
+    r[L2["RoomPF0Lo"] - 0x80] = L2["M0TilePF0"] & 0xFF
+    r[L2["RoomPF0Lo"] + 1 - 0x80] = L2["M0TilePF0"] >> 8
+    r[L0["EnemyDeadMask"] - 0x80] = 0
     # packed configs: (right_col, band mask); 0 = symmetric control
     configs = [(0, 0), (0, 1), (5, 4), (9, 7), (9, 4)]
     checks = 0
-    for rc, mask in configs:
-        packed = 0 if rc == 0 and mask == 0 else ((rc + 1) << 4) | mask
-        mem.ram[L0["LineCount"] - 0x80] = packed
-        for rd in (0, 1):
-            for rx in range(4, 160):
-                for ry in (0, 60, 120):
-                    mem.ram[L0["RoomX"] - 0x80] = rx
-                    mem.ram[L0["PlayerDir"] - 0x80] = rd
-                    mem.ram[L0["RoomY"] - 0x80] = ry
-                    want = expected_hit(rows, rx, rd, ry) \
-                        or overlay_hit(rx, rd, ry, packed)
-                    got = run_phm(mem, rx, ry, rd)
-                    assert got == want, (
-                        f"asym packed=${packed:02X} (rc={rc} mask={mask}) "
-                        f"X={rx} Y={ry} dir={rd}: PHM C={int(got)} want "
-                        f"{int(want)} (base={expected_hit(rows, rx, rd, ry)} "
-                        f"ovl={overlay_hit(rx, rd, ry, packed)}, "
-                        f"vl={visible_left_px(rx, rd)})")
-                    checks += 1
-    mem.ram[L0["LineCount"] - 0x80] = 0
+    for dead in (0, 0x10):
+        for rc, mask in configs:
+            packed = 0 if rc == 0 and mask == 0 else ((rc + 1) << 4) | mask
+            if dead and packed == 0:
+                continue          # kill knob needs one packed≠0 config only
+            r[L0["LineCount"] - 0x80] = packed
+            r[L0["EnemyDeadMask"] - 0x80] = dead
+            for rd in (0, 1):
+                for rx in range(4, 160):
+                    for ry in (0, 60, 120):
+                        mem.ram[L0["RoomX"] - 0x80] = rx
+                        mem.ram[L0["PlayerDir"] - 0x80] = rd
+                        mem.ram[L0["RoomY"] - 0x80] = ry
+                        ball = overlay_hit(rx, rd, ry, packed)
+                        # tramp gate: packed==0 → no crossing → no M1 either
+                        m1 = packed != 0 and m1_overlay_hit(
+                            rx, rd, ry, rows, m1x, dead)
+                        want = expected_hit(rows, rx, rd, ry) or ball or m1
+                        got = run_phm(mem, rx, ry, rd)
+                        assert got == want, (
+                            f"asym packed=${packed:02X} (rc={rc} mask={mask} "
+                            f"dead=${dead:02X}) X={rx} Y={ry} dir={rd}: PHM "
+                            f"C={int(got)} want {int(want)} (base="
+                            f"{expected_hit(rows, rx, rd, ry)} ball={ball} "
+                            f"m1={m1}, m1x={m1x}, "
+                            f"vl={visible_left_px(rx, rd)})")
+                        checks += 1
+    r[L0["LineCount"] - 0x80] = 0
+    r[L0["EnemyDeadMask"] - 0x80] = 0
     return checks
 
 
@@ -296,6 +337,73 @@ def moth_strip_checks() -> int:
     assert not probe(157, inactive), "inactive-band strip must be transparent"
     checks += 1
     mem.ram[L0["LineCount"] - 0x80] = 0
+    return checks
+
+
+def hot_death_checks(rows: list[str]) -> int:
+    """Hot-death regression (user bug 2026-10-05): touching the M1 block on
+    the hot band must set Temp b7 (HotBump -> LoseLife). The old envelope
+    (sbc/cmp #14) assumed an 8px sprite span, but PLAYER_WIDTH=7 (lit
+    [vl, vl+6]) — 1px dead zone: blocked at X, killed only at X+1.
+    Envelope tightened to #13; repro: ry=60 facing right, rx=64 flush
+    (live) vs rx=65 first px into the block (die).
+
+    RoomRects -> M0RoomRects: BOTH model-0 hot rects are gated — the 'H'
+    wall (mask $10, x=0,y=1,w=2,h=1) and the M1 block (mask $00, x=16,
+    y=1, w=2, h=1). `entered` = walk-hit OR M1-overlay funnel — the two
+    ways PHM reaches HotOverlapBody. The ball overlay never funnels to
+    the hot body (returns C=1 directly, "never hot"), and its envelope
+    (vl >= BallX-13 >= 74) is disjoint from M1's (vl <= M1X <= 71) for
+    this model, so it can mask nothing here.
+
+    Two passes (user bug 2, 2026-10-05): dead=0 strip alive; dead=$10
+    strip destroyed — the M1 hot rect must die WITH the strip (mask $00
+    gates on EnemyDeadMask b4, not BombPacked): walking the landing
+    proposal (rows straddle into the floor band) still hits the floor
+    cell under the block, reaches the body unconditionally, and must NOT
+    fire b7 where the block used to be."""
+    mem = Mem()
+    load_case(mem, rows)
+    r = mem.ram
+    r[L0["RoomRectsLo"] - 0x80] = L2["M0RoomRects"] & 0xFF
+    r[L0["RoomRectsHi"] - 0x80] = L2["M0RoomRects"] >> 8
+    r[L2["RoomPF0Lo"] - 0x80] = L2["M0TilePF0"] & 0xFF
+    r[L2["RoomPF0Lo"] + 1 - 0x80] = L2["M0TilePF0"] >> 8
+    r[L0["BombPacked"] - 0x80] = 0
+    packed = 0x11                         # rc=0, band0 -> tramp crosses
+    r[L0["LineCount"] - 0x80] = packed
+    m1x = BANK2[L2["M0TilePF0"] - 0xF000 + 14]
+    hot_rects = ((0, 1, 2, 1), (16, 1, 2, 1))   # x,y,w,h (4px cols/tile rows)
+    checks = 0
+    for dead in (0, 0x10):        # strip alive / destroyed (EnemyDeadMask b4)
+        r[L0["EnemyDeadMask"] - 0x80] = dead
+        # destroyed strip kills the M1 rect too; the 'H' wall rect stays
+        # (BombPacked = 0, wall not blasted)
+        rects = hot_rects if dead == 0 else hot_rects[:1]
+        for rd in (0, 1):
+            for rx in range(4, 160):
+                for ry in (40, 60, 90, 120):  # rows {0,1},{1,1},{1,2},{2,2}
+                    r[L0["RoomX"] - 0x80] = rx
+                    r[L0["PlayerDir"] - 0x80] = rd
+                    r[L0["RoomY"] - 0x80] = ry
+                    r[L0["Temp"] - 0x80] = 0x0F    # joystick: nothing pressed
+                    lo, hi = visible_range(rx, rd)
+                    top, bot = row_range(ry)
+                    entered = (expected_hit(rows, rx, rd, ry)
+                               or m1_overlay_hit(rx, rd, ry, rows, m1x, dead))
+                    want = entered and any(
+                        hx <= hi and hx + hw > lo and hy <= bot
+                        and hy + hh > top
+                        for hx, hy, hw, hh in rects)
+                    run_phm(mem, rx, ry, rd)
+                    got = bool(r[L0["Temp"] - 0x80] & 0x80)
+                    assert got == want, (
+                        f"hot death dead=${dead:02X} X={rx} Y={ry} "
+                        f"dir={rd}: Temp.b7={int(got)} want {int(want)} "
+                        f"(entered={int(entered)} box "
+                        f"{lo}..{hi} {top}..{bot} "
+                        f"vl={visible_left_px(rx, rd)})")
+                    checks += 1
     return checks
 
 
@@ -376,8 +484,9 @@ def main() -> int:
     # --- Phase 4: asym overlay (packed LineCount) — crossing + px/band ---
     asym = asym_checks(cases[0][1])
     strip = moth_strip_checks()
+    hot = hot_death_checks(cases[0][1])
     print(f"test_cell_map: OK ({checks} PHM boxes, {moth_checks} moth "
-          f"boxes, {asym} asym overlay, {strip} moth-strip, "
+          f"boxes, {asym} asym overlay, {strip} moth-strip, {hot} hot-death, "
           f"{len(cases)} geometries)")
     return 0
 

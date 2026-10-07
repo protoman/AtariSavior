@@ -194,9 +194,10 @@ while not (seen_play and mem.ram[DROPT] == 0):
     step()
     if mpu.pc == PC_STARTFRAME:
         frame += 1
-        # RESET edge: released f1, held f2-3, then released (title contract)
-        mem.swchb = 0xFE if frame in (2, 3) else 0xFF
-        if mem.ram[DROPT] != 0xFF:
+        # RESET pulses (intro 2026-10-06): f2 leaves the $FD intro,
+        # f5 hits TitleWork RESET -> game start (single-frame pulses)
+        mem.swchb = 0xFE if frame in (2, 5) else 0xFF
+        if mem.ram[DROPT] not in (0xFF, 0xFD):
             seen_play = True
             in_game = True        # post-title: min-SP guard now counts
         if frame > 600:

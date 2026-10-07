@@ -43,13 +43,23 @@ static int RunSelfTest(const char* modelsPath) {
     ss << in.rdbuf();
     const bool fileHasPatches =
         ss.str().find("asym_patches") != std::string::npos;
+    const bool fileHasMidBand =
+        ss.str().find("mid_band_type") != std::string::npos;
     int withPatches = 0;
+    int withMidBand = 0;
     for (const auto& m : original) {
         if (!m.asym_patches.empty()) ++withPatches;
+        if (m.mid_band_type != 0) ++withMidBand;
     }
     if (fileHasPatches && withPatches == 0) {
         std::fprintf(stderr,
                      "selftest: file contains asym_patches but the LOADER "
+                     "dropped it\n");
+        return 1;
+    }
+    if (fileHasMidBand && withMidBand == 0) {
+        std::fprintf(stderr,
+                     "selftest: file contains mid_band_type but the LOADER "
                      "dropped it\n");
         return 1;
     }
@@ -85,10 +95,17 @@ static int RunSelfTest(const char* modelsPath) {
                          a.id, a.asym_patches.size(), b.asym_patches.size());
             return 1;
         }
+        if (a.mid_band_type != b.mid_band_type) {
+            std::fprintf(stderr,
+                         "selftest: model %d mid_band_type lost/changed in "
+                         "save->load (%d -> %d)\n",
+                         a.id, a.mid_band_type, b.mid_band_type);
+            return 1;
+        }
     }
     std::printf("selftest OK: %zu models, %d with asym_patches, "
-                "save->load round-trip clean\n",
-                original.size(), withPatches);
+                "%d hot middle band, save->load round-trip clean\n",
+                original.size(), withPatches, withMidBand);
     return 0;
 }
 
