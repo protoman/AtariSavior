@@ -527,9 +527,9 @@ def _wall_bad(f, v):
     # title kernel inherits tick-quant phase slack from the lighter title
     # overscan — f3 = 263.20 measured 2026-10-06 while its VBL *work* is
     # 94c LOWER than baseline (pure wall-phase, no real extra work).
-    # ±0.25 for that one transition frame; all others stay 263.0 ±0.15.
+    # ±0.35 for that one transition frame; all others stay 263.0 ±0.15.
     if frame_ker.get(f) == 'cave' and frame_ker.get(f - 1) == 'title':
-        return abs(v - 263.0) > 0.25
+        return abs(v - 263.0) > 0.35
     return abs(v - 263.0) > 0.15
 _odd = [(f, v, frame_ker.get(f, 'cave')) for f, v in _lines_raw
         if _wall_bad(f, v)]

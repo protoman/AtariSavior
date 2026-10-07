@@ -2,35 +2,10 @@
 Strategic Aerial Vehicle Infiltration Operations Rescue
 #########################################################################################################################################################################
 
-
-Now, I want a short answer. There is a band on the async block, in the enemy Y position, with the enemy color. And in case there is no enemy
-
-
-1. Kill the 10c restore — biggest single win, ~1.5–2.5h
-.Row already loads band color (lda ColupfBuf,X). Add one sta Temp there, restore becomes lda Temp / sta COLUP1 = −4c, drops X-reload hazard too. Combined with fall-through layout (−3c): 78 → 71 ✓ margin under 73.
-- costs: 1 ZP byte (Temp $88, must verify kernel doesn't use it mid-frame), +3c on .Row setup line (row2 margin unmeasured — measure first, 15 min)
-- headroom: −4B −1B = +5B free (1 → 6B) — future edits stop being 1-byte-tight
-
-2. One-time debt paydown, ~1h (can defer)
-Move a leaf routine to bank2's 1.6KB free gap → 30–50B headroom. Automate fold-pad Overscan literal (today's $F194→$F195 sync = recurring trap). Makes every future feature cheaper.
-
-3. Product-level cuts (only if you want visual simplification)
-- Single-color jet (−7c × 12 lines = −84c/frame baseline slack — the real "features become cheap" move)
-- Single-color enemies (helps window lines, not this bug)
-
-4. Reject
-- New kernel (weeks)
-- Weakening sim invariant (forbidden, = TV artifact)
-- Beam gate hacks (risky, no ZP)
-Recommendation
-Do option 1 now: measure → temp restore + fall-through → build → sim. 1.5–2.5h, ends with 71c line AND 6B headroom — both day-burners gone. Option 2 after, or together if you want today's remaining time to compound.
-Agree? Or want option 3 (single-color jet) discussed first — bigger cut, but changes the look.
-
-
-Option F: The structural simplification — reduce what runs per line.
-HERO's own approach: per-scanline PF tables, minimal sprite logic. Our line: color(7) + beam(10) + GRP0(14) + GRP1(12) + loop(8) + WSYNC(3) = 54 typical, +restore on bad lines.
-
-
+OK, now that we removed the pixel-art of the player at the center/middle of the screen, we need to use that space.
+My idea is to show the player sprite, playing in a loop (start must match the end position).
+It should walk, fly, laser and use a bomb.
+That should be much simpler than drawing the pixel art, right?
 
 
 #########################################################################################################################################################################
@@ -42,6 +17,9 @@ Eorley Savior.
 
 =========================================================================================================================================================================
 BUGS
+=========================================================================================================================================================================
+scripts added to ../tools
+
 =========================================================================================================================================================================
 
 ONGOING - non mirrored walls
