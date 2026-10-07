@@ -899,6 +899,79 @@ OvM1Block:
     clc
     jmp $FBF8
 
+FooterPtr1 = $E0                 ; title-only pointer block; overwritten by HUD
+FooterPtr2 = $E2
+FooterPtr3 = $E4
+FooterPtr4 = $E6
+FooterPtr5 = $E8
+FooterPtr6 = $EA
+
+    .ds $F700 - *, 0
+FooterBand:
+    sta WSYNC
+    lda #>FooterFont
+    sta FooterPtr1+1
+    sta FooterPtr2+1
+    sta FooterPtr3+1
+    sta FooterPtr4+1
+    sta FooterPtr5+1
+    sta FooterPtr6+1
+    lda #<FooterFont
+    sta FooterPtr1
+    lda #<FooterFont+8
+    sta FooterPtr2
+    lda #<FooterFont+16
+    sta FooterPtr3
+    lda #<FooterFont+24
+    sta FooterPtr4
+    lda #<FooterFont+32
+    sta FooterPtr5
+    lda #<FooterFont+40
+    sta FooterPtr6
+    ldx #7
+    stx LineCount
+.FooterLoop:
+    ldy LineCount
+    lda (FooterPtr6),Y
+    tax
+    sta WSYNC
+    lda (FooterPtr1),Y
+    sta.w GRP0
+    lda (FooterPtr2),Y
+    sta GRP1
+    lda (FooterPtr3),Y
+    sta GRP0
+    lda (FooterPtr4),Y
+    sta Temp
+    lda (FooterPtr5),Y
+    ldy Temp
+    sty GRP1
+    sta GRP0
+    stx GRP1
+    stx GRP0
+    dec LineCount
+    bne .FooterLoop
+    sta WSYNC
+    lda #0
+    sta VDELP0
+    sta VDELP1
+    sta GRP0
+    sta GRP1
+    sta GRP0
+    sta GRP1
+    jmp $FBF8
+
+    .ds $F800 - *, 0
+FooterFont:
+    ; Six 8-pixel slices, top-to-bottom rows are bytes 6..2.
+    ; The 4x5 glyphs spell "2026 Iuri".
+    .byte $00, $00, $3C, $11, $09, $05, $38, $00
+    .byte $00, $00, $CF, $24, $22, $21, $CE, $00
+    .byte $00, $00, $30, $48, $70, $40, $30, $00
+    .byte $00, $00, $1E, $0C, $0C, $0C, $1E, $00
+    .byte $00, $00, $54, $B4, $94, $96, $95, $00
+    .byte $00, $00, $38, $10, $30, $00, $10, $00
+
     .ds $F880 - *, 0
     .ds $F970 - *, 0
 
@@ -984,6 +1057,8 @@ OverlayTramp:
 ; still holds the bank0 jsr CallPad_* return address.
 ; ------------------------------------------------------------------------------
     .ds $FBE0 - *, 0
+    sta $1FF8
+    jmp FooterBand
     .ds $FBF8 - *, 0
 ReturnPad:
     sta $1FF6
