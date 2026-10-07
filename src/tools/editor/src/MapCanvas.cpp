@@ -52,11 +52,15 @@ static int MirrorColumn(int displayCol, int roomWidth) {
     return src >> 1;
 }
 
-// Patch lookup: [row, right_col, tile] triples; returns index or -1.
-static int FindPatch(const hero::ModelData& m, int row, int rightCol) {
+// Patch lookup: [row, col, tile] (right/ball, legacy = side 0) or
+// [row, col, tile, side] (side 0 = right/ball, 1 = left/M1); col is the
+// half's own cell index. Returns index or -1.
+static int FindPatch(const hero::ModelData& m, int row, int col, int side) {
     for (int i = 0; i < (int)m.asym_patches.size(); ++i) {
         const auto& p = m.asym_patches[i];
-        if ((int)p.size() == 3 && p[0] == row && p[1] == rightCol) return i;
+        if ((int)p.size() < 3) continue;
+        const int pside = (int)p.size() == 4 ? p[3] : 0;
+        if (p[0] == row && p[1] == col && pside == side) return i;
     }
     return -1;
 }
@@ -218,17 +222,27 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             int modelY = y / 4;
             int tileType = model->tiles[modelY * roomWidth + x];
             // Right half: a painted patch overrides the mirror (wall where
-            // the mirror is open) — drawn with a cyan outline so patches
+            // the mirror is open); left half: an M1 patch paints wall color
+            // over an open cell. Both draw with a cyan outline so patches
             // read as patches, not mirrored walls.
             bool patch = false;
             if (dcol >= half) {
                 int rc = (dcol - half) >> 1;
-                patch = FindPatch(*model, modelY, rc) >= 0;
-                if (patch) tileType = (int)hero::TileType::SOLID_WALL;
+                patch = FindPatch(*model, modelY, rc, 0) >= 0;
+            } else {
+                patch = FindPatch(*model, modelY, x, 1) >= 0;
             }
+            if (patch) tileType = (int)hero::TileType::SOLID_WALL;
             QRect tileRect(dcol * cellW, y * cellH, cellW, cellH);
 
             QColor color = GetTileColor(tileType, modelY);
+            // Middle band (row 1): the model's mid_band_type selector makes
+            // every wall there hot (convert promotes row 1 to 'H' the same
+            // way — the legacy HOT_ROCK tile value is gone as a brush).
+            if (model->mid_band_type != 0 && modelY == 1 &&
+                tileType != (int)hero::TileType::AIR) {
+                color = GetTileColor((int)hero::TileType::HOT_ROCK_WALL, modelY);
+            }
             // Bottom band: air on last row shows the room's band COLUBK
             // (walls stay wall-colored — matches game: COLUBK only in open PF).
             if (room && room->bottom_band && modelY == roomHeight - 1 &&
@@ -439,43 +453,70 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         emit levelModified();
         update();
     } else if (m_currentBrush == BrushTool::ASYM_PATCH) {
-        // D6 patch = RIGHT half only (full-stage display col >= half).
+        // D6/D6+M1 patch: click the RIGHT half for a ball block (side 0),
+        // the LEFT half for an M1 block (side 1). TWO blocks max; the base
+        // cell must be OPEN (both objects only add paint/color).
         if (!model) return;
         const int halfCols = displayColumns / 2;
-        if (entityX < halfCols || entityX >= displayColumns) return;
-        const int rc = (entityX - halfCols) >> 1;
-        if (rc < 0 || rc >= roomWidth) return;
-        const int mirrorIdx = modelY * roomWidth + (roomWidth - 1 - rc);
-        const int existing = FindPatch(*model, modelY, rc);
+        if (entityX < 0 || entityX >= displayColumns) return;
+        const bool rightHalf = entityX >= halfCols;
+        const int side = rightHalf ? 0 : 1;
+        const int col = rightHalf ? (entityX - halfCols) >> 1 : entityX >> 1;
+        if (col < 0 || col >= roomWidth) return;
+        const int cellIdx =
+            modelY * roomWidth + (rightHalf ? roomWidth - 1 - col : col);
+        const int existing = FindPatch(*model, modelY, col, side);
         if (existing < 0) {
-            // Paint only where the mirror is OPEN — wall-on-wall renders
-            // identically to the mirror (no band, no ball = invisible).
-            if (model->tiles[mirrorIdx] != (int)hero::TileType::AIR) {
+            // Two-block cap (convert hard-fails >2 as well).
+            if ((int)model->asym_patches.size() >= 2) {
                 QMessageBox::warning(
                     nullptr, QObject::tr("Asym Patch"),
-                    QObject::tr("Mirror cell (row %1, col %2) is already a "
-                                "wall — the strip would be invisible in the "
-                                "game.\nPaint where the LEFT half is open.")
-                        .arg(modelY + 1)
-                        .arg(roomWidth - 1 - rc + 1));
+                    QObject::tr("Two blocks max per model (stacked on two "
+                                "bands, or a pair on one band).\nErase a "
+                                "patch first."));
                 return;
             }
-            // Single-column envelope: all patches share one right_col (one
-            // ball-x per cave frame; convert hard-fails mixed columns).
+            if (model->tiles[cellIdx] != (int)hero::TileType::AIR) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Asym Patch"),
+                    rightHalf
+                        ? QObject::tr("Mirror cell (row %1, col %2) is "
+                                      "already a wall — the strip would be "
+                                      "invisible in the game.\nPaint where "
+                                      "the LEFT half is open.")
+                              .arg(modelY + 1)
+                              .arg(roomWidth - 1 - col + 1)
+                        : QObject::tr("Cell (row %1, col %2) is already a "
+                                      "wall — an M1 patch paints wall color "
+                                      "over an OPEN cell.\nErase the cell "
+                                      "first.")
+                              .arg(modelY + 1)
+                              .arg(col + 1));
+                return;
+            }
+            // One column per side (single ball-x / M1-x envelope; convert
+            // hard-fails mixed columns on the same side).
             for (const auto& p : model->asym_patches) {
-                if ((int)p.size() == 3 && p[1] != rc) {
+                if ((int)p.size() < 3) continue;
+                const int pside = (int)p.size() == 4 ? p[3] : 0;
+                if (pside == side && p[1] != col) {
                     QMessageBox::warning(
                         nullptr, QObject::tr("Asym Patch"),
-                        QObject::tr("One strip column per model (single "
-                                    "ball-x envelope).\nExisting patches sit "
-                                    "at right column %1 — erase them first, "
+                        QObject::tr("One strip column per side (single "
+                                    "ball/m1 x envelope).\nExisting patches "
+                                    "sit at column %1 — erase them first, "
                                     "or paint at column %1.")
                             .arg(p[1] + 1));
                     return;
                 }
             }
-            model->asym_patches.push_back(
-                {modelY, rc, (int)hero::TileType::SOLID_WALL});
+            if (rightHalf) {
+                model->asym_patches.push_back(
+                    {modelY, col, (int)hero::TileType::SOLID_WALL});
+            } else {
+                model->asym_patches.push_back(
+                    {modelY, col, (int)hero::TileType::SOLID_WALL, 1});
+            }
         } else {
             // Second click on the same cell = remove the patch (toggle).
             model->asym_patches.erase(model->asym_patches.begin() + existing);

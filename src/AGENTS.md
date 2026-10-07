@@ -33,6 +33,26 @@
   → partial: digit ptrs live in ZP (scorePtr1-6), glyphs stay in ROM ($FD00)
 - Ball (ENABL) for HUD indicators
 
+## Critical Rule: src/ Is the Project Root — Never Anchor to the Parent
+
+**The project root is `src/` (the agent's working directory). All relative
+paths the user gives are relative to `src/`.** Never resolve a path against
+the parent folder (`.../ai_savior/`) and never search there unless the user
+explicitly says to look at the parent folder.
+
+- User path `screenshots/assymetric/x.png` → `src/screenshots/assymetric/x.png`.
+- If a file is "not found", re-anchor to `src/` FIRST before widening any
+  search — do not start globbing/find from the parent.
+- The env's "workspace root" (`.../ai_savior/`) is a git/tooling anchor,
+  NOT the project root. Git commands (`git status`, `git add`) still run
+  from wherever the repo lives, but file reads/writes/globs stay in `src/`.
+
+**Why this rule exists:** 2026-10-06 — the user's screenshot path
+`screenshots/assymetric/bug_adjust_collision.png` was resolved against the
+parent folder, failed, and the subsequent find/glob widened from the parent
+too, missing `src/screenshots/` entirely. The lesson: one wrong base path
+poisons every fallback search built on it.
+
 ## Critical Rule: NEVER Delete Files Without User Permission
 
 **Deleting files (rm, git rm, moving files to /dev/null, or any operation that removes a tracked or untracked source file) is FORBIDDEN without explicit user approval.** This includes:
@@ -51,6 +71,18 @@
 **Data rule:** measurement/debug values come ONLY from screenshots the user provides or from code the agent verified directly. Values that leaked from TODO.txt are forbidden and must be discarded.
 
 **Why this rule exists:** On 2026-09-27 a grep over `src/` surfaced TODO.txt lines containing Stella INTIM readings; those values polluted the timing analysis. The user's TODO file is off-limits — full stop.
+
+## Rule: Estimate First — 20% Timebox on "Can You Do X?" Questions
+
+When the user asks "can you do X in T minutes?", the answer must come from
+a **fast mental estimate**, not from investigation. If deciding takes more
+than ~20% of T (e.g. >2 min for a 10-min task), the answer is already **NO**
+— say NO immediately. Spending the budget on wondering whether you can is
+itself the failure.
+
+**Why this rule exists:** 2026-10-06 — user asked "fix frame regression in
+10 minutes max?"; the agent started investigating instead of answering, and
+had to be told three times to stop.
 
 ## File-Format Changes Require Data Migration
 
@@ -438,6 +470,68 @@ PF0/PF1/PF2 define the left half; TIA mirrors the right.
 - `clearbreaks` — clear all breakpoints
 - `scanline` — show current scanline
 
+### Screenshots (Wayland) — agent captures Stella itself
+
+System is **Wayland**; X11 grab tools (`xwd`, `import -window`) fail with
+`BadWindow` on the XWayland window — do not use them. Working recipe
+(verified 2026-10-06, first title-screen capture):
+
+```bash
+# 1. Launch (XWayland display + software video; detached so it survives)
+cd src/ && setsid nohup env DISPLAY=:0 stella -video software savior.bin \
+  >/dev/null 2>&1 < /dev/null &
+sleep 5   # boot + title frames
+
+# 2. Capture the ACTIVE window (Stella has focus after launch).
+#    -b = background (required for -o/-d), -a = active window,
+#    -e = no decoration, -n = no notify, -d = delay ms
+spectacle -b -a -n -e -d 1200 -o /abs/path/src/screenshots/shot.png
+
+# 3. Verify the file exists, Read it as image, then:
+pkill -f "stella.*savior"
+```
+
+- Never launch bare `stella` or `stella -help` — no ROM arg opens the
+  launcher/GUI (user saw a "loading file" window).
+- `xwininfo -root -tree | grep '"Stella'` works for window inspection
+  (geometry 640x456) but `xwd -id` still fails — spectacle only.
+- Stella has NO CLI screenshot flag (checked `-help`).
+
+### Scripted snapshots — deterministic frame captures (autoexec.script)
+
+Source: `screenshots/debug/debug_in_stella.jpeg` (past-session method).
+For exact-frame PNGs (better than spectacle for A/B timing checks —
+fixed `frame N`, no focus/portal dependency):
+
+```bash
+mkdir -p /tmp/opencode/stella_base /tmp/opencode/stella_shots
+cat > /tmp/opencode/stella_base/autoexec.script <<'EOF'
+frame 5
+saveSnap
+EOF
+cd src/ && setsid nohup env DISPLAY=:0 stella \
+  -basedir /tmp/opencode/stella_base -debug \
+  -snapsavedir /tmp/opencode/stella_shots savior.bin >/dev/null 2>&1 &
+sleep 6            # Stella NEVER exits on its own — background + kill:
+pkill -f "stella.*savior"
+# PNGs land in /tmp/opencode/stella_shots
+```
+
+- `-basedir <tmp>` makes Stella run `autoexec.script` from that dir AND
+  keeps the session away from the real Stella settings (sqlite db —
+  no `logTrace` pollution from the trace-recipe rules below).
+- Script commands that work: `frame #N` (advance N frames),
+  `saveSnap` (PNG of current picture), `ram $addr $val` (poke RAM —
+  e.g. `ram $81 $40` to set RoomY).
+- Traps (measured by past session): `ram` bare hex `a` parses as the
+  A register — ALWAYS `$`-prefix (`ram $0a $05`); joystick-style
+  script commands (`joy0Right` etc.) do NOT affect the running game;
+  no read-back (can't dump RAM/scanline counts out of a script).
+- Because of those gaps, real debugging stays in the py65 sims
+  (`sim_frame_budget` etc.) — Stella scripts = camera + pokes only.
+  Live jitter/pacing still needs human eyes (simulator timing is only
+  as good as its hardware model; Stella is the reference).
+
 ### Timing Measurement
 
 Use `breakLabel` at two addresses, subtract Scn values:
@@ -806,6 +900,85 @@ these rules PREVENT making it worse:
    fill poll in ANOTHER bank ($F2CF = `bne .WaitOverscan` in bank0, not
    LWC code). Cross-check bank before blaming a routine (AGENTS py65
    rule, recurrence).
+
+### Title-kernel dispatch regression family (2026-10-06)
+
+**What broke:** one "simple" feature (title screen: black + S.A.V.I.O.R.
+via the 48px sprite technique) regressed nearly every guard:
+`sim_bomb_fuse` stack stomps, `sim_frame_budget` hang, WSYNC-count
+mismatch, wall-model 263→264 on every gameplay frame, plus the earlier
+M1 +4c VBL regression (`test_phase3_ball` 263/264, user-left-open).
+
+**Causes (each measured, not guessed):**
+1. **jmp-after-jsr stack leak.** KernelInit was `jsr`'d from the frame
+   loop; the title path `jmp`'d out without popping → 2B leaked per
+   title frame → SP decay → bomb sim stomps. Same family as the F6
+   hotspot leak.
+2. **Alternate kernel = new sim contract.** TitleKernel skips `.Row` →
+   the sim phase machine waited for a landmark that never arrived →
+   infinite loop. Every non-cave kernel must register: landmark label,
+   WSYNC count, wall-model target.
+3. **WSYNC count is measured, not arithmetic.** Title pad was budgeted
+   by summing constants (192→195→196→197) across four rebuilds;
+   SetObjectXPos self-WSYNCS, the entry WSYNC and the cleanup WSYNC
+   each changed the count. Count with a py65 histogram, then set pad.
+4. **Kernel-entry span is cycle-precise.** Moving TIA inits into a
+   jsr'd `KernelInit` (fill) added jsr/check/rts (~19c) and an entry
+   WSYNC to the VBL-tail→`.Row` span → wall 263→264 every cave frame.
+   The span had no slack; comments/estimates are not a budget — the
+   sim is.
+5. **VBL growth shows up late.** M1 `adc #1` (+4c in VBL) only bit
+   when a worst path crossed TIM64T #23 — same class as rule 4 above
+   the flicker section (budget the LATEST-in-path, not the first).
+
+**Prevention rules:**
+1. Kernel/VBL/kernel-entry changes: run `sim_frame_budget.py` +
+   `sim_bomb_fuse.py` in isolation IMMEDIATELY after the structural
+   edit, BEFORE writing any feature code. Red guard = stop and fix;
+   never stack the next feature on a red build.
+2. Never `jmp` out of a `jsr` frame without popping (`pla`/`pla`) or
+   making it a true tail-call from a routine that never returns.
+3. New/alternate kernels: add sim landmark (`PC_TITLE`), declare
+   WSYNC count + per-kernel wall target, verify with a py65 WSYNC
+   histogram before Stella.
+4. Measure WSYNC counts and wall segments empirically; never budget by
+   summing comments or mental arithmetic.
+5. VBL-tail→first-kernel-WSYNC is one cycle-precise span — any edit
+   there is a timing change and needs sim proof before feature work.
+6. When a guard fails after a "simple" change, the change is not
+   simple. Revert or fix the regression first; do not debug the
+   feature and the guard in the same step.
+
+### Title pad stripe = VDEL stale live-slot (2026-10-07)
+
+**Symptom:** solid 2-px vertical stripe (TIA x75-76) through all 117
+title-pad scanlines, colored by COLUP0/1 (turned white when we forced
+$0E). Survived `ENAM0/ENAM1 = 0` (once and per-pad-line), `NUSIZ0/1 = 0`,
+`CTRLPF = 0`, `RESMP0/1 = 2`, `GRP0/GRP1 = 0`.
+
+**Root cause:** `VDELP0/VDELP1` were still **1** (set at scn20 for the
+48px text). The post-art `GRP0/GRP1 = 0` clear wrote only the **DELAYED**
+slot; the **LIVE** slot kept the frozen stale text glyph (a byte with 2
+lit bits at the last RESP position → 2-px column, same byte every line →
+solid). Every "obvious" enable reg was correctly 0 — the draw came from
+the slot those writes could not reach.
+
+**Fix:** in the title-pad prologue clear, `sta VDELP0 / sta VDELP1`
+(=0) **BEFORE** `sta GRP0 / sta GRP1` (=0), so the zeroes land in the
+live slot. `kernel.asm` `.TkPad` prologue.
+
+**Rules:**
+- **VDEL state is part of "clear the sprite"** — zeroing GRP/ENAM/ENABL
+  while VDELP0/1 = 1 is a no-op for the visible slot. Always drop VDEL
+  first.
+- When all enable regs prove 0 yet pixels persist, suspect the
+  OTHER VDEL slot before suspecting emulator/write-path bugs. Diagnosis
+  path that worked: color-forcing write (identifies the COLUPx source) →
+  reg-class eliminations (NUSIZ/CTRLPF/RESMP/ENAM each measured) →
+  read VDELP's last value from the py65 trace (`sta $25/$26` A column).
+- Failed-but-reasonable experiments get REMOVED after the fix; only the
+  VDEL reorder stays (experiments E1/E4/E6/E7, see
+  `plans/intro_screen_fix_plan2.md` Outcome).
 
 ### HERO Power Bar Analysis (2026-09-22)
 

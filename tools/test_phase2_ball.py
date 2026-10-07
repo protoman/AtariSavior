@@ -21,15 +21,33 @@ Assertions (gameplay frames >= 2 where the cave kernel runs):
     .BgStore store, and the removed HUD boundary-ball (RESBL/HMBL/HMOVE;
     its 2 lines folded into TopGap so the WSYNC sequence stays aligned).
 
-Baseline: P2_BASELINE env var, default /tmp/opencode/savior_phase1.bin
-(phase1-code build). The bit-identical leg compares PF writes too, so the
-baseline MUST embed the SAME room/model content as the working tree — any
-content edit in src/rooms/ invalidates it. Regenerate:
-  git worktree add /tmp/opencode/p1base a8fb32e
-  cp -r src/rooms/. /tmp/opencode/p1base/src/rooms/
-  (cd /tmp/opencode/p1base/src && ./build.sh)
-  cp /tmp/opencode/p1base/src/savior.bin /tmp/opencode/savior_phase1.bin
-  git worktree remove --force /tmp/opencode/p1base
+Baseline: P2_BASELINE env var, default /tmp/opencode/savior_phase1.bin.
+Regenerate (pre-M1-asm banks + CURRENT content — phase1-era code cannot
+parse today's models.json [4-tuple patches, mid_band_type], and the
+drop-list above already carries every phase1→2 intended delta):
+  cp src/bank1.asm src/bank2.asm /tmp/opencode/       # save working copy
+  git show HEAD:src/bank1.asm > src/bank1.asm         # HEAD = pre-change
+  git show HEAD:src/bank2.asm > src/bank2.asm
+  # HEAD bank2's hand-copied sprite EQUs track the HEAD kernel; the working
+  # kernel may have shifted pre-pad (+7B classes). Resync them the same way
+  # tools/test_miner_colors.py asserts, or the baseline ROM fetches sprite
+  # bytes from a stale address (stripped trace diffs at the first GRP0):
+  /home/iuri/python3/bin/python3 - <<'EOF'
+  import re
+  from pathlib import Path
+  lab = {}
+  for ln in Path("src/bank0.lst").read_text(errors="replace").splitlines():
+      m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+([A-Za-z_][A-Za-z0-9_]*)\s*$", ln)
+      if m: lab[m.group(2)] = m.group(1)
+  p = Path("src/bank2.asm"); s = p.read_text()
+  for n in ("PlayerSpriteA", "PlayerSpriteB"):
+      s = re.sub(rf"^{n} = \$[0-9a-fA-F]+", f"{n} = ${lab[n]}", s, flags=re.M)
+  p.write_text(s)
+  EOF
+  (cd src && ./build.sh)
+  cp src/savior.bin /tmp/opencode/savior_phase1.bin
+  cp /tmp/opencode/bank1.asm /tmp/opencode/bank2.asm src/  # restore
+  (cd src && ./build.sh)
 If missing, the bit-identical leg is skipped (invariants still run).
 
 Run: /home/iuri/python3/bin/python3 tools/test_phase2_ball.py
@@ -155,8 +173,9 @@ def run(rom: Path) -> dict:
         if bk == 0 and pc == PC_START:
             frame += 1
             mem.frame = frame
-            # console RESET pulse: title -> game start (same as sim)
-            mem.swchb = 0xFE if frame in (1, 2) else 0xFF
+            # console RESET pulses (intro 2026-10-06): f1 leaves $FD intro,
+            # f4 hits TitleWork RESET -> game start (same as sim)
+            mem.swchb = 0xFE if frame in (1, 4) else 0xFF
         if bk == 0 and pc == PC_ROW and frame >= 0:
             cave_rows += 1
             ctrlpf_at_row.append((frame, mem.last.get(CTRLPF)))
@@ -173,7 +192,7 @@ def check(r: dict, want_ctrlpf: int, log_fallback: bool = False) -> list[str]:
     """log_fallback: for the baseline ROM — its .Row address differs from
     the current bank0.lst parse (pre-pad code shifted), so the breakpoint
     never fires there; validate via any-bank CTRLPF writes in the log
-    (phase1 baseline: bank1 HUD is the only writer, all $05)."""
+    (pre-M1-asm baseline: Phase 2's CTRLPF $35, same as the new ROM)."""
     fails = []
     rows = r["ctrlpf"]
     if rows:
@@ -242,7 +261,12 @@ def main() -> int:
     stripped = [(a, v) for a, v in trace if a not in _strip]
     if base_path.exists():
         b = run(base_path)
-        fails += check(b, 0x05, log_fallback=True)
+        # Baseline = pre-M1-asm HEAD banks + CURRENT rooms (recipe above):
+        # it carries Phase 2's CTRLPF $35 like the new ROM, so provenance is
+        # "it builds from an explicit rev", not phase1-ness (phase1 code
+        # can no longer parse today's content — quads + mid_band — so the
+        # old a8fb32e recipe is dead).
+        fails += check(b, 0x35, log_fallback=True)
         b_stripped = [(a, v) for f, bb, a, v in b["log"]
                       if f >= 2 and a not in _strip]
         if stripped != b_stripped:

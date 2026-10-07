@@ -87,11 +87,18 @@ struct ModelData {
     int width = 20;
     int height = 3;
     std::vector<int> tiles;
-    // D6 asymmetric patches: [row, right_col, tile] triples; right_col is
-    // the right-half cell (0 = center-adjacent). Empty = symmetric model.
+    // D6 asymmetric patches: [row, col, tile] (right/ball) or
+    // [row, col, tile, side] (side 0 = right/ball, 1 = left/M1); col is
+    // the half's own cell index (0 = center-adjacent). TWO blocks max.
+    // Empty = symmetric model.
     // Optional in the file: symmetric models predate the key and must stay
     // key-less (convert treats missing/[] as symmetric).
     std::vector<std::vector<int>> asym_patches;
+    // Middle band (row 1) type: 0 = Rock Solid, 1 = Hot. Optional in the
+    // file (absent = 0 = solid — pre-mid_band_type files stay key-less).
+    // Convert makes EVERY non-air row-1 cell hot when 1; rows 0/2 never
+    // get hot (a legacy HOT_ROCK tile there coerces to a normal wall).
+    int mid_band_type = 0;
 
     template <class Archive>
     void serialize(Archive& ar) {
@@ -106,8 +113,18 @@ struct ModelData {
             } catch (const cereal::Exception&) {
                 asym_patches.clear();   // no key in an older file
             }
-        } else if (!asym_patches.empty()) {
-            ar(CEREAL_NVP(asym_patches));
+            try {
+                ar(CEREAL_NVP(mid_band_type));
+            } catch (const cereal::Exception&) {
+                mid_band_type = 0;      // no key in an older file
+            }
+        } else {
+            if (!asym_patches.empty()) {
+                ar(CEREAL_NVP(asym_patches));
+            }
+            if (mid_band_type != 0) {
+                ar(CEREAL_NVP(mid_band_type));
+            }
         }
     }
 };

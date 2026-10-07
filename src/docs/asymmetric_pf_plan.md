@@ -581,3 +581,128 @@ three screenshots:
   wider than the ball (1 cell; 2 with M1), and any patch whose ball-x
   would differ between bands. Editor paints outside the envelope →
   warn. Content that cannot fit → O1 revival (recorded fallback).
+
+## Hot-death envelope fix (2026-10-05, user bug)
+
+**Symptom (user, Stella):** player touching the M1 block on the hot band
+was *blocked but never killed*; death came only after blasting (then from
+`BombPlayerBlast`, ±1 col / any Y — by design, bomb drops at own feet).
+
+**Root cause:** both overlay envelopes (`OvM1Block` `cmp/sbc #14`,
+`PHMOverlay` `sbc #14`) modeled an 8px sprite span `[vl, vl+7]`, but
+`PLAYER_WIDTH = 7` — lit span is `[vl, vl+6]` and the hot-rect box uses
+`(vl+6)>>2`. Result: 1px dead zone. Block at M1X=71 (cols 16-17): sprite
+flush at X=64 (vl=57) stopped 1px short of px64; kill required X=65
+(vl=58), which the envelope rejected — `box max col ≤ 15 < rect.x 16` →
+blocked, never hot.
+
+**Fix:** envelope tightened `#14` → `#13` in all three sites (M1 test +
+wrap guard, ball test); comments/header updated. Sprite now touches the
+strip's first pixel exactly when the hot box first overlaps the hot rect
+— parity with PF hot walls (die on the 1px-overlap proposal; stop pixel
+for a cold block = X 64, same as a PF wall).
+
+**Deliberately NOT changed:** moth-turn `sbc #14` (bank2 ~258 — moth
+sprite width, separate object); ball overlay still returns C=1 without
+the hot funnel (D6: ball strip never hot; ball/M1 envelopes disjoint for
+model 0: ball needs vl ≥ 74, M1 ≤ 71). Ball-side hot rect emission
+(convert `hot_m1` for side-1 patches) remains an open latent item —
+model 1's `asym_patches` ball patch is cold today.
+
+**Regression:** `tools/test_cell_map.py::hot_death_checks` — 1248 py65
+sweeps (full X × both facings × 4 row pairs) asserting `Temp` b7 against
+walk/M1-funnel × hot-rect overlap on `M0RoomRects` (both hot rects: the
+'H' wall and the M1 block); spec fns (`m1_overlay_hit`, `overlay_hit`)
+synced to the 7px span.
+
+## Post-destroy hot-rect leak (2026-10-05, user bug 2)
+
+**Symptom:** after blasting the M1 block, walking over where it stood
+still killed the player.
+
+**Root cause:** the walk-hit path reaches `HotOverlapBody`
+unconditionally (player standing under the block: the landing proposal
+`RoomY+1` straddles into the floor band, the floor cell under the block
+is solid → walk hit → body). The body's parent gate was
+`mask & BombPacked` — the M1 hot rect is emitted with mask `$00`
+("never dies with a wall"), so it stayed live forever; `M1StripBlast`
+sets only `EnemyDeadMask` b4, which the funnel honored (`.OvM1no`) but
+the body never saw. Pre-destroy this was masked by the envelope (box
+could not reach col 16 at the flush stop, X 64 → rect col test failed);
+destroy removes the envelope → walk-in → landing proposal → death.
+
+**Fix (bank2 `HotOverlapBody` gate, +10 B, body ends $FD6B < pin
+$FDE1):** mask `$00` now gates on `EnemyDeadMask` b4 (dies with the
+strip); any other mask keeps the old `BombPacked` wall-piece gate.
+
+**Regression:** `hot_death_checks` now sweeps dead=$00 and dead=$10 —
+2496 py65 cases. The dead=$10 pass reproduced the bug headless against
+the pre-fix ROM (X=65 Y=90: b7=1 want 0) and passes post-fix.
+
+## Player art 1-bit alignment fix (2026-10-05, user bug 3)
+
+**Symptom:** player penetrates 2-4 px into the M1 block moving
+left→right (rightward approach only).
+
+**Root cause:** art bit alignment, not collision. TIA renders GRP
+bit7 = leftmost; all four player frames (`PlayerSpriteA/B`,
+`PlayerWalkA/B`) shipped with col7 (bit0) lit on body rows and col0
+(bit7) empty = authored span **cols1-7**. Every consumer assumes
+**cols0-6**: `PLAYER_WIDTH=7`, the walk box `[RoomX-7, RoomX-1]`,
+`sbc PlayerDir` (mirror compensation), gotVL's reflected `+1` ("first
+lit bit is column 1"), PHM `lit-left = arg-7`, the laser nose anchors.
+Net: facing right (REFP0=0) the sprite renders 1 color clock right of
+its collision box; at the flush stop X=64 col7 lands on px64 = the
+block's first clock. 1 color clock = 2 TV pixels — matches the report.
+Facing left the mirror flips the same error into a 2-clock gap
+(not reported, same fix).
+
+**Fix:** shift all 48 art bytes left 1 bit (cols1-7 → cols0-6, b0
+clear everywhere). No label moved (byte counts unchanged → bank2 EQUs,
+test_miner_colors address pins, $FDE7/$FDF3 walk pads all stable).
+Comments made stale by the shift updated: jet B row 7 "+3 px vs A" →
+"+1 px", walk boot cols (A: 2+6 / 1+6, B: 3+4). Laser nose anchor
+`RoomX-3` left alone — post-shift face front is `RoomX-1`, so the
+anchor sits 2 px behind the nose = the safe side (wall search starts
+inside, never skips a flush wall); the `adc #4` beam spawn becomes 5 px
+ahead of the nose instead of 4 (inside the 0/8/16 sweep phase, not
+visible).
+
+**Regression:** all 48 rows assert `byte & 1 == 0` (col7 empty); build
+green (4×4096, pins held, wall-model sim OK); battery 19/20
+(`test_editor_roundtrip` = pre-existing dirty-tree git gate).
+`test_phase2_ball`'s golden TIA trace pins GRP0 values → baseline
+regenerated with its documented recipe (HEAD banks + current kernel;
+working bank1/2 restored byte-identical, verified by md5).
+
+## M1 render off-by-one fix (2026-10-06, user bug 4)
+
+**Symptom:** player sprite penetrates ~1 color clock (4 px) into the
+M1 block moving left→right after the art fix (screenshot
+`screenshots/assymetric/bug_adjust_collision.png`).
+
+**Evidence (pixel-measured, scale `px = 4*clock - 3`, calibrated on 3
+edges):** player sprite rendered `[57,63]` = contract at stop X=64
+(`[A-7,A]`) — P0 correct. Block rendered `[63,70]` at staged M1X=71
+but must cover PF strip cells 16-17 = `[64,71]`. Overlap = clock 63.
+
+**Root cause:** Stella draws 8-wide missiles one clock left of the
+player contract. Code path fully verified otherwise: ROM `M0M1X=$47`
+(71) staged to `$8E` (runtime py65 probe: value intact at
+`PositionBallM1`), `SetObjectXPos` same A/same routine/linear table
+(A=71 → N=5, Y=-4 → landing 71). Player proves the contract; M1
+pixels disagree by -1 = TIA missile-vs-player class offset, not a
+staging/positioning bug.
+
+**Fix:** `PositionBallM1` passes `staged+1` to `SetObjectXPos`
+selector 3 (`clc / adc #1`, +3 B in the $F9C4 fill, VBL +4 c).
+Staged `$8E` semantic unchanged (bank2 kill envelope / LWC re-read
+ROM M1X). Ball selector 4 left alone — same offset unverified (no
+screenshot of ball model). Laser M0 similarly unverified.
+
+**Status:** user Stella-verified fixed (flush both facings). Open:
+`test_phase3_ball` regressed 262/263 → **263/264** frame lines
+(ball path + M1 path poked worst-case; +4 c in VBL crossed the
+window). User decision 2026-10-06: **leave it** — known, not a
+blocker. Battery otherwise 18/19 (`test_editor_roundtrip` = pre-existing
+dirty-tree git gate).

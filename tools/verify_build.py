@@ -991,12 +991,50 @@ def check_model_rects(src: Path) -> None:
                  f"rects={rects}")
 
 
+def sync_overscan_literal(src: Path) -> int:
+    """Post-bank0 self-heal (build.sh: after bank0, before bank1).
+
+    bank1's fold pad ends in `jmp $Fxxx` -> Overscan, which moves whenever
+    bank0 pre-pad code shifts. Hand-synced at least 3x (and bit again
+    2026-10-05); patch it from bank0.lst instead of by hand.
+    """
+    lst0 = src / "bank0.lst"
+    if not lst0.exists():
+        print("sync: bank0.lst missing — assemble bank0 first", file=sys.stderr)
+        return 1
+    labels0, _ = parse_lst(lst0.read_text(errors="replace").splitlines())
+    got = labels0.get("Overscan")
+    if got is None:
+        print("sync: Overscan label not in bank0.lst", file=sys.stderr)
+        return 1
+    bank1_p = src / "bank1.asm"
+    if not bank1_p.exists():
+        print("sync: bank1.asm missing", file=sys.stderr)
+        return 1
+    text = bank1_p.read_text(encoding="utf-8")
+    m = re.search(r"^(    jmp \$)([0-9A-Fa-f]{4})(\s*; Overscan in bank0)",
+                  text, re.M)
+    if not m:
+        print("sync: bank1 Overscan jmp literal not found", file=sys.stderr)
+        return 1
+    old = int(m.group(2), 16)
+    if old != got:
+        text = text[:m.start(2)] + f"{got:04X}" + text[m.end(2):]
+        bank1_p.write_text(text, encoding="utf-8")
+        print(f"sync: bank1 jmp Overscan ${old:04X} -> ${got:04X}")
+    return 0
+
+
 def main() -> int:
     argv = sys.argv[1:]
     if argv and argv[0] == "--sync":
         src = (Path(argv[1]) if len(argv) > 1
                else Path(__file__).resolve().parent.parent / "src")
         return sync_kernel_literals(src)
+    if argv and argv[0] == "--sync-overscan":
+        src = (Path(argv[1]) if len(argv) > 1
+               else Path(__file__).resolve().parent.parent / "src")
+        return sync_overscan_literal(src)
     src = (Path(argv[0]) if argv
            else Path(__file__).resolve().parent.parent / "src")
     check_rom(src)

@@ -135,11 +135,15 @@ RcBase     = $89                ; rect cache count (S3.2-fix: count sits on
                                  ; the $89 pad so rects fit $CC-$DF — clear
                                  ; of bank1's $E0 stomp that ate rect4.h)
 RcW1       = $CC                ; rect0.x — cache base for ABW tables
+RectCount  = $92                ; walk temp — BMW stashes the original screen
+                                 ; col here (hand-copy of kernel's decl —
+                                 ; check_equ_sync pair); M1StripBlast reads it
 BombPacked = $B5                ; state+DownPrev+WallMask (b3-6)
 EnemyDeadMask = $BA             ; b0-2 enemy kills (hand-copy of kernel's
-                                 ; decl — check_equ_sync pair); b3 = D6 strip
-                                 ; destroyed (StripBlastCheck, dies with the
-                                 ; room via EnterRoom's zero)
+                                 ; decl — check_equ_sync pair); b3 = D6 ball
+                                 ; strip destroyed (StripBlastCheck); b4 = M1
+                                 ; strip destroyed (M1StripBlast) — both die
+                                 ; with the room via EnterRoom's zero
 CollisionEndX = $8E             ; blast lo
 TILE_COLUMNS = 20
 
@@ -723,17 +727,22 @@ BarFineTable:           ; B=0..120; ∈{0,1,2,3,4}; path = f(F)
     .byte 0,1,1,1,3,3,3,4,4
 
 ; ------------------------------------------------------------------------------
-; StripBlastCheck — Phase 4: bomb blast vs the D6 patch strip (user: blasting
-; the strip must work). Tail-jumped from BombMarkWalls .BMWDone (jmp, no
-; push: the jsr+pha version measured SP $F7 < the $F8 gameplay guard, and
-; the pha leaked on the early-exit path -> runaway work -> 309-line frames
-; in Stella 2026-10-04). Every exit ends in ReturnPad with A = count.
+    .ds $F937 - *, 0            ; pinned: bank2 M1StripBlast back-jmp operand
+                                 ; ($F937) — test_bomb_strip asserts both literals
+; StripBlastCheck — Phase 4: bomb blast vs the D6 patch strips. Tail-jumped
+; from BombMarkWalls .BMWDone, which now crosses to bank2 FIRST (M1 twin,
+; `sta $1FF8 / jmp $F970` — the meta lives in bank2's ROM) and comes back
+; here (`sta $1FF7 / jmp $F937`). Still 0 pushes (the jsr+pha version
+; measured SP $F7 < the $F8 gameplay guard, and the pha leaked on the
+; early-exit path -> runaway work -> 309-line frames in Stella 2026-10-04).
+; Every exit ends in ReturnPad with A = count.
 ; In: BMWScratch = strip left col pL in RIGHT-half space ($FF = none/sym,
 ; captured before the punch loop), CollisionEndX/CellX = blast window in
 ; LEFT-half space (bomb col mirrored at BMW entry), CollisionX = count.
 ; Overlap after mirroring (39-x) with the strip not yet dead → set
-; EnemyDeadMask b3 and inc the count (caller's +75 loop scores it). The
-; kill bit dies with the room (EnterRoom zeroes EnemyDeadMask) — same
+; EnemyDeadMask b3 (ball strip; b4 = M1 strip, set by M1StripBlast) and
+; inc the count (caller's +75 loop scores it). The
+; kill bits die with the room (EnterRoom zeroes EnemyDeadMask) — same
 ; lifecycle as WallMask holes (D1-B).
 ; ------------------------------------------------------------------------------
 StripBlastCheck:
@@ -774,6 +783,20 @@ StripBlastCheck:
 .SBdone:
     lda CollisionX              ; A = walls newly broken (caller contract)
     jmp $FBF8                   ; ReturnPad → bank0 caller (0 push)
+
+    .ds $F9AC - *, 0            ; shared cross-bank pad — bank2 carries the
+                                 ; SAME 12 bytes at $F9AC (identity asserted
+                                 ; in test_bomb_strip): after `sta $1FF8` the
+                                 ; NEXT opcode fetch is from the NEW bank at
+                                 ; pc+3, so both banks must hold the identical
+                                 ; `jmp` (F6 pad rule — ReturnPad/OverlayTramp
+                                 ; do the same).
+M1ToBank2:                      ; reached bank1-side: .BMWDone jmps here
+    sta $1FF8                   ; switch bank1 → bank2
+    jmp $F970                   ; M1StripBlast
+M1ToBank1:                      ; = $F9B2 (M1StripBlast jmps here bank2-side;
+    sta $1FF7                   ; after that switch bank1 executes this copy)
+    jmp $F937                   ; StripBlastCheck
 
 ; ========================================================================
 ; Leaf routines relocated from bank0 — batch A, sounds (leaf_move_plan)
@@ -1022,6 +1045,11 @@ BombMarkWalls:
 .BMWVL:
     lsr
     lsr                         ; screen col = visible_left/4 (0..39)
+    sta RectCount               ; ORIGINAL screen col (0..39): >=20 = right
+                                ; bomb → real blast lives in the right half,
+                                ; so M1StripBlast must skip its left overlap
+                                ; test (the window below is mirror-space for
+                                ; right bombs). RectCount free pre-loop.
     cmp #TILE_COLUMNS
     bcc .BMWCol
     sta BMWScratch
@@ -1136,8 +1164,13 @@ BombMarkWalls:
     dex
     bpl .BMWLoop
 .BMWDone:
-    jmp StripBlastCheck         ; Phase 4 tail (0 push — SP guard unchanged):
-                                ; the check ends in ReturnPad with A = count
+    jmp M1ToBank2               ; shared pad $F9AC (sta $1FF8 / jmp $F970,
+                                 ; byte-identical in bank2) → M1StripBlast
+                                 ; sets b4 if the blast covers the left strip,
+                                 ; then the pad's back-half crosses to
+                                 ; StripBlastCheck. Still 0 push — SP guard
+                                 ; unchanged; the check ends in ReturnPad with
+                                 ; A = count.
 
 ABWXTab: .byte RcW1, RcW1+4, RcW1+8, RcW1+12      ; rect.x (EQU-derived S3.1)
 ABWWTab: .byte RcW1+2, RcW1+6, RcW1+10, RcW1+14   ; rect.w
@@ -1204,8 +1237,9 @@ CallPad_BombMarkWalls:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F18E           ; Overscan in bank0 (must match bank0 ToGameStub;
-                        ; PROBE build — revert together with the GRP1 probe)
+    jmp $F192           ; Overscan in bank0 (must match bank0 ToGameStub;
+                        ; verify_build --sync-overscan patches this from
+                        ; bank0.lst after every bank0 build)
 
 ; ========================================================================
 ; IsRoomDark/SetRoomDark — moved here (post-ToGameStub free space) when the

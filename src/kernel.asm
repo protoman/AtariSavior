@@ -354,6 +354,7 @@ COLOR_TIMER     = $1E           ; hue 1 luma 7 = yellow
 COLOR_LIVES     = $C6           ; hue 12 luma 3 = green
 COLOR_BOMBS     = $46           ; hue 4 luma 3 = red
 COLOR_SCORE     = $0E           ; hue 0 luma 7 = white
+COLOR_TITLE     = $6A           ; hue 6 luma 5 = purple (title text)
 
 ; Dark room (lamp crashed): medium grey objects, black PF; fuse PF dark grey
 COLOR_DARK_OBJ  = $0A           ; hue 0 luma 5 = medium grey (lamp + enemies)
@@ -416,10 +417,11 @@ GameStart:
     sta TickCounter
     lda #120
     sta BarLevel                ; bar starts full
-    ; --- Title screen: DropTarget=$FF sentinel (valid fall targets are Y
-    ;     ≤ 191, so $FF never reads as a real drop) → boot lands in the
-    ;     level-select state until console RESET starts the game. ---
-    lda #$FF
+    ; --- Intro screen: DropTarget=$FD sentinel (2026-10-06 — SAVIOR splash
+    ;     shows ONCE at power-on; first SELECT/RESET edge anywhere moves to
+    ;     the old title $FF = first room + HUD stage count; valid fall
+    ;     targets are Y ≤ 191, sentinels $FD/$FE/$FF all "not a fall"). ---
+    lda #$FD
     sta DropTarget
 
     ; --- Load first level ---
@@ -602,6 +604,26 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; --- Sprite frame: jet flutter / ground walk cycle (leaf at $FDFx pad) ---
     jsr PickPlayerFrame
 
+    ; --- Cave TIA restores inside the VBL window (moved 2026-10-06) ---
+    ; Was inline between VBL-tail and .Row: making it a jsr'd KernelInit
+    ; added ~19c + an entry WSYNC to the cycle-precise VBL-tail→.Row span
+    ; → wall 263→264 every frame. Inits live HERE (window headroom
+    ; 1472-1076 ≈ 396c, cost ~25c) so the entry span SHRINKS vs inline.
+    ; HUD cannot clobber these: HUD runs AFTER the kernel each frame.
+    lda #$30                      ; NUSIZ0 = single copy P0 + M0 width 8
+    sta NUSIZ0
+    lda #$30                      ; NUSIZ1 = single copy P1 + M1 width 8
+    sta NUSIZ1
+    lda #COLOR_PLAYER             ; restore player color (HUD had it green)
+    sta COLUP0
+    lda #0                        ; clear VDELP0/VDELP1 (HUD sets them to 1)
+    sta VDELP0
+    sta VDELP1
+    sta ENABL                     ; HUD-bar leftover off before first visible
+                                  ;   line (.Row row0 BandTab rewrites next)
+    lda #$35                      ; CTRLPF back to cave (reflect+prio+ball8):
+    sta CTRLPF                    ;   intro band sets $30 every title frame
+
     ; --- Wait for VBLANK timer ---
 .WaitVBLANK:
     lda INTIM
@@ -622,37 +644,10 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
 ; The inner .Line loop has NO PF writes — only sprite rendering.
 ; ==============================================================================
 
-    ; --- Reset TIA state for cave rendering ---
-    ; HUD may have changed NUSIZ0/1, COLUP0/1 — must restore
-    lda #$30                      ; NUSIZ0 = single copy P0 + M0 width 8 (laser S2.1)
-    sta NUSIZ0
-    lda #$30                      ; NUSIZ1 = single copy P1 (bits0-2=0) +
-    sta NUSIZ1                    ;   M1 width 8 (bits4-5 — same encoding as
-                                  ;   NUSIZ0's laser M0; D6 block = 8 clk)
-    lda #COLOR_PLAYER             ; restore player color (was green for HUD lives)
-    sta COLUP0
-    lda #0                        ; clear VDELP0/VDELP1 (bank1 HUD sets them to 1)
-    sta VDELP0
-    sta VDELP1
-    ; ENAM0 NOT cleared here: kernel .Line owns it (BeamMask AND LaserBeamOn
-    ; per in-window line; LaserBeamOn boots $00 via .ClearZP = beam off
-    ; until first fire press)
-    ; ENAM1 NOT cleared here either: PositionBallM1 latches it in VBL when
-    ; the room has an M1 patch (0 → keep previous value = 0 from .AfterRows)
-    sta ENABL                     ; default 0 — .Row row0's BandTab gate
-                                  ; overwrites before any body line;
-                                  ; .AfterRows clears it before the HUD band
+    ; --- Kernel entry: title/cave dispatch (TIA inits live in VBL tail) ---
+    jsr KernelInit
 
-    lda #0
-    sta RowIdx                  ; tile-row counter (0-2); object section clobbers X
-                                ; (Scanline no longer maintained — S2.2 removed
-                                ;  its only reader in .Line)
-    sec
-    sbc RoomY                   ; A = -RoomY = A0 at scanline 0
-    tay                         ; running-Y: Y = A0 for the next .Line (10c/line
-                                ; cheaper than recomputing Scanline-RoomY each line)
-    ldx #0                      ; tile row counter (0-2)
-
+CaveKernelRow:
 .Row:
     ; --- Set PF registers for this tile row (TIA persists) ---
     ; Store ORDER is cycle-critical (thin-yellow-line fix, 2026-10-01): the
@@ -685,6 +680,13 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     sta COLUP1                    ; D6: M1 band color (left-col block) — A
                                   ; unchanged from COLUPF; P1 inherits it
                                   ; until .Line's object path rewrites
+    sta Temp                      ; A1 (line-budget plan): stage band color
+                                  ; for .ObjZero's A==8 restore (replaces
+                                  ; ldx+lda,X = -4c on the 78c worst line ->
+                                  ; 74c). Temp ($88) has no other kernel
+                                  ; reader/writer: VBL stages end before
+                                  ; kernel, overscan joystick writes after.
+                                  ; .Row measured 50-52c (py65) — +3 safe.
 
     ; --- Per-band ball gate (Phase 3): BandTab[row] $ff/$00 → ENABL ---
     ; Takes the slot of the per-band `lda Temp / sta COLUBK` (VBL writes
@@ -702,25 +704,31 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; The bottom water strip (last 12-off lines, bottom_band_plan rule 2)
     ; renders in .WaterRow after this pass — its own setup line + (11-off)
     ; bodies keeps the row-2 total at 49 lines (setup+48) exactly.
-    ; Split tail (2026-10-05, row1 setup gap 77→74): row1 gate used to pay
+    ; Split tail (2026-10-05, row1 setup gap 77->74): row1 gate used to pay
     ; `bne` 3c to skip the tide load AND share the WSYNC — gap was 77 (stall,
     ; +1 line/frame). Rows 0/1 now store+WSYNC before the tide block, then
     ; jmp over it (+3c charged to the FIRST body line = 66max+3jmp+3WSYNC
-    ; = 72 ≤76). Row2 path byte-identical in cost (cpx/beqT/lda/sta/WSYNC
+    ; = 72 <=76). Row2 path byte-identical in cost (cpx/beqT/lda/sta/WSYNC
     ; = 11+3 = 76, zero margin — the `beq` target is 9 bytes ahead, same
     ; page, T=3c; do not let this block grow toward a page edge).
+    ; A1 gap fix (2026-10-05): `sta Temp` (+3c in .Row) pushed gaps to
+    ; 77/79 = stall EVERY frame (265-line frames). `sta LineCount` moved
+    ; AFTER `sta WSYNC` — same bytes, -3c from the gap window, +3c to the
+    ; first body line (66max+3LC[+3jmp]+3WSYNC = 75 rows0/1, 72 row2).
+    ; LineCount is not read until the line's `dec` tail — the early store
+    ; was never required; keep the store strictly between WSYNC and .Line.
     cpx #TILE_ROWS-1
     beq .RowLinesTide        ; row 2: tide count (36+off) from CollisionX
     lda #LINES_PER_TILE
-    sta LineCount
     ; --- Sync to next scanline (rows 0/1) ---
     sta WSYNC
+    sta LineCount
     jmp .Line
 .RowLinesTide:
     lda CollisionX           ; 36..39 — VBL tide calc (see VBL comment)
-    sta LineCount
     ; --- Sync to next scanline (row 2; falls straight into .Line) ---
     sta WSYNC
+    sta LineCount
 
 .Line:
     ; --- Player sprite: color for THIS line, graphics byte for NEXT line ---
@@ -832,9 +840,27 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     sta GRP0
     jmp .Grp1
 .ObjZero:
+    bne .ObjNoRes           ; flags live from `cmp #PLAYER_HEIGHT` upstream:
+                            ; A==8 ONLY = first line below the window — the
+                            ; only line where COLUP1 still holds the object
+                            ; color (all other obj-out lines: band color from
+                            ; .Row is intact, or this line already restored).
+                            ; A!=8 (above window / below first line): skip the
+                            ; restore — this was the A0=11 worst line
+                            ; (color+beam+GrpZero+restore = 77c > 76 → WSYNC
+                            ; late → +1 line/frame, sim 264).
+    lda Temp                 ; A1: band color staged by .Row (was ldx RowIdx
+                             ; + lda ColupfBuf,X = 7c, now 3c: 78 -> 74).
+                             ; Also fixes the water-strip quirk: X=3 used to
+                             ; index dead ColupfBuf[3] ($EA).
+    sta COLUP1                 ; restore-then-blank: A==8 blanks GRP1 10c later
+                               ; than before (one line, ~15px of row7 dup) —
+                               ; accepted to fit +1B headroom.
+.ObjNoRes:
     lda #0
     sta GRP1
-    jmp .AfterObj
+    beq .AfterObj              ; Z=1 from lda #0 — always taken (3c = jmp,
+                               ; saves 1B vs jmp: net +1B total = $FC67 fit)
 .AfterRows:
     ; Phase 3: cave may leave the ball on (band2 BandTab=$ff) — clear ENABL
     ; at the very start of the HUD line, before bank1's first WSYNC and
@@ -2311,32 +2337,32 @@ BombBlinkColors:
 ; Frame A = normal, frame B = jet legs (rows 7-8 differ; 3 pixels changed).
 ; Per-row colors in PlayerColTable (RED/RED/YELLOW/RED/GRAY/RED/.../BLACK/BLACK).
 PlayerSpriteA:
-    .byte %00011110             ; row 0 (sprites.png 2026-10-03)
-    .byte %00111111             ; row 1
-    .byte %00111110             ; row 2 — yellow face
-    .byte %00111111             ; row 3
-    .byte %00111110             ; row 4 — grey pack
-    .byte %01111111             ; row 5
-    .byte %01111111             ; row 6
-    .byte %00011111             ; row 7 — jet frame A
-    .byte %00011111             ; row 8
-    .byte %00001010             ; row 9
-    .byte %00001010             ; row 10 — grey boots
-    .byte %00001010             ; row 11
+    .byte %00111100             ; row 0 (sprites.png 2026-10-03)
+    .byte %01111110             ; row 1
+    .byte %01111100             ; row 2 — yellow face
+    .byte %01111110             ; row 3
+    .byte %01111100             ; row 4 — grey pack
+    .byte %11111110             ; row 5
+    .byte %11111110             ; row 6
+    .byte %00111110             ; row 7 — jet frame A
+    .byte %00111110             ; row 8
+    .byte %00010100             ; row 9
+    .byte %00010100             ; row 10 — grey boots
+    .byte %00010100             ; row 11
 
 PlayerSpriteB:
-    .byte %00011110             ; row 0
-    .byte %00111111             ; row 1
-    .byte %00111110             ; row 2 — yellow face
-    .byte %00111111             ; row 3
-    .byte %00111110             ; row 4 — grey pack
-    .byte %01111111             ; row 5
-    .byte %01111111             ; row 6
-    .byte %10111111             ; row 7 — jet frame B (+3 px vs A)
-    .byte %01011111             ; row 8
-    .byte %00001010             ; row 9
-    .byte %00001010             ; row 10
-    .byte %00001010             ; row 11
+    .byte %00111100             ; row 0
+    .byte %01111110             ; row 1
+    .byte %01111100             ; row 2 — yellow face
+    .byte %01111110             ; row 3
+    .byte %01111100             ; row 4 — grey pack
+    .byte %11111110             ; row 5
+    .byte %11111110             ; row 6
+    .byte %01111110             ; row 7 — jet frame B (+1 px vs A)
+    .byte %10111110             ; row 8
+    .byte %00010100             ; row 9
+    .byte %00010100             ; row 10
+    .byte %00010100             ; row 11
 
 PlayerColTable:
     .byte COLOR_P_RED, COLOR_P_RED, COLOR_P_YELLOW, COLOR_P_RED
@@ -2360,7 +2386,7 @@ LAMP           = 5             ; type-5 enemy record = editor lamp (white square
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 3             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $FBA0        ; frozen address of bank2's LevelDataTable
+LEVEL_DATA_ADDR = $FBA6        ; frozen address of bank2's LevelDataTable
                                 ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
                                 ;  −$FA86 as the ≤2-object room migration
                                 ;  shrank the tables; check_frozen_addrs
@@ -2385,7 +2411,6 @@ YToRowTable:
     .byte 0,0,0,0,0,0,0,0,0,0,0,0
     .byte 1,1,1,1,1,1,1,1,1,1,1,1
     .byte 2,2,2,2,2,2,2,2,2,2,2,2
-    .byte 3,3,3,3,3,3,3,3,3,3,3,3
 
 ; ==============================================================================
 ; PlayerHitsMap — check player bounding box against the room's PF map
@@ -2581,7 +2606,9 @@ OverlayTramp:
 ;   Temp          = staged BallX (bank2 StageBandTab): 0 = symmetric → skip.
 ;                   selector 4 = HMBL/RESPBL, ball x drawn clocks [A-7,A].
 ;   CollisionEndX = staged M1X (TilePF0+14): 0 = no M1 patch → skip.
-;                   selector 3 = HMM1/RESM1, left-col block x = 7+8*col.
+;                   selector 3 = HMM1/RESM1, left-col block x = 7+8*col
+;                   (passed to SetObjectXPos as M1X+1 — Stella draws 8-wide
+;                   M1 one clock left of the [A-7,A] player contract).
 ;                   ENAM1 latched #$02 for the whole cave (hero-style: 2
 ;                   ENAM writes/frame — enable here, clear in .AfterRows);
 ;                   walls hide the parked M1 in unpatched bands (PF > M1 in
@@ -2598,12 +2625,331 @@ PositionBallM1:
 .M1:
     lda CollisionEndX
     beq .Done
+    clc
+    adc #1                      ; Stella renders 8-wide M1 one clock left of
+                                ;   the [A-7,A] contract (pixel-measured 2026-10-06,
+                                ;   screenshots/assymetric/bug_adjust_collision.png:
+                                ;   staged 71 -> drawn [63,70], needs [64,71])
     ldx #3                      ; selector 3: HMP0+3=HMM1, RESP0+3=RESM1
     jsr SetObjectXPos
     lda #$02                    ; missile enable D1 (same encoding the laser
     sta ENAM1                   ;   beam uses for ENAM0)
 .Done:
     rts
+
+; ------------------------------------------------------------------------------
+; KernelInit — title/cave dispatch + cave running-Y (fill: pre-pad headroom 1B).
+; TIA inits moved to the VBL tail 2026-10-06 (entry-span budget — see there).
+; Intro path (DropTarget=$FD sentinel) → TitleKernel (pops this jsr first!);
+; cave path (play AND old title $FF) → rts → CaveKernelRow. Cave side
+; effects: RowIdx=0, Y=-RoomY, X=0, A=0. ENAM0/ENAM1 NOT touched.
+; ------------------------------------------------------------------------------
+KernelInit:
+    lda DropTarget
+    cmp #$FD
+    beq .TkPath
+    lda #0
+    sta RowIdx                    ; tile-row counter (0-2)
+    sec
+    sbc RoomY                     ; A = -RoomY = A0 at scanline 0
+    tay                           ; running-Y for cave .Line
+    ldx #0
+    rts                           ; → CaveKernelRow (.Row follows the jsr)
+.TkPath:
+    pla                           ; drop jsr KernelInit return — title continues
+    pla                           ;   via jmp (jmp alone would leak 2B/frame)
+    lda #0
+    sta ENAM0                     ; LaserInput arms M0 in overscan; clear it
+                                  ;   BEFORE TitleKernel's entry WSYNC (init
+                                  ;   span was 75c — +3c there = 78 > 76 =
+                                  ;   +1 line; entry WSYNC absorbs these cycles)
+    jmp TitleKernel
+
+; ------------------------------------------------------------------------------
+; TitleKernel — start screen (DropTarget=$FF): black + "S.A.V.I.O.R." top via
+; the 48px sprite technique (NUSIZ3+VDEL cross-buffer, P0@60/P1@68 — same
+; pipeline as bank1 score). Jet art + copyright: later pieces.
+; Frame length: 198 visible WSYNCs (text band 20 + art band 60
+; + 118 pad) → wall 263 = cave+HUD (parity: cave
+; pays 3 HUD stall lines, title pays 3 clean pad lines). jmp Overscan.
+; ZP: LineCount ($84) + Temp ($88) as loop counter/tmp — idle on title frames
+; (cave kernel not running; bank1 HUD not running; overscan probes bypassed).
+; ------------------------------------------------------------------------------
+TitleKernel:
+    sta WSYNC                    ; entry-line overrun guard (KernelInit+dispatch)
+    lda #0
+    sta COLUBK
+    sta PF0
+    sta PF1
+    sta PF2
+    sta COLUPF
+    sta GRP0
+    sta GRP1
+    sta GRP0                     ; flush VDEL buffers (score-technique pattern)
+    sta REFP0
+    sta REFP1
+    sta ENABL
+    sta ENAM1
+    lda #COLOR_TITLE
+    sta COLUP0
+    sta COLUP1
+    lda #3                       ; NUSIZ = 3 copies close
+    sta NUSIZ0
+    sta NUSIZ1
+    lda #1                       ; VDELP = ON (cross-buffer active)
+    sta VDELP0
+    sta VDELP1
+    lda #60
+    ldx #0
+    jsr SetObjectXPos            ; P0 slot base (score parity)
+    lda #68
+    ldx #1
+    jsr SetObjectXPos            ; P1 slot base
+    sta WSYNC
+    sta HMOVE
+    ; --- 6 font pointers (score's (zp),Y timing — abs,Y runs 5c fast and
+    ;     shuffles the VDEL slots: observed "V.I.O.R.O.R." 2026-10-06).
+    ;     Transient stomp-zone pair pattern like bank1 scorePtrs: written
+    ;     here every TitleKernel call, rebuilt/staged by VBL/overscan/HUD
+; before any cave reader ($E2-E4 refresh, $E7 rebuild, $E5/E6
+    ;     restage; title frames never run the HUD). Never persistent. ---
+TPtr1 = $E0                       ; font ptrs lo/hi: $E0/$E1, $E2/$E3,
+TPtr2 = $E2                       ;   $E4/$E5, $E6/$E7, $E8/$E9, $EA/$EB
+TPtr3 = $E4
+TPtr4 = $E6
+TPtr5 = $E8
+TPtr6 = $EA
+    lda #>TitleFont
+    sta TPtr1+1
+    sta TPtr2+1
+    sta TPtr3+1
+    sta TPtr4+1
+    sta TPtr5+1
+    sta TPtr6+1
+    lda #<TitleFont              ; $FB00
+    sta TPtr1
+    lda #<TitleFont+8
+    sta TPtr2
+    lda #<TitleFont+16
+    sta TPtr3
+    lda #<TitleFont+24
+    sta TPtr4
+    lda #<TitleFont+32
+    sta TPtr5
+    lda #<TitleFont+40
+    sta TPtr6
+    ldx #8                       ; gap lines before text — also: art setup
+.TkBlnk:
+    sta WSYNC
+    dex
+    beq .TkGapDone
+    cpx #7                       ; first gap line: art-band setup (fits ~40c)
+    bne .TkBlnk
+    lda #$30                     ; CTRLPF: no reflect/prio, ball 8 unused
+    sta CTRLPF
+    lda #0
+    sta ENABL                    ; ball off for the whole band
+    jmp .TkBlnk
+.TkGapDone:
+    lda #COLOR_TITLE             ; text purple — set AFTER the gap setup
+    sta COLUP0                   ;   (art red must not pre-empt the text)
+    sta COLUP1
+    ldx #7
+    stx LineCount                ; rows left (7..1 — byte0 blank, score parity)
+.TkLoop:
+    ldy LineCount
+    lda (TPtr6),Y                ; slot 6 = "R." — font byte7 = TOP row
+    tax                          ; cache slot 6
+    sta WSYNC
+    lda (TPtr1),Y                ; slot 1 = "S."
+    sta.w GRP0                   ; digit 1 -> GRP0A buffer
+    lda (TPtr2),Y                ; slot 2 = "A."
+    sta GRP1                     ; digit 2 -> GRP1A, digit 1 live on P0c1
+    lda (TPtr3),Y                ; slot 3 = "V."
+    sta GRP0                     ; digit 3 -> GRP0A, digit 2 live on P1c1
+    lda (TPtr4),Y                ; slot 4 = "I."
+    sta Temp                     ; cache digit 4
+    lda (TPtr5),Y                ; slot 5 = "O."
+    ldy Temp
+    sty GRP1                     ; digit 4 -> GRP1A, digit 3 live on P0c2
+    sta GRP0                     ; digit 5 -> GRP0A, digit 4 live on P1c2
+    stx GRP1                     ; digit 6 -> GRP1A, digit 5 live on P0c3
+    stx GRP0                     ; digit 6 -> GRP0A, digit 6 live on P1c3
+    dec LineCount
+    bne .TkLoop
+    sta WSYNC                    ; close last text line — L44 displays the
+    lda #0                       ;   last text row (VDEL): keep it purple,
+    sta GRP0                     ;   bank2 writes COLUP red on L45 instead
+    sta GRP1                     ; VDEL=1: GRP write fills New, cross-shuffle
+    sta GRP0                     ;   latches Old←New for the OTHER player.
+    sta GRP1                     ;   2 writes leave one Old slot stale (purple
+                                ;   bars in the gap); writes 3+4 guarantee both
+                                ;   Old slots latch 0 before the gap.
+    ldx #61                      ; mock: art red band = lines 79-145, ours
+.TkGap:                          ;   was 18-75 → 61-line black gap first
+    sta WSYNC
+    dex
+    bne .TkGap
+    jsr ArtFold                  ; bank2: art setup+60 WSYNCs, ReturnPad
+    lda #0
+    sta VDELP0                   ; VDELP still 1 from scn20 — GRP0/1=0 would
+    sta VDELP1                   ;   only fill the DELAYED slot; the LIVE slot
+    sta GRP0                     ;   keeps the stale text glyph (its 2 lit
+    sta GRP1                     ;   bits = the solid pad stripe). VDEL off
+    sta ENAM0                    ;   FIRST, then GRP=0 hits the live slot.
+    sta ENAM1                    ; art leaves missiles enabled — pad would
+    sta ENABL                    ;   draw two stale vertical lines
+    ldx #56                      ; trailing pad: 117 - 61 gap (band sum fixed)
+.TkPad:
+    sta WSYNC
+    dex
+    bne .TkPad
+    jmp Overscan
+
+    .ds $FB00 - *, 0
+; ------------------------------------------------------------------------------
+; TitleFont — 6 slots × 8 bytes, "S.A.V.I.O.R." (letter + baseline dot).
+; Page-aligned ($FB00) for cross-free abs,Y in TitleKernel.
+; Row order = DigitGfx convention: byte0 blank (not drawn), byte7 = TOP,
+; byte1 = bottom (loop draws Y=7 first).
+; ------------------------------------------------------------------------------
+TitleFont:
+    ; slot 1 "S."
+    .byte %00000000
+    .byte %01110010
+    .byte %00001010
+    .byte %00001000
+    .byte %01110000
+    .byte %10000000
+    .byte %10000000
+    .byte %01110000
+    ; slot 2 "A."
+    .byte %00000000
+    .byte %10001010
+    .byte %10001010
+    .byte %10001000
+    .byte %11111000
+    .byte %10001000
+    .byte %10001000
+    .byte %01110000
+    ; slot 3 "V."
+    .byte %00000000
+    .byte %00100010
+    .byte %01010010
+    .byte %10001000
+    .byte %10001000
+    .byte %10001000
+    .byte %10001000
+    .byte %10001000
+    ; slot 4 "I."
+    .byte %00000000
+    .byte %11111010
+    .byte %00100010
+    .byte %00100000
+    .byte %00100000
+    .byte %00100000
+    .byte %00100000
+    .byte %11111000
+    ; slot 5 "O."
+    .byte %00000000
+    .byte %01110010
+    .byte %10001010
+    .byte %10001000
+    .byte %10001000
+    .byte %10001000
+    .byte %10001000
+    .byte %01110000
+    ; slot 6 "R."
+    .byte %00000000
+    .byte %10001010
+    .byte %10010010
+    .byte %10100000
+    .byte %11110000
+    .byte %10001000
+    .byte %10001000
+    .byte %11110000
+
+; ------------------------------------------------------------------------------
+; TitleSelect — SELECT edge for TitleWork (moved here: TitleWork post-pad had
+; 2B gap; fill has room). First press swallowed so the user sees level 1
+; before counting up (2026-10-06 request); later presses = old behavior
+; (level+1, wrap, LoadLevel reload). Flag: TitleSelFlag — 0 = swallow next,
+; nonzero = normal. Boot zeroed; every cave HUD frame zeroes it too (it is
+; bank1's scbrdCnt scratch), so each fresh title visit also swallows its
+; first press. StepsLeft = previous SWCHB sample (title-owned).
+; Clobbers A. LoadLevel clobbers A/X/Y — edge state re-read after it via
+; TitleWork's tail `lda SWCHB / sta StepsLeft`.
+; ------------------------------------------------------------------------------
+TitleSelFlag = $F2              ; was $EC (2026-10-06): HUD zeroed scbrdCnt
+                                ;   every old-title frame → swallow never
+                                ;   stuck → SELECT never incremented. $F2 =
+                                ;   TallyTicks slot: HUD does NOT touch it
+                                ;   (tally feature proves it survives), tally
+                                ;   ARM overwrites it and its done path ends
+                                ;   at 0 = swallow-pending again.
+TitleSelect:
+    lda StepsLeft
+    and #%00000010
+    beq .TSno                   ; held from last frame -> no repeat
+    lda SWCHB
+    and #%00000010
+    bne .TSno                   ; released now -> no press
+    lda TitleSelFlag
+    bne .TSinc                  ; already seen once -> normal +1
+    lda #$80
+    sta TitleSelFlag            ; swallow this press (stay on level 1)
+    clc                         ; C=0: caller skips LoadLevel
+    rts
+.TSinc:
+    inc Level
+    lda Level
+    cmp #LEVEL_COUNT
+    bne .TSok
+    lda #0
+    sta Level                   ; wrap: no level above → back to 000001
+.TSok:
+    sec                         ; C=1: caller runs LoadLevel (keeps the
+    rts                         ;   original TitleWork→LoadLevel stack depth)
+.TSno:
+    clc                         ; no edge / repeat-held: C=0, nothing changed
+    rts
+
+; ------------------------------------------------------------------------------
+; TitleIntro — intro-screen ($FD) edge check. Entered by JMP from DropStep
+; (no pending return; tail-jumps out — never rts, or it would pop a stale
+; frame return). Any SELECT/RESET press (level-triggered, prev-released via
+; StepsLeft): DropTarget=$FF (old title) + jsr DropArm (.DATitle pose/score
+; — the room is ALREADY loaded from boot LoadLevel, no deep LoadLevel:
+; stack depth DropStep→TitleIntro→DropArm keeps sim_bomb_fuse min-SP).
+; Always re-samples StepsLeft (title-owned on intro/title frames;
+; RefreshEnemyY's idle-only guard never touches it during gameplay... its
+; gameplay latch writes StepsLeft only when DropTarget==0 — intro frames
+; have DropTarget=$FD so ownership stays clean).
+; Clobbers A/X/Temp. Ends at TitleTailAudio (silence + overscan wait).
+; ------------------------------------------------------------------------------
+TitleIntro:
+    lda StepsLeft
+    and #%00000011             ; prev released bits (1 = released)
+    sta Temp
+    lda SWCHB
+    eor #%00000011             ; now pressed bits (1 = pressed)
+    and #%00000011
+    and Temp                   ; any prev-released & now-pressed
+    beq .TIno
+    lda #$FF
+    sta DropTarget             ; → old title (first room + HUD count)
+    jsr DropArm                ; .DATitle: pose + ScoreTe = level+1
+.TIno:
+    lda SWCHB
+    sta StepsLeft
+    jmp TitleTailAudio
+
+    .ds $FBE0 - *, 0
+ArtFold:                        ; TitleKernel -> bank2 ArtLine (title art band)
+    sta $1FF8                   ; F6 write: switch to bank2...
+    jmp $F7F1                   ; bank2 ArtLine — operand fetch happens in bank2 (twin at
+                                ;   same address). Literal = bank2 ArtLine —
+                                ;   patched after bank2 build (two-pass).
 
     .ds $FBF8 - *, 0
 ReturnPad:
@@ -2826,8 +3172,11 @@ LoseLifeBand:
 ; ------------------------------------------------------------------------------
 DropArm:
     lda DropTarget
-    cmp #$FF
-    beq .DATitle               ; title ($FF sentinel): static pose at start
+    cmp #$FD
+    bcs .DATitle              ; sentinels $FD intro / $FF old title → static
+                              ;   pose (real fall Y ≤ $BF → C=0 below; $FE
+                              ;   tally cleared to 0 by TallyWork before its
+                              ;   LoadLevel — same-size swap 2026-10-06)
     lda RoomY
     sta DropTarget
     lda #4                      ; 1..7 = jet "burning": VBL flutter runs
@@ -2866,6 +3215,10 @@ DropArm:
 DropStep:
     lda DropTarget
     beq .DSdone                 ; idle (target 0 = nothing to fall)
+    cmp #$FD
+    bne .DSnf                   ; intro ($FD): edge check in fill, then the
+    jmp TitleIntro              ;   shared silence/wait tail (jmp-in, no rts)
+.DSnf:
     cmp #$FF
     beq TitleWork               ; title sentinel: select/reset, no fall
     cmp #$FE
@@ -2900,28 +3253,21 @@ DropSpeedTable:                 ; 8.8 px/frame per Y>>4 tier (Y = tier*16+8)
 ; DropStep every frame). Player stands at the level start: no gravity, no
 ; enemies (count/miner cleared by DropArm .DATitle), no sound, timer frozen
 ; (tail skips the TickCounter/BarLevel block). HUD score = level+1.
-;   SELECT (SWCHB b1, active-low EDGE) → level+1, wrap → 000001, reload room 0
+;   SELECT (SWCHB b1, active-low EDGE) → jsr TitleSelect (fill): first
+;          press swallowed (user sees level 1 before counting up — flag
+;          TitleSelFlag $F2), later presses level+1, wrap → 000001,
+;          reload room 0
 ;   RESET  (SWCHB b0, active-low EDGE) → score 000000, LoadLevel tail arms
 ;          the real drop-in → gameplay starts
+; (Intro $FD never reaches here — DropStep routes it to TitleIntro.)
 ; StepsLeft = previous SWCHB sample (physics is skipped on title, so it is
 ; title-owned; the first play frame rewrites it as the step budget).
 ; Console switches are read again after any jsr (LoadLevel clobbers X/Y/A).
 ; ------------------------------------------------------------------------------
 TitleWork:
-    ; --- SELECT edge: prev released (1) & now pressed (0) ---
-    lda StepsLeft
-    and #%00000010
-    beq .TWselDone             ; held from last frame -> no repeat
-    lda SWCHB
-    and #%00000010
-    bne .TWselDone             ; released now -> no press
-    inc Level
-    lda Level
-    cmp #LEVEL_COUNT
-    bne .TWselGo
-    lda #0
-    sta Level                  ; wrap: no level above → back to 000001
-.TWselGo:
+    ; --- SELECT edge (swallow-first logic lives in fill: TitleSelect) ---
+    jsr TitleSelect
+    bcc .TWselDone             ; C=0: first-press swallow / no edge
     jsr LoadLevel              ; title arm re-runs → score/objects refreshed
 .TWselDone:
     ; --- RESET edge ---
@@ -2944,6 +3290,8 @@ TitleWork:
     ;     channel force-muted here — UpdateJetSound is skipped because
     ;     $FF would read as "falling" and buzz; laser skipped (LaserState
     ;     = 0, AUDV0 covered above). ---
+TitleTailAudio:                 ; shared: TitleWork falls in; TitleIntro
+                                ;   tail-jumps (label — jumps, not falls)
     jsr BombTick
     jsr CallPad_UpdateBombSound
     lda #0
@@ -2981,19 +3329,26 @@ RefreshEnemyY:
 .REYDone:                       ; away at X=$FF, writing $1C2/$1C1/... =
                                 ; mirrored EnemyRamP/EnemyRamD/TIA = blink,
                                 ; black rooms, broken PF, invisible sprites)
-    ; --- SELECT held → back to the title / level-select screen ---
+    ; --- SELECT or RESET held → back to the old title / level-select screen
+    ;     ($FF = first room + HUD count). Gate: DropTarget == 0 EXACTLY
+    ;     (idle/landed). Sentinels ($FD/$FF/$FE) skip via ≠0; a DROP-IN
+    ;     fall (Y≠0) also skips — so the press that STARTED the game (held
+    ;     through TitleWork RESET, level-triggered here) cannot bounce back
+    ;     to the title while falling (bounce-fixed 2026-10-06). Residual:
+    ;     RESET held past LANDING still re-fires — press must be released
+    ;     before the drop-in finishes. ---
     lda DropTarget
-    cmp #$FF
-    beq .REYRts                 ; already title (TitleWork owns SELECT)
+    bne .REYRts                 ; not idle: not ours
     lda SWCHB
     sta StepsLeft               ; latch so TitleWork sees "held" (no re-fire)
-    and #%00000010
-    bne .REYRts                 ; SELECT released
+    and #%00000011              ; SELECT b1 + RESET b0 (level-triggered,
+    cmp #%00000011              ;   same style as the old SELECT-only check)
+    beq .REYRts                 ; neither pressed
     lda #$FF
-    sta DropTarget              ; title sentinel
+    sta DropTarget              ; title sentinel (intro $FD lands here too)
     jsr LoadLevel               ; tail → DropArm .DATitle (score/objects)
     pla                         ; drop OUR return address (LoadLevel already
-    pla                         ; popped its own) — tail into TitleWork
+    pla                         ;   popped its own) — tail into TitleWork
     jmp TitleWork
 .REYRts:
     rts
@@ -3047,7 +3402,11 @@ ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
 ; Guards: verify_build check_frame_tramp (byte-identity + operand = bank2
 ; label). Body logic: jet flutter (PlayerSpriteA/B) > walk (PlayerWalkA/B) >
 ; static A; phase EnemyRamP&$08 (walk, 16-frame) / TickCounter&4 (jet).
+; PINNED: bank2's mirror is address-frozen at $FDE1 — the TitleSelect
+; TitleWork shrink (2026-10-06) moved this −20B and broke byte-identity;
+; any upstream size change must pad back to $FDE1 here.
 ; ------------------------------------------------------------------------------
+    .ds $FDE1 - *, 0
 PickPlayerFrame:
     sta $1FF8                   ; select bank2
     jmp $F3C4                   ; bank2 PickPlayerFrame body (operand pinned
@@ -3056,39 +3415,39 @@ PickPlayerFrame:
 ; ------------------------------------------------------------------------------
 ; PlayerWalkA/B — dedicated ground-walk frames (sprites.png 2026-10-03,
 ; extracted pixel-exact; torso rows 0-6 identical to the jet pair).
-;   A = boots apart (stride, rows 10-11 spread to cols 2+7 / 4+5)
-;   B = boots together (passing pose, rows 10-11 = cols 4+5)
+;   A = boots apart (stride, rows 10-11 spread to cols 2+6 / 1+6)
+;   B = boots together (passing pose, rows 10-11 = cols 3+4)
 ; Legs rows 7-9 identical in both — only the boots move. Standing forces
 ; PlayerSpriteA; walk cycle alternates A<->B every 8 frames (EnemyRamP&$08,
 ; 16-frame full cycle) while grounded + L/R held.
 ; ------------------------------------------------------------------------------
 PlayerWalkA:
-    .byte %00011110             ; row 0 torso (sprites.png 2026-10-03)
-    .byte %00111111             ; row 1
-    .byte %00111110             ; row 2 — yellow face
-    .byte %00111111             ; row 3
-    .byte %00111110             ; row 4 — grey pack
-    .byte %01111111             ; row 5
-    .byte %01111111             ; row 6
-    .byte %00011111             ; row 7  legs
-    .byte %00011111             ; row 8
-    .byte %00001010             ; row 9
-    .byte %00010001             ; row 10 boots apart (spread)
-    .byte %00100001             ; row 11 boots apart
+    .byte %00111100             ; row 0 torso (sprites.png 2026-10-03)
+    .byte %01111110             ; row 1
+    .byte %01111100             ; row 2 — yellow face
+    .byte %01111110             ; row 3
+    .byte %01111100             ; row 4 — grey pack
+    .byte %11111110             ; row 5
+    .byte %11111110             ; row 6
+    .byte %00111110             ; row 7  legs
+    .byte %00111110             ; row 8
+    .byte %00010100             ; row 9
+    .byte %00100010             ; row 10 boots apart (spread)
+    .byte %01000010             ; row 11 boots apart
 
 PlayerWalkB:
-    .byte %00011110             ; row 0 torso (sprites.png 2026-10-03)
-    .byte %00111111             ; row 1
-    .byte %00111110             ; row 2 — yellow face
-    .byte %00111111             ; row 3
-    .byte %00111110             ; row 4 — grey pack
-    .byte %01111111             ; row 5
-    .byte %01111111             ; row 6
-    .byte %00011111             ; row 7  legs
-    .byte %00011111             ; row 8
-    .byte %00001010             ; row 9
-    .byte %00001100             ; row 10 boots together (passing)
-    .byte %00001100             ; row 11 boots together
+    .byte %00111100             ; row 0 torso (sprites.png 2026-10-03)
+    .byte %01111110             ; row 1
+    .byte %01111100             ; row 2 — yellow face
+    .byte %01111110             ; row 3
+    .byte %01111100             ; row 4 — grey pack
+    .byte %11111110             ; row 5
+    .byte %11111110             ; row 6
+    .byte %00111110             ; row 7  legs
+    .byte %00111110             ; row 8
+    .byte %00010100             ; row 9
+    .byte %00011000             ; row 10 boots together (passing)
+    .byte %00011000             ; row 11 boots together
 
 
 
@@ -3199,6 +3558,10 @@ TallyWork:
     lda #0                      ; wrap past last level
     sta Level
 .TNotWrap:
+    lda #0
+    sta DropTarget           ; clear $FE BEFORE LoadLevel — DropArm's new
+                             ;   `cmp #$FD / bcs` treats ≥$FD as sentinel
+                             ;   pose ($FE must take the real-fall path)
     jsr LoadLevel
     lda #120                    ; reset timer for new level
     sta BarLevel

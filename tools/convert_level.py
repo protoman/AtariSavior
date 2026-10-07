@@ -120,11 +120,14 @@ def nearest_byte(r: int, g: int, b: int) -> int:
 
 
 def tile_to_char(value: int) -> str:
-    """Editor tiles: AIR open, HOT_ROCK_WALL 'H', everything else solid #."""
+    """Editor tiles: AIR open, everything else solid #.
+
+    Legacy HOT_ROCK_WALL (8) coerces to a normal wall: hot is no longer a
+    per-cell tile but the model's mid_band_type selector (row 1 only, see
+    rows_from_json).
+    """
     if value == 0:
         return "."
-    if value == 8:
-        return "H"
     return "#"
 
 
@@ -142,6 +145,7 @@ def load_models(models_path: Path) -> dict:
 
 def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
     # If room has model_id and models are available, look up tiles from model
+    model = None
     if models_by_id and "model_id" in room:
         model = models_by_id.get(room["model_id"])
         if model:
@@ -158,10 +162,18 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
     if len(tiles) != WIDTH * HEIGHT:
         raise ValueError(
             f"room {room.get('room_id')}: expected {WIDTH * HEIGHT} tiles, got {len(tiles)}")
-    rows = [
-        "".join(tile_to_char(tiles[y * WIDTH + x]) for x in range(WIDTH))
-        for y in range(HEIGHT)
-    ]
+    # mid_band_type (0/absent = Rock Solid, 1 = Hot): the selector is
+    # authoritative for row 1 — every non-AIR cell there becomes 'H'.
+    # Rows 0/2 never get hot; a legacy tile 8 there coerces to '#'.
+    hot = bool((model if model else room).get("mid_band_type", 0))
+    rows = []
+    for y in range(HEIGHT):
+        line = []
+        for x in range(WIDTH):
+            t = tiles[y * WIDTH + x]
+            line.append("H" if (y == 1 and hot and t != 0)
+                        else tile_to_char(t))
+        rows.append("".join(line))
     return rows
 
 
@@ -191,9 +203,13 @@ def resolve_asym_patches(model: dict,
 
     D6/D6+M1 envelope (fail loudly):
       - row in bands 0..2, col in 0..9 (D7 grid), side in {0, 1};
+      - TWO patches max (2 blocks: stacked on two bands, or a pair on one
+        band); duplicate (row, col, side) rejected;
       - ONE column per side: all right patches share one right_col (single
         ball x), all left patches share one left cell (single M1 x); the
         two sides may use different columns (case 3: side-by-side blocks);
+        same side + same band + two different x is physically impossible
+        (one ball/M1, one x each) and falls out of this rule;
       - ball patches additive-only (target open where the mirror cell is
         wall — the ball can only ADD paint); a run wider than 1 cell needs
         >1 column, so the single-column rule rejects it too;
@@ -208,9 +224,14 @@ def resolve_asym_patches(model: dict,
     if not patches:
         return None
     mid = model.get("id")
+    if len(patches) > 2:
+        raise ValueError(
+            f"model {mid}: {len(patches)} asym patches — envelope allows "
+            f"TWO blocks max (stacked on two bands, or a pair on one band)")
     right_cols: set[int] = set()
     left_cols: set[int] = set()
     left_patch_rows: set[int] = set()
+    seen: set[tuple[int, int, int]] = set()
     has_right = False
     right = ["".join(left_rows[y][WIDTH - 1 - k] for k in range(WIDTH))
              for y in range(HEIGHT)]
@@ -226,6 +247,11 @@ def resolve_asym_patches(model: dict,
                 f"model {mid}: patch {p!r} side {side} not in 0 (right/ball) "
                 f"1 (left/M1)")
         row, col, tile = p[0], p[1], p[2]
+        if (row, col, side) in seen:
+            raise ValueError(
+                f"model {mid}: duplicate asym patch (row {row}, col {col}, "
+                f"side {side}) — the same cell twice is one block")
+        seen.add((row, col, side))
         if not 0 <= row < HEIGHT:
             raise ValueError(f"model {mid}: patch row {row} out of 0..{HEIGHT - 1}")
         if not 0 <= col < WIDTH:
@@ -275,6 +301,10 @@ def resolve_asym_patches(model: dict,
                     f"it (wall-hide guard: wall the cell or patch the band)")
         m1_x = 7 + 8 * m1_col
     ball_x = 87 + 8 * next(iter(right_cols)) if has_right else 0
+    if has_right and model.get("mid_band_type"):
+        # Ball patch cells on row 1 follow the middle-band selector too
+        # (rows_from_json already promoted the mirrored base cells).
+        right[1] = "".join("H" if c == "#" else c for c in right[1])
     return (right if has_right else None), ball_x, m1_x
 
 
@@ -526,9 +556,19 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
                                    models_by_id)
         res = resolve_asym_patches(model, left_rows)
         asym, ball_x, m1_x = res if res else (None, 0, 0)
+        # M1 patches on the hot band (row 1 = rows_from_json's hot row) go
+        # into the hot stream: the cells are PF-open so the 'H' walk never
+        # sees them — convert_room emits them as mask-$00 records.
+        hot_m1 = []
+        if model.get("mid_band_type"):
+            for p in model.get("asym_patches") or []:
+                side = p[3] if len(p) == 4 else 0
+                if side == 1 and p[0] == 1:
+                    hot_m1.append((p[0], p[1]))
         model_lines += convert_room.lines(
             left_rows, prefix=f"M{mid}", source=f"models.json model {mid}",
-            asym_rows=asym, asym_ball_x=ball_x, asym_m1_x=m1_x)
+            asym_rows=asym, asym_ball_x=ball_x, asym_m1_x=m1_x,
+            hot_m1=hot_m1)
     model_lines.append("")
     (generated / "models_data.asm").write_text("\n".join(model_lines) + "\n")
     data_lines.insert(2, f'    include "{generated.name}/models_data.asm"')

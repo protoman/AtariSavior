@@ -202,14 +202,21 @@ while frame < 420:
         # console RESET pulse: title -> game start. frame counter starts at
         # 1 on the first StartFrame, so f1 stays released (title stores the
         # sample), f2-3 held = edge on f2, then released.
-        mem.swchb = 0xFE if frame in (2, 3) else 0xFF
-        # title seen at frame START: the RESET edge fires later within this
-        # frame, so its LoadLevel chain is still boot-class work here
-        on_title = mem.ram[POKE_DROP] == 0xFF
-        if not poked and mem.ram[POKE_DROP] != 0xFF:
-            # boot EnterRoom ran under the title (DropTarget=$FF) and the
-            # RESET reload re-derives the room — poke once gameplay is live
-            # (DropTarget a real fall target), after that EnterRoom
+        # console RESET pulses — 2-stage flow (intro 2026-10-06): f2 edge
+        # leaves the $FD intro (single frame — a held press would bounce
+        # gameplay RESET back to title via RefreshEnemyY), f5 edge hits
+        # TitleWork's RESET → game start. Frame counter starts at 1 on the
+        # first StartFrame, so f1 stays released (intro samples it).
+        mem.swchb = 0xFE if frame in (2, 5) else 0xFF
+        # title/boot frames excluded from min_sp_game: intro ($FD) or the
+        # old title ($FF) — the RESET edge fires later within the frame, so
+        # its DropArm chain is still boot-class work here
+        on_title = mem.ram[POKE_DROP] in (0xFF, 0xFD)
+        if not poked and mem.ram[POKE_DROP] not in (0xFF, 0xFD):
+            # boot EnterRoom ran under the intro (DropTarget=$FD) and the
+            # later title/game reloads re-derive the room — poke once
+            # gameplay is live (DropTarget a real fall target), after that
+            # EnterRoom
             mem.ram[POKE_ENEMYCOUNT] = 2
             mem.ram[POKE_TENT_X] = 36
             # room1's only maskable rect was (17,0,1,2), but the

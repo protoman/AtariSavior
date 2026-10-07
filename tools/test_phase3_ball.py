@@ -14,6 +14,10 @@ Assertions (frames >= 2, after the RESET-pulse title -> game start):
     asym VBL growth must not add a scanline);
   * min SP (frames >= 2) >= $F7 (documented whole-run stack guard).
 
+Second run (partial mask, case-1 stacked blocks): Band1 poked $00 while
+Band0/2 stay $ff -> the per-band gate must emit exactly 2 ENABL $ff
+writes per frame (band1 skipped).
+
 Run: /home/iuri/python3/bin/python3 tools/test_phase3_ball.py
 """
 import re
@@ -43,13 +47,15 @@ if not LAB2:
     sys.exit("no M*BallX/M*Band labels found in bank2.lst")
 
 
-def run(rom: Path) -> dict:
+def run(rom: Path, band1: int = 0xFF) -> dict:
     blob = rom.read_bytes()
     assert len(blob) == 16384, f"{rom} is {len(blob)} bytes, want 16K"
     banks = [bytearray(blob[4096 * i:4096 * (i + 1)]) for i in range(4)]
     for name, addr in LAB2.items():
-        banks[2][addr & 0xFFF] = (BALLX_POKE if name.endswith("BallX")
-                                  else 0xFF)
+        if name.endswith("BallX"):
+            banks[2][addr & 0xFFF] = BALLX_POKE
+        else:  # Band0/1/2 — Band1 parameterized for the partial-mask run
+            banks[2][addr & 0xFFF] = band1 if name.endswith("Band1") else 0xFF
     mem = Mem(banks)
     mpu = m.MPU(memory=mem)
     prev = 0
@@ -140,12 +146,25 @@ def main() -> int:
     if r["min_sp"] < 0xF7:
         fails.append(f"min SP (f>=2) = ${r['min_sp']:02X}, want >= $F7")
 
+    # partial mask (case-1 stacked blocks: bands 0+2 painted, band1 mirror):
+    # the band gate must skip band1 -> exactly 2 ENABL $ff writes per frame.
+    if not fails:
+        rp = run(SRC / "savior.bin", band1=0x00)
+        weak2 = [f for f in range(3, rp["frames"])
+                 if rp["ff_per_frame"].get(f, 0) != 2]
+        if weak2:
+            got = sorted({rp["ff_per_frame"].get(f, 0) for f in weak2})
+            fails.append(
+                f"partial mask band1=0: frames with !=2 ENABL $ff writes "
+                f"{weak2[:6]} (counts {got})")
+
     if fails:
         for f in fails:
             print(f"FAIL: {f}")
         return 1
     print(f"test_phase3_ball: OK ({r['frames']} frames, "
           f"lines={lens[0]}, ENABL {{00,ff}} with >=3 ff/frame, "
+          f"partial mask band1=0 -> 2 ff/frame, "
           f"RESPBL+HMBL every frame, min SP ${r['min_sp']:02X}, "
           f"poked {len(LAB2)} meta bytes)")
     return 0

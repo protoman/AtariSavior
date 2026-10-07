@@ -222,9 +222,11 @@ def main() -> None:
     assert not re.search(r"^MothMaskBit:", b2, re.M), \
         "MothMaskBit orphan must stay deleted (LWC cell swap, plan 3.1)"
 
-    # --- space fix: row lookup uses the 48-entry (A>>2) table -------------
+    # --- space fix: row lookup uses the (A>>2) table, 36-entry tail ------
     # (the dead YToCellRow jsr wrapper was removed in S1.6; the lookup is
-    # inlined at the top of PlayerHitsMap)
+    # inlined at the top of PlayerHitsMap; the row-3 tail was dropped
+    # 2026-10-05 to fund the .ObjZero M1 band-color restore — INVARIANT:
+    # PHM only runs in-cave, RoomY <= 131 → max index 35)
     ytc = KERNEL.split("\nPlayerHitsMap:")[1].split("CollisionCellY", 1)[0]
     assert re.search(r"lda RoomY\n\s*lsr[^\n]*\n\s*lsr[^\n]*\n\s*tay", ytc), \
         "inlined row lookup must index by scanline>>2"
@@ -232,8 +234,9 @@ def main() -> None:
     operands = []
     for byte_line in re.findall(r"\.byte ([\d,]+)", table):
         operands += [int(v) for v in byte_line.split(",") if v.strip()]
-    assert len(operands) == 48 and operands == sorted(operands), \
-        f"YToRowTable must be 48 ascending entries, got {len(operands)}"
+    expect = [0] * 12 + [1] * 12 + [2] * 12
+    assert operands == expect, \
+        f"YToRowTable must be the 36-entry A>>2 form, got {operands}"
 
     # --- E3: tentacle Y derived (÷8 bob), X chases via swap+PlayerHitsMap --
     assert "cmp #ENEMY_TENTACLE" in dey, \
@@ -289,12 +292,21 @@ def main() -> None:
     assert "lda CollisionX" in gate, \
         "row 2 body count must be the tide value 36+off (CollisionX carrier)"
     # split tail (2026-10-05): rows 0/1 store 48 + WSYNC + `jmp .Line` BEFORE
-    # the tide block; row 2 loads CollisionX then falls from its own WSYNC
-    # straight into .Line (row1 setup gap 77->74c = the +1 line/frame stall)
+    # the tide block; row 2 loads CollisionX, WSYNCs, stores its tide count,
+    # then falls straight into .Line (row1 setup gap 77->74c = the +1
+    # line/frame stall).
+    # A1 gap fix (2026-10-05): `sta LineCount` sits AFTER `sta WSYNC` in
+    # both paths — -3c from the setup-gap window (A1's `sta Temp` in .Row
+    # pushed gaps to 77/79 = +2 lines/frame), +3c to the first body line.
+    # Moving either store back before its WSYNC re-opens the stall.
     assert gate.index(".RowLinesTide:") > gate.index("jmp .Line"), \
         "split tail: tide block must come after rows 0/1's WSYNC jmp"
-    assert gate.rstrip().endswith("sta WSYNC"), \
-        "row 2 must fall straight into .Line from its WSYNC"
+    # strip comments first — the A1 explanation above quotes both mnemonics
+    gcode = "\n".join(l.split(";")[0] for l in gate.splitlines())
+    assert gcode.index("sta LineCount") > gcode.index("sta WSYNC"), \
+        "LineCount store must follow WSYNC (setup-gap A1 fix)"
+    assert gcode.rstrip().endswith("sta LineCount"), \
+        "row 2 must fall from WSYNC through LineCount straight into .Line"
     wr = KERNEL.split(".WaterRow:")[1].split(".GrpZero:")[0]
     assert re.search(r"lda\s+#47\b", wr) and "sbc CollisionX" in wr, \
         "strip pass: setup line + (47-(36+off)) bodies = 12-off strip"

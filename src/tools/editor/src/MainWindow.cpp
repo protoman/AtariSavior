@@ -197,9 +197,8 @@ void MainWindow::SetupUI() {
     struct ToolInfo { BrushTool tool; QString text; };
     ToolInfo modelTools[] = {
         { BrushTool::SOLID_WALL, "1. Solid Rock Wall" },
-        { BrushTool::HOT_ROCK_WALL, "2. Hot Rock Wall" },
         { BrushTool::ERASE_AIR, "0. Air (Erase)" },
-        { BrushTool::ASYM_PATCH, "4. Asym Patch (right half)" },
+        { BrushTool::ASYM_PATCH, "2. Asym Patch (right half)" },
     };
     for (const auto& t : modelTools) {
         QListWidgetItem* item = new QListWidgetItem(t.text);
@@ -208,6 +207,16 @@ void MainWindow::SetupUI() {
         m_modelToolList->addItem(item);
     }
     modelToolLayout->addWidget(m_modelToolList);
+
+    // Middle band (row 1) type — per-model, not a brush: every middle-band
+    // wall block takes the selected type on convert.
+    QGroupBox* midBandBox = new QGroupBox("Middle Band", this);
+    QVBoxLayout* midBandLayout = new QVBoxLayout(midBandBox);
+    m_midBandCombo = new QComboBox(this);
+    m_midBandCombo->addItem(tr("Rock Solid"));
+    m_midBandCombo->addItem(tr("Hot Wall"));
+    midBandLayout->addWidget(m_midBandCombo);
+    modelTabLayout->addWidget(midBandBox);
     modelTabLayout->addWidget(modelToolBox);
     modelTabLayout->addStretch();
 
@@ -366,6 +375,8 @@ void MainWindow::SetupUI() {
     connect(addModelBtn, &QPushButton::clicked, this, &MainWindow::AddModel);
     connect(remModelBtn, &QPushButton::clicked, this, &MainWindow::RemoveModel);
     connect(m_modelList, &QListWidget::currentRowChanged, this, &MainWindow::OnModelSelected);
+    connect(m_midBandCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::OnMidBandChanged);
 
     connect(m_modelToolList, &QListWidget::currentRowChanged, this, [this](int row) {
         QListWidgetItem* item = m_modelToolList->item(row);
@@ -413,6 +424,20 @@ void MainWindow::OnModelSelected(int index) {
     if (m_editMode != EditMode::MODEL_EDIT) return;
     if (index < 0 || index >= (int)m_models.size()) return;
     m_canvas->SetActiveModel(index);
+    // Same-value setCurrentIndex fires OnMidBandChanged, which early-returns.
+    m_midBandCombo->setCurrentIndex(
+        m_models[index].mid_band_type != 0 ? 1 : 0);
+}
+
+void MainWindow::OnMidBandChanged(int index) {
+    if (m_editMode != EditMode::MODEL_EDIT) return;
+    int row = m_modelList->currentRow();
+    if (row < 0 || row >= (int)m_models.size()) return;
+    int value = (index == 1) ? 1 : 0;
+    if (m_models[row].mid_band_type == value) return;
+    m_models[row].mid_band_type = value;
+    OnLevelModified();   // MODEL_EDIT: SaveModels()
+    m_canvas->update();
 }
 
 void MainWindow::OnModelAssignmentChanged(int modelIdx) {

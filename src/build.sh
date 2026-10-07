@@ -31,6 +31,9 @@ echo "  bank2: OK"
 python3 "$ROOT/tools/verify_build.py" --sync "$DIR"
 dasm kernel.asm -f3 -obank0.bin -lbank0.lst
 echo "  bank0: OK"
+# bank1's fold pad jmp literal tracks Overscan (moves with pre-pad code) —
+# self-heal from bank0.lst instead of the hand-sync that bit us 3+ times.
+python3 "$ROOT/tools/verify_build.py" --sync-overscan "$DIR"
 dasm bank1.asm -f3 -obank1.bin -lbank1.lst
 echo "  bank1: OK"
 dasm bank3.asm -f3 -obank3.bin
