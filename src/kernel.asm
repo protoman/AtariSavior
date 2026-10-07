@@ -2392,9 +2392,6 @@ LEVEL_DATA_ADDR = $FBA6        ; frozen address of bank2's LevelDataTable
                                 ;  shrank the tables; check_frozen_addrs
                                 ;  enforces)
                                 ; (test asserts bank2.lst label == this)
-COPYRIGHT_BAND_ADDR = $F8B0    ; frozen address of bank2's CopyrightBand
-                                ; (.ds $F8B0 pin — check_frozen_addrs)
-
 ; ==============================================================================
 ; YToRowTable — convert scanline (0-191) to 48-line band row (0-3), idx A>>2
 ; ==============================================================================
@@ -2668,15 +2665,10 @@ KernelInit:
     jmp TitleKernel
 
 ; ------------------------------------------------------------------------------
-; TitleKernel — start screen (DropTarget=$FF): black + "S.A.V.I.O.R." top via
-; the 48px sprite technique (NUSIZ3+VDEL cross-buffer, P0@60/P1@68 — same
-; pipeline as bank1 score). Helmet art disabled 2026-10-07 (blank rows keep
-; the 60-WSYNC band for timing); copyright "© 2026 IURI FIEDORUK" bottom
-; right via bank2 CopyrightBand (same technique, P0@108/P1@116).
-; Frame length: 198 visible WSYNCs (entry 1 + text 20 + gap 61 + art 60 +
-; pos 3 + band 53 [pad45 + glyph7 + close1] = 56 after art = old pad56)
-; → wall 263 = cave+HUD (parity: cave pays 3 HUD stall lines, title pays
-; 3 clean pad lines). jmp Overscan.
+; TitleKernel — intro sentinel ($FD): black + "S.A.V.I.O.R." via the 48px
+; sprite technique (NUSIZ3+VDEL cross-buffer, P0@60/P1@68 — same pipeline
+; as bank1 score). Remaining lines are blank padding to retain the existing
+; title kernel WSYNC count. SELECT/RESET handling stays in TitleIntro/TitleWork.
 ; ZP: LineCount ($84) + Temp ($88) as loop counter/tmp — idle on title frames
 ; (cave kernel not running; bank1 HUD not running; overscan probes bypassed).
 ; ------------------------------------------------------------------------------
@@ -2712,12 +2704,7 @@ TitleKernel:
     jsr SetObjectXPos            ; P1 slot base
     sta WSYNC
     sta HMOVE
-    ; --- 6 font pointers (score's (zp),Y timing — abs,Y runs 5c fast and
-    ;     shuffles the VDEL slots: observed "V.I.O.R.O.R." 2026-10-06).
-    ;     Transient stomp-zone pair pattern like bank1 scorePtrs: written
-    ;     here every TitleKernel call, rebuilt/staged by VBL/overscan/HUD
-; before any cave reader ($E2-E4 refresh, $E7 rebuild, $E5/E6
-    ;     restage; title frames never run the HUD). Never persistent. ---
+    ; --- Six font pointers for the VDEL sprite pipeline. ---
 TPtr1 = $E0                       ; font ptrs lo/hi: $E0/$E1, $E2/$E3,
 TPtr2 = $E2                       ;   $E4/$E5, $E6/$E7, $E8/$E9, $EA/$EB
 TPtr3 = $E4
@@ -2743,21 +2730,13 @@ TPtr6 = $EA
     sta TPtr5
     lda #<TitleFont+40
     sta TPtr6
-    ldx #8                       ; gap lines before text — also: art setup
+    ldx #8                       ; blank lines before text
 .TkBlnk:
     sta WSYNC
     dex
-    beq .TkGapDone
-    cpx #7                       ; first gap line: art-band setup (fits ~40c)
     bne .TkBlnk
-    lda #$30                     ; CTRLPF: no reflect/prio, ball 8 unused
-    sta CTRLPF
-    lda #0
-    sta ENABL                    ; ball off for the whole band
-    jmp .TkBlnk
-.TkGapDone:
-    lda #COLOR_TITLE             ; text purple — set AFTER the gap setup
-    sta COLUP0                   ;   (art red must not pre-empt the text)
+    lda #COLOR_TITLE
+    sta COLUP0
     sta COLUP1
     ldx #7
     stx LineCount                ; rows left (7..1 — byte0 blank, score parity)
@@ -2782,31 +2761,18 @@ TPtr6 = $EA
     stx GRP0                     ; digit 6 -> GRP0A, digit 6 live on P1c3
     dec LineCount
     bne .TkLoop
-    sta WSYNC                    ; close last text line — L44 displays the
-    lda #0                       ;   last text row (VDEL): keep it purple,
-    sta GRP0                     ;   bank2 writes COLUP red on L45 instead
-    sta GRP1                     ; VDEL=1: GRP write fills New, cross-shuffle
-    sta GRP0                     ;   latches Old←New for the OTHER player.
-    sta GRP1                     ;   2 writes leave one Old slot stale (purple
-                                ;   bars in the gap); writes 3+4 guarantee both
-                                ;   Old slots latch 0 before the gap.
-    ldx #61                      ; mock: art red band = lines 79-145, ours
-.TkGap:                          ;   was 18-75 → 61-line black gap first
+    sta WSYNC                    ; close the last text line and clear VDEL slots
+    lda #0
+    sta GRP0
+    sta GRP1
+    sta GRP0
+    sta GRP1
+    ldx #178                     ; blank remainder; retain the existing 198 WSYNCs
+.TkPad:
     sta WSYNC
     dex
-    bne .TkGap
-    jsr ArtFold                  ; bank2: art setup+60 WSYNCs, ReturnPad
-    lda #108                     ; copyright windows — position AFTER art
-    ldx #0                       ;   (ArtLine strobes RESP every row; any
-    jsr SetObjectXPos            ;   position set earlier is long gone)
-    lda #116
-    ldx #1
-    jsr SetObjectXPos
-    sta WSYNC
-    sta HMOVE
-    jsr CopyrightFold            ; bank2 CopyrightBand: ptrs + colors/NUSIZ
-    jmp Overscan                 ;   (first pad line) + pad45 + glyph7 +
-                                 ;   close (VDEL off FIRST — stripe rule)
+    bne .TkPad
+    jmp Overscan
 
     .ds $FB00 - *, 0
 ; ------------------------------------------------------------------------------
@@ -2947,16 +2913,6 @@ TitleIntro:
     jmp TitleTailAudio
 
     .ds $FBE0 - *, 0
-ArtFold:                        ; TitleKernel -> bank2 ArtLine (title art band)
-    sta $1FF8                   ; F6 write: switch to bank2...
-    jmp $F7F1                   ; bank2 ArtLine — operand fetch happens in bank2 (twin at
-                                ;   same address). Literal = bank2 ArtLine —
-                                ;   patched after bank2 build (two-pass).
-
-CopyrightFold:                  ; TitleKernel -> bank2 CopyrightBand (frozen
-    sta $1FF8                   ;   literal — check_frozen_addrs pins it)
-    jmp COPYRIGHT_BAND_ADDR     ; fetch in bank2; twin at same address $FBE6
-
     .ds $FBF8 - *, 0
 ReturnPad:
     sta $1FF6
