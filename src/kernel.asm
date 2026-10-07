@@ -2767,11 +2767,15 @@ TPtr6 = $EA
     sta GRP1
     sta GRP0
     sta GRP1
-    ldx #178                     ; blank remainder; retain the existing 198 WSYNCs
-.TkPad:
+    ldx #169                     ; leave 9 lines for the bottom text band
+.TkFooterPad:
     sta WSYNC
     dex
-    bne .TkPad
+    bne .TkFooterPad
+    lda #$0E                     ; white
+    sta COLUP0
+    sta COLUP1
+    jsr FooterFold               ; bank2 text band
     jmp Overscan
 
     .ds $FB00 - *, 0
@@ -2913,6 +2917,9 @@ TitleIntro:
     jmp TitleTailAudio
 
     .ds $FBE0 - *, 0
+FooterFold:
+    sta $1FF8
+    jmp $F700
     .ds $FBF8 - *, 0
 ReturnPad:
     sta $1FF6
