@@ -2,9 +2,14 @@
 Strategic Aerial Vehicle Infiltration Operations Rescue
 #########################################################################################################################################################################
 
+Now, let's add a simple text in the bottom of the screen: "2026 Iuri", just that, keep it simple for now. Draw it in white, please.
+
+
 OK, now that we removed the pixel-art of the player at the center/middle of the screen, we need to use that space.
 My idea is to show the player sprite, playing in a loop (start must match the end position).
 It should walk, fly, laser and use a bomb.
+If cost is OK, you can also add some enemies into that mini-demo.
+If there leftover from the pixel art from before, remove it.
 That should be much simpler than drawing the pixel art, right?
 
 
