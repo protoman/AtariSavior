@@ -2771,12 +2771,12 @@ TPtr6 = $EA
     sta GRP1
     sta GRP0
     sta GRP1
-    ldx #105                     ; 65 pre-pad + 60 draw + 6 syncs + 38 pad
+    ldx #103                    ; 63 pre-pad + 60 draw + 8 syncs + 37 pad (band +1: TitleBandPrep jsr entry spans 2 lines)
 .TkFooterPad:
     sta WSYNC
     dex
     cpx #40
-    bne .TkFooterPad             ; 65 lines before the flight window
+    bne .TkFooterPad             ; 64 lines before the flight window
 .TkPlayer:
     lda #0
     sta VDELP0
@@ -2784,21 +2784,28 @@ TPtr6 = $EA
     sta GRP0
     sta GRP1
     sta NUSIZ0                  ; single player, not title's 3-copy mode
-    sta HMP1                    ; avoid reapplying P1's stale fine motion
+    sta NUSIZ1                  ; bomb is one P1 copy (footer restores 3)
     ldx #0
     lda RoomX
     jsr SetObjectXPos           ; current flight X; X remains the P0 selector
+    lda BombX                   ; TitleSequence owns BombX (68 = no bomb, so
+    ldx #1                      ;   footer/base X survives; 140 = bomb armed)
+    jsr SetObjectXPos           ; P1 = bomb (same shared-WSYNC pattern as entry)
     sta WSYNC
     sta HMOVE
     jsr TitlePlayerFold         ; isolated bank2 renderer restores both VDELs
     lda #3
     sta NUSIZ0
+    sta NUSIZ1                  ; footer text: 3 copies on both players
     lda #60
     ldx #0                      ; the bank2 renderer used X as its sprite row
     jsr SetObjectXPos           ; restore title/footer P0 position
+    lda #68
+    ldx #1
+    jsr SetObjectXPos           ; restore P1 (bomb SOXP moved it during band)
     sta WSYNC
     sta HMOVE
-    ldx #38                     ; restore the fixed title-kernel line budget
+    ldx #37                     ; restore the fixed title-kernel line budget
 .TkPostFooterPad:
     sta WSYNC
     dex
@@ -2945,14 +2952,25 @@ TitleIntro:
     sta RoomY
     lda #0
     sta PlayerDir
+    sta TallyTicks               ; intro phase machine: back to phase 0
+    lda BombPacked
+    and #%11111100               ; drop any leftover fuse before old title
+    sta BombPacked
     lda #$FF
     sta DropTarget             ; → old title (first room + HUD count)
     jsr DropArm                ; .DATitle: pose + ScoreTe = level+1
 .TIno:
     lda SWCHB
     sta StepsLeft
+    jsr TitleSequenceFold       ; intro phase machine (bank2 body, jsr/ReturnPad)
     jmp TitleTailAudio
 
+    .ds $FBD6 - *, 0            ; fold pinned where bank2's twin mirrors it
+                                ;   (bank2 $FB86.. = level data — both banks
+                                ;   must hold the same sta/jmp bytes)
+TitleSequenceFold:
+    sta $1FF8
+    jmp $F471                    ; TitleSequence body — fetched from bank2
     .ds $FBE0 - *, 0
 FooterFold:
     sta $1FF8
@@ -3302,7 +3320,10 @@ TitleWork:
     ;     = 0, AUDV0 covered above). ---
 TitleTailAudio:                 ; shared: TitleWork falls in; TitleIntro
                                 ;   tail-jumps (label — jumps, not falls)
-    jsr BombTick
+    lda DropTarget              ; title sentinels ($FD/$FF/$FE): the intro's
+    bne .TWnoTick               ;   TitleSequence owns its fuse — skip
+    jsr BombTick                ;   BombTick's blast side effects on titles
+.TWnoTick:
     jsr CallPad_UpdateBombSound
     lda #0
     sta AUDV1
