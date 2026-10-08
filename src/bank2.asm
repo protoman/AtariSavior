@@ -973,8 +973,86 @@ FooterFont:
     .byte $00, $00, $38, $10, $30, $00, $10, $00
 
     .ds $F880 - *, 0
-    .ds $F970 - *, 0
+TitlePlayerBand:
+    ; Match gameplay's four-frame jet flutter, using title's frame clock.
+    lda EnemyRamP
+    and #4
+    beq .TitleJetFrameA
+    lda #<(TitleJetSprite+12)
+    ldy #>(TitleJetSprite+12)
+    bne .TitleJetFrame
+.TitleJetFrameA:
+    lda #<TitleJetSprite
+    ldy #>TitleJetSprite
+.TitleJetFrame:
+    sta Grp0Ptr
+    sty Grp0PtrHi
+    lda RoomY
+    sta LineCount
+    ldx #60
+    ldy #0
+    sta WSYNC
+.TitleJetLine:
+    lda LineCount
+    beq .TitleJetDraw
+    dec LineCount
+    lda #0
+    sta GRP0
+    jmp .TitleJetSync
+.TitleJetDraw:
+    cpy #12
+    bcs .TitleJetBlank
+    lda (Grp0Ptr),Y
+    sta GRP0
+    lda TitleJetColors,Y
+    sta COLUP0
+    iny
+    bne .TitleJetSync
+.TitleJetBlank:
+    lda #0
+    sta GRP0
+.TitleJetSync:
+    sta WSYNC
+    dex
+    bne .TitleJetLine
+    lda #0
+    sta GRP0
+    sta GRP1
+    sta GRP0
+    sta GRP1
+    lda #1
+    sta VDELP0
+    sta VDELP1
+    lda #0
+    sta GRP0
+    sta GRP1
+    sta GRP0
+    sta GRP1
+    lda RoomX
+    cmp #140
+    bcs .TitleJetFall
+    inc RoomX
+    bne .TitleJetDone
+.TitleJetFall:
+    lda RoomY
+    cmp #48
+    bcs .TitleJetDone
+    inc RoomY
+.TitleJetDone:
+    sta WSYNC
+    jmp $FBF8
 
+TitleJetSprite:
+    ; Exact A/B copies of PlayerSpriteA/B; game alternates every 4 frames.
+    .byte %00111100, %01111110, %01111100, %01111110
+    .byte %01111100, %11111110, %11111110, %00111110
+    .byte %00111110, %00010100, %00010100, %00010100
+    .byte %00111100, %01111110, %01111100, %01111110
+    .byte %01111100, %11111110, %11111110, %01111110
+    .byte %10111110, %00010100, %00010100, %00010100
+TitleJetColors:
+    .byte $48, $48, $1E, $48, $08, $48, $48, $48
+    .byte $48, $48, $08, $08
     .ds $F970 - *, 0            ; pinned: bank1 .BMWDone jmp operand ($F970)
 M1StripBlast:
     ; Phase 4 M1 strip blast — entered from bank1 BombMarkWalls .BMWDone
@@ -1059,6 +1137,9 @@ OverlayTramp:
     .ds $FBE0 - *, 0
     sta $1FF8
     jmp FooterBand
+    .ds $FBE8 - *, 0
+    sta $1FF8
+    jmp TitlePlayerBand
     .ds $FBF8 - *, 0
 ReturnPad:
     sta $1FF6
