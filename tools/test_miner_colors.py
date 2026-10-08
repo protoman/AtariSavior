@@ -57,6 +57,14 @@ def main() -> None:
         assert m, f"bank2 EQU {name} missing"
         got = int(m.group(1), 16)
         assert got == addr, f"bank2 {name} = ${got:04X}, bank0 = ${addr:04X}"
+    # bank2 must contain the ART BYTES at those addresses (PickPlayerFrame
+    # reads the EQUs while bank2 is active — stale/missing bytes = sprite
+    # renders zeros or band code, title AND gameplay)
+    rom2 = (SRC / "bank2.bin").read_bytes()
+    for name, addr in want.items():
+        o = addr - 0xF000
+        assert rom0[o:o + 12] == rom2[o:o + 12], \
+            f"bank2 art twin ${addr:04X} ({name}) != bank0 bytes"
     for name, addr in (("Grp0Ptr", 0x86), ("Grp0PtrHi", 0x87), ("SWCHA", 0x0280)):
         m = re.search(rf"^{name}\s*=\s*\$([0-9a-fA-F]+)", bank2, re.M)
         assert m, f"bank2 EQU {name} missing"

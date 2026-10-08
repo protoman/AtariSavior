@@ -13,6 +13,8 @@ NUSIZ0  = $04
 NUSIZ1  = $05
 COLUP0  = $06
 COLUP1  = $07
+COLUBK  = $09                ; kernel line 41
+REFP0   = $0B                ; kernel line 43
 COLOR_PLAYER = $48               ; must match kernel.asm
 RESP0   = $10
 RESP1   = $11
@@ -44,6 +46,9 @@ RectCount = $92
 EnemyDataLo = $B1                ; record base — restaged before every exit
 EnemyDataHi = $B2
 BombPacked = $B5                 ; b3-6 WallMask (destroyed rect skip)
+BombX = $F6                      ; hand-copy kernel EQU — title: 68 = no bomb,
+                                 ;   140 = armed (TitleKernel P1 SOXP reads it)
+BombTimer = $F7                  ; hand-copy kernel EQU — title fuse/explode
 EnemyIndex = $B9                 ; slot save around the col swap + rect walk
 EnemyDeadMask = $BA              ; b0-2 enemy kills; b3 = ball strip
                                  ; destroyed (bank1 StripBlastCheck); b4 = M1
@@ -67,8 +72,8 @@ EnemyDeadMask = $BA            ; LaserHitTest dead bits (written on kill)
 Grp0Ptr = $86                  ; must match kernel.asm (PickPlayerFrame body)
 Grp0PtrHi = $87                ; must match kernel.asm
 SWCHA = $0280                  ; RIOT joystick (same in every bank)
-PlayerSpriteA = $f8d5           ; hand copies (bank0 symbols unreadable here);
-PlayerSpriteB = $f8e1           ; tools/test_miner_colors.py asserts vs bank0.lst
+PlayerSpriteA = $f8dd           ; hand copies (bank0 symbols unreadable here);
+PlayerSpriteB = $f8e9           ; tools/test_miner_colors.py asserts vs bank0.lst
 PlayerWalkA = $fde7
 PlayerWalkB = $fdf3
 LAMP = 5                       ; enemy type: editor lamp — kernel LAMP must match
@@ -81,6 +86,7 @@ LevelWallColor = $AA              ; stripe rows 0+2
 LevelWallColor2 = $AB              ; stripe row 1
 TickCounter = $AD                 ; 60-frame game timer — hot-pulse phase bit 4
 ColupfBuf   = $E7                 ; 12-byte COLUPF image (rows 0-2 used)
+COLOR_BOMBS = $46                ; kernel COLOR_BOMBS — fuse bomb color
 COLOR_CAVE_BG = $00
 COLOR_DARK_PF = $04             ; dark-room fuse walls
 COLOR_HOT_Y = $1C               ; kernel COLOR_BLINK_Y
@@ -787,6 +793,168 @@ StageBandTab:
 .SBTPack:
     jmp $FBF8                   ; ReturnPad → bank0 VBLANK caller
 
+; ------------------------------------------------------------------------------
+; TitleSequence — intro ($FD) phase machine (plans/title_bomb_sequence_plan).
+; Cross-bank entry: bank0 TitleSequenceFold (jsr → sta $1FF8 → jmp $F471,
+; the jmp bytes are mirrored in this bank); tail exits jmp $FBF8 (ReturnPad)
+; so the bank0 jsr returns. Runs once per frame from TitleIntro. No jsr
+; inside (fold depth must not nest). Guard: DropTarget == $FD.
+;   0 fly right→140  1 drop→48  2 face left  3 arm bomb (fuse 180)
+;   4 walk→76 (screen center)  5 wait explosion  6 walk→20 (home)
+;   7 pause 240 → reset to 0 (loop)
+; Fuse/explosion countdown is OWNED here — TitleTailAudio skips BombTick on
+; titles, so no walls/score/lives side effects can leak into title state.
+; BombY is never set: the band bottom-aligns the bomb to RoomY==48's sprite
+; window (armed only while grounded), so there is no reader for it.
+; ------------------------------------------------------------------------------
+TitleSequence:
+    lda DropTarget
+    cmp #$FD
+    beq .TSAlive
+    jmp .TSdone
+.TSAlive:
+    ; --- own the bomb fuse (title: BombTick gated off) ---
+    lda BombPacked
+    and #%00000011
+    beq .TSNoBomb
+    cmp #1
+    beq .TSFuse
+    dec BombTimer               ; state 2 — explosion countdown
+    bne .TSNoBomb
+    lda BombPacked              ; → state 0 (mask/DownPrev kept)
+    and #%11111100
+    sta BombPacked
+    lda #0
+    sta BombTimer
+    jmp .TSNoBomb
+.TSFuse:
+    dec BombTimer
+    bne .TSNoBomb
+    lda BombPacked              ; 1 → 2, explode tone (no BMW/score/blast)
+    and #%11111100
+    ora #%00000010
+    sta BombPacked
+    lda #60
+    sta BombTimer
+    lda #8                      ; noise — bank1 BombSndExplode's regs
+    sta AUDC0
+    lda #0
+    sta AUDF0
+    lda #10
+    sta AUDV0
+    lda #30
+    sta BombSnd                 ; UpdateBombSound fades AUDV0 out
+.TSNoBomb:
+    lda BombPacked              ; no live bomb → BombX = footer/base X
+    and #%00000011
+    bne .TSPhase
+    lda #68
+    sta BombX
+.TSPhase:
+    ; --- dispatch ---
+    lda TallyTicks
+    bne .TSNotP0
+    lda RoomX                   ; phase 0: fly right to 140
+    cmp #140
+    bcc .P0Fly
+    jmp .TSAdv
+.P0Fly:
+    inc RoomX
+    jmp .TSdone
+.TSNotP0:
+    cmp #1
+    bne .TSNotP1
+    lda RoomY                   ; phase 1: drop to 48 (ground)
+    cmp #48
+    bcc .P1Drop
+    jmp .TSAdv
+.P1Drop:
+    inc RoomY
+    jmp .TSdone
+.TSNotP1:
+    cmp #2
+    bne .TSNotP2
+    lda #1                      ; phase 2: face left (FACING_LEFT)
+    sta PlayerDir
+    jmp .TSAdv
+.TSNotP2:
+    cmp #3
+    bne .TSNotP3
+    lda BombPacked              ; phase 3: arm bomb at X=140, fuse 180
+    ora #%00000001
+    sta BombPacked
+    lda #140
+    sta BombX
+    lda #180
+    sta BombTimer
+    lda #4                      ; square — bank1 BombSndDrop's regs
+    sta AUDC0
+    lda #10
+    sta AUDF0
+    lda #8
+    sta AUDV0
+    lda #6
+    sta BombSnd
+    jmp .TSAdv
+.TSNotP3:
+    cmp #4
+    bne .TSNotP4
+    lda RoomX                   ; phase 4: walk left to center (X=76)
+    cmp #77
+    bcc .P4Wait
+    dec RoomX
+    jmp .TSdone
+.P4Wait:
+    lda #0                      ; at center: wait for the blast facing right
+    sta PlayerDir
+    jmp .TSAdv
+.TSNotP4:
+    cmp #5
+    bne .TSNotP5
+    lda BombPacked              ; phase 5: wait out fuse + explosion
+    and #%00000011
+    bne .TSdone
+    lda #1                      ; blast gone: walk home facing left
+    sta PlayerDir
+    jmp .TSAdv
+.TSNotP5:
+    cmp #6
+    bne .TSNotP6
+    lda RoomX                   ; phase 6: walk home (X=20), then pause 240
+    cmp #21
+    bcc .TSPause
+    dec RoomX
+    jmp .TSdone
+.TSPause:
+    lda #240
+    sta BombTimer
+    lda #0                      ; home: wait facing right (before the climb)
+    sta PlayerDir
+    jmp .TSAdv
+.TSNotP6:
+    cmp #7
+    bne .TSNotP7
+    dec BombTimer               ; phase 7: own the 240-frame pause — BombTick
+    bne .TSdone                 ;   is gated off on titles, nothing else ticks
+    jmp .TSAdv                  ;   (dir already 0 — set at .TSPause) -> phase 8
+.TSNotP7:
+    cmp #8
+    bne .TSdone
+    lda RoomY                   ; phase 8: fly back up to original Y=0, then
+    bne .P8Climb                ;   restart the loop (no teleport)
+    lda #20                     ;   X walked home already; belt + braces
+    sta RoomX
+    lda #0
+    sta TallyTicks
+    jmp .TSdone
+.P8Climb:
+    dec RoomY
+    jmp .TSdone
+.TSAdv:
+    inc TallyTicks
+.TSdone:
+    jmp $FBF8                   ; ReturnPad → bank0 TitleIntro (0 push)
+
     .ds $F600 - *, 0            ; Phase 4 LWC patch-strip setup+test (out-of-
                                  ; line: the pre-TallyEntry fill is ~0B)
 LWpSetup:
@@ -906,6 +1074,78 @@ FooterPtr4 = $E6
 FooterPtr5 = $E8
 FooterPtr6 = $EA
 
+; ------------------------------------------------------------------------------
+; TitleBandPrep — called by TitlePlayerBand at band entry (same-bank jsr).
+; Sets Grp0Ptr frame (walk phases 4/6 alternate PlayerWalkA/B on EnemyRamP
+; bit3, phases 2/3/5/7 static A, phases 0/1/8 jet flutter), REFP0 =
+; PlayerDir<<3 (bit3 = mirror, kernel.asm:602), FooterPtr1 = bomb state (draw rows), COLUP1 = fuse color or
+; COLUBK = explosion blink color (same (60-BombTimer)&3 table as the game's
+; BombBlinkColors). Band tail restores COLUBK/REFP0 before the footer.
+; Clobbers A/X/Y; rts (same-bank — NOT a fold; stack +2 during the call).
+; ------------------------------------------------------------------------------
+TitleBandPrep:
+    lda TallyTicks              ; phase — 0/1 airborne + 8 climb: jet flutter
+    cmp #2
+    bcc .TBpJet
+    cmp #8
+    beq .TBpJet
+    cmp #4
+    beq .TBpWalk
+    cmp #6
+    bne .TBpJetFA               ; phases 2,3,5,7: static frame A
+.TBpWalk:                       ; (phase 6 falls through here)
+    lda EnemyRamP
+    and #8
+    beq .TBpWalkA
+    lda #<PlayerWalkB
+    ldy #>PlayerWalkB
+    bne .TBpFrame               ; unconditional (hi != 0)
+.TBpWalkA:
+    lda #<PlayerWalkA
+    ldy #>PlayerWalkA
+    jmp .TBpFrame
+.TBpJet:
+    lda EnemyRamP
+    and #4
+    beq .TBpJetFA
+    lda #<(TitleJetSprite+12)
+    ldy #>(TitleJetSprite+12)
+    bne .TBpFrame
+.TBpJetFA:
+    lda #<TitleJetSprite
+    ldy #>TitleJetSprite
+.TBpFrame:
+    sta Grp0Ptr
+    sty Grp0PtrHi
+    lda PlayerDir              ; walk phases face left: REFP0 bit3
+    asl
+    asl
+    asl                         ; FACING_LEFT(1) -> $08, right -> $00
+    sta REFP0
+    lda BombPacked             ; state -> FooterPtr1 = 1 iff fuse (band
+    and #%00000011             ;   draws bomb rows only when flag 1;
+    beq .TBpStore              ;   state 0: A already 0)
+    cmp #1
+    bne .TBpExpl
+    lda #COLOR_BOMBS
+    sta COLUP1
+    lda #1
+    bne .TBpStore              ; unconditional (A=1)
+.TBpExpl:
+    lda #60                    ; explosion: 4-phase blink (15 exact cycles
+    sec                        ;   per color over the 60-frame state)
+    sbc BombTimer
+    and #3
+    tay
+    lda TitleBlinkColors,Y
+    sta COLUBK
+    lda #0                     ; explosion: no bomb sprite rows
+.TBpStore:
+    sta FooterPtr1
+    lda RoomY                  ; band scanline budget: LineCount staged here
+    sta LineCount              ;   keeps TitlePlayerBand short (twin $F8DD)
+    rts
+
     .ds $F700 - *, 0
 FooterBand:
     sta WSYNC
@@ -972,23 +1212,22 @@ FooterFont:
     .byte $00, $00, $54, $B4, $94, $96, $95, $00
     .byte $00, $00, $38, $10, $30, $00, $10, $00
 
+    .ds $F830 - *, 0            ; FooterFont ends $F830 — sprite/color data
+TitleBombSprite:
+    ; 4 junk rows (top-align: rows Y<4 gated off in the draw path) +
+    ; OBJ_BOMB's 8 rows (kernel ObjSprites+64) — bottom-aligned in the
+    ; 12-row sprite window = sits on the ground line while RoomY==48.
+    .byte $00, $00, $00, $00
+    .byte $10, $20, $20, $60, $f0, $f0, $f0, $60
+TitleBlinkColors:
+    ; Copy of kernel BombBlinkColors ((60-BombTimer)&3): black/yellow/red/yellow
+    .byte COLOR_CAVE_BG, COLOR_HOT_Y, COLOR_HOT_R, COLOR_HOT_Y
+
     .ds $F880 - *, 0
 TitlePlayerBand:
-    ; Match gameplay's four-frame jet flutter, using title's frame clock.
-    lda EnemyRamP
-    and #4
-    beq .TitleJetFrameA
-    lda #<(TitleJetSprite+12)
-    ldy #>(TitleJetSprite+12)
-    bne .TitleJetFrame
-.TitleJetFrameA:
-    lda #<TitleJetSprite
-    ldy #>TitleJetSprite
-.TitleJetFrame:
-    sta Grp0Ptr
-    sty Grp0PtrHi
-    lda RoomY
-    sta LineCount
+    ; Frame pick, mirror, bomb flag + colors live in TitleBandPrep (same
+    ; bank — jsr keeps the 2-line entry span off this gap's budget).
+    jsr TitleBandPrep          ; pick + mirror + bomb flag/colors + LineCount
     ldx #60
     ldy #0
     sta WSYNC
@@ -1006,6 +1245,12 @@ TitlePlayerBand:
     sta GRP0
     lda TitleJetColors,Y
     sta COLUP0
+    ; --- bomb: rows 0-3 read junk zeros, rows 4..11 = fuse sprite ---
+    lda FooterPtr1             ; 1 iff fuse (TitleBandPrep)
+    beq .TitleBombRow
+    lda TitleBombSprite,Y
+    sta GRP1
+.TitleBombRow:
     iny
     bne .TitleJetSync
 .TitleJetBlank:
@@ -1028,20 +1273,13 @@ TitlePlayerBand:
     sta GRP1
     sta GRP0
     sta GRP1
-    lda RoomX
-    cmp #140
-    bcs .TitleJetFall
-    inc RoomX
-    bne .TitleJetDone
-.TitleJetFall:
-    lda RoomY
-    cmp #48
-    bcs .TitleJetDone
-    inc RoomY
+    sta COLUBK                 ; restore black + unmirrored P0 for the footer
+    sta REFP0                  ;   (explosion walk phases end before it)
 .TitleJetDone:
     sta WSYNC
     jmp $FBF8
 
+    .ds $F8DD - *, 0            ; twin: bank0 PlayerSpriteA lives here (test_miner)
 TitleJetSprite:
     ; Exact A/B copies of PlayerSpriteA/B; game alternates every 4 frames.
     .byte %00111100, %01111110, %01111100, %01111110
@@ -1134,6 +1372,11 @@ OverlayTramp:
 ; bank0, the rts is then fetched from bank0's identical copy, and the stack
 ; still holds the bank0 jsr CallPad_* return address.
 ; ------------------------------------------------------------------------------
+    .ds $FBD6 - *, 0            ; TitleSequenceFold twin (kernel.asm same
+                                 ;   address — jmp operand fetched here after
+                                 ;   bank0's sta $1FF8, so bytes must match)
+    sta $1FF8
+    jmp $F471                    ; TitleSequence
     .ds $FBE0 - *, 0
     sta $1FF8
     jmp FooterBand
@@ -1381,6 +1624,15 @@ HotOverlapBody:
 PickPlayerFrameTramp:
     sta $1FF8                   ; executed only as the post-switch fetch image
     jmp $F3C4                   ; bank2 PickPlayerFrame body (this bank)
+    ; Twin of bank0 PlayerWalkA/B ($FDE7, 12+12 rows): PickPlayerFrame reads
+    ; the hand-copy EQUs while THIS bank is active — without these bytes the
+    ; walk frames fetched zeros and the sprite vanished (title + gameplay).
+    .byte %00111100, %01111110, %01111100, %01111110
+    .byte %01111100, %11111110, %11111110, %00111110
+    .byte %00111110, %00010100, %00100010, %01000010   ; walk A boots apart
+    .byte %00111100, %01111110, %01111100, %01111110
+    .byte %01111100, %11111110, %11111110, %00111110
+    .byte %00111110, %00010100, %00011000, %00011000   ; walk B boots together
 
     .ds $FE00 - *, 0            ; PHMOverlay pinned: bank0's dead jmp operand
                                  ; is the literal $FE00 (moth-style dead bytes;
