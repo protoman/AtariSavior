@@ -36,7 +36,8 @@ SRC = ROOT / "src"
 
 need0 = {"EnemyCount", "EnemyDeadMask", "EnemyRamX", "EnemyRamY", "RoomY",
          "CollisionX", "CollisionEndX", "CollisionCellX", "RcBase",
-         "EnemyDataLo", "EnemyDataHi", "PlayerDir", "LineCount"}
+         "EnemyDataLo", "EnemyDataHi", "PlayerDir", "LineCount",
+         "RoomPF0Lo"}
 L0 = parse_labels(SRC / "bank0.lst", need0)
 need2 = {"LaserHitTestBody", "LEVEL1_EnemyDataTable"}
 L2 = parse_labels(SRC / "bank2.lst", need2)
@@ -103,18 +104,33 @@ def main() -> int:
     assert kill_y == want_y, (
         f"kill Y window {kill_y} != beam-row overlap {want_y}")
 
-    # --- LWC patch-strip clamp (Phase 4): strip cols 38-39 (right_col 9)
-    # in an active band must clamp the swept tip; inactive/sym must not.
-    def lwc_clamp(packed: int) -> int:
+    # --- LWC contact contract (redesign 2026-10-08): the tip test returns
+    # A=2 through ReturnPad and NEVER moves CollisionX (the old mid-wall
+    # clamp retired with the sweep). Ball strip via LWpSetup marker, M1
+    # patch strip via (RoomPF0Lo)+14 px window, mirror walk for the rest.
+    def lwc_run(packed: int, tip: int, m1x: int = 0, dead: int = 0
+                ) -> tuple[int, int]:
         r = mem.ram
         r[L0["EnemyCount"] - 0x80] = 0          # no enemies -> clean exit
         r[L0["LineCount"] - 0x80] = packed
         r[L0["RoomY"] - 0x80] = BEAM_Y          # beam rows -> band 1
-        r[L0["CollisionX"] - 0x80] = 159        # unclamped tip
+        r[L0["CollisionX"] - 0x80] = tip
         r[L0["CollisionEndX"] - 0x80] = 20      # path cols: full right half
         r[L0["CollisionCellX"] - 0x80] = 39
         r[L0["RcBase"] - 0x80] = 0              # empty cache: buffer = map
-        r[L0["PlayerDir"] - 0x80] = 0
+        r[L0["PlayerDir"] - 0x80] = 0           # right: tip = CollisionX
+        r[L0["EnemyDeadMask"] - 0x80] = dead
+        # M1X via the room-data pointer: body reads (RoomPF0Lo),Y=Y=14.
+        # Stash at $01EE (mirror of ZP $6E): outside the $01FE/$01FF RTS
+        # sentinel aliases ($7E/$7F); body pushes nothing, never writes $6E.
+        # ptr 0 => reads $000E = 0 => M1X = 0.
+        if m1x:
+            r[L0["RoomPF0Lo"] - 0x80] = 0xE0
+            r[L0["RoomPF0Lo"] + 1 - 0x80] = 0x01
+            r[0x6E] = m1x
+        else:
+            r[L0["RoomPF0Lo"] - 0x80] = 0
+            r[L0["RoomPF0Lo"] + 1 - 0x80] = 0
         mem.bank = 2
         mpu = MPU(memory=mem)
         mpu.pc = L2["LaserHitTestBody"]
@@ -125,21 +141,39 @@ def main() -> int:
         for _ in range(5000):
             mpu.step()
             if mpu.pc == RTS_SENTINEL:
-                return r[L0["CollisionX"] - 0x80]
-        sys.exit("LWC clamp run never returned")
+                return mpu.a, r[L0["CollisionX"] - 0x80]
+        sys.exit("LWC run never returned")
+
     # packed: (right_col+1)<<4 | band mask; band 1 active only
     active = (9 + 1) << 4 | 0x02
     inactive = (9 + 1) << 4 | 0x01
-    assert lwc_clamp(active) == 38 * 4 + 2, (
-        f"active strip must clamp tip to face+2 (got {lwc_clamp(active)})")
-    assert lwc_clamp(0) == 159, (
-        f"symmetric run must not clamp (got {lwc_clamp(0)})")
-    assert lwc_clamp(inactive) == 159, (
-        f"inactive-band strip must stay transparent (got {lwc_clamp(inactive)})")
+    a, cx = lwc_run(active, 159)
+    assert a == 2, f"active strip must return A=2 (got {a})"
+    assert cx == 159, f"contact must not move CollisionX (got {cx})"
+    a, cx = lwc_run(0, 159)
+    assert a == 0, f"sym run must fall to the enemy loop A=0 (got {a})"
+    assert cx == 159, f"clear must not move CollisionX (got {cx})"
+    a, cx = lwc_run(inactive, 159)
+    assert a == 0, f"inactive-band strip must stay transparent (got {a})"
+
+    # --- M1 patch strip: tip px in [M1X-7, M1X] = solid (async block);
+    # outside the window / strip destroyed (b4) = transparent -----------
+    M1X = 71                                   # models_data M0M1X
+    for tip in (M1X - 7, M1X - 4, M1X):        # drawn px window
+        a, cx = lwc_run(0, tip, m1x=M1X)
+        assert a == 2 and cx == tip, \
+            f"M1 tip {tip} must block (A={a}, cx={cx})"
+    for tip in (M1X - 8, M1X + 1):             # just outside
+        a, _ = lwc_run(0, tip, m1x=M1X)
+        assert a == 0, f"tip {tip} outside M1 window must pass (A={a})"
+    a, _ = lwc_run(0, M1X, m1x=M1X, dead=0x10)
+    assert a == 0, f"destroyed strip must pass (A={a})"
+    a, _ = lwc_run(0, M1X, m1x=0)
+    assert a == 0, f"no M1 (M1X=0) must pass (A={a})"
 
     print(f"test_laser_kill_window: OK (X window {kill_x[0]}..{kill_x[-1]} "
-          f"= [A-7,A+7], Y window {kill_y[0]}..{kill_y[-1]}, LWC clamp "
-          f"active/sym/inactive)")
+          f"= [A-7,A+7], Y window {kill_y[0]}..{kill_y[-1]}, LWC "
+          f"strip/M1 contact, CollisionX untouched)")
     return 0
 
 

@@ -102,7 +102,9 @@ def main() -> None:
     assert re.search(r"cmp\s+#TILE_COLUMNS\s*\n\s*bcc\s+\.firstOk", blk), \
         "prologue must mirror right-half cols (walk sees 0-19 only)"
 
-    # --- LWC: cell walk over display cols c0..c1 (plan 3.1) ---------------
+    # --- LWC: contact tip test (redesign 2026-10-08): ONE display col x
+    # band rows RoomY+2..3, ball strip first (LWpSetup), M1 patch strip px
+    # window, then the mirror row walk; result A=2 via ReturnPad ---------
     lb = lwc_block()
     assert re.search(r"adc\s+ColOff,X", lb), \
         "LWC must index ColOff (cell group offset)"
@@ -112,14 +114,20 @@ def main() -> None:
         "LWC must mask the cell bit with ColMask"
     assert re.search(r"cmp\s+#20\s*\n\s*bcc\s+\.LWsrc", lb), \
         "LWC must mirror right-half display cols (source = 39-d)"
-    assert "adc #9" in lb and "adc #2" in lb, \
-        "LWC cand constants face+9 (left) / face+2 (right) must survive"
-    assert re.search(r"cmp\s+CollisionCellX[^\n]*\n\s*beq\s+\.LWdone", lb), \
-        "col loop must stop after processing c1"
-    assert re.search(r"^\.LWdone:\s*\n\s*jmp\s+LaserClampDone", lb, re.M), \
+    assert "adc #2" in lb and "adc #3" in lb, \
+        "band rows must be RoomY+2..RoomY+3 (kill-window rows)"
+    assert "jmp LWpSetup" in lb, \
+        "tip col must go to the ball-strip test (LWpSetup) first"
+    assert "ldy #14" in lb and "(RoomPF0Lo),Y" in lb \
+        and "sbc RectCount" in lb and "cmp #8" in lb, \
+        "M1 patch-strip tip window [M1X-7, M1X] missing"
+    assert re.search(r"cmp\s+CollisionEndY[^\n]*\n\s*beq\s+\.LWclear", lb), \
+        "row loop must stop after the bottom band row"
+    assert re.search(r"^\.LWclear:\s*\n\s*jmp\s+LaserClampDone", lb, re.M), \
         "LWC must tail-jmp LaserClampDone (stack depth unchanged)"
-    for gone in ("RcBase", "(FetchPtr),Y", "MothMaskBit", "BombPacked"):
-        assert gone not in lb, f"LWC must not touch {gone} (cell walk 3.1)"
+    for gone in ("RcBase", "(FetchPtr),Y", "MothMaskBit", "BombPacked",
+                 "sta CollisionX"):
+        assert gone not in lb, f"LWC must not touch {gone} (contact contract)"
     parse_tables(BANK2, "bank2")
 
     # --- moth: cell walk since phase 4.1 (was the PHM rect walk) ----------

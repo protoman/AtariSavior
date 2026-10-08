@@ -88,8 +88,11 @@ INTIM   = $0284
 RoomX           byte            ; player X position (0-159)
 RoomY           byte            ; player Y position (0-191)
 PlayerDir       byte            ; sprite eye facing: FACING_RIGHT (0) or FACING_LEFT
-LaserBeamOn     byte            ; S2.2r2: $02 while fire held else $00 —
-                                ; .Line beam gate (reuses dead Scanline byte)
+LaserX          byte            ; travelling beam X, M0 arg 0-159 (contact
+                                ; missile: +4px/frame from the eye toward
+                                ; facing; resets on contact/offscreen/release;
+                                ; was LaserBeamOn $02 gate — gate moved to
+                                ; LaserState b1 so this byte could hold state)
 LineCount       byte            ; scanlines remaining in current tile row
 BombY           byte            ; bomb drop Y (was dead TileRow; scanline snapshot)
 Grp0Ptr         byte            ; pointer to player sprite data (lo)
@@ -275,10 +278,11 @@ EnemyRamX       = $BD           ; 3 bytes: live X per enemy ($BD-$BF, slots 0-2
                                 ; only — enemies+lamps capped at 3 by editor
                                 ; kMaxRoomElements, convert_level MAX_ENEMIES,
                                 ; verify_build; slot 3 would collide with $C0)
-LaserState      = $C0           ; laser (S1): b7 fire held this frame,
-                                ;   b6 fire held last frame,
+LaserState      = $C0           ; laser: b7 fire held this frame,
+                                ;   b6 fire held last frame (press-edge),
                                 ;   b5-2 RoomDarkMask rooms 4-7,
-                                ;   b1-0 sweep phase (0..3 = 0/8/16/8 px)
+                                ;   b1 beam gate for the kernel .Line
+                                ;     (BeamMask = $02 shares b1; mirror of b7)
 EnemyRamD       = $C1           ; dir bits 0-3 = enemy 0-3 (1=right, 0=left)
 EnemyRamP       = $C2           ; bits0-3 moth phase (shared/sync); bits4-7
                                 ;   vdir for spider/bat/tentacle (1=down)
@@ -334,9 +338,11 @@ LASER_AUD_V     = 9             ; laser ch0 volume while fire held
 FACING_RIGHT    = 0
 FACING_LEFT     = 1
 
-; LaserState bits (laser_implementation_plan S1)
-LASER_HELD      = %10000000     ; b7: fire pressed this frame (INPT4 D7=0)
-LASER_PHASE     = %00000011     ; b1-0: sweep phase 0..3 -> M0 offsets 0/8/16/8 px
+; LaserState bits
+LASER_HELD      = %10000000     ; b7: fire held this frame (INPT4 D7=0)
+LASER_ARMED     = %00000010     ; b1: kernel .Line beam gate (BeamMask $02
+                                ;   shares b1 — ENAM0 = BeamMask & LaserState)
+LASER_ON        = %10000010     ; b7+b1 in one ora (held AND armed)
 LASER_DARK      = %00111100     ; b5-2: RoomDarkMask rooms 4-7 (IsRoomDark/SetRoomDark)
 
 ; Colors (emulator-aware: hue<<4 | luma<<1)
@@ -765,14 +771,14 @@ CaveKernelRow:
     lda PlayerColTable,Y        ; 4c — per-row color from ROM
     sta COLUP0                  ; COLUP0 has no latch: applies to this line
     ; --- Laser S2.2: ENAM0 = beam mask for THIS line (in-window only) ---
-    ; BeamMask = {0,0,2,2,0...} → ENAM0 on RoomY+2..RoomY+3 (eye rows,
-    ; original S2.2 position — reverted per user: the single-color detour
-    ; (rows 5,6 then 0,1) broke kill geometry for no real benefit).
+    ; BeamMask = {0,0,2,0,0...} → ENAM0 on RoomY+2 only (single yellow
+    ; strip — user directive 2026-10-08: the red row-3 strip is gone;
+    ; kill window in LaserHitTestBody keeps rows RoomY+2..3 = superset).
     ; In-window path is the only safe place (Y<12 guaranteed); outside the
     ; window ENAM0 keeps its last in-window write ($00 at A0=11) — no HUD
     ; artifact. Table lives in $FFxx (cross = deterministic 5c): +8c/line.
     lda BeamMask,Y              ; 5c (cross $F1→$FF) — table MUST stay $FFxx
-    and LaserBeamOn             ; 3c — S2.2r2 gate: $02 only while fire held
+    and LaserState              ; 3c — beam gate: b1 armed only while fire held
     sta ENAM0                   ; 3c (bar showed without fire before this)
 .GrpSkip:
     iny                         ; Y = A0+1 ($ff wraps to 0 = sprite row 0)
@@ -2226,60 +2232,14 @@ BombTick subroutine
     dex
     bne .BTScore
 .BTNoScore:
-    jsr BombEnemyBlast          ; S9: kill enemy ±1 col any Y (before player — reload clears)
+    jsr BombEnemyBlast          ; S9: A = 1 kill (bank2, lamp-safe), 0 none
+    beq .BTNoKill
+    lda #$50                    ; +50 per kill — moved out of the pad body
+    jsr CallPad_AddScore        ;   (pads cannot nest; same shape as BMW above)
+.BTNoKill:
     jsr BombPlayerBlast         ; S5: player ±1 col any Y → life (may ReloadLevel → clears masks)
     jsr CallPad_BombSndExplode          ; S10: noise burst
 .BTDone:
-    rts
-
-; ------------------------------------------------------------------------------
-; BombEnemyBlast — on explode, walk live enemies; X-only (±1 col, any Y)
-;   → sets dead bit in EnemyDeadMask (per-enemy, shared with CheckEnemyHit
-;   and LaserHitTest); first live enemy per blast.
-; Call after BombMarkWalls, before BombPlayerBlast (ReloadLevel resets dead list).
-; ------------------------------------------------------------------------------
-BombEnemyBlast:
-    lda EnemyCount
-    bne .BEB1
-    rts
-.BEB1:
-    lda BombX
-    lsr
-    lsr
-    sta CollisionCellX          ; bomb screen col
-    lda #0
-    sta EnemyIndex
-.BEBLoop:
-    ldx EnemyIndex
-    cpx EnemyCount
-    bcs .BEBDone
-    lda EnemyDeadMask
-    and EnemyBitTable,X
-    bne .BEBNext                ; already dead
-    ; Live X from RAM (no Y needed for X-only check)
-    lda EnemyRamX,X
-    ; |dcol| < 2 (col = px/4) — ignore Y entirely
-    lsr
-    lsr
-    sec
-    sbc CollisionCellX
-    bcs .BEBAbsCol
-    eor #$ff
-    clc
-    adc #1
-.BEBAbsCol:
-    cmp #2
-    bcs .BEBNext
-    lda EnemyDeadMask
-    ora EnemyBitTable,X          ; X = EnemyIndex
-    sta EnemyDeadMask            ; kill (first overlapping enemy per blast)
-    lda #$50                    ; +50 points per kill
-    jsr CallPad_AddScore
-    rts
-.BEBNext:
-    inc EnemyIndex
-    jmp .BEBLoop
-.BEBDone:
     rts
 
 ; ------------------------------------------------------------------------------
@@ -2340,6 +2300,14 @@ BombBlinkColors:
 ; --- Player sprites: 8x12, all 8 pixels wide (bit7 = leftmost pixel) ---
 ; Frame A = normal, frame B = jet legs (rows 7-8 differ; 3 pixels changed).
 ; Per-row colors in PlayerColTable (RED/RED/YELLOW/RED/GRAY/RED/.../BLACK/BLACK).
+    .ds $F8DD - *, 0            ; PIN $F8DD: bank2 EQUs PlayerSpriteA/PlayerSpriteB/
+                                 ;   PlayerWalkA/B are address-frozen there; bank2
+                                 ;   holds art byte-twins at the SAME address
+                                 ;   (PickPlayerFrame reads its own EQUs while
+                                 ;   bank2 active — test_miner_colors asserts
+                                 ;   EQU == bank0 label AND byte identity). The
+                                 ;   S9 bomb-lamp stub deletion upstream must
+                                 ;   never shift these again.
 PlayerSpriteA:
     .byte %00111100             ; row 0 (sprites.png 2026-10-03)
     .byte %01111110             ; row 1
@@ -2881,22 +2849,15 @@ TitleFont:
 
 ; ------------------------------------------------------------------------------
 ; TitleSelect — SELECT edge for TitleWork (moved here: TitleWork post-pad had
-; 2B gap; fill has room). First press swallowed so the user sees level 1
-; before counting up (2026-10-06 request); later presses = old behavior
-; (level+1, wrap, LoadLevel reload). Flag: TitleSelFlag — 0 = swallow next,
-; nonzero = normal. Boot zeroed; every cave HUD frame zeroes it too (it is
-; bank1's scbrdCnt scratch), so each fresh title visit also swallows its
-; first press. StepsLeft = previous SWCHB sample (title-owned).
+; 2B gap; fill has room). Swallow-first REMOVED 2026-10-07 (bugs.md 8b): the
+; intro exit already consumes the first press, so the swallow made the second
+; press read as dead — every edge now does level+1, wrap, LoadLevel reload
+; (C=1). (Was: first press swallowed so level 1 stayed visible; flag
+; TitleSelFlag aliased the TallyTicks slot $F2 — EQU removed with it, tally
+; owns $F2 alone now.) StepsLeft = previous SWCHB sample (title-owned).
 ; Clobbers A. LoadLevel clobbers A/X/Y — edge state re-read after it via
 ; TitleWork's tail `lda SWCHB / sta StepsLeft`.
 ; ------------------------------------------------------------------------------
-TitleSelFlag = $F2              ; was $EC (2026-10-06): HUD zeroed scbrdCnt
-                                ;   every old-title frame → swallow never
-                                ;   stuck → SELECT never incremented. $F2 =
-                                ;   TallyTicks slot: HUD does NOT touch it
-                                ;   (tally feature proves it survives), tally
-                                ;   ARM overwrites it and its done path ends
-                                ;   at 0 = swallow-pending again.
 TitleSelect:
     lda StepsLeft
     and #%00000010
@@ -2904,13 +2865,6 @@ TitleSelect:
     lda SWCHB
     and #%00000010
     bne .TSno                   ; released now -> no press
-    lda TitleSelFlag
-    bne .TSinc                  ; already seen once -> normal +1
-    lda #$80
-    sta TitleSelFlag            ; swallow this press (stay on level 1)
-    clc                         ; C=0: caller skips LoadLevel
-    rts
-.TSinc:
     inc Level
     lda Level
     cmp #LEVEL_COUNT
@@ -3218,7 +3172,7 @@ DropArm:
     and #LASER_DARK             ; reset laser, keep rooms 4-7 dark (parity:
     sta LaserState              ; EnemyRamD bits survive DropArm too)
     lda #0                      ; A out = 0 (DropArm contract, was sta LaserState)
-    sta LaserBeamOn
+    sta LaserX
     clc
     rts
 .DATitle:
@@ -3281,10 +3235,9 @@ DropSpeedTable:                 ; 8.8 px/frame per Y>>4 tier (Y = tier*16+8)
 ; DropStep every frame). Player stands at the level start: no gravity, no
 ; enemies (count/miner cleared by DropArm .DATitle), no sound, timer frozen
 ; (tail skips the TickCounter/BarLevel block). HUD score = level+1.
-;   SELECT (SWCHB b1, active-low EDGE) → jsr TitleSelect (fill): first
-;          press swallowed (user sees level 1 before counting up — flag
-;          TitleSelFlag $F2), later presses level+1, wrap → 000001,
-;          reload room 0
+;   SELECT (SWCHB b1, active-low EDGE) → jsr TitleSelect (fill): level+1,
+;          wrap → 000001, reload room 0 (swallow removed 2026-10-07, 8b —
+;          the intro exit ate the first press and made #2 read as dead)
 ;   RESET  (SWCHB b0, active-low EDGE) → score 000000, LoadLevel tail arms
 ;          the real drop-in → gameplay starts
 ; (Intro $FD never reaches here — DropStep routes it to TitleIntro.)
@@ -3293,9 +3246,9 @@ DropSpeedTable:                 ; 8.8 px/frame per Y>>4 tier (Y = tier*16+8)
 ; Console switches are read again after any jsr (LoadLevel clobbers X/Y/A).
 ; ------------------------------------------------------------------------------
 TitleWork:
-    ; --- SELECT edge (swallow-first logic lives in fill: TitleSelect) ---
+    ; --- SELECT edge (TitleSelect, fill region) ---
     jsr TitleSelect
-    bcc .TWselDone             ; C=0: first-press swallow / no edge
+    bcc .TWselDone             ; C=0: no edge
     jsr LoadLevel              ; title arm re-runs → score/objects refreshed
 .TWselDone:
     ; --- RESET edge ---
@@ -3423,6 +3376,23 @@ RefreshEnemyY:
 ColOff:     .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
 ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
             .byte $01,$02,$04,$08,$10,$20,$40,$80
+
+; ------------------------------------------------------------------------------
+; BombEnemyBlast — bank2 entry tramp ($FDD8, lamp-safe S9 2026-10-07): the
+; BombTick `jsr` lands here (bank0), `sta $1FF8` switches to bank2, the `jmp`
+; is fetched from bank2's byte-identical mirror at this same address and
+; lands on the body at $FD6B (the lamp type-check reads enemy records that
+; live in bank2). Body tail-jmps ReturnPad ($FBF8); A = 1 kill (BombTick
+; awards +50 — pads cannot nest), 0 none. Old inline body ($F87F, 66B)
+; deleted: the region re-packs into the gap before the $FBD6 fold pin
+; (pre-pad headroom stays 1B — pins absorb upstream shrink, not the org).
+; TWIN: bank2.asm mirrors these exact 6 bytes at $FDD8 (the pad after
+; .HOVdone). The PickPlayerFrame `.ds $FDE1` below absorbs the size.
+; ------------------------------------------------------------------------------
+BombEnemyBlast:
+    sta $1FF8
+    jmp $FD6B                   ; BombEnemyBlastBody (bank2.lst — after
+                                ;   .HOVdone; NOT in the TitleJetColors span)
 
 ; ------------------------------------------------------------------------------
 ; PickPlayerFrame — VBL entry tramp: the VBL `jsr` lands here (bank0), `sta
@@ -3614,12 +3584,15 @@ TallyWork:
 ; Rows 2-3 = $02 (beam on: RoomY+2..RoomY+3 = eye rows — yellow face row 2 +
 ; red row 3 = two-tone beam; kept per user decision: single-red rows could
 ; not also reach floor-standing enemies without kill-window churn); rest $00.
+; 2026-10-08 user directive: ONE strip, yellow — row 2 only ($02 at index 2),
+; row 3 dropped. Kill window in LaserHitTestBody stays rows RoomY+2..3 = a
+; superset of the 1-line draw (floor-standing reach preserved).
 ; Lives in the $FExx page: `lda BeamMask,Y` from .Line ($F1xx) fetches in
 ; 4c when operand+11 stays in-page (1c reclaim toward the ObjColorTab
 ; write; verify_build asserts the no-cross operand range).
 ; ------------------------------------------------------------------------------
 BeamMask:
-    .byte 0,0,2,2,0,0,0,0,0,0,0,0
+    .byte 0,0,2,0,0,0,0,0,0,0,0,0
 
 
     .ds $FEF0 - *, 0            ; fill tramp..moth gap (drift-proof)
@@ -3708,153 +3681,141 @@ SetObjReflection:
     rts
 
 ; ------------------------------------------------------------------------------
-; LaserInput (S1 fire state + S2.1 M0 beam) — runs every overscan.
-; S6 (docs/laser_s6_log.md): stages the sweep-path column bounds
-; (CollisionEndX..CollisionCellX) and reloads CollisionX after
-; LaserHitTest — bank2's LaserWallClamp pulls it back to the first wall
-; ON the path so the drawn M0 and the kill window share ONE value.
-; ------------------------------------------------------------------------------
-; Lives after $FF20: the pre-$FF00 region is 100% full (ObjSprites + zero pad),
-; so any addition here must go past SetObjReflection. Pre-pad code size is
-; unchanged (call site jsr unchanged) — page contracts in the kernel untouched.
-; INPT4 ($0C) D7: 0 = pressed, 1 = released (HERO reads BIT $0C / BMI).
-; LaserState ($C0): b7 = held now, b6 = held last frame, b1-0 = sweep phase.
-; Every held frame advances phase 0->1->2->3->0 (S3 maps these to M0 offsets
-; 0/8/16/8 px ahead of the eye — full triangle covered either starting parity);
-; release clears held and resets phase. Temp (joystick) intact.
-; S2.1: after state update, positions M0 (selector 2). S2.2: ENAM0 enable
-; moved into kernel .Line (BeamMask) — no TIA writes here anymore.
+; LaserInput — contact missile (redesign 2026-10-08, replaces the S3 sweep):
+; the beam is ONE 8px bar that LEAVES the EYE and travels +/-4px/frame toward
+; the facing until contact, then resets to the eye (single missile, KISS —
+; user spec: no piercing, no HERO comparison needed).
+;   press edge (b7 held, b6 prev): LaserX = eye  (right min(RoomX+4,159),
+;                                                left  RoomX-4)
+;   held frame: LaserX +/-4; LaserX >= 160 (right edge OR left underflow
+;     wrap) -> reset to eye (unsigned check catches both)
+;   contact (bank2 LaserHitTestBody): A = 0 continue / $50 kill (+score,
+;     dead bit set in body) / 1 lamp (SetRoomDark) / 2 wall tip -> all three
+;     contact kinds reset LaserX = eye BEFORE positioning (missile consumed;
+;     tip-in-wall never draws: contact frame restarts at the eye; PF has
+;     priority over M0 anyway).
+;   release: b7/b1 cleared in the prologue, HMM0 = 0; LaserX kept (next
+;     press edge re-anchors).
+; PIXEL MODEL (unchanged): SetObjectXPos arg A -> drawn M0 = [A-7, A].
+; LaserState: b7 held, b6 prev (press edge), b5-2 dark, b1 = .Line gate
+; (BeamMask = $02 shares b1 — ENAM0 = BeamMask & LaserState; the old
+; LaserBeamOn $02 byte now holds LaserX, there was no free ZP byte).
+; S5.4: kill/lamp/wall ACTIONS run here (pad body returns only A).
 ; Overscan: VBLANK on, end waits on TIM64T — SetObjectXPos's WSYNC costs 1
-; of 30 lines. Y/X dead until next reload (ldy #0 / ldx RoomNo) — safe.
+; of 30 lines. Temp (joystick) intact. Lives after $FF20 (pre-$FF00 full).
+; ------------------------------------------------------------------------------
 LaserInput:
-    ldx LaserState             ; X = old state (b7 held, b6 prev, b1-0 phase,
-                               ;     b5-2 dark rooms 4-7)
+    ldx LaserState             ; X = old state (b7 held, b6 prev, b5-2 dark)
     txa
     and #LASER_DARK            ; keep dark bits (else this store wipes them)
     sta LaserState
     txa
     and #LASER_HELD
     lsr                         ; old held (b7) -> new prev (b6)
-    ora LaserState              ; stage prev (phase/held written back below)
+    ora LaserState              ; prev in b6; b7/b1 cleared for this frame
     sta LaserState
     lda INPT4                   ; active-low fire button, D7: 0 = pressed
-    bmi .LaserDone              ; released: prev set, held=0, phase=0 -> done
-    txa
-    and #LASER_PHASE
-    clc
-    adc #1
-    and #LASER_PHASE            ; phase advances every held frame (incl. press)
-    ora LaserState              ; + prev
-    ora #LASER_HELD             ; + held
+    bpl .LaserFire              ; pressed: arm + travel (released sits right
+                                ; below — moved here so the cap code could
+                                ; not push .LaserReleased past bmi's ±127)
+.LaserReleased:
+    lda #0
+    sta HMM0                    ; HMOVE re-applied stale fine offset
+                                ; otherwise -> bars slid across screen
+    rts                         ; LaserX kept; next press edge re-anchors
+.LaserFire:
+    lda LaserState
+    ora #LASER_ON               ; b7 held + b1 armed (kernel .Line gate)
     sta LaserState
-.LaserDone:
-    ; --- S2.1 positioning: M0 X while fire held (S2.2: ENAM0 enable moved
-    ; into the kernel .Line via BeamMask — LaserInput sets the gate byte and
-    ; RESM0/HMM0 positioning only) ---
-    lda LaserState
+    txa
     and #LASER_HELD
-    beq .LaserReleased
-    lda #$02
-    sta LaserBeamOn             ; .Line BeamMask AND passes rows 2-3
-    ; --- S3 sweep: phase 0..3 -> offset 0/8/16/8 px AHEAD of the eye
-    ; (triangle: 0->8->16->8->0 each held frame), sign = facing.
-    ; Eye: art faces right unreflected (REFP0=0), yellow face rows 2-3
-    ; cols 1-4 -> front col 4; REFP0 mirror -> front col 3 (bar extends
-    ; left, left edge = RoomX-4). Args clamped to [0,159] — TIA position
-    ; past 159 is unverified for SetObjectXPos (wrap vs hide).
+    beq .LaserInit              ; press edge: (re)start at the eye
+    ; --- travel: +/-4 px toward the facing (PlayerDir live), capped at the
+    ; old S3 sweep extent (SweepOff max 16: right tip <= RoomX+20, left
+    ; floor max(RoomX-20,0)) — past the cap restarts at the eye, the
+    ; triangle-loop feel of the sweep (user: beam "moved way beyond the
+    ; limit"). RectCount = free scratch (LWC re-owns it for its row walk).
     lda PlayerDir
-    bne .LaserEyeL
-    ; right: X = RoomX + 4 + off
-    lda LaserState
-    and #LASER_PHASE
-    tax
+    bne .LAdvL
+    lda LaserX
+    clc
+    adc #4
+    jmp .LAdvS
+.LAdvL:
+    lda LaserX
+    sec
+    sbc #4
+.LAdvS:
+    sta RectCount               ; candidate (not committed yet)
+    cmp #160                    ; right edge >=160 OR left underflow wrap
+    bcc .LAdvCap
+    jmp .LaserInit
+.LAdvCap:
+    lda PlayerDir
+    bne .LAdvCapL
+    lda RoomX
+    clc
+    adc #20                     ; old max tip = RoomX + 4 + SweepOff(16)
+    cmp RectCount
+    bcs .LAdvKeep               ; cap >= cand -> within old laser extent
+    jmp .LaserInit
+.LAdvCapL:
+    lda RoomX
+    sec
+    sbc #20
+    bcs .LAdvCapLs
+    lda #0                      ; old left clamp floor (extent >= 0)
+.LAdvCapLs:
+    cmp RectCount               ; cap vs cand
+    beq .LAdvKeep
+    bcc .LAdvKeep               ; cap < cand -> cand still above floor
+    jmp .LaserInit
+.LAdvKeep:
+    lda RectCount
+    sta LaserX
+    jmp .LaserGo                ; committed: skip the eye restart
+.LaserInit:
+    jsr .LaserEye               ; edge/offscreen: restart at the eye
+.LaserGo:
+    lda LaserX
+    sta CollisionX              ; cur arg for LaserHitTest (drawn [A-7,A])
+    jsr LaserHitTest            ; A = 0 / $50 kill / 1 lamp / 2 wall
+    beq .LaserPos               ; no contact: keep travelling
+    cmp #$50
+    beq .LaserKill
+    cmp #2
+    beq .LaserContact           ; wall tip: missile consumed (no score)
+    jsr CallPad_SetRoomDark     ; lamp crash = player-body touch (no kill)
+    jmp .LaserContact
+.LaserKill:
+    jsr CallPad_AddScore        ; A = $50 BCD (dead bit already set in body)
+.LaserContact:
+    jsr .LaserEye               ; consumed -> restart at the eye THIS frame
+.LaserPos:
+    lda LaserX
+    ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
+    jsr SetObjectXPos           ; drawn M0 = [LaserX-7, LaserX]
+    rts
+
+; Eye spawn point. Right clamped to 159 (TIA position past 159 is
+; unverified for SetObjectXPos); left >= 0 because RoomX >= PLAYER_MIN_X=4.
+.LaserEye:
+    lda PlayerDir
+    bne .LEyeL
     lda RoomX
     clc
     adc #4
-    clc
-    adc SweepOff,X
     cmp #160
-    bcc .LaserPos
-    lda #159                    ; clamp: sweep stops at right screen edge
-    jmp .LaserPos
-.LaserEyeL:
-    ; left: X = RoomX - 4 - off (RoomX>=PLAYER_MIN_X=4 -> base >=0;
-    ; off may borrow below 0 -> carry clear -> clamp 0)
-    lda LaserState
-    and #LASER_PHASE
-    tax
+    bcc .LEyeS
+    lda #159
+.LEyeS:
+    sta LaserX
+    rts
+.LEyeL:
     lda RoomX
     sec
     sbc #4
-    sec
-    sbc SweepOff,X
-    bcs .LaserPos
-    lda #0                      ; clamp: sweep stops at left screen edge
-.LaserPos:
-    sta CollisionX              ; S4: cur arg for LaserHitTest (held path only)
-    ; --- S6b: sweep-path column bounds for LaserWallClamp (runs first thing
-    ; inside the LHT body). PIXEL MODEL (calibrated: PHM lit-left = arg-7,
-    ; PlayerSpriteA art cols0-6): SetObjectXPos arg A -> drawn M0 = [A-7, A];
-    ; nose (art face col4/col3) = RoomX-3 / RoomX-4. Path anchors the SPRITE
-    ; nose, not the raw tip, so a bar that teleported past the wall (max
-    ; approach: eye col > wall col) still finds it. cols = px>>2:
-    ;   right: [nose_R, A]   left: [A-7, nose_L]
-    ; LWC pulls CollisionX so the drawn tip/start lands 2px INSIDE the first
-    ; wall; kill test uses the SAME [A-7, A] (S6 lock; NO NUSIZ/width change:
-    ; that rewrite is the e24d9de rollback).
-    lda PlayerDir
-    beq .LWpR
-    lda CollisionX              ; left: c0 = drawn-left = A-7
-    sec
-    sbc #7
-    bcs .LWpLz
-    lda #0                      ; A < 7: floor at screen left
-.LWpLz:
-    lsr
-    lsr
-    sta CollisionEndX
-    lda RoomX                   ; left: c1 = nose_L = RoomX-4
-    sec
-    sbc #4
-    jmp .LWpC
-.LWpR:
-    lda RoomX                   ; right: c0 = nose_R = RoomX-3
-    sec
-    sbc #3
-    lsr
-    lsr
-    sta CollisionEndX
-    lda CollisionX              ; right: c1 = drawn tip = A (raw, A <= 159)
-.LWpC:
-    lsr
-    lsr
-    sta CollisionCellX          ; path last col
-    ; S5.4: body moved to bank2 (pads cannot nest from a pad body — the
-    ; kill/lamp ACTIONS return here: A=0 miss / $50 kill / 1 lamp).
-    jsr LaserHitTest            ; S4: swept kill — result in A (+Z via ReturnPad)
-    pha                         ; S6: save result across positioning
-    lda CollisionX              ; S6: CLAMPED by LaserWallClamp (mid-wall tip)
-    ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
-    jsr SetObjectXPos           ; drawn M0 = [CollisionX-7, CollisionX] (S6b)
-    pla                         ; restore result (PLA sets Z from the value)
-    beq .LaserNoHit
-    cmp #$50
-    beq .LaserKill
-    jsr CallPad_SetRoomDark     ; lamp crash = player-body touch (no kill, no score)
-    rts
-.LaserKill:
-    jsr CallPad_AddScore        ; A = $50 BCD (dead bit already set in body)
-.LaserNoHit:
-    rts
-
-; SweepOff — M0 offset ahead of the eye per sweep phase (LaserState b1-0).
-SweepOff:
-    .byte 0,8,16,8
-.LaserReleased:
-    lda #0
-    sta LaserBeamOn             ; beam off (S2.2r2: bar was visible w/o fire)
-    sta HMM0                    ; S2.2r2: HMOVE re-applied stale fine offset
-                                ; every frame -> bars slid across screen
+    sta LaserX
     rts
 
     .ds $FFE6 - *, 0            ; pin TallyTramp (BeamMask moved to $FExx
