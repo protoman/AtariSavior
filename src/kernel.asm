@@ -426,6 +426,10 @@ GameStart:
 
     ; --- Load first level ---
     jsr LoadLevel
+    lda #20
+    sta RoomX                    ; title flight starts on left side
+    lda #0
+    sta RoomY                    ; offset in title's fixed flight window
 
     ; --- Set player color ---
     lda #COLOR_PLAYER
@@ -2667,8 +2671,8 @@ KernelInit:
 ; ------------------------------------------------------------------------------
 ; TitleKernel — intro sentinel ($FD): black + "S.A.V.I.O.R." via the 48px
 ; sprite technique (NUSIZ3+VDEL cross-buffer, P0@60/P1@68 — same pipeline
-; as bank1 score). Remaining lines are blank padding to retain the existing
-; title kernel WSYNC count. SELECT/RESET handling stays in TitleIntro/TitleWork.
+; as bank1 score), with animated game jet frames in a fixed 60-line window.
+; SELECT/RESET handling stays in TitleIntro/TitleWork.
 ; ZP: LineCount ($84) + Temp ($88) as loop counter/tmp — idle on title frames
 ; (cave kernel not running; bank1 HUD not running; overscan probes bypassed).
 ; ------------------------------------------------------------------------------
@@ -2767,11 +2771,38 @@ TPtr6 = $EA
     sta GRP1
     sta GRP0
     sta GRP1
-    ldx #169                     ; leave 9 lines for the bottom text band
+    ldx #105                     ; 65 pre-pad + 60 draw + 6 syncs + 38 pad
 .TkFooterPad:
     sta WSYNC
     dex
-    bne .TkFooterPad
+    cpx #40
+    bne .TkFooterPad             ; 65 lines before the flight window
+.TkPlayer:
+    lda #0
+    sta VDELP0
+    sta VDELP1
+    sta GRP0
+    sta GRP1
+    sta NUSIZ0                  ; single player, not title's 3-copy mode
+    sta HMP1                    ; avoid reapplying P1's stale fine motion
+    ldx #0
+    lda RoomX
+    jsr SetObjectXPos           ; current flight X; X remains the P0 selector
+    sta WSYNC
+    sta HMOVE
+    jsr TitlePlayerFold         ; isolated bank2 renderer restores both VDELs
+    lda #3
+    sta NUSIZ0
+    lda #60
+    ldx #0                      ; the bank2 renderer used X as its sprite row
+    jsr SetObjectXPos           ; restore title/footer P0 position
+    sta WSYNC
+    sta HMOVE
+    ldx #38                     ; restore the fixed title-kernel line budget
+.TkPostFooterPad:
+    sta WSYNC
+    dex
+    bne .TkPostFooterPad
     lda #$0E                     ; white
     sta COLUP0
     sta COLUP1
@@ -2908,6 +2939,12 @@ TitleIntro:
     and #%00000011
     and Temp                   ; any prev-released & now-pressed
     beq .TIno
+    lda LevelStartX
+    sta RoomX                   ; discard title-only flight position
+    lda LevelStartY
+    sta RoomY
+    lda #0
+    sta PlayerDir
     lda #$FF
     sta DropTarget             ; → old title (first room + HUD count)
     jsr DropArm                ; .DATitle: pose + ScoreTe = level+1
@@ -2920,6 +2957,10 @@ TitleIntro:
 FooterFold:
     sta $1FF8
     jmp $F700
+    .ds $FBE8 - *, 0
+TitlePlayerFold:
+    sta $1FF8
+    jmp $F880
     .ds $FBF8 - *, 0
 ReturnPad:
     sta $1FF6
