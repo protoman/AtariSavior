@@ -98,7 +98,7 @@ BarLevel = $AE                  ; time bonus input (120 = full)
 PlayerBombs = $F0               ; 50 pts each unspent
 PlayerLives = $AC               ; 100 pts each remaining
 JetPower = $96                  ; cleared at arm (no thrust flutter)
-LaserBeamOn = $83               ; cleared at arm (no stale beam)
+LaserX = $83                  ; travelling beam X (kernel decl; arm resets to 0)
 BombSnd = $F1                   ; coin hold — bank1 UpdateBombSound decs it
 AUDC0 = $15                     ; TIA — coin tone regs (any bank may write)
 AUDF0 = $17
@@ -358,42 +358,30 @@ MothRowTable:
     .byte 3,3,3,3,3,3,3,3,3,3,3,3
 
 ; ------------------------------------------------------------------------------
-; S6 LaserWallClamp (docs/laser_s6_log.md — baby step 1) — sweep-path clamp.
-; The held laser's kill window must never reach past the FIRST wall on the
-; path the swept beam occupies this frame (sweep = 8 px/phase + 8 px missile;
-; without the clamp a phase jump puts the whole beam beyond the wall and it
-; kills enemies straight through it).
-; In (staged by bank0 LaserInput .LaserPos, S6b):
-;   CollisionEndX (c0), CollisionCellX (c1) = path cols px>>2
-;     right (PlayerDir=0): path px = [nose_R=RoomX-3, A]      (A = raw arg)
-;     left  (1):           path px = [A-7, nose_L=RoomX-4]
-;   CollisionX = A (unclamped), RoomY live, PF0/1/2Buf live (the map —
-;   BombMarkWalls-punched holes read as air for free).
-;   PIXEL MODEL: drawn M0 = [A-7, A] (SetObjectXPos arg -> box-left arg-7;
-;   PlayerSpriteA lit cols0-6, PHM lit-left = arg-7). Kill test = same
-;   [A-7, A] (adc #14 in the body). The raw tip/eye anchoring of S6a missed
-;   the wall at max approach (nose col >= wall col) and left a 1-3px visible
-;   gap + behind-player stub — all three Stella symptoms (2026-10-01).
-; Walks the cell map ONCE (cell_collision_plan 3.1) — rows =
-; band(RoomY+2)..band(RoomY+3) (exact LHT kill window), every DISPLAY col
-; in [c0..c1] (right-half cols mirror 39-d into the buffers). First solid
-; col on the travel direction:
-;   right: col -> tip A   <= col*4+2  -> pull DOWN (min)
-;   left:  col -> start A >= col*4+9  -> pull UP   (max)
-; (col*4 = wall face px; drawn [A-7, A]: right tip lands 2px INSIDE the
-; wall's left half, left start lands 2px inside its right half — visible
-; tip flush at the face (PF has priority over M0, CTRLPF=$05), never past
-; face+3/far side: enemies beyond survive; in/near-wall enemies die.)
-; NO NUSIZ/width/BeamMask change (the e24d9de rollback): beam stays 8 px;
-; only CollisionX moves. Out: CollisionX clamped (never lengthened past the
-; invariant). Clobbers A/X/Y/FetchPtr/RectCount + CollisionCell*/End*.
+; LaserWallClamp $F25A (name+pin kept — sim_frame_budget beam_cols keys on
+; the entry; redesign 2026-10-08): CONTACT wall test — tests ONLY the
+; missile TIP cell (one display col x band rows RoomY+2..3) instead of
+; walking the whole swept path. The sweep/phase machine is gone: bank0
+; LaserInput now travels LaserX +/-4px/frame from the eye, capped at the
+; old sweep extent (RoomX+20 / max(RoomX-20,0)) and resets on contact, so
+; there is no path to clamp and CollisionX is never modified (old S6
+; mid-wall tip clamp retired with the sweep).
+; In (bank0 LaserInput .LaserGo): CollisionX = LaserX, drawn M0 = [A-7,A],
+; PlayerDir live, RoomY live, PF0Buf = the render map (bomb holes = air),
+; patch-strip marker = LineCount x OvHead/OvTail (LWpSetup, $F600).
+; M1 patch strip: tip px in [M1X-7, M1X] (M1X = (RoomPF0Lo)+14) = solid
+; A=2 — the mirror walk alone passes the cell (patch = open, envelope) and
+; the beam used to sail through the async block; kill-aware (b4 skip).
+;   right: tip px = A        left: tip px = A-7 (A < 7 -> off-screen ->
+;     clear -> enemy loop, no wall)
+; Results: solid -> A=2 wall contact via ReturnPad (caller resets the beam
+; to the eye); clear -> jmp LaserClampDone = enemy loop (0/$50/1).
 ; Entered/exited via jmp from/to LaserHitTestBody — stack depth unchanged
 ; (SP guard: gameplay >= $F8; laser chain = 2 jsr from overscan = $FB).
-; Lives here (bank2 $F260+): bank0 has 1B pre-pad headroom; org $F9D9 below
-; pins level data (Origin Reverse-indexed if this overflows = build fails).
+; Clobbers A/X/Y/RectCount/FetchPtr + CollisionEndX (marker scratch only).
 ; ------------------------------------------------------------------------------
     .ds $F25A - *, 0            ; pin LWC entry (sim_frame_budget beam_cols
-                                ; gate + session ledgers key on $F25A)
+                                 ; gate + session ledgers key on $F25A)
 LaserWallClamp:
     lda RoomY                   ; beam rows RoomY+2..3 -> band rows
     clc
@@ -411,26 +399,49 @@ LaserWallClamp:
     tay
     lda MothRowTable,Y
     sta CollisionEndY           ; bottom band row
-    ; --- cell walk (cell_collision_plan 3.1): scan every display col on
-    ; the path against the PF render buffers (bomb holes = air for free;
-    ; the rect cache + destroyed-mask scan are gone from THIS walker). Candidates are DISPLAY px (kill window is display space);
-    ; only the buffer lookup mirrors right-half cols (source = 39-d).
-    ; FetchPtr = running display col (no indirect reads here — the LHT
-    ; body restages FetchPtr after LaserClampDone), RectCount = running
-    ; band row (overscan-only alias of RowIdx, kernel idle).
-    lda CollisionEndX          ; c0 (display space, staged by LaserInput)
-    sta FetchPtr
-    ; --- Phase 4: patch-strip setup+test (out-of-line @ $F600 — the
-    ; pre-TallyEntry fill is ~0B; 12B inline overflowed the $F310 pin).
-    jmp LWpSetup               ; gap: decode + strip test, tails to the
-                               ; globals LWpSolid / LWpNotPatch below
-LWpNotPatch:                   ; global: gap test's miss target
+    ; --- tip col (display space): the ONLY cell the contact tests ---
+    lda PlayerDir
+    bne .LWtipL
+    lda CollisionX              ; right: tip = A (caller keeps A <= 159)
+    jmp .LWtipC
+.LWtipL:
+    lda CollisionX
+    sec
+    sbc #7                      ; left: tip = A-7
+    bcs .LWtipC
+    jmp LaserClampDone          ; tip off screen left -> clear (enemy loop)
+.LWtipC:
+    sta RectCount               ; tip px scratch (mirror walk re-inits it)
+    ldy #14
+    lda (RoomPF0Lo),Y           ; M1X = 7+8*left_col (0 = no M1 patch)
+    beq .LWm1Skip
+    lda EnemyDeadMask
+    and #$10                    ; b4 = M1 strip destroyed -> transparent
+    bne .LWm1Skip
+    ldy #14
+    lda (RoomPF0Lo),Y           ; reload M1X (dead test clobbered A)
+    sec
+    sbc RectCount                ; M1X - tip
+    bcc .LWm1Skip               ; tip > M1X: past the strip's right edge
+    cmp #8
+    bcc .LWm1Solid               ; tip in [M1X-7, M1X] = drawn strip px
+.LWm1Skip:
+    lda RectCount
+    lsr
+    lsr                         ; px -> col
+    sta FetchPtr                ; display col (strip test + mirror walk)
+    jmp LWpSetup                ; patch-strip first (out-of-line $F600):
+                                ; tails to LWpSolid / LWpNotPatch
+.LWm1Solid:
+    lda #2                      ; M1 patch strip solid at the tip (A=2)
+    jmp $FBF8                   ; ReturnPad -> bank0 (contact resets eye)
+LWpNotPatch:                    ; strip miss: mirror-test the ONE tip col
     lda FetchPtr
     cmp #20
-    bcc .LWsrc                 ; left-half display col = source col
+    bcc .LWsrc                  ; left-half display col = source col
     lda #39
     sec
-    sbc FetchPtr               ; right-half: mirrored source col 39-d
+    sbc FetchPtr                ; right-half: mirrored source col 39-d
 .LWsrc:
     tax                        ; X = source col 0-19
     lda CollisionCellY
@@ -442,54 +453,17 @@ LWpNotPatch:                   ; global: gap test's miss target
     tay
     lda PF0Buf,Y
     and ColMask,X
-    bne LWpSolid
+    bne LWpSolid                ; solid -> wall contact (A=2)
     lda RectCount
     cmp CollisionEndY
-    beq LWpNext                ; bottom row tested -> col is clear
+    beq .LWclear                ; bottom row tested -> tip col is clear
     inc RectCount
-    bne .LWrow                 ; always (RectCount <= 2, never wraps to 0)
-LWpSolid:                      ; global: gap test's strip target
-    ; first solid display col on the travel path folds into CollisionX:
-    ;   right: cand = col*4+2, min-apply (tip lands 2px inside the wall)
-    ;   left:  cand = col*4+9, max-apply (start lands 2px inside)
-    ; max/min fold = order independent, ascending scan is fine.
-    lda PlayerDir
-    beq .LWsR
-    lda FetchPtr               ; left
-    asl
-    asl
-    clc
-    adc #9                     ; cand = face+9 (start A >= face+9, S6b)
-    cmp CollisionX
-    bcc LWpNext                ; cand < A -> keep (max-apply)
-    sta CollisionX
-    jmp LWpNext
-.LWsR:
-    lda FetchPtr               ; right
-    asl
-    asl
-    clc
-    adc #2                     ; cand = face+2 (tip A <= face+2, S6b)
-    cmp CollisionX
-    bcs LWpNext                ; cand >= A -> no pull (min-apply)
-    sta CollisionX
-LWpNext:                       ; global: loop end (row-loop + clamp targets)
-    lda FetchPtr
-    cmp CollisionCellX         ; just processed c1?
-    beq .LWdone
-    inc FetchPtr
-    jmp LWpTest
-.LWdone:
+    bne .LWrow                  ; always (RectCount <= 2, never wraps to 0)
+.LWclear:
     jmp LaserClampDone          ; back to the body (stack depth unchanged)
-
-; Cell-map lookup copies (bank2 cannot read bank0 ROM) — cell_collision_plan
-; 0.2 bit spec, byte-identical to kernel.asm's ColOff/ColMask: group offset
-; 0/3/6 + per-col bit (PF0 LSB-first nibble, PF1 MSB-first, PF2 LSB-first).
-ColOff:
-    .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
-ColMask:
-    .byte $10,$20,$40,$80, $80,$40,$20,$10,$08,$04,$02,$01
-    .byte $01,$02,$04,$08, $10,$20,$40,$80
+LWpSolid:                       ; global: strip/row walk solid -> CONTACT
+    lda #2                      ; result: wall tip — caller resets to eye
+    jmp $FBF8                   ; ReturnPad -> bank0 LaserInput (A/Z kept)
 
 ; S6.5 col-change gate for MothRoutine (see entry at .MothRangeOk): walk
 ; result depends only on the (col,row) box. Moth rows are band-constant
@@ -528,8 +502,9 @@ MothGate:
 ;     (AUDC/F/V + BombSnd=8; bank0 TallyWork's UpdateBombSound holds it,
 ;     coin = every 4 ticks = 200 pts), b2 = done (last tick consumed).
 ; Pinned $F313 (org $F9D9 below: level data pins the overflow = build fails).
-; Was $F310 — +3 for the Phase 4 LWC patch-strip walk-head (kernel
-; TallyEntry EQU moves with it; both jmp operands are symbolic).
+; Was $F310 → $F313 (Phase 4 walk-head; kernel TallyEntry EQU moves with
+; it — both jmp operands are symbolic). The LWC M1 tip test (2026-10-08)
+; funds itself by moving ColOff/ColMask past this pin (see their comment).
 ; ------------------------------------------------------------------------------
     .ds $F313 - *, 0
 TallyEntry:
@@ -590,7 +565,7 @@ TallyEntry:
     sta TickCounter             ; fresh pace divider
     lda #0
     sta JetPower                ; frozen frame: no thrust flutter
-    sta LaserBeamOn             ; drop any live beam
+    sta LaserX                  ; drop any live beam (travel restarts on press)
     lda #$FE
     sta DropTarget
     lda #0
@@ -955,6 +930,17 @@ TitleSequence:
 .TSdone:
     jmp $FBF8                   ; ReturnPad → bank0 TitleIntro (0 push)
 
+; Cell-map lookup copies (bank2 cannot read bank0 ROM) — cell_collision_plan
+; 0.2 bit spec, byte-identical to kernel.asm's ColOff/ColMask: group offset
+; 0/3/6 + per-col bit (PF0 LSB-first nibble, PF1 MSB-first, PF2 LSB-first).
+; Moved here 2026-10-08 (was between LWpSolid and MothGate): the TallyEntry
+; $F313 pin splits bank2's pre-region and the LWC M1 tip test needed the 44B.
+ColOff:
+    .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
+ColMask:
+    .byte $10,$20,$40,$80, $80,$40,$20,$10,$08,$04,$02,$01
+    .byte $01,$02,$04,$08, $10,$20,$40,$80
+
     .ds $F600 - *, 0            ; Phase 4 LWC patch-strip setup+test (out-of-
                                  ; line: the pre-TallyEntry fill is ~0B)
 LWpSetup:
@@ -985,8 +971,8 @@ LWpSetup:
 .LWpSet:
     sta CollisionEndX           ; marker (c0 already consumed by LWC entry)
 LWpTest:
-    ; d - marker in {0,1} = display col pL or pL+1 → solid (clamp folds
-    ; exactly like a real 2-col wall); borrow/none land >=2.
+    ; d - marker in {0,1} = display col pL or pL+1 → solid (the strip
+    ; behaves like a real 2-col wall); borrow/none land >=2.
     lda FetchPtr
     sec
     sbc CollisionEndX
@@ -994,7 +980,7 @@ LWpTest:
     bcc .LWhit
     jmp LWpNotPatch             ; miss → mirror/row walk (LWC, same bank)
 .LWhit:
-    jmp LWpSolid                ; strip col → clamp fold (LWC, same bank)
+    jmp LWpSolid                ; strip col → wall contact A=2 (LWC, same bank)
 
 OvM1Block:
     ; Phase 4 M1 (left strip) collision overlay. Entered by JMP from
@@ -1611,6 +1597,63 @@ HotOverlapBody:
     jmp $FBF8                   ; ReturnPad → original caller (C survives)
 
 ; ------------------------------------------------------------------------------
+; BombEnemyBlast body — kill first live enemy |dcol| < 2 (any Y). Type check:
+; LAMP (5) is NOT killable — the old inline loop set the dead bit on lamps too
+; (lost lamp, no dark-room trigger, +50 score for nothing — bugs.md 3).
+; Entered from bank0 stub (sta $1FF8 / jmp <here> — operand in kernel.asm,
+; twin at $FDD8 below), 0 pushes; every exit `jmp $FBF8` ReturnPad.
+; Out: A = 1 kill (caller awards +50 — pads cannot nest), 0 none (Z set).
+; Clobbers A/X/Y. Level enemy records live in THIS bank, so the type read
+; is a direct (EnemyDataLo),Y — no fold.
+; Lives here (after .HOVdone) — NOT between TitleJetColors and the $F970
+; pad: test_title_demo diffs that whole source span for $xx color literals.
+; ------------------------------------------------------------------------------
+BombEnemyBlastBody:
+    lda EnemyCount
+    beq .BEBnone
+    lda BombX
+    lsr
+    lsr
+    sta CollisionCellX          ; bomb screen col
+    lda #0
+    sta EnemyIndex
+.BEBLoop:
+    ldx EnemyIndex
+    cpx EnemyCount
+    bcs .BEBnone
+    lda EnemyDeadMask
+    and EnemyBitTable,X
+    bne .BEBNext                ; already dead
+    ldy EnemyOffTable,X         ; Y = X*4 = type offset (record: type,x,y,dir)
+    lda (EnemyDataLo),Y
+    cmp #LAMP
+    beq .BEBNext                ; lamp: blast passes through (item 3 fix)
+    lda EnemyRamX,X             ; live X from RAM
+    ; |dcol| < 2 (col = px/4) — ignore Y entirely
+    lsr
+    lsr
+    sec
+    sbc CollisionCellX
+    bcs .BEBAbsCol
+    eor #$ff
+    clc
+    adc #1
+.BEBAbsCol:
+    cmp #2
+    bcs .BEBNext
+    lda EnemyDeadMask
+    ora EnemyBitTable,X
+    sta EnemyDeadMask           ; kill (first overlapping enemy per blast)
+    lda #1                      ; killed — bank0 caller awards +50
+    jmp $FBF8                   ; ReturnPad
+.BEBNext:
+    inc EnemyIndex
+    jmp .BEBLoop
+.BEBnone:
+    lda #0                      ; Z set for caller's beq
+    jmp $FBF8                   ; ReturnPad
+
+; ------------------------------------------------------------------------------
 ; HOF entry tramp ($FE80-$FE85) — byte-identical with kernel.asm's copy
 ; (guard: verify_build check_moth_tramp). bank0 executes `sta $1FF8` at
 ; $FE80-$FE82; the fetch at $FE83 comes from THIS bank = `jmp $FCF0`. Neither
@@ -1619,6 +1662,17 @@ HotOverlapBody:
 ; left, a stub needs 6 B) and $FE86-$FEEF is the only free hole before the
 ; moth tramp's $FEF0.
 ; ------------------------------------------------------------------------------
+; ------------------------------------------------------------------------------
+; BombEnemyBlast tramp mirror ($FDD8-$FDDD) — byte-identical with kernel.asm's
+; copy at the same address (bomb-lamp fix 2026-10-07). bank0 executes `sta
+; $1FF8` at $FDD8-$FDDA; the fetch at $FDDB comes from THIS bank = `jmp $FD6B`
+; (BombEnemyBlastBody). Neither bank runs its other half: bank0 is switched
+; away at $FDDA, bank2 never enters at $FDD8 (the .HOVdone tail-jmps $FBF8
+; before this pad). Pinned $FDE1 below = PickPlayerFrame tramp.
+; ------------------------------------------------------------------------------
+    .ds $FDD8 - *, 0
+    .byte $8D, $F8, $1F         ; sta $1FF8 (twin)
+    .byte $4C, $6B, $FD         ; jmp $FD6B (twin — fetched post-switch)
     .ds $FDE1 - *, 0            ; PickPlayerFrame tramp mirror (byte-identical
                                  ; with kernel.asm's copy — verify_frame_tramp)
 PickPlayerFrameTramp:
@@ -1743,33 +1797,34 @@ FoldIndirect:
 
 ; ------------------------------------------------------------------------------
 ; LaserHitTestBody — MOVED from bank0 (S5.4, entry tramp $FE86 -> `jmp $FF00`).
-; Swept laser kill. CollisionX = cur M0 arg, stored by LaserInput .LaserPos
-; (held path only). Interval = [cur, cur+7] (8 px missile); sweep steps are
-; 8 px = missile width, so consecutive frames tile gap-free — no prev-frame
-; storage needed. Vertical: beam rows [RoomY+2, RoomY+3] vs enemy [Y,+7] ->
+; Contact-missile kill (redesign 2026-10-08): CollisionX = LaserX (cur M0
+; arg, stored by LaserInput .LaserGo), drawn M0 = [A-7, A]. The body tests
+; ONE tip cell for wall first, then the missile's OWN body box against each
+; live enemy — no piercing: first contact wins and the caller resets the
+; beam to the eye. Vertical: beam rows [RoomY+2, RoomY+3] vs enemy [Y,+7] ->
 ; (RoomY-Y)+3 in [0..8]. Horizontal (same convention as CheckEnemyHit):
-; |eLo-lo| <= 7 via (d+7) in [0..14]; arg clamped [0,159] = screen-edge clip.
+; |eLo-lo| <= 7 via (d+7) in [0..14]; caller keeps arg in [0,159].
 ; Fold-free: enemy records are level data in THIS bank — stage once, direct
 ; `lda (FetchPtr),Y` for the type (was `jsr FoldIndirect`).
-; RESULT PROTOCOL (pads cannot nest from a pad body — the kill/lamp actions
-; stay in bank0's LaserInput): every exit returns A + Z through ReturnPad
-; (sta/rts preserve both): A=0 miss / #$50 kill (dead bit set here, caller
-; scores) / A=1 lamp (caller does CallPad_SetRoomDark — same as player-body
-; touch; no kill, no score). First live enemy in span only (next frame the
-; dead mask skips it — no resurrection, no double score).
+; RESULT PROTOCOL (pads cannot nest from a pad body — the kill/lamp/wall
+; ACTIONS stay in bank0's LaserInput): every exit returns A + Z through
+; ReturnPad (sta/rts preserve both): A=0 no contact (keep travelling) /
+; #$50 kill (dead bit set here, caller scores + resets) / A=1 lamp (caller
+; does CallPad_SetRoomDark + resets) / A=2 wall tip (caller resets, no
+; score). First live enemy in span only (dead mask skips it next frame —
+; no resurrection, no double score).
 ; Does NOT touch Temp (joystick still live at the call site).
-; S6 (docs/laser_s6_log.md): the body first tail-jmps to LaserWallClamp,
-; which walks the rect cache against the path cols LaserInput staged
-; (CollisionEndX..CollisionCellX) and pulls CollisionX back to the first
-; wall on the travel path — so this kill window can never reach the far
-; side of that wall. LWC ends `jmp LaserClampDone` (back here): stack
-; depth unchanged. Clobbers A/X/Y/FetchPtr + CollisionCellX/Y,
-; CollisionEndX/Y, RectCount; MODIFIES CollisionX (the clamp).
+; Wall first: the body tail-jmps to LaserWallClamp ($F25A) — tip cell
+; (patch-strip + mirrored PF rows) — solid returns A=2 straight through
+; ReturnPad (enemies behind the wall survive); clear ends
+; `jmp LaserClampDone` (back here = enemy loop): stack depth unchanged.
+; Clobbers A/X/Y/FetchPtr + CollisionCellY/CollisionEndY, RectCount,
+; CollisionEndX (strip marker); MODIFIES NOTHING else (no clamp any more).
 ; ------------------------------------------------------------------------------
     .ds $FF00 - *, 0            ; pinned: bank0 tramp operand is literal $FF00
 LaserHitTestBody:
-    jmp LaserWallClamp          ; S6: clamp CollisionX at the first wall on
-                                ; the swept path BEFORE any kill test
+    jmp LaserWallClamp          ; contact: tip-cell wall test FIRST (A=2 or
+                                ; fall into the enemy loop via LaserClampDone)
 LaserClampDone:
     ; --- Stage (P3.1): enemy record pointer — loop writes no FetchPtr ---
     lda EnemyDataLo

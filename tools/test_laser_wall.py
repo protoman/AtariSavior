@@ -1,33 +1,31 @@
 #!/usr/bin/env python3
-"""Laser wall-clamp end-to-end probe (py65, assert-based) — S6.
+"""Laser travel-budget end-to-end probe (py65, assert-based) — redesign.
 
 Boots savior.bin headless, waits until the player lands, kills all enemies
 (no interference), then for BOTH facings sweeps the player across X (fire
 held; RoomY pinned + vy zeroed each frame so inputs are deterministic) and
-compares, every frame, two things against an independent reference that
-reads the SAME runtime rect cache ($89 count, $CC rects):
+checks every frame against an independent travel state machine
+(contact-missile redesign 2026-10-08):
 
-  1. CollisionX ($8B) captured at LaserInput's rts = the value
-     LaserWallClamp left there (also the value SetObjectXPos used).
-  2. LaserBeamOn ($83) stays $02 — the beam is an 8px NUSIZ missile; a
-     change here means someone re-introduced the rolled-back width
-     rewrite (e24d9de: out-of-position/size draws).
+  model (held fire): cand = LaserX +/- 4 (facing); cand >= 160 (left
+    underflow wrap) or cand past the old-sweep cap (right > RoomX+20,
+    left < max(RoomX-20,0)) -> restart at the eye; else cand.
+    eye = right min(RoomX+4,159) / left RoomX-4.
+  capture at LaserInput's rts:
+    CollisionX ($8B) must EQUAL the model's next travel value — it is
+      staged from the post-travel LaserX before the hit test and contact
+      never moves it (the old mid-wall clamp retired with the sweep);
+    LaserX ($83) must be in {model_next, eye} — the eye = the body
+      legitimately consumed the missile this frame (wall cell, ball
+      strip, kill/lamp) and reset it. Anything else = travel escaped the
+      budget (the user regression: beam "moved way beyond the limit").
+  the model re-syncs to the captured LaserX every frame (contacts are not
+    modeled — they collapse to "actual = eye").
 
-Reference = S6b spec (docs/laser_s6_log.md; mirrors bank2 LaserWallClamp).
-PIXEL MODEL: drawn M0 = [A-7, A] (SetObjectXPos arg -> box-left arg-7;
-PlayerSpriteA lit cols 0-6; PHM lit-left = arg-7 validated by flush wall
-stops). Kill test = same [A-7, A].
-  raw A: right = min(RoomX+4+off, 159), left = max(RoomX-4-off, 0)
-  path cols: right = [nose_R=RoomX-3, A] >> 2, left = [A-7, nose_L=RoomX-4] >> 2
-  rows = band(RoomY+2)..band(RoomY+3) (exact LHT kill window)
-  per live rect (BombPacked b3-6 clear), spans = [x, x+w-1] and
-  [40-x-w, 39-x]; on-path overlap -> first wall col on travel direction:
-    right: col = max(slo, c0), cand = col*4+2, min-apply (drawn tip)
-    left:  col = min(shi, c1), cand = col*4+9, max-apply (drawn start)
-  PLUS independent invariants (not a mirror): when the first wall W is on
-  the path, right A in [4W, 4W+2] (tip touches wall, <=2px inside, never
-  past face+2), left A in [4W+9, 4W+10] (start <=2px inside the right
-  half); with no wall A must equal raw (no spurious clamp).
+Model 0's M1/ball-band meta and the hot-rect count are zeroed in THIS
+run's ROM image so strip/hot resets never masquerade as travel; plain
+wall/cell contact stays and is covered by the eye allowance. Enemies are
+frozen dead (DeadMask=$FF) = no kill/lamp resets either.
 
 Run: /home/iuri/python3/bin/python3 tools/test_laser_wall.py
 """
@@ -40,12 +38,8 @@ SRC = ROOT / "src"
 BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 # Phase 4: model 0 is the asymmetric test room — force its meta symmetric
-# in THIS run's ROM image so the wall-path spec measures pure wall clamps
-# (the ball strip clamp has its own fixture in test_laser_kill_window; the
-# M1 strip is excluded here by M1X=0, not modelled by the reference).
-# BallX=0 AND M1X=0 ⇔ sym: with M1X staged the pack now seeds b3 (Phase 4
-# M1 presence) even when BallX=0, the OverlayTramp crosses, and OvM1Block
-# legitimately blocks the M1 cells — which is NOT a wall clamp.
+# in THIS run's ROM image so no strip contact fires (M1X=0 skips the LWC
+# M1 tip test; BallX=0 keeps the ball strip out of the marker path).
 _L2 = {}
 for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(M0(?:BallX|Band[012]|M1X))\s*$",
@@ -77,15 +71,14 @@ for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
 PC_STARTFRAME = LABELS["StartFrame"]
 
 # ZP indices (addr & 0x7F)
-I_ROOMX, I_ROOMY, I_DIR, I_BEAMON = 0x00, 0x01, 0x02, 0x03
-I_BOMBP, I_LSTATE, I_RCBASE = 0x35, 0x40, 0x09
-I_DEADMASK, I_VYLO, I_VYHI = 0x3A, 0x13, 0x14
+I_ROOMX, I_ROOMY, I_DIR, I_LASERX = 0x00, 0x01, 0x02, 0x03  # $83 = LaserX
+I_BOMBP, I_DEADMASK = 0x35, 0x3A
+I_VYLO, I_VYHI = 0x13, 0x14
 I_COLLX = 0x0B                  # $8B
-RECTS0 = 0x4C                   # $CC & 0x7F
 
-# LaserInput's own rts sites: capture CollisionX there = post-clamp value
-# (between LHT and those rts only SetObjectXPos / AddScore run — neither
-# writes CollisionX; enemies are all dead in the probe = miss path).
+# LaserInput's own rts sites: capture CollisionX/LaserX there (between
+# LHT and those rts only SetObjectXPos / AddScore run — neither writes
+# $83/$8B; enemies are all dead in the probe = miss path).
 RANGE_LO = LABELS["LaserInput"]
 # end marker: TallyTramp ($FFE6+) — BeamMask no longer works (it moved to
 # the $FExx hole, BELOW LaserInput, when the aligned color table landed)
@@ -143,11 +136,11 @@ class Mem:
         if a in (0x0294, 0x0296, 0x0297):
             return
         if a <= 0x003F or 0x0100 <= a <= 0x017F:
-            self.tia[a & 0x3F] = v
+            return self.tia[a & 0x3F]
 
 
 mem = Mem()
-from py65.devices.mpu6502 import MPU
+from py65.devices.mpu6502 import MPU  # noqa: E402
 mpu = MPU(memory=mem)
 
 
@@ -155,76 +148,28 @@ def step():
     mpu.step()
 
 
-def path_cols(roomx, facing, lo):
-    """S6b path cols (nose-anchored), mirroring kernel .LaserPos staging."""
-    if facing == 0:                          # right: [nose_R, A]
-        return max(0, roomx - 3) >> 2, lo >> 2
-    return max(0, lo - 7) >> 2, (roomx - 4) >> 2   # left: [A-7, nose_L]
-
-
-def first_wall(c0, c1, facing, rects, top, bottom):
-    """Independent: first solid col on travel direction within [c0, c1]."""
-    cols = range(c0, c1 + 1) if facing == 0 else range(c1, c0 - 1, -1)
-    for col in cols:
-        for (x, y, w, h) in rects:
-            if w <= 0 or h <= 0 or not (y <= bottom and y + h > top):
-                continue
-            for (slo, shi) in ((x, x + w - 1), (40 - x - w, 39 - x)):
-                if slo <= col <= shi:
-                    return col
-    return None
-
-
-def spec(roomx, roomy, facing, phase, rects):
-    """Expected CollisionX after LaserWallClamp (S6b reference)."""
-    off = (0, 8, 16, 8)[phase]
-    if facing == 0:                          # right
-        lo = min(roomx + 4 + off, 159)
-    else:                                    # left
-        lo = max(roomx - 4 - off, 0)
-    c0, c1 = path_cols(roomx, facing, lo)
-    top, bottom = (roomy + 2) // 48, (roomy + 3) // 48
-    for (x, y, w, h) in rects:
-        if w <= 0 or h <= 0:
-            continue
-        if not (y <= bottom and y + h > top):
-            continue                          # rows: band overlap
-        for (slo, shi) in ((x, x + w - 1), (40 - x - w, 39 - x)):
-            if not (slo <= c1 and shi >= c0):
-                continue                      # span off path
-            if facing == 0:
-                cand = max(max(slo, c0) * 4 + 2, 0)
-                if cand < lo:
-                    lo = cand                 # min-apply (drawn tip A)
-            else:
-                cand = min(shi, c1) * 4 + 9
-                if cand > lo:
-                    lo = cand                 # max-apply (drawn start A-7)
-    return lo
-
-
-def check_invariant(x, y0, facing, phase, rects, actual):
-    """Independent geometry check on the captured CollisionX (S6b)."""
-    raw = spec_raw(x, facing, phase)
-    c0, c1 = path_cols(x, facing, raw)
-    top, bottom = (y0 + 2) // 48, (y0 + 3) // 48
-    W = first_wall(c0, c1, facing, rects, top, bottom)
-    if W is None:
-        if actual != raw:
-            return f"spurious clamp (no wall on path): {actual} != {raw}"
-        return None
-    face = W * 4
+def eye_of(roomx, facing):
+    """Reset/press-edge anchor: right min(RoomX+4,159) / left RoomX-4."""
     if facing == 0:
-        if actual > face + 2:
-            return f"PASS: tip {actual} > face+2 {face + 2} (W={W})"
-        if actual < face:
-            return f"GAP: tip {actual} < face {face} (W={W}, short of wall)"
+        return min(roomx + 4, 159)
+    return roomx - 4
+
+
+def travel_next(lx, roomx, facing):
+    """One held frame of bank0 LaserInput travel (no contact)."""
+    if facing == 0:
+        nt = lx + 4
+        cap = roomx + 20                 # old sweep extent: RoomX+4+16
     else:
-        if actual < face + 9:
-            return f"PASS: start {actual - 7} past wall (A < face+9)"
-        if actual > face + 10:
-            return f"GAP: start {actual - 7} > face+3 (overshot, A={actual})"
-    return None
+        nt = (lx - 4) & 0xFF
+        cap = max(roomx - 20, 0)
+    if nt >= 160:                        # right edge / left underflow
+        return eye_of(roomx, facing)
+    if facing == 0 and nt > cap:
+        return eye_of(roomx, facing)
+    if facing == 1 and nt < cap:
+        return eye_of(roomx, facing)
+    return nt
 
 
 def main() -> None:
@@ -253,23 +198,17 @@ def main() -> None:
         sys.exit("player never landed (BombPacked OnGround)")
     mem.ram[I_DEADMASK] = 0xFF                 # kill all enemies (no interference)
 
-    # ---- runtime rect cache = ground truth for the reference ----
-    count = mem.ram[I_RCBASE]
-    rects = []
-    for i in range(count):
-        b = RECTS0 + 4 * i
-        rects.append((mem.ram[b], mem.ram[b + 1],
-                      mem.ram[b + 2], mem.ram[b + 3]))
     y0 = mem.ram[I_ROOMY]
-    print(f"landed f{landed}: RoomY={y0} rects(count={count})={rects}")
+    print(f"landed f{landed}: RoomY={y0}")
 
     # ---- deterministic sweep: pin RoomX/Y, dir, vy; fire held ----
     mismatches = []
     checked = 0
-    clamped = 0
+    contacts = 0
+    model = None                              # re-synced every frame
     for facing in (0, 1):
         for x in range(4, 156):
-            for _ in range(4):                 # 4 frames = full phase cycle
+            for _ in range(4):                # 4 frames = cap-loop steps
                 mem.ram[I_ROOMX] = x
                 mem.ram[I_ROOMY] = y0
                 mem.ram[I_DIR] = facing
@@ -280,48 +219,40 @@ def main() -> None:
                 while True:
                     step()
                     if mpu.pc in rts_pcs:
-                        cap = (mem.ram[I_COLLX], mem.ram[I_BEAMON])
+                        cap = (mem.ram[I_COLLX], mem.ram[I_LASERX])
                     if mpu.pc == PC_STARTFRAME:
                         break
-                phase = mem.ram[I_LSTATE] & 3
-                expected = spec(x, y0, facing, phase, rects)
                 checked += 1
                 if cap is None:
                     mismatches.append(f"X={x} dir={facing}: no LaserInput rts")
                     continue
-                actual, beam = cap
-                if beam != 0x02:
+                cx, lx = cap
+                if model is None:             # first captured frame: seed
+                    model = lx
+                    continue
+                want = travel_next(model, x, facing)
+                eye = eye_of(x, facing)
+                if cx != want:
                     mismatches.append(
-                        f"X={x} dir={facing} phase={phase}: "
-                        f"LaserBeamOn=${beam:02X} != $02 (width rewrite?)")
-                if actual != expected:
+                        f"X={x} dir={facing}: CollisionX=${cx:02X} "
+                        f"!= travel model ${want:02X} (model prev=${model:02X})")
+                if lx not in (want, eye):
                     mismatches.append(
-                        f"X={x} dir={facing} phase={phase}: "
-                        f"CollisionX=${actual:02X} exp=${expected:02X}")
-                inv = check_invariant(x, y0, facing, phase, rects, actual)
-                if inv:
-                    mismatches.append(
-                        f"X={x} dir={facing} phase={phase}: {inv}")
-                if expected != spec_raw(x, facing, phase):
-                    clamped += 1
+                        f"X={x} dir={facing}: LaserX=${lx:02X} escaped "
+                        f"budget (want ${want:02X} or eye ${eye:02X})")
+                if lx == eye and want != eye:
+                    contacts += 1             # body consumed the missile
+                model = lx                    # re-sync (contact collapses)
     if mismatches:
         print(f"FAIL: {len(mismatches)} mismatched frames "
-              f"(S6 spec = mid-wall tip clamp):")
+              f"(contact-missile travel budget):")
         for m in mismatches[:15]:
             print("  " + m)
         if len(mismatches) > 15:
             print(f"  ... and {len(mismatches) - 15} more")
         sys.exit(1)
-    print(f"test_laser_wall: OK ({checked} frames, "
-          f"{clamped} clamped by walls, BeamOn=$02 throughout)")
-
-
-def spec_raw(roomx, facing, phase):
-    """Unclamped lo — for coverage reporting only."""
-    off = (0, 8, 16, 8)[phase]
-    if facing == 0:
-        return min(roomx + 4 + off, 159)
-    return max(roomx - 4 - off, 0)
+    print(f"test_laser_wall: OK ({checked} frames, {contacts} contact "
+          f"resets to the eye, travel inside the old sweep extent)")
 
 
 if __name__ == "__main__":
