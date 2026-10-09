@@ -66,8 +66,32 @@ No entry is worked on without user greenlight.
    **Status:** PASSES 2026-10-07 battery — stale, close at rescan.
 6. **M1 block wall-shade stripe** — 8-line `LevelWallColor2` stripe
    inside the yellow M1 block (screenshots/assymetric, 2026-10-06).
-   Unexplained, cosmetic.
-   **Player:** darker band across one wall block (looks like a seam).
+   **Root cause found 2026-10-09 (two mechanisms):** the stripe is NOT
+   PF — COLUPF writes are exactly 3/frame (band starts, py65-measured).
+   It is the D6 parked-M1 patch (missile1, `PositionBallM1`, ENAM1
+   whole-cave latch) which takes its color from **COLUP1**, shared with
+   the P1 object path:
+   - **Case A (static, select screen / L3):** with no active object,
+     `.SONoObj` parked the GRP1 window at `ObjTop=0` = ON the player's
+     own rows; the window wrote `COLUP1 = ObjColorTab[0..] = $00` for
+     8 lines every frame → patch painted $00 = the darker band.
+     **FIXED:** `.SONoObj` parks ObjTop=144 — window (Scanline −
+     (RoomY+144) mod 256) never lands in the cave while player Y < 112.
+     Zero kernel cycles; sims + battery green.
+   - **Residual 1:** player Y ≥ 112 (floor): 144 wraps → window hits
+     scanlines (Y−112)..(Y−105) (top band) — $00 poison returns there.
+     Value-guard (`beq` on $00 color) would fix everywhere but costs
+     +2c on the ON path → WSYNC write c73+ = +1 line/frame (sim 271);
+     the .Line budget has zero slack (comment worst 61c +2 margin).
+   - **Residual 2 (case B):** a real object window (enemy/bomb — bomb
+     drops make the bomb the active object) writes its color to COLUP1
+     → the patch shows the object color for those 8 lines. M1/P1 share
+     COLUP1 by hardware; fix needs ENAM1-off during windows (+2c, same
+     budget wall) or a design change (per-band patch enable in .Row
+     has slack +3c but doesn't fix the color during the window).
+   Cycle-blocked fixes need a 2c `.Line` re-claim first (see kernel
+   .Line budget comment — recount from bank0.lst, never trust notes).
+   **Player:** darker/wrong-color band across one wall block;
    **Benefit:** uniform block color.
 7. **verify_build warns: model 5/6 have 6 wall rects > 5** — cell-swap
    must cover all cache walkers before release.

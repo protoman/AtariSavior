@@ -863,7 +863,9 @@ CaveKernelRow:
                             ; A!=8 (above window / below first line): skip the
                             ; restore — this was the A0=11 worst line
                             ; (color+beam+GrpZero+restore = 77c > 76 → WSYNC
-                            ; late → +1 line/frame, sim 264).
+                            ; late → +1 line/frame, sim 264). #6 attempt to
+                            ; restore EVERY line measured 271-line frames —
+                            ; keep the A==8-only restore.
     lda Temp                 ; A1: band color staged by .Row (was ldx RowIdx
                              ; + lda ColupfBuf,X = 7c, now 3c: 78 -> 74).
                              ; Also fixes the water-strip quirk: X=3 used to
@@ -1875,9 +1877,12 @@ SelectActiveObject:
     sta ObjTop
     rts
 .SONoObj:
-    lda #0
-    sta ObjTop
-    rts
+    lda #144                  ; #6: park the GRP1 window out of the cave —
+    sta ObjTop                 ; window = Scanline-(RoomY+144) mod 256 never
+    rts                        ; lands in [0,143] while player Y < 112 (the
+                               ; old ObjTop=0 parked it ON the player's own
+                               ; rows and the $00 color store poisoned the
+                               ; parked-M1 patch = the 8-line band).
 
 .SONothing:
     lda #0
