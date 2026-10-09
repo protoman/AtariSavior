@@ -228,11 +228,15 @@ Tables: `ColOff[c]` = {0×4, 3×8, 6×8} (offset from `$C3+row`), `ColMask[c]` =
 
 ## Phase 6 — Hot rocks
 
-- [ ] **6.1 Hot check** (`HotOverlapFlag`/`HotOverlapBody`) → cell-based.
-      PF bits don't encode hot — spec from 0.3b: small hot-tile list in ROM
-      (x,y pairs; counts are small) or a hot mask row buffer if ZP allows.
-      **Check:** py65 parity test (hot cells ⟺ death) + Stella hot-rock
-      touch/death + battery.
+- [x] **6.1 Hot check** — verify-only per the 0.3b revision, confirmed
+      2026-10-09 (bugs #7): hot = uncapped ROM count-driven stream, NOT
+      on the 5-slot cache (0.3b); M5/M6 emit 0 hot rects (verified in
+      generated/models_data.asm). Parity lives in the battery:
+      `test_cell_map.hot_death_checks` (py65: hot band → HotBump →
+      LoseLife; BOTH model-0 hot rects gated; envelope-guaranteed non-hot
+      → C=1 direct; strip-death via mask $00 + EnemyDeadMask b4),
+      `test_mid_band_hot`, `test_phm_walk` (HotOverlapFlag contract) —
+      all green in the 20/21 battery. No data change made.
 
 ## Phase 7 — Cleanup & room freedom
 

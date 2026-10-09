@@ -100,6 +100,22 @@ No entry is worked on without user greenlight.
    **Benefit:** uniform block color.
 7. **verify_build warns: model 5/6 have 6 wall rects > 5** — cell-swap
    must cover all cache walkers before release.
+   **Status 2026-10-09: plan-mapped, 6.1 closed; release blocker =
+   phase 5.1-deviation match + 7.1.** cell_collision_plan progress:
+   PHM 2.1 / LWC 3.1 / moth 4.1 / bomb punch 5.1 = all cell-based
+   (test_phm_walk + test_cell_map green). **6.1 done** (verify-only:
+   hot = uncapped ROM stream, M5/M6 = 0 hot, parity in battery — see
+   the plan). Remaining: **(i)** `BombMarkWalls` MATCH is still
+   cache-driven (ABWXTab walk, count clamped to 4) → on 6-rect models
+   rects 4/5 are un-maskable/unbreakable by bombs (the fell-through-
+   symptom class of 2026-10-02 is fixed by cell-PHM; this residue =
+   bombs only). Design ready: hybrid — cell-inline sweep of the 2-col
+   blast window (PHM-style PF0/1/2Buf walk: ON → ClearPFColumn + score,
+   already-EMPTY = skip = replaces mask double-score) + keep the small
+   cache loop ONLY to set b3-6 mask bits for hot parents (all hot
+   models ≤4 solids). Watch overscan budget (bomb path margin 20-220c
+   per frame-budget rules) — measure before/after. **(ii)** 7.1 =
+   stop emitting solid rects + kill this WARN (only after (i)).
    **Player:** no symptom today; if a walker reads a stale rect → wrong
    wall collision on those models once enabled.
    **Benefit:** removes a release blocker.
