@@ -267,6 +267,18 @@ No entry is worked on without user greenlight.
     **Benefit:** ~1-2 more levels fit before spill re-placement
     (with the #27a free gaps, ~4-6 levels).
 
+29. **Frequent gameplay screen flicker: image jumps a couple pixels
+    up/down; almost always when dropping a bomb** (2026-10-09, user —
+    work later). Small vertical jitter (a few px) during normal play,
+    near-constant on bomb drop. Suspect family = frame-length variance
+    (262 vs 263+ lines scrolls the whole picture; AGENTS frame-budget
+    flicker rules + item 21) with the bomb-drop path (BombPacked state
+    machine, drop input in overscan/VBL) as the trigger to bisect.
+    Start from `sim_frame_budget` `SIM_HIST`/mark windows around the
+    drop frames + wall-model line counts, then the drop handler's VBL
+    cost. **Player:** constant visual jitter during play, worst on bomb
+    drop; **Benefit:** stable picture.
+
 ## Rescan checklist (when the batch is closed)
 
 - [ ] `./build.sh` fully green (all sims, zero new warns)
