@@ -85,10 +85,10 @@ assert len(copied_frames) == 24
 assert copied_frames == game_frames
 game_colors = section(kernel, "PlayerColTable:", "; --- Level data")
 # end marker = the spill-comment line (level_003_rooms.asm now sits between
-# TitleJetColors and the old ".ds $F970" pin — bugs.md 27)
+# TitleJetColors and the old ".ds $F970" pin — bugs.md 27/27b)
 title_colors = section(
     bank2, "TitleJetColors:",
-    "; --- Level-data spill 2 (bugs.md 27): fill gap $F901..$F970 (111B) ---")
+    "; --- Level-data spill 2 (bugs.md 27/27b): fill gap $F901..$F970 (111B) ---")
 color_values = {
     name: int(value, 16)
     for name, value in re.findall(
