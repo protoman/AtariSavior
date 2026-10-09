@@ -3,9 +3,9 @@
 ; Generated from models.json model 0. Do not edit by hand.
 M0RoomRects:
   .byte 3                  ; number of rectangles
-  .byte 0, 0, 4, 1  ; x, y, width, height (4px cols)
-  .byte 0, 1, 2, 1  ; x, y, width, height (4px cols)
-  .byte 0, 2, 18, 1  ; x, y, width, height (4px cols)
+  .byte $00, $11  ; packed (x<<2|y, w<<2|h)
+  .byte $01, $09  ; packed (x<<2|y, w<<2|h)
+  .byte $02, $49  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M0TilePF0:
   .byte $f0, $30, $f0
@@ -21,9 +21,9 @@ M0MetaB:
 ; Generated from models.json model 1. Do not edit by hand.
 M1RoomRects:
   .byte 3                  ; number of rectangles
-  .byte 0, 0, 18, 1  ; x, y, width, height (4px cols)
-  .byte 0, 1, 2, 1  ; x, y, width, height (4px cols)
-  .byte 0, 2, 20, 1  ; x, y, width, height (4px cols)
+  .byte $00, $49  ; packed (x<<2|y, w<<2|h)
+  .byte $01, $09  ; packed (x<<2|y, w<<2|h)
+  .byte $02, $51  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M1TilePF0:
   .byte $f0, $30, $f0
@@ -39,9 +39,9 @@ M1MetaB:
 ; Generated from models.json model 2. Do not edit by hand.
 M2RoomRects:
   .byte 3                  ; number of rectangles
-  .byte 0, 0, 4, 1  ; x, y, width, height (4px cols)
-  .byte 0, 1, 2, 2  ; x, y, width, height (4px cols)
-  .byte 4, 2, 14, 1  ; x, y, width, height (4px cols)
+  .byte $00, $11  ; packed (x<<2|y, w<<2|h)
+  .byte $01, $0a  ; packed (x<<2|y, w<<2|h)
+  .byte $12, $39  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M2TilePF0:
   .byte $f0, $30, $30
@@ -57,9 +57,9 @@ M2MetaB:
 ; Generated from models.json model 3. Do not edit by hand.
 M3RoomRects:
   .byte 3                  ; number of rectangles
-  .byte 0, 0, 2, 2  ; x, y, width, height (4px cols)
-  .byte 4, 0, 14, 1  ; x, y, width, height (4px cols)
-  .byte 0, 2, 8, 1  ; x, y, width, height (4px cols)
+  .byte $00, $0a  ; packed (x<<2|y, w<<2|h)
+  .byte $10, $39  ; packed (x<<2|y, w<<2|h)
+  .byte $02, $21  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M3TilePF0:
   .byte $30, $30, $f0
@@ -88,10 +88,10 @@ M3RightRects:
 ; Generated from models.json model 4. Do not edit by hand.
 M4RoomRects:
   .byte 4                  ; number of rectangles
-  .byte 0, 0, 18, 1  ; x, y, width, height (4px cols)
-  .byte 0, 1, 2, 1  ; x, y, width, height (4px cols)
-  .byte 0, 2, 4, 1  ; x, y, width, height (4px cols)
-  .byte 6, 2, 10, 1  ; x, y, width, height (4px cols)
+  .byte $00, $49  ; packed (x<<2|y, w<<2|h)
+  .byte $01, $09  ; packed (x<<2|y, w<<2|h)
+  .byte $02, $11  ; packed (x<<2|y, w<<2|h)
+  .byte $1a, $29  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M4TilePF0:
   .byte $f0, $30, $f0
@@ -107,12 +107,12 @@ M4MetaB:
 ; Generated from models.json model 5. Do not edit by hand.
 M5RoomRects:
   .byte 6                  ; number of rectangles
-  .byte 0, 0, 4, 1  ; x, y, width, height (4px cols)
-  .byte 6, 0, 14, 1  ; x, y, width, height (4px cols)
-  .byte 0, 1, 2, 1  ; x, y, width, height (4px cols)
-  .byte 10, 1, 10, 1  ; x, y, width, height (4px cols)
-  .byte 0, 2, 8, 1  ; x, y, width, height (4px cols)
-  .byte 12, 2, 8, 1  ; x, y, width, height (4px cols)
+  .byte $00, $11  ; packed (x<<2|y, w<<2|h)
+  .byte $18, $39  ; packed (x<<2|y, w<<2|h)
+  .byte $01, $09  ; packed (x<<2|y, w<<2|h)
+  .byte $29, $29  ; packed (x<<2|y, w<<2|h)
+  .byte $02, $21  ; packed (x<<2|y, w<<2|h)
+  .byte $32, $21  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M5TilePF0:
   .byte $f0, $30, $f0
@@ -128,12 +128,12 @@ M5MetaB:
 ; Generated from models.json model 6. Do not edit by hand.
 M6RoomRects:
   .byte 6                  ; number of rectangles
-  .byte 0, 0, 8, 1  ; x, y, width, height (4px cols)
-  .byte 12, 0, 8, 1  ; x, y, width, height (4px cols)
-  .byte 0, 1, 4, 1  ; x, y, width, height (4px cols)
-  .byte 14, 1, 6, 2  ; x, y, width, height (4px cols)
-  .byte 0, 2, 2, 1  ; x, y, width, height (4px cols)
-  .byte 6, 2, 8, 1  ; x, y, width, height (4px cols)
+  .byte $00, $21  ; packed (x<<2|y, w<<2|h)
+  .byte $30, $21  ; packed (x<<2|y, w<<2|h)
+  .byte $01, $11  ; packed (x<<2|y, w<<2|h)
+  .byte $39, $1a  ; packed (x<<2|y, w<<2|h)
+  .byte $02, $09  ; packed (x<<2|y, w<<2|h)
+  .byte $1a, $21  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M6TilePF0:
   .byte $f0, $f0, $30
@@ -149,9 +149,9 @@ M6MetaB:
 ; Generated from models.json model 7. Do not edit by hand.
 M7RoomRects:
   .byte 3                  ; number of rectangles
-  .byte 0, 0, 2, 2  ; x, y, width, height (4px cols)
-  .byte 6, 0, 14, 1  ; x, y, width, height (4px cols)
-  .byte 0, 2, 18, 1  ; x, y, width, height (4px cols)
+  .byte $00, $0a  ; packed (x<<2|y, w<<2|h)
+  .byte $18, $39  ; packed (x<<2|y, w<<2|h)
+  .byte $02, $49  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M7TilePF0:
   .byte $30, $30, $f0
@@ -167,9 +167,9 @@ M7MetaB:
 ; Generated from models.json model 8. Do not edit by hand.
 M8RoomRects:
   .byte 3                  ; number of rectangles
-  .byte 0, 0, 8, 1  ; x, y, width, height (4px cols)
-  .byte 12, 0, 8, 1  ; x, y, width, height (4px cols)
-  .byte 0, 2, 20, 1  ; x, y, width, height (4px cols)
+  .byte $00, $21  ; packed (x<<2|y, w<<2|h)
+  .byte $30, $21  ; packed (x<<2|y, w<<2|h)
+  .byte $02, $51  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M8TilePF0:
   .byte $f0, $00, $f0
@@ -185,8 +185,8 @@ M8MetaB:
 ; Generated from models.json model 10. Do not edit by hand.
 M10RoomRects:
   .byte 2                  ; number of rectangles
-  .byte 0, 0, 20, 1  ; x, y, width, height (4px cols)
-  .byte 0, 2, 20, 1  ; x, y, width, height (4px cols)
+  .byte $00, $51  ; packed (x<<2|y, w<<2|h)
+  .byte $02, $51  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M10TilePF0:
   .byte $f0, $00, $f0
@@ -214,8 +214,8 @@ M10RightRects:
 ; Generated from models.json model 11. Do not edit by hand.
 M11RoomRects:
   .byte 2                  ; number of rectangles
-  .byte 0, 0, 20, 1  ; x, y, width, height (4px cols)
-  .byte 0, 2, 20, 1  ; x, y, width, height (4px cols)
+  .byte $00, $51  ; packed (x<<2|y, w<<2|h)
+  .byte $02, $51  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M11TilePF0:
   .byte $f0, $00, $f0

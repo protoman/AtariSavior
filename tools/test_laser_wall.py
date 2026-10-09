@@ -52,12 +52,12 @@ for _n in ("M0MetaA", "M0MetaB"):
 
 # Hot (mid_band_type, 2026-10-05) death would corrupt the deterministic
 # sweep — zero model 0's hot-rect count in THIS run's ROM image too (hot
-# stream = RoomRects label + 1 + 4*solid_count).
+# stream = RoomRects label + 1 + 2*solid_count — packed 2B/rect stream).
 for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+M0RoomRects\s*$", _l)
     if _m:
         _a = int(_m.group(1), 16) - 0xF000
-        BANKS[2][_a + 1 + 4 * BANKS[2][_a]] = 0   # hot count = 0
+        BANKS[2][_a + 1 + 2 * BANKS[2][_a]] = 0   # hot count = 0
         break
 else:
     sys.exit("M0RoomRects label missing in bank2.lst")
