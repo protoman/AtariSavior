@@ -172,7 +172,7 @@ def run_until(pred, max_frames, what):
     while frame - f0 < max_frames:
         step()
         steps += 1
-        if mpu.pc == PC_STARTFRAME:
+        if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
             frame += 1
             if pred():
                 return frame
@@ -192,7 +192,7 @@ while not at_init_jsr():
 seen_play = False
 while not (seen_play and mem.ram[DROPT] == 0):
     step()
-    if mpu.pc == PC_STARTFRAME:
+    if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
         frame += 1
         # RESET pulses (intro 2026-10-06): f2 leaves the $FD intro,
         # f5 hits TitleWork RESET -> game start (single-frame pulses)
@@ -246,7 +246,7 @@ while not done:
     if tally_steps > 4000000:
         frozen_bad = f"tally hung mid-frame (f{frame})"
         break
-    if mpu.pc == PC_STARTFRAME:
+    if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
         frame += 1
         tally_frames += 1
         if mem.ram[LEVEL] != 0:
@@ -297,7 +297,7 @@ for swcha, name in ((0x7F, "right"), (0xBF, "left")):
     f0 = frame
     while frame - f0 < 120 and not moved:
         step()
-        if mpu.pc == PC_STARTFRAME:
+        if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
             frame += 1
             if mem.ram[ROOMX] != before_x:
                 print(f"movement resumed ({name}) at f{frame}: "

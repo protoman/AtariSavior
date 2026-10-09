@@ -475,6 +475,51 @@ def check_frame_tramp(src: Path) -> None:
                 f"${body:04X} (operand stale)")
 
 
+def check_enterroom_tramp(src: Path) -> None:
+    """#22 EnterRoom tramp: bank0/bank2 byte-identity + operand = body.
+
+    bank0 executes `sta $1FF8` at labels0['EnterRoom'] ($FB84); the
+    following `jmp` is FETCHED from bank2's twin at the same address, so
+    all 6 bytes must match and the operand must equal bank2's EnterRoomB2
+    body label (pinned $F010 by .ds).
+    """
+    bins: dict[int, bytes] = {}
+    for idx in (0, 2):
+        p = src / f"bank{idx}.bin"
+        if not p.exists():
+            err(f"bank{idx}.bin missing (enterroom tramp check)")
+            return
+        d = p.read_bytes()
+        if len(d) == 4096:
+            bins[idx] = d
+    if len(bins) < 2:
+        return
+    l0p, l2p = src / "bank0.lst", src / "bank2.lst"
+    if not l0p.exists() or not l2p.exists():
+        err("bank0.lst/bank2.lst missing (enterroom tramp check)")
+        return
+    labels0, _ = parse_lst(l0p.read_text(errors="replace").splitlines())
+    labels2, _ = parse_lst(l2p.read_text(errors="replace").splitlines())
+    tramp = labels0.get("EnterRoom")
+    body = labels2.get("EnterRoomB2")
+    if tramp is None or body is None:
+        err("EnterRoom label missing (bank0 tramp / bank2 EnterRoomB2 body)")
+        return
+    off = tramp - 0xF000
+    b0 = bins[0][off:off + 6]
+    b2 = bins[2][off:off + 6]
+    if len(b0) == 6 and b0[:3] != bytes((0x8D, 0xF8, 0x1F)):
+        err(f"bank0 EnterRoom tramp ${tramp:04X} = {b0.hex()} (expected 8df81f + jmp)")
+    if b0 != b2:
+        err(f"enterroom tramp bank0[${tramp:04X}] {b0.hex()} != bank2 {b2.hex()} "
+            f"(byte-identity broken — bank2 twin missing/moved)")
+    if len(b0) == 6:
+        tgt = b0[4] | (b0[5] << 8)
+        if tgt != body:
+            err(f"enterroom tramp jmp ${tgt:04X} != bank2 EnterRoomB2 "
+                f"${body:04X} (operand stale)")
+
+
 def check_callpads(src: Path) -> None:
     banks: dict[int, bytes] = {}
     for idx in (0, 1):
@@ -1029,6 +1074,7 @@ def main() -> int:
     check_fold_block(src)
     check_moth_tramp(src)
     check_frame_tramp(src)
+    check_enterroom_tramp(src)
     check_callpads(src)
     check_levels(src)
     check_model_rects(src)

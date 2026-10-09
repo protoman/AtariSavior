@@ -43,16 +43,15 @@ def main() -> None:
     assert re.search(r"PF0Buf\s*=\s*\$C3\b", KERNEL), \
         "PF0Buf must stay $C3 (rows 0-2 pure since S3.4)"
 
-    # --- ordering ---------------------------------------------------------
-    sel = line_no(r"^\s*jsr\s+SelectActiveObject\b")
-    lpfs = [i + 1 for i, ln in enumerate(KERNEL.splitlines())
-            if re.match(r"\s*jsr\s+LoadPFBuffer\b", ln)]
-    ler = line_no(r"^\s*jsr\s+LoadEnemyRam\b")
-    assert lpfs, "no jsr LoadPFBuffer"
-    assert sel < min(lpfs), \
-        f"VBLANK order broken: Select@{sel} must precede LoadPF@{min(lpfs)}"
-    assert ler > max(lpfs), \
-        f"EnterRoom order broken: LoadEnemyRam@{ler} must follow LoadPF@{max(lpfs)}"
+    # --- ordering (#22: EnterRoom body moved to bank2; PF + enemy loads
+    # are inline in EnterRoomB2, no more LoadPFBuffer/LoadEnemyRam jsrs) ---
+    assert not re.search(r"jsr\s+LoadPFBuffer\b", KERNEL), \
+        "kernel still jsrs LoadPFBuffer — PF loads inline in bank2 EnterRoomB2"
+    assert not re.search(r"jsr\s+LoadEnemyRam\b", KERNEL), \
+        "kernel still jsrs LoadEnemyRam — enemy copy inline in bank2 EnterRoomB2"
+    pf_i, en_i = BANK2.index(".EBpf:"), BANK2.index("EBLER_Loop:")
+    assert pf_i < en_i, \
+        f"EnterRoomB2 must load PF rows (@{pf_i}) before enemy RAM (@{en_i})"
 
     # --- per-frame refresh (safe window: post-HUD-stomp, pre-read) --------
     rey = line_no(r"^\s*jsr\s+RefreshEnemyY\b")
@@ -68,8 +67,8 @@ def main() -> None:
     assert "ldy EnemyOffTable,X" not in body.split("rts")[0], \
         "refresh no longer copies ROM y directly (DeriveEnemyY does)"
 
-    # --- LoadEnemyRAM copies y -------------------------------------------
-    ler_body = KERNEL.split("LoadEnemyRam:")[1].split("EnemyBitTable:")[0]
+    # --- LoadEnemyRAM copies y (body now bank2 EnterRoomB2, #22) ---------
+    ler_body = BANK2.split("LoadEnemyRam:")[1].split("EBLER_Done:")[0]
     assert "sta EnemyRamX,X" in ler_body and "sta EnemyRamY,X" in ler_body, \
         "LoadEnemyRam must shadow both x and y"
 

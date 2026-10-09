@@ -76,14 +76,15 @@ PC_WAIT = LABELS['.WaitVBLANK']  # INTIM poll entry = end of pure VBL work
 PC_TITLE = LABELS['TitleKernel']  # title frames skip .Row (own kernel band)
 
 # overscan sub-marks for attribution (which caller eats the timer window)
+# (#22: LoadPFBuffer/LoadEnemyRam moved into bank2 EnterRoomB2 — they no
+# longer exist in bank0.lst; EnterRoom now marks the $FB84 tramp.)
 OVER_MARKS = {LABELS[_n]: _n for _n in
               ('RefreshEnemyY', 'UpdateEnemies', 'CheckEnemyHit',
                'LaserInput', 'BombTick', 'CheckBandTouch',
                'LaserHitTest', 'SetObjectXPos', 'PlayerHitsMap',
                'StepDown', 'StepUp', 'CheckMinerPickup', 'LoseLife',
                'ExitRoomLeft', 'ExitRoomRight', 'ExitRoomDown',
-               'ExitRoomUp', 'LoadPFBuffer', 'LoadEnemyRam',
-               'CallPad_BombSndDrop', 'CallPad_UpdateBombSound',
+               'ExitRoomUp', 'CallPad_BombSndDrop', 'CallPad_UpdateBombSound',
                'CallPad_UpdateJetSound', 'CallPad_UpdateLaserSound',
                'CallPad_AddScore', 'CallPad_SetRoomDark',
                'AddScore', 'EnterRoom', '.WaitOverscan')
@@ -514,6 +515,8 @@ while frame < 440:
                 # one-shot crossing window (7 frames): pin RoomY at the
                 # bottom edge + hold Down until the exit fires, then release
                 # so later frames measure a CLEAN single-EnterRoom frame.
+                # (Natural descent cannot work: Down is bomb-only and the
+                # floor blocks gravity — docs/bomb_explosion_plan.md.)
                 mem.swcha &= 0xDF          # hold Down
                 mem.ram[0x01] = 130        # RoomY at the bottom edge
 

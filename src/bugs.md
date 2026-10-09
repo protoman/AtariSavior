@@ -147,7 +147,17 @@ No entry is worked on without user greenlight.
     rules prevent making it worse; resume during a rescan.
     **Player:** occasional unexplained flicker in heavy frames.
     **Benefit:** real root-cause fix.
-22. Exit-crossing `EnterRoom` +1665c spikes (f327 class) — still open.
+22. Exit-crossing `EnterRoom` +1665c spikes (f327 class) — FIXED
+    2026-10-09: body moved to bank2 ($F010) via twin tramp at $FB84
+    (guarded by verify_build check_enterroom_tramp); direct (ptr),Y
+    reads replace folds, 9-byte PF loop replaces 3 phases. SIM_EXIT
+    f265 spike 7287→5546c (−1741c), bad-frame list unchanged, min SP
+    $F7→$F9. Residual 5546c = documented rect-walk heavy-frame family
+    (frame-budget rule 2). Sim lesson: frame landmarks must be
+    bank-gated — EnterRoomB2's rect loop parked pc on bank0's
+    StartFrame address ($F041), counting fake frames that stole the
+    f2/f5 RESET pulses (title stuck $FD); gated in bomb_fuse/tally/
+    laser_wall.
     **Player:** judder/flicker when crossing room exits (up to +14
     lines on spike frames).
     **Benefit:** smooth room transitions.
