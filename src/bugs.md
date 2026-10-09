@@ -178,26 +178,31 @@ No entry is worked on without user greenlight.
     references in a separate cleanup pass; keep out of gameplay-demo
     work.
     **Player:** none — docs only; prevents misleading future work.
-27. **Level-data overflow of bank2's $F9D9-$FBD6 window = build dies
-    `Origin Reverse-indexed`** (2026-10-08, level 4). The 509B window is
-    pinned at the end by the fold pads ($FBD6+, address-fixed twins in
-    every bank). Level 4 + models.json growth took the block to 681B.
-    Stopgap landed 2026-10-08: `convert_level.py --levels` now also
+27. **Level-data overflow of bank2's data slots = build dies
+    `Origin Reverse-indexed`** (2026-10-08, level 4). The window is
+    pinned at the end by address-fixed pads (twins in every bank).
+    Level 4 + models.json growth took the block to 681B vs the 509B
+    window. Stopgap landed 2026-10-08: `convert_level.py --levels`
     emits `generated/levels_index.asm` (EQUs + LevelDataTable tail);
-    bank2.asm spills level 4 + index into the `.ds $F800` fill gap
-    ($F767, 153B) and level 3 into the `.ds $F970` gap ($F901, 111B);
-    the window keeps models + levels 1-2. Remaining slack: window 60B,
-    $F767 25B, $F901 7B, $F840 64B (free), $F5A4 92B (free) — ~2 small
-    levels left, then hand re-place again. Structured fix wanted: (a)
-    verify_build PRE-CHECK that sums the generated block vs window+fills
-    and fails early with the placement map (today: cryptic DASM error at
-    the pad line); and/or (b) convert_level emits its own org+include
-    spill lines from a measured free-gap map, so adding a level never
-    touches bank2.asm; long-term (c) plan P4 (docs/level_bank_plan.md):
-    level data in bank3, per-level bank select. **Player:** build dies
-    with `bank2.asm: error: Origin Reverse-indexed` whenever levels or
-    models grow past the window. **Benefit:** add a level = drop the
-    JSON + build, no asm surgery.
+    bank2.asm spills level 4 + index into the `$F800` fill gap
+    (start $F767, 153B) and level 3 into the `.ds $F970` gap
+    (start $F901, 111B); the window keeps models + levels 1-2
+    (start $F9D9, end $FB84 after the #22 tramp, 427B). Remaining
+    slack: window 30B, $F767 37B, $F901 19B, $F840 64B (free),
+    $F5A4 92B (free) — ~2 small levels left, then re-place.
+    (a) DONE 2026-10-09: `verify_build.py --precheck` runs in
+    build.sh BEFORE dasm — parses bank2.asm include-blocks + pad
+    literals, measures generated file sizes, resolves each slot's
+    start (org literal exact / first label from bank2.lst), prints
+    the placement map with slack per slot (now 37/19/30B) and fails
+    early on overflow (verified with an injected +40B spill). Still
+    open: (b) convert_level emits its own org+include spill lines
+    from a measured free-gap map, so adding a level never touches
+    bank2.asm; long-term (c) plan P4 (docs/level_bank_plan.md):
+    level data in bank3, per-level bank select.
+    **Player:** build dies with `bank2.asm: error: Origin
+    Reverse-indexed` whenever levels or models grow past the window.
+    **Benefit:** add a level = drop the JSON + build, no asm surgery.
 28. **Level data costs too much ROM per level** (2026-10-08, user).
     Level 4 = ~72B of tables (6 rooms: 4 conn bytes + enemy records +
     word pairs each) and models_data is 389B for 12 shared models —

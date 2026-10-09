@@ -22,6 +22,10 @@ done
 python3 "$ROOT/tools/convert_level.py" --levels "$DIR/generated/levels.asm" \
     "${LEVELS[@]}"
 
+# level-data window pre-check (bugs.md 27): fail early with the placement
+# map instead of DASM's cryptic `Origin Reverse-indexed` at the pad line
+python3 "$ROOT/tools/verify_build.py" --precheck "$DIR"
+
 # Assemble each bank (from src/ so include paths resolve)
 # bank2 FIRST: its LevelDataTable address is synced into kernel.asm
 # (frozen-literal self-heal) before bank0 bakes it into an immediate.
