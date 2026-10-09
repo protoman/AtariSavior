@@ -147,11 +147,28 @@ No entry is worked on without user greenlight.
     deleted; no code references remain (only history mentions in plan
     docs). `screenshots/title_mock.png` KEPT deliberately — entry 16
     uses it as the sizing mock.
-16. **Title font sizing — WORK IT** (2026-10-08 user greenlight).
-    S.A.V.I.O.R. title letters are very small: bank font is 8×7 rows;
-    mock (`screenshots/title_mock.png`) used 2× scale chunky.
-    **Benefit:** bigger, bolder title letters.
-    **Player:** tiny title text today.
+16. **Title font sizing — DONE** (2026-10-08 greenlight, shipped 2026-10-09).
+    Shipped: title text spread 44px → **86px** (NUSIZ6 32px pitch, drawn
+    grid p=34 via SetObjectXPos 41/57 — hardware max for 6 glyph slots);
+    font = 5px letters bits7-3 + **2px gap** bits2-1 + 1px baseline dot
+    bit0 (8px cell hard limit: 6+2+2 does not fit); rounded S, open-tip V.
+    py65 slot decode = 6/6 byte-exact vs ROM; battery 20/21 (test_title_demo
+    position asserts updated to 41/57).
+    **The "V renders like 9" root cause = VDEL promote x vs NUSIZ copy grid
+    (measured, py65 promote watch):** TitleKernel's cross-buffer writes flip
+    P0/P1 content at FIXED x regardless of sprite position — P0: S from
+    line-start, **V@64**, O@82; P1: A from line-start, **I@73**, R@91
+    (stable ±0 across lines). A glyph cell (8px) must sit ENTIRELY inside
+    its sprite's zone; old grid p=29 put V's cell at 61-68 → pixels 61-63
+    still showed S + 64-68 V = mixed rows that read as "9". Slot grid
+    constraint solve (zones S[0,63] V[64,81] A[0,72] I[73,90] O[82,] R[91,])
+    → **p ∈ [32,35]**; chose 34 (2px margin at V, 1px at I).
+    **Rule: changing title NUSIZ/positions must re-solve cells against the
+    measured promote table — the promote xs are fixed by the loop's cycle
+    timing, not by the sprite positions.** Verify = py65 promote watch +
+    per-slot pixel decode (scripts pattern in this entry's session).
+    **Player:** none today; bigger/2×-taller letters need bank0 space first
+    (pre-pad 1B; title font at $FB00 in main) — free bytes (#25) first.
 
 ## Backlog (from AGENTS development plan)
 
