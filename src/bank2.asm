@@ -143,7 +143,9 @@ EnterRoomB2:
     lda (FetchPtr),Y                ; rects ptr hi
     sta RoomRectsHi
 
-    ; --- copy solid rect list → ZP cache (21 bytes; count + x,y,w,h × 5) ---
+    ; --- copy solid rect list → ZP cache: ROM is packed 2B/rect
+    ;     [x<<2|y, w<<2|h], cache keeps the uniform 4B walk form.
+    ;     Copies 5 slots unconditionally (count = RcBase gates walkers).
     lda RoomRectsLo
     sta FetchPtr
     lda RoomRectsHi
@@ -151,12 +153,30 @@ EnterRoomB2:
     ldy #0
     lda (FetchPtr),Y                ; count
     sta RcBase
-    iny
+    iny                             ; Y = first packed byte
+    ldx #0                          ; dest offset in rect0..4 ($CC+)
 .EBrcW:
     lda (FetchPtr),Y
-    sta RcW1-1,Y                    ; $CC-$DF (Y=1..20 = rects0-4, S3.2 uniform)
+    lsr
+    lsr                             ; x = p0 >> 2
+    sta RcW1,X
+    lda (FetchPtr),Y
+    and #3                          ; y = p0 & 3
+    sta RcW1+1,X
     iny
-    cpy #21
+    lda (FetchPtr),Y
+    lsr
+    lsr                             ; w = p1 >> 2
+    sta RcW1+2,X
+    lda (FetchPtr),Y
+    and #3                          ; h = p1 & 3
+    sta RcW1+3,X
+    iny
+    inx
+    inx
+    inx
+    inx
+    cpx #20
     bne .EBrcW
 
     ; --- enemy record for this room (4 bytes: ptr_lo, ptr_hi, count, band) ---
@@ -1674,8 +1694,7 @@ BuildColupF:
     sta FetchPtr+1
     ldy #0
     lda (FetchPtr),Y            ; solid count (direct read — data in bank2)
-    asl
-    asl
+    asl                          ; packed 2B/rect stream
     clc
     adc #1
     tay                         ; Y → hot count
@@ -1745,8 +1764,7 @@ HotOverlapBody:
     sta FetchPtr+1
     ldy #0
     lda (FetchPtr),Y            ; solid count (direct read — data in this bank)
-    asl
-    asl                         ; *4
+    asl                          ; packed 2B/rect stream
     clc
     adc #1                      ; +1 count byte → hot count offset
     tay
