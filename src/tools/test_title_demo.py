@@ -61,7 +61,8 @@ assert "sta WSYNC\n    jmp $FBF8" in player
 assert "sta HMP1" not in title
 assert "sta NUSIZ1" in title
 assert "bne .TkFooterPad" in title
-assert "lda #60\n    ldx #0\n    jsr SetObjectXPos" in title
+assert "lda #41\n    ldx #0\n    jsr SetObjectXPos" in title
+assert "lda #57" in title and "ldx #1\n    jsr SetObjectXPos" in title
 assert "lda #20\n    sta RoomX" in kernel    # TitleIntro spawn init
 assert "lda #0\n    sta RoomY" in kernel
 bomb_rows = [int(v, 16) for v in re.findall(

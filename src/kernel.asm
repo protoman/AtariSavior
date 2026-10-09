@@ -2439,18 +2439,18 @@ TitleKernel:
     lda #COLOR_TITLE
     sta COLUP0
     sta COLUP1
-    lda #3                       ; NUSIZ = 3 copies close
+    lda #6                       ; NUSIZ = 3 copies, 32px pitch (title widen #16)
     sta NUSIZ0
     sta NUSIZ1
     lda #1                       ; VDELP = ON (cross-buffer active)
     sta VDELP0
     sta VDELP1
-    lda #60
+    lda #41
     ldx #0
-    jsr SetObjectXPos            ; P0 slot base (score parity)
-    lda #68
+    jsr SetObjectXPos            ; P0 slot base: drawn x34 (grid p=34 — V/P0c1
+    lda #57                      ;  must clear the S->V swap at x64, see #16)
     ldx #1
-    jsr SetObjectXPos            ; P1 slot base
+    jsr SetObjectXPos            ; P1 slot base: drawn x50
     sta WSYNC
     sta HMOVE
     ; --- Six font pointers for the VDEL sprite pipeline. ---
@@ -2563,7 +2563,9 @@ TPtr6 = $EA
 
     .ds $FB00 - *, 0
 ; ------------------------------------------------------------------------------
-; TitleFont — 6 slots × 8 bytes, "S.A.V.I.O.R." (letter + baseline dot).
+; TitleFont — 6 slots × 8 bytes, "S.A.V.I.O.R." (#16 feedback: 5px letters
+; bits7-3, 2px gap bits2-1, 1px baseline dot bit0 on the bottom 3 rows —
+; 8px cell limit: 6+2+2 does not fit. Rounded S, open-tip V.
 ; Page-aligned ($FB00) for cross-free abs,Y in TitleKernel.
 ; Row order = DigitGfx convention: byte0 blank (not drawn), byte7 = TOP,
 ; byte1 = bottom (loop draws Y=7 first).
@@ -2571,54 +2573,54 @@ TPtr6 = $EA
 TitleFont:
     ; slot 1 "S."
     .byte %00000000
-    .byte %01110010
-    .byte %00001010
-    .byte %00001000
+    .byte %01110001
+    .byte %00001001
+    .byte %00001001
     .byte %01110000
     .byte %10000000
     .byte %10000000
     .byte %01110000
     ; slot 2 "A."
     .byte %00000000
-    .byte %10001010
-    .byte %10001010
-    .byte %10001000
+    .byte %10001001
+    .byte %10001001
+    .byte %10001001
     .byte %11111000
     .byte %10001000
     .byte %10001000
     .byte %01110000
     ; slot 3 "V."
     .byte %00000000
-    .byte %00100010
-    .byte %01010010
-    .byte %10001000
+    .byte %00100001
+    .byte %01010001
+    .byte %10001001
     .byte %10001000
     .byte %10001000
     .byte %10001000
     .byte %10001000
     ; slot 4 "I."
     .byte %00000000
-    .byte %11111010
-    .byte %00100010
-    .byte %00100000
+    .byte %11111001
+    .byte %00100001
+    .byte %00100001
     .byte %00100000
     .byte %00100000
     .byte %00100000
     .byte %11111000
     ; slot 5 "O."
     .byte %00000000
-    .byte %01110010
-    .byte %10001010
-    .byte %10001000
+    .byte %01110001
+    .byte %10001001
+    .byte %10001001
     .byte %10001000
     .byte %10001000
     .byte %10001000
     .byte %01110000
     ; slot 6 "R."
     .byte %00000000
-    .byte %10001010
-    .byte %10010010
-    .byte %10100000
+    .byte %10001001
+    .byte %10010001
+    .byte %10100001
     .byte %11110000
     .byte %10001000
     .byte %10001000
