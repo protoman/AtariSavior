@@ -197,7 +197,11 @@ while frame < 420:
     if mem.ram[IDX_B5] != prev_b5:
         b5_log.append((frame, prev_pc, prev_b5, mem.ram[IDX_B5]))
         prev_b5 = mem.ram[IDX_B5]
-    if mpu.pc == PC_STARTFRAME:
+    # bank gate: PCs are bank-aliased (AGENTS py65 rule) — EnterRoomB2's
+    # rect-loop can park pc on the SAME address as bank0 StartFrame ($F041),
+    # counting fake frames mid-boot and stealing the f2/f5 RESET pulses
+    # (title stuck in the $FD intro, #22 2026-10-09).
+    if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
         frame += 1
         # console RESET pulse: title -> game start. frame counter starts at
         # 1 on the first StartFrame, so f1 stays released (title stores the

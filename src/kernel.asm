@@ -1239,240 +1239,8 @@ StepUp subroutine
 ; ==============================================================================
 ; Room management
 ; ==============================================================================
-; LoadPF0Only: PF0 phase (3 folds ≈ 130c) — now reached ONLY via
-;   LoadPFBuffer's tail jump (EnterRoom full rebuild).
-;   History: was also called every VBLANK frame to repair the per-frame
-;   EnemyRamY stomp of $C3-$C5; that repair entry + jsr were deleted in
-;   S3.4 when EnemyRamY moved to $E2-$E4 (PF0 rows 0-2 are never stomped).
-; LoadPFBuffer (EnterRoom only): full 3-phase rebuild, 9 folds ≈ 384c.
-;   PF1/PF2 rows 0-2 have no per-frame writer, so they only need rebuilding
-;   once per room (bank1 touches $E0-$EF only; rect caches + RoomBandColor
-;   live in dead rows 3-11).
-; Uses RoomPF0Lo/Hi, RoomPF1Lo/Hi, RoomPF2Lo/Hi (set by EnterRoom).
-; ------------------------------------------------------------------------------
-; P3.3: per-phase fold reads (level data lives in bank2). Stage FetchPtr
-; immediately before each batch.
-; Fill = 3 bytes per register (rows 0-2): the kernel .Row reads X=0..2 and
-; ClearPFColumn walks rows 0..2 — buffer bytes 3-11 are fill-only dead weight
-; (every generated model has 00 there; bank1 score uses its own $B3/$C6 bufs).
-; Cut 2026-09-28 with the $D2 band-color fix: saves ~27 folds ≈ 850c of VBLANK
-; setup (the #75 timer had only ~273c headroom → variable setup blew it and
-; the expired-timer garbage wait scattered frame lengths) and stops the fill
-; from clobbering RoomBandColor = $D2 (PF1Buf[3]).
-; Split 2026-09-29: VBLANK calls LoadPF0Only instead of LoadPFBuffer
-; (-254c/frame) — level-1 object rooms + wall mask blew the #23 window
-; (worst 1539c, -67 → constant 263-line frames ≈ 1s after blast).
-LoadPF0Only:
-    ; --- Phase 0: PF0 → $C3-$C5 — stage once ---
-    lda RoomPF0Lo
-    sta FetchPtr
-    lda RoomPF0Hi
-    sta FetchPtr+1
-    ldy #0
-.LPB_PF0:
-    jsr FoldIndirect
-    sta PF0Buf,Y
-    iny
-    cpy #3
-    bne .LPB_PF0
-    rts
-
-LoadPFBuffer:               ; EnterRoom only — full rebuild (all 3 phases)
-    ; --- Phase 1: PF1 → $CF-$D1 — stage once ---
-    lda RoomPF1Lo
-    sta FetchPtr
-    lda RoomPF1Hi
-    sta FetchPtr+1
-    ldy #0
-.LPB_PF1:
-    jsr FoldIndirect
-    sta PF1Buf,Y
-    iny
-    cpy #3
-    bne .LPB_PF1
-
-    ; --- Phase 2: PF2 → $DB-$DD — stage once (rows 0-2 never touch $E0/$E1,
-    ;     so the P3.3 per-row re-stage is dead too) ---
-    lda RoomPF2Lo
-    sta FetchPtr
-    lda RoomPF2Hi
-    sta FetchPtr+1
-    ldy #0
-.LPB_PF2:
-    jsr FoldIndirect
-    sta PF2Buf,Y
-    iny
-    cpy #3
-    bne .LPB_PF2
-    jmp LoadPF0Only           ; tail: PF0 phase + rts — jsr here would cost
-                              ; +1 stack level (EnterRoom path hit SP $F5,
-                              ; stomping BombTimer $F7; sim_bomb_fuse gate)
-
-; EnterRoom: load PF data and collision rectangles for room A (0-based index).
-; Sets RoomNo, RoomPFDataLo/Hi, and RoomRectsLo/Hi.
-; RoomX/RoomY are NOT changed — caller (exit handlers) sets them.
-; ------------------------------------------------------------------------------
-EnterRoom subroutine
-    ; Plan 5.1/5.2 (D1-B): no WallMask persistence across room changes.
-    ; The old save-into-RoomWallMask block is deleted — holes die with the
-    ; BombPacked=0 reset below, and LoadPFBuffer rebuilds the pattern.
-    sta RoomNo
-    asl
-    asl
-    tay
-    ; --- Fold batch (P2.6): room pointers live in bank2's RoomDataTable.
-    ; Stage FetchPtr = LevelPFData immediately before the batch (P3.1: fold
-    ; bank select is absolute — X is untouched by FoldIndirect). ---
-    lda LevelPFDataLo
-    sta FetchPtr
-    lda LevelPFDataHi
-    sta FetchPtr+1
-    ldx #0
-    ; Load PF0 data pointer (first .word)
-    jsr FoldIndirect
-    sta RoomPF0Lo
-    iny
-    jsr FoldIndirect
-    sta RoomPF0Hi
-    ; Pre-compute PF1 and PF2 pointers (+3 bytes each — S4.2: tables are
-    ; stride 3 now, was +12 in the 12-row era)
-    clc
-    lda RoomPF0Lo
-    adc #3
-    sta RoomPF1Lo
-    lda RoomPF0Hi
-    adc #0
-    sta RoomPF1Hi
-    clc
-    lda RoomPF1Lo
-    adc #3
-    sta RoomPF2Lo
-    lda RoomPF1Hi
-    adc #0
-    sta RoomPF2Hi
-    iny
-    ; Load collision rects pointer (second .word)
-    jsr FoldIndirect
-    sta RoomRectsLo
-    iny
-    jsr FoldIndirect
-    sta RoomRectsHi
-
-    ; --- P3.4: copy solid rect list → ZP cache (21 bytes always; rooms with
-    ; count<5 leave garbage in unused tail slots — the walk stops at count).
-    ; Runs per room change only (cheap). Source order: count, x,y,w,h × 5. ---
-    lda RoomRectsLo
-    sta FetchPtr
-    lda RoomRectsHi
-    sta FetchPtr+1
-    ldy #0
-    jsr FoldIndirect            ; count
-    sta RcBase                  ; → $89 (outside the bank1 stomp zone)
-    iny                         ; Y=1, first rect byte
-.rcW1: jsr FoldIndirect
-    sta RcW1-1,Y                ; $CC-$DF (Y=1..20 = rects0-4 — UNIFORM
-    iny                         ; stride since S3.2, incl. rect4; was 4 loops)
-    cpy #21
-    bne .rcW1
-
-    ; Load enemy data for this room from LevelEnemyLo/Hi table
-    ; Per-room record: ptr_lo, ptr_hi, count, pad (4 bytes per room)
-    lda RoomNo
-    asl                         ; room * 4
-    asl
-    tay
-    ; --- Fold batch (P2.6): re-stage FetchPtr = LevelEnemy for this batch ---
-    lda LevelEnemyLo
-    sta FetchPtr
-    lda LevelEnemyHi
-    sta FetchPtr+1
-    ldx #0
-    jsr FoldIndirect            ; enemy data pointer lo
-    sta EnemyDataLo
-    iny
-    jsr FoldIndirect            ; enemy data pointer hi
-    sta EnemyDataHi
-    iny
-    jsr FoldIndirect            ; enemy count
-    sta EnemyCount
-    iny                         ; +3 = bottom-band color (same byte the VBL
-                                ; fold stages per frame). Restage it HERE or
-                                ; CheckBandTouch kills with the SOURCE room's
-                                ; band on the transition frame: up-exits spawn
-                                ; at Y=PLAYER_MAX_Y=132 >= 125, and level 1
-                                ; room 1 is the only band-on room — leaving it
-                                ; upward with its stale ON color = instant
-                                ; death in the band-less target room.
-    jsr FoldIndirect
-    sta RoomBandColor
-    lda #$00
-    sta EnemyDeadMask            ; no dead enemies in new room
-
-    ; Bomb reset: clear state/timer/sound (incl. OnGround b7) — wall bits
-    ; b3-6 die with it: D1-B, holes do not survive room change (the old
-    ; RoomWallMask nibble restore is deleted; LoadPFBuffer below rebuilds
-    ; the whole pattern from ROM).
-    lda #0
-    sta BombPacked
-    sta BombTimer
-    sta BombSnd
-    sta AUDV0
-
-    jsr LoadPFBuffer
-    jsr LoadEnemyRam            ; writes EnemyRamX/Y/D ($E2 disjoint from PF
-    rts                         ; buffers since S3.4 — order now cosmetic)
-
-; ------------------------------------------------------------------------------
-; LoadEnemyRam — copy each ROM enemy's x,dir into the RAM shadow.
-; ROM stride 4 (S4.1): type(+0), x(+1), y(+2), dir(+3) — the old
-; range_min/range_max slots are gone (nothing read them).
-; Y is NOT shadowed (stays in ROM until S5) — $F3-$F6 is bank1 score.
-; dir ROM: +1 / $FF. Packed: EnemyRamD bit=1 right, 0 left.
-; EnemyRamP = free-running frame clock — seed value here is arbitrary.
-; ------------------------------------------------------------------------------
-LoadEnemyRam:
-    lda EnemyRamD
-    and #$F0                    ; preserve RoomDarkMask bits 4-7 (rooms 0-3)
-    sta EnemyRamD
-    lda #$F0                    ; EnemyRamP clock seed (arbitrary phase)
-    sta EnemyRamP
-    ; --- Fold batch (P3.1): room enemy records live in bank2. Stage FetchPtr
-    ; immediately before the reads; absolute-fold preserves X and Y. ---
-    lda EnemyDataLo
-    sta FetchPtr
-    lda EnemyDataHi
-    sta FetchPtr+1
-    ldx #0
-LER_Loop:
-    cpx EnemyCount
-    bcs LER_Done
-    ldy EnemyOffTable,X         ; Y = X*4 (table lookup — same as UE_Loop;
-                                ; drops the 9 B txa/asl/sta Temp/asl/clc/adc
-                                ; sequence, -6 B main. No caller reads Temp
-                                ; after this routine.)
-    iny                         ; +1 = x
-    jsr FoldIndirect
-    sta EnemyRamX,X
-    iny                         ; +2 = y
-    jsr FoldIndirect
-    sta EnemyRamY,X
-    iny                         ; +3 = dir (S4.1: range slots dropped)
-    jsr FoldIndirect
-    bmi LER_Left                ; $FF = face left
-    lda EnemyBitTable,X         ; face right → set bit
-    ora EnemyRamD
-    sta EnemyRamD
-    jmp LER_Next
-LER_Left:
-    lda EnemyBitTable,X         ; face left → clear bit
-    eor #$FF
-    and EnemyRamD
-    sta EnemyRamD
-LER_Next:
-    inx
-    jmp LER_Loop
-LER_Done:
-    rts
+; EnterRoom tramp lives at $FB84 (shared fill region — bank2 mirrors the
+; 6 bytes there; see TitleTailAudio below). Body = EnterRoomB2 in bank2.
 
 EnemyBitTable:
     .byte $01, $02, $04, $08
@@ -2927,6 +2695,18 @@ TitleIntro:
     sta StepsLeft
     jsr TitleSequenceFold       ; intro phase machine (bank2 body, jsr/ReturnPad)
     jmp TitleTailAudio
+
+    .ds $FB84 - *, 0            ; #22: pin tramp at $FB84 — bank2's twin
+                                 ;   sits at the same address (level data ends
+                                 ;   ~$FB66 there; both banks emit 6 bytes)
+; EnterRoom tramp — body lives in bank2 ($F010, EnterRoomB2).
+; bank0 runs `sta $1FF8`; the fetch at $FB87 comes from bank2's identical
+; twin → `jmp $F010` executes in bank2. Body tail = jmp ReturnPad ($FBF8)
+; → sta $1FF6 / rts. Saves ~1660c per room change (folds → direct reads).
+; A preserved through sta $1FF8; body returns X = EnemyCount.
+EnterRoom:
+    sta $1FF8
+    jmp $F010                    ; EnterRoomB2 — fetched from bank2 twin
 
     .ds $FBD6 - *, 0            ; fold pinned where bank2's twin mirrors it
                                 ;   (bank2 $FB86.. = level data — both banks

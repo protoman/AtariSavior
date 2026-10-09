@@ -89,13 +89,16 @@ def main() -> None:
     for tbl in ("LevelPFDataLo", "LevelEnemyLo", "LevelConnLo", "EnemyDataLo"):
         assert not re.search(rf"lda \({tbl}\),Y", KERNEL), \
             f"kernel.asm still reads ({tbl}),Y directly — route via FoldIndirect"
-    assert KERNEL.count("jsr FoldIndirect") >= 41, \
-        f"expected >=41 fold call sites (P2: band/EnterRoom/conn/LoadLevel 26, " \
-        f"P3.1: enemy reads 15), got {KERNEL.count('jsr FoldIndirect')}"
+    # #22: EnterRoom moved to bank2 (direct (ptr),Y reads — it IS the reader),
+    # so its 11 fold call sites + 10 stage lines left kernel with it.
+    assert KERNEL.count("jsr FoldIndirect") >= 30, \
+        f"expected >=30 fold call sites (band/conn/LoadLevel + P3.1 enemy " \
+        f"derives; EnterRoom folds moved to bank2 direct reads), " \
+        f"got {KERNEL.count('jsr FoldIndirect')}"
     # every fold batch stages FetchPtr immediately before its reads
     stages = len(re.findall(r"^\s+sta FetchPtr\+?1?\s*$", KERNEL, re.M))
-    assert stages >= 22, \
-        f"expected >=22 sta FetchPtr lines (11 stage pairs), got {stages}"
+    assert stages >= 12, \
+        f"expected >=12 sta FetchPtr lines, got {stages}"
 
     # --- P2.5: band-color cache contract ----------------------------------
     # FIX 2026-09-28: was $D1 = PF1Buf[2] — collides with kernel .Row

@@ -175,7 +175,7 @@ def travel_next(lx, roomx, facing):
 def main() -> None:
     # ---- boot to the main frame loop ----
     guard = 0
-    while mpu.pc != PC_STARTFRAME:
+    while not (mem.bank == 0 and mpu.pc == PC_STARTFRAME):
         step()
         guard += 1
         if guard > 400000:
@@ -186,7 +186,7 @@ def main() -> None:
     # ---- wait for landing, then freeze enemies ----
     while frame < 400:
         step()
-        if mpu.pc == PC_STARTFRAME:
+        if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
             frame += 1
             # console RESET pulses (intro 2026-10-06): f2 edge leaves the
             # $FD intro, f5 edge hits TitleWork RESET -> game start
@@ -220,7 +220,7 @@ def main() -> None:
                     step()
                     if mpu.pc in rts_pcs:
                         cap = (mem.ram[I_COLLX], mem.ram[I_LASERX])
-                    if mpu.pc == PC_STARTFRAME:
+                    if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
                         break
                 checked += 1
                 if cap is None:

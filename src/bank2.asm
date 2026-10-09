@@ -35,6 +35,12 @@ LineCount = $84                  ; OverlayTramp gate — packed byte copied
 RoomPF0Lo = $99                 ; TilePF0 pointer (EnterRoom stages; models
                                  ; data lives in THIS bank — bank0 cannot
                                  ; read it, see StageBandTab)
+RoomPF0Hi = $9A                 ; #22 EnterRoomB2 — kernel sequential-block pair
+LevelPFDataLo = $9F             ; RoomDataTable pointer low (kernel decl)
+LevelPFDataHi = $A0             ; RoomDataTable pointer high (kernel decl)
+LevelEnemyLo = $AF              ; RoomEnemies pointer low (kernel decl)
+LevelEnemyHi = $B0              ; RoomEnemies pointer high (kernel decl)
+RoomBandColor = $BC             ; band-color cache (kernel EQU, S3.1)
 BandTab = $ED                   ; Phase 3 band gate bytes — staged here,
                                  ; read by kernel .Row in bank0
 CollisionX = $8B
@@ -108,6 +114,133 @@ AUDV0 = $19
     lda #0
     sta $1FF6                       ; select bank0
     jmp $F005                       ; GameStart in bank0
+
+    ; --- #22 EnterRoomB2 ($F010) -----------------------------------------------
+    ; Body of bank0's EnterRoom (tramp at $FB84: sta $1FF8 / jmp $F010).
+    ; Reached with A = room index; returns via jmp ReturnPad (X = EnemyCount).
+    ; Level data lives in THIS bank → direct (FetchPtr),Y reads, NO folds
+    ; (same transcription as MothRoutine below). Saves ~1660c per room change.
+    ; Must end before org $F100 (MothRoutine) — overflow = Origin Reverse.
+    .ds $F010 - *, 0
+EnterRoomB2:
+    sta RoomNo
+    asl
+    asl
+    tay                             ; Y = room * 4
+    lda LevelPFDataLo
+    sta FetchPtr
+    lda LevelPFDataHi
+    sta FetchPtr+1
+    lda (FetchPtr),Y                ; RoomDataTable: PF0 ptr lo
+    sta RoomPF0Lo
+    iny
+    lda (FetchPtr),Y                ; PF0 ptr hi
+    sta RoomPF0Hi
+    iny
+    lda (FetchPtr),Y                ; rects ptr lo
+    sta RoomRectsLo
+    iny
+    lda (FetchPtr),Y                ; rects ptr hi
+    sta RoomRectsHi
+
+    ; --- copy solid rect list → ZP cache (21 bytes; count + x,y,w,h × 5) ---
+    lda RoomRectsLo
+    sta FetchPtr
+    lda RoomRectsHi
+    sta FetchPtr+1
+    ldy #0
+    lda (FetchPtr),Y                ; count
+    sta RcBase
+    iny
+.EBrcW:
+    lda (FetchPtr),Y
+    sta RcW1-1,Y                    ; $CC-$DF (Y=1..20 = rects0-4, S3.2 uniform)
+    iny
+    cpy #21
+    bne .EBrcW
+
+    ; --- enemy record for this room (4 bytes: ptr_lo, ptr_hi, count, band) ---
+    lda RoomNo
+    asl
+    asl
+    tay
+    lda LevelEnemyLo
+    sta FetchPtr
+    lda LevelEnemyHi
+    sta FetchPtr+1
+    lda (FetchPtr),Y
+    sta EnemyDataLo
+    iny
+    lda (FetchPtr),Y
+    sta EnemyDataHi
+    iny
+    lda (FetchPtr),Y
+    sta EnemyCount
+    iny                             ; +3 = bottom-band color — must restage
+    lda (FetchPtr),Y                ; HERE or CheckBandTouch kills with the
+    sta RoomBandColor               ; SOURCE room's band on the transition frame
+    lda #$00
+    sta EnemyDeadMask               ; no dead enemies in new room
+
+    ; --- bomb reset: clear state/timer/sound (wall bits b3-6 die with it) ---
+    lda #0
+    sta BombPacked
+    sta BombTimer
+    sta BombSnd
+    sta AUDV0
+
+    ; --- PF rebuild: one 9-byte read (PF0+PF1+PF2 rows are contiguous in
+    ;     ROM and in RAM: PF0Buf $C3 + Y covers $C3-$CB = all 9 rows) ---
+    lda RoomPF0Lo
+    sta FetchPtr
+    lda RoomPF0Hi
+    sta FetchPtr+1
+    ldy #0
+.EBpf:
+    lda (FetchPtr),Y
+    sta PF0Buf,Y
+    iny
+    cpy #9
+    bne .EBpf
+
+    ; --- LoadEnemyRam: copy each ROM enemy's x,y,dir into the RAM shadow ---
+    lda EnemyRamD
+    and #$F0                        ; preserve RoomDarkMask bits 4-7
+    sta EnemyRamD
+    lda #$F0                        ; EnemyRamP clock seed (arbitrary phase)
+    sta EnemyRamP
+    lda EnemyDataLo
+    sta FetchPtr
+    lda EnemyDataHi
+    sta FetchPtr+1
+    ldx #0
+EBLER_Loop:
+    cpx EnemyCount
+    bcs EBLER_Done
+    ldy EnemyOffTable,X             ; Y = X*4 type offset
+    iny                             ; +1 = x
+    lda (FetchPtr),Y
+    sta EnemyRamX,X
+    iny                             ; +2 = y
+    lda (FetchPtr),Y
+    sta EnemyRamY,X
+    iny                             ; +3 = dir ($FF = left)
+    lda (FetchPtr),Y
+    bmi EBLER_Left
+    lda EnemyBitTable,X             ; face right → set bit
+    ora EnemyRamD
+    sta EnemyRamD
+    jmp EBLER_Next
+EBLER_Left:
+    lda EnemyBitTable,X             ; face left → clear bit
+    eor #$FF
+    and EnemyRamD
+    sta EnemyRamD
+EBLER_Next:
+    inx
+    jmp EBLER_Loop
+EBLER_Done:
+    jmp ReturnPad                   ; sta $1FF6 / rts — back to bank0 caller
 
     ; --- E4 moth body (bank2 free space $F008-$F9D8) -------------------------
     ; Entered from bank0 via the $FEF0 entry tramp (sta $1FF8 lands on the
@@ -1450,6 +1583,11 @@ OverlayTramp:
 ; bank0, the rts is then fetched from bank0's identical copy, and the stack
 ; still holds the bank0 jsr CallPad_* return address.
 ; ------------------------------------------------------------------------------
+    .ds $FB84 - *, 0            ; #22 EnterRoom tramp twin — byte-identical
+                                 ;   with kernel.asm at $FB84 (level data ends
+                                 ;   ~$FB66; growth past $FB84 fails the build)
+    sta $1FF8
+    jmp $F010                    ; EnterRoomB2 — this half fetched after bank0's sta
     .ds $FBD6 - *, 0            ; TitleSequenceFold twin (kernel.asm same
                                  ;   address — jmp operand fetched here after
                                  ;   bank0's sta $1FF8, so bytes must match)
