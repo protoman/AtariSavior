@@ -182,6 +182,11 @@ BombTimer       = $F7           ; fuse/explode countdown (frames)
 PlayerBombs     = $F0           ; bombs left 0..5 (never written by VBLANK/bank1 score)
 BOMBS_MAX       = 5             ; starting / reload bomb count
 BombSnd         = $F1           ; frames of bomb audio left (0=silent; bank1 must not write)
+LevelShowTimer  = $F2           ; #18 frames left of the LV001 HUD banner (bank1 decs;
+                                 ;  ALIAS of TallyTicks — lifetimes are disjoint: banner
+                                 ;  = gameplay entry (LoadLevel, DropTarget != $FD),
+                                 ;  tally = level-exit bonus, intro phase = boot only)
+LV_SHOW_FRAMES  = 120           ; banner duration (2s at 60Hz)
 TallyTicks = $F2               ; level-bonus countdown, 50-pt units (tally)
 ; (was RoomWallMask $F2 — D1-B, plan 5.2: no cross-room hole state)
 
@@ -1580,6 +1585,12 @@ LoadLevel:
     sta LaserState
     lda #BOMBS_MAX
     sta PlayerBombs
+    lda DropTarget             ; #18: arm the LV001 banner except on the boot
+    cmp #$FD                   ; intro call ($FD = attract pending — TallyTicks
+    beq .NoBanner              ; alias must stay 0 for the intro phase machine)
+    lda #(LV_SHOW_FRAMES|$80)  ; bit7 = banner flag: decs down to $80; any
+    sta LevelShowTimer         ; tally ARM (<=127) kills it instantly
+.NoBanner:
     ; Compute LevelDataTable pointer: base + Level * 14
     ; Stride 14: start(3) + miner(3) + wall_colors(2) + ptrs(3×2)
     lda Level

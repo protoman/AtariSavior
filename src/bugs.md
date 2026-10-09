@@ -174,11 +174,22 @@ No entry is worked on without user greenlight.
 
 17. Per-scanline PF lookup tables for cave patterns (HERO LFA00-style).
     **Benefit:** richer per-row cave texture like HERO.
-18. HUD level indicator (2026-10-08 user spec): at the start of a
-    level, show something like **LV001 in place of the score** for the
-    opening moments (design: duration + exact display open).
-    **Player:** no level number on screen; **benefit:** player knows
-    which level they're on.
+18. **HUD level indicator — DONE** (2026-10-08 spec, shipped 2026-10-09).
+    "LV001" replaces the score in the score slot for the first 120 frames
+    (2s) of a level: bank1 `SetupScorePointers` (moved next to the glyphs
+    at $FD68 — bank1 pre-pad $F937 pin has ~1B slack) points scorePtr1-6
+    at new glyphs 10/11/12 = blank/L/V; Level+1 splits to tens/ones via
+    repeated subtract (hundreds '0', LEVEL_COUNT <= 99). Armed in
+    LoadLevel, gated on DropTarget != $FD (boot intro call must leave
+    the TallyTicks slot alone — see alias below). py65 verified: attract
+    keeps the slot 0, banner ptrs exact, score restored after expiry.
+    **ZP alias:** LevelShowTimer = **$F2 = TallyTicks** (bit7 = banner
+    flag, decs $F8..$80; tally ARM <=127 kills the banner instantly —
+    miner pickup during the banner window used to double-dec the tally,
+    +50pts/tick). Lifetimes: banner = gameplay entry, tally = level-exit
+    bonus, intro phase = boot (gated). The zp doc's "$F2 free" was
+    stale — fixed there. **Player:** sees which level they're on;
+    **Benefit:** level context at every stage start.
 21. Residual flicker investigation postponed (user-led) — S6.4-S6.6
     rules prevent making it worse; resume during a rescan.
     **Player:** occasional unexplained flicker in heavy frames.

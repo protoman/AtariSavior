@@ -293,7 +293,7 @@ was the disproven claim.
 - [x] Lives display (bank1 "Line 2", NUSIZ icons)
 - [x] Bombs display (bank1 "Line 3", red squares, count = PlayerBombs)
 - [x] Timer bar (power bar, bank1 — BarDelay/BarFine/BallX tables)
-- [ ] Level indicator
+- [x] Level indicator
 - [x] HUD rendering in the 48-line band (bank1 via the $FC68 fold pad)
 
 **Score rendering notes (from HERO disassembly + bumbershootsoft):**

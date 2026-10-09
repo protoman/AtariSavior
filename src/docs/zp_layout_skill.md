@@ -143,7 +143,7 @@ sequential byte would be `$BC`, but `$BD+` are explicit EQUs and `$BC` is
 | $F7 | **BombTimer** | Fuse/explode frames |
 | $F0 | **PlayerBombs** | Bombs left 0..5 (lives at `$F0` physically = old ColupfBuf[9]; nothing writes it but bomb logic since S3.0b) |
 | $F1 | **BombSnd** | Frames of bomb audio left (S10; 0=silent) |
-| $F2 | *(free)* | **FREE since plan 5.2 (was RoomWallMask)** — D1-B: no cross-room hole state; EnterRoom pack/restore + LoadLevel zero all deleted 2026-10-02 |
+| $F2 | **TallyTicks** | Level-bonus countdown (50-pt units). **#18 banner alias:** bank1 `LevelShowTimer` shares the byte — bit7 = banner flag (armed `$F8`, decs to `$80` in `SetupScorePointers`); tally ARM (<=127) or the boot-intro gate (DropTarget=$FD skips the arm in LoadLevel) kills the banner instantly. Was listed "free" here 2026-10-02 — stale; TallyTicks predates the 2026-10-09 banner. |
 | $F8-$FF | *(free)* | **stack mirror only** — PlayerGrp0 removed (kernel reads ROM via `Grp0Ptr`); never put a buffer here |
 
 Bank1 HUD `$E0-$EF` (score ptrs + bar temps) stomps ColupfBuf rows 0-2 and
