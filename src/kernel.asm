@@ -2384,6 +2384,11 @@ OverlayTramp:
 PositionBallM1:
     lda Temp
     beq .M1
+    clc
+    adc #1                      ; #9: Stella draws ball/missile 1 clock left of
+                                ;   the player contract — Ball.hxx/Missile.hxx
+                                ;   renderCounterOffset=-4 vs Player.hxx=-5
+                                ;   (same class as the M1 +1 below)
     ldx #4                      ; selector 4: HMP0+4=HMBL, RESP0+4=RESPBL
     jsr SetObjectXPos
 .M1:
@@ -3600,6 +3605,12 @@ LaserInput:
     jsr .LaserEye               ; consumed -> restart at the eye THIS frame
 .LaserPos:
     lda LaserX
+    clc
+    adc #1                      ; #9: Stella draws M0 1 clock left of the
+                                ;   player contract (Missile.hxx
+                                ;   renderCounterOffset=-4 vs Player -5);
+                                ;   +1 lands drawn = [LaserX-7, LaserX],
+                                ;   the contract LaserHitTest assumes.
     ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
     jsr SetObjectXPos           ; drawn M0 = [LaserX-7, LaserX]
     rts

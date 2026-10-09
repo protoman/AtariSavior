@@ -128,13 +128,18 @@ No entry is worked on without user greenlight.
 ## Latent risks (verified once, fragile)
 
 9. **Stella renders 8-wide missiles 1 clock left of the [A-7,A] player
-   contract.** M1 fixed empirically (`PositionBallM1` passes M1X+1,
-   pixel-measured 2026-10-06). **Ball (selector 4) and laser M0 carry
-   the same suspicion — unverified.** Screenshot-check before trusting
-   ball/laser X. Stella TIA source never fetched (repo path unresolved).
-   **Player:** laser/ball possibly 1px off from where collision logic
-   thinks — shots look like near-misses on walls.
-   **Benefit:** shot visual == hit logic.
+   contract — FIXED 2026-10-09.** Stella source finally fetched (the
+   "unresolved repo path" = github raw `stella-emu/stella`):
+   `Player.hxx` `Count::renderCounterOffset = -5` vs `Missile.hxx` /
+   `Ball.hxx` = `-4` (getPosition = `317 - counter - offset`) → Stella
+   draws ball + missiles 1 clock left of an identically-positioned
+   player = the class M1 hit on 2026-10-06. **Fix:** `PositionBallM1`
+   ball path (selector 4) and `.LaserPos` (selector 2) now pass A+1 —
+   drawn lands exactly on the `[A-7,A]` contract `LaserHitTest`
+   assumes (visual == hit logic). Sims + battery 20/21 (laser contract
+   tests green). **Player gate:** eyeball a live beam/ball vs wall in
+   Stella (fire input not scriptable) — should read flush, no
+   near-miss look. **Benefit:** shot visual == hit logic.
 10. **Cross-bank Temp conflict:** bank1 `Temp=$AD` = bank0 `TickCounter`
     slot — deliberate, allowlisted (`check_equ_sync.ZP_ALLOW`). Fragile
     if either side's frame phase changes.
