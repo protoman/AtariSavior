@@ -224,14 +224,31 @@ No entry is worked on without user greenlight.
     **Benefit:** add a level = drop the JSON + build, no asm surgery.
 28. **Level data costs too much ROM per level** (2026-10-08, user).
     Level 4 = ~72B of tables (6 rooms: 4 conn bytes + enemy records +
-    word pairs each) and models_data is 389B for 12 shared models —
-    total block 681B vs the 509B window (item 27). Find compressions:
-    pack connections 2/room (nibble directions), run-length the PF tile
-    rows (mostly $00/$ff runs), compact enemy records, skip per-level
-    scalars the game never reads, emit one PF stream for identical
-    rooms. **Player:** none today (ROM full = build error, item 27);
-    **Benefit:** many more levels per bank and fewer spill
-    re-placements.
+    word pairs each) and models_data was 345B for 11 shared models.
+    **Status: DONE 2026-10-09 (main win shipped, rest catalogued).**
+    SHIPPED: solid rects packed 2B/rect `[x<<2|y, w<<2|h]` (emitter
+    convert_room.py with range assert; EnterRoomB2 `.EBrcW` unpacks to
+    the 4B ZP walk form — walkers/cache untouched; HotOverlapBody +
+    BuildColupF hot offsets ×2; test_laser_wall hot poke ×2).
+    models_data 345→269B (data_size); bank2 window 397→321 of 427B
+    (slack 30→106B), sims + battery green (commit 949583d).
+    Candidate audit: nibble connections ALREADY shipped (levels 1-4);
+    identical-room PF ALREADY deduped (models_data); PF-row RLE moot
+    (band cut left only 9B PF + 2B meta per model); "skip unread
+    level scalars" DISPROVEN — LoadLevel reads all 14 stride bytes;
+    enemy record 4→3B BLOCKED (x/y are 8-bit pixels = 21b and the
+    readers sit in bank0 pre-pad, 1B headroom).
+    Still possible later: RoomDataTable drop PF0 word → derive
+    `PF0 = Rects + 2 + 2*count + 5*hotcount` in EnterRoomB2
+    (−64B raw / ~−34B net; needs a Temp/RectCount scratch audit);
+    RoomEnemies drop ptr → sum counts loop + kernel:522 stride ×2
+    (−32B raw / ~−10B net); pack RightRects (−20B, but ROM-only
+    cell-walk PHM + ball readers = hot path). Note: `tools/
+    explore_laser.py` still parses the old 4B rect stream (stale dev
+    probe, not in battery).
+    **Player:** none today (ROM full = build error, item 27);
+    **Benefit:** ~1-2 more levels fit before spill re-placement
+    (with the #27a free gaps, ~4-6 levels).
 
 ## Rescan checklist (when the batch is closed)
 
