@@ -262,8 +262,10 @@ def asym_checks(rows: list[str]) -> int:
     mem = Mem()
     load_case(mem, rows)
     r = mem.ram
-    # OvM1Block reads TilePF0+14 (M1X) through RoomPF0Lo — bank2 ROM.
-    m1x = BANK2[L2["M0TilePF0"] - 0xF000 + 14]
+    # OvM1Block reads TilePF0+9 (MetaA: m1_col+1 in the high nibble)
+    # through RoomPF0Lo — bank2 ROM; M1X = 8*(m1_col+1)-1, 0 = no M1.
+    m1n = BANK2[L2["M0TilePF0"] - 0xF000 + 9] >> 4
+    m1x = 8 * m1n - 1 if m1n else 0
     r[L2["RoomPF0Lo"] - 0x80] = L2["M0TilePF0"] & 0xFF
     r[L2["RoomPF0Lo"] + 1 - 0x80] = L2["M0TilePF0"] >> 8
     r[L0["EnemyDeadMask"] - 0x80] = 0
@@ -372,7 +374,8 @@ def hot_death_checks(rows: list[str]) -> int:
     r[L0["BombPacked"] - 0x80] = 0
     packed = 0x11                         # rc=0, band0 -> tramp crosses
     r[L0["LineCount"] - 0x80] = packed
-    m1x = BANK2[L2["M0TilePF0"] - 0xF000 + 14]
+    m1n = BANK2[L2["M0TilePF0"] - 0xF000 + 9] >> 4
+    m1x = 8 * m1n - 1 if m1n else 0
     hot_rects = ((0, 1, 2, 1), (16, 1, 2, 1))   # x,y,w,h (4px cols/tile rows)
     checks = 0
     for dead in (0, 0x10):        # strip alive / destroyed (EnemyDeadMask b4)
@@ -484,7 +487,14 @@ def main() -> int:
     # --- Phase 4: asym overlay (packed LineCount) — crossing + px/band ---
     asym = asym_checks(cases[0][1])
     strip = moth_strip_checks()
-    hot = hot_death_checks(cases[0][1])
+    # mid_band_type FEATURE stays (generator fixtures always covered by
+    # test_mid_band_hot); this runtime envelope check is M0-specific
+    # (M0RoomRects/M0TilePF0 below). Model 0 dropped the key 2026-10-08 —
+    # dormant until model 0 sets mid_band_type again.
+    if by_id.get(0, {}).get("mid_band_type"):
+        hot = hot_death_checks(cases[0][1])
+    else:
+        hot = "dormant (model 0 has no mid_band_type)"
     print(f"test_cell_map: OK ({checks} PHM boxes, {moth_checks} moth "
           f"boxes, {asym} asym overlay, {strip} moth-strip, {hot} hot-death, "
           f"{len(cases)} geometries)")

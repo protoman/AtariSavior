@@ -38,16 +38,16 @@ SRC = ROOT / "src"
 BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 # Phase 4: model 0 is the asymmetric test room — force its meta symmetric
-# in THIS run's ROM image so no strip contact fires (M1X=0 skips the LWC
-# M1 tip test; BallX=0 keeps the ball strip out of the marker path).
+# in THIS run's ROM image so no strip contact fires (MetaA nibble 0 skips
+# the LWC M1 tip test; MetaB 0 keeps the ball strip out of the marker path).
 _L2 = {}
 for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
-    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(M0(?:BallX|Band[012]|M1X))\s*$",
+    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(M0(?:MetaA|MetaB))\s*$",
                   _l)
     if _m:
         _L2[_m.group(2)] = int(_m.group(1), 16)
-assert len(_L2) == 5, f"bank2 M0 meta labels missing: {sorted(_L2)}"
-for _n in ("M0BallX", "M0Band0", "M0Band1", "M0Band2", "M0M1X"):
+assert len(_L2) == 2, f"bank2 M0 meta labels missing: {sorted(_L2)}"
+for _n in ("M0MetaA", "M0MetaB"):
     BANKS[2][_L2[_n] - 0xF000] = 0
 
 # Hot (mid_band_type, 2026-10-05) death would corrupt the deterministic

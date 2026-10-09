@@ -3,9 +3,9 @@
 items 3-4 / CHECK 1).
 
 Covers:
-  1. synthetic asymmetric model: resolve_asym_patches + convert_room.lines
-     emit flag, stride-3 right rows with hand-derived CHECK 0 encoder bytes,
-     and a right rect stream;
+   1. synthetic asymmetric model: resolve_asym_patches + convert_room.lines
+      emit packed meta (MetaA/MetaB), stride-3 right rows with hand-derived
+      CHECK 0 encoder bytes, and a right rect stream;
   2. legacy model (no asym_patches field): emission has no asym block and
      is byte-identical to the plain symmetric call;
   3. envelope rejects (fail loudly): >2 patches (two-block cap),
@@ -94,29 +94,19 @@ def main() -> int:
     assert m1_x == 0, f"m1 x {m1_x} != 0 (no side-1 patches)"
     assert asym[0] == "#........." and asym[1] == "..########" \
         and asym[2] == "#.........", asym
-    flag = byte_line(lines, "M90AsymFlag:")
-    assert flag == [1], f"AsymFlag {flag} != [1]"
-    assert byte_line(lines, "M90BallX:") == [87], \
-        f"BallX {byte_line(lines, 'M90BallX:')} != [87]"
-    # meta sits directly after TilePF2 (kernel reads TilePF0+9..+14)
-    assert lines.index("M90AsymFlag:") == lines.index("M90TilePF2:") + 2, \
-        "AsymFlag must be the byte right after TilePF2's .byte line"
-    assert lines.index("M90BallX:") == lines.index("M90AsymFlag:") + 2, \
-        "BallX must be the byte right after AsymFlag's .byte line"
-    # Phase 3 band gate bytes: bands 0+2 patched, band1 stays the mirror
-    assert lines.index("M90Band0:") == lines.index("M90BallX:") + 2, \
-        "Band0 must be the byte right after BallX's .byte line"
-    assert byte_line(lines, "M90Band0:") == [0xFF], "band0 must be $ff"
-    assert byte_line(lines, "M90Band1:") == [0x00], "band1 must be $00"
-    assert byte_line(lines, "M90Band2:") == [0xFF], "band2 must be $ff"
-    # D6 M1 byte (TilePF0+14, always emitted so StageBandTab's blind
-    # `ldy #14` never runs past a sym model's meta): 0 = no M1 patch yet
-    # (side/2-col envelope is a later phase).
-    assert lines.index("M90M1X:") == lines.index("M90Band2:") + 2, \
-        "M1X must be the byte right after Band2's .byte line"
-    assert byte_line(lines, "M90M1X:") == [0], "fixture has no M1 -> M1X 0"
-    assert lines.index("M90RightPF0:") == lines.index("M90M1X:") + 2, \
-        "RightPF0 must follow M1X (meta = 6 bytes, RightPF at +15)"
+    # packed meta: MetaA = (m1_col+1)<<4 | band_mask (bands 0+2 -> $05,
+    # no M1), MetaB = ball_col+1 (col 0 -> 1)
+    assert byte_line(lines, "M90MetaA:") == [0x05], \
+        f"MetaA {byte_line(lines, 'M90MetaA:')} != [05]"
+    assert byte_line(lines, "M90MetaB:") == [0x01], \
+        f"MetaB {byte_line(lines, 'M90MetaB:')} != [01]"
+    # meta sits directly after TilePF2 (kernel reads TilePF0+9..+10)
+    assert lines.index("M90MetaA:") == lines.index("M90TilePF2:") + 2, \
+        "MetaA must be the byte right after TilePF2's .byte line"
+    assert lines.index("M90MetaB:") == lines.index("M90MetaA:") + 2, \
+        "MetaB must be the byte right after MetaA's .byte line"
+    assert lines.index("M90RightPF0:") == lines.index("M90MetaB:") + 2, \
+        "RightPF0 must follow MetaB (meta = 2 bytes, RightPF at +11)"
     assert byte_line(lines, "M90RightPF0:") == [0x00, 0xF0, 0x00]
     assert byte_line(lines, "M90RightPF1:") == [0x00, 0xFF, 0x00]
     assert byte_line(lines, "M90RightPF2:") == [0xC0, 0x0F, 0xC0]
@@ -133,24 +123,20 @@ def main() -> int:
     left = convert_level.rows_from_json({"model_id": 90}, {90: legacy})
     out_b = convert_room.lines(left, prefix="M90", source="test")
     assert out_a == out_b, "legacy emission must be byte-identical"
-    assert byte_line(out_a, "M90AsymFlag:") == [0]
-    assert byte_line(out_a, "M90BallX:") == [0]
-    assert byte_line(out_a, "M90Band0:") == [0], "sym Band0 must be $00"
-    assert byte_line(out_a, "M90Band1:") == [0], "sym Band1 must be $00"
-    assert byte_line(out_a, "M90Band2:") == [0], "sym Band2 must be $00"
-    assert byte_line(out_a, "M90M1X:") == [0], "sym M1X must be $00"
-    assert out_a.index("M90Band0:") == out_a.index("M90BallX:") + 2, \
-        "sym Band0 must still sit after BallX (6-byte meta always present)"
+    assert byte_line(out_a, "M90MetaA:") == [0], "sym MetaA must be $00"
+    assert byte_line(out_a, "M90MetaB:") == [0], "sym MetaB must be $00"
+    assert out_a.index("M90MetaB:") == out_a.index("M90MetaA:") + 2, \
+        "sym MetaB must still sit after MetaA (2-byte meta always present)"
     assert not any("RightPF" in l or "RightRects" in l for l in out_a), \
         "legacy emission must contain no Right block"
 
-    # --- 2b. partial bands: only band0 patched -> $ff, $00, $00 ----------
+    # --- 2b. partial bands: only band0 patched -> MetaA band bit 0 --------
     partial = make_model(patches=[[0, 0, 1]])
     out_p, res_p = emitted(partial)
     assert res_p is not None
-    assert byte_line(out_p, "M90Band0:") == [0xFF], "patched band0 = $ff"
-    assert byte_line(out_p, "M90Band1:") == [0x00], "mirror band1 = $00"
-    assert byte_line(out_p, "M90Band2:") == [0x00], "mirror band2 = $00"
+    assert byte_line(out_p, "M90MetaA:") == [0x01], \
+        "band0 mask bit only -> MetaA $01 (no M1)"
+    assert byte_line(out_p, "M90MetaB:") == [0x01], "ball_col 0 -> MetaB 1"
 
     # --- 2c. M1-only (side=1, no ball): case 2 stack ---------------------
     # BASE tiles: cell3 open in bands 0/2, wall in band1 -> patch bands {0,2}.
@@ -161,16 +147,11 @@ def main() -> int:
     assert asym_m is None, "M1-only keeps the right half a plain mirror"
     assert bx_m == 0, f"ball x {bx_m} != 0 (no right patches)"
     assert m1x_m == 31, f"m1 x {m1x_m} != 31 (left col 3 = 7+8*3)"
-    assert byte_line(out_m, "M90AsymFlag:") == [0], "M1-only flag = 0"
-    assert byte_line(out_m, "M90BallX:") == [0], "M1-only BallX = 0"
-    assert byte_line(out_m, "M90M1X:") == [31], "M1X = 7+8*3"
+    assert byte_line(out_m, "M90MetaA:") == [0x40], \
+        "M1-only: (m1_col+1)=4 in high nibble, band mask 0"
+    assert byte_line(out_m, "M90MetaB:") == [0], "M1-only MetaB = 0 (no ball)"
     assert not any("RightPF" in l or "RightRects" in l for l in out_m), \
         "M1-only: right half is mirror, no Right block"
-    # Band bytes are the BALL gate (ENABL) only -> all off for an M1-only
-    # model; M1 visibility comes from the wall-hide guard, not BandTab.
-    for b in range(3):
-        assert byte_line(out_m, f"M90Band{b}:") == [0], \
-            f"M1-only Band{b} must be $00"
 
     # --- 2d. case 3: side-by-side same band, different x (ball + M1) -----
     # tiles: band0 all open; bands 1/2 wall at cell 8 (M1 wall-hide).
@@ -182,11 +163,9 @@ def main() -> int:
     assert asym_c is not None, "ball patch present -> right rows emitted"
     assert bx_c == 143, f"ball x {bx_c} != 143 (right_col 7 = 87+8*7)"
     assert m1x_c == 71, f"m1 x {m1x_c} != 71 (left col 8 = 7+8*8)"
-    assert byte_line(out_c, "M90BallX:") == [143]
-    assert byte_line(out_c, "M90M1X:") == [71]
-    assert byte_line(out_c, "M90Band0:") == [0xFF], "patched band0 = $ff"
-    assert byte_line(out_c, "M90Band1:") == [0x00]
-    assert byte_line(out_c, "M90Band2:") == [0x00]
+    assert byte_line(out_c, "M90MetaA:") == [0x91], \
+        "(m1_col+1)=9 high nibble | band0 mask -> $91"
+    assert byte_line(out_c, "M90MetaB:") == [0x08], "ball_col 7 -> MetaB 8"
     rc3 = byte_line(out_c, "M90RightRects:")
     assert 0 < rc3[0] <= 4, f"case3 right rects {rc3[0]} outside 1..4"
 

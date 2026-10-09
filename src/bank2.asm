@@ -412,14 +412,27 @@ LaserWallClamp:
     jmp LaserClampDone          ; tip off screen left -> clear (enemy loop)
 .LWtipC:
     sta RectCount               ; tip px scratch (mirror walk re-inits it)
-    ldy #14
-    lda (RoomPF0Lo),Y           ; M1X = 7+8*left_col (0 = no M1 patch)
+    ldy #9
+    lda (RoomPF0Lo),Y           ; MetaA
+    lsr
+    lsr
+    lsr
+    lsr                         ; m1_col+1 (0 = no M1 patch)
     beq .LWm1Skip
     lda EnemyDeadMask
     and #$10                    ; b4 = M1 strip destroyed -> transparent
     bne .LWm1Skip
-    ldy #14
-    lda (RoomPF0Lo),Y           ; reload M1X (dead test clobbered A)
+    ldy #9
+    lda (RoomPF0Lo),Y           ; reload MetaA (dead test clobbered A)
+    lsr
+    lsr
+    lsr
+    lsr
+    asl
+    asl
+    asl
+    sec
+    sbc #1                      ; M1X
     sec
     sbc RectCount                ; M1X - tip
     bcc .LWm1Skip               ; tip > M1X: past the strip's right edge
@@ -664,29 +677,51 @@ PickPlayerFrame:
     jmp ReturnPad              ; sta $1FF6 (via ReturnPad) + rts -> VBL
 
 ; ------------------------------------------------------------------------------
-; StageBandTab — Phase 3 asym ball: copy model meta into bank0 ZP for the cave.
+; StageBandTab — asym meta: decode packed model meta into bank0 ZP for the cave.
 ; Reached from BuildColupF's tail (BCFDarkRun jmp here); ends at ReturnPad so
 ; the VBL jsr returns to bank0 (pads must not nest — no rts here).
 ; WHY here: models_data lives in THIS bank — a bank0 (RoomPF0Lo),Y read
 ; fetches bank0's $F9xx zero pad (the Phase 2 ball block silently read zeros).
-;   BandTab ($ED-$EF) <- TilePF0+11..13 — .Row's per-band ENABL gate.
-;   Temp    ($88)     <- TilePF0+10 (BallX) — VBL ball block after .BgStore
-;                        (0 ⇔ symmetric → skip; verify_build enforces).
+; Packed meta (bugs.md 28 point 1): TilePF0+9 = MetaA = (m1_col+1)<<4 |
+; band_mask (b0-2 = band0/1/2 gates); TilePF0+10 = MetaB = ball_col+1
+; (0 = feature absent). Expanded to the old RAM shapes:
+;   BandTab ($ED-$EF) <- $ff/$00 per-band ENABL gates (.Row ENABL reads
+;                        bit0; the pack's `bit`/`bpl` reads bit7)
+;   Temp    ($88)     <- BallX = 87+8*ball_col (0 ⇔ symmetric → skip;
+;                        verify_build enforces)
+;   CollisionEndX ($8E) <- M1X = 7+8*m1_col (0 = no M1; kill-gated below)
 ; Window: staged every VBL → read by cave → bank1 HUD stomps $ED-$EF after
 ; the cave read → overscan rewrites $88 (joystick) after the ball read.
 ; ------------------------------------------------------------------------------
 StageBandTab:
-    ldy #10
-    lda (RoomPF0Lo),Y
-    sta Temp                    ; BallX (doubles as the asym flag)
-    ldy #11
-    lda (RoomPF0Lo),Y
+    ; --- expand band mask -> BandTab $ff/$00 ×3 (bit0 ENABL + bit7 pack) ---
+    ldy #9
+    lda (RoomPF0Lo),Y       ; MetaA
+    lsr                     ; band0 bit -> carry
+    lda #0
+    rol
+    beq .SBTb0z
+    lda #$ff
+.SBTb0z:
     sta BandTab
-    iny
     lda (RoomPF0Lo),Y
+    lsr
+    lsr                     ; band1 bit -> carry
+    lda #0
+    rol
+    beq .SBTb1z
+    lda #$ff
+.SBTb1z:
     sta BandTab+1
-    iny
     lda (RoomPF0Lo),Y
+    lsr
+    lsr
+    lsr                     ; band2 bit -> carry
+    lda #0
+    rol
+    beq .SBTb2z
+    lda #$ff
+.SBTb2z:
     sta BandTab+2
     ; --- strip destroyed by a bomb? (EnemyDeadMask b3 — StripBlastCheck
     ; set it this overscan) → blank all band gates so the cave renders no
@@ -700,7 +735,7 @@ StageBandTab:
     sta BandTab+1
     sta BandTab+2
 .SBTstripAlive:
-    ; --- D6 M1 (left-col block): TilePF0+14 = M1X -> CollisionEndX ($8E) ---
+    ; --- D6 M1 (left-col block): M1X = 8*(m1_col+1)-1 -> CollisionEndX ($8E) ---
     ; 0 = no M1 patch. Window: this VBL write -> PositionBallM1 reads it
     ; later the same VBL (staged-file pattern like Temp/BallX). Overscan
     ; routines (PHM/LWC/blast/laser) restage their own CollisionEndX values
@@ -710,8 +745,22 @@ StageBandTab:
     ; M1 strip DESTROYED (EnemyDeadMask b4, StripBlastCheck's M1 twin) →
     ; stage 0: PositionBallM1 skips ENAM1, the pack's b3 flag clears, and
     ; both overlay paths (PHM/blast) treat the strip as gone next frame.
-    ldy #14
+    ldy #9
     lda (RoomPF0Lo),Y
+    lsr
+    lsr
+    lsr
+    lsr                     ; m1_col+1 (0 = no M1 patch)
+    beq .M1zero
+    asl
+    asl
+    asl                     ; *8
+    sec
+    sbc #1                  ; 7+8*left_col
+    jmp .M1got
+.M1zero:
+    lda #0
+.M1got:
     sta CollisionEndX
     lda EnemyDeadMask
     and #$10                    ; b4 = M1 strip destroyed (room-scoped)
@@ -719,6 +768,22 @@ StageBandTab:
     lda #0
     sta CollisionEndX
 .M1stage:
+    ; --- BallX = 8*(ball_col+1)+86 -> Temp ($88) ---
+    ; 0 ⇔ symmetric (kernel ball block skips; verify_build enforces).
+    ldy #10
+    lda (RoomPF0Lo),Y       ; MetaB = ball_col+1 (0 = none)
+    beq .SBTnoBall
+    asl
+    asl
+    asl                     ; *8
+    clc
+    adc #86                 ; 87+8*ball_col
+    sta Temp
+    jmp .SBTballDone
+.SBTnoBall:
+    lda #0
+    sta Temp
+.SBTballDone:
     ; --- Phase 4: pack collision overlay byte → CollisionEndY ($8F) ---
     ; b4-b7 = right_col+1, b0-2 = ball band mask, b3 = M1 present
     ; (staged $8E != 0), 0 = symmetric. Cave never
@@ -770,7 +835,7 @@ StageBandTab:
 
 ; ------------------------------------------------------------------------------
 ; TitleSequence — intro ($FD) phase machine (plans/title_bomb_sequence_plan).
-; Cross-bank entry: bank0 TitleSequenceFold (jsr → sta $1FF8 → jmp $F471,
+; Cross-bank entry: bank0 TitleSequenceFold (jsr → sta $1FF8 → jmp $F4AA,
 ; the jmp bytes are mirrored in this bank); tail exits jmp $FBF8 (ReturnPad)
 ; so the bank0 jsr returns. Runs once per frame from TitleIntro. No jsr
 ; inside (fold depth must not nest). Guard: DropTarget == $FD.
@@ -996,9 +1061,18 @@ OvM1Block:
     lda EnemyDeadMask
     and #$10                    ; b4 = M1 strip destroyed → transparent
     bne .OvM1no
-    ldy #14
-    lda (RoomPF0Lo),Y           ; M1X = 7+8ℓ (0 = no M1 patch)
+    ldy #9
+    lda (RoomPF0Lo),Y           ; MetaA
+    lsr
+    lsr
+    lsr
+    lsr                         ; m1_col+1 (0 = no M1 patch)
     beq .OvM1no
+    asl
+    asl
+    asl
+    sec
+    sbc #1                      ; M1X = 7+8*left_col
     sta RectCount               ; scratch M1X (EndX = prologue min col is
                                 ; CollisionEndX — kept intact for HotOverlapFlag)
     lda CollisionX              ; vl
@@ -1187,6 +1261,10 @@ FooterBand:
     sta GRP1
     jmp $FBF8
 
+    ; --- Level-data spill 1 (bugs.md 27): fill gap $F767..$F800 (153B).
+    ; levels_index first — it defines ROOM_NONE for the table includes.
+    include "generated/levels_index.asm"        ; EQUs + LevelDataTable (~56B)
+    include "generated/level_004_rooms.asm"     ; ~72B
     .ds $F800 - *, 0
 FooterFont:
     ; Six 8-pixel slices, top-to-bottom rows are bytes 6..2.
@@ -1277,11 +1355,14 @@ TitleJetSprite:
 TitleJetColors:
     .byte $48, $48, $1E, $48, $08, $48, $48, $48
     .byte $48, $48, $08, $08
+    ; --- Level-data spill 2 (bugs.md 27): fill gap $F901..$F970 (111B) ---
+    include "generated/level_003_rooms.asm"     ; ~104B
     .ds $F970 - *, 0            ; pinned: bank1 .BMWDone jmp operand ($F970)
 M1StripBlast:
     ; Phase 4 M1 strip blast — entered from bank1 BombMarkWalls .BMWDone
     ; via the $F9AC shared pad (`sta $1FF8 / jmp $F970`; 0 pushes). Bank2-
-    ; only: the M1X meta (TilePF0+14) lives in THIS bank's ROM. Window in:
+    ; only: the packed M1 meta (TilePF0+9 MetaA, m1_col+1 nibble) lives in
+    ; THIS bank's ROM. Window in:
     ; CollisionEndX/CellX = blast lo/hi in LEFT-half display cols (0..19) —
     ; the strip's dcols [2ℓ, 2ℓ+1] are in the same frame, no mirror.
     ; RectCount = ORIGINAL screen col from the BMW prologue: >=20 = right-
@@ -1295,13 +1376,16 @@ M1StripBlast:
     lda EnemyDeadMask
     and #$10                    ; b4 already set → no double score
     bne .M1SBout
-    ldy #14
-    lda (RoomPF0Lo),Y           ; M1X (0 = no M1 patch)
+    ldy #9
+    lda (RoomPF0Lo),Y           ; MetaA
+    lsr
+    lsr
+    lsr
+    lsr                         ; m1_col+1 (0 = no M1 patch)
     beq .M1SBout
     sec
-    sbc #7
-    lsr
-    lsr                         ; (M1X-7)/4 = 2ℓ = strip left dcol
+    sbc #1                      ; ℓ = left_col
+    asl                         ; 2ℓ = strip left dcol
     sta CollisionCellY          ; $8D free during BombMarkWalls
     lda CollisionCellX          ; blast hi
     cmp CollisionCellY
@@ -1348,9 +1432,17 @@ OverlayTramp:
     clc
     rts
 
+    ; --- Level data, main window $F9D9..$FBD6 (509B; pads pin the end).
+    ; Level 3 (~104B) spills to the $F901 gap and level 4 + levels_index
+    ; (~128B) to the $F767 gap above (bugs.md 27 — re-place on growth).
     org $F9D9
-    include "generated/levels_data.asm"
-    include "generated/levels.asm"
+    include "generated/models_data.asm"
+    include "generated/level_001_rooms_data.asm"
+    include "generated/level_002_rooms_data.asm"
+    include "generated/level_003_rooms_data.asm"
+    include "generated/level_004_rooms_data.asm"
+    include "generated/level_001_rooms.asm"
+    include "generated/level_002_rooms.asm"
 
 ; ------------------------------------------------------------------------------
 ; ReturnPad ($FBF8) — byte-identical to kernel.asm's copy (sta $1FF6 / rts).
@@ -1362,7 +1454,7 @@ OverlayTramp:
                                  ;   address — jmp operand fetched here after
                                  ;   bank0's sta $1FF8, so bytes must match)
     sta $1FF8
-    jmp $F471                    ; TitleSequence
+    jmp $F4AA                    ; TitleSequence
     .ds $FBE0 - *, 0
     sta $1FF8
     jmp FooterBand

@@ -150,27 +150,25 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     on a hot band never ran the hot-death check (and a hot-only model
     would not even pulse its band). $00 = no blastable parent → never
     dies with a wall (the strip dies via EnemyDeadMask b4 instead).
-    After the TilePF tables EVERY model gets the 6-byte meta block:
-        M<id>AsymFlag:  .byte 0|1    (0 = symmetric: runtime skips ball)
-        M<id>BallX:     .byte 0|87+8*right_col  (staged to Temp, bank2)
-        M<id>Band0/1/2: .byte 00|ff  (TilePF0+11..+13; Phase 3 ENABL gate:
-                        $ff = band differs from its mirror = ball band,
-                        $00 = plain mirror; staged to BandTab $ED-$EF)
-        M<id>M1X:       .byte 0|7+8*left_col  (TilePF0+14; staged to
-                        CollisionEndX $8E by StageBandTab, read by
-                        PositionBallM1 the same VBL; 0 = no M1 patch)
+    After the TilePF tables EVERY model gets a 2-byte packed meta block:
+        M<id>MetaA:  .byte ((m1_col+1)<<4) | band_mask
+                     (b0-2 = band0/1/2 ENABL gates: bit set = band differs
+                      from its mirror = ball band; staged to BandTab $ED-$EF
+                      as $01/$00. m1_col+1: 0 = no M1 patch)
+        M<id>MetaB:  .byte (ball_col+1) or 0
+                     (ball_col: BallX = 87+8*ball_col, staged to Temp $88
+                      via 8*(ball_col+1)+86; 0 = no ball = symmetric)
     bank2 reads this block (StageBandTab in the BuildColupF tail) — a bank0
-    (RoomPF0Lo) read would fetch bank0's $F9xx zero pad. BallX doubles as
-    the flag (0 ⇔ symmetric, enforced by verify_build).
-    Asym models continue with (RightPF0 now at TilePF0+15):
+    (RoomPF0Lo) read would fetch bank0's $F9xx zero pad. M1X = 8*(m1_col+1)-1
+    = 7+8*left_col, staged to CollisionEndX $8E (kill-gated by
+    EnemyDeadMask b3/b4). MetaB=0 ⇔ symmetric (verify_build).
+    Asym models continue with (RightPF0 now at TilePF0+11):
         M<id>RightPF0/1/2:  3 bytes (stride 3; D4: pf_values(reversed(B)))
         M<id>RightRects:    same stream shape as RoomRects; x/w in
                             right-half cell space x2 (x=0 center-adjacent,
                             4px cols), y/band rows; hard-fails above the
                             WallMask budget (4 maskable rects, Risk 1).
-    Symmetric models (asym_rows=None) emit meta 0,0,0,0,0,0 and no Right*
-    block — otherwise byte-identical to pre-D7/Phase-1 output (the M1X byte
-    is the only layout change: always emitted, 0 when no M1 patch).
+    Symmetric models (asym_rows=None) emit meta 0,0 and no Right* block.
     """
     triples = [pf_values(row) for row in rows]
     stride = max(TABLE_STRIDE, len(rows))
@@ -234,37 +232,29 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         table += ["$00"] * (stride - len(table))
         out.append("  .byte " + ", ".join(table))
 
-    # Asym meta at TilePF0+9..+14 — ALWAYS present (bank2 StageBandTab
-    # reads blindly; bank0 gets the staged copies in ZP).
-    out.append(f"{prefix}AsymFlag:")
-    if asym_rows is None:
-        out.append("  .byte 0                  ; 0 = symmetric (mirror cave)")
-        out.append(f"{prefix}BallX:")
-        out.append("  .byte 0                  ; ball x unused when symmetric")
-    else:
-        out.append("  .byte 1                  ; 1 = asymmetric (D6 ball mask)")
-        out.append(f"{prefix}BallX:")
-        out.append(f"  .byte ${asym_ball_x:02x}                  "
-                   f"; D6 ball x = 87+8*right_col ({asym_ball_x})")
-
-    # Phase 3 per-band ENABL gate bytes (TilePF0+11..+13). $ff = this band's
-    # right row is NOT the plain mirror of the left row (has an asym patch),
-    # $00 = plain mirror.
-    for band in range(3):
-        on = asym_rows is not None and \
-            asym_rows[band] != rows[band][::-1]
-        out.append(f"{prefix}Band{band}:")
-        out.append(f"  .byte ${0xff if on else 0:02x}                  "
-                   f"; band {band} ENABL gate ($ff = ball band)")
-
-    # D6 M1 x (TilePF0+14) — ALWAYS emitted so StageBandTab's blind `ldy #14`
-    # read never runs off the end of a sym model's meta into the next model.
-    out.append(f"{prefix}M1X:")
+    # Asym meta at TilePF0+9..+10 — 2 packed bytes, ALWAYS present
+    # (bank2 StageBandTab reads blindly; bank0 gets staged copies in ZP).
+    # MetaA = ((m1_col+1)<<4) | band_mask (b0-2 = band0/1/2 gates);
+    # MetaB = ball_col+1 (0 = no ball). 0 nibbles = feature absent.
+    band_mask = 0
+    if asym_rows is not None:
+        for band in range(3):
+            if asym_rows[band] != rows[band][::-1]:
+                band_mask |= 1 << band
+    m1_col_plus = 0
     if asym_m1_x:
-        out.append(f"  .byte ${asym_m1_x:02x}                  "
-                   f"; D6 M1 x = 7+8*left_col ({asym_m1_x})")
-    else:
-        out.append("  .byte 0                  ; no M1 patch (ENAM1 stays off)")
+        m1_col_plus = ((asym_m1_x - 7) >> 3) + 1
+    out.append(f"{prefix}MetaA:")
+    out.append(
+        f"  .byte ${(m1_col_plus << 4) | band_mask:02x}"
+        "                  ; (m1_col+1)<<4 | band mask")
+    ball_col_plus = 0
+    if asym_ball_x:
+        ball_col_plus = ((asym_ball_x - 87) >> 3) + 1
+    out.append(f"{prefix}MetaB:")
+    out.append(
+        f"  .byte ${ball_col_plus:02x}"
+        "                  ; (ball_col+1), 0 = no ball")
 
     if asym_rows is not None:
         if len(asym_rows) != len(rows) or any(

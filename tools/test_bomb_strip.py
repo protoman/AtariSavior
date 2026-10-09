@@ -21,7 +21,7 @@ Three halves of the fix, driven against the real routines:
 
 3. bank2 StageBandTab: b3 (ball strip dead) blanks BandTab; b4 (M1
    dead) stages M1X=0 and clears the packed b3 presence flag. Expectations
-   are DERIVED from the model meta in bank2.bin (BallX/Band0-2/M1X) so
+   are DERIVED from the model meta in bank2.bin (MetaA/MetaB packed) so
    they track models.json edits.
 
 Both deaths are room-scoped: EnterRoom zeroes EnemyDeadMask.
@@ -125,14 +125,18 @@ assert L1["StripBlastCheck"] == 0xF937, (
 assert L2["M1StripBlast"] == 0xF970, (
     f"M1StripBlast ${L2['M1StripBlast']:04X} != $F970 (pin drift)")
 
-# Model 0 meta (bank2 ROM): BallX+10, Band0-2+11..13, M1X+14 — expectations
-# below are derived from these so the test tracks models.json edits.
+# Model 0 meta (bank2 ROM): MetaA+9 = (m1_col+1)<<4 | band_mask,
+# MetaB+10 = ball_col+1 — expectations below are derived from these so the
+# test tracks models.json edits (packed meta, bugs.md 28 point 1).
 M0 = L2["M0TilePF0"]
 _M0OFF = M0 - 0xF000
-BALLX = BANKS[2][_M0OFF + 10]
-BANDS = tuple(BANKS[2][_M0OFF + 11 + i] for i in range(3))
-BAND_MASK = sum(1 << i for i, b in enumerate(BANDS) if b & 0x80)
-M1X = BANKS[2][_M0OFF + 14]
+META_A = BANKS[2][_M0OFF + 9]
+META_B = BANKS[2][_M0OFF + 10]
+BALLX = 8 * META_B + 86 if META_B else 0    # 87+8*ball_col
+BANDS = tuple(0xFF if META_A & (1 << i) else 0 for i in range(3))
+BAND_MASK = META_A & 0x07
+_m1n = META_A >> 4
+M1X = 8 * _m1n - 1 if _m1n else 0           # 7+8*m1_col
 
 
 def run_bmw(mem: Mem1, bomb_x: int, line_count: int,

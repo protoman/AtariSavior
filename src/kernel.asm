@@ -1724,16 +1724,16 @@ DEYDelta:                      ; A = delta, then add ROM spawn y
 ; ==============================================================================
 ; Room exit handlers — check connection table, switch rooms, reposition player
 ; ==============================================================================
-; Connection table: 4 bytes per room (up, down, left, right), $FF = no exit.
-; After transition: player is placed at the OPPOSITE edge of the new room.
-; Jetpack velocity carries over (matches comparison/hero pattern).
+; Connection table: 2 nibble-packed bytes per room (up<<4|down, left<<4|right),
+; $F = no exit. After transition: player is placed at the OPPOSITE edge of the
+; new room. Jetpack velocity carries over (matches comparison/hero pattern).
 ; GetConnIdx moved to bank1 (leaf_move_plan batch B) — CallPad_GetConnIdx.
 
 ExitRoomDown:
     jsr CallPad_GetConnIdx
-    iny                     ; +1 = down direction
-    jsr FoldIndirect
-    cmp #$ff
+    jsr FoldIndirect         ; +0 = up/down byte
+    and #$0f                 ; down = low nibble
+    cmp #$0f
     beq .NoDown
     jsr EnterRoom
     lda #PLAYER_MIN_Y
@@ -1742,9 +1742,14 @@ ExitRoomDown:
     rts
 
 ExitRoomUp:
-    jsr CallPad_GetConnIdx          ; +0 = up direction
+    jsr CallPad_GetConnIdx          ; +0 = up/down byte
     jsr FoldIndirect
-    cmp #$ff
+    lsr                     ; up = high nibble -> low
+    lsr
+    lsr
+    lsr
+    and #$0f
+    cmp #$0f
     beq .NoUp
     jsr EnterRoom
     lda #PLAYER_MAX_Y
@@ -1754,10 +1759,10 @@ ExitRoomUp:
 
 ExitRoomLeft:
     jsr CallPad_GetConnIdx
-    iny
-    iny                     ; +2 = left direction
+    iny                     ; +1 = left/right byte
     jsr FoldIndirect
-    cmp #$ff
+    and #$0f                 ; left = low nibble
+    cmp #$0f
     beq .NoLeft
     jsr EnterRoom
     lda #PLAYER_MAX_X
@@ -1767,11 +1772,14 @@ ExitRoomLeft:
 
 ExitRoomRight:
     jsr CallPad_GetConnIdx
-    iny
-    iny
-    iny                     ; +3 = right direction
+    iny                     ; +1 = left/right byte
     jsr FoldIndirect
-    cmp #$ff
+    lsr                     ; right = high nibble -> low
+    lsr
+    lsr
+    lsr
+    and #$0f
+    cmp #$0f
     beq .NoRight
     jsr EnterRoom
     lda #PLAYER_MIN_X
@@ -2356,9 +2364,9 @@ ENEMY_TENTACLE = 3
 ENEMY_MOTH     = 4
 LAMP           = 5             ; type-5 enemy record = editor lamp (white square)
 ENEMY_DATA_STRIDE = 6
-LEVEL_COUNT    = 3             ; hand copy of generated LEVEL_COUNT (cmp in
+LEVEL_COUNT    = 4             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $FBA6        ; frozen address of bank2's LevelDataTable
+LEVEL_DATA_ADDR = $F767        ; frozen address of bank2's LevelDataTable
                                 ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
                                 ;  −$FA86 as the ≤2-object room migration
                                 ;  shrank the tables; check_frozen_addrs
@@ -2576,7 +2584,8 @@ OverlayTramp:
 ; $F9C4 & $1FFF = $19C4 ∉ $1FF6-$1FF9; bank0-only, not a fold twin).
 ;   Temp          = staged BallX (bank2 StageBandTab): 0 = symmetric → skip.
 ;                   selector 4 = HMBL/RESPBL, ball x drawn clocks [A-7,A].
-;   CollisionEndX = staged M1X (TilePF0+14): 0 = no M1 patch → skip.
+;   CollisionEndX = staged M1X (MetaA nibble, bank2 StageBandTab):
+;                   0 = no M1 patch → skip.
 ;                   selector 3 = HMM1/RESM1, left-col block x = 7+8*col
 ;                   (passed to SetObjectXPos as M1X+1 — Stella draws 8-wide
 ;                   M1 one clock left of the [A-7,A] player contract).
@@ -2924,7 +2933,7 @@ TitleIntro:
                                 ;   must hold the same sta/jmp bytes)
 TitleSequenceFold:
     sta $1FF8
-    jmp $F471                    ; TitleSequence body — fetched from bank2
+    jmp $F4AA                    ; TitleSequence body — fetched from bank2
     .ds $FBE0 - *, 0
 FooterFold:
     sta $1FF8
@@ -2954,10 +2963,10 @@ CallPad_GetConnIdx:
     jmp $FA26
 CallPad_ClearPFColumn:
     sta $1FF7
-    jmp $FA38
+    jmp $FA37
 CallPad_AddScore:
     sta $1FF7
-    jmp $FA7D
+    jmp $FA7C
 CallPad_IsRoomDark:
     sta $1FF7
     jmp $FC78
@@ -2966,7 +2975,7 @@ CallPad_SetRoomDark:
     jmp $FC9E
 CallPad_UpdateLaserSound:
     sta $1FF7
-    jmp $FAA5
+    jmp $FAA4
 CallPad_BuildColupF:
     sta $1FF8                   ; S5.1: body lives in bank2 (direct rect reads)
     jmp $FC4F

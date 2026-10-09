@@ -120,14 +120,15 @@ def main() -> int:
         r[L0["RcBase"] - 0x80] = 0              # empty cache: buffer = map
         r[L0["PlayerDir"] - 0x80] = 0           # right: tip = CollisionX
         r[L0["EnemyDeadMask"] - 0x80] = dead
-        # M1X via the room-data pointer: body reads (RoomPF0Lo),Y=Y=14.
-        # Stash at $01EE (mirror of ZP $6E): outside the $01FE/$01FF RTS
-        # sentinel aliases ($7E/$7F); body pushes nothing, never writes $6E.
-        # ptr 0 => reads $000E = 0 => M1X = 0.
+        # M1X via the room-data pointer: body reads MetaA (RoomPF0Lo),Y=Y=9
+        # (high nibble = m1_col+1; M1X = 8*nibble-1). Stash at $01E9
+        # (mirror of ZP $69): outside the $01FE/$01FF RTS sentinel aliases
+        # ($7E/$7F); body pushes nothing, never writes $69.
+        # ptr 0 => reads $0009 = 0 => no M1.
         if m1x:
             r[L0["RoomPF0Lo"] - 0x80] = 0xE0
             r[L0["RoomPF0Lo"] + 1 - 0x80] = 0x01
-            r[0x6E] = m1x
+            r[0x69] = ((m1x + 7) >> 3) << 4   # m1_col+1 in the high nibble
         else:
             r[L0["RoomPF0Lo"] - 0x80] = 0
             r[L0["RoomPF0Lo"] + 1 - 0x80] = 0
