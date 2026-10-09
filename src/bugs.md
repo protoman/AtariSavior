@@ -139,7 +139,17 @@ No entry is worked on without user greenlight.
    assumes (visual == hit logic). Sims + battery 20/21 (laser contract
    tests green). **Player gate:** eyeball a live beam/ball vs wall in
    Stella (fire input not scriptable) — should read flush, no
-   near-miss look. **Benefit:** shot visual == hit logic.
+   near-miss look.
+   **Follow-up 2026-10-09 (user: level1 rooms 1+2, close+right, beam
+   continues ALL the way through):** `tools/test_laser_close.py` sweeps
+   RoomX 4..155 × Y ∈ {24,45-straddle,96} × both facings × both rooms
+   (hand-EnterRoom pokes; strip b4 alive): **5472 frames, 3398 cell +
+   99 M1-strip contacts, 0 pass-throughs** — contact logic holds in
+   py65 on the current build. Next: confirm the test ROM includes
+   56fb57d (17:36); if it still reproduces in Stella, capture the
+   EXACT spot (mid-pass shot + player X/Y) — suspect then = a
+   Stella-visual-only path (beam drawn over the wall/strip) that py65's
+   RAM-invariant cannot see. **Benefit:** shot visual == hit logic.
 10. **Cross-bank Temp conflict:** bank1 `Temp=$AD` = bank0 `TickCounter`
     slot — deliberate, allowlisted (`check_equ_sync.ZP_ALLOW`). Fragile
     if either side's frame phase changes.
