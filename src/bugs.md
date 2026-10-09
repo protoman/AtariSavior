@@ -66,6 +66,8 @@ No entry is worked on without user greenlight.
    **Status:** PASSES 2026-10-07 battery — stale, close at rescan.
 6. **M1 block wall-shade stripe** — 8-line `LevelWallColor2` stripe
    inside the yellow M1 block (screenshots/assymetric, 2026-10-06).
+   **Status: FIXED 2026-10-09** (case A park; bomb-window color =
+   accepted residual, future check below).
    **Root cause found 2026-10-09 (two mechanisms):** the stripe is NOT
    PF — COLUPF writes are exactly 3/frame (band starts, py65-measured).
    It is the D6 parked-M1 patch (missile1, `PositionBallM1`, ENAM1
@@ -89,6 +91,9 @@ No entry is worked on without user greenlight.
      COLUP1 by hardware; fix needs ENAM1-off during windows (+2c, same
      budget wall) or a design change (per-band patch enable in .Row
      has slack +3c but doesn't fix the color during the window).
+     **User-tested 2026-10-09: select screen + L3 clean (case A fix
+     verified); bomb drop still shows a bit of color on the asym block
+     = ACCEPTABLE by user — future check only.**
    Cycle-blocked fixes need a 2c `.Line` re-claim first (see kernel
    .Line budget comment — recount from bank0.lst, never trust notes).
    **Player:** darker/wrong-color band across one wall block;
