@@ -11,16 +11,35 @@ No entry is worked on without user greenlight.
 
 ## Open bugs
 
-1. **sim_frame_budget f3 transition frame = 263.20 lines** (2026-10-06,
-   title kernel work). Tolerance 0.15, over by 15c. VBL *work* on f3 is
-   94c LOWER than baseline — pure wall-phase/tick-quant inheritance from
-   the lighter title overscan, not real extra work. Accepted with a
-   documented exception in `_wall_bad` (title→cave transition frame gets
-   ±0.25). Real fix later: find the +15c (probe StartFrame→VBLTimer
-   arm sub-segments) or make title frame phase byte-parity with cave.
-   Family: documented ±56c wall phase slack (2026-10-02 VBL measure notes).
-   **Player:** possible 1-frame flicker/jump entering a level from title.
-   **Benefit:** rock-solid 263-line transition.
+1. **sim_frame_budget f3 transition frame off 263** (filed 2026-10-06 as
+   263.20; re-measured 2026-10-09 as 262.72 — sign flipped when the
+   title flow re-phased, same ±56c wall-phase slack family).
+   **Status: ANALYZED 2026-10-09 — no player-visible effect; the
+   `_wall_bad` ±0.35 exception stays (filing said ±0.25).**
+   Root cause (py65 sub-segment probe: marks at StartFrame /
+   VBLTimer / .WaitVBLANK / .Row|TitleKernel / Overscan): title and
+   cave are two self-consistent sub-line phase loops — title starts at
+   phase 65c (entry 173c), cave at 45c (entry 193c). The entire −21c
+   sits in entry (StartFrame→VBLTimer) = first VSYNC WSYNC stall
+   (76−phase: 10c vs 31c); f3 runs title's entry + cave's pinned rest
+   (vblwork/ker/over all cave-equal on f3) → structurally short; the
+   cave loop re-locks itself by f6, no downstream effect (VBL poll,
+   overscan absorb, SP all normal).
+   Flicker impossible: frame line count = boundary crossings
+   floor(end/76)−floor(start/76) — f3 = 1348−1085 = **263 lines**
+   (start phase 66c ≥ 21c needed to keep 263 → 45c margin; would
+   need span ≤262.13 at this phase to drop a line).
+   Optional metric-only fix (NOT done): cut ~20c from title kernel's
+   post-final-WSYNC tail so both loops lock at phase 45 and the
+   exception can go — title-kernel surgery in the regression-prone
+   zone for zero player gain. Probe method rebuildable from these
+   landmarks (PCs from bank0.lst: StartFrame $F041, VBLTimer $F053,
+   .WaitVBLANK $F0EB, .Row $F0F7, TitleKernel $F9F8, Overscan
+   $F19A; clear `wsync_seen` after each stall).
+   **Player:** none — transition renders the standard 263 lines
+   (filing's "possible 1-frame flicker" cannot trigger at these
+   phases).
+   **Benefit if parity fix done:** sim prints exactly 263.00 on f3.
 2. **test_phase3_ball: frame lines [263,264]** (2026-10-06, M1 `adc #1`
    fix +4c in VBL). User decision: leave. Fix later = find a 4c+ cut on
    the VBL worst path (budget the LATEST-in-path, not the first frame).
