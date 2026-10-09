@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Phase 3 CHECK probe (py65): asymmetric ball path with every model's ball
-meta poked directly in the ROM image (Band0/1/2 = $ff, BallX = 100) — the
-poke simulates resolve_asym_patches output so the probe does not depend on
+"""Phase 3 CHECK probe (py65): asymmetric ball path with every model's
+packed meta poked directly in the ROM image (MetaA = band mask $07,
+MetaB = 2 -> staged BallX = 102) — the poke simulates
+resolve_asym_patches output so the probe does not depend on
 models.json having asymmetric content yet.
 
 Assertions (frames >= 2, after the RESET-pulse title -> game start):
@@ -14,9 +15,9 @@ Assertions (frames >= 2, after the RESET-pulse title -> game start):
     asym VBL growth must not add a scanline);
   * min SP (frames >= 2) >= $F7 (documented whole-run stack guard).
 
-Second run (partial mask, case-1 stacked blocks): Band1 poked $00 while
-Band0/2 stay $ff -> the per-band gate must emit exactly 2 ENABL $ff
-writes per frame (band1 skipped).
+Second run (partial mask, case-1 stacked blocks): MetaA band-mask bit1
+cleared (mask $05) while bits0/2 stay set -> the per-band gate must emit
+exactly 2 ENABL $ff-writes per frame (band1 skipped).
 
 Run: /home/iuri/python3/bin/python3 tools/test_phase3_ball.py
 """
@@ -31,31 +32,33 @@ from test_phase2_ball import Mem, LABELS
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 FRAMES = 60
-BALLX_POKE = 100                 # valid ball x (asym range 87..159)
+META_B_POKE = 2                   # ball_col+1 -> staged BallX = 8*2+86 = 102
 ENABL, RESBL, HMBL = 0x1F, 0x14, 0x24
 
 PC_START = LABELS["StartFrame"]
 
-# bank2 ball-meta labels (models_data.asm) -> poke address
+# bank2 packed-meta labels (models_data.asm) -> poke address
 LAB2 = {}
-_pat = re.compile(r"^\s*\d+\s+([0-9a-f]{4})\s+(M\d+(?:BallX|Band[012]))\b")
+_pat = re.compile(r"^\s*\d+\s+([0-9a-f]{4})\s+(M\d+Meta[AB])\b")
 for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
     _m = _pat.match(_l)
     if _m:
         LAB2.setdefault(_m.group(2), int(_m.group(1), 16))
 if not LAB2:
-    sys.exit("no M*BallX/M*Band labels found in bank2.lst")
+    sys.exit("no M*MetaA/MetaB labels found in bank2.lst")
 
 
 def run(rom: Path, band1: int = 0xFF) -> dict:
     blob = rom.read_bytes()
     assert len(blob) == 16384, f"{rom} is {len(blob)} bytes, want 16K"
     banks = [bytearray(blob[4096 * i:4096 * (i + 1)]) for i in range(4)]
+    # MetaA band mask: band1 parameterized for the partial-mask run
+    mask = 0x07 if band1 else 0x05
     for name, addr in LAB2.items():
-        if name.endswith("BallX"):
-            banks[2][addr & 0xFFF] = BALLX_POKE
-        else:  # Band0/1/2 — Band1 parameterized for the partial-mask run
-            banks[2][addr & 0xFFF] = band1 if name.endswith("Band1") else 0xFF
+        if name.endswith("MetaB"):
+            banks[2][addr & 0xFFF] = META_B_POKE
+        else:  # MetaA
+            banks[2][addr & 0xFFF] = mask
     mem = Mem(banks)
     mpu = m.MPU(memory=mem)
     prev = 0

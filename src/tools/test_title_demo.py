@@ -83,7 +83,11 @@ game_frames = re.findall(r"%[01]{8}", game_frame_a + game_frame_b)
 assert len(copied_frames) == 24
 assert copied_frames == game_frames
 game_colors = section(kernel, "PlayerColTable:", "; --- Level data")
-title_colors = section(bank2, "TitleJetColors:", ".ds $F970 - *, 0")
+# end marker = the spill-comment line (level_003_rooms.asm now sits between
+# TitleJetColors and the old ".ds $F970" pin — bugs.md 27)
+title_colors = section(
+    bank2, "TitleJetColors:",
+    "; --- Level-data spill 2 (bugs.md 27): fill gap $F901..$F970 (111B) ---")
 color_values = {
     name: int(value, 16)
     for name, value in re.findall(
@@ -222,12 +226,18 @@ assert "TitleSequenceFold:" in kernel
 intro = section(kernel, "TitleIntro:", "FooterFold:")
 assert "jsr TitleSequenceFold" in intro                # machine runs per frame
 fold = section(kernel, "TitleSequenceFold:", "    .ds $FBF8 - *, 0")
-assert "sta $1FF8\n    jmp $F471" in fold              # switch to bank2, jump
+# bank0 switches to bank2 and jumps the body; the address drifts with
+# bank2 layout, so parse it from the fold and cross-check twin + .lst.
+m = re.search(r"sta \$1FF8\n    jmp \$([0-9A-Fa-f]{4})", fold)
+assert m, "TitleSequenceFold must sta $1FF8 / jmp <bank2 addr>"
+ts_addr = m.group(1).upper()
 twin = section(bank2, ".ds $FBD6 - *, 0", ".ds $FBE0")
-assert "sta $1FF8\n    jmp $F471" in twin              # same bytes, both banks
+assert f"sta $1FF8\n    jmp ${ts_addr}" in twin, \
+    f"bank2 twin must jmp ${ts_addr} (same bytes, both banks)"
 assert "TitleSequence:" in bank2
 lst = (SRC / "bank2.lst").read_text()
-assert re.search(r"f471\s+TitleSequence\s*$", lst, re.M)   # body at $F471
+assert re.search(rf"{ts_addr.lower()}\s+TitleSequence\s*$", lst, re.M), \
+    f"TitleSequence body must sit at ${ts_addr}"
 ts = section(bank2, "TitleSequence:", "    .ds $F600")
 assert "dec BombTimer" in ts                           # fuse + pause owned here
 assert "lda #240\n    sta BombTimer" in ts            # 240-frame pause

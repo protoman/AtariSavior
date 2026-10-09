@@ -117,37 +117,32 @@ No entry is worked on without user greenlight.
     **Player:** untested flows (unknown until Stella run); known:
     holding RESET past drop-in landing bounces you back to title.
     **Benefit:** verified menu flow, no bounce-back.
-14. **Piece 2: jet art** `art/start_screen.png` (38x40, 1:1 no
-    stretch) — mock approved at `screenshots/title_mock.png`. Art rows
-    have up to 8 runs → pure sprite-slice kernel cannot draw it;
-    choose: PF body + sprite edges, sprite-slice with simplified
-    silhouette, or WRPGRP multi-write (cycle-tuned, risky). Decision +
-    budget plan before coding (kernel rules in AGENTS).
-    **Benefit:** approved artwork on the title screen.
-    **Needs:** your approach pick (PF+sprite / simplified / WRPGRP).
-15. **Piece 3: copyright "(c) Iuri Fiedoruk 2026"** bottom-right, small
-    bitmap font, no antialias (mock: `tools/mock_title.py`). Both P0/P1
-    slots used by title text — needs second reposition phase after text
-    band, or PF (mirror/double-copy issue: PF always shows pattern
-    twice without reflection).
-    **Benefit:** credit line bottom-right on title.
-16. **Title font sizing** — bank font is 8x7 rows; mock used 2x scale
-    chunky. User may want bigger OH-SHOOT-style letters later.
-    **Benefit:** bigger, bolder title letters (your call).
+14. **Jet-art leftovers audit** (2026-10-08 — original jet-art piece
+    CANCELLED, art removed). Grep the tree for dead references:
+    `art/start_screen.png`, `screenshots/title_mock.png`,
+    `tools/mock_title.py`, title-art generators, plan docs (pairs with
+    26). **Player:** none — dev cleanup; **benefit:** no misleading
+    stale refs.
+    — FIXED 2026-10-08: audit clean. `art/start_screen.png` and
+    `tools/mock_title.py` gone; `generated/title_art.asm` already
+    deleted; no code references remain (only history mentions in plan
+    docs). `screenshots/title_mock.png` KEPT deliberately — entry 16
+    uses it as the sizing mock.
+16. **Title font sizing — WORK IT** (2026-10-08 user greenlight).
+    S.A.V.I.O.R. title letters are very small: bank font is 8×7 rows;
+    mock (`screenshots/title_mock.png`) used 2× scale chunky.
+    **Benefit:** bigger, bolder title letters.
+    **Player:** tiny title text today.
 
 ## Backlog (from AGENTS development plan)
 
 17. Per-scanline PF lookup tables for cave patterns (HERO LFA00-style).
     **Benefit:** richer per-row cave texture like HERO.
-18. HUD level indicator (Phase 6 unchecked).
+18. HUD level indicator (2026-10-08 user spec): at the start of a
+    level, show something like **LV001 in place of the score** for the
+    opening moments (design: duration + exact display open).
     **Player:** no level number on screen; **benefit:** player knows
     which level they're on.
-19. Win screen, game over screen, music, screen transitions, difficulty
-    settings (Phase 9).
-    **Benefit:** game can end/start cleanly, with music.
-20. HERO 13+2 sprite technique for HUD text rows; ball ENABL HUD
-    indicators (only score uses the 48px variant so far).
-    **Benefit:** more HUD text/indicators possible.
 21. Residual flicker investigation postponed (user-led) — S6.4-S6.6
     rules prevent making it worse; resume during a rescan.
     **Player:** occasional unexplained flicker in heavy frames.
@@ -173,6 +168,36 @@ No entry is worked on without user greenlight.
     references in a separate cleanup pass; keep out of gameplay-demo
     work.
     **Player:** none — docs only; prevents misleading future work.
+27. **Level-data overflow of bank2's $F9D9-$FBD6 window = build dies
+    `Origin Reverse-indexed`** (2026-10-08, level 4). The 509B window is
+    pinned at the end by the fold pads ($FBD6+, address-fixed twins in
+    every bank). Level 4 + models.json growth took the block to 681B.
+    Stopgap landed 2026-10-08: `convert_level.py --levels` now also
+    emits `generated/levels_index.asm` (EQUs + LevelDataTable tail);
+    bank2.asm spills level 4 + index into the `.ds $F800` fill gap
+    ($F767, 153B) and level 3 into the `.ds $F970` gap ($F901, 111B);
+    the window keeps models + levels 1-2. Remaining slack: window 60B,
+    $F767 25B, $F901 7B, $F840 64B (free), $F5A4 92B (free) — ~2 small
+    levels left, then hand re-place again. Structured fix wanted: (a)
+    verify_build PRE-CHECK that sums the generated block vs window+fills
+    and fails early with the placement map (today: cryptic DASM error at
+    the pad line); and/or (b) convert_level emits its own org+include
+    spill lines from a measured free-gap map, so adding a level never
+    touches bank2.asm; long-term (c) plan P4 (docs/level_bank_plan.md):
+    level data in bank3, per-level bank select. **Player:** build dies
+    with `bank2.asm: error: Origin Reverse-indexed` whenever levels or
+    models grow past the window. **Benefit:** add a level = drop the
+    JSON + build, no asm surgery.
+28. **Level data costs too much ROM per level** (2026-10-08, user).
+    Level 4 = ~72B of tables (6 rooms: 4 conn bytes + enemy records +
+    word pairs each) and models_data is 389B for 12 shared models —
+    total block 681B vs the 509B window (item 27). Find compressions:
+    pack connections 2/room (nibble directions), run-length the PF tile
+    rows (mostly $00/$ff runs), compact enemy records, skip per-level
+    scalars the game never reads, emit one PF stream for identical
+    rooms. **Player:** none today (ROM full = build error, item 27);
+    **Benefit:** many more levels per bank and fewer spill
+    re-placements.
 
 ## Rescan checklist (when the batch is closed)
 

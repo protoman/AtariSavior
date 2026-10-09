@@ -118,9 +118,9 @@ def main() -> None:
         "band rows must be RoomY+2..RoomY+3 (kill-window rows)"
     assert "jmp LWpSetup" in lb, \
         "tip col must go to the ball-strip test (LWpSetup) first"
-    assert "ldy #14" in lb and "(RoomPF0Lo),Y" in lb \
+    assert "ldy #9" in lb and "(RoomPF0Lo),Y" in lb \
         and "sbc RectCount" in lb and "cmp #8" in lb, \
-        "M1 patch-strip tip window [M1X-7, M1X] missing"
+        "M1 patch-strip tip window [M1X-7, M1X] missing (MetaA nibble)"
     assert re.search(r"cmp\s+CollisionEndY[^\n]*\n\s*beq\s+\.LWclear", lb), \
         "row loop must stop after the bottom band row"
     assert re.search(r"^\.LWclear:\s*\n\s*jmp\s+LaserClampDone", lb, re.M), \

@@ -45,6 +45,10 @@ MIN_FRAMES = 300
 
 import os
 SIM_LEVEL = os.environ.get('SIM_LEVEL', '1')   # '0' = boot level/room 0
+# SIM_EXIT=down: after landing + 10 frames, hold Down and pin RoomY near
+# the bottom edge -> ExitRoomDown -> EnterRoom in OVER (the #22 spike
+# class needs a room crossing; the base scenarios never leave room 0).
+EXIT = os.environ.get('SIM_EXIT', '')
 SIM_ROOM = os.environ.get('SIM_ROOM', '1')
 PIN_ROW = os.environ.get('SIM_PINROW') == '1'  # pin RoomY onto enemy row
 FLY = os.environ.get('SIM_FLY', '')    # '1'/'Y' hover enemy Y; 'X' align enemy X (user repro: fly
@@ -77,11 +81,12 @@ OVER_MARKS = {LABELS[_n]: _n for _n in
                'LaserInput', 'BombTick', 'CheckBandTouch',
                'LaserHitTest', 'SetObjectXPos', 'PlayerHitsMap',
                'StepDown', 'StepUp', 'CheckMinerPickup', 'LoseLife',
-               'ExitRoomLeft', 'ExitRoomRight',
+               'ExitRoomLeft', 'ExitRoomRight', 'ExitRoomDown',
+               'ExitRoomUp', 'LoadPFBuffer', 'LoadEnemyRam',
                'CallPad_BombSndDrop', 'CallPad_UpdateBombSound',
                'CallPad_UpdateJetSound', 'CallPad_UpdateLaserSound',
                'CallPad_AddScore', 'CallPad_SetRoomDark',
-               'AddScore', 'EnterRoom')
+               'AddScore', 'EnterRoom', '.WaitOverscan')
               if _n in LABELS}
 mark_events = []                 # (frame, mark, window_cycles) per measurement
 pc_cycles = {}                   # pc -> cycles in CURRENT frame (OVER phase)
@@ -504,6 +509,13 @@ while frame < 440:
                     mem.swcha &= 0xEF       # up thrust (rise to enemy)
             elif k % 12 < 5:
                 mem.swcha &= 0xEF          # up thrust pulse (fly)
+            if EXIT == 'down' and landed_frame is not None \
+                    and landed_frame + 10 <= frame <= landed_frame + 16:
+                # one-shot crossing window (7 frames): pin RoomY at the
+                # bottom edge + hold Down until the exit fires, then release
+                # so later frames measure a CLEAN single-EnterRoom frame.
+                mem.swcha &= 0xDF          # hold Down
+                mem.ram[0x01] = 130        # RoomY at the bottom edge
 
 # ---- report ----
 print(f'\nmeasured frames: {measured} (landed f{landed_frame})')

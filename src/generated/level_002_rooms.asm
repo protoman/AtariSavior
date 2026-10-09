@@ -14,10 +14,10 @@ LEVEL2_RoomDataTable:
   .word M2TilePF0, M2RoomRects ; room 0 (model 2)
   .word M3TilePF0, M3RoomRects ; room 1 (model 3)
 
-; Room connections: up/down/left/right target room index per room ($ff = none).
+; Room connections: 2 bytes/room, nibble-packed (up<<4|down, left<<4|right); $F = none.
 LEVEL2_RoomConnections:
-  .byte ROOM_NONE, $01, ROOM_NONE, ROOM_NONE ; room 0
-  .byte $00, ROOM_NONE, ROOM_NONE, ROOM_NONE ; room 1
+  .byte $f1, $ff ; room 0
+  .byte $0f, $ff ; room 1
 
 ; Enemy data: 1 enemy records across 2 rooms, 4 bytes each (type,x,y,dir).
 LEVEL2_EnemyDataTable:

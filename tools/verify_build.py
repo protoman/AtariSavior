@@ -726,46 +726,34 @@ def check_levels(src: Path) -> None:
             if f"M{mid}TilePF0:" not in mda:
                 continue                      # model not referenced by any room
             asym, ball_x, m1_x = res if res else (None, 0, 0)
-            flag = meta_byte(mid, "AsymFlag")
-            bx = meta_byte(mid, "BallX")
-            if flag is None or bx is None:
-                err(f"model {mid}: AsymFlag/BallX meta missing "
-                    f"(must sit at TilePF0+9/+10 for every model)")
-                continue
-            # Phase A: M1X at TilePF0+14 (staged to CollisionEndX by
-            # StageBandTab; 0 = no M1 patch, 7+8*left_col otherwise).
-            got_m1x = meta_byte(mid, "M1X")
-            if got_m1x is None:
-                err(f"model {mid}: M1X meta missing "
-                    f"(must sit at TilePF0+14 for every model)")
-            elif got_m1x != m1_x:
-                err(f"model {mid}: M1X=${got_m1x:02X}, want ${m1_x:02X} "
-                    f"(7+8*left_col, 0 = no M1 patch)")
-            # Phase 3: Band0/1/2 at TilePF0+11..+13 ($ff = right row is not
-            # the plain left-row mirror = ball band; staged by StageBandTab).
-            for bidx in range(3):
-                got = meta_byte(mid, f"Band{bidx}")
-                if asym is None:
-                    want = 0
-                else:
-                    want = 0xFF if asym[bidx] != left[bidx][::-1] else 0
-                if got is None:
-                    err(f"model {mid}: Band{bidx} meta missing "
-                        f"(must sit at TilePF0+{11 + bidx} for every model)")
-                elif got != want:
-                    err(f"model {mid}: Band{bidx}=${got:02X}, want ${want:02X} "
-                        f"($ff iff band differs from its mirror)")
+            # packed meta (bugs.md 28 point 1): MetaA = (m1_col+1)<<4 |
+            # band_mask at TilePF0+9; MetaB = ball_col+1 at +10 (0 = none).
+            band_mask = 0
+            if asym is not None:
+                for bidx in range(3):
+                    if asym[bidx] != left[bidx][::-1]:
+                        band_mask |= 1 << bidx
+            m1n = ((m1_x - 7) >> 3) + 1 if m1_x else 0
+            want_a = (m1n << 4) | band_mask
+            got_a = meta_byte(mid, "MetaA")
+            if got_a is None:
+                err(f"model {mid}: MetaA missing "
+                    f"(must sit at TilePF0+9 for every model)")
+            elif got_a != want_a:
+                err(f"model {mid}: MetaA=${got_a:02X}, want ${want_a:02X} "
+                    f"((m1_col+1)<<4 | band_mask={band_mask})")
+            ball_n = ((ball_x - 87) >> 3) + 1 if ball_x else 0
+            got_b = meta_byte(mid, "MetaB")
+            if got_b is None:
+                err(f"model {mid}: MetaB missing "
+                    f"(must sit at TilePF0+10 for every model)")
+            elif got_b != ball_n:
+                err(f"model {mid}: MetaB=${got_b:02X}, want ${ball_n:02X} "
+                    f"(ball_col+1, 0 = no ball)")
             if asym is None:
-                if flag != 0 or bx != 0:
-                    err(f"model {mid}: symmetric but meta = "
-                        f"(flag={flag}, ballx={bx}), want (0, 0)")
                 if re.search(rf"^M{mid}RightPF\d:", mda, re.M):
                     err(f"model {mid}: symmetric but RightPF block emitted")
                 continue
-            if flag != 1:
-                err(f"model {mid}: asym but AsymFlag={flag}, want 1")
-            if bx != ball_x:
-                err(f"model {mid}: BallX={bx}, want {ball_x} (87+8*right_col)")
             if f"M{mid}RightPF0:" not in mda:
                 err(f"model {mid}: asym model missing RightPF block")
             for reg in range(3):

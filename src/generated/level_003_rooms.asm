@@ -18,14 +18,14 @@ LEVEL3_RoomDataTable:
   .word M7TilePF0, M7RoomRects ; room 4 (model 7)
   .word M1TilePF0, M1RoomRects ; room 5 (model 1)
 
-; Room connections: up/down/left/right target room index per room ($ff = none).
+; Room connections: 2 bytes/room, nibble-packed (up<<4|down, left<<4|right); $F = none.
 LEVEL3_RoomConnections:
-  .byte ROOM_NONE, $01, ROOM_NONE, ROOM_NONE ; room 0
-  .byte $00, $02, ROOM_NONE, ROOM_NONE ; room 1
-  .byte $01, $03, ROOM_NONE, ROOM_NONE ; room 2
-  .byte $02, $04, ROOM_NONE, ROOM_NONE ; room 3
-  .byte $03, $05, ROOM_NONE, ROOM_NONE ; room 4
-  .byte $04, ROOM_NONE, ROOM_NONE, ROOM_NONE ; room 5
+  .byte $f1, $ff ; room 0
+  .byte $02, $ff ; room 1
+  .byte $13, $ff ; room 2
+  .byte $24, $ff ; room 3
+  .byte $35, $ff ; room 4
+  .byte $4f, $ff ; room 5
 
 ; Enemy data: 8 enemy records across 6 rooms, 4 bytes each (type,x,y,dir).
 LEVEL3_EnemyDataTable:

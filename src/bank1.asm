@@ -883,10 +883,10 @@ BombSndExplode:
 
 ; GetConnIdx — stage FetchPtr for the four exit handlers' folds.
 ; Conn table lives in bank2; the fold read happens in the bank0 CALLER's
-; jsr FoldIndirect after return. Returns Y = RoomNo*4, X = 0.
+; jsr FoldIndirect after return. Returns Y = RoomNo*2 (2 packed bytes per
+; room: up/down, left/right), X = 0.
 GetConnIdx:
     lda RoomNo
-    asl
     asl
     tay
     lda LevelConnLo
@@ -1206,10 +1206,10 @@ CallPad_GetConnIdx:
     jmp $FA26
 CallPad_ClearPFColumn:
     sta $1FF7
-    jmp $FA38
+    jmp $FA37
 CallPad_AddScore:
     sta $1FF7
-    jmp $FA7D
+    jmp $FA7C
 CallPad_IsRoomDark:
     sta $1FF7
     jmp $FC78
@@ -1218,7 +1218,7 @@ CallPad_SetRoomDark:
     jmp $FC9E
 CallPad_UpdateLaserSound:
     sta $1FF7
-    jmp $FAA5
+    jmp $FAA4
 CallPad_BuildColupF:
     sta $1FF8                   ; S5.1: body lives in bank2 (direct rect reads)
     jmp $FC4F

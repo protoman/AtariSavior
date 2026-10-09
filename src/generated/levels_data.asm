@@ -4,4 +4,5 @@
     include "generated/level_001_rooms_data.asm"
     include "generated/level_002_rooms_data.asm"
     include "generated/level_003_rooms_data.asm"
+    include "generated/level_004_rooms_data.asm"
 
