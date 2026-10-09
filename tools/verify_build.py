@@ -29,6 +29,7 @@ Checks:
 
 Usage: verify_build.py [src_dir]
        verify_build.py --sync [src_dir]   (pre-bank0 literal self-heal)
+       verify_build.py --precheck [src_dir]  (level-window fit, pre-dasm)
 """
 import json
 import re
@@ -1058,6 +1059,126 @@ def sync_overscan_literal(src: Path) -> int:
     return 0
 
 
+def data_size(path: Path) -> int:
+    """Bytes a generated pure-data .asm contributes (.byte=1B/op, .word=2B/op)."""
+    n = 0
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.split(";")[0].strip()
+        if line.startswith(".byte"):
+            n += len([o for o in line[5:].split(",") if o.strip()])
+        elif line.startswith(".word"):
+            n += 2 * len([o for o in line[5:].split(",") if o.strip()])
+        elif line.startswith((".ds", ".org", "echo")):
+            warn(f"{path.name}: non-data directive {line!r} — size may be off")
+    return n
+
+
+def bank2_data_slots(bank2: str) -> list[dict]:
+    """Data slots (bugs.md 27): include-blocks terminated by a pad
+    `.ds $ADDR - *, 0`. Returns [{pad, files, org}] where org is the
+    nearest literal `org $X` above the block (exact start) or None."""
+    lines = bank2.splitlines()
+    slots = []
+    for i, raw in enumerate(lines):
+        m = re.match(r"\s*\.ds\s+\$([0-9A-Fa-f]+)\s+-\s+\*\s*,\s*0", raw)
+        if not m:
+            continue
+        files, j = [], i - 1
+        while j >= 0:
+            s = lines[j].strip()
+            if not s or s.startswith(";"):
+                j -= 1
+                continue
+            mi = re.match(r'include\s+"([^"]+)"', s)
+            if mi:
+                files.insert(0, mi.group(1))
+                j -= 1
+                continue
+            break
+        if not files:
+            continue
+        org = None
+        k = j
+        while k >= 0:
+            s = lines[k].strip()
+            if not s or s.startswith(";"):
+                k -= 1
+                continue
+            mo = re.match(r"org\s+\$([0-9A-Fa-f]+)", s)
+            if mo:
+                org = int(mo.group(1), 16)
+            break
+        slots.append({"pad": int(m.group(1), 16), "files": files, "org": org})
+    return slots
+
+
+def slot_start(slot: dict, labels: dict[str, int], src: Path) -> tuple[int | None, str]:
+    if slot["org"] is not None:
+        return slot["org"], "org literal"
+    p = src / slot["files"][0]
+    if not p.exists():
+        return None, f"{slot['files'][0]} missing"
+    for raw in p.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):", raw.split(";")[0].strip())
+        if m:
+            addr = labels.get(m.group(1))
+            if addr is None:
+                return None, f"label {m.group(1)} not in bank2.lst"
+            return addr, m.group(1)
+    return None, f"no label in {p.name}"
+
+
+def check_level_window(src: Path) -> None:
+    """--precheck (build.sh, before dasm bank2): fit generated level/model
+    blocks into bank2's data slots. Fails early with the placement map
+    instead of DASM's cryptic `Origin Reverse-indexed` at the pad line.
+    Slot starts: `org` literal (exact) or first label of the block in
+    bank2.lst (from the last successful build — exact while bank2 code
+    is unchanged, which holds for the JSON-only growth that overflows)."""
+    bank2_p = src / "bank2.asm"
+    if not bank2_p.exists():
+        err("bank2.asm not found")
+        return
+    labels: dict[str, int] = {}
+    lst = src / "bank2.lst"
+    if lst.exists():
+        labels, _ = parse_lst(lst.read_text(errors="replace").splitlines())
+    slots = bank2_data_slots(bank2_p.read_text(encoding="utf-8"))
+    if not slots:
+        err("no include-block data slots found in bank2.asm")
+        return
+    print("window fit map (bank2 data slots):")
+    for s in slots:
+        sizes, missing = [], False
+        for f in s["files"]:
+            p = src / f
+            if not p.exists():
+                err(f"slot ${s['pad']:04X}: {f} missing — run convert_level first")
+                missing = True
+                continue
+            sizes.append((f, data_size(p)))
+        if missing:
+            continue
+        used = sum(sz for _, sz in sizes)
+        start, how = slot_start(s, labels, src)
+        if start is None:
+            warn(f"slot ${s['pad']:04X}: start unknown ({how}) — gate skipped, "
+                 f"used {used}B")
+            continue
+        cap = s["pad"] - start
+        slack = cap - used
+        detail = ", ".join(f"{Path(f).name} {sz}B" for f, sz in sizes)
+        flag = "" if slack >= 0 else "  <-- OVERFLOW"
+        print(f"  ${start:04X}..${s['pad']:04X}  used {used}/{cap}B  "
+              f"slack {slack}B  [{detail}]{flag}")
+        if slack < 0:
+            err(f"slot ${s['pad']:04X} overflows: {used}B > {cap}B "
+                f"(start ${start:04X} via {how}) — move data to another gap "
+                f"or trim; see map above")
+        elif slack < 8:
+            warn(f"slot ${s['pad']:04X} nearly full: slack {slack}B")
+
+
 def main() -> int:
     argv = sys.argv[1:]
     if argv and argv[0] == "--sync":
@@ -1068,6 +1189,19 @@ def main() -> int:
         src = (Path(argv[1]) if len(argv) > 1
                else Path(__file__).resolve().parent.parent / "src")
         return sync_overscan_literal(src)
+    if argv and argv[0] == "--precheck":
+        src = (Path(argv[1]) if len(argv) > 1
+               else Path(__file__).resolve().parent.parent / "src")
+        check_level_window(src)
+        for w in WARNS:
+            print(f"  WARN: {w}")
+        for e in ERRORS:
+            print(f"  ERROR: {e}")
+        if ERRORS:
+            print(f"window precheck: FAILED ({len(ERRORS)} error(s))")
+            return 1
+        print("window precheck: OK")
+        return 0
     src = (Path(argv[0]) if argv
            else Path(__file__).resolve().parent.parent / "src")
     check_rom(src)
