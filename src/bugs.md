@@ -272,9 +272,14 @@ No entry is worked on without user greenlight.
     start (org literal exact / first label from bank2.lst), prints
     the placement map with slack per slot (now 37/19/30B) and fails
     early on overflow (verified with an injected +40B spill). Still
-    open: (b) convert_level emits its own org+include spill lines
-    from a measured free-gap map, so adding a level never touches
-    bank2.asm; long-term (c) plan P4 (docs/level_bank_plan.md):
+    open: (b) DONE 2026-10-09: `convert_level --levels` now emits
+    `generated/spill_*.asm` include-lists from a fixed slot map
+    (first-fit, big levels first, index first per slot) — bank2.asm
+    carries one static include per gap (F767/F901/window + new F840
+    slot, 64B) and adding a level never edits bank2.asm; precheck
+    flattens nested includes before measuring. $F5A4 (92B) stays
+    unusable: it assembles before levels_index defines ROOM_NONE.
+    long-term (c) plan P4 (docs/level_bank_plan.md):
     level data in bank3, per-level bank select.
     **Player:** build dies with `bank2.asm: error: Origin
     Reverse-indexed` whenever levels or models grow past the window.

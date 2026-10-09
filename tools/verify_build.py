@@ -1112,6 +1112,25 @@ def bank2_data_slots(bank2: str) -> list[dict]:
     return slots
 
 
+def flatten_includes(files: list[str], src: Path, depth: int = 0) -> list[str]:
+    """#27b: spill_*.asm files are include-lists — expand to data files
+    (recursive; generated data files never contain includes themselves)."""
+    out: list[str] = []
+    for f in files:
+        p = src / f
+        nested: list[str] = []
+        if depth < 3 and p.exists():
+            for raw in p.read_text(encoding="utf-8").splitlines():
+                mi = re.match(r'\s*include\s+"([^"]+)"', raw)
+                if mi:
+                    nested.append(mi.group(1))
+        if nested:
+            out += flatten_includes(nested, src, depth + 1)
+        else:
+            out.append(f)
+    return out
+
+
 def slot_start(slot: dict, labels: dict[str, int], src: Path) -> tuple[int | None, str]:
     if slot["org"] is not None:
         return slot["org"], "org literal"
@@ -1149,6 +1168,7 @@ def check_level_window(src: Path) -> None:
         return
     print("window fit map (bank2 data slots):")
     for s in slots:
+        s["files"] = flatten_includes(s["files"], src)   # #27b spill lists
         sizes, missing = [], False
         for f in s["files"]:
             p = src / f
@@ -1162,6 +1182,8 @@ def check_level_window(src: Path) -> None:
         used = sum(sz for _, sz in sizes)
         start, how = slot_start(s, labels, src)
         if start is None:
+            if used == 0:
+                continue                      # #27b empty spill slot — no gate
             warn(f"slot ${s['pad']:04X}: start unknown ({how}) — gate skipped, "
                  f"used {used}B")
             continue

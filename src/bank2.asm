@@ -1416,8 +1416,7 @@ FooterBand:
 
     ; --- Level-data spill 1 (bugs.md 27): fill gap $F767..$F800 (153B).
     ; levels_index first — it defines ROOM_NONE for the table includes.
-    include "generated/levels_index.asm"        ; EQUs + LevelDataTable (~56B)
-    include "generated/level_004_rooms.asm"     ; ~72B
+    include "generated/spill_F767.asm"           ; #27b: index + level files, placed by convert_level
     .ds $F800 - *, 0
 FooterFont:
     ; Six 8-pixel slices, top-to-bottom rows are bytes 6..2.
@@ -1440,6 +1439,8 @@ TitleBlinkColors:
     ; Copy of kernel BombBlinkColors ((60-BombTimer)&3): black/yellow/red/yellow
     .byte COLOR_CAVE_BG, COLOR_HOT_Y, COLOR_HOT_R, COLOR_HOT_Y
 
+    .ds $F840 - *, 0            ; #27b level spill slot (64B; empty until
+    include "generated/spill_F840.asm" ;  convert_level places a level here)
     .ds $F880 - *, 0
 TitlePlayerBand:
     ; Frame pick, mirror, bomb flag + colors live in TitleBandPrep (same
@@ -1508,8 +1509,8 @@ TitleJetSprite:
 TitleJetColors:
     .byte $48, $48, $1E, $48, $08, $48, $48, $48
     .byte $48, $48, $08, $08
-    ; --- Level-data spill 2 (bugs.md 27): fill gap $F901..$F970 (111B) ---
-    include "generated/level_003_rooms.asm"     ; ~104B
+    ; --- Level-data spill 2 (bugs.md 27/27b): fill gap $F901..$F970 (111B) ---
+    include "generated/spill_F901.asm"        ; #27b: placed by convert_level
     .ds $F970 - *, 0            ; pinned: bank1 .BMWDone jmp operand ($F970)
 M1StripBlast:
     ; Phase 4 M1 strip blast — entered from bank1 BombMarkWalls .BMWDone
@@ -1594,8 +1595,7 @@ OverlayTramp:
     include "generated/level_002_rooms_data.asm"
     include "generated/level_003_rooms_data.asm"
     include "generated/level_004_rooms_data.asm"
-    include "generated/level_001_rooms.asm"
-    include "generated/level_002_rooms.asm"
+    include "generated/spill_window.asm"       ; #27b: level rooms, placed by convert_level
 
 ; ------------------------------------------------------------------------------
 ; ReturnPad ($FBF8) — byte-identical to kernel.asm's copy (sta $1FF6 / rts).
