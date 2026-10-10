@@ -2096,15 +2096,14 @@ LaserClampDone:
     lda EnemyRamX,X
     sec
     sbc CollisionX
-    clc
-    adc #7                      ; kill == drawn overlap: beam [A-7,A] x
-                                ; enemy [eX-7,eX] (SAME arg-box convention
-                                ; CheckEnemyHit uses for RoomX vs eX) ->
-                                ; eX in [A-7, A+7] <=> (eX-A)+7 in [0..14].
-                                ; S6b's adc #14 was a 7px-LEFT shift: it
-                                ; killed empty space left of the beam and
-                                ; missed every enemy overlapping the tip
-                                ; from the right (laser_collision_tip_bug).
+    bcc .LHNext                 ; #9 draw=[A,A+7] (arg+8): overlap of beam
+                                ; [A,A+7] x enemy [eX-7,eX] => eX in
+                                ; [A, A+14] <=> eX-A in [0..14]; eX < A =
+                                ; enemy fully LEFT of the beam. (Old
+                                ; adc#7 boxed 7px left of the drawn beam
+                                ; = invisible kills + right misses —
+                                ; laser_collision family, realigned
+                                ; 2026-10-09 with the nose-forward draw.)
     cmp #15                     ; bcs -> miss
     bcs .LHNext
 .LHHit:
