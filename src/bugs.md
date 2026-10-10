@@ -182,7 +182,16 @@ No entry is worked on without user greenlight.
    neutral, no LWC/fold changes. Models updated in test_laser_wall +
    test_laser_close (eye_of). Sims green, battery 20/21 (laser tests
    pass). **Player Stella gate:** close-range right-facing fire — beam
-   flush at every wall, no pass-through, no behind-player stub. **Player:** laser passes through blocks at close range
+   flush at every wall, no pass-through, no behind-player stub.
+   **+ stub v3 2026-10-09 (user re-report):** draw arg → LaserX+8 →
+   drawn = [LaserX, LaserX+7] = nose-forward beam (starts at the
+   sprite's lit rear = AT the head, nothing behind it); at a flush
+   wall drawn = [F-1, F+6] inside the >=8px wall tile → zero bleed any
+   wall width (PF hides in-wall px, visible tip = F-1). LHT kill
+   window realigned to the drawn box: eX in [A, A+14] (old [A-7,A+7]
+   = 7px-left box = invisible kills / right misses — laser_collision
+   family); test_laser_s4 model + asserts updated, battery 20/21.
+   **Player:** laser passes through blocks at close range
    (right-facing), sync + async; **Benefit:** beam stops at every wall,
    visual == hit logic. **Status: OPEN, design recorded, budget-gated.**
 10. **Cross-bank Temp conflict:** bank1 `Temp=$AD` = bank0 `TickCounter`
