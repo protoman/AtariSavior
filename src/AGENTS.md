@@ -101,6 +101,9 @@ explicitly says to look at the parent folder.
 - The env's "workspace root" (`.../ai_savior/`) is a git/tooling anchor,
   NOT the project root. Git commands (`git status`, `git add`) still run
   from wherever the repo lives, but file reads/writes/globs stay in `src/`.
+- **User counts rooms/levels from 1** ("level 1 room 2" = `room_id` 1 /
+  model 1 in 0-based data, file `level_001_room_002.txt`). When talking
+  to the user, always use 1-based room/level numbers.
 
 **Why this rule exists:** 2026-10-06 — the user's screenshot path
 `screenshots/assymetric/bug_adjust_collision.png` was resolved against the

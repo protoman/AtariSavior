@@ -180,6 +180,37 @@ No entry is worked on without user greenlight.
    flush; beam holds at the eye while the tile is solid.
    **Benefit:** the "dumb contact missile" contract now also covers
    the mid-tile-eye geometry, not just the tip-in-wall case.
+10. **Bomb leaves a 1-col wall sliver beside the punched thin wall**
+    (user 2026-10-10, `screenshots/bugs/sync_wall_half_destroyed.png`).
+    Level 1 room 2 (room_id 1, model 1, symmetric): thin wall rect
+    `(12,1,2,1)` = display cols 12-13 row1. After a bomb on it: cols
+    12-13 punch clean (+75 once, WallMask correct), BUT col 14 (and
+    its reflection col 25) renders as a full-height wall sliver in the
+    middle band — "removes only half of it" (user).
+    **Measured (pixel scan of the PNG, scale 4.0 px/TIA, borders
+    calibrate exactly):** middle-band wall runs = cols 0-1 (border),
+    14, 25 (mirror of 14), 38-39 (mirror border). ROM verified: bank2
+    `M1TilePF2` row1 = `$03` (bits0-1 = cols12-13 ONLY — bit2/col14
+    never set); rects match source; `ClearPFColumn` masks are
+    AND-only (col14 mask `$FB` clears bit2, cannot set it); sole
+    PF2Buf writers = EnterRoom 9-byte load + AND-punch; `PairGone`
+    is idx4-only (model1 has 4 rects, never runs); M1StripBlast
+    skips (MetaA=$00). **An AND-punch cannot produce a set bit2 —
+    the col14 wall bit has no known writer.** Same symptom family as
+    the pre-5727966 "col x+1 garbage punch" (entry 7) but that left
+    col x+1; this leaves col x+2 with an "impossible" bit — different
+    mechanism.
+    **Status: ANALYZE NEEDED 2026-10-10.** Next step = py65 write
+    trace on `$C9-$CB` (PF2Buf rows) through the bomb 1→2 edge in
+    room 1: dump the row1 byte before/after each `sta`, catch the
+    writer that sets bit2. Suspects: stale `LineCount` row index in
+    `ClearPFColumn` (X=row loop bounds vs col confusion), ZP alias
+    write to `$CA` outside the doc'd map, or cache-rect x drift at
+    runtime.
+    **Player:** the thin wall looks half-destroyed; the sliver is
+    cosmetic-only? (collision = cache rects, cols14 not in any rect —
+    needs a walk-through check) or a real invisible blocker.
+    **Benefit:** bombs clear thin walls completely again.
 
 ## Latent risks (verified once, fragile)
 
