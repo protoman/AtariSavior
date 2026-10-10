@@ -349,6 +349,11 @@ LASER_ARMED     = %00000010     ; b1: kernel .Line beam gate (BeamMask $02
                                 ;   shares b1 — ENAM0 = BeamMask & LaserState)
 LASER_ON        = %10000010     ; b7+b1 in one ora (held AND armed)
 LASER_DARK      = %00111100     ; b5-2: RoomDarkMask rooms 4-7 (IsRoomDark/SetRoomDark)
+LASER_REARM     = %00000001     ; b0: contact consumed last frame — next held
+                                ;   frame re-tests the eye instead of stepping
+                                ;   (flush hold: eye mid-tile, +4 would jump
+                                ;   out with no candidate ever inside the wall)
+LASER_KEEP      = %00111101     ; dark|rearm: prologue store preserving b0
 
 ; Colors (emulator-aware: hue<<4 | luma<<1)
 COLOR_PLAYER    = $48           ; red = sprite row0: stale VBLANK color on the
@@ -3509,7 +3514,8 @@ SetObjReflection:
 ;   release: b7/b1 cleared in the prologue, HMM0 = 0; LaserX kept (next
 ;     press edge re-anchors).
 ; PIXEL MODEL (unchanged): SetObjectXPos arg A -> drawn M0 = [A-7, A].
-; LaserState: b7 held, b6 prev (press edge), b5-2 dark, b1 = .Line gate
+; LaserState: b7 held, b6 prev (press edge), b5-2 dark, b1 = .Line gate,
+; b0 = rearm (contact consumed last frame — re-test the eye next frame)
 ; (BeamMask = $02 shares b1 — ENAM0 = BeamMask & LaserState; the old
 ; LaserBeamOn $02 byte now holds LaserX, there was no free ZP byte).
 ; S5.4: kill/lamp/wall ACTIONS run here (pad body returns only A).
@@ -3519,8 +3525,8 @@ SetObjReflection:
 LaserInput:
     ldx LaserState             ; X = old state (b7 held, b6 prev, b5-2 dark)
     txa
-    and #LASER_DARK            ; keep dark bits (else this store wipes them)
-    sta LaserState
+    and #LASER_KEEP            ; keep dark bits + b0 rearm (else this store
+    sta LaserState             ; wipes them — inc at contact must survive)
     txa
     and #LASER_HELD
     lsr                         ; old held (b7) -> new prev (b6)
@@ -3530,11 +3536,6 @@ LaserInput:
     bpl .LaserFire              ; pressed: arm + travel (released sits right
                                 ; below — moved here so the cap code could
                                 ; not push .LaserReleased past bmi's ±127)
-.LaserWallOff:                 ; #9 (user): wall in front -> NO beam,
-    lda LaserState             ;   buzz only. Clear b1 (armed): kernel
-    and #$FD                   ;   ENAM0 = BeamMask & LaserState = 0 next
-    sta LaserState             ;   frame; b7 stays -> sound keeps buzzing.
-                                ;   Falls into the release tail (HMM0=0).
 .LaserReleased:
     lda #0
     sta HMM0                    ; HMOVE re-applied stale fine offset
@@ -3547,21 +3548,27 @@ LaserInput:
     txa
     and #LASER_HELD
     beq .LaserInit              ; press edge: (re)start at the eye
+    ; --- rearm (b0): last frame a contact consumed the missile — re-test
+    ; the EYE instead of stepping. Flush hold: eye sits mid-tile and the +4
+    ; step would jump out of the 8px wall with no candidate ever inside it
+    ; (pass-through, 2026-10-10). dec clears b0; bne .LaserInit: state ≠ 0
+    ; here (b7 held from the ora above). Open-hold cadence alternates
+    ; travel-consume / eye-retest = 1 LWC per frame, same as before.
+    lda LaserState
+    and #LASER_REARM
+    beq .LAdvStep
+    dec LaserState
+    bne .LaserInit
     ; --- travel: +/-4 px toward the facing (PlayerDir live), capped at the
     ; old S3 sweep extent (SweepOff max 16: right tip <= RoomX+20, left
     ; floor max(RoomX-20,0)) — past the cap restarts at the eye, the
     ; triangle-loop feel of the sweep (user: beam "moved way beyond the
     ; limit"). RectCount = free scratch (LWC re-owns it for its row walk).
-    lda PlayerDir
-    bne .LAdvL
+.LAdvStep:
+    ldy PlayerDir
     lda LaserX
     clc
-    adc #4
-    jmp .LAdvS
-.LAdvL:
-    lda LaserX
-    sec
-    sbc #4
+    adc StepDelta,y             ; dir 0 = +4, dir 1 = -4 (table after eye)
 .LAdvS:
     sta RectCount               ; candidate (not committed yet)
     cmp #160                    ; right edge >=160 OR left underflow wrap
@@ -3601,13 +3608,23 @@ LaserInput:
     cmp #$50
     beq .LaserKill
     cmp #2
-    beq .LaserWallOff           ; #9 wall in front: no beam, buzz only
+    beq .LaserContact           ; wall CONSUMES the missile (user 2026-10-10):
+                                ;   same as kill minus score — restart at
+                                ;   the eye THIS frame, buzz keeps (b7).
+                                ;   #9's blank + the wall-center hold clamp
+                                ;   both superseded: a contact missile is
+                                ;   consumed by walls. No hold state, no
+                                ;   cap reorder, no pass-through possible.
     jsr CallPad_SetRoomDark     ; lamp crash = player-body touch (no kill)
     jmp .LaserContact
 .LaserKill:
     jsr CallPad_AddScore        ; A = $50 BCD (dead bit already set in body)
 .LaserContact:
     jsr .LaserEye               ; consumed -> restart at the eye THIS frame
+    inc LaserState              ; b0 rearm: next held frame re-tests the eye
+                                ; (b0 was 0: travel only runs with b0 clear,
+                                ; rearm dec'd it before this init) — flush
+                                ; hold otherwise steps +4 out of the tile
 .LaserPos:
     lda LaserX
     ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
@@ -3634,6 +3651,9 @@ LaserInput:
     sbc #4
     sta LaserX
     rts
+
+StepDelta:                      ; travel step per PlayerDir (0=right, 1=left)
+    .byte 4, 252
 
     .ds $FFE6 - *, 0            ; pin TallyTramp (BeamMask moved to $FExx
                                  ; freed 12B here — drift must not move it)

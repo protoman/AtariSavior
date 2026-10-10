@@ -11,6 +11,13 @@ checks every frame against an independent travel state machine
     underflow wrap) or cand past the old-sweep cap (right > RoomX+20,
     left < max(RoomX-20,0)) -> restart at the eye; else cand.
     eye = right min(RoomX+4,159) / left RoomX-4.
+    rearm (LaserState b0, 2026-10-10): a contact consume sets b0 — the
+    NEXT held frame re-tests the eye instead of stepping (flush hold:
+    eye mid-tile, +4 would jump out of the 8px wall with no candidate
+    ever inside it). b0 is captured at LaserInput's rts (inc runs at
+    .LaserContact, before the rts): rearm frame want = eye(RoomX)
+    (.LaserInit recomputes the eye from the live RoomX) and LaserX ==
+    eye on every rearm frame.
   capture at LaserInput's rts:
     CollisionX ($8B) must EQUAL the model's next travel value — it is
       staged from the post-travel LaserX before the hit test and contact
@@ -75,6 +82,7 @@ I_ROOMX, I_ROOMY, I_DIR, I_LASERX = 0x00, 0x01, 0x02, 0x03  # $83 = LaserX
 I_BOMBP, I_DEADMASK = 0x35, 0x3A
 I_VYLO, I_VYHI = 0x13, 0x14
 I_COLLX = 0x0B                  # $8B
+I_LSTATE = 0x40                 # $C0 LaserState — b0 rearm captured at rts
 
 # LaserInput's own rts sites: capture CollisionX/LaserX there (between
 # LHT and those rts only SetObjectXPos / AddScore run — neither writes
@@ -206,6 +214,7 @@ def main() -> None:
     checked = 0
     contacts = 0
     model = None                              # re-synced every frame
+    rearm = False                             # b0 from the previous rts
     for facing in (0, 1):
         for x in range(4, 156):
             for _ in range(4):                # 4 frames = cap-loop steps
@@ -219,19 +228,24 @@ def main() -> None:
                 while True:
                     step()
                     if mpu.pc in rts_pcs:
-                        cap = (mem.ram[I_COLLX], mem.ram[I_LASERX])
+                        cap = (mem.ram[I_COLLX], mem.ram[I_LASERX],
+                               mem.ram[I_LSTATE] & 0x01)
                     if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
                         break
                 checked += 1
                 if cap is None:
                     mismatches.append(f"X={x} dir={facing}: no LaserInput rts")
                     continue
-                cx, lx = cap
+                cx, lx, b0 = cap
+                eye = eye_of(x, facing)
                 if model is None:             # first captured frame: seed
                     model = lx
+                    rearm = bool(b0)
                     continue
-                want = travel_next(model, x, facing)
-                eye = eye_of(x, facing)
+                if rearm:
+                    want = eye                # rearm: .LaserInit -> eye(RoomX)
+                else:
+                    want = travel_next(model, x, facing)
                 if cx != want:
                     mismatches.append(
                         f"X={x} dir={facing}: CollisionX=${cx:02X} "
@@ -243,6 +257,7 @@ def main() -> None:
                 if lx == eye and want != eye:
                     contacts += 1             # body consumed the missile
                 model = lx                    # re-sync (contact collapses)
+                rearm = bool(b0)              # this frame's inc -> next want
     if mismatches:
         print(f"FAIL: {len(mismatches)} mismatched frames "
               f"(contact-missile travel budget):")

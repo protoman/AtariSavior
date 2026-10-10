@@ -10,15 +10,21 @@ This probe sweeps RoomX across the whole screen, both facings, both rooms
 and two RoomY rows (incl. a band-straddle row), pinning the player like
 test_laser_wall does, and asserts against the game's LIVE state:
 
-  cell invariant: capture = LaserX ($83) at LaserInput's rts;
-      tip = capture (right) / capture-7 (left)
-      if CellSolid(tip, band) for EITHER beam band row  -> capture == eye
-  extension invariants (current-code contract):
+  consume contract (2026-10-10, AGENTS "laser = dumb contact missile"):
+      capture = (LaserX, CollisionX, LaserState) at LaserInput's rts;
+      candidate tip = CollisionX (right) / CollisionX-7 (left)
+      CollisionX = the position LHT tested (staged pre-contact, LWC does
+      not modify it) — LaserX alone cannot detect contact anymore, because
+      the consume restart rewrites it to the eye.
+      if CellSolid(candidate tip, band) for EITHER beam band row
+          -> LaserX == eye  AND  b1 armed  AND  buzz live (no suppress)
+      else -> LaserX in (candidate, eye)   (travel committed / cap reset)
+  extension invariants (same shape, candidate-based):
       LWtipC left strip: tip in [M1X-7, M1X], strip alive (b4 clear)
-          -> capture == eye        (M1X = (MetaA>>4)<<3)-1)
+          -> consume          (M1X = (MetaA>>4)<<3)-1)
       LWpSetup band strip: pack=$84 !=0, pack & OvHead[top] & OvTail[bot],
           d-tip - pL in {0,1} with pL = 18 + (pack>>4)*2
-          -> capture == eye
+          -> consume
 
 Rooms are switched by hand (the game rebuilds PF/rect/pointer state only
 in EnterRoom): at each block start we poke RoomPF0Lo/Hi, the 9 PF buffer
@@ -64,6 +70,7 @@ PC_STARTFRAME = L0["StartFrame"]
 
 # ZP indices (addr & 0x7F) — from bank0.lst U00xx decl lines
 I_ROOMX, I_ROOMY, I_DIR, I_LASERX = 0x00, 0x01, 0x02, 0x03   # $80..$83
+I_COLLX = 0x0B                      # $8B CollisionX (LHT candidate)
 I_PACK = 0x04                       # $84 LineCount (overlay pack after HUD)
 I_RRLO, I_RRHI = 0x10, 0x11         # $90/$91 RoomRects ptr
 I_VYLO, I_VYHI = 0x13, 0x14         # $93/$94
@@ -241,14 +248,22 @@ def main() -> None:
                         while True:
                             step()
                             if mpu.pc in rts_pcs:
-                                cap = mem.ram[I_LASERX]
+                                cap = (mem.ram[I_LASERX],
+                                       mem.ram[I_COLLX],
+                                       mem.ram[0x40])   # LaserX, CollisionX,
+                                                        # LaserState
                             if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
                                 break
                         if cap is None:
                             continue
                         checked += 1
+                        lx, cx, st = cap
                         eye = eye_of(x, facing)
-                        tip = cap if facing == 0 else cap - 7
+                        # candidate = what LHT tested (CollisionX is staged
+                        # from the pre-contact LaserX; LWC does not modify
+                        # it) — derive contact from THAT, since the consume
+                        # restart rewrites LaserX to the eye.
+                        tip = cx if facing == 0 else cx - 7
                         rows = (band_row_of(y + 2), band_row_of(y + 3))
                         wallish = any(cell_solid(tip, r) for r in rows)
                         # extension: LWtipC left strip window (raw M1X)
@@ -268,41 +283,51 @@ def main() -> None:
                                     wallish = True
                         if wallish:
                             cells_hit += 1
-                            # #9 contract (suppression): wall/strip under the
-                            # tip => beam DISARMED (b1 clear) + HMM0 parked;
-                            # "no laser at all, only the buzz" (b7 kept).
-                            # LaserX intentionally NOT re-eyed anymore.
-                            st = mem.ram[0x40]          # LaserState $C0
-                            h0 = mem.tia[0x22]          # HMM0
-                            if st & 0x02:
+                            # consume contract (2026-10-10, AGENTS Critical
+                            # Rule): the wall CONSUMES the missile — restart
+                            # at the eye THIS frame, beam stays ARMED (b1),
+                            # buzz keeps (b7). No suppress, no hold/clamp.
+                            if lx != eye:
                                 fails.append(
                                     f"r{room} dir{facing} x{x} y{y}: wall "
-                                    f"contact but beam ARMED (LaserState="
-                                    f"${st:02X})")
-                            if h0 != 0:
+                                    f"contact but LaserX={lx} != eye {eye} "
+                                    f"(missile not consumed)")
+                            if not (st & 0x02):
                                 fails.append(
                                     f"r{room} dir{facing} x{x} y{y}: wall "
-                                    f"contact but HMM0=${h0:02X} not parked")
-                            # buzz must LIVE while suppressed (b7 held):
+                                    f"contact but beam DISARMED (LaserState="
+                                    f"${st:02X}) — no suppress allowed")
+                            # buzz must LIVE while held (b7):
                             # ch0 = LASER_AUD_C=2 / LASER_AUD_V=9
                             ac = mem.tia[0x15]      # AUDC0
                             av = mem.tia[0x19]      # AUDV0
                             if ac != 2 or av != 9:
                                 fails.append(
                                     f"r{room} dir{facing} x{x} y{y}: buzz "
-                                    f"dead while suppressed (AUDC0=${ac:02X} "
+                                    f"dead (AUDC0=${ac:02X} "
                                     f"AUDV0=${av:02X}, want $02/$09)")
+                        else:
+                            # clear candidate: travel committed it (or the
+                            # miss-arm cap restarted at the eye) — LaserX is
+                            # the candidate or the eye; anything else means
+                            # the bolt got somewhere it was never tested.
+                            if lx not in (cx, eye):
+                                fails.append(
+                                    f"r{room} dir{facing} x{x} y{y}: clear "
+                                    f"candidate but LaserX={lx} not in "
+                                    f"({cx},{eye}) — pass-through?")
     print(f"checked {checked} frames; cell-contact frames={cells_hit}, "
           f"M1-strip frames={ext_hits}")
     if fails:
-        print(f"FAIL: {len(fails)} pass-through violations:")
+        print(f"FAIL: {len(fails)} consume-contract violations:")
         for f in fails[:20]:
             print("  " + f)
         if len(fails) > 20:
             print(f"  ... and {len(fails) - 20} more")
         sys.exit(1)
-    print("test_laser_close: OK (wall/strip tip => beam suppressed: b1 clear "
-          "+ HMM0 parked, both rooms/facings, straddle rows included)")
+    print("test_laser_close: OK (wall/strip tip => missile CONSUMED: "
+          "LaserX==eye, b1 armed, buzz live; clear frames = candidate or "
+          "eye; both rooms/facings, straddle rows included)")
 
 
 if __name__ == "__main__":

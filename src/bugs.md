@@ -151,6 +151,35 @@ No entry is worked on without user greenlight.
    zero player gain — NOT done).
    **Player:** tiny frame-length wobble in the first 2 boot frames
    (usually invisible).
+9. **Laser pass-through on flush wall hold (right-facing)** — user
+   2026-10-10: player walks flush against a 1-tile-width wall, fires,
+   beam emerges past the tile. Full chain: wall-center clamp attempt
+   built + reverted same day (frame lockup from `RectCount` scratch
+   clobber — see AGENTS Critical Rule); consume-on-contact redesign
+   shipped (`beq .LaserContact`) but the residual reproduced in
+   `tools/test_laser_walk_wall.py` (RED commit `1acc120`): flush stop
+   puts the origin AT the rect face so the eye lands mid-tile (8px
+   tile, eye = face+4); travel's first candidate `eye+4` is already
+   past the far edge → clear → committed → the swept cell is never
+   tested → no contact event → no consume.
+   **Status: FIXED 2026-10-10 (Option A — rearm at the eye).**
+   LaserState b0 (`LASER_REARM`): `.LaserContact` `inc`s it after the
+   eye restart; the next held frame `dec`s it and jumps `.LaserInit`
+   (re-tests the eye instead of stepping). Flush hold = 1 LWC/frame,
+   beam held at the eye; open-hold cadence alternates
+   travel-consume/eye-retest = same 1 LWC/frame avg. Travel ±4 unified
+   through `StepDelta` table (frees the bytes; pad to TallyTramp
+   $FFE6 intact). Prologue mask `LASER_KEEP` = dark|rearm (b0 must
+   survive the every-frame store). Walk repro now green (24/24
+   contacts, LX frozen at eye); `test_laser_wall` model rearm-aware
+   (b0 captured at LaserInput rts); `test_room_dark` static guard
+   updated for LASER_KEEP. Left-facing control never ran in the repro
+   (no left-approach interior wall in rooms 0/1 — placement, WARN
+   only).
+   **Player:** laser no longer crosses a 1-tile wall when fired
+   flush; beam holds at the eye while the tile is solid.
+   **Benefit:** the "dumb contact missile" contract now also covers
+   the mid-tile-eye geometry, not just the tip-in-wall case.
 
 ## Latent risks (verified once, fragile)
 

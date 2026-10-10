@@ -33,6 +33,61 @@
   → partial: digit ptrs live in ZP (scorePtr1-6), glyphs stay in ROM ($FD00)
 - Ball (ENABL) for HUD indicators
 
+## Critical Rule: The Laser Is a Dumb Contact Missile — Consumed by Walls, Enemies, Lamps
+
+The laser (missile 0) is an 8 px contact missile drawn `[LaserX-7, LaserX]`.
+It is **consumed on contact**: a wall tip-cell (`A=2` from bank2
+`LaserWallClamp`), an enemy kill (`A=$50`), and a lamp (`A=1`) all reset
+`LaserX` to the eye in the same frame. Travel = `±4 px/frame`, capped at
+the old sweep extent (`RoomX±20`); past the cap it restarts at the eye.
+That is the entire state machine. Fire buzz continues while held (`b7`
+gates `UpdateLaserSound`).
+
+**Never add a wall clamp, hold state, suppress bit, or "stop at wall
+center" logic.** On 2026-10-10 a wall-center hold clamp was built
+(`LaserWallClamp` overwrote `CollisionX` with a cell-center `LaserX`;
+`LaserInput` held the beam there) and it produced two user-visible
+failures in one session:
+
+1. **Frame lockup** (black screen, stuck buzz — TIA keeps the last audio
+   with no CPU): the cap check compared `RectCount`, which `LaserWallClamp`
+   clobbers as scratch, so the left-facing `.LaserMiss ↔ .LaserInit` path
+   looped *inside one frame* and the kernel never ran.
+2. **Uncapped travel**: the same garbage compare let the right-facing
+   bolt fly past `RoomX+20` to the next wall.
+
+The hold also forced a cap reorder (cap moved from before-commit to the
+miss arm), re-coupling travel/cap/contact — exactly the machine the
+2026-10-08 contact-missile redesign deleted. User directive: a contact
+missile is **consumed** by walls; it does not stop, hold, or clamp.
+
+**The rearm bit (LaserState b0, `LASER_REARM`) is NOT hold/clamp
+state — do not remove it.** Flush hold puts the eye mid-tile (stop
+leaves the origin at the rect face; eye = face+4 inside an 8 px tile)
+and the +4 step would jump out past the far edge with no candidate
+ever inside the wall (pass-through). `.LaserContact` `inc`s b0; the
+next held frame `dec`s it and re-runs `.LaserInit` (re-tests the eye —
+1 wall-walk/frame, same as open-hold). Regression test:
+`tools/test_laser_walk_wall.py` (walk flush, fire, assert consume).
+
+Contracts to keep:
+- Contact never reads a register the callee clobbers. `LaserWallClamp`
+  scratch = `RectCount`/`FetchPtr`/`CollisionCellY`/`CollisionEndY`/
+  `CollisionEndX`; only `CollisionX` is caller input, and it is
+  **not modified**. Result protocol: `A=0` miss / `$50` kill / `1` lamp /
+  `2` wall, preserved through ReturnPad (`sta`/`rts` keep A/Z).
+- `LaserX` changes only via travel (`±4`) or the eye restart. All three
+  contact kinds → `.LaserContact` → `.LaserEye` same frame.
+- Bank0 `LaserInput` stays after `$FF20` (pre-$FF00 full); do not move
+  `SetObjectXPos`, the fold pads, or pinned entries.
+
+Regression test: `tools/test_laser_clamp.py` — stages a synthetic thin
+wall (2 display cols) into the PF buffers at the beam rows, holds fire,
+asserts the tip is never drawn past the wall and that contact restarts
+at the eye with `b1` armed (no suppress). The 2026-10-10 hold clamp was
+first written as a *failing* red test against the pass-through bug, then
+abandoned for consume — keep this test green against consume semantics.
+
 ## Critical Rule: src/ Is the Project Root — Never Anchor to the Parent
 
 **The project root is `src/` (the agent's working directory). All relative
