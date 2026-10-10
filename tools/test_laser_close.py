@@ -283,6 +283,15 @@ def main() -> None:
                                 fails.append(
                                     f"r{room} dir{facing} x{x} y{y}: wall "
                                     f"contact but HMM0=${h0:02X} not parked")
+                            # buzz must LIVE while suppressed (b7 held):
+                            # ch0 = LASER_AUD_C=2 / LASER_AUD_V=9
+                            ac = mem.tia[0x15]      # AUDC0
+                            av = mem.tia[0x19]      # AUDV0
+                            if ac != 2 or av != 9:
+                                fails.append(
+                                    f"r{room} dir{facing} x{x} y{y}: buzz "
+                                    f"dead while suppressed (AUDC0=${ac:02X} "
+                                    f"AUDV0=${av:02X}, want $02/$09)")
     print(f"checked {checked} frames; cell-contact frames={cells_hit}, "
           f"M1-strip frames={ext_hits}")
     if fails:
