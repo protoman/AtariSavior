@@ -127,81 +127,27 @@ No entry is worked on without user greenlight.
 
 ## Latent risks (verified once, fragile)
 
-9. **Stella renders 8-wide missiles 1 clock left of the [A-7,A] player
-   contract — FIXED 2026-10-09.** Stella source finally fetched (the
-   "unresolved repo path" = github raw `stella-emu/stella`):
-   `Player.hxx` `Count::renderCounterOffset = -5` vs `Missile.hxx` /
-   `Ball.hxx` = `-4` (getPosition = `317 - counter - offset`) → Stella
-   draws ball + missiles 1 clock left of an identically-positioned
-   player = the class M1 hit on 2026-10-06. **Fix:** `PositionBallM1`
-   ball path (selector 4) and `.LaserPos` (selector 2) now pass A+1 —
-   drawn lands exactly on the `[A-7,A]` contract `LaserHitTest`
-   assumes (visual == hit logic). Sims + battery 20/21 (laser contract
-   tests green). **Player gate:** eyeball a live beam/ball vs wall in
-   Stella (fire input not scriptable) — should read flush, no
-   near-miss look.
-   **Follow-up 2026-10-09 (user: level1 rooms 1+2, close+right, beam
-   continues ALL the way through):** `tools/test_laser_close.py` sweeps
-   RoomX 4..155 × Y ∈ {24,45-straddle,96} × both facings × both rooms
-   (hand-EnterRoom pokes; strip b4 alive): **5472 frames, 3398 cell +
-   99 M1-strip contacts, 0 pass-throughs** — contact logic holds in
-   py65 on the current build.
-   **Git-history diagnosis (user hint 2026-10-09, confirmed):** THE SAME
-   BUG shipped+fixed in the S6 saga — `bd9b17d` / `docs/laser_s6_log.md`
-   S6b: *"Path anchored at the eye (X+4), not the nose: at max approach
-   the eye col > wall col → wall never on the path → no clamp → beam
-   spawns past the wall and kills through"* (+ the rollback `962721d`:
-   "v3 broke position/Size in Stella despite green py65" = the
-   Stella-vs-sim divergence precedent). The 2026-10-08 contact-missile
-   redesign (forward tip-only test) REINTRODUCED the eye anchor: the
-   tip test can never see the wall cell between nose and eye when the
-   eye starts flush/past it.
-   **Clamp attempt 2026-10-09 (REVERTED — over budget):** fold stub
-   $FFDE + bank2 twin + body at window-front (org $F9D9) + VBL stage of
-   the beam band row — correct logic, but **measured 226c/frame in
-   overscan** → SetObjectXPos's WSYNC stalls (gap86 at $FF11) → +1
-   line/frame on tight frames → 95 sim-bad frames → reverted to green.
-   v2 measurements (2026-10-09): the baseline LaserInput→SetObjectXPos
-   WSYNC segment = 353-378c (already >4 lines, WSYNC-aligned); the v1
-   failure signature = stalls >76 at $FF0F (gap86/81, 93 hits) — any
-   no-WSYNC burst that pushes that WSYNC's arrival past a line start
-   costs a line. v2 must therefore keep the added work off that
-   segment's critical phase: (a) inline cells in the existing bank2
-   LWC walk (test body-span [tip-7..tip] cols instead of tip only —
-   reuses ColOff/ColMask, no fold/JSR, +~20-40c inside a path that
-   already runs there), (b) or press-edge-only scan + nose-eye eye
-   (X+4→X-3): press-only keeps cost rare BUT nose-eye alone leaves a
-   hole (face on cell-last px × X≡3 mod4: cand1 tip skips the wall
-   cell) and a ~2px behind-player stub — not sufficient by itself.
-   Decide with sim as the gate (stall histogram + bad-frame list).
-   **v2 SHIPPED 2026-10-09: eye = nose (`RoomX-1`, was `RoomX+4`).**
-   With eye = F-1 (F = flush wall px): press tip = F-1 (visual flush,
-   drawn [F-7..F], 0 past-wall px, 0 stub) and the first travel tip =
-   F+3 lands IN the wall's cell — tips step 4px = visit every cell, so
-   the path can never skip the wall's start cell (the S6b hole). Size-
-   neutral, no LWC/fold changes. Models updated in test_laser_wall +
-   test_laser_close (eye_of). Sims green, battery 20/21 (laser tests
-   pass). **Player Stella gate:** close-range right-facing fire — beam
-   flush at every wall, no pass-through, no behind-player stub.
-   **+ stub v3 2026-10-09 (user re-report):** draw arg → LaserX+8 →
-   drawn = [LaserX, LaserX+7] = nose-forward beam (starts at the
-   sprite's lit rear = AT the head, nothing behind it); at a flush
-   wall drawn = [F-1, F+6] inside the >=8px wall tile → zero bleed any
-   wall width (PF hides in-wall px, visible tip = F-1). LHT kill
-   window realigned to the drawn box: eX in [A, A+14] (old [A-7,A+7]
-   = 7px-left box = invisible kills / right misses — laser_collision
-   family); test_laser_s4 model + asserts updated, battery 20/21.
-   **+ dir-split 2026-10-09 (user 006):** the arg+8 applied to BOTH
-   facings — left beam [LX, LX+7] poked out the BACK of the player.
-   .LaserPos now splits: right arg=LX+8 -> [LX, LX+7]; left arg=LX+1
-   -> [LX-7, LX] (the approved left draw). LHT kill window split to
-   match: right eX in [A,A+14] (bcc+cmp), left eX in [A-7,A+7]
-   (adc #7 box), selected by PlayerDir. Dead 159 eye-clamp removed
-   (eye = RoomX-1 <= 119; funded the +B). test_laser_s4 +
-   test_laser_kill_window updated (dir-aware), battery 20/21.
-   **Player:** laser passes through blocks at close range
-   (right-facing), sync + async; **Benefit:** beam stops at every wall,
-   visual == hit logic. **Status: OPEN, design recorded, budget-gated.**
+9. **Laser position: REVERTED to original + wall-suppress shipped
+   (2026-10-09, user decision).** The day's position work (Stella-source
+   +1, nose eye, arg+2/+8, dir-split) walked in circles — user ruling:
+   "return the position code to the original; do nothing (no beam at
+   all) if the player is facing a wall, buzz sound only."
+   **Shipped:** original eye/draw/LHT window restored (502d6db state);
+   `LaserWallClamp` hit (A=2) now routes to `LaserWallOff`: clears b1
+   (armed) so kernel `ENAM0 = BeamMask & LaserState` = 0 next frame and
+   parks HMM0 — NO beam while a wall is at the tip; b7 untouched so
+   `UpdateLaserSound` (gated on b7) keeps buzzing. Kill/lamp keep the
+   original re-eye behavior. Contract enforced by
+   `tools/test_laser_close.py` (5472-frame sweep: wall/strip tip ⇒ b1
+   clear + HMM0 parked; sims + battery 20/21).
+   **Residual notes (for a future look, NOT active work):** the eye-
+   past-thin-wall spawn case can show the original beam for a frame
+   until the first travel contact suppresses it; the S6b log
+   (`docs/laser_s6_log.md`) + clamp postmortem in this entry's history
+   hold the deeper fix designs (226c clamp = over budget).
+   **Player:** no beam (buzz only) when firing at a wall face-to-face;
+   **Benefit:** no visual pass-through, laser logic left alone.
+
 10. **Cross-bank Temp conflict:** bank1 `Temp=$AD` = bank0 `TickCounter`
     slot — deliberate, allowlisted (`check_equ_sync.ZP_ALLOW`). Fragile
     if either side's frame phase changes.

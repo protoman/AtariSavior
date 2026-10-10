@@ -149,10 +149,9 @@ def step():
 
 
 def eye_of(roomx, facing):
-    """Reset/press-edge anchor: right = nose RoomX-1 (#9 v2, was X+4 —
-    the eye-past-wall hole) / left RoomX-4."""
+    """Reset/press-edge anchor: right min(RoomX+4,159) / left RoomX-4."""
     if facing == 0:
-        return roomx - 1
+        return min(roomx + 4, 159)
     return roomx - 4
 
 
