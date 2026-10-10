@@ -161,12 +161,19 @@ No entry is worked on without user greenlight.
    the beam band row — correct logic, but **measured 226c/frame in
    overscan** → SetObjectXPos's WSYNC stalls (gap86 at $FF11) → +1
    line/frame on tight frames → 95 sim-bad frames → reverted to green.
-   Budget math for v2: after LaserInput the line has ~36c free; clamp
-   must land ≤~70c → needs (a) inline cell tests (−36c vs jsr helper),
-   (b) ≤2-cell scan, (c) possibly press-edge-only + nose-eye eye
-   (X+4→X-3) as the cheap half. nose-eye alone leaves a hole (face on
-   cell-last px × X≡3 mod4) + a 2px behind-player stub — not sufficient
-   by itself. **Player:** laser passes through blocks at close range
+   v2 measurements (2026-10-09): the baseline LaserInput→SetObjectXPos
+   WSYNC segment = 353-378c (already >4 lines, WSYNC-aligned); the v1
+   failure signature = stalls >76 at $FF0F (gap86/81, 93 hits) — any
+   no-WSYNC burst that pushes that WSYNC's arrival past a line start
+   costs a line. v2 must therefore keep the added work off that
+   segment's critical phase: (a) inline cells in the existing bank2
+   LWC walk (test body-span [tip-7..tip] cols instead of tip only —
+   reuses ColOff/ColMask, no fold/JSR, +~20-40c inside a path that
+   already runs there), (b) or press-edge-only scan + nose-eye eye
+   (X+4→X-3): press-only keeps cost rare BUT nose-eye alone leaves a
+   hole (face on cell-last px × X≡3 mod4: cand1 tip skips the wall
+   cell) and a ~2px behind-player stub — not sufficient by itself.
+   Decide with sim as the gate (stall histogram + bad-frame list). **Player:** laser passes through blocks at close range
    (right-facing), sync + async; **Benefit:** beam stops at every wall,
    visual == hit logic. **Status: OPEN, design recorded, budget-gated.**
 10. **Cross-bank Temp conflict:** bank1 `Temp=$AD` = bank0 `TickCounter`
