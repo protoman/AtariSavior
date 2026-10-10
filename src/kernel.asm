@@ -3497,7 +3497,7 @@ SetObjReflection:
 ; the beam is ONE 8px bar that LEAVES the EYE and travels +/-4px/frame toward
 ; the facing until contact, then resets to the eye (single missile, KISS —
 ; user spec: no piercing, no HERO comparison needed).
-;   press edge (b7 held, b6 prev): LaserX = eye  (right min(RoomX+4,159),
+;   press edge (b7 held, b6 prev): LaserX = eye  (right RoomX-1 = nose,
 ;                                                left  RoomX-4)
 ;   held frame: LaserX +/-4; LaserX >= 160 (right edge OR left underflow
 ;     wrap) -> reset to eye (unsigned check catches both)
@@ -3621,8 +3621,13 @@ LaserInput:
     lda PlayerDir
     bne .LEyeL
     lda RoomX
-    clc
-    adc #4
+    sec
+    sbc #1                      ; #9 v2: eye = nose (was X+4 — the S6b
+                                ;   'eye past the thin wall' hole: with
+                                ;   eye = X-1 the first travel tip (X+3)
+                                ;   always lands IN the flush wall's cell
+                                ;   and drawn [arg-7..arg] = [F-7..F] is
+                                ;   flush with NO stub and NO past-wall px)
     cmp #160
     bcc .LEyeS
     lda #159

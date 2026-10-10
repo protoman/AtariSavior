@@ -165,7 +165,8 @@ def cell_solid(tip_px, band_row):
 
 
 def eye_of(roomx, facing):
-    return min(roomx + 4, 159) if facing == 0 else roomx - 4
+    # #9 v2: right eye = nose RoomX-1 (was RoomX+4 — eye-past-wall hole)
+    return roomx - 1 if facing == 0 else roomx - 4
 
 
 def load_room(room):

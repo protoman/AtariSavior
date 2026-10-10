@@ -173,7 +173,16 @@ No entry is worked on without user greenlight.
    (X+4→X-3): press-only keeps cost rare BUT nose-eye alone leaves a
    hole (face on cell-last px × X≡3 mod4: cand1 tip skips the wall
    cell) and a ~2px behind-player stub — not sufficient by itself.
-   Decide with sim as the gate (stall histogram + bad-frame list). **Player:** laser passes through blocks at close range
+   Decide with sim as the gate (stall histogram + bad-frame list).
+   **v2 SHIPPED 2026-10-09: eye = nose (`RoomX-1`, was `RoomX+4`).**
+   With eye = F-1 (F = flush wall px): press tip = F-1 (visual flush,
+   drawn [F-7..F], 0 past-wall px, 0 stub) and the first travel tip =
+   F+3 lands IN the wall's cell — tips step 4px = visit every cell, so
+   the path can never skip the wall's start cell (the S6b hole). Size-
+   neutral, no LWC/fold changes. Models updated in test_laser_wall +
+   test_laser_close (eye_of). Sims green, battery 20/21 (laser tests
+   pass). **Player Stella gate:** close-range right-facing fire — beam
+   flush at every wall, no pass-through, no behind-player stub. **Player:** laser passes through blocks at close range
    (right-facing), sync + async; **Benefit:** beam stops at every wall,
    visual == hit logic. **Status: OPEN, design recorded, budget-gated.**
 10. **Cross-bank Temp conflict:** bank1 `Temp=$AD` = bank0 `TickCounter`
