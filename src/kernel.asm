@@ -3606,17 +3606,17 @@ LaserInput:
 .LaserPos:
     lda LaserX
     clc
-    adc #2                      ; #9: Stella draws M0 1 clock left of the
-                                ;   player contract (Missile.hxx
-                                ;   renderCounterOffset=-4 vs Player -5);
-                                ;   +2 lands drawn = [LaserX-6, LaserX+1]:
-                                ;   with eye = nose (LaserX = F-1 at a
-                                ;   flush wall) the drawn left edge = F-7
-                                ;   = sprite lit start (NO behind-head
-                                ;   stub, user 2026-10-09) and right edge
-                                ;   = F = wall's first px (hidden by PF,
-                                ;   visible tip flush at F-1). Tests keep
-                                ;   using CollisionX = LaserX (unchanged).
+    adc #8                      ; #9: Stella draws M0 [A-8, A-1] (render-
+                                ;   CounterOffset -4 vs Player -5), so
+                                ;   arg = LaserX+8 -> drawn = [LaserX,
+                                ;   LaserX+7] = nose-forward beam: starts
+                                ;   at the sprite's lit rear col6 (NO beam
+                                ;   pixel behind the head — user 2026-10-09)
+                                ;   and, at a flush wall (LaserX = F-1),
+                                ;   drawn = [F-1, F+6] inside the >=8px
+                                ;   wall tile (PF hides it, visible tip =
+                                ;   F-1, zero bleed for ANY wall width).
+                                ;   Tests keep CollisionX = LaserX.
     ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
     jsr SetObjectXPos           ; drawn M0 = [LaserX-7, LaserX]
     rts

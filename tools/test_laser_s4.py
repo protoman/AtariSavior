@@ -44,9 +44,10 @@ def vert_hit(room_y: int, enemy_y: int) -> bool:
 
 
 def horiz_hit(lo: int, enemy_x: int) -> bool:
-    """Exact mirror of the asm: sec/sbc eLo-lo, clc/adc #7, cmp #15."""
+    """Exact mirror of the asm (#9 nose-forward draw): sec/sbc eLo-lo,
+    bcc miss, cmp #15 -> eX-lo in [0..14] (beam drawn [A,A+7])."""
     a = (enemy_x - lo) & 0xFF
-    return ((a + 7) & 0xFF) < 15
+    return a < 15
 
 
 def overlap_reference(a_lo, a_hi, b_lo, b_hi) -> bool:
@@ -107,9 +108,10 @@ def main() -> None:
     hit = hit[0] if isinstance(hit, list) else hit  # keep str slice
     hit = "\n".join(l.split(";")[0] for l in hit.splitlines())  # ignore comments
     assert "adc #3" in hit and "cmp #9" in hit, "vertical window changed"
-    # kill == drawn overlap (beam [A-7,A] x enemy [eX-7,eX] — the arg-box
-    # convention CheckEnemyHit proves) -> eX in [A-7, A+7] = adc #7.
-    assert "adc #7" in hit and "cmp #15" in hit, "horizontal window changed"
+    # kill == drawn overlap (#9 nose-forward: beam [A,A+7] x enemy
+    # [eX-7,eX]) -> eX in [A, A+14] = bcc + cmp #15 (no adc).
+    assert "bcc .LHNext" in hit and "cmp #15" in hit, "horizontal window changed"
+    assert "adc #7" not in hit, "old left-anchored window still present"
     assert "adc #14" not in hit, "S6b left-shifted kill window still present"
     assert "ora EnemyBitTable,X" in hit and "sta EnemyDeadMask" in hit, \
         "kill path changed"
@@ -205,14 +207,14 @@ def main() -> None:
 
     # --- horizontal: exact window edges incl missile width ----------------
     lo = 40
-    for ex in range(lo - 7, lo + 8):
+    for ex in range(lo, lo + 15):
         assert horiz_hit(lo, ex), f"must hit eLo={ex}"
-    for ex in (lo - 8, lo + 8):
+    for ex in (lo - 1, lo + 15):
         assert not horiz_hit(lo, ex), f"must miss eLo={ex}"
     for lo2 in (14, 40, 151, 159):
         for dx in range(-30, 31):
-            # both boxes right-anchored [x-7, x] (kill_window convention)
-            want = overlap_reference(lo2 - 7, lo2,
+            # beam [A, A+7] (#9 nose-forward) x enemy [eX-7, eX]
+            want = overlap_reference(lo2, lo2 + 7,
                                      lo2 + dx - 7, lo2 + dx)
             got = horiz_hit(lo2, lo2 + dx)
             assert got == want, f"horiz mismatch lo={lo2} dx={dx}: {got} vs {want}"
