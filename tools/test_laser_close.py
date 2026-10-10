@@ -165,8 +165,7 @@ def cell_solid(tip_px, band_row):
 
 
 def eye_of(roomx, facing):
-    # #9 v2: right eye = nose RoomX-1 (was RoomX+4 — eye-past-wall hole)
-    return roomx - 1 if facing == 0 else roomx - 4
+    return min(roomx + 4, 159) if facing == 0 else roomx - 4
 
 
 def load_room(room):
@@ -251,24 +250,12 @@ def main() -> None:
                         eye = eye_of(x, facing)
                         tip = cap if facing == 0 else cap - 7
                         rows = (band_row_of(y + 2), band_row_of(y + 3))
-                        solid = any(cell_solid(tip, r) for r in rows)
-                        if solid:
-                            cells_hit += 1
-                            if cap != eye:
-                                fails.append(
-                                    f"r{room} dir{facing} x{x} y{y}: CELL "
-                                    f"PASS-THROUGH LaserX=${cap:02X} tip {tip} "
-                                    f"solid, want eye ${eye:02X}")
-                                continue
+                        wallish = any(cell_solid(tip, r) for r in rows)
                         # extension: LWtipC left strip window (raw M1X)
                         if m1x is not None and not (mem.ram[I_DEAD] & 0x10):
                             if m1x - 7 <= tip <= m1x:
                                 ext_hits += 1
-                                if cap != eye:
-                                    fails.append(
-                                        f"r{room} dir{facing} x{x} y{y}: M1 "
-                                        f"STRIP PASS-THROUGH LaserX=${cap:02X} "
-                                        f"tip {tip} in [{m1x-7},{m1x}]")
+                                wallish = True
                         # extension: LWpSetup band strip (col marker)
                         pack = mem.ram[I_PACK]
                         if pack and m1x is not None:
@@ -277,11 +264,25 @@ def main() -> None:
                                     BANKS[2][OV_TAIL - 0xF000 + bb]:
                                 pl = 18 + (pack >> 4) * 2
                                 d = tip >> 2
-                                if 0 <= d - pl <= 1 and cap != eye:
-                                    fails.append(
-                                        f"r{room} dir{facing} x{x} y{y}: BAND "
-                                        f"STRIP PASS-THROUGH LaserX=${cap:02X} "
-                                        f"d={d} pL={pl}")
+                                if 0 <= d - pl <= 1:
+                                    wallish = True
+                        if wallish:
+                            cells_hit += 1
+                            # #9 contract (suppression): wall/strip under the
+                            # tip => beam DISARMED (b1 clear) + HMM0 parked;
+                            # "no laser at all, only the buzz" (b7 kept).
+                            # LaserX intentionally NOT re-eyed anymore.
+                            st = mem.ram[0x40]          # LaserState $C0
+                            h0 = mem.tia[0x22]          # HMM0
+                            if st & 0x02:
+                                fails.append(
+                                    f"r{room} dir{facing} x{x} y{y}: wall "
+                                    f"contact but beam ARMED (LaserState="
+                                    f"${st:02X})")
+                            if h0 != 0:
+                                fails.append(
+                                    f"r{room} dir{facing} x{x} y{y}: wall "
+                                    f"contact but HMM0=${h0:02X} not parked")
     print(f"checked {checked} frames; cell-contact frames={cells_hit}, "
           f"M1-strip frames={ext_hits}")
     if fails:
@@ -291,8 +292,8 @@ def main() -> None:
         if len(fails) > 20:
             print(f"  ... and {len(fails) - 20} more")
         sys.exit(1)
-    print("test_laser_close: OK (no pass-through: every solid tip lands "
-          "on the eye, both rooms, both facings, straddle rows included)")
+    print("test_laser_close: OK (wall/strip tip => beam suppressed: b1 clear "
+          "+ HMM0 parked, both rooms/facings, straddle rows included)")
 
 
 if __name__ == "__main__":

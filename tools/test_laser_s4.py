@@ -4,7 +4,7 @@
 Contract (redesign 2026-10-08 — single travelling missile, no sweep):
 
   travel: LaserX +/-4 px per held frame from the eye toward the facing
-          (eye = right RoomX-1 nose (#9) / left RoomX-4), capped at the
+          (eye = right min(RoomX+4,159) / left RoomX-4), capped at the
           old S3 sweep extent (right <= RoomX+20, left >= max(RoomX-20,0));
           past the cap OR the unsigned `cmp #160` wrap restarts at the eye
           (triangle-loop parity — user: beam "moved way beyond the limit");
@@ -43,14 +43,10 @@ def vert_hit(room_y: int, enemy_y: int) -> bool:
     return ((a + 3) & 0xFF) < 9
 
 
-def horiz_hit(lo: int, enemy_x: int, facing: int = 0) -> bool:
-    """#9 dir-split kill window: right draw [A,A+7] -> eX in [A,A+14];
-    left draw [A-7,A] -> eX in [A-7,A+7]. facing 0=right, 1=left."""
-    d = enemy_x - lo
-    a = d & 0xFF
-    if facing == 0:
-        return a < 15
-    return ((d + 7) & 0xFF) < 15
+def horiz_hit(lo: int, enemy_x: int) -> bool:
+    """Exact mirror of the asm: sec/sbc eLo-lo, clc/adc #7, cmp #15."""
+    a = (enemy_x - lo) & 0xFF
+    return ((a + 7) & 0xFF) < 15
 
 
 def overlap_reference(a_lo, a_hi, b_lo, b_hi) -> bool:
@@ -82,10 +78,8 @@ def main() -> None:
     assert "ora #LASER_ON" in lw, "held+armed store missing"
     assert lw.count("jsr .LaserEye") >= 2, \
         "eye reset must run on press edge AND on contact/wrap"
-    # #9: the 159-clamp died with the nose eye (RoomX <= PLAYER_MAX_X=120
-    # makes eye = RoomX-1 <= 119 always)
-    assert "lda #159" not in lw, "dead 159 eye clamp resurrected"
-    assert re.search(r"sbc\s+#1", lw), "right eye must be nose (RoomX-1)"    # CollisionX staged immediately before the hit test; dispatch runs on
+    assert "lda #159" in lw, "right eye clamp (TIA past 159 unverified)"
+    # CollisionX staged immediately before the hit test; dispatch runs on
     # the returned A BEFORE positioning (reset then draws at the eye).
     assert re.search(r"sta CollisionX[^\n]*\n(?:[^\n]*\n)*?\s*jsr\s+LaserHitTest",
                      lw), "CollisionX must be stored before jsr LaserHitTest"
@@ -113,11 +107,9 @@ def main() -> None:
     hit = hit[0] if isinstance(hit, list) else hit  # keep str slice
     hit = "\n".join(l.split(";")[0] for l in hit.splitlines())  # ignore comments
     assert "adc #3" in hit and "cmp #9" in hit, "vertical window changed"
-    # kill == drawn overlap (#9 nose-forward: beam [A,A+7] x enemy
-    # [eX-7,eX]) -> eX in [A, A+14] = bcc + cmp #15 (no adc).
-    assert "bcc .LHNext" in hit and "cmp #15" in hit, "right window changed"
-    assert "adc #7" in hit and "bne .LHitLbox" in hit, \
-        "left window / dir split missing (#9 direction-dependent draw)"
+    # kill == drawn overlap (beam [A-7,A] x enemy [eX-7,eX] — the arg-box
+    # convention CheckEnemyHit proves) -> eX in [A-7, A+7] = adc #7.
+    assert "adc #7" in hit and "cmp #15" in hit, "horizontal window changed"
     assert "adc #14" not in hit, "S6b left-shifted kill window still present"
     assert "ora EnemyBitTable,X" in hit and "sta EnemyDeadMask" in hit, \
         "kill path changed"
@@ -166,7 +158,7 @@ def main() -> None:
 
     for roomx in (4, 12, 60, 120, 140, 155):
         # right facing
-        eye = roomx - 1        # #9 nose (was min(roomx+4,159))
+        eye = min(roomx + 4, 159)
         cap = roomx + 20
         seq = travel_seq(eye, cap, TRAVEL)
         hi = min(cap, 159)
@@ -213,25 +205,17 @@ def main() -> None:
 
     # --- horizontal: exact window edges incl missile width ----------------
     lo = 40
-    for ex in range(lo, lo + 15):
-        assert horiz_hit(lo, ex, 0), f"R must hit eLo={ex}"
-    for ex in (lo - 1, lo + 15):
-        assert not horiz_hit(lo, ex, 0), f"R must miss eLo={ex}"
     for ex in range(lo - 7, lo + 8):
-        assert horiz_hit(lo, ex, 1), f"L must hit eLo={ex}"
+        assert horiz_hit(lo, ex), f"must hit eLo={ex}"
     for ex in (lo - 8, lo + 8):
-        assert not horiz_hit(lo, ex, 1), f"L must miss eLo={ex}"
+        assert not horiz_hit(lo, ex), f"must miss eLo={ex}"
     for lo2 in (14, 40, 151, 159):
         for dx in range(-30, 31):
-            # right: beam [A, A+7]; left: beam [A-7, A] (#9 dir split)
-            want = overlap_reference(lo2, lo2 + 7,
-                                     lo2 + dx - 7, lo2 + dx)
-            got = horiz_hit(lo2, lo2 + dx, 0)
-            assert got == want, f"R mismatch lo={lo2} dx={dx}: {got} vs {want}"
+            # both boxes right-anchored [x-7, x] (kill_window convention)
             want = overlap_reference(lo2 - 7, lo2,
                                      lo2 + dx - 7, lo2 + dx)
-            got = horiz_hit(lo2, lo2 + dx, 1)
-            assert got == want, f"L mismatch lo={lo2} dx={dx}: {got} vs {want}"
+            got = horiz_hit(lo2, lo2 + dx)
+            assert got == want, f"horiz mismatch lo={lo2} dx={dx}: {got} vs {want}"
 
     # --- dead mask: kill each enemy once, others unaffected ---------------
     mask = 0

@@ -2093,23 +2093,19 @@ LaserClampDone:
     adc #3                      ; (RoomY-eY)+3 in [0..8] = eY in [RoomY-5, RoomY+3]
     cmp #9                      ; out of beam rows RoomY+2..3
     bcs .LHNext
-    lda PlayerDir              ; #9 draw is direction-dependent:
-    bne .LHitLbox                 ; right [A, A+7] -> eX in [A, A+14]
-    lda EnemyRamX,X            ; left  [A-7, A] -> eX in [A-7, A+7]
-    sec
-    sbc CollisionX
-    bcc .LHNext                 ; eX < A = enemy fully left of beam
-    cmp #15
-    bcs .LHNext
-    bcc .LHHit                  ; in range (C=0 always here): skip the
-                                ;   left-box variant below
-.LHitLbox:
     lda EnemyRamX,X
     sec
     sbc CollisionX
     clc
-    adc #7                      ; left box: eX-A+7 in [0..14] <=> [A-7,A+7]
-    cmp #15
+    adc #7                      ; kill == drawn overlap: beam [A-7,A] x
+                                ; enemy [eX-7,eX] (SAME arg-box convention
+                                ; CheckEnemyHit uses for RoomX vs eX) ->
+                                ; eX in [A-7, A+7] <=> (eX-A)+7 in [0..14].
+                                ; S6b's adc #14 was a 7px-LEFT shift: it
+                                ; killed empty space left of the beam and
+                                ; missed every enemy overlapping the tip
+                                ; from the right (laser_collision_tip_bug).
+    cmp #15                     ; bcs -> miss
     bcs .LHNext
 .LHHit:
     ldy EnemyOffTable,X         ; type offset into staged record

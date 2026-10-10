@@ -3530,6 +3530,11 @@ LaserInput:
     bpl .LaserFire              ; pressed: arm + travel (released sits right
                                 ; below — moved here so the cap code could
                                 ; not push .LaserReleased past bmi's ±127)
+.LaserWallOff:                 ; #9 (user): wall in front -> NO beam,
+    lda LaserState             ;   buzz only. Clear b1 (armed): kernel
+    and #$FD                   ;   ENAM0 = BeamMask & LaserState = 0 next
+    sta LaserState             ;   frame; b7 stays -> sound keeps buzzing.
+                                ;   Falls into the release tail (HMM0=0).
 .LaserReleased:
     lda #0
     sta HMM0                    ; HMOVE re-applied stale fine offset
@@ -3596,7 +3601,7 @@ LaserInput:
     cmp #$50
     beq .LaserKill
     cmp #2
-    beq .LaserContact           ; wall tip: missile consumed (no score)
+    beq .LaserWallOff           ; #9 wall in front: no beam, buzz only
     jsr CallPad_SetRoomDark     ; lamp crash = player-body touch (no kill)
     jmp .LaserContact
 .LaserKill:
@@ -3604,29 +3609,9 @@ LaserInput:
 .LaserContact:
     jsr .LaserEye               ; consumed -> restart at the eye THIS frame
 .LaserPos:
-    ldy PlayerDir               ; #9 dir-split draw (user 006: arg+8 made
-    lda LaserX                  ;   the LEFT beam poke out the back):
-    beq .LPosR                  ; right -> arg = LX+8 = [LX, LX+7] nose-fwd
-    sec
-    sbc #$FF                    ; left -> arg = LX+1 = [LX-7, LX] (fwd-left)
-    bne .LPosS
-.LPosR:
-    sec
-    sbc #$F8                    ; LX-248 mod 256 = LX+8
-                                ; Stella draws M0 [A-8, A-1] (render-
-                                ;   CounterOffset -4 vs Player -5), so
-                                ;   arg = LaserX+8 -> drawn = [LaserX,
-                                ;   LaserX+7] = nose-forward beam: starts
-                                ;   at the sprite's lit rear col6 (NO beam
-                                ;   pixel behind the head — user 2026-10-09)
-                                ;   and, at a flush wall (LaserX = F-1),
-                                ;   drawn = [F-1, F+6] inside the >=8px
-                                ;   wall tile (PF hides it, visible tip =
-                                ;   F-1, zero bleed for ANY wall width).
-                                ;   Tests keep CollisionX = LaserX.
-.LPosS:
+    lda LaserX
     ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
-    jsr SetObjectXPos           ; drawn right [LX, LX+7] / left [LX-7, LX]
+    jsr SetObjectXPos           ; drawn M0 = [LaserX-7, LaserX]
     rts
 
 ; Eye spawn point. Right clamped to 159 (TIA position past 159 is
@@ -3635,12 +3620,12 @@ LaserInput:
     lda PlayerDir
     bne .LEyeL
     lda RoomX
-    sec
-    sbc #1                      ; #9 v2: eye = nose (was X+4 — the S6b
-                                ;   'eye past the thin wall' hole: with
-                                ;   eye = X-1 the first travel tip (X+3)
-                                ;   always lands IN the flush wall's cell;
-                                ;   no 159-clamp needed — RoomX <= 120)
+    clc
+    adc #4
+    cmp #160
+    bcc .LEyeS
+    lda #159
+.LEyeS:
     sta LaserX
     rts
 .LEyeL:
