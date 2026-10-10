@@ -1,25 +1,26 @@
 #!/usr/bin/env python3
-"""Laser wall clamp regression — RED test for the pass-through bug.
+"""Laser wall regression — CONSUME contract (pass-through guard).
 
 Stages a synthetic thin wall (one D7 cell = 2 display cols) into the PF
 buffers at the beam's two band rows (buffers persist across frames —
 the kernel only rebuilds them on EnterRoom), holds the fire button from
-a fixed RoomX facing the wall, and asserts the beam's max distance:
+a fixed RoomX facing the wall, and asserts the contact-missile law
+(AGENTS "The Laser Is a Dumb Contact Missile"):
 
-  1. LaserX converges to the wall-center clamp
-       right: 4*(pair & $FE) + 3     (tip 3px into the 8px cell)
-       left:  4*(pair & $FE) + 11    (tip = exact center, +7 eye offset)
-  2. stays CONSTANT there (the +4 candidate must never advance past
-     the cell)
-  3. LaserState b1 armed every held frame (beam drawn — no blanking)
+  1. no pass-through: the CANDIDATE tip (CollisionX / CollisionX-7,
+     the position LaserHitTest actually tested) is never strictly
+     past the wall cell;
+  2. wall contact CONSUMES the missile: LaserX == eye on that frame;
+  3. beam stays ARMED (b1) — contact never blanks the beam (#9's
+     suppress is dead), and the restart is observed at least once.
 
-On the 2026-10-08 contact-missile code (contact only clears b1 while
-the tip sits inside a solid cell; LaserX is never clamped and travel
-keeps stepping +-4px) this FAILS: the tip walks through the thin wall
-into the air behind it, b1 re-arms and the beam is drawn through the
-wall. The fix in plans/laser_wall_center_clamp_plan.md (idempotent
-clamp returned by LaserWallClamp via CollisionX, consumed by
-LaserInput .LaserWallHold) makes this pass WITHOUT touching the test.
+History: this test was first written (2026-10-10) against the
+pass-through bug of the 2026-10-08 contact-missile build — travel kept
+stepping +-4px, the tip left the thin wall into air, b1 re-armed and
+the bolt was drawn through the wall. A wall-center HOLD clamp was built
+to fix it and caused a frame lockup + uncapped travel (AGENTS critical
+rule); it was abandoned. The shippable contract is CONSUME: contact
+resets LaserX to the eye the same frame — no hold, no clamp, no state.
 
 Run: /home/iuri/python3/bin/python3 tools/test_laser_clamp.py
 """
@@ -73,6 +74,7 @@ if MOTHROW is None:
 # ZP indices (addr & 0x7F)
 I_ROOMX, I_ROOMY, I_DIR, I_LASERX = 0x00, 0x01, 0x02, 0x03
 I_BOMBP, I_DEADMASK, I_LSTATE = 0x35, 0x3A, 0x40
+I_COLLX = 0x0B                     # $8B CollisionX (tested candidate)
 I_VYLO, I_VYHI = 0x13, 0x14
 PF0BUF, PF1BUF, PF2BUF = 0x43, 0x46, 0x49     # $C3/$C6/$C9 & 0x7F
 
@@ -166,7 +168,11 @@ def stage_wall(cols, rows):
 
 
 def run_frame(x, roomy, facing):
-    """Pin the world, keep the staged wall alive, run one full frame."""
+    """Pin the world, keep the staged wall alive, run one full frame.
+
+    Returns (LaserX, LaserState, CollisionX) captured at LaserInput's
+    rts — CollisionX = the candidate LHT tested (LWC does not modify
+    it), LaserX = post-contact state (eye when consumed)."""
     mem.ram[I_ROOMX] = x
     mem.ram[I_ROOMY] = roomy
     mem.ram[I_DIR] = facing
@@ -176,7 +182,8 @@ def run_frame(x, roomy, facing):
     while True:
         mpu.step()
         if mpu.pc in rts_pcs:
-            cap = (mem.ram[I_LASERX], mem.ram[I_LSTATE])
+            cap = (mem.ram[I_LASERX], mem.ram[I_LSTATE],
+                   mem.ram[I_COLLX])
         if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
             break
     return cap
@@ -208,57 +215,67 @@ def main() -> None:
     print(f"landed f{landed}: RoomY={y0} beam band rows={rows}")
 
     # (facing, wall pair display cols, player X, label)
-    #   right 24,25: mirror of source cell 7 — clamp 4*24+3 = 99
-    #   left   8,9: source cell 4      — clamp 4*8+11 = 43
+    #   right 24,25: mirror of source cell 7 — cell px 96..103
+    #   left   8,9: source cell 4       — cell px 32..39
     cases = [
         (0, (24, 25), 90, "right"),
         (1, (8, 9), 55, "left"),
     ]
     failures = []
     for facing, pair, x, tag in cases:
-        clamp = 4 * (pair[0] & 0xFE) + (3 if facing == 0 else 11)
         pair_lo_px, pair_hi_px = pair[0] * 4, pair[1] * 4 + 3
+        eye = min(x + 4, 159) if facing == 0 else x - 4
         stage_wall(pair, rows)
-        for _ in range(40):                     # travel until it settles
+        for _ in range(40):                     # travel until it cycles
             stage_wall(pair, rows)
             run_frame(x, y0, facing)
         trace = []
-        for f in range(12):
+        consumed = 0
+        for f in range(16):
             stage_wall(pair, rows)
-            lx, ls = run_frame(x, y0, facing)
+            lx, ls, cx = run_frame(x, y0, facing)
             trace.append((lx, ls))
-            tip = lx if facing == 0 else lx - 7
+            tip = cx if facing == 0 else cx - 7   # candidate LHT tested
+            past = tip > pair_hi_px if facing == 0 else tip < pair_lo_px
+            in_pair = pair_lo_px <= tip <= pair_hi_px
             if not (ls & 0x02):
                 failures.append(
-                    f"{tag} f{f}: beam blanked (LaserState b1 clear, "
-                    f"LaserState=${ls:02X}) — contact must not suppress, "
-                    f"the beam holds at the wall")
-            if lx != clamp:
+                    f"{tag} f{f}: beam blanked (LaserState=${ls:02X}, b1 "
+                    f"clear) — contact must never suppress the beam")
+            if past:
                 failures.append(
-                    f"{tag} f{f}: LaserX={lx} != wall-center clamp {clamp} "
-                    f"(cell px {pair_lo_px}..{pair_hi_px}; expected the "
-                    f"beam's max distance to stop INSIDE the wall)")
-            if facing == 0 and tip > pair_hi_px:
-                failures.append(
-                    f"{tag} f{f}: tip {tip} PAST the wall "
-                    f"(pair ends px {pair_hi_px}) — pass-through")
-            if facing == 1 and tip < pair_lo_px:
-                failures.append(
-                    f"{tag} f{f}: tip {tip} PAST the wall "
-                    f"(pair starts px {pair_lo_px}) — pass-through")
-        print(f"  {tag}: clamp={clamp} trace LX=" +
+                    f"{tag} f{f}: candidate tip {tip} PAST the wall cell "
+                    f"({pair_lo_px}..{pair_hi_px}) — pass-through")
+            if in_pair:
+                if lx != eye:
+                    failures.append(
+                        f"{tag} f{f}: tip {tip} in wall but LaserX={lx} "
+                        f"!= eye {eye} — missile not consumed")
+                else:
+                    consumed += 1
+            else:
+                if lx not in (cx, eye):
+                    failures.append(
+                        f"{tag} f{f}: clear candidate {cx} but LaserX={lx} "
+                        f"not in ({cx},{eye})")
+        if consumed == 0:
+            failures.append(
+                f"{tag}: no wall contact observed in 16 frames — probe "
+                f"geometry broken (consumed=0)")
+        print(f"  {tag}: eye={eye} cell={pair_lo_px}..{pair_hi_px} "
+              f"consumed={consumed}/16 LX=" +
               ",".join(str(lx) for lx, _ in trace) +
               " b1=" + "".join("1" if ls & 2 else "0" for _, ls in trace))
     if failures:
-        print(f"\nFAIL: {len(failures)} assertion(s) — laser passes "
-              f"through walls / does not clamp at the wall center:")
+        print(f"\nFAIL: {len(failures)} assertion(s) — laser must be a "
+              f"dumb contact missile (consumed by walls, AGENTS rule):")
         for fmsg in failures[:12]:
             print("  " + fmsg)
         if len(failures) > 12:
             print(f"  ... and {len(failures) - 12} more")
         sys.exit(1)
-    print("test_laser_clamp: OK (beam max distance = wall center, "
-          "held constant, never passes through)")
+    print("test_laser_clamp: OK (wall consumes the missile: no "
+          "pass-through, restart at eye, beam stays armed)")
 
 
 if __name__ == "__main__":

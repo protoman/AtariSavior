@@ -181,8 +181,10 @@ def main() -> int:
         "room8 must stay lit"
 
     # --- kernel-side preservers (static) ---------------------------------
-    assert KERNEL.count("and #LASER_DARK") >= 2, \
-        "LaserInput + DropArm must both mask with LASER_DARK"
+    assert KERNEL.count("and #LASER_DARK") >= 1, \
+        "DropArm must mask with LASER_DARK"
+    assert KERNEL.count("and #LASER_KEEP") >= 1, \
+        "LaserInput prologue must mask with LASER_KEEP (dark|rearm b0)"
     assert re.search(r"and #%11000111\s*;.*rooms 4-7", KERNEL), \
         "LoadLevel must clear LaserState dark bits"
     assert BANK1_SRC.count("cmp #8") >= 2, \
