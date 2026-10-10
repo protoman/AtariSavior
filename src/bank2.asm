@@ -2093,18 +2093,23 @@ LaserClampDone:
     adc #3                      ; (RoomY-eY)+3 in [0..8] = eY in [RoomY-5, RoomY+3]
     cmp #9                      ; out of beam rows RoomY+2..3
     bcs .LHNext
+    lda PlayerDir              ; #9 draw is direction-dependent:
+    bne .LHitLbox                 ; right [A, A+7] -> eX in [A, A+14]
+    lda EnemyRamX,X            ; left  [A-7, A] -> eX in [A-7, A+7]
+    sec
+    sbc CollisionX
+    bcc .LHNext                 ; eX < A = enemy fully left of beam
+    cmp #15
+    bcs .LHNext
+    bcc .LHHit                  ; in range (C=0 always here): skip the
+                                ;   left-box variant below
+.LHitLbox:
     lda EnemyRamX,X
     sec
     sbc CollisionX
-    bcc .LHNext                 ; #9 draw=[A,A+7] (arg+8): overlap of beam
-                                ; [A,A+7] x enemy [eX-7,eX] => eX in
-                                ; [A, A+14] <=> eX-A in [0..14]; eX < A =
-                                ; enemy fully LEFT of the beam. (Old
-                                ; adc#7 boxed 7px left of the drawn beam
-                                ; = invisible kills + right misses —
-                                ; laser_collision family, realigned
-                                ; 2026-10-09 with the nose-forward draw.)
-    cmp #15                     ; bcs -> miss
+    clc
+    adc #7                      ; left box: eX-A+7 in [0..14] <=> [A-7,A+7]
+    cmp #15
     bcs .LHNext
 .LHHit:
     ldy EnemyOffTable,X         ; type offset into staged record

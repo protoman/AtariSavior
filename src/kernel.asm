@@ -3604,9 +3604,16 @@ LaserInput:
 .LaserContact:
     jsr .LaserEye               ; consumed -> restart at the eye THIS frame
 .LaserPos:
-    lda LaserX
-    clc
-    adc #8                      ; #9: Stella draws M0 [A-8, A-1] (render-
+    ldy PlayerDir               ; #9 dir-split draw (user 006: arg+8 made
+    lda LaserX                  ;   the LEFT beam poke out the back):
+    beq .LPosR                  ; right -> arg = LX+8 = [LX, LX+7] nose-fwd
+    sec
+    sbc #$FF                    ; left -> arg = LX+1 = [LX-7, LX] (fwd-left)
+    bne .LPosS
+.LPosR:
+    sec
+    sbc #$F8                    ; LX-248 mod 256 = LX+8
+                                ; Stella draws M0 [A-8, A-1] (render-
                                 ;   CounterOffset -4 vs Player -5), so
                                 ;   arg = LaserX+8 -> drawn = [LaserX,
                                 ;   LaserX+7] = nose-forward beam: starts
@@ -3617,8 +3624,9 @@ LaserInput:
                                 ;   wall tile (PF hides it, visible tip =
                                 ;   F-1, zero bleed for ANY wall width).
                                 ;   Tests keep CollisionX = LaserX.
+.LPosS:
     ldx #2                      ; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
-    jsr SetObjectXPos           ; drawn M0 = [LaserX-7, LaserX]
+    jsr SetObjectXPos           ; drawn right [LX, LX+7] / left [LX-7, LX]
     rts
 
 ; Eye spawn point. Right clamped to 159 (TIA position past 159 is
@@ -3631,13 +3639,8 @@ LaserInput:
     sbc #1                      ; #9 v2: eye = nose (was X+4 — the S6b
                                 ;   'eye past the thin wall' hole: with
                                 ;   eye = X-1 the first travel tip (X+3)
-                                ;   always lands IN the flush wall's cell
-                                ;   and drawn [arg-7..arg] = [F-7..F] is
-                                ;   flush with NO stub and NO past-wall px)
-    cmp #160
-    bcc .LEyeS
-    lda #159
-.LEyeS:
+                                ;   always lands IN the flush wall's cell;
+                                ;   no 159-clamp needed — RoomX <= 120)
     sta LaserX
     rts
 .LEyeL:

@@ -4,11 +4,11 @@
 Bug (user screenshot screenshots/laser_collision_tip_bug.png): the beam
 tip touched an enemy and nothing died.
 
-Convention (proven by the WORKING CheckEnemyHit): both the beam arg A and
-the enemy arg EnemyRamX anchor an 8px box at [arg-7, arg] (SetObjectXPos
-model: lit-left = arg-7). Overlap therefore needs EnemyRamX in
-[A-7, A+7]  <=>  (eX-A)+7 in [0..14]  = adc #7 / cmp #15 — the same
-formula CheckEnemyHit uses with RoomX.
+#9 (2026-10-09) dir-split draw: right-facing beam drawn = [A, A+7]
+(arg = LaserX+8 nose-forward, Stella renders [arg-8, arg-1]) so the
+kill window = eX in [A, A+14] <=> eX-A in [0..14] = bcc + cmp #15.
+Left-facing keeps the [A-7, A+7] box (arg = LaserX+1); this probe
+pins facing right.
 
 S6b (bd9b17d) replaced that with adc #14 (eX in [A-14, A]): a 7px-LEFT
 shift that kills in empty space left of the beam and misses every enemy
@@ -17,7 +17,7 @@ whose box overlaps the tip from the right — exactly the reported bug.
 Drives the real bank2 body (LaserWallClamp with an empty rect cache ->
 no clamp, then the enemy loop) and asserts the kill interval in X and Y:
 
-  X: kill iff eX in [A-7, A+7]      (beam [A-7,A] x enemy [eX-7,eX])
+  X: kill iff eX in [A, A+14]      (right beam [A,A+7] x enemy [eX-7,eX])
   Y: kill iff eY in [RoomY-5, RoomY+3] (beam rows RoomY+2..3 x enemy 8px)
 
 Run: /home/iuri/python3/bin/python3 tools/test_laser_kill_window.py
@@ -82,17 +82,17 @@ def fire(mem: Mem, e_x: int, e_y: int) -> tuple[bool, int]:
 
 def main() -> int:
     mem = Mem()
-    # --- X sweep: kill interval must be [A-7, A+7] -----------------------
+    # --- X sweep: kill interval must be [A, A+14] (#9 right draw) --------
     kill_x = []
     for e_x in range(A - 20, A + 21):
         killed, result = fire(mem, e_x, BEAM_Y)
         if killed:
             assert result == 0x50, f"kill result A=${result:02X} != $50"
             kill_x.append(e_x)
-    want_x = list(range(A - 7, A + 8))
+    want_x = list(range(A, A + 15))
     assert kill_x == want_x, (
         f"kill X window {kill_x} != drawn-overlap {want_x} "
-        f"(beam [A-7,A]=[73,80], enemy [eX-7,eX])")
+        f"(right beam [A,A+7]=[80,87], enemy [eX-7,eX])")
 
     # --- Y sweep: beam rows RoomY+2..3 vs enemy [eY, eY+7] ---------------
     kill_y = []

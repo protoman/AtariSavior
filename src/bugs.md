@@ -191,6 +191,14 @@ No entry is worked on without user greenlight.
    window realigned to the drawn box: eX in [A, A+14] (old [A-7,A+7]
    = 7px-left box = invisible kills / right misses — laser_collision
    family); test_laser_s4 model + asserts updated, battery 20/21.
+   **+ dir-split 2026-10-09 (user 006):** the arg+8 applied to BOTH
+   facings — left beam [LX, LX+7] poked out the BACK of the player.
+   .LaserPos now splits: right arg=LX+8 -> [LX, LX+7]; left arg=LX+1
+   -> [LX-7, LX] (the approved left draw). LHT kill window split to
+   match: right eX in [A,A+14] (bcc+cmp), left eX in [A-7,A+7]
+   (adc #7 box), selected by PlayerDir. Dead 159 eye-clamp removed
+   (eye = RoomX-1 <= 119; funded the +B). test_laser_s4 +
+   test_laser_kill_window updated (dir-aware), battery 20/21.
    **Player:** laser passes through blocks at close range
    (right-facing), sync + async; **Benefit:** beam stops at every wall,
    visual == hit logic. **Status: OPEN, design recorded, budget-gated.**
