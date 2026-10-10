@@ -126,6 +126,21 @@ No entry is worked on without user greenlight.
 8. **Title frames f0/f1 not exactly 263** (262.61 / 262.93 raw) —
    boot-frame quant, same family as item 1. Keyed below f2 so the wall
    assert skips them today.
+   **Status: ANALYZED 2026-10-10 — no player-visible effect, same
+   proof as item 1 (boundary crossings, not raw average).** py65 probe
+   with budget-sim-identical inputs (fire held, RESET at f1/f4, WSYNC
+   wall model): StartFrame-to-StartFrame spans f0..f4 =
+   263.21 / 263.00 / 263.00 / 263.01 / 262.72 raw — and every one
+   crosses exactly 263 scanline boundaries (floor(end/76)−floor(start/76)),
+   including the sub-263 raw f4. The TV shows boundary crossings; a
+   262-line frame is impossible at these phases (needs span ≤262.13 at
+   phase ≥21c, per item 1's math). Raw <263 = phase slack inside the
+   last line, not a missing line. The `f<2` wall-assert keying stays
+   (raw metric noise, zero flicker risk).
+   **Player:** none — boot renders 263 lines on f0/f1.
+   **Benefit if metric fix done:** wall assert could cover f0/f1
+   (metric-only; boot-phase surgery in the regression-prone zone for
+   zero player gain — NOT done).
    **Player:** tiny frame-length wobble in the first 2 boot frames
    (usually invisible).
 
