@@ -160,8 +160,11 @@ def main() -> None:
     assert not re.search(r"^RoomWallMask", KERNEL, re.M), \
         "RoomWallMask $F2 must be gone (D1-B: no cross-room hole state)"
     mb = re.search(r"^BombMaskBit:\s*\n\s*\.byte([^\n]+)", BANK1, re.M)
-    assert mb and len(mb.group(1).split(",")) == 4, \
-        "bank1 BombMaskBit needs 4 entries (rect0-3; bomb walk + hot AND)"
+    assert mb and len(mb.group(1).split(",")) == 5, \
+        "bank1 BombMaskBit needs 5 entries (rect0-3 mask bits + idx4 $00 "\
+        "walk placeholder; #7(i) — PairGone guards idx4 double-score)"
+    assert mb.group(1).split(",")[-1].strip().startswith("$00"), \
+        "BombMaskBit idx4 must be $00 (rect4 never in WallMask)"
     bmc = re.search(r"^BombMarkWalls:.*?^ABWXTab", BANK1, re.S | re.M)
     assert bmc and "jsr ClearPFColumn" in bmc.group(0), \
         "BMW must punch at the match via jsr ClearPFColumn (plan 5.1)"

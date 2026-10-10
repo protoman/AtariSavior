@@ -958,6 +958,49 @@ UpdateLaserSound:
 LaserFreqTable:
     .byte 4,7,10,12,14,12,10,7
 
+; PairGone — leaf in the pre-BMW free zone ($FACC..$FB0F). Called ONLY for
+;   rect idx4 (the sole maskless slot), so rect4.x is deref'd here directly
+;   (RcW1+16 = rect4.x — EQU-derived, not a magic number). Returns Z=1 iff
+;   cols (rect4.x, rect4.x+1) are BOTH clear in row LineCount (pair present
+;   anywhere in the span ⇒ Z=0). Rect idx4 has no WallMask bit (BombMaskBit
+;   is 4-wide, b3-6), so this single-row buffer read replaces the mask
+;   double-score guard for that slot only — first blast sees the pair
+;   solid, any re-blast sees it clear and skips (parity: idx0-3 keep the
+;   mask path untouched). Pair x is even (cell-aligned) and ≠0 (caller
+;   gates), so x and x+1 always share one PF buffer. Clobbers A,X,Y,Temp.
+;   Same-bank jsr legal (no pad nesting).
+PairGone:
+    lda RcW1+16                 ; rect4.x (ABWXTab,X with X=4)
+    tax
+    lda BombClearMask,X
+    eor #$FF
+    tay                         ; Y = bit for col x
+    inx
+    lda BombClearMask,X
+    eor #$FF
+    sta Temp                    ; bit for col x+1
+    tya
+    ora Temp
+    sta Temp                    ; both pair bits
+    ; X = x+1 here — buffer dispatch still selects correctly (pair x is
+    ; even: PF0 iff x<4 ⟺ X<4; PF1 4..10 ⟺ X 5..11; PF2 x≥12 ⟺ X≥13).
+    ldy LineCount
+    cpx #4
+    bcc .pg0
+    cpx #12
+    bcc .pg1
+    lda PF2Buf,Y
+    and Temp
+    rts
+.pg0:
+    lda PF0Buf,Y
+    and Temp
+    rts
+.pg1:
+    lda PF1Buf,Y
+    and Temp
+    rts
+
 ; ========================================================================
 ; BombMarkWalls (S5.2, moved from bank0) — pinned at $FB10.
 ;   On the bomb 1->2 edge: walk the rect cache, set WallMask bit (BombPacked
@@ -974,6 +1017,21 @@ LaserFreqTable:
 ;   hot parent-mask AND (HotOverlapBody) still reads it until phase 6.
 ;   ABW tables + BombMaskBit are bank1-only now (kernel copies died with
 ;   ApplyBombWalls).
+;   #7(i): walk now covers rects 0-4 (cache slot rect4 at $DC-$DF was
+;   loaded but never walked — a thin wall there was unbreakable). Rect5
+;   is not cached (ZP ends $DF) and stays unwalkable — shipped models
+;   have no thin rect at idx5. Rect idx4 has no WallMask bit: PairGone's
+;   buffer read replaces the mask as its double-score guard. A full
+;   buffer cell-sweep was evaluated and REJECTED: find_rectangles merges
+;   maximal runs, so every shipped thin wall has a solid neighbor slab
+;   (checked all 8 models) — buffer adjacency cannot distinguish thin
+;   stubs from thick walls without breaking gameplay parity.
+;   Also fixed: the col x+1 punch passed the ABW table VALUE (the rect's
+;   ZP address) as the ClearPFColumn col instead of deref'ing rect.x —
+;   the second half of every thin wall was punched at a garbage col
+;   (caught by the new test_bomb_strip rect-walk case; pre-existing
+;   since plan 5.1). RcBase is now clamped ≤5 at the bank2 cache load —
+;   BMW trusts it (no local clamp).
 ; ========================================================================
     .ds $FB10 - *, 0
 BombMarkWalls:
@@ -982,11 +1040,11 @@ BombMarkWalls:
     sec
     lda BombX
     cmp #15
-    bcs .BMWoff7
-    sbc #4                      ; visible left = BombX - 5 (CMP clears carry)
-    jmp .BMWVL
-.BMWoff7:
+    bcc .BMWoff7
     sbc #7                      ; visible left = BombX - 7
+    bcs .BMWVL                  ; C set (X>=15) — skip the -5 path
+.BMWoff7:
+    sbc #4                      ; visible left = BombX - 5 (CMP clears carry)
 .BMWVL:
     lsr
     lsr                         ; screen col = visible_left/4 (0..39)
@@ -1045,14 +1103,10 @@ BombMarkWalls:
     sta BMWScratch
     lda #0
     sta CollisionX              ; walls-broken count (returned in A)
-    lda RcBase                  ; cached rect count
+    lda RcBase                  ; cached rect count (clamped ≤5 at load)
     beq .BMWDone
-    cmp #4
-    bcc .BMWCountOk
-    lda #4                      ; rooms with >4 rects: only rects 0-3 maskable
-.BMWCountOk:
-    tax                         ; X = rect count (1..4)
-    dex                         ; X = 3..0
+    tax                         ; X = rect count (1..5)
+    dex                         ; X = 4..0
 .BMWLoop:
     lda ABWXTab,X
     tay
@@ -1069,20 +1123,13 @@ BombMarkWalls:
     lda 0,Y                     ; rect.w
     cmp #2                      ; thin wall = 1 D7 cell = 2 display cols
     bne .BMWNext
-    lda BombMaskBit,X
-    and BombPacked              ; already broken?
-    bne .BMWNext                ; yes → no double score
-    lda BombMaskBit,X
-    ora BombPacked
-    sta BombPacked               ; set WallMask bit (keeps state+DownPrev)
-    inc CollisionX               ; +1 wall broken (caller scores +75 each)
-    ; --- plan 5.1: punch this rect's cells NOW (D7 thin wall w=2 = cols
-    ;   x AND x+1, rows y..y+h-1). Single-col punch was a D7 regression:
-    ;   it cleared only col x, and the just-set mask bit then blocked any
-    ;   re-blast of the surviving col x+1 (user test 2026-10-04 — "removes
-    ;   only half, remaining wall can't be blasted at all"). ClearPFColumn is
-    ;   same-bank rts — jsr legal (no pad nesting), SP -2 for ~40c each.
     stx CollisionCellY          ; save rect idx (ClearPFColumn clobbers X)
+    ; --- plan 5.1: punch rows y..y+h-1 (D7 thin wall w = 2 display cols;
+    ;   cols x AND x+1. Single-col punch was a D7 regression: it cleared
+    ;   only col x, and the just-set mask bit then blocked any re-blast
+    ;   of the surviving col x+1 (user test 2026-10-04 — "removes only
+    ;   half, remaining wall can't be blasted at all"). ClearPFColumn is
+    ;   same-bank rts — jsr legal (no pad nesting), SP -2 for ~40c each.
     lda ABWYTab,X
     tay
     lda 0,Y
@@ -1095,12 +1142,31 @@ BombMarkWalls:
     sec
     sbc #1
     sta CollisionEndY           ; last row (inclusive)
+    lda BombMaskBit,X
+    and BombPacked              ; already broken?
+    bne .BMWNext                ; yes → no double score
+    cpx #4
+    bne .BMWSet
+    jsr PairGone                ; idx4: no WallMask bit — buffer guard instead
+    ldx CollisionCellY          ; PairGone clobbered X (x+1) — restore idx
+    cmp #0                      ; re-derive Z from A (ldx set Z from idx)
+    beq .BMWNext                ; pair already clear → prior blast (no score)
+.BMWSet:
+    lda BombMaskBit,X
+    ora BombPacked
+    sta BombPacked               ; set WallMask bit (keeps state+DownPrev)
+.BMWPunch:
+    inc CollisionX               ; +1 wall broken (caller scores +75 each)
+    ; X = rect idx on entry (mask path never clobbers it; the idx4 guard
+    ; block restored it after PairGone) — first punch may use X directly.
     lda ABWXTab,X
     tay
     lda 0,Y                     ; A = col (ClearPFColumn arg)
     jsr ClearPFColumn
     ldx CollisionCellY          ; restore rect idx (ClearPFColumn clobbers X)
     lda ABWXTab,X
+    tay
+    lda 0,Y
     clc
     adc #1                      ; col x+1 — second half of the D7 thin wall
     jsr ClearPFColumn
@@ -1117,13 +1183,15 @@ BombMarkWalls:
                                  ; unchanged; the check ends in ReturnPad with
                                  ; A = count.
 
-ABWXTab: .byte RcW1, RcW1+4, RcW1+8, RcW1+12      ; rect.x (EQU-derived S3.1)
-ABWWTab: .byte RcW1+2, RcW1+6, RcW1+10, RcW1+14   ; rect.w
-ABWYTab: .byte RcW1+1, RcW1+5, RcW1+9, RcW1+13    ; rect.y (plan 5.1 punch)
-ABWHTab: .byte RcW1+3, RcW1+7, RcW1+11, RcW1+15   ; rect.h (plan 5.1 punch)
+ABWXTab: .byte RcW1, RcW1+4, RcW1+8, RcW1+12, RcW1+16 ; rect.x (EQU-derived S3.1)
+ABWWTab: .byte RcW1+2, RcW1+6, RcW1+10, RcW1+14, RcW1+18 ; rect.w
+ABWYTab: .byte RcW1+1, RcW1+5, RcW1+9, RcW1+13, RcW1+17 ; rect.y (plan 5.1 punch)
+ABWHTab: .byte RcW1+3, RcW1+7, RcW1+11, RcW1+15, RcW1+19 ; rect.h
 BombMaskBit:
-    .byte $08, $10, $20, $40      ; WallMask bit per rect index (kernel copy
-                                  ;  died with ApplyBombWalls, plan 5.2)
+    .byte $08, $10, $20, $40, $00  ; WallMask bit per rect index; idx4 =
+                                   ;  $00 (rect4 never in WallMask — zp doc
+                                   ;  S3.2) — PairGone guards its double-score
+                                   ;  (kernel copy died with ApplyBombWalls)
 
 ; ========================================================================
 ; Cross-bank call pads — byte-identical to bank0 at these addresses

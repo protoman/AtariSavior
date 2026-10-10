@@ -102,27 +102,35 @@ No entry is worked on without user greenlight.
    .Line budget comment — recount from bank0.lst, never trust notes).
    **Player:** darker/wrong-color band across one wall block;
    **Benefit:** uniform block color.
-7. **verify_build warns: model 5/6 have 6 wall rects > 5** — cell-swap
-   must cover all cache walkers before release.
-   **Status 2026-10-09: plan-mapped, 6.1 closed; release blocker =
-   phase 5.1-deviation match + 7.1.** cell_collision_plan progress:
-   PHM 2.1 / LWC 3.1 / moth 4.1 / bomb punch 5.1 = all cell-based
-   (test_phm_walk + test_cell_map green). **6.1 done** (verify-only:
-   hot = uncapped ROM stream, M5/M6 = 0 hot, parity in battery — see
-   the plan). Remaining: **(i)** `BombMarkWalls` MATCH is still
-   cache-driven (ABWXTab walk, count clamped to 4) → on 6-rect models
-   rects 4/5 are un-maskable/unbreakable by bombs (the fell-through-
-   symptom class of 2026-10-02 is fixed by cell-PHM; this residue =
-   bombs only). Design ready: hybrid — cell-inline sweep of the 2-col
-   blast window (PHM-style PF0/1/2Buf walk: ON → ClearPFColumn + score,
-   already-EMPTY = skip = replaces mask double-score) + keep the small
-   cache loop ONLY to set b3-6 mask bits for hot parents (all hot
-   models ≤4 solids). Watch overscan budget (bomb path margin 20-220c
-   per frame-budget rules) — measure before/after. **(ii)** 7.1 =
-   stop emitting solid rects + kill this WARN (only after (i)).
-   **Player:** no symptom today; if a walker reads a stale rect → wrong
-   wall collision on those models once enabled.
-   **Benefit:** removes a release blocker.
+ 7. **verify_build warns: model 5/6 have 6 wall rects > 5** — cell-swap
+    must cover all cache walkers before release.
+    **Status 2026-10-10: (i) FIXED — hybrid shipped (rect4 walk +
+    PairGone); (ii) open.** What shipped, and why NOT the original
+    cell-sweep design: buffer adjacency CANNOT distinguish thin walls —
+    find_rectangles merges maximal runs, so every shipped thin rect has
+    a solid neighbor slab (verified all 8 models: all thins have L or R
+    neighbors; a neighbor-test sweep would make most cave stubs
+    unbreakable). Shipped instead: (a) BMW walk covers rects 0-4 (was
+    0-3; clamp moved to the bank2 cache load, RcBase ≤ 5); ABW tables +
+    BombMaskBit grew a 5th entry ($00 — rect4 never in WallMask, zp doc
+    S3.2); (b) rect idx4 has no mask bit → `PairGone` (leaf at $FACC)
+    reads the pair buffer in row LineCount — solid → punch+count,
+    already-EMPTY → skip = double-score guard for the maskless slot
+    only (idx0-3 keep the mask path byte-for-byte). Rect5 stays
+    unwalkable (ZP cache ends $DF) — shipped models have no thin rect
+    at idx5; revisit only if a future model puts one there. **Also
+    fixed (pre-existing since plan 5.1, caught by the new test): the
+    col x+1 punch passed the ABW table VALUE (the rect's ZP address)
+    as the ClearPFColumn col instead of deref'ing rect.x — every thin
+    wall's second half was punched at a garbage col.** Budget: BMW ran
+    in the bomb 1→2 edge (rare frame); sims + battery green, no OVER
+    regression. (ii) 7.1 = stop emitting solid rects + kill this WARN
+    (only after (i) settles in play).
+    **Player:** bombs can break thin walls at cache slot 4 (was
+    silently unbreakable); no half-walls from the col-x+1 garbage
+    punch.
+    **Benefit:** release blocker downgraded to the 7.1 data-pipeline
+    item.
 8. **Title frames f0/f1 not exactly 263** (262.61 / 262.93 raw) —
    boot-frame quant, same family as item 1. Keyed below f2 so the wall
    assert skips them today.
