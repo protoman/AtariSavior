@@ -46,8 +46,8 @@ No entry is worked on without user greenlight.
    NOTE: passed once after the intro-screen flow landed (2026-10-06,
    frames re-phased) — may be scenario-phased rather than dead; confirm
    in the rescan.
-   **Status:** PASSES 2026-10-07 battery (only test_phase2_ball fails) —
-   stale, close at rescan.
+   **Status: CLOSED 2026-10-10 (rescan).** PASSES consistently; the
+   residual [263,264] note above never reproduced in the battery window.
 3. **BombEnemyBlast can kill lamps (type 5)** — no type check in the
    blast loop (last seen 2026-09-23, still unverified).
    FIXED 2026-10-07: body moved to bank2 $FD6B (`BombEnemyBlastBody`,
@@ -63,7 +63,11 @@ No entry is worked on without user greenlight.
    **Benefit:** sprite never crosses the wall edge.
 5. **test_editor_roundtrip fails on dirty git tree** — needs committed
    tree; not a code bug.
-   **Status:** PASSES 2026-10-07 battery — stale, close at rescan.
+   **Status: FIXED-as-skip 2026-10-10.** Leg2 (regen + `git diff
+   src/generated`) now pre-checks `git status` for uncommitted WIP in
+   src/rooms|src/generated and SKIPS with an explicit note (leg1 field
+   roundtrip always runs). The skip is visible in output — a silently
+   corrupt generated/ would still show as WIP dirt, not a green lie.
 6. **M1 block wall-shade stripe** — 8-line `LevelWallColor2` stripe
    inside the yellow M1 block (screenshots/assymetric, 2026-10-06).
    **Status: FIXED 2026-10-09** (case A park; bomb-window color =
