@@ -145,11 +145,30 @@ No entry is worked on without user greenlight.
    RoomX 4..155 × Y ∈ {24,45-straddle,96} × both facings × both rooms
    (hand-EnterRoom pokes; strip b4 alive): **5472 frames, 3398 cell +
    99 M1-strip contacts, 0 pass-throughs** — contact logic holds in
-   py65 on the current build. Next: confirm the test ROM includes
-   56fb57d (17:36); if it still reproduces in Stella, capture the
-   EXACT spot (mid-pass shot + player X/Y) — suspect then = a
-   Stella-visual-only path (beam drawn over the wall/strip) that py65's
-   RAM-invariant cannot see. **Benefit:** shot visual == hit logic.
+   py65 on the current build.
+   **Git-history diagnosis (user hint 2026-10-09, confirmed):** THE SAME
+   BUG shipped+fixed in the S6 saga — `bd9b17d` / `docs/laser_s6_log.md`
+   S6b: *"Path anchored at the eye (X+4), not the nose: at max approach
+   the eye col > wall col → wall never on the path → no clamp → beam
+   spawns past the wall and kills through"* (+ the rollback `962721d`:
+   "v3 broke position/Size in Stella despite green py65" = the
+   Stella-vs-sim divergence precedent). The 2026-10-08 contact-missile
+   redesign (forward tip-only test) REINTRODUCED the eye anchor: the
+   tip test can never see the wall cell between nose and eye when the
+   eye starts flush/past it.
+   **Clamp attempt 2026-10-09 (REVERTED — over budget):** fold stub
+   $FFDE + bank2 twin + body at window-front (org $F9D9) + VBL stage of
+   the beam band row — correct logic, but **measured 226c/frame in
+   overscan** → SetObjectXPos's WSYNC stalls (gap86 at $FF11) → +1
+   line/frame on tight frames → 95 sim-bad frames → reverted to green.
+   Budget math for v2: after LaserInput the line has ~36c free; clamp
+   must land ≤~70c → needs (a) inline cell tests (−36c vs jsr helper),
+   (b) ≤2-cell scan, (c) possibly press-edge-only + nose-eye eye
+   (X+4→X-3) as the cheap half. nose-eye alone leaves a hole (face on
+   cell-last px × X≡3 mod4) + a 2px behind-player stub — not sufficient
+   by itself. **Player:** laser passes through blocks at close range
+   (right-facing), sync + async; **Benefit:** beam stops at every wall,
+   visual == hit logic. **Status: OPEN, design recorded, budget-gated.**
 10. **Cross-bank Temp conflict:** bank1 `Temp=$AD` = bank0 `TickCounter`
     slot — deliberate, allowlisted (`check_equ_sync.ZP_ALLOW`). Fragile
     if either side's frame phase changes.
