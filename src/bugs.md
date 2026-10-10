@@ -312,6 +312,15 @@ No entry is worked on without user greenlight.
     still mention removed start-screen art/generators. Reconcile those
     references in a separate cleanup pass; keep out of gameplay-demo
     work.
+    **Status: RECONCILED 2026-10-10 (docs-only pass).** The only live
+    reference was `src/plans/intro_screen_fix_plan.md` — now carrying a
+    HISTORICAL banner (art pipeline removed 2026-10-08 per #14; current
+    intro = #16 font, plan2 is the current plan; steps must not be
+    executed). No other .md/asm mentions `mock_title`/`art_table`/
+    `title_art`/`start_screen` (verified by repo grep). NEEDS USER
+    APPROVAL (deletion rule): orphan
+    `src/tools/__pycache__/art_table.cpython-312.pyc` (source removed,
+    bytecode left) — delete with user permission, keep until then.
     **Player:** none — docs only; prevents misleading future work.
 27. **Level-data overflow of bank2's data slots = build dies
     `Origin Reverse-indexed`** (2026-10-08, level 4). The window is

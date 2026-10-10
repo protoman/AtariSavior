@@ -1,5 +1,15 @@
 # Plan: Fix Intro Screen
 
+> **HISTORICAL (2026-10-10, bugs.md #26).** Superseded — the helmet-art
+> pipeline this plan calibrated (`tools/art_table.py`, `mock_title.py`,
+> `generated/title_art.asm`, `art/start_screen.png`, the digit row) was
+> removed 2026-10-08 (bugs.md #14) and the intro title now uses the #16
+> font technique (502d6db). Reference image `intro_screen_mess_fixed.png`
+> is gone too; `screenshots/bug_intro.png` remains. Kept for history
+> only — do NOT execute its steps. Current intro plan:
+> `intro_screen_fix_plan2.md`.
+
+## Goal
 ## Goal
 
 Fix the intro screen (`DropTarget=$FD` path) to match `intro_screen_mess_fixed.png`:
