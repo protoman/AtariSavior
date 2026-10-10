@@ -165,7 +165,9 @@ def main() -> None:
         "walk placeholder; #7(i) — PairGone guards idx4 double-score)"
     assert mb.group(1).split(",")[-1].strip().startswith("$00"), \
         "BombMaskBit idx4 must be $00 (rect4 never in WallMask)"
-    bmc = re.search(r"^BombMarkWalls:.*?^ABWXTab", BANK1, re.S | re.M)
+    # end anchor: ReturnPad — ABWXTab moved to the $F010 fill gap (2026-10-10
+    # table relocation), so it no longer follows the BMW body in source order
+    bmc = re.search(r"^BombMarkWalls:.*?^ReturnPad", BANK1, re.S | re.M)
     assert bmc and "jsr ClearPFColumn" in bmc.group(0), \
         "BMW must punch at the match via jsr ClearPFColumn (plan 5.1)"
     cpc = re.search(r"^\.CPCDone:\s*\n\s*(\S+)", BANK1, re.M)

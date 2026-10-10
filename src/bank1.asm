@@ -46,6 +46,23 @@ VDELP1  = $26
     ; Bank0 power-up stub: lda #0 / sta $1FF6 → lands here, jumps to GameStart
     jmp $F008
 
+    ; --- ABW rect tables + BombMaskBit (relocated 2026-10-10) ---
+    ; The BMW span-overlap fix grew the walk ~9B and overflowed the
+    ; pre-$FBF8 content end ($FBF5, only 2B slack → Origin
+    ; Reverse-indexed). Tables are abs-indexed from BombMarkWalls only,
+    ; so they park in the $F003 fill gap (kept clear of the stub's
+    ; $F008 landing zone). Recheck this gap if the power-up stub grows.
+    .ds $F010 - *, 0
+ABWXTab: .byte RcW1, RcW1+4, RcW1+8, RcW1+12, RcW1+16 ; rect.x (EQU-derived S3.1)
+ABWWTab: .byte RcW1+2, RcW1+6, RcW1+10, RcW1+14, RcW1+18 ; rect.w
+ABWYTab: .byte RcW1+1, RcW1+5, RcW1+9, RcW1+13, RcW1+17 ; rect.y (plan 5.1 punch)
+ABWHTab: .byte RcW1+3, RcW1+7, RcW1+11, RcW1+15, RcW1+19 ; rect.h
+BombMaskBit:
+    .byte $08, $10, $20, $40, $00  ; WallMask bit per rect index; idx4 =
+                                   ;  $00 (rect4 never in WallMask — zp doc
+                                   ;  S3.2) — PairGone guards its double-score
+                                   ;  (kernel copy died with ApplyBombWalls)
+
     org $F540
 MenuMain:
     ; ========================================================================
@@ -1112,17 +1129,30 @@ BombMarkWalls:
     tay
     lda 0,Y                     ; rect.x
     beq .BMWNext                ; x==0 = screen L/R border — never destroy
-    cmp CollisionEndX
-    bcc .BMWNext                ; x < lo
-    cmp CollisionCellX
-    beq .BMWCheckW              ; x == hi → in blast
-    bcs .BMWNext                ; x > hi
-.BMWCheckW:
+    sta CollisionEndY           ; hold x for the span test below; punch path
+                                ;   rewrites CollisionEndY (last row) before
+                                ;   ClearPFColumn reads it — no conflict
     lda ABWWTab,X
     tay
-    lda 0,Y                     ; rect.w
+    lda 0,Y
     cmp #2                      ; thin wall = 1 D7 cell = 2 display cols
     bne .BMWNext
+    ; --- SPAN overlap (2026-10-10): blast hits the wall if ANY col of
+    ; [x, x+w-1] lies in [blast_lo, blast_hi]. The old rect.x-only test
+    ; missed bombs sitting one col right of rect.x: fold 15 → window
+    ; [13,17] vs rect span [12,13] → 0 PF writes ("right wall: nothing
+    ; happens"; sweep bombx 104-107 = natural flush drop beside the
+    ; mirrored instance cols 26-27). w is already known == 2 here, so
+    ; far = x+1.
+    lda CollisionEndY           ; x
+    cmp CollisionCellX          ; x vs hi
+    beq .BMWIn                  ; x == hi → right col in blast
+    bcs .BMWNext                ; x > hi → span entirely right of blast
+    clc
+    adc #1                      ; far = x + w - 1
+    cmp CollisionEndX           ; far vs lo
+    bcc .BMWNext                ; far < lo → span entirely left of blast
+.BMWIn:
     stx CollisionCellY          ; save rect idx (ClearPFColumn clobbers X)
     ; --- plan 5.1: punch rows y..y+h-1 (D7 thin wall w = 2 display cols;
     ;   cols x AND x+1. Single-col punch was a D7 regression: it cleared
@@ -1183,15 +1213,10 @@ BombMarkWalls:
                                  ; unchanged; the check ends in ReturnPad with
                                  ; A = count.
 
-ABWXTab: .byte RcW1, RcW1+4, RcW1+8, RcW1+12, RcW1+16 ; rect.x (EQU-derived S3.1)
-ABWWTab: .byte RcW1+2, RcW1+6, RcW1+10, RcW1+14, RcW1+18 ; rect.w
-ABWYTab: .byte RcW1+1, RcW1+5, RcW1+9, RcW1+13, RcW1+17 ; rect.y (plan 5.1 punch)
-ABWHTab: .byte RcW1+3, RcW1+7, RcW1+11, RcW1+15, RcW1+19 ; rect.h
-BombMaskBit:
-    .byte $08, $10, $20, $40, $00  ; WallMask bit per rect index; idx4 =
-                                   ;  $00 (rect4 never in WallMask — zp doc
-                                   ;  S3.2) — PairGone guards its double-score
-                                   ;  (kernel copy died with ApplyBombWalls)
+; ABWXTab/ABWWTab/ABWYTab/ABWHTab/BombMaskBit live at $F010 (top-of-bank
+; fill gap) — relocated 2026-10-10 when the BMW span fix overflowed the
+; $FBF8 pin. Only BombMarkWalls indexes them (abs,X/Y), no cross-bank
+; operand points at them.
 
 ; ========================================================================
 ; Cross-bank call pads — byte-identical to bank0 at these addresses
