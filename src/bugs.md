@@ -184,7 +184,7 @@ No entry is worked on without user greenlight.
 
 ## Title screen — unfinished pieces (2026-10-06)
 
-13. **Piece 1 code complete, Stella test NOT done.** Flow (2026-10-06,
+13. **Piece 1 menu flow — CLOSED 2026-10-10 (py65, test_menu_flow.py).** Original flow (2026-10-06,
     rev2): boot → intro (black, purple "S.A.V.I.O.R." — digit row
     removed per user); first SELECT/RESET edge → old title (first room
     + HUD count); old title SELECT = swallow-first +1 (flag $F2 — moved
@@ -195,9 +195,20 @@ No entry is worked on without user greenlight.
     out). RESIDUAL: RESET held *past landing* still re-fires to title
     (level-triggered, no edge byte available) — release before the
     drop-in finishes. Verify both transitions, level wrap 3→1.
-    **Player:** untested flows (unknown until Stella run); known:
-    holding RESET past drop-in landing bounces you back to title.
-    **Benefit:** verified menu flow, no bounce-back.
+    **Status: CLOSED 2026-10-10 — py65 self-test, no Stella needed.**
+    `tools/test_menu_flow.py` walks the whole flow against live RAM:
+    intro $FD -> RESET -> title $FF (intro never reappears, whole-run
+    monitor); title idle holds; SELECT held 3 frames = exactly one edge;
+    full LEVEL_COUNT=4 cycle with exact wrap + title state kept (entry's
+    "3->1" stale — LEVEL_COUNT=4, display wrap 000004->000001); title
+    RESET zeroes score, arms fall, lands DROPT==0; SELECT held mid-fall
+    never bounces (idle gate verified); landed SELECT -> title, second
+    RESET -> game (repeatable). Entry's "swallow-first + flag $F2" is
+    stale too — swallow removed 2026-10-07 (8b), tally owns $F2.
+    Residual unchanged/documented: a switch held PAST landing re-fires
+    (release before drop-in finishes).
+    **Player:** menu flows verified end-to-end in sim.
+    **Benefit:** switch-edge/gate regressions caught by the battery.
 14. **Jet-art leftovers audit** (2026-10-08 — original jet-art piece
     CANCELLED, art removed). Grep the tree for dead references:
     `art/start_screen.png`, `screenshots/title_mock.png`,
