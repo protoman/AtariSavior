@@ -152,6 +152,10 @@ EnterRoomB2:
     sta FetchPtr+1
     ldy #0
     lda (FetchPtr),Y                ; count
+    cmp #6
+    bcc .EBrcCntOk
+    lda #5                          ; rect5+ not cached (ZP ends $DF) — clamp
+.EBrcCntOk:                         ; so walkers can trust RcBase <= 5
     sta RcBase
     iny                             ; Y = first packed byte
     ldx #0                          ; dest offset in rect0..4 ($CC+)

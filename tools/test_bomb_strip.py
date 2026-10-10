@@ -91,7 +91,9 @@ def parse_equ(path: Path, names: set) -> dict:
 L1 = parse_labels(SRC / "bank1.lst", {"BombMarkWalls", "StripBlastCheck",
                                       "M1ToBank2", "M1ToBank1"})
 L0 = parse_labels(SRC / "bank0.lst", {"BombX", "LineCount", "RcBase",
-                                "EnemyDeadMask", "CollisionX"})
+                                "EnemyDeadMask", "CollisionX",
+                                "BombPacked", "PF0Buf", "PF1Buf",
+                                "PF2Buf"})
 L2 = parse_labels(SRC / "bank2.lst", {"StageBandTab", "M0TilePF0",
                                       "M3TilePF0", "M1StripBlast"})
 L2.update(parse_equ(SRC / "bank2.lst",
@@ -99,7 +101,8 @@ L2.update(parse_equ(SRC / "bank2.lst",
                      "RoomPF0Lo"}))
 need = ({"BombMarkWalls", "StripBlastCheck", "M1ToBank2", "M1ToBank1"}
         - L1.keys()) | \
-       ({"BombX", "LineCount", "RcBase", "EnemyDeadMask", "CollisionX"}
+       ({"BombX", "LineCount", "RcBase", "EnemyDeadMask", "CollisionX",
+         "BombPacked", "PF0Buf", "PF1Buf", "PF2Buf"}
         - L0.keys()) | \
        ({"StageBandTab", "M0TilePF0", "M3TilePF0", "M1StripBlast",
          "BandTab", "CollisionEndY", "CollisionEndX",
@@ -140,19 +143,25 @@ M1X = 8 * _m1n - 1 if _m1n else 0           # 7+8*m1_col
 
 
 def run_bmw(mem: Mem1, bomb_x: int, line_count: int,
-            meta: int = None) -> int:
+            meta: int = None, rects=None, bomb_packed: int = 0) -> int:
     """Drive BombMarkWalls; return the count A (walls newly broken).
 
     meta = TilePF0 address staged into RoomPF0Lo (M1X read target);
-    defaults to model 0."""
+    defaults to model 0. rects = list of (x, y, w, h) staged into the
+    ZP cache (RcBase = len); bomb_packed seeds BombPacked (WallMask)."""
     r = mem.ram
     meta = M0 if meta is None else meta
     r[L2["RoomPF0Lo"] - 0x80] = meta & 0xFF
     r[L2["RoomPF0Lo"] + 1 - 0x80] = meta >> 8
     r[L0["BombX"] - 0x80] = bomb_x
     r[L0["LineCount"] - 0x80] = line_count
-    r[L0["RcBase"] - 0x80] = 0           # no rects: strip check only
     r[L0["EnemyDeadMask"] - 0x80] = 0
+    r[L0["BombPacked"] - 0x80] = bomb_packed
+    rects = rects or []
+    r[L0["RcBase"] - 0x80] = len(rects)
+    for i, (x, y, w, h) in enumerate(rects):
+        off = 0xCC - 0x80 + 4 * i
+        r[off], r[off + 1], r[off + 2], r[off + 3] = x, y, w, h
     mem.bank = 1
     mpu = MPU(memory=mem)
     mpu.pc = L1["BombMarkWalls"]
@@ -327,8 +336,37 @@ def main() -> int:
         f"b4 must not touch the ball strip (bands={bands}, "
         f"mask=${pack_b & 7:02X})")
 
+    # --- #7(i): walk covers rect4; PairGone guards its double-score ------
+    # left bomb col 11 -> blast [9,13] (far from the strip mirror {14,15},
+    # cf. case 6). Thin rect (10,0,2,1) staged at cache idx4 = the slot the
+    # old X=3..0 walk never reached. Pair cols 10,11 = PF1 bits $02|$01.
+    r5 = [(0, 0, 4, 1), (2, 0, 4, 1), (4, 0, 4, 1), (6, 0, 4, 1),
+          (10, 0, 2, 1)]
+    memr = Mem1()
+    r = memr.ram
+    r[L0["PF1Buf"] - 0x80] = 0x03
+    gotr = run_bmw(memr, 51, 0, rects=r5)
+    assert gotr == 1, f"rect4 thin must break (count={gotr})"
+    assert not r[L0["PF1Buf"] - 0x80] & 0x03, "rect4 punch must clear pair"
+    assert not r[L0["BombPacked"] - 0x80] & 0x78, (
+        f"rect4 must not set WallMask (packed=${r[L0['BombPacked'] - 0x80]:02X})")
+    gotr2 = run_bmw(memr, 51, 0, rects=r5)   # pair now clear in PF1Buf
+    assert gotr2 == 0, f"rect4 re-blast must not count (count={gotr2})"
+
+    # idx0 keeps the mask path: WallMask blocks a re-blast even with the
+    # pair re-solidified (mask is the guard for idx0-3, buffer is not).
+    memq = Mem1()
+    r = memq.ram
+    r[L0["PF1Buf"] - 0x80] = 0x03
+    gotq = run_bmw(memq, 51, 0, rects=[(10, 0, 2, 1)])
+    assert gotq == 1, f"idx0 thin must break (count={gotq})"
+    assert r[L0["BombPacked"] - 0x80] & 0x08, "idx0 must set WallMask b3"
+    r[L0["PF1Buf"] - 0x80] = 0x03
+    gotq2 = run_bmw(memq, 51, 0, rects=[(10, 0, 2, 1)], bomb_packed=0x08)
+    assert gotq2 == 0, f"idx0 mask must block re-blast (count={gotq2})"
+
     print("test_bomb_strip: OK (ball+M1 blast hit/controls, no double "
-          "count, staging alive/dead, pad identity)")
+          "count, staging alive/dead, pad identity, rect4 walk + guard)")
     return 0
 
 
