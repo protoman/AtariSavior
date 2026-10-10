@@ -1917,14 +1917,14 @@ BombEnemyBlastBody:
 ; ------------------------------------------------------------------------------
 ; BombEnemyBlast tramp mirror ($FDD8-$FDDD) — byte-identical with kernel.asm's
 ; copy at the same address (bomb-lamp fix 2026-10-07). bank0 executes `sta
-; $1FF8` at $FDD8-$FDDA; the fetch at $FDDB comes from THIS bank = `jmp $FD6B`
+; $1FF8` at $FDD8-$FDDA; the fetch at $FDDB comes from THIS bank = `jmp $FD6A`
 ; (BombEnemyBlastBody). Neither bank runs its other half: bank0 is switched
 ; away at $FDDA, bank2 never enters at $FDD8 (the .HOVdone tail-jmps $FBF8
 ; before this pad). Pinned $FDE1 below = PickPlayerFrame tramp.
 ; ------------------------------------------------------------------------------
     .ds $FDD8 - *, 0
     .byte $8D, $F8, $1F         ; sta $1FF8 (twin)
-    .byte $4C, $6B, $FD         ; jmp $FD6B (twin — fetched post-switch)
+    .byte $4C, $6A, $FD         ; jmp $FD6A (twin — fetched post-switch)
     .ds $FDE1 - *, 0            ; PickPlayerFrame tramp mirror (byte-identical
                                  ; with kernel.asm's copy — verify_frame_tramp)
 PickPlayerFrameTramp:

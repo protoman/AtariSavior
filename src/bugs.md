@@ -50,7 +50,9 @@ No entry is worked on without user greenlight.
    residual [263,264] note above never reproduced in the battery window.
 3. **BombEnemyBlast can kill lamps (type 5)** — no type check in the
    blast loop (last seen 2026-09-23, still unverified).
-   FIXED 2026-10-07: body moved to bank2 $FD6B (`BombEnemyBlastBody`,
+    FIXED 2026-10-07: body moved to bank2 ($FD6A — this entry's "$FD6B"
+    was a stale comment and is what the hand-synced tramp operand
+    copied → bug 10; `BombEnemyBlastBody`,
    `lda (EnemyDataLo),Y / cmp #LAMP` skip) via $FDD8 pad twin (stub in
    kernel.asm; post-switch fetch needs byte-identical bank2 copy), body
    returns A=kill flag, BombTick awards +50 (pads can't nest); PlayerSpriteA
@@ -200,17 +202,79 @@ No entry is worked on without user greenlight.
     the pre-5727966 "col x+1 garbage punch" (entry 7) but that left
     col x+1; this leaves col x+2 with an "impossible" bit — different
     mechanism.
-    **Status: ANALYZE NEEDED 2026-10-10.** Next step = py65 write
-    trace on `$C9-$CB` (PF2Buf rows) through the bomb 1→2 edge in
-    room 1: dump the row1 byte before/after each `sta`, catch the
-    writer that sets bit2. Suspects: stale `LineCount` row index in
-    `ClearPFColumn` (X=row loop bounds vs col confusion), ZP alias
-    write to `$CA` outside the doc'd map, or cache-rect x drift at
-    runtime.
-    **Player:** the thin wall looks half-destroyed; the sliver is
-    cosmetic-only? (collision = cache rects, cols14 not in any rect —
-    needs a walk-through check) or a real invisible blocker.
+     **Status: FIXED 2026-10-10 — root cause = tramp operand
+     off-by-one (same family as the hand-synced-literal lessons).**
+     The `$FDD8` tramp was `sta $1FF8 / jmp $FD6B`, but
+     `BombEnemyBlastBody` lives at `$FD6A` — entry executed the operand
+     byte of `lda EnemyCount` (`a5 b3`) as an opcode. Garbage stream:
+     `LAX ($F0),Y` / `ALR ($A5),Y` / **`inc $4A,X`** — with the real
+     room's register state `X=$80`, `inc` physically increments `$CA`
+     (PF2 band1) → wall bits set with NO store that can explain it
+     (exactly the "impossible bit2" pixel-scan above). Proven by two
+     Stella `logTrace` instruction traces (parser: store+RMW+mirror
+     scans against built bins): the `inc` ran on all 4 blasts, X=$80
+     only at frames 1157/1699 → `$CA 03→04` (shot f1176) → `04→05`
+     (shot f1733), corroborated by RAM-grid screenshots `$CA=04`/`05`.
+     The sliver is render-only: `inc` touched the PF buffer, never the
+     rect cache → collision/walk-through unaffected (cosmetic).
+     Fix: both tramp copies → `jmp $FD6A` (kernel.asm source + bank2
+     twin `.byte $4C, $6A, $FD`). Escape lessons + autonomous repro
+     recipe: `lessons_learned.md`. Guards added to verify_build (RED on
+     the pre-rebuild bins): `check_blast_tramp` (byte-identity AND
+     operand == `BombEnemyBlastBody` — byte-identity alone was
+     satisfied by two equally-wrong copies) + `check_tramp_targets`
+     (generic: every `sta $1FFx`+`jmp` target must be a
+     destination-bank listing row start). verify_build +
+     sim_bomb_fuse + sim_frame_budget + battery 27/27 green.
     **Benefit:** bombs clear thin walls completely again.
+11. **Editor grid still shows pre-D7 (old tile) format** (user-reported
+    2026-10-10). Context: D7 grid flip (commit 3423ecc, 2026-10-04)
+    doubled tile width — one logical tile now = 8px = what was 2 tiles
+    before (`convert_level.py` `WIDTH = 10` "was 20 pre-D7"). The game
+    data pipeline is on the new 10-col grid, but the editor's grid
+    display still renders the old 20-col/tile-size layout.
+    **Status: OPEN 2026-10-10.**
+    **Player:** none directly (display/authoring confusion — rooms
+    drawn/edited against the wrong grid scale risk misaligned walls).
+    **Benefit:** editor WYSIWYG matches in-game tile size.
+12. **Bomb "does nothing" on the right wall — BMW window matched
+     rect.x only, not the wall's span** (user 2026-10-10: "bomb not
+     destroying the right wall at all. Left wall working fine").
+     Root cause: `BombMarkWalls` matched `rect.x ∈ [bombcol-2,
+     bombcol+2]` (folded mirror space) as a single point — the thin
+     wall's span is `[x, x+1]`, so bombs whose window STARTS at
+     `x+1` missed entirely (0 `ClearPFColumn` calls = "nothing
+     happens"). The mirror instance needs window coverage of the FAR
+     col (27 for rect x=12): natural flush drops beside it land at
+     fold 15 (bombx 104-107, window [13,17] vs span [12,13]) → miss;
+     left-side natural drops land fold 10-14 → hit — hence the
+     asymmetric report. (Same family as the pre-existing "bomb@104
+     window miss, BMW×3 ClearPFColumn×0" finding from the 2026-10-10
+     trace session.)
+     **Measured:** `tools/bomb_window_sweep.py` (diagnostic, not in
+     battery) — before: punch only fold 10-14; after: fold 10-15 both
+     sides, fold ≥16 correct miss (bomb 3+ cols from wall).
+     **Status: FIXED 2026-10-10.** Span-overlap match in the BMW walk
+     (`w==2` first, then `x<=hi` and `x+1>=lo`; temp-hold x in
+     `CollisionEndY`, punch path rewrites it with the last row before
+     `ClearPFColumn` reads — no contract change). Growth (~9B)
+     overflowed the pre-`$FBF8` content end ($FBF5 = 2B slack →
+     Origin Reverse-indexed) → the 4 ABW tables + `BombMaskBit`
+     (25B) relocated to the `$F010` fill gap in bank1 (abs-indexed
+     only by BMW; `test_phm_walk`'s `^BombMarkWalls:.*?^ABWXTab`
+     source anchor retargeted to `^ReturnPad`).
+     **Tests:** `test_bomb_half_wall` gained case C (bombx 104 =
+     fold 15 right — the user drop) + case D (bombx 68 = fold 15
+     left — proves window edge, not mirror), RED before the fix, green
+     after; the test now stages a **frozen fixture copy** of the room
+     (FIXTURE_PF/FIXTURE_RR literals captured 2026-10-10) with a
+     ROM-equality gate, so `src/rooms/*.txt` WIP edits fail loudly
+     here instead of silently drifting the contract (user-requested
+     "room copies the editor does not touch").
+     **Player:** bombs destroy thin walls from every natural drop
+     position on both sides.
+     **Benefit:** blast window = true ±2 overlap semantics for 2-col
+     walls on both sides.
 
 ## Latent risks (verified once, fragile)
 
