@@ -521,6 +521,109 @@ def check_enterroom_tramp(src: Path) -> None:
                 f"${body:04X} (operand stale)")
 
 
+def check_blast_tramp(src: Path) -> None:
+    """BombEnemyBlast tramp: bank0/bank2 byte-identity + operand = body.
+
+    2026-10-10 bug #10: operand was hand-synced to $FD6B while
+    BombEnemyBlastBody lives at $FD6A — both copies byte-identical and
+    equally wrong, execution entered mid-instruction and `inc $4A,X`
+    aliased into $CA (wall bits set with no store that could explain it).
+    Byte-identity alone proves nothing; the operand must equal the label.
+    """
+    bins: dict[int, bytes] = {}
+    for idx in (0, 2):
+        p = src / f"bank{idx}.bin"
+        if not p.exists():
+            err(f"bank{idx}.bin missing (blast tramp check)")
+            return
+        d = p.read_bytes()
+        if len(d) == 4096:
+            bins[idx] = d
+    if len(bins) < 2:
+        return
+    l0p, l2p = src / "bank0.lst", src / "bank2.lst"
+    if not l0p.exists() or not l2p.exists():
+        err("bank0.lst/bank2.lst missing (blast tramp check)")
+        return
+    labels0, _ = parse_lst(l0p.read_text(errors="replace").splitlines())
+    labels2, _ = parse_lst(l2p.read_text(errors="replace").splitlines())
+    tramp = labels0.get("BombEnemyBlast")
+    body = labels2.get("BombEnemyBlastBody")
+    if tramp is None or body is None:
+        err("BombEnemyBlast/BombEnemyBlastBody label missing (blast tramp)")
+        return
+    off = tramp - 0xF000
+    b0 = bins[0][off:off + 6]
+    b2 = bins[2][off:off + 6]
+    if len(b0) == 6 and b0[:3] != bytes((0x8D, 0xF8, 0x1F)):
+        err(f"bank0 BombEnemyBlast tramp ${tramp:04X} = {b0.hex()} (expected 8df81f + jmp)")
+    if b0 != b2:
+        err(f"blast tramp bank0[${tramp:04X}] {b0.hex()} != bank2 {b2.hex()} "
+            f"(byte-identity broken — bank2 twin missing/moved)")
+    if len(b0) == 6:
+        tgt = b0[4] | (b0[5] << 8)
+        if tgt != body:
+            err(f"blast tramp jmp ${tgt:04X} != bank2 BombEnemyBlastBody "
+                f"${body:04X} (operand stale)")
+
+
+def check_tramp_targets(src: Path) -> None:
+    """Generic: every `sta $1FFx` + `jmp $Fxxx` pair must land on a
+    destination-bank listing row start (label/instruction/data start).
+
+    Catches the stale-operand class generally: a 1-byte-wrong jmp operand
+    lands between rows, like 2026-10-10 ($FD6B vs BombEnemyBlastBody
+    $FD6A). Comment text is stripped first so prose mentioning tramps
+    (e.g. bank1's $F937 pin comments) cannot false-positive. bank3 has
+    no listing — pairs to $1FF9 warn only.
+    """
+    hot = {"$1FF6": 0, "$1FF7": 1, "$1FF8": 2, "$1FF9": 3}
+    starts: dict[int, set[int]] = {}
+    for b in range(3):
+        p = src / f"bank{b}.lst"
+        if not p.exists():
+            err(f"bank{b}.lst missing (tramp target check)")
+            return
+        labels, rows = parse_lst(p.read_text(errors="replace").splitlines())
+        starts[b] = {a for a, _ in rows} | set(labels.values())
+    sta_re = re.compile(r"sta\s+(\$1FF[6789])(?![0-9A-Fa-f])")
+    jmp_re = re.compile(r"jmp\s+\$([0-9a-fA-F]{4})")
+
+    def check(dest: int, tgt: int, where: str) -> None:
+        if not 0xF000 <= tgt <= 0xFFFF:
+            err(f"{where} tramp jmp ${tgt:04X} outside code space")
+        elif dest == 3:
+            warn(f"{where} tramp to bank3 ${tgt:04X} — bank3.lst absent, unverified")
+        elif tgt not in starts[dest]:
+            err(f"{where} tramp -> jmp ${tgt:04X} is NOT a bank{dest} "
+                f"listing row start (stale operand)")
+
+    for name in ("kernel.asm", "bank1.asm", "bank2.asm", "bank3.asm"):
+        p = src / name
+        if not p.exists():
+            continue
+        lines = p.read_text(errors="replace").splitlines()
+        for i, raw in enumerate(lines):
+            code = raw.split(";", 1)[0]
+            m = sta_re.search(code)
+            if not m:
+                continue
+            dest = hot[m.group(1)]
+            where = f"{name}:{i + 1}"
+            mj = jmp_re.search(code[m.end():])
+            if mj:  # sta + jmp on the same line
+                check(dest, int(mj.group(1), 16), where)
+                continue
+            for j in range(i + 1, min(i + 9, len(lines))):  # next code line only
+                nxt = lines[j].split(";", 1)[0].strip()
+                if not nxt:
+                    continue
+                mj = jmp_re.search(nxt)
+                if mj and not re.search(r"\bjsr\b|\brts\b|\.byte", nxt):
+                    check(dest, int(mj.group(1), 16), f"{where}/{j + 1}")
+                break  # first non-comment line decides: jmp pair or not a tramp
+
+
 def check_callpads(src: Path) -> None:
     banks: dict[int, bytes] = {}
     for idx in (0, 1):
@@ -1231,6 +1334,8 @@ def main() -> int:
     check_moth_tramp(src)
     check_frame_tramp(src)
     check_enterroom_tramp(src)
+    check_blast_tramp(src)
+    check_tramp_targets(src)
     check_callpads(src)
     check_levels(src)
     check_model_rects(src)

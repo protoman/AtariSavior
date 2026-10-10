@@ -3198,7 +3198,7 @@ ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
 ; BombEnemyBlast — bank2 entry tramp ($FDD8, lamp-safe S9 2026-10-07): the
 ; BombTick `jsr` lands here (bank0), `sta $1FF8` switches to bank2, the `jmp`
 ; is fetched from bank2's byte-identical mirror at this same address and
-; lands on the body at $FD6B (the lamp type-check reads enemy records that
+; lands on the body at $FD6A (the lamp type-check reads enemy records that
 ; live in bank2). Body tail-jmps ReturnPad ($FBF8); A = 1 kill (BombTick
 ; awards +50 — pads cannot nest), 0 none. Old inline body ($F87F, 66B)
 ; deleted: the region re-packs into the gap before the $FBD6 fold pin
@@ -3208,8 +3208,12 @@ ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
 ; ------------------------------------------------------------------------------
 BombEnemyBlast:
     sta $1FF8
-    jmp $FD6B                   ; BombEnemyBlastBody (bank2.lst — after
+    jmp $FD6A                   ; BombEnemyBlastBody (bank2.lst — after
                                 ;   .HOVdone; NOT in the TitleJetColors span)
+                                ;   (2026-10-10: was $FD6B — 1-byte stale
+                                ;   operand = entry mid-instruction at
+                                ;   `lda EnemyCount+1`; garbage path's
+                                ;   `inc $4A,X` set wall bits via $CA)
 
 ; ------------------------------------------------------------------------------
 ; PickPlayerFrame — VBL entry tramp: the VBL `jsr` lands here (bank0), `sta
