@@ -467,6 +467,20 @@ StartFrame:
 ; ------------------------------------------------------------------------------
 ; VSYNC (3 scanlines)
 ; ------------------------------------------------------------------------------
+; FIX (bugs.md #29 Class C): the OLD block started with `sta VSYNC` immediately
+; at frame entry, so the CPU was still inside the 76-cycle HBLANK when it
+; wrote VSYNC=$02 and the first `sta WSYNC`. A WSYNC that lands inside HBLANK
+; does not advance the wall clock to the next scanline boundary (it is already
+; there), so the VSYNC pulse was 2 lines instead of 3 on ~30% of frames (the
+; fraction depends on where the previous frame's overscan happened to end) —
+; the whole screen shifted up 1 scanline on those frames = the jitter.
+;
+; FIX: re-anchor first with an unconditional `sta WSYNC`. This always stalls to
+; the next scanline boundary (even if we were already at it — the store is 3c
+; past the HBLANK start so it always advances). THEN the 3 WSYNCs are a clean,
+; deterministic 3-scanline VSYNC pulse. Costs 1 scanline/frame (262 -> 263);
+; the sim wall-model target is updated to match.
+    sta WSYNC                   ; re-anchor to scanline boundary (always stalls)
     lda #2
     sta VSYNC
     sta WSYNC
@@ -648,6 +662,17 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
 .WaitVBLANK:
     lda INTIM
     bne .WaitVBLANK
+
+    ; --- Kernel-entry re-anchor (bugs.md #29 Class C, 2026-10-11) ---
+    ; TIM64T expires on a 64-cycle tick, the poll exits up to 63c late, and
+    ; the band-0 .Row setup WSYNC gap is ~75c — so the kernel start line
+    ; oscillated ±1 with the tick phase (measured: first .Line WSYNC at scn
+    ; 20 on 100 frames, scn 21 on 51 frames under bomb/thrust input = the
+    ; whole-screen jitter, HUD seam flipping rows 144/194). The re-anchor
+    ; below (VBLANK still on = blank line) absorbs the quantization: the
+    ; kernel + HUD are now WSYNC-line-locked every frame. +1 line/frame
+    ; (blank, invisible); wall-model target moves 264 -> 265.
+    sta WSYNC
 
     ; --- Turn off VBLANK ---
     lda #0

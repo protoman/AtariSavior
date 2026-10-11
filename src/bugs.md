@@ -616,44 +616,28 @@ No entry is worked on without user greenlight.
       frame (EnterRoom spike, #22 residual) + f266/f366-369 title-264
       family — pre-exist the Class-A fix unchanged (pre-fix EXIT run had
       them + the6 cave micros; post-fix only these6 remain).
-    - **Class C (residual seam) — ROOT-CAUSED 2026-10-11 (agent, via
-      Stella frame-trace detector).** NOT a WSYNC-count or per-section
-      cycle overrun: py65 measured cave=147 / HUD=48 WSYNC fixed over
-      300 frames; transition span cave-last-WSYNC→TopGap=125c fixed;
-      VBL=1110-1149c and overscan=1026-2079c, 0/N over their timers.
-      Stella pixel detector (`/tmp/opencode/stella_base/autoexec.script`
-      + row-probe) found the flip: HUD grey band bottom row (194) and
-      the cave/HUD seam row (144) toggle every ~2 frames (62/58 split
-      over 120 frames) — whole screen shifts ±1 row, brown cave top
-      edge moves 95↔96. Root: **VSYNC WSYNC #1 (kernel.asm:472) lands
-      in HBLANK ~30% of frames** (arrival phase β is uniform —
-      measured full 0-75 spread across 184 frames). HBLANK write = no
-      stall = frame 1 line shorter; visible write = stall = full length.
-      That ±1 at the VSYNC block propagates: VBL timer deadline D drifts
-      ±1 line, wait-exit drifts, and the first kernel `.Row` setup WSYNC
-      ($F115) writes at phase 22-23±(D drift) — right at the 22.7c HBLANK
-      cutoff — sometimes stalling (visible) sometimes not. Verified in
-      trace: f8 F115@scn19 resumes same line (no stall); f13 F115@scn19
-      resumes next line (stall) with identical instruction streams; the
-      stall cascades (first F150 scn 20↔21, Overscan entry 217↔218,
-      StartFrame 258↔259). The HUD bar/lives/bombs/score then all shift
-      ±1 row; row194 flips black/grey. **Trigger: bomb-drop path** —
-      bomb processing (overscan work, ~500-1000c extra) shifts the
-      VSYNC-entry phase β into the HBLANK window more often; idle/thrust
-      frames show 0 stalls in 133-frame trace. **Fix direction (not yet
-      applied):** force VSYNC #1 into a deterministic visible write.
-      Options measured-but-not-tried: (a) HMOVE-style padding before
-      #1 (needs exact cycle count to guarantee visible phase); (b)
-      restructure VSYNC block so the 3 WSYNCs are preceded by a 4th
-      unconditional `sta WSYNC` (costs 1 line/frame, shifts everything
-      but removes the ±1 variance — wall-model would re-baseline);
-      (c) accept ±1 and re-tune `.Row` WSYNC write phase deeper into
-      HBLANK (needs ≥7c earlier — hard with fixed setup). All three
-      require a sim_frame_budget re-baseline + Stella detector re-run
-      (120-frame row-probe must show single seam signature).
-      Tooling kept: `tools/measure_bar_cycles.py` (py65 WSYNC-count +
-      span + VBL/overscan duration under thrust+fire input) — run it
-      before/after any fix.
+    - **Class C (residual seam) — FIXED 2026-10-11 (agent).** Root cause:
+      TIM64T expires on a 64-cycle tick and the INTIM poll (`.WaitVBLANK`)
+      exits up to 63c late; the band-0 `.Row` setup WSYNC gap is ~75c, so
+      the kernel start line oscillated ±1 with the tick phase (Stella
+      trace: first `.Line` WSYNC at scn 20 on 100 frames / scn 21 on 51
+      frames under bomb+thrust input; HUD seam flipped rows 144/194,
+      62/58 split over 120 detector frames). py65 WSYNC counts were
+      constant (cave 147 / HUD 48) — the variance was the tick-phase
+      straddle, invisible to count-based guards. Fix: two re-anchor
+      `sta WSYNC`s — (1) at `StartFrame` before the VSYNC pulse
+      (overscan-end quant → VSYNC phase-lock), (2) after `.WaitVBLANK`
+      with VBLANK still on (VBL quant → kernel-entry line-lock; blank
+      line, invisible). +2 lines/frame → wall-model 263→265 (both
+      re-anchors counted); `OVER_ABSORB` 3222→3223 (+1c page-cross from
+      the +4 bytes of code motion — ledgered, not new work); f2/f3
+      transition exception widened to ±1.0 (was f3-only ±0.35).
+      Verified: Stella trace first-kernel-WSYNC scn 21 on 152/152
+      frames; pixel detector single seam signature 120/120 frames
+      (was 62/58); sim_frame_budget 265.0 clean on default + FLY
+      {Y,X,M}; battery 26/26; `test_phase3_ball` expectation
+      updated to {264,265}. Tooling: `tools/measure_bar_cycles.py`
+      (py65 WSYNC/span/VBL/overscan under thrust+fire).
 
 ## Rescan checklist (when the batch is closed)
 

@@ -41,6 +41,16 @@ class Mem:
         self.log_wsync = False
         self.wsync_log = []      # list of (bank, pc) at each WSYNC write
         self.mpu_pc = 0          # updated by step() before each mpu.step()
+        self.wall = 0            # CPU-cycle wall clock (advance in step())
+
+    def advance(self, c):
+        """Advance the wall clock; on a WSYNC store ($02) snap to the next
+        scanline boundary (76c) like hardware — same model as sim_frame_budget."""
+        self.wall += c
+        if c == 0:
+            return
+        # WSYNC halt is triggered by the STORE to $02, detected in __setitem__
+        # (see below). Here we just accumulate CPU cycles.
 
     def __getitem__(self, a):
         a &= 0xFFFF
@@ -75,6 +85,9 @@ class Mem:
             return
         if a == WSYNC:
             self.wsync_writes += 1
+            # WSYNC halt: snap wall to next scanline boundary (76c/line)
+            w = self.wall
+            self.wall = (w // 76 + 1) * 76 if w % 76 else w
             # log (bank, pc) at each WSYNC so we can reconstruct the sequence
             if self.log_wsync:
                 self.wsync_log.append((self.bank, self.mpu_pc))
@@ -123,7 +136,10 @@ print(f"paths: YLoop=${YLOOP:04X} F0=${BARREDF0:04X} "
 
 def step():
     mem.mpu_pc = mpu.pc
+    before = mpu.processorCycles
     mpu.step()
+    c = mpu.processorCycles - before
+    mem.advance(c)
 
 
 def boot_to_gameplay():
@@ -310,6 +326,14 @@ def run_frame_wsync():
         g += 1
         if g > 40000:
             return None
+    # reset the wall clock + WSYNC count at frame start so we can read BOTH
+    # the scanline count (wall delta / 76) and the WSYNC count for this frame.
+    # Wall reset happens at StartFrame (VSYNC), so the count covers
+    # VBLANK + kernel + overscan = 259 scanlines. HUD adds the 3 VSYNC
+    # stall lines that the next frame's reset will attribute to it, so
+    # total frame = measured_lines + 3 = 262.
+    mem.wall = 0
+    mem.wsync_writes = 0
     mem.wsync_log = []
     mem.log_wsync = True
     guard = 0
@@ -321,7 +345,8 @@ def run_frame_wsync():
         if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
             break
     mem.log_wsync = False
-    return mem.wsync_log
+    lines = mem.wall / 76.0
+    return mem.wsync_log, mem.wsync_writes, lines
 
 
 def hud_band_wsync(log):
@@ -616,21 +641,28 @@ if __name__ == "__main__":
     # The idle total was 203 fixed. Under movement/bomb the frame may emit 204
     # (a +1 scanline stall) on some frames = the seam flip. Measure total WSYNC
     # per frame across thrust + periodic fire (bomb) cycles.
-    print(f"\n total WSYNC under thrust+fire input:")
+    print(f"\n total WSYNC + frame-lines under thrust+fire input:")
     from collections import Counter
     tf_total = Counter()
+    tf_lines = Counter()
     for f in range(200):
         # thrust held (SWCHA D4=0 = 0xEF); fire pressed every 8th frame
         mem.swcha = 0xEF
         mem.inpt4 = 0x00 if (f % 8 < 3) else 0x80   # fire held 3 of every 8
-        log = run_frame_wsync()
-        if log is None:
+        res = run_frame_wsync()
+        if res is None:
             continue
-        tf_total[len(log)] += 1
+        log, nws, lines = res
+        tf_total[nws] += 1
+        tf_lines[round(lines, 2)] += 1
     print(f"  total WSYNC/frame distribution (thrust+fire):")
     for c, n in sorted(tf_total.items()):
         tag = "  <-- +1 vs idle 203!" if c != 203 else ""
         print(f"    {c} WSYNC: {n} frames{tag}")
+    print(f"  frame-lines (wall/76) distribution (thrust+fire):")
+    for c, n in sorted(tf_lines.items()):
+        tag = "" if abs(c - 263.0) < 0.15 else "  <-- OFF 263!"
+        print(f"    {c} lines: {n} frames{tag}")
 
     # --- Which section loses the WSYNC under fire? Split per-frame WSYNC into
     # cave (bank0 .Row..AfterRows) vs HUD (bank1 TopGap..HudPad) vs rest.
@@ -855,10 +887,10 @@ if __name__ == "__main__":
     total_counter = Counter()
     NFRAMES = 100
     for f in range(NFRAMES):
-        log = run_frame_wsync()
-        if log is None:
+        res = run_frame_wsync()
+        if res is None:
             continue
-        total = len(log)
+        log, total, _lines = res
         hud = hud_band_wsync(log)
         hud_counter[hud] += 1
         total_counter[total] += 1
