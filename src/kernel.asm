@@ -1042,11 +1042,12 @@ UpdateP0Vertical:
 ;       * spin-up: ÷4 ramp gate (EnemyRamP & 3) — net lift at exactly
 ;         60f = 1.0s of held-Up (user-confirmed "perfect").
 ;       * release -> FLOAT: JetPower takes b7 as the float flag and the
-;         low 7 bits as a 60-frame countdown ($80|60 = $BC). Phase A:
+;         low 7 bits as a 54-frame countdown ($80|54 = $B6). Phase A:
 ;         gravity-only decel stops the climb in ~0.3s; then Y is pinned
-;         (vy re-zeroed every frame) for the remaining ~1.0s — the
-;         player holds altitude — then the flag clears and normal
-;         gravity resumes (fall). State lives in JetPower, NOT
+;         (vy re-zeroed every frame) for ~0.5s (user retest: the first
+;         1.0s hover was too long — halved); then the flag clears and
+;         normal gravity resumes (fall ~0.85s after release). State
+;         lives in JetPower, NOT
 ;         StepsLeft: StepsLeft is the RefreshEnemyY SWCHB latch's byte
 ;         (title edge-detect contract) and .UpSteps rewrites it every
 ;         rising frame — both clobbered a StepsLeft-based float.
@@ -1084,12 +1085,12 @@ UpdateP0Vertical:
     ora vyLo
     beq .Gravity                ;   vy == 0 (DropArm JP=4 residue) — no
                                 ;   climb to stop, do NOT float
-    lda #$80+80                 ;   $D0 = float flag | 80-frame countdown:
-    sta JetPower                ;   ~26f climb-decel + ~54f pinned-Y
-    jmp .Gravity                ;   hover (spec ~0.3s stop + ~1s
+    lda #$80+54                 ;   $B6 = float flag | 54-frame countdown:
+    sta JetPower                ;   ~26f climb-decel + ~28f pinned-Y
+    jmp .Gravity                ;   (user: 1s hover too long ->
 .FloatRun:
-    dec JetPower                ;   same-Y); fall ~1.3s after release
-    lda JetPower                ; tick: $D0..$81 = 80f + release frame
+    dec JetPower                ;   halved to ~0.5s); fall ~0.85s
+    lda JetPower                ;   after release. tick: $B6..$81
     and #$7F
     bne .FRActive
     sta JetPower                ; A = 0: countdown done -> flag cleared,
