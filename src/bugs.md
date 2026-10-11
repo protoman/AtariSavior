@@ -233,7 +233,21 @@ No entry is worked on without user greenlight.
     before (`convert_level.py` `WIDTH = 10` "was 20 pre-D7"). The game
     data pipeline is on the new 10-col grid, but the editor's grid
     display still renders the old 20-col/tile-size layout.
-    **Status: OPEN 2026-10-10.**
+    **Root cause (2026-10-10):** `MapCanvas::paintEvent` drew the grid
+    border (and the patch/fragile/reinforced decorations) once per
+    display col — 40 boxes, one per 4px half-cell — the pre-D7
+    cell-per-col look. D7 cells are 2 display cols (8px), so the
+    correct grid is 20 boxes. Placement/edit granularity was never
+    wrong (only the visual grid).
+    **Status: FIXED 2026-10-10.** Borders + per-cell decorations now
+    drawn once per model cell (`dcol & 1 == 0`, `cellRect` spans 2
+    display cols — even start holds on both halves; right half mirrors
+    `39-dcol`); fill still per display col (patch/color logic
+    unchanged). Mouse/`ApplyBrushAt` untouched — clicking/enemy
+    placement keeps its granularity. Verified: editor rebuilt (cmake),
+    screenshot `screenshots/assymetric/bug11_grid_after.png` (20-cell
+    grid, cell-wide cyan patch outline), `test_editor_roundtrip`
+    selftest OK, full battery green.
     **Player:** none directly (display/authoring confusion — rooms
     drawn/edited against the wrong grid scale risk misaligned walls).
     **Benefit:** editor WYSIWYG matches in-game tile size.
