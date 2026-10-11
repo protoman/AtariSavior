@@ -775,7 +775,8 @@ No entry is worked on without user greenlight.
       RefreshEnemyY's SWCHB latch byte — title edge contract — and
       .UpSteps rewrites it on every rising frame, killing any
       StepsLeft-based float within 1 frame). Release edge (thrust
-      1..127, b7 clear, vy != 0) loads $80+80; physics skips the
+      1..127, b7 clear, vy != 0) loads $80+54 (first pass $80+80 =
+      ~0.9s hover; user: 1s too long → halved, ~0.5s pinned); physics skips the
       thrust subtraction while b7 set (gravity-only decel = phase A);
       when vy >= 0 Y is re-zeroed every frame (pinned) until the
       countdown clears the flag, then normal gravity resumes.
@@ -785,9 +786,10 @@ No entry is worked on without user greenlight.
       relocation + $FDD8 re-pin, fall-gate StepsLeft clear, the
       StepsLeft PENDING/HOLD machine, and the ÷2 decay.
     - **Measured (py65):** press spin-up unchanged (~1s, floor then
-      lift); release: stop-climb 26f (0.43s), Y pinned ~54-60f
-      (~0.9s), fall at ~80f = **~1.35s after release** (spec: 0.3s
-      stop + ~1s same-Y ✓). Countdown lives at $80+80.
+      lift); release: stop-climb 26f (0.43s), Y pinned ~28f
+      (~0.5s, halved per user retest), fall ~48-54f =
+      **~0.85s after release** (spec: 0.3s stop + ~0.5s same-Y ✓).
+      Countdown lives at $80+54.
     - **Fixture updates (sim_frame_budget, honest scenario drift):**
       X/B fly pulses stop at f500 (rapid 5/12 re-presses + pinned
       releases hover forever, vy never reaches the 256 StepDown
