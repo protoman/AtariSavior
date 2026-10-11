@@ -2928,8 +2928,26 @@ ReloadLevel:
     lda #BOMBS_MAX
     sta PlayerBombs
     lda Level
-    jsr LoadLevel
-    lda #0
+    ; TAIL-jmp LoadLevel (bugs.md #29 Class B, 2026-10-11). The old
+    ; `jsr LoadLevel / zeros / rts` left FOUR jsr slots live when LoadLevel
+    ; reached `jsr EnterRoom`: CheckEnemyHit/timer death paths ran
+    ; main->jsr CEH->jmp LoseLife->jsr ReloadLevel->jsr LoadLevel->
+    ; jsr EnterRoom at SP=$F7, so the return address sat on $F6/$F7
+    ; (BombX/BombTimer), EnterRoomB2's `sta BombTimer` zeroed the pushed
+    ; PCH, and ReturnPad's rts popped ($00<<8|BombX)+1 = $009A -> ZP
+    ; executed as code -> $F008 pad -> GameStart REBOOT to title (the
+    ; SIM_EXIT=down f265 296-line crash frame + the title-264 family).
+    ; With the tail-jmp the slot count drops by one: EnterRoom's return
+    ; lands on $F8/$F9 (stack-only cells) on every death path.
+    ; The old post-code (vy/JetPower zeros + rts) is now unreachable but
+    ; KEPT BYTE-IDENTICAL: it lives in the pinned post-pad region and
+    ; deleting it shifted the downstream byte-identical twins (blast tramp
+    ; $FDCD guard). DropArm zeroes vyLo/vyHi/PlayerYSub itself (JetPower=4
+    ; stays through the drop-in flutter — now identical to the .LLStay
+    ; normal-death path). LoseLife's `sec` still runs (DropArm's rts pops
+    ; the jsr ReloadLevel slot back into LoseLife).
+    jmp LoadLevel
+    lda #0                      ; DEAD (address-stability pad, see above)
     sta vyLo
     sta vyHi
     sta JetPower

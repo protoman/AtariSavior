@@ -612,10 +612,34 @@ No entry is worked on without user greenlight.
       default/FLY={Y,X,M} all 0 bad; EXIT=down cave micros gone;
       battery 26/26; TIA-trace diff vs pre-fix baseline = only the58
       skipped COLUP0=$08 +58 ENAM0=$00 writes (per-frame, nothing else).
-    - **Class B — OPEN:** SIM_EXIT=down f265 overscan 5528c → 293.6-line
-      frame (EnterRoom spike, #22 residual) + f266/f366-369 title-264
-      family — pre-exist the Class-A fix unchanged (pre-fix EXIT run had
-      them + the6 cave micros; post-fix only these6 remain).
+    - **Class B — FIXED 2026-10-11 (agent).** Root cause was a CRASH, not
+      a heavy frame: the death chain `main→jsr CheckEnemyHit→jmp LoseLife→
+      jsr ReloadLevel→jsr LoadLevel→jsr EnterRoom` ran at SP=$F7, so the
+      `jsr EnterRoom` return address sat on $F6/$F7 (BombX/BombTimer RAM
+      mirrors); `EnterRoomB2`'s `sta BombTimer` zeroed the pushed PCH and
+      ReturnPad's `rts` popped ($00<<8|BombX)+1 = $009A → ZP executed as
+      code → $F008 pad → **GameStart REBOOT to title**. That produced BOTH
+      the f265 296-line frame AND the whole title-264 family (bad list
+      [265..276]). Only 3-slot-upstream paths were poisoned (CheckEnemyHit
+      / timer death); bomb (4 slots) and water-band (5 slots) sat on
+      safe cells — which is why only some deaths "rebooted".
+      Fix: `ReloadLevel` tail-jmps `LoadLevel` (−1 slot → return lands
+      on $F8/$F9 stack-only cells on every death path). The old post-code
+      (vy/JetPower zeros + rts) is dead but kept byte-identical — deleting
+      it shifted the $FDCD blast-tramp byte-identity guard; LoadLevel ends
+      in DropArm which zeroes the same (JetPower=4 now survives the
+      wrap-death drop-in, matching the .LLStay normal-death path).
+      Guards added: sim_frame_budget silent-reboot detector (post-landing
+      `$F000` re-entry → structural fail), bank-keyed pc_hist (pc-alias
+      trap), `transition_frames` exemption for the death+respawn pair
+      (reload chain runs +1 TIM64T tick = 3264c measured → +0.83/+0.22
+      lines on exactly 2 frames; wall/overscan gates exempt ONLY these).
+      Pre-existing, unchanged: `bomb exploded (state2 seen)` FAIL in
+      SIM_EXIT=down (confirmed identical pre-fix — bomb never reaches
+      state 2 in this scenario; not a regression).
+      Verified: SIM_EXIT=down bad wall list **empty** (was 296-line
+      crash + 12-frame title family); build.sh green; battery 26/26;
+      SIM_FLY {Y,X,M} all 0 bad at 265.0; no structural notes.
     - **Class C (residual seam) — FIXED 2026-10-11 (agent).** Root cause:
       TIM64T expires on a 64-cycle tick and the INTIM poll (`.WaitVBLANK`)
       exits up to 63c late; the band-0 `.Row` setup WSYNC gap is ~75c, so
