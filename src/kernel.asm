@@ -1037,22 +1037,31 @@ UpdateP0Vertical:
     and #%01111111
     sta Temp
 
-; --- Jet thrust accumulator: +1/frame while Up is held (cap JET_MAX),
-;     -1/frame otherwise. The ramp gives the jet its initial inertia.
-;     BUGS #31 (2026-10-11): the +1 now steps only every 4th frame
-;     (EnemyRamP & 3 == 0 — free-running clock, runs every gameplay
-;     frame) so spin-up to net lift takes exactly 60 frames = 1.0s of
-;     held-Up ("~1 second to start flying"). Decay stays -1/frame: on
-;     release the throttle bleeds fast and the stored momentum
-;     (rise-clamp $0100) carries the player ~0.6-0.9s before falling
-;     begins ("~1 second to start falling" + horizontal glide window).
-;     Sound is already press-gated (SWCHA D4), not JetPower-gated —
-;     the buzz starts on the press even while thrust is still ramping.
-;     +7B: absorbed by the pre-pad $F8DD pad slack (headroom $FC67).
+; --- Jet thrust accumulator: +1 every 4th frame while Up is held
+;     (cap JET_MAX). BUGS #31 (2026-10-11, clarified spec):
+;       * spin-up: ÷4 ramp gate (EnemyRamP & 3) — net lift at exactly
+;         60f = 1.0s of held-Up (user-confirmed "perfect").
+;       * release -> FLOAT: JetPower takes b7 as the float flag and the
+;         low 7 bits as a 60-frame countdown ($80|60 = $BC). Phase A:
+;         gravity-only decel stops the climb in ~0.3s; then Y is pinned
+;         (vy re-zeroed every frame) for the remaining ~1.0s — the
+;         player holds altitude — then the flag clears and normal
+;         gravity resumes (fall). State lives in JetPower, NOT
+;         StepsLeft: StepsLeft is the RefreshEnemyY SWCHB latch's byte
+;         (title edge-detect contract) and .UpSteps rewrites it every
+;         rising frame — both clobbered a StepsLeft-based float.
+;       * Sound is press-gated (SWCHA D4) — buzz starts on the press.
+;       * +~50B here: absorbed by the pre-pad $F8DD pad slack
+;         (headroom stays $FC67).
 ; ------------------------------------------------------------------------------
     lda #%00000001              ; test D0 (up, after 4x LSR)
     bit Temp
     bne .JetDecay
+    lda JetPower                ; Up held: cancel an active float first
+    bpl .RampStart              ;   (b7 flag) — WITHOUT this guard the
+    lda #0                      ;   clear would wipe JetPower every held
+    sta JetPower                ;   frame and the ramp could never build
+.RampStart:
     lda EnemyRamP               ; ramp gate: +1 only on the free-running
     and #3                      ;   clock's phase 0 (every 4th frame)
     bne .Gravity
@@ -1067,21 +1076,35 @@ UpdateP0Vertical:
 .JetSet:
     sta JetPower
     jmp .Gravity
-.JetDecay:
-    lda EnemyRamP               ; bugs #31 retest: decay steps every 2nd
-    and #1                      ;   frame (÷2) — throttle bleeds at half
-    bne .Gravity                ;   speed, so the post-release float runs
-                                ;   ~64f (1.07s) to fall instead of ~35f
-                                ;   (0.58s, "falls too soon"); vy starts
-                                ;   at the -1px/f rise-clamp and gravity
-                                ;   (+8/f) minus the half-speed thrust
-                                ;   decays it to 0 at ~1.07s. +7B again
-                                ;   absorbed by the $F8DD pad slack.
+.JetDecay:                      ; Up NOT held this frame
     lda JetPower
-    beq .Gravity
-    dec JetPower
+    beq .Gravity                ; 0: idle / normal fall
+    bmi .FloatRun               ; b7 set: float already active -> step it
+    lda vyHi                    ; RELEASE EDGE (thrust 1..127, b7 clear):
+    ora vyLo
+    beq .Gravity                ;   vy == 0 (DropArm JP=4 residue) — no
+                                ;   climb to stop, do NOT float
+    lda #$80+80                 ;   $D0 = float flag | 80-frame countdown:
+    sta JetPower                ;   ~26f climb-decel + ~54f pinned-Y
+    jmp .Gravity                ;   hover (spec ~0.3s stop + ~1s
+.FloatRun:
+    dec JetPower                ;   same-Y); fall ~1.3s after release
+    lda JetPower                ; tick: $D0..$81 = 80f + release frame
+    and #$7F
+    bne .FRActive
+    sta JetPower                ; A = 0: countdown done -> flag cleared,
+    beq .Gravity                ;   normal gravity fall from here
+.FRActive:
+    lda vyHi
+    bmi .Gravity                ; still climbing: gravity-only decel
+    lda #0                      ; rise stopped: pin Y for the rest of
+    sta vyLo                    ;   the countdown (~1.0s hover)
+    sta vyHi
+    jmp .Integrate
 
 ; --- Physics: vy += GRAVITY (gravity), vy -= JetPower (jet thrust). ---
+;     JetPower b7 = float flag (bugs #31): float frames add gravity
+;     only — subtracting $80+ would blast the player upward.
 .Gravity:
     clc
     lda vyLo
@@ -1090,6 +1113,8 @@ UpdateP0Vertical:
     lda vyHi
     adc #>GRAVITY
     sta vyHi
+    lda JetPower
+    bmi .ThrustSkip              ; float: no thrust subtraction
     sec
     lda vyLo
     sbc JetPower
@@ -1097,6 +1122,7 @@ UpdateP0Vertical:
     lda vyHi
     sbc #0
     sta vyHi
+.ThrustSkip:
 
 ; --- Clamp fall speed: down at MAX_FALL, up at -$0100. ---
     lda vyHi

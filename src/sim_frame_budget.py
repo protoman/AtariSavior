@@ -289,7 +289,11 @@ wsync_counts = set()
 enemy_seen = False
 inpt4_frames = 0
 
-while frame < 440:
+# 440 -> 1100 (bugs #31): slower spin-up + the float's pinned releases
+# land the fly repro much later (old landed f85; pulses stop at f500 so
+# the fall can finish) — drop+180f fuse needs the room; wall gates
+# unchanged (they are per-frame).
+while frame < 1100:
     c = step()
     pc, bk = mpu.pc, mem.bank
 
@@ -505,6 +509,11 @@ while frame < 440:
             prev_wall = mem.wall
         else:
             frame_lines.append((frame, (mem.wall - prev_wall) / 76))
+            if os.environ.get('SIM_KERDBG') and frame % 50 == 0:
+                print(f'PROBE f{frame} DT={mem.ram[DROP_IDX]:02X} '
+                      f'Y={mem.ram[0x01]:02X} B5={mem.ram[IDX_B5]:02X} '
+                      f'vy={mem.ram[0x14]:02X}{mem.ram[0x13]:02X} '
+                      f'JP={mem.ram[0x16]:02X} SL={mem.ram[0x17]:02X}')
             if os.environ.get('SIM_KERDBG') and frame <= 20:
                 print(f'KERDBG f{frame} ker={frame_ker.get(frame, "?")} '
                       f'wall={(mem.wall - prev_wall) / 76:.2f} '
@@ -545,8 +554,11 @@ while frame < 440:
                 d = ((mem.ram[0x01] - mem.ram[0x62] + 128) & 0xFF) - 128
                 if d > 6:
                     mem.swcha &= 0xEF       # up thrust (rise to enemy)
-            elif k % 12 < 5:
-                mem.swcha &= 0xEF          # up thrust pulse (fly)
+            elif k % 12 < 5 and frame < 500:
+                mem.swcha &= 0xEF          # up thrust pulse (fly) — stop
+                #   at f500: after #31 each release pins Y ~1.35s, so
+                #   rapid re-presses never build vy to the 256 StepDown
+                #   threshold (OnGround) and the fixture never lands
             if EXIT == 'down' and landed_frame is not None \
                     and landed_frame + 10 <= frame <= landed_frame + 16:
                 # one-shot crossing window (7 frames): pin RoomY at the
@@ -588,9 +600,11 @@ def _wall_bad(f, v):
     if f <= 3:
         return abs(v - 265.0) > 1.0
     if f in transition_frames:
-        # death/respawn transition: reload chain runs 1 TIM64T tick over
-        # (documented residual — see transition_frames note above)
-        return abs(v - 265.0) > 1.0
+        # death/respawn transition: reload chain runs exactly +1 TIM64T
+        # tick (64c) over -> 266.00 +/- wall-phase slack; measured
+        # 265.83..266.01 across revisions (post-#31 float shifted the
+        # drop-in timing). Anything > +1.1 = a REAL second overrun.
+        return abs(v - 265.0) > 1.1
     return abs(v - 265.0) > 0.15
 _odd = [(f, v, frame_ker.get(f, 'cave')) for f, v in _lines_raw
       if _wall_bad(f, v)]

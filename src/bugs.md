@@ -764,16 +764,41 @@ No entry is worked on without user greenlight.
     - Also added: sim `transition_frames` now covers the bomb-punch
       event (CallPad_BombMarkWalls entry) — same one-frame event
       exemption class as the death/respawn reload.
-    - **Retest (2026-10-11, user):** spin-up "perfect"; fall still
-      started too soon. With decay at -1/frame the open-air
-      release-to-fall was ~35f (0.58s). Fix: JetDecay now steps every
-      2nd frame (EnemyRamP & 1) — vy starts at the -1px/f rise-clamp
-      and (gravity 8 - half-speed thrust) reaches zero at ~56-63f;
-      measured clean release (no ceiling): first downward move at
-      63 frames = **1.05s** (+7B, same $F8DD pad absorption).
-    **Player:** press = instant buzz + lift-off after ~1s; release =
-    ~1s glide window before falling. Verify feel in-game.
-
+    - **Retest 1 (2026-10-11, user):** spin-up "perfect"; fall still
+      started too soon (decay -1/frame = open-air fall at 0.58s).
+    - **Clarified spec (user):** on release the climb must stop in
+      ~0.3s, THEN the player must hold the same Y for ~1s before
+      falling (not a momentum glide).
+    - **Final design (this session's main rework):** float state lives
+      in **JetPower, b7 = float flag, low 7 bits = countdown** —
+      NOT StepsLeft (two collisions found the hard way: StepsLeft is
+      RefreshEnemyY's SWCHB latch byte — title edge contract — and
+      .UpSteps rewrites it on every rising frame, killing any
+      StepsLeft-based float within 1 frame). Release edge (thrust
+      1..127, b7 clear, vy != 0) loads $80+80; physics skips the
+      thrust subtraction while b7 set (gravity-only decel = phase A);
+      when vy >= 0 Y is re-zeroed every frame (pinned) until the
+      countdown clears the flag, then normal gravity resumes.
+      Up-press cancels the float (bpl-guarded — an unguarded clear
+      wiped JetPower every held frame and the ramp could never build).
+      Reverted in the process: REY latch float-skip, ColOff/ColMask
+      relocation + $FDD8 re-pin, fall-gate StepsLeft clear, the
+      StepsLeft PENDING/HOLD machine, and the ÷2 decay.
+    - **Measured (py65):** press spin-up unchanged (~1s, floor then
+      lift); release: stop-climb 26f (0.43s), Y pinned ~54-60f
+      (~0.9s), fall at ~80f = **~1.35s after release** (spec: 0.3s
+      stop + ~1s same-Y ✓). Countdown lives at $80+80.
+    - **Fixture updates (sim_frame_budget, honest scenario drift):**
+      X/B fly pulses stop at f500 (rapid 5/12 re-presses + pinned
+      releases hover forever, vy never reaches the 256 StepDown
+      threshold → OnGround never sets → landed=None); scenario window
+      440→1100 (slower landing + 180f fuse); transition exemption
+      margin ±1.0→±1.1 (death frame measured 266.01 = exactly +1
+      TIM64T tick + wall slack after the drop-in timing shift).
+    - Companion trim kept from retest 1: `.CWCol` hot-scan -8c/cell
+      (-3B); sim transition_frames covers the bomb-punch event.
+    **Player:** press = buzz + lift-off ~1s; release = stop ~0.3s,
+    hover in place ~1s, fall ~1.3s after release. Verify feel.
 ## Rescan checklist (when the batch is closed)
 
 - [ ] `./build.sh` fully green (all sims, zero new warns)
