@@ -11,8 +11,9 @@ Assertions (frames >= 2, after the RESET-pulse title -> game start):
   * >= 1 bank0 RESPBL ($14) AND >= 1 HMBL ($24) write per frame — proves
     bank2 StageBandTab staged a non-zero BallX into Temp and the VBL ball
     block ran SetObjectXPos selector 4 (the Phase 3 staging path);
-  * frame line count constant across frames >= 3 and in {262, 263} (the
-    asym VBL growth must not add a scanline);
+  * frame line count constant across frames >= 3 and in {264, 265} (the
+    asym VBL growth must not add a scanline; 265 = 262 NTSC + 3 since the
+    2026-10-11 VSYNC re-anchor fix for bugs.md #29 Class C);
   * min SP (frames >= 2) >= $F7 (documented whole-run stack guard).
 
 Second run (partial mask, case-1 stacked blocks): MetaA band-mask bit1
@@ -143,8 +144,8 @@ def main() -> int:
         fails.append(f"frames without bank0 HMBL: {no_hmb[:6]}")
 
     lens = sorted({r["per_frame"].get(f) for f in range(3, r["frames"])})
-    if len(lens) != 1 or lens[0] not in (262, 263):
-        fails.append(f"frame line counts (f>=3) = {lens}, want one of [262,263]")
+    if len(lens) != 1 or lens[0] not in (264, 265):
+        fails.append(f"frame line counts (f>=3) = {lens}, want one of [264,265]")
 
     if r["min_sp"] < 0xF7:
         fails.append(f"min SP (f>=2) = ${r['min_sp']:02X}, want >= $F7")
