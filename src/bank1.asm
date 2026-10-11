@@ -201,13 +201,17 @@ INPT4       = $0C       ; fire button (active low, bit 7)
 
     ; ====================================================================
     ; Line 1: Timer bar — PF body, mid-scanline COLUPF yellow→red
-    ; Full (BarLevel=BAR_MAX): pure yellow, no red write (no stripes).
+    ; Full (BarLevel >= BAR_MAX-3 = 117..120): pure yellow, no red write.
+    ; The 4-dec hold (bugs.md #30, 2026-10-11) delays the FIRST red until
+    ; t=4s = exactly one chunk period, so the first red appears on the
+    ; same cadence as every later chunk (report: "already red at start;
+    ; first one should take the same time each chunk needs").
     ; H3c dual path: F=0 slim / F=1 slim+nop / F=2,3,4 full dispatch.
     ; dispatch ≤73c from the TopGap WSYNC to the first bar WSYNC.
     ; ====================================================================
     ldy BarLevel
-    cpy #BAR_MAX
-    bne .BarRedSetup    ; not full → red path (short fwd branch)
+    cpy #(BAR_MAX-3)
+    bcc .BarRedSetup    ; B < 117 → red path (short fwd branch)
     ; Full bar: pure yellow, 3 lines only (no red write).
     ldx #3
 .YLoop:
@@ -669,24 +673,24 @@ SetObjectXPos_b1:
 ; Paths (cycles after WSYNC → sty red): F=0 slim 12+5A; F=1 slim+nop 14+5A;
 ; F=2 full 20+5A; F=3 full 30+5A; F=4 full 31+5A (A=0 special-cased).
 BarDelayTable:          ; B=0..120
-    .byte 0,0,2,2,2,1,1,1,3,3,3,3,3,3,3,2
-    .byte 2,2,0,0,0,0,0,0,4,4,4,1,1,1,1,1
-    .byte 1,1,5,5,5,5,5,5,2,2,2,2,2,2,6,6
-    .byte 6,6,6,6,6,3,3,3,3,3,3,7,7,7,7,7
-    .byte 7,4,4,4,4,4,4,4,8,8,8,8,8,8,5,5
-    .byte 5,5,5,5,9,9,9,9,9,9,9,6,6,6,6,6
-    .byte 6,10,10,10,10,10,10,7,7,7,7,7,7,11,11,11
-    .byte 11,11,11,11,8,8,8,8,8
+    .byte 2,2,2,2,2,1,1,1,1,3,3,3,3,3,3,3
+    .byte 3,2,2,2,2,4,4,4,4,4,4,4,4,3,3,3
+    .byte 3,5,5,5,5,5,5,5,5,4,4,4,4,6,6,6
+    .byte 6,6,6,6,6,5,5,5,5,7,7,7,7,7,7,7
+    .byte 7,6,6,6,6,8,8,8,8,8,8,8,8,7,7,7
+    .byte 7,9,9,9,9,9,9,9,9,8,8,8,8,10,10,10
+    .byte 10,10,10,10,10,9,9,9,9,11,11,11,11,11,11,11
+    .byte 11,8,8,8,8,8,8,8,8
 
 BarFineTable:           ; B=0..120; ∈{0,1,2,3,4}; path = f(F)
-    .byte 0,0,1,1,1,2,2,2,0,0,0,0,1,1,1,2
-    .byte 2,2,3,3,3,4,4,4,1,1,1,3,3,3,4,4
-    .byte 4,4,0,0,0,1,1,1,3,3,3,4,4,4,0,0
-    .byte 0,1,1,1,1,3,3,3,4,4,4,0,0,0,1,1
-    .byte 1,3,3,3,4,4,4,4,0,0,0,1,1,1,3,3
-    .byte 3,4,4,4,0,0,0,1,1,1,1,3,3,3,4,4
-    .byte 4,0,0,0,1,1,1,3,3,3,4,4,4,0,0,0
-    .byte 0,1,1,1,3,3,3,4,4
+    .byte 0,1,1,1,1,2,2,2,2,0,0,0,0,1,1,1
+    .byte 1,2,2,2,2,0,0,0,0,1,1,1,1,2,2,2
+    .byte 2,0,0,0,0,1,1,1,1,2,2,2,2,0,0,0
+    .byte 0,1,1,1,1,2,2,2,2,0,0,0,0,1,1,1
+    .byte 1,2,2,2,2,0,0,0,0,1,1,1,1,2,2,2
+    .byte 2,0,0,0,0,1,1,1,1,2,2,2,2,0,0,0
+    .byte 0,1,1,1,1,2,2,2,2,0,0,0,0,1,1,1
+    .byte 1,4,4,4,4,4,4,4,4
 
 ; ------------------------------------------------------------------------------
     .ds $F937 - *, 0            ; pinned: bank2 M1StripBlast back-jmp operand
