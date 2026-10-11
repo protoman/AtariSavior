@@ -764,6 +764,13 @@ No entry is worked on without user greenlight.
     - Also added: sim `transition_frames` now covers the bomb-punch
       event (CallPad_BombMarkWalls entry) — same one-frame event
       exemption class as the death/respawn reload.
+    - **Retest (2026-10-11, user):** spin-up "perfect"; fall still
+      started too soon. With decay at -1/frame the open-air
+      release-to-fall was ~35f (0.58s). Fix: JetDecay now steps every
+      2nd frame (EnemyRamP & 1) — vy starts at the -1px/f rise-clamp
+      and (gravity 8 - half-speed thrust) reaches zero at ~56-63f;
+      measured clean release (no ceiling): first downward move at
+      63 frames = **1.05s** (+7B, same $F8DD pad absorption).
     **Player:** press = instant buzz + lift-off after ~1s; release =
     ~1s glide window before falling. Verify feel in-game.
 
