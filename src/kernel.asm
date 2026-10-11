@@ -1068,6 +1068,15 @@ UpdateP0Vertical:
     sta JetPower
     jmp .Gravity
 .JetDecay:
+    lda EnemyRamP               ; bugs #31 retest: decay steps every 2nd
+    and #1                      ;   frame (÷2) — throttle bleeds at half
+    bne .Gravity                ;   speed, so the post-release float runs
+                                ;   ~64f (1.07s) to fall instead of ~35f
+                                ;   (0.58s, "falls too soon"); vy starts
+                                ;   at the -1px/f rise-clamp and gravity
+                                ;   (+8/f) minus the half-speed thrust
+                                ;   decays it to 0 at ~1.07s. +7B again
+                                ;   absorbed by the $F8DD pad slack.
     lda JetPower
     beq .Gravity
     dec JetPower
