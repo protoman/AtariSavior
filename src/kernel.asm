@@ -1374,7 +1374,9 @@ UE_Exit:
 ; ------------------------------------------------------------------------------
 UE_Tentacle:
     lda TickCounter
-    and #3                       ; ÷4 gate: 1 px / 4 frames (half of E-gate r1)
+    and #1                       ; ÷2 gate: 1 px / 2 frames = 0.5 px/frame
+                                 ; = half the player's 1 px/frame (user
+                                 ; 2026-10-10: &3 read as chunky/slow)
     bne .TentOut
     lda EnemyRamX,X
     cmp RoomX
