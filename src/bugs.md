@@ -713,6 +713,20 @@ No entry is worked on without user greenlight.
     SELECT and starting a new game does NOT reset BarLevel/TickCounter
     (stale bar possible on the 2nd+ game from title); would need ~10B
     in the fill region at TitleWork RESET.
+    - **Retest (2026-10-11, user):** timing fixed ("a chunk being
+      removed so soon" gone) but first chunk still ~5-6x a normal one.
+      Measured: bite = 14px(160) vs first steps of 3px (the K=4 top
+      steps were 1-2c while the F4 top block renders 1c early — bite
+      28px/320 vs 6-12px steps). Second fix: K=4 -> **K=8** — chunks
+      now 3-4 cycles (9-12px, mostly 4c) every 8s, full-hold 7 decs
+      (first red at t=8s = one chunk), generator ratio gate <=1.7
+      (actual schedule: bite 14.1px / chunk 11.7px = 1.20 computed;
+      Stella dense re-measure: bite 28px vs +18..24px steps =
+      **1.17-1.56x**, boundaries exactly 480 emu frames = 8s,
+      red first appears ~emu558 = t=8s after landing ✓). The F4A8
+      top-block -1c render offset is documented in the generator
+      (bite calc +3px) — would need a path recount to remove; not
+      worth it at <=1.56x.
 
 ## Rescan checklist (when the batch is closed)
 
