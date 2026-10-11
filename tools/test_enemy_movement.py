@@ -244,7 +244,9 @@ def main() -> None:
     assert re.search(r"lsr[^\n]*\n\s*lsr[^\n]*\n\s*lsr", tent_tick), \
         "tentacle bob gate must be clock >> 3"
     tent = KERNEL.split("UE_Tentacle:")[1].split(".TentOut:")[0]
-    assert "and #3" in tent, "tentacle X gate must be TickCounter & 3 (÷4)"
+    assert "and #1" in tent, \
+        "tentacle X gate must be TickCounter & 1 (÷2 = 0.5 px/f, " \
+        "half the player's 1 px/f — user 2026-10-10)"
     # ZP-scratch probe (6140f5a): the old 3-pha path hit min SP $F4 = bomb
     # stomp — pha/pla are banned here; the swap uses ActiveObjectX/Y + EnemyIndex.
     tent_code = "\n".join(l.split(";")[0] for l in tent.splitlines())

@@ -75,6 +75,10 @@ No entry is worked on without user greenlight.
     all cand/facing + sensitivity asserts the OLD formula misses) and
     `test_enemy_movement` source assert (guarded `sbc #1` before the
     probe `sta RoomX`, negative-tested). build.sh + sims + battery green.
+    **Tuning (2026-10-10, same session):** X gate `&3` → `&1` — user
+    reported the post-fix motion chunky/slow; `&1` = 1 px / 2 frames =
+    0.5 px/frame = half the player's 1 px/frame (the `&3` was 0.25 —
+    half of half). `test_enemy_movement` gate assert updated.
     **Player:** tentacle sprite overlaps the left wall line while probing
     (cosmetic only — collision stays correct).
     **Benefit:** sprite never crosses the wall edge.
