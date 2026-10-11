@@ -160,6 +160,24 @@ def row_range(room_y: int) -> tuple[int, int]:
             YTOROW[((room_y + 11) >> 2) & 0x3F])
 
 
+def tentacle_ink_cells(cand: int) -> tuple[int, int] | None:
+    """Tentacle ink cells (walker space): 4 px at vl = cand-5/-7 (bank2
+    .Mvl convention — SetObjectXPos draws the sprite 5/7 px left of A),
+    mirrored >=20 like the PHM prologue. None = fully off-screen left."""
+    vl = cand - (5 if cand < 15 else 7)
+    if vl + 3 < 0:
+        return None
+    lo = max(0, vl) >> 2
+    hi = (max(0, vl) + 3) >> 2
+    if lo >= 20:
+        lo = (39 - lo) & 0xFF
+    if hi >= 20:
+        hi = (39 - hi) & 0xFF
+    if lo > hi:
+        lo, hi = hi, lo
+    return lo, hi
+
+
 def box_hit(rows: list[str], lo: int, hi: int, top: int, bot: int) -> bool:
     """lo/hi are 4px display cols (0..19, walker space); D7 logical cell =
     col pair, so cell = col >> 1 (bit-pairing in pf_values)."""
@@ -495,8 +513,38 @@ def main() -> int:
         hot = hot_death_checks(cases[0][1])
     else:
         hot = "dormant (model 0 has no mid_band_type)"
+    # --- #4 tentacle probe origin (UE_Tentacle RoomX = cand-1) -------------
+    # Column-set inclusion, geometry-free: PHM's row range (Y..Y+11) always
+    # covers the tentacle ink rows (Y+1..Y+8), so cols-coverage implies the
+    # probe HITs whenever ink touches a wall cell, for every geometry.
+    # Kernel guard: cand<=4 probes RoomX=cand (no offset) — RoomX<=3 wraps
+    # PHM's negative visible-left to 255 (ColOff OOB walk).
+    tent_checks = 0
+    for rd in (0, 1):
+        for cand in range(4, 160):
+            ink = tentacle_ink_cells(cand)
+            if ink is None:
+                continue
+            r_room = cand - 1 if cand >= 5 else cand
+            lo, hi = visible_range(r_room, rd)
+            assert ink[0] >= lo and ink[1] <= hi, (
+                f"tentacle cand={cand} dir={rd}: ink cells {ink[0]}..{ink[1]} "
+                f"outside probe box {lo}..{hi} (RoomX={r_room})")
+            tent_checks += 1
+    # Sensitivity: the pre-fix RoomX=cand box must MISS the ink cell at
+    # cand 8/12 (the bugs.md #4 1-px wall overlap) — proves this sweep
+    # would catch a regression that drops the origin offset.
+    for rd in (0, 1):
+        for cand in (8, 12):
+            ink = tentacle_ink_cells(cand)
+            lo, hi = visible_range(cand, rd)
+            assert not (ink[0] >= lo and ink[1] <= hi), (
+                f"tentacle sensitivity cand={cand} dir={rd}: pre-fix box "
+                f"{lo}..{hi} unexpectedly covers ink {ink[0]}..{ink[1]}")
+            tent_checks += 1
     print(f"test_cell_map: OK ({checks} PHM boxes, {moth_checks} moth "
-          f"boxes, {asym} asym overlay, {strip} moth-strip, {hot} hot-death, "
+          f"boxes, {tent_checks} tentacle-probe, {asym} asym overlay, "
+          f"{strip} moth-strip, {hot} hot-death, "
           f"{len(cases)} geometries)")
     return 0
 

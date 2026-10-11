@@ -57,12 +57,27 @@ No entry is worked on without user greenlight.
    kernel.asm; post-switch fetch needs byte-identical bank2 copy), body
    returns A=kill flag, BombTick awards +50 (pads can't nest); PlayerSpriteA
    re-pinned $F8DD, body kept out of test_title_demo's TitleJetColors span.
-4. **Tentacle enters walls slightly on the left probe** (user-accepted).
-   PHM entry uses PLAYER origin/width for the candidate box; fix =
-   per-enemy origin offset in `UE_Tentacle`.
-   **Player:** tentacle sprite overlaps the left wall line while probing
-   (cosmetic only — collision stays correct).
-   **Benefit:** sprite never crosses the wall edge.
+ 4. **Tentacle enters walls slightly on the left probe** (user-accepted).
+    PHM entry uses PLAYER origin/width for the candidate box; fix =
+    per-enemy origin offset in `UE_Tentacle`.
+    **Root cause (2026-10-10):** ink = 4 px at `vl = X-5/X-7` (bank2
+    moth `.Mvl` convention — "SetObjectXPos draws ~5/7 px LEFT of A"),
+    but the probe swapped the raw candidate into `RoomX`, so PHM's
+    PLAYER prologue derived `lit-left = arg-4/arg-7` with the bin on
+    `RoomX-PlayerDir` → tested box missed the cell left of the ink at
+    cand 8/12 (1-px wall overlap; cell-level proof, both facings).
+    **Status: FIXED 2026-10-10.** `UE_Tentacle` probes
+    `RoomX = candidate-1`, guarded `cand >= 5` (RoomX<=3 wraps PHM's
+    negative visible-left to 255 = ColOff OOB walk; cand<=4 ink is
+    off-screen anyway). Model sweep: K=0 misses = 4 cases (cand 8/12
+    × facing), guarded K=-1 = 0 misses, 0 unsafe. Guards:
+    `test_cell_map` tentacle-probe section (316 checks: box ⊇ ink for
+    all cand/facing + sensitivity asserts the OLD formula misses) and
+    `test_enemy_movement` source assert (guarded `sbc #1` before the
+    probe `sta RoomX`, negative-tested). build.sh + sims + battery green.
+    **Player:** tentacle sprite overlaps the left wall line while probing
+    (cosmetic only — collision stays correct).
+    **Benefit:** sprite never crosses the wall edge.
 5. **test_editor_roundtrip fails on dirty git tree** — needs committed
    tree; not a code bug.
    **Status: FIXED-as-skip 2026-10-10.** Leg2 (regen + `git diff

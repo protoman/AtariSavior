@@ -1402,7 +1402,25 @@ UE_Tentacle:
     lda RoomY                    ; the 3-pha path hit min SP $F4 → bomb stomp)
     sta ActiveObjectY
     lda Temp
-    sta RoomX                    ; probe as the tentacle (candidate x)
+    cmp #5
+    bcc .TentProbeX              ; cand<=4: offset would push RoomX to <=3 —
+                                 ; PHM's negative visible-left wraps to 255
+                                 ; (col garbage / ColOff OOB walk). cand<=4
+                                 ; ink pokes off-screen anyway; RoomX=cand
+                                 ; already covers cell0.
+    sec
+    sbc #1                       ; #4: per-enemy origin offset — tentacle ink
+                                 ; sits 5/7 px left of A (moth .Mvl convention,
+                                 ; bank2), but PHM's PLAYER prologue derives
+                                 ; lit-left = arg-4/arg-7 with the bin on
+                                 ; RoomX-PlayerDir → box missed the cell left
+                                 ; of the ink at cand 8/12 (sprite drew 1 px
+                                 ; into the wall — bugs.md #4). cand-1 shifts
+                                 ; the tested box 1 px left: cell-exact or 1 px
+                                 ; conservative for every cand/facing pair
+                                 ; (tools/test_cell_map.py tentacle section).
+.TentProbeX:
+    sta RoomX                    ; probe as the tentacle (candidate x [-1])
     lda EnemyRamY,X
     sta RoomY                    ; live tentacle y (refreshed this overscan)
     stx EnemyIndex               ; save slot: PlayerHitsMap clobbers X
