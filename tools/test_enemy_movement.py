@@ -264,6 +264,17 @@ def main() -> None:
         "probe order must be: PHM -> restore X -> restore player -> commit"
     assert "sta ActiveObjectX" in tent and "sta ActiveObjectY" in tent, \
         "probe must save player RoomX/RoomY into ZP scratch"
+    # #4 origin offset (2026-10-10): probe RoomX = candidate-1, guarded
+    # cand>=5 (RoomX<=3 wraps PHM's negative visible-left to 255 = ColOff
+    # OOB walk). Without the offset PHM's player prologue misses the cell
+    # left of the tentacle ink at cand 8/12 — sprite draws 1 px into the
+    # wall. Value/coverage proven in test_cell_map (tentacle-probe sweep).
+    off_code = "\n".join(l.split(";")[0] for l in tent[:phm].splitlines())
+    assert re.search(
+        r"lda Temp\s+cmp #5\s+bcc \.TentProbeX\s+sec\s+sbc #1\s+"
+        r"\.TentProbeX:\s+sta RoomX", off_code), \
+        "probe must apply the guarded cand-1 origin offset before " \
+        "sta RoomX (tentacle would overlap the left wall — bugs.md #4)"
     # tail architecture: the ONLY exit is .TentOut -> jmp UE_Next
     tent_out = KERNEL.split(".TentOut:")[1].splitlines()[1]
     assert tent_out.split(";")[0].strip() == "jmp UE_Next", \
