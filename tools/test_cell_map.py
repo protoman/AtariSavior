@@ -85,7 +85,9 @@ if not need2 <= L2.keys():
     sys.exit(f"bank2.lst labels missing: {sorted(need2 - L2.keys())}")
 
 PF0_BUF = 0xC3
-YTOROW = [i // 12 for i in range(48)]        # kernel YToRowTable (rows 0-3)
+YTOROW = [min(i // 12, 2) for i in range(48)]  # kernel YToRowTable: 36
+                              # entries + idx36 tentacle-bob clamp = 2
+                              # (bugs.md #13; box past cave bottom → row 2)
 Z_FLAG = 0x02
 C_FLAG = 0x01
 RTS_SENTINEL = 0x0101
@@ -466,8 +468,9 @@ def main() -> int:
 
     # --- py65: box parity, all models, full X sweep, row-pair reps --------
     # Row pairs realized by the prologue: (0,0) Y0-36, (0,1) Y37-47,
-    # (1,1) Y48-84, (1,2) Y85-95, (2,2) Y96-132 — one rep each.
-    y_reps = (0, 40, 60, 90, 120)
+    # (1,1) Y48-84, (1,2) Y85-95, (2,2) Y96-132 — one rep each; +134 =
+    # tentacle bob top (EndY idx36 = the bugs.md #13 clamp entry).
+    y_reps = (0, 40, 60, 90, 120, 134)
     checks = 0
     moth_checks = 0
     temp = 0x42                        # candidate != sentinel 0xAA

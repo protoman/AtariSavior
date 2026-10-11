@@ -2182,7 +2182,7 @@ LEVEL_DATA_ADDR = $F767        ; frozen address of bank2's LevelDataTable
                                 ;  enforces)
                                 ; (test asserts bank2.lst label == this)
 ; ==============================================================================
-; YToRowTable — convert scanline (0-191) to 48-line band row (0-3), idx A>>2
+; YToRowTable — convert scanline to 48-line band row (0-2), idx A>>2
 ; ==============================================================================
 ; The jsr wrapper that used to live here was dead (PlayerHitsMap inlines the
 ; lsr/lsr/tay/lda lookup — saves 2 JSR stack push levels to keep SP >= $F8)
@@ -2190,15 +2190,24 @@ LEVEL_DATA_ADDR = $F767        ; frozen address of bank2's LevelDataTable
 ; linearly with RoomY and made 3× PlayerHitsMap (fall 2 + L/R 1) exceed
 ; overscan TIM64T=35 (~2240c) in 4-rect rooms → frame >262 lines → vertical
 ; roll when strafing while falling.
-; Indexed by A>>2 (48-entry table): floor(floor(A/4)/12) = floor(A/48).
+; Indexed by A>>2: 37 entries (idx 0-35 = A 0-143 = the player envelope
+; "Max A = PLAYER_MAX_Y+11 = 143", + idx36 = the tentacle-bob clamp, below).
 ; Costs +4c/call vs the 192-entry table, saves 144 ROM bytes.
-; Max A = PLAYER_MAX_Y+11 = 143 → index 35 (fits 48 entries).
-
-; 48 entries: 12 each of 0,1,2,3 (value = index/12 = scanline/48).
+; Row = idx/12 = scanline/48 (3 cave bands of 48 lines = rows 0-2).
+;
+; 36 entries: 12 each of 0,1,2 (value = index/12 = scanline/48) +
+; idx36 = 2: tentacle RoomY 133/134 (bob on spawn y=132) → A=(Y+11)>>2 =
+; 36 — WITHOUT this byte the lookup reads the OOB opcode ($A5 = `lda
+; RoomY`) → CollisionEndY garbage → cell walk false-hits ~24/32 bob
+; frames → measured 0.125 px/f vs the &1 gate's 0.5 (bugs.md #13).
+; Clamped value 2 = last cave row: box bottom (line 144-145) past the
+; cave (0-143) walks row 2 = floor wall, never PF0Buf+3 (row 3 = $C6,
+; not a buffer byte). Player never reaches idx36 (PLAYER_MAX_Y=132).
 YToRowTable:
     .byte 0,0,0,0,0,0,0,0,0,0,0,0
     .byte 1,1,1,1,1,1,1,1,1,1,1,1
     .byte 2,2,2,2,2,2,2,2,2,2,2,2
+    .byte 2                         ; idx36 — tentacle bob clamp (see above)
 
 ; ==============================================================================
 ; PlayerHitsMap — check player bounding box against the room's PF map
