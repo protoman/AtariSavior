@@ -251,19 +251,27 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             }
             painter.fillRect(tileRect, color);
 
-            painter.setPen(QColor(40, 40, 50));
-            painter.drawRect(tileRect);
-            if (patch) {
-                painter.setPen(QPen(QColor(0, 210, 255), 2));
-                painter.drawRect(tileRect);
-            }
+            // D7 grid: one model cell = 2 display cols, so the grid border
+            // and per-cell decorations are drawn once per cell (even dcol =
+            // cell start on both halves; the right half mirrors 39-dcol),
+            // not once per display col — that made the grid look like the
+            // old pre-D7 40-col layout.
+            if ((dcol & 1) == 0) {
+                QRect cellRect(dcol * cellW, y * cellH, cellW * 2, cellH);
+                painter.setPen(QColor(40, 40, 50));
+                painter.drawRect(cellRect);
+                if (patch) {
+                    painter.setPen(QPen(QColor(0, 210, 255), 2));
+                    painter.drawRect(cellRect);
+                }
 
-            if (tileType == (int)hero::TileType::FRAGILE_WALL) {
-                painter.setPen(QColor(140, 90, 30));
-                painter.drawLine(tileRect.topLeft(), tileRect.bottomRight());
-            } else if (tileType == (int)hero::TileType::REINFORCED_WALL) {
-                painter.setPen(QColor(220, 80, 80));
-                painter.drawRect(tileRect.adjusted(3, 3, -3, -3));
+                if (tileType == (int)hero::TileType::FRAGILE_WALL) {
+                    painter.setPen(QColor(140, 90, 30));
+                    painter.drawLine(cellRect.topLeft(), cellRect.bottomRight());
+                } else if (tileType == (int)hero::TileType::REINFORCED_WALL) {
+                    painter.setPen(QColor(220, 80, 80));
+                    painter.drawRect(cellRect.adjusted(3, 3, -3, -3));
+                }
             }
         }
     }
