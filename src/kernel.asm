@@ -759,11 +759,17 @@ CaveKernelRow:
     ; (sec/sbc RoomY/tay); .Line's iny advances it (Y = A0+1 after the
     ; graphics write = A0 of the next line). Nothing between rows may touch
     ; Y — the water-strip band-color read is an inlined `lda` (Y untouched).
-    ; Cycle budget from .Line (body starts c8, dec/bne already paid), recounted
-    ; from bank0.lst (worst = in-window color/beam/GRP0 + object in-range):
-    ;   color+beam+GRP0 (cpy..sta GRP0 incl BeamMask+gate) = 37c
-    ;   object (tya..sta GRP1) = 24c
-    ;   worst = 61c -> sta WSYNC at c69 (write c71) — 2c margin vs c73. FITS.
+    ; Cycle budget — MEASURED (sim_frame_budget, bugs.md #29 Class A):
+    ; the old worst path (in-window color/beam/GRP0 + object in-range) was
+    ; 78c: WSYNC write landed 2c into the next line -> full-line stall ->
+    ; +1 scanline on every frame whose object window overlapped the A0=11
+    ; line (24 stalls in the SIM_LEVEL=2 window, always even frames —
+    ; SelectActiveObject parity rotation). Root fix: the color/beam gate
+    ; below stops at A0=10; row 11 inherits row 10's COLUP0/ENAM0 writes
+    ; (PlayerColTable/BeamMask [10]==[11], verify_build asserts) because
+    ; GRP0 row11 is fetched on line A0=10 already ("row11 shows via
+    ; line10"). Worst path now 61c -> WSYNC write c61 — 12c margin vs
+    ; c73. FITS.
     ; ObjSprites+71 must stay in the $FExx page (else lda ObjSprites,X
     ; page-crosses, +1c on the GRP1 fetch) — verify_build enforces this.
     ; Branch targets all same-page (3c taken) and BeamMask operand in $FExx
@@ -776,18 +782,21 @@ CaveKernelRow:
     ; overlapping scanline — stretched cave row, HUD pushed down, and with
     ; GRP1 flicker rotation the frame length alternated (one-tile oscillation).
     ; Keep the hot path at <= ~68c: an overrun duplicates the scanline.
-    cpy #PLAYER_SPRITE_H
-    bcs .GrpSkip                ; A0 >= 12 (incl $ff): no color this line
+    cpy #PLAYER_SPRITE_H - 1
+    bcs .GrpSkip                ; A0 >= 11 (incl $ff): no color/beam this line.
+                                ; A0=11 skips too (Class-A stall line): rows
+                                ; 10/11 share color+beam bytes, so row 10's
+                                ; writes are still in effect here.
     lda PlayerColTable,Y        ; 4c — per-row color from ROM
     sta COLUP0                  ; COLUP0 has no latch: applies to this line
     ; --- Laser S2.2: ENAM0 = beam mask for THIS line (in-window only) ---
     ; BeamMask = {0,0,2,0,0...} → ENAM0 on RoomY+2 only (single yellow
     ; strip — user directive 2026-10-08: the red row-3 strip is gone;
     ; kill window in LaserHitTestBody keeps rows RoomY+2..3 = superset).
-    ; In-window path is the only safe place (Y<12 guaranteed); outside the
-    ; window ENAM0 keeps its last in-window write ($00 at A0=11) — no HUD
-    ; artifact. Table lives in $FFxx (cross = deterministic 5c): +8c/line.
-    lda BeamMask,Y              ; 5c (cross $F1→$FF) — table MUST stay $FFxx
+    ; In-window path is the only safe place (Y<11 guaranteed); outside the
+    ; window ENAM0 keeps its last in-window write ($00 at A0=10) — no HUD
+    ; artifact. Table lives in $FExx (no-cross = 4c, verify_build guard).
+    lda BeamMask,Y              ; 4c (no-cross $FExx) — table MUST stay $FExx
     and LaserState              ; 3c — beam gate: b1 armed only while fire held
     sta ENAM0                   ; 3c (bar showed without fire before this)
 .GrpSkip:

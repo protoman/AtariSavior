@@ -597,6 +597,25 @@ No entry is worked on without user greenlight.
     drop frames + wall-model line counts, then the drop handler's VBL
     cost. **Player:** constant visual jitter during play, worst on bomb
     drop; **Benefit:** stable picture.
+    - **Class A — FIXED 2026-10-10 (agent).** Root cause: the `.Line`
+      kernel body on the player's A0=11 line (color fetch + GRP0 blank
+      same iteration) overlapped the GRP1 object window = **78c > 76c**;
+      `sta WSYNC` landed 2c into the next line → full-line stall → +1
+      scanline on every frame whose flicker-rotated object window hit
+      that line (24 stalls per SIM_LEVEL=2 window, frame-parity
+      pairs). Same family also produced the SIM_LEVEL=0 FLY 264-frame
+      bad frames (Class C) and6 EXIT=down cave micros. Fix: color/beam
+      gate at A0=10 (`cpy #PLAYER_SPRITE_H-1`) — row 11 renders row 10's
+      COLUP0/ENAM0 writes (both tables `[10]==[11]`, verify_build guard
+      #5 asserts + gate presence). Worst path 78c→61c, net 0 bytes
+      (headroom stays1B). Verified: SIM_LEVEL=2 bad 24→0; SIM_LEVEL=0
+      default/FLY={Y,X,M} all 0 bad; EXIT=down cave micros gone;
+      battery 26/26; TIA-trace diff vs pre-fix baseline = only the58
+      skipped COLUP0=$08 +58 ENAM0=$00 writes (per-frame, nothing else).
+    - **Class B — OPEN:** SIM_EXIT=down f265 overscan 5528c → 293.6-line
+      frame (EnterRoom spike, #22 residual) + f266/f366-369 title-264
+      family — pre-exist the Class-A fix unchanged (pre-fix EXIT run had
+      them + the6 cave micros; post-fix only these6 remain).
 
 ## Rescan checklist (when the batch is closed)
 

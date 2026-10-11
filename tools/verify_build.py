@@ -206,6 +206,28 @@ def check_rom(src: Path) -> bytes | None:
             break
     else:
         err("lda BeamMask,Y not found in bank0.lst")
+    # 5) Class-A jitter guard (bugs.md #29): the color/beam gate skips A0=11
+    #    (`cpy #PLAYER_SPRITE_H - 1`) — line A0=11 inherits row 10's COLUP0
+    #    and ENAM0 writes. Requires [10]==[11] in both tables (row 11 render
+    #    = row bytes fetched on line A0=10; wrong pair = wrong boot color or
+    #    stale beam bit, silent). Removing the -1 gate without recounting
+    #    the .Line worst path is also an error (78c stall, +1 scanline).
+    if 0 in banks:
+        for name in ("PlayerColTable", "BeamMask"):
+            a = labels.get(name)
+            if a is None:
+                err(f"{name} label not found in bank0.lst")
+                continue
+            tbl = banks[0][a - 0xF000:a - 0xF000 + 12]
+            if len(tbl) < 12:
+                err(f"{name} at ${a:04X}: only {len(tbl)} bytes in bank0")
+            elif tbl[10] != tbl[11]:
+                err(f"{name}[10]=${tbl[10]:02X} != [11]=${tbl[11]:02X} — "
+                    "A0=11 gate skip inherits row 10 (verify_build #5)")
+    if not any(re.search(r"\bcpy\s+#PLAYER_SPRITE_H\s*-\s*1\b", t)
+               for _, t in rows):
+        err("color gate `cpy #PLAYER_SPRITE_H - 1` not found in bank0.lst "
+            "(A0=11 worst-line skip removed — recount the .Line worst path)")
     return pad0
 
 
