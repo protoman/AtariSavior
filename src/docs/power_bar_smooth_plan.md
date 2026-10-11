@@ -241,7 +241,8 @@ one. Three causes + fixes (full detail in bugs.md #30):
       steps +18..24px(320) vs bite 28px = **1.17-1.56x** (Stella
       `frame N` ~ 1.6x N emulated frames — calibrate future captures
       with this factor).
-- [ ] **User confirmation** of in-game feel (cadence + no red at start).
+- [x] **User pass** (2026-10-11): "It is a pass." — cadence, no red
+      at start, bite/chunk ratio accepted.
 
 **Follow-up:** SELECT->title->new-game does not reset BarLevel
 (stale bar on 2nd+ game) — needs ~10B fill-region reset at TitleWork.
