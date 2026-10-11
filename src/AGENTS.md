@@ -242,6 +242,16 @@ scanline, WSYNC stalls until the NEXT scanline, making the frame longer.
 
 **If the budget exceeds 48, reduce BEFORE coding — not after.** The frame will crash with a grey screen if the HUD band overflows. Each icon rendered on its own scanline (for RESP positioning) costs 3 scanlines: 1 WSYNC in SetObjectXPos + 2 WSYNCs in RenderLifeIcon. Multiply by icon count and add gaps.
 
+### MANDATORY: Keep the kernel entry WSYNC-anchored (bugs.md #29 Class C)
+
+**Two re-anchor `sta WSYNC`s hold the picture still — never delete them, never add cycle-variable code around them:**
+1. `StartFrame`: `sta WSYNC` BEFORE `lda #2 / sta VSYNC` (overscan-end tick quant → VSYNC phase-lock).
+2. `.WaitVBLANK` exit: `sta WSYNC` while VBLANK is still ON, before `sta VBLANK` off (VBL tick quant → kernel-entry line-lock; blank line, invisible).
+
+**Why:** `TIM64T` ticks every 64 cycles; the `INTIM` poll exits up to 63c late; the band-0 `.Row` setup WSYNC gap is ~75c — without the anchors the kernel start line straddles the 76c boundary and oscillates ±1 with tick phase = whole-screen jitter (62/58 two-class split, 2026-10-11). **WSYNC-count guards cannot see this family** — counts stayed constant through the whole bug. Oracle: Stella `logTrace` SCN at the first kernel WSYNC must be a SINGLE value across ≥100 frames, and the pixel detector's seam rows must form ONE signature across ≥120 frames (`tools/measure_bar_cycles.py` + `stella_shots` row-probe recipe).
+
+**Each anchor costs +1 wall-model line** — when adding one, update `sim_frame_budget`'s 265.0 target, `test_phase3_ball`'s {264,265} set, and any comment citing the frame total in the SAME change. Full lesson: **Timer-quantization phase straddle** in Lessons Learned below.
+
 ### Structure (HERO pattern)
 
 ```
@@ -889,9 +899,48 @@ kernel `.Line` loop stalls a FULL scanline per affected line.
   **Addresses drift with every code change** (Overscan was $F18A then
   $F182/$F176/$F173 through the S3.x refactors) — resolve each landmark
   from `bank0.lst` at use time, never from this file.
-  **Bar rule: content AFTER `sty COLUPF` (post-boundary) is
-  table-independent (trim freely); content BEFORE it is table-coupled
-  (BarDelay/BarFine/BallX regeneration required).**
+   **Bar rule: content AFTER `sty COLUPF` (post-boundary) is
+   table-independent (trim freely); content BEFORE it is table-coupled
+   (BarDelay/BarFine/BallX regeneration required).**
+
+**Timer-quantization phase straddle at kernel entry = whole-screen ±1
+jitter (2026-10-11, bugs.md #29 Class C) — WSYNC-count guards are BLIND
+to this family:**
+
+- **Symptom:** whole screen (HUD seam rows 144/194, cave top edge) shifts
+  ±1 row on ~half the frames under bomb/thrust input; Stella detector
+  shows a 62/58 two-class split of an otherwise identical scene. NOT a
+  duplicated row (Class A) — a seam flip.
+- **Root cause:** `TIM64T` expires on a 64-cycle tick and the `INTIM`
+  poll (`.WaitVBLANK` / `.WaitOverscan`) exits up to 63c late. The
+  kernel-entry phase = tick remainder + the band-0 `.Row` setup WSYNC
+  gap (~75c) — right at the 76c boundary — so the kernel start line
+  oscillated ±1 with the tick phase (measured: first `.Line` WSYNC at
+  scn 20 ×100 frames / scn 21 ×51 frames). py65 WSYNC counts stayed
+  CONSTANT (cave 147 / HUD 48) the whole time: count-based guards and
+  `sim_frame_budget`'s WSYNC-count assertion could never see it.
+- **Fix (do NOT remove either):** two re-anchor `sta WSYNC`s —
+  (1) `StartFrame` before the VSYNC pulse (overscan-end quant → VSYNC
+  phase-lock); (2) after `.WaitVBLANK` with VBLANK still on (VBL quant
+  → kernel-entry line-lock; blank line, invisible). Each costs +1 line
+  (263→265 wall-model); `OVER_ABSOAD` +1c from code-motion page-cross
+  is ledgered in sim_frame_budget.py.
+- **RULE 1: the kernel entry must stay WSYNC-anchored.** Any edit that
+  puts cycle-variable code between the INTIM poll exit and the first
+  kernel WSYNC (or deletes either re-anchor) re-opens the straddle.
+  The gap between them is cycle-precise (see the 2026-10-06
+  VBL-tail lesson above).
+- **RULE 2: count-constant ≠ stable.** When a ±1 seam jitter is
+  reported, do NOT trust WSYNC-count or per-section cycle sums — they
+  were constant across the whole bug. The oracle that found it: Stella
+  `logTrace` SCN distribution at a kernel landmark PC (must be a SINGLE
+  value across ≥100 gameplay frames) + the pixel row-probe detector
+  (seam rows must form ONE signature over ≥120 frames). Re-run both
+  after any kernel-entry/VBL/Overscan timing change.
+- **RULE 3: frame-line targets move with re-anchors.** Adding a
+  re-anchor WSYNC = +1 wall-model line: update `sim_frame_budget`'s
+  265.0 target, `test_phase3_ball`'s {264,265} set, and any comment
+  citing the total in the SAME change — leaving one stale = red gate.
 
 **When debugging collision misalignment:**
 1. First check if SetObjectXPos matches the comparison branch exactly
