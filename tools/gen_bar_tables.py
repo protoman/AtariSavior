@@ -31,8 +31,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BANK1 = ROOT / "src" / "bank1.asm"
 
-K = 4               # seconds (BarLevel decs) per visible chunk
-FULL_HOLD = 3       # extra decs held all-yellow after t=0 (first red at t=4)
+K = 8               # seconds (BarLevel decs) per visible chunk
+FULL_HOLD = 7       # extra decs held all-yellow after t=0 (first red at t=K=8)
 BAR_MAX = 120
 FIRST_RED_B = BAR_MAX - FULL_HOLD - 1   # 116: first B rendered through the red path
 
@@ -80,7 +80,9 @@ def targets():
     pos = POS_MAX
     d3 = 0
     for _ in range(len(starts) - 1):
-        for d in (2, 1, 3):
+        # prefer 4c (12px) steps: first-bite ~14px, so chunks of the same
+        # order make bite/chunk ~ 1.2 (was 5-6x with 1c/3c steps)
+        for d in (4, 3, 2, 1):
             cand = pos - d
             if cand in REACH:
                 if d == 3:
@@ -122,21 +124,30 @@ def verify(levels):
     for b in range(FIRST_RED_B, -1, -1):
         if levels[b] != levels[b + 1] and (FIRST_RED_B - b) % K != 0:
             errs.append(f"B={b}: change off the {K}-dec grid")
-    # chunk step sizes: 1-2c (3-6px); one 3c allowed in the sparse bottom
+    # chunk step sizes: 1-3c (3-9px); aim is mostly 3c so the chunk is
+    # the same order as the first bite (report: bite was 5-6x a chunk)
     starts, tgs, d3 = targets()
-    if d3 > 1:
-        errs.append(f"{d3} steps of 3c (want <=1, bottom band only)")
     for i in range(1, len(tgs)):
         d = tgs[i - 1] - tgs[i]
-        if not (1 <= d <= 3):
-            errs.append(f"chunk step {d}c at block {i} (want 1-3c)")
-    # B=0 must still render visually full-red: flip before HBLANK end
-    # (CPU ~22.7c) so the whole body is right of the flip
-    if levels[0] > 23:
-        errs.append(f"pos(0)={levels[0]} > 23: empty bar would show yellow")
+        if not (1 <= d <= 4):
+            errs.append(f"chunk step {d}c at block {i} (want 1-4c)")
+    n3 = sum(1 for i in range(1, len(tgs)) if tgs[i - 1] - tgs[i] >= 3)
+    if n3 * 2 < len(tgs) - 1:
+        errs.append(f"only {n3}/{len(tgs) - 1} steps are >=3c (want >=1/2)")
+    # B=0 must render visually full-red: flip x = 3*pos - 68 must sit at
+    # or before the body's left edge (x=4, PF0=$E0 4px margin) so every
+    # body pixel is right of the flip.
+    if levels[0] > 24:
+        errs.append(f"pos(0)={levels[0]} > 24: empty bar would show yellow")
     # first-red bite vs avg chunk (report: bite should be <= ~2x chunk)
-    bite = (POS_FULL - levels[FIRST_RED_B]) * 3.0     # px (3 clocks/cycle)
+    # +3px(160): F4A8 (top block) renders ~1c earlier than 31+5A lists
+    # (measured first red 28px/320 vs 22px predicted); later states on
+    # F1/F0 paths matched the table exactly, so the offset is top-block only.
+    bite = (POS_FULL - levels[FIRST_RED_B]) * 3.0 + 3.0
     chunk = (POS_FULL - levels[0]) * 3.0 / (len(tgs) - 1)
+    if chunk > 0 and bite / chunk > 1.7:
+        errs.append(f"bite/chunk ratio {bite / chunk:.2f} > 1.7 "
+                    f"(bite {bite:.1f}px, chunk {chunk:.1f}px)")
     return errs, bite, chunk
 
 
@@ -187,7 +198,7 @@ def main():
         for e in errs:
             print("  " + e)
         sys.exit(1)
-    print("verify OK: monotone, reachable, <=2c steps, K-grid")
+    print("verify OK: monotone, reachable, 1-4c steps, K-grid, ratio<=1.7")
     if check:
         # verify the tables actually IN bank1.asm match the generator
         src = BANK1.read_text()
