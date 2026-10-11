@@ -707,6 +707,7 @@ No entry is worked on without user greenlight.
     (structural: body-end 74.7c vs max red-path pos 71c = 11.1px
     floor; would need a new (A,F) path or content>71 to shrink —
     ceiling noted, revisit only if user still perceives it).
+    **Status: USER PASS 2026-10-11** (after the K=8 retest, 1bf92af).
     **Player:** timer bar starts full, drains in uniform visible steps
     on a fixed cadence; no red before the first chunk's worth of time.
     **Follow-up (noted, not fixed):** returning to title mid-run via
