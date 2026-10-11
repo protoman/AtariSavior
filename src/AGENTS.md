@@ -400,7 +400,7 @@ was the disproven claim.
 
 ### Phase 8: Jetpack Physics
 - [x] Gravity (constant downward force — vyLo/vyHi integration)
-- [x] Thrust (upward force when button held — JetPower ramp)
+- [x] Thrust (upward force when button held — JetPower ramp; ÷4 clock gate + JET_MAX=$14 = ~1s spin-up/float, bugs #31)
 - [x] Inertia (momentum — subpixel accumulator PlayerYSub)
 - [ ] Fuel management (no fuel system; the power bar is the game TIMER)
 - [x] Vertical collision with ceiling (StepUp stops flush)

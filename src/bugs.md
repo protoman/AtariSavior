@@ -729,6 +729,44 @@ No entry is worked on without user greenlight.
       (bite calc +3px) — would need a path recount to remove; not
       worth it at <=1.56x.
 
+31. **Jetpack inertia: ~1s spin-up + ~1s float after release**
+    (2026-10-11, user — feature). Spec: pressing Up starts the engine
+    sound immediately but the player takes ~1 second to actually start
+    flying; releasing Up must not start the fall immediately — also
+    ~1 second — so the player can glide horizontally before having to
+    thrust or fall.
+    **Status: IMPLEMENTED 2026-10-11 (agent), awaiting user feel-test.**
+    - **Root cause of the snappy feel:** JetPower ramped +1/frame to
+      JET_MAX=$20 — net lift (cumulative thrust = gravity) after only
+      ~15 frames (0.25s); decay was also fast.
+    - **Fix (kernel.asm, UpdateP0Vertical):** the +1 ramp step now
+      runs only on the free-running clock's every-4th frame
+      (`EnemyRamP & 3 == 0`); decay stays -1/frame (fast throttle
+      bleed + stored rise-clamp momentum = the float). JET_MAX
+      $20 -> $14 (20): with the ÷4 ramp, net lift (vy=0) at exactly
+      60 frames = **1.0s of held-Up**; full thrust at 80f.
+      Sound was already press-gated (SWCHA D4 in bank1
+      UpdateJetSound) — buzz starts on the press, pitch revs with
+      JetPower. +7B ramp gate absorbed by the pre-pad $F8DD pad
+      slack (headroom stays $FC67).
+    - **Measured (py65, boot-to-gameplay):** press-to-first-upward-
+      move = 73 frames (1.22s, includes gravity settling onto the
+      floor first); release-to-first-downward-move = 51 frames
+      (0.85s). Both "around 1 second" per spec.
+    - **Side effect + companion trim:** the slower spin-up keeps the
+      player grounded longer, so the SIM_FLY=X bomb now drops and
+      lands a falling+enemy-probe+hot-scan coincidence on its frame
+      (3260c > 3223 band, wall 266.11). Trimmed the hot-scan walk
+      `.CWCol` (kernel.asm): X seeded per row + `cpx` instead of
+      reload+cmp = -8c/cell (~-90c on that frame) — same walk
+      semantics (stx keeps CollisionX fresh for HotOverlapFlag);
+      -3B. FLY={X,Y,M} all 0 bad again; battery 26/26.
+    - Also added: sim `transition_frames` now covers the bomb-punch
+      event (CallPad_BombMarkWalls entry) — same one-frame event
+      exemption class as the death/respawn reload.
+    **Player:** press = instant buzz + lift-off after ~1s; release =
+    ~1s glide window before falling. Verify feel in-game.
+
 ## Rescan checklist (when the batch is closed)
 
 - [ ] `./build.sh` fully green (all sims, zero new warns)

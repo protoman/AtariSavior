@@ -330,7 +330,11 @@ PLAYER_MAX_Y    = 132           ; CAVE_LINES - PLAYER_SPRITE_H
 
 ; Jetpack physics constants (HERO-style)
 GRAVITY         = $0008         ; gravity per frame (signed 16-bit, + = down)
-JET_MAX         = $20           ; max jet thrust accumulator
+JET_MAX         = $14           ; max jet thrust accumulator = 20. With the
+                                ; ÷4 ramp gate below: full thrust at 80f,
+                                ; net lift (vy=0) at exactly 60f = 1.0s
+                                ; spin-up (bugs.md #31); was $20 (÷1 ramp:
+                                ; lift after 0.25s — too snappy).
 MAX_FALL        = $0200         ; max fall speed (positive = down)
 JET_AUD_BASE    = $0F           ; engine AUDF base: freq = base - JetPower/8 - sputter
 JET_AUD_VOL     = $08           ; engine volume while Up is held
@@ -1034,10 +1038,24 @@ UpdateP0Vertical:
     sta Temp
 
 ; --- Jet thrust accumulator: +1/frame while Up is held (cap JET_MAX),
-;     -1/frame otherwise. The ramp gives the jet its initial inertia. ---
+;     -1/frame otherwise. The ramp gives the jet its initial inertia.
+;     BUGS #31 (2026-10-11): the +1 now steps only every 4th frame
+;     (EnemyRamP & 3 == 0 — free-running clock, runs every gameplay
+;     frame) so spin-up to net lift takes exactly 60 frames = 1.0s of
+;     held-Up ("~1 second to start flying"). Decay stays -1/frame: on
+;     release the throttle bleeds fast and the stored momentum
+;     (rise-clamp $0100) carries the player ~0.6-0.9s before falling
+;     begins ("~1 second to start falling" + horizontal glide window).
+;     Sound is already press-gated (SWCHA D4), not JetPower-gated —
+;     the buzz starts on the press even while thrust is still ramping.
+;     +7B: absorbed by the pre-pad $F8DD pad slack (headroom $FC67).
+; ------------------------------------------------------------------------------
     lda #%00000001              ; test D0 (up, after 4x LSR)
     bit Temp
     bne .JetDecay
+    lda EnemyRamP               ; ramp gate: +1 only on the free-running
+    and #3                      ;   clock's phase 0 (every 4th frame)
+    bne .Gravity
     lda JetPower
     cmp #JET_MAX
     bcs .JetCapped
@@ -2347,9 +2365,10 @@ PlayerHitsMap:
 .CWRow:
     lda CollisionEndX
     sta CollisionX
+    tax                            ; X = col, seeded ONCE per row (bugs.md #31:
+                                   ;   was re-loaded every cell — −8c/cell walk
+                                   ;   trim for the falling+probe heavy frame)
 .CWCol:
-    lda CollisionX
-    tax
     ldy RectCount
     tya
     clc
@@ -2358,10 +2377,10 @@ PlayerHitsMap:
     lda PF0Buf,Y            ; $C3+row+off — the byte the kernel renders
     and ColMask,X           ; bit for this source col
     bne .CWHit              ; solid (Z=0)
-    lda CollisionX
-    cmp CollisionCellX      ; col == max?
-    beq .CWRowDone
-    inc CollisionX
+    cpx CollisionCellX      ; col == max? (X == CollisionX, stx below keeps
+    beq .CWRowDone          ;   the memory walk-temp fresh for HotOverlapFlag)
+    inx
+    stx CollisionX
     bne .CWCol              ; always (col never wraps to 0)
 .CWRowDone:
     lda RectCount

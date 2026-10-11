@@ -66,7 +66,8 @@ for _l in (SRC / 'bank0.lst').read_text(errors='replace').splitlines():
     if _m:
         LABELS.setdefault(_m.group(2), int(_m.group(1), 16))
 for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row',
-              '.WaitVBLANK', 'TitleKernel', 'ReloadLevel'):
+              '.WaitVBLANK', 'TitleKernel', 'ReloadLevel',
+              'CallPad_BombMarkWalls'):
     if _need not in LABELS:
         sys.exit(f'label {_need} not found in bank0.lst')
 PC_START = LABELS['StartFrame']
@@ -74,6 +75,7 @@ PC_OVER = LABELS['Overscan']
 PC_ENTER = LABELS['EnterRoom']
 PC_LOADLEVEL = LABELS['LoadLevel']
 PC_RELOAD = LABELS['ReloadLevel']
+PC_BMW = LABELS['CallPad_BombMarkWalls']
 PC_ROW = LABELS['.Row']
 PC_VBLT = LABELS['VBLTimer']     # VBL work window: TIM64T #23 armed here
 PC_WAIT = LABELS['.WaitVBLANK']  # INTIM poll entry = end of pure VBL work
@@ -246,11 +248,17 @@ frame_ker = {}                    # frame_lines key -> 'title' | 'cave'
 kwsync_by_kind = {}               # kind -> {WSYNC counts} (each must be size 1)
 
 max_vbl = max_over = max_gap = 0
-# Death/respawn transition frames (ReloadLevel entry + its drop-in frame):
-# the reload chain legitimately pushes overscan ~1 tick past the timer
-# (measured 3264c = +64c) so these 2 frames run +0.83/+0.22 lines long.
-# Exempt them from the wall/overscan gates (bugs.md #29 Class B residual
-# — same family as #22's documented heavy-frame) — NEVER exempt others.
+# Event-transition frames (bugs.md #29 Class B + #31): a state-machine
+# event legitimately stacks a reload/punch into one overscan, pushing it
+# ~1 TIM64T tick past the timer (+64c measured) so the frame runs ~1
+# line long. TWO event classes, each recorded once per occurrence:
+#   * death/respawn: ReloadLevel entry (frame + drop-in frame)
+#   * bomb explosion: CallPad_BombMarkWalls (fuse 1->2 edge — punches
+#     walls, reloads enemies, THEN the physics/probe coincide; post-#31
+#     slow jet spin-up keeps the player grounded so the X-repro's bomb
+#     now drops and its explosion frame measured 3260c/266.1 lines)
+# Exempt these event frames from the wall/overscan gates — NEVER a
+# blanket exemption; ordinary heavy frames must still be cut.
 transition_frames = set()
 max_vbl_f = max_over_f = max_gap_f = None
 gap_pc = None
@@ -288,12 +296,12 @@ while frame < 440:
     # room poke: the boot EnterRoom runs under the title (DropTarget=$FF)
     # and the console-RESET reload re-derives RoomNo — poke the GAMEPLAY
     # EnterRoom (DropTarget already a real fall target) instead.
-    if landed_frame is not None and bk == 0 and pc == PC_RELOAD \
-            and frame >= 2:
+    if landed_frame is not None and bk == 0 and frame >= 2 \
+            and pc in (PC_RELOAD, PC_BMW):
         transition_frames.add(frame)
         transition_frames.add(frame + 1)
         transition_frames.add(frame + 2)  # wall-numbering lag (frame counter
-        # increments at the NEXT boundary — covers the drop-in frame too)
+        # increments at the NEXT boundary — covers the drop-in / next frame)
     if not poked_room and bk == 0 and pc == PC_ENTER and \
             mem.ram[DROP_IDX] not in (0xFF, 0xFD):
         mpu.a = int(SIM_ROOM)              # EnterRoom param
