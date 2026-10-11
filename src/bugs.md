@@ -78,7 +78,10 @@ No entry is worked on without user greenlight.
     **Tuning (2026-10-10, same session):** X gate `&3` → `&1` — user
     reported the post-fix motion chunky/slow; `&1` = 1 px / 2 frames =
     0.5 px/frame = half the player's 1 px/frame (the `&3` was 0.25 —
-    half of half). `test_enemy_movement` gate assert updated.
+    half of half). `test_enemy_movement` gate assert updated. The
+    `&1` gate alone still delivered only 0.125 px/f — probe
+    false-blocks at bob Y≥133: #13 (fixed same day, this is why the
+    second "too slow" report came after this fix).
     **Player:** tentacle sprite overlaps the left wall line while probing
     (cosmetic only — collision stays correct).
     **Benefit:** sprite never crosses the wall edge.
@@ -308,6 +311,44 @@ No entry is worked on without user greenlight.
      position on both sides.
      **Benefit:** blast window = true ±2 overlap semantics for 2-col
      walls on both sides.
+13. **Tentacle X speed ~0.125 px/f — YToRowTable OOB at
+    EnemyRamY ≥ 133** (user 2026-10-10: tentacle "not fluid, ~10% of
+    gap crossing"; second report after the #4 `&1` gate fix — the gate
+    was already 0.5 px/f, the probe was swallowing the steps).
+    **Root cause:** `YToRowTable` has 36 entries (idx 0-35 = the
+    documented envelope "Max A = PLAYER_MAX_Y+11 = 143"). Tentacle
+    spawn y = 132 (level_002 room1 record `.byte 3,71,132,1`) + bob
+    triangle (EnemyRamP>>3, 32f period) → RoomY 132/133/134 → EndY
+    index `(RoomY+11)>>2` = 36 = OOB → reads the next opcode byte
+    (`$A5` = `lda RoomY`) as `CollisionEndY` → cell walk rows 2..165
+    through RAM past PF0/1/2Buf → false C=1 on ~24 of every 32 bob
+    frames; only the Y=132 frames probed clean → 1 px per 32f
+    (measured move gaps `[2,2,2,26]` = 0.125 px/f). The player can
+    never trigger it: `PLAYER_MAX_Y = 132` → idx ≤ 35; the tentacle
+    is the only PHM caller with Y ≥ 133. Test gap: `test_cell_map`
+    `y_reps` ≤ 120 (idx ≤ 32) — parity never exercised idx 36.
+    **Status: FIXED 2026-10-10.** Table +1 byte `.byte 2` (idx36 =
+    clamp to the last cave row: box bottom 144/145 is past the cave
+    0-143 → walk row 2 = floor wall, never `PF0Buf+3` = $C6, not a
+    buffer byte). Pre-pad headroom 1B absorbed it exactly (ends
+    $FC67); zero runtime cost — a `jsr TentProbeY` clamp helper was
+    built first and rejected: every post-pad window is pin-full
+    (max free fill 3B at `$FDE1`; `$FE00`/`$FE90`/`$FE96`/`$FEF6`/
+    `$FF00` = 0-1B, twin pins `$FDD8`/`$FDE1` address-frozen).
+    **Guards:** `test_enemy_movement` 37-entry table assert (was
+    36); `test_cell_map` model `YTOROW = [min(i//12, 2) ...]` +
+    `y_reps` gains 134 (EndY idx36 end-to-end through py65 PHM).
+    **Measured:** py65 `/tmp/opencode/tent_speed.py` phase A idle
+    chase: gaps `[2,2,2,...]` steady = **0.5 px/f** (was `[2,2,2,26]`
+    = 0.125) = half the player's 1 px/frame — the `&1` gate intent
+    (f8b46ac). Phase B wall-holds verified correct geometry (probe
+    box `cand-1` conservative 1px into the col wall; ink still
+    overlaps the player box). Script note: SWCHA `0xF7` = P1 right —
+    P0 right = `0x7F` (the crossing phase never moved the player).
+    **Player:** tentacle closes at half player speed, fluid; stops
+    flush at real walls only.
+    **Benefit:** chase distance closes 4× faster; the bob no longer
+    randomizes blocked/clear.
 
 ## Latent risks (verified once, fragile)
 

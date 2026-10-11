@@ -225,7 +225,8 @@ def main() -> None:
     # (the dead YToCellRow jsr wrapper was removed in S1.6; the lookup is
     # inlined at the top of PlayerHitsMap; the row-3 tail was dropped
     # 2026-10-05 to fund the .ObjZero M1 band-color restore — INVARIANT:
-    # PHM only runs in-cave, RoomY <= 131 → max index 35)
+    # PHM only runs in-cave; tentacle bob RoomY <= 134 → max index 36
+    # (idx36 = the bugs.md #13 clamp entry: (134+11)>>2 = 36)
     ytc = KERNEL.split("\nPlayerHitsMap:")[1].split("CollisionCellY", 1)[0]
     assert re.search(r"lda RoomY\n\s*lsr[^\n]*\n\s*lsr[^\n]*\n\s*tay", ytc), \
         "inlined row lookup must index by scanline>>2"
@@ -233,9 +234,9 @@ def main() -> None:
     operands = []
     for byte_line in re.findall(r"\.byte ([\d,]+)", table):
         operands += [int(v) for v in byte_line.split(",") if v.strip()]
-    expect = [0] * 12 + [1] * 12 + [2] * 12
+    expect = [0] * 12 + [1] * 12 + [2] * 13
     assert operands == expect, \
-        f"YToRowTable must be the 36-entry A>>2 form, got {operands}"
+        f"YToRowTable must be the 37-entry A>>2 form (tentacle clamp), got {operands}"
 
     # --- E3: tentacle Y derived (÷8 bob), X chases via swap+PlayerHitsMap --
     assert "cmp #ENEMY_TENTACLE" in dey, \
