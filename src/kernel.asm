@@ -1192,11 +1192,18 @@ OverscanAudio:                  ; rejoin for the spawn drop-in (DropStep tail):
     ; --- Laser audio (channel 0): low zoom while fire held; ch0 is free ---
     jsr CallPad_UpdateLaserSound
 
-    ; --- Decrement game timer (60 frames/step × 120 = 120s) ---
+    ; --- Game timer (60 frames/step × 120 = 120s) ---------------------------
     dec TickCounter
     bne .TimerDone              ; not 1s yet
     lda #60
     sta TickCounter
+    ; Forced fall (DropTarget != 0): swallow ONLY the bar step (bugs.md #30).
+    ; TickCounter keeps running (jet-flutter clock + second phase stay
+    ; frame-exact), so the bar pauses while the player cannot act — no more
+    ; red-at-start from the game-start drop-in — without shifting the
+    ; PickPlayerFrame animation phase the bit-identity probe asserts.
+    lda DropTarget
+    bne .TimerDone
     dec BarLevel
     bne .TimerDone              ; not empty yet (bne = was beq+jmp, −3B)
 .TimerExpired:
