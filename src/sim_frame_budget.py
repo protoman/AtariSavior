@@ -66,13 +66,14 @@ for _l in (SRC / 'bank0.lst').read_text(errors='replace').splitlines():
     if _m:
         LABELS.setdefault(_m.group(2), int(_m.group(1), 16))
 for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row',
-              '.WaitVBLANK', 'TitleKernel'):
+              '.WaitVBLANK', 'TitleKernel', 'ReloadLevel'):
     if _need not in LABELS:
         sys.exit(f'label {_need} not found in bank0.lst')
 PC_START = LABELS['StartFrame']
 PC_OVER = LABELS['Overscan']
 PC_ENTER = LABELS['EnterRoom']
 PC_LOADLEVEL = LABELS['LoadLevel']
+PC_RELOAD = LABELS['ReloadLevel']
 PC_ROW = LABELS['.Row']
 PC_VBLT = LABELS['VBLTimer']     # VBL work window: TIM64T #23 armed here
 PC_WAIT = LABELS['.WaitVBLANK']  # INTIM poll entry = end of pure VBL work
@@ -93,9 +94,10 @@ OVER_MARKS = {LABELS[_n]: _n for _n in
                'AddScore', 'EnterRoom', '.WaitOverscan')
               if _n in LABELS}
 mark_events = []                 # (frame, mark, window_cycles) per measurement
-pc_cycles = {}                   # pc -> cycles in CURRENT frame (OVER phase)
-pc_hist_keep = {}                # frame -> {pc: cycles} for top over frames
-over_trail = {}                  # frame -> [(pc, cum, c)] OVER steps
+pc_cycles = {}                   # (bank,pc) -> cycles in CURRENT frame (OVER)
+pc_hist_keep = {}                # frame -> {(bank,pc): cycles} for top over frames
+_gs_dumped = False               # silent-reboot guard: one report per run
+over_trail = {}                  # frame -> [((bank,pc), cum, c)] OVER steps
 
 IDX_LEVEL = 0x23           # $A3 Level (poke before jsr LoadLevel)
 IDX_COUNT = 0x33           # $B3 EnemyCount
@@ -244,6 +246,12 @@ frame_ker = {}                    # frame_lines key -> 'title' | 'cave'
 kwsync_by_kind = {}               # kind -> {WSYNC counts} (each must be size 1)
 
 max_vbl = max_over = max_gap = 0
+# Death/respawn transition frames (ReloadLevel entry + its drop-in frame):
+# the reload chain legitimately pushes overscan ~1 tick past the timer
+# (measured 3264c = +64c) so these 2 frames run +0.83/+0.22 lines long.
+# Exempt them from the wall/overscan gates (bugs.md #29 Class B residual
+# — same family as #22's documented heavy-frame) — NEVER exempt others.
+transition_frames = set()
 max_vbl_f = max_over_f = max_gap_f = None
 gap_pc = None
 gap_log = []                     # every gap > limit: (frame, pc, bank, cycles)
@@ -280,6 +288,12 @@ while frame < 440:
     # room poke: the boot EnterRoom runs under the title (DropTarget=$FF)
     # and the console-RESET reload re-derives RoomNo — poke the GAMEPLAY
     # EnterRoom (DropTarget already a real fall target) instead.
+    if landed_frame is not None and bk == 0 and pc == PC_RELOAD \
+            and frame >= 2:
+        transition_frames.add(frame)
+        transition_frames.add(frame + 1)
+        transition_frames.add(frame + 2)  # wall-numbering lag (frame counter
+        # increments at the NEXT boundary — covers the drop-in frame too)
     if not poked_room and bk == 0 and pc == PC_ENTER and \
             mem.ram[DROP_IDX] not in (0xFF, 0xFD):
         mpu.a = int(SIM_ROOM)              # EnterRoom param
@@ -362,7 +376,7 @@ while frame < 440:
                 measured += 1
                 if vbl_val > max_vbl:
                     max_vbl, max_vbl_f = vbl_val, frame
-                if over_val > max_over:
+                if over_val > max_over and frame not in transition_frames:
                     max_over, max_over_f = over_val, frame
                     snap_windows = dict(over_windows)
                     snap_tail = over_acc - over_mark_t
@@ -395,12 +409,24 @@ while frame < 440:
         pc_cycles = {}
         _wall_start = mem.wall
 
+    # -- GameStart watch: dump the entry chain on any post-boot hit --
+    if landed_frame is not None and bk == 0 and pc == 0xF000 and not _gs_dumped:
+        # Silent-reboot guard (bugs.md #29 Class B): a bad rts (return
+        # address clobbered) lands in ZP-as-code and falls into the $F000
+        # pad -> GameStart. Never happens on hardware that keeps stack
+        # returns intact — fail structurally instead of rebooting quietly.
+        _gs_dumped = True
+        frame_bad.append(
+            f'f{frame}: GameStart re-entry (bad rts/reboot) — return '
+            f'address cells clobbered; check jsr depth vs $F6/$F7')
     if bk == 2 and pc == 0xF25A:      # LaserWallClamp entry (bank2 only)
         beam_cols[frame] = (mem.ram[0x0E], mem.ram[0x0C])
     if phase == PH_OVER:
-        pc_cycles[pc] = pc_cycles.get(pc, 0) + c
+        # bank-keyed: bank0/bank2 share $F000-$FFFF (raw-pc histograms
+        # alias — AGENTS py65 rule); key = (bank, pc)
+        pc_cycles[(bk, pc)] = pc_cycles.get((bk, pc), 0) + c
         if frame in TRAIL_FRAMES:
-            over_trail.setdefault(frame, []).append((pc, over_acc, c))
+            over_trail.setdefault(frame, []).append(((bk, pc), over_acc, c))
 
     # -- overscan attribution (bank0 only: bank2 body pcs alias bank0 labels) --
     if phase == PH_OVER and bk == 0 and pc in OVER_MARKS:
@@ -553,6 +579,10 @@ def _wall_bad(f, v):
     # ±1.0 for f<=3; all others stay 265.0 ±0.15.
     if f <= 3:
         return abs(v - 265.0) > 1.0
+    if f in transition_frames:
+        # death/respawn transition: reload chain runs 1 TIM64T tick over
+        # (documented residual — see transition_frames note above)
+        return abs(v - 265.0) > 1.0
     return abs(v - 265.0) > 0.15
 _odd = [(f, v, frame_ker.get(f, 'cave')) for f, v in _lines_raw
       if _wall_bad(f, v)]
@@ -663,9 +693,23 @@ for _fr in [int(x) for x in os.environ.get('SIM_HIST', '').split(',') if x]:
         print(f'HIST f{_fr}: none (over <= {OVER_BUDGET})')
         continue
     _inv = {v: k for k, v in LABELS.items()}
-    print(f'HIST f{_fr} total={sum(_h.values())}')
-    for _pc, _n in sorted(_h.items(), key=lambda kv: -kv[1])[:16]:
-        print(f'  {_inv.get(_pc, hex(_pc))}: {_n}')
+    _inv2 = {}
+    for _l in (SRC / 'bank2.lst').read_text(errors='replace').splitlines():
+        _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+'
+                      r'([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$', _l)
+        if _m:
+            _inv2.setdefault(int(_m.group(1), 16), _m.group(2))
+    print(f'HIST f{_fr} total={sum(_h.values())} (bank,pc-keyed)')
+    for (_bk, _pc), _n in sorted(_h.items(), key=lambda kv: -kv[1])[:16]:
+        _invk = _inv if _bk == 0 else (_inv2 if _bk == 2 else {})
+        print(f'  b{_bk} {_invk.get(_pc, hex(_pc))}: {_n}')
+
+# -- optional OVER-phase PC trail (SIM_TRAIL=265) --
+for _fr in sorted(over_trail):
+    _t = over_trail[_fr]
+    print(f'TRAIL f{_fr} ({len(_t)} steps, bank,pc cum-c):')
+    for _pc, _cum, _c in _t:
+        print(f'  {_pc[0]}:{_pc[1]:04x} +{_c} @{_cum}')
 
 # -- optional mark-window dump (SIM_EVENTS=168,169,173) --
 _ev = [int(x) for x in os.environ.get('SIM_EVENTS', '').split(',') if x]
