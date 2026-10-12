@@ -2667,7 +2667,7 @@ TPtr6 = $EA
     sta GRP1
     sta GRP0
     sta GRP1
-    ldx #103                    ; 63 pre-pad + 60 draw + 8 syncs + 37 pad (band +1: TitleBandPrep jsr entry spans 2 lines)
+    ldx #103                    ; 63 pre-pad + 60 draw + 8 syncs + 31 pad (band +1: TitleBandPrep jsr entry spans 2 lines)
 .TkFooterPad:
     sta WSYNC
     dex
@@ -2701,7 +2701,8 @@ TPtr6 = $EA
     jsr SetObjectXPos           ; restore P1 (bomb SOXP moved it during band)
     sta WSYNC
     sta HMOVE
-    ldx #37                     ; restore the fixed title-kernel line budget
+    ldx #31                     ; fixed title-kernel line budget: 37 - 6
+                                ;   (footer grew 7 -> 13 rows, 2026-10-12)
 .TkPostFooterPad:
     sta WSYNC
     dex
