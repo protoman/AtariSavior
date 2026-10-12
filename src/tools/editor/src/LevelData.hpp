@@ -36,7 +36,12 @@ enum class TileType : int {
     WATER = 5,           // Instant death/drown
     RAFT = 6,            // Floating raft on water/lava
     MAGMA_FALL = 7,      // Periodic dropping hazard
-    HOT_ROCK_WALL = 8    // Solid wall; pulses yellow/red, kills on touch
+    HOT_ROCK_WALL = 8,   // Solid wall; pulses yellow/red, kills on touch
+    LOCKED_DOOR = 9,     // async side-0 PATCH tile only (never grid — convert
+                         // rejects it in tiles[]; MetaB b7 in ROM)
+    PHASE = 10,          // grid: blinking wall (PF bit swap + rect w toggle)
+    VCRUNCH = 11,        // grid: vertical crunch cell
+    HCRUNCH = 12         // grid: horizontal crunch band (prefix cols 0..n)
 };
 
 enum class EnemyType : int {
@@ -44,7 +49,10 @@ enum class EnemyType : int {
     BAT = 1,
     SNAKE = 2,
     TENTACLE = 3,
-    GIANT_MOTH = 4
+    GIANT_MOTH = 4,
+    // 5 = LAMP in the ROM merged table (lamps live in RoomData.lamps, never
+    // as an editor enemy type) — keep 5 unused here to match convert.
+    KEY = 6              // collectible key (HUD icon; sets KeyHeld)
 };
 
 struct EnemyData {

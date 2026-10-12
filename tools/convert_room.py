@@ -47,9 +47,10 @@ def read_room(path: Path) -> list[str]:
             raise ValueError(
                 f"{path}: row {number} must have {WIDTH} columns, got {len(row)}"
             )
-        if any(cell not in ".#H" for cell in row):
+        if any(cell not in ".#HPVC" for cell in row):
             raise ValueError(
-                f"{path}: row {number} contains a character other than ., # or H"
+                f"{path}: row {number} contains a character other than "
+                "., #, H, P, V or C"
             )
     return rows
 
@@ -66,9 +67,10 @@ def pf_values(row: str) -> tuple[int, int, int]:
       expanded cols 0-3   -> PF0 bits 4-7 (bit 4 = leftmost)
       expanded cols 4-11  -> PF1 bits 7-0 (bit 7 = display col 4)
       expanded cols 12-19 -> PF2 bits 0-7 (bit 0 = display col 12)
-    Hot rock (H) is solid for the playfield, same as #.
+    Hot rock (H) is solid for the playfield, same as #; feature cells
+    (P phase / V vertical crunch / C horizontal crunch) are solid too.
     """
-    solid = [cell in "#H" for cell in row]
+    solid = [cell in "#HPVC" for cell in row]
     if len(solid) != WIDTH:
         raise ValueError(f"pf_values: expected {WIDTH} columns, got {len(row)}")
     s20 = [s for s in solid for _ in (0, 1)]   # D7 bit-pairing
@@ -139,7 +141,8 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
           asym_rows: list[str] | None = None,
           asym_ball_x: int = 0,
           asym_m1_x: int = 0,
-          hot_m1: list[tuple[int, int]] | None = None) -> list[str]:
+          hot_m1: list[tuple[int, int]] | None = None,
+          door: bool = False) -> list[str]:
     """Build the asm lines for a grid (shared by per-room and per-model emission).
 
     asym_rows (D2/D3, models only): resolved right-half rows in right_col
@@ -159,9 +162,12 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
                      (b0-2 = band0/1/2 ENABL gates: bit set = band differs
                       from its mirror = ball band; staged to BandTab $ED-$EF
                       as $01/$00. m1_col+1: 0 = no M1 patch)
-        M<id>MetaB:  .byte (ball_col+1) or 0
+        M<id>MetaB:  .byte (ball_col+1) or 0, b7 = async door
                      (ball_col: BallX = 87+8*ball_col, staged to Temp $88
-                      via 8*(ball_col+1)+86; 0 = no ball = symmetric)
+                      via 8*(ball_col+1)+86; 0 = no ball = symmetric.
+                      b7 set = the model's side-0 strip is a LOCKED_DOOR
+                      async patch — P2 stages CTRLPF $25 instead of $35.
+                      Staging must mask b7 out of the ball-col math.)
     bank2 reads this block (StageBandTab in the BuildColupF tail) — a bank0
     (RoomPF0Lo) read would fetch bank0's $F9xx zero pad. M1X = 8*(m1_col+1)-1
     = 7+8*left_col, staged to CollisionEndX $8E (kill-gated by
@@ -184,7 +190,7 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         out.append(f"ROOM_TILE_COLUMNS = {WIDTH}")
         out.append(f"ROOM_TILE_ROWS = {len(rows)}")
 
-    rects = find_rectangles(rows, solids="#H")
+    rects = find_rectangles(rows, solids="#HPVC")
     hot_rects = find_rectangles(rows, solids="H")
     # find_rectangles works in logical cells (0..9); the runtime compares
     # rect x/w against 4-px display columns, so emit x/w in pairs (D7).
@@ -205,7 +211,50 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     # piece once that wall is blasted — hot_rock_wall_plan rule 4);
     # $00 = no blastable parent (parent outside rects 0-3, or none) → never dies.
     m1_hot = list(hot_m1 or ())
-    out.append(f"  .byte {len(hot_rects) + len(m1_hot)}              "
+    # Feature cells (P phase, V vertical crunch, C horizontal crunch) ride
+    # the hot record stream with b7 set in the mask byte — legacy masks
+    # ($00/$08/$10/$20/$40) never set b7, so legacy emission is unchanged
+    # (byte-identical when no feature char is present).
+    #   $80 phase   : [mask, 2c, row, 2, 1] one record per cell (left-half
+    #                  coords; the runtime mirrors like rects)
+    #   $81 vcrunch : [mask, x, y, w, h] bbox of all V cells
+    #   $82 hcrunch : [mask, 0, band, w, 1] band + prefix extent from col 0
+    phase_cells: list[tuple[int, int]] = []
+    v_cells: list[tuple[int, int]] = []
+    c_cells: list[tuple[int, int]] = []
+    for r, row in enumerate(rows):
+        for c, cell in enumerate(row):
+            if cell == "P":
+                phase_cells.append((r, c))
+            elif cell == "V":
+                v_cells.append((r, c))
+            elif cell == "C":
+                c_cells.append((r, c))
+    feats: list[str] = []
+    for r, c in phase_cells:
+        feats.append(f"  .byte $80, {2 * c}, {r}, 2, 1  ; phase cell")
+    if v_cells:
+        rs = [r for r, _ in v_cells]
+        cs = [c for _, c in v_cells]
+        feats.append(
+            f"  .byte $81, {2 * min(cs)}, {min(rs)}, "
+            f"{2 * (max(cs) - min(cs) + 1)}, {max(rs) - min(rs) + 1}  "
+            f"; vcrunch bbox")
+    if c_cells:
+        bands = {r for r, _ in c_cells}
+        if len(bands) != 1:
+            raise ValueError(
+                f"{source}: hcrunch cells span bands {sorted(bands)} — the "
+                "crunch band must live in exactly ONE row")
+        cols = sorted(c for _, c in c_cells)
+        if cols != list(range(cols[-1] + 1)):
+            raise ValueError(
+                f"{source}: hcrunch cells at cols {cols} are not a contiguous "
+                "prefix from col 0 (need cols 0..n in one band)")
+        feats.append(
+            f"  .byte $82, 0, {next(iter(bands))}, {2 * (cols[-1] + 1)}, 1  "
+            f"; hcrunch band prefix")
+    out.append(f"  .byte {len(hot_rects) + len(m1_hot) + len(feats)}              "
                f"; number of hot rectangles")
     for hx, hy, hw, hh in hot_rects:
         parent = next(
@@ -234,6 +283,8 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     for mrow, mcol in m1_hot:
         out.append(f"  .byte $00, {2 * mcol}, {mrow}, 2, 1  "
                    f"; mask, x, y, w, h (M1 block cell, hot band)")
+    out.extend(feats)
+
 
     for name, register in zip(("TilePF0", "TilePF1", "TilePF2"), range(3)):
         out.append(f"{prefix}{name}:")
@@ -260,10 +311,19 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     ball_col_plus = 0
     if asym_ball_x:
         ball_col_plus = ((asym_ball_x - 87) >> 3) + 1
-    out.append(f"{prefix}MetaB:")
-    out.append(
-        f"  .byte ${ball_col_plus:02x}"
-        "                  ; (ball_col+1), 0 = no ball")
+    if door:
+        if not asym_ball_x:
+            raise ValueError(
+                f"{source}: LOCKED_DOOR needs a side-0 (ball) patch strip")
+        out.append(f"{prefix}MetaB:")
+        out.append(
+            f"  .byte ${ball_col_plus | 0x80:02x}"
+            "                  ; (ball_col+1) | $80 async door")
+    else:
+        out.append(f"{prefix}MetaB:")
+        out.append(
+            f"  .byte ${ball_col_plus:02x}"
+            "                  ; (ball_col+1), 0 = no ball")
 
     if asym_rows is not None:
         if len(asym_rows) != len(rows) or any(
@@ -277,7 +337,7 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
             out.append(f"{prefix}{name}:")
             out.append("  .byte " + ", ".join(
                 f"${t[register]:02x}" for t in r_triples))
-        r_rects = find_rectangles(asym_rows, solids="#H")
+        r_rects = find_rectangles(asym_rows, solids="#HPVC")
         if len(r_rects) > 4:
             raise ValueError(
                 f"{source}: {len(r_rects)} right wall rects > WallMask budget 4 "
