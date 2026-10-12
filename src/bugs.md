@@ -799,8 +799,26 @@ No entry is worked on without user greenlight.
       TIM64T tick + wall slack after the drop-in timing shift).
     - Companion trim kept from retest 1: `.CWCol` hot-scan -8c/cell
       (-3B); sim transition_frames covers the bomb-punch event.
+    - **User pass (2026-10-11):** "It is perfect, congratulations on
+      the well-done job." (#31 closed.)
     **Player:** press = buzz + lift-off ~1s; release = stop ~0.3s,
-    hover in place ~1s, fall ~1.3s after release. Verify feel.
+    hover ~0.5s, fall ~0.85s after release.
+
+32. **Intro copyright line: add surname** (2026-10-11, user). Where the
+    intro screen currently says "2026 Iuri", user wants "2026 Iuri
+    Fiedoruk" (fallback "2026 Iuri Fdrk" if the full name did not fit).
+    **Status: DONE 2026-10-11 (agent).** The footer font
+    (bank2 `FooterFont`, 48px canvas = 6 x 8px sprites) was 4px wide —
+    "2026 Iuri" fit (33px), "+ Fiedoruk" did not (66px). New
+    `tools/footer_font.py` regenerates the block as a 3x5 micro-font:
+    14 letters at 3px + 1px 'i' x2 + 1px spaces x2 = **46px <= 48px**
+    (full name fits; the "Fdrk" fallback was not needed). Generator
+    round-trip verified against the shipped font, `--check` CI gate
+    added, bank2 `FooterFont` patched (assembled size unchanged = 48B,
+    `$F830` pin unaffected). Battery 26/26, build green; Stella intro
+    capture confirmed the new line renders.
+    **Player:** intro copyright reads "2026 Iuri Fiedoruk".
+
 ## Rescan checklist (when the batch is closed)
 
 - [ ] `./build.sh` fully green (all sims, zero new warns)

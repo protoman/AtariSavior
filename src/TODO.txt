@@ -20,15 +20,48 @@ BUGS
 
 
 =========================================================================================================================================================================
-Now, I need to add inertia to player flying.
-He should take around 1 second to start flying (the sound should start when player press up tough).
-In the same way, when user stops pressing up, he should not start falling immediatlly, but also take about 1 second to start falling,
-so he can fly horizontally for a while before falling or having to fly upwards.
+This will require a plan, as it might need zome data into ZP, so we need to check it beforehand and prepare to open space, if needed.
+New wall types should be added into editor, what will have effect into the game.
+
+For normal (sync) tiles we have:
+    # horizontal crunch wall
+        - NOTE: HERO has a similar feature, so youc an look into it.
+        - a wall that grows and schrinks horizontally from left and right until both sides meet each other
+        - it grows or shrinks 1 tile each 0.3 seconds
+        - it should grow until one side reaches the center of the screen - because
+        - it needs to grow the height of an enemy such as a spider, each step
+        - it stays closed or open for 1.5 seconds
+        - if player is inside the area it grows, the player looses a life, and the wall is removed from the playfield.
+        - no enemy or object can be placed on the tile that contains a vertical crunch wall
+
+
+For async, I want to add:
+    # locked door
+        - appears as a grey tile/block.
+        - to open it, player have to find a key object in that stage.
+        - once open, it is just removed from the playfield.
+    # phase wall
+        - a wall that appears and disappears each second.
+        - if the player is inside its area when it appears, the player looses a life, and the wall is removed from the playfield.
+    # vertical crunch wall
+        - a wall that grows and schrinks vertically from top and bottom until both sides meet each other
+        - it grows or shrinks each 0.3 seconds
+        - it needs to grow the height of an enemy such as a spider (more a less, you can do the math to fix perfectly), each step
+        - the max size it grows is haff a band (because it grows in both up and bottom directions)
+        - it stays closed or open for 1.5 seconds
+        - if player is inside the area it grows, the player looses a life, and the wall is removed from the playfield.
+        - no enemy or object can be placed on the tile that contains a vertical crunch wall
 
 
 
+New object types:
+    # key - once got, allows to open a locked door on that stage.
+        # sprite in forma of a key, same size of enemies such as spider and yellow.
+        # once obtained the sprite must be drawn in the HUD, on the right side of the score. (is sprite is too difficult, just draw a yellow square)
 
-# speed multiplier - each X levels (5?) the speed of the enemies increases (x1,5, x2, x2.5, x3...)
+
+
+# enemy speed multiplier - each X levels (5?) the speed of the enemies increases (x1,5, x2, x2.5, x3...)
 
 # dynamic "pulse" wall (appears/disappears)
 
