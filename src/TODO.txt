@@ -1,48 +1,51 @@
 #########################################################################################################################################################################
 Strategic Aerial Vehicle Infiltration Operations Rescue
 #########################################################################################################################################################################
-
-Now, let's add a simple text in the bottom of the screen: "2026 Iuri", just that, keep it simple for now. Draw it in white, please.
-
-
-OK, now that we removed the pixel-art of the player at the center/middle of the screen, we need to use that space.
-My idea is to show the player sprite, playing in a loop (start must match the end position).
-It should walk, fly, laser and use a bomb.
-If cost is OK, you can also add some enemies into that mini-demo.
-If there leftover from the pixel art from before, remove it.
-That should be much simpler than drawing the pixel art, right?
-
-
-#########################################################################################################################################################################
-Strategic Aerial Vehicle Infiltration Operations Rescue
-#########################################################################################################################################################################
-Eorley Savior.
+Nome personagem: Eorley Savior.
 
 #########################################################################################################################################################################
 
 =========================================================================================================================================================================
 BUGS
 =========================================================================================================================================================================
-scripts added to ../tools
+# add Fiedoruk to copyright line.
+    # start with F. and try increasing.
+    # maybe split in 3 lines (c) 2026 / Iuri Fiedoruk / Upperland Studios
+
+# being scripts added to ../tools
+
+# Once the game starts, the bar already looses a chunk (turns red).
+    # It should take the same time each chunk needs, for the first one to appear as red.
+    # Also, that chunk seems to be very big, something like 2 to 4 (sorry, I can't measure it well) than a normal chunk.
+
 
 =========================================================================================================================================================================
+Now, I need to add inertia to player flying.
+He should take around 1 second to start flying (the sound should start when player press up tough).
+In the same way, when user stops pressing up, he should not start falling immediatlly, but also take about 1 second to start falling,
+so he can fly horizontally for a while before falling or having to fly upwards.
 
-ONGOING - non mirrored walls
+
+
+
+# speed multiplier - each X levels (5?) the speed of the enemies increases (x1,5, x2, x2.5, x3...)
+
+# dynamic "pulse" wall (appears/disappears)
+
+# static "crunch" wall (grows up to the middle of the PF)
+    # can be the only wall on that band
+
+
+# tentacle pull player
+    # increase tentacle height, so part of it can leave the water
+
+# raft
+
+# use a build folder to generate the .bin
 =========================================================================================================================================================================
 
-Once the game starts, the bar already looses a chunk (turns red).
-It should take the same time each chunk needs, for the first one to appear as red.
-Also, that chunk seems to be very big, something like 2 to 4 (sorry, I can't measure it well) than a normal chunk.
-=========================================================================================================================================================================
 
-tentacle pull player
-=========================================================================================================================================================================
 
-raft
-=========================================================================================================================================================================
-
-logo in score like activision?
-Or SAVIOR as (part of) the playfield on the start screen?
 =========================================================================================================================================================================
 stage generator in editor
     # take in account level number for number of rooms, available objects to add and difficulty
@@ -54,19 +57,6 @@ So, before implementing this feature, write a detailed plan into a MD file, spli
 so that, if we have an issue, we can later resume from that point, following that plan. For both options 2 and 3.
 And let me know where the MD file is stored.
 After that, start following the option 2.
-
-
-
-#########################################################################################################################################################################
-
-
-#########################################################################################################################################################################
-REFACTOR
-#########################################################################################################################################################################
-
-
-- adicionar suporte a partes async nas fases
-
 
 
 

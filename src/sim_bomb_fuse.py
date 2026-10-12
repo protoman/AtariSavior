@@ -29,6 +29,7 @@ F6 banking: writes to $1FF6-$1FF9 select the 4K bank at $F000-$FFFF.
 NOTE: PC labels in the diagnostic output come from bank0.lst — after moving
 bank0 code, re-check addresses there (assertions do NOT depend on PCs).
 """
+import os
 import re
 import sys
 from pathlib import Path
@@ -235,6 +236,10 @@ while frame < 420:
             poked = True
             print(f'tentacle coverage poked at f{frame}: EnemyCount=2, '
                   f'slot1 X=36, rect1=(4,2,2,1)')
+        if os.environ.get('SIM_JETDBG') and 40 <= frame <= 160 and frame % 10 == 0:
+            print(f'JETDBG f{frame} DT={mem.ram[0x0A]:02X} B5={mem.ram[IDX_B5]:02X} '
+                  f'vy={mem.ram[0x14]:02X}{mem.ram[0x13]:02X} JP={mem.ram[0x16]:02X} '
+                  f'SL={mem.ram[0x17]:02X} Y={mem.ram[0x01]:02X} bombs={mem.ram[0x70]}')
         st = mem.ram[IDX_B5] & 3
         states_seen.append((frame, st))
         if drop_frame is None and mem.ram[IDX_F0] < 5:
