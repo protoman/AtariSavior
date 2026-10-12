@@ -198,7 +198,11 @@ void MainWindow::SetupUI() {
     ToolInfo modelTools[] = {
         { BrushTool::SOLID_WALL, "1. Solid Rock Wall" },
         { BrushTool::ERASE_AIR, "0. Air (Erase)" },
-        { BrushTool::ASYM_PATCH, "2. Asym Patch (right half)" },
+        { BrushTool::ASYM_PATCH, "2. Async" },
+        { BrushTool::PHASE_TILE, "3. Phase Wall" },
+        { BrushTool::VCRUNCH_TILE, "4. Vertical Crunch" },
+        { BrushTool::HCRUNCH_TILE, "5. Horizontal Crunch" },
+        { BrushTool::DOOR_TILE, "6. Async Door" },
     };
     for (const auto& t : modelTools) {
         QListWidgetItem* item = new QListWidgetItem(t.text);
@@ -303,6 +307,7 @@ void MainWindow::SetupUI() {
         { BrushTool::ADD_MOTH, "W. Moth" },
         { BrushTool::ADD_LAMP, "L. Lamp" },
         { BrushTool::ADD_RAFT, "R. Raft" },
+        { BrushTool::ADD_KEY, "Y. Key" },
         { BrushTool::DELETE_ENTITY, "X. Delete" }
     };
     for (const auto& t : levelTools) {
@@ -946,6 +951,32 @@ QIcon MainWindow::MakeToolIcon(BrushTool tool) const {
             p.drawRect(r);
             break;
         }
+        case BrushTool::DOOR_TILE:
+            p.fillRect(r, QColor(150, 154, 170));
+            p.setPen(QPen(QColor(255, 215, 0), 3));
+            p.drawRect(r);
+            break;
+        case BrushTool::PHASE_TILE:
+            p.fillRect(r, QColor(0, 180, 90));
+            p.setPen(Qt::white);
+            p.drawText(r, Qt::AlignCenter, "P");
+            break;
+        case BrushTool::VCRUNCH_TILE:
+            p.fillRect(r, QColor(150, 70, 210));
+            p.setPen(Qt::white);
+            p.drawText(r, Qt::AlignCenter, "V");
+            break;
+        case BrushTool::HCRUNCH_TILE:
+            p.fillRect(r, QColor(0, 170, 200));
+            p.setPen(Qt::white);
+            p.drawText(r, Qt::AlignCenter, "C");
+            break;
+        case BrushTool::ADD_KEY:
+            p.setPen(Qt::black);
+            p.setBrush(QColor(255, 215, 0));
+            p.drawRoundedRect(r, 6, 6);
+            p.drawText(r, Qt::AlignCenter, "Y");
+            break;
         case BrushTool::DELETE_ENTITY:
             p.setPen(QColor(70, 70, 85));
             p.drawRect(pix.rect().adjusted(1, 1, -1, -1));

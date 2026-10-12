@@ -44,7 +44,16 @@ enum class BrushTool {
     // Model tab: D6 asymmetric patch on the RIGHT half (wall where the
     // mirror is open; toggle with a second click). One right_col per model
     // (single ball-x envelope — convert hard-fails mixed columns).
-    ASYM_PATCH = 19
+    ASYM_PATCH = 19,
+    // Level tab: the collectible key (EnemyType::KEY = 6, counts toward
+    // kMaxRoomElements like every other object).
+    ADD_KEY = 20,
+    // Model tab: new feature brushes (BrushTool-local values 21-24 — 9..19
+    // are taken; ApplyBrushAt maps them to TileType 9-12).
+    DOOR_TILE = 21,     // TileType::LOCKED_DOOR as an async side-0 patch
+    PHASE_TILE = 22,    // TileType::PHASE grid cell
+    VCRUNCH_TILE = 23,  // TileType::VCRUNCH grid cell
+    HCRUNCH_TILE = 24   // TileType::HCRUNCH grid cell
 };
 
 class MapCanvas : public QWidget {
@@ -81,11 +90,16 @@ protected:
     void paintEvent(QPaintEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
 
 private:
     void ApplyBrushAt(int tileX, int entityX, int tileY);
     void MouseToTile(const QPointF& pos, bool apply);
+    // Warn (once per mouse RELEASE, never mid-drag) about feature layouts
+    // convert would reject at build: phase/vcrunch on the hot middle band,
+    // hcrunch cells outside one band / not a contiguous prefix from col 0.
+    void ValidateFeatureTiles();
     QColor GetTileColor(int tileType, int tileY) const;
     void UpdateSizeForRoom();
     void DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int dir) const;

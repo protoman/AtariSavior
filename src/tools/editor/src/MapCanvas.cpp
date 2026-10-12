@@ -22,6 +22,7 @@
 #include <QKeyEvent>
 #include <QMessageBox>
 #include <QPolygonF>
+#include <QStringList>
 #include <cmath>
 
 namespace editor {
@@ -165,6 +166,14 @@ QColor MapCanvas::GetTileColor(int tileType, int tileY) const {
             return QColor(255, 100, 0);
         case hero::TileType::HOT_ROCK_WALL:
             return QColor(255, 80, 20);
+        case hero::TileType::LOCKED_DOOR:
+            return QColor(150, 154, 170);   // async door = grey 4clk stripe
+        case hero::TileType::PHASE:
+            return QColor(0, 180, 90);
+        case hero::TileType::VCRUNCH:
+            return QColor(150, 70, 210);
+        case hero::TileType::HCRUNCH:
+            return QColor(0, 170, 200);
         default:
             return QColor(15, 15, 20);
     }
@@ -226,21 +235,35 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             // over an open cell. Both draw with a cyan outline so patches
             // read as patches, not mirrored walls.
             bool patch = false;
+            bool doorPatch = false;
             if (dcol >= half) {
                 int rc = (dcol - half) >> 1;
-                patch = FindPatch(*model, modelY, rc, 0) >= 0;
+                int pi = FindPatch(*model, modelY, rc, 0);
+                patch = pi >= 0;
+                doorPatch = patch && (int)model->asym_patches[pi].size() >= 3
+                    && model->asym_patches[pi][2]
+                           == (int)hero::TileType::LOCKED_DOOR;
             } else {
                 patch = FindPatch(*model, modelY, x, 1) >= 0;
             }
-            if (patch) tileType = (int)hero::TileType::SOLID_WALL;
+            if (patch)
+                tileType = doorPatch ? (int)hero::TileType::LOCKED_DOOR
+                                     : (int)hero::TileType::SOLID_WALL;
             QRect tileRect(dcol * cellW, y * cellH, cellW, cellH);
 
             QColor color = GetTileColor(tileType, modelY);
             // Middle band (row 1): the model's mid_band_type selector makes
             // every wall there hot (convert promotes row 1 to 'H' the same
             // way — the legacy HOT_ROCK tile value is gone as a brush).
+            // Feature tiles keep their own color (they are never hot —
+            // convert keeps P/V chars and rejects hcrunch there).
+            const bool featureTile =
+                tileType == (int)hero::TileType::PHASE ||
+                tileType == (int)hero::TileType::VCRUNCH ||
+                tileType == (int)hero::TileType::HCRUNCH ||
+                tileType == (int)hero::TileType::LOCKED_DOOR;
             if (model->mid_band_type != 0 && modelY == 1 &&
-                tileType != (int)hero::TileType::AIR) {
+                tileType != (int)hero::TileType::AIR && !featureTile) {
                 color = GetTileColor((int)hero::TileType::HOT_ROCK_WALL, modelY);
             }
             // Bottom band: air on last row shows the room's band COLUBK
@@ -339,6 +362,7 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
                 case hero::EnemyType::SNAKE: eColor = QColor(40, 200, 40); label = "K"; break;
                 case hero::EnemyType::TENTACLE: eColor = QColor(200, 60, 200); label = "T"; break;
                 case hero::EnemyType::GIANT_MOTH: eColor = QColor(190, 160, 120); label = "M"; break;
+                case hero::EnemyType::KEY: eColor = QColor(255, 215, 0); label = "Y"; break;
             }
 
             painter.setBrush(eColor);
@@ -460,17 +484,51 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         model->tiles[modelY * roomWidth + tileX] = brushVal;
         emit levelModified();
         update();
-    } else if (m_currentBrush == BrushTool::ASYM_PATCH) {
+    } else if (m_currentBrush == BrushTool::PHASE_TILE ||
+               m_currentBrush == BrushTool::VCRUNCH_TILE ||
+               m_currentBrush == BrushTool::HCRUNCH_TILE) {
+        // Feature grid tiles (convert maps them to chars P/V/C and emits
+        // b7 feature records; ERASE_AIR clears them like any tile).
+        if (!model) return;
+        int tileVal = (int)hero::TileType::PHASE;
+        if (m_currentBrush == BrushTool::VCRUNCH_TILE)
+            tileVal = (int)hero::TileType::VCRUNCH;
+        else if (m_currentBrush == BrushTool::HCRUNCH_TILE)
+            tileVal = (int)hero::TileType::HCRUNCH;
+        model->tiles[modelY * roomWidth + tileX] = tileVal;
+        emit levelModified();
+        update();
+    } else if (m_currentBrush == BrushTool::ASYM_PATCH ||
+               m_currentBrush == BrushTool::DOOR_TILE) {
         // D6/D6+M1 patch: click the RIGHT half for a ball block (side 0),
         // the LEFT half for an M1 block (side 1). TWO blocks max; the base
         // cell must be OPEN (both objects only add paint/color).
+        // DOOR_TILE is the same envelope with tile LOCKED_DOOR (side 0 only;
+        // convert hard-fails a model whose side-0 patches mix kinds).
         if (!model) return;
+        const bool doorBrush = (m_currentBrush == BrushTool::DOOR_TILE);
         const int halfCols = displayColumns / 2;
         if (entityX < 0 || entityX >= displayColumns) return;
         const bool rightHalf = entityX >= halfCols;
+        if (doorBrush && !rightHalf) {
+            QMessageBox::warning(
+                nullptr, QObject::tr("Async Door"),
+                QObject::tr("The async door is a RIGHT-half (ball strip) "
+                            "patch — click the right half."));
+            return;
+        }
+        if (doorBrush && modelY == 1 && model->mid_band_type != 0) {
+            QMessageBox::warning(
+                nullptr, QObject::tr("Async Door"),
+                QObject::tr("The middle band is HOT — paint the door on "
+                            "band 0 or 2 (convert rejects it too)."));
+            return;
+        }
         const int side = rightHalf ? 0 : 1;
         const int col = rightHalf ? (entityX - halfCols) >> 1 : entityX >> 1;
         if (col < 0 || col >= roomWidth) return;
+        const int patchTile = doorBrush ? (int)hero::TileType::LOCKED_DOOR
+                                        : (int)hero::TileType::SOLID_WALL;
         const int cellIdx =
             modelY * roomWidth + (rightHalf ? roomWidth - 1 - col : col);
         const int existing = FindPatch(*model, modelY, col, side);
@@ -503,11 +561,13 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                 return;
             }
             // One column per side (single ball-x / M1-x envelope; convert
-            // hard-fails mixed columns on the same side).
+            // hard-fails mixed columns on the same side) and NO mixed kinds
+            // on one side (a door model's async patches must all be door).
             for (const auto& p : model->asym_patches) {
                 if ((int)p.size() < 3) continue;
                 const int pside = (int)p.size() == 4 ? p[3] : 0;
-                if (pside == side && p[1] != col) {
+                if (pside != side) continue;
+                if (p[1] != col) {
                     QMessageBox::warning(
                         nullptr, QObject::tr("Asym Patch"),
                         QObject::tr("One strip column per side (single "
@@ -517,10 +577,23 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                             .arg(p[1] + 1));
                     return;
                 }
+                if (p[2] != patchTile) {
+                    QMessageBox::warning(
+                        nullptr,
+                        QObject::tr(doorBrush ? "Async Door" : "Asym Patch"),
+                        QObject::tr(doorBrush
+                            ? "This side already has a plain patch — erase "
+                              "it first (a door model's async patches must "
+                              "ALL be door tiles)."
+                            : "This side already has an async door — erase "
+                              "it first (no mixing door and plain patches "
+                              "on one side)."));
+                    return;
+                }
             }
             if (rightHalf) {
                 model->asym_patches.push_back(
-                    {modelY, col, (int)hero::TileType::SOLID_WALL});
+                    {modelY, col, patchTile});
             } else {
                 model->asym_patches.push_back(
                     {modelY, col, (int)hero::TileType::SOLID_WALL, 1});
@@ -567,7 +640,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         update();
     } else if (!m_modelMode && room && (m_currentBrush == BrushTool::ADD_SPIDER || m_currentBrush == BrushTool::ADD_BAT ||
                m_currentBrush == BrushTool::ADD_SNAKE || m_currentBrush == BrushTool::ADD_TENTACLE ||
-               m_currentBrush == BrushTool::ADD_MOTH)) {
+               m_currentBrush == BrushTool::ADD_MOTH || m_currentBrush == BrushTool::ADD_KEY)) {
         // Entity placement: full stage width, no mirroring. Reject rows beyond
         // the cave (tileY >= displayRows) so enemies can't spawn in the HUD.
         if (entityX < 0 || entityX >= displayColumns ||
@@ -579,6 +652,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         else if (m_currentBrush == BrushTool::ADD_SNAKE) eData.type = (int)hero::EnemyType::SNAKE;
         else if (m_currentBrush == BrushTool::ADD_TENTACLE) eData.type = (int)hero::EnemyType::TENTACLE;
         else if (m_currentBrush == BrushTool::ADD_MOTH) eData.type = (int)hero::EnemyType::GIANT_MOTH;
+        else eData.type = (int)hero::EnemyType::KEY;
 
         eData.x = (float)entityX;
         eData.y = (float)tileY;
@@ -588,8 +662,16 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         eData.dir = m_initialFacing;
 
         // Occupied tile: flip existing enemy facing instead of stacking.
+        // The key has no facing — warn instead of silently doing nothing.
         for (auto& e : room->enemies) {
             if ((int)std::floor(e.x) == entityX && (int)std::floor(e.y) == tileY) {
+                if (m_currentBrush == BrushTool::ADD_KEY) {
+                    QMessageBox::warning(
+                        nullptr, QObject::tr("Key"),
+                        QObject::tr("An object already sits on this tile — "
+                                    "erase it first."));
+                    return;
+                }
                 e.dir = (e.dir >= 0) ? -1 : 1;
                 emit levelModified();
                 update();
@@ -668,6 +750,79 @@ void MapCanvas::mousePressEvent(QMouseEvent* event) {
 
 void MapCanvas::mouseMoveEvent(QMouseEvent* event) {
     MouseToTile(event->position(), event->buttons() & Qt::LeftButton);
+}
+
+void MapCanvas::mouseReleaseEvent(QMouseEvent* event) {
+    // Live feature checks fire on RELEASE only — never mid-drag (a drag
+    // legitimately passes through invalid layouts cell by cell).
+    if (m_modelMode &&
+        (m_currentBrush == BrushTool::PHASE_TILE ||
+         m_currentBrush == BrushTool::VCRUNCH_TILE ||
+         m_currentBrush == BrushTool::HCRUNCH_TILE)) {
+        ValidateFeatureTiles();
+    }
+    QWidget::mouseReleaseEvent(event);
+}
+
+void MapCanvas::ValidateFeatureTiles() {
+    if (!m_models || m_activeModelIndex < 0 ||
+        m_activeModelIndex >= (int)m_models->size())
+        return;
+    const hero::ModelData& model = (*m_models)[m_activeModelIndex];
+    QStringList problems;
+
+    // phase/vcrunch on the hot middle band (convert: hard error)
+    if (model.mid_band_type != 0) {
+        QStringList hits;
+        for (int c = 0; c < model.width; ++c) {
+            int t = model.tiles[1 * model.width + c];
+            if (t == (int)hero::TileType::PHASE ||
+                t == (int)hero::TileType::VCRUNCH)
+                hits << QString::number(c + 1);
+        }
+        if (!hits.isEmpty())
+            problems << tr("Phase/vcrunch on the HOT middle band at col(s) %1 "
+                           "— hot and blinking/crunching are mutually "
+                           "exclusive (convert will fail).\nPaint on band 0/2 "
+                           "or turn the middle-band Hot selector off.")
+                        .arg(hits.join(", "));
+    }
+
+    // hcrunch purity: ALL cells in ONE band + contiguous prefix from col 0
+    bool bandUsed[3] = {false, false, false};
+    bool colUsed[10] = {false};
+    int maxCol = -1;
+    for (int r = 0; r < model.height && r < 3; ++r) {
+        for (int c = 0; c < model.width && c < 10; ++c) {
+            if (model.tiles[r * model.width + c] ==
+                (int)hero::TileType::HCRUNCH) {
+                bandUsed[r] = true;
+                colUsed[c] = true;
+                if (c > maxCol) maxCol = c;
+            }
+        }
+    }
+    if (maxCol >= 0) {
+        QStringList bands, cols;
+        int bandCount = 0;
+        bool prefixOk = true;
+        for (int r = 0; r < 3; ++r)
+            if (bandUsed[r]) { ++bandCount; bands << QString::number(r + 1); }
+        for (int c = 0; c <= maxCol; ++c)
+            if (!colUsed[c]) prefixOk = false;
+        for (int c = 0; c < 10; ++c)
+            if (colUsed[c]) cols << QString::number(c + 1);
+        if (bandCount != 1 || !prefixOk)
+            problems << tr("Horizontal crunch cells must all sit in ONE band "
+                           "and form a contiguous prefix from the left edge "
+                           "(cols 1..n).\nFound band(s) %1, col(s) %2 — "
+                           "convert will fail.")
+                         .arg(bands.join(", "), cols.join(", "));
+    }
+
+    if (!problems.isEmpty())
+        QMessageBox::warning(nullptr, tr("Feature Check"),
+                             problems.join("\n\n"));
 }
 
 void MapCanvas::keyPressEvent(QKeyEvent* event) {

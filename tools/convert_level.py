@@ -32,6 +32,14 @@ WIDTH = 10                  # D7: logical cells per half (was 20 pre-D7)
 # Playable color bands per room (the bottom 48 scanlines render as HUD).
 HEIGHT = 3
 ROOM_NONE = 0xFF
+# New tile values (ai_new_tiles plan Phase 1). LOCKED_DOOR lives ONLY in
+# asym_patches (side 0 = async ball strip, MetaB b7); the three grid tiles
+# paint model cells and emit b7 feature records in the hot record stream.
+LOCKED_DOOR = 9
+PHASE = 10
+VCRUNCH = 11
+HCRUNCH = 12
+FEATURE_TILES = (PHASE, VCRUNCH, HCRUNCH)
 # Byte that renders the editor default (56,104,144 = hue A, luma 2) under the
 # emulator-aware encoding in nearest_byte: (hue << 4) | (luma << 1) = 0xA4.
 LEVEL_WALL_COLOR_DEFAULT = 0xA4
@@ -124,10 +132,20 @@ def tile_to_char(value: int) -> str:
 
     Legacy HOT_ROCK_WALL (8) coerces to a normal wall: hot is no longer a
     per-cell tile but the model's mid_band_type selector (row 1 only, see
-    rows_from_json).
+    rows_from_json). LOCKED_DOOR (9) renders solid (the async strip IS a
+    wall stripe). Feature tiles map to their own grid chars (P/V/C — solid
+    for PF and rects, scanned by convert_room.lines for feature records).
     """
     if value == 0:
         return "."
+    if value == LOCKED_DOOR:
+        return "#"
+    if value == PHASE:
+        return "P"
+    if value == VCRUNCH:
+        return "V"
+    if value == HCRUNCH:
+        return "C"
     return "#"
 
 
@@ -165,14 +183,33 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
     # mid_band_type (0/absent = Rock Solid, 1 = Hot): the selector is
     # authoritative for row 1 — every non-AIR cell there becomes 'H'.
     # Rows 0/2 never get hot; a legacy tile 8 there coerces to '#'.
+    # Phase/vcrunch are FORBIDDEN on the hot band (user rule 2026-10-12:
+    # hot and blinking/crunching are mutually exclusive — simplest model).
+    # Hcrunch IS allowed there: its cells keep the 'C' char (the crunch
+    # cells are not hot; the band's other cells still are).
     hot = bool((model if model else room).get("mid_band_type", 0))
+    who = room.get("room_id", f"model {room.get('model_id', '?')}")
     rows = []
     for y in range(HEIGHT):
         line = []
         for x in range(WIDTH):
             t = tiles[y * WIDTH + x]
-            line.append("H" if (y == 1 and hot and t != 0)
-                        else tile_to_char(t))
+            if t == LOCKED_DOOR:
+                raise ValueError(
+                    f"{who}: tile 9 LOCKED_DOOR "
+                    "belongs in asym_patches (async side-0 strip), not the grid")
+            if t in FEATURE_TILES:
+                if t in (PHASE, VCRUNCH) and y == 1 and hot:
+                    raise ValueError(
+                        f"{who}: {'phase' if t == PHASE else 'vcrunch'} on "
+                        "the hot middle band — hot and blinking/crunching are "
+                        "mutually exclusive (paint on band 0/2 or turn the "
+                        "hot flag off)")
+                line.append(tile_to_char(t))
+            elif y == 1 and hot and t != 0:
+                line.append("H")
+            else:
+                line.append(tile_to_char(t))
         rows.append("".join(line))
     return rows
 
@@ -252,6 +289,18 @@ def resolve_asym_patches(model: dict,
                 f"model {mid}: duplicate asym patch (row {row}, col {col}, "
                 f"side {side}) — the same cell twice is one block")
         seen.add((row, col, side))
+        if tile in FEATURE_TILES:
+            raise ValueError(
+                f"model {mid}: tile {tile} is a grid tile — feature tiles "
+                "(phase/vcrunch/hcrunch) cannot be asym patches")
+        if tile == LOCKED_DOOR and side == 1:
+            raise ValueError(
+                f"model {mid}: LOCKED_DOOR is an async SIDE-0 patch "
+                "(right/ball strip), not an M1 patch")
+        if tile == LOCKED_DOOR and row == 1 and model.get("mid_band_type"):
+            raise ValueError(
+                f"model {mid}: LOCKED_DOOR on the hot middle band — paint "
+                "the door on band 0 or 2")
         if not 0 <= row < HEIGHT:
             raise ValueError(f"model {mid}: patch row {row} out of 0..{HEIGHT - 1}")
         if not 0 <= col < WIDTH:
@@ -280,6 +329,14 @@ def resolve_asym_patches(model: dict,
             f"model {mid}: ball patches span columns {sorted(right_cols)} — "
             f"envelope allows exactly ONE column-x per side (single ball x; "
             f"a run wider than 1 cell needs >1 column and is rejected too)")
+    side0_tiles = {p[2] for p in patches
+                   if len(p) >= 3 and (p[3] if len(p) == 4 else 0) == 0}
+    if LOCKED_DOOR in side0_tiles and len(side0_tiles) > 1:
+        others = sorted(t for t in side0_tiles if t != LOCKED_DOOR)
+        raise ValueError(
+            f"model {mid}: side-0 patches mix LOCKED_DOOR with tile(s) "
+            f"{others} — a door model's async patches must ALL be "
+            "LOCKED_DOOR")
     if len(left_cols) > 1:
         raise ValueError(
             f"model {mid}: M1 patches span columns {sorted(left_cols)} — "
@@ -306,6 +363,15 @@ def resolve_asym_patches(model: dict,
         # (rows_from_json already promoted the mirrored base cells).
         right[1] = "".join("H" if c == "#" else c for c in right[1])
     return (right if has_right else None), ball_x, m1_x
+
+
+def model_door_flag(model: dict) -> bool:
+    """True when the model carries a LOCKED_DOOR async patch (MetaB b7)."""
+    return any(
+        len(p) >= 3 and p[2] == LOCKED_DOOR
+        and (p[3] if len(p) == 4 else 0) == 0
+        for p in (model.get("asym_patches") or [])
+    )
 
 
 def connection_bytes(rooms: list[dict]) -> list[list[int]]:
@@ -577,7 +643,7 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         model_lines += convert_room.lines(
             left_rows, prefix=f"M{mid}", source=f"models.json model {mid}",
             asym_rows=asym, asym_ball_x=ball_x, asym_m1_x=m1_x,
-            hot_m1=hot_m1)
+            hot_m1=hot_m1, door=model_door_flag(model))
     model_lines.append("")
     (generated / "models_data.asm").write_text("\n".join(model_lines) + "\n")
     data_lines.insert(2, f'    include "{generated.name}/models_data.asm"')

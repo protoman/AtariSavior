@@ -843,7 +843,7 @@ def check_room_txt(path: Path, label: str) -> None:
     for li, row in enumerate(rows):
         if len(row) != 10:
             err(f"{label}: row {li} is {len(row)} chars, expected 10")
-        bad = set(row) - set(".,#H")
+        bad = set(row) - set(".,#HPVC")
         if bad:
             err(f"{label}: row {li} has invalid chars {sorted(bad)}")
 
@@ -873,7 +873,8 @@ def check_levels(src: Path) -> None:
     # rows stride 3, ball x = 87+8*right_col, right-rect budget.
     if models:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from convert_level import resolve_asym_patches, rows_from_json  # noqa: PLC0415
+        from convert_level import (resolve_asym_patches, rows_from_json,  # noqa: PLC0415
+                                   model_door_flag)
         from convert_room import pf_values  # noqa: PLC0415
         gen = src / "generated" / "models_data.asm"
         mda = gen.read_text() if gen.exists() else ""
@@ -914,13 +915,15 @@ def check_levels(src: Path) -> None:
                 err(f"model {mid}: MetaA=${got_a:02X}, want ${want_a:02X} "
                     f"((m1_col+1)<<4 | band_mask={band_mask})")
             ball_n = ((ball_x - 87) >> 3) + 1 if ball_x else 0
+            if model_door_flag(model):
+                ball_n |= 0x80
             got_b = meta_byte(mid, "MetaB")
             if got_b is None:
                 err(f"model {mid}: MetaB missing "
                     f"(must sit at TilePF0+10 for every model)")
             elif got_b != ball_n:
                 err(f"model {mid}: MetaB=${got_b:02X}, want ${ball_n:02X} "
-                    f"(ball_col+1, 0 = no ball)")
+                    f"(ball_col+1 | $80 door, 0 = no ball)")
             if asym is None:
                 if re.search(rf"^M{mid}RightPF\d:", mda, re.M):
                     err(f"model {mid}: symmetric but RightPF block emitted")
@@ -1022,8 +1025,9 @@ def check_levels(src: Path) -> None:
             for i, e in enumerate(enemies):
                 el = f"{label} enemy {i}"
                 t = e.get("type", 0)
-                if not isinstance(t, int) or not 0 <= t <= 4:
-                    err(f"{el}: type={t!r} out of 0..4")
+                if not isinstance(t, int) or t not in (0, 1, 2, 3, 4, 6):
+                    err(f"{el}: type={t!r} out of 0..4, 6 (5 = lamp in the "
+                        f"merged table, 6 = key)")
                 try:
                     if not 0 <= float(e.get("x", -1)) <= 39:
                         err(f"{el}: x={e.get('x')} out of display columns 0..39")
