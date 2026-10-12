@@ -20,9 +20,10 @@ M0MetaB:
 
 ; Generated from models.json model 1. Do not edit by hand.
 M1RoomRects:
-  .byte 3                  ; number of rectangles
+  .byte 4                  ; number of rectangles
   .byte $00, $49  ; packed (x<<2|y, w<<2|h)
   .byte $01, $09  ; packed (x<<2|y, w<<2|h)
+  .byte $31, $09  ; packed (x<<2|y, w<<2|h)
   .byte $02, $51  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M1TilePF0:
@@ -30,7 +31,7 @@ M1TilePF0:
 M1TilePF1:
   .byte $ff, $00, $ff
 M1TilePF2:
-  .byte $3f, $00, $ff
+  .byte $3f, $03, $ff
 M1MetaA:
   .byte $00                  ; (m1_col+1)<<4 | band mask
 M1MetaB:
