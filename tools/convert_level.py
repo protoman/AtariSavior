@@ -633,7 +633,9 @@ _SPILL_SLOTS = [
     ("spill_F767", 0xF800),   # after FooterFont lead-in  ($F767, 153B)
     ("spill_F901", 0xF970),   # TitleJetColors tail       ($F901, 111B)
     ("spill_window", 0xFB84), # after models+rooms_data   (window, 427B total)
-    ("spill_F840", 0xF880),   # TitleBombSprite gap       ($F840, 64B)
+    ("spill_F840", 0xF880),   # TitleBombSprite gap       ($F864, 28B —
+                              #  start moved 0xF840->0xF864 when FooterFont
+                              #  grew to 13 rows, 2026-10-12; name kept)
     # $F5A4 (92B) NOT usable: it assembles BEFORE levels_index defines
     # ROOM_NONE — a spill slot must sit after the index in source order.
 ]
@@ -666,7 +668,7 @@ def emit_spills(generated: Path) -> None:
         start = _SPILL_ORG.get(name)
         if start is None:                       # pad-derived constant starts
             start = {"spill_F767": 0xF767, "spill_F901": 0xF901,
-                     "spill_F840": 0xF840}[name]
+                     "spill_F840": 0xF864}[name]
         cap = end - start
         if name == "spill_window":
             cap -= window_used

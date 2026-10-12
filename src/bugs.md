@@ -818,6 +818,14 @@ No entry is worked on without user greenlight.
     `$F830` pin unaffected). Battery 26/26, build green; Stella intro
     capture confirmed the new line renders.
     **Player:** intro copyright reads "2026 Iuri Fiedoruk".
+    **Follow-up 2026-10-12 (agent):** the 7-row version (two 3px lines)
+    read too short vertically — regrown to **13 rows (3x5 glyphs, two
+    lines + 3-row gap): "2026 Iuri" / indented "Fiedoruk"**. FooterFont
+    48B -> 84B ($F800..$F854), spill_F840 start $F840 -> $F864 (28B,
+    convert_level.py slot table synced), FooterBand `ldx #13`, title
+    post-footer pad 37 -> 31 (net 0: title wall stays 265, WSYNC count
+    uniform 197). Battery 27/27, Stella capture pixel-exact vs generator
+    canvas (0/624 cells).
 
 ## Rescan checklist (when the batch is closed)
 

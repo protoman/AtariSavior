@@ -28,7 +28,7 @@ assert "jsr DropArm" in kernel
 title = kernel[kernel.index("TitleKernel:"):kernel.index("TitleFont:")]
 assert "ldx #103" in title
 assert "cpx #40" in title
-assert "ldx #37" in title
+assert "ldx #31" in title
 assert ".TkPostFooterPad:" in title
 assert title.count("jsr SetObjectXPos") == 6
 assert "sta NUSIZ0" in title
@@ -57,6 +57,9 @@ assert "sta COLUBK" in player and "sta REFP0" in player  # tail restore
 assert "sta VDELP0\n    sta VDELP1" in player
 assert player.count("sta GRP0") == 7
 assert player.count("sta GRP1") == 5   # 4 clears + bomb row
+footer = section(bank2, "FooterBand:", "FooterFont:")
+assert "ldx #13" in footer            # 13-row loop = 14B sprite chunks
+assert "lda #<FooterFont+70" in footer  # 6 pointers x14B
 assert "sta WSYNC\n    jmp $FBF8" in player
 assert "sta HMP1" not in title
 assert "sta NUSIZ1" in title
