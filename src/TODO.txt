@@ -21,29 +21,30 @@ BUGS
 
 =========================================================================================================================================================================
 This will require a plan, as it might need zome data into ZP, so we need to check it beforehand and prepare to open space, if needed.
-New wall types should be added into editor, what will have effect into the game.
+New wall and object types should be added into editor, what will have effect into the game.
 
-For normal (sync) tiles we have:
+For normal (sync) block/tiles we have:
     # horizontal crunch wall
         - NOTE: HERO has a similar feature, so youc an look into it.
         - a wall that grows and schrinks horizontally from left and right until both sides meet each other
         - it grows or shrinks 1 tile each 0.3 seconds
-        - it should grow until one side reaches the center of the screen - because
-        - it needs to grow the height of an enemy such as a spider, each step
+        - it should grow until one side reaches the center of the screen - because it is mirrored, the other side will match it
         - it stays closed or open for 1.5 seconds
         - if player is inside the area it grows, the player looses a life, and the wall is removed from the playfield.
-        - no enemy or object can be placed on the tile that contains a vertical crunch wall
+        - no enemy or object can be placed on the band that contains a horizontal crunch wall
 
-
-For async, I want to add:
+For async blocks/tiles, I want to add:
     # locked door
-        - appears as a grey tile/block.
+        - those are inspirated by Montezuma's Revenge in the 2600, in case you want to research.
+        - appears as a yellow tile/block.
         - to open it, player have to find a key object in that stage.
         - once open, it is just removed from the playfield.
     # phase wall
+        - those are inspirated by Montezuma's Revenge in the 2600, in case you want to research.
         - a wall that appears and disappears each second.
         - if the player is inside its area when it appears, the player looses a life, and the wall is removed from the playfield.
-    # vertical crunch wall
+        - show it as horizontal dashes
+    # vertical crunch wall (similar to horizontal crunch wall)
         - a wall that grows and schrinks vertically from top and bottom until both sides meet each other
         - it grows or shrinks each 0.3 seconds
         - it needs to grow the height of an enemy such as a spider (more a less, you can do the math to fix perfectly), each step
@@ -52,14 +53,13 @@ For async, I want to add:
         - if player is inside the area it grows, the player looses a life, and the wall is removed from the playfield.
         - no enemy or object can be placed on the tile that contains a vertical crunch wall
 
-
-
 New object types:
     # key - once got, allows to open a locked door on that stage.
-        # sprite in forma of a key, same size of enemies such as spider and yellow.
+        # sprite in form a of a key, same size of enemies such as spider and yellow.
         # once obtained the sprite must be drawn in the HUD, on the right side of the score. (is sprite is too difficult, just draw a yellow square)
 
 
+=========================================================================================================================================================================
 
 # enemy speed multiplier - each X levels (5?) the speed of the enemies increases (x1,5, x2, x2.5, x3...)
 
