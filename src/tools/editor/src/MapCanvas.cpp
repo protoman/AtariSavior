@@ -53,6 +53,23 @@ static int MirrorColumn(int displayCol, int roomWidth) {
     return src >> 1;
 }
 
+// Special-feature presence bits for a model (user rule 2026-10-14): door,
+// phase, vcrunch, hcrunch are ALONE per room. 1=door (LOCKED_DOOR async
+// patch, side 0 or 1), 2=phase, 4=vcrunch, 8=hcrunch (grid tiles).
+static int ModelSpecialBits(const hero::ModelData& m) {
+    int bits = 0;
+    for (int t : m.tiles) {
+        if (t == (int)hero::TileType::PHASE) bits |= 2;
+        else if (t == (int)hero::TileType::VCRUNCH) bits |= 4;
+        else if (t == (int)hero::TileType::HCRUNCH) bits |= 8;
+    }
+    for (const auto& p : m.asym_patches) {
+        if (p.size() >= 3 && p[2] == (int)hero::TileType::LOCKED_DOOR)
+            bits |= 1;
+    }
+    return bits;
+}
+
 // Patch lookup: [row, col, tile] (right/ball, legacy = side 0) or
 // [row, col, tile, side] (side 0 = right/ball, 1 = left/M1); col is the
 // half's own cell index. Returns index or -1.
@@ -64,6 +81,103 @@ static int FindPatch(const hero::ModelData& m, int row, int col, int side) {
         if (p[0] == row && p[1] == col && pside == side) return i;
     }
     return -1;
+}
+
+// Port of convert_room.find_rectangles (solids "#HPVC") — greedy scan,
+// extend right then down, thin (w==1) stops before a row that joins a
+// wider run. Returns the rect count (the budget is what matters here).
+static int CountRightRects(const std::vector<std::string>& rows) {
+    int height = (int)rows.size();
+    int width = height ? (int)rows[0].size() : 0;
+    std::vector<std::vector<bool>> visited(
+        height, std::vector<bool>(width, false));
+    auto solid = [&](int r, int c) {
+        const char ch = rows[r][c];
+        return ch == '#' || ch == 'H' || ch == 'P' || ch == 'V' || ch == 'C';
+    };
+    int count = 0;
+    for (int row = 0; row < height; ++row) {
+        for (int col = 0; col < width; ++col) {
+            if (!solid(row, col) || visited[row][col]) continue;
+            int w = 1;
+            while (col + w < width && solid(row, col + w) &&
+                   !visited[row][col + w])
+                ++w;
+            int h = 1;
+            while (row + h < height) {
+                bool ok = true;
+                for (int c = col; c < col + w; ++c) {
+                    if (!solid(row + h, c) || visited[row + h][c]) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (!ok) break;
+                if (w == 1) {
+                    const bool left = col > 0 && solid(row + h, col - 1);
+                    const bool right = col + 1 < width && solid(row + h, col + 1);
+                    if (left || right) break;
+                }
+                ++h;
+            }
+            for (int r = row; r < row + h; ++r)
+                for (int c = col; c < col + w; ++c) visited[r][c] = true;
+            ++count;
+        }
+    }
+    return count;
+}
+
+// Resolved right rows exactly like convert_level.resolve_asym_patches:
+// mirror of the left rows (chars like tile_to_char), side-0 patches on
+// top. Empty = no patches at all (plain mirror, no WallMask budget).
+static std::vector<std::string> BuildRightRows(const hero::ModelData& m) {
+    if (m.asym_patches.empty()) return {};
+    const int w = m.width, h = m.height;
+    std::vector<std::string> left(h, std::string(w, '.'));
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            const int t = m.tiles[y * w + x];
+            if (t == (int)hero::TileType::AIR) continue;
+            if (t == (int)hero::TileType::PHASE) { left[y][x] = 'P'; continue; }
+            if (t == (int)hero::TileType::VCRUNCH) { left[y][x] = 'V'; continue; }
+            if (t == (int)hero::TileType::HCRUNCH) { left[y][x] = 'C'; continue; }
+            left[y][x] = '#';   // walls (incl. legacy hot rock) and door
+        }
+    }
+    std::vector<std::string> right(h, std::string(w, '.'));
+    for (int y = 0; y < h; ++y)
+        for (int k = 0; k < w; ++k) right[y][k] = left[y][w - 1 - k];
+    for (const auto& p : m.asym_patches) {
+        if ((int)p.size() < 3) continue;
+        const int side = (int)p.size() == 4 ? p[3] : 0;
+        if (side != 0) continue;
+        const int row = p[0], col = p[1];
+        if (row < 0 || row >= h || col < 0 || col >= w) continue;
+        right[row][col] = (p[2] == (int)hero::TileType::AIR) ? '.' : '#';
+    }
+    return right;
+}
+
+// WallMask budget (BombPacked b3-6 — Risk 1): only 4 right-half rects can
+// be maskable; convert hard-fails above that. *outCount = found count (0
+// when no patches = no budget). Editor pre-flight so the brush blocks the
+// paint that would brick the build.
+static bool RightRectsOk(const hero::ModelData& m, int* outCount) {
+    const auto rows = BuildRightRows(m);
+    if (rows.empty()) { *outCount = 0; return true; }
+    *outCount = CountRightRects(rows);
+    return *outCount <= 4;
+}
+
+static void WarnRightRectBudget(int n) {
+    QMessageBox::warning(
+        nullptr, QObject::tr("WallMask Budget"),
+        QObject::tr("Blocked: this paint would split the right half into "
+                    "%1 wall rectangles — the budget is 4 (WallMask "
+                    "b3-6, only 4 bomb-destroy bits; convert hard-fails "
+                    "this too).\nMerge the wall blocks (paint the gap "
+                    "between them) or erase the stray cell.").arg(n));
 }
 
 // Tile height so the whole visible map (DisplayColumnsFor(roomWidth) columns x
@@ -244,7 +358,11 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
                     && model->asym_patches[pi][2]
                            == (int)hero::TileType::LOCKED_DOOR;
             } else {
-                patch = FindPatch(*model, modelY, x, 1) >= 0;
+                int pi = FindPatch(*model, modelY, x, 1);
+                patch = pi >= 0;
+                doorPatch = patch && (int)model->asym_patches[pi].size() >= 3
+                    && model->asym_patches[pi][2]
+                           == (int)hero::TileType::LOCKED_DOOR;
             }
             if (patch)
                 tileType = doorPatch ? (int)hero::TileType::LOCKED_DOOR
@@ -255,8 +373,9 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             // Middle band (row 1): the model's mid_band_type selector makes
             // every wall there hot (convert promotes row 1 to 'H' the same
             // way — the legacy HOT_ROCK tile value is gone as a brush).
-            // Feature tiles keep their own color (they are never hot —
-            // convert keeps P/V chars and rejects hcrunch there).
+            // Feature tiles keep their own color (convert keeps their
+            // P/V/C chars even on the hot band — hot+phase is rejected
+            // in ValidateFeatureTiles, hcrunch/vcrunch are allowed).
             const bool featureTile =
                 tileType == (int)hero::TileType::PHASE ||
                 tileType == (int)hero::TileType::VCRUNCH ||
@@ -397,17 +516,17 @@ void MapCanvas::DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int d
     painter.drawPolygon(tri);
 }
 
-int MapCanvas::CountRoomElements() const {
-    if (!m_levelData || m_activeRoomIndex < 0 ||
-        m_activeRoomIndex >= (int)m_levelData->rooms.size())
+int MapCanvas::CountRoomElementsIn(int roomIdx) const {
+    if (!m_levelData || roomIdx < 0 ||
+        roomIdx >= (int)m_levelData->rooms.size())
         return 0;
-    const hero::RoomData& room = m_levelData->rooms[m_activeRoomIndex];
+    const hero::RoomData& room = m_levelData->rooms[roomIdx];
     int n = (int)room.enemies.size() + (int)room.lamps.size();
-    if (m_levelData->miner_room == m_activeRoomIndex) n++;
+    if (m_levelData->miner_room == roomIdx) n++;
     const hero::ModelData* model =
         GetModelForRoom(const_cast<hero::LevelData*>(m_levelData),
                         const_cast<std::vector<hero::ModelData>*>(m_models),
-                        m_activeRoomIndex);
+                        roomIdx);
     if (model) {
         for (int t : model->tiles) {
             if (t == (int)hero::TileType::RAFT || t == (int)hero::TileType::MAGMA_FALL)
@@ -417,7 +536,64 @@ int MapCanvas::CountRoomElements() const {
     return n;
 }
 
-bool MapCanvas::AllowAddElement() {
+int MapCanvas::CountRoomElements() const {
+    return CountRoomElementsIn(m_activeRoomIndex);
+}
+
+bool MapCanvas::RoomHasCrunch() const {
+    const hero::ModelData* model =
+        GetModelForRoom(const_cast<hero::LevelData*>(m_levelData),
+                        const_cast<std::vector<hero::ModelData>*>(m_models),
+                        m_activeRoomIndex);
+    if (!model) return false;
+    for (int t : model->tiles)
+        if (t == (int)hero::TileType::VCRUNCH ||
+            t == (int)hero::TileType::HCRUNCH) return true;
+    return false;
+}
+
+bool MapCanvas::ModelHasRoomObjects(const hero::ModelData& model) const {
+    if (!m_levelData) return false;
+    for (int i = 0; i < (int)m_levelData->rooms.size(); ++i) {
+        if (GetModelForRoom(const_cast<hero::LevelData*>(m_levelData),
+                            const_cast<std::vector<hero::ModelData>*>(m_models),
+                            i) != &model)
+            continue;
+        if (CountRoomElementsIn(i) > 0) return true;
+    }
+    return false;
+}
+
+bool MapCanvas::AllowAddElement(bool asEnemy) {
+    if (RoomHasCrunch()) {
+        QMessageBox::warning(
+            nullptr, QObject::tr("Crunch Room"),
+            QObject::tr("A room with a crunch shutter cannot "
+                        "contain other objects — the shutter needs the "
+                        "sprite slot."));
+        return false;
+    }
+    const hero::ModelData* model =
+        GetModelForRoom(const_cast<hero::LevelData*>(m_levelData),
+                        const_cast<std::vector<hero::ModelData>*>(m_models),
+                        m_activeRoomIndex);
+    if (model && (ModelSpecialBits(*model) & 1)) {
+        // Door room (user rule 2026-10-14): a single enemy, nothing else.
+        if (!asEnemy) {
+            QMessageBox::warning(
+                nullptr, QObject::tr("Door Room"),
+                QObject::tr("A door room allows a single enemy and "
+                            "nothing else — no lamp, miner, raft or "
+                            "magma."));
+            return false;
+        }
+        if (CountRoomElements() >= 1) {
+            QMessageBox::warning(
+                nullptr, QObject::tr("Door Room"),
+                QObject::tr("Door rooms allow ONE enemy only."));
+            return false;
+        }
+    }
     if (CountRoomElements() < kMaxRoomElements) return true;
     QMessageBox::warning(
         nullptr, QObject::tr("Element Limit"),
@@ -481,7 +657,36 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
 
     if (m_currentBrush == BrushTool::SOLID_WALL || m_currentBrush == BrushTool::ERASE_AIR ||
         m_currentBrush == BrushTool::HOT_ROCK_WALL) {
-        model->tiles[modelY * roomWidth + tileX] = brushVal;
+        const int idx = modelY * roomWidth + tileX;
+        const int oldTile = model->tiles[idx];
+        model->tiles[idx] = brushVal;
+        // ERASE_AIR also removes any async patch covering this cell (user
+        // rule 2026-10-12: empty brush = the ONLY way to remove a patch,
+        // same as a sync wall). Snapshot for rollback: opening the cell
+        // can SPLIT a wall run into a 5th right rect.
+        std::vector<std::vector<int>> removedPatches;
+        if (m_currentBrush == BrushTool::ERASE_AIR) {
+            for (int i = (int)model->asym_patches.size() - 1; i >= 0; --i) {
+                const auto& p = model->asym_patches[i];
+                if ((int)p.size() < 3) continue;
+                const int pside = (int)p.size() == 4 ? p[3] : 0;
+                const int cellCol =
+                    pside == 0 ? roomWidth - 1 - p[1] : p[1];
+                if (p[0] == modelY && cellCol == tileX) {
+                    removedPatches.push_back(p);
+                    model->asym_patches.erase(
+                        model->asym_patches.begin() + i);
+                }
+            }
+        }
+        int n = 0;
+        if (!RightRectsOk(*model, &n)) {
+            model->tiles[idx] = oldTile;
+            for (const auto& p : removedPatches)
+                model->asym_patches.push_back(p);
+            WarnRightRectBudget(n);
+            return;
+        }
         emit levelModified();
         update();
     } else if (m_currentBrush == BrushTool::PHASE_TILE ||
@@ -490,12 +695,73 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         // Feature grid tiles (convert maps them to chars P/V/C and emits
         // b7 feature records; ERASE_AIR clears them like any tile).
         if (!model) return;
+        // Special features are alone per room (door XOR phase XOR vcrunch
+        // XOR hcrunch) and live ONLY on the middle band (row 1) — top and
+        // bottom bands are entry/exit corridors (user rule 2026-10-14).
+        {
+            const int brushBit =
+                (m_currentBrush == BrushTool::PHASE_TILE) ? 2 :
+                (m_currentBrush == BrushTool::VCRUNCH_TILE) ? 4 : 8;
+            const int other = ModelSpecialBits(*model) & ~brushBit;
+            if (other) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Special Features"),
+                    QObject::tr("Special features are alone per room "
+                                "(door XOR phase XOR vcrunch XOR hcrunch). "
+                                "Erase the other special feature first."));
+                return;
+            }
+        }
+        if ((m_currentBrush == BrushTool::VCRUNCH_TILE ||
+             m_currentBrush == BrushTool::HCRUNCH_TILE) &&
+            ModelHasRoomObjects(*model)) {
+            QMessageBox::warning(
+                nullptr, QObject::tr("Crunch Room"),
+                QObject::tr("A room using this model already contains "
+                            "objects (miner, enemies, lamps, raft, magma). "
+                            "A crunch shutter cannot share the "
+                            "room — remove the objects first."));
+            return;
+        }
+        if (modelY != 1) {
+            QMessageBox::warning(
+                nullptr, QObject::tr("Special Feature Row"),
+                QObject::tr("Special features must sit on row 2 (band 1, "
+                            "the middle band) — top/bottom bands are "
+                            "entry/exit corridors (convert rejects it "
+                            "too)."));
+            return;
+        }
+        if (m_currentBrush == BrushTool::VCRUNCH_TILE) {
+            int vCount = 0;
+            for (int c = 0; c < model->width; ++c)
+                if (model->tiles[1 * model->width + c]
+                        == (int)hero::TileType::VCRUNCH)
+                    ++vCount;
+            if (vCount >= 1 &&
+                model->tiles[modelY * roomWidth + tileX]
+                    != (int)hero::TileType::VCRUNCH) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Vcrunch"),
+                    QObject::tr("A room can have only ONE vcrunch cell. "
+                                "Erase the existing V first."));
+                return;
+            }
+        }
         int tileVal = (int)hero::TileType::PHASE;
         if (m_currentBrush == BrushTool::VCRUNCH_TILE)
             tileVal = (int)hero::TileType::VCRUNCH;
         else if (m_currentBrush == BrushTool::HCRUNCH_TILE)
             tileVal = (int)hero::TileType::HCRUNCH;
-        model->tiles[modelY * roomWidth + tileX] = tileVal;
+        const int idx = modelY * roomWidth + tileX;
+        const int oldTile = model->tiles[idx];
+        model->tiles[idx] = tileVal;
+        int n = 0;
+        if (!RightRectsOk(*model, &n)) {
+            model->tiles[idx] = oldTile;
+            WarnRightRectBudget(n);
+            return;
+        }
         emit levelModified();
         update();
     } else if (m_currentBrush == BrushTool::ASYM_PATCH ||
@@ -503,26 +769,40 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         // D6/D6+M1 patch: click the RIGHT half for a ball block (side 0),
         // the LEFT half for an M1 block (side 1). TWO blocks max; the base
         // cell must be OPEN (both objects only add paint/color).
-        // DOOR_TILE is the same envelope with tile LOCKED_DOOR (side 0 only;
-        // convert hard-fails a model whose side-0 patches mix kinds).
+        // DOOR_TILE is the same envelope with tile LOCKED_DOOR (either side;
+        // convert hard-fails a model whose patches on one side mix kinds).
         if (!model) return;
         const bool doorBrush = (m_currentBrush == BrushTool::DOOR_TILE);
         const int halfCols = displayColumns / 2;
         if (entityX < 0 || entityX >= displayColumns) return;
         const bool rightHalf = entityX >= halfCols;
-        if (doorBrush && !rightHalf) {
-            QMessageBox::warning(
-                nullptr, QObject::tr("Async Door"),
-                QObject::tr("The async door is a RIGHT-half (ball strip) "
-                            "patch — click the right half."));
-            return;
-        }
-        if (doorBrush && modelY == 1 && model->mid_band_type != 0) {
-            QMessageBox::warning(
-                nullptr, QObject::tr("Async Door"),
-                QObject::tr("The middle band is HOT — paint the door on "
-                            "band 0 or 2 (convert rejects it too)."));
-            return;
+        if (doorBrush) {
+            // Door lives ONLY on the middle band (row 1), never on the hot
+            // band, and is alone per room (user rule 2026-10-14).
+            if (modelY != 1) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Async Door"),
+                    QObject::tr("The door must sit on row 2 (band 1, the "
+                                "middle band) — top/bottom bands are "
+                                "entry/exit corridors (convert rejects it "
+                                "too)."));
+                return;
+            }
+            if (model->mid_band_type != 0) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Async Door"),
+                    QObject::tr("The middle band is HOT — turn the Hot "
+                                "selector off (convert rejects it too)."));
+                return;
+            }
+            if (ModelSpecialBits(*model) & ~1) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Special Features"),
+                    QObject::tr("Special features are alone per room "
+                                "(door XOR phase XOR vcrunch XOR hcrunch). "
+                                "Erase the other special feature first."));
+                return;
+            }
         }
         const int side = rightHalf ? 0 : 1;
         const int col = rightHalf ? (entityX - halfCols) >> 1 : entityX >> 1;
@@ -596,17 +876,50 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                     {modelY, col, patchTile});
             } else {
                 model->asym_patches.push_back(
-                    {modelY, col, (int)hero::TileType::SOLID_WALL, 1});
+                    {modelY, col, patchTile, 1});
+            }
+            int n = 0;
+            if (!RightRectsOk(*model, &n)) {
+                model->asym_patches.pop_back();
+                WarnRightRectBudget(n);
+                return;
             }
         } else {
-            // Second click on the same cell = remove the patch (toggle).
-            model->asym_patches.erase(model->asym_patches.begin() + existing);
+            // Patch already here: NO-OP (user rule 2026-10-12 — the async
+            // brush only ADDS; re-entry during a drag must not toggle).
+            // Removal = the ERASE_AIR brush (same as a sync wall).
+            return;
         }
         emit levelModified();
         update();
     } else if (m_currentBrush == BrushTool::ADD_RAFT) {
+        // Raft rule (user rule 2026-10-14): bottom band (row 2) of a WATER
+        // room (bottom_band strip on), painted on an EMPTY cell.
+        if (modelY != 2) {
+            QMessageBox::warning(
+                nullptr, QObject::tr("Raft"),
+                QObject::tr("The raft lives on the bottom band (row 3, "
+                            "the water strip)."));
+            return;
+        }
+        if (room && !room->bottom_band) {
+            QMessageBox::warning(
+                nullptr, QObject::tr("Raft"),
+                QObject::tr("Rafts float in water — turn the room's "
+                            "bottom band on first (the water strip)."));
+            return;
+        }
         int idx = modelY * roomWidth + tileX;
-        if (model->tiles[idx] != (int)hero::TileType::RAFT && room && !AllowAddElement()) return;
+        const int t = model->tiles[idx];
+        if (t != (int)hero::TileType::RAFT &&
+            t != (int)hero::TileType::AIR) {
+            QMessageBox::warning(
+                nullptr, QObject::tr("Raft"),
+                QObject::tr("The raft needs open water — paint it on an "
+                            "EMPTY cell of the bottom band."));
+            return;
+        }
+        if (t != (int)hero::TileType::RAFT && room && !AllowAddElement()) return;
         model->tiles[idx] = (int)hero::TileType::RAFT;
         emit levelModified();
         update();
@@ -661,6 +974,56 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         eData.speed = 1.5f;
         eData.dir = m_initialFacing;
 
+        // Door-room + tentacle rules (user rule 2026-10-14): a door room
+        // allows ONE non-key enemy and nothing else; tentacles live in
+        // the water on the bottom band, in open cells.
+        if (model && (ModelSpecialBits(*model) & 1)) {
+            if (m_currentBrush == BrushTool::ADD_KEY) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Door Room"),
+                    QObject::tr("No key in a door room — a single enemy "
+                                "only."));
+                return;
+            }
+            if ((int)room->enemies.size() >= 1) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Door Room"),
+                    QObject::tr("Door rooms allow ONE enemy only."));
+                return;
+            }
+        }
+        if (m_currentBrush == BrushTool::ADD_TENTACLE) {
+            if (tileY / 4 != 2) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Tentacle"),
+                    QObject::tr("Tentacles live on the bottom band "
+                                "(rows 9-12)."));
+                return;
+            }
+            if (!room->bottom_band) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Tentacle"),
+                    QObject::tr("Tentacles live in water — turn the "
+                                "room's bottom band on first."));
+                return;
+            }
+            if (model) {
+                const int halfCols = displayColumns / 2;
+                const int col = (entityX < halfCols)
+                                    ? (entityX >> 1)
+                                    : ((displayColumns - 1 - entityX) >> 1);
+                if (col >= 0 && col < roomWidth &&
+                    model->tiles[2 * roomWidth + col] !=
+                        (int)hero::TileType::AIR) {
+                    QMessageBox::warning(
+                        nullptr, QObject::tr("Tentacle"),
+                        QObject::tr("Tentacles need open water — the "
+                                    "spawn cell is not empty."));
+                    return;
+                }
+            }
+        }
+
         // Occupied tile: flip existing enemy facing instead of stacking.
         // The key has no facing — warn instead of silently doing nothing.
         for (auto& e : room->enemies) {
@@ -680,7 +1043,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         }
 
         if (!AllowElementInRow(tileY)) return;
-        if (!AllowAddElement()) return;
+        if (!AllowAddElement(true)) return;
         room->enemies.push_back(eData);
         emit levelModified();
         update();
@@ -771,20 +1134,87 @@ void MapCanvas::ValidateFeatureTiles() {
     const hero::ModelData& model = (*m_models)[m_activeModelIndex];
     QStringList problems;
 
-    // phase/vcrunch on the hot middle band (convert: hard error)
+    // Special features are alone per room (convert: hard error)
+    {
+        const int bits = ModelSpecialBits(model);
+        QStringList kinds;
+        if (bits & 1) kinds << "door";
+        if (bits & 2) kinds << "phase";
+        if (bits & 4) kinds << "vcrunch";
+        if (bits & 8) kinds << "hcrunch";
+        if (kinds.size() > 1)
+            problems << tr("Mixed special features %1 — specials are alone "
+                           "per room (door XOR phase XOR vcrunch XOR "
+                           "hcrunch); convert will fail.")
+                        .arg(kinds.join(", "));
+    }
+
+    // phase on the hot middle band (convert: hard error). vcrunch/hcrunch
+    // ARE allowed on hot (user rule 2026-10-14: both crunch walls respect
+    // the hot flag — convert flags it in MetaB b6).
     if (model.mid_band_type != 0) {
         QStringList hits;
         for (int c = 0; c < model.width; ++c) {
             int t = model.tiles[1 * model.width + c];
-            if (t == (int)hero::TileType::PHASE ||
-                t == (int)hero::TileType::VCRUNCH)
+            if (t == (int)hero::TileType::PHASE)
                 hits << QString::number(c + 1);
         }
         if (!hits.isEmpty())
-            problems << tr("Phase/vcrunch on the HOT middle band at col(s) %1 "
-                           "— hot and blinking/crunching are mutually "
-                           "exclusive (convert will fail).\nPaint on band 0/2 "
-                           "or turn the middle-band Hot selector off.")
+            problems << tr("Phase on the HOT middle band at col(s) %1 "
+                           "— hot and blinking are mutually exclusive "
+                           "(convert will fail).\nTurn the "
+                           "middle-band Hot selector off.")
+                        .arg(hits.join(", "));
+    }
+
+    // vcrunch: at most one cell per room (user rule 2026-10-14 — multiple
+    // V cells collapse into one bbox; a single cell keeps the shutter
+    // visually clean as one 8px column).
+    if (ModelSpecialBits(model) & 4) {
+        int vCount = 0;
+        for (int c = 0; c < model.width; ++c)
+            if (model.tiles[1 * model.width + c]
+                    == (int)hero::TileType::VCRUNCH)
+                ++vCount;
+        if (vCount > 1)
+            problems << tr("Multiple VCRUNCH cells (%1) — only one "
+                           "allowed per room; convert collapses them "
+                           "into one bbox.")
+                        .arg(vCount);
+    }
+
+    // vcrunch cannot share the M1 slot with a side-1 strip/door patch
+    // (convert: hard error — the shutter stages CollisionEndX every frame)
+    if (ModelSpecialBits(model) & 4) {
+        for (const auto& p : model.asym_patches) {
+            int side = p.size() >= 4 ? p[3] : 0;
+            if (side == 1) {
+                problems << tr("Vcrunch shares a side-1 (M1) patch/door — "
+                               "the shutter owns the M1 slot every frame; "
+                               "convert will fail.");
+                break;
+            }
+        }
+    }
+
+    // Special features off the middle band (row 1) — convert: hard error.
+    // Top/bottom bands are entry/exit corridors (user rule 2026-10-14).
+    {
+        QStringList hits;
+        for (int r = 0; r < model.height && r < 3; ++r) {
+            if (r == 1) continue;
+            for (int c = 0; c < model.width && c < 10; ++c) {
+                int t = model.tiles[r * model.width + c];
+                if (t == (int)hero::TileType::PHASE ||
+                    t == (int)hero::TileType::VCRUNCH ||
+                    t == (int)hero::TileType::HCRUNCH)
+                    hits << QString("%1,%2").arg(r + 1).arg(c + 1);
+            }
+        }
+        if (!hits.isEmpty())
+            problems << tr("Special feature off the middle band at "
+                           "cell(s) %1 — specials sit on row 2 (band 1); "
+                           "convert rejects it too.")
                         .arg(hits.join(", "));
     }
 
@@ -812,10 +1242,11 @@ void MapCanvas::ValidateFeatureTiles() {
             if (!colUsed[c]) prefixOk = false;
         for (int c = 0; c < 10; ++c)
             if (colUsed[c]) cols << QString::number(c + 1);
-        if (bandCount != 1 || !prefixOk)
-            problems << tr("Horizontal crunch cells must all sit in ONE band "
-                           "and form a contiguous prefix from the left edge "
-                           "(cols 1..n).\nFound band(s) %1, col(s) %2 — "
+        if (bandCount != 1 || !bandUsed[1] || !prefixOk)
+            problems << tr("Horizontal crunch cells must all sit in the "
+                           "middle band (row 2) and form a contiguous "
+                           "prefix from the left edge (cols 1..n).\n"
+                           "Found band(s) %1, col(s) %2 — "
                            "convert will fail.")
                          .arg(bands.join(", "), cols.join(", "));
     }

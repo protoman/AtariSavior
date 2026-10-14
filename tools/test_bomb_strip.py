@@ -98,7 +98,7 @@ L2 = parse_labels(SRC / "bank2.lst", {"StageBandTab", "M0TilePF0",
                                       "M3TilePF0", "M1StripBlast"})
 L2.update(parse_equ(SRC / "bank2.lst",
                     {"BandTab", "CollisionEndY", "CollisionEndX",
-                     "RoomPF0Lo"}))
+                     "RoomPF0Lo", "RoomRectsLo"}))
 need = ({"BombMarkWalls", "StripBlastCheck", "M1ToBank2", "M1ToBank1"}
         - L1.keys()) | \
        ({"BombX", "LineCount", "RcBase", "EnemyDeadMask", "CollisionX",
@@ -106,7 +106,7 @@ need = ({"BombMarkWalls", "StripBlastCheck", "M1ToBank2", "M1ToBank1"}
         - L0.keys()) | \
        ({"StageBandTab", "M0TilePF0", "M3TilePF0", "M1StripBlast",
          "BandTab", "CollisionEndY", "CollisionEndX",
-         "RoomPF0Lo"} - L2.keys())
+         "RoomPF0Lo", "RoomRectsLo"} - L2.keys())
 if need:
     sys.exit(f"labels missing: {sorted(need)}")
 
@@ -365,8 +365,124 @@ def main() -> int:
     gotq2 = run_bmw(memq, 51, 0, rects=[(10, 0, 2, 1)], bomb_packed=0x08)
     assert gotq2 == 0, f"idx0 mask must block re-blast (count={gotq2})"
 
+    # --- P2b doors (key-only, bomb-immune) ------------------------------
+    # Synthetic meta blob in ZP ($A0..$AA): +9 MetaA, +10 MetaB.
+    def door_run(meta_a, meta_b, bomb_x, line_count):
+        mem = Mem1()
+        r = mem.ram
+        r[0xA0 - 0x80 + 9] = meta_a
+        r[0xA0 - 0x80 + 10] = meta_b
+        got = run_bmw(mem, bomb_x, line_count, meta=0xA0)
+        return got, r[L0["EnemyDeadMask"] - 0x80]
+
+    # 8a. RIGHT door: MetaB b7 set, same strip geometry as case 1
+    #     (ball_col+1=3 → pL=24; bomb 107 → blast covers it) — bomb must
+    #     NOT set b3 nor count.
+    got, mask = door_run(0x90, 0x83, 107, (2 + 1) << 4 | 0x07)
+    assert got == 0 and not mask & 0x08, (
+        f"right door must be bomb-immune (count={got}, deadmask=${mask:02X})")
+    # 8b. same meta WITHOUT b7 → the old kill still works (control)
+    got, mask = door_run(0x90, 0x03, 107, (2 + 1) << 4 | 0x07)
+    assert got == 1 and mask & 0x08, (
+        f"plain strip control must still die (count={got}, mask=${mask:02X})")
+
+    # 9a. LEFT door: MetaA = m1n9 | band | b3 ($98). M1 dcol = 16; a
+    #     left bomb at col 16 (BombX=71 → blast [14,18]) must NOT set b4.
+    got, mask = door_run(0x98, 0x00, 71, 0)
+    assert got == 0 and not mask & 0x10, (
+        f"left door must be bomb-immune (count={got}, deadmask=${mask:02X})")
+    # 9b. same MetaA without b3 ($90, model 0's own) → b4 sets (control)
+    got, mask = door_run(0x90, 0x00, 71, 0)
+    assert got == 1 and mask & 0x10, (
+        f"plain M1 control must still die (count={got}, mask=${mask:02X})")
+
+    # 10. NUSIZ1 staging: constant $30 for door AND plain (user rejected
+    #     the 4clk door sizing 2026-10-12 — doors look like plain async).
+    class MemTIA(Mem02):
+        def __init__(self):
+            super().__init__()
+            self.tia_writes = {}
+
+        def __setitem__(self, a, v):
+            a &= 0xFFFF
+            if a <= 0x3F or 0x100 <= a <= 0x13F:
+                self.tia_writes[a & 0x3F] = v & 0xFF
+            super().__setitem__(a, v)
+
+    def stage_n1(meta_a):
+        mem = MemTIA()
+        r = mem.ram
+        r[0xA0 - 0x80 + 9] = meta_a
+        r[0xA0 - 0x80 + 10] = 0x00
+        r[L2["RoomPF0Lo"] - 0x80] = 0xA0
+        r[L2["RoomPF0Lo"] + 1 - 0x80] = 0x00
+        r[L0["EnemyDeadMask"] - 0x80] = 0
+        mem.bank = 2
+        mpu = MPU(memory=mem)
+        mpu.pc = L2["StageBandTab"]
+        mpu.a = mpu.x = mpu.y = 0
+        mpu.sp = 0xFD
+        mem[0x1FF] = 0x01
+        mem[0x1FE] = 0x00
+        for _ in range(5000):
+            mpu.step()
+            if mpu.pc == RTS_SENTINEL:
+                return (mem.tia_writes.get(0x05),
+                        r[0x8D - 0x80])          # NUSIZ1, door color
+        sys.exit("StageBandTab (NUSIZ1 probe) never returned")
+
+    n1, color = stage_n1(0x98)
+    assert n1 == 0x30 and color == 0x1C, (
+        f"door: NUSIZ1=${n1:02X} color=${color:02X}, want $30/$1C yellow")
+    n1, color = stage_n1(0x90)
+    assert n1 == 0x30 and color == 0x80, (
+        f"plain: NUSIZ1=${n1:02X} color=${color:02X}, want $30/$80")
+
+    # --- Phase 3: phase-cell blink ---------------------------------------
+    # Synthetic hot stream at $A0: solid count 0, hot count 1, record
+    # $80, 2c=4 (pair idx 2 → PF1 bits7,6 = $C0), row 1 (PF1Buf row1 =
+    # $C7). mod-90 clock (2026-10-13): phase <45 = ON half (b5 armed,
+    # bits set); phase >=45 = OFF half (bits cleared).
+    def stage_phase(clock):
+        mem = Mem02()
+        r = mem.ram
+        r[0xA0 - 0x80:0xA0 - 0x80 + 7] = bytes([0, 1, 0x80, 4, 1, 2, 1])
+        r[L2["RoomRectsLo"] - 0x80] = 0xA0
+        r[L2["RoomRectsLo"] + 1 - 0x80] = 0x00
+        r[L2["RoomPF0Lo"] - 0x80] = 0xC0   # meta blob: MetaA at +9 = $C9
+        r[L2["RoomPF0Lo"] + 1 - 0x80] = 0x00
+        r[0xC9 - 0x80] = 0x90              # MetaA: plain M1 (no door)
+        r[0xCA - 0x80] = 0x00              # MetaB
+        r[L0["EnemyDeadMask"] - 0x80] = 0
+        r[0xC2 - 0x80] = clock             # EnemyRamP
+        r[0xC7 - 0x80] = 0xC0              # PF1Buf row1 pre-seeded ON
+        mem.bank = 2
+        mpu = MPU(memory=mem)
+        mpu.pc = L2["StageBandTab"]
+        mpu.a = mpu.x = mpu.y = 0
+        mpu.sp = 0xFD
+        mem[0x1FF] = 0x01
+        mem[0x1FE] = 0x00
+        for _ in range(8000):              # walk + jsr depth
+            mpu.step()
+            if mpu.pc == RTS_SENTINEL:
+                return r[0xC7 - 0x80]
+        sys.exit("StageBandTab (phase probe) never returned")
+
+    assert stage_phase(0x2D) == 0x00, (
+        f"phase OFF half (phase 45) must clear PF1Buf row1 bits7,6 "
+        f"(got ${stage_phase(0x2D):02X})")
+    assert stage_phase(0x00) == 0xC0, (
+        f"phase ON half (phase 0) must set PF1Buf row1 bits7,6 "
+        f"(got ${stage_phase(0x00):02X})")
+    # mod-90 two-pass normalize: clock 200 → 200-90-90 = 20 <45 = ON
+    assert stage_phase(0xC8) == 0xC0, (
+        f"mod-90 clock 200 must land in the ON half "
+        f"(got ${stage_phase(0xC8):02X})")
+
     print("test_bomb_strip: OK (ball+M1 blast hit/controls, no double "
-          "count, staging alive/dead, pad identity, rect4 walk + guard)")
+          "count, staging alive/dead, pad identity, rect4 walk + guard, "
+          "P2b doors bomb-immune + NUSIZ1, Phase 3 blink + door color)")
     return 0
 
 

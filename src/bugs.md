@@ -9,9 +9,21 @@ Info lines per entry (added 2026-10-07, user request): **Player:** what
 someone running the game sees today; **Benefit:** what the fix gives them.
 No entry is worked on without user greenlight.
 
+1. **Respawn starts player falling — water death loop** (filed
+   2026-10-13, user). After respawn, pressing up still makes the player
+   fall; after a water death he drops back into the water one time after
+   another and can never leave the spot. Expected: after respawn the
+   player must NOT fall at all — he may take a moment to fly up (thrust
+   spin-up), but gravity must not pull him down. Check the LoseLife/
+   respawn path vs the jetpack gravity/thrust gate (JetPower ramp,
+   AGENTS Phase 8).
+   **Player:** die in water → respawn → hold Up → falls back in, death
+   loop, room unescapable.
+   **Benefit:** respawn survivable; player flies out.
+
 ## Open bugs
 
-1. **sim_frame_budget f3 transition frame off 263** (filed 2026-10-06 as
+2. **sim_frame_budget f3 transition frame off 263** (filed 2026-10-06 as
    263.20; re-measured 2026-10-09 as 262.72 — sign flipped when the
    title flow re-phased, same ±56c wall-phase slack family).
    **Status: ANALYZED 2026-10-09 — no player-visible effect; the
@@ -40,7 +52,7 @@ No entry is worked on without user greenlight.
    (filing's "possible 1-frame flicker" cannot trigger at these
    phases).
    **Benefit if parity fix done:** sim prints exactly 263.00 on f3.
-2. **test_phase3_ball: frame lines [263,264]** (2026-10-06, M1 `adc #1`
+3. **test_phase3_ball: frame lines [263,264]** (2026-10-06, M1 `adc #1`
    fix +4c in VBL). User decision: leave. Fix later = find a 4c+ cut on
    the VBL worst path (budget the LATEST-in-path, not the first frame).
    NOTE: passed once after the intro-screen flow landed (2026-10-06,
@@ -48,11 +60,11 @@ No entry is worked on without user greenlight.
    in the rescan.
    **Status: CLOSED 2026-10-10 (rescan).** PASSES consistently; the
    residual [263,264] note above never reproduced in the battery window.
-3. **BombEnemyBlast can kill lamps (type 5)** — no type check in the
+4. **BombEnemyBlast can kill lamps (type 5)** — no type check in the
    blast loop (last seen 2026-09-23, still unverified).
     FIXED 2026-10-07: body moved to bank2 ($FD6A — this entry's "$FD6B"
     was a stale comment and is what the hand-synced tramp operand
-    copied → bug 10; `BombEnemyBlastBody`,
+    copied → bug 11; `BombEnemyBlastBody`,
    `lda (EnemyDataLo),Y / cmp #LAMP` skip) via $FDD8 pad twin (stub in
    kernel.asm; post-switch fetch needs byte-identical bank2 copy), body
    returns A=kill flag, BombTick awards +50 (pads can't nest); PlayerSpriteA
@@ -80,19 +92,19 @@ No entry is worked on without user greenlight.
     0.5 px/frame = half the player's 1 px/frame (the `&3` was 0.25 —
     half of half). `test_enemy_movement` gate assert updated. The
     `&1` gate alone still delivered only 0.125 px/f — probe
-    false-blocks at bob Y≥133: #13 (fixed same day, this is why the
+    false-blocks at bob Y≥133: #14 (fixed same day, this is why the
     second "too slow" report came after this fix).
     **Player:** tentacle sprite overlaps the left wall line while probing
     (cosmetic only — collision stays correct).
     **Benefit:** sprite never crosses the wall edge.
-5. **test_editor_roundtrip fails on dirty git tree** — needs committed
+6. **test_editor_roundtrip fails on dirty git tree** — needs committed
    tree; not a code bug.
    **Status: FIXED-as-skip 2026-10-10.** Leg2 (regen + `git diff
    src/generated`) now pre-checks `git status` for uncommitted WIP in
    src/rooms|src/generated and SKIPS with an explicit note (leg1 field
    roundtrip always runs). The skip is visible in output — a silently
    corrupt generated/ would still show as WIP dirt, not a green lie.
-6. **M1 block wall-shade stripe** — 8-line `LevelWallColor2` stripe
+7. **M1 block wall-shade stripe** — 8-line `LevelWallColor2` stripe
    inside the yellow M1 block (screenshots/assymetric, 2026-10-06).
    **Status: FIXED 2026-10-09** (case A park; bomb-window color =
    accepted residual, future check below).
@@ -155,7 +167,7 @@ No entry is worked on without user greenlight.
     punch.
     **Benefit:** release blocker downgraded to the 7.1 data-pipeline
     item.
-8. **Title frames f0/f1 not exactly 263** (262.61 / 262.93 raw) —
+9. **Title frames f0/f1 not exactly 263** (262.61 / 262.93 raw) —
    boot-frame quant, same family as item 1. Keyed below f2 so the wall
    assert skips them today.
    **Status: ANALYZED 2026-10-10 — no player-visible effect, same
@@ -175,7 +187,7 @@ No entry is worked on without user greenlight.
    zero player gain — NOT done).
    **Player:** tiny frame-length wobble in the first 2 boot frames
    (usually invisible).
-9. **Laser pass-through on flush wall hold (right-facing)** — user
+10. **Laser pass-through on flush wall hold (right-facing)** — user
    2026-10-10: player walks flush against a 1-tile-width wall, fires,
    beam emerges past the tile. Full chain: wall-center clamp attempt
    built + reverted same day (frame lockup from `RectCount` scratch
@@ -204,7 +216,7 @@ No entry is worked on without user greenlight.
    flush; beam holds at the eye while the tile is solid.
    **Benefit:** the "dumb contact missile" contract now also covers
    the mid-tile-eye geometry, not just the tip-in-wall case.
-10. **Bomb leaves a 1-col wall sliver beside the punched thin wall**
+11. **Bomb leaves a 1-col wall sliver beside the punched thin wall**
     (user 2026-10-10, `screenshots/bugs/sync_wall_half_destroyed.png`).
     Level 1 room 2 (room_id 1, model 1, symmetric): thin wall rect
     `(12,1,2,1)` = display cols 12-13 row1. After a bomb on it: cols
@@ -249,7 +261,7 @@ No entry is worked on without user greenlight.
      destination-bank listing row start). verify_build +
      sim_bomb_fuse + sim_frame_budget + battery 27/27 green.
     **Benefit:** bombs clear thin walls completely again.
-11. **Editor grid still shows pre-D7 (old tile) format** (user-reported
+12. **Editor grid still shows pre-D7 (old tile) format** (user-reported
     2026-10-10). Context: D7 grid flip (commit 3423ecc, 2026-10-04)
     doubled tile width — one logical tile now = 8px = what was 2 tiles
     before (`convert_level.py` `WIDTH = 10` "was 20 pre-D7"). The game
@@ -273,7 +285,7 @@ No entry is worked on without user greenlight.
     **Player:** none directly (display/authoring confusion — rooms
     drawn/edited against the wrong grid scale risk misaligned walls).
     **Benefit:** editor WYSIWYG matches in-game tile size.
-12. **Bomb "does nothing" on the right wall — BMW window matched
+13. **Bomb "does nothing" on the right wall — BMW window matched
      rect.x only, not the wall's span** (user 2026-10-10: "bomb not
      destroying the right wall at all. Left wall working fine").
      Root cause: `BombMarkWalls` matched `rect.x ∈ [bombcol-2,
@@ -311,7 +323,7 @@ No entry is worked on without user greenlight.
      position on both sides.
      **Benefit:** blast window = true ±2 overlap semantics for 2-col
      walls on both sides.
-13. **Tentacle X speed ~0.125 px/f — YToRowTable OOB at
+14. **Tentacle X speed ~0.125 px/f — YToRowTable OOB at
     EnemyRamY ≥ 133** (user 2026-10-10: tentacle "not fluid, ~10% of
     gap crossing"; second report after the #4 `&1` gate fix — the gate
     was already 0.5 px/f, the probe was swallowing the steps).
@@ -349,6 +361,27 @@ No entry is worked on without user greenlight.
     flush at real walls only.
     **Benefit:** chase distance closes 4× faster; the bob no longer
     randomizes blocked/clear.
+15. **Yellow door (P2b #32) color bleed + flicker on enemy/miner rows**
+    (filed 2026-10-12, user-accepted for now). The M1 door stripe's
+    color register (COLUP1) is shared with every P1 object: the enemy
+    and the miner rewrite COLUP1 on the lines they occupy, so the door
+    stripe on those rows paints in the OBJECT's color; the kernel's
+    object-path restore (`Temp` = the band color from `ColupfBuf,X`)
+    then flips the stripe back to the wall color for the rest of the
+    line = per-line color flicker on the door's rows whenever an
+    object crosses the door band. Root: one color register per line
+    for P1+M1 (TIA hardware); the pre-door code had the same sharing
+    but the stripe was already wall-colored so the bleed was invisible.
+    Fix path (not done): the object-path COLUP1 restore should write
+    the staged door color ($8D = $1C) instead of `Temp` when the band
+    is a door band — the restore is on the cycle-precise object line
+    (worst path 56/76c, +branch cost needs a recount) and the door
+    flag is per-frame (needs a per-band bit to avoid testing on every
+    line). The other register-sharing classes (laser M0 = COLUP0 with
+    the jet) have the same physics and stay invisible for the same
+    color-overlap reasons.
+    **Player:** the yellow door shimmers with enemy/miner hues on
+    rows where they cross it; **Benefit:** solid yellow door.
 
 ## Latent risks (verified once, fragile)
 
@@ -801,6 +834,21 @@ No entry is worked on without user greenlight.
       (-3B); sim transition_frames covers the bomb-punch event.
     - **User pass (2026-10-11):** "It is perfect, congratulations on
       the well-done job." (#31 closed.)
+32. **Yellow door stripe — CLOSED 2026-10-12** (user chose yellow over
+    multi-stripe grates after the TIA slot audit: 5 object slots, all
+    used; M1 copies ghost the enemy; PF grate collides with the
+    band-mask ball semantics). Landed: bank2 `StageBandTab` stages
+    CollisionCellY ($8D) = $1C (yellow, hue1 luma6) when MetaA b3 else
+    $80; the cave band-setup line's COLUP1 write takes it (kernel.asm
+    "D6 M1 band color" region). The +10c branch crossed 76c on two
+    setup lines → measured **267-line cave frames** (deterministic);
+    wall-model retargeted per-kernel (cave 267.0 / title 265.0 —
+    `sim_frame_budget._tgt`, `test_phase3_ball` {266,267}). RIGHT
+    (ball) doors stay wall-colored: the ball's color register is
+    COLUPF, shared with the cave walls on the same scanline — cannot
+    be yellow. The P5 key sprite = yellow for free.
+    **Player:** doors read as walls today (user keeps re-testing them
+    as plain async); **Benefit:** instant door recognition.
     **Player:** press = buzz + lift-off ~1s; release = stop ~0.3s,
     hover ~0.5s, fall ~0.85s after release.
 

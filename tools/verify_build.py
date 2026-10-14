@@ -862,6 +862,25 @@ def check_levels(src: Path) -> None:
                     err(f"models.json model {model.get('id')}: expected 10x3 geometry")
                 if len(model.get("tiles", [])) != 30:
                     err(f"models.json model {model.get('id')}: expected 30 band tiles")
+                # Special-feature row rule (user rule 2026-10-14): door/
+                # phase/vcrunch/hcrunch live ONLY on the middle band (row
+                # 1) — top/bottom bands are entry/exit corridors. convert
+                # hard-fails any cell below/above row 1 too.
+                w = model.get("width") or 10
+                for tile, name in ((10, "PHASE"), (11, "VCRUNCH"),
+                                   (12, "HCRUNCH")):
+                    bad = [i // w for i, t in enumerate(model.get("tiles", []))
+                           if t == tile and i // w != 1]
+                    if bad:
+                        err(f"models.json model {model.get('id')}: {name} at "
+                        f"row(s) {sorted(set(bad))} — must sit in row 1 "
+                        "(middle band only)")
+                bad = [i // w for i, t in enumerate(model.get("tiles", []))
+                       if t == 6 and i // w != 2]
+                if bad:
+                    err(f"models.json model {model.get('id')}: RAFT at "
+                        f"row(s) {sorted(set(bad))} — must sit in row 2 "
+                        "(bottom band, the water strip)")
         except Exception as exc:  # noqa: BLE001 - report, don't crash verifier
             err(f"models.json: {exc}")
 
@@ -874,7 +893,7 @@ def check_levels(src: Path) -> None:
     if models:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from convert_level import (resolve_asym_patches, rows_from_json,  # noqa: PLC0415
-                                   model_door_flag)
+                                   model_door_flag, model_m1_door_flag)
         from convert_room import pf_values  # noqa: PLC0415
         gen = src / "generated" / "models_data.asm"
         mda = gen.read_text() if gen.exists() else ""
@@ -897,9 +916,10 @@ def check_levels(src: Path) -> None:
                 continue
             if f"M{mid}TilePF0:" not in mda:
                 continue                      # model not referenced by any room
-            asym, ball_x, m1_x = res if res else (None, 0, 0)
+            asym, ball_x, m1_x, m1_door = res if res else (None, 0, 0, False)
             # packed meta (bugs.md 28 point 1): MetaA = (m1_col+1)<<4 |
-            # band_mask at TilePF0+9; MetaB = ball_col+1 at +10 (0 = none).
+            # band_mask | $08 left door at TilePF0+9; MetaB = ball_col+1
+            # at +10 (0 = none, b7 = right door).
             band_mask = 0
             if asym is not None:
                 for bidx in range(3):
@@ -907,23 +927,35 @@ def check_levels(src: Path) -> None:
                         band_mask |= 1 << bidx
             m1n = ((m1_x - 7) >> 3) + 1 if m1_x else 0
             want_a = (m1n << 4) | band_mask
+            if model_m1_door_flag(model):
+                want_a |= 0x08
             got_a = meta_byte(mid, "MetaA")
             if got_a is None:
                 err(f"model {mid}: MetaA missing "
                     f"(must sit at TilePF0+9 for every model)")
             elif got_a != want_a:
                 err(f"model {mid}: MetaA=${got_a:02X}, want ${want_a:02X} "
-                    f"((m1_col+1)<<4 | band_mask={band_mask})")
+                    f"((m1_col+1)<<4 | band_mask={band_mask}"
+                    f"{' | $08 door' if model_m1_door_flag(model) else ''})")
             ball_n = ((ball_x - 87) >> 3) + 1 if ball_x else 0
             if model_door_flag(model):
                 ball_n |= 0x80
+            # vcrunch shutter flag (vcrunch_shutter_plan Phase B) — convert
+            # sets MetaB b7 for vcrunch models; PHMOverlay's kill gate reads it
+            if any(t == 11 for t in model.get("tiles", [])):
+                ball_n |= 0x80
+            # mid_band_type hot flag (user rule 2026-10-14: both crunch walls
+            # respect the hot flag) — convert sets MetaB b6; OvShutBand /
+            # the crunch kill gates read it for touch semantics.
+            if model.get("mid_band_type"):
+                ball_n |= 0x40
             got_b = meta_byte(mid, "MetaB")
             if got_b is None:
                 err(f"model {mid}: MetaB missing "
                     f"(must sit at TilePF0+10 for every model)")
             elif got_b != ball_n:
                 err(f"model {mid}: MetaB=${got_b:02X}, want ${ball_n:02X} "
-                    f"(ball_col+1 | $80 door, 0 = no ball)")
+                    f"(ball_col+1 | $80 door/vcrunch | $40 hot, 0 = no ball)")
             if asym is None:
                 if re.search(rf"^M{mid}RightPF\d:", mda, re.M):
                     err(f"model {mid}: symmetric but RightPF block emitted")
@@ -1022,6 +1054,49 @@ def check_levels(src: Path) -> None:
                     f"RAM would still hold 3 slots — slot 3 collides with "
                     f"LaserState at $C0)")
 
+            # Special-feature room rules (user rule 2026-10-14): specials
+            # are alone per room; vcrunch/hcrunch own the sprite slot (no
+            # objects at all); door allows a single non-key enemy and no
+            # lamp/miner; raft models need water rooms (bottom_band).
+            specials = []
+            door_model = False
+            has_raft = False
+            if mid is not None and models and mid in models:
+                mdef = models[mid]
+                if any(len(p) >= 3 and p[2] == 9
+                       and (p[3] if len(p) == 4 else 0) == 0
+                       for p in (mdef.get("asym_patches") or [])):
+                    door_model = True
+                    specials.append("door")
+                for t, name in ((10, "phase"), (11, "vcrunch"), (12, "hcrunch")):
+                    if any(t_ == t for t_ in mdef.get("tiles", [])):
+                        specials.append(name)
+                has_raft = any(t == 6 for t in mdef.get("tiles", []))
+            if len(specials) > 1:
+                err(f"{label}: model {mid} mixes special features "
+                    f"{specials} — specials are alone per room "
+                    "(door XOR phase XOR vcrunch XOR hcrunch)")
+            if (("vcrunch" in specials or "hcrunch" in specials)
+                    and objs > 0):
+                err(f"{label}: model {mid} has "
+                    f"{'vcrunch' if 'vcrunch' in specials else 'hcrunch'} "
+                    f"but room has {objs} object(s) (enemies+lamps+miner) "
+                    "— the shutter needs the sprite slot")
+            if door_model:
+                if len(enemies) > 1:
+                    err(f"{label}: door room has {len(enemies)} enemies "
+                        "— at most ONE enemy per door room")
+                if any(e.get("type", 0) == 6 for e in enemies):
+                    err(f"{label}: door room has a KEY enemy — door rooms "
+                        "allow a single non-key enemy only")
+                if len(lamps) > 0 or (
+                        lvl.get("miner_room") == r.get("room_id")):
+                    err(f"{label}: door room has a lamp/miner — door rooms "
+                        "allow a single enemy only")
+            if has_raft and not r.get("bottom_band"):
+                err(f"{label}: model {mid} has RAFT tiles but the room is "
+                    "not water (bottom_band=false)")
+
             for i, e in enumerate(enemies):
                 el = f"{label} enemy {i}"
                 t = e.get("type", 0)
@@ -1040,6 +1115,19 @@ def check_levels(src: Path) -> None:
                     err(f"{el}: non-numeric coordinate")
                 if e.get("dir") not in (-1, 1):
                     err(f"{el}: dir={e.get('dir')!r} must be -1 or 1")
+                # Raft/tentacle water rule (user rule 2026-10-14):
+                # tentacles live in the water on the bottom band.
+                if t == 3:
+                    if not r.get("bottom_band"):
+                        err(f"{el}: tentacle in a room without the bottom "
+                            "band — tentacles live in the water")
+                    try:
+                        if int(float(e.get("y", 0))) // 4 != 2:
+                            err(f"{el}: tentacle at y={e.get('y')} — "
+                                "tentacles live on the bottom band "
+                                "(display rows 8-11)")
+                    except (TypeError, ValueError):
+                        pass  # non-numeric y already reported above
 
             if lamps and int(r.get("room_id", 0)) >= 8:
                 warn(f"{label}: room {r.get('room_id')} has {len(lamps)} "
@@ -1188,6 +1276,47 @@ def sync_overscan_literal(src: Path) -> int:
     return 0
 
 
+def sync_phrec_literal(src: Path) -> int:
+    """Post-bank2 self-heal (build.sh: before dasm bank3).
+
+    bank3's return-tail tramps `jmp $Fxxx ; .PhRec (vcrunch/hcrunch)` track
+    bank2's .PhRec label, which moves whenever the feature-record stream
+    (model tiles / level data) shifts. Hand-synced twice on 2026-10-13 and
+    stale again after each data edit — same family as bank1's Overscan
+    literal; patch from bank2.lst instead of by hand.
+    """
+    lst2 = src / "bank2.lst"
+    if not lst2.exists():
+        print("sync: bank2.lst missing — assemble bank2 first", file=sys.stderr)
+        return 1
+    m = re.search(r"^\s*\d+\s+([0-9a-f]{4})\s+\.PhRec\s*$",
+                  lst2.read_text(errors="replace"), re.M)
+    if not m:
+        print("sync: .PhRec label not in bank2.lst", file=sys.stderr)
+        return 1
+    got = int(m.group(1), 16)
+    bank3_p = src / "bank3.asm"
+    if not bank3_p.exists():
+        print("sync: bank3.asm missing", file=sys.stderr)
+        return 1
+    text = bank3_p.read_text(encoding="utf-8")
+    pat = re.compile(r"^(    jmp \$)([0-9A-Fa-f]{4})(\s*; \.PhRec)", re.M)
+    hits = list(pat.finditer(text))
+    if len(hits) != 2:
+        print(f"sync: expected 2 bank3 .PhRec jmp literals, found {len(hits)}",
+              file=sys.stderr)
+        return 1
+    new = text
+    for hit in reversed(hits):
+        old = int(hit.group(2), 16)
+        if old != got:
+            new = new[:hit.start(2)] + f"{got:04X}" + new[hit.end(2):]
+            print(f"sync: bank3 jmp .PhRec ${old:04X} -> ${got:04X}")
+    if new != text:
+        bank3_p.write_text(new, encoding="utf-8")
+    return 0
+
+
 def data_size(path: Path) -> int:
     """Bytes a generated pure-data .asm contributes (.byte=1B/op, .word=2B/op)."""
     n = 0
@@ -1330,6 +1459,91 @@ def check_level_window(src: Path) -> None:
             warn(f"slot ${s['pad']:04X} nearly full: slack {slack}B")
 
 
+def check_crunch_clock(src: Path) -> None:
+    """VcrCoveredState (bank2) mirrors bank3 CrunchClock's ping-pong.
+
+    Both routines drive the vcrunch shutter (PF cell sweep / sprite-slice
+    state + kill). The `cmp #32` fold and the `cmp #4`/`sbc #4` dwell must
+    stay byte-identical or the aperture render drifts from the kill test
+    (comment contract at bank2 VcrCoveredState; asserted here).
+    """
+    tokens = ("cmp #32", "eor #$3F", "cmp #4", "sbc #4")
+
+    def window(path: Path, label: str, lines_after: int) -> str:
+        if not path.exists():
+            return ""
+        text = path.read_text()
+        m = re.search(rf"^{re.escape(label)}:", text, re.M)
+        if not m:
+            return ""
+        tail = text[m.start():]
+        return "\n".join(tail.splitlines()[:lines_after])
+
+    b3 = window(src / "bank3.asm", "CrunchClock", 60)
+    b2 = window(src / "bank2.asm", "VcrCoveredState", 50)
+    b3v = window(src / "bank3.asm", "VCS3", 50)
+    if not b3:
+        err("bank3.asm: CrunchClock label not found")
+        return
+    if not b2:
+        err("bank2.asm: VcrCoveredState label not found")
+        return
+    if not b3v:
+        err("bank3.asm: VCS3 label not found (OvShutScan body)")
+        return
+    for tok in tokens:
+        if tok not in b3:
+            err(f"bank3.asm CrunchClock: expected {tok!r} in first 60 lines")
+        if tok not in b2:
+            err(f"bank2.asm VcrCoveredState: expected {tok!r} in first 50 lines")
+        if tok not in b3v:
+            err(f"bank3.asm VCS3: expected {tok!r} in first 50 lines")
+
+
+def check_scan_tramp(src: Path) -> None:
+    """OvShutScan (bank2 tramp) ↔ bank3 VCS3 wiring — pins + twin bytes.
+
+    bank2 OvShutScan: sta $1FF9 + jmp $FD80 at $FE48; the jmp OPCODE is
+    fetched from bank3's image at the same address ($FE51 = jmp $FD80).
+    Return = the $FBEE pad (sta $1FF8 / rts), byte-identical in bank2
+    (Bank2ReturnPad) and bank3 — rts is fetched bank2-side post-switch,
+    so a silent drift in either copy strands the overlay or returns to
+    the wrong bank.
+    """
+    b2 = (src / "bank2.asm").read_text() if (src / "bank2.asm").exists() else ""
+    b3 = (src / "bank3.asm").read_text() if (src / "bank3.asm").exists() else ""
+    if not b2 or not b3:
+        err("bank2.asm/bank3.asm missing (scan tramp check)")
+        return
+    m = re.search(r"^VCS3:", b3, re.M)
+    if not m:
+        err("bank3.asm: VCS3 label not found")
+    elif "jmp $FD80" not in b2:
+        err("bank2.asm OvShutScan: jmp $FD80 literal missing (VCS3 moved?)")
+    if ".byte $4C, $80, $FD" not in b3 or "jmp $FD80" not in b3:
+        err("bank3.asm: $FE51 entry image (jmp $FD80) missing/stale")
+    # Byte-level pins below (text shape alone cannot see operand drift).
+    bin2 = src / "bank2.bin"
+    bin3 = src / "bank3.bin"
+    if bin2.exists() and bin3.exists():
+        a2 = bin2.read_bytes()
+        a3 = bin3.read_bytes()
+        sl2 = a2[0xBEE:0xBF2]
+        sl3 = a3[0xBEE:0xBF2]
+        if sl2 != bytes((0x8D, 0xF8, 0x1F, 0x60)):
+            err(f"$FBEE twin bank2 = {sl2.hex()} (want 8df81f60)")
+        if sl3 != sl2:
+            err(f"$FBEE twin bank3 = {sl3.hex()} != bank2 {sl2.hex()}")
+        # $FE57 entry image: both banks hold `jmp $FD80` (4C 80 FD) —
+        # bank2's live tramp fetch + bank3's pre-switch copy.
+        img2 = a2[0xE57:0xE5A]
+        img3 = a3[0xE57:0xE5A]
+        if img2 != bytes((0x4C, 0x80, 0xFD)):
+            err(f"$FE57 image bank2 = {img2.hex()} (want 4c80fd)")
+        if img3 != img2:
+            err(f"$FE57 image bank3 = {img3.hex()} != bank2 {img2.hex()}")
+
+
 def main() -> int:
     argv = sys.argv[1:]
     if argv and argv[0] == "--sync":
@@ -1340,6 +1554,10 @@ def main() -> int:
         src = (Path(argv[1]) if len(argv) > 1
                else Path(__file__).resolve().parent.parent / "src")
         return sync_overscan_literal(src)
+    if argv and argv[0] == "--sync-phrec":
+        src = (Path(argv[1]) if len(argv) > 1
+               else Path(__file__).resolve().parent.parent / "src")
+        return sync_phrec_literal(src)
     if argv and argv[0] == "--precheck":
         src = (Path(argv[1]) if len(argv) > 1
                else Path(__file__).resolve().parent.parent / "src")
@@ -1366,6 +1584,8 @@ def main() -> int:
     check_levels(src)
     check_model_rects(src)
     check_equ_sync(src)
+    check_crunch_clock(src)
+    check_scan_tramp(src)
     check_frozen_addrs(src)
 
     for w in WARNS:

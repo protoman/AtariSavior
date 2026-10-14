@@ -48,6 +48,9 @@ def lst_labels(path):
 L0 = lst_labels(SRC / "bank0.lst")
 L1 = lst_labels(SRC / "bank1.lst")
 L2 = lst_labels(SRC / "bank2.lst")
+
+import test_fixtures as FX  # noqa: E402
+FX.freeze_m1(BANKS, L2)     # frozen model1 into the private copy (rule 2026-10-14)
 PC_STARTFRAME = L0["StartFrame"]
 PC_BMW = L1["BombMarkWalls"]
 
@@ -69,13 +72,14 @@ PF_IDX = [a & 0x7F for a in PF_ROWS]   # bytearray indices
 
 MODEL = {1: ("M1TilePF0", "M1RoomRects")}
 
-# Editor-proof frozen copy of level-1 room-2 (model1) staging data,
-# captured 2026-10-10 from bank2.bin (M1TilePF0 9 PF bytes, M1RoomRects
-# packed list). src/rooms/*.txt is user-editable WIP — the test stages
-# THESE literals into RAM and hard-fails if the ROM drifted, so room
-# edits can never silently change what this test proves.
-FIXTURE_PF = bytes.fromhex("f0 30 f0 ff 00 ff 3f 03 ff")   # rows: PF0|PF1|PF2
-FIXTURE_RR = bytes.fromhex("04 00 49 01 09 31 09 02 51")   # 4 rects
+# Frozen copy of level-1 room-2 (model1) staging data lives in
+# tools/test_fixtures.py (the tests-folder copy, user rule 2026-10-14).
+# freeze_m1 above injected it into THIS test's private bank2.bin copy, so
+# the pointer-based reads (StageBandTab MetaA/MetaB, the rect/hot stream
+# walk) see the fixture as well — live room edits cannot move the stage
+# and no ROM-equality gate exists to drift.
+FIXTURE_PF = FX.M1_PF            # rows: PF0|PF1|PF2
+FIXTURE_RR = FX.M1_STREAM[:-1]   # count + 4 packed rects (hot tail cut)
 
 
 class Mem:
@@ -150,16 +154,11 @@ def step():
 
 def load_room(room):
     """Hand-EnterRoom: pointers + PF buffers + real rect cache (same
-    unpack as bank2 EnterRoomB2) — staged from the FROZEN fixture, with
-    a ROM-equality gate so a room edit fails loudly here instead of
-    drifting the contract."""
+    unpack as bank2 EnterRoomB2) — staged from the FROZEN fixture;
+    pointers target the injected copy so every pointer-based read
+    (StageBandTab Meta, stream walk) stays fixture-true."""
     pf0, rr = MODEL[room]
     a_pf0, a_rr = L2[pf0], L2[rr]
-    rom_pf = bytes(BANKS[2][a_pf0 - 0xF000 + i] for i in range(9))
-    rom_rr = bytes(BANKS[2][a_rr - 0xF000 + i] for i in range(9))
-    if rom_pf != FIXTURE_PF or rom_rr != FIXTURE_RR:
-        sys.exit("fixture drift: room model changed since 2026-10-10 — "
-                 "re-freeze FIXTURE_PF/FIXTURE_RR in this test")
     mem.ram[I_PF0LO] = a_pf0 & 0xFF
     mem.ram[I_PF0HI] = a_pf0 >> 8
     mem.ram[I_RRLO] = a_rr & 0xFF
@@ -227,10 +226,13 @@ def report(tag, bmw_seen, wts, initial):
     print(f"[{tag}] PF writes ({len(wts)}):")
     for f, pc, bank, addr, val in wts:
         print(f"  f{f} ${pc:04X} bank{bank} ${addr:02X} -> ${val:02X}")
-    # contract: punch clears rect (12,1,2,1) = PF2 row1 cols12-13 (bits0,1);
+    # contract: punch clears the thin wall rect (12,1,2,1) = PF2 row1
+    # cols12-13 (bits0,1) AND any second thin wall inside the blast
+    # window (the user's live models.json grew a (14,1,2,1) neighbour —
+    # cols14-15 = bits2,3 — the blast [10,14] hits both; 2026-10-12);
     # every other row/byte keeps its ROM value.
     want = dict(initial)
-    want[0xCA] = initial[0xCA] & 0xFC
+    want[0xCA] = initial[0xCA] & 0xC0
     bad = []
     for a in sorted(PF_ROWS):
         v = mem.ram[a & 0x7F]
@@ -300,10 +302,6 @@ def main():
     if fail:
         sys.exit("FAIL: bomb half-wall repro (bugs.md #10)")
     print("test_bomb_half_wall: OK (both walls fully cleared)")
-
-
-if __name__ == "__main__":
-    main()
 
 
 if __name__ == "__main__":

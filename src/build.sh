@@ -40,6 +40,9 @@ echo "  bank0: OK"
 python3 "$ROOT/tools/verify_build.py" --sync-overscan "$DIR"
 dasm bank1.asm -f3 -obank1.bin -lbank1.lst
 echo "  bank1: OK"
+# bank3's .PhRec tramp literals track bank2's label (moves with level/model
+# data) — self-heal from bank2.lst, same family as the Overscan sync.
+python3 "$ROOT/tools/verify_build.py" --sync-phrec "$DIR"
 dasm bank3.asm -f3 -obank3.bin
 echo "  bank3: OK"
 

@@ -61,6 +61,8 @@ New object types:
 
 =========================================================================================================================================================================
 
+# mini-map in the editor that shows all rooms in their position on a grid.
+
 # enemy speed multiplier - each X levels (5?) the speed of the enemies increases (x1,5, x2, x2.5, x3...)
 
 # dynamic "pulse" wall (appears/disappears)

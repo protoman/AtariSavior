@@ -27,10 +27,8 @@ LEVEL3_RoomConnections:
   .byte $35, $ff ; room 4
   .byte $4f, $ff ; room 5
 
-; Enemy data: 8 enemy records across 6 rooms, 4 bytes each (type,x,y,dir).
+; Enemy data: 6 enemy records across 6 rooms, 4 bytes each (type,x,y,dir).
 LEVEL3_EnemyDataTable:
-  .byte 0, 135, 48, -1
-  .byte 5, 91, 18, 1
   .byte 1, 127, 60, 1
   .byte 5, 27, 18, 1
   .byte 0, 23, 108, 1
@@ -41,8 +39,8 @@ LEVEL3_EnemyDataTable:
 ; Per-room enemy records: ptr_lo, ptr_hi, count, bottom_color.
 LEVEL3_RoomEnemies:
   .byte <(LEVEL3_EnemyDataTable), >(LEVEL3_EnemyDataTable), 0, $00 ; room 0
-  .byte <(LEVEL3_EnemyDataTable+0), >(LEVEL3_EnemyDataTable+0), 2, $00 ; room 1
-  .byte <(LEVEL3_EnemyDataTable+8), >(LEVEL3_EnemyDataTable+8), 2, $00 ; room 2
-  .byte <(LEVEL3_EnemyDataTable+16), >(LEVEL3_EnemyDataTable+16), 2, $00 ; room 3
-  .byte <(LEVEL3_EnemyDataTable+24), >(LEVEL3_EnemyDataTable+24), 2, $00 ; room 4
+  .byte <(LEVEL3_EnemyDataTable), >(LEVEL3_EnemyDataTable), 0, $00 ; room 1
+  .byte <(LEVEL3_EnemyDataTable+0), >(LEVEL3_EnemyDataTable+0), 2, $00 ; room 2
+  .byte <(LEVEL3_EnemyDataTable+8), >(LEVEL3_EnemyDataTable+8), 2, $00 ; room 3
+  .byte <(LEVEL3_EnemyDataTable+16), >(LEVEL3_EnemyDataTable+16), 2, $00 ; room 4
   .byte <(LEVEL3_EnemyDataTable), >(LEVEL3_EnemyDataTable), 0, $00 ; room 5

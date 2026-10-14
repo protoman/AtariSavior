@@ -105,8 +105,18 @@ private:
     void DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int dir) const;
     // Miner + enemies + lamps in the active room (flicker budget).
     int CountRoomElements() const;
+    // Same count for an explicit room index (vcrunch rule scans every room
+    // that shares a model).
+    int CountRoomElementsIn(int roomIdx) const;
+    // True if the active room's model contains a VCRUNCH or HCRUNCH cell.
+    bool RoomHasCrunch() const;
+    // True if any room using this model already has objects (vcrunch
+    // shutter owns the ball sprite slot — 2026-10-13 plan Phase A).
+    bool ModelHasRoomObjects(const hero::ModelData& model) const;
     // False + warning dialog if adding would exceed kMaxRoomElements.
-    bool AllowAddElement();
+    // asEnemy=true relaxes the door-room cap (a door room allows a single
+    // enemy); every other element kind stays blocked in a door room.
+    bool AllowAddElement(bool asEnemy = false);
     // True if any miner/enemy/lamp already occupies this tile row (room space).
     bool ElementInRow(int tileY) const;
     // False + warning if row already has an element (except optional ignoreY

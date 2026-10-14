@@ -67,7 +67,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $8A | DropTarget | Spawn drop-in target Y (0 = idle; **$FF = title-screen sentinel**, valid targets ≤ 191). Was MapPtrPad1 dead pad — slot kept so the sequential block doesn't shift |
 | $8B | CollisionX | Collision/mirror scratch |
 | $8C | CollisionCellX | Player max tile col |
-| $8D | CollisionCellY | Player top tile row |
+| $8D | CollisionCellY | Player top tile row; **time-partitioned**: VBL `StageBandTab` stages the P2b door stripe color ($80 = none / $1C = yellow) for the cave band-setup line's `COLUP1` write; overscan PHM's prologue restages it as the top-row temp AFTER the kernel — lifecycles never overlap |
 | $8E | CollisionEndX | Player min tile col; **time-partitioned**: overscan PHM/LWC/blast/laser stage+read their own min-col, and VBL `StageBandTab` stages the D6 M1X (TilePF0+14, 0=none) for `PositionBallM1`'s same-VBL read — window closes before overscan restages, so the alias never crosses frames |
 | $8F | CollisionEndY | Player bottom tile row |
 | $90 | RoomRectsLo | Room rect list ptr lo |
@@ -134,6 +134,7 @@ sequential byte would be `$BC`, but `$BD+` are explicit EQUs and `$BC` is
 | $89 + $CC-$DF | Rect cache | **count + rects0-4 UNIFORM (S3.2)** — count `RcBase=$89` (sequential decl), walk base `RcW1=$CC`, stride 4 for all five rects (Y=0..19): no windows, no `.Stage3` (both deleted), mask index4 = `$00` table entry (rect4 never in WallMask). rect4 x,y,w,h = `$DC-$DF`. ABW tables EQU-derived — cannot go stale. **STOMP-ZONE RULE:** every persistent byte here must stay < `$E0` — the first S3.2 layout ended at `$E0` and bank1's `scorePtr1` lo (leading zero) zeroed rect4.h every HUD frame → probes passed through rect4 walls (tentacle walked inside walls). Guarded by `check_equ_sync` (`RcW1+19 ≤ $DF`). FetchPtr lives at `$E5` (fold operand byte-guarded: FOLD_BYTES). |
 | $E2-$E4 | EnemyRamY | Live Y, private 3B (S3.4) — sits in the bank1 stomp zone but window-safe (write/read between stomps — kernel ZP contract block). |
 | $E5-$E6 | FetchPtr | Fold-indirect pointer (moved `$E0→$E5` S3.2 to free `$E0`, then out of the cache entirely). Staged-only: batch stage→read inside one VBL/overscan window; bank1 `scorePtr3+1/scorePtr4` share the bytes in HUD. Fold operand is byte-guarded (`FOLD_BYTES` in verify_build). |
+| $EA-$EC | VcrState/VcrNext/VcrBand | Vcrunch shutter staging (plan: `vcrunch_shutter_plan.md` Phase C). `$EA` VcrState (current slice state, idle `0`), `$EB` VcrNext (staged target, idle `0`; kernel consumes to `$05`), `$EC` VcrBand (active band, idle `$FF`; armed = `$01` — middle band, rule R1 2026-10-14). Staged by bank2 `PhaseBlink` prologue + `VcrShutter` arm every gameplay VBL from the `EnemyRamP` clock; consumed by the band1 `.Row` slice dispatch (`RowSlice`) **before** the bank0 `jmp $FC68` HUD fold — staged-only window (rule 6), same time-partition class as `$ED`/`$E5`. In the HUD table: `$EA/$EB` = scorePtr6 lo/hi, `$EC` = scbrdCnt — HUD rebuilds after the cave read (sample $EA-$EC AT the fold, not at StartFrame — by then bank1 has stomped). Persistent gameplay state stays at `$EA+` only because the stage runs every VBL (do not rely on values across a HUD frame). Phase D: the hazard recolor writes `ColupfBuf` `$E7` (= scorePtr4 hi window = the `$FD` seen post-HUD) in `VcrShutter` — same fold-window sampling applies. |
 | $ED | BandTab | Phase 3 asym-ball band gate bytes (3B, `$ff` = ball band). Staged by bank2 `StageBandTab` (BuildColupF tail) every VBL; read by `.Row`'s `lda BandTab,X / sta ENABL`; bank1 HUD `scbrdTmp` stomps `$ED` only after the cave read (staged-only, rule 6). Bank2 mirrors the EQU (`check_equ_sync` pins both to kernel). |
 | $E7-$F2 | ColupfBuf | Final COLUPF × 12 rows — but only rows 0-2 ($E7-$E9) are ever written (TILE_ROWS=3; rows 9-11 are the bombs' own bytes, no overlap machinery since S3.0b). Bank1 clobbers $E7-$EF during HUD; VBLANK rebuilds every frame (S2.1 blocker, see progress doc). |
 | $F3 | ScoreTh | Shared with bank1 score |
@@ -163,8 +164,8 @@ only and nothing else touched `$F0-$F2` between save and restore.
 | $AC | PlayerLives | Shared lives | same |
 | $AD | Temp | Bank1 scratch | bank0 TickCounter (different phase) |
 | $AE | BarLevel | Shared bar | same |
-| $E0-$EB | scorePtr1-6 | 6 digit ptrs | stomps ColupfBuf[0-2] ($E7-$E9) + EnemyRamY ($E2-$E4) every frame — both safe by rebuild/write window (see above); $E5/$E6 additionally time-partition with kernel `FetchPtr` (S3.2: bank0 stages only in VBL/overscan batches, HUD rebuilds after) |
-| $EC | scbrdCnt | Score loop | ColupfBuf dead-row overlap OK |
+| $E0-$EB | scorePtr1-6 | 6 digit ptrs | stomps ColupfBuf[0-2] ($E7-$E9) + EnemyRamY ($E2-$E4) every frame — both safe by rebuild/write window (see above); $E5/$E6 additionally time-partition with kernel `FetchPtr` (S3.2: bank0 stages only in VBL/overscan batches, HUD rebuilds after); $EA/$EB additionally = kernel `VcrState`/`VcrNext` (cave slice dispatch consumed before this fold) |
+| $EC | scbrdCnt | Score loop | ColupfBuf dead-row overlap OK; also kernel `VcrBand` (Vcrunch active band) — same pre-fold consume as $EA/$EB |
 | $ED | scbrdTmp | Score temp | ColupfBuf dead-row overlap OK; also kernel `BandTab` (Phase 3 band gate bytes) — staged every VBL and read by the cave BEFORE this HUD stomp, so the time-partition is safe (staged-only, see rule 6) |
 | $EE | DelayCnt | Power-bar delay | ColupfBuf dead-row overlap OK |
 | $EF | FineCnt | Power-bar fine | ColupfBuf dead-row overlap OK |

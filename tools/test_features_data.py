@@ -2,17 +2,20 @@
 """New-tile data pipeline fixtures (ai_new_tiles plan Phase 1 / CHECK 1).
 
 Covers:
-   1. feature chars flow: grid tiles 10/11/12 -> P/V/C rows, solid for
-      pf_values, kept off the hot-band coercion;
+   1. feature chars flow: grid tiles 10/11/12 -> P/V/C on the middle
+      band (row 1, rule 2026-10-14), solid for pf_values, kept off the
+      hot-band coercion; hot + phase stays mutually exclusive (vcrunch
+      now ALLOWED on hot — user rule 2026-10-14, MetaB b6 flags it);
    2. convert_room.lines emits b7 feature records in the hot stream:
       $80 per phase cell, $81 vcrunch bbox, $82 hcrunch band prefix —
-      and the hot count byte includes them;
-   3. hcrunch rejects (fail loudly): cells spanning bands, non-prefix
-      cols, hot middle band (rows_from_json);
+      all carrying y=1, and the hot count byte includes them;
+   3. special-feature rejects (fail loudly): P/V/C off row 1 (both
+      layers), hcrunch spanning bands / non-prefix cols, door XOR
+      feature exclusivity, mixed P/V/C;
    4. LOCKED_DOOR rejects in the grid (rows_from_json);
-   5. door: resolve passes on side 0, model_door_flag, MetaB b7 set
-      (ball_col+1 | $80), mixed side-0 tiles rejected, door on side 1 /
-      hot band rejected;
+   5. door (row-1 patch only): resolve passes on side 0, model_door_flag,
+      MetaB b7 set (ball_col+1 | $80), mixed side-0 tiles rejected, door
+      on side 1 / hot band rejected;
    6. legacy emission (no feature chars, no door) stays byte-identical
       to the plain call;
    7. KEY = enemy type 6 flows through _enemy_tables.
@@ -50,12 +53,14 @@ def rows_of(m):
 def emitted(m, door=None):
     left = rows_of(m)
     res = convert_level.resolve_asym_patches(m, left)
-    asym, ball_x, m1_x = res if res else (None, 0, 0)
+    asym, ball_x, m1_x, m1_door = res if res else (None, 0, 0, False)
     if door is None:
         door = convert_level.model_door_flag(m)
     return convert_room.lines(left, prefix=f"M{m['id']}", source="test",
                               asym_rows=asym, asym_ball_x=ball_x,
-                              asym_m1_x=m1_x, door=door)
+                              asym_m1_x=m1_x, door=door,
+                              m1_door=m1_door,
+                              hot=bool(m.get("mid_band_type")))
 
 
 def byte_line(lines, label):
@@ -100,50 +105,71 @@ def expect_reject(fn, needle):
 def main() -> int:
     open10 = ["." * 10] * 3
 
-    # --- 1. feature chars: grid -> rows, PF-solid, hot off --------------
-    m = model(grid(["P.V.C.....", "#" * 10, ".........."]),
-              mid_band_type=1)
+    # --- 1. feature chars: middle band (row 1), PF-solid, hot off -------
+    # Special features live ONLY on row 1 (rule 2026-10-14); phase is
+    # mutually exclusive with hot here, so no hot flag in this model.
+    m = model(grid(["." * 10, "P.V.C.....", "." * 10]),
+              mid_band_type=0)
     rows = rows_of(m)
-    assert rows[0] == "P.V.C.....", rows
-    assert rows[1] == "H" * 10, rows          # plain walls go hot
-    pf = convert_room.pf_values(rows[0])
+    assert rows[1] == "P.V.C.....", rows
+    assert rows[0] == "." * 10 and rows[2] == "." * 10, rows
+    pf = convert_room.pf_values(rows[1])
     # P at cell0 (pairs 0-1), V cell2 (4-5), C cell4 (8-9)
     assert pf == (0x30, 0xCC, 0x00), pf
+    # plain walls on the hot band still go H (no features in that model)
+    walls = model(grid(["." * 10, "#" * 10, "." * 10]), mid_band_type=1)
+    assert rows_of(walls)[1] == "H" * 10, rows
     # feature tile keeps its char on the hot band (hcrunch allowed there)
     m_hotfeat = model(grid(["." * 10, "C.." + "." * 7, "." * 10]),
                       mid_band_type=1)
     assert rows_of(m_hotfeat)[1] == "C.." + "." * 7
 
-    # --- 2. feature records in the hot stream ---------------------------
-    # phase cells (0,0) and (0,2): expect two $80 records
+    # --- 2. feature records in the hot stream (all y=1) -----------------
+    # phase cells (1,0) and (1,2): expect two $80 records on row 1
     count, recs = hot_records(emitted(model(
-        grid(["P.P." + "." * 6, "." * 10, "." * 10]))))
-    assert count == 2 and recs == [(0x80, 0, 0, 2, 1), (0x80, 4, 0, 2, 1)], \
+        grid(["." * 10, "P.P." + "." * 6, "." * 10]))))
+    assert count == 2 and recs == [(0x80, 0, 1, 2, 1), (0x80, 4, 1, 2, 1)], \
         (count, recs)
 
-    # vcrunch bbox: cells (2,0),(2,1),(1,0) -> x0 y1 w4 h2
+    # vcrunch bbox: cells (1,0..2) -> x0 y1 w6 h1 (the sprite shutter
+    # slices only the middle band)
     count, recs = hot_records(emitted(model(
-        grid(["." * 10, "VV" + "." * 8, "V.." + "." * 7]))))
-    assert count == 1 and recs == [(0x81, 0, 1, 4, 2)], (count, recs)
+        grid(["." * 10, "VVV" + "." * 7, "." * 10]))))
+    assert count == 1 and recs == [(0x81, 0, 1, 6, 1)], (count, recs)
 
-    # hcrunch prefix cols 0-3 on band 2 -> one $82 record
-    count, recs = hot_records(emitted(model(
-        grid(["." * 10, "." * 10, "CCCC" + "." * 6]))))
-    assert count == 1 and recs == [(0x82, 0, 2, 8, 1)], (count, recs)
+    # special features off row 1 = hard error (entry/exit corridors)
+    expect_reject(
+        lambda: emitted(model(grid(["." * 10, "." * 10, "V" + "." * 9]))),
+        "special features live on the middle band")
+    expect_reject(
+        lambda: emitted(model(grid(["P" + "." * 9, "." * 10, "." * 10]))),
+        "special features live on the middle band")
+    # convert_room's own band check (belt for direct, non-JSON callers)
+    expect_reject(
+        lambda: convert_room.lines(["V" + "." * 9, "." * 10, "." * 10],
+                                   prefix="M91", source="test"),
+        "vcrunch cells at rows")
 
-    # hot rect + feature share the stream: band1 wall (hot) + phase cell
+    # hcrunch off row 1 = hard error
+    expect_reject(
+        lambda: emitted(model(grid(["." * 10, "." * 10, "CCCC" + "." * 6]))),
+        "special features live on the middle band")
+    # hcrunch prefix cols 0-3 on the middle band -> one $82 record
     count, recs = hot_records(emitted(model(
-        grid(["P" + "." * 9, "#" * 10, "." * 10]), mid_band_type=1)))
-    assert count >= 2 and recs[1][0] == 0x80, (count, recs)
+        grid(["." * 10, "CCCC" + "." * 6, "." * 10]))))
+    assert count == 1 and recs == [(0x82, 0, 1, 8, 1)], (count, recs)
 
     # --- 3. hcrunch rejects: span bands / non-prefix; hot band ALLOWED ----
+    # Span needs two rows — rows_from_json rejects those first, so call
+    # convert_room directly (belt layer for non-JSON callers).
     expect_reject(
-        lambda: emitted(model(grid(["." * 10, "CC" + "." * 8,
-                                    "CC" + "." * 8]))),
-        "span bands")
+        lambda: convert_room.lines(["." * 10, "CC" + "." * 8,
+                                    "CC" + "." * 8],
+                                   prefix="M91", source="test"),
+        "crunch band must be the middle band")
     expect_reject(
-        lambda: emitted(model(grid(["." * 10, "." * 10,
-                                    ".C.C" + "." * 6]))),
+        lambda: emitted(model(grid(["." * 10, ".C.C" + "." * 6,
+                                    "." * 10]))),
         "not a contiguous prefix")
     # hot band + hcrunch = allowed (user rule 2026-10-12): C cells keep
     # their char, record still emitted
@@ -151,15 +177,41 @@ def main() -> int:
         grid(["." * 10, "CCCC" + "." * 6, "." * 10]), mid_band_type=1)))
     assert count == 1 and recs == [(0x82, 0, 1, 8, 1)], (count, recs)
 
-    # phase/vcrunch on the hot middle band = hard error (mutually exclusive)
+    # phase on the hot middle band = hard error (mutually exclusive)
     expect_reject(
         lambda: emitted(model(grid(["." * 10, "P" + "." * 9, "." * 10]),
                               mid_band_type=1)),
         "phase on the hot middle band")
+    # vcrunch on the hot middle band = ALLOWED (user rule 2026-10-14:
+    # both crunch walls respect the hot flag) — MetaB b6 carries it.
+    # All-V row = no 'H' cell, so the flag must ride the explicit hot=.
+    m_vhot = model(grid(["." * 10, "." * 9 + "V", "." * 10]),
+                   mid_band_type=1)
+    assert rows_of(m_vhot)[1] == "." * 9 + "V", rows_of(m_vhot)
+    vb = byte_line(emitted(m_vhot), "M91MetaB:")
+    assert vb == [0xC0], f"vcrunch+hot MetaB {vb} != [C0] (b7 shutter|b6 hot)"
+    # same model cold (no flag) -> $80 only
+    vcold = model(grid(["." * 10, "." * 9 + "V", "." * 10]))
+    assert byte_line(emitted(vcold), "M91MetaB:") == [0x80]
+    # vcrunch cannot share the M1 slot with a side-1 strip / door
+    # (M1 envelope: patch col open in its band, walls in the others)
     expect_reject(
-        lambda: emitted(model(grid(["." * 10, "." * 9 + "V", "." * 10]),
-                              mid_band_type=1)),
-        "vcrunch on the hot middle band")
+        lambda: emitted(model(grid(["#" + "." * 9, "." * 9 + "V",
+                                    "#" + "." * 9]),
+                              asym_patches=[[1, 0, 1, 1]])),
+        "shutter owns the M1 slot")
+
+    # exclusivity (rule 2026-10-14): door XOR phase XOR vcrunch XOR hcrunch
+    expect_reject(
+        lambda: emitted(model(grid(["." * 10, "P" + "." * 9, "." * 10]),
+                              asym_patches=[[1, 3,
+                                             convert_level.LOCKED_DOOR]])),
+        "special features are alone per room")
+    expect_reject(
+        lambda: emitted(model(grid(["." * 10,
+                                    "P" + "." * 4 + "V" + "." * 4,
+                                    "." * 10]))),
+        "mixed special features")
 
     # --- 4. LOCKED_DOOR in the grid rejects ------------------------------
     door_tiles = grid(["." * 10] * 3)
@@ -170,9 +222,10 @@ def main() -> int:
         "LOCKED_DOOR")
 
     # --- 5. door: resolve + MetaB b7 + envelope rejects ------------------
+    # The door patch sits on row 1 only (rule 2026-10-14) — two stacked
+    # door bands are impossible under that rule, so one patch.
     door_model = model(grid(["." * 10] * 3),
-                       asym_patches=[[0, 3, convert_level.LOCKED_DOOR],
-                                     [2, 3, convert_level.LOCKED_DOOR]])
+                       asym_patches=[[1, 3, convert_level.LOCKED_DOOR]])
     assert convert_level.model_door_flag(door_model)
     lines = emitted(door_model)
     # ball col 3 -> ball_col+1 = 4, | $80
@@ -183,18 +236,52 @@ def main() -> int:
     assert not convert_level.model_door_flag(plain)
     pb = byte_line(emitted(plain), "M91MetaB:")
     assert pb == [0x04] and not (pb[0] & 0x80), pb
-    # mixed side-0 tiles (door + plain patch)
+    # mixed side-0 tiles (door on row 1 + plain patch elsewhere)
     expect_reject(
         lambda: emitted(model(grid(["." * 10] * 3),
-                              asym_patches=[[0, 3, convert_level.LOCKED_DOOR],
+                              asym_patches=[[1, 3, convert_level.LOCKED_DOOR],
                                             [2, 3, 1]])),
         "must ALL be")
-    # door as an M1 patch
+    # --- 5b. side-1 door: MetaA b3 + envelope (P2b) ----------------------
+    # M1 envelope: col open in the patched band, wall in the others.
+    left1 = ["." * 10, "...#......", "...#......"]   # patch row 0 (plain)
+    left1d = ["...#......", "." * 10, "...#......"]  # patch row 1 (door)
+    m1door = model(grid(left1d),
+                   asym_patches=[[1, 3, convert_level.LOCKED_DOOR, 1]])
+    assert convert_level.model_m1_door_flag(m1door)
+    assert not convert_level.model_door_flag(m1door), \
+        "side-1 door must not set MetaB b7"
+    l1 = emitted(m1door)
+    # m1 col 3 -> m1_col+1 = 4 -> $40 | b3 door
+    assert byte_line(l1, "M91MetaA:") == [0x48], \
+        f"side-1 door MetaA {byte_line(l1, 'M91MetaA:')} != [48]"
+    assert byte_line(l1, "M91MetaB:") == [0x00], \
+        f"side-1 door MetaB {byte_line(l1, 'M91MetaB:')} != [00]"
+    # plain M1 patch keeps MetaA b3 clear
+    plain_m1 = model(grid(left1), asym_patches=[[0, 3, 1, 1]])
+    pa = byte_line(emitted(plain_m1), "M91MetaA:")
+    assert pa == [0x40] and not (pa[0] & 0x08), pa
+    # mixed side-1 tiles (door on row 1 + plain M1 on row 0) — both
+    # patched bands open, remaining band wall (M1 envelope) so the
+    # no-mix check is what fires
     expect_reject(
-        lambda: emitted(model(grid(["#" * 10] * 3),
-                              asym_patches=[[0, 3, convert_level.LOCKED_DOOR,
-                                             1]])),
-        "SIDE-0")
+        lambda: emitted(model(grid(["." * 10, "." * 10, "...#......"]),
+                              asym_patches=[[1, 3, convert_level.LOCKED_DOOR,
+                                             1],
+                                            [0, 3, 1, 1]])),
+        "M1 patches must ALL be LOCKED_DOOR")
+    # m1_door flag without an M1 strip
+    expect_reject(
+        lambda: convert_room.lines(["." * 10] * 3, prefix="M91",
+                                   source="test", m1_door=True),
+        "needs an M1 patch strip")
+    # side-1 door on the hot middle band (same reject as side 0)
+    expect_reject(
+        lambda: emitted(model(grid(left1),
+                              asym_patches=[[1, 3, convert_level.LOCKED_DOOR,
+                                             1]],
+                              mid_band_type=1)),
+        "hot middle band")
     # door on the hot middle band
     expect_reject(
         lambda: emitted(model(grid(["." * 10] * 3),

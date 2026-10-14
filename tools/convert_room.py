@@ -142,7 +142,9 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
           asym_ball_x: int = 0,
           asym_m1_x: int = 0,
           hot_m1: list[tuple[int, int]] | None = None,
-          door: bool = False) -> list[str]:
+          door: bool = False,
+          m1_door: bool = False,
+          hot: bool | None = None) -> list[str]:
     """Build the asm lines for a grid (shared by per-room and per-model emission).
 
     asym_rows (D2/D3, models only): resolved right-half rows in right_col
@@ -158,16 +160,23 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     would not even pulse its band). $00 = no blastable parent → never
     dies with a wall (the strip dies via EnemyDeadMask b4 instead).
     After the TilePF tables EVERY model gets a 2-byte packed meta block:
-        M<id>MetaA:  .byte ((m1_col+1)<<4) | band_mask
+        M<id>MetaA:  .byte ((m1_col+1)<<4) | band_mask | (b3 = left door)
                      (b0-2 = band0/1/2 ENABL gates: bit set = band differs
                       from its mirror = ball band; staged to BandTab $ED-$EF
-                      as $01/$00. m1_col+1: 0 = no M1 patch)
-        M<id>MetaB:  .byte (ball_col+1) or 0, b7 = async door
+                      as $01/$00. m1_col+1: 0 = no M1 patch. b3 set = the
+                      M1 strip is a LOCKED_DOOR async patch — P2b sizes M1
+                      to 4 clk and the key (not the bomb) opens it.)
+        M<id>MetaB:  .byte (ball_col+1) or 0, b7 = async door/vcrunch,
+                     b6 = mid_band_type hot (rule 2026-10-14)
                      (ball_col: BallX = 87+8*ball_col, staged to Temp $88
                       via 8*(ball_col+1)+86; 0 = no ball = symmetric.
                       b7 set = the model's side-0 strip is a LOCKED_DOOR
-                      async patch — P2 stages CTRLPF $25 instead of $35.
-                      Staging must mask b7 out of the ball-col math.)
+                      async patch — P2 stages CTRLPF $25 instead of $35
+                      (also set for vcrunch: the shutter kill gate).
+                      Staging must mask b7/b6 out of the ball-col math.
+                      b6 set = the model's mid_band_type is Hot: the
+                      shutter/crunch kill tests use touch semantics (any
+                      part of the drawn block) instead of containment.)
     bank2 reads this block (StageBandTab in the BuildColupF tail) — a bank0
     (RoomPF0Lo) read would fetch bank0's $F9xx zero pad. M1X = 8*(m1_col+1)-1
     = 7+8*left_col, staged to CollisionEndX $8E (kill-gated by
@@ -231,21 +240,43 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
             elif cell == "C":
                 c_cells.append((r, c))
     feats: list[str] = []
+    special_kinds = {ch for ch, cells in (("P", phase_cells),
+                                          ("V", v_cells),
+                                          ("C", c_cells)) if cells}
+    if door and special_kinds:
+        raise ValueError(
+            f"{source}: door model also has feature tile(s) "
+            f"{sorted(special_kinds)} — special features are alone per room "
+            "(door XOR phase XOR vcrunch XOR hcrunch)")
+    if len(special_kinds) > 1:
+        raise ValueError(
+            f"{source}: mixed special features {sorted(special_kinds)} — "
+            "special features are alone per room "
+            "(door XOR phase XOR vcrunch XOR hcrunch)")
     for r, c in phase_cells:
+        if r != 1:
+            raise ValueError(
+                f"{source}: phase cell at row {r} — special features live "
+                "on the middle band (row 1)")
         feats.append(f"  .byte $80, {2 * c}, {r}, 2, 1  ; phase cell")
     if v_cells:
         rs = [r for r, _ in v_cells]
         cs = [c for _, c in v_cells]
+        if any(r != 1 for r in rs):
+            raise ValueError(
+                f"{source}: vcrunch cells at rows {sorted(set(rs))} — the "
+                "sprite shutter slices only the middle band (row 1; "
+                "top/bottom bands are entry/exit corridors)")
         feats.append(
             f"  .byte $81, {2 * min(cs)}, {min(rs)}, "
             f"{2 * (max(cs) - min(cs) + 1)}, {max(rs) - min(rs) + 1}  "
             f"; vcrunch bbox")
     if c_cells:
         bands = {r for r, _ in c_cells}
-        if len(bands) != 1:
+        if bands != {1}:
             raise ValueError(
-                f"{source}: hcrunch cells span bands {sorted(bands)} — the "
-                "crunch band must live in exactly ONE row")
+                f"{source}: hcrunch cells at rows {sorted(bands)} — the "
+                "crunch band must be the middle band (row 1)")
         cols = sorted(c for _, c in c_cells)
         if cols != list(range(cols[-1] + 1)):
             raise ValueError(
@@ -305,25 +336,49 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     if asym_m1_x:
         m1_col_plus = ((asym_m1_x - 7) >> 3) + 1
     out.append(f"{prefix}MetaA:")
+    if m1_door and not asym_m1_x:
+        raise ValueError(
+            f"{source}: LOCKED_DOOR side 1 needs an M1 patch strip")
     out.append(
-        f"  .byte ${(m1_col_plus << 4) | band_mask:02x}"
-        "                  ; (m1_col+1)<<4 | band mask")
+        f"  .byte ${(m1_col_plus << 4) | band_mask | (0x08 if m1_door else 0):02x}"
+        "                  ; (m1_col+1)<<4 | band mask"
+        + (" | $08 left door" if m1_door else ""))
     ball_col_plus = 0
     if asym_ball_x:
         ball_col_plus = ((asym_ball_x - 87) >> 3) + 1
+    # Sprite shutter (vcrunch_shutter_plan Phase B): a vcrunch model packs
+    # MetaB b7 so bank2 PHMOverlay's miss path runs the shutter kill test
+    # (the punched-open cell no longer trips the PF cell walk). b7 shares
+    # its slot with the door flag — door+feature is rejected via "special
+    # features are alone per room" above. The M1 slot cannot be shared
+    # (the shutter stages CollisionEndX for its mirror M1 each frame):
+    # an M1 strip patch or side-1 door would fight it every frame.
+    # A side-0 ball patch IS allowed (user model 2026-10-14): the shutter
+    # owns Temp $88/BallX while it runs; the static band marker yields.
+    if hot is None:
+        hot = any("H" in row for row in rows)
+    has_vcrunch = any(cell == "V" for row in rows for cell in row)
+    if has_vcrunch and (m1_door or asym_m1_x):
+        raise ValueError(
+            f"{source}: vcrunch cannot share a model with an M1 strip/side-1 "
+            f"door (the shutter owns the M1 slot every frame)")
     if door:
         if not asym_ball_x:
             raise ValueError(
                 f"{source}: LOCKED_DOOR needs a side-0 (ball) patch strip")
         out.append(f"{prefix}MetaB:")
         out.append(
-            f"  .byte ${ball_col_plus | 0x80:02x}"
-            "                  ; (ball_col+1) | $80 async door")
+            f"  .byte ${ball_col_plus | 0x80 | (0x40 if hot else 0):02x}"
+            "                  ; (ball_col+1) | $80 async door"
+            + (" | $40 hot" if hot else ""))
     else:
         out.append(f"{prefix}MetaB:")
         out.append(
-            f"  .byte ${ball_col_plus:02x}"
-            "                  ; (ball_col+1), 0 = no ball")
+            f"  .byte ${ball_col_plus | (0x80 if has_vcrunch else 0) | (0x40 if hot else 0):02x}"
+            "                  ; (ball_col+1)"
+            + (" | $80 vcrunch shutter" if has_vcrunch else
+               ", 0 = no ball")
+            + (" | $40 hot" if hot else ""))
 
     if asym_rows is not None:
         if len(asym_rows) != len(rows) or any(
@@ -339,9 +394,14 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
                 f"${t[register]:02x}" for t in r_triples))
         r_rects = find_rectangles(asym_rows, solids="#HPVC")
         if len(r_rects) > 4:
+            found = ", ".join(
+                f"(col {x}, row {y}, {w}x{h})" for x, y, w, h in r_rects)
             raise ValueError(
                 f"{source}: {len(r_rects)} right wall rects > WallMask budget 4 "
-                f"(Risk 1 — do not silently wrap)")
+                f"(Risk 1 — do not silently wrap); found: {found}. Merge the "
+                "wall blocks on the right half (paint the gap between them, or "
+                "erase the stray cell) — WallMask (BombPacked b3-6) has only 4 "
+                "destroy bits")
         # Phase 4 item 2's COMBINED left+right <= 4 is deferred: plan 4.2
         # gates it on 'once flag-gated masks exist' (right rects entering the
         # runtime cache). RightRects are ROM-only today (cell-walk PHM + ball

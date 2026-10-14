@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VCS Sprite Editor</title>
+<style>
+  :root {
+    --walnut: #4a3322;
+    --walnut-light: #6b4a30;
+    --panel: #26221f;
+    --panel-2: #312c28;
+    --ridge: #3a3430;
+    --silver: #c4bfb5;
+    --text: #ebe5da;
+    --muted: #a39b8f;
+    --amber: #e3a53c;
+    --focus: #f2c46b;
+    --font: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+    --mono: "Cascadia Mono", "Consolas", "SF Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--panel);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.4;
+  }
+  button, select, input, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  /* Woodgrain strip across the top, like the console's front panel */
+  header {
+    display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
+    padding: 14px 22px 12px;
+    background:
+      repeating-linear-gradient(90deg, rgba(0,0,0,.10) 0 2px, transparent 2px 9px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 1px, transparent 1px 23px),
+      linear-gradient(180deg, var(--walnut-light), var(--walnut));
+    border-bottom: 3px solid #1d1916;
+  }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: .01em; }
+  header p { margin: 0; color: #d9cbb6; font-size: 14px; }
+  header .ver { font-size: 13px; font-weight: 400; color: #d9cbb6; font-family: var(--mono); margin-left: 6px; vertical-align: 2px; }
+
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 0;
+    min-height: calc(100% - 58px);
+  }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  /* The TV */
+  .stage {
+    padding: 22px;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    background: repeating-linear-gradient(0deg, var(--panel) 0 3px, #2a2622 3px 6px);
+  }
+  .tv {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 16px;
+    background: #1c1917;
+    border-radius: 14px;
+    box-shadow: inset 0 0 0 2px #3b3530, 0 8px 24px rgba(0,0,0,.45);
+    max-width: 100%;
+  }
+  .strips { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+  .strips small { color: var(--muted); font-size: 11px; writing-mode: vertical-rl; transform: rotate(180deg); }
+  canvas { display: block; touch-action: none; }
+  #screen { cursor: crosshair; background: #000; }
+  #strip { cursor: pointer; background: #000; }
+  .status { color: var(--muted); font-size: 14px; text-align: center; min-height: 1.4em; }
+
+  /* Control panel */
+  aside {
+    background: var(--panel-2);
+    border-left: 3px solid #1d1916;
+    padding: 6px 18px 24px;
+    overflow-y: auto;
+  }
+  section { padding: 14px 0; border-bottom: 1px solid var(--ridge); }
+  section:last-child { border-bottom: 0; }
+  h2 { margin: 0 0 10px; font-size: 16px; font-weight: 600; color: var(--silver); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  .row > label:first-child { width: 112px; color: var(--muted); }
+
+  /* Segmented switches, echoing the console's rocker switches */
+  .seg { display: inline-flex; border-radius: 6px; overflow: hidden; box-shadow: inset 0 0 0 1px #4a433c; }
+  .seg button {
+    border: 0; background: #2b2724; padding: 5px 11px; cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid #4a433c; }
+  .seg button[aria-pressed="true"] {
+    background: linear-gradient(180deg, #d9d4ca, #a9a398); color: #1e1a17; font-weight: 600;
+  }
+  .seg button:disabled { opacity: .4; cursor: not-allowed; }
+
+  .btn {
+    border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer;
+    background: linear-gradient(180deg, #d9d4ca, #a9a398); color: #1e1a17; font-weight: 600;
+  }
+  .btn.quiet { background: #3a3430; color: var(--text); font-weight: 400; box-shadow: inset 0 0 0 1px #4f4740; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  input[type="number"], select, input[type="text"] {
+    background: #1f1b18; border: 1px solid #4f4740; border-radius: 6px; padding: 4px 8px; width: 90px;
+  }
+  input[type="text"] { width: 140px; }
+
+  /* Palette */
+  .targets { display: flex; gap: 10px; margin-bottom: 10px; }
+  .target {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; cursor: pointer;
+    background: #2b2724; border: 2px solid transparent; flex: 1;
+  }
+  .target[aria-pressed="true"] { border-color: var(--amber); }
+  .chip { width: 26px; height: 18px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); }
+  .target span.code { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  #palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+  #palette button {
+    aspect-ratio: 2 / 1; border: 0; padding: 0; cursor: pointer; border-radius: 2px;
+  }
+  #palette button.sel-pf { outline: 2px solid var(--amber); outline-offset: -1px; }
+  #palette button.sel-bk { box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3px #000; }
+  .hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+
+  /* Export */
+  .export { padding: 18px 22px 28px; background: var(--panel-2); border-top: 3px solid #1d1916; grid-column: 1 / -1; }
+  .export h2 { font-size: 18px; }
+  textarea {
+    width: 100%; height: 300px; resize: vertical;
+    background: #171412; border: 1px solid #4f4740; border-radius: 8px; padding: 10px 12px;
+    font-family: var(--mono); font-size: 13px; line-height: 1.45; color: #e8e0d2;
+  }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  /* ---- Sprite editor additions ---- */
+  .work { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; justify-content: center; }
+  .panelbox { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+  .panelbox h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--silver); align-self: flex-start; }
+  #grid { cursor: crosshair; background: #000; }
+  #lineStrip { cursor: pointer; background: #000; }
+  #preview { cursor: grab; background: #000; }
+  #preview.dragging { cursor: grabbing; }
+  .readout { color: var(--muted); font-size: 13px; font-family: var(--mono); }
+
+  /* Frames strip: a row of thumbnails like film frames */
+  .frames {
+    width: 100%; max-width: 1100px;
+    background: #1c1917; border-radius: 12px; padding: 10px 12px 12px;
+    box-shadow: inset 0 0 0 2px #3b3530;
+  }
+  .frames-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .frames-head h3 { margin: 0 8px 0 0; font-size: 14px; color: var(--silver); font-weight: 600; }
+  .thumbs { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 6px; }
+  .thumb {
+    flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 6px; border-radius: 8px; border: 2px solid transparent; background: #26221f; cursor: pointer; color: var(--muted);
+    font-size: 12px; font-family: var(--mono);
+  }
+  .thumb[aria-current="true"] { border-color: var(--amber); color: var(--text); }
+  .thumb canvas { display: block; image-rendering: pixelated; }
+  .btn.small { padding: 4px 9px; font-size: 13px; }
+  .spritelist { display: flex; flex-direction: column; gap: 4px; max-height: 190px; overflow-y: auto; margin-bottom: 8px; }
+  .spritelist button {
+    display: flex; justify-content: space-between; gap: 8px; text-align: left; cursor: pointer;
+    background: #2b2724; border: 2px solid transparent; border-radius: 6px; padding: 5px 9px;
+  }
+  .spritelist button[aria-current="true"] { border-color: var(--amber); }
+  .spritelist .meta { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+  .checks { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px; font-size: 13px; color: var(--muted); }
+  .checks label { display: inline-flex; gap: 5px; align-items: center; }
+  .warn { color: #f0b46a; }
+  .seq-step { cursor: pointer; }
+  .seq-step .refl { display: inline-flex; gap: 4px; align-items: center; font-size: 11px; color: var(--muted); cursor: pointer; }
+  .seq-step .refl input { margin: 0; }
+  .frames select, .frames input[type="text"] { background: #1f1b18; border: 1px solid #4f4740; border-radius: 6px; padding: 3px 7px; }
+  .seq-empty { color: var(--muted); font-size: 13px; padding: 10px 4px; }
+  aside .row > label:first-child { width: 96px; }
+  aside .seg button { padding: 5px 9px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>VCS Sprite Editor <span class="ver">v0.3</span></h1>
+  <p>Draw Atari 2600 player sprites and 48-pixel graphics with a colour per line and animation frames, then export DASM data.</p>
+</header>
+
+<main>
+  <div class="stage">
+    <div class="work">
+      <div class="panelbox">
+        <h3 id="editTitle">Frame 1</h3>
+        <div class="tv">
+          <canvas id="lineStrip" aria-label="Line colours: click or drag to paint the selected sprite colour onto lines"></canvas>
+          <canvas id="grid" aria-label="Sprite pixels: click and drag to draw, right-click to erase"></canvas>
+        </div>
+        <div class="status" id="status" aria-live="polite"></div>
+      </div>
+      <div class="panelbox">
+        <h3>Preview on screen</h3>
+        <div class="tv"><canvas id="preview" aria-label="Preview: drag the sprite to move it"></canvas></div>
+        <div class="row" style="margin:0">
+          <button class="btn" id="play">Play</button>
+          <label for="speed" style="width:auto;color:var(--muted)">Frames per step</label>
+          <input id="speed" type="number" min="1" max="60" step="1" style="width:64px">
+          <span class="readout" id="posInfo"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="frames">
+      <div class="frames-head">
+        <h3>Frames</h3>
+        <button class="btn quiet small" id="fAdd">Add blank</button>
+        <button class="btn quiet small" id="fDup">Duplicate</button>
+        <button class="btn quiet small" id="fDel">Delete</button>
+        <button class="btn quiet small" id="fLeft" aria-label="Move frame left">◀ Move</button>
+        <button class="btn quiet small" id="fRight" aria-label="Move frame right">Move ▶</button>
+        <button class="btn quiet small" id="fCopy">Copy</button>
+        <button class="btn quiet small" id="fPaste">Paste over</button>
+        <label class="checks" style="margin:0 0 0 8px"><input type="checkbox" id="onion"> Onion skin</label>
+      </div>
+      <div class="thumbs" id="thumbs" role="listbox" aria-label="Frames"></div>
+    </div>
+
+    <div class="frames" id="seqPanel">
+      <div class="frames-head">
+        <h3>Sequences <span class="hint" style="margin:0;font-weight:400">(preview only, not exported)</span></h3>
+        <select id="seqSel" aria-label="Sequence"></select>
+        <input id="seqName" type="text" spellcheck="false" style="width:110px" aria-label="Sequence name">
+        <button class="btn quiet small" id="seqNew">New sequence</button>
+        <button class="btn quiet small" id="seqDel">Delete sequence</button>
+        <button class="btn small" id="seqPlay">Play sequence</button>
+      </div>
+      <div class="frames-head">
+        <button class="btn quiet small" id="stAdd">Add current frame</button>
+        <button class="btn quiet small" id="stDel">Remove step</button>
+        <button class="btn quiet small" id="stLeft" aria-label="Move step left">◀ Move</button>
+        <button class="btn quiet small" id="stRight" aria-label="Move step right">Move ▶</button>
+        <span class="hint" style="margin:0" id="seqHint">Steps play left to right, then loop. Tick REFP0 to mirror that step.</span>
+      </div>
+      <div class="thumbs" id="steps" role="listbox" aria-label="Sequence steps"></div>
+    </div>
+  </div>
+
+  <aside>
+    <section>
+      <h2>Sprites</h2>
+      <div class="spritelist" id="spriteList" role="listbox" aria-label="Sprites in this project"></div>
+      <div class="row"><label for="sName">Name</label><input id="sName" type="text" spellcheck="false"></div>
+      <div class="row">
+        <button class="btn quiet small" id="sNew">New sprite</button>
+        <button class="btn quiet small" id="sDupe">Duplicate</button>
+        <button class="btn quiet small" id="sDel">Delete</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Size</h2>
+      <div class="row"><label>Width</label>
+        <div class="seg" id="widthSeg"><button data-v="8">8 px player</button><button data-v="48">48 px</button></div>
+      </div>
+      <div class="row"><label for="height">Height</label>
+        <input id="height" type="number" min="1" max="128" step="1"> <span class="hint" style="margin:0">lines</span>
+      </div>
+      <div class="row"><label for="par">Pixel shape</label>
+        <select id="par">
+          <option value="1">Square pixels</option>
+          <option value="1.5">1.5 : 1</option>
+          <option value="1.7">1.7 : 1</option>
+          <option value="2">2 : 1</option>
+        </select>
+      </div>
+      <div class="row"><label>TV system</label>
+        <div class="seg" id="tvSeg"><button data-v="NTSC">NTSC</button><button data-v="PAL">PAL</button><button data-v="PAL60">PAL60</button></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Tool</h2>
+      <div class="seg" id="toolSeg">
+        <button data-v="draw">Draw pixels</button><button data-v="colour">Paint line colour</button>
+      </div>
+      <p class="hint">Left button draws, right button erases. The strip left of the pixels always paints line colour.</p>
+    </section>
+
+    <section>
+      <h2>Colours</h2>
+      <div class="targets">
+        <button class="target" id="tFG" aria-pressed="true"><span class="chip" id="chipFG"></span>Sprite <span class="code" id="codeFG"></span></button>
+        <button class="target" id="tBK" aria-pressed="false"><span class="chip" id="chipBK"></span>Background <span class="code" id="codeBK"></span></button>
+      </div>
+      <div id="palette" role="group" aria-label="Palette"></div>
+      <div class="row" id="palOrderRow" style="margin-top:8px"><label>PAL rows</label>
+        <div class="seg" id="palOrderSeg"><button data-v="hw">Hardware order</button><button data-v="spec">Spectral order</button></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn quiet small" id="fillFG">Sprite colour to all lines</button>
+      </div>
+      <div class="checks"><label><input type="checkbox" id="sharedCol"> Colour changes apply to every frame</label></div>
+      <p class="hint" id="palNote"></p>
+    </section>
+
+    <section>
+      <h2>Edit</h2>
+      <div class="row">
+        <button class="btn quiet small" id="eL" aria-label="Shift left">←</button>
+        <button class="btn quiet small" id="eR" aria-label="Shift right">→</button>
+        <button class="btn quiet small" id="eU" aria-label="Shift up">↑</button>
+        <button class="btn quiet small" id="eD" aria-label="Shift down">↓</button>
+        <button class="btn quiet small" id="eFH">Flip ↔</button>
+        <button class="btn quiet small" id="eFV">Flip ↕</button>
+      </div>
+      <div class="row">
+        <button class="btn quiet small" id="eRotL" aria-label="Rotate anticlockwise">Rotate ⟲</button>
+        <button class="btn quiet small" id="eRotR" aria-label="Rotate clockwise">Rotate ⟳</button>
+        <button class="btn quiet small" id="eInv">Invert</button>
+        <button class="btn quiet small" id="eClr">Clear</button>
+      </div>
+      <div class="checks">
+        <label><input type="checkbox" id="optCol"> Include colours</label>
+        <label><input type="checkbox" id="optAll"> All frames</label>
+        <label><input type="checkbox" id="optWrap"> Wrap edges</label>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn quiet small" id="undo">Undo</button>
+        <button class="btn quiet small" id="redo">Redo</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Preview</h2>
+      <div class="row"><label>Player width</label>
+        <div class="seg" id="nusizSeg"><button data-v="0">Single</button><button data-v="5">Double</button><button data-v="7">Quad</button></div>
+      </div>
+      <div class="row"><label>Reflect</label><input type="checkbox" id="reflect"> <span class="hint" style="margin:0">REFP0</span></div>
+      <div class="row"><label>Kernel</label>
+        <div class="seg" id="repSeg"><button data-v="1">1-line</button><button data-v="2">2-line</button><button data-v="3">3-line</button><button data-v="4">4-line</button></div>
+      </div>
+      <div class="row">
+        <button class="btn quiet small" id="bdLoad">Load playfield backdrop</button>
+        <button class="btn quiet small" id="bdClear">Remove backdrop</button>
+        <input type="file" id="bdFile" accept=".json,application/json" class="sr-only">
+      </div>
+      <p class="hint" id="bdNote">Use a project file saved from the VCS Playfield Colour Editor to see the sprite against a maze.</p>
+    </section>
+
+    <section>
+      <h2>Saving</h2>
+      <div class="row">
+        <button class="btn quiet small" id="pSave">Save project</button>
+        <button class="btn quiet small" id="pOpen">Open project</button>
+      </div>
+      <div class="row">
+        <button class="btn quiet small" id="sSave">Save this sprite</button>
+        <button class="btn quiet small" id="sAdd">Add sprites from file</button>
+      </div>
+      <input type="file" id="fileIn" accept=".json,application/json" class="sr-only">
+      <p class="hint">A project holds every sprite with all frames and colours. A sprite file holds one sprite, so you can reuse it in another project. Your work is also kept in this browser.</p>
+    </section>
+  </aside>
+
+  <section class="export">
+    <h2>Export</h2>
+    <div class="row">
+      <div class="seg" id="expSeg"><button data-v="data">Data tables</button><button data-v="test">Stella test program</button></div>
+      <label for="prefix" style="width:auto;margin-left:10px">Label prefix</label>
+      <input id="prefix" type="text" spellcheck="false" placeholder="sprite name">
+      <label for="fmt" style="width:auto">Bytes</label>
+      <select id="fmt"><option value="bin">Binary</option><option value="hex">Hex</option></select>
+      <label for="order" style="width:auto">Order</label>
+      <select id="order"><option value="bottom">Bottom-up</option><option value="top">Top-down</option></select>
+    </div>
+    <div class="checks" id="dataOpts" style="margin-bottom:8px">
+      <label><input type="checkbox" id="xAll"> All frames</label>
+      <label><input type="checkbox" id="xCol"> Colour tables</label>
+      <label><input type="checkbox" id="xPtr"> Pointer tables</label>
+      <label><input type="checkbox" id="xPad"> Zero byte below the sprite</label>
+    </div>
+    <div class="row">
+      <button class="btn" id="copy">Copy</button>
+      <button class="btn quiet" id="dl">Download .asm</button>
+      <span class="hint" style="margin:0" id="expNote"></span>
+    </div>
+    <textarea id="out" spellcheck="false" readonly aria-label="Exported assembly"></textarea>
+  </section>
+</main>
+
+<script>
+(() => {
+  // ---------- Palettes (Stella-style approximations) ----------
+  const NTSC = [
+    "000000","404040","6c6c6c","909090","b0b0b0","c8c8c8","dcdcdc","ececec",
+    "444400","646410","848424","a0a034","b8b840","d0d050","e8e85c","fcfc68",
+    "702800","844414","985c28","ac783c","bc8c4c","cca05c","dcb468","ecc878",
+    "841800","983418","ac5030","c06848","d0805c","e09470","eca880","fcbc94",
+    "880000","9c2020","b03c3c","c05858","d07070","e08888","eca0a0","fcb4b4",
+    "78005c","8c2074","a03c88","b0589c","c070b0","d084c0","dc9cd0","ecb0e0",
+    "480078","602090","783ca4","8c58b8","a070cc","b484dc","c49cec","d4b0fc",
+    "140084","302098","4c3cac","6858c0","7c70d0","9488e0","a8a0ec","bcb4fc",
+    "000088","1c209c","3840b0","505cc0","6874d0","7c8ce0","90a4ec","a4b8fc",
+    "00187c","1c3890","3854a8","5070bc","6888cc","7c9cdc","90b4ec","a4c8fc",
+    "002c5c","1c4c78","386890","5084ac","689cc0","7cb4d4","90cce8","a4e0fc",
+    "003c2c","1c5c48","387c64","509c80","68b494","7cd0ac","90e4c0","a4fcd4",
+    "003c00","205c20","407c40","5c9c5c","74b474","8cd08c","a4e4a4","b8fcb8",
+    "143800","345c1c","507c38","6c9850","84b468","9ccc7c","b4e490","c8fca4",
+    "2c3000","4c501c","687034","848c4c","9ca864","b4c078","ccd488","e0ec9c",
+    "442800","644818","846830","a08444","b89c58","d0b46c","e8cc7c","fce08c"
+  ];
+  const GREY = ["000000","282828","505050","747474","949494","b4b4b4","d0d0d0","ececec"];
+  const PAL = [].concat(
+    GREY, GREY,
+    ["805800","947020","a8843c","bc9c58","ccac70","dcc084","ecd09c","fce0b0"],
+    ["445c00","5c7820","74903c","8cac58","a0c070","b0d484","c4e89c","d4fcb0"],
+    ["703400","885020","a0683c","b48458","c89870","dcac84","ecc09c","fcd4b0"],
+    ["006414","208034","3c9850","58b06c","70c484","84d89c","9ce8b4","b0fcc8"],
+    ["700014","882034","a03c50","b4586c","c87084","dc849c","ec9cb4","fcb0c8"],
+    ["005c5c","207474","3c8c8c","58a4a4","70b8b8","84c8c8","9cdcdc","b0ecec"],
+    ["70005c","842074","983c88","ac589c","bc70b0","cc84c0","dc9cd0","ecb0e0"],
+    ["003c70","1c5888","387ca0","5494b4","6cacc8","84c0dc","9cd4ec","b0e4fc"],
+    ["580070","6c2088","803ca0","9458b4","a470c8","b484dc","c49cec","d4b0fc"],
+    ["002070","1c3c88","3858a0","5074b4","6888c8","7ca0dc","94b4ec","a8c8fc"],
+    ["3c0080","542094","6c3ca8","8058bc","9470cc","a884dc","b89cec","c8b0fc"],
+    ["000088","20209c","3c3cb0","5858c0","7070d0","8888e0","a0a0ec","b4b4fc"],
+    GREY, GREY
+  );
+  const palette = () => (proj.tv === "NTSC" ? NTSC : PAL);
+  const palUi = () => ({ tv: proj.tv, get palOrder() { return proj.ui.palOrder; }, set palOrder(v) { proj.ui.palOrder = v; } });
+  const rgb = (c) => "#" + palette()[(c >> 1) & 127];
+  const hex2 = (n) => "$" + (n & 255).toString(16).toUpperCase().padStart(2, "0");
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- Project model ----------
+  const STORE = "vcs-sprite-editor-v1";
+  const MAXH = 128;
+  const blankFrame = (h, col) => ({ bits: Array.from({ length: h }, () => new Array(48).fill(0)), colors: new Array(h).fill(col) });
+  function newSprite(name, col = 0x1E) {
+    return {
+      name, width: 8, height: 16, bk: 0x00, frame: 0,
+      frames: [blankFrame(16, col)],
+      view: { nusiz: 0, reflect: false, repeat: 1, speed: 8, x: 76, y: 88 },
+      sequences: [], seqCur: 0, seqStep: 0
+    };
+  }
+  let proj = {
+    type: "vcs-sprite-project", version: 1, tv: "NTSC", par: 1.5, cur: 0,
+    sprites: [newSprite("Sprite1")], backdrop: null,
+    ui: { tool: "draw", target: "fg", selFG: 0x1E, palOrder: "hw", onion: false, sharedCol: true, incCol: true, allFrames: false,
+          wrap: false, exp: "data", fmt: "bin", order: "bottom", xAll: true, xCol: true, xPtr: true, xPad: false, prefix: "" }
+  };
+  const sp = () => proj.sprites[proj.cur];
+  const fr = () => sp().frames[sp().frame];
+  const visLines = () => (proj.tv === "PAL" ? 228 : 192);
+  const fps = () => (proj.tv === "PAL" ? 50 : 60);
+
+  // Make sure every frame has at least `height` rows (rows beyond the height are kept, not deleted)
+  function fitSprite(s) {
+    for (const f of s.frames) {
+      while (f.bits.length < s.height) f.bits.push(new Array(48).fill(0));
+      while (f.colors.length < s.height) f.colors.push(f.colors.length ? f.colors[f.colors.length - 1] : proj.ui.selFG);
+      for (const r of f.bits) while (r.length < 48) r.push(0);
+    }
+    if (s.frame >= s.frames.length) s.frame = s.frames.length - 1;
+    if (!s.view) s.view = { nusiz: 0, reflect: false, repeat: 1, speed: 8, x: 76, y: 88 };
+    if (!Array.isArray(s.sequences)) s.sequences = [];
+    for (const q of s.sequences) q.steps = (q.steps || []).filter((st) => st.f >= 0 && st.f < s.frames.length);
+    s.seqCur = Math.max(0, Math.min(s.seqCur || 0, s.sequences.length - 1));
+    const q0 = s.sequences[s.seqCur];
+    s.seqStep = q0 ? Math.max(0, Math.min(s.seqStep || 0, q0.steps.length - 1)) : 0;
+    clampView(s);
+  }
+  function spriteWidthPx(s) { return s.width === 48 ? 48 : 8 * ({ 0: 1, 5: 2, 7: 4 }[s.view.nusiz] || 1); }
+  function clampView(s) {
+    const v = s.view, lines = s.height * (v.repeat || 1);
+    if (s.width === 48) v.x = Math.max(3, Math.min(83, Math.round(v.x)));
+    else v.x = Math.max(v.nusiz ? 4 : 3, Math.min(160 - spriteWidthPx(s), Math.round(v.x)));
+    v.y = Math.max(3, Math.min(Math.max(3, visLines() - 4 - lines), Math.round(v.y)));
+  }
+
+  // ---------- Undo ----------
+  let undoStack = [], redoStack = [];
+  const snap = () => JSON.stringify({ sprites: proj.sprites, cur: proj.cur });
+  function restore(s) { const o = JSON.parse(s); proj.sprites = o.sprites; proj.cur = o.cur; proj.sprites.forEach(fitSprite); }
+  function pushUndo() { undoStack.push(snap()); if (undoStack.length > 150) undoStack.shift(); redoStack = []; }
+  function undo() { if (!undoStack.length) return; redoStack.push(snap()); restore(undoStack.pop()); changed(); }
+  function redo() { if (!redoStack.length) return; undoStack.push(snap()); restore(redoStack.pop()); changed(); }
+
+  // ---------- Editor canvas ----------
+  const grid = $("grid"), strip = $("lineStrip"), prev = $("preview");
+  const gctx = grid.getContext("2d"), sctx = strip.getContext("2d"), pctx = prev.getContext("2d");
+  let cw = 20, ch = 14, pscale = 2;
+  const STRIP_W = 26;
+
+  function setCanvas(cv, w, h) {
+    const dpr = window.devicePixelRatio || 1;
+    cv.style.width = w + "px"; cv.style.height = h + "px";
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    cv.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  function layout() {
+    const s = sp();
+    const stageW = document.querySelector(".stage").clientWidth - 40;
+    const availH = Math.max(260, Math.min(window.innerHeight - 330, 620));
+    // Preview: a whole TV screen
+    pscale = Math.max(1, Math.min(2, (availH) / visLines()));
+    const pW = Math.round(160 * pscale * proj.par), pH = Math.round(visLines() * pscale);
+    setCanvas(prev, pW, pH);
+    // Editor: fill the rest
+    // 48-pixel graphics are wide: the preview wraps below, so the grid can use the full width
+    const availW = Math.max(200, s.width === 48 ? stageW - 80 : stageW - pW - 110);
+    ch = Math.floor(availH / s.height);
+    ch = Math.max(3, Math.min(40, ch));
+    cw = ch * proj.par;
+    if (s.width * cw > availW) { cw = availW / s.width; ch = Math.max(2, cw / proj.par); }
+    setCanvas(grid, Math.round(s.width * cw), Math.round(s.height * ch));
+    setCanvas(strip, STRIP_W, Math.round(s.height * ch));
+    drawAll();
+  }
+
+  function drawEditor() {
+    const s = sp(), f = fr(), W = s.width, H = s.height;
+    const gw = W * cw, gh = H * ch;
+    gctx.fillStyle = rgb(s.bk); gctx.fillRect(0, 0, gw, gh);
+    // Onion skin: the previous frame, faint
+    if (proj.ui.onion && s.frames.length > 1) {
+      const o = s.frames[(s.frame - 1 + s.frames.length) % s.frames.length];
+      gctx.fillStyle = "rgba(255,255,255,.22)";
+      for (let r = 0; r < H; r++) for (let c = 0; c < W; c++)
+        if (o.bits[r][c] && !f.bits[r][c]) gctx.fillRect(c * cw, r * ch, cw + .5, ch + .5);
+    }
+    for (let r = 0; r < H; r++) {
+      gctx.fillStyle = rgb(f.colors[r]);
+      for (let c = 0; c < W; c++) if (f.bits[r][c]) gctx.fillRect(c * cw, r * ch, cw + .5, ch + .5);
+    }
+    if (cw >= 5 && ch >= 4) {
+      gctx.strokeStyle = "rgba(128,128,128,.32)"; gctx.lineWidth = 1; gctx.beginPath();
+      for (let c = 1; c < W; c++) { const x = Math.round(c * cw) + .5; gctx.moveTo(x, 0); gctx.lineTo(x, gh); }
+      for (let r = 1; r < H; r++) { const y = Math.round(r * ch) + .5; gctx.moveTo(0, y); gctx.lineTo(gw, y); }
+      gctx.stroke();
+    }
+    if (W === 48) {
+      gctx.strokeStyle = "rgba(227,165,60,.75)"; gctx.beginPath();
+      for (let c = 8; c < 48; c += 8) { const x = Math.round(c * cw) + .5; gctx.moveTo(x, 0); gctx.lineTo(x, gh); }
+      gctx.stroke();
+    }
+    // line colour strip
+    sctx.fillStyle = "#000"; sctx.fillRect(0, 0, STRIP_W, gh);
+    for (let r = 0; r < H; r++) { sctx.fillStyle = rgb(f.colors[r]); sctx.fillRect(0, r * ch, STRIP_W - 4, ch - (ch > 4 ? 1 : 0)); }
+    $("editTitle").textContent = `${s.name}: frame ${s.frame + 1} of ${s.frames.length}`;
+  }
+
+  // ---------- Preview ----------
+  let playing = false, playFrame = 0, lastTick = 0, tvFrames = 0, playMode = "frames";
+  const curSeq = () => sp().sequences[sp().seqCur];
+  // What the preview shows right now: { frame, reflect }
+  function shown() {
+    const s = sp();
+    if (playing && playMode === "seq" && curSeq() && curSeq().steps.length) {
+      const st = curSeq().steps[playFrame % curSeq().steps.length];
+      return { f: s.frames[st.f], reflect: !!st.r };
+    }
+    return { f: s.frames[playing ? playFrame % s.frames.length : s.frame], reflect: !!s.view.reflect };
+  }
+  function drawPreview() {
+    const s = sp(), v = s.view, V = visLines(), sx = pscale * proj.par, sy = pscale;
+    const W = 160 * sx;
+    // background or playfield backdrop
+    pctx.fillStyle = rgb(s.bk); pctx.fillRect(0, 0, W, V * sy);
+    const bd = proj.backdrop;
+    if (bd) {
+      const n = Math.floor(bd.kernel / bd.lineH);
+      for (let r = 0; r < n && r < bd.rows.length; r++) {
+        const row = bd.rows[r], y = r * bd.lineH * sy, h = bd.lineH * sy;
+        if (r * bd.lineH >= V) break;
+        pctx.fillStyle = rgb(row.bk); pctx.fillRect(0, y, W, h);
+        pctx.fillStyle = rgb(row.pf);
+        const b = row.bits, left = b.slice(0, 20);
+        const right = bd.mode === "asym" ? b.slice(20, 40) : bd.side === "mirror" ? left.slice().reverse() : left;
+        const line = left.concat(right);
+        for (let c = 0; c < 40; c++) if (line[c]) pctx.fillRect(c * 4 * sx, y, 4 * sx + .5, h + .5);
+      }
+    }
+    // the sprite
+    const { f, reflect } = shown();
+    const rep = v.repeat || 1, stretch = s.width === 48 ? 1 : ({ 0: 1, 5: 2, 7: 4 }[v.nusiz] || 1);
+    for (let r = 0; r < s.height; r++) {
+      pctx.fillStyle = rgb(f.colors[r]);
+      const y = (v.y + r * rep) * sy;
+      for (let c = 0; c < s.width; c++) {
+        const src = s.width === 8 && reflect ? 7 - c : c;
+        if (f.bits[r][src]) pctx.fillRect((v.x + c * stretch) * sx, y, stretch * sx + .5, rep * sy + .5);
+      }
+    }
+    $("posInfo").textContent = `x ${v.x}  y ${v.y}`;
+  }
+  function tick(t) {
+    if (!playing) return;
+    const ms = 1000 / fps();
+    if (!lastTick) lastTick = t;
+    while (t - lastTick >= ms) {
+      lastTick += ms; tvFrames++;
+      if (tvFrames >= (sp().view.speed || 1)) {
+        tvFrames = 0;
+        const n = playMode === "seq" && curSeq() ? curSeq().steps.length : sp().frames.length;
+        playFrame = (playFrame + 1) % Math.max(1, n);
+        if (playMode === "seq") { sp().seqStep = playFrame; drawSteps(); }
+      }
+    }
+    drawPreview();
+    requestAnimationFrame(tick);
+  }
+  function setPlaying(on, mode = "frames") {
+    playing = on; playMode = mode;
+    $("play").textContent = on && mode === "frames" ? "Pause" : "Play";
+    $("seqPlay").textContent = on && mode === "seq" ? "Pause sequence" : "Play sequence";
+    if (on) {
+      playFrame = mode === "seq" ? (sp().seqStep || 0) : sp().frame;
+      tvFrames = 0; lastTick = 0; requestAnimationFrame(tick);
+    } else drawPreview();
+  }
+
+  // ---------- Thumbnails ----------
+  function thumbCanvas(s, f, mirror) {
+    const sc = Math.max(1, Math.min(4, Math.floor(56 / s.height)));
+    const tw = (s.width === 48 ? 1 : 2) * sc;
+    const cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.round(s.width * tw * (proj.par >= 1.5 ? 1 : 0.7))); cv.height = s.height * sc;
+    const x = cv.getContext("2d"), pw = cv.width / s.width;
+    x.fillStyle = rgb(s.bk); x.fillRect(0, 0, cv.width, cv.height);
+    for (let r = 0; r < s.height; r++) {
+      x.fillStyle = rgb(f.colors[r]);
+      for (let c = 0; c < s.width; c++) {
+        const src = mirror && s.width === 8 ? 7 - c : c;
+        if (f.bits[r][src]) x.fillRect(c * pw, r * sc, pw + .3, sc);
+      }
+    }
+    return cv;
+  }
+  function drawSteps() {
+    const s = sp(), box = $("steps"), q = curSeq();
+    const sel = $("seqSel"); sel.innerHTML = "";
+    s.sequences.forEach((sq, i) => { const o = document.createElement("option"); o.value = i; o.textContent = sq.name; sel.appendChild(o); });
+    if (!s.sequences.length) { const o = document.createElement("option"); o.textContent = "No sequences yet"; o.value = -1; sel.appendChild(o); }
+    sel.value = q ? s.seqCur : -1;
+    $("seqName").value = q ? q.name : ""; $("seqName").disabled = !q;
+    for (const id of ["seqDel", "seqPlay", "stAdd"]) $(id).disabled = !q;
+    for (const id of ["stDel", "stLeft", "stRight"]) $(id).disabled = !q || !q.steps.length;
+    box.innerHTML = "";
+    if (!q) { box.innerHTML = '<div class="seq-empty">Make a sequence (for example Walk or Chomp), then add frames to it in the order they should play. Frames can repeat.</div>'; return; }
+    if (!q.steps.length) { box.innerHTML = '<div class="seq-empty">Select a frame above, then press Add current frame.</div>'; return; }
+    q.steps.forEach((st, i) => {
+      const b = document.createElement("div");
+      b.className = "thumb seq-step"; b.setAttribute("role", "option");
+      b.setAttribute("aria-current", String(i === s.seqStep));
+      b.appendChild(thumbCanvas(s, s.frames[st.f], st.r));
+      const lab = document.createElement("span"); lab.textContent = `${i + 1}: frame ${st.f + 1}`; b.appendChild(lab);
+      const rl = document.createElement("label"); rl.className = "refl";
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!st.r; cb.disabled = s.width === 48;
+      cb.addEventListener("click", (e) => e.stopPropagation());
+      cb.addEventListener("change", () => { pushUndo(); st.r = cb.checked; s.seqStep = i; changed(false); });
+      rl.append(cb, document.createTextNode("REFP0"));
+      rl.addEventListener("click", (e) => e.stopPropagation());
+      b.appendChild(rl);
+      b.addEventListener("click", () => { s.seqStep = i; s.frame = st.f; if (playing) setPlaying(false); changed(false); });
+      box.appendChild(b);
+    });
+    $("seqHint").textContent = s.width === 48
+      ? "Steps play left to right, then loop. REFP0 can't mirror 48-pixel graphics."
+      : "Steps play left to right, then loop. Tick REFP0 to mirror that step.";
+  }
+  function drawThumbs() {
+    const s = sp(), box = $("thumbs");
+    box.innerHTML = "";
+    const sc = Math.max(1, Math.min(4, Math.floor(56 / s.height)));
+    const tw = Math.max(1, Math.round(s.width === 48 ? 1 : 2)) * sc;
+    s.frames.forEach((f, i) => {
+      const b = document.createElement("button");
+      b.className = "thumb"; b.setAttribute("role", "option");
+      b.setAttribute("aria-current", String(i === s.frame));
+      b.setAttribute("aria-label", "Frame " + (i + 1));
+      const cv = document.createElement("canvas");
+      const w = s.width * tw * (proj.par >= 1.5 ? 1 : 0.7), h = s.height * sc;
+      cv.width = Math.max(1, Math.round(w)); cv.height = h;
+      const x = cv.getContext("2d");
+      x.fillStyle = rgb(s.bk); x.fillRect(0, 0, cv.width, h);
+      const pw = cv.width / s.width;
+      for (let r = 0; r < s.height; r++) {
+        x.fillStyle = rgb(f.colors[r]);
+        for (let c = 0; c < s.width; c++) if (f.bits[r][c]) x.fillRect(c * pw, r * sc, pw + .3, sc);
+      }
+      b.appendChild(cv);
+      const lab = document.createElement("span"); lab.textContent = i + 1; b.appendChild(lab);
+      b.addEventListener("click", () => { s.frame = i; if (playing) setPlaying(false); changed(); });
+      box.appendChild(b);
+    });
+  }
+
+  // ---------- Sprite list ----------
+  function drawSpriteList() {
+    const box = $("spriteList");
+    box.innerHTML = "";
+    proj.sprites.forEach((s, i) => {
+      const b = document.createElement("button");
+      b.setAttribute("role", "option"); b.setAttribute("aria-current", String(i === proj.cur));
+      const n = document.createElement("span"); n.textContent = s.name;
+      const m = document.createElement("span"); m.className = "meta";
+      m.textContent = `${s.width}×${s.height}, ${s.frames.length} frame${s.frames.length > 1 ? "s" : ""}`;
+      b.append(n, m);
+      b.addEventListener("click", () => { proj.cur = i; if (playing) setPlaying(false); changed(true, true); });
+      box.appendChild(b);
+    });
+  }
+
+  function drawAll() { drawEditor(); drawPreview(); }
+
+  // ---------- Pointer editing ----------
+  let painting = null;
+  function cellAt(ev, cv) {
+    const rect = cv.getBoundingClientRect();
+    return { c: Math.floor((ev.clientX - rect.left) / cw), r: Math.floor((ev.clientY - rect.top) / ch) };
+  }
+  const colourFrames = () => (proj.ui.sharedCol ? sp().frames : [fr()]);
+  function applyCell(r, c) {
+    const s = sp();
+    if (r < 0 || r >= s.height) return;
+    if (painting.kind === "colour") { for (const f of colourFrames()) f.colors[r] = proj.ui.selFG; return; }
+    if (c < 0 || c >= s.width) return;
+    const f = fr();
+    if (painting.value === null) painting.value = painting.erase ? 0 : (f.bits[r][c] ? 0 : 1);
+    f.bits[r][c] = painting.value;
+  }
+  function applyAt(ev, cv) {
+    const { c, r } = cellAt(ev, cv);
+    const last = painting.last || { r, c };
+    const steps = Math.max(Math.abs(r - last.r), Math.abs(c - last.c), 1);
+    if (!painting.last) applyCell(r, c);
+    else for (let i = 1; i <= steps; i++)
+      applyCell(Math.round(last.r + (r - last.r) * i / steps), Math.round(last.c + (c - last.c) * i / steps));
+    painting.last = { r, c };
+    drawEditor(); drawPreview();
+  }
+  for (const cv of [grid, strip]) {
+    cv.addEventListener("contextmenu", (e) => e.preventDefault());
+    cv.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 && e.button !== 2) return;
+      e.preventDefault(); pushUndo();
+      const kind = cv === strip || proj.ui.tool === "colour" ? "colour" : "draw";
+      painting = { kind, erase: e.button === 2, value: null, last: null };
+      cv.setPointerCapture(e.pointerId);
+      applyAt(e, cv);
+    });
+    cv.addEventListener("pointermove", (e) => {
+      if (painting) applyAt(e, cv);
+      const { c, r } = cellAt(e, cv), s = sp();
+      if (r >= 0 && r < s.height) {
+        setStatus(`Line ${r}` + (cv === grid && c >= 0 && c < s.width ? `  ·  pixel ${c}` + (s.width === 48 ? ` (column ${c >> 3})` : "") : "") +
+          `  ·  colour ${hex2(fr().colors[r])}`);
+      }
+    });
+    const end = () => { if (painting) { painting = null; changed(); } };
+    cv.addEventListener("pointerup", end);
+    cv.addEventListener("pointercancel", end);
+    cv.addEventListener("pointerleave", () => { if (!painting) setStatus(defaultStatus()); });
+  }
+
+  // Drag the sprite around the preview screen
+  let dragging = null;
+  prev.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const rect = prev.getBoundingClientRect();
+    dragging = { x0: e.clientX, y0: e.clientY, vx: sp().view.x, vy: sp().view.y, rect };
+    prev.classList.add("dragging"); prev.setPointerCapture(e.pointerId);
+  });
+  prev.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const v = sp().view;
+    v.x = dragging.vx + (e.clientX - dragging.x0) / (pscale * proj.par);
+    v.y = dragging.vy + (e.clientY - dragging.y0) / pscale;
+    clampView(sp()); drawPreview();
+  });
+  const endDrag = () => { if (dragging) { dragging = null; prev.classList.remove("dragging"); changed(false); } };
+  prev.addEventListener("pointerup", endDrag);
+  prev.addEventListener("pointercancel", endDrag);
+
+  // ---------- Edit operations ----------
+  const targetFrames = () => (proj.ui.allFrames ? sp().frames : [fr()]);
+  function op(fn) { pushUndo(); for (const f of targetFrames()) fn(f, sp()); changed(); }
+  function shiftH(dir) {
+    op((f, s) => {
+      for (let r = 0; r < s.height; r++) {
+        const row = f.bits[r].slice(0, s.width), out = new Array(s.width).fill(0);
+        for (let c = 0; c < s.width; c++) {
+          let t = c + dir;
+          if (t < 0 || t >= s.width) { if (!proj.ui.wrap) continue; t = (t + s.width) % s.width; }
+          out[t] = row[c];
+        }
+        for (let c = 0; c < s.width; c++) f.bits[r][c] = out[c];
+      }
+    });
+  }
+  function shiftV(dir) {
+    op((f, s) => {
+      const H = s.height, rows = f.bits.slice(0, H), cols = f.colors.slice(0, H);
+      const nb = Array.from({ length: H }, () => new Array(48).fill(0)), nc = cols.slice();
+      for (let r = 0; r < H; r++) {
+        let t = r + dir;
+        if (t < 0 || t >= H) { if (!proj.ui.wrap) continue; t = (t + H) % H; }
+        nb[t] = rows[r].slice();
+        if (proj.ui.incCol) nc[t] = cols[r];
+      }
+      for (let r = 0; r < H; r++) { f.bits[r] = nb[r]; f.colors[r] = nc[r]; }
+    });
+  }
+  function flipH() { op((f, s) => { for (let r = 0; r < s.height; r++) { const p = f.bits[r].slice(0, s.width).reverse(); for (let c = 0; c < s.width; c++) f.bits[r][c] = p[c]; } }); }
+  function flipV() {
+    op((f, s) => {
+      const H = s.height, b = f.bits.slice(0, H).reverse(), c = f.colors.slice(0, H).reverse();
+      for (let r = 0; r < H; r++) { f.bits[r] = b[r]; if (proj.ui.incCol) f.colors[r] = c[r]; }
+    });
+  }
+  function rotate(cwise) {
+    const s = sp();
+    if (s.width !== s.height) { setStatus(`Rotate needs a square sprite (${s.width}×${s.width}); this one is ${s.width}×${s.height}.`); return; }
+    op((f, s) => {
+      const N = s.width, src = f.bits.slice(0, N).map((r) => r.slice(0, N));
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++)
+        f.bits[r][c] = cwise ? src[N - 1 - c][r] : src[c][N - 1 - r];
+    });
+  }
+  function invert() { op((f, s) => { for (let r = 0; r < s.height; r++) for (let c = 0; c < s.width; c++) f.bits[r][c] ^= 1; }); }
+  function clearPx() { op((f, s) => { for (let r = 0; r < s.height; r++) for (let c = 0; c < 48; c++) f.bits[r][c] = 0; }); }
+
+  // ---------- Frame operations ----------
+  const cloneFrame = (f) => JSON.parse(JSON.stringify(f));
+  let clip = null;
+  function frameOp(fn) { pushUndo(); fn(sp()); if (playing) setPlaying(false); changed(); }
+  // Sequence steps refer to frames by number: keep them pointing at the same frames
+  function seqInserted(s, k) { for (const q of s.sequences) for (const st of q.steps) if (st.f >= k) st.f++; }
+  function seqDeleted(s, k) {
+    for (const q of s.sequences) { q.steps = q.steps.filter((st) => st.f !== k); for (const st of q.steps) if (st.f > k) st.f--; }
+    fitSprite(s);
+  }
+  function seqSwapped(s, a, b) { for (const q of s.sequences) for (const st of q.steps) st.f = st.f === a ? b : st.f === b ? a : st.f; }
+  $("fAdd").addEventListener("click", () => frameOp((s) => {
+    const f = blankFrame(Math.max(s.height, fr().bits.length), 0);
+    f.colors = fr().colors.slice();
+    seqInserted(s, s.frame + 1); s.frames.splice(s.frame + 1, 0, f); s.frame++;
+  }));
+  $("fDup").addEventListener("click", () => frameOp((s) => { seqInserted(s, s.frame + 1); s.frames.splice(s.frame + 1, 0, cloneFrame(fr())); s.frame++; }));
+  $("fDel").addEventListener("click", () => {
+    if (sp().frames.length < 2) { setStatus("A sprite needs at least one frame."); return; }
+    frameOp((s) => { const k = s.frame; s.frames.splice(k, 1); s.frame = Math.min(k, s.frames.length - 1); seqDeleted(s, k); });
+  });
+  $("fLeft").addEventListener("click", () => { if (sp().frame > 0) frameOp((s) => { seqSwapped(s, s.frame, s.frame - 1); const f = s.frames.splice(s.frame, 1)[0]; s.frame--; s.frames.splice(s.frame, 0, f); }); });
+  $("fRight").addEventListener("click", () => { if (sp().frame < sp().frames.length - 1) frameOp((s) => { seqSwapped(s, s.frame, s.frame + 1); const f = s.frames.splice(s.frame, 1)[0]; s.frame++; s.frames.splice(s.frame, 0, f); }); });
+
+  // ---------- Sequence operations ----------
+  function seqOp(fn) { pushUndo(); fn(sp()); if (playing) setPlaying(false); fitSprite(sp()); changed(false); }
+  function seqUniqueName(s, name) {
+    const names = new Set(s.sequences.map((q) => q.name));
+    if (!names.has(name)) return name;
+    const base = name.replace(/\d+$/, "") || "Seq";
+    for (let i = 2; ; i++) if (!names.has(base + i)) return base + i;
+  }
+  $("seqNew").addEventListener("click", () => seqOp((s) => {
+    s.sequences.push({ name: seqUniqueName(s, "Seq" + (s.sequences.length + 1)), steps: [] });
+    s.seqCur = s.sequences.length - 1; s.seqStep = 0;
+  }));
+  $("seqDel").addEventListener("click", () => {
+    const n = curSeq() && curSeq().name;
+    seqOp((s) => { s.sequences.splice(s.seqCur, 1); s.seqCur = Math.max(0, s.seqCur - 1); });
+    setStatus(`Deleted sequence ${n}. Undo brings it back.`);
+  });
+  $("seqSel").addEventListener("change", () => { const i = +$("seqSel").value; if (i >= 0) { sp().seqCur = i; sp().seqStep = 0; if (playing) setPlaying(false); changed(false); } });
+  $("seqName").addEventListener("change", () => {
+    const v = $("seqName").value.trim(); if (!v || !curSeq()) { drawSteps(); return; }
+    seqOp((s) => { curSeq().name = v; });
+  });
+  $("stAdd").addEventListener("click", () => seqOp((s) => {
+    const q = curSeq(), at = q.steps.length ? s.seqStep + 1 : 0;
+    q.steps.splice(at, 0, { f: s.frame, r: false }); s.seqStep = at;
+  }));
+  $("stDel").addEventListener("click", () => seqOp((s) => { curSeq().steps.splice(s.seqStep, 1); s.seqStep = Math.max(0, s.seqStep - 1); }));
+  $("stLeft").addEventListener("click", () => { if (sp().seqStep > 0) seqOp((s) => { const q = curSeq().steps, i = s.seqStep; [q[i - 1], q[i]] = [q[i], q[i - 1]]; s.seqStep--; }); });
+  $("stRight").addEventListener("click", () => { const q = curSeq(); if (q && sp().seqStep < q.steps.length - 1) seqOp((s) => { const st = curSeq().steps, i = s.seqStep; [st[i + 1], st[i]] = [st[i], st[i + 1]]; s.seqStep++; }); });
+  $("fCopy").addEventListener("click", () => { clip = cloneFrame(fr()); setStatus(`Copied frame ${sp().frame + 1}.`); updateButtons(); });
+  $("fPaste").addEventListener("click", () => {
+    if (!clip) return;
+    frameOp((s) => { const f = cloneFrame(clip); s.frames[s.frame] = f; fitSprite(s); });
+    setStatus(`Pasted over frame ${sp().frame + 1}.`);
+  });
+
+  // ---------- Sprite operations ----------
+  function uniqueName(name) {
+    const names = new Set(proj.sprites.map((s) => s.name));
+    if (!names.has(name)) return name;
+    const base = name.replace(/\d+$/, "") || "Sprite";
+    for (let i = 2; ; i++) if (!names.has(base + i)) return base + i;
+  }
+  $("sNew").addEventListener("click", () => {
+    pushUndo(); proj.sprites.push(newSprite(uniqueName("Sprite" + (proj.sprites.length + 1)), proj.ui.selFG)); proj.cur = proj.sprites.length - 1;
+    if (playing) setPlaying(false); changed(true, true);
+  });
+  $("sDupe").addEventListener("click", () => {
+    pushUndo(); const c = JSON.parse(JSON.stringify(sp())); c.name = uniqueName(c.name);
+    proj.sprites.splice(proj.cur + 1, 0, c); proj.cur++; changed(true, true);
+  });
+  $("sDel").addEventListener("click", () => {
+    if (proj.sprites.length < 2) { setStatus("A project needs at least one sprite. Use Clear to empty it."); return; }
+    pushUndo(); const n = sp().name; proj.sprites.splice(proj.cur, 1); proj.cur = Math.min(proj.cur, proj.sprites.length - 1);
+    if (playing) setPlaying(false); changed(true, true); setStatus(`Deleted ${n}. Undo brings it back.`);
+  });
+  $("sName").addEventListener("change", () => {
+    const v = $("sName").value.trim(); if (!v) { $("sName").value = sp().name; return; }
+    pushUndo(); sp().name = v; changed(true);
+  });
+
+  // ---------- Exports ----------
+  const safeLabel = (s) => (s.replace(/[^A-Za-z0-9_]/g, "") || "Sprite").replace(/^[0-9]/, "_$&");
+  const prefix = () => safeLabel(proj.ui.prefix || sp().name);
+  function rowByte(row, col) { let b = 0; for (let i = 0; i < 8; i++) if (row[col * 8 + i]) b |= 0x80 >> i; return b; }
+  const vis = (b) => b.toString(2).padStart(8, "0").replace(/0/g, ".").replace(/1/g, "X");
+  const fmtB = (b) => (proj.ui.fmt === "hex" ? hex2(b) : "%" + b.toString(2).padStart(8, "0"));
+
+  function exportData() {
+    const s = sp(), p = prefix(), H = s.height, cols = s.width / 8, u = proj.ui;
+    const list = u.xAll ? s.frames.map((f, i) => [f, i]) : [[fr(), s.frame]];
+    const bottom = u.order === "bottom";
+    const order = [...Array(H).keys()]; if (bottom) order.reverse();
+    const pad = u.xPad;
+    const sameCols = list.every(([f]) => f.colors.slice(0, H).join() === list[0][0].colors.slice(0, H).join());
+    const o = [];
+    o.push(`; ${s.name} - VCS Sprite Editor`);
+    o.push(`; ${s.width} x ${H} pixels, ${list.length} frame${list.length > 1 ? "s" : ""}, ${proj.tv} colours`);
+    o.push(`; ${bottom ? "Bottom-up: the first byte is the bottom line (for kernels that count Y down to 0)" : "Top-down: the first byte is the top line"}`);
+    if (pad) o.push(`; Each table has a zero byte below the sprite, so ${p}_HEIGHT includes it`);
+    if (cols > 1) o.push(`; 48-pixel graphics: six 8-pixel columns per frame, column 0 on the left`);
+    o.push("");
+    o.push(`${p}_HEIGHT = ${H + (pad ? 1 : 0)}`);
+    o.push(`${p}_FRAMES = ${list.length}`);
+    const table = (label, bytes, isCol) => {
+      o.push(""); o.push(`${label}:`);
+      const rows = order.map((r) => ({ r, b: bytes[r] }));
+      if (pad) { const z = { r: null, b: 0 }; bottom ? rows.unshift(z) : rows.push(z); }
+      for (const { r, b } of rows) {
+        const tag = r === null ? "blank line" : `line ${r}`;
+        if (isCol) o.push(`        .byte ${hex2(b)}   ; ${tag}`);
+        else o.push(`        .byte ${fmtB(b)}${proj.ui.fmt === "hex" ? "   ; " + vis(b) + "  " : "   ; "}${tag}`);
+      }
+    };
+    for (const [f, i] of list) {
+      for (let c = 0; c < cols; c++) {
+        const label = cols > 1 ? `${p}_Frame${i}_Col${c}` : `${p}_Frame${i}`;
+        table(label, f.bits.slice(0, H).map((row) => rowByte(row, c)), false);
+      }
+    }
+    if (u.xCol) {
+      if (sameCols) table(`${p}_Colors`, list[0][0].colors.slice(0, H), true);
+      else for (const [f, i] of list) table(`${p}_Colors${i}`, f.colors.slice(0, H), true);
+    }
+    if (u.xPtr) {
+      const ptr = (name, labels) => {
+        o.push(""); o.push(`${name}Lo:`); o.push(`        .byte ${labels.map((l) => "<" + l).join(",")}`);
+        o.push(`${name}Hi:`); o.push(`        .byte ${labels.map((l) => ">" + l).join(",")}`);
+      };
+      if (cols > 1) for (let c = 0; c < cols; c++) ptr(`${p}_Col${c}`, list.map(([, i]) => `${p}_Frame${i}_Col${c}`));
+      else ptr(`${p}_Frame`, list.map(([, i]) => `${p}_Frame${i}`));
+      if (u.xCol && !sameCols) ptr(`${p}_Colors`, list.map(([, i]) => `${p}_Colors${i}`));
+    }
+    return o.join("\n");
+  }
+
+  // Standard frame timing for a fixed visible line count
+  function timing() {
+    const pal = proj.tv === "PAL";
+    // Values chosen so each timer runs out mid-line, well away from a line boundary
+    return { V: visLines(), vbT: pal ? 54 : 43, osT: pal ? 41 : 35 };
+  }
+  const head = (title, notes) => [
+    `; ${title}`,
+    `; Assemble: dasm sprite_test.asm -f3 -osprite_test.bin   (needs vcs.h and macro.h)`,
+    ...notes,
+    "", "        processor 6502", "NO_ILLEGAL_OPCODES = 1", '        include "vcs.h"', '        include "macro.h"', ""
+  ];
+  const tailCommon = [
+    "", ";------------------------------------------------------------",
+    "; SetHorizPos: A = X position, X = object (0 = P0, 1 = P1). Always 2 lines.",
+    ";------------------------------------------------------------",
+    "; This routine places players 3 pixels right of A, so callers pass X-3 (checked in Javatari).",
+    "; Its loop must not cross a page: a crossed branch adds a cycle per pass and moves the sprite.",
+    "PageSHP:", "        IF [>PageSHP] != [>(PageSHP + 18)]", "          ALIGN 256", "        ENDIF",
+    "SetHorizPos:", "        sta WSYNC", "        sec", "DivLoop:", "        sbc #15", "        bcs DivLoop",
+    "        eor #7", "        asl", "        asl", "        asl", "        asl",
+    "        sta HMP0,x", "        sta RESP0,x", "        sta WSYNC", "        rts"
+  ];
+  const vsync = ["Frame:  lda #2", "        sta WSYNC", "        sta VSYNC", "        sta WSYNC", "        sta WSYNC", "        sta WSYNC",
+    "        lda #0", "        sta VSYNC", "        lda #2", "        sta VBLANK", "        lda #VB_TIM", "        sta TIM64T"];
+  const anim = ["; ---- animation: step every SPEED frames ----", "        dec AnimTimer", "        bne NoStep", "        lda #SPEED",
+    "        sta AnimTimer", "        inc FrameNo", "        lda FrameNo", "        cmp #FRAMES", "        bcc NoStep",
+    "        lda #0", "        sta FrameNo", "NoStep:"];
+  const byteRows = (label, bytes) => {
+    const o = [`${label}:`];
+    for (let i = 0; i < bytes.length; i += 8) o.push("        .byte " + bytes.slice(i, i + 8).map(hex2).join(","));
+    return o;
+  };
+
+  function exportTest8() {
+    const s = sp(), v = s.view, H = s.height, N = v.repeat || 1, t = timing();
+    const lines = H * N;
+    const TOP = v.y - 1, BOTTOM = t.V - 2 - TOP - lines;
+    if (TOP < 1 || BOTTOM < 1) throw new Error(`the sprite (${lines} lines) doesn't fit on the screen at y ${v.y}; drag it up or reduce the height`);
+    const F = s.frames.length;
+    const L = head(`Stella test program - ${s.name}, 8 x ${H}, ${F} frame${F > 1 ? "s" : ""}, ${proj.tv}`, [
+      `; Shows the sprite animating at x ${v.x}, y ${v.y} on a plain background, as in the editor's preview.`,
+      `; Expect ${proj.tv === "PAL" ? 312 : 262} scanlines per frame in Stella.`]);
+    L.push(`HEIGHT  = ${H}`, `FRAMES  = ${F}`, `SPEED   = ${v.speed || 1}             ; TV frames per animation step`,
+      `REPEAT  = ${N}             ; scanlines per sprite line`, `TOP     = ${TOP}`, `BOTTOM  = ${BOTTOM}`,
+      `SPRITE_X = ${v.x}`, `VB_TIM  = ${t.vbT}`, `OS_TIM  = ${t.osT}`, "",
+      "        seg.u Variables", "        org $80", "GfxPtr    ds 2", "ColPtr    ds 2", "FrameNo   ds 1", "AnimTimer ds 1", "",
+      "        seg Code", "        org $F000", "", "Reset:  CLEAN_START",
+      `        lda #${hex2(s.bk)}`, "        sta COLUBK", `        lda #${hex2(v.nusiz)}`, "        sta NUSIZ0",
+      `        lda #${v.reflect ? "$08" : "$00"}`, "        sta REFP0", "        lda #SPEED", "        sta AnimTimer", "",
+      ...vsync, ...anim,
+      "        ldx FrameNo", "        lda GfxLo,x", "        sta GfxPtr", "        lda GfxHi,x", "        sta GfxPtr+1",
+      "        lda ColLo,x", "        sta ColPtr", "        lda ColHi,x", "        sta ColPtr+1",
+      "        sta HMCLR", `        lda #SPRITE_X-${v.nusiz ? 4 : 3}${v.nusiz ? "          ; wide players are drawn 1 pixel further right" : ""}`, "        ldx #0", "        jsr SetHorizPos", "        sta WSYNC", "        sta HMOVE",
+      "WaitVB: lda INTIM", "        bne WaitVB", "        sta WSYNC", "        lda #0", "        sta VBLANK", "",
+      "        ldx #TOP", "Top:    sta WSYNC", "        dex", "        bne Top",
+      "        ldy #HEIGHT-1", "Line:   ldx #REPEAT",
+      "Rep:    sta WSYNC", "        lda (ColPtr),y", "        sta COLUP0", "        lda (GfxPtr),y", "        sta GRP0",
+      "        dex", "        bne Rep", "        dey", "        cpy #$FF", "        bne Line",
+      "        sta WSYNC", "        lda #0", "        sta GRP0",
+      "        ldx #BOTTOM", "Bottom: sta WSYNC", "        dex", "        bne Bottom", "",
+      "        sta WSYNC", "        lda #2", "        sta VBLANK", "        lda #OS_TIM", "        sta TIM64T",
+      "WaitOS: lda INTIM", "        bne WaitOS", "        jmp Frame", ...tailCommon, "",
+      "; ---- graphics, bottom line first ----");
+    s.frames.forEach((f, i) => {
+      L.push(...byteRows(`Gfx${i}`, f.bits.slice(0, H).map((r) => rowByte(r, 0)).reverse()));
+      L.push(...byteRows(`Col${i}`, f.colors.slice(0, H).slice().reverse()));
+    });
+    L.push("GfxLo:  .byte " + s.frames.map((_, i) => `<Gfx${i}`).join(","), "GfxHi:  .byte " + s.frames.map((_, i) => `>Gfx${i}`).join(","),
+      "ColLo:  .byte " + s.frames.map((_, i) => `<Col${i}`).join(","), "ColHi:  .byte " + s.frames.map((_, i) => `>Col${i}`).join(","),
+      "", "        org $FFFA", "        .word Reset", "        .word Reset", "        .word Reset");
+    return L.join("\n");
+  }
+
+  // 48-pixel kernel: an exact 76-cycle loop (no WSYNC) per frame. The stack pointer holds the line
+  // index so A, X and Y are free for the last three column bytes. The loop starts at cycle E of the
+  // line before each sprite line; E is chosen from the sprite's X position.
+  function plan48(x) {
+    let best = null;
+    for (let E = 48; E <= 75; E++) {
+      const p = 3 * (E - 22) - 68, lo = p - 13, hi = p - 8;
+      const d = x < lo ? lo - x : x > hi ? x - hi : 0;
+      const score = d * 100 + Math.abs(x - (lo + hi) / 2);
+      if (!best || score < best.score) best = { E, score, x: Math.max(lo, Math.min(hi, x)) };
+    }
+    return best;
+  }
+  function exportTest48() {
+    const s = sp(), v = s.view, H = s.height, N = v.repeat || 1, t = timing(), F = s.frames.length;
+    const LINES = H * N;
+    if (LINES > 255) throw new Error("a 48-pixel sprite can be at most 255 scanlines tall in this test program");
+    const pl = plan48(v.x), E = pl.E;
+    const TOP = v.y - 2;
+    // The exit path finishes E+20 cycles into the last sprite line; pad it so the WSYNC always
+    // lands early in the next line (never near a line boundary), whatever E is.
+    let exitPad = Math.max(0, 80 - (E + 20)); if (exitPad === 1) exitPad = 2;
+    const endLine = TOP + 2 + LINES;
+    const BOTTOM = t.V - endLine - 2;
+    if (TOP < 1 || BOTTOM < 1) throw new Error(`the sprite (${LINES} lines) doesn't fit on the screen at y ${v.y}; drag it up or reduce the height`);
+    const sleep = E - 9;
+    const L = head(`Stella test program - ${s.name}, 48 x ${H}, ${F} frame${F > 1 ? "s" : ""}, ${proj.tv}`, [
+      `; Shows the 48-pixel graphic at x ${pl.x}, y ${v.y}. Both players use three close copies with`,
+      `; vertical delay; each frame has its own exact 76-cycle loop entered at cycle ${E}.`,
+      `; Expect ${proj.tv === "PAL" ? 312 : 262} scanlines per frame in Stella. If the six columns appear`,
+      `; swapped or doubled, change X48 by 1 or 2 and rebuild.`]);
+    L.push(`FRAMES  = ${F}`, `SPEED   = ${v.speed || 1}             ; TV frames per animation step`, `LINES   = ${LINES}`,
+      `TOP     = ${TOP}`, `BOTTOM  = ${BOTTOM}`, `X48     = ${pl.x}`, `VB_TIM  = ${t.vbT}`, `OS_TIM  = ${t.osT}`, "",
+      "        seg.u Variables", "        org $80", "KPtr      ds 2", "Temp      ds 1", "FrameNo   ds 1", "AnimTimer ds 1", "",
+      "        seg Code", "        org $F000", "", "Reset:  CLEAN_START",
+      `        lda #${hex2(s.bk)}`, "        sta COLUBK", "        lda #3              ; three copies, close",
+      "        sta NUSIZ0", "        sta NUSIZ1", "        lda #1", "        sta VDELP0", "        sta VDELP1",
+      "        lda #SPEED", "        sta AnimTimer", "", ...vsync, ...anim,
+      "        ldx FrameNo", "        lda KernLo,x", "        sta KPtr", "        lda KernHi,x", "        sta KPtr+1",
+      "        sta HMCLR", "        lda #X48-3", "        ldx #0", "        jsr SetHorizPos",
+      "        lda #X48+8-3", "        ldx #1", "        jsr SetHorizPos", "        sta WSYNC", "        sta HMOVE",
+      "WaitVB: lda INTIM", "        bne WaitVB", "        sta WSYNC", "        lda #0", "        sta VBLANK", "",
+      "        ldx #TOP", "Top:    sta WSYNC", "        dex", "        bne Top",
+      "        sta WSYNC               ; 0  the line before the first sprite line",
+      "        ldx #LINES-1            ; 2", "        txs                     ; 4  S = line index");
+    // sleep (cycles) using nops and one 3-cycle jmp if odd
+    let lab = 0;
+    const sleepLines = (n) => {
+      const o = [];
+      if (n % 2) { o.push(`        jmp Dly${++lab}`, `Dly${lab}:`); n -= 3; }
+      while (n > 0) { o.push("        nop"); n -= 2; }
+      return o;
+    };
+    L.push(...sleepLines(sleep), `        jmp (KPtr)              ; ${E}  enter the loop`, "");
+    s.frames.forEach((_, i) => {
+      L.push(`PageK${i}:`, `        IF [>PageK${i}] != [>(PageK${i} + 49)]`, "          ALIGN 256", "        ENDIF",
+        `Kern${i}:                        ; offset 0 = cycle ${E} of the previous line`,
+        "        tsx                     ; 2",
+        `        lda C${i},x             ; 6`,
+        "        sta COLUP0              ; 9",
+        "        sta COLUP1              ; 12",
+        `        lda G${i}_0,x           ; 16`,
+        "        sta GRP0                ; 19",
+        `        lda G${i}_1,x           ; 23`,
+        "        sta GRP1                ; 26  P0 shows column 0",
+        `        lda G${i}_2,x           ; 30`,
+        "        sta GRP0                ; 33  P1 shows column 1",
+        `        lda G${i}_5,x           ; 37`,
+        "        sta Temp                ; 40",
+        `        ldy G${i}_4,x           ; 44`,
+        `        lda G${i}_3,x           ; 48`,
+        "        ldx Temp                ; 51",
+        "        sta GRP1                ; 54  P0 shows column 2",
+        "        sty GRP0                ; 57  P1 shows column 3",
+        "        stx GRP1                ; 60  P0 shows column 4",
+        "        sta GRP0                ; 63  P1 shows column 5",
+        "        nop                     ; 65",
+        "        tsx                     ; 67",
+        "        dex                     ; 69",
+        "        txs                     ; 71",
+        "        cpx #$FF                ; 73",
+        `        bne Kern${i}             ; 76`,
+        "        jmp KernDone", "");
+    });
+    L.push("KernDone:", "        lda #0", "        sta GRP0", "        sta GRP1", "        sta GRP0",
+      "        ldx #$FF", "        txs", ...sleepLines(exitPad), "        sta WSYNC               ; ends the line after the last sprite line",
+      "        ldx #BOTTOM", "Bottom: sta WSYNC", "        dex", "        bne Bottom", "",
+      "        sta WSYNC", "        lda #2", "        sta VBLANK", "        lda #OS_TIM", "        sta TIM64T",
+      "WaitOS: lda INTIM", "        bne WaitOS", "        jmp Frame", ...tailCommon, "",
+      "; ---- graphics: one table per column per frame, bottom line first, none crossing a page ----");
+    const expand = (arr) => { const o = []; for (let r = H - 1; r >= 0; r--) for (let k = 0; k < N; k++) o.push(arr[r]); return o; };
+    s.frames.forEach((f, i) => {
+      const tabs = [[`C${i}`, expand(f.colors.slice(0, H))]];
+      for (let c = 0; c < 6; c++) tabs.push([`G${i}_${c}`, expand(f.bits.slice(0, H).map((r) => rowByte(r, c)))]);
+      for (const [name, bytes] of tabs) {
+        L.push(`Page${name}:`, `        IF [>Page${name}] != [>(Page${name} + ${LINES - 1})]`, "          ALIGN 256", "        ENDIF");
+        L.push(...byteRows(name, bytes));
+      }
+    });
+    L.push("KernLo: .byte " + s.frames.map((_, i) => `<Kern${i}`).join(","), "KernHi: .byte " + s.frames.map((_, i) => `>Kern${i}`).join(","),
+      "", "        org $FFFA", "        .word Reset", "        .word Reset", "        .word Reset");
+    return L.join("\n");
+  }
+
+  function romEstimate() {
+    const s = sp(), H = s.height * (s.view.repeat || 1);
+    if (s.width === 8) return 300 + s.frames.length * s.height * 2;
+    return 350 + s.frames.length * (60 + 7 * H + 7 * 40);
+  }
+  function refreshExport() {
+    const u = proj.ui;
+    let text;
+    try {
+      text = u.exp === "data" ? exportData() : sp().width === 48 ? exportTest48() : exportTest8();
+    } catch (err) { text = "; Couldn't build this program: " + err.message; }
+    $("out").value = text;
+    $("dataOpts").style.opacity = u.exp === "data" ? "1" : ".45";
+    for (const id of ["xAll", "xCol", "xPtr", "xPad", "fmt", "order"]) $(id).disabled = u.exp !== "data";
+    let note = u.exp === "data" ? "Data for your own kernel." : "A complete program: assemble with DASM and open in Stella.";
+    if (u.exp === "test" && romEstimate() > 3800) note = "This sprite may be too big for a 4K test program: try fewer frames or a 1-line kernel.";
+    $("expNote").textContent = note;
+  }
+
+  // ---------- Files ----------
+  function download(name, text, type) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type }));
+    a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+  const fileBase = (s) => (s.replace(/[^A-Za-z0-9_ -]/g, "").trim() || "sprite");
+  $("pSave").addEventListener("click", () => {
+    download(`${fileBase(proj.sprites[0].name)}.spriteproject.json`, JSON.stringify(proj, null, 1), "application/json");
+    setStatus(`Saved the project with ${proj.sprites.length} sprite${proj.sprites.length > 1 ? "s" : ""}.`);
+  });
+  $("sSave").addEventListener("click", () => {
+    const file = { type: "vcs-sprite", version: 1, tv: proj.tv, sprite: sp() };
+    download(`${fileBase(sp().name)}.sprite.json`, JSON.stringify(file, null, 1), "application/json");
+    setStatus(`Saved ${sp().name} as a sprite file.`);
+  });
+  let fileMode = "open";
+  $("pOpen").addEventListener("click", () => { fileMode = "open"; $("fileIn").click(); });
+  $("sAdd").addEventListener("click", () => { fileMode = "add"; $("fileIn").click(); });
+  function validSprite(s) { return s && Array.isArray(s.frames) && s.frames.length && (s.width === 8 || s.width === 48) && s.height >= 1; }
+  $("fileIn").addEventListener("change", async () => {
+    const f = $("fileIn").files[0]; if (!f) return;
+    $("fileIn").value = "";
+    try {
+      const data = JSON.parse(await f.text());
+      let incoming = [], msg = "";
+      if (data.type === "vcs-sprite" && validSprite(data.sprite)) incoming = [data.sprite];
+      else if (data.type === "vcs-sprite-project" && Array.isArray(data.sprites)) incoming = data.sprites.filter(validSprite);
+      if (!incoming.length) throw new Error("not a sprite file");
+      pushUndo();
+      if (fileMode === "open") {
+        if (data.type !== "vcs-sprite-project") throw new Error("not a project");
+        const ui = Object.assign({}, proj.ui, data.ui || {});
+        proj = Object.assign(proj, data); proj.ui = ui;
+        proj.cur = Math.min(proj.cur || 0, proj.sprites.length - 1);
+        msg = `Opened ${f.name}: ${proj.sprites.length} sprite${proj.sprites.length > 1 ? "s" : ""}.`;
+      } else {
+        for (const s of incoming) { s.name = uniqueName(s.name || "Sprite"); proj.sprites.push(s); }
+        proj.cur = proj.sprites.length - incoming.length;
+        msg = `Added ${incoming.length} sprite${incoming.length > 1 ? "s" : ""} from ${f.name}.`;
+      }
+      proj.sprites.forEach(fitSprite);
+      if (playing) setPlaying(false);
+      changed(true, true);
+      setStatus(msg);
+    } catch (err) {
+      setStatus(fileMode === "open" && err.message === "not a project"
+        ? `${f.name} is a single sprite file. Use "Add sprites from file" to bring it into this project.`
+        : `Couldn't open ${f.name}: it isn't a file saved by this sprite editor.`);
+    }
+  });
+  // Playfield backdrop
+  $("bdLoad").addEventListener("click", () => $("bdFile").click());
+  $("bdFile").addEventListener("change", async () => {
+    const f = $("bdFile").files[0]; if (!f) return;
+    $("bdFile").value = "";
+    try {
+      const d = JSON.parse(await f.text());
+      if (!Array.isArray(d.rows) || !d.lineH) throw new Error();
+      proj.backdrop = { rows: d.rows.map((r) => ({ bits: r.bits, pf: r.pf, bk: r.bk })), mode: d.mode || "sym", side: d.side || "mirror", lineH: d.lineH, kernel: d.kernel || 192, name: f.name };
+      changed(true);
+      setStatus(`Showing ${f.name} behind the sprite. Drag the sprite in the preview to place it.`);
+    } catch { setStatus(`Couldn't use ${f.name}: it isn't a project file saved by the playfield editor.`); }
+  });
+  $("bdClear").addEventListener("click", () => { proj.backdrop = null; changed(true); });
+
+  // ---------- Controls ----------
+  function setStatus(t) { $("status").textContent = t; }
+  function defaultStatus() { const s = sp(); return `${s.width} × ${s.height} pixels, ${s.frames.length} frame${s.frames.length > 1 ? "s" : ""}`; }
+  function segWire(id, fn) {
+    $(id).addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b || b.disabled) return; fn(b.dataset.v); });
+  }
+  function segSync(id, val) { for (const b of $(id).querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.v === String(val))); }
+
+  segWire("widthSeg", (v) => { pushUndo(); sp().width = +v; fitSprite(sp()); changed(true, true); });
+  segWire("tvSeg", (v) => { proj.tv = v; proj.sprites.forEach(fitSprite); changed(true, true); });
+  segWire("toolSeg", (v) => { proj.ui.tool = v; changed(true); });
+  segWire("nusizSeg", (v) => { sp().view.nusiz = +v; clampView(sp()); changed(true); });
+  segWire("repSeg", (v) => { sp().view.repeat = +v; clampView(sp()); changed(true); });
+  segWire("expSeg", (v) => { proj.ui.exp = v; changed(true); });
+  $("height").addEventListener("change", () => {
+    const h = Math.max(1, Math.min(MAXH, Math.round(+$("height").value || 16)));
+    pushUndo(); sp().height = h; fitSprite(sp()); changed(true, true);
+  });
+  $("par").addEventListener("change", () => { proj.par = +$("par").value; changed(true, true); });
+  $("reflect").addEventListener("change", () => { sp().view.reflect = $("reflect").checked; changed(true); });
+  $("speed").addEventListener("change", () => { sp().view.speed = Math.max(1, Math.min(60, Math.round(+$("speed").value || 8))); changed(true); });
+  $("play").addEventListener("click", () => setPlaying(!(playing && playMode === "frames"), "frames"));
+  $("seqPlay").addEventListener("click", () => {
+    if (playing && playMode === "seq") { setPlaying(false); return; }
+    if (!curSeq() || !curSeq().steps.length) { setStatus("Add some frames to the sequence first."); return; }
+    setPlaying(true, "seq");
+  });
+  const bindCheck = (id, key) => $(id).addEventListener("change", () => { proj.ui[key] = $(id).checked; changed(true); });
+  bindCheck("onion", "onion"); bindCheck("sharedCol", "sharedCol"); bindCheck("optCol", "incCol");
+  bindCheck("optAll", "allFrames"); bindCheck("optWrap", "wrap");
+  bindCheck("xAll", "xAll"); bindCheck("xCol", "xCol"); bindCheck("xPtr", "xPtr"); bindCheck("xPad", "xPad");
+  $("prefix").addEventListener("input", () => { proj.ui.prefix = $("prefix").value; changed(true); });
+  $("fmt").addEventListener("change", () => { proj.ui.fmt = $("fmt").value; changed(true); });
+  $("order").addEventListener("change", () => { proj.ui.order = $("order").value; changed(true); });
+
+  // Palette
+  const pal = $("palette");
+  // PAL hue rows can be shown in spectral order (like NTSC). Display only: colour values never change.
+  // Grey $0 first, then yellow -> orange -> red -> magenta -> purple -> blue -> cyan -> green -> yellow-green,
+  // then the duplicate greys $1, $E, $F.
+  const PAL_SPECTRAL = [0x0, 0x2, 0x4, 0x6, 0x8, 0xA, 0xC, 0xD, 0xB, 0x9, 0x7, 0x5, 0x3, 0x1, 0xE, 0xF];
+  let palBuiltFor = null;
+  function buildPalette() {
+    const spectral = palUi().tv !== "NTSC" && palUi().palOrder === "spec";
+    if (palBuiltFor === spectral) return;
+    palBuiltFor = spectral;
+    pal.innerHTML = "";
+    for (const hue of spectral ? PAL_SPECTRAL : [...Array(16).keys()]) for (let lum = 0; lum < 8; lum++) {
+      const b = document.createElement("button");
+      b.dataset.c = (hue << 4) | (lum << 1);
+      b.setAttribute("aria-label", "Colour " + hex2(+b.dataset.c));
+      b.title = hex2(+b.dataset.c);
+      pal.appendChild(b);
+    }
+  }
+  buildPalette();
+  $("palOrderSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    palUi().palOrder = b.dataset.v; changed(true);
+  });
+  pal.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (proj.ui.target === "fg") proj.ui.selFG = +b.dataset.c;
+    else { pushUndo(); sp().bk = +b.dataset.c; }
+    changed(true);
+  });
+  $("tFG").addEventListener("click", () => { proj.ui.target = "fg"; changed(true); });
+  $("tBK").addEventListener("click", () => { proj.ui.target = "bk"; changed(true); });
+  $("fillFG").addEventListener("click", () => { pushUndo(); for (const f of colourFrames()) f.colors.fill(proj.ui.selFG); changed(); });
+
+  $("eL").addEventListener("click", () => shiftH(-1));
+  $("eR").addEventListener("click", () => shiftH(1));
+  $("eU").addEventListener("click", () => shiftV(-1));
+  $("eD").addEventListener("click", () => shiftV(1));
+  $("eFH").addEventListener("click", flipH);
+  $("eFV").addEventListener("click", flipV);
+  $("eRotL").addEventListener("click", () => rotate(false));
+  $("eRotR").addEventListener("click", () => rotate(true));
+  $("eInv").addEventListener("click", invert);
+  $("eClr").addEventListener("click", clearPx);
+  $("undo").addEventListener("click", undo);
+  $("redo").addEventListener("click", redo);
+  document.addEventListener("keydown", (e) => {
+    if (e.target.matches("input, textarea, select")) return;
+    const k = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+    else if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); }
+    else if (k === "," || k === ".") {
+      const s = sp(); s.frame = (s.frame + (k === "," ? -1 : 1) + s.frames.length) % s.frames.length;
+      if (playing) setPlaying(false); changed();
+    }
+  });
+  $("copy").addEventListener("click", async () => {
+    const t = $("out").value;
+    try { await navigator.clipboard.writeText(t); } catch { $("out").select(); document.execCommand("copy"); }
+    setStatus("Copied the export to the clipboard.");
+  });
+  $("dl").addEventListener("click", () => {
+    const name = proj.ui.exp === "data" ? `${prefix()}_data.asm` : `${prefix()}_test.asm`;
+    download(name, $("out").value.replace(/\n/g, "\r\n"), "text/plain");
+  });
+
+  function syncControls() {
+    const s = sp(), u = proj.ui;
+    segSync("widthSeg", s.width); segSync("tvSeg", proj.tv); segSync("toolSeg", u.tool);
+    segSync("nusizSeg", s.view.nusiz); segSync("repSeg", s.view.repeat || 1); segSync("expSeg", u.exp);
+    for (const b of $("nusizSeg").querySelectorAll("button")) b.disabled = s.width === 48;
+    $("reflect").disabled = s.width === 48;
+    $("height").value = s.height; $("par").value = String(proj.par);
+    $("reflect").checked = !!s.view.reflect; $("speed").value = s.view.speed || 8;
+    $("sName").value = s.name;
+    $("onion").checked = u.onion; $("sharedCol").checked = u.sharedCol; $("optCol").checked = u.incCol;
+    $("optAll").checked = u.allFrames; $("optWrap").checked = u.wrap;
+    $("xAll").checked = u.xAll; $("xCol").checked = u.xCol; $("xPtr").checked = u.xPtr; $("xPad").checked = u.xPad;
+    $("prefix").value = u.prefix; $("prefix").placeholder = safeLabel(s.name); $("fmt").value = u.fmt; $("order").value = u.order;
+    $("tFG").setAttribute("aria-pressed", String(u.target === "fg"));
+    $("tBK").setAttribute("aria-pressed", String(u.target === "bk"));
+    $("chipFG").style.background = rgb(u.selFG); $("codeFG").textContent = hex2(u.selFG);
+    $("chipBK").style.background = rgb(s.bk); $("codeBK").textContent = hex2(s.bk);
+    buildPalette();
+    $("palOrderRow").style.display = palUi().tv === "NTSC" ? "none" : "";
+    for (const b of $("palOrderSeg").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.v === (palUi().palOrder || "hw")));
+    for (const b of pal.children) {
+      const c = +b.dataset.c;
+      b.style.background = rgb(c);
+      b.classList.toggle("sel-pf", c === u.selFG);
+      b.classList.toggle("sel-bk", c === s.bk);
+    }
+    $("palNote").textContent = proj.tv === "NTSC"
+      ? "NTSC palette. Colour values are palette-specific: switching to PAL keeps the values, so colours change."
+      : "PAL palette (also used for PAL60). Hues 0, 1, 14 and 15 are greys on PAL. Row order only changes this display: every swatch keeps its colour value.";
+    $("bdNote").textContent = proj.backdrop
+      ? `Backdrop: ${proj.backdrop.name}. The Stella test program shows the sprite only.`
+      : "Use a project file saved from the VCS Playfield Colour Editor to see the sprite against a maze.";
+    $("eRotL").disabled = $("eRotR").disabled = s.width !== s.height;
+    updateButtons();
+  }
+  function updateButtons() {
+    $("undo").disabled = !undoStack.length; $("redo").disabled = !redoStack.length;
+    $("fPaste").disabled = !clip; $("fDel").disabled = sp().frames.length < 2;
+    $("sDel").disabled = proj.sprites.length < 2;
+  }
+  function save() { try { localStorage.setItem(STORE, JSON.stringify(proj)); } catch (e) { /* storage unavailable */ } }
+  function changed(controlsToo, relayout) {
+    if (controlsToo !== false) syncControls(); else updateButtons();
+    if (relayout) layout(); else drawAll();
+    drawThumbs(); drawSteps(); drawSpriteList(); refreshExport();
+    if (!painting) setStatus(defaultStatus());
+    save();
+  }
+
+  // ---------- Start ----------
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE) || "null");
+    if (saved && saved.type === "vcs-sprite-project" && Array.isArray(saved.sprites) && saved.sprites.length) {
+      const ui = Object.assign({}, proj.ui, saved.ui || {});
+      proj = Object.assign(proj, saved); proj.ui = ui;
+      proj.cur = Math.min(proj.cur || 0, proj.sprites.length - 1);
+    }
+  } catch (e) { /* ignore */ }
+  if (proj.sprites.length === 1 && proj.sprites[0].frames.length === 1 && !proj.sprites[0].frames[0].bits.some((r) => r.some(Boolean))) {
+    // A small starter so the screen isn't empty
+    const art = ["...XX...", "..XXXX..", ".XXXXXX.", "XX.XX.XX", "XXXXXXXX", "..X..X..", ".X.XX.X.", "X.X..X.X"];
+    const f = proj.sprites[0].frames[0];
+    art.forEach((row, r) => { for (let c = 0; c < 8; c++) f.bits[r + 4][c] = row[c] === "X" ? 1 : 0; });
+  }
+  proj.sprites.forEach(fitSprite);
+  window.addEventListener("resize", layout);
+  syncControls(); layout(); changed(true);
+})();
+</script>
+</body>
+</html>
