@@ -131,7 +131,7 @@ def run_bcf(room_no, d, ls, bomb=0):
     mpu = MPU(memory=mem)
     mpu.pc = ADDR2["BuildColupF"]
     mpu.sp = 0xFF
-    for _ in range(128):
+    for _ in range(192):              # P2b StageBandTab grew ~14 instrs
         mpu.step()
         if mpu.pc == ADDR2["ReturnPad"]:
             return [r[COLUPF_BUF - 0x80 + i] for i in range(3)]

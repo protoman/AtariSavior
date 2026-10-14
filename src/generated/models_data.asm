@@ -20,10 +20,9 @@ M0MetaB:
 
 ; Generated from models.json model 1. Do not edit by hand.
 M1RoomRects:
-  .byte 4                  ; number of rectangles
+  .byte 3                  ; number of rectangles
   .byte $00, $49  ; packed (x<<2|y, w<<2|h)
   .byte $01, $09  ; packed (x<<2|y, w<<2|h)
-  .byte $31, $09  ; packed (x<<2|y, w<<2|h)
   .byte $02, $51  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M1TilePF0:
@@ -31,7 +30,7 @@ M1TilePF0:
 M1TilePF1:
   .byte $ff, $00, $ff
 M1TilePF2:
-  .byte $3f, $03, $ff
+  .byte $3f, $00, $ff
 M1MetaA:
   .byte $00                  ; (m1_col+1)<<4 | band mask
 M1MetaB:
@@ -39,21 +38,36 @@ M1MetaB:
 
 ; Generated from models.json model 2. Do not edit by hand.
 M2RoomRects:
-  .byte 3                  ; number of rectangles
+  .byte 4                  ; number of rectangles
   .byte $00, $11  ; packed (x<<2|y, w<<2|h)
   .byte $01, $0a  ; packed (x<<2|y, w<<2|h)
+  .byte $41, $09  ; packed (x<<2|y, w<<2|h)
   .byte $12, $39  ; packed (x<<2|y, w<<2|h)
-  .byte 0              ; number of hot rectangles
+  .byte 1              ; number of hot rectangles
+  .byte $81, 16, 1, 2, 1  ; vcrunch bbox
 M2TilePF0:
   .byte $f0, $30, $30
 M2TilePF1:
   .byte $00, $00, $ff
 M2TilePF2:
-  .byte $00, $00, $3f
+  .byte $00, $30, $3f
 M2MetaA:
-  .byte $00                  ; (m1_col+1)<<4 | band mask
+  .byte $01                  ; (m1_col+1)<<4 | band mask
 M2MetaB:
-  .byte $00                  ; (ball_col+1), 0 = no ball
+  .byte $82                  ; (ball_col+1) | $80 vcrunch shutter
+M2RightPF0:
+  .byte $f0, $30, $30
+M2RightPF1:
+  .byte $00, $00, $ff
+M2RightPF2:
+  .byte $30, $30, $3f
+M2RightRects:
+  .byte 4                  ; number of rectangles
+  .byte 2, 0, 2, 2  ; x(right_col*2), y, w, h
+  .byte 16, 0, 4, 1  ; x(right_col*2), y, w, h
+  .byte 18, 1, 2, 2  ; x(right_col*2), y, w, h
+  .byte 2, 2, 14, 1  ; x(right_col*2), y, w, h
+  .byte 0              ; number of hot rectangles
 
 ; Generated from models.json model 3. Do not edit by hand.
 M3RoomRects:
@@ -69,22 +83,9 @@ M3TilePF1:
 M3TilePF2:
   .byte $3f, $00, $00
 M3MetaA:
-  .byte $02                  ; (m1_col+1)<<4 | band mask
+  .byte $00                  ; (m1_col+1)<<4 | band mask
 M3MetaB:
-  .byte $09                  ; (ball_col+1), 0 = no ball
-M3RightPF0:
-  .byte $30, $f0, $f0
-M3RightPF1:
-  .byte $ff, $00, $f0
-M3RightPF2:
-  .byte $3f, $00, $00
-M3RightRects:
-  .byte 4                  ; number of rectangles
-  .byte 2, 0, 14, 1  ; x(right_col*2), y, w, h
-  .byte 18, 0, 2, 1  ; x(right_col*2), y, w, h
-  .byte 16, 1, 4, 2  ; x(right_col*2), y, w, h
-  .byte 12, 2, 4, 1  ; x(right_col*2), y, w, h
-  .byte 0              ; number of hot rectangles
+  .byte $00                  ; (ball_col+1), 0 = no ball
 
 ; Generated from models.json model 4. Do not edit by hand.
 M4RoomRects:
@@ -92,14 +93,14 @@ M4RoomRects:
   .byte $00, $49  ; packed (x<<2|y, w<<2|h)
   .byte $01, $09  ; packed (x<<2|y, w<<2|h)
   .byte $02, $11  ; packed (x<<2|y, w<<2|h)
-  .byte $1a, $29  ; packed (x<<2|y, w<<2|h)
+  .byte $1a, $39  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 M4TilePF0:
   .byte $f0, $30, $f0
 M4TilePF1:
   .byte $ff, $00, $3f
 M4TilePF2:
-  .byte $3f, $00, $0f
+  .byte $3f, $00, $ff
 M4MetaA:
   .byte $00                  ; (m1_col+1)<<4 | band mask
 M4MetaB:

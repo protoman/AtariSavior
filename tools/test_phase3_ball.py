@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase 3 CHECK probe (py65): asymmetric ball path with every model's
 packed meta poked directly in the ROM image (MetaA = band mask $07,
-MetaB = 2 -> staged BallX = 102) — the poke simulates
+MetaB = 2 -> staged BallX = 8*2+79 = 95) — the poke simulates
 resolve_asym_patches output so the probe does not depend on
 models.json having asymmetric content yet.
 
@@ -11,7 +11,9 @@ Assertions (frames >= 2, after the RESET-pulse title -> game start):
   * >= 1 bank0 RESPBL ($14) AND >= 1 HMBL ($24) write per frame — proves
     bank2 StageBandTab staged a non-zero BallX into Temp and the VBL ball
     block ran SetObjectXPos selector 4 (the Phase 3 staging path);
-  * frame line count constant across frames >= 3 and in {264, 265} (the
+  * Temp ($88) at every bank0 RESPBL write == 95 (8*2+79) — pins the
+    staged-BallX constant to the calibrated arg / PHMOverlay math;
+  * frame line count constant across frames >= 3 and in {266, 267} (the
     asym VBL growth must not add a scanline; 265 = 262 NTSC + 3 since the
     2026-10-11 VSYNC re-anchor fix for bugs.md #29 Class C);
   * min SP (frames >= 2) >= $F7 (documented whole-run stack guard).
@@ -33,7 +35,11 @@ from test_phase2_ball import Mem, LABELS
 
 SRC = Path(__file__).resolve().parent.parent / "src"
 FRAMES = 60
-META_B_POKE = 2                   # ball_col+1 -> staged BallX = 8*2+86 = 102
+META_B_POKE = 2                   # ball_col+1 -> staged BallX = 8*2+79 = 95
+                                  # (calibrated SetObjectXPos arg; must equal
+                                  # PHMOverlay's independent 8n+79 math — a
+                                  # #86 constant drew the stripe one cell
+                                  # right of its collision, 2026-10-12)
 ENABL, RESBL, HMBL = 0x1F, 0x14, 0x24
 
 PC_START = LABELS["StartFrame"]
@@ -60,7 +66,15 @@ def run(rom: Path, band1: int = 0xFF) -> dict:
             banks[2][addr & 0xFFF] = META_B_POKE
         else:  # MetaA
             banks[2][addr & 0xFFF] = mask
-    mem = Mem(banks)
+    respbl_temp = []
+
+    class ProbeMem(Mem):
+        def __setitem__(self, a, v):
+            if (a & 0xFFFF) == RESBL and self.bank == 0:
+                respbl_temp.append((self.frame, self.ram[0x08]))
+            super().__setitem__(a, v)
+
+    mem = ProbeMem(banks)
     mpu = m.MPU(memory=mem)
     prev = 0
     per_frame = {}
@@ -115,6 +129,7 @@ def run(rom: Path, band1: int = 0xFF) -> dict:
         ff_per_frame=ff_per_frame,
         respbl=respbl,
         hmbll=hmbll,
+        respbl_temp=respbl_temp,
         per_frame=per_frame,
         min_sp=min_sp,
         frames=frame,
@@ -143,9 +158,20 @@ def main() -> int:
     if no_hmb:
         fails.append(f"frames without bank0 HMBL: {no_hmb[:6]}")
 
+    # staged-BallX constant: Temp at the RESPBL write must be the
+    # calibrated arg 8*MetaB+79 (MetaB poke = 2 -> 95). Catches the
+    # #86 regression that drew the stripe one cell right of collision.
+    want_temp = 8 * META_B_POKE + 79
+    bad_temp = sorted({t for f, t in r["respbl_temp"]
+                       if f >= 2 and t != want_temp})
+    if bad_temp:
+        fails.append(
+            f"Temp at bank0 RESPBL = "
+            f"{[f'${t:02X}' for t in bad_temp]}, want ${want_temp:02X}")
+
     lens = sorted({r["per_frame"].get(f) for f in range(3, r["frames"])})
-    if len(lens) != 1 or lens[0] not in (264, 265):
-        fails.append(f"frame line counts (f>=3) = {lens}, want one of [264,265]")
+    if len(lens) != 1 or lens[0] not in (266, 267):
+        fails.append(f"frame line counts (f>=3) = {lens}, want one of [266,267]")
 
     if r["min_sp"] < 0xF7:
         fails.append(f"min SP (f>=2) = ${r['min_sp']:02X}, want >= $F7")
@@ -169,7 +195,8 @@ def main() -> int:
     print(f"test_phase3_ball: OK ({r['frames']} frames, "
           f"lines={lens[0]}, ENABL {{00,ff}} with >=3 ff/frame, "
           f"partial mask band1=0 -> 2 ff/frame, "
-          f"RESPBL+HMBL every frame, min SP ${r['min_sp']:02X}, "
+          f"RESPBL+HMBL every frame (Temp=${want_temp:02X} at RESPBL), "
+          f"min SP ${r['min_sp']:02X}, "
           f"poked {len(LAB2)} meta bytes)")
     return 0
 

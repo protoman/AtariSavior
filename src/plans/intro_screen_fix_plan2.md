@@ -1,5 +1,8 @@
 # Implementation Plan: Fix Intro Screen
 
+**Status: CLOSED (2026-10-07) — both Outcomes below shipped; VDEL stale
+live-slot root cause documented in AGENTS.md "Title pad stripe" section.**
+
 ## Goal
 Fix the intro screen (`DropTarget=$FD`) to match `screenshots/intro_screen_mess_fixed.png`:
 - Center the "S.A.V.I.O.R." title text and remove the trailing `_` artifact.

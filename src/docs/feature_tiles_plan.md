@@ -29,10 +29,13 @@ Add to game + editor:
 - **Door = MetaB b7** (`ball_col+1 | $80`), computed by `model_door_flag(model)`.
   Staging must mask b7 in Phase 2 (staged RAM is wall-only).
 - **KeyHeld = `LevelStartRoom $A7` b7** (write kernel, read needs `and #$7F`).
-- **Door open = `EnemyDeadMask b3`**; phase/vcrunch/hcrunch dead bits b5/b6/b7
-  of `$BA`, zeroed at EnterRoom.
+- **Door open = `EnemyDeadMask b3`**; `$BA` feature bits (final, 2026-10-13):
+  b5 = phase armed (staged by PhaseBlink each VBL), **b6 = phase removed
+  (latch set at the crush kill; punch forced open until EnterRoom)**,
+  b7 = free for vcrunch/hcrunch — zeroed at EnterRoom.
 - **Crunch state = clock-derived only** (no state bytes; ZP 100% full).
-  hcrunch 4.27s cycle (user-chosen), vcrunch 16f/step, phase 64f blink.
+  hcrunch 4.27s cycle (user-chosen), vcrunch 16f/step, phase 90f blink
+  (mod-90 staging → 45 on / 45 off, +40%).
 - **Key art = OBJ_NONE offset-0 slot reuse** (ObjBase=0 → $FF sentinel);
   key persists across rooms, death keeps state.
 - **CTLPF 4clk = per-frame write** (kernel) driven by a per-room ROM table
@@ -46,6 +49,35 @@ Add to game + editor:
      crunch, not hot; the band's other cells stay hot).
   3. Editor live feature checks fire **on mouse RELEASE only**, never
      mid-drag (drag legitimately passes through invalid layouts).
+
+## Placement rules R1–R5 (user-approved 2026-10-14)
+
+Special features get ONE sanctioned home; every layer enforces the same
+list (convert raises, `verify_build` gates, editor guards on mouse
+release):
+
+- **R1** door / phase / vcrunch / hcrunch live ONLY on **model row 1**
+  (middle band, display tiles 4-7). Rows 0/2 are entry/exit corridors.
+- **R2** **≤1 special type per room** — door XOR phase XOR vcrunch XOR
+  hcrunch (convert raises on any mix).
+- **R3** room-shape caps: vcrunch/hcrunch rooms = **no objects**; door
+  rooms = **≤1 non-key enemy, no lamp/miner/raft/magma**; phase rooms
+  unrestricted.
+- **R4** the hot middle band (`mid_band_type=1`) is incompatible with
+  door/phase only (user rule amended 2026-10-14: **vcrunch/hcrunch ARE
+  allowed on hot** — both crunch walls respect the hot flag: hot ON =
+  touching any part of the drawn block kills; convert flags it in
+  MetaB b6 and the kill gates use touch semantics when b6 is set).
+- **R5** raft + tentacle only on the **bottom band** (model row 2) over
+  an AIR cell, and only in rooms with `bottom_band: true`.
+
+Enforcement: `tools/convert_room.py` (R1/R2 stream layer),
+`tools/convert_level.py` (`rows_from_json`, `resolve_asym_patches`,
+`check_model_objects`, `check_rooms_against_models`), `tools/verify_build.py`
+(ROM-side gate), `MapCanvas.cpp` (feature/door/enemy brushes).
+Consequence: vcrunch moved band0 → band 1 (ROM: `bank2.asm` `VcrShutter`
+`cmp #1` gate, `VcrBand #1`, recolor `sta ColupfBuf,X`, `OvShutScan`
+slices +48 = #57/#66/#79/#88/#97; records emitted with y=1).
 
 ## Phase 0 — audits (READ-ONLY) — DONE, CHECK 0 green
 
@@ -77,39 +109,171 @@ Check 0 = full battery green.
   `/tmp/opencode/p1_baseline`.
 - Gates: `./build.sh` + sims OK, battery 27/27 + title + editor roundtrip.
 
-## Phase 2 — ball staging (b7 mask) + async door — NEXT
+## Phase 2 — ball staging (b7 mask) + async door — DONE 2026-10-12 (CHECK 2)
 
-1. Bank2 hot staging strips b7 from the staged mask byte (wall-only RAM;
-   legacy masks unaffected → rendering bit-identical, prove via baseline diff).
-2. Door flag: MetaB b7 → per-room ROM table → per-frame `CTRLPF` 4-clock
-   write in the kernel (no ZP).
-3. Ball stripe enabled on the door column; red `COLUPF` band.
-4. Open condition: `EnemyDeadMask b3` clear → stripe off (passable).
-5. CHECK: gates green + Stella screenshot: stripe visible, opens when flag
-   clears.
+Landed in `bank2.asm` StageBandTab + fold-operand sync:
 
-## Phase 3 — phase wall
+1. **MetaB b7 → CTRLPF**: `and #$80 / eor #$35 / sta CTRLPF` every VBL —
+   $35 (plain, 8 clk) / $B5 (door, 4 clk; b7 → TIA-ignored D7). Written in
+   VBL = the cave's value; bank1 HUD's $05/$35 dance lands after the cave.
+2. MetaB reload + `and #$7F` (defensive — the ×8 asl chain drops b7 anyway)
+   before the BallX math.
+3. TitleSequence moved $F4AA → **$F4B4** (+10B growth): both fold operands
+   (`kernel.asm` TitleSequenceFold + bank2 twin) + the stale comment
+   synced; `verify_build`'s tramp guard + `test_title_demo`'s lst assert
+   catch drift.
+4. Open path = existing strip-kill: `EnemyDeadMask b3` → StageBandTab zeroes
+   BandTab → ENABL off (render) + PHMOverlay band mask 0 (passable).
+    Bomb (`StripBlastCheck`) already sets b3 — **P2b retires that**: doors
+    open by KEY only (bomb-immune), both sides.
 
-`$80` records → per-cell blink (64f cycle) at band setup; collision pass when
-phase flag on. CHECK: gates + Stella blink A/B frames.
+Verification: py65 probe (`/tmp/opencode/probe_door.py`, injected
+M3MetaB=$89 model 3 in level-1 start room, reverted after):
+bank2 writes CTRLPF=$B5 every VBL before the cave; b3 poke zeroes the band
+gates frame 1; generated data byte-identical after revert; battery 27/27 +
+title + sims green. **Stella visual left to user** — scripted console-switch
+input cannot reach gameplay (intro waits on real RESET edges; `write $82`
+and `reset` script commands don't register). To eyeball: flip any ball
+patch tile to 9 in the editor, build, play.
 
-## Phase 4 — vcrunch + hcrunch
+## Phase 2b — left door + key-only unlock (both sides)
 
-`$81` bbox → vertical crush (16f/step); `$82` band prefix → horizontal crush
-(4.27s cycle). Contact rules (crushed player death) per audit 0.3. CHECK:
-gates + Stella animation frames.
+Door = specialized async patch on EITHER side, exactly two extra bits on
+the existing strip infrastructure (user design, 2026-10-12):
 
-## Phase 5 — key
+- **is-door bit**: `MetaB` b7 (right/ball — landed P2) / **`MetaA` b3**
+  (left/M1 — free: high nibble = m1_col+1, b0-2 = band mask).
+- **is-consumed bit**: `EnemyDeadMask` b3 (ball) / b4 (M1) — both already
+  gate render (`StageBandTab` zeroes BandTab on b3, `PositionBallM1`
+  skips ENAM1 on b4) AND collision (`OvM1Block` checks b4 at entry;
+  ball strip dies with its band gates).
+- Left M1 async **already blocks** the player (`OvM1Block`, bank2:1221 —
+  px overlap + per-row open-cell walk). Nothing to add for collision.
 
-EnemyType 6 → OBJ_NONE slot rendering (art at offset 0), pickup →
-`KeyHeld $A7 b7`, HUD ball icon in HudPad, door unlock coupling, persistence
-across rooms + death. CHECK: gates + Stella pickup → door opens.
+Work items (status 2026-10-12, all landed except CHECK):
+1. DONE: convert allows `LOCKED_DOOR` side 1; MetaA b3 emitted
+   (`model_m1_door_flag`, no-mix rule per side); editor `DOOR_TILE`
+   accepts the left half; verify_build MetaA want includes b3;
+   `test_features_data` 5b covers the positive/reject cases.
+2. DONE: bank2 `StageBandTab` owns NUSIZ1 + CTRLPF every VBL; kernel's
+   VBL restores DELETED (they ran after StageBandTab and clobbered it).
+   Door visual = **yellow stripe** (user final ruling 2026-10-12, after
+   4clk "half a tile" and thin-stripe "only one strip" both rejected):
+   full-width M1 ($30) + COLUP1 = $1C staged via CollisionCellY ($8D)
+   when MetaA b3. The +10c band-setup branch cost +2 frame lines →
+   wall-model retargeted per-kernel (cave 267.0 / title 265.0; see
+   bugs.md #32). RIGHT doors stay wall-colored (ball = COLUPF = walls).
+3. DONE (no staging byte needed — gates live in bank2 where MetaA/MetaB
+   ROM is): `M1StripBlast` (runs BEFORE the bank1 check) — MetaB b7
+   stashes `BMWScratch := $FF` ("no strip" sentinel, kills the bank1
+   take; BMWScratch = Temp $88, BombMarkWalls' own scratch in this
+   flow); MetaA b3 bails before the overlap test so b4 never sets.
+   The plan's earlier "StageBandTab b7 staging" sketch is dead — b7 is
+   reserved for hcrunch-dead (Phase 4) and staging would have collided.
+   Key pickup (P5) sets b3/b4 (comment hooks at both checks).
+4. DONE: gates + battery 28/28 + py65 probe in `test_bomb_strip` +
+   **user Stella sign-off 2026-10-12** (door looks/blocks like plain
+   async, bomb immune; 4clk sizing retired same day — see item 2).
+   Note: the `test_phase2_ball` bit-identity baseline was re-cut
+   2026-10-12 (content + P2b shifted the old 10-11 baseline's trace;
+   re-cut recipe = docstring).
+
+## Phase 3 — phase wall — LANDED + kill/removal 2026-10-13 (user CHECK)
+
+$80 records → per-cell blink (90f full cycle = mod-90 on EnemyRamP, 45 on +
+45 off — clock-derived, no state bytes). Implementation: bank2 `PhaseBlink`
+(moved after the level data — the StageBandTab window is pin-full at $F4C4;
+door-color staging moved in with it) walks the hot stream and toggles the
+cell's two PF bits. The PF buffers ARE the collision map — render + PHM +
+laser follow the blink with zero kernel cost. PhMaskTab (10B) in the $F901
+gap. Probe: `test_bomb_strip` stage_phase.
+
+**Crush kill (user ruling):** armed (b5) + candidate-box overlap on a `$80`
+record → shared Hot hit (Temp b7 → bank0 `jsr LoseLife` — hot-rock death).
+**Wall removal:** the kill latches `EnemyDeadMask b6`; `.HOVfeature` gates
+on armed-and-not-removed (`and #$60 / cmp #$20`) and PhaseBlink's punch site
+force-opens the cell while b6 set (`and #$40 / bne .PhOff`) — the blink
+staging block is untouched. `.LLStay` → DropArm respawns at the death spot
+(no EnterRoom) → b6 survives, no re-kill, player falls through the opened
+cell. **Ruling (user 2026-10-13): removal is same-room only** — re-entering
+blinks the walls again (EnterRoom zero is correct, no change).
+
+Tramp operand syncs for the +14B hit-block/gate inserts: `BombEnemyBlastBody`
+$FD79→$FD87 (kernel `jmp` + $FDD8 twin literal, verify_build guards both).
+Tests: `tools/test_phase_kill.py` (7 unit cases), `tools/test_phase_kill_frame.py`
+(full-frame chain: kill once, b6 latched, cell removed, respawn survived —
+room-agnostic via `load_room_m1()` since `start_room=0`).
+
+## Phase 4 — vcrunch + hcrunch — rulings locked 2026-10-13
+
+**Status 2026-10-14: vcrunch SHIPPED — but via `plans/vcrunch_shutter_plan.md`
+(Phases A-D, 2026-10-14), not this plan's original record-path sketch.**
+The shipped kill rides the overlay MISS path (`OvShutScan`/`OvShutBand`,
+MetaB b7 gate): `.HOVfeature` deliberately SKIPS the `$81` record
+(`cmp #$81 / beq HOVnext`, stack-stomp 2026-10-13). The `HOVvcrunch`
+record-path kill below is historical reference only — do not implement it.
+Tests (`test_vcr_shutter`, `test_phase_kill_frame`, `test_phase_kill`)
+encode the shipped contract; stage data frozen in `tools/test_fixtures.py`.
+**hcrunch (`$82`) still pending.**
+
+**Band move (2026-10-14, rule R1):** vcrunch now lives on the MIDDLE
+band. `VcrShutter` arms only for `VcrBand == 1` (`cmp #1`), the hazard
+recolor writes the band's `ColupfBuf,X`, and `OvShutScan`'s slice ranges
+shifted +48: head+feet must both sit in a closed slice of
+[57,66)/[66,79)/[79,88)/[88,97) — line ≥97 never closes. All three
+tests retargeted (arm y=66 open / y=116 band2 reject / kill y=68);
+M2 fixture is a count-0 stream (7B — fits the live 8B `M2RoomRects`
+slot; a 15B stream spills into `M2TilePF0` and the PF/meta freeze eats
+the `$81` record). `freeze_m1/m2` now accept the test's 4-bank list
+(previously a silent no-op list-slice — found 2026-10-14).
+
+Records (from convert_room.py): `$81` vcrunch = bbox of all painted V cells
+`[mask, 2*min_c, min_r, 2*span_c, span_r]`; `$82` hcrunch = single-row prefix
+`[mask, 0, band, 2*(max_c+1), 1]` (contiguous cols 0..n, exactly one band).
+
+**User rulings (2026-10-13):**
+- **Motion = ping-pong**, and at the home/box position it **dwells ("waits a
+  while")** before restarting the sweep. Far end just turns around.
+- **Death = always-solid + edge-overlap kill** (same LoseLife path as phase).
+  The covered extent is always solid; the advancing leading edge kills on
+  player overlap. Never a fully-gone state (≥ a stub always present).
+- **Bomb-immune like doors** (no consume bit — ZP full); laser just blocked.
+- CHECK = user eyeballs speed in Stella (tunable constants: step cadence
+  16f/step, dwell default ~60f — adjust at CHECK).
+- **Motion-model confirm still open:** (A) shutter extend/retract — covered
+  extent grows from the home edge to full bbox then retracts (matches "C
+  closes from the left"); vs (B) solid full-bbox block that slides its own
+  height. Recommend (A). Awaiting user pick before implementing.
+
+## Phase 5 — key — rulings locked 2026-10-13 (implementation pending)
+
+EnemyType 6 → OBJ_NONE offset-0 slot (art = 8-wide key, user OK). Pickup →
+`KeyHeld` ($A7 b7).
+
+**User rulings (2026-10-13):**
+- **One key opens ALL doors, forever** (single flag — keep it simple).
+- **Key never reappears once obtained** — `KeyHeld` persists (survives
+  EnterRoom + death); if `KeyHeld`, skip type-6 render + pickup everywhere.
+  Zero extra storage.
+- **Doors re-lock on room re-entry** (EnemyDeadMask b3/b4 zeroed at EnterRoom
+  — no per-door storage). `KeyHeld` overrides: door-open check = KeyHeld OR
+  the per-room consumed bit, so an obtained key keeps doors open on re-entry.
+- **Editor rule: only one KEY object per level** (like the miner/goal).
+- CHECK = gates + Stella pickup → door opens.
 
 ## Phase 6 — QA sweep
 
 Full battery + `sim_frame_budget` + `sim_bomb_fuse` + Stella sweep of all
 five features in-game; screenshot set; update AGENTS/zp docs if any invariant
 moved.
+
+**Status 2026-10-14:** battery 31/31 green (`tools/test_*.py` incl.
+`test_features_data` retargeted to R1–R5, `test_vcr_shutter`,
+`test_phase_kill_frame`); `./build.sh` green (verify_build OK 5 warnings,
+both sims OK); `test_phase2_ball` baseline re-cut as a green-ROM snapshot
+(the old HEAD-bank recipe no longer builds — `.PhRec` sync needs the
+uncommitted feature work; recipe updated in the test docstring).
+Stella screenshot set still pending (hcrunch + key not in-game yet).
 
 ## Gates (every phase)
 

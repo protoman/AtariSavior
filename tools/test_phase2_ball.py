@@ -22,32 +22,14 @@ Assertions (gameplay frames >= 2 where the cave kernel runs):
     its 2 lines folded into TopGap so the WSYNC sequence stays aligned).
 
 Baseline: P2_BASELINE env var, default /tmp/opencode/savior_phase1.bin.
-Regenerate (pre-M1-asm banks + CURRENT content — phase1-era code cannot
-parse today's models.json [4-tuple patches, mid_band_type], and the
-drop-list above already carries every phase1→2 intended delta):
-  cp src/bank1.asm src/bank2.asm /tmp/opencode/       # save working copy
-  git show HEAD:src/bank1.asm > src/bank1.asm         # HEAD = pre-change
-  git show HEAD:src/bank2.asm > src/bank2.asm
-  # HEAD bank2's hand-copied sprite EQUs track the HEAD kernel; the working
-  # kernel may have shifted pre-pad (+7B classes). Resync them the same way
-  # tools/test_miner_colors.py asserts, or the baseline ROM fetches sprite
-  # bytes from a stale address (stripped trace diffs at the first GRP0):
-  /home/iuri/python3/bin/python3 - <<'EOF'
-  import re
-  from pathlib import Path
-  lab = {}
-  for ln in Path("src/bank0.lst").read_text(errors="replace").splitlines():
-      m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+([A-Za-z_][A-Za-z0-9_]*)\s*$", ln)
-      if m: lab[m.group(2)] = m.group(1)
-  p = Path("src/bank2.asm"); s = p.read_text()
-  for n in ("PlayerSpriteA", "PlayerSpriteB"):
-      s = re.sub(rf"^{n} = \$[0-9a-fA-F]+", f"{n} = ${lab[n]}", s, flags=re.M)
-  p.write_text(s)
-  EOF
-  (cd src && ./build.sh)
-  cp src/savior.bin /tmp/opencode/savior_phase1.bin
-  cp /tmp/opencode/bank1.asm /tmp/opencode/bank2.asm src/  # restore
-  (cd src && ./build.sh)
+Regenerate: snapshot a GREEN build — after ./build.sh + the battery pass,
+`cp src/savior.bin /tmp/opencode/savior_phase1.bin`. Re-cut the snapshot
+whenever an intended TIA-writing change lands (the strip list above
+carries the standing phase1→2 deltas; the snapshot then catches
+UNintended drift from that point). The old "git show HEAD:bank1/2"
+recipe died 2026-10-14: verify_build's .PhRec sync needs a bank2.lst
+that has the label, and HEAD predates the uncommitted feature-stream
+work — revisit once that work is committed.
 If missing, the bit-identical leg is skipped (invariants still run).
 
 Run: /home/iuri/python3/bin/python3 tools/test_phase2_ball.py
@@ -204,9 +186,13 @@ def check(r: dict, want_ctrlpf: int, log_fallback: bool = False) -> list[str]:
         if len(set(rows)) != 1:
             fails.append(f"CTRLPF not constant: {sorted(set(rows))}")
     elif log_fallback:
-        # baseline phase1: CTRLPF was written by bank1 HUD only (no bank0
-        # VBL site yet) — any-bank writes, all must equal want.
-        vals = [v for f, b, a, v in r["log"] if f >= 2 and a == CTRLPF]
+        # baseline: .Row address differs from the current bank0.lst parse,
+        # so the breakpoint never fires there — validate via bank0-only
+        # CTRLPF writes (cave value). bank1 HUD legitimately writes $05
+        # (bar grey) + $35; those ride in the any-bank log and are not
+        # this invariant's business (stripped-trace leg owns the rest).
+        vals = [v for f, b, a, v in r["log"]
+                if f >= 2 and b == 0 and a == CTRLPF]
         if not vals:
             fails.append("baseline: no CTRLPF writes in log")
         elif set(vals) != {want_ctrlpf}:

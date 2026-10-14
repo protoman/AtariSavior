@@ -90,14 +90,14 @@ assert hot_counts(hot) == [1], (
 patch = [[1, 0, 1, 0]]
 model = make_model(hot=1, patches=patch)
 left_hot = rows_of(model)
-right_hot, ball_x, m1_x = convert_level.resolve_asym_patches(model, left_hot)
+right_hot, ball_x, m1_x, _ = convert_level.resolve_asym_patches(model, left_hot)
 assert right_hot is not None and ball_x == 87, "ball patch must resolve"
 assert right_hot[1][0] == "H", (
     f"hot patch cell must promote to 'H', got {right_hot[1][0]!r}")
 
 model = make_model(patches=patch)          # same patch, selector cold
 left_cold = rows_of(model)
-right_cold, _, _ = convert_level.resolve_asym_patches(model, left_cold)
+right_cold, _, _, _ = convert_level.resolve_asym_patches(model, left_cold)
 assert right_cold[1][0] == "#", (
     f"cold patch cell must stay '#', got {right_cold[1][0]!r}")
 

@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VCS Playfield Colour Editor</title>
+<style>
+  :root {
+    --walnut: #4a3322;
+    --walnut-light: #6b4a30;
+    --panel: #26221f;
+    --panel-2: #312c28;
+    --ridge: #3a3430;
+    --silver: #c4bfb5;
+    --text: #ebe5da;
+    --muted: #a39b8f;
+    --amber: #e3a53c;
+    --focus: #f2c46b;
+    --font: "Bahnschrift", "DIN Alternate", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+    --mono: "Cascadia Mono", "Consolas", "SF Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--panel);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.4;
+  }
+  button, select, input, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  /* Woodgrain strip across the top, like the console's front panel */
+  header {
+    display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
+    padding: 14px 22px 12px;
+    background:
+      repeating-linear-gradient(90deg, rgba(0,0,0,.10) 0 2px, transparent 2px 9px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.04) 0 1px, transparent 1px 23px),
+      linear-gradient(180deg, var(--walnut-light), var(--walnut));
+    border-bottom: 3px solid #1d1916;
+  }
+  header h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: .01em; }
+  header p { margin: 0; color: #d9cbb6; font-size: 14px; }
+  header .ver { font-size: 13px; font-weight: 400; color: #d9cbb6; font-family: var(--mono); margin-left: 6px; vertical-align: 2px; }
+
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 0;
+    min-height: calc(100% - 58px);
+  }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+  /* The TV */
+  .stage {
+    padding: 22px;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    background: repeating-linear-gradient(0deg, var(--panel) 0 3px, #2a2622 3px 6px);
+  }
+  .tv {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 16px;
+    background: #1c1917;
+    border-radius: 14px;
+    box-shadow: inset 0 0 0 2px #3b3530, 0 8px 24px rgba(0,0,0,.45);
+    max-width: 100%;
+  }
+  .strips { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+  .strips small { color: var(--muted); font-size: 11px; writing-mode: vertical-rl; transform: rotate(180deg); }
+  canvas { display: block; touch-action: none; }
+  #screen { cursor: crosshair; background: #000; }
+  #strip { cursor: pointer; background: #000; }
+  .status { color: var(--muted); font-size: 14px; text-align: center; min-height: 1.4em; }
+
+  /* Control panel */
+  aside {
+    background: var(--panel-2);
+    border-left: 3px solid #1d1916;
+    padding: 6px 18px 24px;
+    overflow-y: auto;
+  }
+  section { padding: 14px 0; border-bottom: 1px solid var(--ridge); }
+  section:last-child { border-bottom: 0; }
+  h2 { margin: 0 0 10px; font-size: 16px; font-weight: 600; color: var(--silver); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  .row > label:first-child { width: 112px; color: var(--muted); }
+
+  /* Segmented switches, echoing the console's rocker switches */
+  .seg { display: inline-flex; border-radius: 6px; overflow: hidden; box-shadow: inset 0 0 0 1px #4a433c; }
+  .seg button {
+    border: 0; background: #2b2724; padding: 5px 11px; cursor: pointer;
+  }
+  .seg button + button { border-left: 1px solid #4a433c; }
+  .seg button[aria-pressed="true"] {
+    background: linear-gradient(180deg, #d9d4ca, #a9a398); color: #1e1a17; font-weight: 600;
+  }
+  .seg button:disabled { opacity: .4; cursor: not-allowed; }
+
+  .btn {
+    border: 0; border-radius: 6px; padding: 6px 12px; cursor: pointer;
+    background: linear-gradient(180deg, #d9d4ca, #a9a398); color: #1e1a17; font-weight: 600;
+  }
+  .btn.quiet { background: #3a3430; color: var(--text); font-weight: 400; box-shadow: inset 0 0 0 1px #4f4740; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  input[type="number"], select, input[type="text"] {
+    background: #1f1b18; border: 1px solid #4f4740; border-radius: 6px; padding: 4px 8px; width: 90px;
+  }
+  input[type="text"] { width: 140px; }
+
+  /* Palette */
+  .targets { display: flex; gap: 10px; margin-bottom: 10px; }
+  .target {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; cursor: pointer;
+    background: #2b2724; border: 2px solid transparent; flex: 1;
+  }
+  .target[aria-pressed="true"] { border-color: var(--amber); }
+  .chip { width: 26px; height: 18px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); }
+  .target span.code { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+  #palette { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+  #palette button {
+    aspect-ratio: 2 / 1; border: 0; padding: 0; cursor: pointer; border-radius: 2px;
+  }
+  #palette button.sel-pf { outline: 2px solid var(--amber); outline-offset: -1px; }
+  #palette button.sel-bk { box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3px #000; }
+  .hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+
+  /* Export */
+  .export { padding: 18px 22px 28px; background: var(--panel-2); border-top: 3px solid #1d1916; grid-column: 1 / -1; }
+  .export h2 { font-size: 18px; }
+  textarea {
+    width: 100%; height: 300px; resize: vertical;
+    background: #171412; border: 1px solid #4f4740; border-radius: 8px; padding: 10px 12px;
+    font-family: var(--mono); font-size: 13px; line-height: 1.45; color: #e8e0d2;
+  }
+  .pflist { display: flex; flex-direction: column; gap: 4px; max-height: 190px; overflow-y: auto; margin-bottom: 8px; }
+  .pflist button {
+    display: flex; justify-content: space-between; gap: 8px; text-align: left; cursor: pointer;
+    background: #2b2724; border: 2px solid transparent; border-radius: 6px; padding: 5px 9px;
+  }
+  .pflist button[aria-current="true"] { border-color: var(--amber); }
+  .pflist .meta { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+  .btn.small { padding: 4px 9px; font-size: 13px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<header>
+  <h1>VCS Playfield Colour Editor <span class="ver">v0.3</span></h1>
+  <p>Draw Atari 2600 playfields with a wall colour and background colour for every row, then export DASM data.</p>
+</header>
+
+<main>
+  <div class="stage">
+    <div class="tv">
+      <div class="strips">
+        <canvas id="strip" aria-label="Row colours: click to paint the selected colours onto rows"></canvas>
+      </div>
+      <canvas id="screen" aria-label="Playfield: click and drag to draw"></canvas>
+    </div>
+    <div class="status" id="status" aria-live="polite"></div>
+  </div>
+
+  <aside>
+    <section>
+      <h2>Playfields</h2>
+      <div class="pflist" id="pfList" role="listbox" aria-label="Playfields in this project"></div>
+      <div class="row"><label for="pfName">Name</label><input id="pfName" type="text" spellcheck="false" style="width:160px"></div>
+      <div class="row">
+        <button class="btn quiet small" id="pfNew">New playfield</button>
+        <button class="btn quiet small" id="pfDupe">Duplicate</button>
+        <button class="btn quiet small" id="pfDel">Delete</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Screen</h2>
+      <div class="row"><label>TV system</label>
+        <div class="seg" id="tvSeg">
+          <button data-v="NTSC">NTSC</button><button data-v="PAL">PAL</button><button data-v="PAL60">PAL60</button>
+        </div>
+      </div>
+      <div class="row"><label>Playfield</label>
+        <div class="seg" id="modeSeg">
+          <button data-v="sym">Symmetric</button><button data-v="asym">Asymmetric</button>
+        </div>
+      </div>
+      <div class="row"><label>Right side</label>
+        <div class="seg" id="sideSeg">
+          <button data-v="repeat">Repeat</button><button data-v="mirror">Mirror</button>
+        </div>
+      </div>
+      <div class="row"><label for="kh">Kernel height</label>
+        <input id="kh" type="number" min="8" max="256" step="1" list="khList"> <span class="hint" style="margin:0">lines</span>
+        <datalist id="khList"><option value="180"><option value="192"><option value="228"></datalist>
+      </div>
+      <div class="row"><label for="lh">Row height</label>
+        <select id="lh"></select> <span class="hint" style="margin:0" id="rowInfo"></span>
+      </div>
+      <div class="row"><label for="par">Pixel shape</label>
+        <select id="par">
+          <option value="1">Square pixels</option>
+          <option value="1.5">1.5 : 1</option>
+          <option value="1.7">1.7 : 1</option>
+          <option value="2">2 : 1</option>
+        </select>
+      </div>
+      <div class="row"><label for="grid">Grid lines</label>
+        <input id="grid" type="checkbox" checked>
+      </div>
+    </section>
+
+    <section>
+      <h2>Tool</h2>
+      <div class="seg" id="toolSeg">
+        <button data-v="draw">Draw walls</button><button data-v="pf">Paint wall colour</button><button data-v="bk">Paint background</button>
+      </div>
+      <p class="hint">Colour tools paint whole rows. The strip left of the screen paints too: its left half is wall colour, its right half background.</p>
+    </section>
+
+    <section>
+      <h2>Colours</h2>
+      <div class="targets">
+        <button class="target" id="tPF" aria-pressed="true"><span class="chip" id="chipPF"></span>Wall <span class="code" id="codePF"></span></button>
+        <button class="target" id="tBK" aria-pressed="false"><span class="chip" id="chipBK"></span>Background <span class="code" id="codeBK"></span></button>
+      </div>
+      <div id="palette" role="group" aria-label="Palette"></div>
+      <div class="row" id="palOrderRow" style="margin-top:8px"><label>PAL rows</label>
+        <div class="seg" id="palOrderSeg"><button data-v="hw">Hardware order</button><button data-v="spec">Spectral order</button></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn quiet" id="fillPF">Wall colour to all rows</button>
+        <button class="btn quiet" id="fillBK">Background to all rows</button>
+      </div>
+      <p class="hint" id="palNote"></p>
+    </section>
+
+    <section>
+      <h2>Edit</h2>
+      <div class="row">
+        <button class="btn quiet" id="sL" aria-label="Shift left">←</button>
+        <button class="btn quiet" id="sR" aria-label="Shift right">→</button>
+        <button class="btn quiet" id="sU" aria-label="Shift up">↑</button>
+        <button class="btn quiet" id="sD" aria-label="Shift down">↓</button>
+        <button class="btn quiet" id="inv">Invert</button>
+      </div>
+      <div class="row">
+        <button class="btn quiet" id="undo">Undo</button>
+        <button class="btn quiet" id="redo">Redo</button>
+        <button class="btn quiet" id="clear">Clear walls</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Saving</h2>
+      <div class="row">
+        <button class="btn quiet small" id="save">Save project</button>
+        <button class="btn quiet small" id="loadBtn">Open project</button>
+      </div>
+      <div class="row">
+        <button class="btn quiet small" id="savePf">Save this playfield</button>
+        <button class="btn quiet small" id="addPf">Add playfields from file</button>
+      </div>
+      <input type="file" id="loadFile" accept=".json,application/json" class="sr-only">
+      <p class="hint">A project holds every playfield with its walls, colours and settings. A playfield file holds one, so you can reuse it in another project. The sprite editor can load either as a backdrop. Your work is also kept in this browser.</p>
+    </section>
+  </aside>
+
+  <section class="export">
+    <h2>Export</h2>
+    <div class="row">
+      <div class="seg" id="expSeg">
+        <button data-v="data">Data tables</button><button data-v="test">Stella test program</button>
+      </div>
+      <label for="prefix" style="width:auto;margin-left:10px">Label prefix</label>
+      <input id="prefix" type="text" spellcheck="false" placeholder="playfield name">
+      <label for="fmt" style="width:auto">Bytes</label>
+      <select id="fmt"><option value="bin">Binary</option><option value="hex">Hex</option></select>
+      <label for="order" style="width:auto">Order</label>
+      <select id="order"><option value="top">Top-down</option><option value="bottom">Bottom-up</option></select>
+      <label style="width:auto"><input type="checkbox" id="incCol" checked> Colour tables</label>
+    </div>
+    <div class="row">
+      <button class="btn" id="copy">Copy</button>
+      <button class="btn quiet" id="dl">Download .asm</button>
+      <span class="hint" style="margin:0" id="expNote"></span>
+    </div>
+    <textarea id="out" spellcheck="false" readonly aria-label="Exported assembly"></textarea>
+  </section>
+</main>
+
+<script>
+(() => {
+  // ---------- Palettes (Stella-style approximations) ----------
+  const NTSC = [
+    "000000","404040","6c6c6c","909090","b0b0b0","c8c8c8","dcdcdc","ececec",
+    "444400","646410","848424","a0a034","b8b840","d0d050","e8e85c","fcfc68",
+    "702800","844414","985c28","ac783c","bc8c4c","cca05c","dcb468","ecc878",
+    "841800","983418","ac5030","c06848","d0805c","e09470","eca880","fcbc94",
+    "880000","9c2020","b03c3c","c05858","d07070","e08888","eca0a0","fcb4b4",
+    "78005c","8c2074","a03c88","b0589c","c070b0","d084c0","dc9cd0","ecb0e0",
+    "480078","602090","783ca4","8c58b8","a070cc","b484dc","c49cec","d4b0fc",
+    "140084","302098","4c3cac","6858c0","7c70d0","9488e0","a8a0ec","bcb4fc",
+    "000088","1c209c","3840b0","505cc0","6874d0","7c8ce0","90a4ec","a4b8fc",
+    "00187c","1c3890","3854a8","5070bc","6888cc","7c9cdc","90b4ec","a4c8fc",
+    "002c5c","1c4c78","386890","5084ac","689cc0","7cb4d4","90cce8","a4e0fc",
+    "003c2c","1c5c48","387c64","509c80","68b494","7cd0ac","90e4c0","a4fcd4",
+    "003c00","205c20","407c40","5c9c5c","74b474","8cd08c","a4e4a4","b8fcb8",
+    "143800","345c1c","507c38","6c9850","84b468","9ccc7c","b4e490","c8fca4",
+    "2c3000","4c501c","687034","848c4c","9ca864","b4c078","ccd488","e0ec9c",
+    "442800","644818","846830","a08444","b89c58","d0b46c","e8cc7c","fce08c"
+  ];
+  const GREY = ["000000","282828","505050","747474","949494","b4b4b4","d0d0d0","ececec"];
+  const PAL = [].concat(
+    GREY, GREY,
+    ["805800","947020","a8843c","bc9c58","ccac70","dcc084","ecd09c","fce0b0"],
+    ["445c00","5c7820","74903c","8cac58","a0c070","b0d484","c4e89c","d4fcb0"],
+    ["703400","885020","a0683c","b48458","c89870","dcac84","ecc09c","fcd4b0"],
+    ["006414","208034","3c9850","58b06c","70c484","84d89c","9ce8b4","b0fcc8"],
+    ["700014","882034","a03c50","b4586c","c87084","dc849c","ec9cb4","fcb0c8"],
+    ["005c5c","207474","3c8c8c","58a4a4","70b8b8","84c8c8","9cdcdc","b0ecec"],
+    ["70005c","842074","983c88","ac589c","bc70b0","cc84c0","dc9cd0","ecb0e0"],
+    ["003c70","1c5888","387ca0","5494b4","6cacc8","84c0dc","9cd4ec","b0e4fc"],
+    ["580070","6c2088","803ca0","9458b4","a470c8","b484dc","c49cec","d4b0fc"],
+    ["002070","1c3c88","3858a0","5074b4","6888c8","7ca0dc","94b4ec","a8c8fc"],
+    ["3c0080","542094","6c3ca8","8058bc","9470cc","a884dc","b89cec","c8b0fc"],
+    ["000088","20209c","3c3cb0","5858c0","7070d0","8888e0","a0a0ec","b4b4fc"],
+    GREY, GREY
+  );
+  const palette = () => (state.tv === "NTSC" ? NTSC : PAL);
+  const rgb = (c) => "#" + palette()[(c >> 1) & 127];
+  const hex2 = (n) => "$" + n.toString(16).toUpperCase().padStart(2, "0");
+
+  // ---------- State ----------
+  const STORE = "vcs-pf-colour-editor-v1";
+  const blankRow = (pf, bk) => ({ bits: new Array(40).fill(0), pf, bk });
+  let state = {
+    tv: "NTSC", mode: "sym", side: "mirror",
+    kernel: 192, lineH: 6, par: 1.5, grid: true,
+    selPF: 0x1A, selBK: 0x80, target: "pf", tool: "draw",
+    exp: "data", prefix: "", fmt: "bin", order: "top", incCol: true, palOrder: "hw",
+    name: "Maze", rows: [],
+    library: [], cur: 0
+  };
+  // Each playfield in the project keeps these; the active one is edited directly on `state`.
+  const PF_KEYS = ["name", "mode", "side", "kernel", "lineH", "rows"];
+  const pick = (o) => { const r = {}; for (const k of PF_KEYS) r[k] = o[k]; return r; };
+  function syncToLib() {
+    if (!state.library.length) state.library = [pick(state)];
+    state.library[state.cur] = pick(state);
+  }
+  function loadFromLib(i) {
+    state.cur = Math.max(0, Math.min(i, state.library.length - 1));
+    const p = state.library[state.cur];
+    for (const k of PF_KEYS) if (p[k] !== undefined) state[k] = p[k];
+    if (!Array.isArray(state.rows)) state.rows = [];
+    fitRows();
+    prevMode = state.mode;
+  }
+  const rowCount = () => Math.floor(state.kernel / state.lineH);
+
+  function fitRows() {
+    const n = rowCount();
+    while (state.rows.length < n) {
+      const last = state.rows[state.rows.length - 1];
+      state.rows.push(blankRow(last ? last.pf : state.selPF, last ? last.bk : state.selBK));
+    }
+    // Keep extra rows in memory so shrinking and growing again doesn't lose work.
+  }
+
+  // Effective 40-pixel line for a row (what the TIA would show)
+  function lineBits(r) {
+    const b = state.rows[r].bits;
+    if (state.mode === "asym") return b.slice(0, 40);
+    const left = b.slice(0, 20);
+    const right = state.side === "mirror" ? left.slice().reverse() : left.slice();
+    return left.concat(right);
+  }
+  // Which stored bit a screen column edits
+  function storeCol(c) {
+    if (state.mode === "asym" || c < 20) return c;
+    return state.side === "mirror" ? 39 - c : c - 20;
+  }
+
+  // ---------- Undo ----------
+  let undoStack = [], redoStack = [];
+  const snap = () => { syncToLib(); return JSON.stringify({ library: state.library, cur: state.cur }); };
+  function restoreSnap(s) { const o = JSON.parse(s); state.library = o.library; loadFromLib(o.cur); }
+  function pushUndo() {
+    undoStack.push(snap());
+    if (undoStack.length > 200) undoStack.shift();
+    redoStack = [];
+    updateButtons();
+  }
+  function undo() {
+    if (!undoStack.length) return;
+    redoStack.push(snap());
+    restoreSnap(undoStack.pop());
+    changed(true, true);
+  }
+  function redo() {
+    if (!redoStack.length) return;
+    undoStack.push(snap());
+    restoreSnap(redoStack.pop());
+    changed(true, true);
+  }
+
+  // ---------- Rendering ----------
+  const screen = document.getElementById("screen");
+  const strip = document.getElementById("strip");
+  const sctx = screen.getContext("2d");
+  const tctx = strip.getContext("2d");
+  let scale = 3, pxW = 4.5;
+
+  function layout() {
+    const stage = document.querySelector(".stage");
+    const availW = Math.max(320, stage.clientWidth - 44 - 32 - 50);
+    const availH = Math.max(300, window.innerHeight - 190);
+    scale = Math.min(availW / (160 * state.par), availH / state.kernel);
+    scale = Math.max(1, scale);
+    pxW = scale * state.par;
+    const dpr = window.devicePixelRatio || 1;
+    const W = Math.round(160 * pxW), H = Math.round(state.kernel * scale);
+    for (const [cv, w] of [[screen, W], [strip, 36]]) {
+      cv.style.width = w + "px"; cv.style.height = H + "px";
+      cv.width = Math.round(w * dpr); cv.height = Math.round(H * dpr);
+      cv.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    draw();
+  }
+
+  function draw() {
+    const n = rowCount();
+    const W = 160 * pxW, rowH = state.lineH * scale, blk = 4 * pxW;
+    sctx.fillStyle = "#000"; sctx.fillRect(0, 0, W, state.kernel * scale);
+    tctx.fillStyle = "#000"; tctx.fillRect(0, 0, 36, state.kernel * scale);
+    for (let r = 0; r < n; r++) {
+      const row = state.rows[r], y = r * rowH, bits = lineBits(r);
+      sctx.fillStyle = rgb(row.bk); sctx.fillRect(0, y, W, rowH);
+      sctx.fillStyle = rgb(row.pf);
+      for (let c = 0; c < 40; c++) if (bits[c]) sctx.fillRect(c * blk, y, blk + 0.5, rowH + 0.5);
+      tctx.fillStyle = rgb(row.pf); tctx.fillRect(0, y, 17, rowH);
+      tctx.fillStyle = rgb(row.bk); tctx.fillRect(19, y, 17, rowH);
+    }
+    // Lines below the last whole row are not part of any row
+    if (n * rowH < state.kernel * scale) {
+      sctx.fillStyle = "rgba(255,255,255,.08)";
+      for (let x = -state.kernel * scale; x < W; x += 10) {
+        sctx.save(); sctx.beginPath(); sctx.rect(0, n * rowH, W, state.kernel * scale - n * rowH); sctx.clip();
+        sctx.fillRect(x, n * rowH, 3, state.kernel * scale); sctx.restore();
+      }
+    }
+    if (state.grid) {
+      sctx.strokeStyle = "rgba(128,128,128,.28)"; sctx.lineWidth = 1;
+      sctx.beginPath();
+      for (let c = 1; c < 40; c++) { const x = Math.round(c * blk) + .5; sctx.moveTo(x, 0); sctx.lineTo(x, n * rowH); }
+      for (let r = 1; r < n; r++) { const y = Math.round(r * rowH) + .5; sctx.moveTo(0, y); sctx.lineTo(W, y); }
+      sctx.stroke();
+      sctx.strokeStyle = "rgba(227,165,60,.7)";
+      sctx.beginPath(); const mx = Math.round(20 * blk) + .5; sctx.moveTo(mx, 0); sctx.lineTo(mx, n * rowH); sctx.stroke();
+    }
+  }
+
+  // ---------- Pointer editing ----------
+  let painting = null; // { kind, value }
+  function cellAt(ev, cv) {
+    const rect = cv.getBoundingClientRect();
+    const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+    return { c: Math.floor(x / (4 * pxW)), r: Math.floor(y / (state.lineH * scale)), x };
+  }
+  function applyCell(kind, r, c) {
+    if (r < 0 || r >= rowCount()) return;
+    const row = state.rows[r];
+    if (kind === "draw") {
+      if (c < 0 || c > 39) return;
+      const sc = storeCol(c);
+      if (painting.value === null) painting.value = row.bits[sc] ? 0 : 1;
+      row.bits[sc] = painting.value;
+    } else if (kind === "pf") {
+      row.pf = state.selPF;
+    } else {
+      row.bk = state.selBK;
+    }
+  }
+  // Fill in every cell between pointer samples, so fast drags don't skip blocks or rows
+  function applyAt(ev, cv) {
+    const { c, r } = cellAt(ev, cv);
+    const last = painting.last;
+    if (!last) applyCell(painting.kind, r, c);
+    else {
+      const steps = Math.max(Math.abs(r - last.r), Math.abs(c - last.c), 1);
+      for (let i = 1; i <= steps; i++)
+        applyCell(painting.kind, Math.round(last.r + (r - last.r) * i / steps), Math.round(last.c + (c - last.c) * i / steps));
+    }
+    painting.last = { r, c };
+    draw();
+  }
+  function startPaint(ev, cv) {
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    pushUndo();
+    let kind = state.tool;
+    if (cv === strip) kind = cellAt(ev, cv).x < 18 ? "pf" : "bk";
+    painting = { kind, value: null, last: null };
+    cv.setPointerCapture(ev.pointerId);
+    applyAt(ev, cv);
+  }
+  for (const cv of [screen, strip]) {
+    cv.addEventListener("pointerdown", (e) => startPaint(e, cv));
+    cv.addEventListener("pointermove", (e) => {
+      if (painting) applyAt(e, cv);
+      const { c, r } = cellAt(e, cv);
+      if (r >= 0 && r < rowCount()) {
+        const row = state.rows[r];
+        setStatus(`Row ${r}  ·  scanlines ${r * state.lineH}–${r * state.lineH + state.lineH - 1}` +
+          (cv === screen && c >= 0 && c < 40 ? `  ·  column ${c}` : "") +
+          `  ·  wall ${hex2(row.pf)}  ·  background ${hex2(row.bk)}`);
+      }
+    });
+    cv.addEventListener("pointerup", () => { if (painting) { painting = null; changed(); } });
+    cv.addEventListener("pointercancel", () => { painting = null; changed(); });
+    cv.addEventListener("pointerleave", () => { if (!painting) setStatus(defaultStatus()); });
+  }
+
+  // ---------- Edit operations ----------
+  function forEditableRows(fn) { for (let r = 0; r < rowCount(); r++) fn(state.rows[r]); }
+  function shiftH(dir) {
+    pushUndo();
+    const w = state.mode === "asym" ? 40 : 20;
+    forEditableRows((row) => {
+      const part = row.bits.slice(0, w);
+      const moved = dir < 0 ? part.slice(1).concat(part[0]) : [part[w - 1]].concat(part.slice(0, w - 1));
+      for (let i = 0; i < w; i++) row.bits[i] = moved[i];
+    });
+    changed();
+  }
+  function shiftV(dir) {
+    pushUndo();
+    const n = rowCount();
+    const bits = state.rows.slice(0, n).map((r) => r.bits);
+    const moved = dir < 0 ? bits.slice(1).concat([bits[0]]) : [bits[n - 1]].concat(bits.slice(0, n - 1));
+    for (let r = 0; r < n; r++) state.rows[r].bits = moved[r];
+    changed();
+  }
+  function invert() {
+    pushUndo();
+    const w = state.mode === "asym" ? 40 : 20;
+    forEditableRows((row) => { for (let i = 0; i < w; i++) row.bits[i] ^= 1; });
+    changed();
+  }
+  function clearWalls() { pushUndo(); forEditableRows((row) => row.bits.fill(0)); changed(); }
+  function fill(kind) {
+    pushUndo();
+    forEditableRows((row) => { if (kind === "pf") row.pf = state.selPF; else row.bk = state.selBK; });
+    changed();
+  }
+
+  // ---------- Encoding ----------
+  // 20 pixels (left to right) -> PF0, PF1, PF2 register values
+  function encodeHalf(p) {
+    let pf0 = 0, pf1 = 0, pf2 = 0;
+    for (let i = 0; i < 4; i++) if (p[i]) pf0 |= 1 << (4 + i);
+    for (let i = 0; i < 8; i++) if (p[4 + i]) pf1 |= 1 << (7 - i);
+    for (let i = 0; i < 8; i++) if (p[12 + i]) pf2 |= 1 << i;
+    return [pf0, pf1, pf2];
+  }
+  function rowRegs(r) {
+    const bits = state.rows[r].bits;
+    const left = encodeHalf(bits.slice(0, 20));
+    if (state.mode === "sym") return { left, right: null };
+    return { left, right: encodeHalf(bits.slice(20, 40)) };
+  }
+  const ctrlpf = () => (state.mode === "sym" && state.side === "mirror" ? 1 : 0);
+  const fmtByte = (v) => state.fmt === "hex" ? hex2(v) : "%" + v.toString(2).padStart(8, "0");
+  const safeLabel = (t) => (String(t || "").replace(/[^A-Za-z0-9_]/g, "") || "Maze").replace(/^[0-9]/, "_$&");
+  const safePrefix = () => safeLabel(state.prefix || state.name);
+
+  function exportData() {
+    const n = rowCount(), p = safePrefix();
+    const order = [...Array(n).keys()];
+    if (state.order === "bottom") order.reverse();
+    const regs = order.map(rowRegs);
+    const tables = [
+      [`${p}_PF0`, regs.map((g) => g.left[0])],
+      [`${p}_PF1`, regs.map((g) => g.left[1])],
+      [`${p}_PF2`, regs.map((g) => g.left[2])]
+    ];
+    if (state.mode === "asym") {
+      tables.push([`${p}_PF0R`, regs.map((g) => g.right[0])],
+                  [`${p}_PF1R`, regs.map((g) => g.right[1])],
+                  [`${p}_PF2R`, regs.map((g) => g.right[2])]);
+    }
+    if (state.incCol) {
+      tables.push([`${p}_COLPF`, order.map((r) => state.rows[r].pf)],
+                  [`${p}_COLBK`, order.map((r) => state.rows[r].bk)]);
+    }
+    const out = [];
+    out.push(`; ${p} playfield - VCS Playfield Colour Editor`);
+    out.push(`; ${state.tv}, ${state.mode === "sym" ? "symmetric" : "asymmetric"}` +
+      `${state.mode === "sym" ? ", right side " + state.side : ""}, ${n} rows x ${state.lineH} lines = ${n * state.lineH} scanlines`);
+    out.push(`; Row order: ${state.order === "top" ? "top-down (first byte = top row)" : "bottom-up (first byte = bottom row)"}`);
+    if (state.mode === "asym") out.push(`; Asymmetric: write PF0-PF2 for the left half early in the line, then the R tables mid-line.`);
+    out.push("");
+    out.push(`${p}_ROWS = ${n}`);
+    out.push(`${p}_LINE_HEIGHT = ${state.lineH}`);
+    out.push(`${p}_CTRLPF = ${hex2(ctrlpf())}${ctrlpf() ? "            ; reflect on (mirror)" : "            ; reflect off (repeat)"}`);
+    for (const [label, vals] of tables) {
+      out.push("");
+      out.push(`${label}:`);
+      vals.forEach((v, i) => {
+        const r = order[i];
+        const isCol = label.endsWith("COLPF") || label.endsWith("COLBK");
+        out.push(`        .byte ${isCol ? hex2(v) : fmtByte(v)}   ; row ${r}`);
+      });
+    }
+    return out.join("\n");
+  }
+
+  function timers(visible) {
+    const total = state.tv === "PAL" ? 312 : 262;
+    const free = total - 3 - visible;
+    const vbDefault = state.tv === "PAL" ? 45 : 37, osDefault = state.tv === "PAL" ? 36 : 30;
+    const vb = Math.round(free * vbDefault / (vbDefault + osDefault));
+    const os = free - vb;
+    return {
+      total, vb, os,
+      vbT: Math.max(1, Math.floor((vb * 76 - 40) / 64)),
+      osT: Math.max(1, Math.floor((os * 76 - 30) / 64))
+    };
+  }
+
+  function exportTest() {
+    const n = rowCount(), lines = state.kernel, asym = state.mode === "asym";
+    // Per-scanline tables, bottom-up: index 0 = bottom line (kernel counts Y down)
+    const per = { pf: [], bk: [], l0: [], l1: [], l2: [], r0: [], r1: [], r2: [] };
+    for (let i = 0; i < lines; i++) {
+      const s = lines - 1 - i, r = Math.floor(s / state.lineH);
+      if (r >= n) { for (const k in per) per[k].push(0); continue; }
+      const row = state.rows[r], g = rowRegs(r);
+      per.pf.push(row.pf); per.bk.push(row.bk);
+      per.l0.push(g.left[0]); per.l1.push(g.left[1]); per.l2.push(g.left[2]);
+      if (asym) { per.r0.push(g.right[0]); per.r1.push(g.right[1]); per.r2.push(g.right[2]); }
+    }
+    const t = timers(lines + 1);
+    const tab = (label, vals) => {
+      const o = ["", "        ALIGN 256", `${label}:`];
+      for (let i = 0; i < vals.length; i += 8) o.push("        .byte " + vals.slice(i, i + 8).map(hex2).join(","));
+      return o.join("\n");
+    };
+    const L = [];
+    L.push(`; Stella test program - VCS Playfield Colour Editor`);
+    L.push(`; ${state.tv}, ${asym ? "asymmetric" : "symmetric, right side " + state.side}, ${lines}-line kernel`);
+    L.push(`; Assemble: dasm test.asm -f3 -otest.bin   (needs vcs.h and macro.h)`);
+    L.push(`; Timer values are estimates for a ${t.total}-line frame: check Stella's`);
+    L.push(`; scanline count and adjust VB_TIM / OS_TIM if needed.`);
+    L.push("");
+    L.push("        processor 6502");
+    L.push('        include "vcs.h"');
+    L.push('        include "macro.h"');
+    L.push("");
+    L.push(`LINES   = ${lines}`);
+    L.push(`VB_TIM  = ${t.vbT}             ; ~${t.vb} lines`);
+    L.push(`OS_TIM  = ${t.osT}             ; ~${t.os} lines`);
+    L.push(`CTRLPF_VAL = ${hex2(ctrlpf())}`);
+    L.push("");
+    L.push("        seg Code");
+    L.push("        org $F000");
+    L.push("");
+    L.push("Reset:  CLEAN_START");
+    L.push("");
+    L.push("Frame:  lda #2");
+    L.push("        sta WSYNC");
+    L.push("        sta VSYNC");
+    L.push("        sta WSYNC");
+    L.push("        sta WSYNC");
+    L.push("        sta WSYNC");
+    L.push("        lda #0");
+    L.push("        sta VSYNC");
+    L.push("        lda #VB_TIM");
+    L.push("        sta TIM64T");
+    L.push("        lda #CTRLPF_VAL");
+    L.push("        sta CTRLPF");
+    L.push("        ldy #LINES-1");
+    L.push("        ldx TabBK,y              ; background for the first line");
+    L.push("WaitVB: lda INTIM");
+    L.push("        bne WaitVB");
+    L.push("        sta WSYNC");
+    L.push("        lda #0");
+    L.push("        sta VBLANK");
+    L.push("");
+    L.push("; Every store lands before the TIA draws that part of the line.");
+    L.push("; Tables are page-aligned, so no page-crossing cycles.");
+    L.push("Line:   sta WSYNC               ; cycle 0");
+    L.push("        stx COLUBK              ; 3");
+    L.push("        lda TabPF,y");
+    L.push("        sta COLUPF              ; 10");
+    L.push("        lda TabL0,y");
+    L.push("        sta PF0                 ; 17  (left PF0 starts at 22.7)");
+    L.push("        lda TabL1,y");
+    L.push("        sta PF1                 ; 24  (left PF1 starts at 28)");
+    L.push("        lda TabL2,y");
+    L.push("        sta PF2                 ; 31  (left PF2 starts at 38.7)");
+    if (asym) {
+      L.push("        lda TabR0,y");
+      L.push("        sta PF0                 ; 38  (right PF0: 28 to 49.3)");
+      L.push("        lda TabR1,y");
+      L.push("        sta PF1                 ; 45  (right PF1: 38.7 to 54.7)");
+      L.push("        lda TabR2,y");
+      L.push("        sta PF2                 ; 52  (right PF2: 49.3 to 65.3)");
+    }
+    L.push("        ldx TabBK-1,y           ; next line's background");
+    L.push("        dey");
+    L.push("        cpy #$FF                ; (Y can exceed 127, so no bpl)");
+    L.push("        bne Line");
+    L.push("");
+    L.push("        sta WSYNC");
+    L.push("        lda #2");
+    L.push("        sta VBLANK");
+    L.push("        lda #0");
+    L.push("        sta PF0");
+    L.push("        sta PF1");
+    L.push("        sta PF2");
+    L.push("        sta COLUBK");
+    L.push("        lda #OS_TIM");
+    L.push("        sta TIM64T");
+    L.push("WaitOS: lda INTIM");
+    L.push("        bne WaitOS");
+    L.push("        jmp Frame");
+    L.push("");
+    L.push("; Per-scanline tables, bottom line first");
+    L.push(tab("TabBK", per.bk));
+    L.push(tab("TabPF", per.pf));
+    L.push(tab("TabL0", per.l0));
+    L.push(tab("TabL1", per.l1));
+    L.push(tab("TabL2", per.l2));
+    if (asym) { L.push(tab("TabR0", per.r0)); L.push(tab("TabR1", per.r1)); L.push(tab("TabR2", per.r2)); }
+    L.push("");
+    L.push("        org $FFFA");
+    L.push("        .word Reset");
+    L.push("        .word Reset");
+    L.push("        .word Reset");
+    return L.join("\n");
+  }
+
+  function refreshExport() {
+    const test = state.exp === "test";
+    document.getElementById("out").value = test ? exportTest() : exportData();
+    for (const id of ["fmt", "order", "incCol"]) document.getElementById(id).disabled = test;
+    document.getElementById("expNote").textContent = test
+      ? "A complete program: assemble with DASM and open in Stella to see the playfield on a real TIA."
+      : "Row data for your own kernel. Each row is shown for Row height scanlines.";
+  }
+
+  // ---------- UI wiring ----------
+  const $ = (id) => document.getElementById(id);
+  function setStatus(t) { $("status").textContent = t; }
+  function defaultStatus() {
+    const n = rowCount(), left = state.kernel - n * state.lineH;
+    return `${n} rows of ${state.lineH} lines` + (left ? `, ${left} spare line${left > 1 ? "s" : ""} at the bottom (hatched)` : "");
+  }
+  function segWire(id, key, after) {
+    $(id).addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b || b.disabled) return;
+      state[key] = b.dataset.v; if (after) after(); changed(true);
+    });
+  }
+  function segSync(id, val) {
+    for (const b of $(id).querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.v === val));
+  }
+
+  let prevMode = state.mode;
+  segWire("tvSeg", "tv", () => {
+    if (state.tv === "PAL" && state.kernel === 192) state.kernel = 228;
+    if (state.tv !== "PAL" && state.kernel === 228) state.kernel = 192;
+    fitRows(); layout();
+  });
+  segWire("modeSeg", "mode", () => {
+    if (prevMode === "sym" && state.mode === "asym") {
+      // Keep what's on screen: write the derived right half into real bits (undo restores the mode too)
+      state.mode = prevMode; pushUndo(); state.mode = "asym";
+      state.rows.forEach((row) => {
+        const left = row.bits.slice(0, 20);
+        const right = state.side === "mirror" ? left.slice().reverse() : left.slice();
+        for (let i = 0; i < 20; i++) row.bits[20 + i] = right[i];
+      });
+      state.side = "repeat";
+    }
+    prevMode = state.mode;
+  });
+  segWire("sideSeg", "side");
+  segWire("toolSeg", "tool");
+  segWire("expSeg", "exp");
+
+  $("kh").addEventListener("change", () => {
+    const v = Math.max(8, Math.min(256, Math.round(+$("kh").value || 192)));
+    state.kernel = v; fitRows(); layout(); changed(true);
+  });
+  for (let i = 1; i <= 16; i++) { const o = document.createElement("option"); o.value = i; o.textContent = i + (i > 1 ? " lines" : " line"); $("lh").appendChild(o); }
+  $("lh").addEventListener("change", () => { state.lineH = +$("lh").value; fitRows(); layout(); changed(true); });
+  $("par").addEventListener("change", () => { state.par = +$("par").value; layout(); changed(true); });
+  $("grid").addEventListener("change", () => { state.grid = $("grid").checked; changed(true); });
+
+  // Palette
+  const pal = $("palette");
+  // PAL hue rows can be shown in spectral order (like NTSC). Display only: colour values never change.
+  // Grey $0 first, then yellow -> orange -> red -> magenta -> purple -> blue -> cyan -> green -> yellow-green,
+  // then the duplicate greys $1, $E, $F.
+  const PAL_SPECTRAL = [0x0, 0x2, 0x4, 0x6, 0x8, 0xA, 0xC, 0xD, 0xB, 0x9, 0x7, 0x5, 0x3, 0x1, 0xE, 0xF];
+  let palBuiltFor = null;
+  function buildPalette() {
+    const spectral = state.tv !== "NTSC" && state.palOrder === "spec";
+    if (palBuiltFor === spectral) return;
+    palBuiltFor = spectral;
+    pal.innerHTML = "";
+    for (const hue of spectral ? PAL_SPECTRAL : [...Array(16).keys()]) for (let lum = 0; lum < 8; lum++) {
+      const b = document.createElement("button");
+      b.dataset.c = (hue << 4) | (lum << 1);
+      b.setAttribute("aria-label", "Colour " + hex2(+b.dataset.c));
+      b.title = hex2(+b.dataset.c);
+      pal.appendChild(b);
+    }
+  }
+  buildPalette();
+  $("palOrderSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    state.palOrder = b.dataset.v; changed(true);
+  });
+  pal.addEventListener("click", (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    if (state.target === "pf") state.selPF = +b.dataset.c; else state.selBK = +b.dataset.c;
+    changed(true);
+  });
+  $("tPF").addEventListener("click", () => { state.target = "pf"; changed(true); });
+  $("tBK").addEventListener("click", () => { state.target = "bk"; changed(true); });
+  $("fillPF").addEventListener("click", () => fill("pf"));
+  $("fillBK").addEventListener("click", () => fill("bk"));
+
+  $("sL").addEventListener("click", () => shiftH(-1));
+  $("sR").addEventListener("click", () => shiftH(1));
+  $("sU").addEventListener("click", () => shiftV(-1));
+  $("sD").addEventListener("click", () => shiftV(1));
+  $("inv").addEventListener("click", invert);
+  $("clear").addEventListener("click", clearWalls);
+  $("undo").addEventListener("click", undo);
+  $("redo").addEventListener("click", redo);
+  document.addEventListener("keydown", (e) => {
+    if (e.target.matches("input, textarea, select")) return;
+    const k = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+    else if ((e.ctrlKey || e.metaKey) && k === "y") { e.preventDefault(); redo(); }
+  });
+
+  // Export controls
+  $("prefix").addEventListener("input", () => { state.prefix = $("prefix").value; changed(true); });
+  $("fmt").addEventListener("change", () => { state.fmt = $("fmt").value; changed(true); });
+  $("order").addEventListener("change", () => { state.order = $("order").value; changed(true); });
+  $("incCol").addEventListener("change", () => { state.incCol = $("incCol").checked; changed(true); });
+  $("copy").addEventListener("click", async () => {
+    const t = $("out").value;
+    try { await navigator.clipboard.writeText(t); setStatus("Copied the export to the clipboard."); }
+    catch { $("out").select(); document.execCommand("copy"); setStatus("Copied the export to the clipboard."); }
+  });
+  function download(name, text, type) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type }));
+    a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+  $("dl").addEventListener("click", () => {
+    const p = safePrefix();
+    download(state.exp === "test" ? `${p}_test.asm` : `${p}_data.asm`, $("out").value.replace(/\n/g, "\r\n"), "text/plain");
+  });
+
+  // ---------- Project and playfield files ----------
+  const fileBase = (t) => (String(t || "").replace(/[^A-Za-z0-9_ -]/g, "").trim() || "playfield");
+  const deep = (o) => JSON.parse(JSON.stringify(o));
+  const SETTINGS = ["tv", "par", "grid", "selPF", "selBK", "target", "tool", "exp", "prefix", "fmt", "order", "incCol", "palOrder"];
+  function projectFile() {
+    syncToLib();
+    const f = { type: "vcs-playfield-project", version: 2 };
+    for (const k of SETTINGS) f[k] = state[k];
+    f.cur = state.cur;
+    f.playfields = deep(state.library);
+    // The current playfield also sits at the top level, so older tools (the sprite editor's backdrop) can read it
+    Object.assign(f, deep(pick(state)));
+    return f;
+  }
+  function validPf(p) { return p && Array.isArray(p.rows) && p.rows.length && +p.lineH >= 1; }
+  function normPf(p, fallbackName) {
+    const q = { name: p.name || fallbackName || "Maze", mode: p.mode === "asym" ? "asym" : "sym", side: p.side === "repeat" ? "repeat" : "mirror",
+                kernel: Math.max(8, Math.min(256, +p.kernel || 192)), lineH: Math.max(1, Math.min(16, +p.lineH || 6)), rows: deep(p.rows) };
+    for (const r of q.rows) { if (!Array.isArray(r.bits)) r.bits = []; while (r.bits.length < 40) r.bits.push(0); }
+    return q;
+  }
+  // Returns { settings, playfields, cur } from any file this editor has written (old or new format)
+  function readFile(d, fname) {
+    if (d.type === "vcs-playfield" && validPf(d.playfield)) return { settings: d, playfields: [normPf(d.playfield)], cur: 0, single: true };
+    if (d.type === "vcs-playfield-project" && Array.isArray(d.playfields) && d.playfields.some(validPf))
+      return { settings: d, playfields: d.playfields.filter(validPf).map((p) => normPf(p)), cur: d.cur || 0 };
+    if (validPf(d)) return { settings: d, playfields: [normPf(d, d.prefix || fileBase(fname).split(".")[0])], cur: 0 };   // first-version project
+    return null;
+  }
+  function uniqueName(name) {
+    syncToLib();
+    const names = new Set(state.library.map((p) => p.name));
+    if (!names.has(name)) return name;
+    const base = name.replace(/\d+$/, "") || "Maze";
+    for (let i = 2; ; i++) if (!names.has(base + i)) return base + i;
+  }
+  $("save").addEventListener("click", () => {
+    const f = projectFile();
+    download(`${fileBase(state.library[0].name)}.pfproject.json`, JSON.stringify(f, null, 1), "application/json");
+    setStatus(`Saved the project with ${f.playfields.length} playfield${f.playfields.length > 1 ? "s" : ""}.`);
+  });
+  $("savePf").addEventListener("click", () => {
+    const p = deep(pick(state));
+    const f = Object.assign({ type: "vcs-playfield", version: 1, tv: state.tv, playfield: p }, deep(p));
+    download(`${fileBase(state.name)}.playfield.json`, JSON.stringify(f, null, 1), "application/json");
+    setStatus(`Saved ${state.name} as a playfield file.`);
+  });
+  let fileMode = "open";
+  $("loadBtn").addEventListener("click", () => { fileMode = "open"; $("loadFile").click(); });
+  $("addPf").addEventListener("click", () => { fileMode = "add"; $("loadFile").click(); });
+  $("loadFile").addEventListener("change", async () => {
+    const f = $("loadFile").files[0]; if (!f) return;
+    $("loadFile").value = "";
+    let msg;
+    try {
+      const got = readFile(JSON.parse(await f.text()), f.name);
+      if (!got) throw new Error("bad");
+      if (fileMode === "open" && got.single) {
+        setStatus(`${f.name} is a single playfield file. Use "Add playfields from file" to bring it into this project.`);
+        return;
+      }
+      pushUndo();
+      if (fileMode === "open") {
+        for (const k of SETTINGS) if (got.settings[k] !== undefined) state[k] = got.settings[k];
+        state.library = got.playfields;
+        loadFromLib(got.cur);
+        msg = `Opened ${f.name}: ${got.playfields.length} playfield${got.playfields.length > 1 ? "s" : ""}.`;
+      } else {
+        syncToLib();
+        for (const p of got.playfields) { p.name = uniqueName(p.name); state.library.push(p); }
+        loadFromLib(state.library.length - got.playfields.length);
+        msg = `Added ${got.playfields.length} playfield${got.playfields.length > 1 ? "s" : ""} from ${f.name}.`;
+      }
+      changed(true, true);
+      setStatus(msg);
+    } catch (err) {
+      setStatus(`Couldn't open ${f.name}: it isn't a file saved by this playfield editor.`);
+    }
+  });
+
+  // ---------- Playfield list ----------
+  function drawPfList() {
+    syncToLib();
+    const box = $("pfList"); box.innerHTML = "";
+    state.library.forEach((p, i) => {
+      const b = document.createElement("button");
+      b.setAttribute("role", "option"); b.setAttribute("aria-current", String(i === state.cur));
+      const n = document.createElement("span"); n.textContent = p.name;
+      const m = document.createElement("span"); m.className = "meta";
+      m.textContent = `${p.mode === "asym" ? "asym" : "sym"}, ${Math.floor(p.kernel / p.lineH)}×${p.lineH}`;
+      b.append(n, m);
+      b.addEventListener("click", () => { if (i === state.cur) return; syncToLib(); loadFromLib(i); changed(true, true); });
+      box.appendChild(b);
+    });
+  }
+  $("pfNew").addEventListener("click", () => {
+    pushUndo(); syncToLib();
+    const p = { name: uniqueName("Maze" + (state.library.length + 1)), mode: state.mode, side: state.side, kernel: state.kernel, lineH: state.lineH, rows: [] };
+    const n = Math.floor(p.kernel / p.lineH);
+    for (let r = 0; r < n; r++) p.rows.push(blankRow(state.rows[r] ? state.rows[r].pf : state.selPF, state.rows[r] ? state.rows[r].bk : state.selBK));
+    state.library.push(p); loadFromLib(state.library.length - 1); changed(true, true);
+    setStatus(`Added ${p.name}, with the same size and colours as the playfield you were on.`);
+  });
+  $("pfDupe").addEventListener("click", () => {
+    pushUndo(); syncToLib();
+    const p = deep(pick(state)); p.name = uniqueName(p.name);
+    state.library.splice(state.cur + 1, 0, p); loadFromLib(state.cur + 1); changed(true, true);
+  });
+  $("pfDel").addEventListener("click", () => {
+    syncToLib();
+    if (state.library.length < 2) { setStatus("A project needs at least one playfield. Use Clear walls to empty it."); return; }
+    pushUndo(); const n = state.name;
+    state.library.splice(state.cur, 1); loadFromLib(Math.min(state.cur, state.library.length - 1)); changed(true, true);
+    setStatus(`Deleted ${n}. Undo brings it back.`);
+  });
+  $("pfName").addEventListener("change", () => {
+    const v = $("pfName").value.trim();
+    if (!v) { $("pfName").value = state.name; return; }
+    pushUndo(); state.name = v; changed(true);
+  });
+
+  function syncControls() {
+    segSync("tvSeg", state.tv); segSync("modeSeg", state.mode); segSync("sideSeg", state.side);
+    segSync("toolSeg", state.tool); segSync("expSeg", state.exp);
+    for (const b of $("sideSeg").querySelectorAll("button")) b.disabled = state.mode === "asym";
+    $("kh").value = state.kernel; $("lh").value = state.lineH; $("par").value = String(state.par);
+    $("grid").checked = state.grid;
+    $("prefix").value = state.prefix || ""; $("prefix").placeholder = safeLabel(state.name); $("pfName").value = state.name;
+    $("fmt").value = state.fmt; $("order").value = state.order; $("incCol").checked = state.incCol;
+    $("rowInfo").textContent = `${rowCount()} rows`;
+    $("tPF").setAttribute("aria-pressed", String(state.target === "pf"));
+    $("tBK").setAttribute("aria-pressed", String(state.target === "bk"));
+    $("chipPF").style.background = rgb(state.selPF); $("codePF").textContent = hex2(state.selPF);
+    $("chipBK").style.background = rgb(state.selBK); $("codeBK").textContent = hex2(state.selBK);
+    buildPalette();
+    $("palOrderRow").style.display = state.tv === "NTSC" ? "none" : "";
+    for (const b of $("palOrderSeg").querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.v === (state.palOrder || "hw")));
+    for (const b of pal.children) {
+      const c = +b.dataset.c;
+      b.style.background = rgb(c);
+      b.classList.toggle("sel-pf", c === state.selPF);
+      b.classList.toggle("sel-bk", c === state.selBK);
+    }
+    $("palNote").textContent = state.tv === "NTSC"
+      ? "NTSC palette. Colour values are palette-specific: switching to PAL keeps the values, so colours change."
+      : "PAL palette (also used for PAL60). Hues 0, 1, 14 and 15 are greys on PAL. Row order only changes this display: every swatch keeps its colour value.";
+  }
+  function updateButtons() {
+    $("undo").disabled = !undoStack.length;
+    $("redo").disabled = !redoStack.length;
+    $("pfDel").disabled = state.library.length < 2;
+  }
+  function changed(controlsToo, relayout) {
+    if (controlsToo !== false) syncControls();
+    if (relayout) layout(); else draw();
+    refreshExport(); drawPfList(); updateButtons();
+    if (!painting) setStatus(defaultStatus());
+    try { localStorage.setItem(STORE, JSON.stringify(projectFile())); } catch (e) { /* storage unavailable */ }
+  }
+
+  // ---------- Start ----------
+  let restored = false;
+  try {
+    const got = readFile(JSON.parse(localStorage.getItem(STORE) || "null") || {}, "Maze");
+    if (got) {
+      for (const k of SETTINGS) if (got.settings[k] !== undefined) state[k] = got.settings[k];
+      if (state.prefix === "Maze") state.prefix = "";   // first version stored the default prefix
+      state.library = got.playfields; loadFromLib(got.cur); restored = true;
+    }
+  } catch (e) { /* ignore */ }
+  prevMode = state.mode;
+  if (!state.rows.length) {
+    // A small starter maze frame so the screen isn't empty
+    fitRows();
+    const n = rowCount();
+    state.rows.forEach((row, r) => {
+      if (r >= n) return;
+      if (r === 0 || r === n - 1) row.bits.fill(1, 0, 20);
+      else { row.bits[0] = 1; }
+    });
+  }
+  fitRows();
+  if (!restored) { state.library = []; syncToLib(); }
+  window.addEventListener("resize", layout);
+  syncControls(); layout(); changed(true);
+})();
+</script>
+</body>
+</html>

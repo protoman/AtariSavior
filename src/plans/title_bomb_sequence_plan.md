@@ -1,5 +1,8 @@
 # Title Bomb Sequence Plan
 
+**Status: SHIPPED (2026-10-07) — bank2 `TitleSequence` (:1037), drop-in
+guarded; regression test `tools/test_title_demo.py` (green).**
+
 ## Goal
 
 Extend the existing title flight into one scripted pass: fly from the left to

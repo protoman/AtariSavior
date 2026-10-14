@@ -158,6 +158,14 @@ in `src/` as a standalone project with no dependencies on the older prototype.
 - Bank1-3: stubs (switch to bank0, ready for future expansion)
 - Output: `savior.bin` (16K)
 
+**Standing rule (2026-10-14): do NOT add new data or features to bank0.**
+Bank0 pre-pad headroom is ~1 byte (build warning `ends $FC67, limit $FC68`)
+and the fold pads are pinned — every addition forces a reshuffle or a cut.
+New ROM content goes to bank2's free gap ($F37C–$F9D8, the move pattern) or
+banks 1/3. If a change seems to need bank0 space, move a leaf helper after
+the pads or into bank2 first; only touch bank0 for in-place edits to existing
+code. This is why we keep extracting routines out of bank0 every time it fills.
+
 ### F6 Bankswitching
 
 | Bank | Address Range | Power-up | Contents |
@@ -303,6 +311,23 @@ Requires: `dasm` (6502 cross-assembler)
   Check file timestamps after building.
 
 ## Testing
+
+### Test stage data — frozen test-owned copies only (user rule 2026-10-14)
+
+**Tests must NOT stage from live game data** (models.json, `generated/`,
+ROM bytes read from current label addresses) and must NOT gate on
+ROM↔fixture equality — the user keeps editing stages, so live-coupled
+tests break on every edit. Staging fixtures live in
+`../tools/test_fixtures.py` (the tests-folder copy): frozen bytes
+injected into the test's own `bank*.bin` copy via `freeze_m1`/`freeze_m2`
+at the CURRENT label addresses, so pointer-based reads (StageBandTab
+MetaA/MetaB, rect/hot stream walks) see the fixture too, while label
+moves stay harmless. Fixture bytes change only by deliberately
+re-freezing in that module.
+
+Sanctioned exception: converter-validation tests (`test_cell_map`,
+`test_features_data`, `test_asym_data`, `test_editor_roundtrip`,
+`test_title_demo`) — their job IS to track live data.
 
 Run in Stella:
 ```bash

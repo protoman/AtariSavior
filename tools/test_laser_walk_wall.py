@@ -71,12 +71,13 @@ I_ENCOUNT = 0x33                    # $B3
 I_BOMBP = 0x35                      # $B5
 I_DEAD = 0x3A                       # $BA EnemyDeadMask
 I_LSTATE = 0x40                     # $C0 LaserState
+DT_SLOT = 0x0A                      # $8A DropTarget (death/feature gate)
 RECTS0 = 0x4C                       # $CC rect cache slots (RcW1)
 
 OV_HEAD = L2["OvHead"]
-MODEL = {  # room 0-based -> (TilePF0 label, RoomRects label)
-    0: ("M0TilePF0", "M0RoomRects"),
-    1: ("M1TilePF0", "M1RoomRects"),
+MODEL = {  # model id -> (TilePF0 label, RoomRects label); scanned in order
+    i: (f"M{i}TilePF0", f"M{i}RoomRects") for i in range(12)
+    if f"M{i}TilePF0" in L2  # skip models not emitted (e.g. M9)
 }
 
 RANGE_LO = L0["LaserInput"]
@@ -255,6 +256,27 @@ def find_wall(rows, approach):
     return None
 
 
+def vcrunch_bbox_overlaps(room, rows, wl, wr):
+    """True if a hot $81 (vcrunch bbox) record covers the wall run.
+    Hot records: after packed count + hot count, 5B each
+    [class, x, y, w, h] — x = 4px display col (left half), y = band."""
+    _, rr = MODEL[room]
+    off = (L2[rr] - 0xF000) & 0xFFFF
+    count = BANKS[2][off]
+    hot = BANKS[2][off + 1 + 2 * count]
+    base = off + 2 + 2 * count
+    for i in range(hot):
+        cls, x, y, w, h = BANKS[2][base + 5 * i:base + 5 * i + 5]
+        if cls != 0x81:
+            continue
+        if not any(y <= r < y + h for r in rows):
+            continue
+        bx0, bx1 = x * 4, x * 4 + w * 4 - 1
+        if wl <= bx1 and bx0 <= wr:
+            return True
+    return False
+
+
 def run_case(room, y_pin, approach, warns, fails, stats):
     rows = (band_row_of(y_pin + 2), band_row_of(y_pin + 3))
     wall = find_wall(rows, approach)
@@ -264,6 +286,17 @@ def run_case(room, y_pin, approach, warns, fails, stats):
         warns.append(f"{tag}: no interior wall with clear approach")
         return
     wl, wr = wall
+    if vcrunch_bbox_overlaps(room, rows, wl, wr):
+        # Shutter cell: VcrShutter punches the bbox OPEN in the PF buffers
+        # every VBL (the ball block needs the hole — CTRLPF priority would
+        # hide it), and the cell walk IS the PF buffers, so the left half of
+        # the bbox is walkable by design (2026-10-13 "no invisible left
+        # kill" ruling: kill/block follows the drawn right-half ball only).
+        # The wall here is the shutter itself — plain-wall probe geometry
+        # not applicable (same skip class as a DropTarget feature tile).
+        warns.append(f"{tag}: wall {wl}..{wr} = vcrunch bbox — skipped "
+                     f"(punched cell, shutter semantics)")
+        return
     if approach > 0:
         start = max(4, wl - 8)
         mem.swcha = 0x7F                    # P0 right pressed (active low D7)
@@ -274,12 +307,22 @@ def run_case(room, y_pin, approach, warns, fails, stats):
         want_dir = 1
     mem.ram[I_ROOMX] = start
     mem.ram[I_ROOMY] = y_pin
+    mem.ram[I_LSTATE] = 0                # clean laser state per case (was
+                                         # accumulating b7/held bits across
+                                         # the wider model sweep)
     mem.inpt4 = 0x80                        # fire released while walking
 
     # --- walk until collision stops him -----------------------------------
     prev, streak, final_dir = start, 0, None
     for _ in range(200):
         cap = step_frame(y_pin)
+        if cap is None:
+            # DropTarget armed (death tile: feature record $80/$81/$82 in
+            # the hot stream until Phase 3/4 runtime exists) or LaserInput
+            # skipped — geometry not probeable, skip the case.
+            warns.append(f"{tag}: DropTarget=${mem.ram[DT_SLOT]:02X} during "
+                         f"walk — death/feature tile in geometry")
+            return
         rx = cap[3]
         streak = streak + 1 if rx == prev else 0
         prev, final_dir = rx, cap[4]
@@ -319,7 +362,12 @@ def run_case(room, y_pin, approach, warns, fails, stats):
     contacts = 0
     trace = []
     for f in range(nframes):
-        lx, cx, st, rx, _d = step_frame(y_pin)
+        cap = step_frame(y_pin)
+        if cap is None:
+            fails.append(f"{tag} f{f}: DropTarget=${mem.ram[DT_SLOT]:02X} "
+                         f"during fire — LaserInput gated")
+            break
+        lx, cx, st, rx, _d = cap
         eye = eye_of(rx, 0 if approach > 0 else 1)
         tip = cx if approach > 0 else cx - 7
         trace.append(lx)
@@ -387,15 +435,22 @@ def main() -> None:
 
     warns, fails = [], []
     stats = {"frames": 0, "cases": 0}
-    for room in (0, 1):
+    # Scan models in order until enough cases ran: content edits can empty
+    # any single model of qualifying interior walls (rooms 0/1 models no
+    # longer have any — 2026-10-12), and the walk probe needs geometry.
+    for room in sorted(MODEL):
         load_room(room)
         for _ in range(2):                 # VBL rebuilds overlay pack
             while not (mem.bank == 0 and mpu.pc == PC_STARTFRAME):
                 step()
         mem.ram[I_DEAD] = 0xEF             # enemies dead, b4 strip ALIVE
-        for y in (spawn_y, 24, 45, 96):
+        # Wide y sweep: cover every band so at least one case always has
+        # geometry to walk.
+        for y in (spawn_y, 8, 24, 36, 56, 72, 88, 104, 120, 136):
             for approach in (+1, -1):
                 run_case(room, y, approach, warns, fails, stats)
+        if stats["cases"] >= 8:
+            break
 
     for w in warns:
         print("WARN " + w)

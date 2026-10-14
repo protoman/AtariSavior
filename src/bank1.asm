@@ -158,7 +158,9 @@ RcBase     = $89                ; rect cache count (S3.2-fix: count sits on
 RcW1       = $CC                ; rect0.x — cache base for ABW tables
 RectCount  = $92                ; walk temp — BMW stashes the original screen
                                  ; col here (hand-copy of kernel's decl —
-                                 ; check_equ_sync pair); M1StripBlast reads it
+                                 ; check_equ_sync pair); M1StripBlast restages
+                                 ; it as the left-strip dcol (2ℓ / $FF) that
+                                 ; StripBlastCheck's left take reads
 BombPacked = $B5                ; state+DownPrev+WallMask (b3-6)
 EnemyDeadMask = $BA             ; b0-2 enemy kills (hand-copy of kernel's
                                  ; decl — check_equ_sync pair); b3 = D6 ball
@@ -710,9 +712,37 @@ BarFineTable:           ; B=0..120; ∈{0,1,2,3,4}; path = f(F)
 ; EnemyDeadMask b3 (ball strip; b4 = M1 strip, set by M1StripBlast) and
 ; inc the count (caller's +75 loop scores it). The
 ; kill bits die with the room (EnterRoom zeroes EnemyDeadMask) — same
-; lifecycle as WallMask holes (D1-B).
+; lifecycle as WallMask holes (D1-B). P2b door models never
+; reach .SBtake: M1StripBlast (bank2, runs first) stashes BMWScratch :=
+; $FF when MetaB b7 — the take's window test then falls into .SBdone.
+; Key pickup (P5) sets b3/b4 for doors instead (key-only unlock).
 ; ------------------------------------------------------------------------------
 StripBlastCheck:
+    ; --- P2b left strip take (staged by bank2 M1StripBlast) --------------
+    ; RectCount = 2ℓ left dcol, $FF = none / left door / right bomb.
+    ; Window is still LEFT-half here (the mirror below). Door models stage
+    ; $FF both ways (MetaA b3 / MetaB b7) so neither take runs — key (P5)
+    ; sets b3/b4 instead.
+    lda RectCount
+    bmi .SBright                ; $FF → no left strip this frame
+    lda CollisionCellX          ; blast hi
+    cmp RectCount
+    bcc .SBright                ; hi < 2ℓ → strip right of the blast
+    lda CollisionEndX           ; blast lo (C=1 from the hi cmp)
+    sbc RectCount               ; lo - 2ℓ (borrow ⇒ lo < 2ℓ)
+    bcc .SBleftTake             ; blast starts left → overlap
+    cmp #2
+    bcs .SBright                ; lo >= 2ℓ+2 → blast ends left of strip
+                                ;   (A=0/1 falls into take = overlap)
+.SBleftTake:
+    lda EnemyDeadMask
+    and #$10
+    bne .SBright                ; already destroyed → no double score
+    lda #$10
+    ora EnemyDeadMask
+    sta EnemyDeadMask           ; b4 = M1 strip destroyed (room-scoped)
+    inc CollisionX              ; +1 wall for the caller's score loop
+.SBright:
     ; BMW blast cols are LEFT-frame; strip pL is RIGHT-frame → mirror the
     ; window here (space is free in this gap): lo_r = 39-hi_l,
     ; hi_r = 39-lo_l. Y holds hi_r (no stack push).
@@ -1280,7 +1310,7 @@ CallPad_BombMarkWalls:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F19E           ; Overscan in bank0 (must match bank0 ToGameStub;
+    jmp $F1BE           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; verify_build --sync-overscan patches this from
                         ; bank0.lst after every bank0 build)
 

@@ -257,6 +257,26 @@ BandTab         = $ED           ; Phase 3 asym ball: staged Band0/1/2
                                 ; $ED-$EF (scbrdTmp etc.) only AFTER the
                                 ; cave read — staged-only window, like
                                 ; FetchPtr. Next VBL restages.
+; Vcrunch shutter slice staging (vcrunch_shutter_plan Phase C) — same
+; staged-only lifecycle as BandTab: bank2 PhaseBlink prologue restages
+; EVERY gameplay VBL (defaults $FF/0/0), VcrShutter arm overwrites for
+; shutter rooms, the cave kernel reads them, bank1 HUD then stomps
+; $EA/$EB/$EC (scorePtr6 lo/hi, scbrdCnt — title/footer/HUD-only roles,
+; all frame-disjoint from gameplay). Aliases (docs/zp_layout_skill.md).
+; Title-era frames never run PhaseBlink — their $EA-$EC garbage must be
+; inert (VcrBand=$FF by scbrdCnt underflow, VcrNext=$00 via ZP font ptr);
+; the .Row derive + dispatch idle guard make stale values read as 48/none.
+VcrState        = $EA           ; slice state byte: b0-4 = slice0-4 closed
+                                ;   ($11/$1B/$1F from VcrCoveredState)
+VcrNext         = $EB           ; next slice to render (armed = 1..5; idle 0).
+                                ;   .Row derives the band0 slice length from
+                                ;   VcrBand/VcrNext — no staged length byte:
+                                ;   the title HUD's $EE (DelayCnt) stomp left
+                                ;   a stale $FF on the title->game frames and
+                                ;   rows 0/1 ran 255 lines each (+414 wall).
+VcrBand         = $EC           ; tile band holding the shutter (1, middle
+                                ;   band — specials rule 2026-10-14) or $FF
+                                ;   (idle — tail dispatch skips slicing)
 
 ; Enemy RAM shadow — live X/Y + packed flags. ROM records are read-only.
 ; Sequential vars end at $BB (ObjBot removed S3.0b); $BC = RoomBandColor,
@@ -650,8 +670,9 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; HUD cannot clobber these: HUD runs AFTER the kernel each frame.
     lda #$30                      ; NUSIZ0 = single copy P0 + M0 width 8
     sta NUSIZ0
-    lda #$30                      ; NUSIZ1 = single copy P1 + M1 width 8
-    sta NUSIZ1
+    ; NUSIZ1 + CTRLPF restores DELETED (P2b): bank2 StageBandTab owns both
+    ; every VBL (door drives M1 4clk / ball 4clk). TitleKernel re-establishes
+    ; its own NUSIZ1 (:2595/:2683/:2695) per frame.
     lda #COLOR_PLAYER             ; restore player color (HUD had it green)
     sta COLUP0
     lda #0                        ; clear VDELP0/VDELP1 (HUD sets them to 1)
@@ -659,8 +680,6 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     sta VDELP1
     sta ENABL                     ; HUD-bar leftover off before first visible
                                   ;   line (.Row row0 BandTab rewrites next)
-    lda #$35                      ; CTRLPF back to cave (reflect+prio+ball8):
-    sta CTRLPF                    ;   intro band sets $30 every title frame
 
     ; --- Wait for VBLANK timer ---
 .WaitVBLANK:
@@ -726,16 +745,20 @@ CaveKernelRow:
     ; Inline stripe+hot test was 84-109c; budget is 76c/scanline.
     lda ColupfBuf,X
     sta COLUPF
-    sta COLUP1                    ; D6: M1 band color (left-col block) — A
-                                  ; unchanged from COLUPF; P1 inherits it
-                                  ; until .Line's object path rewrites
     sta Temp                      ; A1 (line-budget plan): stage band color
-                                  ; for .ObjZero's A==8 restore (replaces
-                                  ; ldx+lda,X = -4c on the 78c worst line ->
-                                  ; 74c). Temp ($88) has no other kernel
-                                  ; reader/writer: VBL stages end before
-                                  ; kernel, overscan joystick writes after.
-                                  ; .Row measured 50-52c (py65) — +3 safe.
+                                  ; for .ObjZero's A==8 restore (moved up —
+                                  ; same A; Temp has no other kernel reader)
+    lda CollisionCellY            ; P2b door color staged by bank2 VBL:
+                                  ; $80 = no door / $1C = yellow stripe
+    bmi .M1band
+    sta COLUP1                    ; door: yellow (only visible on the door's
+                                  ;   open bands — wall PF hides it elsewhere)
+    bpl .M1done                   ; $1C b7=0 → always
+.M1band:
+    lda ColupfBuf,X
+    sta COLUP1                    ; D6: M1 band color (left-col block) — P1
+                                  ; inherits it until .Line's object path
+.M1done:
 
     ; --- Per-band ball gate (Phase 3): BandTab[row] $ff/$00 → ENABL ---
     ; Takes the slot of the per-band `lda Temp / sta COLUBK` (VBL writes
@@ -768,7 +791,23 @@ CaveKernelRow:
     ; was never required; keep the store strictly between WSYNC and .Line.
     cpx #TILE_ROWS-1
     beq .RowLinesTide        ; row 2: tide count (36+off) from CollisionX
-    lda #LINES_PER_TILE
+    ; rows 0/1: derive the shutter-band length (armed = 8, else 48) instead
+    ; of reading a staged byte — any ZP-staged length is garbage on the
+    ; title->game frames (title HUD stomps $EE, PhaseBlink hasn't run:
+    ; measured $FF -> 255-line rows -> 681-line boot frames). Armed is
+    ; (RowIdx == VcrBand && VcrNext != 0); with VcrBand=1 (middle band,
+    ; specials rule 2026-10-14) row1 takes the 8-line derive and row0
+    ; reads 48 exactly as before. +12c on these two setup lines — already
+    ; stall lines (84-86c, d=152 double) ✓.
+    cpx VcrBand
+    bne .R1Full
+    lda VcrNext
+    beq .R1Full
+    lda #8
+    bne .R1Len              ; taken (A=8, Z=0)
+.R1Full:
+    lda #48
+.R1Len:
     ; --- Sync to next scanline (rows 0/1) ---
     sta WSYNC
     sta LineCount
@@ -864,7 +903,30 @@ CaveKernelRow:
     bne .Line                   ; loop if more scanlines in this row
 
     ; --- Advance to next tile row (X clobbered by object section: reload) ---
+    ; Phase C vcrunch shutter: while the band's slice run is live
+    ; (RowIdx == VcrBand, VcrNext in 1..4) the row does NOT advance — the
+    ; tail hands the setup line to RowSlice instead, which renders the next
+    ; sub-slice of the shutter band and returns here to re-enter .Line. Slice path
+    ; ≈59c + jsr/rts 12c = 71c from the previous WSYNC (<=76 → no stall);
+    ; non-shutter pass-end +10c (three zp compares — VcrNext=0 is the
+    ; idle marker so a title-stomp VcrBand=0 coincidences cannot slice)
+    ; — measured segments stay under the 152c double-line ceiling.
+    ; RowSlice lives in the $FBD0 fill hole (below). jsr, not jmp: RowSlice
+    ; is out of CaveKernelRow's local-label scope (.Line won't resolve there
+    ; — DASM has no external-local syntax), so the in-scope tail does the
+    ; `jmp .Line` re-entry after the rts. SP: +1 dip at kernel depth = same
+    ; as the existing row-11 band jsr (not a new low) — sim_bomb_fuse
+    ; verifies gameplay min SP >= $F8.
     ldx RowIdx
+    cpx VcrBand                ; $FF idle (default) → never matches rows 0-2
+    bne .RowAdv
+    lda VcrNext
+    beq .RowAdv                ; 0 = idle marker (arm starts at 1)
+    cmp #5                     ; slices 0-4 done (VcrNext disarmed to 5)
+    bcs .RowAdv
+    jsr RowSlice               ; bookkeeping + sta WSYNC, then:
+    jmp .Line                  ; re-enter the scanline loop (in-scope ref)
+.RowAdv:
     inx
     stx RowIdx
     ; Phase 3: single cpx + bcs replaces `cpx #TILE_ROWS / cpx #TILE_ROWS+1`
@@ -1346,7 +1408,7 @@ StepUp subroutine
 ; ==============================================================================
 ; Room management
 ; ==============================================================================
-; EnterRoom tramp lives at $FB84 (shared fill region — bank2 mirrors the
+; EnterRoom tramp lives at $FBD0 (shared fill region — bank2 mirrors the
 ; 6 bytes there; see TitleTailAudio below). Body = EnterRoomB2 in bank2.
 
 EnemyBitTable:
@@ -2850,11 +2912,55 @@ TitleIntro:
     jsr TitleSequenceFold       ; intro phase machine (bank2 body, jsr/ReturnPad)
     jmp TitleTailAudio
 
-    .ds $FB84 - *, 0            ; #22: pin tramp at $FB84 — bank2's twin
-                                 ;   sits at the same address (level data ends
-                                 ;   ~$FB66 there; both banks emit 6 bytes)
+; ------------------------------------------------------------------------------
+; RowSlice — Phase C vcrunch shutter: render ONE sub-slice of the shutter
+; band (VcrBand=1, middle band — specials rule 2026-10-14).
+; jsr-entered from the kernel row-advance (rts back, then `jmp .Line` —
+; DASM has no external-local syntax so the loop re-entry stays in-scope)
+; while RowIdx == VcrBand and VcrNext in 1..4. Replaces the .Row setup
+; line for slices 1-4 (slice0 ran via the kernel-entry .Row with the
+; derived 8-line count):
+;   ranges   [0,9) [9,18) [18,31) [31,40) [40,49)  = 5 setups + 44 bodies
+;            = 49 WSYNCs — exactly band0's original count (wall unchanged).
+; ENABL/ENAM1 = per-slice state gates (ball $ff/$00, left-mirror M1
+; $02/$00 — Step 4) — written early on the setup line (well before the
+; block's ball pixels, so no transition seam); PF/palette persist from
+; .Row's band setup. Y (running A0) must stay untouched — .Line inherits
+; it exactly as after .Row.
+; Cycles: tail ≈19 + body ≈36 + jsr/rts 12 ≈ 67-71 from the previous
+; WSYNC (<= 76 → the setup line does not stall; band0 keeps its measured
+; wall contribution). Step 4: +6/+8 for the ENAM1 pair, −5 from moving
+; `inc VcrNext` after the WSYNC — net inside the same window.
+; SBmask entries = VcrState bit per slice; SBod = bodies per slice
+; (index 0 = slice0, correct-but-unused: slice0 count comes from the
+; kernel-entry .Row derive).
+; ------------------------------------------------------------------------------
+RowSlice:
+    ldx VcrNext
+    lda SBmask,X
+    and VcrState
+    beq .RSopen
+    lda #$ff
+.RSopen:
+    sta ENABL
+    lda SBod,X
+    sta LineCount
+    inc VcrNext
+    sta WSYNC                ; this line = the slice setup line
+    rts                      ; tail re-enters the loop (jsr caller — .Line
+                              ;   is not referenceable from this scope)
+SBmask:
+    .byte 1,2,4,8,16         ; state bit for slices 0-4
+SBod:
+    .byte 8,8,12,8,8         ; body lines per slice (5 setups + 44 = 49)
+
+    .ds $FBD0 - *, 0            ; #22: pin tramp at $FBD0 — bank2's twin
+                                 ;   sits at the same address (pin moved from
+                                 ;   $FB84 2026-10-13 for PhaseBlink staging,
+                                 ;   then $FBC0 → $FBD0 2026-10-14: model2
+                                 ;   asym data +49B pushed the bank2 window)
 ; EnterRoom tramp — body lives in bank2 ($F010, EnterRoomB2).
-; bank0 runs `sta $1FF8`; the fetch at $FB87 comes from bank2's identical
+; bank0 runs `sta $1FF8`; the fetch at $FBD3 comes from bank2's identical
 ; twin → `jmp $F010` executes in bank2. Body tail = jmp ReturnPad ($FBF8)
 ; → sta $1FF6 / rts. Saves ~1660c per room change (folds → direct reads).
 ; A preserved through sta $1FF8; body returns X = EnemyCount.
@@ -2863,11 +2969,11 @@ EnterRoom:
     jmp $F010                    ; EnterRoomB2 — fetched from bank2 twin
 
     .ds $FBD6 - *, 0            ; fold pinned where bank2's twin mirrors it
-                                ;   (bank2 $FB86.. = level data — both banks
-                                ;   must hold the same sta/jmp bytes)
+                                 ;   (both banks must hold the same sta/jmp
+                                 ;   bytes at these fixed addresses)
 TitleSequenceFold:
     sta $1FF8
-    jmp $F4AA                    ; TitleSequence body — fetched from bank2
+    jmp $F4C4                    ; TitleSequence body — fetched from bank2
     .ds $FBE0 - *, 0
 FooterFold:
     sta $1FF8
@@ -3342,7 +3448,7 @@ ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
 ; BombEnemyBlast — bank2 entry tramp ($FDD8, lamp-safe S9 2026-10-07): the
 ; BombTick `jsr` lands here (bank0), `sta $1FF8` switches to bank2, the `jmp`
 ; is fetched from bank2's byte-identical mirror at this same address and
-; lands on the body at $FD6A (the lamp type-check reads enemy records that
+; lands on the body at $FD87 (the lamp type-check reads enemy records that
 ; live in bank2). Body tail-jmps ReturnPad ($FBF8); A = 1 kill (BombTick
 ; awards +50 — pads cannot nest), 0 none. Old inline body ($F87F, 66B)
 ; deleted: the region re-packs into the gap before the $FBD6 fold pin
@@ -3352,12 +3458,16 @@ ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
 ; ------------------------------------------------------------------------------
 BombEnemyBlast:
     sta $1FF8
-    jmp $FD6A                   ; BombEnemyBlastBody (bank2.lst — after
-                                ;   .HOVdone; NOT in the TitleJetColors span)
-                                ;   (2026-10-10: was $FD6B — 1-byte stale
-                                ;   operand = entry mid-instruction at
-                                ;   `lda EnemyCount+1`; garbage path's
-                                ;   `inc $4A,X` set wall bits via $CA)
+    jmp $FD87                   ; BombEnemyBlastBody (bank2.lst — after
+                                ;   .HOVfeature; NOT in the TitleJetColors
+                                ;   span)
+                                ;   (2026-10-13: was $FD79 — crush-kill b6
+                                ;   latch + feature gate pushed +14; same day
+                                ;   was $FD6C — .HOVfeature pushed +13; 2026-
+                                ;   10-10: was $FD6B — 1-byte stale operand =
+                                ;   entry mid-instruction at `lda EnemyCount+1`;
+                                ;   garbage path's `inc $4A,X` set wall bits
+                                ;   via $CA)
 
 ; ------------------------------------------------------------------------------
 ; PickPlayerFrame — VBL entry tramp: the VBL `jsr` lands here (bank0), `sta

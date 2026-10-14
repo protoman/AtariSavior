@@ -39,7 +39,10 @@ LOCKED_DOOR = 9
 PHASE = 10
 VCRUNCH = 11
 HCRUNCH = 12
+RAFT = 6
+MAGMA_FALL = 7
 FEATURE_TILES = (PHASE, VCRUNCH, HCRUNCH)
+FEATURE_NAME = {PHASE: "phase", VCRUNCH: "vcrunch", HCRUNCH: "hcrunch"}
 # Byte that renders the editor default (56,104,144 = hue A, luma 2) under the
 # emulator-aware encoding in nearest_byte: (hue << 4) | (luma << 1) = 0xA4.
 LEVEL_WALL_COLOR_DEFAULT = 0xA4
@@ -183,10 +186,11 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
     # mid_band_type (0/absent = Rock Solid, 1 = Hot): the selector is
     # authoritative for row 1 — every non-AIR cell there becomes 'H'.
     # Rows 0/2 never get hot; a legacy tile 8 there coerces to '#'.
-    # Phase/vcrunch are FORBIDDEN on the hot band (user rule 2026-10-12:
-    # hot and blinking/crunching are mutually exclusive — simplest model).
-    # Hcrunch IS allowed there: its cells keep the 'C' char (the crunch
-    # cells are not hot; the band's other cells still are).
+    # Phase is FORBIDDEN on the hot band (rule 2026-10-12: hot and
+    # blinking are mutually exclusive). Vcrunch IS allowed on hot (user
+    # rule 2026-10-14: both crunch walls respect the hot flag — hot ON
+    # = touching any part of the drawn block kills). Hcrunch was already
+    # allowed: its cells keep the 'C' char (the band's other cells are H).
     hot = bool((model if model else room).get("mid_band_type", 0))
     who = room.get("room_id", f"model {room.get('model_id', '?')}")
     rows = []
@@ -199,12 +203,19 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
                     f"{who}: tile 9 LOCKED_DOOR "
                     "belongs in asym_patches (async side-0 strip), not the grid")
             if t in FEATURE_TILES:
-                if t in (PHASE, VCRUNCH) and y == 1 and hot:
+                # Special features live ONLY on the middle band (row 1) —
+                # top/bottom bands are entry/exit corridors (user rule
+                # 2026-10-14). Phase stays mutually exclusive with hot;
+                # hcrunch/vcrunch are allowed there.
+                if y != 1:
                     raise ValueError(
-                        f"{who}: {'phase' if t == PHASE else 'vcrunch'} on "
-                        "the hot middle band — hot and blinking/crunching are "
-                        "mutually exclusive (paint on band 0/2 or turn the "
-                        "hot flag off)")
+                        f"{who}: {FEATURE_NAME[t]} at row {y} — special "
+                        "features live on the middle band (row 1)")
+                if t == PHASE and hot:
+                    raise ValueError(
+                        f"{who}: phase on the hot middle band "
+                        "— hot and blinking are mutually exclusive "
+                        "(turn the hot flag off)")
                 line.append(tile_to_char(t))
             elif y == 1 and hot and t != 0:
                 line.append("H")
@@ -293,14 +304,16 @@ def resolve_asym_patches(model: dict,
             raise ValueError(
                 f"model {mid}: tile {tile} is a grid tile — feature tiles "
                 "(phase/vcrunch/hcrunch) cannot be asym patches")
-        if tile == LOCKED_DOOR and side == 1:
-            raise ValueError(
-                f"model {mid}: LOCKED_DOOR is an async SIDE-0 patch "
-                "(right/ball strip), not an M1 patch")
-        if tile == LOCKED_DOOR and row == 1 and model.get("mid_band_type"):
-            raise ValueError(
-                f"model {mid}: LOCKED_DOOR on the hot middle band — paint "
-                "the door on band 0 or 2")
+        if tile == LOCKED_DOOR:
+            if row != 1:
+                raise ValueError(
+                    f"model {mid}: LOCKED_DOOR patch at row {row} — the "
+                    "door lives on the middle band (row 1)")
+            if model.get("mid_band_type"):
+                raise ValueError(
+                    f"model {mid}: LOCKED_DOOR on the hot middle band — "
+                    "turn the hot flag off (door and hot are mutually "
+                    "exclusive)")
         if not 0 <= row < HEIGHT:
             raise ValueError(f"model {mid}: patch row {row} out of 0..{HEIGHT - 1}")
         if not 0 <= col < WIDTH:
@@ -337,6 +350,13 @@ def resolve_asym_patches(model: dict,
             f"model {mid}: side-0 patches mix LOCKED_DOOR with tile(s) "
             f"{others} — a door model's async patches must ALL be "
             "LOCKED_DOOR")
+    side1_tiles = {p[2] for p in patches if len(p) >= 4 and p[3] == 1}
+    if LOCKED_DOOR in side1_tiles and len(side1_tiles) > 1:
+        others = sorted(t for t in side1_tiles if t != LOCKED_DOOR)
+        raise ValueError(
+            f"model {mid}: side-1 patches mix LOCKED_DOOR with tile(s) "
+            f"{others} — a door model's M1 patches must ALL be LOCKED_DOOR")
+    m1_door = LOCKED_DOOR in side1_tiles
     if len(left_cols) > 1:
         raise ValueError(
             f"model {mid}: M1 patches span columns {sorted(left_cols)} — "
@@ -362,7 +382,7 @@ def resolve_asym_patches(model: dict,
         # Ball patch cells on row 1 follow the middle-band selector too
         # (rows_from_json already promoted the mirrored base cells).
         right[1] = "".join("H" if c == "#" else c for c in right[1])
-    return (right if has_right else None), ball_x, m1_x
+    return (right if has_right else None), ball_x, m1_x, m1_door
 
 
 def model_door_flag(model: dict) -> bool:
@@ -372,6 +392,110 @@ def model_door_flag(model: dict) -> bool:
         and (p[3] if len(p) == 4 else 0) == 0
         for p in (model.get("asym_patches") or [])
     )
+
+
+def model_m1_door_flag(model: dict) -> bool:
+    """True when the model carries a side-1 LOCKED_DOOR (MetaA b3)."""
+    return any(
+        len(p) == 4 and p[3] == 1 and p[2] == LOCKED_DOOR
+        for p in (model.get("asym_patches") or [])
+    )
+
+
+def model_specials(model: dict) -> list[str]:
+    """Special-feature kinds present in a model (door patches + grid tiles).
+
+    Order: door first (async patch), then phase/vcrunch/hcrunch by tile id.
+    """
+    kinds: list[str] = []
+    if model_door_flag(model):
+        kinds.append("door")
+    for t in sorted(set(model.get("tiles") or [])):
+        if t in FEATURE_NAME:
+            kinds.append(FEATURE_NAME[t])
+    return kinds
+
+
+def check_model_objects(model: dict, who: str) -> None:
+    """Special features are alone; raft is bottom-band (user rule 2026-10-14)."""
+    kinds = model_specials(model)
+    if len(kinds) > 1:
+        raise ValueError(
+            f"{who}: mixed special features {kinds} — special features are "
+            "alone per room (door XOR phase XOR vcrunch XOR hcrunch)")
+    w = int(model.get("width", WIDTH))
+    tiles = model.get("tiles") or []
+    has_obj_tile = any(t in (RAFT, MAGMA_FALL) for t in tiles)
+    for i, t in enumerate(tiles):
+        if t == RAFT and i // w != 2:
+            raise ValueError(
+                f"{who}: RAFT at row {i // w} — the raft lives on the "
+                "bottom band (row 2, the water strip)")
+    if has_obj_tile:
+        for k in ("door", "vcrunch", "hcrunch"):
+            if k in kinds:
+                raise ValueError(
+                    f"{who}: {k} model also has raft/magma tiles — "
+                    f"{k} rooms block objects (vcrunch/hcrunch need the "
+                    "sprite slot; door allows a single enemy only)")
+
+
+def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
+                               who_prefix: str,
+                               miner_room: int = -1) -> None:
+    """Per-room object rules against the room's model special (2026-10-14).
+
+    vcrunch/hcrunch rooms: no objects at all. Door rooms: at most one
+    enemy, and never a key/lamp/miner. Raft models need water rooms
+    (bottom_band). Tentacles live in the water on the bottom band.
+    """
+    if not models_by_id:
+        return
+    for index, room in enumerate(rooms):
+        model = models_by_id.get(room.get("model_id"))
+        if model is None:
+            continue
+        who = f"{who_prefix} room {index} (model {model['id']})"
+        kinds = model_specials(model)
+        enemies = room.get("enemies") or []
+        lamps = room.get("lamps") or []
+        miner = miner_room == index
+        if "vcrunch" in kinds or "hcrunch" in kinds:
+            kind = "vcrunch" if "vcrunch" in kinds else "hcrunch"
+            if enemies or lamps or miner:
+                raise ValueError(
+                    f"{who}: {kind} room has objects (enemies/lamps/miner) "
+                    "— the shutter needs the sprite slot")
+        if "door" in kinds:
+            if len(enemies) > 1:
+                raise ValueError(
+                    f"{who}: door room has {len(enemies)} enemies — at "
+                    "most ONE enemy per door room")
+            if any(int(e.get("type", 0)) == 6 for e in enemies):
+                raise ValueError(
+                    f"{who}: door room has a KEY enemy — door rooms allow "
+                    "a single non-key enemy only")
+            if lamps or miner:
+                raise ValueError(
+                    f"{who}: door room has a lamp/miner — door rooms allow "
+                    "a single enemy only")
+        tiles = model.get("tiles") or []
+        if any(t == RAFT for t in tiles) and not room.get("bottom_band"):
+            raise ValueError(
+                f"{who}: model has RAFT tiles but the room is not water "
+                "(bottom_band=false)")
+        for e in enemies:
+            if int(e.get("type", 0)) == 3:  # EnemyType::TENTACLE
+                if not room.get("bottom_band"):
+                    raise ValueError(
+                        f"{who}: tentacle in a room without the bottom "
+                        "band — tentacles live in the water")
+                row = int(float(e.get("y", 0))) // 4
+                if row != 2:
+                    raise ValueError(
+                        f"{who}: tentacle at display row "
+                        f"{e.get('y')} — tentacles live on the bottom band "
+                        "(model row 2)")
 
 
 def connection_bytes(rooms: list[dict]) -> list[list[int]]:
@@ -451,6 +575,9 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
     miner_room = int(level.get("miner_room", 0))
     if int(level.get("miner_dir", -1)) > 0:
         miner_room |= 0x80  # kernel uses bit 7 as miner-facing-right flag
+    check_rooms_against_models(rooms, models_by_id,
+                               f"level {level_n}",
+                               int(level.get("miner_room", 0)) & 0x7F)
     lines = [
         f"; Generated from {level.get('name', 'level')} (level {level_n}). "
         "Do not edit by hand."
@@ -616,6 +743,9 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         for room in level["rooms"]:
             if models_by_id.get(room.get("model_id")) is not None:
                 referenced.add(models_by_id[room["model_id"]]["id"])
+        check_rooms_against_models(level.get("rooms") or [], models_by_id,
+                                   f"level {level_n}",
+                                   int(level.get("miner_room", 0)) & 0x7F)
         rel = generated.name
         data_lines.append(f'    include "{rel}/level_{level_n:03d}_rooms_data.asm"')
         table_lines.append(f'    include "{rel}/level_{level_n:03d}_rooms.asm"')
@@ -629,8 +759,9 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         left_rows = rows_from_json({"model_id": mid, "tiles": model.get("tiles"),
                                     "width": model.get("width", WIDTH)},
                                    models_by_id)
+        check_model_objects(model, f"models.json model {mid}")
         res = resolve_asym_patches(model, left_rows)
-        asym, ball_x, m1_x = res if res else (None, 0, 0)
+        asym, ball_x, m1_x, m1_door = res if res else (None, 0, 0, False)
         # M1 patches on the hot band (row 1 = rows_from_json's hot row) go
         # into the hot stream: the cells are PF-open so the 'H' walk never
         # sees them — convert_room emits them as mask-$00 records.
@@ -643,7 +774,9 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         model_lines += convert_room.lines(
             left_rows, prefix=f"M{mid}", source=f"models.json model {mid}",
             asym_rows=asym, asym_ball_x=ball_x, asym_m1_x=m1_x,
-            hot_m1=hot_m1, door=model_door_flag(model))
+            hot_m1=hot_m1, door=model_door_flag(model),
+            m1_door=model_m1_door_flag(model),
+            hot=bool(model.get("mid_band_type")))
     model_lines.append("")
     (generated / "models_data.asm").write_text("\n".join(model_lines) + "\n")
     data_lines.insert(2, f'    include "{generated.name}/models_data.asm"')

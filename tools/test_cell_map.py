@@ -35,7 +35,9 @@ from convert_room import pf_values  # noqa: E402
 
 SRC = ROOT / "src"
 BANK0 = (SRC / "bank0.bin").read_bytes()
+BANK1 = (SRC / "bank1.bin").read_bytes()
 BANK2 = (SRC / "bank2.bin").read_bytes()
+BANK3 = (SRC / "bank3.bin").read_bytes()
 
 
 def parse_labels(path: Path, names: set[str]) -> dict[str, int]:
@@ -101,17 +103,21 @@ class Mem:
     def __getitem__(self, a):
         a &= 0xFFFF
         if 0xF000 <= a <= 0xFFFF:
-            return {0: BANK0, 2: BANK2}.get(self.bank, BANK0)[a - 0xF000]
+            return {0: BANK0, 1: BANK1, 2: BANK2, 3: BANK3}.get(self.bank, BANK0)[a - 0xF000]
         if 0x80 <= a <= 0xFF or 0x180 <= a <= 0x1FF:
             return self.ram[a & 0x7F]
         return 0
 
     def __setitem__(self, a, v):
         a &= 0xFFFF
-        if a == 0x1FF8:
-            self.bank = 2
-        elif a == 0x1FF6:
+        if a == 0x1FF6:
             self.bank = 0
+        elif a == 0x1FF7:
+            self.bank = 1
+        elif a == 0x1FF8:
+            self.bank = 2
+        elif a == 0x1FF9:
+            self.bank = 3
         elif 0x80 <= a <= 0xFF or 0x180 <= a <= 0x1FF:
             self.ram[a & 0x7F] = v & 0xFF
         # other hotspots ignored
@@ -185,7 +191,7 @@ def box_hit(rows: list[str], lo: int, hi: int, top: int, bot: int) -> bool:
     col pair, so cell = col >> 1 (bit-pairing in pf_values)."""
     assert 0 <= lo <= hi <= 19, f"col range {lo}..{hi} out of spec"
     assert 0 <= top <= bot <= 2, f"row range {top}..{bot} out of spec"
-    return any(rows[r][c >> 1] in "#H" for r in range(top, bot + 1)
+    return any(rows[r][c >> 1] in "#HPVC" for r in range(top, bot + 1)
                for c in range(lo, hi + 1))
 
 
