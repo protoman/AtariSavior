@@ -6,6 +6,53 @@ SHIPPED 2026-10-14 (hazard recolor + bomb coexistence; battery 11/11).
 Run each phase build → user Stella test → next phase (AGENTS build-test-build rule);
 during auto-pilot, verification = py65 sims + scripted Stella snapshots.
 
+## Sprite Y alignment fix (bug 2026-10-15)
+
+**Symptom:** when vcrunch is NOT totally open (any other state), the player
+sprite renders ~3 scanlines lower relative to the playfield — feet sit
+inside the ground/wall PF. Totally open = correct.
+
+**Root cause:** RowSlice setup lines each consume a real visible scanline
+(`sta WSYNC`) but do NOT enter `.Line` — only the body path does `iny`
+on the running-Y (A0) register. Band structure: open band = 1 `.Row`
+setup (no iny) + 48 bodies; armed band = 5 setups (1 `.Row` + 4 RowSlice,
+no iny) + 44 bodies = same 49 WSYNCs but **4 fewer `iny`**. The sprite
+(GRP0) is drawn 1 line late per RowSlice setup crossed → measured 3-line
+delay when armed (sprite rows at L88 vs L85 for RoomY=84). PF band stores
+stay at identical lines (0/49/98) in both states → sprite sits inside
+floor PF.
+
+**Fix (kernel.asm, committed 2026-10-15):**
+1. `RowSlice`: `iny` after `inc VcrNext` before `sta WSYNC` — the setup
+   line WSYNCS like a body, so Y must advance. `.Line` inherits Y = A0+1
+   exactly as after a body WSYNC.
+2. `.Row` / post-`jsr RowSlice`: `lda #0 / sta GRP0` before the setup
+   WSYNC — every band setup WSYNCS a visible line but never enters `.Line`,
+   so GRP0 is still line L88's byte (would duplicate a sprite row on the
+   body line). `GRP0=0` + jmp/tsx ≈70c from the previous WSYNC (was
+   ≈61+3+3).
+
+**Verified:** py65 probe (`/tmp/opencode/probe_grp0_val.py`): GRP0 Y rows
+land at L85–96 (matching open) when armed; total WSYNCs open == armed (147);
+PF0/PF1/PF2/COLUPF/ENABL stores at identical lines (0, 49, 98) in both;
+armed RowSlice entries at lines 58/67/80/89 with VcrNext 1→4; VcrState/
+Next/Band armed = e.g. `$1F/$05/$01`; BandTab@Cave open `[255,0,0,5]`,
+armed `[255,255,0,5]`.
+
+**Regression:** `tools/test_vcr_shutter.py` case 15 — GRP0 writes must
+span RoomY..RoomY+11 in BOTH open and armed states (a lag shows as an
+armed Y range starting later). `test_phase2_ball` strip list += $1B (GRP0)
+for the new per-band setup writes.
+
+**Rules:**
+- RowSlice setup line WSYNCS (visible) but does NOT enter `.Line` — Y
+  (running A0) must still advance so the next `.Line` pass indexes the
+  correct sprite row (bug: skipped iny delayed GRP0 3 lines when armed).
+- `.Line` inherits Y = A0+1 exactly as after a body WSYNC.
+- Every band setup WSYNCS a visible line but never enters `.Line` — blank
+  GRP0 so the latched body cannot copy a stale sprite byte (armed slices
+  lose the same one line; sprite Y still correct).
+
 ## Symptom being fixed (user report 2026-10-13)
 
 Vcrunch placed in level 1 room 2 (`level_001_room_002.txt`, `#......V..`). Result:
