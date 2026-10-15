@@ -315,3 +315,141 @@ the same session.
 - Battery 31/31 green.
 - `test_vcr_shutter.py` OK (9 cases).
 - Editor builds clean.
+
+## Step 4b — Side-brush kill fix (2026-10-14, user bug)
+
+**Symptom:** the player touching the shutter column from the SIDE (lit
+span entirely outside the block, 1px edge touch) died whenever the
+aperture state was `$1F` (fully closed). Root cause: the kill path's
+horizontal gate was PHMOverlay's edge-overlap test
+(`[BallX-13, BallX]` for vl — 14 positions) and VCS3's `$1F` trivial
+kill ignored horizontal position entirely (the vertical containment
+has no `$1F` check: any Y in the band + any edge overlap = death).
+py65 probe: kill x window was `[120,133]` at `$1F`; x=120 = lit
+`[114,120]` entirely left of the block `[120,127]`.
+
+**Fix (bank3 `VCS3`, after the clock math / `tax`, before the
+hot/cold split):** horizontal containment gate — the lit span
+`[vl, vl+6]` must sit inside the block `[BallX-7, BallX]` or the call
+returns passable (`clc / jmp $FBEE`). Applies to BOTH hot and cold
+(the crunch can only crush what is inside it; D6 strip solid is
+unaffected — the gate lives inside VCS3, which only OvShutScan
+reaches). Inputs still live from PHMOverlay's gate: `CollisionX`
+($8B) = vl, `RectCount` ($92) = BallX — OvShutBand/OvShutScan do not
+clobber them. Gate must NOT go at VCS3's top: A = kill clock on
+entry; clobbering A there corrupts the clock→state math (caught by
+`open`/`coldtap` going red — states computed from garbage).
+
+**Geometry (frozen fixture):** BallX=127, block `[120,127]`, lit
+`[x-6, x]` → kill window x ∈ `{126,127}` (movement is 1 px/frame —
+no skip). Player at x=120..125 with the shutter closed now penetrates
+and is crushed at 126 (the "sucked in" crunch); pure side brushes
+(x=120 / x=133) pass.
+
+**Tests:** `test_vcr_shutter.py` 9 → 11 cases (brushL x=120 /
+brushR x=133 at `$1F` y68 → no kill; kill/vertical-semantics cases
+moved to x=127 = the inside window). `test_phase_kill_frame.py`
+CELL_X 125 → 127. Battery green; `./build.sh` green.
+
+## Rule 1 — phase-gated kills (2026-10-14, user directive)
+
+**Spec:** when totally CLOSED (`$1F` / covered==full) or when OPENING
+(the folded/Descending half of the ping-pong, `sc>=32`), neither
+vcrunch nor hcrunch kills unless the band is hot (MetaB b6). The cold
+kill is the CLOSING ACTION only (`$11`/`$1B` while `sc<32`, player
+caught/contained). User still died from the side after Step 4b — the
+remaining cold `$1F` trivial kill (contained at the block's edge) was
+the path; Rule 1 removes it.
+
+**vcrunch (bank3 `VCS3`, cold path `.OScontain`):** phase gate after
+the containment/hot split — `sc = (EnemyRamP-1)>>2`; `sc>=32` → miss
+(opening); `cpx #$1f` → miss (totally closed = wall); then the
+existing endpoint/aperture containment. Hot path unchanged (any
+closed-slice touch, inside the block).
+
+**hcrunch (bank3 `HOVhcrunch`):** cold gate before `CrunchClock` —
+`sc = EnemyRamP>>2` (CrunchClock's own parity); `sc>=32` → miss; after
+CrunchClock, `covered==full` → miss (totally closed). Hot exempts both
+(LineCount = MetaB staged bank2-side by `HOVFeatPre`, tested via
+`asl×2` → b6 in C — b7 shutter flag shifts out first).
+
+**bank2 `HOVFeatPre` recost (+ staging in the pinned $FBFC window):**
+the `sta $1FF9` slot moved `$FC17→$FC1A` (the staging grew the
+pre-direct part) — the post-switch `jmp $FA40` fetch continues at
+`$FC1D`, so bank3's tramp image moved `$FC1A→$FC1D` (no guard pinned
+the old address; the image just has to match the slot). Class saved
+in X (`tax`/`txa` — the old Y-restore + class reload was dead: bank3
+reads fields from the stack, never Y). `PhHcrPre` field pushes looped
+(`ldx #4`) to pay for it. The $80 phase path skips the staging (Y =
+record base must survive for `HOVafterGate`).
+
+**Tests:** `test_vcr_shutter.py` 11 → 13 cases — case 5 (was: `$1F`
+kill) → `closed` no-kill; `openB` (clock 200 = `$1B` OPENING, y48
+crunch geometry inside the block) and `openF` (clock 140 = `$1F`
+OPENING) → no kill. `test_phase_kill_frame.py` CLOCK 100→64
+(`$1B` closing), CELL_Y 68→48 (crunched below the aperture — the
+Rule 1 kill geometry). Battery green; `./build.sh` green.
+
+## Rule 1b — closed shutter is SOLID, not walk-through (2026-10-14b)
+
+**Symptom:** after Rule 1 the cold kills vanished, but the punched
+cell had nothing blocking the player — walking through a closed
+shutter became possible (user: "I can walk through the vcrunch ...
+when it is not open and I am in a part that exists on screen").
+
+**Model:** the shutter column is SOLID wherever its slices are closed
+at the player's Y (walk blocked, no death), passable only where the
+aperture is open (both endpoints in open slices). The kill is unchanged
+(Rule 1: closing + crunched + contained; hot = any closed-slice touch
+inside the block). Side brushes: no kill (Step 4b) — solid where
+closed, passable through the aperture. hcrunch unaffected (PhHcrEntry
+writes real PF cells — physically solid already).
+
+**Implementation (bank3 `VCS3` + bank2 `OvShutBand`):** new return
+contract — `C=0` passable (A ignored) / `C=1 + A≠0` kill / `C=1 + A=0`
+SOLID block. Every non-kill outcome (side brush, opening half, totally
+closed, the closing-path aperture-touch) routes through the shared
+solidity test `.V3solidBody` (both endpoints open → pass, else solid).
+`OvShutBand`: `bcc .OSBm1 / bne .OSBlatch / sec / jmp $FBF8` — the
+solid path blocks the PHM walk without latching b7 (no wall removal,
+no LoseLife). `.OSline` moved to $FE80 (the $FD80..$FE57 window
+outgrew); `.V3solidBody` follows it in the free region; a 5B
+`.V3solid` thunk near VCS3 keeps the cold-path `bcc`s in range.
+
+**Probe (py65, frozen model2):** closed `$1F` y68, hold right from
+x=110: RoomX stops at 120 (wall face) and stays — blocked, no death.
+Open `$1B` y66 (aperture): walks through 110→140. Battery green;
+`./build.sh` green; `test_vcr_shutter` 13/13 (pin-based cases
+unaffected — solid ≠ latch).
+
+## Rule 1c — fully-open dwell (2026-10-14c, user)
+
+**Symptom:** the open end of the sweep never emptied — the state
+floor was `$11` (edge slices always closed, the 2026-10-13
+"always-solid stub"), so the block stopped shrinking with one edge
+sliver visible. User: it should disappear totally, then grow back.
+
+**Change:** the dwell zone (eff 0-3 — both halves of the wrap) now
+maps to a fourth state `$00` (nothing closed) instead of `$11`:
+- `VcrCoveredState` (bank2) + `VCS3` (bank3, kill/solidity mirror):
+  an extra `cmp #4 / bcc` after the head-offset `sbc #4`. Cycle:
+  open (sc 0-7) → `$11` (8-13) → `$1B` → `$1F` → `$1B` → `$11` →
+  open (56-63) — 32-frame empty dwell at both ends.
+- `VcrShutter`: `lsr / bcc .VSpunch` after `sta VcrState` — bit0
+  clear (state `$00`) skips the arm + `BandTab` write: prologue
+  defaults stay (VcrBand=$FF, VcrNext=0) and BandTab keeps
+  StageBandTab's MetaA value ($00 in shutter rooms) → slice0's
+  band-setup ENABL off, slice-run idle, overlay pack gate off
+  (open = passable). RowSlice already renders nothing for `$00`
+  (no state bits → ENABL=$00). The punch still runs (cell open).
+- State `$00` needs no other logic: every .OSline bit is 0 → all
+  endpoints open → passable through the existing solidity test.
+- Window funding: OvShutBand's solid/kill dispatch restructured
+  (`beq .OSBsolid` + latch reorder `lda #$80 / sta Temp / ora /
+  sta` — −7B) — the $FED0 VcrCoveredState window had 1B slack.
+
+**Tests:** `test_vcr_shutter.py` 13 → 14 cases — `dwell`
+(clock 8 = sc 2 → `$00`): VcrState=$00, no latch. `covered()`
+python mirror + the docstring state list updated. Battery green;
+`./build.sh` green. Probe: full sc 0..63 sweep shows
+`. E M F M E .` with `VcrNext=0` (disarmed) on the open dwell.

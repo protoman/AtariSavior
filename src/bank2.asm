@@ -1843,7 +1843,11 @@ ReturnPad:
     ; ---- HOV feature pre-read ($FBFC gap; $80 skips field reads) --------
 HOVFeatPre:                 ; .HOVfeature: A = class, Y = record base
         cmp #$80
-        beq .HFPdirect      ; $80 phase: no fields (HOVafterGate reads bank2-side)
+        beq .HFPdirect      ; $80 phase: no fields, no staging (Y = base
+                            ;   must survive — HOVafterGate reads it)
+        tax                 ; X = class (survives the field pushes; the old
+                            ;   Y-restore + class reload is dead — bank3
+                            ;   reads fields from the stack, never Y)
         iny
         lda (FetchPtr),Y
         pha                 ; x
@@ -1856,27 +1860,28 @@ HOVFeatPre:                 ; .HOVfeature: A = class, Y = record base
         iny
         lda (FetchPtr),Y
         pha                 ; h
-        tya
-        sec
-        sbc #4
-        tay
-        lda (FetchPtr),Y    ; reload class (A clobbered by field reads)
+        txa                 ; class
+        ; Rule 1 (user 2026-10-14): stage MetaB for HOVhcrunch's hot
+        ; exemption. Full byte — bank3 tests b6 via asl×2 (b7 shutter
+        ; flag shifts out first; hcrunch rooms keep b7 clear). LineCount
+        ; is free on the HOV hit path (the overlay reader is the miss
+        ; path — mutually exclusive; kernel restages per row).
+        pha                 ; save class
+        ldy #10
+        lda (RoomPF0Lo),Y   ; MetaB
+        sta LineCount
+        pla
 .HFPdirect:
         sta $1FF9
         jmp $FA40           ; HOVFeatEntry (bank3)
 PhHcrPre:                   ; PhaseBlink $82: Y = record base
+        ldx #4              ; field-push loop (x,y,w,h — same stack order;
+.PHp                        ;   PhHcrEntry reads via tsx, A unused)
         iny
         lda (FetchPtr),Y
-        pha                 ; x
-        iny
-        lda (FetchPtr),Y
-        pha                 ; y (band)
-        iny
-        lda (FetchPtr),Y
-        pha                 ; w
-        iny
-        lda (FetchPtr),Y
-        pha                 ; h
+        pha
+        dex
+        bne .PHp
         sta $1FF9
         jmp $F880           ; PhHcrEntry (bank3)
     .ds $FC38 - *, 0
@@ -2334,11 +2339,13 @@ PhVcrPre:                   ; PhaseBlink $81: Y = record base
 ; OPCODE is fetched from bank3's image at the same address (pinned
 ; `.byte $4C,$80,$FD` at $FE57). Body returns C=1 kill / C=0 passable via
 ; the $FBEE pad (`sta $1FF8` executed bank3-side; `rts` fetched from
-; bank2's byte-identical copy) back to OvShutBand's jsr — C survives
-; both, stack depth unchanged (+2 for the jsr only).
+; bank2's byte-identical copy) back to OvShutBand's jsr — A and C
+; survive both, stack depth unchanged (+2 for the jsr only). Out
+; (2026-10-14b): C=0 passable / C=1 + A≠0 kill / C=1 + A=0 solid block.
 ; Kill semantics (user spec 2026-10-14): hot band (MetaB b6) = touching
 ; any closed slice kills; cold band = containment (sprite fully inside
-; closed slices). Full logic: bank3 VCS3 (header there).
+; closed slices), closing phase only (Rule 1). Full logic: bank3 VCS3
+; (header there).
 ; ------------------------------------------------------------------------------
 OvShutScan:
     ldy #10
@@ -2373,7 +2380,10 @@ LaserHitTest:
 ; path IS the kill trigger: MetaB b7 (convert's shutter flag) gates it; plain
 ; D6 strip rooms (b7 clear) fall through to plain solid (old .OvBand
 ; behavior). Kill follows the VISIBLE right-half block only (async ruling
-; 2026-10-14 — the left mirror was removed to fix flicker).
+; 2026-10-14 — the left mirror was removed to fix flicker). Where the
+; block is closed but the player is not crunched, VCS3 returns SOLID —
+; the walk blocks (no walking through a closed shutter, user
+; 2026-10-14b); only the aperture at the player's Y is passable.
 ; Kill = EnemyDeadMask b7 latch (once per room visit — EnterRoom zeroes) +
 ; Temp b7 -> kernel hot-bump -> LoseLife; latched = wall REMOVED (open
 ; hole — VcrShutter punches-only and disarms BandTab; no re-kill).
@@ -2394,14 +2404,15 @@ OvShutBand:
                                 ;   only path disarms BandTab, so this arm
                                 ;   is defense-in-depth) — passable, no
                                 ;   re-kill (user spec 2026-10-14)
-    jsr OvShutScan              ; Phase C (bank3 VCS3 via tramp): C=1 iff the
-                                ;   player is killed (hot touch / cold contain)
+    jsr OvShutScan              ; Phase C (bank3 VCS3 via tramp), 2026-10-14b:
+                                ;   C=0 passable (A ignored) / C=1 + A≠0 kill
+                                ;   / C=1 + A=0 SOLID (block, no latch)
     bcc .OSBm1                  ; aperture open over the player → passable
-    lda EnemyDeadMask           ; (OvShutScan clobbered A) — fall into latch
-    ora #$80
-    sta EnemyDeadMask           ; crunch-kill latch
+    beq .OSBsolid               ; A=0: solid — the walk blocks, no death
     lda #$80
     sta Temp                    ; b7 -> kernel hot-bump -> LoseLife
+    ora EnemyDeadMask           ; A = $80 | mask (b7 latch; other bits kept)
+    sta EnemyDeadMask           ; crunch-kill latch
 .OSBsolid:
     sec
     jmp $FBF8
@@ -2411,14 +2422,17 @@ OvShutBand:
 ; ------------------------------------------------------------------------------
 ; VcrCoveredState — aperture clock → slice state (vcrunch_shutter_plan Phase C).
 ; IN:  A = frame clock (EnemyRamP)
-; OUT: A = $11 (slices 0,4 closed — edges only) / $1B (+1,3) / $1F (all)
+; OUT: A = $00 (fully open — dwell, nothing closed/drawn; user 2026-10-14c:
+;          the block must disappear totally, not stop at one edge sliver) /
+;      $11 (slices 0,4 closed — edges only) / $1B (+1,3) / $1F (all)
 ; Clobbers A only — jsr-safe for the VBL arm (VcrShutter) and OvShutScan.
 ; Mirror of bank3 CrunchClock's ping-pong (lsr/lsr = clock>>2, cmp #32 /
 ; eor #$3F fold, cmp #4 / sbc #4 head offset — SAME constants; verify_build
 ; asserts the #32/#4 pair stays byte-identical with CrunchClock's) mapped
-; to the three slice states instead of a cell count.
-; Phase widths: eff 0-8 edges / 9-17 center-open / 18+ full — dwell at both
-; ends of the ping-pong via the >>2 modulus (no visible wrap jump).
+; to the four slice states instead of a cell count.
+; Phase widths: eff 0-3 open / 4-8 edges / 9-17 center-open / 18+ full —
+; dwell at both ends of the ping-pong via the >>2 modulus (no visible wrap
+; jump).
 ; ------------------------------------------------------------------------------
 VcrCoveredState:
     lsr
@@ -2431,6 +2445,8 @@ VcrCoveredState:
     bcc .VCq
     sbc #4                      ; head offset (C set by cmp) — dwell zone
 .VCq:
+    cmp #4
+    bcc .VCopen                 ; eff 0-3 (both dwell halves) -> fully open
     cmp #9
     bcc .VC11
     cmp #18
@@ -2443,6 +2459,9 @@ VcrCoveredState:
 .VC11:
     lda #$11                    ; only edge slices closed
     rts
+.VCopen:
+    lda #0                      ; fully open — VcrShutter skips the arm +
+    rts                         ;   BandTab (slice0 off, pack gate off)
 
 ; ------------------------------------------------------------------------------
 ; FoldIndirect — byte-identical copy of kernel.asm's block (same $FEF6
@@ -2608,8 +2627,15 @@ VcrShutter:
     lda #$44
     sta ColupfBuf,X
     lda EnemyRamP
-    jsr VcrCoveredState         ; A = $11/$1B/$1F aperture state
+    jsr VcrCoveredState         ; A = $00/$11/$1B/$1F aperture state
     sta VcrState
+    lsr                         ; C = state bit0 (slice0 closed)
+    bcc .VSpunch                ; fully open (user 2026-10-14c): skip the
+                                ;   arm + BandTab — prologue defaults stay
+                                ;   (VcrBand=$FF, VcrNext=0) and BandTab
+                                ;   keeps StageBandTab's MetaA value ($00
+                                ;   in shutter rooms): slice0 off, pack
+                                ;   gate off, nothing renders/passable
     lda #1
     sta VcrBand                 ; arm the kernel slice dispatch (band 1)
     sta VcrNext                 ; slice0 runs via the kernel-entry .Row (8)
