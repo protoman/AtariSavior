@@ -243,7 +243,7 @@ def main() -> int:
     # HMM1 $23 (SetObjectXPos selector 3), ENAM1 $1E (whole-cave latch in
     # PositionBallM1 + .AfterRows clear).
     _strip = (CTRLPF, ENABL, 0x09, RESBL, HMBL, HMOVE, 0x02,
-              0x05, 0x07, 0x13, 0x1E, 0x23)
+              0x05, 0x07, 0x13, 0x1E, 0x23, 0x1B)
     stripped = [(a, v) for a, v in trace if a not in _strip]
     if base_path.exists():
         b = run(base_path)

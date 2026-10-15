@@ -80,6 +80,7 @@ I_BOMBT = 0x77                          # $F7 BombTimer fuse countdown
 
 # HUD fold: first bank0->bank1 fold after the cave kernel — staging is
 # still the VBL's (bank1 stomps $E0-$EF only after entering the HUD).
+# Discover the jmp PC at runtime — the address moves with every bank0 edit.
 HUD_JMP = None
 for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
     _code = _l.split(";")[0]           # drop lst comment (no jmp/$FC68 mix)
@@ -371,12 +372,91 @@ def main() -> None:
     # == $00 via covered() and that no latch fires.
     expect_clear("dwell", clock=8, y=68)
 
+    # --- case 15: sprite Y alignment when armed (bug 2026-10-15) ----------
+    # Each RowSlice setup line WSYNCS (visible) but does not enter .Line —
+    # without iny the next .Line indexed sprite row A0, delaying GRP0 3
+    # lines. Guard: GRP0 writes must span RoomY..RoomY+11 in BOTH open and
+    # armed states (a lag shows as an armed Y range starting later).
+    # HUD_JMP / CaveKernelRow are DISCOVERED from bank0.lst at runtime —
+    # hardcoded addresses drift with every bank0 edit.
+    ca = (SRC / "bank0.lst").read_text(errors="replace").splitlines()
+    sta_grp0 = set()
+    sta_wsync = set()
+    for _l in ca:
+        _code = _l.split(";")[0]
+        if not _code.strip() or _code.lstrip().startswith(";"):
+            continue
+        _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+((?:[0-9a-f]{2}[ \t]+)+)(\S+)", _l)
+        if not _m:
+            continue
+        addr = int(_m.group(1), 16)
+        mnem = _m.group(3)
+        if mnem == "sta":
+            if "GRP0" in _code:
+                sta_grp0.add(addr)
+            if "WSYNC" in _code or "$02" in _code:
+                sta_wsync.add(addr)
+    cave = None
+    for _l in ca:
+        _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+CaveKernelRow\s*$", _l)
+        if _m:
+            cave = int(_m.group(1), 16)
+            break
+    if cave is None:
+        fails.append("case15: CaveKernelRow not found in bank0.lst")
+    if not sta_grp0 or not sta_wsync:
+        fails.append(f"case15: sta GRP0={len(sta_grp0)} WSYNC={len(sta_wsync)}"
+                     f" not found in bank0.lst")
+    else:
+        def grp0_lines(clock, y):
+            pins.update(clock=clock, y=y)
+            set_dead(0x00)
+            lines = {}
+            in_k = False
+            ln = 0
+            steps = 0
+            while steps < 300000:
+                if (W.mem.bank == 0 and W.mpu.pc == W.PC_STARTFRAME
+                        and in_k):
+                    break
+                if (W.mem.bank == 0 and W.mpu.pc == cave
+                        and not in_k):     # CaveKernelRow
+                    in_k = True
+                    ln = 0
+                pc = W.mpu.pc
+                bank = W.mem.bank
+                W.mpu.step()
+                steps += 1
+                if in_k and bank == 0:
+                    if pc in sta_grp0:
+                        lines[ln] = (W.mpu.y, W.mpu.a)
+                    if pc in sta_wsync:
+                        ln += 1
+            return {ln: (y, a) for ln, (y, a) in lines.items() if a != 0}
+
+        # clock 8 = open, clock 100 = $1F fully closed (armed) — both at
+        # y84 (player feet just above the row2 floor)
+        g_open = grp0_lines(clock=8, y=84)
+        g_armed = grp0_lines(clock=100, y=84)
+        ys_open = [y for _, (y, a) in sorted(g_open.items())]
+        ys_armed = [y for _, (y, a) in sorted(g_armed.items())]
+        if not ys_open or not ys_armed:
+            fails.append(f"case15: no GRP0 writes (open={ys_open} "
+                         f"armed={ys_armed})")
+        elif ys_open[0] != ys_armed[0] or ys_open[-1] != ys_armed[-1]:
+            fails.append(f"case15: sprite Y misaligned (open L{ys_open[0]}"
+                         f"..{ys_open[-1]} armed L{ys_armed[0]}"
+                         f"..{ys_armed[-1]}) — RowSlice missing iny")
+        else:
+            print(f"  case15: sprite Y aligned open/armed L{ys_open[0]}"
+                  f"..{ys_open[-1]} (RoomY=84)")
+
     if fails:
         print(f"\nFAIL: {len(fails)}")
         for f in fails:
             print("  " + f)
         sys.exit(1)
-    print("test_vcr_shutter: OK (14 cases)")
+    print("test_vcr_shutter: OK (15 cases)")
 
 
 if __name__ == "__main__":

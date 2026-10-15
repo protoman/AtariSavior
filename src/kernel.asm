@@ -772,6 +772,14 @@ CaveKernelRow:
     sta ENABL
     lda PF2Buf,X
     sta PF2
+    lda #0
+    sta GRP0                   ; every band setup WSYNCS a visible line but
+                               ;   never enters .Line — blank GRP0 so the
+                               ;   latched body cannot copy a stale sprite
+                               ;   byte (armed slices lose the same one
+                               ;   line; sprite Y still correct). GRP0=0
+                               ;   + jmp/tsx ≈70c from the previous WSYNC
+                               ;   (was ≈61+3+3).
     ; --- Scanlines this pass: rows 0/1 = 48; row 2 = 36+off (tide, CollisionX).
     ; The bottom water strip (last 12-off lines, bottom_band_plan rule 2)
     ; renders in .WaterRow after this pass — its own setup line + (11-off)
@@ -924,7 +932,12 @@ CaveKernelRow:
     beq .RowAdv                ; 0 = idle marker (arm starts at 1)
     cmp #5                     ; slices 0-4 done (VcrNext disarmed to 5)
     bcs .RowAdv
-    jsr RowSlice               ; bookkeeping + sta WSYNC, then:
+    jsr RowSlice               ; bookkeeping + iny + sta WSYNC, then:
+    lda #0
+    sta GRP0                   ; blank GRP0 before the first slice body:
+                               ;   the setup line never entered .Line, so
+                               ;   GRP0 is still line L88's byte (would
+                               ;   duplicate a sprite row on the body line)
     jmp .Line                  ; re-enter the scanline loop (in-scope ref)
 .RowAdv:
     inx
@@ -2925,8 +2938,10 @@ TitleIntro:
 ; ENABL/ENAM1 = per-slice state gates (ball $ff/$00, left-mirror M1
 ; $02/$00 — Step 4) — written early on the setup line (well before the
 ; block's ball pixels, so no transition seam); PF/palette persist from
-; .Row's band setup. Y (running A0) must stay untouched — .Line inherits
-; it exactly as after .Row.
+; .Row's band setup. Setup line WSYNCS (visible) but does NOT enter .Line —
+; Y (running A0) must still advance so the next .Line pass indexes the
+; correct sprite row (bug: skipped iny delayed GRP0 3 lines when armed).
+; .Line inherits Y = A0+1 exactly as after a body WSYNC.
 ; Cycles: tail ≈19 + body ≈36 + jsr/rts 12 ≈ 67-71 from the previous
 ; WSYNC (<= 76 → the setup line does not stall; band0 keeps its measured
 ; wall contribution). Step 4: +6/+8 for the ENAM1 pair, −5 from moving
@@ -2946,6 +2961,9 @@ RowSlice:
     lda SBod,X
     sta LineCount
     inc VcrNext
+    iny                     ; running A0: setup WSYNC is a visible line like
+                            ;   a body — without this the next .Line indexes
+                            ;   sprite row A0 (armed sprite sat ~4 lines low)
     sta WSYNC                ; this line = the slice setup line
     rts                      ; tail re-enters the loop (jsr caller — .Line
                               ;   is not referenceable from this scope)
