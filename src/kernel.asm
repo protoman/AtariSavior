@@ -772,14 +772,11 @@ CaveKernelRow:
     sta ENABL
     lda PF2Buf,X
     sta PF2
-    lda #0
-    sta GRP0                   ; every band setup WSYNCS a visible line but
-                               ;   never enters .Line — blank GRP0 so the
-                               ;   latched body cannot copy a stale sprite
-                               ;   byte (armed slices lose the same one
-                               ;   line; sprite Y still correct). GRP0=0
-                               ;   + jmp/tsx ≈70c from the previous WSYNC
-                               ;   (was ≈61+3+3).
+    ; (2026-10-15) GRP0 blank REMOVED: +5c pushed the rows0/1 setup
+    ; segment to 75c armed (>=74 = write lands next line = +1 stall line
+    ; = whole-screen shift). The blank only traded a stale-byte duplicate
+    ; for a blank line at band boundaries — shipped pre-99b8e86 without
+    ; either; case15 filters zero writes so the Y-align guard is unaffected.
     ; --- Scanlines this pass: rows 0/1 = 48; row 2 = 36+off (tide, CollisionX).
     ; The bottom water strip (last 12-off lines, bottom_band_plan rule 2)
     ; renders in .WaterRow after this pass — its own setup line + (11-off)
@@ -827,6 +824,8 @@ CaveKernelRow:
     sta LineCount
 
 .Line:
+SliceReentry:                 ; global alias ON .Line — RowSlice's tail
+                              ;   jmp lands here (its scope can't see .Line)
     ; --- Player sprite: color for THIS line, graphics byte for NEXT line ---
     ; GRP0 written on line S displays on line S+1 (latched at the sprite's
     ; window start after the write) — index graphics with A0+1 ($ff wraps
@@ -844,8 +843,12 @@ CaveKernelRow:
     ; below stops at A0=10; row 11 inherits row 10's COLUP0/ENAM0 writes
     ; (PlayerColTable/BeamMask [10]==[11], verify_build asserts) because
     ; GRP0 row11 is fetched on line A0=10 already ("row11 shows via
-    ; line10"). Worst path now 61c -> WSYNC write c61 — 12c margin vs
-    ; c73. FITS.
+    ; line10"). Worst path measured 2026-10-15 (vcrunch jitter hunt):
+    ; in-window color/beam/GRP0 + object in-range = 69c between WSs,
+    ; start-to-start d=72 — was 73/76 (= stall zone 74-76, whole-screen
+    ; +1-line jitter) until the dead `cpy #12 / bcs .GrpZero` (4c, never
+    ; taken on the A0<=10 color path) moved to .GrpSkip. Budget: work
+    ; <= 70c / d <= 73 — a 74-76 segment stalls a full scanline.
     ; ObjSprites+71 must stay in the $FExx page (else lda ObjSprites,X
     ; page-crosses, +1c on the GRP1 fetch) — verify_build enforces this.
     ; Branch targets all same-page (3c taken) and BeamMask operand in $FExx
@@ -857,7 +860,7 @@ CaveKernelRow:
     ; write on cycle 76 = one cycle late): WSYNC stalled a full line per
     ; overlapping scanline — stretched cave row, HUD pushed down, and with
     ; GRP1 flicker rotation the frame length alternated (one-tile oscillation).
-    ; Keep the hot path at <= ~68c: an overrun duplicates the scanline.
+    ; Keep the hot path at <= 70c work: an overrun duplicates the scanline.
     cpy #PLAYER_SPRITE_H - 1
     bcs .GrpSkip                ; A0 >= 11 (incl $ff): no color/beam this line.
                                 ; A0=11 skips too (Class-A stall line): rows
@@ -875,10 +878,13 @@ CaveKernelRow:
     lda BeamMask,Y              ; 4c (no-cross $FExx) — table MUST stay $FExx
     and LaserState              ; 3c — beam gate: b1 armed only while fire held
     sta ENAM0                   ; 3c (bar showed without fire before this)
-.GrpSkip:
-    iny                         ; Y = A0+1 ($ff wraps to 0 = sprite row 0)
-    cpy #PLAYER_SPRITE_H
-    bcs .GrpZero                ; Y >= 12: blank (row11 shows via line10)
+    iny                         ; Y = A0+1 ($ff wraps to 0 = sprite row 0).
+                                ;   Color/beam gate entered only with A0<=10
+                                ;   -> after iny Y<=11: always fetchable, so
+                                ;   the old `cpy #PLAYER_SPRITE_H / bcs
+                                ;   .GrpZero` here was DEAD 4c on the worst
+                                ;   path (2+2, never taken — A0=11+ never
+                                ;   reaches it, it goes to bcs .GrpSkip).
     lda (Grp0Ptr),Y             ; 5c — byte for the NEXT scanline
     sta GRP0
 .Grp1:
@@ -913,18 +919,22 @@ CaveKernelRow:
     ; --- Advance to next tile row (X clobbered by object section: reload) ---
     ; Phase C vcrunch shutter: while the band's slice run is live
     ; (RowIdx == VcrBand, VcrNext in 1..4) the row does NOT advance — the
-    ; tail hands the setup line to RowSlice instead, which renders the next
-    ; sub-slice of the shutter band and returns here to re-enter .Line. Slice path
-    ; ≈59c + jsr/rts 12c = 71c from the previous WSYNC (<=76 → no stall);
+    ; tail hands the setup line to RowSlice, which renders the next
+    ; sub-slice of the shutter band and jumps to SliceReentry. Slice path
+    ; ≈59c + jmp 3c = 62c from the previous WSYNC (<=73 => single line);
     ; non-shutter pass-end +10c (three zp compares — VcrNext=0 is the
     ; idle marker so a title-stomp VcrBand=0 coincidences cannot slice)
     ; — measured segments stay under the 152c double-line ceiling.
-    ; RowSlice lives in the $FBD0 fill hole (below). jsr, not jmp: RowSlice
-    ; is out of CaveKernelRow's local-label scope (.Line won't resolve there
-    ; — DASM has no external-local syntax), so the in-scope tail does the
-    ; `jmp .Line` re-entry after the rts. SP: +1 dip at kernel depth = same
-    ; as the existing row-11 band jsr (not a new low) — sim_bomb_fuse
-    ; verifies gameplay min SP >= $F8.
+    ; RowSlice lives in the $FBD0 fill hole (below). TAIL JMP, not jsr:
+    ; the slice loop would otherwise push 4 returns per frame that the
+    ; jmp re-entry never pops (stack decay — F6-hotspot family), and the
+    ; old jsr + rts + lda/sta GRP0 + jmp tail was +14c on the first body
+    ; line after each slice setup (82c measured; >=74 = stall line).
+    ; SP: ZERO extra dips at kernel depth (jsr removed) — sim_bomb_fuse
+    ; gate (gameplay min SP >= $F8) can only improve.
+    ; SliceReentry is a GLOBAL label: .Line is local to CaveKernelRow's
+    ; scope and is not referenceable from RowSlice's scope (DASM has no
+    ; external-local syntax).
     ldx RowIdx
     cpx VcrBand                ; $FF idle (default) → never matches rows 0-2
     bne .RowAdv
@@ -932,13 +942,9 @@ CaveKernelRow:
     beq .RowAdv                ; 0 = idle marker (arm starts at 1)
     cmp #5                     ; slices 0-4 done (VcrNext disarmed to 5)
     bcs .RowAdv
-    jsr RowSlice               ; bookkeeping + iny + sta WSYNC, then:
-    lda #0
-    sta GRP0                   ; blank GRP0 before the first slice body:
-                               ;   the setup line never entered .Line, so
-                               ;   GRP0 is still line L88's byte (would
-                               ;   duplicate a sprite row on the body line)
-    jmp .Line                  ; re-enter the scanline loop (in-scope ref)
+    jmp RowSlice               ; bookkeeping + iny + sta WSYNC, then
+                               ;   jmp SliceReentry (no stack push; the
+                               ;   trampoline label sits ON .Line below)
 .RowAdv:
     inx
     stx RowIdx
@@ -948,6 +954,15 @@ CaveKernelRow:
     beq .WaterRow                ; row 2 done -> water strip pass
     bcs .AfterRows               ; X=4 (C=1,Z=0): water pass done
     jmp .Row
+.GrpSkip:                       ; A0 >= 11 (incl $ff): no color/beam/fetch on
+    iny                         ;   this line — advance running Y, then blank
+    jmp .GrpZero                ;   GRP0 for the next line. Relocated here
+                                ;   (was inline after sta ENAM0) so the color
+                                ;   path drops its dead cpy/bcs (4c — worst
+                                ;   path 73c work/76 start-to-start = stall
+                                ;   zone -> 69c/72, single line). bcs .GrpSkip
+                                ;   stays same-page 3c (F136 -> F1xx, rel8
+                                ;   fits; verify_build branch guard).
 .WaterRow:
     ; PF0/1/2 + COLUPF persist from row 2's setup; COLUBK = the VBL .BgStore
     ; value (Phase 3: .Row no longer re-stores it per band) — the strip
@@ -968,7 +983,8 @@ CaveKernelRow:
     sta LineCount
     sta WSYNC
     jmp .Line
-.GrpZero:                       ; dead space: entered only by bcs from .Line
+.GrpZero:                       ; dead space: entered only from .GrpSkip
+                                ;   (bcs A0>=11 -> iny -> jmp here)
     lda #0                      ; (nothing falls through `jmp .Row`)
     sta GRP0
     jmp .Grp1
@@ -2964,9 +2980,11 @@ RowSlice:
     iny                     ; running A0: setup WSYNC is a visible line like
                             ;   a body — without this the next .Line indexes
                             ;   sprite row A0 (armed sprite sat ~4 lines low)
-    sta WSYNC                ; this line = the slice setup line
-    rts                      ; tail re-enters the loop (jsr caller — .Line
-                              ;   is not referenceable from this scope)
+    sta WSYNC               ; this line = the slice setup line
+    jmp SliceReentry        ; tail re-enters .Line via the global trampoline
+                            ;   (jsr/rts replaced 2026-10-15: +14c tail
+                            ;   stalled the first slice body line at 82c;
+                            ;   tail jmp costs 3c and pushes no stack)
 SBmask:
     .byte 1,2,4,8,16         ; state bit for slices 0-4
 SBod:

@@ -148,6 +148,10 @@ def run_frames(n, pins, samples):
 def main() -> None:
     fails = []
     boot()
+    # cases 1-15 poke I_ENCOUNT=0 (no objects for staging checks) — case16
+    # needs the natural boot count so SelectActiveObject stages a real
+    # object window (the .Line worst path = object in-range overlap).
+    natural_enc = W.mem.ram[W.I_ENCOUNT]
     W.load_room(2)                     # model2 (V at row1 col4)
 
     # settle/arm position = corridor y20 (band0): the band gate rejects
@@ -451,12 +455,78 @@ def main() -> None:
             print(f"  case15: sprite Y aligned open/armed L{ys_open[0]}"
                   f"..{ys_open[-1]} (RoomY=84)")
 
+    # --- case 16: no late-WSYNC stall segment (74-76c) in the cave --------
+    # 2026-10-15 whole-screen jitter: the worst .Line path (in-window
+    # color/beam/GRP0 + object window in-range) hit d=76 between two cave
+    # sta WSYNCs — the store lands across the line boundary -> full-line
+    # stall -> whole picture +1 scanline. Contract: every consecutive
+    # cave WSYNC pair <=73 (77-152 = accepted double-line design spans,
+    # 74-76 = stall zone = FAIL). Env: natural enemy staging (ENCOUNT
+    # restored) so the object-overlap path actually runs; worst must reach
+    # 70 or the sweep never hit it (vacuity guard).
+    if not fails and cave and sta_wsync:
+        def poke16(y, clock, sw):
+            r = W.mem.ram
+            W.mem.swcha = sw
+            r[I_ROOMX] = pins["x"]
+            r[I_ROOMY] = y
+            r[I_VYLO] = 0
+            r[I_VYHI] = 0
+            r[W.I_ENCOUNT] = natural_enc
+            r[I_RAMP] = clock
+            r[I_DEAD] = 0x00
+
+        stall = []
+        worst16 = 0
+        for clock in (8, 100):          # open / armed slices
+            for y in range(0, 144, 3):
+                for sw in (0xFF, 0x7F):
+                    poke16(y, clock, sw)
+                    in_k = False
+                    last = lastpc = None
+                    steps = 0
+                    while steps < 300000:
+                        if (W.mem.bank == 0
+                                and W.mpu.pc == W.PC_STARTFRAME and in_k):
+                            break
+                        pc = W.mpu.pc
+                        bank = W.mem.bank
+                        if bank == 0 and pc == cave:
+                            in_k = True
+                            last = W.mpu.processorCycles
+                            lastpc = None
+                        if (in_k and bank == 0 and pc in sta_wsync
+                                and last is not None):
+                            now = W.mpu.processorCycles
+                            if lastpc is not None:
+                                d = now - last
+                                if d > worst16:
+                                    worst16 = d
+                                if 74 <= d <= 76:
+                                    stall.append((clock, y, hex(pc), d))
+                            last = now
+                            lastpc = pc
+                        W.mpu.step()
+                        steps += 1
+                    else:
+                        fails.append(f"case16: frame hung (clock={clock} "
+                                     f"y={y}) — no StartFrame in 300k steps")
+        if stall:
+            fails.append(f"case16: {len(stall)} stall-zone segments 74-76c "
+                         f"(worst {worst16}) e.g. {stall[:3]}")
+        elif worst16 < 70:
+            fails.append(f"case16: worst segment {worst16} < 70 — object "
+                         "overlap path never ran (vacuous sweep, re-stage)")
+        else:
+            print(f"  case16: worst cave segment {worst16} <= 73 "
+                  "(no 74-76 stall zone, overlap path exercised)")
+
     if fails:
         print(f"\nFAIL: {len(fails)}")
         for f in fails:
             print("  " + f)
         sys.exit(1)
-    print("test_vcr_shutter: OK (15 cases)")
+    print("test_vcr_shutter: OK (16 cases)")
 
 
 if __name__ == "__main__":

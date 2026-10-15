@@ -500,3 +500,65 @@ maps to a fourth state `$00` (nothing closed) instead of `$11`:
 python mirror + the docstring state list updated. Battery green;
 `./build.sh` green. Probe: full sc 0..63 sweep shows
 `. E M F M E .` with `VcrNext=0` (disarmed) on the open dwell.
+
+## Late-WSYNC stall fix — whole-screen jitter (2026-10-15)
+
+**Symptom:** whole picture shifts ~1 scanline every frame ("vcrunch
+shutter screens move", `screenshots/bugs/vcrunch_screen_moving_001/002`
+= same fully-open scene, 002 = +1 line).
+
+**Stall rule (py65, start-to-start delta between consecutive cave
+`sta WSYNC`s):**
+- `d <= 73` — single line, safe.
+- `d in 74..76` — store straddles the line boundary with zero CPU work
+  on the next line = **full-line stall = +1 scanline** (the jitter).
+- `d >= 77` — accepted double-line design span (row-advance/setups;
+  none currently exceed 73 anyway).
+
+**Diagnosis (per-instruction py65 trace, boot-env enemies alive,
+RoomY × swcha sweep):** the worst `.Line` path — in-window
+color/beam/GRP0 **+ GRP1 object in-range** (object window overlapping
+the A0<=10 player window, ObjTop ∈ {1..11} ∪ {249..255}) — measured
+**d=76** (work 73c). Pre-existing (body untouched by the sprite-Y fix);
+`99b8e86`-era edits had separately pushed armed setup to 75c and
+post-slice body to 82c.
+
+**Fix (kernel.asm, committed 2026-10-15, −4c on the worst path):**
+1. **`.GrpSkip` relocation (−4c):** on the color path (gate entered
+   only with A0<=10), after `iny` Y<=11 — the in-line
+   `cpy #PLAYER_SPRITE_H / bcs .GrpZero` was **dead** (never taken).
+   Deleted from the path; `.GrpSkip` moved to the row-advance gap as
+   `iny / jmp .GrpZero` (out-window A0>=11 keeps the exact old
+   sequence). bcs .GrpSkip stays same-page 3c (verify_build branch
+   guard), rel8 fits; `.WaterRow -> .GrpZero` text span untouched
+   (test_enemy_movement split).
+2. **`.Row` GRP0 blank removed** (after `sta PF2`) — pushed armed
+   setup to 75c (stall zone); effect = trading a duplicate sprite line
+   for a blank line at band boundaries (shipped without either
+   pre-sprite-Y).
+3. **RowSlice tail-jmp (`jmp RowSlice` / `jmp SliceReentry` on
+   `.Line`)** — stack-neutral tail re-entry (no per-slice return
+   address, SP gate can only improve); `SliceReentry` label sits
+   AFTER `.Line:` (label between `sta LineCount` and `.Line:` broke
+   test_enemy_movement's fall-through contract).
+4. Worst path now **69c work / d=72** (was 73/76).
+
+**Regression gate — `test_vcr_shutter.py` case16:** sweeps open/armed
+× RoomY 0..143 × swcha over natural enemy staging (boot `I_ENCOUNT`
+restored — cases 1-15 poke it 0), collects every consecutive cave
+WSYNC pair, fails on any 74-76 segment; vacuity floor `worst >= 70`
+proves the object-overlap path ran. Measured worst: 72.
+
+**Verification:** `./build.sh` green (sim_bomb_fuse, sim_frame_budget,
+verify_build — bank0 headroom still 1B, no new data); battery green
+(test_vcr_shutter 16, test_enemy_movement, test_laser_wall,
+test_laser_s4, test_miner_colors, test_phase2_ball). Stella visual:
+gameplay snapshots render clean; live shutter punch confirmed in
+level 2 room 1 (the only live V model): punch appears once
+(persistent 288px PF edit between staged snaps) and holds —
+post-punch `$1F/$1B/$00` states render identically **by design**
+(punch is one-way per room visit: "punches-only, no re-kill"), which
+is why a first attempt at state-snapshots showed byte-identical
+frames. `swchb fe/fd/ff` are the working Stella script commands for
+RESET/SELECT edges (intro exits on first RESET edge, title SELECT
+held 3 frames = one level+1).
