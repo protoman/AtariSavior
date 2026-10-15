@@ -1104,6 +1104,10 @@ Overscan:
     sta BombY
     lda #180
     sta BombTimer
+    lda BombX                    ; position P1 ONCE here (overscan, timer-gated);
+    ldx #1                       ;   bomb X is constant during the straight fall,
+    jsr SetObjectXPos            ;   so VBL bomb path skips SOXP (its WSYNC shifted
+                                 ;   the re-anchor phase = +1-line pump on bt0)
     jsr CallPad_BombSndDrop          ; S10: short blip on place
     jmp .BombInDone
 .BombMarkDown:
@@ -1942,17 +1946,14 @@ SelectActiveObject:
     bne .SOCount
     lda BombTimer
     and #3
-    bne .SOCount                ; 3 of 4 → miner/enemy
+    bne .SOCount                ; 3 of 4 -> miner/enemy
     lda #OBJ_BOMB               ; bomb design offset into ObjSprites
     sta ObjBase
     lda BombX
     sta ActiveObjectX
     lda BombY
     sta ActiveObjectY
-    lda BombX                    ; A = X for SetObjectXPos
-    ldx #1
-    jsr SetObjectXPos
-    lda #COLOR_BOMBS             ; $46 red
+    lda #COLOR_BOMBS             ; $46 red (SOXP moved to drop — see DropArm)
     sta COLUP1
     jmp .SODone                  ; ObjTop/Bot from ActiveObjectY
 .SOCount:

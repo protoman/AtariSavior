@@ -1498,6 +1498,34 @@ def check_crunch_clock(src: Path) -> None:
             err(f"bank2.asm VcrCoveredState: expected {tok!r} in first 50 lines")
         if tok not in b3v:
             err(f"bank3.asm VCS3: expected {tok!r} in first 50 lines")
+    # VcrStateTab (bank2 $FE64, 32B) — the VBL hot-path form of the same
+    # formula (VcrShutter lookup, 2026-10-15: −21c/frame vs the jsr).
+    # Guard the table BYTES against the formula or render drifts from the
+    # kill test with no code change to notice.
+    lst2 = src / "bank2.lst"
+    bin2 = src / "bank2.bin"
+    if lst2.exists() and bin2.exists():
+        addr = None
+        for _l in lst2.read_text(errors="replace").splitlines():
+            _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+VcrStateTab\s*$",
+                          _l.split(";")[0])
+            if _m:
+                addr = int(_m.group(1), 16)
+                break
+        if addr is None:
+            err("bank2.lst: VcrStateTab label not found")
+        else:
+            rom = bin2.read_bytes()
+            got = rom[addr - 0xF000: addr - 0xF000 + 32]
+            want = []
+            for sc in range(32):
+                e = sc - 4 if sc >= 4 else sc
+                want.append(0x00 if e < 4 else
+                            0x11 if e < 9 else 0x1B if e < 18 else 0x1F)
+            if list(got) != want:
+                err(f"VcrStateTab @ ${addr:04X}: bytes drift from the "
+                    f"VcrCoveredState formula\n    got  {bytes(got).hex()}\n"
+                    f"    want {bytes(want).hex()}")
 
 
 def check_scan_tramp(src: Path) -> None:

@@ -2362,6 +2362,21 @@ PFOffTab:
                                  ;   (VcrShutter punch — moved out of the
                                  ;   $FF00 window to make the Step 4
                                  ;   left-mirror staging fit)
+    .ds $FE64 - *, 0
+VcrStateTab:                     ; 32B — sc (clock>>2, folded 32..63 -> 31..0)
+                                 ;   -> $00/$11/$1B/$1F. VBL hot path uses
+                                 ;   this table (2026-10-15: the jsr
+                                 ;   VcrCoveredState form was 21c/frame —
+                                 ;   V-room VBL sat one TIM64T tick from the
+                                 ;   +1-line bucket and bomb-draw frames
+                                 ;   crossed it = whole-screen jump).
+                                 ;   VcrCoveredState stays as the formula
+                                 ;   reference (verify_build guards this
+                                 ;   table against it + bank3 CrunchClock).
+    .byte $00,$00,$00,$00,$00,$00,$00,$00   ; sc 0-7   dwell (fully open)
+    .byte $11,$11,$11,$11,$11               ; sc 8-12  edge slices
+    .byte $1b,$1b,$1b,$1b,$1b,$1b,$1b,$1b,$1b  ; sc 13-21 center-open
+    .byte $1f,$1f,$1f,$1f,$1f,$1f,$1f,$1f,$1f,$1f  ; sc 22-31 full
 
     .ds $FE90 - *, 0
 HotOverlapFlag:
@@ -2627,7 +2642,17 @@ VcrShutter:
     lda #$44
     sta ColupfBuf,X
     lda EnemyRamP
-    jsr VcrCoveredState         ; A = $00/$11/$1B/$1F aperture state
+    lsr
+    lsr                         ; sc = clock>>2 (fold same as VcrCoveredState)
+    cmp #32
+    bcc .VSsc
+    eor #$3F                    ; 32..63 -> 31..0
+.VSsc:
+    tay
+    lda VcrStateTab,Y           ; $FE64 — 32B state table (21c vs the old
+                                ;   43c jsr form; V-room VBL was one TIM64T
+                                ;   tick from the +1-line bucket and
+                                ;   bomb-draw frames crossed it)
     sta VcrState
     lsr                         ; C = state bit0 (slice0 closed)
     bcc .VSpunch                ; fully open (user 2026-10-14c): skip the
