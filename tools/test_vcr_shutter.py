@@ -7,6 +7,13 @@ path is PHMOverlay's miss path (punched
 cell): the player sits in the right-half ball window, the cell walk
 misses (punched/air), and OvShutBand runs OvShutScan — endpoints RoomY
 (head) + RoomY+11 (feet) vs the slice state of clock-1 (kill parity).
+VCS3's horizontal containment gate (user bug 2026-10-14) runs FIRST:
+the lit span [x-6,x] must sit inside the block [BallX-7,BallX] =
+[120,127] (frozen fixture BallX=127 — inside window x in {126,127});
+a side brush (edge overlap only) is passable, never a crunch.
+Rule 1 (user 2026-10-14): cold bands kill ONLY while CLOSING
+(sc<32) and not totally closed ($1F = wall; the opening half
+retracts). Hot (MetaB b6) exempts both gates.
 
 Cases:
   1. arm      — after load: VcrBand=1, VcrNext=1, VcrState staged
@@ -21,17 +28,26 @@ Cases:
                 WHILE the shutter pipeline keeps cycling (VcrNext consumed
                 to 5, state matched, hazard color kept) — plan Phase D:
                 bomb lives on GRP1, shutter owns the ball, no contention;
-  5. kill     — clock 100 ($1F), player in band1 ball window ->
-                 EnemyDeadMask b7 latches (crunch kill, cold containment
-                 trivially true for the fully closed state);
-  6. crunch  — clock 64 ($1B), y48: sprite 48..59 both endpoints CLOSED
-                 below the [66,79) aperture -> cold containment KILLS
+  5. closed   — clock 100 ($1F), x=127 INSIDE the block: no kill
+                 (Rule 1 — totally closed is a wall, not a crunch);
+  6. crunch  — clock 64 ($1B CLOSING), y48: sprite 48..59 both endpoints
+                 CLOSED below the [66,79) aperture -> cold kill
                  (crunched under the lower slab) — user spec 2026-10-14;
   7. crunch2 — same, y80: sprite 80..91 both closed above gapHi -> kill;
   8. coldtap — clock 64 ($1B), y57: head 57 CLOSED, feet 68 OPEN ->
                   cold: NO kill (touch from the open side is not a
                   crunched kill);
-  9. hottap  — same geometry, MetaB b6 set (hot band): TOUCH -> kill.
+  9. hottap  — same geometry, MetaB b6 set (hot band): TOUCH -> kill
+                  (hot exempts the Rule 1 gates);
+ 10. brushL  — clock 100 ($1F), x=120: lit span [114,120] entirely LEFT
+                  of the block, 1px side brush -> NO kill (containment);
+ 11. brushR  — same, x=133: lit [127,133] entirely right -> NO kill;
+ 12. openB   — clock 200 -> $1B OPENING, y48 crunch geometry inside the
+                  block -> NO kill (Rule 1: the opening half retracts);
+ 13. openF   — clock 140 -> $1F OPENING, y68 inside -> NO kill;
+ 14. dwell   — clock 8 -> sc=2 dwell -> state $00 FULLY OPEN (user
+                  2026-10-14c: the block disappears totally at the open
+                  dwell instead of stopping at an $11 edge sliver).
 
 The kill cases run LAST-ish (a latch leads to LoseLife; EnterRoom zeroes
 the latch on respawn and the per-frame pins re-stage the room). Staging
@@ -87,6 +103,9 @@ def covered(clock: int) -> int:
         sc ^= 0x3F                    # eor #$3F fold (32..63 -> 31..0)
     if sc >= 4:
         sc -= 4                       # sbc #4 head (C from cmp #4)
+    if sc < 4:
+        return 0x00                   # dwell -> fully open (user 2026-10-14c:
+                                      #   the block disappears totally)
     return 0x11 if sc < 9 else (0x1B if sc < 18 else 0x1F)
 
 
@@ -133,8 +152,10 @@ def main() -> None:
     # settle/arm position = corridor y20 (band0): the band gate rejects
     # non-shutter bands, so the kill latch never fires during staging
     # checks (a latch would disarm VcrShutter for the rest of the room
-    # visit — bmi .VSnoArm).
-    pins = {"x": 125, "y": 20, "clock": 100, "dead": 0x00}
+    # visit — bmi .VSnoArm). x=127 = inside the containment window for
+    # the frozen fixture (BallX=127: lit span [x-6,x] sits inside the
+    # block [120,127] iff x in {126,127}).
+    pins = {"x": 127, "y": 20, "clock": 100, "dead": 0x00}
 
     def poke():
         # NOTE: I_DEAD is NOT poked per frame — the kill latch is set at
@@ -214,7 +235,7 @@ def main() -> None:
     # pinned (physics may not re-confirm the floor). Goal: bomb state
     # machine ticking CONCURRENT with a cycling shutter — plan Phase D
     # (bomb borrows GRP1, shutter owns the ball, color/pipeline intact).
-    pins.update(clock=100, y=20, x=125)
+    pins.update(clock=100, y=20, x=127)
     set_dead(0x00)
 
     def poke_bomb():
@@ -252,18 +273,11 @@ def main() -> None:
     # kill path is overlay/PHM, independent of GRP1)
     W.mem.swcha = 0x7F
 
-    # --- case 5: kill ($1F — both semantics agree) -------------------------
-    pins.update(clock=100, y=68, x=125)
-    set_dead(0x00)
-    samples.clear()
-    run_frames(6, poke, samples)
-    if not any(s[3] & 0x80 for s in samples):
-        fails.append("kill: no crunch latch with $1F state, sprite in band1 "
-                     "ball window (x=125 y=68 clock=100) — kill path dead")
-    else:
-        s = next(s for s in samples if s[3] & 0x80)
-        print(f"  kill: latch set (state=${covered(100):02X}, "
-              f"Temp=${s[4]:02X} at sample)")
+    # --- case 5: closed = wall, not crunch (Rule 1, user 2026-10-14) ------
+    # $1F totally closed: cold bands never kill — only the CLOSING action
+    # ($11/$1B while sc<32) crushes. x=127 is inside the block (the old
+    # containment window) — still no death.
+    expect_clear("closed", clock=100, y=68)
 
     # --- cases 6-9: hot/cold kill semantics (user spec 2026-10-14) --------
     # MetaB = (RoomPF0Lo)+10; b6 = mid_band_type hot. Poke the test's own
@@ -322,12 +336,47 @@ def main() -> None:
     expect_kill("hottap", clock=64, y=57)
     set_hot(False)                     # restore fixture semantics
 
+    # --- cases 10-11: side brush must NOT kill (user bug 2026-10-14) ------
+    # The old edge-overlap gate [BallX-13, BallX] let a 1px touch kill.
+    # Containment gate (VCS3 top): the lit span must sit inside the block
+    # [120,127]; x=120 -> lit [114,120] (entirely left, 1px brush),
+    # x=133 -> lit [127,133] (entirely right, 1px brush) -> passable.
+    # $1F fully closed, y68 band1 — the vertical gate would kill if the
+    # horizontal gate didn't reject.
+    for tag, bx in (("brushL", 120), ("brushR", 133)):
+        pins.update(clock=100, y=68, x=bx)
+        set_dead(0x00)
+        samples.clear()
+        run_frames(4, poke, samples)
+        if any(s[3] & 0x80 for s in samples):
+            fails.append(f"{tag}: latch set with side brush (x={bx} y=68 "
+                         f"clock=100 $1F) — containment gate failed")
+        else:
+            print(f"  {tag}: no kill (side brush x={bx}, lit span "
+                  f"outside block [120,127])")
+
+    # --- cases 12-13: opening half never kills (Rule 1, 2026-10-14) ------
+    # sc>=32 = the folded/Descending half of the ping-pong (the shutter
+    # retracts). clock=200 -> sc=50 -> folded 13 -> eff 9 -> $1B OPENING
+    # at y48 (crunch geometry — closing $1B at this y KILLS, case 6);
+    # clock=140 -> sc=35 -> folded 28 -> eff 24 -> $1F OPENING at y68.
+    # Both must be passable even inside the block (x=127).
+    pins.update(x=127)
+    expect_clear("openB", clock=200, y=48)
+    expect_clear("openF", clock=140, y=68)
+
+    # --- case 14: dwell = fully open (user 2026-10-14c) -------------------
+    # clock=8 -> sc=2 (dwell) -> state $00: nothing closed, nothing drawn
+    # (VcrShutter skips the arm + BandTab). expect_clear verifies VcrState
+    # == $00 via covered() and that no latch fires.
+    expect_clear("dwell", clock=8, y=68)
+
     if fails:
         print(f"\nFAIL: {len(fails)}")
         for f in fails:
             print("  " + f)
         sys.exit(1)
-    print("test_vcr_shutter: OK (9 cases)")
+    print("test_vcr_shutter: OK (14 cases)")
 
 
 if __name__ == "__main__":

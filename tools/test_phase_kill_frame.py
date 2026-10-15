@@ -13,9 +13,11 @@ the stage; user rule 2026-10-14). Boots the ROM first, then stages
 explicitly after landing (load_room_m2 — PF buffers, rect cache, AND both
 room pointers: RoomRects* for the stream walk, RoomPF0* for StageBandTab's
 MetaA/MetaB gate),
-pins the player in the right-half ball window (x125 y68, clock 100 =
-$1F fully closed), holds RIGHT so PHM proposes every frame (walk ->
-punched-cell MISS -> OverlayTramp -> OvShutScan/OvShutBand), and
+pins the player INSIDE the shutter block, crunched below the aperture
+(x127 y48 — the containment window + Rule 1's closing phase; clock 64 =
+$1B CLOSING, sc=16<32 — $1F closed is a wall now, no kill), holds
+RIGHT so PHM proposes every frame (walk -> punched-cell MISS ->
+OverlayTramp -> OvShutScan/OvShutBand), and
 asserts the full chain (kill rides the OVERLAY miss path — the $81
 record walk is deliberately skipped in .HOVfeature, stack-stomp
 2026-10-13):
@@ -90,9 +92,14 @@ I_RCBASE = 0x09          # staged rect-cache count (bomb-test layout)
 RECTS0 = 0x4C            # staged rect-cache base
 I_PF1BAND1 = 0x47          # PF1Buf band1 row1 ($C7) — V punch lives here
 
-CELL_X, CELL_Y = 125, 68   # right-half ball window (mirror of V col4),
-                           # band1 y68 (sprite 68-79 inside row1)
-CLOCK = 100                # fully closed ($1F) per VcrCoveredState
+CELL_X, CELL_Y = 127, 48   # inside the containment window (frozen fixture
+                           # BallX=127: lit [x-6,x] within block [120,127]
+                           # iff x in {126,127}; 125 is a side brush now),
+                           # y48 = crunched BELOW the [66,79) aperture
+                           # (Rule 1 2026-10-14: cold kills only while
+                           # CLOSING and not totally closed)
+CLOCK = 64                 # $1B CLOSING (sc=16 < 32) — the kill phase;
+                           # 100 = $1F (closed) is a wall now, no kill
 ARM_FRAME = 90            # frames to run after arming
 RESPAWN_FRAME = 150       # frames to let DropArm respawn settle
 
