@@ -1808,42 +1808,6 @@ PhNext:                     ; Y = row (base+2): skip w/h → next class.
 ; bank0, the rts is then fetched from bank0's identical copy, and the stack
 ; still holds the bank0 jsr CallPad_* return address.
 ; ------------------------------------------------------------------------------
-; ------------------------------------------------------------------------------
-; SetObjectXPos_t2 / fineAdjustBegin_t2 — copy for the TITLE kernel (moved into
-; bank2 2026-10-16). Same Davie routine as bank0's. NOT page-aligned, but the
-; `lda fineAdjustTable_t2,Y` page-cross still holds here: (base-241) low byte
-; $B6 + Y($F1..$FF) carries -> 5c, so the positioning contract is preserved.
-; ------------------------------------------------------------------------------
-    org $FBA7
-fineAdjustBegin_t2:
-    .byte %01110000               ; left 7
-    .byte %01100000               ; left 6
-    .byte %01010000               ; left 5
-    .byte %01000000               ; left 4
-    .byte %00110000               ; left 3
-    .byte %00100000               ; left 2
-    .byte %00010000               ; left 1
-    .byte %00000000               ; no movement
-    .byte %11110000               ; right 1
-    .byte %11100000               ; right 2
-    .byte %11010000               ; right 3
-    .byte %11000000               ; right 4
-    .byte %10110000               ; right 5
-    .byte %10100000               ; right 6
-    .byte %10010000               ; right 7
-fineAdjustTable_t2 EQU fineAdjustBegin_t2 - %11110001
-SetObjectXPos_t2:
-    sta WSYNC
-    sec
-.Div15LoopT2:
-    sbc #15
-    bcs .Div15LoopT2
-    tay
-    lda fineAdjustTable_t2,Y
-    sta HMP0,X
-    sta RESP0,X
-    rts
-
     .ds $FBD0 - *, 0            ; #22 EnterRoom tramp twin — byte-identical
                                  ;   with kernel.asm at $FBD0 (pin moved from
                                  ;   $FB84 2026-10-13, then $FBC0 2026-10-14:
