@@ -63,6 +63,45 @@ switch per title frame is free.
   shrink broke `$FDE1`). Gate with `test_menu_flow`, `test_title_demo`,
   `test_phase2_ball` (title frames).
 
+#### Step-1 findings (2026-10-16, before implementing)
+Surveying the actual code shows the title move is a **multi-step refactor**, not
+a single chunk move — two hard blockers:
+1. **`TitleKernel` calls `jsr SetObjectXPos` SIX times mid-kernel** (entry
+   P0/P1, player band P0/P1, footer restore P0/P1). `SetObjectXPos` is **pinned
+   at `$FF0F` in bank0** and its `bcs .Div15Loop` / page-aligned `fineAdjust`
+   timing is load-bearing. A bank2 kernel therefore needs a **bank2
+   `SetObjectXPos` copy + its own PAGE-ALIGNED fineAdjust table** (~35B), or the
+   kernel can't move. Duplicating a cycle-tuned, pin-guarded routine is the
+   riskiest part of the whole plan.
+2. **Every cross-bank transition needs a SAME-ADDRESS byte-identical twin**
+   (the fold-pad / CallPad rule). The existing twin slots (`$FBFC-$FC47`
+   CallPads, `$FC68/$FC70` fold pads, `$FBD0-$FBEE` return pads) are **full** —
+   a new entry/exit/return needs a fresh mutually-free bank0+bank2 address pair.
+   The title kernel also exits via `jmp Overscan` and `jsr FooterFold`, both
+   bank0, so the exit needs a shared-block tramp too.
+3. The cold **helpers** call bank0 directly: `TitleWork` → `jsr LoadLevel`;
+   `TitleIntro` → `jsr DropArm` + `jsr TitleSequenceFold`; `TitleTailAudio` →
+   `jsr BombTick` + `jsr CallPad_UpdateBombSound` + `jmp StartFrame`. Moving
+   them needs a bank2→bank0 return mechanism — **the codebase has no
+   bank2→bank0 `jsr` today** (only bank0→bank2/3 and the data fold), so this
+   pattern must be established first.
+
+**Revised step 1 (sub-ordered, each verified before the next):**
+- 1a. Create ONE reusable bank0↔bank2 tramp slot pair at a mutually-free
+  address (freed from the title region once it shrinks) + prove a bank0→bank2
+  `jsr`/return round-trip with the smallest cold leaf (`TitleSelect`, 25B).
+- 1b. Move the title helpers (`TitleWork`/`TitleIntro`/`TitleTailAudio`) using
+  that tramp + a bank2→bank0 call gate for `LoadLevel`/`BombTick`/`DropArm`/
+  `StartFrame`.
+- 1c. Duplicate `SetObjectXPos` + a page-aligned `fineAdjust` in bank2, then
+  move `TitleKernel` + loops + `TitleFont`.
+- 1d. Move the title folds' bank2 bodies (they may already be in bank2 — check
+  `bank2.lst`) and retire their bank0 stubs.
+
+Alternatively, if 1c proves too risky, keep the kernel in bank0 and bank only
+the helpers + font (smaller win, ~150B), or pivot to a lower-coupling chunk
+(§4 cold leaves / §2 data with a cold reader).
+
 ### 2. Data tables → bank2 (up to ~250B after TitleFont)
 `ObjColorTab` (72, read by `SelectActiveObject`), `ObjSprites` (72, read by
 `SelectActiveObject` + the kernel `.Grp1`), `YToRowTable` (37, read by
