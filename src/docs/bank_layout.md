@@ -53,11 +53,30 @@ chain, not a single block.
 - **Title kernel:** `TitleKernel` `$F9FB`, `.TkLoop`, `.TkPlayer`; `TitleFont`
   `$FB00`; `TitleSelect` `$FB30`, `TitleIntro` `$FB4D`; folds `$FBD0`/`$FBD6`/
   `$FBE0`/`$FBE8`.
-- **Data:** sprites `PlayerSpriteA/B`+`PlayerWalkA/B`+`PlayerColTable` (`$F8DD`
-  — byte-twin of bank2), `BombBlinkColors`, `EnemyColorTable`,
-  `ObjSpriteOffTable`, `EnemyBitTable`, `YToRowTable` `$F901`,
-  `DropSpeedTable`, `ColOff/ColMask`, `ObjColorTab` `$FE00`, `ObjSprites`
-  `$FE48`, `BeamMask` `$FEDB`, `StepDelta`.
+- **Data structures:**
+
+  | label | size | purpose |
+  |---|---|---|
+  | `EnemyBitTable` | 4 | enemy index → dead bit (b0-2) for `EnemyDeadMask` |
+  | `EnemyColorTable` | 6 | enemy type → `COLUP1` (hue<<4\|luma<<1) |
+  | `ObjSpriteOffTable` | 6 | object type (0-6) → `ObjSprites` design offset |
+  | `BombBlinkColors` | 4 | explosion blink `COLUBK`: `(60-BombTimer)%3` (blk/yel/red/yel) |
+  | `PlayerSpriteA/B` | 12 ea | 8×12 jet frames (bank2 byte-twins at `$F8DD`) |
+  | `PlayerWalkA/B` | 12 ea | ground-walk frames (stride / passing) |
+  | `PlayerColTable` | 12 | per-row player `COLUP0` (red/yellow/gray/black) |
+  | `YToRowTable` | 37 | `(A>>2)` → tile band row (floor-nested `A/48`) |
+  | `EnemyOffTable` | 3 | enemy index → record offset (X×4) |
+  | `TitleFont` | 48 | title "S.A.V.I.O.R." 6 slots × 8 rows |
+  | `SBmask` / `SBod` | 5 ea | vcrunch shutter sub-band: VcrState bit / bodies per slice |
+  | `DropSpeedTable` | 9 | drop-in 8.8 px/frame per `Y>>4` tier |
+  | `ColOff` / `ColMask` | 20 / 12 | cell-walk: left-half col 0-19 → PF-reg offset (0/3/6) / bit |
+  | `ObjColorTab` | 72 | per-scanline GRP1 color (9 slots × 8 rows) |
+  | `ObjSprites` | 72 | GRP1 art (9 designs × 8 rows) |
+  | `BeamMask` | 12 | laser beam graphic (b1 shared with `LASER_ARMED`) |
+  | `StepDelta` | 2 | laser travel step per `PlayerDir` (0=+4, 1=−4) |
+  | `fineAdjustBegin` | 15 | `SetObjectXPos` fine-adjust, page-aligned `$FF00` |
+  - ZP buffers (not ROM): `PF0Buf` `$C3` (9B band rows), `ColupfBuf` `$E7`
+    (12B), `EnemyRamX/Y/D/P`, `RectCount`/`RcW1` rect cache `$89/$CC`.
 - **Pins/twins:** `$F8DD` (sprite twin), `$F9B8` (overlay tramp), `$FB00`
   (TitleFont page-align), `$FBFC-$FC47` **CallPads**, `$FC49` MothExitPad,
   `$FC68`/`$FC70` **fold pads**, `$FDE1` (frame tramp twin), `$FE00`/`$FE48`
@@ -73,8 +92,19 @@ chain, not a single block.
 - **Helpers / call targets:** `UpdateBombSound`, `UpdateJetSound`, `BombSndDrop`,
   `BombSndExplode`, `GetConnIdx`, `ClearPFColumn`, `AddScore`, `IsRoomDark`,
   `SetRoomDark`, `UpdateLaserSound`, `StripBlastCheck` `$F937`.
-- **Data:** `BarDelayTable`/`BarFineTable` (power bar), `ABWxTab`+`BombMaskBit`,
-  HUD font data.
+- **Data structures:**
+
+  | label | size | purpose |
+  |---|---|---|
+  | `BombMaskBit` | 5 | wall rect index → `WallMask` bit |
+  | `BarDelayTable` | 121 | power-bar mid-scanline color delay (B=0..120) |
+  | `BarFineTable` | 121 | power-bar fine split (F∈{0,1,2,3,4}) |
+  | `BombClearMask` | 20 | AND-mask to clear col 0-19's PF bit (inverse of `convert_room.pf_values`) |
+  | `LaserFreqTable` | 8 | laser sound frequency per state |
+  | `BitMaskTable` | 8 | enemy bit masks (b0-2 used) |
+  | `DigitGfx` | 104 | HUD 13+2 score font (6 digits) |
+  | `fineAdjustBegin_b1` | 15 | bank1 `SetObjectXPos` fine table, page-aligned `$FF00` |
+  | `ABWXTab`/`ABWWTab`/`ABWYTab`/`ABWHTab` | 5 ea | ABW rect field offsets (EQU-derived from `RcW1`) |
 - **Pads:** `ReturnPad` `$FBF8`, CallPad block `$FBFC-$FC47` (byte-identical
   with bank0), `$FC68`/`$FC70` fold pads.
 - Free: **`$F025–$F53F` (1307B)**, plus `$FDE3–$FEFF` (285B), `$FF10–$FFF9`.
@@ -85,9 +115,24 @@ chain, not a single block.
 - **Code (moved from bank0):** `TallyEntry` `$F313`, `PickPlayerFrame` `$F3C4`,
   `TitleSequence` `$F4C4`, `BuildColupF` `$FC4F`, `LaserHitTestBody` `$FF00`,
   `FooterBand` `$F700`, `TitlePlayerBand` `$F880`.
-- **Data:** `LevelDataTable` `$F767` + per-level rooms/enemies/connections,
-  `FooterFont`, `TitleJetColors`/`TitleJetSprite`/`TitleBombSprite` (twins at
-  `$F8DD`), `VcrStateTab`, `PhMaskTab`, level spill slots.
+- **Data structures:**
+
+  | label | size | purpose |
+  |---|---|---|
+  | `LevelDataTable` (+ per-level) | — | level start/miner/colors + `RoomDataTable`/`RoomConnections`/`RoomEnemies`; generated `spill_*.asm` |
+  | `MothBitTable` / `MothRowTable` | 3 / 48 | moth enemy turn bits / row lookup |
+  | `BCFDarkMask` | 8 | `BuildColupF` dark-room mask per room |
+  | `ColOff` / `ColMask` | 20 / 12 | cell-walk copies (bank2-side walkers) |
+  | `FooterFont` | 84 | title footer font (6 × 14) |
+  | `TitleBombSprite` | 12 | title bomb sprite (bottom-aligned) |
+  | `TitleBlinkColors` | 4 | title blink colors (black/yellow/red/yellow) |
+  | `TitleJetSprite` | 24 | title jet A/B sprite (byte-twin of bank0 `$F8DD`) |
+  | `TitleJetColors` | 12 | title jet per-row colors |
+  | `PhMaskTab` | 10 | PhaseBlink blink-cell pair idx → PF bit pair |
+  | `PFOffTab` | 10 | pair idx → PF reg offset (0/3/6) |
+  | `OvHead` / `OvTail` | 3 ea | overlay patch-strip row markers |
+  | `VcrStateTab` | 32 | vcrunch slice state: `sc(clock>>2) → $00/$11/$1B/$1F` |
+  | `EnemyOffTable` / `EnemyBitTable` | 3 / 4 | enemy copies (bank2 walkers) |
 - **Pads/twins:** `$F9B8` overlay-tramp twin, `$FBD0`/`$FBD6`/`$FBE0`/`$FBE8`
   fold twins, `Bank2ReturnPad` `$FBEE`, `ReturnPad` `$FBF8`, `$FDE1`
   PickPlayerFrame twin, `$FE90`/`$FE96` tramp twins, `$FEF6` fold twin,
@@ -102,7 +147,15 @@ chain, not a single block.
   `PhHcrEntry` `$F880`, `CrunchClock` `$F900`, `HcrClock` `$F9FE`,
   `HOVFeatEntry` `$FA40`, `HOVvcrunch` `$FA82`, `HOVhcrunch` `$FACB`,
   `VCS3` `$FD80` + tramp-image pads.
-- **Data:** `CrPfx0/1/2` prefix tables, `.OSgapHi/Lo`.
+- **Data structures:**
+
+  | label | size | purpose |
+  |---|---|---|
+  | `CrPfx0` / `CrPfx1` / `CrPfx2` | 11 ea | prefix masks `P(n)`, n=0..10 (crunch PF staging) |
+  | `HcrBandLo` | 3 | band → `band*48` (HcrPush vertical gate) |
+  | `.OSgapHi` / `.OSgapLo` | 2 ea | VCS3 cold-kill aperture bounds ([79,88) / [66,57)) |
+  - crunch tramp-image pads (`.byte $4C,…`) — same-address twins for the
+    bank2↔bank3 dispatch.
 - Free: `$F0A1–$F7FF` (~1887B), `$FECC–$FFF9` (~302B), plus several 20–155B.
 
 ## Cross-bank mechanism (why "just move it" is hard)
