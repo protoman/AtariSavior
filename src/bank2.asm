@@ -614,7 +614,7 @@ LaserWallClamp:
                                 ; tails to LWpSolid / LWpNotPatch
 .LWm1Solid:
     lda #2                      ; M1 patch strip solid at the tip (A=2)
-    jmp $FBF8                   ; ReturnPad -> bank0 (contact resets eye)
+    jmp ReturnPad                   ; ReturnPad -> bank0 (contact resets eye)
 LWpNotPatch:                    ; strip miss: mirror-test the ONE tip col
     lda FetchPtr
     cmp #20
@@ -643,7 +643,7 @@ LWpNotPatch:                    ; strip miss: mirror-test the ONE tip col
     jmp LaserClampDone          ; back to the body (stack depth unchanged)
 LWpSolid:                       ; global: strip/row walk solid -> CONTACT
     lda #2                      ; result: wall tip — caller resets to eye
-    jmp $FBF8                   ; ReturnPad -> bank0 LaserInput (A/Z kept)
+    jmp ReturnPad                   ; ReturnPad -> bank0 LaserInput (A/Z kept)
 
 ; S6.5 col-change gate for MothRoutine (see entry at .MothRangeOk): walk
 ; result depends only on the (col,row) box. Moth rows are band-constant
@@ -708,16 +708,16 @@ TallyEntry:
     lda #8
     sta AUDV0
     lda #3                      ; tick + coin
-    jmp $FBF8
+    jmp ReturnPad
 .TEOne:
     lda #1                      ; tick only
-    jmp $FBF8
+    jmp ReturnPad
 .TEFinal:
     lda #7                      ; tick + coin + done
-    jmp $FBF8
+    jmp ReturnPad
 .TEIdle:
     lda #0                      ; no event (Z set for bank0 beq)
-    jmp $FBF8
+    jmp ReturnPad
 .TEArm:
     lda BarLevel
     clc
@@ -749,7 +749,7 @@ TallyEntry:
     lda #$FE
     sta DropTarget
     lda #0
-    jmp $FBF8
+    jmp ReturnPad
 
 ; ------------------------------------------------------------------------------
 ; BCFDarkRun — BuildColupF's dark-room override (moved here from BCF's tail:
@@ -1031,7 +1031,7 @@ StageBandTab:
     ora CollisionEndY
     sta CollisionEndY
 .SBTPack:
-    jmp $FBF8                   ; ReturnPad → bank0 VBLANK caller
+    jmp ReturnPad                   ; ReturnPad → bank0 VBLANK caller
 
 ; ------------------------------------------------------------------------------
 ; TitleSequence — intro ($FD) phase machine (plans/title_bomb_sequence_plan).
@@ -1197,7 +1197,7 @@ TitleSequence:
 .TSAdv:
     inc TallyTicks
 .TSdone:
-    jmp $FBF8                   ; ReturnPad → bank0 TitleIntro (0 push)
+    jmp ReturnPad                   ; ReturnPad → bank0 TitleIntro (0 push)
 
 ; Cell-map lookup copies (bank2 cannot read bank0 ROM) — cell_collision_plan
 ; 0.2 bit spec, byte-identical to kernel.asm's ColOff/ColMask: group offset
@@ -1329,7 +1329,7 @@ OvM1Block:
     jmp HotOverlapFlag          ; C=1 contract; body sets Temp b7 on hot hit
 .OvM1no:
     clc
-    jmp $FBF8
+    jmp ReturnPad
 
 FooterPtr1 = $E0                 ; title-only pointer block; overwritten by HUD
 FooterPtr2 = $E2
@@ -1463,7 +1463,7 @@ FooterBand:
     sta GRP1
     sta GRP0
     sta GRP1
-    jmp $FBF8
+    jmp ReturnPad
 
     ; --- Level-data spill 1 (bugs.md 27): fill gap $F767..$F800 (153B).
     ; levels_index first — it defines ROOM_NONE for the table includes.
@@ -1547,7 +1547,7 @@ TitlePlayerBand:
     sta REFP0                  ;   (explosion walk phases end before it)
 .TitleJetDone:
     sta WSYNC
-    jmp $FBF8
+    jmp ReturnPad
 
     .ds $F8DD - *, 0            ; twin: bank0 PlayerSpriteA lives here (test_miner)
 TitleJetSprite:
@@ -2134,7 +2134,7 @@ HOVlegHit:
     ora #%10000000
     sta Temp
     sec                         ; tail-call contract: return C=1
-    jmp $FBF8                   ; ReturnPad → original caller (C survives)
+    jmp ReturnPad                   ; ReturnPad → original caller (C survives)
 HOVnext:
     pla
     clc
@@ -2144,7 +2144,7 @@ HOVnext:
     bne .HOVloop
 .HOVdone:
     sec                         ; tail-call contract: return C=1
-    jmp $FBF8                   ; ReturnPad → original caller (C survives)
+    jmp ReturnPad                   ; ReturnPad → original caller (C survives)
 
 ; Feature-record dispatch ($80 phase / $81 vcrunch / $82 hcrunch — Phase 4):
 ; armed/overlap/kill tests live in bank3 (HOVFeatEntry). $80 phase: b5 armed
@@ -2215,13 +2215,13 @@ BombEnemyBlastBody:
     ora EnemyBitTable,X
     sta EnemyDeadMask           ; kill (first overlapping enemy per blast)
     lda #1                      ; killed — bank0 caller awards +50
-    jmp $FBF8                   ; ReturnPad
+    jmp ReturnPad                   ; ReturnPad
 .BEBNext:
     inc EnemyIndex
     jmp .BEBLoop
 .BEBnone:
     lda #0                      ; Z set for caller's beq
-    jmp $FBF8                   ; ReturnPad
+    jmp ReturnPad                   ; ReturnPad
 
 ; ------------------------------------------------------------------------------
 ; HOF entry tramp ($FE80-$FE85) — byte-identical with kernel.asm's copy
@@ -2439,7 +2439,7 @@ OvShutBand:
     sta EnemyDeadMask           ; crunch-kill latch
 .OSBsolid:
     sec
-    jmp $FBF8
+    jmp ReturnPad
 .OSBm1:
     jmp OvM1Block
 
@@ -2585,16 +2585,16 @@ LaserClampDone:
     ora EnemyBitTable,X
     sta EnemyDeadMask
     lda #$50                    ; result: kill — caller adds #$50 score
-    jmp $FBF8                   ; ReturnPad → bank0 caller (A/Z/C preserved)
+    jmp ReturnPad                   ; ReturnPad → bank0 caller (A/Z/C preserved)
 .LHLamp:
     lda #1                      ; result: lamp — caller crashes the lamp
-    jmp $FBF8
+    jmp ReturnPad
 .LHNext:
     inx
     bne .LHLoop
 .LHTOut:
     lda #0                      ; result: miss (Z set for caller's beq)
-    jmp $FBF8
+    jmp ReturnPad
 
 ; Type-offset table (copy of kernel EnemyOffTable: enemy index * 4; S4.1) and
 ; dead-bit table (copy of kernel EnemyBitTable) — bank0 ROM is not visible
