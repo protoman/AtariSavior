@@ -1662,9 +1662,10 @@ DeriveEnemyY:
     beq .DEYTickShift
     cmp #ENEMY_SPIDER
     beq .DEYSpiderTick
-    cmp #ENEMY_MOTH             ; E4: Y arm lives in the $FC4F gap
+    cmp #ENEMY_MOTH             ; E4: Y arm — CallPad to bank1 (leaf_move_plan)
     bne .DEYStatic
-    jmp MothYDerive
+    jsr CallPad_MothYDerive
+    jmp DEYDelta
 .DEYStatic:
     iny
     iny
@@ -3069,32 +3070,6 @@ MothExitPad:
     sta $1FF6                   ; select bank0 (executed from bank2's copy)
     jmp UE_Next                 ; resume dispatch loop (bank0 half)
 
-; ------------------------------------------------------------------------------
-; MothYDerive — E4 Y arm (docs/e4_moth_plan.md). 25 B EXACT: fills the
-; $FC4F-$FC67 gap; 26 B trips org $FC68 reverse-index (loud build error).
-; In: Y = record+0 (type offset), X = slot (preserved). Out: A = live Y.
-; Y sine ±6 px: tri = clamp(triangle((EnemyRamP>>1)&15), 0..6) → ×2−6.
-; Phase period 16 divides the 256 clock exactly (no teleport), continuous
-; at the p15→p0 wrap (both −6). Jump-tail into DEYDelta: stack depth of
-; DeriveEnemyY's caller unchanged (sta Temp / iny iny / fold y / adc / rts).
-; ------------------------------------------------------------------------------
-MothYDerive:
-    lda EnemyRamP               ; free-running frame clock (RefreshEnemyY incs)
-    lsr
-    lsr                         ; ÷4: vertical tick = half the X tick (user tuning:
-    and #15                     ; sine period 32→64 frames = half vertical speed)
-    cmp #8
-    bcc .mUp
-    eor #15                     ; mirror: tri = p<8 ? p : 15-p (0..7)
-.mUp:
-    cmp #7
-    bcc .mOk
-    lda #6                      ; clamp tri ≤ 6 → delta exact ±6
-.mOk:
-    asl                         ; 0..12 (C=0: bit7 clear)
-    adc #$FA                    ; ×2−6 → delta −6..+6 (C=0 → A−6 mod 256)
-    jmp DEYDelta                ; shared tail — A = delta, Y = record+0
-
 ; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
 ; These go BEFORE the fineAdjustTable so org $FC68 doesn't go backwards.
@@ -3710,6 +3685,11 @@ TallyWork:
 BeamMask:
     .byte 0,0,2,0,0,0,0,0,0,0,0,0
 
+
+    .ds $FEE7 - *, 0            ; bank0↔bank1 CallPad (leaf_move_plan Step 0)
+CallPad_MothYDerive:
+    sta $1FF7
+    jmp $F029
 
     .ds $FEF0 - *, 0            ; fill tramp..moth gap (drift-proof)
 UE_MothTramp:
