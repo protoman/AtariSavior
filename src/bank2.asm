@@ -1860,17 +1860,16 @@ HOVFeatPre:                 ; .HOVfeature: A = class, Y = record base
         iny
         lda (FetchPtr),Y
         pha                 ; h
-        txa                 ; class
         ; Rule 1 (user 2026-10-14): stage MetaB for HOVhcrunch's hot
         ; exemption. Full byte — bank3 tests b6 via asl×2 (b7 shutter
         ; flag shifts out first; hcrunch rooms keep b7 clear). LineCount
         ; is free on the HOV hit path (the overlay reader is the miss
-        ; path — mutually exclusive; kernel restages per row).
-        pha                 ; save class
+        ; path — mutually exclusive; kernel restages per row). X still
+        ; holds the class (survives the field pushes) — no pha/pla pair.
         ldy #10
         lda (RoomPF0Lo),Y   ; MetaB
         sta LineCount
-        pla
+        txa                 ; class (A = record class for bank3)
 .HFPdirect:
         sta $1FF9
         jmp $FA40           ; HOVFeatEntry (bank3)
@@ -1881,7 +1880,17 @@ PhHcrPre:                   ; PhaseBlink $82: Y = record base
         lda (FetchPtr),Y
         pha
         dex
-        bne .PHp
+        bne .PHp            ; Y = base+4 (bank3's return contract)
+        tya
+        pha                 ; save base+4 across the MetaB read
+        ldy #10
+        lda (RoomPF0Lo),Y       ; MetaB (bank2 ROM image at TilePF0+10 =
+                                ; $FA3C; a bank3 fetch sees pad $FF there)
+        sta LineCount           ; full byte — bank3's HcrPush masks b6;
+                                ; read EARLY in PhHcrEntry, before the PF
+                                ; mask staging reuses LineCount.
+        pla
+        tay                 ; Y = base+4 (record end → .PhRec iny)
         sta $1FF9
         jmp $F880           ; PhHcrEntry (bank3)
     .ds $FC38 - *, 0

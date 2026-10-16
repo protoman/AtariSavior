@@ -314,20 +314,37 @@ Requires: `dasm` (6502 cross-assembler)
 
 ### Test stage data — frozen test-owned copies only (user rule 2026-10-14)
 
-**Tests must NOT stage from live game data** (models.json, `generated/`,
-ROM bytes read from current label addresses) and must NOT gate on
+**Tests must never read live `src/rooms/`, `models.json`, or `generated/`**
+(models, level jsons, generated slices) and must NOT gate on
 ROM↔fixture equality — the user keeps editing stages, so live-coupled
-tests break on every edit. Staging fixtures live in
-`../tools/test_fixtures.py` (the tests-folder copy): frozen bytes
-injected into the test's own `bank*.bin` copy via `freeze_m1`/`freeze_m2`
-at the CURRENT label addresses, so pointer-based reads (StageBandTab
-MetaA/MetaB, rect/hot stream walks) see the fixture too, while label
-moves stay harmless. Fixture bytes change only by deliberately
-re-freezing in that module.
+tests break on every edit. **Frozen test copies live in `src/tests/`.**
+Test scripts stay where they are (`../tools/test_*.py`,
+`src/tools/test_title_demo.py`) and read only from `src/tests/`.
+**No editor change to rooms/models may break any test or build.**
 
-Sanctioned exception: converter-validation tests (`test_cell_map`,
-`test_features_data`, `test_asym_data`, `test_editor_roundtrip`,
-`test_title_demo`) — their job IS to track live data.
+Two staging mechanisms:
+- **File copies** (models.json, level jsons, generated slices):
+  frozen files under `src/tests/`.
+- **ROM byte staging**: `../tools/test_fixtures.py` — frozen bytes
+  injected into the test's own `bank*.bin` copy via `freeze_m1`/`freeze_m2`
+  at the CURRENT label addresses, so pointer-based reads (StageBandTab
+  MetaA/MetaB, rect/hot stream walks) see the fixture too, while label
+  moves stay harmless. Fixture bytes change only by deliberately
+  re-freezing in that module.
+
+Sanctioned exceptions — their job IS to track live data (run them after
+`./build.sh`, since they compare live sources against the built ROM):
+- converter-validation tests (`test_features_data`, `test_asym_data`)
+- `test_band_restage` (live level jsons ↔ built ROM EnterRoom behavior)
+- `test_level_bank` (kernel `LEVEL_COUNT` hand-copy ↔ live
+  `generated/levels.asm` count — freezing it would break on level add)
+
+**Re-freeze procedure** (only when stage content deliberately changes):
+run `./build.sh` first (so `generated/` matches the edited data), then
+copy the edited `rooms/level_*.json`, `rooms/models/models.json`, and the
+convert outputs under `src/tests/generated/` into `src/tests/` keeping
+the same relative tree. `test_editor_roundtrip` regenerates from the
+frozen copies into a TEMP dir — it must never write the repo.
 
 Run in Stella:
 ```bash

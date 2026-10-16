@@ -199,7 +199,12 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         out.append(f"ROOM_TILE_COLUMNS = {WIDTH}")
         out.append(f"ROOM_TILE_ROWS = {len(rows)}")
 
-    rects = find_rectangles(rows, solids="#HPVC")
+    # C (hcrunch) cells are NOT static rects (2026-10-16): the shutter's
+    # covered prefix is DYNAMIC solidity — PhHcrEntry rewrites the band
+    # every VBL from the clock (row & ~P(full) | P(n)), and the PF cell
+    # walk follows the buffers. A static C-rect would wall the whole
+    # sweep corridor once the C extent grows to the screen center.
+    rects = find_rectangles(rows, solids="#HPV")
     hot_rects = find_rectangles(rows, solids="H")
     # find_rectangles works in logical cells (0..9); the runtime compares
     # rect x/w against 4-px display columns, so emit x/w in pairs (D7).

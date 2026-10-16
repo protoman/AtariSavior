@@ -38,36 +38,21 @@ M1MetaB:
 
 ; Generated from models.json model 2. Do not edit by hand.
 M2RoomRects:
-  .byte 4                  ; number of rectangles
+  .byte 3                  ; number of rectangles
   .byte $00, $11  ; packed (x<<2|y, w<<2|h)
   .byte $01, $0a  ; packed (x<<2|y, w<<2|h)
-  .byte $41, $09  ; packed (x<<2|y, w<<2|h)
   .byte $12, $39  ; packed (x<<2|y, w<<2|h)
-  .byte 1              ; number of hot rectangles
-  .byte $81, 16, 1, 2, 1  ; vcrunch bbox
+  .byte 0              ; number of hot rectangles
 M2TilePF0:
   .byte $f0, $30, $30
 M2TilePF1:
   .byte $00, $00, $ff
 M2TilePF2:
-  .byte $00, $30, $3f
+  .byte $00, $00, $3f
 M2MetaA:
-  .byte $01                  ; (m1_col+1)<<4 | band mask
+  .byte $00                  ; (m1_col+1)<<4 | band mask
 M2MetaB:
-  .byte $82                  ; (ball_col+1) | $80 vcrunch shutter
-M2RightPF0:
-  .byte $f0, $30, $30
-M2RightPF1:
-  .byte $00, $00, $ff
-M2RightPF2:
-  .byte $30, $30, $3f
-M2RightRects:
-  .byte 4                  ; number of rectangles
-  .byte 2, 0, 2, 2  ; x(right_col*2), y, w, h
-  .byte 16, 0, 4, 1  ; x(right_col*2), y, w, h
-  .byte 18, 1, 2, 2  ; x(right_col*2), y, w, h
-  .byte 2, 2, 14, 1  ; x(right_col*2), y, w, h
-  .byte 0              ; number of hot rectangles
+  .byte $00                  ; (ball_col+1), 0 = no ball
 
 ; Generated from models.json model 3. Do not edit by hand.
 M3RoomRects:
@@ -89,18 +74,18 @@ M3MetaB:
 
 ; Generated from models.json model 4. Do not edit by hand.
 M4RoomRects:
-  .byte 4                  ; number of rectangles
+  .byte 3                  ; number of rectangles
   .byte $00, $49  ; packed (x<<2|y, w<<2|h)
-  .byte $01, $09  ; packed (x<<2|y, w<<2|h)
   .byte $02, $11  ; packed (x<<2|y, w<<2|h)
   .byte $1a, $39  ; packed (x<<2|y, w<<2|h)
-  .byte 0              ; number of hot rectangles
+  .byte 1              ; number of hot rectangles
+  .byte $82, 0, 1, 20, 1  ; hcrunch band prefix
 M4TilePF0:
-  .byte $f0, $30, $f0
+  .byte $f0, $f0, $f0
 M4TilePF1:
-  .byte $ff, $00, $3f
+  .byte $ff, $ff, $3f
 M4TilePF2:
-  .byte $3f, $00, $ff
+  .byte $3f, $ff, $ff
 M4MetaA:
   .byte $00                  ; (m1_col+1)<<4 | band mask
 M4MetaB:
