@@ -34,6 +34,7 @@ from convert_level import rows_from_json  # noqa: E402
 from convert_room import pf_values  # noqa: E402
 
 SRC = ROOT / "src"
+TESTS = SRC / "tests"          # frozen stage copies (AGENTS test-data rule)
 BANK0 = (SRC / "bank0.bin").read_bytes()
 BANK1 = (SRC / "bank1.bin").read_bytes()
 BANK2 = (SRC / "bank2.bin").read_bytes()
@@ -452,10 +453,11 @@ def load_case(mem: Mem, rows: list[str]) -> None:
 
 def main() -> int:
     # --- generator parity: models_data.asm PF bytes == pf_values ----------
-    md = json.loads((SRC / "rooms" / "models" / "models.json").read_text())
+    md = json.loads(
+        (TESTS / "rooms" / "models" / "models.json").read_text())
     ml = md.get("models_file", md).get("models", [])
     by_id = {m.get("id"): m for m in ml}
-    mda = (SRC / "generated" / "models_data.asm").read_text()
+    mda = (TESTS / "generated" / "models_data.asm").read_text()
     cases = []
     for m in ml:
         mid = m.get("id")

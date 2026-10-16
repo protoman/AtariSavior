@@ -9,7 +9,8 @@ NOT in the ROM data ($03 = bits0,1 only) and cannot be set by an
 AND-punch. This probe boots the real game, hand-loads room 1
 (room_id 1), forces the bomb fuse 1->2 edge over the wall, and
 snapshots EVERY write to PF0/1/2Buf ($C3-$CB) with (pc, bank, old,
-new) so the mystery writer names itself.
+new) so the mystery writer names itself. Hand-loads room 0 (the boot
+room — the model the game itself restages), stages the frozen fixture.
 
 Contract (exit 1): PF2 row1 must end $00 (both rect cols cleared,
 col14 bit clear). The write trace is printed either way.
@@ -23,17 +24,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
-
-# Zero M0/M1 hot counts (player stands in the blast band).
-for _name in ("M0RoomRects", "M1RoomRects"):
-    for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
-        _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
-        if _m:
-            _a = int(_m.group(1), 16) - 0xF000
-            BANKS[2][_a + 1 + 2 * BANKS[2][_a]] = 0
-            break
-    else:
-        sys.exit(f"{_name} label missing in bank2.lst")
 
 
 def lst_labels(path):
@@ -50,7 +40,7 @@ L1 = lst_labels(SRC / "bank1.lst")
 L2 = lst_labels(SRC / "bank2.lst")
 
 import test_fixtures as FX  # noqa: E402
-FX.freeze_m1(BANKS, L2)     # frozen model1 into the private copy (rule 2026-10-14)
+FX.freeze_m0(BANKS, L2)     # frozen model0 into the private copy (rule 2026-10-14)
 PC_STARTFRAME = L0["StartFrame"]
 PC_BMW = L1["BombMarkWalls"]
 
@@ -70,16 +60,18 @@ RECTS0 = 0x4C
 PF_ROWS = range(0xC3, 0xCC)   # PF0/1/2 rows 0-2 (reported addrs)
 PF_IDX = [a & 0x7F for a in PF_ROWS]   # bytearray indices
 
-MODEL = {1: ("M1TilePF0", "M1RoomRects")}
+MODEL = {0: ("M0TilePF0", "M0RoomRects")}
 
-# Frozen copy of level-1 room-2 (model1) staging data lives in
-# tools/test_fixtures.py (the tests-folder copy, user rule 2026-10-14).
-# freeze_m1 above injected it into THIS test's private bank2.bin copy, so
-# the pointer-based reads (StageBandTab MetaA/MetaB, the rect/hot stream
-# walk) see the fixture as well — live room edits cannot move the stage
-# and no ROM-equality gate exists to drift.
-FIXTURE_PF = FX.M1_PF            # rows: PF0|PF1|PF2
-FIXTURE_RR = FX.M1_STREAM[:-1]   # count + 4 packed rects (hot tail cut)
+# Frozen copy of the bomb-contract geometry lives in tools/test_fixtures.py
+# (the tests-folder copy, user rule 2026-10-14) — at the M0 labels, the
+# model the game's own EnterRoom restages (a fixture at M1 was stomped by
+# live M0 bytes whenever they diverged). freeze_m0 above injected it into
+# THIS test's private bank2.bin copy, so the pointer-based reads
+# (StageBandTab MetaA/MetaB, the rect/hot stream walk, and any mid-test
+# EnterRoom re-entry) see the fixture as well — live room edits cannot
+# move the stage and no ROM-equality gate exists to drift.
+FIXTURE_PF = FX.M0_PF            # rows: PF0|PF1|PF2
+FIXTURE_RR = FX.M0_STREAM[:-1]   # count + 3 packed rects (hot tail cut)
 
 
 class Mem:
@@ -188,9 +180,9 @@ def pin(y=70):
 
 
 def run_case(tag, bombx, roomx, y=70):
-    """Reload room 1 fresh, drop a bomb on bombx, watch PF writes.
+    """Reload room 0 fresh, drop a bomb on bombx, watch PF writes.
     Returns (bmw_seen_frame_or_None, writes_since_call, initial_rows)."""
-    load_room(1)
+    load_room(0)
     initial = {a: mem.ram[a & 0x7F] for a in PF_ROWS}
     mem.ram[I_BOMBX] = bombx
     mem.ram[I_ROOMX] = roomx

@@ -596,12 +596,13 @@ def check_tramp_targets(src: Path) -> None:
     Catches the stale-operand class generally: a 1-byte-wrong jmp operand
     lands between rows, like 2026-10-10 ($FD6B vs BombEnemyBlastBody
     $FD6A). Comment text is stripped first so prose mentioning tramps
-    (e.g. bank1's $F937 pin comments) cannot false-positive. bank3 has
-    no listing — pairs to $1FF9 warn only.
+    (e.g. bank1's $F937 pin comments) cannot false-positive. bank3.lst
+    is emitted by build.sh (added 2026-10-16 — it was a silent fossil
+    before, misdirecting label lookups).
     """
     hot = {"$1FF6": 0, "$1FF7": 1, "$1FF8": 2, "$1FF9": 3}
     starts: dict[int, set[int]] = {}
-    for b in range(3):
+    for b in range(4):
         p = src / f"bank{b}.lst"
         if not p.exists():
             err(f"bank{b}.lst missing (tramp target check)")
@@ -614,8 +615,6 @@ def check_tramp_targets(src: Path) -> None:
     def check(dest: int, tgt: int, where: str) -> None:
         if not 0xF000 <= tgt <= 0xFFFF:
             err(f"{where} tramp jmp ${tgt:04X} outside code space")
-        elif dest == 3:
-            warn(f"{where} tramp to bank3 ${tgt:04X} — bank3.lst absent, unverified")
         elif tgt not in starts[dest]:
             err(f"{where} tramp -> jmp ${tgt:04X} is NOT a bank{dest} "
                 f"listing row start (stale operand)")

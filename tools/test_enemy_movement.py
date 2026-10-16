@@ -127,7 +127,7 @@ def main() -> None:
         "UpdateEnemies must not move the bat (movement is derived in refresh)"
     # first screen must spawn at least one enemy (spawner sanity for Stella)
     import json
-    lvl = json.loads((ROOT / "src" / "rooms" / "level_001.json")
+    lvl = json.loads((ROOT / "src" / "tests" / "rooms" / "level_001.json")
                      .read_text(encoding="utf-8"))
     first = lvl["level"]["rooms"][0]["enemies"]
     assert len(first) >= 1, \

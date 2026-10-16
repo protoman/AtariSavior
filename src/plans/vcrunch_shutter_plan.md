@@ -562,3 +562,217 @@ is why a first attempt at state-snapshots showed byte-identical
 frames. `swchb fe/fd/ff` are the working Stella script commands for
 RESET/SELECT edges (intro exits on first RESET edge, title SELECT
 held 3 frames = one level+1).
+
+## hcrunch retune (16f/step) — SHIPPED 2026-10-16 (7-step plan, steps A-E)
+
+**Motion contract (user ruling 2026-10-16):** 16f/step, 256f cycle;
+home dwell s0-3 (=80f closed stub), grow s4-9 (eff=s-3), retract
+s10-15 (eff=15-s, instant far-end turn), covered = 1+min(eff,
+full-1) — stub >= 1 always (always-solid floor kept).
+
+**Shipped:**
+- **`HcrClock`** (bank3, after `PhVcApplyAND`, before the pinned
+  `org $FA40`): `s = EnemyRamP>>4` buckets as above; full=1 fast
+  path; clobbers A only (X/Y preserved — unlike CrunchClock).
+  Exactly two call sites swapped: `PhHcrEntry` (VBL staging) and
+  `HOVhcrunch` (overscan kill). `CrunchClock` stays for the VCR
+  mirrors + retired `PhVcrEntry` + `verify_build.check_crunch_clock`
+  token gate — untouched.
+- **First-exec bugs the contract test caught (no live `$82` existed
+  before — these paths had never run):**
+  1. **bank3 `$FC2C` tramp twin missing** — `sta $1FF9` @ `$FC29`
+     switched to bank3 whose `$FC2C` bytes were zeros → BRK-path →
+     `$F000` pad → `sta $1FF6` → GameStart re-init every frame
+     (title kernel, no cave HUD, empty samples). Added
+     `.ds $FC2C - *,0` + `.byte $4C,$80,$F8` twin.
+  2. **`HOVhcrunch` wall check read X after `jsr CrunchClock`** —
+     CrunchClock's internal `tsx` left X=SP → `txa / cmp CollisionX`
+     compared SP garbage → `covered==full` wall never fired → every
+     cold overlap killed (the `closed` case). Fix: `txa / pha` … `pla`
+     around the jsr (PLA preserves C for the hot `bcs`); the wall
+     check is callee-independent now.
+  3. **`PhHcrEntry` AND-phase double-complement** — caller pre-
+     complemented masks that `PhVcApplyAND` complements itself →
+     bbox-open became bbox-keep → staging was n-invisible. Removed
+     the caller's 3 `eor #$FF` (direct P masks = the ApplyOR /
+     CrunchMasks convention).
+- **Tooling:** `build.sh` now emits `-lbank3.lst` (it was a stale
+  fossil — misdirected label lookups all session) and
+  `verify_build.check_tramp_targets` verifies `$1FF9` pairs against
+  it (was warn-only "bank3 absent"). Both 6-warning lines gone;
+  build warning count 6 → 3 (pre-pad headroom + model 5/6 rects).
+- **Tests:** `tools/test_hcrunch.py` — contract-first, 10 cases,
+  all green post-retune (`curve n[s0..15]=[1,1,1,1,2×11,1]`,
+  `dwell 80f`, kill/rearm/closed/opening/band0/nohit). Battery 32/32;
+  `./build.sh` green (sims + verify).
+- **Eyeball (step D deviation — noted for follow-up):** Stella has
+  no verified JOYSTICK traversal recipe (Phase C proved
+  `swchb $FD/$FF/$FE` + `ram $C2 $xx` + `saveSnap`, but level 3's
+  start room has no `$82` record — reaching room 2 needs scripted
+  `swcha` movement + enemy survival, unbounded R&D). Shipped instead
+  a deterministic render of the same py65 path the test uses:
+  `tools/render_shutter_frames.py` → `screenshots/hcrunch/
+  retune_curve.png` (16 pinned buckets; labels = live PF bytes;
+  stub `$30` vs full `$F0` + dwell visible; `swcha`-driven in-game
+  Stella snaps = open item).
+
+## hcrunch grow-to-center + HcrPush + kill-at-seal — SHIPPED 2026-10-16
+
+**Three user requirements (on top of the 7-step retune):**
+1. The shutter grows to the screen CENTER (n <= 10 cells = the left
+   half), not full width. `HcrClock` already caps at `full`; the
+   fixture/full = w>>1 = 10 for the w=20 record.
+2. COLD growth pushes the player toward center so a growing shutter
+   cannot trap them (`HcrPush`).
+3. Catch-at-seal is now a KILL — the 2026-10-14 "closed wall is a
+   wall, not a crunch" exemption is GONE.
+
+**Contract (source of truth = `tools/test_hcrunch.py` `covered()`):**
+`s = EnemyRamP>>4` (16f/step, 256f cycle):
+- s0-3 dwell (`eff 0`, n=1 stub, 80f),
+- s4-12 grow to center (`eff = s-3`, n = 1+min(s-3, full-1), s12 = full = 10),
+- s13-15 fast retract (`eff = 3*(15-s) = 6,3,0`, wipe home in 3 steps).
+`n[s0..15] = [1,1,1,1,2,3,4,5,6,7,8,9,10,7,4,1]`.
+
+**HcrPush (bank3 `$F010`):** called every VBL from `PhHcrEntry`.
+Pushes ONLY while the prefix ADVANCES (s4-12), cold (MetaB b6 clear),
+player box `[RoomX-7, RoomY..RoomY+11]` vertically overlapping the
+band, and an aperture still exists (sealed n>=10 skips). Left prefix
+covers px `[0,8n)`, the TIA mirror `[160-8n,160)`; clamps `RoomX` to
+`8n+7` (left) / `159-8n` (right) so the [RoomX-7,RoomX] box clears the
+prefix. Hot (MetaB b6) never pushes — the kill semantics own it.
+
+**Kill rule change (`HOVhcrunch`):** cold kill while CLOSING
+(`sc = EnemyRamP>>2 < 52` == s<13 == dwell+grow; the grow half IS the
+closing sweep) at ANY extent. Hot exempts (any phase/extent kills).
+Opening (sc>=52) never kills. The old `covered==full -> wall` branch is
+removed (it froze a cornered player at the seal).
+
+**Root causes fixed this session (the `$FC2C`/`$FC34` family again):**
+- **bank2 `PhHcrPre` MetaB read + Y-clobber.** The uncommitted attempt
+  did `ldy #11` (wrong: MetaB is at TilePF0+10) and clobbered Y (the
+  record base) BEFORE the 4-field push loop → pushed garbage fields and
+  left Y=15 instead of base+4 → bank3 `.PhRec` walked off the record.
+  Fix: run the field loop first (Y=base+4), `tya/pha` save base+4,
+  `ldy #10` read the FULL MetaB byte, `pla/tay` restore. The 8-byte
+  block moved bank2's `jmp $F880` from `$FC2C` to `$FC34`.
+- **bank3 tramp twin was stale at `$FC2C`.** When `PhHcrPre` executes
+  `sta $1FF9` (`$FC31`) it switches to bank3, whose `$FC34` bytes were
+  `.ds` fill = `$00` → BRK → `$F000` pad → GameStart re-init every M4
+  frame (title kernel, no cave HUD fold, empty samples — the original
+  IndexError). Fix: twin moved to `$FC34`; `HOVFeatPre` also shrank 2
+  bytes (dropped its `pha/pla` class save — X already holds the class),
+  so its `jmp $FA40` moved `$FC1D` -> `$FC1B` and THAT twin moved too.
+  **Lesson (repeat of the `$FC2C` first-exec bug): the pre-read tramp
+  twins are NOT auto-synced (only `.PhRec` is, by `build.sh`); any byte
+  change in `HOVFeatPre`/`PhHcrPre` silently breaks the frame.**
+- **`LineCount` staging vs mask clobber.** `PhHcrEntry` uses
+  `LineCount`($84) as the PF0 mask scratch, so the hot byte staged there
+  was overwritten before use. Fix: `PhHcrEntry` reads `LineCount` (the
+  bank2-staged MetaB) and calls `HcrPush` FIRST, right after `HcrClock`
+  and before the mask staging. No 5th push, so the stack contract and
+  the twin alignment are unchanged.
+
+**Test:** `tools/test_hcrunch.py` 13/13 (arm, curve, stable, dwell,
+kill, rearm, sealed-kill, opening, band0, nohit, pushL 5->55, pushR
+150->111, noPush). Battery 31/32 — the one failure
+(`test_editor_roundtrip`) is unrelated (its frozen `generated/` set
+includes `copyright_font.asm`/`symbols.asm`, which `convert_level.py`
+never emits; pre-existing in the uncommitted editor work).
+
+**Eyeball:** re-rendered `screenshots/hcrunch/retune_curve.png` (labels
+now computed from `test_hcrunch.covered` — the previous labels only knew
+n=1/n=2 and mislabelled the whole grow half).
+
+## hcrunch flicker fix — VBL budget (user 2026-10-16)
+
+**Symptom:** once the shutter room rendered (after the twin fix), the
+whole screen flickered ±1 line whenever the player overlapped the
+shutter band.
+
+**Diagnosis (`sim_frame_budget.py`, hcrunch room = `SIM_LEVEL=2
+SIM_ROOM=1`, model 4 = level_003 room_id 1):**
+- normal room VBL work 1130c; hcrunch room **1445c** vs the 1472c
+  `TIM64T #23` window.
+- the cave frame oscillated **267 (×522) / 268 (×576)**, the bad frames
+  starting f86 (the moment gameplay begins); `seg deltas: vbl +73..+79,
+  ker 0, over ~0` — the VBL segment ate exactly one extra scanline.
+- `HcrPush` was the delta: NOPing `jsr HcrPush` → VBL **1378c**, all
+  frames 267, wall-model PASS. 1445c lands within the ~64c INTIM
+  quantization of the 1472c deadline, so the poll exits a tick late and
+  the VBL segment crosses a line boundary (the #29 Class-C straddle
+  family, re-opened by the hcrunch VBL load).
+- overscan has **no** headroom to move the push (3222c vs the 3223c
+  absorb ceiling), so both segments were full.
+
+**Fix (two parts, both landed):**
+1. **Fused PF staging in `PhHcrEntry`.** `(buf & ~P(full)) | P(n)` is
+   computed in ONE pass per register (open masks staged in
+   LineCount/CCX/CEY, prefix read from `CrPfx*,Y` inline) instead of
+   `jsr PhVcApplyAND` then `jsr PhVcApplyOR`. Same result (P(n) ⊆
+   P(full)) — `test_hcrunch.curve` verifies byte-exact PF for every
+   bucket. Also dropped the `and #$40` masking (bank2 stages the full
+   MetaB byte; `HcrPush` masks). Frees ~50c of VBL.
+2. **Push gated to the 16f grow-step edge** (`EnemyRamP & $0F == 0`):
+   the shutter extent only changes there, and the covered cells are
+   SOLID in the PF/collision map, so the player cannot re-enter
+   mid-step — no need to run the clamp every frame.
+
+**Result:** hcrunch-room VBL max **1360c** (was 1445c); wall-model all
+267, **bad: []** (no flicker). Battery green (`test_hcrunch` 13/13,
+`test_vcr_shutter` 16, `test_phase_kill*`, `test_bomb_strip`,
+`test_cell_map`); `./build.sh` green. (The hcrunch-room `sim_frame_budget`
+still prints SIM FAILED on its scenario checks only — that M4 room has no
+enemies/bomb target, so "enemy present"/"bomb exploded" can't hold; all
+TIMING assertions PASS.) No overscan move was needed (option 3 unused).
+
+## hcrunch spent-freeze + push shrink (user 2026-10-16, round 2)
+
+**1. Spent-freeze (kill → stop at min).** User: after the crunch kills
+the player once, the next encounter no longer kills (b7 latch, by design)
+but the shutter KEEPS ANIMATING; it must stop at the minimum width (the
+home stub). Fix: `HcrClock` now returns **n=1** whenever `EnemyDeadMask`
+b7 (crunch-kill latch) is set, so `PhHcrEntry` stages the stub for the
+rest of the room visit; `HcrPush` is skipped while spent (the stub is
+inert). `EnterRoom` still zeroes b7 → the shutter re-arms on re-entry.
+Test: `test_hcrunch` case 14 (`spent`) — b7 forces PF band1 = P(1) at any
+clock. (The check lives in `HcrClock`, not `PhHcrEntry`, because the
+latter overflows its `$F880-$F900` 128B window; HOVhcrunch never reaches
+HcrClock when b7 is set, so this is safe.)
+
+**2. Residual flicker — push shrink (partial).** After the round-1 fix
+the push grow-step frames still peaked VBL ~1375c (vs ~1293c on
+non-push frames, an ~82c step spike). Shrunk `HcrPush`:
+- caller precomputes `8n` (and filters the 16f step + b7), so the body
+  no longer juggles X;
+- `band_lo` via a 3-byte `HcrBandLo` table (0/48/96) instead of `×48`;
+- sealed test is `8n >= 80` (no `16n+7`).
+Step-frame VBL now **~1364c** (saved ~11c; the body was already mostly
+early-return). Sim wall-model still all 267. **A "little bit" of flicker
+persisted in real play** — the sim's INTIM model is approximate (AGENTS
+#29 Class C: the oracle is Stella, not the wall-model). Remaining levers
+besides moving the push (option 3, which needs a matching overscan cut
+as overscan is at 3222/3223): (a) if continuous, cut the per-frame
+shutter PF staging (~90c — safe only if no `$80` blink shares the band
+row); (b) if only around a kill/room entry, it is the death
+`ReloadLevel→LoadLevel→EnterRoom` frame spike (~+1665c, the documented
+f327 open class), not the push.
+
+**3. Split the step frame (option A — landed, chosen over option 3).**
+The worst hcrunch frame carried BOTH the ~90c shutter PF staging and
+the ~65c `HcrPush` on the same frame (`base 1129 + staging + push`).
+`PhHcrEntry` now stages on every non-step frame and **skips the staging
+on the 16f grow-step frame, where it pushes instead**: the PF buffer
+keeps last frame's prefix for that one frame (the shutter renders one
+frame late on a grow step — invisible at 16f/step), so the staging and
+the push never share a frame. No ZP byte needed (the buffer stays
+correct because `n` only changes at the step and nothing else writes the
+band row in the hcrunch rooms; a bomb/blink punch would be re-covered on
+the next non-step frame, ≤1 frame late). Spent (b7) always stages.
+
+Measured (`SIM_LEVEL=2 SIM_ROOM=1`, model 4): hcrunch-room VBL max
+**1277c** (was 1364c → 1445c originally), load spread across frames,
+wall-model all **267, bad: []**. Margin to the `TIM64T #23` (1472c)
+deadline is now ~195c (> the 64c tick), so the step/quantization
+straddle is gone. `test_hcrunch` **14/14**; battery green (only the
+pre-existing unrelated `test_editor_roundtrip` fails).

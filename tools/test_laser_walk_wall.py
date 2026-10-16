@@ -35,17 +35,6 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
-# Zero M0/M1 hot counts (life-loss would end the walk); strips stay real.
-for _name in ("M0RoomRects", "M1RoomRects"):
-    for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
-        _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
-        if _m:
-            _a = int(_m.group(1), 16) - 0xF000
-            BANKS[2][_a + 1 + 2 * BANKS[2][_a]] = 0   # hot count = 0
-            break
-    else:
-        sys.exit(f"{_name} label missing in bank2.lst")
-
 
 def lst_labels(path):
     out = {}
@@ -59,6 +48,9 @@ def lst_labels(path):
 L0 = lst_labels(SRC / "bank0.lst")
 L2 = lst_labels(SRC / "bank2.lst")
 PC_STARTFRAME = L0["StartFrame"]
+
+import test_fixtures as FX  # noqa: E402
+FX.freeze_m0(BANKS, L2)     # frozen model0: interior wall + hot count 0
 
 # ZP indices (addr & 0x7F) — from bank0.lst decl lines
 I_ROOMX, I_ROOMY, I_DIR, I_LASERX = 0x00, 0x01, 0x02, 0x03   # $80..$83
@@ -75,9 +67,13 @@ DT_SLOT = 0x0A                      # $8A DropTarget (death/feature gate)
 RECTS0 = 0x4C                       # $CC rect cache slots (RcW1)
 
 OV_HEAD = L2["OvHead"]
-MODEL = {  # model id -> (TilePF0 label, RoomRects label); scanned in order
-    i: (f"M{i}TilePF0", f"M{i}RoomRects") for i in range(12)
-    if f"M{i}TilePF0" in L2  # skip models not emitted (e.g. M9)
+MODEL = {  # fixture models only (rule 2026-10-14). M0 = this test's
+    # probe; M2 kept for test_vcr_shutter, which imports this harness and
+    # freeze_m2's its own private copy before load_room(2); M4 kept for
+    # test_hcrunch (freeze_m4's its own copy before load_room(4)).
+    0: ("M0TilePF0", "M0RoomRects"),
+    2: ("M2TilePF0", "M2RoomRects"),
+    4: ("M4TilePF0", "M4RoomRects"),
 }
 
 RANGE_LO = L0["LaserInput"]
@@ -435,22 +431,21 @@ def main() -> None:
 
     warns, fails = [], []
     stats = {"frames": 0, "cases": 0}
-    # Scan models in order until enough cases ran: content edits can empty
-    # any single model of qualifying interior walls (rooms 0/1 models no
-    # longer have any — 2026-10-12), and the walk probe needs geometry.
-    for room in sorted(MODEL):
+    # Frozen fixture only (rule 2026-10-14): the probe geometry is the
+    # M0 fixture's interior wall (cols 14-15, band 1). Live models are
+    # never scanned — content edits emptied them of qualifying walls
+    # (2026-10-16 "no fire case ran"). MODEL also maps M2 for the
+    # test_vcr_shutter import; only room 0 is probed here.
+    for room in (0,):
         load_room(room)
         for _ in range(2):                 # VBL rebuilds overlay pack
             while not (mem.bank == 0 and mpu.pc == PC_STARTFRAME):
                 step()
         mem.ram[I_DEAD] = 0xEF             # enemies dead, b4 strip ALIVE
-        # Wide y sweep: cover every band so at least one case always has
-        # geometry to walk.
-        for y in (spawn_y, 8, 24, 36, 56, 72, 88, 104, 120, 136):
+        # Band-1 pins only: the fixture wall lives on the middle band.
+        for y in (56, 72, 88):
             for approach in (+1, -1):
                 run_case(room, y, approach, warns, fails, stats)
-        if stats["cases"] >= 8:
-            break
 
     for w in warns:
         print("WARN " + w)
