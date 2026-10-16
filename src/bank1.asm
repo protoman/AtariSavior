@@ -779,7 +779,7 @@ StripBlastCheck:
     inc CollisionX              ; +1 wall for the caller's score loop
 .SBdone:
     lda CollisionX              ; A = walls newly broken (caller contract)
-    jmp $FBF8                   ; ReturnPad → bank0 caller (0 push)
+    jmp ReturnPad                   ; ReturnPad → bank0 caller (0 push)
 
     .ds $F9AC - *, 0            ; shared cross-bank pad — bank2 carries the
                                  ; SAME 12 bytes at $F9AC (identity asserted
@@ -817,7 +817,7 @@ UpdateBombSound:
     lda #0
     sta AUDV0
 .UBSDone:
-    jmp $FBF8
+    jmp ReturnPad
 
 UpdateJetSound:
     lda DropTarget              ; spawn drop-in: engine buzz while falling
@@ -850,7 +850,7 @@ UpdateJetSound:
     lda #JET_AUD_VOL
 .JetStore:
     sta AUDV1
-    jmp $FBF8
+    jmp ReturnPad
 
 BombSndDrop:
     lda #6
@@ -861,7 +861,7 @@ BombSndDrop:
     sta AUDF0
     lda #8
     sta AUDV0
-    jmp $FBF8
+    jmp ReturnPad
 
 BombSndExplode:
     lda #30
@@ -872,7 +872,7 @@ BombSndExplode:
     sta AUDF0
     lda #10
     sta AUDV0
-    jmp $FBF8
+    jmp ReturnPad
 
 ; ========================================================================
 ; Leaf routines relocated from bank0 — batch B (leaf_move_plan)
@@ -891,7 +891,7 @@ GetConnIdx:
     lda LevelConnHi
     sta FetchPtr+1
     ldx #0
-    jmp $FBF8
+    jmp ReturnPad
 
 ; ClearPFColumn — A = left-half col 0..19; LineCount ($84) = first row;
 ;   CollisionEndY = last row (inclusive). AND-clear that col's
@@ -976,7 +976,7 @@ AddScore:
     pla
 .ASstoreTe:
     sta ScoreTe
-    jmp $FBF8
+    jmp ReturnPad
 
 ; UpdateLaserSound — low "zoom" tone on channel 0 while fire is held.
 ; Call order in bank0 overscan: UpdateBombSound, UpdateJetSound, this — so
@@ -1005,7 +1005,7 @@ UpdateLaserSound:
     lda #LASER_AUD_V
     sta AUDV0
 .ULSOut:
-    jmp $FBF8
+    jmp ReturnPad
 
 LaserFreqTable:
     .byte 4,7,10,12,14,12,10,7
@@ -1334,7 +1334,7 @@ IsRoomDark:
     tax
     lda BitMaskTable,X
     and EnemyRamD               ; Z=1 → lit (bit clear), Z=0 → dark
-    jmp $FBF8
+    jmp ReturnPad
 .IRDhi:
     cmp #8
     bcs .IRDlit                 ; rooms 8+ never dark (no mask bit)
@@ -1343,10 +1343,10 @@ IsRoomDark:
     lsr
     lsr                         ; → $04/$08/$10/$20 = LaserState b2-5
     and LaserState
-    jmp $FBF8
+    jmp ReturnPad
 .IRDlit:
     lda #0                      ; Z=1 → lit
-    jmp $FBF8
+    jmp ReturnPad
 
 ; SetRoomDark — set dark flag for current RoomNo (rooms 0-3 → EnemyRamD
 ; bits 4-7, rooms 4-7 → LaserState bits 2-5; rooms 8+ = no-op, room
@@ -1361,7 +1361,7 @@ SetRoomDark:
     lda BitMaskTable,X
     ora EnemyRamD
     sta EnemyRamD
-    jmp $FBF8
+    jmp ReturnPad
 .SRDhi:
     cmp #8
     bcs .SRDdone                ; rooms 8+: no bit to set (no crash)
@@ -1372,7 +1372,7 @@ SetRoomDark:
     ora LaserState
     sta LaserState
 .SRDdone:
-    jmp $FBF8
+    jmp ReturnPad
 
 ; Bit masks for IsRoomDark/SetRoomDark. Index 4+room for EnemyRamD
 ; (rooms 0-3 → bits 4-7); index = room for LaserState (rooms 4-7 →
