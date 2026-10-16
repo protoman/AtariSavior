@@ -1008,8 +1008,12 @@ these rules PREVENT making it worse:
    loop ~340) + an extra player substep walk (+277..390c) landing on the
    same frame; exit crossings add `EnterRoom` (~769c measured 2026-10-16 —
    the old "+1665c, f327 class" predates the direct-read EnterRoomB2
-   rewrite; it can still stack on a coincident rect walk, so it stays the
-   f327 watch item). One rect walk ≈ 400-600c total; EVERY walker multiplies
+   rewrite). The VBL half of the crossing spike was a separate bug:
+   `SelectActiveObject`'s `FlickerFrame` modulo-subtract loop (`.SOModLoop`)
+   grew unbounded in a 0-object room (the modulo is skipped there) and then
+   ran O(FlickerFrame) ≈150 iterations in the VBL on the next room with
+   objects (+533c / +7 lines) — fixed 2026-10-16 by zeroing `FlickerFrame`
+   on the no-object path. One rect walk ≈ 400-600c total; EVERY walker multiplies
    any new rect, new per-frame probe, or loop-body growth (PHM, moth
    walk, LWC, LHT kill scan all share the pattern). Before adding any
    per-frame walk/probe: measure with mark windows + `SIM_HIST`, and
