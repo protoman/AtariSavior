@@ -161,17 +161,18 @@ def main() -> None:
         "RefreshEnemyY countdown must end with txa/bne (flags from X)"
     assert ".DEYDelta" not in KERNEL, \
         "DEYDelta must be a global label (gap leaf cannot jmp a local)"
-    assert "cmp #ENEMY_MOTH" in dey and "jmp MothYDerive" in dey, \
-        "DeriveEnemyY must dispatch the moth to MothYDerive"
-    moth = KERNEL.split("MothYDerive:")[1].split("org $FC68")[0]
+    assert "cmp #ENEMY_MOTH" in dey and "CallPad_MothYDerive" in dey, \
+        "DeriveEnemyY must dispatch the moth via CallPad_MothYDerive (bank1)"
+    _b1m = (ROOT / "src" / "bank1.asm").read_text(encoding="utf-8")
+    moth = _b1m.split("MothYDerive:")[1].split("org $F540")[0]
     assert "and #15" in moth and "cmp #8" in moth, \
         "moth phase must be (P>>2)&15 with triangle mirror at 8"
     assert moth.count("lsr") >= 2, \
         "vertical tick = P>>2 (half the X tick — user speed tuning)"
     assert "lda #6" in moth, "moth delta must clamp tri <= 6 (exact ±6)"
     assert "adc #$FA" in moth, "moth delta = asl then -6 (x2-6)"
-    assert moth.count("jmp DEYDelta") == 1, \
-        "moth must jump-tail into the shared delta+spawn-y add"
+    assert moth.count("jmp ReturnPad") == 1, \
+        "relocated moth returns via ReturnPad to the bank0 caller"
     assert "sta EnemyRamP" not in moth, "MothYDerive reads the clock only"
 
     # --- E4 Stage C: bank2 MothRoutine horizontal patrol ---------------------

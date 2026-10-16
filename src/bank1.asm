@@ -63,6 +63,26 @@ BombMaskBit:
                                    ;  S3.2) — PairGone guards its double-score
                                    ;  (kernel copy died with ApplyBombWalls)
 
+; MothYDerive — moved from bank0 (leaf_move_plan Step 0, 2026-10-16). In
+; Y = record+0, X = slot (preserved). Out A = live Y delta; the bank0
+; caller then jmp DEYDelta (adds the ROM spawn y). Same math as old copy.
+MothYDerive:
+    lda EnemyRamP
+    lsr
+    lsr
+    and #15
+    cmp #8
+    bcc .mUpB1
+    eor #15
+.mUpB1:
+    cmp #7
+    bcc .mOkB1
+    lda #6
+.mOkB1:
+    asl
+    adc #$FA
+    jmp ReturnPad
+
     org $F540
 MenuMain:
     ; ========================================================================
@@ -1619,6 +1639,13 @@ SetupScorePointers:
     asl
     sta scorePtr6
     rts
+
+; ========================================================================
+; CallPad_MothYDerive twin — byte-identical with kernel.asm at $FEE7
+; ========================================================================
+    .ds $FEE7 - *, 0
+    sta $1FF7
+    jmp $F029
 
 ; ========================================================================
 ; Fine-adjust table (page-aligned at $FF00)

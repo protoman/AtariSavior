@@ -116,7 +116,7 @@ def main() -> None:
     assert "cmp #LAMP" in hit and ".LHLamp" in hit, \
         "lamp crash path changed"
     # result protocol: 0 / $50 / 1 lamp / 2 wall through ReturnPad
-    assert "lda #$50" in hit and "lda #0" in hit and "jmp $FBF8" in hit, \
+    assert "lda #$50" in hit and "lda #0" in hit and "jmp ReturnPad" in hit, \
         "body must return its result through ReturnPad"
     assert "jmp LaserWallClamp" in hit, \
         "body must tail-jmp LaserWallClamp (tip wall test) first"
