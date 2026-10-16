@@ -1953,7 +1953,7 @@ SelectActiveObject:
     sta ActiveObjectX
     lda BombY
     sta ActiveObjectY
-    lda #COLOR_BOMBS             ; $46 red (SOXP moved to drop — see DropArm)
+    lda #COLOR_BOMBS             ; $46 red (P1 X set by the .SODone tail)
     sta COLUP1
     jmp .SODone                  ; ObjTop/Bot from ActiveObjectY
 .SOCount:
@@ -2005,9 +2005,6 @@ SelectActiveObject:
                                 ; sprite floated above the floor line; tuning
                                 ; constant — pickup box still uses MinerY)
     sta ActiveObjectY
-    lda MinerX                 ; A = X position for SetObjectXPos
-    ldx #1
-    jsr SetObjectXPos
     lda #$66                    ; purple (hue 6, luma 3)
     sta COLUP1
     jmp .SODone
@@ -2067,10 +2064,6 @@ SelectActiveObject:
     ldx EnemyIndex
     lda EnemyRamY,X             ; live Y from $E2 (private since S3.4)
     sta ActiveObjectY
-    ; Position GRP1
-    lda ActiveObjectX            ; A = X position for SetObjectXPos
-    ldx #1                      ; X=1 = player1
-    jsr SetObjectXPos
     jmp .SODone
 
 .SOEnemySkip:
@@ -2078,6 +2071,16 @@ SelectActiveObject:
     sta ObjBase
 
 .SODone:
+    ; Position GRP1 from ActiveObjectX — ONE shared call for every object
+    ; path (bomb/miner/enemy). ac4c3ee moved the bomb's SOXP to the drop and
+    ; the bomb path skipped it, so the bomb rendered at the last enemy/miner
+    ; X (looked fixed). ObjBase==0 (no object / dead-enemy slot) skips it.
+    lda ObjBase
+    beq .SODoneNoPos
+    lda ActiveObjectX
+    ldx #1
+    jsr SetObjectXPos
+.SODoneNoPos:
     jsr SetObjReflection
     ; Set ObjTop for kernel GRP1 visibility check.
     ; S2.2: ObjTop stored RoomY-relative (ObjTopRel = ActiveObjectY-RoomY+1) so

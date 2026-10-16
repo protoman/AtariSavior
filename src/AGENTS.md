@@ -872,6 +872,16 @@ right while the collision code expected it left. This caused the player to stop
 1+ pixels away from walls. **Fix:** Remove any extra instructions before the
 div15 loop — the comparison branch's SetObjectXPos is the reference.
 
+**Shared-GRP1 positioning (2026-10-16, bomb render):** the bomb, enemies and
+miner all draw on GRP1 (one sprite, flicker 1/N frames). P1's hardware X
+(RESP1/HMP1 via SetObjectXPos) must be set on EVERY object frame — ac4c3ee
+moved the bomb's SOXP out of the VBL to the drop only, so on bomb-draw frames
+`SelectActiveObject` set `ActiveObjectX = BombX` but P1 still pointed at the
+last enemy/miner X: the bomb rendered pinned near that object (collision was
+correct — only the sprite was wrong). **Fix:** one shared SOXP in
+`SelectActiveObject`'s `.SODone` tail (`ObjBase != 0`), deduped from the
+miner/enemy paths. Test: `tools/test_bomb_render_x.py`.
+
 **Branch page-cross in a cycle-tuned loop (2026-09-26, laser S1) — recurrence
 of the 2026-09-21 family, via a different mechanism:** a 3-byte `jsr LaserInput`
 inserted before SetObjectXPos moved it `$F8F7→$F8FA`, pushing
