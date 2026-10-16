@@ -3,7 +3,20 @@ Strategic Aerial Vehicle Infiltration Operations Rescue
 #########################################################################################################################################################################
 Nome personagem: Eorley Savior.
 
+
 #########################################################################################################################################################################
+
+Exact next steps (when you're back or in a fresh session):
+1. Copy TitleKernel+loops+TitleFont and the fold bodies + their data into bank1's $F025–$F53F free run; rewrite fold exits to rts; point jsr→SetObjectXPos_b1.
+2. Add the KernelInit .TkPath → bank1 entry tramp + the kernel's jmp Overscan → bank0 exit return.
+3. ./build.sh + test_menu_flow/test_title_demo + a Stella title screenshot.
+4. Shift the $FB00/$FBD0/$FBD6/$FBE0/$FBE8/$FBF8/$FC49 pins down across all banks → reclaim ~310B.
+
+
+
+=========================================================================================================================================================================
+
+
 
 Phase 8: Jetpack Physics
 - Gravity (constant downward force — vyLo/vyHi integration)
