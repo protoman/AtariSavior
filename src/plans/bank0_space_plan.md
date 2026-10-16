@@ -2,6 +2,39 @@
 
 **Status:** plan (2026-10-16). Baseline build is green; working tree clean.
 
+> ## ⚠ CORRECTION (2026-10-16, after starting step 1)
+>
+> **Removing code/data from *before* a `.ds` pin frees NOTHING.** A pin
+> `.ds $X - *, 0` fills to `$X`; if the content before it shrinks, the fill
+> simply grows, `$X` stays, and everything after `$X` is unchanged → the
+> pre-pad end (`$FC67`) does not move. Conversely **adding** bytes before a pin
+> errors (`Origin Reverse-indexed`) because the fill is already ~0.
+>
+> This means the original §"Movable chunks" premise is **wrong**: moving the
+> title kernel (`$F9FB–$FAFF`, before the `$FB00`/`$FBD0` pins) would shrink
+> the `$FB00`-pin content and just grow that fill — **0 bytes freed**.
+>
+> **Bank0 has ~20 pins** (`$F8DD $F9B8 $FB00 $FBD0 $FBD6 $FBE0 $FBE8 $FBF8
+> $FC49 $FE00 $FE48 $FE90 $FE96 $FEF0 $FEF6 $FF00 $FFE6 $FFFA`), most of them
+> **cross-bank byte-identity twins** (bank1/bank2/bank3 copies at the same
+> address). Freeing real space therefore needs one of:
+> - **(T) tail moves only** — content AFTER the last pin in each region. Pre-pad
+>   tail = `MothYDerive` (`$FC4F–$FC67`, ~24B) → move it out to free ~24B.
+>   Post-pad tail = the `$FFE6+` region. **Small (tens of bytes).**
+> - **(R) RE-PIN** — remove a chunk AND move the downstream twin pins down by
+>   the same amount, updating every cross-bank twin (bank1/bank2/bank3) + every
+>   hardcoded address reference + the `verify_build`/test guards. This is the
+>   only way to reclaim hundreds of bytes, and it is a coordinated 4-bank
+>   operation (this is what past sessions did — the AGENTS records pin moves
+>   `$FB84→$FBC0→$FBF8`). **The real plan is a re-pin, not a "chunk move".**
+>
+> Recommended: do **(T)** first (safe, ~24B, unblocks nothing by itself but
+> proves the tail-move pattern), then scope **(R)** for the title kernel +
+> `TitleFont` (a ~300B re-pin: move the `$FB00`/`$FBD0`/`$FBFC`/`$FC49` pins down
+> past the removed kernel and re-sync the twins). The §"Movable chunks" lists
+> still name the *content* worth relocating; only the freed-size math changes
+> (it is the pin shift, not the content size, that yields space).
+
 ## Rule (user, 2026-10-16)
 
 **Do not add anything to bank0 unless it is very needed. New code/data goes to
