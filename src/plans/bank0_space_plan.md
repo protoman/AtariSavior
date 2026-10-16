@@ -131,6 +131,34 @@ a single chunk move — two hard blockers:
 - 1d. Move the title folds' bank2 bodies (they may already be in bank2 — check
   `bank2.lst`) and retire their bank0 stubs.
 
+## R progress (2026-10-16, auto-pilot)
+
+**Decision: title kernel → bank1** (user: keep code to bank0/bank1 + maybe
+bank2-start; keep bank3 data-only; don't spread code to bank3).
+
+- **R slice 1 (done, `2122eef`):** `jmp $FBF8` → `jmp ReturnPad` (label in
+  kernel/bank1/bank2) — ROM byte-identical; de-risks the `ReturnPad` pin shift.
+- **R1.1 — needs NO new code:** bank1 ALREADY has a page-aligned copy,
+  `SetObjectXPos_b1` (`$F7F2`) + `fineAdjustBegin_b1` (`$FF00`, page-aligned),
+  used by the HUD bar. bank1 also has **1307B free** (`$F025–$F53F`). The
+  kernel can call `SetObjectXPos_b1` directly — no bank2 copy needed, which
+  sidesteps the bank2-fragmentation blocker entirely.
+- **R1.2 blocker (fold chain):** `TitleKernel` calls `jsr TitlePlayerFold` /
+  `jsr FooterFold`. Those are bank0 stubs → bank2 bodies (`FooterBand`,
+  `TitlePlayerBand`) that exit via `jmp ReturnPad` = **`sta $1FF6` (bank0
+  hardcoded)**. A bank1 kernel cannot use them — the bodies must move/duplicate
+  into bank1 (`FooterBand`+`FooterFont`+`TitlePlayerBand`, and `TitlePlayerBand`
+  →`TitleBandPrep`). These folds are **kernel-only** callers, so the bodies can
+  move bank2→bank1 (bank2 loses the fill, no space change there; bank0's
+  `FooterFold`/`TitlePlayerFold` stubs become dead). Net: bank1 grows ~200B
+  (has room), bank0 shrinks by the kernel+font (~310B) after the pin shift.
+
+**Next:** (R1.2) move kernel+font + fold bodies to bank1; entry from
+`KernelInit .TkPath` (bank0→bank1 tramp) + exit `jmp Overscan` (bank1→bank0
+return); repoint the kernel's `jsr`s to `bank1` targets. Then (R1.3) verify, and
+(R1.4) shift the `$FB00/$FBD0/$FBD6/$FBE0/$FBE8/$FBF8/$FC49` pins down.
+
+
 Alternatively, if 1c proves too risky, keep the kernel in bank0 and bank only
 the helpers + font (smaller win, ~150B), or pivot to a lower-coupling chunk
 (§4 cold leaves / §2 data with a cold reader).
