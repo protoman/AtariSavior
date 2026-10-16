@@ -210,17 +210,55 @@ overscan cycles via a tramp — avoid unless the cycle ledger allows it.
 - **Pins move safely on REMOVAL only:** deleting bytes before a `.ds` pin lets
   the `.ds` grow; ADDING bytes breaks the pin (offsets everything after).
 
-## Sequenced plan
+## Sequenced plan (batch-shift model — 2026-10-16 revision)
 
-1. **Title subsystem → bank2** (prime the tramps + `TitleFont`). Target: free
-   ~390B. Gate: `test_menu_flow`/`test_title_demo`/`test_phase2_ball` + build.
-2. **`ObjColorTab` + `SelectActiveObject` reader → bank2** (or a fold). +~100B.
-3. **`YToRowTable` compression** (compute/nest instead of a 37B table) and the
-   small tables. +~50B.
-4. **Cold leaf routines** as needed (`ExitRoom*`, `CheckMinerPickup`,
-   `DeriveEnemyY`). +~150B.
-5. **Then unblock Phase 8**: the respawn hover (needs ~20B) + a ZP byte
-   (relocate one if still needed).
+**The pin shift is the ONLY step that frees bank0** (moving content alone just
+grows the `.ds` fills). So do **all content moves first**, then **one** pin
+shift. Do NOT interleave moves with shifts.
+
+**Kernel clarification (user 2026-10-16):** the thing to move is the **title/
+intro kernel** (`TitleKernel` `$F9FB`, a cold splash-screen display kernel), NOT
+the main cave kernel. The main cave kernel + all core gameplay stay in bank0.
+See `docs/bank_layout.md` for the full kernel/bank map.
+
+### Phase A — settle the target layout
+- bank0 = main game code + cave kernel.
+- bank1 = HUD + title subsystem + Phase-4 crunch bodies (+ event routines if
+  chosen).
+- bank2 = start-of-bank code + all data.
+- bank3 = data only + the mandatory 5-byte stub.
+
+### Phase B — content moves (order = easy/self-contained first; each verified; NONE frees space yet)
+- **B1. `YToRowTable` compression** (compute/nest) + tiny tables. Low risk.
+- **B2. Cold helpers → bank1/bank2** (`ExitRoom*`, `CheckMinerPickup`,
+  `DeriveEnemyY`, `LoseLifeBand`/`CheckBandTouch`).
+- **B3. `ObjColorTab` (+ its reader, or a fold) → bank2.**
+- **B4. Title subsystem → bank1** (the tangled one; last so the simpler moves
+  validate the bank0↔bank1 tramp pattern first):
+  - kernel + `.TkLoop`/`.TkPlayer` + `TitleFont`;
+  - fold bodies `FooterBand`+`FooterFont`+`TitlePlayerBand`+`TitleBandPrep` +
+    their twin data (`TitleJetColors`/`TitleBombSprite`) **duplicated into
+    bank1** (the fold bodies exit `jmp ReturnPad` = bank0-hardcoded → rewrite to
+    `rts` for bank1);
+  - kernel `jsr` → `SetObjectXPos_b1` (bank1 already has it, page-aligned);
+  - entry `KernelInit .TkPath` (bank0→bank1 tramp) + exit `jmp Overscan`
+    (bank1→bank0 return).
+- Optional (bigger): post-pad **event** routines (`DropArm`/`DropStep`/…) →
+  bank1. Hotter + call-web → only if more space is needed.
+
+### Phase C — the single pin shift (this is where the bytes appear)
+- Shift the `$FB00/$FBD0/$FBD6/$FBE0/$FBE8/$FBF8/$FC49` pins **down** by the
+  total removed, in **all banks** (twins). `ReturnPad` literals already track
+  the label (R slice 1, `2122eef`). Net freed ≈ total Phase-B bytes.
+
+### Phase D — verify + unblock Phase 8
+- `./build.sh`, full battery, Stella title + gameplay screenshots.
+- Then the Phase 8 respawn hover (~20B) + a ZP byte if still needed.
+
+### Phase E — R2 (separate, later): stop spreading code
+- Move the bank3 crunch bodies → bank1; make bank3 data-only. Rewrites the
+  Phase-4 `bank2↔bank3` tramp web → `bank2↔bank1`. Do after R1.
+
 
 ## Test gates (run after every move)
 
@@ -233,6 +271,7 @@ overscan cycles via a tramp — avoid unless the cycle ledger allows it.
 
 ## Expected outcome
 
-Title move alone unblocks the Phase 8 hover and restores headroom for future
-content. Steps 1-4 target **~500-700B** freed in bank0, at which point the
-"don't grow bank0" rule is enforceable rather than aspirational.
+The batched Phase-B moves + the single Phase-C pin shift target **~500-700B**
+freed in bank0, at which point the "don't grow bank0" rule is enforceable
+rather than aspirational. `docs/bank_layout.md` records the kernel/bank map for
+future placement decisions.
