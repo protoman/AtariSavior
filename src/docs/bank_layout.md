@@ -35,10 +35,16 @@ bank3 (its reset vector at `$FFFC` points to the 5-byte stub → bank0).
 | **Overscan** | bank0 | `Overscan` `$F1BB` → `OverscanAudio` `$F336` | (input/AI/collision) | every frame |
 
 Title-kernel note: the title is a **separate cold kernel**, not the cave kernel.
-Its helper renders live in bank2 (`TitlePlayerBand` `$F880`, `FooterBand`
-`$F700`), reached by bank0 fold stubs (`TitlePlayerFold` `$FBE8`,
-`FooterFold` `$FBE0`). This coupling is why relocating the title kernel is a
-chain, not a single block.
+Its helpers + fonts live in bank2 (`TitlePlayerBand` `$F880`, `TitleBandPrep`
+`$F3xx`, `FooterBand` `$F700`, `FooterFont`), reached by bank0 fold stubs
+(`TitlePlayerFold` `$FBE8`, `FooterFold` `$FBE0`). **The title machinery is
+bank0↔bank2 twin-coupled:** `TitleBandPrep` sets `Grp0Ptr` to `PlayerWalkA/B`
+and `TitleJetSprite`, and `TitlePlayerBand` reads the sprite from **bank2's
+byte-twins at bank0's sprite addresses** (`$F8DD`, `$FDE7`). So the title
+kernel's correct home is **bank2** (with its helpers/fonts/twins), NOT bank1 —
+moving it to bank1 would require bank1 to hold twins at bank0's sprite
+addresses, which is impossible. Only the small flip-animation sprites are the
+shared twins; the kernel+`TitleFont` are the movable part.
 
 ## bank0 — main game code (`$F000`–`$FFFF`)
 

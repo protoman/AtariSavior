@@ -233,16 +233,20 @@ See `docs/bank_layout.md` for the full kernel/bank map.
 - **B2. Cold helpers → bank1/bank2** (`ExitRoom*`, `CheckMinerPickup`,
   `DeriveEnemyY`, `LoseLifeBand`/`CheckBandTouch`).
 - **B3. `ObjColorTab` (+ its reader, or a fold) → bank2.**
-- **B4. Title subsystem → bank1** (the tangled one; last so the simpler moves
-  validate the bank0↔bank1 tramp pattern first):
-  - kernel + `.TkLoop`/`.TkPlayer` + `TitleFont`;
-  - fold bodies `FooterBand`+`FooterFont`+`TitlePlayerBand`+`TitleBandPrep` +
-    their twin data (`TitleJetColors`/`TitleBombSprite`) **duplicated into
-    bank1** (the fold bodies exit `jmp ReturnPad` = bank0-hardcoded → rewrite to
-    `rts` for bank1);
-  - kernel `jsr` → `SetObjectXPos_b1` (bank1 already has it, page-aligned);
-  - entry `KernelInit .TkPath` (bank0→bank1 tramp) + exit `jmp Overscan`
-    (bank1→bank0 return).
+- **B4. Title kernel subsystem → BANK2** (corrected 2026-10-16: NOT bank1).
+  The title machinery is `bank0↔bank2` twin-coupled — `TitleBandPrep` sets
+  `Grp0Ptr` to `PlayerWalkA/B`/`TitleJetSprite` and `TitlePlayerBand` reads the
+  sprite from bank2's byte-twins at bank0's sprite addresses (`$F8DD`/`$FDE7`).
+  So the kernel+`TitleFont` must join its helpers (`TitlePlayerBand`,
+  `TitleBandPrep`, `FooterBand`, `FooterFont`) in **bank2**:
+  - needs a bank2 `SetObjectXPos`+`fineAdjust` copy — place at `$FBA7..$FBC5`
+    (41B free run); NOT page-aligned but the `lda fineAdjustTable,Y`
+    page-cross-equivalence holds there (`(table-241)` low byte + Y carries), so
+    the 5c contract stands;
+  - kernel `jsr`s → the bank2 fold bodies directly (already same-bank);
+  - entry `KernelInit .TkPath` (bank0→bank2 tramp) + exit `jmp Overscan`
+    (bank2→bank0 return).
+  (The earlier bank1 idea is void — bank1 can't host the sprite twins.)
 - Optional (bigger): post-pad **event** routines (`DropArm`/`DropStep`/…) →
   bank1. Hotter + call-web → only if more space is needed.
 
