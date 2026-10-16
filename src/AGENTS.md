@@ -438,7 +438,6 @@ was the disproven claim.
 - [x] Wall destruction (BombMarkWalls/ApplyBombWalls, WallMask b3-6)
 - [x] Item collection (CheckMinerPickup → next level)
 - [x] Level progression (inc Level, wraps at LEVEL_COUNT)
-- [ ] Win/lose conditions — lose (0 lives → game over) exists; no win screen (levels wrap)
 
 ### Phase 8: Jetpack Physics
 - [x] Gravity (constant downward force — vyLo/vyHi integration)
