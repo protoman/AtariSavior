@@ -34,6 +34,12 @@ BUILD_DIR = EDITOR_DIR / "cmake-build-debug"
 BINARY = BUILD_DIR / "savior_editor"
 MODELS = TESTS / "rooms" / "models" / "models.json"
 FROZEN_GEN = TESTS / "generated"
+# Frozen src/tests/generated/ files that the convert commands this test
+# re-runs (build.sh uses convert_level.py only) do NOT emit: the editor's
+# copyright micro-font (src/tools/copyright_font.py) and the assembler
+# symbol dump. They are snapshotted for other purposes — exclude them from
+# the "regenerated set" comparison so they are not reported as missing.
+NON_CONVERT = {"copyright_font.asm", "symbols.asm"}
 PY = "/home/iuri/python3/bin/python3"
 
 
@@ -90,7 +96,8 @@ def main() -> int:
             print(f"FAIL: convert --levels:\n{r.stderr}")
             return 1
 
-        want = {p.name: p for p in FROZEN_GEN.glob("*.asm")}
+        want = {p.name: p for p in FROZEN_GEN.glob("*.asm")
+                if p.name not in NON_CONVERT}
         got = {p.name: p for p in tmp_gen.glob("*.asm")}
         assert want, "no frozen generated/ copies in src/tests/generated"
         missing = sorted(set(want) - set(got))

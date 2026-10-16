@@ -53,7 +53,10 @@ Cases:
    13. noPush  — dwell (clock 8) / retract (clock 224) / band0 (y=20):
                  RoomX untouched;
    14. spent   — b7 crunch-kill latch set: PF band1 frozen at the home
-                 stub P(1) at any clock (no more animation after a kill).
+                 stub P(1) at any clock (no more animation after a kill);
+   15. hot-nopush — MetaB b6 (hot) suppresses HcrPush (RoomX untouched);
+   16. hot-kill   — MetaB b6 (hot) kills at the OPENING phase too (cold
+                 case 8 = no kill), i.e. any extent.
 
 Staging samples are taken at the `jmp $FC68` HUD fold (VBL staging
 done, bank1's $EA-$EF stomp not yet run — PF buffers $C3-$CB are
@@ -376,12 +379,41 @@ def main() -> None:
     else:
         print("  spent: b7 latch freezes the shutter at the stub (min width)")
 
+    # --- cases 15-16: hot (MetaB b6) semantics --------------------------
+    # Hot hcrunch: the shutter kills at ANY extent and NEVER pushes. Both
+    # M4 hcrunch rooms are cold, so this path is untested live — inject b6
+    # into the frozen fixture's MetaB byte (TilePF0+10) and probe.
+    meta_off = (W.L2["M4TilePF0"] + 10) - 0xF000
+    W.BANKS[2][meta_off] = 0x40           # MetaB b6 = hot
+    # 15: hot never pushes (cold pushL at clock 0x80 -> 55)
+    set_dead(0x00)
+    got_x = probe_push(clock=0x80, x=5, y=68)
+    if got_x != 5:
+        fails.append(f"hot-nopush: RoomX={got_x}, want 5 (MetaB b6 hot "
+                     f"must suppress HcrPush)")
+    else:
+        print("  hot-nopush: b6 hot suppresses HcrPush (no clamp)")
+    # 16: hot kills at the OPENING phase too (cold case 8 = no kill)
+    pins.update(x=0, y=68, clock=240)
+    set_dead(0x00)
+    W.mem.ram[I_LIVES] = 3
+    samples = []
+    run_frames(6, poke, samples)
+    if not any(s[3] & 0x80 for s in samples):
+        fails.append("hot: no latch (clock 240 opening) — hot must kill at "
+                     "ANY extent (b6 exemption)")
+    elif W.mem.ram[I_LIVES] != 2:
+        fails.append(f"hot: PlayerLives={W.mem.ram[I_LIVES]}, want 2")
+    else:
+        print("  hot-kill: opening-phase catch kills when hot (b6)")
+    W.BANKS[2][meta_off] = 0x00           # restore cold
+
     if fails:
         print(f"\nFAIL: {len(fails)}")
         for f in fails:
             print("  " + f)
         sys.exit(1)
-    print("test_hcrunch: OK (14 cases)")
+    print("test_hcrunch: OK (16 cases)")
 
 
 if __name__ == "__main__":
