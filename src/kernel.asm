@@ -1968,7 +1968,14 @@ SelectActiveObject:
 .SONoMiner:
     lda Temp
     bne .SONotNothing
-    jmp .SONothing              ; no objects at all
+    ; No objects this frame: A = Temp = 0. Blank the sprite AND reset the
+    ; flicker counter — with no objects the modulo below never runs, so
+    ; FlickerFrame would grow unbounded and .SOModLoop (a subtract loop)
+    ; would run O(FlickerFrame) iterations in the VBL on the next room with
+    ; objects (measured +533c / +7 lines room-crossing spike, 2026-10-16).
+    sta ObjBase
+    sta FlickerFrame
+    jmp .SODone
 .SONotNothing:
     ; FlickerFrame already advanced at entry — modulo into 0..(slot count-1)
 .SOModLoop:
@@ -2096,14 +2103,8 @@ SelectActiveObject:
                                ; rows and the $00 color store poisoned the
                                ; parked-M1 patch = the 8-line band).
 
-.SONothing:
-    lda #0
-    sta ObjBase
-    jmp .SODone
-
 ; ==============================================================================
 ; Enemy color table (emulator-aware: hue<<4 | luma<<1)
-; ==============================================================================
 EnemyColorTable:
     .byte $14                   ; spider — hue 1 luma 2 = dark yellow
     .byte $f2                   ; bat — hue 15 luma 7 = brown
@@ -3281,8 +3282,8 @@ DropArm:
     rts
 .DATitle:
     ; Title: player already placed at level start by LoadLevel. Hide all
-    ; GRP1 objects (EnemyCount=0 → SelectActiveObject .SONothing blanks
-    ; ObjBase/ObjTop) and drop the miner slot so SELECT/RESET reloads
+    ; GRP1 objects (EnemyCount=0 → SelectActiveObject's no-object path
+    ; blanks ObjBase/ObjTop) and drop the miner slot so SELECT/RESET reloads
     ; refresh them via EnterRoom. HUD score = level+1 ("000001" = level 0).
     lda #0
     sta EnemyCount

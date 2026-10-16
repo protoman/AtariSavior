@@ -48,9 +48,10 @@ MIN_FRAMES = 300
 
 import os
 SIM_LEVEL = os.environ.get('SIM_LEVEL', '1')   # '0' = boot level/room 0
-# SIM_EXIT=down: after landing + 10 frames, hold Down and pin RoomY near
-# the bottom edge -> ExitRoomDown -> EnterRoom in OVER (the #22 spike
-# class needs a room crossing; the base scenarios never leave room 0).
+# SIM_EXIT=down: one frame after landing, force RoomY=PLAYER_MAX_Y (132) with
+# vs positive (falling) and no thrust -> StepDown's `.SDBottom` fires
+# ExitRoomDown -> EnterRoom in OVER (the room-crossing repro; pick a room
+# with a down connection, e.g. SIM_LEVEL=1 SIM_ROOM=0).
 EXIT = os.environ.get('SIM_EXIT', '')
 SIM_ROOM = os.environ.get('SIM_ROOM', '1')
 PIN_ROW = os.environ.get('SIM_PINROW') == '1'  # pin RoomY onto enemy row
@@ -589,14 +590,18 @@ while frame < 1100:
                 #   rapid re-presses never build vy to the 256 StepDown
                 #   threshold (OnGround) and the fixture never lands
             if EXIT == 'down' and landed_frame is not None \
-                    and landed_frame + 10 <= frame <= landed_frame + 16:
-                # one-shot crossing window (7 frames): pin RoomY at the
-                # bottom edge + hold Down until the exit fires, then release
-                # so later frames measure a CLEAN single-EnterRoom frame.
-                # (Natural descent cannot work: Down is bomb-only and the
-                # floor blocks gravity — docs/bomb_explosion_plan.md.)
-                mem.swcha &= 0xDF          # hold Down
-                mem.ram[0x01] = 130        # RoomY at the bottom edge
+                    and frame == landed_frame + 10:
+                # One-shot crossing window (7 frames): force RoomY to the
+                # bottom edge AND vy positive (falling) with NO thrust, so
+                # StepDown's `.SDBottom` fires ExitRoomDown -> EnterRoom in
+                # overscan. (The old window only pinned RoomY=130 and held
+                # Down — but Down is bomb-only and the fly Up-pulses kept the
+                # player airborne, so StepDown never ran and no crossing
+                # fired.) RoomY = PLAYER_MAX_Y=132, vyHi:vyLo = $01:$40.
+                mem.swcha = 0xFF           # no thrust, no bomb
+                mem.ram[0x01] = 132        # RoomY = PLAYER_MAX_Y
+                mem.ram[0x13] = 0x40       # vyLo
+                mem.ram[0x14] = 0x01       # vyHi  (falling)
 
 # ---- report ----
 print(f'\nmeasured frames: {measured} (landed f{landed_frame})')
