@@ -166,6 +166,15 @@ banks 1/3. If a change seems to need bank0 space, move a leaf helper after
 the pads or into bank2 first; only touch bank0 for in-place edits to existing
 code. This is why we keep extracting routines out of bank0 every time it fills.
 
+*Reinforced 2026-10-16:* bank0 is now **100% allocated AND byte-identity-frozen**
+(pre-pad 1B; post-pad pinned at `$F8DD`/`$FDDA`/`$FDE1`/`$FC68`/`$FF00`).
+Adding even 2 bytes breaks `verify_build`'s twin pins. A modest feature (the
+Phase 8 respawn hover, ~20B) could not be added at all. **Default answer to
+"needs bank0 space" is now: move a chunk OUT first.** Survey + §
+"Movable chunks" in `plans/bank0_space_plan.md` (title subsystem ~390B cold →
+bank2 is the prime target). Cross-bank catch: bank0 cannot read bank1/bank2
+data by `abs` — moving a table requires moving its reader (or a fold) too.
+
 ### F6 Bankswitching
 
 | Bank | Address Range | Power-up | Contents |
