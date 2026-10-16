@@ -5,19 +5,13 @@ Nome personagem: Eorley Savior.
 
 #########################################################################################################################################################################
 
-Phase 7: Gameplay
-- Laser/weapon system (missile 0) — LaserInput/ENAM0/BeamMask/LaserHitTest
-- Bomb system (bomb sprite + fuse timer, NOT the ball — BombPacked state machine)
-- Wall destruction (BombMarkWalls/ApplyBombWalls, WallMask b3-6)
-- Item collection (CheckMinerPickup → next level)
-- Level progression (inc Level, wraps at LEVEL_COUNT)
-- Win/lose conditions — lose (0 lives → game over) exists; no win screen (levels wrap)
 Phase 8: Jetpack Physics
 - Gravity (constant downward force — vyLo/vyHi integration)
 - Thrust (upward force when button held — JetPower ramp; ÷4 clock gate + JET_MAX=$14 ≈ 1 s spin-up/float, bugs #31)
 - Inertia (momentum — subpixel accumulator PlayerYSub)
 - Fuel management (no fuel system; the power bar is the game TIMER)
 - Vertical collision with ceiling (StepUp stops flush)
+
 Phase 9: Polish
 - Sound effects (engine buzz, bomb drop/explode, laser — test_laser_sound.py)
 - Music (background theme)
@@ -26,6 +20,7 @@ Phase 9: Polish
 - Title screen (level select: DROP-IN sentinel, SELECT/RESET console switches)
 - Game over screen
 - Difficulty settings
+
 Phase 10: Levels & Content
 - Design 5+ levels with increasing difficulty
 - Level-specific enemy patterns
@@ -69,6 +64,9 @@ Fix player falling when returning from death
 # raft
 
 # use a build folder to generate the .bin
+
+
+# game over screen
 =========================================================================================================================================================================
 
 
