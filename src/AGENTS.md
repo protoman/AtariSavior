@@ -1006,8 +1006,10 @@ these rules PREVENT making it worse:
 2. **Heavy frames = rect-walk coincidence, not one hot loop.** Every
    measured spike = enemy-probe walk (~480c = prologue ~140 + 5-rect
    loop ~340) + an extra player substep walk (+277..390c) landing on the
-   same frame; exit crossings add `EnterRoom` (+1665c, f327 class —
-   still open). One rect walk ≈ 400-600c total; EVERY walker multiplies
+   same frame; exit crossings add `EnterRoom` (~769c measured 2026-10-16 —
+   the old "+1665c, f327 class" predates the direct-read EnterRoomB2
+   rewrite; it can still stack on a coincident rect walk, so it stays the
+   f327 watch item). One rect walk ≈ 400-600c total; EVERY walker multiplies
    any new rect, new per-frame probe, or loop-body growth (PHM, moth
    walk, LWC, LHT kill scan all share the pattern). Before adding any
    per-frame walk/probe: measure with mark windows + `SIM_HIST`, and
