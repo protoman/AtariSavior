@@ -189,3 +189,45 @@ Legend: `[V]` verified now · `[?]` must be verified by a probe/build before doi
   twin-walled by bank2. [VERIFIED]
 - Numbers tagged `[m]` are listing-derived and must be confirmed with a probe
   before that space is used for anything irreversible.
+
+---
+
+## 7. Progress log
+
+| Step | Commit | Result |
+|---|---|---|
+| Corrected model + verified plan | `6ae2786` | docs |
+| **D1.1** reclaim dead ZP `RoomPF1/2` | `<D1.1>` | **+4 ZP** (`$9B-$9E` = `ZpSpare0-3`); addresses stable |
+| **Phase 3.1 canary** `TitleSelect` -> bank1 | `91c5d8a` | **+29B bank0** (`.ds $FBD0` fill 40->69B) |
+| **Phase 3** title kernel+font+bands+fonts -> bank1 | `81e4f6b` | **+309B bank0** (`.ds $FB00` fill 3->261B; `.ds $FBD0` 69->117B) |
+
+### Bank0 free space now (verified from `bank0.lst`)
+
+| Region | Size | Notes |
+|---|---|---|
+| `$F7FC-$F8DC` | **225B** | before the `$F8DD` sprite pin |
+| `$F9FB-$FAFF` | **261B** | where the title kernel used to be (before `$FB00` pin) |
+| `$FB5B-$FBCF` | **117B** | title font/helpers region (before `$FBD0` pin) |
+| `$FC61-$FC67` | 7B | E4 gap remainder (CallPads grew) |
+| **Total** | **~610B** | contiguous-ish chunks usable by new gameplay code |
+
+### Bank1 free space now
+- `$F357-$F53F` (~489B, after the moved title block, before `MenuMain` `org $F540`)
+- `$FDE3-$FEE6` (260B), `$FCC7-$FCFF` (57B), `$FF0F-$FFF9` (235B).
+
+### Remaining (not done; each needs a fresh verification)
+- **D4 dead-data removal is BLOCKED**: bank2's now-dead title bodies
+  (`FooterBand`/`TitlePlayerBand`/`TitleBandPrep`/fonts) are referenced by
+  bank2's `$FBE0`/`$FBE8` fold twins and their `.ds` pins anchor that twin block
+  — removing them needs the bank1/bank2 pin surgery first.
+- **D2 table compaction**: `BarDelayTable`/`BarFineTable` (242B) are
+  period-8 → ~30B, but the reader needs `(B-1)>>3` (~+10c) and the bar path is
+  budget-tight; verify against `sim_frame_budget` before attempting.
+- **D3.1 level data -> bank3** (`$F9D9-$FBA6` ~461B): needs reader rewiring
+  (`EnterRoomB2` direct reads → fold). Size it before attempting.
+- **D1.2/D1.3** more ZP (`$F6/$F7`, `$E0/$E1`): needs a stack-depth inline.
+
+### Test/sim updates required by Phase 3 (done)
+- `sim_frame_budget.PC_TITLE` -> bank0 `CallPad_TitleKernel` (sim is bank-aware).
+- `verify_build.check_callpads` handles `sta $1FF6` pads (bank1→bank0 exit).
+- `src/tools/test_title_demo.py` reads the title code from bank1 now.
