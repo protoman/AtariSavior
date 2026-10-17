@@ -587,68 +587,117 @@ TitleJetColors:
     .byte $48, $48, $08, $08
 ; ==============================================================================
 ; Intro music player (2026-10-16). Ticked once per intro ($FD) frame from
-; TitleKernel (same bank). Drives both TIA voices:
-;   AUD0 = melody (Square, AUDC 4), AUD1 = bass (Bass, AUDC 6), volume 7.
-; Data = (melPitch, bassPitch, dur) triples; a $FF melody slot loops to 0.
-; Pitches are Paul Slocum "Setup #1" codes (the in-tune ones). ZP = $9D/$9E
-; (kernel ZpSpare2/3), initialised 0 by GameStart. ~90c/tick.
+; TitleTailAudio via CallPad_MusicTick (bank0↔bank1 @ $FC61). Plays the
+; Ukraine anthem (src/art/ukraine_anthem.asm): two synchronized (duration,
+; note) streams — AUD0 = melody (Lead $0C), AUD1 = bass (Bass $06); one 8th =
+; 13 frames; note = AUDF, $FE = rest, $FF = loop. ZP: MelPtr/MelTimer
+; ($9D/$9E) + BasPtr/BasTimer ($EC/$ED = bank1 HUD scratch, free on the
+; title-only frames this runs on).
 ; ==============================================================================
-MusPos   = $9D
-MusTimer = $9E
+MelPtr   = $9D
+MelTimer = $9E
+BasPtr   = $EC
+BasTimer = $ED
 
 MusicTick:
-    lda MusTimer
-    beq .mtAdvance              ; step done -> advance + load
-    dec MusTimer
-    jmp .mtPlay
-.mtAdvance:
-    ldy MusPos
-    lda MusicData+3,Y           ; next step's melody byte ($FF = loop)
+    ldx MelPtr
+    lda MelTimer
+    beq .MelLoad
+    dec MelTimer
+    lda MusicMel+1,X            ; re-assert the current note (survives SFX)
+    cmp #$FE
+    beq .MelMute
     cmp #$FF
-    bne .mtAdv
-    ldy #$FD                    ; +3 wraps to step 0
-.mtAdv:
-    tya
-    clc
-    adc #3
-    sta MusPos
-    tay
-    lda MusicData+2,Y           ; new step's duration
-    sta MusTimer
-.mtPlay:                        ; (re)assert the current step every frame so
-    ldy MusPos                  ;   an intro SFX cannot leave the melody wrong
-    lda MusicData,Y             ; melody pitch
+    beq .MelDone
     sta AUDF0
-    lda #4                      ; Square
+    lda #$0C                    ; Lead
     sta AUDC0
     lda #7
     sta AUDV0
-    iny
-    lda MusicData,Y             ; bass pitch
+.MelDone:
+    jmp .Bas
+.MelMute:
+    lda #0
+    sta AUDV0
+    jmp .Bas
+.MelLoad:
+    lda MusicMel,X              ; duration
+    sta MelTimer
+    lda MusicMel+1,X            ; note
+    cmp #$FF
+    beq .MelLoop
+    cmp #$FE
+    beq .MelRest
+    sta AUDF0
+    lda #$0C
+    sta AUDC0
+    lda #7
+    sta AUDV0
+    jmp .MelAdv
+.MelRest:
+    lda #0
+    sta AUDV0
+    jmp .MelAdv
+.MelLoop:
+    lda #0
+    sta MelPtr
+    jmp .Bas
+.MelAdv:
+    txa
+    clc
+    adc #2
+    sta MelPtr
+.Bas:
+    ldx BasPtr
+    lda BasTimer
+    beq .BasLoad
+    dec BasTimer
+    lda MusicBas+1,X
+    cmp #$FE
+    beq .BasMute
+    cmp #$FF
+    beq .BasDone
     sta AUDF1
-    lda #6                      ; Bass
+    lda #$06                    ; Bass
     sta AUDC1
     lda #7
     sta AUDV1
+.BasDone:
+    jmp ReturnPad
+.BasMute:
+    lda #0
+    sta AUDV1
+    jmp ReturnPad
+.BasLoad:
+    lda MusicBas,X
+    sta BasTimer
+    lda MusicBas+1,X
+    cmp #$FF
+    beq .BasLoop
+    cmp #$FE
+    beq .BasRest
+    sta AUDF1
+    lda #$06
+    sta AUDC1
+    lda #7
+    sta AUDV1
+    jmp .BasAdv
+.BasRest:
+    lda #0
+    sta AUDV1
+    jmp .BasAdv
+.BasLoop:
+    lda #0
+    sta BasPtr
+    jmp ReturnPad
+.BasAdv:
+    txa
+    clc
+    adc #2
+    sta BasPtr
     jmp ReturnPad
 
-MusicData:
-    ; (melPitch, bassPitch, dur) — a short heroic loop, Setup #1 codes.
-    .byte 30,31,6           ; b4 / h0
-    .byte 28,29,6           ; c5 / c1
-    .byte 25,26,6           ; d5 / d1
-    .byte 22,23,12          ; e5 / e1
-    .byte 21,19,6           ; f5 / g1
-    .byte 22,23,6           ; e5 / e1
-    .byte 25,26,6           ; d5 / d1
-    .byte 28,29,12          ; c5 / c1
-    .byte 30,15,6           ; b4 / b1
-    .byte 28,29,6           ; c5 / c1
-    .byte 25,26,6           ; d5 / d1
-    .byte 22,23,6           ; e5 / e1
-    .byte 21,19,12          ; f5 / g1
-    .byte 30,31,18          ; b4 / h0 (cadence)
-    .byte $FF               ; loop
+    include "art/ukraine_anthem.asm"
 
     org $F540
 MenuMain:
@@ -1886,7 +1935,7 @@ CallPad_TitleKernel:
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F1BF
+    jmp $F1BB
     .ds $FC61 - *, 0
 CallPad_MusicTick:
     sta $1FF7
@@ -1903,7 +1952,7 @@ CallPad_MusicTick:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F1BF           ; Overscan in bank0 (must match bank0 ToGameStub;
+    jmp $F1BB           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; verify_build --sync-overscan patches this from
                         ; bank0.lst after every bank0 build)
 

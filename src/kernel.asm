@@ -140,8 +140,8 @@ RoomPF0Hi       byte            ; pointer to current room's TilePF0 (high)
 BarIdx          byte            ; ($9B) bar table idx (BarLevel+7)>>3 (D2 sync)
 Hover           byte            ; ($9C) respawn hover flag (bugs.md #1): 1 while
                                 ;       gravity is suppressed after a respawn
-MusPos          byte            ; ($9D) intro music: sequence index (bank1 read)
-MusTimer        byte            ; ($9E) intro music: frames left in this step
+MelPtr          byte            ; ($9D) intro music: melody stream index (bank1)
+MelTimer        byte            ; ($9E) intro music: melody frames left
 LevelPFDataLo   byte            ; pointer to level's RoomDataTable (low)
 LevelPFDataHi   byte            ; pointer to level's RoomDataTable (high)
 LevelConnLo     byte            ; pointer to level's RoomConnections (low)
@@ -463,8 +463,6 @@ GameStart:
     sta TickCounter
     lda #120
     sta BarLevel                ; bar starts full
-    lda #1
-    sta MusTimer                ; intro music: fire step 0 on the first tick
     ; --- Intro screen: DropTarget=$FD sentinel (2026-10-06 — SAVIOR splash
     ;     shows ONCE at power-on; first SELECT/RESET edge anywhere moves to
     ;     the old title $FF = first room + HUD stage count; valid fall
@@ -2886,7 +2884,7 @@ CallPad_TitleKernel:
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F1BF
+    jmp $F1BB
     .ds $FC61 - *, 0            ; bank0↔bank1 intro-music tick
 CallPad_MusicTick:
     sta $1FF7
