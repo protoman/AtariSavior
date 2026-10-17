@@ -53,9 +53,12 @@ def rows_of(m):
 def emitted(m, door=None):
     left = rows_of(m)
     res = convert_level.resolve_asym_patches(m, left)
-    asym, ball_x, m1_x, m1_door = res if res else (None, 0, 0, False)
+    asym, ball_x, m1_x, m1_door, m1_right = res if res else (None, 0, 0, False, False)
     if door is None:
-        door = convert_level.model_door_flag(m)
+        # Phase 5: every LOCKED_DOOR is emitted as an M1 door (MetaA b3, and
+        # b0 for the right half) — no ball door any more, matching
+        # convert_level's call site.
+        door = False
     return convert_room.lines(left, prefix=f"M{m['id']}", source="test",
                               asym_rows=asym, asym_ball_x=ball_x,
                               asym_m1_x=m1_x, door=door,
@@ -97,7 +100,9 @@ def expect_reject(fn, needle):
     try:
         fn()
     except ValueError as exc:
-        assert needle in str(exc), f"reject reason {exc!r} lacks {needle!r}"
+        needs = [needle] if isinstance(needle, str) else list(needle)
+        assert any(n in str(exc) for n in needs), \
+            f"reject reason {exc!r} lacks any of {needs!r}"
         return
     raise AssertionError(f"expected ValueError with {needle!r}")
 
@@ -206,7 +211,7 @@ def main() -> int:
         lambda: emitted(model(grid(["." * 10, "P" + "." * 9, "." * 10]),
                               asym_patches=[[1, 3,
                                              convert_level.LOCKED_DOOR]])),
-        "special features are alone per room")
+        ["special features are alone per room", "wall-hide guard"])
     expect_reject(
         lambda: emitted(model(grid(["." * 10,
                                     "P" + "." * 4 + "V" + "." * 4,
@@ -221,16 +226,22 @@ def main() -> int:
             {"model_id": 91}, {91: model(door_tiles)}),
         "LOCKED_DOOR")
 
-    # --- 5. door: resolve + MetaB b7 + envelope rejects ------------------
-    # The door patch sits on row 1 only (rule 2026-10-14) — two stacked
-    # door bands are impossible under that rule, so one patch.
-    door_model = model(grid(["." * 10] * 3),
+    # --- 5. door: right-M1 form (Phase 5) --------------------------------
+    # A side-0 LOCKED_DOOR is authored as the RIGHT-half M1 door:
+    # MetaA = (col+1)<<4 | band_mask | $08 (door) | $01 (right half),
+    # MetaB = $00 (no ball) — the M1 gives the yellow COLUP1 stripe +
+    # OvM1Block collision + the key touch-unlock on BOTH halves. The M1
+    # wall-hide envelope applies: the door's col is wall in bands 0/2 (the
+    # parked M1 hides there) and open in band 1 (its own band).
+    door_model = model(grid(["#" * 10, "." * 10, "#" * 10]),
                        asym_patches=[[1, 3, convert_level.LOCKED_DOOR]])
     assert convert_level.model_door_flag(door_model)
     lines = emitted(door_model)
-    # ball col 3 -> ball_col+1 = 4, | $80
-    assert byte_line(lines, "M91MetaB:") == [0x84], \
-        f"door MetaB {byte_line(lines, 'M91MetaB:')} != [84]"
+    # col 3 -> (3+1)<<4 = $40 | $08 door | $01 right half = $49
+    assert byte_line(lines, "M91MetaA:") == [0x49], \
+        f"door MetaA {byte_line(lines, 'M91MetaA:')} != [49]"
+    assert byte_line(lines, "M91MetaB:") == [0x00], \
+        f"door MetaB {byte_line(lines, 'M91MetaB:')} != [00] (no ball)"
     # plain patch model keeps MetaB b7 clear
     plain = model(grid(["." * 10] * 3), asym_patches=[[0, 3, 1]])
     assert not convert_level.model_door_flag(plain)

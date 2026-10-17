@@ -918,7 +918,7 @@ def check_levels(src: Path) -> None:
                 continue
             if f"M{mid}TilePF0:" not in mda:
                 continue                      # model not referenced by any room
-            asym, ball_x, m1_x, m1_door = res if res else (None, 0, 0, False)
+            asym, ball_x, m1_x, m1_door, m1_right = res if res else (None, 0, 0, False, False)
             # packed meta (bugs.md 28 point 1): MetaA = (m1_col+1)<<4 |
             # band_mask | $08 left door at TilePF0+9; MetaB = ball_col+1
             # at +10 (0 = none, b7 = right door).
@@ -928,9 +928,14 @@ def check_levels(src: Path) -> None:
                     if asym[bidx] != left[bidx][::-1]:
                         band_mask |= 1 << bidx
             m1n = ((m1_x - 7) >> 3) + 1 if m1_x else 0
+            m1_right = any(
+                len(q) >= 3 and q[2] == 9 and (q[3] if len(q) == 4 else 0) == 0
+                for q in (model.get("asym_patches") or []))
             want_a = (m1n << 4) | band_mask
             if model_m1_door_flag(model):
                 want_a |= 0x08
+            if m1_right:
+                want_a |= 0x01          # Phase 5: right-half door (M1 b0)
             got_a = meta_byte(mid, "MetaA")
             if got_a is None:
                 err(f"model {mid}: MetaA missing "
@@ -940,8 +945,7 @@ def check_levels(src: Path) -> None:
                     f"((m1_col+1)<<4 | band_mask={band_mask}"
                     f"{' | $08 door' if model_m1_door_flag(model) else ''})")
             ball_n = ((ball_x - 87) >> 3) + 1 if ball_x else 0
-            if model_door_flag(model):
-                ball_n |= 0x80
+            # Phase 5: doors use the M1 strip on BOTH halves -> no ball/b7
             # vcrunch shutter flag (vcrunch_shutter_plan Phase B) — convert
             # sets MetaB b7 for vcrunch models; PHMOverlay's kill gate reads it
             if any(t == 11 for t in model.get("tiles", [])):
