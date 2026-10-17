@@ -1885,7 +1885,7 @@ CallPad_TitleKernel:
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F1BB
+    jmp $F1BF
     .ds $FC61 - *, 0
 CallPad_MusicTick:
     sta $1FF7
@@ -1902,7 +1902,7 @@ CallPad_MusicTick:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F1BB           ; Overscan in bank0 (must match bank0 ToGameStub;
+    jmp $F1BF           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; verify_build --sync-overscan patches this from
                         ; bank0.lst after every bank0 build)
 
