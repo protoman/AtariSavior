@@ -398,6 +398,14 @@ No entry is worked on without user greenlight.
     falls back to `Temp` (band colour) when not a door — so the stripe
     keeps yellow for the rest of the band instead of flipping to the wall
     colour. (Overscan shifted $F1BB→$F1BF, CallPad literals synced.)
+    **Follow-up 2026-10-16 (agent):** the branch at `.ObjZero` cost +5c on
+    the object line and tipped a vcrunch worst-case line into the 74-76c
+    stall zone (`test_vcr_shutter` case16, 75c). Re-cut so the restore is
+    the plain 6c `lda Temp / sta COLUP1`, and `.Row` now also stages the
+    door colour into `Temp` (+3c on the setup line, which has margin) —
+    same visible result, no stall. Battery 37/37. NOTE: the fix leaves
+    bank0 pre-pad headroom at **1B** (the freed E4 slack is spent); any
+    further bank0 change needs the refactor's movable-chunk plan.
     **Residual (user-accepted, expected):** the P1+M1 register sharing
     still tints the stripe on the 8 lines the object actually occupies —
     to be prevented at authoring time in the EDITOR (see deferred item
