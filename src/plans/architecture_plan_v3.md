@@ -1,5 +1,10 @@
 # Architecture plan v3 — prepare for future features (2026-10-16)
 
+> **SUPERSEDED 2026-10-16 by `docs/refactor_v4_plan.md`.** v3 assumed bank0 was
+> full and that freeing space needs a 4-bank pin shift; that is false — bank0
+> has a verified 225B free run at `$F7FC`, and there is ~3400B free overall.
+> Read `docs/refactor_v4_plan.md` first.
+
 Supersedes v2's scope (v2 = the mechanism; this = the whole prep pass). Goal:
 land the five planned features (better physics, raft, game-over screen,
 difficulty settings, intro music) **without another architecture pass**.
