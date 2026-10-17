@@ -83,6 +83,33 @@ MothYDerive:
     adc #$FA
     jmp ReturnPad
 
+; TitleSelect — moved from bank0 (refactor_v4_plan Phase 3.1 canary, 2026-10-16).
+; Pure leaf (no calls); returns C=1 edge (caller runs LoadLevel) / C=0 no-edge.
+; Entered via CallPad_TitleSelect ($FC4F); tail-exits through ReturnPad
+; (sta $1FF6/rts), which returns to the bank0 caller with C intact.
+SWCHB       = $0282
+StepsLeft   = $97               ; bank0 per-frame step latch (ZP byte block)
+LEVEL_COUNT = 4                 ; hand copy of kernel LEVEL_COUNT
+TitleSelect:
+    lda StepsLeft
+    and #%00000010
+    beq .TSnoB1
+    lda SWCHB
+    and #%00000010
+    bne .TSnoB1
+    inc Level
+    lda Level
+    cmp #LEVEL_COUNT
+    bne .TSokB1
+    lda #0
+    sta Level
+.TSokB1:
+    sec
+    jmp ReturnPad
+.TSnoB1:
+    clc
+    jmp ReturnPad
+
     org $F540
 MenuMain:
     ; ========================================================================
@@ -1318,6 +1345,12 @@ CallPad_BuildColupF:
 CallPad_BombMarkWalls:
     sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
     jmp $FB10
+
+; CallPad_TitleSelect twin — byte-identical with kernel.asm at $FC4F
+    .ds $FC4F - *, 0
+CallPad_TitleSelect:
+    sta $1FF7
+    jmp TitleSelect
 
 ; ========================================================================
 ; Fold-pad stubs (byte-identical to bank0)

@@ -2881,35 +2881,9 @@ TitleFont:
     .byte %11110000
 
 ; ------------------------------------------------------------------------------
-; TitleSelect — SELECT edge for TitleWork (moved here: TitleWork post-pad had
-; 2B gap; fill has room). Swallow-first REMOVED 2026-10-07 (bugs.md 8b): the
-; intro exit already consumes the first press, so the swallow made the second
-; press read as dead — every edge now does level+1, wrap, LoadLevel reload
-; (C=1). (Was: first press swallowed so level 1 stayed visible; flag
-; TitleSelFlag aliased the TallyTicks slot $F2 — EQU removed with it, tally
-; owns $F2 alone now.) StepsLeft = previous SWCHB sample (title-owned).
-; Clobbers A. LoadLevel clobbers A/X/Y — edge state re-read after it via
-; TitleWork's tail `lda SWCHB / sta StepsLeft`.
-; ------------------------------------------------------------------------------
-TitleSelect:
-    lda StepsLeft
-    and #%00000010
-    beq .TSno                   ; held from last frame -> no repeat
-    lda SWCHB
-    and #%00000010
-    bne .TSno                   ; released now -> no press
-    inc Level
-    lda Level
-    cmp #LEVEL_COUNT
-    bne .TSok
-    lda #0
-    sta Level                   ; wrap: no level above → back to 000001
-.TSok:
-    sec                         ; C=1: caller runs LoadLevel (keeps the
-    rts                         ;   original TitleWork→LoadLevel stack depth)
-.TSno:
-    clc                         ; no edge / repeat-held: C=0, nothing changed
-    rts
+; TitleSelect — MOVED to bank1 (refactor_v4_plan Phase 3.1 canary, 2026-10-16).
+; Entered via CallPad_TitleSelect ($FC4F); returns C=1 edge / C=0 no-edge.
+
 
 ; ------------------------------------------------------------------------------
 ; TitleIntro — intro-screen ($FD) edge check. Entered by JMP from DropStep
@@ -3074,6 +3048,11 @@ CallPad_BombMarkWalls:
 MothExitPad:
     sta $1FF6                   ; select bank0 (executed from bank2's copy)
     jmp UE_Next                 ; resume dispatch loop (bank0 half)
+
+    .ds $FC4F - *, 0            ; bank0↔bank1 CallPad slot (refactor_v4)
+CallPad_TitleSelect:
+    sta $1FF7
+    jmp $F041
 
 ; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
@@ -3335,7 +3314,7 @@ DropSpeedTable:                 ; 8.8 px/frame per Y>>4 tier (Y = tier*16+8)
 ; ------------------------------------------------------------------------------
 TitleWork:
     ; --- SELECT edge (TitleSelect, fill region) ---
-    jsr TitleSelect
+    jsr CallPad_TitleSelect
     bcc .TWselDone             ; C=0: no edge
     jsr LoadLevel              ; title arm re-runs → score/objects refreshed
 .TWselDone:
