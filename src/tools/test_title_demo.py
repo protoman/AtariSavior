@@ -20,21 +20,22 @@ for name in SOURCES:
     assert "Demo" not in source, f"intro demo code remains in {name}"
 
 kernel = (SRC / "kernel.asm").read_text()
-assert "TitleKernel:" in kernel
+bank1 = (SRC / "bank1.asm").read_text()
+assert "TitleKernel:" in bank1
 assert "FooterFold:" in kernel
 assert "TitleIntro:" in kernel
 assert "jsr DropArm" in kernel
 
-title = kernel[kernel.index("TitleKernel:"):kernel.index("TitleFont:")]
+title = bank1[bank1.index("TitleKernel:"):bank1.index("TitleFont:")]
 assert "ldx #103" in title
 assert "cpx #40" in title
 assert "ldx #31" in title
 assert ".TkPostFooterPad:" in title
-assert title.count("jsr SetObjectXPos") == 6
+assert title.count("jsr SetObjectXPos_b1") == 6
 assert "sta NUSIZ0" in title
 bank2 = (SRC / "bank2.asm").read_text()
-player = section(bank2, "TitlePlayerBand:", "TitleJetSprite:")
-prep = section(bank2, "TitleBandPrep:", "    .ds $F700")
+player = section(bank1, "TitlePlayerBand:", "TitleJetSprite:")
+prep = section(bank1, "TitleBandPrep:", "FooterBand:")
 # frame pick / mirror / bomb colors live in TitleBandPrep (band calls it)
 assert "jsr TitleBandPrep" in player
 assert "lda EnemyRamP\n    and #4" in prep          # jet flutter gate
@@ -57,10 +58,10 @@ assert "sta COLUBK" in player and "sta REFP0" in player  # tail restore
 assert "sta VDELP0\n    sta VDELP1" in player
 assert player.count("sta GRP0") == 7
 assert player.count("sta GRP1") == 5   # 4 clears + bomb row
-footer = section(bank2, "FooterBand:", "FooterFont:")
+footer = section(bank1, "FooterBand:", "FooterFont:")
 assert "ldx #13" in footer            # 13-row loop = 14B sprite chunks
 assert "lda #<FooterFont+70" in footer  # 6 pointers x14B
-assert "sta WSYNC\n    jmp ReturnPad" in player
+assert "sta WSYNC\n    rts" in player          # bank1 band exits same-bank rts
 assert "sta HMP1" not in title
 assert "sta NUSIZ1" in title
 assert "bne .TkFooterPad" in title
@@ -69,10 +70,10 @@ assert "lda #57" in title and "ldx #1\n    jsr SetObjectXPos" in title
 assert "lda #20\n    sta RoomX" in kernel    # TitleIntro spawn init
 assert "lda #0\n    sta RoomY" in kernel
 bomb_rows = [int(v, 16) for v in re.findall(
-    r"\$([0-9A-Fa-f]{2})", section(bank2, "TitleBombSprite:", "TitleBlinkColors:"))]
+    r"\$([0-9A-Fa-f]{2})", section(bank1, "TitleBombSprite:", "TitleBlinkColors:"))]
 assert bomb_rows[-8:] == [0x10, 0x20, 0x20, 0x60, 0xF0, 0xF0, 0xF0, 0x60]
 blink = re.findall(
-    r"COLOR_[A-Z_]+", section(bank2, "TitleBlinkColors:", ".ds $F880"))
+    r"COLOR_[A-Z_]+", section(bank1, "TitleBlinkColors:", "TitlePlayerBand:"))
 assert blink == ["COLOR_CAVE_BG", "COLOR_HOT_Y", "COLOR_HOT_R", "COLOR_HOT_Y"]
 
 intro = section(kernel, "TitleIntro:", "FooterFold:")
@@ -81,7 +82,7 @@ assert "lda LevelStartY\n    sta RoomY" in intro
 
 game_frame_a = section(kernel, "PlayerSpriteA:", "PlayerSpriteB:")
 game_frame_b = section(kernel, "PlayerSpriteB:", "PlayerColTable:")
-jet_copy = section(bank2, "TitleJetSprite:", "TitleJetColors:")
+jet_copy = section(bank1, "TitleJetSprite:", "TitleJetColors:")
 copied_frames = re.findall(r"%[01]{8}", jet_copy)
 game_frames = re.findall(r"%[01]{8}", game_frame_a + game_frame_b)
 assert len(copied_frames) == 24
@@ -90,8 +91,8 @@ game_colors = section(kernel, "PlayerColTable:", "; --- Level data")
 # end marker = the spill-comment line (level_003_rooms.asm now sits between
 # TitleJetColors and the old ".ds $F970" pin — bugs.md 27/27b)
 title_colors = section(
-    bank2, "TitleJetColors:",
-    "; --- Level-data spill 2 (bugs.md 27/27b): fill gap $F901..$F970 (111B) ---")
+    bank1, "TitleJetColors:",
+    "    org $F540")
 color_values = {
     name: int(value, 16)
     for name, value in re.findall(
