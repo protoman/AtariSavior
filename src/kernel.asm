@@ -140,8 +140,8 @@ RoomPF0Hi       byte            ; pointer to current room's TilePF0 (high)
 BarIdx          byte            ; ($9B) bar table idx (BarLevel+7)>>3 (D2 sync)
 Hover           byte            ; ($9C) respawn hover flag (bugs.md #1): 1 while
                                 ;       gravity is suppressed after a respawn
-ZpSpare2        byte            ; free ZP ($9D)
-ZpSpare3        byte            ; free ZP ($9E)
+MusPos          byte            ; ($9D) intro music: sequence index (bank1 read)
+MusTimer        byte            ; ($9E) intro music: frames left in this step
 LevelPFDataLo   byte            ; pointer to level's RoomDataTable (low)
 LevelPFDataHi   byte            ; pointer to level's RoomDataTable (high)
 LevelConnLo     byte            ; pointer to level's RoomConnections (low)
@@ -463,6 +463,8 @@ GameStart:
     sta TickCounter
     lda #120
     sta BarLevel                ; bar starts full
+    lda #1
+    sta MusTimer                ; intro music: fire step 0 on the first tick
     ; --- Intro screen: DropTarget=$FD sentinel (2026-10-06 — SAVIOR splash
     ;     shows ONCE at power-on; first SELECT/RESET edge anywhere moves to
     ;     the old title $FF = first room + HUD stage count; valid fall
@@ -2884,7 +2886,11 @@ CallPad_TitleKernel:
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F1BB
+    jmp $F1BF
+    .ds $FC61 - *, 0            ; bank0↔bank1 intro-music tick
+CallPad_MusicTick:
+    sta $1FF7
+    jmp $F35A
 
 ; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
@@ -2940,20 +2946,13 @@ ReloadLevel:
     ; SIM_EXIT=down f265 296-line crash frame + the title-264 family).
     ; With the tail-jmp the slot count drops by one: EnterRoom's return
     ; lands on $F8/$F9 (stack-only cells) on every death path.
-    ; The old post-code (vy/JetPower zeros + rts) is now unreachable but
-    ; KEPT BYTE-IDENTICAL: it lives in the pinned post-pad region and
-    ; deleting it shifted the downstream byte-identical twins (blast tramp
-    ; $FDCD guard). DropArm zeroes vyLo/vyHi/PlayerYSub itself (JetPower=4
-    ; stays through the drop-in flutter — now identical to the .LLStay
-    ; normal-death path). LoseLife's `sec` still runs (DropArm's rts pops
-    ; the jsr ReloadLevel slot back into LoseLife).
+    ; The old post-code (vy/JetPower zeros + rts) was unreachable; DELETED
+    ; 2026-10-16 (intro music) — the $FDD8 blast-tramp pin below absorbs the
+    ; shift, so the twins stay put. DropArm zeroes vyLo/vyHi/PlayerYSub itself
+    ; (JetPower=4 stays through the drop-in flutter — identical to the .LLStay
+    ; path). LoseLife's `sec` still runs (DropArm's rts pops the jsr ReloadLevel
+    ; slot back into LoseLife).
     jmp LoadLevel
-    lda #0                      ; DEAD (address-stability pad, see above)
-    sta vyLo
-    sta vyHi
-    sta JetPower
-    sta PlayerYSub
-    rts
 
 ; ------------------------------------------------------------------------------
 ; HotOverlapFlag — moved to bank2 (S5.3): fold-free body (HotOverlapBody)
@@ -3177,12 +3176,17 @@ TitleWork:
 TitleTailAudio:                 ; shared: TitleWork falls in; TitleIntro
                                 ;   tail-jumps (label — jumps, not falls)
     lda DropTarget              ; title sentinels ($FD/$FF/$FE): the intro's
-    bne .TWnoTick               ;   TitleSequence owns its fuse — skip
-    jsr BombTick                ;   BombTick's blast side effects on titles
+    cmp #$FD                    ;   TitleSequence owns its fuse — skip
+    beq .TWmusic                ;   $FD intro: music owns AUD0/AUD1
+    bne .TWnoTick               ;   BombTick's blast side effects on titles
+    jsr BombTick
 .TWnoTick:
     jsr CallPad_UpdateBombSound
     lda #0
     sta AUDV1
+    beq .TWwait                 ; A=0 -> always taken
+.TWmusic:                       ; intro: tick AFTER TitleSequence so the music
+    jsr CallPad_MusicTick       ;   wins the audio registers every frame
 .TWwait:
     lda INTIM
     bne .TWwait
