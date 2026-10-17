@@ -13,3 +13,8 @@ distella
 *.kate-swp
 src/docs/hero/
 src/screenshots/
+
+# test-owned frozen bank images + labels (must be tracked; see tools/freeze_test_banks.sh)
+!src/tests/frozen/
+!src/tests/frozen/*.bin
+!src/tests/frozen/*.lst
