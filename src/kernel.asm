@@ -137,7 +137,7 @@ RoomPF0Hi       byte            ; pointer to current room's TilePF0 (high)
 ; emitted 3 rows apart), so no separate PF1/PF2 pointer is ever used.
 ; Reclaimed as a free ZP pool for new features (addresses stay stable so
 ; bank1/bank2 hand-copies do not shift).
-ZpSpare0        byte            ; free ZP ($9B) — physics/raft/config
+BarIdx          byte            ; ($9B) bar table idx (BarLevel+7)>>3 (D2 sync)
 ZpSpare1        byte            ; free ZP ($9C)
 ZpSpare2        byte            ; free ZP ($9D)
 ZpSpare3        byte            ; free ZP ($9E)
@@ -1368,6 +1368,15 @@ OverscanAudio:                  ; rejoin for the spawn drop-in (DropStep tail):
     lda #120
     sta BarLevel             ; reset bar for retry
 .TimerDone:
+    ; D2: sync the compressed bar-table index here (BarLevel only changes in
+    ; this block / at full-reset sites). (B+7)>>3 → 0..15; HUD reader pays 0c.
+    lda BarLevel
+    clc
+    adc #7
+    lsr
+    lsr
+    lsr
+    sta BarIdx
 
     ; --- Wait for overscan timer ---
 .WaitOverscan:

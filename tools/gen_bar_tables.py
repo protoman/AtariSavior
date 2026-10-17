@@ -157,13 +157,11 @@ def emit_table(name, levels):
 
 
 def render(name, delay_of, fine_of):
-    vals = [delay_of[b] if name == "BarDelayTable" else fine_of[b]
-            for b in range(BAR_MAX + 1)]
-    lines = []
-    for i in range(0, len(vals), 16):
-        chunk = ",".join(str(v) for v in vals[i:i + 16])
-        lines.append(f"    .byte {chunk}")
-    return "\n".join(lines)
+    """D2 (2026-10-16): the 121-entry tables were exactly period-8, so bank1
+    stores 15 entries indexed (B+7)>>3 — entry0 = B0, entry g = B(8g-7)."""
+    src = delay_of if name == "BarDelayTable" else fine_of
+    vals = [src[0]] + [src[8 * g - 7] for g in range(1, 15)]
+    return "    .byte " + ",".join(str(v) for v in vals)
 
 
 def patch_bank1(delay_of, fine_of, write=True):
@@ -205,9 +203,10 @@ def main():
         for name, want in (("BarDelayTable", delay_of), ("BarFineTable", fine_of)):
             m = re.search(rf"{name}:[^\n]*\n((?:\s*\.byte[^\n]*\n)+)", src)
             got = [int(v) for v in re.findall(r"[0-9]+", m.group(1))]
-            bad = [b for b in range(BAR_MAX + 1) if got[b] != want[b]]
+            exp = [want[0]] + [want[8 * g - 7] for g in range(1, 15)]
+            bad = [g for g in range(15) if got[g] != exp[g]]
             if bad:
-                print(f"FAIL {name}: {len(bad)} entries stale, e.g. B={bad[:5]}")
+                print(f"FAIL {name}: {len(bad)} entries stale, e.g. g={bad[:5]}")
                 sys.exit(1)
         print("bank1 tables match generator")
     else:
