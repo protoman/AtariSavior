@@ -132,10 +132,15 @@ StepsLeft       byte            ; per-frame Y pixel steps remaining (vertical ph
 RoomNo          byte            ; current room index (0-based)
 RoomPF0Lo       byte            ; pointer to current room's TilePF0 (low)
 RoomPF0Hi       byte            ; pointer to current room's TilePF0 (high)
-RoomPF1Lo       byte            ; pointer to current room's TilePF1 (low)
-RoomPF1Hi       byte            ; pointer to current room's TilePF1 (high)
-RoomPF2Lo       byte            ; pointer to current room's TilePF2 (low)
-RoomPF2Hi       byte            ; pointer to current room's TilePF2 (high)
+; RoomPF1/RoomPF2 pointers were DEAD (2026-10-16, D1.1): every reader
+; indexes (RoomPF0Lo),Y across the 3 contiguous PF rows (TilePF0/1/2 are
+; emitted 3 rows apart), so no separate PF1/PF2 pointer is ever used.
+; Reclaimed as a free ZP pool for new features (addresses stay stable so
+; bank1/bank2 hand-copies do not shift).
+ZpSpare0        byte            ; free ZP ($9B) — physics/raft/config
+ZpSpare1        byte            ; free ZP ($9C)
+ZpSpare2        byte            ; free ZP ($9D)
+ZpSpare3        byte            ; free ZP ($9E)
 LevelPFDataLo   byte            ; pointer to level's RoomDataTable (low)
 LevelPFDataHi   byte            ; pointer to level's RoomDataTable (high)
 LevelConnLo     byte            ; pointer to level's RoomConnections (low)
