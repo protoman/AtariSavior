@@ -60,7 +60,7 @@ assert player.count("sta GRP1") == 5   # 4 clears + bomb row
 footer = section(bank2, "FooterBand:", "FooterFont:")
 assert "ldx #13" in footer            # 13-row loop = 14B sprite chunks
 assert "lda #<FooterFont+70" in footer  # 6 pointers x14B
-assert "sta WSYNC\n    jmp $FBF8" in player
+assert "sta WSYNC\n    jmp ReturnPad" in player
 assert "sta HMP1" not in title
 assert "sta NUSIZ1" in title
 assert "bne .TkFooterPad" in title
@@ -250,6 +250,6 @@ assert "sta PlayerDir\n    jmp .TSAdv" in ts           # transition face sets
 assert ts.count("sta PlayerDir") == 4   # phase2 + 4->5(0) + 5->6(1) + 6->7(0)
 assert "cmp #8" in ts and "dec RoomY" in ts            # phase 8 climbs to Y=0
 assert "sta RoomY" not in ts                           # no teleport reset
-assert "jmp $FBF8" in ts                               # ReturnPad exit
+assert "jmp ReturnPad" in ts                           # ReturnPad exit
 
 print("Title player sprite and fixed line-budget guards passed.")

@@ -164,7 +164,7 @@ def main() -> None:
     assert "cmp #ENEMY_MOTH" in dey and "CallPad_MothYDerive" in dey, \
         "DeriveEnemyY must dispatch the moth via CallPad_MothYDerive (bank1)"
     _b1m = (ROOT / "src" / "bank1.asm").read_text(encoding="utf-8")
-    moth = _b1m.split("MothYDerive:")[1].split("org $F540")[0]
+    moth = _b1m.split("MothYDerive:")[1].split("TitleSelect:")[0]
     assert "and #15" in moth and "cmp #8" in moth, \
         "moth phase must be (P>>2)&15 with triangle mirror at 8"
     assert moth.count("lsr") >= 2, \
