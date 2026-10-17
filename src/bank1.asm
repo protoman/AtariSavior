@@ -19,6 +19,7 @@ COLUBK  = $09
 PlayerLives = $AC
 PlayerBombs = $F0
 BarLevel = $AE
+BarIdx   = $9B           ; (BarLevel+7)>>3, synced by kernel overscan (D2)
 BAR_MAX = 120            ; full bar (60 frames/step × 120 = 120s)
 COLUPF  = $08
 COLUBK  = $09
@@ -733,10 +734,9 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; H3c dual path: F=0 slim / F=1 slim+nop / F=2,3,4 full dispatch.
     ; dispatch ≤73c from the TopGap WSYNC to the first bar WSYNC.
     ; ====================================================================
-    ldy BarLevel
-    cpy #(BAR_MAX-7)
+    lda BarLevel
+    cmp #(BAR_MAX-7)
     bcc .BarRedSetup    ; B < 117 → red path (short fwd branch)
-    ; Full bar: pure yellow, 3 lines only (no red write).
     ldx #3
 .YLoop:
     sta WSYNC
@@ -747,6 +747,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     jmp .BarGap
 
 .BarRedSetup:
+    ldy BarIdx          ; precomputed (BarLevel+7)>>3, synced in kernel overscan
     lda BarDelayTable,Y
     sta DelayCnt
     lda BarFineTable,Y
@@ -1196,25 +1197,13 @@ SetObjectXPos_b1:
 ; Bar H3c tables (B=0..120): content ≤71c (WSYNC 3c fits in 76).
 ; Paths (cycles after WSYNC → sty red): F=0 slim 12+5A; F=1 slim+nop 14+5A;
 ; F=2 full 20+5A; F=3 full 30+5A; F=4 full 31+5A (A=0 special-cased).
-BarDelayTable:          ; B=0..120
-    .byte 0,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3
-    .byte 3,2,2,2,2,2,2,2,2,4,4,4,4,4,4,4
-    .byte 4,5,5,5,5,5,5,5,5,2,2,2,2,2,2,2
-    .byte 2,5,5,5,5,5,5,5,5,7,7,7,7,7,7,7
-    .byte 7,8,8,8,8,8,8,8,8,5,5,5,5,5,5,5
-    .byte 5,8,8,8,8,8,8,8,8,10,10,10,10,10,10,10
-    .byte 10,11,11,11,11,11,11,11,11,8,8,8,8,8,8,8
-    .byte 8,8,8,8,8,8,8,8,8
-
-BarFineTable:           ; B=0..120; ∈{0,1,2,3,4}; path = f(F)
-    .byte 2,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0
-    .byte 0,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1
-    .byte 1,0,0,0,0,0,0,0,0,4,4,4,4,4,4,4
-    .byte 4,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1
-    .byte 1,0,0,0,0,0,0,0,0,4,4,4,4,4,4,4
-    .byte 4,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1
-    .byte 1,0,0,0,0,0,0,0,0,4,4,4,4,4,4,4
-    .byte 4,4,4,4,4,4,4,4,4
+; D2 (2026-10-16): both tables were EXACTLY period-8 ([1-8],[9-16],…) so
+; they shrank 121→15 entries, indexed (B+7)>>3 (see the reader). Entry 0 =
+; B=0; entry g≥1 = B in [8(g-1)+1, 8g]. Verified against the old 121B blobs.
+BarDelayTable:          ; (B+7)>>3, 15 entries
+    .byte 0, 2,3,2,4,5,2,5,7,8,5,8,10,11,8
+BarFineTable:           ; (B+7)>>3, 15 entries; ∈{0,1,2,3,4}
+    .byte 2, 1,0,2,1,0,4,2,1,0,4,2,1,0,4
 
 ; ------------------------------------------------------------------------------
     .ds $F937 - *, 0            ; pinned: bank2 M1StripBlast back-jmp operand
