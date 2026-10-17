@@ -585,6 +585,71 @@ TitleJetSprite:
 TitleJetColors:
     .byte $48, $48, $1E, $48, $08, $48, $48, $48
     .byte $48, $48, $08, $08
+; ==============================================================================
+; Intro music player (2026-10-16). Ticked once per intro ($FD) frame from
+; TitleKernel (same bank). Drives both TIA voices:
+;   AUD0 = melody (Square, AUDC 4), AUD1 = bass (Bass, AUDC 6), volume 7.
+; Data = (melPitch, bassPitch, dur) triples; a $FF melody slot loops to 0.
+; Pitches are Paul Slocum "Setup #1" codes (the in-tune ones). ZP = $9D/$9E
+; (kernel ZpSpare2/3), initialised 0 by GameStart. ~90c/tick.
+; ==============================================================================
+MusPos   = $9D
+MusTimer = $9E
+
+MusicTick:
+    lda MusTimer
+    beq .mtAdvance              ; step done -> advance + load
+    dec MusTimer
+    jmp .mtPlay
+.mtAdvance:
+    ldy MusPos
+    lda MusicData+3,Y           ; next step's melody byte ($FF = loop)
+    cmp #$FF
+    bne .mtAdv
+    ldy #$FD                    ; +3 wraps to step 0
+.mtAdv:
+    tya
+    clc
+    adc #3
+    sta MusPos
+    tay
+    lda MusicData+2,Y           ; new step's duration
+    sta MusTimer
+.mtPlay:                        ; (re)assert the current step every frame so
+    ldy MusPos                  ;   an intro SFX cannot leave the melody wrong
+    lda MusicData,Y             ; melody pitch
+    sta AUDF0
+    lda #4                      ; Square
+    sta AUDC0
+    lda #7
+    sta AUDV0
+    iny
+    lda MusicData,Y             ; bass pitch
+    sta AUDF1
+    lda #6                      ; Bass
+    sta AUDC1
+    lda #7
+    sta AUDV1
+    jmp ReturnPad
+
+MusicData:
+    ; (melPitch, bassPitch, dur) — a short heroic loop, Setup #1 codes.
+    .byte 30,31,6           ; b4 / h0
+    .byte 28,29,6           ; c5 / c1
+    .byte 25,26,6           ; d5 / d1
+    .byte 22,23,12          ; e5 / e1
+    .byte 21,19,6           ; f5 / g1
+    .byte 22,23,6           ; e5 / e1
+    .byte 25,26,6           ; d5 / d1
+    .byte 28,29,12          ; c5 / c1
+    .byte 30,15,6           ; b4 / b1
+    .byte 28,29,6           ; c5 / c1
+    .byte 25,26,6           ; d5 / d1
+    .byte 22,23,6           ; e5 / e1
+    .byte 21,19,12          ; f5 / g1
+    .byte 30,31,18          ; b4 / h0 (cadence)
+    .byte $FF               ; loop
+
     org $F540
 MenuMain:
     ; ========================================================================
@@ -1821,7 +1886,11 @@ CallPad_TitleKernel:
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F1BB
+    jmp $F1BF
+    .ds $FC61 - *, 0
+CallPad_MusicTick:
+    sta $1FF7
+    jmp MusicTick
 
 ; ========================================================================
 ; Fold-pad stubs (byte-identical to bank0)
@@ -1834,7 +1903,7 @@ CallPad_Overscan:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F1BB           ; Overscan in bank0 (must match bank0 ToGameStub;
+    jmp $F1BF           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; verify_build --sync-overscan patches this from
                         ; bank0.lst after every bank0 build)
 

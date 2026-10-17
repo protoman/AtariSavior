@@ -92,7 +92,7 @@ game_colors = section(kernel, "PlayerColTable:", "; --- Level data")
 # TitleJetColors and the old ".ds $F970" pin — bugs.md 27/27b)
 title_colors = section(
     bank1, "TitleJetColors:",
-    "    org $F540")
+    "; Intro music player")
 color_values = {
     name: int(value, 16)
     for name, value in re.findall(
