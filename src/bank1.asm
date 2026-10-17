@@ -589,7 +589,7 @@ TitleJetColors:
 ; Intro music player (2026-10-16). Ticked once per intro ($FD) frame from
 ; TitleTailAudio via CallPad_MusicTick (bank0↔bank1 @ $FC61). Plays the
 ; Ukraine anthem (src/art/ukraine_anthem.asm): two synchronized (duration,
-; note) streams — AUD0 = melody (Lead $0C), AUD1 = bass (Bass $06); one 8th =
+; note) streams — AUD0 = melody + AUD1 = bass, BOTH Lead $0C (one tuning -> in tune); 8th =
 ; 13 frames; note = AUDF, $FE = rest, $FF = loop. ZP: MelPtr/MelTimer
 ; ($9D/$9E) + BasPtr/BasTimer ($EC/$ED = bank1 HUD scratch, free on the
 ; title-only frames this runs on).
@@ -658,7 +658,7 @@ MusicTick:
     cmp #$FF
     beq .BasDone
     sta AUDF1
-    lda #$06                    ; Bass
+    lda #$0C                    ; Lead (same tuning as the melody — in tune)
     sta AUDC1
     lda #7
     sta AUDV1
@@ -677,7 +677,7 @@ MusicTick:
     cmp #$FE
     beq .BasRest
     sta AUDF1
-    lda #$06
+    lda #$0C                    ; Lead (matches the melody's tuning)
     sta AUDC1
     lda #7
     sta AUDV1

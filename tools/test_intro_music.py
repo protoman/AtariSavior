@@ -91,15 +91,15 @@ while frame < 1400:
                     bad_vol.append((frame, "v0", mem.tia[AUDV0]))
                 mel.append(mem.tia[AUDF0])
             if mem.tia[AUDV1] != 0:
-                seen_c1 = seen_c1 or mem.tia[AUDC1] == 0x06
+                seen_c1 = seen_c1 or mem.tia[AUDC1] == 0x0C
                 if mem.tia[AUDV1] != 7:
                     bad_vol.append((frame, "v1", mem.tia[AUDV1]))
 
 print(f"intro frames={intro}; melody notes seen={len(mel)}; "
       f"distinct AUDF0={sorted(set(mel))[:12]}...")
-print(f"AUDC0=Lead seen={seen_c0}; AUDC1=Bass seen={seen_c1}; bad volumes={len(bad_vol)}")
+print(f"AUDC0=Lead seen={seen_c0}; AUDC1=Lead seen={seen_c1}; bad volumes={len(bad_vol)}")
 assert intro > 1000, "did not stay on the intro screen"
 assert not bad_vol, f"volume must be 7 when playing: {bad_vol[:5]}"
 assert len(set(mel)) >= 4, "melody is not advancing"
 assert seen_c0 and seen_c1, "Lead (AUD0) + Bass (AUD1) timbres must be used"
-print("PASS: Ukraine-anthem intro music driving AUD0 (Lead) + AUD1 (Bass)")
+print("PASS: Ukraine-anthem intro music driving AUD0 + AUD1 (both Lead)")
