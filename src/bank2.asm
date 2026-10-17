@@ -867,6 +867,16 @@ PickPlayerFrame:
 StageBandTab:
     ; --- expand band mask -> BandTab $ff/$00 ×3 (bit0 ENABL + bit7 pack) ---
     ldy #9
+    ; --- Phase 5: stage the M1 x-offset for the door SIDE. A door's band
+    ; mask is $02, so MetaA bit0 is free: 1 = M1 strip on the RIGHT half
+    ; (x = 87+8*col → offset +79), 0 = left (x = 7+8*col → offset -1).
+    ; The M1 block adds it via clc/adc RectCount. RectCount ($92) is free in
+    ; the VBL (kernel re-inits RowIdx at entry; the pack uses $8F).
+    lda (RoomPF0Lo),Y       ; MetaA
+    and #$01
+    tax
+    lda M1OffTab,X
+    sta RectCount
     lda (RoomPF0Lo),Y       ; MetaA
     lsr                     ; band0 bit -> carry
     lda #0
@@ -926,8 +936,8 @@ StageBandTab:
     asl
     asl
     asl                     ; *8
-    sec
-    sbc #1                  ; 7+8*left_col
+    clc
+    adc RectCount           ; staged offset: -1 (left, $FF) / +79 (right,$4f)
     jmp .M1got
 .M1zero:
     lda #0
@@ -1036,6 +1046,8 @@ StageBandTab:
     sta CollisionEndY
 .SBTPack:
     jmp ReturnPad                   ; ReturnPad → bank0 VBLANK caller
+M1OffTab:                           ; Phase 5: MetaA b0 → M1 x-offset (left/right)
+    .byte $ff, $4f
 
 ; ------------------------------------------------------------------------------
 ; TitleSequence — intro ($FD) phase machine (plans/title_bomb_sequence_plan).
