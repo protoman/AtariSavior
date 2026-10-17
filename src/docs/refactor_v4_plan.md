@@ -200,6 +200,8 @@ Legend: `[V]` verified now · `[?]` must be verified by a probe/build before doi
 | **D1.1** reclaim dead ZP `RoomPF1/2` | `<D1.1>` | **+4 ZP** (`$9B-$9E` = `ZpSpare0-3`); addresses stable |
 | **Phase 3.1 canary** `TitleSelect` -> bank1 | `91c5d8a` | **+29B bank0** (`.ds $FBD0` fill 40->69B) |
 | **Phase 3** title kernel+font+bands+fonts -> bank1 | `81e4f6b` | **+309B bank0** (`.ds $FB00` fill 3->261B; `.ds $FBD0` 69->117B) |
+| **D2** bar tables 242B->30B (period-8) | `9f39c30` | **+212B bank1** (`.ds $F937` fill 67->277B); 0 HUD cycles (overscan index) |
+| docs progress | `097fd9f` | — |
 
 ### Bank0 free space now (verified from `bank0.lst`)
 
@@ -208,24 +210,36 @@ Legend: `[V]` verified now · `[?]` must be verified by a probe/build before doi
 | `$F7FC-$F8DC` | **225B** | before the `$F8DD` sprite pin |
 | `$F9FB-$FAFF` | **261B** | where the title kernel used to be (before `$FB00` pin) |
 | `$FB5B-$FBCF` | **117B** | title font/helpers region (before `$FBD0` pin) |
-| `$FC61-$FC67` | 7B | E4 gap remainder (CallPads grew) |
-| **Total** | **~610B** | contiguous-ish chunks usable by new gameplay code |
+| **Total** | **~603B** | three contiguous chunks usable by new gameplay code |
 
-### Bank1 free space now
-- `$F357-$F53F` (~489B, after the moved title block, before `MenuMain` `org $F540`)
-- `$FDE3-$FEE6` (260B), `$FCC7-$FCFF` (57B), `$FF0F-$FFF9` (235B).
+### Bank1 free space now (after D2)
+- `$F357-$F53F` (~490B, before `MenuMain` `org $F540`)
+- `$F822-$F936` (**277B**, before the `$F937` StripBlastCheck pin)
+- `$FDE3-$FEE6` (260B), `$FF0F-$FFF9` (235B), `$F995-$F9AB` (23B), `$FAFE-$FB0F` (18B)
+- **Total ~1300B**
 
-### Remaining (not done; each needs a fresh verification)
-- **D4 dead-data removal is BLOCKED**: bank2's now-dead title bodies
-  (`FooterBand`/`TitlePlayerBand`/`TitleBandPrep`/fonts) are referenced by
-  bank2's `$FBE0`/`$FBE8` fold twins and their `.ds` pins anchor that twin block
-  — removing them needs the bank1/bank2 pin surgery first.
-- **D2 table compaction**: `BarDelayTable`/`BarFineTable` (242B) are
-  period-8 → ~30B, but the reader needs `(B-1)>>3` (~+10c) and the bar path is
-  budget-tight; verify against `sim_frame_budget` before attempting.
-- **D3.1 level data -> bank3** (`$F9D9-$FBA6` ~461B): needs reader rewiring
-  (`EnterRoomB2` direct reads → fold). Size it before attempting.
-- **D1.2/D1.3** more ZP (`$F6/$F7`, `$E0/$E1`): needs a stack-depth inline.
+### Bank3 free space
+- `$F0A3-$F7FF` (**1885B**), plus scattered.
+
+### Verified blockers (why the remaining big steps aren't one-liners)
+- **D3.1 level data -> bank3**: the level-data readers are `jsr FoldIndirect`
+  (`sta $1FF8` = **bank2**) plus `EnterRoomB2` direct same-bank reads. The fold
+  is shared with **enemy** data (also bank2) and `LEVEL_DATA_ADDR` is a frozen
+  literal in `kernel.asm` + `verify_build.check_frozen_addrs`. Moving the window
+  needs a separate bank3 fold + every call site rewired + generator spill
+  re-placement. Not a single edit.
+- **D4 dead bank2 title code**: the bodies sit between `.ds` pins that also
+  bracket `generated/spill_*.asm` includes; removing a body shifts a spill's
+  emit address, so `convert_level.py`'s slot constants + `--precheck` must change
+  in lockstep. The `$FBE0`/`$FBE8` fold twins also `jmp` the bodies.
+- **Pin shift (the old "hundreds of bytes" hope)**: verified capped at **~18B**
+  by bank1's pre-`$FBF8` content (`$FBE6`); D2's 212B landed in the `$F937` fill,
+  not there. Not worth the 4-bank risk — the same bytes are already free as fills.
+
+### Remaining ZP
+- `$9C-$9E` still free (`ZpSpare1-3`); `$F6/$F7` need a stack-depth inline;
+  `$E0/$E1` are **not** free (bank1 writes `scorePtr1/2` = `$E0/$E1` every HUD
+  frame — the v3 plan's claim was wrong).
 
 ### Test/sim updates required by Phase 3 (done)
 - `sim_frame_budget.PC_TITLE` -> bank0 `CallPad_TitleKernel` (sim is bank-aware).

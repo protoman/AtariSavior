@@ -224,7 +224,7 @@ assert {frame & 4 for frame in range(16)} == {0, 4}     # flutter bit pattern
 kernel_pad = section(kernel, "TitlePlayerFold:", ".ds $FBF8 - *, 0")
 bank2_pad = section(bank2, ".ds $FBE8 - *, 0", ".ds $FBF8 - *, 0")
 assert "sta $1FF8\n    jmp $F880" in kernel_pad
-assert "sta $1FF8\n    jmp TitlePlayerBand" in bank2_pad
+assert "sta $1FF8\n    jmp $F880" in bank2_pad
 
 # --- TitleSequence cross-bank fold: bank0 jsr target + bank2 mirror ---
 assert "TitleSequenceFold:" in kernel
