@@ -20,6 +20,16 @@ No entry is worked on without user greenlight.
    **Player:** die in water → respawn → hold Up → falls back in, death
    loop, room unescapable.
    **Benefit:** respawn survivable; player flies out.
+   **Status: FIXED 2026-10-16 (user-confirmed in Stella) — commits
+   1dfd1b8 + da214d4.** Root cause: after a respawn the jet ramps
+   (+1/4 frames) while gravity (+8/frame) still applies → ~0.6s of net
+   downward. Fix = respawn hover: `Hover` ZP flag (\$9C) armed by
+   `LoseLife`, cleared by `LoadLevel`; physics pins `vy=0` at `.Integrate`
+   while Hover (no fall) but lets `JetPower` ramp, clearing once thrust
+   beats gravity (`>= GRAVITY+1`). First attempt (1dfd1b8) put the check
+   after the clamp's fall-through so it was unreachable, and armed it at
+   every drop-in (broke stage-start landing/OnGround); fixed in da214d4.
+   Guard: `tools/test_respawn_hover.py` + `tools/test_water_respawn.py`.
 
 ## Open bugs
 
