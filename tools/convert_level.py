@@ -281,6 +281,7 @@ def resolve_asym_patches(model: dict,
     left_patch_rows: set[int] = set()
     seen: set[tuple[int, int, int]] = set()
     has_right = False
+    m1_door_right = False
     right = ["".join(left_rows[y][WIDTH - 1 - k] for k in range(WIDTH))
              for y in range(HEIGHT)]
     for p in patches:
@@ -320,6 +321,14 @@ def resolve_asym_patches(model: dict,
             raise ValueError(
                 f"model {mid}: patch col {col} out of 0..{WIDTH - 1} (D7 grid)")
         char = tile_to_char(tile)
+        if side == 0 and tile == LOCKED_DOOR:
+            # Phase 5: a RIGHT-half door is drawn by the M1 strip (yellow
+            # COLUP1, OvM1Block collision, key touch-unlock), positioned on
+            # the right by MetaA b0=1 (bank2 StageBandTab M1OffTab). No ball.
+            m1_door_right = True
+            left_cols.add(col)
+            left_patch_rows.add(row)
+            continue
         if side == 1:
             # M1: paints wall-colored color over an OPEN left cell.
             if char not in "#H":
@@ -356,7 +365,7 @@ def resolve_asym_patches(model: dict,
         raise ValueError(
             f"model {mid}: side-1 patches mix LOCKED_DOOR with tile(s) "
             f"{others} — a door model's M1 patches must ALL be LOCKED_DOOR")
-    m1_door = LOCKED_DOOR in side1_tiles
+    m1_door = (LOCKED_DOOR in side1_tiles) or m1_door_right
     if len(left_cols) > 1:
         raise ValueError(
             f"model {mid}: M1 patches span columns {sorted(left_cols)} — "
@@ -364,25 +373,32 @@ def resolve_asym_patches(model: dict,
     m1_x = 0
     if left_cols:
         m1_col = next(iter(left_cols))
+        # A right-half door's M1 bar sits at x = 87+8*col, but its wall-hide
+        # depends on the reflected PF as well: one of {col, WIDTH-1-col} can
+        # be open while the other is wall, and ENAM1 latches the WHOLE cave —
+        # so require BOTH columns to satisfy the envelope for a right door.
+        cols = ({m1_col, WIDTH - 1 - m1_col} if m1_door_right else {m1_col})
         for b in range(HEIGHT):
-            cell = left_rows[b][m1_col]
-            if b in left_patch_rows and cell in "#H":
-                raise ValueError(
-                    f"model {mid}: M1 patch band {b} col {m1_col} is wall — "
-                    f"the whole-cave ENAM1 latch would hide the patch "
-                    f"(wall-hide guard)")
-            if b not in left_patch_rows and cell not in "#H":
-                raise ValueError(
-                    f"model {mid}: M1 cell col {m1_col} is open in band {b} "
-                    f"with no patch — the whole-cave ENAM1 latch would paint "
-                    f"it (wall-hide guard: wall the cell or patch the band)")
+            for cc in sorted(cols):
+                cell = left_rows[b][cc]
+                if b in left_patch_rows and cell in "#H":
+                    raise ValueError(
+                        f"model {mid}: M1 patch band {b} col {cc} is wall — "
+                        f"the whole-cave ENAM1 latch would hide the patch "
+                        f"(wall-hide guard)")
+                if b not in left_patch_rows and cell not in "#H":
+                    raise ValueError(
+                        f"model {mid}: M1 cell col {cc} is open in band {b} "
+                        f"with no patch — the whole-cave ENAM1 latch would "
+                        f"paint it (wall-hide guard: wall the cell or patch "
+                        f"the band)")
         m1_x = 7 + 8 * m1_col
     ball_x = 87 + 8 * next(iter(right_cols)) if has_right else 0
     if has_right and model.get("mid_band_type"):
         # Ball patch cells on row 1 follow the middle-band selector too
         # (rows_from_json already promoted the mirrored base cells).
         right[1] = "".join("H" if c == "#" else c for c in right[1])
-    return (right if has_right else None), ball_x, m1_x, m1_door
+    return (right if has_right else None), ball_x, m1_x, m1_door, m1_door_right
 
 
 def model_door_flag(model: dict) -> bool:
@@ -395,9 +411,13 @@ def model_door_flag(model: dict) -> bool:
 
 
 def model_m1_door_flag(model: dict) -> bool:
-    """True when the model carries a side-1 LOCKED_DOOR (MetaA b3)."""
+    """True when the model carries a LOCKED_DOOR door (MetaA b3).
+
+    Since Phase 5 (2026-10-17) BOTH halves use the M1 strip: a side-1 door is
+    the left door, a side-0 door is authored as the right door (MetaA b0=1).
+    """
     return any(
-        len(p) == 4 and p[3] == 1 and p[2] == LOCKED_DOOR
+        len(p) >= 3 and p[2] == LOCKED_DOOR
         for p in (model.get("asym_patches") or [])
     )
 
@@ -761,7 +781,7 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
                                    models_by_id)
         check_model_objects(model, f"models.json model {mid}")
         res = resolve_asym_patches(model, left_rows)
-        asym, ball_x, m1_x, m1_door = res if res else (None, 0, 0, False)
+        asym, ball_x, m1_x, m1_door, m1_right = res if res else (None, 0, 0, False, False)
         # M1 patches on the hot band (row 1 = rows_from_json's hot row) go
         # into the hot stream: the cells are PF-open so the 'H' walk never
         # sees them — convert_room emits them as mask-$00 records.
@@ -774,8 +794,10 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         model_lines += convert_room.lines(
             left_rows, prefix=f"M{mid}", source=f"models.json model {mid}",
             asym_rows=asym, asym_ball_x=ball_x, asym_m1_x=m1_x,
-            hot_m1=hot_m1, door=model_door_flag(model),
+            hot_m1=hot_m1, door=False,   # Phase 5: no ball doors — a side-0
+                                         # door is emitted as the right M1 door
             m1_door=model_m1_door_flag(model),
+            m1_right=m1_right,
             hot=bool(model.get("mid_band_type")))
     model_lines.append("")
     (generated / "models_data.asm").write_text("\n".join(model_lines) + "\n")

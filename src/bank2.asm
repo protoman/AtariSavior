@@ -1283,6 +1283,9 @@ OvM1Block:
     bne .OvM1no
     ldy #9
     lda (RoomPF0Lo),Y           ; MetaA
+    and #$01                    ; Phase 5: b0 = M1 strip on the RIGHT half
+    tax                         ;   (door band mask is $02 → b0 free)
+    lda (RoomPF0Lo),Y           ; reload MetaA
     lsr
     lsr
     lsr
@@ -1290,9 +1293,11 @@ OvM1Block:
     beq .OvM1no
     asl
     asl
-    asl
-    sec
-    sbc #1                      ; M1X = 7+8*left_col
+    asl                         ; 8*(m1_col+1)
+    clc
+    adc M1OffTab,X              ; -1 (left, $FF) / +79 (right, $4f) → the
+                                ;   side's M1X (7+8*col / 87+8*col) — MUST
+                                ;   match the bank2 StageBandTab staging.
     sta RectCount               ; scratch M1X (EndX = prologue min col is
                                 ; CollisionEndX — kept intact for HotOverlapFlag)
     lda CollisionX              ; vl

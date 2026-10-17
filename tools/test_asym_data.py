@@ -48,7 +48,7 @@ def emitted(model):
     left = convert_level.rows_from_json({"model_id": model["id"]},
                                         {model["id"]: model})
     res = convert_level.resolve_asym_patches(model, left)
-    asym, ball_x, m1_x, m1_door = res if res else (None, 0, 0, False)
+    asym, ball_x, m1_x, m1_door, m1_right = res if res else (None, 0, 0, False, False)
     lines = convert_room.lines(left, prefix=f"M{model['id']}",
                                source="test", asym_rows=asym,
                                asym_ball_x=ball_x, asym_m1_x=m1_x,
@@ -89,7 +89,7 @@ def main() -> int:
     model = make_model(patches=[[0, 0, 1], [2, 0, 1]])
     lines, res = emitted(model)
     assert res is not None
-    asym, ball_x, m1_x, _m1_door = res
+    asym, ball_x, m1_x, _m1_door, _m1r = res
     assert len(asym) == 3
     assert ball_x == 87, f"ball x {ball_x} != 87 (right_col 0 = 87+8*0)"
     assert m1_x == 0, f"m1 x {m1_x} != 0 (no side-1 patches)"
@@ -144,7 +144,7 @@ def main() -> int:
     m1_only = make_model(patches=[[0, 3, 1, 1], [2, 3, 1, 1]])
     out_m, res_m = emitted(m1_only)
     assert res_m is not None
-    asym_m, bx_m, m1x_m, _ = res_m
+    asym_m, bx_m, m1x_m, _, _ = res_m
     assert asym_m is None, "M1-only keeps the right half a plain mirror"
     assert bx_m == 0, f"ball x {bx_m} != 0 (no right patches)"
     assert m1x_m == 31, f"m1 x {m1x_m} != 31 (left col 3 = 7+8*3)"
@@ -160,7 +160,7 @@ def main() -> int:
     case3 = make_model(patches=[[0, 7, 1], [0, 8, 1, 1]], tiles=case3_tiles)
     out_c, res_c = emitted(case3)
     assert res_c is not None
-    asym_c, bx_c, m1x_c, _ = res_c
+    asym_c, bx_c, m1x_c, _, _ = res_c
     assert asym_c is not None, "ball patch present -> right rows emitted"
     assert bx_c == 143, f"ball x {bx_c} != 143 (right_col 7 = 87+8*7)"
     assert m1x_c == 71, f"m1 x {m1x_c} != 71 (left col 8 = 7+8*8)"

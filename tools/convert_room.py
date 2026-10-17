@@ -144,6 +144,7 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
           hot_m1: list[tuple[int, int]] | None = None,
           door: bool = False,
           m1_door: bool = False,
+          m1_right: bool = False,
           hot: bool | None = None) -> list[str]:
     """Build the asm lines for a grid (shared by per-room and per-model emission).
 
@@ -345,9 +346,10 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         raise ValueError(
             f"{source}: LOCKED_DOOR side 1 needs an M1 patch strip")
     out.append(
-        f"  .byte ${(m1_col_plus << 4) | band_mask | (0x08 if m1_door else 0):02x}"
+        f"  .byte ${(m1_col_plus << 4) | band_mask | (0x08 if m1_door else 0) | (0x01 if m1_right else 0):02x}"
         "                  ; (m1_col+1)<<4 | band mask"
-        + (" | $08 left door" if m1_door else ""))
+        + (" | $08 door" if m1_door else "")
+        + (" | $01 right half" if m1_right else ""))
     ball_col_plus = 0
     if asym_ball_x:
         ball_col_plus = ((asym_ball_x - 87) >> 3) + 1
