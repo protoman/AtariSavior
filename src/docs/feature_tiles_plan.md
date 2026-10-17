@@ -257,12 +257,13 @@ EnemyType 6 → OBJ_NONE offset-0 slot (art = 8-wide key, user OK). Pickup →
 `0→$FF` (`bmi` checks); `CheckEnemyHit` type 6 → `CEH_Key` (marks the slot
 dead + latches `KeyHeld`, NO life loss); `SelectActiveObject` render-skips a
 type-6 while `KeyHeld`; **door = touch-to-open, NOT possession** — the M1
-(left) strip unlocks (`OvM1Block` → `b4`) only on player-box contact with
-`KeyHeld`. Right door (ball strip) touch-unlock NOT yet wired: its
-`OvShutBand` hook needs bank2's full `$FE9C` hole freed (move
-`VcrCoveredState`). `CEH_Key` lives in bank0's `$F82C` pin gap (177 B
-slack); removed an early auto-open that wrongly cleared `b3/b4` on pickup.
-Also fixed a latent parked-object wrap (bugs #34).
+(left) strip unlocks (`OvM1Block` → `b4`) and the ball (right) strip unlocks
+(`OvShutBand` → `b3`, gated off vcrunch rooms by `VcrBand=$FF`) only on
+player-box contact with `KeyHeld`. `CEH_Key` lives in bank0's `$F82C` pin
+gap (177 B slack). Removed an early auto-open that wrongly cleared `b3/b4` on
+pickup. Also fixed a latent parked-object wrap (bugs #34). `VcrCoveredState`
+was relocated ($FE9C hole → bank2 spill gap $F8B7) to make room for the
+`OvShutBand` hook (it is dead — no callers since `VcrStateTab`).
 
 **User rulings (2026-10-13):**
 - **One key opens ALL doors, forever** (single flag — keep it simple).

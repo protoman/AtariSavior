@@ -79,12 +79,12 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $96 | JetPower | Jet thrust 0..JET_MAX |
 | $97 | StepsLeft | Vertical step budget |
 | $98 | RoomNo | Current room index |
-| $99 | RoomPF0Lo | TilePF0 ptr lo |
+| $99 | RoomPF0Lo | TilePF0 ptr lo (the 3 PF rows are contiguous from here: `(RoomPF0Lo),Y`, Y spans rows 0-2 — no separate PF1/PF2 ptrs) |
 | $9A | RoomPF0Hi | TilePF0 ptr hi |
-| $9B | RoomPF1Lo | TilePF1 ptr lo |
-| $9C | RoomPF1Hi | TilePF1 ptr hi |
-| $9D | RoomPF2Lo | TilePF2 ptr lo |
-| $9E | RoomPF2Hi | TilePF2 ptr hi |
+| $9B | BarIdx | Power-bar table idx `(BarLevel+7)>>3` (synced in kernel overscan, read by bank1 HUD) |
+| $9C | Hover | Respawn hover flag (bugs.md #1): 1 while armed (LoseLife), cleared at LoadLevel |
+| $9D | MelPtr | Intro music: melody stream index (bank1 MusicTick) |
+| $9E | MelTimer | Intro music: melody frames left (bank1 MusicTick) |
 | $9F | LevelPFDataLo | Level RoomDataTable lo |
 | $A0 | LevelPFDataHi | Level RoomDataTable hi |
 | $A1 | LevelConnLo | RoomConnections lo |
