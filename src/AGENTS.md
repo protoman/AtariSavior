@@ -331,14 +331,26 @@ Test scripts stay where they are (`../tools/test_*.py`,
 `src/tools/test_title_demo.py`) and read only from `src/tests/`.
 **No editor change to rooms/models may break any test or build.**
 
-Two staging mechanisms:
+**RE-ASSERTED 2026-10-17 (user, emphatic): "When creating tests, create the
+rooms, and put them in tests folder. Do not use live-data for tests."**
+This means, concretely, that a test **authors its own rooms/models** and
+keeps them under `src/tests/` — it does **not** read `src/*.bin`,
+`src/*.lst`, or `src/generated/**` (the live build). The earlier
+"ROM byte staging" (`test_fixtures.py` injecting into the live
+`src/bank2.bin` at live `bank2.lst` label addresses) **VIOLATED this rule**:
+because the label addresses come from `bank2.lst`, those tests were coupled
+to whatever the editor last wrote into `models_data.asm`, so a model edit
+(e.g. model 4 losing its hot rect → a 13B→10B rect slot) broke
+`test_fixtures` + `test_hcrunch` + `test_laser_wall`. That mechanism is
+**NOT** sanctioned any more — it must be replaced by frozen copies.
+**Whenever a ROM-byte fixture is needed: copy the bank image AND the label
+set into `src/tests/` and read those, never the live build.**
+
+Two staging mechanisms (both fully test-owned):
 - **File copies** (models.json, level jsons, generated slices):
   frozen files under `src/tests/`.
-- **ROM byte staging**: `../tools/test_fixtures.py` — frozen bytes
-  injected into the test's own `bank*.bin` copy via `freeze_m1`/`freeze_m2`
-  at the CURRENT label addresses, so pointer-based reads (StageBandTab
-  MetaA/MetaB, rect/hot stream walks) see the fixture too, while label
-  moves stay harmless. Fixture bytes change only by deliberately
+- **Frozen ROM image + labels**: a test-owned `src/tests/bank*.bin` (and a
+  frozen label set) — never `src/bank*.bin` / `src/*.lst`. Fixture bytes change only by deliberately
   re-freezing in that module.
 
 Sanctioned exceptions — their job IS to track live data (run them after

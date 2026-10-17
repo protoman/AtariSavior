@@ -42,13 +42,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
+FROZEN = SRC / "tests" / "frozen"   # test-owned banks+labels
+BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 # Phase 4: model 0 is the asymmetric test room — force its meta symmetric
 # in THIS run's ROM image so no strip contact fires (MetaA nibble 0 skips
 # the LWC M1 tip test; MetaB 0 keeps the ball strip out of the marker path).
 _L2 = {}
-for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank2.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(M0(?:MetaA|MetaB))\s*$",
                   _l)
     if _m:
@@ -60,7 +61,7 @@ for _n in ("M0MetaA", "M0MetaB"):
 # Hot (mid_band_type, 2026-10-05) death would corrupt the deterministic
 # sweep — zero model 0's hot-rect count in THIS run's ROM image too (hot
 # stream = RoomRects label + 1 + 2*solid_count — packed 2B/rect stream).
-for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank2.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+M0RoomRects\s*$", _l)
     if _m:
         _a = int(_m.group(1), 16) - 0xF000
@@ -71,7 +72,7 @@ else:
 
 # labels from bank0.lst (addresses move every commit)
 LABELS = {}
-for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+([A-Za-z_][A-Za-z0-9_]*)\s*$", _l)
     if _m:
         LABELS[_m.group(2)] = int(_m.group(1), 16)
@@ -92,7 +93,7 @@ RANGE_LO = LABELS["LaserInput"]
 # the $FExx hole, BELOW LaserInput, when the aligned color table landed)
 RANGE_HI = LABELS.get("TallyTramp", 0xFFF0)
 rts_pcs = set()
-for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(?:[0-9a-f]{2}[ \t]+)+rts\b", _l)
     if _m:
         a = int(_m.group(1), 16)

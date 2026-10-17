@@ -33,7 +33,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
+FROZEN = SRC / "tests" / "frozen"   # test-owned banks+labels
+BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 
 def lst_labels(path):
@@ -45,8 +46,8 @@ def lst_labels(path):
     return out
 
 
-L0 = lst_labels(SRC / "bank0.lst")
-L2 = lst_labels(SRC / "bank2.lst")
+L0 = lst_labels(FROZEN / "bank0.lst")
+L2 = lst_labels(FROZEN / "bank2.lst")
 PC_STARTFRAME = L0["StartFrame"]
 
 import test_fixtures as FX  # noqa: E402
@@ -79,7 +80,7 @@ MODEL = {  # fixture models only (rule 2026-10-14). M0 = this test's
 RANGE_LO = L0["LaserInput"]
 RANGE_HI = L0.get("TallyTramp", 0xFFF0)
 rts_pcs = set()
-for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s+\d+\s+([0-9a-f]{4})\s+(?:[0-9a-f]{2}[ \t]+)+rts\b", _l)
     if _m:
         a = int(_m.group(1), 16)
