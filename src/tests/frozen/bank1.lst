@@ -1,0 +1,2264 @@
+------- FILE bank1.asm LEVEL 1 PASS 3
+      1  fffe					      processor	6502
+      2  10000 ????						; ==============================================================================
+      3  10000 ????						; bank1 — HUD rendering + 6-digit score (F6 bankswitch, $F000-$FFFF)
+      4  10000 ????						; ==============================================================================
+      5  10000 ????						; Follows HERO/comparison pattern exactly:
+      6  10000 ????						; - GRP0/GRP1 for indicator sprites (lives, bombs)
+      7  10000 ????						; - 48-pixel sprite technique for score (NUSIZ copies + VDELP cross-buffer)
+      8  10000 ????						; - SetObjectXPos for precise positioning
+      9  10000 ????						; - Returns via fold-pad at $FC70
+     10  10000 ????
+     11  10000 ????		00 01	    VBLANK     =	$01
+     12  10000 ????		00 02	    WSYNC      =	$02
+     13  10000 ????		00 04	    NUSIZ0     =	$04
+     14  10000 ????		00 05	    NUSIZ1     =	$05
+     15  10000 ????		00 06	    COLUP0     =	$06
+     16  10000 ????		00 07	    COLUP1     =	$07
+     17  10000 ????		00 08	    COLUPF     =	$08
+     18  10000 ????		00 09	    COLUBK     =	$09
+     19  10000 ????		00 ac	    PlayerLives =	$AC
+     20  10000 ????		00 f0	    PlayerBombs =	$F0
+     21  10000 ????		00 ae	    BarLevel   =	$AE
+     22  10000 ????		00 9b	    BarIdx     =	$9B	; (BarLevel+7)>>3, synced by kernel overscan (D2)
+     23  10000 ????		00 78	    BAR_MAX    =	120	; full bar (60 frames/step × 120 = 120s)
+     24  10000 ????		00 08	    COLUPF     =	$08
+     25  10000 ????		00 09	    COLUBK     =	$09
+     26  10000 ????		00 0d	    PF0        =	$0D
+     27  10000 ????		00 0e	    PF1        =	$0E
+     28  10000 ????		00 0f	    PF2        =	$0F
+     29  10000 ????		00 10	    RESP0      =	$10
+     30  10000 ????		00 11	    RESP1      =	$11
+     31  10000 ????		00 1b	    GRP0       =	$1B
+     32  10000 ????		00 1c	    GRP1       =	$1C
+     33  10000 ????		00 1d	    ENAM0      =	$1D
+     34  10000 ????		00 1e	    ENAM1      =	$1E
+     35  10000 ????		00 1f	    ENABL      =	$1F
+     36  10000 ????		00 20	    HMP0       =	$20
+     37  10000 ????		00 21	    HMP1       =	$21
+     38  10000 ????		00 2a	    HMOVE      =	$2A
+     39  10000 ????		00 0b	    REFP0      =	$0B
+     40  10000 ????		00 0c	    REFP1      =	$0C
+     41  10000 ????		00 0a	    CTRLPF     =	$0A
+     42  10000 ????		00 25	    VDELP0     =	$25
+     43  10000 ????		00 26	    VDELP1     =	$26
+     44  10000 ????
+     45  f000					      org	$F000
+     46  f000
+     47  f000							; Bank0 power-up stub: lda #0 / sta $1FF6 → lands here, jumps to GameStart
+     48  f000		       4c 08 f0 	      jmp	$F008
+     49  f003
+     50  f003							; --- ABW rect tables + BombMaskBit (relocated 2026-10-10) ---
+     51  f003							; The BMW span-overlap fix grew the walk ~9B and overflowed the
+     52  f003							; pre-$FBF8 content end ($FBF5, only 2B slack → Origin
+     53  f003							; Reverse-indexed). Tables are abs-indexed from BombMarkWalls only,
+     54  f003							; so they park in the $F003 fill gap (kept clear of the stub's
+     55  f003							; $F008 landing zone). Recheck this gap if the power-up stub grows.
+     56  f003		       00 00 00 00*	      .ds	$F010 - *, 0
+     57  f010		       cc d0 d4 d8*ABWXTab    .byte.b	RcW1, RcW1+4, RcW1+8, RcW1+12, RcW1+16	; rect.x (EQU-derived S3.1)
+     58  f015		       ce d2 d6 da*ABWWTab    .byte.b	RcW1+2, RcW1+6, RcW1+10, RcW1+14, RcW1+18	; rect.w
+     59  f01a		       cd d1 d5 d9*ABWYTab    .byte.b	RcW1+1, RcW1+5, RcW1+9, RcW1+13, RcW1+17	; rect.y (plan 5.1 punch)
+     60  f01f		       cf d3 d7 db*ABWHTab    .byte.b	RcW1+3, RcW1+7, RcW1+11, RcW1+15, RcW1+19	; rect.h
+     61  f024				   BombMaskBit
+     62  f024		       08 10 20 40*	      .byte.b	$08, $10, $20, $40, $00	; WallMask bit per rect index; idx4 =
+     63  f029							;  $00 (rect4 never in WallMask — zp doc
+     64  f029							;  S3.2) — PairGone guards its double-score
+     65  f029							;  (kernel copy died with ApplyBombWalls)
+     66  f029
+     67  f029							; MothYDerive — moved from bank0 (leaf_move_plan Step 0, 2026-10-16). In
+     68  f029							; Y = record+0, X = slot (preserved). Out A = live Y delta; the bank0
+     69  f029							; caller then jmp DEYDelta (adds the ROM spawn y). Same math as old copy.
+     70  f029				   MothYDerive
+     71  f029		       a5 c2		      lda	EnemyRamP
+     72  f02b		       4a		      lsr
+     73  f02c		       4a		      lsr
+     74  f02d		       29 0f		      and	#15
+     75  f02f		       c9 08		      cmp	#8
+     76  f031		       90 02		      bcc	.mUpB1
+     77  f033		       49 0f		      eor	#15
+     78  f035				   .mUpB1
+     79  f035		       c9 07		      cmp	#7
+     80  f037		       90 02		      bcc	.mOkB1
+     81  f039		       a9 06		      lda	#6
+     82  f03b				   .mOkB1
+     83  f03b		       0a		      asl
+     84  f03c		       69 fa		      adc	#$FA
+     85  f03e		       4c f8 fb 	      jmp	ReturnPad
+     86  f041
+     87  f041							; TitleSelect — moved from bank0 (refactor_v4_plan Phase 3.1 canary, 2026-10-16).
+     88  f041							; Pure leaf (no calls); returns C=1 edge (caller runs LoadLevel) / C=0 no-edge.
+     89  f041							; Entered via CallPad_TitleSelect ($FC4F); tail-exits through ReturnPad
+     90  f041							; (sta $1FF6/rts), which returns to the bank0 caller with C intact.
+     91  f041		       02 82	   SWCHB      =	$0282
+     92  f041		       00 97	   StepsLeft  =	$97	; bank0 per-frame step latch (ZP byte block)
+     93  f041		       00 04	   LEVEL_COUNT =	4	; hand copy of kernel LEVEL_COUNT
+     94  f041				   TitleSelect
+     95  f041		       a5 97		      lda	StepsLeft
+     96  f043		       29 02		      and	#%00000010
+     97  f045		       f0 17		      beq	.TSnoB1
+     98  f047		       ad 82 02 	      lda	SWCHB
+     99  f04a		       29 02		      and	#%00000010
+    100  f04c		       d0 10		      bne	.TSnoB1
+    101  f04e		       e6 a3		      inc	Level
+    102  f050		       a5 a3		      lda	Level
+    103  f052		       c9 04		      cmp	#LEVEL_COUNT
+    104  f054		       d0 04		      bne	.TSokB1
+    105  f056		       a9 00		      lda	#0
+    106  f058		       85 a3		      sta	Level
+    107  f05a				   .TSokB1
+    108  f05a		       38		      sec
+    109  f05b		       4c f8 fb 	      jmp	ReturnPad
+    110  f05e				   .TSnoB1
+    111  f05e		       18		      clc
+    112  f05f		       4c f8 fb 	      jmp	ReturnPad
+    113  f062
+    114  f062							; ==============================================================================
+    115  f062							; Title subsystem — MOVED from bank0 (TitleKernel/TitleFont) + bank2 (bands/
+    116  f062							; fonts/sprites) 2026-10-16 (docs/refactor_v4_plan.md Phase 3). Kernel + band
+    117  f062							; bodies share bank1; bank0 enters via CallPad_TitleKernel ($FC55); tail-exits
+    118  f062							; via CallPad_Overscan ($FC5B). Band bodies end in rts (same-bank).
+    119  f062							; ==============================================================================
+    120  f062		       00 80	   RoomX      =	$80
+    121  f062		       00 81	   RoomY      =	$81
+    122  f062		       00 82	   PlayerDir  =	$82
+    123  f062		       00 86	   Grp0Ptr    =	$86
+    124  f062		       00 87	   Grp0PtrHi  =	$87
+    125  f062		       00 f7	   BombTimer  =	$F7
+    126  f062		       00 f2	   TallyTicks =	$F2
+    127  f062		       00 00	   COLOR_CAVE_BG =	$00
+    128  f062		       00 1c	   COLOR_HOT_Y =	$1C
+    129  f062		       00 44	   COLOR_HOT_R =	$44
+    130  f062		       00 46	   COLOR_BOMBS =	$46
+    131  f062		       00 6a	   COLOR_TITLE =	$6A
+    132  f062		       00 e0	   FooterPtr1 =	$E0
+    133  f062		       00 e2	   FooterPtr2 =	$E2
+    134  f062		       00 e4	   FooterPtr3 =	$E4
+    135  f062		       00 e6	   FooterPtr4 =	$E6
+    136  f062		       00 e8	   FooterPtr5 =	$E8
+    137  f062		       00 ea	   FooterPtr6 =	$EA
+    138  f062
+    139  f062				   PlayerWalkA
+    140  f062		       3c		      .byte.b	%00111100	; row 0 torso (sprites.png 2026-10-03)
+    141  f063		       7e		      .byte.b	%01111110	; row 1
+    142  f064		       7c		      .byte.b	%01111100	; row 2 — yellow face
+    143  f065		       7e		      .byte.b	%01111110	; row 3
+    144  f066		       7c		      .byte.b	%01111100	; row 4 — grey pack
+    145  f067		       fe		      .byte.b	%11111110	; row 5
+    146  f068		       fe		      .byte.b	%11111110	; row 6
+    147  f069		       3e		      .byte.b	%00111110	; row 7  legs
+    148  f06a		       3e		      .byte.b	%00111110	; row 8
+    149  f06b		       14		      .byte.b	%00010100	; row 9
+    150  f06c		       22		      .byte.b	%00100010	; row 10 boots apart (spread)
+    151  f06d		       42		      .byte.b	%01000010	; row 11 boots apart
+    152  f06e
+    153  f06e				   PlayerWalkB
+    154  f06e		       3c		      .byte.b	%00111100	; row 0 torso (sprites.png 2026-10-03)
+    155  f06f		       7e		      .byte.b	%01111110	; row 1
+    156  f070		       7c		      .byte.b	%01111100	; row 2 — yellow face
+    157  f071		       7e		      .byte.b	%01111110	; row 3
+    158  f072		       7c		      .byte.b	%01111100	; row 4 — grey pack
+    159  f073		       fe		      .byte.b	%11111110	; row 5
+    160  f074		       fe		      .byte.b	%11111110	; row 6
+    161  f075		       3e		      .byte.b	%00111110	; row 7  legs
+    162  f076		       3e		      .byte.b	%00111110	; row 8
+    163  f077		       14		      .byte.b	%00010100	; row 9
+    164  f078		       18		      .byte.b	%00011000	; row 10 boots together (passing)
+    165  f079		       18		      .byte.b	%00011000	; row 11 boots together
+    166  f07a
+    167  f07a				   TitleKernel
+    168  f07a		       85 02		      sta	WSYNC	; entry-line overrun guard (KernelInit+dispatch)
+    169  f07c		       a9 00		      lda	#0
+    170  f07e		       85 09		      sta	COLUBK
+    171  f080		       85 0d		      sta	PF0
+    172  f082		       85 0e		      sta	PF1
+    173  f084		       85 0f		      sta	PF2
+    174  f086		       85 08		      sta	COLUPF
+    175  f088		       85 1b		      sta	GRP0
+    176  f08a		       85 1c		      sta	GRP1
+    177  f08c		       85 1b		      sta	GRP0	; flush VDEL buffers (score-technique pattern)
+    178  f08e		       85 0b		      sta	REFP0
+    179  f090		       85 0c		      sta	REFP1
+    180  f092		       85 1f		      sta	ENABL
+    181  f094		       85 1e		      sta	ENAM1
+    182  f096		       a9 6a		      lda	#COLOR_TITLE
+    183  f098		       85 06		      sta	COLUP0
+    184  f09a		       85 07		      sta	COLUP1
+    185  f09c		       a9 06		      lda	#6	; NUSIZ = 3 copies, 32px pitch (title widen #16)
+    186  f09e		       85 04		      sta	NUSIZ0
+    187  f0a0		       85 05		      sta	NUSIZ1
+    188  f0a2		       a9 01		      lda	#1	; VDELP = ON (cross-buffer active)
+    189  f0a4		       85 25		      sta	VDELP0
+    190  f0a6		       85 26		      sta	VDELP1
+    191  f0a8		       a9 29		      lda	#41
+    192  f0aa		       a2 00		      ldx	#0
+    193  f0ac		       20 f4 f7 	      jsr	SetObjectXPos_b1	; P0 slot base: drawn x34 (grid p=34 — V/P0c1
+    194  f0af		       a9 39		      lda	#57	;  must clear the S->V swap at x64, see #16)
+    195  f0b1		       a2 01		      ldx	#1
+    196  f0b3		       20 f4 f7 	      jsr	SetObjectXPos_b1	; P1 slot base: drawn x50
+    197  f0b6		       85 02		      sta	WSYNC
+    198  f0b8		       85 2a		      sta	HMOVE
+    199  f0ba							; --- Six font pointers for the VDEL sprite pipeline. ---
+    200  f0ba		       00 e0	   TPtr1      =	$E0	; font ptrs lo/hi: $E0/$E1, $E2/$E3,
+    201  f0ba		       00 e2	   TPtr2      =	$E2	;   $E4/$E5, $E6/$E7, $E8/$E9, $EA/$EB
+    202  f0ba		       00 e4	   TPtr3      =	$E4
+    203  f0ba		       00 e6	   TPtr4      =	$E6
+    204  f0ba		       00 e8	   TPtr5      =	$E8
+    205  f0ba		       00 ea	   TPtr6      =	$EA
+    206  f0ba		       a9 f1		      lda	#>TitleFont
+    207  f0bc		       85 e1		      sta	TPtr1+1
+    208  f0be		       85 e3		      sta	TPtr2+1
+    209  f0c0		       85 e5		      sta	TPtr3+1
+    210  f0c2		       85 e7		      sta	TPtr4+1
+    211  f0c4		       85 e9		      sta	TPtr5+1
+    212  f0c6		       85 eb		      sta	TPtr6+1
+    213  f0c8		       a9 7c		      lda	#<TitleFont	; $FB00
+    214  f0ca		       85 e0		      sta	TPtr1
+    215  f0cc		       a9 84		      lda	#<TitleFont+8
+    216  f0ce		       85 e2		      sta	TPtr2
+    217  f0d0		       a9 8c		      lda	#<TitleFont+16
+    218  f0d2		       85 e4		      sta	TPtr3
+    219  f0d4		       a9 94		      lda	#<TitleFont+24
+    220  f0d6		       85 e6		      sta	TPtr4
+    221  f0d8		       a9 9c		      lda	#<TitleFont+32
+    222  f0da		       85 e8		      sta	TPtr5
+    223  f0dc		       a9 a4		      lda	#<TitleFont+40
+    224  f0de		       85 ea		      sta	TPtr6
+    225  f0e0		       a2 08		      ldx	#8	; blank lines before text
+    226  f0e2				   .TkBlnk
+    227  f0e2		       85 02		      sta	WSYNC
+    228  f0e4		       ca		      dex
+    229  f0e5		       d0 fb		      bne	.TkBlnk
+    230  f0e7		       a9 6a		      lda	#COLOR_TITLE
+    231  f0e9		       85 06		      sta	COLUP0
+    232  f0eb		       85 07		      sta	COLUP1
+    233  f0ed		       a2 07		      ldx	#7
+    234  f0ef		       86 84		      stx	LineCount	; rows left (7..1 — byte0 blank, score parity)
+    235  f0f1				   .TkLoop
+    236  f0f1		       a4 84		      ldy	LineCount
+    237  f0f3		       b1 ea		      lda	(TPtr6),Y	; slot 6 = "R." — font byte7 = TOP row
+    238  f0f5		       aa		      tax		; cache slot 6
+    239  f0f6		       85 02		      sta	WSYNC
+    240  f0f8		       b1 e0		      lda	(TPtr1),Y	; slot 1 = "S."
+    241  f0fa		       8d 1b 00 	      sta.w	GRP0	; digit 1 -> GRP0A buffer
+    242  f0fd		       b1 e2		      lda	(TPtr2),Y	; slot 2 = "A."
+    243  f0ff		       85 1c		      sta	GRP1	; digit 2 -> GRP1A, digit 1 live on P0c1
+    244  f101		       b1 e4		      lda	(TPtr3),Y	; slot 3 = "V."
+    245  f103		       85 1b		      sta	GRP0	; digit 3 -> GRP0A, digit 2 live on P1c1
+    246  f105		       b1 e6		      lda	(TPtr4),Y	; slot 4 = "I."
+    247  f107		       85 ad		      sta	Temp	; cache digit 4
+    248  f109		       b1 e8		      lda	(TPtr5),Y	; slot 5 = "O."
+    249  f10b		       a4 ad		      ldy	Temp
+    250  f10d		       84 1c		      sty	GRP1	; digit 4 -> GRP1A, digit 3 live on P0c2
+    251  f10f		       85 1b		      sta	GRP0	; digit 5 -> GRP0A, digit 4 live on P1c2
+    252  f111		       86 1c		      stx	GRP1	; digit 6 -> GRP1A, digit 5 live on P0c3
+    253  f113		       86 1b		      stx	GRP0	; digit 6 -> GRP0A, digit 6 live on P1c3
+    254  f115		       c6 84		      dec	LineCount
+    255  f117		       d0 d8		      bne	.TkLoop
+    256  f119		       85 02		      sta	WSYNC	; close the last text line and clear VDEL slots
+    257  f11b		       a9 00		      lda	#0
+    258  f11d		       85 1b		      sta	GRP0
+    259  f11f		       85 1c		      sta	GRP1
+    260  f121		       85 1b		      sta	GRP0
+    261  f123		       85 1c		      sta	GRP1
+    262  f125		       a2 67		      ldx	#103	; 63 pre-pad + 60 draw + 8 syncs + 31 pad (band +1: TitleBandPrep jsr entry spans 2 lines)
+    263  f127				   .TkFooterPad
+    264  f127		       85 02		      sta	WSYNC
+    265  f129		       ca		      dex
+    266  f12a		       e0 28		      cpx	#40
+    267  f12c		       d0 f9		      bne	.TkFooterPad	; 64 lines before the flight window
+    268  f12e				   .TkPlayer
+    269  f12e		       a9 00		      lda	#0
+    270  f130		       85 25		      sta	VDELP0
+    271  f132		       85 26		      sta	VDELP1
+    272  f134		       85 1b		      sta	GRP0
+    273  f136		       85 1c		      sta	GRP1
+    274  f138		       85 04		      sta	NUSIZ0	; single player, not title's 3-copy mode
+    275  f13a		       85 05		      sta	NUSIZ1	; bomb is one P1 copy (footer restores 3)
+    276  f13c		       a2 00		      ldx	#0
+    277  f13e		       a5 80		      lda	RoomX
+    278  f140		       20 f4 f7 	      jsr	SetObjectXPos_b1	; current flight X; X remains the P0 selector
+    279  f143		       a5 f6		      lda	BombX	; TitleSequence owns BombX (68 = no bomb, so
+    280  f145		       a2 01		      ldx	#1	;   footer/base X survives; 140 = bomb armed)
+    281  f147		       20 f4 f7 	      jsr	SetObjectXPos_b1	; P1 = bomb (same shared-WSYNC pattern as entry)
+    282  f14a		       85 02		      sta	WSYNC
+    283  f14c		       85 2a		      sta	HMOVE
+    284  f14e		       20 dd f2 	      jsr	TitlePlayerBand	; isolated bank2 renderer restores both VDELs
+    285  f151		       a9 03		      lda	#3
+    286  f153		       85 04		      sta	NUSIZ0
+    287  f155		       85 05		      sta	NUSIZ1	; footer text: 3 copies on both players
+    288  f157		       a9 3c		      lda	#60
+    289  f159		       a2 00		      ldx	#0	; the bank2 renderer used X as its sprite row
+    290  f15b		       20 f4 f7 	      jsr	SetObjectXPos_b1	; restore title/footer P0 position
+    291  f15e		       a9 44		      lda	#68
+    292  f160		       a2 01		      ldx	#1
+    293  f162		       20 f4 f7 	      jsr	SetObjectXPos_b1	; restore P1 (bomb SOXP moved it during band)
+    294  f165		       85 02		      sta	WSYNC
+    295  f167		       85 2a		      sta	HMOVE
+    296  f169		       a2 1f		      ldx	#31	; fixed title-kernel line budget: 37 - 6
+    297  f16b							;   (footer grew 7 -> 13 rows, 2026-10-12)
+    298  f16b				   .TkPostFooterPad
+    299  f16b		       85 02		      sta	WSYNC
+    300  f16d		       ca		      dex
+    301  f16e		       d0 fb		      bne	.TkPostFooterPad
+    302  f170		       a9 0e		      lda	#$0E	; white
+    303  f172		       85 06		      sta	COLUP0
+    304  f174		       85 07		      sta	COLUP1
+    305  f176		       20 14 f2 	      jsr	FooterBand	; bank2 text band
+    306  f179		       4c 5b fc 	      jmp	CallPad_Overscan
+    307  f17c
+    308  f17c				   TitleFont
+    309  f17c							; slot 1 "S."
+    310  f17c		       00		      .byte.b	%00000000
+    311  f17d		       71		      .byte.b	%01110001
+    312  f17e		       09		      .byte.b	%00001001
+    313  f17f		       09		      .byte.b	%00001001
+    314  f180		       70		      .byte.b	%01110000
+    315  f181		       80		      .byte.b	%10000000
+    316  f182		       80		      .byte.b	%10000000
+    317  f183		       70		      .byte.b	%01110000
+    318  f184							; slot 2 "A."
+    319  f184		       00		      .byte.b	%00000000
+    320  f185		       89		      .byte.b	%10001001
+    321  f186		       89		      .byte.b	%10001001
+    322  f187		       89		      .byte.b	%10001001
+    323  f188		       f8		      .byte.b	%11111000
+    324  f189		       88		      .byte.b	%10001000
+    325  f18a		       88		      .byte.b	%10001000
+    326  f18b		       70		      .byte.b	%01110000
+    327  f18c							; slot 3 "V."
+    328  f18c		       00		      .byte.b	%00000000
+    329  f18d		       21		      .byte.b	%00100001
+    330  f18e		       51		      .byte.b	%01010001
+    331  f18f		       89		      .byte.b	%10001001
+    332  f190		       88		      .byte.b	%10001000
+    333  f191		       88		      .byte.b	%10001000
+    334  f192		       88		      .byte.b	%10001000
+    335  f193		       88		      .byte.b	%10001000
+    336  f194							; slot 4 "I."
+    337  f194		       00		      .byte.b	%00000000
+    338  f195		       f9		      .byte.b	%11111001
+    339  f196		       21		      .byte.b	%00100001
+    340  f197		       21		      .byte.b	%00100001
+    341  f198		       20		      .byte.b	%00100000
+    342  f199		       20		      .byte.b	%00100000
+    343  f19a		       20		      .byte.b	%00100000
+    344  f19b		       f8		      .byte.b	%11111000
+    345  f19c							; slot 5 "O."
+    346  f19c		       00		      .byte.b	%00000000
+    347  f19d		       71		      .byte.b	%01110001
+    348  f19e		       89		      .byte.b	%10001001
+    349  f19f		       89		      .byte.b	%10001001
+    350  f1a0		       88		      .byte.b	%10001000
+    351  f1a1		       88		      .byte.b	%10001000
+    352  f1a2		       88		      .byte.b	%10001000
+    353  f1a3		       70		      .byte.b	%01110000
+    354  f1a4							; slot 6 "R."
+    355  f1a4		       00		      .byte.b	%00000000
+    356  f1a5		       89		      .byte.b	%10001001
+    357  f1a6		       91		      .byte.b	%10010001
+    358  f1a7		       a1		      .byte.b	%10100001
+    359  f1a8		       f0		      .byte.b	%11110000
+    360  f1a9		       88		      .byte.b	%10001000
+    361  f1aa		       88		      .byte.b	%10001000
+    362  f1ab		       f0		      .byte.b	%11110000
+    363  f1ac
+    364  f1ac							; ------------------------------------------------------------------------------
+    365  f1ac							; TitleSelect — MOVED to bank1 (refactor_v4_plan Phase 3.1 canary, 2026-10-16).
+    366  f1ac							; Entered via CallPad_TitleSelect ($FC4F); returns C=1 edge / C=0 no-edge.
+    367  f1ac
+    368  f1ac
+    369  f1ac							; ------------------------------------------------------------------------------
+    370  f1ac							; TitleIntro — intro-screen ($FD) edge check. Entered by JMP from DropStep
+    371  f1ac							; (no pending return; tail-jumps out — never rts, or it would pop a stale
+    372  f1ac							; frame return). Any SELECT/RESET press (level-triggered, prev-released via
+    373  f1ac							; StepsLeft): DropTarget=$FF (old title) + jsr DropArm (.DATitle pose/score
+    374  f1ac							; — the room is ALREADY loaded from boot LoadLevel, no deep LoadLevel:
+    375  f1ac							; stack depth DropStep→TitleIntro→DropArm keeps sim_bomb_fuse min-SP).
+    376  f1ac							; Always re-samples StepsLeft (title-owned on intro/title frames;
+    377  f1ac							; RefreshEnemyY's idle-only guard never touches it during gameplay... its
+    378  f1ac							; gameplay latch writes StepsLeft only when DropTarget==0 — intro frames
+    379  f1ac							; have DropTarget=$FD so ownership stays clean).
+    380  f1ac							; Clobbers A/X/Temp. Ends at TitleTailAudio (silence + overscan wait).
+    381  f1ac							; ------------------------------------------------------------------------------
+    382  f1ac
+    383  f1ac				   TitleBandPrep
+    384  f1ac		       a5 f2		      lda	TallyTicks	; phase — 0/1 airborne + 8 climb: jet flutter
+    385  f1ae		       c9 02		      cmp	#2
+    386  f1b0		       90 1f		      bcc	.TBpJet
+    387  f1b2		       c9 08		      cmp	#8
+    388  f1b4		       f0 1b		      beq	.TBpJet
+    389  f1b6		       c9 04		      cmp	#4
+    390  f1b8		       f0 04		      beq	.TBpWalk
+    391  f1ba		       c9 06		      cmp	#6
+    392  f1bc		       d0 1f		      bne	.TBpJetFA	; phases 2,3,5,7: static frame A
+    393  f1be				   .TBpWalk		; (phase 6 falls through here)
+    394  f1be		       a5 c2		      lda	EnemyRamP
+    395  f1c0		       29 08		      and	#8
+    396  f1c2		       f0 06		      beq	.TBpWalkA
+    397  f1c4		       a9 6e		      lda	#<PlayerWalkB
+    398  f1c6		       a0 f0		      ldy	#>PlayerWalkB
+    399  f1c8		       d0 17		      bne	.TBpFrame	; unconditional (hi != 0)
+    400  f1ca				   .TBpWalkA
+    401  f1ca		       a9 62		      lda	#<PlayerWalkA
+    402  f1cc		       a0 f0		      ldy	#>PlayerWalkA
+    403  f1ce		       4c e1 f1 	      jmp	.TBpFrame
+    404  f1d1				   .TBpJet
+    405  f1d1		       a5 c2		      lda	EnemyRamP
+    406  f1d3		       29 04		      and	#4
+    407  f1d5		       f0 06		      beq	.TBpJetFA
+    408  f1d7		       a9 42		      lda	#<(TitleJetSprite+12)
+    409  f1d9		       a0 f3		      ldy	#>(TitleJetSprite+12)
+    410  f1db		       d0 04		      bne	.TBpFrame
+    411  f1dd				   .TBpJetFA
+    412  f1dd		       a9 36		      lda	#<TitleJetSprite
+    413  f1df		       a0 f3		      ldy	#>TitleJetSprite
+    414  f1e1				   .TBpFrame
+    415  f1e1		       85 86		      sta	Grp0Ptr
+    416  f1e3		       84 87		      sty	Grp0PtrHi
+    417  f1e5		       a5 82		      lda	PlayerDir	; walk phases face left: REFP0 bit3
+    418  f1e7		       0a		      asl
+    419  f1e8		       0a		      asl
+    420  f1e9		       0a		      asl		; FACING_LEFT(1) -> $08, right -> $00
+    421  f1ea		       85 0b		      sta	REFP0
+    422  f1ec		       a5 b5		      lda	BombPacked	; state -> FooterPtr1 = 1 iff fuse (band
+    423  f1ee		       29 03		      and	#%00000011	;   draws bomb rows only when flag 1;
+    424  f1f0		       f0 1b		      beq	.TBpStore	;   state 0: A already 0)
+    425  f1f2		       c9 01		      cmp	#1
+    426  f1f4		       d0 08		      bne	.TBpExpl
+    427  f1f6		       a9 46		      lda	#COLOR_BOMBS
+    428  f1f8		       85 07		      sta	COLUP1
+    429  f1fa		       a9 01		      lda	#1
+    430  f1fc		       d0 0f		      bne	.TBpStore	; unconditional (A=1)
+    431  f1fe				   .TBpExpl
+    432  f1fe		       a9 3c		      lda	#60	; explosion: 4-phase blink (15 exact cycles
+    433  f200		       38		      sec		;   per color over the 60-frame state)
+    434  f201		       e5 f7		      sbc	BombTimer
+    435  f203		       29 03		      and	#3
+    436  f205		       a8		      tay
+    437  f206		       b9 d9 f2 	      lda	TitleBlinkColors,Y
+    438  f209		       85 09		      sta	COLUBK
+    439  f20b		       a9 00		      lda	#0	; explosion: no bomb sprite rows
+    440  f20d				   .TBpStore
+    441  f20d		       85 e0		      sta	FooterPtr1
+    442  f20f		       a5 81		      lda	RoomY	; band scanline budget: LineCount staged here
+    443  f211		       85 84		      sta	LineCount	;   keeps TitlePlayerBand short (twin $F8DD)
+    444  f213		       60		      rts
+    445  f214
+    446  f214				   FooterBand
+    447  f214		       85 02		      sta	WSYNC
+    448  f216		       a9 f2		      lda	#>FooterFont
+    449  f218		       85 e1		      sta	FooterPtr1+1
+    450  f21a		       85 e3		      sta	FooterPtr2+1
+    451  f21c		       85 e5		      sta	FooterPtr3+1
+    452  f21e		       85 e7		      sta	FooterPtr4+1
+    453  f220		       85 e9		      sta	FooterPtr5+1
+    454  f222		       85 eb		      sta	FooterPtr6+1
+    455  f224		       a9 79		      lda	#<FooterFont
+    456  f226		       85 e0		      sta	FooterPtr1
+    457  f228		       a9 87		      lda	#<FooterFont+14
+    458  f22a		       85 e2		      sta	FooterPtr2
+    459  f22c		       a9 95		      lda	#<FooterFont+28
+    460  f22e		       85 e4		      sta	FooterPtr3
+    461  f230		       a9 a3		      lda	#<FooterFont+42
+    462  f232		       85 e6		      sta	FooterPtr4
+    463  f234		       a9 b1		      lda	#<FooterFont+56
+    464  f236		       85 e8		      sta	FooterPtr5
+    465  f238		       a9 bf		      lda	#<FooterFont+70
+    466  f23a		       85 ea		      sta	FooterPtr6
+    467  f23c		       a2 0d		      ldx	#13
+    468  f23e		       86 84		      stx	LineCount
+    469  f240				   .FooterLoop
+    470  f240		       a4 84		      ldy	LineCount
+    471  f242		       b1 ea		      lda	(FooterPtr6),Y
+    472  f244		       aa		      tax
+    473  f245		       85 02		      sta	WSYNC
+    474  f247		       b1 e0		      lda	(FooterPtr1),Y
+    475  f249		       8d 1b 00 	      sta.w	GRP0
+    476  f24c		       b1 e2		      lda	(FooterPtr2),Y
+    477  f24e		       85 1c		      sta	GRP1
+    478  f250		       b1 e4		      lda	(FooterPtr3),Y
+    479  f252		       85 1b		      sta	GRP0
+    480  f254		       b1 e6		      lda	(FooterPtr4),Y
+    481  f256		       85 ad		      sta	Temp
+    482  f258		       b1 e8		      lda	(FooterPtr5),Y
+    483  f25a		       a4 ad		      ldy	Temp
+    484  f25c		       84 1c		      sty	GRP1
+    485  f25e		       85 1b		      sta	GRP0
+    486  f260		       86 1c		      stx	GRP1
+    487  f262		       86 1b		      stx	GRP0
+    488  f264		       c6 84		      dec	LineCount
+    489  f266		       d0 d8		      bne	.FooterLoop
+    490  f268		       85 02		      sta	WSYNC
+    491  f26a		       a9 00		      lda	#0
+    492  f26c		       85 25		      sta	VDELP0
+    493  f26e		       85 26		      sta	VDELP1
+    494  f270		       85 1b		      sta	GRP0
+    495  f272		       85 1c		      sta	GRP1
+    496  f274		       85 1b		      sta	GRP0
+    497  f276		       85 1c		      sta	GRP1
+    498  f278		       60		      rts
+    499  f279
+    500  f279				   FooterFont
+    501  f279							; generated by tools/footer_font.py — DO NOT EDIT
+    502  f279							; "2026 Iuri / Fiedoruk" (two lines, 3x5 glyphs) packed into
+    503  f279							; the 48px x 13-row footer canvas (6 x 14-byte sprites,
+    504  f279							; FooterBand .FooterLoop: Y=13..1).
+    505  f279		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $EE, $8A, $EA, $2A, $EE	; sprite 0 (x 0-7)
+    506  f287		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $00, $00, $EE, $8A, $EE, $28, $EE	; sprite 1 (x 8-15)
+    507  f295		       00 22 22 32*	      .byte.b	$00, $22, $22, $32, $20, $3A, $00, $00, $00, $3B, $12, $12, $12, $3A	; sprite 2 (x 16-23)
+    508  f2a3		       00 ee 8a ee*	      .byte.b	$00, $EE, $8A, $EE, $A2, $E2, $00, $00, $00, $A2, $A2, $A2, $A8, $B2	; sprite 3 (x 24-31)
+    509  f2b1		       00 e8 a8 a8*	      .byte.b	$00, $E8, $A8, $A8, $AA, $EC, $00, $00, $00, $00, $00, $00, $00, $00	; sprite 4 (x 32-39)
+    510  f2bf		       00 ea ac ac*	      .byte.b	$00, $EA, $AC, $AC, $AC, $AA, $00, $00, $00, $00, $00, $00, $00, $00	; sprite 5 (x 40-47)
+    511  f2cd
+    512  f2cd				   TitleBombSprite
+    513  f2cd							; 4 junk rows (top-align: rows Y<4 gated off in the draw path) +
+    514  f2cd							; OBJ_BOMB's 8 rows (kernel ObjSprites+64) — bottom-aligned in the
+    515  f2cd							; 12-row sprite window = sits on the ground line while RoomY==48.
+    516  f2cd		       00 00 00 00	      .byte.b	$00, $00, $00, $00
+    517  f2d1		       10 20 20 60*	      .byte.b	$10, $20, $20, $60, $f0, $f0, $f0, $60
+    518  f2d9				   TitleBlinkColors
+    519  f2d9							; Copy of kernel BombBlinkColors ((60-BombTimer)&3): black/yellow/red/yellow
+    520  f2d9		       00 1c 44 1c	      .byte.b	COLOR_CAVE_BG, COLOR_HOT_Y, COLOR_HOT_R, COLOR_HOT_Y
+    521  f2dd
+    522  f2dd				   TitlePlayerBand
+    523  f2dd							; Frame pick, mirror, bomb flag + colors live in TitleBandPrep (same
+    524  f2dd							; bank — jsr keeps the 2-line entry span off this gap's budget).
+    525  f2dd		       20 ac f1 	      jsr	TitleBandPrep	; pick + mirror + bomb flag/colors + LineCount
+    526  f2e0		       a2 3c		      ldx	#60
+    527  f2e2		       a0 00		      ldy	#0
+    528  f2e4		       85 02		      sta	WSYNC
+    529  f2e6				   .TitleJetLine
+    530  f2e6		       a5 84		      lda	LineCount
+    531  f2e8		       f0 09		      beq	.TitleJetDraw
+    532  f2ea		       c6 84		      dec	LineCount
+    533  f2ec		       a9 00		      lda	#0
+    534  f2ee		       85 1b		      sta	GRP0
+    535  f2f0		       4c 10 f3 	      jmp	.TitleJetSync
+    536  f2f3				   .TitleJetDraw
+    537  f2f3		       c0 0c		      cpy	#12
+    538  f2f5		       b0 15		      bcs	.TitleJetBlank
+    539  f2f7		       b1 86		      lda	(Grp0Ptr),Y
+    540  f2f9		       85 1b		      sta	GRP0
+    541  f2fb		       b9 4e f3 	      lda	TitleJetColors,Y
+    542  f2fe		       85 06		      sta	COLUP0
+    543  f300							; --- bomb: rows 0-3 read junk zeros, rows 4..11 = fuse sprite ---
+    544  f300		       a5 e0		      lda	FooterPtr1	; 1 iff fuse (TitleBandPrep)
+    545  f302		       f0 05		      beq	.TitleBombRow
+    546  f304		       b9 cd f2 	      lda	TitleBombSprite,Y
+    547  f307		       85 1c		      sta	GRP1
+    548  f309				   .TitleBombRow
+    549  f309		       c8		      iny
+    550  f30a		       d0 04		      bne	.TitleJetSync
+    551  f30c				   .TitleJetBlank
+    552  f30c		       a9 00		      lda	#0
+    553  f30e		       85 1b		      sta	GRP0
+    554  f310				   .TitleJetSync
+    555  f310		       85 02		      sta	WSYNC
+    556  f312		       ca		      dex
+    557  f313		       d0 d1		      bne	.TitleJetLine
+    558  f315		       a9 00		      lda	#0
+    559  f317		       85 1b		      sta	GRP0
+    560  f319		       85 1c		      sta	GRP1
+    561  f31b		       85 1b		      sta	GRP0
+    562  f31d		       85 1c		      sta	GRP1
+    563  f31f		       a9 01		      lda	#1
+    564  f321		       85 25		      sta	VDELP0
+    565  f323		       85 26		      sta	VDELP1
+    566  f325		       a9 00		      lda	#0
+    567  f327		       85 1b		      sta	GRP0
+    568  f329		       85 1c		      sta	GRP1
+    569  f32b		       85 1b		      sta	GRP0
+    570  f32d		       85 1c		      sta	GRP1
+    571  f32f		       85 09		      sta	COLUBK	; restore black + unmirrored P0 for the footer
+    572  f331		       85 0b		      sta	REFP0	;   (explosion walk phases end before it)
+    573  f333				   .TitleJetDone
+    574  f333		       85 02		      sta	WSYNC
+    575  f335		       60		      rts
+    576  f336
+    577  f336				   TitleJetSprite
+    578  f336							; Exact A/B copies of PlayerSpriteA/B; game alternates every 4 frames.
+    579  f336		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
+    580  f33a		       7c fe fe 3e	      .byte.b	%01111100, %11111110, %11111110, %00111110
+    581  f33e		       3e 14 14 14	      .byte.b	%00111110, %00010100, %00010100, %00010100
+    582  f342		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
+    583  f346		       7c fe fe 7e	      .byte.b	%01111100, %11111110, %11111110, %01111110
+    584  f34a		       be 14 14 14	      .byte.b	%10111110, %00010100, %00010100, %00010100
+    585  f34e				   TitleJetColors
+    586  f34e		       48 48 1e 48*	      .byte.b	$48, $48, $1E, $48, $08, $48, $48, $48
+    587  f356		       48 48 08 08	      .byte.b	$48, $48, $08, $08
+    588  f35a							; ==============================================================================
+    589  f35a							; Intro music player (2026-10-16). Ticked once per intro ($FD) frame from
+    590  f35a							; TitleTailAudio via CallPad_MusicTick (bank0<->bank1 @ $FC61). Plays the
+    591  f35a							; original theme "Hollow Earth" (src/art/intro_theme.asm MusicMel: (duration,
+    592  f35a							; note) pairs; note = AUDF, $FE = rest, $FF = loop; E minor, 8th = 15 frames).
+    593  f35a							; AUD0 = Lead ($0C), volume 7, single voice.
+    594  f35a							; ==============================================================================
+    595  f35a		       00 9d	   MelPtr     =	$9D
+    596  f35a		       00 9e	   MelTimer   =	$9E
+    597  f35a
+    598  f35a				   MusicTick
+    599  f35a		       a9 00		      lda	#0
+    600  f35c		       85 1a		      sta	AUDV1	; bass voice off (melody only)
+    601  f35e		       a6 9d		      ldx	MelPtr
+    602  f360		       a5 9e		      lda	MelTimer
+    603  f362		       f0 21		      beq	.MelLoad
+    604  f364		       c6 9e		      dec	MelTimer
+    605  f366		       bd ba f3 	      lda	MusicMel+1,X	; re-assert the current note (survives SFX)
+    606  f369		       c9 fe		      cmp	#$FE
+    607  f36b		       f0 11		      beq	.MelMute
+    608  f36d		       c9 ff		      cmp	#$FF
+    609  f36f		       f0 0a		      beq	.MelDone
+    610  f371		       85 17		      sta	AUDF0
+    611  f373		       a9 0c		      lda	#$0C	; Lead
+    612  f375		       85 15		      sta	AUDC0
+    613  f377		       a9 07		      lda	#7
+    614  f379		       85 19		      sta	AUDV0
+    615  f37b				   .MelDone
+    616  f37b		       4c f8 fb 	      jmp	ReturnPad
+    617  f37e				   .MelMute
+    618  f37e		       a9 00		      lda	#0
+    619  f380		       85 19		      sta	AUDV0
+    620  f382		       4c f8 fb 	      jmp	ReturnPad
+    621  f385				   .MelLoad
+    622  f385		       bd b9 f3 	      lda	MusicMel,X	; duration
+    623  f388		       85 9e		      sta	MelTimer
+    624  f38a		       bd ba f3 	      lda	MusicMel+1,X	; note
+    625  f38d		       c9 ff		      cmp	#$FF
+    626  f38f		       f0 18		      beq	.MelLoop
+    627  f391		       c9 fe		      cmp	#$FE
+    628  f393		       f0 0d		      beq	.MelRest
+    629  f395		       85 17		      sta	AUDF0
+    630  f397		       a9 0c		      lda	#$0C
+    631  f399		       85 15		      sta	AUDC0
+    632  f39b		       a9 07		      lda	#7
+    633  f39d		       85 19		      sta	AUDV0
+    634  f39f		       4c b0 f3 	      jmp	.MelAdv
+    635  f3a2				   .MelRest
+    636  f3a2		       a9 00		      lda	#0
+    637  f3a4		       85 19		      sta	AUDV0
+    638  f3a6		       4c b0 f3 	      jmp	.MelAdv
+    639  f3a9				   .MelLoop
+    640  f3a9		       a9 00		      lda	#0
+    641  f3ab		       85 9d		      sta	MelPtr
+    642  f3ad		       4c f8 fb 	      jmp	ReturnPad
+    643  f3b0				   .MelAdv
+    644  f3b0		       8a		      txa
+    645  f3b1		       18		      clc
+    646  f3b2		       69 02		      adc	#2
+    647  f3b4		       85 9d		      sta	MelPtr
+    648  f3b6		       4c f8 fb 	      jmp	ReturnPad
+    649  f3b9
+------- FILE art/intro_theme.asm LEVEL 2 PASS 3
+      0  f3b9					      include	"art/intro_theme.asm"
+      1  f3b9							; Intro theme: 'hollow earth' - adventurous, with dread (original, 2026-10-16).
+      2  f3b9							; E minor; every AUDF is in tune on the TIA Lead ($0C). Single voice.
+      3  f3b9							; (duration_frames, AUDF) pairs; 8th=15 frames; $FE=rest, $FF=loop.
+      4  f3b9				   MusicMel
+      5  f3b9		       1e 1f 1e 1b*	      .byte.b	$1E,$1F,$1E,$1B,$1E,$1A,$1E,$17,$3C,$14,$1E,$13,$1E,$14,$1E,$17
+      6  f3c9		       1e 1a 1e 1b*	      .byte.b	$1E,$1A,$1E,$1B,$1E,$1F,$3C,$1F,$3C,$FE,$1E,$1F,$1E,$1A,$1E,$1F
+      7  f3d9		       1e fe 78 0f*	      .byte.b	$1E,$FE,$78,$0F,$1E,$0F,$1E,$0D,$1E,$0B,$1E,$09,$3C,$08,$1E,$09
+      8  f3e9		       1e 08 3c 07*	      .byte.b	$1E,$08,$3C,$07,$1E,$09,$1E,$08,$78,$07,$1E,$1F,$1E,$1F,$1E,$1A
+      9  f3f9		       1e 1a 1e 17*	      .byte.b	$1E,$1A,$1E,$17,$1E,$17,$3C,$14,$3C,$13,$3C,$12,$3C,$13,$3C,$14
+     10  f409		       78 1f 1e 0f*	      .byte.b	$78,$1F,$1E,$0F,$1E,$10,$1E,$0F,$1E,$0D,$3C,$0B,$3C,$09,$3C,$08
+     11  f419		       3c 07 78 1f*	      .byte.b	$3C,$07,$78,$1F,$00,$FF
+------- FILE bank1.asm
+    651  f41f
+    652  f540					      org	$F540
+    653  f540				   MenuMain
+    654  f540							; ========================================================================
+    655  f540							; HUD entry point — called from bank0 via fold-pad at $FC68
+    656  f540							; Follows comparison/lo-a-rad-dragon/bank2.asm pattern exactly
+    657  f540							; ========================================================================
+    658  f540
+    659  f540							; --- Setup (same as comparison bank2) ---
+    660  f540		       a9 00		      lda	#0
+    661  f542		       85 0d		      sta	PF0
+    662  f544		       85 0e		      sta	PF1
+    663  f546		       85 0f		      sta	PF2
+    664  f548		       a9 06		      lda	#$06	; grey background
+    665  f54a		       85 09		      sta	COLUBK
+    666  f54c		       a9 0e		      lda	#$0e	; white sprites
+    667  f54e		       85 06		      sta	COLUP0
+    668  f550		       85 07		      sta	COLUP1
+    669  f552		       a9 00		      lda	#0
+    670  f554		       85 04		      sta	NUSIZ0
+    671  f556		       85 05		      sta	NUSIZ1
+    672  f558		       85 25		      sta	VDELP0
+    673  f55a		       85 26		      sta	VDELP1
+    674  f55c		       85 0b		      sta	REFP0
+    675  f55e		       85 0c		      sta	REFP1
+    676  f560
+    677  f560							; ZP variables for score rendering (48-pixel sprite technique)
+    678  f560		       00 e0	   scorePtr1  =	$E0	; pointer to digit 1 font data (hundred-thousands)
+    679  f560		       00 e2	   scorePtr2  =	$E2	; pointer to digit 2 font data (ten-thousands)
+    680  f560		       00 e4	   scorePtr3  =	$E4	; pointer to digit 3 font data (thousands)
+    681  f560		       00 e6	   scorePtr4  =	$E6	; pointer to digit 4 font data (hundreds)
+    682  f560		       00 e8	   scorePtr5  =	$E8	; pointer to digit 5 font data (tens)
+    683  f560		       00 ea	   scorePtr6  =	$EA	; pointer to digit 6 font data (ones)
+    684  f560		       00 ec	   scbrdCnt   =	$EC	; score render loop counter (7..0)
+    685  f560		       00 ed	   scbrdTmp   =	$ED	; mid-scanline temp cache
+    686  f560		       00 ee	   DelayCnt   =	$EE	; bar delay A preloaded once per frame (bank1; ColupfBuf+7)
+    687  f560		       00 ef	   FineCnt    =	$EF	; bar fine delay cycles 0/2/3/4 (H3; bank1 only)
+    688  f560		       00 ad	   Temp       =	$AD	; scratch variable
+    689  f560							; Score digits live at $F3-$F6 — MUST match bank0 Score* EQUs.
+    690  f560							; Old home $BF-$C2 collided with EnemyRamX[2]/[3]/D/P during game HUD.
+    691  f560		       00 f3	   ScoreTh    =	$F3	; score thousands digit (must match bank0)
+    692  f560		       00 f4	   ScoreHu    =	$F4	; score hundreds digit
+    693  f560		       00 f5	   ScoreTe    =	$F5	; score tens+ones packed BCD
+    694  f560		       00 a3	   Level      =	$A3	; #18 current level, 0-based (must match kernel)
+    695  f560		       00 f2	   LevelShowTimer =	$F2	; #18 LV001 banner frames left (kernel sets, bank1 decs;
+    696  f560							;  ALIAS of TallyTicks — banner = gameplay entry only,
+    697  f560							;  tally = level-exit bonus; LoadLevel gates on $FD)
+    698  f560							; $F6 is NOT ScoreOn — bank0 uses it as BombX. Do not write $F6 here.
+    699  f560
+    700  f560							; --- TIA/RIOT + ZP mirrors for relocated leaf routines (leaf_move_plan) ---
+    701  f560							;     MUST match kernel.asm decls (hardware-fixed or frozen ZP addresses).
+    702  f560		       00 15	   AUDC0      =	$15
+    703  f560		       00 16	   AUDC1      =	$16
+    704  f560		       00 17	   AUDF0      =	$17
+    705  f560		       00 18	   AUDF1      =	$18
+    706  f560		       00 19	   AUDV0      =	$19
+    707  f560		       00 1a	   AUDV1      =	$1A
+    708  f560		       02 80	   SWCHA      =	$0280
+    709  f560		       00 f1	   BombSnd    =	$F1
+    710  f560		       00 96	   JetPower   =	$96
+    711  f560		       00 ad	   TickCounter =	$AD	; kernel's 60-frame timer ($AC = PlayerLives!).
+    712  f560							; Was $AC (stale) — jet wobble at `lda
+    713  f560							; TickCounter` read PlayerLives. Guard:
+    714  f560							; verify_build check_equ_sync (S3.0).
+    715  f560		       00 c0	   LaserState =	$C0	; b7 fire held this frame, b5-2 = RoomDarkMask rooms
+    716  f560							; 4-7 (kernel.asm LaserState; laser b7/b6/b1-0 must
+    717  f560							; preserve b5-2 — see LaserInput/DropArm)
+    718  f560		       00 c2	   EnemyRamP  =	$C2	; free-running frame clock (bank0 RefreshEnemyY incs)
+    719  f560		       00 98	   RoomNo     =	$98
+    720  f560		       00 a1	   LevelConnLo =	$A1
+    721  f560		       00 a2	   LevelConnHi =	$A2
+    722  f560		       00 e5	   FetchPtr   =	$E5	; moved S3.2 (was $E0) — must match kernel
+    723  f560		       00 c1	   EnemyRamD  =	$C1
+    724  f560		       00 c3	   PF0Buf     =	$C3
+    725  f560		       00 c6	   PF1Buf     =	$C6	; packed rows 0-2 (S3.1; was $CF)
+    726  f560		       00 c9	   PF2Buf     =	$C9	; packed rows 0-2 (S3.1; was $DB)
+    727  f560		       00 8b	   CollisionX =	$8B
+    728  f560		       00 8c	   CollisionCellX =	$8C
+    729  f560		       00 8d	   CollisionCellY =	$8D	; plan 5.1 punch: rect idx save across ClearPFColumn
+    730  f560		       00 8f	   CollisionEndY =	$8F	; plan 5.1 punch: last row (ClearPFColumn contract)
+    731  f560							; bank0's LineCount — do NOT confuse with bank1's Temp ($AD) HUD scratch above.
+    732  f560							; ClearPFColumn's first-row arg — passed by BombMarkWalls (plan 5.1 punch),
+    733  f560							; NOT Temp: EnterRoom no longer runs ClearPFColumn (restore deleted, D1-B)
+    734  f560							; and the old mid-input constraint is gone. Dead in overscan otherwise —
+    735  f560							; kernel .Row re-inits it every tile row.
+    736  f560		       00 84	   LineCount  =	$84
+    737  f560
+    738  f560							; --- BombMarkWalls (S5.2, moved from bank0) — must match kernel.asm ---
+    739  f560		       00 f6	   BombX      =	$F6	; read-only here (see $F6 note above)
+    740  f560		       00 88	   BMWScratch =	$88	; kernel Temp — NOT bank1's Temp ($AD)
+    741  f560		       00 89	   RcBase     =	$89	; rect cache count (S3.2-fix: count sits on
+    742  f560							; the $89 pad so rects fit $CC-$DF — clear
+    743  f560							; of bank1's $E0 stomp that ate rect4.h)
+    744  f560		       00 cc	   RcW1       =	$CC	; rect0.x — cache base for ABW tables
+    745  f560		       00 92	   RectCount  =	$92	; walk temp — BMW stashes the original screen
+    746  f560							; col here (hand-copy of kernel's decl —
+    747  f560							; check_equ_sync pair); M1StripBlast restages
+    748  f560							; it as the left-strip dcol (2ℓ / $FF) that
+    749  f560							; StripBlastCheck's left take reads
+    750  f560		       00 b5	   BombPacked =	$B5	; state+DownPrev+WallMask (b3-6)
+    751  f560		       00 ba	   EnemyDeadMask =	$BA	; b0-2 enemy kills (hand-copy of kernel's
+    752  f560							; decl — check_equ_sync pair); b3 = D6 ball
+    753  f560							; strip destroyed (StripBlastCheck); b4 = M1
+    754  f560							; strip destroyed (M1StripBlast) — both die
+    755  f560							; with the room via EnterRoom's zero
+    756  f560		       00 8e	   CollisionEndX =	$8E	; blast lo
+    757  f560		       00 14	   TILE_COLUMNS =	20
+    758  f560
+    759  f560		       00 0c	   INPT4      =	$0C	; fire button (active low, bit 7)
+    760  f560
+    761  f560							; --- Bar PF setup before TopGap (grey-on-grey: invisible) ---
+    762  f560							; Yellow COLUPF only on the 3 bar lines; HMOVE line stays short.
+    763  f560		       a9 e0		      lda	#$E0	; margins (bit 4 = leftmost 4 clocks OFF)
+    764  f562		       85 0d		      sta	PF0
+    765  f564		       a9 ff		      lda	#$FF
+    766  f566		       85 0e		      sta	PF1
+    767  f568		       85 0f		      sta	PF2
+    768  f56a		       a9 06		      lda	#$06	; grey (same as COLUBK)
+    769  f56c		       85 08		      sta	COLUPF
+    770  f56e		       a9 00		      lda	#0
+    771  f570		       85 1b		      sta	GRP0	; clear cave player sprite
+    772  f572		       85 04		      sta	NUSIZ0
+    773  f574		       a9 05		      lda	#$05	; CTRLPF: reflect + priority + 1-clock ball.
+    774  f576		       85 0a		      sta	CTRLPF
+    775  f578							; --- Phase 4: copy the VBL-packed asym byte ($8F) → LineCount ($84) ---
+    776  f578							; Cave .Row clobbered $84; this runs after the cave and before the
+    777  f578							; score-ptr stomp window; overscan PHM reads $84 (OverlayTramp gate).
+    778  f578		       a5 8f		      lda	CollisionEndY
+    779  f57a		       85 84		      sta	LineCount
+    780  f57c
+    781  f57c							; --- Top gap: 6 scanlines (lower HUD elements) ---
+    782  f57c							; 4 + the 2 lines the removed ball-at-boundary block used to occupy:
+    783  f57c							; bar/lives/bombs/score keep their exact scanlines (HudPad stays 9).
+    784  f57c		       a2 06		      ldx	#6
+    785  f57e				   .TopGap
+    786  f57e		       85 02		      sta	WSYNC
+    787  f580		       ca		      dex
+    788  f581		       d0 fb		      bne	.TopGap
+    789  f583
+    790  f583							; ====================================================================
+    791  f583							; Line 1: Timer bar — PF body, mid-scanline COLUPF yellow→red
+    792  f583							; Full (BarLevel >= BAR_MAX-7 = 113..120): pure yellow, no red write.
+    793  f583							; The 8-dec hold (bugs.md #30, 2026-10-11) delays the FIRST red until
+    794  f583							; t=8s = exactly one chunk period (K=8), so the first red appears on
+    795  f583							; the same cadence as every later chunk. Chunks are 3-4c (9-12px) so
+    796  f583							; the bite (14px incl. the F4 top-block render offset) is ~1.2x a
+    797  f583							; chunk instead of the reported 5-6x.
+    798  f583							; H3c dual path: F=0 slim / F=1 slim+nop / F=2,3,4 full dispatch.
+    799  f583							; dispatch ≤73c from the TopGap WSYNC to the first bar WSYNC.
+    800  f583							; ====================================================================
+    801  f583		       a5 ae		      lda	BarLevel
+    802  f585		       c9 71		      cmp	#(BAR_MAX-7)
+    803  f587		       90 0e		      bcc	.BarRedSetup	; B < 117 → red path (short fwd branch)
+    804  f589		       a2 03		      ldx	#3
+    805  f58b				   .YLoop
+    806  f58b		       85 02		      sta	WSYNC
+    807  f58d		       a9 1c		      lda	#$1C	; yellow (hue 1, luma 6)
+    808  f58f		       85 08		      sta	COLUPF
+    809  f591		       ca		      dex
+    810  f592		       d0 f7		      bne	.YLoop
+    811  f594		       4c 7c f6 	      jmp	.BarGap
+    812  f597
+    813  f597				   .BarRedSetup
+    814  f597		       a4 9b		      ldy	BarIdx	; precomputed (BarLevel+7)>>3, synced in kernel overscan
+    815  f599		       b9 04 f8 	      lda	BarDelayTable,Y
+    816  f59c		       85 ee		      sta	DelayCnt
+    817  f59e		       b9 13 f8 	      lda	BarFineTable,Y
+    818  f5a1		       85 ef		      sta	FineCnt
+    819  f5a3		       a0 44		      ldy	#$44	; red (hue 4, luma 2) for sty COLUPF
+    820  f5a5		       a5 ef		      lda	FineCnt
+    821  f5a7		       d0 30		      bne	.NotF0	; F≠0 → check F=1
+    822  f5a9							; --- Fine=0: slim, no pad (≤67c @A=11) ---
+    823  f5a9				   .BarRedF0
+    824  f5a9		       85 02		      sta	WSYNC
+    825  f5ab		       a9 1c		      lda	#$1C
+    826  f5ad		       85 08		      sta	COLUPF
+    827  f5af		       a6 ee		      ldx	DelayCnt
+    828  f5b1		       f0 03		      beq	.RF1
+    829  f5b3				   .BF1
+    830  f5b3		       ca		      dex
+    831  f5b4		       d0 fd		      bne	.BF1
+    832  f5b6				   .RF1
+    833  f5b6		       84 08		      sty	COLUPF
+    834  f5b8
+    835  f5b8		       85 02		      sta	WSYNC
+    836  f5ba		       a9 1c		      lda	#$1C
+    837  f5bc		       85 08		      sta	COLUPF
+    838  f5be		       a6 ee		      ldx	DelayCnt
+    839  f5c0		       f0 03		      beq	.RF2
+    840  f5c2				   .BF2
+    841  f5c2		       ca		      dex
+    842  f5c3		       d0 fd		      bne	.BF2
+    843  f5c5				   .RF2
+    844  f5c5		       84 08		      sty	COLUPF
+    845  f5c7
+    846  f5c7		       85 02		      sta	WSYNC
+    847  f5c9		       a9 1c		      lda	#$1C
+    848  f5cb		       85 08		      sta	COLUPF
+    849  f5cd		       a6 ee		      ldx	DelayCnt
+    850  f5cf		       f0 03		      beq	.RF3
+    851  f5d1				   .BF3
+    852  f5d1		       ca		      dex
+    853  f5d2		       d0 fd		      bne	.BF3
+    854  f5d4				   .RF3
+    855  f5d4		       84 08		      sty	COLUPF
+    856  f5d6		       4c 7c f6 	      jmp	.BarGap
+    857  f5d9
+    858  f5d9				   .NotF0
+    859  f5d9		       c9 01		      cmp	#1
+    860  f5db		       f0 03		      beq	.BarRedF1	; F=1 → slim+nop (avoids page-cross on bne .BarRedFull)
+    861  f5dd		       4c 13 f6 	      jmp	.BarRedFull	; F=2,3,4 → dispatch
+    862  f5e0							; --- Fine=1: slim + 2c nop/line (fills 3px gaps) ---
+    863  f5e0				   .BarRedF1
+    864  f5e0		       85 02		      sta	WSYNC
+    865  f5e2		       a9 1c		      lda	#$1C
+    866  f5e4		       85 08		      sta	COLUPF
+    867  f5e6		       a6 ee		      ldx	DelayCnt
+    868  f5e8		       f0 03		      beq	.RF1n
+    869  f5ea				   .BF1n
+    870  f5ea		       ca		      dex
+    871  f5eb		       d0 fd		      bne	.BF1n
+    872  f5ed				   .RF1n
+    873  f5ed		       ea		      nop		; +2c → +6 clocks vs F=0
+    874  f5ee		       84 08		      sty	COLUPF
+    875  f5f0
+    876  f5f0		       85 02		      sta	WSYNC
+    877  f5f2		       a9 1c		      lda	#$1C
+    878  f5f4		       85 08		      sta	COLUPF
+    879  f5f6		       a6 ee		      ldx	DelayCnt
+    880  f5f8		       f0 03		      beq	.RF2n
+    881  f5fa				   .BF2n
+    882  f5fa		       ca		      dex
+    883  f5fb		       d0 fd		      bne	.BF2n
+    884  f5fd				   .RF2n
+    885  f5fd		       ea		      nop
+    886  f5fe		       84 08		      sty	COLUPF
+    887  f600
+    888  f600		       85 02		      sta	WSYNC
+    889  f602		       a9 1c		      lda	#$1C
+    890  f604		       85 08		      sta	COLUPF
+    891  f606		       a6 ee		      ldx	DelayCnt
+    892  f608		       f0 03		      beq	.RF3n
+    893  f60a				   .BF3n
+    894  f60a		       ca		      dex
+    895  f60b		       d0 fd		      bne	.BF3n
+    896  f60d				   .RF3n
+    897  f60d		       ea		      nop
+    898  f60e		       84 08		      sty	COLUPF
+    899  f610		       4c 7c f6 	      jmp	.BarGap
+    900  f613
+    901  f613							; --- Fine ∈ {2,3,4}: full dispatch, content ≤71c ---
+    902  f613				   .BarRedFull
+    903  f613		       85 02		      sta	WSYNC
+    904  f615		       a9 1c		      lda	#$1C	; yellow (hue 1, luma 6)
+    905  f617		       85 08		      sta	COLUPF
+    906  f619		       a6 ee		      ldx	DelayCnt	; 3c, Z if A=0
+    907  f61b		       f0 03		      beq	.Fine1	; A=0 → fine only
+    908  f61d				   .BD1
+    909  f61d		       ca		      dex		; 2c
+    910  f61e		       d0 fd		      bne	.BD1	; 3c taken / 2c last → 5A-1
+    911  f620				   .Fine1
+    912  f620		       a6 ef		      ldx	FineCnt	; 3c (≠0 here)
+    913  f622		       e0 02		      cpx	#2	; 2c
+    914  f624		       f0 0e		      beq	.R1	; Fine=2
+    915  f626		       e0 03		      cpx	#3	; 2c
+    916  f628		       f0 05		      beq	.F31	; Fine=3
+    917  f62a		       ea		      nop		; Fine=4
+    918  f62b		       ea		      nop
+    919  f62c		       4c 34 f6 	      jmp	.R1
+    920  f62f				   .F31
+    921  f62f		       24 ee		      bit	DelayCnt	; 3c zp
+    922  f631		       4c 34 f6 	      jmp	.R1
+    923  f634				   .R1
+    924  f634		       84 08		      sty	COLUPF
+    925  f636
+    926  f636		       85 02		      sta	WSYNC
+    927  f638		       a9 1c		      lda	#$1C
+    928  f63a		       85 08		      sta	COLUPF
+    929  f63c		       a6 ee		      ldx	DelayCnt
+    930  f63e		       f0 03		      beq	.Fine2
+    931  f640				   .BD2
+    932  f640		       ca		      dex
+    933  f641		       d0 fd		      bne	.BD2
+    934  f643				   .Fine2
+    935  f643		       a6 ef		      ldx	FineCnt
+    936  f645		       e0 02		      cpx	#2
+    937  f647		       f0 0e		      beq	.R2
+    938  f649		       e0 03		      cpx	#3
+    939  f64b		       f0 05		      beq	.F32
+    940  f64d		       ea		      nop
+    941  f64e		       ea		      nop
+    942  f64f		       4c 57 f6 	      jmp	.R2
+    943  f652				   .F32
+    944  f652		       24 ee		      bit	DelayCnt
+    945  f654		       4c 57 f6 	      jmp	.R2
+    946  f657				   .R2
+    947  f657		       84 08		      sty	COLUPF
+    948  f659
+    949  f659		       85 02		      sta	WSYNC
+    950  f65b		       a9 1c		      lda	#$1C
+    951  f65d		       85 08		      sta	COLUPF
+    952  f65f		       a6 ee		      ldx	DelayCnt
+    953  f661		       f0 03		      beq	.Fine3
+    954  f663				   .BD3
+    955  f663		       ca		      dex
+    956  f664		       d0 fd		      bne	.BD3
+    957  f666				   .Fine3
+    958  f666		       a6 ef		      ldx	FineCnt
+    959  f668		       e0 02		      cpx	#2
+    960  f66a		       f0 0e		      beq	.R3
+    961  f66c		       e0 03		      cpx	#3
+    962  f66e		       f0 05		      beq	.F33
+    963  f670		       ea		      nop
+    964  f671		       ea		      nop
+    965  f672		       4c 7a f6 	      jmp	.R3
+    966  f675				   .F33
+    967  f675		       24 ee		      bit	DelayCnt
+    968  f677		       4c 7a f6 	      jmp	.R3
+    969  f67a				   .R3
+    970  f67a		       84 08		      sty	COLUPF
+    971  f67c							; no jmp here: .BarGap is the next instruction — the old `jmp .BarGap`
+    972  f67c							; cost 3c AFTER the red boundary write and pushed line-3 content to 76c
+    973  f67c							; (BarGap WSYNC started at c76 → full-line stall → HUD band 51→52 lines
+    974  f67c							; → frame 263 on Fine2/3/4 frames). Lines 1/2 enter their WSYNC at c73.
+    975  f67c				   .BarGap
+    976  f67c
+    977  f67c							; --- gap: end bar line 3, clear PF during gap HBLANK ---
+    978  f67c							; (no ENABL write: the boundary-ball was removed — nothing in the HUD
+    979  f67c							; enables the ball anymore; .AfterRows already cleared it for the cave
+    980  f67c							; gate's benefit.)
+    981  f67c		       85 02		      sta	WSYNC
+    982  f67e		       a9 00		      lda	#0
+    983  f680		       85 0d		      sta	PF0
+    984  f682		       85 0e		      sta	PF1
+    985  f684		       85 0f		      sta	PF2
+    986  f686
+    987  f686							; ====================================================================
+    988  f686							; Line 2: Lives — green squares, count based on PlayerLives
+    989  f686							; P0 with NUSIZ based on lives: $03=3 copies, $01=2, $00=1
+    990  f686							; ====================================================================
+    991  f686		       a5 ac		      lda	PlayerLives
+    992  f688		       f0 39		      beq	.NoLives	; 0 lives = skip
+    993  f68a		       c9 03		      cmp	#3
+    994  f68c		       d0 05		      bne	.LivesNot3
+    995  f68e		       a9 03		      lda	#$03	; 3 copies close
+    996  f690		       4c 9e f6 	      jmp	.LivesSetNusiz
+    997  f693				   .LivesNot3
+    998  f693		       c9 02		      cmp	#2
+    999  f695		       d0 05		      bne	.LivesNot2
+   1000  f697		       a9 01		      lda	#$01	; 2 copies close
+   1001  f699		       4c 9e f6 	      jmp	.LivesSetNusiz
+   1002  f69c				   .LivesNot2
+   1003  f69c		       a9 00		      lda	#$00	; 1 copy
+   1004  f69e				   .LivesSetNusiz
+   1005  f69e		       85 04		      sta	NUSIZ0
+   1006  f6a0		       a9 c6		      lda	#$C6	; green
+   1007  f6a2		       85 06		      sta	COLUP0
+   1008  f6a4		       a9 0c		      lda	#12	; base X
+   1009  f6a6		       a2 00		      ldx	#0
+   1010  f6a8		       20 f4 f7 	      jsr	SetObjectXPos_b1
+   1011  f6ab		       85 02		      sta	WSYNC
+   1012  f6ad		       85 2a		      sta	HMOVE
+   1013  f6af		       a9 e0		      lda	#$E0	; 3-color-clock-wide square pattern
+   1014  f6b1		       85 1b		      sta	GRP0
+   1015  f6b3		       a0 05		      ldy	#5	; 5 scanlines tall
+   1016  f6b5				   .LivesLoop
+   1017  f6b5		       85 02		      sta	WSYNC
+   1018  f6b7		       88		      dey
+   1019  f6b8		       d0 fb		      bne	.LivesLoop
+   1020  f6ba		       a9 00		      lda	#0
+   1021  f6bc		       85 1b		      sta	GRP0
+   1022  f6be		       85 04		      sta	NUSIZ0
+   1023  f6c0		       4c d4 f6 	      jmp	.LivesDone
+   1024  f6c3				   .NoLives
+   1025  f6c3		       a9 00		      lda	#0
+   1026  f6c5		       85 1b		      sta	GRP0
+   1027  f6c7		       85 04		      sta	NUSIZ0
+   1028  f6c9		       a0 05		      ldy	#5
+   1029  f6cb				   .LivesBlankLoop
+   1030  f6cb		       85 02		      sta	WSYNC
+   1031  f6cd		       88		      dey
+   1032  f6ce		       d0 fb		      bne	.LivesBlankLoop
+   1033  f6d0		       85 02		      sta	WSYNC	; match lives path: SetObjectXPos + HMOVE
+   1034  f6d2		       85 02		      sta	WSYNC
+   1035  f6d4				   .LivesDone
+   1036  f6d4
+   1037  f6d4							; --- 1 scanline gap ---
+   1038  f6d4		       85 02		      sta	WSYNC
+   1039  f6d6
+   1040  f6d6							; ====================================================================
+   1041  f6d6							; Line 3: Bombs — red squares, count = PlayerBombs (0..5)
+   1042  f6d6							; P0 at 12: NUSIZ0 $00/$01/$03 → 1/2/3 copies
+   1043  f6d6							; P1 at 60: NUSIZ1 $00/$01 → 1/2 copies (only if count >= 4)
+   1044  f6d6							; Always same WSYNC structure (2×pos + HMOVE + 5 + 3 gap = 11)
+   1045  f6d6							; ====================================================================
+   1046  f6d6		       a9 46		      lda	#$46	; red
+   1047  f6d8		       85 06		      sta	COLUP0
+   1048  f6da		       85 07		      sta	COLUP1
+   1049  f6dc		       a5 f0		      lda	PlayerBombs
+   1050  f6de		       c9 05		      cmp	#5
+   1051  f6e0		       d0 0b		      bne	.BmNot5
+   1052  f6e2		       a9 03		      lda	#$03
+   1053  f6e4		       85 04		      sta	NUSIZ0
+   1054  f6e6		       a9 01		      lda	#$01
+   1055  f6e8		       85 05		      sta	NUSIZ1
+   1056  f6ea		       4c 1a f7 	      jmp	.BmNusizDone
+   1057  f6ed				   .BmNot5
+   1058  f6ed		       c9 04		      cmp	#4
+   1059  f6ef		       d0 0b		      bne	.BmNot4
+   1060  f6f1		       a9 03		      lda	#$03
+   1061  f6f3		       85 04		      sta	NUSIZ0
+   1062  f6f5		       a9 00		      lda	#$00
+   1063  f6f7		       85 05		      sta	NUSIZ1
+   1064  f6f9		       4c 1a f7 	      jmp	.BmNusizDone
+   1065  f6fc				   .BmNot4
+   1066  f6fc		       c9 03		      cmp	#3
+   1067  f6fe		       d0 07		      bne	.BmNot3
+   1068  f700		       a9 03		      lda	#$03
+   1069  f702		       85 04		      sta	NUSIZ0
+   1070  f704		       4c 16 f7 	      jmp	.BmP1off
+   1071  f707				   .BmNot3
+   1072  f707		       c9 02		      cmp	#2
+   1073  f709		       d0 07		      bne	.BmNot2
+   1074  f70b		       a9 01		      lda	#$01
+   1075  f70d		       85 04		      sta	NUSIZ0
+   1076  f70f		       4c 16 f7 	      jmp	.BmP1off
+   1077  f712				   .BmNot2
+   1078  f712		       a9 00		      lda	#$00	; 0 or 1 bomb
+   1079  f714		       85 04		      sta	NUSIZ0
+   1080  f716				   .BmP1off
+   1081  f716		       a9 00		      lda	#$00
+   1082  f718		       85 05		      sta	NUSIZ1
+   1083  f71a				   .BmNusizDone
+   1084  f71a		       a9 0c		      lda	#12	; P0 base
+   1085  f71c		       a2 00		      ldx	#0
+   1086  f71e		       20 f4 f7 	      jsr	SetObjectXPos_b1
+   1087  f721		       a9 3c		      lda	#60	; P1 base
+   1088  f723		       a2 01		      ldx	#1
+   1089  f725		       20 f4 f7 	      jsr	SetObjectXPos_b1
+   1090  f728		       85 02		      sta	WSYNC
+   1091  f72a		       85 2a		      sta	HMOVE
+   1092  f72c		       a5 f0		      lda	PlayerBombs
+   1093  f72e		       f0 18		      beq	.BmBlank
+   1094  f730		       c9 04		      cmp	#4
+   1095  f732		       b0 0b		      bcs	.BmBoth
+   1096  f734		       a9 e0		      lda	#$E0
+   1097  f736		       85 1b		      sta	GRP0
+   1098  f738		       a9 00		      lda	#0
+   1099  f73a		       85 1c		      sta	GRP1
+   1100  f73c		       4c 4e f7 	      jmp	.BmDraw
+   1101  f73f				   .BmBoth
+   1102  f73f		       a9 e0		      lda	#$E0
+   1103  f741		       85 1b		      sta	GRP0
+   1104  f743		       85 1c		      sta	GRP1
+   1105  f745		       4c 4e f7 	      jmp	.BmDraw
+   1106  f748				   .BmBlank
+   1107  f748		       a9 00		      lda	#0
+   1108  f74a		       85 1b		      sta	GRP0
+   1109  f74c		       85 1c		      sta	GRP1
+   1110  f74e				   .BmDraw
+   1111  f74e		       a0 05		      ldy	#5
+   1112  f750				   .BombsLoop
+   1113  f750		       85 02		      sta	WSYNC
+   1114  f752		       88		      dey
+   1115  f753		       d0 fb		      bne	.BombsLoop
+   1116  f755		       a9 00		      lda	#0
+   1117  f757		       85 1b		      sta	GRP0
+   1118  f759		       85 1c		      sta	GRP1
+   1119  f75b		       85 04		      sta	NUSIZ0
+   1120  f75d		       85 05		      sta	NUSIZ1
+   1121  f75f
+   1122  f75f							; --- 3 scanline gap (moved score down to avoid bomb collision) ---
+   1123  f75f		       85 02		      sta	WSYNC
+   1124  f761		       85 02		      sta	WSYNC
+   1125  f763		       85 02		      sta	WSYNC
+   1126  f765
+   1127  f765							; ====================================================================
+   1128  f765							; Line 4: Score — 6-digit test ("012389") — 48-pixel sprite technique
+   1129  f765							; NUSIZ0=3 (3 copies close) + NUSIZ1=3 (3 copies close)
+   1130  f765							; Interleaved: P0c1 P1c1 P0c2 P1c2 P0c3 P1c3 = 6 digit slots
+   1131  f765							; VDELP0=1, VDELP1=1 for cross-buffer pipeline
+   1132  f765							; ====================================================================
+   1133  f765
+   1134  f765							; --- Setup sprites ---
+   1135  f765		       a9 0e		      lda	#$0E	; white
+   1136  f767		       85 06		      sta	COLUP0
+   1137  f769		       85 07		      sta	COLUP1
+   1138  f76b		       a9 03		      lda	#3	; NUSIZ = 3 copies close
+   1139  f76d		       85 04		      sta	NUSIZ0
+   1140  f76f		       85 05		      sta	NUSIZ1
+   1141  f771		       a9 01		      lda	#1	; VDELP = ON (cross-buffer active)
+   1142  f773		       85 25		      sta	VDELP0
+   1143  f775		       85 26		      sta	VDELP1
+   1144  f777							; Flush both VDELP buffers + live registers to 0.
+   1145  f777							; Without this, stale buffer data from previous frame shows as
+   1146  f777							; white ghost copies during the positioning scanlines.
+   1147  f777		       a9 00		      lda	#0
+   1148  f779		       85 1b		      sta	GRP0	; GRP0A (buffer) = 0
+   1149  f77b		       85 1c		      sta	GRP1	; GRP1A (buffer) = 0, GRP0 live = GRP0A = 0
+   1150  f77d		       85 1b		      sta	GRP0	; GRP1 live = GRP1A = 0
+   1151  f77f		       85 0b		      sta	REFP0
+   1152  f781		       85 0c		      sta	REFP1
+   1153  f783
+   1154  f783							; --- Position P0 and P1 for interleaved 6-digit layout ---
+   1155  f783							; P0 at pixel 60, P1 at pixel 68 (shifted 4px right to fix pipeline timing)
+   1156  f783		       a9 3c		      lda	#60
+   1157  f785		       a2 00		      ldx	#0
+   1158  f787		       20 f4 f7 	      jsr	SetObjectXPos_b1
+   1159  f78a		       a9 44		      lda	#68
+   1160  f78c		       a2 01		      ldx	#1
+   1161  f78e		       20 f4 f7 	      jsr	SetObjectXPos_b1
+   1162  f791		       85 02		      sta	WSYNC
+   1163  f793		       85 2a		      sta	HMOVE
+   1164  f795
+   1165  f795							; --- Score digits + #18 LV001 banner pointers (sub with the glyphs
+   1166  f795							; at $FD.. — bank1 pre-pad $F937 pin has ~1B slack, nothing fits).
+   1167  f795		       20 68 fd 	      jsr	SetupScorePointers
+   1168  f798
+   1169  f798							; --- Clear sprites before loop (3-write pattern for VDELP) ---
+   1170  f798		       a9 00		      lda	#0
+   1171  f79a		       85 1b		      sta	GRP0
+   1172  f79c		       85 1c		      sta	GRP1
+   1173  f79e		       85 1b		      sta	GRP0
+   1174  f7a0
+   1175  f7a0							; ====================================================================
+   1176  f7a0							; 8-scanline render loop (exactly 71 cycles + WSYNC = 74 per line)
+   1177  f7a0							; Proven kernel from score48pix.asm
+   1178  f7a0							; ====================================================================
+   1179  f7a0		       a0 07		      ldy	#7
+   1180  f7a2		       84 ec		      sty	scbrdCnt
+   1181  f7a4				   .ScoreLoop
+   1182  f7a4		       a4 ec		      ldy	<scbrdCnt	; 3c
+   1183  f7a6		       b1 ea		      lda	(scorePtr6),Y	; 5c — pre-load LAST digit (digit 6)
+   1184  f7a8		       aa		      tax		; 2c — cache in X
+   1185  f7a9		       85 02		      sta	WSYNC	; 3c
+   1186  f7ab		       b1 e0		      lda	(scorePtr1),Y	; 5c — load digit 1
+   1187  f7ad		       8d 1b 00 	      sta.w	GRP0	; 4c — digit 1 -> GRP0A buffer
+   1188  f7b0		       b1 e2		      lda	(scorePtr2),Y	; 5c — load digit 2
+   1189  f7b2		       85 1c		      sta	GRP1	; 3c — digit 2 -> GRP1A, digit 1 live on P0c1
+   1190  f7b4		       b1 e4		      lda	(scorePtr3),Y	; 5c — load digit 3
+   1191  f7b6		       85 1b		      sta	GRP0	; 3c — digit 3 -> GRP0A, digit 2 live on P1c1
+   1192  f7b8		       b1 e6		      lda	(scorePtr4),Y	; 5c — load digit 4
+   1193  f7ba		       85 ed		      sta	<scbrdTmp	; 3c — cache digit 4
+   1194  f7bc		       b1 e8		      lda	(scorePtr5),Y	; 5c — load digit 5
+   1195  f7be		       a4 ed		      ldy	<scbrdTmp	; 3c — Y = digit 4
+   1196  f7c0		       84 1c		      sty	GRP1	; 3c — digit 4 -> GRP1A, digit 3 live on P0c2
+   1197  f7c2		       85 1b		      sta	GRP0	; 3c — digit 5 -> GRP0A, digit 4 live on P1c2
+   1198  f7c4		       86 1c		      stx	GRP1	; 3c — digit 6 -> GRP1A, digit 5 live on P0c3
+   1199  f7c6		       86 1b		      stx	GRP0	; 3c — digit 6 -> GRP0A, digit 6 live on P1c3
+   1200  f7c8		       c6 ec		      dec	<scbrdCnt	; 5c
+   1201  f7ca		       d0 d8		      bne	.ScoreLoop	; 3c
+   1202  f7cc
+   1203  f7cc							; --- Cleanup ---
+   1204  f7cc		       a9 00		      lda	#0
+   1205  f7ce		       85 1b		      sta	GRP0
+   1206  f7d0		       85 1c		      sta	GRP1
+   1207  f7d2		       85 04		      sta	NUSIZ0
+   1208  f7d4		       85 05		      sta	NUSIZ1
+   1209  f7d6		       85 25		      sta	VDELP0
+   1210  f7d8		       85 26		      sta	VDELP1
+   1211  f7da
+   1212  f7da							; --- Restore cave kernel settings ---
+   1213  f7da		       a9 35		      lda	#$35	; CTRLPF: reflect + priority + 8-clk ball (cave mode
+   1214  f7dc							; since D6 — bank1 bar overwrote $05 during its band)
+   1215  f7dc		       85 0a		      sta	CTRLPF
+   1216  f7de		       a9 00		      lda	#0
+   1217  f7e0		       85 04		      sta	NUSIZ0
+   1218  f7e2		       a9 00		      lda	#0
+   1219  f7e4		       85 05		      sta	NUSIZ1
+   1220  f7e6		       85 25		      sta	VDELP0
+   1221  f7e8		       85 26		      sta	VDELP1
+   1222  f7ea
+   1223  f7ea							; ====================================================================
+   1224  f7ea							; Pad remaining scanlines to reach exactly 48 total
+   1225  f7ea							; Path A (PlayerLives > 0) — execution count:
+   1226  f7ea							;   Top gap:  6 (4 + 2 former ball-pos lines — elements keep lines)
+   1227  f7ea							;   Timer:    3 loop + 1 gap = 4
+   1228  f7ea							;   Lives:    1 SetObjectXPos + 1 HMOVE + 5 render + 1 gap = 8
+   1229  f7ea							;   Bombs:    2 SetObjectXPos + 1 HMOVE + 5 render + 3 gap = 11
+   1230  f7ea							;   Score:    2 SetObjectXPos + 1 HMOVE + 7 ScoreLoop = 10
+   1231  f7ea							;   Subtotal: 6+4+8+11+10 = 39
+   1232  f7ea							;   Pad:      48 - 39 = 9
+   1233  f7ea							; .NoLives blank path pads +2 WSYNC so both paths total 48.
+   1234  f7ea							; ====================================================================
+   1235  f7ea		       a2 09		      ldx	#9
+   1236  f7ec				   .HudPad
+   1237  f7ec		       85 02		      sta	WSYNC
+   1238  f7ee		       ca		      dex
+   1239  f7ef		       d0 fb		      bne	.HudPad
+   1240  f7f1
+   1241  f7f1							; --- Return to bank0 via fold-pad ---
+   1242  f7f1		       4c 70 fc 	      jmp	$FC70
+   1243  f7f4
+   1244  f7f4							; ========================================================================
+   1245  f7f4							; SetObjectXPos — Andrew Davie algorithm (page-aligned table)
+   1246  f7f4							; X=0 positions P0, X=1 positions P1
+   1247  f7f4							; A = pixel position (0-159)
+   1248  f7f4							; ========================================================================
+   1249  f7f4				   SetObjectXPos_b1
+   1250  f7f4		       85 02		      sta	WSYNC
+   1251  f7f6		       38		      sec
+   1252  f7f7				   .Div15Loop
+   1253  f7f7		       e9 0f		      sbc	#15
+   1254  f7f9		       b0 fc		      bcs	.Div15Loop
+   1255  f7fb		       a8		      tay
+   1256  f7fc		       b9 0f fe 	      lda	fineAdjustTable_b1,Y
+   1257  f7ff		       95 20		      sta	HMP0,X
+   1258  f801		       95 10		      sta	RESP0,X
+   1259  f803		       60		      rts
+   1260  f804
+   1261  f804							; Bar H3c tables (B=0..120): content ≤71c (WSYNC 3c fits in 76).
+   1262  f804							; Paths (cycles after WSYNC → sty red): F=0 slim 12+5A; F=1 slim+nop 14+5A;
+   1263  f804							; F=2 full 20+5A; F=3 full 30+5A; F=4 full 31+5A (A=0 special-cased).
+   1264  f804							; D2 (2026-10-16): both tables were EXACTLY period-8 ([1-8],[9-16],…) so
+   1265  f804							; they shrank 121→15 entries, indexed (B+7)>>3 (see the reader). Entry 0 =
+   1266  f804							; B=0; entry g≥1 = B in [8(g-1)+1, 8g]. Verified against the old 121B blobs.
+   1267  f804				   BarDelayTable		; (B+7)>>3, 15 entries
+   1268  f804		       00 02 03 02*	      .byte.b	0, 2,3,2,4,5,2,5,7,8,5,8,10,11,8
+   1269  f813				   BarFineTable 		; (B+7)>>3, 15 entries; ∈{0,1,2,3,4}
+   1270  f813		       02 01 00 02*	      .byte.b	2, 1,0,2,1,0,4,2,1,0,4,2,1,0,4
+   1271  f822
+   1272  f822							; ------------------------------------------------------------------------------
+   1273  f822		       00 00 00 00*	      .ds	$F937 - *, 0	; pinned: bank2 M1StripBlast back-jmp operand
+   1274  f937							; ($F937) — test_bomb_strip asserts both literals
+   1275  f937							; StripBlastCheck — Phase 4: bomb blast vs the D6 patch strips. Tail-jumped
+   1276  f937							; from BombMarkWalls .BMWDone, which now crosses to bank2 FIRST (M1 twin,
+   1277  f937							; `sta $1FF8 / jmp $F970` — the meta lives in bank2's ROM) and comes back
+   1278  f937							; here (`sta $1FF7 / jmp $F937`). Still 0 pushes (the jsr+pha version
+   1279  f937							; measured SP $F7 < the $F8 gameplay guard, and the pha leaked on the
+   1280  f937							; early-exit path -> runaway work -> 309-line frames in Stella 2026-10-04).
+   1281  f937							; Every exit ends in ReturnPad with A = count.
+   1282  f937							; In: BMWScratch = strip left col pL in RIGHT-half space ($FF = none/sym,
+   1283  f937							; captured before the punch loop), CollisionEndX/CellX = blast window in
+   1284  f937							; LEFT-half space (bomb col mirrored at BMW entry), CollisionX = count.
+   1285  f937							; Overlap after mirroring (39-x) with the strip not yet dead → set
+   1286  f937							; EnemyDeadMask b3 (ball strip; b4 = M1 strip, set by M1StripBlast) and
+   1287  f937							; inc the count (caller's +75 loop scores it). The
+   1288  f937							; kill bits die with the room (EnterRoom zeroes EnemyDeadMask) — same
+   1289  f937							; lifecycle as WallMask holes (D1-B). P2b door models never
+   1290  f937							; reach .SBtake: M1StripBlast (bank2, runs first) stashes BMWScratch :=
+   1291  f937							; $FF when MetaB b7 — the take's window test then falls into .SBdone.
+   1292  f937							; Key pickup (P5) sets b3/b4 for doors instead (key-only unlock).
+   1293  f937							; ------------------------------------------------------------------------------
+   1294  f937				   StripBlastCheck
+   1295  f937							; --- P2b left strip take (staged by bank2 M1StripBlast) --------------
+   1296  f937							; RectCount = 2ℓ left dcol, $FF = none / left door / right bomb.
+   1297  f937							; Window is still LEFT-half here (the mirror below). Door models stage
+   1298  f937							; $FF both ways (MetaA b3 / MetaB b7) so neither take runs — key (P5)
+   1299  f937							; sets b3/b4 instead.
+   1300  f937		       a5 92		      lda	RectCount
+   1301  f939		       30 1e		      bmi	.SBright	; $FF → no left strip this frame
+   1302  f93b		       a5 8c		      lda	CollisionCellX	; blast hi
+   1303  f93d		       c5 92		      cmp	RectCount
+   1304  f93f		       90 18		      bcc	.SBright	; hi < 2ℓ → strip right of the blast
+   1305  f941		       a5 8e		      lda	CollisionEndX	; blast lo (C=1 from the hi cmp)
+   1306  f943		       e5 92		      sbc	RectCount	; lo - 2ℓ (borrow ⇒ lo < 2ℓ)
+   1307  f945		       90 04		      bcc	.SBleftTake	; blast starts left → overlap
+   1308  f947		       c9 02		      cmp	#2
+   1309  f949		       b0 0e		      bcs	.SBright	; lo >= 2ℓ+2 → blast ends left of strip
+   1310  f94b							;   (A=0/1 falls into take = overlap)
+   1311  f94b				   .SBleftTake
+   1312  f94b		       a5 ba		      lda	EnemyDeadMask
+   1313  f94d		       29 10		      and	#$10
+   1314  f94f		       d0 08		      bne	.SBright	; already destroyed → no double score
+   1315  f951		       a9 10		      lda	#$10
+   1316  f953		       05 ba		      ora	EnemyDeadMask
+   1317  f955		       85 ba		      sta	EnemyDeadMask	; b4 = M1 strip destroyed (room-scoped)
+   1318  f957		       e6 8b		      inc	CollisionX	; +1 wall for the caller's score loop
+   1319  f959				   .SBright
+   1320  f959							; BMW blast cols are LEFT-frame; strip pL is RIGHT-frame → mirror the
+   1321  f959							; window here (space is free in this gap): lo_r = 39-hi_l,
+   1322  f959							; hi_r = 39-lo_l. Y holds hi_r (no stack push).
+   1323  f959		       18		      clc
+   1324  f95a		       a5 8e		      lda	CollisionEndX	; lo_l
+   1325  f95c		       49 ff		      eor	#$FF
+   1326  f95e		       69 28		      adc	#40	; hi_r = 39-lo_l
+   1327  f960		       a8		      tay
+   1328  f961		       18		      clc
+   1329  f962		       a5 8c		      lda	CollisionCellX	; hi_l
+   1330  f964		       49 ff		      eor	#$FF
+   1331  f966		       69 28		      adc	#40	; lo_r = 39-hi_l
+   1332  f968		       85 8e		      sta	CollisionEndX	; EndX := lo_r
+   1333  f96a		       84 8c		      sty	CollisionCellX	; CellX := hi_r
+   1334  f96c		       a5 8c		      lda	CollisionCellX	; hi
+   1335  f96e		       38		      sec
+   1336  f96f		       e5 88		      sbc	BMWScratch	; hi - pL
+   1337  f971		       90 1d		      bcc	.SBdone	; hi < pL → strip right of the blast
+   1338  f973		       a5 8e		      lda	CollisionEndX	; lo
+   1339  f975		       c5 88		      cmp	BMWScratch
+   1340  f977		       90 09		      bcc	.SBtake	; lo < pL (blast reaches right, hi >= pL)
+   1341  f979		       f0 07		      beq	.SBtake	; lo == pL
+   1342  f97b		       38		      sec
+   1343  f97c		       e9 01		      sbc	#1
+   1344  f97e		       c5 88		      cmp	BMWScratch
+   1345  f980		       d0 0e		      bne	.SBdone	; lo >= pL+2 → blast ends left of the strip
+   1346  f982				   .SBtake
+   1347  f982		       a5 ba		      lda	EnemyDeadMask
+   1348  f984		       29 08		      and	#$08
+   1349  f986		       d0 08		      bne	.SBdone	; already destroyed → no double score
+   1350  f988		       a9 08		      lda	#$08
+   1351  f98a		       05 ba		      ora	EnemyDeadMask
+   1352  f98c		       85 ba		      sta	EnemyDeadMask	; b3 = strip destroyed (in-room persistent)
+   1353  f98e		       e6 8b		      inc	CollisionX	; +1 wall for the caller's score loop
+   1354  f990				   .SBdone
+   1355  f990		       a5 8b		      lda	CollisionX	; A = walls newly broken (caller contract)
+   1356  f992		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad → bank0 caller (0 push)
+   1357  f995
+   1358  f995		       00 00 00 00*	      .ds	$F9AC - *, 0	; shared cross-bank pad — bank2 carries the
+   1359  f9ac							; SAME 12 bytes at $F9AC (identity asserted
+   1360  f9ac							; in test_bomb_strip): after `sta $1FF8` the
+   1361  f9ac							; NEXT opcode fetch is from the NEW bank at
+   1362  f9ac							; pc+3, so both banks must hold the identical
+   1363  f9ac							; `jmp` (F6 pad rule — ReturnPad/OverlayTramp
+   1364  f9ac							; do the same).
+   1365  f9ac				   M1ToBank2		; reached bank1-side: .BMWDone jmps here
+   1366  f9ac		       8d f8 1f 	      sta	$1FF8	; switch bank1 → bank2
+   1367  f9af		       4c 70 f9 	      jmp	$F970	; M1StripBlast
+   1368  f9b2				   M1ToBank1		; = $F9B2 (M1StripBlast jmps here bank2-side;
+   1369  f9b2		       8d f7 1f 	      sta	$1FF7	; after that switch bank1 executes this copy)
+   1370  f9b5		       4c 37 f9 	      jmp	$F937	; StripBlastCheck
+   1371  f9b8
+   1372  f9b8							; ========================================================================
+   1373  f9b8							; Leaf routines relocated from bank0 — batch A, sounds (leaf_move_plan)
+   1374  f9b8							; Entry targets for bank0 CallPads; every tail jmps ReturnPad at $FBF8
+   1375  f9b8							; (byte-identical pad in both banks — pha/lda/sta/pla/rts).
+   1376  f9b8							; ========================================================================
+   1377  f9b8		       00 00 00 00*	      .ds	$F9C0 - *, 0
+   1378  f9c0
+   1379  f9c0		       00 0f	   JET_AUD_BASE =	$0F	; mirrors kernel.asm EQU (value guarded by tests)
+   1380  f9c0		       00 08	   JET_AUD_VOL =	$08
+   1381  f9c0		       00 02	   LASER_AUD_C =	2	; mirrors kernel.asm EQU: div-15 tone = low pitch
+   1382  f9c0		       00 09	   LASER_AUD_V =	9
+   1383  f9c0		       00 8a	   DropTarget =	$8A	; hand-copy of kernel ZP byte (spawn drop-in)
+   1384  f9c0
+   1385  f9c0				   UpdateBombSound
+   1386  f9c0		       a5 f1		      lda	BombSnd
+   1387  f9c2		       f0 04		      beq	.UBSSilence
+   1388  f9c4		       c6 f1		      dec	BombSnd
+   1389  f9c6		       d0 04		      bne	.UBSDone
+   1390  f9c8				   .UBSSilence
+   1391  f9c8		       a9 00		      lda	#0
+   1392  f9ca		       85 19		      sta	AUDV0
+   1393  f9cc				   .UBSDone
+   1394  f9cc		       4c f8 fb 	      jmp	ReturnPad
+   1395  f9cf
+   1396  f9cf				   UpdateJetSound
+   1397  f9cf		       a5 8a		      lda	DropTarget	; spawn drop-in: engine buzz while falling
+   1398  f9d1		       d0 0b		      bne	.JetOn	;   (no Up held — DropArm zeroes JetPower)
+   1399  f9d3		       ad 80 02 	      lda	SWCHA
+   1400  f9d6		       29 10		      and	#%00010000	; D4 = up (0 = pressed)
+   1401  f9d8		       f0 04		      beq	.JetOn
+   1402  f9da		       a9 00		      lda	#0	; throttle off -> mute engine
+   1403  f9dc		       f0 1d		      beq	.JetStore	; A=0 -> Z set, always taken (byte-neutral)
+   1404  f9de				   .JetOn
+   1405  f9de		       a9 01		      lda	#1	; 4-bit poly = raspy engine buzz
+   1406  f9e0		       85 16		      sta	AUDC1
+   1407  f9e2		       a5 96		      lda	JetPower
+   1408  f9e4		       4a		      lsr
+   1409  f9e5		       4a		      lsr
+   1410  f9e6		       4a		      lsr		; JetPower/8 = 0..4 (revs with thrust)
+   1411  f9e7		       49 ff		      eor	#$ff
+   1412  f9e9		       18		      clc
+   1413  f9ea		       69 01		      adc	#1	; A = -(JetPower/8)
+   1414  f9ec		       18		      clc
+   1415  f9ed		       69 0f		      adc	#JET_AUD_BASE	; A = base - JetPower/8
+   1416  f9ef		       aa		      tax
+   1417  f9f0		       a5 ad		      lda	TickCounter
+   1418  f9f2		       4a		      lsr		; C = TickCounter bit0 (was and #1)
+   1419  f9f3		       90 01		      bcc	.JetWob	;   parity wobble -1 every other frame (30 Hz)
+   1420  f9f5		       ca		      dex		; (bcc = old beq; dex when bit0 set)
+   1421  f9f6				   .JetWob
+   1422  f9f6		       8a		      txa
+   1423  f9f7		       85 18		      sta	AUDF1
+   1424  f9f9		       a9 08		      lda	#JET_AUD_VOL
+   1425  f9fb				   .JetStore
+   1426  f9fb		       85 1a		      sta	AUDV1
+   1427  f9fd		       4c f8 fb 	      jmp	ReturnPad
+   1428  fa00
+   1429  fa00				   BombSndDrop
+   1430  fa00		       a9 06		      lda	#6
+   1431  fa02		       85 f1		      sta	BombSnd
+   1432  fa04		       a9 04		      lda	#4	; square
+   1433  fa06		       85 15		      sta	AUDC0
+   1434  fa08		       a9 0a		      lda	#10
+   1435  fa0a		       85 17		      sta	AUDF0
+   1436  fa0c		       a9 08		      lda	#8
+   1437  fa0e		       85 19		      sta	AUDV0
+   1438  fa10		       4c f8 fb 	      jmp	ReturnPad
+   1439  fa13
+   1440  fa13				   BombSndExplode
+   1441  fa13		       a9 1e		      lda	#30
+   1442  fa15		       85 f1		      sta	BombSnd
+   1443  fa17		       a9 08		      lda	#8	; noise
+   1444  fa19		       85 15		      sta	AUDC0
+   1445  fa1b		       a9 00		      lda	#0
+   1446  fa1d		       85 17		      sta	AUDF0
+   1447  fa1f		       a9 0a		      lda	#10
+   1448  fa21		       85 19		      sta	AUDV0
+   1449  fa23		       4c f8 fb 	      jmp	ReturnPad
+   1450  fa26
+   1451  fa26							; ========================================================================
+   1452  fa26							; Leaf routines relocated from bank0 — batch B (leaf_move_plan)
+   1453  fa26							; ========================================================================
+   1454  fa26
+   1455  fa26							; GetConnIdx — stage FetchPtr for the four exit handlers' folds.
+   1456  fa26							; Conn table lives in bank2; the fold read happens in the bank0 CALLER's
+   1457  fa26							; jsr FoldIndirect after return. Returns Y = RoomNo*2 (2 packed bytes per
+   1458  fa26							; room: up/down, left/right), X = 0.
+   1459  fa26				   GetConnIdx
+   1460  fa26		       a5 98		      lda	RoomNo
+   1461  fa28		       0a		      asl
+   1462  fa29		       a8		      tay
+   1463  fa2a		       a5 a1		      lda	LevelConnLo
+   1464  fa2c		       85 e5		      sta	FetchPtr
+   1465  fa2e		       a5 a2		      lda	LevelConnHi
+   1466  fa30		       85 e6		      sta	FetchPtr+1
+   1467  fa32		       a2 00		      ldx	#0
+   1468  fa34		       4c f8 fb 	      jmp	ReturnPad
+   1469  fa37
+   1470  fa37							; ClearPFColumn — A = left-half col 0..19; LineCount ($84) = first row;
+   1471  fa37							;   CollisionEndY = last row (inclusive). AND-clear that col's
+   1472  fa37							;   PF bit in those rows only. Clobbers A/X/Y/Temp ($AD) — NO CollisionX
+   1473  fa37							;   (plan 5.1: BombMarkWalls keeps its broken-wall count there across the
+   1474  fa37							;   call). Same-bank rts tail: BombMarkWalls jsrs this directly; the old
+   1475  fa37							;   CallPad_ClearPFColumn path died with ApplyBombWalls (dead pad kept).
+   1476  fa37				   ClearPFColumn
+   1477  fa37		       a8		      tay		; Y = col
+   1478  fa38		       b9 68 fa 	      lda	BombClearMask,Y
+   1479  fa3b		       85 ad		      sta	Temp	; AND mask (clear bit; NOT CollisionX)
+   1480  fa3d		       a6 84		      ldx	LineCount	; first row
+   1481  fa3f				   .CPCLoop
+   1482  fa3f		       98		      tya		; col
+   1483  fa40		       c9 04		      cmp	#4
+   1484  fa42		       90 0d		      bcc	.CPC0
+   1485  fa44		       c9 0c		      cmp	#12
+   1486  fa46		       90 12		      bcc	.CPC1
+   1487  fa48		       b5 c9		      lda	PF2Buf,X
+   1488  fa4a		       25 ad		      and	Temp
+   1489  fa4c		       95 c9		      sta	PF2Buf,X
+   1490  fa4e		       4c 60 fa 	      jmp	.CPCNext
+   1491  fa51				   .CPC0
+   1492  fa51		       b5 c3		      lda	PF0Buf,X
+   1493  fa53		       25 ad		      and	Temp
+   1494  fa55		       95 c3		      sta	PF0Buf,X
+   1495  fa57		       4c 60 fa 	      jmp	.CPCNext
+   1496  fa5a				   .CPC1
+   1497  fa5a		       b5 c6		      lda	PF1Buf,X
+   1498  fa5c		       25 ad		      and	Temp
+   1499  fa5e		       95 c6		      sta	PF1Buf,X
+   1500  fa60				   .CPCNext
+   1501  fa60		       e4 8f		      cpx	CollisionEndY
+   1502  fa62		       f0 03		      beq	.CPCDone
+   1503  fa64		       e8		      inx
+   1504  fa65		       d0 d8		      bne	.CPCLoop	; rows 0..2; X never wraps here
+   1505  fa67				   .CPCDone
+   1506  fa67		       60		      rts		; plan 5.1: same-bank subroutine (was pad tail)
+   1507  fa68
+   1508  fa68							; AND-mask to clear col 0-19's PF bit (inverse of convert_room.pf_values)
+   1509  fa68				   BombClearMask
+   1510  fa68		       ef df bf 7f	      .byte.b	$EF, $DF, $BF, $7F	; col 0-3  (PF0)
+   1511  fa6c		       7f bf df ef*	      .byte.b	$7F, $BF, $DF, $EF, $F7, $FB, $FD, $FE	; col 4-11 (PF1)
+   1512  fa74		       fe fd fb f7*	      .byte.b	$FE, $FD, $FB, $F7, $EF, $DF, $BF, $7F	; col 12-19 (PF2)
+   1513  fa7c
+   1514  fa7c							; AddScore — add BCD amount in A (e.g. #$50, #$75) to HUD score.
+   1515  fa7c							; ScoreTh/ScoreHu = binary 0-9; ScoreTe = packed BCD. Clobbers A.
+   1516  fa7c							; Real 6502 BCD add — SED/ADC/CLD straight-line: D is cleared before any
+   1517  fa7c							; jsr, the 2600 has no interrupts, and nothing here restores D via plp
+   1518  fa7c							; (the 2026-09-23 decimal-mode rule). The old BINARY `cmp #$A0 / sbc #$A0`
+   1519  fa7c							; fix-up missed nibble-level overflow: $25+$75 = $9A stored raw -> ones
+   1520  fa7c							; digit A -> glyph index 10 -> DigitGfx+80 (past the 10-glyph font) =
+   1521  fa7c							; the solid-block score digit (screenshots/score_issue_002.png).
+   1522  fa7c							; C=1 = BCD carry (sum >= 100) -> ScoreHu path.
+   1523  fa7c							; SIZE PIN: routine runs $FA7D..$FAA4 exactly (UpdateLaserSound's pad
+   1524  fa7c							; target is $FAA5). Old head = clc/adc/cmp/bcc/sbc = 9 bytes, new head =
+   1525  fa7c							; sed/clc/adc/cld/bcc = 7, so the two nops restore the exact length —
+   1526  fa7c							; without them every pad below shifts silently.
+   1527  fa7c				   AddScore
+   1528  fa7c		       f8		      sed
+   1529  fa7d		       18		      clc
+   1530  fa7e		       65 f5		      adc	ScoreTe
+   1531  fa80		       d8		      cld
+   1532  fa81		       90 1c		      bcc	.ASstoreTe
+   1533  fa83		       ea		      nop		; byte-pin (see SIZE PIN above)
+   1534  fa84		       ea		      nop		; byte-pin
+   1535  fa85		       48		      pha		; save wrapped ScoreTe
+   1536  fa86		       e6 f4		      inc	ScoreHu
+   1537  fa88		       a5 f4		      lda	ScoreHu
+   1538  fa8a		       c9 0a		      cmp	#10
+   1539  fa8c		       90 10		      bcc	.AShuOk
+   1540  fa8e		       a9 00		      lda	#0
+   1541  fa90		       85 f4		      sta	ScoreHu
+   1542  fa92		       e6 f3		      inc	ScoreTh
+   1543  fa94		       a5 f3		      lda	ScoreTh
+   1544  fa96		       c9 0a		      cmp	#10
+   1545  fa98		       90 04		      bcc	.ASthOk
+   1546  fa9a		       a9 09		      lda	#9
+   1547  fa9c		       85 f3		      sta	ScoreTh
+   1548  fa9e				   .ASthOk
+   1549  fa9e				   .AShuOk
+   1550  fa9e		       68		      pla
+   1551  fa9f				   .ASstoreTe
+   1552  fa9f		       85 f5		      sta	ScoreTe
+   1553  faa1		       4c f8 fb 	      jmp	ReturnPad
+   1554  faa4
+   1555  faa4							; UpdateLaserSound — low "zoom" tone on channel 0 while fire is held.
+   1556  faa4							; Call order in bank0 overscan: UpdateBombSound, UpdateJetSound, this — so
+   1557  faa4							; AUDV0 is already forced to 0 by UpdateBombSound when BombSnd = 0, which is
+   1558  faa4							; exactly what silence-on-release needs (this routine then does nothing).
+   1559  faa4							; Bomb events own ch0 (BombSnd > 0 -> skip) so blip/explosion stay audible.
+   1560  faa4							; Pitch sweeps AUDF 4..14 on the free-running frame clock: AUDC=2 divides by
+   1561  faa4							; 15, so f = 31400/((AUDF+1)*15) = 419..140 Hz (low). Triangle, 8 steps x
+   1562  faa4							; 8 frames = 1.07 s per cycle, no audible wrap jump.
+   1563  faa4							; Clobbers A/X; Y preserved. No ZP writes.
+   1564  faa4				   UpdateLaserSound
+   1565  faa4		       a5 f1		      lda	BombSnd
+   1566  faa6		       d0 19		      bne	.ULSOut	; bomb event owns channel 0
+   1567  faa8		       a5 c0		      lda	LaserState
+   1568  faaa		       10 15		      bpl	.ULSOut	; fire released -> ch0 stays silent
+   1569  faac		       a5 c2		      lda	EnemyRamP
+   1570  faae		       4a		      lsr
+   1571  faaf		       4a		      lsr
+   1572  fab0		       4a		      lsr		; /8 frames per sweep step
+   1573  fab1		       29 07		      and	#7
+   1574  fab3		       aa		      tax
+   1575  fab4		       bd c4 fa 	      lda	LaserFreqTable,X
+   1576  fab7		       85 17		      sta	AUDF0
+   1577  fab9		       a9 02		      lda	#LASER_AUD_C
+   1578  fabb		       85 15		      sta	AUDC0
+   1579  fabd		       a9 09		      lda	#LASER_AUD_V
+   1580  fabf		       85 19		      sta	AUDV0
+   1581  fac1				   .ULSOut
+   1582  fac1		       4c f8 fb 	      jmp	ReturnPad
+   1583  fac4
+   1584  fac4				   LaserFreqTable
+   1585  fac4		       04 07 0a 0c*	      .byte.b	4,7,10,12,14,12,10,7
+   1586  facc
+   1587  facc							; PairGone — leaf in the pre-BMW free zone ($FACC..$FB0F). Called ONLY for
+   1588  facc							;   rect idx4 (the sole maskless slot), so rect4.x is deref'd here directly
+   1589  facc							;   (RcW1+16 = rect4.x — EQU-derived, not a magic number). Returns Z=1 iff
+   1590  facc							;   cols (rect4.x, rect4.x+1) are BOTH clear in row LineCount (pair present
+   1591  facc							;   anywhere in the span ⇒ Z=0). Rect idx4 has no WallMask bit (BombMaskBit
+   1592  facc							;   is 4-wide, b3-6), so this single-row buffer read replaces the mask
+   1593  facc							;   double-score guard for that slot only — first blast sees the pair
+   1594  facc							;   solid, any re-blast sees it clear and skips (parity: idx0-3 keep the
+   1595  facc							;   mask path untouched). Pair x is even (cell-aligned) and ≠0 (caller
+   1596  facc							;   gates), so x and x+1 always share one PF buffer. Clobbers A,X,Y,Temp.
+   1597  facc							;   Same-bank jsr legal (no pad nesting).
+   1598  facc				   PairGone
+   1599  facc		       a5 dc		      lda	RcW1+16	; rect4.x (ABWXTab,X with X=4)
+   1600  face		       aa		      tax
+   1601  facf		       bd 68 fa 	      lda	BombClearMask,X
+   1602  fad2		       49 ff		      eor	#$FF
+   1603  fad4		       a8		      tay		; Y = bit for col x
+   1604  fad5		       e8		      inx
+   1605  fad6		       bd 68 fa 	      lda	BombClearMask,X
+   1606  fad9		       49 ff		      eor	#$FF
+   1607  fadb		       85 ad		      sta	Temp	; bit for col x+1
+   1608  fadd		       98		      tya
+   1609  fade		       05 ad		      ora	Temp
+   1610  fae0		       85 ad		      sta	Temp	; both pair bits
+   1611  fae2							; X = x+1 here — buffer dispatch still selects correctly (pair x is
+   1612  fae2							; even: PF0 iff x<4 ⟺ X<4; PF1 4..10 ⟺ X 5..11; PF2 x≥12 ⟺ X≥13).
+   1613  fae2		       a4 84		      ldy	LineCount
+   1614  fae4		       e0 04		      cpx	#4
+   1615  fae6		       90 0a		      bcc	.pg0
+   1616  fae8		       e0 0c		      cpx	#12
+   1617  faea		       90 0c		      bcc	.pg1
+   1618  faec		       b9 c9 00 	      lda	PF2Buf,Y
+   1619  faef		       25 ad		      and	Temp
+   1620  faf1		       60		      rts
+   1621  faf2				   .pg0
+   1622  faf2		       b9 c3 00 	      lda	PF0Buf,Y
+   1623  faf5		       25 ad		      and	Temp
+   1624  faf7		       60		      rts
+   1625  faf8				   .pg1
+   1626  faf8		       b9 c6 00 	      lda	PF1Buf,Y
+   1627  fafb		       25 ad		      and	Temp
+   1628  fafd		       60		      rts
+   1629  fafe
+   1630  fafe							; ========================================================================
+   1631  fafe							; BombMarkWalls (S5.2, moved from bank0) — pinned at $FB10.
+   1632  fafe							;   On the bomb 1->2 edge: walk the rect cache, set WallMask bit (BombPacked
+   1633  fafe							;   b3-6) for each w==2 rect whose x is in blast cols (bomb left-half col
+   1634  fafe							;   +-2, clamped 0..19). w==2 = one D7 logical cell (rect x/w are emitted
+   1635  fafe							;   in 4px display cols; a thin wall is exactly one cell = 2 cols). Skip x==0 (screen border). Score is NOT done here —
+   1636  fafe							;   pads cannot nest (ReturnPad switches to bank0), so this returns
+   1637  fafe							;   A = #walls newly broken and the bank0 caller adds +75 per wall.
+   1638  fafe							;   Plan 5.1: each newly broken rect is punched here immediately —
+   1639  fafe							;   ClearPFColumn on col x AND col x+1 (D7 thin wall w = 2 display cols;
+   1640  fafe							;   the single-col punch left half the wall standing behind a set mask bit)
+   1641  fafe							;   — the old VBL ApplyBombWalls re-apply + EnterRoom
+   1642  fafe							;   restore are deleted (D1-B). WallMask b3-6 survives only in-room: the
+   1643  fafe							;   hot parent-mask AND (HotOverlapBody) still reads it until phase 6.
+   1644  fafe							;   ABW tables + BombMaskBit are bank1-only now (kernel copies died with
+   1645  fafe							;   ApplyBombWalls).
+   1646  fafe							;   #7(i): walk now covers rects 0-4 (cache slot rect4 at $DC-$DF was
+   1647  fafe							;   loaded but never walked — a thin wall there was unbreakable). Rect5
+   1648  fafe							;   is not cached (ZP ends $DF) and stays unwalkable — shipped models
+   1649  fafe							;   have no thin rect at idx5. Rect idx4 has no WallMask bit: PairGone's
+   1650  fafe							;   buffer read replaces the mask as its double-score guard. A full
+   1651  fafe							;   buffer cell-sweep was evaluated and REJECTED: find_rectangles merges
+   1652  fafe							;   maximal runs, so every shipped thin wall has a solid neighbor slab
+   1653  fafe							;   (checked all 8 models) — buffer adjacency cannot distinguish thin
+   1654  fafe							;   stubs from thick walls without breaking gameplay parity.
+   1655  fafe							;   Also fixed: the col x+1 punch passed the ABW table VALUE (the rect's
+   1656  fafe							;   ZP address) as the ClearPFColumn col instead of deref'ing rect.x —
+   1657  fafe							;   the second half of every thin wall was punched at a garbage col
+   1658  fafe							;   (caught by the new test_bomb_strip rect-walk case; pre-existing
+   1659  fafe							;   since plan 5.1). RcBase is now clamped ≤5 at the bank2 cache load —
+   1660  fafe							;   BMW trusts it (no local clamp).
+   1661  fafe							; ========================================================================
+   1662  fafe		       00 00 00 00*	      .ds	$FB10 - *, 0
+   1663  fb10				   BombMarkWalls
+   1664  fb10							; visible-left mapping identical to PlayerHitsMap: the bomb is drawn from
+   1665  fb10							; BombX via SetObjectXPos, so its left edge is BombX-5 / BombX-7, not BombX.
+   1666  fb10		       38		      sec
+   1667  fb11		       a5 f6		      lda	BombX
+   1668  fb13		       c9 0f		      cmp	#15
+   1669  fb15		       90 04		      bcc	.BMWoff7
+   1670  fb17		       e9 07		      sbc	#7	; visible left = BombX - 7
+   1671  fb19		       b0 02		      bcs	.BMWVL	; C set (X>=15) — skip the -5 path
+   1672  fb1b				   .BMWoff7
+   1673  fb1b		       e9 04		      sbc	#4	; visible left = BombX - 5 (CMP clears carry)
+   1674  fb1d				   .BMWVL
+   1675  fb1d		       4a		      lsr
+   1676  fb1e		       4a		      lsr		; screen col = visible_left/4 (0..39)
+   1677  fb1f		       85 92		      sta	RectCount	; ORIGINAL screen col (0..39): >=20 = right
+   1678  fb21							; bomb → real blast lives in the right half,
+   1679  fb21							; so M1StripBlast must skip its left overlap
+   1680  fb21							; test (the window below is mirror-space for
+   1681  fb21							; right bombs). RectCount free pre-loop.
+   1682  fb21		       c9 14		      cmp	#TILE_COLUMNS
+   1683  fb23		       90 07		      bcc	.BMWCol
+   1684  fb25		       85 88		      sta	BMWScratch
+   1685  fb27		       a9 27		      lda	#39
+   1686  fb29		       38		      sec
+   1687  fb2a		       e5 88		      sbc	BMWScratch	; mirror right-half → left-half col
+   1688  fb2c				   .BMWCol
+   1689  fb2c		       85 88		      sta	BMWScratch	; bomb left-half col
+   1690  fb2e							; blast lo = max(col-2, 0)   (±2: player is 8px wide, so a bomb dropped
+   1691  fb2e							; blast hi = min(col+2, 19)	flush-left sits 2 cols from the wall)
+   1692  fb2e		       a5 88		      lda	BMWScratch
+   1693  fb30		       c9 02		      cmp	#2
+   1694  fb32		       90 05		      bcc	.BMWLo0
+   1695  fb34		       38		      sec
+   1696  fb35		       e9 02		      sbc	#2
+   1697  fb37		       b0 02		      bcs	.BMWStoreLo
+   1698  fb39				   .BMWLo0
+   1699  fb39		       a9 00		      lda	#0
+   1700  fb3b				   .BMWStoreLo
+   1701  fb3b		       85 8e		      sta	CollisionEndX	; blast_lo (free: overscan, after movement)
+   1702  fb3d		       a5 88		      lda	BMWScratch
+   1703  fb3f		       c9 12		      cmp	#18
+   1704  fb41		       b0 05		      bcs	.BMWHi19
+   1705  fb43		       18		      clc
+   1706  fb44		       69 02		      adc	#2
+   1707  fb46		       90 02		      bcc	.BMWStoreHi
+   1708  fb48				   .BMWHi19
+   1709  fb48		       a9 13		      lda	#19
+   1710  fb4a				   .BMWStoreHi
+   1711  fb4a		       85 8c		      sta	CollisionCellX	; blast_hi (loop compares rect.x against it)
+   1712  fb4c							; --- Phase 4: capture the strip's left col BEFORE the punch loop
+   1713  fb4c							; (ClearPFColumn overwrites LineCount with rect rows). pL = 18+2n,
+   1714  fb4c							; n = packed nibble (right_col+1); $FF = symmetric/none. BMWScratch is
+   1715  fb4c							; free here (bomb col already folded into blast lo/hi).
+   1716  fb4c		       a5 84		      lda	LineCount
+   1717  fb4e		       f0 0b		      beq	.SBnocap
+   1718  fb50		       4a		      lsr
+   1719  fb51		       4a		      lsr
+   1720  fb52		       4a		      lsr
+   1721  fb53		       4a		      lsr		; n = right_col+1
+   1722  fb54		       0a		      asl
+   1723  fb55		       18		      clc
+   1724  fb56		       69 12		      adc	#18	; pL = 20+2*right_col
+   1725  fb58		       4c 5d fb 	      jmp	.SBst
+   1726  fb5b				   .SBnocap
+   1727  fb5b		       a9 ff		      lda	#$FF
+   1728  fb5d				   .SBst
+   1729  fb5d		       85 88		      sta	BMWScratch
+   1730  fb5f		       a9 00		      lda	#0
+   1731  fb61		       85 8b		      sta	CollisionX	; walls-broken count (returned in A)
+   1732  fb63		       a5 89		      lda	RcBase	; cached rect count (clamped ≤5 at load)
+   1733  fb65		       f0 7c		      beq	.BMWDone
+   1734  fb67		       aa		      tax		; X = rect count (1..5)
+   1735  fb68		       ca		      dex		; X = 4..0
+   1736  fb69				   .BMWLoop
+   1737  fb69		       bd 10 f0 	      lda	ABWXTab,X
+   1738  fb6c		       a8		      tay
+   1739  fb6d		       b9 00 00 	      lda	0,Y	; rect.x
+   1740  fb70		       f0 6e		      beq	.BMWNext	; x==0 = screen L/R border — never destroy
+   1741  fb72		       85 8f		      sta	CollisionEndY	; hold x for the span test below; punch path
+   1742  fb74							;   rewrites CollisionEndY (last row) before
+   1743  fb74							;   ClearPFColumn reads it — no conflict
+   1744  fb74		       bd 15 f0 	      lda	ABWWTab,X
+   1745  fb77		       a8		      tay
+   1746  fb78		       b9 00 00 	      lda	0,Y
+   1747  fb7b		       c9 02		      cmp	#2	; thin wall = 1 D7 cell = 2 display cols
+   1748  fb7d		       d0 61		      bne	.BMWNext
+   1749  fb7f							; --- SPAN overlap (2026-10-10): blast hits the wall if ANY col of
+   1750  fb7f							; [x, x+w-1] lies in [blast_lo, blast_hi]. The old rect.x-only test
+   1751  fb7f							; missed bombs sitting one col right of rect.x: fold 15 → window
+   1752  fb7f							; [13,17] vs rect span [12,13] → 0 PF writes ("right wall: nothing
+   1753  fb7f							; happens"; sweep bombx 104-107 = natural flush drop beside the
+   1754  fb7f							; mirrored instance cols 26-27). w is already known == 2 here, so
+   1755  fb7f							; far = x+1.
+   1756  fb7f		       a5 8f		      lda	CollisionEndY	; x
+   1757  fb81		       c5 8c		      cmp	CollisionCellX	; x vs hi
+   1758  fb83		       f0 09		      beq	.BMWIn	; x == hi → right col in blast
+   1759  fb85		       b0 59		      bcs	.BMWNext	; x > hi → span entirely right of blast
+   1760  fb87		       18		      clc
+   1761  fb88		       69 01		      adc	#1	; far = x + w - 1
+   1762  fb8a		       c5 8e		      cmp	CollisionEndX	; far vs lo
+   1763  fb8c		       90 52		      bcc	.BMWNext	; far < lo → span entirely left of blast
+   1764  fb8e				   .BMWIn
+   1765  fb8e		       86 8d		      stx	CollisionCellY	; save rect idx (ClearPFColumn clobbers X)
+   1766  fb90							; --- plan 5.1: punch rows y..y+h-1 (D7 thin wall w = 2 display cols;
+   1767  fb90							;   cols x AND x+1. Single-col punch was a D7 regression: it cleared
+   1768  fb90							;   only col x, and the just-set mask bit then blocked any re-blast
+   1769  fb90							;   of the surviving col x+1 (user test 2026-10-04 — "removes only
+   1770  fb90							;   half, remaining wall can't be blasted at all"). ClearPFColumn is
+   1771  fb90							;   same-bank rts — jsr legal (no pad nesting), SP -2 for ~40c each.
+   1772  fb90		       bd 1a f0 	      lda	ABWYTab,X
+   1773  fb93		       a8		      tay
+   1774  fb94		       b9 00 00 	      lda	0,Y
+   1775  fb97		       85 84		      sta	LineCount	; first row
+   1776  fb99		       bd 1f f0 	      lda	ABWHTab,X
+   1777  fb9c		       a8		      tay
+   1778  fb9d		       b9 00 00 	      lda	0,Y
+   1779  fba0		       18		      clc
+   1780  fba1		       65 84		      adc	LineCount
+   1781  fba3		       38		      sec
+   1782  fba4		       e9 01		      sbc	#1
+   1783  fba6		       85 8f		      sta	CollisionEndY	; last row (inclusive)
+   1784  fba8		       bd 24 f0 	      lda	BombMaskBit,X
+   1785  fbab		       25 b5		      and	BombPacked	; already broken?
+   1786  fbad		       d0 31		      bne	.BMWNext	; yes → no double score
+   1787  fbaf		       e0 04		      cpx	#4
+   1788  fbb1		       d0 09		      bne	.BMWSet
+   1789  fbb3		       20 cc fa 	      jsr	PairGone	; idx4: no WallMask bit — buffer guard instead
+   1790  fbb6		       a6 8d		      ldx	CollisionCellY	; PairGone clobbered X (x+1) — restore idx
+   1791  fbb8		       c9 00		      cmp	#0	; re-derive Z from A (ldx set Z from idx)
+   1792  fbba		       f0 24		      beq	.BMWNext	; pair already clear → prior blast (no score)
+   1793  fbbc				   .BMWSet
+   1794  fbbc		       bd 24 f0 	      lda	BombMaskBit,X
+   1795  fbbf		       05 b5		      ora	BombPacked
+   1796  fbc1		       85 b5		      sta	BombPacked	; set WallMask bit (keeps state+DownPrev)
+   1797  fbc3				   .BMWPunch
+   1798  fbc3		       e6 8b		      inc	CollisionX	; +1 wall broken (caller scores +75 each)
+   1799  fbc5							; X = rect idx on entry (mask path never clobbers it; the idx4 guard
+   1800  fbc5							; block restored it after PairGone) — first punch may use X directly.
+   1801  fbc5		       bd 10 f0 	      lda	ABWXTab,X
+   1802  fbc8		       a8		      tay
+   1803  fbc9		       b9 00 00 	      lda	0,Y	; A = col (ClearPFColumn arg)
+   1804  fbcc		       20 37 fa 	      jsr	ClearPFColumn
+   1805  fbcf		       a6 8d		      ldx	CollisionCellY	; restore rect idx (ClearPFColumn clobbers X)
+   1806  fbd1		       bd 10 f0 	      lda	ABWXTab,X
+   1807  fbd4		       a8		      tay
+   1808  fbd5		       b9 00 00 	      lda	0,Y
+   1809  fbd8		       18		      clc
+   1810  fbd9		       69 01		      adc	#1	; col x+1 — second half of the D7 thin wall
+   1811  fbdb		       20 37 fa 	      jsr	ClearPFColumn
+   1812  fbde		       a6 8d		      ldx	CollisionCellY	; restore rect idx for .BMWNext's dex
+   1813  fbe0				   .BMWNext
+   1814  fbe0		       ca		      dex
+   1815  fbe1		       10 86		      bpl	.BMWLoop
+   1816  fbe3				   .BMWDone
+   1817  fbe3		       4c ac f9 	      jmp	M1ToBank2	; shared pad $F9AC (sta $1FF8 / jmp $F970,
+   1818  fbe6							; byte-identical in bank2) → M1StripBlast
+   1819  fbe6							; sets b4 if the blast covers the left strip,
+   1820  fbe6							; then the pad's back-half crosses to
+   1821  fbe6							; StripBlastCheck. Still 0 push — SP guard
+   1822  fbe6							; unchanged; the check ends in ReturnPad with
+   1823  fbe6							; A = count.
+   1824  fbe6
+   1825  fbe6							; ABWXTab/ABWWTab/ABWYTab/ABWHTab/BombMaskBit live at $F010 (top-of-bank
+   1826  fbe6							; fill gap) — relocated 2026-10-10 when the BMW span fix overflowed the
+   1827  fbe6							; $FBF8 pin. Only BombMarkWalls indexes them (abs,X/Y), no cross-bank
+   1828  fbe6							; operand points at them.
+   1829  fbe6
+   1830  fbe6							; ========================================================================
+   1831  fbe6							; Cross-bank call pads — byte-identical to bank0 at these addresses
+   1832  fbe6							; (docs/leaf_move_plan.md). F6 hotspot ignores the written value, so pads
+   1833  fbe6							; pass A/X/Y/flags through untouched (`sta` does not affect flags).
+   1834  fbe6							; ========================================================================
+   1835  fbe6		       00 00 00 00*	      .ds	$FBF8 - *, 0
+   1836  fbf8				   ReturnPad
+   1837  fbf8		       8d f6 1f 	      sta	$1FF6
+   1838  fbfb		       60		      rts
+   1839  fbfc				   CallPad_UpdateBombSound
+   1840  fbfc		       8d f7 1f 	      sta	$1FF7
+   1841  fbff		       4c c0 f9 	      jmp	$F9C0
+   1842  fc02				   CallPad_UpdateJetSound
+   1843  fc02		       8d f7 1f 	      sta	$1FF7
+   1844  fc05		       4c cf f9 	      jmp	$F9CF
+   1845  fc08				   CallPad_BombSndDrop
+   1846  fc08		       8d f7 1f 	      sta	$1FF7
+   1847  fc0b		       4c 00 fa 	      jmp	$FA00
+   1848  fc0e				   CallPad_BombSndExplode
+   1849  fc0e		       8d f7 1f 	      sta	$1FF7
+   1850  fc11		       4c 13 fa 	      jmp	$FA13
+   1851  fc14				   CallPad_GetConnIdx
+   1852  fc14		       8d f7 1f 	      sta	$1FF7
+   1853  fc17		       4c 26 fa 	      jmp	$FA26
+   1854  fc1a				   CallPad_ClearPFColumn
+   1855  fc1a		       8d f7 1f 	      sta	$1FF7
+   1856  fc1d		       4c 37 fa 	      jmp	$FA37
+   1857  fc20				   CallPad_AddScore
+   1858  fc20		       8d f7 1f 	      sta	$1FF7
+   1859  fc23		       4c 7c fa 	      jmp	$FA7C
+   1860  fc26				   CallPad_IsRoomDark
+   1861  fc26		       8d f7 1f 	      sta	$1FF7
+   1862  fc29		       4c 78 fc 	      jmp	$FC78
+   1863  fc2c				   CallPad_SetRoomDark
+   1864  fc2c		       8d f7 1f 	      sta	$1FF7
+   1865  fc2f		       4c 9e fc 	      jmp	$FC9E
+   1866  fc32				   CallPad_UpdateLaserSound
+   1867  fc32		       8d f7 1f 	      sta	$1FF7
+   1868  fc35		       4c a4 fa 	      jmp	$FAA4
+   1869  fc38				   CallPad_BuildColupF
+   1870  fc38		       8d f8 1f 	      sta	$1FF8	; S5.1: body lives in bank2 (direct rect reads)
+   1871  fc3b		       4c 4f fc 	      jmp	$FC4F
+   1872  fc3e				   CallPad_BombMarkWalls
+   1873  fc3e		       8d f7 1f 	      sta	$1FF7	; S5.2: body lives in bank1 ($FB10)
+   1874  fc41		       4c 10 fb 	      jmp	$FB10
+   1875  fc44
+   1876  fc44							; CallPad_TitleSelect twin — byte-identical with kernel.asm at $FC4F
+   1877  fc44		       00 00 00 00*	      .ds	$FC4F - *, 0
+   1878  fc4f				   CallPad_TitleSelect
+   1879  fc4f		       8d f7 1f 	      sta	$1FF7
+   1880  fc52		       4c 41 f0 	      jmp	TitleSelect
+   1881  fc55					      .ds	$FC55 - *, 0
+   1882  fc55				   CallPad_TitleKernel
+   1883  fc55		       8d f7 1f 	      sta	$1FF7
+   1884  fc58		       4c 7a f0 	      jmp	TitleKernel
+   1885  fc5b					      .ds	$FC5B - *, 0
+   1886  fc5b				   CallPad_Overscan
+   1887  fc5b		       8d f6 1f 	      sta	$1FF6
+   1888  fc5e		       4c bd f1 	      jmp	$F1BD
+   1889  fc61					      .ds	$FC61 - *, 0
+   1890  fc61				   CallPad_MusicTick
+   1891  fc61		       8d f7 1f 	      sta	$1FF7
+   1892  fc64		       4c 5a f3 	      jmp	MusicTick
+   1893  fc67
+   1894  fc67							; ========================================================================
+   1895  fc67							; Fold-pad stubs (byte-identical to bank0)
+   1896  fc67							; ========================================================================
+   1897  fc67		       00		      .ds	$FC68 - *, 0
+   1898  fc68		       a9 01		      lda	#1
+   1899  fc6a		       8d f7 1f 	      sta	$1FF7
+   1900  fc6d		       4c 40 f5 	      jmp	$F540
+   1901  fc70
+   1902  fc70					      .ds	$FC70 - *, 0
+   1903  fc70		       a9 00		      lda	#0
+   1904  fc72		       8d f6 1f 	      sta	$1FF6
+   1905  fc75		       4c bd f1 	      jmp	$F1BD	; Overscan in bank0 (must match bank0 ToGameStub;
+   1906  fc78							; verify_build --sync-overscan patches this from
+   1907  fc78							; bank0.lst after every bank0 build)
+   1908  fc78
+   1909  fc78							; ========================================================================
+   1910  fc78							; IsRoomDark/SetRoomDark — moved here (post-ToGameStub free space) when the
+   1911  fc78							; mask grew to 8 bits: the $F9C0-$FB10 body span had only ~19 B headroom.
+   1912  fc78							; CallPad jmp literals live in BOTH kernel.asm and bank1.asm — verify_build
+   1913  fc78							; check_callpads asserts they equal these labels.
+   1914  fc78							; ------------------------------------------------------------------------
+   1915  fc78							; IsRoomDark — Z=1 if lit, Z=0 if dark (RoomDarkMask = 8-bit split:
+   1916  fc78							; rooms 0-3 = EnemyRamD bits 4-7, rooms 4-7 = LaserState bits 2-5.
+   1917  fc78							; Rooms 8+ have no bit → always lit, never crash.)
+   1918  fc78							; Clobbers A/X; Y preserved. PLA in ReturnPad re-sets Z from A — contract
+   1919  fc78							; survives the cross-bank return.
+   1920  fc78				   IsRoomDark
+   1921  fc78		       a5 98		      lda	RoomNo
+   1922  fc7a		       c9 04		      cmp	#4
+   1923  fc7c		       b0 0c		      bcs	.IRDhi
+   1924  fc7e		       18		      clc
+   1925  fc7f		       69 04		      adc	#4	; bit index = 4 + RoomNo
+   1926  fc81		       aa		      tax
+   1927  fc82		       bd c3 fc 	      lda	BitMaskTable,X
+   1928  fc85		       25 c1		      and	EnemyRamD	; Z=1 → lit (bit clear), Z=0 → dark
+   1929  fc87		       4c f8 fb 	      jmp	ReturnPad
+   1930  fc8a				   .IRDhi
+   1931  fc8a		       c9 08		      cmp	#8
+   1932  fc8c		       b0 0b		      bcs	.IRDlit	; rooms 8+ never dark (no mask bit)
+   1933  fc8e		       aa		      tax
+   1934  fc8f		       bd c3 fc 	      lda	BitMaskTable,X	; $10/$20/$40/$80
+   1935  fc92		       4a		      lsr
+   1936  fc93		       4a		      lsr		; → $04/$08/$10/$20 = LaserState b2-5
+   1937  fc94		       25 c0		      and	LaserState
+   1938  fc96		       4c f8 fb 	      jmp	ReturnPad
+   1939  fc99				   .IRDlit
+   1940  fc99		       a9 00		      lda	#0	; Z=1 → lit
+   1941  fc9b		       4c f8 fb 	      jmp	ReturnPad
+   1942  fc9e
+   1943  fc9e							; SetRoomDark — set dark flag for current RoomNo (rooms 0-3 → EnemyRamD
+   1944  fc9e							; bits 4-7, rooms 4-7 → LaserState bits 2-5; rooms 8+ = no-op, room
+   1945  fc9e							; simply stays lit). Cleared only by LoadLevel.
+   1946  fc9e				   SetRoomDark
+   1947  fc9e		       a5 98		      lda	RoomNo
+   1948  fca0		       c9 04		      cmp	#4
+   1949  fca2		       b0 0e		      bcs	.SRDhi
+   1950  fca4		       18		      clc
+   1951  fca5		       69 04		      adc	#4
+   1952  fca7		       aa		      tax
+   1953  fca8		       bd c3 fc 	      lda	BitMaskTable,X
+   1954  fcab		       05 c1		      ora	EnemyRamD
+   1955  fcad		       85 c1		      sta	EnemyRamD
+   1956  fcaf		       4c f8 fb 	      jmp	ReturnPad
+   1957  fcb2				   .SRDhi
+   1958  fcb2		       c9 08		      cmp	#8
+   1959  fcb4		       b0 0a		      bcs	.SRDdone	; rooms 8+: no bit to set (no crash)
+   1960  fcb6		       aa		      tax
+   1961  fcb7		       bd c3 fc 	      lda	BitMaskTable,X
+   1962  fcba		       4a		      lsr
+   1963  fcbb		       4a		      lsr
+   1964  fcbc		       05 c0		      ora	LaserState
+   1965  fcbe		       85 c0		      sta	LaserState
+   1966  fcc0				   .SRDdone
+   1967  fcc0		       4c f8 fb 	      jmp	ReturnPad
+   1968  fcc3
+   1969  fcc3							; Bit masks for IsRoomDark/SetRoomDark. Index 4+room for EnemyRamD
+   1970  fcc3							; (rooms 0-3 → bits 4-7); index = room for LaserState (rooms 4-7 →
+   1971  fcc3							; bits 4-7 of the table, lsr×2 down to bits 2-5 = LaserState spare).
+   1972  fcc3				   BitMaskTable
+   1973  fcc3		       01 02 04 08*	      .byte.b	$01, $02, $04, $08, $10, $20, $40, $80
+   1974  fccb
+   1975  fccb							; ========================================================================
+   1976  fccb							; Score digit font — 8x8 pixels, page-aligned for fast (zp),Y addressing
+   1977  fccb							; 10 digits (0-9), 8 bytes each = 80 bytes
+   1978  fccb							; MSB-first: bit7 = leftmost pixel
+   1979  fccb							; ========================================================================
+   1980  fd00					      org	$FD00
+   1981  fd00				   DigitGfx
+   1982  fd00							; Digit 0
+   1983  fd00		       00		      .byte.b	%0
+   1984  fd01		       7c		      .byte.b	%01111100
+   1985  fd02		       c6		      .byte.b	%11000110
+   1986  fd03		       c6		      .byte.b	%11000110
+   1987  fd04		       c6		      .byte.b	%11000110
+   1988  fd05		       c6		      .byte.b	%11000110
+   1989  fd06		       c6		      .byte.b	%11000110
+   1990  fd07		       7c		      .byte.b	%01111100
+   1991  fd08
+   1992  fd08							; Digit 1
+   1993  fd08		       00		      .byte.b	%0
+   1994  fd09		       18		      .byte.b	%00011000
+   1995  fd0a		       18		      .byte.b	%00011000
+   1996  fd0b		       18		      .byte.b	%00011000
+   1997  fd0c		       18		      .byte.b	%00011000
+   1998  fd0d		       58		      .byte.b	%01011000
+   1999  fd0e		       38		      .byte.b	%00111000
+   2000  fd0f		       18		      .byte.b	%00011000
+   2001  fd10
+   2002  fd10							; Digit 2
+   2003  fd10		       00		      .byte.b	%0
+   2004  fd11		       fe		      .byte.b	%11111110
+   2005  fd12		       c0		      .byte.b	%11000000
+   2006  fd13		       60		      .byte.b	%01100000
+   2007  fd14		       18		      .byte.b	%00011000
+   2008  fd15		       06		      .byte.b	%00000110
+   2009  fd16		       c6		      .byte.b	%11000110
+   2010  fd17		       7c		      .byte.b	%01111100
+   2011  fd18
+   2012  fd18							; Digit 3
+   2013  fd18		       00		      .byte.b	%0
+   2014  fd19		       fc		      .byte.b	%11111100
+   2015  fd1a		       06		      .byte.b	%00000110
+   2016  fd1b		       06		      .byte.b	%00000110
+   2017  fd1c		       3c		      .byte.b	%00111100
+   2018  fd1d		       06		      .byte.b	%00000110
+   2019  fd1e		       06		      .byte.b	%00000110
+   2020  fd1f		       fc		      .byte.b	%11111100
+   2021  fd20
+   2022  fd20							; Digit 4
+   2023  fd20		       00		      .byte.b	%0
+   2024  fd21		       0c		      .byte.b	%00001100
+   2025  fd22		       0c		      .byte.b	%00001100
+   2026  fd23		       fe		      .byte.b	%11111110
+   2027  fd24		       cc		      .byte.b	%11001100
+   2028  fd25		       cc		      .byte.b	%11001100
+   2029  fd26		       cc		      .byte.b	%11001100
+   2030  fd27		       c0		      .byte.b	%11000000
+   2031  fd28
+   2032  fd28							; Digit 5
+   2033  fd28		       00		      .byte.b	%0
+   2034  fd29		       fc		      .byte.b	%11111100
+   2035  fd2a		       06		      .byte.b	%00000110
+   2036  fd2b		       06		      .byte.b	%00000110
+   2037  fd2c		       fc		      .byte.b	%11111100
+   2038  fd2d		       c0		      .byte.b	%11000000
+   2039  fd2e		       c0		      .byte.b	%11000000
+   2040  fd2f		       fe		      .byte.b	%11111110
+   2041  fd30
+   2042  fd30							; Digit 6
+   2043  fd30		       00		      .byte.b	%0
+   2044  fd31		       7c		      .byte.b	%01111100
+   2045  fd32		       c6		      .byte.b	%11000110
+   2046  fd33		       c6		      .byte.b	%11000110
+   2047  fd34		       fc		      .byte.b	%11111100
+   2048  fd35		       c0		      .byte.b	%11000000
+   2049  fd36		       c2		      .byte.b	%11000010
+   2050  fd37		       7c		      .byte.b	%01111100
+   2051  fd38
+   2052  fd38							; Digit 7
+   2053  fd38		       00		      .byte.b	%0
+   2054  fd39		       60		      .byte.b	%01100000
+   2055  fd3a		       30		      .byte.b	%00110000
+   2056  fd3b		       18		      .byte.b	%00011000
+   2057  fd3c		       0c		      .byte.b	%00001100
+   2058  fd3d		       06		      .byte.b	%00000110
+   2059  fd3e		       06		      .byte.b	%00000110
+   2060  fd3f		       fe		      .byte.b	%11111110
+   2061  fd40
+   2062  fd40							; Digit 8
+   2063  fd40		       00		      .byte.b	%0
+   2064  fd41		       7c		      .byte.b	%01111100
+   2065  fd42		       c6		      .byte.b	%11000110
+   2066  fd43		       c6		      .byte.b	%11000110
+   2067  fd44		       7c		      .byte.b	%01111100
+   2068  fd45		       c6		      .byte.b	%11000110
+   2069  fd46		       c6		      .byte.b	%11000110
+   2070  fd47		       7c		      .byte.b	%01111100
+   2071  fd48
+   2072  fd48							; Digit 9
+   2073  fd48		       00		      .byte.b	%0
+   2074  fd49		       7c		      .byte.b	%01111100
+   2075  fd4a		       86		      .byte.b	%10000110
+   2076  fd4b		       06		      .byte.b	%00000110
+   2077  fd4c		       7e		      .byte.b	%01111110
+   2078  fd4d		       c6		      .byte.b	%11000110
+   2079  fd4e		       c6		      .byte.b	%11000110
+   2080  fd4f		       7c		      .byte.b	%01111100
+   2081  fd50
+   2082  fd50							; Glyph 10 = blank (#18 LV banner trailing slot; byte7=top, byte1=bottom)
+   2083  fd50		       00		      .byte.b	%0
+   2084  fd51		       00		      .byte.b	%0
+   2085  fd52		       00		      .byte.b	%0
+   2086  fd53		       00		      .byte.b	%0
+   2087  fd54		       00		      .byte.b	%0
+   2088  fd55		       00		      .byte.b	%0
+   2089  fd56		       00		      .byte.b	%0
+   2090  fd57		       00		      .byte.b	%0
+   2091  fd58
+   2092  fd58							; Glyph 11 = L (#18)
+   2093  fd58		       00		      .byte.b	%0
+   2094  fd59		       7e		      .byte.b	%01111110
+   2095  fd5a		       60		      .byte.b	%01100000
+   2096  fd5b		       60		      .byte.b	%01100000
+   2097  fd5c		       60		      .byte.b	%01100000
+   2098  fd5d		       60		      .byte.b	%01100000
+   2099  fd5e		       60		      .byte.b	%01100000
+   2100  fd5f		       60		      .byte.b	%01100000
+   2101  fd60
+   2102  fd60							; Glyph 12 = V (#18)
+   2103  fd60		       00		      .byte.b	%0
+   2104  fd61		       18		      .byte.b	%00011000
+   2105  fd62		       18		      .byte.b	%00011000
+   2106  fd63		       3c		      .byte.b	%00111100
+   2107  fd64		       3c		      .byte.b	%00111100
+   2108  fd65		       66		      .byte.b	%01100110
+   2109  fd66		       66		      .byte.b	%01100110
+   2110  fd67		       66		      .byte.b	%01100110
+   2111  fd68
+   2112  fd68							; SetupScorePointers — score digit ptrs + #18 LV001 banner (#18):
+   2113  fd68							; first frame zeroes ScoreTh/Hu/Te (Temp = $AD first-frame flag); every
+   2114  fd68							; frame points scorePtr1-6 at DigitGfx+digit*8 (right-aligned "00ThHu.."),
+   2115  fd68							; or — while LevelShowTimer > 0 — at "L V 0 tens ones _" for Level+1
+   2116  fd68							; (hundreds stays '0'; LEVEL_COUNT <= 99). Decrements LevelShowTimer
+   2117  fd68							; once per banner frame. Lives with the glyphs: bank1 pre-pad $F937 pin
+   2118  fd68							; has ~1B slack (score section is a jsr here from MenuMain).
+   2119  fd68				   SetupScorePointers
+   2120  fd68							; --- Initialize score to 0 on first frame ---
+   2121  fd68		       a5 ad		      lda	Temp
+   2122  fd6a		       d0 0c		      bne	.scoreInitDone
+   2123  fd6c		       e6 ad		      inc	Temp
+   2124  fd6e		       a9 00		      lda	#0
+   2125  fd70		       85 f3		      sta	ScoreTh
+   2126  fd72		       85 f4		      sta	ScoreHu
+   2127  fd74		       a9 00		      lda	#$00
+   2128  fd76		       85 f5		      sta	ScoreTe
+   2129  fd78				   .scoreInitDone
+   2130  fd78
+   2131  fd78							; --- Set up 6 digit pointers ---
+   2132  fd78							; High bytes first (all $FD)
+   2133  fd78		       a9 fd		      lda	#>DigitGfx
+   2134  fd7a		       85 e1		      sta	scorePtr1+1
+   2135  fd7c		       85 e3		      sta	scorePtr2+1
+   2136  fd7e		       85 e5		      sta	scorePtr3+1
+   2137  fd80		       85 e7		      sta	scorePtr4+1
+   2138  fd82		       85 e9		      sta	scorePtr5+1
+   2139  fd84		       85 eb		      sta	scorePtr6+1
+   2140  fd86
+   2141  fd86		       a5 f2		      lda	LevelShowTimer
+   2142  fd88		       29 80		      and	#$80	; bit7 = banner flag (#18; tally ARM clears it)
+   2143  fd8a		       f0 2e		      beq	.scoreLows
+   2144  fd8c		       c6 f2		      dec	LevelShowTimer
+   2145  fd8e		       a9 58		      lda	#<DigitGfx+88	; glyph 11 = L
+   2146  fd90		       85 e0		      sta	scorePtr1
+   2147  fd92		       a9 60		      lda	#<DigitGfx+96	; glyph 12 = V
+   2148  fd94		       85 e2		      sta	scorePtr2
+   2149  fd96		       a9 00		      lda	#0	; hundreds '0'
+   2150  fd98		       85 e4		      sta	scorePtr3
+   2151  fd9a		       a5 a3		      lda	Level
+   2152  fd9c		       18		      clc
+   2153  fd9d		       69 01		      adc	#1	; 1-based level number
+   2154  fd9f		       a2 00		      ldx	#0
+   2155  fda1				   .LVTens
+   2156  fda1		       c9 0a		      cmp	#10
+   2157  fda3		       90 05		      bcc	.LVTensDone
+   2158  fda5		       e9 0a		      sbc	#10
+   2159  fda7		       e8		      inx
+   2160  fda8		       d0 f7		      bne	.LVTens
+   2161  fdaa				   .LVTensDone
+   2162  fdaa		       0a		      asl
+   2163  fdab		       0a		      asl
+   2164  fdac		       0a		      asl		; ones * 8
+   2165  fdad		       85 e8		      sta	scorePtr5
+   2166  fdaf		       8a		      txa
+   2167  fdb0		       0a		      asl
+   2168  fdb1		       0a		      asl
+   2169  fdb2		       0a		      asl		; tens * 8
+   2170  fdb3		       85 e6		      sta	scorePtr4
+   2171  fdb5		       a9 50		      lda	#<DigitGfx+80	; glyph 10 = blank (trailing slot)
+   2172  fdb7		       85 ea		      sta	scorePtr6
+   2173  fdb9		       60		      rts
+   2174  fdba
+   2175  fdba							; scorePtr1..2 = leading zeros
+   2176  fdba				   .scoreLows
+   2177  fdba		       a9 00		      lda	#0
+   2178  fdbc		       85 e0		      sta	scorePtr1
+   2179  fdbe		       85 e2		      sta	scorePtr2
+   2180  fdc0
+   2181  fdc0							; scorePtr3 = ScoreTh * 8
+   2182  fdc0		       a5 f3		      lda	ScoreTh
+   2183  fdc2		       0a		      asl
+   2184  fdc3		       0a		      asl
+   2185  fdc4		       0a		      asl
+   2186  fdc5		       85 e4		      sta	scorePtr3
+   2187  fdc7
+   2188  fdc7							; scorePtr4 = ScoreHu * 8
+   2189  fdc7		       a5 f4		      lda	ScoreHu
+   2190  fdc9		       0a		      asl
+   2191  fdca		       0a		      asl
+   2192  fdcb		       0a		      asl
+   2193  fdcc		       85 e6		      sta	scorePtr4
+   2194  fdce
+   2195  fdce							; scorePtr5 = (ScoreTe >> 4) * 8  (tens digit)
+   2196  fdce		       a5 f5		      lda	ScoreTe
+   2197  fdd0		       4a		      lsr
+   2198  fdd1		       4a		      lsr
+   2199  fdd2		       4a		      lsr
+   2200  fdd3		       4a		      lsr		; tens digit in low nibble
+   2201  fdd4		       0a		      asl
+   2202  fdd5		       0a		      asl
+   2203  fdd6		       0a		      asl
+   2204  fdd7		       85 e8		      sta	scorePtr5
+   2205  fdd9
+   2206  fdd9							; scorePtr6 = (ScoreTe & $0F) * 8  (ones digit)
+   2207  fdd9		       a5 f5		      lda	ScoreTe
+   2208  fddb		       29 0f		      and	#$0F
+   2209  fddd		       0a		      asl
+   2210  fdde		       0a		      asl
+   2211  fddf		       0a		      asl
+   2212  fde0		       85 ea		      sta	scorePtr6
+   2213  fde2		       60		      rts
+   2214  fde3
+   2215  fde3							; ========================================================================
+   2216  fde3							; CallPad_MothYDerive twin — byte-identical with kernel.asm at $FEE7
+   2217  fde3							; ========================================================================
+   2218  fde3		       00 00 00 00*	      .ds	$FEE7 - *, 0
+   2219  fee7		       8d f7 1f 	      sta	$1FF7
+   2220  feea		       4c 29 f0 	      jmp	$F029
+   2221  feed
+   2222  feed							; ========================================================================
+   2223  feed							; Fine-adjust table (page-aligned at $FF00)
+   2224  feed							; ========================================================================
+   2225  ff00					      org	$FF00
+   2226  ff00				   fineAdjustBegin_b1
+   2227  ff00		       70		      .byte.b	%01110000
+   2228  ff01		       60		      .byte.b	%01100000
+   2229  ff02		       50		      .byte.b	%01010000
+   2230  ff03		       40		      .byte.b	%01000000
+   2231  ff04		       30		      .byte.b	%00110000
+   2232  ff05		       20		      .byte.b	%00100000
+   2233  ff06		       10		      .byte.b	%00010000
+   2234  ff07		       00		      .byte.b	%00000000
+   2235  ff08		       f0		      .byte.b	%11110000
+   2236  ff09		       e0		      .byte.b	%11100000
+   2237  ff0a		       d0		      .byte.b	%11010000
+   2238  ff0b		       c0		      .byte.b	%11000000
+   2239  ff0c		       b0		      .byte.b	%10110000
+   2240  ff0d		       a0		      .byte.b	%10100000
+   2241  ff0e		       90		      .byte.b	%10010000
+   2242  ff0e		       fe 0f	   fineAdjustTable_b1 EQU	fineAdjustBegin_b1 - %11110001
+   2243  ff0f
+   2244  ff0f							; ========================================================================
+   2245  ff0f							; Interrupt vectors
+   2246  ff0f							; ========================================================================
+   2247  ff0f		       00 00 00 00*	      .ds	$FFFA - *, 0
+   2248  fffa		       00 f0		      .word.w	$F000
+   2249  fffc		       00 f0		      .word.w	$F000
+   2250  fffe		       00 f0		      .word.w	$F000
