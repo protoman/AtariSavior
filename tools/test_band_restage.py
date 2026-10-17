@@ -25,10 +25,22 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from py65.devices.mpu6502 import MPU  # noqa: E402
 
-from test_cell_map import Mem, RTS_SENTINEL, parse_labels  # noqa: E402
+import test_cell_map as _CM  # noqa: E402
+from test_cell_map import RTS_SENTINEL, parse_labels  # noqa: E402
 
 SRC = ROOT / "src"
 ROOMS = SRC / "rooms"
+
+# Sanctioned live-tracking exception (AGENTS): this test drives the built
+# ROM's EnterRoom against the LIVE level jsons, so it must read the LIVE
+# bank images. test_cell_map.Mem defaults to the frozen test-owned banks —
+# pointing its bank globals at src/bank*.bin keeps the frozen data out of
+# this test without duplicating the Mem class. (Reading frozen banks here
+# mixes the test-owned level layout with live labels → EnterRoom reads the
+# wrong table and the run never returns.)
+for _i in range(4):
+    setattr(_CM, f"BANK{_i}", (SRC / f"bank{_i}.bin").read_bytes())
+Mem = _CM.Mem
 
 need0 = {"EnterRoom", "RoomBandColor", "LevelPFDataLo", "LevelPFDataHi",
          "LevelEnemyLo", "LevelEnemyHi", "EnemyCount", "RoomNo"}

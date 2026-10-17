@@ -867,11 +867,14 @@ PickPlayerFrame:
 StageBandTab:
     ; --- expand band mask -> BandTab $ff/$00 ×3 (bit0 ENABL + bit7 pack) ---
     ldy #9
-    ; --- Phase 5: stage the M1 x-offset for the door SIDE. A door's band
-    ; mask is $02, so MetaA bit0 is free: 1 = M1 strip on the RIGHT half
-    ; (x = 87+8*col → offset +79), 0 = left (x = 7+8*col → offset -1).
-    ; The M1 block adds it via clc/adc RectCount. RectCount ($92) is free in
-    ; the VBL (kernel re-inits RowIdx at entry; the pack uses $8F).
+    ; --- Phase 5: stage the M1 x-offset for the door SIDE. A door has no
+    ; ball (its asym rows resolve to None → band mask $00), so MetaA bit0
+    ; is free: 1 = M1 strip on the RIGHT half (x = 87+8*col → offset +79),
+    ; 0 = left (x = 7+8*col → offset -1). The M1 block adds it via
+    ; clc/adc RectCount. MetaA bit0 is ALSO the band-0 ball gate — the
+    ; no-ball path below blanks BandTab so it never enables the ball.
+    ; RectCount ($92) is free in the VBL (kernel re-inits RowIdx at entry;
+    ; the pack uses $8F).
     lda (RoomPF0Lo),Y       ; MetaA
     and #$01
     tax
@@ -959,7 +962,10 @@ StageBandTab:
     sta CTRLPF
     ldy #10
     lda (RoomPF0Lo),Y       ; MetaB = ball_col+1 (0 = none)
-    and #$7F                ; defensive: b7 unused since the door eor died
+    and #$0F                ; ball_col+1 is b0-b3 only (max 10); drops b7
+                            ; (vcrunch) AND b6 (hot) — b6 used to survive
+                            ; and fake a 1-cell ball at x72-79 on a
+                            ; hot-without-ball model
     beq .SBTnoBall
     asl
     asl
@@ -978,6 +984,16 @@ StageBandTab:
 .SBTnoBall:
     lda #0
     sta Temp
+    ; --- No ball in this room → BE the ball gate off. ---------------------
+    ; BandTab is the per-band ENABL gate for the cave (.Row). MetaA bit0 is
+    ; the band-0 gate AND (for a door) the "M1 strip on the RIGHT half"
+    ; flag — a door has no ball, so its bit0 must NOT enable one. Before
+    ; this, the door room rendered a wall-coloured (COLUPF) ball bar over
+    ; the band-0 opening: ENABL on, RESPBL never strobed (Temp=0) → the
+    ; ball free-ran at x72-79 (user screenshot 2026-10-17, door_right.png).
+    sta BandTab
+    sta BandTab+1
+    sta BandTab+2
 .SBTballDone:
     ; --- NUSIZ1 owned here since P2b (kernel's VBL $30 restore deleted) ---
     ; Constant $30 (P1 single, M1 8 clk): the door distinction is COLOR
@@ -1007,28 +1023,25 @@ StageBandTab:
     ; b3 seeds BEFORE the Temp=0 early-out so an M1-ONLY room still packs
     ; nonzero (kernel OverlayTramp gates on LineCount != 0 — no M1 cross
     ; otherwise).
-    lda #0
-    sta CollisionEndY
     lda CollisionEndX           ; staged M1X (kill-gated above)
-    beq .M1nof
-    lda #$08
-    sta CollisionEndY           ; b3 = M1 present
+    beq .M1nof                  ; 0 = no M1 → seed 0 (A is 0)
+    lda #$08                    ; b3 = M1 present
 .M1nof:
+    sta CollisionEndY
     lda Temp
     beq .SBTPack                ; no ball → keep b3-only (or 0) pack
     sec
-    sbc #87
+    sbc #79                     ; (BallX-79)>>3 = ball_col+1 (BallX =
+    lsr                         ;   87+8*ball_col) → <<4 lands it in b4-b7
+    lsr                         ;   with ONE sbc (was sbc #87 + adc #$10)
     lsr
-    lsr
-    lsr                         ; right_col 0..9
     asl
     asl
     asl
     asl
-    clc
-    adc #$10                    ; (right_col+1) into b4-b7
     ora CollisionEndY           ; merge with the b3 seed
     sta CollisionEndY
+    ; BandTab bytes are $ff/$00 → their bit7 IS the gate.
     lda #0
     bit BandTab
     bpl .SBTp0
