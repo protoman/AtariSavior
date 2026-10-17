@@ -201,7 +201,22 @@ Legend: `[V]` verified now · `[?]` must be verified by a probe/build before doi
 | **Phase 3.1 canary** `TitleSelect` -> bank1 | `91c5d8a` | **+29B bank0** (`.ds $FBD0` fill 40->69B) |
 | **Phase 3** title kernel+font+bands+fonts -> bank1 | `81e4f6b` | **+309B bank0** (`.ds $FB00` fill 3->261B; `.ds $FBD0` 69->117B) |
 | **D2** bar tables 242B->30B (period-8) | `9f39c30` | **+212B bank1** (`.ds $F937` fill 67->277B); 0 HUD cycles (overscan index) |
+| **D4** remove dead bank2 title bodies | `486fdc0` | **+430B bank2** fill (their `.ds` pins + spills kept) |
 | docs progress | `097fd9f` | — |
+
+### Final free-space map (verified from `bank*.lst`, .ds fills ≥16B + org gaps)
+
+| Bank | Free | Largest runs |
+|---|---|---|
+| bank0 | **~593B** | `$F7FC` 215B, `$F9FB` 261B, `$FB5B` 117B |
+| bank1 | **~1320B** | `$F357-$F53F` 490B (org gap), `$F937` 277B, `$FDE3` 260B, `$FF0F` 235B |
+| bank2 | **~530B** | `$F800` 116B, `$F700` 108B, `$F8DD` 93B |
+| bank3 | **~2800B** | `$F0A3-$F7FF` 1885B (org gap), `$FFE6+` 303B, `$FD7B` 156B |
+| **Total** | **~5200B** | (was ~1B tracked at the start) |
+
+Gameplay still fits bank0 (cave kernel + game code); HUD+title kernel in bank1;
+small start-of-bank code + level/stage data in bank2; data-first bank3 — matching
+the target layout.
 
 ### Bank0 free space now (verified from `bank0.lst`)
 
