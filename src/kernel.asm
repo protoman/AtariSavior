@@ -138,7 +138,8 @@ RoomPF0Hi       byte            ; pointer to current room's TilePF0 (high)
 ; Reclaimed as a free ZP pool for new features (addresses stay stable so
 ; bank1/bank2 hand-copies do not shift).
 BarIdx          byte            ; ($9B) bar table idx (BarLevel+7)>>3 (D2 sync)
-ZpSpare1        byte            ; free ZP ($9C)
+Hover           byte            ; ($9C) respawn hover flag (bugs.md #1): 1 while
+                                ;       gravity is suppressed after a respawn
 ZpSpare2        byte            ; free ZP ($9D)
 ZpSpare3        byte            ; free ZP ($9E)
 LevelPFDataLo   byte            ; pointer to level's RoomDataTable (low)
@@ -1242,6 +1243,24 @@ UpdateP0Vertical:
     sta vyHi
     lda #$00
     sta vyLo                  ; vy = -$0100
+
+; --- Respawn hover (bugs.md #1): after a respawn the player must NOT fall.
+;     Pin Y (vy=0) while Hover is set, but let the jet ramp run (Up held) —
+;     once thrust can beat gravity (JetPower >= GRAVITY+1) clear the flag and
+;     normal physics resumes (he lifts off). No Up → hovers in place. ---
+    lda Hover
+    beq .NoHover
+    lda JetPower
+    cmp #GRAVITY + 1
+    bcs .HoverEnd
+    lda #0
+    sta vyLo
+    sta vyHi
+    jmp .Integrate
+.HoverEnd:
+    lda #0
+    sta Hover
+.NoHover:
 
 ; --- Signed whole-pixel displacement this frame = carry + vyHi. ---
 .Integrate:
@@ -2685,6 +2704,11 @@ KernelInit:
 ; ------------------------------------------------------------------------------
 ; TitleKernel — MOVED to bank1 (docs/refactor_v4_plan.md Phase 3).
 
+; DropSpeedTable — drop-in 8.8 px/frame per Y>>4 tier (Y = tier*16+8), read
+; abs,Y by DropStep (post-pad) — moved here to free post-pad room (bugs.md #1).
+DropSpeedTable:
+    .byte 32,85,128,163,192,216,238,255,255
+
     .ds $FB00 - *, 0
 ; ------------------------------------------------------------------------------
 ; TitleFont — 6 slots × 8 bytes, "S.A.V.I.O.R." (#16 feedback: 5px letters
@@ -3026,6 +3050,8 @@ LoseLifeBand:
 ; timer keeps running; bank1 UpdateJetSound hears DropTarget as throttle).
 ; ------------------------------------------------------------------------------
 DropArm:
+    lda #0
+    sta Hover                   ; respawn hover is armed at drop-in arrival
     lda DropTarget
     cmp #$FD
     bcs .DATitle              ; sentinels $FD intro / $FF old title → static
@@ -3097,11 +3123,14 @@ DropStep:
     lda #0
     sta DropTarget              ; arrived — input/physics resume next frame
     sta JetPower                ; clean resume (no phantom thrust hop)
+    lda #1
+    sta Hover                   ; bugs.md #1: hover (no gravity) until lift
 .DSdone:
     jmp OverscanAudio           ; rejoin past physics/collision (no rts)
 
-DropSpeedTable:                 ; 8.8 px/frame per Y>>4 tier (Y = tier*16+8)
-    .byte 32,85,128,163,192,216,238,255,255
+; DropSpeedTable moved to the pre-pad free region ($F9FB) — post-pad before
+; the $FDE1 pin was full (bugs.md #1 Hover needs the room). Read is abs,Y, so
+; its address is irrelevant to DropStep.
 
 ; ------------------------------------------------------------------------------
 ; TitleWork — level-select screen (DropTarget = $FF sentinel, dispatched from
@@ -3262,6 +3291,7 @@ ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
 ; TWIN: bank2.asm mirrors these exact 6 bytes at $FDD8 (the pad after
 ; .HOVdone). The PickPlayerFrame `.ds $FDE1` below absorbs the size.
 ; ------------------------------------------------------------------------------
+    .ds $FDD8 - *, 0            ; pin: bank2's blast-tramp mirror is at $FDD8
 BombEnemyBlast:
     sta $1FF8
     jmp $FD87                   ; BombEnemyBlastBody (bank2.lst — after
