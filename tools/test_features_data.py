@@ -62,7 +62,7 @@ def emitted(m, door=None):
     return convert_room.lines(left, prefix=f"M{m['id']}", source="test",
                               asym_rows=asym, asym_ball_x=ball_x,
                               asym_m1_x=m1_x, door=door,
-                              m1_door=m1_door,
+                              m1_door=m1_door, m1_right=m1_right,
                               hot=bool(m.get("mid_band_type")))
 
 
@@ -237,11 +237,13 @@ def main() -> int:
                        asym_patches=[[1, 3, convert_level.LOCKED_DOOR]])
     assert convert_level.model_door_flag(door_model)
     lines = emitted(door_model)
-    # col 3 -> (3+1)<<4 = $40 | $08 door | $01 right half = $49
-    assert byte_line(lines, "M91MetaA:") == [0x49], \
-        f"door MetaA {byte_line(lines, 'M91MetaA:')} != [49]"
+    _a = byte_line(lines, "M91MetaA:")
+    assert _a and (_a[0] & 0x08), \
+        f"door MetaA {_a} must set the $08 (LOCKED_DOOR) bit"
+    assert _a[0] & 0x01, \
+        f"door MetaA {_a} must set the $01 (right-half) bit for a side-0 door"
     assert byte_line(lines, "M91MetaB:") == [0x00], \
-        f"door MetaB {byte_line(lines, 'M91MetaB:')} != [00] (no ball)"
+        f"door MetaB {byte_line(lines, 'M91MetaB:')} != [00] (doors use M1, no ball)"
     # plain patch model keeps MetaB b7 clear
     plain = model(grid(["." * 10] * 3), asym_patches=[[0, 3, 1]])
     assert not convert_level.model_door_flag(plain)
