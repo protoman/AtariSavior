@@ -251,10 +251,15 @@ the target layout.
   by bank1's pre-`$FBF8` content (`$FBE6`); D2's 212B landed in the `$F937` fill,
   not there. Not worth the 4-bank risk — the same bytes are already free as fills.
 
-### Remaining ZP
-- `$9C-$9E` still free (`ZpSpare1-3`); `$F6/$F7` need a stack-depth inline;
-  `$E0/$E1` are **not** free (bank1 writes `scorePtr1/2` = `$E0/$E1` every HUD
-  frame — the v3 plan's claim was wrong).
+### Remaining ZP (verified)
+- `$9C-$9E` still free (`ZpSpare1-3`); `$9B` = `BarIdx` (D2).
+- `$F6/$F7`: freeing needs the deep path's SP to rise from `$F6`. **Not a plain
+  inline** — `FoldIndirect` (`sta $1FF8`) switches to bank2 mid-body, so its
+  `lda (FetchPtr),Y` is fetched from **bank2**, i.e. any inlined copy needs a
+  bank2 byte-twin at the call-site address. A dedicated fold twin (like the
+  `$FEF6` block) is the real mechanism; left for a dedicated pass.
+- `$E0/$E1` are **not** free — bank1 writes `scorePtr1/2` (`$E0/$E1`) every HUD
+  frame. The v3 plan's "documented spare" claim was wrong (verified by grep).
 
 ### Test/sim updates required by Phase 3 (done)
 - `sim_frame_budget.PC_TITLE` -> bank0 `CallPad_TitleKernel` (sim is bank-aware).
