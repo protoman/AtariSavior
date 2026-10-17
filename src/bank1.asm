@@ -588,11 +588,9 @@ TitleJetColors:
 ; ==============================================================================
 ; Intro music player (2026-10-16). Ticked once per intro ($FD) frame from
 ; TitleTailAudio via CallPad_MusicTick (bank0<->bank1 @ $FC61). Plays the
-; Ukraine anthem MELODY (src/art/ukraine_anthem.asm MusicMel: (duration, note)
-; pairs; note = AUDF, $FE = rest, $FF = loop; one 8th = 13 frames).
-; AUD0 = Lead ($0C), volume 7. AUD1 is muted - the bass voice read as a
-; constant beep (user, 2026-10-16) so it was dropped. ZP: MelPtr/MelTimer
-; ($9D/$9E).
+; original theme "Hollow Earth" (src/art/intro_theme.asm MusicMel: (duration,
+; note) pairs; note = AUDF, $FE = rest, $FF = loop; E minor, 8th = 15 frames).
+; AUD0 = Lead ($0C), volume 7, single voice.
 ; ==============================================================================
 MelPtr   = $9D
 MelTimer = $9E
