@@ -68,6 +68,8 @@ BombX = $F6                      ; hand-copy kernel EQU — title: 68 = no bomb,
                                  ;   140 = armed (TitleKernel P1 SOXP reads it)
 BombTimer = $F7                  ; hand-copy kernel EQU — title fuse/explode
 EnemyIndex = $B9                 ; slot save around the col swap + rect walk
+LevelStartRoom = $A7             ; hand-copy kernel EQU — b7 = KeyHeld
+                                 ;   (Phase 5); EnterRoom re-opens doors
 EnemyDeadMask = $BA              ; b0-2 enemy kills; b3 = ball strip
                                  ; destroyed (bank1 StripBlastCheck); b4 = M1
                                  ; strip destroyed (M1StripBlast) — check_equ_sync
@@ -1328,7 +1330,17 @@ OvM1Block:
     ; with a wall), so touching the block on a hot band = death, exactly
     ; like a hot PF wall. Off-band / non-hot: body finds no rect → sec,
     ; still blocked. b4 (strip destroyed) never reaches here (.OvM1no).
+    ; Phase 5 key: touching the M1 strip (left door) while KeyHeld removes
+    ; it (b4) — touch, not mere possession.
+    lda LevelStartRoom
+    bmi .OvM1unlock
     jmp HotOverlapFlag          ; C=1 contract; body sets Temp b7 on hot hit
+.OvM1unlock:
+    lda EnemyDeadMask
+    ora #$10                    ; b4 = M1 strip (left door) destroyed
+    sta EnemyDeadMask
+    clc
+    jmp ReturnPad               ; passable
 .OvM1no:
     clc
     jmp ReturnPad

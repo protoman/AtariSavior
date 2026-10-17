@@ -923,6 +923,20 @@ No entry is worked on without user greenlight.
     model async patches to the levels that use them) per AGENTS "File-Format
     Changes Require Data Migration".
 
+34. **Parked "off" GRP1 object wrapped into view — ghost key off the player
+    — FIXED 2026-10-17** (user, Stella; surfaced by the new key feature).
+    The off-object park wrote a CONSTANT `ObjTop=144`. The kernel draws when
+    `(Scanline−RoomY) − ObjTopRel ∈ [0,7]`, i.e. `Scanline−(RoomY+ObjTopRel)`
+    mod 256; once `RoomY ≥ 112` the sum wraps back into `[0,143]` and the
+    parked object renders `ObjSprites[row+ObjBase]` on the player's own rows
+    (`ObjBase=$FF` → rows 1-7 = index 0-6 = **slot 0**). Latent for years
+    because slot 0 was the blank design (all `$00`); taking slot 0 for the
+    KEY art made it visible (yellow key glued to the player near the cave
+    bottom, "following" the player). **Fix:** `.SONoObj` now parks
+    `ObjTop = 144−RoomY` → the window lands at a constant 144 →
+    `Scanline−144 ∈ [112,255]` → never <8 → never drawn, for ANY `RoomY`.
+    Guard: `tools/test_key_pickup.py` (`sbc RoomY` in `.SONoObj`).
+
 ## Rescan checklist (when the batch is closed)
 
 - [ ] `./build.sh` fully green (all sims, zero new warns)
