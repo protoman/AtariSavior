@@ -110,6 +110,480 @@ TitleSelect:
     clc
     jmp ReturnPad
 
+; ==============================================================================
+; Title subsystem — MOVED from bank0 (TitleKernel/TitleFont) + bank2 (bands/
+; fonts/sprites) 2026-10-16 (docs/refactor_v4_plan.md Phase 3). Kernel + band
+; bodies share bank1; bank0 enters via CallPad_TitleKernel ($FC55); tail-exits
+; via CallPad_Overscan ($FC5B). Band bodies end in rts (same-bank).
+; ==============================================================================
+RoomX        = $80
+RoomY        = $81
+PlayerDir    = $82
+Grp0Ptr      = $86
+Grp0PtrHi    = $87
+BombTimer    = $F7
+TallyTicks   = $F2
+COLOR_CAVE_BG = $00
+COLOR_HOT_Y  = $1C
+COLOR_HOT_R  = $44
+COLOR_BOMBS  = $46
+COLOR_TITLE  = $6A
+FooterPtr1   = $E0
+FooterPtr2   = $E2
+FooterPtr3   = $E4
+FooterPtr4   = $E6
+FooterPtr5   = $E8
+FooterPtr6   = $EA
+
+PlayerWalkA:
+    .byte %00111100             ; row 0 torso (sprites.png 2026-10-03)
+    .byte %01111110             ; row 1
+    .byte %01111100             ; row 2 — yellow face
+    .byte %01111110             ; row 3
+    .byte %01111100             ; row 4 — grey pack
+    .byte %11111110             ; row 5
+    .byte %11111110             ; row 6
+    .byte %00111110             ; row 7  legs
+    .byte %00111110             ; row 8
+    .byte %00010100             ; row 9
+    .byte %00100010             ; row 10 boots apart (spread)
+    .byte %01000010             ; row 11 boots apart
+
+PlayerWalkB:
+    .byte %00111100             ; row 0 torso (sprites.png 2026-10-03)
+    .byte %01111110             ; row 1
+    .byte %01111100             ; row 2 — yellow face
+    .byte %01111110             ; row 3
+    .byte %01111100             ; row 4 — grey pack
+    .byte %11111110             ; row 5
+    .byte %11111110             ; row 6
+    .byte %00111110             ; row 7  legs
+    .byte %00111110             ; row 8
+    .byte %00010100             ; row 9
+    .byte %00011000             ; row 10 boots together (passing)
+    .byte %00011000             ; row 11 boots together
+
+TitleKernel:
+    sta WSYNC                    ; entry-line overrun guard (KernelInit+dispatch)
+    lda #0
+    sta COLUBK
+    sta PF0
+    sta PF1
+    sta PF2
+    sta COLUPF
+    sta GRP0
+    sta GRP1
+    sta GRP0                     ; flush VDEL buffers (score-technique pattern)
+    sta REFP0
+    sta REFP1
+    sta ENABL
+    sta ENAM1
+    lda #COLOR_TITLE
+    sta COLUP0
+    sta COLUP1
+    lda #6                       ; NUSIZ = 3 copies, 32px pitch (title widen #16)
+    sta NUSIZ0
+    sta NUSIZ1
+    lda #1                       ; VDELP = ON (cross-buffer active)
+    sta VDELP0
+    sta VDELP1
+    lda #41
+    ldx #0
+    jsr SetObjectXPos_b1            ; P0 slot base: drawn x34 (grid p=34 — V/P0c1
+    lda #57                      ;  must clear the S->V swap at x64, see #16)
+    ldx #1
+    jsr SetObjectXPos_b1            ; P1 slot base: drawn x50
+    sta WSYNC
+    sta HMOVE
+    ; --- Six font pointers for the VDEL sprite pipeline. ---
+TPtr1 = $E0                       ; font ptrs lo/hi: $E0/$E1, $E2/$E3,
+TPtr2 = $E2                       ;   $E4/$E5, $E6/$E7, $E8/$E9, $EA/$EB
+TPtr3 = $E4
+TPtr4 = $E6
+TPtr5 = $E8
+TPtr6 = $EA
+    lda #>TitleFont
+    sta TPtr1+1
+    sta TPtr2+1
+    sta TPtr3+1
+    sta TPtr4+1
+    sta TPtr5+1
+    sta TPtr6+1
+    lda #<TitleFont              ; $FB00
+    sta TPtr1
+    lda #<TitleFont+8
+    sta TPtr2
+    lda #<TitleFont+16
+    sta TPtr3
+    lda #<TitleFont+24
+    sta TPtr4
+    lda #<TitleFont+32
+    sta TPtr5
+    lda #<TitleFont+40
+    sta TPtr6
+    ldx #8                       ; blank lines before text
+.TkBlnk:
+    sta WSYNC
+    dex
+    bne .TkBlnk
+    lda #COLOR_TITLE
+    sta COLUP0
+    sta COLUP1
+    ldx #7
+    stx LineCount                ; rows left (7..1 — byte0 blank, score parity)
+.TkLoop:
+    ldy LineCount
+    lda (TPtr6),Y                ; slot 6 = "R." — font byte7 = TOP row
+    tax                          ; cache slot 6
+    sta WSYNC
+    lda (TPtr1),Y                ; slot 1 = "S."
+    sta.w GRP0                   ; digit 1 -> GRP0A buffer
+    lda (TPtr2),Y                ; slot 2 = "A."
+    sta GRP1                     ; digit 2 -> GRP1A, digit 1 live on P0c1
+    lda (TPtr3),Y                ; slot 3 = "V."
+    sta GRP0                     ; digit 3 -> GRP0A, digit 2 live on P1c1
+    lda (TPtr4),Y                ; slot 4 = "I."
+    sta Temp                     ; cache digit 4
+    lda (TPtr5),Y                ; slot 5 = "O."
+    ldy Temp
+    sty GRP1                     ; digit 4 -> GRP1A, digit 3 live on P0c2
+    sta GRP0                     ; digit 5 -> GRP0A, digit 4 live on P1c2
+    stx GRP1                     ; digit 6 -> GRP1A, digit 5 live on P0c3
+    stx GRP0                     ; digit 6 -> GRP0A, digit 6 live on P1c3
+    dec LineCount
+    bne .TkLoop
+    sta WSYNC                    ; close the last text line and clear VDEL slots
+    lda #0
+    sta GRP0
+    sta GRP1
+    sta GRP0
+    sta GRP1
+    ldx #103                    ; 63 pre-pad + 60 draw + 8 syncs + 31 pad (band +1: TitleBandPrep jsr entry spans 2 lines)
+.TkFooterPad:
+    sta WSYNC
+    dex
+    cpx #40
+    bne .TkFooterPad             ; 64 lines before the flight window
+.TkPlayer:
+    lda #0
+    sta VDELP0
+    sta VDELP1
+    sta GRP0
+    sta GRP1
+    sta NUSIZ0                  ; single player, not title's 3-copy mode
+    sta NUSIZ1                  ; bomb is one P1 copy (footer restores 3)
+    ldx #0
+    lda RoomX
+    jsr SetObjectXPos_b1           ; current flight X; X remains the P0 selector
+    lda BombX                   ; TitleSequence owns BombX (68 = no bomb, so
+    ldx #1                      ;   footer/base X survives; 140 = bomb armed)
+    jsr SetObjectXPos_b1           ; P1 = bomb (same shared-WSYNC pattern as entry)
+    sta WSYNC
+    sta HMOVE
+    jsr TitlePlayerBand         ; isolated bank2 renderer restores both VDELs
+    lda #3
+    sta NUSIZ0
+    sta NUSIZ1                  ; footer text: 3 copies on both players
+    lda #60
+    ldx #0                      ; the bank2 renderer used X as its sprite row
+    jsr SetObjectXPos_b1           ; restore title/footer P0 position
+    lda #68
+    ldx #1
+    jsr SetObjectXPos_b1           ; restore P1 (bomb SOXP moved it during band)
+    sta WSYNC
+    sta HMOVE
+    ldx #31                     ; fixed title-kernel line budget: 37 - 6
+                                ;   (footer grew 7 -> 13 rows, 2026-10-12)
+.TkPostFooterPad:
+    sta WSYNC
+    dex
+    bne .TkPostFooterPad
+    lda #$0E                     ; white
+    sta COLUP0
+    sta COLUP1
+    jsr FooterBand               ; bank2 text band
+    jmp CallPad_Overscan
+
+TitleFont:
+    ; slot 1 "S."
+    .byte %00000000
+    .byte %01110001
+    .byte %00001001
+    .byte %00001001
+    .byte %01110000
+    .byte %10000000
+    .byte %10000000
+    .byte %01110000
+    ; slot 2 "A."
+    .byte %00000000
+    .byte %10001001
+    .byte %10001001
+    .byte %10001001
+    .byte %11111000
+    .byte %10001000
+    .byte %10001000
+    .byte %01110000
+    ; slot 3 "V."
+    .byte %00000000
+    .byte %00100001
+    .byte %01010001
+    .byte %10001001
+    .byte %10001000
+    .byte %10001000
+    .byte %10001000
+    .byte %10001000
+    ; slot 4 "I."
+    .byte %00000000
+    .byte %11111001
+    .byte %00100001
+    .byte %00100001
+    .byte %00100000
+    .byte %00100000
+    .byte %00100000
+    .byte %11111000
+    ; slot 5 "O."
+    .byte %00000000
+    .byte %01110001
+    .byte %10001001
+    .byte %10001001
+    .byte %10001000
+    .byte %10001000
+    .byte %10001000
+    .byte %01110000
+    ; slot 6 "R."
+    .byte %00000000
+    .byte %10001001
+    .byte %10010001
+    .byte %10100001
+    .byte %11110000
+    .byte %10001000
+    .byte %10001000
+    .byte %11110000
+
+; ------------------------------------------------------------------------------
+; TitleSelect — MOVED to bank1 (refactor_v4_plan Phase 3.1 canary, 2026-10-16).
+; Entered via CallPad_TitleSelect ($FC4F); returns C=1 edge / C=0 no-edge.
+
+
+; ------------------------------------------------------------------------------
+; TitleIntro — intro-screen ($FD) edge check. Entered by JMP from DropStep
+; (no pending return; tail-jumps out — never rts, or it would pop a stale
+; frame return). Any SELECT/RESET press (level-triggered, prev-released via
+; StepsLeft): DropTarget=$FF (old title) + jsr DropArm (.DATitle pose/score
+; — the room is ALREADY loaded from boot LoadLevel, no deep LoadLevel:
+; stack depth DropStep→TitleIntro→DropArm keeps sim_bomb_fuse min-SP).
+; Always re-samples StepsLeft (title-owned on intro/title frames;
+; RefreshEnemyY's idle-only guard never touches it during gameplay... its
+; gameplay latch writes StepsLeft only when DropTarget==0 — intro frames
+; have DropTarget=$FD so ownership stays clean).
+; Clobbers A/X/Temp. Ends at TitleTailAudio (silence + overscan wait).
+; ------------------------------------------------------------------------------
+
+TitleBandPrep:
+    lda TallyTicks              ; phase — 0/1 airborne + 8 climb: jet flutter
+    cmp #2
+    bcc .TBpJet
+    cmp #8
+    beq .TBpJet
+    cmp #4
+    beq .TBpWalk
+    cmp #6
+    bne .TBpJetFA               ; phases 2,3,5,7: static frame A
+.TBpWalk:                       ; (phase 6 falls through here)
+    lda EnemyRamP
+    and #8
+    beq .TBpWalkA
+    lda #<PlayerWalkB
+    ldy #>PlayerWalkB
+    bne .TBpFrame               ; unconditional (hi != 0)
+.TBpWalkA:
+    lda #<PlayerWalkA
+    ldy #>PlayerWalkA
+    jmp .TBpFrame
+.TBpJet:
+    lda EnemyRamP
+    and #4
+    beq .TBpJetFA
+    lda #<(TitleJetSprite+12)
+    ldy #>(TitleJetSprite+12)
+    bne .TBpFrame
+.TBpJetFA:
+    lda #<TitleJetSprite
+    ldy #>TitleJetSprite
+.TBpFrame:
+    sta Grp0Ptr
+    sty Grp0PtrHi
+    lda PlayerDir              ; walk phases face left: REFP0 bit3
+    asl
+    asl
+    asl                         ; FACING_LEFT(1) -> $08, right -> $00
+    sta REFP0
+    lda BombPacked             ; state -> FooterPtr1 = 1 iff fuse (band
+    and #%00000011             ;   draws bomb rows only when flag 1;
+    beq .TBpStore              ;   state 0: A already 0)
+    cmp #1
+    bne .TBpExpl
+    lda #COLOR_BOMBS
+    sta COLUP1
+    lda #1
+    bne .TBpStore              ; unconditional (A=1)
+.TBpExpl:
+    lda #60                    ; explosion: 4-phase blink (15 exact cycles
+    sec                        ;   per color over the 60-frame state)
+    sbc BombTimer
+    and #3
+    tay
+    lda TitleBlinkColors,Y
+    sta COLUBK
+    lda #0                     ; explosion: no bomb sprite rows
+.TBpStore:
+    sta FooterPtr1
+    lda RoomY                  ; band scanline budget: LineCount staged here
+    sta LineCount              ;   keeps TitlePlayerBand short (twin $F8DD)
+    rts
+
+FooterBand:
+    sta WSYNC
+    lda #>FooterFont
+    sta FooterPtr1+1
+    sta FooterPtr2+1
+    sta FooterPtr3+1
+    sta FooterPtr4+1
+    sta FooterPtr5+1
+    sta FooterPtr6+1
+    lda #<FooterFont
+    sta FooterPtr1
+    lda #<FooterFont+14
+    sta FooterPtr2
+    lda #<FooterFont+28
+    sta FooterPtr3
+    lda #<FooterFont+42
+    sta FooterPtr4
+    lda #<FooterFont+56
+    sta FooterPtr5
+    lda #<FooterFont+70
+    sta FooterPtr6
+    ldx #13
+    stx LineCount
+.FooterLoop:
+    ldy LineCount
+    lda (FooterPtr6),Y
+    tax
+    sta WSYNC
+    lda (FooterPtr1),Y
+    sta.w GRP0
+    lda (FooterPtr2),Y
+    sta GRP1
+    lda (FooterPtr3),Y
+    sta GRP0
+    lda (FooterPtr4),Y
+    sta Temp
+    lda (FooterPtr5),Y
+    ldy Temp
+    sty GRP1
+    sta GRP0
+    stx GRP1
+    stx GRP0
+    dec LineCount
+    bne .FooterLoop
+    sta WSYNC
+    lda #0
+    sta VDELP0
+    sta VDELP1
+    sta GRP0
+    sta GRP1
+    sta GRP0
+    sta GRP1
+    rts
+
+FooterFont:
+    ; generated by tools/footer_font.py — DO NOT EDIT
+    ; "2026 Iuri / Fiedoruk" (two lines, 3x5 glyphs) packed into
+    ; the 48px x 13-row footer canvas (6 x 14-byte sprites,
+    ; FooterBand .FooterLoop: Y=13..1).
+    .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $EE, $8A, $EA, $2A, $EE    ; sprite 0 (x 0-7)
+    .byte $00, $00, $00, $00, $00, $00, $00, $00, $00, $EE, $8A, $EE, $28, $EE    ; sprite 1 (x 8-15)
+    .byte $00, $22, $22, $32, $20, $3A, $00, $00, $00, $3B, $12, $12, $12, $3A    ; sprite 2 (x 16-23)
+    .byte $00, $EE, $8A, $EE, $A2, $E2, $00, $00, $00, $A2, $A2, $A2, $A8, $B2    ; sprite 3 (x 24-31)
+    .byte $00, $E8, $A8, $A8, $AA, $EC, $00, $00, $00, $00, $00, $00, $00, $00    ; sprite 4 (x 32-39)
+    .byte $00, $EA, $AC, $AC, $AC, $AA, $00, $00, $00, $00, $00, $00, $00, $00    ; sprite 5 (x 40-47)
+
+TitleBombSprite:
+    ; 4 junk rows (top-align: rows Y<4 gated off in the draw path) +
+    ; OBJ_BOMB's 8 rows (kernel ObjSprites+64) — bottom-aligned in the
+    ; 12-row sprite window = sits on the ground line while RoomY==48.
+    .byte $00, $00, $00, $00
+    .byte $10, $20, $20, $60, $f0, $f0, $f0, $60
+TitleBlinkColors:
+    ; Copy of kernel BombBlinkColors ((60-BombTimer)&3): black/yellow/red/yellow
+    .byte COLOR_CAVE_BG, COLOR_HOT_Y, COLOR_HOT_R, COLOR_HOT_Y
+
+TitlePlayerBand:
+    ; Frame pick, mirror, bomb flag + colors live in TitleBandPrep (same
+    ; bank — jsr keeps the 2-line entry span off this gap's budget).
+    jsr TitleBandPrep          ; pick + mirror + bomb flag/colors + LineCount
+    ldx #60
+    ldy #0
+    sta WSYNC
+.TitleJetLine:
+    lda LineCount
+    beq .TitleJetDraw
+    dec LineCount
+    lda #0
+    sta GRP0
+    jmp .TitleJetSync
+.TitleJetDraw:
+    cpy #12
+    bcs .TitleJetBlank
+    lda (Grp0Ptr),Y
+    sta GRP0
+    lda TitleJetColors,Y
+    sta COLUP0
+    ; --- bomb: rows 0-3 read junk zeros, rows 4..11 = fuse sprite ---
+    lda FooterPtr1             ; 1 iff fuse (TitleBandPrep)
+    beq .TitleBombRow
+    lda TitleBombSprite,Y
+    sta GRP1
+.TitleBombRow:
+    iny
+    bne .TitleJetSync
+.TitleJetBlank:
+    lda #0
+    sta GRP0
+.TitleJetSync:
+    sta WSYNC
+    dex
+    bne .TitleJetLine
+    lda #0
+    sta GRP0
+    sta GRP1
+    sta GRP0
+    sta GRP1
+    lda #1
+    sta VDELP0
+    sta VDELP1
+    lda #0
+    sta GRP0
+    sta GRP1
+    sta GRP0
+    sta GRP1
+    sta COLUBK                 ; restore black + unmirrored P0 for the footer
+    sta REFP0                  ;   (explosion walk phases end before it)
+.TitleJetDone:
+    sta WSYNC
+    rts
+
+TitleJetSprite:
+    ; Exact A/B copies of PlayerSpriteA/B; game alternates every 4 frames.
+    .byte %00111100, %01111110, %01111100, %01111110
+    .byte %01111100, %11111110, %11111110, %00111110
+    .byte %00111110, %00010100, %00010100, %00010100
+    .byte %00111100, %01111110, %01111100, %01111110
+    .byte %01111100, %11111110, %11111110, %01111110
+    .byte %10111110, %00010100, %00010100, %00010100
+TitleJetColors:
+    .byte $48, $48, $1E, $48, $08, $48, $48, $48
+    .byte $48, $48, $08, $08
     org $F540
 MenuMain:
     ; ========================================================================
@@ -1351,6 +1825,14 @@ CallPad_BombMarkWalls:
 CallPad_TitleSelect:
     sta $1FF7
     jmp TitleSelect
+    .ds $FC55 - *, 0
+CallPad_TitleKernel:
+    sta $1FF7
+    jmp TitleKernel
+    .ds $FC5B - *, 0
+CallPad_Overscan:
+    sta $1FF6
+    jmp $F1BB
 
 ; ========================================================================
 ; Fold-pad stubs (byte-identical to bank0)

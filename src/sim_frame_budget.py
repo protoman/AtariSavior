@@ -75,7 +75,7 @@ for _l in (SRC / 'bank0.lst').read_text(errors='replace').splitlines():
     if _m:
         LABELS.setdefault(_m.group(2), int(_m.group(1), 16))
 for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row',
-              '.WaitVBLANK', 'TitleKernel', 'ReloadLevel',
+              '.WaitVBLANK', 'CallPad_TitleKernel', 'ReloadLevel',
               'CallPad_BombMarkWalls'):
     if _need not in LABELS:
         sys.exit(f'label {_need} not found in bank0.lst')
@@ -88,7 +88,7 @@ PC_BMW = LABELS['CallPad_BombMarkWalls']
 PC_ROW = LABELS['.Row']
 PC_VBLT = LABELS['VBLTimer']     # VBL work window: TIM64T #23 armed here
 PC_WAIT = LABELS['.WaitVBLANK']  # INTIM poll entry = end of pure VBL work
-PC_TITLE = LABELS['TitleKernel']  # title frames skip .Row (own kernel band)
+PC_TITLE = LABELS['CallPad_TitleKernel']  # bank0 entry pad; kernel now in bank1
 
 # overscan sub-marks for attribution (which caller eats the timer window)
 # (#22: LoadPFBuffer/LoadEnemyRam moved into bank2 EnterRoomB2 — they no

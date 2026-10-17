@@ -704,9 +704,12 @@ def check_callpads(src: Path) -> None:
                 "be `sta $1FFx / jmp` only (value ignored by F6 hotspot)")
         want = int(hexv, 16)
         # `sta $1FF8` pads jump to a bank2 body (e.g. BuildColupF: the hot-rect
-        # stream lives in bank2); `sta $1FF7` pads jump to bank1.
+        # stream lives in bank2); `sta $1FF7` pads jump to bank1; `sta $1FF6`
+        # pads are bank1->bank0 tail exits (e.g. CallPad_Overscan -> Overscan).
         if "sta $1FF8" in body:
             tgt_labs, tgt_side = labels2, "bank2"
+        elif "sta $1FF6" in body:
+            tgt_labs, tgt_side = labels0, "bank0"
         else:
             tgt_labs, tgt_side = labels1, "bank1"
         got = tgt_labs.get(name)

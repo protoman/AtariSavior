@@ -2664,7 +2664,7 @@ KernelInit:
                                   ;   BEFORE TitleKernel's entry WSYNC (init
                                   ;   span was 75c — +3c there = 78 > 76 =
                                   ;   +1 line; entry WSYNC absorbs these cycles)
-    jmp TitleKernel
+    jmp CallPad_TitleKernel
 
 ; ------------------------------------------------------------------------------
 ; TitleKernel — intro sentinel ($FD): black + "S.A.V.I.O.R." via the 48px
@@ -2674,146 +2674,7 @@ KernelInit:
 ; ZP: LineCount ($84) + Temp ($88) as loop counter/tmp — idle on title frames
 ; (cave kernel not running; bank1 HUD not running; overscan probes bypassed).
 ; ------------------------------------------------------------------------------
-TitleKernel:
-    sta WSYNC                    ; entry-line overrun guard (KernelInit+dispatch)
-    lda #0
-    sta COLUBK
-    sta PF0
-    sta PF1
-    sta PF2
-    sta COLUPF
-    sta GRP0
-    sta GRP1
-    sta GRP0                     ; flush VDEL buffers (score-technique pattern)
-    sta REFP0
-    sta REFP1
-    sta ENABL
-    sta ENAM1
-    lda #COLOR_TITLE
-    sta COLUP0
-    sta COLUP1
-    lda #6                       ; NUSIZ = 3 copies, 32px pitch (title widen #16)
-    sta NUSIZ0
-    sta NUSIZ1
-    lda #1                       ; VDELP = ON (cross-buffer active)
-    sta VDELP0
-    sta VDELP1
-    lda #41
-    ldx #0
-    jsr SetObjectXPos            ; P0 slot base: drawn x34 (grid p=34 — V/P0c1
-    lda #57                      ;  must clear the S->V swap at x64, see #16)
-    ldx #1
-    jsr SetObjectXPos            ; P1 slot base: drawn x50
-    sta WSYNC
-    sta HMOVE
-    ; --- Six font pointers for the VDEL sprite pipeline. ---
-TPtr1 = $E0                       ; font ptrs lo/hi: $E0/$E1, $E2/$E3,
-TPtr2 = $E2                       ;   $E4/$E5, $E6/$E7, $E8/$E9, $EA/$EB
-TPtr3 = $E4
-TPtr4 = $E6
-TPtr5 = $E8
-TPtr6 = $EA
-    lda #>TitleFont
-    sta TPtr1+1
-    sta TPtr2+1
-    sta TPtr3+1
-    sta TPtr4+1
-    sta TPtr5+1
-    sta TPtr6+1
-    lda #<TitleFont              ; $FB00
-    sta TPtr1
-    lda #<TitleFont+8
-    sta TPtr2
-    lda #<TitleFont+16
-    sta TPtr3
-    lda #<TitleFont+24
-    sta TPtr4
-    lda #<TitleFont+32
-    sta TPtr5
-    lda #<TitleFont+40
-    sta TPtr6
-    ldx #8                       ; blank lines before text
-.TkBlnk:
-    sta WSYNC
-    dex
-    bne .TkBlnk
-    lda #COLOR_TITLE
-    sta COLUP0
-    sta COLUP1
-    ldx #7
-    stx LineCount                ; rows left (7..1 — byte0 blank, score parity)
-.TkLoop:
-    ldy LineCount
-    lda (TPtr6),Y                ; slot 6 = "R." — font byte7 = TOP row
-    tax                          ; cache slot 6
-    sta WSYNC
-    lda (TPtr1),Y                ; slot 1 = "S."
-    sta.w GRP0                   ; digit 1 -> GRP0A buffer
-    lda (TPtr2),Y                ; slot 2 = "A."
-    sta GRP1                     ; digit 2 -> GRP1A, digit 1 live on P0c1
-    lda (TPtr3),Y                ; slot 3 = "V."
-    sta GRP0                     ; digit 3 -> GRP0A, digit 2 live on P1c1
-    lda (TPtr4),Y                ; slot 4 = "I."
-    sta Temp                     ; cache digit 4
-    lda (TPtr5),Y                ; slot 5 = "O."
-    ldy Temp
-    sty GRP1                     ; digit 4 -> GRP1A, digit 3 live on P0c2
-    sta GRP0                     ; digit 5 -> GRP0A, digit 4 live on P1c2
-    stx GRP1                     ; digit 6 -> GRP1A, digit 5 live on P0c3
-    stx GRP0                     ; digit 6 -> GRP0A, digit 6 live on P1c3
-    dec LineCount
-    bne .TkLoop
-    sta WSYNC                    ; close the last text line and clear VDEL slots
-    lda #0
-    sta GRP0
-    sta GRP1
-    sta GRP0
-    sta GRP1
-    ldx #103                    ; 63 pre-pad + 60 draw + 8 syncs + 31 pad (band +1: TitleBandPrep jsr entry spans 2 lines)
-.TkFooterPad:
-    sta WSYNC
-    dex
-    cpx #40
-    bne .TkFooterPad             ; 64 lines before the flight window
-.TkPlayer:
-    lda #0
-    sta VDELP0
-    sta VDELP1
-    sta GRP0
-    sta GRP1
-    sta NUSIZ0                  ; single player, not title's 3-copy mode
-    sta NUSIZ1                  ; bomb is one P1 copy (footer restores 3)
-    ldx #0
-    lda RoomX
-    jsr SetObjectXPos           ; current flight X; X remains the P0 selector
-    lda BombX                   ; TitleSequence owns BombX (68 = no bomb, so
-    ldx #1                      ;   footer/base X survives; 140 = bomb armed)
-    jsr SetObjectXPos           ; P1 = bomb (same shared-WSYNC pattern as entry)
-    sta WSYNC
-    sta HMOVE
-    jsr TitlePlayerFold         ; isolated bank2 renderer restores both VDELs
-    lda #3
-    sta NUSIZ0
-    sta NUSIZ1                  ; footer text: 3 copies on both players
-    lda #60
-    ldx #0                      ; the bank2 renderer used X as its sprite row
-    jsr SetObjectXPos           ; restore title/footer P0 position
-    lda #68
-    ldx #1
-    jsr SetObjectXPos           ; restore P1 (bomb SOXP moved it during band)
-    sta WSYNC
-    sta HMOVE
-    ldx #31                     ; fixed title-kernel line budget: 37 - 6
-                                ;   (footer grew 7 -> 13 rows, 2026-10-12)
-.TkPostFooterPad:
-    sta WSYNC
-    dex
-    bne .TkPostFooterPad
-    lda #$0E                     ; white
-    sta COLUP0
-    sta COLUP1
-    jsr FooterFold               ; bank2 text band
-    jmp Overscan
+; TitleKernel — MOVED to bank1 (docs/refactor_v4_plan.md Phase 3).
 
     .ds $FB00 - *, 0
 ; ------------------------------------------------------------------------------
@@ -2824,80 +2685,8 @@ TPtr6 = $EA
 ; Row order = DigitGfx convention: byte0 blank (not drawn), byte7 = TOP,
 ; byte1 = bottom (loop draws Y=7 first).
 ; ------------------------------------------------------------------------------
-TitleFont:
-    ; slot 1 "S."
-    .byte %00000000
-    .byte %01110001
-    .byte %00001001
-    .byte %00001001
-    .byte %01110000
-    .byte %10000000
-    .byte %10000000
-    .byte %01110000
-    ; slot 2 "A."
-    .byte %00000000
-    .byte %10001001
-    .byte %10001001
-    .byte %10001001
-    .byte %11111000
-    .byte %10001000
-    .byte %10001000
-    .byte %01110000
-    ; slot 3 "V."
-    .byte %00000000
-    .byte %00100001
-    .byte %01010001
-    .byte %10001001
-    .byte %10001000
-    .byte %10001000
-    .byte %10001000
-    .byte %10001000
-    ; slot 4 "I."
-    .byte %00000000
-    .byte %11111001
-    .byte %00100001
-    .byte %00100001
-    .byte %00100000
-    .byte %00100000
-    .byte %00100000
-    .byte %11111000
-    ; slot 5 "O."
-    .byte %00000000
-    .byte %01110001
-    .byte %10001001
-    .byte %10001001
-    .byte %10001000
-    .byte %10001000
-    .byte %10001000
-    .byte %01110000
-    ; slot 6 "R."
-    .byte %00000000
-    .byte %10001001
-    .byte %10010001
-    .byte %10100001
-    .byte %11110000
-    .byte %10001000
-    .byte %10001000
-    .byte %11110000
+; TitleFont — MOVED to bank1.
 
-; ------------------------------------------------------------------------------
-; TitleSelect — MOVED to bank1 (refactor_v4_plan Phase 3.1 canary, 2026-10-16).
-; Entered via CallPad_TitleSelect ($FC4F); returns C=1 edge / C=0 no-edge.
-
-
-; ------------------------------------------------------------------------------
-; TitleIntro — intro-screen ($FD) edge check. Entered by JMP from DropStep
-; (no pending return; tail-jumps out — never rts, or it would pop a stale
-; frame return). Any SELECT/RESET press (level-triggered, prev-released via
-; StepsLeft): DropTarget=$FF (old title) + jsr DropArm (.DATitle pose/score
-; — the room is ALREADY loaded from boot LoadLevel, no deep LoadLevel:
-; stack depth DropStep→TitleIntro→DropArm keeps sim_bomb_fuse min-SP).
-; Always re-samples StepsLeft (title-owned on intro/title frames;
-; RefreshEnemyY's idle-only guard never touches it during gameplay... its
-; gameplay latch writes StepsLeft only when DropTarget==0 — intro frames
-; have DropTarget=$FD so ownership stays clean).
-; Clobbers A/X/Temp. Ends at TitleTailAudio (silence + overscan wait).
-; ------------------------------------------------------------------------------
 TitleIntro:
     lda StepsLeft
     and #%00000011             ; prev released bits (1 = released)
@@ -3053,6 +2842,14 @@ MothExitPad:
 CallPad_TitleSelect:
     sta $1FF7
     jmp $F041
+    .ds $FC55 - *, 0
+CallPad_TitleKernel:
+    sta $1FF7
+    jmp $F07A
+    .ds $FC5B - *, 0
+CallPad_Overscan:
+    sta $1FF6
+    jmp $F1BB
 
 ; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
