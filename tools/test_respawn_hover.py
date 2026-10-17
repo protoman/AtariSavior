@@ -20,17 +20,19 @@ GRAVITY = int(re.search(r"^GRAVITY\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 1
 JET_MAX = int(re.search(r"^JET_MAX\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 16)
 
 # --- 1. asm structure -------------------------------------------------------
-# DropArm clears Hover
-drop = K[K.index("DropArm:"):K.index("DropStep:")]
-assert "sta Hover" in drop, "DropArm must clear Hover"
-# DropStep arms Hover at arrival
-ds = K[K.index("DropStep:"):K.index("TitleWork:")]
-assert re.search(r"sta DropTarget\s*;.*\n\s*sta JetPower.*\n\s*lda #1\s*\n\s*sta Hover", ds), \
-    "DropStep arrival must set Hover=1"
-# UpdateP0Vertical checks Hover + pins vy
-up = K[K.index("UpdateP0Vertical:"):K.index(".Integrate:")]
+# LoseLife arms Hover on every death
+ll = K[K.index("LoseLife:"):K.index(".LLStay:")]
+assert re.search(r"lda #1\s*\n\s*sta Hover", ll), "LoseLife must arm Hover=1"
+# LoadLevel clears Hover (stage entry lands normally)
+i = K.index("\nLoadLevel:")
+loadlvl = K[i:i + 700]
+assert re.search(r"sta Hover", loadlvl), "LoadLevel must clear Hover"
+# UpdateP0Vertical checks Hover + pins vy (at .Integrate, all paths reach it)
+up = K[K.index("UpdateP0Vertical:"):K.index(".DoInt:")]
 assert "lda Hover" in up and "sta Hover" in up, "physics must read+clear Hover"
 assert re.search(r"cmp #GRAVITY \+ 1", up), "lift threshold must be GRAVITY+1"
+assert up.index(".Integrate:") < up.index("lda Hover"), \
+    "Hover check must sit at .Integrate (clamp jmps there)"
 # DropSpeedTable is pre-pad (before the $FB00 pin), read abs,Y
 tbl = K.index("DropSpeedTable:")
 assert tbl < K.index("    .ds $FB00 - *, 0"), "DropSpeedTable must be pre-pad"
