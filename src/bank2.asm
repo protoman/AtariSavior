@@ -1370,6 +1370,44 @@ FooterPtr6 = $EA
     .ds $F864 - *, 0            ; #27b level spill slot ($F864, 28B; empty until
     include "generated/spill_F840.asm" ;  convert_level places a level here)
     .ds $F880 - *, 0
+    .ds $F8B7 - *, 0            ; spill-pool gap: VcrCoveredState relocated here
+; ------------------------------------------------------------------------------
+; VcrCoveredState — aperture clock → slice state (vcrunch_shutter_plan Phase C).
+; (moved from the $FE9C hole 2026-10-17 to make room for the ball-door key
+;  touch-unlock in OvShutBand; no callers since VcrStateTab took the hot path —
+;  kept as the formula reference verify_build guards against CrunchClock.)
+; IN: A = frame clock (EnemyRamP). OUT: A = $00/$11/$1B/$1F (slice states).
+; Mirror of bank3 CrunchClock (lsr/lsr = clock>>2, cmp #32 / eor #$3F fold,
+; cmp #4 / sbc #4 head offset — verify_build asserts the shared constants).
+; ------------------------------------------------------------------------------
+VcrCoveredState:
+    lsr
+    lsr                         ; clock>>2 (64-frame ping-pong period)
+    cmp #32
+    bcc .VChop
+    eor #$3F                    ; 32..63 -> 31..0 (fold down)
+.VChop:
+    cmp #4
+    bcc .VCq
+    sbc #4                      ; head offset (C set by cmp) — dwell zone
+.VCq:
+    cmp #4
+    bcc .VCopen                 ; eff 0-3 (both dwell halves) -> fully open
+    cmp #9
+    bcc .VC11
+    cmp #18
+    bcc .VC1b
+    lda #$1f                    ; fully closed
+    rts
+.VC1b:
+    lda #$1b                    ; center slice open
+    rts
+.VC11:
+    lda #$11                    ; only edge slices closed
+    rts
+.VCopen:
+    lda #0                      ; fully open
+    rts
     .ds $F8DD - *, 0            ; twin: bank0 PlayerSpriteA lives here (test_miner)
 TitleJetSprite:
     ; Exact A/B copies of PlayerSpriteA/B; game alternates every 4 frames.
@@ -2246,6 +2284,16 @@ OvShutBand:
                                 ;   only path disarms BandTab, so this arm
                                 ;   is defense-in-depth) — passable, no
                                 ;   re-kill (user spec 2026-10-14)
+    lda LevelStartRoom          ; Phase 5 key: KeyHeld + a plain ball-strip
+    bpl .OSBshut                ;   RIGHT door (VcrBand=$FF → not a vcrunch
+    lda VcrBand                 ;   room) → the touch destroys it (b3) and the
+    cmp #$ff                    ;   walk passes. A vcrunch room (VcrBand 0-2)
+    bne .OSBshut                ;   keeps its shutter test — the key does NOT
+    lda EnemyDeadMask           ;   disable the hazard.
+    ora #$08                    ; b3 = ball strip (right door) destroyed
+    sta EnemyDeadMask
+    jmp .OSBm1                  ; passable (strip blanked next StageBandTab)
+.OSBshut:
     jsr OvShutScan              ; Phase C (bank3 VCS3 via tramp), 2026-10-14b:
                                 ;   C=0 passable (A ignored) / C=1 + A≠0 kill
                                 ;   / C=1 + A=0 SOLID (block, no latch)
@@ -2262,48 +2310,9 @@ OvShutBand:
     jmp OvM1Block
 
 ; ------------------------------------------------------------------------------
-; VcrCoveredState — aperture clock → slice state (vcrunch_shutter_plan Phase C).
-; IN:  A = frame clock (EnemyRamP)
-; OUT: A = $00 (fully open — dwell, nothing closed/drawn; user 2026-10-14c:
-;          the block must disappear totally, not stop at one edge sliver) /
-;      $11 (slices 0,4 closed — edges only) / $1B (+1,3) / $1F (all)
-; Clobbers A only — jsr-safe for the VBL arm (VcrShutter) and OvShutScan.
-; Mirror of bank3 CrunchClock's ping-pong (lsr/lsr = clock>>2, cmp #32 /
-; eor #$3F fold, cmp #4 / sbc #4 head offset — SAME constants; verify_build
-; asserts the #32/#4 pair stays byte-identical with CrunchClock's) mapped
-; to the four slice states instead of a cell count.
-; Phase widths: eff 0-3 open / 4-8 edges / 9-17 center-open / 18+ full —
-; dwell at both ends of the ping-pong via the >>2 modulus (no visible wrap
-; jump).
+; VcrCoveredState — MOVED to bank2's spill-pool gap ($F8B7) below (2026-10-17),
+; freeing this $FE9C hole for OvShutBand's key touch-unlock branch.
 ; ------------------------------------------------------------------------------
-VcrCoveredState:
-    lsr
-    lsr                         ; clock>>2 (64-frame ping-pong period)
-    cmp #32
-    bcc .VChop
-    eor #$3F                    ; 32..63 -> 31..0 (fold down)
-.VChop:
-    cmp #4
-    bcc .VCq
-    sbc #4                      ; head offset (C set by cmp) — dwell zone
-.VCq:
-    cmp #4
-    bcc .VCopen                 ; eff 0-3 (both dwell halves) -> fully open
-    cmp #9
-    bcc .VC11
-    cmp #18
-    bcc .VC1b
-    lda #$1f                    ; fully closed
-    rts
-.VC1b:
-    lda #$1b                    ; center slice open
-    rts
-.VC11:
-    lda #$11                    ; only edge slices closed
-    rts
-.VCopen:
-    lda #0                      ; fully open — VcrShutter skips the arm +
-    rts                         ;   BandTab (slice0 off, pack gate off)
 
 ; ------------------------------------------------------------------------------
 ; FoldIndirect — byte-identical copy of kernel.asm's block (same $FEF6

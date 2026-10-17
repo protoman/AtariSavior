@@ -52,6 +52,11 @@ assert "LevelStartRoom = $A7" in B2, "bank2 must hand-copy LevelStartRoom"
 ov = B2[B2.index(".OvM1block:"):B2.index(".OvM1no:")]
 assert "lda LevelStartRoom" in ov and "ora #$10" in ov, \
     "OvM1Block must key-unlock the left door (b4) on touch"
+# Right door = ball strip; a MetaB b7 strip in a non-vcrunch room (VcrBand
+# = $FF) unlocks (b3) on touch. Vcrunch rooms keep the shutter test.
+sh = B2[B2.index("OvShutBand:"):B2.index(".OSBm1:")]
+assert "lda LevelStartRoom" in sh and "ora #$08" in sh and "cmp #$ff" in sh, \
+    "OvShutBand must key-unlock a plain right door (b3), gated off vcrunch"
 
 so = K[K.index("\nSelectActiveObject:"):K.index("\nEnemyColorTable:")]
 assert "cpx #KEY" in so and "bmi .SOEnemySkip" in so, \
