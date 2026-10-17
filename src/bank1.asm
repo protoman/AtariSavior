@@ -587,19 +587,19 @@ TitleJetColors:
     .byte $48, $48, $08, $08
 ; ==============================================================================
 ; Intro music player (2026-10-16). Ticked once per intro ($FD) frame from
-; TitleTailAudio via CallPad_MusicTick (bank0↔bank1 @ $FC61). Plays the
-; Ukraine anthem (src/art/ukraine_anthem.asm): two synchronized (duration,
-; note) streams — AUD0 = melody + AUD1 = bass, BOTH Lead $0C (one tuning -> in tune); 8th =
-; 13 frames; note = AUDF, $FE = rest, $FF = loop. ZP: MelPtr/MelTimer
-; ($9D/$9E) + BasPtr/BasTimer ($EC/$ED = bank1 HUD scratch, free on the
-; title-only frames this runs on).
+; TitleTailAudio via CallPad_MusicTick (bank0<->bank1 @ $FC61). Plays the
+; Ukraine anthem MELODY (src/art/ukraine_anthem.asm MusicMel: (duration, note)
+; pairs; note = AUDF, $FE = rest, $FF = loop; one 8th = 13 frames).
+; AUD0 = Lead ($0C), volume 7. AUD1 is muted - the bass voice read as a
+; constant beep (user, 2026-10-16) so it was dropped. ZP: MelPtr/MelTimer
+; ($9D/$9E).
 ; ==============================================================================
 MelPtr   = $9D
 MelTimer = $9E
-BasPtr   = $EC
-BasTimer = $ED
 
 MusicTick:
+    lda #0
+    sta AUDV1                   ; bass voice off (melody only)
     ldx MelPtr
     lda MelTimer
     beq .MelLoad
@@ -615,11 +615,11 @@ MusicTick:
     lda #7
     sta AUDV0
 .MelDone:
-    jmp .Bas
+    jmp ReturnPad
 .MelMute:
     lda #0
     sta AUDV0
-    jmp .Bas
+    jmp ReturnPad
 .MelLoad:
     lda MusicMel,X              ; duration
     sta MelTimer
@@ -641,60 +641,12 @@ MusicTick:
 .MelLoop:
     lda #0
     sta MelPtr
-    jmp .Bas
+    jmp ReturnPad
 .MelAdv:
     txa
     clc
     adc #2
     sta MelPtr
-.Bas:
-    ldx BasPtr
-    lda BasTimer
-    beq .BasLoad
-    dec BasTimer
-    lda MusicBas+1,X
-    cmp #$FE
-    beq .BasMute
-    cmp #$FF
-    beq .BasDone
-    sta AUDF1
-    lda #$0C                    ; Lead (same tuning as the melody — in tune)
-    sta AUDC1
-    lda #7
-    sta AUDV1
-.BasDone:
-    jmp ReturnPad
-.BasMute:
-    lda #0
-    sta AUDV1
-    jmp ReturnPad
-.BasLoad:
-    lda MusicBas,X
-    sta BasTimer
-    lda MusicBas+1,X
-    cmp #$FF
-    beq .BasLoop
-    cmp #$FE
-    beq .BasRest
-    sta AUDF1
-    lda #$0C                    ; Lead (matches the melody's tuning)
-    sta AUDC1
-    lda #7
-    sta AUDV1
-    jmp .BasAdv
-.BasRest:
-    lda #0
-    sta AUDV1
-    jmp .BasAdv
-.BasLoop:
-    lda #0
-    sta BasPtr
-    jmp ReturnPad
-.BasAdv:
-    txa
-    clc
-    adc #2
-    sta BasPtr
     jmp ReturnPad
 
     include "art/ukraine_anthem.asm"
