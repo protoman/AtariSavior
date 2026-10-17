@@ -649,7 +649,7 @@ MusicTick:
     sta MelPtr
     jmp ReturnPad
 
-    include "art/ukraine_anthem.asm"
+    include "art/ukraine_melody.asm"
 
     org $F540
 MenuMain:
