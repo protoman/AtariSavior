@@ -2,9 +2,9 @@
 """Intro music guard (2026-10-16).
 
 Boots the ROM (power-on = the $FD intro), runs intro frames, and asserts the
-Ukraine-anthem player drives both TIA voices: AUDC0=Lead ($0C), AUDC1=Bass
-($06) once notes start, volumes in {0,7} (the anthem opens with rests), and
-the melody pitch (AUDF0) advances through the sequence.
+original "Hollow Earth" theme drives AUD0: Lead ($0C), volume in {0,7}
+($FE rests silence it), and the melody pitch (AUDF0) advances. The bass
+voice (AUD1) must stay muted.
 """
 import re
 import sys
@@ -96,10 +96,10 @@ while frame < 1400:
 
 print(f"intro frames={intro}; melody notes seen={len(mel)}; "
       f"distinct AUDF0={sorted(set(mel))[:12]}...")
-print(f"AUDC0=Lead seen={seen_c0}; bass-on frames={len(bass_on)}; bad volumes={len(bad_vol)}")
+print(f"AUD0=Lead seen={seen_c0}; bass-off frames={len(bass_on)}; bad volumes={len(bad_vol)}")
 assert intro > 1000, "did not stay on the intro screen"
 assert not bad_vol, f"volume must be 7 when playing: {bad_vol[:5]}"
 assert len(set(mel)) >= 4, "melody is not advancing"
 assert seen_c0, "melody must use the Lead timbre"
 assert not bass_on, "bass voice (AUD1) must stay muted"
-print("PASS: Ukraine-anthem intro melody (AUD0 Lead), bass muted")
+print("PASS: intro theme on AUD0 (Lead), bass muted")
