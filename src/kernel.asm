@@ -759,6 +759,10 @@ CaveKernelRow:
     bmi .M1band
     sta COLUP1                    ; door: yellow (only visible on the door's
                                   ;   open bands — wall PF hides it elsewhere)
+    sta Temp                      ; bugs.md #15: also stage the door color into
+                                  ;   Temp, so .ObjZero's plain restore keeps
+                                  ;   the stripe yellow (0 extra cycles on the
+                                  ;   object line; +3c here on the setup line)
     bpl .M1done                   ; $1C b7=0 → always
 .M1band:
     lda ColupfBuf,X
@@ -1006,11 +1010,8 @@ SliceReentry:                 ; global alias ON .Line — RowSlice's tail
                             ; late → +1 line/frame, sim 264). #6 attempt to
                             ; restore EVERY line measured 271-line frames —
                             ; keep the A==8-only restore.
-    lda CollisionCellY          ; bugs.md #15: door band → $1C (yellow),
-                                ;   $80 (b7) → not a door → band colour below
-    bpl .ObjSetCol
-    lda Temp                    ; A1: band colour staged by .Row
-.ObjSetCol:
+    lda Temp                    ; bugs.md #15: door bands stage $1C here at
+                                ;   .Row, others the band colour ColupfBuf,X
     sta COLUP1                 ; restore-then-blank: A==8 blanks GRP1 10c later
                                ; than before (one line, ~15px of row7 dup) —
                                ; accepted to fit +1B headroom.
@@ -2885,7 +2886,7 @@ CallPad_TitleKernel:
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F1BF
+    jmp $F1BD
     .ds $FC61 - *, 0            ; bank0↔bank1 intro-music tick
 CallPad_MusicTick:
     sta $1FF7
