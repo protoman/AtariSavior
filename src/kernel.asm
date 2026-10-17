@@ -339,6 +339,7 @@ VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × LINES_PER_TILE)
 
 ; GRP1 sprite design offsets into ObjSprites (8 bytes each; 0 = blank/off)
 OBJ_NONE        = 0
+OBJ_KEY         = 0             ; type-6 KEY design = the offset-0 slot
 OBJ_MOTH        = 8
 OBJ_SPIDER      = 16
 OBJ_LAMP        = 24
@@ -901,7 +902,7 @@ SliceReentry:                 ; global alias ON .Line — RowSlice's tail
 
     ; --- GRP1 SECOND (object/enemy sprite): one design row per scanline ---
     ; ObjTop..ObjTop+7 window → row byte from ObjSprites[ObjBase + offset].
-    ; Object off: ObjBase=0 → blank rows. S2.2: ObjTop is RoomY-relative;
+    ; Object off: ObjBase=$FF sentinel (ObjTop parked 144). S2.2: ObjTop is RoomY-relative;
     ; Y here = A0+1 = next line's A0, so `Y - ObjTopRel` = Scanline - ObjTop
     ; (mod 256, exact). In-object iff result 0..7 → `cmp #8/bcs` (C=0 in
     ; range → adc adds exact ObjBase). Replaces `lda Scanline/sec/sbc/bcc`
@@ -2011,8 +2012,9 @@ SelectActiveObject:
     ; FlickerFrame would grow unbounded and .SOModLoop (a subtract loop)
     ; would run O(FlickerFrame) iterations in the VBL on the next room with
     ; objects (measured +533c / +7 lines room-crossing spike, 2026-10-16).
-    sta ObjBase
     sta FlickerFrame
+    lda #$FF
+    sta ObjBase
     jmp .SODone
 .SONotNothing:
     ; FlickerFrame already advanced at entry — modulo into 0..(slot count-1)
@@ -2063,7 +2065,7 @@ SelectActiveObject:
     cmp EnemyCount
     bcc .SOEnemyValid
     ; Out of range — no object this slot
-    lda #0
+    lda #$FF
     sta ObjBase
     jmp .SODone
 .SOEnemyValid:
@@ -2096,6 +2098,11 @@ SelectActiveObject:
     lda EnemyColorTable,X
     sta COLUP1
 .SOEnemyPattern:
+    cpx #KEY
+    bne .SOPNorm
+    lda LevelStartRoom          ; Phase 5: KeyHeld ($A7 b7) → key already
+    bmi .SOEnemySkip            ;   taken → skip render (never reappears)
+.SOPNorm:
     lda ObjSpriteOffTable,X     ; type → ObjSprites design offset
     sta ObjBase
 .SOEnemyColorDone:
@@ -2105,7 +2112,7 @@ SelectActiveObject:
     jmp .SODone
 
 .SOEnemySkip:
-    lda #0
+    lda #$FF
     sta ObjBase
 
 .SODone:
@@ -2114,7 +2121,7 @@ SelectActiveObject:
     ; the bomb path skipped it, so the bomb rendered at the last enemy/miner
     ; X (looked fixed). ObjBase==0 (no object / dead-enemy slot) skips it.
     lda ObjBase
-    beq .SODoneNoPos
+    bmi .SODoneNoPos
     lda ActiveObjectX
     ldx #1
     jsr SetObjectXPos
@@ -2128,7 +2135,7 @@ SelectActiveObject:
     ; ObjBot (write-only, no readers): stores removed S1.5, decl removed
     ; S3.0b (was last sequential decl — no address shift).
     lda ObjBase
-    beq .SONoObj
+    bmi .SONoObj
     lda ActiveObjectY
     sec
     sbc RoomY
@@ -2137,12 +2144,19 @@ SelectActiveObject:
     sta ObjTop
     rts
 .SONoObj:
-    lda #144                  ; #6: park the GRP1 window out of the cave —
-    sta ObjTop                 ; window = Scanline-(RoomY+144) mod 256 never
-    rts                        ; lands in [0,143] while player Y < 112 (the
-                               ; old ObjTop=0 parked it ON the player's own
-                               ; rows and the $00 color store poisoned the
-                               ; parked-M1 patch = the 8-line band).
+    lda #144                    ; Park the GRP1 window off-cave for EVERY
+    sec                         ; RoomY. The kernel draws when running-Y
+    sbc RoomY                   ; (Scanline-RoomY) - ObjTopRel ∈ [0,7] =
+    sta ObjTop                  ; Scanline-(RoomY+ObjTopRel); parking ObjTopRel
+    rts                         ; = 144-RoomY → Scanline-144 ∈ [112,255] →
+                                ; never <8 → never drawn. A CONSTANT 144
+                                ; wrapped for RoomY ≥ 112 (Scanline-(144+RY)
+                                ; mod 256 ∈ [0,7]) and drew ObjSprites[row+
+                                ; ObjBase]; with the key art now at slot 0
+                                ; (ObjBase=$FF → row 1..7 = index 0..6) that
+                                ; leaked the key onto the player's rows
+                                ; (user 2026-10-17). The old blank slot 0 had
+                                ; hidden this latent bug.
 
 ; ==============================================================================
 ; Enemy color table (emulator-aware: hue<<4 | luma<<1)
@@ -2153,6 +2167,7 @@ EnemyColorTable:
     .byte $0e                   ; tentacle — hue 0 luma 7 = white
     .byte $22                   ; moth — hue 2 luma 1 = dark orange
     .byte $0e                   ; lamp (type 5) — white; dark rooms override to grey
+    .byte $1C                   ; key (type 6) — yellow
 
 ; Enemy type → ObjSprites design offset (index = ENEMY_* type)
 ObjSpriteOffTable:
@@ -2162,6 +2177,7 @@ ObjSpriteOffTable:
     .byte OBJ_TENTACLE          ; 3
     .byte OBJ_MOTH              ; 4
     .byte OBJ_LAMP              ; 5 (LAMP)
+    .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
 
 ; ==============================================================================
 ; CheckEnemyHit — player overlaps an enemy → remove enemy, lose life
@@ -2217,6 +2233,10 @@ CEH_HasMore:
     jsr FoldIndirect            ; type
     cmp #LAMP
     beq CEH_Lamp
+    cmp #KEY                    ; type 6 = key: collect, no life loss
+    bne .CEHkill
+    jmp CEH_Key
+.CEHkill:
     ; Hit! Mark this enemy dead (bit = index)
     lda EnemyDeadMask
     ora EnemyBitTable,X         ; X = EnemyIndex (set at CEH hit)
@@ -2346,6 +2366,27 @@ BombBlinkColors:
 ; --- Player sprites: 8x12, all 8 pixels wide (bit7 = leftmost pixel) ---
 ; Frame A = normal, frame B = jet legs (rows 7-8 differ; 3 pixels changed).
 ; Per-row colors in PlayerColTable (RED/RED/YELLOW/RED/GRAY/RED/.../BLACK/BLACK).
+; ------------------------------------------------------------------------------
+; CEH_Key — type-6 key pickup (docs/feature_tiles_plan.md Phase 5): latch
+; KeyHeld ($A7 b7) and mark the key slot dead so it vanishes, with NO life
+; loss. X = EnemyIndex (set by CheckEnemyHit's hit path); reached via
+; `jmp CEH_Key` from that dispatch. Lives in the $F82C pre-pad pin gap
+; (177B slack before the $F8DD sprite pin); pre-pad END headroom is 1B but
+; this region is upstream of the pin, so it costs nothing at $FC67.
+; KEY is one per level, so KeyHeld is a single bit (no per-key storage).
+; LevelStartRoom b7 resets when LoadLevel rewrites $A7 (:1875) before its own
+; read at :1922, so no reader mask is needed; KeyHeld survives room changes
+; and normal deaths, resets on game-over reload.
+; ------------------------------------------------------------------------------
+CEH_Key:
+    lda EnemyDeadMask
+    ora EnemyBitTable,X
+    sta EnemyDeadMask
+    lda LevelStartRoom
+    ora #$80                    ; KeyHeld = b7
+    sta LevelStartRoom
+    rts
+
     .ds $F8DD - *, 0            ; PIN $F8DD: bank2 EQUs PlayerSpriteA/PlayerSpriteB/
                                  ;   PlayerWalkA/B are address-frozen there; bank2
                                  ;   holds art byte-twins at the SAME address
@@ -2401,6 +2442,7 @@ ENEMY_SNAKE    = 2
 ENEMY_TENTACLE = 3
 ENEMY_MOTH     = 4
 LAMP           = 5             ; type-5 enemy record = editor lamp (white square)
+KEY            = 6             ; type-6 enemy record = editor key (Phase 5 pickup)
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 4             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
@@ -2992,6 +3034,16 @@ LoseLife:
     jmp DropArm                 ; same drop-in code: X/Y stay, fall from top
                                 ; (DropArm zeroes physics + laser, C=0 out)
 
+; ------------------------------------------------------------------------------
+; CEH_Key — type-6 key pickup (docs/feature_tiles_plan.md Phase 5): latch
+; KeyHeld ($A7 b7) and mark the key slot dead so it vanishes, with NO life
+; loss. X = EnemyIndex (set by CheckEnemyHit). Post-pad leaf (bank0 pre-pad
+; is at its 1B limit); reached from CheckEnemyHit's type-6 dispatch by jmp
+; (out of `beq` range). KEY is one per level, so KeyHeld is a single bit.
+; LevelStartRoom b7 resets when LoadLevel rewrites $A7 (:1875) before its own
+; read at :1922, so no reader mask is needed; KeyHeld survives room changes
+; and normal deaths, resets on game-over reload.
+; ------------------------------------------------------------------------------
 ; IsRoomDark / SetRoomDark + BitMaskTable moved to bank1 (leaf_move_plan B).
 
 ; ------------------------------------------------------------------------------
@@ -3384,7 +3436,7 @@ PlayerWalkB:
 ; is overridden per row (no budget for a dark skip flag; see .Line probe).
 ; ------------------------------------------------------------------------------
 ObjColorTab:
-    .byte $00,$00,$00,$00,$00,$00,$00,$00   ; 0 NONE (blank GRP1)
+    .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c   ; 0 KEY    ($1c yellow; was NONE/blank)
     .byte $22,$22,$22,$22,$22,$22,$22,$22   ; 1 MOTH   ($22 dark orange)
     .byte $14,$14,$14,$14,$14,$14,$14,$14   ; 2 SPIDER ($14 dark yellow)
     .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 3 LAMP   ($0e white)
@@ -3402,7 +3454,7 @@ ObjColorTab:
 ; Offset = OBJ_* constant; index 0 = blank (object off).
 ; ------------------------------------------------------------------------------
 ObjSprites:
-    .byte 0,0,0,0,0,0,0,0          ; OBJ_NONE
+    .byte $3C,$42,$5A,$42,$3C,$18,$18,$14   ; OBJ_KEY (offset 0 = key art)
     .byte $90,$60,$f0,$f0,$60,$90,$60,$60   ; OBJ_MOTH
     .byte $60,$f0,$f0,$60,$90,$60,$90,$90   ; OBJ_SPIDER
     .byte $f0,$f0,$60,$60,$f0,$f0,$f0,$60   ; OBJ_LAMP

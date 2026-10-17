@@ -245,10 +245,24 @@ Records (from convert_room.py): `$81` vcrunch = bbox of all painted V cells
   closes from the left"); vs (B) solid full-bbox block that slides its own
   height. Recommend (A). Awaiting user pick before implementing.
 
-## Phase 5 — key — rulings locked 2026-10-13 (implementation pending)
+## Phase 5 — key — rulings locked 2026-10-13, implemented 2026-10-17
 
 EnemyType 6 → OBJ_NONE offset-0 slot (art = 8-wide key, user OK). Pickup →
 `KeyHeld` ($A7 b7).
+
+**Implemented 2026-10-17 (user-verified in Stella; guard
+`tools/test_key_pickup.py`):** key art at `ObjSprites` offset 0 +
+`ObjColorTab[0]=$1C` (yellow — the per-row table overrides the frame colour)
++ `EnemyColorTable[6]`/`ObjSpriteOffTable[6]`; `ObjBase` "off" sentinel
+`0→$FF` (`bmi` checks); `CheckEnemyHit` type 6 → `CEH_Key` (marks the slot
+dead + latches `KeyHeld`, NO life loss); `SelectActiveObject` render-skips a
+type-6 while `KeyHeld`; **door = touch-to-open, NOT possession** — the M1
+(left) strip unlocks (`OvM1Block` → `b4`) only on player-box contact with
+`KeyHeld`. Right door (ball strip) touch-unlock NOT yet wired: its
+`OvShutBand` hook needs bank2's full `$FE9C` hole freed (move
+`VcrCoveredState`). `CEH_Key` lives in bank0's `$F82C` pin gap (177 B
+slack); removed an early auto-open that wrongly cleared `b3/b4` on pickup.
+Also fixed a latent parked-object wrap (bugs #34).
 
 **User rulings (2026-10-13):**
 - **One key opens ALL doors, forever** (single flag — keep it simple).
