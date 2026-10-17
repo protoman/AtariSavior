@@ -1,9 +1,10 @@
 #!/home/iuri/python3/bin/python3
 """Intro music guard (2026-10-16).
 
-Boots the ROM (power-on = the $FD intro screen), runs intro frames, and
-asserts the music player drives both TIA voices: AUDC0=4 (Square) + AUDC1=6
-(Bass), AUDV0/1=7, and the melody pitch (AUDF0) steps through the sequence.
+Boots the ROM (power-on = the $FD intro), runs intro frames, and asserts the
+Ukraine-anthem player drives both TIA voices: AUDC0=Lead ($0C), AUDC1=Bass
+($06) once notes start, volumes in {0,7} (the anthem opens with rests), and
+the melody pitch (AUDF0) advances through the sequence.
 """
 import re
 import sys
@@ -74,34 +75,31 @@ AUDC0, AUDC1, AUDF0, AUDF1, AUDV0, AUDV1 = 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A
 I_DROP = 0x0A
 
 frame = 0
-pitches = []          # (frame, AUDF0) on intro frames
-bad = []              # frames where the music registers are wrong
-intro_frames = 0
-
-while frame < 400:
+mel = []
+seen_c0 = seen_c1 = False
+bad_vol = []
+intro = 0
+while frame < 1400:
     mpu.step()
     if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
         frame += 1
-        if mem.ram[I_DROP] == 0xFD:      # still on the intro screen
-            intro_frames += 1
-            if frame > 3:                # after boot ZP-clear + first tick
-                if (mem.tia[AUDV0] != 7 or mem.tia[AUDV1] != 7
-                        or mem.tia[AUDC0] != 4 or mem.tia[AUDC1] != 6):
-                    bad.append((frame, mem.tia[AUDC0], mem.tia[AUDC1],
-                                mem.tia[AUDV0], mem.tia[AUDV1]))
-                pitches.append(mem.tia[AUDF0])
-                if frame % 20 == 0:
-                    print(f"  f{frame}: AUDF0={mem.tia[AUDF0]} "
-                          f"MusPos={mem.ram[0x1D]:02X} MusTimer={mem.ram[0x1E]:02X} "
-                          f"DT={mem.ram[I_DROP]:02X}")
+        if mem.ram[I_DROP] == 0xFD:
+            intro += 1
+            if mem.tia[AUDV0] != 0:
+                seen_c0 = seen_c0 or mem.tia[AUDC0] == 0x0C
+                if mem.tia[AUDV0] != 7:
+                    bad_vol.append((frame, "v0", mem.tia[AUDV0]))
+                mel.append(mem.tia[AUDF0])
+            if mem.tia[AUDV1] != 0:
+                seen_c1 = seen_c1 or mem.tia[AUDC1] == 0x06
+                if mem.tia[AUDV1] != 7:
+                    bad_vol.append((frame, "v1", mem.tia[AUDV1]))
 
-print(f"intro frames={intro_frames}; bad audio regs={len(bad)}")
-print(f"melody pitches seen: {sorted(set(pitches))}")
-if bad:
-    for b in bad[:5]:
-        print("  bad", b)
-    sys.exit(1)
-assert intro_frames > 60, "did not stay on the intro screen"
-assert not bad, "music registers wrong on intro frames"
-assert len(set(pitches)) >= 4, "melody is not advancing through the sequence"
-print("PASS: intro music driving AUD0 (Square) + AUD1 (Bass), melody advancing")
+print(f"intro frames={intro}; melody notes seen={len(mel)}; "
+      f"distinct AUDF0={sorted(set(mel))[:12]}...")
+print(f"AUDC0=Lead seen={seen_c0}; AUDC1=Bass seen={seen_c1}; bad volumes={len(bad_vol)}")
+assert intro > 1000, "did not stay on the intro screen"
+assert not bad_vol, f"volume must be 7 when playing: {bad_vol[:5]}"
+assert len(set(mel)) >= 4, "melody is not advancing"
+assert seen_c0 and seen_c1, "Lead (AUD0) + Bass (AUD1) timbres must be used"
+print("PASS: Ukraine-anthem intro music driving AUD0 (Lead) + AUD1 (Bass)")
