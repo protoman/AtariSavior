@@ -118,7 +118,8 @@ def freeze_m4(banks, labels):
 def _selfcheck():
     from pathlib import Path
     import re
-    src = Path(__file__).resolve().parents[1] / "src"
+    src = (Path(__file__).resolve().parents[1] / "src" / "tests" / "frozen")
+    # ^ test-owned frozen banks+labels (user rule: never live src/)
     labels = {}
     for line in (src / "bank2.lst").read_text(errors="replace").splitlines():
         m = re.match(r"^\s+\d+\s+([0-9a-f]{4})\s+([A-Za-z_][A-Za-z0-9_]*)\s*$",

@@ -34,11 +34,12 @@ from convert_level import rows_from_json  # noqa: E402
 from convert_room import pf_values  # noqa: E402
 
 SRC = ROOT / "src"
+FROZEN = SRC / "tests" / "frozen"   # test-owned banks+labels (never live src/)
 TESTS = SRC / "tests"          # frozen stage copies (AGENTS test-data rule)
-BANK0 = (SRC / "bank0.bin").read_bytes()
-BANK1 = (SRC / "bank1.bin").read_bytes()
-BANK2 = (SRC / "bank2.bin").read_bytes()
-BANK3 = (SRC / "bank3.bin").read_bytes()
+BANK0 = (FROZEN / "bank0.bin").read_bytes()
+BANK1 = (FROZEN / "bank1.bin").read_bytes()
+BANK2 = (FROZEN / "bank2.bin").read_bytes()
+BANK3 = (FROZEN / "bank3.bin").read_bytes()
 
 
 def parse_labels(path: Path, names: set[str]) -> dict[str, int]:
@@ -75,7 +76,7 @@ need0 = {"PlayerHitsMap", "RoomX", "RoomY", "PlayerDir", "BombPacked",
          "EnemyDataLo", "EnemyDataHi", "EnemyIndex", "EnemyRamX",
          "EnemyRamD", "UE_Next", "LineCount", "FetchPtr",
          "EnemyDeadMask"}
-L0 = parse_labels(SRC / "bank0.lst", need0)
+L0 = parse_labels(FROZEN / "bank0.lst", need0)
 missing = need0 - L0.keys()
 if missing:
     sys.exit(f"bank0.lst labels missing: {sorted(missing)}")
@@ -83,7 +84,7 @@ PHM = L0["PlayerHitsMap"]
 
 need2 = {"M5RoomRects", "M0RoomRects", ".MothColsOk", "M0TilePF0",
          "RoomPF0Lo"}
-L2 = parse_labels(SRC / "bank2.lst", need2)
+L2 = parse_labels(FROZEN / "bank2.lst", need2)
 if not need2 <= L2.keys():
     sys.exit(f"bank2.lst labels missing: {sorted(need2 - L2.keys())}")
 

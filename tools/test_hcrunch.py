@@ -71,6 +71,7 @@ from pathlib import Path
 import test_laser_walk_wall as W
 
 SRC = W.SRC
+FROZEN = W.SRC / "tests" / "frozen"   # test-owned banks+labels
 
 import test_fixtures as FX          # noqa: E402
 FX.freeze_m4(W.BANKS, W.L2)         # frozen model4 (user rule 2026-10-14)
@@ -86,7 +87,7 @@ I_VBAND = 0x6C                          # $EC VcrBand ($FF = idle, no $81)
 # HUD fold: first bank0->bank1 fold after the cave kernel — VBL staging
 # is still the frame's (bank1 stomps $EA-$EF only after entering HUD).
 HUD_JMP = None
-for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
     _code = _l.split(";")[0]           # drop lst comment (no jmp/$FC68 mix)
     if "jmp" in _code and "$FC68" in _code:
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})", _l)
