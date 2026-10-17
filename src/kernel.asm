@@ -1244,26 +1244,26 @@ UpdateP0Vertical:
     lda #$00
     sta vyLo                  ; vy = -$0100
 
-; --- Respawn hover (bugs.md #1): after a respawn the player must NOT fall.
-;     Pin Y (vy=0) while Hover is set, but let the jet ramp run (Up held) —
-;     once thrust can beat gravity (JetPower >= GRAVITY+1) clear the flag and
-;     normal physics resumes (he lifts off). No Up → hovers in place. ---
+; --- Signed whole-pixel displacement this frame = carry + vyHi. ---
+;     Respawn hover (bugs.md #1) runs HERE so every velocity path reaches it
+;     (the clamp above `jmp .Integrate`s past anything placed earlier). While
+;     Hover is set, pin Y (vy=0, no fall) but let the jet ramp run; once thrust
+;     can beat gravity (JetPower >= GRAVITY+1) clear it and normal physics
+;     resumes (he lifts off). No Up -> hovers in place.
+.Integrate:
     lda Hover
-    beq .NoHover
+    beq .DoInt
     lda JetPower
     cmp #GRAVITY + 1
     bcs .HoverEnd
     lda #0
     sta vyLo
     sta vyHi
-    jmp .Integrate
+    jmp .DoInt
 .HoverEnd:
     lda #0
     sta Hover
-.NoHover:
-
-; --- Signed whole-pixel displacement this frame = carry + vyHi. ---
-.Integrate:
+.DoInt:
     clc
     lda PlayerYSub
     adc vyLo
@@ -1831,6 +1831,8 @@ LoadLevel:
     sta PlayerDir               ; face right on every stage entry (new stage,
                                 ;  game-over restart = LoseLife->ReloadLevel->
                                 ;  here; same-stage respawn keeps facing)
+    sta Hover                   ; bugs.md #1: stage entry lands normally; the
+                                ;   respawn hover is armed only by LoseLife
     lda LaserState
     and #%11000111              ; clear RoomDarkMask rooms 4-7 (LaserState b5-2)
     sta LaserState
@@ -2975,6 +2977,9 @@ ReloadLevel:
 ; action (bar reload, RoomY shift). Tail-callable (`jmp LoseLife`).
 ; ------------------------------------------------------------------------------
 LoseLife:
+    lda #1
+    sta Hover                   ; bugs.md #1: arm respawn hover for every death
+                                ;   (LoadLevel clears it on a stage-entry reset)
     dec PlayerLives
     bpl .LLStay
     lda #3
@@ -3050,8 +3055,6 @@ LoseLifeBand:
 ; timer keeps running; bank1 UpdateJetSound hears DropTarget as throttle).
 ; ------------------------------------------------------------------------------
 DropArm:
-    lda #0
-    sta Hover                   ; respawn hover is armed at drop-in arrival
     lda DropTarget
     cmp #$FD
     bcs .DATitle              ; sentinels $FD intro / $FF old title → static
@@ -3123,8 +3126,6 @@ DropStep:
     lda #0
     sta DropTarget              ; arrived — input/physics resume next frame
     sta JetPower                ; clean resume (no phantom thrust hop)
-    lda #1
-    sta Hover                   ; bugs.md #1: hover (no gravity) until lift
 .DSdone:
     jmp OverscanAudio           ; rejoin past physics/collision (no rts)
 
