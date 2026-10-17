@@ -172,15 +172,20 @@ shared twins; the kernel+`TitleFont` are the movable part.
   `$FC68`/`$FC70`, CallPads `$FBFC-$FC47`, `ReturnPad` `$FBF8`, fold twins).
 - bank0 **cannot** read bank1/bank2 data with `abs,X/Y` — a moved table needs
   its reader moved too (or a fold).
-- **`.ds $X` pins** keep these twin addresses fixed. Removing content *before*
-  a pin frees nothing (the fill grows); freeing space = remove content **and
-  shift the downstream pins** (in every bank) — a batched operation.
+- **`.ds $X` pins** keep these twin addresses fixed **and** fill the gap up to
+  `$X`. Removing content *before* a pin **grows that fill — which is usable
+  code/data space in the same bank.** So removal DOES free space; it just does
+  not move the "pre-pad headroom" number (which measures only the gap before
+  `org $FC68`). A pin shift is needed only to *merge* scattered fills into one
+  contiguous run. **CORRECTED 2026-10-16** — the old "removing before a pin
+  frees nothing" claim was wrong. See `docs/refactor_v4_plan.md` §0.
 
 ## "Where does new content go?" (decision guide)
 
-1. Gameplay code / cave kernel → **bank0** (frozen; only via a batched pin shift).
-2. HUD / display / leaf helpers → **bank1** (has free space).
-3. Level/enemy/font/model data → **bank2**.
-4. Crunch/tally bodies → **bank2** if possible (bank3 should trend to data-only).
-5. Never add bank0 bytes without removing an equal-or-larger chunk (and doing
-   the pin shift) in the same change — see `plans/bank0_space_plan.md`.
+1. Gameplay code / cave kernel → **bank0** — use the **225B free run at
+   `$F7FC–$F8DC`** (verified; before the `$F8DD` sprite pin).
+2. HUD / display / other kernels → **bank1** — use **`$F042–$F53F` (~1278B)**.
+3. Level/enemy/font/model data → **bank2/3** — bank3 has **`$F0A3–$F7FF` (~1885B)**.
+4. Crunch/tally bodies → move out of bank3 (data-only target).
+5. There is already **~3400B free** across banks; the constraint is cross-bank
+   coupling, not total bytes. See `docs/refactor_v4_plan.md` (verified).

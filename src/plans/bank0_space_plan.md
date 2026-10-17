@@ -1,5 +1,10 @@
 # Bank0 space plan — clear room for future content
 
+> **SUPERSEDED 2026-10-16 by `docs/refactor_v4_plan.md`.** The premise here ("a
+> `.ds` pin makes removal free nothing; space needs a 4-bank pin shift") is
+> wrong: the pin's fill is itself usable space, and bank0 has a verified 225B
+> free run at `$F7FC–$F8DC`. Read `docs/refactor_v4_plan.md` first.
+
 **Status:** plan (2026-10-16). Baseline build is green; working tree clean.
 
 > ## ⚠ CORRECTION (2026-10-16, after starting step 1)
