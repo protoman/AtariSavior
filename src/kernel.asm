@@ -1006,10 +1006,11 @@ SliceReentry:                 ; global alias ON .Line — RowSlice's tail
                             ; late → +1 line/frame, sim 264). #6 attempt to
                             ; restore EVERY line measured 271-line frames —
                             ; keep the A==8-only restore.
-    lda Temp                 ; A1: band color staged by .Row (was ldx RowIdx
-                             ; + lda ColupfBuf,X = 7c, now 3c: 78 -> 74).
-                             ; Also fixes the water-strip quirk: X=3 used to
-                             ; index dead ColupfBuf[3] ($EA).
+    lda CollisionCellY          ; bugs.md #15: door band → $1C (yellow),
+                                ;   $80 (b7) → not a door → band colour below
+    bpl .ObjSetCol
+    lda Temp                    ; A1: band colour staged by .Row
+.ObjSetCol:
     sta COLUP1                 ; restore-then-blank: A==8 blanks GRP1 10c later
                                ; than before (one line, ~15px of row7 dup) —
                                ; accepted to fit +1B headroom.
@@ -2884,7 +2885,7 @@ CallPad_TitleKernel:
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F1BB
+    jmp $F1BF
     .ds $FC61 - *, 0            ; bank0↔bank1 intro-music tick
 CallPad_MusicTick:
     sta $1FF7

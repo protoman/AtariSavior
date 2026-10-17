@@ -392,6 +392,16 @@ No entry is worked on without user greenlight.
     color-overlap reasons.
     **Player:** the yellow door shimmers with enemy/miner hues on
     rows where they cross it; **Benefit:** solid yellow door.
+    **Status: FLICKER FIXED 2026-10-16 (user-confirmed in Stella — "no
+    screen flicker at all").** Fix landed: `.ObjZero`'s COLUP1 restore
+    now reads `CollisionCellY` ($8D: $1C = door / $80 = none) and only
+    falls back to `Temp` (band colour) when not a door — so the stripe
+    keeps yellow for the rest of the band instead of flipping to the wall
+    colour. (Overscan shifted $F1BB→$F1BF, CallPad literals synced.)
+    **Residual (user-accepted, expected):** the P1+M1 register sharing
+    still tints the stripe on the 8 lines the object actually occupies —
+    to be prevented at authoring time in the EDITOR (see deferred item
+    "async objects belong to the level, not the model" below).
 
 ## Latent risks (verified once, fragile)
 
@@ -884,6 +894,26 @@ No entry is worked on without user greenlight.
     post-footer pad 37 -> 31 (net 0: title wall stays 265, WSYNC count
     uniform 197). Battery 27/27, Stella capture pixel-exact vs generator
     canvas (0/624 cells).
+
+33. **Move async objects (door + P/V/C feature tiles) from the MODEL to
+    the LEVEL** (2026-10-16, user). Today `async_patches` are authored in
+    `models.json` (per *model*), so every room sharing a model gets the
+    same async layout, and `feature_tiles_plan.md` rules R1-R5 constrain
+    object/room combos to avoid clashes. User wants them authored **per
+    level/room** instead, so a door (or phase/vcrunch/hcrunch) can go in a
+    specific room without a dedicated model. This is ALSO the intended
+    cure for the residual P1+M1 colour tint (bugs #15): with per-room
+    authoring the editor can simply forbid objects sharing a row with a
+    door/feature.
+    **Player:** (authoring) — no gameplay change expected.
+    **Benefit:** rooms authored freely; fewer model permutations; door/obj
+    colour clashes prevented at authoring time.
+    **Touches:** `rooms/models/models.json` schema + `convert_room.py` /
+    `convert_level.py` (emit per-room feature records; today they read the
+    model's `asym_patches`), `MapCanvas.cpp` (per-room feature brushes),
+    `verify_build.py` gates. **Data migration required** (move existing
+    model async patches to the levels that use them) per AGENTS "File-Format
+    Changes Require Data Migration".
 
 ## Rescan checklist (when the batch is closed)
 
