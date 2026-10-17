@@ -438,6 +438,52 @@ def main() -> int:
     assert n1 == 0x30 and color == 0x80, (
         f"plain: NUSIZ1=${n1:02X} color=${color:02X}, want $30/$80")
 
+    # 11. Ball gate off for a NO-BALL model even when MetaA bit0 is set.
+    #     A RIGHT-half door reuses MetaA bit0 as its "M1 strip on the RIGHT
+    #     half" flag (band mask $00 — a door has no ball), and that bit is
+    #     ALSO the band-0 ENABL gate: decoded blindly it enabled the ball in
+    #     band0, painting a wall-coloured (COLUPF) 8px bar over the room's
+    #     band-0 opening — the stray brown tile in
+    #     screenshots/bugs/door_right.png (user report 2026-10-17).
+    #     MetaA=$29 = live model 1: (m1_col+1=2)<<4 | $08 door | $01 right.
+    def band_gate(meta_a, meta_b):
+        mem = Mem02()
+        r = mem.ram
+        r[0xA0 - 0x80 + 9] = meta_a
+        r[0xA0 - 0x80 + 10] = meta_b
+        r[L2["RoomPF0Lo"] - 0x80] = 0xA0
+        r[L2["RoomPF0Lo"] + 1 - 0x80] = 0x00
+        r[L0["EnemyDeadMask"] - 0x80] = 0
+        mem.bank = 2
+        mpu = MPU(memory=mem)
+        mpu.pc = L2["StageBandTab"]
+        mpu.a = mpu.x = mpu.y = 0
+        mpu.sp = 0xFD
+        mem[0x1FF] = 0x01
+        mem[0x1FE] = 0x00
+        for _ in range(8000):
+            mpu.step()
+            if mpu.pc == RTS_SENTINEL:
+                return (r[L2["BandTab"] - 0x80], r[L2["BandTab"] + 1 - 0x80],
+                        r[L2["BandTab"] + 2 - 0x80],
+                        r[L2["CollisionEndY"] - 0x80],
+                        r[L2["CollisionEndX"] - 0x80])
+        sys.exit("StageBandTab (band gate probe) never returned")
+
+    b0, b1, b2, packed, m1x = band_gate(0x29, 0x00)
+    assert (b0, b1, b2) == (0, 0, 0), (
+        f"door (no ball, MetaA bit0 = right-half flag) must blank the band "
+        f"gates, got {(b0, b1, b2)}")
+    assert m1x == 0x5F, f"right door M1X ${m1x:02X} != $5F (87+8*1)"
+    assert packed == 0x08, (
+        f"door pack ${packed:02X} != $08 (M1 present, no ball bits)")
+    # control: the SAME bit0 with a real ball is still the band-0 gate
+    b0, b1, b2, packed, m1x = band_gate(0x91, 0x03)
+    assert (b0, b1, b2) == (0xFF, 0, 0), (
+        f"ball model band-0 mask must still enable band0, got {(b0, b1, b2)}")
+    assert packed & 0x07 == 0x01, (
+        f"ball model pack mask ${packed & 7:02X} != $01")
+
     # --- Phase 3: phase-cell blink ---------------------------------------
     # Synthetic hot stream at $A0: solid count 0, hot count 1, record
     # $80, 2c=4 (pair idx 2 → PF1 bits7,6 = $C0), row 1 (PF1Buf row1 =
@@ -482,7 +528,8 @@ def main() -> int:
 
     print("test_bomb_strip: OK (ball+M1 blast hit/controls, no double "
           "count, staging alive/dead, pad identity, rect4 walk + guard, "
-          "P2b doors bomb-immune + NUSIZ1, Phase 3 blink + door color)")
+          "P2b doors bomb-immune + NUSIZ1, Phase 3 blink + door color, "
+          "no-ball band gate off)")
     return 0
 
 
