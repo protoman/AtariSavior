@@ -17,7 +17,7 @@
   "rooms": [
    {
     "room_id": 0,
-    "model_id": 12,
+    "model_id": 20,
     "room_x": 0,
     "room_y": 0,
     "enemies": [],
@@ -29,16 +29,16 @@
    },
    {
     "room_id": 1,
-    "model_id": 12,
+    "model_id": 21,
     "room_x": 0,
     "room_y": 1,
     "enemies": [
      {
       "type": 6,
-      "x": 8.0,
+      "x": 13.0,
       "y": 5.0,
-      "range_min": 8.0,
-      "range_max": 8.0,
+      "range_min": 13.0,
+      "range_max": 13.0,
       "speed": 1.0,
       "dir": 1
      }
@@ -51,7 +51,7 @@
    },
    {
     "room_id": 2,
-    "model_id": 13,
+    "model_id": 22,
     "room_x": 0,
     "room_y": 2,
     "enemies": [],
@@ -63,7 +63,7 @@
    },
    {
     "room_id": 3,
-    "model_id": 14,
+    "model_id": 23,
     "room_x": 0,
     "room_y": 3,
     "enemies": [],
@@ -75,7 +75,7 @@
    },
    {
     "room_id": 4,
-    "model_id": 15,
+    "model_id": 24,
     "room_x": 0,
     "room_y": 4,
     "enemies": [],
@@ -87,7 +87,7 @@
    },
    {
     "room_id": 5,
-    "model_id": 16,
+    "model_id": 25,
     "room_x": 0,
     "room_y": 5,
     "enemies": [],
@@ -99,7 +99,7 @@
    },
    {
     "room_id": 6,
-    "model_id": 12,
+    "model_id": 26,
     "room_x": 0,
     "room_y": 6,
     "enemies": [],
