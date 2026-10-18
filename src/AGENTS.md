@@ -79,6 +79,14 @@ Invariants (each one has a reason, do not "clean up"):
 - Guards: `tools/test_raft.py` (battery: unit cases + the cross-bank
   integration case), `verify_build.check_raft_tramp` + the CallPad literal
   check, and `bank2`'s blast skip.
+- **Inertia (the take-off ramp) is NOT in the ROM yet — it is a SPACE problem,
+  not a design one.** The design + the two masking fixes are written up in
+  `plans/raft_moving_plan.md` ("Inertia ramp — specified, then BLOCKED"): the
+  ramp is ~60 B, bank1's `$FDE3` fill has 44 B spare, and moving the probe/tables
+  into the `$F822` fill broke the body's 127-byte relative branches. Do it as a
+  dedicated pass: move the WHOLE raft block into one contiguous fill (the $F822
+  one has 277 B) so no relative branch crosses a moved block. Today the raft has
+  the one-frame hold on each turn as its only "mass".
 - **To PLAY it without touching the live stage:** `bash tools/raft_build.sh`
   -> `/tmp/opencode/savior_raft.bin`, a staged COPY of the stage whose level-2
   water room carries the raft instead of its tentacle (level 2 -> descend from
