@@ -21,6 +21,7 @@ every feature actually works where the player meets it:
 Run (after bash tools/qa_build.sh):
   /home/iuri/python3/bin/python3 tools/qa_sweep.py [rom.bin]
 """
+import os
 import sys
 from pathlib import Path
 
@@ -42,6 +43,23 @@ L0 = parse_labels(L0P, {
     "BandTab", "CollisionEndX", "CollisionEndY", "Temp", "PF0Buf", "PF1Buf",
     "PF2Buf", "VcrBand", "VcrNext", "VcrState", "vyLo", "vyHi"})
 PC_SF = L0["StartFrame"]
+
+# QA_SHOTS=1 also writes a PNG per room (tools/qa_shots.py): Stella cannot
+# reach gameplay from a script, so the sim state is the camera for the Phase-6
+# picture set.
+SHOTS = Path(__file__).resolve().parents[1] / "src" / "screenshots" / "qa"
+_SHOT_ENABLED = bool(os.environ.get("QA_SHOTS"))
+_SHOT_SEQ = []
+
+
+def shot(tag: str, note: str = "", water: bool = False) -> None:
+    if not _SHOT_ENABLED:
+        return
+    import qa_shots  # noqa: PLC0415
+    _SHOT_SEQ.append(tag)
+    out = SHOTS / f"{len(_SHOT_SEQ):02d}_{tag}.png"
+    qa_shots.save(out, mem, note, water=water)
+    NOTES.append(f"shot {out.name}")
 
 UP, RIGHT, LEFT, NONE = 0xEF, 0x7F, 0xBF, 0xFF      # active low (D4/D7/D6)
 # Active-low: pressing two directions ANDs the masks (OR would release both).
@@ -244,10 +262,12 @@ def main() -> int:
     # room 0 -- start: settle on the floor, walk right into the cell 4/5 lane
     # (box [x-7,x] must sit inside x32-47 -> x 39..47) and drop.
     settle(tag="room0")
+    shot("start", "room 0: spawn, walk right to the lane")
     if not walk_to(59, maxf=900, tag="room0"):
         return report()
     wait_room(1, maxf=900, tag="room0->1")
 
+    shot("key", "room 1: key ahead in the lane")
     # room 1 -- KEY: fall the lane; the key (x40-47) must be collected.
     run(1)
     s0 = frame()
@@ -262,6 +282,7 @@ def main() -> int:
         FAILS.append("room1: KeyHeld not still set at the room exit")
     a_key = bool(R[L0["LevelStartRoom"] & 0x7F] & KEY_HELD)
 
+    shot("phase", "room 2 entry: phase stripe ahead")
     # room 2 -- phase: the stripe (cells 8,9 = x64-79) must blink; the player
     # lands on the cell 4,5 floor and leaves by the cell 2,3 gap (x16-31,
     # box window x 23..31) -- the stripe itself is a wall, so the lane goes
@@ -297,6 +318,7 @@ def main() -> int:
         return report()
     wait_room(3, maxf=900, tag="room2->3")
 
+    shot("door", "room 3 entry: landed, M1 bar to the right")
     # room 3 -- door: settle in the cell 4/5 lane, walk RIGHT into the M1 bar
     # (col0 -> x80-87) with the key -> touch-unlock b4; then walk LEFT into the
     # exit lane (cells 2,3 = x16-31) and drop. The bar is a wall until then.
@@ -318,6 +340,7 @@ def main() -> int:
         return report()
     NOTES.append("room3: passed the opened door and dropped the exit lane")
 
+    shot("vcrunch", "room 4 entry: V cell across the lane")
     # room 4 -- vcrunch: shutter armed; the block is staged at the lane's
     # mirror (V cell2 -> BallX = 159-8*2 = 143). The player drops the punched
     # left lane at x23-31.
@@ -334,6 +357,7 @@ def main() -> int:
                      + f" (record Temp={sorted({s.get('ftemp') for s in seen})}); "
                      "dropped the punched lane")
 
+    shot("hcrunch", "room 5 entry: hcrunch prefix across band 1")
     # room 5 -- hcrunch: band 1 must be staged to P(n) (>=2 distinct shapings)
     # and the player must time the aperture to reach the last room.
     seen = wait_room(6, maxf=2400, tag="room5->6")
@@ -356,6 +380,8 @@ def main() -> int:
     else:
         NOTES.append(f"room6: landed on the water ledge at y={ledge_y} "
                      "(raft/ledge platform holds)")
+    shot("water_ledge", f"water room: standing on the raft/ledge at y={ledge_y}",
+         water=True)
     if R[L0["Hover"] & 0x7F]:
         FAILS.append("room6: landed with the respawn Hover armed — the water "
                      "killed the player ON the platform")
@@ -414,6 +440,8 @@ def main() -> int:
     else:
         NOTES.append("room6: crossed the raft bridge to the miner "
                      "(level tally armed)")
+        shot("water_miner", "crossed the raft bridge, miner reached",
+             water=True)
     return report()
 
 
