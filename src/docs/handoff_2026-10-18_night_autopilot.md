@@ -167,3 +167,24 @@ exactly that and still never reached the dispatch (`probe_ran` stayed false) wit
 `EnemyCount=2` and the staged byte verified at $F105; the next step is to trace
 `UpdateEnemies`' dispatch for slot 0 in that sim (bank0.lst is the live build,
 so the staged pointer and the room's own table can be compared directly).
+
+## Addendum 3 — "player looks wider / hard to fall through the hole": RESOLVED
+
+**Cause was the hcrunch's stage data, not the ROM.** The user removed the hcrunch
+row (10 feature cells, one per column) from level 3 room 1 and immediately the
+hole became passable again — the hcrunch is a kill-on-touch band stripe, so
+dropping through that hole ran into it. No sprite, NUSIZ, positioning or
+collision bug existed: the earlier "the player looks wider" reading was the
+stripe sitting next to the player.
+
+What it took to get there (all landed):
+- the editor's **Delete tool** now clears a P/V/C feature row / asym patch (it
+  only erased entities before — the report was correct and the agent's test used
+  the wrong brush, see the AGENTS entry-point rule),
+- the **spill layout**: `TallySum` moved out of the `.ds $F970` slack into the
+  `$F880-$F8B6` pad so a shrinking level data set still builds,
+- the `.PhRec` literal re-synced by `verify_build --sync-phrec`.
+
+Lesson for the file: a report of "hard to fall through / looks wider" in a room
+carrying a band feature should first be checked against the feature's data, not
+the sprite pipeline.
