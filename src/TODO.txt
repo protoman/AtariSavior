@@ -6,12 +6,20 @@ Nome personagem: Eorley Savior.
 
 #########################################################################################################################################################################
 
-Exact next steps (when you're back or in a fresh session):
-1. Copy TitleKernel+loops+TitleFont and the fold bodies + their data into bank1's $F025–$F53F free run; rewrite fold exits to rts; point jsr→SetObjectXPos_b1.
-2. Add the KernelInit .TkPath → bank1 entry tramp + the kernel's jmp Overscan → bank0 exit return.
-3. ./build.sh + test_menu_flow/test_title_demo + a Stella title screenshot.
-4. Shift the $FB00/$FBD0/$FBD6/$FBE0/$FBE8/$FBF8/$FC49 pins down across all banks → reclaim ~310B.
-
+Visible gameplay bugs
+- #15 Yellow-door color bleed/flicker — when the enemy/miner crosses the door band, the door stripe shimmers in the object's color (P1+M1 share COLUP1). Fix path is documented (restore the staged door color on the object line). Small, self-contained, user-visible.
+- #32 cross-bank Temp conflict / bank1 stomp-zone notes — latent fragility, no player-visible effect.
+Phase 9 polish (features still unchecked)
+- Screen transitions (room-change wipes).
+- Game-over screen — new screen; the "dark caves" theme fits, and we now have the bank1 screen pattern + the music engine to reuse.
+- Difficulty settings.
+Phase 10 content
+- More levels, level-specific enemy patterns, a boss encounter, secret rooms, high-score tracking. (bank0 space is no longer the blocker — we freed ~600B there.)
+Music (natural extension of what we just did)
+- Play "Hollow Earth" (or a variant) on the title/level-select screen too, or add an in-game track. The engine is single-voice — a 2nd voice is a small addition if you want it.
+Refactor leftovers (docs/refactor_v4_plan.md)
+- bank3 → data-only (move crunch bodies to bank1), level data → bank3 — optional churn, no net space.
+My pick: #15 (door flicker) if you want a quick, visible win, or the game-over screen if you want to build a feature on the space we just freed. Which one?
 
 
 =========================================================================================================================================================================
