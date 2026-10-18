@@ -44,8 +44,16 @@ VDELP1  = $26
 
     org $F000
 
-    ; Bank0 power-up stub: lda #0 / sta $1FF6 → lands here, jumps to GameStart
-    jmp $F008
+    ; --- power-up stub: the F6 latch powers up in an UNDEFINED bank on real
+    ; hardware (Stella only randomises it with developer settings), so every
+    ; bank must be able to start. This is 5 bytes on purpose: `sta $1FF6`
+    ; switches to bank0, and the next fetch ($F005) then comes from BANK0,
+    ; where a `jmp $F008` (GameStart) sits — the same 5-byte prefix bank2 and
+    ; bank3 carry. Never shorten it to a bare `jmp`: that is what this bank had
+    ; (a bank-select-less `jmp $F008` = BRK loop into zero fill).
+    ; Guard: verify_build.check_boot_banks + tools/test_boot_banks.py.
+    lda #0
+    sta $1FF6                       ; select bank0 (hotspot: the DATA is ignored)
 
     ; --- ABW rect tables + BombMaskBit (relocated 2026-10-10) ---
     ; The BMW span-overlap fix grew the walk ~9B and overflowed the
