@@ -1983,6 +1983,36 @@ CheckMinerPickup:
 ; One GRP1: cannot draw bomb + entity same frame.
 ; ------------------------------------------------------------------------------
 SelectActiveObject:
+    ; Tally / frozen scene (DropTarget = $FE): show the PLAYER and the MINER
+    ; only — no enemies, no raft, no bomb. That frame bypasses the overscan, so
+    ; RefreshEnemyY never runs while bank1's HUD writes $E0-$EF: EnemyRamY
+    ; ($E2-$E4) is left holding score-pointer bytes, and any enemy drawn then
+    ; jumps to a garbage Y (user report 2026-10-18: the raft "moved up to the
+    ; middle of the screen" the moment the points counting started).
+    lda DropTarget
+    cmp #$FE
+    bne .SOFull
+    lda #0
+    sta FlickerFrame            ; keep the modulo counter bounded (2026-10-16)
+    sta ObjBase                 ; 0 = no object
+    lda LevelMinerRoom
+    and #$7f
+    cmp RoomNo
+    beq .SOTallyMiner
+    jmp .SODone                 ; miner not here -> nothing drawn
+.SOTallyMiner:
+    lda #OBJ_MINER
+    sta ObjBase
+    lda MinerX
+    sta ActiveObjectX
+    lda MinerY
+    clc
+    adc #3                      ; same 3px offset as the normal miner path
+    sta ActiveObjectY
+    lda #$66                    ; purple (hue 6, luma 3)
+    sta COLUP1
+    jmp .SODone
+.SOFull:
     inc FlickerFrame            ; advance every frame (bomb + enemy paths)
     ; --- Bomb fuse (state=1): 1 of 4 frames = bomb (enemies keep priority) ---
     lda BombPacked

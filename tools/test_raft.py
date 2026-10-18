@@ -168,8 +168,56 @@ def integration() -> None:
     assert mem.bank == 0, "the raft path must come back to bank0 (ReturnPad)"
 
 
+def tally_gate() -> None:
+    """During the points tally (DropTarget = $FE) the GRP1 slot must draw the
+    MINER only — no enemy, no raft, no bomb. That frame bypasses the overscan,
+    so RefreshEnemyY never runs while bank1's HUD writes $E0-$EF: EnemyRamY
+    ($E2-$E4) is left holding score-pointer bytes, and whatever enemy is drawn
+    then appears at a garbage Y (user report 2026-10-18: the raft "moved up to
+    the middle of the screen" when the counting started)."""
+    need = {"SelectActiveObject", "DropTarget", "LevelMinerRoom", "RoomNo",
+            "MinerX", "MinerY", "ObjBase", "ActiveObjectX", "ActiveObjectY",
+            "FlickerFrame", "BombPacked"}
+    L = parse_labels(FROZEN / "bank0.lst", need)
+    assert not (need - L.keys()), f"labels missing: {sorted(need - L.keys())}"
+    Z = {k: v & 0x7F for k, v in L.items() if 0x80 <= v <= 0xFF}
+    OBJ_MINER = 56
+
+    def one(miner_room, room_no):
+        mem = Mem()
+        mem.bank = 0
+        r = mem.ram
+        r[Z["DropTarget"]] = 0xFE          # the tally / frozen scene
+        r[Z["LevelMinerRoom"]] = miner_room
+        r[Z["RoomNo"]] = room_no
+        r[Z["MinerX"]] = 80
+        r[Z["MinerY"]] = 84
+        r[Z["FlickerFrame"]] = 40          # the gate must zero it
+        r[Z["BombPacked"]] = 0
+        r[Z["ObjBase"]] = 0xAA             # sentinel: must be rewritten
+        mpu = MPU(memory=mem)
+        mpu.pc = L["SelectActiveObject"]
+        mpu.sp = 0xFD
+        mem[0x1FF] = 0x01
+        mem[0x1FE] = 0x00
+        for _ in range(4000):
+            mpu.step()
+            if mpu.pc == RTS_SENTINEL:
+                break
+        else:
+            raise AssertionError("SelectActiveObject never returned")
+        return r[Z["ObjBase"]], r[Z["FlickerFrame"]]
+
+    obj, flick = one(miner_room=3, room_no=3)
+    assert obj == OBJ_MINER, f"the tally must draw the MINER, got ObjBase={obj}"
+    obj, flick = one(miner_room=1, room_no=3)
+    assert obj == 0, f"the tally must draw NOTHING else, got ObjBase={obj}"
+    assert flick == 0, f"the tally must zero FlickerFrame, got {flick}"
+
+
 def main() -> int:
     integration()
+    tally_gate()
 
     # 1. it floats on the water SURFACE, not on the authored y
     s = run(80, pf1=0xFF)
