@@ -95,12 +95,11 @@ struct ModelData {
     int width = 20;
     int height = 3;
     std::vector<int> tiles;
-    // D6 asymmetric patches: [row, col, tile] (right/ball) or
-    // [row, col, tile, side] (side 0 = right/ball, 1 = left/M1); col is
-    // the half's own cell index (0 = center-adjacent). TWO blocks max.
-    // Empty = symmetric model.
-    // Optional in the file: symmetric models predate the key and must stay
-    // key-less (convert treats missing/[] as symmetric).
+    // LEGACY (pre-2026-10-17): async walls used to live here; they are now
+    // per-ROOM (RoomData::asym_patches / feature_cells). Kept so an older
+    // project still LOADS — DataSerializer::MigrateAsyncToRooms() then moves
+    // them into every room that references the model and clears this field,
+    // so a save always writes the room-level form.
     std::vector<std::vector<int>> asym_patches;
     // Middle band (row 1) type: 0 = Rock Solid, 1 = Hot. Optional in the
     // file (absent = 0 = solid — pre-mid_band_type files stay key-less).
@@ -150,6 +149,18 @@ struct RoomData {
     int bottom_r = 0;
     int bottom_g = 0;
     int bottom_b = 0;
+    // Async walls live on the ROOM (2026-10-17 format change) so one model
+    // SHAPE can be reused by rooms with different async. Same encoding the
+    // model used to carry:
+    //   asym_patches : [row, col, tile] (right/ball) or [row, col, tile, side]
+    //                  (side 0 = right/ball, 1 = left/M1); col is the half's
+    //                  own cell index; TWO entries max (one x per side).
+    //   feature_cells: [row, col, tile] with tile 10/11/12 (PHASE/VCRUNCH/
+    //                  HCRUNCH), row 1 only, one kind per room.
+    // Optional in the file: absent/empty = no async, so a room without async
+    // stays key-less (byte-identical to the pre-2026-10-17 emission).
+    std::vector<std::vector<int>> asym_patches;
+    std::vector<std::vector<int>> feature_cells;
 
     template <class Archive>
     void serialize(Archive& ar) {
@@ -163,6 +174,25 @@ struct RoomData {
            CEREAL_NVP(bottom_r),
            CEREAL_NVP(bottom_g),
            CEREAL_NVP(bottom_b));
+        if (Archive::is_loading::value) {
+            try {
+                ar(CEREAL_NVP(asym_patches));
+            } catch (const cereal::Exception&) {
+                asym_patches.clear();       // no key in an older/newer file
+            }
+            try {
+                ar(CEREAL_NVP(feature_cells));
+            } catch (const cereal::Exception&) {
+                feature_cells.clear();
+            }
+        } else {
+            if (!asym_patches.empty()) {
+                ar(CEREAL_NVP(asym_patches));
+            }
+            if (!feature_cells.empty()) {
+                ar(CEREAL_NVP(feature_cells));
+            }
+        }
     }
 };
 

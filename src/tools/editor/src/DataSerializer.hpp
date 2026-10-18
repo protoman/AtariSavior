@@ -29,6 +29,18 @@ public:
     static bool LoadLevelFromFile(LevelData& level, const std::string& filepath);
     static bool SaveModelsToFile(const std::vector<ModelData>& models, const std::string& filepath);
     static bool LoadModelsFromFile(std::vector<ModelData>& models, const std::string& filepath);
+    // 2026-10-17 format change: async walls moved from the MODEL to the ROOM
+    // (RoomData::asym_patches / feature_cells) so a model SHAPE can be reused
+    // by rooms with different async. This migrates a legacy project in place:
+    // every level_*.json in `levelsDir` gets its models' async copied into the
+    // rooms that reference them (a model's P/V/C grid tiles become the room's
+    // feature_cells + SOLID_WALL, which is the same PF byte), then the model
+    // fields are cleared and models.json is rewritten. Idempotent: a project
+    // already migrated reports `false` and nothing is written.
+    // Returns true when at least one file changed.
+    static bool MigrateAsyncToRooms(std::vector<ModelData>& models,
+                                    const std::string& levelsDir,
+                                    const std::string& modelsPath);
     static void GenerateAll20DefaultLevels(const std::string& outputDirectory);
     // Converts the pixel-decoded authentic H.E.R.O. stage maps into standard
     // level JSON files. Returns false if the intermediate file is missing.

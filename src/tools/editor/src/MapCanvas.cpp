@@ -629,6 +629,23 @@ bool MapCanvas::AllowElementInRow(int tileY, int ignoreY) {
     return false;
 }
 
+void MapCanvas::WarnAsyncBrushNeedsRoomEditor() {
+    static bool warned = false;
+    if (warned) {
+        return;                      // one dialog per session is enough
+    }
+    warned = true;
+    QMessageBox::information(
+        nullptr, QObject::tr("Async Walls Are Room-Level Now"),
+        QObject::tr(
+            "Doors, phase walls and vcrunch/hcrunch shutters are ROOM "
+            "properties since the 2026-10-17 format change: they live in the "
+            "room's async layer (room.asym_patches / room.feature_cells) so "
+            "one model shape can be reused by rooms with different async.\n\n"
+            "The room-level brush UI for them is the next editor step. "
+            "Nothing was changed."));
+}
+
 void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
     hero::ModelData* model = nullptr;
     hero::RoomData* room = nullptr;
@@ -654,6 +671,22 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
     if (tileX < 0 || tileX >= roomWidth || tileY < 0 || tileY >= displayRows) return;
 
     int brushVal = static_cast<int>(m_currentBrush);
+
+    // -----------------------------------------------------------------------
+    // Async walls (door strip / phase / vcrunch / hcrunch) are ROOM-level since
+    // the 2026-10-17 format change: they live in RoomData::asym_patches /
+    // feature_cells, never on the model. The brush UI for the room-level layer
+    // is the next editor step, so REFUSE here instead of writing the retired
+    // model fields — convert hard-fails a model that still carries async.
+    // -----------------------------------------------------------------------
+    if (m_currentBrush == BrushTool::PHASE_TILE ||
+        m_currentBrush == BrushTool::VCRUNCH_TILE ||
+        m_currentBrush == BrushTool::HCRUNCH_TILE ||
+        m_currentBrush == BrushTool::DOOR_TILE ||
+        m_currentBrush == BrushTool::ASYM_PATCH) {
+        WarnAsyncBrushNeedsRoomEditor();
+        return;
+    }
 
     if (m_currentBrush == BrushTool::SOLID_WALL || m_currentBrush == BrushTool::ERASE_AIR ||
         m_currentBrush == BrushTool::HOT_ROCK_WALL) {
@@ -689,9 +722,15 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         }
         emit levelModified();
         update();
-    } else if (m_currentBrush == BrushTool::PHASE_TILE ||
+    } else if (false) {
+        // UNREACHABLE: the async brushes are refused at the top of this
+        // function (2026-10-17 async move). The bodies below are kept for the
+        // room-level brush step, which will retarget every read/write from
+        // *model to the active room (asym_patches / feature_cells) and then
+        // delete this `false` gate.
+    } else if (false && (m_currentBrush == BrushTool::PHASE_TILE ||
                m_currentBrush == BrushTool::VCRUNCH_TILE ||
-               m_currentBrush == BrushTool::HCRUNCH_TILE) {
+               m_currentBrush == BrushTool::HCRUNCH_TILE)) {
         // Feature grid tiles (convert maps them to chars P/V/C and emits
         // b7 feature records; ERASE_AIR clears them like any tile).
         if (!model) return;
