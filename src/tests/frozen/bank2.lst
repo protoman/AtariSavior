@@ -737,7 +737,7 @@
     736  f35b		       e8		      inx		; X = time ticks (0..20; BarLevel <= 120)
     737  f35c		       d0 f6		      bne	.TEDiv
     738  f35e				   .TEDivSum
-    739  f35e		       20 2e f9 	      jsr	TallySum	; TallyTicks = ticks + 20 + bombs + 2*lives
+    739  f35e		       20 80 f8 	      jsr	TallySum	; TallyTicks = ticks + 20 + bombs + 2*lives
     740  f361							; (masking the raft's ramp bits out of
     741  f361							; PlayerBombs needs room this region lacks)
     742  f361		       a9 04		      lda	#4
@@ -1582,54 +1582,78 @@
       2  f864							; Include list for this bank2 gap — see emit_spills().
 ------- FILE bank2.asm
    1396  f864		       00 00 00 00*	      .ds	$F880 - *, 0
-   1397  f880		       00 00 00 00*	      .ds	$F8B7 - *, 0	; spill-pool gap: VcrCoveredState relocated here
-   1398  f8b7							; ------------------------------------------------------------------------------
-   1399  f8b7							; VcrCoveredState — aperture clock → slice state (vcrunch_shutter_plan Phase C).
-   1400  f8b7							; (moved from the $FE9C hole 2026-10-17 to make room for the ball-door key
-   1401  f8b7							;  touch-unlock in OvShutBand; no callers since VcrStateTab took the hot path —
-   1402  f8b7							;  kept as the formula reference verify_build guards against CrunchClock.)
-   1403  f8b7							; IN: A = frame clock (EnemyRamP). OUT: A = $00/$11/$1B/$1F (slice states).
-   1404  f8b7							; Mirror of bank3 CrunchClock (lsr/lsr = clock>>2, cmp #32 / eor #$3F fold,
-   1405  f8b7							; cmp #4 / sbc #4 head offset — verify_build asserts the shared constants).
-   1406  f8b7							; ------------------------------------------------------------------------------
-   1407  f8b7				   VcrCoveredState
-   1408  f8b7		       4a		      lsr
-   1409  f8b8		       4a		      lsr		; clock>>2 (64-frame ping-pong period)
-   1410  f8b9		       c9 20		      cmp	#32
-   1411  f8bb		       90 02		      bcc	.VChop
-   1412  f8bd		       49 3f		      eor	#$3F	; 32..63 -> 31..0 (fold down)
-   1413  f8bf				   .VChop
-   1414  f8bf		       c9 04		      cmp	#4
-   1415  f8c1		       90 02		      bcc	.VCq
-   1416  f8c3		       e9 04		      sbc	#4	; head offset (C set by cmp) — dwell zone
-   1417  f8c5				   .VCq
-   1418  f8c5		       c9 04		      cmp	#4
-   1419  f8c7		       90 11		      bcc	.VCopen	; eff 0-3 (both dwell halves) -> fully open
-   1420  f8c9		       c9 09		      cmp	#9
-   1421  f8cb		       90 0a		      bcc	.VC11
-   1422  f8cd		       c9 12		      cmp	#18
-   1423  f8cf		       90 03		      bcc	.VC1b
-   1424  f8d1		       a9 1f		      lda	#$1f	; fully closed
-   1425  f8d3		       60		      rts
-   1426  f8d4				   .VC1b
-   1427  f8d4		       a9 1b		      lda	#$1b	; center slice open
-   1428  f8d6		       60		      rts
-   1429  f8d7				   .VC11
-   1430  f8d7		       a9 11		      lda	#$11	; only edge slices closed
-   1431  f8d9		       60		      rts
-   1432  f8da				   .VCopen
-   1433  f8da		       a9 00		      lda	#0	; fully open
-   1434  f8dc		       60		      rts
-   1435  f8dd					      .ds	$F8DD - *, 0	; twin: bank0 PlayerSpriteA lives here (test_miner)
-   1436  f8dd				   TitleJetSprite
-   1437  f8dd							; Exact A/B copies of PlayerSpriteA/B; game alternates every 4 frames.
-   1438  f8dd		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
-   1439  f8e1		       7c fe fe 3e	      .byte.b	%01111100, %11111110, %11111110, %00111110
-   1440  f8e5		       3e 14 14 14	      .byte.b	%00111110, %00010100, %00010100, %00010100
-   1441  f8e9		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
-   1442  f8ed		       7c fe fe 7e	      .byte.b	%01111100, %11111110, %11111110, %01111110
-   1443  f8f1		       be 14 14 14	      .byte.b	%10111110, %00010100, %00010100, %00010100
-   1444  f8f5							; --- Level-data spill 2 (bugs.md 27/27b): fill gap $F901..$F970 (111B) ---
+   1397  f880							; TallySum — the level-bonus total for TallyEntry (frozen-scene frame).
+   1398  f880							; Split OUT of the inline TallyEntry region (it ends at a hard org) into bank2's
+   1399  f880							; free slack before the $F970 pin. IN: X = time ticks (0..20). OUT: TallyTicks
+   1400  f880							; set; A clobbered, X/Y kept. The bomb count MUST be masked: PlayerBombs' high
+   1401  f880							; bits carry the raft's take-off ramp state (b7 flag, b6-3 level — see the
+   1402  f880							; kernel EQU contract), and a stale ride would otherwise inflate the bonus.
+   1403  f880							; Temp ($88) is free here: the tally frame bypasses the input (its joystick
+   1404  f880							; store) and the next VBL restages Temp anyway.
+   1405  f880				   TallySum
+   1406  f880		       a5 f0		      lda	PlayerBombs
+   1407  f882		       29 07		      and	#%00000111	; bombs only, never the ramp bits
+   1408  f884		       85 88		      sta	Temp
+   1409  f886		       8a		      txa
+   1410  f887		       18		      clc
+   1411  f888		       69 14		      adc	#20	; miner reach = 1000 pts
+   1412  f88a		       65 88		      adc	Temp	; + 50 per unspent bomb (chain carry ok)
+   1413  f88c		       85 f2		      sta	TallyTicks
+   1414  f88e		       a5 ac		      lda	PlayerLives
+   1415  f890		       0a		      asl		; + 100 per life = 2 ticks
+   1416  f891		       18		      clc
+   1417  f892		       65 f2		      adc	TallyTicks
+   1418  f894		       85 f2		      sta	TallyTicks
+   1419  f896		       60		      rts
+   1420  f897
+   1421  f897		       00 00 00 00*	      .ds	$F8B7 - *, 0	; spill-pool gap: VcrCoveredState relocated here
+   1422  f8b7							; ------------------------------------------------------------------------------
+   1423  f8b7							; VcrCoveredState — aperture clock → slice state (vcrunch_shutter_plan Phase C).
+   1424  f8b7							; (moved from the $FE9C hole 2026-10-17 to make room for the ball-door key
+   1425  f8b7							;  touch-unlock in OvShutBand; no callers since VcrStateTab took the hot path —
+   1426  f8b7							;  kept as the formula reference verify_build guards against CrunchClock.)
+   1427  f8b7							; IN: A = frame clock (EnemyRamP). OUT: A = $00/$11/$1B/$1F (slice states).
+   1428  f8b7							; Mirror of bank3 CrunchClock (lsr/lsr = clock>>2, cmp #32 / eor #$3F fold,
+   1429  f8b7							; cmp #4 / sbc #4 head offset — verify_build asserts the shared constants).
+   1430  f8b7							; ------------------------------------------------------------------------------
+   1431  f8b7				   VcrCoveredState
+   1432  f8b7		       4a		      lsr
+   1433  f8b8		       4a		      lsr		; clock>>2 (64-frame ping-pong period)
+   1434  f8b9		       c9 20		      cmp	#32
+   1435  f8bb		       90 02		      bcc	.VChop
+   1436  f8bd		       49 3f		      eor	#$3F	; 32..63 -> 31..0 (fold down)
+   1437  f8bf				   .VChop
+   1438  f8bf		       c9 04		      cmp	#4
+   1439  f8c1		       90 02		      bcc	.VCq
+   1440  f8c3		       e9 04		      sbc	#4	; head offset (C set by cmp) — dwell zone
+   1441  f8c5				   .VCq
+   1442  f8c5		       c9 04		      cmp	#4
+   1443  f8c7		       90 11		      bcc	.VCopen	; eff 0-3 (both dwell halves) -> fully open
+   1444  f8c9		       c9 09		      cmp	#9
+   1445  f8cb		       90 0a		      bcc	.VC11
+   1446  f8cd		       c9 12		      cmp	#18
+   1447  f8cf		       90 03		      bcc	.VC1b
+   1448  f8d1		       a9 1f		      lda	#$1f	; fully closed
+   1449  f8d3		       60		      rts
+   1450  f8d4				   .VC1b
+   1451  f8d4		       a9 1b		      lda	#$1b	; center slice open
+   1452  f8d6		       60		      rts
+   1453  f8d7				   .VC11
+   1454  f8d7		       a9 11		      lda	#$11	; only edge slices closed
+   1455  f8d9		       60		      rts
+   1456  f8da				   .VCopen
+   1457  f8da		       a9 00		      lda	#0	; fully open
+   1458  f8dc		       60		      rts
+   1459  f8dd					      .ds	$F8DD - *, 0	; twin: bank0 PlayerSpriteA lives here (test_miner)
+   1460  f8dd				   TitleJetSprite
+   1461  f8dd							; Exact A/B copies of PlayerSpriteA/B; game alternates every 4 frames.
+   1462  f8dd		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
+   1463  f8e1		       7c fe fe 3e	      .byte.b	%01111100, %11111110, %11111110, %00111110
+   1464  f8e5		       3e 14 14 14	      .byte.b	%00111110, %00010100, %00010100, %00010100
+   1465  f8e9		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
+   1466  f8ed		       7c fe fe 7e	      .byte.b	%01111100, %11111110, %11111110, %01111110
+   1467  f8f1		       be 14 14 14	      .byte.b	%10111110, %00010100, %00010100, %00010100
+   1468  f8f5							; --- Level-data spill 2 (bugs.md 27/27b): fill gap $F901..$F970 (111B) ---
 ------- FILE generated/spill_F901.asm LEVEL 2 PASS 2
       0  f8f5					      include	"generated/spill_F901.asm"	; #27b: placed by convert_level
       1  f8f5							; Generated by convert_level.py --levels (bugs.md 27b). Do not edit by hand.
@@ -1686,38 +1710,14 @@
      48  f923		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
 ------- FILE generated/spill_F901.asm
 ------- FILE bank2.asm
-   1446  f924							; Phase 3 blink masks — pair index (2c>>1) → the two adjacent PF bits
-   1447  f924							; for that left-half cell (PF0: bits4-7 left-to-right; PF1: bits7-0;
-   1448  f924							; PF2: bits0-7 reversed). Pairs never straddle a register (even 2c).
-   1449  f924				   PhMaskTab
-   1450  f924		       30 c0		      .byte.b	$30, $C0	; PF0 pairs (0,1) (2,3)
-   1451  f926		       c0 30 0c 03	      .byte.b	$C0, $30, $0C, $03	; PF1 pairs (4,5) (6,7) (8,9) (10,11)
-   1452  f92a		       03 0c 30 c0	      .byte.b	$03, $0C, $30, $C0	; PF2 pairs (12,13) ... (18,19)
-   1453  f92e							; TallySum — the level-bonus total for TallyEntry (frozen-scene frame).
-   1454  f92e							; Split OUT of the inline TallyEntry region (it ends at a hard org) into bank2's
-   1455  f92e							; free slack before the $F970 pin. IN: X = time ticks (0..20). OUT: TallyTicks
-   1456  f92e							; set; A clobbered, X/Y kept. The bomb count MUST be masked: PlayerBombs' high
-   1457  f92e							; bits carry the raft's take-off ramp state (b7 flag, b6-3 level — see the
-   1458  f92e							; kernel EQU contract), and a stale ride would otherwise inflate the bonus.
-   1459  f92e							; Temp ($88) is free here: the tally frame bypasses the input (its joystick
-   1460  f92e							; store) and the next VBL restages Temp anyway.
-   1461  f92e				   TallySum
-   1462  f92e		       a5 f0		      lda	PlayerBombs
-   1463  f930		       29 07		      and	#%00000111	; bombs only, never the ramp bits
-   1464  f932		       85 88		      sta	Temp
-   1465  f934		       8a		      txa
-   1466  f935		       18		      clc
-   1467  f936		       69 14		      adc	#20	; miner reach = 1000 pts
-   1468  f938		       65 88		      adc	Temp	; + 50 per unspent bomb (chain carry ok)
-   1469  f93a		       85 f2		      sta	TallyTicks
-   1470  f93c		       a5 ac		      lda	PlayerLives
-   1471  f93e		       0a		      asl		; + 100 per life = 2 ticks
-   1472  f93f		       18		      clc
-   1473  f940		       65 f2		      adc	TallyTicks
-   1474  f942		       85 f2		      sta	TallyTicks
-   1475  f944		       60		      rts
-   1476  f945
-   1477  f945		       00 00 00 00*	      .ds	$F970 - *, 0	; pinned: bank1 .BMWDone jmp operand ($F970)
+   1470  f924							; Phase 3 blink masks — pair index (2c>>1) → the two adjacent PF bits
+   1471  f924							; for that left-half cell (PF0: bits4-7 left-to-right; PF1: bits7-0;
+   1472  f924							; PF2: bits0-7 reversed). Pairs never straddle a register (even 2c).
+   1473  f924				   PhMaskTab
+   1474  f924		       30 c0		      .byte.b	$30, $C0	; PF0 pairs (0,1) (2,3)
+   1475  f926		       c0 30 0c 03	      .byte.b	$C0, $30, $0C, $03	; PF1 pairs (4,5) (6,7) (8,9) (10,11)
+   1476  f92a		       03 0c 30 c0	      .byte.b	$03, $0C, $30, $C0	; PF2 pairs (12,13) ... (18,19)
+   1477  f92e		       00 00 00 00*	      .ds	$F970 - *, 0	; pinned: bank1 .BMWDone jmp operand ($F970)
    1478  f970				   M1StripBlast
    1479  f970							; Phase 4 M1 strip blast — entered from bank1 BombMarkWalls .BMWDone
    1480  f970							; via the $F9AC shared pad (`sta $1FF8 / jmp $F970`; 0 pushes). Bank2-

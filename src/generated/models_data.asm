@@ -54,6 +54,25 @@ M3MetaA:
 M3MetaB:
   .byte $00                  ; (ball_col+1), 0 = no ball
 
+; Generated from models.json model 4. Do not edit by hand.
+M4RoomRects:
+  .byte 4                  ; number of rectangles
+  .byte $00, $49  ; packed (x<<2|y, w<<2|h)
+  .byte $01, $09  ; packed (x<<2|y, w<<2|h)
+  .byte $02, $11  ; packed (x<<2|y, w<<2|h)
+  .byte $1a, $39  ; packed (x<<2|y, w<<2|h)
+  .byte 0              ; number of hot rectangles
+M4TilePF0:
+  .byte $f0, $30, $f0
+M4TilePF1:
+  .byte $ff, $00, $3f
+M4TilePF2:
+  .byte $3f, $00, $ff
+M4MetaA:
+  .byte $00                  ; (m1_col+1)<<4 | band mask
+M4MetaB:
+  .byte $00                  ; (ball_col+1), 0 = no ball
+
 ; Generated from models.json model 5. Do not edit by hand.
 M5RoomRects:
   .byte 6                  ; number of rectangles
