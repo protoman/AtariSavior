@@ -1310,153 +1310,17 @@ BarFineTable:           ; (B+7)>>3, 15 entries; ∈{0,1,2,3,4}
 ;             can always fly off.
 ; In: X = enemy slot. Clobbers A/Y and bank0 Temp ($88).
 ; ==============================================================================
-RAFT_MIN_X    = 8               ; the raft's logical X is its lit span's right
-RAFT_MAX_X    = 148             ; end, exactly like the player's [x-7,x]; these
-                                ; rails keep it inside the room
-RAFTER_Y      = 130             ; raft top: 2 px above the water strip line (the
-                                ; band's last 12 lines), so it reads as floating
-RAFTER_XOFF   = 6               ; PLAYER_WIDTH-1: spawn x of the body span
-RAFTER_XSPAN  = 14              ; PLAYER_WIDTH+ENEMY_WIDTH-1: no-overlap gate
-RAFTER_YSPAN  = 18              ; PLAYER_SPRITE_H+6: riding when the feet are
-                                ; from 12 px above the raft's top to 5 px into it
-RAFTER_PINFIT = 12              ; PLAYER_SPRITE_H: pin = raft top - this
-
-RaftBody:
-    lda #RAFTER_Y
-    sta EnemyRamY,X             ; float on the water line (authored y ignored)
-    lda EnemyRamP
-    and #1
-    clc
-    adc #1                      ; 1 px even frames, 2 px odd = 1.5 px/frame
-    sta $88                     ; bank0 Temp = this frame's step
-    lda RaftBitTab,X
-    and EnemyRamD
-    beq .RaftLeft
-    ; ---- leading edge right: candidate = x + step ---------------------------
-    lda EnemyRamX,X
-    clc
-    adc $88
-    bcs .RaftTurn               ; wrapped past 255
-    cmp #RAFT_MAX_X
-    bcs .RaftTurn               ; right rail
-    clc
-    adc #1                      ; the cell just beyond the right edge
-    lsr
-    lsr
-    jsr RaftCellSolid
-    bne .RaftTurn               ; solid ahead (ledge / room edge) -> turn
-    lda EnemyRamX,X
-    clc
-    adc $88
-    sta EnemyRamX,X
-    jmp .RaftRide
-    ; ---- leading edge left --------------------------------------------------
-.RaftLeft:
-    lda EnemyRamX,X
-    sec
-    sbc $88
-    bcc .RaftTurn               ; wrapped below 0
-    cmp #RAFT_MIN_X
-    bcc .RaftTurn               ; left rail
-    sec
-    sbc #8                      ; the cell just beyond the left edge
-    bcs .RaftLeftCol
-    lda #0
-.RaftLeftCol:
-    lsr
-    lsr
-    jsr RaftCellSolid
-    bne .RaftTurn
-    lda EnemyRamX,X
-    sec
-    sbc $88
-    sta EnemyRamX,X
-    ; ---- carry + pin while the player is aboard -----------------------------
-.RaftRide:
-    lda RoomX
-    sec
-    sbc EnemyRamX,X
-    clc
-    adc #RAFTER_XOFF
-    cmp #RAFTER_XSPAN
-    bcs .RaftDone               ; no X overlap: nobody aboard
-    lda RoomY
-    sec
-    sbc EnemyRamY,X
-    clc
-    adc #RAFTER_PINFIT
-    cmp #RAFTER_YSPAN
-    bcs .RaftDone               ; not in the raft's upper rows
-    lda vyHi
-    bmi .RaftDone               ; rising: let him fly away (no pin)
-    lda EnemyRamY,X
-    sec
-    sbc #RAFTER_PINFIT
-    sta RoomY                   ; feet on the raft's top
-    lda #0
-    sta vyLo
-    sta vyHi                    ; landing kills the accumulated fall speed
-    lda RaftBitTab,X
-    and EnemyRamD
-    beq .RaftCarryL
-    lda RoomX
-    clc
-    adc $88
-    sta RoomX
-    jmp .RaftDone
-.RaftCarryL:
-    lda RoomX
-    sec
-    sbc $88
-    sta RoomX
-.RaftDone:
-    jmp ReturnPad
-.RaftTurn:
-    lda RaftBitTab,X
-    eor EnemyRamD
-    sta EnemyRamD               ; flip this slot's dir bit (the high nibble is
-                                ; bank1's RoomDarkMask — must be preserved)
-    jmp ReturnPad               ; and the turn costs this frame (the inertia)
-
-; RaftCellSolid — is the model row-2 (water row) playfield cell in display
-; column A solid? Reflect mapping: CTRLPF $35 (reflect) is the cave default and
-; a raft room has no door/bar band to switch it off. IN: A = display col 0..39.
-; OUT: Z=1 open (water) / Z=0 solid. Clobbers A/Y.
-;   cols 0-3   -> PF0 row 2 ($C5), bit 4+col (PF0 bit 4 = leftmost pixel)
-;   cols 4-11  -> PF1 row 2 ($C8), bit 7-(col-4)
-;   cols 12-19 -> PF2 row 2 ($CB), bit col-12
-;   cols 20-39 -> the mirrored half: source = 39-col
-RaftCellSolid:
-    cmp #20
-    bcc .RCSrc
-    eor #$ff
-    clc
-    adc #40
-.RCSrc:
-    tay
-    lda RaftCellMasks,Y
-    cpy #4
-    bcs .RCPF1
-    and $C5
-    rts
-.RCPF1:
-    cpy #12
-    bcs .RCPF2
-    and $C8
-    rts
-.RCPF2:
-    and $CB
-    rts
-
-RaftBitTab:                     ; 1 << slot (EnemyBitTable is bank0's ROM, so a
-    .byte $01, $02, $04, $08    ; 4-byte copy keeps this body bank-local)
-
-RaftCellMasks:                  ; mask for source column 0..19: PF0 cols 0-3 —
-    .byte $10, $20, $40, $80    ; PF0 cols 0-3 (bit 4 = leftmost), then
-    .byte $80, $40, $20, $10    ; PF1 cols 4-11 (bit 7 = leftmost)
-    .byte $08, $04, $02, $01    ; PF2 cols 12-19 (bit 0 = leftmost)
-    .byte $01, $02, $04, $08
-    .byte $10, $20, $40, $80
+; ------------------------------------------------------------------------------
+; CallPad_RaftBody twin — BYTE-IDENTICAL with kernel.asm's copy at $F8C0 (guard:
+; verify_build.check_raft_tramp). bank0 executes `sta $1FF7` at $F8C0-$F8C2 and
+; the fetch at $F8C3 comes from THIS bank: `jmp $FDE3` = RaftBody below. Neither
+; bank runs the other's half — bank0's operand bytes are never fetched, bank1's
+; `sta $1FF7` is never executed (it is only the swapped-out image's prefix).
+; In bank1's $F822-$F936 fill, so the $F937 pin does not move.
+; ------------------------------------------------------------------------------
+    .ds $F8C0 - *, 0
+    .byte $8D, $F7, $1F         ; sta $1FF7 (twin)
+    .byte $4C, $E3, $FD         ; jmp $FDE3 (twin — fetched post-switch)
 
     .ds $F937 - *, 0            ; pinned: bank2 M1StripBlast back-jmp operand
                                  ; ($F937) — test_bomb_strip asserts both literals
@@ -2403,6 +2267,154 @@ SetupScorePointers:
 ; ========================================================================
 ; CallPad_MothYDerive twin — byte-identical with kernel.asm at $FEE7
 ; ========================================================================
+    .ds $FDE3 - *, 0
+RAFT_MIN_X    = 8               ; the raft's logical X is its lit span's right
+RAFT_MAX_X    = 148             ; end, exactly like the player's [x-7,x]; these
+                                ; rails keep it inside the room
+RAFTER_Y      = 130             ; raft top: 2 px above the water strip line (the
+                                ; band's last 12 lines), so it reads as floating
+RAFTER_XOFF   = 6               ; PLAYER_WIDTH-1: spawn x of the body span
+RAFTER_XSPAN  = 14              ; PLAYER_WIDTH+ENEMY_WIDTH-1: no-overlap gate
+RAFTER_YSPAN  = 18              ; PLAYER_SPRITE_H+6: riding when the feet are
+                                ; from 12 px above the raft's top to 5 px into it
+RAFTER_PINFIT = 12              ; PLAYER_SPRITE_H: pin = raft top - this
+
+RaftBody:
+    lda #RAFTER_Y
+    sta EnemyRamY,X             ; float on the water line (authored y ignored)
+    lda EnemyRamP
+    and #1
+    clc
+    adc #1                      ; 1 px even frames, 2 px odd = 1.5 px/frame
+    sta $88                     ; bank0 Temp = this frame's step
+    lda RaftBitTab,X
+    and EnemyRamD
+    beq .RaftLeft
+    ; ---- leading edge right: candidate = x + step ---------------------------
+    lda EnemyRamX,X
+    clc
+    adc $88
+    bcs .RaftTurn               ; wrapped past 255
+    cmp #RAFT_MAX_X
+    bcs .RaftTurn               ; right rail
+    clc
+    adc #1                      ; the cell just beyond the right edge
+    lsr
+    lsr
+    jsr RaftCellSolid
+    bne .RaftTurn               ; solid ahead (ledge / room edge) -> turn
+    lda EnemyRamX,X
+    clc
+    adc $88
+    sta EnemyRamX,X
+    jmp .RaftRide
+    ; ---- leading edge left --------------------------------------------------
+.RaftLeft:
+    lda EnemyRamX,X
+    sec
+    sbc $88
+    bcc .RaftTurn               ; wrapped below 0
+    cmp #RAFT_MIN_X
+    bcc .RaftTurn               ; left rail
+    sec
+    sbc #8                      ; the cell just beyond the left edge
+    bcs .RaftLeftCol
+    lda #0
+.RaftLeftCol:
+    lsr
+    lsr
+    jsr RaftCellSolid
+    bne .RaftTurn
+    lda EnemyRamX,X
+    sec
+    sbc $88
+    sta EnemyRamX,X
+    ; ---- carry + pin while the player is aboard -----------------------------
+.RaftRide:
+    lda RoomX
+    sec
+    sbc EnemyRamX,X
+    clc
+    adc #RAFTER_XOFF
+    cmp #RAFTER_XSPAN
+    bcs .RaftDone               ; no X overlap: nobody aboard
+    lda RoomY
+    sec
+    sbc EnemyRamY,X
+    clc
+    adc #RAFTER_PINFIT
+    cmp #RAFTER_YSPAN
+    bcs .RaftDone               ; not in the raft's upper rows
+    lda vyHi
+    bmi .RaftDone               ; rising: let him fly away (no pin)
+    lda EnemyRamY,X
+    sec
+    sbc #RAFTER_PINFIT
+    sta RoomY                   ; feet on the raft's top
+    lda #0
+    sta vyLo
+    sta vyHi                    ; landing kills the accumulated fall speed
+    lda RaftBitTab,X
+    and EnemyRamD
+    beq .RaftCarryL
+    lda RoomX
+    clc
+    adc $88
+    sta RoomX
+    jmp .RaftDone
+.RaftCarryL:
+    lda RoomX
+    sec
+    sbc $88
+    sta RoomX
+.RaftDone:
+    jmp ReturnPad
+.RaftTurn:
+    lda RaftBitTab,X
+    eor EnemyRamD
+    sta EnemyRamD               ; flip this slot's dir bit (the high nibble is
+                                ; bank1's RoomDarkMask — must be preserved)
+    jmp ReturnPad               ; and the turn costs this frame (the inertia)
+
+; RaftCellSolid — is the model row-2 (water row) playfield cell in display
+; column A solid? Reflect mapping: CTRLPF $35 (reflect) is the cave default and
+; a raft room has no door/bar band to switch it off. IN: A = display col 0..39.
+; OUT: Z=1 open (water) / Z=0 solid. Clobbers A/Y.
+;   cols 0-3   -> PF0 row 2 ($C5), bit 4+col (PF0 bit 4 = leftmost pixel)
+;   cols 4-11  -> PF1 row 2 ($C8), bit 7-(col-4)
+;   cols 12-19 -> PF2 row 2 ($CB), bit col-12
+;   cols 20-39 -> the mirrored half: source = 39-col
+RaftCellSolid:
+    cmp #20
+    bcc .RCSrc
+    eor #$ff
+    clc
+    adc #40
+.RCSrc:
+    tay
+    lda RaftCellMasks,Y
+    cpy #4
+    bcs .RCPF1
+    and $C5
+    rts
+.RCPF1:
+    cpy #12
+    bcs .RCPF2
+    and $C8
+    rts
+.RCPF2:
+    and $CB
+    rts
+
+RaftBitTab:                     ; 1 << slot (EnemyBitTable is bank0's ROM, so a
+    .byte $01, $02, $04, $08    ; 4-byte copy keeps this body bank-local)
+
+RaftCellMasks:                  ; mask for source column 0..19: PF0 cols 0-3 —
+    .byte $10, $20, $40, $80    ; PF0 cols 0-3 (bit 4 = leftmost), then
+    .byte $80, $40, $20, $10    ; PF1 cols 4-11 (bit 7 = leftmost)
+    .byte $08, $04, $02, $01    ; PF2 cols 12-19 (bit 0 = leftmost)
+    .byte $01, $02, $04, $08
+    .byte $10, $20, $40, $80
     .ds $FEE7 - *, 0
     sta $1FF7
     jmp $F029

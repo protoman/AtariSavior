@@ -189,7 +189,7 @@ CallPad_IsRoomDark       fc26              (R )
 CallPad_MothYDerive      fee7              (R )
 CallPad_MusicTick        fc61              (R )
 CallPad_Overscan         fc5b                  
-CallPad_RaftBody         f85c              (R )
+CallPad_RaftBody         f8c0              (R )
 CallPad_SetRoomDark      fc2c              (R )
 CallPad_TitleKernel      fc55              (R )
 CallPad_TitleSelect      fc4f              (R )

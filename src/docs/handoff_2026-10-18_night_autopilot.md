@@ -97,10 +97,27 @@ QA_SHOTS=1 /home/iuri/python3/bin/python3 tools/qa_sweep.py   # + PNGs
 ## Addendum — raft landed (same night, later session)
 
 The moving raft is now IN the ROM and guarded (see `plans/raft_moving_plan.md`
-for the as-built section: bank1 `RaftBody` at $F822, `CallPad_RaftBody` in the
-$F82C gap, the folded `UEDispatch`, the two table bytes, the bank2 bomb skip).
-`tools/test_raft.py` is battery entry 42; the build is green with both sims
-(`sim_bomb_fuse`, `sim_frame_budget`).
+for the as-built section: bank1 `RaftBody` at $FDE3, the twinned `CallPad_RaftBody`
+at $F8C0, the folded `UEDispatch`, the two table bytes, the bank2 bomb skip).
+`tools/test_raft.py` is battery entry 42 and now also drives the REAL cross-bank
+path (UpdateEnemies -> dispatch -> tramp -> bank1 body -> ReturnPad); the build is
+green with both sims.
+
+**To play it:** `bash tools/raft_build.sh` -> `/tmp/opencode/savior_raft.bin` —
+a staged COPY of the live stage whose level-2 water room carries the raft instead
+of its tentacle (level 2 -> descend from the start room; the raft patrols the
+channel, drop onto it from a ledge). The live stage is never modified: room 1 is
+at the 2-object cap and swapping the tentacle in place breaks `sim_bomb_fuse`,
+and models 2/3 are solid at display cols 0-1 / 38-39 so no new level-2 room can
+be reached from the start room.
+
+**Lesson worth keeping** (the one real bug of the session, caught before you
+ever saw it): a cross-bank call needs a byte-identical TWIN, because `sta $1FF7`
+makes the CPU fetch the `jmp` opcode AND its operand from the other bank at the
+same address. My first tramp had no twin — it would have jumped into bank1's own
+body bytes. `verify_build.check_raft_tramp` now asserts the pair, and the
+integration case in `test_raft.py` drives the real path so this class of mistake
+cannot ship silently.
 
 What needs YOUR call when you are back:
 1. **Inertia**: implemented as a one-frame hold on the turn frame. A real

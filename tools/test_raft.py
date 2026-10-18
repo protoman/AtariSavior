@@ -21,7 +21,8 @@ from py65.devices.mpu6502 import MPU  # noqa: E402
 FROZEN = ROOT / "src" / "tests" / "frozen"
 L0 = parse_labels(FROZEN / "bank0.lst", {
     "EnemyRamX", "EnemyRamY", "EnemyRamD", "EnemyRamP", "RoomX", "RoomY",
-    "vyLo", "vyHi", "Temp"})
+    "vyLo", "vyHi", "Temp", "UpdateEnemies", "EnemyCount", "EnemyDataLo",
+    "EnemyDataHi", "EnemyDeadMask"})
 L1 = parse_labels(FROZEN / "bank1.lst", {"RaftBody"})
 missing = ({"EnemyRamX", "EnemyRamY", "EnemyRamD", "EnemyRamP", "RoomX",
             "RoomY", "vyLo", "vyHi"} - L0.keys()) | ({"RaftBody"} - L1.keys())
@@ -73,7 +74,77 @@ def run(x, dir_right=True, parity=0, lead=0, room_x=None, room_y=None,
         vyhi=r[X["vyHi"]], lead=lead)
 
 
+TRAMP = 0xF8C0                 # CallPad_RaftBody (pinned; verify_build guard)
+
+
+def integration() -> None:
+    """The REAL cross-bank path: UpdateEnemies -> UEDispatch ->
+    CallPad_RaftBody (bank0 $F8C0) -> bank1 RaftBody ($FDE3) -> ReturnPad.
+
+    The enemy record is faked by pointing EnemyDataLo/Hi at a frozen bank2 byte
+    that reads 7 in the TYPE slot (the key record's y byte), so the dispatch
+    takes the raft arm for real. This is the case that catches a misplaced or
+    mistwinned tramp: the unit cases above enter RaftBody directly and cannot
+    see it (a $F82C tramp with no bank1 twin jumped into the body's own bytes).
+    """
+    b0 = (FROZEN / "bank0.bin").read_bytes()
+    b1 = (FROZEN / "bank1.bin").read_bytes()
+    a = b0[TRAMP - 0xF000:TRAMP - 0xF000 + 6]
+    b = b1[TRAMP - 0xF000:TRAMP - 0xF000 + 6]
+    assert a == b and a[:3] == bytes([0x8D, 0xF7, 0x1F]), (
+        f"raft tramp ${TRAMP:04X} not twinned: bank0 {a.hex()} bank1 {b.hex()} "
+        "(the jmp is fetched from bank1 after sta $1FF7)")
+    assert a[3:6] == bytes([0x4C, RAFT & 0xFF, RAFT >> 8]), (
+        f"raft tramp target {a[3:6].hex()} != bank1 RaftBody ${RAFT:04X}")
+
+    L2 = parse_labels(FROZEN / "bank2.lst", {"LEVEL1_RoomDataTable"})
+    assert "LEVEL1_RoomDataTable" in L2, "frozen bank2 level table label"
+    b2 = (FROZEN / "bank2.bin").read_bytes()
+    # RaftBody reads NO record field (it lives off EnemyRam*/the playfield), so
+    # any bank2 byte that reads 7 in the type slot stages a raft for real. Prefer
+    # a hit inside the level-data area so the fake record looks like data.
+    base = L2["LEVEL1_RoomDataTable"] & 0xFFF0
+    off = next((i for i in range(base - 0xF000, 0xF000)
+                if b2[i] == 7), None)
+    assert off is not None, "no bank2 byte reads 7 to stage a raft type"
+
+    mem = Mem()
+    mem.bank = 0                       # UpdateEnemies lives in bank0
+    r = mem.ram
+    r[X["RoomX"]] = 0
+    r[X["RoomY"]] = 0
+    r[X["EnemyRamX"]] = 80
+    r[X["EnemyRamY"]] = 0
+    r[X["EnemyRamD"]] = 0x01           # slot 0 faces right
+    r[X["EnemyRamP"]] = 0              # even frame -> 1 px
+    r[X["EnemyDeadMask"]] = 0
+    r[X["EnemyCount"]] = 1
+    r[X["EnemyDataLo"]] = off & 0xFF
+    r[X["EnemyDataHi"]] = (off >> 8) + 0xF0
+    r[PF0_R2] = r[PF1_R2] = r[PF2_R2] = 0      # open water ahead
+    mpu = MPU(memory=mem)
+    mpu.pc = L0["UpdateEnemies"]
+    mpu.a = mpu.x = mpu.y = 0
+    mpu.sp = 0xFD
+    mem[0x1FF] = 0x01
+    mem[0x1FE] = 0x00
+    for _ in range(40000):
+        mpu.step()
+        if mpu.pc == RTS_SENTINEL:
+            break
+    else:
+        raise AssertionError("UpdateEnemies never returned (raft dispatch hung)")
+    assert r[X["EnemyRamY"]] == RAFTER_Y, (
+        "the dispatch did not reach the raft body (EnemyRamY not floated) — "
+        "check the CallPad twin at $F8C0 and the $FDE3 target")
+    assert r[X["EnemyRamX"]] == 81, (
+        f"the raft did not move through UpdateEnemies: x={r[X['EnemyRamX']]}")
+    assert mem.bank == 0, "the raft path must come back to bank0 (ReturnPad)"
+
+
 def main() -> int:
+    integration()
+
     # 1. it always floats on the water line, not on the authored y
     s = run(80, pf1=0xFF)
     assert s["y"] == RAFTER_Y, f"raft must float at RAFTER_Y: {s}"
@@ -129,7 +200,7 @@ def main() -> int:
     s = run(80, parity=0, room_x=0x20, room_y=0x40, pf1=0xFF)
     assert (s["room_x"], s["room_y"]) == (0x20, 0x40), f"no rider, no touch: {s}"
 
-    print("test_raft: OK (floats on the water line; 1.5 px/frame parity; turns "
+    print("test_raft: OK (dispatch->tramp->body cross-bank path; floats on the water line; 1.5 px/frame parity; turns "
           "at PF0/PF1/PF2 ledges incl. the mirrored half; rails hold; a rider "
           f"is pinned to RoomY {RAFTER_Y - PIN_FIT} < {KILL_LINE} and carried)")
     return 0

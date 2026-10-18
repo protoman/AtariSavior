@@ -26,11 +26,24 @@
 
 The moving, rideable raft (`EnemyType 7`, user spec 2026-10-18) is **not a
 tile**: the `RAFT` tile 6 stays a static row-2 platform. The live raft is an
-enemy ENTITY whose body is **bank1 `RaftBody` at $F822**, entered from bank0 by
-`CallPad_RaftBody` (`sta $1FF7 / jmp $F822`) in the `$F82C` pin gap. The
+enemy ENTITY whose body is **bank1 `RaftBody` at $FDE3** (bank1's `.ds $FEE7`
+fill — dead space), entered from bank0 by **`CallPad_RaftBody`, PINNED at
+$F8C0**, which is `sta $1FF7 / jmp $FDE3` (6 bytes in the `$F82C` gap). The
 type dispatch was folded into `UEDispatch` (same gap) to pay for it — that is
 where the old inline `cmp #ENEMY_TENTACLE/MOTH/SNAKE` chain now lives, and
 `test_enemy_movement.py` asserts against `UEDispatch`, not `UpdateEnemies`.
+
+**A cross-bank call needs a byte-identical TWIN — this is the trap that cost a
+whole debugging detour.** `sta $1FF7` switches banks, so the `jmp` OPCODE and
+its OPERAND are fetched from bank1 at the same address, not from the code that
+writes them. `bank1.asm` therefore carries the same 6 bytes at `$F8C0`
+(`.ds $F8C0 - *` in both files, then `$8D,$F7,$1F,$4C,$E3,$FD`), whose target
+is bank1's own `RaftBody`. Without the twin the tramp jumped into whatever
+bank1 held at that address. Guards: `verify_build.check_raft_tramp` (identity +
+operand == bank1's `RaftBody` label) and — the case that actually caught it —
+the integration case in `tools/test_raft.py`, which drives the REAL path
+(`UpdateEnemies` -> `UEDispatch` -> tramp -> bank1 body -> `ReturnPad`); the
+unit cases enter `RaftBody` directly and cannot see a broken tramp.
 
 Invariants (each one has a reason, do not "clean up"):
 - **The raft's Y is kernel-owned**: `RaftBody` writes `EnemyRamY` = `RAFTER_Y`
@@ -49,8 +62,18 @@ Invariants (each one has a reason, do not "clean up"):
 - Bank1 body rules apply: it must not call a CallPad or any bank0 routine, and
   it uses **bank0's `Temp` ($88)** explicitly — bank1's own `Temp` symbol is
   `$AD` = bank0's `TickCounter`, and writing that would stall the game timer.
-- Guards: `tools/test_raft.py` (battery), the CallPad literal check in
-  `tools/verify_build.py`, and `bank2`'s blast skip.
+- Guards: `tools/test_raft.py` (battery: unit cases + the cross-bank
+  integration case), `verify_build.check_raft_tramp` + the CallPad literal
+  check, and `bank2`'s blast skip.
+- **To PLAY it without touching the live stage:** `bash tools/raft_build.sh`
+  -> `/tmp/opencode/savior_raft.bin`, a staged COPY of the stage whose level-2
+  water room carries the raft instead of its tentacle (level 2 -> descend from
+  the start room). The live stage must not be edited for this: room 1 is at the
+  2-object cap (tentacle + the level's miner), and in-place swapping breaks
+  `sim_bomb_fuse` (it forces Level 2 and fabricates that room's enemies), while
+  every other level-2 slot is unreachable (models 2/3 are solid at display
+  cols 0-1 / 38-39 in all bands). The demo build skips the sims (they probe
+  live content) and restores + rebuilds the live ROM on exit, like qa_build.sh.
 
 **What we have NOT yet implemented from HERO (implement these next):**
 - 13+2 sprite technique for HUD text/indicators (P0×3 + P1×3 + ball = 13 character columns)

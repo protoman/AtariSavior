@@ -2417,11 +2417,16 @@ UEDispatch:
                                  ; (absolute jmps: this block is far from the
                                  ;  bodies — relative branches do not reach)
 
-; CallPad_RaftBody — bank1 RaftBody at $F822. The jmp operand is a literal, like
-; every other CallPad (verify_build's CallPad table asserts the address).
+; CallPad_RaftBody — bank1 RaftBody entry. Pinned at $F8C0 with a
+; BYTE-IDENTICAL twin in bank1 (bank1.asm, same address): the `sta $1FF7`
+; switches banks, so the `jmp` opcode AND its operand are fetched from bank1,
+; not from here. That is the same FoldIndirect discipline every other tramp
+; uses — the twin cannot be skipped or shortened.
+; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
+    .ds $F8C0 - *, 0
 CallPad_RaftBody:
-    sta $1FF7                    ; select bank1
-    jmp $F822                    ; bank1 RaftBody — returns via bank1's ReturnPad
+    sta $1FF7                    ; select bank1 (last byte fetched from bank0)
+    jmp $FDE3                    ; bank1 RaftBody — returns via bank1's ReturnPad
 
     .ds $F8DD - *, 0            ; PIN $F8DD: bank2 EQUs PlayerSpriteA/PlayerSpriteB/
                                  ;   PlayerWalkA/B are address-frozen there; bank2
