@@ -83,7 +83,13 @@ Invariants (each one has a reason, do not "clean up"):
   ($F0) spare high bits: b2-0 stay the bomb count, b7 = "ridden last frame",
   b6-b3 = the ramp level stepping every 2nd frame, so the raft leaves at
   1 px/frame and reaches the full 1/2 parity (1.5 avg) after ~30 frames
-  (~0.5 s); the empty raft returns at full speed and each take-off ramps again.
+  (~0.5 s).
+- **The raft is a FERRY (user rule 2026-10-18): it moves ONLY while the player is
+  over it.** The ride test gates the whole motion block, so it parks the moment
+  he steps (or flies) off; parking also clears the ramp state, so the next
+  take-off ramps again. Position reset = `LoadEnemyRam` re-copying the record's
+  spawn x on room entry (leave/return and it is back at its start). Do not
+  "restore" a self-returning raft: an empty one must stay put.
   **Contract:** only `RaftBody` writes b7-3; the bomb code touches b2-0 (its
   `dec` is guarded by a non-zero count so it cannot borrow upward) and every
   reader of the count masks `#%00000111` — the drop guard, bank1's two HUD
