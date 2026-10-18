@@ -1193,7 +1193,37 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         emit levelModified();
         update();
     } else if (!m_modelMode && room && m_currentBrush == BrushTool::DELETE_ENTITY) {
-        // Entities live in full stage coordinates (no mirroring)
+        // The Level tab's Delete tool removes the ROOM-side thing at the click:
+        // a P/V/C feature ROW (a feature is a row property), the asym patch
+        // covering this cell, or a placed entity. Before 2026-10-18 it only
+        // removed entities, so Delete anywhere on a hcrunch row did nothing at
+        // all — the ERASE_AIR brush was the only way, and only per column
+        // (user 2026-10-18: "clicked delete in all columns, still there").
+        bool removedRoomLayer = false;
+        for (int i = (int)room->feature_cells.size() - 1; i >= 0; --i) {
+            const auto& c = room->feature_cells[i];
+            if (c.size() >= 3 && c[0] == modelY) {
+                room->feature_cells.erase(room->feature_cells.begin() + i);
+                removedRoomLayer = true;
+            }
+        }
+        for (int i = (int)room->asym_patches.size() - 1; i >= 0; --i) {
+            const auto& p = room->asym_patches[i];
+            if ((int)p.size() < 3) continue;
+            const int pside = (int)p.size() == 4 ? p[3] : 0;
+            const int cellCol = pside == 0 ? roomWidth - 1 - p[1] : p[1];
+            if (p[0] == modelY && cellCol == tileX) {
+                room->asym_patches.erase(room->asym_patches.begin() + i);
+                removedRoomLayer = true;
+            }
+        }
+        if (removedRoomLayer) {
+            emit levelModified();
+            update();
+            return;
+        }
+        // else fall through: Entities live in full stage coordinates (no
+        // mirroring)
         for (auto it = room->enemies.begin(); it != room->enemies.end(); ++it) {
             if ((int)std::floor(it->x) == entityX && (int)std::floor(it->y) == tileY) {
                 room->enemies.erase(it);
