@@ -64,7 +64,17 @@ def migrate_level(path: Path, moved: dict[int, dict]) -> int:
             room["asym_patches"] = src["patches"]
             n += 1
         if src["features"] and not room.get("feature_cells"):
-            room["feature_cells"] = src["features"]
+            # ONE entry per (row, kind), at its lowest column. A P/V/C feature
+            # is a ROW property: convert resolves the row and allows one kind
+            # per room, so one cell per column is redundant — and it made the
+            # editor's erase look broken (per-cell match, 2026-10-18).
+            seen: dict[tuple[int, int], int] = {}
+            for r, c, tile in src["features"]:
+                key = (r, tile)
+                if key not in seen or c < seen[key]:
+                    seen[key] = c
+            room["feature_cells"] = [[r, c, tile]
+                                     for (r, tile), c in sorted(seen.items())]
             n += 1
     path.write_text(json.dumps({"level": lvl}, indent=1) + "\n")
     return n
