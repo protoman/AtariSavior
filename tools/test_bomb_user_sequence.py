@@ -26,7 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
-for _name in ("L1R1RoomRects", "L1R2RoomRects"):
+for _name in ("L1R1RoomRects",):   # level 1 has one room (the
+                                   # L1R2 block was removed with it)
     for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
         if _m:
@@ -69,7 +70,7 @@ RECTS0 = 0x4C
 PF_ROWS = range(0xC3, 0xCC)
 PF_IDX = [a & 0x7F for a in PF_ROWS]
 
-MODEL = {1: ("L1R2TilePF0", "L1R2RoomRects")}
+MODEL = {1: ("L1R1TilePF0", "L1R1RoomRects")}   # level 1 has one room
 
 
 class Mem:
