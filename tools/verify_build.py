@@ -453,6 +453,42 @@ PAD_LO, PAD_HI = 0xFBF8, 0xFC49   # inclusive start, exclusive end (FC48 last)
 
 
 
+def check_boot_banks(src: Path) -> None:
+    """F6 power-up robustness: the bank latch is UNDEFINED at power-up on real
+    hardware, so any of the four banks can be the first one fetched. Every bank
+    therefore needs the same 5-byte "select bank0" prefix at $F000
+    (`lda #0 / sta $1FF6`), with bank0 holding `jmp GameStart` at $F005 — the
+    post-switch fetch reads those three bytes from BANK0, so banks 1-3 can
+    leave them as anything. Each bank's RESET vector must lead there (bank0
+    jumps straight to GameStart at $F008).
+
+    Regression this exists for: bank1 shipped with a bank-select-less
+    `jmp $F008`, i.e. a 1-in-4 chance of booting into zero fill (BRK loop).
+    """
+    PREFIX = bytes([0xA9, 0x00, 0x8D, 0xF6, 0x1F])   # lda #0 / sta $1FF6
+    bins: dict[int, bytes] = {}
+    for idx in range(4):
+        p = src / f"bank{idx}.bin"
+        if p.exists() and p.stat().st_size == 4096:
+            bins[idx] = p.read_bytes()
+    if len(bins) < 4:
+        err("bank images missing (boot-bank check)")
+        return
+    for idx, d in bins.items():
+        off = 0xF000 - 0xF000
+        if d[off:off + 5] != PREFIX:
+            err(f"bank{idx} $F000 = {d[off:off + 5].hex()} — every bank must "
+                "start with `lda #0 / sta $1FF6` (F6 can power up in ANY bank)")
+        res = d[0xFFFC - 0xF000] | (d[0xFFFD - 0xF000] << 8)
+        want = 0xF008 if idx == 0 else 0xF000
+        if res != want:
+            err(f"bank{idx} RESET vector = ${res:04X}, expected ${want:04X}")
+    b0 = bins[0]
+    if b0[0xF005 - 0xF000:0xF008 - 0xF000] != bytes([0x4C, 0x08, 0xF0]):
+        err("bank0 $F005 must be `jmp $F008` (the landing pad the other banks "
+            "fetch after switching)")
+
+
 def check_raft_tramp(src: Path) -> None:
     """Raft entry tramp: bank0 executes `sta $1FF7` at $F8C0; the `jmp` opcode
     and operand are FETCHED from bank1's mirror at the same address (CallPad /
@@ -1695,6 +1731,7 @@ def main() -> int:
     check_moth_tramp(src)
     check_frame_tramp(src)
     check_raft_tramp(src)
+    check_boot_banks(src)
     check_enterroom_tramp(src)
     check_blast_tramp(src)
     check_tramp_targets(src)
