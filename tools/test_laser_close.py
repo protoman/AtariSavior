@@ -44,7 +44,8 @@ SRC = ROOT / "src"
 BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 # Zero M0/M1 hot counts (life-loss would end the sweep); strips stay real.
-for _name in ("L1R1RoomRects", "L1R2RoomRects"):
+for _name in ("L1R1RoomRects",):   # level 1 has one room (the
+                                   # L1R2 block was removed with it)
     for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
         if _m:
@@ -82,7 +83,6 @@ I_DEAD = 0x3A                       # $BA EnemyDeadMask
 OV_HEAD, OV_TAIL = L2["OvHead"], L2["OvTail"]
 MODEL = {  # room 0-based -> (TilePF0 label, RoomRects label)
     0: ("L1R1TilePF0", "L1R1RoomRects"),
-    1: ("L1R2TilePF0", "L1R2RoomRects"),
 }
 
 RANGE_LO = L0["LaserInput"]
@@ -225,7 +225,7 @@ def main() -> None:
     fails = []
     checked = 0
     cells_hit = ext_hits = 0
-    for room in (0, 1):
+    for room in (0,):   # level 1 has one room
         load_room(room)
         # settle: let one VBL StageBandTab rebuild the overlay pack from
         # the freshly poked MetaA before asserts start
