@@ -44,6 +44,8 @@ L0 = parse_labels(L0P, {
 PC_SF = L0["StartFrame"]
 
 UP, RIGHT, LEFT, NONE = 0xEF, 0x7F, 0xBF, 0xFF      # active low (D4/D7/D6)
+# Active-low: pressing two directions ANDs the masks (OR would release both).
+UP_RIGHT = UP & RIGHT
 KEY_HELD = 0x80
 
 
@@ -342,18 +344,76 @@ def main() -> int:
         NOTES.append("room5: hcrunch band1 stagings "
                      + str([f"{a:02X}{b:02X}" for a, b in h]))
 
-    # room 6 -- goal: land on the floor, walk into the miner -> tally starts.
+    # room 6 -- water: land on the entry ledge, prove the WATER kills, then
+    # cross the RAFT bridge to the miner. A bottom_band room kills at
+    # RoomY >= 125, so row-2 platforms (the raft cells) are the only footing;
+    # LoseLife arms the respawn Hover (bugs.md #1) -> that is the death signal.
     settle(tag="room6")
-    for _ in range(400):
+    ledge_y = R[Y]
+    if not (70 <= ledge_y <= 100):
+        FAILS.append(f"room6: landing height y={ledge_y} is not the ledge "
+                     f"(want ~84 on the row-2 platform)")
+    else:
+        NOTES.append(f"room6: landed on the water ledge at y={ledge_y} "
+                     "(raft/ledge platform holds)")
+    if R[L0["Hover"] & 0x7F]:
+        FAILS.append("room6: landed with the respawn Hover armed — the water "
+                     "killed the player ON the platform")
+
+    # walk LEFT off the ledge into the open water -> the band death
+    died = False
+    for _ in range(300):
+        s = frame()
+        mem.swcha = LEFT
+        if R[L0["Hover"] & 0x7F]:
+            died = True
+            break
+    if not died:
+        FAILS.append(f"room6: walking into the open water did not kill "
+                     f"(x{R[X]} y{R[Y]}) — the bottom_band hazard is dead")
+    else:
+        NOTES.append("room6: the open water is lethal (band kill + Hover armed)")
+
+    # recover: thrust up while moving RIGHT until clear of the water, then let
+    # the float settle onto the ledge (releasing UP over the water would just
+    # re-enter it — the hover pins Y, not X, so travel first, then descend).
+    # Recover from the band death. LoseLifeBand sets DropTarget = death_y-12
+    # and DropArm re-drops the player there, so: (1) wait the respawn DROP out
+    # (input is bypassed while DropTarget != 0), (2) thrust up until clear of
+    # the ledge's band-2 rows — the hover pins Y and the ledge cell is solid at
+    # y>=96, so walking right before rising just jams against it, (3) fly right
+    # over the bridge, (4) release and settle.
+    for _ in range(200):                      # (1) respawn drop completes
+        if R[L0["DropTarget"] & 0x7F] == 0:
+            break
+        frame()
+    for _ in range(200):                      # (2) rise out of band 2
+        frame_hold(UP)
+        if R[Y] < 90:
+            break
+    for _ in range(160):                      # (3) fly right over the ledge
+        frame_hold(UP_RIGHT)
+        if R[X] >= 24:
+            break
+    for _ in range(200):                      # (4) release, settle on the raft
+        frame_hold(RIGHT if R[X] < 43 else NONE)
+        if R[Y] >= 70:
+            break
+    if R[L0["Hover"] & 0x7F]:
+        clear_hover(tag="room6-recover")
+    # cross the raft cells to the far ledge and take the miner
+    for _ in range(500):
         s = frame()
         if s["dt"] == 0xFE:
             break
-        mem.swcha = RIGHT if s["x"] < 25 else (LEFT if s["x"] > 31 else NONE)
+        mem.swcha = RIGHT if s["x"] < 71 else NONE
     if R[L0["DropTarget"] & 0x7F] != 0xFE:
-        FAILS.append(f"room6: miner never picked up "
-                     f"(x{R[X]} y{R[Y]} DropTarget={R[L0['DropTarget'] & 0x7F]:02X})")
+        FAILS.append(f"room6: miner never reached across the raft bridge "
+                     f"(x{R[X]} y{R[Y]} DropTarget="
+                     f"{R[L0['DropTarget'] & 0x7F]:02X})")
     else:
-        NOTES.append("room6: miner pickup armed the level tally (DropTarget=$FE)")
+        NOTES.append("room6: crossed the raft bridge to the miner "
+                     "(level tally armed)")
     return report()
 
 

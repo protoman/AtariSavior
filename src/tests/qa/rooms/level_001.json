@@ -11,7 +11,7 @@
   "wall2_b": 20,
   "start_room": 0,
   "miner_room": 6,
-  "miner_x": 2.5,
+  "miner_x": 8.0,
   "miner_y": 7.0,
   "miner_dir": 1,
   "rooms": [
@@ -182,10 +182,10 @@
     "room_y": 6,
     "enemies": [],
     "lamps": [],
-    "bottom_band": false,
+    "bottom_band": true,
     "bottom_r": 0,
-    "bottom_g": 0,
-    "bottom_b": 0
+    "bottom_g": 70,
+    "bottom_b": 190
    }
   ]
  }
