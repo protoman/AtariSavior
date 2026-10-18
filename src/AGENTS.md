@@ -104,6 +104,14 @@ Invariants (each one has a reason, do not "clean up"):
   only, so it can sit in any bank1 fill — but a block whose relative branches
   belong to the body (e.g. `.RaftTurn`, which both arms branch to) must stay
   within 127 bytes of it.
+- **The tally frame draws the MINER only** (user 2026-10-18): during the points
+  counting (`DropTarget = $FE`) `SelectActiveObject` skips enemies, the raft and
+  the bomb, and zeroes `FlickerFrame`. That frame bypasses the overscan, so
+  `RefreshEnemyY` never runs while bank1's HUD writes `$E0-$EF` — `EnemyRamY`
+  ($E2-$E4) is left holding score-pointer bytes, and anything drawn from it
+  appears at a garbage Y (the raft "jumped to the middle of the screen"). Do not
+  relax this to "just re-derive Y": the HUD stomp is the invariant, the gate is
+  the fix. Guarded by the `tally_gate` case in `tools/test_raft.py`.
 - **To PLAY it without touching the live stage:** `bash tools/raft_build.sh`
   -> `/tmp/opencode/savior_raft.bin`, a staged COPY of the stage whose level-2
   water room carries the raft instead of its tentacle (level 2 -> descend from
