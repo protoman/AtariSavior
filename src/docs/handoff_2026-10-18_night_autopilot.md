@@ -111,6 +111,20 @@ at the 2-object cap and swapping the tentacle in place breaks `sim_bomb_fuse`,
 and models 2/3 are solid at display cols 0-1 / 38-39 so no new level-2 room can
 be reached from the start room.
 
+**Tide + colour (user feedback, same session):** the raft now RIDES THE TIDE.
+The water surface is not static — the VBL stages `36+off` into `CollisionX` and
+the kernel draws the strip as the band's last `12-off` lines — so `RaftBody` sets
+its Y to `125+off` and its bottom row sits on the moving surface (the rider's pin
+follows it, worst case 116 < the 125 kill line). The raft is **white** now
+(`ObjSpriteOffTable[7] = OBJ_LAMP`, frame colour `$0e`) — LAMP is the only white
+blocky 8x8 and `ObjSprites` has no spare bytes, so a dedicated design needs 8 art
++ 8 colour bytes freed.
+
+**Rule recorded in AGENTS:** the LIVE stage (`src/rooms`, `models.json`,
+`src/generated`) belongs to you — the agent does not edit it, tests use the
+frozen/test-owned copies and anything playable gets a staged demo build
+(`tools/raft_build.sh`).
+
 **Lesson worth keeping** (the one real bug of the session, caught before you
 ever saw it): a cross-bank call needs a byte-identical TWIN, because `sta $1FF7`
 makes the CPU fetch the `jmp` opcode AND its operand from the other bank at the

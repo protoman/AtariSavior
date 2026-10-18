@@ -1288,10 +1288,13 @@ BarFineTable:           ; (B+7)>>3, 15 entries; ∈{0,1,2,3,4}
 ;
 ; User spec 2026-10-18: floats only on water; carries the player across and
 ; returns; ~1.5x the player's 1 px/frame; inertia when it starts.
-;   Y       = a FIXED line (RAFTER_Y), not the authored y: the water surface is
-;             the same in every water room (the band's last 12 lines), so the
-;             raft always looks like it is floating, and the rider's RoomY
-;             (RAFTER_Y-12 = 118) stays 7 px clear of the 125 water-kill line.
+;   Y       = the water surface, NOT the authored y and NOT a constant: the
+;             surface line drifts 0-3 lines with the TIDE (VBL stages 36+off
+;             into CollisionX, kernel draws the strip as the band's last
+;             (12-off) lines), so the raft is placed at 125+off and its bottom
+;             row sits exactly on the moving surface — it rides the wave the
+;             water does. The rider's pin (top-12 = 113+off, worst case 116)
+;             stays clear of the 125 water-kill line at every tide phase.
 ;             This write lands after RefreshEnemyY, so the VBL draws it.
 ;   Speed   = 1 px on even frames, 2 px on odd (EnemyRamP parity) = 1.5 px/frame.
 ;   Inertia = the raft holds the frame on which it turns around (it does not
@@ -2271,8 +2274,11 @@ SetupScorePointers:
 RAFT_MIN_X    = 8               ; the raft's logical X is its lit span's right
 RAFT_MAX_X    = 148             ; end, exactly like the player's [x-7,x]; these
                                 ; rails keep it inside the room
-RAFTER_Y      = 130             ; raft top: 2 px above the water strip line (the
-                                ; band's last 12 lines), so it reads as floating
+RAFTER_BASE   = 125             ; raft top when the tide is at 0 = the water
+                                ; surface (line 132) - 7, so its BOTTOM row
+                                ; sits exactly ON the surface. The live value is
+                                ; RAFTER_BASE + off (see the tide block below) —
+                                ; never hard-code the Y: the surface MOVES.
 RAFTER_XOFF   = 6               ; PLAYER_WIDTH-1: spawn x of the body span
 RAFTER_XSPAN  = 14              ; PLAYER_WIDTH+ENEMY_WIDTH-1: no-overlap gate
 RAFTER_YSPAN  = 18              ; PLAYER_SPRITE_H+6: riding when the feet are
@@ -2280,8 +2286,38 @@ RAFTER_YSPAN  = 18              ; PLAYER_SPRITE_H+6: riding when the feet are
 RAFTER_PINFIT = 12              ; PLAYER_SPRITE_H: pin = raft top - this
 
 RaftBody:
-    lda #RAFTER_Y
-    sta EnemyRamY,X             ; float on the water line (authored y ignored)
+    ; --- float ON the water surface, riding the TIDE ------------------------
+    ; The water band's surface drifts 0-3 lines (the tide): the VBL stages
+    ; 36+off into CollisionX and the kernel draws the strip as the band's last
+    ; (12-off) lines, so the surface line is 132+off. The raft's bottom row
+    ; (top+7) must land ON that line -> top = 125+off. This mirrors the VBL's
+    ; triangle EXACTLY (p = EnemyRamP>>4: p0-3 down 0->3, p4-7 up 3->0,
+    ; p8-15 rest), and this frame's EnemyRamP inc runs before UpdateEnemies,
+    ; so both sides see the same p — the raft bobs with the water it floats on.
+    ; CollisionX itself is unusable here: the input rect-walks clobber it
+    ; before UpdateEnemies runs. Keep the two formulas in step (AGENTS).
+    lda EnemyRamP
+    and #$F0
+    beq .RaftTide               ; p=0 -> off 0 (A already 0)
+    lsr
+    lsr
+    lsr
+    lsr                         ; A = p (1..15)
+    cmp #8
+    bcc .RaftTideTri
+    lda #0                      ; rest phase p8-15
+    beq .RaftTide               ; always
+.RaftTideTri:
+    cmp #4
+    bcc .RaftTide               ; p1-3: off = p
+    eor #$FF
+    sec
+    adc #7                      ; p4-7: off = 7-p
+.RaftTide:
+    clc
+    adc #RAFTER_BASE            ; + 125 -> the surface line (132+off) minus 7
+    sta EnemyRamY,X             ; the authored y is ignored on purpose: the
+                                ; water line is what the raft floats on
     lda EnemyRamP
     and #1
     clc

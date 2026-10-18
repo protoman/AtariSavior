@@ -33,9 +33,25 @@ RAFT = L1["RaftBody"]
 # ZP indices as plain names (bank-independent RAM)
 X = {k: v & 0x7F for k, v in L0.items() if 0x80 <= v <= 0xFF}
 PF0_R2, PF1_R2, PF2_R2 = 0xC5 - 0x80, 0xC8 - 0x80, 0xCB - 0x80
-RAFTER_Y, RAFT_MIN_X, RAFT_MAX_X = 130, 8, 148
+RAFT_MIN_X, RAFT_MAX_X = 8, 148
+RAFTER_BASE = 125                  # raft top at tide off=0 (surface 132 - 7:
+                                   # the bottom row sits ON the surface line)
 PIN_FIT = 12                       # PLAYER_SPRITE_H
 KILL_LINE = 125                    # CheckBandTouch: RoomY >= 125 is water
+
+
+def tide_off(enemy_ram_p):
+    """Mirror of the kernel's tide triangle, which the raft body also mirrors:
+    p = EnemyRamP >> 4; p0-3 -> 0..3 down, p4-7 -> 3..0 up, p8-15 -> rest."""
+    p = (enemy_ram_p & 0xF0) >> 4
+    if p == 0 or p >= 8:
+        return 0
+    return p if p < 4 else 7 - p
+
+
+def raft_top(enemy_ram_p):
+    """The raft's top row: it floats ON the moving water surface."""
+    return RAFTER_BASE + tide_off(enemy_ram_p)
 
 
 def run(x, dir_right=True, parity=0, lead=0, room_x=None, room_y=None,
@@ -134,7 +150,7 @@ def integration() -> None:
             break
     else:
         raise AssertionError("UpdateEnemies never returned (raft dispatch hung)")
-    assert r[X["EnemyRamY"]] == RAFTER_Y, (
+    assert r[X["EnemyRamY"]] == raft_top(0), (
         "the dispatch did not reach the raft body (EnemyRamY not floated) — "
         "check the CallPad twin at $F8C0 and the $FDE3 target")
     assert r[X["EnemyRamX"]] == 81, (
@@ -145,9 +161,9 @@ def integration() -> None:
 def main() -> int:
     integration()
 
-    # 1. it always floats on the water line, not on the authored y
+    # 1. it floats on the water SURFACE, not on the authored y
     s = run(80, pf1=0xFF)
-    assert s["y"] == RAFTER_Y, f"raft must float at RAFTER_Y: {s}"
+    assert s["y"] == raft_top(0), f"raft must float on the surface: {s}"
 
     # 2. 1.5 px/frame = 1 px even frames, 2 px odd frames (open water ahead)
     assert run(80, parity=0)["x"] == 81, "even frame must move 1 px"
@@ -180,29 +196,49 @@ def main() -> int:
     s = run(RAFT_MIN_X, dir_right=False, parity=1, pf0=0xFF)
     assert (s["x"], s["right"]) == (RAFT_MIN_X, True), f"left rail: {s}"
 
+    # 4b. RIDES THE TIDE: the water surface drifts 0-3 lines (the kernel draws
+    # the strip as the band's last 12-off lines -> surface 132+off), so the
+    # raft's top must be 125+off at EVERY phase: its bottom row stays on the
+    # moving surface instead of a hard-coded line.
+    for ramp, off in ((0x00, 0), (0x10, 1), (0x20, 2), (0x30, 3), (0x40, 3),
+                      (0x50, 2), (0x60, 1), (0x70, 0), (0x80, 0), (0xF0, 0)):
+        s = run(80, parity=ramp, pf1=0xFF)
+        assert s["y"] == raft_top(ramp) == RAFTER_BASE + off, (
+            f"tide p={ramp >> 4}: raft top {s['y']} != surface-7 "
+            f"{RAFTER_BASE + off}")
+
+    # 4c. worst-case tide for the rider: off=3 puts the pin at 116, still well
+    # clear of the 125 kill line (the pin follows the raft, not a constant)
+    s = run(80, parity=0x30, room_x=77, room_y=raft_top(0x30) + 2)
+    assert s["room_y"] == raft_top(0x30) - PIN_FIT, f"tide pin wrong: {s}"
+    assert s["room_y"] < KILL_LINE, (
+        f"rider at the tide's extreme is in the water: {s}")
+
     # 5. the ride: overlapping the raft's upper rows pins the player onto it,
     #    kills the fall speed and carries him by the raft's own step
-    s = run(80, parity=1, room_x=77, room_y=RAFTER_Y + 2)
-    assert s["room_y"] == RAFTER_Y - PIN_FIT, f"feet must land on the raft: {s}"
+    s = run(80, parity=1, room_x=77, room_y=raft_top(1) + 2)
+    assert s["room_y"] == raft_top(1) - PIN_FIT, f"feet must land on the raft: {s}"
     assert s["room_y"] < KILL_LINE, f"rider inside the water line!: {s}"
     assert s["vyhi"] == 0, f"landing must zero the fall speed: {s}"
     assert s["room_x"] == 79, f"rider must be carried by the step: {s}"
     #    ... and the rider keeps riding on later frames (the pin re-applies)
-    s = run(82, parity=0, room_x=79, room_y=RAFTER_Y - PIN_FIT, pf1=0xFF)
-    assert (s["room_y"], s["room_x"]) == (RAFTER_Y - PIN_FIT, 80), f"re-pin: {s}"
+    s = run(82, parity=0, room_x=79, room_y=raft_top(0) - PIN_FIT, pf1=0xFF)
+    assert (s["room_y"], s["room_x"]) == (raft_top(0) - PIN_FIT, 80), f"re-pin: {s}"
 
     # 6. thrust escapes: while rising (vyHi < 0) the pin is skipped
-    s = run(80, parity=0, room_x=77, room_y=RAFTER_Y + 2, vyhi=0xFF,
+    s = run(80, parity=0, room_x=77, room_y=raft_top(0) + 2, vyhi=0xFF,
             pf1=0xFF)
-    assert s["room_y"] == RAFTER_Y + 2, f"rising must not be pinned: {s}"
+    assert s["room_y"] == raft_top(0) + 2, f"rising must not be pinned: {s}"
 
     # 7. an empty raft is left alone: no carry, no pin
     s = run(80, parity=0, room_x=0x20, room_y=0x40, pf1=0xFF)
     assert (s["room_x"], s["room_y"]) == (0x20, 0x40), f"no rider, no touch: {s}"
 
-    print("test_raft: OK (dispatch->tramp->body cross-bank path; floats on the water line; 1.5 px/frame parity; turns "
-          "at PF0/PF1/PF2 ledges incl. the mirrored half; rails hold; a rider "
-          f"is pinned to RoomY {RAFTER_Y - PIN_FIT} < {KILL_LINE} and carried)")
+    print("test_raft: OK (dispatch->tramp->body cross-bank path; floats ON the "
+          "tide-driven water surface (0-3 line drift, both directions); 1.5 "
+          "px/frame parity; turns at PF0/PF1/PF2 ledges incl. the mirrored "
+          "half; rails hold; a rider is pinned to the raft's top (113+off, "
+          f"worst case {raft_top(0x30) - PIN_FIT}) < {KILL_LINE} and carried)")
     return 0
 
 

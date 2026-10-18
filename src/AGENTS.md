@@ -46,12 +46,26 @@ the integration case in `tools/test_raft.py`, which drives the REAL path
 unit cases enter `RaftBody` directly and cannot see a broken tramp.
 
 Invariants (each one has a reason, do not "clean up"):
-- **The raft's Y is kernel-owned**: `RaftBody` writes `EnemyRamY` = `RAFTER_Y`
-  (130, the water strip line - 2) every frame, *after* `RefreshEnemyY`, so the
-  authored y is ignored on purpose and the raft always floats on the water.
-- **A rider is pinned to `RAFTER_Y - 12` (118)** — 7 px clear of the 125
-  water-kill line — with `vyLo/vyHi` zeroed so gravity cannot accumulate into
-  the water. Thrust (vyHi < 0) skips the pin, so the player can always fly off.
+- **The raft's Y is kernel-owned AND tide-driven**: `RaftBody` writes
+  `EnemyRamY` = `125 + off` every frame, *after* `RefreshEnemyY`, so the authored
+  y is ignored on purpose. `off` is the **tide** (VBL stages `36+off` into
+  `CollisionX`; the kernel draws the water strip as the band's last `12-off`
+  lines, so the surface line is `132+off`): the raft's bottom row sits exactly on
+  the moving surface and bobs with the water it floats on. **Never re-introduce a
+  fixed raft Y** — the water surface moves (0-3 lines) and the raft must follow.
+  The body mirrors the VBL's triangle (`p = EnemyRamP>>4`: p0-3 down, p4-7 up,
+  p8-15 rest) because `CollisionX` is clobbered by the input rect-walks before
+  `UpdateEnemies`: **the two formulas must be kept in step by hand** (the tide
+  block in the VBL and `.RaftTide` in bank1), and `tools/test_raft.py` pins the
+  triangle against every phase.
+- **A rider is pinned to the raft's top minus 12** (`113+off`, worst case 116)
+  — always clear of the 125 water-kill line — with `vyLo/vyHi` zeroed so gravity
+  cannot accumulate into the water. Thrust (vyHi < 0) skips the pin, so the
+  player can always fly off. The pin rides the tide with the raft.
+- **The raft is white** (`ObjSpriteOffTable[7] = OBJ_LAMP` + `$0e`): LAMP is the
+  only white, blocky 8x8 in `ObjSprites`, which is exactly 72 B and ends at
+  `$FF00` — no spare art bytes exist for a dedicated raft design (freeing 8 art
+  + 8 colour bytes would allow one).
 - **The turn-around reads the playfield**, not rects and not data: the row-2
   cell beyond the leading edge, reflect mapping (display col >= 20 mirrors to
   39-col), mask table `RaftCellMasks`. It therefore works in any water span and
@@ -74,6 +88,27 @@ Invariants (each one has a reason, do not "clean up"):
   every other level-2 slot is unreachable (models 2/3 are solid at display
   cols 0-1 / 38-39 in all bands). The demo build skips the sims (they probe
   live content) and restores + rebuilds the live ROM on exit, like qa_build.sh.
+
+### Critical Rule: the LIVE Stage Is the User's — Never Edit It
+
+`src/rooms/`, `src/rooms/models/models.json` and `src/generated/` are the user's
+stage. **Do not edit them** (user rule 2026-10-18: "when needed I'll edit the
+rooms myself, you should not worry or depend on it"). They change under the
+agent's feet, and several gates deliberately pin live content:
+
+- `sim_bomb_fuse` FORCES Level 2 and fabricates that room's enemies (it needs
+  room 1's wall rects for the bomb-hole check) — any edit to that room breaks it.
+- `sim_frame_budget` / `qa_*` probe live rooms for their scenarios.
+- The frozen test banks are built from `src/tests/rooms`, not from the live stage.
+
+So when a feature needs stage data (a room, a spawn, a demo):
+1. **frozen/test-owned copies** in `src/tests/` for tests (`tools/freeze_test_banks.sh`
+   rebuilds the frozen banks from `src/tests/rooms`), and
+2. **a staged demo build** for anything playable — copy the stage, edit the COPY,
+   build, restore (`tools/raft_build.sh` is the model: `SIM_PY=/bin/false ./build.sh`
+   + a `trap restore EXIT` that rebuilds the live ROM).
+If a feature truly needs live stage content, ask the user — do not add it
+unasked (the raft's demo ROM exists for exactly this reason).
 
 **What we have NOT yet implemented from HERO (implement these next):**
 - 13+2 sprite technique for HUD text/indicators (P0×3 + P1×3 + ball = 13 character columns)
