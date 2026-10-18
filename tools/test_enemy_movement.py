@@ -86,12 +86,22 @@ def main() -> None:
         "LaserHitTest vertical test still reads ROM y"
 
     # --- dispatch + snake gate -------------------------------------------
+    # 2026-10-18: the per-type compare chain left UpdateEnemies — one 3-byte
+    # `jmp UEDispatch` replaced it (that jmp paid for the raft's table bytes and
+    # for the dispatch's own home in the $F82C pin gap). The type tests now live
+    # in UEDispatch and the bodies start at their labels, so the ordering
+    # invariant to keep is: dispatch FIRST, then the handler's own gate.
     ue = KERNEL.split("UpdateEnemies:")[1].split("UE_Next:")[0]
-    assert "cmp #ENEMY_SNAKE" in ue, "dispatch must test snake"
+    assert "jmp UEDispatch" in ue, "dispatch must fold into UEDispatch"
+    disp = KERNEL.split("UEDispatch:")[1].split("CallPad_RaftBody:")[0]
+    for t in ("cmp #ENEMY_RAFT", "cmp #ENEMY_TENTACLE", "cmp #ENEMY_MOTH",
+              "cmp #ENEMY_SNAKE"):
+        assert t in disp, f"UEDispatch must test {t.split('#')[1]}"
+    assert "jmp UE_SnakeBody" in disp, "dispatch must reach the snake body"
     assert "and #3" in ue, "snake keeps its 1px/4f gate inside the handler"
     gate_pos = ue.index("and #3")
-    cmp_pos = ue.index("cmp #ENEMY_SNAKE")
-    assert cmp_pos < gate_pos, "snake gate must come AFTER the type dispatch"
+    body_pos = ue.index("UE_SnakeBody:")
+    assert body_pos < gate_pos, "snake gate must come AFTER the type dispatch"
     head = ue.split("UE_Loop:")[0]
     assert "and #3" not in head, "global tick gate must be removed (E0)"
 
@@ -284,16 +294,17 @@ def main() -> None:
     assert tent_out.split(";")[0].strip() == "jmp UE_Next", \
         "every path must exit via .TentOut -> jmp UE_Next (tail jmp, no rts)"
     ue = KERNEL.split("UpdateEnemies:")[1].split("UE_Exit:")[0]
-    assert "jmp UE_Tentacle" in ue, \
+    disp = KERNEL.split("UEDispatch:")[1].split("CallPad_RaftBody:")[0]
+    assert "jmp UE_Tentacle" in disp, \
         "dispatch must tail-jmp the tentacle (jsr costs 2 stack bytes)"
-    assert ue.index("cmp #ENEMY_TENTACLE") < ue.index("cmp #ENEMY_SNAKE"), \
+    assert disp.index("cmp #ENEMY_TENTACLE") < disp.index("cmp #ENEMY_SNAKE"), \
         "tentacle check must come first (keeps snake branches in range)"
     # --- E4: moth dispatched via the $FEF0 bank2 code-fold tramp ------------
-    assert "cmp #ENEMY_MOTH" in ue, "dispatch must test the moth"
-    assert "jmp UE_MothTramp" in ue, \
+    assert "cmp #ENEMY_MOTH" in disp, "dispatch must test the moth"
+    assert "jmp UE_MothTramp" in disp, \
         "moth must tail-jmp the entry tramp (0 push — stack guard)"
-    assert (ue.index("cmp #ENEMY_TENTACLE") < ue.index("cmp #ENEMY_MOTH")
-            < ue.index("cmp #ENEMY_SNAKE")), \
+    assert (disp.index("cmp #ENEMY_TENTACLE") < disp.index("cmp #ENEMY_MOTH")
+            < disp.index("cmp #ENEMY_SNAKE")), \
         "dispatch order must stay tentacle -> moth -> snake"
 
     # --- water strip: bottom 1/4 of the bottom band, split pass ------------

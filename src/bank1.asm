@@ -721,6 +721,10 @@ LevelConnLo = $A1
 LevelConnHi = $A2
 FetchPtr    = $E5                ; moved S3.2 (was $E0) — must match kernel
 EnemyRamD   = $C1
+EnemyRamX   = $BD           ; 3 bytes live enemy X (slots 0-2) — raft body
+EnemyRamY   = $E2           ; 3 bytes live enemy Y (private since S3.4)
+vyLo        = $93           ; Y velocity lo (signed 16) — raft riding pins it
+vyHi        = $94           ; Y velocity hi
 PF0Buf      = $C3
 PF1Buf      = $C6                ; packed rows 0-2 (S3.1; was $CF)
 PF2Buf      = $C9                ; packed rows 0-2 (S3.1; was $DB)
@@ -1270,6 +1274,190 @@ BarFineTable:           ; (B+7)>>3, 15 entries; ∈{0,1,2,3,4}
     .byte 2, 1,0,2,1,0,4,2,1,0,4,2,1,0,4
 
 ; ------------------------------------------------------------------------------
+
+; ==============================================================================
+; Raft (enemy type 7) — the moving, rideable platform. plans/raft_moving_plan.md
+; ==============================================================================
+; Entrance: bank0 UEDispatch -> CallPad_RaftBody (sta $1FF7 / jmp $F822) -> here;
+; exit: jmp ReturnPad ($FBF8, bank1's twin) -> bank0's jmp UE_Next.
+; CallPad rules honoured: no nested CallPad, no bank0 jsr, ZP is shared RAM.
+; ZP ALIAS WARNING: this code uses bank0's Temp at $88 (free here — every other
+; overscan Temp consumer, the joystick read and the hot-bump flag, ran before
+; UpdateEnemies). It must NEVER touch bank1's Temp symbol ($AD = bank0's
+; TickCounter — writing that would stall the game timer).
+;
+; User spec 2026-10-18: floats only on water; carries the player across and
+; returns; ~1.5x the player's 1 px/frame; inertia when it starts.
+;   Y       = a FIXED line (RAFTER_Y), not the authored y: the water surface is
+;             the same in every water room (the band's last 12 lines), so the
+;             raft always looks like it is floating, and the rider's RoomY
+;             (RAFTER_Y-12 = 118) stays 7 px clear of the 125 water-kill line.
+;             This write lands after RefreshEnemyY, so the VBL draws it.
+;   Speed   = 1 px on even frames, 2 px on odd (EnemyRamP parity) = 1.5 px/frame.
+;   Inertia = the raft holds the frame on which it turns around (it does not
+;             move that frame). A true multi-frame spin-up ramp would need one
+;             byte of per-raft state and the ZP map has none free (EnemyRamD's
+;             high nibble is bank1's RoomDarkMask — verified, not free), so the
+;             ramp is a deliberate simplification; ask and I carve a byte.
+;   Range   = derived from the playfield, no data and no ZP: the model row-2
+;             cell just beyond the raft's leading edge is read from the PF row-2
+;             buffers and a SOLID cell turns it around, so the raft patrols
+;             exactly the open water span of the room.
+;   Ride    = while the player's box overlaps the raft's upper rows and he is not
+;             rising (vyHi >= 0): pin RoomY to the raft's top, zero vy (gravity
+;             must never accumulate into the water) and carry RoomX by the
+;             raft's own step. Thrust up (vyHi < 0) skips the pin, so the player
+;             can always fly off.
+; In: X = enemy slot. Clobbers A/Y and bank0 Temp ($88).
+; ==============================================================================
+RAFT_MIN_X    = 8               ; the raft's logical X is its lit span's right
+RAFT_MAX_X    = 148             ; end, exactly like the player's [x-7,x]; these
+                                ; rails keep it inside the room
+RAFTER_Y      = 130             ; raft top: 2 px above the water strip line (the
+                                ; band's last 12 lines), so it reads as floating
+RAFTER_XOFF   = 6               ; PLAYER_WIDTH-1: spawn x of the body span
+RAFTER_XSPAN  = 14              ; PLAYER_WIDTH+ENEMY_WIDTH-1: no-overlap gate
+RAFTER_YSPAN  = 18              ; PLAYER_SPRITE_H+6: riding when the feet are
+                                ; from 12 px above the raft's top to 5 px into it
+RAFTER_PINFIT = 12              ; PLAYER_SPRITE_H: pin = raft top - this
+
+RaftBody:
+    lda #RAFTER_Y
+    sta EnemyRamY,X             ; float on the water line (authored y ignored)
+    lda EnemyRamP
+    and #1
+    clc
+    adc #1                      ; 1 px even frames, 2 px odd = 1.5 px/frame
+    sta $88                     ; bank0 Temp = this frame's step
+    lda RaftBitTab,X
+    and EnemyRamD
+    beq .RaftLeft
+    ; ---- leading edge right: candidate = x + step ---------------------------
+    lda EnemyRamX,X
+    clc
+    adc $88
+    bcs .RaftTurn               ; wrapped past 255
+    cmp #RAFT_MAX_X
+    bcs .RaftTurn               ; right rail
+    clc
+    adc #1                      ; the cell just beyond the right edge
+    lsr
+    lsr
+    jsr RaftCellSolid
+    bne .RaftTurn               ; solid ahead (ledge / room edge) -> turn
+    lda EnemyRamX,X
+    clc
+    adc $88
+    sta EnemyRamX,X
+    jmp .RaftRide
+    ; ---- leading edge left --------------------------------------------------
+.RaftLeft:
+    lda EnemyRamX,X
+    sec
+    sbc $88
+    bcc .RaftTurn               ; wrapped below 0
+    cmp #RAFT_MIN_X
+    bcc .RaftTurn               ; left rail
+    sec
+    sbc #8                      ; the cell just beyond the left edge
+    bcs .RaftLeftCol
+    lda #0
+.RaftLeftCol:
+    lsr
+    lsr
+    jsr RaftCellSolid
+    bne .RaftTurn
+    lda EnemyRamX,X
+    sec
+    sbc $88
+    sta EnemyRamX,X
+    ; ---- carry + pin while the player is aboard -----------------------------
+.RaftRide:
+    lda RoomX
+    sec
+    sbc EnemyRamX,X
+    clc
+    adc #RAFTER_XOFF
+    cmp #RAFTER_XSPAN
+    bcs .RaftDone               ; no X overlap: nobody aboard
+    lda RoomY
+    sec
+    sbc EnemyRamY,X
+    clc
+    adc #RAFTER_PINFIT
+    cmp #RAFTER_YSPAN
+    bcs .RaftDone               ; not in the raft's upper rows
+    lda vyHi
+    bmi .RaftDone               ; rising: let him fly away (no pin)
+    lda EnemyRamY,X
+    sec
+    sbc #RAFTER_PINFIT
+    sta RoomY                   ; feet on the raft's top
+    lda #0
+    sta vyLo
+    sta vyHi                    ; landing kills the accumulated fall speed
+    lda RaftBitTab,X
+    and EnemyRamD
+    beq .RaftCarryL
+    lda RoomX
+    clc
+    adc $88
+    sta RoomX
+    jmp .RaftDone
+.RaftCarryL:
+    lda RoomX
+    sec
+    sbc $88
+    sta RoomX
+.RaftDone:
+    jmp ReturnPad
+.RaftTurn:
+    lda RaftBitTab,X
+    eor EnemyRamD
+    sta EnemyRamD               ; flip this slot's dir bit (the high nibble is
+                                ; bank1's RoomDarkMask — must be preserved)
+    jmp ReturnPad               ; and the turn costs this frame (the inertia)
+
+; RaftCellSolid — is the model row-2 (water row) playfield cell in display
+; column A solid? Reflect mapping: CTRLPF $35 (reflect) is the cave default and
+; a raft room has no door/bar band to switch it off. IN: A = display col 0..39.
+; OUT: Z=1 open (water) / Z=0 solid. Clobbers A/Y.
+;   cols 0-3   -> PF0 row 2 ($C5), bit 4+col (PF0 bit 4 = leftmost pixel)
+;   cols 4-11  -> PF1 row 2 ($C8), bit 7-(col-4)
+;   cols 12-19 -> PF2 row 2 ($CB), bit col-12
+;   cols 20-39 -> the mirrored half: source = 39-col
+RaftCellSolid:
+    cmp #20
+    bcc .RCSrc
+    eor #$ff
+    clc
+    adc #40
+.RCSrc:
+    tay
+    lda RaftCellMasks,Y
+    cpy #4
+    bcs .RCPF1
+    and $C5
+    rts
+.RCPF1:
+    cpy #12
+    bcs .RCPF2
+    and $C8
+    rts
+.RCPF2:
+    and $CB
+    rts
+
+RaftBitTab:                     ; 1 << slot (EnemyBitTable is bank0's ROM, so a
+    .byte $01, $02, $04, $08    ; 4-byte copy keeps this body bank-local)
+
+RaftCellMasks:                  ; mask for source column 0..19: PF0 cols 0-3 —
+    .byte $10, $20, $40, $80    ; PF0 cols 0-3 (bit 4 = leftmost), then
+    .byte $80, $40, $20, $10    ; PF1 cols 4-11 (bit 7 = leftmost)
+    .byte $08, $04, $02, $01    ; PF2 cols 12-19 (bit 0 = leftmost)
+    .byte $01, $02, $04, $08
+    .byte $10, $20, $40, $80
+
     .ds $F937 - *, 0            ; pinned: bank2 M1StripBlast back-jmp operand
                                  ; ($F937) — test_bomb_strip asserts both literals
 ; StripBlastCheck — Phase 4: bomb blast vs the D6 patch strips. Tail-jumped

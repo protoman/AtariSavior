@@ -90,3 +90,28 @@ bash tools/qa_build.sh                       # QA ROM -> /tmp/opencode/savior_qa
 QA_SHOTS=1 /home/iuri/python3/bin/python3 tools/qa_sweep.py   # + PNGs
 /home/iuri/python3/bin/python3 tools/gen_qa_stage.py          # regenerate the QA stage
 ```
+
+
+---
+
+## Addendum — raft landed (same night, later session)
+
+The moving raft is now IN the ROM and guarded (see `plans/raft_moving_plan.md`
+for the as-built section: bank1 `RaftBody` at $F822, `CallPad_RaftBody` in the
+$F82C gap, the folded `UEDispatch`, the two table bytes, the bank2 bomb skip).
+`tools/test_raft.py` is battery entry 42; the build is green with both sims
+(`sim_bomb_fuse`, `sim_frame_budget`).
+
+What needs YOUR call when you are back:
+1. **Inertia**: implemented as a one-frame hold on the turn frame. A real
+   multi-frame spin-up needs one ZP byte (none free — EnemyRamD's high nibble is
+   RoomDarkMask) — say the word and I carve one.
+2. **Art**: the raft borrows the snake's solid 8x8 block (`ObjSprites` is full to
+   $FF00). Freeing 8 B would give it real raft art.
+3. **Where to fly it**: authoring is the editor's `ADD_RAFT` brush (type-7
+   entity, water room, open cell). The live water room (level 2 room 1) is full
+   (tentacle + the level's miner = the 2-object cap), and swapping the tentacle
+   out breaks `sim_bomb_fuse` (it bombs that room for the wall-hole check), so
+   the live stage was deliberately left untouched. Options if you want it in the
+   live game: move the miner, drop the tentacle, or let me add a second water
+   room to level 2.
