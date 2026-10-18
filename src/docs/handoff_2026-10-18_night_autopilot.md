@@ -1,0 +1,92 @@
+# Handoff — night auto-pilot, 2026-10-17 → 18
+
+Context: user asleep; instruction "work on all remaining tasks and features like
+the raft". Everything below is committed, gated and on `master`.
+
+## Committed tonight (newest last)
+
+| commit | what |
+|---|---|
+| `55c1495` | editor: room-level async **data model** + startup migration + brushe refuse |
+| `50f0a7b` | bank3 `.PhRec` literals re-synced to the LIVE layout |
+| `3ac41a8` | docs: async model→room invariants (AGENTS) + `feature_tiles_plan` Phase 7 |
+| `b341052` | user's `TODO.txt` (added blind) |
+| `ce1cdda` | editor: room-level async **brushes** (the option-4 request, finished) |
+| `84e15dc` | QA stage: durable generator + **water/raft room**, raft proven in-game |
+| `fde1a6c` | AGENTS: stale lamp item resolved, phase-wall ruling, raft status |
+| `0c9fee1` | QA sweep **picture set** (`tools/qa_shots.py`, 8 PNGs) |
+
+Gates at HEAD: `./build.sh` green (verify_build + both py65 sims) · battery
+**38/38** · editor builds + `--selftest` (models *and* level/migration) ·
+`test_editor_roundtrip` OK · `qa_build.sh` + `qa_sweep.py` **18 checks green**
+(with and without `QA_SHOTS=1`).
+
+## What tonight actually changed for gameplay
+
+- **Async walls are per-ROOM now** (strips + phase/vcrunch/hcrunch cells) — see
+  AGENTS "Async walls live on the ROOM" for the invariants. The editor can
+  author them from the LEVEL tab ("D. Async Door", "A. Async Strip",
+  "P. Phase Wall", "V. Vertical Crunch", "C. Horizontal Crunch"); opening an
+  older project migrates it once and says so in the status bar.
+- **The raft is proven in-game** (it already existed as data + PF): a row-2
+  `RAFT` tile is a solid platform you stand on (~RoomY 84) while the
+  `bottom_band` water kills at `RoomY >= 125`. `qa_sweep` now lands on the
+  ledge, walks INTO the water to prove it kills, and crosses a 4-cell raft
+  bridge to the goal. **Motion was never specified** — a moving/rideable raft
+  needs a ruling from you (it would be a new object type: data record + carry
+  physics + render + editor brush).
+- **Bug fix found stale:** the "blast kills lamps" item was already fixed
+  2026-10-07; it now has its missing regression guard (`tools/test_bomb_lamp.py`).
+
+## Remaining work, with my assessment
+
+1. **Editor GUI pass (you) — cheap.** The relocation compiles, selftests and
+   round-trips, but the Qt GUI itself was never opened tonight (headless).
+   Open the editor, load `src/rooms`, place a door + a phase wall in a room,
+   save, run `./build.sh`: that is the whole acceptance test for `ce1cdda`.
+2. **Put the features into the LIVE levels (content) — cheap, needs your OK.**
+   `src/tests/qa/rooms` is a ready-made 7-room set (key/phase/door/vcrunch/
+   hcrunch/water-raft). Because async is per-room now, a room can reuse any of
+   your existing model shapes — I did NOT touch `src/rooms` while you slept.
+3. **Game-over screen — medium, needs a design ruling.** Today `PlayerLives=0`
+   just resets to 3 and reloads the level (`LoseLife`). A real game-over means
+   a text screen + wait for RESET/SELECT. The title's 48px pipeline lives in
+   bank1 and could host it, but bank0 is full (1B) so it needs a cross-bank
+   pad, and the AGENTS frame-timing rules apply (sim-proof required).
+4. **Phase 9 leftovers:** background music (needs your ear; the ch0 machinery +
+   `test_intro_music` exist), screen transitions, difficulty settings, high
+   score table.
+5. **Phase 10 content:** 5+ designed levels, per-level enemy patterns, boss,
+   secret rooms.
+6. **Phase-6 sweets:** play the QA ROM in Stella for the real screenshot set
+   (`bash tools/qa_build.sh` → `/tmp/opencode/savior_qa.bin`); the sim-rendered
+   set is already in `src/screenshots/qa/`.
+
+## Traversal lessons worth keeping (they cost me an hour tonight)
+
+- **Collision box is `[RoomX-7, RoomX]`** (7 lit px, reported at the right
+  edge). An 8 px one-cell gap leaves a **1 px** drop window — author lanes as
+  TWO cells (16 px) or the player ping-pongs on the edge.
+- **An M1 door can never be touched while falling**: the wall-hide envelope
+  forbids the door column and its mirror from being open in rows 0/2, and those
+  cells are exactly the fall path. Door rooms need a floor to walk into the bar.
+- **Input is active-low**: two directions must **AND** the masks
+  (`UP_RIGHT = UP & RIGHT`); ORing releases both.
+- **A band death re-drops the player** (`DropTarget = death_y-12`, input
+  bypassed during the drop) and arms the respawn hover, which pins Y — so the
+  recovery order is: wait the drop, thrust UP out of band 2, then move
+  sideways. Walking first jams against the ledge because y is inside its cell.
+- **A full-band phase stripe is not crossable in one pass** (45 f window vs
+  ~55 f fall) — that is your ruling: one-time crushable wall.
+
+## Commands
+
+```
+./build.sh                                   # ROM + verify_build + both sims
+for t in tools/test_*.py src/tools/test_*.py; do /home/iuri/python3/bin/python3 $t; done
+./src/tools/editor/cmake-build-debug/savior_editor --selftest src/tests/rooms/models/models.json
+bash tools/qa_build.sh                       # QA ROM -> /tmp/opencode/savior_qa.bin
+/home/iuri/python3/bin/python3 tools/qa_sweep.py
+QA_SHOTS=1 /home/iuri/python3/bin/python3 tools/qa_sweep.py   # + PNGs
+/home/iuri/python3/bin/python3 tools/gen_qa_stage.py          # regenerate the QA stage
+```
