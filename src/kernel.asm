@@ -2163,8 +2163,10 @@ EnemyColorTable:
     .byte $22                   ; moth — hue 2 luma 1 = dark orange
     .byte $0e                   ; lamp (type 5) — white; dark rooms override to grey
     .byte $1C                   ; key (type 6) — yellow
-    .byte $c4                   ; raft (type 7) — matches the borrowed art's
-                                ; ObjColorTab slot (6 = SNAKE, $c4)
+    .byte $0e                   ; raft (type 7) — white; matches its ObjColorTab
+                                ; slot (3 = LAMP, $0e). The white slots are LAMP
+                                ; and TENTACLE; LAMP is the blockier one, so the
+                                ; raft reads as a pale platform over the water.
 
 ; Enemy type → ObjSprites design offset (index = ENEMY_* type)
 ObjSpriteOffTable:
@@ -2175,10 +2177,11 @@ ObjSpriteOffTable:
     .byte OBJ_MOTH              ; 4
     .byte OBJ_LAMP              ; 5 (LAMP)
     .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
-    .byte OBJ_SNAKE             ; 7 (RAFT — borrows the solid 8x8 snake design:
-                                ; ObjSprites is exactly 72 B and ends at $FF00,
-                                ; so there is no room for dedicated raft art; a
-                                ; solid block reads as a floating platform)
+    .byte OBJ_LAMP              ; 7 (RAFT — borrows the LAMP design: it is the
+                                ; only white, blocky 8x8 in ObjSprites, which is
+                                ; exactly 72 B and ends at $FF00, so there are no
+                                ; spare art bytes for a dedicated white raft.
+                                ; Freeing 8 art + 8 colour bytes would allow one.)
 
 ; ==============================================================================
 ; CheckEnemyHit — player overlaps an enemy → remove enemy, lose life

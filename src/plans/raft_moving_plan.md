@@ -30,6 +30,19 @@ As built:
   `test_enemy_movement.py` was retargeted at `UEDispatch` (the dispatch left
   `UpdateEnemies`, so its structure string assertions moved with it).
 
+Riding the tide (2026-10-18, user catch): the water band's surface is NOT
+static — the VBL stages `36+off` into `CollisionX` and the kernel draws the strip
+as the band's last `12-off` lines, so the surface drifts 0-3 lines on a triangle
+wave (`p = EnemyRamP>>4`). `RaftBody` therefore sets `EnemyRamY = 125+off`: the
+raft's bottom row sits on the moving surface and it bobs with the water, and the
+rider's pin (raft top - 12) follows it. The body mirrors the VBL's triangle (it
+cannot reuse `CollisionX`, which the input walks clobber first) — keep the two
+formulas in step; `tools/test_raft.py` pins all 10 phases.
+
+Colour: **white** (`ObjSpriteOffTable[7] = OBJ_LAMP`, frame colour `$0e`). LAMP
+is the only white, blocky 8x8 in `ObjSprites`; the table is exactly 72 B and ends
+at `$FF00`, so a dedicated white raft design needs 8 art + 8 colour bytes freed.
+
 Two deliberate simplifications, both for review:
 1. **Inertia = a one-frame hold on the turn frame.** A true multi-frame spin-up
    ramp needs one byte of per-raft state; the ZP map has none free (EnemyRamD's
