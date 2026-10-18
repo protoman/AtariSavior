@@ -12,7 +12,7 @@ LEVEL4_MINER_Y = 84
 ; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
 LEVEL4_RoomDataTable:
   .word L4R1TilePF0, L4R1RoomRects ; room 0 (async)
-  .word M4TilePF0, M4RoomRects ; room 1 (model 4)
+  .word L4R2TilePF0, L4R2RoomRects ; room 1 (async)
   .word M5TilePF0, M5RoomRects ; room 2 (model 5)
   .word M8TilePF0, M8RoomRects ; room 3 (model 8)
   .word L4R5TilePF0, L4R5RoomRects ; room 4 (async)
@@ -55,6 +55,25 @@ L4R1TilePF2:
 L4R1MetaA:
   .byte $90                  ; (m1_col+1)<<4 | band mask
 L4R1MetaB:
+  .byte $00                  ; (ball_col+1), 0 = no ball
+
+; Generated from room 1 (model 4). Do not edit by hand.
+L4R2RoomRects:
+  .byte 3                  ; number of rectangles
+  .byte $00, $49  ; packed (x<<2|y, w<<2|h)
+  .byte $02, $11  ; packed (x<<2|y, w<<2|h)
+  .byte $1a, $39  ; packed (x<<2|y, w<<2|h)
+  .byte 1              ; number of hot rectangles
+  .byte $82, 0, 1, 20, 1  ; hcrunch band prefix
+L4R2TilePF0:
+  .byte $f0, $f0, $f0
+L4R2TilePF1:
+  .byte $ff, $ff, $3f
+L4R2TilePF2:
+  .byte $3f, $ff, $ff
+L4R2MetaA:
+  .byte $00                  ; (m1_col+1)<<4 | band mask
+L4R2MetaB:
   .byte $00                  ; (ball_col+1), 0 = no ball
 
 ; Generated from room 4 (model 11). Do not edit by hand.

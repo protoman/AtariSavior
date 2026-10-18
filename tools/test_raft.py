@@ -65,8 +65,14 @@ def run(x, dir_right=True, parity=0, lead=0, room_x=None, room_y=None,
     r[X["EnemyRamD"]] = (1 << slot) if dir_right else 0
     r[X["EnemyRamP"]] = parity
     r[X["PlayerBombs"]] = bombs        # b2-0 bombs, b7 flag, b6-3 ramp level
-    r[X["RoomX"]] = room_x if room_x is not None else 0
-    r[X["RoomY"]] = room_y if room_y is not None else 0
+    # default: a rider is over the raft (the ferry only moves when he is);
+    # pass room_x/room_y to place him elsewhere and check the parked case
+    if room_x is None:
+        room_x = x
+    if room_y is None:
+        room_y = raft_top(parity) + 2
+    r[X["RoomX"]] = room_x
+    r[X["RoomY"]] = room_y
     r[X["vyLo"]] = 0
     r[X["vyHi"]] = vyhi
     r[PF0_R2], r[PF1_R2], r[PF2_R2] = pf0, pf1, pf2
@@ -128,8 +134,11 @@ def integration() -> None:
     mem = Mem()
     mem.bank = 0                       # UpdateEnemies lives in bank0
     r = mem.ram
-    r[X["RoomX"]] = 0
-    r[X["RoomY"]] = 0
+    # the raft is a ferry: it only moves while the rider is over it, so the
+    # integration case puts him on top (the dispatch proof is the floated Y;
+    # the step proves motion still happens through the real path)
+    r[X["RoomX"]] = 80
+    r[X["RoomY"]] = raft_top(0) + 2
     r[X["EnemyRamX"]] = 80
     r[X["EnemyRamY"]] = 0
     r[X["EnemyRamD"]] = 0x01           # slot 0 faces right
@@ -252,16 +261,21 @@ def main() -> int:
             pf1=0xFF)
     assert s["room_y"] == raft_top(0) + 2, f"rising must not be pinned: {s}"
 
-    # 7. an empty raft is left alone: no carry, no pin
-    s = run(80, parity=0, room_x=0x20, room_y=0x40, pf1=0xFF)
+    # 7. FERRY: with nobody over it the raft PARKS (no motion at all), and the
+    # ramp state is cleared so the next take-off ramps again; a rider is never
+    # touched. (Position reset on room entry is LoadEnemyRam's job.)
+    s = run(80, parity=1, room_x=0x20, room_y=0x40, pf1=0xFF, bombs=0x85)
+    assert s["x"] == 80, f"an empty raft must not move: {s}"
     assert (s["room_x"], s["room_y"]) == (0x20, 0x40), f"no rider, no touch: {s}"
+    assert s["bombs_after"] == 0x05, f"parking must clear the ramp: {s}"
 
-    print("test_raft: OK (dispatch->tramp->body cross-bank path; floats ON the "
-          "tide-driven water surface (0-3 line drift, both directions); "
-          "take-off ramp (1 px/frame -> 1.5, cleared when ridden, bombs "
-          "untouched); turns at PF0/PF1/PF2 ledges incl. the mirrored half; "
-          "rails hold; a rider is pinned to the raft's top (113+off, worst "
-          f"case {raft_top(0x30) - PIN_FIT}) < {KILL_LINE} and carried)")
+    print("test_raft: OK (dispatch->tramp->body cross-bank path; FERRY: moves "
+          "only while the rider is over it and parks when he leaves; floats ON "
+          "the tide-driven water surface (0-3 line drift); take-off ramp "
+          "(1 px/frame -> 1.5, cleared on parking, bombs untouched); turns at "
+          "PF0/PF1/PF2 ledges incl. the mirrored half; rails hold; a rider is "
+          "pinned to the raft's top (113+off, worst case "
+          f"{raft_top(0x30) - PIN_FIT}) < {KILL_LINE} and carried)")
     return 0
 
 

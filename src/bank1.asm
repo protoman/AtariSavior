@@ -1318,11 +1318,15 @@ BarFineTable:           ; (B+7)>>3, 15 entries; ∈{0,1,2,3,4}
 ;             cell just beyond the raft's leading edge is read from the PF row-2
 ;             buffers and a SOLID cell turns it around, so the raft patrols
 ;             exactly the open water span of the room.
-;   Ride    = while the player's box overlaps the raft's upper rows and he is not
-;             rising (vyHi >= 0): pin RoomY to the raft's top, zero vy (gravity
-;             must never accumulate into the water) and carry RoomX by the
-;             raft's own step. Thrust up (vyHi < 0) skips the pin, so the player
-;             can always fly off.
+;   Ride    = the raft is a FERRY: it moves ONLY while the player's box overlaps
+;             its upper rows; step off and it parks immediately (the ramp state
+;             is cleared too, so the next take-off ramps again). While over it a
+;             non-rising player (vyHi >= 0) is pinned to the raft's top with vy
+;             zeroed (gravity must never accumulate into the water) and carried
+;             by the raft's step; thrust up skips the pin but keeps the carry, so
+;             flying off is always possible. Leaving and re-entering the ROOM
+;             resets the raft to its authored spawn x (LoadEnemyRam re-copies
+;             it), which is the "reset" the user asked for.
 ; In: X = enemy slot. Clobbers A/Y and bank0 Temp ($88).
 ; ==============================================================================
 ; RaftCellSolid — is the model row-2 (water row) playfield cell in display
@@ -2369,6 +2373,39 @@ RaftBody:
     adc #RAFTER_BASE            ; + 125 -> the surface line (132+off) minus 7
     sta EnemyRamY,X             ; the authored y is ignored on purpose: the
                                 ; water line is what the raft floats on
+
+    ; --- does the player count as "over the raft"? --------------------------
+    ; The raft is a FERRY (user rule 2026-10-18): it moves ONLY while he is over
+    ; it, parks the moment he steps off, and its position resets on room entry
+    ; (LoadEnemyRam re-copies the record's spawn x). Gating the whole motion
+    ; block here is what makes it park; the pin/carry later still applies while
+    ; riding. The test runs against the CURRENT x (before the step), i.e. the
+    ; raft he is actually standing on.
+    lda RoomX
+    sec
+    sbc EnemyRamX,X
+    clc
+    adc #RAFTER_XOFF
+    cmp #RAFTER_XSPAN
+    bcs .RaftNoRide             ; no X overlap: nobody aboard
+    lda RoomY
+    sec
+    sbc EnemyRamY,X
+    clc
+    adc #RAFTER_PINFIT
+    cmp #RAFTER_YSPAN
+    bcs .RaftNoRide             ; not in the raft's upper rows
+    lda vyHi
+    bmi .RaftNoRide             ; rising: let him fly away (no pin)
+    jmp .RaftGo
+.RaftNoRide:
+    ; nobody over the raft: PARK it (no motion) and clear the ramp state so the
+    ; next take-off ramps again; the bomb count in b2-0 is preserved
+    lda $F0
+    and #%00000111
+    sta $F0
+    jmp ReturnPad
+.RaftGo:
     ; --- take-off ramp (inertia): heaviest right after boarding -------------
     ; State = PlayerBombs' ($F0) spare HIGH bits: b7 = "ridden last frame",
     ; b6-b3 = the ramp level (0-15); b2-0 stay the bomb count. Adding $10 never
@@ -2442,22 +2479,8 @@ RaftBody:
     sta EnemyRamX,X
     ; ---- carry + pin while the player is aboard -----------------------------
 .RaftRide:
-    lda RoomX
-    sec
-    sbc EnemyRamX,X
-    clc
-    adc #RAFTER_XOFF
-    cmp #RAFTER_XSPAN
-    bcs .RaftNoRide             ; no X overlap: nobody aboard
-    lda RoomY
-    sec
-    sbc EnemyRamY,X
-    clc
-    adc #RAFTER_PINFIT
-    cmp #RAFTER_YSPAN
-    bcs .RaftNoRide             ; not in the raft's upper rows
     lda vyHi
-    bmi .RaftNoRide             ; rising: let him fly away (no pin)
+    bmi .RaftNoPin              ; rising: pin skipped, carry still happens
     lda EnemyRamY,X
     sec
     sbc #RAFTER_PINFIT
@@ -2465,6 +2488,7 @@ RaftBody:
     lda #0
     sta vyLo
     sta vyHi                    ; landing kills the accumulated fall speed
+.RaftNoPin:
     ; ramp: arm the flag, and +1 level every 2nd frame (capped at 15)
     lda $F0
     ora #%10000000
@@ -2495,12 +2519,6 @@ RaftBody:
     sbc $88
     sta RoomX
     jmp .RaftDone
-.RaftNoRide:
-    ; nobody aboard: drop the flag AND the level, keep the bombs (b2-0) — the
-    ; raft runs at full speed and the next take-off ramps again
-    lda $F0
-    and #%00000111
-    sta $F0
 .RaftDone:
     jmp ReturnPad
 
