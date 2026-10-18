@@ -46,13 +46,15 @@ PC_START = LABELS["StartFrame"]
 
 # bank2 packed-meta labels (models_data.asm) -> poke address
 LAB2 = {}
-_pat = re.compile(r"^\s*\d+\s+([0-9a-f]{4})\s+(M\d+Meta[AB])\b")
+# model blocks (M<id>) AND per-room blocks (L<level>R<room>): async
+# moved to the room 2026-10-17, so the played room owns its meta.
+_pat = re.compile(r"^\s*\d+\s+([0-9a-f]{4})\s+((?:M\d+|L\d+R\d+)Meta[AB])\b")
 for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
     _m = _pat.match(_l)
     if _m:
         LAB2.setdefault(_m.group(2), int(_m.group(1), 16))
 if not LAB2:
-    sys.exit("no M*MetaA/MetaB labels found in bank2.lst")
+    sys.exit("no *MetaA/MetaB labels found in bank2.lst")
 
 
 def run(rom: Path, band1: int = 0xFF) -> dict:

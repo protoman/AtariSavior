@@ -60,7 +60,7 @@ RECTS0 = 0x4C
 PF_ROWS = range(0xC3, 0xCC)   # PF0/1/2 rows 0-2 (reported addrs)
 PF_IDX = [a & 0x7F for a in PF_ROWS]   # bytearray indices
 
-MODEL = {0: ("M0TilePF0", "M0RoomRects")}
+MODEL = {0: ("L1R1TilePF0", "L1R1RoomRects")}
 
 # Frozen copy of the bomb-contract geometry lives in tools/test_fixtures.py
 # (the tests-folder copy, user rule 2026-10-14) — at the M0 labels, the

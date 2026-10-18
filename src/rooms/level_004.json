@@ -1,92 +1,121 @@
 {
-    "level": {
-        "cereal_class_version": 1,
-        "level_id": 1,
-        "name": "New Level",
-        "wall_r": 140,
-        "wall_g": 32,
-        "wall_b": 116,
-        "wall2_r": 176,
-        "wall2_g": 88,
-        "wall2_b": 156,
-        "start_room": 0,
-        "miner_room": 5,
-        "miner_x": 17.5,
-        "miner_y": 7.0,
-        "miner_dir": -1,
-        "rooms": [
-            {
-                "room_id": 0,
-                "model_id": 0,
-                "room_x": 0,
-                "room_y": 0,
-                "enemies": [],
-                "lamps": [],
-                "bottom_band": false,
-                "bottom_r": 0,
-                "bottom_g": 0,
-                "bottom_b": 0
-            },
-            {
-                "room_id": 1,
-                "model_id": 4,
-                "room_x": 0,
-                "room_y": 1,
-                "enemies": [],
-                "lamps": [],
-                "bottom_band": false,
-                "bottom_r": 0,
-                "bottom_g": 0,
-                "bottom_b": 0
-            },
-            {
-                "room_id": 2,
-                "model_id": 5,
-                "room_x": 0,
-                "room_y": 2,
-                "enemies": [],
-                "lamps": [],
-                "bottom_band": false,
-                "bottom_r": 0,
-                "bottom_g": 0,
-                "bottom_b": 0
-            },
-            {
-                "room_id": 3,
-                "model_id": 8,
-                "room_x": 0,
-                "room_y": 3,
-                "enemies": [],
-                "lamps": [],
-                "bottom_band": false,
-                "bottom_r": 0,
-                "bottom_g": 0,
-                "bottom_b": 0
-            },
-            {
-                "room_id": 4,
-                "model_id": 11,
-                "room_x": -1,
-                "room_y": 3,
-                "enemies": [],
-                "lamps": [],
-                "bottom_band": false,
-                "bottom_r": 0,
-                "bottom_g": 0,
-                "bottom_b": 0
-            },
-            {
-                "room_id": 5,
-                "model_id": 10,
-                "room_x": 1,
-                "room_y": 3,
-                "enemies": [],
-                "lamps": [],
-                "bottom_band": false,
-                "bottom_r": 0,
-                "bottom_g": 0,
-                "bottom_b": 0
-            }
-        ]
-    }
+ "level": {
+  "cereal_class_version": 1,
+  "level_id": 1,
+  "name": "New Level",
+  "wall_r": 140,
+  "wall_g": 32,
+  "wall_b": 116,
+  "wall2_r": 176,
+  "wall2_g": 88,
+  "wall2_b": 156,
+  "start_room": 0,
+  "miner_room": 5,
+  "miner_x": 17.5,
+  "miner_y": 7.0,
+  "miner_dir": -1,
+  "rooms": [
+   {
+    "room_id": 0,
+    "model_id": 0,
+    "room_x": 0,
+    "room_y": 0,
+    "enemies": [],
+    "lamps": [],
+    "bottom_band": false,
+    "bottom_r": 0,
+    "bottom_g": 0,
+    "bottom_b": 0,
+    "asym_patches": [
+     [
+      0,
+      8,
+      1,
+      1
+     ],
+     [
+      1,
+      8,
+      1,
+      1
+     ]
+    ]
+   },
+   {
+    "room_id": 1,
+    "model_id": 4,
+    "room_x": 0,
+    "room_y": 1,
+    "enemies": [],
+    "lamps": [],
+    "bottom_band": false,
+    "bottom_r": 0,
+    "bottom_g": 0,
+    "bottom_b": 0
+   },
+   {
+    "room_id": 2,
+    "model_id": 5,
+    "room_x": 0,
+    "room_y": 2,
+    "enemies": [],
+    "lamps": [],
+    "bottom_band": false,
+    "bottom_r": 0,
+    "bottom_g": 0,
+    "bottom_b": 0
+   },
+   {
+    "room_id": 3,
+    "model_id": 8,
+    "room_x": 0,
+    "room_y": 3,
+    "enemies": [],
+    "lamps": [],
+    "bottom_band": false,
+    "bottom_r": 0,
+    "bottom_g": 0,
+    "bottom_b": 0
+   },
+   {
+    "room_id": 4,
+    "model_id": 11,
+    "room_x": -1,
+    "room_y": 3,
+    "enemies": [],
+    "lamps": [],
+    "bottom_band": false,
+    "bottom_r": 0,
+    "bottom_g": 0,
+    "bottom_b": 0,
+    "asym_patches": [
+     [
+      1,
+      0,
+      1,
+      1
+     ]
+    ]
+   },
+   {
+    "room_id": 5,
+    "model_id": 10,
+    "room_x": 1,
+    "room_y": 3,
+    "enemies": [],
+    "lamps": [],
+    "bottom_band": false,
+    "bottom_r": 0,
+    "bottom_g": 0,
+    "bottom_b": 0,
+    "asym_patches": [
+     [
+      1,
+      9,
+      1
+     ]
+    ]
+   }
+  ]
+ }
 }

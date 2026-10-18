@@ -45,9 +45,13 @@ def make_model(patches=None, tiles=None):
 
 def emitted(model):
     """resolve + emit -> (asm lines list, (right rows, ball x, m1 x) | None)."""
+    # Async lives on the ROOM (2026-10-17): the model keeps the shape, the
+    # room carries the strips. These synthetic cases move the model's patch
+    # list onto a room dict.
+    room = {"room_id": 0, "asym_patches": model.get("asym_patches") or []}
     left = convert_level.rows_from_json({"model_id": model["id"]},
                                         {model["id"]: model})
-    res = convert_level.resolve_asym_patches(model, left)
+    res = convert_level.resolve_asym_patches(model, room, left)
     asym, ball_x, m1_x, m1_door, m1_right = res if res else (None, 0, 0, False, False)
     lines = convert_room.lines(left, prefix=f"M{model['id']}",
                                source="test", asym_rows=asym,

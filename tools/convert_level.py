@@ -164,6 +164,92 @@ def load_models(models_path: Path) -> dict:
         return {}
 
 
+def room_who(room: dict) -> str:
+    """Human identity for an error message (async lives on the ROOM now)."""
+    return f"room {room.get('room_id', '?')} (model {room.get('model_id', '?')})"
+
+
+def room_patches(room: dict) -> list:
+    """Room-level async strips — relocated from ModelData 2026-10-17 so one
+    model shape can be reused by rooms with different async walls."""
+    patches = room.get("asym_patches") or []
+    if not isinstance(patches, list):
+        raise ValueError(f"{room_who(room)}: asym_patches must be a list")
+    return patches
+
+
+def room_feature_cells(room: dict) -> list[tuple[int, int, int]]:
+    """Room-level P/V/C cells: [[row, col, tile], ...] -> [(row, col, tile)].
+
+    Feature tiles are no longer model grid tiles: the model keeps the SHAPE
+    (a feature cell's model tile migrates to SOLID_WALL, same PF byte) and the
+    room supplies the behaviour cells. One special kind per room, row 1 only
+    (user rules R1/R2, 2026-10-14)."""
+    who = room_who(room)
+    out: list[tuple[int, int, int]] = []
+    seen: set[tuple[int, int]] = set()
+    for cell in room.get("feature_cells") or []:
+        if not (isinstance(cell, (list, tuple)) and len(cell) == 3
+                and all(isinstance(v, int) for v in cell)):
+            raise ValueError(
+                f"{who}: feature cell {cell!r} must be [row, col, tile]")
+        row, col, tile = cell
+        if tile not in FEATURE_TILES:
+            raise ValueError(
+                f"{who}: feature tile {tile} is not a feature tile "
+                f"({FEATURE_NAME} — 10/11/12)")
+        if not 0 <= row < HEIGHT:
+            raise ValueError(f"{who}: feature row {row} out of 0..{HEIGHT - 1}")
+        if not 0 <= col < WIDTH:
+            raise ValueError(
+                f"{who}: feature col {col} out of 0..{WIDTH - 1} (D7 grid)")
+        if row != 1:
+            raise ValueError(
+                f"{who}: {FEATURE_NAME[tile]} at row {row} — special features "
+                "live on the middle band (row 1)")
+        if (row, col) in seen:
+            raise ValueError(f"{who}: duplicate feature cell (row {row}, col {col})")
+        seen.add((row, col))
+        out.append((row, col, tile))
+    # NOTE: the "one special kind per room" rule is NOT enforced here — the
+    # per-cell list is also used to probe mixed grids. convert_room.lines()
+    # (special_kinds) and verify_build's room loop own that gate.
+    return out
+
+
+def room_door_flag(room: dict) -> bool:
+    """True when the ROOM carries a LOCKED_DOOR async strip (was MetaB b7)."""
+    return any(
+        len(p) >= 3 and p[2] == LOCKED_DOOR
+        and (p[3] if len(p) == 4 else 0) == 0
+        for p in room_patches(room)
+    )
+
+
+def room_m1_door_flag(room: dict) -> bool:
+    """True when the ROOM carries a LOCKED_DOOR door (MetaA b3).
+
+    Since Phase 5 (2026-10-17) BOTH halves use the M1 strip: a side-1 door is
+    the left door, a side-0 door is authored as the right door (MetaA b0=1).
+    """
+    return any(
+        len(p) >= 3 and p[2] == LOCKED_DOOR
+        for p in room_patches(room)
+    )
+
+
+def async_kinds(room: dict) -> list[str]:
+    """Special-feature kinds present in a ROOM's async: door first, then
+    phase/vcrunch/hcrunch by tile id."""
+    kinds: list[str] = []
+    if room_door_flag(room):
+        kinds.append("door")
+    for t in sorted({c[2] for c in room_feature_cells(room)}):
+        if t in FEATURE_NAME:
+            kinds.append(FEATURE_NAME[t])
+    return kinds
+
+
 def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
     # If room has model_id and models are available, look up tiles from model
     model = None
@@ -192,7 +278,12 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
     # = touching any part of the drawn block kills). Hcrunch was already
     # allowed: its cells keep the 'C' char (the band's other cells are H).
     hot = bool((model if model else room).get("mid_band_type", 0))
-    who = room.get("room_id", f"model {room.get('model_id', '?')}")
+    who = room_who(room)
+    feats = {(r, c): t for r, c, t in room_feature_cells(room)}
+    if feats and hot and any(t == PHASE for t in feats.values()):
+        raise ValueError(
+            f"{who}: phase on the hot middle band — hot and blinking are "
+            "mutually exclusive (turn the hot flag off)")
     rows = []
     for y in range(HEIGHT):
         line = []
@@ -200,23 +291,16 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
             t = tiles[y * WIDTH + x]
             if t == LOCKED_DOOR:
                 raise ValueError(
-                    f"{who}: tile 9 LOCKED_DOOR "
-                    "belongs in asym_patches (async side-0 strip), not the grid")
+                    f"{who}: tile 9 LOCKED_DOOR belongs in asym_patches "
+                    "(async strip), not the grid")
             if t in FEATURE_TILES:
-                # Special features live ONLY on the middle band (row 1) —
-                # top/bottom bands are entry/exit corridors (user rule
-                # 2026-10-14). Phase stays mutually exclusive with hot;
-                # hcrunch/vcrunch are allowed there.
-                if y != 1:
-                    raise ValueError(
-                        f"{who}: {FEATURE_NAME[t]} at row {y} — special "
-                        "features live on the middle band (row 1)")
-                if t == PHASE and hot:
-                    raise ValueError(
-                        f"{who}: phase on the hot middle band "
-                        "— hot and blinking are mutually exclusive "
-                        "(turn the hot flag off)")
-                line.append(tile_to_char(t))
+                raise ValueError(
+                    f"{who}: model grid carries feature tile "
+                    f"{FEATURE_NAME[t]} — features live on the ROOM now "
+                    "(room.feature_cells); migrate with "
+                    "tools/migrate_async_to_rooms.py")
+            if (y, x) in feats:
+                line.append(tile_to_char(feats[(y, x)]))
             elif y == 1 and hot and t != 0:
                 line.append("H")
             else:
@@ -225,9 +309,9 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
     return rows
 
 
-def resolve_asym_patches(model: dict,
+def resolve_asym_patches(model: dict, room: dict,
                          left_rows: list[str]
-                         ) -> tuple[list[str] | None, int, int] | None:
+                         ) -> tuple[list[str] | None, int, int, bool, bool] | None:
     """D3 asym_patches -> (right rows|None, ball x, m1 x), or None (no patches).
 
     Right rows are in right_col order (col 0 = center-adjacent); they start
@@ -268,13 +352,14 @@ def resolve_asym_patches(model: dict,
         one (a wall cell would hide the patch it claims to show).
         Ball mask and M1 mask may differ.
     """
-    patches = model.get("asym_patches") or []
+    patches = room_patches(room)
     if not patches:
         return None
     mid = model.get("id")
+    who = room_who(room)
     if len(patches) > 2:
         raise ValueError(
-            f"model {mid}: {len(patches)} asym patches — envelope allows "
+            f"{who}: {len(patches)} asym patches — envelope allows "
             f"TWO blocks max (stacked on two bands, or a pair on one band)")
     right_cols: set[int] = set()
     left_cols: set[int] = set()
@@ -288,38 +373,38 @@ def resolve_asym_patches(model: dict,
         if not (isinstance(p, (list, tuple)) and len(p) in (3, 4)
                 and all(isinstance(v, int) for v in p)):
             raise ValueError(
-                f"model {mid}: asym patch {p!r} must be [row, col, tile] or "
+                f"{who}: asym patch {p!r} must be [row, col, tile] or "
                 f"[row, col, tile, side] (side 0 = right/ball, 1 = left/M1)")
         side = p[3] if len(p) == 4 else 0
         if side not in (0, 1):
             raise ValueError(
-                f"model {mid}: patch {p!r} side {side} not in 0 (right/ball) "
+                f"{who}: patch {p!r} side {side} not in 0 (right/ball) "
                 f"1 (left/M1)")
         row, col, tile = p[0], p[1], p[2]
         if (row, col, side) in seen:
             raise ValueError(
-                f"model {mid}: duplicate asym patch (row {row}, col {col}, "
+                f"{who}: duplicate asym patch (row {row}, col {col}, "
                 f"side {side}) — the same cell twice is one block")
         seen.add((row, col, side))
         if tile in FEATURE_TILES:
             raise ValueError(
-                f"model {mid}: tile {tile} is a grid tile — feature tiles "
+                f"{who}: tile {tile} is a grid tile — feature tiles "
                 "(phase/vcrunch/hcrunch) cannot be asym patches")
         if tile == LOCKED_DOOR:
             if row != 1:
                 raise ValueError(
-                    f"model {mid}: LOCKED_DOOR patch at row {row} — the "
+                    f"{who}: LOCKED_DOOR patch at row {row} — the "
                     "door lives on the middle band (row 1)")
             if model.get("mid_band_type"):
                 raise ValueError(
-                    f"model {mid}: LOCKED_DOOR on the hot middle band — "
+                    f"{who}: LOCKED_DOOR on the hot middle band — "
                     "turn the hot flag off (door and hot are mutually "
                     "exclusive)")
         if not 0 <= row < HEIGHT:
-            raise ValueError(f"model {mid}: patch row {row} out of 0..{HEIGHT - 1}")
+            raise ValueError(f"{who}: patch row {row} out of 0..{HEIGHT - 1}")
         if not 0 <= col < WIDTH:
             raise ValueError(
-                f"model {mid}: patch col {col} out of 0..{WIDTH - 1} (D7 grid)")
+                f"{who}: patch col {col} out of 0..{WIDTH - 1} (D7 grid)")
         char = tile_to_char(tile)
         if side == 0 and tile == LOCKED_DOOR:
             # Phase 5: a RIGHT-half door is drawn by the M1 strip (yellow
@@ -333,7 +418,7 @@ def resolve_asym_patches(model: dict,
             # M1: paints wall-colored color over an OPEN left cell.
             if char not in "#H":
                 raise ValueError(
-                    f"model {mid}: M1 patch at row {row} col {col} must paint "
+                    f"{who}: M1 patch at row {row} col {col} must paint "
                     f"a wall tile (M1 only adds color, tile {tile!r} is open)")
             left_cols.add(col)
             left_patch_rows.add(row)
@@ -341,14 +426,14 @@ def resolve_asym_patches(model: dict,
         mirror = left_rows[row][WIDTH - 1 - col]
         if char == "." and mirror in "#H":
             raise ValueError(
-                f"model {mid}: subtractive patch at row {row} col {col} "
+                f"{who}: subtractive patch at row {row} col {col} "
                 f"(opens a cell whose mirror is wall — D6 is additive-only)")
         right_cols.add(col)
         has_right = True
         right[row] = right[row][:col] + char + right[row][col + 1:]
     if len(right_cols) > 1:
         raise ValueError(
-            f"model {mid}: ball patches span columns {sorted(right_cols)} — "
+            f"{who}: ball patches span columns {sorted(right_cols)} — "
             f"envelope allows exactly ONE column-x per side (single ball x; "
             f"a run wider than 1 cell needs >1 column and is rejected too)")
     side0_tiles = {p[2] for p in patches
@@ -356,19 +441,19 @@ def resolve_asym_patches(model: dict,
     if LOCKED_DOOR in side0_tiles and len(side0_tiles) > 1:
         others = sorted(t for t in side0_tiles if t != LOCKED_DOOR)
         raise ValueError(
-            f"model {mid}: side-0 patches mix LOCKED_DOOR with tile(s) "
+            f"{who}: side-0 patches mix LOCKED_DOOR with tile(s) "
             f"{others} — a door model's async patches must ALL be "
             "LOCKED_DOOR")
     side1_tiles = {p[2] for p in patches if len(p) >= 4 and p[3] == 1}
     if LOCKED_DOOR in side1_tiles and len(side1_tiles) > 1:
         others = sorted(t for t in side1_tiles if t != LOCKED_DOOR)
         raise ValueError(
-            f"model {mid}: side-1 patches mix LOCKED_DOOR with tile(s) "
+            f"{who}: side-1 patches mix LOCKED_DOOR with tile(s) "
             f"{others} — a door model's M1 patches must ALL be LOCKED_DOOR")
     m1_door = (LOCKED_DOOR in side1_tiles) or m1_door_right
     if len(left_cols) > 1:
         raise ValueError(
-            f"model {mid}: M1 patches span columns {sorted(left_cols)} — "
+            f"{who}: M1 patches span columns {sorted(left_cols)} — "
             f"envelope allows exactly ONE column-x per side (single M1 x)")
     m1_x = 0
     if left_cols:
@@ -383,12 +468,12 @@ def resolve_asym_patches(model: dict,
                 cell = left_rows[b][cc]
                 if b in left_patch_rows and cell in "#H":
                     raise ValueError(
-                        f"model {mid}: M1 patch band {b} col {cc} is wall — "
+                        f"{who}: M1 patch band {b} col {cc} is wall — "
                         f"the whole-cave ENAM1 latch would hide the patch "
                         f"(wall-hide guard)")
                 if b not in left_patch_rows and cell not in "#H":
                     raise ValueError(
-                        f"model {mid}: M1 cell col {cc} is open in band {b} "
+                        f"{who}: M1 cell col {cc} is open in band {b} "
                         f"with no patch — the whole-cave ENAM1 latch would "
                         f"paint it (wall-hide guard: wall the cell or patch "
                         f"the band)")
@@ -401,35 +486,12 @@ def resolve_asym_patches(model: dict,
     return (right if has_right else None), ball_x, m1_x, m1_door, m1_door_right
 
 
-def model_door_flag(model: dict) -> bool:
-    """True when the model carries a LOCKED_DOOR async patch (MetaB b7)."""
-    return any(
-        len(p) >= 3 and p[2] == LOCKED_DOOR
-        and (p[3] if len(p) == 4 else 0) == 0
-        for p in (model.get("asym_patches") or [])
-    )
-
-
-def model_m1_door_flag(model: dict) -> bool:
-    """True when the model carries a LOCKED_DOOR door (MetaA b3).
-
-    Since Phase 5 (2026-10-17) BOTH halves use the M1 strip: a side-1 door is
-    the left door, a side-0 door is authored as the right door (MetaA b0=1).
-    """
-    return any(
-        len(p) >= 3 and p[2] == LOCKED_DOOR
-        for p in (model.get("asym_patches") or [])
-    )
-
-
 def model_specials(model: dict) -> list[str]:
-    """Special-feature kinds present in a model (door patches + grid tiles).
-
-    Order: door first (async patch), then phase/vcrunch/hcrunch by tile id.
-    """
+    """Special-feature kinds still encoded on a MODEL — must be EMPTY since
+    the async move (2026-10-17). Kept as the migration tripwire."""
     kinds: list[str] = []
-    if model_door_flag(model):
-        kinds.append("door")
+    if model.get("asym_patches"):
+        kinds.append("door/strip")
     for t in sorted(set(model.get("tiles") or [])):
         if t in FEATURE_NAME:
             kinds.append(FEATURE_NAME[t])
@@ -437,27 +499,25 @@ def model_specials(model: dict) -> list[str]:
 
 
 def check_model_objects(model: dict, who: str) -> None:
-    """Special features are alone; raft is bottom-band (user rule 2026-10-14)."""
-    kinds = model_specials(model)
-    if len(kinds) > 1:
+    """MODEL-level static rules + the async-migration tripwire.
+
+    Async (asym strips + feature cells) lives on the ROOM since 2026-10-17, so
+    a model carrying either key is stale data: the per-room rules (special
+    alone, object caps) are enforced in check_rooms_against_models instead.
+    Raft stays model-level (it is a static grid object, row 2 only)."""
+    stale = model_specials(model)
+    if stale:
         raise ValueError(
-            f"{who}: mixed special features {kinds} — special features are "
-            "alone per room (door XOR phase XOR vcrunch XOR hcrunch)")
+            f"{who}: model still carries async {stale} — async lives on the "
+            "ROOM now (room.asym_patches / room.feature_cells); migrate with "
+            "tools/migrate_async_to_rooms.py")
     w = int(model.get("width", WIDTH))
     tiles = model.get("tiles") or []
-    has_obj_tile = any(t in (RAFT, MAGMA_FALL) for t in tiles)
     for i, t in enumerate(tiles):
         if t == RAFT and i // w != 2:
             raise ValueError(
                 f"{who}: RAFT at row {i // w} — the raft lives on the "
                 "bottom band (row 2, the water strip)")
-    if has_obj_tile:
-        for k in ("door", "vcrunch", "hcrunch"):
-            if k in kinds:
-                raise ValueError(
-                    f"{who}: {k} model also has raft/magma tiles — "
-                    f"{k} rooms block objects (vcrunch/hcrunch need the "
-                    "sprite slot; door allows a single enemy only)")
 
 
 def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
@@ -476,7 +536,7 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
         if model is None:
             continue
         who = f"{who_prefix} room {index} (model {model['id']})"
-        kinds = model_specials(model)
+        kinds = async_kinds(room)
         enemies = room.get("enemies") or []
         lamps = room.get("lamps") or []
         miner = miner_room == index
@@ -621,14 +681,17 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
     lines.append(f"{prefix}_RoomDataTable:")
     for index, room in enumerate(rooms):
         model = models_by_id.get(room.get("model_id")) if models_by_id else None
-        if model is not None:
+        if model is not None and not room_has_async(room):
             mid = model["id"]
             lines.append(
                 f"  .word M{mid}TilePF0, M{mid}RoomRects ; room {index} (model {mid})")
         else:
+            why = "" if model is not None else " (no model)"
+            if model is not None:
+                why = " (async)"
             lines.append(
                 f"  .word {room_prefix}{index + 1}TilePF0, "
-                f"{room_prefix}{index + 1}RoomRects ; room {index}")
+                f"{room_prefix}{index + 1}RoomRects ; room {index}{why}")
     lines.append("")
     lines.append(
         "; Room connections: 2 bytes/room, nibble-packed "
@@ -641,6 +704,20 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
             f"${nibble_room(left_, 'left'):01x}{nibble_room(right, 'right'):01x} "
             f"; room {index}")
     lines += _enemy_tables(prefix, rooms)
+
+    # Per-room data blocks (async rooms + model-less rooms) live in THIS file,
+    # not in level_00N_rooms_data.asm: the table file is the unit emit_spills
+    # sizes and relocates into a bank2 gap (bugs.md 27b), so net-new data is
+    # spill-managed instead of silently overrunning the level-data window.
+    for index, room in enumerate(rooms):
+        model = models_by_id.get(room.get("model_id")) if models_by_id else None
+        if model is not None and not room_has_async(room):
+            continue
+        rows = rows_from_json(room, models_by_id)
+        lines.append("")
+        lines += emit_room_block(f"{room_prefix}{index + 1}", room, model, rows,
+                                 f"room {index} (model "
+                                 f"{room.get('model_id', '-')})")
     output.write_text("\n".join(lines) + "\n")
 
 
@@ -738,6 +815,48 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
     return lines
 
 
+def emit_room_block(prefix: str, room: dict, model: dict, rows: list[str],
+                    source: str) -> list[str]:
+    """One (TilePF0..2 + MetaA/B [+ Right*]) block for `prefix`.
+
+    Used for BOTH the shared static M<id> blocks (room = {} -> no async) and
+    the per-room L<level>R<room> blocks an async room owns since the 2026-10-17
+    move. Keeping one emitter means the two paths cannot drift."""
+    if model is None:
+        res = None
+        hot = False
+    else:
+        res = resolve_asym_patches(model, room, rows)
+        hot = bool(model.get("mid_band_type"))
+    asym, ball_x, m1_x, m1_door, m1_right = (
+        res if res else (None, 0, 0, False, False))
+    # M1 strips on the hot band: the cells are PF-open so the 'H' walk never
+    # sees them -> convert_room emits mask-$00 records for them.
+    hot_m1 = []
+    if hot:
+        for patch in room_patches(room):
+            side = patch[3] if len(patch) == 4 else 0
+            if side == 1 and patch[0] == 1:
+                hot_m1.append((patch[0], patch[1]))
+    return convert_room.lines(
+        rows, prefix=prefix, source=source,
+        asym_rows=asym, asym_ball_x=ball_x, asym_m1_x=m1_x,
+        hot_m1=hot_m1,
+        door=False,          # Phase 5: no ball doors — a side-0 door is the
+                             # right M1 door (MetaA b0=1)
+        m1_door=room_m1_door_flag(room),
+        m1_right=m1_right,
+        hot=hot)
+
+
+def room_has_async(room: dict) -> bool:
+    """True when the ROOM owns a data block (async strips / feature cells).
+
+    Those rooms can no longer share a model block: the meta lives at a fixed
+    offset inside the (PF + meta + stream) block the room points at."""
+    return bool(room.get("asym_patches") or room.get("feature_cells"))
+
+
 def write_levels_index(output: Path, json_paths: list[Path]) -> None:
     """Emit models_data.asm + levels_data.asm (includes) + levels.asm (tables).
 
@@ -761,8 +880,15 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         level_n = level_number_from_path(path) or int(level.get("level_id", 1))
         levels.append((level_n, level))
         for room in level["rooms"]:
-            if models_by_id.get(room.get("model_id")) is not None:
-                referenced.add(models_by_id[room["model_id"]]["id"])
+            model = models_by_id.get(room.get("model_id"))
+            if model is None:
+                continue
+            # A shared M<id> block is only needed by rooms that carry NO async.
+            # An async room owns its own block (the meta sits at a fixed offset
+            # inside the block the room points at), so a model used exclusively
+            # by async rooms needs no shared block at all.
+            if not room_has_async(room):
+                referenced.add(model["id"])
         check_rooms_against_models(level.get("rooms") or [], models_by_id,
                                    f"level {level_n}",
                                    int(level.get("miner_room", 0)) & 0x7F)
@@ -776,29 +902,16 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
     for mid in sorted(referenced):
         model = models_by_id[mid]
         model_lines.append("")
+        # A model block is the STATIC shape only (async lives on rooms now).
+        # Its label set stays stable for every referenced model, so the frozen
+        # test fixtures (tools/test_fixtures.py injects at M0/M2/M4) and any
+        # hand-written reference keep resolving.
         left_rows = rows_from_json({"model_id": mid, "tiles": model.get("tiles"),
                                     "width": model.get("width", WIDTH)},
                                    models_by_id)
         check_model_objects(model, f"models.json model {mid}")
-        res = resolve_asym_patches(model, left_rows)
-        asym, ball_x, m1_x, m1_door, m1_right = res if res else (None, 0, 0, False, False)
-        # M1 patches on the hot band (row 1 = rows_from_json's hot row) go
-        # into the hot stream: the cells are PF-open so the 'H' walk never
-        # sees them — convert_room emits them as mask-$00 records.
-        hot_m1 = []
-        if model.get("mid_band_type"):
-            for p in model.get("asym_patches") or []:
-                side = p[3] if len(p) == 4 else 0
-                if side == 1 and p[0] == 1:
-                    hot_m1.append((p[0], p[1]))
-        model_lines += convert_room.lines(
-            left_rows, prefix=f"M{mid}", source=f"models.json model {mid}",
-            asym_rows=asym, asym_ball_x=ball_x, asym_m1_x=m1_x,
-            hot_m1=hot_m1, door=False,   # Phase 5: no ball doors — a side-0
-                                         # door is emitted as the right M1 door
-            m1_door=model_m1_door_flag(model),
-            m1_right=m1_right,
-            hot=bool(model.get("mid_band_type")))
+        model_lines += emit_room_block(
+            f"M{mid}", {}, model, left_rows, f"models.json model {mid}")
     model_lines.append("")
     (generated / "models_data.asm").write_text("\n".join(model_lines) + "\n")
     data_lines.insert(2, f'    include "{generated.name}/models_data.asm"')
@@ -862,6 +975,11 @@ _SPILL_SLOTS = [
 ]
 _SPILL_ORG = {  # slot start for capacity of the window slot (org $F9D9)
     "spill_window": 0xF9D9,
+    # bank2's include for spill_F767 sits after `.ds $F700 - *`, so the slot
+    # really spans $F700..$F800 (256B): the index/LevelDataTable lands first at
+    # $F700. The old $F767 start under-counted 103B of usable capacity, which
+    # the level tables alone never needed — the per-room async blocks do.
+    "spill_F767": 0xF700,
 }
 
 
@@ -957,36 +1075,21 @@ def main(argv: list[str]) -> int:
 
     level_n = level_number_from_path(json_path) or int(level.get("level_id", 1))
     try:
-        room_asms = []
         for index, room in enumerate(rooms):
             rows = rows_from_json(room, models_by_id)
             txt = rooms_dir / f"level_{level_n:03d}_room_{index + 1:03d}.txt"
             txt.write_text("\n".join(rows) + "\n")
-            # Rooms with a model get their PF/rect data from the shared
-            # M<id>* symbols in models_data.asm — no per-room copy.
-            if models_by_id.get(room.get("model_id")) is None:
-                asm = generated_dir / f"level_{level_n:03d}_room_{index + 1:03d}.asm"
-                convert_room.emit(rows, asm, prefix=f"L{level_n}R{index + 1}",
-                                  source=txt.name)
-                room_asms.append(asm)
 
         connections = connection_bytes(rooms)
         tables = Path(str(out_prefix) + "_rooms.asm")
         write_tables(level, rooms, connections, tables, level_n, models_by_id)
 
-        # Include list for every per-room data file still emitted (rooms
-        # without a model). The game assembler needs only this single include
-        # and picks up rooms added in the editor without editing bank0.asm.
-        # Include paths are relative to the build working directory (the repo
-        # root), matching the style used elsewhere.
+        # Rooms with a model AND no async share the M<id>* symbols in
+        # models_data.asm. Every other room's block is emitted into the level's
+        # table file by write_tables() (see there).
         data_include = generated_dir / f"level_{level_n:03d}_rooms_data.asm"
-        if room_asms:
-            data_include.write_text(
-                "\n".join(f'    include "{generated_dir.name}/{asm.name}"'
-                          for asm in room_asms) + "\n")
-        else:
-            data_include.write_text(
-                "; All rooms use shared model data (models_data.asm).\n")
+        data_include.write_text(
+            "; All rooms use shared model data (models_data.asm).\n")
 
         print(f"wrote {len(rooms)} room grids and tables -> {tables}")
     except (OSError, ValueError) as error:

@@ -72,9 +72,9 @@ MODEL = {  # fixture models only (rule 2026-10-14). M0 = this test's
     # probe; M2 kept for test_vcr_shutter, which imports this harness and
     # freeze_m2's its own private copy before load_room(2); M4 kept for
     # test_hcrunch (freeze_m4's its own copy before load_room(4)).
-    0: ("M0TilePF0", "M0RoomRects"),
+    0: ("L1R1TilePF0", "L1R1RoomRects"),
     2: ("M2TilePF0", "M2RoomRects"),
-    4: ("M4TilePF0", "M4RoomRects"),
+    4: ("L3R2TilePF0", "L3R2RoomRects"),
 }
 
 RANGE_LO = L0["LaserInput"]

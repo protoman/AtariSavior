@@ -33,7 +33,7 @@ Run standalone:
 # stopped seeing its wall). PF: rows PF0|PF1|PF2; row1 PF2 = $0C = the
 # (14,1,2,1) thin wall (cols 14-15), the blast-window edge case the
 # test proves. Stream: 3 rects (ceiling dropped — the blast row is 1),
-# 1+6+1 = 8B = the exact M0RoomRects->M0TilePF0 slot (a 4th rect spills
+# 1+6+1 = 8B = the exact L1R1RoomRects->L1R1TilePF0 slot (a 4th rect spills
 # the hot count into the PF block — same trap that ate the $81 record
 # in the M2 fixture).
 M0_PF = bytes.fromhex("f0 30 f0 ff 00 ff 3f 0c ff")
@@ -59,8 +59,8 @@ M2_STREAM = bytes.fromhex(
 
 # model4 — the shipped hcrunch room (level 3 room 2, $82 prefix shutter on
 # band1, sweep extent cols 0-19 = the whole left half to screen center).
-# Stream = 1+6+1+5 = 13B = the exact M4RoomRects -> M4TilePF0 slot;
-# PF+meta = 11B = the exact M4TilePF0 -> M5RoomRects slot.
+# Stream = 1+6+1+5 = 13B = the exact L3R2RoomRects -> L3R2TilePF0 slot;
+# PF+meta = 11B = the exact L3R2TilePF0 -> M5RoomRects slot.
 # Re-frozen 2026-10-16: C cells dropped from static rects (convert_room
 # solids "#HPV") — the C+row2 merged rect is now the row2 wall rect
 # ($02,$11); record w=4 -> w=20 (full = 10 cells = to the center).
@@ -97,8 +97,8 @@ def _as_bank2(banks):
 def freeze_m0(banks, labels):
     """Inject the bomb-contract fixture (stream first, then PF+meta)."""
     bank2 = _as_bank2(banks)
-    _freeze(bank2, labels, "M0RoomRects", M0_STREAM)
-    _freeze(bank2, labels, "M0TilePF0", M0_PF + M0_META)
+    _freeze(bank2, labels, "L1R1RoomRects", M0_STREAM)
+    _freeze(bank2, labels, "L1R1TilePF0", M0_PF + M0_META)
 
 
 def freeze_m2(banks, labels):
@@ -111,8 +111,8 @@ def freeze_m2(banks, labels):
 def freeze_m4(banks, labels):
     """Inject the hcrunch fixture (stream first, then PF+meta)."""
     bank2 = _as_bank2(banks)
-    _freeze(bank2, labels, "M4RoomRects", M4_STREAM)
-    _freeze(bank2, labels, "M4TilePF0", M4_PF + M4_META)
+    _freeze(bank2, labels, "L3R2RoomRects", M4_STREAM)
+    _freeze(bank2, labels, "L3R2TilePF0", M4_PF + M4_META)
 
 
 def _selfcheck():
@@ -126,8 +126,8 @@ def _selfcheck():
                      line)
         if m:
             labels[m.group(2)] = int(m.group(1), 16)
-    for name in ("M0RoomRects", "M0TilePF0", "M2RoomRects", "M2TilePF0",
-                 "M4RoomRects", "M4TilePF0", "M5RoomRects"):
+    for name in ("L1R1RoomRects", "L1R1TilePF0", "M2RoomRects", "M2TilePF0",
+                 "L3R2RoomRects", "L3R2TilePF0", "M5RoomRects"):
         if name not in labels:
             raise SystemExit(f"selfcheck FAIL: {name} missing in bank2.lst")
     bank = bytearray(open(src / "bank2.bin", "rb").read())
@@ -138,12 +138,12 @@ def _selfcheck():
     # fixture deliberately spills into the next block, which the PF/meta
     # freeze then overwrites — order documented in freeze_m*).
     for label, data, nxt in (
-        ("M0RoomRects", M0_STREAM, "M0TilePF0"),
-        ("M0TilePF0", M0_PF + M0_META, "M1RoomRects"),
+        ("L1R1RoomRects", M0_STREAM, "L1R1TilePF0"),
+        ("L1R1TilePF0", M0_PF + M0_META, "M1RoomRects"),
         ("M2RoomRects", M2_STREAM, "M2TilePF0"),
         ("M2TilePF0", M2_PF + M2_META, "M3RoomRects"),
-        ("M4RoomRects", M4_STREAM, "M4TilePF0"),
-        ("M4TilePF0", M4_PF + M4_META, "M5RoomRects"),
+        ("L3R2RoomRects", M4_STREAM, "L3R2TilePF0"),
+        ("L3R2TilePF0", M4_PF + M4_META, "M5RoomRects"),
     ):
         off = labels[label] - 0xF000
         fit = min(len(data), labels[nxt] - labels[label])
@@ -159,13 +159,16 @@ def _selfcheck():
     # the hot count inside the PF block; an M2 spill eats the $81 record
     # (an M4 spill has the same trap: hot count / $82 inside the PF block)
     for tag, stream, a, b in (
-        ("M0", M0_STREAM, "M0RoomRects", "M0TilePF0"),
+        ("M0", M0_STREAM, "L1R1RoomRects", "L1R1TilePF0"),
         ("M2", M2_STREAM, "M2RoomRects", "M2TilePF0"),
-        ("M4", M4_STREAM, "M4RoomRects", "M4TilePF0"),
+        ("M4", M4_STREAM, "L3R2RoomRects", "L3R2TilePF0"),
     ):
         gap = labels[b] - labels[a]
         assert len(stream) <= gap, f"{tag} stream {len(stream)}B > slot {gap}B"
-    assert len(M4_PF + M4_META) <= labels["M5RoomRects"] - labels["M4TilePF0"]
+    # The room block is PF(9B) + MetaA + MetaB, so the fixture's PF+meta write
+    # ends exactly at MetaB+1 (the old "next M-block" neighbour is gone: per-room
+    # blocks live in the level table file now).
+    assert labels["L3R2MetaB"] + 1 - labels["L3R2TilePF0"] == len(M4_PF + M4_META)
     print("test_fixtures: OK (freeze round-trip + fixture self-consistency)")
 
 
