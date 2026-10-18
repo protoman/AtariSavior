@@ -122,6 +122,27 @@ Invariants (each one has a reason, do not "clean up"):
   cols 0-1 / 38-39 in all bands). The demo build skips the sims (they probe
   live content) and restores + rebuilds the live ROM on exit, like qa_build.sh.
 
+### Critical Rule: Reproduce the User's Report Through THEIR Entry Point
+
+**When the user says a tool/feature "does not work", reproduce it with the exact
+tool, tab and entry point they use — never a nearby internal function.** On
+2026-10-18 the user reported that Delete did nothing on a hcrunch row (they said
+it three times, and even warned "assume your tests might fail"). The agent's
+regression case called `MapCanvas::ApplyBrushAt` directly with `BrushTool::
+ERASE_AIR` (the empty brush) and passed — while the user was clicking
+`BrushTool::DELETE_ENTITY`, a different tool handled by a different branch that
+only erased entities. The test was green, the user's click was a literal no-op,
+and the agent spent a session doubting a correct report.
+
+Rules:
+- **A green test that does not use the user's path proves nothing about their
+  path.** Name the tool/tab/entry point in the test (here: `DELETE_ENTITY`, the
+  Level tab) and drive it the way the UI does.
+- **The user's observation outranks your model of the code.** If they say it
+  fails and your reading says it cannot, your reading is incomplete — find the
+  other branch. "I checked and it should work" is not an answer.
+- Do not ask them to re-verify something they already verified; reproduce it.
+
 ### Critical Rule: the LIVE Stage Is the User's — Never Edit It
 
 `src/rooms/`, `src/rooms/models/models.json` and `src/generated/` are the user's
