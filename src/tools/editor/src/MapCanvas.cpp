@@ -728,7 +728,12 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         if (m_currentBrush == BrushTool::ERASE_AIR && asyncRoom) {
             for (int i = (int)asyncRoom->feature_cells.size() - 1; i >= 0; --i) {
                 const auto& c = asyncRoom->feature_cells[i];
-                if (c.size() >= 3 && c[0] == modelY && c[1] == tileX) {
+                // A P/V/C feature is a ROW property (one kind per row; convert
+                // resolves the row and an older paint wrote one cell per
+                // column). Matching the stored column left the other cells
+                // behind, so the row still drew and "delete did nothing"
+                // (user report 2026-10-18). One erase clears the row.
+                if (c.size() >= 3 && c[0] == modelY) {
                     removedFeatures.push_back(c);
                     asyncRoom->feature_cells.erase(
                         asyncRoom->feature_cells.begin() + i);
@@ -829,8 +834,9 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         std::vector<std::vector<int>> oldFeatures = room->feature_cells;
         for (int i = (int)room->feature_cells.size() - 1; i >= 0; --i) {
             const auto& c = room->feature_cells[i];
-            if (c.size() >= 3 && c[0] == modelY && c[1] == tileX)
-                room->feature_cells.erase(room->feature_cells.begin() + i);
+            if (c.size() >= 3 && c[0] == modelY)   // row-wide: replace the
+                room->feature_cells.erase(          // row's kind in one go
+                    room->feature_cells.begin() + i);
         }
         room->feature_cells.push_back({modelY, tileX, tileVal});
         int n = 0;
