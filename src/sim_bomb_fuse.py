@@ -92,9 +92,30 @@ for _l in open(Path(__file__).with_name('bank0.lst'), errors='replace'):
                   r'([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$', _l)
     if _m:
         _LBL.setdefault(_m.group(2), int(_m.group(1), 16))
-for _need in ('StartFrame', 'LoadLevel'):
+        continue
+    # ZP EQUs and `byte` declarations are not code labels
+    _e = re.match(r'^\s*\d+\s+U?[0-9a-fA-F]{4}\s+(?:[0-9a-f]{2}\s+)+'
+                  r'([A-Za-z_.][A-Za-z0-9_.]*)\s+=\s+\$([0-9a-fA-F]+)', _l)
+    if _e:
+        _LBL.setdefault(_e.group(1), int(_e.group(2), 16))
+        continue
+    _z = re.match(r'^\s*\d+\s+U([0-9a-f]{4})\s+[0-9a-f]{2}+\s+'
+                  r'([A-Za-z_.][A-Za-z0-9_.]*)\s+byte', _l)
+    if _z:
+        _LBL.setdefault(_z.group(2), int(_z.group(1), 16))
+for _need in ('StartFrame', 'LoadLevel', 'EnemyDataLo', 'EnemyDataHi',
+              'EnemyDeadMask'):
     if _need not in _LBL:
         sys.exit(f'label {_need} not found in bank0.lst')
+B2_IDX_LO = _LBL['EnemyDataLo'] & 0x7F
+B2_IDX_HI = _LBL['EnemyDataHi'] & 0x7F
+B2_IDX_DEAD = _LBL['EnemyDeadMask'] & 0x7F
+# Stage the tentacle ourselves: point the enemy-record pointer at a bank2 byte
+# that reads 3 (TENTACLE). The room's authored records are the user's stage
+# (AGENTS) and this sim must not depend on them. UE_Tentacle takes its X from
+# EnemyRamX and chases the player, so the fake record's other fields are unused.
+_B2 = (Path(__file__).with_name('bank2.bin')).read_bytes()
+TENT_REC = next(0xF000 + i for i, v in enumerate(_B2) if i >= 0x100 and v == 3)
 PC_STARTFRAME = _LBL['StartFrame']
 LOADLEVEL     = _LBL['LoadLevel']
 # jsr LoadLevel inside GameStart: exact opcode+operand match (hand PC
@@ -235,7 +256,17 @@ while frame < 420:
             mem.ram[0x50:0x54] = bytes((4, 2, 2, 1))
             poked = True
             print(f'tentacle coverage poked at f{frame}: EnemyCount=2, '
-                  f'slot1 X=36, rect1=(4,2,2,1)')
+                  f'slot0 X=36 (staged tentacle at ${TENT_REC:04X}), '
+                  f'rect1=(4,2,2,1)')
+        if poked and mem.ram[POKE_DROP] not in (0xFF, 0xFD):
+            # keep the staging alive: EnterRoom/reloads re-derive the pointer,
+            # and the sim's own bomb blast sets EnemyDeadMask bits — a dead
+            # slot 0 is skipped by UpdateEnemies, which is why the first attempt
+            # never reached the probe despite the staged type being correct.
+            mem.ram[POKE_ENEMYCOUNT] = 2
+            mem.ram[B2_IDX_LO] = TENT_REC & 0xFF
+            mem.ram[B2_IDX_HI] = TENT_REC >> 8
+            mem.ram[B2_IDX_DEAD] = 0
         if os.environ.get('SIM_JETDBG') and 40 <= frame <= 160 and frame % 10 == 0:
             print(f'JETDBG f{frame} DT={mem.ram[0x0A]:02X} B5={mem.ram[IDX_B5]:02X} '
                   f'vy={mem.ram[0x14]:02X}{mem.ram[0x13]:02X} JP={mem.ram[0x16]:02X} '
@@ -337,16 +368,12 @@ checks = [
     ('returned to idle (state=0 after blast)', saw_idle_after),
     (f'min SP gameplay >= $F8 (actual ${min_sp_game:02X})', min_sp_game >= 0xF8),
     (f'min SP whole-run >= $F7 (actual ${min_sp:02X})', min_sp >= 0xF7),
-    # SKIP-able (3rd element): this coverage pokes the ROOM's authored enemy
-    # records, and that room belongs to the user (AGENTS: the live stage is
-    # not ours). When they put something other than a tentacle there, the deep
-    # probe path cannot be reached from this sim — report it loudly instead of
-    # failing a build they did not break. KNOWN GAP: stage the tentacle from a
-    # bank2 ROM byte instead of the room (the first attempt lost the dispatch;
-    # see docs/handoff_2026-10-18_night_autopilot.md).
+    # The tentacle is STAGED (pointer -> a bank2 byte reading type 3, dead mask
+    # cleared every frame), so this no longer depends on the room's authored
+    # records — the user's stage is theirs (AGENTS) and they removed that
+    # tentacle on 2026-10-18, which is what exposed this coupling.
     ('tentacle coverage (probe ran + EnemyCount live)',
-     probe_ran and mem.ram[POKE_ENEMYCOUNT] == 2,
-     not probe_ran),
+     probe_ran and mem.ram[POKE_ENEMYCOUNT] == 2),
     ('hole: PF bits cleared at blast, none set (window visible)', hole_pf),
     ('hole: WallMask b3-6 selected at blast (BombMarkWalls ran)', hole_mask),
 ]
