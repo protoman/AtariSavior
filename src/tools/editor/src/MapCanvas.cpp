@@ -53,29 +53,39 @@ static int MirrorColumn(int displayCol, int roomWidth) {
     return src >> 1;
 }
 
-// Special-feature presence bits for a model (user rule 2026-10-14): door,
-// phase, vcrunch, hcrunch are ALONE per room. 1=door (LOCKED_DOOR async
-// patch, side 0 or 1), 2=phase, 4=vcrunch, 8=hcrunch (grid tiles).
-static int ModelSpecialBits(const hero::ModelData& m) {
+// Special-feature presence bits for a ROOM (user rule 2026-10-14: door,
+// phase, vcrunch, hcrunch are ALONE per room). Async lives on the ROOM since
+// the 2026-10-17 format change — 1=door (LOCKED_DOOR strip), 2=phase,
+// 4=vcrunch, 8=hcrunch (the room's feature cells).
+static int RoomSpecialBits(const hero::RoomData& r) {
     int bits = 0;
-    for (int t : m.tiles) {
-        if (t == (int)hero::TileType::PHASE) bits |= 2;
-        else if (t == (int)hero::TileType::VCRUNCH) bits |= 4;
-        else if (t == (int)hero::TileType::HCRUNCH) bits |= 8;
+    for (const auto& c : r.feature_cells) {
+        if (c.size() < 3) continue;
+        if (c[2] == (int)hero::TileType::PHASE) bits |= 2;
+        else if (c[2] == (int)hero::TileType::VCRUNCH) bits |= 4;
+        else if (c[2] == (int)hero::TileType::HCRUNCH) bits |= 8;
     }
-    for (const auto& p : m.asym_patches) {
+    for (const auto& p : r.asym_patches) {
         if (p.size() >= 3 && p[2] == (int)hero::TileType::LOCKED_DOOR)
             bits |= 1;
     }
     return bits;
 }
 
+// Room feature cell at (row, col): TileType::PHASE/VCRUNCH/HCRUNCH or -1.
+static int FindFeature(const hero::RoomData& r, int row, int col) {
+    for (const auto& c : r.feature_cells) {
+        if (c.size() >= 3 && c[0] == row && c[1] == col) return c[2];
+    }
+    return -1;
+}
+
 // Patch lookup: [row, col, tile] (right/ball, legacy = side 0) or
 // [row, col, tile, side] (side 0 = right/ball, 1 = left/M1); col is the
 // half's own cell index. Returns index or -1.
-static int FindPatch(const hero::ModelData& m, int row, int col, int side) {
-    for (int i = 0; i < (int)m.asym_patches.size(); ++i) {
-        const auto& p = m.asym_patches[i];
+static int FindPatch(const hero::RoomData& r, int row, int col, int side) {
+    for (int i = 0; i < (int)r.asym_patches.size(); ++i) {
+        const auto& p = r.asym_patches[i];
         if ((int)p.size() < 3) continue;
         const int pside = (int)p.size() == 4 ? p[3] : 0;
         if (p[0] == row && p[1] == col && pside == side) return i;
@@ -131,24 +141,26 @@ static int CountRightRects(const std::vector<std::string>& rows) {
 // Resolved right rows exactly like convert_level.resolve_asym_patches:
 // mirror of the left rows (chars like tile_to_char), side-0 patches on
 // top. Empty = no patches at all (plain mirror, no WallMask budget).
-static std::vector<std::string> BuildRightRows(const hero::ModelData& m) {
-    if (m.asym_patches.empty()) return {};
+static std::vector<std::string> BuildRightRows(const hero::ModelData& m,
+                                               const hero::RoomData& r) {
+    if (r.asym_patches.empty()) return {};
     const int w = m.width, h = m.height;
     std::vector<std::string> left(h, std::string(w, '.'));
     for (int y = 0; y < h; ++y) {
-        for (int x = 0; x < w; ++x) {
-            const int t = m.tiles[y * w + x];
-            if (t == (int)hero::TileType::AIR) continue;
-            if (t == (int)hero::TileType::PHASE) { left[y][x] = 'P'; continue; }
-            if (t == (int)hero::TileType::VCRUNCH) { left[y][x] = 'V'; continue; }
-            if (t == (int)hero::TileType::HCRUNCH) { left[y][x] = 'C'; continue; }
-            left[y][x] = '#';   // walls (incl. legacy hot rock) and door
-        }
+        for (int x = 0; x < w; ++x)
+            if (m.tiles[y * w + x] != (int)hero::TileType::AIR)
+                left[y][x] = '#';         // shape only (features are room cells)
+    }
+    // The room's feature cells are solid too (convert: solids "#HPV") and the
+    // right half mirrors them, so they count toward the WallMask budget.
+    for (const auto& c : r.feature_cells) {
+        if (c.size() >= 3 && c[0] >= 0 && c[0] < h && c[1] >= 0 && c[1] < w)
+            left[c[0]][c[1]] = '#';
     }
     std::vector<std::string> right(h, std::string(w, '.'));
     for (int y = 0; y < h; ++y)
         for (int k = 0; k < w; ++k) right[y][k] = left[y][w - 1 - k];
-    for (const auto& p : m.asym_patches) {
+    for (const auto& p : r.asym_patches) {
         if ((int)p.size() < 3) continue;
         const int side = (int)p.size() == 4 ? p[3] : 0;
         if (side != 0) continue;
@@ -163,8 +175,9 @@ static std::vector<std::string> BuildRightRows(const hero::ModelData& m) {
 // be maskable; convert hard-fails above that. *outCount = found count (0
 // when no patches = no budget). Editor pre-flight so the brush blocks the
 // paint that would brick the build.
-static bool RightRectsOk(const hero::ModelData& m, int* outCount) {
-    const auto rows = BuildRightRows(m);
+static bool RightRectsOk(const hero::ModelData& m, const hero::RoomData& r,
+                         int* outCount) {
+    const auto rows = BuildRightRows(m, r);
     if (rows.empty()) { *outCount = 0; return true; }
     *outCount = CountRightRects(rows);
     return *outCount <= 4;
@@ -197,6 +210,17 @@ MapCanvas::MapCanvas(QWidget* parent) : QWidget(parent) {
     setFixedSize(DisplayColumnsFor(kDefaultRoomWidth) * m_tileSize,
                  kDefaultRoomHeight * 4 * CellHeightFor(m_tileSize,
                      DisplayColumnsFor(kDefaultRoomWidth), kDefaultRoomHeight * 4));
+}
+
+// The room that owns the async layer being edited/drawn: the ACTIVE room in
+// level mode; NULL in model mode (the model tab has no room context, and the
+// async brushes refuse there).
+const hero::RoomData* MapCanvas::AsyncRoomRef() const {
+    if (m_modelMode || !m_levelData) return nullptr;
+    if (m_activeRoomIndex < 0 ||
+        m_activeRoomIndex >= (int)m_levelData->rooms.size())
+        return nullptr;
+    return &m_levelData->rooms[m_activeRoomIndex];
 }
 
 void MapCanvas::SetLevelData(hero::LevelData* levelData, std::vector<hero::ModelData>* models, int activeRoomIndex) {
@@ -350,19 +374,28 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             // read as patches, not mirrored walls.
             bool patch = false;
             bool doorPatch = false;
-            if (dcol >= half) {
-                int rc = (dcol - half) >> 1;
-                int pi = FindPatch(*model, modelY, rc, 0);
-                patch = pi >= 0;
-                doorPatch = patch && (int)model->asym_patches[pi].size() >= 3
-                    && model->asym_patches[pi][2]
-                           == (int)hero::TileType::LOCKED_DOOR;
-            } else {
-                int pi = FindPatch(*model, modelY, x, 1);
-                patch = pi >= 0;
-                doorPatch = patch && (int)model->asym_patches[pi].size() >= 3
-                    && model->asym_patches[pi][2]
-                           == (int)hero::TileType::LOCKED_DOOR;
+            const hero::RoomData* ar = AsyncRoomRef();
+            if (ar) {
+                if (dcol >= half) {
+                    int rc = (dcol - half) >> 1;
+                    int pi = FindPatch(*ar, modelY, rc, 0);
+                    patch = pi >= 0;
+                    doorPatch = patch &&
+                        (int)ar->asym_patches[pi].size() >= 3
+                        && ar->asym_patches[pi][2]
+                               == (int)hero::TileType::LOCKED_DOOR;
+                } else {
+                    int pi = FindPatch(*ar, modelY, x, 1);
+                    patch = pi >= 0;
+                    doorPatch = patch &&
+                        (int)ar->asym_patches[pi].size() >= 3
+                        && ar->asym_patches[pi][2]
+                               == (int)hero::TileType::LOCKED_DOOR;
+                }
+                // The room's feature cells paint their own colour (the model
+                // grid holds the shape, not the behaviour).
+                const int feat = FindFeature(*ar, modelY, x);
+                if (feat >= 0 && dcol < half) tileType = feat;
             }
             if (patch)
                 tileType = doorPatch ? (int)hero::TileType::LOCKED_DOOR
@@ -541,25 +574,13 @@ int MapCanvas::CountRoomElements() const {
 }
 
 bool MapCanvas::RoomHasCrunch() const {
-    const hero::ModelData* model =
-        GetModelForRoom(const_cast<hero::LevelData*>(m_levelData),
-                        const_cast<std::vector<hero::ModelData>*>(m_models),
-                        m_activeRoomIndex);
-    if (!model) return false;
-    for (int t : model->tiles)
-        if (t == (int)hero::TileType::VCRUNCH ||
-            t == (int)hero::TileType::HCRUNCH) return true;
-    return false;
-}
-
-bool MapCanvas::ModelHasRoomObjects(const hero::ModelData& model) const {
-    if (!m_levelData) return false;
-    for (int i = 0; i < (int)m_levelData->rooms.size(); ++i) {
-        if (GetModelForRoom(const_cast<hero::LevelData*>(m_levelData),
-                            const_cast<std::vector<hero::ModelData>*>(m_models),
-                            i) != &model)
-            continue;
-        if (CountRoomElementsIn(i) > 0) return true;
+    // vcrunch/hcrunch are ROOM feature cells since the 2026-10-17 async move.
+    const hero::RoomData* r = AsyncRoomRef();
+    if (!r) return false;
+    for (const auto& c : r->feature_cells) {
+        if (c.size() >= 3 && (c[2] == (int)hero::TileType::VCRUNCH ||
+                              c[2] == (int)hero::TileType::HCRUNCH))
+            return true;
     }
     return false;
 }
@@ -577,7 +598,8 @@ bool MapCanvas::AllowAddElement(bool asEnemy) {
         GetModelForRoom(const_cast<hero::LevelData*>(m_levelData),
                         const_cast<std::vector<hero::ModelData>*>(m_models),
                         m_activeRoomIndex);
-    if (model && (ModelSpecialBits(*model) & 1)) {
+    const hero::RoomData* ar = AsyncRoomRef();
+    if (model && ar && (RoomSpecialBits(*ar) & 1)) {
         // Door room (user rule 2026-10-14): a single enemy, nothing else.
         if (!asEnemy) {
             QMessageBox::warning(
@@ -684,8 +706,10 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         m_currentBrush == BrushTool::HCRUNCH_TILE ||
         m_currentBrush == BrushTool::DOOR_TILE ||
         m_currentBrush == BrushTool::ASYM_PATCH) {
-        WarnAsyncBrushNeedsRoomEditor();
-        return;
+        if (!room) {
+            WarnAsyncBrushNeedsRoomEditor();
+            return;
+        }
     }
 
     if (m_currentBrush == BrushTool::SOLID_WALL || m_currentBrush == BrushTool::ERASE_AIR ||
@@ -693,47 +717,57 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         const int idx = modelY * roomWidth + tileX;
         const int oldTile = model->tiles[idx];
         model->tiles[idx] = brushVal;
-        // ERASE_AIR also removes any async patch covering this cell (user
+        // ERASE_AIR also removes any ROOM async covering this cell (user
         // rule 2026-10-12: empty brush = the ONLY way to remove a patch,
-        // same as a sync wall). Snapshot for rollback: opening the cell
-        // can SPLIT a wall run into a 5th right rect.
+        // same as a sync wall; feature cells go the same way). Snapshot for
+        // rollback: opening the cell can SPLIT a wall run into a 5th right
+        // rect.
         std::vector<std::vector<int>> removedPatches;
-        if (m_currentBrush == BrushTool::ERASE_AIR) {
-            for (int i = (int)model->asym_patches.size() - 1; i >= 0; --i) {
-                const auto& p = model->asym_patches[i];
+        std::vector<std::vector<int>> removedFeatures;
+        hero::RoomData* asyncRoom = room;   // level mode only (guard above)
+        if (m_currentBrush == BrushTool::ERASE_AIR && asyncRoom) {
+            for (int i = (int)asyncRoom->feature_cells.size() - 1; i >= 0; --i) {
+                const auto& c = asyncRoom->feature_cells[i];
+                if (c.size() >= 3 && c[0] == modelY && c[1] == tileX) {
+                    removedFeatures.push_back(c);
+                    asyncRoom->feature_cells.erase(
+                        asyncRoom->feature_cells.begin() + i);
+                }
+            }
+            for (int i = (int)asyncRoom->asym_patches.size() - 1; i >= 0; --i) {
+                const auto& p = asyncRoom->asym_patches[i];
                 if ((int)p.size() < 3) continue;
                 const int pside = (int)p.size() == 4 ? p[3] : 0;
                 const int cellCol =
                     pside == 0 ? roomWidth - 1 - p[1] : p[1];
                 if (p[0] == modelY && cellCol == tileX) {
                     removedPatches.push_back(p);
-                    model->asym_patches.erase(
-                        model->asym_patches.begin() + i);
+                    asyncRoom->asym_patches.erase(
+                        asyncRoom->asym_patches.begin() + i);
                 }
             }
         }
         int n = 0;
-        if (!RightRectsOk(*model, &n)) {
+        if (!RightRectsOk(*model, asyncRoom ? *asyncRoom : hero::RoomData(),
+                          &n)) {
             model->tiles[idx] = oldTile;
-            for (const auto& p : removedPatches)
-                model->asym_patches.push_back(p);
+            if (asyncRoom) {
+                for (const auto& p : removedPatches)
+                    asyncRoom->asym_patches.push_back(p);
+                for (const auto& c : removedFeatures)
+                    asyncRoom->feature_cells.push_back(c);
+            }
             WarnRightRectBudget(n);
             return;
         }
         emit levelModified();
         update();
-    } else if (false) {
-        // UNREACHABLE: the async brushes are refused at the top of this
-        // function (2026-10-17 async move). The bodies below are kept for the
-        // room-level brush step, which will retarget every read/write from
-        // *model to the active room (asym_patches / feature_cells) and then
-        // delete this `false` gate.
-    } else if (false && (m_currentBrush == BrushTool::PHASE_TILE ||
+    } else if (m_currentBrush == BrushTool::PHASE_TILE ||
                m_currentBrush == BrushTool::VCRUNCH_TILE ||
-               m_currentBrush == BrushTool::HCRUNCH_TILE)) {
+               m_currentBrush == BrushTool::HCRUNCH_TILE) {
         // Feature grid tiles (convert maps them to chars P/V/C and emits
         // b7 feature records; ERASE_AIR clears them like any tile).
-        if (!model) return;
+        if (!model || !room) return;      // features are ROOM cells
         // Special features are alone per room (door XOR phase XOR vcrunch
         // XOR hcrunch) and live ONLY on the middle band (row 1) — top and
         // bottom bands are entry/exit corridors (user rule 2026-10-14).
@@ -741,7 +775,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
             const int brushBit =
                 (m_currentBrush == BrushTool::PHASE_TILE) ? 2 :
                 (m_currentBrush == BrushTool::VCRUNCH_TILE) ? 4 : 8;
-            const int other = ModelSpecialBits(*model) & ~brushBit;
+            const int other = RoomSpecialBits(*room) & ~brushBit;
             if (other) {
                 QMessageBox::warning(
                     nullptr, QObject::tr("Special Features"),
@@ -753,13 +787,12 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         }
         if ((m_currentBrush == BrushTool::VCRUNCH_TILE ||
              m_currentBrush == BrushTool::HCRUNCH_TILE) &&
-            ModelHasRoomObjects(*model)) {
+            CountRoomElements() > 0) {
             QMessageBox::warning(
                 nullptr, QObject::tr("Crunch Room"),
-                QObject::tr("A room using this model already contains "
-                            "objects (miner, enemies, lamps, raft, magma). "
-                            "A crunch shutter cannot share the "
-                            "room — remove the objects first."));
+                QObject::tr("This room already contains objects (miner, "
+                            "enemies, lamps). A crunch shutter cannot share "
+                            "the room — remove the objects first."));
             return;
         }
         if (modelY != 1) {
@@ -773,12 +806,11 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         }
         if (m_currentBrush == BrushTool::VCRUNCH_TILE) {
             int vCount = 0;
-            for (int c = 0; c < model->width; ++c)
-                if (model->tiles[1 * model->width + c]
-                        == (int)hero::TileType::VCRUNCH)
+            for (const auto& c : room->feature_cells)
+                if (c.size() >= 3 && c[2] == (int)hero::TileType::VCRUNCH)
                     ++vCount;
             if (vCount >= 1 &&
-                model->tiles[modelY * roomWidth + tileX]
+                FindFeature(*room, modelY, tileX)
                     != (int)hero::TileType::VCRUNCH) {
                 QMessageBox::warning(
                     nullptr, QObject::tr("Vcrunch"),
@@ -792,12 +824,18 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
             tileVal = (int)hero::TileType::VCRUNCH;
         else if (m_currentBrush == BrushTool::HCRUNCH_TILE)
             tileVal = (int)hero::TileType::HCRUNCH;
-        const int idx = modelY * roomWidth + tileX;
-        const int oldTile = model->tiles[idx];
-        model->tiles[idx] = tileVal;
+        // Room feature cell (2026-10-17): the model keeps the shape; the room
+        // carries the behaviour. Re-paint = replace the cell's kind.
+        std::vector<std::vector<int>> oldFeatures = room->feature_cells;
+        for (int i = (int)room->feature_cells.size() - 1; i >= 0; --i) {
+            const auto& c = room->feature_cells[i];
+            if (c.size() >= 3 && c[0] == modelY && c[1] == tileX)
+                room->feature_cells.erase(room->feature_cells.begin() + i);
+        }
+        room->feature_cells.push_back({modelY, tileX, tileVal});
         int n = 0;
-        if (!RightRectsOk(*model, &n)) {
-            model->tiles[idx] = oldTile;
+        if (!RightRectsOk(*model, *room, &n)) {
+            room->feature_cells = oldFeatures;
             WarnRightRectBudget(n);
             return;
         }
@@ -834,7 +872,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                                 "selector off (convert rejects it too)."));
                 return;
             }
-            if (ModelSpecialBits(*model) & ~1) {
+            if (RoomSpecialBits(*room) & ~1) {
                 QMessageBox::warning(
                     nullptr, QObject::tr("Special Features"),
                     QObject::tr("Special features are alone per room "
@@ -850,10 +888,10 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                                         : (int)hero::TileType::SOLID_WALL;
         const int cellIdx =
             modelY * roomWidth + (rightHalf ? roomWidth - 1 - col : col);
-        const int existing = FindPatch(*model, modelY, col, side);
+        const int existing = FindPatch(*room, modelY, col, side);
         if (existing < 0) {
             // Two-block cap (convert hard-fails >2 as well).
-            if ((int)model->asym_patches.size() >= 2) {
+            if ((int)room->asym_patches.size() >= 2) {
                 QMessageBox::warning(
                     nullptr, QObject::tr("Asym Patch"),
                     QObject::tr("Two blocks max per model (stacked on two "
@@ -882,7 +920,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
             // One column per side (single ball-x / M1-x envelope; convert
             // hard-fails mixed columns on the same side) and NO mixed kinds
             // on one side (a door model's async patches must all be door).
-            for (const auto& p : model->asym_patches) {
+            for (const auto& p : room->asym_patches) {
                 if ((int)p.size() < 3) continue;
                 const int pside = (int)p.size() == 4 ? p[3] : 0;
                 if (pside != side) continue;
@@ -911,15 +949,13 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                 }
             }
             if (rightHalf) {
-                model->asym_patches.push_back(
-                    {modelY, col, patchTile});
+                room->asym_patches.push_back({modelY, col, patchTile});
             } else {
-                model->asym_patches.push_back(
-                    {modelY, col, patchTile, 1});
+                room->asym_patches.push_back({modelY, col, patchTile, 1});
             }
             int n = 0;
-            if (!RightRectsOk(*model, &n)) {
-                model->asym_patches.pop_back();
+            if (!RightRectsOk(*model, *room, &n)) {
+                room->asym_patches.pop_back();
                 WarnRightRectBudget(n);
                 return;
             }
@@ -1016,7 +1052,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         // Door-room + tentacle rules (user rule 2026-10-14): a door room
         // allows ONE non-key enemy and nothing else; tentacles live in
         // the water on the bottom band, in open cells.
-        if (model && (ModelSpecialBits(*model) & 1)) {
+        if (room && (RoomSpecialBits(*room) & 1)) {
             if (m_currentBrush == BrushTool::ADD_KEY) {
                 QMessageBox::warning(
                     nullptr, QObject::tr("Door Room"),
@@ -1171,11 +1207,13 @@ void MapCanvas::ValidateFeatureTiles() {
         m_activeModelIndex >= (int)m_models->size())
         return;
     const hero::ModelData& model = (*m_models)[m_activeModelIndex];
+    const hero::RoomData* ar = AsyncRoomRef();
+    if (!ar) return;          // async is a room property: nothing to validate
     QStringList problems;
 
     // Special features are alone per room (convert: hard error)
     {
-        const int bits = ModelSpecialBits(model);
+        const int bits = RoomSpecialBits(*ar);
         QStringList kinds;
         if (bits & 1) kinds << "door";
         if (bits & 2) kinds << "phase";
@@ -1193,10 +1231,10 @@ void MapCanvas::ValidateFeatureTiles() {
     // the hot flag — convert flags it in MetaB b6).
     if (model.mid_band_type != 0) {
         QStringList hits;
-        for (int c = 0; c < model.width; ++c) {
-            int t = model.tiles[1 * model.width + c];
-            if (t == (int)hero::TileType::PHASE)
-                hits << QString::number(c + 1);
+        for (const auto& c : ar->feature_cells) {
+            if (c.size() >= 3 && c[1] < model.width &&
+                c[2] == (int)hero::TileType::PHASE)
+                hits << QString::number(c[1] + 1);
         }
         if (!hits.isEmpty())
             problems << tr("Phase on the HOT middle band at col(s) %1 "
@@ -1209,11 +1247,10 @@ void MapCanvas::ValidateFeatureTiles() {
     // vcrunch: at most one cell per room (user rule 2026-10-14 — multiple
     // V cells collapse into one bbox; a single cell keeps the shutter
     // visually clean as one 8px column).
-    if (ModelSpecialBits(model) & 4) {
+    if (RoomSpecialBits(*ar) & 4) {
         int vCount = 0;
-        for (int c = 0; c < model.width; ++c)
-            if (model.tiles[1 * model.width + c]
-                    == (int)hero::TileType::VCRUNCH)
+        for (const auto& c : ar->feature_cells)
+            if (c.size() >= 3 && c[2] == (int)hero::TileType::VCRUNCH)
                 ++vCount;
         if (vCount > 1)
             problems << tr("Multiple VCRUNCH cells (%1) — only one "
@@ -1224,8 +1261,8 @@ void MapCanvas::ValidateFeatureTiles() {
 
     // vcrunch cannot share the M1 slot with a side-1 strip/door patch
     // (convert: hard error — the shutter stages CollisionEndX every frame)
-    if (ModelSpecialBits(model) & 4) {
-        for (const auto& p : model.asym_patches) {
+    if (RoomSpecialBits(*ar) & 4) {
+        for (const auto& p : ar->asym_patches) {
             int side = p.size() >= 4 ? p[3] : 0;
             if (side == 1) {
                 problems << tr("Vcrunch shares a side-1 (M1) patch/door — "
