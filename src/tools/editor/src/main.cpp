@@ -329,8 +329,20 @@ static int RunBrushTest() {
     canvas.SetCurrentBrush(BrushTool::ERASE_AIR);
     canvas.ApplyBrushAt(5, 10, 4);        // row 1 (tileY 4), column 5
     if (!level.rooms[1].feature_cells.empty()) {
-        std::fprintf(stderr, "brushtest: ERASE left %zu feature cells "
-                     "(one click must clear the row)\n",
+        std::fprintf(stderr, "brushtest: DELETE left %zu feature cells "
+                     "(the Level-tab Delete tool must clear the row)\n",
+                     level.rooms[1].feature_cells.size());
+        return 1;
+    }
+    // ... and the same through the Level tab's DELETE tool, which is what a
+    // user actually clicks (it used to only erase entities: 2026-10-18).
+    for (int c = 0; c < 10; ++c)
+        level.rooms[1].feature_cells.push_back({1, c, 12});
+    canvas.SetCurrentBrush(BrushTool::DELETE_ENTITY);
+    canvas.ApplyBrushAt(5, 10, 4);
+    if (!level.rooms[1].feature_cells.empty()) {
+        std::fprintf(stderr, "brushtest: DELETE left %zu feature cells "
+                     "(the Level-tab Delete tool must clear the row)\n",
                      level.rooms[1].feature_cells.size());
         return 1;
     }
