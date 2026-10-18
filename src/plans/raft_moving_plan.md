@@ -1,8 +1,49 @@
 # Raft (moving, rideable) — implementation plan
 
-Status 2026-10-18: **NOT implemented.** Nothing in the ROM moves a raft today.
-This file is the design + the byte-level plan, decided (not asked) per the
-user's instruction, for review.
+Status 2026-10-18 (late): **IMPLEMENTED and guarded.** Everything below is the
+design as decided; this preamble records what actually landed and where.
+
+As built:
+- **bank1 `RaftBody` at $F822** (inside the `.ds $F937` fill that used to be dead
+  space before the M1StripBlast pin; the body is 216 B, 61 B of that fill left).
+  Bank0 enters it through **`CallPad_RaftBody`** (`sta $1FF7 / jmp $F822`), which
+  lives in the **$F82C pin gap** next to `CEH_Key` — the pre-pad END ($FC68) is
+  untouched because that gap is upstream of the $F8DD sprite pin.
+  `verify_build`'s CallPad guard already checks the `jmp $F822` literal against
+  bank1's `RaftBody` label, so the seam cannot drift silently.
+- **Dispatch folded:** `UpdateEnemies`' 18 B tentacle/moth/snake compare chain
+  became one `jmp UEDispatch` (+3 B). `UEDispatch` (same gap) re-tests all four
+  types with absolute jumps and tail-jumps to the bodies, so stack depth is
+  unchanged. Net: **15 B of pre-pad headroom returned**; it pays for the two new
+  table bytes (`EnemyColorTable[7]`, `ObjSpriteOffTable[7]`) and the CEH reorder.
+- **`CheckEnemyHit`**: the KEY check became `bcc .CEHkill / bne CEHNext`, so
+  type 7 is walked over (a platform is not a target) for +2 B instead of +4.
+- **`bank2 BombEnemyBlastBody`**: a blast passes through the raft (it cannot be
+  destroyed under the rider).
+- **Tests:** `tools/test_raft.py` (42nd battery entry) drives the real body —
+  float line, both parity steps, all three PF arms *including the mirrored
+  right half*, rails, carry + pin + vy reset, thrust escape, empty-raft no-op.
+  `test_enemy_movement.py` was retargeted at `UEDispatch` (the dispatch left
+  `UpdateEnemies`, so its structure string assertions moved with it).
+
+Two deliberate simplifications, both for review:
+1. **Inertia = a one-frame hold on the turn frame.** A true multi-frame spin-up
+   ramp needs one byte of per-raft state; the ZP map has none free (EnemyRamD's
+   high nibble is bank1's RoomDarkMask — checked in the code, not assumed). The
+   user's "inertia" therefore reads as mass on reversal, not an acceleration
+   curve. Say the word and I carve a byte and add the ramp.
+2. **The raft borrows the snake's art** (a solid 8x8 block). `ObjSprites` is
+   exactly 72 B and ends at $FF00, so there is no bank0 room for dedicated raft
+   art; a solid block reads as a floating platform. Moving a sprite out (or
+   freeing 8 B) would allow real raft art.
+
+Authoring: the editor's `ADD_RAFT` brush now writes a **type-7 ENTITY** (bottom
+band, water room, open cell — the same rule shape as the tentacle). NOTE the
+object cap: the live water room (level 2 room 1) already holds the tentacle and
+the level's miner (2 objects = the cap), so a live raft needs one of those slots
+freed. Swapping the tentacle out there breaks `sim_bomb_fuse` (it bombs that
+room's wall for the "hole" check), so the live stage was left untouched; author
+the raft with the brush wherever a water room has a free slot.
 
 ## What exists today (and is NOT a raft)
 

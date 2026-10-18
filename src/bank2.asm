@@ -97,6 +97,7 @@ PlayerSpriteB = $f8e9           ; tools/test_miner_colors.py asserts vs bank0.ls
 PlayerWalkA = $fde7
 PlayerWalkB = $fdf3
 LAMP = 5                       ; enemy type: editor lamp — kernel LAMP must match
+RAFT = 7                       ; enemy type: moving raft — kernel ENEMY_RAFT
 ; --- BuildColupF (S5.1, moved from bank0) — addresses must match kernel.asm ---
 TILE_ROWS = 3                     ; playable color bands (rows 0-2 of ColupfBuf)
 RoomRectsLo = $90                 ; hot/solid rect stream — read directly here
@@ -2084,6 +2085,9 @@ BombEnemyBlastBody:
     lda (EnemyDataLo),Y
     cmp #LAMP
     beq .BEBNext                ; lamp: blast passes through (item 3 fix)
+    cmp #RAFT
+    beq .BEBNext                ; raft: a blast cannot destroy the platform the
+                                ; player is riding across the water
     lda EnemyRamX,X             ; live X from RAM
     ; |dcol| < 2 (col = px/4) — ignore Y entirely
     lsr

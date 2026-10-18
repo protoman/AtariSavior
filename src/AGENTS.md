@@ -22,6 +22,36 @@
 - Frame timing: 3 VSYNC + 37 VBLANK + 192 kernel + 30 overscan = 262 scanlines
 - F6 bankswitching (16K, 4 banks × 4K)
 
+### Critical Rule: the Raft Is a Type-7 Entity With a Bank1 Body
+
+The moving, rideable raft (`EnemyType 7`, user spec 2026-10-18) is **not a
+tile**: the `RAFT` tile 6 stays a static row-2 platform. The live raft is an
+enemy ENTITY whose body is **bank1 `RaftBody` at $F822**, entered from bank0 by
+`CallPad_RaftBody` (`sta $1FF7 / jmp $F822`) in the `$F82C` pin gap. The
+type dispatch was folded into `UEDispatch` (same gap) to pay for it — that is
+where the old inline `cmp #ENEMY_TENTACLE/MOTH/SNAKE` chain now lives, and
+`test_enemy_movement.py` asserts against `UEDispatch`, not `UpdateEnemies`.
+
+Invariants (each one has a reason, do not "clean up"):
+- **The raft's Y is kernel-owned**: `RaftBody` writes `EnemyRamY` = `RAFTER_Y`
+  (130, the water strip line - 2) every frame, *after* `RefreshEnemyY`, so the
+  authored y is ignored on purpose and the raft always floats on the water.
+- **A rider is pinned to `RAFTER_Y - 12` (118)** — 7 px clear of the 125
+  water-kill line — with `vyLo/vyHi` zeroed so gravity cannot accumulate into
+  the water. Thrust (vyHi < 0) skips the pin, so the player can always fly off.
+- **The turn-around reads the playfield**, not rects and not data: the row-2
+  cell beyond the leading edge, reflect mapping (display col >= 20 mirrors to
+  39-col), mask table `RaftCellMasks`. It therefore works in any water span and
+  needs no new ZP and no new ROM data. `RaftBitTab` exists because bank1 cannot
+  read bank0's `EnemyBitTable`.
+- **`EnemyRamD` bits 4-7 are bank1's RoomDarkMask** — never usable as raft
+  state (that is why there is no speed ramp).
+- Bank1 body rules apply: it must not call a CallPad or any bank0 routine, and
+  it uses **bank0's `Temp` ($88)** explicitly — bank1's own `Temp` symbol is
+  `$AD` = bank0's `TickCounter`, and writing that would stall the game timer.
+- Guards: `tools/test_raft.py` (battery), the CallPad literal check in
+  `tools/verify_build.py`, and `bank2`'s blast skip.
+
 **What we have NOT yet implemented from HERO (implement these next):**
 - 13+2 sprite technique for HUD text/indicators (P0×3 + P1×3 + ball = 13 character columns)
   → score DOES use P0×3+P1×3+VDELP (docs/font/48px_score_skill.md); ball/extra columns not yet
@@ -441,7 +471,7 @@ stella -debug savior.bin # debugger
 - [x] Enemy positioning (RESP1/HMP1 via SetObjectXPos selector 1)
 - [x] Basic enemy AI (patrol/chase — moth walk, tentacle probe, derives)
 - [x] Enemy-player collision (CheckEnemyHit)
-- [x] Multiple enemy types (moth/spider/tentacle/bat/snake/lamp + miner)
+- [x] Multiple enemy types (moth/spider/tentacle/bat/snake/lamp/miner/raft)
 
 ### Phase 6: HUD Display
 **HERO's HUD per disassembly (corrected — see the "read the FULL section"

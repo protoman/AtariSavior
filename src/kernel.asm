@@ -1513,16 +1513,11 @@ UE_Alive:
     bne UE_Next                  ; dead enemy does not move
     ldy EnemyOffTable,X          ; Y = X*4 = type offset
     jsr FoldIndirect             ; type
-    cmp #ENEMY_TENTACLE
-    bne .UENotTent
-    jmp UE_Tentacle              ; tail jmp: saves 2 push bytes (stack guard)
-.UENotTent:
-    cmp #ENEMY_MOTH              ; E4: moth body runs in bank2 (code fold)
-    bne .UENotMoth
-    jmp UE_MothTramp             ; tail jmp: 0 push (stack guard, like tentacle)
-.UENotMoth:
-    cmp #ENEMY_SNAKE
-    bne UE_Next                  ; other types: no X motion (Y is derived)
+    jmp UEDispatch               ; UEDispatch ($F82C pin gap) replaces the old
+                                 ; 18 B per-type compare chain with one 3 B jmp:
+                                 ; frees 15 B of pre-pad headroom and gives the
+                                 ; type tables room for the raft byte.
+UE_SnakeBody:
     lda TickCounter              ; snake: 1 px / 4 frames (was the global gate)
     and #3
     bne UE_Next
@@ -2168,6 +2163,8 @@ EnemyColorTable:
     .byte $22                   ; moth — hue 2 luma 1 = dark orange
     .byte $0e                   ; lamp (type 5) — white; dark rooms override to grey
     .byte $1C                   ; key (type 6) — yellow
+    .byte $c4                   ; raft (type 7) — matches the borrowed art's
+                                ; ObjColorTab slot (6 = SNAKE, $c4)
 
 ; Enemy type → ObjSprites design offset (index = ENEMY_* type)
 ObjSpriteOffTable:
@@ -2178,6 +2175,10 @@ ObjSpriteOffTable:
     .byte OBJ_MOTH              ; 4
     .byte OBJ_LAMP              ; 5 (LAMP)
     .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
+    .byte OBJ_SNAKE             ; 7 (RAFT — borrows the solid 8x8 snake design:
+                                ; ObjSprites is exactly 72 B and ends at $FF00,
+                                ; so there is no room for dedicated raft art; a
+                                ; solid block reads as a floating platform)
 
 ; ==============================================================================
 ; CheckEnemyHit — player overlaps an enemy → remove enemy, lose life
@@ -2234,8 +2235,9 @@ CEH_HasMore:
     cmp #LAMP
     beq CEH_Lamp
     cmp #KEY                    ; type 6 = key: collect, no life loss
-    bne .CEHkill
-    jmp CEH_Key
+    bcc .CEHkill                ; 0-4 (LAMP handled above) = enemy: lose life
+    bne CEHNext                 ; 7 = RAFT: a platform is walked on, not hit
+    jmp CEH_Key                 ; 6 = key
 .CEHkill:
     ; Hit! Mark this enemy dead (bit = index)
     lda EnemyDeadMask
@@ -2387,6 +2389,40 @@ CEH_Key:
     sta LevelStartRoom
     rts
 
+; ------------------------------------------------------------------------------
+; UEDispatch — the enemy-type dispatch tail, moved out of UpdateEnemies into the
+; $F82C pin gap (upstream of the $F8DD sprite pin, so the pre-pad END is
+; unaffected and the 15 B the folded chain frees stays free). Every non-raft arm
+; tail-jumps, exactly like the old inline chain, so the stack depth is unchanged.
+; ------------------------------------------------------------------------------
+UEDispatch:
+    cmp #ENEMY_RAFT
+    bne .UEDNotRaft
+    jsr CallPad_RaftBody         ; bank1 body; returns past this jmp (ReturnPad)
+    jmp UE_Next
+.UEDNotRaft:
+    cmp #ENEMY_TENTACLE
+    bne .UEDNotTent
+    jmp UE_Tentacle              ; tail jmp: saves 2 push bytes (stack guard)
+.UEDNotTent:
+    cmp #ENEMY_MOTH              ; E4: moth body runs in bank2 (code fold)
+    bne .UEDNotMoth
+    jmp UE_MothTramp             ; tail jmp: 0 push (stack guard, like tentacle)
+.UEDNotMoth:
+    cmp #ENEMY_SNAKE
+    bne .UEDNotSnake
+    jmp UE_SnakeBody
+.UEDNotSnake:
+    jmp UE_Next                  ; other types: no X motion (Y is derived)
+                                 ; (absolute jmps: this block is far from the
+                                 ;  bodies — relative branches do not reach)
+
+; CallPad_RaftBody — bank1 RaftBody at $F822. The jmp operand is a literal, like
+; every other CallPad (verify_build's CallPad table asserts the address).
+CallPad_RaftBody:
+    sta $1FF7                    ; select bank1
+    jmp $F822                    ; bank1 RaftBody — returns via bank1's ReturnPad
+
     .ds $F8DD - *, 0            ; PIN $F8DD: bank2 EQUs PlayerSpriteA/PlayerSpriteB/
                                  ;   PlayerWalkA/B are address-frozen there; bank2
                                  ;   holds art byte-twins at the SAME address
@@ -2443,6 +2479,10 @@ ENEMY_TENTACLE = 3
 ENEMY_MOTH     = 4
 LAMP           = 5             ; type-5 enemy record = editor lamp (white square)
 KEY            = 6             ; type-6 enemy record = editor key (Phase 5 pickup)
+ENEMY_RAFT     = 7             ; type-7 enemy record = the moving, rideable raft
+                               ; (plans/raft_moving_plan.md): floats on the open
+                               ; water of model row 2, carries the player and
+                               ; returns; body lives in bank1 (RaftBody)
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 4             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
