@@ -39,7 +39,9 @@ LOCKED_DOOR = 9
 PHASE = 10
 VCRUNCH = 11
 HCRUNCH = 12
-RAFT = 6
+RAFT = 6                    # RAFT **tile**: a static row-2 platform
+RAFT_ENTITY = 7             # RAFT **entity** (enemies[] type 7): the moving,
+                            # rideable raft (plans/raft_moving_plan.md)
 MAGMA_FALL = 7
 FEATURE_TILES = (PHASE, VCRUNCH, HCRUNCH)
 FEATURE_NAME = {PHASE: "phase", VCRUNCH: "vcrunch", HCRUNCH: "hcrunch"}
@@ -564,18 +566,38 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
             raise ValueError(
                 f"{who}: model has RAFT tiles but the room is not water "
                 "(bottom_band=false)")
+        bottom_rows = None
         for e in enemies:
-            if int(e.get("type", 0)) == 3:  # EnemyType::TENTACLE
-                if not room.get("bottom_band"):
-                    raise ValueError(
-                        f"{who}: tentacle in a room without the bottom "
-                        "band — tentacles live in the water")
-                row = int(float(e.get("y", 0))) // 4
-                if row != 2:
-                    raise ValueError(
-                        f"{who}: tentacle at display row "
-                        f"{e.get('y')} — tentacles live on the bottom band "
-                        "(model row 2)")
+            etype = int(e.get("type", 0))
+            if etype not in (3, RAFT_ENTITY):   # TENTACLE / RAFT
+                continue
+            what = "tentacle" if etype == 3 else "raft"
+            if not room.get("bottom_band"):
+                raise ValueError(
+                    f"{who}: {what} in a room without the bottom band — "
+                    f"{what}s live in the water")
+            row = int(float(e.get("y", 0))) // 4
+            if row != 2:
+                raise ValueError(
+                    f"{who}: {what} at display row {e.get('y')} — {what}s "
+                    "live on the bottom band (model row 2)")
+            if etype != RAFT_ENTITY:
+                continue
+            # The moving raft floats on OPEN water: its spawn cell must be
+            # water (an open model cell), never a ledge/wall, so it can start
+            # patrolling immediately (user rule: "placed only above water").
+            if bottom_rows is None:
+                bottom_rows = rows_from_json(room, models_by_id)
+            ex = float(e.get("x", 0))
+            if not 0 <= ex <= 39:
+                raise ValueError(f"{who}: raft x={e.get('x')} out of 0..39")
+            dcol = int(ex)
+            cell = dcol // 2 if dcol < 20 else (39 - dcol) // 2
+            if bottom_rows[2][cell] != ".":
+                raise ValueError(
+                    f"{who}: raft at display col {dcol} sits on "
+                    f"{bottom_rows[2][cell]!r} — the raft floats on OPEN "
+                    "water (paint the cell as air)")
 
 
 def connection_bytes(rooms: list[dict]) -> list[list[int]]:
