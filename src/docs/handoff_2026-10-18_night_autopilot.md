@@ -188,3 +188,19 @@ What it took to get there (all landed):
 Lesson for the file: a report of "hard to fall through / looks wider" in a room
 carrying a band feature should first be checked against the feature's data, not
 the sprite pipeline.
+
+## Addendum 4 — the two open items are closed
+
+1. **`sim_bomb_fuse`'s tentacle coverage is a hard check again.** The tentacle is
+   now staged from ROM (EnemyDataLo/Hi -> a bank2 byte reading type 3) with the
+   count, the pointer AND `EnemyDeadMask` re-applied every live frame. The dead
+   mask was the piece the first attempt missed: the sim's own bomb blast marks
+   slot 0 dead, and `UpdateEnemies` skips a dead slot before it can move — so the
+   probe never ran even though the staged type was correct. No dependence on the
+   user's room data remains (that coupling is what broke when they removed the
+   tentacle).
+2. **`test_bomb_user_sequence` / `test_laser_close` are green.** They read the
+   live `bank2.lst` and expected level 1 to have a second room (`L1R2*`); level 1
+   has one room, so they threw KeyError. Re-pointed at the room that exists.
+
+Battery: **43/43**.
