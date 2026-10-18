@@ -864,19 +864,21 @@ def check_levels(src: Path) -> None:
                     err(f"models.json model {model.get('id')}: expected 10x3 geometry")
                 if len(model.get("tiles", [])) != 30:
                     err(f"models.json model {model.get('id')}: expected 30 band tiles")
-                # Special-feature row rule (user rule 2026-10-14): door/
-                # phase/vcrunch/hcrunch live ONLY on the middle band (row
-                # 1) — top/bottom bands are entry/exit corridors. convert
-                # hard-fails any cell below/above row 1 too.
+                # Async lives on the ROOM (moved 2026-10-17): a model that
+                # still carries asym_patches or P/V/C grid tiles is stale
+                # data. RAFT stays a model grid object (row 2 only).
                 w = model.get("width") or 10
-                for tile, name in ((10, "PHASE"), (11, "VCRUNCH"),
-                                   (12, "HCRUNCH")):
-                    bad = [i // w for i, t in enumerate(model.get("tiles", []))
-                           if t == tile and i // w != 1]
-                    if bad:
-                        err(f"models.json model {model.get('id')}: {name} at "
-                        f"row(s) {sorted(set(bad))} — must sit in row 1 "
-                        "(middle band only)")
+                if model.get("asym_patches"):
+                    err(f"models.json model {model.get('id')}: asym_patches is "
+                        "stale — async strips live on the ROOM "
+                        "(room.asym_patches); run tools/migrate_async_to_rooms.py")
+                stale_feat = sorted({t for t in model.get("tiles", [])
+                                     if t in (10, 11, 12)})
+                if stale_feat:
+                    err(f"models.json model {model.get('id')}: feature tiles "
+                        f"{stale_feat} in the grid — feature cells live on the "
+                        "ROOM (room.feature_cells); run "
+                        "tools/migrate_async_to_rooms.py")
                 bad = [i // w for i, t in enumerate(model.get("tiles", []))
                        if t == 6 and i // w != 2]
                 if bad:
@@ -886,106 +888,107 @@ def check_levels(src: Path) -> None:
         except Exception as exc:  # noqa: BLE001 - report, don't crash verifier
             err(f"models.json: {exc}")
 
-    # D6 envelope + asym emission guards (asymmetric_pf_plan Phase 1
-    # items 2+4 / Phase 2 meta): resolve every model's asym_patches
-    # through the SAME envelope convert uses (independent gate at verify
-    # time), then cross-check the emitted models_data.asm — meta bytes
-    # at TilePF0+9/+10 (always present: VBL reads them blindly), right
-    # rows stride 3, ball x = 87+8*right_col, right-rect budget.
+    # Async-meta guards (2026-10-17): async lives on the ROOM, so every MODEL
+    # block is static (MetaA $00, MetaB $00 | $40 hot) and each room that owns
+    # async has its own L<level>R<room> block. Both are cross-checked against
+    # the SAME envelope convert uses (independent gate at verify time): meta
+    # bytes at TilePF0+9/+10, right rows stride 3, ball x = 87+8*right_col,
+    # right-rect budget. The block's own text is passed in, so the model and
+    # per-room paths cannot diverge.
+    block_checks = None
     if models:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from convert_level import (resolve_asym_patches, rows_from_json,  # noqa: PLC0415
-                                   model_door_flag, model_m1_door_flag)
+                                   room_feature_cells, room_m1_door_flag)
         from convert_room import pf_values  # noqa: PLC0415
-        gen = src / "generated" / "models_data.asm"
-        mda = gen.read_text() if gen.exists() else ""
+        gen_dir = src / "generated"
 
-        def meta_byte(mid_, label):
+        def meta_byte(text: str, tag: str, label: str):
             hit = re.search(
-                rf"^{re.escape(f'M{mid_}{label}')}:\s*\n\s*\.byte\s+\$?([0-9a-fA-F]+)",
-                mda, re.M)
+                rf"^{re.escape(tag + label)}:\s*\n\s*\.byte\s+\$?([0-9a-fA-F]+)",
+                text, re.M)
             return int(hit.group(1), 16) if hit else None
 
-        for mid, model in sorted(models.items()):
+        def block_checks(tag: str, text: str, model: dict, room: dict,
+                         left: list[str], who: str) -> None:
+            """Meta + right-half cross-check for one emitted block."""
             try:
-                left = rows_from_json({"model_id": mid}, models)
-                res = resolve_asym_patches(model, left)
+                res = resolve_asym_patches(model, room, left)
             except ValueError as exc:
-                err(f"models.json model {mid}: {exc}")
-                continue
-            except (KeyError, TypeError) as exc:
-                err(f"models.json model {mid}: bad geometry ({exc})")
-                continue
-            if f"M{mid}TilePF0:" not in mda:
-                continue                      # model not referenced by any room
-            asym, ball_x, m1_x, m1_door, m1_right = res if res else (None, 0, 0, False, False)
-            # packed meta (bugs.md 28 point 1): MetaA = (m1_col+1)<<4 |
-            # band_mask | $08 left door at TilePF0+9; MetaB = ball_col+1
-            # at +10 (0 = none, b7 = right door).
+                err(f"{who}: {exc}")
+                return
+            asym, ball_x, m1_x, _door, m1_right = (
+                res if res else (None, 0, 0, False, False))
             band_mask = 0
             if asym is not None:
                 for bidx in range(3):
                     if asym[bidx] != left[bidx][::-1]:
                         band_mask |= 1 << bidx
             m1n = ((m1_x - 7) >> 3) + 1 if m1_x else 0
-            m1_right = any(
-                len(q) >= 3 and q[2] == 9 and (q[3] if len(q) == 4 else 0) == 0
-                for q in (model.get("asym_patches") or []))
             want_a = (m1n << 4) | band_mask
-            if model_m1_door_flag(model):
+            if room_m1_door_flag(room):
                 want_a |= 0x08
             if m1_right:
-                want_a |= 0x01          # Phase 5: right-half door (M1 b0)
-            got_a = meta_byte(mid, "MetaA")
+                want_a |= 0x01
+            got_a = meta_byte(text, tag, "MetaA")
             if got_a is None:
-                err(f"model {mid}: MetaA missing "
-                    f"(must sit at TilePF0+9 for every model)")
+                err(f"{who}: {tag}MetaA missing (must sit at TilePF0+9)")
             elif got_a != want_a:
-                err(f"model {mid}: MetaA=${got_a:02X}, want ${want_a:02X} "
-                    f"((m1_col+1)<<4 | band_mask={band_mask}"
-                    f"{' | $08 door' if model_m1_door_flag(model) else ''})")
+                err(f"{who}: MetaA=${got_a:02X}, want ${want_a:02X} "
+                    f"((m1_col+1)<<4 | band_mask=${band_mask:02X}"
+                    f"{' | $08 door' if room_m1_door_flag(room) else ''})")
             ball_n = ((ball_x - 87) >> 3) + 1 if ball_x else 0
-            # Phase 5: doors use the M1 strip on BOTH halves -> no ball/b7
-            # vcrunch shutter flag (vcrunch_shutter_plan Phase B) — convert
-            # sets MetaB b7 for vcrunch models; PHMOverlay's kill gate reads it
-            if any(t == 11 for t in model.get("tiles", [])):
-                ball_n |= 0x80
-            # mid_band_type hot flag (user rule 2026-10-14: both crunch walls
-            # respect the hot flag) — convert sets MetaB b6; OvShutBand /
-            # the crunch kill gates read it for touch semantics.
+            try:
+                if any(c[2] == 11 for c in room_feature_cells(room)):
+                    ball_n |= 0x80        # vcrunch shutter flag
+            except ValueError as exc:
+                err(f"{who}: {exc}")
             if model.get("mid_band_type"):
-                ball_n |= 0x40
-            got_b = meta_byte(mid, "MetaB")
+                ball_n |= 0x40            # hot band (touch-kill semantics)
+            got_b = meta_byte(text, tag, "MetaB")
             if got_b is None:
-                err(f"model {mid}: MetaB missing "
-                    f"(must sit at TilePF0+10 for every model)")
+                err(f"{who}: {tag}MetaB missing (must sit at TilePF0+10)")
             elif got_b != ball_n:
-                err(f"model {mid}: MetaB=${got_b:02X}, want ${ball_n:02X} "
-                    f"(ball_col+1 | $80 door/vcrunch | $40 hot, 0 = no ball)")
+                err(f"{who}: MetaB=${got_b:02X}, want ${ball_n:02X} "
+                    "(ball_col+1 | $80 vcrunch | $40 hot, 0 = no ball)")
             if asym is None:
-                if re.search(rf"^M{mid}RightPF\d:", mda, re.M):
-                    err(f"model {mid}: symmetric but RightPF block emitted")
-                continue
-            if f"M{mid}RightPF0:" not in mda:
-                err(f"model {mid}: asym model missing RightPF block")
+                if re.search(rf"^{re.escape(tag)}RightPF\d:", text, re.M):
+                    err(f"{who}: symmetric but RightPF block emitted")
+                return
+            if f"{tag}RightPF0:" not in text:
+                err(f"{who}: asym block missing RightPF")
+                return
             for reg in range(3):
-                label = f"M{mid}RightPF{reg}"
+                label = f"{tag}RightPF{reg}"
                 hit = re.search(
-                    rf"^{re.escape(label)}:\s*\n\s*\.byte([^\n]+)", mda, re.M)
+                    rf"^{re.escape(label)}:\s*\n\s*\.byte([^\n]+)", text, re.M)
                 if not hit:
-                    err(f"model {mid}: {label} missing from models_data.asm")
+                    err(f"{who}: {label} missing")
                     continue
                 got = [int(b.strip().lstrip("$"), 16)
                        for b in hit.group(1).split(",")]
                 want = [pf_values(r[::-1])[reg] for r in asym]
                 if got != want:
-                    err(f"model {mid}: {label} = {got}, want {want} (stride 3)")
+                    err(f"{who}: {label} = {got}, want {want} (stride 3)")
             hit = re.search(
-                rf"^M{mid}RightRects:\s*\n\s*\.byte\s+(\d+)", mda, re.M)
+                rf"^{re.escape(tag)}RightRects:\s*\n\s*\.byte\s+(\d+)", text, re.M)
             if not hit:
-                err(f"model {mid}: M{mid}RightRects missing from models_data.asm")
+                err(f"{who}: {tag}RightRects missing")
             elif int(hit.group(1)) > 4:
-                err(f"model {mid}: {hit.group(1)} right rects > WallMask budget 4")
+                err(f"{who}: {hit.group(1)} right rects > WallMask budget 4")
+
+        mda = (gen_dir / "models_data.asm").read_text() \
+            if (gen_dir / "models_data.asm").exists() else ""
+        for mid, model in sorted(models.items()):
+            tag = f"M{mid}"
+            if f"{tag}TilePF0:" not in mda:
+                continue                      # model not referenced by any room
+            try:
+                left = rows_from_json({"model_id": mid}, models)
+            except (ValueError, KeyError, TypeError) as exc:
+                err(f"models.json model {mid}: {exc}")
+                continue
+            block_checks(tag, mda, model, {}, left, f"models.json model {mid}")
 
     level_files = sorted(rooms_dir.glob("level_[0-9][0-9][0-9].json"))
     if not level_files:
@@ -1069,22 +1072,22 @@ def check_levels(src: Path) -> None:
             has_raft = False
             if mid is not None and models and mid in models:
                 mdef = models[mid]
-                if any(len(p) >= 3 and p[2] == 9
-                       and (p[3] if len(p) == 4 else 0) == 0
-                       for p in (mdef.get("asym_patches") or [])):
-                    door_model = True
-                    specials.append("door")
-                for t, name in ((10, "phase"), (11, "vcrunch"), (12, "hcrunch")):
-                    if any(t_ == t for t_ in mdef.get("tiles", [])):
-                        specials.append(name)
                 has_raft = any(t == 6 for t in mdef.get("tiles", []))
+            if block_checks is not None:
+                # Special kinds come from the ROOM's async now.
+                try:
+                    from convert_level import async_kinds  # noqa: PLC0415
+                    specials = async_kinds(r)
+                except (ValueError, TypeError, KeyError) as exc:
+                    err(f"{label}: {exc}")
+                door_model = "door" in specials
             if len(specials) > 1:
-                err(f"{label}: model {mid} mixes special features "
+                err(f"{label}: room mixes special features "
                     f"{specials} — specials are alone per room "
                     "(door XOR phase XOR vcrunch XOR hcrunch)")
             if (("vcrunch" in specials or "hcrunch" in specials)
                     and objs > 0):
-                err(f"{label}: model {mid} has "
+                err(f"{label}: room has "
                     f"{'vcrunch' if 'vcrunch' in specials else 'hcrunch'} "
                     f"but room has {objs} object(s) (enemies+lamps+miner) "
                     "— the shutter needs the sprite slot")
@@ -1102,6 +1105,33 @@ def check_levels(src: Path) -> None:
             if has_raft and not r.get("bottom_band"):
                 err(f"{label}: model {mid} has RAFT tiles but the room is "
                     "not water (bottom_band=false)")
+
+            # A room that owns async must have its own emitted block, and its
+            # meta/right rows are cross-checked here (paths relative to src/).
+            if block_checks is not None and mid is not None \
+                    and models and mid in models:
+                try:
+                    has_async = bool(r.get("asym_patches")
+                                     or r.get("feature_cells"))
+                except AttributeError:
+                    has_async = False
+                if has_async:
+                    rid = r.get("room_id", 0)
+                    # per-room blocks are emitted into the level's table file
+                    # (write_tables) so emit_spills owns their placement
+                    asm = src / "generated" / f"level_{level_n:03d}_rooms.asm"
+                    text = asm.read_text() if asm.exists() else ""
+                    tag = f"L{level_n}R{rid + 1}"
+                    if f"{tag}TilePF0:" not in text:
+                        err(f"{label}: room owns async but no {tag} block was "
+                            f"emitted ({asm.name})")
+                    else:
+                        try:
+                            left = rows_from_json(r, models)
+                        except (ValueError, KeyError, TypeError) as exc:
+                            err(f"{label}: {exc}")
+                        else:
+                            block_checks(tag, text, models[mid], r, left, label)
 
             for i, e in enumerate(enemies):
                 el = f"{label} enemy {i}"

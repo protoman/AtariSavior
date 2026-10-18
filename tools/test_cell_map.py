@@ -82,7 +82,7 @@ if missing:
     sys.exit(f"bank0.lst labels missing: {sorted(missing)}")
 PHM = L0["PlayerHitsMap"]
 
-need2 = {"M5RoomRects", "M0RoomRects", ".MothColsOk", "M0TilePF0",
+need2 = {"M5RoomRects", "L1R1RoomRects", ".MothColsOk", "L1R1TilePF0",
          "RoomPF0Lo"}
 L2 = parse_labels(FROZEN / "bank2.lst", need2)
 if not need2 <= L2.keys():
@@ -292,10 +292,10 @@ def asym_checks(rows: list[str]) -> int:
     r = mem.ram
     # OvM1Block reads TilePF0+9 (MetaA: m1_col+1 in the high nibble)
     # through RoomPF0Lo — bank2 ROM; M1X = 8*(m1_col+1)-1, 0 = no M1.
-    m1n = BANK2[L2["M0TilePF0"] - 0xF000 + 9] >> 4
+    m1n = BANK2[L2["L1R1TilePF0"] - 0xF000 + 9] >> 4
     m1x = 8 * m1n - 1 if m1n else 0
-    r[L2["RoomPF0Lo"] - 0x80] = L2["M0TilePF0"] & 0xFF
-    r[L2["RoomPF0Lo"] + 1 - 0x80] = L2["M0TilePF0"] >> 8
+    r[L2["RoomPF0Lo"] - 0x80] = L2["L1R1TilePF0"] & 0xFF
+    r[L2["RoomPF0Lo"] + 1 - 0x80] = L2["L1R1TilePF0"] >> 8
     r[L0["EnemyDeadMask"] - 0x80] = 0
     # packed configs: (right_col, band mask); 0 = symmetric control
     configs = [(0, 0), (0, 1), (5, 4), (9, 7), (9, 4)]
@@ -378,7 +378,7 @@ def hot_death_checks(rows: list[str]) -> int:
     Envelope tightened to #13; repro: ry=60 facing right, rx=64 flush
     (live) vs rx=65 first px into the block (die).
 
-    RoomRects -> M0RoomRects: BOTH model-0 hot rects are gated — the 'H'
+    RoomRects -> L1R1RoomRects: BOTH model-0 hot rects are gated — the 'H'
     wall (mask $10, x=0,y=1,w=2,h=1) and the M1 block (mask $00, x=16,
     y=1, w=2, h=1). `entered` = walk-hit OR M1-overlay funnel — the two
     ways PHM reaches HotOverlapBody. The ball overlay never funnels to
@@ -395,14 +395,14 @@ def hot_death_checks(rows: list[str]) -> int:
     mem = Mem()
     load_case(mem, rows)
     r = mem.ram
-    r[L0["RoomRectsLo"] - 0x80] = L2["M0RoomRects"] & 0xFF
-    r[L0["RoomRectsHi"] - 0x80] = L2["M0RoomRects"] >> 8
-    r[L2["RoomPF0Lo"] - 0x80] = L2["M0TilePF0"] & 0xFF
-    r[L2["RoomPF0Lo"] + 1 - 0x80] = L2["M0TilePF0"] >> 8
+    r[L0["RoomRectsLo"] - 0x80] = L2["L1R1RoomRects"] & 0xFF
+    r[L0["RoomRectsHi"] - 0x80] = L2["L1R1RoomRects"] >> 8
+    r[L2["RoomPF0Lo"] - 0x80] = L2["L1R1TilePF0"] & 0xFF
+    r[L2["RoomPF0Lo"] + 1 - 0x80] = L2["L1R1TilePF0"] >> 8
     r[L0["BombPacked"] - 0x80] = 0
     packed = 0x11                         # rc=0, band0 -> tramp crosses
     r[L0["LineCount"] - 0x80] = packed
-    m1n = BANK2[L2["M0TilePF0"] - 0xF000 + 9] >> 4
+    m1n = BANK2[L2["L1R1TilePF0"] - 0xF000 + 9] >> 4
     m1x = 8 * m1n - 1 if m1n else 0
     hot_rects = ((0, 1, 2, 1), (16, 1, 2, 1))   # x,y,w,h (4px cols/tile rows)
     checks = 0
@@ -519,7 +519,7 @@ def main() -> int:
     strip = moth_strip_checks()
     # mid_band_type FEATURE stays (generator fixtures always covered by
     # test_mid_band_hot); this runtime envelope check is M0-specific
-    # (M0RoomRects/M0TilePF0 below). Model 0 dropped the key 2026-10-08 —
+    # (L1R1RoomRects/L1R1TilePF0 below). Model 0 dropped the key 2026-10-08 —
     # dormant until model 0 sets mid_band_type again.
     if by_id.get(0, {}).get("mid_band_type"):
         hot = hot_death_checks(cases[0][1])

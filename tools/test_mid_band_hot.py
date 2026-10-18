@@ -89,15 +89,17 @@ assert hot_counts(hot) == [1], (
 # Patch col 0 (mirror open at left col 9): ball ADDS a wall cell on row 1.
 patch = [[1, 0, 1, 0]]
 model = make_model(hot=1, patches=patch)
+room_hot = {"room_id": 0, "asym_patches": patch}
 left_hot = rows_of(model)
-right_hot, ball_x, m1_x, _, _m1r = convert_level.resolve_asym_patches(model, left_hot)
+right_hot, ball_x, m1_x, _, _m1r = convert_level.resolve_asym_patches(model, room_hot, left_hot)
 assert right_hot is not None and ball_x == 87, "ball patch must resolve"
 assert right_hot[1][0] == "H", (
     f"hot patch cell must promote to 'H', got {right_hot[1][0]!r}")
 
 model = make_model(patches=patch)          # same patch, selector cold
+room_cold = {"room_id": 0, "asym_patches": patch}
 left_cold = rows_of(model)
-right_cold, _, _, _, _ = convert_level.resolve_asym_patches(model, left_cold)
+right_cold, _, _, _, _ = convert_level.resolve_asym_patches(model, room_cold, left_cold)
 assert right_cold[1][0] == "#", (
     f"cold patch cell must stay '#', got {right_cold[1][0]!r}")
 

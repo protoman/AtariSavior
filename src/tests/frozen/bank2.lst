@@ -1014,7 +1014,7 @@
    1013  f488							; them) — toggling the cell's two bits THERE makes render + PHM +
    1014  f488							; laser follow with zero kernel cost. 64f full cycle = EnemyRamP bit5
    1015  f488							; (32 on + 32 off; clock-derived, no state bytes — locked plan).
-   1016  f488		       20 ea fa 	      jsr	PhaseBlink
+   1016  f488		       20 e9 fa 	      jsr	PhaseBlink
    1017  f48b							; --- Phase 4: pack collision overlay byte → CollisionEndY ($8F) ---
    1018  f48b							; b4-b7 = right_col+1, b0-2 = ball band mask, b3 = M1 present
    1019  f48b							; (staged $8E != 0), 0 = symmetric. Cave never
@@ -1411,11 +1411,11 @@
       8  f700							; colors, then the level's RoomDataTable and RoomConnections bases.
       9  f700				   LevelDataTable
      10  f700		       00 20 18 81*	      .byte.b	LEVEL1_START_ROOM, LEVEL1_START_X, LEVEL1_START_Y, LEVEL1_MINER_ROOM, LEVEL1_MINER_X, LEVEL1_MINER_Y, LEVEL1_WALL_COLOR, LEVEL1_WALL_COLOR2
-     11  f708		       ce fa d6 fa*	      .word.w	LEVEL1_RoomDataTable, LEVEL1_RoomConnections, LEVEL1_RoomEnemies
+     11  f708		       f5 f8 fd f8*	      .word.w	LEVEL1_RoomDataTable, LEVEL1_RoomConnections, LEVEL1_RoomEnemies
      12  f70e		       00 20 18 81*	      .byte.b	LEVEL2_START_ROOM, LEVEL2_START_X, LEVEL2_START_Y, LEVEL2_MINER_ROOM, LEVEL2_MINER_X, LEVEL2_MINER_Y, LEVEL2_WALL_COLOR, LEVEL2_WALL_COLOR2
      13  f716		       38 f7 40 f7*	      .word.w	LEVEL2_RoomDataTable, LEVEL2_RoomConnections, LEVEL2_RoomEnemies
      14  f71c		       00 20 18 85*	      .byte.b	LEVEL3_START_ROOM, LEVEL3_START_X, LEVEL3_START_Y, LEVEL3_MINER_ROOM, LEVEL3_MINER_X, LEVEL3_MINER_Y, LEVEL3_WALL_COLOR, LEVEL3_WALL_COLOR2
-     15  f724		       f5 f8 0d f9*	      .word.w	LEVEL3_RoomDataTable, LEVEL3_RoomConnections, LEVEL3_RoomEnemies
+     15  f724		       6a fa 82 fa*	      .word.w	LEVEL3_RoomDataTable, LEVEL3_RoomConnections, LEVEL3_RoomEnemies
      16  f72a		       00 20 18 05*	      .byte.b	LEVEL4_START_ROOM, LEVEL4_START_X, LEVEL4_START_Y, LEVEL4_MINER_ROOM, LEVEL4_MINER_X, LEVEL4_MINER_Y, LEVEL4_WALL_COLOR, LEVEL4_WALL_COLOR2
      17  f732		       50 f7 68 f7*	      .word.w	LEVEL4_RoomDataTable, LEVEL4_RoomConnections, LEVEL4_RoomEnemies
      18  f738
@@ -1435,8 +1435,8 @@
      11  f738							; Room data: one (L2R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
      12  f738							; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
      13  f738				   LEVEL2_RoomDataTable
-     14  f738		       07 fa ff f9	      .word.w	M2TilePF0, M2RoomRects	; room 0 (model 2)
-     15  f73c		       1a fa 12 fa	      .word.w	M3TilePF0, M3RoomRects	; room 1 (model 3)
+     14  f738		       f4 f9 ec f9	      .word.w	M2TilePF0, M2RoomRects	; room 0 (model 2)
+     15  f73c		       07 fa ff f9	      .word.w	M3TilePF0, M3RoomRects	; room 1 (model 3)
      16  f740
      17  f740							; Room connections: 2 bytes/room, nibble-packed (up<<4|down, left<<4|right); $F = none.
      18  f740				   LEVEL2_RoomConnections
@@ -1467,12 +1467,12 @@
      11  f750							; Room data: one (L4R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
      12  f750							; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
      13  f750				   LEVEL4_RoomDataTable
-     14  f750		       e1 f9 d9 f9	      .word.w	M0TilePF0, M0RoomRects	; room 0 (model 0)
-     15  f754		       32 fa 25 fa	      .word.w	M4TilePF0, M4RoomRects	; room 1 (model 4)
-     16  f758		       4b fa 3d fa	      .word.w	M5TilePF0, M5RoomRects	; room 2 (model 5)
-     17  f75c		       8a fa 82 fa	      .word.w	M8TilePF0, M8RoomRects	; room 3 (model 8)
-     18  f760		       c3 fa bd fa	      .word.w	M11TilePF0, M11RoomRects	; room 4 (model 11)
-     19  f764		       9b fa 95 fa	      .word.w	M10TilePF0, M10RoomRects	; room 5 (model 10)
+     14  f750		       94 f7 8c f7	      .word.w	L4R1TilePF0, L4R1RoomRects	; room 0 (async)
+     15  f754		       ac f7 9f f7	      .word.w	L4R2TilePF0, L4R2RoomRects	; room 1 (async)
+     16  f758		       20 fa 12 fa	      .word.w	M5TilePF0, M5RoomRects	; room 2 (model 5)
+     17  f75c		       5f fa 57 fa	      .word.w	M8TilePF0, M8RoomRects	; room 3 (model 8)
+     18  f760		       bd f7 b7 f7	      .word.w	L4R5TilePF0, L4R5RoomRects	; room 4 (async)
+     19  f764		       ce f7 c8 f7	      .word.w	L4R6TilePF0, L4R6RoomRects	; room 5 (async)
      20  f768
      21  f768							; Room connections: 2 bytes/room, nibble-packed (up<<4|down, left<<4|right); $F = none.
      22  f768				   LEVEL4_RoomConnections
@@ -1494,9 +1494,92 @@
      38  f780		       74 f7 00 00	      .byte.b	<(LEVEL4_EnemyDataTable), >(LEVEL4_EnemyDataTable), 0, $00	; room 3
      39  f784		       74 f7 00 00	      .byte.b	<(LEVEL4_EnemyDataTable), >(LEVEL4_EnemyDataTable), 0, $00	; room 4
      40  f788		       74 f7 00 00	      .byte.b	<(LEVEL4_EnemyDataTable), >(LEVEL4_EnemyDataTable), 0, $00	; room 5
+     41  f78c
+     42  f78c							; Generated from room 0 (model 0). Do not edit by hand.
+     43  f78c				   L4R1RoomRects
+     44  f78c		       03		      .byte.b	3	; number of rectangles
+     45  f78d		       00 11		      .byte.b	$00, $11	; packed (x<<2|y, w<<2|h)
+     46  f78f		       01 09		      .byte.b	$01, $09	; packed (x<<2|y, w<<2|h)
+     47  f791		       02 49		      .byte.b	$02, $49	; packed (x<<2|y, w<<2|h)
+     48  f793		       00		      .byte.b	0	; number of hot rectangles
+     49  f794				   L4R1TilePF0
+     50  f794		       f0 30 f0 	      .byte.b	$f0, $30, $f0
+     51  f797				   L4R1TilePF1
+     52  f797		       00 00 ff 	      .byte.b	$00, $00, $ff
+     53  f79a				   L4R1TilePF2
+     54  f79a		       00 00 3f 	      .byte.b	$00, $00, $3f
+     55  f79d				   L4R1MetaA
+     56  f79d		       90		      .byte.b	$90	; (m1_col+1)<<4 | band mask
+     57  f79e				   L4R1MetaB
+     58  f79e		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
+     59  f79f
+     60  f79f							; Generated from room 1 (model 4). Do not edit by hand.
+     61  f79f				   L4R2RoomRects
+     62  f79f		       03		      .byte.b	3	; number of rectangles
+     63  f7a0		       00 49		      .byte.b	$00, $49	; packed (x<<2|y, w<<2|h)
+     64  f7a2		       02 11		      .byte.b	$02, $11	; packed (x<<2|y, w<<2|h)
+     65  f7a4		       1a 39		      .byte.b	$1a, $39	; packed (x<<2|y, w<<2|h)
+     66  f7a6		       01		      .byte.b	1	; number of hot rectangles
+     67  f7a7		       82 00 01 14*	      .byte.b	$82, 0, 1, 20, 1	; hcrunch band prefix
+     68  f7ac				   L4R2TilePF0
+     69  f7ac		       f0 f0 f0 	      .byte.b	$f0, $f0, $f0
+     70  f7af				   L4R2TilePF1
+     71  f7af		       ff ff 3f 	      .byte.b	$ff, $ff, $3f
+     72  f7b2				   L4R2TilePF2
+     73  f7b2		       3f ff ff 	      .byte.b	$3f, $ff, $ff
+     74  f7b5				   L4R2MetaA
+     75  f7b5		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
+     76  f7b6				   L4R2MetaB
+     77  f7b6		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
+     78  f7b7
+     79  f7b7							; Generated from room 4 (model 11). Do not edit by hand.
+     80  f7b7				   L4R5RoomRects
+     81  f7b7		       02		      .byte.b	2	; number of rectangles
+     82  f7b8		       00 51		      .byte.b	$00, $51	; packed (x<<2|y, w<<2|h)
+     83  f7ba		       02 51		      .byte.b	$02, $51	; packed (x<<2|y, w<<2|h)
+     84  f7bc		       00		      .byte.b	0	; number of hot rectangles
+     85  f7bd				   L4R5TilePF0
+     86  f7bd		       f0 00 f0 	      .byte.b	$f0, $00, $f0
+     87  f7c0				   L4R5TilePF1
+     88  f7c0		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+     89  f7c3				   L4R5TilePF2
+     90  f7c3		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+     91  f7c6				   L4R5MetaA
+     92  f7c6		       10		      .byte.b	$10	; (m1_col+1)<<4 | band mask
+     93  f7c7				   L4R5MetaB
+     94  f7c7		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
+     95  f7c8
+     96  f7c8							; Generated from room 5 (model 10). Do not edit by hand.
+     97  f7c8				   L4R6RoomRects
+     98  f7c8		       02		      .byte.b	2	; number of rectangles
+     99  f7c9		       00 51		      .byte.b	$00, $51	; packed (x<<2|y, w<<2|h)
+    100  f7cb		       02 51		      .byte.b	$02, $51	; packed (x<<2|y, w<<2|h)
+    101  f7cd		       00		      .byte.b	0	; number of hot rectangles
+    102  f7ce				   L4R6TilePF0
+    103  f7ce		       f0 00 f0 	      .byte.b	$f0, $00, $f0
+    104  f7d1				   L4R6TilePF1
+    105  f7d1		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+    106  f7d4				   L4R6TilePF2
+    107  f7d4		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+    108  f7d7				   L4R6MetaA
+    109  f7d7		       02		      .byte.b	$02	; (m1_col+1)<<4 | band mask
+    110  f7d8				   L4R6MetaB
+    111  f7d8		       0a		      .byte.b	$0a	; (ball_col+1), 0 = no ball
+    112  f7d9				   L4R6RightPF0
+    113  f7d9		       f0 30 f0 	      .byte.b	$f0, $30, $f0
+    114  f7dc				   L4R6RightPF1
+    115  f7dc		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+    116  f7df				   L4R6RightPF2
+    117  f7df		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+    118  f7e2				   L4R6RightRects
+    119  f7e2		       03		      .byte.b	3	; number of rectangles
+    120  f7e3		       00 00 14 01	      .byte.b	0, 0, 20, 1	; x(right_col*2), y, w, h
+    121  f7e7		       12 01 02 01	      .byte.b	18, 1, 2, 1	; x(right_col*2), y, w, h
+    122  f7eb		       00 02 14 01	      .byte.b	0, 2, 20, 1	; x(right_col*2), y, w, h
+    123  f7ef		       00		      .byte.b	0	; number of hot rectangles
 ------- FILE generated/spill_F767.asm
 ------- FILE bank2.asm
-   1398  f78c		       00 00 00 00*	      .ds	$F800 - *, 0
+   1398  f7f0		       00 00 00 00*	      .ds	$F800 - *, 0
    1399  f800		       00 00 00 00*	      .ds	$F854 - *, 0	; FooterFont ends $F854 (13-row) — sprite/color data
    1400  f854		       00 00 00 00*	      .ds	$F864 - *, 0	; #27b level spill slot ($F864, 28B; empty until
 ------- FILE generated/spill_F840.asm LEVEL 2 PASS 2
@@ -1557,64 +1640,66 @@
       0  f8f5					      include	"generated/spill_F901.asm"	; #27b: placed by convert_level
       1  f8f5							; Generated by convert_level.py --levels (bugs.md 27b). Do not edit by hand.
       2  f8f5							; Include list for this bank2 gap — see emit_spills().
-------- FILE generated/level_003_rooms.asm LEVEL 3 PASS 2
-      0  f8f5					      include	"generated/level_003_rooms.asm"
-      1  f8f5							; Generated from New Level (level 3). Do not edit by hand.
-      2  f8f5		       00 00	   LEVEL3_START_ROOM =	0
-      3  f8f5		       00 92	   LEVEL3_WALL_COLOR =	$92
-      4  f8f5		       00 96	   LEVEL3_WALL_COLOR2 =	$96
-      5  f8f5		       00 20	   LEVEL3_START_X =	32
-      6  f8f5		       00 18	   LEVEL3_START_Y =	24
-      7  f8f5		       00 85	   LEVEL3_MINER_ROOM =	133
-      8  f8f5		       00 17	   LEVEL3_MINER_X =	23
-      9  f8f5		       00 54	   LEVEL3_MINER_Y =	84
+------- FILE generated/level_001_rooms.asm LEVEL 3 PASS 2
+      0  f8f5					      include	"generated/level_001_rooms.asm"
+      1  f8f5							; Generated from Level 1 (level 1). Do not edit by hand.
+      2  f8f5		       00 00	   LEVEL1_START_ROOM =	0
+      3  f8f5		       00 20	   LEVEL1_WALL_COLOR =	$20
+      4  f8f5		       00 22	   LEVEL1_WALL_COLOR2 =	$22
+      5  f8f5		       00 20	   LEVEL1_START_X =	32
+      6  f8f5		       00 18	   LEVEL1_START_Y =	24
+      7  f8f5		       00 81	   LEVEL1_MINER_ROOM =	129
+      8  f8f5		       00 1b	   LEVEL1_MINER_X =	27
+      9  f8f5		       00 54	   LEVEL1_MINER_Y =	84
      10  f8f5
-     11  f8f5							; Room data: one (L3R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
+     11  f8f5							; Room data: one (L1R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
      12  f8f5							; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
-     13  f8f5				   LEVEL3_RoomDataTable
-     14  f8f5		       e1 f9 d9 f9	      .word.w	M0TilePF0, M0RoomRects	; room 0 (model 0)
-     15  f8f9		       32 fa 25 fa	      .word.w	M4TilePF0, M4RoomRects	; room 1 (model 4)
-     16  f8fd		       4b fa 3d fa	      .word.w	M5TilePF0, M5RoomRects	; room 2 (model 5)
-     17  f901		       64 fa 56 fa	      .word.w	M6TilePF0, M6RoomRects	; room 3 (model 6)
-     18  f905		       77 fa 6f fa	      .word.w	M7TilePF0, M7RoomRects	; room 4 (model 7)
-     19  f909		       f4 f9 ec f9	      .word.w	M1TilePF0, M1RoomRects	; room 5 (model 1)
-     20  f90d
-     21  f90d							; Room connections: 2 bytes/room, nibble-packed (up<<4|down, left<<4|right); $F = none.
-     22  f90d				   LEVEL3_RoomConnections
-     23  f90d		       f1 ff		      .byte.b	$f1, $ff	; room 0
-     24  f90f		       02 ff		      .byte.b	$02, $ff	; room 1
-     25  f911		       13 ff		      .byte.b	$13, $ff	; room 2
-     26  f913		       24 ff		      .byte.b	$24, $ff	; room 3
-     27  f915		       35 ff		      .byte.b	$35, $ff	; room 4
-     28  f917		       4f ff		      .byte.b	$4f, $ff	; room 5
-     29  f919
-     30  f919							; Enemy data: 6 enemy records across 6 rooms, 4 bytes each (type,x,y,dir).
-     31  f919				   LEVEL3_EnemyDataTable
-     32  f919		       01 7f 3c 01	      .byte.b	1, 127, 60, 1
-     33  f91d		       05 1b 12 01	      .byte.b	5, 27, 18, 1
-     34  f921		       00 17 6c 01	      .byte.b	0, 23, 108, 1
-     35  f925		       02 67 3c 01	      .byte.b	2, 103, 60, 1
-     36  f929		       04 27 3c 01	      .byte.b	4, 39, 60, 1
-     37  f92d		       05 1b 12 01	      .byte.b	5, 27, 18, 1
-     38  f931
-     39  f931							; Per-room enemy records: ptr_lo, ptr_hi, count, bottom_color.
-     40  f931				   LEVEL3_RoomEnemies
-     41  f931		       19 f9 00 00	      .byte.b	<(LEVEL3_EnemyDataTable), >(LEVEL3_EnemyDataTable), 0, $00	; room 0
-     42  f935		       19 f9 00 00	      .byte.b	<(LEVEL3_EnemyDataTable), >(LEVEL3_EnemyDataTable), 0, $00	; room 1
-     43  f939		       19 f9 02 00	      .byte.b	<(LEVEL3_EnemyDataTable+0), >(LEVEL3_EnemyDataTable+0), 2, $00	; room 2
-     44  f93d		       21 f9 02 00	      .byte.b	<(LEVEL3_EnemyDataTable+8), >(LEVEL3_EnemyDataTable+8), 2, $00	; room 3
-     45  f941		       29 f9 02 00	      .byte.b	<(LEVEL3_EnemyDataTable+16), >(LEVEL3_EnemyDataTable+16), 2, $00	; room 4
-     46  f945		       19 f9 00 00	      .byte.b	<(LEVEL3_EnemyDataTable), >(LEVEL3_EnemyDataTable), 0, $00	; room 5
+     13  f8f5				   LEVEL1_RoomDataTable
+     14  f8f5		       19 f9 11 f9	      .word.w	L1R1TilePF0, L1R1RoomRects	; room 0 (async)
+     15  f8f9		       e1 f9 d9 f9	      .word.w	M1TilePF0, M1RoomRects	; room 1 (model 1)
+     16  f8fd
+     17  f8fd							; Room connections: 2 bytes/room, nibble-packed (up<<4|down, left<<4|right); $F = none.
+     18  f8fd				   LEVEL1_RoomConnections
+     19  f8fd		       f1 ff		      .byte.b	$f1, $ff	; room 0
+     20  f8ff		       0f ff		      .byte.b	$0f, $ff	; room 1
+     21  f901
+     22  f901							; Enemy data: 2 enemy records across 2 rooms, 4 bytes each (type,x,y,dir).
+     23  f901				   LEVEL1_EnemyDataTable
+     24  f901		       06 9b 54 ff	      .byte.b	6, 155, 84, -1
+     25  f905		       00 7f 3c ff	      .byte.b	0, 127, 60, -1
+     26  f909
+     27  f909							; Per-room enemy records: ptr_lo, ptr_hi, count, bottom_color.
+     28  f909				   LEVEL1_RoomEnemies
+     29  f909		       01 f9 01 00	      .byte.b	<(LEVEL1_EnemyDataTable+0), >(LEVEL1_EnemyDataTable+0), 1, $00	; room 0
+     30  f90d		       05 f9 01 00	      .byte.b	<(LEVEL1_EnemyDataTable+4), >(LEVEL1_EnemyDataTable+4), 1, $00	; room 1
+     31  f911
+     32  f911							; Generated from room 0 (model 0). Do not edit by hand.
+     33  f911				   L1R1RoomRects
+     34  f911		       03		      .byte.b	3	; number of rectangles
+     35  f912		       00 11		      .byte.b	$00, $11	; packed (x<<2|y, w<<2|h)
+     36  f914		       01 09		      .byte.b	$01, $09	; packed (x<<2|y, w<<2|h)
+     37  f916		       02 49		      .byte.b	$02, $49	; packed (x<<2|y, w<<2|h)
+     38  f918		       00		      .byte.b	0	; number of hot rectangles
+     39  f919				   L1R1TilePF0
+     40  f919		       f0 30 f0 	      .byte.b	$f0, $30, $f0
+     41  f91c				   L1R1TilePF1
+     42  f91c		       00 00 ff 	      .byte.b	$00, $00, $ff
+     43  f91f				   L1R1TilePF2
+     44  f91f		       00 00 3f 	      .byte.b	$00, $00, $3f
+     45  f922				   L1R1MetaA
+     46  f922		       90		      .byte.b	$90	; (m1_col+1)<<4 | band mask
+     47  f923				   L1R1MetaB
+     48  f923		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
 ------- FILE generated/spill_F901.asm
 ------- FILE bank2.asm
-   1452  f949							; Phase 3 blink masks — pair index (2c>>1) → the two adjacent PF bits
-   1453  f949							; for that left-half cell (PF0: bits4-7 left-to-right; PF1: bits7-0;
-   1454  f949							; PF2: bits0-7 reversed). Pairs never straddle a register (even 2c).
-   1455  f949				   PhMaskTab
-   1456  f949		       30 c0		      .byte.b	$30, $C0	; PF0 pairs (0,1) (2,3)
-   1457  f94b		       c0 30 0c 03	      .byte.b	$C0, $30, $0C, $03	; PF1 pairs (4,5) (6,7) (8,9) (10,11)
-   1458  f94f		       03 0c 30 c0	      .byte.b	$03, $0C, $30, $C0	; PF2 pairs (12,13) ... (18,19)
-   1459  f953		       00 00 00 00*	      .ds	$F970 - *, 0	; pinned: bank1 .BMWDone jmp operand ($F970)
+   1452  f924							; Phase 3 blink masks — pair index (2c>>1) → the two adjacent PF bits
+   1453  f924							; for that left-half cell (PF0: bits4-7 left-to-right; PF1: bits7-0;
+   1454  f924							; PF2: bits0-7 reversed). Pairs never straddle a register (even 2c).
+   1455  f924				   PhMaskTab
+   1456  f924		       30 c0		      .byte.b	$30, $C0	; PF0 pairs (0,1) (2,3)
+   1457  f926		       c0 30 0c 03	      .byte.b	$C0, $30, $0C, $03	; PF1 pairs (4,5) (6,7) (8,9) (10,11)
+   1458  f92a		       03 0c 30 c0	      .byte.b	$03, $0C, $30, $C0	; PF2 pairs (12,13) ... (18,19)
+   1459  f92e		       00 00 00 00*	      .ds	$F970 - *, 0	; pinned: bank1 .BMWDone jmp operand ($F970)
    1460  f970				   M1StripBlast
    1461  f970							; Phase 4 M1 strip blast — entered from bank1 BombMarkWalls .BMWDone
    1462  f970							; via the $F9AC shared pad (`sta $1FF8 / jmp $F970`; 0 pushes). Bank2-
@@ -1695,430 +1780,400 @@
       0  f9d9					      include	"generated/models_data.asm"
       1  f9d9							; Generated by convert_level.py --levels. Do not edit by hand.
       2  f9d9
-      3  f9d9							; Generated from models.json model 0. Do not edit by hand.
-      4  f9d9				   M0RoomRects
+      3  f9d9							; Generated from models.json model 1. Do not edit by hand.
+      4  f9d9				   M1RoomRects
       5  f9d9		       03		      .byte.b	3	; number of rectangles
-      6  f9da		       00 11		      .byte.b	$00, $11	; packed (x<<2|y, w<<2|h)
+      6  f9da		       00 49		      .byte.b	$00, $49	; packed (x<<2|y, w<<2|h)
       7  f9dc		       01 09		      .byte.b	$01, $09	; packed (x<<2|y, w<<2|h)
-      8  f9de		       02 49		      .byte.b	$02, $49	; packed (x<<2|y, w<<2|h)
+      8  f9de		       02 51		      .byte.b	$02, $51	; packed (x<<2|y, w<<2|h)
       9  f9e0		       00		      .byte.b	0	; number of hot rectangles
-     10  f9e1				   M0TilePF0
+     10  f9e1				   M1TilePF0
      11  f9e1		       f0 30 f0 	      .byte.b	$f0, $30, $f0
-     12  f9e4				   M0TilePF1
-     13  f9e4		       00 00 ff 	      .byte.b	$00, $00, $ff
-     14  f9e7				   M0TilePF2
-     15  f9e7		       00 00 3f 	      .byte.b	$00, $00, $3f
-     16  f9ea				   M0MetaA
-     17  f9ea		       90		      .byte.b	$90	; (m1_col+1)<<4 | band mask
-     18  f9eb				   M0MetaB
+     12  f9e4				   M1TilePF1
+     13  f9e4		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+     14  f9e7				   M1TilePF2
+     15  f9e7		       3f 00 ff 	      .byte.b	$3f, $00, $ff
+     16  f9ea				   M1MetaA
+     17  f9ea		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
+     18  f9eb				   M1MetaB
      19  f9eb		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
      20  f9ec
-     21  f9ec							; Generated from models.json model 1. Do not edit by hand.
-     22  f9ec				   M1RoomRects
+     21  f9ec							; Generated from models.json model 2. Do not edit by hand.
+     22  f9ec				   M2RoomRects
      23  f9ec		       03		      .byte.b	3	; number of rectangles
-     24  f9ed		       00 49		      .byte.b	$00, $49	; packed (x<<2|y, w<<2|h)
-     25  f9ef		       01 09		      .byte.b	$01, $09	; packed (x<<2|y, w<<2|h)
-     26  f9f1		       02 51		      .byte.b	$02, $51	; packed (x<<2|y, w<<2|h)
+     24  f9ed		       00 11		      .byte.b	$00, $11	; packed (x<<2|y, w<<2|h)
+     25  f9ef		       01 0a		      .byte.b	$01, $0a	; packed (x<<2|y, w<<2|h)
+     26  f9f1		       12 39		      .byte.b	$12, $39	; packed (x<<2|y, w<<2|h)
      27  f9f3		       00		      .byte.b	0	; number of hot rectangles
-     28  f9f4				   M1TilePF0
-     29  f9f4		       f0 30 f0 	      .byte.b	$f0, $30, $f0
-     30  f9f7				   M1TilePF1
-     31  f9f7		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-     32  f9fa				   M1TilePF2
-     33  f9fa		       3f 00 ff 	      .byte.b	$3f, $00, $ff
-     34  f9fd				   M1MetaA
+     28  f9f4				   M2TilePF0
+     29  f9f4		       f0 30 30 	      .byte.b	$f0, $30, $30
+     30  f9f7				   M2TilePF1
+     31  f9f7		       00 00 ff 	      .byte.b	$00, $00, $ff
+     32  f9fa				   M2TilePF2
+     33  f9fa		       00 00 3f 	      .byte.b	$00, $00, $3f
+     34  f9fd				   M2MetaA
      35  f9fd		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
-     36  f9fe				   M1MetaB
+     36  f9fe				   M2MetaB
      37  f9fe		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
      38  f9ff
-     39  f9ff							; Generated from models.json model 2. Do not edit by hand.
-     40  f9ff				   M2RoomRects
+     39  f9ff							; Generated from models.json model 3. Do not edit by hand.
+     40  f9ff				   M3RoomRects
      41  f9ff		       03		      .byte.b	3	; number of rectangles
-     42  fa00		       00 11		      .byte.b	$00, $11	; packed (x<<2|y, w<<2|h)
-     43  fa02		       01 0a		      .byte.b	$01, $0a	; packed (x<<2|y, w<<2|h)
-     44  fa04		       12 39		      .byte.b	$12, $39	; packed (x<<2|y, w<<2|h)
+     42  fa00		       00 0a		      .byte.b	$00, $0a	; packed (x<<2|y, w<<2|h)
+     43  fa02		       10 39		      .byte.b	$10, $39	; packed (x<<2|y, w<<2|h)
+     44  fa04		       02 21		      .byte.b	$02, $21	; packed (x<<2|y, w<<2|h)
      45  fa06		       00		      .byte.b	0	; number of hot rectangles
-     46  fa07				   M2TilePF0
-     47  fa07		       f0 30 30 	      .byte.b	$f0, $30, $30
-     48  fa0a				   M2TilePF1
-     49  fa0a		       00 00 ff 	      .byte.b	$00, $00, $ff
-     50  fa0d				   M2TilePF2
-     51  fa0d		       00 00 3f 	      .byte.b	$00, $00, $3f
-     52  fa10				   M2MetaA
+     46  fa07				   M3TilePF0
+     47  fa07		       30 30 f0 	      .byte.b	$30, $30, $f0
+     48  fa0a				   M3TilePF1
+     49  fa0a		       ff 00 f0 	      .byte.b	$ff, $00, $f0
+     50  fa0d				   M3TilePF2
+     51  fa0d		       3f 00 00 	      .byte.b	$3f, $00, $00
+     52  fa10				   M3MetaA
      53  fa10		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
-     54  fa11				   M2MetaB
+     54  fa11				   M3MetaB
      55  fa11		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
      56  fa12
-     57  fa12							; Generated from models.json model 3. Do not edit by hand.
-     58  fa12				   M3RoomRects
-     59  fa12		       03		      .byte.b	3	; number of rectangles
-     60  fa13		       00 0a		      .byte.b	$00, $0a	; packed (x<<2|y, w<<2|h)
-     61  fa15		       10 39		      .byte.b	$10, $39	; packed (x<<2|y, w<<2|h)
-     62  fa17		       02 21		      .byte.b	$02, $21	; packed (x<<2|y, w<<2|h)
-     63  fa19		       00		      .byte.b	0	; number of hot rectangles
-     64  fa1a				   M3TilePF0
-     65  fa1a		       30 30 f0 	      .byte.b	$30, $30, $f0
-     66  fa1d				   M3TilePF1
-     67  fa1d		       ff 00 f0 	      .byte.b	$ff, $00, $f0
-     68  fa20				   M3TilePF2
-     69  fa20		       3f 00 00 	      .byte.b	$3f, $00, $00
-     70  fa23				   M3MetaA
-     71  fa23		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
-     72  fa24				   M3MetaB
-     73  fa24		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
-     74  fa25
-     75  fa25							; Generated from models.json model 4. Do not edit by hand.
-     76  fa25				   M4RoomRects
-     77  fa25		       03		      .byte.b	3	; number of rectangles
-     78  fa26		       00 49		      .byte.b	$00, $49	; packed (x<<2|y, w<<2|h)
-     79  fa28		       02 11		      .byte.b	$02, $11	; packed (x<<2|y, w<<2|h)
-     80  fa2a		       1a 39		      .byte.b	$1a, $39	; packed (x<<2|y, w<<2|h)
-     81  fa2c		       01		      .byte.b	1	; number of hot rectangles
-     82  fa2d		       82 00 01 14*	      .byte.b	$82, 0, 1, 20, 1	; hcrunch band prefix
-     83  fa32				   M4TilePF0
-     84  fa32		       f0 f0 f0 	      .byte.b	$f0, $f0, $f0
-     85  fa35				   M4TilePF1
-     86  fa35		       ff ff 3f 	      .byte.b	$ff, $ff, $3f
-     87  fa38				   M4TilePF2
-     88  fa38		       3f ff ff 	      .byte.b	$3f, $ff, $ff
-     89  fa3b				   M4MetaA
-     90  fa3b		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
-     91  fa3c				   M4MetaB
-     92  fa3c		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
-     93  fa3d
-     94  fa3d							; Generated from models.json model 5. Do not edit by hand.
-     95  fa3d				   M5RoomRects
-     96  fa3d		       06		      .byte.b	6	; number of rectangles
-     97  fa3e		       00 11		      .byte.b	$00, $11	; packed (x<<2|y, w<<2|h)
-     98  fa40		       18 39		      .byte.b	$18, $39	; packed (x<<2|y, w<<2|h)
-     99  fa42		       01 09		      .byte.b	$01, $09	; packed (x<<2|y, w<<2|h)
-    100  fa44		       29 29		      .byte.b	$29, $29	; packed (x<<2|y, w<<2|h)
-    101  fa46		       02 21		      .byte.b	$02, $21	; packed (x<<2|y, w<<2|h)
-    102  fa48		       32 21		      .byte.b	$32, $21	; packed (x<<2|y, w<<2|h)
-    103  fa4a		       00		      .byte.b	0	; number of hot rectangles
-    104  fa4b				   M5TilePF0
-    105  fa4b		       f0 30 f0 	      .byte.b	$f0, $30, $f0
-    106  fa4e				   M5TilePF1
-    107  fa4e		       3f 03 f0 	      .byte.b	$3f, $03, $f0
-    108  fa51				   M5TilePF2
-    109  fa51		       ff ff ff 	      .byte.b	$ff, $ff, $ff
-    110  fa54				   M5MetaA
-    111  fa54		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
-    112  fa55				   M5MetaB
-    113  fa55		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
-    114  fa56
-    115  fa56							; Generated from models.json model 6. Do not edit by hand.
-    116  fa56				   M6RoomRects
-    117  fa56		       06		      .byte.b	6	; number of rectangles
-    118  fa57		       00 21		      .byte.b	$00, $21	; packed (x<<2|y, w<<2|h)
-    119  fa59		       30 21		      .byte.b	$30, $21	; packed (x<<2|y, w<<2|h)
-    120  fa5b		       01 11		      .byte.b	$01, $11	; packed (x<<2|y, w<<2|h)
-    121  fa5d		       39 1a		      .byte.b	$39, $1a	; packed (x<<2|y, w<<2|h)
-    122  fa5f		       02 09		      .byte.b	$02, $09	; packed (x<<2|y, w<<2|h)
-    123  fa61		       1a 21		      .byte.b	$1a, $21	; packed (x<<2|y, w<<2|h)
-    124  fa63		       00		      .byte.b	0	; number of hot rectangles
-    125  fa64				   M6TilePF0
-    126  fa64		       f0 f0 30 	      .byte.b	$f0, $f0, $30
-    127  fa67				   M6TilePF1
-    128  fa67		       f0 00 3f 	      .byte.b	$f0, $00, $3f
-    129  fa6a				   M6TilePF2
-    130  fa6a		       ff fc ff 	      .byte.b	$ff, $fc, $ff
-    131  fa6d				   M6MetaA
-    132  fa6d		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
-    133  fa6e				   M6MetaB
-    134  fa6e		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
-    135  fa6f
-    136  fa6f							; Generated from models.json model 7. Do not edit by hand.
-    137  fa6f				   M7RoomRects
-    138  fa6f		       03		      .byte.b	3	; number of rectangles
-    139  fa70		       00 0a		      .byte.b	$00, $0a	; packed (x<<2|y, w<<2|h)
-    140  fa72		       18 39		      .byte.b	$18, $39	; packed (x<<2|y, w<<2|h)
-    141  fa74		       02 49		      .byte.b	$02, $49	; packed (x<<2|y, w<<2|h)
-    142  fa76		       00		      .byte.b	0	; number of hot rectangles
-    143  fa77				   M7TilePF0
-    144  fa77		       30 30 f0 	      .byte.b	$30, $30, $f0
-    145  fa7a				   M7TilePF1
-    146  fa7a		       3f 00 ff 	      .byte.b	$3f, $00, $ff
-    147  fa7d				   M7TilePF2
-    148  fa7d		       ff 00 3f 	      .byte.b	$ff, $00, $3f
-    149  fa80				   M7MetaA
-    150  fa80		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
-    151  fa81				   M7MetaB
-    152  fa81		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
-    153  fa82
-    154  fa82							; Generated from models.json model 8. Do not edit by hand.
-    155  fa82				   M8RoomRects
-    156  fa82		       03		      .byte.b	3	; number of rectangles
-    157  fa83		       00 21		      .byte.b	$00, $21	; packed (x<<2|y, w<<2|h)
-    158  fa85		       30 21		      .byte.b	$30, $21	; packed (x<<2|y, w<<2|h)
-    159  fa87		       02 51		      .byte.b	$02, $51	; packed (x<<2|y, w<<2|h)
-    160  fa89		       00		      .byte.b	0	; number of hot rectangles
-    161  fa8a				   M8TilePF0
-    162  fa8a		       f0 00 f0 	      .byte.b	$f0, $00, $f0
-    163  fa8d				   M8TilePF1
-    164  fa8d		       f0 00 ff 	      .byte.b	$f0, $00, $ff
-    165  fa90				   M8TilePF2
-    166  fa90		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-    167  fa93				   M8MetaA
-    168  fa93		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
-    169  fa94				   M8MetaB
-    170  fa94		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
-    171  fa95
-    172  fa95							; Generated from models.json model 10. Do not edit by hand.
-    173  fa95				   M10RoomRects
-    174  fa95		       02		      .byte.b	2	; number of rectangles
-    175  fa96		       00 51		      .byte.b	$00, $51	; packed (x<<2|y, w<<2|h)
-    176  fa98		       02 51		      .byte.b	$02, $51	; packed (x<<2|y, w<<2|h)
-    177  fa9a		       00		      .byte.b	0	; number of hot rectangles
-    178  fa9b				   M10TilePF0
-    179  fa9b		       f0 00 f0 	      .byte.b	$f0, $00, $f0
-    180  fa9e				   M10TilePF1
-    181  fa9e		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-    182  faa1				   M10TilePF2
-    183  faa1		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-    184  faa4				   M10MetaA
-    185  faa4		       02		      .byte.b	$02	; (m1_col+1)<<4 | band mask
-    186  faa5				   M10MetaB
-    187  faa5		       0a		      .byte.b	$0a	; (ball_col+1), 0 = no ball
-    188  faa6				   M10RightPF0
-    189  faa6		       f0 30 f0 	      .byte.b	$f0, $30, $f0
-    190  faa9				   M10RightPF1
-    191  faa9		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-    192  faac				   M10RightPF2
-    193  faac		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-    194  faaf				   M10RightRects
-    195  faaf		       03		      .byte.b	3	; number of rectangles
-    196  fab0		       00 00 14 01	      .byte.b	0, 0, 20, 1	; x(right_col*2), y, w, h
-    197  fab4		       12 01 02 01	      .byte.b	18, 1, 2, 1	; x(right_col*2), y, w, h
-    198  fab8		       00 02 14 01	      .byte.b	0, 2, 20, 1	; x(right_col*2), y, w, h
-    199  fabc		       00		      .byte.b	0	; number of hot rectangles
-    200  fabd
-    201  fabd							; Generated from models.json model 11. Do not edit by hand.
-    202  fabd				   M11RoomRects
-    203  fabd		       02		      .byte.b	2	; number of rectangles
-    204  fabe		       00 51		      .byte.b	$00, $51	; packed (x<<2|y, w<<2|h)
-    205  fac0		       02 51		      .byte.b	$02, $51	; packed (x<<2|y, w<<2|h)
-    206  fac2		       00		      .byte.b	0	; number of hot rectangles
-    207  fac3				   M11TilePF0
-    208  fac3		       f0 00 f0 	      .byte.b	$f0, $00, $f0
-    209  fac6				   M11TilePF1
-    210  fac6		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-    211  fac9				   M11TilePF2
-    212  fac9		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-    213  facc				   M11MetaA
-    214  facc		       10		      .byte.b	$10	; (m1_col+1)<<4 | band mask
-    215  facd				   M11MetaB
-    216  facd		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
-    217  face
+     57  fa12							; Generated from models.json model 5. Do not edit by hand.
+     58  fa12				   M5RoomRects
+     59  fa12		       06		      .byte.b	6	; number of rectangles
+     60  fa13		       00 11		      .byte.b	$00, $11	; packed (x<<2|y, w<<2|h)
+     61  fa15		       18 39		      .byte.b	$18, $39	; packed (x<<2|y, w<<2|h)
+     62  fa17		       01 09		      .byte.b	$01, $09	; packed (x<<2|y, w<<2|h)
+     63  fa19		       29 29		      .byte.b	$29, $29	; packed (x<<2|y, w<<2|h)
+     64  fa1b		       02 21		      .byte.b	$02, $21	; packed (x<<2|y, w<<2|h)
+     65  fa1d		       32 21		      .byte.b	$32, $21	; packed (x<<2|y, w<<2|h)
+     66  fa1f		       00		      .byte.b	0	; number of hot rectangles
+     67  fa20				   M5TilePF0
+     68  fa20		       f0 30 f0 	      .byte.b	$f0, $30, $f0
+     69  fa23				   M5TilePF1
+     70  fa23		       3f 03 f0 	      .byte.b	$3f, $03, $f0
+     71  fa26				   M5TilePF2
+     72  fa26		       ff ff ff 	      .byte.b	$ff, $ff, $ff
+     73  fa29				   M5MetaA
+     74  fa29		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
+     75  fa2a				   M5MetaB
+     76  fa2a		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
+     77  fa2b
+     78  fa2b							; Generated from models.json model 6. Do not edit by hand.
+     79  fa2b				   M6RoomRects
+     80  fa2b		       06		      .byte.b	6	; number of rectangles
+     81  fa2c		       00 21		      .byte.b	$00, $21	; packed (x<<2|y, w<<2|h)
+     82  fa2e		       30 21		      .byte.b	$30, $21	; packed (x<<2|y, w<<2|h)
+     83  fa30		       01 11		      .byte.b	$01, $11	; packed (x<<2|y, w<<2|h)
+     84  fa32		       39 1a		      .byte.b	$39, $1a	; packed (x<<2|y, w<<2|h)
+     85  fa34		       02 09		      .byte.b	$02, $09	; packed (x<<2|y, w<<2|h)
+     86  fa36		       1a 21		      .byte.b	$1a, $21	; packed (x<<2|y, w<<2|h)
+     87  fa38		       00		      .byte.b	0	; number of hot rectangles
+     88  fa39				   M6TilePF0
+     89  fa39		       f0 f0 30 	      .byte.b	$f0, $f0, $30
+     90  fa3c				   M6TilePF1
+     91  fa3c		       f0 00 3f 	      .byte.b	$f0, $00, $3f
+     92  fa3f				   M6TilePF2
+     93  fa3f		       ff fc ff 	      .byte.b	$ff, $fc, $ff
+     94  fa42				   M6MetaA
+     95  fa42		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
+     96  fa43				   M6MetaB
+     97  fa43		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
+     98  fa44
+     99  fa44							; Generated from models.json model 7. Do not edit by hand.
+    100  fa44				   M7RoomRects
+    101  fa44		       03		      .byte.b	3	; number of rectangles
+    102  fa45		       00 0a		      .byte.b	$00, $0a	; packed (x<<2|y, w<<2|h)
+    103  fa47		       18 39		      .byte.b	$18, $39	; packed (x<<2|y, w<<2|h)
+    104  fa49		       02 49		      .byte.b	$02, $49	; packed (x<<2|y, w<<2|h)
+    105  fa4b		       00		      .byte.b	0	; number of hot rectangles
+    106  fa4c				   M7TilePF0
+    107  fa4c		       30 30 f0 	      .byte.b	$30, $30, $f0
+    108  fa4f				   M7TilePF1
+    109  fa4f		       3f 00 ff 	      .byte.b	$3f, $00, $ff
+    110  fa52				   M7TilePF2
+    111  fa52		       ff 00 3f 	      .byte.b	$ff, $00, $3f
+    112  fa55				   M7MetaA
+    113  fa55		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
+    114  fa56				   M7MetaB
+    115  fa56		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
+    116  fa57
+    117  fa57							; Generated from models.json model 8. Do not edit by hand.
+    118  fa57				   M8RoomRects
+    119  fa57		       03		      .byte.b	3	; number of rectangles
+    120  fa58		       00 21		      .byte.b	$00, $21	; packed (x<<2|y, w<<2|h)
+    121  fa5a		       30 21		      .byte.b	$30, $21	; packed (x<<2|y, w<<2|h)
+    122  fa5c		       02 51		      .byte.b	$02, $51	; packed (x<<2|y, w<<2|h)
+    123  fa5e		       00		      .byte.b	0	; number of hot rectangles
+    124  fa5f				   M8TilePF0
+    125  fa5f		       f0 00 f0 	      .byte.b	$f0, $00, $f0
+    126  fa62				   M8TilePF1
+    127  fa62		       f0 00 ff 	      .byte.b	$f0, $00, $ff
+    128  fa65				   M8TilePF2
+    129  fa65		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+    130  fa68				   M8MetaA
+    131  fa68		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
+    132  fa69				   M8MetaB
+    133  fa69		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
+    134  fa6a
 ------- FILE bank2.asm
 ------- FILE generated/level_001_rooms_data.asm LEVEL 2 PASS 2
-      0  face					      include	"generated/level_001_rooms_data.asm"
-      1  face							; All rooms use shared model data (models_data.asm).
+      0  fa6a					      include	"generated/level_001_rooms_data.asm"
+      1  fa6a							; All rooms use shared model data (models_data.asm).
 ------- FILE bank2.asm
 ------- FILE generated/level_002_rooms_data.asm LEVEL 2 PASS 2
-      0  face					      include	"generated/level_002_rooms_data.asm"
-      1  face							; All rooms use shared model data (models_data.asm).
+      0  fa6a					      include	"generated/level_002_rooms_data.asm"
+      1  fa6a							; All rooms use shared model data (models_data.asm).
 ------- FILE bank2.asm
 ------- FILE generated/level_003_rooms_data.asm LEVEL 2 PASS 2
-      0  face					      include	"generated/level_003_rooms_data.asm"
-      1  face							; All rooms use shared model data (models_data.asm).
+      0  fa6a					      include	"generated/level_003_rooms_data.asm"
+      1  fa6a							; All rooms use shared model data (models_data.asm).
 ------- FILE bank2.asm
 ------- FILE generated/level_004_rooms_data.asm LEVEL 2 PASS 2
-      0  face					      include	"generated/level_004_rooms_data.asm"
-      1  face							; All rooms use shared model data (models_data.asm).
+      0  fa6a					      include	"generated/level_004_rooms_data.asm"
+      1  fa6a							; All rooms use shared model data (models_data.asm).
 ------- FILE bank2.asm
 ------- FILE generated/spill_window.asm LEVEL 2 PASS 2
-      0  face					      include	"generated/spill_window.asm"	; #27b: level rooms, placed by convert_level
-      1  face							; Generated by convert_level.py --levels (bugs.md 27b). Do not edit by hand.
-      2  face							; Include list for this bank2 gap — see emit_spills().
-------- FILE generated/level_001_rooms.asm LEVEL 3 PASS 2
-      0  face					      include	"generated/level_001_rooms.asm"
-      1  face							; Generated from Level 1 (level 1). Do not edit by hand.
-      2  face		       00 00	   LEVEL1_START_ROOM =	0
-      3  face		       00 20	   LEVEL1_WALL_COLOR =	$20
-      4  face		       00 22	   LEVEL1_WALL_COLOR2 =	$22
-      5  face		       00 20	   LEVEL1_START_X =	32
-      6  face		       00 18	   LEVEL1_START_Y =	24
-      7  face		       00 81	   LEVEL1_MINER_ROOM =	129
-      8  face		       00 1b	   LEVEL1_MINER_X =	27
-      9  face		       00 54	   LEVEL1_MINER_Y =	84
-     10  face
-     11  face							; Room data: one (L1R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
-     12  face							; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
-     13  face				   LEVEL1_RoomDataTable
-     14  face		       e1 f9 d9 f9	      .word.w	M0TilePF0, M0RoomRects	; room 0 (model 0)
-     15  fad2		       f4 f9 ec f9	      .word.w	M1TilePF0, M1RoomRects	; room 1 (model 1)
-     16  fad6
-     17  fad6							; Room connections: 2 bytes/room, nibble-packed (up<<4|down, left<<4|right); $F = none.
-     18  fad6				   LEVEL1_RoomConnections
-     19  fad6		       f1 ff		      .byte.b	$f1, $ff	; room 0
-     20  fad8		       0f ff		      .byte.b	$0f, $ff	; room 1
-     21  fada
-     22  fada							; Enemy data: 2 enemy records across 2 rooms, 4 bytes each (type,x,y,dir).
-     23  fada				   LEVEL1_EnemyDataTable
-     24  fada		       06 9b 54 ff	      .byte.b	6, 155, 84, -1
-     25  fade		       00 7f 3c ff	      .byte.b	0, 127, 60, -1
-     26  fae2
-     27  fae2							; Per-room enemy records: ptr_lo, ptr_hi, count, bottom_color.
-     28  fae2				   LEVEL1_RoomEnemies
-     29  fae2		       da fa 01 00	      .byte.b	<(LEVEL1_EnemyDataTable+0), >(LEVEL1_EnemyDataTable+0), 1, $00	; room 0
-     30  fae6		       de fa 01 00	      .byte.b	<(LEVEL1_EnemyDataTable+4), >(LEVEL1_EnemyDataTable+4), 1, $00	; room 1
+      0  fa6a					      include	"generated/spill_window.asm"	; #27b: level rooms, placed by convert_level
+      1  fa6a							; Generated by convert_level.py --levels (bugs.md 27b). Do not edit by hand.
+      2  fa6a							; Include list for this bank2 gap — see emit_spills().
+------- FILE generated/level_003_rooms.asm LEVEL 3 PASS 2
+      0  fa6a					      include	"generated/level_003_rooms.asm"
+      1  fa6a							; Generated from New Level (level 3). Do not edit by hand.
+      2  fa6a		       00 00	   LEVEL3_START_ROOM =	0
+      3  fa6a		       00 92	   LEVEL3_WALL_COLOR =	$92
+      4  fa6a		       00 96	   LEVEL3_WALL_COLOR2 =	$96
+      5  fa6a		       00 20	   LEVEL3_START_X =	32
+      6  fa6a		       00 18	   LEVEL3_START_Y =	24
+      7  fa6a		       00 85	   LEVEL3_MINER_ROOM =	133
+      8  fa6a		       00 17	   LEVEL3_MINER_X =	23
+      9  fa6a		       00 54	   LEVEL3_MINER_Y =	84
+     10  fa6a
+     11  fa6a							; Room data: one (L3R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
+     12  fa6a							; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
+     13  fa6a				   LEVEL3_RoomDataTable
+     14  fa6a		       c6 fa be fa	      .word.w	L3R1TilePF0, L3R1RoomRects	; room 0 (async)
+     15  fa6e		       de fa d1 fa	      .word.w	L3R2TilePF0, L3R2RoomRects	; room 1 (async)
+     16  fa72		       20 fa 12 fa	      .word.w	M5TilePF0, M5RoomRects	; room 2 (model 5)
+     17  fa76		       39 fa 2b fa	      .word.w	M6TilePF0, M6RoomRects	; room 3 (model 6)
+     18  fa7a		       4c fa 44 fa	      .word.w	M7TilePF0, M7RoomRects	; room 4 (model 7)
+     19  fa7e		       e1 f9 d9 f9	      .word.w	M1TilePF0, M1RoomRects	; room 5 (model 1)
+     20  fa82
+     21  fa82							; Room connections: 2 bytes/room, nibble-packed (up<<4|down, left<<4|right); $F = none.
+     22  fa82				   LEVEL3_RoomConnections
+     23  fa82		       f1 ff		      .byte.b	$f1, $ff	; room 0
+     24  fa84		       02 ff		      .byte.b	$02, $ff	; room 1
+     25  fa86		       13 ff		      .byte.b	$13, $ff	; room 2
+     26  fa88		       24 ff		      .byte.b	$24, $ff	; room 3
+     27  fa8a		       35 ff		      .byte.b	$35, $ff	; room 4
+     28  fa8c		       4f ff		      .byte.b	$4f, $ff	; room 5
+     29  fa8e
+     30  fa8e							; Enemy data: 6 enemy records across 6 rooms, 4 bytes each (type,x,y,dir).
+     31  fa8e				   LEVEL3_EnemyDataTable
+     32  fa8e		       01 7f 3c 01	      .byte.b	1, 127, 60, 1
+     33  fa92		       05 1b 12 01	      .byte.b	5, 27, 18, 1
+     34  fa96		       00 17 6c 01	      .byte.b	0, 23, 108, 1
+     35  fa9a		       02 67 3c 01	      .byte.b	2, 103, 60, 1
+     36  fa9e		       04 27 3c 01	      .byte.b	4, 39, 60, 1
+     37  faa2		       05 1b 12 01	      .byte.b	5, 27, 18, 1
+     38  faa6
+     39  faa6							; Per-room enemy records: ptr_lo, ptr_hi, count, bottom_color.
+     40  faa6				   LEVEL3_RoomEnemies
+     41  faa6		       8e fa 00 00	      .byte.b	<(LEVEL3_EnemyDataTable), >(LEVEL3_EnemyDataTable), 0, $00	; room 0
+     42  faaa		       8e fa 00 00	      .byte.b	<(LEVEL3_EnemyDataTable), >(LEVEL3_EnemyDataTable), 0, $00	; room 1
+     43  faae		       8e fa 02 00	      .byte.b	<(LEVEL3_EnemyDataTable+0), >(LEVEL3_EnemyDataTable+0), 2, $00	; room 2
+     44  fab2		       96 fa 02 00	      .byte.b	<(LEVEL3_EnemyDataTable+8), >(LEVEL3_EnemyDataTable+8), 2, $00	; room 3
+     45  fab6		       9e fa 02 00	      .byte.b	<(LEVEL3_EnemyDataTable+16), >(LEVEL3_EnemyDataTable+16), 2, $00	; room 4
+     46  faba		       8e fa 00 00	      .byte.b	<(LEVEL3_EnemyDataTable), >(LEVEL3_EnemyDataTable), 0, $00	; room 5
+     47  fabe
+     48  fabe							; Generated from room 0 (model 0). Do not edit by hand.
+     49  fabe				   L3R1RoomRects
+     50  fabe		       03		      .byte.b	3	; number of rectangles
+     51  fabf		       00 11		      .byte.b	$00, $11	; packed (x<<2|y, w<<2|h)
+     52  fac1		       01 09		      .byte.b	$01, $09	; packed (x<<2|y, w<<2|h)
+     53  fac3		       02 49		      .byte.b	$02, $49	; packed (x<<2|y, w<<2|h)
+     54  fac5		       00		      .byte.b	0	; number of hot rectangles
+     55  fac6				   L3R1TilePF0
+     56  fac6		       f0 30 f0 	      .byte.b	$f0, $30, $f0
+     57  fac9				   L3R1TilePF1
+     58  fac9		       00 00 ff 	      .byte.b	$00, $00, $ff
+     59  facc				   L3R1TilePF2
+     60  facc		       00 00 3f 	      .byte.b	$00, $00, $3f
+     61  facf				   L3R1MetaA
+     62  facf		       90		      .byte.b	$90	; (m1_col+1)<<4 | band mask
+     63  fad0				   L3R1MetaB
+     64  fad0		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
+     65  fad1
+     66  fad1							; Generated from room 1 (model 4). Do not edit by hand.
+     67  fad1				   L3R2RoomRects
+     68  fad1		       03		      .byte.b	3	; number of rectangles
+     69  fad2		       00 49		      .byte.b	$00, $49	; packed (x<<2|y, w<<2|h)
+     70  fad4		       02 11		      .byte.b	$02, $11	; packed (x<<2|y, w<<2|h)
+     71  fad6		       1a 39		      .byte.b	$1a, $39	; packed (x<<2|y, w<<2|h)
+     72  fad8		       01		      .byte.b	1	; number of hot rectangles
+     73  fad9		       82 00 01 14*	      .byte.b	$82, 0, 1, 20, 1	; hcrunch band prefix
+     74  fade				   L3R2TilePF0
+     75  fade		       f0 f0 f0 	      .byte.b	$f0, $f0, $f0
+     76  fae1				   L3R2TilePF1
+     77  fae1		       ff ff 3f 	      .byte.b	$ff, $ff, $3f
+     78  fae4				   L3R2TilePF2
+     79  fae4		       3f ff ff 	      .byte.b	$3f, $ff, $ff
+     80  fae7				   L3R2MetaA
+     81  fae7		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
+     82  fae8				   L3R2MetaB
+     83  fae8		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
 ------- FILE generated/spill_window.asm
 ------- FILE bank2.asm
-   1542  faea
-   1543  faea							; --- Phase 3: phase-cell blink (moved here — StageBandTab window full)
-   1544  faea							; Walks the hot-stream $80 records [class, 2c, row, 2, 1] and toggles
-   1545  faea							; the cell's two PF bits per EnemyRamP bit5 (64f cycle: 32 ON + 32
-   1546  faea							; OFF). The PF buffers are the collision map — render, PHM, and the
-   1547  faea							; laser all follow the blink for free. $81/$82 (vcrunch/hcrunch)
-   1548  faea							; tramp to bank3 (CrunchClock ping-pong staging — Phase 4); legacy
-   1549  faea							; hot rects are skipped. CollisionEndY ($8F) is
-   1550  faea							; scratch: the pack rebuild in StageBandTab overwrites it right
-   1551  faea							; after the call returns.
-   1552  faea				   PhaseBlink
-   1553  faea							; --- Phase C vcrunch slice staging (defaults; the walk's VcrShutter
-   1554  faea							; arm overwrites for shutter rooms). Runs every VBL this routine does —
-   1555  faea							; bank1 HUD already stomped $EA/$EB/$EC after the cave, so a full
-   1556  faea							; restage here is the only way the next kernel reads sane values.
-   1557  faea							; Idle defaults: VcrBand=$FF (tail dispatch never matches), VcrNext=0
-   1558  faea							; (idle marker — only 1..4 slices), VcrState=0. The band0 length needs
-   1559  faea							; no byte: .Row derives 8/48 from these two.
-   1560  faea		       a9 ff		      lda	#$FF
-   1561  faec		       85 ec		      sta	VcrBand
-   1562  faee		       a9 00		      lda	#0
-   1563  faf0		       85 eb		      sta	VcrNext
-   1564  faf2		       85 ea		      sta	VcrState
-   1565  faf4							; Door stripe color → CollisionCellY ($8D): $80 = no door (the kernel
-   1566  faf4		       a9 80		      lda	#$80
-   1567  faf6							; band-setup line keeps the band color on COLUP1); $1C = yellow
-   1568  faf6							; (hue1 luma6 — doors + key are yellow, user ruling 2026-10-12; the
-   1569  faf6							; +10c door branch cost +2 cave frame lines — wall-model retargeted
-   1570  faf6							; per-kernel, bugs.md #32 closed). The overscan PHM prologue restages
-   1571  faf6							; $8D as its own top-row temp AFTER the kernel — no lifecycle overlap.
-   1572  faf6							; (Staged here, not in StageBandTab: that window is pin-full.)
-   1573  faf6		       a9 80		      lda	#$80
-   1574  faf8		       85 8d		      sta	CollisionCellY
-   1575  fafa		       a0 09		      ldy	#9
-   1576  fafc		       b1 99		      lda	(RoomPF0Lo),Y	; MetaA
-   1577  fafe		       29 08		      and	#$08	; b3 = left door
-   1578  fb00		       f0 04		      beq	.PhNoDoor
-   1579  fb02		       a9 1c		      lda	#$1C	; yellow door stripe
-   1580  fb04		       85 8d		      sta	CollisionCellY
-   1581  fb06				   .PhNoDoor
-   1582  fb06							; --- blink phase → EnemyDeadMask b5 (armed = cell solid this frame) --
-   1583  fb06							; mod-90 clock: 45 ON / 45 OFF (+76f tail per 256 wrap) = ~+40% over the
-   1584  fb06							; old raw bit5 32/32 blink (user, 2026-10-13). Staged here every VBL so
-   1585  fb06							; overscan HotOverlapBody can read the SAME frame's state: EnemyRamP is
-   1586  fb06							; incremented at overscan entry (RefreshEnemyY), so a raw-clock read in
-   1587  fb06							; HOV would be one frame ahead of the kernel's rendered blink.
-   1588  fb06		       a5 c2		      lda	EnemyRamP
-   1589  fb08		       c9 5a		      cmp	#90
-   1590  fb0a		       90 02		      bcc	.Phm1
-   1591  fb0c		       e9 5a		      sbc	#90
-   1592  fb0e				   .Phm1
-   1593  fb0e		       c9 5a		      cmp	#90
-   1594  fb10		       90 02		      bcc	.Phm2
-   1595  fb12		       e9 5a		      sbc	#90
-   1596  fb14				   .Phm2
-   1597  fb14		       c9 2d		      cmp	#45	; C=1 ⟺ phase ≥ 45 ⟺ blink OFF
-   1598  fb16		       a5 ba		      lda	EnemyDeadMask	; (LDA preserves C)
-   1599  fb18		       b0 04		      bcs	.PhfOff
-   1600  fb1a		       09 20		      ora	#$20
-   1601  fb1c		       90 02		      bcc	.PhfSt	; C=0 → always taken (skips the AND)
-   1602  fb1e				   .PhfOff
-   1603  fb1e		       29 df		      and	#$DF
-   1604  fb20				   .PhfSt
-   1605  fb20		       85 ba		      sta	EnemyDeadMask
-   1606  fb22		       a5 90		      lda	RoomRectsLo
-   1607  fb24		       85 e5		      sta	FetchPtr
-   1608  fb26		       a5 91		      lda	RoomRectsHi
-   1609  fb28		       85 e6		      sta	FetchPtr+1
-   1610  fb2a		       a0 00		      ldy	#0
-   1611  fb2c		       b1 e5		      lda	(FetchPtr),Y	; solid count
-   1612  fb2e		       0a		      asl
-   1613  fb2f		       18		      clc
-   1614  fb30		       69 01		      adc	#1
-   1615  fb32		       a8		      tay		; Y → hot count
-   1616  fb33		       b1 e5		      lda	(FetchPtr),Y
-   1617  fb35		       f0 6e		      beq	.PhDone	; no hot records at all
-   1618  fb37		       85 92		      sta	RectCount
-   1619  fb39				   .PhRec
-   1620  fb39		       a5 92		      lda	RectCount
-   1621  fb3b		       f0 68		      beq	.PhDone
-   1622  fb3d		       c6 92		      dec	RectCount
-   1623  fb3f		       c8		      iny		; Y → record class
-   1624  fb40		       b1 e5		      lda	(FetchPtr),Y
-   1625  fb42		       10 5a		      bpl	.PhSkip	; legacy hot rect — not a blink cell
-   1626  fb44		       c9 80		      cmp	#$80
-   1627  fb46		       f0 0e		      beq	.PhPhase
-   1628  fb48		       c9 81		      cmp	#$81
-   1629  fb4a		       d0 03		      bne	.PhB82
-   1630  fb4c		       4c 45 fe 	      jmp	PhVcrPre	; Phase 4: pre-read fields (bank2 ROM), tramp bank3
-   1631  fb4f				   .PhB82
-   1632  fb4f		       c9 82		      cmp	#$82
-   1633  fb51		       d0 4b		      bne	.PhSkip	; unknown b7 class: skip 4
-   1634  fb53		       4c 1e fc 	      jmp	PhHcrPre	; Phase 4: pre-read fields (bank2 ROM), tramp bank3
-   1635  fb56				   .PhPhase
-   1636  fb56		       c8		      iny		; Y → 2c (even, 0-18)
-   1637  fb57		       b1 e5		      lda	(FetchPtr),Y
-   1638  fb59		       4a		      lsr		; pair index 0-9
-   1639  fb5a		       aa		      tax
-   1640  fb5b		       bd 49 f9 	      lda	PhMaskTab,X	; two adjacent PF bits for the cell pair
-   1641  fb5e		       85 8c		      sta	CollisionCellX	; mask (scratch — overscan restages $8C)
-   1642  fb60		       49 ff		      eor	#$FF
-   1643  fb62		       85 8f		      sta	CollisionEndY	; ~mask (scratch — pack rebuild overwrites)
-   1644  fb64							; buffer offset: pair<2 → PF0 (0), <6 → PF1 (3), else PF2 (6)
-   1645  fb64		       a9 00		      lda	#0
-   1646  fb66		       e0 02		      cpx	#2
-   1647  fb68		       90 08		      bcc	.PhOffA
-   1648  fb6a		       a9 03		      lda	#3
-   1649  fb6c		       e0 06		      cpx	#6
-   1650  fb6e		       90 02		      bcc	.PhOffA
-   1651  fb70		       a9 06		      lda	#6
-   1652  fb72				   .PhOffA
-   1653  fb72		       85 84		      sta	LineCount	; offset scratch
-   1654  fb74		       c8		      iny		; Y → row (band 0-2)
-   1655  fb75		       b1 e5		      lda	(FetchPtr),Y
-   1656  fb77		       18		      clc
-   1657  fb78		       65 84		      adc	LineCount	; A = buffer offset + row (0-8 → $C3+A)
-   1658  fb7a		       aa		      tax
-   1659  fb7b		       a5 ba		      lda	EnemyDeadMask	; b5 flag staged above this frame
-   1660  fb7d		       29 40		      and	#$40	; b6: walls removed by crush kill
-   1661  fb7f		       d0 0f		      bne	.PhOff	; force open every VBL until EnterRoom clears
-   1662  fb81		       a5 ba		      lda	EnemyDeadMask	; b5 flag staged above this frame
-   1663  fb83		       29 20		      and	#$20	; armed ⟺ cell solid
-   1664  fb85		       f0 09		      beq	.PhOff
-   1665  fb87		       b5 c3		      lda	PF0Buf,X
-   1666  fb89		       05 8c		      ora	CollisionCellX
-   1667  fb8b		       95 c3		      sta	PF0Buf,X
-   1668  fb8d		       4c 99 fb 	      jmp	PhNext
-   1669  fb90				   .PhOff
-   1670  fb90		       b5 c3		      lda	PF0Buf,X
-   1671  fb92		       25 8f		      and	CollisionEndY
-   1672  fb94		       95 c3		      sta	PF0Buf,X
-   1673  fb96		       4c 99 fb 	      jmp	PhNext
-   1674  fb99				   PhNext		; Y = row (base+2): skip w/h → next class.
-   1675  fb99							; GLOBAL: bank3 crunch bodies tail-jmp here
-   1676  fb99							; via the $FCC1 pads (Y left at base+2).
-   1677  fb99		       c8		      iny		; Y → w
-   1678  fb9a		       c8		      iny		; Y → h (record last byte)
-   1679  fb9b		       4c 39 fb 	      jmp	.PhRec
-   1680  fb9e				   .PhSkip		; non-phase record: skip its last 4 bytes
-   1681  fb9e		       c8		      iny
-   1682  fb9f		       c8		      iny
-   1683  fba0		       c8		      iny
-   1684  fba1		       c8		      iny		; Y → h (record last byte)
-   1685  fba2		       4c 39 fb 	      jmp	.PhRec
-   1686  fba5				   .PhDone
-   1687  fba5		       60		      rts
-   1688  fba6
-   1689  fba6							; ------------------------------------------------------------------------------
-   1690  fba6							; ReturnPad ($FBF8) — byte-identical to kernel.asm's copy (sta $1FF6 / rts).
-   1691  fba6							; S5.1 pad bodies (BuildColupF) tail-jmp here: sta switches this bank to
-   1692  fba6							; bank0, the rts is then fetched from bank0's identical copy, and the stack
-   1693  fba6							; still holds the bank0 jsr CallPad_* return address.
-   1694  fba6							; ------------------------------------------------------------------------------
-   1695  fba6		       00 00 00 00*	      .ds	$FBD0 - *, 0	; #22 EnterRoom tramp twin — byte-identical
+   1542  fae9
+   1543  fae9							; --- Phase 3: phase-cell blink (moved here — StageBandTab window full)
+   1544  fae9							; Walks the hot-stream $80 records [class, 2c, row, 2, 1] and toggles
+   1545  fae9							; the cell's two PF bits per EnemyRamP bit5 (64f cycle: 32 ON + 32
+   1546  fae9							; OFF). The PF buffers are the collision map — render, PHM, and the
+   1547  fae9							; laser all follow the blink for free. $81/$82 (vcrunch/hcrunch)
+   1548  fae9							; tramp to bank3 (CrunchClock ping-pong staging — Phase 4); legacy
+   1549  fae9							; hot rects are skipped. CollisionEndY ($8F) is
+   1550  fae9							; scratch: the pack rebuild in StageBandTab overwrites it right
+   1551  fae9							; after the call returns.
+   1552  fae9				   PhaseBlink
+   1553  fae9							; --- Phase C vcrunch slice staging (defaults; the walk's VcrShutter
+   1554  fae9							; arm overwrites for shutter rooms). Runs every VBL this routine does —
+   1555  fae9							; bank1 HUD already stomped $EA/$EB/$EC after the cave, so a full
+   1556  fae9							; restage here is the only way the next kernel reads sane values.
+   1557  fae9							; Idle defaults: VcrBand=$FF (tail dispatch never matches), VcrNext=0
+   1558  fae9							; (idle marker — only 1..4 slices), VcrState=0. The band0 length needs
+   1559  fae9							; no byte: .Row derives 8/48 from these two.
+   1560  fae9		       a9 ff		      lda	#$FF
+   1561  faeb		       85 ec		      sta	VcrBand
+   1562  faed		       a9 00		      lda	#0
+   1563  faef		       85 eb		      sta	VcrNext
+   1564  faf1		       85 ea		      sta	VcrState
+   1565  faf3							; Door stripe color → CollisionCellY ($8D): $80 = no door (the kernel
+   1566  faf3		       a9 80		      lda	#$80
+   1567  faf5							; band-setup line keeps the band color on COLUP1); $1C = yellow
+   1568  faf5							; (hue1 luma6 — doors + key are yellow, user ruling 2026-10-12; the
+   1569  faf5							; +10c door branch cost +2 cave frame lines — wall-model retargeted
+   1570  faf5							; per-kernel, bugs.md #32 closed). The overscan PHM prologue restages
+   1571  faf5							; $8D as its own top-row temp AFTER the kernel — no lifecycle overlap.
+   1572  faf5							; (Staged here, not in StageBandTab: that window is pin-full.)
+   1573  faf5		       a9 80		      lda	#$80
+   1574  faf7		       85 8d		      sta	CollisionCellY
+   1575  faf9		       a0 09		      ldy	#9
+   1576  fafb		       b1 99		      lda	(RoomPF0Lo),Y	; MetaA
+   1577  fafd		       29 08		      and	#$08	; b3 = left door
+   1578  faff		       f0 04		      beq	.PhNoDoor
+   1579  fb01		       a9 1c		      lda	#$1C	; yellow door stripe
+   1580  fb03		       85 8d		      sta	CollisionCellY
+   1581  fb05				   .PhNoDoor
+   1582  fb05							; --- blink phase → EnemyDeadMask b5 (armed = cell solid this frame) --
+   1583  fb05							; mod-90 clock: 45 ON / 45 OFF (+76f tail per 256 wrap) = ~+40% over the
+   1584  fb05							; old raw bit5 32/32 blink (user, 2026-10-13). Staged here every VBL so
+   1585  fb05							; overscan HotOverlapBody can read the SAME frame's state: EnemyRamP is
+   1586  fb05							; incremented at overscan entry (RefreshEnemyY), so a raw-clock read in
+   1587  fb05							; HOV would be one frame ahead of the kernel's rendered blink.
+   1588  fb05		       a5 c2		      lda	EnemyRamP
+   1589  fb07		       c9 5a		      cmp	#90
+   1590  fb09		       90 02		      bcc	.Phm1
+   1591  fb0b		       e9 5a		      sbc	#90
+   1592  fb0d				   .Phm1
+   1593  fb0d		       c9 5a		      cmp	#90
+   1594  fb0f		       90 02		      bcc	.Phm2
+   1595  fb11		       e9 5a		      sbc	#90
+   1596  fb13				   .Phm2
+   1597  fb13		       c9 2d		      cmp	#45	; C=1 ⟺ phase ≥ 45 ⟺ blink OFF
+   1598  fb15		       a5 ba		      lda	EnemyDeadMask	; (LDA preserves C)
+   1599  fb17		       b0 04		      bcs	.PhfOff
+   1600  fb19		       09 20		      ora	#$20
+   1601  fb1b		       90 02		      bcc	.PhfSt	; C=0 → always taken (skips the AND)
+   1602  fb1d				   .PhfOff
+   1603  fb1d		       29 df		      and	#$DF
+   1604  fb1f				   .PhfSt
+   1605  fb1f		       85 ba		      sta	EnemyDeadMask
+   1606  fb21		       a5 90		      lda	RoomRectsLo
+   1607  fb23		       85 e5		      sta	FetchPtr
+   1608  fb25		       a5 91		      lda	RoomRectsHi
+   1609  fb27		       85 e6		      sta	FetchPtr+1
+   1610  fb29		       a0 00		      ldy	#0
+   1611  fb2b		       b1 e5		      lda	(FetchPtr),Y	; solid count
+   1612  fb2d		       0a		      asl
+   1613  fb2e		       18		      clc
+   1614  fb2f		       69 01		      adc	#1
+   1615  fb31		       a8		      tay		; Y → hot count
+   1616  fb32		       b1 e5		      lda	(FetchPtr),Y
+   1617  fb34		       f0 6e		      beq	.PhDone	; no hot records at all
+   1618  fb36		       85 92		      sta	RectCount
+   1619  fb38				   .PhRec
+   1620  fb38		       a5 92		      lda	RectCount
+   1621  fb3a		       f0 68		      beq	.PhDone
+   1622  fb3c		       c6 92		      dec	RectCount
+   1623  fb3e		       c8		      iny		; Y → record class
+   1624  fb3f		       b1 e5		      lda	(FetchPtr),Y
+   1625  fb41		       10 5a		      bpl	.PhSkip	; legacy hot rect — not a blink cell
+   1626  fb43		       c9 80		      cmp	#$80
+   1627  fb45		       f0 0e		      beq	.PhPhase
+   1628  fb47		       c9 81		      cmp	#$81
+   1629  fb49		       d0 03		      bne	.PhB82
+   1630  fb4b		       4c 45 fe 	      jmp	PhVcrPre	; Phase 4: pre-read fields (bank2 ROM), tramp bank3
+   1631  fb4e				   .PhB82
+   1632  fb4e		       c9 82		      cmp	#$82
+   1633  fb50		       d0 4b		      bne	.PhSkip	; unknown b7 class: skip 4
+   1634  fb52		       4c 1e fc 	      jmp	PhHcrPre	; Phase 4: pre-read fields (bank2 ROM), tramp bank3
+   1635  fb55				   .PhPhase
+   1636  fb55		       c8		      iny		; Y → 2c (even, 0-18)
+   1637  fb56		       b1 e5		      lda	(FetchPtr),Y
+   1638  fb58		       4a		      lsr		; pair index 0-9
+   1639  fb59		       aa		      tax
+   1640  fb5a		       bd 24 f9 	      lda	PhMaskTab,X	; two adjacent PF bits for the cell pair
+   1641  fb5d		       85 8c		      sta	CollisionCellX	; mask (scratch — overscan restages $8C)
+   1642  fb5f		       49 ff		      eor	#$FF
+   1643  fb61		       85 8f		      sta	CollisionEndY	; ~mask (scratch — pack rebuild overwrites)
+   1644  fb63							; buffer offset: pair<2 → PF0 (0), <6 → PF1 (3), else PF2 (6)
+   1645  fb63		       a9 00		      lda	#0
+   1646  fb65		       e0 02		      cpx	#2
+   1647  fb67		       90 08		      bcc	.PhOffA
+   1648  fb69		       a9 03		      lda	#3
+   1649  fb6b		       e0 06		      cpx	#6
+   1650  fb6d		       90 02		      bcc	.PhOffA
+   1651  fb6f		       a9 06		      lda	#6
+   1652  fb71				   .PhOffA
+   1653  fb71		       85 84		      sta	LineCount	; offset scratch
+   1654  fb73		       c8		      iny		; Y → row (band 0-2)
+   1655  fb74		       b1 e5		      lda	(FetchPtr),Y
+   1656  fb76		       18		      clc
+   1657  fb77		       65 84		      adc	LineCount	; A = buffer offset + row (0-8 → $C3+A)
+   1658  fb79		       aa		      tax
+   1659  fb7a		       a5 ba		      lda	EnemyDeadMask	; b5 flag staged above this frame
+   1660  fb7c		       29 40		      and	#$40	; b6: walls removed by crush kill
+   1661  fb7e		       d0 0f		      bne	.PhOff	; force open every VBL until EnterRoom clears
+   1662  fb80		       a5 ba		      lda	EnemyDeadMask	; b5 flag staged above this frame
+   1663  fb82		       29 20		      and	#$20	; armed ⟺ cell solid
+   1664  fb84		       f0 09		      beq	.PhOff
+   1665  fb86		       b5 c3		      lda	PF0Buf,X
+   1666  fb88		       05 8c		      ora	CollisionCellX
+   1667  fb8a		       95 c3		      sta	PF0Buf,X
+   1668  fb8c		       4c 98 fb 	      jmp	PhNext
+   1669  fb8f				   .PhOff
+   1670  fb8f		       b5 c3		      lda	PF0Buf,X
+   1671  fb91		       25 8f		      and	CollisionEndY
+   1672  fb93		       95 c3		      sta	PF0Buf,X
+   1673  fb95		       4c 98 fb 	      jmp	PhNext
+   1674  fb98				   PhNext		; Y = row (base+2): skip w/h → next class.
+   1675  fb98							; GLOBAL: bank3 crunch bodies tail-jmp here
+   1676  fb98							; via the $FCC1 pads (Y left at base+2).
+   1677  fb98		       c8		      iny		; Y → w
+   1678  fb99		       c8		      iny		; Y → h (record last byte)
+   1679  fb9a		       4c 38 fb 	      jmp	.PhRec
+   1680  fb9d				   .PhSkip		; non-phase record: skip its last 4 bytes
+   1681  fb9d		       c8		      iny
+   1682  fb9e		       c8		      iny
+   1683  fb9f		       c8		      iny
+   1684  fba0		       c8		      iny		; Y → h (record last byte)
+   1685  fba1		       4c 38 fb 	      jmp	.PhRec
+   1686  fba4				   .PhDone
+   1687  fba4		       60		      rts
+   1688  fba5
+   1689  fba5							; ------------------------------------------------------------------------------
+   1690  fba5							; ReturnPad ($FBF8) — byte-identical to kernel.asm's copy (sta $1FF6 / rts).
+   1691  fba5							; S5.1 pad bodies (BuildColupF) tail-jmp here: sta switches this bank to
+   1692  fba5							; bank0, the rts is then fetched from bank0's identical copy, and the stack
+   1693  fba5							; still holds the bank0 jsr CallPad_* return address.
+   1694  fba5							; ------------------------------------------------------------------------------
+   1695  fba5		       00 00 00 00*	      .ds	$FBD0 - *, 0	; #22 EnterRoom tramp twin — byte-identical
    1696  fbd0							;   with kernel.asm at $FBD0 (pin moved from
    1697  fbd0							;   $FB84 2026-10-13, then $FBC0 2026-10-14:
    1698  fbd0							;   model2 asym data +49B pushed the window —
@@ -2333,9 +2388,9 @@
    1907  fcbe							; ------------------------------------------------------------------------------
    1908  fcbe		       00 00 00 	      .ds	$FCC1 - *, 0
    1909  fcc1		       00 00 00 	      .byte.b	0, 0, 0
-   1910  fcc4		       4c 99 fb 	      jmp	PhNext	; vcrunch PF staging return (Y = base+2)
+   1910  fcc4		       4c 98 fb 	      jmp	PhNext	; vcrunch PF staging return (Y = base+2)
    1911  fcc7		       00 00 00 	      .byte.b	0, 0, 0
-   1912  fcca		       4c 99 fb 	      jmp	PhNext	; hcrunch PF staging return (Y = base+2)
+   1912  fcca		       4c 98 fb 	      jmp	PhNext	; hcrunch PF staging return (Y = base+2)
    1913  fccd		       00 00 00 	      .byte.b	0, 0, 0
    1914  fcd0		       4c 6b fd 	      jmp	HOVnext	; crunch miss → record walk continues
    1915  fcd3		       00 00 00 	      .byte.b	0, 0, 0
@@ -2969,7 +3024,7 @@
    2543  ff8d		       b1 e5		      lda	(FetchPtr),Y
    2544  ff8f		       4a		      lsr
    2545  ff90		       aa		      tax		; pair 0-9
-   2546  ff91		       bd 49 f9 	      lda	PhMaskTab,X
+   2546  ff91		       bd 24 f9 	      lda	PhMaskTab,X
    2547  ff94		       49 ff		      eor	#$FF
    2548  ff96		       85 84		      sta	LineCount	; ~pair mask (bits to clear)
    2549  ff98		       bd 5a fe 	      lda	PFOffTab,X	; PF reg offset 0/3/6 (was a 7-branch
@@ -3014,7 +3069,7 @@
    2588  ffd4		       c8		      iny
    2589  ffd5		       c8		      iny
    2590  ffd6		       c8		      iny
-   2591  ffd7		       4c 39 fb 	      jmp	.PhRec
+   2591  ffd7		       4c 38 fb 	      jmp	.PhRec
    2592  ffda
    2593  ffda							; Tally entry tramp slice ($FFE6-$FFEB, byte-identical with kernel.asm —
    2594  ffda							; guard: check_moth_tramp). bank0 executes `sta $1FF8`; the fetch at $FFE9

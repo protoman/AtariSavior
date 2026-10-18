@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+FROZEN = ROOT / "src" / "tests" / "frozen"
 SRC = ROOT / "src"
 sys.path.insert(0, str(ROOT / "tools"))
 
@@ -94,7 +95,7 @@ L0 = parse_labels(SRC / "bank0.lst", {"BombX", "LineCount", "RcBase",
                                 "EnemyDeadMask", "CollisionX",
                                 "BombPacked", "PF0Buf", "PF1Buf",
                                 "PF2Buf"})
-L2 = parse_labels(SRC / "bank2.lst", {"StageBandTab", "M0TilePF0",
+L2 = parse_labels(SRC / "bank2.lst", {"StageBandTab", "L1R1TilePF0",
                                       "M3TilePF0", "M1StripBlast"})
 L2.update(parse_equ(SRC / "bank2.lst",
                     {"BandTab", "CollisionEndY", "CollisionEndX",
@@ -104,7 +105,7 @@ need = ({"BombMarkWalls", "StripBlastCheck", "M1ToBank2", "M1ToBank1"}
        ({"BombX", "LineCount", "RcBase", "EnemyDeadMask", "CollisionX",
          "BombPacked", "PF0Buf", "PF1Buf", "PF2Buf"}
         - L0.keys()) | \
-       ({"StageBandTab", "M0TilePF0", "M3TilePF0", "M1StripBlast",
+       ({"StageBandTab", "L1R1TilePF0", "M3TilePF0", "M1StripBlast",
          "BandTab", "CollisionEndY", "CollisionEndX",
          "RoomPF0Lo", "RoomRectsLo"} - L2.keys())
 if need:
@@ -131,7 +132,7 @@ assert L2["M1StripBlast"] == 0xF970, (
 # Model 0 meta (bank2 ROM): MetaA+9 = (m1_col+1)<<4 | band_mask,
 # MetaB+10 = ball_col+1 — expectations below are derived from these so the
 # test tracks models.json edits (packed meta, bugs.md 28 point 1).
-M0 = L2["M0TilePF0"]
+M0 = L2["L1R1TilePF0"]
 _M0OFF = M0 - 0xF000
 META_A = BANKS[2][_M0OFF + 9]
 META_B = BANKS[2][_M0OFF + 10]
@@ -179,7 +180,7 @@ def run_bmw(mem: Mem1, bomb_x: int, line_count: int,
 
 def stage(deadmask: int) -> tuple[tuple, int, int]:
     """Drive StageBandTab; return (BandTab0..2, packed byte, staged M1X)."""
-    mem = Mem02()
+    mem = Mem1()
     r = mem.ram
     r[L2["RoomPF0Lo"] - 0x80] = M0 & 0xFF
     r[(L2["RoomPF0Lo"] + 1) - 0x80] = M0 >> 8
@@ -398,7 +399,7 @@ def main() -> int:
 
     # 10. NUSIZ1 staging: constant $30 for door AND plain (user rejected
     #     the 4clk door sizing 2026-10-12 — doors look like plain async).
-    class MemTIA(Mem02):
+    class MemTIA(Mem1):
         def __init__(self):
             super().__init__()
             self.tia_writes = {}
@@ -447,7 +448,7 @@ def main() -> int:
     #     screenshots/bugs/door_right.png (user report 2026-10-17).
     #     MetaA=$29 = live model 1: (m1_col+1=2)<<4 | $08 door | $01 right.
     def band_gate(meta_a, meta_b):
-        mem = Mem02()
+        mem = Mem1()
         r = mem.ram
         r[0xA0 - 0x80 + 9] = meta_a
         r[0xA0 - 0x80 + 10] = meta_b
@@ -490,7 +491,7 @@ def main() -> int:
     # $C7). mod-90 clock (2026-10-13): phase <45 = ON half (b5 armed,
     # bits set); phase >=45 = OFF half (bits cleared).
     def stage_phase(clock):
-        mem = Mem02()
+        mem = Mem1()
         r = mem.ram
         r[0xA0 - 0x80:0xA0 - 0x80 + 7] = bytes([0, 1, 0x80, 4, 1, 2, 1])
         r[L2["RoomRectsLo"] - 0x80] = 0xA0

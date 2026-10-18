@@ -13,7 +13,7 @@ Covers:
       layers), hcrunch spanning bands / non-prefix cols, door XOR
       feature exclusivity, mixed P/V/C;
    4. LOCKED_DOOR rejects in the grid (rows_from_json);
-   5. door (row-1 patch only): resolve passes on side 0, model_door_flag,
+   5. door (row-1 patch only): resolve passes on side 0, room_door_flag,
       MetaB b7 set (ball_col+1 | $80), mixed side-0 tiles rejected, door
       on side 1 / hot band rejected;
    6. legacy emission (no feature chars, no door) stays byte-identical
@@ -46,13 +46,39 @@ def model(tiles, **extra):
     return m
 
 
+def split_async(m):
+    """Test shim for the 2026-10-17 async move.
+
+    This test authors features the old way (P/V/C tiles + asym_patches ON the
+    model). The convert API now reads them from the ROOM, so split the model
+    into (model, room): feature tiles become room.feature_cells and the grid
+    cell becomes SOLID_WALL — exactly what tools/migrate_async_to_rooms.py
+    does to real data and what keeps the PF bytes identical."""
+    tiles = list(m.get("tiles") or [])
+    feats = []
+    for i, tile in enumerate(tiles):
+        if tile in convert_level.FEATURE_TILES:
+            feats.append([i // 10, i % 10, tile])
+            tiles[i] = 1
+    model = dict(m)
+    if feats:
+        model["tiles"] = tiles
+    room = {"room_id": m["id"], "model_id": m["id"],
+            "asym_patches": m.get("asym_patches") or []}
+    if feats:
+        room["feature_cells"] = feats
+    return model, room
+
+
 def rows_of(m):
-    return convert_level.rows_from_json({"model_id": m["id"]}, {m["id"]: m})
+    model, room = split_async(m)
+    return convert_level.rows_from_json(room, {model["id"]: model})
 
 
 def emitted(m, door=None):
+    model, room = split_async(m)
     left = rows_of(m)
-    res = convert_level.resolve_asym_patches(m, left)
+    res = convert_level.resolve_asym_patches(model, room, left)
     asym, ball_x, m1_x, m1_door, m1_right = res if res else (None, 0, 0, False, False)
     if door is None:
         # Phase 5: every LOCKED_DOOR is emitted as an M1 door (MetaA b3, and
@@ -235,7 +261,7 @@ def main() -> int:
     # parked M1 hides there) and open in band 1 (its own band).
     door_model = model(grid(["#" * 10, "." * 10, "#" * 10]),
                        asym_patches=[[1, 3, convert_level.LOCKED_DOOR]])
-    assert convert_level.model_door_flag(door_model)
+    assert convert_level.room_door_flag(split_async(door_model)[1])
     lines = emitted(door_model)
     _a = byte_line(lines, "M91MetaA:")
     assert _a and (_a[0] & 0x08), \
@@ -246,7 +272,7 @@ def main() -> int:
         f"door MetaB {byte_line(lines, 'M91MetaB:')} != [00] (doors use M1, no ball)"
     # plain patch model keeps MetaB b7 clear
     plain = model(grid(["." * 10] * 3), asym_patches=[[0, 3, 1]])
-    assert not convert_level.model_door_flag(plain)
+    assert not convert_level.room_door_flag(split_async(plain)[1])
     pb = byte_line(emitted(plain), "M91MetaB:")
     assert pb == [0x04] and not (pb[0] & 0x80), pb
     # mixed side-0 tiles (door on row 1 + plain patch elsewhere)
@@ -261,8 +287,8 @@ def main() -> int:
     left1d = ["...#......", "." * 10, "...#......"]  # patch row 1 (door)
     m1door = model(grid(left1d),
                    asym_patches=[[1, 3, convert_level.LOCKED_DOOR, 1]])
-    assert convert_level.model_m1_door_flag(m1door)
-    assert not convert_level.model_door_flag(m1door), \
+    assert convert_level.room_m1_door_flag(split_async(m1door)[1])
+    assert not convert_level.room_door_flag(split_async(m1door)[1]), \
         "side-1 door must not set MetaB b7"
     l1 = emitted(m1door)
     # m1 col 3 -> m1_col+1 = 4 -> $40 | b3 door

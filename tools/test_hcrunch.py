@@ -384,7 +384,7 @@ def main() -> None:
     # Hot hcrunch: the shutter kills at ANY extent and NEVER pushes. Both
     # M4 hcrunch rooms are cold, so this path is untested live — inject b6
     # into the frozen fixture's MetaB byte (TilePF0+10) and probe.
-    meta_off = (W.L2["M4TilePF0"] + 10) - 0xF000
+    meta_off = (W.L2["L3R2TilePF0"] + 10) - 0xF000
     W.BANKS[2][meta_off] = 0x40           # MetaB b6 = hot
     # 15: hot never pushes (cold pushL at clock 0x80 -> 55)
     set_dead(0x00)
