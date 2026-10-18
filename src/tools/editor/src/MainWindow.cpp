@@ -153,6 +153,17 @@ void MainWindow::LoadModels() {
     if (m_modelList->count() > 0 && m_modelList->currentRow() < 0) {
         m_modelList->setCurrentRow(0);
     }
+    // 2026-10-17 format change: async walls live on the ROOM now. If this
+    // project still carries model-level async (an older file), migrate every
+    // level + models.json once, in place — a save must never write the
+    // retired form (convert hard-fails a model that still carries async).
+    if (hero::DataSerializer::MigrateAsyncToRooms(
+            m_models, m_gameDataDir.toStdString(),
+            m_modelsFilePath.toStdString())) {
+        statusBar()->showMessage(
+            "Async walls migrated from models to rooms (2026-10-17 format)",
+            6000);
+    }
 }
 
 void MainWindow::SaveModels() {

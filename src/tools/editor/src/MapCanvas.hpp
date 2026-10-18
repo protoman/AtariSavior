@@ -100,6 +100,11 @@ private:
     // convert would reject at build: phase/vcrunch on the hot middle band,
     // hcrunch cells outside one band / not a contiguous prefix from col 0.
     void ValidateFeatureTiles();
+    // Async walls (door/phase/vcrunch/hcrunch) are ROOM properties since the
+    // 2026-10-17 format change; the room-level brush UI is the next editor
+    // step. The legacy brushes refuse (one dialog per session) instead of
+    // writing the retired model fields.
+    void WarnAsyncBrushNeedsRoomEditor();
     QColor GetTileColor(int tileType, int tileY) const;
     void UpdateSizeForRoom();
     void DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int dir) const;

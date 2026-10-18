@@ -17,6 +17,7 @@
  */
 
 #include "DataSerializer.hpp"
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
@@ -25,6 +26,110 @@
 #include <iterator>
 
 namespace hero {
+
+// ---------------------------------------------------------------------------
+// Async walls moved from MODEL to ROOM (2026-10-17). Mirrors
+// tools/migrate_async_to_rooms.py so the editor and the CLI agree.
+// ---------------------------------------------------------------------------
+namespace {
+constexpr int kPhaseTile = 10;
+constexpr int kVcrunchTile = 11;
+constexpr int kHcrunchTile = 12;
+constexpr int kSolidWall = 1;
+constexpr int kRoomWidth = 10;
+
+bool IsFeatureTile(int t) {
+    return t == kPhaseTile || t == kVcrunchTile || t == kHcrunchTile;
+}
+
+// model id -> {patches, feature cells} harvested from the legacy fields.
+struct LegacyAsync {
+    std::vector<std::vector<int>> patches;
+    std::vector<std::vector<int>> features;
+};
+}  // namespace
+
+bool DataSerializer::MigrateAsyncToRooms(std::vector<ModelData>& models,
+                                         const std::string& levelsDir,
+                                         const std::string& modelsPath) {
+    namespace fs = std::filesystem;
+    std::map<int, LegacyAsync> legacy;
+    for (const auto& m : models) {
+        LegacyAsync a;
+        a.patches = m.asym_patches;
+        const int w = m.width > 0 ? m.width : kRoomWidth;
+        for (size_t i = 0; i < m.tiles.size(); ++i) {
+            if (IsFeatureTile(m.tiles[i])) {
+                a.features.push_back({static_cast<int>(i) / w,
+                                      static_cast<int>(i) % w, m.tiles[i]});
+            }
+        }
+        if (!a.patches.empty() || !a.features.empty()) {
+            legacy[m.id] = a;
+        }
+    }
+    if (legacy.empty()) {
+        return false;                       // already migrated (or no async)
+    }
+
+    bool changed = false;
+    std::error_code ec;
+    std::vector<fs::path> levels;
+    if (fs::is_directory(levelsDir, ec)) {
+        for (const auto& e : fs::directory_iterator(levelsDir, ec)) {
+            const std::string name = e.path().filename().string();
+            if (name.rfind("level_", 0) == 0 && e.path().extension() == ".json") {
+                levels.push_back(e.path());
+            }
+        }
+    }
+    std::sort(levels.begin(), levels.end());
+    for (const auto& path : levels) {
+        LevelData level;
+        if (!LoadLevelFromFile(level, path.string())) {
+            std::cerr << "migrate: cannot load " << path << std::endl;
+            continue;
+        }
+        bool touched = false;
+        for (auto& room : level.rooms) {
+            const auto it = legacy.find(room.model_id);
+            if (it == legacy.end()) {
+                continue;
+            }
+            if (!it->second.patches.empty() && room.asym_patches.empty()) {
+                room.asym_patches = it->second.patches;
+                touched = true;
+            }
+            if (!it->second.features.empty() && room.feature_cells.empty()) {
+                room.feature_cells = it->second.features;
+                touched = true;
+            }
+        }
+        if (touched && SaveLevelToFile(level, path.string())) {
+            std::cout << "migrate: " << path.filename()
+                      << " async walls moved to rooms" << std::endl;
+            changed = true;
+        }
+    }
+
+    for (auto& m : models) {
+        if (!m.asym_patches.empty()) {
+            m.asym_patches.clear();
+            changed = true;
+        }
+        const int w = m.width > 0 ? m.width : kRoomWidth;
+        for (size_t i = 0; i < m.tiles.size(); ++i) {
+            if (IsFeatureTile(m.tiles[i])) {
+                m.tiles[i] = kSolidWall;    // same PF byte (feature = solid)
+                changed = true;
+            }
+        }
+    }
+    if (changed && !modelsPath.empty()) {
+        SaveModelsToFile(models, modelsPath);   // persist the cleared models
+    }
+    return changed;
+}
 
 bool DataSerializer::SaveLevelToFile(const LevelData& level, const std::string& filepath) {
     try {
