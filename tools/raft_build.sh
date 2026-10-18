@@ -25,18 +25,31 @@ TMP="$(mktemp -d)"
 DONE=0
 
 restore() {
+    rc=$?
     if [ "$DONE" = 0 ] && [ -d "$TMP/rooms" ]; then
         rm -rf "$DIR/rooms" "$DIR/generated"
         cp -a "$TMP/rooms" "$DIR/rooms"
         cp -a "$TMP/generated" "$DIR/generated"
         DONE=1
+        now="$(cd "$DIR" && find rooms -type f -print0 | sort -z | \
+               xargs -0 sha256sum | sha256sum)"
+        if [ -n "$LIVE_SHA" ] && [ "$now" != "$LIVE_SHA" ]; then
+            echo "raft_build: *** LIVE STAGE MISMATCH AFTER RESTORE ***" >&2
+            echo "raft_build: src/rooms != pre-build snapshot — DO NOT COMMIT." >&2
+            rc=1
+        fi
     fi
     rm -rf "$TMP"
+    exit $rc
 }
 trap restore EXIT
+trap 'exit 130' INT TERM
+export FREEZE_STAGED=1
 
 cp -a "$DIR/rooms" "$TMP/rooms"
 cp -a "$DIR/generated" "$TMP/generated"
+LIVE_SHA="$(cd "$DIR" && find rooms -type f -print0 | sort -z | \
+            xargs -0 sha256sum | sha256sum)"
 
 echo "raft_build: staging a stage copy with the raft in the level-2 water room ..."
 "$PY" - "$DIR/rooms/level_002.json" <<'PY'

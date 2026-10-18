@@ -15,12 +15,42 @@ set -e
 DIR="$(cd "$(dirname "$0")/../src" && pwd)"
 ROOT="$(cd "$DIR/.." && pwd)"
 TMP="$(mktemp -d)"
-cleanup() { rm -rf "$TMP"; }
-trap cleanup EXIT
+# The live stage is REPLACED by src/tests/rooms while this runs, so the restore
+# must be trapped, never inline-only: on 2026-10-18 an early exit left the test
+# stage in src/rooms (whose level_002 still had the tentacle), the backup was
+# deleted, and the next blind `git add -A src` committed the revert over the
+# user's own room edit. The trap restores + verifies the hash of src/rooms
+# against the pre-freeze snapshot and fails loudly if they differ.
+LIVE_SHA=""
+restore() {
+    rc=$?
+    if [ -d "$TMP/rooms" ]; then
+        rm -rf "$DIR/rooms" "$DIR/generated"
+        cp -a "$TMP/rooms" "$DIR/rooms"
+        cp -a "$TMP/generated" "$DIR/generated"
+        now="$(cd "$DIR" && find rooms -type f -print0 | sort -z | \
+               xargs -0 sha256sum | sha256sum)"
+        if [ -n "$LIVE_SHA" ] && [ "$now" != "$LIVE_SHA" ]; then
+            echo "freeze: *** LIVE STAGE MISMATCH AFTER RESTORE ***" >&2
+            echo "freeze: src/rooms does not match the pre-freeze snapshot." >&2
+            echo "freeze: DO NOT COMMIT — restore the user's stage first." >&2
+            rc=1
+        fi
+    fi
+    rm -rf "$TMP"
+    exit $rc
+}
+trap restore EXIT
+trap 'exit 130' INT TERM
+# the staged test stage IS src/tests/rooms, so the live-vs-test check in
+# verify_build must stand down while this script runs
+export FREEZE_STAGED=1
 
 echo "freeze: staging test-owned data from src/tests/rooms ..."
 cp -a "$DIR/rooms" "$TMP/rooms"
 cp -a "$DIR/generated" "$TMP/generated"
+LIVE_SHA="$(cd "$DIR" && find rooms -type f -print0 | sort -z | \
+            xargs -0 sha256sum | sha256sum)"
 rm -rf "$DIR/rooms" "$DIR/generated"
 cp -a "$DIR/tests/rooms" "$DIR/rooms"
 cp -a "$DIR/tests/generated" "$DIR/generated"
