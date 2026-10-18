@@ -453,6 +453,46 @@ PAD_LO, PAD_HI = 0xFBF8, 0xFC49   # inclusive start, exclusive end (FC48 last)
 
 
 
+def check_raft_tramp(src: Path) -> None:
+    """Raft entry tramp: bank0 executes `sta $1FF7` at $F8C0; the `jmp` opcode
+    and operand are FETCHED from bank1's mirror at the same address (CallPad /
+    FoldIndirect discipline). So the 6 bytes must be byte-identical in
+    bank0/bank1 and the operand must be bank1's RaftBody body label (pinned
+    $FDE3 by `.ds`, bank1.asm). Added 2026-10-18 with the raft: without the
+    twin the tramp jumps into whatever bank1 happens to hold at that address."""
+    TRAMP = 0xF8C0
+    bins = {}
+    for idx in (0, 1):
+        p = src / f"bank{idx}.bin"
+        if p.exists() and p.stat().st_size == 4096:
+            bins[idx] = p.read_bytes()
+    if len(bins) < 2:
+        return
+    off = TRAMP - 0xF000
+    a, b = bins[0][off:off + 6], bins[1][off:off + 6]
+    if a != b:
+        err(f"raft tramp ${TRAMP:04X}: bank0 {a.hex()} != bank1 {b.hex()} "
+            "(must be byte-identical: the post-switch fetch comes from bank1)")
+    tgt = None
+    lst = src / "bank1.lst"
+    if lst.exists():
+        for line in lst.read_text(errors="replace").splitlines():
+            # DASM label lines: "<lineno> <addr>  <TAB>Label" — comments always
+            # carry a ';', so requiring the label to END the line is enough.
+            if ";" in line or not re.search(r"\bRaftBody\b", line):
+                continue
+            m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+RaftBody\s*$", line)
+            if m:
+                tgt = int(m.group(1), 16)
+                break
+    if tgt is None:
+        err("raft tramp: bank1 RaftBody label not found in bank1.lst")
+        return
+    if a[3:6] != bytes([0x4C, tgt & 0xFF, tgt >> 8]):
+        err(f"raft tramp ${TRAMP:04X}: jmp operand {a[3:6].hex()} != "
+            f"bank1 RaftBody ${tgt:04X}")
+
+
 def check_frame_tramp(src: Path) -> None:
     """PickPlayerFrame VBL tramp: bank0/bank2 byte-identity + operand = body.
 
@@ -1654,6 +1694,7 @@ def main() -> int:
     check_fold_block(src)
     check_moth_tramp(src)
     check_frame_tramp(src)
+    check_raft_tramp(src)
     check_enterroom_tramp(src)
     check_blast_tramp(src)
     check_tramp_targets(src)

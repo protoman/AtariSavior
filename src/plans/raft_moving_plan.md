@@ -4,13 +4,17 @@ Status 2026-10-18 (late): **IMPLEMENTED and guarded.** Everything below is the
 design as decided; this preamble records what actually landed and where.
 
 As built:
-- **bank1 `RaftBody` at $F822** (inside the `.ds $F937` fill that used to be dead
-  space before the M1StripBlast pin; the body is 216 B, 61 B of that fill left).
-  Bank0 enters it through **`CallPad_RaftBody`** (`sta $1FF7 / jmp $F822`), which
-  lives in the **$F82C pin gap** next to `CEH_Key` — the pre-pad END ($FC68) is
-  untouched because that gap is upstream of the $F8DD sprite pin.
-  `verify_build`'s CallPad guard already checks the `jmp $F822` literal against
-  bank1's `RaftBody` label, so the seam cannot drift silently.
+- **bank1 `RaftBody` at $FDE3** (bank1's `.ds $FEE7` fill, ~216 B of dead space
+  before the moth-twin pin). Bank0 enters it through **`CallPad_RaftBody`,
+  pinned at $F8C0** (`sta $1FF7 / jmp $FDE3`), in the **$F82C pin gap** next to
+  `CEH_Key` — the pre-pad END ($FC68) is untouched because that gap is upstream
+  of the $F8DD sprite pin.
+  **The tramp is a twinned pair:** `bank1.asm` holds the same 6 bytes at $F8C0,
+  because `sta $1FF7` makes the CPU fetch the `jmp` opcode and operand from
+  bank1. The first version of this feature put the tramp in the gap with no
+  twin and would have jumped into bank1's own body bytes; the guard is
+  `verify_build.check_raft_tramp`, and the integration case in `test_raft.py`
+  is what proves the whole path (the unit cases enter the body directly).
 - **Dispatch folded:** `UpdateEnemies`' 18 B tentacle/moth/snake compare chain
   became one `jmp UEDispatch` (+3 B). `UEDispatch` (same gap) re-tests all four
   types with absolute jumps and tail-jumps to the bodies, so stack depth is
@@ -36,6 +40,12 @@ Two deliberate simplifications, both for review:
    exactly 72 B and ends at $FF00, so there is no bank0 room for dedicated raft
    art; a solid block reads as a floating platform. Moving a sprite out (or
    freeing 8 B) would allow real raft art.
+
+Playing it: `bash tools/raft_build.sh` builds `/tmp/opencode/savior_raft.bin`
+from a staged COPY of the stage (the level-2 water room carries the raft instead
+of its tentacle) and restores the live stage + live ROM on exit. In game: level
+2 -> descend from the start room into the water room, stand on a ledge, let the
+raft come under you, step off to drop onto it.
 
 Authoring: the editor's `ADD_RAFT` brush now writes a **type-7 ENTITY** (bottom
 band, water room, open cell — the same rule shape as the tentacle). NOTE the
