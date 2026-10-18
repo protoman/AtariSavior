@@ -696,10 +696,10 @@ HOVhcrunch:
 
     .ds $FCC1 - *, 0            ; return tails (slots match bank2 pads)
     sta $1FF8
-    jmp $FB38                   ; .PhRec (vcrunch; Y=base+4, iny→next class)
+    jmp $FAFD                   ; .PhRec (vcrunch; Y=base+4, iny→next class)
     .ds $FCC7 - *, 0
     sta $1FF8
-    jmp $FB38                   ; .PhRec (hcrunch; Y=base+4, iny→next class)
+    jmp $FAFD                   ; .PhRec (hcrunch; Y=base+4, iny→next class)
     .ds $FCCD - *, 0
     sta $1FF8
     jmp $FD6B                   ; HOVnext (miss)
