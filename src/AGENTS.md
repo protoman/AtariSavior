@@ -146,6 +146,36 @@ had to be told three times to stop.
 
 When changing a serialized or generated data format, update all existing project data and its generators in the same change. Preserve compatibility with older files through an explicit version/default migration, or migrate those files before requiring the new format. Verify both legacy loading and new-format round trips; never leave checked-in data behind the code's schema.
 
+**Async walls live on the ROOM (2026-10-17 move — do NOT put them back on the model).**
+`room.asym_patches` = `[[row, col, tile, side?], ...]` (ball/M1 strip, door; ≤2,
+both sides may differ) and `room.feature_cells` = `[[row, col, tile], ...]`
+(P/V/C = 10/11/12, row 1 only, one kind per room). The model keeps only the
+SHAPE (`tiles` = air/wall/hot/raft + `mid_band_type`); a model that still
+carries `asym_patches` or a P/V/C grid tile is STALE and `convert` hard-fails it
+with a migration hint. Why the room owns it: one model shape is reused by rooms
+with different async, and the editor edits the room, not the model.
+
+Consequences that are easy to get wrong:
+- **A room that owns async gets its OWN `(PF + MetaA/B [+ RightPF/RightRects])`
+  block**, because `bank2.StageBandTab` reads the meta at the FIXED offset
+  `TilePF0+9/+10` of the block the room points at — a room cannot share a
+  model's PF and still carry its own door/ball meta. Async-free rooms still
+  point at the shared `M<id>` block (byte-identical legacy path).
+- Those per-room blocks are emitted into the LEVEL TABLE FILE
+  (`generated/level_00N_rooms.asm`), so `emit_spills` (bugs.md 27b) sizes and
+  relocates them. Net-new level data must never be added inside
+  `level_00N_rooms_data.asm` — that file is invisible to the spill accounting
+  and silently overruns the `$F9D9..$FBD0` window with code.
+- `emit_spills` slot starts must be the REAL bank2 include site: `spill_F767`
+  begins at `$F700` (bank2 `.ds $F700 - *`), worth 103 B that the old
+  `$F767` start hid.
+- `resolve_asym_patches(model, room, left_rows)`; `room_door_flag` /
+  `room_m1_door_flag` / `async_kinds(room)` replaced the model-level helpers.
+- ROM-byte tests read FROZEN banks AND frozen labels (`src/tests/frozen/`) —
+  never frozen bytes with live `src/bank2.lst` labels (that mismatch silently
+  reads the wrong block; it bit `test_band_restage`, `test_bomb_strip` and
+  `test_phase3_ball` on the day of the move).
+
 ## Overview
 
 A from-scratch Atari 2600 game kernel modeled after Activision's HERO (1984). Built
