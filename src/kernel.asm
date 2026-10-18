@@ -185,7 +185,17 @@ ObjTop          byte            ; top scanline of active object (for GRP1 visibi
 ; Bomb X/Y/timer live at $F6/$F7 + BombY=$85 (see top of ZP map)
 BombX           = $F6           ; bomb drop X (RoomX snapshot; bank1 does not write $F6)
 BombTimer       = $F7           ; fuse/explode countdown (frames)
-PlayerBombs     = $F0           ; bombs left 0..5 (never written by VBLANK/bank1 score)
+PlayerBombs     = $F0           ; bombs left in b2-0 (0..5; readers mask, see
+                                ; below). b7 = bank1 RaftBody's "ridden last
+                                ; frame" flag, b6-b3 = its take-off ramp level
+                                ; (0-15) — the raft's inertia state lives here
+                                ; because the ZP map has no free byte (AGENTS).
+                                ; Contract: only the raft writes b7-3; the bomb
+                                ; code touches b2-0 (its `dec` is guarded by a
+                                ; nonzero count, so it cannot borrow upward);
+                                ; LoadLevel/ReloadLevel write the whole byte,
+                                ; which merely resets the ramp. Every reader of
+                                ; the COUNT masks with #%00000111.
 BOMBS_MAX       = 5             ; starting / reload bomb count
 BombSnd         = $F1           ; frames of bomb audio left (0=silent; bank1 must not write)
 LevelShowTimer  = $F2           ; #18 frames left of the LV001 HUD banner (bank1 decs;
@@ -1099,6 +1109,7 @@ Overscan:
     and #%00000011
     bne .BombMarkDown           ; bomb already active: just set DownPrev
     lda PlayerBombs
+    and #%00000111              ; b2-0 = bombs; b7-3 are the raft's ramp state
     beq .BombMarkDown           ; no bombs left: swallow edge, keep DownPrev
     lda BombPacked
     and #%10000000              ; b7 OnGround — drop only when standing

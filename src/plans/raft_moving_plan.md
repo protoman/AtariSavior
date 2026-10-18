@@ -43,7 +43,10 @@ Colour: **white** (`ObjSpriteOffTable[7] = OBJ_LAMP`, frame colour `$0e`). LAMP
 is the only white, blocky 8x8 in `ObjSprites`; the table is exactly 72 B and ends
 at `$FF00`, so a dedicated white raft design needs 8 art + 8 colour bytes freed.
 
-**Inertia ramp — specified, then BLOCKED on space (2026-10-18, measured).** The
+**Inertia ramp — DONE (2026-10-18, after the space fight).** It is in the ROM
+(see AGENTS for the `$F0` contract). The recorded history below is why the
+layout matters: the body is 236 B and needs one contiguous fill; the probe+tables
+(51 B, absolute addressing only) live in bank1's other fill. The
 user wants a heavy take-off: 1 px/frame then the full 1.5. The design is done and
 was implemented, but it does not fit tonight's layout:
 - State lives in `PlayerBombs` ($F0) spare high bits: b2-0 stay the bomb count,

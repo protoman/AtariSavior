@@ -79,14 +79,25 @@ Invariants (each one has a reason, do not "clean up"):
 - Guards: `tools/test_raft.py` (battery: unit cases + the cross-bank
   integration case), `verify_build.check_raft_tramp` + the CallPad literal
   check, and `bank2`'s blast skip.
-- **Inertia (the take-off ramp) is NOT in the ROM yet — it is a SPACE problem,
-  not a design one.** The design + the two masking fixes are written up in
-  `plans/raft_moving_plan.md` ("Inertia ramp — specified, then BLOCKED"): the
-  ramp is ~60 B, bank1's `$FDE3` fill has 44 B spare, and moving the probe/tables
-  into the `$F822` fill broke the body's 127-byte relative branches. Do it as a
-  dedicated pass: move the WHOLE raft block into one contiguous fill (the $F822
-  one has 277 B) so no relative branch crosses a moved block. Today the raft has
-  the one-frame hold on each turn as its only "mass".
+- **Inertia (the take-off ramp) is IN** (2026-10-18). State = `PlayerBombs`
+  ($F0) spare high bits: b2-0 stay the bomb count, b7 = "ridden last frame",
+  b6-b3 = the ramp level stepping every 2nd frame, so the raft leaves at
+  1 px/frame and reaches the full 1/2 parity (1.5 avg) after ~30 frames
+  (~0.5 s); the empty raft returns at full speed and each take-off ramps again.
+  **Contract:** only `RaftBody` writes b7-3; the bomb code touches b2-0 (its
+  `dec` is guarded by a non-zero count so it cannot borrow upward) and every
+  reader of the count masks `#%00000111` — the drop guard, bank1's two HUD
+  reads, and bank2's `TallySum` (split into the `$F939` slack because the inline
+  tally region ends at a hard `org`). `LoadLevel`/`ReloadLevel` write the whole
+  byte, which merely resets the ramp.
+- **bank1 layout, do not re-shuffle blindly:** `RaftBody` (+ the ramp) lives in
+  the `$FDE3` fill and the playfield probe + its two tables (`RaftCellSolid`,
+  `RaftBitTab`, `RaftCellMasks`) in the `$F822` fill. The body is 236 B and the
+  probe block 51 B; they must stay in separate fills because together they
+  overrun `$FDE3` (287 > 260). The probe is reached by absolute `jsr`/`abs,X`
+  only, so it can sit in any bank1 fill — but a block whose relative branches
+  belong to the body (e.g. `.RaftTurn`, which both arms branch to) must stay
+  within 127 bytes of it.
 - **To PLAY it without touching the live stage:** `bash tools/raft_build.sh`
   -> `/tmp/opencode/savior_raft.bin`, a staged COPY of the stage whose level-2
   water room carries the raft instead of its tentacle (level 2 -> descend from
