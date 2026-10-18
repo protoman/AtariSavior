@@ -320,6 +320,21 @@ static int RunBrushTest() {
         return 1;
     }
 
+    // Regression (2026-10-18): an older paint wrote one feature cell PER COLUMN.
+    // One ERASE click must clear the whole ROW — the per-cell match removed 1 of
+    // 10 and the row still resolved, so "delete did nothing" for the user.
+    level.rooms[1].feature_cells.clear();
+    for (int c = 0; c < 10; ++c)
+        level.rooms[1].feature_cells.push_back({1, c, 12});   // HCRUNCH row
+    canvas.SetCurrentBrush(BrushTool::ERASE_AIR);
+    canvas.ApplyBrushAt(5, 10, 4);        // row 1 (tileY 4), column 5
+    if (!level.rooms[1].feature_cells.empty()) {
+        std::fprintf(stderr, "brushtest: ERASE left %zu feature cells "
+                     "(one click must clear the row)\n",
+                     level.rooms[1].feature_cells.size());
+        return 1;
+    }
+
     // erase clears the room's async again (both layers)
     canvas.SetCurrentBrush(BrushTool::ERASE_AIR);
     canvas.ApplyBrushAt(3, 3, 4);              // room 1: the phase cell
