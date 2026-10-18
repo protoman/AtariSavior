@@ -58,6 +58,18 @@ def main() -> int:
     binary = ensure_editor()
 
     # --- 1. field round-trip on the frozen models.json ---------------------
+    # 0. headless BRUSH test: the async brushes must write the ROOM's async
+    #    layer, never the retired model fields (2026-10-18 relocation). Runs
+    #    offscreen: a brush that pops a modal warning would hang here, which is
+    #    itself a failure signal (valid targets only).
+    import os as _os
+    env = dict(_os.environ, QT_QPA_PLATFORM="offscreen")
+    rb = subprocess.run([str(binary), "--brushtest"], capture_output=True,
+                        text=True, timeout=120, env=env)
+    if rb.returncode != 0 or "brushtest: OK" not in rb.stdout:
+        print(f"FAIL: editor --brushtest rc={rb.returncode}\n"
+              f"{rb.stdout[-600:]}{rb.stderr[-600:]}")
+        return 1
     r = subprocess.run([str(binary), "--selftest", str(MODELS)],
                        capture_output=True, text=True, timeout=120)
     out = (r.stdout or "") + (r.stderr or "")
