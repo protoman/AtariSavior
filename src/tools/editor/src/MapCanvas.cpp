@@ -829,6 +829,24 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
             tileVal = (int)hero::TileType::VCRUNCH;
         else if (m_currentBrush == BrushTool::HCRUNCH_TILE)
             tileVal = (int)hero::TileType::HCRUNCH;
+        // convert allows ONE special kind per room, row 1 only — refuse here
+        // instead of writing data that fails the build (user 2026-10-18).
+        if (modelY != 1) {
+            QMessageBox::warning(
+                nullptr, QObject::tr("Special feature"),
+                QObject::tr("Phase / vcrunch / hcrunch live on row 1 only."));
+            return;
+        }
+        for (const auto& c : room->feature_cells) {
+            if (c.size() >= 3 && c[2] != tileVal) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Special feature"),
+                    QObject::tr("This room already carries a different special "
+                                "kind — convert allows one per room. Erase the "
+                                "existing one first."));
+                return;
+            }
+        }
         // Room feature cell (2026-10-17): the model keeps the shape; the room
         // carries the behaviour. Re-paint = replace the cell's kind.
         std::vector<std::vector<int>> oldFeatures = room->feature_cells;

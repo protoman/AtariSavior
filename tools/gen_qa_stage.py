@@ -78,11 +78,16 @@ def main() -> None:
         json.dumps({"models_file": {"models": models}}, indent=1) + "\n")
 
     def features_of(mid):
-        out = []
+        # one cell per (row, kind) at its lowest column: a feature is a row
+        # property (convert resolves the row) — see the editor change 2026-10-18
+        seen = {}
         for r, row in enumerate(rows_of[mid]):
             for c, ch in enumerate(row):
                 if T[ch] in FEATURE_TILES:
-                    out.append([r, c, T[ch]])
+                    key = (r, T[ch])
+                    if key not in seen or c < seen[key]:
+                        seen[key] = c
+        out = [[r, c, t] for (r, t), c in sorted(seen.items())]
         return out or None
 
     key = {"type": 6, "x": 13.0, "y": 5.0, "range_min": 13.0,
