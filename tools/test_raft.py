@@ -21,8 +21,8 @@ from py65.devices.mpu6502 import MPU  # noqa: E402
 FROZEN = ROOT / "src" / "tests" / "frozen"
 L0 = parse_labels(FROZEN / "bank0.lst", {
     "EnemyRamX", "EnemyRamY", "EnemyRamD", "EnemyRamP", "RoomX", "RoomY",
-    "vyLo", "vyHi", "Temp", "UpdateEnemies", "EnemyCount", "EnemyDataLo",
-    "EnemyDataHi", "EnemyDeadMask"})
+    "vyLo", "vyHi", "Temp", "PlayerBombs", "UpdateEnemies", "EnemyCount",
+    "EnemyDataLo", "EnemyDataHi", "EnemyDeadMask"})
 L1 = parse_labels(FROZEN / "bank1.lst", {"RaftBody"})
 missing = ({"EnemyRamX", "EnemyRamY", "EnemyRamD", "EnemyRamP", "RoomX",
             "RoomY", "vyLo", "vyHi"} - L0.keys()) | ({"RaftBody"} - L1.keys())
@@ -55,7 +55,7 @@ def raft_top(enemy_ram_p):
 
 
 def run(x, dir_right=True, parity=0, lead=0, room_x=None, room_y=None,
-        vyhi=0, pf0=0, pf1=0, pf2=0, slot=0):
+        vyhi=0, pf0=0, pf1=0, pf2=0, slot=0, bombs=0):
     """One RaftBody frame. `lead` seeds the elements ahead of the raft."""
     mem = Mem()
     mem.bank = 1                   # RaftBody lives in bank1 (CallPad target)
@@ -64,6 +64,7 @@ def run(x, dir_right=True, parity=0, lead=0, room_x=None, room_y=None,
     r[X["EnemyRamY"] + slot] = 0x00        # junk: RaftBody must overwrite it
     r[X["EnemyRamD"]] = (1 << slot) if dir_right else 0
     r[X["EnemyRamP"]] = parity
+    r[X["PlayerBombs"]] = bombs        # b2-0 bombs, b7 flag, b6-3 ramp level
     r[X["RoomX"]] = room_x if room_x is not None else 0
     r[X["RoomY"]] = room_y if room_y is not None else 0
     r[X["vyLo"]] = 0
@@ -87,7 +88,7 @@ def run(x, dir_right=True, parity=0, lead=0, room_x=None, room_y=None,
         x=r[X["EnemyRamX"] + slot], y=r[X["EnemyRamY"] + slot],
         right=bool(r[X["EnemyRamD"]] & (1 << slot)),
         room_x=r[X["RoomX"]], room_y=r[X["RoomY"]],
-        vyhi=r[X["vyHi"]], lead=lead)
+        vyhi=r[X["vyHi"]], lead=lead, bombs_after=r[X["PlayerBombs"]])
 
 
 TRAMP = 0xF8C0                 # CallPad_RaftBody (pinned; verify_build guard)
@@ -196,6 +197,27 @@ def main() -> int:
     s = run(RAFT_MIN_X, dir_right=False, parity=1, pf0=0xFF)
     assert (s["x"], s["right"]) == (RAFT_MIN_X, True), f"left rail: {s}"
 
+    # 4a. TAKE-OFF RAMP (inertia): the state lives in PlayerBombs' spare high
+    # bits. While boarded the raft leaves at 1 px/frame and only reaches the
+    # 1/2 parity once the level tops out; stepping off clears both, so an empty
+    # raft returns at full speed and the next take-off ramps again.
+    RAMP_FULL = 0xF8                   # flag + level 15 = spun up
+    s = run(80, parity=1, bombs=0x80)  # just boarded -> still slow on an odd frame
+    assert s["x"] == 81, f"ramped raft must do 1 px/frame: {s}"
+    s = run(80, parity=1, bombs=RAMP_FULL)
+    assert s["x"] == 82, f"spun-up raft must do the full 1/2 parity: {s}"
+    # even frame while ridden: level +1 (bombs must survive untouched)
+    s = run(80, parity=0, room_x=77, room_y=raft_top(0) + 2, bombs=0x05)
+    assert s["bombs_after"] == 0x05 | 0x80 | 0x10, (
+        f"ramp must advance the level and keep the bombs: {s}")
+    # odd frame while ridden: flag only
+    s = run(80, parity=1, room_x=77, room_y=raft_top(0) + 2, bombs=0x05)
+    assert s["bombs_after"] == 0x05 | 0x80, (
+        f"odd frames only arm the flag: {s}")
+    # nobody aboard: flag and level cleared, bombs kept -> full speed next time
+    s = run(80, parity=0, room_x=0x20, room_y=0x40, bombs=0xF5)
+    assert s["bombs_after"] == 0x05, f"empty raft must clear the ramp: {s}"
+
     # 4b. RIDES THE TIDE: the water surface drifts 0-3 lines (the kernel draws
     # the strip as the band's last 12-off lines -> surface 132+off), so the
     # raft's top must be 125+off at EVERY phase: its bottom row stays on the
@@ -235,10 +257,11 @@ def main() -> int:
     assert (s["room_x"], s["room_y"]) == (0x20, 0x40), f"no rider, no touch: {s}"
 
     print("test_raft: OK (dispatch->tramp->body cross-bank path; floats ON the "
-          "tide-driven water surface (0-3 line drift, both directions); 1.5 "
-          "px/frame parity; turns at PF0/PF1/PF2 ledges incl. the mirrored "
-          "half; rails hold; a rider is pinned to the raft's top (113+off, "
-          f"worst case {raft_top(0x30) - PIN_FIT}) < {KILL_LINE} and carried)")
+          "tide-driven water surface (0-3 line drift, both directions); "
+          "take-off ramp (1 px/frame -> 1.5, cleared when ridden, bombs "
+          "untouched); turns at PF0/PF1/PF2 ledges incl. the mirrored half; "
+          "rails hold; a rider is pinned to the raft's top (113+off, worst "
+          f"case {raft_top(0x30) - PIN_FIT}) < {KILL_LINE} and carried)")
     return 0
 
 
