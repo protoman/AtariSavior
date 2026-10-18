@@ -93,8 +93,13 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
 
-private:
+public:
+    // Brush entry point (the mouse handlers are thin wrappers). Public so the
+    // headless --brushtest can drive the real brush logic — the room-level
+    // async relocation (2026-10-18) has no other automated coverage.
     void ApplyBrushAt(int tileX, int entityX, int tileY);
+
+private:
     void MouseToTile(const QPointF& pos, bool apply);
     // Warn (once per mouse RELEASE, never mid-drag) about feature layouts
     // convert would reject at build: phase/vcrunch on the hot middle band,

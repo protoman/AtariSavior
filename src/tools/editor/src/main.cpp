@@ -17,6 +17,7 @@
  */
 
 #include <QApplication>
+#include <algorithm>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -26,6 +27,7 @@
 #include "DataSerializer.hpp"
 #include "LevelData.hpp"
 #include "MainWindow.hpp"
+#include "MapCanvas.hpp"
 
 // CHECK5 round-trip probe (headless): load models.json -> save to a temp
 // file -> reload -> byte-compare models incl. asym_patches. Detects BOTH
@@ -255,7 +257,104 @@ static int RunLevelAsyncSelftest(const char* modelsPath) {
     return 0;
 }
 
+// Headless brush test (2026-10-18): the async brushes write the ROOM's async
+// layer, which no other test covers. Builds a synthetic stage in code (a model
+// shape + one room), drives MapCanvas::ApplyBrushAt directly and asserts the
+// room changed — no dialogs may open, so only VALID targets are used (an
+// invalid one pops a modal warning that would hang a headless run).
+static int RunBrushTest() {
+    using editor::MapCanvas;
+    using editor::BrushTool;
+    hero::LevelData level;
+    level.name = "brushtest";
+    hero::ModelData model;
+    model.id = 0;
+    model.name = "brush shape";
+    model.width = 10;
+    model.height = 3;
+    model.tiles.assign(30, (int)hero::TileType::AIR);
+    for (int x = 0; x < 10; ++x) {
+        model.tiles[0 * 10 + x] = (int)hero::TileType::SOLID_WALL;
+        if (x != 9) model.tiles[2 * 10 + x] = (int)hero::TileType::SOLID_WALL;
+    }
+    model.tiles[1 * 10 + 0] = (int)hero::TileType::AIR;
+    model.tiles[1 * 10 + 9] = (int)hero::TileType::AIR;   // right-door mirror
+    std::vector<hero::ModelData> models{model};
+    // TWO rooms: painting a door and a phase wall in the SAME room is rejected
+    // by the alone-per-room rule with a modal warning, which would hang a
+    // headless run — so each brush gets its own room.
+    for (int i = 0; i < 2; ++i) {
+        hero::RoomData r;
+        r.room_id = i;
+        r.model_id = 0;
+        r.room_y = i;
+        level.rooms.push_back(r);
+    }
+
+    MapCanvas canvas;
+    canvas.SetLevelData(&level, &models, 0);
+    canvas.SetModels(&models);
+    canvas.SetEditMode(false);                 // LEVEL tab: async is room-level
+
+    // door strip on the RIGHT half, col 0 (entityX 20 -> rightHalf, col 0)
+    canvas.SetCurrentBrush(BrushTool::DOOR_TILE);
+    canvas.ApplyBrushAt(9, 20, 4);             // tileY 4 = model row 1
+    if (level.rooms[0].asym_patches.size() != 1 ||
+        level.rooms[0].asym_patches[0] != std::vector<int>({1, 0, 9})) {
+        std::fprintf(stderr, "brushtest: door brush did not write the ROOM "
+                     "(asym_patches=%zu)\n",
+                     level.rooms[0].asym_patches.size());
+        return 1;
+    }
+
+    // phase wall cell on row 1 (room 1: a door + a phase wall in one room is
+    // refused by design)
+    canvas.SetActiveRoom(1);
+    canvas.SetCurrentBrush(BrushTool::PHASE_TILE);
+    canvas.ApplyBrushAt(3, 3, 4);
+    if (level.rooms[1].feature_cells.size() != 1 ||
+        level.rooms[1].feature_cells[0] != std::vector<int>({1, 3, 10})) {
+        std::fprintf(stderr, "brushtest: phase brush did not write the ROOM "
+                     "(feature_cells=%zu)\n",
+                     level.rooms[1].feature_cells.size());
+        return 1;
+    }
+
+    // erase clears the room's async again (both layers)
+    canvas.SetCurrentBrush(BrushTool::ERASE_AIR);
+    canvas.ApplyBrushAt(3, 3, 4);              // room 1: the phase cell
+    canvas.SetActiveRoom(0);
+    canvas.ApplyBrushAt(9, 20, 4);             // room 0: the door strip
+    if (!level.rooms[1].feature_cells.empty() ||
+        !level.rooms[0].asym_patches.empty()) {
+        std::fprintf(stderr, "brushtest: ERASE_AIR left async behind "
+                     "(features=%zu patches=%zu)\n",
+                     level.rooms[1].feature_cells.size(),
+                     level.rooms[0].asym_patches.size());
+        return 1;
+    }
+
+    // the MODEL must never be touched by an async brush
+    if (!model.asym_patches.empty() ||
+        std::any_of(model.tiles.begin(), model.tiles.end(), [](int t) {
+            return t == (int)hero::TileType::PHASE ||
+                   t == (int)hero::TileType::VCRUNCH ||
+                   t == (int)hero::TileType::HCRUNCH;
+        })) {
+        std::fprintf(stderr, "brushtest: async brush wrote the MODEL "
+                     "(legacy fields must stay empty)\n");
+        return 1;
+    }
+    std::printf("brushtest: OK (door + phase brushes write the room, ERASE "
+                "clears both layers, the model stays clean)\n");
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
+    if (argc == 2 && std::string(argv[1]) == "--brushtest") {
+        QApplication app(argc, argv);
+        return RunBrushTest();
+    }
     if (argc == 3 && std::string(argv[1]) == "--selftest") {
         const int rc = RunSelfTest(argv[2]);
         if (rc != 0) {
