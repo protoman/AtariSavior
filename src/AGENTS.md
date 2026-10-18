@@ -1320,8 +1320,30 @@ Rationale: GRP1 is one sprite — more simultaneous objects → more flicker
 
 ### Open items (refresh 2026-10-01)
 
-- **BombEnemyBlast can kill lamps** (type 5): pre-existing bug — no type
-  check in the blast loop. Last seen 2026-09-23, still unverified/fixed.
+- **RESOLVED 2026-10-07** — *BombEnemyBlast can kill lamps* (type 5): the
+  blast loop now skips LAMP (`bank2.asm BombEnemyBlastBody`: `cmp #LAMP /
+  beq .BEBNext`), so a lamp survives, keeps its dark-room trigger and no
+  phantom +50 is awarded. **Guard added 2026-10-18:** `tools/test_bomb_lamp.py`
+  (6 cases: enemy dies / lamp survives in either slot order, lamp-only = no
+  kill, pre-dead enemy, range gate `|dcol| < 2`, one kill per blast). The
+  entry above sat stale for 11 days — when picking up an "open item", verify it
+  against the code first.
+- **Phase wall = one-time crushable wall (user ruling 2026-10-18).** A
+  full-band stripe cannot be crossed in one pass: falling 48 px from a standing
+  start takes ~55 frames (subgravity 8/256 px/f²) while PhaseBlink's OFF half is
+  45 frames — measured by `tools/qa_sweep.py`. That is INTENDED: taking the
+  crush kill latches the removal (`EnemyDeadMask b6`), which force-opens the
+  cell until the next `EnterRoom`, so the wall costs one life and is open for
+  the rest of the room visit. Do not "fix" the blink into a timing gate without
+  a new user ruling.
+- **Raft = a row-2 platform cell** (`RAFT` tile 6): `tile_to_char` renders it
+  as a solid wall cell, so it is a static platform you can stand on (~RoomY 84)
+  while the `bottom_band` water below kills at `RoomY >= 125`. Authored with
+  the editor's ADD_RAFT brush (row 2, water room, painted on an AIR cell) and
+  enforced by convert (`RAFT` row 2 only; raft models need `bottom_band`). It
+  is NOT a moving/rideable object — motion has never been specified; ask the
+  user before adding any.
+
 - **Cross-bank Temp conflict (documented, allowlisted):** bank1 `Temp` =
   `$AD` = bank0's `TickCounter` slot (NOT bank0's `Temp` at `$88`) —
   bank1 uses it as its score-init first-frame flag (`inc` once). Deliberate;
