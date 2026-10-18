@@ -1394,6 +1394,30 @@ FooterPtr6 = $EA
     .ds $F864 - *, 0            ; #27b level spill slot ($F864, 28B; empty until
     include "generated/spill_F840.asm" ;  convert_level places a level here)
     .ds $F880 - *, 0
+; TallySum — the level-bonus total for TallyEntry (frozen-scene frame).
+; Split OUT of the inline TallyEntry region (it ends at a hard org) into bank2's
+; free slack before the $F970 pin. IN: X = time ticks (0..20). OUT: TallyTicks
+; set; A clobbered, X/Y kept. The bomb count MUST be masked: PlayerBombs' high
+; bits carry the raft's take-off ramp state (b7 flag, b6-3 level — see the
+; kernel EQU contract), and a stale ride would otherwise inflate the bonus.
+; Temp ($88) is free here: the tally frame bypasses the input (its joystick
+; store) and the next VBL restages Temp anyway.
+TallySum:
+    lda PlayerBombs
+    and #%00000111              ; bombs only, never the ramp bits
+    sta Temp
+    txa
+    clc
+    adc #20                     ; miner reach = 1000 pts
+    adc Temp                    ; + 50 per unspent bomb (chain carry ok)
+    sta TallyTicks
+    lda PlayerLives
+    asl                         ; + 100 per life = 2 ticks
+    clc
+    adc TallyTicks
+    sta TallyTicks
+    rts
+
     .ds $F8B7 - *, 0            ; spill-pool gap: VcrCoveredState relocated here
 ; ------------------------------------------------------------------------------
 ; VcrCoveredState — aperture clock → slice state (vcrunch_shutter_plan Phase C).
@@ -1450,30 +1474,6 @@ PhMaskTab:
     .byte $30, $C0                     ; PF0 pairs (0,1) (2,3)
     .byte $C0, $30, $0C, $03           ; PF1 pairs (4,5) (6,7) (8,9) (10,11)
     .byte $03, $0C, $30, $C0           ; PF2 pairs (12,13) ... (18,19)
-; TallySum — the level-bonus total for TallyEntry (frozen-scene frame).
-; Split OUT of the inline TallyEntry region (it ends at a hard org) into bank2's
-; free slack before the $F970 pin. IN: X = time ticks (0..20). OUT: TallyTicks
-; set; A clobbered, X/Y kept. The bomb count MUST be masked: PlayerBombs' high
-; bits carry the raft's take-off ramp state (b7 flag, b6-3 level — see the
-; kernel EQU contract), and a stale ride would otherwise inflate the bonus.
-; Temp ($88) is free here: the tally frame bypasses the input (its joystick
-; store) and the next VBL restages Temp anyway.
-TallySum:
-    lda PlayerBombs
-    and #%00000111              ; bombs only, never the ramp bits
-    sta Temp
-    txa
-    clc
-    adc #20                     ; miner reach = 1000 pts
-    adc Temp                    ; + 50 per unspent bomb (chain carry ok)
-    sta TallyTicks
-    lda PlayerLives
-    asl                         ; + 100 per life = 2 ticks
-    clc
-    adc TallyTicks
-    sta TallyTicks
-    rts
-
     .ds $F970 - *, 0            ; pinned: bank1 .BMWDone jmp operand ($F970)
 M1StripBlast:
     ; Phase 4 M1 strip blast — entered from bank1 BombMarkWalls .BMWDone
