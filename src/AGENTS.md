@@ -62,10 +62,12 @@ Invariants (each one has a reason, do not "clean up"):
   — always clear of the 125 water-kill line — with `vyLo/vyHi` zeroed so gravity
   cannot accumulate into the water. Thrust (vyHi < 0) skips the pin, so the
   player can always fly off. The pin rides the tide with the raft.
-- **The raft is white** (`ObjSpriteOffTable[7] = OBJ_LAMP` + `$0e`): LAMP is the
-  only white, blocky 8x8 in `ObjSprites`, which is exactly 72 B and ends at
-  `$FF00` — no spare art bytes exist for a dedicated raft design (freeing 8 art
-  + 8 colour bytes would allow one).
+- **The raft is a GREEN SOLID block** (`ObjSpriteOffTable[7] = OBJ_SNAKE` +
+  `$c4`): a log/trunk floating on the water (user ruling 2026-10-18 — the white
+  LAMP art's notch read as odd). Every `ObjSprites` entry is 8x8, so the solid
+  block is not larger; it just reads bigger than the notched art, which helps the
+  player land on it. `ObjSprites` is exactly 72 B and ends at `$FF00`, so a
+  dedicated raft design would need 8 art bytes freed somewhere.
 - **The turn-around reads the playfield**, not rects and not data: the row-2
   cell beyond the leading edge, reflect mapping (display col >= 20 mirrors to
   39-col), mask table `RaftCellMasks`. It therefore works in any water span and
