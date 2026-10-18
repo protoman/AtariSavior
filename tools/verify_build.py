@@ -1133,12 +1133,25 @@ def check_levels(src: Path) -> None:
                         else:
                             block_checks(tag, text, models[mid], r, left, label)
 
+            # Moving raft (type 7): water rooms only, bottom band only, and
+            # the spawn cell must be OPEN water — the same contract convert
+            # enforces (plans/raft_moving_plan.md).
+            for i, e in enumerate(enemies):
+                if int(e.get("type", 0)) != 7:
+                    continue
+                if not r.get("bottom_band"):
+                    err(f"{label} enemy {i}: raft in a room without the "
+                        "bottom band (water)")
+                if int(float(e.get("y", 0))) // 4 != 2:
+                    err(f"{label} enemy {i}: raft at y={e.get('y')} — the "
+                        "raft lives on the bottom band (model row 2)")
+
             for i, e in enumerate(enemies):
                 el = f"{label} enemy {i}"
                 t = e.get("type", 0)
-                if not isinstance(t, int) or t not in (0, 1, 2, 3, 4, 6):
-                    err(f"{el}: type={t!r} out of 0..4, 6 (5 = lamp in the "
-                        f"merged table, 6 = key)")
+                if not isinstance(t, int) or t not in (0, 1, 2, 3, 4, 6, 7):
+                    err(f"{el}: type={t!r} out of 0..4, 6, 7 (5 = lamp in the "
+                        f"merged table, 6 = key, 7 = moving raft)")
                 try:
                     if not 0 <= float(e.get("x", -1)) <= 39:
                         err(f"{el}: x={e.get('x')} out of display columns 0..39")
