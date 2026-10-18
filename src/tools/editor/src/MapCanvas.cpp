@@ -967,37 +967,9 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         }
         emit levelModified();
         update();
-    } else if (m_currentBrush == BrushTool::ADD_RAFT) {
-        // Raft rule (user rule 2026-10-14): bottom band (row 2) of a WATER
-        // room (bottom_band strip on), painted on an EMPTY cell.
-        if (modelY != 2) {
-            QMessageBox::warning(
-                nullptr, QObject::tr("Raft"),
-                QObject::tr("The raft lives on the bottom band (row 3, "
-                            "the water strip)."));
-            return;
-        }
-        if (room && !room->bottom_band) {
-            QMessageBox::warning(
-                nullptr, QObject::tr("Raft"),
-                QObject::tr("Rafts float in water — turn the room's "
-                            "bottom band on first (the water strip)."));
-            return;
-        }
-        int idx = modelY * roomWidth + tileX;
-        const int t = model->tiles[idx];
-        if (t != (int)hero::TileType::RAFT &&
-            t != (int)hero::TileType::AIR) {
-            QMessageBox::warning(
-                nullptr, QObject::tr("Raft"),
-                QObject::tr("The raft needs open water — paint it on an "
-                            "EMPTY cell of the bottom band."));
-            return;
-        }
-        if (t != (int)hero::TileType::RAFT && room && !AllowAddElement()) return;
-        model->tiles[idx] = (int)hero::TileType::RAFT;
-        emit levelModified();
-        update();
+    // (ADD_RAFT is handled with the other ENTITY brushes below: the raft is a
+    // moving object now, not a tile — the static RAFT tile stays valid in
+    // hand-authored data as a platform.)
     } else if (m_currentBrush == BrushTool::ADD_MAGMA) {
         int idx = modelY * roomWidth + tileX;
         if (model->tiles[idx] != (int)hero::TileType::MAGMA_FALL && room && !AllowAddElement()) return;
@@ -1028,6 +1000,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         update();
     } else if (!m_modelMode && room && (m_currentBrush == BrushTool::ADD_SPIDER || m_currentBrush == BrushTool::ADD_BAT ||
                m_currentBrush == BrushTool::ADD_SNAKE || m_currentBrush == BrushTool::ADD_TENTACLE ||
+               m_currentBrush == BrushTool::ADD_RAFT ||
                m_currentBrush == BrushTool::ADD_MOTH || m_currentBrush == BrushTool::ADD_KEY)) {
         // Entity placement: full stage width, no mirroring. Reject rows beyond
         // the cave (tileY >= displayRows) so enemies can't spawn in the HUD.
@@ -1039,6 +1012,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         else if (m_currentBrush == BrushTool::ADD_BAT) eData.type = (int)hero::EnemyType::BAT;
         else if (m_currentBrush == BrushTool::ADD_SNAKE) eData.type = (int)hero::EnemyType::SNAKE;
         else if (m_currentBrush == BrushTool::ADD_TENTACLE) eData.type = (int)hero::EnemyType::TENTACLE;
+        else if (m_currentBrush == BrushTool::ADD_RAFT) eData.type = (int)hero::EnemyType::RAFT;
         else if (m_currentBrush == BrushTool::ADD_MOTH) eData.type = (int)hero::EnemyType::GIANT_MOTH;
         else eData.type = (int)hero::EnemyType::KEY;
 
@@ -1065,6 +1039,41 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                     nullptr, QObject::tr("Door Room"),
                     QObject::tr("Door rooms allow ONE enemy only."));
                 return;
+            }
+        }
+        if (m_currentBrush == BrushTool::ADD_RAFT) {
+            // The moving raft floats on OPEN water on the bottom band (user
+            // rule: "placed only above water") — the same shape as the
+            // tentacle rule, plus the cell must be air (water).
+            if (tileY / 4 != 2) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Raft"),
+                    QObject::tr("The raft floats on the bottom band "
+                                "(rows 9-12)."));
+                return;
+            }
+            if (!room->bottom_band) {
+                QMessageBox::warning(
+                    nullptr, QObject::tr("Raft"),
+                    QObject::tr("Rafts float in water — turn the room's "
+                                "bottom band on first."));
+                return;
+            }
+            if (model) {
+                const int halfCols = displayColumns / 2;
+                const int col = (entityX < halfCols)
+                                    ? (entityX >> 1)
+                                    : ((displayColumns - 1 - entityX) >> 1);
+                if (col >= 0 && col < roomWidth &&
+                    model->tiles[2 * roomWidth + col] !=
+                        (int)hero::TileType::AIR) {
+                    QMessageBox::warning(
+                        nullptr, QObject::tr("Raft"),
+                        QObject::tr("The raft needs OPEN water — that cell "
+                                    "is a wall/ledge. Paint it as air "
+                                    "first."));
+                    return;
+                }
             }
         }
         if (m_currentBrush == BrushTool::ADD_TENTACLE) {

@@ -52,11 +52,17 @@ enum class EnemyType : int {
     GIANT_MOTH = 4,
     // 5 = LAMP in the ROM merged table (lamps live in RoomData.lamps, never
     // as an editor enemy type) — keep 5 unused here to match convert.
-    KEY = 6              // collectible key (HUD icon; sets KeyHeld)
+    KEY = 6,             // collectible key (HUD icon; sets KeyHeld)
+    // 7 = the moving/rideable raft (2026-10-18): floats on OPEN water on the
+    // bottom band, carries the player across and returns. Convert enforces
+    // water + row 2 + an open cell (plans/raft_moving_plan.md). The RAFT
+    // *tile* (6) stays supported as a static platform for hand-authored data.
+    RAFT = 7
 };
 
 struct EnemyData {
-    int type = 0; // 0: SPIDER, 1: BAT, 2: SNAKE, 3: TENTACLE, 4: GIANT_MOTH
+    int type = 0; // 0: SPIDER, 1: BAT, 2: SNAKE, 3: TENTACLE, 4: GIANT_MOTH,
+                  // 6: KEY, 7: RAFT (moving, over water)
     float x = 0.0f;
     float y = 0.0f;
     float range_min = 0.0f;
