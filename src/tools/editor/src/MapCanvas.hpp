@@ -100,6 +100,9 @@ private:
     // convert would reject at build: phase/vcrunch on the hot middle band,
     // hcrunch cells outside one band / not a contiguous prefix from col 0.
     void ValidateFeatureTiles();
+    // The room that owns the async layer being edited/drawn (the ACTIVE room
+    // in level mode; NULL in model mode, where the async brushes refuse).
+    const hero::RoomData* AsyncRoomRef() const;
     // Async walls (door/phase/vcrunch/hcrunch) are ROOM properties since the
     // 2026-10-17 format change; the room-level brush UI is the next editor
     // step. The legacy brushes refuse (one dialog per session) instead of
@@ -113,11 +116,8 @@ private:
     // Same count for an explicit room index (vcrunch rule scans every room
     // that shares a model).
     int CountRoomElementsIn(int roomIdx) const;
-    // True if the active room's model contains a VCRUNCH or HCRUNCH cell.
+    // True if the ACTIVE ROOM has a vcrunch/hcrunch feature cell.
     bool RoomHasCrunch() const;
-    // True if any room using this model already has objects (vcrunch
-    // shutter owns the ball sprite slot — 2026-10-13 plan Phase A).
-    bool ModelHasRoomObjects(const hero::ModelData& model) const;
     // False + warning dialog if adding would exceed kMaxRoomElements.
     // asEnemy=true relaxes the door-room cap (a door room allows a single
     // enemy); every other element kind stays blocked in a door room.
