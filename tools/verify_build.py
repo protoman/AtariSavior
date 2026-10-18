@@ -32,6 +32,7 @@ Usage: verify_build.py [src_dir]
        verify_build.py --precheck [src_dir]  (level-window fit, pre-dasm)
 """
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -451,6 +452,35 @@ def check_moth_tramp(src: Path) -> None:
 # rts post-switch), and every CallPad jmp literal must equal the bank1 label.
 PAD_LO, PAD_HI = 0xFBF8, 0xFC49   # inclusive start, exclusive end (FC48 last)
 
+
+
+def check_live_stage(src: Path) -> None:
+    """The live stage must not BE the test stage.
+
+    `tools/freeze_test_banks.sh` and `tools/raft_build.sh` replace src/rooms with
+    src/tests/rooms for the duration of a build and restore it afterwards. Before
+    2026-10-18 the restore was inline-only (the EXIT trap just deleted the
+    backup), so an early exit left the TEST stage in src/rooms — and a blind
+    `git add -A src` committed it over the user's own room edit. This makes that
+    state impossible to miss: the two trees may never be byte-identical.
+    Stands down while a staging script runs (it sets FREEZE_STAGED=1).
+    """
+    if os.environ.get("FREEZE_STAGED"):
+        return
+    live, test = src / "rooms", src / "tests" / "rooms"
+    if not live.is_dir() or not test.is_dir():
+        return
+    live_files = sorted(p.relative_to(live) for p in live.rglob("*") if p.is_file())
+    test_files = sorted(p.relative_to(test) for p in test.rglob("*") if p.is_file())
+    if live_files != test_files:
+        return
+    for rel in live_files:
+        if (live / rel).read_bytes() != (test / rel).read_bytes():
+            return
+    err("src/rooms is byte-identical to src/tests/rooms — the TEST stage is "
+        "sitting in the live slot. A staging script (freeze_test_banks.sh / "
+        "raft_build.sh) was interrupted; restore the live stage before "
+        "building or committing.")
 
 
 def check_boot_banks(src: Path) -> None:
@@ -1732,6 +1762,7 @@ def main() -> int:
     check_frame_tramp(src)
     check_raft_tramp(src)
     check_boot_banks(src)
+    check_live_stage(src)
     check_enterroom_tramp(src)
     check_blast_tramp(src)
     check_tramp_targets(src)
