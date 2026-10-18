@@ -146,3 +146,24 @@ What needs YOUR call when you are back:
    the live stage was deliberately left untouched. Options if you want it in the
    live game: move the miner, drop the tentacle, or let me add a second water
    room to level 2.
+
+## Addendum 2 — sim_bomb_fuse was coupled to the live stage (user caught)
+
+The user removed the tentacle from their water room (raft + miner now) and
+`sim_bomb_fuse` failed its **tentacle coverage** check. Cause: the sim forced
+Level 2 and relied on that room's AUTHORED record being a type-3 tentacle
+(its own comment said so), which violates the live-stage ownership rule. The
+tentacle is what exercises the deepest gameplay stack path (the probe's
+PlayerHitsMap), so the check exists on purpose.
+
+State now: the check **degrades to a loud `[SKIP]`** instead of failing a build
+the user did not break, and the reason is printed. That is a deliberate
+downgrade, not a fix.
+
+KNOWN GAP (next session): stage the tentacle from bank2 ROM instead of from the
+room — point `EnemyDataLo/Hi` at a bank2 byte that reads 3 (and re-apply it each
+live frame, because EnterRoom re-derives the pointer). The first attempt did
+exactly that and still never reached the dispatch (`probe_ran` stayed false) with
+`EnemyCount=2` and the staged byte verified at $F105; the next step is to trace
+`UpdateEnemies`' dispatch for slot 0 in that sim (bank0.lst is the live build,
+so the staged pointer and the room's own table can be compared directly).
