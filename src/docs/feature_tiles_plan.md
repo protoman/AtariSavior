@@ -308,3 +308,43 @@ Stella screenshot set still pending (hcrunch + key not in-game yet).
   MapCanvas.cpp, MainWindow.cpp}`
 - Kernel (Phase 2+): `src/kernel.asm` (ball strip, CTRLPF, staging entry),
   `src/bank2.asm` (staging mask), `src/bank1.asm` (HUD icon, Phase 5)
+
+## Phase 7 — async walls move MODEL → ROOM (2026-10-17, user ruling)
+
+**Why:** one model SHAPE must be reusable by rooms with different async (a door
+here, a phase wall there), and it makes the editor simpler — the room owns its
+own behaviour layer instead of the model owning a shared one.
+
+**Scope:** the asym strips (ball/M1/door, was `ModelData.asym_patches`) AND the
+phase/vcrunch/hcrunch feature cells (were `P`/`V`/`C` grid tiles).
+`mid_band_type` (hot) and raft stay model properties.
+
+**Encoding (relocated, not re-invented):** `room.asym_patches` =
+`[[row, col, tile, side?], ...]`; `room.feature_cells` = `[[row, col, tile], ...]`.
+A model's P/V/C tiles become SOLID_WALL — the same PF byte, since
+`tile_to_char()` already rendered them solid.
+
+**Implemented:**
+- `tools/migrate_async_to_rooms.py` (idempotent) migrated `src/rooms`,
+  `src/tests/rooms`, `src/tests/qa/rooms`.
+- `convert_level`: `rows_from_json` overlays the room's feature cells;
+  `resolve_asym_patches(model, room, rows)`; `room_door_flag` /
+  `room_m1_door_flag` / `async_kinds`; a room with async gets its own
+  `(PF + meta + stream [+ Right*])` block emitted into the LEVEL TABLE FILE so
+  `emit_spills` owns the placement; a model shared only by async rooms emits no
+  `M<id>` block. `emit_spills`' `spill_F767` start corrected to `$F700`.
+- `verify_build`: model blocks are static (`MetaA $00`, `MetaB $00|$40 hot`);
+  each async room's block is cross-checked through the same envelope gate.
+- Editor: `RoomData` carries the async (optional keys, legacy-safe load),
+  `DataSerializer::MigrateAsyncToRooms` migrates a legacy project once at
+  startup, the selftest round-trips a level + the migration.
+- **Remaining editor step:** the brush UI. The async brushes currently refuse
+  (one-shot dialog) instead of writing the retired model form; the next step
+  retargets them (and the validation/render helpers: `ModelSpecialBits`,
+  `FindPatch`, `BuildRightRows`, `RightRectsOk`, the door/feature rendering) to
+  the active ROOM and moves them to the level tab.
+
+**Evidence the move is semantics-preserving:** a room-by-room dump
+(`LEVELn_RoomDataTable` → PF triples + MetaA/B + rect/hot stream) is
+byte-identical for all 16 live rooms before vs after (only label placement, and
+hence the ROM md5, moved). Build green, battery 38/38, QA sweep end to end.
