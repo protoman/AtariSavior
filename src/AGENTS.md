@@ -135,6 +135,16 @@ So when a feature needs stage data (a room, a spawn, a demo):
 If a feature truly needs live stage content, ask the user — do not add it
 unasked (the raft's demo ROM exists for exactly this reason).
 
+**Never `git add -A src`.** On 2026-10-18 a blind `git add -A src tools` committed
+a REVERTED `src/rooms/level_002.json` — the user had replaced that room's tentacle
+with the raft, and the staging scripts (`freeze_test_banks.sh`, `raft_build.sh`
+both copy rooms/ to a temp dir, replace it, then restore) left the tree at an
+older state that got swept in. The user's edit had to be rebuilt by hand.
+Rules: stage `src/rooms` and `src/generated` explicitly and separately, and
+always run `git diff --stat -- src/rooms src/generated` before a commit that
+touches them. If a freeze/demo script was interrupted, verify the live stage
+against the user's intent BEFORE committing anything.
+
 **What we have NOT yet implemented from HERO (implement these next):**
 - 13+2 sprite technique for HUD text/indicators (P0×3 + P1×3 + ball = 13 character columns)
   → score DOES use P0×3+P1×3+VDELP (docs/font/48px_score_skill.md); ball/extra columns not yet
