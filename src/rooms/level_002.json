@@ -34,11 +34,11 @@
     "room_y": 1,
     "enemies": [
      {
-      "type": 3,
-      "x": 16.0,
+      "type": 7,
+      "x": 20.0,
       "y": 11.0,
-      "range_min": 13.0,
-      "range_max": 19.0,
+      "range_min": 20.0,
+      "range_max": 20.0,
       "speed": 1.5,
       "dir": 1
      }
