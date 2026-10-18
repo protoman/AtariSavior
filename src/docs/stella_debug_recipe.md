@@ -114,6 +114,36 @@ a file tonight [F]**, so treat the Stella half as unconfirmed until §5 is
 resolved. The py65 equivalent is `tools/qa_sweep.py`'s `load_room`-style
 harness and always works.
 
+## 4b. 2026-10-18 measurements (verified in this environment)
+
+**[V] The scripted snapshot WORKS in this exact form:**
+
+```bash
+rm -rf /tmp/opencode/sb /tmp/opencode/ss && mkdir -p /tmp/opencode/sb /tmp/opencode/ss
+printf 'frame 60\nsaveSnap\n' > /tmp/opencode/sb/autoexec.script
+cd src/ && timeout 20 stella -video software -basedir /tmp/opencode/sb -debug \
+  -snapsavedir /tmp/opencode/ss savior.bin >/dev/null 2>&1
+pkill -f "stella.*savior"
+# -> /tmp/opencode/ss/savior_dbg_<hash>.png   (320x228 RGB, the real frame)
+```
+Points that mattered: a **fresh** basedir (`rm -rf` first — Stella creates
+`state/ nvram/ stella.sqlite3` inside it), `-debug` present, `saveSnap` (not
+`snap`), `frame N` before it.
+
+**[F] ANY memory-write line kills the script in this build (Stella 7.0 build
+8005):** with one poke added (`ram $80 $28` / `ram $0080 $28` /
+`write $80 $28`) the run produced **no PNG at all** — the script stops at the
+first unknown/unsupported command, so everything after it (including
+`saveSnap`) never runs. `ram` is an **interactive** debugger command: the only
+standalone command literals in `/usr/bin/stella` are `print saveSnap snap
+write`, and `ram` is absent, while `write` exists but did not take my argument
+forms. **Conclusion: poke RAM INTERACTIVELY at the debugger prompt** (a human),
+or use the py65 renderer — do not put memory writes in `autoexec.script` until
+a working scripted form is found.
+
+**A comment line is fine** (`; ...` did not break the working script) — the
+earlier suspicion that comments broke it was wrong; the pokes did.
+
 ## 5. Debugging the scripted path when no PNG appears (2026-10-18 failure)
 
 Symptom: launch + `-debug` + basedir script → **no PNG anywhere, empty log**,
