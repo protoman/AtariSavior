@@ -43,6 +43,25 @@ Colour: **white** (`ObjSpriteOffTable[7] = OBJ_LAMP`, frame colour `$0e`). LAMP
 is the only white, blocky 8x8 in `ObjSprites`; the table is exactly 72 B and ends
 at `$FF00`, so a dedicated white raft design needs 8 art + 8 colour bytes freed.
 
+**Inertia ramp — specified, then BLOCKED on space (2026-10-18, measured).** The
+user wants a heavy take-off: 1 px/frame then the full 1.5. The design is done and
+was implemented, but it does not fit tonight's layout:
+- State lives in `PlayerBombs` ($F0) spare high bits: b2-0 stay the bomb count,
+  b7 = "ridden last frame", b6-3 = a 4-bit ramp level stepping every 2nd frame
+  (~30 frames to full). Adding $10 never carries into b2-0, and the drop's `dec`
+  is guarded by a non-zero count, so it cannot borrow upward.
+- Two consumers must mask the count: bank1's HUD (2 reads, +2 B each) and bank2's
+  bonus tally. The tally's inline region ends at a hard `org` (+6 B = "Origin
+  Reverse-indexed"), so the masking went into `TallySum`, split out into bank2's
+  free slack before the $F970 pin (its caller then SHRINKS by 3 B).
+- **Blocker:** the ramp code is ~60 B and bank1's `$FDE3` fill has only 44 B
+  spare. Splitting RaftCellSolid + the tables into the `$F822` fill (277 B, only
+  the 6-byte twin in it) then broke the body's 127-byte relative branch ranges
+  (`beq .RaftTide` etc. — the probe/tables must stay within reach of the body).
+- Next pass: move the WHOLE raft block into the `$F822` fill (its 277 B fits the
+  body + probe + tables + ramp) and keep every relative branch inside one
+  contiguous unit; or put the body in bank2's gap behind a second twinned tramp.
+
 Two deliberate simplifications, both for review:
 1. **Inertia = a one-frame hold on the turn frame.** A true multi-frame spin-up
    ramp needs one byte of per-raft state; the ZP map has none free (EnemyRamD's
