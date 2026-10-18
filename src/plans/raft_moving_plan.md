@@ -56,7 +56,15 @@ user's instruction, for review.
 
 Bank0 is **1 byte** from its `$FC68` limit, and the enemy-type dispatch in
 `UpdateEnemies` is a chain of `cmp #T / bne / jmp UE_Body` (5-6 B per type), so
-a new type costs bytes bank0 does not have. **Fix (net −1 byte):**
+a new type costs bytes bank0 does not have. **Fix (net −15 bytes — measured):** the whole three-type compare chain in
+`UpdateEnemies` is tentacle (7 B) + moth (7 B) + snake (4 B) = 18 B; replacing
+it with a single 3 B `jmp UEDispatch` frees **15 B**, which pays for the two new
+table bytes (`ObjSpriteOffTable[7]`, `EnemyColorTable[7]`) *and* leaves slack.
+`UEDispatch` (in the gap) re-tests every type and tail-jumps to its body. The
+earlier "net −1 byte" note in this file was wrong — only the snake compare was
+being replaced.
+
+**Original single-compare variant (kept for reference):**
 
 - Replace the snake tail `cmp #ENEMY_SNAKE / bne UE_Next` (4 B) with
   `jmp UE_Dispatch` (3 B) and put `UE_Dispatch` in the **`$F82C` pin gap**
