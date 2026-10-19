@@ -322,3 +322,56 @@ Redesign (all zero-push):
 
 Then, and only then, the ~10-15 ROM-byte tests that read block bytes must
 switch to `BANKS[3]` + `bank3.lst`.
+
+## Why the ROM is this big (measured 2026-10-19, post-A2)
+
+Method: every emitted byte in `bank*.lst` attributed to its enclosing global
+label (`.lst` tab columns); HERO measured the same way from the DiStella
+disassembly in `docs/hero/` (bank0 was dumped as data by DiStella, so its
+code figure is a lower bound).
+
+| | code | data | level data | total | density |
+|---|---|---|---|---|---|
+| **HERO (8K)** | ~1.9 KB (bank1) + ≤0.05 KB (bank0) | ~6.3 KB | inside that | 8192 | **100%** |
+| **us (16K)** | ~9.9 KB | ~1.0 KB | 0.56 KB | 11076 used (4571 fill) | 68% |
+
+Our bytes by subsystem (top-down):
+
+| subsystem | bytes |
+|---|---|
+| kernel / core / VBL / overscan / physics glue | 2454 |
+| enemies + sprite dispatch (`SelectActiveObject` 289, moth 216, derive, UE) | 1411 |
+| room load + PF staging (`EnterRoomB2` 179, `PhaseBlink` 173, `BuildColupF` 141, `B3StageBand` 132) | 1347 |
+| title / intro / music / footer / copyright | 1304 |
+| crunch shutters + overlays (`VCS3` 271, `HOVFeatEntry` 210, `PhHcrEntry` 125, `VcrShutter` 129, `OvM1Block` 128) | 1184 |
+| HUD band / score / bar (`MenuMain` 806, `SetupScorePointers` 137) | 1150 |
+| player physics + collision (`UpdateP0Vertical` 214, `LaserInput` 171, `PlayerHitsMap` 140) | 968 |
+| bomb + walls (`BombMarkWalls` 214) | 511 |
+| raft ferry (`RaftBody` 252 + inertia) | 318 |
+| laser clamp/hit | 186 |
+
+**Where HERO's 8K goes:** ~1.9 KB of code, ~6.3 KB of *pictures* — per-scanline
+PF lookup tables (LFA00/LFB00/LFC00/LFD00), 20-odd screen templates reused
+across levels, sprite art, sound bytes. Reasons its code is 5x smaller:
+
+1. **Hardware collision** (TIA CX registers) — HERO has ~1 collision routine.
+   We have six software rect walkers (`PlayerHitsMap`, `LaserWallClamp`,
+   `OvM1Block`, `HotOverlapBody`, the enemy probes, the shutter kill).
+2. **Baked screens vs staged screens** — HERO reads PF per scanline from ROM
+   tables; we stage PF/color/meta every VBL (1.3 KB of room-load/staging code).
+3. **No flicker multiplexer** — HERO's object budget fits its sprites; we
+   multiplex one GRP1 across bomb/enemies/miner (`SelectActiveObject` 289 B).
+4. **No cross-bank tax** — HERO has 2 banks and a handful of pads; we spend
+   ~600 B on CallPads/twins/return pads and 4571 B on fill.
+5. **Feature surface** — we carry two crunch machines, a raft ferry with
+   inertia, dark rooms + key/doors, asymmetric PF (ball/M1), hot bands, jet
+   physics with subpixel + hover, drop-in, tally, level banner, intro music
+   player, footer + copyright fonts, 7 enemy types. HERO has 4 enemy types,
+   a simple title, and level/screen reuse.
+
+**Implication:** 8K total is not reachable by squeezing — it needs HERO's
+architecture (hardware collision + baked screens), i.e. a rewrite. The
+realistic dedup wins are ~1 KB: one walker engine (~400-600), crunch
+consolidation C2/C3 (~200), staging merge (~200). Cutting title/intro/music/
+footer would return another ~1.3 KB if the product does not need it.
+
