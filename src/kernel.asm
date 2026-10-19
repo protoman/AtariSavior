@@ -479,10 +479,10 @@ GameStart:
     sta TickCounter
     lda #120
     sta BarLevel                ; bar starts full
-    ; --- Intro screen: DropTarget=$FD sentinel (2026-10-06 — SAVIOR splash
-    ;     shows ONCE at power-on; first SELECT/RESET edge anywhere moves to
-    ;     the old title $FF = first room + HUD stage count; valid fall
-    ;     targets are Y ≤ 191, sentinels $FD/$FE/$FF all "not a fall"). ---
+    ; --- Merged title screen: DropTarget=$FD (2026-10-19). One screen
+    ;     shows the SAVIOR logo, the selected level number, the credits and
+    ;     plays the theme; SELECT cycles the level, RESET starts the game.
+    ;     Valid fall targets are Y ≤ 191; sentinels $FD/$FE are "not a fall". ---
     lda #$FD
     sta DropTarget
 
@@ -2788,8 +2788,8 @@ PositionBallM1:
 ; ------------------------------------------------------------------------------
 ; KernelInit — title/cave dispatch + cave running-Y (fill: pre-pad headroom 1B).
 ; TIA inits moved to the VBL tail 2026-10-06 (entry-span budget — see there).
-; Intro path (DropTarget=$FD sentinel) → TitleKernel (pops this jsr first!);
-; cave path (play AND old title $FF) → rts → CaveKernelRow. Cave side
+; Title path (DropTarget=$FD sentinel) → TitleKernel (pops this jsr first!);
+; cave path (play) → rts → CaveKernelRow. Cave side
 ; effects: RowIdx=0, Y=-RoomY, X=0, A=0. ENAM0/ENAM1 NOT touched.
 ; ------------------------------------------------------------------------------
 KernelInit:
@@ -2839,33 +2839,8 @@ DropSpeedTable:
 ; ------------------------------------------------------------------------------
 ; TitleFont — MOVED to bank1.
 
-TitleIntro:
-    lda StepsLeft
-    and #%00000011             ; prev released bits (1 = released)
-    sta Temp
-    lda SWCHB
-    eor #%00000011             ; now pressed bits (1 = pressed)
-    and #%00000011
-    and Temp                   ; any prev-released & now-pressed
-    beq .TIno
-    lda LevelStartX
-    sta RoomX                   ; discard title-only flight position
-    lda LevelStartY
-    sta RoomY
-    lda #0
-    sta PlayerDir
-    sta TallyTicks               ; intro phase machine: back to phase 0
-    lda BombPacked
-    and #%11111100               ; drop any leftover fuse before old title
-    sta BombPacked
-    lda #$FF
-    sta DropTarget             ; → old title (first room + HUD count)
-    jsr DropArm                ; .DATitle: pose + ScoreTe = level+1
-.TIno:
-    lda SWCHB
-    sta StepsLeft
-    jsr TitleSequenceFold       ; intro phase machine (bank2 body, jsr/ReturnPad)
-    jmp TitleTailAudio
+    .ds $FB37 - *, 0            ; TitleIntro retired — merged title screen
+                                 ;   (2026-10-19): $FD now goes to TitleWork
 
 ; ------------------------------------------------------------------------------
 ; RowSlice — Phase C vcrunch shutter: render ONE sub-slice of the shutter
@@ -2930,21 +2905,9 @@ EnterRoom:
     sta $1FF8
     jmp $F010                    ; EnterRoomB2 — fetched from bank2 twin
 
-    .ds $FBD6 - *, 0            ; fold pinned where bank2's twin mirrors it
-                                 ;   (both banks must hold the same sta/jmp
-                                 ;   bytes at these fixed addresses)
-TitleSequenceFold:
-    sta $1FF8
-    jmp $F4C4                    ; TitleSequence body — fetched from bank2
-    .ds $FBE0 - *, 0
-FooterFold:
-    sta $1FF8
-    jmp $F700
-    .ds $FBE8 - *, 0
-TitlePlayerFold:
-    sta $1FF8
-    jmp $F880
-    .ds $FBF8 - *, 0
+    .ds $FBF8 - *, 0            ; TitleSequenceFold / FooterFold /
+                                 ;   TitlePlayerFold retired with the intro
+                                 ;   movie (merged title, 2026-10-19)
 ReturnPad:
     sta $1FF6
     rts
@@ -3221,11 +3184,7 @@ DropStep:
     lda DropTarget
     beq .DSdone                 ; idle (target 0 = nothing to fall)
     cmp #$FD
-    bne .DSnf                   ; intro ($FD): edge check in fill, then the
-    jmp TitleIntro              ;   shared silence/wait tail (jmp-in, no rts)
-.DSnf:
-    cmp #$FF
-    beq TitleWork               ; title sentinel: select/reset, no fall
+    beq TitleWork               ; merged title = level select ($FD)
     cmp #$FE
     bne .DSfall
     jmp TallyWork               ; level-bonus tally sentinel (bank2 step)
@@ -3255,10 +3214,11 @@ DropStep:
 ; its address is irrelevant to DropStep.
 
 ; ------------------------------------------------------------------------------
-; TitleWork — level-select screen (DropTarget = $FF sentinel, dispatched from
-; DropStep every frame). Player stands at the level start: no gravity, no
-; enemies (count/miner cleared by DropArm .DATitle), no sound, timer frozen
-; (tail skips the TickCounter/BarLevel block). HUD score = level+1.
+; TitleWork — merged title/level-select screen (DropTarget = $FD sentinel,
+; dispatched from DropStep every frame). The TitleKernel shows the logo, the
+; selected level number (digits band) and the credits; the theme plays here.
+; No gravity/enemies/sound beyond the music (frame is title-owned; timer
+; frozen). SELECT cycles Level, RESET starts the game at the selected level.
 ;   SELECT (SWCHB b1, active-low EDGE) → jsr TitleSelect (fill): level+1,
 ;          wrap → 000001, reload room 0 (swallow removed 2026-10-07, 8b —
 ;          the intro exit ate the first press and made #2 read as dead)
@@ -3295,11 +3255,10 @@ TitleWork:
     ;     channel force-muted here — UpdateJetSound is skipped because
     ;     $FF would read as "falling" and buzz; laser skipped (LaserState
     ;     = 0, AUDV0 covered above). ---
-TitleTailAudio:                 ; shared: TitleWork falls in; TitleIntro
-                                ;   tail-jumps (label — jumps, not falls)
-    lda DropTarget              ; title sentinels ($FD/$FF/$FE): the intro's
-    cmp #$FD                    ;   TitleSequence owns its fuse — skip
-    beq .TWmusic                ;   $FD intro: music owns AUD0/AUD1
+TitleTailAudio:                 ; tail: TitleWork falls in (no rts)
+    lda DropTarget              ; merged title ($FD): music owns AUD0/AUD1,
+    cmp #$FD                    ;   no bomb fuse/tick on title frames
+    beq .TWmusic
     bne .TWnoTick               ;   BombTick's blast side effects on titles
     jsr BombTick
 .TWnoTick:
@@ -3307,7 +3266,7 @@ TitleTailAudio:                 ; shared: TitleWork falls in; TitleIntro
     lda #0
     sta AUDV1
     beq .TWwait                 ; A=0 -> always taken
-.TWmusic:                       ; intro: tick AFTER TitleSequence so the music
+.TWmusic:                       ; title: music wins the audio regs
     jsr CallPad_MusicTick       ;   wins the audio registers every frame
 .TWwait:
     lda INTIM
@@ -3357,8 +3316,8 @@ RefreshEnemyY:
     and #%00000011              ; SELECT b1 + RESET b0 (level-triggered,
     cmp #%00000011              ;   same style as the old SELECT-only check)
     beq .REYRts                 ; neither pressed
-    lda #$FF
-    sta DropTarget              ; title sentinel (intro $FD lands here too)
+    lda #$FD
+    sta DropTarget              ; merged title sentinel ($FD, 2026-10-19)
     jsr LoadLevel               ; tail → DropArm .DATitle (score/objects)
     pla                         ; drop OUR return address (LoadLevel already
     pla                         ;   popped its own) — tail into TitleWork

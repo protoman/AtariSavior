@@ -794,8 +794,9 @@ PickPlayerFrame:
 ; ------------------------------------------------------------------------------
 
 ; ------------------------------------------------------------------------------
-; TitleSequence — intro ($FD) phase machine (plans/title_bomb_sequence_plan).
-; Cross-bank entry: bank0 TitleSequenceFold (jsr → sta $1FF8 → jmp $F4C4,
+; TitleSequence — RETIRED 2026-10-19 (merged title screen). The space is
+; fill; the old cross-bank entry was bank0 TitleSequenceFold (jsr → $F4C4,
+
 ; the jmp bytes are mirrored in this bank); tail exits jmp $FBF8 (ReturnPad)
 ; so the bank0 jsr returns. Runs once per frame from TitleIntro. No jsr
 ; inside (fold depth must not nest). Guard: DropTarget == $FD.
@@ -819,159 +820,9 @@ ERBlocksPad:
                                  ; operand ($F4C4 since P2b StageBandTab grew;
                                  ; verify_build asserts the operand is a
                                  ; TitleSequence lst row start)
-TitleSequence:
-    lda DropTarget
-    cmp #$FD
-    beq .TSAlive
-    jmp .TSdone
-.TSAlive:
-    ; --- own the bomb fuse (title: BombTick gated off) ---
-    lda BombPacked
-    and #%00000011
-    beq .TSNoBomb
-    cmp #1
-    beq .TSFuse
-    dec BombTimer               ; state 2 — explosion countdown
-    bne .TSNoBomb
-    lda BombPacked              ; → state 0 (mask/DownPrev kept)
-    and #%11111100
-    sta BombPacked
-    lda #0
-    sta BombTimer
-    jmp .TSNoBomb
-.TSFuse:
-    dec BombTimer
-    bne .TSNoBomb
-    lda BombPacked              ; 1 → 2, explode tone (no BMW/score/blast)
-    and #%11111100
-    ora #%00000010
-    sta BombPacked
-    lda #60
-    sta BombTimer
-    lda #8                      ; noise — bank1 BombSndExplode's regs
-    sta AUDC0
-    lda #0
-    sta AUDF0
-    lda #10
-    sta AUDV0
-    lda #30
-    sta BombSnd                 ; UpdateBombSound fades AUDV0 out
-.TSNoBomb:
-    lda BombPacked              ; no live bomb → BombX = footer/base X
-    and #%00000011
-    bne .TSPhase
-    lda #68
-    sta BombX
-.TSPhase:
-    ; --- dispatch ---
-    lda TallyTicks
-    bne .TSNotP0
-    lda RoomX                   ; phase 0: fly right to 140
-    cmp #140
-    bcc .P0Fly
-    jmp .TSAdv
-.P0Fly:
-    inc RoomX
-    jmp .TSdone
-.TSNotP0:
-    cmp #1
-    bne .TSNotP1
-    lda RoomY                   ; phase 1: drop to 48 (ground)
-    cmp #48
-    bcc .P1Drop
-    jmp .TSAdv
-.P1Drop:
-    inc RoomY
-    jmp .TSdone
-.TSNotP1:
-    cmp #2
-    bne .TSNotP2
-    lda #1                      ; phase 2: face left (FACING_LEFT)
-    sta PlayerDir
-    jmp .TSAdv
-.TSNotP2:
-    cmp #3
-    bne .TSNotP3
-    lda BombPacked              ; phase 3: arm bomb at X=140, fuse 180
-    ora #%00000001
-    sta BombPacked
-    lda #140
-    sta BombX
-    lda #180
-    sta BombTimer
-    lda #4                      ; square — bank1 BombSndDrop's regs
-    sta AUDC0
-    lda #10
-    sta AUDF0
-    lda #8
-    sta AUDV0
-    lda #6
-    sta BombSnd
-    jmp .TSAdv
-.TSNotP3:
-    cmp #4
-    bne .TSNotP4
-    lda RoomX                   ; phase 4: walk left to center (X=76)
-    cmp #77
-    bcc .P4Wait
-    dec RoomX
-    jmp .TSdone
-.P4Wait:
-    lda #0                      ; at center: wait for the blast facing right
-    sta PlayerDir
-    jmp .TSAdv
-.TSNotP4:
-    cmp #5
-    bne .TSNotP5
-    lda BombPacked              ; phase 5: wait out fuse + explosion
-    and #%00000011
-    bne .TSdone
-    lda #1                      ; blast gone: walk home facing left
-    sta PlayerDir
-    jmp .TSAdv
-.TSNotP5:
-    cmp #6
-    bne .TSNotP6
-    lda RoomX                   ; phase 6: walk home (X=20), then pause 240
-    cmp #21
-    bcc .TSPause
-    dec RoomX
-    jmp .TSdone
-.TSPause:
-    lda #240
-    sta BombTimer
-    lda #0                      ; home: wait facing right (before the climb)
-    sta PlayerDir
-    jmp .TSAdv
-.TSNotP6:
-    cmp #7
-    bne .TSNotP7
-    dec BombTimer               ; phase 7: own the 240-frame pause — BombTick
-    bne .TSdone                 ;   is gated off on titles, nothing else ticks
-    jmp .TSAdv                  ;   (dir already 0 — set at .TSPause) -> phase 8
-.TSNotP7:
-    cmp #8
-    bne .TSdone
-    lda RoomY                   ; phase 8: fly back up to original Y=0, then
-    bne .P8Climb                ;   restart the loop (no teleport)
-    lda #20                     ;   X walked home already; belt + braces
-    sta RoomX
-    lda #0
-    sta TallyTicks
-    jmp .TSdone
-.P8Climb:
-    dec RoomY
-    jmp .TSdone
-.TSAdv:
-    inc TallyTicks
-.TSdone:
-    jmp ReturnPad                   ; ReturnPad → bank0 TitleIntro (0 push)
+    .ds $F5CF - *, 0            ; TitleSequence retired — merged title
+                                 ;   screen (2026-10-19)
 
-; Cell-map lookup copies (bank2 cannot read bank0 ROM) — cell_collision_plan
-; 0.2 bit spec, byte-identical to kernel.asm's ColOff/ColMask: group offset
-; 0/3/6 + per-col bit (PF0 LSB-first nibble, PF1 MSB-first, PF2 LSB-first).
-; Moved here 2026-10-08 (was between LWpSolid and MothGate): the TallyEntry
-; $F313 pin splits bank2's pre-region and the LWC M1 tip test needed the 44B.
 ColOff:
     .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
 ColMask:
@@ -1283,15 +1134,9 @@ OverlayTramp:
     .ds $FBD6 - *, 0            ; TitleSequenceFold twin (kernel.asm same
                                  ;   address — jmp operand fetched here after
                                  ;   bank0's sta $1FF8, so bytes must match)
-    sta $1FF8
-    jmp $F4C4                    ; TitleSequence
-    .ds $FBE0 - *, 0
-    sta $1FF8
-    jmp $F700
-    .ds $FBE8 - *, 0
-    sta $1FF8
-    jmp $F880
-    .ds $FBEE - *, 0
+    .ds $FBEE - *, 0            ; TitleSequenceFold / FooterFold /
+                                 ;   TitlePlayerFold images retired with the
+                                 ;   intro movie (merged title, 2026-10-19)
 Bank2ReturnPad:                 ; bank3 VCS3 (OvShutScan body) tail target:
                                 ;   sta executes bank3-side, rts fetched from
                                 ;   THIS byte-identical copy (post-switch)

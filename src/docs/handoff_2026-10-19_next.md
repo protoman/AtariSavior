@@ -298,11 +298,31 @@ last bytes are the `CallPad_MusicTick` pad. Consequence: **bank0's 1-byte
 pre-pad headroom is structural**, not a compaction failure; any new bank0
 feature needs a bank0 deletion, not a size win elsewhere.
 
-Real remaining reductions are feature decisions, not compaction:
-- LV001 banner: ~76 B (banner path + `L`/`V` glyphs) — visible (no level
-  indicator for 1 s at stage start).
+### Merged title screen (2026-10-19, same day)
+
+The old two-step title (intro splash `$FD` + "old title" level select `$FF`)
+was merged into ONE `$FD` screen: logo + 2-digit level number + credit footer +
+theme. SELECT cycles the level; RESET starts. Boot/return-to-title both use
+`$FD`, so `LoadLevel`'s banner gate (`cmp #$FD`) also suppresses LV001 on
+title frames.
+
+Removed (measured from the listings, replaced with `.ds` where addresses are
+pinned): bank2 `TitleSequence` 267 + dead fold images 12; bank1 `TitleBandPrep`
+104, `TitlePlayerBand` 89, jet/bomb/blink art 52, `TitleKernel` player block
+(61→pad) 51 net; bank0 `TitleIntro` 55, three folds 18, `DropStep` `$FF`
+branch 7. Added: the two-digit band (~52 B incl. pad re-budget) → **−563 B
+used** (10896 → 10333), bank1 +204 free, bank2 +285 free.
+
+Title frame budget is 265.0 again (pad `ldx #157` + priming WSYNC + 31-line
+post pad); `test_title_demo.py` and `test_menu_flow.py` were rewritten to the
+merged contract (both green).
+
+Remaining reductions are feature decisions, not compaction:
+- LV001 banner: ~76 B (banner path + `L`/`V` glyphs) — now redundant-ish: the
+  merged title already shows the selected level. Visible only for 1 s at stage
+  start.
 - Music (`MusicTick` + melody): ~200-390 B — audible; user wants it kept.
-- Title/intro cluster: ~978 B — user decided keep (2026-10-19).
+- Credits footer (`FooterBand` + `FooterFont`): ~185 B — visible.
 
 ## 5. Open decisions for the user
 
