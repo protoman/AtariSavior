@@ -370,17 +370,15 @@ MothDoWalk:
     clc
     adc #1                     ; top line = Y+1
     lsr
-    lsr                        ; A = line >> 2 (48-entry table index)
-    tay
-    lda MothRowTable,Y
+    lsr                        ; A = line >> 2
+    jsr BandRowFromLine
     sta CollisionCellY         ; top band row = floor((Y+1)/48)
     lda EnemyRamY,X
     clc
     adc #8                     ; bottom line = Y+8
     lsr
     lsr
-    tay
-    lda MothRowTable,Y
+    jsr BandRowFromLine
     sta CollisionEndY          ; bottom band row = floor((Y+8)/48)
     ; cols from VISIBLE left, not Temp: SetObjectXPos draws the sprite
     ; ~5/7 px LEFT of A (BombMarkWalls/PHM convention) — probing Temp let
@@ -536,14 +534,28 @@ MothBitTable:
 ; ApplyBombWalls (plan 5.2) — bank1 BombMaskBit stays for the bomb walk
 ; + hot parent-mask AND.
 
-; 48-line band row lookup — copy of kernel's YToRowTable (bank2 cannot read
-; bank0 ROM). Index = line >> 2, value = floor(line/48) = band row 0-3.
-; Max in-cave index = (143+8) >> 2 = 37 — fits.
-MothRowTable:
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 1,1,1,1,1,1,1,1,1,1,1,1
-    .byte 2,2,2,2,2,2,2,2,2,2,2,2
-    .byte 3,3,3,3,3,3,3,3,3,3,3,3
+; Band row from a scanline — replaces the old 48-byte MothRowTable copy
+; (index = line>>2, value = floor(line/48)). Same result, 24 B instead of
+; 48 B, and four call sites share it instead of carrying the table.
+; IN: A = scanline >> 2 (0..37; callers do the two lsr)  OUT: A = band row
+BandRowFromLine:
+    cmp #36
+    bcs .BR3                ; 144..151 (also clamps >151)
+    cmp #24
+    bcs .BR2                ; 96..143
+    cmp #12
+    bcs .BR1                ; 48..95
+    lda #0                  ; 0..47
+    rts
+.BR1:
+    lda #1
+    rts
+.BR2:
+    lda #2
+    rts
+.BR3:
+    lda #3
+    rts
 
 ; ------------------------------------------------------------------------------
 ; LaserWallClamp $F25A (name+pin kept — sim_frame_budget beam_cols keys on
@@ -576,16 +588,14 @@ LaserWallClamp:
     adc #2
     lsr
     lsr
-    tay
-    lda MothRowTable,Y
+    jsr BandRowFromLine
     sta CollisionCellY          ; top band row
     lda RoomY
     clc
     adc #3
     lsr
     lsr
-    tay
-    lda MothRowTable,Y
+    jsr BandRowFromLine
     sta CollisionEndY           ; bottom band row
     ; --- tip col (display space): the ONLY cell the contact tests ---
     lda PlayerDir
