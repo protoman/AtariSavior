@@ -115,3 +115,38 @@ unaffected (they use generated text, not addresses).
 
 Estimated: two-pass build ~30 lines in build.sh/verify_build; test migration
 mechanical but touches 10-15 files.
+
+
+## Bank3 move, next design (tail-call, zero stack) — 2026-10-19 second attempt
+
+The two-pass symbol export WORKED (build + verify green), but `sim_bomb_fuse`
+died: the HOV/crunch chain pushed SP to $F7 (BombTimer) and then wrapped. The
+new `jsr ReadB3` frames inside `EnterRoomB2`/`StageBandTab` added stack levels
+to a chain that already sits on the floor. Two lessons:
+
+1. **Never add a `jsr` to the room-load or VBL chain** — both are at the
+   measured stack floor. Use the project's tail-call/tramp pattern instead
+   (`sta $1FFx` + `jmp`, return via `$FBF8`/`$FBEE`), which pushes nothing.
+2. A bank3 read stub that must RETURN to bank2 costs one jsr level; a bank3
+   body that FINISHES the job can be tail-entered for free.
+
+Redesign (all zero-push):
+- **EnterRoomB2 stays in bank2** for everything that reads bank2 (room table,
+  RoomEnemies, enemy records). Reorder it so the BLOCK work (rect unpack +
+  9-byte PF copy) is LAST, then `sta $1FF9 / jmp B3RoomBlocks`.
+  `B3RoomBlocks` (bank3) unpacks rects into `RcBase/RcW1` and copies PF into
+  `PF0Buf`, then `jmp $FBF8` (ReturnPad -> bank0). Must preserve X
+  (EnemyCount is EnterRoom's return contract) — use Y + a ZP scratch for the
+  cache index instead.
+- **StageBandTab moves to bank3 entirely** (it only reads the block meta).
+  `BuildColupF`'s tail becomes `sta $1FF9 / jmp B3StageBand` (tail, twin jmp
+  image in bank3); the body ends `jmp $FBF8`. Bonus: ~150 B leave bank2.
+- **Moth/LaserHitTest records stay in bank2** (only blocks move), so no
+  reader changes there; the VBL band-color read is already gone.
+- Tramp/twin addresses must be free in BOTH banks; the measured free pairs
+  are `$FC3E-$FC48`, `$FCDF-$FCEF`, `$F800-$F87F` (bank2) and
+  `$F800-$F87F`, `$FCDF-$FD7A` (bank3).
+- Two-pass label export (`--sync-bank3-labels`) stays as implemented.
+
+Then, and only then, the ~10-15 ROM-byte tests that read block bytes must
+switch to `BANKS[3]` + `bank3.lst`.
