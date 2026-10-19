@@ -130,7 +130,7 @@ the data bank.
 **Expected:** bank2 3261 → ~2100-2500 B (data -556, readers -~600 if all four
 move), bank3 holds data + readers with room left.
 
-## 2. Chunk C2 — crunch consolidation (needs A3)
+## 2. Chunk C2 — crunch consolidation — **DONE 2026-10-19** (−85 B; stack shuttle removed, see §1c)
 
 - Move `PhHcrEntry` + `CrPfx0/1/2` + `HcrClock` + `HcrPush` (~420 B) from
   bank3 into the hole vacated by the level data (bank2), then merge the PF
@@ -140,8 +140,9 @@ move), bank3 holds data + readers with room left.
   `jmp HOVnext` in bank2.
 - Unify the mask tables (`OvHead/OvTail` vs `CrPfx*`) and the clock
   (`VcrStateTab` 32 B vs `CrunchClock`).
-- **Expected:** 200-300 B. Tests: `test_hcrunch`, `test_vcr_shutter`,
-  `test_phase_kill_frame`, `test_phase_kill`.
+- **Expected:** 200-300 B. **Actual:** 85 B (the shuttle was ~100 B; the
+  "move to bank2" half became pointless after A3). Tests green. Keeping the
+  machine in bank3 is the recorded decision.
 
 ## 3. Chunk C3/C4 — small cleanup
 
@@ -151,18 +152,25 @@ move), bank3 holds data + readers with room left.
 
 ## 4. Reorganisation (after the crunch)
 
-### 4a. Score renderer → HERO PF-table score (**approved by user**)
+### 4a. Score renderer → HERO PF-table score — **DISPROVEN 2026-10-19**
 
-- Replace the 48-px sprite score (`MenuMain` loop + `SetupScorePointers` 123 +
-  `DigitGfx` 104 data = ~1033 B) with HERO's model: per-scanline PF tables
-  baked per digit (`LFA00/LFB00/LFC00/LFD00` pattern), 4-5 scanlines per digit,
-  masks per row.
-- **Expected 200-400 B.** Highest risk item: visible output changes. Gate:
-  `sim_frame_budget` (HUD band line budget) + screenshots + `test_title_demo`
-  (title uses the same text technique — decide whether it shares the new
-  renderer).
-- Precedent: `docs/font/48px_score_skill.md` documents the current technique;
-  write the new one next to it.
+The audit claim ("HERO renders its score from baked per-scanline PF images")
+does not survive a check against `screenshots/hero_001.png`:
+
+- HERO's score is `705255` — **6 distinct digits centered across the screen
+  middle**.
+- TIA playfield is 20 bits × 4 clocks = 80 px, then **repeated or mirrored**
+  for the other 80 px. A PF score therefore always appears twice; a centered
+  one shows the left glyphs mirrored on the right.
+- Six different digits crossing the center are geometrically impossible in PF.
+  HERO's score is sprite-based (P0×3 + P1×3 interleaved) — **the technique we
+  already use** (`MenuMain` 48px loop + `DigitGfx`).
+
+Conclusion: no rewrite. The 1033 B cluster is HERO-parity, not waste. The
+audit's §2/§4a wording is corrected in `docs/code_size_audit.md`.
+If a smaller/coarser score is ever acceptable as a *design* change (not a
+compaction), the PF variant would also force a layout change (score would have
+to sit in one 80 px half and be duplicated) — user decision, not a free win.
 
 ### 4b. Dedupe list (measured in `docs/code_size_audit.md` §3)
 
@@ -189,11 +197,41 @@ Metric to watch: cross-bank pads (currently 92).
 ### 4d. Still-open long-term goal
 
 User wants **code in bank0+bank1 only** (or at most half of bank2). Measured
-today: code alone is 9340 B vs 8192 in two banks, so it needs ~1.2-3 KB more
-off. Keep hunting after the reorg; candidates already identified: the title
-cluster (978 B, keep for now), tally/banner (220), and the pad tax (512).
+after A3/C2: code alone is **9213 B** vs 8192 in two banks, so it needs ~1 KB
+more off. Candidates: the title cluster (978 B, keep for now), tally/banner
+(220), pad co-location (~100 B), and the de-fragmentation pass (§8).
 Also on the wish list for parity with HERO: Activision-style logo screen,
 more colours per stage, HERO's 13+2 HUD columns.
+
+## 8. Fill / fragmentation options (added 2026-10-19)
+
+**Fill is layout slack, not a budget.** It is the `.ds` padding between a block
+end and the next *pinned* address, plus the 4K tail. Shrinking code usually
+makes it grow (the gap before a pin widens — bank3 fill went 1355 → 1386 after
+C2 removed 85 B). The metric that matters is **largest contiguous free hole
+per bank**, because that is what a new feature can actually use.
+
+Options, cheapest first:
+
+1. **Use the gaps (fill → used).** Move cold tables/leaf routines into the big
+   holes. Current largest runs: bank2 `$F9D9-$FBCF` 503 B (empty data window),
+   `$FC4C-$FD86` 315 B, `$FF59-$FFE5` 141 B; bank3 `$FC3E-$FD7F` 322 B,
+   `$FECB-$FFEE` 292 B, `$FB08-$FBED` 230 B, `$F290-$F3AB` 284 B. Zero
+   behaviour change; the block's labels move, the syncs already handle literals.
+2. **De-fragment per bank.** Reorder/compact blocks so used areas are
+   contiguous and all slack ends in one tail run. Same byte count, more usable
+   contiguous space (and fewer >127-byte branch hazards).
+3. **Remove pins by removing tramps.** Co-locate routines so cross-bank pads
+   disappear (audit: 92 sites / 512 B; measured ceiling ~100 B genuinely
+   recoverable). Each removed pad is one fixed address and two merges.
+4. **Fewer banks (repack).** Used 10,922 B < 12,288 B, so a 3-bank fit is
+   possible in principle. It saves ROM bytes, not gameplay bytes, needs a full
+   repack of the pinned map, and F6 still ships 16K. Treat as a long-term
+   layout project, not a compaction tweak.
+
+Do NOT re-pin anything that a cross-bank literal depends on without running the
+full build (the sync steps rewrite operands; `sim_bomb_fuse` runs on the
+previous `savior.bin`).
 
 ## 5. Open decisions for the user
 
