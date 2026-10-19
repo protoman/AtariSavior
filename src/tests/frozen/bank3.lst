@@ -345,462 +345,430 @@
     344  fa40							; $81/$82 entered from bank2 HOVFeatPre: stack (top→) = h, w, y, x,
     345  fa40							; <base from .HOVloop>. Fields MUST be drained before HOVnext/HOVlegHit
     346  fa40							; (they pop the .HOVloop base). $80 has no fields (HOVafterGate = bank2).
-    347  fa40		       c9 80		      cmp	#$80
-    348  fa42		       f0 30		      beq	.HFphase
-    349  fa44		       48		      pha		; save class (b7 check clobbers A)
-    350  fa45		       a5 ba		      lda	EnemyDeadMask
-    351  fa47		       29 80		      and	#$80	; b7: crunch kill already happened?
-    352  fa49		       d0 21		      bne	.HFmissP	; yes → pass (wall stays, no re-kill)
-    353  fa4b		       68		      pla
-    354  fa4c		       c9 81		      cmp	#$81
-    355  fa4e		       d0 0c		      bne	.HF82
-    356  fa50		       20 82 fa 	      jsr	HOVvcrunch
-    357  fa53		       f0 18		      beq	.HFm81	; miss → drain + HOVnext
-    358  fa55		       68		      pla
-    359  fa56		       68		      pla
-    360  fa57		       68		      pla
-    361  fa58		       68		      pla		; kill → drain h,w,y,x (base on top for HOVlegHit)
-    362  fa59		       4c d3 fc 	      jmp	$FCD3	; pad: sta $1FF8 / jmp HOVlegHit (bank2 image)
-    363  fa5c				   .HF82
-    364  fa5c		       c9 82		      cmp	#$82
-    365  fa5e		       d0 0d		      bne	.HFm81	; unknown b7 class → same drain path
-    366  fa60		       20 cb fa 	      jsr	HOVhcrunch
-    367  fa63		       f0 08		      beq	.HFm81
-    368  fa65		       68		      pla
-    369  fa66		       68		      pla
-    370  fa67		       68		      pla
-    371  fa68		       68		      pla
-    372  fa69		       4c d3 fc 	      jmp	$FCD3	; pad: sta $1FF8 / jmp HOVlegHit (bank2 image)
-    373  fa6c				   .HFmissP
-    374  fa6c		       68		      pla		; drop saved class
-    375  fa6d				   .HFm81
-    376  fa6d		       68		      pla
-    377  fa6e		       68		      pla
-    378  fa6f		       68		      pla
-    379  fa70		       68		      pla		; drain h,w,y,x (base on top for HOVnext)
-    380  fa71		       4c cd fc 	      jmp	$FCCD	; pad: sta $1FF8 / jmp HOVnext (bank2 image)
-    381  fa74				   .HFphase
-    382  fa74		       a5 ba		      lda	EnemyDeadMask
-    383  fa76		       29 60		      and	#$60	; b5 armed | b6 phase dead
-    384  fa78		       c9 20		      cmp	#$20	; armed AND not yet removed?
-    385  fa7a		       d0 03		      bne	.HFmiss
-    386  fa7c		       4c d9 fc 	      jmp	$FCD9	; pad: sta $1FF8 / jmp HOVafterGate (bank2 image)
-    387  fa7f				   .HFmiss
-    388  fa7f		       4c cd fc 	      jmp	$FCCD	; $80 miss: no field drain (none pushed)
-    389  fa82
-    390  fa82							; ==============================================================================
-    391  fa82							; HOVvcrunch — $81 kill test. Covered rect = [x, y, w, covered_h] (top
-    392  fa82							; rows of the bbox — same extent PhaseBlink stages this frame).
-    393  fa82							; Overlap: x ≤ max && x+w > min && y ≤ bottom && y+covered_h > top.
-    394  fa82							; Out: A = 1 kill (b7 latched) / 0 miss. Y clobbered (base on stack
-    395  fa82							; survives). CollisionX ($88 = Temp) scratch — HOV already owns it.
-    396  fa82							; ==============================================================================
-    397  fa82				   HOVvcrunch
-    398  fa82							; Entered via jsr from HOVFeatEntry: stack (top→) = ret(2), h, w, y, x,
-    399  fa82							; <base>. Fields from bank2 PreFields — no (FetchPtr) reads.
-    400  fa82		       ba		      tsx
-    401  fa83		       bd 06 01 	      lda	$0106,X	; x
-    402  fa86		       c5 8c		      cmp	CollisionCellX	; x vs max col
-    403  fa88		       f0 05		      beq	.HVx
-    404  fa8a		       90 03		      bcc	.HVx
-    405  fa8c		       a9 00		      lda	#0
-    406  fa8e		       60		      rts
-    407  fa8f				   .HVx
-    408  fa8f		       85 84		      sta	LineCount	; save x
-    409  fa91		       ba		      tsx
-    410  fa92		       bd 05 01 	      lda	$0105,X	; y
-    411  fa95		       c5 8f		      cmp	CollisionEndY	; y vs bottom row
-    412  fa97		       f0 05		      beq	.HVy
-    413  fa99		       90 03		      bcc	.HVy
-    414  fa9b		       a9 00		      lda	#0
-    415  fa9d		       60		      rts
-    416  fa9e				   .HVy
-    417  fa9e		       85 8b		      sta	CollisionX	; save y
-    418  faa0		       ba		      tsx
-    419  faa1		       18		      clc
-    420  faa2		       bd 06 01 	      lda	$0106,X	; x
-    421  faa5		       7d 04 01 	      adc	$0104,X	; + w
-    422  faa8		       c5 8e		      cmp	CollisionEndX	; x+w vs min col (strict >)
-    423  faaa		       f0 1c		      beq	.HVno
-    424  faac		       90 1a		      bcc	.HVno
-    425  faae		       ba		      tsx
-    426  faaf		       bd 03 01 	      lda	$0103,X	; h
-    427  fab2		       85 84		      sta	LineCount	; Phase B sprite shutter: covered = h (static
-    428  fab4							;   full — same extent the ball renders; the
-    429  fab4							;   per-frame CrunchClock sweep returns in
-    430  fab4							;   Phase C with the sub-band window)
-    431  fab4		       a5 8b		      lda	CollisionX	; y
-    432  fab6		       18		      clc
-    433  fab7		       65 84		      adc	LineCount	; y + covered_h
-    434  fab9		       c5 8d		      cmp	CollisionCellY	; vs top row (strict >)
-    435  fabb		       f0 0b		      beq	.HVno2
-    436  fabd		       90 09		      bcc	.HVno2
-    437  fabf		       a5 ba		      lda	EnemyDeadMask
-    438  fac1		       09 80		      ora	#$80	; b7: crunch kill latch
-    439  fac3		       85 ba		      sta	EnemyDeadMask
-    440  fac5		       a9 01		      lda	#1
-    441  fac7		       60		      rts
-    442  fac8				   .HVno
-    443  fac8				   .HVno2
-    444  fac8		       a9 00		      lda	#0
-    445  faca		       60		      rts
-    446  facb
-    447  facb							; ==============================================================================
-    448  facb							; HOVhcrunch — $82 kill test. Covered rect = [0, band, 2*covered_cells, 1]
-    449  facb							; (prefix from col 0 — same extent PhaseBlink stages this frame).
-    450  facb							; Overlap: band ∈ [top, bottom] && covered_w > min col.
-    451  facb							; Rule 1 (user 2026-10-14): cold kill only while CLOSING (sc<32) and not
-    452  facb							; totally closed (covered==full); hot (LineCount = MetaB b6, staged
-    453  facb							; bank2-side by HOVFeatPre) exempts both gates.
-    454  facb							; Out: A = 1 kill (b7 latched) / 0 miss.
-    455  facb							; ==============================================================================
-    456  facb				   HOVhcrunch
-    457  facb							; Entered via jsr from HOVFeatEntry: stack (top→) = ret(2), h, w, y(band),
-    458  facb							; x, <base>. Fields from bank2 PreFields — no (FetchPtr) reads.
-    459  facb		       ba		      tsx
-    460  facc		       bd 05 01 	      lda	$0105,X	; y = band
-    461  facf		       c5 8d		      cmp	CollisionCellY	; band < top?
-    462  fad1		       90 3c		      bcc	.HHno
-    463  fad3		       c5 8f		      cmp	CollisionEndY	; band vs bottom
-    464  fad5		       f0 04		      beq	.HHw
-    465  fad7		       90 02		      bcc	.HHw
-    466  fad9		       d0 34		      bne	.HHno
-    467  fadb				   .HHw
-    468  fadb		       ba		      tsx
-    469  fadc		       bd 04 01 	      lda	$0104,X	; w
-    470  fadf		       4a		      lsr		; full cells
-    471  fae0		       aa		      tax
-    472  fae1							; Rule (user 2026-10-16): cold kill while CLOSING (sc<52 = s<13 =
-    473  fae1							; dwell+grow under HcrClock — the grow half IS the closing sweep);
-    474  fae1							; hot (LineCount = MetaB, staged bank2-side by HOVFeatPre; asl×2
-    475  fae1							; brings b6 to C) exempts — any phase/extent kills. The old
-    476  fae1							; totally-closed exemption is GONE: a catch at the seal froze the
-    477  fae1							; player inside the wall (push prevents the approach; the seal-
-    478  fae1							; moment catch is the crunch). Opening (sc>=52) never kills.
-    479  fae1		       a5 84		      lda	LineCount
-    480  fae3		       0a		      asl
-    481  fae4		       0a		      asl		; b7 out, b6 -> C
-    482  fae5		       b0 08		      bcs	.HHcc	; hot -> any phase/extent kills
-    483  fae7		       a5 c2		      lda	EnemyRamP
-    484  fae9		       4a		      lsr
-    485  faea		       4a		      lsr		; sc
-    486  faeb		       c9 34		      cmp	#52
-    487  faed		       b0 20		      bcs	.HHno	; opening half -> no kill
-    488  faef				   .HHcc
-    489  faef		       8a		      txa
-    490  faf0		       48		      pha		; full — wall check stays callee-independent
-    491  faf1		       20 a1 f9 	      jsr	HcrClock	; n covered cells (X = full preserved)
-    492  faf4		       85 8b		      sta	CollisionX	; save covered (free temp here)
-    493  faf6		       a5 84		      lda	LineCount
-    494  faf8		       0a		      asl
-    495  faf9		       0a		      asl		; b7 out, b6 -> C
-    496  fafa		       68		      pla		; full (PLA preserves C)
-    497  fafb		       b0 00		      bcs	.HHovl	; hot -> any extent kills
-    498  fafd							; cold + closing + caught kills at ANY extent (fall through)
-    499  fafd				   .HHovl
-    500  fafd		       a5 8b		      lda	CollisionX
-    501  faff		       0a		      asl		; covered_w in 4px cols
-    502  fb00		       c5 8e		      cmp	CollisionEndX	; covered_w vs min col (strict >)
-    503  fb02		       f0 0b		      beq	.HHno
-    504  fb04		       90 09		      bcc	.HHno
-    505  fb06		       a5 ba		      lda	EnemyDeadMask
-    506  fb08		       09 80		      ora	#$80
-    507  fb0a		       85 ba		      sta	EnemyDeadMask
-    508  fb0c		       a9 01		      lda	#1
-    509  fb0e		       60		      rts
-    510  fb0f				   .HHno
-    511  fb0f		       a9 00		      lda	#0
-    512  fb11		       60		      rts
-    513  fb12
-    514  fb12							; ==============================================================================
-    515  fb12							; Bank3-side tramp images (byte-identical with bank2's fetch slots) and
-    516  fb12							; return tails. The `sta $1FF8` at each tail executes bank3-side; the
-    517  fb12							; `jmp` operand bytes at +3 are fetched from bank2 post-switch — bank2's
-    518  fb12							; $FCC1 pads hold the same jmp images.
-    519  fb12							; ==============================================================================
-    520  fb12		       00 00 00 00*	      .ds	$FB57 - *, 0
-    521  fb57		       4c 00 f8 	      .byte.b	$4C, $00, $F8	; jmp $F800 (image: bank2 $FB57, PhVcrEntry)
-    522  fb5a		       00 00 00 00*	      .ds	$FB61 - *, 0
-    523  fb61		       4c 80 f8 	      .byte.b	$4C, $80, $F8	; jmp $F880 (image: bank2 $FB61, PhHcrEntry)
-    524  fb64
-    525  fb64		       00 00 00 00*	      .ds	$FBEE - *, 0	; pads $FB64→$FBEE
-    526  fbee		       8d f8 1f 	      sta	$1FF8	; $FBEE — twin of bank2 Bank2ReturnPad
-    527  fbf1		       60		      rts		; $FBF1 — fetched bank2-side post-switch
-    528  fbf2		       00 00 00 00*	      .ds	$FC1B - *, 0
-    529  fc1b		       4c 40 fa 	      .byte.b	$4C, $40, $FA	; jmp $FA40 (image: bank2 $FC1B — post-switch
-    530  fc1e							;   fetch of HOVFeatPre's jmp; bank2's HOV
-    531  fc1e							;   staging dropped the pha/pla pair, moving
-    532  fc1e							;   the slot -2 from the old $FC1D)
-    533  fc1e		       00 00 00 00*	      .ds	$FC34 - *, 0
-    534  fc34		       4c 80 f8 	      .byte.b	$4C, $80, $F8	; jmp $F880 (image: bank2 $FC34 — post-switch
-    535  fc37							;   fetch of PhHcrPre's jmp; sta $1FF9 sits at
-    536  fc37							;   $FC31 after the 4-field push + MetaB read).
-    537  fc37							;   Missing/misaligned twin = zeros executed
-    538  fc37							;   bank3-side → $F000 pad → GameStart re-init
-    539  fc37
-    540  fc37		       00 00 00 00*	      .ds	$FCC1 - *, 0	; return tails (slots match bank2 pads)
-    541  fcc1		       8d f8 1f 	      sta	$1FF8
-    542  fcc4		       4c 38 fb 	      jmp	$FB38	; .PhRec (vcrunch; Y=base+4, iny→next class)
-    543  fcc7					      .ds	$FCC7 - *, 0
-    544  fcc7		       8d f8 1f 	      sta	$1FF8
-    545  fcca		       4c 38 fb 	      jmp	$FB38	; .PhRec (hcrunch; Y=base+4, iny→next class)
-    546  fccd					      .ds	$FCCD - *, 0
-    547  fccd		       8d f8 1f 	      sta	$1FF8
-    548  fcd0		       4c 6b fd 	      jmp	$FD6B	; HOVnext (miss)
-    549  fcd3					      .ds	$FCD3 - *, 0
-    550  fcd3		       8d f8 1f 	      sta	$1FF8
-    551  fcd6		       4c 60 fd 	      jmp	$FD60	; HOVlegHit (kill)
-    552  fcd9					      .ds	$FCD9 - *, 0
-    553  fcd9		       8d f8 1f 	      sta	$1FF8
-    554  fcdc		       4c 1c fd 	      jmp	$FD1C	; HOVafterGate (phase armed)
-    555  fcdf
-    556  fcdf		       00 00 00 00*	      .ds	$FD7B - *, 0
-    557  fd7b		       4c 40 fa 	      .byte.b	$4C, $40, $FA	; jmp $FA40 (image: bank2 $FD7B, HOVFeatEntry)
-    558  fd7e
-    559  fd7e							; ------------------------------------------------------------------------------
-    560  fd7e							; VCS3 — OvShutScan body (Phase C kill test; bank2 tramp `sta $1FF9 / jmp
-    561  fd7e							; $FD80` at $FE48). IN: A = kill clock (EnemyRamP-1), Y = MetaB b6 hot bit
-    562  fd7e							; ($40/0 — staged bank2-side; MetaB lives in bank2 models_data ROM, a
-    563  fd7e							; (RoomPF0Lo),Y fetch here would see bank3's pad). OUT (2026-10-14b):
-    564  fd7e							; C=0 passable (A ignored) / C=1 + A≠0 kill / C=1 + A=0 SOLID block —
-    565  fd7e							; returned through the $FBEE pad (sta $1FF8 executed here, rts fetched
-    566  fd7e							; from bank2's byte-identical copy) to OvShutBand's jsr — A and C
-    567  fd7e							; survive both; X/Y clobbered (OvShutBand reloads A before the latch).
-    568  fd7e							; Kill semantics (user spec 2026-10-14, superseded the 2026-10-13
-    569  fd7e							; endpoint-only rule): a horizontal containment gate (after the clock
-    570  fd7e							; math, before the hot/cold split) — the player's lit span must sit
-    571  fd7e							; inside the column [BallX-7, BallX] or the call returns passable
-    572  fd7e							; (side brush, user bug 2026-10-14: touching the closed block from the
-    573  fd7e							; side is not a crunch). Then hot band (MetaB b6) = touching ANY
-    574  fd7e							; closed slice kills (endpoint test ≡ any-part: the ping-pong states
-    575  fd7e							; $11/$1B/$1F never have a closed middle with open ends). Cold band =
-    576  fd7e							; containment only: kill iff the whole sprite sits inside CLOSED
-    577  fd7e							; slices (crunched) — $1F trivially; $1B/$11 iff the box misses the
-    578  fd7e							; aperture (H≥gapHi or F<gapLo). Touching an edge from the open side
-    579  fd7e							; is not a cold kill — that is what the hot flag is for. Every
-    580  fd7e							; NON-kill outcome (side brush, opening half, totally closed, the
-    581  fd7e							; aperture at the player's Y) goes through the solidity test
-    582  fd7e							; (.V3solidBody): both endpoints open → passable, else SOLID block —
-    583  fd7e							; the punched cell must not be walkable through a closed shutter
-    584  fd7e							; (user 2026-10-14b).
-    585  fd7e							; Clock parity: RefreshEnemyY inc'd EnemyRamP at overscan entry, so
-    586  fd7e							; clock-1 = the exact value the kernel rendered slices from this frame.
-    587  fd7e							; Endpoints: RoomY (head) + RoomY+11 (feet = PLAYER_SPRITE_H-1) — every
-    588  fd7e							; open state's gap is >=13 lines ($1B = the 13-line center slice), so
-    589  fd7e							; both endpoints open ⟺ the whole sprite is clear of that state.
-    590  fd7e							; Ping-pong constants (#32/#4) = bank2 VcrCoveredState + CrunchClock
-    591  fd7e							; (verify_build check_crunch_clock asserts the trio).
-    592  fd7e							; ------------------------------------------------------------------------------
-    593  fd7e		       00 00		      .ds	$FD80 - *, 0
-    594  fd80				   VCS3
-    595  fd80		       4a		      lsr
-    596  fd81		       4a		      lsr		; clock>>2 (64-frame ping-pong period)
-    597  fd82		       c9 20		      cmp	#32
-    598  fd84		       90 02		      bcc	.V3hop
-    599  fd86		       49 3f		      eor	#$3F	; 32..63 -> 31..0 (fold down)
-    600  fd88				   .V3hop
-    601  fd88		       c9 04		      cmp	#4
-    602  fd8a		       90 02		      bcc	.VC3q
-    603  fd8c		       e9 04		      sbc	#4	; head offset (C set by cmp) — dwell zone
-    604  fd8e				   .VC3q
-    605  fd8e		       c9 04		      cmp	#4
-    606  fd90		       90 12		      bcc	.V3open	; eff 0-3 (both dwell halves) -> fully open
-    607  fd92							;   (state $00: no closed slices — passable;
-    608  fd92							;   mirrors VcrCoveredState 2026-10-14c)
-    609  fd92		       c9 09		      cmp	#9
-    610  fd94		       90 12		      bcc	.VC311
-    611  fd96		       c9 12		      cmp	#18
-    612  fd98		       90 05		      bcc	.VC31b
-    613  fd9a		       a9 1f		      lda	#$1f	; fully closed
-    614  fd9c		       4c aa fd 	      jmp	.OSgo
-    615  fd9f				   .VC31b
-    616  fd9f		       a9 1b		      lda	#$1b	; center slice open
-    617  fda1		       4c aa fd 	      jmp	.OSgo
-    618  fda4				   .V3open
-    619  fda4		       a9 00		      lda	#0	; fully open
-    620  fda6		       f0 02		      beq	.OSgo	; (always — Z=1 from A=0)
-    621  fda8				   .VC311
-    622  fda8		       a9 11		      lda	#$11	; only edge slices closed
-    623  fdaa				   .OSgo
-    624  fdaa		       aa		      tax		; X = slice state
-    625  fdab							; Horizontal containment gate (user bug 2026-10-14): the KILL only
-    626  fdab							; fires when the player's lit span sits INSIDE the shutter column —
-    627  fdab							; a side brush never kills. It is also never freely passable: every
-    628  fdab							; non-kill outcome routes through the solidity test (closed slices
-    629  fdab							; BLOCK — user 2026-10-14b: no walking through a closed shutter;
-    630  fdab							; the aperture at the player's Y passes). ZP inputs still live from
-    631  fdab							; PHMOverlay's gate: CollisionX ($8B) = vl, RectCount ($92) = BallX;
-    632  fdab							; block = [BallX-7, BallX], lit span = [vl, vl+6].
-    633  fdab		       a5 92		      lda	RectCount
-    634  fdad		       38		      sec
-    635  fdae		       e9 07		      sbc	#7	; BallX-7 = block left edge
-    636  fdb0		       c5 8b		      cmp	CollisionX	; vl vs left edge
-    637  fdb2		       90 05		      bcc	.V3in	; starts inside
-    638  fdb4		       f0 03		      beq	.V3in	; flush left -> inside
-    639  fdb6		       4c 32 fe 	      jmp	.V3solid	; side-left: solid where closed
-    640  fdb9				   .V3in
-    641  fdb9		       a5 8b		      lda	CollisionX
-    642  fdbb		       18		      clc
-    643  fdbc		       69 06		      adc	#6	; vl+6 = player right edge
-    644  fdbe		       c5 92		      cmp	RectCount	; vs BallX
-    645  fdc0		       90 05		      bcc	.V3hot	; fully inside
-    646  fdc2		       f0 03		      beq	.V3hot	; flush right -> inside
-    647  fdc4		       4c 32 fe 	      jmp	.V3solid	; side-right: solid where closed
-    648  fdc7				   .V3hot
-    649  fdc7		       98		      tya		; A = hot bit ($40/0) — staged bank2-side
-    650  fdc8							;   (MetaB lives in bank2 models_data ROM)
-    651  fdc8		       f0 16		      beq	.OScontain	; cold: kill only when CRUNCHED (contained)
-    652  fdca		       8a		      txa		; hot: TOUCH — either endpoint in a closed
-    653  fdcb		       a8		      tay		;   slice kills
-    654  fdcc		       a5 81		      lda	RoomY
-    655  fdce		       20 80 fe 	      jsr	.OSline
-    656  fdd1		       b0 4f		      bcs	.OSkill	; head inside a closed slice → kill
-    657  fdd3		       a5 81		      lda	RoomY
-    658  fdd5		       18		      clc
-    659  fdd6		       69 0b		      adc	#11
-    660  fdd8		       20 80 fe 	      jsr	.OSline
-    661  fddb		       b0 45		      bcs	.OSkill	; feet inside a closed slice → kill
-    662  fddd		       4c 1e fe 	      jmp	.OSmiss	; clear of every closed slice → pass
-    663  fde0							; Cold path: kill only while CLOSING and crunched (Rule 1 2026-10-14);
-    664  fde0							; every other outcome routes through the solidity test — closed slices
-    665  fde0							; block, the aperture at the player's Y passes.
-    666  fde0				   .OScontain
-    667  fde0		       a5 c2		      lda	EnemyRamP
-    668  fde2		       38		      sec
-    669  fde3		       e9 01		      sbc	#1	; kill clock
-    670  fde5		       4a		      lsr
-    671  fde6		       4a		      lsr		; sc = clock>>2
-    672  fde7		       c9 20		      cmp	#32
-    673  fde9		       b0 47		      bcs	.V3solid	; opening half -> no kill, solidity
-    674  fdeb		       e0 1f		      cpx	#$1f
-    675  fded		       f0 43		      beq	.V3solid	; totally closed -> no kill, solidity
-    676  fdef		       8a		      txa
-    677  fdf0		       a8		      tay		; Y = state (for .OSline)
-    678  fdf1		       a5 81		      lda	RoomY
-    679  fdf3		       20 80 fe 	      jsr	.OSline
-    680  fdf6		       90 3a		      bcc	.V3solid	; head open -> solidity (feet decides)
-    681  fdf8		       a5 81		      lda	RoomY
-    682  fdfa		       18		      clc
-    683  fdfb		       69 0b		      adc	#11
-    684  fdfd		       20 80 fe 	      jsr	.OSline
-    685  fe00		       90 30		      bcc	.V3solid	; feet open (head closed) -> solidity
-    686  fe02							; both endpoints closed — crunched: kill iff the box misses the
-    687  fe02							; state's aperture ($1B = [66,79), $11 = [57,88))
-    688  fe02		       8a		      txa
-    689  fe03		       a0 00		      ldy	#0
-    690  fe05		       c9 1b		      cmp	#$1b
-    691  fe07		       f0 01		      beq	.OSgap
-    692  fe09		       c8		      iny
-    693  fe0a				   .OSgap
-    694  fe0a		       a5 81		      lda	RoomY
-    695  fe0c		       d9 2e fe 	      cmp	.OSgapHi,y	; H >= gapHi → wholly above aperture → kill
-    696  fe0f		       b0 11		      bcs	.OSkill
-    697  fe11		       a5 81		      lda	RoomY
-    698  fe13		       18		      clc
-    699  fe14		       69 0b		      adc	#11
-    700  fe16		       d9 30 fe 	      cmp	.OSgapLo,y	; F < gapLo → wholly below aperture → kill
-    701  fe19		       90 07		      bcc	.OSkill
-    702  fe1b		       4c 32 fe 	      jmp	.V3solid	; (unreachable: a 12px sprite cannot span a
-    703  fe1e							;  >=13px aperture with both ends closed)
-    704  fe1e				   .OSmiss
-    705  fe1e		       18		      clc		; A ignored — C=0 = passable
-    706  fe1f		       4c ee fb 	      jmp	$FBEE
-    707  fe22				   .OSkill
-    708  fe22		       a9 01		      lda	#1	; A≠0 + C=1 = kill (OvShutBand latches b7+Temp)
-    709  fe24		       38		      sec
-    710  fe25		       4c ee fb 	      jmp	$FBEE
-    711  fe28				   .OSsolid
-    712  fe28		       a9 00		      lda	#0	; A=0 + C=1 = solid block (walk blocked, no kill)
-    713  fe2a		       38		      sec
-    714  fe2b		       4c ee fb 	      jmp	$FBEE
-    715  fe2e				   .OSgapHi
-    716  fe2e		       4f 58		      .byte.b	79, 88
-    717  fe30				   .OSgapLo
-    718  fe30		       42 39		      .byte.b	66, 57
-    719  fe32				   .V3solid
-    720  fe32		       4c af fe 	      jmp	.V3solidBody	; shared solidity thunk (body moved out — no
-    721  fe35							;   room in the $FD80..$FE57 window)
-    722  fe35
-    723  fe35		       00 00 00 00*	      .ds	$FE57 - *, 0
-    724  fe57		       4c 80 fd 	      .byte.b	$4C, $80, $FD	; jmp $FD80 (image: bank2 $FE57, OvShutScan tramp)
-    725  fe5a		       00 00 00 00*	      .ds	$FE67 - *, 0
-    726  fe67		       4c 00 f8 	      .byte.b	$4C, $00, $F8	; jmp $F800 (image: bank2 $FE67, PhVcrPre tramp)
-    727  fe6a		       00 00 00 00*	      .ds	$FE7D - *, 0
-    728  fe7d		       4c 80 f8 	      .byte.b	$4C, $80, $F8	; jmp $F880 (image: bank2 $FE7D, PhHcrPre tramp)
-    729  fe80
-    730  fe80							; A = global cave line (RoomY), Y = state → C = state bit of the owning
-    731  fe80							; slice. Ranges shifted +48 for the middle band (shutter band 1 since the
-    732  fe80							; 2026-10-14 specials rule): [57,66) [66,79) [79,88) [88,97); >=97 never
-    733  fe80							; closed (bottom band has no shutter). Moved to $FE80 (2026-10-14b) —
-    734  fe80							; the VCS3 solidity rework outgrew the $FD80..$FE57 window.
-    735  fe80				   .OSline
-    736  fe80		       c9 39		      cmp	#57
-    737  fe82		       90 12		      bcc	.OSl0
-    738  fe84		       c9 42		      cmp	#66
-    739  fe86		       90 11		      bcc	.OSl1
-    740  fe88		       c9 4f		      cmp	#79
-    741  fe8a		       90 11		      bcc	.OSl2
-    742  fe8c		       c9 58		      cmp	#88
-    743  fe8e		       90 12		      bcc	.OSl3
-    744  fe90		       c9 61		      cmp	#97
-    745  fe92		       90 14		      bcc	.OSl4
-    746  fe94		       18		      clc
-    747  fe95		       60		      rts
-    748  fe96				   .OSl0
-    749  fe96		       98		      tya
-    750  fe97		       4a		      lsr		; bit0 → C
-    751  fe98		       60		      rts
-    752  fe99				   .OSl1
-    753  fe99		       98		      tya
-    754  fe9a		       4a		      lsr
-    755  fe9b		       4a		      lsr		; bit1 → C
-    756  fe9c		       60		      rts
-    757  fe9d				   .OSl2
-    758  fe9d		       98		      tya
-    759  fe9e		       4a		      lsr
-    760  fe9f		       4a		      lsr
-    761  fea0		       4a		      lsr		; bit2 → C
-    762  fea1		       60		      rts
-    763  fea2				   .OSl3
-    764  fea2		       98		      tya
-    765  fea3		       4a		      lsr
-    766  fea4		       4a		      lsr
-    767  fea5		       4a		      lsr
-    768  fea6		       4a		      lsr		; bit3 → C
-    769  fea7		       60		      rts
-    770  fea8				   .OSl4
-    771  fea8		       98		      tya
-    772  fea9		       4a		      lsr
-    773  feaa		       4a		      lsr
-    774  feab		       4a		      lsr
-    775  feac		       4a		      lsr
-    776  fead		       4a		      lsr		; bit4 → C
-    777  feae		       60		      rts
-    778  feaf
-    779  feaf							; Shared solidity test (user 2026-10-14b — no walking through a closed
-    780  feaf							; shutter): IN Y = state; both endpoints open → passable (.OSmiss),
-    781  feaf							; else SOLID (.OSsolid — C=1, A=0: the walk blocks, no kill latch).
-    782  feaf							; Entered from VCS3's .V3solid thunk (side brushes + every cold
-    783  feaf							; non-kill outcome: opening half, totally closed, aperture-touch).
-    784  feaf				   .V3solidBody
-    785  feaf		       8a		      txa
-    786  feb0		       a8		      tay		; Y = state (X survives the callers)
-    787  feb1		       a5 81		      lda	RoomY
-    788  feb3		       20 80 fe 	      jsr	.OSline
-    789  feb6		       90 03		      bcc	.V3sol2	; head open → feet decides
-    790  feb8		       4c 28 fe 	      jmp	.OSsolid
-    791  febb				   .V3sol2
-    792  febb		       a5 81		      lda	RoomY
-    793  febd		       18		      clc
-    794  febe		       69 0b		      adc	#11
-    795  fec0		       20 80 fe 	      jsr	.OSline
-    796  fec3		       b0 03		      bcs	.V3solS	; feet closed (head open) → solid
-    797  fec5		       4c 1e fe 	      jmp	.OSmiss	; both open → whole sprite in the aperture
-    798  fec8				   .V3solS
-    799  fec8		       4c 28 fe 	      jmp	.OSsolid
-    800  fecb
-    801  fecb							; Pad to vectors at $FFFA
-    802  fecb		       00 00 00 00*	      .ds	$FFFA - *, 0
-    803  fffa		       00 f0		      .word.w	$F000	; NMI vector
-    804  fffc		       00 f0		      .word.w	$F000	; RESET vector ← power-up entry
-    805  fffe		       00 f0		      .word.w	$F000	; IRQ vector
+    347  fa40							; C1 (2026-10-19): ONE dispatcher for both crunch classes — the old
+    348  fa40							; HOVvcrunch/HOVhcrunch jsr+rts pair and their duplicated drains are gone.
+    349  fa40							; Conditional misses branch to the nearby .HFmissJ trampoline (a direct
+    350  fa40							; bcc to .HFmissD is >127 B away in both arms).
+    351  fa40		       c9 80		      cmp	#$80
+    352  fa42		       d0 03		      bne	.HFnotPhase
+    353  fa44		       4c fd fa 	      jmp	.HFphase	; (far: trampoline form for every branch here)
+    354  fa47				   .HFnotPhase
+    355  fa47		       48		      pha		; save class (b7 check clobbers A)
+    356  fa48		       a5 ba		      lda	EnemyDeadMask
+    357  fa4a		       29 80		      and	#$80	; b7: crunch kill already happened?
+    358  fa4c		       f0 03		      beq	.HFnotLatched
+    359  fa4e		       4c f9 fa 	      jmp	.HFmissP	; yes → pass (wall stays, no re-kill)
+    360  fa51				   .HFnotLatched
+    361  fa51		       68		      pla
+    362  fa52		       c9 81		      cmp	#$81
+    363  fa54		       d0 03		      bne	.HFnotV
+    364  fa56		       4c a8 fa 	      jmp	.HFv
+    365  fa59				   .HFnotV
+    366  fa59		       c9 82		      cmp	#$82
+    367  fa5b		       f0 03		      beq	.HFh_begin
+    368  fa5d		       4c f9 fa 	      jmp	.HFmissP	; unknown b7 class → same drain path
+    369  fa60				   .HFh_begin
+    370  fa60
+    371  fa60							; ---------------- $82 hcrunch: band ∈ [top,bottom] ----------------
+    372  fa60		       ba		      tsx
+    373  fa61		       bd 03 01 	      lda	$0103,X	; y = band
+    374  fa64		       c5 8d		      cmp	CollisionCellY
+    375  fa66		       b0 03		      bcs	.HFh_lo
+    376  fa68		       4c f2 fa 	      jmp	.HFmissD	; band < top
+    377  fa6b				   .HFh_lo
+    378  fa6b		       c5 8f		      cmp	CollisionEndY
+    379  fa6d		       f0 05		      beq	.HFh2
+    380  fa6f		       90 03		      bcc	.HFh2	; band <= bottom
+    381  fa71		       4c f2 fa 	      jmp	.HFmissD	; band > bottom
+    382  fa74				   .HFh2
+    383  fa74		       ba		      tsx
+    384  fa75		       bd 02 01 	      lda	$0102,X	; w
+    385  fa78		       4a		      lsr		; full cells
+    386  fa79		       aa		      tax
+    387  fa7a							; Rule (user 2026-10-16): cold kill while CLOSING (sc<52 = dwell+grow);
+    388  fa7a							; hot (LineCount = MetaB, staged bank2-side; asl×2 brings b6 to C)
+    389  fa7a							; exempts — any phase/extent kills. Opening never kills.
+    390  fa7a		       a5 84		      lda	LineCount
+    391  fa7c		       0a		      asl
+    392  fa7d		       0a		      asl		; b7 out, b6 -> C
+    393  fa7e		       b0 0b		      bcs	.HFh3	; hot → any phase/extent kills
+    394  fa80		       a5 c2		      lda	EnemyRamP
+    395  fa82		       4a		      lsr
+    396  fa83		       4a		      lsr		; sc
+    397  fa84		       c9 34		      cmp	#52
+    398  fa86		       90 03		      bcc	.HFh3	; closing half
+    399  fa88		       4c a5 fa 	      jmp	.HFmissJ	; opening half → no kill
+    400  fa8b				   .HFh3
+    401  fa8b		       8a		      txa
+    402  fa8c		       48		      pha		; full — stays callee-independent
+    403  fa8d		       20 a1 f9 	      jsr	HcrClock	; n covered cells (X = full preserved)
+    404  fa90		       85 8b		      sta	CollisionX	; save covered
+    405  fa92		       a5 84		      lda	LineCount
+    406  fa94		       0a		      asl
+    407  fa95		       0a		      asl		; b7 out, b6 -> C
+    408  fa96		       68		      pla		; full (PLA preserves C)
+    409  fa97		       b0 00		      bcs	.HFh4	; hot → any extent kills
+    410  fa99				   .HFh4
+    411  fa99		       a5 8b		      lda	CollisionX
+    412  fa9b		       0a		      asl		; covered_w in 4px cols
+    413  fa9c		       c5 8e		      cmp	CollisionEndX	; covered_w vs min col (strict >)
+    414  fa9e		       90 05		      bcc	.HFmissJ
+    415  faa0		       f0 03		      beq	.HFmissJ
+    416  faa2		       4c e5 fa 	      jmp	.HFkill
+    417  faa5
+    418  faa5				   .HFmissJ
+    419  faa5		       4c f2 fa 	      jmp	.HFmissD
+    420  faa8
+    421  faa8							; ---------------- $81 vcrunch: covered rect [x, y, w, h] -------------
+    422  faa8				   .HFv
+    423  faa8		       ba		      tsx
+    424  faa9		       bd 04 01 	      lda	$0104,X	; x
+    425  faac		       c5 8c		      cmp	CollisionCellX	; x vs max col
+    426  faae		       f0 05		      beq	.HFv2
+    427  fab0		       90 03		      bcc	.HFv2
+    428  fab2		       4c f2 fa 	      jmp	.HFmissD
+    429  fab5				   .HFv2
+    430  fab5		       85 84		      sta	LineCount	; save x
+    431  fab7		       ba		      tsx
+    432  fab8		       bd 03 01 	      lda	$0103,X	; y
+    433  fabb		       c5 8f		      cmp	CollisionEndY	; y vs bottom row
+    434  fabd		       f0 05		      beq	.HFv3
+    435  fabf		       90 03		      bcc	.HFv3
+    436  fac1		       4c f2 fa 	      jmp	.HFmissD
+    437  fac4				   .HFv3
+    438  fac4		       85 8b		      sta	CollisionX	; save y
+    439  fac6		       ba		      tsx
+    440  fac7		       18		      clc
+    441  fac8		       bd 04 01 	      lda	$0104,X	; x
+    442  facb		       7d 02 01 	      adc	$0102,X	; + w
+    443  face		       c5 8e		      cmp	CollisionEndX	; x+w vs min col (strict >)
+    444  fad0		       90 d3		      bcc	.HFmissJ
+    445  fad2		       f0 d1		      beq	.HFmissJ
+    446  fad4		       ba		      tsx
+    447  fad5		       bd 01 01 	      lda	$0101,X	; h
+    448  fad8		       85 84		      sta	LineCount	; Phase B sprite shutter: covered = h
+    449  fada		       a5 8b		      lda	CollisionX	; y
+    450  fadc		       18		      clc
+    451  fadd		       65 84		      adc	LineCount	; y + covered_h
+    452  fadf		       c5 8d		      cmp	CollisionCellY	; vs top row (strict >)
+    453  fae1		       90 c2		      bcc	.HFmissJ
+    454  fae3		       f0 c0		      beq	.HFmissJ
+    455  fae5
+    456  fae5				   .HFkill
+    457  fae5		       a5 ba		      lda	EnemyDeadMask
+    458  fae7		       09 80		      ora	#$80	; b7: crunch kill latch
+    459  fae9		       85 ba		      sta	EnemyDeadMask
+    460  faeb		       68		      pla
+    461  faec		       68		      pla
+    462  faed		       68		      pla
+    463  faee		       68		      pla		; drain h,w,y,x (base on top for HOVlegHit)
+    464  faef		       4c d3 fc 	      jmp	$FCD3	; pad: sta $1FF8 / jmp HOVlegHit (bank2 image)
+    465  faf2				   .HFmissD
+    466  faf2		       68		      pla
+    467  faf3		       68		      pla
+    468  faf4		       68		      pla
+    469  faf5		       68		      pla		; drain h,w,y,x (base on top for HOVnext)
+    470  faf6				   .HFmiss
+    471  faf6		       4c cd fc 	      jmp	$FCCD	; pad: sta $1FF8 / jmp HOVnext (bank2 image)
+    472  faf9				   .HFmissP
+    473  faf9		       68		      pla		; drop saved class
+    474  fafa		       4c f2 fa 	      jmp	.HFmissD
+    475  fafd				   .HFphase
+    476  fafd		       a5 ba		      lda	EnemyDeadMask
+    477  faff		       29 60		      and	#$60	; b5 armed | b6 phase dead
+    478  fb01		       c9 20		      cmp	#$20	; armed AND not yet removed?
+    479  fb03		       d0 f1		      bne	.HFmiss
+    480  fb05		       4c d9 fc 	      jmp	$FCD9	; pad: sta $1FF8 / jmp HOVafterGate (bank2 image)
+    481  fb08
+    482  fb08							; ==============================================================================
+    483  fb08							; Bank3-side tramp images (byte-identical with bank2's fetch slots) and
+    484  fb08							; return tails. The `sta $1FF8` at each tail executes bank3-side; the
+    485  fb08							; `jmp` operand bytes at +3 are fetched from bank2 post-switch — bank2's
+    486  fb08							; $FCC1 pads hold the same jmp images.
+    487  fb08							; ==============================================================================
+    488  fb08		       00 00 00 00*	      .ds	$FB57 - *, 0
+    489  fb57		       4c 00 f8 	      .byte.b	$4C, $00, $F8	; jmp $F800 (image: bank2 $FB57, PhVcrEntry)
+    490  fb5a		       00 00 00 00*	      .ds	$FB61 - *, 0
+    491  fb61		       4c 80 f8 	      .byte.b	$4C, $80, $F8	; jmp $F880 (image: bank2 $FB61, PhHcrEntry)
+    492  fb64
+    493  fb64		       00 00 00 00*	      .ds	$FBEE - *, 0	; pads $FB64→$FBEE
+    494  fbee		       8d f8 1f 	      sta	$1FF8	; $FBEE — twin of bank2 Bank2ReturnPad
+    495  fbf1		       60		      rts		; $FBF1 — fetched bank2-side post-switch
+    496  fbf2		       00 00 00 00*	      .ds	$FC1B - *, 0
+    497  fc1b		       4c 40 fa 	      .byte.b	$4C, $40, $FA	; jmp $FA40 (image: bank2 $FC1B — post-switch
+    498  fc1e							;   fetch of HOVFeatPre's jmp; bank2's HOV
+    499  fc1e							;   staging dropped the pha/pla pair, moving
+    500  fc1e							;   the slot -2 from the old $FC1D)
+    501  fc1e		       00 00 00 00*	      .ds	$FC34 - *, 0
+    502  fc34		       4c 80 f8 	      .byte.b	$4C, $80, $F8	; jmp $F880 (image: bank2 $FC34 — post-switch
+    503  fc37							;   fetch of PhHcrPre's jmp; sta $1FF9 sits at
+    504  fc37							;   $FC31 after the 4-field push + MetaB read).
+    505  fc37							;   Missing/misaligned twin = zeros executed
+    506  fc37							;   bank3-side → $F000 pad → GameStart re-init
+    507  fc37
+    508  fc37		       00 00 00 00*	      .ds	$FCC1 - *, 0	; return tails (slots match bank2 pads)
+    509  fcc1		       8d f8 1f 	      sta	$1FF8
+    510  fcc4		       4c 38 fb 	      jmp	$FB38	; .PhRec (vcrunch; Y=base+4, iny→next class)
+    511  fcc7					      .ds	$FCC7 - *, 0
+    512  fcc7		       8d f8 1f 	      sta	$1FF8
+    513  fcca		       4c 38 fb 	      jmp	$FB38	; .PhRec (hcrunch; Y=base+4, iny→next class)
+    514  fccd					      .ds	$FCCD - *, 0
+    515  fccd		       8d f8 1f 	      sta	$1FF8
+    516  fcd0		       4c 6b fd 	      jmp	$FD6B	; HOVnext (miss)
+    517  fcd3					      .ds	$FCD3 - *, 0
+    518  fcd3		       8d f8 1f 	      sta	$1FF8
+    519  fcd6		       4c 60 fd 	      jmp	$FD60	; HOVlegHit (kill)
+    520  fcd9					      .ds	$FCD9 - *, 0
+    521  fcd9		       8d f8 1f 	      sta	$1FF8
+    522  fcdc		       4c 1c fd 	      jmp	$FD1C	; HOVafterGate (phase armed)
+    523  fcdf
+    524  fcdf		       00 00 00 00*	      .ds	$FD7B - *, 0
+    525  fd7b		       4c 40 fa 	      .byte.b	$4C, $40, $FA	; jmp $FA40 (image: bank2 $FD7B, HOVFeatEntry)
+    526  fd7e
+    527  fd7e							; ------------------------------------------------------------------------------
+    528  fd7e							; VCS3 — OvShutScan body (Phase C kill test; bank2 tramp `sta $1FF9 / jmp
+    529  fd7e							; $FD80` at $FE48). IN: A = kill clock (EnemyRamP-1), Y = MetaB b6 hot bit
+    530  fd7e							; ($40/0 — staged bank2-side; MetaB lives in bank2 models_data ROM, a
+    531  fd7e							; (RoomPF0Lo),Y fetch here would see bank3's pad). OUT (2026-10-14b):
+    532  fd7e							; C=0 passable (A ignored) / C=1 + A≠0 kill / C=1 + A=0 SOLID block —
+    533  fd7e							; returned through the $FBEE pad (sta $1FF8 executed here, rts fetched
+    534  fd7e							; from bank2's byte-identical copy) to OvShutBand's jsr — A and C
+    535  fd7e							; survive both; X/Y clobbered (OvShutBand reloads A before the latch).
+    536  fd7e							; Kill semantics (user spec 2026-10-14, superseded the 2026-10-13
+    537  fd7e							; endpoint-only rule): a horizontal containment gate (after the clock
+    538  fd7e							; math, before the hot/cold split) — the player's lit span must sit
+    539  fd7e							; inside the column [BallX-7, BallX] or the call returns passable
+    540  fd7e							; (side brush, user bug 2026-10-14: touching the closed block from the
+    541  fd7e							; side is not a crunch). Then hot band (MetaB b6) = touching ANY
+    542  fd7e							; closed slice kills (endpoint test ≡ any-part: the ping-pong states
+    543  fd7e							; $11/$1B/$1F never have a closed middle with open ends). Cold band =
+    544  fd7e							; containment only: kill iff the whole sprite sits inside CLOSED
+    545  fd7e							; slices (crunched) — $1F trivially; $1B/$11 iff the box misses the
+    546  fd7e							; aperture (H≥gapHi or F<gapLo). Touching an edge from the open side
+    547  fd7e							; is not a cold kill — that is what the hot flag is for. Every
+    548  fd7e							; NON-kill outcome (side brush, opening half, totally closed, the
+    549  fd7e							; aperture at the player's Y) goes through the solidity test
+    550  fd7e							; (.V3solidBody): both endpoints open → passable, else SOLID block —
+    551  fd7e							; the punched cell must not be walkable through a closed shutter
+    552  fd7e							; (user 2026-10-14b).
+    553  fd7e							; Clock parity: RefreshEnemyY inc'd EnemyRamP at overscan entry, so
+    554  fd7e							; clock-1 = the exact value the kernel rendered slices from this frame.
+    555  fd7e							; Endpoints: RoomY (head) + RoomY+11 (feet = PLAYER_SPRITE_H-1) — every
+    556  fd7e							; open state's gap is >=13 lines ($1B = the 13-line center slice), so
+    557  fd7e							; both endpoints open ⟺ the whole sprite is clear of that state.
+    558  fd7e							; Ping-pong constants (#32/#4) = bank2 VcrCoveredState + CrunchClock
+    559  fd7e							; (verify_build check_crunch_clock asserts the trio).
+    560  fd7e							; ------------------------------------------------------------------------------
+    561  fd7e		       00 00		      .ds	$FD80 - *, 0
+    562  fd80				   VCS3
+    563  fd80		       4a		      lsr
+    564  fd81		       4a		      lsr		; clock>>2 (64-frame ping-pong period)
+    565  fd82		       c9 20		      cmp	#32
+    566  fd84		       90 02		      bcc	.V3hop
+    567  fd86		       49 3f		      eor	#$3F	; 32..63 -> 31..0 (fold down)
+    568  fd88				   .V3hop
+    569  fd88		       c9 04		      cmp	#4
+    570  fd8a		       90 02		      bcc	.VC3q
+    571  fd8c		       e9 04		      sbc	#4	; head offset (C set by cmp) — dwell zone
+    572  fd8e				   .VC3q
+    573  fd8e		       c9 04		      cmp	#4
+    574  fd90		       90 12		      bcc	.V3open	; eff 0-3 (both dwell halves) -> fully open
+    575  fd92							;   (state $00: no closed slices — passable;
+    576  fd92							;   mirrors VcrCoveredState 2026-10-14c)
+    577  fd92		       c9 09		      cmp	#9
+    578  fd94		       90 12		      bcc	.VC311
+    579  fd96		       c9 12		      cmp	#18
+    580  fd98		       90 05		      bcc	.VC31b
+    581  fd9a		       a9 1f		      lda	#$1f	; fully closed
+    582  fd9c		       4c aa fd 	      jmp	.OSgo
+    583  fd9f				   .VC31b
+    584  fd9f		       a9 1b		      lda	#$1b	; center slice open
+    585  fda1		       4c aa fd 	      jmp	.OSgo
+    586  fda4				   .V3open
+    587  fda4		       a9 00		      lda	#0	; fully open
+    588  fda6		       f0 02		      beq	.OSgo	; (always — Z=1 from A=0)
+    589  fda8				   .VC311
+    590  fda8		       a9 11		      lda	#$11	; only edge slices closed
+    591  fdaa				   .OSgo
+    592  fdaa		       aa		      tax		; X = slice state
+    593  fdab							; Horizontal containment gate (user bug 2026-10-14): the KILL only
+    594  fdab							; fires when the player's lit span sits INSIDE the shutter column —
+    595  fdab							; a side brush never kills. It is also never freely passable: every
+    596  fdab							; non-kill outcome routes through the solidity test (closed slices
+    597  fdab							; BLOCK — user 2026-10-14b: no walking through a closed shutter;
+    598  fdab							; the aperture at the player's Y passes). ZP inputs still live from
+    599  fdab							; PHMOverlay's gate: CollisionX ($8B) = vl, RectCount ($92) = BallX;
+    600  fdab							; block = [BallX-7, BallX], lit span = [vl, vl+6].
+    601  fdab		       a5 92		      lda	RectCount
+    602  fdad		       38		      sec
+    603  fdae		       e9 07		      sbc	#7	; BallX-7 = block left edge
+    604  fdb0		       c5 8b		      cmp	CollisionX	; vl vs left edge
+    605  fdb2		       90 05		      bcc	.V3in	; starts inside
+    606  fdb4		       f0 03		      beq	.V3in	; flush left -> inside
+    607  fdb6		       4c 32 fe 	      jmp	.V3solid	; side-left: solid where closed
+    608  fdb9				   .V3in
+    609  fdb9		       a5 8b		      lda	CollisionX
+    610  fdbb		       18		      clc
+    611  fdbc		       69 06		      adc	#6	; vl+6 = player right edge
+    612  fdbe		       c5 92		      cmp	RectCount	; vs BallX
+    613  fdc0		       90 05		      bcc	.V3hot	; fully inside
+    614  fdc2		       f0 03		      beq	.V3hot	; flush right -> inside
+    615  fdc4		       4c 32 fe 	      jmp	.V3solid	; side-right: solid where closed
+    616  fdc7				   .V3hot
+    617  fdc7		       98		      tya		; A = hot bit ($40/0) — staged bank2-side
+    618  fdc8							;   (MetaB lives in bank2 models_data ROM)
+    619  fdc8		       f0 16		      beq	.OScontain	; cold: kill only when CRUNCHED (contained)
+    620  fdca		       8a		      txa		; hot: TOUCH — either endpoint in a closed
+    621  fdcb		       a8		      tay		;   slice kills
+    622  fdcc		       a5 81		      lda	RoomY
+    623  fdce		       20 80 fe 	      jsr	.OSline
+    624  fdd1		       b0 4f		      bcs	.OSkill	; head inside a closed slice → kill
+    625  fdd3		       a5 81		      lda	RoomY
+    626  fdd5		       18		      clc
+    627  fdd6		       69 0b		      adc	#11
+    628  fdd8		       20 80 fe 	      jsr	.OSline
+    629  fddb		       b0 45		      bcs	.OSkill	; feet inside a closed slice → kill
+    630  fddd		       4c 1e fe 	      jmp	.OSmiss	; clear of every closed slice → pass
+    631  fde0							; Cold path: kill only while CLOSING and crunched (Rule 1 2026-10-14);
+    632  fde0							; every other outcome routes through the solidity test — closed slices
+    633  fde0							; block, the aperture at the player's Y passes.
+    634  fde0				   .OScontain
+    635  fde0		       a5 c2		      lda	EnemyRamP
+    636  fde2		       38		      sec
+    637  fde3		       e9 01		      sbc	#1	; kill clock
+    638  fde5		       4a		      lsr
+    639  fde6		       4a		      lsr		; sc = clock>>2
+    640  fde7		       c9 20		      cmp	#32
+    641  fde9		       b0 47		      bcs	.V3solid	; opening half -> no kill, solidity
+    642  fdeb		       e0 1f		      cpx	#$1f
+    643  fded		       f0 43		      beq	.V3solid	; totally closed -> no kill, solidity
+    644  fdef		       8a		      txa
+    645  fdf0		       a8		      tay		; Y = state (for .OSline)
+    646  fdf1		       a5 81		      lda	RoomY
+    647  fdf3		       20 80 fe 	      jsr	.OSline
+    648  fdf6		       90 3a		      bcc	.V3solid	; head open -> solidity (feet decides)
+    649  fdf8		       a5 81		      lda	RoomY
+    650  fdfa		       18		      clc
+    651  fdfb		       69 0b		      adc	#11
+    652  fdfd		       20 80 fe 	      jsr	.OSline
+    653  fe00		       90 30		      bcc	.V3solid	; feet open (head closed) -> solidity
+    654  fe02							; both endpoints closed — crunched: kill iff the box misses the
+    655  fe02							; state's aperture ($1B = [66,79), $11 = [57,88))
+    656  fe02		       8a		      txa
+    657  fe03		       a0 00		      ldy	#0
+    658  fe05		       c9 1b		      cmp	#$1b
+    659  fe07		       f0 01		      beq	.OSgap
+    660  fe09		       c8		      iny
+    661  fe0a				   .OSgap
+    662  fe0a		       a5 81		      lda	RoomY
+    663  fe0c		       d9 2e fe 	      cmp	.OSgapHi,y	; H >= gapHi → wholly above aperture → kill
+    664  fe0f		       b0 11		      bcs	.OSkill
+    665  fe11		       a5 81		      lda	RoomY
+    666  fe13		       18		      clc
+    667  fe14		       69 0b		      adc	#11
+    668  fe16		       d9 30 fe 	      cmp	.OSgapLo,y	; F < gapLo → wholly below aperture → kill
+    669  fe19		       90 07		      bcc	.OSkill
+    670  fe1b		       4c 32 fe 	      jmp	.V3solid	; (unreachable: a 12px sprite cannot span a
+    671  fe1e							;  >=13px aperture with both ends closed)
+    672  fe1e				   .OSmiss
+    673  fe1e		       18		      clc		; A ignored — C=0 = passable
+    674  fe1f		       4c ee fb 	      jmp	$FBEE
+    675  fe22				   .OSkill
+    676  fe22		       a9 01		      lda	#1	; A≠0 + C=1 = kill (OvShutBand latches b7+Temp)
+    677  fe24		       38		      sec
+    678  fe25		       4c ee fb 	      jmp	$FBEE
+    679  fe28				   .OSsolid
+    680  fe28		       a9 00		      lda	#0	; A=0 + C=1 = solid block (walk blocked, no kill)
+    681  fe2a		       38		      sec
+    682  fe2b		       4c ee fb 	      jmp	$FBEE
+    683  fe2e				   .OSgapHi
+    684  fe2e		       4f 58		      .byte.b	79, 88
+    685  fe30				   .OSgapLo
+    686  fe30		       42 39		      .byte.b	66, 57
+    687  fe32				   .V3solid
+    688  fe32		       4c af fe 	      jmp	.V3solidBody	; shared solidity thunk (body moved out — no
+    689  fe35							;   room in the $FD80..$FE57 window)
+    690  fe35
+    691  fe35		       00 00 00 00*	      .ds	$FE57 - *, 0
+    692  fe57		       4c 80 fd 	      .byte.b	$4C, $80, $FD	; jmp $FD80 (image: bank2 $FE57, OvShutScan tramp)
+    693  fe5a		       00 00 00 00*	      .ds	$FE67 - *, 0
+    694  fe67		       4c 00 f8 	      .byte.b	$4C, $00, $F8	; jmp $F800 (image: bank2 $FE67, PhVcrPre tramp)
+    695  fe6a		       00 00 00 00*	      .ds	$FE7D - *, 0
+    696  fe7d		       4c 80 f8 	      .byte.b	$4C, $80, $F8	; jmp $F880 (image: bank2 $FE7D, PhHcrPre tramp)
+    697  fe80
+    698  fe80							; A = global cave line (RoomY), Y = state → C = state bit of the owning
+    699  fe80							; slice. Ranges shifted +48 for the middle band (shutter band 1 since the
+    700  fe80							; 2026-10-14 specials rule): [57,66) [66,79) [79,88) [88,97); >=97 never
+    701  fe80							; closed (bottom band has no shutter). Moved to $FE80 (2026-10-14b) —
+    702  fe80							; the VCS3 solidity rework outgrew the $FD80..$FE57 window.
+    703  fe80				   .OSline
+    704  fe80		       c9 39		      cmp	#57
+    705  fe82		       90 12		      bcc	.OSl0
+    706  fe84		       c9 42		      cmp	#66
+    707  fe86		       90 11		      bcc	.OSl1
+    708  fe88		       c9 4f		      cmp	#79
+    709  fe8a		       90 11		      bcc	.OSl2
+    710  fe8c		       c9 58		      cmp	#88
+    711  fe8e		       90 12		      bcc	.OSl3
+    712  fe90		       c9 61		      cmp	#97
+    713  fe92		       90 14		      bcc	.OSl4
+    714  fe94		       18		      clc
+    715  fe95		       60		      rts
+    716  fe96				   .OSl0
+    717  fe96		       98		      tya
+    718  fe97		       4a		      lsr		; bit0 → C
+    719  fe98		       60		      rts
+    720  fe99				   .OSl1
+    721  fe99		       98		      tya
+    722  fe9a		       4a		      lsr
+    723  fe9b		       4a		      lsr		; bit1 → C
+    724  fe9c		       60		      rts
+    725  fe9d				   .OSl2
+    726  fe9d		       98		      tya
+    727  fe9e		       4a		      lsr
+    728  fe9f		       4a		      lsr
+    729  fea0		       4a		      lsr		; bit2 → C
+    730  fea1		       60		      rts
+    731  fea2				   .OSl3
+    732  fea2		       98		      tya
+    733  fea3		       4a		      lsr
+    734  fea4		       4a		      lsr
+    735  fea5		       4a		      lsr
+    736  fea6		       4a		      lsr		; bit3 → C
+    737  fea7		       60		      rts
+    738  fea8				   .OSl4
+    739  fea8		       98		      tya
+    740  fea9		       4a		      lsr
+    741  feaa		       4a		      lsr
+    742  feab		       4a		      lsr
+    743  feac		       4a		      lsr
+    744  fead		       4a		      lsr		; bit4 → C
+    745  feae		       60		      rts
+    746  feaf
+    747  feaf							; Shared solidity test (user 2026-10-14b — no walking through a closed
+    748  feaf							; shutter): IN Y = state; both endpoints open → passable (.OSmiss),
+    749  feaf							; else SOLID (.OSsolid — C=1, A=0: the walk blocks, no kill latch).
+    750  feaf							; Entered from VCS3's .V3solid thunk (side brushes + every cold
+    751  feaf							; non-kill outcome: opening half, totally closed, aperture-touch).
+    752  feaf				   .V3solidBody
+    753  feaf		       8a		      txa
+    754  feb0		       a8		      tay		; Y = state (X survives the callers)
+    755  feb1		       a5 81		      lda	RoomY
+    756  feb3		       20 80 fe 	      jsr	.OSline
+    757  feb6		       90 03		      bcc	.V3sol2	; head open → feet decides
+    758  feb8		       4c 28 fe 	      jmp	.OSsolid
+    759  febb				   .V3sol2
+    760  febb		       a5 81		      lda	RoomY
+    761  febd		       18		      clc
+    762  febe		       69 0b		      adc	#11
+    763  fec0		       20 80 fe 	      jsr	.OSline
+    764  fec3		       b0 03		      bcs	.V3solS	; feet closed (head open) → solid
+    765  fec5		       4c 1e fe 	      jmp	.OSmiss	; both open → whole sprite in the aperture
+    766  fec8				   .V3solS
+    767  fec8		       4c 28 fe 	      jmp	.OSsolid
+    768  fecb
+    769  fecb							; Pad to vectors at $FFFA
+    770  fecb		       00 00 00 00*	      .ds	$FFFA - *, 0
+    771  fffa		       00 f0		      .word.w	$F000	; NMI vector
+    772  fffc		       00 f0		      .word.w	$F000	; RESET vector ← power-up entry
+    773  fffe		       00 f0		      .word.w	$F000	; IRQ vector

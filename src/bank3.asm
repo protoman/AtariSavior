@@ -370,7 +370,7 @@ HOVFeatEntry:
 
     ; ---------------- $82 hcrunch: band ∈ [top,bottom] ----------------
     tsx
-    lda $0105,X                 ; y = band
+    lda $0103,X                 ; y = band
     cmp CollisionCellY
     bcs .HFh_lo
     jmp .HFmissD                ; band < top
@@ -381,7 +381,7 @@ HOVFeatEntry:
     jmp .HFmissD                ; band > bottom
 .HFh2:
     tsx
-    lda $0104,X                 ; w
+    lda $0102,X                 ; w
     lsr                         ; full cells
     tax
     ; Rule (user 2026-10-16): cold kill while CLOSING (sc<52 = dwell+grow);
@@ -421,7 +421,7 @@ HOVFeatEntry:
     ; ---------------- $81 vcrunch: covered rect [x, y, w, h] -------------
 .HFv:
     tsx
-    lda $0106,X                 ; x
+    lda $0104,X                 ; x
     cmp CollisionCellX          ; x vs max col
     beq .HFv2
     bcc .HFv2
@@ -429,7 +429,7 @@ HOVFeatEntry:
 .HFv2:
     sta LineCount               ; save x
     tsx
-    lda $0105,X                 ; y
+    lda $0103,X                 ; y
     cmp CollisionEndY           ; y vs bottom row
     beq .HFv3
     bcc .HFv3
@@ -438,13 +438,13 @@ HOVFeatEntry:
     sta CollisionX              ; save y
     tsx
     clc
-    lda $0106,X                 ; x
-    adc $0104,X                 ; + w
+    lda $0104,X                 ; x
+    adc $0102,X                 ; + w
     cmp CollisionEndX           ; x+w vs min col (strict >)
     bcc .HFmissJ
     beq .HFmissJ
     tsx
-    lda $0103,X                 ; h
+    lda $0101,X                 ; h
     sta LineCount               ; Phase B sprite shutter: covered = h
     lda CollisionX              ; y
     clc

@@ -61,3 +61,11 @@ delta vs baseline: code **-10 B** (bank3), used -10 B. Level data unchanged
 556 B. (The merge removed the jsr/rts pair + one drain, but the two arms'
 bounds checks and the near-trampolines cost most of it back — C2/C3 carry the
 real weight.)
+
+**Trap hit and fixed in C1:** the old `HOVvcrunch`/`HOVhcrunch` were entered
+with `jsr`, so their `tsx` field offsets assumed a 2-byte return address on
+top. Merging them into the entry removed that word — every offset shifts by
+−2 (h=$0101, w=$0102, y=$0103, x=$0104). The first build was "green" only
+because the frozen test banks still held the OLD code; `freeze_test_banks.sh`
++ battery exposed 4 failing hcrunch cases. **Lesson: re-freeze before
+trusting a battery run after any bank code change.**
