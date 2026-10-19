@@ -1071,7 +1071,7 @@
    1070  f1b0
    1071  f1b0							; --- Write live Y → EnemyRamY ($E2-$E4; window-safe since S3.4: this
    1072  f1b0							; runs after the HUD score-ptr stomp, before every reader) ---
-   1073  f1b0		       20 77 fd 	      jsr	RefreshEnemyY
+   1073  f1b0		       20 74 fd 	      jsr	RefreshEnemyY
    1074  f1b3
    1075  f1b3							; --- Read joystick ---
    1076  f1b3							; SWCHA bits: D4=up, D5=down, D6=left, D7=right (0=pressed)
@@ -2658,10 +2658,10 @@
    2657  f989		       a4 92		      ldy	RectCount
    2658  f98b		       98		      tya
    2659  f98c		       18		      clc
-   2660  f98d		       7d a2 fd 	      adc	ColOff,X	; PF0/PF1/PF2 group offset (0/3/6)
+   2660  f98d		       7d 9c fd 	      adc	ColOff,X	; PF0/PF1/PF2 group offset (0/3/6)
    2661  f990		       a8		      tay
    2662  f991		       b9 c3 00 	      lda	PF0Buf,Y	; $C3+row+off — the byte the kernel renders
-   2663  f994		       3d b6 fd 	      and	ColMask,X	; bit for this source col
+   2663  f994		       3d b0 fd 	      and	ColMask,X	; bit for this source col
    2664  f997		       d0 13		      bne	.CWHit	; solid (Z=0)
    2665  f999		       e4 8c		      cpx	CollisionCellX	; col == max? (X == CollisionX, stx below keeps
    2666  f99b		       f0 05		      beq	.CWRowDone	;   the memory walk-temp fresh for HotOverlapFlag)
@@ -3225,7 +3225,7 @@
    3224  fd31							;	    the intro exit ate the first press and made #2 read as dead)
    3225  fd31							;   RESET  (SWCHB b0, active-low EDGE) → score 000000, LoadLevel tail arms
    3226  fd31							;	    the real drop-in → gameplay starts
-   3227  fd31							; (Intro $FD never reaches here — DropStep routes it to TitleIntro.)
+   3227  fd31							; ($FD reaches here directly — merged title, 2026-10-19.)
    3228  fd31							; StepsLeft = previous SWCHB sample (physics is skipped on title, so it is
    3229  fd31							; title-owned; the first play frame rewrites it as the step budget).
    3230  fd31							; Console switches are read again after any jsr (LoadLevel clobbers X/Y/A).
@@ -3233,152 +3233,152 @@
    3232  fd31				   TitleWork
    3233  fd31							; --- SELECT edge (TitleSelect, fill region) ---
    3234  fd31		       20 4f fc 	      jsr	CallPad_TitleSelect
-   3235  fd34		       90 03		      bcc	.TWselDone	; C=0: no edge
-   3236  fd36		       20 52 f5 	      jsr	LoadLevel	; title arm re-runs → score/objects refreshed
-   3237  fd39				   .TWselDone
-   3238  fd39							; --- RESET edge ---
-   3239  fd39		       a5 97		      lda	StepsLeft
-   3240  fd3b		       29 01		      and	#%00000001
-   3241  fd3d		       f0 14		      beq	.TWrstDone
-   3242  fd3f		       ad 82 02 	      lda	SWCHB
-   3243  fd42		       29 01		      and	#%00000001
-   3244  fd44		       d0 0d		      bne	.TWrstDone
-   3245  fd46		       a9 00		      lda	#0
-   3246  fd48		       85 8a		      sta	DropTarget	; leave title → LoadLevel tail arms real fall
-   3247  fd4a		       85 f3		      sta	ScoreTh	; gameplay score starts at 000000
-   3248  fd4c		       85 f4		      sta	ScoreHu
-   3249  fd4e		       85 f5		      sta	ScoreTe
-   3250  fd50		       20 52 f5 	      jsr	LoadLevel
-   3251  fd53				   .TWrstDone
-   3252  fd53		       ad 82 02 	      lda	SWCHB
-   3253  fd56		       85 97		      sta	StepsLeft	; remember sample for next frame's edges
-   3254  fd58							; --- Frame audio: ch0 silenced by UpdateBombSound (BombSnd=0); jet
-   3255  fd58							;     channel force-muted here — UpdateJetSound is skipped because
-   3256  fd58							;     $FF would read as "falling" and buzz; laser skipped (LaserState
-   3257  fd58							;     = 0, AUDV0 covered above). ---
-   3258  fd58				   TitleTailAudio		; tail: TitleWork falls in (no rts)
-   3259  fd58		       a5 8a		      lda	DropTarget	; merged title ($FD): music owns AUD0/AUD1,
-   3260  fd5a		       c9 fd		      cmp	#$FD	;   no bomb fuse/tick on title frames
-   3261  fd5c		       f0 0e		      beq	.TWmusic
-   3262  fd5e		       d0 03		      bne	.TWnoTick	;   BombTick's blast side effects on titles
-   3263  fd60		       20 b7 f7 	      jsr	BombTick
-   3264  fd63				   .TWnoTick
-   3265  fd63		       20 fc fb 	      jsr	CallPad_UpdateBombSound
-   3266  fd66		       a9 00		      lda	#0
-   3267  fd68		       85 1a		      sta	AUDV1
-   3268  fd6a		       f0 03		      beq	.TWwait	; A=0 -> always taken
-   3269  fd6c				   .TWmusic		; title: music wins the audio regs
-   3270  fd6c		       20 61 fc 	      jsr	CallPad_MusicTick	;   wins the audio registers every frame
-   3271  fd6f				   .TWwait
-   3272  fd6f		       ad 84 02 	      lda	INTIM
-   3273  fd72		       d0 fb		      bne	.TWwait
-   3274  fd74		       4c 41 f0 	      jmp	StartFrame
-   3275  fd77
-   3276  fd77							; ------------------------------------------------------------------------------
-   3277  fd77							; RefreshEnemyY — write live Y → EnemyRamY (every slot, live or dead).
-   3278  fd77							; Runs at overscan entry: inside the safe window (after the HUD score-ptr
-   3279  fd77							; stomp of $E2-$E4, before LaserInput / CheckEnemyHit / moth / next frame's
-   3280  fd77							; SelectActiveObject read it) — see the EnemyRamY contract at the ZP map.
-   3281  fd77							; E1: moving types (bat) get ROM spawn + TickCounter-derived offset via
-   3282  fd77							; DeriveEnemyY — no persistent movement state exists in RAM.
-   3283  fd77							; Clobbers A/X/Y. Moved post-pad 2026-10-02 (SELECT → title needs this
-   3284  fd77							; block after the pads; pre-pad headroom is 1B).
-   3285  fd77							; ------------------------------------------------------------------------------
-   3286  fd77				   RefreshEnemyY
-   3287  fd77		       e6 c2		      inc	EnemyRamP	; free-running frame clock (wraps 0-255).
-   3288  fd79							; TickCounter is the 60-frame GAME timer
-   3289  fd79							; (decrements 60->1, reloads) — gates derived
-   3290  fd79							; from it wrapped every second (spider
-   3291  fd79							; "teleported": (TC>>3)&63 only ever saw
-   3292  fd79							; 0..7 and counted DOWN 0->7 = jump).
-   3293  fd79		       a6 b3		      ldx	EnemyCount	; countdown loop (-2 B vs forward; derive
-   3294  fd7b		       f0 09		      beq	.REYDone	; order n-1..0 — derivations independent,
-   3295  fd7d				   .REYLoop		; every reader runs after refresh completes)
-   3296  fd7d		       ca		      dex
-   3297  fd7e		       20 96 f4 	      jsr	DeriveEnemyY	; A = live Y (ROM copy, or derived for bat)
-   3298  fd81		       95 e2		      sta	EnemyRamY,X
-   3299  fd83		       8a		      txa		; N/Z must come from X: flags after jsr are
-   3300  fd84		       d0 f7		      bne	.REYLoop	; the sign of the DERIVED Y byte (bpl ran
-   3301  fd86				   .REYDone		; away at X=$FF, writing $1C2/$1C1/... =
-   3302  fd86							; mirrored EnemyRamP/EnemyRamD/TIA = blink,
-   3303  fd86							; black rooms, broken PF, invisible sprites)
-   3304  fd86							; --- SELECT or RESET held → back to the old title / level-select screen
-   3305  fd86							;     ($FF = first room + HUD count). Gate: DropTarget == 0 EXACTLY
-   3306  fd86							;     (idle/landed). Sentinels ($FD/$FF/$FE) skip via ≠0; a DROP-IN
-   3307  fd86							;     fall (Y≠0) also skips — so the press that STARTED the game (held
-   3308  fd86							;     through TitleWork RESET, level-triggered here) cannot bounce back
-   3309  fd86							;     to the title while falling (bounce-fixed 2026-10-06). Residual:
-   3310  fd86							;     RESET held past LANDING still re-fires — press must be released
-   3311  fd86							;     before the drop-in finishes. ---
-   3312  fd86		       a5 8a		      lda	DropTarget
-   3313  fd88		       d0 17		      bne	.REYRts	; not idle: not ours
-   3314  fd8a		       ad 82 02 	      lda	SWCHB
-   3315  fd8d		       85 97		      sta	StepsLeft	; latch so TitleWork sees "held" (no re-fire)
-   3316  fd8f		       29 03		      and	#%00000011	; SELECT b1 + RESET b0 (level-triggered,
-   3317  fd91		       c9 03		      cmp	#%00000011	;   same style as the old SELECT-only check)
-   3318  fd93		       f0 0c		      beq	.REYRts	; neither pressed
-   3319  fd95		       a9 fd		      lda	#$FD
-   3320  fd97		       85 8a		      sta	DropTarget	; merged title sentinel ($FD, 2026-10-19)
-   3321  fd99		       20 52 f5 	      jsr	LoadLevel	; tail → DropArm .DATitle (score/objects)
-   3322  fd9c		       68		      pla		; drop OUR return address (LoadLevel already
-   3323  fd9d		       68		      pla		;   popped its own) — tail into TitleWork
-   3324  fd9e		       4c 31 fd 	      jmp	TitleWork
-   3325  fda1				   .REYRts
-   3326  fda1		       60		      rts
-   3327  fda2
-   3328  fda2							; ------------------------------------------------------------------------------
-   3329  fda2							; BuildColupF — 12-byte final COLUPF image at ColupfBuf ($E7-$F2).
-   3330  fda2							;   Stripe: rows 0,2 = LevelWallColor; row 1 = LevelWallColor2.
-   3331  fda2							;   Hot rows overwrite with TickCounter-bit4 pulse (COLOR_HOT_Y/R).
-   3332  fda2							;   $F0-$F2 (bombs) NO LONGER overlap-saved: body writes rows 0-2 only,
-   3333  fda2							;   save/restore round trip deleted (S3.0b — window audit: zero writers).
-   3334  fda2							;   Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds every frame.
-   3335  fda2							; ------------------------------------------------------------------------------
-   3336  fda2							; ------------------------------------------------------------------------------
-   3337  fda2							; BuildColupF — MOVED to bank2 (S5.1) — CallPad_BuildColupF.
-   3338  fda2							;   Hot-rect data (RoomRects) lives in bank2, so the body reads it with
-   3339  fda2							;   direct (FetchPtr),Y — the shared $FEF6 fold block's sta $1FF6 always
-   3340  fda2							;   returns to bank0, so a fold inside a bank1 body could not work.
-   3341  fda2							;   The dark check is inlined there too: CallPad_IsRoomDark cannot nest
-   3342  fda2							;   from a pad body (ReturnPad switches to bank0 mid-call).
-   3343  fda2							;   Body: bank2.asm, pinned at $FC4F. Entry save block ($F0-$F2 → collision
-   3344  fda2							;   temps) was dead (rows 0-2 only) — deleted with the .AfterRows restore
-   3345  fda2							;   in S3.0b.
-   3346  fda2							; ------------------------------------------------------------------------------
-   3347  fda2
-   3348  fda2							; UpdateBombSound moved to bank1 (leaf_move_plan batch A) — CallPad_UpdateBombSound.
-   3349  fda2
-   3350  fda2							; ------------------------------------------------------------------------------
-   3351  fda2							; ColOff/ColMask — cell-walk lookup tables (cell_collision_plan).
-   3352  fda2							;   Indexed by LEFT-HALF source col 0-19 (PHM prologue mirrors right-half
-   3353  fda2							;   ranges before the walk; bank2 display-space walkers mirror first too).
-   3354  fda2							;   ColOff: byte offset from PF0Buf+row ($C3+row) to the register holding
-   3355  fda2							;   that col (0/3/6 = PF0/PF1/PF2 row byte). ColMask: the col's bit in that
-   3356  fda2							;   byte — PF0 bit4+col (cols 0-3), PF1 MSB-first (4-11), PF2 LSB-first
-   3357  fda2							;   (12-19); matches convert_room.pf_values (plan 0.2 spec, proven by
-   3358  fda2							;   tools/test_cell_map.py).
-   3359  fda2							;   (The standalone CellSolid leaf that lived here moved INTO
-   3360  fda2							;   PlayerHitsMap's walk as inline code — a jsr in the walk cost 2B of
-   3361  fda2							;   stack depth and would break sim_bomb_fuse's gameplay min-SP >= $F8
-   3362  fda2							;   guard; the post-pad slot keeps these tables abs,X-reachable.)
-   3363  fda2							; ------------------------------------------------------------------------------
-   3364  fda2		       00 00 00 00*ColOff     .byte.b	0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
-   3365  fdb6		       10 20 40 80*ColMask    .byte.b	$10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
-   3366  fdc2		       01 02 04 08*	      .byte.b	$01,$02,$04,$08,$10,$20,$40,$80
-   3367  fdca
-   3368  fdca							; ------------------------------------------------------------------------------
-   3369  fdca							; BombEnemyBlast — bank2 entry tramp ($FDD8, lamp-safe S9 2026-10-07): the
-   3370  fdca							; BombTick `jsr` lands here (bank0), `sta $1FF8` switches to bank2, the `jmp`
-   3371  fdca							; is fetched from bank2's byte-identical mirror at this same address and
-   3372  fdca							; lands on the body at $FD87 (the lamp type-check reads enemy records that
-   3373  fdca							; live in bank2). Body tail-jmps ReturnPad ($FBF8); A = 1 kill (BombTick
-   3374  fdca							; awards +50 — pads cannot nest), 0 none. Old inline body ($F87F, 66B)
-   3375  fdca							; deleted: the region re-packs into the gap before the $FBD6 fold pin
-   3376  fdca							; (pre-pad headroom stays 1B — pins absorb upstream shrink, not the org).
-   3377  fdca							; TWIN: bank2.asm mirrors these exact 6 bytes at $FDD8 (the pad after
-   3378  fdca							; .HOVdone). The PickPlayerFrame `.ds $FDE1` below absorbs the size.
-   3379  fdca							; ------------------------------------------------------------------------------
-   3380  fdca		       00 00 00 00*	      .ds	$FDD8 - *, 0	; pin: bank2's blast-tramp mirror is at $FDD8
+   3235  fd34		       90 00		      bcc	.TWselDone	; C=0: no edge
+   3236  fd36							; No LoadLevel here: the merged title renders no room and the digits band
+   3237  fd36							; reads Level directly (2026-10-19).
+   3238  fd36				   .TWselDone
+   3239  fd36							; --- RESET edge ---
+   3240  fd36		       a5 97		      lda	StepsLeft
+   3241  fd38		       29 01		      and	#%00000001
+   3242  fd3a		       f0 14		      beq	.TWrstDone
+   3243  fd3c		       ad 82 02 	      lda	SWCHB
+   3244  fd3f		       29 01		      and	#%00000001
+   3245  fd41		       d0 0d		      bne	.TWrstDone
+   3246  fd43		       a9 00		      lda	#0
+   3247  fd45		       85 8a		      sta	DropTarget	; leave title → LoadLevel tail arms real fall
+   3248  fd47		       85 f3		      sta	ScoreTh	; gameplay score starts at 000000
+   3249  fd49		       85 f4		      sta	ScoreHu
+   3250  fd4b		       85 f5		      sta	ScoreTe
+   3251  fd4d		       20 52 f5 	      jsr	LoadLevel
+   3252  fd50				   .TWrstDone
+   3253  fd50		       ad 82 02 	      lda	SWCHB
+   3254  fd53		       85 97		      sta	StepsLeft	; remember sample for next frame's edges
+   3255  fd55							; --- Frame audio: ch0 silenced by UpdateBombSound (BombSnd=0); jet
+   3256  fd55							;     channel force-muted here — UpdateJetSound is skipped because
+   3257  fd55							;     $FF would read as "falling" and buzz; laser skipped (LaserState
+   3258  fd55							;     = 0, AUDV0 covered above). ---
+   3259  fd55				   TitleTailAudio		; tail: TitleWork falls in (no rts)
+   3260  fd55		       a5 8a		      lda	DropTarget	; merged title ($FD): music owns AUD0/AUD1,
+   3261  fd57		       c9 fd		      cmp	#$FD	;   no bomb fuse/tick on title frames
+   3262  fd59		       f0 0e		      beq	.TWmusic
+   3263  fd5b		       d0 03		      bne	.TWnoTick	;   BombTick's blast side effects on titles
+   3264  fd5d		       20 b7 f7 	      jsr	BombTick
+   3265  fd60				   .TWnoTick
+   3266  fd60		       20 fc fb 	      jsr	CallPad_UpdateBombSound
+   3267  fd63		       a9 00		      lda	#0
+   3268  fd65		       85 1a		      sta	AUDV1
+   3269  fd67		       f0 03		      beq	.TWwait	; A=0 -> always taken
+   3270  fd69				   .TWmusic		; title: music wins the audio regs
+   3271  fd69		       20 61 fc 	      jsr	CallPad_MusicTick	;   wins the audio registers every frame
+   3272  fd6c				   .TWwait
+   3273  fd6c		       ad 84 02 	      lda	INTIM
+   3274  fd6f		       d0 fb		      bne	.TWwait
+   3275  fd71		       4c 41 f0 	      jmp	StartFrame
+   3276  fd74
+   3277  fd74							; ------------------------------------------------------------------------------
+   3278  fd74							; RefreshEnemyY — write live Y → EnemyRamY (every slot, live or dead).
+   3279  fd74							; Runs at overscan entry: inside the safe window (after the HUD score-ptr
+   3280  fd74							; stomp of $E2-$E4, before LaserInput / CheckEnemyHit / moth / next frame's
+   3281  fd74							; SelectActiveObject read it) — see the EnemyRamY contract at the ZP map.
+   3282  fd74							; E1: moving types (bat) get ROM spawn + TickCounter-derived offset via
+   3283  fd74							; DeriveEnemyY — no persistent movement state exists in RAM.
+   3284  fd74							; Clobbers A/X/Y. Moved post-pad 2026-10-02 (SELECT → title needs this
+   3285  fd74							; block after the pads; pre-pad headroom is 1B).
+   3286  fd74							; ------------------------------------------------------------------------------
+   3287  fd74				   RefreshEnemyY
+   3288  fd74		       e6 c2		      inc	EnemyRamP	; free-running frame clock (wraps 0-255).
+   3289  fd76							; TickCounter is the 60-frame GAME timer
+   3290  fd76							; (decrements 60->1, reloads) — gates derived
+   3291  fd76							; from it wrapped every second (spider
+   3292  fd76							; "teleported": (TC>>3)&63 only ever saw
+   3293  fd76							; 0..7 and counted DOWN 0->7 = jump).
+   3294  fd76		       a6 b3		      ldx	EnemyCount	; countdown loop (-2 B vs forward; derive
+   3295  fd78		       f0 09		      beq	.REYDone	; order n-1..0 — derivations independent,
+   3296  fd7a				   .REYLoop		; every reader runs after refresh completes)
+   3297  fd7a		       ca		      dex
+   3298  fd7b		       20 96 f4 	      jsr	DeriveEnemyY	; A = live Y (ROM copy, or derived for bat)
+   3299  fd7e		       95 e2		      sta	EnemyRamY,X
+   3300  fd80		       8a		      txa		; N/Z must come from X: flags after jsr are
+   3301  fd81		       d0 f7		      bne	.REYLoop	; the sign of the DERIVED Y byte (bpl ran
+   3302  fd83				   .REYDone		; away at X=$FF, writing $1C2/$1C1/... =
+   3303  fd83							; mirrored EnemyRamP/EnemyRamD/TIA = blink,
+   3304  fd83							; black rooms, broken PF, invisible sprites)
+   3305  fd83							; --- SELECT or RESET held → back to the old title / level-select screen
+   3306  fd83							;     ($FF = first room + HUD count). Gate: DropTarget == 0 EXACTLY
+   3307  fd83							;     (idle/landed). Sentinels ($FD/$FF/$FE) skip via ≠0; a DROP-IN
+   3308  fd83							;     fall (Y≠0) also skips — so the press that STARTED the game (held
+   3309  fd83							;     through TitleWork RESET, level-triggered here) cannot bounce back
+   3310  fd83							;     to the title while falling (bounce-fixed 2026-10-06). Residual:
+   3311  fd83							;     RESET held past LANDING still re-fires — press must be released
+   3312  fd83							;     before the drop-in finishes. ---
+   3313  fd83		       a5 8a		      lda	DropTarget
+   3314  fd85		       d0 14		      bne	.REYRts	; not idle: not ours
+   3315  fd87		       ad 82 02 	      lda	SWCHB
+   3316  fd8a		       85 97		      sta	StepsLeft	; latch so TitleWork sees "held" (no re-fire)
+   3317  fd8c		       29 03		      and	#%00000011	; SELECT b1 + RESET b0 (level-triggered,
+   3318  fd8e		       c9 03		      cmp	#%00000011	;   same style as the old SELECT-only check)
+   3319  fd90		       f0 09		      beq	.REYRts	; neither pressed
+   3320  fd92		       a9 fd		      lda	#$FD
+   3321  fd94		       85 8a		      sta	DropTarget	; merged title sentinel ($FD, 2026-10-19)
+   3322  fd96		       68		      pla		; drop our jsr return address — tail into
+   3323  fd97		       68		      pla		;   TitleWork (no room load: title draws none)
+   3324  fd98		       4c 31 fd 	      jmp	TitleWork
+   3325  fd9b				   .REYRts
+   3326  fd9b		       60		      rts
+   3327  fd9c
+   3328  fd9c							; ------------------------------------------------------------------------------
+   3329  fd9c							; BuildColupF — 12-byte final COLUPF image at ColupfBuf ($E7-$F2).
+   3330  fd9c							;   Stripe: rows 0,2 = LevelWallColor; row 1 = LevelWallColor2.
+   3331  fd9c							;   Hot rows overwrite with TickCounter-bit4 pulse (COLOR_HOT_Y/R).
+   3332  fd9c							;   $F0-$F2 (bombs) NO LONGER overlap-saved: body writes rows 0-2 only,
+   3333  fd9c							;   save/restore round trip deleted (S3.0b — window audit: zero writers).
+   3334  fd9c							;   Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds every frame.
+   3335  fd9c							; ------------------------------------------------------------------------------
+   3336  fd9c							; ------------------------------------------------------------------------------
+   3337  fd9c							; BuildColupF — MOVED to bank2 (S5.1) — CallPad_BuildColupF.
+   3338  fd9c							;   Hot-rect data (RoomRects) lives in bank2, so the body reads it with
+   3339  fd9c							;   direct (FetchPtr),Y — the shared $FEF6 fold block's sta $1FF6 always
+   3340  fd9c							;   returns to bank0, so a fold inside a bank1 body could not work.
+   3341  fd9c							;   The dark check is inlined there too: CallPad_IsRoomDark cannot nest
+   3342  fd9c							;   from a pad body (ReturnPad switches to bank0 mid-call).
+   3343  fd9c							;   Body: bank2.asm, pinned at $FC4F. Entry save block ($F0-$F2 → collision
+   3344  fd9c							;   temps) was dead (rows 0-2 only) — deleted with the .AfterRows restore
+   3345  fd9c							;   in S3.0b.
+   3346  fd9c							; ------------------------------------------------------------------------------
+   3347  fd9c
+   3348  fd9c							; UpdateBombSound moved to bank1 (leaf_move_plan batch A) — CallPad_UpdateBombSound.
+   3349  fd9c
+   3350  fd9c							; ------------------------------------------------------------------------------
+   3351  fd9c							; ColOff/ColMask — cell-walk lookup tables (cell_collision_plan).
+   3352  fd9c							;   Indexed by LEFT-HALF source col 0-19 (PHM prologue mirrors right-half
+   3353  fd9c							;   ranges before the walk; bank2 display-space walkers mirror first too).
+   3354  fd9c							;   ColOff: byte offset from PF0Buf+row ($C3+row) to the register holding
+   3355  fd9c							;   that col (0/3/6 = PF0/PF1/PF2 row byte). ColMask: the col's bit in that
+   3356  fd9c							;   byte — PF0 bit4+col (cols 0-3), PF1 MSB-first (4-11), PF2 LSB-first
+   3357  fd9c							;   (12-19); matches convert_room.pf_values (plan 0.2 spec, proven by
+   3358  fd9c							;   tools/test_cell_map.py).
+   3359  fd9c							;   (The standalone CellSolid leaf that lived here moved INTO
+   3360  fd9c							;   PlayerHitsMap's walk as inline code — a jsr in the walk cost 2B of
+   3361  fd9c							;   stack depth and would break sim_bomb_fuse's gameplay min-SP >= $F8
+   3362  fd9c							;   guard; the post-pad slot keeps these tables abs,X-reachable.)
+   3363  fd9c							; ------------------------------------------------------------------------------
+   3364  fd9c		       00 00 00 00*ColOff     .byte.b	0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
+   3365  fdb0		       10 20 40 80*ColMask    .byte.b	$10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
+   3366  fdbc		       01 02 04 08*	      .byte.b	$01,$02,$04,$08,$10,$20,$40,$80
+   3367  fdc4
+   3368  fdc4							; ------------------------------------------------------------------------------
+   3369  fdc4							; BombEnemyBlast — bank2 entry tramp ($FDD8, lamp-safe S9 2026-10-07): the
+   3370  fdc4							; BombTick `jsr` lands here (bank0), `sta $1FF8` switches to bank2, the `jmp`
+   3371  fdc4							; is fetched from bank2's byte-identical mirror at this same address and
+   3372  fdc4							; lands on the body at $FD87 (the lamp type-check reads enemy records that
+   3373  fdc4							; live in bank2). Body tail-jmps ReturnPad ($FBF8); A = 1 kill (BombTick
+   3374  fdc4							; awards +50 — pads cannot nest), 0 none. Old inline body ($F87F, 66B)
+   3375  fdc4							; deleted: the region re-packs into the gap before the $FBD6 fold pin
+   3376  fdc4							; (pre-pad headroom stays 1B — pins absorb upstream shrink, not the org).
+   3377  fdc4							; TWIN: bank2.asm mirrors these exact 6 bytes at $FDD8 (the pad after
+   3378  fdc4							; .HOVdone). The PickPlayerFrame `.ds $FDE1` below absorbs the size.
+   3379  fdc4							; ------------------------------------------------------------------------------
+   3380  fdc4		       00 00 00 00*	      .ds	$FDD8 - *, 0	; pin: bank2's blast-tramp mirror is at $FDD8
    3381  fdd8				   BombEnemyBlast
    3382  fdd8		       8d f8 1f 	      sta	$1FF8
    3383  fddb		       4c 87 fd 	      jmp	$FD87	; BombEnemyBlastBody (bank2.lst — after
