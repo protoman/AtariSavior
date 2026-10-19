@@ -388,7 +388,7 @@ product does not need it. The size is feature-driven, not architecture-driven.
 | 1 | "HERO uses hardware collision; we have six rect walkers" | **wrong twice**: HERO has no CX reads; our two hot walkers already read PF bits | **~0 B** |
 | 2 | "they bake the screen, we compute it; 1.3 KB of staging" | **mostly wrong**: our PF SHAPE is already baked and 3-5x denser than HERO's (9 B/room vs 36-60); the "1.3 KB" is 645 B across 4 routines, and what it computes is dynamic state | **~0 B** (baking trades ~100 B of code for ~150-200 B of data) |
 | 3 | "flicker multiplexer" (`SelectActiveObject` 289 B) | **~0 B**: the scheduler is only ~35 B of it; the rest is per-object X/Y/colour/pattern staging that every sprite needs anyway. Removing it = dropping the feature (bomb+enemies+miner on one GRP1), not saving code | **≤35 B** |
-| 4 | cross-bank tax | still to audit | ? |
+| 4 | cross-bank tax | **measured: 512 B of switch machinery** — 80 pads (`sta $1FFx / jmp` = 6 B) + 8 returns (`sta $1FFx / rts` = 4 B) + 4 others, summed over all four banks. Fill 4571 B is NOT tax: 2652 of it is bank3's usable reserve, the 1919 in banks 0-2 is pinned. Co-location (A3+C2) removes ~6-10 transitions | **~72-120 B** (repack would recover the 1919 B pinned fill, multi-session + risky) |
 | 5 | feature surface | still to audit | ? |
 
 **Point 2 detail (measured).** The four names I lumped together total 645 B:
