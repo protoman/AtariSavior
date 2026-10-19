@@ -1306,7 +1306,7 @@ ReturnPad:
 ; CallPad_BuildColupF twin — bank3 body now (A3). bank0/bank1 execute
 ; `sta $1FF9`; the `jmp` at +3 is fetched from BANK3 (its $FC3B image).
 ; ------------------------------------------------------------------------------
-    .ds $FC38 - *, 0
+    .ds $FC32 - *, 0
 CallPad_BuildColupF:
     sta $1FF9                   ; bank3 (level-data walker)
     jmp $F5C7                   ; BuildColupF (bank3; synced by verify_build)

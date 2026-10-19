@@ -1961,9 +1961,6 @@ CallPad_BombSndExplode:
 CallPad_GetConnIdx:
     sta $1FF7
     jmp $FA26
-CallPad_ClearPFColumn:
-    sta $1FF7
-    jmp $FA37
 CallPad_AddScore:
     sta $1FF7
     jmp $FA7C
