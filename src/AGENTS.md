@@ -296,6 +296,44 @@ itself the failure.
 10 minutes max?"; the agent started investigating instead of answering, and
 had to be told three times to stop.
 
+## Rule: Session Budget Discipline
+
+The model context window is fixed and the ENTIRE conversation (system prompt +
+`AGENTS.md` + every tool output) is re-sent each turn. Long sessions do not
+"get shorter" — the remaining working budget shrinks with every full-file read,
+listing dump and rebuild log. Treat context like the ROM budget: spend it
+deliberately.
+
+- **One chunk per session.** Start by reading the current plan/handoff
+  (`docs/*_plan.md`, `docs/handoff_*.md`) and a 5-line state note — never
+  re-derive what is written down.
+- **Read by index, not by file.** `codegraph_explore` first; `grep` with tight
+  patterns for a specific symbol; `sed -n 'a,bp'` for a slice. Full-file reads
+  of `kernel.asm`/`bank2.asm` (1000+ lines) are a last resort.
+- **Filter every command's output**: `./build.sh 2>&1 | grep -E
+  "error|Done|sim_|verify_build"`, `tail -5` on sims, `grep -c` for counts.
+  Never paste a full `.lst` or a full battery log.
+- **Commit after each chunk** (build + both sims + battery green), with the
+  chunk name in the message, so a cut-off session always leaves a green tree.
+- **Update the size ledger in the same commit**: run
+  `tools/rom_size_report.py --md` and paste the table into the active plan
+  (per-bank code/data/used/free + level-data total). The ledger is the tripwire
+  if a later chunk misbehaves.
+- **Re-freeze the test banks** (`tools/freeze_test_banks.sh`) before trusting a
+  battery run after ANY bank code change — the frozen images otherwise keep
+  executing the previous build and a green battery proves nothing.
+- **Budget floor:** when roughly a fifth of the session is left, stop starting
+  new edits. Finish/verify the current one, commit, and write the exact next
+  step (design, addresses, blocker, files) into the plan/handoff.
+- **Never leave the tree broken**: a reverted attempt + a documented design is
+  worth more than a half-applied refactor. Record what was learned (the failing
+  sim output, the exact stack/address symptom) in the plan.
+
+**Why this rule exists:** 2026-10-19 — a long session (crunch unification +
+bank3 level-data move) repeatedly ran out of budget mid-refactor; the bank3
+move had to be attempted twice and reverted twice, and the handoff had to carry
+the design that the session could no longer execute.
+
 ## File-Format Changes Require Data Migration
 
 When changing a serialized or generated data format, update all existing project data and its generators in the same change. Preserve compatibility with older files through an explicit version/default migration, or migrate those files before requiring the new format. Verify both legacy loading and new-format round trips; never leave checked-in data behind the code's schema.
