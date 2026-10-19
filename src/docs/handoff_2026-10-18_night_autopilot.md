@@ -204,3 +204,28 @@ the sprite pipeline.
    has one room, so they threw KeyError. Re-pointed at the room that exists.
 
 Battery: **43/43**.
+
+## Addendum 5 — OPEN (small): flip the snake's initial direction at load
+
+User ruling 2026-10-19: the snake's patrol is now symmetric about its placement
+(`spawn ± SNAKE_PATROL`, one tile each way) and the speed is halved (1 px /
+8 frames). What remains is the STARTING direction.
+
+Wanted: the authored `dir` should mean **where the snake will come out**, and the
+snake's FIRST movement should be the retreat into its wall — then it comes out a
+tile, goes back in, repeats. That way the editor shows the meaningful direction
+and the user never has to think about the entry side.
+
+Where: `src/bank2.asm`, inside the room-load body (`LoadEnemyRam`, called from
+`EnterRoomB2` — `#22` moved it there). It walks the records via `EnemyOffTable`,
+copies x (+1) and y (+2) into `EnemyRamX/Y`, then reads the dir at +3 (`$FF` =
+left / `0` = right) and ORs the per-slot bit into `EnemyRamD`.
+
+Change: for a SNAKE (record type 2, offset +0) invert that sense — OR the bit when
+the record says left, clear it when it says right. ~6-10 B in bank2's free space;
+**no kernel change** (the bounds no longer read the dir at all, so this load-time
+store is the single place the direction is consumed).
+
+Verify: `tools/test_enemy_movement.py` (add an assert that the snake's live dir is
+the inverse of the record's), then a Stella look — place a snake facing into open
+air; its first move must be INTO the wall.
