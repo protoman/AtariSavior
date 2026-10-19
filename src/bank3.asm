@@ -11,30 +11,23 @@
 ; return pads").
 ;
 ; Cross-bank contract (M1ToBank* pattern, 0 pushes — pads never nest):
-;   bank2 tramp @ T:  sta $1FF9          ; switch to bank3
+;   caller tramp @ T: sta $1FF9          ; switch to bank3
 ;                     jmp $Fxxx          ; operand FETCHED bank3-side
 ;   bank3 @ T+3:      jmp Body           ; byte-identical image required
-;   body tail:        sta $1FF8          ; switch back
-;                     jmp $Fxxx          ; operand FETCHED bank2-side
-;   bank2 @ tail+3:   jmp <label>        ; byte-identical image required
+;   body tail:        sta $1FF6/$1FF8    ; switch back (ReturnPad or pad)
 ;
-; Tramp/tail addresses (sync with bank2.asm after ANY PhaseBlink/HOV move):
-;   LIVE bank-switch twins (bank2 sta $1FF9 slot -> operand fetch here):
-;     $FC1B  jmp $FA40  (HOVFeatPre -> HOVFeatEntry)
-;     $FC34  jmp $F880  (PhHcrPre  -> PhHcrEntry)
-;     $FE57  jmp $FD80  (OvShutScan -> VCS3)
-;   LEGACY twins kept as fill (their bank2 slots tail-jmp internally now —
-;   PhVcrPre is `jmp VcrShutter` at $FE45, so PhVcrEntry is retired):
-;     $FB57  jmp $F800 / $FB61 jmp $F880 / $FD7B jmp $FA40
-;   Return tails (bank3 sta $1FF8 executed here, jmp fetched bank2-side):
-;     $FCC1  tail → <bank2 .PhRec>      (vcrunch staging return)
-;     $FCC7  tail → <bank2 .PhRec>      (hcrunch staging return)
-;     $FCCD  tail → $FD6B HOVnext       (crunch kill miss)
-;     $FCD3  tail → $FD60 HOVlegHit     (crunch kill HIT)
-;     $FCD9  tail → $FD1C HOVafterGate  (phase armed → overlap tests)
-;   .PhRec literal is auto-synced by build.sh (sync_phrec_literal) — the
-;   PRE-READ twins above are NOT; a byte change in HOVFeatPre/PhHcrPre
-;   silently moves bank2's jmp and breaks the frame (2026-10-16).
+; LIVE entry images (the `jmp` fetched after the caller's `sta $1FF9`):
+;   $F453  B3RoomBlocks      (bank2 ERBlocksPad, EnterRoom's data half)
+;   $FC3B  BuildColupF       (kernel/bank1 CallPad_BuildColupF)
+;   $FD80  VCS3              (bank2 OvShutScan, `sta $1FF9` at $FE57)
+;   $FFEF  HotOverlapBody    (kernel AND bank2 `HotOverlapFlag` at $FFEC)
+; Live return tails: B3RoomBlocks `sta $1FF8` at $F458 -> bank2 $F45B;
+; VCS3 `sta $1FF8` at $FBEE -> bank2 rts; everything else exits via bank3
+; ReturnPad ($FBF8 -> `sta $1FF6` + bank0 rts).
+;
+; A3/C2 retired the pre-read twins and the $FCC1-$FCD9 return pads: PhaseBlink,
+; VcrShutter, BuildColupF, HotOverlapBody and the $81/$82 dispatchers all live
+; HERE now, so those paths are local jmps (no pad, no switch, no stack shuttle).
 ;
 ; ZP EQUs hand-copied from kernel.asm/bank2.asm (check_equ_sync does not
 ; scan bank3 — keep these correct by hand).
