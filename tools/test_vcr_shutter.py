@@ -287,12 +287,11 @@ def main() -> None:
     # --- cases 6-9: hot/cold kill semantics (user spec 2026-10-14) --------
     # MetaB = (RoomPF0Lo)+10; b6 = mid_band_type hot. Poke the test's own
     # bank2 copy (synthetic staging — not live game data).
-    metap = W.mem.ram[0x99 & 0x7F] | (W.mem.ram[0x9A & 0x7F] << 8)  # RoomPF0Lo
-    meta_off = metap + 10 - 0xF000
-    meta_orig = W.BANKS[2][meta_off]
+    meta_orig = W.mem.ram[0x9A & 0x7F]        # RoomMetaB (staged at entry)
 
     def set_hot(on: bool):
-        W.BANKS[2][meta_off] = (meta_orig | 0x40) if on else (meta_orig & ~0x40)
+        W.mem.ram[0x9A & 0x7F] = ((meta_orig | 0x40) if on
+                                  else (meta_orig & ~0x40))
 
     def expect_kill(tag, clock, y, frames=6):
         pins.update(clock=clock, y=y)

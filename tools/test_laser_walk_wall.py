@@ -174,8 +174,10 @@ def load_room(room):
     overlay pack from the new MetaA by itself."""
     pf0, rr = MODEL[room]
     a_pf0, a_rr = L2[pf0], L2[rr]
-    mem.ram[I_PF0LO] = a_pf0 & 0xFF
-    mem.ram[I_PF0HI] = a_pf0 >> 8
+    # RoomMetaA/B are staged at room entry (bank2 EnterRoomB2 reads the
+    # block's +9/+10 and overwrites the pointer pair) — stage them directly.
+    mem.ram[I_PF0LO] = BANKS[2][(a_pf0 + 9 - 0xF000) & 0xFFFF]
+    mem.ram[I_PF0HI] = BANKS[2][(a_pf0 + 10 - 0xF000) & 0xFFFF]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     # ROM: TilePF0/1/2 = 3 band-row bytes each, in order after the label

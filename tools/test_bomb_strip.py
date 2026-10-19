@@ -152,8 +152,14 @@ def run_bmw(mem: Mem1, bomb_x: int, line_count: int,
     ZP cache (RcBase = len); bomb_packed seeds BombPacked (WallMask)."""
     r = mem.ram
     meta = M0 if meta is None else meta
-    r[L2["RoomPF0Lo"] - 0x80] = meta & 0xFF
-    r[L2["RoomPF0Lo"] + 1 - 0x80] = meta >> 8
+    if meta >= 0xF000:                   # ROM block: read its MetaA/B
+        _off = (meta - 0xF000) & 0xFFFF
+        _ma, _mb = BANKS[2][_off + 9], BANKS[2][_off + 10]
+    else:                                # legacy RAM blob at Y=+9/+10
+        _ma = r[(meta + 9) & 0x7F]
+        _mb = r[(meta + 10) & 0x7F]
+    r[L2["RoomPF0Lo"] - 0x80] = _ma       # staged room meta
+    r[L2["RoomPF0Lo"] + 1 - 0x80] = _mb
     r[L0["BombX"] - 0x80] = bomb_x
     r[L0["LineCount"] - 0x80] = line_count
     r[L0["EnemyDeadMask"] - 0x80] = 0
@@ -182,8 +188,8 @@ def stage(deadmask: int) -> tuple[tuple, int, int]:
     """Drive StageBandTab; return (BandTab0..2, packed byte, staged M1X)."""
     mem = Mem1()
     r = mem.ram
-    r[L2["RoomPF0Lo"] - 0x80] = M0 & 0xFF
-    r[(L2["RoomPF0Lo"] + 1) - 0x80] = M0 >> 8
+    r[L2["RoomPF0Lo"] - 0x80] = META_A          # staged meta (room entry)
+    r[(L2["RoomPF0Lo"] + 1) - 0x80] = META_B
     r[L0["EnemyDeadMask"] - 0x80] = deadmask
     mem.bank = 2
     mpu = MPU(memory=mem)
@@ -413,9 +419,7 @@ def main() -> int:
     def stage_n1(meta_a):
         mem = MemTIA()
         r = mem.ram
-        r[0xA0 - 0x80 + 9] = meta_a
-        r[0xA0 - 0x80 + 10] = 0x00
-        r[L2["RoomPF0Lo"] - 0x80] = 0xA0
+        r[L2["RoomPF0Lo"] - 0x80] = meta_a         # staged MetaA
         r[L2["RoomPF0Lo"] + 1 - 0x80] = 0x00
         r[L0["EnemyDeadMask"] - 0x80] = 0
         mem.bank = 2
@@ -450,10 +454,8 @@ def main() -> int:
     def band_gate(meta_a, meta_b):
         mem = Mem1()
         r = mem.ram
-        r[0xA0 - 0x80 + 9] = meta_a
-        r[0xA0 - 0x80 + 10] = meta_b
-        r[L2["RoomPF0Lo"] - 0x80] = 0xA0
-        r[L2["RoomPF0Lo"] + 1 - 0x80] = 0x00
+        r[L2["RoomPF0Lo"] - 0x80] = meta_a        # staged MetaA
+        r[L2["RoomPF0Lo"] + 1 - 0x80] = meta_b    # staged MetaB
         r[L0["EnemyDeadMask"] - 0x80] = 0
         mem.bank = 2
         mpu = MPU(memory=mem)
@@ -496,10 +498,8 @@ def main() -> int:
         r[0xA0 - 0x80:0xA0 - 0x80 + 7] = bytes([0, 1, 0x80, 4, 1, 2, 1])
         r[L2["RoomRectsLo"] - 0x80] = 0xA0
         r[L2["RoomRectsLo"] + 1 - 0x80] = 0x00
-        r[L2["RoomPF0Lo"] - 0x80] = 0xC0   # meta blob: MetaA at +9 = $C9
-        r[L2["RoomPF0Lo"] + 1 - 0x80] = 0x00
-        r[0xC9 - 0x80] = 0x90              # MetaA: plain M1 (no door)
-        r[0xCA - 0x80] = 0x00              # MetaB
+        r[L2["RoomPF0Lo"] - 0x80] = 0x90   # staged MetaA: plain M1 (no door)
+        r[L2["RoomPF0Lo"] + 1 - 0x80] = 0x00   # staged MetaB
         r[L0["EnemyDeadMask"] - 0x80] = 0
         r[0xC2 - 0x80] = clock             # EnemyRamP
         r[0xC7 - 0x80] = 0xC0              # PF1Buf row1 pre-seeded ON

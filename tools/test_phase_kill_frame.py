@@ -109,8 +109,9 @@ def load_room_m2():
     MetaB $80) after boot — start_room-agnostic."""
     a_pf0 = L2["M2TilePF0"]
     a_rr = L2["M2RoomRects"]
-    mem.ram[I_PF0LO] = a_pf0 & 0xFF   # StageBandTab reads MetaB (b7 =
-    mem.ram[I_PF0HI] = a_pf0 >> 8     # shutter gate) through this ptr
+    off = (a_pf0 - 0xF000) & 0xFFFF   # MetaA/MetaB staged at room entry
+    mem.ram[I_PF0LO] = BANKS[2][off + 9]
+    mem.ram[I_PF0HI] = BANKS[2][off + 10]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):

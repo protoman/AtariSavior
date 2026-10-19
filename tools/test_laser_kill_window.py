@@ -125,13 +125,10 @@ def main() -> int:
         # (mirror of ZP $69): outside the $01FE/$01FF RTS sentinel aliases
         # ($7E/$7F); body pushes nothing, never writes $69.
         # ptr 0 => reads $0009 = 0 => no M1.
-        if m1x:
-            r[L0["RoomPF0Lo"] - 0x80] = 0xE0
-            r[L0["RoomPF0Lo"] + 1 - 0x80] = 0x01
-            r[0x69] = ((m1x + 7) >> 3) << 4   # m1_col+1 in the high nibble
-        else:
-            r[L0["RoomPF0Lo"] - 0x80] = 0
-            r[L0["RoomPF0Lo"] + 1 - 0x80] = 0
+        # MetaA is STAGED at room entry (RoomMetaA = $99) — no block
+        # pointer any more; m1_col+1 lives in the high nibble.
+        r[L0["RoomPF0Lo"] - 0x80] = ((m1x + 7) >> 3) << 4 if m1x else 0
+        r[L0["RoomPF0Lo"] + 1 - 0x80] = 0
         mem.bank = 2
         mpu = MPU(memory=mem)
         mpu.pc = L2["LaserHitTestBody"]

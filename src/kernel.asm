@@ -3646,7 +3646,7 @@ CallPad_MothYDerive:
     .ds $FEF0 - *, 0            ; fill tramp..moth gap (drift-proof)
 UE_MothTramp:
     sta $1FF8                   ; select bank2
-    jmp $F100                   ; bank2 MothRoutine (dead in bank0; guard pins
+    jmp $F110                   ; bank2 MothRoutine (dead in bank0; guard pins
                                 ;   bank0/bank2 operands == bank2.lst label)
     .ds $FEF6 - *, 0            ; pin address (main size drift must not move it)
 FoldIndirect:

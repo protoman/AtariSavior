@@ -294,8 +294,8 @@ def asym_checks(rows: list[str]) -> int:
     # through RoomPF0Lo — bank2 ROM; M1X = 8*(m1_col+1)-1, 0 = no M1.
     m1n = BANK2[L2["L1R1TilePF0"] - 0xF000 + 9] >> 4
     m1x = 8 * m1n - 1 if m1n else 0
-    r[L2["RoomPF0Lo"] - 0x80] = L2["L1R1TilePF0"] & 0xFF
-    r[L2["RoomPF0Lo"] + 1 - 0x80] = L2["L1R1TilePF0"] >> 8
+    r[L2["RoomPF0Lo"] - 0x80] = BANK2[L2["L1R1TilePF0"] - 0xF000 + 9]
+    r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK2[L2["L1R1TilePF0"] - 0xF000 + 10]
     r[L0["EnemyDeadMask"] - 0x80] = 0
     # packed configs: (right_col, band mask); 0 = symmetric control
     configs = [(0, 0), (0, 1), (5, 4), (9, 7), (9, 4)]
@@ -397,8 +397,8 @@ def hot_death_checks(rows: list[str]) -> int:
     r = mem.ram
     r[L0["RoomRectsLo"] - 0x80] = L2["L1R1RoomRects"] & 0xFF
     r[L0["RoomRectsHi"] - 0x80] = L2["L1R1RoomRects"] >> 8
-    r[L2["RoomPF0Lo"] - 0x80] = L2["L1R1TilePF0"] & 0xFF
-    r[L2["RoomPF0Lo"] + 1 - 0x80] = L2["L1R1TilePF0"] >> 8
+    r[L2["RoomPF0Lo"] - 0x80] = BANK2[L2["L1R1TilePF0"] - 0xF000 + 9]
+    r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK2[L2["L1R1TilePF0"] - 0xF000 + 10]
     r[L0["BombPacked"] - 0x80] = 0
     packed = 0x11                         # rc=0, band0 -> tramp crosses
     r[L0["LineCount"] - 0x80] = packed
