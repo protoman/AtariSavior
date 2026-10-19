@@ -1348,7 +1348,7 @@ HOVFeatEntry:
 ReturnPad:                      ;   The `sta $1FF6` runs HERE, the `rts` opcode
     sta $1FF6                   ;   is fetched from bank0 at $FBF9 -> pops the
     rts                         ;   bank0 VBL/jsr caller.
-    .ds $FC3B - *, 0            ; CallPad_BuildColupF entry image: bank0/bank1
+    .ds $FC35 - *, 0            ; CallPad_BuildColupF entry image: bank0/bank1
     jmp BuildColupF             ;   execute `sta $1FF9`, this fetch is bank3-side
 
 ; VCS3 — OvShutScan body (Phase C kill test; bank2 tramp `sta $1FF9 / jmp

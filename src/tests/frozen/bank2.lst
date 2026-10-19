@@ -1587,21 +1587,21 @@
    1306  fbfc							; CallPad_BuildColupF twin — bank3 body now (A3). bank0/bank1 execute
    1307  fbfc							; `sta $1FF9`; the `jmp` at +3 is fetched from BANK3 (its $FC3B image).
    1308  fbfc							; ------------------------------------------------------------------------------
-   1309  fbfc		       00 00 00 00*	      .ds	$FC38 - *, 0
-   1310  fc38				   CallPad_BuildColupF
-   1311  fc38		       8d f9 1f 	      sta	$1FF9	; bank3 (level-data walker)
-   1312  fc3b		       4c c7 f5 	      jmp	$F5C7	; BuildColupF (bank3; synced by verify_build)
-   1313  fc3e
-   1314  fc3e							; ------------------------------------------------------------------------------
-   1315  fc3e							; E4 moth exit tramp ($FC49-$FC4B) — byte-identical slice with kernel.asm's
-   1316  fc3e							; MothExitPad (guard: verify_build check_moth_tramp). bank2 executes
-   1317  fc3e							; `sta $1FF6`; the fetch at $FC4C comes from bank0 = `jmp UE_Next`
-   1318  fc3e							; (bank0's own label). This file's bytes from $FC4C never run.
-   1319  fc3e							; Pinned at $FC49 (NOT $FFF2): $FFF6-$FFF9 are F6 hotspot mirrors — a peek
-   1320  fc3e							; of those addresses calls checkSwitchBank in Stella and flips banks
-   1321  fc3e							; mid-instruction (see kernel.asm MothExitPad comment).
-   1322  fc3e							; ------------------------------------------------------------------------------
-   1323  fc3e		       00 00 00 00*	      .ds	$FC49 - *, 0
+   1309  fbfc		       00 00 00 00*	      .ds	$FC32 - *, 0
+   1310  fc32				   CallPad_BuildColupF
+   1311  fc32		       8d f9 1f 	      sta	$1FF9	; bank3 (level-data walker)
+   1312  fc35		       4c c7 f5 	      jmp	$F5C7	; BuildColupF (bank3; synced by verify_build)
+   1313  fc38
+   1314  fc38							; ------------------------------------------------------------------------------
+   1315  fc38							; E4 moth exit tramp ($FC49-$FC4B) — byte-identical slice with kernel.asm's
+   1316  fc38							; MothExitPad (guard: verify_build check_moth_tramp). bank2 executes
+   1317  fc38							; `sta $1FF6`; the fetch at $FC4C comes from bank0 = `jmp UE_Next`
+   1318  fc38							; (bank0's own label). This file's bytes from $FC4C never run.
+   1319  fc38							; Pinned at $FC49 (NOT $FFF2): $FFF6-$FFF9 are F6 hotspot mirrors — a peek
+   1320  fc38							; of those addresses calls checkSwitchBank in Stella and flips banks
+   1321  fc38							; mid-instruction (see kernel.asm MothExitPad comment).
+   1322  fc38							; ------------------------------------------------------------------------------
+   1323  fc38		       00 00 00 00*	      .ds	$FC49 - *, 0
    1324  fc49				   MothExitPad
    1325  fc49		       8d f6 1f 	      sta	$1FF6
    1326  fc4c

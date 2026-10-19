@@ -1645,43 +1645,43 @@
    1348  fbf8				   ReturnPad		;   The `sta $1FF6` runs HERE, the `rts` opcode
    1349  fbf8		       8d f6 1f 	      sta	$1FF6	;   is fetched from bank0 at $FBF9 -> pops the
    1350  fbfb		       60		      rts		;   bank0 VBL/jsr caller.
-   1351  fbfc		       00 00 00 00*	      .ds	$FC3B - *, 0	; CallPad_BuildColupF entry image: bank0/bank1
-   1352  fc3b		       4c c7 f5 	      jmp	BuildColupF	;   execute `sta $1FF9`, this fetch is bank3-side
-   1353  fc3e
-   1354  fc3e							; VCS3 — OvShutScan body (Phase C kill test; bank2 tramp `sta $1FF9 / jmp
-   1355  fc3e							; $FD80` at $FE48). IN: A = kill clock (EnemyRamP-1), Y = MetaB b6 hot bit
-   1356  fc3e							; ($40/0 — staged bank2-side; MetaB lives in bank2 models_data ROM, a
-   1357  fc3e							; (RoomPF0Lo),Y fetch here would see bank3's pad). OUT (2026-10-14b):
-   1358  fc3e							; C=0 passable (A ignored) / C=1 + A≠0 kill / C=1 + A=0 SOLID block —
-   1359  fc3e							; returned through the $FBEE pad (sta $1FF8 executed here, rts fetched
-   1360  fc3e							; from bank2's byte-identical copy) to OvShutBand's jsr — A and C
-   1361  fc3e							; survive both; X/Y clobbered (OvShutBand reloads A before the latch).
-   1362  fc3e							; Kill semantics (user spec 2026-10-14, superseded the 2026-10-13
-   1363  fc3e							; endpoint-only rule): a horizontal containment gate (after the clock
-   1364  fc3e							; math, before the hot/cold split) — the player's lit span must sit
-   1365  fc3e							; inside the column [BallX-7, BallX] or the call returns passable
-   1366  fc3e							; (side brush, user bug 2026-10-14: touching the closed block from the
-   1367  fc3e							; side is not a crunch). Then hot band (MetaB b6) = touching ANY
-   1368  fc3e							; closed slice kills (endpoint test ≡ any-part: the ping-pong states
-   1369  fc3e							; $11/$1B/$1F never have a closed middle with open ends). Cold band =
-   1370  fc3e							; containment only: kill iff the whole sprite sits inside CLOSED
-   1371  fc3e							; slices (crunched) — $1F trivially; $1B/$11 iff the box misses the
-   1372  fc3e							; aperture (H≥gapHi or F<gapLo). Touching an edge from the open side
-   1373  fc3e							; is not a cold kill — that is what the hot flag is for. Every
-   1374  fc3e							; NON-kill outcome (side brush, opening half, totally closed, the
-   1375  fc3e							; aperture at the player's Y) goes through the solidity test
-   1376  fc3e							; (.V3solidBody): both endpoints open → passable, else SOLID block —
-   1377  fc3e							; the punched cell must not be walkable through a closed shutter
-   1378  fc3e							; (user 2026-10-14b).
-   1379  fc3e							; Clock parity: RefreshEnemyY inc'd EnemyRamP at overscan entry, so
-   1380  fc3e							; clock-1 = the exact value the kernel rendered slices from this frame.
-   1381  fc3e							; Endpoints: RoomY (head) + RoomY+11 (feet = PLAYER_SPRITE_H-1) — every
-   1382  fc3e							; open state's gap is >=13 lines ($1B = the 13-line center slice), so
-   1383  fc3e							; both endpoints open ⟺ the whole sprite is clear of that state.
-   1384  fc3e							; Ping-pong constants (#32/#4) = bank2 VcrCoveredState + CrunchClock
-   1385  fc3e							; (verify_build check_crunch_clock asserts the trio).
-   1386  fc3e							; ------------------------------------------------------------------------------
-   1387  fc3e		       00 00 00 00*	      .ds	$FD80 - *, 0
+   1351  fbfc		       00 00 00 00*	      .ds	$FC35 - *, 0	; CallPad_BuildColupF entry image: bank0/bank1
+   1352  fc35		       4c c7 f5 	      jmp	BuildColupF	;   execute `sta $1FF9`, this fetch is bank3-side
+   1353  fc38
+   1354  fc38							; VCS3 — OvShutScan body (Phase C kill test; bank2 tramp `sta $1FF9 / jmp
+   1355  fc38							; $FD80` at $FE48). IN: A = kill clock (EnemyRamP-1), Y = MetaB b6 hot bit
+   1356  fc38							; ($40/0 — staged bank2-side; MetaB lives in bank2 models_data ROM, a
+   1357  fc38							; (RoomPF0Lo),Y fetch here would see bank3's pad). OUT (2026-10-14b):
+   1358  fc38							; C=0 passable (A ignored) / C=1 + A≠0 kill / C=1 + A=0 SOLID block —
+   1359  fc38							; returned through the $FBEE pad (sta $1FF8 executed here, rts fetched
+   1360  fc38							; from bank2's byte-identical copy) to OvShutBand's jsr — A and C
+   1361  fc38							; survive both; X/Y clobbered (OvShutBand reloads A before the latch).
+   1362  fc38							; Kill semantics (user spec 2026-10-14, superseded the 2026-10-13
+   1363  fc38							; endpoint-only rule): a horizontal containment gate (after the clock
+   1364  fc38							; math, before the hot/cold split) — the player's lit span must sit
+   1365  fc38							; inside the column [BallX-7, BallX] or the call returns passable
+   1366  fc38							; (side brush, user bug 2026-10-14: touching the closed block from the
+   1367  fc38							; side is not a crunch). Then hot band (MetaB b6) = touching ANY
+   1368  fc38							; closed slice kills (endpoint test ≡ any-part: the ping-pong states
+   1369  fc38							; $11/$1B/$1F never have a closed middle with open ends). Cold band =
+   1370  fc38							; containment only: kill iff the whole sprite sits inside CLOSED
+   1371  fc38							; slices (crunched) — $1F trivially; $1B/$11 iff the box misses the
+   1372  fc38							; aperture (H≥gapHi or F<gapLo). Touching an edge from the open side
+   1373  fc38							; is not a cold kill — that is what the hot flag is for. Every
+   1374  fc38							; NON-kill outcome (side brush, opening half, totally closed, the
+   1375  fc38							; aperture at the player's Y) goes through the solidity test
+   1376  fc38							; (.V3solidBody): both endpoints open → passable, else SOLID block —
+   1377  fc38							; the punched cell must not be walkable through a closed shutter
+   1378  fc38							; (user 2026-10-14b).
+   1379  fc38							; Clock parity: RefreshEnemyY inc'd EnemyRamP at overscan entry, so
+   1380  fc38							; clock-1 = the exact value the kernel rendered slices from this frame.
+   1381  fc38							; Endpoints: RoomY (head) + RoomY+11 (feet = PLAYER_SPRITE_H-1) — every
+   1382  fc38							; open state's gap is >=13 lines ($1B = the 13-line center slice), so
+   1383  fc38							; both endpoints open ⟺ the whole sprite is clear of that state.
+   1384  fc38							; Ping-pong constants (#32/#4) = bank2 VcrCoveredState + CrunchClock
+   1385  fc38							; (verify_build check_crunch_clock asserts the trio).
+   1386  fc38							; ------------------------------------------------------------------------------
+   1387  fc38		       00 00 00 00*	      .ds	$FD80 - *, 0
    1388  fd80				   VCS3
    1389  fd80		       4a		      lsr
    1390  fd81		       4a		      lsr		; clock>>2 (64-frame ping-pong period)
