@@ -259,7 +259,7 @@ machinery. Options with measured/estimated value:
 | # | idea | saves | cost/risk |
 |---|---|---|---|
 | S1 | `RoomDataTable` word pairs → 1 word/room, PF derived from the rect stream (`2 + 2*solid + 5*hot`) | 32 B data | **TRIED + REVERTED 2026-10-19**: derivation cost +37 B code → net **+5 B worse**. Do not retry without a cheaper derivation. |
-| S2 | `RoomEnemies` 4 B/room → 2 B/room (8-bit offset + count packed) | 32 B | +~15 B decode |
+| S2 | `RoomEnemies` 4 B/room → 2 B/room (base word + count/band + prefix sum) | 24 B data | **TRIED + REVERTED 2026-10-19**: +36 B decode → net **+12 B worse**. Like S1, the loader arithmetic outcosts the record bytes. |
 | S3 | enemy record 4 B → 3 B (type+dir packed with x) | ~9 B | +~10 B decode |
 | S4 | `LevelDataTable` stride 14 → 12 (drop redundant start x/y constants, they are fixed 32/24) | **DONE** −14 B used (code −6, data −8) | trivial; kernel sets `LevelStartX/Y` to 32/24 immediates |
 | S5 | derive SOLID rects at room entry from the 9 PF bytes (drop the generated solid streams; keep hot/M1/feature records) | ~100 B data | ~100-150 B of code + must reproduce convert's rect merge exactly and fit the 5-slot cache; net ≈ 0 and medium risk |
@@ -275,6 +275,34 @@ shortcut.
 b2 2090/2006, b3 2102/1994 — total used **10908**, free 5476,
 code 9207 / data 1701 / fill 4482. The pre-pad headroom warning is unchanged
 (a `.ds` pad after `LoadLevel` absorbs the 6 freed bytes; bank0 is still 1 B).
+
+**Post-pad-cleanup ledger** (same day, `c110b3f`): deleted the dead
+`CallPad_ClearPFColumn` pad (no call site in any bank; the body is reached
+directly from `BombMarkWalls`) from bank0 and bank1, which shifts the pad block
+by 6 B — `CallPad_BuildColupF`'s post-switch image moved `$FC3B → $FC35` in
+bank3 and bank2's twin `$FC38 → $FC32`. Used **10896** (b0 −6 code, b1 −6
+code, fill +12), free 5488.
+
+### Measured floor (2026-10-19)
+
+Every remaining stage-data idea was built and measured, not estimated:
+S1 **+5 B worse**, S2 **+12 B worse**, S4 **−14 B** (the only free win), and a
+`SetupScorePointers` loop trim broke `sim_frame_budget` (+1 line: 6×`sta abs`
+is 24c, the 2-step loop is 64c — the HUD band has no slack, revert).
+
+Structural reason the crumbs stop here: every bank region is anchored by
+absolute `.ds` pins (cross-bank twins + page-aligned font), so shrinking code
+*inside* an anchored region only grows that region's fill — it never moves the
+end. Only a deletion *after* the last pin would create headroom, and bank0's
+last bytes are the `CallPad_MusicTick` pad. Consequence: **bank0's 1-byte
+pre-pad headroom is structural**, not a compaction failure; any new bank0
+feature needs a bank0 deletion, not a size win elsewhere.
+
+Real remaining reductions are feature decisions, not compaction:
+- LV001 banner: ~76 B (banner path + `L`/`V` glyphs) — visible (no level
+  indicator for 1 s at stage start).
+- Music (`MusicTick` + melody): ~200-390 B — audible; user wants it kept.
+- Title/intro cluster: ~978 B — user decided keep (2026-10-19).
 
 ## 5. Open decisions for the user
 
