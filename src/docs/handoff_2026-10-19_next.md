@@ -155,16 +155,24 @@ move), bank3 holds data + readers with room left.
 ### 4a. Score renderer → HERO PF-table score — **DISPROVEN 2026-10-19**
 
 The audit claim ("HERO renders its score from baked per-scanline PF images")
-does not survive a check against `screenshots/hero_001.png`:
+is contradicted by HERO's own code (`docs/hero/hero_bank0.asm`, assembled to a
+4K image and disassembled — no screenshots used as evidence):
 
-- HERO's score is `705255` — **6 distinct digits centered across the screen
-  middle**.
-- TIA playfield is 20 bits × 4 clocks = 80 px, then **repeated or mirrored**
-  for the other 80 px. A PF score therefore always appears twice; a centered
-  one shows the left glyphs mirrored on the right.
-- Six different digits crossing the center are geometrically impossible in PF.
-  HERO's score is sprite-based (P0×3 + P1×3 interleaved) — **the technique we
-  already use** (`MenuMain` 48px loop + `DigitGfx`).
+- `$DF00` is an **8x8 sprite glyph font**: 10 digits (0-9), 8 bytes each,
+  then letters/blank. Rendered as bitmaps they are unmistakably 0-9.
+- HUD setup fills zero-page pointer **high bytes with `$DF`** (`LDX #$0B /
+  LDA #$DF / STA $85,X / DEX/DEX ...` at `$D0E6-$D0F4`), i.e. pointers into
+  that glyph table.
+- Rendering is `LDA ($xx),Y` → `STA $1B` (GRP0) / `STA $1C` (GRP1) in 8-row
+  loops (`$D47F-$D4FD` for the 5-letter row, `$D15E-$D17A` and `$D23C+` for
+  other sprite rows), with `STA $25/$26` (VDELP0/1), `STA $04/$05`
+  (NUSIZ0/1) and `STA $06/$07` (COLUP0/1).
+- No PF (`$0D/$0E/$0F`) writes exist in the score/HUD path; PF is the terrain.
+
+So HERO's score is **sprite-based with a glyph table and (zp),Y fetch** — the
+same technique as our `MenuMain` 48px score + `DigitGfx`. The PF variant could
+not show six distinct centered digits anyway (20 bits × 4 clocks, repeated or
+mirrored).
 
 Conclusion: no rewrite. The 1033 B cluster is HERO-parity, not waste. The
 audit's §2/§4a wording is corrected in `docs/code_size_audit.md`.
