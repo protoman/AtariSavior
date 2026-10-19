@@ -1635,12 +1635,11 @@ def check_level_window(src: Path) -> None:
 
 
 def check_crunch_clock(src: Path) -> None:
-    """VcrCoveredState (bank2) mirrors bank3 CrunchClock's ping-pong.
+    """The vcrunch ping-pong formula vs the VBL state table.
 
-    Both routines drive the vcrunch shutter (PF cell sweep / sprite-slice
-    state + kill). The `cmp #32` fold and the `cmp #4`/`sbc #4` dwell must
-    stay byte-identical or the aperture render drifts from the kill test
-    (comment contract at bank2 VcrCoveredState; asserted here).
+    VCS3 (bank3) executes the fold/dwell; VcrStateTab (bank2) is the VBL
+    hot-path form. The `cmp #32` fold and `cmp #4`/`sbc #4` dwell must stay
+    in step or the rendered aperture drifts from the kill test.
     """
     tokens = ("cmp #32", "eor #$3F", "cmp #4", "sbc #4")
 
@@ -1654,23 +1653,16 @@ def check_crunch_clock(src: Path) -> None:
         tail = text[m.start():]
         return "\n".join(tail.splitlines()[:lines_after])
 
-    b3 = window(src / "bank3.asm", "CrunchClock", 60)
-    b2 = window(src / "bank2.asm", "VcrCoveredState", 50)
     b3v = window(src / "bank3.asm", "VCS3", 50)
-    if not b3:
-        err("bank3.asm: CrunchClock label not found")
-        return
-    if not b2:
-        err("bank2.asm: VcrCoveredState label not found")
-        return
     if not b3v:
         err("bank3.asm: VCS3 label not found (OvShutScan body)")
         return
+    # 2026-10-19: both mirrors are gone. VcrCoveredState had no callers once
+    # VcrStateTab took the VBL hot path, and CrunchClock/CrunchMasks died with
+    # PhVcrEntry (the retired vcrunch tramp). The formula now exists only
+    # where it EXECUTES — VCS3 (bank3) — and the VcrStateTab bytes below are
+    # checked against the re-derived values.
     for tok in tokens:
-        if tok not in b3:
-            err(f"bank3.asm CrunchClock: expected {tok!r} in first 60 lines")
-        if tok not in b2:
-            err(f"bank2.asm VcrCoveredState: expected {tok!r} in first 50 lines")
         if tok not in b3v:
             err(f"bank3.asm VCS3: expected {tok!r} in first 50 lines")
     # VcrStateTab (bank2 $FE64, 32B) — the VBL hot-path form of the same
@@ -1699,7 +1691,7 @@ def check_crunch_clock(src: Path) -> None:
                             0x11 if e < 9 else 0x1B if e < 18 else 0x1F)
             if list(got) != want:
                 err(f"VcrStateTab @ ${addr:04X}: bytes drift from the "
-                    f"VcrCoveredState formula\n    got  {bytes(got).hex()}\n"
+                    f"shutter formula\n    got  {bytes(got).hex()}\n"
                     f"    want {bytes(want).hex()}")
 
 

@@ -136,62 +136,13 @@ HcrBandLo:
 ; user ruling 2026-10-13). Y = record class on entry; tail leaves
 ; Y = base+2 for PhNext. Clobbers A/X/Y + LineCount/CCX/CEY.
 ; ==============================================================================
-    org $F800
-PhVcrEntry:
-    ; Entered from bank2 PhVcrPre: stack (top→) = h, w, y, x, <caller>.
-    ; bank2 pushed the fields — bank3 MUST NOT read (FetchPtr) (cross-bank
-    ; ROM = garbage). Y = base+4 on entry; saved for the .PhRec return.
-    tya
-    pha                     ; [base+4]
-    tsx
-    lda $0105,X             ; x
-    sta LineCount
-    lda $0104,X             ; w
-    sta CollisionCellX
-    lda $0102,X             ; h
-    tax
-    jsr CrunchClock         ; A = covered_h (1..h)
-    pha                     ; [base+4, ch]
-    ; bbox width masks: pairs (x>>1)..((x+w-1)>>1) via CrunchMasks
-    lda LineCount
-    lsr
-    tay                     ; p0
-    lda CollisionCellX
-    sec
-    sbc #1
-    clc
-    adc LineCount           ; x+w-1
-    lsr
-    tax                     ; p1
-    jsr CrunchMasks         ; LineCount/CCX/CEY = pair-range masks
-    ; OR covered rows: start y, count ch
-    ; stack: ch, base+4, h, w, y, x
-    tsx
-    lda $0105,X             ; y
-    ldy $0101,X             ; ch
-    jsr PhVcApplyOR
-    ; AND open rows: start y+ch, count h-ch (0 → done)
-    tsx
-    lda $0103,X             ; h
-    sec
-    sbc $0101,X             ; h-ch
-    beq .PVfin
-    tay
-    tsx
-    lda $0105,X             ; y
-    clc
-    adc $0101,X             ; y+ch
-    jsr PhVcApplyAND
-.PVfin:
-    pla
-    pla                     ; ch, base+4 → A = base+4
-    tay                     ; Y = base+4 (record end → .PhRec iny → next class)
-    pla
-    pla
-    pla
-    pla                     ; drain h, w, y, x
-    jmp $FCC1               ; pad: sta $1FF8 / jmp .PhRec (bank2 image)
-
+; ==============================================================================
+; PhVcrEntry RETIRED (2026-10-19) — bank2's PhVcrPre tail-jmps VcrShutter
+; (bank2) since the Phase-B rework; no tramp targets $F800 anymore (the
+; $FB57/$FE67 images are legacy fill). The whole $F800-$F87F block is free
+; for data. Vcrunch's live path = bank2 VcrShutter (PF punch + Temp/BandTab)
+; + bank3 VCS3 (kill); CrunchClock/CrunchMasks/PhVcApply* remain for it.
+; ==============================================================================
 ; ==============================================================================
 ; PhHcrEntry — PhaseBlink $82 (hcrunch) tramp target.
 ; Record: $82, 0, band (row), w (4px = 2*cells), 1. Single-row band
@@ -294,77 +245,11 @@ PhHcrEntry:
     jmp $FCC7               ; pad: sta $1FF8 / jmp .PhRec (bank2 image)
 
 ; ==============================================================================
-; CrunchClock — ping-pong shutter clock (VCR mirrors + retired
-; PhVcrEntry; the two hcrunch call sites moved to HcrClock 2026-10-16).
-;   In:  X = full extent (cells, ≥1)
-;   Out: A = covered (1..full) — never 0 (always-solid stub)
-;   Clobbers A/X/Y (callers save what they need)
-; sc = EnemyRamP>>2 (0..63); triangle tri = sc<32 ? sc : 63-sc (0..31..0);
-; dwell: effective = max(0, tri-4) — a ~16f flat bottom at home (both
-; ends of the sc wrap land in the dwell zone). covered = 1+min(eff,
-; full-1). Sweep: eff climbs 0..27 over tri 4..31 = 28 sc steps × 4f ≈
-; 112f out + 112f back + dwell — tunable via the #4/#32 constants
-; (user CHECK: eyeball speed, 2026-10-13).
+; CrunchClock / CrunchMasks DELETED (2026-10-19): their only caller was
+; PhVcrEntry, which bank2 stopped tramping to in the Phase-B rework (vcrunch
+; now stages its PF punch in bank2 VcrShutter and kills through VCS3). The
+; live ping-pong formula is VcrStateTab (VBL) + VCS3 (kill) — both guarded.
 ; ==============================================================================
-    org $F900
-CrunchClock:
-    cpx #1
-    bne .ccNorm
-    lda #1                  ; full==1: covered is always 1 — skip the clock
-    rts
-.ccNorm:
-    lda EnemyRamP
-    lsr
-    lsr                     ; sc 0..63
-    cmp #32
-    bcc .ccF
-    eor #$3F                ; sc>=32: 63-sc (sc^63 — high bits don't overlap)
-.ccF:
-    cmp #4
-    bcc .ccZ                ; dwell: tri<4 → 0
-    sbc #4                  ; C=1 from cmp
-.ccZ:
-    tay                     ; Y = eff
-    txa
-    sec
-    sbc #1                  ; A = full-1
-    pha                     ; (stack as the min() temp — no ZP free)
-    tsx
-    tya
-    cmp $0101,X             ; eff vs full-1
-    bcc .ccA                ; eff smaller → keep A=eff
-    lda $0101,X             ; else full-1
-.ccA:
-    pla
-    clc
-    adc #1
-    rts
-
-; ==============================================================================
-; CrunchMasks — PF pair-range masks via the prefix tables.
-;   In:  Y = first pair (0-9), X = last pair (0-9, ≥ Y)
-;   Out: LineCount = PF0 mask, CollisionCellX = PF1 mask,
-;        CollisionEndY = PF2 mask
-;   Clobbers A/X/Y
-; mask(p0..p1) = P(p1+1) & ~P(p0) — P(n) = OR of pairs 0..n-1 per
-; register (CrPfx0/1/2, n = 0..10). Prefix-from-0 callers (hcrunch)
-; skip this and load CrPfx* directly.
-; ==============================================================================
-    org $F940
-CrunchMasks:
-    ; Prefix masks are cumulative-disjoint, so P(p1+1) ^ P(p0) ==
-    ; P(p1+1) & ~P(p0) — the XOR form drops 2 insns/register (-21c).
-    lda CrPfx0+1,X
-    eor CrPfx0,Y
-    sta LineCount
-    lda CrPfx1+1,X
-    eor CrPfx1,Y
-    sta CollisionCellX
-    lda CrPfx2+1,X
-    eor CrPfx2,Y
-    sta CollisionEndY
-    rts
-
 ; Prefix tables: P(n) for n pairs from pair 0 — n = 0..10.
 ; Pair → register: 0-1 PF0 ($30,$C0), 2-5 PF1 ($C0,$30,$0C,$03),
 ; 6-9 PF2 ($03,$0C,$30,$C0). PF0 maxes at n=2, PF1 at n=6, PF2 at n=10.
@@ -377,51 +262,9 @@ CrPfx2:
     .byte $00, $00, $00, $00, $00, $00, $00, $03, $0F, $3F, $FF
 
 ; ==============================================================================
-; PhVcApplyOR / PhVcApplyAND — write one PF buffer row trio.
-;   In:  A = row (0-2), Y = row count (≥1); masks in LineCount/CCX/CEY
-;   PF0Buf[row], +3 (PF1), +6 (PF2) — the 9-byte buffer layout the
-;   phase-cell path already uses (offset 0/3/6 + row).
-;   Clobbers A/X/Y.
+; PhVcApplyOR / PhVcApplyAND DELETED (2026-10-19) — same retired vcrunch
+; tramp path; hcrunch fuses its AND+OR pass inside PhHcrEntry.
 ; ==============================================================================
-    org $F9B0
-PhVcApplyOR:
-    tax
-.PVo:
-    lda PF0Buf,X
-    ora LineCount
-    sta PF0Buf,X
-    lda PF0Buf+3,X
-    ora CollisionCellX
-    sta PF0Buf+3,X
-    lda PF0Buf+6,X
-    ora CollisionEndY
-    sta PF0Buf+6,X
-    inx
-    dey
-    bne .PVo
-    rts
-
-    org $F9E0
-PhVcApplyAND:
-    tax
-.PVa:
-    lda LineCount
-    eor #$FF
-    and PF0Buf,X
-    sta PF0Buf,X
-    lda CollisionCellX
-    eor #$FF
-    and PF0Buf+3,X
-    sta PF0Buf+3,X
-    lda CollisionEndY
-    eor #$FF
-    and PF0Buf+6,X
-    sta PF0Buf+6,X
-    inx
-    dey
-    bne .PVa
-    rts
-
 ; ==============================================================================
 ; HcrClock — retuned shutter clock (hcrunch-only; 2026-10-16 retune).
 ;   In:  X = full extent (cells, ≥1); reads EnemyRamP (StartFrame-pinned)
