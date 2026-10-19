@@ -94,9 +94,10 @@ def main() -> None:
     # so its 11 fold call sites + 10 stage lines left kernel with it.
     # was 30: the snake's symmetric patrol (2026-10-19) dropped its two ROM-dir
     # reads; then the redundant VBL band-color fold left (EnterRoom stages it),
-    # so 27.
-    assert KERNEL.count("jsr FoldIndirect") >= 27, \
-        f"expected >=27 fold call sites (conn/LoadLevel + P3.1 enemy " \
+    # so 27. S4 (2026-10-19) dropped the two start_x/start_y table fields,
+    # so 25.
+    assert KERNEL.count("jsr FoldIndirect") >= 25, \
+        f"expected >=25 fold call sites (conn/LoadLevel + P3.1 enemy " \
         f"derives; EnterRoom folds moved to bank2 direct reads), " \
         f"got {KERNEL.count('jsr FoldIndirect')}"
     # every fold batch stages FetchPtr immediately before its reads

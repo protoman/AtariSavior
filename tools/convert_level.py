@@ -688,8 +688,6 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
         f"{prefix}_START_ROOM = {level.get('start_room', 0)}",
         f"{prefix}_WALL_COLOR = ${wall:02x}",
         f"{prefix}_WALL_COLOR2 = ${wall2:02x}",
-        f"{prefix}_START_X = 32",
-        f"{prefix}_START_Y = 24",
         f"{prefix}_MINER_ROOM = {miner_room}",
         f"{prefix}_MINER_X = {enemy_x_px(float(level.get('miner_x', 0)) * 2)}",
         f"{prefix}_MINER_Y = {px(level.get('miner_y', 0), 12)}",
@@ -894,7 +892,8 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
 
     The game reads LevelDataTable[Level] to start a level and place the miner.
     miner_room's high bit carries miner-facing-right; low 7 bits remain room id.
-    The entry contains 8 scalar bytes followed by three word pointers (stride14).
+    The entry contains 6 scalar bytes followed by three word pointers (stride12;
+    start_x/start_y dropped 2026-10-19 — they were the constants 32/24).
 
     models_data.asm holds each referenced model's PF/rect data ONCE, shared by
     every room (across all levels) whose RoomDataTable points at that model.
@@ -968,18 +967,19 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
 
     tail_lines = [
         "",
-        "LEVEL_DATA_STRIDE = 14",
+        "LEVEL_DATA_STRIDE = 12",
         f"LEVEL_COUNT = {len(levels)}",
         "",
-        "; Per-level entry (stride 14): start room/x/y, miner room/x/y, both wall",
+        "; Per-level entry (stride 12): start room, miner room/x/y, both wall",
         "; colors, then the level's RoomDataTable and RoomConnections bases.",
+        "; Start x/y are the fixed constants 32/24 (kernel.asm LoadLevel).",
         "LevelDataTable:",
     ]
     for level_n, _level in levels:
         prefix = f"LEVEL{level_n}"
         tail_lines += [
-            f"  .byte {prefix}_START_ROOM, {prefix}_START_X, {prefix}_START_Y, "
-            f"{prefix}_MINER_ROOM, {prefix}_MINER_X, {prefix}_MINER_Y, "
+            f"  .byte {prefix}_START_ROOM, {prefix}_MINER_ROOM, "
+            f"{prefix}_MINER_X, {prefix}_MINER_Y, "
             f"{prefix}_WALL_COLOR, {prefix}_WALL_COLOR2",
             f"  .word {prefix}_RoomDataTable, {prefix}_RoomConnections, {prefix}_RoomEnemies",
         ]
