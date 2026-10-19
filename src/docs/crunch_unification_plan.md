@@ -387,7 +387,7 @@ product does not need it. The size is feature-driven, not architecture-driven.
 |---|---|---|---|
 | 1 | "HERO uses hardware collision; we have six rect walkers" | **wrong twice**: HERO has no CX reads; our two hot walkers already read PF bits | **~0 B** |
 | 2 | "they bake the screen, we compute it; 1.3 KB of staging" | **mostly wrong**: our PF SHAPE is already baked and 3-5x denser than HERO's (9 B/room vs 36-60); the "1.3 KB" is 645 B across 4 routines, and what it computes is dynamic state | **~0 B** (baking trades ~100 B of code for ~150-200 B of data) |
-| 3 | flicker multiplexer (`SelectActiveObject` 289 B) | still to audit | ? |
+| 3 | "flicker multiplexer" (`SelectActiveObject` 289 B) | **~0 B**: the scheduler is only ~35 B of it; the rest is per-object X/Y/colour/pattern staging that every sprite needs anyway. Removing it = dropping the feature (bomb+enemies+miner on one GRP1), not saving code | **≤35 B** |
 | 4 | cross-bank tax | still to audit | ? |
 | 5 | feature surface | still to audit | ? |
 
