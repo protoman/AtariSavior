@@ -1505,9 +1505,10 @@ EnemyBitTable:
 ; ÷4 here; bat ungated, spider ÷8, tentacle ÷2/÷8, moth ÷2 in E1-E4).
 ; Snake patrol: bounds are SYMMETRIC about the ROM spawn X (± SNAKE_PATROL =
 ; one tile, user 2026-10-19 — see the constant): retreat a tile behind the
-; placement, come out a tile, repeat. The ROM dir still picks which way it
-; starts. Ignores editor range_* per user
-; 2026-09-23. First move = facing (live dir from LoadEnemyRam). No wall collision.
+; placement, come out a tile, repeat. The ROM dir names the side it comes OUT
+; on: the loader inverts a snake's live dir at room load (bank2 EnterRoomB2),
+; so the first move is the retreat into its wall. Ignores editor range_* per
+; user 2026-09-23. No wall collision.
 ; ------------------------------------------------------------------------------
 UpdateEnemies:
     lda EnemyCount

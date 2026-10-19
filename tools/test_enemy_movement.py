@@ -14,8 +14,10 @@ against the sources, so a drift fails this check:
     safe window: after the HUD score-ptr stomp, before every reader —
     without it, enemies render stale/vanish)
   - all three Y readers use EnemyRamY (draw, CheckEnemyHit, LaserHitTest)
-  - UpdateEnemies: loop ungated, snake carries its own TickCounter & 3 gate
-  - speeds per plan: snake &3 (1px/4f); others added in E1-E4
+  - UpdateEnemies: loop ungated, snake carries its own TickCounter & 7 gate
+  - speeds per plan: snake &7 (1px/8f, user 2026-10-19); others added in E1-E4
+  - a snake's live dir is the INVERSE of its record dir (load-time invert:
+    authored dir = where it will come OUT; first move = the retreat)
 
 Run: python3 tools/test_enemy_movement.py
 """
@@ -27,6 +29,61 @@ ROOT = Path(__file__).resolve().parents[1]
 KERNEL = (ROOT / "src" / "kernel.asm").read_text(encoding="utf-8")
 # S5.4: LaserHitTest body moved to bank2 (entry tramp stays in kernel.asm)
 BANK2 = (ROOT / "src" / "bank2.asm").read_text(encoding="utf-8")
+
+
+def loader_run(records, dark=0x00):
+    """Run bank2's REAL enemy loader (EBLER_Loop) over fabricated records.
+
+    Records are 4 B [type, x, y, dir] in EnemyOffTable order, staged in RAM
+    (FetchPtr = $0180) so the test owns its data. Entry is mid-routine with
+    FetchPtr/EnemyCount staged exactly as EnterRoomB2 has them; the loop stops
+    at EBLER_Done (before `jmp ReturnPad`), so it never touches TIA or the
+    stack. Returns the live shadow: right[] (EnemyRamD bits), x[], and
+    EnemyRamD bits 4-7 (RoomDarkMask must survive).
+    """
+    import sys
+    sys.path.insert(0, str(ROOT / "tools"))
+    from test_cell_map import Mem, parse_labels
+    from py65.devices.mpu6502 import MPU
+
+    names = {"EBLER_Loop", "EBLER_Done", "EnemyRamX", "EnemyRamY",
+             "EnemyRamD", "EnemyCount", "FetchPtr"}
+    lbl = parse_labels(ROOT / "src" / "tests" / "frozen" / "bank2.lst", names)
+    missing = names - lbl.keys()
+    assert not missing, f"frozen bank2.lst missing {sorted(missing)} — re-freeze"
+
+    mem = Mem()
+    mem.bank = 2
+    r = mem.ram
+    rec = 0x180                      # RAM window FetchPtr reads (no stack)
+    for i, (typ, dir_) in enumerate(records):
+        mem[rec + 4 * i + 0] = typ
+        mem[rec + 4 * i + 1] = 100 - 10 * i     # spawn x
+        mem[rec + 4 * i + 2] = 84               # y
+        mem[rec + 4 * i + 3] = dir_
+    r[lbl["FetchPtr"] & 0x7F] = rec & 0xFF
+    r[(lbl["FetchPtr"] & 0x7F) + 1] = 0        # $180 -> hi 0
+    r[lbl["EnemyCount"] & 0x7F] = len(records)
+    r[lbl["EnemyRamD"] & 0x7F] = dark
+
+    mpu = MPU(memory=mem)
+    mpu.pc = lbl["EBLER_Loop"]
+    mpu.a = mpu.y = 0
+    mpu.x = 0
+    mpu.sp = 0xFD
+    for _ in range(4000):
+        mpu.step()
+        if mpu.pc == lbl["EBLER_Done"]:
+            break
+    else:
+        raise AssertionError(f"loader never reached EBLER_Done "
+                             f"(pc=${mpu.pc:04X} bank={mem.bank})")
+    n = len(records)
+    return dict(
+        right=[bool(r[(lbl["EnemyRamD"] & 0x7F)] & (1 << i))
+               for i in range(n)],
+        x=[r[(lbl["EnemyRamX"] & 0x7F) + i] for i in range(n)],
+        dark=r[lbl["EnemyRamD"] & 0x7F] & 0xF0)
 
 
 def line_no(pattern: str, flags: int = 0) -> int:
@@ -71,6 +128,39 @@ def main() -> None:
     ler_body = BANK2.split("LoadEnemyRam:")[1].split("EBLER_Done:")[0]
     assert "sta EnemyRamX,X" in ler_body and "sta EnemyRamY,X" in ler_body, \
         "LoadEnemyRam must shadow both x and y"
+    # 2026-10-19 (user): a snake's authored dir = where it will come OUT, so
+    # the LIVE dir must be its inverse — the first move is the retreat into
+    # its wall. The loader is dir's only consumer (the patrol bounds are
+    # spawn ± SNAKE_PATROL), so this invert is the whole feature.
+    ler_code = "\n".join(ln.split(";")[0] for ln in ler_body.splitlines())
+    assert re.search(r"cpy\s+#SNAKE\s*\n\s*bne\s+EBLER_Dir\s*\n\s*"
+                     r"eor\s+#\$FF\s*\nEBLER_Dir:\s*\n\s*tay\s*\n\s*"
+                     r"bmi\s+EBLER_Left",
+                     ler_code), \
+        "snake live dir must be inverted at load (eor #$FF before the bmi; "\
+        "art: bank2 SNAKE = kernel ENEMY_SNAKE = 2). The tay is load-bearing: "\
+        "cpy clobbers the N flag the bmi reads, so it must be re-set from A"
+    assert re.search(r"lda\s+\(FetchPtr\),Y\s*\n\s*sta\s+Temp", ler_code), \
+        "loader must read the record TYPE (+0) into Temp for the snake test"
+    assert re.search(r"^SNAKE\s*=\s*2\b", BANK2, re.M) and \
+        re.search(r"^ENEMY_SNAKE\s*=\s*2\b", KERNEL, re.M), \
+        "bank2's SNAKE copy must match kernel ENEMY_SNAKE"
+
+    # ... and the live loop behaves that way (real bank2 code, not a regex).
+    for recs, want_right, want_x, dark in (
+            ([(2, 0xFF)], [True], [100], 0xA0),      # snake authored LEFT ->
+            ([(2, 0x00)], [False], [100], 0x00),     #   first move RIGHT
+            ([(4, 0xFF)], [False], [100], 0x00),     # moth: sense unchanged
+            ([(4, 0x00)], [True], [100], 0x00),
+            ([(2, 0x00), (4, 0x00)], [False, True], [100, 90], 0x50),
+            ([(2, 0xFF), (4, 0xFF)], [True, False], [100, 90], 0x00)):
+        got = loader_run(recs, dark)
+        assert got["right"] == want_right and got["x"] == want_x, (
+            f"loader {recs}: live dir {got['right']} / x {got['x']}, "
+            f"expected {want_right} / {want_x}")
+        assert got["dark"] == dark, (
+            f"loader {recs}: EnemyRamD bits 4-7 must keep RoomDarkMask "
+            f"({dark:#04x} -> {got['dark']:#04x})")
 
     # --- Y readers (no ROM y reads left in draw/CEH/laser vertical) -------
     draw = KERNEL.split(".SOEnemyColorDone:")[1].split(".SOEnemySkip:")[0]

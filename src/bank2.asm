@@ -98,6 +98,7 @@ PlayerWalkA = $fde7
 PlayerWalkB = $fdf3
 LAMP = 5                       ; enemy type: editor lamp — kernel LAMP must match
 RAFT = 7                       ; enemy type: moving raft — kernel ENEMY_RAFT
+SNAKE = 2                      ; enemy type: kernel ENEMY_SNAKE (load-dir invert)
 ; --- BuildColupF (S5.1, moved from bank0) — addresses must match kernel.asm ---
 TILE_ROWS = 3                     ; playable color bands (rows 0-2 of ColupfBuf)
 RoomRectsLo = $90                 ; hot/solid rect stream — read directly here
@@ -257,6 +258,8 @@ EBLER_Loop:
     cpx EnemyCount
     bcs EBLER_Done
     ldy EnemyOffTable,X             ; Y = X*4 type offset
+    lda (FetchPtr),Y                ; +0 = type (kept for the snake invert)
+    sta Temp                        ; Temp = record type (EnterRoom: free)
     iny                             ; +1 = x
     lda (FetchPtr),Y
     sta EnemyRamX,X
@@ -265,6 +268,19 @@ EBLER_Loop:
     sta EnemyRamY,X
     iny                             ; +3 = dir ($FF = left)
     lda (FetchPtr),Y
+    ldy Temp                        ; record type
+    cpy #SNAKE
+    bne EBLER_Dir
+    eor #$FF                        ; SNAKE: the authored dir = where it will
+                                    ; come OUT, so invert the live bit — the
+                                    ; first move must be the retreat into its
+                                    ; wall (user 2026-10-19). Nothing else
+                                    ; reads the ROM dir: the patrol bounds are
+                                    ; spawn ± SNAKE_PATROL.
+EBLER_Dir:
+    tay                             ; Y = dir, re-setting N from A (the cpy
+                                    ; above clobbered the flags `bmi` needs;
+                                    ; Y is reloaded at the loop top)
     bmi EBLER_Left
     lda EnemyBitTable,X             ; face right → set bit
     ora EnemyRamD
