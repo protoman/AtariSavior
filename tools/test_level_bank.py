@@ -28,6 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 KERNEL = (ROOT / "src" / "kernel.asm").read_text(encoding="utf-8")
+BANK2 = (ROOT / "src" / "bank2.asm").read_text(encoding="utf-8")
 BANK1 = (ROOT / "src" / "bank1.asm").read_text(encoding="utf-8")
 BANK2 = (ROOT / "src" / "bank2.asm").read_text(encoding="utf-8")
 
@@ -92,15 +93,16 @@ def main() -> None:
     # #22: EnterRoom moved to bank2 (direct (ptr),Y reads — it IS the reader),
     # so its 11 fold call sites + 10 stage lines left kernel with it.
     # was 30: the snake's symmetric patrol (2026-10-19) dropped its two ROM-dir
-    # reads, so two fold call sites left the kernel.
-    assert KERNEL.count("jsr FoldIndirect") >= 28, \
-        f"expected >=28 fold call sites (band/conn/LoadLevel + P3.1 enemy " \
+    # reads; then the redundant VBL band-color fold left (EnterRoom stages it),
+    # so 27.
+    assert KERNEL.count("jsr FoldIndirect") >= 27, \
+        f"expected >=27 fold call sites (conn/LoadLevel + P3.1 enemy " \
         f"derives; EnterRoom folds moved to bank2 direct reads), " \
         f"got {KERNEL.count('jsr FoldIndirect')}"
     # every fold batch stages FetchPtr immediately before its reads
     stages = len(re.findall(r"^\s+sta FetchPtr\+?1?\s*$", KERNEL, re.M))
-    assert stages >= 12, \
-        f"expected >=12 sta FetchPtr lines, got {stages}"
+    assert stages >= 10, \
+        f"expected >=10 sta FetchPtr lines, got {stages}"
 
     # --- P2.5: band-color cache contract ----------------------------------
     # FIX 2026-09-28: was $D1 = PF1Buf[2] — collides with kernel .Row
@@ -112,8 +114,13 @@ def main() -> None:
         "RoomBandColor must not alias PF1Buf[2] ($D1) — kernel reads it"
     assert "lda RoomBandColor" in KERNEL, \
         "kernel/overscan must read the VBLANK-staged cache (inlined)"
-    assert "sta RoomBandColor" in KERNEL, \
-        "VBLANK stage (sta RoomBandColor) missing"
+    # 2026-10-19: the per-frame VBL re-read of the band color was redundant
+    # (EnterRoomB2 restages it on every room entry since the 2026-10-04 fix),
+    # so the ONLY writer is the room loader now.
+    assert "sta RoomBandColor" not in KERNEL, \
+        "kernel.asm must not re-read the band color every VBL (redundant)"
+    assert "sta RoomBandColor" in BANK2, \
+        "EnterRoomB2 must stage RoomBandColor (the only writer)"
     assert "jsr LoadRoomBottomColor" not in KERNEL, \
         "LoadRoomBottomColor was inlined (S1.5) — reads go direct"
 
