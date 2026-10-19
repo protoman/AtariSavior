@@ -144,33 +144,8 @@ FooterPtr4   = $E6
 FooterPtr5   = $E8
 FooterPtr6   = $EA
 
-PlayerWalkA:
-    .byte %00111100             ; row 0 torso (sprites.png 2026-10-03)
-    .byte %01111110             ; row 1
-    .byte %01111100             ; row 2 — yellow face
-    .byte %01111110             ; row 3
-    .byte %01111100             ; row 4 — grey pack
-    .byte %11111110             ; row 5
-    .byte %11111110             ; row 6
-    .byte %00111110             ; row 7  legs
-    .byte %00111110             ; row 8
-    .byte %00010100             ; row 9
-    .byte %00100010             ; row 10 boots apart (spread)
-    .byte %01000010             ; row 11 boots apart
-
-PlayerWalkB:
-    .byte %00111100             ; row 0 torso (sprites.png 2026-10-03)
-    .byte %01111110             ; row 1
-    .byte %01111100             ; row 2 — yellow face
-    .byte %01111110             ; row 3
-    .byte %01111100             ; row 4 — grey pack
-    .byte %11111110             ; row 5
-    .byte %11111110             ; row 6
-    .byte %00111110             ; row 7  legs
-    .byte %00111110             ; row 8
-    .byte %00010100             ; row 9
-    .byte %00011000             ; row 10 boots together (passing)
-    .byte %00011000             ; row 11 boots together
+    .ds $F07A - *, 0            ; bank1 PlayerWalkA/B copies retired with
+                                 ;   the title player band (2026-10-19)
 
 TitleKernel:
     sta WSYNC                    ; entry-line overrun guard (KernelInit+dispatch)

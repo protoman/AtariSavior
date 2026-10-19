@@ -3224,7 +3224,7 @@ DropStep:
 ;          the intro exit ate the first press and made #2 read as dead)
 ;   RESET  (SWCHB b0, active-low EDGE) → score 000000, LoadLevel tail arms
 ;          the real drop-in → gameplay starts
-; (Intro $FD never reaches here — DropStep routes it to TitleIntro.)
+; ($FD reaches here directly — merged title, 2026-10-19.)
 ; StepsLeft = previous SWCHB sample (physics is skipped on title, so it is
 ; title-owned; the first play frame rewrites it as the step budget).
 ; Console switches are read again after any jsr (LoadLevel clobbers X/Y/A).
@@ -3233,7 +3233,8 @@ TitleWork:
     ; --- SELECT edge (TitleSelect, fill region) ---
     jsr CallPad_TitleSelect
     bcc .TWselDone             ; C=0: no edge
-    jsr LoadLevel              ; title arm re-runs → score/objects refreshed
+    ; No LoadLevel here: the merged title renders no room and the digits band
+    ; reads Level directly (2026-10-19).
 .TWselDone:
     ; --- RESET edge ---
     lda StepsLeft
@@ -3318,9 +3319,8 @@ RefreshEnemyY:
     beq .REYRts                 ; neither pressed
     lda #$FD
     sta DropTarget              ; merged title sentinel ($FD, 2026-10-19)
-    jsr LoadLevel               ; tail → DropArm .DATitle (score/objects)
-    pla                         ; drop OUR return address (LoadLevel already
-    pla                         ;   popped its own) — tail into TitleWork
+    pla                         ; drop our jsr return address — tail into
+    pla                         ;   TitleWork (no room load: title draws none)
     jmp TitleWork
 .REYRts:
     rts
