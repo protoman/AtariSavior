@@ -30,6 +30,64 @@ tripwire if a later chunk misbehaves: diff the ledger, find the chunk.
 C2 is the structural one; it may require the level-data move to bank3 first
 (bank2 needs the room).
 
+## STATE SNAPSHOT — 2026-10-19, end of chunk A2 (commit `78d996b`)
+
+Everything below is measured, not estimated. Tree green: build + both sims +
+42-test battery + title demo; frozen banks re-frozen.
+
+### Actual sizes
+
+| bank | code | data | used | free | largest contiguous hole |
+|---|---|---|---|---|---|
+| bank0 | 3180 | 360 | 3540 | 556 | — (1 B pre-pad headroom; byte-frozen) |
+| bank1 | 2628 | 554 | 3182 | 914 | fragmented |
+| bank2 | 2513 | 748 | 3261 | 835 | **192 B** `$F404-$F4C3` |
+| bank3 | 1019 | 74 | 1093 | 3003 | **1102 B** `$F3B2-…`, 587 B `$F161-…`, 300 B |
+| **total** | **9340** | **1736** | **11076** | **5308** | |
+
+level data (in bank2 spill slots `$F700-$F800` 256 B, `$F901-$F970` 111 B,
+`$F9D9-$FB84` 427 B): index 56 + tables 334 + models 166 = **556 B**.
+
+Fill/pad tax inside the 16K (pinned tramps, `.ds` slots, byte-identical twin
+images): **4571 B** — bank0 554, bank1 552, bank2 813, bank3 2652. This is why
+every 150 B feature costs a reshuffle: the free space is 100 B holes.
+
+### Capacity answer (asked 2026-10-19)
+
+- **Code in bank0+bank1 only: impossible.** Code alone is 9340 B vs 8192 B
+  available (-1148 B), before the 1736 B of data and 556 B of level data.
+- **bank0+bank1 + half of bank2: not reachable today.** 11076 B used vs 10240 B.
+  Short 836 B *and* bank0 is 1 byte from its pre-pad limit; it would need
+  ~800-1000 B of content deleted plus a full repack.
+- **Reachable target: code in bank0 + bank1 + a *part* of bank2, bank3 = the
+  data/content bank.** After A3 bank2 falls to ~2100-2500 B (51-61%) and bank3
+  carries the level data plus ~3.3 KB of contiguous free space.
+
+### What the chunks actually bought (honest accounting)
+
+- C1 -10 B, **A1 -22 B** (bank2), **A2 -170 B** (bank2). A1/A2 were
+  *prerequisites*, not the payoff: they removed the `(RoomPF0Lo),Y` block reads
+  so the VBL chain could leave bank2. Net so far: **bank2 3453 → 3261 used,
+  free 643 → 835, biggest hole 99 → 192 B**.
+- **A3 (level-data move) is the payoff** and the next real gain: -556 B of data
+  from bank2 plus ~600 B of block readers that must follow it to bank3
+  (PhaseBlink, BuildColupF's hot-rect walk, HotOverlapBody, EnterRoom's tail).
+  That is the whole-layout rebuild (convert split + two-pass build + test
+  migration), not a hole-hunt.
+- C2/C3 after A3 are cheap (-150…-200) and need no hole arithmetic.
+
+### Standing rules learned here (do not relearn)
+
+1. A bank2↔bank3 pad is ADDRESS-sensitive: the twin is the first byte fetched
+   post-switch, i.e. at **sta+3**; the pin must be `.ds <addr>` placed BEFORE
+   the block label (inside the block it is a BRK in the fall-through path).
+2. `sim_bomb_fuse` runs BEFORE the ROM is concatenated, so it validates the
+   *previous* savior.bin — after a chain change, `cat bank*.bin > savior.bin`
+   by hand before trusting a sim result.
+3. PhaseBlink must run AFTER SBT's band/ball staging and BEFORE the pack
+   (`VcrShutter` overwrites Temp/BandTab for the shutter cell).
+
+
 ## Size ledger
 
 Measured with `tools/rom_size_report.py --md` (DASM listing-based; code vs data
