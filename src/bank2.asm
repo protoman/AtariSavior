@@ -1446,42 +1446,10 @@ TallySum:
 
     .ds $F8B7 - *, 0            ; spill-pool gap: VcrCoveredState relocated here
 ; ------------------------------------------------------------------------------
-; VcrCoveredState — aperture clock → slice state (vcrunch_shutter_plan Phase C).
-; (moved from the $FE9C hole 2026-10-17 to make room for the ball-door key
-;  touch-unlock in OvShutBand; no callers since VcrStateTab took the hot path —
-;  kept as the formula reference verify_build guards against CrunchClock.)
-; IN: A = frame clock (EnemyRamP). OUT: A = $00/$11/$1B/$1F (slice states).
-; Mirror of bank3 CrunchClock (lsr/lsr = clock>>2, cmp #32 / eor #$3F fold,
-; cmp #4 / sbc #4 head offset — verify_build asserts the shared constants).
-; ------------------------------------------------------------------------------
-VcrCoveredState:
-    lsr
-    lsr                         ; clock>>2 (64-frame ping-pong period)
-    cmp #32
-    bcc .VChop
-    eor #$3F                    ; 32..63 -> 31..0 (fold down)
-.VChop:
-    cmp #4
-    bcc .VCq
-    sbc #4                      ; head offset (C set by cmp) — dwell zone
-.VCq:
-    cmp #4
-    bcc .VCopen                 ; eff 0-3 (both dwell halves) -> fully open
-    cmp #9
-    bcc .VC11
-    cmp #18
-    bcc .VC1b
-    lda #$1f                    ; fully closed
-    rts
-.VC1b:
-    lda #$1b                    ; center slice open
-    rts
-.VC11:
-    lda #$11                    ; only edge slices closed
-    rts
-.VCopen:
-    lda #0                      ; fully open
-    rts
+; VcrCoveredState DELETED (2026-10-19): it had no callers once VcrStateTab
+; took the VBL hot path, and the formula it documented is already asserted
+; directly against bank3 CrunchClock + VCS3 and re-derived for VcrStateTab
+; by verify_build.check_crunch_clock. (~39 B freed.)
     .ds $F8DD - *, 0            ; twin: bank0 PlayerSpriteA lives here (test_miner)
 TitleJetSprite:
     ; Exact A/B copies of PlayerSpriteA/B; game alternates every 4 frames.
