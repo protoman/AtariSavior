@@ -6,12 +6,14 @@ Everything below is grounded in measurements recorded in
 
 ## 0. State at handoff (all committed, tree green)
 
-- HEAD `7736175`. Build + both sims + 42-test battery + title demo green;
-  frozen banks re-frozen.
-- Sizes: b0 3540 used / 556 free · b1 3182 / 914 · b2 3261 / 835 (largest hole
-  **192 B** at `$F404-$F4C3`) · b3 1093 / 3003. Level data **556 B** (bank2).
-- Fill/pad tax: **4571 B** (b3 2652 = usable reserve; b0-b2 1919 = pinned).
-- Code: 9340 B. Cross-bank machinery: 92 sites / 512 B.
+- HEAD `14d9620` (A3 + C2 + C3). Build + both sims + 42-test battery + title
+  demo green; frozen banks re-frozen.
+- Sizes: b0 3540 used / 556 free · b1 3182 / 914 · b2 2098 / 1998 · b3 2102 /
+  1994. Largest bank2 holes: 315 B `$FC4C-$FD86`, 503 B `$F9D9-$FBCF` (data
+  window, empty), 141 B `$FF59`. Largest bank3: 322 B `$FC3E-$FD7F`.
+  Level data **556 B**: index + tables in bank2, models + blocks in bank3.
+- Code: **9213 B** (A3 -42, C2 -85). Fill/pad tax: 4468 B.
+- Cross-bank pads: ~85 sites.
 
 ### Rules that bit us (do not relearn)
 
