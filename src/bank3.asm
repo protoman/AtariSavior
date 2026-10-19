@@ -344,172 +344,140 @@ HOVFeatEntry:
     ; $81/$82 entered from bank2 HOVFeatPre: stack (top→) = h, w, y, x,
     ; <base from .HOVloop>. Fields MUST be drained before HOVnext/HOVlegHit
     ; (they pop the .HOVloop base). $80 has no fields (HOVafterGate = bank2).
+    ; C1 (2026-10-19): ONE dispatcher for both crunch classes — the old
+    ; HOVvcrunch/HOVhcrunch jsr+rts pair and their duplicated drains are gone.
+    ; Conditional misses branch to the nearby .HFmissJ trampoline (a direct
+    ; bcc to .HFmissD is >127 B away in both arms).
     cmp #$80
-    beq .HFphase
+    bne .HFnotPhase
+    jmp .HFphase                ; (far: trampoline form for every branch here)
+.HFnotPhase:
     pha                         ; save class (b7 check clobbers A)
     lda EnemyDeadMask
     and #$80                    ; b7: crunch kill already happened?
-    bne .HFmissP                ; yes → pass (wall stays, no re-kill)
+    beq .HFnotLatched
+    jmp .HFmissP                ; yes → pass (wall stays, no re-kill)
+.HFnotLatched:
     pla
     cmp #$81
-    bne .HF82
-    jsr HOVvcrunch
-    beq .HFm81                  ; miss → drain + HOVnext
-    pla
-    pla
-    pla
-    pla                         ; kill → drain h,w,y,x (base on top for HOVlegHit)
-    jmp $FCD3                   ; pad: sta $1FF8 / jmp HOVlegHit (bank2 image)
-.HF82:
+    bne .HFnotV
+    jmp .HFv
+.HFnotV:
     cmp #$82
-    bne .HFm81                  ; unknown b7 class → same drain path
-    jsr HOVhcrunch
-    beq .HFm81
-    pla
-    pla
-    pla
-    pla
-    jmp $FCD3                   ; pad: sta $1FF8 / jmp HOVlegHit (bank2 image)
-.HFmissP:
-    pla                         ; drop saved class
-.HFm81:
-    pla
-    pla
-    pla
-    pla                         ; drain h,w,y,x (base on top for HOVnext)
-    jmp $FCCD                   ; pad: sta $1FF8 / jmp HOVnext (bank2 image)
-.HFphase:
-    lda EnemyDeadMask
-    and #$60                    ; b5 armed | b6 phase dead
-    cmp #$20                    ; armed AND not yet removed?
-    bne .HFmiss
-    jmp $FCD9                   ; pad: sta $1FF8 / jmp HOVafterGate (bank2 image)
-.HFmiss:
-    jmp $FCCD                   ; $80 miss: no field drain (none pushed)
+    beq .HFh_begin
+    jmp .HFmissP                ; unknown b7 class → same drain path
+.HFh_begin:
 
-; ==============================================================================
-; HOVvcrunch — $81 kill test. Covered rect = [x, y, w, covered_h] (top
-; rows of the bbox — same extent PhaseBlink stages this frame).
-; Overlap: x ≤ max && x+w > min && y ≤ bottom && y+covered_h > top.
-; Out: A = 1 kill (b7 latched) / 0 miss. Y clobbered (base on stack
-; survives). CollisionX ($88 = Temp) scratch — HOV already owns it.
-; ==============================================================================
-HOVvcrunch:
-    ; Entered via jsr from HOVFeatEntry: stack (top→) = ret(2), h, w, y, x,
-    ; <base>. Fields from bank2 PreFields — no (FetchPtr) reads.
+    ; ---------------- $82 hcrunch: band ∈ [top,bottom] ----------------
+    tsx
+    lda $0105,X                 ; y = band
+    cmp CollisionCellY
+    bcs .HFh_lo
+    jmp .HFmissD                ; band < top
+.HFh_lo:
+    cmp CollisionEndY
+    beq .HFh2
+    bcc .HFh2                   ; band <= bottom
+    jmp .HFmissD                ; band > bottom
+.HFh2:
+    tsx
+    lda $0104,X                 ; w
+    lsr                         ; full cells
+    tax
+    ; Rule (user 2026-10-16): cold kill while CLOSING (sc<52 = dwell+grow);
+    ; hot (LineCount = MetaB, staged bank2-side; asl×2 brings b6 to C)
+    ; exempts — any phase/extent kills. Opening never kills.
+    lda LineCount
+    asl
+    asl                         ; b7 out, b6 -> C
+    bcs .HFh3                   ; hot → any phase/extent kills
+    lda EnemyRamP
+    lsr
+    lsr                         ; sc
+    cmp #52
+    bcc .HFh3                   ; closing half
+    jmp .HFmissJ                ; opening half → no kill
+.HFh3:
+    txa
+    pha                         ; full — stays callee-independent
+    jsr HcrClock                ; n covered cells (X = full preserved)
+    sta CollisionX              ; save covered
+    lda LineCount
+    asl
+    asl                         ; b7 out, b6 -> C
+    pla                         ; full (PLA preserves C)
+    bcs .HFh4                   ; hot → any extent kills
+.HFh4:
+    lda CollisionX
+    asl                         ; covered_w in 4px cols
+    cmp CollisionEndX           ; covered_w vs min col (strict >)
+    bcc .HFmissJ
+    beq .HFmissJ
+    jmp .HFkill
+
+.HFmissJ:
+    jmp .HFmissD
+
+    ; ---------------- $81 vcrunch: covered rect [x, y, w, h] -------------
+.HFv:
     tsx
     lda $0106,X                 ; x
     cmp CollisionCellX          ; x vs max col
-    beq .HVx
-    bcc .HVx
-    lda #0
-    rts
-.HVx:
+    beq .HFv2
+    bcc .HFv2
+    jmp .HFmissD
+.HFv2:
     sta LineCount               ; save x
     tsx
     lda $0105,X                 ; y
     cmp CollisionEndY           ; y vs bottom row
-    beq .HVy
-    bcc .HVy
-    lda #0
-    rts
-.HVy:
+    beq .HFv3
+    bcc .HFv3
+    jmp .HFmissD
+.HFv3:
     sta CollisionX              ; save y
     tsx
     clc
     lda $0106,X                 ; x
     adc $0104,X                 ; + w
     cmp CollisionEndX           ; x+w vs min col (strict >)
-    beq .HVno
-    bcc .HVno
+    bcc .HFmissJ
+    beq .HFmissJ
     tsx
     lda $0103,X                 ; h
-    sta LineCount               ; Phase B sprite shutter: covered = h (static
-                                ;   full — same extent the ball renders; the
-                                ;   per-frame CrunchClock sweep returns in
-                                ;   Phase C with the sub-band window)
+    sta LineCount               ; Phase B sprite shutter: covered = h
     lda CollisionX              ; y
     clc
     adc LineCount               ; y + covered_h
     cmp CollisionCellY          ; vs top row (strict >)
-    beq .HVno2
-    bcc .HVno2
+    bcc .HFmissJ
+    beq .HFmissJ
+
+.HFkill:
     lda EnemyDeadMask
     ora #$80                    ; b7: crunch kill latch
     sta EnemyDeadMask
-    lda #1
-    rts
-.HVno:
-.HVno2:
-    lda #0
-    rts
-
-; ==============================================================================
-; HOVhcrunch — $82 kill test. Covered rect = [0, band, 2*covered_cells, 1]
-; (prefix from col 0 — same extent PhaseBlink stages this frame).
-; Overlap: band ∈ [top, bottom] && covered_w > min col.
-; Rule 1 (user 2026-10-14): cold kill only while CLOSING (sc<32) and not
-; totally closed (covered==full); hot (LineCount = MetaB b6, staged
-; bank2-side by HOVFeatPre) exempts both gates.
-; Out: A = 1 kill (b7 latched) / 0 miss.
-; ==============================================================================
-HOVhcrunch:
-    ; Entered via jsr from HOVFeatEntry: stack (top→) = ret(2), h, w, y(band),
-    ; x, <base>. Fields from bank2 PreFields — no (FetchPtr) reads.
-    tsx
-    lda $0105,X                 ; y = band
-    cmp CollisionCellY          ; band < top?
-    bcc .HHno
-    cmp CollisionEndY           ; band vs bottom
-    beq .HHw
-    bcc .HHw
-    bne .HHno
-.HHw:
-    tsx
-    lda $0104,X                 ; w
-    lsr                         ; full cells
-    tax
-    ; Rule (user 2026-10-16): cold kill while CLOSING (sc<52 = s<13 =
-    ; dwell+grow under HcrClock — the grow half IS the closing sweep);
-    ; hot (LineCount = MetaB, staged bank2-side by HOVFeatPre; asl×2
-    ; brings b6 to C) exempts — any phase/extent kills. The old
-    ; totally-closed exemption is GONE: a catch at the seal froze the
-    ; player inside the wall (push prevents the approach; the seal-
-    ; moment catch is the crunch). Opening (sc>=52) never kills.
-    lda LineCount
-    asl
-    asl                     ; b7 out, b6 -> C
-    bcs .HHcc               ; hot -> any phase/extent kills
-    lda EnemyRamP
-    lsr
-    lsr                         ; sc
-    cmp #52
-    bcs .HHno                   ; opening half -> no kill
-.HHcc:
-    txa
-    pha                     ; full — wall check stays callee-independent
-    jsr HcrClock                ; n covered cells (X = full preserved)
-    sta CollisionX              ; save covered (free temp here)
-    lda LineCount
-    asl
-    asl                         ; b7 out, b6 -> C
-    pla                         ; full (PLA preserves C)
-    bcs .HHovl                  ; hot -> any extent kills
-    ; cold + closing + caught kills at ANY extent (fall through)
-.HHovl:
-    lda CollisionX
-    asl                         ; covered_w in 4px cols
-    cmp CollisionEndX           ; covered_w vs min col (strict >)
-    beq .HHno
-    bcc .HHno
+    pla
+    pla
+    pla
+    pla                         ; drain h,w,y,x (base on top for HOVlegHit)
+    jmp $FCD3                   ; pad: sta $1FF8 / jmp HOVlegHit (bank2 image)
+.HFmissD:
+    pla
+    pla
+    pla
+    pla                         ; drain h,w,y,x (base on top for HOVnext)
+.HFmiss:
+    jmp $FCCD                   ; pad: sta $1FF8 / jmp HOVnext (bank2 image)
+.HFmissP:
+    pla                         ; drop saved class
+    jmp .HFmissD
+.HFphase:
     lda EnemyDeadMask
-    ora #$80
-    sta EnemyDeadMask
-    lda #1
-    rts
-.HHno:
-    lda #0
-    rts
+    and #$60                    ; b5 armed | b6 phase dead
+    cmp #$20                    ; armed AND not yet removed?
+    bne .HFmiss
+    jmp $FCD9                   ; pad: sta $1FF8 / jmp HOVafterGate (bank2 image)
 
 ; ==============================================================================
 ; Bank3-side tramp images (byte-identical with bank2's fetch slots) and
