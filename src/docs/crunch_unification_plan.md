@@ -386,9 +386,23 @@ product does not need it. The size is feature-driven, not architecture-driven.
 | # | claim | verdict | space |
 |---|---|---|---|
 | 1 | "HERO uses hardware collision; we have six rect walkers" | **wrong twice**: HERO has no CX reads; our two hot walkers already read PF bits | **~0 B** |
-| 2 | baked screens vs staged screens | still to audit | ? |
+| 2 | "they bake the screen, we compute it; 1.3 KB of staging" | **mostly wrong**: our PF SHAPE is already baked and 3-5x denser than HERO's (9 B/room vs 36-60); the "1.3 KB" is 645 B across 4 routines, and what it computes is dynamic state | **~0 B** (baking trades ~100 B of code for ~150-200 B of data) |
 | 3 | flicker multiplexer (`SelectActiveObject` 289 B) | still to audit | ? |
 | 4 | cross-bank tax | still to audit | ? |
 | 5 | feature surface | still to audit | ? |
+
+**Point 2 detail (measured).** The four names I lumped together total 645 B:
+`EnterRoomB2` 179, `PhaseBlink` 173, `BuildColupF` 161, `B3StageBand` 132.
+Inside them:
+
+| piece | B | bakeable? |
+|---|---|---|
+| PF shape (9 B/room copy in EnterRoomB2) | ~15 | already baked — HERO spends 36-60 B/screen for the same job |
+| stripe colour per band (2 level bytes) | 33 | static already, nothing to bake |
+| hot-rect colour walk | 75 | partly: 3 colour bytes/room would cost ~60 B of data, and the red/yellow pulse (18 B) is per-frame and cannot be baked |
+| band/M1/ball expansion (`B3StageBand` part A) | 87 | bakeable as ~6 B/room → ~120 B of data for ~87 B of code: net worse |
+| `PhaseBlink` (blink + shutter PF patching) | 178 | no — per-frame animation, no HERO analogue |
+| overlay pack (`B3StageBand` part B) | ~45 | no — depends on the runtime destroyed-strip state |
+
 
 
