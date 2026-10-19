@@ -1807,12 +1807,13 @@ ExitRoomRight:
 ; Level management
 ; ==============================================================================
 ; LoadLevel: read LevelDataTable entry for current Level, init pointers, enter room.
-; LevelDataTable stride: 14 bytes
-;   +0..+2: start_room, start_x, start_y
-;   +3..+5: miner_room (b7 = faces right), miner_x, miner_y
-;   +6..+7: pfdata ptr (lo, hi)
-;   +8..+9: conn ptr (lo, hi)
-;  +10..+11: enemy ptr (lo, hi)
+; LevelDataTable stride: 12 bytes (S4 2026-10-19: start_x/y dropped — they
+; were always the constants 32/24)
+;   +0: start_room
+;   +1..+3: miner_room (b7 = faces right), miner_x, miner_y
+;   +4..+5: pfdata ptr (lo, hi)
+;   +6..+7: conn ptr (lo, hi)
+;   +8..+9: enemy ptr (lo, hi)
 ; ------------------------------------------------------------------------------
 LoadLevel:
     ; Stage leave/reload/advance: walls return + bombs refill to 5
@@ -1836,8 +1837,8 @@ LoadLevel:
     lda #(LV_SHOW_FRAMES|$80)  ; bit7 = banner flag: decs down to $80; any
     sta LevelShowTimer         ; tally ARM (<=127) kills it instantly
 .NoBanner:
-    ; Compute LevelDataTable pointer: base + Level * 14
-    ; Stride 14: start(3) + miner(3) + wall_colors(2) + ptrs(3×2)
+    ; Compute LevelDataTable pointer: base + Level * 12
+    ; Stride 12: start_room(1) + miner(3) + wall_colors(2) + ptrs(3×2)
     lda Level
     asl                         ; *2
     sta Temp                    ; Temp = L * 2
@@ -1846,8 +1847,7 @@ LoadLevel:
     clc
     adc Temp                    ; *10
     adc Temp                    ; *12
-    adc Temp                    ; *14
-    tay                         ; Y = Level * 14
+    tay                         ; Y = Level * 12
 
     ; --- Fold batch (P2.7): LevelDataTable lives in bank2 at the frozen
     ; address. Stage FetchPtr immediately before the batch; FoldIndirect
@@ -1859,17 +1859,15 @@ LoadLevel:
     sta FetchPtr+1
     ldx #0
 
-    ; +0..+2: start room, x, y
+    ; +0: start room; start x/y are the fixed constants 32/24
     jsr FoldIndirect
     sta LevelStartRoom
-    iny
-    jsr FoldIndirect
+    lda #32
     sta LevelStartX
-    iny
-    jsr FoldIndirect
+    lda #24
     sta LevelStartY
     iny
-    ; +3..+5: miner room, x, y
+    ; +1..+3: miner room, x, y
     jsr FoldIndirect
     sta LevelMinerRoom
     iny
@@ -1879,28 +1877,28 @@ LoadLevel:
     jsr FoldIndirect
     sta MinerY
     iny
-    ; +6..+7: wall colors
+    ; +4..+5: wall colors
     jsr FoldIndirect
     sta LevelWallColor
     iny
     jsr FoldIndirect
     sta LevelWallColor2
     iny
-    ; +8..+9: pfdata ptr
+    ; +6..+7: pfdata ptr
     jsr FoldIndirect
     sta LevelPFDataLo
     iny
     jsr FoldIndirect
     sta LevelPFDataHi
     iny
-    ; +10..+11: conn ptr
+    ; +8..+9: conn ptr
     jsr FoldIndirect
     sta LevelConnLo
     iny
     jsr FoldIndirect
     sta LevelConnHi
     iny
-    ; +12..+13: enemy ptr
+    ; +10..+11: enemy ptr
     jsr FoldIndirect
     sta LevelEnemyLo
     iny

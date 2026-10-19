@@ -258,17 +258,23 @@ machinery. Options with measured/estimated value:
 
 | # | idea | saves | cost/risk |
 |---|---|---|---|
-| S1 | `RoomDataTable` word pairs → 1-byte offsets into a bank3 block page (2 B/room) | 32 B | +~20 B lookup code; block pages must stay within a 256 B window (they do: $F160-$F284) |
+| S1 | `RoomDataTable` word pairs → 1 word/room, PF derived from the rect stream (`2 + 2*solid + 5*hot`) | 32 B data | **TRIED + REVERTED 2026-10-19**: derivation cost +37 B code → net **+5 B worse**. Do not retry without a cheaper derivation. |
 | S2 | `RoomEnemies` 4 B/room → 2 B/room (8-bit offset + count packed) | 32 B | +~15 B decode |
 | S3 | enemy record 4 B → 3 B (type+dir packed with x) | ~9 B | +~10 B decode |
-| S4 | `LevelDataTable` stride 14 → 12 (drop redundant start x/y constants, they are fixed 32/24) | 8 B | trivial; update kernel readers |
+| S4 | `LevelDataTable` stride 14 → 12 (drop redundant start x/y constants, they are fixed 32/24) | **DONE** −14 B used (code −6, data −8) | trivial; kernel sets `LevelStartX/Y` to 32/24 immediates |
 | S5 | derive SOLID rects at room entry from the 9 PF bytes (drop the generated solid streams; keep hot/M1/feature records) | ~100 B data | ~100-150 B of code + must reproduce convert's rect merge exactly and fit the 5-slot cache; net ≈ 0 and medium risk |
 | S6 | RLE/pack the PF bytes (mostly $FF/$00 runs), expand at room entry | ~60-100 B | ~60 B decoder; room load is not hot; low risk |
 
-Recommended order: S4, S1, S2, S3 (mechanical, ~80 B), then S6; skip S5
-(net-zero, highest risk). Note HERO's own player-vs-wall collision is NOT
-hardware (`CXP0FB $30` is never read in its bank; only `$32/$33/$34` for
-ball/missile/PP are), so "use CX like HERO" is not a shortcut.
+Recommended order: ~~S4~~ (done), then S2/S3 only if a real need appears; skip S1
+(measured net loss), skip S5 (net-zero, highest risk); S6 last. Note HERO's own
+player-vs-wall collision is NOT hardware (`CXP0FB $30` is never read in its bank;
+only `$32/$33/$34` for ball/missile/PP are), so "use CX like HERO" is not a
+shortcut.
+
+**Post-S4 ledger** (`rom_size_report --md`): b0 3534/562, b1 3182/914,
+b2 2090/2006, b3 2102/1994 — total used **10908**, free 5476,
+code 9207 / data 1701 / fill 4482. The pre-pad headroom warning is unchanged
+(a `.ds` pad after `LoadLevel` absorbs the 6 freed bytes; bank0 is still 1 B).
 
 ## 5. Open decisions for the user
 
