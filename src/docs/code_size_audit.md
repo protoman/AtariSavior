@@ -83,7 +83,7 @@ Top routines (bytes, bank):
 |---|---|---|---|---|---|
 | 1 | one crunch machine: one mask table, one clock, one staging path | 1324 | **200-300** | medium (tests exist) | A3 (space) |
 | 2 | co-locate features so pads disappear (A3+C2) | 512 | **100-150** | medium | A3 |
-| 3 | score renderer → PF-table (HERO style) | 1033 | **200-400** | high (visible output) | user OK on look |
+| 3 | score renderer → PF-table (HERO style) | 1033 | **0 — DISPROVEN** | n/a | HERO is sprite-based (2026-10-19 check) |
 | 4 | title/intro simplification (drop music/footer/animated jet) | 978+ | **500-900** | product decision | user |
 | 5 | unify row/band math + bit tables + M1OffTab | ~70 | **30-50** | low | — |
 | 6 | tally/banner simplification | ~220 | **60-100** | product decision | user |
