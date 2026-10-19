@@ -56,24 +56,36 @@ def lst_labels(path):
 L0 = lst_labels(SRC / "bank0.lst")
 L1 = lst_labels(SRC / "bank1.lst")
 L2 = lst_labels(SRC / "bank2.lst")
+L3 = lst_labels(SRC / "bank3.lst")   # A3: level blocks + HOV walker
 
 import test_fixtures as FX  # noqa: E402
-FX.freeze_m2(BANKS, L2)     # frozen model2 into the private copy (rule 2026-10-14)
+FX.freeze_m2(BANKS, L3)     # frozen model2 into the private copy (rule 2026-10-14)
 PC_STARTFRAME = L0["StartFrame"]
 PC_PHM = L0["PlayerHitsMap"]
 PC_HOF = L0["HotOverlapFlag"]
 PC_OVERLAY = L0["OverlayTramp"]
 PC_STEPD = L0["StepDown"]
 PC_STEPS = L0["StepUp"]
-PC_HOV = L2["HotOverlapBody"]
+PC_HOV = L3["HotOverlapBody"]
 PC_BUMPCHK = 0xF303         # bank0: lda Temp / bpl .NoHotBump (overscan)
 PC_LOSECALL = L0["LoseLife"]  # entry — kill rides the KERNEL hot-bump
                               # (Temp b7 -> jsr LoseLife), not F305
-PC_HOV_BEQCNT = 0xFD03      # beq .HOVdone (hot count==0 -> loop skipped)
-PC_HOV_BMI = 0xFD0C         # bmi .HOVfeature
-PC_HOV_FEAT = L2[".HOVfeature"]
-PC_HOV_JMP = 0xFD84         # jmp .HOVafterGate (resolve: feat+12)
-PC_HOV_ORA = 0xFD63         # ora #%10000000 (HIT; resolve from bank2.lst)
+PC_HOV_FEAT = L3[".HOVfeature"]
+
+
+def _b3_pc(pattern: str) -> int:
+    """PC of the first bank3.lst row whose source matches `pattern`."""
+    for _l in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
+        _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+", _l)
+        if _m and re.search(pattern, _l):
+            return int(_m.group(1), 16)
+    raise SystemExit(f"bank3.lst: no row matching {pattern!r}")
+
+
+PC_HOV_BEQCNT = _b3_pc(r"beq\s+\.HOVdone")      # hot count==0 -> skip
+PC_HOV_BMI = _b3_pc(r"bmi\s+\.HOVfeature")
+PC_HOV_JMP = _b3_pc(r"jmp\s+HOVafterGate")
+PC_HOV_ORA = _b3_pc(r"ora\s+#%10000000")
 
 I_ROOMX, I_ROOMY = 0x00, 0x01
 I_VYLO, I_VYHI = 0x13, 0x14
@@ -107,23 +119,23 @@ RESPAWN_FRAME = 150       # frames to let DropArm respawn settle
 def load_room_m2():
     """Stage model2 (the vcrunch room: V at row1 col4, $81 bbox record +
     MetaB $80) after boot — start_room-agnostic."""
-    a_pf0 = L2["M2TilePF0"]
-    a_rr = L2["M2RoomRects"]
+    a_pf0 = L3["M2TilePF0"]
+    a_rr = L3["M2RoomRects"]
     off = (a_pf0 - 0xF000) & 0xFFFF   # MetaA/MetaB staged at room entry
-    mem.ram[I_PF0LO] = BANKS[2][off + 9]
-    mem.ram[I_PF0HI] = BANKS[2][off + 10]
+    mem.ram[I_PF0LO] = BANKS[3][off + 9]
+    mem.ram[I_PF0HI] = BANKS[3][off + 10]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
         for row in range(3):
-            mem.ram[(dst + row) & 0x7F] = BANKS[2][
+            mem.ram[(dst + row) & 0x7F] = BANKS[3][
                 ((a_pf0 + i * 3 + row) - 0xF000) & 0xFFFF]
     off = (a_rr - 0xF000) & 0xFFFF
-    count = BANKS[2][off]
+    count = BANKS[3][off]
     mem.ram[I_RCBASE] = min(count, 5)
     for i in range(min(count, 5)):
-        p0 = BANKS[2][off + 1 + 2 * i]
-        p1 = BANKS[2][off + 2 + 2 * i]
+        p0 = BANKS[3][off + 1 + 2 * i]
+        p1 = BANKS[3][off + 2 + 2 * i]
         mem.ram[RECTS0 + 4 * i + 0] = p0 >> 2
         mem.ram[RECTS0 + 4 * i + 1] = p0 & 3
         mem.ram[RECTS0 + 4 * i + 2] = p1 >> 2
@@ -228,7 +240,7 @@ def step():
         hits.append((frame, mem.ram[I_CCX], mem.ram[I_CCY],
                      mem.ram[I_CEX], mem.ram[I_CEFY],
                      mem.ram[I_DEAD], mem.ram[I_ROOMX], mem.ram[I_ROOMY]))
-    if mem.bank == 2 and mpu.pc == PC_HOV:
+    if mem.bank == 3 and mpu.pc == PC_HOV:
         hovs.append((frame, (mem.ram[I_DEAD] >> 5) & 1, mem.ram[I_DEAD],
                      mem.ram[I_CCX], mem.ram[I_CCY], mem.ram[I_TEMP]))
         if len(hovs) == 1:

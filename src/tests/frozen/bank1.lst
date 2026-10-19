@@ -1991,8 +1991,8 @@
    1977  fc32		       8d f7 1f 	      sta	$1FF7
    1978  fc35		       4c a4 fa 	      jmp	$FAA4
    1979  fc38				   CallPad_BuildColupF
-   1980  fc38		       8d f8 1f 	      sta	$1FF8	; S5.1: body lives in bank2 (direct rect reads)
-   1981  fc3b		       4c 4f fc 	      jmp	$FC4F
+   1980  fc38		       8d f9 1f 	      sta	$1FF9	; A3: body lives in bank3 (record stream)
+   1981  fc3b		       4c c3 f5 	      jmp	$F5C3	; BuildColupF (bank3; synced by verify_build)
    1982  fc3e				   CallPad_BombMarkWalls
    1983  fc3e		       8d f7 1f 	      sta	$1FF7	; S5.2: body lives in bank1 ($FB10)
    1984  fc41		       4c 10 fb 	      jmp	$FB10

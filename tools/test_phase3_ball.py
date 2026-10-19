@@ -49,12 +49,12 @@ LAB2 = {}
 # model blocks (M<id>) AND per-room blocks (L<level>R<room>): async
 # moved to the room 2026-10-17, so the played room owns its meta.
 _pat = re.compile(r"^\s*\d+\s+([0-9a-f]{4})\s+((?:M\d+|L\d+R\d+)Meta[AB])\b")
-for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
+for _l in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
     _m = _pat.match(_l)
     if _m:
         LAB2.setdefault(_m.group(2), int(_m.group(1), 16))
 if not LAB2:
-    sys.exit("no *MetaA/MetaB labels found in bank2.lst")
+    sys.exit("no *MetaA/MetaB labels found in bank3.lst")
 
 
 def run(rom: Path, band1: int = 0xFF) -> dict:
@@ -65,9 +65,9 @@ def run(rom: Path, band1: int = 0xFF) -> dict:
     mask = 0x07 if band1 else 0x05
     for name, addr in LAB2.items():
         if name.endswith("MetaB"):
-            banks[2][addr & 0xFFF] = META_B_POKE
+            banks[3][addr & 0xFFF] = META_B_POKE
         else:  # MetaA
-            banks[2][addr & 0xFFF] = mask
+            banks[3][addr & 0xFFF] = mask
     respbl_temp = []
 
     class ProbeMem(Mem):

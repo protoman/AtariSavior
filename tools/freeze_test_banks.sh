@@ -63,12 +63,15 @@ done
 python3 "$ROOT/tools/convert_level.py" --levels "$DIR/generated/levels.asm" "${LEVELS[@]}"
 python3 "$ROOT/tools/verify_build.py" --precheck "$DIR"
 cd "$DIR"
+# A3 two-pass (same order as build.sh): bank3 pass 1 exports the level-data
+# block labels that bank2's room tables need.
+dasm bank3.asm -f3 -obank3.bin -lbank3.lst
+python3 "$ROOT/tools/verify_build.py" --sync-bank3-labels "$DIR"
 dasm bank2.asm -f3 -obank2.bin -lbank2.lst
 python3 "$ROOT/tools/verify_build.py" --sync "$DIR"
 dasm kernel.asm -f3 -obank0.bin -lbank0.lst -s/tmp/opencode/frozen_symbols.asm
 python3 "$ROOT/tools/verify_build.py" --sync-overscan "$DIR"
 dasm bank1.asm -f3 -obank1.bin -lbank1.lst
-python3 "$ROOT/tools/verify_build.py" --sync-phrec "$DIR"
 dasm bank3.asm -f3 -obank3.bin -lbank3.lst
 for i in 0 1 2 3; do
     SIZE=$(wc -c < "bank${i}.bin")

@@ -77,13 +77,16 @@ def level_data_sizes() -> dict[str, int]:
     gen = SRC / "generated"
     idx = gen / "levels_index.asm"
     levels = sorted(gen.glob("level_*_rooms.asm"))
+    blocks = sorted(gen.glob("level_*_blocks.asm"))   # A3: bank3 blocks
     models = gen / "models_data.asm"
     return {
         "index": _gen_data_size(idx) if idx.exists() else 0,
-        "levels": sum(_gen_data_size(p) for p in levels),
+        "levels": sum(_gen_data_size(p) for p in levels)
+        + sum(_gen_data_size(p) for p in blocks),
         "models": _gen_data_size(models) if models.exists() else 0,
         "total": (_gen_data_size(idx) if idx.exists() else 0)
         + sum(_gen_data_size(p) for p in levels)
+        + sum(_gen_data_size(p) for p in blocks)
         + (_gen_data_size(models) if models.exists() else 0),
     }
 
@@ -105,7 +108,7 @@ def main() -> int:
         print(f"| **total** | **{tot_c}** | **{tot_d}** | **{tot_f}** | "
               f"**{tot_c + tot_d}** | **{16384 - tot_c - tot_d}** |")
         print()
-        print(f"level data: index {lv['index']} + level tables {lv['levels']} "
+        print(f"level data: index {lv['index']} + tables/blocks {lv['levels']} "
               f"+ models {lv['models']} = **{lv['total']} B**")
         return 0
     for b in BANKS:

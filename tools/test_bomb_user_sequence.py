@@ -28,14 +28,14 @@ BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 for _name in ("L1R1RoomRects",):   # level 1 has one room (the
                                    # L1R2 block was removed with it)
-    for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
+    for _l in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
         if _m:
             _a = int(_m.group(1), 16) - 0xF000
-            BANKS[2][_a + 1 + 2 * BANKS[2][_a]] = 0
+            BANKS[3][_a + 1 + 2 * BANKS[3][_a]] = 0
             break
     else:
-        sys.exit(f"{_name} label missing in bank2.lst")
+        sys.exit(f"{_name} label missing in bank3.lst")
 
 
 def lst_labels(path):
@@ -50,6 +50,7 @@ def lst_labels(path):
 L0 = lst_labels(SRC / "bank0.lst")
 L1 = lst_labels(SRC / "bank1.lst")
 L2 = lst_labels(SRC / "bank2.lst")
+L3 = lst_labels(SRC / "bank3.lst")   # A3: level/model blocks
 PC_STARTFRAME = L0["StartFrame"]
 PC_BMW = L1["BombMarkWalls"]
 
@@ -149,21 +150,21 @@ def step():
 
 def load_room(room):
     pf0, rr = MODEL[room]
-    a_pf0, a_rr = L2[pf0], L2[rr]
+    a_pf0, a_rr = L3[pf0], L3[rr]
     mem.ram[I_PF0LO] = a_pf0 & 0xFF
     mem.ram[I_PF0HI] = a_pf0 >> 8
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
         for row in range(3):
-            mem.ram[(dst + row) & 0x7F] = BANKS[2][
+            mem.ram[(dst + row) & 0x7F] = BANKS[3][
                 ((a_pf0 + i * 3 + row) - 0xF000) & 0xFFFF]
     off = (a_rr - 0xF000) & 0xFFFF
-    count = BANKS[2][off]
+    count = BANKS[3][off]
     mem.ram[I_RCBASE] = min(count, 5)
     for i in range(min(count, 5)):
-        p0 = BANKS[2][off + 1 + 2 * i]
-        p1 = BANKS[2][off + 2 + 2 * i]
+        p0 = BANKS[3][off + 1 + 2 * i]
+        p1 = BANKS[3][off + 2 + 2 * i]
         mem.ram[RECTS0 + 4 * i + 0] = p0 >> 2
         mem.ram[RECTS0 + 4 * i + 1] = p0 & 3
         mem.ram[RECTS0 + 4 * i + 2] = p1 >> 2

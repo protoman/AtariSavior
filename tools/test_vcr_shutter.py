@@ -65,7 +65,7 @@ import test_laser_walk_wall as W
 SRC = W.SRC
 
 import test_fixtures as FX          # noqa: E402
-FX.freeze_m2(W.BANKS, W.L2)         # frozen model2 (user rule 2026-10-14)
+FX.freeze_m2(W.BANKS, W.L3)         # frozen model2 (user rule 2026-10-14)
 
 # ZP indices (addr & 0x7F)
 I_ROOMX, I_ROOMY = W.I_ROOMX, W.I_ROOMY
@@ -92,7 +92,7 @@ for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
 if HUD_JMP is None:
     sys.exit("bank0.lst: `jmp $FC68` not found")
 
-PHMASK4 = W.BANKS[2][W.L2["PhMaskTab"] + 4 - 0xF000]   # pair mask (cols 8-9)
+PHMASK4 = W.BANKS[3][W.L3["PhMaskTab"] + 4 - 0xF000]   # pair mask (cols 8-9)
 PF1_BAND1 = 0xC7 & 0x7F                # PF0Buf + offset3 + band1 (ZP index)
 
 

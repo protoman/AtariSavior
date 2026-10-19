@@ -27,9 +27,12 @@ python3 "$ROOT/tools/convert_level.py" --levels "$DIR/generated/levels.asm" \
 python3 "$ROOT/tools/verify_build.py" --precheck "$DIR"
 
 # Assemble each bank (from src/ so include paths resolve)
-# bank2 FIRST: its LevelDataTable address is synced into kernel.asm
-# (frozen-literal self-heal) before bank0 bakes it into an immediate.
+# A3 two-pass: bank3 pass 1 exports the level-data block labels (bank2's room
+# tables use them), then bank2 → bank0 → bank1, then bank3 pass 2 ships.
 cd "$DIR"
+dasm bank3.asm -f3 -obank3.bin -lbank3.lst
+echo "  bank3 (pass 1): OK"
+python3 "$ROOT/tools/verify_build.py" --sync-bank3-labels "$DIR"
 dasm bank2.asm -f3 -obank2.bin -lbank2.lst
 echo "  bank2: OK"
 python3 "$ROOT/tools/verify_build.py" --sync "$DIR"
@@ -40,11 +43,10 @@ echo "  bank0: OK"
 python3 "$ROOT/tools/verify_build.py" --sync-overscan "$DIR"
 dasm bank1.asm -f3 -obank1.bin -lbank1.lst
 echo "  bank1: OK"
-# bank3's .PhRec tramp literals track bank2's label (moves with level/model
-# data) — self-heal from bank2.lst, same family as the Overscan sync.
-python3 "$ROOT/tools/verify_build.py" --sync-phrec "$DIR"
+# bank3 pass 2: the shipping image (pass 1's labels are what bank2 used; the
+# syncs above only rewrite literals, never sizes, so addresses are stable).
 dasm bank3.asm -f3 -obank3.bin -lbank3.lst
-echo "  bank3: OK"
+echo "  bank3 (pass 2): OK"
 
 # Pad each bank to exactly 4K (DASM doesn't emit trailing zeros)
 for i in 0 1 2 3; do

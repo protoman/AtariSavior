@@ -300,7 +300,7 @@ HMM1                     0023
 HMOVE                    002a              (R )
 HMP0                     0020              (R )
 HMP1                     0021                  
-HotOverlapFlag           fe90              (R )
+HotOverlapFlag           ffec              (R )
 Hover                    009c              (R )
 HUD_ROWS                 0001                  
 INPT4                    000c              (R )

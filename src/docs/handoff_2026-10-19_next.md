@@ -33,7 +33,32 @@ Everything below is grounded in measurements recorded in
 6. Never `git add -A src`; stage `src/rooms`/`src/generated` explicitly and
    diff them.
 
-## 1. Chunk A3 — level data → bank3 (the enabler; do this first)
+## 1. Chunk A3 — level data → bank3 — **DONE 2026-10-19**
+
+Result: bank2 **2098** used (was 3261), bank3 2187. Build + both sims +
+42-test battery + title demo green, frozen banks re-frozen. `bank2` has
+315 B at `$FC4C-$FD86` and the (empty) 503 B `$F9D9` data window is now the
+biggest contiguous run — C2's ~420 B fits.
+
+Traps found while landing it (add to §"Rules that bit us"):
+- **The return tail of a bank3 body must sit at the address bank2 fetches
+  post-switch.** `B3RoomBlocks` ends `sta $1FF8` PINNED at `$F458`; bank2's
+  `ERBlocksDone` `jmp` is at `$F45B`. Putting the tail at the end of the body
+  ($F406) made bank2 execute fill -> GameStart (silent reboot).
+- **HOF entry moved to `$FFEC` in BOTH bank0 and bank2.** bank3's `$FE93`
+  is inside OvShutBand's `.OSline`; bank2 needs its own live pad because
+  `OvM1Block` `jmp HotOverlapFlag` runs with bank2 selected. Bank3 serves the
+  image at `$FFEF` (guard updated in `check_moth_tramp`).
+- `verify_build --sync-bank3-labels` is the new pass-1 step: it writes
+  `generated/bank3_labels.asm` (block EQUs for bank2) and self-heals the
+  `CallPad_BuildColupF` / `HotOverlapFlag` literals in kernel/bank1/bank2.
+- Test migration: block labels/bytes come from bank3 (`L3` / `BANKS[3]`);
+  code labels stay bank2. `test_fixtures` now injects into bank3.
+  `src/tests/generated/` was regenerated (adds `*_blocks.asm`,
+  `spill_bank3.asm`).
+- `emit_spills` sizes only the bank2 table files; bank3 has a fixed org.
+
+## 1b. (historical) A3 plan — level data → bank3
 
 **Why first:** C2 needs ~420 B contiguous in bank2; the biggest hole is 192 B.
 A3 frees the level-data spill slots (256 + 111 + 427 B) and turns bank3 into

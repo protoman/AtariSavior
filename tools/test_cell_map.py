@@ -85,8 +85,12 @@ PHM = L0["PlayerHitsMap"]
 need2 = {"M5RoomRects", "L1R1RoomRects", ".MothColsOk", "L1R1TilePF0",
          "RoomPF0Lo"}
 L2 = parse_labels(FROZEN / "bank2.lst", need2)
+# A3: the level/model BLOCKS live in bank3 — overlay those labels.
+blk = {"M5RoomRects", "L1R1RoomRects", "L1R1TilePF0"}
+L3 = parse_labels(FROZEN / "bank3.lst", blk)
+L2.update(L3)
 if not need2 <= L2.keys():
-    sys.exit(f"bank2.lst labels missing: {sorted(need2 - L2.keys())}")
+    sys.exit(f"bank2/bank3 labels missing: {sorted(need2 - L2.keys())}")
 
 PF0_BUF = 0xC3
 YTOROW = [min(i // 12, 2) for i in range(48)]  # kernel YToRowTable: 36
@@ -292,10 +296,10 @@ def asym_checks(rows: list[str]) -> int:
     r = mem.ram
     # OvM1Block reads TilePF0+9 (MetaA: m1_col+1 in the high nibble)
     # through RoomPF0Lo — bank2 ROM; M1X = 8*(m1_col+1)-1, 0 = no M1.
-    m1n = BANK2[L2["L1R1TilePF0"] - 0xF000 + 9] >> 4
+    m1n = BANK3[L2["L1R1TilePF0"] - 0xF000 + 9] >> 4
     m1x = 8 * m1n - 1 if m1n else 0
-    r[L2["RoomPF0Lo"] - 0x80] = BANK2[L2["L1R1TilePF0"] - 0xF000 + 9]
-    r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK2[L2["L1R1TilePF0"] - 0xF000 + 10]
+    r[L2["RoomPF0Lo"] - 0x80] = BANK3[L2["L1R1TilePF0"] - 0xF000 + 9]
+    r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK3[L2["L1R1TilePF0"] - 0xF000 + 10]
     r[L0["EnemyDeadMask"] - 0x80] = 0
     # packed configs: (right_col, band mask); 0 = symmetric control
     configs = [(0, 0), (0, 1), (5, 4), (9, 7), (9, 4)]
@@ -397,12 +401,12 @@ def hot_death_checks(rows: list[str]) -> int:
     r = mem.ram
     r[L0["RoomRectsLo"] - 0x80] = L2["L1R1RoomRects"] & 0xFF
     r[L0["RoomRectsHi"] - 0x80] = L2["L1R1RoomRects"] >> 8
-    r[L2["RoomPF0Lo"] - 0x80] = BANK2[L2["L1R1TilePF0"] - 0xF000 + 9]
-    r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK2[L2["L1R1TilePF0"] - 0xF000 + 10]
+    r[L2["RoomPF0Lo"] - 0x80] = BANK3[L2["L1R1TilePF0"] - 0xF000 + 9]
+    r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK3[L2["L1R1TilePF0"] - 0xF000 + 10]
     r[L0["BombPacked"] - 0x80] = 0
     packed = 0x11                         # rc=0, band0 -> tramp crosses
     r[L0["LineCount"] - 0x80] = packed
-    m1n = BANK2[L2["L1R1TilePF0"] - 0xF000 + 9] >> 4
+    m1n = BANK3[L2["L1R1TilePF0"] - 0xF000 + 9] >> 4
     m1x = 8 * m1n - 1 if m1n else 0
     hot_rects = ((0, 1, 2, 1), (16, 1, 2, 1))   # x,y,w,h (4px cols/tile rows)
     checks = 0
