@@ -98,8 +98,8 @@ def main() -> None:
               "cmp #ENEMY_SNAKE"):
         assert t in disp, f"UEDispatch must test {t.split('#')[1]}"
     assert "jmp UE_SnakeBody" in disp, "dispatch must reach the snake body"
-    assert "and #3" in ue, "snake keeps its 1px/4f gate inside the handler"
-    gate_pos = ue.index("and #3")
+    assert "and #7" in ue, "snake keeps its 1px/8f gate inside the handler"
+    gate_pos = ue.index("and #7")
     body_pos = ue.index("UE_SnakeBody:")
     assert body_pos < gate_pos, "snake gate must come AFTER the type dispatch"
     head = ue.split("UE_Loop:")[0]

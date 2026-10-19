@@ -339,7 +339,12 @@ PLAYER_WIDTH    = 7             ; lit player sprite spans 7 pixels; REFP0 shift 
 ENEMY_WIDTH     = 8             ; snake GRP1 width ($ff = 8 px) — flush-out span
 LAMP_WIDTH      = 4             ; OBJ_LAMP uses GRP1's leftmost 4 lit pixels
 MINER_WIDTH     = 4             ; OBJ_MINER spans 4 lit GRP1 pixels
-SNAKE_PATROL    = 4             ; patrol half-span from spawn X (was ENEMY_WIDTH)
+SNAKE_PATROL    = 8             ; patrol half-span from spawn X = the sprite's
+                                ; FULL width (user 2026-10-19). It had been cut
+                                ; 8 -> 6 -> 4 and at 4 the snake only travelled
+                                ; half its own width, so it never got back
+                                ; inside its wall: it looked like it stayed out.
+                                ; 8 makes it emerge fully and retreat fully.
 TILE_COLUMNS    = 20            ; columns per half (reflected playfield)
 TILE_ROWS       = 3             ; number of playable color bands
 LINES_PER_TILE  = 48            ; scanlines per tile row
@@ -1498,8 +1503,9 @@ EnemyBitTable:
 ; UpdateEnemies — per-type live motion from RAM shadow (overscan).
 ; E0: loop runs EVERY frame; each type carries its own speed gate (snake
 ; ÷4 here; bat ungated, spider ÷8, tentacle ÷2/÷8, moth ÷2 in E1-E4).
-; Snake patrol: bounds relative to ROM spawn X ± SNAKE_PATROL (6 px, was
-; ± ENEMY_WIDTH = overshoot), side chosen by ROM dir (initial facing). Ignores editor range_* per user
+; Snake patrol: bounds relative to ROM spawn X ± SNAKE_PATROL (8 px = the
+; sprite's full width, user 2026-10-19 — see the constant), side chosen by ROM
+; dir (initial facing). Ignores editor range_* per user
 ; 2026-09-23. First move = facing (live dir from LoadEnemyRam). No wall collision.
 ; ------------------------------------------------------------------------------
 UpdateEnemies:
@@ -1529,8 +1535,8 @@ UE_Alive:
                                  ; frees 15 B of pre-pad headroom and gives the
                                  ; type tables room for the raft byte.
 UE_SnakeBody:
-    lda TickCounter              ; snake: 1 px / 4 frames (was the global gate)
-    and #3
+    lda TickCounter              ; snake: 1 px / 8 frames (user 2026-10-19:
+    and #7                      ;   halved from /4 — it read as too fast)
     bne UE_Next
     ; live dir bit: 1 = right, 0 = left
     lda EnemyBitTable,X
