@@ -2981,8 +2981,8 @@ CallPad_UpdateLaserSound:
     sta $1FF7
     jmp $FAA4
 CallPad_BuildColupF:
-    sta $1FF8                   ; S5.1: body lives in bank2 (direct rect reads)
-    jmp $FC4F
+    sta $1FF9                   ; A3: body lives in bank3 (record stream)
+    jmp $F5C3                   ; BuildColupF (bank3; synced by verify_build)
 CallPad_BombMarkWalls:
     sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
     jmp $FB10
@@ -3559,19 +3559,14 @@ ObjSprites:
 ; other half: bank0 is switched away at $FEF2, bank2 is never entered here.
 ; The 6-byte pad is the only free hole before FoldIndirect's pinned $FEF6.
 ; ------------------------------------------------------------------------------
-    .ds $FE90 - *, 0            ; S5.3 HOF entry tramp (byte-identical w/ bank2,
-                                ; guard: check_moth_tramp — shifted +$10 for
-                                ; the aligned color/sprite tables)
-HotOverlapFlag:
-    sta $1FF8                   ; select bank2
-    jmp $FCF0                   ; bank2 HotOverlapBody (dead in bank0; guard
-                                ;   pins bank0/bank2 operands == bank2 label)
     .ds $FE96 - *, 0            ; S5.4 LHT entry tramp (byte-identical w/ bank2,
                                 ; guard: check_moth_tramp — shifted +$10)
 LaserHitTest:
     sta $1FF8                   ; select bank2
     jmp $FF00                   ; bank2 LaserHitTestBody (dead in bank0; guard
                                 ;   pins operands == bank2.lst label)
+
+; ------------------------------------------------------------------------------
 
 ; ------------------------------------------------------------------------------
 ; TallyWork — level-bonus count-up (user spec 2026-10-02): reaching the miner
@@ -3900,6 +3895,18 @@ TallyEntry = $F313              ; bank2 TallyEntry — operand must match label
 TallyTramp:
     sta $1FF8
     jmp TallyEntry
+
+; ------------------------------------------------------------------------------
+; HotOverlapFlag — bank3 entry tramp (A3 2026-10-19). Moved off $FE90 (bank3
+; $FE93 belongs to OvShutBand's .OSline) into the 6-byte gap after
+; TallyTramp. bank0 executes `sta $1FF9`; the `jmp` at +3 is fetched from
+; bank3's image at $FFEF (guard: check_moth_tramp).
+; ------------------------------------------------------------------------------
+    .ds $FFEC - *, 0
+HotOverlapFlag:
+    sta $1FF9                   ; select bank3 (record stream lives there)
+    jmp $F67F                   ; bank3 HotOverlapBody (synced by verify_build)
+    .ds $FFF2 - *, 0            ; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
 
 ; ------------------------------------------------------------------------------
 ; LaserHitTest — MOVED to bank2 (S5.4, entry tramp $FE86 -> `jmp $FF00`).

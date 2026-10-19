@@ -98,7 +98,10 @@ L0 = parse_labels(SRC / "bank0.lst", {"BombX", "LineCount", "RcBase",
 L2 = parse_labels(SRC / "bank2.lst", {"L1R1TilePF0", "M3TilePF0",
                                       "M1StripBlast"})
 # StageBandTab MOVED to bank3 (chunk A2) — B3StageBand at $F0A3.
-L3 = parse_labels(SRC / "bank3.lst", {"B3StageBand"})
+L3 = parse_labels(SRC / "bank3.lst", {"B3StageBand", "L1R1TilePF0",
+                                      "M3TilePF0"})
+# A3: level/model blocks live in bank3 — block labels AND bytes from there.
+L2.update({k: L3[k] for k in ("L1R1TilePF0", "M3TilePF0")})
 L2.update(parse_equ(SRC / "bank2.lst",
                     {"BandTab", "CollisionEndY", "CollisionEndX",
                      "RoomPF0Lo", "RoomRectsLo"}))
@@ -136,8 +139,8 @@ assert L2["M1StripBlast"] == 0xF970, (
 # test tracks models.json edits (packed meta, bugs.md 28 point 1).
 M0 = L2["L1R1TilePF0"]
 _M0OFF = M0 - 0xF000
-META_A = BANKS[2][_M0OFF + 9]
-META_B = BANKS[2][_M0OFF + 10]
+META_A = BANKS[3][_M0OFF + 9]
+META_B = BANKS[3][_M0OFF + 10]
 BALLX = 8 * META_B + 86 if META_B else 0    # 87+8*ball_col
 BANDS = tuple(0xFF if META_A & (1 << i) else 0 for i in range(3))
 BAND_MASK = META_A & 0x07
@@ -156,7 +159,7 @@ def run_bmw(mem: Mem1, bomb_x: int, line_count: int,
     meta = M0 if meta is None else meta
     if meta >= 0xF000:                   # ROM block: read its MetaA/B
         _off = (meta - 0xF000) & 0xFFFF
-        _ma, _mb = BANKS[2][_off + 9], BANKS[2][_off + 10]
+        _ma, _mb = BANKS[3][_off + 9], BANKS[3][_off + 10]
     else:                                # legacy RAM blob at Y=+9/+10
         _ma = r[(meta + 9) & 0x7F]
         _mb = r[(meta + 10) & 0x7F]

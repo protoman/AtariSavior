@@ -1977,8 +1977,8 @@ CallPad_UpdateLaserSound:
     sta $1FF7
     jmp $FAA4
 CallPad_BuildColupF:
-    sta $1FF8                   ; S5.1: body lives in bank2 (direct rect reads)
-    jmp $FC4F
+    sta $1FF9                   ; A3: body lives in bank3 (record stream)
+    jmp $F5C3                   ; BuildColupF (bank3; synced by verify_build)
 CallPad_BombMarkWalls:
     sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
     jmp $FB10

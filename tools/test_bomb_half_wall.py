@@ -38,9 +38,10 @@ def lst_labels(path):
 L0 = lst_labels(SRC / "bank0.lst")
 L1 = lst_labels(SRC / "bank1.lst")
 L2 = lst_labels(SRC / "bank2.lst")
+L3 = lst_labels(SRC / "bank3.lst")   # A3: level/model blocks
 
 import test_fixtures as FX  # noqa: E402
-FX.freeze_m0(BANKS, L2)     # frozen model0 into the private copy (rule 2026-10-14)
+FX.freeze_m0(BANKS, L3)     # frozen model0 into the private copy (rule 2026-10-14)
 PC_STARTFRAME = L0["StartFrame"]
 PC_BMW = L1["BombMarkWalls"]
 
@@ -150,7 +151,7 @@ def load_room(room):
     pointers target the injected copy so every pointer-based read
     (StageBandTab Meta, stream walk) stays fixture-true."""
     pf0, rr = MODEL[room]
-    a_pf0, a_rr = L2[pf0], L2[rr]
+    a_pf0, a_rr = L3[pf0], L3[rr]
     mem.ram[I_PF0LO] = a_pf0 & 0xFF
     mem.ram[I_PF0HI] = a_pf0 >> 8
     mem.ram[I_RRLO] = a_rr & 0xFF

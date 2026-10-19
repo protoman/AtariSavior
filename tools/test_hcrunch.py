@@ -74,7 +74,7 @@ SRC = W.SRC
 FROZEN = W.SRC / "tests" / "frozen"   # test-owned banks+labels
 
 import test_fixtures as FX          # noqa: E402
-FX.freeze_m4(W.BANKS, W.L2)         # frozen model4 (user rule 2026-10-14)
+FX.freeze_m4(W.BANKS, W.L3)         # frozen model4 (user rule 2026-10-14)
 
 # ZP indices (addr & 0x7F)
 I_ROOMX, I_ROOMY = W.I_ROOMX, W.I_ROOMY

@@ -73,8 +73,39 @@ every 150 B feature costs a reshuffle: the free space is 100 B holes.
   Short 836 B *and* bank0 is 1 byte from its pre-pad limit; it would need
   ~800-1000 B of content deleted plus a full repack.
 - **Reachable target: code in bank0 + bank1 + a *part* of bank2, bank3 = the
-  data/content bank.** After A3 bank2 falls to ~2100-2500 B (51-61%) and bank3
-  carries the level data plus ~3.3 KB of contiguous free space.
+  data/content bank.** A3 landed bank2 at **2098 B (51%)**; bank3 carries the
+  level data + walkers with ~1.9 KB free. Bank0+bank1 alone still needs
+  ~1100 B of code cut (code total 9298 vs 8192).
+
+### A3 SNAPSHOT — 2026-10-19, level data -> bank3 (this commit)
+
+| bank | code | data | used | free | largest contiguous hole |
+|---|---|---|---|---|---|
+| bank0 | 3180 | 360 | 3540 | 556 | — (1 B pre-pad headroom; byte-frozen) |
+| bank1 | 2628 | 554 | 3182 | 914 | fragmented |
+| bank2 | **1729** | 369 | **2098** | 1998 | **315 B** `$FC4C-$FD86`, 503 B `$F9D9-$FBCF` (data window, now empty), 141 B `$FF59`, 132 B `$F7FC`, 123 B `$F8F5` |
+| bank3 | 1761 | 426 | 2187 | 1909 | **322 B** `$FC3E-$FD7F`, 292 B `$FECB-$FFEE`, 284 B `$F290-$F3AB`, 230 B `$FB08-$FBED` |
+| **total** | **9298** | **1709** | **11007** | **5377** | |
+
+level data = index 56 + tables/blocks 334 + models 166 = **556 B**, now split:
+bank2 keeps the room TABLES (`$F700-$F800` 252 B), bank3 owns models +
+per-room blocks (`generated/spill_bank3.asm`, `$F160+`).
+
+What A3 changed structurally:
+- `convert_level.py` emits `level_00N_blocks.asm` + `generated/spill_bank3.asm`;
+  bank2's spill machinery now sizes only the table file.
+- Two-pass build: bank3 pass 1 -> `verify_build --sync-bank3-labels` (exports
+  the block labels as EQUs for bank2, self-heals the two `$1FF9` pad literals)
+  -> bank2 -> bank0 -> bank1 -> bank3 pass 2.
+- Bank3 now owns the level-record WALKERS, not just data: `B3RoomBlocks`
+  (EnterRoomB2's rect/PF/meta half, 2 tail switches), `PhaseBlink` (local jsr
+  from B3StageBand — the A2 ping-pong and its `$F800/$F803/$F80C` pads are
+  gone), `VcrShutter` + `VcrStateTab`/`PFOffTab`/`PhMaskTab`, `BuildColupF` +
+  `BCFDarkRun` (CallPad now `sta $1FF9`), `HotOverlapBody` + `HOVFeatPre`
+  (feature dispatch local; HOF pad moved to `$FFEC` in bank0 AND bank2 —
+  bank3's `$FE93` belongs to OvShutBand's `.OSline`).
+- The `$FCC1-$FCD9` return pads and the `$FC1B/$FC34` pre-read twins are
+  DELETED on both sides.
 
 ### What the chunks actually bought (honest accounting)
 
@@ -82,11 +113,11 @@ every 150 B feature costs a reshuffle: the free space is 100 B holes.
   *prerequisites*, not the payoff: they removed the `(RoomPF0Lo),Y` block reads
   so the VBL chain could leave bank2. Net so far: **bank2 3453 → 3261 used,
   free 643 → 835, biggest hole 99 → 192 B**.
-- **A3 (level-data move) is the payoff** and the next real gain: -556 B of data
-  from bank2 plus ~600 B of block readers that must follow it to bank3
-  (PhaseBlink, BuildColupF's hot-rect walk, HotOverlapBody, EnterRoom's tail).
-  That is the whole-layout rebuild (convert split + two-pass build + test
-  migration), not a hole-hunt.
+- **A3 (level-data move) DONE**: bank2 3261 -> **2098** (-1163 B: data split
+  + the five record walkers). bank3 1093 -> 2187 (it now holds data + walkers).
+  A3 cost one layout rebuild (convert split + two-pass build + test migration),
+  not a hole-hunt; every ROM-byte test now reads block labels/bytes from
+  bank3 (`L3`/`BANKS[3]`).
 - C2/C3 after A3 are cheap (-150…-200) and need no hole arithmetic.
 
 ### Standing rules learned here (do not relearn)

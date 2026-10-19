@@ -286,7 +286,7 @@ MOTH_STA16 = bytes([0x8D, 0xF6, 0x1F])
 # `sta $1FF8` at $FE90, the fetch at $FE93 comes from bank2 = `jmp` target.
 # (shifted +$10 from $FE80 when the aligned ObjColorTab/ObjSprites pair
 #  took $FE00-$FE8F; mirrors in both banks moved together.)
-HOF_ENTRY = 0xFE90
+HOF_ENTRY = 0xFFEC   # A3: moved off $FE90 (bank3 $FE93 = .OSline)
 # S5.4 LaserHitTest entry tramp — same pattern: `sta $1FF8` at $FE96,
 # fetch at $FE89 from bank2 = `jmp LaserHitTestBody`.
 LHT_ENTRY = 0xFE96
@@ -311,7 +311,7 @@ def check_moth_tramp(src: Path) -> None:
     flips banks mid-instruction (the 2026-09-30 frame-3 crash).
     """
     banks: dict[int, bytes] = {}
-    for idx in (0, 2):
+    for idx in (0, 2, 3):
         p = src / f"bank{idx}.bin"
         if not p.exists():
             err(f"bank{idx}.bin missing (moth tramp check)")
@@ -351,28 +351,33 @@ def check_moth_tramp(src: Path) -> None:
         err(f"UE_MothTramp at {shown}, expected ${MOTH_ENTRY:04X} "
             "(dispatch jmp target moved off the pad)")
 
-    # S5.3 HOF tramp ($FE90) — same discipline as the moth entry above.
+    # HOF tramp ($FFEC, A3) — bank0 runs `sta $1FF9`, the opcode+operand are
+    # fetched from BANK3's image at +3 ($FFEF).
     hoff = HOF_ENTRY - 0xF000
     g0 = banks[0][hoff:hoff + 6]
-    g2 = banks[2][hoff:hoff + 6]
-    if g0[:3] != MOTH_STA18:
+    g3 = banks[3][hoff + 3:hoff + 6]
+    if g0[:3] != bytes([0x8D, 0xF9, 0x1F]):
         err(f"bank0 HOF entry ${HOF_ENTRY:04X} = {g0.hex()} "
-            f"(expected {MOTH_STA18.hex()} + jmp)")
-    if g0 != g2:
-        err(f"HOF entry bank0[${HOF_ENTRY:04X}] {g0.hex()} != bank2 "
-            f"{g2.hex()} (byte-identity broken)")
-    hof = labels2.get("HotOverlapBody")
-    hof_tgt = (g0[4] | (g0[5] << 8)) if len(g0) == 6 else None
+            "(expected 8df91f + jmp)")
+    if len(g3) != 3 or g3[0] != 0x4C:
+        err(f"bank3 HOF image ${HOF_ENTRY + 3:04X} = {g3.hex()} "
+            "(expected jmp image)")
+    labels3, _ = parse_lst((src / "bank3.lst").read_text(
+        errors="replace").splitlines())
+    hof = labels3.get("HotOverlapBody")
+    hof_tgt = (g3[1] | (g3[2] << 8)) if len(g3) == 3 else None
     if hof is None:
-        err("HotOverlapBody label not found in bank2.lst")
+        err("HotOverlapBody label not found in bank3.lst")
     elif hof_tgt != hof:
         err(f"HOF entry jmp ${hof_tgt if hof_tgt is not None else 0:04X} != "
-            f"bank2 HotOverlapBody ${hof:04X} (tramp operand stale)")
+            f"bank3 HotOverlapBody ${hof:04X} (tramp operand stale)")
     hof_tramp = labels0.get("HotOverlapFlag")
     if hof_tramp != HOF_ENTRY:
         shown = f"${hof_tramp:04X}" if hof_tramp is not None else "None"
         err(f"HotOverlapFlag at {shown}, expected ${HOF_ENTRY:04X} "
             "(PlayerHitsMap jmp target moved off the pad)")
+    # $FFF2-$FFF9 must stay fill (hotspot mirrors) — bank0 pad now ends $FFF1.
+
 
     # S5.4 LaserHitTest tramp ($FE86) — same discipline again.
     loff = LHT_ENTRY - 0xF000
@@ -773,7 +778,9 @@ def check_callpads(src: Path) -> None:
     labels0: dict[str, int] = {}
     labels1: dict[str, int] = {}
     labels2: dict[str, int] = {}
-    for idx, out in ((0, "labels0"), (1, "labels1"), (2, "labels2")):
+    labels3: dict[str, int] = {}
+    for idx, out in ((0, "labels0"), (1, "labels1"), (2, "labels2"),
+                     (3, "labels3")):
         lp = src / f"bank{idx}.lst"
         if not lp.exists():
             err(f"bank{idx}.lst missing (callpad label check)")
@@ -783,8 +790,10 @@ def check_callpads(src: Path) -> None:
             labels0 = labs
         elif idx == 1:
             labels1 = labs
-        else:
+        elif idx == 2:
             labels2 = labs
+        else:
+            labels3 = labs
     for side, labs in (("bank0", labels0), ("bank1", labels1)):
         rp = labs.get("ReturnPad")
         if rp != PAD_LO:
@@ -814,6 +823,8 @@ def check_callpads(src: Path) -> None:
         # pads are bank1->bank0 tail exits (e.g. CallPad_Overscan -> Overscan).
         if "sta $1FF8" in body:
             tgt_labs, tgt_side = labels2, "bank2"
+        elif "sta $1FF9" in body:
+            tgt_labs, tgt_side = labels3, "bank3"   # A3: level-data walkers
         elif "sta $1FF6" in body:
             tgt_labs, tgt_side = labels0, "bank0"
         else:
@@ -1223,9 +1234,9 @@ def check_levels(src: Path) -> None:
                     has_async = False
                 if has_async:
                     rid = r.get("room_id", 0)
-                    # per-room blocks are emitted into the level's table file
-                    # (write_tables) so emit_spills owns their placement
-                    asm = src / "generated" / f"level_{level_n:03d}_rooms.asm"
+                    # A3: per-room blocks are emitted into level_00N_blocks.asm
+                    # (included from bank3); the table file keeps only tables.
+                    asm = src / "generated" / f"level_{level_n:03d}_blocks.asm"
                     text = asm.read_text() if asm.exists() else ""
                     tag = f"L{level_n}R{rid + 1}"
                     if f"{tag}TilePF0:" not in text:
@@ -1669,8 +1680,8 @@ def check_crunch_clock(src: Path) -> None:
     # formula (VcrShutter lookup, 2026-10-15: −21c/frame vs the jsr).
     # Guard the table BYTES against the formula or render drifts from the
     # kill test with no code change to notice.
-    lst2 = src / "bank2.lst"
-    bin2 = src / "bank2.bin"
+    lst2 = src / "bank3.lst"       # A3: VcrShutter/VcrStateTab moved to bank3
+    bin2 = src / "bank3.bin"
     if lst2.exists() and bin2.exists():
         addr = None
         for _l in lst2.read_text(errors="replace").splitlines():
@@ -1680,7 +1691,7 @@ def check_crunch_clock(src: Path) -> None:
                 addr = int(_m.group(1), 16)
                 break
         if addr is None:
-            err("bank2.lst: VcrStateTab label not found")
+            err("bank3.lst: VcrStateTab label not found")
         else:
             rom = bin2.read_bytes()
             got = rom[addr - 0xF000: addr - 0xF000 + 32]
@@ -1739,6 +1750,75 @@ def check_scan_tramp(src: Path) -> None:
             err(f"$FE57 image bank3 = {img3.hex()} != bank2 {img2.hex()}")
 
 
+def sync_bank3_labels(src: Path) -> int:
+    """Post-bank3-pass1 (build.sh): export block labels + self-heal pads.
+
+    A3 (2026-10-19): the level data (shared model blocks + per-room blocks)
+    lives in bank3. bank2's room TABLES still need those labels as plain
+    absolute addresses, so pass 1 of bank3 is assembled, its labels are
+    exported into generated/bank3_labels.asm (included by bank2), and the
+    `jmp` literals of the two pads whose bodies moved to bank3 are patched
+    (kernel/bank1/bank2 `CallPad_BuildColupF`, kernel/bank2 `HotOverlapFlag`).
+    Size-preserving: only the 4 hex digits change, so pass 2's addresses are
+    identical to pass 1's.
+    """
+    lst3 = src / "bank3.lst"
+    if not lst3.exists():
+        print("sync-bank3: bank3.lst missing — assemble bank3 pass 1 first",
+              file=sys.stderr)
+        return 1
+    labels, _ = parse_lst(lst3.read_text(errors="replace").splitlines())
+    block = re.compile(r"^(M\d+|L\d+R\d+)(TilePF[0-2]|RoomRects|Meta[AB]|"
+                       r"RightPF[0-2]|RightRects)$")
+    lines = ["; Generated by verify_build.py --sync-bank3-labels. Do not edit.",
+             "; bank3 level-data block labels (absolute addresses for bank2's",
+             "; room tables)."]
+    n = 0
+    for name in sorted(labels):
+        if block.match(name):
+            lines.append(f"{name} = ${labels[name]:04X}")
+            n += 1
+    if not n:
+        print("sync-bank3: no block labels found in bank3.lst", file=sys.stderr)
+        return 1
+    (src / "generated" / "bank3_labels.asm").write_text("\n".join(lines) + "\n")
+    print(f"sync-bank3: exported {n} block labels -> generated/bank3_labels.asm")
+
+    targets = {"CallPad_BuildColupF": ("BuildColupF",
+                                        ("kernel.asm", "bank1.asm", "bank2.asm")),
+               "HotOverlapFlag": ("HotOverlapBody",
+                                  ("kernel.asm", "bank2.asm"))}
+    for fname in ("kernel.asm", "bank1.asm", "bank2.asm"):
+        p = src / fname
+        if not p.exists():
+            continue
+        text = p.read_text(encoding="utf-8")
+        orig = text
+        for pad, (label, files) in targets.items():
+            if fname not in files:
+                continue
+            addr = labels.get(label)
+            if addr is None:
+                err(f"bank3.lst: {label} label missing (pad {pad})")
+                return 1
+            pat = re.compile(
+                rf"(^{re.escape(pad)}:\s*\n(?:[^\n]*\n){{0,3}}?\s*jmp \$)"
+                rf"([0-9A-Fa-f]{{4}})", re.M)
+            def repl(m, addr=addr, pad=pad, fname=fname):
+                old = int(m.group(2), 16)
+                if old != addr:
+                    print(f"sync-bank3: {fname} {pad} ${old:04X} -> "
+                          f"${addr:04X}")
+                return m.group(1) + f"{addr:04X}"
+            text, k = pat.subn(repl, text, count=1)
+            if not k:
+                err(f"{fname}: {pad} pad not found (sync-bank3)")
+                return 1
+        if text != orig:
+            p.write_text(text, encoding="utf-8")
+    return 0
+
+
 def main() -> int:
     argv = sys.argv[1:]
     if argv and argv[0] == "--sync":
@@ -1753,6 +1833,10 @@ def main() -> int:
         src = (Path(argv[1]) if len(argv) > 1
                else Path(__file__).resolve().parent.parent / "src")
         return sync_phrec_literal(src)
+    if argv and argv[0] == "--sync-bank3-labels":
+        src = (Path(argv[1]) if len(argv) > 1
+               else Path(__file__).resolve().parent.parent / "src")
+        return sync_bank3_labels(src)
     if argv and argv[0] == "--precheck":
         src = (Path(argv[1]) if len(argv) > 1
                else Path(__file__).resolve().parent.parent / "src")

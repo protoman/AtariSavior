@@ -49,23 +49,23 @@ BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(4)
 # in THIS run's ROM image so no strip contact fires (MetaA nibble 0 skips
 # the LWC M1 tip test; MetaB 0 keeps the ball strip out of the marker path).
 _L2 = {}
-for _l in (FROZEN / "bank2.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank3.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(L1R1(?:MetaA|MetaB))\s*$",
                   _l)
     if _m:
         _L2[_m.group(2)] = int(_m.group(1), 16)
-assert len(_L2) == 2, f"bank2 L1R1 meta labels missing: {sorted(_L2)}"
+assert len(_L2) == 2, f"bank3 L1R1 meta labels missing: {sorted(_L2)}"
 for _n in ("L1R1MetaA", "L1R1MetaB"):
-    BANKS[2][_L2[_n] - 0xF000] = 0
+    BANKS[3][_L2[_n] - 0xF000] = 0
 
 # Hot (mid_band_type, 2026-10-05) death would corrupt the deterministic
 # sweep — zero model 0's hot-rect count in THIS run's ROM image too (hot
 # stream = RoomRects label + 1 + 2*solid_count — packed 2B/rect stream).
-for _l in (FROZEN / "bank2.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank3.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+L1R1RoomRects\s*$", _l)
     if _m:
         _a = int(_m.group(1), 16) - 0xF000
-        BANKS[2][_a + 1 + 2 * BANKS[2][_a]] = 0   # hot count = 0
+        BANKS[3][_a + 1 + 2 * BANKS[3][_a]] = 0   # hot count = 0
         break
 else:
     sys.exit("L1R1RoomRects label missing in bank2.lst")

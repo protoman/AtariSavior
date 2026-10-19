@@ -46,14 +46,14 @@ BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 # Zero M0/M1 hot counts (life-loss would end the sweep); strips stay real.
 for _name in ("L1R1RoomRects",):   # level 1 has one room (the
                                    # L1R2 block was removed with it)
-    for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
+    for _l in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
         if _m:
             _a = int(_m.group(1), 16) - 0xF000
-            BANKS[2][_a + 1 + 2 * BANKS[2][_a]] = 0   # hot count = 0
+            BANKS[3][_a + 1 + 2 * BANKS[3][_a]] = 0   # hot count = 0
             break
     else:
-        sys.exit(f"{_name} label missing in bank2.lst")
+        sys.exit(f"{_name} label missing in bank3.lst")
 
 
 def lst_labels(path):
@@ -67,6 +67,7 @@ def lst_labels(path):
 
 L0 = lst_labels(SRC / "bank0.lst")
 L2 = lst_labels(SRC / "bank2.lst")
+L3 = lst_labels(SRC / "bank3.lst")   # A3: level/model blocks
 PC_STARTFRAME = L0["StartFrame"]
 
 # ZP indices (addr & 0x7F) — from bank0.lst U00xx decl lines
@@ -179,22 +180,22 @@ def load_room(room):
     """Hand-EnterRoom: pointers + PF buffers + rects ptr (cache unused by
     the laser). VBL StageBandTab rebuilds the overlay pack itself."""
     pf0, rr = MODEL[room]
-    a_pf0, a_rr = L2[pf0], L2[rr]
-    mem.ram[I_PF0LO] = BANKS[2][(a_pf0 + 9 - 0xF000) & 0xFFFF]   # MetaA
-    mem.ram[I_PF0HI] = BANKS[2][(a_pf0 + 10 - 0xF000) & 0xFFFF]  # MetaB
+    a_pf0, a_rr = L3[pf0], L3[rr]
+    mem.ram[I_PF0LO] = BANKS[3][(a_pf0 + 9 - 0xF000) & 0xFFFF]   # MetaA
+    mem.ram[I_PF0HI] = BANKS[3][(a_pf0 + 10 - 0xF000) & 0xFFFF]  # MetaB
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     # ROM: TilePF0/1/2 = 3 band-row bytes each, in order after the label
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
         for row in range(3):
-            mem.ram[(dst + row) & 0x7F] = BANKS[2][
+            mem.ram[(dst + row) & 0x7F] = BANKS[3][
                 ((a_pf0 + i * 3 + row) - 0xF000) & 0xFFFF]
 
 
 def meta_a(room):
     """MetaA = (RoomPF0 stream)+9 — same addressing LWtipC uses."""
-    a_pf0 = L2[MODEL[room][0]]
-    return BANKS[2][a_pf0 + 9 - 0xF000]
+    a_pf0 = L3[MODEL[room][0]]
+    return BANKS[3][a_pf0 + 9 - 0xF000]
 
 
 CASE_Y = (24, 45, 96)      # 24 = spawn/band0, 45 = straddle, 96 = band 2
