@@ -267,38 +267,75 @@ TPtr6 = $EA
     sta GRP1
     sta GRP0
     sta GRP1
-    ldx #103                    ; 63 pre-pad + 60 draw + 8 syncs + 31 pad (band +1: TitleBandPrep jsr entry spans 2 lines)
+    ldx #157                    ; 117 pre-pad: logo 8+63 + the retired
+                                ;   player band 52 (merged title, 2026-10-19)
 .TkFooterPad:
     sta WSYNC
     dex
     cpx #40
     bne .TkFooterPad             ; 64 lines before the flight window
-.TkPlayer:
+    ; --- level-number band (merged title screen, 2026-10-19): two digits
+    ;     from DigitGfx under the logo, same VDEL cross-buffer as the logo.
+    ;     Lines: 2 SOXP + HMOVE + 8 rows + flush = 12; the retired player
+    ;     band's 52 extra lines moved into .TkFooterPad above.
     lda #0
-    sta VDELP0
-    sta VDELP1
-    sta GRP0
-    sta GRP1
-    sta NUSIZ0                  ; single player, not title's 3-copy mode
-    sta NUSIZ1                  ; bomb is one P1 copy (footer restores 3)
+    sta NUSIZ0
+    sta NUSIZ1                  ; single copies (logo/footer use 3)
     ldx #0
-    lda RoomX
-    jsr SetObjectXPos_b1           ; current flight X; X remains the P0 selector
-    lda BombX                   ; TitleSequence owns BombX (68 = no bomb, so
-    ldx #1                      ;   footer/base X survives; 140 = bomb armed)
-    jsr SetObjectXPos_b1           ; P1 = bomb (same shared-WSYNC pattern as entry)
+    lda #30
+    jsr SetObjectXPos_b1
+    ldx #1
+    lda #46
+    jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
-    jsr TitlePlayerBand         ; isolated bank2 renderer restores both VDELs
+    lda Level
+    clc
+    adc #1                      ; 1-based level number
+    ldx #0
+.LVTens2:
+    cmp #10
+    bcc .LVTensDone2
+    sbc #10
+    inx
+    bne .LVTens2
+.LVTensDone2:
+    asl
+    asl
+    asl                         ; ones * 8
+    sta TPtr2
+    txa
+    asl
+    asl
+    asl                         ; tens * 8
+    sta TPtr1
+    lda #>DigitGfx
+    sta TPtr1+1
+    sta TPtr2+1
+    sta WSYNC                   ; settle the pointer math off the glyph line
+    ldy #7
+.LDigitLoop:
+    lda (TPtr1),Y
+    sta GRP0
+    lda (TPtr2),Y
+    sta GRP1
+    sta WSYNC
+    dey
+    bpl .LDigitLoop
+    lda #0
+    sta GRP0
+    sta GRP1
+    sta WSYNC
+    ; --- footer text: 3 copies on both players at the title positions ---
     lda #3
     sta NUSIZ0
-    sta NUSIZ1                  ; footer text: 3 copies on both players
+    sta NUSIZ1
+    ldx #0
     lda #60
-    ldx #0                      ; the bank2 renderer used X as its sprite row
-    jsr SetObjectXPos_b1           ; restore title/footer P0 position
-    lda #68
+    jsr SetObjectXPos_b1
     ldx #1
-    jsr SetObjectXPos_b1           ; restore P1 (bomb SOXP moved it during band)
+    lda #68
+    jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
     ldx #31                     ; fixed title-kernel line budget: 37 - 6
@@ -388,68 +425,8 @@ TitleFont:
 ; Clobbers A/X/Temp. Ends at TitleTailAudio (silence + overscan wait).
 ; ------------------------------------------------------------------------------
 
-TitleBandPrep:
-    lda TallyTicks              ; phase — 0/1 airborne + 8 climb: jet flutter
-    cmp #2
-    bcc .TBpJet
-    cmp #8
-    beq .TBpJet
-    cmp #4
-    beq .TBpWalk
-    cmp #6
-    bne .TBpJetFA               ; phases 2,3,5,7: static frame A
-.TBpWalk:                       ; (phase 6 falls through here)
-    lda EnemyRamP
-    and #8
-    beq .TBpWalkA
-    lda #<PlayerWalkB
-    ldy #>PlayerWalkB
-    bne .TBpFrame               ; unconditional (hi != 0)
-.TBpWalkA:
-    lda #<PlayerWalkA
-    ldy #>PlayerWalkA
-    jmp .TBpFrame
-.TBpJet:
-    lda EnemyRamP
-    and #4
-    beq .TBpJetFA
-    lda #<(TitleJetSprite+12)
-    ldy #>(TitleJetSprite+12)
-    bne .TBpFrame
-.TBpJetFA:
-    lda #<TitleJetSprite
-    ldy #>TitleJetSprite
-.TBpFrame:
-    sta Grp0Ptr
-    sty Grp0PtrHi
-    lda PlayerDir              ; walk phases face left: REFP0 bit3
-    asl
-    asl
-    asl                         ; FACING_LEFT(1) -> $08, right -> $00
-    sta REFP0
-    lda BombPacked             ; state -> FooterPtr1 = 1 iff fuse (band
-    and #%00000011             ;   draws bomb rows only when flag 1;
-    beq .TBpStore              ;   state 0: A already 0)
-    cmp #1
-    bne .TBpExpl
-    lda #COLOR_BOMBS
-    sta COLUP1
-    lda #1
-    bne .TBpStore              ; unconditional (A=1)
-.TBpExpl:
-    lda #60                    ; explosion: 4-phase blink (15 exact cycles
-    sec                        ;   per color over the 60-frame state)
-    sbc BombTimer
-    and #3
-    tay
-    lda TitleBlinkColors,Y
-    sta COLUBK
-    lda #0                     ; explosion: no bomb sprite rows
-.TBpStore:
-    sta FooterPtr1
-    lda RoomY                  ; band scanline budget: LineCount staged here
-    sta LineCount              ;   keeps TitlePlayerBand short (twin $F8DD)
-    rts
+    .ds $F214 - *, 0            ; TitleBandPrep/TitlePlayerBand retired
+                                 ;   (merged title screen, 2026-10-19)
 
 FooterBand:
     sta WSYNC
@@ -517,87 +494,15 @@ FooterFont:
     .byte $00, $E8, $A8, $A8, $AA, $EC, $00, $00, $00, $00, $00, $00, $00, $00    ; sprite 4 (x 32-39)
     .byte $00, $EA, $AC, $AC, $AC, $AA, $00, $00, $00, $00, $00, $00, $00, $00    ; sprite 5 (x 40-47)
 
-TitleBombSprite:
-    ; 4 junk rows (top-align: rows Y<4 gated off in the draw path) +
-    ; OBJ_BOMB's 8 rows (kernel ObjSprites+64) — bottom-aligned in the
-    ; 12-row sprite window = sits on the ground line while RoomY==48.
-    .byte $00, $00, $00, $00
-    .byte $10, $20, $20, $60, $f0, $f0, $f0, $60
-TitleBlinkColors:
-    ; Copy of kernel BombBlinkColors ((60-BombTimer)&3): black/yellow/red/yellow
-    .byte COLOR_CAVE_BG, COLOR_HOT_Y, COLOR_HOT_R, COLOR_HOT_Y
+    .ds $F35A - *, 0            ; title movie art/bands retired
+                                 ;   (merged title screen, 2026-10-19)
 
-TitlePlayerBand:
-    ; Frame pick, mirror, bomb flag + colors live in TitleBandPrep (same
-    ; bank — jsr keeps the 2-line entry span off this gap's budget).
-    jsr TitleBandPrep          ; pick + mirror + bomb flag/colors + LineCount
-    ldx #60
-    ldy #0
-    sta WSYNC
-.TitleJetLine:
-    lda LineCount
-    beq .TitleJetDraw
-    dec LineCount
-    lda #0
-    sta GRP0
-    jmp .TitleJetSync
-.TitleJetDraw:
-    cpy #12
-    bcs .TitleJetBlank
-    lda (Grp0Ptr),Y
-    sta GRP0
-    lda TitleJetColors,Y
-    sta COLUP0
-    ; --- bomb: rows 0-3 read junk zeros, rows 4..11 = fuse sprite ---
-    lda FooterPtr1             ; 1 iff fuse (TitleBandPrep)
-    beq .TitleBombRow
-    lda TitleBombSprite,Y
-    sta GRP1
-.TitleBombRow:
-    iny
-    bne .TitleJetSync
-.TitleJetBlank:
-    lda #0
-    sta GRP0
-.TitleJetSync:
-    sta WSYNC
-    dex
-    bne .TitleJetLine
-    lda #0
-    sta GRP0
-    sta GRP1
-    sta GRP0
-    sta GRP1
-    lda #1
-    sta VDELP0
-    sta VDELP1
-    lda #0
-    sta GRP0
-    sta GRP1
-    sta GRP0
-    sta GRP1
-    sta COLUBK                 ; restore black + unmirrored P0 for the footer
-    sta REFP0                  ;   (explosion walk phases end before it)
-.TitleJetDone:
-    sta WSYNC
-    rts
-
-TitleJetSprite:
-    ; Exact A/B copies of PlayerSpriteA/B; game alternates every 4 frames.
-    .byte %00111100, %01111110, %01111100, %01111110
-    .byte %01111100, %11111110, %11111110, %00111110
-    .byte %00111110, %00010100, %00010100, %00010100
-    .byte %00111100, %01111110, %01111100, %01111110
-    .byte %01111100, %11111110, %11111110, %01111110
-    .byte %10111110, %00010100, %00010100, %00010100
-TitleJetColors:
-    .byte $48, $48, $1E, $48, $08, $48, $48, $48
-    .byte $48, $48, $08, $08
 ; ==============================================================================
-; Intro music player (2026-10-16). Ticked once per intro ($FD) frame from
-; TitleTailAudio via CallPad_MusicTick (bank0<->bank1 @ $FC61). Plays the
-; original theme "Hollow Earth" (src/art/intro_theme.asm MusicMel: (duration,
-; note) pairs; note = AUDF, $FE = rest, $FF = loop; E minor, 8th = 15 frames).
+; Title music player (2026-10-16; merged title screen 2026-10-19). Ticked once
+; per title frame from TitleTailAudio via CallPad_MusicTick (bank0<->bank1
+; @ $FC61). Plays the original theme "Hollow Earth"
+; (src/art/intro_theme.asm MusicMel: (duration, note) pairs; note = AUDF,
+; $FE = rest, $FF = loop; E minor, 8th = 15 frames).
 ; AUD0 = Lead ($0C), volume 7, single voice.
 ; ==============================================================================
 MelPtr   = $9D

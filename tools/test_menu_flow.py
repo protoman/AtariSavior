@@ -1,28 +1,20 @@
 #!/usr/bin/env python3
-"""Menu flow behavioral test — bugs.md #13 (self-test, no Stella needed).
+"""Menu flow behavioral test — merged title screen (self-test, no Stella).
 
-Boots the real savior.bin in py65 and walks the full console-switch flow
-against DropTarget ($8A) / Level ($A3) / score state:
+Boots the real savior.bin in py65 and walks the console-switch flow against
+DropTarget ($8A) / Level ($A3) / score state.  Since 2026-10-19 there is ONE
+title screen ($FD sentinel): logo + level digits + credits + music.
 
-  1. boot    — intro sentinel $FD shows; first RESET edge exits to old
-               title $FF (never returns to $FD for the whole run);
-  2. title   — idle holds $FF (no auto-advance); SELECT held 3 frames
-               increments Level exactly ONCE (edge, not level-triggered);
-  3. select  — LEVEL_COUNT presses cycle Level 0..N-1 and wrap to 0
-               (display level = Level+1, so wrap 000004 -> 000001 with
-               the current LEVEL_COUNT=4), title state kept ($FF);
+  1. boot    — title sentinel $FD; stays $FD while idle;
+  2. select  — SELECT held 3 frames increments Level exactly ONCE
+               (edge, not level-triggered) and keeps $FD;
+  3. cycle   — LEVEL_COUNT presses cycle Level 0..N-1 and wrap to 0;
   4. start   — title RESET edge: score forced 000000, drop-in arms
                (DROPT = fall Y), lands at DROPT==0 = gameplay;
   5. gate    — SELECT held mid-fall never bounces to title (idle gate:
-               DROPT==0 exactly); released before landing, the game
-               completes the drop (documented residual: a switch held
-               PAST landing re-fires — that hold is what the user must
-               release; this test keeps the supported window);
-  6. return  — landed + idle: SELECT edge returns to old title $FF;
-               a second title RESET starts the game again (repeatable).
-
-Entry #13's "swallow-first SELECT flag $F2" is stale — swallow removed
-2026-10-07 (bugs.md 8b); code wins: every edge does level+1.
+               DROPT==0 exactly);
+  6. return  — landed + idle: SELECT returns to the merged title $FD;
+               a second title RESET starts the game again.
 
 Run: /home/iuri/python3/bin/python3 tools/test_menu_flow.py
 """
@@ -114,9 +106,8 @@ PC_STARTFRAME = _LBL["StartFrame"]
 
 frame = -1
 fails = []
-intro_seen = False
-intro_exited = False
-title_bounced_to_intro = False
+title_seen = False
+old_ff_seen = False
 
 
 def step():
@@ -125,7 +116,7 @@ def step():
 
 def next_frame(sw=REL):
     """Advance to the next frame boundary; arm SWCHB for that frame."""
-    global frame, intro_seen, intro_exited, title_bounced_to_intro
+    global frame, title_seen, old_ff_seen
     guard = 0
     while True:
         step()
@@ -137,11 +128,9 @@ def next_frame(sw=REL):
             mem.swchb = sw
             d = mem.ram[DROPT]
             if d == 0xFD:
-                intro_seen = True
-            elif intro_seen and not intro_exited:
-                intro_exited = True
-            if intro_exited and d == 0xFD:
-                title_bounced_to_intro = True
+                title_seen = True
+            if d == 0xFF:
+                old_ff_seen = True
             return
 
 
@@ -160,7 +149,7 @@ def check(cond, msg):
         fails.append(msg)
 
 
-# ---- 1. boot -> intro -> first RESET edge -> old title ---------------
+# ---- 1. boot: one merged title, stays $FD while idle --------------------
 guard = 0
 while not (mem.bank == 0 and mpu.pc == PC_STARTFRAME):
     step()
@@ -169,17 +158,14 @@ while not (mem.bank == 0 and mpu.pc == PC_STARTFRAME):
         sys.exit("never reached StartFrame")
 frame = 0
 
-run(2)                       # f1, f2 with released switches
-check(mem.ram[DROPT] == 0xFD, f"boot should show intro $FD, got ${mem.ram[DROPT]:02X}")
-next_frame(RST)              # f3: single-frame RESET pulse
-run(4)
-check(mem.ram[DROPT] == 0xFF,
-      f"intro RESET edge -> old title $FF, got ${mem.ram[DROPT]:02X} at f{frame}")
-check(intro_exited, "intro was never seen")
+run(2)
+check(mem.ram[DROPT] == 0xFD,
+      f"boot should show merged title $FD, got ${mem.ram[DROPT]:02X}")
+run(10)
+check(mem.ram[DROPT] == 0xFD,
+      f"title must hold $FD while idle, got ${mem.ram[DROPT]:02X}")
 
-# ---- 2. title idle + SELECT edge-once-while-held ---------------------
-run(8)
-check(mem.ram[DROPT] == 0xFF, f"title must hold $FF while idle, got ${mem.ram[DROPT]:02X}")
+# ---- 2. SELECT edge-once-while-held --------------------------------------
 lvl0 = mem.ram[LEVEL]
 for _ in range(3):           # held 3 frames -> exactly one edge
     next_frame(SEL)
@@ -187,22 +173,23 @@ run(3)
 check(mem.ram[LEVEL] == (lvl0 + 1) % LEVEL_COUNT,
       f"SELECT held 3f must inc Level once: {lvl0} -> {mem.ram[LEVEL]}, "
       f"want {(lvl0 + 1) % LEVEL_COUNT}")
-check(mem.ram[DROPT] == 0xFF, f"SELECT must keep old title $FF, got ${mem.ram[DROPT]:02X}")
+check(mem.ram[DROPT] == 0xFD,
+      f"SELECT must keep the merged title $FD, got ${mem.ram[DROPT]:02X}")
 
-# ---- 3. full SELECT cycle: LEVEL_COUNT edges -> exact wrap ------------
+# ---- 3. full SELECT cycle: LEVEL_COUNT edges -> exact wrap ---------------
 start = mem.ram[LEVEL]
 seen = [start]
 for k in range(LEVEL_COUNT):
     next_frame(SEL)          # one pressed frame
     run(4)                   # release + LoadLevel settle
-    check(mem.ram[DROPT] == 0xFF,
+    check(mem.ram[DROPT] == 0xFD,
           f"SELECT #{k + 1}: title state lost, DROPT=${mem.ram[DROPT]:02X}")
     seen.append(mem.ram[LEVEL])
 want = [(start + k) % LEVEL_COUNT for k in range(LEVEL_COUNT + 1)]
 check(seen == want, f"SELECT cycle levels {seen}, want {want}")
 check(mem.ram[LEVEL] == start, f"wrap not exact: {mem.ram[LEVEL]} != {start}")
 
-# ---- 4. title RESET -> game (score zeroed, drop-in lands) -------------
+# ---- 4. title RESET -> game (score zeroed, drop-in lands) ---------------
 run(4)
 next_frame(RST)
 run(2)
@@ -217,14 +204,14 @@ for _ in range(400):
         break
 check(landed is not None, "drop-in never landed (DROPT stuck)")
 run(6)
-check(mem.ram[DROPT] == 0, f"gameplay must stay idle, DROPT=${mem.ram[DROPT]:02X}")
+check(mem.ram[DROPT] == 0,
+      f"gameplay must stay idle, DROPT=${mem.ram[DROPT]:02X}")
 
-# ---- 5. bounce gate: SELECT mid-fall never returns to title ----------
-# Restart the game from idle first (SELECT -> title), then start again and
-# hold SELECT strictly during the fall window.
-next_frame(SEL)
+# ---- 5. bounce gate: SELECT mid-fall never returns to title -------------
+next_frame(SEL)              # idle SELECT -> merged title
 run(4)
-check(mem.ram[DROPT] == 0xFF, f"idle SELECT -> title, got ${mem.ram[DROPT]:02X}")
+check(mem.ram[DROPT] == 0xFD,
+      f"idle SELECT -> title $FD, got ${mem.ram[DROPT]:02X}")
 next_frame(RST)
 # wait for the fall to arm (DROPT = fall Y, a small nonzero non-sentinel)
 for _ in range(60):
@@ -232,14 +219,14 @@ for _ in range(60):
     if mem.ram[DROPT] not in (0xFD, 0xFF, 0xFE, 0):
         break
 else:
-    check(False, "fall never armed after second title RESET")
+    check(False, "fall never armed after title RESET")
 fall_seen = mem.ram[DROPT]
 held = 0
 while mem.ram[DROPT] not in (0, 0xFF) and held < 40:
     next_frame(SEL)          # held during the fall
     held += 1
-check(mem.ram[DROPT] != 0xFF,
-      f"SELECT mid-fall bounced to title (DROPT=$FF after {held} held frames)")
+check(mem.ram[DROPT] != 0xFD,
+      f"SELECT mid-fall bounced to title (DROPT=$FD after {held} held frames)")
 # release well before landing; the drop must complete
 for _ in range(200):
     next_frame(REL)
@@ -249,25 +236,28 @@ check(mem.ram[DROPT] == 0,
       f"game never completed after SELECT release (DROPT=${mem.ram[DROPT]:02X}, "
       f"fall was ${fall_seen:02X})")
 
-# ---- 6. gameplay -> title -> game again (repeatable) -----------------
+# ---- 6. gameplay -> title -> game again (repeatable) --------------------
 run(5)
 next_frame(SEL)
 run(4)
-check(mem.ram[DROPT] == 0xFF, f"landed SELECT -> old title, got ${mem.ram[DROPT]:02X}")
+check(mem.ram[DROPT] == 0xFD,
+      f"landed SELECT -> merged title, got ${mem.ram[DROPT]:02X}")
 next_frame(RST)
 for _ in range(400):
     next_frame(REL)
     if mem.ram[DROPT] == 0:
         break
-check(mem.ram[DROPT] == 0, f"second game start never landed, DROPT=${mem.ram[DROPT]:02X}")
+check(mem.ram[DROPT] == 0,
+      f"second game start never landed, DROPT=${mem.ram[DROPT]:02X}")
 
-# ---- global: intro never reappears -----------------------------------
-check(not title_bounced_to_intro, "intro $FD reappeared after the first exit")
+# ---- global: the retired $FF title never appears ------------------------
+check(title_seen, "merged title $FD never ran")
+check(not old_ff_seen, "retired $FF title sentinel appeared")
 
 if fails:
     print(f"FAIL: {len(fails)} menu-flow violations:")
     for f in fails:
         print("  " + f)
     sys.exit(1)
-print(f"test_menu_flow: OK (intro->title->select x{LEVEL_COUNT} wrap->game->"
-      f"bounce-gate->title->game, {frame} frames, intro shown once)")
+print(f"test_menu_flow: OK (title $FD -> select x{LEVEL_COUNT} wrap -> game -> "
+      f"bounce gate -> title -> game, {frame} frames)")

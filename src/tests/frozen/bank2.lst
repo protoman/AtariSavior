@@ -888,344 +888,195 @@
     794  f401							; ------------------------------------------------------------------------------
     795  f401
     796  f401							; ------------------------------------------------------------------------------
-    797  f401							; TitleSequence — intro ($FD) phase machine (plans/title_bomb_sequence_plan).
-    798  f401							; Cross-bank entry: bank0 TitleSequenceFold (jsr → sta $1FF8 → jmp $F4C4,
-    799  f401							; the jmp bytes are mirrored in this bank); tail exits jmp $FBF8 (ReturnPad)
-    800  f401							; so the bank0 jsr returns. Runs once per frame from TitleIntro. No jsr
-    801  f401							; inside (fold depth must not nest). Guard: DropTarget == $FD.
-    802  f401							;   0 fly right→140	1 drop→48  2 face left  3 arm bomb (fuse 180)
-    803  f401							;   4 walk→76 (screen center)  5 wait explosion  6 walk→20 (home)
-    804  f401							;   7 pause 240 → reset to 0 (loop)
-    805  f401							; Fuse/explosion countdown is OWNED here — TitleTailAudio skips BombTick on
-    806  f401							; titles, so no walls/score/lives side effects can leak into title state.
-    807  f401							; BombY is never set: the band bottom-aligns the bomb to RoomY==48's sprite
-    808  f401							; window (armed only while grounded), so there is no reader for it.
-    809  f401							; ------------------------------------------------------------------------------
-    810  f401		       00 00 00 00*	      .ds	$F450 - *, 0	; EnterRoomB2 block-reader pad (A3)
-    811  f450				   ERBlocksPad
-    812  f450		       8d f9 1f 	      sta	$1FF9	; select bank3 (level-data bank)
-    813  f453		       4c b0 f3 	      jmp	$F3B0	; B3RoomBlocks — operand FETCHED bank3-side
-    814  f456		       00 00		      .ds	$F458 - *, 0
-    815  f458		       8d f8 1f 	      sta	$1FF8	; bank3 half of the return tail (never fetched
-    816  f45b							;   bank2-side — B3RoomBlocks ends here)
-    817  f45b		       4c 33 f0 	      jmp	ERBlocksDone	; fetched bank2-side at $F45B after the switch
-    818  f45e		       00 00 00 00*	      .ds	$F4C4 - *, 0	; pinned: bank0/bank2 TitleSequenceFold jmp
-    819  f4c4							; operand ($F4C4 since P2b StageBandTab grew;
-    820  f4c4							; verify_build asserts the operand is a
-    821  f4c4							; TitleSequence lst row start)
-    822  f4c4				   TitleSequence
-    823  f4c4		       a5 8a		      lda	DropTarget
-    824  f4c6		       c9 fd		      cmp	#$FD
-    825  f4c8		       f0 03		      beq	.TSAlive
-    826  f4ca		       4c cc f5 	      jmp	.TSdone
-    827  f4cd				   .TSAlive
-    828  f4cd							; --- own the bomb fuse (title: BombTick gated off) ---
-    829  f4cd		       a5 b5		      lda	BombPacked
-    830  f4cf		       29 03		      and	#%00000011
-    831  f4d1		       f0 35		      beq	.TSNoBomb
-    832  f4d3		       c9 01		      cmp	#1
-    833  f4d5		       f0 11		      beq	.TSFuse
-    834  f4d7		       c6 f7		      dec	BombTimer	; state 2 — explosion countdown
-    835  f4d9		       d0 2d		      bne	.TSNoBomb
-    836  f4db		       a5 b5		      lda	BombPacked	; → state 0 (mask/DownPrev kept)
-    837  f4dd		       29 fc		      and	#%11111100
-    838  f4df		       85 b5		      sta	BombPacked
-    839  f4e1		       a9 00		      lda	#0
-    840  f4e3		       85 f7		      sta	BombTimer
-    841  f4e5		       4c 08 f5 	      jmp	.TSNoBomb
-    842  f4e8				   .TSFuse
-    843  f4e8		       c6 f7		      dec	BombTimer
-    844  f4ea		       d0 1c		      bne	.TSNoBomb
-    845  f4ec		       a5 b5		      lda	BombPacked	; 1 → 2, explode tone (no BMW/score/blast)
-    846  f4ee		       29 fc		      and	#%11111100
-    847  f4f0		       09 02		      ora	#%00000010
-    848  f4f2		       85 b5		      sta	BombPacked
-    849  f4f4		       a9 3c		      lda	#60
-    850  f4f6		       85 f7		      sta	BombTimer
-    851  f4f8		       a9 08		      lda	#8	; noise — bank1 BombSndExplode's regs
-    852  f4fa		       85 15		      sta	AUDC0
-    853  f4fc		       a9 00		      lda	#0
-    854  f4fe		       85 17		      sta	AUDF0
-    855  f500		       a9 0a		      lda	#10
-    856  f502		       85 19		      sta	AUDV0
-    857  f504		       a9 1e		      lda	#30
-    858  f506		       85 f1		      sta	BombSnd	; UpdateBombSound fades AUDV0 out
-    859  f508				   .TSNoBomb
-    860  f508		       a5 b5		      lda	BombPacked	; no live bomb → BombX = footer/base X
-    861  f50a		       29 03		      and	#%00000011
-    862  f50c		       d0 04		      bne	.TSPhase
-    863  f50e		       a9 44		      lda	#68
-    864  f510		       85 f6		      sta	BombX
-    865  f512				   .TSPhase
-    866  f512							; --- dispatch ---
-    867  f512		       a5 f2		      lda	TallyTicks
-    868  f514		       d0 0e		      bne	.TSNotP0
-    869  f516		       a5 80		      lda	RoomX	; phase 0: fly right to 140
-    870  f518		       c9 8c		      cmp	#140
-    871  f51a		       90 03		      bcc	.P0Fly
-    872  f51c		       4c ca f5 	      jmp	.TSAdv
-    873  f51f				   .P0Fly
-    874  f51f		       e6 80		      inc	RoomX
-    875  f521		       4c cc f5 	      jmp	.TSdone
-    876  f524				   .TSNotP0
-    877  f524		       c9 01		      cmp	#1
-    878  f526		       d0 0e		      bne	.TSNotP1
-    879  f528		       a5 81		      lda	RoomY	; phase 1: drop to 48 (ground)
-    880  f52a		       c9 30		      cmp	#48
-    881  f52c		       90 03		      bcc	.P1Drop
-    882  f52e		       4c ca f5 	      jmp	.TSAdv
-    883  f531				   .P1Drop
-    884  f531		       e6 81		      inc	RoomY
-    885  f533		       4c cc f5 	      jmp	.TSdone
-    886  f536				   .TSNotP1
-    887  f536		       c9 02		      cmp	#2
-    888  f538		       d0 07		      bne	.TSNotP2
-    889  f53a		       a9 01		      lda	#1	; phase 2: face left (FACING_LEFT)
-    890  f53c		       85 82		      sta	PlayerDir
-    891  f53e		       4c ca f5 	      jmp	.TSAdv
-    892  f541				   .TSNotP2
-    893  f541		       c9 03		      cmp	#3
-    894  f543		       d0 21		      bne	.TSNotP3
-    895  f545		       a5 b5		      lda	BombPacked	; phase 3: arm bomb at X=140, fuse 180
-    896  f547		       09 01		      ora	#%00000001
-    897  f549		       85 b5		      sta	BombPacked
-    898  f54b		       a9 8c		      lda	#140
-    899  f54d		       85 f6		      sta	BombX
-    900  f54f		       a9 b4		      lda	#180
-    901  f551		       85 f7		      sta	BombTimer
-    902  f553		       a9 04		      lda	#4	; square — bank1 BombSndDrop's regs
-    903  f555		       85 15		      sta	AUDC0
-    904  f557		       a9 0a		      lda	#10
-    905  f559		       85 17		      sta	AUDF0
-    906  f55b		       a9 08		      lda	#8
-    907  f55d		       85 19		      sta	AUDV0
-    908  f55f		       a9 06		      lda	#6
-    909  f561		       85 f1		      sta	BombSnd
-    910  f563		       4c ca f5 	      jmp	.TSAdv
-    911  f566				   .TSNotP3
-    912  f566		       c9 04		      cmp	#4
-    913  f568		       d0 12		      bne	.TSNotP4
-    914  f56a		       a5 80		      lda	RoomX	; phase 4: walk left to center (X=76)
-    915  f56c		       c9 4d		      cmp	#77
-    916  f56e		       90 05		      bcc	.P4Wait
-    917  f570		       c6 80		      dec	RoomX
-    918  f572		       4c cc f5 	      jmp	.TSdone
-    919  f575				   .P4Wait
-    920  f575		       a9 00		      lda	#0	; at center: wait for the blast facing right
-    921  f577		       85 82		      sta	PlayerDir
-    922  f579		       4c ca f5 	      jmp	.TSAdv
-    923  f57c				   .TSNotP4
-    924  f57c		       c9 05		      cmp	#5
-    925  f57e		       d0 0d		      bne	.TSNotP5
-    926  f580		       a5 b5		      lda	BombPacked	; phase 5: wait out fuse + explosion
-    927  f582		       29 03		      and	#%00000011
-    928  f584		       d0 46		      bne	.TSdone
-    929  f586		       a9 01		      lda	#1	; blast gone: walk home facing left
-    930  f588		       85 82		      sta	PlayerDir
-    931  f58a		       4c ca f5 	      jmp	.TSAdv
-    932  f58d				   .TSNotP5
-    933  f58d		       c9 06		      cmp	#6
-    934  f58f		       d0 16		      bne	.TSNotP6
-    935  f591		       a5 80		      lda	RoomX	; phase 6: walk home (X=20), then pause 240
-    936  f593		       c9 15		      cmp	#21
-    937  f595		       90 05		      bcc	.TSPause
-    938  f597		       c6 80		      dec	RoomX
-    939  f599		       4c cc f5 	      jmp	.TSdone
-    940  f59c				   .TSPause
-    941  f59c		       a9 f0		      lda	#240
-    942  f59e		       85 f7		      sta	BombTimer
-    943  f5a0		       a9 00		      lda	#0	; home: wait facing right (before the climb)
-    944  f5a2		       85 82		      sta	PlayerDir
-    945  f5a4		       4c ca f5 	      jmp	.TSAdv
-    946  f5a7				   .TSNotP6
-    947  f5a7		       c9 07		      cmp	#7
-    948  f5a9		       d0 07		      bne	.TSNotP7
-    949  f5ab		       c6 f7		      dec	BombTimer	; phase 7: own the 240-frame pause — BombTick
-    950  f5ad		       d0 1d		      bne	.TSdone	;   is gated off on titles, nothing else ticks
-    951  f5af		       4c ca f5 	      jmp	.TSAdv	;   (dir already 0 — set at .TSPause) -> phase 8
-    952  f5b2				   .TSNotP7
-    953  f5b2		       c9 08		      cmp	#8
-    954  f5b4		       d0 16		      bne	.TSdone
-    955  f5b6		       a5 81		      lda	RoomY	; phase 8: fly back up to original Y=0, then
-    956  f5b8		       d0 0b		      bne	.P8Climb	;   restart the loop (no teleport)
-    957  f5ba		       a9 14		      lda	#20	;   X walked home already; belt + braces
-    958  f5bc		       85 80		      sta	RoomX
-    959  f5be		       a9 00		      lda	#0
-    960  f5c0		       85 f2		      sta	TallyTicks
-    961  f5c2		       4c cc f5 	      jmp	.TSdone
-    962  f5c5				   .P8Climb
-    963  f5c5		       c6 81		      dec	RoomY
-    964  f5c7		       4c cc f5 	      jmp	.TSdone
-    965  f5ca				   .TSAdv
-    966  f5ca		       e6 f2		      inc	TallyTicks
-    967  f5cc				   .TSdone
-    968  f5cc		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad → bank0 TitleIntro (0 push)
-    969  f5cf
-    970  f5cf							; Cell-map lookup copies (bank2 cannot read bank0 ROM) — cell_collision_plan
-    971  f5cf							; 0.2 bit spec, byte-identical to kernel.asm's ColOff/ColMask: group offset
-    972  f5cf							; 0/3/6 + per-col bit (PF0 LSB-first nibble, PF1 MSB-first, PF2 LSB-first).
-    973  f5cf							; Moved here 2026-10-08 (was between LWpSolid and MothGate): the TallyEntry
-    974  f5cf							; $F313 pin splits bank2's pre-region and the LWC M1 tip test needed the 44B.
-    975  f5cf				   ColOff
-    976  f5cf		       00 00 00 00*	      .byte.b	0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
-    977  f5e3				   ColMask
-    978  f5e3		       10 20 40 80*	      .byte.b	$10,$20,$40,$80, $80,$40,$20,$10,$08,$04,$02,$01
-    979  f5ef		       01 02 04 08*	      .byte.b	$01,$02,$04,$08, $10,$20,$40,$80
-    980  f5f7
-    981  f5f7		       00 00 00 00*	      .ds	$F600 - *, 0	; Phase 4 LWC patch-strip setup+test (out-of-
-    982  f600							; line: the pre-TallyEntry fill is ~0B)
-    983  f600				   LWpSetup
-    984  f600							; Marker = pL = 18+2*right_col (patch strip LEFT display col) when the
-    985  f600							; strip is solid for SOME tested band row, else $FC (d-$FC >= 4 for all
-    986  f600							; display cols — never matches the {0,1} strip test).
-    987  f600							; Band-active = LineCount mask x OvHead[top] & OvTail[bottom] (same
-    988  f600							; tables as PHMOverlay): an inactive band keeps the strip transparent.
-    989  f600		       a5 84		      lda	LineCount
-    990  f602		       f0 1b		      beq	.LWpNone
-    991  f604		       a6 8d		      ldx	CollisionCellY
-    992  f606		       bd 3f fe 	      lda	OvHead,X
-    993  f609		       a6 8f		      ldx	CollisionEndY
-    994  f60b		       3d 42 fe 	      and	OvTail,X
-    995  f60e		       25 84		      and	LineCount
-    996  f610		       f0 0d		      beq	.LWpNone
-    997  f612		       a5 84		      lda	LineCount
-    998  f614		       4a		      lsr
-    999  f615		       4a		      lsr
-   1000  f616		       4a		      lsr
-   1001  f617		       4a		      lsr		; n = right_col+1
-   1002  f618		       0a		      asl		; 2n
-   1003  f619		       18		      clc
-   1004  f61a		       69 12		      adc	#18	; 18+2n = 20+2*(n-1) = pL
-   1005  f61c		       4c 21 f6 	      jmp	.LWpSet
-   1006  f61f				   .LWpNone
-   1007  f61f		       a9 fc		      lda	#$FC
-   1008  f621				   .LWpSet
-   1009  f621		       85 8e		      sta	CollisionEndX	; marker (c0 already consumed by LWC entry)
-   1010  f623				   LWpTest
-   1011  f623							; d - marker in {0,1} = display col pL or pL+1 → solid (the strip
-   1012  f623							; behaves like a real 2-col wall); borrow/none land >=2.
-   1013  f623		       a5 e5		      lda	FetchPtr
-   1014  f625		       38		      sec
-   1015  f626		       e5 8e		      sbc	CollisionEndX
-   1016  f628		       c9 02		      cmp	#2
-   1017  f62a		       90 03		      bcc	.LWhit
-   1018  f62c		       4c b8 f2 	      jmp	LWpNotPatch	; miss → mirror/row walk (LWC, same bank)
-   1019  f62f				   .LWhit
-   1020  f62f		       4c e4 f2 	      jmp	LWpSolid	; strip col → wall contact A=2 (LWC, same bank)
-   1021  f632
-   1022  f632				   OvM1Block
-   1023  f632							; Phase 4 M1 (left strip) collision overlay. Entered by JMP from
-   1024  f632							; PHMOverlay's .OvClear (right-strip miss) — 0 pushes; both exits
-   1025  f632							; ReturnPad ($FBF8). In: CollisionX = vl, CollisionCellY/EndY =
-   1026  f632							; player row range (survive the right tests — do NOT clobber the
-   1027  f632							; prologue box: CellX/EndX/CellY/EndY must stay intact, the block
-   1028  f632							; path hands them to HotOverlapFlag). Scratch = RectCount ($92; M1X,
-   1029  f632							; then ℓ math — see PHMOverlay note). Kill-aware
-   1030  f632							; (EnemyDeadMask b4); a row blocks iff its PF cell at col ℓ is open —
-   1031  f632							; the wall-hide envelope guarantees open ⟺ patched (every band at ℓ
-   1032  f632							; is wall or M1-patched, never plain-open).
-   1033  f632		       a5 ba		      lda	EnemyDeadMask
-   1034  f634		       29 10		      and	#$10	; b4 = M1 strip destroyed → transparent
-   1035  f636		       d0 6a		      bne	.OvM1no
-   1036  f638		       a5 99		      lda	RoomMetaA	; MetaA
-   1037  f63a		       29 01		      and	#$01	; Phase 5: b0 = M1 strip on the RIGHT half
-   1038  f63c		       aa		      tax		;   (door band mask is $02 → b0 free)
-   1039  f63d		       a5 99		      lda	RoomMetaA	; reload MetaA
-   1040  f63f		       4a		      lsr
-   1041  f640		       4a		      lsr
-   1042  f641		       4a		      lsr
-   1043  f642		       4a		      lsr		; m1_col+1 (0 = no M1 patch)
-   1044  f643		       f0 5d		      beq	.OvM1no
-   1045  f645		       0a		      asl
-   1046  f646		       0a		      asl
-   1047  f647		       0a		      asl		; 8*(m1_col+1)
-   1048  f648		       18		      clc
-   1049  f649		       7d 74 f3 	      adc	M1OffTab,X	; -1 (left, $FF) / +79 (right, $4f) → the
-   1050  f64c							;   side's M1X (7+8*col / 87+8*col) — MUST
-   1051  f64c							;   match the bank2 StageBandTab staging.
-   1052  f64c		       85 92		      sta	RectCount	; scratch M1X (EndX = prologue min col is
-   1053  f64e							; CollisionEndX — kept intact for HotOverlapFlag)
-   1054  f64e		       a5 8b		      lda	CollisionX	; vl
-   1055  f650		       c5 92		      cmp	RectCount	; vl vs M1X (same shape as the ball test)
-   1056  f652		       90 04		      bcc	.OvM1T2
-   1057  f654		       f0 02		      beq	.OvM1T2
-   1058  f656		       b0 4a		      bcs	.OvM1no	; vl > M1X → player fully left of strip
-   1059  f658				   .OvM1T2
-   1060  f658		       a5 92		      lda	RectCount
-   1061  f65a		       c9 0d		      cmp	#13
-   1062  f65c		       90 0b		      bcc	.OvM1Band	; M1X < 13 (ℓ = 0): M1X-13 wraps — skip
-   1063  f65e		       38		      sec		; the second test (test 1 already implies
-   1064  f65f		       e9 0d		      sbc	#13	; overlap for every valid vl)
-   1065  f661		       c5 8b		      cmp	CollisionX
-   1066  f663		       90 04		      bcc	.OvM1Band
-   1067  f665		       f0 02		      beq	.OvM1Band
-   1068  f667		       b0 39		      bcs	.OvM1no	; M1X-13 > vl → player fully right
-   1069  f669				   .OvM1Band
-   1070  f669		       a5 92		      lda	RectCount
-   1071  f66b		       38		      sec
-   1072  f66c		       e9 07		      sbc	#7
-   1073  f66e		       4a		      lsr
-   1074  f66f		       4a		      lsr
-   1075  f670		       4a		      lsr		; ℓ = (M1X-7)/8
-   1076  f671		       aa		      tax		; X = ℓ (PHM callers preserve X themselves)
-   1077  f672		       a5 8d		      lda	CollisionCellY
-   1078  f674		       85 92		      sta	RectCount	; $92 walk temp — free after the cell walk
-   1079  f676							; (RowIdx re-inits at kernel entry)
-   1080  f676				   .OvM1Row
-   1081  f676		       a5 92		      lda	RectCount
-   1082  f678		       a8		      tay
-   1083  f679		       98		      tya
-   1084  f67a		       18		      clc
-   1085  f67b		       7d cf f5 	      adc	ColOff,X	; PF0/PF1/PF2 group offset (0/3/6)
-   1086  f67e		       a8		      tay
-   1087  f67f		       b9 c3 00 	      lda	PF0Buf,Y	; same cell read as PlayerHitsMap
-   1088  f682		       3d e3 f5 	      and	ColMask,X
-   1089  f685		       f0 0a		      beq	.OvM1block	; open → patch cell active in this row
-   1090  f687		       a5 92		      lda	RectCount
-   1091  f689		       c5 8f		      cmp	CollisionEndY
-   1092  f68b		       f0 15		      beq	.OvM1no
-   1093  f68d		       e6 92		      inc	RectCount
-   1094  f68f		       d0 e5		      bne	.OvM1Row	; row never wraps to 0
-   1095  f691				   .OvM1block
-   1096  f691							; Blocked by the M1 cell: run the hot check too — convert emits the
-   1097  f691							; M1 patch cell as a hot rect on the hot band (mask $00, never dies
-   1098  f691							; with a wall), so touching the block on a hot band = death, exactly
-   1099  f691							; like a hot PF wall. Off-band / non-hot: body finds no rect → sec,
-   1100  f691							; still blocked. b4 (strip destroyed) never reaches here (.OvM1no).
-   1101  f691							; Phase 5 key: touching the M1 strip (left door) while KeyHeld removes
-   1102  f691							; it (b4) — touch, not mere possession.
-   1103  f691		       a5 a7		      lda	LevelStartRoom
-   1104  f693		       30 03		      bmi	.OvM1unlock
-   1105  f695		       4c ec ff 	      jmp	HotOverlapFlag	; C=1 contract; body sets Temp b7 on hot hit
-   1106  f698				   .OvM1unlock
-   1107  f698		       a5 ba		      lda	EnemyDeadMask
-   1108  f69a		       09 10		      ora	#$10	; b4 = M1 strip (left door) destroyed
-   1109  f69c		       85 ba		      sta	EnemyDeadMask
-   1110  f69e		       18		      clc
-   1111  f69f		       4c f8 fb 	      jmp	ReturnPad	; passable
-   1112  f6a2				   .OvM1no
-   1113  f6a2		       18		      clc
-   1114  f6a3		       4c f8 fb 	      jmp	ReturnPad
-   1115  f6a6
-   1116  f6a6		       00 e0	   FooterPtr1 =	$E0	; title-only pointer block; overwritten by HUD
-   1117  f6a6		       00 e2	   FooterPtr2 =	$E2
-   1118  f6a6		       00 e4	   FooterPtr3 =	$E4
-   1119  f6a6		       00 e6	   FooterPtr4 =	$E6
-   1120  f6a6		       00 e8	   FooterPtr5 =	$E8
-   1121  f6a6		       00 ea	   FooterPtr6 =	$EA
-   1122  f6a6
-   1123  f6a6							; ------------------------------------------------------------------------------
-   1124  f6a6							; TitleBandPrep — called by TitlePlayerBand at band entry (same-bank jsr).
-   1125  f6a6							; Sets Grp0Ptr frame (walk phases 4/6 alternate PlayerWalkA/B on EnemyRamP
-   1126  f6a6							; bit3, phases 2/3/5/7 static A, phases 0/1/8 jet flutter), REFP0 =
-   1127  f6a6							; PlayerDir<<3 (bit3 = mirror, kernel.asm:602), FooterPtr1 = bomb state (draw rows), COLUP1 = fuse color or
-   1128  f6a6							; COLUBK = explosion blink color (same (60-BombTimer)&3 table as the game's
-   1129  f6a6							; BombBlinkColors). Band tail restores COLUBK/REFP0 before the footer.
-   1130  f6a6							; Clobbers A/X/Y; rts (same-bank — NOT a fold; stack +2 during the call).
-   1131  f6a6							; ------------------------------------------------------------------------------
-   1132  f6a6		       00 00 00 00*	      .ds	$F700 - *, 0
-   1133  f700							; --- Level-data spill 1 (bugs.md 27): fill gap $F767..$F800 (153B).
-   1134  f700							; levels_index first — it defines ROOM_NONE for the table includes.
+    797  f401							; TitleSequence — RETIRED 2026-10-19 (merged title screen). The space is
+    798  f401							; fill; the old cross-bank entry was bank0 TitleSequenceFold (jsr → $F4C4,
+    799  f401
+    800  f401							; the jmp bytes are mirrored in this bank); tail exits jmp $FBF8 (ReturnPad)
+    801  f401							; so the bank0 jsr returns. Runs once per frame from TitleIntro. No jsr
+    802  f401							; inside (fold depth must not nest). Guard: DropTarget == $FD.
+    803  f401							;   0 fly right→140	1 drop→48  2 face left  3 arm bomb (fuse 180)
+    804  f401							;   4 walk→76 (screen center)  5 wait explosion  6 walk→20 (home)
+    805  f401							;   7 pause 240 → reset to 0 (loop)
+    806  f401							; Fuse/explosion countdown is OWNED here — TitleTailAudio skips BombTick on
+    807  f401							; titles, so no walls/score/lives side effects can leak into title state.
+    808  f401							; BombY is never set: the band bottom-aligns the bomb to RoomY==48's sprite
+    809  f401							; window (armed only while grounded), so there is no reader for it.
+    810  f401							; ------------------------------------------------------------------------------
+    811  f401		       00 00 00 00*	      .ds	$F450 - *, 0	; EnterRoomB2 block-reader pad (A3)
+    812  f450				   ERBlocksPad
+    813  f450		       8d f9 1f 	      sta	$1FF9	; select bank3 (level-data bank)
+    814  f453		       4c b0 f3 	      jmp	$F3B0	; B3RoomBlocks — operand FETCHED bank3-side
+    815  f456		       00 00		      .ds	$F458 - *, 0
+    816  f458		       8d f8 1f 	      sta	$1FF8	; bank3 half of the return tail (never fetched
+    817  f45b							;   bank2-side — B3RoomBlocks ends here)
+    818  f45b		       4c 33 f0 	      jmp	ERBlocksDone	; fetched bank2-side at $F45B after the switch
+    819  f45e		       00 00 00 00*	      .ds	$F4C4 - *, 0	; pinned: bank0/bank2 TitleSequenceFold jmp
+    820  f4c4							; operand ($F4C4 since P2b StageBandTab grew;
+    821  f4c4							; verify_build asserts the operand is a
+    822  f4c4							; TitleSequence lst row start)
+    823  f4c4		       00 00 00 00*	      .ds	$F5CF - *, 0	; TitleSequence retired — merged title
+    824  f5cf							;   screen (2026-10-19)
+    825  f5cf
+    826  f5cf				   ColOff
+    827  f5cf		       00 00 00 00*	      .byte.b	0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
+    828  f5e3				   ColMask
+    829  f5e3		       10 20 40 80*	      .byte.b	$10,$20,$40,$80, $80,$40,$20,$10,$08,$04,$02,$01
+    830  f5ef		       01 02 04 08*	      .byte.b	$01,$02,$04,$08, $10,$20,$40,$80
+    831  f5f7
+    832  f5f7		       00 00 00 00*	      .ds	$F600 - *, 0	; Phase 4 LWC patch-strip setup+test (out-of-
+    833  f600							; line: the pre-TallyEntry fill is ~0B)
+    834  f600				   LWpSetup
+    835  f600							; Marker = pL = 18+2*right_col (patch strip LEFT display col) when the
+    836  f600							; strip is solid for SOME tested band row, else $FC (d-$FC >= 4 for all
+    837  f600							; display cols — never matches the {0,1} strip test).
+    838  f600							; Band-active = LineCount mask x OvHead[top] & OvTail[bottom] (same
+    839  f600							; tables as PHMOverlay): an inactive band keeps the strip transparent.
+    840  f600		       a5 84		      lda	LineCount
+    841  f602		       f0 1b		      beq	.LWpNone
+    842  f604		       a6 8d		      ldx	CollisionCellY
+    843  f606		       bd 3f fe 	      lda	OvHead,X
+    844  f609		       a6 8f		      ldx	CollisionEndY
+    845  f60b		       3d 42 fe 	      and	OvTail,X
+    846  f60e		       25 84		      and	LineCount
+    847  f610		       f0 0d		      beq	.LWpNone
+    848  f612		       a5 84		      lda	LineCount
+    849  f614		       4a		      lsr
+    850  f615		       4a		      lsr
+    851  f616		       4a		      lsr
+    852  f617		       4a		      lsr		; n = right_col+1
+    853  f618		       0a		      asl		; 2n
+    854  f619		       18		      clc
+    855  f61a		       69 12		      adc	#18	; 18+2n = 20+2*(n-1) = pL
+    856  f61c		       4c 21 f6 	      jmp	.LWpSet
+    857  f61f				   .LWpNone
+    858  f61f		       a9 fc		      lda	#$FC
+    859  f621				   .LWpSet
+    860  f621		       85 8e		      sta	CollisionEndX	; marker (c0 already consumed by LWC entry)
+    861  f623				   LWpTest
+    862  f623							; d - marker in {0,1} = display col pL or pL+1 → solid (the strip
+    863  f623							; behaves like a real 2-col wall); borrow/none land >=2.
+    864  f623		       a5 e5		      lda	FetchPtr
+    865  f625		       38		      sec
+    866  f626		       e5 8e		      sbc	CollisionEndX
+    867  f628		       c9 02		      cmp	#2
+    868  f62a		       90 03		      bcc	.LWhit
+    869  f62c		       4c b8 f2 	      jmp	LWpNotPatch	; miss → mirror/row walk (LWC, same bank)
+    870  f62f				   .LWhit
+    871  f62f		       4c e4 f2 	      jmp	LWpSolid	; strip col → wall contact A=2 (LWC, same bank)
+    872  f632
+    873  f632				   OvM1Block
+    874  f632							; Phase 4 M1 (left strip) collision overlay. Entered by JMP from
+    875  f632							; PHMOverlay's .OvClear (right-strip miss) — 0 pushes; both exits
+    876  f632							; ReturnPad ($FBF8). In: CollisionX = vl, CollisionCellY/EndY =
+    877  f632							; player row range (survive the right tests — do NOT clobber the
+    878  f632							; prologue box: CellX/EndX/CellY/EndY must stay intact, the block
+    879  f632							; path hands them to HotOverlapFlag). Scratch = RectCount ($92; M1X,
+    880  f632							; then ℓ math — see PHMOverlay note). Kill-aware
+    881  f632							; (EnemyDeadMask b4); a row blocks iff its PF cell at col ℓ is open —
+    882  f632							; the wall-hide envelope guarantees open ⟺ patched (every band at ℓ
+    883  f632							; is wall or M1-patched, never plain-open).
+    884  f632		       a5 ba		      lda	EnemyDeadMask
+    885  f634		       29 10		      and	#$10	; b4 = M1 strip destroyed → transparent
+    886  f636		       d0 6a		      bne	.OvM1no
+    887  f638		       a5 99		      lda	RoomMetaA	; MetaA
+    888  f63a		       29 01		      and	#$01	; Phase 5: b0 = M1 strip on the RIGHT half
+    889  f63c		       aa		      tax		;   (door band mask is $02 → b0 free)
+    890  f63d		       a5 99		      lda	RoomMetaA	; reload MetaA
+    891  f63f		       4a		      lsr
+    892  f640		       4a		      lsr
+    893  f641		       4a		      lsr
+    894  f642		       4a		      lsr		; m1_col+1 (0 = no M1 patch)
+    895  f643		       f0 5d		      beq	.OvM1no
+    896  f645		       0a		      asl
+    897  f646		       0a		      asl
+    898  f647		       0a		      asl		; 8*(m1_col+1)
+    899  f648		       18		      clc
+    900  f649		       7d 74 f3 	      adc	M1OffTab,X	; -1 (left, $FF) / +79 (right, $4f) → the
+    901  f64c							;   side's M1X (7+8*col / 87+8*col) — MUST
+    902  f64c							;   match the bank2 StageBandTab staging.
+    903  f64c		       85 92		      sta	RectCount	; scratch M1X (EndX = prologue min col is
+    904  f64e							; CollisionEndX — kept intact for HotOverlapFlag)
+    905  f64e		       a5 8b		      lda	CollisionX	; vl
+    906  f650		       c5 92		      cmp	RectCount	; vl vs M1X (same shape as the ball test)
+    907  f652		       90 04		      bcc	.OvM1T2
+    908  f654		       f0 02		      beq	.OvM1T2
+    909  f656		       b0 4a		      bcs	.OvM1no	; vl > M1X → player fully left of strip
+    910  f658				   .OvM1T2
+    911  f658		       a5 92		      lda	RectCount
+    912  f65a		       c9 0d		      cmp	#13
+    913  f65c		       90 0b		      bcc	.OvM1Band	; M1X < 13 (ℓ = 0): M1X-13 wraps — skip
+    914  f65e		       38		      sec		; the second test (test 1 already implies
+    915  f65f		       e9 0d		      sbc	#13	; overlap for every valid vl)
+    916  f661		       c5 8b		      cmp	CollisionX
+    917  f663		       90 04		      bcc	.OvM1Band
+    918  f665		       f0 02		      beq	.OvM1Band
+    919  f667		       b0 39		      bcs	.OvM1no	; M1X-13 > vl → player fully right
+    920  f669				   .OvM1Band
+    921  f669		       a5 92		      lda	RectCount
+    922  f66b		       38		      sec
+    923  f66c		       e9 07		      sbc	#7
+    924  f66e		       4a		      lsr
+    925  f66f		       4a		      lsr
+    926  f670		       4a		      lsr		; ℓ = (M1X-7)/8
+    927  f671		       aa		      tax		; X = ℓ (PHM callers preserve X themselves)
+    928  f672		       a5 8d		      lda	CollisionCellY
+    929  f674		       85 92		      sta	RectCount	; $92 walk temp — free after the cell walk
+    930  f676							; (RowIdx re-inits at kernel entry)
+    931  f676				   .OvM1Row
+    932  f676		       a5 92		      lda	RectCount
+    933  f678		       a8		      tay
+    934  f679		       98		      tya
+    935  f67a		       18		      clc
+    936  f67b		       7d cf f5 	      adc	ColOff,X	; PF0/PF1/PF2 group offset (0/3/6)
+    937  f67e		       a8		      tay
+    938  f67f		       b9 c3 00 	      lda	PF0Buf,Y	; same cell read as PlayerHitsMap
+    939  f682		       3d e3 f5 	      and	ColMask,X
+    940  f685		       f0 0a		      beq	.OvM1block	; open → patch cell active in this row
+    941  f687		       a5 92		      lda	RectCount
+    942  f689		       c5 8f		      cmp	CollisionEndY
+    943  f68b		       f0 15		      beq	.OvM1no
+    944  f68d		       e6 92		      inc	RectCount
+    945  f68f		       d0 e5		      bne	.OvM1Row	; row never wraps to 0
+    946  f691				   .OvM1block
+    947  f691							; Blocked by the M1 cell: run the hot check too — convert emits the
+    948  f691							; M1 patch cell as a hot rect on the hot band (mask $00, never dies
+    949  f691							; with a wall), so touching the block on a hot band = death, exactly
+    950  f691							; like a hot PF wall. Off-band / non-hot: body finds no rect → sec,
+    951  f691							; still blocked. b4 (strip destroyed) never reaches here (.OvM1no).
+    952  f691							; Phase 5 key: touching the M1 strip (left door) while KeyHeld removes
+    953  f691							; it (b4) — touch, not mere possession.
+    954  f691		       a5 a7		      lda	LevelStartRoom
+    955  f693		       30 03		      bmi	.OvM1unlock
+    956  f695		       4c ec ff 	      jmp	HotOverlapFlag	; C=1 contract; body sets Temp b7 on hot hit
+    957  f698				   .OvM1unlock
+    958  f698		       a5 ba		      lda	EnemyDeadMask
+    959  f69a		       09 10		      ora	#$10	; b4 = M1 strip (left door) destroyed
+    960  f69c		       85 ba		      sta	EnemyDeadMask
+    961  f69e		       18		      clc
+    962  f69f		       4c f8 fb 	      jmp	ReturnPad	; passable
+    963  f6a2				   .OvM1no
+    964  f6a2		       18		      clc
+    965  f6a3		       4c f8 fb 	      jmp	ReturnPad
+    966  f6a6
+    967  f6a6		       00 e0	   FooterPtr1 =	$E0	; title-only pointer block; overwritten by HUD
+    968  f6a6		       00 e2	   FooterPtr2 =	$E2
+    969  f6a6		       00 e4	   FooterPtr3 =	$E4
+    970  f6a6		       00 e6	   FooterPtr4 =	$E6
+    971  f6a6		       00 e8	   FooterPtr5 =	$E8
+    972  f6a6		       00 ea	   FooterPtr6 =	$EA
+    973  f6a6
+    974  f6a6							; ------------------------------------------------------------------------------
+    975  f6a6							; TitleBandPrep — called by TitlePlayerBand at band entry (same-bank jsr).
+    976  f6a6							; Sets Grp0Ptr frame (walk phases 4/6 alternate PlayerWalkA/B on EnemyRamP
+    977  f6a6							; bit3, phases 2/3/5/7 static A, phases 0/1/8 jet flutter), REFP0 =
+    978  f6a6							; PlayerDir<<3 (bit3 = mirror, kernel.asm:602), FooterPtr1 = bomb state (draw rows), COLUP1 = fuse color or
+    979  f6a6							; COLUBK = explosion blink color (same (60-BombTimer)&3 table as the game's
+    980  f6a6							; BombBlinkColors). Band tail restores COLUBK/REFP0 before the footer.
+    981  f6a6							; Clobbers A/X/Y; rts (same-bank — NOT a fold; stack +2 during the call).
+    982  f6a6							; ------------------------------------------------------------------------------
+    983  f6a6		       00 00 00 00*	      .ds	$F700 - *, 0
+    984  f700							; --- Level-data spill 1 (bugs.md 27): fill gap $F767..$F800 (153B).
+    985  f700							; levels_index first — it defines ROOM_NONE for the table includes.
 ------- FILE generated/spill_F767.asm LEVEL 2 PASS 2
       0  f700					      include	"generated/spill_F767.asm"	; #27b: index + level files, placed by convert_level
       1  f700							; Generated by convert_level.py --levels (bugs.md 27b). Do not edit by hand.
@@ -1402,638 +1253,632 @@
      38  f7f0		       dc f7 00 00	      .byte.b	<(LEVEL4_EnemyDataTable), >(LEVEL4_EnemyDataTable), 0, $00	; room 5
 ------- FILE generated/spill_F767.asm
 ------- FILE bank2.asm
-   1136  f7f4		       00 00 00 00*	      .ds	$F800 - *, 0
-   1137  f800
-   1138  f800							; ------------------------------------------------------------------------------
-   1139  f800							; StageBandTab ping-pong (chunk A2, 2026-10-19). bank3 B3StageBand stages the
-   1140  f800							; band/ball state, then `jmp $F800` (its `sta $1FF8` runs there); the fetch at
-   1141  f800							; $F803 is THIS bank's `jmp PhBlinkTail`. PhaseBlink stays here (it walks the
-   1142  f800							; rect stream), then the tail switches back so bank3 can run the overlay pack.
-   1143  f800							; Zero pushes both ways — the bank0 VBL jsr frame is never touched.
-   1144  f800							; ------------------------------------------------------------------------------
-   1145  f800		       00 00 00 00*	      .ds	$F854 - *, 0	; FooterFont ends $F854 (13-row) — sprite/color data
-   1146  f854		       00 00 00 00*	      .ds	$F864 - *, 0	; #27b level spill slot ($F864, 28B; empty until
+    987  f7f4		       00 00 00 00*	      .ds	$F800 - *, 0
+    988  f800
+    989  f800							; ------------------------------------------------------------------------------
+    990  f800							; StageBandTab ping-pong (chunk A2, 2026-10-19). bank3 B3StageBand stages the
+    991  f800							; band/ball state, then `jmp $F800` (its `sta $1FF8` runs there); the fetch at
+    992  f800							; $F803 is THIS bank's `jmp PhBlinkTail`. PhaseBlink stays here (it walks the
+    993  f800							; rect stream), then the tail switches back so bank3 can run the overlay pack.
+    994  f800							; Zero pushes both ways — the bank0 VBL jsr frame is never touched.
+    995  f800							; ------------------------------------------------------------------------------
+    996  f800		       00 00 00 00*	      .ds	$F854 - *, 0	; FooterFont ends $F854 (13-row) — sprite/color data
+    997  f854		       00 00 00 00*	      .ds	$F864 - *, 0	; #27b level spill slot ($F864, 28B; empty until
 ------- FILE generated/spill_F840.asm LEVEL 2 PASS 2
       0  f864					      include	"generated/spill_F840.asm"	;  convert_level places a level here)
       1  f864							; Generated by convert_level.py --levels (bugs.md 27b). Do not edit by hand.
       2  f864							; Include list for this bank2 gap — see emit_spills().
 ------- FILE bank2.asm
-   1148  f864		       00 00 00 00*	      .ds	$F880 - *, 0
-   1149  f880							; TallySum — the level-bonus total for TallyEntry (frozen-scene frame).
-   1150  f880							; Split OUT of the inline TallyEntry region (it ends at a hard org) into bank2's
-   1151  f880							; free slack before the $F970 pin. IN: X = time ticks (0..20). OUT: TallyTicks
-   1152  f880							; set; A clobbered, X/Y kept. The bomb count MUST be masked: PlayerBombs' high
-   1153  f880							; bits carry the raft's take-off ramp state (b7 flag, b6-3 level — see the
-   1154  f880							; kernel EQU contract), and a stale ride would otherwise inflate the bonus.
-   1155  f880							; Temp ($88) is free here: the tally frame bypasses the input (its joystick
-   1156  f880							; store) and the next VBL restages Temp anyway.
-   1157  f880				   TallySum
-   1158  f880		       a5 f0		      lda	PlayerBombs
-   1159  f882		       29 07		      and	#%00000111	; bombs only, never the ramp bits
-   1160  f884		       85 88		      sta	Temp
-   1161  f886		       8a		      txa
-   1162  f887		       18		      clc
-   1163  f888		       69 14		      adc	#20	; miner reach = 1000 pts
-   1164  f88a		       65 88		      adc	Temp	; + 50 per unspent bomb (chain carry ok)
-   1165  f88c		       85 f2		      sta	TallyTicks
-   1166  f88e		       a5 ac		      lda	PlayerLives
-   1167  f890		       0a		      asl		; + 100 per life = 2 ticks
-   1168  f891		       18		      clc
-   1169  f892		       65 f2		      adc	TallyTicks
-   1170  f894		       85 f2		      sta	TallyTicks
-   1171  f896		       60		      rts
-   1172  f897
-   1173  f897		       00 00 00 00*	      .ds	$F8B7 - *, 0	; spill-pool gap: VcrCoveredState relocated here
-   1174  f8b7							; ------------------------------------------------------------------------------
-   1175  f8b7							; VcrCoveredState DELETED (2026-10-19): it had no callers once VcrStateTab
-   1176  f8b7							; took the VBL hot path, and the formula it documented is already asserted
-   1177  f8b7							; directly against bank3 CrunchClock + VCS3 and re-derived for VcrStateTab
-   1178  f8b7							; by verify_build.check_crunch_clock. (~39 B freed.)
-   1179  f8b7		       00 00 00 00*	      .ds	$F8DD - *, 0	; twin: bank0 PlayerSpriteA lives here (test_miner)
-   1180  f8dd				   TitleJetSprite
-   1181  f8dd							; Exact A/B copies of PlayerSpriteA/B; game alternates every 4 frames.
-   1182  f8dd		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
-   1183  f8e1		       7c fe fe 3e	      .byte.b	%01111100, %11111110, %11111110, %00111110
-   1184  f8e5		       3e 14 14 14	      .byte.b	%00111110, %00010100, %00010100, %00010100
-   1185  f8e9		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
-   1186  f8ed		       7c fe fe 7e	      .byte.b	%01111100, %11111110, %11111110, %01111110
-   1187  f8f1		       be 14 14 14	      .byte.b	%10111110, %00010100, %00010100, %00010100
-   1188  f8f5							; --- Level-data spill 2 (bugs.md 27/27b): fill gap $F901..$F970 (111B) ---
+    999  f864		       00 00 00 00*	      .ds	$F880 - *, 0
+   1000  f880							; TallySum — the level-bonus total for TallyEntry (frozen-scene frame).
+   1001  f880							; Split OUT of the inline TallyEntry region (it ends at a hard org) into bank2's
+   1002  f880							; free slack before the $F970 pin. IN: X = time ticks (0..20). OUT: TallyTicks
+   1003  f880							; set; A clobbered, X/Y kept. The bomb count MUST be masked: PlayerBombs' high
+   1004  f880							; bits carry the raft's take-off ramp state (b7 flag, b6-3 level — see the
+   1005  f880							; kernel EQU contract), and a stale ride would otherwise inflate the bonus.
+   1006  f880							; Temp ($88) is free here: the tally frame bypasses the input (its joystick
+   1007  f880							; store) and the next VBL restages Temp anyway.
+   1008  f880				   TallySum
+   1009  f880		       a5 f0		      lda	PlayerBombs
+   1010  f882		       29 07		      and	#%00000111	; bombs only, never the ramp bits
+   1011  f884		       85 88		      sta	Temp
+   1012  f886		       8a		      txa
+   1013  f887		       18		      clc
+   1014  f888		       69 14		      adc	#20	; miner reach = 1000 pts
+   1015  f88a		       65 88		      adc	Temp	; + 50 per unspent bomb (chain carry ok)
+   1016  f88c		       85 f2		      sta	TallyTicks
+   1017  f88e		       a5 ac		      lda	PlayerLives
+   1018  f890		       0a		      asl		; + 100 per life = 2 ticks
+   1019  f891		       18		      clc
+   1020  f892		       65 f2		      adc	TallyTicks
+   1021  f894		       85 f2		      sta	TallyTicks
+   1022  f896		       60		      rts
+   1023  f897
+   1024  f897		       00 00 00 00*	      .ds	$F8B7 - *, 0	; spill-pool gap: VcrCoveredState relocated here
+   1025  f8b7							; ------------------------------------------------------------------------------
+   1026  f8b7							; VcrCoveredState DELETED (2026-10-19): it had no callers once VcrStateTab
+   1027  f8b7							; took the VBL hot path, and the formula it documented is already asserted
+   1028  f8b7							; directly against bank3 CrunchClock + VCS3 and re-derived for VcrStateTab
+   1029  f8b7							; by verify_build.check_crunch_clock. (~39 B freed.)
+   1030  f8b7		       00 00 00 00*	      .ds	$F8DD - *, 0	; twin: bank0 PlayerSpriteA lives here (test_miner)
+   1031  f8dd				   TitleJetSprite
+   1032  f8dd							; Exact A/B copies of PlayerSpriteA/B; game alternates every 4 frames.
+   1033  f8dd		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
+   1034  f8e1		       7c fe fe 3e	      .byte.b	%01111100, %11111110, %11111110, %00111110
+   1035  f8e5		       3e 14 14 14	      .byte.b	%00111110, %00010100, %00010100, %00010100
+   1036  f8e9		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
+   1037  f8ed		       7c fe fe 7e	      .byte.b	%01111100, %11111110, %11111110, %01111110
+   1038  f8f1		       be 14 14 14	      .byte.b	%10111110, %00010100, %00010100, %00010100
+   1039  f8f5							; --- Level-data spill 2 (bugs.md 27/27b): fill gap $F901..$F970 (111B) ---
 ------- FILE generated/spill_F901.asm LEVEL 2 PASS 2
       0  f8f5					      include	"generated/spill_F901.asm"	; #27b: placed by convert_level
       1  f8f5							; Generated by convert_level.py --levels (bugs.md 27b). Do not edit by hand.
       2  f8f5							; Include list for this bank2 gap — see emit_spills().
 ------- FILE bank2.asm
-   1190  f8f5							; Phase 3 blink masks — pair index (2c>>1) → the two adjacent PF bits
-   1191  f8f5							; for that left-half cell (PF0: bits4-7 left-to-right; PF1: bits7-0;
-   1192  f8f5							; PF2: bits0-7 reversed). Pairs never straddle a register (even 2c).
-   1193  f8f5		       00 00 00 00*	      .ds	$F970 - *, 0	; pinned: bank1 .BMWDone jmp operand ($F970)
-   1194  f970				   M1StripBlast
-   1195  f970							; Phase 4 M1 strip blast — entered from bank1 BombMarkWalls .BMWDone
-   1196  f970							; via the $F9AC shared pad (`sta $1FF8 / jmp $F970`; 0 pushes). Bank2-
-   1197  f970							; only job (P2b stager): the packed meta (TilePF0+9/+10) lives in THIS
-   1198  f970							; bank's ROM — read the door flags + left-strip dcol, stage them, let
-   1199  f970							; bank1 StripBlastCheck run BOTH overlap takes (the blast window is
-   1200  f970							; left-half cols 0..19 and stays READ-ONLY here).
-   1201  f970							; Staging contract (both scratch bytes free in this flow):
-   1202  f970							;   RectCount := 2ℓ left-strip dcol, or $FF = none/door/right-bomb;
-   1203  f970							;   Temp ($88 = bank1 BMWScratch) := $FF when MetaB b7 (right door)
-   1204  f970							;   so the ball-strip take can never fire. Key pickup (P5) sets b3/b4
-   1205  f970							;   for doors instead (comment hook at the takes).
-   1206  f970		       a5 92		      lda	RectCount	; original screen col (BMW prologue stash)
-   1207  f972		       c9 14		      cmp	#20
-   1208  f974		       b0 1b		      bcs	.M1SBnone	; right bomb → left strip unreachable
-   1209  f976		       a5 ba		      lda	EnemyDeadMask
-   1210  f978		       29 10		      and	#$10	; b4 already set → nothing to stage
-   1211  f97a		       d0 15		      bne	.M1SBnone
-   1212  f97c		       a5 99		      lda	RoomMetaA	; MetaA
-   1213  f97e		       29 08		      and	#$08	; b3 = left door (key-only, bomb-immune)
-   1214  f980		       d0 0f		      bne	.M1SBnone	; stays $FF: bank1 takes no left strip
-   1215  f982		       a5 99		      lda	RoomMetaA	; reload (and clobbered A)
-   1216  f984		       4a		      lsr
-   1217  f985		       4a		      lsr
-   1218  f986		       4a		      lsr
-   1219  f987		       4a		      lsr		; m1_col+1 (0 = no M1 → 2ℓ = $FE, off the
-   1220  f988							;   high end — bank1's hi test rejects)
-   1221  f988		       38		      sec
-   1222  f989		       e9 01		      sbc	#1	; ℓ = left_col
-   1223  f98b		       0a		      asl		; 2ℓ = strip left dcol
-   1224  f98c		       85 92		      sta	RectCount	; staged (nothing after this reads the col)
-   1225  f98e		       4c 95 f9 	      jmp	.M1SBdoorR
-   1226  f991				   .M1SBnone
-   1227  f991		       a9 ff		      lda	#$FF
-   1228  f993		       85 92		      sta	RectCount	; no left strip this frame
-   1229  f995				   .M1SBdoorR
-   1230  f995		       a5 9a		      lda	RoomMetaB	; MetaB, b7 = right door
-   1231  f997		       10 04		      bpl	.M1SBout
-   1232  f999		       a0 ff		      ldy	#$FF
-   1233  f99b		       84 88		      sty	Temp	; = bank1's BMWScratch ($88) — "no strip"
-   1234  f99d				   .M1SBout
-   1235  f99d		       4c b2 f9 	      jmp	M1ToBank1	; shared pad $F9B2 (sta $1FF7 / jmp $F937,
-   1236  f9a0							; byte-identical in bank1) → StripBlastCheck
-   1237  f9a0
-   1238  f9a0		       00 00 00 00*	      .ds	$F9AC - *, 0	; shared cross-bank pad — byte-IDENTICAL twin
-   1239  f9ac							; of bank1's $F9A4 block (identity asserted
-   1240  f9ac							; in test_bomb_strip). After either `sta $1FFx`
-   1241  f9ac							; the next opcode fetch comes from the newly
-   1242  f9ac							; selected bank at pc+3, so the `jmp` bytes
-   1243  f9ac							; must match in both banks (F6 pad rule).
-   1244  f9ac				   M1ToBank2		; reached bank1-side after `sta $1FF8`
-   1245  f9ac		       8d f8 1f 	      sta	$1FF8	; switch bank1 → bank2
-   1246  f9af		       4c 70 f9 	      jmp	$F970	; M1StripBlast
-   1247  f9b2				   M1ToBank1		; = $F9B2 — M1StripBlast jmps here bank2-side
-   1248  f9b2		       8d f7 1f 	      sta	$1FF7	; switch bank2 → bank1
-   1249  f9b5		       4c 37 f9 	      jmp	$F937	; StripBlastCheck
-   1250  f9b8
-   1251  f9b8					      .ds	$F9B8 - *, 0	; Phase 4 overlay tramp twin (kernel.asm's
-   1252  f9b8							; copy sits at the same address — bank0
-   1253  f9b8							; executes +0..+6, the bank2 fetch starts
-   1254  f9b8							; at the jmp; the clc/rts tail is bank0-only)
-   1255  f9b8				   OverlayTramp
-   1256  f9b8		       a5 84		      lda	LineCount	; dead in bank2 (entry arrives at +7)
-   1257  f9ba		       f0 06		      beq	.OTsym
-   1258  f9bc		       8d f8 1f 	      sta	$1FF8
-   1259  f9bf		       4c 00 fe 	      jmp	PHMOverlay
-   1260  f9c2				   .OTsym
-   1261  f9c2		       18		      clc
-   1262  f9c3		       60		      rts
-   1263  f9c4
-   1264  f9c4							; --- Level data, main window $F9D9..$FBD6 (509B; pads pin the end).
-   1265  f9c4							; A3 (2026-10-19): models_data + per-room blocks moved to bank3; only the
-   1266  f9c4							; per-room TABLES stay here (RoomDataTable/connections/enemy tables) —
-   1267  f9c4							; their M<id>/L<n>R<r> word pairs resolve through generated/bank3_labels.asm.
-   1268  f9d9					      org	$F9D9
+   1041  f8f5							; Phase 3 blink masks — pair index (2c>>1) → the two adjacent PF bits
+   1042  f8f5							; for that left-half cell (PF0: bits4-7 left-to-right; PF1: bits7-0;
+   1043  f8f5							; PF2: bits0-7 reversed). Pairs never straddle a register (even 2c).
+   1044  f8f5		       00 00 00 00*	      .ds	$F970 - *, 0	; pinned: bank1 .BMWDone jmp operand ($F970)
+   1045  f970				   M1StripBlast
+   1046  f970							; Phase 4 M1 strip blast — entered from bank1 BombMarkWalls .BMWDone
+   1047  f970							; via the $F9AC shared pad (`sta $1FF8 / jmp $F970`; 0 pushes). Bank2-
+   1048  f970							; only job (P2b stager): the packed meta (TilePF0+9/+10) lives in THIS
+   1049  f970							; bank's ROM — read the door flags + left-strip dcol, stage them, let
+   1050  f970							; bank1 StripBlastCheck run BOTH overlap takes (the blast window is
+   1051  f970							; left-half cols 0..19 and stays READ-ONLY here).
+   1052  f970							; Staging contract (both scratch bytes free in this flow):
+   1053  f970							;   RectCount := 2ℓ left-strip dcol, or $FF = none/door/right-bomb;
+   1054  f970							;   Temp ($88 = bank1 BMWScratch) := $FF when MetaB b7 (right door)
+   1055  f970							;   so the ball-strip take can never fire. Key pickup (P5) sets b3/b4
+   1056  f970							;   for doors instead (comment hook at the takes).
+   1057  f970		       a5 92		      lda	RectCount	; original screen col (BMW prologue stash)
+   1058  f972		       c9 14		      cmp	#20
+   1059  f974		       b0 1b		      bcs	.M1SBnone	; right bomb → left strip unreachable
+   1060  f976		       a5 ba		      lda	EnemyDeadMask
+   1061  f978		       29 10		      and	#$10	; b4 already set → nothing to stage
+   1062  f97a		       d0 15		      bne	.M1SBnone
+   1063  f97c		       a5 99		      lda	RoomMetaA	; MetaA
+   1064  f97e		       29 08		      and	#$08	; b3 = left door (key-only, bomb-immune)
+   1065  f980		       d0 0f		      bne	.M1SBnone	; stays $FF: bank1 takes no left strip
+   1066  f982		       a5 99		      lda	RoomMetaA	; reload (and clobbered A)
+   1067  f984		       4a		      lsr
+   1068  f985		       4a		      lsr
+   1069  f986		       4a		      lsr
+   1070  f987		       4a		      lsr		; m1_col+1 (0 = no M1 → 2ℓ = $FE, off the
+   1071  f988							;   high end — bank1's hi test rejects)
+   1072  f988		       38		      sec
+   1073  f989		       e9 01		      sbc	#1	; ℓ = left_col
+   1074  f98b		       0a		      asl		; 2ℓ = strip left dcol
+   1075  f98c		       85 92		      sta	RectCount	; staged (nothing after this reads the col)
+   1076  f98e		       4c 95 f9 	      jmp	.M1SBdoorR
+   1077  f991				   .M1SBnone
+   1078  f991		       a9 ff		      lda	#$FF
+   1079  f993		       85 92		      sta	RectCount	; no left strip this frame
+   1080  f995				   .M1SBdoorR
+   1081  f995		       a5 9a		      lda	RoomMetaB	; MetaB, b7 = right door
+   1082  f997		       10 04		      bpl	.M1SBout
+   1083  f999		       a0 ff		      ldy	#$FF
+   1084  f99b		       84 88		      sty	Temp	; = bank1's BMWScratch ($88) — "no strip"
+   1085  f99d				   .M1SBout
+   1086  f99d		       4c b2 f9 	      jmp	M1ToBank1	; shared pad $F9B2 (sta $1FF7 / jmp $F937,
+   1087  f9a0							; byte-identical in bank1) → StripBlastCheck
+   1088  f9a0
+   1089  f9a0		       00 00 00 00*	      .ds	$F9AC - *, 0	; shared cross-bank pad — byte-IDENTICAL twin
+   1090  f9ac							; of bank1's $F9A4 block (identity asserted
+   1091  f9ac							; in test_bomb_strip). After either `sta $1FFx`
+   1092  f9ac							; the next opcode fetch comes from the newly
+   1093  f9ac							; selected bank at pc+3, so the `jmp` bytes
+   1094  f9ac							; must match in both banks (F6 pad rule).
+   1095  f9ac				   M1ToBank2		; reached bank1-side after `sta $1FF8`
+   1096  f9ac		       8d f8 1f 	      sta	$1FF8	; switch bank1 → bank2
+   1097  f9af		       4c 70 f9 	      jmp	$F970	; M1StripBlast
+   1098  f9b2				   M1ToBank1		; = $F9B2 — M1StripBlast jmps here bank2-side
+   1099  f9b2		       8d f7 1f 	      sta	$1FF7	; switch bank2 → bank1
+   1100  f9b5		       4c 37 f9 	      jmp	$F937	; StripBlastCheck
+   1101  f9b8
+   1102  f9b8					      .ds	$F9B8 - *, 0	; Phase 4 overlay tramp twin (kernel.asm's
+   1103  f9b8							; copy sits at the same address — bank0
+   1104  f9b8							; executes +0..+6, the bank2 fetch starts
+   1105  f9b8							; at the jmp; the clc/rts tail is bank0-only)
+   1106  f9b8				   OverlayTramp
+   1107  f9b8		       a5 84		      lda	LineCount	; dead in bank2 (entry arrives at +7)
+   1108  f9ba		       f0 06		      beq	.OTsym
+   1109  f9bc		       8d f8 1f 	      sta	$1FF8
+   1110  f9bf		       4c 00 fe 	      jmp	PHMOverlay
+   1111  f9c2				   .OTsym
+   1112  f9c2		       18		      clc
+   1113  f9c3		       60		      rts
+   1114  f9c4
+   1115  f9c4							; --- Level data, main window $F9D9..$FBD6 (509B; pads pin the end).
+   1116  f9c4							; A3 (2026-10-19): models_data + per-room blocks moved to bank3; only the
+   1117  f9c4							; per-room TABLES stay here (RoomDataTable/connections/enemy tables) —
+   1118  f9c4							; their M<id>/L<n>R<r> word pairs resolve through generated/bank3_labels.asm.
+   1119  f9d9					      org	$F9D9
 ------- FILE generated/spill_window.asm LEVEL 2 PASS 2
       0  f9d9					      include	"generated/spill_window.asm"	; #27b: level tables, placed by convert_level
       1  f9d9							; Generated by convert_level.py --levels (bugs.md 27b). Do not edit by hand.
       2  f9d9							; Include list for this bank2 gap — see emit_spills().
 ------- FILE bank2.asm
-   1270  f9d9
-   1271  f9d9							; ReturnPad ($FBF8) — byte-identical to kernel.asm's copy (sta $1FF6 / rts).
-   1272  f9d9							; S5.1 pad bodies (BuildColupF) tail-jmp here: sta switches this bank to
-   1273  f9d9							; bank0, the rts is then fetched from bank0's identical copy, and the stack
-   1274  f9d9							; still holds the bank0 jsr CallPad_* return address.
-   1275  f9d9							; ------------------------------------------------------------------------------
-   1276  f9d9		       00 00 00 00*	      .ds	$FBD0 - *, 0	; #22 EnterRoom tramp twin — byte-identical
-   1277  fbd0							;   with kernel.asm at $FBD0 (pin moved from
-   1278  fbd0							;   $FB84 2026-10-13, then $FBC0 2026-10-14:
-   1279  fbd0							;   model2 asym data +49B pushed the window —
-   1280  fbd0							;   growth past this pin fails the build)
-   1281  fbd0		       8d f8 1f 	      sta	$1FF8
-   1282  fbd3		       4c 10 f0 	      jmp	$F010	; EnterRoomB2 — this half fetched after bank0's sta
-   1283  fbd6					      .ds	$FBD6 - *, 0	; TitleSequenceFold twin (kernel.asm same
-   1284  fbd6							;   address — jmp operand fetched here after
-   1285  fbd6							;   bank0's sta $1FF8, so bytes must match)
-   1286  fbd6		       8d f8 1f 	      sta	$1FF8
-   1287  fbd9		       4c c4 f4 	      jmp	$F4C4	; TitleSequence
-   1288  fbdc		       00 00 00 00	      .ds	$FBE0 - *, 0
-   1289  fbe0		       8d f8 1f 	      sta	$1FF8
-   1290  fbe3		       4c 00 f7 	      jmp	$F700
-   1291  fbe6		       00 00		      .ds	$FBE8 - *, 0
-   1292  fbe8		       8d f8 1f 	      sta	$1FF8
-   1293  fbeb		       4c 80 f8 	      jmp	$F880
-   1294  fbee					      .ds	$FBEE - *, 0
-   1295  fbee				   Bank2ReturnPad		; bank3 VCS3 (OvShutScan body) tail target:
-   1296  fbee							;   sta executes bank3-side, rts fetched from
-   1297  fbee							;   THIS byte-identical copy (post-switch)
-   1298  fbee		       8d f8 1f 	      sta	$1FF8
-   1299  fbf1		       60		      rts
-   1300  fbf2		       00 00 00 00*	      .ds	$FBF8 - *, 0
-   1301  fbf8				   ReturnPad
-   1302  fbf8		       8d f6 1f 	      sta	$1FF6
-   1303  fbfb		       60		      rts
-   1304  fbfc
-   1305  fbfc							; ------------------------------------------------------------------------------
-   1306  fbfc							; CallPad_BuildColupF twin — bank3 body now (A3). bank0/bank1 execute
-   1307  fbfc							; `sta $1FF9`; the `jmp` at +3 is fetched from BANK3 (its $FC3B image).
-   1308  fbfc							; ------------------------------------------------------------------------------
-   1309  fbfc		       00 00 00 00*	      .ds	$FC32 - *, 0
-   1310  fc32				   CallPad_BuildColupF
-   1311  fc32		       8d f9 1f 	      sta	$1FF9	; bank3 (level-data walker)
-   1312  fc35		       4c c7 f5 	      jmp	$F5C7	; BuildColupF (bank3; synced by verify_build)
-   1313  fc38
-   1314  fc38							; ------------------------------------------------------------------------------
-   1315  fc38							; E4 moth exit tramp ($FC49-$FC4B) — byte-identical slice with kernel.asm's
-   1316  fc38							; MothExitPad (guard: verify_build check_moth_tramp). bank2 executes
-   1317  fc38							; `sta $1FF6`; the fetch at $FC4C comes from bank0 = `jmp UE_Next`
-   1318  fc38							; (bank0's own label). This file's bytes from $FC4C never run.
-   1319  fc38							; Pinned at $FC49 (NOT $FFF2): $FFF6-$FFF9 are F6 hotspot mirrors — a peek
-   1320  fc38							; of those addresses calls checkSwitchBank in Stella and flips banks
-   1321  fc38							; mid-instruction (see kernel.asm MothExitPad comment).
-   1322  fc38							; ------------------------------------------------------------------------------
-   1323  fc38		       00 00 00 00*	      .ds	$FC49 - *, 0
-   1324  fc49				   MothExitPad
-   1325  fc49		       8d f6 1f 	      sta	$1FF6
-   1326  fc4c
-   1327  fc4c							; ------------------------------------------------------------------------------
-   1328  fc4c							; BuildColupF + HotOverlapBody moved to bank3 (A3 2026-10-19 — they walk the
-   1329  fc4c							; level-data record stream, which now lives there). The space below is fill;
-   1330  fc4c							; BombEnemyBlastBody stays PINNED at its original address so the bank0/bank2
-   1331  fc4c							; blast-tramp literals ($FDD8 twins) need no resync.
-   1332  fc4c							; ------------------------------------------------------------------------------
-   1333  fc4c		       00 00 00 00*	      .ds	$FD87 - *, 0
-   1334  fd87							; BombEnemyBlast body — kill first live enemy |dcol| < 2 (any Y). Type check:
-   1335  fd87							; LAMP (5) is NOT killable — the old inline loop set the dead bit on lamps too
-   1336  fd87							; (lost lamp, no dark-room trigger, +50 score for nothing — bugs.md 3).
-   1337  fd87							; Entered from bank0 stub (sta $1FF8 / jmp <here> — operand in kernel.asm,
-   1338  fd87							; twin at $FDD8 below), 0 pushes; every exit `jmp $FBF8` ReturnPad.
-   1339  fd87							; Out: A = 1 kill (caller awards +50 — pads cannot nest), 0 none (Z set).
-   1340  fd87							; Clobbers A/X/Y. Level enemy records live in THIS bank, so the type read
-   1341  fd87							; is a direct (EnemyDataLo),Y — no fold.
-   1342  fd87							; Lives here (after .HOVdone) — NOT between TitleJetColors and the $F970
-   1343  fd87							; pad: test_title_demo diffs that whole source span for $xx color literals.
-   1344  fd87							; ------------------------------------------------------------------------------
-   1345  fd87				   BombEnemyBlastBody
-   1346  fd87		       a5 b3		      lda	EnemyCount
-   1347  fd89		       f0 47		      beq	.BEBnone
-   1348  fd8b		       a5 f6		      lda	BombX
-   1349  fd8d		       4a		      lsr
-   1350  fd8e		       4a		      lsr
-   1351  fd8f		       85 8c		      sta	CollisionCellX	; bomb screen col
-   1352  fd91		       a9 00		      lda	#0
-   1353  fd93		       85 b9		      sta	EnemyIndex
-   1354  fd95				   .BEBLoop
-   1355  fd95		       a6 b9		      ldx	EnemyIndex
-   1356  fd97		       e4 b3		      cpx	EnemyCount
-   1357  fd99		       b0 37		      bcs	.BEBnone
-   1358  fd9b		       a5 ba		      lda	EnemyDeadMask
-   1359  fd9d		       3d 55 ff 	      and	EnemyBitTable,X
-   1360  fda0		       d0 2b		      bne	.BEBNext	; already dead
-   1361  fda2		       bc 52 ff 	      ldy	EnemyOffTable,X	; Y = X*4 = type offset (record: type,x,y,dir)
-   1362  fda5		       b1 b1		      lda	(EnemyDataLo),Y
-   1363  fda7		       c9 05		      cmp	#LAMP
-   1364  fda9		       f0 22		      beq	.BEBNext	; lamp: blast passes through (item 3 fix)
-   1365  fdab		       c9 07		      cmp	#RAFT
-   1366  fdad		       f0 1e		      beq	.BEBNext	; raft: a blast cannot destroy the platform the
-   1367  fdaf							; player is riding across the water
-   1368  fdaf		       b5 bd		      lda	EnemyRamX,X	; live X from RAM
-   1369  fdb1							; |dcol| < 2 (col = px/4) — ignore Y entirely
-   1370  fdb1		       4a		      lsr
-   1371  fdb2		       4a		      lsr
-   1372  fdb3		       38		      sec
-   1373  fdb4		       e5 8c		      sbc	CollisionCellX
-   1374  fdb6		       b0 05		      bcs	.BEBAbsCol
-   1375  fdb8		       49 ff		      eor	#$ff
-   1376  fdba		       18		      clc
-   1377  fdbb		       69 01		      adc	#1
-   1378  fdbd				   .BEBAbsCol
-   1379  fdbd		       c9 02		      cmp	#2
-   1380  fdbf		       b0 0c		      bcs	.BEBNext
-   1381  fdc1		       a5 ba		      lda	EnemyDeadMask
-   1382  fdc3		       1d 55 ff 	      ora	EnemyBitTable,X
-   1383  fdc6		       85 ba		      sta	EnemyDeadMask	; kill (first overlapping enemy per blast)
-   1384  fdc8		       a9 01		      lda	#1	; killed — bank0 caller awards +50
-   1385  fdca		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad
-   1386  fdcd				   .BEBNext
-   1387  fdcd		       e6 b9		      inc	EnemyIndex
-   1388  fdcf		       4c 95 fd 	      jmp	.BEBLoop
-   1389  fdd2				   .BEBnone
-   1390  fdd2		       a9 00		      lda	#0	; Z set for caller's beq
-   1391  fdd4		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad
-   1392  fdd7
-   1393  fdd7							; ------------------------------------------------------------------------------
-   1394  fdd7							; HOF entry tramp ($FE80-$FE85) — byte-identical with kernel.asm's copy
-   1395  fdd7							; (guard: verify_build check_moth_tramp). bank0 executes `sta $1FF8` at
-   1396  fdd7							; $FE80-$FE82; the fetch at $FE83 comes from THIS bank = `jmp $FCF0`. Neither
-   1397  fdd7							; bank runs its other half: bank0 is switched away at $FE82, bank2 never
-   1398  fdd7							; enters at $FE80. Pinned $FE80: the $FBF8-$FC48 pad window is full (5 B
-   1399  fdd7							; left, a stub needs 6 B) and $FE86-$FEEF is the only free hole before the
-   1400  fdd7							; moth tramp's $FEF0.
-   1401  fdd7							; ------------------------------------------------------------------------------
-   1402  fdd7							; ------------------------------------------------------------------------------
-   1403  fdd7							; BombEnemyBlast tramp mirror ($FDD8-$FDDD) — byte-identical with kernel.asm's
-   1404  fdd7							; copy at the same address (bomb-lamp fix 2026-10-07). bank0 executes `sta
-   1405  fdd7							; $1FF8` at $FDD8-$FDDA; the fetch at $FDDB comes from THIS bank = `jmp $FD87`
-   1406  fdd7							; (BombEnemyBlastBody). Neither bank runs its other half: bank0 is switched
-   1407  fdd7							; away at $FDDA, bank2 never enters at $FDD8 (the .HOVdone tail-jmps $FBF8
-   1408  fdd7							; before this pad). Pinned $FDE1 below = PickPlayerFrame tramp.
-   1409  fdd7							; ------------------------------------------------------------------------------
-   1410  fdd7		       00		      .ds	$FDD8 - *, 0
-   1411  fdd8		       8d f8 1f 	      .byte.b	$8D, $F8, $1F	; sta $1FF8 (twin)
-   1412  fddb		       4c 87 fd 	      .byte.b	$4C, $87, $FD	; jmp $FD87 (twin — fetched post-switch)
-   1413  fdde		       00 00 00 	      .ds	$FDE1 - *, 0	; PickPlayerFrame tramp mirror (byte-identical
-   1414  fde1							; with kernel.asm's copy — verify_frame_tramp)
-   1415  fde1				   PickPlayerFrameTramp
-   1416  fde1		       8d f8 1f 	      sta	$1FF8	; executed only as the post-switch fetch image
-   1417  fde4		       4c c4 f3 	      jmp	$F3C4	; bank2 PickPlayerFrame body (this bank)
-   1418  fde7							; Twin of bank0 PlayerWalkA/B ($FDE7, 12+12 rows): PickPlayerFrame reads
-   1419  fde7							; the hand-copy EQUs while THIS bank is active — without these bytes the
-   1420  fde7							; walk frames fetched zeros and the sprite vanished (title + gameplay).
-   1421  fde7		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
-   1422  fdeb		       7c fe fe 3e	      .byte.b	%01111100, %11111110, %11111110, %00111110
-   1423  fdef		       3e 14 22 42	      .byte.b	%00111110, %00010100, %00100010, %01000010	; walk A boots apart
-   1424  fdf3		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
-   1425  fdf7		       7c fe fe 3e	      .byte.b	%01111100, %11111110, %11111110, %00111110
-   1426  fdfb		       3e 14 18 18	      .byte.b	%00111110, %00010100, %00011000, %00011000	; walk B boots together
-   1427  fdff
-   1428  fdff		       00		      .ds	$FE00 - *, 0	; PHMOverlay pinned: bank0's dead jmp operand
-   1429  fe00							; is the literal $FE00 (moth-style dead bytes;
-   1430  fe00							; body only ever runs bank2-side)
-   1431  fe00				   PHMOverlay
-   1432  fe00							; Phase 4 asym-patch collision (entered via OverlayTramp, 0 pushes).
-   1433  fe00							; LineCount packed: b4-b7 = right_col+1, b0-2 = bands with the painted
-   1434  fe00							; ball-strip ($ff BandTab entries). D6 envelope: ONE right column
-   1435  fe00							; [BallX-7, BallX] px, BallX = 87+8*rc — overlay is additive (cells
-   1436  fe00							; painted only where the mirrored cell is open, never hot).
-   1437  fe00							; Exact visible_left (same math as PHM's prologue), then px overlap of
-   1438  fe00							; [vl, vl+6] (PLAYER_WIDTH=7 lit) with the patch column, then band x rows.
-   1439  fe00		       38		      sec
-   1440  fe01		       a5 80		      lda	RoomX
-   1441  fe03		       e5 82		      sbc	PlayerDir
-   1442  fe05		       c9 0f		      cmp	#15
-   1443  fe07		       b0 06		      bcs	.Ov7
-   1444  fe09		       38		      sec
-   1445  fe0a		       e9 04		      sbc	#4
-   1446  fe0c		       4c 11 fe 	      jmp	.OvVL
-   1447  fe0f				   .Ov7
-   1448  fe0f		       e9 07		      sbc	#7
-   1449  fe11				   .OvVL
-   1450  fe11		       18		      clc
-   1451  fe12		       65 82		      adc	PlayerDir	; A = visible_left px
-   1452  fe14		       85 8b		      sta	CollisionX	; walk temps are free on the miss path
-   1453  fe16		       a5 84		      lda	LineCount
-   1454  fe18		       4a		      lsr
-   1455  fe19		       4a		      lsr
-   1456  fe1a		       4a		      lsr
-   1457  fe1b		       4a		      lsr		; n = right_col+1 (1..10)
-   1458  fe1c		       0a		      asl
-   1459  fe1d		       0a		      asl
-   1460  fe1e		       0a		      asl		; 8n
-   1461  fe1f		       18		      clc
-   1462  fe20		       69 4f		      adc	#79	; BallX = 79+8n = 87+8*rc (patch right edge)
-   1463  fe22		       85 92		      sta	RectCount	; scratch (NOT CollisionCellX): the prologue
-   1464  fe24							; box must survive for HotOverlapFlag — OvM1Block
-   1465  fe24							; funnels block hits there for hot-death. Scratch
-   1466  fe24							; = RectCount ($92): free after the cell walk,
-   1467  fe24							; RowIdx re-inits at kernel entry. NEVER Temp —
-   1468  fe24							; CheckP0Left/Right read the joystick in Temp
-   1469  fe24							; AFTER this physics call (Temp scratch here
-   1470  fe24							; left D3=0 = phantom right-press = drift bug).
-   1471  fe24		       a5 8b		      lda	CollisionX
-   1472  fe26		       c5 92		      cmp	RectCount	; vl vs BallX
-   1473  fe28		       90 04		      bcc	.OvT2
-   1474  fe2a		       f0 02		      beq	.OvT2
-   1475  fe2c		       b0 0b		      bcs	.OvClear	; vl > BallX → player fully right of patch
-   1476  fe2e				   .OvT2
-   1477  fe2e		       a5 92		      lda	RectCount
-   1478  fe30		       38		      sec
-   1479  fe31		       e9 0d		      sbc	#13	; BallX-13 (lit span is 7px, not 8: [vl,vl+6])
-   1480  fe33		       c5 8b		      cmp	CollisionX	; vs vl: overlap iff BallX-13 <= vl
-   1481  fe35		       90 05		      bcc	.OvBand
-   1482  fe37		       f0 03		      beq	.OvBand
-   1483  fe39				   .OvClear
-   1484  fe39		       4c 32 f6 	      jmp	OvM1Block	; right-strip miss → M1 (left) strip test;
-   1485  fe3c							; IT returns via ReturnPad (C set/clear).
-   1486  fe3c							; Shutter rooms: miss here = player left of
-   1487  fe3c							; the VISIBLE right-half block → passable
-   1488  fe3c							; (kill follows the drawn block only, async
-   1489  fe3c							; ruling 2026-10-14 — no left mirror)
-   1490  fe3c				   .OvBand
-   1491  fe3c		       4c 9c fe 	      jmp	OvShutBand	; band overlap → shutter kill / strip solid
-   1492  fe3f							; (body in the $FE9C hole; band test lives
-   1493  fe3f							; there so the $FE00-$FE90 window stays fit)
-   1494  fe3f				   OvHead
-   1495  fe3f		       07 06 04 	      .byte.b	7,6,4	; rows 0..2 → mask bits >= row
-   1496  fe42				   OvTail
-   1497  fe42		       01 03 07 	      .byte.b	1,3,7	; rows 0..2 → mask bits <= row
-   1498  fe45
-   1499  fe45							; ------------------------------------------------------------------------------
-   1500  fe45							; OvShutScan — Phase C kill test, bank3 body (VCS3 at $FD80). Tramp only:
-   1501  fe45							; the MetaB hot bit (b6) is read HERE from the room-entry staged byte
-   1502  fe45							; (RoomMetaB — ZP, so no bank dependency) and passed in Y; A = kill clock.
-   1503  fe45							; sta $1FF9 + jmp — after the hotspot write the jmp
-   1504  fe45							; OPCODE is fetched from bank3's image at the same address (pinned
-   1505  fe45							; `.byte $4C,$80,$FD` at $FE57). Body returns C=1 kill / C=0 passable via
-   1506  fe45							; the $FBEE pad (`sta $1FF8` executed bank3-side; `rts` fetched from
-   1507  fe45							; bank2's byte-identical copy) back to OvShutBand's jsr — A and C
-   1508  fe45							; survive both, stack depth unchanged (+2 for the jsr only). Out
-   1509  fe45							; (2026-10-14b): C=0 passable / C=1 + A≠0 kill / C=1 + A=0 solid block.
-   1510  fe45							; Kill semantics (user spec 2026-10-14): hot band (MetaB b6) = touching
-   1511  fe45							; any closed slice kills; cold band = containment (sprite fully inside
-   1512  fe45							; closed slices), closing phase only (Rule 1). Full logic: bank3 VCS3
-   1513  fe45							; (header there).
-   1514  fe45							; ------------------------------------------------------------------------------
-   1515  fe45		       00 00 00 00*	      .ds	$FE4A - *, 0	; PIN: +2 so the tramp ends at $FE57 (bank3's
-   1516  fe4a							;   OvShutScan image). The pad sits BEFORE the
-   1517  fe4a							;   label: between `sta $1FF9` and its jmp it
-   1518  fe4a							;   would be a BRK in the fall-through path.
-   1519  fe4a				   OvShutScan
-   1520  fe4a		       a5 9a		      lda	RoomMetaB	; MetaB
-   1521  fe4c		       29 40		      and	#$40	; A = b6 mid_band_type hot mask ($40/0)
-   1522  fe4e		       a8		      tay		; Y = hot bit — survives sta $1FF9 + jmp
-   1523  fe4f		       a5 c2		      lda	EnemyRamP
-   1524  fe51		       38		      sec
-   1525  fe52		       e9 01		      sbc	#1	; kill clock = render clock (post-inc)
-   1526  fe54		       8d f9 1f 	      sta	$1FF9	; bank3
-   1527  fe57					      .ds	$FE57 - *, 0	; PIN: the jmp image must sit at $FE57 (bank3's
-   1528  fe57							;   tramp copy; guard check_tramp_targets)
-   1529  fe57		       4c 80 fd 	      jmp	$FD80	; VCS3 — image pinned bank3-side at $FE57
-   1530  fe5a		       00 00 00 00*	      .ds	$FE96 - *, 0	; S5.4 LHT tramp — byte-identical w/ kernel.asm
-   1531  fe96							; (shifted +$10 with kernel's tables)
-   1532  fe96				   LaserHitTest
-   1533  fe96		       8d f8 1f 	      sta	$1FF8	; dead in bank2 (entry arrives at $FE89)
-   1534  fe99		       4c 00 ff 	      jmp	LaserHitTestBody	; == $FF00 — operand guard vs bank0 literal
-   1535  fe9c
-   1536  fe9c							; ------------------------------------------------------------------------------
-   1537  fe9c							; OvShutBand — shutter kill on the PHMOverlay miss path (vcrunch_shutter_plan
-   1538  fe9c							; Phase B). Entered from PHMOverlay .OvBand (right-column + player-band
-   1539  fe9c							; overlap). The punched cell no longer trips the PF cell walk, so the overlay
-   1540  fe9c							; path IS the kill trigger: MetaB b7 (convert's shutter flag) gates it; plain
-   1541  fe9c							; D6 strip rooms (b7 clear) fall through to plain solid (old .OvBand
-   1542  fe9c							; behavior). Kill follows the VISIBLE right-half block only (async ruling
-   1543  fe9c							; 2026-10-14 — the left mirror was removed to fix flicker). Where the
-   1544  fe9c							; block is closed but the player is not crunched, VCS3 returns SOLID —
-   1545  fe9c							; the walk blocks (no walking through a closed shutter, user
-   1546  fe9c							; 2026-10-14b); only the aperture at the player's Y is passable.
-   1547  fe9c							; Kill = EnemyDeadMask b7 latch (once per room visit — EnterRoom zeroes) +
-   1548  fe9c							; Temp b7 -> kernel hot-bump -> LoseLife; latched = wall REMOVED (open
-   1549  fe9c							; hole — VcrShutter punches-only and disarms BandTab; no re-kill).
-   1550  fe9c							; ------------------------------------------------------------------------------
-   1551  fe9c					      .ds	$FE9C - *, 0	; free hole before the moth tramp ($FEF0)
-   1552  fe9c				   OvShutBand
-   1553  fe9c		       a6 8d		      ldx	CollisionCellY
-   1554  fe9e		       bd 3f fe 	      lda	OvHead,X	; bits >= row
-   1555  fea1		       a6 8f		      ldx	CollisionEndY
-   1556  fea3		       3d 42 fe 	      and	OvTail,X	; bits <= row
-   1557  fea6		       25 84		      and	LineCount	; active-band mask (b0-2)
-   1558  fea8		       f0 2e		      beq	.OSBm1	; not in a painted band → M1 strip test
-   1559  feaa		       a5 9a		      lda	RoomMetaB	; MetaB
-   1560  feac		       10 26		      bpl	.OSBsolid	; b7=0: plain D6 strip → solid (old behavior)
-   1561  feae		       a5 ba		      lda	EnemyDeadMask
-   1562  feb0		       30 26		      bmi	.OSBm1	; b7 latch: wall REMOVED (VcrShutter punch-
-   1563  feb2							;   only path disarms BandTab, so this arm
-   1564  feb2							;   is defense-in-depth) — passable, no
-   1565  feb2							;   re-kill (user spec 2026-10-14)
-   1566  feb2		       a5 a7		      lda	LevelStartRoom	; Phase 5 key: KeyHeld + a plain ball-strip
-   1567  feb4		       10 0f		      bpl	.OSBshut	;   RIGHT door (VcrBand=$FF → not a vcrunch
-   1568  feb6		       a5 ec		      lda	VcrBand	;   room) → the touch destroys it (b3) and the
-   1569  feb8		       c9 ff		      cmp	#$ff	;   walk passes. A vcrunch room (VcrBand 0-2)
-   1570  feba		       d0 09		      bne	.OSBshut	;   keeps its shutter test — the key does NOT
-   1571  febc		       a5 ba		      lda	EnemyDeadMask	;   disable the hazard.
-   1572  febe		       09 08		      ora	#$08	; b3 = ball strip (right door) destroyed
-   1573  fec0		       85 ba		      sta	EnemyDeadMask
-   1574  fec2		       4c d8 fe 	      jmp	.OSBm1	; passable (strip blanked next StageBandTab)
-   1575  fec5				   .OSBshut
-   1576  fec5		       20 4a fe 	      jsr	OvShutScan	; Phase C (bank3 VCS3 via tramp), 2026-10-14b:
-   1577  fec8							;   C=0 passable (A ignored) / C=1 + A≠0 kill
-   1578  fec8							;   / C=1 + A=0 SOLID (block, no latch)
-   1579  fec8		       90 0e		      bcc	.OSBm1	; aperture open over the player → passable
-   1580  feca		       f0 08		      beq	.OSBsolid	; A=0: solid — the walk blocks, no death
-   1581  fecc		       a9 80		      lda	#$80
-   1582  fece		       85 88		      sta	Temp	; b7 -> kernel hot-bump -> LoseLife
-   1583  fed0		       05 ba		      ora	EnemyDeadMask	; A = $80 | mask (b7 latch; other bits kept)
-   1584  fed2		       85 ba		      sta	EnemyDeadMask	; crunch-kill latch
-   1585  fed4				   .OSBsolid
-   1586  fed4		       38		      sec
-   1587  fed5		       4c f8 fb 	      jmp	ReturnPad
-   1588  fed8				   .OSBm1
-   1589  fed8		       4c 32 f6 	      jmp	OvM1Block
-   1590  fedb
-   1591  fedb							; ------------------------------------------------------------------------------
-   1592  fedb							; VcrCoveredState — MOVED to bank2's spill-pool gap ($F8B7) below (2026-10-17),
-   1593  fedb							; freeing this $FE9C hole for OvShutBand's key touch-unlock branch.
-   1594  fedb							; ------------------------------------------------------------------------------
-   1595  fedb
-   1596  fedb							; ------------------------------------------------------------------------------
-   1597  fedb							; FoldIndirect — byte-identical copy of kernel.asm's block (same $FEF6
-   1598  fedb							; address). bank0 executes bytes 1-3 (`sta $1FF8`, absolute — P3.1 deviation,
-   1599  fedb							; see kernel.asm) then fetches bytes 4-9
-   1600  fedb							; here (data bank active); `sta $1FF6` switches back, rts fetched from bank0.
-   1601  fedb							; Guard: verify_build compares bank0/bank2 regions byte-for-byte.
-   1602  fedb							; ------------------------------------------------------------------------------
-   1603  fedb							; ------------------------------------------------------------------------------
-   1604  fedb							; E4 moth entry tramp — byte-identical with kernel.asm's $FEF0 copy
-   1605  fedb							; (guard: verify_build check_moth_tramp). bank2's `sta $1FF8` half never
-   1606  fedb							; runs (entry always arrives from bank0); the `jmp MothRoutine` half at
-   1607  fedb							; $FEF3 runs after bank0's switch. Assembles to the same 6 bytes as
-   1608  fedb							; kernel's `sta $1FF8 / jmp $F110` — operand drift fails the guard.
-   1609  fedb							; ------------------------------------------------------------------------------
-   1610  fedb		       00 00 00 00*	      .ds	$FEF0 - *, 0
-   1611  fef0				   UE_MothTramp
-   1612  fef0		       8d f8 1f 	      sta	$1FF8
-   1613  fef3		       4c 10 f1 	      jmp	MothRoutine
-   1614  fef6					      .ds	$FEF6 - *, 0
-   1615  fef6				   FoldIndirect
-   1616  fef6		       8d f8 1f 	      sta	$1FF8
-   1617  fef9		       b1 e5		      lda	(FetchPtr),Y
-   1618  fefb		       8d f6 1f 	      sta	$1FF6
-   1619  fefe		       60		      rts
-   1620  feff
-   1621  feff							; ------------------------------------------------------------------------------
-   1622  feff							; LaserHitTestBody — MOVED from bank0 (S5.4, entry tramp $FE86 -> `jmp $FF00`).
-   1623  feff							; Contact-missile kill (redesign 2026-10-08): CollisionX = LaserX (cur M0
-   1624  feff							; arg, stored by LaserInput .LaserGo), drawn M0 = [A-7, A]. The body tests
-   1625  feff							; ONE tip cell for wall first, then the missile's OWN body box against each
-   1626  feff							; live enemy — no piercing: first contact wins and the caller resets the
-   1627  feff							; beam to the eye. Vertical: beam rows [RoomY+2, RoomY+3] vs enemy [Y,+7] ->
-   1628  feff							; (RoomY-Y)+3 in [0..8]. Horizontal (same convention as CheckEnemyHit):
-   1629  feff							; |eLo-lo| <= 7 via (d+7) in [0..14]; caller keeps arg in [0,159].
-   1630  feff							; Fold-free: enemy records are level data in THIS bank — stage once, direct
-   1631  feff							; `lda (FetchPtr),Y` for the type (was `jsr FoldIndirect`).
-   1632  feff							; RESULT PROTOCOL (pads cannot nest from a pad body — the kill/lamp/wall
-   1633  feff							; ACTIONS stay in bank0's LaserInput): every exit returns A + Z through
-   1634  feff							; ReturnPad (sta/rts preserve both): A=0 no contact (keep travelling) /
-   1635  feff							; #$50 kill (dead bit set here, caller scores + resets) / A=1 lamp (caller
-   1636  feff							; does CallPad_SetRoomDark + resets) / A=2 wall tip (caller resets, no
-   1637  feff							; score). First live enemy in span only (dead mask skips it next frame —
-   1638  feff							; no resurrection, no double score).
-   1639  feff							; Does NOT touch Temp (joystick still live at the call site).
-   1640  feff							; Wall first: the body tail-jmps to LaserWallClamp ($F25A) — tip cell
-   1641  feff							; (patch-strip + mirrored PF rows) — solid returns A=2 straight through
-   1642  feff							; ReturnPad (enemies behind the wall survive); clear ends
-   1643  feff							; `jmp LaserClampDone` (back here = enemy loop): stack depth unchanged.
-   1644  feff							; Clobbers A/X/Y/FetchPtr + CollisionCellY/CollisionEndY, RectCount,
-   1645  feff							; CollisionEndX (strip marker); MODIFIES NOTHING else (no clamp any more).
-   1646  feff							; ------------------------------------------------------------------------------
-   1647  feff		       00		      .ds	$FF00 - *, 0	; pinned: bank0 tramp operand is literal $FF00
-   1648  ff00				   LaserHitTestBody
-   1649  ff00		       4c 5a f2 	      jmp	LaserWallClamp	; contact: tip-cell wall test FIRST (A=2 or
-   1650  ff03							; fall into the enemy loop via LaserClampDone)
-   1651  ff03				   LaserClampDone
-   1652  ff03							; --- Stage (P3.1): enemy record pointer — loop writes no FetchPtr ---
-   1653  ff03		       a5 b1		      lda	EnemyDataLo
-   1654  ff05		       85 e5		      sta	FetchPtr
-   1655  ff07		       a5 b2		      lda	EnemyDataHi
-   1656  ff09		       85 e6		      sta	FetchPtr+1
-   1657  ff0b		       a2 00		      ldx	#0
-   1658  ff0d				   .LHLoop
-   1659  ff0d		       e4 b3		      cpx	EnemyCount
-   1660  ff0f		       b0 3c		      bcs	.LHTOut
-   1661  ff11		       a5 ba		      lda	EnemyDeadMask
-   1662  ff13		       3d 55 ff 	      and	EnemyBitTable,X
-   1663  ff16		       d0 32		      bne	.LHNext
-   1664  ff18		       a5 81		      lda	RoomY
-   1665  ff1a		       38		      sec
-   1666  ff1b		       f5 e2		      sbc	EnemyRamY,X
-   1667  ff1d		       18		      clc
-   1668  ff1e		       69 03		      adc	#3	; (RoomY-eY)+3 in [0..8] = eY in [RoomY-5, RoomY+3]
-   1669  ff20		       c9 09		      cmp	#9	; out of beam rows RoomY+2..3
-   1670  ff22		       b0 26		      bcs	.LHNext
-   1671  ff24		       b5 bd		      lda	EnemyRamX,X
-   1672  ff26		       38		      sec
-   1673  ff27		       e5 8b		      sbc	CollisionX
-   1674  ff29		       18		      clc
-   1675  ff2a		       69 07		      adc	#7	; kill == drawn overlap: beam [A-7,A] x
-   1676  ff2c							; enemy [eX-7,eX] (SAME arg-box convention
-   1677  ff2c							; CheckEnemyHit uses for RoomX vs eX) ->
-   1678  ff2c							; eX in [A-7, A+7] <=> (eX-A)+7 in [0..14].
-   1679  ff2c							; S6b's adc #14 was a 7px-LEFT shift: it
-   1680  ff2c							; killed empty space left of the beam and
-   1681  ff2c							; missed every enemy overlapping the tip
-   1682  ff2c							; from the right (laser_collision_tip_bug).
-   1683  ff2c		       c9 0f		      cmp	#15	; bcs -> miss
-   1684  ff2e		       b0 1a		      bcs	.LHNext
-   1685  ff30				   .LHHit
-   1686  ff30		       bc 52 ff 	      ldy	EnemyOffTable,X	; type offset into staged record
-   1687  ff33		       b1 e5		      lda	(FetchPtr),Y	; direct — level data in this bank (was fold)
-   1688  ff35		       c9 05		      cmp	#LAMP
-   1689  ff37		       f0 0c		      beq	.LHLamp
-   1690  ff39		       a5 ba		      lda	EnemyDeadMask
-   1691  ff3b		       1d 55 ff 	      ora	EnemyBitTable,X
-   1692  ff3e		       85 ba		      sta	EnemyDeadMask
-   1693  ff40		       a9 50		      lda	#$50	; result: kill — caller adds #$50 score
-   1694  ff42		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad → bank0 caller (A/Z/C preserved)
-   1695  ff45				   .LHLamp
-   1696  ff45		       a9 01		      lda	#1	; result: lamp — caller crashes the lamp
-   1697  ff47		       4c f8 fb 	      jmp	ReturnPad
-   1698  ff4a				   .LHNext
-   1699  ff4a		       e8		      inx
-   1700  ff4b		       d0 c0		      bne	.LHLoop
-   1701  ff4d				   .LHTOut
-   1702  ff4d		       a9 00		      lda	#0	; result: miss (Z set for caller's beq)
-   1703  ff4f		       4c f8 fb 	      jmp	ReturnPad
-   1704  ff52
-   1705  ff52							; Type-offset table (copy of kernel EnemyOffTable: enemy index * 4; S4.1) and
-   1706  ff52							; dead-bit table (copy of kernel EnemyBitTable) — bank0 ROM is not visible
-   1707  ff52							; from here; labels keep the kernel-side test anchors working.
-   1708  ff52				   EnemyOffTable
-   1709  ff52		       00 04 08 	      .byte.b	0,4,8
-   1710  ff55
-   1711  ff55				   EnemyBitTable
-   1712  ff55		       01 02 04 08	      .byte.b	$01, $02, $04, $08
-   1713  ff59
-   1714  ff59							; ------------------------------------------------------------------------------
-   1715  ff59							; VcrShutter — sprite-shutter staging (vcrunch_shutter_plan Phase B).
-   1716  ff59							; Tail-entered from PhVcrPre (PhaseBlink walk, 0 pushes — the VBL chain sits
-   1717  ff59							; on the measured SP floor) and tail-exits at .PhRec.
-   1718  ff59							;   IN:  FetchPtr = hot record stream, Y = record base (class byte)
-   1719  ff59							;   OUT: Y = base+4 (.PhRec contract: its iny -> base+5 = next class)
-   1720  ff59							;   Clobbers A/X/Y + LineCount/CollisionCellX/CollisionEndY/Temp (all
-   1721  ff59							;   PhaseBlink scratch in this window; the pack rebuilds CollisionEndY
-   1722  ff59							;   after PhaseBlink returns). NO stack use.
-   1723  ff59							; - Punches the vcrunch bbox OPEN in PF0/1/2Buf (pair-range AND): the ball
-   1724  ff59							;   block would hide under a solid cell (CTRLPF priority), and the render
-   1725  ff59							;   and the cell walk share the buffers by design. Reflect mirrors the
-   1726  ff59							;   punched left-half cell to the right half.
-   1727  ff59							; - Stages Temp = mirrored BallX = 159-4x (right edge; >= 87 so the pack's
-   1728  ff59							;   (Temp-87)>>3 decode stays valid) and BandTab[band..band+h-1] = $ff —
-   1729  ff59							;   the D6 ball machinery then renders the block with zero kernel changes.
-   1730  ff59							; ------------------------------------------------------------------------------
-   1731  ff59							; Tally entry tramp slice ($FFE6-$FFEB, byte-identical with kernel.asm —
-   1732  ff59							; guard: check_moth_tramp). bank0 executes `sta $1FF8`; the fetch at $FFE9
-   1733  ff59							; comes from THIS bank = `jmp TallyEntry`. Neither bank runs its other half.
-   1734  ff59		       00 00 00 00*	      .ds	$FFE6 - *, 0
-   1735  ffe6				   TallyTramp
-   1736  ffe6		       8d f8 1f 	      sta	$1FF8
-   1737  ffe9		       4c 13 f3 	      jmp	TallyEntry
-   1738  ffec
-   1739  ffec							; ------------------------------------------------------------------------------
-   1740  ffec							; HotOverlapFlag (bank2-side, A3): OvM1Block/OvShutScan reach it with `jmp`
-   1741  ffec							; while bank2 is selected, so THIS copy is the live one. Bank3 has no room
-   1742  ffec							; at $FE93 (OvShutBand .OSline), so the pad sits at $FFEC like bank0's;
-   1743  ffec							; the `jmp` at +3 is fetched from bank3's $FFEF image.
-   1744  ffec							; ------------------------------------------------------------------------------
-   1745  ffec					      .ds	$FFEC - *, 0
-   1746  ffec				   HotOverlapFlag
-   1747  ffec		       8d f9 1f 	      sta	$1FF9	; select bank3
-   1748  ffef		       4c 83 f6 	      jmp	$F683	; bank3 HotOverlapBody (synced by verify_build)
-   1749  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
-   1750  fff2
-   1751  fff2							; Pad to vectors at $FFFA ($FFF2-$FFF9 = fill — never code: $FFF6-$FFF9
-   1752  fff2							; are F6 hotspot mirrors on peek, see MothExitPad at $FC49)
-   1753  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0
-   1754  fffa
-   1755  fffa							; Interrupt vectors
-   1756  fffa		       00 f0		      .word.w	$F000	; NMI vector
-   1757  fffc		       00 f0		      .word.w	$F000	; RESET vector
-   1758  fffe		       00 f0		      .word.w	$F000	; IRQ vector
+   1121  f9d9
+   1122  f9d9							; ReturnPad ($FBF8) — byte-identical to kernel.asm's copy (sta $1FF6 / rts).
+   1123  f9d9							; S5.1 pad bodies (BuildColupF) tail-jmp here: sta switches this bank to
+   1124  f9d9							; bank0, the rts is then fetched from bank0's identical copy, and the stack
+   1125  f9d9							; still holds the bank0 jsr CallPad_* return address.
+   1126  f9d9							; ------------------------------------------------------------------------------
+   1127  f9d9		       00 00 00 00*	      .ds	$FBD0 - *, 0	; #22 EnterRoom tramp twin — byte-identical
+   1128  fbd0							;   with kernel.asm at $FBD0 (pin moved from
+   1129  fbd0							;   $FB84 2026-10-13, then $FBC0 2026-10-14:
+   1130  fbd0							;   model2 asym data +49B pushed the window —
+   1131  fbd0							;   growth past this pin fails the build)
+   1132  fbd0		       8d f8 1f 	      sta	$1FF8
+   1133  fbd3		       4c 10 f0 	      jmp	$F010	; EnterRoomB2 — this half fetched after bank0's sta
+   1134  fbd6					      .ds	$FBD6 - *, 0	; TitleSequenceFold twin (kernel.asm same
+   1135  fbd6							;   address — jmp operand fetched here after
+   1136  fbd6							;   bank0's sta $1FF8, so bytes must match)
+   1137  fbd6		       00 00 00 00*	      .ds	$FBEE - *, 0	; TitleSequenceFold / FooterFold /
+   1138  fbee							;   TitlePlayerFold images retired with the
+   1139  fbee							;   intro movie (merged title, 2026-10-19)
+   1140  fbee				   Bank2ReturnPad		; bank3 VCS3 (OvShutScan body) tail target:
+   1141  fbee							;   sta executes bank3-side, rts fetched from
+   1142  fbee							;   THIS byte-identical copy (post-switch)
+   1143  fbee		       8d f8 1f 	      sta	$1FF8
+   1144  fbf1		       60		      rts
+   1145  fbf2		       00 00 00 00*	      .ds	$FBF8 - *, 0
+   1146  fbf8				   ReturnPad
+   1147  fbf8		       8d f6 1f 	      sta	$1FF6
+   1148  fbfb		       60		      rts
+   1149  fbfc
+   1150  fbfc							; ------------------------------------------------------------------------------
+   1151  fbfc							; CallPad_BuildColupF twin — bank3 body now (A3). bank0/bank1 execute
+   1152  fbfc							; `sta $1FF9`; the `jmp` at +3 is fetched from BANK3 (its $FC3B image).
+   1153  fbfc							; ------------------------------------------------------------------------------
+   1154  fbfc		       00 00 00 00*	      .ds	$FC32 - *, 0
+   1155  fc32				   CallPad_BuildColupF
+   1156  fc32		       8d f9 1f 	      sta	$1FF9	; bank3 (level-data walker)
+   1157  fc35		       4c c7 f5 	      jmp	$F5C7	; BuildColupF (bank3; synced by verify_build)
+   1158  fc38
+   1159  fc38							; ------------------------------------------------------------------------------
+   1160  fc38							; E4 moth exit tramp ($FC49-$FC4B) — byte-identical slice with kernel.asm's
+   1161  fc38							; MothExitPad (guard: verify_build check_moth_tramp). bank2 executes
+   1162  fc38							; `sta $1FF6`; the fetch at $FC4C comes from bank0 = `jmp UE_Next`
+   1163  fc38							; (bank0's own label). This file's bytes from $FC4C never run.
+   1164  fc38							; Pinned at $FC49 (NOT $FFF2): $FFF6-$FFF9 are F6 hotspot mirrors — a peek
+   1165  fc38							; of those addresses calls checkSwitchBank in Stella and flips banks
+   1166  fc38							; mid-instruction (see kernel.asm MothExitPad comment).
+   1167  fc38							; ------------------------------------------------------------------------------
+   1168  fc38		       00 00 00 00*	      .ds	$FC49 - *, 0
+   1169  fc49				   MothExitPad
+   1170  fc49		       8d f6 1f 	      sta	$1FF6
+   1171  fc4c
+   1172  fc4c							; ------------------------------------------------------------------------------
+   1173  fc4c							; BuildColupF + HotOverlapBody moved to bank3 (A3 2026-10-19 — they walk the
+   1174  fc4c							; level-data record stream, which now lives there). The space below is fill;
+   1175  fc4c							; BombEnemyBlastBody stays PINNED at its original address so the bank0/bank2
+   1176  fc4c							; blast-tramp literals ($FDD8 twins) need no resync.
+   1177  fc4c							; ------------------------------------------------------------------------------
+   1178  fc4c		       00 00 00 00*	      .ds	$FD87 - *, 0
+   1179  fd87							; BombEnemyBlast body — kill first live enemy |dcol| < 2 (any Y). Type check:
+   1180  fd87							; LAMP (5) is NOT killable — the old inline loop set the dead bit on lamps too
+   1181  fd87							; (lost lamp, no dark-room trigger, +50 score for nothing — bugs.md 3).
+   1182  fd87							; Entered from bank0 stub (sta $1FF8 / jmp <here> — operand in kernel.asm,
+   1183  fd87							; twin at $FDD8 below), 0 pushes; every exit `jmp $FBF8` ReturnPad.
+   1184  fd87							; Out: A = 1 kill (caller awards +50 — pads cannot nest), 0 none (Z set).
+   1185  fd87							; Clobbers A/X/Y. Level enemy records live in THIS bank, so the type read
+   1186  fd87							; is a direct (EnemyDataLo),Y — no fold.
+   1187  fd87							; Lives here (after .HOVdone) — NOT between TitleJetColors and the $F970
+   1188  fd87							; pad: test_title_demo diffs that whole source span for $xx color literals.
+   1189  fd87							; ------------------------------------------------------------------------------
+   1190  fd87				   BombEnemyBlastBody
+   1191  fd87		       a5 b3		      lda	EnemyCount
+   1192  fd89		       f0 47		      beq	.BEBnone
+   1193  fd8b		       a5 f6		      lda	BombX
+   1194  fd8d		       4a		      lsr
+   1195  fd8e		       4a		      lsr
+   1196  fd8f		       85 8c		      sta	CollisionCellX	; bomb screen col
+   1197  fd91		       a9 00		      lda	#0
+   1198  fd93		       85 b9		      sta	EnemyIndex
+   1199  fd95				   .BEBLoop
+   1200  fd95		       a6 b9		      ldx	EnemyIndex
+   1201  fd97		       e4 b3		      cpx	EnemyCount
+   1202  fd99		       b0 37		      bcs	.BEBnone
+   1203  fd9b		       a5 ba		      lda	EnemyDeadMask
+   1204  fd9d		       3d 55 ff 	      and	EnemyBitTable,X
+   1205  fda0		       d0 2b		      bne	.BEBNext	; already dead
+   1206  fda2		       bc 52 ff 	      ldy	EnemyOffTable,X	; Y = X*4 = type offset (record: type,x,y,dir)
+   1207  fda5		       b1 b1		      lda	(EnemyDataLo),Y
+   1208  fda7		       c9 05		      cmp	#LAMP
+   1209  fda9		       f0 22		      beq	.BEBNext	; lamp: blast passes through (item 3 fix)
+   1210  fdab		       c9 07		      cmp	#RAFT
+   1211  fdad		       f0 1e		      beq	.BEBNext	; raft: a blast cannot destroy the platform the
+   1212  fdaf							; player is riding across the water
+   1213  fdaf		       b5 bd		      lda	EnemyRamX,X	; live X from RAM
+   1214  fdb1							; |dcol| < 2 (col = px/4) — ignore Y entirely
+   1215  fdb1		       4a		      lsr
+   1216  fdb2		       4a		      lsr
+   1217  fdb3		       38		      sec
+   1218  fdb4		       e5 8c		      sbc	CollisionCellX
+   1219  fdb6		       b0 05		      bcs	.BEBAbsCol
+   1220  fdb8		       49 ff		      eor	#$ff
+   1221  fdba		       18		      clc
+   1222  fdbb		       69 01		      adc	#1
+   1223  fdbd				   .BEBAbsCol
+   1224  fdbd		       c9 02		      cmp	#2
+   1225  fdbf		       b0 0c		      bcs	.BEBNext
+   1226  fdc1		       a5 ba		      lda	EnemyDeadMask
+   1227  fdc3		       1d 55 ff 	      ora	EnemyBitTable,X
+   1228  fdc6		       85 ba		      sta	EnemyDeadMask	; kill (first overlapping enemy per blast)
+   1229  fdc8		       a9 01		      lda	#1	; killed — bank0 caller awards +50
+   1230  fdca		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad
+   1231  fdcd				   .BEBNext
+   1232  fdcd		       e6 b9		      inc	EnemyIndex
+   1233  fdcf		       4c 95 fd 	      jmp	.BEBLoop
+   1234  fdd2				   .BEBnone
+   1235  fdd2		       a9 00		      lda	#0	; Z set for caller's beq
+   1236  fdd4		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad
+   1237  fdd7
+   1238  fdd7							; ------------------------------------------------------------------------------
+   1239  fdd7							; HOF entry tramp ($FE80-$FE85) — byte-identical with kernel.asm's copy
+   1240  fdd7							; (guard: verify_build check_moth_tramp). bank0 executes `sta $1FF8` at
+   1241  fdd7							; $FE80-$FE82; the fetch at $FE83 comes from THIS bank = `jmp $FCF0`. Neither
+   1242  fdd7							; bank runs its other half: bank0 is switched away at $FE82, bank2 never
+   1243  fdd7							; enters at $FE80. Pinned $FE80: the $FBF8-$FC48 pad window is full (5 B
+   1244  fdd7							; left, a stub needs 6 B) and $FE86-$FEEF is the only free hole before the
+   1245  fdd7							; moth tramp's $FEF0.
+   1246  fdd7							; ------------------------------------------------------------------------------
+   1247  fdd7							; ------------------------------------------------------------------------------
+   1248  fdd7							; BombEnemyBlast tramp mirror ($FDD8-$FDDD) — byte-identical with kernel.asm's
+   1249  fdd7							; copy at the same address (bomb-lamp fix 2026-10-07). bank0 executes `sta
+   1250  fdd7							; $1FF8` at $FDD8-$FDDA; the fetch at $FDDB comes from THIS bank = `jmp $FD87`
+   1251  fdd7							; (BombEnemyBlastBody). Neither bank runs its other half: bank0 is switched
+   1252  fdd7							; away at $FDDA, bank2 never enters at $FDD8 (the .HOVdone tail-jmps $FBF8
+   1253  fdd7							; before this pad). Pinned $FDE1 below = PickPlayerFrame tramp.
+   1254  fdd7							; ------------------------------------------------------------------------------
+   1255  fdd7		       00		      .ds	$FDD8 - *, 0
+   1256  fdd8		       8d f8 1f 	      .byte.b	$8D, $F8, $1F	; sta $1FF8 (twin)
+   1257  fddb		       4c 87 fd 	      .byte.b	$4C, $87, $FD	; jmp $FD87 (twin — fetched post-switch)
+   1258  fdde		       00 00 00 	      .ds	$FDE1 - *, 0	; PickPlayerFrame tramp mirror (byte-identical
+   1259  fde1							; with kernel.asm's copy — verify_frame_tramp)
+   1260  fde1				   PickPlayerFrameTramp
+   1261  fde1		       8d f8 1f 	      sta	$1FF8	; executed only as the post-switch fetch image
+   1262  fde4		       4c c4 f3 	      jmp	$F3C4	; bank2 PickPlayerFrame body (this bank)
+   1263  fde7							; Twin of bank0 PlayerWalkA/B ($FDE7, 12+12 rows): PickPlayerFrame reads
+   1264  fde7							; the hand-copy EQUs while THIS bank is active — without these bytes the
+   1265  fde7							; walk frames fetched zeros and the sprite vanished (title + gameplay).
+   1266  fde7		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
+   1267  fdeb		       7c fe fe 3e	      .byte.b	%01111100, %11111110, %11111110, %00111110
+   1268  fdef		       3e 14 22 42	      .byte.b	%00111110, %00010100, %00100010, %01000010	; walk A boots apart
+   1269  fdf3		       3c 7e 7c 7e	      .byte.b	%00111100, %01111110, %01111100, %01111110
+   1270  fdf7		       7c fe fe 3e	      .byte.b	%01111100, %11111110, %11111110, %00111110
+   1271  fdfb		       3e 14 18 18	      .byte.b	%00111110, %00010100, %00011000, %00011000	; walk B boots together
+   1272  fdff
+   1273  fdff		       00		      .ds	$FE00 - *, 0	; PHMOverlay pinned: bank0's dead jmp operand
+   1274  fe00							; is the literal $FE00 (moth-style dead bytes;
+   1275  fe00							; body only ever runs bank2-side)
+   1276  fe00				   PHMOverlay
+   1277  fe00							; Phase 4 asym-patch collision (entered via OverlayTramp, 0 pushes).
+   1278  fe00							; LineCount packed: b4-b7 = right_col+1, b0-2 = bands with the painted
+   1279  fe00							; ball-strip ($ff BandTab entries). D6 envelope: ONE right column
+   1280  fe00							; [BallX-7, BallX] px, BallX = 87+8*rc — overlay is additive (cells
+   1281  fe00							; painted only where the mirrored cell is open, never hot).
+   1282  fe00							; Exact visible_left (same math as PHM's prologue), then px overlap of
+   1283  fe00							; [vl, vl+6] (PLAYER_WIDTH=7 lit) with the patch column, then band x rows.
+   1284  fe00		       38		      sec
+   1285  fe01		       a5 80		      lda	RoomX
+   1286  fe03		       e5 82		      sbc	PlayerDir
+   1287  fe05		       c9 0f		      cmp	#15
+   1288  fe07		       b0 06		      bcs	.Ov7
+   1289  fe09		       38		      sec
+   1290  fe0a		       e9 04		      sbc	#4
+   1291  fe0c		       4c 11 fe 	      jmp	.OvVL
+   1292  fe0f				   .Ov7
+   1293  fe0f		       e9 07		      sbc	#7
+   1294  fe11				   .OvVL
+   1295  fe11		       18		      clc
+   1296  fe12		       65 82		      adc	PlayerDir	; A = visible_left px
+   1297  fe14		       85 8b		      sta	CollisionX	; walk temps are free on the miss path
+   1298  fe16		       a5 84		      lda	LineCount
+   1299  fe18		       4a		      lsr
+   1300  fe19		       4a		      lsr
+   1301  fe1a		       4a		      lsr
+   1302  fe1b		       4a		      lsr		; n = right_col+1 (1..10)
+   1303  fe1c		       0a		      asl
+   1304  fe1d		       0a		      asl
+   1305  fe1e		       0a		      asl		; 8n
+   1306  fe1f		       18		      clc
+   1307  fe20		       69 4f		      adc	#79	; BallX = 79+8n = 87+8*rc (patch right edge)
+   1308  fe22		       85 92		      sta	RectCount	; scratch (NOT CollisionCellX): the prologue
+   1309  fe24							; box must survive for HotOverlapFlag — OvM1Block
+   1310  fe24							; funnels block hits there for hot-death. Scratch
+   1311  fe24							; = RectCount ($92): free after the cell walk,
+   1312  fe24							; RowIdx re-inits at kernel entry. NEVER Temp —
+   1313  fe24							; CheckP0Left/Right read the joystick in Temp
+   1314  fe24							; AFTER this physics call (Temp scratch here
+   1315  fe24							; left D3=0 = phantom right-press = drift bug).
+   1316  fe24		       a5 8b		      lda	CollisionX
+   1317  fe26		       c5 92		      cmp	RectCount	; vl vs BallX
+   1318  fe28		       90 04		      bcc	.OvT2
+   1319  fe2a		       f0 02		      beq	.OvT2
+   1320  fe2c		       b0 0b		      bcs	.OvClear	; vl > BallX → player fully right of patch
+   1321  fe2e				   .OvT2
+   1322  fe2e		       a5 92		      lda	RectCount
+   1323  fe30		       38		      sec
+   1324  fe31		       e9 0d		      sbc	#13	; BallX-13 (lit span is 7px, not 8: [vl,vl+6])
+   1325  fe33		       c5 8b		      cmp	CollisionX	; vs vl: overlap iff BallX-13 <= vl
+   1326  fe35		       90 05		      bcc	.OvBand
+   1327  fe37		       f0 03		      beq	.OvBand
+   1328  fe39				   .OvClear
+   1329  fe39		       4c 32 f6 	      jmp	OvM1Block	; right-strip miss → M1 (left) strip test;
+   1330  fe3c							; IT returns via ReturnPad (C set/clear).
+   1331  fe3c							; Shutter rooms: miss here = player left of
+   1332  fe3c							; the VISIBLE right-half block → passable
+   1333  fe3c							; (kill follows the drawn block only, async
+   1334  fe3c							; ruling 2026-10-14 — no left mirror)
+   1335  fe3c				   .OvBand
+   1336  fe3c		       4c 9c fe 	      jmp	OvShutBand	; band overlap → shutter kill / strip solid
+   1337  fe3f							; (body in the $FE9C hole; band test lives
+   1338  fe3f							; there so the $FE00-$FE90 window stays fit)
+   1339  fe3f				   OvHead
+   1340  fe3f		       07 06 04 	      .byte.b	7,6,4	; rows 0..2 → mask bits >= row
+   1341  fe42				   OvTail
+   1342  fe42		       01 03 07 	      .byte.b	1,3,7	; rows 0..2 → mask bits <= row
+   1343  fe45
+   1344  fe45							; ------------------------------------------------------------------------------
+   1345  fe45							; OvShutScan — Phase C kill test, bank3 body (VCS3 at $FD80). Tramp only:
+   1346  fe45							; the MetaB hot bit (b6) is read HERE from the room-entry staged byte
+   1347  fe45							; (RoomMetaB — ZP, so no bank dependency) and passed in Y; A = kill clock.
+   1348  fe45							; sta $1FF9 + jmp — after the hotspot write the jmp
+   1349  fe45							; OPCODE is fetched from bank3's image at the same address (pinned
+   1350  fe45							; `.byte $4C,$80,$FD` at $FE57). Body returns C=1 kill / C=0 passable via
+   1351  fe45							; the $FBEE pad (`sta $1FF8` executed bank3-side; `rts` fetched from
+   1352  fe45							; bank2's byte-identical copy) back to OvShutBand's jsr — A and C
+   1353  fe45							; survive both, stack depth unchanged (+2 for the jsr only). Out
+   1354  fe45							; (2026-10-14b): C=0 passable / C=1 + A≠0 kill / C=1 + A=0 solid block.
+   1355  fe45							; Kill semantics (user spec 2026-10-14): hot band (MetaB b6) = touching
+   1356  fe45							; any closed slice kills; cold band = containment (sprite fully inside
+   1357  fe45							; closed slices), closing phase only (Rule 1). Full logic: bank3 VCS3
+   1358  fe45							; (header there).
+   1359  fe45							; ------------------------------------------------------------------------------
+   1360  fe45		       00 00 00 00*	      .ds	$FE4A - *, 0	; PIN: +2 so the tramp ends at $FE57 (bank3's
+   1361  fe4a							;   OvShutScan image). The pad sits BEFORE the
+   1362  fe4a							;   label: between `sta $1FF9` and its jmp it
+   1363  fe4a							;   would be a BRK in the fall-through path.
+   1364  fe4a				   OvShutScan
+   1365  fe4a		       a5 9a		      lda	RoomMetaB	; MetaB
+   1366  fe4c		       29 40		      and	#$40	; A = b6 mid_band_type hot mask ($40/0)
+   1367  fe4e		       a8		      tay		; Y = hot bit — survives sta $1FF9 + jmp
+   1368  fe4f		       a5 c2		      lda	EnemyRamP
+   1369  fe51		       38		      sec
+   1370  fe52		       e9 01		      sbc	#1	; kill clock = render clock (post-inc)
+   1371  fe54		       8d f9 1f 	      sta	$1FF9	; bank3
+   1372  fe57					      .ds	$FE57 - *, 0	; PIN: the jmp image must sit at $FE57 (bank3's
+   1373  fe57							;   tramp copy; guard check_tramp_targets)
+   1374  fe57		       4c 80 fd 	      jmp	$FD80	; VCS3 — image pinned bank3-side at $FE57
+   1375  fe5a		       00 00 00 00*	      .ds	$FE96 - *, 0	; S5.4 LHT tramp — byte-identical w/ kernel.asm
+   1376  fe96							; (shifted +$10 with kernel's tables)
+   1377  fe96				   LaserHitTest
+   1378  fe96		       8d f8 1f 	      sta	$1FF8	; dead in bank2 (entry arrives at $FE89)
+   1379  fe99		       4c 00 ff 	      jmp	LaserHitTestBody	; == $FF00 — operand guard vs bank0 literal
+   1380  fe9c
+   1381  fe9c							; ------------------------------------------------------------------------------
+   1382  fe9c							; OvShutBand — shutter kill on the PHMOverlay miss path (vcrunch_shutter_plan
+   1383  fe9c							; Phase B). Entered from PHMOverlay .OvBand (right-column + player-band
+   1384  fe9c							; overlap). The punched cell no longer trips the PF cell walk, so the overlay
+   1385  fe9c							; path IS the kill trigger: MetaB b7 (convert's shutter flag) gates it; plain
+   1386  fe9c							; D6 strip rooms (b7 clear) fall through to plain solid (old .OvBand
+   1387  fe9c							; behavior). Kill follows the VISIBLE right-half block only (async ruling
+   1388  fe9c							; 2026-10-14 — the left mirror was removed to fix flicker). Where the
+   1389  fe9c							; block is closed but the player is not crunched, VCS3 returns SOLID —
+   1390  fe9c							; the walk blocks (no walking through a closed shutter, user
+   1391  fe9c							; 2026-10-14b); only the aperture at the player's Y is passable.
+   1392  fe9c							; Kill = EnemyDeadMask b7 latch (once per room visit — EnterRoom zeroes) +
+   1393  fe9c							; Temp b7 -> kernel hot-bump -> LoseLife; latched = wall REMOVED (open
+   1394  fe9c							; hole — VcrShutter punches-only and disarms BandTab; no re-kill).
+   1395  fe9c							; ------------------------------------------------------------------------------
+   1396  fe9c					      .ds	$FE9C - *, 0	; free hole before the moth tramp ($FEF0)
+   1397  fe9c				   OvShutBand
+   1398  fe9c		       a6 8d		      ldx	CollisionCellY
+   1399  fe9e		       bd 3f fe 	      lda	OvHead,X	; bits >= row
+   1400  fea1		       a6 8f		      ldx	CollisionEndY
+   1401  fea3		       3d 42 fe 	      and	OvTail,X	; bits <= row
+   1402  fea6		       25 84		      and	LineCount	; active-band mask (b0-2)
+   1403  fea8		       f0 2e		      beq	.OSBm1	; not in a painted band → M1 strip test
+   1404  feaa		       a5 9a		      lda	RoomMetaB	; MetaB
+   1405  feac		       10 26		      bpl	.OSBsolid	; b7=0: plain D6 strip → solid (old behavior)
+   1406  feae		       a5 ba		      lda	EnemyDeadMask
+   1407  feb0		       30 26		      bmi	.OSBm1	; b7 latch: wall REMOVED (VcrShutter punch-
+   1408  feb2							;   only path disarms BandTab, so this arm
+   1409  feb2							;   is defense-in-depth) — passable, no
+   1410  feb2							;   re-kill (user spec 2026-10-14)
+   1411  feb2		       a5 a7		      lda	LevelStartRoom	; Phase 5 key: KeyHeld + a plain ball-strip
+   1412  feb4		       10 0f		      bpl	.OSBshut	;   RIGHT door (VcrBand=$FF → not a vcrunch
+   1413  feb6		       a5 ec		      lda	VcrBand	;   room) → the touch destroys it (b3) and the
+   1414  feb8		       c9 ff		      cmp	#$ff	;   walk passes. A vcrunch room (VcrBand 0-2)
+   1415  feba		       d0 09		      bne	.OSBshut	;   keeps its shutter test — the key does NOT
+   1416  febc		       a5 ba		      lda	EnemyDeadMask	;   disable the hazard.
+   1417  febe		       09 08		      ora	#$08	; b3 = ball strip (right door) destroyed
+   1418  fec0		       85 ba		      sta	EnemyDeadMask
+   1419  fec2		       4c d8 fe 	      jmp	.OSBm1	; passable (strip blanked next StageBandTab)
+   1420  fec5				   .OSBshut
+   1421  fec5		       20 4a fe 	      jsr	OvShutScan	; Phase C (bank3 VCS3 via tramp), 2026-10-14b:
+   1422  fec8							;   C=0 passable (A ignored) / C=1 + A≠0 kill
+   1423  fec8							;   / C=1 + A=0 SOLID (block, no latch)
+   1424  fec8		       90 0e		      bcc	.OSBm1	; aperture open over the player → passable
+   1425  feca		       f0 08		      beq	.OSBsolid	; A=0: solid — the walk blocks, no death
+   1426  fecc		       a9 80		      lda	#$80
+   1427  fece		       85 88		      sta	Temp	; b7 -> kernel hot-bump -> LoseLife
+   1428  fed0		       05 ba		      ora	EnemyDeadMask	; A = $80 | mask (b7 latch; other bits kept)
+   1429  fed2		       85 ba		      sta	EnemyDeadMask	; crunch-kill latch
+   1430  fed4				   .OSBsolid
+   1431  fed4		       38		      sec
+   1432  fed5		       4c f8 fb 	      jmp	ReturnPad
+   1433  fed8				   .OSBm1
+   1434  fed8		       4c 32 f6 	      jmp	OvM1Block
+   1435  fedb
+   1436  fedb							; ------------------------------------------------------------------------------
+   1437  fedb							; VcrCoveredState — MOVED to bank2's spill-pool gap ($F8B7) below (2026-10-17),
+   1438  fedb							; freeing this $FE9C hole for OvShutBand's key touch-unlock branch.
+   1439  fedb							; ------------------------------------------------------------------------------
+   1440  fedb
+   1441  fedb							; ------------------------------------------------------------------------------
+   1442  fedb							; FoldIndirect — byte-identical copy of kernel.asm's block (same $FEF6
+   1443  fedb							; address). bank0 executes bytes 1-3 (`sta $1FF8`, absolute — P3.1 deviation,
+   1444  fedb							; see kernel.asm) then fetches bytes 4-9
+   1445  fedb							; here (data bank active); `sta $1FF6` switches back, rts fetched from bank0.
+   1446  fedb							; Guard: verify_build compares bank0/bank2 regions byte-for-byte.
+   1447  fedb							; ------------------------------------------------------------------------------
+   1448  fedb							; ------------------------------------------------------------------------------
+   1449  fedb							; E4 moth entry tramp — byte-identical with kernel.asm's $FEF0 copy
+   1450  fedb							; (guard: verify_build check_moth_tramp). bank2's `sta $1FF8` half never
+   1451  fedb							; runs (entry always arrives from bank0); the `jmp MothRoutine` half at
+   1452  fedb							; $FEF3 runs after bank0's switch. Assembles to the same 6 bytes as
+   1453  fedb							; kernel's `sta $1FF8 / jmp $F110` — operand drift fails the guard.
+   1454  fedb							; ------------------------------------------------------------------------------
+   1455  fedb		       00 00 00 00*	      .ds	$FEF0 - *, 0
+   1456  fef0				   UE_MothTramp
+   1457  fef0		       8d f8 1f 	      sta	$1FF8
+   1458  fef3		       4c 10 f1 	      jmp	MothRoutine
+   1459  fef6					      .ds	$FEF6 - *, 0
+   1460  fef6				   FoldIndirect
+   1461  fef6		       8d f8 1f 	      sta	$1FF8
+   1462  fef9		       b1 e5		      lda	(FetchPtr),Y
+   1463  fefb		       8d f6 1f 	      sta	$1FF6
+   1464  fefe		       60		      rts
+   1465  feff
+   1466  feff							; ------------------------------------------------------------------------------
+   1467  feff							; LaserHitTestBody — MOVED from bank0 (S5.4, entry tramp $FE86 -> `jmp $FF00`).
+   1468  feff							; Contact-missile kill (redesign 2026-10-08): CollisionX = LaserX (cur M0
+   1469  feff							; arg, stored by LaserInput .LaserGo), drawn M0 = [A-7, A]. The body tests
+   1470  feff							; ONE tip cell for wall first, then the missile's OWN body box against each
+   1471  feff							; live enemy — no piercing: first contact wins and the caller resets the
+   1472  feff							; beam to the eye. Vertical: beam rows [RoomY+2, RoomY+3] vs enemy [Y,+7] ->
+   1473  feff							; (RoomY-Y)+3 in [0..8]. Horizontal (same convention as CheckEnemyHit):
+   1474  feff							; |eLo-lo| <= 7 via (d+7) in [0..14]; caller keeps arg in [0,159].
+   1475  feff							; Fold-free: enemy records are level data in THIS bank — stage once, direct
+   1476  feff							; `lda (FetchPtr),Y` for the type (was `jsr FoldIndirect`).
+   1477  feff							; RESULT PROTOCOL (pads cannot nest from a pad body — the kill/lamp/wall
+   1478  feff							; ACTIONS stay in bank0's LaserInput): every exit returns A + Z through
+   1479  feff							; ReturnPad (sta/rts preserve both): A=0 no contact (keep travelling) /
+   1480  feff							; #$50 kill (dead bit set here, caller scores + resets) / A=1 lamp (caller
+   1481  feff							; does CallPad_SetRoomDark + resets) / A=2 wall tip (caller resets, no
+   1482  feff							; score). First live enemy in span only (dead mask skips it next frame —
+   1483  feff							; no resurrection, no double score).
+   1484  feff							; Does NOT touch Temp (joystick still live at the call site).
+   1485  feff							; Wall first: the body tail-jmps to LaserWallClamp ($F25A) — tip cell
+   1486  feff							; (patch-strip + mirrored PF rows) — solid returns A=2 straight through
+   1487  feff							; ReturnPad (enemies behind the wall survive); clear ends
+   1488  feff							; `jmp LaserClampDone` (back here = enemy loop): stack depth unchanged.
+   1489  feff							; Clobbers A/X/Y/FetchPtr + CollisionCellY/CollisionEndY, RectCount,
+   1490  feff							; CollisionEndX (strip marker); MODIFIES NOTHING else (no clamp any more).
+   1491  feff							; ------------------------------------------------------------------------------
+   1492  feff		       00		      .ds	$FF00 - *, 0	; pinned: bank0 tramp operand is literal $FF00
+   1493  ff00				   LaserHitTestBody
+   1494  ff00		       4c 5a f2 	      jmp	LaserWallClamp	; contact: tip-cell wall test FIRST (A=2 or
+   1495  ff03							; fall into the enemy loop via LaserClampDone)
+   1496  ff03				   LaserClampDone
+   1497  ff03							; --- Stage (P3.1): enemy record pointer — loop writes no FetchPtr ---
+   1498  ff03		       a5 b1		      lda	EnemyDataLo
+   1499  ff05		       85 e5		      sta	FetchPtr
+   1500  ff07		       a5 b2		      lda	EnemyDataHi
+   1501  ff09		       85 e6		      sta	FetchPtr+1
+   1502  ff0b		       a2 00		      ldx	#0
+   1503  ff0d				   .LHLoop
+   1504  ff0d		       e4 b3		      cpx	EnemyCount
+   1505  ff0f		       b0 3c		      bcs	.LHTOut
+   1506  ff11		       a5 ba		      lda	EnemyDeadMask
+   1507  ff13		       3d 55 ff 	      and	EnemyBitTable,X
+   1508  ff16		       d0 32		      bne	.LHNext
+   1509  ff18		       a5 81		      lda	RoomY
+   1510  ff1a		       38		      sec
+   1511  ff1b		       f5 e2		      sbc	EnemyRamY,X
+   1512  ff1d		       18		      clc
+   1513  ff1e		       69 03		      adc	#3	; (RoomY-eY)+3 in [0..8] = eY in [RoomY-5, RoomY+3]
+   1514  ff20		       c9 09		      cmp	#9	; out of beam rows RoomY+2..3
+   1515  ff22		       b0 26		      bcs	.LHNext
+   1516  ff24		       b5 bd		      lda	EnemyRamX,X
+   1517  ff26		       38		      sec
+   1518  ff27		       e5 8b		      sbc	CollisionX
+   1519  ff29		       18		      clc
+   1520  ff2a		       69 07		      adc	#7	; kill == drawn overlap: beam [A-7,A] x
+   1521  ff2c							; enemy [eX-7,eX] (SAME arg-box convention
+   1522  ff2c							; CheckEnemyHit uses for RoomX vs eX) ->
+   1523  ff2c							; eX in [A-7, A+7] <=> (eX-A)+7 in [0..14].
+   1524  ff2c							; S6b's adc #14 was a 7px-LEFT shift: it
+   1525  ff2c							; killed empty space left of the beam and
+   1526  ff2c							; missed every enemy overlapping the tip
+   1527  ff2c							; from the right (laser_collision_tip_bug).
+   1528  ff2c		       c9 0f		      cmp	#15	; bcs -> miss
+   1529  ff2e		       b0 1a		      bcs	.LHNext
+   1530  ff30				   .LHHit
+   1531  ff30		       bc 52 ff 	      ldy	EnemyOffTable,X	; type offset into staged record
+   1532  ff33		       b1 e5		      lda	(FetchPtr),Y	; direct — level data in this bank (was fold)
+   1533  ff35		       c9 05		      cmp	#LAMP
+   1534  ff37		       f0 0c		      beq	.LHLamp
+   1535  ff39		       a5 ba		      lda	EnemyDeadMask
+   1536  ff3b		       1d 55 ff 	      ora	EnemyBitTable,X
+   1537  ff3e		       85 ba		      sta	EnemyDeadMask
+   1538  ff40		       a9 50		      lda	#$50	; result: kill — caller adds #$50 score
+   1539  ff42		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad → bank0 caller (A/Z/C preserved)
+   1540  ff45				   .LHLamp
+   1541  ff45		       a9 01		      lda	#1	; result: lamp — caller crashes the lamp
+   1542  ff47		       4c f8 fb 	      jmp	ReturnPad
+   1543  ff4a				   .LHNext
+   1544  ff4a		       e8		      inx
+   1545  ff4b		       d0 c0		      bne	.LHLoop
+   1546  ff4d				   .LHTOut
+   1547  ff4d		       a9 00		      lda	#0	; result: miss (Z set for caller's beq)
+   1548  ff4f		       4c f8 fb 	      jmp	ReturnPad
+   1549  ff52
+   1550  ff52							; Type-offset table (copy of kernel EnemyOffTable: enemy index * 4; S4.1) and
+   1551  ff52							; dead-bit table (copy of kernel EnemyBitTable) — bank0 ROM is not visible
+   1552  ff52							; from here; labels keep the kernel-side test anchors working.
+   1553  ff52				   EnemyOffTable
+   1554  ff52		       00 04 08 	      .byte.b	0,4,8
+   1555  ff55
+   1556  ff55				   EnemyBitTable
+   1557  ff55		       01 02 04 08	      .byte.b	$01, $02, $04, $08
+   1558  ff59
+   1559  ff59							; ------------------------------------------------------------------------------
+   1560  ff59							; VcrShutter — sprite-shutter staging (vcrunch_shutter_plan Phase B).
+   1561  ff59							; Tail-entered from PhVcrPre (PhaseBlink walk, 0 pushes — the VBL chain sits
+   1562  ff59							; on the measured SP floor) and tail-exits at .PhRec.
+   1563  ff59							;   IN:  FetchPtr = hot record stream, Y = record base (class byte)
+   1564  ff59							;   OUT: Y = base+4 (.PhRec contract: its iny -> base+5 = next class)
+   1565  ff59							;   Clobbers A/X/Y + LineCount/CollisionCellX/CollisionEndY/Temp (all
+   1566  ff59							;   PhaseBlink scratch in this window; the pack rebuilds CollisionEndY
+   1567  ff59							;   after PhaseBlink returns). NO stack use.
+   1568  ff59							; - Punches the vcrunch bbox OPEN in PF0/1/2Buf (pair-range AND): the ball
+   1569  ff59							;   block would hide under a solid cell (CTRLPF priority), and the render
+   1570  ff59							;   and the cell walk share the buffers by design. Reflect mirrors the
+   1571  ff59							;   punched left-half cell to the right half.
+   1572  ff59							; - Stages Temp = mirrored BallX = 159-4x (right edge; >= 87 so the pack's
+   1573  ff59							;   (Temp-87)>>3 decode stays valid) and BandTab[band..band+h-1] = $ff —
+   1574  ff59							;   the D6 ball machinery then renders the block with zero kernel changes.
+   1575  ff59							; ------------------------------------------------------------------------------
+   1576  ff59							; Tally entry tramp slice ($FFE6-$FFEB, byte-identical with kernel.asm —
+   1577  ff59							; guard: check_moth_tramp). bank0 executes `sta $1FF8`; the fetch at $FFE9
+   1578  ff59							; comes from THIS bank = `jmp TallyEntry`. Neither bank runs its other half.
+   1579  ff59		       00 00 00 00*	      .ds	$FFE6 - *, 0
+   1580  ffe6				   TallyTramp
+   1581  ffe6		       8d f8 1f 	      sta	$1FF8
+   1582  ffe9		       4c 13 f3 	      jmp	TallyEntry
+   1583  ffec
+   1584  ffec							; ------------------------------------------------------------------------------
+   1585  ffec							; HotOverlapFlag (bank2-side, A3): OvM1Block/OvShutScan reach it with `jmp`
+   1586  ffec							; while bank2 is selected, so THIS copy is the live one. Bank3 has no room
+   1587  ffec							; at $FE93 (OvShutBand .OSline), so the pad sits at $FFEC like bank0's;
+   1588  ffec							; the `jmp` at +3 is fetched from bank3's $FFEF image.
+   1589  ffec							; ------------------------------------------------------------------------------
+   1590  ffec					      .ds	$FFEC - *, 0
+   1591  ffec				   HotOverlapFlag
+   1592  ffec		       8d f9 1f 	      sta	$1FF9	; select bank3
+   1593  ffef		       4c 83 f6 	      jmp	$F683	; bank3 HotOverlapBody (synced by verify_build)
+   1594  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
+   1595  fff2
+   1596  fff2							; Pad to vectors at $FFFA ($FFF2-$FFF9 = fill — never code: $FFF6-$FFF9
+   1597  fff2							; are F6 hotspot mirrors on peek, see MothExitPad at $FC49)
+   1598  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0
+   1599  fffa
+   1600  fffa							; Interrupt vectors
+   1601  fffa		       00 f0		      .word.w	$F000	; NMI vector
+   1602  fffc		       00 f0		      .word.w	$F000	; RESET vector
+   1603  fffe		       00 f0		      .word.w	$F000	; IRQ vector

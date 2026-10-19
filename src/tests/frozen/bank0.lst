@@ -480,10 +480,10 @@
     479  f024		       85 ad		      sta	TickCounter
     480  f026		       a9 78		      lda	#120
     481  f028		       85 ae		      sta	BarLevel	; bar starts full
-    482  f02a							; --- Intro screen: DropTarget=$FD sentinel (2026-10-06 — SAVIOR splash
-    483  f02a							;     shows ONCE at power-on; first SELECT/RESET edge anywhere moves to
-    484  f02a							;     the old title $FF = first room + HUD stage count; valid fall
-    485  f02a							;     targets are Y ≤ 191, sentinels $FD/$FE/$FF all "not a fall"). ---
+    482  f02a							; --- Merged title screen: DropTarget=$FD (2026-10-19). One screen
+    483  f02a							;     shows the SAVIOR logo, the selected level number, the credits and
+    484  f02a							;     plays the theme; SELECT cycles the level, RESET starts the game.
+    485  f02a							;     Valid fall targets are Y ≤ 191; sentinels $FD/$FE are "not a fall". ---
     486  f02a		       a9 fd		      lda	#$FD
     487  f02c		       85 8a		      sta	DropTarget
     488  f02e
@@ -1071,7 +1071,7 @@
    1070  f1b0
    1071  f1b0							; --- Write live Y → EnemyRamY ($E2-$E4; window-safe since S3.4: this
    1072  f1b0							; runs after the HUD score-ptr stomp, before every reader) ---
-   1073  f1b0		       20 7e fd 	      jsr	RefreshEnemyY
+   1073  f1b0		       20 77 fd 	      jsr	RefreshEnemyY
    1074  f1b3
    1075  f1b3							; --- Read joystick ---
    1076  f1b3							; SWCHA bits: D4=up, D5=down, D6=left, D7=right (0=pressed)
@@ -2658,10 +2658,10 @@
    2657  f989		       a4 92		      ldy	RectCount
    2658  f98b		       98		      tya
    2659  f98c		       18		      clc
-   2660  f98d		       7d a9 fd 	      adc	ColOff,X	; PF0/PF1/PF2 group offset (0/3/6)
+   2660  f98d		       7d a2 fd 	      adc	ColOff,X	; PF0/PF1/PF2 group offset (0/3/6)
    2661  f990		       a8		      tay
    2662  f991		       b9 c3 00 	      lda	PF0Buf,Y	; $C3+row+off — the byte the kernel renders
-   2663  f994		       3d bd fd 	      and	ColMask,X	; bit for this source col
+   2663  f994		       3d b6 fd 	      and	ColMask,X	; bit for this source col
    2664  f997		       d0 13		      bne	.CWHit	; solid (Z=0)
    2665  f999		       e4 8c		      cpx	CollisionCellX	; col == max? (X == CollisionX, stx below keeps
    2666  f99b		       f0 05		      beq	.CWRowDone	;   the memory walk-temp fresh for HotOverlapFlag)
@@ -2789,8 +2789,8 @@
    2788  f9e1							; ------------------------------------------------------------------------------
    2789  f9e1							; KernelInit — title/cave dispatch + cave running-Y (fill: pre-pad headroom 1B).
    2790  f9e1							; TIA inits moved to the VBL tail 2026-10-06 (entry-span budget — see there).
-   2791  f9e1							; Intro path (DropTarget=$FD sentinel) → TitleKernel (pops this jsr first!);
-   2792  f9e1							; cave path (play AND old title $FF) → rts → CaveKernelRow. Cave side
+   2791  f9e1							; Title path (DropTarget=$FD sentinel) → TitleKernel (pops this jsr first!);
+   2792  f9e1							; cave path (play) → rts → CaveKernelRow. Cave side
    2793  f9e1							; effects: RowIdx=0, Y=-RoomY, X=0, A=0. ENAM0/ENAM1 NOT touched.
    2794  f9e1							; ------------------------------------------------------------------------------
    2795  f9e1				   KernelInit
@@ -2840,1089 +2840,1048 @@
    2839  fb00							; ------------------------------------------------------------------------------
    2840  fb00							; TitleFont — MOVED to bank1.
    2841  fb00
-   2842  fb00				   TitleIntro
-   2843  fb00		       a5 97		      lda	StepsLeft
-   2844  fb02		       29 03		      and	#%00000011	; prev released bits (1 = released)
-   2845  fb04		       85 88		      sta	Temp
-   2846  fb06		       ad 82 02 	      lda	SWCHB
-   2847  fb09		       49 03		      eor	#%00000011	; now pressed bits (1 = pressed)
-   2848  fb0b		       29 03		      and	#%00000011
-   2849  fb0d		       25 88		      and	Temp	; any prev-released & now-pressed
-   2850  fb0f		       f0 1b		      beq	.TIno
-   2851  fb11		       a5 a8		      lda	LevelStartX
-   2852  fb13		       85 80		      sta	RoomX	; discard title-only flight position
-   2853  fb15		       a5 a9		      lda	LevelStartY
-   2854  fb17		       85 81		      sta	RoomY
-   2855  fb19		       a9 00		      lda	#0
-   2856  fb1b		       85 82		      sta	PlayerDir
-   2857  fb1d		       85 f2		      sta	TallyTicks	; intro phase machine: back to phase 0
-   2858  fb1f		       a5 b5		      lda	BombPacked
-   2859  fb21		       29 fc		      and	#%11111100	; drop any leftover fuse before old title
-   2860  fb23		       85 b5		      sta	BombPacked
-   2861  fb25		       a9 ff		      lda	#$FF
-   2862  fb27		       85 8a		      sta	DropTarget	; → old title (first room + HUD count)
-   2863  fb29		       20 c7 fc 	      jsr	DropArm	; .DATitle: pose + ScoreTe = level+1
-   2864  fb2c				   .TIno
-   2865  fb2c		       ad 82 02 	      lda	SWCHB
-   2866  fb2f		       85 97		      sta	StepsLeft
-   2867  fb31		       20 d6 fb 	      jsr	TitleSequenceFold	; intro phase machine (bank2 body, jsr/ReturnPad)
-   2868  fb34		       4c 5f fd 	      jmp	TitleTailAudio
-   2869  fb37
-   2870  fb37							; ------------------------------------------------------------------------------
-   2871  fb37							; RowSlice — Phase C vcrunch shutter: render ONE sub-slice of the shutter
-   2872  fb37							; band (VcrBand=1, middle band — specials rule 2026-10-14).
-   2873  fb37							; jsr-entered from the kernel row-advance (rts back, then `jmp .Line` —
-   2874  fb37							; DASM has no external-local syntax so the loop re-entry stays in-scope)
-   2875  fb37							; while RowIdx == VcrBand and VcrNext in 1..4. Replaces the .Row setup
-   2876  fb37							; line for slices 1-4 (slice0 ran via the kernel-entry .Row with the
-   2877  fb37							; derived 8-line count):
-   2878  fb37							;   ranges   [0,9) [9,18) [18,31) [31,40) [40,49)  = 5 setups + 44 bodies
-   2879  fb37							;	      = 49 WSYNCs — exactly band0's original count (wall unchanged).
-   2880  fb37							; ENABL/ENAM1 = per-slice state gates (ball $ff/$00, left-mirror M1
-   2881  fb37							; $02/$00 — Step 4) — written early on the setup line (well before the
-   2882  fb37							; block's ball pixels, so no transition seam); PF/palette persist from
-   2883  fb37							; .Row's band setup. Setup line WSYNCS (visible) but does NOT enter .Line —
-   2884  fb37							; Y (running A0) must still advance so the next .Line pass indexes the
-   2885  fb37							; correct sprite row (bug: skipped iny delayed GRP0 3 lines when armed).
-   2886  fb37							; .Line inherits Y = A0+1 exactly as after a body WSYNC.
-   2887  fb37							; Cycles: tail ≈19 + body ≈36 + jsr/rts 12 ≈ 67-71 from the previous
-   2888  fb37							; WSYNC (<= 76 → the setup line does not stall; band0 keeps its measured
-   2889  fb37							; wall contribution). Step 4: +6/+8 for the ENAM1 pair, −5 from moving
-   2890  fb37							; `inc VcrNext` after the WSYNC — net inside the same window.
-   2891  fb37							; SBmask entries = VcrState bit per slice; SBod = bodies per slice
-   2892  fb37							; (index 0 = slice0, correct-but-unused: slice0 count comes from the
-   2893  fb37							; kernel-entry .Row derive).
-   2894  fb37							; ------------------------------------------------------------------------------
-   2895  fb37				   RowSlice
-   2896  fb37		       a6 eb		      ldx	VcrNext
-   2897  fb39		       bd 51 fb 	      lda	SBmask,X
-   2898  fb3c		       25 ea		      and	VcrState
-   2899  fb3e		       f0 02		      beq	.RSopen
-   2900  fb40		       a9 ff		      lda	#$ff
-   2901  fb42				   .RSopen
-   2902  fb42		       85 1f		      sta	ENABL
-   2903  fb44		       bd 56 fb 	      lda	SBod,X
-   2904  fb47		       85 84		      sta	LineCount
-   2905  fb49		       e6 eb		      inc	VcrNext
-   2906  fb4b		       c8		      iny		; running A0: setup WSYNC is a visible line like
-   2907  fb4c							;   a body — without this the next .Line indexes
-   2908  fb4c							;   sprite row A0 (armed sprite sat ~4 lines low)
-   2909  fb4c		       85 02		      sta	WSYNC	; this line = the slice setup line
-   2910  fb4e		       4c 20 f1 	      jmp	SliceReentry	; tail re-enters .Line via the global trampoline
-   2911  fb51							;   (jsr/rts replaced 2026-10-15: +14c tail
-   2912  fb51							;   stalled the first slice body line at 82c;
-   2913  fb51							;   tail jmp costs 3c and pushes no stack)
-   2914  fb51				   SBmask
-   2915  fb51		       01 02 04 08*	      .byte.b	1,2,4,8,16	; state bit for slices 0-4
-   2916  fb56				   SBod
-   2917  fb56		       08 08 0c 08*	      .byte.b	8,8,12,8,8	; body lines per slice (5 setups + 44 = 49)
-   2918  fb5b
-   2919  fb5b		       00 00 00 00*	      .ds	$FBD0 - *, 0	; #22: pin tramp at $FBD0 — bank2's twin
-   2920  fbd0							;   sits at the same address (pin moved from
-   2921  fbd0							;   $FB84 2026-10-13 for PhaseBlink staging,
-   2922  fbd0							;   then $FBC0 → $FBD0 2026-10-14: model2
-   2923  fbd0							;   asym data +49B pushed the bank2 window)
-   2924  fbd0							; EnterRoom tramp — body lives in bank2 ($F010, EnterRoomB2).
-   2925  fbd0							; bank0 runs `sta $1FF8`; the fetch at $FBD3 comes from bank2's identical
-   2926  fbd0							; twin → `jmp $F010` executes in bank2. Body tail = jmp ReturnPad ($FBF8)
-   2927  fbd0							; → sta $1FF6 / rts. Saves ~1660c per room change (folds → direct reads).
-   2928  fbd0							; A preserved through sta $1FF8; body returns X = EnemyCount.
-   2929  fbd0				   EnterRoom
-   2930  fbd0		       8d f8 1f 	      sta	$1FF8
-   2931  fbd3		       4c 10 f0 	      jmp	$F010	; EnterRoomB2 — fetched from bank2 twin
-   2932  fbd6
-   2933  fbd6					      .ds	$FBD6 - *, 0	; fold pinned where bank2's twin mirrors it
-   2934  fbd6							;   (both banks must hold the same sta/jmp
-   2935  fbd6							;   bytes at these fixed addresses)
-   2936  fbd6				   TitleSequenceFold
-   2937  fbd6		       8d f8 1f 	      sta	$1FF8
-   2938  fbd9		       4c c4 f4 	      jmp	$F4C4	; TitleSequence body — fetched from bank2
-   2939  fbdc		       00 00 00 00	      .ds	$FBE0 - *, 0
-   2940  fbe0				   FooterFold
-   2941  fbe0		       8d f8 1f 	      sta	$1FF8
-   2942  fbe3		       4c 00 f7 	      jmp	$F700
-   2943  fbe6		       00 00		      .ds	$FBE8 - *, 0
-   2944  fbe8				   TitlePlayerFold
-   2945  fbe8		       8d f8 1f 	      sta	$1FF8
-   2946  fbeb		       4c 80 f8 	      jmp	$F880
-   2947  fbee		       00 00 00 00*	      .ds	$FBF8 - *, 0
-   2948  fbf8				   ReturnPad
-   2949  fbf8		       8d f6 1f 	      sta	$1FF6
-   2950  fbfb		       60		      rts
-   2951  fbfc				   CallPad_UpdateBombSound
-   2952  fbfc		       8d f7 1f 	      sta	$1FF7
-   2953  fbff		       4c c0 f9 	      jmp	$F9C0
-   2954  fc02				   CallPad_UpdateJetSound
-   2955  fc02		       8d f7 1f 	      sta	$1FF7
-   2956  fc05		       4c cf f9 	      jmp	$F9CF
-   2957  fc08				   CallPad_BombSndDrop
-   2958  fc08		       8d f7 1f 	      sta	$1FF7
-   2959  fc0b		       4c 00 fa 	      jmp	$FA00
-   2960  fc0e				   CallPad_BombSndExplode
-   2961  fc0e		       8d f7 1f 	      sta	$1FF7
-   2962  fc11		       4c 13 fa 	      jmp	$FA13
-   2963  fc14				   CallPad_GetConnIdx
-   2964  fc14		       8d f7 1f 	      sta	$1FF7
-   2965  fc17		       4c 26 fa 	      jmp	$FA26
-   2966  fc1a				   CallPad_AddScore
-   2967  fc1a		       8d f7 1f 	      sta	$1FF7
-   2968  fc1d		       4c 7c fa 	      jmp	$FA7C
-   2969  fc20				   CallPad_IsRoomDark
-   2970  fc20		       8d f7 1f 	      sta	$1FF7
-   2971  fc23		       4c 78 fc 	      jmp	$FC78
-   2972  fc26				   CallPad_SetRoomDark
-   2973  fc26		       8d f7 1f 	      sta	$1FF7
-   2974  fc29		       4c 9e fc 	      jmp	$FC9E
-   2975  fc2c				   CallPad_UpdateLaserSound
-   2976  fc2c		       8d f7 1f 	      sta	$1FF7
-   2977  fc2f		       4c a4 fa 	      jmp	$FAA4
-   2978  fc32				   CallPad_BuildColupF
-   2979  fc32		       8d f9 1f 	      sta	$1FF9	; A3: body lives in bank3 (record stream)
-   2980  fc35		       4c c7 f5 	      jmp	$F5C7	; BuildColupF (bank3; synced by verify_build)
-   2981  fc38				   CallPad_BombMarkWalls
-   2982  fc38		       8d f7 1f 	      sta	$1FF7	; S5.2: body lives in bank1 ($FB10)
-   2983  fc3b		       4c 10 fb 	      jmp	$FB10
-   2984  fc3e
-   2985  fc3e		       00 00 00 00*	      .ds	$FC49 - *, 0	; pin (main growth past $FC49 = build error)
-   2986  fc49				   MothExitPad
-   2987  fc49		       8d f6 1f 	      sta	$1FF6	; select bank0 (executed from bank2's copy)
-   2988  fc4c		       4c 3d f4 	      jmp	UE_Next	; resume dispatch loop (bank0 half)
-   2989  fc4f
-   2990  fc4f					      .ds	$FC4F - *, 0	; bank0↔bank1 CallPad slot (refactor_v4)
-   2991  fc4f				   CallPad_TitleSelect
-   2992  fc4f		       8d f7 1f 	      sta	$1FF7
-   2993  fc52		       4c 41 f0 	      jmp	$F041
-   2994  fc55					      .ds	$FC55 - *, 0
-   2995  fc55				   CallPad_TitleKernel
-   2996  fc55		       8d f7 1f 	      sta	$1FF7
-   2997  fc58		       4c 7a f0 	      jmp	$F07A
-   2998  fc5b					      .ds	$FC5B - *, 0
-   2999  fc5b				   CallPad_Overscan
-   3000  fc5b		       8d f6 1f 	      sta	$1FF6
-   3001  fc5e		       4c a7 f1 	      jmp	$F1A7
-   3002  fc61					      .ds	$FC61 - *, 0	; bank0↔bank1 intro-music tick
-   3003  fc61				   CallPad_MusicTick
-   3004  fc61		       8d f7 1f 	      sta	$1FF7
-   3005  fc64		       4c 5a f3 	      jmp	$F35A
-   3006  fc67
-   3007  fc67							; ==============================================================================
-   3008  fc67							; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
-   3009  fc67							; These go BEFORE the fineAdjustTable so org $FC68 doesn't go backwards.
-   3010  fc67							; ==============================================================================
-   3011  fc67		       f5 40	   MenuMain   =	$F540	; bank1's HUD entry (not code in bank0)
-   3012  fc68					      org	$FC68
-   3013  fc68				   ToMenuStub
-   3014  fc68		       a9 01		      lda	#1
-   3015  fc6a		       8d f7 1f 	      sta	$1FF7	; select bank1 (HUD)
-   3016  fc6d		       4c 40 f5 	      jmp	MenuMain	; next fetch from bank1: jmp $F540
-   3017  fc70
-   3018  fc70					      org	$FC70
-   3019  fc70				   ToGameStub
-   3020  fc70		       a9 00		      lda	#0
-   3021  fc72		       8d f6 1f 	      sta	$1FF6	; select bank0 (game)
-   3022  fc75		       4c a7 f1 	      jmp	Overscan	; return to bank0 after HUD band
-   3023  fc78
-   3024  fc78							; Flip dir bit for enemy X (right↔left).
-   3025  fc78							; After fold pads to keep main code under $FC68 (leaf, jsr-safe from bank0).
-   3026  fc78				   UE_FlipDir
-   3027  fc78		       bd cf f3 	      lda	EnemyBitTable,X
-   3028  fc7b		       45 c1		      eor	EnemyRamD
-   3029  fc7d		       85 c1		      sta	EnemyRamD
-   3030  fc7f		       60		      rts
-   3031  fc80
-   3032  fc80							; ClearPFColumn + BombClearMask moved to bank1 (leaf_move_plan batch B).
-   3033  fc80
-   3034  fc80							; UpdateJetSound moved to bank1 (leaf_move_plan batch A) — CallPad_UpdateJetSound.
-   3035  fc80
-   3036  fc80							; AddScore moved to bank1 (leaf_move_plan batch B) — CallPad_AddScore.
-   3037  fc80
-   3038  fc80							; ------------------------------------------------------------------------------
-   3039  fc80							; ReloadLevel — reset level to initial state (all enemies back, 3 lives).
-   3040  fc80							; Reloads level data from ROM and respawns player at start.
-   3041  fc80							; Score is NOT reset (persists across deaths).
-   3042  fc80							; After fold pads to keep main code under $FC68.
-   3043  fc80							; ------------------------------------------------------------------------------
-   3044  fc80				   ReloadLevel
-   3045  fc80		       a9 03		      lda	#3
-   3046  fc82		       85 ac		      sta	PlayerLives
-   3047  fc84		       a9 05		      lda	#BOMBS_MAX
-   3048  fc86		       85 f0		      sta	PlayerBombs
-   3049  fc88		       a5 a3		      lda	Level
-   3050  fc8a							; TAIL-jmp LoadLevel (bugs.md #29 Class B, 2026-10-11). The old
-   3051  fc8a							; `jsr LoadLevel / zeros / rts` left FOUR jsr slots live when LoadLevel
-   3052  fc8a							; reached `jsr EnterRoom`: CheckEnemyHit/timer death paths ran
-   3053  fc8a							; main->jsr CEH->jmp LoseLife->jsr ReloadLevel->jsr LoadLevel->
-   3054  fc8a							; jsr EnterRoom at SP=$F7, so the return address sat on $F6/$F7
-   3055  fc8a							; (BombX/BombTimer), EnterRoomB2's `sta BombTimer` zeroed the pushed
-   3056  fc8a							; PCH, and ReturnPad's rts popped ($00<<8|BombX)+1 = $009A -> ZP
-   3057  fc8a							; executed as code -> $F008 pad -> GameStart REBOOT to title (the
-   3058  fc8a							; SIM_EXIT=down f265 296-line crash frame + the title-264 family).
-   3059  fc8a							; With the tail-jmp the slot count drops by one: EnterRoom's return
-   3060  fc8a							; lands on $F8/$F9 (stack-only cells) on every death path.
-   3061  fc8a							; The old post-code (vy/JetPower zeros + rts) was unreachable; DELETED
-   3062  fc8a							; 2026-10-16 (intro music) — the $FDD8 blast-tramp pin below absorbs the
-   3063  fc8a							; shift, so the twins stay put. DropArm zeroes vyLo/vyHi/PlayerYSub itself
-   3064  fc8a							; (JetPower=4 stays through the drop-in flutter — identical to the .LLStay
-   3065  fc8a							; path). LoseLife's `sec` still runs (DropArm's rts pops the jsr ReloadLevel
-   3066  fc8a							; slot back into LoseLife).
-   3067  fc8a		       4c 52 f5 	      jmp	LoadLevel
-   3068  fc8d
-   3069  fc8d							; ------------------------------------------------------------------------------
-   3070  fc8d							; HotOverlapFlag — moved to bank2 (S5.3): fold-free body (HotOverlapBody)
-   3071  fc8d							;   reads RoomRects directly via (FetchPtr),Y — 7 folds → 7 direct reads
-   3072  fc8d							;   (one less push level on the hot path too). Entry tramp pinned $FE80
-   3073  fc8d							;   (byte-identical bank0/bank2, moth pattern — the $FBF8-$FC48 pad window
-   3074  fc8d							;   is full: 5 B left, a stub needs 6 B). Call sites below keep
-   3075  fc8d							;   `jmp HotOverlapFlag` (tail: 0 push) and the C=1 contract: body ends
-   3076  fc8d							;   `sec / jmp $FBF8` (ReturnPad), so the pad's rts pops the ORIGINAL
-   3077  fc8d							;   caller's return. Full behavior docs moved with the body.
-   3078  fc8d							;   Behavior: if the player's proposed tile range (CollisionCell*) overlaps
-   3079  fc8d							;   any hot-only rect, set Temp bit 7 (HotBump), called from PlayerHitsMap
-   3080  fc8d							;   HIT while CollisionCell* still describe the rejected position.
-   3081  fc8d							; ------------------------------------------------------------------------------
-   3082  fc8d
-   3083  fc8d							; ------------------------------------------------------------------------------
-   3084  fc8d							; LoseLife — the single life-loss path (enemy hit, timer expiry, bomb blast,
-   3085  fc8d							; hot rock, band). Returns C=1: lives exhausted, ReloadLevel already done
-   3086  fc8d							; (LoadLevel re-places the player — callers skip their stay action).
-   3087  fc8d							; C=0: still alive — physics zeroed here; caller does its per-site stay
-   3088  fc8d							; action (bar reload, RoomY shift). Tail-callable (`jmp LoseLife`).
-   3089  fc8d							; ------------------------------------------------------------------------------
-   3090  fc8d				   LoseLife
-   3091  fc8d		       a9 01		      lda	#1
-   3092  fc8f		       85 9c		      sta	Hover	; bugs.md #1: arm respawn hover for every death
-   3093  fc91							;   (LoadLevel clears it on a stage-entry reset)
-   3094  fc91		       c6 ac		      dec	PlayerLives
-   3095  fc93		       10 0d		      bpl	.LLStay
-   3096  fc95		       a9 03		      lda	#3
-   3097  fc97		       85 ac		      sta	PlayerLives
-   3098  fc99		       a9 00		      lda	#$00
-   3099  fc9b		       85 ba		      sta	EnemyDeadMask
-   3100  fc9d		       20 80 fc 	      jsr	ReloadLevel
-   3101  fca0		       38		      sec
-   3102  fca1		       60		      rts
-   3103  fca2				   .LLStay
-   3104  fca2		       4c c7 fc 	      jmp	DropArm	; same drop-in code: X/Y stay, fall from top
-   3105  fca5							; (DropArm zeroes physics + laser, C=0 out)
-   3106  fca5
-   3107  fca5							; ------------------------------------------------------------------------------
-   3108  fca5							; CEH_Key — type-6 key pickup (docs/feature_tiles_plan.md Phase 5): latch
-   3109  fca5							; KeyHeld ($A7 b7) and mark the key slot dead so it vanishes, with NO life
-   3110  fca5							; loss. X = EnemyIndex (set by CheckEnemyHit). Post-pad leaf (bank0 pre-pad
-   3111  fca5							; is at its 1B limit); reached from CheckEnemyHit's type-6 dispatch by jmp
-   3112  fca5							; (out of `beq` range). KEY is one per level, so KeyHeld is a single bit.
-   3113  fca5							; LevelStartRoom b7 resets when LoadLevel rewrites $A7 (:1875) before its own
-   3114  fca5							; read at :1922, so no reader mask is needed; KeyHeld survives room changes
-   3115  fca5							; and normal deaths, resets on game-over reload.
-   3116  fca5							; ------------------------------------------------------------------------------
-   3117  fca5							; IsRoomDark / SetRoomDark + BitMaskTable moved to bank1 (leaf_move_plan B).
-   3118  fca5
-   3119  fca5							; ------------------------------------------------------------------------------
-   3120  fca5							; CheckBandTouch — overscan: if band on and sprite touches the water strip →
-   3121  fca5							; life. Strip = bottom ~12 lines of the cave (bottom_band_plan rule 2);
-   3122  fca5							; sprite origin RoomY >= 125 enters it (125 + PLAYER_SPRITE_H - 1 = 136).
-   3123  fca5							; Same path as hot/enemy: lose life, then respawn 12 scanlines up (min 0).
-   3124  fca5							; Band color = VBLANK-staged RoomBandColor ($D2, PF1Buf[3] dead-row alias;
-   3125  fca5							; staged by the VBLANK fold from LevelEnemy+RoomNo*4+3 — a kernel-time fold
-   3126  fca5							; overruns the .WaterRow line). Read inlined here and in .WaterRow (0 = off).
-   3127  fca5							; ------------------------------------------------------------------------------
-   3128  fca5				   CheckBandTouch
-   3129  fca5		       a5 bc		      lda	RoomBandColor
-   3130  fca7		       f0 09		      beq	.CBTdone	; band off
-   3131  fca9		       a5 81		      lda	RoomY
-   3132  fcab		       c9 7d		      cmp	#125
-   3133  fcad		       90 03		      bcc	.CBTdone	; above strip
-   3134  fcaf		       20 b3 fc 	      jsr	LoseLifeBand
-   3135  fcb2				   .CBTdone
-   3136  fcb2		       60		      rts
-   3137  fcb3
-   3138  fcb3							; ------------------------------------------------------------------------------
-   3139  fcb3							; LoseLifeBand — life path + RoomY -= 12 (min 0; spec: respawn just above
-   3140  fcb3							; the water strip). Full reload skips the shift
-   3141  fcb3							; (LoadLevel already places the player safely).
-   3142  fcb3							; ------------------------------------------------------------------------------
-   3143  fcb3				   LoseLifeBand
-   3144  fcb3		       20 8d fc 	      jsr	LoseLife
-   3145  fcb6		       b0 0e		      bcs	.LLBdone	; exhausted: ReloadLevel placed the player
-   3146  fcb8		       a5 8a		      lda	DropTarget	; armed death Y (DropArm already zeroed RoomY)
-   3147  fcba		       38		      sec
-   3148  fcbb		       e9 0c		      sbc	#12	; clear the strip (spec: -= 12, not whole band)
-   3149  fcbd		       b0 02		      bcs	.LLBstore
-   3150  fcbf		       a9 00		      lda	#0
-   3151  fcc1				   .LLBstore
-   3152  fcc1		       85 81		      sta	RoomY
-   3153  fcc3		       4c c7 fc 	      jmp	DropArm	; same code, destiny Y = one tile above water
-   3154  fcc6				   .LLBdone
-   3155  fcc6		       60		      rts
-   3156  fcc7
-   3157  fcc7							; ------------------------------------------------------------------------------
-   3158  fcc7							; DropArm / DropStep — the ONE spawn drop-in (user rule: same code for every
-   3159  fcc7							; restart, only the destiny X/Y changes — X is already in RoomX, placed by the
-   3160  fcc7							; caller; Y is animated from the screen top down to it).
-   3161  fcc7							; Triggers: stage start / game over / level advance (LoadLevel tail),
-   3162  fcc7							; enemy/blast/timer/hot death (.LLStay, same position), water (LoseLifeBand,
-   3163  fcc7							; Y-12). All tail-call it -> zero added stack depth (sim_bomb_fuse guard).
-   3164  fcc7							;
-   3165  fcc7							; DropArm (A implied = current RoomY, C=0 out): freezes RoomY as DropTarget,
-   3166  fcc7							; starts the sprite at the top (RoomY=0), zeroes physics + laser state so
-   3167  fcc7							; descent is clean (LaserInput is skipped by the gate; beam gate forced 0).
-   3168  fcc7							;
-   3169  fcc7							; DropStep (runs instead of input/physics/collision while DropTarget != 0):
-   3170  fcc7							; 8.8 accumulator PlayerYSub += DropSpeedTable[DropTarget>>4]; carry ->
-   3171  fcc7							; inc RoomY; arrival (RoomY >= DropTarget) -> DropTarget = 0, normal control
-   3172  fcc7							; resumes next frame. Speed table = Y*256/(60+Y/2) sampled per 16px tier ->
-   3173  fcc7							; fall lasts ~60+Y/2 frames = 1.0-2.2 s (shallow start = quicker arrival).
-   3174  fcc7							; Tail-jumps to OverscanAudio: bomb/laser/input/physics/horizontal/hot/band/
-   3175  fcc7							; miner/enemy-hit/BombTick are all bypassed (enemies + bombs frozen 1-2 s,
-   3176  fcc7							; timer keeps running; bank1 UpdateJetSound hears DropTarget as throttle).
-   3177  fcc7							; ------------------------------------------------------------------------------
-   3178  fcc7				   DropArm
-   3179  fcc7		       a5 8a		      lda	DropTarget
-   3180  fcc9		       c9 fd		      cmp	#$FD
-   3181  fccb		       b0 1e		      bcs	.DATitle	; sentinels $FD intro / $FF old title → static
-   3182  fccd							;   pose (real fall Y ≤ $BF → C=0 below; $FE
-   3183  fccd							;   tally cleared to 0 by TallyWork before its
-   3184  fccd							;   LoadLevel — same-size swap 2026-10-06)
-   3185  fccd		       a5 81		      lda	RoomY
-   3186  fccf		       85 8a		      sta	DropTarget
-   3187  fcd1		       a9 04		      lda	#4	; 1..7 = jet "burning": VBL flutter runs
-   3188  fcd3		       85 96		      sta	JetPower	;   (JP/8=0 keeps bank1 pitch at idle base)
-   3189  fcd5		       a9 00		      lda	#0
-   3190  fcd7		       85 81		      sta	RoomY
-   3191  fcd9		       85 95		      sta	PlayerYSub
-   3192  fcdb		       85 93		      sta	vyLo
-   3193  fcdd		       85 94		      sta	vyHi
-   3194  fcdf		       a5 c0		      lda	LaserState
-   3195  fce1		       29 3c		      and	#LASER_DARK	; reset laser, keep rooms 4-7 dark (parity:
-   3196  fce3		       85 c0		      sta	LaserState	; EnemyRamD bits survive DropArm too)
-   3197  fce5		       a9 00		      lda	#0	; A out = 0 (DropArm contract, was sta LaserState)
-   3198  fce7		       85 83		      sta	LaserX
-   3199  fce9		       18		      clc
-   3200  fcea		       60		      rts
-   3201  fceb				   .DATitle
-   3202  fceb							; Title: player already placed at level start by LoadLevel. Hide all
-   3203  fceb							; GRP1 objects (EnemyCount=0 → SelectActiveObject's no-object path
-   3204  fceb							; blanks ObjBase/ObjTop) and drop the miner slot so SELECT/RESET reloads
-   3205  fceb							; refresh them via EnterRoom. HUD score = level+1 ("000001" = level 0).
-   3206  fceb		       a9 00		      lda	#0
-   3207  fced		       85 b3		      sta	EnemyCount
-   3208  fcef		       a9 ff		      lda	#$FF
-   3209  fcf1		       85 a4		      sta	LevelMinerRoom	; ROOM_NONE: no miner slot, no pickup
-   3210  fcf3		       a5 a3		      lda	Level
-   3211  fcf5		       18		      clc
-   3212  fcf6		       69 01		      adc	#1
-   3213  fcf8		       85 f5		      sta	ScoreTe	; ones digit (LEVEL_COUNT ≤ 9 — ≥10 needs
-   3214  fcfa		       a9 00		      lda	#0	;  a packed-BCD tens digit here)
-   3215  fcfc		       85 f3		      sta	ScoreTh
-   3216  fcfe		       85 f4		      sta	ScoreHu
-   3217  fd00		       18		      clc
-   3218  fd01		       60		      rts
-   3219  fd02
-   3220  fd02				   DropStep
-   3221  fd02		       a5 8a		      lda	DropTarget
-   3222  fd04		       f0 2f		      beq	.DSdone	; idle (target 0 = nothing to fall)
-   3223  fd06		       c9 fd		      cmp	#$FD
-   3224  fd08		       d0 03		      bne	.DSnf	; intro ($FD): edge check in fill, then the
-   3225  fd0a		       4c 00 fb 	      jmp	TitleIntro	;   shared silence/wait tail (jmp-in, no rts)
-   3226  fd0d				   .DSnf
-   3227  fd0d		       c9 ff		      cmp	#$FF
-   3228  fd0f		       f0 27		      beq	TitleWork	; title sentinel: select/reset, no fall
-   3229  fd11		       c9 fe		      cmp	#$FE
-   3230  fd13		       d0 03		      bne	.DSfall
-   3231  fd15		       4c 9c fe 	      jmp	TallyWork	; level-bonus tally sentinel (bank2 step)
-   3232  fd18				   .DSfall
-   3233  fd18		       4a		      lsr
-   3234  fd19		       4a		      lsr
-   3235  fd1a		       4a		      lsr
-   3236  fd1b		       4a		      lsr
-   3237  fd1c		       a8		      tay
-   3238  fd1d		       b9 fb f9 	      lda	DropSpeedTable,y
-   3239  fd20		       18		      clc
-   3240  fd21		       65 95		      adc	PlayerYSub
-   3241  fd23		       85 95		      sta	PlayerYSub
-   3242  fd25		       90 0e		      bcc	.DSdone	; subpixel: no whole pixel yet this frame
-   3243  fd27		       e6 81		      inc	RoomY
-   3244  fd29		       a5 81		      lda	RoomY
-   3245  fd2b		       c5 8a		      cmp	DropTarget
-   3246  fd2d		       90 06		      bcc	.DSdone
-   3247  fd2f		       a9 00		      lda	#0
-   3248  fd31		       85 8a		      sta	DropTarget	; arrived — input/physics resume next frame
-   3249  fd33		       85 96		      sta	JetPower	; clean resume (no phantom thrust hop)
-   3250  fd35				   .DSdone
-   3251  fd35		       4c 3b f3 	      jmp	OverscanAudio	; rejoin past physics/collision (no rts)
-   3252  fd38
-   3253  fd38							; DropSpeedTable moved to the pre-pad free region ($F9FB) — post-pad before
-   3254  fd38							; the $FDE1 pin was full (bugs.md #1 Hover needs the room). Read is abs,Y, so
-   3255  fd38							; its address is irrelevant to DropStep.
-   3256  fd38
-   3257  fd38							; ------------------------------------------------------------------------------
-   3258  fd38							; TitleWork — level-select screen (DropTarget = $FF sentinel, dispatched from
-   3259  fd38							; DropStep every frame). Player stands at the level start: no gravity, no
-   3260  fd38							; enemies (count/miner cleared by DropArm .DATitle), no sound, timer frozen
-   3261  fd38							; (tail skips the TickCounter/BarLevel block). HUD score = level+1.
-   3262  fd38							;   SELECT (SWCHB b1, active-low EDGE) → jsr TitleSelect (fill): level+1,
-   3263  fd38							;	    wrap → 000001, reload room 0 (swallow removed 2026-10-07, 8b —
-   3264  fd38							;	    the intro exit ate the first press and made #2 read as dead)
-   3265  fd38							;   RESET  (SWCHB b0, active-low EDGE) → score 000000, LoadLevel tail arms
-   3266  fd38							;	    the real drop-in → gameplay starts
-   3267  fd38							; (Intro $FD never reaches here — DropStep routes it to TitleIntro.)
-   3268  fd38							; StepsLeft = previous SWCHB sample (physics is skipped on title, so it is
-   3269  fd38							; title-owned; the first play frame rewrites it as the step budget).
-   3270  fd38							; Console switches are read again after any jsr (LoadLevel clobbers X/Y/A).
-   3271  fd38							; ------------------------------------------------------------------------------
-   3272  fd38				   TitleWork
-   3273  fd38							; --- SELECT edge (TitleSelect, fill region) ---
-   3274  fd38		       20 4f fc 	      jsr	CallPad_TitleSelect
-   3275  fd3b		       90 03		      bcc	.TWselDone	; C=0: no edge
-   3276  fd3d		       20 52 f5 	      jsr	LoadLevel	; title arm re-runs → score/objects refreshed
-   3277  fd40				   .TWselDone
-   3278  fd40							; --- RESET edge ---
-   3279  fd40		       a5 97		      lda	StepsLeft
-   3280  fd42		       29 01		      and	#%00000001
-   3281  fd44		       f0 14		      beq	.TWrstDone
-   3282  fd46		       ad 82 02 	      lda	SWCHB
-   3283  fd49		       29 01		      and	#%00000001
-   3284  fd4b		       d0 0d		      bne	.TWrstDone
-   3285  fd4d		       a9 00		      lda	#0
-   3286  fd4f		       85 8a		      sta	DropTarget	; leave title → LoadLevel tail arms real fall
-   3287  fd51		       85 f3		      sta	ScoreTh	; gameplay score starts at 000000
-   3288  fd53		       85 f4		      sta	ScoreHu
-   3289  fd55		       85 f5		      sta	ScoreTe
-   3290  fd57		       20 52 f5 	      jsr	LoadLevel
-   3291  fd5a				   .TWrstDone
-   3292  fd5a		       ad 82 02 	      lda	SWCHB
-   3293  fd5d		       85 97		      sta	StepsLeft	; remember sample for next frame's edges
-   3294  fd5f							; --- Frame audio: ch0 silenced by UpdateBombSound (BombSnd=0); jet
-   3295  fd5f							;     channel force-muted here — UpdateJetSound is skipped because
-   3296  fd5f							;     $FF would read as "falling" and buzz; laser skipped (LaserState
-   3297  fd5f							;     = 0, AUDV0 covered above). ---
-   3298  fd5f				   TitleTailAudio		; shared: TitleWork falls in; TitleIntro
-   3299  fd5f							;   tail-jumps (label — jumps, not falls)
-   3300  fd5f		       a5 8a		      lda	DropTarget	; title sentinels ($FD/$FF/$FE): the intro's
-   3301  fd61		       c9 fd		      cmp	#$FD	;   TitleSequence owns its fuse — skip
-   3302  fd63		       f0 0e		      beq	.TWmusic	;   $FD intro: music owns AUD0/AUD1
-   3303  fd65		       d0 03		      bne	.TWnoTick	;   BombTick's blast side effects on titles
-   3304  fd67		       20 b7 f7 	      jsr	BombTick
-   3305  fd6a				   .TWnoTick
-   3306  fd6a		       20 fc fb 	      jsr	CallPad_UpdateBombSound
-   3307  fd6d		       a9 00		      lda	#0
-   3308  fd6f		       85 1a		      sta	AUDV1
-   3309  fd71		       f0 03		      beq	.TWwait	; A=0 -> always taken
-   3310  fd73				   .TWmusic		; intro: tick AFTER TitleSequence so the music
-   3311  fd73		       20 61 fc 	      jsr	CallPad_MusicTick	;   wins the audio registers every frame
-   3312  fd76				   .TWwait
-   3313  fd76		       ad 84 02 	      lda	INTIM
-   3314  fd79		       d0 fb		      bne	.TWwait
-   3315  fd7b		       4c 41 f0 	      jmp	StartFrame
-   3316  fd7e
-   3317  fd7e							; ------------------------------------------------------------------------------
-   3318  fd7e							; RefreshEnemyY — write live Y → EnemyRamY (every slot, live or dead).
-   3319  fd7e							; Runs at overscan entry: inside the safe window (after the HUD score-ptr
-   3320  fd7e							; stomp of $E2-$E4, before LaserInput / CheckEnemyHit / moth / next frame's
-   3321  fd7e							; SelectActiveObject read it) — see the EnemyRamY contract at the ZP map.
-   3322  fd7e							; E1: moving types (bat) get ROM spawn + TickCounter-derived offset via
-   3323  fd7e							; DeriveEnemyY — no persistent movement state exists in RAM.
-   3324  fd7e							; Clobbers A/X/Y. Moved post-pad 2026-10-02 (SELECT → title needs this
-   3325  fd7e							; block after the pads; pre-pad headroom is 1B).
-   3326  fd7e							; ------------------------------------------------------------------------------
-   3327  fd7e				   RefreshEnemyY
-   3328  fd7e		       e6 c2		      inc	EnemyRamP	; free-running frame clock (wraps 0-255).
-   3329  fd80							; TickCounter is the 60-frame GAME timer
-   3330  fd80							; (decrements 60->1, reloads) — gates derived
-   3331  fd80							; from it wrapped every second (spider
-   3332  fd80							; "teleported": (TC>>3)&63 only ever saw
-   3333  fd80							; 0..7 and counted DOWN 0->7 = jump).
-   3334  fd80		       a6 b3		      ldx	EnemyCount	; countdown loop (-2 B vs forward; derive
-   3335  fd82		       f0 09		      beq	.REYDone	; order n-1..0 — derivations independent,
-   3336  fd84				   .REYLoop		; every reader runs after refresh completes)
-   3337  fd84		       ca		      dex
-   3338  fd85		       20 96 f4 	      jsr	DeriveEnemyY	; A = live Y (ROM copy, or derived for bat)
-   3339  fd88		       95 e2		      sta	EnemyRamY,X
-   3340  fd8a		       8a		      txa		; N/Z must come from X: flags after jsr are
-   3341  fd8b		       d0 f7		      bne	.REYLoop	; the sign of the DERIVED Y byte (bpl ran
-   3342  fd8d				   .REYDone		; away at X=$FF, writing $1C2/$1C1/... =
-   3343  fd8d							; mirrored EnemyRamP/EnemyRamD/TIA = blink,
-   3344  fd8d							; black rooms, broken PF, invisible sprites)
-   3345  fd8d							; --- SELECT or RESET held → back to the old title / level-select screen
-   3346  fd8d							;     ($FF = first room + HUD count). Gate: DropTarget == 0 EXACTLY
-   3347  fd8d							;     (idle/landed). Sentinels ($FD/$FF/$FE) skip via ≠0; a DROP-IN
-   3348  fd8d							;     fall (Y≠0) also skips — so the press that STARTED the game (held
-   3349  fd8d							;     through TitleWork RESET, level-triggered here) cannot bounce back
-   3350  fd8d							;     to the title while falling (bounce-fixed 2026-10-06). Residual:
-   3351  fd8d							;     RESET held past LANDING still re-fires — press must be released
-   3352  fd8d							;     before the drop-in finishes. ---
-   3353  fd8d		       a5 8a		      lda	DropTarget
-   3354  fd8f		       d0 17		      bne	.REYRts	; not idle: not ours
-   3355  fd91		       ad 82 02 	      lda	SWCHB
-   3356  fd94		       85 97		      sta	StepsLeft	; latch so TitleWork sees "held" (no re-fire)
-   3357  fd96		       29 03		      and	#%00000011	; SELECT b1 + RESET b0 (level-triggered,
-   3358  fd98		       c9 03		      cmp	#%00000011	;   same style as the old SELECT-only check)
-   3359  fd9a		       f0 0c		      beq	.REYRts	; neither pressed
-   3360  fd9c		       a9 ff		      lda	#$FF
-   3361  fd9e		       85 8a		      sta	DropTarget	; title sentinel (intro $FD lands here too)
-   3362  fda0		       20 52 f5 	      jsr	LoadLevel	; tail → DropArm .DATitle (score/objects)
-   3363  fda3		       68		      pla		; drop OUR return address (LoadLevel already
-   3364  fda4		       68		      pla		;   popped its own) — tail into TitleWork
-   3365  fda5		       4c 38 fd 	      jmp	TitleWork
-   3366  fda8				   .REYRts
-   3367  fda8		       60		      rts
-   3368  fda9
-   3369  fda9							; ------------------------------------------------------------------------------
-   3370  fda9							; BuildColupF — 12-byte final COLUPF image at ColupfBuf ($E7-$F2).
-   3371  fda9							;   Stripe: rows 0,2 = LevelWallColor; row 1 = LevelWallColor2.
-   3372  fda9							;   Hot rows overwrite with TickCounter-bit4 pulse (COLOR_HOT_Y/R).
-   3373  fda9							;   $F0-$F2 (bombs) NO LONGER overlap-saved: body writes rows 0-2 only,
-   3374  fda9							;   save/restore round trip deleted (S3.0b — window audit: zero writers).
-   3375  fda9							;   Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds every frame.
-   3376  fda9							; ------------------------------------------------------------------------------
-   3377  fda9							; ------------------------------------------------------------------------------
-   3378  fda9							; BuildColupF — MOVED to bank2 (S5.1) — CallPad_BuildColupF.
-   3379  fda9							;   Hot-rect data (RoomRects) lives in bank2, so the body reads it with
-   3380  fda9							;   direct (FetchPtr),Y — the shared $FEF6 fold block's sta $1FF6 always
-   3381  fda9							;   returns to bank0, so a fold inside a bank1 body could not work.
-   3382  fda9							;   The dark check is inlined there too: CallPad_IsRoomDark cannot nest
-   3383  fda9							;   from a pad body (ReturnPad switches to bank0 mid-call).
-   3384  fda9							;   Body: bank2.asm, pinned at $FC4F. Entry save block ($F0-$F2 → collision
-   3385  fda9							;   temps) was dead (rows 0-2 only) — deleted with the .AfterRows restore
-   3386  fda9							;   in S3.0b.
-   3387  fda9							; ------------------------------------------------------------------------------
-   3388  fda9
-   3389  fda9							; UpdateBombSound moved to bank1 (leaf_move_plan batch A) — CallPad_UpdateBombSound.
-   3390  fda9
-   3391  fda9							; ------------------------------------------------------------------------------
-   3392  fda9							; ColOff/ColMask — cell-walk lookup tables (cell_collision_plan).
-   3393  fda9							;   Indexed by LEFT-HALF source col 0-19 (PHM prologue mirrors right-half
-   3394  fda9							;   ranges before the walk; bank2 display-space walkers mirror first too).
-   3395  fda9							;   ColOff: byte offset from PF0Buf+row ($C3+row) to the register holding
-   3396  fda9							;   that col (0/3/6 = PF0/PF1/PF2 row byte). ColMask: the col's bit in that
-   3397  fda9							;   byte — PF0 bit4+col (cols 0-3), PF1 MSB-first (4-11), PF2 LSB-first
-   3398  fda9							;   (12-19); matches convert_room.pf_values (plan 0.2 spec, proven by
-   3399  fda9							;   tools/test_cell_map.py).
-   3400  fda9							;   (The standalone CellSolid leaf that lived here moved INTO
-   3401  fda9							;   PlayerHitsMap's walk as inline code — a jsr in the walk cost 2B of
-   3402  fda9							;   stack depth and would break sim_bomb_fuse's gameplay min-SP >= $F8
-   3403  fda9							;   guard; the post-pad slot keeps these tables abs,X-reachable.)
-   3404  fda9							; ------------------------------------------------------------------------------
-   3405  fda9		       00 00 00 00*ColOff     .byte.b	0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
-   3406  fdbd		       10 20 40 80*ColMask    .byte.b	$10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
-   3407  fdc9		       01 02 04 08*	      .byte.b	$01,$02,$04,$08,$10,$20,$40,$80
-   3408  fdd1
-   3409  fdd1							; ------------------------------------------------------------------------------
-   3410  fdd1							; BombEnemyBlast — bank2 entry tramp ($FDD8, lamp-safe S9 2026-10-07): the
-   3411  fdd1							; BombTick `jsr` lands here (bank0), `sta $1FF8` switches to bank2, the `jmp`
-   3412  fdd1							; is fetched from bank2's byte-identical mirror at this same address and
-   3413  fdd1							; lands on the body at $FD87 (the lamp type-check reads enemy records that
-   3414  fdd1							; live in bank2). Body tail-jmps ReturnPad ($FBF8); A = 1 kill (BombTick
-   3415  fdd1							; awards +50 — pads cannot nest), 0 none. Old inline body ($F87F, 66B)
-   3416  fdd1							; deleted: the region re-packs into the gap before the $FBD6 fold pin
-   3417  fdd1							; (pre-pad headroom stays 1B — pins absorb upstream shrink, not the org).
-   3418  fdd1							; TWIN: bank2.asm mirrors these exact 6 bytes at $FDD8 (the pad after
-   3419  fdd1							; .HOVdone). The PickPlayerFrame `.ds $FDE1` below absorbs the size.
-   3420  fdd1							; ------------------------------------------------------------------------------
-   3421  fdd1		       00 00 00 00*	      .ds	$FDD8 - *, 0	; pin: bank2's blast-tramp mirror is at $FDD8
-   3422  fdd8				   BombEnemyBlast
-   3423  fdd8		       8d f8 1f 	      sta	$1FF8
-   3424  fddb		       4c 87 fd 	      jmp	$FD87	; BombEnemyBlastBody (bank2.lst — after
-   3425  fdde							;   .HOVfeature; NOT in the TitleJetColors
-   3426  fdde							;   span)
-   3427  fdde							;   (2026-10-13: was $FD79 — crush-kill b6
-   3428  fdde							;   latch + feature gate pushed +14; same day
-   3429  fdde							;   was $FD6C — .HOVfeature pushed +13; 2026-
-   3430  fdde							;   10-10: was $FD6B — 1-byte stale operand =
-   3431  fdde							;   entry mid-instruction at `lda EnemyCount+1`;
-   3432  fdde							;   garbage path's `inc $4A,X` set wall bits
-   3433  fdde							;   via $CA)
-   3434  fdde
-   3435  fdde							; ------------------------------------------------------------------------------
-   3436  fdde							; PickPlayerFrame — VBL entry tramp: the VBL `jsr` lands here (bank0), `sta
-   3437  fdde							; $1FF8` switches to bank2, the `jmp` is fetched from bank2's byte-identical
-   3438  fdde							; mirror at this same address and lands on bank2's body ($F3C4). The body
-   3439  fdde							; tail-jmps ReturnPad ($FBF8) -> `sta $1FF6/rts` returns to the VBL jsr
-   3440  fdde							; (BuildColupF pad pattern; 0 extra stack depth).
-   3441  fdde							; Guards: verify_build check_frame_tramp (byte-identity + operand = bank2
-   3442  fdde							; label). Body logic: jet flutter (PlayerSpriteA/B) > walk (PlayerWalkA/B) >
-   3443  fdde							; static A; phase EnemyRamP&$08 (walk, 16-frame) / TickCounter&4 (jet).
-   3444  fdde							; PINNED: bank2's mirror is address-frozen at $FDE1 — the TitleSelect
-   3445  fdde							; TitleWork shrink (2026-10-06) moved this −20B and broke byte-identity;
-   3446  fdde							; any upstream size change must pad back to $FDE1 here.
-   3447  fdde							; ------------------------------------------------------------------------------
-   3448  fdde		       00 00 00 	      .ds	$FDE1 - *, 0
-   3449  fde1				   PickPlayerFrame
-   3450  fde1		       8d f8 1f 	      sta	$1FF8	; select bank2
-   3451  fde4		       4c c4 f3 	      jmp	$F3C4	; bank2 PickPlayerFrame body (operand pinned
-   3452  fde7							;   by verify_frame_tramp = bank2.lst label)
-   3453  fde7
-   3454  fde7							; ------------------------------------------------------------------------------
-   3455  fde7							; PlayerWalkA/B — dedicated ground-walk frames (sprites.png 2026-10-03,
-   3456  fde7							; extracted pixel-exact; torso rows 0-6 identical to the jet pair).
-   3457  fde7							;   A = boots apart (stride, rows 10-11 spread to cols 2+6 / 1+6)
-   3458  fde7							;   B = boots together (passing pose, rows 10-11 = cols 3+4)
-   3459  fde7							; Legs rows 7-9 identical in both — only the boots move. Standing forces
-   3460  fde7							; PlayerSpriteA; walk cycle alternates A<->B every 8 frames (EnemyRamP&$08,
-   3461  fde7							; 16-frame full cycle) while grounded + L/R held.
-   3462  fde7							; ------------------------------------------------------------------------------
-   3463  fde7				   PlayerWalkA
-   3464  fde7		       3c		      .byte.b	%00111100	; row 0 torso (sprites.png 2026-10-03)
-   3465  fde8		       7e		      .byte.b	%01111110	; row 1
-   3466  fde9		       7c		      .byte.b	%01111100	; row 2 — yellow face
-   3467  fdea		       7e		      .byte.b	%01111110	; row 3
-   3468  fdeb		       7c		      .byte.b	%01111100	; row 4 — grey pack
-   3469  fdec		       fe		      .byte.b	%11111110	; row 5
-   3470  fded		       fe		      .byte.b	%11111110	; row 6
-   3471  fdee		       3e		      .byte.b	%00111110	; row 7  legs
-   3472  fdef		       3e		      .byte.b	%00111110	; row 8
-   3473  fdf0		       14		      .byte.b	%00010100	; row 9
-   3474  fdf1		       22		      .byte.b	%00100010	; row 10 boots apart (spread)
-   3475  fdf2		       42		      .byte.b	%01000010	; row 11 boots apart
-   3476  fdf3
-   3477  fdf3				   PlayerWalkB
-   3478  fdf3		       3c		      .byte.b	%00111100	; row 0 torso (sprites.png 2026-10-03)
-   3479  fdf4		       7e		      .byte.b	%01111110	; row 1
-   3480  fdf5		       7c		      .byte.b	%01111100	; row 2 — yellow face
-   3481  fdf6		       7e		      .byte.b	%01111110	; row 3
-   3482  fdf7		       7c		      .byte.b	%01111100	; row 4 — grey pack
-   3483  fdf8		       fe		      .byte.b	%11111110	; row 5
-   3484  fdf9		       fe		      .byte.b	%11111110	; row 6
-   3485  fdfa		       3e		      .byte.b	%00111110	; row 7  legs
-   3486  fdfb		       3e		      .byte.b	%00111110	; row 8
-   3487  fdfc		       14		      .byte.b	%00010100	; row 9
-   3488  fdfd		       18		      .byte.b	%00011000	; row 10 boots together (passing)
-   3489  fdfe		       18		      .byte.b	%00011000	; row 11 boots together
-   3490  fdff
-   3491  fdff
-   3492  fdff
-   3493  fdff
-   3494  fdff		       00		      .ds	$FE00 - *, 0	; ObjColorTab $FE00-$FE47, ObjSprites $FE48-$FE8F:
-   3495  fe00							; BOTH same-page 4c fetches (verify guards);
-   3496  fe00							; end $FE8F -> HOF tramp $FE90 (shifted +$10,
-   3497  fe00							; mirrors+HOF_ENTRY/LHT_ENTRY synced)
-   3498  fe00							; ------------------------------------------------------------------------------
-   3499  fe00							; ObjColorTab — per-scanline GRP1 object colors, stride 8 = ObjSprites
-   3500  fe00							; stride; indexed by the same X = ObjBase + r in .Grp1 at $FE00 (4c, same
-   3501  fe00							; page for all 72 B — the passing +7 probe's exact cycle sum). Row colors
-   3502  fe00							; per OBJ_* slot: type color x8 (matches EnemyColorTable /
-   3503  fe00							; SelectActiveObject frame colors — no visual change for enemies/lamp/bomb);
-   3504  fe00							; MINER slot = miner.png purple/pink/grey -> nearest NTSC $54/$4A/$08.
-   3505  fe00							; NOTE: dark rooms no longer force grey objects — the frame-level $0A write
-   3506  fe00							; is overridden per row (no budget for a dark skip flag; see .Line probe).
-   3507  fe00							; ------------------------------------------------------------------------------
-   3508  fe00				   ObjColorTab
-   3509  fe00		       1c 1c 1c 1c*	      .byte.b	$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c	; 0 KEY    ($1c yellow; was NONE/blank)
-   3510  fe08		       22 22 22 22*	      .byte.b	$22,$22,$22,$22,$22,$22,$22,$22	; 1 MOTH   ($22 dark orange)
-   3511  fe10		       14 14 14 14*	      .byte.b	$14,$14,$14,$14,$14,$14,$14,$14	; 2 SPIDER ($14 dark yellow)
-   3512  fe18		       0e 0e 0e 0e*	      .byte.b	$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 3 LAMP   ($0e white)
-   3513  fe20		       0e 0e 0e 0e*	      .byte.b	$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 4 TENTACLE ($0e white)
-   3514  fe28		       f2 f2 f2 f2*	      .byte.b	$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2	; 5 BAT    ($f2 brown)
-   3515  fe30		       c4 c4 c4 c4*	      .byte.b	$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4	; 6 SNAKE  ($c4 green)
-   3516  fe38		       54 54 4a 54*	      .byte.b	$54,$54,$4a,$54,$54,$08,$54,$54	; 7 MINER  purple/pink face/grey tool
-   3517  fe40		       46 46 46 46*	      .byte.b	$46,$46,$46,$46,$46,$46,$46,$46	; 8 BOMB   ($46 red)
-   3518  fe48
-   3519  fe48							; ------------------------------------------------------------------------------
-   3520  fe48							; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
-   3521  fe48							; Row r displays on scanline RoomY+ObjTop-1+r (ObjTop is RoomY-relative since
-   3522  fe48							; S2.2; .Grp1 checks r = Y-ObjTop where Y = running A0+1). GRP1 write
-   3523  fe48							; latching, same as before.
-   3524  fe48							; Offset = OBJ_* constant; index 0 = blank (object off).
-   3525  fe48							; ------------------------------------------------------------------------------
-   3526  fe48				   ObjSprites
-   3527  fe48		       3c 42 5a 42*	      .byte.b	$3C,$42,$5A,$42,$3C,$18,$18,$14	; OBJ_KEY (offset 0 = key art)
-   3528  fe50		       90 60 f0 f0*	      .byte.b	$90,$60,$f0,$f0,$60,$90,$60,$60	; OBJ_MOTH
-   3529  fe58		       60 f0 f0 60*	      .byte.b	$60,$f0,$f0,$60,$90,$60,$90,$90	; OBJ_SPIDER
-   3530  fe60		       f0 f0 60 60*	      .byte.b	$f0,$f0,$60,$60,$f0,$f0,$f0,$60	; OBJ_LAMP
-   3531  fe68		       60 90 80 60*	      .byte.b	$60,$90,$80,$60,$30,$30,$30,$30	; OBJ_TENTACLE
-   3532  fe70		       90 60 f0 60*	      .byte.b	$90,$60,$f0,$60,$60,$90,$90,$00	; OBJ_BAT
-   3533  fe78		       ff ff ff ff*	      .byte.b	$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; OBJ_SNAKE (8 px)
-   3534  fe80		       0c 1c 4c 36*	      .byte.b	$0c,$1c,$4c,$36,$0f,$07,$3f,$6e	; OBJ_MINER (miner.png 2026-10-03,
-   3535  fe88							; mirrored — faces left; r2 pink face, r5 grey)
-   3536  fe88		       10 20 20 60*	      .byte.b	$10,$20,$20,$60,$f0,$f0,$f0,$60	; OBJ_BOMB
-   3537  fe90
-   3538  fe90							; ------------------------------------------------------------------------------
-   3539  fe90							; FoldIndirect — cross-bank data fetch (HERO fold, write-triggered;
-   3540  fe90							; level_bank_plan §0.1). Pad lands $FEF6-$FEFF (last byte ≤ $FEFF — $FF00
-   3541  fe90							; stays the fineAdjust anchor). Bytes must be byte-identical in bank2
-   3542  fe90							; (guard: verify_build) — after `sta $1FF8` the CPU fetches the remainder
-   3543  fe90							; from the data bank at the same PC.
-   3544  fe90							; Contract: bank select is ABSOLUTE $1FF8 (bank2) — X/Y both preserved,
-   3545  fe90							; A = junk in, data out (`sta $1FF6` switches back, A preserved).
-   3546  fe90							; P3.1 deviation (plan §0): `sta $1FF8,X` required X=0, but every enemy
-   3547  fe90							; loop keeps the slot in X and has no free temp to swap (DEY/snake hold
-   3548  fe90							; Temp live across the read). All level data is bank2, so X-selection is
-   3549  fe90							; dead weight; bank3 data later needs a second entry `sta $1FF9` pad.
-   3550  fe90							; ------------------------------------------------------------------------------
-   3551  fe90							; E4 moth entry tramp ($FEF0-$FEF5) — byte-identical with bank2's copy
-   3552  fe90							; (guard: verify_build check_moth_tramp). bank0 executes `sta $1FF8`; the next
-   3553  fe90							; fetch ($FEF3) comes from bank2 = `jmp MothRoutine`. Neither bank runs its
-   3554  fe90							; other half: bank0 is switched away at $FEF2, bank2 is never entered here.
-   3555  fe90							; The 6-byte pad is the only free hole before FoldIndirect's pinned $FEF6.
-   3556  fe90							; ------------------------------------------------------------------------------
-   3557  fe90		       00 00 00 00*	      .ds	$FE96 - *, 0	; S5.4 LHT entry tramp (byte-identical w/ bank2,
-   3558  fe96							; guard: check_moth_tramp — shifted +$10)
-   3559  fe96				   LaserHitTest
-   3560  fe96		       8d f8 1f 	      sta	$1FF8	; select bank2
-   3561  fe99		       4c 00 ff 	      jmp	$FF00	; bank2 LaserHitTestBody (dead in bank0; guard
-   3562  fe9c							;   pins operands == bank2.lst label)
-   3563  fe9c
-   3564  fe9c							; ------------------------------------------------------------------------------
-   3565  fe9c
-   3566  fe9c							; ------------------------------------------------------------------------------
-   3567  fe9c							; TallyWork — level-bonus count-up (user spec 2026-10-02): reaching the miner
-   3568  fe9c							; freezes the frame (dispatch bypasses input/physics/enemies via DropTarget
-   3569  fe9c							; $FE), bank2 TallyEntry adds +50 every 4 frames and writes the coin tone
-   3570  fe9c							; (every 200 pts); when TallyTicks hits 0 the done path advances the level
-   3571  fe9c							; exactly like the old CheckMinerPickup tail, then rejoins OverscanAudio.
-   3572  fe9c							;   Event bits in A (through ReturnPad sta/rts): b0 = add 50, b2 = done.
-   3573  fe9c							;   Tail mirrors TitleWork: UpdateBombSound holds the coin (BombSnd>0), jet
-   3574  fe9c							;   muted, own INTIM wait -> StartFrame: timer block skipped = frozen scene.
-   3575  fe9c							; Lives in the $FE8C LHT..moth fill (bank0 has no pre-pad headroom).
-   3576  fe9c							; ------------------------------------------------------------------------------
-   3577  fe9c				   TallyWork
-   3578  fe9c		       20 e6 ff 	      jsr	TallyTramp	; A = event (bank2 TallyEntry step)
-   3579  fe9f		       a8		      tay
-   3580  fea0		       29 01		      and	#1
-   3581  fea2		       f0 05		      beq	.TNoScore
-   3582  fea4		       a9 50		      lda	#$50	; BCD +50 per tick (pack is $50 exactly)
-   3583  fea6		       20 1a fc 	      jsr	CallPad_AddScore
-   3584  fea9				   .TNoScore
-   3585  fea9		       98		      tya
-   3586  feaa		       29 04		      and	#4
-   3587  feac		       f0 1e		      beq	.TLive
-   3588  feae		       e6 a3		      inc	Level	; --- done: advance (old CheckMinerPickup tail)
-   3589  feb0		       a5 a3		      lda	Level
-   3590  feb2		       c9 04		      cmp	#LEVEL_COUNT
-   3591  feb4		       d0 04		      bne	.TNotWrap
-   3592  feb6		       a9 00		      lda	#0	; wrap past last level
-   3593  feb8		       85 a3		      sta	Level
-   3594  feba				   .TNotWrap
-   3595  feba		       a9 00		      lda	#0
-   3596  febc		       85 8a		      sta	DropTarget	; clear $FE BEFORE LoadLevel — DropArm's new
-   3597  febe							;   `cmp #$FD / bcs` treats ≥$FD as sentinel
-   3598  febe							;   pose ($FE must take the real-fall path)
-   3599  febe		       20 52 f5 	      jsr	LoadLevel
-   3600  fec1		       a9 78		      lda	#120	; reset timer for new level
-   3601  fec3		       85 ae		      sta	BarLevel
-   3602  fec5		       a9 3c		      lda	#60
-   3603  fec7		       85 ad		      sta	TickCounter
-   3604  fec9		       4c 3b f3 	      jmp	OverscanAudio	; normal sounds + timer resume
-   3605  fecc				   .TLive
-   3606  fecc		       20 fc fb 	      jsr	CallPad_UpdateBombSound	; hold/silence ch0 for the coin blip
-   3607  fecf		       a9 00		      lda	#0
-   3608  fed1		       85 1a		      sta	AUDV1	; jet muted (UpdateJetSound skipped)
-   3609  fed3				   .TWait
-   3610  fed3		       ad 84 02 	      lda	INTIM
-   3611  fed6		       d0 fb		      bne	.TWait
-   3612  fed8		       4c 41 f0 	      jmp	StartFrame
-   3613  fedb
-   3614  fedb							; ------------------------------------------------------------------------------
-   3615  fedb							; BeamMask — per-scanline ENAM0 values for the in-window kernel path (S2.2).
-   3616  fedb							; Indexed by Y = A0 = Scanline - RoomY, rows 0-11 only.
-   3617  fedb							; Rows 2-3 = $02 (beam on: RoomY+2..RoomY+3 = eye rows — yellow face row 2 +
-   3618  fedb							; red row 3 = two-tone beam; kept per user decision: single-red rows could
-   3619  fedb							; not also reach floor-standing enemies without kill-window churn); rest $00.
-   3620  fedb							; 2026-10-08 user directive: ONE strip, yellow — row 2 only ($02 at index 2),
-   3621  fedb							; row 3 dropped. Kill window in LaserHitTestBody stays rows RoomY+2..3 = a
-   3622  fedb							; superset of the 1-line draw (floor-standing reach preserved).
-   3623  fedb							; Lives in the $FExx page: `lda BeamMask,Y` from .Line ($F1xx) fetches in
-   3624  fedb							; 4c when operand+11 stays in-page (1c reclaim toward the ObjColorTab
-   3625  fedb							; write; verify_build asserts the no-cross operand range).
-   3626  fedb							; ------------------------------------------------------------------------------
-   3627  fedb				   BeamMask
-   3628  fedb		       00 00 02 00*	      .byte.b	0,0,2,0,0,0,0,0,0,0,0,0
-   3629  fee7
-   3630  fee7
-   3631  fee7					      .ds	$FEE7 - *, 0	; bank0↔bank1 CallPad (leaf_move_plan Step 0)
-   3632  fee7				   CallPad_MothYDerive
-   3633  fee7		       8d f7 1f 	      sta	$1FF7
-   3634  feea		       4c 29 f0 	      jmp	$F029
-   3635  feed
-   3636  feed		       00 00 00 	      .ds	$FEF0 - *, 0	; fill tramp..moth gap (drift-proof)
-   3637  fef0				   UE_MothTramp
-   3638  fef0		       8d f8 1f 	      sta	$1FF8	; select bank2
-   3639  fef3		       4c 10 f1 	      jmp	$F110	; bank2 MothRoutine (dead in bank0; guard pins
-   3640  fef6							;   bank0/bank2 operands == bank2.lst label)
-   3641  fef6					      .ds	$FEF6 - *, 0	; pin address (main size drift must not move it)
-   3642  fef6				   FoldIndirect
-   3643  fef6		       8d f8 1f 	      sta	$1FF8
-   3644  fef9		       b1 e5		      lda	(FetchPtr),Y
-   3645  fefb		       8d f6 1f 	      sta	$1FF6
-   3646  fefe		       60		      rts
-   3647  feff
-   3648  feff							; Pad to fineAdjustTable
-   3649  feff		       00		      .ds	$FF00 - *, 0
-   3650  ff00
-   3651  ff00							; ==============================================================================
-   3652  ff00							; Fine-adjust table for SetObjectXPos — MUST be page-aligned ($xx00)
-   3653  ff00							; ==============================================================================
-   3654  ff00					      org	$FF00
-   3655  ff00				   fineAdjustBegin
-   3656  ff00		       70		      .byte.b	%01110000	; left 7
-   3657  ff01		       60		      .byte.b	%01100000	; left 6
-   3658  ff02		       50		      .byte.b	%01010000	; left 5
-   3659  ff03		       40		      .byte.b	%01000000	; left 4
-   3660  ff04		       30		      .byte.b	%00110000	; left 3
-   3661  ff05		       20		      .byte.b	%00100000	; left 2
-   3662  ff06		       10		      .byte.b	%00010000	; left 1
-   3663  ff07		       00		      .byte.b	%00000000	; no movement
-   3664  ff08		       f0		      .byte.b	%11110000	; right 1
-   3665  ff09		       e0		      .byte.b	%11100000	; right 2
-   3666  ff0a		       d0		      .byte.b	%11010000	; right 3
-   3667  ff0b		       c0		      .byte.b	%11000000	; right 4
-   3668  ff0c		       b0		      .byte.b	%10110000	; right 5
-   3669  ff0d		       a0		      .byte.b	%10100000	; right 6
-   3670  ff0e		       90		      .byte.b	%10010000	; right 7
-   3671  ff0e		       fe 0f	   fineAdjustTable EQU	fineAdjustBegin - %11110001	; = fineAdjustBegin - 241
-   3672  ff0f
-   3673  ff0f							; ==============================================================================
-   3674  ff0f							; SetObjectXPos — horizontal positioning via RESP0/HMP0
-   3675  ff0f							; ==============================================================================
-   3676  ff0f							; Andrew Davie session-24 routine:
-   3677  ff0f							; Rolls the divide-by-15 and the delay loop into one unit.
-   3678  ff0f							; The page-aligned fineAdjustTable ($FF00) guarantees every RESP0 write lands
-   3679  ff0f							; on the same clock grid, mapping the sprite 1:1 to pixel (0..159).
-   3680  ff0f							; Input: A = horizontal position (0-159 color clocks); drawn = [A-7, A]
-   3681  ff0f							;	  X = object selector (0 = HMP0/RESP0 player, 1 = HMP1/RESP1 object,
-   3682  ff0f							;	      2 = HMM0/RESM0 laser, 4 = HMBL/RESPBL ball — bank1 bar already
-   3683  ff0f							;	      uses 4; HMP0+4=$24=HMBL, RESP0+4=$14=RESPBL)
-   3684  ff0f							;
-   3685  ff0f							; Lives in the $FF10-$FF1F gap (exactly 16 bytes, before org $FF20) — moved
-   3686  ff0f							; here 2026-09-26 (laser S1): the `jsr LaserInput` (+3 pre-pad) had pushed
-   3687  ff0f							; .Div15Loop across the $F8/$F9 page, turning `bcs .Div15Loop` from 3c into
-   3688  ff0f							; 4c = 6c per /15 iteration (contract: 5c). RESP0 then fired 3 color-clocks
-   3689  ff0f							; late per coarse step -> sprites drifted right ~3*(X/15) px and wrapped past
-   3690  ff0f							; 160 (spider appeared at the left edge). Placement inside ONE page makes the
-   3691  ff0f							; 5c contract structurally safe; verify_build asserts the exact range.
-   3692  ff0f							; DO NOT move this routine to an address where bcs and .Div15Loop differ in page.
-   3693  ff0f				   SetObjectXPos subroutine
-   3694  ff0f		       85 02		      sta	WSYNC	; sync to start of scanline
-   3695  ff11		       38		      sec		; ensure carry flag
-   3696  ff12				   .Div15Loop
-   3697  ff12		       e9 0f		      sbc	#15	; coarse delay (15 clocks / 5 cycles per loop)
-   3698  ff14		       b0 fc		      bcs	.Div15Loop	; loop until carry clear (remainder in -15..-1)
-   3699  ff16		       a8		      tay		; Y = remainder in -15..-1
-   3700  ff17		       b9 0f fe 	      lda	fineAdjustTable,Y	; 5 cycles (page-cross guaranteed) -> fine offset
-   3701  ff1a		       95 20		      sta	HMP0,X	; store fine offset
-   3702  ff1c		       95 10		      sta	RESP0,X	; store coarse offset
-   3703  ff1e		       60		      rts
-   3704  ff1f
-   3705  ff20					      org	$FF20
-   3706  ff20
-   3707  ff20							; Set REFP1/NUSIZ1 each frame; bank1 HUD may have changed both registers.
-   3708  ff20				   SetObjReflection
-   3709  ff20		       a9 00		      lda	#0
-   3710  ff22		       85 0c		      sta	REFP1
-   3711  ff24		       a5 b6		      lda	ObjBase
-   3712  ff26		       c9 38		      cmp	#OBJ_MINER
-   3713  ff28		       d0 08		      bne	.SORdone
-   3714  ff2a		       a5 a4		      lda	LevelMinerRoom
-   3715  ff2c		       10 04		      bpl	.SORdone
-   3716  ff2e		       a9 08		      lda	#$08
-   3717  ff30		       85 0c		      sta	REFP1
-   3718  ff32				   .SORdone
-   3719  ff32		       60		      rts
-   3720  ff33
-   3721  ff33							; ------------------------------------------------------------------------------
-   3722  ff33							; LaserInput — contact missile (redesign 2026-10-08, replaces the S3 sweep):
-   3723  ff33							; the beam is ONE 8px bar that LEAVES the EYE and travels +/-4px/frame toward
-   3724  ff33							; the facing until contact, then resets to the eye (single missile, KISS —
-   3725  ff33							; user spec: no piercing, no HERO comparison needed).
-   3726  ff33							;   press edge (b7 held, b6 prev): LaserX = eye  (right RoomX-1 = nose,
-   3727  ff33							;						  left	RoomX-4)
-   3728  ff33							;   held frame: LaserX +/-4; LaserX >= 160 (right edge OR left underflow
-   3729  ff33							;     wrap) -> reset to eye (unsigned check catches both)
-   3730  ff33							;   contact (bank2 LaserHitTestBody): A = 0 continue / $50 kill (+score,
-   3731  ff33							;     dead bit set in body) / 1 lamp (SetRoomDark) / 2 wall tip -> all three
-   3732  ff33							;     contact kinds reset LaserX = eye BEFORE positioning (missile consumed;
-   3733  ff33							;     tip-in-wall never draws: contact frame restarts at the eye; PF has
-   3734  ff33							;     priority over M0 anyway).
-   3735  ff33							;   release: b7/b1 cleared in the prologue, HMM0 = 0; LaserX kept (next
-   3736  ff33							;     press edge re-anchors).
-   3737  ff33							; PIXEL MODEL (unchanged): SetObjectXPos arg A -> drawn M0 = [A-7, A].
-   3738  ff33							; LaserState: b7 held, b6 prev (press edge), b5-2 dark, b1 = .Line gate,
-   3739  ff33							; b0 = rearm (contact consumed last frame — re-test the eye next frame)
-   3740  ff33							; (BeamMask = $02 shares b1 — ENAM0 = BeamMask & LaserState; the old
-   3741  ff33							; LaserBeamOn $02 byte now holds LaserX, there was no free ZP byte).
-   3742  ff33							; S5.4: kill/lamp/wall ACTIONS run here (pad body returns only A).
-   3743  ff33							; Overscan: VBLANK on, end waits on TIM64T — SetObjectXPos's WSYNC costs 1
-   3744  ff33							; of 30 lines. Temp (joystick) intact. Lives after $FF20 (pre-$FF00 full).
-   3745  ff33							; ------------------------------------------------------------------------------
-   3746  ff33				   LaserInput
-   3747  ff33		       a6 c0		      ldx	LaserState	; X = old state (b7 held, b6 prev, b5-2 dark)
-   3748  ff35		       8a		      txa
-   3749  ff36		       29 3d		      and	#LASER_KEEP	; keep dark bits + b0 rearm (else this store
-   3750  ff38		       85 c0		      sta	LaserState	; wipes them — inc at contact must survive)
-   3751  ff3a		       8a		      txa
-   3752  ff3b		       29 80		      and	#LASER_HELD
-   3753  ff3d		       4a		      lsr		; old held (b7) -> new prev (b6)
-   3754  ff3e		       05 c0		      ora	LaserState	; prev in b6; b7/b1 cleared for this frame
-   3755  ff40		       85 c0		      sta	LaserState
-   3756  ff42		       a5 0c		      lda	INPT4	; active-low fire button, D7: 0 = pressed
-   3757  ff44		       10 05		      bpl	.LaserFire	; pressed: arm + travel (released sits right
-   3758  ff46							; below — moved here so the cap code could
-   3759  ff46							; not push .LaserReleased past bmi's ±127)
-   3760  ff46				   .LaserReleased
-   3761  ff46		       a9 00		      lda	#0
-   3762  ff48		       85 22		      sta	HMM0	; HMOVE re-applied stale fine offset
-   3763  ff4a							; otherwise -> bars slid across screen
-   3764  ff4a		       60		      rts		; LaserX kept; next press edge re-anchors
-   3765  ff4b				   .LaserFire
-   3766  ff4b		       a5 c0		      lda	LaserState
-   3767  ff4d		       09 82		      ora	#LASER_ON	; b7 held + b1 armed (kernel .Line gate)
-   3768  ff4f		       85 c0		      sta	LaserState
-   3769  ff51		       8a		      txa
-   3770  ff52		       29 80		      and	#LASER_HELD
-   3771  ff54		       f0 44		      beq	.LaserInit	; press edge: (re)start at the eye
-   3772  ff56							; --- rearm (b0): last frame a contact consumed the missile — re-test
-   3773  ff56							; the EYE instead of stepping. Flush hold: eye sits mid-tile and the +4
-   3774  ff56							; step would jump out of the 8px wall with no candidate ever inside it
-   3775  ff56							; (pass-through, 2026-10-10). dec clears b0; bne .LaserInit: state ≠ 0
-   3776  ff56							; here (b7 held from the ora above). Open-hold cadence alternates
-   3777  ff56							; travel-consume / eye-retest = 1 LWC per frame, same as before.
-   3778  ff56		       a5 c0		      lda	LaserState
-   3779  ff58		       29 01		      and	#LASER_REARM
-   3780  ff5a		       f0 04		      beq	.LAdvStep
-   3781  ff5c		       c6 c0		      dec	LaserState
-   3782  ff5e		       d0 3a		      bne	.LaserInit
-   3783  ff60							; --- travel: +/-4 px toward the facing (PlayerDir live), capped at the
-   3784  ff60							; old S3 sweep extent (SweepOff max 16: right tip <= RoomX+20, left
-   3785  ff60							; floor max(RoomX-20,0)) — past the cap restarts at the eye, the
-   3786  ff60							; triangle-loop feel of the sweep (user: beam "moved way beyond the
-   3787  ff60							; limit"). RectCount = free scratch (LWC re-owns it for its row walk).
-   3788  ff60				   .LAdvStep
-   3789  ff60		       a4 82		      ldy	PlayerDir
-   3790  ff62		       a5 83		      lda	LaserX
-   3791  ff64		       18		      clc
-   3792  ff65		       79 de ff 	      adc	StepDelta,y	; dir 0 = +4, dir 1 = -4 (table after eye)
-   3793  ff68				   .LAdvS
-   3794  ff68		       85 92		      sta	RectCount	; candidate (not committed yet)
-   3795  ff6a		       c9 a0		      cmp	#160	; right edge >=160 OR left underflow wrap
-   3796  ff6c		       90 03		      bcc	.LAdvCap
-   3797  ff6e		       4c 9a ff 	      jmp	.LaserInit
-   3798  ff71				   .LAdvCap
-   3799  ff71		       a5 82		      lda	PlayerDir
-   3800  ff73		       d0 0c		      bne	.LAdvCapL
-   3801  ff75		       a5 80		      lda	RoomX
-   3802  ff77		       18		      clc
-   3803  ff78		       69 14		      adc	#20	; old max tip = RoomX + 4 + SweepOff(16)
-   3804  ff7a		       c5 92		      cmp	RectCount
-   3805  ff7c		       b0 15		      bcs	.LAdvKeep	; cap >= cand -> within old laser extent
-   3806  ff7e		       4c 9a ff 	      jmp	.LaserInit
-   3807  ff81				   .LAdvCapL
-   3808  ff81		       a5 80		      lda	RoomX
-   3809  ff83		       38		      sec
-   3810  ff84		       e9 14		      sbc	#20
-   3811  ff86		       b0 02		      bcs	.LAdvCapLs
-   3812  ff88		       a9 00		      lda	#0	; old left clamp floor (extent >= 0)
-   3813  ff8a				   .LAdvCapLs
-   3814  ff8a		       c5 92		      cmp	RectCount	; cap vs cand
-   3815  ff8c		       f0 05		      beq	.LAdvKeep
-   3816  ff8e		       90 03		      bcc	.LAdvKeep	; cap < cand -> cand still above floor
-   3817  ff90		       4c 9a ff 	      jmp	.LaserInit
-   3818  ff93				   .LAdvKeep
-   3819  ff93		       a5 92		      lda	RectCount
-   3820  ff95		       85 83		      sta	LaserX
-   3821  ff97		       4c 9d ff 	      jmp	.LaserGo	; committed: skip the eye restart
-   3822  ff9a				   .LaserInit
-   3823  ff9a		       20 c4 ff 	      jsr	.LaserEye	; edge/offscreen: restart at the eye
-   3824  ff9d				   .LaserGo
-   3825  ff9d		       a5 83		      lda	LaserX
-   3826  ff9f		       85 8b		      sta	CollisionX	; cur arg for LaserHitTest (drawn [A-7,A])
-   3827  ffa1		       20 96 fe 	      jsr	LaserHitTest	; A = 0 / $50 kill / 1 lamp / 2 wall
-   3828  ffa4		       f0 16		      beq	.LaserPos	; no contact: keep travelling
-   3829  ffa6		       c9 50		      cmp	#$50
-   3830  ffa8		       f0 0a		      beq	.LaserKill
-   3831  ffaa		       c9 02		      cmp	#2
-   3832  ffac		       f0 09		      beq	.LaserContact	; wall CONSUMES the missile (user 2026-10-10):
-   3833  ffae							;   same as kill minus score — restart at
-   3834  ffae							;   the eye THIS frame, buzz keeps (b7).
-   3835  ffae							;   #9's blank + the wall-center hold clamp
-   3836  ffae							;   both superseded: a contact missile is
-   3837  ffae							;   consumed by walls. No hold state, no
-   3838  ffae							;   cap reorder, no pass-through possible.
-   3839  ffae		       20 26 fc 	      jsr	CallPad_SetRoomDark	; lamp crash = player-body touch (no kill)
-   3840  ffb1		       4c b7 ff 	      jmp	.LaserContact
-   3841  ffb4				   .LaserKill
-   3842  ffb4		       20 1a fc 	      jsr	CallPad_AddScore	; A = $50 BCD (dead bit already set in body)
-   3843  ffb7				   .LaserContact
-   3844  ffb7		       20 c4 ff 	      jsr	.LaserEye	; consumed -> restart at the eye THIS frame
-   3845  ffba		       e6 c0		      inc	LaserState	; b0 rearm: next held frame re-tests the eye
-   3846  ffbc							; (b0 was 0: travel only runs with b0 clear,
-   3847  ffbc							; rearm dec'd it before this init) — flush
-   3848  ffbc							; hold otherwise steps +4 out of the tile
-   3849  ffbc				   .LaserPos
-   3850  ffbc		       a5 83		      lda	LaserX
-   3851  ffbe		       a2 02		      ldx	#2	; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
-   3852  ffc0		       20 0f ff 	      jsr	SetObjectXPos	; drawn M0 = [LaserX-7, LaserX]
-   3853  ffc3		       60		      rts
-   3854  ffc4
-   3855  ffc4							; Eye spawn point. Right clamped to 159 (TIA position past 159 is
-   3856  ffc4							; unverified for SetObjectXPos); left >= 0 because RoomX >= PLAYER_MIN_X=4.
-   3857  ffc4				   .LaserEye
-   3858  ffc4		       a5 82		      lda	PlayerDir
-   3859  ffc6		       d0 0e		      bne	.LEyeL
-   3860  ffc8		       a5 80		      lda	RoomX
-   3861  ffca		       18		      clc
-   3862  ffcb		       69 04		      adc	#4
-   3863  ffcd		       c9 a0		      cmp	#160
-   3864  ffcf		       90 02		      bcc	.LEyeS
-   3865  ffd1		       a9 9f		      lda	#159
-   3866  ffd3				   .LEyeS
-   3867  ffd3		       85 83		      sta	LaserX
-   3868  ffd5		       60		      rts
-   3869  ffd6				   .LEyeL
-   3870  ffd6		       a5 80		      lda	RoomX
-   3871  ffd8		       38		      sec
-   3872  ffd9		       e9 04		      sbc	#4
-   3873  ffdb		       85 83		      sta	LaserX
-   3874  ffdd		       60		      rts
-   3875  ffde
-   3876  ffde				   StepDelta		; travel step per PlayerDir (0=right, 1=left)
-   3877  ffde		       04 fc		      .byte.b	4, 252
-   3878  ffe0
-   3879  ffe0		       00 00 00 00*	      .ds	$FFE6 - *, 0	; pin TallyTramp (BeamMask moved to $FExx
-   3880  ffe6							; freed 12B here — drift must not move it)
-   3881  ffe6							; ------------------------------------------------------------------------------
-   3882  ffe6							; TallyTramp ($FFE6, byte-identical with bank2 — guard: check_moth_tramp).
-   3883  ffe6							; bank0 jsr's here (CheckMinerPickup arm / TallyWork step): `sta $1FF8`
-   3884  ffe6							; selects bank2, then the jmp operand is fetched from bank2's image at the
-   3885  ffe6							; same PC (FoldIndirect discipline). The bank2 body tail-jmps ReturnPad
-   3886  ffe6							; ($FBF8) -> rts back to the bank0 jsr. Ends $FFEB — $FFF2-$FFF9 stay fill
-   3887  ffe6							; (F6 hotspot mirrors).
-   3888  ffe6							; ------------------------------------------------------------------------------
-   3889  ffe6		       f3 13	   TallyEntry =	$F313	; bank2 TallyEntry — operand must match label
-   3890  ffe6				   TallyTramp
-   3891  ffe6		       8d f8 1f 	      sta	$1FF8
-   3892  ffe9		       4c 13 f3 	      jmp	TallyEntry
-   3893  ffec
-   3894  ffec							; ------------------------------------------------------------------------------
-   3895  ffec							; HotOverlapFlag — bank3 entry tramp (A3 2026-10-19). Moved off $FE90 (bank3
-   3896  ffec							; $FE93 belongs to OvShutBand's .OSline) into the 6-byte gap after
-   3897  ffec							; TallyTramp. bank0 executes `sta $1FF9`; the `jmp` at +3 is fetched from
-   3898  ffec							; bank3's image at $FFEF (guard: check_moth_tramp).
-   3899  ffec							; ------------------------------------------------------------------------------
-   3900  ffec					      .ds	$FFEC - *, 0
-   3901  ffec				   HotOverlapFlag
-   3902  ffec		       8d f9 1f 	      sta	$1FF9	; select bank3 (record stream lives there)
-   3903  ffef		       4c 83 f6 	      jmp	$F683	; bank3 HotOverlapBody (synced by verify_build)
-   3904  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
-   3905  fff2
-   3906  fff2							; ------------------------------------------------------------------------------
-   3907  fff2							; LaserHitTest — MOVED to bank2 (S5.4, entry tramp $FE86 -> `jmp $FF00`).
-   3908  fff2							;   Fold-free: enemy records are level data in bank2 (direct (FetchPtr),Y),
-   3909  fff2							;   and the kill/lamp ACTIONS cannot run from a bank2 body (CallPads are
-   3910  fff2							;   bank0->bank1 only — pads cannot nest from a pad body). Body returns a
-   3911  fff2							;   RESULT CODE in A (+Z preserved through ReturnPad's sta/rts): 0 = miss,
-   3912  fff2							;   #$50 = kill (dead bit already set), 1 = lamp. LaserInput's tail does
-   3913  fff2							;   `beq / cmp #$50 / jsr CallPad_SetRoomDark | jsr CallPad_AddScore`.
-   3914  fff2							;   One less push level too (no fold / no pad call inside the body).
-   3915  fff2							;   Full behavior docs moved with the body.
-   3916  fff2							; ------------------------------------------------------------------------------
-   3917  fff2
-   3918  fff2							; ==============================================================================
-   3919  fff2							; Interrupt vectors ($FFF2-$FFF9 = fill — NEVER put code here: $FFF6-$FFF9
-   3920  fff2							; decode as F6 hotspot mirrors on peek (see MothExitPad comment at $FC49))
-   3921  fff2							; ==============================================================================
-   3922  fff2							; ==============================================================================
-   3923  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0	; pad to vectors at $FFFA
-   3924  fffa
-   3925  fffa		       08 f0		      .word.w	GameStart	; NMI vector
-   3926  fffc		       08 f0		      .word.w	GameStart	; RESET vector
-   3927  fffe		       08 f0		      .word.w	GameStart	; IRQ vector
+   2842  fb00		       00 00 00 00*	      .ds	$FB37 - *, 0	; TitleIntro retired — merged title screen
+   2843  fb37							;   (2026-10-19): $FD now goes to TitleWork
+   2844  fb37
+   2845  fb37							; ------------------------------------------------------------------------------
+   2846  fb37							; RowSlice — Phase C vcrunch shutter: render ONE sub-slice of the shutter
+   2847  fb37							; band (VcrBand=1, middle band — specials rule 2026-10-14).
+   2848  fb37							; jsr-entered from the kernel row-advance (rts back, then `jmp .Line` —
+   2849  fb37							; DASM has no external-local syntax so the loop re-entry stays in-scope)
+   2850  fb37							; while RowIdx == VcrBand and VcrNext in 1..4. Replaces the .Row setup
+   2851  fb37							; line for slices 1-4 (slice0 ran via the kernel-entry .Row with the
+   2852  fb37							; derived 8-line count):
+   2853  fb37							;   ranges   [0,9) [9,18) [18,31) [31,40) [40,49)  = 5 setups + 44 bodies
+   2854  fb37							;	      = 49 WSYNCs — exactly band0's original count (wall unchanged).
+   2855  fb37							; ENABL/ENAM1 = per-slice state gates (ball $ff/$00, left-mirror M1
+   2856  fb37							; $02/$00 — Step 4) — written early on the setup line (well before the
+   2857  fb37							; block's ball pixels, so no transition seam); PF/palette persist from
+   2858  fb37							; .Row's band setup. Setup line WSYNCS (visible) but does NOT enter .Line —
+   2859  fb37							; Y (running A0) must still advance so the next .Line pass indexes the
+   2860  fb37							; correct sprite row (bug: skipped iny delayed GRP0 3 lines when armed).
+   2861  fb37							; .Line inherits Y = A0+1 exactly as after a body WSYNC.
+   2862  fb37							; Cycles: tail ≈19 + body ≈36 + jsr/rts 12 ≈ 67-71 from the previous
+   2863  fb37							; WSYNC (<= 76 → the setup line does not stall; band0 keeps its measured
+   2864  fb37							; wall contribution). Step 4: +6/+8 for the ENAM1 pair, −5 from moving
+   2865  fb37							; `inc VcrNext` after the WSYNC — net inside the same window.
+   2866  fb37							; SBmask entries = VcrState bit per slice; SBod = bodies per slice
+   2867  fb37							; (index 0 = slice0, correct-but-unused: slice0 count comes from the
+   2868  fb37							; kernel-entry .Row derive).
+   2869  fb37							; ------------------------------------------------------------------------------
+   2870  fb37				   RowSlice
+   2871  fb37		       a6 eb		      ldx	VcrNext
+   2872  fb39		       bd 51 fb 	      lda	SBmask,X
+   2873  fb3c		       25 ea		      and	VcrState
+   2874  fb3e		       f0 02		      beq	.RSopen
+   2875  fb40		       a9 ff		      lda	#$ff
+   2876  fb42				   .RSopen
+   2877  fb42		       85 1f		      sta	ENABL
+   2878  fb44		       bd 56 fb 	      lda	SBod,X
+   2879  fb47		       85 84		      sta	LineCount
+   2880  fb49		       e6 eb		      inc	VcrNext
+   2881  fb4b		       c8		      iny		; running A0: setup WSYNC is a visible line like
+   2882  fb4c							;   a body — without this the next .Line indexes
+   2883  fb4c							;   sprite row A0 (armed sprite sat ~4 lines low)
+   2884  fb4c		       85 02		      sta	WSYNC	; this line = the slice setup line
+   2885  fb4e		       4c 20 f1 	      jmp	SliceReentry	; tail re-enters .Line via the global trampoline
+   2886  fb51							;   (jsr/rts replaced 2026-10-15: +14c tail
+   2887  fb51							;   stalled the first slice body line at 82c;
+   2888  fb51							;   tail jmp costs 3c and pushes no stack)
+   2889  fb51				   SBmask
+   2890  fb51		       01 02 04 08*	      .byte.b	1,2,4,8,16	; state bit for slices 0-4
+   2891  fb56				   SBod
+   2892  fb56		       08 08 0c 08*	      .byte.b	8,8,12,8,8	; body lines per slice (5 setups + 44 = 49)
+   2893  fb5b
+   2894  fb5b		       00 00 00 00*	      .ds	$FBD0 - *, 0	; #22: pin tramp at $FBD0 — bank2's twin
+   2895  fbd0							;   sits at the same address (pin moved from
+   2896  fbd0							;   $FB84 2026-10-13 for PhaseBlink staging,
+   2897  fbd0							;   then $FBC0 → $FBD0 2026-10-14: model2
+   2898  fbd0							;   asym data +49B pushed the bank2 window)
+   2899  fbd0							; EnterRoom tramp — body lives in bank2 ($F010, EnterRoomB2).
+   2900  fbd0							; bank0 runs `sta $1FF8`; the fetch at $FBD3 comes from bank2's identical
+   2901  fbd0							; twin → `jmp $F010` executes in bank2. Body tail = jmp ReturnPad ($FBF8)
+   2902  fbd0							; → sta $1FF6 / rts. Saves ~1660c per room change (folds → direct reads).
+   2903  fbd0							; A preserved through sta $1FF8; body returns X = EnemyCount.
+   2904  fbd0				   EnterRoom
+   2905  fbd0		       8d f8 1f 	      sta	$1FF8
+   2906  fbd3		       4c 10 f0 	      jmp	$F010	; EnterRoomB2 — fetched from bank2 twin
+   2907  fbd6
+   2908  fbd6		       00 00 00 00*	      .ds	$FBF8 - *, 0	; TitleSequenceFold / FooterFold /
+   2909  fbf8							;   TitlePlayerFold retired with the intro
+   2910  fbf8							;   movie (merged title, 2026-10-19)
+   2911  fbf8				   ReturnPad
+   2912  fbf8		       8d f6 1f 	      sta	$1FF6
+   2913  fbfb		       60		      rts
+   2914  fbfc				   CallPad_UpdateBombSound
+   2915  fbfc		       8d f7 1f 	      sta	$1FF7
+   2916  fbff		       4c c0 f9 	      jmp	$F9C0
+   2917  fc02				   CallPad_UpdateJetSound
+   2918  fc02		       8d f7 1f 	      sta	$1FF7
+   2919  fc05		       4c cf f9 	      jmp	$F9CF
+   2920  fc08				   CallPad_BombSndDrop
+   2921  fc08		       8d f7 1f 	      sta	$1FF7
+   2922  fc0b		       4c 00 fa 	      jmp	$FA00
+   2923  fc0e				   CallPad_BombSndExplode
+   2924  fc0e		       8d f7 1f 	      sta	$1FF7
+   2925  fc11		       4c 13 fa 	      jmp	$FA13
+   2926  fc14				   CallPad_GetConnIdx
+   2927  fc14		       8d f7 1f 	      sta	$1FF7
+   2928  fc17		       4c 26 fa 	      jmp	$FA26
+   2929  fc1a				   CallPad_AddScore
+   2930  fc1a		       8d f7 1f 	      sta	$1FF7
+   2931  fc1d		       4c 7c fa 	      jmp	$FA7C
+   2932  fc20				   CallPad_IsRoomDark
+   2933  fc20		       8d f7 1f 	      sta	$1FF7
+   2934  fc23		       4c 78 fc 	      jmp	$FC78
+   2935  fc26				   CallPad_SetRoomDark
+   2936  fc26		       8d f7 1f 	      sta	$1FF7
+   2937  fc29		       4c 9e fc 	      jmp	$FC9E
+   2938  fc2c				   CallPad_UpdateLaserSound
+   2939  fc2c		       8d f7 1f 	      sta	$1FF7
+   2940  fc2f		       4c a4 fa 	      jmp	$FAA4
+   2941  fc32				   CallPad_BuildColupF
+   2942  fc32		       8d f9 1f 	      sta	$1FF9	; A3: body lives in bank3 (record stream)
+   2943  fc35		       4c c7 f5 	      jmp	$F5C7	; BuildColupF (bank3; synced by verify_build)
+   2944  fc38				   CallPad_BombMarkWalls
+   2945  fc38		       8d f7 1f 	      sta	$1FF7	; S5.2: body lives in bank1 ($FB10)
+   2946  fc3b		       4c 10 fb 	      jmp	$FB10
+   2947  fc3e
+   2948  fc3e		       00 00 00 00*	      .ds	$FC49 - *, 0	; pin (main growth past $FC49 = build error)
+   2949  fc49				   MothExitPad
+   2950  fc49		       8d f6 1f 	      sta	$1FF6	; select bank0 (executed from bank2's copy)
+   2951  fc4c		       4c 3d f4 	      jmp	UE_Next	; resume dispatch loop (bank0 half)
+   2952  fc4f
+   2953  fc4f					      .ds	$FC4F - *, 0	; bank0↔bank1 CallPad slot (refactor_v4)
+   2954  fc4f				   CallPad_TitleSelect
+   2955  fc4f		       8d f7 1f 	      sta	$1FF7
+   2956  fc52		       4c 41 f0 	      jmp	$F041
+   2957  fc55					      .ds	$FC55 - *, 0
+   2958  fc55				   CallPad_TitleKernel
+   2959  fc55		       8d f7 1f 	      sta	$1FF7
+   2960  fc58		       4c 7a f0 	      jmp	$F07A
+   2961  fc5b					      .ds	$FC5B - *, 0
+   2962  fc5b				   CallPad_Overscan
+   2963  fc5b		       8d f6 1f 	      sta	$1FF6
+   2964  fc5e		       4c a7 f1 	      jmp	$F1A7
+   2965  fc61					      .ds	$FC61 - *, 0	; bank0↔bank1 intro-music tick
+   2966  fc61				   CallPad_MusicTick
+   2967  fc61		       8d f7 1f 	      sta	$1FF7
+   2968  fc64		       4c 5a f3 	      jmp	$F35A
+   2969  fc67
+   2970  fc67							; ==============================================================================
+   2971  fc67							; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
+   2972  fc67							; These go BEFORE the fineAdjustTable so org $FC68 doesn't go backwards.
+   2973  fc67							; ==============================================================================
+   2974  fc67		       f5 40	   MenuMain   =	$F540	; bank1's HUD entry (not code in bank0)
+   2975  fc68					      org	$FC68
+   2976  fc68				   ToMenuStub
+   2977  fc68		       a9 01		      lda	#1
+   2978  fc6a		       8d f7 1f 	      sta	$1FF7	; select bank1 (HUD)
+   2979  fc6d		       4c 40 f5 	      jmp	MenuMain	; next fetch from bank1: jmp $F540
+   2980  fc70
+   2981  fc70					      org	$FC70
+   2982  fc70				   ToGameStub
+   2983  fc70		       a9 00		      lda	#0
+   2984  fc72		       8d f6 1f 	      sta	$1FF6	; select bank0 (game)
+   2985  fc75		       4c a7 f1 	      jmp	Overscan	; return to bank0 after HUD band
+   2986  fc78
+   2987  fc78							; Flip dir bit for enemy X (right↔left).
+   2988  fc78							; After fold pads to keep main code under $FC68 (leaf, jsr-safe from bank0).
+   2989  fc78				   UE_FlipDir
+   2990  fc78		       bd cf f3 	      lda	EnemyBitTable,X
+   2991  fc7b		       45 c1		      eor	EnemyRamD
+   2992  fc7d		       85 c1		      sta	EnemyRamD
+   2993  fc7f		       60		      rts
+   2994  fc80
+   2995  fc80							; ClearPFColumn + BombClearMask moved to bank1 (leaf_move_plan batch B).
+   2996  fc80
+   2997  fc80							; UpdateJetSound moved to bank1 (leaf_move_plan batch A) — CallPad_UpdateJetSound.
+   2998  fc80
+   2999  fc80							; AddScore moved to bank1 (leaf_move_plan batch B) — CallPad_AddScore.
+   3000  fc80
+   3001  fc80							; ------------------------------------------------------------------------------
+   3002  fc80							; ReloadLevel — reset level to initial state (all enemies back, 3 lives).
+   3003  fc80							; Reloads level data from ROM and respawns player at start.
+   3004  fc80							; Score is NOT reset (persists across deaths).
+   3005  fc80							; After fold pads to keep main code under $FC68.
+   3006  fc80							; ------------------------------------------------------------------------------
+   3007  fc80				   ReloadLevel
+   3008  fc80		       a9 03		      lda	#3
+   3009  fc82		       85 ac		      sta	PlayerLives
+   3010  fc84		       a9 05		      lda	#BOMBS_MAX
+   3011  fc86		       85 f0		      sta	PlayerBombs
+   3012  fc88		       a5 a3		      lda	Level
+   3013  fc8a							; TAIL-jmp LoadLevel (bugs.md #29 Class B, 2026-10-11). The old
+   3014  fc8a							; `jsr LoadLevel / zeros / rts` left FOUR jsr slots live when LoadLevel
+   3015  fc8a							; reached `jsr EnterRoom`: CheckEnemyHit/timer death paths ran
+   3016  fc8a							; main->jsr CEH->jmp LoseLife->jsr ReloadLevel->jsr LoadLevel->
+   3017  fc8a							; jsr EnterRoom at SP=$F7, so the return address sat on $F6/$F7
+   3018  fc8a							; (BombX/BombTimer), EnterRoomB2's `sta BombTimer` zeroed the pushed
+   3019  fc8a							; PCH, and ReturnPad's rts popped ($00<<8|BombX)+1 = $009A -> ZP
+   3020  fc8a							; executed as code -> $F008 pad -> GameStart REBOOT to title (the
+   3021  fc8a							; SIM_EXIT=down f265 296-line crash frame + the title-264 family).
+   3022  fc8a							; With the tail-jmp the slot count drops by one: EnterRoom's return
+   3023  fc8a							; lands on $F8/$F9 (stack-only cells) on every death path.
+   3024  fc8a							; The old post-code (vy/JetPower zeros + rts) was unreachable; DELETED
+   3025  fc8a							; 2026-10-16 (intro music) — the $FDD8 blast-tramp pin below absorbs the
+   3026  fc8a							; shift, so the twins stay put. DropArm zeroes vyLo/vyHi/PlayerYSub itself
+   3027  fc8a							; (JetPower=4 stays through the drop-in flutter — identical to the .LLStay
+   3028  fc8a							; path). LoseLife's `sec` still runs (DropArm's rts pops the jsr ReloadLevel
+   3029  fc8a							; slot back into LoseLife).
+   3030  fc8a		       4c 52 f5 	      jmp	LoadLevel
+   3031  fc8d
+   3032  fc8d							; ------------------------------------------------------------------------------
+   3033  fc8d							; HotOverlapFlag — moved to bank2 (S5.3): fold-free body (HotOverlapBody)
+   3034  fc8d							;   reads RoomRects directly via (FetchPtr),Y — 7 folds → 7 direct reads
+   3035  fc8d							;   (one less push level on the hot path too). Entry tramp pinned $FE80
+   3036  fc8d							;   (byte-identical bank0/bank2, moth pattern — the $FBF8-$FC48 pad window
+   3037  fc8d							;   is full: 5 B left, a stub needs 6 B). Call sites below keep
+   3038  fc8d							;   `jmp HotOverlapFlag` (tail: 0 push) and the C=1 contract: body ends
+   3039  fc8d							;   `sec / jmp $FBF8` (ReturnPad), so the pad's rts pops the ORIGINAL
+   3040  fc8d							;   caller's return. Full behavior docs moved with the body.
+   3041  fc8d							;   Behavior: if the player's proposed tile range (CollisionCell*) overlaps
+   3042  fc8d							;   any hot-only rect, set Temp bit 7 (HotBump), called from PlayerHitsMap
+   3043  fc8d							;   HIT while CollisionCell* still describe the rejected position.
+   3044  fc8d							; ------------------------------------------------------------------------------
+   3045  fc8d
+   3046  fc8d							; ------------------------------------------------------------------------------
+   3047  fc8d							; LoseLife — the single life-loss path (enemy hit, timer expiry, bomb blast,
+   3048  fc8d							; hot rock, band). Returns C=1: lives exhausted, ReloadLevel already done
+   3049  fc8d							; (LoadLevel re-places the player — callers skip their stay action).
+   3050  fc8d							; C=0: still alive — physics zeroed here; caller does its per-site stay
+   3051  fc8d							; action (bar reload, RoomY shift). Tail-callable (`jmp LoseLife`).
+   3052  fc8d							; ------------------------------------------------------------------------------
+   3053  fc8d				   LoseLife
+   3054  fc8d		       a9 01		      lda	#1
+   3055  fc8f		       85 9c		      sta	Hover	; bugs.md #1: arm respawn hover for every death
+   3056  fc91							;   (LoadLevel clears it on a stage-entry reset)
+   3057  fc91		       c6 ac		      dec	PlayerLives
+   3058  fc93		       10 0d		      bpl	.LLStay
+   3059  fc95		       a9 03		      lda	#3
+   3060  fc97		       85 ac		      sta	PlayerLives
+   3061  fc99		       a9 00		      lda	#$00
+   3062  fc9b		       85 ba		      sta	EnemyDeadMask
+   3063  fc9d		       20 80 fc 	      jsr	ReloadLevel
+   3064  fca0		       38		      sec
+   3065  fca1		       60		      rts
+   3066  fca2				   .LLStay
+   3067  fca2		       4c c7 fc 	      jmp	DropArm	; same drop-in code: X/Y stay, fall from top
+   3068  fca5							; (DropArm zeroes physics + laser, C=0 out)
+   3069  fca5
+   3070  fca5							; ------------------------------------------------------------------------------
+   3071  fca5							; CEH_Key — type-6 key pickup (docs/feature_tiles_plan.md Phase 5): latch
+   3072  fca5							; KeyHeld ($A7 b7) and mark the key slot dead so it vanishes, with NO life
+   3073  fca5							; loss. X = EnemyIndex (set by CheckEnemyHit). Post-pad leaf (bank0 pre-pad
+   3074  fca5							; is at its 1B limit); reached from CheckEnemyHit's type-6 dispatch by jmp
+   3075  fca5							; (out of `beq` range). KEY is one per level, so KeyHeld is a single bit.
+   3076  fca5							; LevelStartRoom b7 resets when LoadLevel rewrites $A7 (:1875) before its own
+   3077  fca5							; read at :1922, so no reader mask is needed; KeyHeld survives room changes
+   3078  fca5							; and normal deaths, resets on game-over reload.
+   3079  fca5							; ------------------------------------------------------------------------------
+   3080  fca5							; IsRoomDark / SetRoomDark + BitMaskTable moved to bank1 (leaf_move_plan B).
+   3081  fca5
+   3082  fca5							; ------------------------------------------------------------------------------
+   3083  fca5							; CheckBandTouch — overscan: if band on and sprite touches the water strip →
+   3084  fca5							; life. Strip = bottom ~12 lines of the cave (bottom_band_plan rule 2);
+   3085  fca5							; sprite origin RoomY >= 125 enters it (125 + PLAYER_SPRITE_H - 1 = 136).
+   3086  fca5							; Same path as hot/enemy: lose life, then respawn 12 scanlines up (min 0).
+   3087  fca5							; Band color = VBLANK-staged RoomBandColor ($D2, PF1Buf[3] dead-row alias;
+   3088  fca5							; staged by the VBLANK fold from LevelEnemy+RoomNo*4+3 — a kernel-time fold
+   3089  fca5							; overruns the .WaterRow line). Read inlined here and in .WaterRow (0 = off).
+   3090  fca5							; ------------------------------------------------------------------------------
+   3091  fca5				   CheckBandTouch
+   3092  fca5		       a5 bc		      lda	RoomBandColor
+   3093  fca7		       f0 09		      beq	.CBTdone	; band off
+   3094  fca9		       a5 81		      lda	RoomY
+   3095  fcab		       c9 7d		      cmp	#125
+   3096  fcad		       90 03		      bcc	.CBTdone	; above strip
+   3097  fcaf		       20 b3 fc 	      jsr	LoseLifeBand
+   3098  fcb2				   .CBTdone
+   3099  fcb2		       60		      rts
+   3100  fcb3
+   3101  fcb3							; ------------------------------------------------------------------------------
+   3102  fcb3							; LoseLifeBand — life path + RoomY -= 12 (min 0; spec: respawn just above
+   3103  fcb3							; the water strip). Full reload skips the shift
+   3104  fcb3							; (LoadLevel already places the player safely).
+   3105  fcb3							; ------------------------------------------------------------------------------
+   3106  fcb3				   LoseLifeBand
+   3107  fcb3		       20 8d fc 	      jsr	LoseLife
+   3108  fcb6		       b0 0e		      bcs	.LLBdone	; exhausted: ReloadLevel placed the player
+   3109  fcb8		       a5 8a		      lda	DropTarget	; armed death Y (DropArm already zeroed RoomY)
+   3110  fcba		       38		      sec
+   3111  fcbb		       e9 0c		      sbc	#12	; clear the strip (spec: -= 12, not whole band)
+   3112  fcbd		       b0 02		      bcs	.LLBstore
+   3113  fcbf		       a9 00		      lda	#0
+   3114  fcc1				   .LLBstore
+   3115  fcc1		       85 81		      sta	RoomY
+   3116  fcc3		       4c c7 fc 	      jmp	DropArm	; same code, destiny Y = one tile above water
+   3117  fcc6				   .LLBdone
+   3118  fcc6		       60		      rts
+   3119  fcc7
+   3120  fcc7							; ------------------------------------------------------------------------------
+   3121  fcc7							; DropArm / DropStep — the ONE spawn drop-in (user rule: same code for every
+   3122  fcc7							; restart, only the destiny X/Y changes — X is already in RoomX, placed by the
+   3123  fcc7							; caller; Y is animated from the screen top down to it).
+   3124  fcc7							; Triggers: stage start / game over / level advance (LoadLevel tail),
+   3125  fcc7							; enemy/blast/timer/hot death (.LLStay, same position), water (LoseLifeBand,
+   3126  fcc7							; Y-12). All tail-call it -> zero added stack depth (sim_bomb_fuse guard).
+   3127  fcc7							;
+   3128  fcc7							; DropArm (A implied = current RoomY, C=0 out): freezes RoomY as DropTarget,
+   3129  fcc7							; starts the sprite at the top (RoomY=0), zeroes physics + laser state so
+   3130  fcc7							; descent is clean (LaserInput is skipped by the gate; beam gate forced 0).
+   3131  fcc7							;
+   3132  fcc7							; DropStep (runs instead of input/physics/collision while DropTarget != 0):
+   3133  fcc7							; 8.8 accumulator PlayerYSub += DropSpeedTable[DropTarget>>4]; carry ->
+   3134  fcc7							; inc RoomY; arrival (RoomY >= DropTarget) -> DropTarget = 0, normal control
+   3135  fcc7							; resumes next frame. Speed table = Y*256/(60+Y/2) sampled per 16px tier ->
+   3136  fcc7							; fall lasts ~60+Y/2 frames = 1.0-2.2 s (shallow start = quicker arrival).
+   3137  fcc7							; Tail-jumps to OverscanAudio: bomb/laser/input/physics/horizontal/hot/band/
+   3138  fcc7							; miner/enemy-hit/BombTick are all bypassed (enemies + bombs frozen 1-2 s,
+   3139  fcc7							; timer keeps running; bank1 UpdateJetSound hears DropTarget as throttle).
+   3140  fcc7							; ------------------------------------------------------------------------------
+   3141  fcc7				   DropArm
+   3142  fcc7		       a5 8a		      lda	DropTarget
+   3143  fcc9		       c9 fd		      cmp	#$FD
+   3144  fccb		       b0 1e		      bcs	.DATitle	; sentinels $FD intro / $FF old title → static
+   3145  fccd							;   pose (real fall Y ≤ $BF → C=0 below; $FE
+   3146  fccd							;   tally cleared to 0 by TallyWork before its
+   3147  fccd							;   LoadLevel — same-size swap 2026-10-06)
+   3148  fccd		       a5 81		      lda	RoomY
+   3149  fccf		       85 8a		      sta	DropTarget
+   3150  fcd1		       a9 04		      lda	#4	; 1..7 = jet "burning": VBL flutter runs
+   3151  fcd3		       85 96		      sta	JetPower	;   (JP/8=0 keeps bank1 pitch at idle base)
+   3152  fcd5		       a9 00		      lda	#0
+   3153  fcd7		       85 81		      sta	RoomY
+   3154  fcd9		       85 95		      sta	PlayerYSub
+   3155  fcdb		       85 93		      sta	vyLo
+   3156  fcdd		       85 94		      sta	vyHi
+   3157  fcdf		       a5 c0		      lda	LaserState
+   3158  fce1		       29 3c		      and	#LASER_DARK	; reset laser, keep rooms 4-7 dark (parity:
+   3159  fce3		       85 c0		      sta	LaserState	; EnemyRamD bits survive DropArm too)
+   3160  fce5		       a9 00		      lda	#0	; A out = 0 (DropArm contract, was sta LaserState)
+   3161  fce7		       85 83		      sta	LaserX
+   3162  fce9		       18		      clc
+   3163  fcea		       60		      rts
+   3164  fceb				   .DATitle
+   3165  fceb							; Title: player already placed at level start by LoadLevel. Hide all
+   3166  fceb							; GRP1 objects (EnemyCount=0 → SelectActiveObject's no-object path
+   3167  fceb							; blanks ObjBase/ObjTop) and drop the miner slot so SELECT/RESET reloads
+   3168  fceb							; refresh them via EnterRoom. HUD score = level+1 ("000001" = level 0).
+   3169  fceb		       a9 00		      lda	#0
+   3170  fced		       85 b3		      sta	EnemyCount
+   3171  fcef		       a9 ff		      lda	#$FF
+   3172  fcf1		       85 a4		      sta	LevelMinerRoom	; ROOM_NONE: no miner slot, no pickup
+   3173  fcf3		       a5 a3		      lda	Level
+   3174  fcf5		       18		      clc
+   3175  fcf6		       69 01		      adc	#1
+   3176  fcf8		       85 f5		      sta	ScoreTe	; ones digit (LEVEL_COUNT ≤ 9 — ≥10 needs
+   3177  fcfa		       a9 00		      lda	#0	;  a packed-BCD tens digit here)
+   3178  fcfc		       85 f3		      sta	ScoreTh
+   3179  fcfe		       85 f4		      sta	ScoreHu
+   3180  fd00		       18		      clc
+   3181  fd01		       60		      rts
+   3182  fd02
+   3183  fd02				   DropStep
+   3184  fd02		       a5 8a		      lda	DropTarget
+   3185  fd04		       f0 28		      beq	.DSdone	; idle (target 0 = nothing to fall)
+   3186  fd06		       c9 fd		      cmp	#$FD
+   3187  fd08		       f0 27		      beq	TitleWork	; merged title = level select ($FD)
+   3188  fd0a		       c9 fe		      cmp	#$FE
+   3189  fd0c		       d0 03		      bne	.DSfall
+   3190  fd0e		       4c 9c fe 	      jmp	TallyWork	; level-bonus tally sentinel (bank2 step)
+   3191  fd11				   .DSfall
+   3192  fd11		       4a		      lsr
+   3193  fd12		       4a		      lsr
+   3194  fd13		       4a		      lsr
+   3195  fd14		       4a		      lsr
+   3196  fd15		       a8		      tay
+   3197  fd16		       b9 fb f9 	      lda	DropSpeedTable,y
+   3198  fd19		       18		      clc
+   3199  fd1a		       65 95		      adc	PlayerYSub
+   3200  fd1c		       85 95		      sta	PlayerYSub
+   3201  fd1e		       90 0e		      bcc	.DSdone	; subpixel: no whole pixel yet this frame
+   3202  fd20		       e6 81		      inc	RoomY
+   3203  fd22		       a5 81		      lda	RoomY
+   3204  fd24		       c5 8a		      cmp	DropTarget
+   3205  fd26		       90 06		      bcc	.DSdone
+   3206  fd28		       a9 00		      lda	#0
+   3207  fd2a		       85 8a		      sta	DropTarget	; arrived — input/physics resume next frame
+   3208  fd2c		       85 96		      sta	JetPower	; clean resume (no phantom thrust hop)
+   3209  fd2e				   .DSdone
+   3210  fd2e		       4c 3b f3 	      jmp	OverscanAudio	; rejoin past physics/collision (no rts)
+   3211  fd31
+   3212  fd31							; DropSpeedTable moved to the pre-pad free region ($F9FB) — post-pad before
+   3213  fd31							; the $FDE1 pin was full (bugs.md #1 Hover needs the room). Read is abs,Y, so
+   3214  fd31							; its address is irrelevant to DropStep.
+   3215  fd31
+   3216  fd31							; ------------------------------------------------------------------------------
+   3217  fd31							; TitleWork — merged title/level-select screen (DropTarget = $FD sentinel,
+   3218  fd31							; dispatched from DropStep every frame). The TitleKernel shows the logo, the
+   3219  fd31							; selected level number (digits band) and the credits; the theme plays here.
+   3220  fd31							; No gravity/enemies/sound beyond the music (frame is title-owned; timer
+   3221  fd31							; frozen). SELECT cycles Level, RESET starts the game at the selected level.
+   3222  fd31							;   SELECT (SWCHB b1, active-low EDGE) → jsr TitleSelect (fill): level+1,
+   3223  fd31							;	    wrap → 000001, reload room 0 (swallow removed 2026-10-07, 8b —
+   3224  fd31							;	    the intro exit ate the first press and made #2 read as dead)
+   3225  fd31							;   RESET  (SWCHB b0, active-low EDGE) → score 000000, LoadLevel tail arms
+   3226  fd31							;	    the real drop-in → gameplay starts
+   3227  fd31							; (Intro $FD never reaches here — DropStep routes it to TitleIntro.)
+   3228  fd31							; StepsLeft = previous SWCHB sample (physics is skipped on title, so it is
+   3229  fd31							; title-owned; the first play frame rewrites it as the step budget).
+   3230  fd31							; Console switches are read again after any jsr (LoadLevel clobbers X/Y/A).
+   3231  fd31							; ------------------------------------------------------------------------------
+   3232  fd31				   TitleWork
+   3233  fd31							; --- SELECT edge (TitleSelect, fill region) ---
+   3234  fd31		       20 4f fc 	      jsr	CallPad_TitleSelect
+   3235  fd34		       90 03		      bcc	.TWselDone	; C=0: no edge
+   3236  fd36		       20 52 f5 	      jsr	LoadLevel	; title arm re-runs → score/objects refreshed
+   3237  fd39				   .TWselDone
+   3238  fd39							; --- RESET edge ---
+   3239  fd39		       a5 97		      lda	StepsLeft
+   3240  fd3b		       29 01		      and	#%00000001
+   3241  fd3d		       f0 14		      beq	.TWrstDone
+   3242  fd3f		       ad 82 02 	      lda	SWCHB
+   3243  fd42		       29 01		      and	#%00000001
+   3244  fd44		       d0 0d		      bne	.TWrstDone
+   3245  fd46		       a9 00		      lda	#0
+   3246  fd48		       85 8a		      sta	DropTarget	; leave title → LoadLevel tail arms real fall
+   3247  fd4a		       85 f3		      sta	ScoreTh	; gameplay score starts at 000000
+   3248  fd4c		       85 f4		      sta	ScoreHu
+   3249  fd4e		       85 f5		      sta	ScoreTe
+   3250  fd50		       20 52 f5 	      jsr	LoadLevel
+   3251  fd53				   .TWrstDone
+   3252  fd53		       ad 82 02 	      lda	SWCHB
+   3253  fd56		       85 97		      sta	StepsLeft	; remember sample for next frame's edges
+   3254  fd58							; --- Frame audio: ch0 silenced by UpdateBombSound (BombSnd=0); jet
+   3255  fd58							;     channel force-muted here — UpdateJetSound is skipped because
+   3256  fd58							;     $FF would read as "falling" and buzz; laser skipped (LaserState
+   3257  fd58							;     = 0, AUDV0 covered above). ---
+   3258  fd58				   TitleTailAudio		; tail: TitleWork falls in (no rts)
+   3259  fd58		       a5 8a		      lda	DropTarget	; merged title ($FD): music owns AUD0/AUD1,
+   3260  fd5a		       c9 fd		      cmp	#$FD	;   no bomb fuse/tick on title frames
+   3261  fd5c		       f0 0e		      beq	.TWmusic
+   3262  fd5e		       d0 03		      bne	.TWnoTick	;   BombTick's blast side effects on titles
+   3263  fd60		       20 b7 f7 	      jsr	BombTick
+   3264  fd63				   .TWnoTick
+   3265  fd63		       20 fc fb 	      jsr	CallPad_UpdateBombSound
+   3266  fd66		       a9 00		      lda	#0
+   3267  fd68		       85 1a		      sta	AUDV1
+   3268  fd6a		       f0 03		      beq	.TWwait	; A=0 -> always taken
+   3269  fd6c				   .TWmusic		; title: music wins the audio regs
+   3270  fd6c		       20 61 fc 	      jsr	CallPad_MusicTick	;   wins the audio registers every frame
+   3271  fd6f				   .TWwait
+   3272  fd6f		       ad 84 02 	      lda	INTIM
+   3273  fd72		       d0 fb		      bne	.TWwait
+   3274  fd74		       4c 41 f0 	      jmp	StartFrame
+   3275  fd77
+   3276  fd77							; ------------------------------------------------------------------------------
+   3277  fd77							; RefreshEnemyY — write live Y → EnemyRamY (every slot, live or dead).
+   3278  fd77							; Runs at overscan entry: inside the safe window (after the HUD score-ptr
+   3279  fd77							; stomp of $E2-$E4, before LaserInput / CheckEnemyHit / moth / next frame's
+   3280  fd77							; SelectActiveObject read it) — see the EnemyRamY contract at the ZP map.
+   3281  fd77							; E1: moving types (bat) get ROM spawn + TickCounter-derived offset via
+   3282  fd77							; DeriveEnemyY — no persistent movement state exists in RAM.
+   3283  fd77							; Clobbers A/X/Y. Moved post-pad 2026-10-02 (SELECT → title needs this
+   3284  fd77							; block after the pads; pre-pad headroom is 1B).
+   3285  fd77							; ------------------------------------------------------------------------------
+   3286  fd77				   RefreshEnemyY
+   3287  fd77		       e6 c2		      inc	EnemyRamP	; free-running frame clock (wraps 0-255).
+   3288  fd79							; TickCounter is the 60-frame GAME timer
+   3289  fd79							; (decrements 60->1, reloads) — gates derived
+   3290  fd79							; from it wrapped every second (spider
+   3291  fd79							; "teleported": (TC>>3)&63 only ever saw
+   3292  fd79							; 0..7 and counted DOWN 0->7 = jump).
+   3293  fd79		       a6 b3		      ldx	EnemyCount	; countdown loop (-2 B vs forward; derive
+   3294  fd7b		       f0 09		      beq	.REYDone	; order n-1..0 — derivations independent,
+   3295  fd7d				   .REYLoop		; every reader runs after refresh completes)
+   3296  fd7d		       ca		      dex
+   3297  fd7e		       20 96 f4 	      jsr	DeriveEnemyY	; A = live Y (ROM copy, or derived for bat)
+   3298  fd81		       95 e2		      sta	EnemyRamY,X
+   3299  fd83		       8a		      txa		; N/Z must come from X: flags after jsr are
+   3300  fd84		       d0 f7		      bne	.REYLoop	; the sign of the DERIVED Y byte (bpl ran
+   3301  fd86				   .REYDone		; away at X=$FF, writing $1C2/$1C1/... =
+   3302  fd86							; mirrored EnemyRamP/EnemyRamD/TIA = blink,
+   3303  fd86							; black rooms, broken PF, invisible sprites)
+   3304  fd86							; --- SELECT or RESET held → back to the old title / level-select screen
+   3305  fd86							;     ($FF = first room + HUD count). Gate: DropTarget == 0 EXACTLY
+   3306  fd86							;     (idle/landed). Sentinels ($FD/$FF/$FE) skip via ≠0; a DROP-IN
+   3307  fd86							;     fall (Y≠0) also skips — so the press that STARTED the game (held
+   3308  fd86							;     through TitleWork RESET, level-triggered here) cannot bounce back
+   3309  fd86							;     to the title while falling (bounce-fixed 2026-10-06). Residual:
+   3310  fd86							;     RESET held past LANDING still re-fires — press must be released
+   3311  fd86							;     before the drop-in finishes. ---
+   3312  fd86		       a5 8a		      lda	DropTarget
+   3313  fd88		       d0 17		      bne	.REYRts	; not idle: not ours
+   3314  fd8a		       ad 82 02 	      lda	SWCHB
+   3315  fd8d		       85 97		      sta	StepsLeft	; latch so TitleWork sees "held" (no re-fire)
+   3316  fd8f		       29 03		      and	#%00000011	; SELECT b1 + RESET b0 (level-triggered,
+   3317  fd91		       c9 03		      cmp	#%00000011	;   same style as the old SELECT-only check)
+   3318  fd93		       f0 0c		      beq	.REYRts	; neither pressed
+   3319  fd95		       a9 fd		      lda	#$FD
+   3320  fd97		       85 8a		      sta	DropTarget	; merged title sentinel ($FD, 2026-10-19)
+   3321  fd99		       20 52 f5 	      jsr	LoadLevel	; tail → DropArm .DATitle (score/objects)
+   3322  fd9c		       68		      pla		; drop OUR return address (LoadLevel already
+   3323  fd9d		       68		      pla		;   popped its own) — tail into TitleWork
+   3324  fd9e		       4c 31 fd 	      jmp	TitleWork
+   3325  fda1				   .REYRts
+   3326  fda1		       60		      rts
+   3327  fda2
+   3328  fda2							; ------------------------------------------------------------------------------
+   3329  fda2							; BuildColupF — 12-byte final COLUPF image at ColupfBuf ($E7-$F2).
+   3330  fda2							;   Stripe: rows 0,2 = LevelWallColor; row 1 = LevelWallColor2.
+   3331  fda2							;   Hot rows overwrite with TickCounter-bit4 pulse (COLOR_HOT_Y/R).
+   3332  fda2							;   $F0-$F2 (bombs) NO LONGER overlap-saved: body writes rows 0-2 only,
+   3333  fda2							;   save/restore round trip deleted (S3.0b — window audit: zero writers).
+   3334  fda2							;   Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds every frame.
+   3335  fda2							; ------------------------------------------------------------------------------
+   3336  fda2							; ------------------------------------------------------------------------------
+   3337  fda2							; BuildColupF — MOVED to bank2 (S5.1) — CallPad_BuildColupF.
+   3338  fda2							;   Hot-rect data (RoomRects) lives in bank2, so the body reads it with
+   3339  fda2							;   direct (FetchPtr),Y — the shared $FEF6 fold block's sta $1FF6 always
+   3340  fda2							;   returns to bank0, so a fold inside a bank1 body could not work.
+   3341  fda2							;   The dark check is inlined there too: CallPad_IsRoomDark cannot nest
+   3342  fda2							;   from a pad body (ReturnPad switches to bank0 mid-call).
+   3343  fda2							;   Body: bank2.asm, pinned at $FC4F. Entry save block ($F0-$F2 → collision
+   3344  fda2							;   temps) was dead (rows 0-2 only) — deleted with the .AfterRows restore
+   3345  fda2							;   in S3.0b.
+   3346  fda2							; ------------------------------------------------------------------------------
+   3347  fda2
+   3348  fda2							; UpdateBombSound moved to bank1 (leaf_move_plan batch A) — CallPad_UpdateBombSound.
+   3349  fda2
+   3350  fda2							; ------------------------------------------------------------------------------
+   3351  fda2							; ColOff/ColMask — cell-walk lookup tables (cell_collision_plan).
+   3352  fda2							;   Indexed by LEFT-HALF source col 0-19 (PHM prologue mirrors right-half
+   3353  fda2							;   ranges before the walk; bank2 display-space walkers mirror first too).
+   3354  fda2							;   ColOff: byte offset from PF0Buf+row ($C3+row) to the register holding
+   3355  fda2							;   that col (0/3/6 = PF0/PF1/PF2 row byte). ColMask: the col's bit in that
+   3356  fda2							;   byte — PF0 bit4+col (cols 0-3), PF1 MSB-first (4-11), PF2 LSB-first
+   3357  fda2							;   (12-19); matches convert_room.pf_values (plan 0.2 spec, proven by
+   3358  fda2							;   tools/test_cell_map.py).
+   3359  fda2							;   (The standalone CellSolid leaf that lived here moved INTO
+   3360  fda2							;   PlayerHitsMap's walk as inline code — a jsr in the walk cost 2B of
+   3361  fda2							;   stack depth and would break sim_bomb_fuse's gameplay min-SP >= $F8
+   3362  fda2							;   guard; the post-pad slot keeps these tables abs,X-reachable.)
+   3363  fda2							; ------------------------------------------------------------------------------
+   3364  fda2		       00 00 00 00*ColOff     .byte.b	0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
+   3365  fdb6		       10 20 40 80*ColMask    .byte.b	$10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
+   3366  fdc2		       01 02 04 08*	      .byte.b	$01,$02,$04,$08,$10,$20,$40,$80
+   3367  fdca
+   3368  fdca							; ------------------------------------------------------------------------------
+   3369  fdca							; BombEnemyBlast — bank2 entry tramp ($FDD8, lamp-safe S9 2026-10-07): the
+   3370  fdca							; BombTick `jsr` lands here (bank0), `sta $1FF8` switches to bank2, the `jmp`
+   3371  fdca							; is fetched from bank2's byte-identical mirror at this same address and
+   3372  fdca							; lands on the body at $FD87 (the lamp type-check reads enemy records that
+   3373  fdca							; live in bank2). Body tail-jmps ReturnPad ($FBF8); A = 1 kill (BombTick
+   3374  fdca							; awards +50 — pads cannot nest), 0 none. Old inline body ($F87F, 66B)
+   3375  fdca							; deleted: the region re-packs into the gap before the $FBD6 fold pin
+   3376  fdca							; (pre-pad headroom stays 1B — pins absorb upstream shrink, not the org).
+   3377  fdca							; TWIN: bank2.asm mirrors these exact 6 bytes at $FDD8 (the pad after
+   3378  fdca							; .HOVdone). The PickPlayerFrame `.ds $FDE1` below absorbs the size.
+   3379  fdca							; ------------------------------------------------------------------------------
+   3380  fdca		       00 00 00 00*	      .ds	$FDD8 - *, 0	; pin: bank2's blast-tramp mirror is at $FDD8
+   3381  fdd8				   BombEnemyBlast
+   3382  fdd8		       8d f8 1f 	      sta	$1FF8
+   3383  fddb		       4c 87 fd 	      jmp	$FD87	; BombEnemyBlastBody (bank2.lst — after
+   3384  fdde							;   .HOVfeature; NOT in the TitleJetColors
+   3385  fdde							;   span)
+   3386  fdde							;   (2026-10-13: was $FD79 — crush-kill b6
+   3387  fdde							;   latch + feature gate pushed +14; same day
+   3388  fdde							;   was $FD6C — .HOVfeature pushed +13; 2026-
+   3389  fdde							;   10-10: was $FD6B — 1-byte stale operand =
+   3390  fdde							;   entry mid-instruction at `lda EnemyCount+1`;
+   3391  fdde							;   garbage path's `inc $4A,X` set wall bits
+   3392  fdde							;   via $CA)
+   3393  fdde
+   3394  fdde							; ------------------------------------------------------------------------------
+   3395  fdde							; PickPlayerFrame — VBL entry tramp: the VBL `jsr` lands here (bank0), `sta
+   3396  fdde							; $1FF8` switches to bank2, the `jmp` is fetched from bank2's byte-identical
+   3397  fdde							; mirror at this same address and lands on bank2's body ($F3C4). The body
+   3398  fdde							; tail-jmps ReturnPad ($FBF8) -> `sta $1FF6/rts` returns to the VBL jsr
+   3399  fdde							; (BuildColupF pad pattern; 0 extra stack depth).
+   3400  fdde							; Guards: verify_build check_frame_tramp (byte-identity + operand = bank2
+   3401  fdde							; label). Body logic: jet flutter (PlayerSpriteA/B) > walk (PlayerWalkA/B) >
+   3402  fdde							; static A; phase EnemyRamP&$08 (walk, 16-frame) / TickCounter&4 (jet).
+   3403  fdde							; PINNED: bank2's mirror is address-frozen at $FDE1 — the TitleSelect
+   3404  fdde							; TitleWork shrink (2026-10-06) moved this −20B and broke byte-identity;
+   3405  fdde							; any upstream size change must pad back to $FDE1 here.
+   3406  fdde							; ------------------------------------------------------------------------------
+   3407  fdde		       00 00 00 	      .ds	$FDE1 - *, 0
+   3408  fde1				   PickPlayerFrame
+   3409  fde1		       8d f8 1f 	      sta	$1FF8	; select bank2
+   3410  fde4		       4c c4 f3 	      jmp	$F3C4	; bank2 PickPlayerFrame body (operand pinned
+   3411  fde7							;   by verify_frame_tramp = bank2.lst label)
+   3412  fde7
+   3413  fde7							; ------------------------------------------------------------------------------
+   3414  fde7							; PlayerWalkA/B — dedicated ground-walk frames (sprites.png 2026-10-03,
+   3415  fde7							; extracted pixel-exact; torso rows 0-6 identical to the jet pair).
+   3416  fde7							;   A = boots apart (stride, rows 10-11 spread to cols 2+6 / 1+6)
+   3417  fde7							;   B = boots together (passing pose, rows 10-11 = cols 3+4)
+   3418  fde7							; Legs rows 7-9 identical in both — only the boots move. Standing forces
+   3419  fde7							; PlayerSpriteA; walk cycle alternates A<->B every 8 frames (EnemyRamP&$08,
+   3420  fde7							; 16-frame full cycle) while grounded + L/R held.
+   3421  fde7							; ------------------------------------------------------------------------------
+   3422  fde7				   PlayerWalkA
+   3423  fde7		       3c		      .byte.b	%00111100	; row 0 torso (sprites.png 2026-10-03)
+   3424  fde8		       7e		      .byte.b	%01111110	; row 1
+   3425  fde9		       7c		      .byte.b	%01111100	; row 2 — yellow face
+   3426  fdea		       7e		      .byte.b	%01111110	; row 3
+   3427  fdeb		       7c		      .byte.b	%01111100	; row 4 — grey pack
+   3428  fdec		       fe		      .byte.b	%11111110	; row 5
+   3429  fded		       fe		      .byte.b	%11111110	; row 6
+   3430  fdee		       3e		      .byte.b	%00111110	; row 7  legs
+   3431  fdef		       3e		      .byte.b	%00111110	; row 8
+   3432  fdf0		       14		      .byte.b	%00010100	; row 9
+   3433  fdf1		       22		      .byte.b	%00100010	; row 10 boots apart (spread)
+   3434  fdf2		       42		      .byte.b	%01000010	; row 11 boots apart
+   3435  fdf3
+   3436  fdf3				   PlayerWalkB
+   3437  fdf3		       3c		      .byte.b	%00111100	; row 0 torso (sprites.png 2026-10-03)
+   3438  fdf4		       7e		      .byte.b	%01111110	; row 1
+   3439  fdf5		       7c		      .byte.b	%01111100	; row 2 — yellow face
+   3440  fdf6		       7e		      .byte.b	%01111110	; row 3
+   3441  fdf7		       7c		      .byte.b	%01111100	; row 4 — grey pack
+   3442  fdf8		       fe		      .byte.b	%11111110	; row 5
+   3443  fdf9		       fe		      .byte.b	%11111110	; row 6
+   3444  fdfa		       3e		      .byte.b	%00111110	; row 7  legs
+   3445  fdfb		       3e		      .byte.b	%00111110	; row 8
+   3446  fdfc		       14		      .byte.b	%00010100	; row 9
+   3447  fdfd		       18		      .byte.b	%00011000	; row 10 boots together (passing)
+   3448  fdfe		       18		      .byte.b	%00011000	; row 11 boots together
+   3449  fdff
+   3450  fdff
+   3451  fdff
+   3452  fdff
+   3453  fdff		       00		      .ds	$FE00 - *, 0	; ObjColorTab $FE00-$FE47, ObjSprites $FE48-$FE8F:
+   3454  fe00							; BOTH same-page 4c fetches (verify guards);
+   3455  fe00							; end $FE8F -> HOF tramp $FE90 (shifted +$10,
+   3456  fe00							; mirrors+HOF_ENTRY/LHT_ENTRY synced)
+   3457  fe00							; ------------------------------------------------------------------------------
+   3458  fe00							; ObjColorTab — per-scanline GRP1 object colors, stride 8 = ObjSprites
+   3459  fe00							; stride; indexed by the same X = ObjBase + r in .Grp1 at $FE00 (4c, same
+   3460  fe00							; page for all 72 B — the passing +7 probe's exact cycle sum). Row colors
+   3461  fe00							; per OBJ_* slot: type color x8 (matches EnemyColorTable /
+   3462  fe00							; SelectActiveObject frame colors — no visual change for enemies/lamp/bomb);
+   3463  fe00							; MINER slot = miner.png purple/pink/grey -> nearest NTSC $54/$4A/$08.
+   3464  fe00							; NOTE: dark rooms no longer force grey objects — the frame-level $0A write
+   3465  fe00							; is overridden per row (no budget for a dark skip flag; see .Line probe).
+   3466  fe00							; ------------------------------------------------------------------------------
+   3467  fe00				   ObjColorTab
+   3468  fe00		       1c 1c 1c 1c*	      .byte.b	$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c	; 0 KEY    ($1c yellow; was NONE/blank)
+   3469  fe08		       22 22 22 22*	      .byte.b	$22,$22,$22,$22,$22,$22,$22,$22	; 1 MOTH   ($22 dark orange)
+   3470  fe10		       14 14 14 14*	      .byte.b	$14,$14,$14,$14,$14,$14,$14,$14	; 2 SPIDER ($14 dark yellow)
+   3471  fe18		       0e 0e 0e 0e*	      .byte.b	$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 3 LAMP   ($0e white)
+   3472  fe20		       0e 0e 0e 0e*	      .byte.b	$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 4 TENTACLE ($0e white)
+   3473  fe28		       f2 f2 f2 f2*	      .byte.b	$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2	; 5 BAT    ($f2 brown)
+   3474  fe30		       c4 c4 c4 c4*	      .byte.b	$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4	; 6 SNAKE  ($c4 green)
+   3475  fe38		       54 54 4a 54*	      .byte.b	$54,$54,$4a,$54,$54,$08,$54,$54	; 7 MINER  purple/pink face/grey tool
+   3476  fe40		       46 46 46 46*	      .byte.b	$46,$46,$46,$46,$46,$46,$46,$46	; 8 BOMB   ($46 red)
+   3477  fe48
+   3478  fe48							; ------------------------------------------------------------------------------
+   3479  fe48							; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
+   3480  fe48							; Row r displays on scanline RoomY+ObjTop-1+r (ObjTop is RoomY-relative since
+   3481  fe48							; S2.2; .Grp1 checks r = Y-ObjTop where Y = running A0+1). GRP1 write
+   3482  fe48							; latching, same as before.
+   3483  fe48							; Offset = OBJ_* constant; index 0 = blank (object off).
+   3484  fe48							; ------------------------------------------------------------------------------
+   3485  fe48				   ObjSprites
+   3486  fe48		       3c 42 5a 42*	      .byte.b	$3C,$42,$5A,$42,$3C,$18,$18,$14	; OBJ_KEY (offset 0 = key art)
+   3487  fe50		       90 60 f0 f0*	      .byte.b	$90,$60,$f0,$f0,$60,$90,$60,$60	; OBJ_MOTH
+   3488  fe58		       60 f0 f0 60*	      .byte.b	$60,$f0,$f0,$60,$90,$60,$90,$90	; OBJ_SPIDER
+   3489  fe60		       f0 f0 60 60*	      .byte.b	$f0,$f0,$60,$60,$f0,$f0,$f0,$60	; OBJ_LAMP
+   3490  fe68		       60 90 80 60*	      .byte.b	$60,$90,$80,$60,$30,$30,$30,$30	; OBJ_TENTACLE
+   3491  fe70		       90 60 f0 60*	      .byte.b	$90,$60,$f0,$60,$60,$90,$90,$00	; OBJ_BAT
+   3492  fe78		       ff ff ff ff*	      .byte.b	$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; OBJ_SNAKE (8 px)
+   3493  fe80		       0c 1c 4c 36*	      .byte.b	$0c,$1c,$4c,$36,$0f,$07,$3f,$6e	; OBJ_MINER (miner.png 2026-10-03,
+   3494  fe88							; mirrored — faces left; r2 pink face, r5 grey)
+   3495  fe88		       10 20 20 60*	      .byte.b	$10,$20,$20,$60,$f0,$f0,$f0,$60	; OBJ_BOMB
+   3496  fe90
+   3497  fe90							; ------------------------------------------------------------------------------
+   3498  fe90							; FoldIndirect — cross-bank data fetch (HERO fold, write-triggered;
+   3499  fe90							; level_bank_plan §0.1). Pad lands $FEF6-$FEFF (last byte ≤ $FEFF — $FF00
+   3500  fe90							; stays the fineAdjust anchor). Bytes must be byte-identical in bank2
+   3501  fe90							; (guard: verify_build) — after `sta $1FF8` the CPU fetches the remainder
+   3502  fe90							; from the data bank at the same PC.
+   3503  fe90							; Contract: bank select is ABSOLUTE $1FF8 (bank2) — X/Y both preserved,
+   3504  fe90							; A = junk in, data out (`sta $1FF6` switches back, A preserved).
+   3505  fe90							; P3.1 deviation (plan §0): `sta $1FF8,X` required X=0, but every enemy
+   3506  fe90							; loop keeps the slot in X and has no free temp to swap (DEY/snake hold
+   3507  fe90							; Temp live across the read). All level data is bank2, so X-selection is
+   3508  fe90							; dead weight; bank3 data later needs a second entry `sta $1FF9` pad.
+   3509  fe90							; ------------------------------------------------------------------------------
+   3510  fe90							; E4 moth entry tramp ($FEF0-$FEF5) — byte-identical with bank2's copy
+   3511  fe90							; (guard: verify_build check_moth_tramp). bank0 executes `sta $1FF8`; the next
+   3512  fe90							; fetch ($FEF3) comes from bank2 = `jmp MothRoutine`. Neither bank runs its
+   3513  fe90							; other half: bank0 is switched away at $FEF2, bank2 is never entered here.
+   3514  fe90							; The 6-byte pad is the only free hole before FoldIndirect's pinned $FEF6.
+   3515  fe90							; ------------------------------------------------------------------------------
+   3516  fe90		       00 00 00 00*	      .ds	$FE96 - *, 0	; S5.4 LHT entry tramp (byte-identical w/ bank2,
+   3517  fe96							; guard: check_moth_tramp — shifted +$10)
+   3518  fe96				   LaserHitTest
+   3519  fe96		       8d f8 1f 	      sta	$1FF8	; select bank2
+   3520  fe99		       4c 00 ff 	      jmp	$FF00	; bank2 LaserHitTestBody (dead in bank0; guard
+   3521  fe9c							;   pins operands == bank2.lst label)
+   3522  fe9c
+   3523  fe9c							; ------------------------------------------------------------------------------
+   3524  fe9c
+   3525  fe9c							; ------------------------------------------------------------------------------
+   3526  fe9c							; TallyWork — level-bonus count-up (user spec 2026-10-02): reaching the miner
+   3527  fe9c							; freezes the frame (dispatch bypasses input/physics/enemies via DropTarget
+   3528  fe9c							; $FE), bank2 TallyEntry adds +50 every 4 frames and writes the coin tone
+   3529  fe9c							; (every 200 pts); when TallyTicks hits 0 the done path advances the level
+   3530  fe9c							; exactly like the old CheckMinerPickup tail, then rejoins OverscanAudio.
+   3531  fe9c							;   Event bits in A (through ReturnPad sta/rts): b0 = add 50, b2 = done.
+   3532  fe9c							;   Tail mirrors TitleWork: UpdateBombSound holds the coin (BombSnd>0), jet
+   3533  fe9c							;   muted, own INTIM wait -> StartFrame: timer block skipped = frozen scene.
+   3534  fe9c							; Lives in the $FE8C LHT..moth fill (bank0 has no pre-pad headroom).
+   3535  fe9c							; ------------------------------------------------------------------------------
+   3536  fe9c				   TallyWork
+   3537  fe9c		       20 e6 ff 	      jsr	TallyTramp	; A = event (bank2 TallyEntry step)
+   3538  fe9f		       a8		      tay
+   3539  fea0		       29 01		      and	#1
+   3540  fea2		       f0 05		      beq	.TNoScore
+   3541  fea4		       a9 50		      lda	#$50	; BCD +50 per tick (pack is $50 exactly)
+   3542  fea6		       20 1a fc 	      jsr	CallPad_AddScore
+   3543  fea9				   .TNoScore
+   3544  fea9		       98		      tya
+   3545  feaa		       29 04		      and	#4
+   3546  feac		       f0 1e		      beq	.TLive
+   3547  feae		       e6 a3		      inc	Level	; --- done: advance (old CheckMinerPickup tail)
+   3548  feb0		       a5 a3		      lda	Level
+   3549  feb2		       c9 04		      cmp	#LEVEL_COUNT
+   3550  feb4		       d0 04		      bne	.TNotWrap
+   3551  feb6		       a9 00		      lda	#0	; wrap past last level
+   3552  feb8		       85 a3		      sta	Level
+   3553  feba				   .TNotWrap
+   3554  feba		       a9 00		      lda	#0
+   3555  febc		       85 8a		      sta	DropTarget	; clear $FE BEFORE LoadLevel — DropArm's new
+   3556  febe							;   `cmp #$FD / bcs` treats ≥$FD as sentinel
+   3557  febe							;   pose ($FE must take the real-fall path)
+   3558  febe		       20 52 f5 	      jsr	LoadLevel
+   3559  fec1		       a9 78		      lda	#120	; reset timer for new level
+   3560  fec3		       85 ae		      sta	BarLevel
+   3561  fec5		       a9 3c		      lda	#60
+   3562  fec7		       85 ad		      sta	TickCounter
+   3563  fec9		       4c 3b f3 	      jmp	OverscanAudio	; normal sounds + timer resume
+   3564  fecc				   .TLive
+   3565  fecc		       20 fc fb 	      jsr	CallPad_UpdateBombSound	; hold/silence ch0 for the coin blip
+   3566  fecf		       a9 00		      lda	#0
+   3567  fed1		       85 1a		      sta	AUDV1	; jet muted (UpdateJetSound skipped)
+   3568  fed3				   .TWait
+   3569  fed3		       ad 84 02 	      lda	INTIM
+   3570  fed6		       d0 fb		      bne	.TWait
+   3571  fed8		       4c 41 f0 	      jmp	StartFrame
+   3572  fedb
+   3573  fedb							; ------------------------------------------------------------------------------
+   3574  fedb							; BeamMask — per-scanline ENAM0 values for the in-window kernel path (S2.2).
+   3575  fedb							; Indexed by Y = A0 = Scanline - RoomY, rows 0-11 only.
+   3576  fedb							; Rows 2-3 = $02 (beam on: RoomY+2..RoomY+3 = eye rows — yellow face row 2 +
+   3577  fedb							; red row 3 = two-tone beam; kept per user decision: single-red rows could
+   3578  fedb							; not also reach floor-standing enemies without kill-window churn); rest $00.
+   3579  fedb							; 2026-10-08 user directive: ONE strip, yellow — row 2 only ($02 at index 2),
+   3580  fedb							; row 3 dropped. Kill window in LaserHitTestBody stays rows RoomY+2..3 = a
+   3581  fedb							; superset of the 1-line draw (floor-standing reach preserved).
+   3582  fedb							; Lives in the $FExx page: `lda BeamMask,Y` from .Line ($F1xx) fetches in
+   3583  fedb							; 4c when operand+11 stays in-page (1c reclaim toward the ObjColorTab
+   3584  fedb							; write; verify_build asserts the no-cross operand range).
+   3585  fedb							; ------------------------------------------------------------------------------
+   3586  fedb				   BeamMask
+   3587  fedb		       00 00 02 00*	      .byte.b	0,0,2,0,0,0,0,0,0,0,0,0
+   3588  fee7
+   3589  fee7
+   3590  fee7					      .ds	$FEE7 - *, 0	; bank0↔bank1 CallPad (leaf_move_plan Step 0)
+   3591  fee7				   CallPad_MothYDerive
+   3592  fee7		       8d f7 1f 	      sta	$1FF7
+   3593  feea		       4c 29 f0 	      jmp	$F029
+   3594  feed
+   3595  feed		       00 00 00 	      .ds	$FEF0 - *, 0	; fill tramp..moth gap (drift-proof)
+   3596  fef0				   UE_MothTramp
+   3597  fef0		       8d f8 1f 	      sta	$1FF8	; select bank2
+   3598  fef3		       4c 10 f1 	      jmp	$F110	; bank2 MothRoutine (dead in bank0; guard pins
+   3599  fef6							;   bank0/bank2 operands == bank2.lst label)
+   3600  fef6					      .ds	$FEF6 - *, 0	; pin address (main size drift must not move it)
+   3601  fef6				   FoldIndirect
+   3602  fef6		       8d f8 1f 	      sta	$1FF8
+   3603  fef9		       b1 e5		      lda	(FetchPtr),Y
+   3604  fefb		       8d f6 1f 	      sta	$1FF6
+   3605  fefe		       60		      rts
+   3606  feff
+   3607  feff							; Pad to fineAdjustTable
+   3608  feff		       00		      .ds	$FF00 - *, 0
+   3609  ff00
+   3610  ff00							; ==============================================================================
+   3611  ff00							; Fine-adjust table for SetObjectXPos — MUST be page-aligned ($xx00)
+   3612  ff00							; ==============================================================================
+   3613  ff00					      org	$FF00
+   3614  ff00				   fineAdjustBegin
+   3615  ff00		       70		      .byte.b	%01110000	; left 7
+   3616  ff01		       60		      .byte.b	%01100000	; left 6
+   3617  ff02		       50		      .byte.b	%01010000	; left 5
+   3618  ff03		       40		      .byte.b	%01000000	; left 4
+   3619  ff04		       30		      .byte.b	%00110000	; left 3
+   3620  ff05		       20		      .byte.b	%00100000	; left 2
+   3621  ff06		       10		      .byte.b	%00010000	; left 1
+   3622  ff07		       00		      .byte.b	%00000000	; no movement
+   3623  ff08		       f0		      .byte.b	%11110000	; right 1
+   3624  ff09		       e0		      .byte.b	%11100000	; right 2
+   3625  ff0a		       d0		      .byte.b	%11010000	; right 3
+   3626  ff0b		       c0		      .byte.b	%11000000	; right 4
+   3627  ff0c		       b0		      .byte.b	%10110000	; right 5
+   3628  ff0d		       a0		      .byte.b	%10100000	; right 6
+   3629  ff0e		       90		      .byte.b	%10010000	; right 7
+   3630  ff0e		       fe 0f	   fineAdjustTable EQU	fineAdjustBegin - %11110001	; = fineAdjustBegin - 241
+   3631  ff0f
+   3632  ff0f							; ==============================================================================
+   3633  ff0f							; SetObjectXPos — horizontal positioning via RESP0/HMP0
+   3634  ff0f							; ==============================================================================
+   3635  ff0f							; Andrew Davie session-24 routine:
+   3636  ff0f							; Rolls the divide-by-15 and the delay loop into one unit.
+   3637  ff0f							; The page-aligned fineAdjustTable ($FF00) guarantees every RESP0 write lands
+   3638  ff0f							; on the same clock grid, mapping the sprite 1:1 to pixel (0..159).
+   3639  ff0f							; Input: A = horizontal position (0-159 color clocks); drawn = [A-7, A]
+   3640  ff0f							;	  X = object selector (0 = HMP0/RESP0 player, 1 = HMP1/RESP1 object,
+   3641  ff0f							;	      2 = HMM0/RESM0 laser, 4 = HMBL/RESPBL ball — bank1 bar already
+   3642  ff0f							;	      uses 4; HMP0+4=$24=HMBL, RESP0+4=$14=RESPBL)
+   3643  ff0f							;
+   3644  ff0f							; Lives in the $FF10-$FF1F gap (exactly 16 bytes, before org $FF20) — moved
+   3645  ff0f							; here 2026-09-26 (laser S1): the `jsr LaserInput` (+3 pre-pad) had pushed
+   3646  ff0f							; .Div15Loop across the $F8/$F9 page, turning `bcs .Div15Loop` from 3c into
+   3647  ff0f							; 4c = 6c per /15 iteration (contract: 5c). RESP0 then fired 3 color-clocks
+   3648  ff0f							; late per coarse step -> sprites drifted right ~3*(X/15) px and wrapped past
+   3649  ff0f							; 160 (spider appeared at the left edge). Placement inside ONE page makes the
+   3650  ff0f							; 5c contract structurally safe; verify_build asserts the exact range.
+   3651  ff0f							; DO NOT move this routine to an address where bcs and .Div15Loop differ in page.
+   3652  ff0f				   SetObjectXPos subroutine
+   3653  ff0f		       85 02		      sta	WSYNC	; sync to start of scanline
+   3654  ff11		       38		      sec		; ensure carry flag
+   3655  ff12				   .Div15Loop
+   3656  ff12		       e9 0f		      sbc	#15	; coarse delay (15 clocks / 5 cycles per loop)
+   3657  ff14		       b0 fc		      bcs	.Div15Loop	; loop until carry clear (remainder in -15..-1)
+   3658  ff16		       a8		      tay		; Y = remainder in -15..-1
+   3659  ff17		       b9 0f fe 	      lda	fineAdjustTable,Y	; 5 cycles (page-cross guaranteed) -> fine offset
+   3660  ff1a		       95 20		      sta	HMP0,X	; store fine offset
+   3661  ff1c		       95 10		      sta	RESP0,X	; store coarse offset
+   3662  ff1e		       60		      rts
+   3663  ff1f
+   3664  ff20					      org	$FF20
+   3665  ff20
+   3666  ff20							; Set REFP1/NUSIZ1 each frame; bank1 HUD may have changed both registers.
+   3667  ff20				   SetObjReflection
+   3668  ff20		       a9 00		      lda	#0
+   3669  ff22		       85 0c		      sta	REFP1
+   3670  ff24		       a5 b6		      lda	ObjBase
+   3671  ff26		       c9 38		      cmp	#OBJ_MINER
+   3672  ff28		       d0 08		      bne	.SORdone
+   3673  ff2a		       a5 a4		      lda	LevelMinerRoom
+   3674  ff2c		       10 04		      bpl	.SORdone
+   3675  ff2e		       a9 08		      lda	#$08
+   3676  ff30		       85 0c		      sta	REFP1
+   3677  ff32				   .SORdone
+   3678  ff32		       60		      rts
+   3679  ff33
+   3680  ff33							; ------------------------------------------------------------------------------
+   3681  ff33							; LaserInput — contact missile (redesign 2026-10-08, replaces the S3 sweep):
+   3682  ff33							; the beam is ONE 8px bar that LEAVES the EYE and travels +/-4px/frame toward
+   3683  ff33							; the facing until contact, then resets to the eye (single missile, KISS —
+   3684  ff33							; user spec: no piercing, no HERO comparison needed).
+   3685  ff33							;   press edge (b7 held, b6 prev): LaserX = eye  (right RoomX-1 = nose,
+   3686  ff33							;						  left	RoomX-4)
+   3687  ff33							;   held frame: LaserX +/-4; LaserX >= 160 (right edge OR left underflow
+   3688  ff33							;     wrap) -> reset to eye (unsigned check catches both)
+   3689  ff33							;   contact (bank2 LaserHitTestBody): A = 0 continue / $50 kill (+score,
+   3690  ff33							;     dead bit set in body) / 1 lamp (SetRoomDark) / 2 wall tip -> all three
+   3691  ff33							;     contact kinds reset LaserX = eye BEFORE positioning (missile consumed;
+   3692  ff33							;     tip-in-wall never draws: contact frame restarts at the eye; PF has
+   3693  ff33							;     priority over M0 anyway).
+   3694  ff33							;   release: b7/b1 cleared in the prologue, HMM0 = 0; LaserX kept (next
+   3695  ff33							;     press edge re-anchors).
+   3696  ff33							; PIXEL MODEL (unchanged): SetObjectXPos arg A -> drawn M0 = [A-7, A].
+   3697  ff33							; LaserState: b7 held, b6 prev (press edge), b5-2 dark, b1 = .Line gate,
+   3698  ff33							; b0 = rearm (contact consumed last frame — re-test the eye next frame)
+   3699  ff33							; (BeamMask = $02 shares b1 — ENAM0 = BeamMask & LaserState; the old
+   3700  ff33							; LaserBeamOn $02 byte now holds LaserX, there was no free ZP byte).
+   3701  ff33							; S5.4: kill/lamp/wall ACTIONS run here (pad body returns only A).
+   3702  ff33							; Overscan: VBLANK on, end waits on TIM64T — SetObjectXPos's WSYNC costs 1
+   3703  ff33							; of 30 lines. Temp (joystick) intact. Lives after $FF20 (pre-$FF00 full).
+   3704  ff33							; ------------------------------------------------------------------------------
+   3705  ff33				   LaserInput
+   3706  ff33		       a6 c0		      ldx	LaserState	; X = old state (b7 held, b6 prev, b5-2 dark)
+   3707  ff35		       8a		      txa
+   3708  ff36		       29 3d		      and	#LASER_KEEP	; keep dark bits + b0 rearm (else this store
+   3709  ff38		       85 c0		      sta	LaserState	; wipes them — inc at contact must survive)
+   3710  ff3a		       8a		      txa
+   3711  ff3b		       29 80		      and	#LASER_HELD
+   3712  ff3d		       4a		      lsr		; old held (b7) -> new prev (b6)
+   3713  ff3e		       05 c0		      ora	LaserState	; prev in b6; b7/b1 cleared for this frame
+   3714  ff40		       85 c0		      sta	LaserState
+   3715  ff42		       a5 0c		      lda	INPT4	; active-low fire button, D7: 0 = pressed
+   3716  ff44		       10 05		      bpl	.LaserFire	; pressed: arm + travel (released sits right
+   3717  ff46							; below — moved here so the cap code could
+   3718  ff46							; not push .LaserReleased past bmi's ±127)
+   3719  ff46				   .LaserReleased
+   3720  ff46		       a9 00		      lda	#0
+   3721  ff48		       85 22		      sta	HMM0	; HMOVE re-applied stale fine offset
+   3722  ff4a							; otherwise -> bars slid across screen
+   3723  ff4a		       60		      rts		; LaserX kept; next press edge re-anchors
+   3724  ff4b				   .LaserFire
+   3725  ff4b		       a5 c0		      lda	LaserState
+   3726  ff4d		       09 82		      ora	#LASER_ON	; b7 held + b1 armed (kernel .Line gate)
+   3727  ff4f		       85 c0		      sta	LaserState
+   3728  ff51		       8a		      txa
+   3729  ff52		       29 80		      and	#LASER_HELD
+   3730  ff54		       f0 44		      beq	.LaserInit	; press edge: (re)start at the eye
+   3731  ff56							; --- rearm (b0): last frame a contact consumed the missile — re-test
+   3732  ff56							; the EYE instead of stepping. Flush hold: eye sits mid-tile and the +4
+   3733  ff56							; step would jump out of the 8px wall with no candidate ever inside it
+   3734  ff56							; (pass-through, 2026-10-10). dec clears b0; bne .LaserInit: state ≠ 0
+   3735  ff56							; here (b7 held from the ora above). Open-hold cadence alternates
+   3736  ff56							; travel-consume / eye-retest = 1 LWC per frame, same as before.
+   3737  ff56		       a5 c0		      lda	LaserState
+   3738  ff58		       29 01		      and	#LASER_REARM
+   3739  ff5a		       f0 04		      beq	.LAdvStep
+   3740  ff5c		       c6 c0		      dec	LaserState
+   3741  ff5e		       d0 3a		      bne	.LaserInit
+   3742  ff60							; --- travel: +/-4 px toward the facing (PlayerDir live), capped at the
+   3743  ff60							; old S3 sweep extent (SweepOff max 16: right tip <= RoomX+20, left
+   3744  ff60							; floor max(RoomX-20,0)) — past the cap restarts at the eye, the
+   3745  ff60							; triangle-loop feel of the sweep (user: beam "moved way beyond the
+   3746  ff60							; limit"). RectCount = free scratch (LWC re-owns it for its row walk).
+   3747  ff60				   .LAdvStep
+   3748  ff60		       a4 82		      ldy	PlayerDir
+   3749  ff62		       a5 83		      lda	LaserX
+   3750  ff64		       18		      clc
+   3751  ff65		       79 de ff 	      adc	StepDelta,y	; dir 0 = +4, dir 1 = -4 (table after eye)
+   3752  ff68				   .LAdvS
+   3753  ff68		       85 92		      sta	RectCount	; candidate (not committed yet)
+   3754  ff6a		       c9 a0		      cmp	#160	; right edge >=160 OR left underflow wrap
+   3755  ff6c		       90 03		      bcc	.LAdvCap
+   3756  ff6e		       4c 9a ff 	      jmp	.LaserInit
+   3757  ff71				   .LAdvCap
+   3758  ff71		       a5 82		      lda	PlayerDir
+   3759  ff73		       d0 0c		      bne	.LAdvCapL
+   3760  ff75		       a5 80		      lda	RoomX
+   3761  ff77		       18		      clc
+   3762  ff78		       69 14		      adc	#20	; old max tip = RoomX + 4 + SweepOff(16)
+   3763  ff7a		       c5 92		      cmp	RectCount
+   3764  ff7c		       b0 15		      bcs	.LAdvKeep	; cap >= cand -> within old laser extent
+   3765  ff7e		       4c 9a ff 	      jmp	.LaserInit
+   3766  ff81				   .LAdvCapL
+   3767  ff81		       a5 80		      lda	RoomX
+   3768  ff83		       38		      sec
+   3769  ff84		       e9 14		      sbc	#20
+   3770  ff86		       b0 02		      bcs	.LAdvCapLs
+   3771  ff88		       a9 00		      lda	#0	; old left clamp floor (extent >= 0)
+   3772  ff8a				   .LAdvCapLs
+   3773  ff8a		       c5 92		      cmp	RectCount	; cap vs cand
+   3774  ff8c		       f0 05		      beq	.LAdvKeep
+   3775  ff8e		       90 03		      bcc	.LAdvKeep	; cap < cand -> cand still above floor
+   3776  ff90		       4c 9a ff 	      jmp	.LaserInit
+   3777  ff93				   .LAdvKeep
+   3778  ff93		       a5 92		      lda	RectCount
+   3779  ff95		       85 83		      sta	LaserX
+   3780  ff97		       4c 9d ff 	      jmp	.LaserGo	; committed: skip the eye restart
+   3781  ff9a				   .LaserInit
+   3782  ff9a		       20 c4 ff 	      jsr	.LaserEye	; edge/offscreen: restart at the eye
+   3783  ff9d				   .LaserGo
+   3784  ff9d		       a5 83		      lda	LaserX
+   3785  ff9f		       85 8b		      sta	CollisionX	; cur arg for LaserHitTest (drawn [A-7,A])
+   3786  ffa1		       20 96 fe 	      jsr	LaserHitTest	; A = 0 / $50 kill / 1 lamp / 2 wall
+   3787  ffa4		       f0 16		      beq	.LaserPos	; no contact: keep travelling
+   3788  ffa6		       c9 50		      cmp	#$50
+   3789  ffa8		       f0 0a		      beq	.LaserKill
+   3790  ffaa		       c9 02		      cmp	#2
+   3791  ffac		       f0 09		      beq	.LaserContact	; wall CONSUMES the missile (user 2026-10-10):
+   3792  ffae							;   same as kill minus score — restart at
+   3793  ffae							;   the eye THIS frame, buzz keeps (b7).
+   3794  ffae							;   #9's blank + the wall-center hold clamp
+   3795  ffae							;   both superseded: a contact missile is
+   3796  ffae							;   consumed by walls. No hold state, no
+   3797  ffae							;   cap reorder, no pass-through possible.
+   3798  ffae		       20 26 fc 	      jsr	CallPad_SetRoomDark	; lamp crash = player-body touch (no kill)
+   3799  ffb1		       4c b7 ff 	      jmp	.LaserContact
+   3800  ffb4				   .LaserKill
+   3801  ffb4		       20 1a fc 	      jsr	CallPad_AddScore	; A = $50 BCD (dead bit already set in body)
+   3802  ffb7				   .LaserContact
+   3803  ffb7		       20 c4 ff 	      jsr	.LaserEye	; consumed -> restart at the eye THIS frame
+   3804  ffba		       e6 c0		      inc	LaserState	; b0 rearm: next held frame re-tests the eye
+   3805  ffbc							; (b0 was 0: travel only runs with b0 clear,
+   3806  ffbc							; rearm dec'd it before this init) — flush
+   3807  ffbc							; hold otherwise steps +4 out of the tile
+   3808  ffbc				   .LaserPos
+   3809  ffbc		       a5 83		      lda	LaserX
+   3810  ffbe		       a2 02		      ldx	#2	; selector 2: RESP0+2=RESM0, HMP0+2=HMM0
+   3811  ffc0		       20 0f ff 	      jsr	SetObjectXPos	; drawn M0 = [LaserX-7, LaserX]
+   3812  ffc3		       60		      rts
+   3813  ffc4
+   3814  ffc4							; Eye spawn point. Right clamped to 159 (TIA position past 159 is
+   3815  ffc4							; unverified for SetObjectXPos); left >= 0 because RoomX >= PLAYER_MIN_X=4.
+   3816  ffc4				   .LaserEye
+   3817  ffc4		       a5 82		      lda	PlayerDir
+   3818  ffc6		       d0 0e		      bne	.LEyeL
+   3819  ffc8		       a5 80		      lda	RoomX
+   3820  ffca		       18		      clc
+   3821  ffcb		       69 04		      adc	#4
+   3822  ffcd		       c9 a0		      cmp	#160
+   3823  ffcf		       90 02		      bcc	.LEyeS
+   3824  ffd1		       a9 9f		      lda	#159
+   3825  ffd3				   .LEyeS
+   3826  ffd3		       85 83		      sta	LaserX
+   3827  ffd5		       60		      rts
+   3828  ffd6				   .LEyeL
+   3829  ffd6		       a5 80		      lda	RoomX
+   3830  ffd8		       38		      sec
+   3831  ffd9		       e9 04		      sbc	#4
+   3832  ffdb		       85 83		      sta	LaserX
+   3833  ffdd		       60		      rts
+   3834  ffde
+   3835  ffde				   StepDelta		; travel step per PlayerDir (0=right, 1=left)
+   3836  ffde		       04 fc		      .byte.b	4, 252
+   3837  ffe0
+   3838  ffe0		       00 00 00 00*	      .ds	$FFE6 - *, 0	; pin TallyTramp (BeamMask moved to $FExx
+   3839  ffe6							; freed 12B here — drift must not move it)
+   3840  ffe6							; ------------------------------------------------------------------------------
+   3841  ffe6							; TallyTramp ($FFE6, byte-identical with bank2 — guard: check_moth_tramp).
+   3842  ffe6							; bank0 jsr's here (CheckMinerPickup arm / TallyWork step): `sta $1FF8`
+   3843  ffe6							; selects bank2, then the jmp operand is fetched from bank2's image at the
+   3844  ffe6							; same PC (FoldIndirect discipline). The bank2 body tail-jmps ReturnPad
+   3845  ffe6							; ($FBF8) -> rts back to the bank0 jsr. Ends $FFEB — $FFF2-$FFF9 stay fill
+   3846  ffe6							; (F6 hotspot mirrors).
+   3847  ffe6							; ------------------------------------------------------------------------------
+   3848  ffe6		       f3 13	   TallyEntry =	$F313	; bank2 TallyEntry — operand must match label
+   3849  ffe6				   TallyTramp
+   3850  ffe6		       8d f8 1f 	      sta	$1FF8
+   3851  ffe9		       4c 13 f3 	      jmp	TallyEntry
+   3852  ffec
+   3853  ffec							; ------------------------------------------------------------------------------
+   3854  ffec							; HotOverlapFlag — bank3 entry tramp (A3 2026-10-19). Moved off $FE90 (bank3
+   3855  ffec							; $FE93 belongs to OvShutBand's .OSline) into the 6-byte gap after
+   3856  ffec							; TallyTramp. bank0 executes `sta $1FF9`; the `jmp` at +3 is fetched from
+   3857  ffec							; bank3's image at $FFEF (guard: check_moth_tramp).
+   3858  ffec							; ------------------------------------------------------------------------------
+   3859  ffec					      .ds	$FFEC - *, 0
+   3860  ffec				   HotOverlapFlag
+   3861  ffec		       8d f9 1f 	      sta	$1FF9	; select bank3 (record stream lives there)
+   3862  ffef		       4c 83 f6 	      jmp	$F683	; bank3 HotOverlapBody (synced by verify_build)
+   3863  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
+   3864  fff2
+   3865  fff2							; ------------------------------------------------------------------------------
+   3866  fff2							; LaserHitTest — MOVED to bank2 (S5.4, entry tramp $FE86 -> `jmp $FF00`).
+   3867  fff2							;   Fold-free: enemy records are level data in bank2 (direct (FetchPtr),Y),
+   3868  fff2							;   and the kill/lamp ACTIONS cannot run from a bank2 body (CallPads are
+   3869  fff2							;   bank0->bank1 only — pads cannot nest from a pad body). Body returns a
+   3870  fff2							;   RESULT CODE in A (+Z preserved through ReturnPad's sta/rts): 0 = miss,
+   3871  fff2							;   #$50 = kill (dead bit already set), 1 = lamp. LaserInput's tail does
+   3872  fff2							;   `beq / cmp #$50 / jsr CallPad_SetRoomDark | jsr CallPad_AddScore`.
+   3873  fff2							;   One less push level too (no fold / no pad call inside the body).
+   3874  fff2							;   Full behavior docs moved with the body.
+   3875  fff2							; ------------------------------------------------------------------------------
+   3876  fff2
+   3877  fff2							; ==============================================================================
+   3878  fff2							; Interrupt vectors ($FFF2-$FFF9 = fill — NEVER put code here: $FFF6-$FFF9
+   3879  fff2							; decode as F6 hotspot mirrors on peek (see MothExitPad comment at $FC49))
+   3880  fff2							; ==============================================================================
+   3881  fff2							; ==============================================================================
+   3882  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0	; pad to vectors at $FFFA
+   3883  fffa
+   3884  fffa		       08 f0		      .word.w	GameStart	; NMI vector
+   3885  fffc		       08 f0		      .word.w	GameStart	; RESET vector
+   3886  fffe		       08 f0		      .word.w	GameStart	; IRQ vector
