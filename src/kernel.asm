@@ -580,22 +580,13 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; BombMarkWalls punches holes once at the fuse 1->2 edge.
     jsr CallPad_BuildColupF    ; stripe+hot COLUPF bytes into ColupfBuf ($E7-$F2)
 
-    ; --- Band-color cache → RoomBandColor ($D2) for kernel+overscan (P2.5) ---
-    ; ROM now lives in bank2: kernel-time fold is cycle-impossible on the
-    ; .WaterRow line, so fold HERE (VBLANK, timer-paced) and hand the kernel
-    ; a plain zp load. Stage FetchPtr immediately before the fold.
-    lda RoomNo
-    asl
-    asl
-    ora #3                      ; Y = RoomNo*4+3 (RoomNo*4 low bits are 0)
-    tay
-    lda LevelEnemyLo
-    sta FetchPtr
-    lda LevelEnemyHi
-    sta FetchPtr+1
-    ldx #0
-    jsr FoldIndirect
-    sta RoomBandColor
+    ; --- Band color: RoomBandColor ($BC) is staged ONCE per room by
+    ; EnterRoomB2 (+3 of the RoomEnemies record — the 2026-10-04 up-exit
+    ; fix). The old per-frame VBL fold that re-read the same ROM byte is
+    ; REDUNDANT since then and is deleted (2026-10-19): it saved nothing the
+    ; kernel needs, cost ~30c of VBL time, and it was a level-data read in
+    ; the VBL path (the read that made a bank3 data move need another
+    ; reader). test_band_restage covers the contract.
 
     ; --- Cave COLUBK for this frame → written DIRECTLY (Phase 3) ---
     ; state=2: blink (60-BombTimer)&3 → black/yellow/red/yellow; else COLOR_CAVE_BG
@@ -3012,7 +3003,7 @@ CallPad_TitleKernel:
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F1BD
+    jmp $F1A7
     .ds $FC61 - *, 0            ; bank0↔bank1 intro-music tick
 CallPad_MusicTick:
     sta $1FF7

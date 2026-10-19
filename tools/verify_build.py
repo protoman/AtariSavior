@@ -1428,6 +1428,26 @@ def sync_overscan_literal(src: Path) -> int:
         text = text[:m.start(2)] + f"{got:04X}" + text[m.end(2):]
         bank1_p.write_text(text, encoding="utf-8")
         print(f"sync: bank1 jmp Overscan ${old:04X} -> ${got:04X}")
+    # The CallPad twin block is byte-identical in bank0 and bank1: patch both
+    # pads' CallPad_Overscan operand (every byte before the pad moves with
+    # bank0 code, and the two pads must point at the same address).
+    for label, path in (("kernel", src / "kernel.asm"),
+                        ("bank1", bank1_p)):
+        if not path.exists():
+            print(f"sync: {path.name} missing", file=sys.stderr)
+            return 1
+        txt = path.read_text(encoding="utf-8")
+        pm = re.search(r"(CallPad_Overscan:\s*\n\s*sta \$1FF6\s*\n\s*jmp \$)"
+                       r"([0-9A-Fa-f]{4})", txt)
+        if not pm:
+            print(f"sync: {label} CallPad_Overscan literal not found",
+                  file=sys.stderr)
+            return 1
+        pold = int(pm.group(2), 16)
+        if pold != got:
+            txt = txt[:pm.start(2)] + f"{got:04X}" + txt[pm.end(2):]
+            path.write_text(txt, encoding="utf-8")
+            print(f"sync: {label} CallPad_Overscan ${pold:04X} -> ${got:04X}")
     return 0
 
 
