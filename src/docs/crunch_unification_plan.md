@@ -354,9 +354,14 @@ Our bytes by subsystem (top-down):
 PF lookup tables (LFA00/LFB00/LFC00/LFD00), 20-odd screen templates reused
 across levels, sprite art, sound bytes. Reasons its code is 5x smaller:
 
-1. **Hardware collision** (TIA CX registers) — HERO has ~1 collision routine.
-   We have six software rect walkers (`PlayerHitsMap`, `LaserWallClamp`,
-   `OvM1Block`, `HotOverlapBody`, the enemy probes, the shutter kill).
+1. **CORRECTED 2026-10-19 (code checked): HERO has NO hardware collision**
+   (zero `CX*` reads in the disassembly; it compares against per-row limit
+   tables and a 25-byte RAM copy of the screen). And **our collision is
+   already HERO-shaped**: `PlayerHitsMap` (cell_collision_plan 2.1) and
+   `MothDoWalk` (4.1) both read the PF buffers directly — the rect cache was
+   removed from those walkers. What is left is semantic (hot rects, M1 strip,
+   shutter endpoints), which PF bits cannot encode. **Space left on the table
+   here: ~0** (see the point-by-point audit below).
 2. **Baked screens vs staged screens** — HERO reads PF per scanline from ROM
    tables; we stage PF/color/meta every VBL (1.3 KB of room-load/staging code).
 3. **No flicker multiplexer** — HERO's object budget fits its sprites; we
@@ -369,9 +374,21 @@ across levels, sprite art, sound bytes. Reasons its code is 5x smaller:
    player, footer + copyright fonts, 7 enemy types. HERO has 4 enemy types,
    a simple title, and level/screen reuse.
 
-**Implication:** 8K total is not reachable by squeezing — it needs HERO's
-architecture (hardware collision + baked screens), i.e. a rewrite. The
-realistic dedup wins are ~1 KB: one walker engine (~400-600), crunch
-consolidation C2/C3 (~200), staging merge (~200). Cutting title/intro/music/
-footer would return another ~1.3 KB if the product does not need it.
+**Implication:** 8K total is not reachable by squeezing — and the "hardware
+collision" idea is dead: we already use the PF-buffer cell map. The realistic
+dedup wins are much smaller than first stated: crunch consolidation C2/C3
+(~200), staging merge (~200), prologue micro-merges (~40-100, blocked by the
+no-jsr stack rule). Cutting title/intro/music/footer returns ~1.3 KB if the
+product does not need it. The size is feature-driven, not architecture-driven.
+
+### Point-by-point audit of the "why so big" list (measured)
+
+| # | claim | verdict | space |
+|---|---|---|---|
+| 1 | "HERO uses hardware collision; we have six rect walkers" | **wrong twice**: HERO has no CX reads; our two hot walkers already read PF bits | **~0 B** |
+| 2 | baked screens vs staged screens | still to audit | ? |
+| 3 | flicker multiplexer (`SelectActiveObject` 289 B) | still to audit | ? |
+| 4 | cross-bank tax | still to audit | ? |
+| 5 | feature surface | still to audit | ? |
+
 
