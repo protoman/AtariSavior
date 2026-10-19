@@ -58,6 +58,19 @@ Traps found while landing it (add to §"Rules that bit us"):
   `spill_bank3.asm`).
 - `emit_spills` sizes only the bank2 table files; bank3 has a fixed org.
 
+## 1c. Chunk C2 — **DONE 2026-10-19**
+
+Deleted `PhHcrPre`/`HOVFeatPre`; the crunch dispatchers read record fields
+directly from `(FetchPtr),Y` (same bank since A3). No stack shuttle: only the
+record base is pushed. bank3 code 1761 -> **1676** (-85 B), total code 9298 ->
+**9213**. 16-case hcrunch + vcrunch/phase tests green, frozen banks re-frozen.
+Decision on the open question changed by A3's result: **the crunch machine
+stays in bank3** (both its walker and its consumer are there; moving it to
+bank2 would re-add two switches and save nothing).
+
+Next: C3 (drop retired twins if any remain, fold `HcrPush`/`HcrClock` if a
+zero-risk form exists), then the reorg (PF-table score).
+
 ## 1b. (historical) A3 plan — level data → bank3
 
 **Why first:** C2 needs ~420 B contiguous in bank2; the biggest hole is 192 B.

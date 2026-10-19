@@ -563,7 +563,12 @@ PhRec:
 .PhB82:
     cmp #$82
     bne .PhSkip             ; unknown b7 class: skip 4
-    jmp PhHcrPre            ; Phase 4: pre-read fields (bank2 ROM), tramp bank3
+    ; A3b: stage MetaB (b6 = hot) for HcrClock's cold/hot gate, then enter the
+    ; hcrunch body DIRECTLY — FetchPtr still points at this record, so no
+    ; field pre-read/push shuttle is needed (same-bank walker now).
+    lda RoomMetaB
+    sta LineCount
+    jmp PhHcrEntry
 .PhPhase:
     iny                     ; Y → 2c (even, 0-18)
     lda (FetchPtr),Y
@@ -1010,69 +1015,22 @@ HOVnext:
 .HOVfeature:
     cmp #$81
     beq HOVnext             ; vcrunch skip (HOVnext pops the loop Y)
-    jmp HOVFeatPre          ; → pre-read fields (bank2 ROM) → bank3 dispatch
+    ; LineCount is clobbered by the kernel .Row between this VBL staging and
+    ; the overscan walk, so the hot byte (MetaB b6) is re-staged HERE, at the
+    ; call, exactly like the old bank2 pre-read did.
+    lda RoomMetaB
+    sta LineCount
+    lda (FetchPtr),Y        ; restore the class (Y = record base)
+    jmp HOVFeatEntry        ; A3b: same-bank, fields read from FetchPtr
     .ds 8, 0                ; pad: 2+2+3+8 = 15B = old body size
 
 ; ------------------------------------------------------------------------------
 
 
-                            ;   twin jmp sits at $FC1B). The pad MUST sit
-                            ;   before the label — inside the block it would
-                            ;   be a BRK in the fall-through path.
-HOVFeatPre:                 ; .HOVfeature: A = class, Y = record base
-        cmp #$80
-        beq .HFPdirect      ; $80 phase: no fields, no staging (Y = base
-                            ;   must survive — HOVafterGate reads it)
-        tax                 ; X = class (survives the field pushes; the old
-                            ;   Y-restore + class reload is dead — bank3
-                            ;   reads fields from the stack, never Y)
-        iny
-        lda (FetchPtr),Y
-        pha                 ; x
-        iny
-        lda (FetchPtr),Y
-        pha                 ; y
-        iny
-        lda (FetchPtr),Y
-        pha                 ; w
-        iny
-        lda (FetchPtr),Y
-        pha                 ; h
-        ; Rule 1 (user 2026-10-14): stage MetaB for HOVhcrunch's hot
-        ; exemption. Full byte — bank3 tests b6 via asl×2 (b7 shutter
-        ; flag shifts out first; hcrunch rooms keep b7 clear). LineCount
-        ; is free on the HOV hit path (the overlay reader is the miss
-        ; path — mutually exclusive; kernel restages per row). X still
-        ; holds the class (survives the field pushes) — no pha/pla pair.
-        lda RoomMetaB       ; MetaB
-        sta LineCount
-        txa                 ; class (A = record class for bank3)
-                            ;   shrink here (MetaB staging) moved the sta and
-                            ;   the frame died in bank3's $F000 stub. The pad
-                            ;   precedes the label so the branch lands on code.
-.HFPdirect:
-        jmp HOVFeatEntry     ; A3: local (bank3)
-                            ;   tramp lands at $FC31 (bank3 twin jmp $FC34). The
-                            ;   pad sits BEFORE the label — inside the block it
-                            ;   would be a BRK in the fall-through path.
-PhHcrPre:                   ; PhaseBlink $82: Y = record base
-        ldx #4              ; field-push loop (x,y,w,h — same stack order;
-.PHp                        ;   PhHcrEntry reads via tsx, A unused)
-        iny
-        lda (FetchPtr),Y
-        pha
-        dex
-        bne .PHp            ; Y = base+4 (bank3's return contract)
-        tya
-        pha                 ; save base+4 across the MetaB read
-        lda RoomMetaB       ; MetaB — staged at room entry (ZP, bank-free;
-                            ;   the old (RoomPF0Lo),Y read was bank2-only)
-        sta LineCount           ; full byte — bank3's HcrPush masks b6;
-                                ; read EARLY in PhHcrEntry, before the PF
-                                ; mask staging reuses LineCount.
-        pla
-        tay                 ; Y = base+4 (record end → .PhRec iny)
-        jmp PhHcrEntry       ; A3: local (bank3)
+; A3b (2026-10-19): HOVFeatPre / PhHcrPre DELETED. Both bodies are in
+; this bank now, so the feature dispatchers read the record fields
+; straight from FetchPtr with Y = record base — no 4-field stack
+; shuttle (the stack floor improves by ~7 bytes on both paths).
 
 ; ==============================================================================
 ; PhVcrEntry — PhaseBlink $81 (vcrunch) tramp target.
@@ -1101,59 +1059,47 @@ PhHcrPre:                   ; PhaseBlink $82: Y = record base
 ; ==============================================================================
     org $F880
 PhHcrEntry:
-    ; Entered from bank2 PhHcrPre: stack (top→) = h, w, y(band), x, <caller>.
-    ; Hot (MetaB b6) is staged bank2-side in LineCount ($84) and read HERE,
-    ; right after HcrClock, BEFORE the mask staging reuses LineCount. The
-    ; push is deliberately the FIRST thing after n: it only needs n + band +
-    ; hot, and reordering keeps the 4-field stack contract (no 5th push) so
-    ; bank2's tramp stays aligned with this bank's twin.
-    ; Y = base+4 on entry; saved for the .PhRec return.
+    ; $82 hcrunch. IN: Y = record base, A = class (ignored), FetchPtr = record
+    ; stream, LineCount = MetaB (b6 hot; staged by PhaseBlink's $82 arm).
+    ; Record: [$82, x, y(band), w(2*cells), h]. Same bank as the walker now
+    ; (A3), so fields are read DIRECTLY — the old 4-field stack shuttle is
+    ; gone and only the record base is pushed (stack floor eases by ~7 bytes).
+    ; Y = base+4 on exit (PhRec contract).
     tya
-    pha                     ; [base+4]
-    tsx
-    lda $0104,X             ; y = band
-    pha                     ; [base+4, band]
-    tsx
-    lda $0104,X             ; w
+    pha                     ; [base] — only saved value
+    iny
+    iny
+    lda (FetchPtr),Y        ; band
+    sta CollisionEndX       ; band scratch for the staging (PHM restages it)
+    sta CollisionCellX      ; HcrPush's band input (its band-range gate)
+    iny
+    lda (FetchPtr),Y        ; w
     lsr                     ; full cells (w is even, 2*cells)
-    pha                     ; [base+4, band, full]
     tax                     ; X = full
     jsr HcrClock            ; A = n covered cells (1..full); b7 → 1 (spent)
-    pha                     ; [base+4, band, full, n]
-    ; cold growth push (user 2026-10-16). Split from the staging (option A):
-    ; on the 16f grow-step edge (EnemyRamP & $0F == 0) we PUSH and SKIP the
-    ; staging; every other frame we STAGE and never push. The PF buffer then
-    ; shows last frame's prefix for the one step frame (the shutter renders
-    ; one frame late on a step — invisible at 16f/step), but the ~90c staging
-    ; and the ~65c push never share a frame, so the worst VBL is base +
-    ; max(staging, push) instead of the sum (the flicker fix). Spent (b7)
-    ; always stages (freeze at stub) and never pushes.
+    sta CollisionX          ; n
+    ; --- cold growth push on the 16f step edge (spent never pushes) ---
     lda EnemyRamP
     and #$0F
-    bne .HcStage            ; not the step edge → stage the shutter
+    bne .HcStage
     lda EnemyDeadMask
     and #$80
-    bne .HcStage            ; spent: stage the stub, never push
-    tsx
-    lda $0103,X             ; band
-    sta CollisionCellX
-    lda $0101,X             ; n
+    bne .HcStage
+    lda CollisionX
     asl
     asl
     asl                     ; 8n (prefix width px) — HcrPush's only ext input
     sta CollisionX
-    lda LineCount           ; hot (MetaB b6, $40/0) — bank2 staged it
+    lda LineCount           ; hot (MetaB b6, $40/0)
     tay                     ; Y = hot
     jsr HcrPush
-    jmp .HcDrain            ; push frame: skip the staging (see above)
+    jmp .HcDone             ; push frame: skip the staging (see plan)
 .HcStage:
-    ; Fused bbox-open + prefix-close, ONE band row (h is always 1 for $82):
+    ; Fused bbox-open + prefix-close, ONE band row:
     ;   PF[row] = (PF[row] & ~P(full)) | P(n)
-    ; ~P(full) staged in LineCount/CCX/CEY; P(n) read from CrPfx*,Y inline.
-    ; One pass replaces ApplyAND-then-ApplyOR (same result — P(n) ⊆ P(full)
-    ; — but half the buffer reads); frees ~50c of the hcrunch VBL.
-    tsx
-    ldy $0102,X             ; full
+    ; X still = full (HcrClock preserves X/Y).
+    txa                     ; full
+    tay
     lda CrPfx0,Y
     eor #$FF
     sta LineCount
@@ -1163,10 +1109,8 @@ PhHcrEntry:
     lda CrPfx2,Y
     eor #$FF
     sta CollisionEndY
-    tsx
-    ldy $0101,X             ; n → CrPfx index
-    lda $0103,X             ; band
-    tax                     ; X = PF buffer row index
+    ldx CollisionEndX       ; band → PF buffer row
+    ldy CollisionX          ; n → CrPfx index
     lda PF0Buf,X
     and LineCount
     ora CrPfx0,Y
@@ -1179,17 +1123,12 @@ PhHcrEntry:
     and CollisionEndY
     ora CrPfx2,Y
     sta PF0Buf+6,X
-.HcDrain:
-    pla                     ; n
-    pla                     ; full
-    pla                     ; band
-    pla                     ; base+4 → A = base+4
-    tay                     ; Y = base+4 (record end → .PhRec iny → next class)
-    pla
-    pla
-    pla
-    pla                     ; drain h, w, y, x
-    jmp PhRec               ; A3: local (PhaseBlink walks in bank3)
+.HcDone:
+    pla                     ; base
+    clc
+    adc #4                  ; base+4 = record end (PhRec iny → next class)
+    tay
+    jmp PhRec
 
 ; ==============================================================================
 ; CrunchClock / CrunchMasks DELETED (2026-10-19): their only caller was
@@ -1288,36 +1227,34 @@ HcrClock:
 ; ==============================================================================
     org $FA40
 HOVFeatEntry:
-    ; $81/$82 entered from bank2 HOVFeatPre: stack (top→) = h, w, y, x,
-    ; <base from .HOVloop>. Fields MUST be drained before HOVnext/HOVlegHit
-    ; (they pop the .HOVloop base). $80 has no fields (HOVafterGate = bank2).
-    ; C1 (2026-10-19): ONE dispatcher for both crunch classes — the old
-    ; HOVvcrunch/HOVhcrunch jsr+rts pair and their duplicated drains are gone.
-    ; Conditional misses branch to the nearby .HFmissJ trampoline (a direct
-    ; bcc to .HFmissD is >127 B away in both arms).
+    ; .HOVfeature dispatch. IN: A = record class, Y = record base,
+    ; FetchPtr = record stream (all same-bank since A3). No field pre-read and
+    ; no stack: fields are read at (FetchPtr),base+1..4 as needed. Returns to
+    ; HOVnext / HOVlegHit (both pop the .HOVloop base) or HOVafterGate ($80,
+    ; which needs Y = base — the $80 path never touches Y).
     cmp #$80
     bne .HFnotPhase
-    jmp .HFphase                ; (far: trampoline form for every branch here)
+    jmp .HFphase                ; (far trampoline; Y = base preserved)
 .HFnotPhase:
-    pha                         ; save class (b7 check clobbers A)
     lda EnemyDeadMask
     and #$80                    ; b7: crunch kill already happened?
     beq .HFnotLatched
-    jmp .HFmissP                ; yes → pass (wall stays, no re-kill)
+    jmp .HFmiss                 ; yes → pass (wall stays, no re-kill)
 .HFnotLatched:
-    pla
+    lda (FetchPtr),Y            ; class byte (A was consumed by the mask test)
     cmp #$81
     bne .HFnotV
     jmp .HFv
 .HFnotV:
     cmp #$82
     beq .HFh_begin
-    jmp .HFmissP                ; unknown b7 class → same drain path
+    jmp .HFmiss
 .HFh_begin:
 
     ; ---------------- $82 hcrunch: band ∈ [top,bottom] ----------------
-    tsx
-    lda $0103,X                 ; y = band
+    iny
+    iny
+    lda (FetchPtr),Y            ; y = band
     cmp CollisionCellY
     bcs .HFh_lo
     jmp .HFmissD                ; band < top
@@ -1327,13 +1264,13 @@ HOVFeatEntry:
     bcc .HFh2                   ; band <= bottom
     jmp .HFmissD                ; band > bottom
 .HFh2:
-    tsx
-    lda $0102,X                 ; w
+    iny
+    lda (FetchPtr),Y            ; w
     lsr                         ; full cells
     tax
     ; Rule (user 2026-10-16): cold kill while CLOSING (sc<52 = dwell+grow);
-    ; hot (LineCount = MetaB, staged bank2-side; asl×2 brings b6 to C)
-    ; exempts — any phase/extent kills. Opening never kills.
+    ; hot (LineCount = MetaB, staged by PhaseBlink's $82 arm; asl×2 brings
+    ; b6 to C) exempts — any phase/extent kills. Opening never kills.
     lda LineCount
     asl
     asl                         ; b7 out, b6 -> C
@@ -1345,18 +1282,8 @@ HOVFeatEntry:
     bcc .HFh3                   ; closing half
     jmp .HFmissJ                ; opening half → no kill
 .HFh3:
-    txa
-    pha                         ; full — stays callee-independent
-    jsr HcrClock                ; n covered cells (X = full preserved)
-    sta CollisionX              ; save covered
-    lda LineCount
-    asl
-    asl                         ; b7 out, b6 -> C
-    pla                         ; full (PLA preserves C)
-    bcs .HFh4                   ; hot → any extent kills
-.HFh4:
-    lda CollisionX
-    asl                         ; covered_w in 4px cols
+    jsr HcrClock                ; A = n (1..full); X/Y preserved
+    asl                         ; n covered cells in 4px cols
     cmp CollisionEndX           ; covered_w vs min col (strict >)
     bcc .HFmissJ
     beq .HFmissJ
@@ -1367,35 +1294,35 @@ HOVFeatEntry:
 
     ; ---------------- $81 vcrunch: covered rect [x, y, w, h] -------------
 .HFv:
-    tsx
-    lda $0104,X                 ; x
+    iny
+    lda (FetchPtr),Y            ; x
     cmp CollisionCellX          ; x vs max col
     beq .HFv2
     bcc .HFv2
     jmp .HFmissD
 .HFv2:
     sta LineCount               ; save x
-    tsx
-    lda $0103,X                 ; y
+    iny
+    lda (FetchPtr),Y            ; y
     cmp CollisionEndY           ; y vs bottom row
     beq .HFv3
     bcc .HFv3
     jmp .HFmissD
 .HFv3:
     sta CollisionX              ; save y
-    tsx
+    iny
     clc
-    lda $0104,X                 ; x
-    adc $0102,X                 ; + w
+    lda LineCount               ; x
+    adc (FetchPtr),Y            ; + w
     cmp CollisionEndX           ; x+w vs min col (strict >)
     bcc .HFmissJ
     beq .HFmissJ
-    tsx
-    lda $0101,X                 ; h
-    sta LineCount               ; Phase B sprite shutter: covered = h
+    iny
+    lda (FetchPtr),Y            ; h
+    sta LineCount               ; covered = h
     lda CollisionX              ; y
     clc
-    adc LineCount               ; y + covered_h
+    adc LineCount               ; y + h
     cmp CollisionCellY          ; vs top row (strict >)
     bcc .HFmissJ
     beq .HFmissJ
@@ -1404,34 +1331,17 @@ HOVFeatEntry:
     lda EnemyDeadMask
     ora #$80                    ; b7: crunch kill latch
     sta EnemyDeadMask
-    pla
-    pla
-    pla
-    pla                         ; drain h,w,y,x (base on top for HOVlegHit)
-    jmp HOVlegHit               ; A3: local (body is in bank3)
+    jmp HOVlegHit               ; loop Y still on the stack (popped there)
 .HFmissD:
-    pla
-    pla
-    pla
-    pla                         ; drain h,w,y,x (base on top for HOVnext)
 .HFmiss:
-    jmp HOVnext                 ; A3: local
-.HFmissP:
-    pla                         ; drop saved class
-    jmp .HFmissD
+    jmp HOVnext                 ; loop Y still on the stack (popped there)
 .HFphase:
     lda EnemyDeadMask
     and #$60                    ; b5 armed | b6 phase dead
     cmp #$20                    ; armed AND not yet removed?
     bne .HFmiss
-    jmp HOVafterGate            ; A3: local
+    jmp HOVafterGate            ; A3: local (Y = base still live)
 
-; ==============================================================================
-; Bank3-side tramp images (byte-identical with bank2's fetch slots) and
-; return tails. The `sta $1FF8` at each tail executes bank3-side; the
-; `jmp` operand bytes at +3 are fetched from bank2 post-switch — bank2's
-; $FCC1 pads hold the same jmp images.
-; ==============================================================================
 ; ==============================================================================
 ; A3 (2026-10-19): the pre-read/return tramp images are gone — PhaseBlink,
 ; VcrShutter, HotOverlapBody and the HOV feature dispatcher all live in

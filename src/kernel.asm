@@ -2982,7 +2982,7 @@ CallPad_UpdateLaserSound:
     jmp $FAA4
 CallPad_BuildColupF:
     sta $1FF9                   ; A3: body lives in bank3 (record stream)
-    jmp $F5C3                   ; BuildColupF (bank3; synced by verify_build)
+    jmp $F5C7                   ; BuildColupF (bank3; synced by verify_build)
 CallPad_BombMarkWalls:
     sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
     jmp $FB10
@@ -3905,7 +3905,7 @@ TallyTramp:
     .ds $FFEC - *, 0
 HotOverlapFlag:
     sta $1FF9                   ; select bank3 (record stream lives there)
-    jmp $F67F                   ; bank3 HotOverlapBody (synced by verify_build)
+    jmp $F683                   ; bank3 HotOverlapBody (synced by verify_build)
     .ds $FFF2 - *, 0            ; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
 
 ; ------------------------------------------------------------------------------
