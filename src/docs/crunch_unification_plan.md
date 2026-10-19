@@ -107,6 +107,34 @@ What A3 changed structurally:
 - The `$FCC1-$FCD9` return pads and the `$FC1B/$FC34` pre-read twins are
   DELETED on both sides.
 
+### C2 SNAPSHOT — 2026-10-19, stack-shuttle removal (this commit)
+
+**What actually existed:** after A3 both crunch staging paths and both
+consumers live in bank3, so the "move the machine to bank2" half of C2 became
+pointless (it would re-add two bank switches). The real duplication was the
+**4-field stack shuttle**: `PhHcrPre`/`HOVFeatPre` pushed x,y,w,h from the
+record, then `PhHcrEntry`/`HOVFeatEntry` re-pushed and `tsx`-read them and
+drained 4 bytes on every exit.
+
+**Done:** deleted `PhHcrPre` + `HOVFeatPre`; both dispatchers now read the
+fields straight from `(FetchPtr),Y` (same bank as the stream since A3). The
+crunch paths push nothing except the one record-base byte (`PhHcrEntry`) —
+the measured stack floor eases by ~7 bytes on both paths. `PhaseBlink`'s $82
+arm stages `LineCount = MetaB` itself; HotOverlap re-stages it at the call
+(the kernel `.Row` clobbers LineCount between VBL and overscan).
+
+| item | result |
+|---|---|
+| bank3 code | 1761 -> **1676** (-85 B) |
+| bank3 used | 2187 -> **2102** |
+| total code | 9298 -> **9213** |
+| behaviour | identical (16-case hcrunch battery, vcrunch/phase-kill/vcr shutter green) |
+
+Honest note: the 200-300 B estimate did not survive contact — the shuttle was
+~100 B and the re-stage costs ~15. The remaining dedupe ideas (mask tables
+~20 B, crunch clocks ~50 B) are cross-semantic (vcrunch state nibble vs
+hcrunch prefix count) and were left alone rather than risk the kill logic.
+
 ### What the chunks actually bought (honest accounting)
 
 - C1 -10 B, **A1 -22 B** (bank2), **A2 -170 B** (bank2). A1/A2 were

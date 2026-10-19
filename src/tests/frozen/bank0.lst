@@ -2983,7 +2983,7 @@
    2982  fc35		       4c a4 fa 	      jmp	$FAA4
    2983  fc38				   CallPad_BuildColupF
    2984  fc38		       8d f9 1f 	      sta	$1FF9	; A3: body lives in bank3 (record stream)
-   2985  fc3b		       4c c3 f5 	      jmp	$F5C3	; BuildColupF (bank3; synced by verify_build)
+   2985  fc3b		       4c c7 f5 	      jmp	$F5C7	; BuildColupF (bank3; synced by verify_build)
    2986  fc3e				   CallPad_BombMarkWalls
    2987  fc3e		       8d f7 1f 	      sta	$1FF7	; S5.2: body lives in bank1 ($FB10)
    2988  fc41		       4c 10 fb 	      jmp	$FB10
@@ -3906,7 +3906,7 @@
    3905  ffec					      .ds	$FFEC - *, 0
    3906  ffec				   HotOverlapFlag
    3907  ffec		       8d f9 1f 	      sta	$1FF9	; select bank3 (record stream lives there)
-   3908  ffef		       4c 7f f6 	      jmp	$F67F	; bank3 HotOverlapBody (synced by verify_build)
+   3908  ffef		       4c 83 f6 	      jmp	$F683	; bank3 HotOverlapBody (synced by verify_build)
    3909  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
    3910  fff2
    3911  fff2							; ------------------------------------------------------------------------------
