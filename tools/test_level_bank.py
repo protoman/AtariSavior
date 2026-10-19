@@ -91,8 +91,10 @@ def main() -> None:
             f"kernel.asm still reads ({tbl}),Y directly — route via FoldIndirect"
     # #22: EnterRoom moved to bank2 (direct (ptr),Y reads — it IS the reader),
     # so its 11 fold call sites + 10 stage lines left kernel with it.
-    assert KERNEL.count("jsr FoldIndirect") >= 30, \
-        f"expected >=30 fold call sites (band/conn/LoadLevel + P3.1 enemy " \
+    # was 30: the snake's symmetric patrol (2026-10-19) dropped its two ROM-dir
+    # reads, so two fold call sites left the kernel.
+    assert KERNEL.count("jsr FoldIndirect") >= 28, \
+        f"expected >=28 fold call sites (band/conn/LoadLevel + P3.1 enemy " \
         f"derives; EnterRoom folds moved to bank2 direct reads), " \
         f"got {KERNEL.count('jsr FoldIndirect')}"
     # every fold batch stages FetchPtr immediately before its reads
