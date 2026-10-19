@@ -339,12 +339,12 @@ PLAYER_WIDTH    = 7             ; lit player sprite spans 7 pixels; REFP0 shift 
 ENEMY_WIDTH     = 8             ; snake GRP1 width ($ff = 8 px) — flush-out span
 LAMP_WIDTH      = 4             ; OBJ_LAMP uses GRP1's leftmost 4 lit pixels
 MINER_WIDTH     = 4             ; OBJ_MINER spans 4 lit GRP1 pixels
-SNAKE_PATROL    = 8             ; patrol half-span from spawn X = the sprite's
-                                ; FULL width (user 2026-10-19). It had been cut
-                                ; 8 -> 6 -> 4 and at 4 the snake only travelled
-                                ; half its own width, so it never got back
-                                ; inside its wall: it looked like it stayed out.
-                                ; 8 makes it emerge fully and retreat fully.
+SNAKE_PATROL    = 4             ; ONE TILE each side of the spawn (user
+                                ; 2026-10-19): the patrol is SYMMETRIC about the
+                                ; placed X, so the snake retreats a tile behind
+                                ; its placement and then comes out a tile — 2
+                                ; tiles of travel total. The editor cannot ask
+                                ; the user to place it 2 tiles from the border.
 TILE_COLUMNS    = 20            ; columns per half (reflected playfield)
 TILE_ROWS       = 3             ; number of playable color bands
 LINES_PER_TILE  = 48            ; scanlines per tile row
@@ -1503,9 +1503,10 @@ EnemyBitTable:
 ; UpdateEnemies — per-type live motion from RAM shadow (overscan).
 ; E0: loop runs EVERY frame; each type carries its own speed gate (snake
 ; ÷4 here; bat ungated, spider ÷8, tentacle ÷2/÷8, moth ÷2 in E1-E4).
-; Snake patrol: bounds relative to ROM spawn X ± SNAKE_PATROL (8 px = the
-; sprite's full width, user 2026-10-19 — see the constant), side chosen by ROM
-; dir (initial facing). Ignores editor range_* per user
+; Snake patrol: bounds are SYMMETRIC about the ROM spawn X (± SNAKE_PATROL =
+; one tile, user 2026-10-19 — see the constant): retreat a tile behind the
+; placement, come out a tile, repeat. The ROM dir still picks which way it
+; starts. Ignores editor range_* per user
 ; 2026-09-23. First move = facing (live dir from LoadEnemyRam). No wall collision.
 ; ------------------------------------------------------------------------------
 UpdateEnemies:
@@ -1547,17 +1548,10 @@ UE_SnakeLeft:
     iny                          ; +1 = ROM spawn X
     jsr FoldIndirect
     sta Temp
-    iny
-    iny                          ; +3 = ROM dir (S4.1: range slots dropped)
-    jsr FoldIndirect
-    bmi UE_LeftInitL             ; initial face left → rmin = spawn - 6
-    lda Temp                     ; initial face right → rmin = spawn
-    jmp UE_LeftChk
-UE_LeftInitL:
     sec
-    lda Temp
-    sbc #SNAKE_PATROL
-UE_LeftChk:
+    sbc #SNAKE_PATROL            ; rmin = spawn - SNAKE_PATROL: SYMMETRIC patrol
+                                 ; (user 2026-10-19) — no dir read needed, the
+                                 ; range is the placement ± one tile either way
     sta Temp
     lda EnemyRamX,X
     cmp Temp
@@ -1571,17 +1565,8 @@ UE_SnakeRight:
     iny                          ; +1 = ROM spawn X
     jsr FoldIndirect
     sta Temp
-    iny
-    iny                          ; +3 = ROM dir (S4.1: range slots dropped)
-    jsr FoldIndirect
-    bmi UE_RightInitL            ; initial face left → rmax = spawn
     clc
-    lda Temp                     ; initial face right → rmax = spawn + 6
-    adc #SNAKE_PATROL
-    jmp UE_RightChk
-UE_RightInitL:
-    lda Temp
-UE_RightChk:
+    adc #SNAKE_PATROL            ; rmax = spawn + SNAKE_PATROL (symmetric)
     sta Temp
     lda EnemyRamX,X
     cmp Temp
