@@ -60,16 +60,10 @@ for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
         LABELS[_m.group(2)] = int(_m.group(1), 16)
 PC_STARTFRAME = LABELS["StartFrame"]
 
-# bank2 MothRowTable (LWC maps (RoomY+2)>>2 / (RoomY+3)>>2 through it)
-MOTHROW = None
-for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
-    _l = _l.split(";")[0]
-    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+MothRowTable\s*$", _l)
-    if _m:
-        MOTHROW = int(_m.group(1), 16)
-        break
-if MOTHROW is None:
-    sys.exit("bank2 MothRowTable label missing")
+# LWC maps (RoomY+2)>>2 and (RoomY+3)>>2 through bank2's BandRowFromLine
+# ladder (floor(line/48)) — compute the same value here.
+def band_row(line: int) -> int:
+    return min(line // 48, 3)
 
 # ZP indices (addr & 0x7F)
 I_ROOMX, I_ROOMY, I_DIR, I_LASERX = 0x00, 0x01, 0x02, 0x03
@@ -211,7 +205,7 @@ def main() -> None:
         sys.exit("player never landed (BombPacked OnGround)")
     mem.ram[I_DEADMASK] = 0xFF                 # kill all enemies
     y0 = mem.ram[I_ROOMY]
-    rows = sorted({rom2(MOTHROW + ((y0 + d) >> 2)) for d in (2, 3)})
+    rows = sorted({band_row(y0 + d) for d in (2, 3)})
     print(f"landed f{landed}: RoomY={y0} beam band rows={rows}")
 
     # (facing, wall pair display cols, player X, label)

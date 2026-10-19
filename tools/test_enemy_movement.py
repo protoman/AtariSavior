@@ -279,8 +279,12 @@ def main() -> None:
     b2 = (ROOT / "src" / "bank2.asm").read_text(encoding="utf-8")
     mr = b2.split("MothRoutine:")[1].split("MothBitTable:")[0]
     body = "\n".join(ln.split(";")[0] for ln in mr.splitlines())
-    assert "jsr" not in body, \
-        "bank2 moth must never jsr (mid-bank2 fold = frozen player)"
+    # Same-bank leaf jsr is fine (BandRowFromLine); a CROSS-bank jsr/fold is
+    # what freezes the player (the fold switches away mid-routine).
+    assert not re.search(r"jsr\s+(FoldIndirect|CallPad_|BankRead|MFold)", body), \
+        "bank2 moth must never jsr a cross-bank fold (frozen player)"
+    assert body.count("jsr BandRowFromLine") == 2, \
+        "moth rows go through the bank2-local /48 ladder"
     assert "jmp UE_Next" not in body, \
         "exit only via jmp MothExitPad (bank0's pad half serves UE_Next)"
     assert "and #1" in body, "gate = EnemyRamP & 1 (1 px / 2 frames)"
@@ -308,15 +312,15 @@ def main() -> None:
         "cols must start at VISIBLE left (Temp-5/-7 bomb convention), not Temp"
     assert "adc #8" in body and "adc #1" in body, \
         "rows must be visual Y+1..Y+8 (GRP1 ObjTop+1 window)"
-    assert body.count("MothRowTable,Y") == 2, \
-        "rows must convert via the /48 band table (the old >>4 = /16 gave " \
+    assert body.count("jsr BandRowFromLine") == 2, \
+        "rows must convert via the /48 band helper (the old >>4 = /16 gave " \
         "rows 3-4 = below every rect -> probe never hit -> walked into wall)"
-    mrt = b2.split("MothRowTable:")[1].split("org")[0]
-    mvals = []
-    for byte_line in re.findall(r"\.byte ([\d,]+)", mrt):
-        mvals += [int(v) for v in byte_line.split(",") if v.strip()]
-    assert len(mvals) == 48 and mvals == sorted(mvals), \
-        f"MothRowTable must be 48 ascending /48-band entries, got {len(mvals)}"
+    br = b2.split("BandRowFromLine:")[1].split("org")[0]
+    assert br.count("cmp #12") == 1 and br.count("cmp #24") == 1 and \
+        br.count("cmp #36") == 1, \
+        "BandRowFromLine must be the /48 compare ladder (12/24/36 thresholds)"
+    assert "MothRowTable:" not in b2, \
+        "the 48-byte MothRowTable copy is replaced by the helper"
     assert ".byte $01, $02, $04" in b2, \
         "MothBitTable = per-slot dir bits (bank2-local copy)"
     assert not re.search(r"^MothMaskBit:", b2, re.M), \
