@@ -119,6 +119,11 @@ Rules that come out of this audit:
 
 ## 8. Open decisions
 
+**Answered 2026-10-19:** score renderer → HERO PF-table (**approved**, do it in
+the reorg phase); intro/music (**keep for now**); order = **A3 → crunch C2/C3 →
+reorg**; bank0+bank1-only stays an open long-term target (more dedupe to be
+hunted after the reorg).
+
 - Do we keep the 48px sprite score, or adopt HERO's PF-table score (smaller
   code, different look)?
 - Do we keep the animated title + intro music + footer, or a static title?
