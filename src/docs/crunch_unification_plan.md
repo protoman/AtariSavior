@@ -18,6 +18,19 @@ tripwire if a later chunk misbehaves: diff the ledger, find the chunk.
 - Both: kill test runs on the same clock the kernel rendered (EnemyRamP-1), and
   the record walk stays in PhaseBlink.
 
+## Decisions — user, 2026-10-19 (after the size audit)
+
+1. **Crunch first, then the code reorg.** Order: **A3 → C2/C3/C4 → reorg.**
+2. **C2 is blocked on A3 by space, measured:** the hcrunch cluster
+   (`PhHcrEntry` + `CrPfx0/1/2` + `HcrClock` + `HcrPush`) is ≈420 B; bank2's
+   largest contiguous hole after A2 is **192 B** (`$F404-$F4C3`). A3 frees the
+   level-data spill slots (556 B in 256/111/427 B pieces) and is the enabler.
+3. **HERO-style PF-table score: approved** (part of the reorg, not now).
+4. **Intro + music: keep for now** (not part of any cut).
+5. Bank0+bank1-only is **not** closed as a long-term goal — more dedupe will be
+   hunted after the reorg (the audit found ~770 B of duplication, 350-500 B
+   recoverable).
+
 ## Chunk list
 
 | chunk | content | expected |
