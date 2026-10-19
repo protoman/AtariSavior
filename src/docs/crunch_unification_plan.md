@@ -69,3 +69,49 @@ top. Merging them into the entry removed that word — every offset shifts by
 because the frozen test banks still held the OLD code; `freeze_test_banks.sh`
 + battery exposed 4 failing hcrunch cases. **Lesson: re-freeze before
 trusting a battery run after any bank code change.**
+
+
+## Level-data move to bank3 (started 2026-10-19, reverted to keep green)
+
+Goal: free bank2 for the crunch consolidation. Blocks (model + per-room
+PF/meta/rect) move to bank3; the small tables (RoomDataTable, connections,
+enemy records, RoomEnemies) stay in bank2.
+
+Done and reverted in the same session (working but not committed):
+- convert split: `level_00N_blocks.asm` (blocks) + `spill_bank3.asm` list;
+  tables stay in `level_00N_rooms.asm`;
+- bank3 stubs at `$F0A3`: `B3Read` ((FetchPtr),Y), `B3ReadPF`
+  ((RoomPF0Lo),Y), `B3CopyPF` (9 B -> PF0Buf); all return through `$FBEE`;
+  twin `jmp` images at `$FC41/$FCE2/$FCE8`;
+- bank2 tramps at `$FC3E` (`ReadPFB3`), `$FCDF` (`ReadB3`), `$FCE5`
+  (`CopyPFB3`) — those three addresses are free in BOTH banks;
+- `EnterRoomB2` rect unpacking reads through `ReadB3` (pha/pla per byte);
+  the PF copy goes through `CopyPFB3`; `StageBandTab` reads MetaA once +
+  MetaB through `ReadPFB3` (M1OffTab moved to the `$F3BC` gap).
+
+**Blocker:** each bank is assembled separately, so bank2's level tables
+cannot reference block labels defined in bank3's include
+(`M5TilePF0`, `L3R1TilePF0`, …) — DASM stops with "Unresolved Symbol".
+
+Two ways forward (both keep 16K):
+
+1. **Two-pass assembly + exported EQUs (recommended).** Assemble bank3
+   first, dump its symbols (`-s`), keep only `M<digits>*` / `L<digits>R<digits>*`,
+   emit `generated/bank3_labels.asm`, and `include` it in bank2. The table
+   `.word`s keep resolving symbolically and — importantly — `bank2.lst`
+   still shows those labels as EQU rows, so most tests keep parsing the same
+   file. Reorder build.sh: convert → bank3 (pass 1) → bank2 → sync-phrec →
+   bank3 (pass 2) → bank0 → bank1.
+2. **Literal index/table addresses.** convert computes the bank3 block
+   layout itself and emits numeric pointers. No build reorder, but every
+   `.word` becomes a literal and `verify_build` needs a label-vs-literal
+   cross-check.
+
+Migration after either: ~10-15 ROM-byte tests read block bytes from
+`BANKS[2]` (`test_bomb_strip`, `test_bomb_user_sequence`, `test_laser_*`,
+`test_hcrunch`, `test_cell_map`, `test_fixtures`, …) and must read `BANKS[3]`
+plus labels from `bank3.lst`. `test_editor_roundtrip`/`test_level_bank` are
+unaffected (they use generated text, not addresses).
+
+Estimated: two-pass build ~30 lines in build.sh/verify_build; test migration
+mechanical but touches 10-15 files.
