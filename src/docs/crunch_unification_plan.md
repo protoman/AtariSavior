@@ -183,7 +183,53 @@ contiguous hole at `$F401-$F4C3`**, which is what C2 (PhHcrEntry + HcrPush
 readers: PhaseBlink, BuildColupF's hot walk, HotOverlapBody, EnterRoom tail).
 
 
+## Chunk A2 — `StageBandTab` moved to bank3 (`B3StageBand` @ `$F0A3`), 2026-10-19
+
+The A1 staging paid off: SBT was already ZP-only, so the move needed no read
+tramp. What it DID need is ordering — this is the whole subtlety:
+
+- **PhaseBlink must run AFTER SBT's band/ball staging and BEFORE the pack.**
+  It is not a "phase cell" pass only: the `$81` path tail-jumps into
+  `VcrShutter`, which **overwrites `Temp` (BallX) and `BandTab` for the
+  shutter cell**. Calling PhaseBlink first (the obvious "move the jsr to
+  BuildColupF" version) let SBT's own staging erase the shutter, and every
+  crunch kill stopped latching (`test_vcr_shutter` / `test_phase_kill_frame`
+  caught it: "no latch (state=$1B)"). So the body is split at the old jsr:
+  part A (band mask, M1X, CTRLPF, BallX, NUSIZ1) → ping-pong → part B (pack).
+- **Ping-pong, 0 pushes, both legs pinned:**
+  - bank2 `BCFDarkRun` tail `$F3A9`: `sta $1FF9 / jmp $F0A3`
+  - bank3 `$F3AC`: `jmp B3StageBand` (byte-image; **sta+3**, not sta+6 — the
+    jmp OPCODE is the first byte fetched post-switch)
+  - bank3 part A end `$F124`: `jmp $F800` → bank3 `$F800` `sta $1FF8` → bank2
+    `$F803` `jmp PhBlinkTail` → `jsr PhaseBlink` → `sta $1FF9` → bank3
+    `$F80C` `jmp SBT_B`
+  - bank3 `$FBF8` now carries its own `ReturnPad` (`sta $1FF6`; the `rts`
+    opcode is fetched bank0-side) — without it the exit executed bank3 fill.
+- Test: `test_bomb_strip` drives `B3StageBand` from `bank3.lst` with
+  `mem.bank = 3`; it now exercises the real ping-pong (the phase case walks
+  PhaseBlink the way the VBL does).
+
+| bank | code | data | fill | used | free |
+|---|---|---|---|---|---|
+| bank0 | 3180 | 360 | 554 | 3540 | 556 |
+| bank1 | 2628 | 554 | 552 | 3182 | 914 |
+| bank2 | 2513 | 748 | 813 | 3261 | 835 |
+| bank3 | 1019 | 74 | 2652 | 1093 | 3003 |
+| **total** | **9340** | **1736** | **4571** | **11076** | **5308** |
+
+delta vs A1: bank2 code **-170 B** (used 3431 → 3261), bank3 code +195 B.
+**bank2's largest contiguous hole is now 192 B (`$F404-$F4C3`)** — C2
+(PhHcrEntry + HcrPush + HcrClock ≈ 150 B into bank2) is unblocked.
+
+**Next: C2** — move `PhHcrEntry`/`HcrPush`/`HcrClock`/`CrPfx*` from bank3 into
+the `$F404-$F4C3` hole and merge the PF staging with bank2 `VcrShutter`.
+Keep the tramp/twin discipline: `$FC34` (PhHcrPre → PhHcrEntry) becomes a
+local `jmp` once the body is in bank2 (delete the bank3 twin), and the
+`$FCC1-$FCDD` return pads collapse to `jmp PhNext`/`jmp HOVnext` in bank2.
+
 ## Bank3 move, next design (tail-call, zero stack) — 2026-10-19 second attempt
+
+
 
 
 

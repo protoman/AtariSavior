@@ -95,8 +95,10 @@ L0 = parse_labels(SRC / "bank0.lst", {"BombX", "LineCount", "RcBase",
                                 "EnemyDeadMask", "CollisionX",
                                 "BombPacked", "PF0Buf", "PF1Buf",
                                 "PF2Buf"})
-L2 = parse_labels(SRC / "bank2.lst", {"StageBandTab", "L1R1TilePF0",
-                                      "M3TilePF0", "M1StripBlast"})
+L2 = parse_labels(SRC / "bank2.lst", {"L1R1TilePF0", "M3TilePF0",
+                                      "M1StripBlast"})
+# StageBandTab MOVED to bank3 (chunk A2) — B3StageBand at $F0A3.
+L3 = parse_labels(SRC / "bank3.lst", {"B3StageBand"})
 L2.update(parse_equ(SRC / "bank2.lst",
                     {"BandTab", "CollisionEndY", "CollisionEndX",
                      "RoomPF0Lo", "RoomRectsLo"}))
@@ -105,9 +107,9 @@ need = ({"BombMarkWalls", "StripBlastCheck", "M1ToBank2", "M1ToBank1"}
        ({"BombX", "LineCount", "RcBase", "EnemyDeadMask", "CollisionX",
          "BombPacked", "PF0Buf", "PF1Buf", "PF2Buf"}
         - L0.keys()) | \
-       ({"StageBandTab", "L1R1TilePF0", "M3TilePF0", "M1StripBlast",
+       ({"L1R1TilePF0", "M3TilePF0", "M1StripBlast",
          "BandTab", "CollisionEndY", "CollisionEndX",
-         "RoomPF0Lo", "RoomRectsLo"} - L2.keys())
+         "RoomPF0Lo", "RoomRectsLo"} - L2.keys()) | ({"B3StageBand"} - L3.keys())
 if need:
     sys.exit(f"labels missing: {sorted(need)}")
 
@@ -185,15 +187,15 @@ def run_bmw(mem: Mem1, bomb_x: int, line_count: int,
 
 
 def stage(deadmask: int) -> tuple[tuple, int, int]:
-    """Drive StageBandTab; return (BandTab0..2, packed byte, staged M1X)."""
+    """Drive B3StageBand (bank3); return (BandTab0..2, packed byte, staged M1X)."""
     mem = Mem1()
     r = mem.ram
     r[L2["RoomPF0Lo"] - 0x80] = META_A          # staged meta (room entry)
     r[(L2["RoomPF0Lo"] + 1) - 0x80] = META_B
     r[L0["EnemyDeadMask"] - 0x80] = deadmask
-    mem.bank = 2
+    mem.bank = 3
     mpu = MPU(memory=mem)
-    mpu.pc = L2["StageBandTab"]
+    mpu.pc = L3["B3StageBand"]
     mpu.a = mpu.x = mpu.y = 0
     mpu.sp = 0xFD
     mem[0x1FF] = 0x01
@@ -422,9 +424,9 @@ def main() -> int:
         r[L2["RoomPF0Lo"] - 0x80] = meta_a         # staged MetaA
         r[L2["RoomPF0Lo"] + 1 - 0x80] = 0x00
         r[L0["EnemyDeadMask"] - 0x80] = 0
-        mem.bank = 2
+        mem.bank = 3
         mpu = MPU(memory=mem)
-        mpu.pc = L2["StageBandTab"]
+        mpu.pc = L3["B3StageBand"]
         mpu.a = mpu.x = mpu.y = 0
         mpu.sp = 0xFD
         mem[0x1FF] = 0x01
@@ -457,9 +459,9 @@ def main() -> int:
         r[L2["RoomPF0Lo"] - 0x80] = meta_a        # staged MetaA
         r[L2["RoomPF0Lo"] + 1 - 0x80] = meta_b    # staged MetaB
         r[L0["EnemyDeadMask"] - 0x80] = 0
-        mem.bank = 2
+        mem.bank = 3
         mpu = MPU(memory=mem)
-        mpu.pc = L2["StageBandTab"]
+        mpu.pc = L3["B3StageBand"]
         mpu.a = mpu.x = mpu.y = 0
         mpu.sp = 0xFD
         mem[0x1FF] = 0x01
@@ -503,9 +505,9 @@ def main() -> int:
         r[L0["EnemyDeadMask"] - 0x80] = 0
         r[0xC2 - 0x80] = clock             # EnemyRamP
         r[0xC7 - 0x80] = 0xC0              # PF1Buf row1 pre-seeded ON
-        mem.bank = 2
+        mem.bank = 3
         mpu = MPU(memory=mem)
-        mpu.pc = L2["StageBandTab"]
+        mpu.pc = L3["B3StageBand"]
         mpu.a = mpu.x = mpu.y = 0
         mpu.sp = 0xFD
         mem[0x1FF] = 0x01
