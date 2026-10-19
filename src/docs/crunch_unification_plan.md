@@ -117,7 +117,75 @@ Estimated: two-pass build ~30 lines in build.sh/verify_build; test migration
 mechanical but touches 10-15 files.
 
 
+## Chunk A1 — room meta staged at entry (`RoomMetaA/B`), 2026-10-19
+
+**Why first:** the level-data move's real blocker is not the data — it is
+that bank2 READS block bytes in 12 places (StageBandTab ×6, LaserWallClamp,
+PHMOverlay, M1StripBlast, PhaseBlink, HOVFeatPre, PhHcrPre, OvShutBand,
+OvShutScan). A block moved to bank3 turns every one of those into a garbage
+read. Staging the two meta bytes at room entry removes the whole class:
+
+- `EnterRoomB2` already copies the 9 PF bytes through `FetchPtr`; the copy
+  loop leaves **Y = 9**, so MetaA/MetaB are the next two `(FetchPtr),Y`
+  reads — 8 bytes, no `ldy`, and they land in the now-dead pointer pair
+  `$99/$9A` (`RoomMetaA/B`). The block pointer itself is dead after that
+  (nothing else reads it).
+- Every meta reader becomes `lda RoomMetaA/B` (3 B instead of
+  `ldy #n / lda (RoomPF0Lo),Y`, 5 B). This is what makes StageBandTab
+  ZP-only — the prerequisite for moving it (and later the data) to bank3.
+- Two bytes were freed in EnterRoomB2 to pay for the staging: the redundant
+  `lda #0` before the bomb reset, and the enemy-record read turned into a
+  3-byte loop over the contiguous `EnemyDataLo/Hi/Count` ($B1-$B3).
+- `MothRoutine` moved `$F100 → $F110` (its region had slack) so the body
+  fits; the `$FEF0` moth tramp operand was updated in **both** banks.
+
+**Trap hit (cost most of the session):** three bank2↔bank3 pads are
+ADDRESS-sensitive — bank3 keeps a byte-image at a fixed address while the
+bank2 half is `sta $1FF9 / jmp body`. The meta rewrite removed `ldy #10`
+from `HOVFeatPre`, `PhHcrPre` and `OvShutScan`, which shifted each pad by 2
+bytes; the jmp then landed on bank3 fill (`$00` = BRK → reset vector →
+GameStart reset loop). Symptom: crunch tests boot, then the game silently
+restarts (DropTarget becomes `$FD`). Fix = `.ds <addr> - *, 0` **before the
+block label** (a pad inside the block sits in the fall-through path and is
+itself a BRK). Pins now: `$FBFE` HOVFeatPre, `$FC20` PhHcrPre, `$FE4A`
+OvShutScan → tramps at `$FC18/$FC31/$FE54`, jmps at `$FC1B/$FC34/$FE57`.
+**Rule: any size change in a bank2 block that owns a bank3 twin needs a
+re-check of the twin alignment, and the guard should pin the BLOCK start,
+not the jmp.**
+
+Tests updated (staging moved from the block pointer to the ZP pair):
+`test_bomb_strip`, `test_cell_map`, `test_laser_close`,
+`test_laser_kill_window`, `test_laser_walk_wall` (shared `load_room`),
+`test_phase_kill_frame`, `test_vcr_shutter`, `test_hcrunch` (MetaB poke),
+`test_laser_s4`/`test_phm_walk` (source asserts now look for `RoomMetaA`).
+
+| bank | code | data | fill | used | free |
+|---|---|---|---|---|---|
+| bank0 | 3180 | 360 | 554 | 3540 | 556 |
+| bank1 | 2628 | 554 | 552 | 3182 | 914 |
+| bank2 | 2683 | 748 | 643 | 3431 | 665 |
+| bank3 | 824 | 69 | 952 | 893 | 3203 |
+| **total** | **9315** | **1731** | **2701** | **11046** | **5338** |
+
+delta vs C1: bank2 code **-22 B** (used 3453 → 3431). Bank2's largest
+contiguous hole is unchanged (**99 B**, `$FB6D-$FBCF`), so C2 still needs
+the StageBandTab move below.
+
+**Next chunk (A2):** move `StageBandTab` (~195 B, now ZP-only) to bank3.
+`BuildColupF`'s tail becomes `sta $1FF9 / jmp B3StageBand` (twin jmp in
+bank3, same -2/+2 pin discipline). PhaseBlink stays in bank2 (it walks the
+rect stream) and is reached from bank3 as a tail ping-pong:
+`sta $1FF8 / jmp PhBlink` → bank2 body → `sta $1FF9 / jmp SBT_tail`
+(0 pushes, VBL jsr still returns via ReturnPad). That opens a **195 B
+contiguous hole at `$F401-$F4C3`**, which is what C2 (PhHcrEntry + HcrPush
++ HcrClock into bank2) needs. Then A3 = the data move itself
+(convert `level_00N_blocks.asm` + two-pass build + the remaining rect-walk
+readers: PhaseBlink, BuildColupF's hot walk, HotOverlapBody, EnterRoom tail).
+
+
 ## Bank3 move, next design (tail-call, zero stack) — 2026-10-19 second attempt
+
+
 
 The two-pass symbol export WORKED (build + verify green), but `sim_bomb_fuse`
 died: the HOV/crunch chain pushed SP to $F7 (BombTimer) and then wrapped. The

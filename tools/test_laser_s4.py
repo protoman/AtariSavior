@@ -132,8 +132,8 @@ def main() -> None:
         "clamp store resurrected (contact must not move CollisionX)"
     # M1 patch strip = solid at the tip (the mirror walk alone passes the
     # patched cell — envelope open — and the beam used to sail through)
-    assert "ldy #9" in lwc and "(RoomPF0Lo),Y" in lwc, \
-        "M1X must be derived from room MetaA at offset 9"
+    assert "RoomMetaA" in lwc, \
+        "M1X must be derived from the staged room MetaA (RoomMetaA)"
     assert "sbc RectCount" in lwc and "cmp #8" in lwc, \
         "M1 tip window must be px [M1X-7, M1X]"
     assert "and #$10" in lwc, "M1 contact must be kill-aware (dead b4)"

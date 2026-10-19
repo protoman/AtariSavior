@@ -507,10 +507,10 @@ HOVFeatEntry:
 
     .ds $FCC1 - *, 0            ; return tails (slots match bank2 pads)
     sta $1FF8
-    jmp $FAFD                   ; .PhRec (vcrunch; Y=base+4, iny→next class)
+    jmp $FAFB                   ; .PhRec (vcrunch; Y=base+4, iny→next class)
     .ds $FCC7 - *, 0
     sta $1FF8
-    jmp $FAFD                   ; .PhRec (hcrunch; Y=base+4, iny→next class)
+    jmp $FAFB                   ; .PhRec (hcrunch; Y=base+4, iny→next class)
     .ds $FCCD - *, 0
     sta $1FF8
     jmp $FD6B                   ; HOVnext (miss)

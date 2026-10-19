@@ -3647,7 +3647,7 @@
    3646  feed		       00 00 00 	      .ds	$FEF0 - *, 0	; fill tramp..moth gap (drift-proof)
    3647  fef0				   UE_MothTramp
    3648  fef0		       8d f8 1f 	      sta	$1FF8	; select bank2
-   3649  fef3		       4c 00 f1 	      jmp	$F100	; bank2 MothRoutine (dead in bank0; guard pins
+   3649  fef3		       4c 10 f1 	      jmp	$F110	; bank2 MothRoutine (dead in bank0; guard pins
    3650  fef6							;   bank0/bank2 operands == bank2.lst label)
    3651  fef6					      .ds	$FEF6 - *, 0	; pin address (main size drift must not move it)
    3652  fef6				   FoldIndirect

@@ -508,10 +508,10 @@
     507  fc37
     508  fc37		       00 00 00 00*	      .ds	$FCC1 - *, 0	; return tails (slots match bank2 pads)
     509  fcc1		       8d f8 1f 	      sta	$1FF8
-    510  fcc4		       4c 38 fb 	      jmp	$FB38	; .PhRec (vcrunch; Y=base+4, iny→next class)
+    510  fcc4		       4c 36 fb 	      jmp	$FB36	; .PhRec (vcrunch; Y=base+4, iny→next class)
     511  fcc7					      .ds	$FCC7 - *, 0
     512  fcc7		       8d f8 1f 	      sta	$1FF8
-    513  fcca		       4c 38 fb 	      jmp	$FB38	; .PhRec (hcrunch; Y=base+4, iny→next class)
+    513  fcca		       4c 36 fb 	      jmp	$FB36	; .PhRec (hcrunch; Y=base+4, iny→next class)
     514  fccd					      .ds	$FCCD - *, 0
     515  fccd		       8d f8 1f 	      sta	$1FF8
     516  fcd0		       4c 6b fd 	      jmp	$FD6B	; HOVnext (miss)

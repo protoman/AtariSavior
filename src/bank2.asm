@@ -35,10 +35,14 @@ RoomX = $80                      ; PHMOverlay visible_left math (Phase 4)
 PlayerDir = $82
 LineCount = $84                  ; OverlayTramp gate — packed byte copied
                                  ; from $8F at bank1 HUD entry each frame
-RoomPF0Lo = $99                 ; TilePF0 pointer (EnterRoom stages; models
-                                 ; data lives in THIS bank — bank0 cannot
-                                 ; read it, see StageBandTab)
-RoomPF0Hi = $9A                 ; #22 EnterRoomB2 — kernel sequential-block pair
+RoomPF0Lo = $99                 ; TilePF0 pointer INSIDE EnterRoomB2 only.
+RoomPF0Hi = $9A                 ; After the 9-byte PF copy + meta read, entry
+                                 ; OVERWRITES both with the room's MetaA/MetaB:
+                                 ; no other code needs the pointer (all meta
+                                 ; readers use the staged pair below), so the
+                                 ; bytes carry the meta for the whole visit.
+RoomMetaA = $99                 ; staged MetaA (band mask/m1 col/side/door-L)
+RoomMetaB = $9A                 ; staged MetaB (ball col/hot/door-R+shutter b7)
 LevelPFDataLo = $9F             ; RoomDataTable pointer low (kernel decl)
 LevelPFDataHi = $A0             ; RoomDataTable pointer high (kernel decl)
 LevelEnemyLo = $AF              ; RoomEnemies pointer low (kernel decl)
@@ -136,7 +140,8 @@ AUDV0 = $19
     ; Reached with A = room index; returns via jmp ReturnPad (X = EnemyCount).
     ; Level data lives in THIS bank → direct (FetchPtr),Y reads, NO folds
     ; (same transcription as MothRoutine below). Saves ~1660c per room change.
-    ; Must end before org $F100 (MothRoutine) — overflow = Origin Reverse.
+    ; Must end before MothRoutine ($F110 since the meta staging) — overflow
+    ; = Origin Reverse.
     .ds $F010 - *, 0
 EnterRoomB2:
     sta RoomNo
@@ -209,21 +214,19 @@ EnterRoomB2:
     lda LevelEnemyHi
     sta FetchPtr+1
     lda (FetchPtr),Y
-    sta EnemyDataLo
+    ldx #0                          ; EnemyDataLo/Hi/Count are contiguous
+.EBrec:
+    sta EnemyDataLo,X               ; $B1/$B2/$B3 (record bytes 0-2)
     iny
+    inx
     lda (FetchPtr),Y
-    sta EnemyDataHi
-    iny
-    lda (FetchPtr),Y
-    sta EnemyCount
-    iny                             ; +3 = bottom-band color — must restage
-    lda (FetchPtr),Y                ; HERE or CheckBandTouch kills with the
+    cpx #3
+    bne .EBrec
     sta RoomBandColor               ; SOURCE room's band on the transition frame
-    lda #$00
+    lda #0                          ; (also the bomb reset seed below)
     sta EnemyDeadMask               ; no dead enemies in new room
 
     ; --- bomb reset: clear state/timer/sound (wall bits b3-6 die with it) ---
-    lda #0
     sta BombPacked
     sta BombTimer
     sta BombSnd
@@ -242,6 +245,18 @@ EnterRoomB2:
     iny
     cpy #9
     bne .EBpf
+
+    ; --- room meta staging: MetaA/MetaB → the pointer bytes ($99/$9A) ---
+    ; The block pointer is DEAD from here on (the 9-byte copy above was its
+    ; last reader), so the pair carries the room's meta for the whole visit.
+    ; EVERY bank2 meta reader uses RoomMetaA/B — that is what lets the VBL
+    ; band chain move to bank3 later with no (RoomPF0Lo),Y read left.
+    ; Y = 9 on entry from the copy loop above (so no LDY here).
+    lda (FetchPtr),Y                ; MetaA (Y = 9)
+    sta RoomMetaA                   ; = RoomPF0Lo — pointer lo dies here
+    iny
+    lda (FetchPtr),Y                ; MetaB (Y = 10)
+    sta RoomMetaB                   ; = RoomPF0Hi — pointer hi dies here
 
     ; --- LoadEnemyRam: copy each ROM enemy's x,y,dir into the RAM shadow ---
     lda EnemyRamD
@@ -307,7 +322,7 @@ EBLER_Done:
     ;   - Keep the whole routine inline (no jsr): tramps are tail jmps so
     ;     the stack depth equals the UE body (+0 vs the $F8 guard).
     ;   - ZP (rect cache, EnemyRam*, EnemyDataLo/Hi) is RAM: bank-independent.
-    org $F100
+    .ds $F110 - *, 0
 MothRoutine:
     ; E4 Stage C: horizontal patrol (docs/e4_moth_plan.md). 1 px / 2 frames
     ; (EnemyRamP & 1), range = spawn ± 8 tiles (32 px), wall/range/wrap =
@@ -610,8 +625,7 @@ LaserWallClamp:
     jmp LaserClampDone          ; tip off screen left -> clear (enemy loop)
 .LWtipC:
     sta RectCount               ; tip px scratch (mirror walk re-inits it)
-    ldy #9
-    lda (RoomPF0Lo),Y           ; MetaA
+    lda RoomMetaA               ; MetaA
     lsr
     lsr
     lsr
@@ -620,8 +634,7 @@ LaserWallClamp:
     lda EnemyDeadMask
     and #$10                    ; b4 = M1 strip destroyed -> transparent
     bne .LWm1Skip
-    ldy #9
-    lda (RoomPF0Lo),Y           ; reload MetaA (dead test clobbered A)
+    lda RoomMetaA               ; reload MetaA (dead test clobbered A)
     lsr
     lsr
     lsr
@@ -871,8 +884,9 @@ PickPlayerFrame:
 ; StageBandTab — asym meta: decode packed model meta into bank0 ZP for the cave.
 ; Reached from BuildColupF's tail (BCFDarkRun jmp here); ends at ReturnPad so
 ; the VBL jsr returns to bank0 (pads must not nest — no rts here).
-; WHY here: models_data lives in THIS bank — a bank0 (RoomPF0Lo),Y read
-; fetches bank0's $F9xx zero pad (the Phase 2 ball block silently read zeros).
+; WHY here: the room meta is STAGED at room entry (RoomMetaA/B — see
+; EnterRoomB2), so this body reads ZP only; it no longer touches level data.
+; That is what makes it movable to bank3 (next chunk: C2's space).
 ; Packed meta (bugs.md 28 point 1): TilePF0+9 = MetaA = (m1_col+1)<<4 |
 ; band_mask (b0-2 = band0/1/2 gates); TilePF0+10 = MetaB = ball_col+1
 ; (0 = feature absent). Expanded to the old RAM shapes:
@@ -886,7 +900,6 @@ PickPlayerFrame:
 ; ------------------------------------------------------------------------------
 StageBandTab:
     ; --- expand band mask -> BandTab $ff/$00 ×3 (bit0 ENABL + bit7 pack) ---
-    ldy #9
     ; --- Phase 5: stage the M1 x-offset for the door SIDE. A door has no
     ; ball (its asym rows resolve to None → band mask $00), so MetaA bit0
     ; is free: 1 = M1 strip on the RIGHT half (x = 87+8*col → offset +79),
@@ -895,12 +908,12 @@ StageBandTab:
     ; no-ball path below blanks BandTab so it never enables the ball.
     ; RectCount ($92) is free in the VBL (kernel re-inits RowIdx at entry;
     ; the pack uses $8F).
-    lda (RoomPF0Lo),Y       ; MetaA
+    lda RoomMetaA           ; MetaA
     and #$01
     tax
     lda M1OffTab,X
     sta RectCount
-    lda (RoomPF0Lo),Y       ; MetaA
+    lda RoomMetaA           ; MetaA
     lsr                     ; band0 bit -> carry
     lda #0
     rol
@@ -908,7 +921,7 @@ StageBandTab:
     lda #$ff
 .SBTb0z:
     sta BandTab
-    lda (RoomPF0Lo),Y
+    lda RoomMetaA
     lsr
     lsr                     ; band1 bit -> carry
     lda #0
@@ -917,7 +930,7 @@ StageBandTab:
     lda #$ff
 .SBTb1z:
     sta BandTab+1
-    lda (RoomPF0Lo),Y
+    lda RoomMetaA
     lsr
     lsr
     lsr                     ; band2 bit -> carry
@@ -949,8 +962,7 @@ StageBandTab:
     ; M1 strip DESTROYED (EnemyDeadMask b4, StripBlastCheck's M1 twin) →
     ; stage 0: PositionBallM1 skips ENAM1, the pack's b3 flag clears, and
     ; both overlay paths (PHM/blast) treat the strip as gone next frame.
-    ldy #9
-    lda (RoomPF0Lo),Y
+    lda RoomMetaA
     lsr
     lsr
     lsr
@@ -980,8 +992,7 @@ StageBandTab:
     ; cave's value (the HUD's own $05/$35 dance runs after the cave).
     lda #$35
     sta CTRLPF
-    ldy #10
-    lda (RoomPF0Lo),Y       ; MetaB = ball_col+1 (0 = none)
+    lda RoomMetaB           ; MetaB = ball_col+1 (0 = none)
     and #$0F                ; ball_col+1 is b0-b3 only (max 10); drops b7
                             ; (vcrunch) AND b6 (hot) — b6 used to survive
                             ; and fake a 1-cell ball at x72-79 on a
@@ -1314,11 +1325,10 @@ OvM1Block:
     lda EnemyDeadMask
     and #$10                    ; b4 = M1 strip destroyed → transparent
     bne .OvM1no
-    ldy #9
-    lda (RoomPF0Lo),Y           ; MetaA
+    lda RoomMetaA               ; MetaA
     and #$01                    ; Phase 5: b0 = M1 strip on the RIGHT half
     tax                         ;   (door band mask is $02 → b0 free)
-    lda (RoomPF0Lo),Y           ; reload MetaA
+    lda RoomMetaA               ; reload MetaA
     lsr
     lsr
     lsr
@@ -1487,11 +1497,10 @@ M1StripBlast:
     lda EnemyDeadMask
     and #$10                    ; b4 already set → nothing to stage
     bne .M1SBnone
-    ldy #9
-    lda (RoomPF0Lo),Y           ; MetaA
+    lda RoomMetaA               ; MetaA
     and #$08                    ; b3 = left door (key-only, bomb-immune)
     bne .M1SBnone               ; stays $FF: bank1 takes no left strip
-    lda (RoomPF0Lo),Y           ; reload (and clobbered A)
+    lda RoomMetaA               ; reload (and clobbered A)
     lsr
     lsr
     lsr
@@ -1506,8 +1515,7 @@ M1StripBlast:
     lda #$FF
     sta RectCount               ; no left strip this frame
 .M1SBdoorR:
-    ldy #10
-    lda (RoomPF0Lo),Y           ; MetaB, b7 = right door
+    lda RoomMetaB               ; MetaB, b7 = right door
     bpl .M1SBout
     ldy #$FF
     sty Temp                    ; = bank1's BMWScratch ($88) — "no strip"
@@ -1584,8 +1592,7 @@ PhaseBlink:
     ; (Staged here, not in StageBandTab: that window is pin-full.)
     lda #$80
     sta CollisionCellY
-    ldy #9
-    lda (RoomPF0Lo),Y       ; MetaA
+    lda RoomMetaA           ; MetaA
     and #$08                ; b3 = left door
     beq .PhNoDoor
     lda #$1C                ; yellow door stripe
@@ -1738,7 +1745,11 @@ ReturnPad:
 ; `sta $1FF8` the pad's `jmp $FC4F` is FETCHED FROM THIS BANK (the switch
 ; happens mid-pad, same reason bank1 mirrors the whole pad block).
 ; ------------------------------------------------------------------------------
-    ; ---- HOV feature pre-read ($FBFC gap; $80 skips field reads) --------
+    ; ---- HOV feature pre-read ($FBFE; $80 skips field reads) -----------
+    .ds $FBFE - *, 0        ; PIN: +2 so the tramp lands at $FC18 (bank3's
+                            ;   twin jmp sits at $FC1B). The pad MUST sit
+                            ;   before the label — inside the block it would
+                            ;   be a BRK in the fall-through path.
 HOVFeatPre:                 ; .HOVfeature: A = class, Y = record base
         cmp #$80
         beq .HFPdirect      ; $80 phase: no fields, no staging (Y = base
@@ -1764,13 +1775,20 @@ HOVFeatPre:                 ; .HOVfeature: A = class, Y = record base
         ; is free on the HOV hit path (the overlay reader is the miss
         ; path — mutually exclusive; kernel restages per row). X still
         ; holds the class (survives the field pushes) — no pha/pla pair.
-        ldy #10
-        lda (RoomPF0Lo),Y   ; MetaB
+        lda RoomMetaB       ; MetaB
         sta LineCount
         txa                 ; class (A = record class for bank3)
+        .ds $FC18 - *, 0    ; PIN: bank3's twin jmp sits at $FC1B; a 2-byte
+                            ;   shrink here (MetaB staging) moved the sta and
+                            ;   the frame died in bank3's $F000 stub. The pad
+                            ;   precedes the label so the branch lands on code.
 .HFPdirect:
         sta $1FF9
         jmp $FA40           ; HOVFeatEntry (bank3)
+        .ds $FC20 - *, 0    ; PIN: the whole PhHcrPre block is shifted so its
+                            ;   tramp lands at $FC31 (bank3 twin jmp $FC34). The
+                            ;   pad sits BEFORE the label — inside the block it
+                            ;   would be a BRK in the fall-through path.
 PhHcrPre:                   ; PhaseBlink $82: Y = record base
         ldx #4              ; field-push loop (x,y,w,h — same stack order;
 .PHp                        ;   PhHcrEntry reads via tsx, A unused)
@@ -1781,9 +1799,8 @@ PhHcrPre:                   ; PhaseBlink $82: Y = record base
         bne .PHp            ; Y = base+4 (bank3's return contract)
         tya
         pha                 ; save base+4 across the MetaB read
-        ldy #10
-        lda (RoomPF0Lo),Y       ; MetaB (bank2 ROM image at TilePF0+10 =
-                                ; $FA3C; a bank3 fetch sees pad $FF there)
+        lda RoomMetaB       ; MetaB — staged at room entry (ZP, bank-free;
+                            ;   the old (RoomPF0Lo),Y read was bank2-only)
         sta LineCount           ; full byte — bank3's HcrPush masks b6;
                                 ; read EARLY in PhHcrEntry, before the PF
                                 ; mask staging reuses LineCount.
@@ -2243,9 +2260,9 @@ PhVcrPre:                   ; PhaseBlink $81: Y = record base
                               ;   measured SP floor; VcrShutter ends at .PhRec)
 ; ------------------------------------------------------------------------------
 ; OvShutScan — Phase C kill test, bank3 body (VCS3 at $FD80). Tramp only:
-; the MetaB hot bit (b6) is read HERE (models_data is bank2 ROM — a bank3
-; (RoomPF0Lo),Y fetch would see bank3's pad at that address) and passed in
-; Y; A = kill clock. sta $1FF9 + jmp — after the hotspot write the jmp
+; the MetaB hot bit (b6) is read HERE from the room-entry staged byte
+; (RoomMetaB — ZP, so no bank dependency) and passed in Y; A = kill clock.
+; sta $1FF9 + jmp — after the hotspot write the jmp
 ; OPCODE is fetched from bank3's image at the same address (pinned
 ; `.byte $4C,$80,$FD` at $FE57). Body returns C=1 kill / C=0 passable via
 ; the $FBEE pad (`sta $1FF8` executed bank3-side; `rts` fetched from
@@ -2257,15 +2274,20 @@ PhVcrPre:                   ; PhaseBlink $81: Y = record base
 ; closed slices), closing phase only (Rule 1). Full logic: bank3 VCS3
 ; (header there).
 ; ------------------------------------------------------------------------------
+    .ds $FE4A - *, 0            ; PIN: +2 so the tramp ends at $FE57 (bank3's
+                                ;   OvShutScan image). The pad sits BEFORE the
+                                ;   label: between `sta $1FF9` and its jmp it
+                                ;   would be a BRK in the fall-through path.
 OvShutScan:
-    ldy #10
-    lda (RoomPF0Lo),Y           ; MetaB
+    lda RoomMetaB               ; MetaB
     and #$40                    ; A = b6 mid_band_type hot mask ($40/0)
     tay                         ; Y = hot bit — survives sta $1FF9 + jmp
     lda EnemyRamP
     sec
     sbc #1                      ; kill clock = render clock (post-inc)
     sta $1FF9                   ; bank3
+    .ds $FE57 - *, 0            ; PIN: the jmp image must sit at $FE57 (bank3's
+                                ;   tramp copy; guard check_tramp_targets)
     jmp $FD80                   ; VCS3 — image pinned bank3-side at $FE57
 PFOffTab:
     .byte 0,0,3,3,3,3,6,6,6,6   ; pair 0-9 -> PF0/PF1/PF2 reg offset
@@ -2321,8 +2343,7 @@ OvShutBand:
     and OvTail,X                ; bits <= row
     and LineCount               ; active-band mask (b0-2)
     beq .OSBm1                  ; not in a painted band → M1 strip test
-    ldy #10
-    lda (RoomPF0Lo),Y           ; MetaB
+    lda RoomMetaB               ; MetaB
     bpl .OSBsolid               ; b7=0: plain D6 strip → solid (old behavior)
     lda EnemyDeadMask
     bmi .OSBm1                  ; b7 latch: wall REMOVED (VcrShutter punch-
@@ -2371,7 +2392,7 @@ OvShutBand:
 ; (guard: verify_build check_moth_tramp). bank2's `sta $1FF8` half never
 ; runs (entry always arrives from bank0); the `jmp MothRoutine` half at
 ; $FEF3 runs after bank0's switch. Assembles to the same 6 bytes as
-; kernel's `sta $1FF8 / jmp $F100` — operand drift fails the guard.
+; kernel's `sta $1FF8 / jmp $F110` — operand drift fails the guard.
 ; ------------------------------------------------------------------------------
     .ds $FEF0 - *, 0
 UE_MothTramp:

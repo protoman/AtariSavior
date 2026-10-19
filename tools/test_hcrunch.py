@@ -384,8 +384,9 @@ def main() -> None:
     # Hot hcrunch: the shutter kills at ANY extent and NEVER pushes. Both
     # M4 hcrunch rooms are cold, so this path is untested live — inject b6
     # into the frozen fixture's MetaB byte (TilePF0+10) and probe.
-    meta_off = (W.L2["L3R2TilePF0"] + 10) - 0xF000
-    W.BANKS[2][meta_off] = 0x40           # MetaB b6 = hot
+    # MetaB is STAGED in ZP at room entry ($9A) — patch the staged byte,
+    # not the ROM copy (the ROM is not re-read after entry).
+    W.mem.ram[0x9A & 0x7F] = 0x40         # MetaB b6 = hot
     # 15: hot never pushes (cold pushL at clock 0x80 -> 55)
     set_dead(0x00)
     got_x = probe_push(clock=0x80, x=5, y=68)
@@ -407,7 +408,7 @@ def main() -> None:
         fails.append(f"hot: PlayerLives={W.mem.ram[I_LIVES]}, want 2")
     else:
         print("  hot-kill: opening-phase catch kills when hot (b6)")
-    W.BANKS[2][meta_off] = 0x00           # restore cold
+    W.mem.ram[0x9A & 0x7F] = 0x00         # restore cold
 
     if fails:
         print(f"\nFAIL: {len(fails)}")
