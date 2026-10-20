@@ -63,7 +63,22 @@ def bank_sizes(bank: int) -> dict[str, int]:
     for i, (addr, has_bytes, line) in enumerate(r):
         if not has_bytes:
             continue
+        # A `NAME = value` row emits no ROM. DASM prints the value in the byte
+        # columns and (after a positive-length `.ds`) keeps the preceding
+        # address, so counting it steals the `.ds` fill it sits inside
+        # (bank1's $FD00 -> $FDE3 pad was reported as code before this).
+        if re.match(r"^[A-Za-z_.][A-Za-z0-9_.]*\s*=\s*",
+                    re.sub(r"^\s*\d+\s+[0-9a-f]{4}\s+(?:[0-9a-f]{2}\s+)+\*?\s*",
+                           "", line)):
+            continue
         nxt = r[i + 1][0] if i + 1 < len(r) else addr + 1
+        if nxt == addr and ".ds" in line:
+            # Truncated `.ds` row: DASM prints the START address, and the rows
+            # inside the fill keep it. The fill ends at the next address jump.
+            for j in range(i + 1, len(r)):
+                if r[j][0] > addr:
+                    nxt = r[j][0]
+                    break
         size = nxt - addr if nxt > addr else 0
         if not 0xF000 <= addr < 0x10000:
             continue

@@ -157,10 +157,10 @@ and bakes pictures.
    (a) the cave kernel draws the active object (a miner/enemy would appear on
    the title — needs suppression or acceptance), (b) the title player becomes
    multi-colour (game palette) instead of `$0E`. Needs a visual OK.
-3. **LV001 banner removal — ~78 B, needs user approval.**
-   `SetupScorePointers`' banner branch (~55 B, incl. the /10 loop) + the
-   kernel arming (~7 B) + L/V glyphs (16 B). The merged title's score now
-   shows the level, so the banner is redundant. Product decision.
+3. **LV001 banner removal — DONE 2026-10-19 (§9, −86 B).**
+   `SetupScorePointers`' banner branch + the kernel arming + L/V glyphs are
+   gone. The merged title's score shows the level, so the banner was
+   redundant.
 4. **Pad co-location — 60–90 B (est.), low risk.**
    34 shared twin slots. Moving a leaf to the bank that calls it removes the
    pad (and possibly a twin). Best candidates: the sound leaves called from
@@ -215,7 +215,7 @@ excluded from the estimates above.
 ## 7. What I would do next, in order
 
 1. C1/C2/C3 crunch unification (planned; biggest measured subsystem).
-2. Ask the user about the LV001 banner (78 B) and the tally (160 B).
+2. Tally removal decision (160 B) — the LV001 banner is already gone (§9).
 3. TitleKernel band reuse if the visual conditions are acceptable.
 4. Pad co-location pass (measure per target, move same-bank leaves first).
 5. Boot bundle + sim hook last (it is test-harness work).
@@ -337,3 +337,49 @@ level data 548 B (index 48 + tables/blocks 334 + models 166).
 Delta vs chunk 1: bank3 −278 code (−$116 used, free +$116). bank0/bank2
 unchanged (only the auto-synced CallPad literals moved: BuildColupF
 $F50B→$F507, HotOverlapBody $F5C7→$F5C3).
+
+---
+
+## 9. LV001 HUD banner removed (2026-10-19, user-approved)
+
+The banner ("L V 0nn" in the score slot for the first 120 gameplay frames,
+#18) is gone: the merged title's HUD already shows the level, so it was
+redundant. Removed:
+
+- `kernel.asm`: `LevelShowTimer`/`LV_SHOW_FRAMES` EQUs + the `LoadLevel`
+  arming block (`DropTarget != $FF` gate) — **10 B code**.
+- `bank1.asm`: the `SetupScorePointers` banner branch (flag test, /10 loop,
+  L/V/blank pointer writes, its early `rts`) — **52 B code** — plus glyphs
+  10 (blank) / 11 (L) / 12 (V), **24 B data**. Nothing else referenced them
+  (`DigitGfx+80` was banner-only; scores still use glyphs 0-9).
+- Contract unchanged: the title score (`level+1`) comes from `DropArm`
+  `.DATitle`, not the banner — `test_menu_flow` still passes as-is.
+
+Guard: `src/tools/test_title_demo.py` now asserts `LevelShowTimer`,
+`LV_SHOW_FRAMES` and the banner branch stay out of kernel/bank1 sources.
+
+Size ledger after the removal (`tools/rom_size_report.py --md`, parser fixed:
+see note below):
+
+| bank | code | data | fill | used | free |
+|---|---|---|---|---|---|
+| bank0 | 3016 | 350 | 727 | 3366 | 730 |
+| bank1 | 2461 | 478 | 795 | 2939 | 1157 |
+| bank2 | 1399 | 361 | 2314 | 1760 | 2336 |
+| bank3 | 933 | 368 | 1761 | 1301 | 2795 |
+| **total** | **7809** | **1557** | **5597** | **9366** | **7018** |
+
+level data 548 B (index 48 + tables/blocks 334 + models 166).
+
+Delta (same parser on both sides): **bank0 −10 B, bank1 −76 B, total −86 B**
+(bank1 `$FD00` block free space 0 → 76 B). Free growth in bank0 is still
+absorbed by its pad: pre-pad headroom stays 1 B (the banner arm was not at
+the pre-pad tail).
+
+**Parser fix in the same change:** `tools/rom_size_report.py` credited a
+positive-length `.ds` fill to the `NAME = value` rows DASM prints inside it
+(bank1's new 76 B `$FD00 -> $FDE3` pad was reported as +76 *code*), and lost
+the fill. It now skips `NAME = value` rows as content and ends a truncated
+`.ds` row at the next address jump. Ledgers before §9 were measured with the
+old parser; bank0 differs by 1 B (an EQU row), bank1 totals were correct but
+code/data/fill were shifted.

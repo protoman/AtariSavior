@@ -628,9 +628,6 @@ ScoreTh     = $F3       ; score thousands digit (must match bank0)
 ScoreHu     = $F4       ; score hundreds digit
 ScoreTe     = $F5       ; score tens+ones packed BCD
 Level       = $A3       ; #18 current level, 0-based (must match kernel)
-LevelShowTimer = $F2    ; #18 LV001 banner frames left (kernel sets, bank1 decs;
-                         ;  ALIAS of TallyTicks — banner = gameplay entry only,
-                         ;  tally = level-exit bonus; LoadLevel gates on $FD)
 ; $F6 is NOT ScoreOn — bank0 uses it as BombX. Do not write $F6 here.
 
 ; --- TIA/RIOT + ZP mirrors for relocated leaf routines (leaf_move_plan) ---
@@ -1107,8 +1104,8 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta WSYNC
     sta HMOVE
 
-    ; --- Score digits + #18 LV001 banner pointers (sub with the glyphs
-    ; at $FD.. — bank1 pre-pad $F937 pin has ~1B slack, nothing fits).
+    ; --- Score digit pointers (sub with the glyphs at $FD.. — bank1
+    ; pre-pad $F937 pin has ~1B slack, nothing fits).
     jsr SetupScorePointers
 
     ; --- Clear sprites before loop (3-write pattern for VDELP) ---
@@ -2117,43 +2114,11 @@ DigitGfx:
     .byte %11000110
     .byte %01111100
 
-    ; Glyph 10 = blank (#18 LV banner trailing slot; byte7=top, byte1=bottom)
-    .byte %0
-    .byte %0
-    .byte %0
-    .byte %0
-    .byte %0
-    .byte %0
-    .byte %0
-    .byte %0
-
-    ; Glyph 11 = L (#18)
-    .byte %0
-    .byte %01111110
-    .byte %01100000
-    .byte %01100000
-    .byte %01100000
-    .byte %01100000
-    .byte %01100000
-    .byte %01100000
-
-    ; Glyph 12 = V (#18)
-    .byte %0
-    .byte %00011000
-    .byte %00011000
-    .byte %00111100
-    .byte %00111100
-    .byte %01100110
-    .byte %01100110
-    .byte %01100110
-
-; SetupScorePointers — score digit ptrs + #18 LV001 banner (#18):
+; SetupScorePointers — score digit pointers:
 ; first frame zeroes ScoreTh/Hu/Te (Temp = $AD first-frame flag); every
-; frame points scorePtr1-6 at DigitGfx+digit*8 (right-aligned "00ThHu.."),
-; or — while LevelShowTimer > 0 — at "L V 0 tens ones _" for Level+1
-; (hundreds stays '0'; LEVEL_COUNT <= 99). Decrements LevelShowTimer
-; once per banner frame. Lives with the glyphs: bank1 pre-pad $F937 pin
-; has ~1B slack (score section is a jsr here from MenuMain).
+; frame points scorePtr1-6 at DigitGfx+digit*8 (right-aligned "00ThHu..").
+; Lives with the glyphs: bank1 pre-pad $F937 pin has ~1B slack (score
+; section is a jsr here from MenuMain).
 SetupScorePointers:
     ; --- Initialize score to 0 on first frame ---
     lda Temp
@@ -2176,42 +2141,7 @@ SetupScorePointers:
     sta scorePtr5+1
     sta scorePtr6+1
 
-    lda LevelShowTimer
-    and #$80                   ; bit7 = banner flag (#18; tally ARM clears it)
-    beq .scoreLows
-    dec LevelShowTimer
-    lda #<DigitGfx+88          ; glyph 11 = L
-    sta scorePtr1
-    lda #<DigitGfx+96          ; glyph 12 = V
-    sta scorePtr2
-    lda #0                     ; hundreds '0'
-    sta scorePtr3
-    lda Level
-    clc
-    adc #1                     ; 1-based level number
-    ldx #0
-.LVTens:
-    cmp #10
-    bcc .LVTensDone
-    sbc #10
-    inx
-    bne .LVTens
-.LVTensDone:
-    asl
-    asl
-    asl                        ; ones * 8
-    sta scorePtr5
-    txa
-    asl
-    asl
-    asl                        ; tens * 8
-    sta scorePtr4
-    lda #<DigitGfx+80          ; glyph 10 = blank (trailing slot)
-    sta scorePtr6
-    rts
-
     ; scorePtr1..2 = leading zeros
-.scoreLows:
     lda #0
     sta scorePtr1
     sta scorePtr2
