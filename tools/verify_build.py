@@ -718,7 +718,7 @@ def check_tramp_targets(src: Path) -> None:
     Catches the stale-operand class generally: a 1-byte-wrong jmp operand
     lands between rows, like 2026-10-10 ($FD6B vs BombEnemyBlastBody
     $FD6A). Comment text is stripped first so prose mentioning tramps
-    (e.g. bank1's $F937 pin comments) cannot false-positive. bank3.lst
+    (e.g. bank1's retired $F937 pin comments) cannot false-positive. bank3.lst
     is emitted by build.sh (added 2026-10-16 — it was a silent fossil
     before, misdirecting label lookups).
     """

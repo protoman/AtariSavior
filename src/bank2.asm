@@ -670,7 +670,7 @@ MothGate:
 ; ------------------------------------------------------------------------------
 ; TallyEntry MOVED to bank1 (repack chunk 3, 2026-10-20): ZP/TIA only,
 ; and the tally frame is the bank1 HUD frame anyway. The hard `org $F313`
-; pin died with it; the region is fill up to the $F3C4 pin below.
+; pin died with it; the region is fill.
 ; ------------------------------------------------------------------------------
 ; ------------------------------------------------------------------------------
 ; BCFDarkRun / BuildColupF / PhaseBlink / HotOverlapBody moved to
@@ -690,8 +690,9 @@ OvTail:
 
 ; --- Level data (frozen addresses — pointer values must match bank0's
 ;     original layout, level_bank_plan P2.1: $F9D9-$FB1E = 326B) ---
-    .ds $F3C4 - *, 0            ; (was PickPlayerFrame's body entry pin — body
-                                ;   moved to bank0 2026-10-20, repack chunk 1)
+; ($F3C4 pin DELETED 2026-10-20, audit round 2: it was PickPlayerFrame's body
+;  entry pin, retired with the repack chunk-1 move. Nothing ever sat between
+;  it and the $F450 ERBlocks pad, so the gap is plain fill.)
 ; ------------------------------------------------------------------------------
 ; PickPlayerFrame MOVED to bank0 ($F9F5 region, repack chunk 1 2026-10-20).
 ; With it went the $FDE1 tramp mirror and the $F8DD/$FDE7 art twins: the body
@@ -728,12 +729,11 @@ ERBlocksPad:
     sta $1FF8                   ; bank3 half of the return tail (never fetched
                                 ;   bank2-side — B3RoomBlocks ends here)
     jmp ERBlocksDone            ; fetched bank2-side at $F45B after the switch
-    .ds $F4C4 - *, 0            ; pinned: bank0/bank2 TitleSequenceFold jmp
-                                 ; operand ($F4C4 since P2b StageBandTab grew;
-                                 ; verify_build asserts the operand is a
-                                 ; TitleSequence lst row start)
-    .ds $F5CF - *, 0            ; TitleSequence retired — merged title
-                                 ;   screen (2026-10-19)
+; ($F4C4 / $F5CF pins DELETED 2026-10-20, audit round 2: TitleSequence was
+;  retired with the merged title, so there is no jmp operand and no lst row to
+;  match. ColOff is read as `lda ColOff,X`, so the table floats: it now starts
+;  right after the ERBlocks return tail, and the $F600 pin still holds
+;  LWpSetup / LWpSolid / LWpNotPatch.)
 
 ColOff:
     .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
@@ -830,17 +830,21 @@ FooterPtr6 = $EA
     ; Phase 3 blink masks — pair index (2c>>1) → the two adjacent PF bits
     ; for that left-half cell (PF0: bits4-7 left-to-right; PF1: bits7-0;
     ; PF2: bits0-7 reversed). Pairs never straddle a register (even 2c).
-    .ds $F970 - *, 0            ; (was M1StripBlast's body entry pin — body
-                                 ;   moved to bank1 2026-10-20, repack chunk 2)
+    .ds $F970 - *, 0            ; LOAD-BEARING (kept): the END of the
+                                ;   spill_F901 data slot — convert_level's
+                                ;   _SPILL_SLOTS and verify_build's
+                                ;   bank2_data_slots both read THIS line.
+                                ;   M1StripBlast's body entry pin retired
+                                ;   2026-10-20 (repack chunk 2); the address
+                                ;   stays because it is the window bound.
 ; ------------------------------------------------------------------------------
 ; M1StripBlast MOVED to bank1 ($F41F fill, repack chunk 2 2026-10-20): it
 ; reads ZP only, so the .BMWDone -> M1StripBlast -> StripBlastCheck chain is
 ; same-bank there. Bank2's 12 B hop pads at $F9AC went with it.
 ; ------------------------------------------------------------------------------
 
-    .ds $F9B8 - *, 0            ; (was the Phase 4 overlay tramp twin — the
-                                 ;   whole overlay cluster moved to bank0
-                                 ;   2026-10-20, repack chunk 4)
+; ($F9B8 pin DELETED 2026-10-20, audit round 2: the Phase 4 overlay tramp
+;  twin moved to bank0 with the whole cluster — no bank2 byte lives at $F9B8.)
 
     ; --- Level data, main window $F9D9..$FBD6 (509B; pads pin the end).
     ; A3 (2026-10-19): models_data + per-room blocks moved to bank3; only the
@@ -970,14 +974,14 @@ BombEnemyBlastBody:
 ; $1FF8` at $FDD8-$FDDA; the fetch at $FDDB comes from THIS bank = `jmp $FD87`
 ; (BombEnemyBlastBody). Neither bank runs its other half: bank0 is switched
 ; away at $FDDA, bank2 never enters at $FDD8 (the .HOVdone tail-jmps $FBF8
-; before this pad). Pinned $FDE1 below = PickPlayerFrame tramp.
+; before this pad). $FDE1 no longer pins anything (PickPlayerFrame's tramp
+; mirror retired 2026-10-20).
 ; ------------------------------------------------------------------------------
     .ds $FDD8 - *, 0
     .byte $8D, $F8, $1F         ; sta $1FF8 (twin)
     .byte $4C, $87, $FD         ; jmp $FD87 (twin — fetched post-switch)
-    .ds $FDE1 - *, 0            ; (was the PickPlayerFrame tramp mirror + the
-                                 ;   PlayerWalkA/B art twin: both deleted
-                                 ;   2026-10-20 — body moved to bank0)
+; ($FDE1 pin DELETED 2026-10-20, audit round 2: PickPlayerFrame's tramp mirror
+;  and the PlayerWalkA/B art twin moved to bank0 — nothing sits at $FDE1.)
 
     .ds $FE00 - *, 0            ; (was PHMOverlay's pin — the overlay
                                  ;   cluster moved to bank0 2026-10-20,

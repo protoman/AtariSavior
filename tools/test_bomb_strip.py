@@ -119,12 +119,24 @@ if need:
 # Repack chunk 2 (2026-10-20): M1StripBlast lives in bank1 ($F41F fill) and
 # the .BMWDone -> M1StripBlast -> StripBlastCheck chain is same-bank, so the
 # old 12 B hop pad at $F9AC and bank2's copy of the body must be gone.
+# Audit round 2 (2026-10-20): the $F937 / $F9AC pins are deleted too — the
+# body is reached by label, so it floats. Pin the INVARIANTS instead of an
+# absolute: chain order, the $F41F placement, and "no hand-coded $F937/$F9AC
+# literal survives in any bank" (a stale absolute is what the old pin kept).
 assert "M1StripBlast" not in L2, "bank2 must not carry M1StripBlast any more"
 assert L1["M1StripBlast"] == 0xF41F, (
     f"M1StripBlast ${L1['M1StripBlast']:04X} != $F41F (placement drift)")
 assert L1["M1StripBlast"] < L1["StripBlastCheck"], "strip chain out of order"
-assert L1["StripBlastCheck"] == 0xF937, (
-    f"StripBlastCheck ${L1['StripBlastCheck']:04X} != $F937 (pin drift)")
+# StripBlastCheck floats in bank1's $F8C6-$F9AB gap (raft twin -> sound leaves)
+assert 0xF8C6 <= L1["StripBlastCheck"] < 0xF9AC, (
+    f"StripBlastCheck ${L1['StripBlastCheck']:04X} outside the $F8C6-$F9AB gap")
+for _f in ("kernel.asm", "bank1.asm", "bank2.asm", "bank3.asm"):
+    _t = (SRC / _f).read_text(errors="replace")
+    # comments may mention the retired pins; only CODE operands break:
+    for _n, _line in enumerate(_t.splitlines(), 1):
+        _code = _line.split(";")[0]
+        assert "$F937" not in _code and "$F9AC" not in _code, (
+            f"{_f}:{_n}: stale strip address literal in code: {_line.strip()}")
 
 # Model 0 meta (bank2 ROM): MetaA+9 = (m1_col+1)<<4 | band_mask,
 # MetaB+10 = ball_col+1 — expectations below are derived from these so the

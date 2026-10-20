@@ -1176,8 +1176,8 @@
     931  fcb5		       a9 30		      lda	#$30
     932  fcb7		       85 05		      sta	NUSIZ1
     933  fcb9							; Door stripe color ($8D) is staged inside PhaseBlink (this window
-    934  fcb9							; is full to the $F4C4 pin — the 14B staging block lives with the
-    935  fcb9							; walk where there is hole).
+    934  fcb9							; was full to the $F4C4 pin, retired 2026-10-20 — the 14B staging
+    935  fcb9							; block lives with the walk where there is hole).
     936  fcb9							; --- Phase 3: phase-cell blink (PF buffer pokes) ----------------------
     937  fcb9							; Body moved after the level data (PhaseBlink, ~130B — the StageBandTab
     938  fcb9							; window $F3C4..$F4C4 was full; the data window has the only free
