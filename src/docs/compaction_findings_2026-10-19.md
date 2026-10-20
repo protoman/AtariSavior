@@ -343,3 +343,61 @@ to stop counting `NAME = value` rows inside positive-length `.ds` fills as code
 (the fills are now reported as fill). That moves the reported total by 1 B
 (9453 -> 9452); it is an accounting fix, not a ROM change. The banner removal
 commit `348c342` was reverted per user decision — the LV001 banner stays.
+
+## Chunk: title reuses the cave kernel (band 0) — 2026-10-20
+
+`TitleKernel` in bank1 duplicated the whole frame (its own band-0 stage +
+player + band-1 logo/footer + band-2 + HUD). Band 0 is now the REAL cave
+kernel, so the two can never drift:
+
+- `KernelInit` no longer dispatches on `DropTarget` (the `$FF` title path,
+  its `pla/pla` unwinding and the ENAM0 clear are gone): every frame runs
+  `CaveKernelRow`, which draws the live stage PF/COLUPF from the room buffers
+  and the player through `PlayerColTable`/`Grp0Ptr`/`PickPlayerFrame`.
+- The row-advance tail diverts **only** on `$FF`:
+  `lda DropTarget / cmp #$FF / bne .Row / jmp CallPad_TitleBand`. Cost: +5c on
+  the row1/row2 setup lines of gameplay frames; the wall model did NOT move
+  (sim: cave 267.0 constant, title frame 265, WSYNC counts 195/193), measured
+  before retargeting anything.
+- `CallPad_TitleKernel` ($FC55) is retargeted, not added: the same 6-byte pad
+  is now `CallPad_TitleBand` (byte-identical in bank0/bank1, `jmp $F080`).
+- `TitleBand` (bank1, still pinned at `$F080`) starts at band 1: band-1 PF +
+  COLUPF + ENABL from `PF*Buf+1`/`ColupfBuf+1`/`BandTab+1` (same store order as
+  the cave `.Row`), the 48px logo (`TitleFont`, NUSIZ 6 + VDEL, unchanged),
+  the credit footer (`FooterBand`), the band-1 tail, then band 2
+  (`PF*Buf+2`), its 48 lines, and `jmp MenuMain`.
+- Object/beam suppression needs NO new code: `LoadLevel` tail-jumps `DropArm`,
+  whose `.DATitle` (taken because `DropTarget=$FF`) clears
+  `EnemyCount`/`LevelMinerRoom`, so `SelectActiveObject` parks GRP1; the same
+  `.DATitle` now also clears the laser held/gate bits (`and #LASER_KEEP` —
+  band 0 is the cave `.Line`, which would otherwise re-enable ENAM0 from
+  `BeamMask & LaserState`), keeping `b0` + the rooms 4-7 dark mask.
+- The cave band 0 leaves the missiles latched (`.AfterRows` is skipped on the
+  title), and the 48px footer sets NUSIZ=3: `TitleBand` clears `ENAM0/ENAM1`
+  on entry, otherwise two 1-clock vertical lines ran through bands 1/2.
+- Bank1's `PlayerWalkA/B` art (24 B) and the manual player draw are deleted;
+  the inlined `#<FooterFont+N` / `#<TitleFont+N` literals are parenthesized
+  (`#<(FooterFont+N)`) — DASM bound `<` to the label only, so moving the font
+  across a page boundary turned them into out-of-range values.
+
+Guards: `src/tools/test_title_demo.py` rewritten for the new architecture
+(cave band 0 + TitleBand bands 1/2, pad retarget, no bank1 player art,
+`.DATitle` suppression); `src/sim_frame_budget.py` classifies title frames at
+the new pad (`CallPad_TitleBand`, PH_KER) instead of the retired label.
+
+Size ledger after the chunk:
+
+| bank | code | data | fill | used | free |
+|---|---|---|---|---|---|
+| bank0 | 3023 | 350 | 720 | 3373 | 723 |
+| bank1 | 2409 | 478 | 847 | 2887 | 1209 |
+| bank2 | 1399 | 361 | 2314 | 1760 | 2336 |
+| bank3 | 933 | 368 | 1761 | 1301 | 2795 |
+| **total** | **7764** | **1557** | **5642** | **9321** | **7063** |
+
+level data: index 48 + tables/blocks 334 + models 166 = **548 B**.
+
+Delta vs the tally-revert baseline (9452 used / 6932 free): **−131 B used**
+(bank0 −4, bank1 −128: code −104, data −24). Bank0's pre-pad pin still ends at
+`$FC67` (the `.ds` pins absorb the shrink); bank1's freed space is fill until
+the next feature.

@@ -75,7 +75,7 @@ for _l in (SRC / 'bank0.lst').read_text(errors='replace').splitlines():
     if _m:
         LABELS.setdefault(_m.group(2), int(_m.group(1), 16))
 for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row',
-              '.WaitVBLANK', 'CallPad_TitleKernel', 'ReloadLevel',
+              '.WaitVBLANK', 'CallPad_TitleBand', 'ReloadLevel',
               'CallPad_BombMarkWalls'):
     if _need not in LABELS:
         sys.exit(f'label {_need} not found in bank0.lst')
@@ -88,7 +88,7 @@ PC_BMW = LABELS['CallPad_BombMarkWalls']
 PC_ROW = LABELS['.Row']
 PC_VBLT = LABELS['VBLTimer']     # VBL work window: TIM64T #23 armed here
 PC_WAIT = LABELS['.WaitVBLANK']  # INTIM poll entry = end of pure VBL work
-PC_TITLE = LABELS['CallPad_TitleKernel']  # bank0 entry pad; kernel now in bank1
+PC_TITLE = LABELS['CallPad_TitleBand']  # bank0 pad -> bank1 TitleBand (bands 1-2)
 
 # overscan sub-marks for attribution (which caller eats the timer window)
 # (#22: LoadPFBuffer/LoadEnemyRam moved into bank2 EnterRoomB2 — they no
@@ -385,15 +385,11 @@ while frame < 1100:
                   f'{" ".join(f"{mem.ram[a-0x80]:02x}" for a in (0xEA, 0xEB, 0xEC))} '
                   f'RowIdx={mem.ram[0x92-0x80]:02x} '
                   f'LineCount={mem.ram[0x84-0x80]:02x}')
-    elif bk == 0 and pc == PC_TITLE and phase == PH_VBL:
-        # title frames: KernelInit branches to TitleKernel (skips .Row) —
-        # same kernel-phase accounting; Overscan transition below still applies
-        vbl_val = vbl_pre if vbl_pre is not None else vbl_acc
-        _wall_vbl = mem.wall
-        ker_bounds.setdefault(frame, {})['row'] = mem.wall
-        phase = PH_KER
-        gap = 0
-        kwsync = 0
+    elif bk == 0 and pc == PC_TITLE and phase == PH_KER:
+        # title frames share the cave kernel for band 0; the row-advance tail
+        # diverts to bank1's TitleBand (bands 1-2 + HUD) right before band 1.
+        # Only the kernel KIND changes here — the VBL->KER boundary is the
+        # normal .Row marker, so phase/vbl accounting is the cave one.
         cur_ker = 'title'
     elif bk == 0 and pc == PC_OVER and phase == PH_KER:
         # kernel tail (post last WSYNC) also counts as line work.
