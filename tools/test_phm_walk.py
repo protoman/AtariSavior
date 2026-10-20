@@ -159,17 +159,22 @@ def main() -> None:
         "no caller may re-punch (VBL re-apply + EnterRoom restore deleted)"
     assert not re.search(r"^RoomWallMask", KERNEL, re.M), \
         "RoomWallMask $F2 must be gone (D1-B: no cross-room hole state)"
-    mb = re.search(r"^BombMaskBit:\s*\n\s*\.byte([^\n]+)", BANK1, re.M)
-    assert mb and len(mb.group(1).split(",")) == 5, \
-        "bank1 BombMaskBit needs 5 entries (rect0-3 mask bits + idx4 $00 "\
-        "walk placeholder; #7(i) — PairGone guards idx4 double-score)"
-    assert mb.group(1).split(",")[-1].strip().startswith("$00"), \
-        "BombMaskBit idx4 must be $00 (rect4 never in WallMask)"
-    # end anchor: ReturnPad — ABWXTab moved to the $F010 fill gap (2026-10-10
-    # table relocation), so it no longer follows the BMW body in source order
+    # plan 5.1b (2026-10-20): the punch is CELL-based — the rect cache, the
+    # WallMask bits and PairGone are gone; the thin-cell test is
+    # solid(k) + empty(k-1) + empty(k+1) over the PF buffers.
+    assert not re.search(r"^BombMaskBit:", BANK1, re.M), \
+        "bank1 BombMaskBit must be gone (plan 5.1b: WallMask retired)"
+    assert not re.search(r"^PairGone:", BANK1, re.M), \
+        "PairGone must be gone (plan 5.1b: the buffer is the guard)"
+    assert not re.search(r"^ABWXTab:", BANK1, re.M), \
+        "ABW rect tables must be gone (plan 5.1b: no rect cache)"
     bmc = re.search(r"^BombMarkWalls:.*?^ReturnPad", BANK1, re.S | re.M)
-    assert bmc and "jsr ClearPFColumn" in bmc.group(0), \
-        "BMW must punch at the match via jsr ClearPFColumn (plan 5.1)"
+    assert bmc and "jsr BMWCellSolid" in bmc.group(0), \
+        "BMW must probe PF cells via jsr BMWCellSolid (plan 5.1b)"
+    assert bmc and bmc.group(0).count("jsr ClearPFColumn") == 2, \
+        "BMW must punch BOTH cols of the D7 cell (plan 5.1b)"
+    assert "RcBase" not in bmc.group(0) and "BombPacked" not in bmc.group(0), \
+        "BMW must not read the rect cache or write WallMask (plan 5.1b)"
     cpc = re.search(r"^\.CPCDone:\s*\n\s*(\S+)", BANK1, re.M)
     assert cpc and cpc.group(1) == "rts", \
         "ClearPFColumn must tail rts, not ReturnPad (same-bank, plan 5.1)"

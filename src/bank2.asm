@@ -1094,14 +1094,12 @@ HotOverlapBody:
                                  ;   $82 hcrunch; $81 is inert) — NOT a
                                  ;   legacy death rect (see .HOVfeature
                                  ;   after .HOVdone).
-    bne .HOVwallGate
+    bne HOVafterGate           ; nonzero = wall piece → PF gate at the hit
+                               ;   (plan 5.1b: no WallMask bits any more)
     lda EnemyDeadMask
     and #$10                    ; b4: strip destroyed → M1 rect dead
     bne HOVnext                ; (HOVnext pops the loop's pushed Y)
     beq HOVafterGate           ; strip alive → continue (result was 0)
-.HOVwallGate:
-    and BombPacked
-    bne HOVnext
 HOVafterGate:
     iny                         ; Y = base+1 (x)
     ; Column overlap (same tests as PlayerHitsMap)
@@ -1144,10 +1142,15 @@ HOVafterGate:
     dey
     dey                         ; Y = base+2 → base (record class)
     lda (FetchPtr),Y
-    bpl HOVlegHit              ; legacy hot rect → no phase latch
-    lda EnemyDeadMask
-    ora #$40                    ; b6: phase dead — walls removed from now on
-    sta EnemyDeadMask           ;   (PhaseBlink forces punch-OFF, kill gated)
+    bmi .HOVphaseLatch         ; b7 set = feature record → phase latch
+    ; Legacy hot rect (plan 5.1b): its parent wall must still be SOLID in
+    ; the PF buffers. A thin parent is a bombable cell, so a blast punches
+    ; it and the hot piece dies with the wall (the old WallMask AND). Mask
+    ; $00 (M1 block cell, PF-open by envelope) is gated above → no read.
+    ; The probe lives AFTER the $F9D9 window (HOVHotPfGate) so this pinned
+    ; 290 B window does not grow.
+    beq HOVlegHit
+    jmp HOVHotPfGate
 HOVlegHit:
     pla
     lda Temp
@@ -1155,6 +1158,11 @@ HOVlegHit:
     sta Temp
     sec                         ; tail-call contract: return C=1
     jmp ReturnPad                   ; ReturnPad → original caller (C survives)
+.HOVphaseLatch:
+    lda EnemyDeadMask
+    ora #$40                    ; b6: phase dead — walls removed from now on
+    sta EnemyDeadMask           ;   (PhaseBlink forces punch-OFF, kill gated)
+    jmp HOVlegHit
 HOVnext:
     pla
     clc
@@ -2053,6 +2061,29 @@ LaserHitTest:
 ; $FEF3 runs after bank0's switch. Assembles to the same 6 bytes as
 ; kernel's `sta $1FF8 / jmp $F110` — operand drift fails the guard.
 ; ------------------------------------------------------------------------------
+; HOVHotPfGate (plan 5.1b, 2026-10-20) — legacy hot rect parent test. The
+; record's own PF cell must still be solid: a thin parent wall is a bombable
+; cell, so a blast punches it and the hot piece dies with the wall (this is
+; the PF form of the retired WallMask AND). Entered from HotOverlapBody's hit
+; path with Y = record base (mask,x,y,w,h) after the box overlap passed.
+; Exits: cell solid -> HOVlegHit (kill), cell empty -> HOVnext (pass/advance).
+; Placed in the $FEA6-$FEEF hole (the $F8B7 window is pin-full).
+HOVHotPfGate:
+    iny
+    lda (FetchPtr),Y            ; x (left-half display col 0..19)
+    tax
+    iny
+    lda (FetchPtr),Y            ; y (band row 0..2)
+    clc
+    adc ColOff,X
+    tay
+    lda PF0Buf,Y
+    and ColMask,X
+    beq .HOVPFskip             ; parent wall blasted (cell punched) -> pass
+    jmp HOVlegHit
+.HOVPFskip:
+    jmp HOVnext
+
     .ds $FEF0 - *, 0
 UE_MothTramp:
     sta $1FF8

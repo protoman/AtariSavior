@@ -29,11 +29,11 @@ from test_cell_map import Mem as Mem02, RTS_SENTINEL, parse_labels  # noqa: E402
 L2 = parse_labels(SRC / "bank2.lst", {
     "HotOverlapBody", "CollisionCellX", "CollisionCellY",
     "CollisionEndX", "CollisionEndY", "RoomRectsLo",
-    "EnemyDeadMask", "BombPacked", "Temp",
+    "EnemyDeadMask", "BombPacked", "Temp", "PF0Buf",
 })
 need = ({"HotOverlapBody", "CollisionCellX", "CollisionCellY",
          "CollisionEndX", "CollisionEndY", "RoomRectsLo",
-         "EnemyDeadMask", "BombPacked"} - L2.keys())
+         "EnemyDeadMask", "BombPacked", "PF0Buf"} - L2.keys())
 if need:
     sys.exit(f"labels missing: {sorted(need)}")
 TEMP = L2.get("Temp", 0x88)
@@ -51,8 +51,13 @@ ARMED = 0x20               # EnemyDeadMask b5 = blink solid this frame
 
 
 def run(mask: int, box: tuple[int, int, int, int],
-        dead_mask: int, bomb_packed: int = 0) -> int:
-    """HotOverlapBody over one record; returns Temp (b7 = kill)."""
+        dead_mask: int, bomb_packed: int = 0, pf_solid: bool = True) -> int:
+    """HotOverlapBody over one record; returns Temp (b7 = kill).
+
+    plan 5.1b: a legacy (nonzero, b7-clear) record's parent gate is now the
+    PF cell under the record (x=4, y=1 -> PF1Buf row1, col 4 = bit 7), not
+    the WallMask AND. pf_solid stages that cell (wall intact); pf_solid=False
+    is the blasted wall (the punch emptied the cell)."""
     mem = Mem02()
     r = mem.ram
     r[STREAM - 0x80:STREAM - 0x80 + 7] = bytes(
@@ -64,6 +69,8 @@ def run(mask: int, box: tuple[int, int, int, int],
                       ("BombPacked", bomb_packed)):
         r[L2[name] - 0x80] = val
     r[TEMP - 0x80] = 0
+    # PF cell of the record (x=4 -> PF1Buf; row 1) — see pf_solid above.
+    r[L2["PF0Buf"] + 3 + 1 - 0x80] = 0x80 if pf_solid else 0x00
     mem.bank = 2            # C2: the walkers moved to bank2
     mpu = MPU(memory=mem)
     mpu.pc = L2["HotOverlapBody"]
@@ -89,8 +96,12 @@ cases = [
     ("armed + below", run(0x80, BELOW, ARMED), False),
     ("armed + inside + $81 vcrunch -> record path skipped (kill = OvShutBand)",
      run(0x81, INSIDE, ARMED), False),
-    ("legacy $40 unbombed + inside", run(0x40, INSIDE, 0, 0x00), True),
-    ("legacy $40 bombed + inside", run(0x40, INSIDE, 0, 0x40), False),
+    ("legacy $40 wall intact + inside", run(0x40, INSIDE, 0, 0x00), True),
+    # plan 5.1b: the parent gate is the PF cell — a punched (empty) cell
+    # means the wall was blasted, so the hot piece passes. WallMask bits
+    # (BombPacked b3-6) are retired and must NOT matter.
+    ("legacy $40 wall punched + inside",
+     run(0x40, INSIDE, 0, 0x40, pf_solid=False), False),
 ]
 bad = [(n, t, want) for n, t, want in cases if killed(t) != want]
 if bad:
