@@ -109,17 +109,18 @@ COLOR_DARK_PF = $04             ; dark-room fuse walls
 COLOR_HOT_Y = $1C               ; kernel COLOR_BLINK_Y
 COLOR_HOT_R = $44               ; kernel COLOR_BLINK_R
 ; --- TallyEntry (level-bonus tally) — hand-copies, check_equ_sync guarded ---
-TallyTicks = $F2                ; countdown, 50-pt units (kernel EQU)
+TallyTicks = $F2                ; hold countdown after the award (kernel EQU)
 DropTarget = $8A                ; $FE = tally sentinel (hand-copy kernel byte)
 BarLevel = $AE                  ; time bonus input (120 = full)
 PlayerBombs = $F0               ; 50 pts each unspent
 PlayerLives = $AC               ; 100 pts each remaining
 JetPower = $96                  ; cleared at arm (no thrust flutter)
 LaserX = $83                  ; travelling beam X (kernel decl; arm resets to 0)
-BombSnd = $F1                   ; coin hold — bank1 UpdateBombSound decs it
-AUDC0 = $15                     ; TIA — coin tone regs (any bank may write)
-AUDF0 = $17
-AUDV0 = $19
+BombSnd = $F1                   ; leftover event hold — bank1 UpdateBombSound decs it
+AUDV0 = $19                     ; TIA — bomb-sound body below writes it
+ScoreTh = $F3                   ; award target (bank1/bank0 hand-copy)
+ScoreHu = $F4
+ScoreTe = $F5
 
 ; A3: level-data block labels (M<id>*, L<n>R<r>*) live in bank3 now — the
 ; room tables below need their absolute values as plain EQUs.
@@ -652,53 +653,34 @@ MothGate:
     jmp MothDoWalk
 
 ; ------------------------------------------------------------------------------
-; TallyEntry — level-bonus tally body (user spec 2026-10-02). Entered from
-; bank0's TallyTramp ($FFE6) via jsr; tail-jmps ReturnPad ($FBF8) so A (and
-; Z) survive back to the bank0 caller.
+; TallyEntry — level-bonus award + frozen hold (user decision 2026-10-19,
+; replacing the 2026-10-02 count-up: A+C = award at once, keep the hold).
+; Entered from bank0's TallyTramp ($FFE6) via jsr; tail-jmps ReturnPad
+; ($FBF8) so A (and Z) survive back to the bank0 caller.
 ;   DropTarget == 0 (pickup frame) -> ARM: snapshot the bonus into TallyTicks
 ;     in 50-pt units — 20 = miner (1000), (BarLevel+3)/6 = remaining time
-;     (50% -> 10 ticks -> 500), 1/bomb, 2/life — then arm the 4-frame pace
-;     divider (TickCounter), clear jet/beam, set DropTarget = $FE.
-;   DropTarget == $FE (every frame) -> STEP: dec TickCounter; on 0 reload 4,
-;     dec TallyTicks. Event A: b0 = add 50, b1 = coin tone written here
-;     (AUDC/F/V + BombSnd=8; bank0 TallyWork's UpdateBombSound holds it,
-;     coin = every 4 ticks = 200 pts), b2 = done (last tick consumed).
+;     (50% -> 10 ticks -> 500), 1/bomb, 2/life — then award the WHOLE amount
+;     (TallyAward, one BCD add in this frame), reload TallyTicks as the HOLD
+;     countdown (TALLY_HOLD frames, final score visible), clear jet/beam, set
+;     DropTarget = $FE.
+;   DropTarget == $FE (every held frame) -> dec TallyTicks. Event A: b2 = done
+;     (last hold frame), 0 = no event. No coin tone, no pacing divider.
 ; Pinned $F313 (org $F9D9 below: level data pins the overflow = build fails).
 ; Was $F310 → $F313 (Phase 4 walk-head; kernel TallyEntry EQU moves with
 ; it — both jmp operands are symbolic). The LWC M1 tip test (2026-10-08)
 ; funds itself by moving ColOff/ColMask past this pin (see their comment).
 ; ------------------------------------------------------------------------------
+TALLY_HOLD = 36                 ; frozen frames after the award (~0.6 s)
     .ds $F313 - *, 0
 TallyEntry:
     lda DropTarget
     beq .TEArm
-    dec TickCounter             ; pace: 1 tick per 4 frames
-    bne .TEIdle
-    lda #4
-    sta TickCounter
-    dec TallyTicks
-    beq .TEFinal                ; last unit: event = tick+coin+done
-    lda TallyTicks
-    and #3
-    bne .TEOne                  ; tick only
-    lda #8                      ; --- coin blip (200 pts = every 4th tick)
-    sta BombSnd
-    lda #4
-    sta AUDC0                   ; square
-    lda #24
-    sta AUDF0                   ; high pitch — distinct from bomb drop ($0A)
-    lda #8
-    sta AUDV0
-    lda #3                      ; tick + coin
-    jmp ReturnPad
-.TEOne:
-    lda #1                      ; tick only
-    jmp ReturnPad
-.TEFinal:
-    lda #7                      ; tick + coin + done
-    jmp ReturnPad
-.TEIdle:
+    dec TallyTicks              ; hold: 1 frame per unit
+    beq .TEDone
     lda #0                      ; no event (Z set for bank0 beq)
+    jmp ReturnPad
+.TEDone:
+    lda #4                      ; b2 = done
     jmp ReturnPad
 .TEArm:
     lda BarLevel
@@ -716,8 +698,9 @@ TallyEntry:
     jsr TallySum                ; TallyTicks = ticks + 20 + bombs + 2*lives
                                 ; (masking the raft's ramp bits out of
                                 ; PlayerBombs needs room this region lacks)
-    lda #4
-    sta TickCounter             ; fresh pace divider
+    jsr TallyAward              ; score += 50 * TallyTicks (same total, 1 frame)
+    lda #TALLY_HOLD
+    sta TallyTicks              ; reuse the slot as the hold countdown
     lda #0
     sta JetPower                ; frozen frame: no thrust flutter
     sta LaserX                  ; drop any live beam (travel restarts on press)
@@ -725,6 +708,57 @@ TallyEntry:
     sta DropTarget
     lda #0
     jmp ReturnPad
+
+; ------------------------------------------------------------------------------
+; TallyAward — score += 50 * TallyTicks in ONE BCD step (TallyEntry arm).
+; 50*N = 100*(N/2) + 50*(N&1): the odd half adds $50 to ScoreTe (packed
+; tens/ones) and its decimal carry bumps the hundreds count; the hundreds
+; count then goes to ScoreHu with a binary normalize (carry -> ScoreTh).
+; Saturates at $9999 exactly like AddScore. Clobbers A/X/Temp; Y kept.
+; Temp ($88) is free here (same window as TallySum).
+; ------------------------------------------------------------------------------
+TallyAward:
+    lda TallyTicks
+    lsr                         ; A = N/2 hundreds, C = odd (extra 50)
+    sta Temp
+    lda ScoreTe
+    bcc .TAHund                 ; even: no tens addend
+    sed
+    clc
+    adc #$50
+    cld
+    bcc .TAHund                 ; tens digit did not overflow
+    inc Temp                    ; 50 crossed into the hundreds digit
+.TAHund:
+    sta ScoreTe
+    lda ScoreHu
+    clc
+    adc Temp                    ; binary 0..34
+    ldx #0
+.TANorm:
+    cmp #10
+    bcc .TAHuOk
+    sbc #10
+    inx
+    bcs .TANorm
+.TAHuOk:
+    sta ScoreHu
+    txa
+    beq .TADone
+    clc
+    adc ScoreTh
+    cmp #10
+    bcc .TAThOk
+    lda #9                      ; $9999 cap (AddScore's saturation)
+    sta ScoreTh
+    sta ScoreHu
+    lda #$99
+    sta ScoreTe
+    rts
+.TAThOk:
+    sta ScoreTh
+.TADone:
+    rts
 
 ; ------------------------------------------------------------------------------
 ; BCFDarkRun / BuildColupF / PhaseBlink / HotOverlapBody moved to
