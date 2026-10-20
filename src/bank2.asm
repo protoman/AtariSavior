@@ -30,6 +30,7 @@ ENABL   = $1F
 CTRLPF  = $0A
 VDELP0  = $25
 VDELP1  = $26
+SWCHA   = $0280                 ; joystick port (room-entry input refresh)
 Temp = $88
 RoomX = $80                      ; PHMOverlay visible_left math (Phase 4)
 PlayerDir = $82
@@ -315,6 +316,19 @@ EBLER_Next:
     inx
     jmp EBLER_Loop
 EBLER_Done:
+    ; --- C? (2026-10-20): refresh the joystick shadow. EnterRoom clobbers
+    ;     Temp (room index / record type scratch) and bank0's input handler
+    ;     keeps reading the shifted joystick bits from it for the rest of the
+    ;     frame. Without this re-read the stale byte faked a held direction on
+    ;     every transition (user report: the eye snapped right and the player
+    ;     twitched). SWCHA is stable inside a frame, so this reproduces the
+    ;     value the input block staged at overscan entry.
+    lda SWCHA
+    lsr
+    lsr
+    lsr
+    lsr
+    sta Temp
     jmp ReturnPad                   ; sta $1FF6 / rts — back to bank0 caller
 
     ; --- E4 moth body (bank2 free space $F008-$F9D8) -------------------------
@@ -2231,6 +2245,71 @@ BombEnemyBlastBody:
 ; already owns ColOff/ColMask + the $FFEC HotOverlapFlag pad, so the per-miss
 ; bank switch disappears and the tables stop being duplicated.
 ; ------------------------------------------------------------------------------
+; LaserTipEnemy (2026-10-20) — enemy covering the beam's TIP PIXEL, tested
+; BEFORE the wall clamp. The clamp only looks at the tip CELL, so an enemy
+; drawn over a solid cell (the snake's whole design: it retreats into its
+; wall) lost to the wall and a visible hit did nothing (user report). A
+; sprite overlaps the tip pixel iff eX-7 <= tip <= eX, i.e. eX in
+; [tip, tip+7] — an enemy BEHIND the wall cannot match, because the tip px
+; sits inside the solid cell and the next sprite starts past it. Also covers
+; the air-tip case harmlessly (same kill the body loop would award).
+; IN: CollisionX = tip arg (LaserX, unchanged), PlayerDir = facing.
+; OUT: A=0 no tip enemy -> LaserWallClamp (normal wall/enemy order);
+;      A=$50 kill / A=1 lamp -> ReturnPad (caller resets the beam).
+; Clobbers A/X/Y/FetchPtr + RectCount (the wall clamp re-inits it anyway);
+; Temp is NOT touched (the joystick shadow stays live for the caller).
+LaserTipEnemy:
+    lda CollisionX
+    ldx PlayerDir
+    beq .LTEtip
+    sec
+    sbc #7                      ; left-facing tip = A-7 (drawn [A-7, A])
+    bcc .LTEnone                ; tip off screen left: no enemy
+.LTEtip:
+    sta RectCount               ; tip px (wall clamp scratch; re-inited there)
+    lda EnemyDataLo
+    sta FetchPtr
+    lda EnemyDataHi
+    sta FetchPtr+1
+    ldx #0
+.LTEloop:
+    cpx EnemyCount
+    bcs .LTEnone
+    lda EnemyDeadMask
+    and EnemyBitTable,X
+    bne .LTEnext
+    lda RoomY
+    sec
+    sbc EnemyRamY,X
+    clc
+    adc #3                      ; same vertical window as the body scan
+    cmp #9                      ; beam rows RoomY+2..3 vs enemy [Y, Y+7]
+    bcs .LTEnext
+    lda EnemyRamX,X
+    sec
+    sbc RectCount               ; eX - tip
+    bcc .LTEnext                ; eX < tip: sprite ends left of the tip
+    cmp #8                      ; eX in [tip, tip+7]: sprite covers the tip
+    bcs .LTEnext
+    ldy EnemyOffTable,X         ; type offset into the staged record
+    lda (FetchPtr),Y            ; direct — enemy records are in THIS bank
+    cmp #LAMP
+    beq .LTElamp
+    lda EnemyDeadMask
+    ora EnemyBitTable,X
+    sta EnemyDeadMask
+    lda #$50                    ; kill — caller adds #$50 score
+    jmp ReturnPad
+.LTElamp:
+    lda #1                      ; lamp — caller crashes it (dark room)
+    jmp ReturnPad
+.LTEnext:
+    inx
+    bne .LTEloop
+.LTEnone:
+    lda #0
+    jmp LaserWallClamp
+
     .ds $FE96 - *, 0            ; S5.4 LHT tramp — byte-identical w/ kernel.asm
                                 ; (shifted +$10 with kernel's tables)
 LaserHitTest:
@@ -2309,17 +2388,20 @@ FoldIndirect:
 ; score). First live enemy in span only (dead mask skips it next frame —
 ; no resurrection, no double score).
 ; Does NOT touch Temp (joystick still live at the call site).
-; Wall first: the body tail-jmps to LaserWallClamp ($F25A) — tip cell
-; (patch-strip + mirrored PF rows) — solid returns A=2 straight through
-; ReturnPad (enemies behind the wall survive); clear ends
-; `jmp LaserClampDone` (back here = enemy loop): stack depth unchanged.
+; Order: LaserTipEnemy (2026-10-20) → LaserWallClamp ($F25A) → enemy loop.
+; The tip-enemy pass only hits a sprite that COVERS the tip pixel (the snake
+; lives inside its wall); then the wall tip cell (patch-strip + mirrored PF
+; rows) — solid returns A=2 through ReturnPad (enemies behind the wall
+; survive); clear ends `jmp LaserClampDone` (back here = enemy loop): stack
+; depth unchanged.
 ; Clobbers A/X/Y/FetchPtr + CollisionCellY/CollisionEndY, RectCount,
 ; CollisionEndX (strip marker); MODIFIES NOTHING else (no clamp any more).
 ; ------------------------------------------------------------------------------
     .ds $FF00 - *, 0            ; pinned: bank0 tramp operand is literal $FF00
 LaserHitTestBody:
-    jmp LaserWallClamp          ; contact: tip-cell wall test FIRST (A=2 or
-                                ; fall into the enemy loop via LaserClampDone)
+    jmp LaserTipEnemy           ; tip-PIXEL enemy first (a sprite drawn over a
+                                ; solid cell must win: snake), then the wall
+                                ; clamp -> enemy loop via LaserClampDone
 LaserClampDone:
     ; --- Stage (P3.1): enemy record pointer — loop writes no FetchPtr ---
     lda EnemyDataLo

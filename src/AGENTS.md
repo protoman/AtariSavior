@@ -197,6 +197,16 @@ the old sweep extent (`RoomX±20`); past the cap it restarts at the eye.
 That is the entire state machine. Fire buzz continues while held (`b7`
 gates `UpdateLaserSound`).
 
+**Contact order is tip-ENEMY, then tip-CELL wall, then the body-box loop**
+(`LaserTipEnemy` at `$FE00` → `LaserWallClamp` → `LaserClampDone`; 2026-10-20).
+The snake lives *inside* its wall by design, so its sprite is drawn over a
+solid cell; wall-first made a visible hit do nothing (user report). The
+pre-pass awards a hit only to a sprite that **covers the tip pixel**
+(`eX in [tip, tip+7]`, `tip = A` right / `A-7` left), which an enemy behind
+the wall cannot satisfy — no shooting through walls. Do not "simplify" this
+back to wall-first, and do not widen the pre-pass to the `±7` body window
+(that would kill through a thin wall). Guard: `tools/test_laser_snake.py`.
+
 **Never add a wall clamp, hold state, suppress bit, or "stop at wall
 center" logic.** On 2026-10-10 a wall-center hold clamp was built
 (`LaserWallClamp` overwrote `CollisionX` with a cell-center `LaserX`;
@@ -965,6 +975,18 @@ myScanlineCountLast}`) — **left box first, right box second:**
 - Use `breakLabel` + Scn field instead
 
 ### Lessons Learned
+
+**Room entry must refresh the joystick shadow `Temp` (2026-10-20, user
+report: the eye snapped right on every transition + a 1 px twitch):** bank0's
+overscan input block stages `SWCHA>>4` into `Temp` and keeps reading it for
+the rest of the frame. `EnterRoomB2` reuses `Temp` for room/record scratch, so
+the stale byte faked a held direction after every exit (room index 0..7 has
+bit3 clear = "RIGHT pressed"), flipping `PlayerDir` and walking a pixel.
+`bank2.EBLER_Done` therefore re-reads `SWCHA` into `Temp` before `ReturnPad`
+(14 B, zero per-frame cost; SWCHA is stable within a frame). **Any future
+writer of `Temp` inside the room-load chain must not run after that refresh**,
+and any new exit path must return through `EBLER_Done`. Guard:
+`tools/test_room_input.py` (stubbed port, three patterns).
 
 **F6 hotspot MIRROR zone = $FFF6-$FFF9 — no fetched byte may ever live there
 (2026-09-30, E4 moth exit tramp frame-3 crash):** Stella's

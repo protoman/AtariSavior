@@ -118,8 +118,16 @@ def main() -> None:
     # result protocol: 0 / $50 / 1 lamp / 2 wall through ReturnPad
     assert "lda #$50" in hit and "lda #0" in hit and "jmp ReturnPad" in hit, \
         "body must return its result through ReturnPad"
-    assert "jmp LaserWallClamp" in hit, \
-        "body must tail-jmp LaserWallClamp (tip wall test) first"
+    assert "jmp LaserTipEnemy" in hit, \
+        "body must tail-jmp LaserTipEnemy first (sprite covering the tip px " \
+        "must beat the wall — snake-in-wall report 2026-10-20)"
+    tip = text2.split("LaserTipEnemy:")[1].split("LaserWallClamp:")[0]
+    tip = "\n".join(l.split(";")[0] for l in tip.splitlines())
+    assert "cmp #8" in tip and "sbc RectCount" in tip, \
+        "tip-enemy pass must use the eX in [tip, tip+7] containment window"
+    assert "jmp LaserWallClamp" in tip, \
+        "LaserTipEnemy must fall into LaserWallClamp when no sprite covers " \
+        "the tip pixel"
     assert "LaserClampDone:" in hit, "LWC return label missing in body"
     assert "LaserWallClamp:" in text2, "LaserWallClamp definition missing"
     # LWC slice = LaserWallClamp..MothGate (MothGate uses CollisionX as its
