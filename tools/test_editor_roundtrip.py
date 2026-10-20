@@ -39,12 +39,11 @@ FROZEN_GEN = TESTS / "generated"
 # copyright micro-font (src/tools/copyright_font.py) and the assembler
 # symbol dump. They are snapshotted for other purposes — exclude them from
 # the "regenerated set" comparison so they are not reported as missing.
-NON_CONVERT = {"copyright_font.asm", "symbols.asm",
-               # C1 2026-10-20 (bank3 evacuation prep): these three bank2
-               # data slots were retired — convert_level no longer emits them.
-               # The frozen snapshots are left in place (ask the user before
-               # deleting); they are excluded so they are not "missing".
-               "spill_F840.asm", "spill_F901.asm", "spill_window.asm"}
+NON_CONVERT = {"copyright_font.asm", "symbols.asm"}
+# (2026-10-20) The retired bank2 data-slot snapshots spill_F840/F901/window
+# were deleted with user approval; generated/bank3_labels.asm went too (the
+# level-data label export is assembled in bank2 now). convert_level emits
+# only spill_F767 + spill_bank3.
 PY = "/home/iuri/python3/bin/python3"
 
 
