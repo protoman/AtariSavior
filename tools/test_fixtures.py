@@ -6,13 +6,16 @@ generated/, ROM contents at current label addresses). The user keeps editing
 stages; live-coupled tests break on every edit. Tests own their copies HERE,
 in the tests folder, frozen at authoring time.
 
-`freeze_m0` / `freeze_m2` inject the frozen bytes into a test's PRIVATE
-bank*.bin copy (a bytearray the test already owns) at the CURRENT label
-addresses parsed from bank*.lst — so the game's pointer-based reads
-(StageBandTab MetaA/MetaB, the rect/hot stream walk) see the fixture,
-while label moves stay harmless. Fixture blocks are written stream-first
-then PF+meta so a shrunken live block's spill is overwritten by the
-fixture itself.
+`freeze_m0` / `freeze_m2` / `freeze_m4` inject the frozen STREAM bytes into
+a test's PRIVATE bank*.bin copy (a bytearray the test already owns) at the
+CURRENT label addresses parsed from bank*.lst, so the game's hot-stream walk
+sees the fixture while label moves stay harmless.
+
+C5 (2026-10-20): a shape block is `hot stream | PF triple` — the MetaA/MetaB
+pair moved to the room extras and `TilePF0+9/+10` is retired. Test harnesses
+therefore take the PF and the meta pair from the FROZEN CONSTANTS here
+(`PFX` / `METAX`) instead of reading them out of ROM: the fixture block only
+has to hold the (small) stream, which fits inside the live 10 B shape.
 
 Addresses may move with live data; bytes never change until someone
 deliberately re-freezes here.
@@ -92,25 +95,29 @@ def _as_bank2(banks):
     return banks[2] if isinstance(banks, (list, tuple)) else banks
 
 
+# Test-owned PF triple + staged meta pair per fixture model (C5: the ROM no
+# longer carries the meta inside the shape block, and the fixture stream may
+# overwrite PF bytes — harnesses use these constants instead).
+PFX = {0: M0_PF, 2: M2_PF, 4: M4_PF}
+METAX = {0: M0_META, 2: M2_META, 4: M4_META}
+
+
 def freeze_m0(banks, labels):
-    """Inject the bomb-contract fixture (stream first, then PF+meta)."""
+    """Inject the bomb-contract stream at the shared model-0 shape."""
     bank2 = _as_bank2(banks)
-    _freeze(bank2, labels, "L1R1RoomRects", M0_STREAM)
-    _freeze(bank2, labels, "L1R1TilePF0", M0_PF + M0_META)
+    _freeze(bank2, labels, "M0RoomRects", M0_STREAM)
 
 
 def freeze_m2(banks, labels):
-    """Inject the vcrunch fixture (stream first, then PF+meta)."""
+    """Inject the (inert) $81 stream at the shared model-2 shape."""
     bank2 = _as_bank2(banks)
     _freeze(bank2, labels, "M2RoomRects", M2_STREAM)
-    _freeze(bank2, labels, "M2TilePF0", M2_PF + M2_META)
 
 
 def freeze_m4(banks, labels):
-    """Inject the hcrunch fixture (stream first, then PF+meta)."""
+    """Inject the hcrunch $82 stream at the shared model-4 shape."""
     bank2 = _as_bank2(banks)
-    _freeze(bank2, labels, "L3R2RoomRects", M4_STREAM)
-    _freeze(bank2, labels, "L3R2TilePF0", M4_PF + M4_META)
+    _freeze(bank2, labels, "M4RoomRects", M4_STREAM)
 
 
 def _selfcheck():
@@ -124,28 +131,26 @@ def _selfcheck():
                      line)
         if m:
             labels[m.group(2)] = int(m.group(1), 16)
-    for name in ("L1R1RoomRects", "L1R1TilePF0", "M2RoomRects", "M2TilePF0",
-                 "L3R2RoomRects", "L3R2TilePF0", "M5RoomRects"):
+    for name in ("M0RoomRects", "M0TilePF0", "M2RoomRects", "M2TilePF0",
+                 "M4RoomRects", "M4TilePF0"):
         if name not in labels:
             raise SystemExit(f"selfcheck FAIL: {name} missing in bank2.lst")
     bank = bytearray(open(src / "bank2.bin", "rb").read())
     freeze_m0(bank, labels)
     freeze_m2(bank, labels)
     freeze_m4(bank, labels)
-    # Assert the fitting prefix of each block (a stream shorter than the
-    # fixture deliberately spills into the next block, which the PF/meta
-    # freeze then overwrites — order documented in freeze_m*).
-    for label, data, nxt in (
-        ("L1R1RoomRects", M0_STREAM, "L1R1TilePF0"),
-        ("L1R1TilePF0", M0_PF + M0_META, "M1RoomRects"),
-        ("M2RoomRects", M2_STREAM, "M2TilePF0"),
-        ("M2TilePF0", M2_PF + M2_META, "M3RoomRects"),
-        ("L3R2RoomRects", M4_STREAM, "L3R2TilePF0"),
-        ("L3R2TilePF0", M4_PF + M4_META, "M5RoomRects"),
+    # Streams land at the block base and must fit BETWEEN base and TilePF0
+    # (C4: TilePF0 = block + 1 + 5*hot). M0's stream is a single count byte;
+    # the synthetic $81/$82 streams overwrite the first PF bytes, which the
+    # harnesses never read (PFX is test-owned).
+    for tag, stream, base, pf in (
+        ("M0", M0_STREAM, "M0RoomRects", "M0TilePF0"),
+        ("M2", M2_STREAM, "M2RoomRects", "M2TilePF0"),
+        ("M4", M4_STREAM, "M4RoomRects", "M4TilePF0"),
     ):
-        off = labels[label] - 0xF000
-        fit = min(len(data), labels[nxt] - labels[label])
-        assert bytes(bank[off:off + fit]) == data[:fit], label
+        off = labels[base] - 0xF000
+        fit = min(len(stream), labels[pf] - labels[base])
+        assert bytes(bank[off:off + fit]) == stream[:fit], tag
     # fixtures must be self-consistent with the walk/punch assumptions
     assert M0_STREAM[0] == 0 and len(M0_STREAM) == 1      # hot count only
     assert M2_STREAM[0] == 1 and len(M2_STREAM) == 1 + 5
@@ -153,23 +158,9 @@ def _selfcheck():
     assert M0_PF[7] == 0x0C and M2_META[1] == 0x80 and M2_STREAM[1] == 0x81
     assert M4_STREAM[1] == 0x82
     assert M4_META == b"\x00\x00" and M4_STREAM[2:6] == bytes([0, 1, 20, 1])
-    # both streams must fit their slots with NO spill — an M0 spill puts
-    # the hot count inside the PF block; an M2 spill eats the $81 record
-    # (an M4 spill has the same trap: hot count / $82 inside the PF block)
-    for tag, stream, a, b in (
-        ("M0", M0_STREAM, "L1R1RoomRects", "L1R1TilePF0"),
-        ("M2", M2_STREAM, "M2RoomRects", "M2TilePF0"),
-        ("M4", M4_STREAM, "L3R2RoomRects", "L3R2TilePF0"),
-    ):
-        gap = labels[b] - labels[a]
-        # C4: TilePF0 = block + 1 + 5*hot, so the LIVE gap is tiny; the
-        # fixture stream may spill into it because _freeze writes the stream
-        # FIRST and PF+meta SECOND (the PF injection overwrites the spill).
-        assert gap >= 1, f"{tag} block has no room for the hot count"
-    # The room block is PF(9B) + MetaA + MetaB, so the fixture's PF+meta write
-    # ends exactly at MetaB+1 (the old "next M-block" neighbour is gone: per-room
-    # blocks live in the level table file now).
-    assert labels["L3R2MetaB"] + 1 - labels["L3R2TilePF0"] == len(M4_PF + M4_META)
+    # C5: no fixture block carries a meta tail any more (TilePF0+9/+10 gone)
+    assert len(M0_PF) == 9 and len(M2_PF) == 9 and len(M4_PF) == 9
+    assert all(len(v) == 2 for v in METAX.values())
     print("test_fixtures: OK (freeze round-trip + fixture self-consistency)")
 
 

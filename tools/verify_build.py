@@ -931,7 +931,7 @@ def check_exit_handlers(src: Path) -> None:
 
 
 def check_level_format(src: Path) -> None:
-    """C2 (2026-10-20): LEVEL_FORMAT 3 = 3 B shape-index room records.
+    """C5 (2026-10-20): LEVEL_FORMAT 4 = shape-index records + async extras.
 
     The generated level index is the converter's truth; kernel.asm and
     bank1.asm carry hand copies (bank1's is also paired by check_equ_sync).
@@ -942,13 +942,16 @@ def check_level_format(src: Path) -> None:
 
         base +  0   RoomShapes     1 B  (idx b5-0 | band b6 | extras b7)
         base +  n   RoomPositions  1 B  (x<<4|y)
-        base + 2n   RoomCounts     1 B  (count<<6 | extras index)
+        base + 2n   RoomCounts     1 B  (count<<6 | extras ordinal)
         base + 3n   EnemyDataTable 4 B/record
+        ..          LEVELn_AsyncExtras  variable records (C5)
 
     The block address is `LEVEL_ShapeTable[shape index]` (a 2 B word table in
-    levels_index.asm), so the record no longer stores one. The extras index
-    is reserved 0 until the C5 async stream: a non-zero byte here means the
-    reader would need a stream that does not exist yet — hard-fail it.
+    levels_index.asm); the MetaA/MetaB pair is no longer inside the block
+    (`TilePF0+9/+10` retired) — it lives in the extras record. The counts
+    byte's b5-0 is the room's 1-based extras ordinal (0 = none) and MUST
+    agree with the shape byte's b7, or the loader would read a record that
+    is not there (or ignore one that is).
     """
     idx = src / "generated" / "levels_index.asm"
     if not idx.exists():
@@ -961,10 +964,10 @@ def check_level_format(src: Path) -> None:
             "(format 3 = C2 shape-index room records)")
         return
     gen_fmt = int(m.group(1), 16)
-    if gen_fmt != 3:
+    if gen_fmt != 4:
         err(f"generated LEVEL_FORMAT = {gen_fmt}, the bank2 reader implements "
-            "3 (shape-index room records) — stale generated tree or half-done "
-            "migration")
+            "4 (shape-index records + async extras) — stale generated tree or "
+            "half-done migration")
     for name in ("kernel.asm", "bank1.asm"):
         p = src / name
         if not p.exists():
@@ -1018,7 +1021,8 @@ def check_level_format(src: Path) -> None:
             continue
         if [int(i) for _n, _b, i in shapes] != list(range(len(shapes))):
             err(f"{path.name}: room indices are not 0..n-1 in order")
-        for name, band, index in shapes:
+        owns_flags: list[bool] = []
+        for name, flags_hex, index in shapes:
             shape = name[6:]
             if shape not in shape_equ:
                 err(f"{path.name}: room {index} shape {name} has no "
@@ -1029,24 +1033,73 @@ def check_level_format(src: Path) -> None:
                 err(f"{path.name}: room {index} shape {name} = {value} is "
                     f"outside LEVEL_ShapeTable (0..{shape_count - 1})")
             used.add(value)
-            if band and int(band, 16) != 0x40:
+            flags = int(flags_hex, 16) if flags_hex else 0
+            if flags & ~0xC0:
                 err(f"{path.name}: room {index} sets unsupported shape-byte "
-                    f"bits ${band} (only b6 = band flag is defined; b7 is "
-                    "reserved for the C5 extras stream)")
+                    f"bits ${flags:02x} (only b6 = band flag and b7 = "
+                    "owns-extras are defined)")
+            owns_flags.append(bool(flags & 0x80))
         for hexv in pos:
             b = int(hexv, 16)
             if (b >> 4) == 0xF or (b & 0x0F) == 0xF:
                 err(f"{path.name}: position byte ${hexv} has a nibble of 15 — "
                     "reserved as the off-grid sentinel (POSITION_SPAN 15)")
-        for hexv, count in counts:
+        ordinals: list[int] = []
+        for i, (hexv, count) in enumerate(counts):
             b = int(hexv, 16)
-            if b & 0x3F:
-                err(f"{path.name}: count byte ${hexv} has a non-zero extras "
-                    "index — the C5 extras stream does not exist in "
-                    "LEVEL_FORMAT 3 (bank2 would read garbage)")
+            ordinal = b & 0x3F
+            owns = owns_flags[i] if i < len(owns_flags) else False
+            if bool(ordinal) != owns:
+                err(f"{path.name}: room {i} shape b7 owns-extras={int(owns)} "
+                    f"but its count byte ${hexv} carries extras ordinal "
+                    f"{ordinal} — the loader dispatches on b7 and indexes "
+                    "with b5-0, so they must agree")
+            if ordinal:
+                ordinals.append(ordinal)
             if int(count) > 3:
                 err(f"{path.name}: room has {count} enemy records > 3 "
                     "(MAX_ENEMIES)")
+        # --- C5 extras stream: one record per owns-extras room, in order ---
+        hit = re.search(r"^LEVEL\d+_AsyncExtras:\n((?:  \.byte[^\n]*\n)+)",
+                        text, re.M)
+        records = hit.group(1).splitlines() if hit else []
+        if ordinals != list(range(1, len(ordinals) + 1)):
+            err(f"{path.name}: extras ordinals {ordinals} are not 1..N in "
+                "room order (the loader walks the stream by ordinal)")
+        if len(records) != len(ordinals):
+            err(f"{path.name}: {len(records)} AsyncExtras records for "
+                f"{len(ordinals)} owns-extras rooms")
+        for n, line in enumerate(records):
+            payload = line.split(".byte", 1)[1].split(";")[0]
+            vals = [int(v.strip().lstrip("$"), 16)
+                    for v in payload.split(",")]
+            if len(vals) < 3:
+                err(f"{path.name}: extras record {n + 1} shorter than the "
+                    "flags + MetaA/MetaB header")
+                continue
+            flags = vals[0]
+            npatch, nfeat = flags & 0x03, (flags >> 2) & 0x0F
+            want = 3 + npatch + nfeat
+            if nfeat:
+                hot_at = want
+                if len(vals) <= hot_at:
+                    err(f"{path.name}: extras record {n + 1} has no hot "
+                        "count byte (n_features > 0 requires the room's hot "
+                        "stream)")
+                    continue
+                want += 1 + 5 * vals[hot_at]
+            if flags & 0xC0:
+                err(f"{path.name}: extras record {n + 1} sets reserved flags "
+                    f"${flags:02x} (only b5-0 are n_features/n_patches)")
+            if len(vals) != want:
+                err(f"{path.name}: extras record {n + 1} is {len(vals)} B, "
+                    f"the flags say {want} B (n_patches={npatch}, "
+                    f"n_features={nfeat})")
+                continue
+            if nfeat and vals[2] & 0x80:
+                err(f"{path.name}: extras record {n + 1} MetaB sets b7 (the "
+                    "retired shutter/door flag) — StageBandTab masks it out "
+                    "but the record must stay clean")
     if shape_count and used != set(range(shape_count)):
         err(f"LEVEL_ShapeTable entries {sorted(set(range(shape_count)) - used)} "
             "are unreferenced — the shape stream and the table drifted")
@@ -1413,89 +1466,19 @@ def check_levels(src: Path) -> None:
         except Exception as exc:  # noqa: BLE001 - report, don't crash verifier
             err(f"models.json: {exc}")
 
-    # Async-meta guards (2026-10-17): async lives on the ROOM, so every MODEL
-    # block is static (MetaA $00, MetaB $00 | $40 hot) and each room that owns
-    # async has its own L<level>R<room> block. Both are cross-checked against
-    # the SAME envelope convert uses (independent gate at verify time): meta
-    # bytes at TilePF0+9/+10, right rows stride 3, ball x = 87+8*right_col,
-    # right-rect budget. The block's own text is passed in, so the model and
-    # per-room paths cannot diverge.
-    block_checks = None
+    # C5 (2026-10-20) shape + extras cross-check. Async lives on the ROOM and
+    # now rides the level's AsyncExtras stream; the shared M<id> SHAPE block is
+    # the static hot stream + PF triple ONLY. So:
+    #   1. no emitted shape carries the retired meta/right sections;
+    #   2. every shape's PF triple equals pf_values(model rows);
+    #   3. every AsyncExtras record re-derives, byte for byte, from the JSON
+    #      through the same envelope convert uses (an independent gate: the
+    #      loader stages MetaA/MetaB and the PF feature cells from it).
     if models:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from convert_level import (resolve_asym_patches, rows_from_json,  # noqa: PLC0415
-                                   room_feature_cells, room_m1_door_flag)
+        from convert_level import room_extras, rows_from_json  # noqa: PLC0415
         from convert_room import pf_values  # noqa: PLC0415
         gen_dir = src / "generated"
-
-        def meta_byte(text: str, tag: str, label: str):
-            hit = re.search(
-                rf"^{re.escape(tag + label)}:\s*\n\s*\.byte\s+\$?([0-9a-fA-F]+)",
-                text, re.M)
-            return int(hit.group(1), 16) if hit else None
-
-        def block_checks(tag: str, text: str, model: dict, room: dict,
-                         left: list[str], who: str) -> None:
-            """Meta + right-half cross-check for one emitted block."""
-            try:
-                res = resolve_asym_patches(model, room, left)
-            except ValueError as exc:
-                err(f"{who}: {exc}")
-                return
-            asym, ball_x, m1_x, _door, m1_right = (
-                res if res else (None, 0, 0, False, False))
-            band_mask = 0
-            if asym is not None:
-                for bidx in range(3):
-                    if asym[bidx] != left[bidx][::-1]:
-                        band_mask |= 1 << bidx
-            m1n = ((m1_x - 7) >> 3) + 1 if m1_x else 0
-            want_a = (m1n << 4) | band_mask
-            if room_m1_door_flag(room):
-                want_a |= 0x08
-            if m1_right:
-                want_a |= 0x01
-            got_a = meta_byte(text, tag, "MetaA")
-            if got_a is None:
-                err(f"{who}: {tag}MetaA missing (must sit at TilePF0+9)")
-            elif got_a != want_a:
-                err(f"{who}: MetaA=${got_a:02X}, want ${want_a:02X} "
-                    f"((m1_col+1)<<4 | band_mask=${band_mask:02X}"
-                    f"{' | $08 door' if room_m1_door_flag(room) else ''})")
-            ball_n = ((ball_x - 87) >> 3) + 1 if ball_x else 0
-            if model.get("mid_band_type"):
-                ball_n |= 0x40            # hot band (touch-kill semantics)
-            got_b = meta_byte(text, tag, "MetaB")
-            if got_b is None:
-                err(f"{who}: {tag}MetaB missing (must sit at TilePF0+10)")
-            elif got_b != ball_n:
-                err(f"{who}: MetaB=${got_b:02X}, want ${ball_n:02X} "
-                    "(ball_col+1 | $80 door | $40 hot, 0 = no ball)")
-            if asym is None:
-                if re.search(rf"^{re.escape(tag)}RightPF\d:", text, re.M):
-                    err(f"{who}: symmetric but RightPF block emitted")
-                return
-            if f"{tag}RightPF0:" not in text:
-                err(f"{who}: asym block missing RightPF")
-                return
-            for reg in range(3):
-                label = f"{tag}RightPF{reg}"
-                hit = re.search(
-                    rf"^{re.escape(label)}:\s*\n\s*\.byte([^\n]+)", text, re.M)
-                if not hit:
-                    err(f"{who}: {label} missing")
-                    continue
-                got = [int(b.strip().lstrip("$"), 16)
-                       for b in hit.group(1).split(",")]
-                want = [pf_values(r[::-1])[reg] for r in asym]
-                if got != want:
-                    err(f"{who}: {label} = {got}, want {want} (stride 3)")
-            hit = re.search(
-                rf"^{re.escape(tag)}RightRects:\s*\n\s*\.byte\s+(\d+)", text, re.M)
-            if not hit:
-                err(f"{who}: {tag}RightRects missing")
-            elif int(hit.group(1)) > 4:
-                err(f"{who}: {hit.group(1)} right rects > WallMask budget 4")
 
         mda = (gen_dir / "models_data.asm").read_text() \
             if (gen_dir / "models_data.asm").exists() else ""
@@ -1503,12 +1486,79 @@ def check_levels(src: Path) -> None:
             tag = f"M{mid}"
             if f"{tag}TilePF0:" not in mda:
                 continue                      # model not referenced by any room
+            if re.search(rf"^{re.escape(tag)}(MetaA|MetaB|RightPF\d|"
+                         rf"RightRects):", mda, re.M):
+                err(f"models.json model {mid}: shape block still carries a "
+                    "retired meta/right section — C5 moved MetaA/MetaB to the "
+                    "level extras and dropped RightPF/RightRects")
             try:
                 left = rows_from_json({"model_id": mid}, models)
             except (ValueError, KeyError, TypeError) as exc:
                 err(f"models.json model {mid}: {exc}")
                 continue
-            block_checks(tag, mda, model, {}, left, f"models.json model {mid}")
+            for reg, name in enumerate(("TilePF0", "TilePF1", "TilePF2")):
+                hit = re.search(
+                    rf"^{re.escape(tag + name)}:\s*\n\s*\.byte([^\n]+)",
+                    mda, re.M)
+                if not hit:
+                    err(f"models.json model {mid}: {tag}{name} missing")
+                    continue
+                got = [int(b.strip().lstrip("$"), 16)
+                       for b in hit.group(1).split(",")]
+                want = [pf_values(r)[reg] for r in left]
+                if got != want:
+                    err(f"models.json model {mid}: {tag}{name} = {got}, want "
+                        f"{want} (PF triple must be the model rows)")
+
+        for jp in sorted(rooms_dir.glob("level_[0-9][0-9][0-9].json")):
+            level_n = int(re.search(r"(\d+)", jp.stem).group(1))
+            try:
+                doc = json.loads(jp.read_text())
+            except Exception as exc:  # noqa: BLE001
+                err(f"{jp.name}: invalid JSON ({exc})")
+                continue
+            lvl = doc.get("level", doc)
+            rooms = sorted(lvl.get("rooms") or [],
+                           key=lambda r: r["room_id"])
+            gen = gen_dir / f"level_{level_n:03d}_rooms.asm"
+            if not gen.exists():
+                err(f"{gen.name}: missing (async extras cross-check)")
+                continue
+            text = gen.read_text(errors="replace")
+            hit = re.search(r"^LEVEL\d+_AsyncExtras:\n((?:  \.byte[^\n]*\n)+)",
+                            text, re.M)
+            lines = hit.group(1).splitlines() if hit else []
+            ordinal = 0
+            for index, room in enumerate(rooms):
+                if not (room.get("asym_patches") or room.get("feature_cells")):
+                    continue
+                model = models.get(int(room.get("model_id", -1)))
+                if model is None:
+                    err(f"{jp.name} room {index}: no model_id (C5 needs a "
+                        "shared shape)")
+                    continue
+                who = f"{jp.name} room {index}"
+                try:
+                    rows = rows_from_json(room, models)
+                    want, _nfeat = room_extras(room, model, rows, who)
+                except ValueError as exc:
+                    err(f"{who}: {exc}")
+                    continue
+                if ordinal >= len(lines):
+                    err(f"{who}: no AsyncExtras record (owns-extras room must "
+                        "carry one)")
+                    continue
+                payload = lines[ordinal].split(".byte", 1)[1].split(";")[0]
+                got = bytes(int(v.strip().lstrip("$"), 16)
+                            for v in payload.split(","))
+                if got != want:
+                    err(f"{who}: AsyncExtras record {got.hex()} != the "
+                        f"JSON-derived {want.hex()} (meta/patches/features/"
+                        "hot stream drifted from the room data)")
+                ordinal += 1
+            if ordinal != len(lines):
+                err(f"{gen.name}: {len(lines)} AsyncExtras records for "
+                    f"{ordinal} async rooms")
 
     level_files = sorted(rooms_dir.glob("level_[0-9][0-9][0-9].json"))
     if not level_files:
@@ -1593,7 +1643,7 @@ def check_levels(src: Path) -> None:
             if mid is not None and models and mid in models:
                 mdef = models[mid]
                 has_raft = any(t == 6 for t in mdef.get("tiles", []))
-            if block_checks is not None:
+            if models:
                 # Special kinds come from the ROOM's async now.
                 try:
                     from convert_level import async_kinds  # noqa: PLC0415
@@ -1624,62 +1674,21 @@ def check_levels(src: Path) -> None:
                 err(f"{label}: model {mid} has RAFT tiles but the room is "
                     "not water (bottom_band=false)")
 
-            # A room that owns async must have its own emitted block, and its
-            # meta/right rows are cross-checked here (paths relative to src/).
-            if block_checks is not None and mid is not None \
-                    and models and mid in models:
-                try:
-                    has_async = bool(r.get("asym_patches")
-                                     or r.get("feature_cells"))
-                except AttributeError:
-                    has_async = False
-                if has_async:
-                    rid = r.get("room_id", 0)
-                    # A3: per-room blocks are emitted into level_00N_blocks.asm
-                    # (included from bank3); the table file keeps only tables.
-                    asm = src / "generated" / f"level_{level_n:03d}_blocks.asm"
-                    text = asm.read_text() if asm.exists() else ""
-                    tag = f"L{level_n}R{rid + 1}"
-                    if f"{tag}TilePF0:" not in text:
-                        # C1 (2026-10-20): a byte-identical block owned by
-                        # another level's room is emitted ONCE; the duplicate
-                        # carries a note and its table points at the survivor.
-                        # Cross-check the survivor's bytes against THIS room's
-                        # expected meta/right rows — same bytes, so a stale
-                        # note cannot hide a mismatch.
-                        hit = re.search(
-                            rf"^;\s*({re.escape(tag)}) block SHARED with "
-                            rf"(L\d+R\d+)\b", text, re.M)
-                        shared_text = None
-                        if hit:
-                            for other in sorted(
-                                    (src / "generated").glob(
-                                        "level_[0-9][0-9][0-9]_blocks.asm")):
-                                body = other.read_text()
-                                if f"{hit.group(2)}TilePF0:" in body:
-                                    shared_text = body
-                                    break
-                        if not hit:
-                            err(f"{label}: room owns async but no {tag} block "
-                                f"was emitted ({asm.name})")
-                        elif shared_text is None:
-                            err(f"{label}: {tag} claims to share "
-                                f"{hit.group(2)} but no such block exists")
-                        else:
-                            try:
-                                left = rows_from_json(r, models)
-                            except (ValueError, KeyError, TypeError) as exc:
-                                err(f"{label}: {exc}")
-                            else:
-                                block_checks(hit.group(2), shared_text,
-                                             models[mid], r, left, label)
-                    else:
-                        try:
-                            left = rows_from_json(r, models)
-                        except (ValueError, KeyError, TypeError) as exc:
-                            err(f"{label}: {exc}")
-                        else:
-                            block_checks(tag, text, models[mid], r, left, label)
+            # C5 (2026-10-20): an async room has NO per-room block any more —
+            # its record is cross-checked byte-for-byte against the JSON in the
+            # block above (check_level_format parses the stream, this function
+            # re-derives it). A belt-and-braces guard here: the room must flip
+            # the shape byte's b7 and the count byte's ordinal.
+            if models and mid is not None and (
+                    r.get("asym_patches") or r.get("feature_cells")):
+                rid = r.get("room_id", 0)
+                asm = (src / "generated" /
+                       f"level_{level_n:03d}_rooms.asm")
+                text = asm.read_text() if asm.exists() else ""
+                if not re.search(rf"^  \.byte \w+(?: \| \$[0-9a-f]{{2}})? "
+                                 rf"; room {rid} \(async extras\)$", text, re.M):
+                    err(f"{label}: async room's shape byte is not flagged "
+                        "owns-extras (C5 extras stream)")
 
             # Moving raft (type 7): water rooms only, bottom band only, and
             # the spawn cell must be OPEN water — the same contract convert

@@ -19,6 +19,11 @@ Emitted data (block = the shape table entry / RoomRectsLo target):
   - TilePF0/TilePF1/TilePF2: one byte per tile row for the kernel; each
     logical cell sets a PF bit PAIR (encoder bit-pairing, D7). TilePF0 sits
     at block + 1 + 5*hot_count (bank2 B3RoomBlocks derives it).
+C5 (2026-10-20): the MetaA/MetaB pair left this block (the fixed
+`TilePF0+9/+10` contract is retired) — it lives in the room EXTRAS stream
+(`meta_bytes`), and the RightPF/RightRects payload is gone (dead since C4).
+`lines(..., with_meta=False)` is the shape-only form convert_level emits for
+the shared M<id> shapes.
 All per-row tables (PF triples) are emitted at TABLE_STRIDE (= 3, the
 playable bands) since S4.2; only the first 3 entries are drawn — the old
 12-byte padding existed for bank0's +12/+12 pointer arithmetic, which
@@ -32,7 +37,6 @@ WIDTH = 10                  # D7: logical cells per half (was 20 pre-D7)
 HEIGHT = 3                  # playable color bands (HUD is drawn separately)
 TABLE_STRIDE = 3            # S4.2: per-row table size = the 3 playable bands
                             # (was 12 — kernel EnterRoom now does +3/+3)
-MASK_BITS = (0x08, 0x10, 0x20, 0x40)  # RightRects hot parents only (left list retired, C4)
 WALL_PARENT_MASK = 0x08      # hot record mask: nonzero = PF-cell parent gate
 
 
@@ -135,94 +139,36 @@ def find_rectangles(rows: list[str], solids: str = "#") -> list[tuple[int, int, 
     return rects
 
 
-def lines(rows: list[str], prefix: str = "", source: str = "room",
-          asym_rows: list[str] | None = None,
-          asym_ball_x: int = 0,
-          asym_m1_x: int = 0,
-          hot_m1: list[tuple[int, int]] | None = None,
-          door: bool = False,
-          m1_door: bool = False,
-          m1_right: bool = False,
-          hot: bool | None = None) -> list[str]:
-    """Build the asm lines for a grid (shared by per-room and per-model emission).
+def hot_records(rows: list[str], hot_m1: list[tuple[int, int]] | None = None,
+                hot: bool | None = None, door: bool = False,
+                source: str = "room") -> tuple[list[str], list[str]]:
+    """The hot stream section: (legacy hot lines, feature record lines).
 
-    asym_rows (D2/D3, models only): resolved right-half rows in right_col
-    order (col 0 = center-adjacent) when the model carries asym_patches.
-    asym_ball_x: D6 ball x (SetObjectXPos arg, drawn clocks [A-7, A]) from
-    resolve_asym_patches — emitted with the flag.
-    asym_m1_x: D6 M1 x (left-col block, SetObjectXPos arg) — 0 = no M1.
-    hot_m1: (row, col) cells of side-1 (M1) patches that sit on the hot
-    band (mid_band_type) — emitted as mask-$00 hot records in the LEFT
-    stream: the M1 cell is PF-open by envelope so it never lands in
-    find_rectangles(rows, "H") — without this record touching the block
-    on a hot band never ran the hot-death check (and a hot-only model
-    would not even pulse its band). $00 = no blastable parent → never
-    dies with a wall (the strip dies via EnemyDeadMask b4 instead).
-    After the TilePF tables EVERY model gets a 2-byte packed meta block:
-        M<id>MetaA:  .byte ((m1_col+1)<<4) | band_mask | (b3 = left door)
-                     (b0-2 = band0/1/2 ENABL gates: bit set = band differs
-                      from its mirror = ball band; staged to BandTab $ED-$EF
-                      as $01/$00. m1_col+1: 0 = no M1 patch. b3 set = the
-                      M1 strip is a LOCKED_DOOR async patch — P2b sizes M1
-                      to 4 clk and the key (not the bomb) opens it.)
-        M<id>MetaB:  .byte (ball_col+1) or 0, b7 = async door,
-                     b6 = mid_band_type hot (rule 2026-10-14)
-                     (ball_col: BallX = 87+8*ball_col, staged to Temp $88
-                      via 8*(ball_col+1)+86; 0 = no ball = symmetric.
-                      b7 set = the model's side-0 strip is a LOCKED_DOOR
-                      async patch — P2 stages CTRLPF $25 instead of $35.
-                      Staging must mask b7/b6 out of the ball-col math.
-                      b6 set = the model's mid_band_type is Hot: the
-                      shutter/crunch kill tests use touch semantics (any
-                      part of the drawn block) instead of containment.)
-    bank2 reads this block (StageBandTab in the BuildColupF tail) — a bank0
-    (RoomPF0Lo) read would fetch bank0's $F9xx zero pad. M1X = 8*(m1_col+1)-1
-    = 7+8*left_col, staged to CollisionEndX $8E (kill-gated by
-    EnemyDeadMask b3/b4). MetaB=0 ⇔ symmetric (verify_build).
-    Asym models continue with (RightPF0 now at TilePF0+11):
-        M<id>RightPF0/1/2:  3 bytes (stride 3; D4: pf_values(reversed(B)))
-        M<id>RightRects:    same stream shape as RoomRects; x/w in
-                            right-half cell space x2 (x=0 center-adjacent,
-                            4px cols), y/band rows; hard-fails above the
-                            WallMask budget (4 maskable rects, Risk 1).
-    Symmetric models (asym_rows=None) emit meta 0,0 and no Right* block.
+    C4 (2026-10-20): the solid rect list is retired, so a block's first
+    section is `count` + 5 B records. C5 (2026-10-20): convert_level also
+    reuses this for the per-room extras hot section — a feature room's stream
+    is built from the ROOM rows (feature cells split/remove the shape's
+    legacy hot rects), so the runtime walkers see the same bytes a per-room
+    block used to carry.
+
+    Record = mask, x, y, w, h (5 bytes). mask: b7 = feature class; $00 =
+    M1 block cell (dies with the strip, EnemyDeadMask b4); nonzero = wall
+    parent (the runtime gates on that parent's PF cell still being solid,
+    so a thin parent dies with the bomb punch and a thick one never does).
     """
-    triples = [pf_values(row) for row in rows]
-    stride = max(TABLE_STRIDE, len(rows))
-
-    out = [
-        f"; Generated from {source}. Do not edit by hand.",
-    ]
-    if not prefix:
-        out.append(f"ROOM_TILE_COLUMNS = {WIDTH}")
-        out.append(f"ROOM_TILE_ROWS = {len(rows)}")
-
     # C (hcrunch) cells are NOT static rects (2026-10-16): the shutter's
     # covered prefix is DYNAMIC solidity — PhHcrEntry rewrites the band
     # every VBL from the clock (row & ~P(full) | P(n)), and the PF cell
-    # walk follows the buffers. A static C-rect would wall the whole
-    # sweep corridor once the C extent grows to the screen center.
-    # C4 (2026-10-20): the SOLID rect list is RETIRED — every collision
-    # walker tests the PF buffers (cell_collision_plan 2.1/3.1/4.1/5.1b), so
-    # the block is hot stream | PF | meta and the PF triple IS the map.
-    # `walls` is still computed for the hot parent mask only.
+    # walk follows the buffers. `walls` is still computed for the hot parent
+    # mask only.
     walls = find_rectangles(rows, solids="#HPV")
     hot_rects = find_rectangles(rows, solids="H")
-    # Emitted block layout (RoomRects is the BLOCK base — the shape table and
-    # RoomRectsLo point at it, so the label name stays):
-    #   RoomRects:  hot count, 5 B/hot record
-    #   TilePF0/1/2 (3 B each), MetaA/MetaB  -> TilePF0 = RoomRects+1+5*hot
-    #   [asym] RightPF0/1/2 at TilePF0+11, RightRects after them
-    # Record = mask, x, y, w, h (5 bytes). mask: b7 = feature class; $00 =
-    # M1 block cell (dies with the strip, EnemyDeadMask b4); nonzero = wall
-    # parent (the runtime gates on that parent's PF cell still being solid,
-    # so a thin parent dies with the bomb punch and a thick one never does).
     hot_lines: list[str] = []
     m1_hot = list(hot_m1 or ())
-    # Feature cells (P phase, V vertical crunch, C horizontal crunch) ride
-    # the hot record stream with b7 set in the mask byte — legacy masks
-    # ($00/$08/$10/$20/$40) never set b7, so legacy emission is unchanged
-    # (byte-identical when no feature char is present).
+    # Feature cells (P phase, C horizontal crunch) ride the hot record stream
+    # with b7 set in the mask byte — legacy masks ($00/$08/$10/$20/$40) never
+    # set b7, so legacy emission is unchanged (byte-identical when no feature
+    # char is present).
     #   $80 phase   : [mask, 2c, row, 2, 1] one record per cell (left-half
     #                  coords; the runtime mirrors like rects)
     #   $82 hcrunch : [mask, 0, band, w, 1] band + prefix extent from col 0
@@ -297,7 +243,108 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     for mrow, mcol in m1_hot:
         hot_lines.append(f"  .byte $00, {2 * mcol}, {mrow}, 2, 1  "
                          f"; mask, x, y, w, h (M1 block cell, hot band)")
+    return hot_lines, feats
 
+
+def meta_bytes(rows: list[str], asym_rows: list[str] | None = None,
+               asym_ball_x: int = 0, asym_m1_x: int = 0,
+               hot: bool | None = None, door: bool = False,
+               m1_door: bool = False, m1_right: bool = False,
+               source: str = "room") -> tuple[int, int]:
+    """(MetaA, MetaB) packed pair — C5 (2026-10-20) moved into the room EXTRAS.
+
+    MetaA = ((m1_col+1)<<4) | band_mask | b3 (left door) | b0 (right half)
+            b0-2 = band0/1/2 ENABL gates: bit set = band differs from its
+            mirror = ball band; staged to BandTab $ED-$EF as $01/$00.
+    MetaB = (ball_col+1) | b7 (async door) | b6 (mid_band_type hot)
+            ball_col: BallX = 87+8*ball_col, staged to Temp $88 via
+            8*(ball_col+1)+86; 0 = no ball.
+    """
+    if asym_rows is not None:
+        if len(asym_rows) != len(rows) or any(
+                len(r) != WIDTH for r in asym_rows):
+            raise ValueError(
+                f"{source}: asym rows must be {len(rows)}x{WIDTH} like the left rows")
+    band_mask = 0
+    if asym_rows is not None:
+        for band in range(3):
+            if asym_rows[band] != rows[band][::-1]:
+                band_mask |= 1 << band
+    m1_col_plus = 0
+    if asym_m1_x:
+        m1_col_plus = ((asym_m1_x - 7) >> 3) + 1
+    if m1_door and not asym_m1_x:
+        raise ValueError(
+            f"{source}: LOCKED_DOOR side 1 needs an M1 patch strip")
+    meta_a = ((m1_col_plus << 4) | band_mask
+              | (0x08 if m1_door else 0) | (0x01 if m1_right else 0))
+    ball_col_plus = 0
+    if asym_ball_x:
+        ball_col_plus = ((asym_ball_x - 87) >> 3) + 1
+    if hot is None:
+        hot = any("H" in row for row in rows)
+    if door:
+        if not asym_ball_x:
+            raise ValueError(
+                f"{source}: LOCKED_DOOR needs a side-0 (ball) patch strip")
+        meta_b = ball_col_plus | 0x80 | (0x40 if hot else 0)
+    else:
+        meta_b = ball_col_plus | (0x40 if hot else 0)
+    return meta_a, meta_b
+
+
+def lines(rows: list[str], prefix: str = "", source: str = "room",
+          asym_rows: list[str] | None = None,
+          asym_ball_x: int = 0,
+          asym_m1_x: int = 0,
+          hot_m1: list[tuple[int, int]] | None = None,
+          door: bool = False,
+          m1_door: bool = False,
+          m1_right: bool = False,
+          hot: bool | None = None,
+          with_meta: bool = True) -> list[str]:
+    """Build the asm lines for a grid (shared by per-room and per-model emission).
+
+    asym_rows (D2/D3, models only): resolved right-half rows in right_col
+    order (col 0 = center-adjacent) when the model carries asym_patches.
+    asym_ball_x: D6 ball x (SetObjectXPos arg, drawn clocks [A-7, A]) from
+    resolve_asym_patches — emitted with the flag.
+    asym_m1_x: D6 M1 x (left-col block, SetObjectXPos arg) — 0 = no M1.
+    hot_m1: (row, col) cells of side-1 (M1) patches that sit on the hot
+    band (mid_band_type) — emitted as mask-$00 hot records in the LEFT
+    stream: the M1 cell is PF-open by envelope so it never lands in
+    find_rectangles(rows, "H") — without this record touching the block
+    on a hot band never ran the hot-death check (and a hot-only model
+    would not even pulse its band). $00 = no blastable parent → never
+    dies with a wall (the strip dies via EnemyDeadMask b4 instead).
+
+    C5 (2026-10-20) contract change — the MetaA/MetaB pair no longer lives
+    in this block (the `TilePF0+9/+10` fixed-offset contract is retired):
+    it moved into the room EXTRAS stream (`meta_bytes` feeds it). The
+    RightPF/RightRects payload is gone too (dead since C4 — the D6 ball
+    overlay and the cell walk replaced right-rect collision). So a block is
+    now exactly `hot count + records + PF0/PF1/PF2` and its PF triple IS
+    both the render and the collision map.
+
+    `with_meta=False` emits the shape-only block (what convert_level writes
+    for the shared M<id> shapes). with_meta=True keeps the historical
+    meta-pair emission for the standalone per-grid path and the converter
+    unit tests (asym_rows/asym_* still select the packed values).
+    """
+    triples = [pf_values(row) for row in rows]
+    stride = max(TABLE_STRIDE, len(rows))
+
+    out = [
+        f"; Generated from {source}. Do not edit by hand.",
+    ]
+    if not prefix:
+        out.append(f"ROOM_TILE_COLUMNS = {WIDTH}")
+        out.append(f"ROOM_TILE_ROWS = {len(rows)}")
+
+    # Hot stream section (hot records + feature records) — shared with the
+    # per-room extras path (C5) so the two cannot drift.
+    hot_lines, feats = hot_records(rows, hot_m1=hot_m1, hot=hot, door=door,
+                                   source=source)
 
     out.append("; C4 (2026-10-20): block base = hot stream (no solid rect list)")
     out.append(f"{prefix}RoomRects:")
@@ -311,103 +358,25 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         table += ["$00"] * (stride - len(table))
         out.append("  .byte " + ", ".join(table))
 
-    # Asym meta at TilePF0+9..+10 — 2 packed bytes, ALWAYS present
-    # (bank2 StageBandTab reads blindly; bank0 gets staged copies in ZP).
-    # MetaA = ((m1_col+1)<<4) | band_mask (b0-2 = band0/1/2 gates);
-    # MetaB = ball_col+1 (0 = no ball). 0 nibbles = feature absent.
-    band_mask = 0
-    if asym_rows is not None:
-        for band in range(3):
-            if asym_rows[band] != rows[band][::-1]:
-                band_mask |= 1 << band
-    m1_col_plus = 0
-    if asym_m1_x:
-        m1_col_plus = ((asym_m1_x - 7) >> 3) + 1
+    if not with_meta:
+        return out
+    meta_a, meta_b = meta_bytes(rows, asym_rows=asym_rows,
+                               asym_ball_x=asym_ball_x, asym_m1_x=asym_m1_x,
+                               hot=hot, door=door, m1_door=m1_door,
+                               m1_right=m1_right, source=source)
     out.append(f"{prefix}MetaA:")
-    if m1_door and not asym_m1_x:
-        raise ValueError(
-            f"{source}: LOCKED_DOOR side 1 needs an M1 patch strip")
     out.append(
-        f"  .byte ${(m1_col_plus << 4) | band_mask | (0x08 if m1_door else 0) | (0x01 if m1_right else 0):02x}"
+        f"  .byte ${meta_a:02x}"
         "                  ; (m1_col+1)<<4 | band mask"
         + (" | $08 door" if m1_door else "")
         + (" | $01 right half" if m1_right else ""))
-    ball_col_plus = 0
-    if asym_ball_x:
-        ball_col_plus = ((asym_ball_x - 87) >> 3) + 1
-    if hot is None:
-        hot = any("H" in row for row in rows)
-    if door:
-        if not asym_ball_x:
-            raise ValueError(
-                f"{source}: LOCKED_DOOR needs a side-0 (ball) patch strip")
-        out.append(f"{prefix}MetaB:")
-        out.append(
-            f"  .byte ${ball_col_plus | 0x80 | (0x40 if hot else 0):02x}"
-            "                  ; (ball_col+1) | $80 async door"
-            + (" | $40 hot" if hot else ""))
-    else:
-        out.append(f"{prefix}MetaB:")
-        out.append(
-            f"  .byte ${ball_col_plus | (0x40 if hot else 0):02x}"
-            "                  ; (ball_col+1)"
-            + (", 0 = no ball" if not ball_col_plus else "")
-            + (" | $40 hot" if hot else ""))
-
-    if asym_rows is not None:
-        if len(asym_rows) != len(rows) or any(
-                len(r) != WIDTH for r in asym_rows):
-            raise ValueError(
-                f"{source}: asym rows must be {len(rows)}x{WIDTH} like the left rows")
-        # D4 reflect: stored right trio = pf_values(reversed(B)); B is in
-        # right_col order (col 0 = center-adjacent).
-        r_triples = [pf_values(r[::-1]) for r in asym_rows]
-        for name, register in zip(("RightPF0", "RightPF1", "RightPF2"), range(3)):
-            out.append(f"{prefix}{name}:")
-            out.append("  .byte " + ", ".join(
-                f"${t[register]:02x}" for t in r_triples))
-        r_rects = find_rectangles(asym_rows, solids="#HPVC")
-        if len(r_rects) > 4:
-            found = ", ".join(
-                f"(col {x}, row {y}, {w}x{h})" for x, y, w, h in r_rects)
-            raise ValueError(
-                f"{source}: {len(r_rects)} right wall rects > WallMask budget 4 "
-                f"(Risk 1 — do not silently wrap); found: {found}. Merge the "
-                "wall blocks on the right half (paint the gap between them, or "
-                "erase the stray cell) — WallMask (BombPacked b3-6) has only 4 "
-                "destroy bits")
-        # Phase 4 item 2's COMBINED left+right <= 4 is deferred: plan 4.2
-        # gates it on 'once flag-gated masks exist' (right rects entering the
-        # runtime cache). RightRects are ROM-only today (cell-walk PHM + ball
-        # render consume no mask slots), and every real model's mirror
-        # fragments to 3-6 rects — combined<=4 would block all asym content
-        # (measured 2026-10-04: models 1-7 sum 6..12). Re-add when a cache
-        # loader lands.
-        r_hot = find_rectangles(asym_rows, solids="H")
-        out.append(f"{prefix}RightRects:")
-        out.append(f"  .byte {len(r_rects)}                  ; number of rectangles")
-        for x, y, w, h in r_rects:
-            out.append(f"  .byte {2 * x}, {y}, {2 * w}, {h}  ; x(right_col*2), y, w, h")
-        out.append(f"  .byte {len(r_hot)}              ; number of hot rectangles")
-        for hx, hy, hw, hh in r_hot:
-            parent = next(
-                (
-                    i
-                    for i, (x, y, w, h) in enumerate(r_rects)
-                    if x <= hx and y <= hy and hx + hw <= x + w and hy + hh <= y + h
-                ),
-                None,
-            )
-            if parent is None:
-                print(f"warning: hot rect ({hx},{hy},{hw},{hh}) not inside any "
-                      f"right wall rect", file=sys.stderr)
-                mask = 0
-            elif parent < len(MASK_BITS):
-                mask = MASK_BITS[parent]
-            else:
-                mask = 0
-            out.append(f"  .byte ${mask:02x}, {2 * hx}, {hy}, {2 * hw}, {hh}  ; mask, x, y, w, h")
-
+    out.append(f"{prefix}MetaB:")
+    out.append(
+        f"  .byte ${meta_b:02x}"
+        "                  ; (ball_col+1)"
+        + (", 0 = no ball" if not (meta_b & 0x0F) else "")
+        + (" | $80 async door" if door else "")
+        + (" | $40 hot" if (meta_b & 0x40) else ""))
     return out
 
 

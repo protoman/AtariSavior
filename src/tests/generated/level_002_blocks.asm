@@ -1,1 +1,3 @@
-; Generated from New Level (level 2) — per-room PF/meta blocks. Do not edit by hand.
+; Generated from New Level (level 2).
+; C5 (2026-10-20): per-room blocks RETIRED — async rooms point at
+; their shared model shape and carry an async-extras record instead.

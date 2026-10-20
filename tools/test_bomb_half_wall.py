@@ -61,7 +61,7 @@ RECTS0 = 0x4C
 PF_ROWS = range(0xC3, 0xCC)   # PF0/1/2 rows 0-2 (reported addrs)
 PF_IDX = [a & 0x7F for a in PF_ROWS]   # bytearray indices
 
-MODEL = {0: ("L1R1TilePF0", "L1R1RoomRects")}
+MODEL = {0: 0}   # room -> fixture MODEL id (C5: shared M0 shape)
 
 # Frozen copy of the bomb-contract geometry lives in tools/test_fixtures.py
 # (the tests-folder copy, user rule 2026-10-14) — at the M0 labels, the
@@ -150,10 +150,11 @@ def load_room(room):
     fixture; pointers target the injected copy so every pointer-based read
     (StageBandTab Meta, hot stream walk) stays fixture-true. C4: no rect
     cache (cell collision)."""
-    pf0, rr = MODEL[room]
-    a_pf0, a_rr = L3[pf0], L3[rr]
-    mem.ram[I_PF0LO] = a_pf0 & 0xFF
-    mem.ram[I_PF0HI] = a_pf0 >> 8
+    model = MODEL[room]
+    a_pf0, a_rr = L3[f"M{model}TilePF0"], L3[f"M{model}RoomRects"]
+    # C5: MetaA/MetaB are staged from the room's extras record.
+    mem.ram[I_PF0LO] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
+    mem.ram[I_PF0HI] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     for i in range(3):

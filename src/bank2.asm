@@ -798,11 +798,290 @@ ERBlocksPad:
 ;  right after the ERBlocks return tail, and the $F600 pin still holds
 ;  LWpSetup / LWpSolid / LWpNotPatch.)
 
-ColOff:
-    .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
-ColMask:
-    .byte $10,$20,$40,$80, $80,$40,$20,$10,$08,$04,$02,$01
-    .byte $01,$02,$04,$08, $10,$20,$40,$80
+; ColOff/ColMask MOVED (C5) to the $F854-$F8B6 fill so this window fits the
+; room-block loader; both are abs,X readers so they float.
+
+; ------------------------------------------------------------------------------
+; C5 (2026-10-20): B3RoomBlocks + ExtrasLoad — the room block loader.
+; Living in the free $F453 window (it outgrew the $F8B7 half of its old
+; window once the extras dispatch landed). Entered from ERBlocksPad
+; (`jmp B3RoomBlocks`), tail-exits `jmp ERBlocksDone`; 0 pushes (the room-load
+; chain sits at the measured SP floor).
+;
+; Shape block (C4/C5) = HOT STREAM | PF TRIPLE. The MetaA/MetaB pair is NOT
+; in the block any more: `TilePF0+9/+10` is retired. A room with the shape
+; byte's b7 set reads its pair (+patches+features) from the level's async
+; extras stream; every other room derives MetaA = 0 and MetaB = $40 iff the
+; shape carries hot records (row-1 'H' cells).
+; ------------------------------------------------------------------------------
+B3RoomBlocks:
+    lda RoomRectsLo
+    sta FetchPtr
+    lda RoomRectsHi
+    sta FetchPtr+1
+    ldy #0
+    lda (FetchPtr),Y                ; hot count
+    sta RectCount                   ; also the MetaB hot flag below
+    asl                             ; 2n
+    asl                             ; 4n
+    clc
+    adc RectCount                   ; 5n
+    clc
+    adc #1                          ; +1 count byte = TilePF0 offset
+    clc
+    adc RoomRectsLo
+    sta RoomPF0Lo
+    lda RoomRectsHi
+    adc #0
+    sta RoomPF0Hi
+
+    ; --- PF rebuild: one 9-byte read (PF0+PF1+PF2 rows are contiguous in
+    ;     ROM and in RAM: PF0Buf $C3 + Y covers $C3-$CB = all 9 rows) ---
+    lda RoomPF0Lo
+    sta FetchPtr
+    lda RoomPF0Hi
+    sta FetchPtr+1
+    ldy #0
+.EBpf:
+    lda (FetchPtr),Y
+    sta PF0Buf,Y
+    iny
+    cpy #9
+    bne .EBpf
+
+    ; --- C5 meta source: owns-extras (shape byte b7) → the extras stream;
+    ;     otherwise MetaA = 0 and MetaB = $40 iff the shape has hot records.
+    lda LevelPFDataLo
+    sta FetchPtr
+    lda LevelPFDataHi
+    sta FetchPtr+1
+    ldy RoomNo
+    lda (FetchPtr),Y
+    bmi .EBextras
+    lda #0
+    sta RoomMetaA
+    lda RectCount
+    beq .EBmetaDone
+    lda #$40
+.EBmetaDone:
+    sta RoomMetaB
+    jmp ERBlocksDone
+.EBextras:
+    jmp ExtrasLoad
+
+; --- C5: async extras loader (see the record layout in convert_level.py) ---
+; extras base = level base + 3n + 4*(total enemy records): the stream sits
+; AFTER the enemy records, so EnterRoomB2's base+3n staging is untouched.
+ExtrasLoad:
+    lda LevelPFDataLo
+    clc
+    adc LevelRoomN
+    adc LevelRoomN
+    adc LevelRoomN
+    sta FetchPtr
+    lda LevelPFDataHi
+    adc #0
+    sta FetchPtr+1
+    ; counts column (base + 2n) → RoomPF0Lo/Hi (MetaA/B not staged yet)
+    lda LevelPFDataLo
+    clc
+    adc LevelRoomN
+    adc LevelRoomN
+    sta RoomPF0Lo
+    lda LevelPFDataHi
+    adc #0
+    sta RoomPF0Hi
+    ; total enemy records (sum of the count bytes' b7-6)
+    lda #0
+    sta Temp
+    ldy #0
+.EXLsum:
+    cpy LevelRoomN
+    beq .EXLsumOk
+    lda (RoomPF0Lo),Y
+    lsr
+    lsr
+    lsr
+    lsr
+    lsr
+    lsr
+    clc
+    adc Temp
+    sta Temp
+    iny
+    jmp .EXLsum
+.EXLsumOk:
+    lda Temp
+    asl
+    asl                             ; *4 (<= 63 records/level)
+    clc
+    adc FetchPtr
+    sta FetchPtr
+    lda FetchPtr+1
+    adc #0
+    sta FetchPtr+1
+    ; --- walk to this room's record (counts byte b5-0 = 1-based ordinal) ---
+    ldy RoomNo
+    lda (RoomPF0Lo),Y
+    and #$3F
+    beq .EXLload                    ; 0 = no record (defensive: b7 without it)
+    sec
+    sbc #1
+    sta Temp                        ; records still to skip
+.EXLskip:
+    lda Temp
+    beq .EXLload
+    dec Temp
+    ldy #0
+    lda (FetchPtr),Y                ; flags
+    and #$03
+    clc
+    adc #3
+    sta LevelConnSpare              ; 3 + n_patches
+    lda (FetchPtr),Y
+    lsr
+    lsr
+    and #$0F                        ; n_features
+    beq .EXLskipFlat
+    clc
+    adc LevelConnSpare
+    tay                             ; Y = 3 + np + nf = hot-count offset
+    lda (FetchPtr),Y                ; hot record count
+    iny                             ; Y = offset past the count byte
+    sta LevelConnSpare              ; H
+    tya
+    clc
+    adc FetchPtr
+    sta FetchPtr
+    bcc .EXLskipHot
+    inc FetchPtr+1
+.EXLskipHot:
+    lda LevelConnSpare
+    asl
+    asl
+    clc
+    adc LevelConnSpare              ; 5H
+    clc
+    adc FetchPtr
+    sta FetchPtr
+    bcc .EXLskip
+    inc FetchPtr+1
+    jmp .EXLskip
+.EXLskipFlat:
+    lda LevelConnSpare              ; 3 + np
+    clc
+    adc FetchPtr
+    sta FetchPtr
+    bcc .EXLskip
+    inc FetchPtr+1
+    jmp .EXLskip
+
+.EXLload:
+    ; FetchPtr = this room's extras record
+    ldy #0
+    lda (FetchPtr),Y                ; flags
+    sta LevelConnSpare
+    iny
+    lda (FetchPtr),Y                ; MetaA
+    sta RoomMetaA
+    iny
+    lda (FetchPtr),Y                ; MetaB
+    sta RoomMetaB
+    ; --- apply the patch list: MetaA b0-2 = bands with a SIDE-0 (ball)
+    ;     patch. Side-1 (M1) patches paint via the strip and gate no band. ---
+    lda #0
+    sta Temp
+    lda LevelConnSpare
+    and #$03
+    beq .EXLfeat
+    tax                             ; n_patches
+    ldy #3
+.EXLpatch:
+    lda (FetchPtr),Y
+    and #$10                        ; side b4: nonzero = M1 side
+    bne .EXLpatchNext
+    lda (FetchPtr),Y
+    and #$C0                        ; row b7-6
+    beq .EXLrowB0
+    cmp #$40
+    beq .EXLrowB1
+    lda #%00000100                  ; row 2
+    jmp .EXLrowOr
+.EXLrowB1:
+    lda #%00000010                  ; row 1
+    jmp .EXLrowOr
+.EXLrowB0:
+    lda #%00000001                  ; row 0
+.EXLrowOr:
+    ora Temp
+    sta Temp
+.EXLpatchNext:
+    iny
+    dex
+    bne .EXLpatch
+    lda RoomMetaA
+    ora Temp                        ; keep the authored gates, add the
+    sta RoomMetaA                   ;   side-0 patch rows (the converter
+                                    ;   asserts they agree, so this is
+                                    ;   idempotent for real stage data)
+.EXLfeat:
+    ; --- feature cells: the PF pairs the retired per-room block carried.
+    ;     A hcrunch entry ($80 kind) covers cols 0..col (contiguous prefix);
+    ;     a phase entry ($40 kind) is one cell. Row is always band 1. ---
+    ldy #0
+    lda (FetchPtr),Y
+    lsr
+    lsr
+    and #$0F
+    sta EnemyDataLo                 ; features remaining (free at load time)
+    beq .EXLdone                    ; patch-only: the shape's hot stream stays
+    lda (FetchPtr),Y
+    and #$03
+    clc
+    adc #3
+    tay                             ; Y = first feature byte
+.EXLfeatLoop:
+    lda (FetchPtr),Y
+    sta LevelConnSpare              ; kind b7-6 | col b3-0
+    and #$3F
+    sta Temp                        ; current col
+.EXLfeatCol:
+    ldx Temp
+    lda PhMaskTab,X                 ; PF bit pair for cell `col`
+    sta RectCount                   ; mask (hot flag already consumed)
+    lda #0
+    cpx #2
+    bcc .EXLfOff
+    lda #3
+    cpx #6
+    bcc .EXLfOff
+    lda #6
+.EXLfOff:
+    clc
+    adc #1                          ; row 1 in the 3-row PF buffer
+    tax
+    lda PF0Buf,X
+    ora RectCount
+    sta PF0Buf,X
+    lda LevelConnSpare
+    bpl .EXLfNext                   ; b7 clear = phase (one cell)
+    dec Temp
+    bpl .EXLfeatCol                 ; hcrunch prefix 0..col
+.EXLfNext:
+    iny
+    dec EnemyDataLo
+    bne .EXLfeatLoop
+    ; --- hot stream = this room's copy, right after the feature bytes.
+    ;     The feature loop left Y at 3 + n_patches + n_features. ---
+    tya
+    clc
+    adc FetchPtr
+    sta RoomRectsLo
+    lda FetchPtr+1
+    adc #0
+    sta RoomRectsHi
+.EXLdone:
+    jmp ERBlocksDone
 
 ; (A1 2026-10-20: SelectActiveObject moved BACK to bank0 — the body, its
 ; SetObjectXPos/SetObjReflection copies and the type tables left this bank.
@@ -974,6 +1253,17 @@ LoadLevelB2:
     .ds $F854 - *, 0            ; FooterFont ends $F854 (13-row) — sprite/color data
 
 ; ------------------------------------------------------------------------------
+; C5 (2026-10-20): ColOff/ColMask moved here from the $F453 loader window
+; (which needed the 40 B for B3RoomBlocks + ExtrasLoad). Both are read as
+; `lda/and Table,X` (absolute,X) so their address is free.
+; ------------------------------------------------------------------------------
+ColOff:
+    .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
+ColMask:
+    .byte $10,$20,$40,$80, $80,$40,$20,$10,$08,$04,$02,$01
+    .byte $01,$02,$04,$08, $10,$20,$40,$80
+
+; ------------------------------------------------------------------------------
 ; C2 (2026-10-20): $F8B7 window — the level-data block reader and the
 ; HotOverlapBody walk. Both walk the block stream that now lives in THIS bank
 ; ($F307 slot), so `lda (FetchPtr),Y` is a plain in-bank read — no tramp, no
@@ -982,56 +1272,10 @@ LoadLevelB2:
 ; ------------------------------------------------------------------------------
     .ds $F8B7 - *, 0
 
-B3RoomBlocks:
-    ; --- plan C4 (2026-10-20): the block is HOT STREAM | PF | META. The
-    ;     solid rect list is gone (collision is cell-based), and with it the
-    ;     ZP rect cache copy. Layout:
-    ;       block+0     hot count
-    ;       block+1..   hot records (5 B each)
-    ;       TilePF0     = block + 1 + 5*hot_count
-    lda RoomRectsLo
-    sta FetchPtr
-    lda RoomRectsHi
-    sta FetchPtr+1
-    ldy #0
-    lda (FetchPtr),Y                ; hot count
-    sta RectCount                   ; scratch (kernel re-inits RowIdx)
-    asl                             ; 2n
-    asl                             ; 4n
-    clc
-    adc RectCount                   ; 5n
-    clc
-    adc #1                          ; +1 count byte = TilePF0 offset
-    clc
-    adc RoomRectsLo
-    sta RoomPF0Lo
-    lda RoomRectsHi
-    adc #0
-    sta RoomPF0Hi
-
-    ; --- PF rebuild: one 9-byte read (PF0+PF1+PF2 rows are contiguous in
-    ;     ROM and in RAM: PF0Buf $C3 + Y covers $C3-$CB = all 9 rows) ---
-    lda RoomPF0Lo
-    sta FetchPtr
-    lda RoomPF0Hi
-    sta FetchPtr+1
-    ldy #0
-.EBpf:
-    lda (FetchPtr),Y
-    sta PF0Buf,Y
-    iny
-    cpy #9
-    bne .EBpf
-
-    ; --- room meta staging: MetaA/MetaB → the pointer bytes ($99/$9A) ---
-    ; Y = 9 on entry from the copy loop above (so no LDY here).
-    lda (FetchPtr),Y                ; MetaA (Y = 9)
-    sta RoomMetaA                   ; = RoomPF0Lo — pointer lo dies here
-    iny
-    lda (FetchPtr),Y                ; MetaB (Y = 10)
-    sta RoomMetaB                   ; = RoomPF0Hi — pointer hi dies here
-    jmp ERBlocksDone                ; C2: same-bank return (bank3's $F458 tail
-                                    ;   and the `sta $1FF8` are gone)
+; C5 (2026-10-20): B3RoomBlocks MOVED to the free $F453 window (it grew by
+; the async-extras dispatch). The window start stays reserved and
+; HotOverlapBody keeps its $F8F8 address, so nothing downstream shifts.
+    .ds $F8F8 - *, 0
 
 HotOverlapBody:
     lda RoomRectsLo

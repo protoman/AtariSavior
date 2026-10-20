@@ -36,7 +36,14 @@ HEIGHT = 3
 # gone: a room stores a 6-bit SHAPE INDEX (one byte column), the grid position
 # and the enemy count; the block address comes from LEVEL_ShapeTable and the
 # first enemy record is derived by summing the earlier rooms' counts.
-LEVEL_FORMAT = 3
+# C5 (2026-10-20): 4 = async EXTRAS stream. A room record's b7 (owns-extras)
+# + the count byte's extras index select a variable-length record in the
+# level's extras stream (after the enemy records): flags, MetaA/MetaB,
+# 1 B/patch, 1 B/feature, then [feature rooms] the room's hot stream. That
+# retired the per-room blocks and the `TilePF0+9/+10` meta contract: a room
+# points at its shared model SHAPE and the loader (bank2 ExtrasLoad) applies
+# the patches/features and stages MetaA/MetaB.
+LEVEL_FORMAT = 4
 # New tile values (ai_new_tiles plan Phase 1). LOCKED_DOOR lives ONLY in
 # asym_patches (side 0 = async ball strip, MetaB b7); the three grid tiles
 # paint model cells and emit b7 feature records in the hot record stream.
@@ -675,10 +682,106 @@ def level_number_from_path(path: Path) -> int:
     return int(match.group(1)) if match else 0
 
 
+# --- C5 (2026-10-20): async extras records ---------------------------------
+# Feature kind nibble in the 1 B/feature entries (the record class byte in the
+# hot stream is $80 phase / $82 hcrunch; the extras byte uses compact kinds).
+EXTRAS_PHASE = 1
+EXTRAS_HCRUNCH = 2
+
+
+def _parse_hot_line(line: str) -> list[int]:
+    """`  .byte $08, 4, 1, 2, 1  ; note` -> [8, 4, 1, 2, 1]."""
+    payload = line.split(".byte", 1)[1].split(";")[0]
+    return [int(v.strip().lstrip("$"), 16) for v in payload.split(",")]
+
+
+def room_extras(room: dict, model: dict, rows: list[str],
+                who: str) -> tuple[bytes, int]:
+    """Build one C5 extras record for an async room: (bytes, n_features).
+
+    Layout (see LEVELn_AsyncExtras): flags, MetaA, MetaB, 1 B/patch, 1 B/
+    feature, then [features] the ROOM's hot stream (count + 5 B records).
+    The meta pair is the retired `TilePF0+9/+10` payload; the patch list is
+    the live geometry the loader derives the MetaA band mask from (asserted
+    here so the two encodings cannot drift).
+    """
+    res = resolve_asym_patches(model, room, rows)
+    asym, ball_x, m1_x, m1_door, m1_right = (
+        res if res else (None, 0, 0, False, False))
+    hot = bool(model.get("mid_band_type"))
+    hot_m1 = []
+    if hot:
+        for patch in room_patches(room):
+            side = patch[3] if len(patch) == 4 else 0
+            if side == 1 and patch[0] == 1:
+                hot_m1.append((patch[0], patch[1]))
+    meta_a, meta_b = convert_room.meta_bytes(
+        rows, asym_rows=asym, asym_ball_x=ball_x, asym_m1_x=m1_x,
+        hot=hot, door=False, m1_door=m1_door, m1_right=m1_right, source=who)
+    patch_bytes: list[int] = []
+    derived_mask = 0
+    for patch in room_patches(room):
+        row, col = patch[0], patch[1]
+        side = patch[3] if len(patch) == 4 else 0
+        patch_bytes.append((row << 6) | (side << 4) | col)
+        if side == 0:
+            derived_mask |= 1 << row   # ball band gate (MetaA b0-2)
+    if (meta_a & 0x07) != derived_mask:
+        raise ValueError(
+            f"{who}: MetaA band mask ${meta_a & 0x07:02x} != the side-0 patch "
+            f"rows ${derived_mask:02x} — the extras patch list and the packed "
+            "meta drifted")
+    feats = room_feature_cells(room)
+    feature_bytes: list[int] = []
+    if feats:
+        kinds = {t for _r, _c, t in feats}
+        if len(kinds) != 1:
+            raise ValueError(
+                f"{who}: mixed special features {sorted(kinds)} — special "
+                "features are alone per room")
+        kind = kinds.pop()
+        if room_door_flag(room):
+            raise ValueError(
+                f"{who}: door and feature cells in one room (door XOR "
+                "phase XOR hcrunch)")
+        if kind == HCRUNCH:
+            cols = sorted(c for _r, c, _t in feats)
+            feature_bytes.append((EXTRAS_HCRUNCH << 6) | cols[-1])
+        else:
+            for _r, col, _t in sorted(feats, key=lambda f: f[1]):
+                feature_bytes.append((EXTRAS_PHASE << 6) | col)
+    if len(patch_bytes) > 3:
+        raise ValueError(f"{who}: {len(patch_bytes)} extras patches > 3 "
+                         "(flags b1-0)")
+    if len(feature_bytes) > 15:
+        raise ValueError(f"{who}: {len(feature_bytes)} feature bytes > 15 "
+                         "(flags b5-2)")
+    out = bytearray([len(patch_bytes) | (len(feature_bytes) << 2),
+                     meta_a, meta_b])
+    out += bytes(patch_bytes)
+    out += bytes(feature_bytes)
+    if feature_bytes:
+        hot_lines, feat_lines = convert_room.hot_records(
+            rows, hot_m1=hot_m1, hot=hot, door=False, source=who)
+        records = [_parse_hot_line(line) for line in hot_lines + feat_lines]
+        out.append(len(records))
+        for record in records:
+            out += bytes(record)
+    return bytes(out), len(feature_bytes)
+
+
+def extras_record_lines(record: bytes, n_features: int, note: str) -> list[str]:
+    """One `.byte` block for an extras record, with per-section comments."""
+    flags = record[0]
+    n_patch = flags & 0x03
+    comment = (f"  ; {note}: {n_patch} patch(es), {n_features} feature(s)"
+               f", MetaA ${record[1]:02x} MetaB ${record[2]:02x}")
+    return [f"  .byte " + ", ".join(f"${b:02x}" for b in record) + comment]
+
+
 def write_tables(level: dict, rooms: list[dict], positions: list[int],
                  output: Path, level_n: int, models_by_id: dict = None) -> None:
     prefix = f"LEVEL{level_n}"
-    room_prefix = f"L{level_n}R"
     # Two wall colors: bands 0 and 2 use color 1; band 1 uses color 2.
     wall = nearest_byte(
         int(level.get('wall_r', 56)),
@@ -722,23 +825,38 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
         "; Room shape index (C2 2026-10-20): ONE byte per room =",
         ";   b5-0 SHAPE INDEX into LEVEL_ShapeTable (levels_index.asm)",
         ";   b6   bottom-band flag",
-        ";   b7   owns-extras (reserved 0: the async stream is C5)",
-        "; The block address is the table entry, so the old 2-byte RoomRects",
-        "; word is gone. C4 (2026-10-20): the block is hot stream | PF | meta",
-        "; (no solid rect list) — TilePF0 = block + 1 + 5*hot_count.",
+        ";   b7   owns-extras (C5): the room has a record in the level's",
+        ";        AsyncExtras stream (selected by the counts byte's b5-0)",
+        "; C5 (2026-10-20): an async room points at its SHARED MODEL shape;",
+        "; the patches/features/meta come from the extras record, so there are",
+        "; no per-room blocks any more. A room without a model is rejected",
+        "; (the shape must be shared). C4: block = hot stream | PF triple —",
+        "; TilePF0 = block + 1 + 5*hot_count.",
         f"{prefix}_RoomShapes:",
     ]
+    extras_index: dict[int, int] = {}
+    extras_lines: list[str] = []
     for index, room in enumerate(rooms):
         model = models_by_id.get(room.get("model_id")) if models_by_id else None
-        if model is not None and not room_has_async(room):
-            shape = f"SHAPE_M{model['id']}"
-            why = f"model {model['id']}"
-        else:
-            shape = f"SHAPE_{room_prefix}{index + 1}"
-            why = "no model" if model is None else "async"
-        band = 0x40 if _room_bottom_color(room) else 0
-        value = f"{shape} | $40" if band else shape
+        if model is None:
+            raise ValueError(
+                f"level {level_n} room {index}: no model_id — C5 needs a "
+                "shared model shape for every room")
+        shape = f"SHAPE_M{model['id']}"
+        async_room = room_has_async(room)
+        why = "async extras" if async_room else f"model {model['id']}"
+        flags = (0x40 if _room_bottom_color(room) else 0) | (
+            0x80 if async_room else 0)
+        value = f"{shape} | ${flags:02x}" if flags else shape
         lines.append(f"  .byte {value} ; room {index} ({why})")
+        if not async_room:
+            continue
+        rows = rows_from_json(room, models_by_id)
+        record, nfeat = room_extras(room, model, rows,
+                                    f"level {level_n} room {index}")
+        extras_index[index] = len(extras_index) + 1
+        extras_lines += extras_record_lines(record, nfeat,
+                                            f"room {index}")
     lines.append("")
     lines.append(
         "; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,")
@@ -753,29 +871,36 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
     for index, pos in enumerate(positions):
         lines.append(f"  .byte ${pos:02x} ; room {index} "
                      f"({pos >> 4}, {pos & 0x0F})")
-    lines += _enemy_tables(prefix, rooms)
+    lines += _enemy_tables(prefix, rooms, extras_index)
+    if extras_lines:
+        lines += [
+            "",
+            "; C5 (2026-10-20) async EXTRAS stream — one record per",
+            "; owns-extras room, in room order (the counts byte b5-0 is the",
+            "; 1-based ORDINAL). Record layout (hex per line below):",
+            ";   +0 flags: n_patches b1-0 | n_features b5-2",
+            ";   +1 MetaA  +2 MetaB  (the pair that used to sit at",
+            ";      TilePF0+9/+10 — the loader stages it into $99/$9A)",
+            ";   +3.. 1 B/patch: row b7-6 | side b4 | col b3-0 (tile = wall)",
+            ";   ..   1 B/feature: kind b7-6 (1 = phase, 2 = hcrunch",
+            ";        prefix end) | col b3-0",
+            ";   ..   [n_features > 0] 1 B hot count + 5 B/hot record — the",
+            ";        ROOM's hot stream (feature cells split the shape's own",
+            ";        hot rects, so the walkers read this copy instead).",
+            f"{prefix}_AsyncExtras:",
+        ]
+        lines += extras_lines
 
     output.write_text("\n".join(lines) + "\n")
 
-    # Per-room data blocks (async rooms + model-less rooms) live in their OWN
-    # generated file (A3 2026-10-19): the tables above stay in bank2, the
-    # blocks move to bank3 with the rest of the level data (spill_bank3.asm).
-    # Keeping them out of level_00N_rooms.asm means emit_spills sizes only the
-    # bank2 table file; the bank3 side has no spill machinery (fixed org).
+    # C5 (2026-10-20): the per-room async blocks are RETIRED (the extras
+    # stream above replaces them). Keep writing the *_blocks.asm file as a
+    # comment-only stub so the include list / tooling keeps resolving.
     block_lines = [
-        f"; Generated from {level.get('name', 'level')} (level {level_n}) — "
-        "per-room PF/meta blocks. Do not edit by hand."
+        f"; Generated from {level.get('name', 'level')} (level {level_n}).",
+        "; C5 (2026-10-20): per-room blocks RETIRED — async rooms point at",
+        "; their shared model shape and carry an async-extras record instead.",
     ]
-    for index, room in enumerate(rooms):
-        model = models_by_id.get(room.get("model_id")) if models_by_id else None
-        if model is not None and not room_has_async(room):
-            continue
-        rows = rows_from_json(room, models_by_id)
-        block_lines.append("")
-        block_lines += emit_room_block(f"{room_prefix}{index + 1}", room, model,
-                                       rows,
-                                       f"room {index} (model "
-                                       f"{room.get('model_id', '-')})")
     blocks_path = output.with_name(
         output.name.replace("_rooms.asm", "_blocks.asm"))
     blocks_path.write_text("\n".join(block_lines) + "\n")
@@ -807,7 +932,8 @@ def _room_bottom_color(room: dict) -> int:
     return color if color != 0 else 1  # never emit 0 when band is on
 
 
-def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
+def _enemy_tables(prefix: str, rooms: list[dict],
+                  extras_index: dict[int, int] | None = None) -> list[str]:
     """Emit the level's per-room enemy counts and its flat enemy table.
 
     Enemies are positioned in EDITOR stage coordinates: x is a full-stage
@@ -825,11 +951,13 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
     (count << 6 | extras index). The records stay contiguous in room order,
     so the FIRST record index is DERIVED at room load by summing the counts
     of the rooms before it (bank2 EnterRoomB2) — the old packed index field
-    capped a level at 31 records and is gone. The extras index is reserved 0
-    until the C5 async stream; the band flag moved to the shape column.
+    capped a level at 31 records and is gone. C5 (2026-10-20): the low six
+    bits are the room's 1-based ORDINAL in the level's AsyncExtras stream
+    (0 = no extras); the band flag lives in the shape column.
     """
     flat: list[tuple[int, int, int, int]] = []
     counts: list[int] = []
+    extras_index = extras_index or {}
     # Lamp entries are merged into the enemy table as type=5 (kernel LAMP).
     LAMP_TYPE = 5
     for index, room in enumerate(rooms):
@@ -857,14 +985,17 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
     lines = [""]
     lines += [
         "; Per-room enemy count (C2 2026-10-20): ONE byte = count<<6 |",
-        "; extras index (0 = none; the record index is derived at room load).",
+        "; extras ordinal (C5: 1-based index into LEVELn_AsyncExtras, 0 =",
+        "; none; the enemy record index is derived at room load).",
         f"{prefix}_RoomCounts:",
     ]
     for index, count in enumerate(counts):
         assert count <= 3, f"{prefix}: room {index} has {count} records (>3)"
-        packed = count << 6
+        packed = (count << 6) | extras_index.get(index, 0)
         lines.append(
-            f"  .byte ${packed:02x} ; room {index}: {count} record(s)")
+            f"  .byte ${packed:02x} ; room {index}: {count} record(s)"
+            + (f", extras {extras_index[index]}"
+               if index in extras_index else ""))
     lines += [
         "",
         f"; Enemy data: {len(flat)} enemy records across {len(rooms)} rooms, "
@@ -878,11 +1009,12 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
 
 def emit_room_block(prefix: str, room: dict, model: dict, rows: list[str],
                     source: str) -> list[str]:
-    """One (TilePF0..2 + MetaA/B [+ Right*]) block for `prefix`.
+    """One shared model SHAPE block (hot stream + PF triple) for `prefix`.
 
-    Used for BOTH the shared static M<id> blocks (room = {} -> no async) and
-    the per-room L<level>R<room> blocks an async room owns since the 2026-10-17
-    move. Keeping one emitter means the two paths cannot drift."""
+    C5 (2026-10-20): the model block is the STATIC shape only — the
+    MetaA/MetaB pair moved to the room extras stream, so `with_meta=False`.
+    There are no per-room blocks any more (async rooms share the model shape
+    and carry an extras record)."""
     if model is None:
         res = None
         hot = False
@@ -907,7 +1039,8 @@ def emit_room_block(prefix: str, room: dict, model: dict, rows: list[str],
                              # right M1 door (MetaA b0=1)
         m1_door=room_m1_door_flag(room),
         m1_right=m1_right,
-        hot=hot)
+        hot=hot,
+        with_meta=False)
 
 
 def room_has_async(room: dict) -> bool:
@@ -917,13 +1050,6 @@ def room_has_async(room: dict) -> bool:
     offset inside the (PF + meta + stream) block the room points at."""
     return bool(room.get("asym_patches") or room.get("feature_cells"))
 
-
-# --- C1 (2026-10-20): share byte-identical per-room blocks ----------------
-# Rooms in DIFFERENT levels can each own async yet emit the same
-# (rects + PF + meta) block. The post-pass below keeps the first copy and
-# points the duplicates' room tables at it, so the bytes exist once.
-_BLOCK_START = re.compile(r"^(L\d+R\d+)RoomRects:\s*$")
-_SHARED_NOTE = "; {tag} block SHARED with {canon} (byte-identical dedupe)"
 
 # C2 (2026-10-20): the room record stores the shape index in b5-0, so the
 # whole game can address 64 distinct blocks. That is the plan's C3 ceiling
@@ -937,11 +1063,11 @@ def _shape_stream(generated: Path) -> list[str]:
 
     This order IS the contract: bank2's EnterRoomB2 reads
     `LEVEL_ShapeTable[index]`, and the converter numbers the table by walking
-    the SAME files in the same order. Byte-identical duplicates were already
-    dropped by dedupe_room_blocks(), which is why their labels are resolved
-    through the {dup: canon} map instead of appearing here.
+    the SAME files in the same order. C5 (2026-10-20): only the shared model
+    shapes are emitted (the per-room block stream is retired, and its
+    byte-identical dedupe pass with it).
     """
-    pattern = re.compile(r"^(M\d+|L\d+R\d+)RoomRects:")
+    pattern = re.compile(r"^(M\d+)RoomRects:")
     order: list[str] = []
     files = [generated / "models_data.asm"] + sorted(
         generated.glob("level_[0-9][0-9][0-9]_blocks.asm"))
@@ -951,72 +1077,6 @@ def _shape_stream(generated: Path) -> list[str]:
             if match:
                 order.append(match.group(1))
     return order
-
-
-def _block_payload(chunk: list[str], prefix: str) -> tuple:
-    """Identity key of one emitted block: label suffixes + byte directives.
-
-    Comments and the per-room `L<level>R<room>` prefix are stripped, so two
-    rooms that emit the same bytes (possibly from different levels) match."""
-    out = []
-    for raw in chunk:
-        line = raw.split(";", 1)[0].strip()
-        if not line:
-            continue
-        head, sep, _rest = line.partition(":")
-        if sep and head.startswith(prefix):
-            out.append((head[len(prefix):], ""))
-        else:
-            out.append(("", line))
-    return tuple(out)
-
-
-def dedupe_room_blocks(generated: Path) -> dict:
-    """Drop duplicate per-room blocks; return {duplicate: canonical} prefixes.
-
-    Runs after the per-level conversions (i.e. in `--levels` mode), because
-    identical blocks can live in different levels' *_blocks.asm files. The
-    duplicate room keeps working: its RoomDataTable entry is rewritten to the
-    canonical labels (same absolute address in bank3, so the meta at
-    TilePF0+9/+10 still holds), and the block file carries a machine-readable
-    `; <tag> block SHARED with <canon>` note that verify_build checks."""
-    seen: dict = {}
-    shared: dict = {}
-    for path in sorted(generated.glob("level_[0-9][0-9][0-9]_blocks.asm")):
-        lines = path.read_text(encoding="utf-8").splitlines()
-        starts = [i for i, line in enumerate(lines) if _BLOCK_START.match(line)]
-        if not starts:
-            continue
-        new = lines[:starts[0]]
-        for n, start in enumerate(starts):
-            end = starts[n + 1] if n + 1 < len(starts) else len(lines)
-            chunk = lines[start:end]
-            prefix = _BLOCK_START.match(chunk[0]).group(1)
-            key = _block_payload(chunk, prefix)
-            if key in seen:
-                canon = seen[key]
-                shared[prefix] = canon
-                new.append(_SHARED_NOTE.format(tag=prefix, canon=canon))
-            else:
-                seen[key] = prefix
-                new.extend(chunk)
-        path.write_text("\n".join(new).rstrip("\n") + "\n", encoding="utf-8")
-    if not shared:
-        return shared
-    # Point the duplicate rooms' tables at the surviving block.
-    for path in sorted(generated.glob("level_[0-9][0-9][0-9]_rooms.asm")):
-        lines = []
-        for line in path.read_text(encoding="utf-8").splitlines():
-            for dup, canon in shared.items():
-                # C3: the room table carries the RoomRects word only (TilePF0
-                # is derived from it), so RoomRects is the label to repoint.
-                if f"{dup}RoomRects" in line:
-                    line = line.replace(f"{dup}TilePF0", f"{canon}TilePF0") \
-                               .replace(f"{dup}RoomRects", f"{canon}RoomRects")
-                    line = f"{line} [shared with {canon}]"
-            lines.append(line)
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return shared
 
 
 def write_levels_index(output: Path, json_paths: list[Path]) -> None:
@@ -1032,12 +1092,6 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
     every room (across all levels) whose RoomDataTable points at that model.
     """
     generated = output.parent
-    # C1 (2026-10-20): rooms in different levels that emit a byte-identical
-    # block share one copy; their tables are repointed here.
-    shared_blocks = dedupe_room_blocks(generated)
-    if shared_blocks:
-        print("shared room blocks: " + ", ".join(
-            f"{dup}->{canon}" for dup, canon in sorted(shared_blocks.items())))
     data_lines = ["; Generated by convert_level.py --levels. Do not edit by hand.", ""]
     table_lines = ["; Generated by convert_level.py --levels. Do not edit by hand.", ""]
     levels = []
@@ -1052,13 +1106,14 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         for room in level["rooms"]:
             model = models_by_id.get(room.get("model_id"))
             if model is None:
-                continue
-            # A shared M<id> block is only needed by rooms that carry NO async.
-            # An async room owns its own block (the meta sits at a fixed offset
-            # inside the block the room points at), so a model used exclusively
-            # by async rooms needs no shared block at all.
-            if not room_has_async(room):
-                referenced.add(model["id"])
+                raise ValueError(
+                    f"level {level_n}: a room has no model_id — C5 needs a "
+                    "shared model shape for every room (per-room blocks are "
+                    "retired)")
+            # C5 (2026-10-20): EVERY referenced model needs its shape block
+            # now — an async room points at the model shape too and carries
+            # its patches/features/meta in the extras stream.
+            referenced.add(model["id"])
         check_rooms_against_models(level.get("rooms") or [], models_by_id,
                                    f"level {level_n}",
                                    int(level.get("miner_room", 0)) & 0x7F)
@@ -1132,10 +1187,8 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
     # --- C2 (2026-10-20): shape registry + address table -------------------
     # A room record holds a 6-bit SHAPE INDEX; the block address lives here.
     # The ordinal IS the emission order of spill_bank3.asm (models sorted by
-    # id, then each level's per-room blocks in room order) — that keeps the
-    # index stable without a second sort, and dedupe_room_blocks() has already
-    # dropped byte-identical duplicates, whose labels resolve to the surviving
-    # block's ordinal (shared_blocks).
+    # id). C5 (2026-10-20): only shared model shapes exist now, so every
+    # ordinal is referenced directly (no dedupe aliases).
     shapes = _shape_stream(generated)
     if len(shapes) > MAX_SHAPES:
         raise ValueError(
@@ -1143,13 +1196,9 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
             "room-record shape index can address — share a model or wait for "
             "the C3 row dictionary")
     shape_index = {name: i for i, name in enumerate(shapes)}
-    for dup, canon in shared_blocks.items():
-        shape_index[dup] = shape_index[canon]
     equ_lines = [f"LEVEL_SHAPE_COUNT = {len(shapes)}"]
     for name in shapes:
         equ_lines.append(f"SHAPE_{name} = {shape_index[name]}")
-    for dup in sorted(shared_blocks):
-        equ_lines.append(f"SHAPE_{dup} = {shape_index[dup]}")
 
     tail_lines = [
         "",
@@ -1161,13 +1210,19 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         "; colors, then the level's room-table base and its ROOM COUNT.",
         "; start x/y (32/24), start_room (0) and miner_y (84) are kernel",
         "; constants now — the converter rejects other values.",
-        "; Inside a level block (n = ROOM COUNT, C2 2026-10-20):",
+        "; Inside a level block (n = ROOM COUNT, C2 2026-10-20; C5 extras):",
         ";   base + 0   RoomShapes     1 B/room (shape idx b5-0 | band b6 |",
-        ";                               owns-extras b7; block = the table below)",
+        ";                               owns-extras b7; shape = the table below)",
         ";   base + n   RoomPositions  1 B/room (LEVEL_FORMAT 2: x<<4|y,",
         ";                               exits derived by scanning it)",
-        ";   base + 2n  RoomCounts     1 B/room (count<<6 | extras index)",
+        ";   base + 2n  RoomCounts     1 B/room (count<<6 | extras ordinal)",
         ";   base + 3n  EnemyDataTable 4 B/record (first record index derived)",
+        ";   ..         AsyncExtras    variable, one record per owns-extras room",
+        ";                               (C5; after the enemy records — the",
+        ";                               loader derives its base from the count",
+        ";                               column sum). Flags/MetaA/MetaB,",
+        ";                               1 B/patch, 1 B/feature, then the",
+        ";                               room's hot stream when it has features.",
     ] + equ_lines + [
         "",
         "; Shape address table: SHAPE_<label> indices above are the row here.",

@@ -69,13 +69,16 @@ DT_SLOT = 0x0A                      # $8A DropTarget (death/feature gate)
 RECTS0 = 0x4C                       # $CC rect cache slots (RcW1)
 
 OV_HEAD = L2["OvHead"]
-MODEL = {  # fixture models only (rule 2026-10-14). M0 = this test's
-    # probe; M2 kept for test_vcr_shutter, which imports this harness and
+# C5 (2026-10-20): fixtures live at the shared MODEL shapes; the PF triple and
+# the staged MetaA/MetaB pair come from test_fixtures' frozen constants (the
+# shape block no longer carries the 2-byte meta tail).
+MODEL = {  # fixture model id per room (rule 2026-10-14). M0 = this test's
+    # probe; M2 kept for test_phase_kill_frame, which imports this harness and
     # freeze_m2's its own private copy before load_room(2); M4 kept for
     # test_hcrunch (freeze_m4's its own copy before load_room(4)).
-    0: ("L1R1TilePF0", "L1R1RoomRects"),
-    2: ("M2TilePF0", "M2RoomRects"),
-    4: ("L3R2TilePF0", "L3R2RoomRects"),
+    0: 0,
+    2: 2,
+    4: 4,
 }
 
 RANGE_LO = L0["LaserInput"]
@@ -169,39 +172,26 @@ def eye_of(roomx, facing):
 
 
 def load_room(room):
-    """Hand-EnterRoom: pointers + PF buffers + REAL rect cache, same
-    unpack as bank2 EnterRoomB2 (packed 2B [x<<2|y, w<<2|h] -> 4B at
-    $CC, count -> RcBase clamped to 5). VBL StageBandTab rebuilds the
-    overlay pack from the new MetaA by itself."""
-    pf0, rr = MODEL[room]
-    a_pf0, a_rr = L3[pf0], L3[rr]
-    # RoomMetaA/B are staged at room entry (bank2 EnterRoomB2 reads the
-    # block's +9/+10 and overwrites the pointer pair) — stage them directly.
-    mem.ram[I_PF0LO] = BANKS[2][(a_pf0 + 9 - 0xF000) & 0xFFFF]
-    mem.ram[I_PF0HI] = BANKS[2][(a_pf0 + 10 - 0xF000) & 0xFFFF]
+    """Hand-EnterRoom: hot-stream pointer + PF buffers + staged meta pair.
+
+    C4 retired the solid-rect cache, and C5 moved the MetaA/MetaB pair out of
+    the shape block, so this stages the test-owned PF/meta constants and the
+    fixture stream pointer (the real loader is exercised by test_band_restage).
+    """
+    model = MODEL[room]
+    a_rr = L3[f"M{model}RoomRects"]
+    meta_a_bytes, meta_b = FX.METAX[model]
+    mem.ram[I_PF0LO] = meta_a_bytes
+    mem.ram[I_PF0HI] = meta_b
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
-    # ROM: TilePF0/1/2 = 3 band-row bytes each, in order after the label
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
         for row in range(3):
-            mem.ram[(dst + row) & 0x7F] = BANKS[2][
-                ((a_pf0 + i * 3 + row) - 0xF000) & 0xFFFF]
-    # rect cache (EnterRoomB2 .EBrcW): count + unpack 4B/rect slots
-    off = (a_rr - 0xF000) & 0xFFFF
-    count = BANKS[2][off]
-    mem.ram[I_RCBASE] = min(count, 5)
-    for i in range(min(count, 5)):
-        p0 = BANKS[2][off + 1 + 2 * i]
-        p1 = BANKS[2][off + 2 + 2 * i]
-        mem.ram[RECTS0 + 4 * i + 0] = p0 >> 2      # x
-        mem.ram[RECTS0 + 4 * i + 1] = p0 & 3       # y
-        mem.ram[RECTS0 + 4 * i + 2] = p1 >> 2      # w
-        mem.ram[RECTS0 + 4 * i + 3] = p1 & 3       # h
+            mem.ram[(dst + row) & 0x7F] = FX.PFX[model][i * 3 + row]
 
 
 def meta_a(room):
-    a_pf0 = L3[MODEL[room][0]]
-    return BANKS[2][a_pf0 + 9 - 0xF000]
+    return FX.METAX[MODEL[room]][0]
 
 
 def step_frame(y_pin, capture=True):
@@ -260,7 +250,7 @@ def vcrunch_bbox_overlaps(room, rows, wl, wr):
     """True if a hot $81 (vcrunch bbox) record covers the wall run.
     Hot records: after packed count + hot count, 5B each
     [class, x, y, w, h] — x = 4px display col (left half), y = band."""
-    _, rr = MODEL[room]
+    rr = f"M{MODEL[room]}RoomRects"
     off = (L3[rr] - 0xF000) & 0xFFFF
     count = BANKS[2][off]
     hot = BANKS[2][off + 1 + 2 * count]

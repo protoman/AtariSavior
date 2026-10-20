@@ -9,10 +9,13 @@ LEVEL2_MINER_Y = 84
 ; Room shape index (C2 2026-10-20): ONE byte per room =
 ;   b5-0 SHAPE INDEX into LEVEL_ShapeTable (levels_index.asm)
 ;   b6   bottom-band flag
-;   b7   owns-extras (reserved 0: the async stream is C5)
-; The block address is the table entry, so the old 2-byte RoomRects
-; word is gone. C4 (2026-10-20): the block is hot stream | PF | meta
-; (no solid rect list) — TilePF0 = block + 1 + 5*hot_count.
+;   b7   owns-extras (C5): the room has a record in the level's
+;        AsyncExtras stream (selected by the counts byte's b5-0)
+; C5 (2026-10-20): an async room points at its SHARED MODEL shape;
+; the patches/features/meta come from the extras record, so there are
+; no per-room blocks any more. A room without a model is rejected
+; (the shape must be shared). C4: block = hot stream | PF triple —
+; TilePF0 = block + 1 + 5*hot_count.
 LEVEL2_RoomShapes:
   .byte SHAPE_M2 ; room 0 (model 2)
   .byte SHAPE_M3 | $40 ; room 1 (model 3)
@@ -27,7 +30,8 @@ LEVEL2_RoomPositions:
   .byte $01 ; room 1 (0, 1)
 
 ; Per-room enemy count (C2 2026-10-20): ONE byte = count<<6 |
-; extras index (0 = none; the record index is derived at room load).
+; extras ordinal (C5: 1-based index into LEVELn_AsyncExtras, 0 =
+; none; the enemy record index is derived at room load).
 LEVEL2_RoomCounts:
   .byte $00 ; room 0: 0 record(s)
   .byte $40 ; room 1: 1 record(s)

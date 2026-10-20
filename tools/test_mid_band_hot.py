@@ -108,12 +108,14 @@ assert right_cold[1][0] == "#", (
 hot_lines = convert_room.lines(
     left_hot, prefix="T2", source="test", asym_rows=right_hot,
     asym_ball_x=87, asym_m1_x=0)
-assert hot_counts(hot_lines) == [1, 2], (
-    f"hot base/right hot rects expected [1, 2], got {hot_counts(hot_lines)}")
+# C5 (2026-10-20): only the LEFT stream is emitted — RightRects/RightPF are
+# retired (no reader since C4), so the right half contributes no blocks.
+assert hot_counts(hot_lines) == [1], (
+    f"hot base hot rects expected [1], got {hot_counts(hot_lines)}")
 cold_lines = convert_room.lines(
     left_cold, prefix="T3", source="test", asym_rows=right_cold,
     asym_ball_x=87, asym_m1_x=0)
-assert hot_counts(cold_lines) == [0, 0], (
-    f"cold hot rects expected [0, 0], got {hot_counts(cold_lines)}")
+assert hot_counts(cold_lines) == [0], (
+    f"cold hot rects expected [0], got {hot_counts(cold_lines)}")
 
 print("PASS: mid_band_type selector fixtures")

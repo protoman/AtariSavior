@@ -730,7 +730,7 @@ RoomNo      = $98
 LevelPFDataLo = $9F              ; level block base = RoomShapes column (C2:
 LevelPFDataHi = $A0              ;   pos/count/records are +n/+2n/+3n)
 LevelRoomN  = $A1                ; rooms in the level (C4 2026-10-20)
-LEVEL_FORMAT = $03               ; C2 2026-10-20 room-record format (hand copy;
+LEVEL_FORMAT = $04               ; C5 2026-10-20 room-record format (hand copy;
                                  ;   kernel.asm twin — check_equ_sync)
 FetchPtr    = $E5                ; moved S3.2 (was $E0) — must match kernel
 EnemyRamD   = $C1

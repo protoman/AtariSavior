@@ -185,15 +185,15 @@ def main() -> None:
     assert 'include "generated/levels_equ.asm"' in BANK2, (
         "bank2.asm must include generated/levels_equ.asm (BAND_COLOR) BEFORE "
         "EnterRoomB2 uses it")
-    # LEVEL_FORMAT 3 must be declared by the generator and by the consumers
+    # LEVEL_FORMAT 4 must be declared by the generator and by the consumers
     m = re.search(r"^LEVEL_FORMAT = \$([0-9a-f]{2})", index, re.M)
-    assert m and int(m.group(1), 16) == 3, (
-        "generated level index must declare LEVEL_FORMAT = $03 (C2 "
-        "shape-index room records)")
+    assert m and int(m.group(1), 16) == 4, (
+        "generated level index must declare LEVEL_FORMAT = $04 (C5 "
+        "shape-index records + async extras)")
     for name, body in (("kernel.asm", KERNEL), ("bank1.asm", BANK1)):
         hm = re.search(r"^LEVEL_FORMAT\s*=\s*\$([0-9a-f]{2})", body, re.M)
-        assert hm and int(hm.group(1), 16) == 3, (
-            f"{name}: LEVEL_FORMAT hand copy must be $03 (C2)")
+        assert hm and int(hm.group(1), 16) == 4, (
+            f"{name}: LEVEL_FORMAT hand copy must be $04 (C5)")
     # --- shape registry: table <-> EQUs <-> 6-bit index --------------------
     shape_count = int(re.search(r"^LEVEL_SHAPE_COUNT = (\d+)$", index, re.M)
                       .group(1))
@@ -238,9 +238,9 @@ def main() -> None:
                 f"LEVEL{n} room {room}: {name} has no SHAPE_ EQU")
             assert equ_map[name[6:]] < shape_count, (
                 f"LEVEL{n} room {room}: {name} index outside the table")
-            assert not band or int(band, 16) == 0x40, (
-                f"LEVEL{n} room {room}: only b6 (band) may be set in the "
-                "shape byte; b7 is the reserved owns-extras flag")
+            assert not band or not (int(band, 16) & ~0xC0), (
+                f"LEVEL{n} room {room}: only b6 (band) and b7 (owns-extras) "
+                "may be set in the shape byte")
         # C1: the position column is the exit source of truth — both nibbles
         # in 0..14 (15 = off-grid sentinel) and every position unique
         positions = re.findall(
@@ -265,20 +265,55 @@ def main() -> None:
             r"^  \.byte \$([0-9a-f]{2}) ; room (\d+): (\d) record", text, re.M)
         assert len(counts) == rooms, f"LEVEL{n}: RoomCounts record count"
         total = 0
-        for hexv, room, count in counts:
+        ordinals = []
+        for i, (hexv, room, count) in enumerate(counts):
             packed = int(hexv, 16)
             assert int(count) == packed >> 6, (
                 f"LEVEL{n} room {room}: count comment {count} != b7-6")
             assert packed >> 6 <= 3, (
                 f"LEVEL{n} room {room}: count {packed >> 6} > 3 (b7-6)")
-            assert not (packed & 0x3F), (
-                f"LEVEL{n} room {room}: extras index ${packed & 0x3F:02x} != 0 "
-                "— the C5 extras stream does not exist in format 3")
+            owns = bool(shapes[i][1]) and bool(int(shapes[i][1], 16) & 0x80)
+            assert bool(packed & 0x3F) == owns, (
+                f"LEVEL{n} room {room}: extras ordinal ${packed & 0x3F:02x} "
+                f"but the shape byte owns-extras={int(owns)} — the loader "
+                "dispatches on b7 and indexes with b5-0")
+            if packed & 0x3F:
+                ordinals.append(packed & 0x3F)
             total += packed >> 6
-        records = text[pos[f"LEVEL{n}_EnemyDataTable"]:].count("  .byte ")
+        assert ordinals == list(range(1, len(ordinals) + 1)), (
+            f"LEVEL{n}: extras ordinals {ordinals} are not 1..N in room order")
+        enemy_end = text.find(f"LEVEL{n}_AsyncExtras:")
+        enemy_text = text[pos[f"LEVEL{n}_EnemyDataTable"]:
+                          enemy_end if enemy_end >= 0 else len(text)]
+        records = enemy_text.count("  .byte ")
         assert records == total, (
             f"LEVEL{n}: EnemyDataTable has {records} records but the counts "
             f"account for {total} (4 B/record)")
+        extras_at = text.find(f"LEVEL{n}_AsyncExtras:")
+        if ordinals:
+            assert extras_at >= 0, (
+                f"LEVEL{n}: {len(ordinals)} owns-extras rooms but no "
+                "AsyncExtras stream")
+            lines = text[extras_at:].splitlines()[1:]
+            lines = [ln for ln in lines if ln.startswith("  .byte")]
+            assert len(lines) == len(ordinals), (
+                f"LEVEL{n}: {len(lines)} extras records for {len(ordinals)} "
+                "owns-extras rooms")
+            for n_rec, ln in enumerate(lines):
+                vals = [int(v.strip().lstrip("$"), 16)
+                        for v in ln.split(".byte", 1)[1].split(";")[0]
+                        .split(",")]
+                flags = vals[0]
+                npatch, nfeat = flags & 3, (flags >> 2) & 0x0F
+                length = 3 + npatch + nfeat
+                if nfeat:
+                    length += 1 + 5 * vals[3 + npatch + nfeat]
+                assert len(vals) == length, (
+                    f"LEVEL{n} extras record {n_rec + 1}: {len(vals)} B but "
+                    f"the flags say {length} B")
+        else:
+            assert extras_at < 0, (
+                f"LEVEL{n}: AsyncExtras emitted with no owns-extras room")
 
     print("test_level_bank: all asserts passed")
     return 0
