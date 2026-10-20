@@ -783,11 +783,17 @@ HOVFeatEntry:
 ; fetched after a bank0/bank1 `sta $1FF9`.
 ; ==============================================================================
     .ds $FBF8 - *, 0            ; B3StageBand/BuildColupF exit: jmp ReturnPad.
-ReturnPad:                      ;   The `sta $1FF6` runs HERE, the `rts` opcode
-    sta $1FF6                   ;   is fetched from bank0 at $FBF9 -> pops the
-    rts                         ;   bank0 VBL/jsr caller.
-    .ds $FC35 - *, 0            ; CallPad_BuildColupF entry image: bank0/bank1
-    jmp BuildColupF             ;   execute `sta $1FF9`, this fetch is bank3-side
+                                ;   The `sta $1FF6` runs HERE, the `rts` opcode
+                                ;   is fetched from bank0 at $FBFB -> pops the
+                                ;   bank0 VBL/jsr caller. (Label on its own
+                                ;   line: verify_build.parse_lst only reads
+                                ;   label rows with no trailing text.)
+ReturnPad:
+    sta $1FF6
+    rts
+    .ds $FC1A - *, 0            ; CallPad_BuildColupF entry image: bank0
+    jmp BuildColupF             ;   executes `sta $1FF9` at $FC17, this fetch
+                                ;   ($FC1A) is bank3-side (chunk 4: pads split)
 
     org $FC38
 B3StageBand:

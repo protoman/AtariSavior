@@ -1944,47 +1944,36 @@ BombMarkWalls:
 ; operand points at them.
 
 ; ========================================================================
-; Cross-bank call pads — byte-identical to bank0 at these addresses
-; (docs/leaf_move_plan.md). F6 hotspot ignores the written value, so pads
-; pass A/X/Y/flags through untouched (`sta` does not affect flags).
+; Cross-bank call pads — 2026-10-20 (chunk 4): SPLIT across the banks, no
+; twin. kernel.asm holds the eleven `sta $1FFx` halves compactly at
+; $FBFC..$FC1C; after the switch the fetch at A+3 lands HERE, so this bank
+; keeps only the `jmp` halves (at A+3, i.e. $FBFF onward). The reverse halves
+; were dead bytes: no bank1/bank2/bank3 code calls a CallPad (guard:
+; verify_build.check_callpads rejects any `jsr/jmp CallPad_*` outside
+; kernel.asm). F6 hotspot ignores the written value, so a pad still passes
+; A/X/Y/flags through untouched (`sta` affects no flag).
+;   $FBFF <-$FBFC+3 UpdateBombSound      $FC0E <-$FC0B+3 AddScore
+;   $FC02 <-$FBFF+3 UpdateJetSound       $FC11 <-$FC0E+3 IsRoomDark
+;   $FC05 <-$FC02+3 BombSndDrop          $FC14 <-$FC11+3 SetRoomDark
+;   $FC08 <-$FC05+3 BombSndExplode       $FC17 <-$FC14+3 UpdateLaserSound
+;   $FC0B <-$FC08+3 GetConnIdx           $FC1D <-$FC1A+3 BombMarkWalls
+; $FC1A (BuildColupF's +3) belongs to BANK3 — its pad is `sta $1FF9`.
 ; ========================================================================
     .ds $FBF8 - *, 0
 ReturnPad:
-    sta $1FF6
-    rts
-CallPad_UpdateBombSound:
-    sta $1FF7
-    jmp $F9C0
-CallPad_UpdateJetSound:
-    sta $1FF7
-    jmp $F9CF
-CallPad_BombSndDrop:
-    sta $1FF7
-    jmp $FA00
-CallPad_BombSndExplode:
-    sta $1FF7
-    jmp $FA13
-CallPad_GetConnIdx:
-    sta $1FF7
-    jmp $FA26
-CallPad_AddScore:
-    sta $1FF7
+    sta $1FF6                   ; the `rts` at $FBFB is served by bank0
+    .ds $FBFF - *, 0
+    jmp UpdateBombSound
+    jmp UpdateJetSound
+    jmp BombSndDrop
+    jmp BombSndExplode
+    jmp GetConnIdx
     jmp AddScore                ; label, not the literal: bank1 shifts move it
-CallPad_IsRoomDark:
-    sta $1FF7
-    jmp $FC78
-CallPad_SetRoomDark:
-    sta $1FF7
-    jmp $FC9E
-CallPad_UpdateLaserSound:
-    sta $1FF7
+    jmp IsRoomDark
+    jmp SetRoomDark
     jmp UpdateLaserSound        ; label, not the literal (bank1 shifts)
-CallPad_BuildColupF:
-    sta $1FF9                   ; A3: body lives in bank3 (record stream)
-    jmp $F507                   ; BuildColupF (bank3; synced by verify_build)
-CallPad_BombMarkWalls:
-    sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
-    jmp $FB10
+    .ds $FC1D - *, 0            ; ($FC1A is bank3's BuildColupF image)
+    jmp BombMarkWalls           ; S5.2: body lives in bank1 ($FB10)
 
 ; CallPad tail pads (2026-10-20: SPLIT across the banks, no twin). kernel.asm
 ; holds the three `sta $1FF7` at $FC4F/$FC52/$FC55; after the switch the fetch

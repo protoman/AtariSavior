@@ -419,6 +419,7 @@ the repack.
 | 1. packed title theme | 3642 | 2993 | 1222 | 1260 | **9117** | 510 |
 | 2. level-data C2+C3+C4 | 3620 | 3000 | 1175 | 1285 | **9080** | 434 |
 | 3. tail pads split | 3605 | 2985 | 1175 | 1285 | **9050** | 434 |
+| 4. corridor pads split | 3572 | 2948 | 1169 | 1285 | **8974** | 434 |
 
 ## 1. Title theme packed 1 byte/step (−56 B, audit row 4)
 
@@ -553,3 +554,76 @@ back, or if any `CallPad_*` is neither a corridor pad nor a declared tail pad
 (MusicTick pad), `test_menu_flow` (SELECT/TitleSelect pad) and
 `sim_frame_budget`'s title-frame classification (TitleBand pad) all drive the
 real paths.
+
+## 4. Corridor pads split — every pad is one live half per bank (−76 B)
+
+Audit row (section B) proposed an **RTS-dispatch gateway** for the 11 corridor
+CallPads ("132 → ~61 B, ~53 net, +~8c/call"). Re-measured before building it:
+the gateway cannot beat the chips it costs, and one cheaper scheme gets more.
+
+**Why the gateway loses.** Its 11 pads collapse into 1 pad/bank + dispatch +
+an 11-word table, but the routine id has to come from somewhere:
+- id in A/X at the call site = +2 B × 27 `jsr` sites (**+54 B**, and A holds a
+  live argument at several sites: `AddScore` takes the amount in A);
+- inline id byte = +1 B × 27 (**+27 B**) plus a return-address rewrite;
+- RTS dispatch then costs `asl/tay/lda/pha/lda/pha/rts` ≈ **+21c per call**
+  over today's `jsr + sta + jmp` (13c), and the overscan margin at the
+  fly+laser baseline is only ~20-220c. That is the measured net *below* the
+  task's 25 B floor, with a timing risk on top.
+
+**What was done instead: extend the proven tail-pad split to the corridor.**
+Same F6 contract as commit 1abf83e, no new machinery: a bank0 caller executes
+`sta $1FFx` at A, so the opcode fetch at A+3 already comes from the TARGET
+bank. Nothing outside bank0 calls a pad (re-measured: 0 hits in all three
+other banks; they only `jmp ReturnPad`), so bank0 needs the `sta` half alone
+and the target bank the `jmp` half alone. Packing the live halves:
+
+| | before | after |
+|---|---|---|
+| bank0 corridor | 11 × (`sta`+`jmp`) = 66 + ReturnPad 4 | 11 × `sta` at `$FBFC..$FC1C` = 33 + ReturnPad 4 |
+| bank1 corridor | 11 × (`sta`+`jmp`) = 66 + 4 | 10 × `jmp` at `$FBFF..$FC1F` = 30 + `sta $1FF6` 3 |
+| bank2 | dead `CallPad_BuildColupF` image (6) + 4 | 4 |
+| bank3 | `jmp BuildColupF` at `$FC35` + 4 | same image at `$FC1A` + 4 |
+
+Address map (bank0 A → target A+3): `$FBFC/$FBFF/$FC02/$FC05/$FC08/$FC0B/
+$FC0E/$FC11/$FC14` → bank1's `UpdateBombSound`, `UpdateJetSound`,
+`BombSndDrop`, `BombSndExplode`, `GetConnIdx`, `AddScore`, `IsRoomDark`,
+`SetRoomDark`, `UpdateLaserSound`; `$FC17` `sta $1FF9` → **bank3's**
+`jmp BuildColupF` at `$FC1A`; `$FC1A` → bank1's `jmp BombMarkWalls` at
+`$FC1D`. Bank3's image moved because its address is the pad's A+3, not a pin.
+
+**bank2's `CallPad_BuildColupF` was deleted, not moved.** It had no caller in
+bank2 either; after the split its `+3` would land on bank3 fill, i.e. a trap
+that looks live. Its `jmp $F507` was also the last `BuildColupF` literal in
+the tree, so `sync_bank3_labels` no longer patches a `CallPad_BuildColupF`
+(bank3's own image is `jmp BuildColupF`, a self-healing label).
+
+**Guards (stronger than the byte-identity they replace).** The old
+`check_callpads` compared the whole `$FBF8-$FC48` block bank0 == bank1 — with
+the split that comparison is exactly what stops being true, and it never
+proved the jump operands. New contract, per pad, from ROM bytes:
+- `bank0[A] == 8D F6/F7/F8/F9 1F` (the sta half, target bank from the table) and
+  `bank0[A+3]` is **not** `4C` (a regained bank0 `jmp` is a dead byte);
+- `target_bank[A+3] == 4C <label lo hi>` with `<label>` resolved from that
+  bank's own `.lst` (the fetch is bank-side, so a stale literal dies here);
+- `ReturnPad == $FBF8` in every bank with `8D F6 1F`, and bank0 adds the `60`
+  (rts) — the other banks' `rts` bytes are correctly dead;
+- corridor pads must stay below the `$FC49` MothExitPad pin;
+- **no `jsr`/`jmp CallPad_*` in bank1/bank2/bank3** (that is the invariant the
+  split rests on — a non-bank0 caller would have no `sta` half to come back);
+- every `CallPad_*` in kernel.asm must be declared in `SPLIT_PADS` or
+  `TWIN_PADS` (the pinned `RaftBody`/`MothYDerive` tramps keep both halves and
+  their own identity guards), and `CallPad_Overscan` must stay gone.
+
+Nothing timing-critical moved: `sta` costs the same, the pad block is still
+0 push / 0 cycles, and no kernel/VBL/Overscan instruction changed. Runtime
+proof: `sim_frame_budget` (VBL's `CallPad_BuildColupF` → bank3 every frame) and
+`sim_bomb_fuse` (overscan sound pads + `AddScore` + `BombMarkWalls`) plus the
+full battery, all green.
+
+Measured: bank0 3605 → **3572**, bank1 2985 → **2948**, bank2 1175 → **1169**,
+bank3 1285 (image relocated into fill), total 9050 → **8974 = −76 B**.
+bank0's pre-pad headroom stays 16 B (the flow still ends at the `$FC58` tail
+pad); the reclaimed bank0 space is fill between `$FC1D` and the `$FC48`
+MothExitPad pin — 44 B, usable by an `org`'d leaf helper, not by sequential
+flow. That is the same trade the tail-pad split made.

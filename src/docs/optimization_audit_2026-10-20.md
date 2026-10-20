@@ -131,6 +131,17 @@ caller bank *before* the `sta`, and the target bank holds the dispatch table
 plus the `jmp (vec)` image at the fixed address. It trades 132 B of duplicated
 pads for ~61 B, and removes 22 pins from the two most crowded banks.
 
+**DONE differently 2026-10-20** (`cuts 4` commit) — the gateway row was
+measured and **skipped**: the routine id costs +27..54 B at the 27 call sites
+and RTS dispatch adds ~21c/call against a ~20-220c overscan margin, i.e. under
+the 25 B floor with a timing risk. The same duplication was reclaimed by
+extending the proven **split-pad** contract (commit `1abf83e`) to the corridor:
+bank0 keeps the `sta` halves packed, the target bank the `jmp` halves at A+3.
+Net **−76 B** (bank0 −33, bank1 −37, bank2 −6), zero cycles, zero stack. The
+`CallPad_BuildColupF` image moved `$FC35` → `$FC1A` and bank2's dead copy was
+deleted (its `+3` would have landed on bank3 fill). Details:
+`docs/compaction_findings_2026-10-19.md` §4.
+
 ---
 
 ## C. Level / room data (548 B)
