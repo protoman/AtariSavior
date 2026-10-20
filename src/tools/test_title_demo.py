@@ -80,12 +80,20 @@ assert "jsr FooterBand" in title, "credit footer over the stage"
 assert "jmp MenuMain" in title, "HUD band follows the title (score = level+1)"
 assert ".LDigitLoop" not in title, "digits band was retired with the black screen"
 
-# --- the title pad reuses the old slot (same 6 bytes, retargeted) ---------
+# --- the title pads are SPLIT across the banks (2026-10-20) ----------------
+# bank0 keeps the three `sta $1FF7` ($FC4F/$FC52/$FC55); bank1 keeps the three
+# `jmp` halves at A+3 ($FC52/$FC55/$FC58) — the fetch after the switch.
 for src, name in ((kernel, "kernel"), (bank1, "bank1")):
-    assert "CallPad_TitleBand:" in src, f"{name} missing CallPad_TitleBand"
     assert "CallPad_TitleKernel:" not in src, \
         f"{name} still carries the retired TitleKernel pad"
-assert ".ds $FC55 - *, 0" in kernel and "jmp $F080" in kernel
+assert "CallPad_TitleBand:\n    sta $1FF7" in kernel, \
+    "kernel must keep the TitleBand sta half"
+assert "CallPad_Overscan:" not in kernel and "CallPad_Overscan:" not in bank1, \
+    "CallPad_Overscan had no caller and was deleted with the tail-pad packing"
+assert '.ds $FC52 - *, 0\n    jmp TitleSelect' in bank1 and \
+       '.ds $FC55 - *, 0\n    jmp $F080' in bank1 and \
+       '.ds $FC58 - *, 0\n    jmp MusicTick' in bank1, \
+    "bank1 must hold the three tail jmps at A+3 ($FC52/$FC55/$FC58)"
 
 # --- no object on the title: DropArm .DATitle hides the GRP1 slots --------
 title_arm = section(kernel, ".DATitle:", "DropStep:")

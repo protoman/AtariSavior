@@ -798,7 +798,7 @@ def check_callpads(src: Path) -> None:
         want = int(hexv, 16)
         # `sta $1FF8` pads jump to a bank2 body (e.g. BuildColupF: the hot-rect
         # stream lives in bank2); `sta $1FF7` pads jump to bank1; `sta $1FF6`
-        # pads are bank1->bank0 tail exits (e.g. CallPad_Overscan -> Overscan).
+        # pads are bank1->bank0 tail exits.
         if "sta $1FF8" in body:
             tgt_labs, tgt_side = labels2, "bank2"
         elif "sta $1FF9" in body:
@@ -814,6 +814,50 @@ def check_callpads(src: Path) -> None:
         elif got != want:
             err(f"CallPad_{name}: jmp ${want:04X} != {tgt_side} {name} "
                 f"${got:04X} (stale literal — pads must be byte-identical)")
+
+    # --- tail pads: SPLIT across the banks (2026-10-20) ---------------------
+    # A bank0 caller executes the `sta $1FF7` AT A; the next opcode fetch is at
+    # A+3 and comes from BANK1, so bank1 must hold `jmp <label>` there. The
+    # old form twinned the whole 6-byte pad in both banks and its target check
+    # came from parsing kernel's `jmp`; with the jmp moved to bank1 that parse
+    # would silently stop covering these pads, so they get an explicit ROM-byte
+    # contract instead: bank0[A] == 8D F7 1F, bank1[A+3] == 4C <label>.
+    tail_pads = (("CallPad_TitleSelect", "TitleSelect", 0xFC4F),
+                 ("CallPad_TitleBand", "TitleBand", 0xFC52),
+                 ("CallPad_MusicTick", "MusicTick", 0xFC55))
+    jmp_names = {name for name, _b, _h in pads}
+    for pad, target, want_addr in tail_pads:
+        a0 = labels0.get(pad)
+        if a0 != want_addr:
+            err(f"{pad} at ${a0 if a0 is not None else -1:04X}, expected "
+                f"${want_addr:04X} (tail pads are packed: the next pad's A+3 "
+                f"is this pad's sta + 3)")
+            continue
+        got = banks[0][a0 - 0xF000:a0 - 0xF000 + 3]
+        if got != bytes([0x8D, 0xF7, 0x1F]):
+            err(f"{pad} bank0 ${a0:04X} = {got.hex()} != sta $1FF7 "
+                "(8d f7 1f) — the bank0 half must select bank1")
+        tgt = labels1.get(target)
+        if tgt is None:
+            err(f"{pad}: target {target} not in bank1.lst")
+            continue
+        got = banks[1][a0 + 3 - 0xF000:a0 + 3 - 0xF000 + 3]
+        want_b = bytes([0x4C, tgt & 0xFF, tgt >> 8])
+        if got != want_b:
+            err(f"{pad} bank1 ${a0 + 3:04X} = {got.hex()} != {want_b.hex()} "
+                f"(jmp {target} ${tgt:04X}, fetched from bank1 after the "
+                f"$1FF7 write — stale operand or an overwritten slot)")
+        if pad[len("CallPad_"):] in jmp_names:
+            err(f"{pad} still carries a kernel-side `jmp` — the tail pads must "
+                "keep only the sta half in bank0 (bank1 owns the jmp)")
+    if re.search(r"^CallPad_Overscan:", ksrc, re.M):
+        err("CallPad_Overscan is back: it has no caller in any bank (deleted "
+            "2026-10-20 with the tail-pad packing)")
+    tail_names = {n[len("CallPad_"):] for n, _t, _a in tail_pads}
+    for name in sorted(set(re.findall(r"^CallPad_(\w+):", ksrc, re.M))
+                       - jmp_names - tail_names):
+        err(f"CallPad_{name} is neither a corridor pad (sta + jmp) nor a "
+            "declared tail pad — add it to tail_pads with its address")
 
 
 # S3.0: cross-bank EQU sync --------------------------------------------------
@@ -1440,26 +1484,8 @@ def sync_overscan_literal(src: Path) -> int:
         text = text[:m.start(2)] + f"{got:04X}" + text[m.end(2):]
         bank1_p.write_text(text, encoding="utf-8")
         print(f"sync: bank1 jmp Overscan ${old:04X} -> ${got:04X}")
-    # The CallPad twin block is byte-identical in bank0 and bank1: patch both
-    # pads' CallPad_Overscan operand (every byte before the pad moves with
-    # bank0 code, and the two pads must point at the same address).
-    for label, path in (("kernel", src / "kernel.asm"),
-                        ("bank1", bank1_p)):
-        if not path.exists():
-            print(f"sync: {path.name} missing", file=sys.stderr)
-            return 1
-        txt = path.read_text(encoding="utf-8")
-        pm = re.search(r"(CallPad_Overscan:\s*\n\s*sta \$1FF6\s*\n\s*jmp \$)"
-                       r"([0-9A-Fa-f]{4})", txt)
-        if not pm:
-            print(f"sync: {label} CallPad_Overscan literal not found",
-                  file=sys.stderr)
-            return 1
-        pold = int(pm.group(2), 16)
-        if pold != got:
-            txt = txt[:pm.start(2)] + f"{got:04X}" + txt[pm.end(2):]
-            path.write_text(txt, encoding="utf-8")
-            print(f"sync: {label} CallPad_Overscan ${pold:04X} -> ${got:04X}")
+    # (The CallPad_Overscan twin that used to be patched here was deleted
+    # 2026-10-20 with the tail-pad packing: it had no caller in any bank.)
     return 0
 
 

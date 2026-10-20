@@ -3059,21 +3059,22 @@ MothExitPad:
     jmp UE_Next                 ; resume dispatch loop (bank0 half)
 
     .ds $FC4F - *, 0            ; bank0↔bank1 CallPad slot (refactor_v4)
+; 2026-10-20: the three tail pads are SPLIT across the banks, not twinned.
+; A bank0 caller runs the `sta $1FF7` AT A; the next opcode fetch (A+3) comes
+; from bank1, which keeps ONLY the `jmp`. Bank0's `jmp` half and bank1's `sta`
+; half were dead bytes (nothing calls a tail pad from bank1). Packing the live
+; halves + deleting the caller-less CallPad_Overscan reclaimed 15 B here:
+;   A=$FC4F sta $1FF7   A+3=$FC52 -> bank1 jmp TitleSelect
+;   A=$FC52 sta $1FF7   A+3=$FC55 -> bank1 jmp TitleBand
+;   A=$FC55 sta $1FF7   A+3=$FC58 -> bank1 jmp MusicTick
+; Guard: verify_build.check_callpads runs this A / A+3 contract byte-for-byte
+; (the $FBF8-$FC48 corridor above stays fully byte-identical).
 CallPad_TitleSelect:
     sta $1FF7
-    jmp $F041
-    .ds $FC55 - *, 0
 CallPad_TitleBand:
     sta $1FF7
-    jmp $F080
-    .ds $FC5B - *, 0
-CallPad_Overscan:
-    sta $1FF6
-    jmp $F18A
-    .ds $FC61 - *, 0            ; bank0↔bank1 intro-music tick
 CallPad_MusicTick:
     sta $1FF7
-    jmp $F35A
 
 ; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.

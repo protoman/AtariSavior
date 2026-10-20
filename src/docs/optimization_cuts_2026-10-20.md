@@ -93,6 +93,14 @@ Skipped in this chunk: 15 B for a rewrite of the one guard that protects the
 bank-switch corridor (a wrong pad address is a silent wrong-bank jump), with
 the bank0 tail pinned on both sides. Recorded above instead.
 
+**DONE 2026-10-20** (`cuts 3` commit) — the split is in, at the cost the design
+predicted (bank0 headroom 1 → 16 B) and with a *stronger* guard than the twin
+half-test: `check_callpads` now pins each pad address and asserts
+`bank0[A] == 8D F7 1F` + `bank1[A+3] == 4C <label>`, plus "no tail pad may
+regain a kernel `jmp`" and "every CallPad_* must be corridor or declared
+tail". The corridor `$FBF8-$FC48` stays fully byte-identical. Details:
+`docs/compaction_findings_2026-10-19.md` §3.
+
 ## 3. ObjColorTab 72 -> 17 — SKIPPED (hot-path cycle cost, not a table win)
 
 `ObjColorTab` (kernel.asm `$FE00-$FE47`) is read in the cycle-exact `.Grp1`
