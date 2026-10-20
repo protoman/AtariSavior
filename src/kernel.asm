@@ -1757,112 +1757,23 @@ ExitRoomRight:
 ; ==============================================================================
 ; Level management
 ; ==============================================================================
-; LoadLevel: read LevelDataTable entry for current Level, init pointers, enter room.
-; LevelDataTable stride: 7 bytes (C4 2026-10-20: the Connections / RoomEnemies
-; word pointers were redundant — both are fixed offsets inside the level block,
-; see the layout comment in generated/levels_index.asm. start_x/y dropped
-; 2026-10-19 (constants 32/24); start_room and miner_y dropped 2026-10-20
-; (constants 0 / 84) — the converter rejects any other value)
-;   +0: miner_room (b7 = faces right)
-;   +1: miner_x
-;   +2..+3: wall colors
-;   +4..+5: level block base (RoomDataTable)
-;   +6: room count n — readers derive Connections (+2n), RoomEnemies (+4n)
-;       and the enemy records (+5n — 1 B/room since 2026-10-20) from it (C2/C3)
-; ------------------------------------------------------------------------------
-LoadLevel:
-    ; Stage leave/reload/advance: walls return + bombs refill to 5
-    lda #0
-    sta BombPacked              ; state + WallMask bits (D1-B: no $F2 mirror)
-    sta BombTimer
-    sta EnemyRamD               ; clear dir + RoomDarkMask (bits 4-7) — level reset
-    sta PlayerDir               ; face right on every stage entry (new stage,
-                                ;  game-over restart = LoseLife->ReloadLevel->
-                                ;  here; same-stage respawn keeps facing)
-    sta Hover                   ; bugs.md #1: stage entry lands normally; the
-                                ;   respawn hover is armed only by LoseLife
-    lda LaserState
-    and #%11000111              ; clear RoomDarkMask rooms 4-7 (LaserState b5-2)
-    sta LaserState
-    lda #BOMBS_MAX
-    sta PlayerBombs
-    lda DropTarget             ; #18: arm the LV001 banner except on the
-    cmp #$FF                   ; title preview (HUD score shows level+1)
-    beq .NoBanner
-    lda #(LV_SHOW_FRAMES|$80)  ; bit7 = banner flag: decs down to $80; any
-    sta LevelShowTimer         ; tally ARM (<=127) kills it instantly
-.NoBanner:
-    ; Compute LevelDataTable pointer: base + Level * 7
-    ; Stride 7: miner(2) + wall_colors(2) + base ptr(2) + rooms(1)
-    lda Level
-    asl                         ; *2
-    asl                         ; *4
-    asl                         ; *8
-    sec
-    sbc Level                   ; *7
-    tay                         ; Y = Level * 7
-
-    ; --- Fold batch (P2.7): LevelDataTable lives in bank2 at the frozen
-    ; address. Stage FetchPtr immediately before the batch; FoldIndirect
-    ; preserves X and Y (iny flow below unchanged), returns the byte in A.
-    ; The ldx #0 is kept for callers that expect X clear on entry. ---
-    lda #<LEVEL_DATA_ADDR
-    sta FetchPtr
-    lda #>LEVEL_DATA_ADDR
-    sta FetchPtr+1
-    ldx #0
-
-    ; +0: miner room (b7 = faces right). start room/x/y and the miner's y are
-    ; kernel constants now (0 / 32 / 24 / 84 px = 7 rows).
-    lda #0
-    sta LevelStartRoom
-    lda #32
-    sta LevelStartX
-    lda #24
-    sta LevelStartY
-    jsr FoldIndirect
-    sta LevelMinerRoom
-    iny
-    ; +1: miner x
-    jsr FoldIndirect
-    sta MinerX
-    lda #84
-    sta MinerY
-    iny
-    ; +2..+3: wall colors
-    jsr FoldIndirect
-    sta LevelWallColor
-    iny
-    jsr FoldIndirect
-    sta LevelWallColor2
-    iny
-    ; +4..+5: level block base (RoomDataTable; C4 dropped the conn/enemy words
-    ; — they are the block's +2n / +4n / +5n offsets, see the readers)
-    jsr FoldIndirect
-    sta LevelPFDataLo
-    iny
-    jsr FoldIndirect
-    sta LevelPFDataHi
-    iny
-    ; +6: room count → GetConnIdx (bank1) and EnterRoomB2 (bank2) derive the
-    ; Connections / RoomEnemies / enemy-record bases from it
-    jsr FoldIndirect
-    sta LevelRoomN
-
-    ; Enter the starting room
-    lda LevelStartRoom
-    jsr EnterRoom
-
-    ; Place player at level start
-    lda LevelStartX
-    sta RoomX
-    lda LevelStartY
-    sta RoomY
-
-    ; Drop-in from the screen top to the start Y (DropArm also zeroes the
-    ; jetpack state + laser — stage start, game over and level advance all
-    ; land here).
-    jmp DropArm
+; LoadLevel MOVED to bank2 (C2, 2026-10-20) — body = LoadLevelB2 ($F640).
+; The level index/table lives in bank2 (level data), so the old body paid 7
+; `jsr FoldIndirect` (7 x 25c + 14 bank switches) to read a 7-byte entry that
+; an in-bank (FetchPtr),Y read now fetches directly. Both halves are split
+; pads (same discipline as CallPad_SelectObject):
+;   A=$FC20  CallPad_LoadLevel / LoadLevel: `sta $1FF8`   (bank0 runs this)
+;   A+3=$FC23  bank2 `jmp LoadLevelB2`                    (fetched after it)
+;   body tail `jmp $FC26` -> bank2 `sta $1FF6` at $FC26 -> the fetch at $FC29
+;   comes from HERE: `jmp LF_B0Tail`, i.e. the drop-in tail (EnterRoom call,
+;   level-start placement, `jmp DropArm`) stays in bank0 so the call chain and
+;   the measured stack depth are UNCHANGED (0 extra jsr levels, 0 pushes).
+; Entry layout: stride 7 = miner_room (b7 = faces right), miner_x, wall color,
+; wall color 2, block base word (RoomDataTable), room count n (the Connections
+; /RoomEnemies/enemy-record bases are that block's +2n/+4n/+5n offsets).
+; Guards: verify_build.check_callpads pins the entry pad bytes + operand,
+; check_loadlevel_tramp pins the return half; tools/test_respawn_hover.py,
+; test_room_dark.py and test_level_bank.py read the bank2 body.
 
 ; ==============================================================================
 ; Miner pickup — check if player overlaps miner, advance to next level
@@ -2835,6 +2746,35 @@ CallPad_SelectObject:
     sta $1FF8                   ; C1: body lives in bank2 ($F486); bank2's
                                 ; $FC20 `jmp SelectActiveObject` is the live
                                 ; half fetched after this write
+
+; ------------------------------------------------------------------------------
+; C2 (2026-10-20): LoadLevel moved to bank2 ($F640). Entry pad + return half.
+; ENTRY: a bank0 caller `jsr LoadLevel` lands on `sta $1FF8` here; the opcode
+; fetch at $FC23 then comes from bank2 = `jmp LoadLevelB2` (split-pad rule).
+; The three bank0 bytes at $FC23-$FC25 are NEVER fetched (bank2's jmp lives
+; there) — zero-filled so nothing can branch into them by accident.
+; RETURN: the body's tail is `jmp $FC26`; bank2's $FC26 holds `sta $1FF6`, so
+; the fetch at $FC29 lands on the `jmp LF_B0Tail` below (live bank0 half).
+; Guard: verify_build.check_callpads (entry pad) + check_loadlevel_tramp
+; (return half + this stub's shape).
+; ------------------------------------------------------------------------------
+CallPad_LoadLevel:
+LoadLevel:
+    sta $1FF8                   ; C2: body = bank2 $F640 LoadLevelB2
+    .byte 0,0,0                 ; $FC23-$FC25 — bank2's `jmp LoadLevelB2`
+
+    .byte 0,0,0                 ; $FC26-$FC28 — bank2 runs `sta $1FF6` there
+    jmp LF_B0Tail               ; $FC29 — fetched bank0-side after the swap
+; Drop-in tail, kept in bank0 (0 extra jsr levels, 0 pushes): EnterRoom is the
+; normal bank0 tramp, and DropArm's rts still pops the original caller frame.
+LF_B0Tail:
+    lda LevelStartRoom
+    jsr EnterRoom
+    lda LevelStartX
+    sta RoomX
+    lda LevelStartY
+    sta RoomY
+    jmp DropArm
 
     .ds $FC49 - *, 0             ; pin (main growth past $FC49 = build error)
 MothExitPad:

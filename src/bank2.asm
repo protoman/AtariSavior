@@ -140,6 +140,14 @@ OBJ_BAT = 40
 OBJ_SNAKE = 48
 OBJ_MINER = 56
 OBJ_BOMB = 64
+; --- LoadLevelB2 (MOVED here, C2 2026-10-20) — hand-copies, check_equ_sync ---
+Level = $A3                      ; current level index (kernel decl $A3)
+LevelStartX = $A8                ; level start x (kernel constant 32)
+LevelStartY = $A9                ; level start y (kernel constant 24)
+Hover = $9C                      ; respawn hover flag — cleared on stage entry
+LevelShowTimer = $F2             ; LV001 banner countdown (kernel $F2)
+BOMBS_MAX = 5                    ; kernel constant
+LV_SHOW_FRAMES = 120             ; kernel constant (banner frames)
 
 ; A3: level-data block labels (M<id>*, L<n>R<r>*) live in bank3 now — the
 ; room tables below need their absolute values as plain EQUs.
@@ -1066,6 +1074,94 @@ FooterPtr6 = $EA
 ; BombBlinkColors). Band tail restores COLUBK/REFP0 before the footer.
 ; Clobbers A/X/Y; rts (same-bank — NOT a fold; stack +2 during the call).
 ; ------------------------------------------------------------------------------
+; ==============================================================================
+; LoadLevelB2 — MOVED from bank0 (C2, 2026-10-20; was $F535-$F5B1 = 124 B).
+; Entry: bank0 `jsr LoadLevel` ($FC20 `sta $1FF8`) -> the fetch at $FC23 is
+; THIS bank's `jmp LoadLevelB2`. Tail: `jmp LF_TailSwap` ($FC26 = `sta $1FF6`
+; here) -> bank0's `jmp LF_B0Tail`, which runs EnterRoom + the level-start
+; placement + `jmp DropArm` in bank0. 0 extra jsr levels, 0 pushes: the stack
+; depth of boot/RESET/title/tally (sim_bomb_fuse, test_tally) is unchanged.
+; Why: the level index + tables ARE bank2 level data, so the 7 FoldIndirect
+; reads (7 x 25c, 14 switches) are direct (FetchPtr),Y reads here.
+; Entry layout (7 B stride): miner_room (b7 = faces right), miner_x, wall
+; color, wall color 2, block base word (RoomDataTable), room count n. The
+; start room / start x / start y / miner y are kernel constants (0/32/24/84).
+; ==============================================================================
+    .ds $F640 - *, 0
+LoadLevelB2:
+    ; Stage leave/reload/advance: walls return + bombs refill to 5
+    lda #0
+    sta BombPacked              ; state + WallMask bits (D1-B: no $F2 mirror)
+    sta BombTimer
+    sta EnemyRamD               ; clear dir + RoomDarkMask (bits 4-7) — stay
+    sta PlayerDir               ; face right on every stage entry (new stage,
+                                ;  game-over restart = LoseLife->ReloadLevel->
+                                ;  here; same-stage respawn keeps facing)
+    sta Hover                   ; bugs.md #1: stage entry lands normally; the
+                                ;   respawn hover is armed only by LoseLife
+    lda LaserState
+    and #%11000111              ; clear RoomDarkMask rooms 4-7 (LaserState b5-2)
+    sta LaserState
+    lda #BOMBS_MAX
+    sta PlayerBombs
+    lda DropTarget              ; #18: arm the LV001 banner unless this is the
+    cmp #$FF                    ; title preview (HUD score shows level+1)
+    beq .LLNoBanner
+    lda #(LV_SHOW_FRAMES|$80)   ; bit7 = banner flag: decs down to $80; any
+    sta LevelShowTimer          ; tally ARM (<=127) kills it instantly
+.LLNoBanner:
+    ; LevelDataTable is level data in THIS bank: pointer = LevelDataTable +
+    ; Level*7 (no FetchPtr staging through a fold any more).
+    lda Level
+    asl                         ; *2
+    asl                         ; *4
+    asl                         ; *8
+    sec
+    sbc Level                   ; *7
+    tay                         ; Y = Level * 7
+    lda #<LevelDataTable
+    sta FetchPtr
+    lda #>LevelDataTable
+    sta FetchPtr+1
+    ldx #0                      ; callers' X contract (kept from the bank0 body)
+    ; start room / start x/y are kernel constants now (0 / 32 / 24 px)
+    lda #0
+    sta LevelStartRoom
+    lda #32
+    sta LevelStartX
+    lda #24
+    sta LevelStartY
+    ; +0: miner room (b7 = faces right)
+    lda (FetchPtr),Y
+    sta LevelMinerRoom
+    iny
+    ; +1: miner x (miner y is the constant 84 px = 7 rows)
+    lda (FetchPtr),Y
+    sta MinerX
+    lda #84
+    sta MinerY
+    iny
+    ; +2..+3: wall colors
+    lda (FetchPtr),Y
+    sta LevelWallColor
+    iny
+    lda (FetchPtr),Y
+    sta LevelWallColor2
+    iny
+    ; +4..+5: block base (RoomDataTable; the conn/enemy words are its
+    ; +2n/+4n/+5n offsets, see EnterRoomB2 + bank1 GetConnIdx)
+    lda (FetchPtr),Y
+    sta LevelPFDataLo
+    iny
+    lda (FetchPtr),Y
+    sta LevelPFDataHi
+    iny
+    ; +6: room count n → GetConnIdx (bank1) and EnterRoomB2 (bank2) derive the
+    ; Connections / RoomEnemies / enemy-record bases from it
+    lda (FetchPtr),Y
+    sta LevelRoomN
+    jmp LF_TailSwap             ; bank0: EnterRoom + placement + jmp DropArm
+
     .ds $F700 - *, 0
 ; --- Level-data spill 1 (bugs.md 27): fill gap $F767..$F800 (153B).
     ; levels_index first — it defines ROOM_NONE for the table includes.
@@ -1156,6 +1252,7 @@ ObjSpriteOffTable:
 BitMaskTab:
     .byte $01, $02, $04, $08, $10, $20, $40, $80
 
+
 ; ------------------------------------------------------------------------------
 ; StageBandTab ping-pong (chunk A2, 2026-10-19). bank3 B3StageBand stages the
 ; band/ball state, then `jmp $F800` (its `sta $1FF8` runs there); the fetch at
@@ -1236,6 +1333,21 @@ ReturnPad:
 ; ------------------------------------------------------------------------------
     .ds $FC20 - *, 0
     jmp SelectActiveObject      ; bank2 body ($F486)
+
+; ------------------------------------------------------------------------------
+; C2 (2026-10-20): LoadLevel return halves (see LoadLevelB2 + kernel.asm $FC20).
+;   $FC23 `jmp LoadLevelB2`  — fetched bank2-side after bank0's `sta $1FF8`
+;                              at $FC20 (entry; bank0's $FC23-$FC25 are dead)
+;   $FC26 `sta $1FF6`        — the body tail `jmp LF_TailSwap` lands here;
+;                              the fetch at $FC29 comes from bank0, whose
+;                              `jmp LF_B0Tail` is the live half
+; Guard: verify_build.check_loadlevel_tramp asserts all 12 bytes + operands.
+; ------------------------------------------------------------------------------
+    .ds $FC23 - *, 0
+    jmp LoadLevelB2             ; $FC23
+LF_TailSwap:
+    sta $1FF6                   ; $FC26 — bank0 serves the `jmp LF_B0Tail`
+    .byte 0,0,0                 ; $FC29-$FC2B dead (bank0's jmp fetched there)
 
 ; ------------------------------------------------------------------------------
 ; E4 moth exit tramp ($FC49-$FC4B) — byte-identical slice with kernel.asm's

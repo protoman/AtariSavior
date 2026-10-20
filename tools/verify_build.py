@@ -525,6 +525,7 @@ CORRIDOR_PADS = (
     ("CallPad_BuildColupF", 0xFC17, 3, "BuildColupF"),
     ("CallPad_BombMarkWalls", 0xFC1A, 1, "BombMarkWalls"),
     ("CallPad_SelectObject", 0xFC1D, 2, "SelectActiveObject"),
+    ("CallPad_LoadLevel", 0xFC20, 2, "LoadLevelB2"),
 )
 
 # Tail pads (title/music): same split contract, packed after the $FC49 pin.
@@ -759,6 +760,83 @@ def check_blast_tramp(src: Path) -> None:
         if tgt != body:
             err(f"blast tramp jmp ${tgt:04X} != bank2 BombEnemyBlastBody "
                 f"${body:04X} (operand stale)")
+
+
+def check_loadlevel_tramp(src: Path) -> None:
+    """C2 (2026-10-20): LoadLevel lives in bank2; the RETURN half is inverted.
+
+    Entry is an ordinary split pad (SPLIT_PADS: bank0 `sta $1FF8` at $FC20,
+    bank2 `jmp LoadLevelB2` at $FC23). The return is the mirror image: the
+    bank2 body tail `jmp $FC26` executes BANK2's `sta $1FF6` there, so the
+    fetch at $FC29 comes from bank0, which must hold `jmp LF_B0Tail` (the
+    drop-in tail: EnterRoom + placement + `jmp DropArm`). Both halves are
+    pinned byte-for-byte, and the drop-in tail's shape is pinned too: if it
+    ever moves back into bank2 the stack depth of boot/RESET grows by a jsr
+    level (sim_bomb_fuse / test_tally measure it), so a silent relocation is
+    exactly the failure this guard must catch.
+    """
+    PAD_ENTRY, PAD_RET = 0xFC20, 0xFC26
+    bins: dict[int, bytes] = {}
+    for idx in (0, 2):
+        p = src / f"bank{idx}.bin"
+        if not p.exists():
+            err(f"bank{idx}.bin missing (loadlevel tramp check)")
+            return
+        d = p.read_bytes()
+        if len(d) == 4096:
+            bins[idx] = d
+    if len(bins) < 2:
+        return
+    l0p, l2p = src / "bank0.lst", src / "bank2.lst"
+    if not l0p.exists() or not l2p.exists():
+        err("bank0.lst/bank2.lst missing (loadlevel tramp check)")
+        return
+    labels0, _ = parse_lst(l0p.read_text(errors="replace").splitlines())
+    labels2, _ = parse_lst(l2p.read_text(errors="replace").splitlines())
+
+    def at(bank: int, addr: int, n: int) -> bytes:
+        return bins[bank][addr - 0xF000:addr - 0xF000 + n]
+
+    if labels0.get("LoadLevel") != PAD_ENTRY:
+        err(f"bank0 LoadLevel ${labels0.get('LoadLevel', -1):04X} != "
+            f"${PAD_ENTRY:04X} (entry pad)")
+    if at(0, PAD_ENTRY, 3) != bytes((0x8D, 0xF8, 0x1F)):
+        err(f"bank0 ${PAD_ENTRY:04X} = {at(0, PAD_ENTRY, 3).hex()} != "
+            "sta $1FF8 (8d f8 1f)")
+    body = labels2.get("LoadLevelB2")
+    if body is None:
+        err("bank2 LoadLevelB2 label missing")
+        return
+    got = at(2, PAD_ENTRY + 3, 3)
+    if got != bytes((0x4C, body & 0xFF, body >> 8)):
+        err(f"bank2 ${PAD_ENTRY + 3:04X} = {got.hex()} != jmp LoadLevelB2 "
+            f"${body:04X} (stale operand)")
+    if at(2, PAD_RET, 3) != bytes((0x8D, 0xF6, 0x1F)):
+        err(f"bank2 ${PAD_RET:04X} = {at(2, PAD_RET, 3).hex()} != sta $1FF6 "
+            "(the body tail jmp $FC26 must land on the bank0 switch)")
+    tail = labels0.get("LF_B0Tail")
+    if tail is None:
+        err("bank0 LF_B0Tail label missing (LoadLevel drop-in tail)")
+        return
+    got = at(0, PAD_RET + 3, 3)
+    if got != bytes((0x4C, tail & 0xFF, tail >> 8)):
+        err(f"bank0 ${PAD_RET + 3:04X} = {got.hex()} != jmp LF_B0Tail "
+            f"${tail:04X} (the post-swap fetch comes from bank0)")
+    # The tail must stay in bank0 and keep its three jobs.
+    ksrc = (src / "kernel.asm").read_text(errors="replace")
+    m = re.search(r"^LF_B0Tail:\n((?:[ \t]+[^\n]*\n)+)", ksrc, re.M)
+    if not m:
+        err("bank0 LF_B0Tail body not found next to its label")
+    else:
+        want = ("lda LevelStartRoom", "jsr EnterRoom", "lda LevelStartX",
+                "sta RoomX", "lda LevelStartY", "sta RoomY", "jmp DropArm")
+        norm = [ln.split(";")[0].strip() for ln in m.group(1).splitlines()]
+        norm = [ln for ln in norm if ln]
+        if tuple(norm) != want:
+            err(f"LF_B0Tail body {norm} != {list(want)} (EnterRoom + level-start "
+                "placement + DropArm must stay in bank0)")
+    if "LoadLevelB2" in labels0:
+        err("bank0.lst has a LoadLevelB2 label (body must live in bank2 only)")
 
 
 def check_tramp_targets(src: Path) -> None:
@@ -1869,6 +1947,7 @@ def main() -> int:
     check_live_stage(src)
     check_enterroom_tramp(src)
     check_blast_tramp(src)
+    check_loadlevel_tramp(src)
     check_tramp_targets(src)
     check_callpads(src)
     check_bank2_xpos(src)
