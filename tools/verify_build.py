@@ -1199,7 +1199,11 @@ def check_shape_blocks(src: Path) -> None:
             err(f"{tag}RoomRects: hot count {hot} but {len(rec_lines)} record "
                 "lines (C3 block = count + 5 B/record + 3 row indices)")
         for ln in rec_lines:
-            n = len([v for v in ln.split(".byte", 1)[1].split(",") if v.strip()])
+            # Strip the trailing comment FIRST: the hot-record comment itself
+            # contains commas ("mask, x, y, w, h"), which used to inflate the
+            # count to 9 for generated hot bands (2026-10-20).
+            values = ln.split(";", 1)[0].split(".byte", 1)[1]
+            n = len([v for v in values.split(",") if v.strip()])
             if n != 5:
                 err(f"{tag}RoomRects: hot record is {n} B, want 5")
         indices = [int(v.strip().lstrip("$"), 16)
@@ -2387,8 +2391,12 @@ def main() -> int:
     import os as _os  # noqa: PLC0415
     _stage = _os.environ.get("STAGE_FILE")
     if _stage and Path(_stage).exists():
+        # Room .txt mirrors live where build.sh sent them (a temp dir); when
+        # verify is run by hand without STAGE_ROOMS, fall back to the stage's
+        # own directory (the converter's default).
+        _txt = _os.environ.get("STAGE_ROOMS") or str(Path(_stage).parent)
         print(f"level source: stage file {_stage} (STAGE_FILE override)")
-        check_levels(src, stage_rooms_dir(Path(_stage)), Path(_stage).parent)
+        check_levels(src, stage_rooms_dir(Path(_stage)), Path(_txt))
     else:
         check_levels(src)
     check_equ_sync(src)

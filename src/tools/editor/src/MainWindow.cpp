@@ -802,12 +802,9 @@ void MainWindow::OnStageSelected(int index) {
     if (stageItem) {
         if (stageIdx == m_stageLevelIndex && !IsModified()) return;
         if (IsModified()) {
-            auto res = QMessageBox::question(this, "Unsaved Changes",
-                "Save current level changes before switching stage?",
-                QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
-            if (res == QMessageBox::Yes) {
-                SaveLevel();
-            } else if (res == QMessageBox::Cancel) {
+            // User rule 2026-10-20: switching levels ALWAYS saves, no prompt.
+            SaveStage();                    // sync + write the one stage file
+            if (IsModified()) {             // save failed — stay on this level
                 PopulateStageCombo();
                 return;
             }
@@ -828,15 +825,7 @@ void MainWindow::OnStageSelected(int index) {
     if (filePath == m_currentFilePath && !IsModified()) return;
 
     if (IsModified()) {
-        auto res = QMessageBox::question(this, "Unsaved Changes",
-            "Save current level changes before switching stage?",
-            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
-        if (res == QMessageBox::Yes) {
-            SaveLevel();
-        } else if (res == QMessageBox::Cancel) {
-            PopulateStageCombo();
-            return;
-        }
+        SaveLevel();                        // user rule 2026-10-20: always save
     }
 
     hero::LevelData loaded;

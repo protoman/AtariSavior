@@ -158,3 +158,37 @@ empty slots (432 B) are what growth past ~210 rooms would use.
   `cereal_class_version: 1` to each level it materialises: cereal writes that
   key ONCE per archive (the first level), so every level file after the first
   failed `check_level_format` on a staged build.
+
+## G2 (2026-10-20): HERO-style variety + editor rules
+
+The first generated stage was flat (bats only). G2 gives every level a
+growing feature mix, in the HERO spirit (level 1 is a single cave; later maps
+add red/hot walls, water, tentacles, snakes, spiders and the keyed door):
+
+| from level | feature |
+|---|---|
+| 1 | 2 rooms minimum (user rule); spider start, wall snake + miner goal |
+| 3 | hot middle band (model `mid_band_type = 1`, two wall blocks) |
+| 4 | water goal (bottom band) + raft on open water |
+| 6 | keyed gate: row-1 gate shape, one `LOCKED_DOOR` cell, key in an earlier room |
+| 7 | tentacle on the water goal's surface (replaces the raft) |
+| 9 | two-object rooms (bat + spider, one per row) |
+
+Hazards alternate with "breather" rooms; the shape library grows to ~10
+entries (exit masks x hazard role) and the converter still fits: 211 rooms
+build with (measured) bank2 tables 262 B slack and bank3 shape data 783 B.
+
+`tools/test_generator.py` asserts the schedule (hot from 3, water from 4,
+raft then tentacle, gate/key from 6, two-object rooms from 9), the door rule
+(one non-key enemy), the tear rule (a water goal's row-2 opening is the
+surface, not an exit), determinism and the converter capacity.
+
+## Editor rules (2026-10-20)
+
+* Switching levels **always saves** (no "save changes?" prompt).
+* `File > Generate 20 Levels` replaces the stage and **saves immediately** to
+  `<gameDataDir>/stage.json` — no save dialog.
+* `File > Save Stage` (Ctrl+S) writes the same path.
+* Build the editor's stage with `STAGE_FILE=rooms/stage.json ./build.sh`; the
+  default `./build.sh` still builds the legacy per-level stage until the
+  live-tracking tests are migrated (they pin level 1's tutorial room).
