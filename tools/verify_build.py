@@ -1680,7 +1680,9 @@ def sync_bank3_labels(src: Path) -> int:
     targets = {"CallPad_BuildColupF": ("BuildColupF",
                                         ("kernel.asm", "bank1.asm", "bank2.asm")),
                "HotOverlapFlag": ("HotOverlapBody",
-                                  ("kernel.asm", "bank2.asm"))}
+                                  ("kernel.asm",))}
+    # (bank2's HotOverlapFlag pad retired 2026-10-20: OvM1Block/OvShutBand
+    #  moved to bank0, so only kernel.asm carries the live pad.)
     for fname in ("kernel.asm", "bank1.asm", "bank2.asm"):
         p = src / fname
         if not p.exists():

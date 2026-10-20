@@ -2669,10 +2669,8 @@ EnemyOffTable:
                                  ; org $F9D9); F6-safe ($F9B1 & $1FFF ∉ hotspots)
 OverlayTramp:
     lda LineCount                ; packed asym byte (0 = symmetric)
-    beq .OTsym                   ; sym: clc/rts in bank0, never switches
-    sta $1FF8                    ; select bank2 (F6 ignores the value)
-    jmp $FE00                    ; bank2 PHMOverlay (dead in bank0 — the
-                                 ; twin's jmp operand is the live one)
+    beq .OTsym                   ; sym: clc/rts, never enters the cluster
+    jmp PHMOverlay               ; bank0 cluster ($FA30; repack chunk 4)
 .OTsym:
     clc
     rts
@@ -2789,20 +2787,217 @@ PickPlayerFrame:
     sty Grp0PtrHi
     rts                        ; back to the VBL jsr (same bank, no switch)
 
-    .ds $FB00 - *, 0
-; ------------------------------------------------------------------------------
-; TitleFont — 6 slots × 8 bytes, "S.A.V.I.O.R." (#16 feedback: 5px letters
-; bits7-3, 2px gap bits2-1, 1px baseline dot bit0 on the bottom 3 rows —
-; 8px cell limit: 6+2+2 does not fit. Rounded S, open-tip V.
-; Page-aligned ($FB00) for cross-free abs,Y in TitleKernel.
-; Row order = DigitGfx convention: byte0 blank (not drawn), byte7 = TOP,
-; byte1 = bottom (loop draws Y=7 first).
-; ------------------------------------------------------------------------------
-; TitleFont — MOVED to bank1.
+; ==============================================================================
+; Phase 4 asym-patch collision overlay cluster — MOVED from bank2 to bank0
+; (repack chunk 4, 2026-10-20). One entry (OverlayTramp at $F9B8, inline
+; `jmp PHMOverlay` instead of a bank switch), three bodies, two tables:
+;   PHMOverlay / OvM1Block / OvShutBand   (ball strip → M1 strip → shutter)
+;   OvHead/OvTail (band edges), M1OffTab (MetaA b0 → side offset)
+; bank0 already owns ColOff/ColMask (kernel PHM walk) and the $FFEC
+; HotOverlapFlag pad, so nothing is duplicated: bank2 loses the bodies, the
+; $F9B8 twin, the 2 B M1OffTab and the whole switch (2 fewer per miss path).
+; ZP names folded to kernel's: RoomMetaA/B ARE CheckP0Left-walk leftovers
+; $99/$9A = RoomPF0Lo/Hi (bank3 stages MetaA/B over the dead pointer pair).
+; Exits are plain rts: the PHM caller is bank0, so no ReturnPad round trip.
+; ==============================================================================
+PHMOverlay:
+    ; LineCount packed: b4-b7 = right_col+1, b0-2 = bands with the painted
+    ; ball-strip ($ff BandTab entries). D6 envelope: ONE right column
+    ; [BallX-7, BallX] px, BallX = 87+8*rc — overlay is additive (cells
+    ; painted only where the mirrored cell is open, never hot).
+    ; Exact visible_left (same math as PHM's prologue), then px overlap of
+    ; [vl, vl+6] (PLAYER_WIDTH=7 lit) with the patch column, then band x rows.
+    sec
+    lda RoomX
+    sbc PlayerDir
+    cmp #15
+    bcs .Ov7
+    sec
+    sbc #4
+    jmp .OvVL
+.Ov7:
+    sbc #7
+.OvVL:
+    clc
+    adc PlayerDir               ; A = visible_left px
+    sta CollisionX              ; walk temps are free on the miss path
+    lda LineCount
+    lsr
+    lsr
+    lsr
+    lsr                         ; n = right_col+1 (1..10)
+    asl
+    asl
+    asl                         ; 8n
+    clc
+    adc #79                     ; BallX = 79+8n = 87+8*rc (patch right edge)
+    sta RectCount               ; scratch (NOT CollisionCellX): the prologue
+                                ; box must survive for HotOverlapFlag — OvM1Block
+                                ; funnels block hits there for hot-death. Scratch
+                                ; = RectCount ($92): free after the cell walk,
+                                ; RowIdx re-inits at kernel entry. NEVER Temp —
+                                ; CheckP0Left/Right read the joystick in Temp
+                                ; AFTER this physics call (Temp scratch here
+                                ; left D3=0 = phantom right-press = drift bug).
+    lda CollisionX
+    cmp RectCount               ; vl vs BallX
+    bcc .OvT2
+    beq .OvT2
+    bcs .OvClear                ; vl > BallX → player fully right of patch
+.OvT2:
+    lda RectCount
+    sec
+    sbc #13                     ; BallX-13 (lit span is 7px, not 8: [vl,vl+6])
+    cmp CollisionX              ; vs vl: overlap iff BallX-13 <= vl
+    bcc .OvBand
+    beq .OvBand
+.OvClear:
+    jmp OvM1Block               ; right-strip miss → M1 (left) strip test;
+                                ; IT returns with C set/clear.
+                                ; Shutter rooms: miss here = player left of
+                                ; the VISIBLE right-half block → passable
+                                ; (kill follows the drawn block only, async
+                                ; ruling 2026-10-14 — no left mirror)
+.OvBand:
+    jmp OvShutBand              ; band overlap → shutter kill / strip solid
 
-    .ds $FB37 - *, 0            ; TitleIntro retired — merged title screen
-                                 ;   (2026-10-19): $FD now goes to TitleWork
+OvM1Block:
+    ; Phase 4 M1 (left strip) collision overlay. Entered by JMP from
+    ; PHMOverlay's .OvClear — 0 pushes; both exits rts to the PHM caller.
+    ; In: CollisionX = vl, CollisionCellY/EndY =
+    ; player row range (survive the right tests — do NOT clobber the
+    ; prologue box: CellX/EndX/CellY/EndY must stay intact, the block
+    ; path hands them to HotOverlapFlag). Scratch = RectCount ($92; M1X,
+    ; then ℓ math — see PHMOverlay note). Kill-aware
+    ; (EnemyDeadMask b4); a row blocks iff its PF cell at col ℓ is open —
+    ; the wall-hide envelope guarantees open ⟺ patched (every band at ℓ
+    ; is wall or M1-patched, never plain-open).
+    lda EnemyDeadMask
+    and #$10                    ; b4 = M1 strip destroyed → transparent
+    bne .OvM1no
+    lda RoomPF0Lo               ; staged MetaA ($99)
+    and #$01                    ; Phase 5: b0 = M1 strip on the RIGHT half
+    tax                         ;   (door band mask is $02 → b0 free)
+    lda RoomPF0Lo               ; reload MetaA
+    lsr
+    lsr
+    lsr
+    lsr                         ; m1_col+1 (0 = no M1 patch)
+    beq .OvM1no
+    asl
+    asl
+    asl                         ; 8*(m1_col+1)
+    clc
+    adc M1OffTab,X              ; -1 (left, $FF) / +79 (right, $4f) → the
+                                ;   side's M1X (7+8*col / 87+8*col) — MUST
+                                ;   match B3StageBand's staging (its own twin)
+    sta RectCount               ; scratch M1X (EndX = prologue min col is
+                                ; CollisionEndX — kept intact for HotOverlapFlag)
+    lda CollisionX              ; vl
+    cmp RectCount                ; vl vs M1X (same shape as the ball test)
+    bcc .OvM1T2
+    beq .OvM1T2
+    bcs .OvM1no                 ; vl > M1X → player fully left of strip
+.OvM1T2:
+    lda RectCount
+    cmp #13
+    bcc .OvM1Band               ; M1X < 13 (ℓ = 0): M1X-13 wraps — skip
+    sec                         ; the second test (test 1 already implies
+    sbc #13                     ; overlap for every valid vl)
+    cmp CollisionX
+    bcc .OvM1Band
+    beq .OvM1Band
+    bcs .OvM1no                 ; M1X-13 > vl → player fully right
+.OvM1Band:
+    lda RectCount
+    sec
+    sbc #7
+    lsr
+    lsr
+    lsr                         ; ℓ = (M1X-7)/8
+    tax                         ; X = ℓ (PHM callers preserve X themselves)
+    lda CollisionCellY
+    sta RectCount               ; $92 walk temp — free after the cell walk
+                                ; (RowIdx re-inits at kernel entry)
+.OvM1Row:
+    lda RectCount
+    tay
+    tya
+    clc
+    adc ColOff,X                ; PF0/PF1/PF2 group offset (0/3/6)
+    tay
+    lda PF0Buf,Y                ; same cell read as PlayerHitsMap
+    and ColMask,X
+    beq .OvM1block              ; open → patch cell active in this row
+    lda RectCount
+    cmp CollisionEndY
+    beq .OvM1no
+    inc RectCount
+    bne .OvM1Row                ; row never wraps to 0
+.OvM1block:
+    ; Blocked by the M1 cell: run the hot check too — convert emits the
+    ; M1 patch cell as a hot rect on the hot band (mask $00, never dies
+    ; with a wall), so touching the block on a hot band = death, exactly
+    ; like a hot PF wall. Off-band / non-hot: body finds no rect → sec,
+    ; still blocked. b4 (strip destroyed) never reaches here (.OvM1no).
+    ; Phase 5 key: touching the M1 strip (left door) while KeyHeld removes
+    ; it (b4) — touch, not mere possession.
+    lda LevelStartRoom
+    bmi .OvM1unlock
+    jmp HotOverlapFlag          ; C=1 contract; body sets Temp b7 on hot hit
+.OvM1unlock:
+    lda EnemyDeadMask
+    ora #$10                    ; b4 = M1 strip (left door) destroyed
+    sta EnemyDeadMask
+    clc
+    rts                         ; passable (bank0 caller)
+.OvM1no:
+    clc
+    rts
 
+; ------------------------------------------------------------------------------
+; OvShutBand — right-column strip on the PHMOverlay miss path. Entered from
+; PHMOverlay .OvBand (right-column + player-band overlap). MetaB b7 marks a
+; LOCKED_DOOR right strip; b7 clear is a plain D6 strip. A plain strip is
+; solid. A door strip is solid until the key is held, then the touch
+; destroys it (EnemyDeadMask b3) and the walk passes (Phase 5).
+; Kill follows the VISIBLE right-half block only (async ruling 2026-10-14 —
+; no left mirror). The retired vcrunch kill test is gone.
+; ------------------------------------------------------------------------------
+OvShutBand:
+    ldx CollisionCellY
+    lda OvHead,X                ; bits >= row
+    ldx CollisionEndY
+    and OvTail,X                ; bits <= row
+    and LineCount               ; active-band mask (b0-2)
+    beq .OSBm1                  ; not in a painted band → M1 strip test
+    lda RoomPF0Hi               ; staged MetaB ($9A)
+    bpl .OSBsolid               ; b7=0: plain D6 strip → solid
+    lda LevelStartRoom          ; KeyHeld?
+    bpl .OSBsolid               ; no key → locked (solid)
+    lda EnemyDeadMask           ; key held: the touch destroys the strip
+    ora #$08                    ; b3 = ball strip (right door) destroyed
+    sta EnemyDeadMask
+    jmp .OSBm1                  ; passable (strip blanked next B3StageBand)
+.OSBsolid:
+    sec
+    rts
+.OSBm1:
+    jmp OvM1Block
+
+OvHead:
+    .byte 7,6,4                 ; rows 0..2 → mask bits >= row
+OvTail:
+    .byte 1,3,7                 ; rows 0..2 → mask bits <= row
+M1OffTab:                       ; MetaA b0 -> M1 x-offset.
+    .byte $ff, $4f              ; B3StageBand has the twin.
+
+; ------------------------------------------------------------------------------
+; $FB00/$FB37 pins RETIRED (repack chunk 4, 2026-10-20): TitleFont lives in
+; bank1 and TitleIntro died with the merged title, so both .ds boundaries
+; were dead — the overlay cluster now runs straight through them into the
+; $FBD0 pin below (EnterRoom tramp twin, still live).
+; ------------------------------------------------------------------------------
 
     .ds $FBD0 - *, 0            ; #22: pin tramp at $FBD0 — bank2's twin
                                  ;   sits at the same address (pin moved from

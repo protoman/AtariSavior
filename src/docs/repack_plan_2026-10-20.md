@@ -257,3 +257,33 @@ the bank2 copy's `sty Temp` would have killed the game timer. `RoomMetaA/B`
 EQUs hand-copied into bank1. `test_bomb_strip` now asserts the body at
 `$F41F`, that bank2 no longer has `M1StripBlast`, and keeps the `$F937`
 layout pin.
+
+### Chunk 3 (plan chunk 4) — PHM/M1/shutter overlay → bank0 ($FA30) — LANDED
+
+| | before | after | Δ |
+|---|---|---|---|
+| bank0 | 3426 | 3642 | +216 |
+| bank1 | 2923 | 2923 | 0 |
+| bank2 | 1585 | 1348 | **−237** |
+| bank3 | 1263 | 1263 | 0 |
+| **total** | **9197** | **9176** | **−21** |
+
+*Placement re-derived:* the cluster starts at `$FA30` (right after the
+PickPlayerFrame body) and runs through the dead `$FB00`/`$FB37` pins, which
+were deleted; it stops before the live `$FBD0` EnterRoom twin. The `$F9B8`
+tramp became `lda LineCount / beq / jmp PHMOverlay` (bank0 body), so the
+per-miss switch is gone. Exits are `rts` (3 tail-jmps → rts, −3 B); the
+`jmp HotOverlapFlag` still rides bank0's own `$FFEC` pad → bank3.
+
+*Deviation from the plan (measured):* **`OvHead`/`OvTail` (6 B) stay in
+bank2** — `MothDoWalk`'s patch test and `.LWpSetup` (LWC) read them in-bank
+and cross-bank reads are impossible, so bank0 got its own copy. `M1OffTab`
+did move (only PHMOverlay read it; bank3 keeps its twin). `LevelStartRoom`
+lost its bank2 hand-copy with its last readers.
+
+Pins/twins killed: bank2 `$F9B8` overlay tramp, `$FE00` PHMOverlay pin,
+`$FE9C` shutter hole, `$FFEC` HotOverlapFlag pad (sync target list updated),
+`M1OffTab`. Guards/tests touched: `verify_build.sync_bank3_labels` now
+patches the HOF pad in kernel.asm only; `test_key_pickup` reads the cluster
+from kernel.asm and asserts bank2's `LevelStartRoom` copy is gone;
+`test_respawn_hover` anchors on the `$FBD0` pin.

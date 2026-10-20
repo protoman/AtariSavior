@@ -46,15 +46,17 @@ assert "ora #$18" not in body, "CEH_Key must NOT auto-open doors"
 assert "LoseLife" not in body, "CEH_Key must not kill the player"
 
 B2 = (SRC / "bank2.asm").read_text()
-assert "LevelStartRoom = $A7" in B2, "bank2 must hand-copy LevelStartRoom"
+assert "LevelStartRoom = $A7" not in B2, \
+    "bank2 LevelStartRoom copy is dead (overlay cluster moved to bank0)"
 # Touch-to-open: the M1 (left door) strip opens only when the player's box
-# overlaps it AND KeyHeld (not by merely holding the key).
-ov = B2[B2.index(".OvM1block:"):B2.index(".OvM1no:")]
+# overlaps it AND KeyHeld (not by merely holding the key). The overlay
+# cluster lives in bank0 since repack chunk 4 (2026-10-20).
+ov = K[K.index(".OvM1block:"):K.index(".OvM1no:")]
 assert "lda LevelStartRoom" in ov and "ora #$10" in ov, \
     "OvM1Block must key-unlock the left door (b4) on touch"
 # Right door = ball strip; a MetaB b7 strip unlocks (b3) on touch while
 # KeyHeld (tile 11/vcrunch is gone, so every b7 strip is a door now).
-sh = B2[B2.index("OvShutBand:"):B2.index(".OSBm1:")]
+sh = K[K.index("OvShutBand:"):K.index(".OSBm1:")]
 assert "lda LevelStartRoom" in sh and "ora #$08" in sh, \
     "OvShutBand must key-unlock a right door (b3) on touch"
 assert "cmp #$ff" not in sh, "the retired VcrBand gate still in OvShutBand"

@@ -33,9 +33,10 @@ assert "lda Hover" in up and "sta Hover" in up, "physics must read+clear Hover"
 assert re.search(r"cmp #GRAVITY \+ 1", up), "lift threshold must be GRAVITY+1"
 assert up.index(".Integrate:") < up.index("lda Hover"), \
     "Hover check must sit at .Integrate (clamp jmps there)"
-# DropSpeedTable is pre-pad (before the $FB00 pin), read abs,Y
+# DropSpeedTable is pre-pad (before the $FBD0 EnterRoom-tramp pin; the old
+# $FB00/$FB37 pins died with the overlay move, chunk 4), read abs,Y
 tbl = K.index("DropSpeedTable:")
-assert tbl < K.index("    .ds $FB00 - *, 0"), "DropSpeedTable must be pre-pad"
+assert tbl < K.index("    .ds $FBD0 - *, 0"), "DropSpeedTable must be pre-pad"
 
 # --- 2. physics simulation (mirrors UpdateP0Vertical's arithmetic) ----------
 def simulate(up_held, frames):
