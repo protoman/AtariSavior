@@ -174,8 +174,13 @@ def tally_gate() -> None:
     so RefreshEnemyY never runs while bank1's HUD writes $E0-$EF: EnemyRamY
     ($E2-$E4) is left holding score-pointer bytes, and whatever enemy is drawn
     then appears at a garbage Y (user report 2026-10-18: the raft "moved up to
-    the middle of the screen" when the counting started)."""
-    need = {"SelectActiveObject", "DropTarget", "LevelMinerRoom", "RoomNo",
+    the middle of the screen" when the counting started).
+
+    C1 2026-10-20: the body moved to bank2, so this drives the REAL path —
+    bank0's CallPad_SelectObject (`sta $1FF8`) -> bank2 body -> ReturnPad —
+    instead of entering the body directly. A broken tramp fails here.
+    """
+    need = {"CallPad_SelectObject", "DropTarget", "LevelMinerRoom", "RoomNo",
             "MinerX", "MinerY", "ObjBase", "ActiveObjectX", "ActiveObjectY",
             "FlickerFrame", "BombPacked"}
     L = parse_labels(FROZEN / "bank0.lst", need)
@@ -196,7 +201,7 @@ def tally_gate() -> None:
         r[Z["BombPacked"]] = 0
         r[Z["ObjBase"]] = 0xAA             # sentinel: must be rewritten
         mpu = MPU(memory=mem)
-        mpu.pc = L["SelectActiveObject"]
+        mpu.pc = L["CallPad_SelectObject"]
         mpu.sp = 0xFD
         mem[0x1FF] = 0x01
         mem[0x1FE] = 0x00
@@ -206,6 +211,7 @@ def tally_gate() -> None:
                 break
         else:
             raise AssertionError("SelectActiveObject never returned")
+        assert mem.bank == 0, "the drawn-object path must come back to bank0"
         return r[Z["ObjBase"]], r[Z["FlickerFrame"]]
 
     obj, flick = one(miner_room=3, room_no=3)

@@ -97,15 +97,19 @@ def main() -> None:
     # so 27. S4 (2026-10-19) dropped the two start_x/start_y table fields,
     # so 25. C4 (2026-10-20) dropped the two derived pointer words from the
     # per-level entry (4 reads), so 21. The 2026-10-20 micro-pack dropped
-    # start_room + miner_y from the entry (2 reads), so 20.
-    assert KERNEL.count("jsr FoldIndirect") >= 20, \
-        f"expected >=21 fold call sites (conn/LoadLevel + P3.1 enemy " \
-        f"derives; EnterRoom folds moved to bank2 direct reads), " \
-        f"got {KERNEL.count('jsr FoldIndirect')}"
+    # start_room + miner_y from the entry (2 reads), so 20. C1 (2026-10-20)
+    # moved SelectActiveObject to bank2 (2 sites: lit + dark reloads), so 18.
+    assert KERNEL.count("jsr FoldIndirect") >= 18, \
+        f"expected >=18 fold call sites (conn/LoadLevel + P3.1 enemy " \
+        f"derives; EnterRoom + SelectActiveObject folds moved to bank2 " \
+        f"direct reads), got {KERNEL.count('jsr FoldIndirect')}"
     # every fold batch stages FetchPtr immediately before its reads
+    # C1 (2026-10-20): SelectActiveObject's staging pair (EnemyDataLo/Hi ->
+    # FetchPtr) left with the body to bank2, which reads (EnemyDataLo),Y
+    # directly: 10 -> 8.
     stages = len(re.findall(r"^\s+sta FetchPtr\+?1?\s*$", KERNEL, re.M))
-    assert stages >= 10, \
-        f"expected >=10 sta FetchPtr lines, got {stages}"
+    assert stages >= 8, \
+        f"expected >=8 sta FetchPtr lines, got {stages}"
 
     # --- P2.5: band-color cache contract ----------------------------------
     # FIX 2026-09-28: was $D1 = PF1Buf[2] — collides with kernel .Row

@@ -168,7 +168,8 @@ def main() -> None:
             f"({dark:#04x} -> {got['dark']:#04x})")
 
     # --- Y readers (no ROM y reads left in draw/CEH/laser vertical) -------
-    draw = KERNEL.split(".SOEnemyColorDone:")[1].split(".SOEnemySkip:")[0]
+    # C1 2026-10-20: the GRP1 draw body moved to bank2 (SelectActiveObject).
+    draw = BANK2.split(".SOEnemyColorDone:")[1].split(".SOEnemySkip:")[0]
     assert "lda EnemyRamY,X" in draw, "draw must read EnemyRamY"
     assert "lda (EnemyDataLo),Y" not in draw, "draw still reads ROM y"
     ceh = KERNEL.split("CheckEnemyHit:")[1].split("CEH_Loop:")[0]

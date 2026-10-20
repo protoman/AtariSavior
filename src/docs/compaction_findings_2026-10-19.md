@@ -784,3 +784,75 @@ Measured ROM −24 B, and it is all level data (bank0 code −4, bank2 code +4):
   restage (every py65 test that fabricates a 4-byte record).
 - **(b') share one hot prefix** (L4R2 is the only block with hot records):
   0 B, it is already one block.
+
+---
+
+## C1 — `SelectActiveObject` → bank2 (2026-10-20, audit round 3 #C1)
+
+The renderer moved out of bank0's mid-flow into bank2's `$F486-$F5FF` fill
+window; the helpers (fineAdjust/SOXP/reflection/tables) live in the `$F800`
+fill, and bank0 keeps only a 3 B corridor pad.
+
+### Size (measured, `tools/rom_size_report.py --md`)
+
+| | bank0 | bank1 | bank2 | bank3 | total | level data |
+|---|---|---|---|---|---|---|
+| before (05ea633) | 3568 | 2948 | 1149 | 1285 | **8950** | 410 |
+| after | **3266** | 2948 | **1537** | 1285 | **9036** | 410 |
+| delta | **−302** | 0 | +388 | 0 | +86 | 0 |
+
+bank0 = −289 body −16 type tables +3 pad. bank2 = +314 (body, vs 289 in
+bank0: inline dark test + two `jmp ReturnPad` tails) +17 SOXP +18 reflection
++15 fineAdjust +24 tables +3 pad half. The +86 total is the price of the local
+variants. Where the freed bytes landed (emitted-byte occupancy from the new
+`bank0.lst`): the `$F6EB-$F8BF` fill block grew to **469 B contiguous**
+(org-able; it was ~167 B), while `$FB08-$FBCF` stays 200 B, `$FC20-$FC48` 41 B
+and the appended-flow tail stays 16 B (the `$FC55` MusicTick pad still bounds
+it — the flow end did not move). So bank0's insertable capacity went from
+258 B (audit: 200 + 44 + 14) to ~726 B in the same class of windows.
+
+### Cycles (measured, `sim_frame_budget`)
+
+−46c on every scenario's worst VBL frame, wall model unchanged:
+
+| scenario | VBL max before | after |
+|---|---|---|
+| default gate | 1059c (f121) | **1013c** (f121) |
+| `SIM_FLY=Y` | 1124c (f211) | **1078c** (f211) |
+| `SIM_FLY=X` | 1098c (f114) | **1052c** (f114) |
+| `SIM_FLY=M` | 1097c (f50) | **1051c** (f50) |
+
+Savings: the per-object `FoldIndirect` (25c) and the `FetchPtr` staging (12c)
+are now one `lda (EnemyDataLo),Y` (5c), and `CallPad_IsRoomDark` (~21c of
+pad overhead) is an inline test. Cost: pad entry `sta $1FF8`+`jmp` (7c) and
+exit `jmp ReturnPad`+`sta $1FF6` vs `rts` (7c). Net −46c, still 161c+ of the
+#23 window free.
+
+### Guards added / changed
+
+- `verify_build.CORRIDOR_PADS += ("CallPad_SelectObject", $FC1D, bank2,
+  "SelectActiveObject")` — both halves byte-checked (bank0 `sta $1FF8`, bank2
+  `jmp` operand from bank2.lst), and bank0's `$FC20` may not hold a `jmp`.
+- NEW `verify_build.check_bank2_xpos`: bank2's fineAdjust base is page-aligned
+  AND (begin−241) sits in the previous page (guaranteed 5c table read), and
+  `bcs .Div15Loop` + the whole routine stay inside one page — the same
+  contract the `$FF0F` copy is pinned to.
+- `test_raft.tally_gate` now drives the REAL path (pad → body → ReturnPad,
+  asserting the return lands in bank0) instead of entering the body.
+- `test_room_dark.check_select_object_dark` (new): drives the pad for rooms
+  0-9 and asserts the inline mask matches bank1's IsRoomDark split for
+  EnemyRamD b4-7, LaserState b2-5 and the rooms-8+ lit guard.
+- `test_key_pickup`: slices the bank2 body; the `LevelStartRoom = $A7` copy is
+  live again (the renderer reads it) — the guard now requires it; its py65 run
+  reads FROZEN labels (was mixing live *.lst with frozen *.bin — exposed by
+  this move).
+- `test_bomb_render_x`: watches `SetObjectXPos_b2` in bank 2 (was `$FF0F`).
+- `test_enemy_movement`: draw-path Y assertions read bank2; `test_level_bank`:
+  fold sites 20 → 18, `sta FetchPtr` 10 → 8.
+
+### Deviation from the audit
+
+The audit listed "remove the IsRoomDark pad". It cannot be removed: the VBL's
+band-color path (`COLOR_CAVE_BG` on bomb states) still calls it every frame,
+and the pad is a byte-identity-pinned corridor slot. Only the per-object call
+left (the reason it was removable in the plan).

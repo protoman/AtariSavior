@@ -17,6 +17,8 @@ import sys
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parent.parent / "src"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_cell_map import parse_labels, FROZEN, Mem as BankMem  # noqa: E402
 BANK1 = (SRC / "bank1.bin").read_bytes()
 BANK2 = (SRC / "bank2.bin").read_bytes()
 BANK3 = (SRC / "bank3.bin").read_bytes()
@@ -139,6 +141,98 @@ def run_bcf(room_no, d, ls, bomb=0):
     sys.exit(f"BuildColupF never returned (pc=${mpu.pc:04X})")
 
 
+def check_select_object_dark() -> None:
+    """C1: the bank2 SelectActiveObject inline dark test must agree with the
+    bank1 IsRoomDark split (rooms 0-3 = EnemyRamD b4-7, rooms 4-7 = LaserState
+    b2-5, rooms 8+ always lit).
+
+    The renderer moved to bank2 (2026-10-20) and bank1's IsRoomDark cannot be
+    called from there (it ends `jmp ReturnPad` -> bank0), so the split is
+    re-implemented inline. This drives the REAL pad path (bank0
+    `CallPad_SelectObject` -> `sta $1FF8` -> bank2 body -> ReturnPad) over a
+    fabricated one-enemy room and reads COLUP1, so a drift in the inline mask
+    (bit index, the >>2 for rooms 4-7, or the rooms-8+ guard) fails here."""
+    pad = parse_labels(FROZEN / "bank0.lst", {"CallPad_SelectObject"})
+    assert "CallPad_SelectObject" in pad, \
+        "frozen bank0.lst has no CallPad_SelectObject (re-freeze?)"
+    rts = 0x0101                       # RTS_SENTINEL (test_cell_map)
+    MOTH = 4
+    OBJ_MOTH, COLOR_DARK_OBJ, COLOR_MOTH = 8, 0x0A, 0x22
+    Z = {"EnemyDataLo": 0x31, "EnemyDataHi": 0x32, "EnemyCount": 0x33,
+         "FlickerFrame": 0x34, "BombPacked": 0x35, "RoomNo": 0x18,
+         "LevelMinerRoom": 0x24, "EnemyDeadMask": 0x3A, "COLUP1": 0x07,
+         "ObjBase": 0x36, "ActiveObjectX": 0x37, "ActiveObjectY": 0x38,
+         "ObjTop": 0x3B, "RoomY": 0x01, "EnemyRamX": 0x3D, "EnemyRamY": 0x62,
+         "EnemyRamD": 0x41, "LaserState": 0x40, "LevelStartRoom": 0x27}
+
+    def draw(room_no, d, ls):
+        class ObjMem(BankMem):
+            """Bank-switching Mem that also records TIA writes ($00-$3F)."""
+            def __init__(self):
+                super().__init__()
+                self.tia = {}
+
+            def __setitem__(self, a, v):
+                a &= 0xFFFF
+                if a < 0x80:
+                    self.tia[a] = v & 0xFF
+                    return
+                BankMem.__setitem__(self, a, v)
+
+        mem = ObjMem()
+        mem.bank = 0
+        r = mem.ram
+        r[Z["EnemyDataLo"]] = 0x80     # record base = $0180 (RAM, test-owned)
+        r[Z["EnemyDataHi"]] = 0x01
+        r[0x00] = MOTH                 # type at record +0 (EnemyOffTable stride 4)
+        r[Z["EnemyCount"]] = 1
+        r[Z["FlickerFrame"]] = 0
+        r[Z["BombPacked"]] = 0
+        r[Z["RoomNo"]] = room_no
+        r[Z["LevelMinerRoom"]] = 0x7F  # miner in another room -> no miner slot
+        r[Z["LevelStartRoom"]] = 0
+        r[Z["EnemyDeadMask"]] = 0
+        r[Z["EnemyRamX"]] = 80
+        r[Z["EnemyRamY"]] = 84
+        r[Z["EnemyRamD"]] = d
+        r[Z["LaserState"]] = ls
+        r[Z["RoomY"]] = 0x50
+        r[Z["ObjBase"]] = 0xAA         # sentinel: must be rewritten
+        mpu = MPU(memory=mem)
+        mpu.pc = pad["CallPad_SelectObject"]
+        mpu.sp = 0xFD
+        mem[0x1FF] = 0x01
+        mem[0x1FE] = 0x00
+        for _ in range(4000):
+            mpu.step()
+            if mpu.pc == rts:
+                break
+        else:
+            sys.exit(f"SelectActiveObject never returned (pc=${mpu.pc:04X}, "
+                     f"bank={mem.bank})")
+        assert mem.bank == 0, "the draw path must come back to bank0"
+        assert r[Z["ObjBase"]] == OBJ_MOTH, f"ObjBase={r[Z['ObjBase']]:02X}"
+        assert r[Z["ObjTop"]] == ((84 - 0x50 + 1) & 0xFF), \
+            f"ObjTop={r[Z['ObjTop']]:02X} (must stay RoomY-relative)"
+        return mem.tia.get(Z["COLUP1"], 0)
+
+    # rooms 0-3: EnemyRamD b4-7
+    assert draw(0, 0x00, 0x00) == COLOR_MOTH, "room0 lit"
+    assert draw(0, 0x10, 0x00) == COLOR_DARK_OBJ, "room0 dark (b4)"
+    assert draw(1, 0x20, 0x00) == COLOR_DARK_OBJ, "room1 dark (b5)"
+    assert draw(3, 0x80, 0x00) == COLOR_DARK_OBJ, "room3 dark (b7)"
+    assert draw(0, 0x20, 0x00) == COLOR_MOTH, "room0 must ignore b5 (room1's bit)"
+    # rooms 4-7: LaserState b2-5
+    assert draw(4, 0x00, 0x04) == COLOR_DARK_OBJ, "room4 dark (laser b2)"
+    assert draw(7, 0x00, 0x20) == COLOR_DARK_OBJ, "room7 dark (laser b5)"
+    assert draw(4, 0x00, 0x00) == COLOR_MOTH, "room4 lit"
+    assert draw(4, 0x00, 0x40) == COLOR_MOTH, "room4 must ignore laser b6"
+    assert draw(4, 0x10, 0x00) == COLOR_MOTH, "room4 must ignore EnemyRamD b4"
+    # rooms 8+: no mask bit, always lit, never crash
+    for room in (8, 9, 200):
+        assert draw(room, 0xFF, 0xFF) == COLOR_MOTH, f"room{room} must stay lit"
+
+
 def main() -> int:
     # --- rooms 0-3: EnemyRamD bits 4-7 -----------------------------------
     assert not is_dark(0, 0x00, 0x00), "room0 lit when mask clear"
@@ -190,6 +284,10 @@ def main() -> int:
         "LoadLevel must clear LaserState dark bits"
     assert BANK1_SRC.count("cmp #8") >= 2, \
         "IsRoomDark/SetRoomDark must guard rooms 8+"
+
+    # --- C1: bank2 renderer's inline dark test agrees with the split ------
+    check_select_object_dark()
+
     print("room-dark 8-bit mask: OK "
           "(0-3=EnemyRamD, 4-7=LaserState b5-2, 8+ always lit)")
     return 0
