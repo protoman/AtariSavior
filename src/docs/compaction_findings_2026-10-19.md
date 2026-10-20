@@ -219,3 +219,41 @@ excluded from the estimates above.
 3. TitleKernel band reuse if the visual conditions are acceptable.
 4. Pad co-location pass (measure per target, move same-bank leaves first).
 5. Boot bundle + sim hook last (it is test-harness work).
+
+---
+
+## 8. HERO raft code — FOUND (screenshots raft_002..raft_004, trapWrite $9B)
+
+HERO's raft is **not an entity**. It is a collision test + a forced walk, in bank 1:
+
+```
+$F0E0-$F11C  shared gates: sprite ptr $D8==$97, death timer $AD==0,
+             room $9C>=11, BIT $07 = CXPPMM (player<P>P1 collision)
+$F11E-$F125  LDA $EC / AND #$7F / CLC / ADC #$18 / STA $BB   ; raft X
+$F127-$F12E  LDA $9B / SEC / SBC $BB / CMP #$09 / BCS      ; <9 px?
+$F130-$F13E  $E6=$40, $AC=$40, $B0 = (bit7 of $EC) ? 0 : 8 ; ride direction
+$F140-$F149  $BD=$FF, $9B = $BB + $04                       ; pin to raft
+```
+
+- The raft is drawn as **P1 (GRP1), sprite pointer $97**. Ride detection is the
+  hardware **CXPPMM** collision plus a <9 px X test — no playfield probe.
+- Its X comes from one byte: `raftX = ($EC & $7F) + $18`; `$EC` is written only
+  by the room init at `$F663-$F66D` (`$80`/`$60`: bit7 = direction).
+- The motion reuses the **ordinary walk step** at `$F240-$F256`: with
+  `$B0 = 0/8`, `$9B += 1` (or −1) per frame. Confirmed live: standing still on
+  the raft, `$9B` went `2D -> 41` over 20 frames (exactly 1 px/frame), `$9F`
+  unchanged, `$A8` in lockstep (`$A8` is the object that chases `$9B` at
+  `$F513-$F52B`, not the raft).
+- Size: raft-specific ≈ **44 B** (`$F11E-$F149`) + ~11 B room init; the rest of
+  the block is shared sprite/death/input logic. Total ≈ **55-70 B**.
+- Ours: `RaftBody` 252 + probe tables 60 + pad 6 = **318 B**.
+
+So the suspicion is confirmed: HERO's ferry is a fixed platform + auto-walk,
+about 5× smaller than ours. The difference is **behaviour**, not technique:
+ours is an entity with ferry gating, inertia, playfield turn-around and tide
+alignment. Copying HERO's model would mean deleting those behaviours, not
+refactoring the body.
+
+`hcrunch` still untraced; the raft result suggests it will also be room
+data/gates rather than a 1.5 KB machine — same trap method (trapWrite on the
+band variable) would settle it in one run.
