@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""Level-bonus tally behavioral test (user spec 2026-10-02).
+"""Level-bonus tally behavioral test (user decision 2026-10-19: award at once,
+hold the frozen scene, no count-up, no coin).
 
 Boots the real savior.bin in py65, lands the player, then stages a miner
-pickup and asserts the whole count-up flow:
-  arm    — TallyArm snapshots the bonus into TallyTicks ($F2):
+pickup and asserts the whole flow:
+  arm    — TallyEntry snapshots the bonus into TallyTicks ($F2):
            20 (miner) + (BarLevel+3)/6 (time, 50% -> 500) + bombs
            + 2*lives; DropTarget ($8A) = $FE.
-  freeze — while tallying: joystick RIGHT held, RoomX/RoomY never move,
-           BarLevel stays frozen (timer block skipped), TallyTicks decs.
-  coin   — AUDV0 goes >0 during the run (coin blip via BombSnd hold).
-  score  — exact total at completion = ticks*50
+  award  — the WHOLE bonus lands on the arm frame (one BCD add): score at
+           the first frozen-frame boundary = ticks*50
            (BarLevel=60, bombs=2, lives=3 -> 38 ticks -> 1900 =
             miner 1000 + time 500 + bombs 100 + lives 300).
+  freeze — while holding: joystick RIGHT held, RoomX/RoomY never move,
+           BarLevel and TickCounter stay frozen (timer block skipped, no
+           pacing divider), score holds the final value, and NO coin blip
+           (AUDV0/BombSnd stay 0), hold lasts TALLY_HOLD (36) frames.
   done   — DropTarget back to 0, Level advanced, BarLevel=120,
            TickCounter=60; a few post-tally frames run clean.
   min_sp — two guards: whole run >= $F7 (covers the done path's
@@ -221,52 +224,60 @@ expected_score = expected_ticks * 50                # = 1900
 
 # ---- arm: next normal frame's CheckMinerPickup must fire ----
 f_arm = run_until(lambda: mem.ram[DROPT] == 0xFE, 60, "tally arm")
-assert mem.ram[TALLY] == expected_ticks, (
-    f"TallyTicks={mem.ram[TALLY]} expected {expected_ticks} "
-    f"(20 + (60+3)//6 + bombs 2 + lives*2)")
-assert score_total() == 0, f"score before count-up = {score_total()}"
-print(f"armed at f{f_arm}: TallyTicks={mem.ram[TALLY]} "
-      f"expected {expected_ticks}")
+bonus = expected_ticks * 50                         # = 1900
+assert score_total() == bonus, (
+    f"score after arm {score_total()} expected {bonus} "
+    f"(award must land on the arm frame, not count up)")
+hold_ticks = mem.ram[TALLY]
+assert 1 <= hold_ticks <= 127, (
+    f"hold counter={hold_ticks} (TallyTicks reused as the freeze frames)")
+print(f"armed at f{f_arm}: bonus={bonus} hold={hold_ticks} frames")
 
-# ---- tally: hold joystick RIGHT, watch freeze + coin + progress ----
+# ---- hold: frozen scene, final score, no coin, no pacing ----
 # Exit ONLY at a frame boundary after the done path finished: LoadLevel's
 # tail jmp DropArm writes DropTarget=$18 mid-done-frame, and `inc Level`
 # runs even earlier — a mid-frame exit (on DropTarget or Level) would
 # assert before TallyWork's sta BarLevel/sta TickCounter execute (they
 # run after DropArm's rts returns to the jsr LoadLevel call site).
 mem.swcha = 0x7F             # right held (active low D7=0)
-coin_seen = False
 frozen_bad = None
-tally_frames = 0
-tally_steps = 0
+held_frames = 0
+tick_at_arm = mem.ram[TICKC]
 done = False
 while not done:
     step()
-    tally_steps += 1
-    if tally_steps > 4000000:
-        frozen_bad = f"tally hung mid-frame (f{frame})"
-        break
     if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
         frame += 1
-        tally_frames += 1
+        held_frames += 1
         if mem.ram[LEVEL] != 0:
             done = True            # done frame fully completed at this boundary
             break
-        if mem.tia[AUDV0] > 0 or mem.ram[BOMBSND] > 0:
-            coin_seen = True
         if mem.ram[BAR] != 60:
             frozen_bad = f"BarLevel {mem.ram[BAR]} != 60 (timer not frozen)"
             break
+        if mem.ram[TICKC] != tick_at_arm:
+            frozen_bad = (f"TickCounter {mem.ram[TICKC]} != {tick_at_arm} "
+                          f"(pacing divider still running)")
+            break
         if mem.ram[ROOMX] != mem.ram[MINERX] or mem.ram[ROOMY] != mem.ram[MINERY]:
-            frozen_bad = (f"player moved during tally: "
+            frozen_bad = (f"player moved during hold: "
                           f"({mem.ram[ROOMX]},{mem.ram[ROOMY]}) != "
                           f"({mem.ram[MINERX]},{mem.ram[MINERY]})")
             break
-        if tally_frames > 600:
-            frozen_bad = f"tally never finished (f{frame})"
+        if score_total() != bonus:
+            frozen_bad = f"score {score_total()} != {bonus} during hold"
+            break
+        if mem.tia[AUDV0] > 0 or mem.ram[BOMBSND] > 0:
+            frozen_bad = (f"coin blip during hold (AUDV0={mem.tia[AUDV0]}, "
+                          f"BombSnd={mem.ram[BOMBSND]})")
+            break
+        if held_frames > 200:
+            frozen_bad = f"hold never finished (f{frame})"
             break
 assert frozen_bad is None, frozen_bad
-assert coin_seen, "no coin blip (AUDV0/BombSnd never nonzero during tally)"
+assert 30 <= held_frames <= 45, (
+    f"hold lasted {held_frames} frames, expected TALLY_HOLD 36 "
+    f"(about 0.6 s of frozen scene)")
 
 # ---- completion state ----
 # done path runs the old pickup tail: level++ / jsr LoadLevel, whose tail
@@ -282,7 +293,7 @@ assert mem.ram[TICKC] in (59, 60), f"TickCounter={mem.ram[TICKC]} expected 60/59
 assert score_total() == expected_score, (
     f"score {score_total()} expected {expected_score} "
     f"({expected_ticks} ticks x 50)")
-print(f"done at f{frame}: tally_frames={tally_frames} score={score_total()} "
+print(f"done at f{frame}: held {held_frames} frames score={score_total()} "
       f"DropTarget=${mem.ram[DROPT]:02X} (drop-in fall)")
 
 # drop-in: next level's spawn fall must land, then normal play resumes
@@ -322,4 +333,51 @@ assert min_sp_all >= 0xF7, (
     f"whole-run min SP ${min_sp_all:02X} < $F7 (stack boundary crossed)")
 assert min_sp_game >= 0xF8, (
     f"gameplay min SP ${min_sp_game:02X} < $F8 (tally path too deep)")
+# ---- TallyAward unit cases: exact 50*N bonus in one BCD add ----
+# (The scenario above covers the even, zero-based case; these pin the odd
+# half ($50 to ScoreTe), the hundreds/thousands carry and the $9999 cap.)
+_BL2 = {}
+for _l in open(SRC / "bank2.lst", errors="replace"):
+    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+"
+                  r"([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$",
+                  _l)
+    if _m:
+        _BL2.setdefault(_m.group(2), int(_m.group(1), 16))
+AWARD = _BL2["TallyAward"]
+
+
+def award_case(ticks, th, hu, te, want):
+    m = Mem()
+    m.banks_ = BANKS
+    m.bank = 2                       # TallyAward lives in bank2
+    m.ram[TALLY] = ticks
+    m.ram[SC_TH], m.ram[SC_HU], m.ram[SC_TE] = th, hu, te
+    p = MPU(memory=m)
+    p.sp = 0xFD
+    m[0x1FF] = 0x00                  # RTS: pull $00FF -> +1 = $0100 sentinel
+    m[0x1FE] = 0xFF
+    p.pc = AWARD
+    for _ in range(4000):
+        p.step()
+        if p.pc == 0x0100:
+            break
+    else:
+        sys.exit(f"TallyAward hung for ticks={ticks}")
+    got = (m.ram[SC_TH] * 1000 + m.ram[SC_HU] * 100
+           + (m.ram[SC_TE] >> 4) * 10 + (m.ram[SC_TE] & 15))
+    assert got == want, (f"TallyAward({ticks}) on {th}{hu}{te:02X}: "
+                         f"got {got}, want {want}")
+    return got
+
+
+for _ticks, _th, _hu, _te, _want in (
+        (38, 0, 0, 0x00, 1900),      # even: 19 hundreds, carry into Th
+        (1, 0, 0, 0x00, 50),         # odd single tick
+        (3, 0, 0, 0x95, 245),        # odd + $50 tens carry (hundreds bumps)
+        (51, 0, 0, 0x00, 2550),      # max ticks: 25 hundreds -> Th=2
+        (38, 9, 9, 0x80, 9999),      # saturation at $9999
+):
+    award_case(_ticks, _th, _hu, _te, _want)
+print("TallyAward: 5/5 BCD cases exact")
+
 print("PASS test_tally")

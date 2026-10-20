@@ -1878,10 +1878,12 @@ CheckMinerPickup:
     adc #PLAYER_SPRITE_H - 1
     cmp #PLAYER_SPRITE_H + PLAYER_HEIGHT - 1
     bcs .CMPDone                ; no Y overlap
-    ; Pickup! Arm the level-bonus tally (frozen count-up, then advance).
-    ; TallyArm (bank2, via TallyTramp) snapshots time/bombs/lives into
-    ; TallyTicks and sets DropTarget=$FE; each frame's dispatch then runs
-    ; TallyWork, whose done path does the old tail (level++/LoadLevel/bar).
+    ; Pickup! Award the level bonus at once and freeze the scene for a short
+    ; hold (user decision 2026-10-19: no count-up, no coin). TallyArm (bank2,
+    ; via TallyTramp) snapshots time/bombs/lives into TallyTicks, adds
+    ; 50*TallyTicks to the score in one BCD step and sets DropTarget=$FE;
+    ; each frame's dispatch then runs TallyWork, whose done path does the old
+    ; tail (level++/LoadLevel/bar).
     jsr TallyTramp
 .CMPDone:
     rts
@@ -3403,25 +3405,20 @@ LaserHitTest:
 ; ------------------------------------------------------------------------------
 
 ; ------------------------------------------------------------------------------
-; TallyWork — level-bonus count-up (user spec 2026-10-02): reaching the miner
-; freezes the frame (dispatch bypasses input/physics/enemies via DropTarget
-; $FE), bank2 TallyEntry adds +50 every 4 frames and writes the coin tone
-; (every 200 pts); when TallyTicks hits 0 the done path advances the level
-; exactly like the old CheckMinerPickup tail, then rejoins OverscanAudio.
-;   Event bits in A (through ReturnPad sta/rts): b0 = add 50, b2 = done.
-;   Tail mirrors TitleWork: UpdateBombSound holds the coin (BombSnd>0), jet
-;   muted, own INTIM wait -> StartFrame: timer block skipped = frozen scene.
+; TallyWork — level-bonus hold (user decision 2026-10-19: award at once, no
+; count-up / no coin): reaching the miner freezes the frame (dispatch skips
+; input/physics/enemies via DropTarget $FE); bank2 TallyEntry awards the WHOLE
+; bonus (50 x TallyTicks) on the arm frame in one BCD add, then holds the
+; frozen scene (miner + final score) for 36 frames (~0.6 s). When TallyTicks
+; hits 0 the done path advances the level exactly like the old
+; CheckMinerPickup tail, then rejoins OverscanAudio.
+;   Event A (through ReturnPad sta/rts): b2 = done, 0 = still holding.
+;   Live tail mirrors TitleWork: UpdateBombSound drains any leftover event,
+;   jet muted, own INTIM wait -> StartFrame: timer block skipped = frozen.
 ; Lives in the $FE8C LHT..moth fill (bank0 has no pre-pad headroom).
 ; ------------------------------------------------------------------------------
 TallyWork:
     jsr TallyTramp              ; A = event (bank2 TallyEntry step)
-    tay
-    and #1
-    beq .TNoScore
-    lda #$50                    ; BCD +50 per tick (pack is $50 exactly)
-    jsr CallPad_AddScore
-.TNoScore:
-    tya
     and #4
     beq .TLive
     inc Level                   ; --- done: advance (old CheckMinerPickup tail)
