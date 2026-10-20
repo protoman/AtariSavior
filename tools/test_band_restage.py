@@ -52,7 +52,7 @@ if missing0:
 
 levels = []
 for n in (1, 2, 3):
-    names = {f"LEVEL{n}_RoomDataTable", f"LEVEL{n}_RoomEnemies",
+    names = {f"LEVEL{n}_RoomShapes", f"LEVEL{n}_RoomCounts",
              f"LEVEL{n}_EnemyDataTable"}
     got = parse_labels(SRC / "bank2.lst", names)
     missing = names - got.keys()
@@ -63,8 +63,9 @@ for n in (1, 2, 3):
 
 def enter_room(mem: Mem, table: int, room_count: int, room: int) -> None:
     """Stage what LoadLevel stages (C4): the level block base + its room count.
-    The RoomPositions / RoomEnemies / enemy-record bases are the block's
-    +2n / +3n / +4n offsets (C1 2026-10-20), derived by the readers."""
+    The RoomPositions / RoomCounts / enemy-record bases are the block's
+    +n / +2n / +3n offsets (C2 2026-10-20: 3 B shape-index room records),
+    derived by the readers."""
     r = mem.ram
     r[L0["LevelPFDataLo"] - 0x80] = table & 0xFF
     r[L0["LevelPFDataHi"] - 0x80] = table >> 8
@@ -86,10 +87,14 @@ def enter_room(mem: Mem, table: int, room_count: int, room: int) -> None:
 
 def main() -> int:
     checks = 0
+    # C2: model block addresses (the shared M<id> blocks) — an async room must
+    # NOT land on one of these, whatever its shape index says.
+    model_blocks = parse_labels(
+        SRC / "bank2.lst", {f"M{mid}RoomRects" for mid in range(16)})
     for n, syms in levels:
         data = json.loads((ROOMS / f"level_{n:03d}.json").read_text())
         level = data.get("level", data)
-        table = syms[f"LEVEL{n}_RoomDataTable"]
+        table = syms[f"LEVEL{n}_RoomShapes"]
         enemy_data = syms[f"LEVEL{n}_EnemyDataTable"]
         rooms = level["rooms"]
         counts = [min(len(r.get("enemies") or []) + len(r.get("lamps") or []), 3)
@@ -123,6 +128,26 @@ def main() -> int:
             # --- C3: TilePF0 derived from the rect list (rects + 2 + 2*n) ---
             rects = (mem.ram[L0["RoomRectsLo"] - 0x80]
                      | (mem.ram[L0["RoomRectsHi"] - 0x80] << 8))
+            # --- C2 (2026-10-20): the shape table routed this room's block ---
+            # The block word is gone, so the only thing selecting the block is
+            # LEVEL_ShapeTable[shape index]: an async room must land on its OWN
+            # per-room block (never the shared model block), a plain room on
+            # the shared model block.
+            model = room.get("model_id")
+            label = f"M{int(model)}RoomRects" if model is not None else None
+            if label in model_blocks:
+                async_room = bool(room.get("asym_patches")
+                                  or room.get("feature_cells"))
+                if async_room:
+                    assert rects != model_blocks[label], (
+                        f"level {n} room {i}: async room loaded the SHARED "
+                        f"model block {label} (${rects:04X}) — the shape "
+                        "index/table routed it wrong")
+                else:
+                    assert rects == model_blocks[label], (
+                        f"level {n} room {i}: symmetric room loaded "
+                        f"${rects:04X}, want the model block {label} "
+                        f"${model_blocks[label]:04X} (shape index/table)")
             # C2 (2026-10-20): the blocks + their walker live in bank2 now.
             blocks = _CM.BANK2
             nrect = blocks[rects - 0xF000]
@@ -134,8 +159,8 @@ def main() -> int:
                 f"level {n} room {i}: PF cache {got_pf.hex()} != the block's "
                 f"PF triple at ${pf0:04X} {want_pf.hex()} (TilePF0 derivation)")
             checks += 1
-    print(f"test_band_restage: OK ({checks} rooms, RoomBandColor + packed "
-          f"enemy record + derived TilePF0 "
+    print(f"test_band_restage: OK ({checks} rooms, RoomBandColor + derived "
+          f"enemy record + shape-table block routing + derived TilePF0 "
           f"per room)")
     return 0
 

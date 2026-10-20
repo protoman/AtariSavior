@@ -140,7 +140,7 @@ def main() -> None:
     # --- LEVEL_COUNT hand-copy stays in sync with generated data -----------
     gen = (ROOT / "src" / "generated" / "levels.asm").read_text(
         encoding="utf-8")
-    n_levels = len(re.findall(r"^\s*\.word\s+LEVEL\d+_RoomDataTable",
+    n_levels = len(re.findall(r"^\s*\.word\s+LEVEL\d+_RoomShapes",
                               gen, re.M))
     m = re.search(r"^LEVEL_COUNT\s*=\s*(\d+)", KERNEL, re.M)
     assert m and int(m.group(1)) == n_levels, \
@@ -155,26 +155,26 @@ def main() -> None:
         f"LEVEL_DATA_ADDR ${m2 and m2.group(1)} != " \
         f"bank2 LevelDataTable ${m.group(1)}"
 
-    # --- C1/C2/C3/C4 (2026-10-20) + the 2026-10-20 micro-pack -------------
-    # The readers hardcode the block layout: RoomDataTable (2 B/room),
-    # RoomPositions (1 B/room, LEVEL_FORMAT 2), RoomEnemies (1 B/room),
-    # EnemyDataTable (4 B/record). The per-level entry is 4 scalars + base word
-    # + room count, and the positions/RoomEnemies/enemy-record bases are the
-    # block's +2n / +3n / +4n offsets, so the emission order IS the contract.
+    # --- C2 (2026-10-20): 3 B shape-index room records ---------------------
+    # The readers hardcode the block layout: RoomShapes / RoomPositions /
+    # RoomCounts (1 B/room each) then EnemyDataTable (4 B/record). The
+    # per-level entry is 4 scalars + base word + room count, and the position /
+    # count / enemy-record bases are the block's +n / +2n / +3n offsets, so the
+    # emission order IS the contract. The block address is no longer stored per
+    # room: it is LEVEL_ShapeTable[shape index].
     index = (ROOT / "src" / "generated" / "levels_index.asm").read_text(
         encoding="utf-8")
     assert "LEVEL_DATA_STRIDE = 7" in index, (
         "level index stride is not the 7-byte layout (kernel LoadLevel "
         "computes Level*7; start_room and miner_y are kernel constants)")
-    assert "  .word LEVEL" in index and "  .byte " in index
     entries = re.findall(r"^\s*\.byte (LEVEL(\d+)_MINER_ROOM), "
                          r"LEVEL\2_MINER_X, LEVEL\2_WALL_COLOR, "
                          r"LEVEL\2_WALL_COLOR2\n"
-                         r"\s*\.word (LEVEL\2_RoomDataTable)\n"
+                         r"\s*\.word (LEVEL\2_RoomShapes)\n"
                          r"\s*\.byte (\d+) ;", index, re.M)
     assert len(entries) == n_levels, (
         f"level index has {len(entries)} 7-byte entries, want {n_levels} "
-        "(miner room/x + 2 wall colors + base word + room count)")
+        "(miner room/x + 2 wall colors + shape column word + room count)")
     assert "LEVEL1_START_ROOM," not in index and "MINER_Y," not in index, (
         "start_room / miner_y must not be emitted into the entry (kernel "
         "constants 0 / 84; convert_level rejects other values)")
@@ -185,35 +185,62 @@ def main() -> None:
     assert 'include "generated/levels_equ.asm"' in BANK2, (
         "bank2.asm must include generated/levels_equ.asm (BAND_COLOR) BEFORE "
         "EnterRoomB2 uses it")
-    # LEVEL_FORMAT 2 must be declared by the generator and by the consumers
+    # LEVEL_FORMAT 3 must be declared by the generator and by the consumers
     m = re.search(r"^LEVEL_FORMAT = \$([0-9a-f]{2})", index, re.M)
-    assert m and int(m.group(1), 16) == 2, (
-        "generated level index must declare LEVEL_FORMAT = $02 (C1 grid "
-        "positions)")
+    assert m and int(m.group(1), 16) == 3, (
+        "generated level index must declare LEVEL_FORMAT = $03 (C2 "
+        "shape-index room records)")
     for name, body in (("kernel.asm", KERNEL), ("bank1.asm", BANK1)):
         hm = re.search(r"^LEVEL_FORMAT\s*=\s*\$([0-9a-f]{2})", body, re.M)
-        assert hm and int(hm.group(1), 16) == 2, (
-            f"{name}: LEVEL_FORMAT hand copy must be $02 (C1)")
+        assert hm and int(hm.group(1), 16) == 3, (
+            f"{name}: LEVEL_FORMAT hand copy must be $03 (C2)")
+    # --- shape registry: table <-> EQUs <-> 6-bit index --------------------
+    shape_count = int(re.search(r"^LEVEL_SHAPE_COUNT = (\d+)$", index, re.M)
+                      .group(1))
+    assert shape_count <= 64, (
+        f"LEVEL_SHAPE_COUNT {shape_count} > 64 — the record shape index "
+        "is b5-0")
+    table = re.search(r"^LEVEL_ShapeTable:\n((?:  \.word \w+RoomRects\n)+)",
+                      index, re.M)
+    assert table, "levels_index.asm must emit LEVEL_ShapeTable (C2)"
+    assert table.group(1).count("  .word ") == shape_count, (
+        "LEVEL_ShapeTable entry count != LEVEL_SHAPE_COUNT")
+    equ_map = {name: int(value) for name, value in re.findall(
+        r"^SHAPE_(\w+) = (\d+)$", index, re.M)}
+    assert len(set(equ_map.values())) == shape_count, (
+        "SHAPE_ EQUs must cover every table entry exactly once")
     for _ml, n, _rd, rooms in entries:
         rooms = int(rooms)
         text = (ROOT / "src" / "generated" / f"level_{int(n):03d}_rooms.asm"
                 ).read_text(encoding="utf-8")
+        assert "RoomDataTable" not in text and "RoomEnemies" not in text, (
+            f"LEVEL{n}: stale per-room block word / enemy-meta label — C2 "
+            "stores a shape index instead")
         pos = {k: text.index(f"{k}:") for k in (
-            f"LEVEL{n}_RoomDataTable", f"LEVEL{n}_RoomPositions",
-            f"LEVEL{n}_RoomEnemies", f"LEVEL{n}_EnemyDataTable")}
-        assert (pos[f"LEVEL{n}_RoomDataTable"] < pos[f"LEVEL{n}_RoomPositions"]
-                < pos[f"LEVEL{n}_RoomEnemies"]
+            f"LEVEL{n}_RoomShapes", f"LEVEL{n}_RoomPositions",
+            f"LEVEL{n}_RoomCounts", f"LEVEL{n}_EnemyDataTable")}
+        assert (pos[f"LEVEL{n}_RoomShapes"] < pos[f"LEVEL{n}_RoomPositions"]
+                < pos[f"LEVEL{n}_RoomCounts"]
                 < pos[f"LEVEL{n}_EnemyDataTable"]), (
-            f"LEVEL{n}: block order must be RoomData/Positions/RoomEnemies/"
-            f"EnemyData — the readers use +2n/+3n/+4n offsets")
-        chunk = text[pos[f"LEVEL{n}_RoomDataTable"]:pos[f"LEVEL{n}_EnemyDataTable"]]
-        assert chunk.count("  .word ") == rooms, (
-            f"LEVEL{n}: RoomDataTable must be ONE word per room (C3)")
-        # RoomPositions: ONE byte/room (C1); RoomEnemies: ONE byte/room
-        assert chunk.count("  .byte ") == 2 * rooms, (
-            f"LEVEL{n}: one RoomPositions line (1 B) + one RoomEnemies line "
-            f"(1 B) per room — got {chunk.count('  .byte ')} for "
-            f"{rooms} rooms")
+            f"LEVEL{n}: block order must be Shapes/Positions/Counts/EnemyData "
+            f"— the readers use +n/+2n/+3n offsets")
+        chunk = text[pos[f"LEVEL{n}_RoomShapes"]:pos[f"LEVEL{n}_EnemyDataTable"]]
+        assert chunk.count("  .byte ") == 3 * rooms, (
+            f"LEVEL{n}: 1 B shapes + 1 B positions + 1 B counts per room — got "
+            f"{chunk.count('  .byte ')} lines for {rooms} rooms")
+        shapes = re.findall(
+            r"^  \.byte (SHAPE_\w+)(?: \| \$([0-9a-f]{2}))? ; room (\d+) \(",
+            text, re.M)
+        assert len(shapes) == rooms, (
+            f"LEVEL{n}: RoomShapes must hold one byte per room")
+        for name, band, room in shapes:
+            assert name[6:] in equ_map, (
+                f"LEVEL{n} room {room}: {name} has no SHAPE_ EQU")
+            assert equ_map[name[6:]] < shape_count, (
+                f"LEVEL{n} room {room}: {name} index outside the table")
+            assert not band or int(band, 16) == 0x40, (
+                f"LEVEL{n} room {room}: only b6 (band) may be set in the "
+                "shape byte; b7 is the reserved owns-extras flag")
         # C1: the position column is the exit source of truth — both nibbles
         # in 0..14 (15 = off-grid sentinel) and every position unique
         positions = re.findall(
@@ -234,28 +261,24 @@ def main() -> None:
         assert rooms <= 225, (
             f"LEVEL{n}: {rooms} rooms > the 15x15 grid-position space (225) "
             "— C1 lifts the old 15-room cap to 225 cells, not unbounded")
-        enemies = text[pos[f"LEVEL{n}_RoomEnemies"]:
-                       pos[f"LEVEL{n}_EnemyDataTable"]]
-        goals = re.findall(r"^  \.byte \$([0-9a-f]{2}) ; room (\d+)", enemies, re.M)
-        assert len(goals) == rooms, f"LEVEL{n}: RoomEnemies record count"
-        prev = 0
-        for hexv, room in goals:
+        counts = re.findall(
+            r"^  \.byte \$([0-9a-f]{2}) ; room (\d+): (\d) record", text, re.M)
+        assert len(counts) == rooms, f"LEVEL{n}: RoomCounts record count"
+        total = 0
+        for hexv, room, count in counts:
             packed = int(hexv, 16)
-            count, first = packed >> 6, (packed >> 1) & 0x1F
-            assert count <= 3, (
-                f"LEVEL{n} room {room}: count {count} > 3 (b7-6)")
-            assert first == prev, (
-                f"LEVEL{n} room {room}: packed first index {first} != {prev} "
-                f"(records must stay contiguous in room order)")
-            prev += count
+            assert int(count) == packed >> 6, (
+                f"LEVEL{n} room {room}: count comment {count} != b7-6")
+            assert packed >> 6 <= 3, (
+                f"LEVEL{n} room {room}: count {packed >> 6} > 3 (b7-6)")
+            assert not (packed & 0x3F), (
+                f"LEVEL{n} room {room}: extras index ${packed & 0x3F:02x} != 0 "
+                "— the C5 extras stream does not exist in format 3")
+            total += packed >> 6
         records = text[pos[f"LEVEL{n}_EnemyDataTable"]:].count("  .byte ")
-        assert records == prev, (
-            f"LEVEL{n}: EnemyDataTable has {records} records but the packed "
-            f"indices account for {prev} (4 B/record)")
-        # the bottom-band FLAG is b0 only; the color is the global EQU
-        for hexv, _room in goals:
-            if int(hexv, 16) & 0x01:
-                assert int(hexv, 16) >> 6 <= 3
+        assert records == total, (
+            f"LEVEL{n}: EnemyDataTable has {records} records but the counts "
+            f"account for {total} (4 B/record)")
 
     print("test_level_bank: all asserts passed")
     return 0

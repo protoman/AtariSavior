@@ -6,15 +6,19 @@ LEVEL3_MINER_ROOM = 133
 LEVEL3_MINER_X = 23
 LEVEL3_MINER_Y = 84
 
-; Room data: ONE word per room (the block's RoomRects label), indexed by RoomNo. TilePF0 is derived at room load as
-; rects + 2 + 2*nrect (C3 2026-10-20: it always sits 2 bytes past the rect list in the same block, so the second word was redundant).
-LEVEL3_RoomDataTable:
-  .word L1R1RoomRects ; room 0 (async) [shared with L1R1]
-  .word M4RoomRects ; room 1 (model 4)
-  .word M5RoomRects ; room 2 (model 5)
-  .word M6RoomRects ; room 3 (model 6)
-  .word M7RoomRects ; room 4 (model 7)
-  .word M1RoomRects ; room 5 (model 1)
+; Room shape index (C2 2026-10-20): ONE byte per room =
+;   b5-0 SHAPE INDEX into LEVEL_ShapeTable (levels_index.asm)
+;   b6   bottom-band flag
+;   b7   owns-extras (reserved 0: the async stream is C5)
+; The block address is the table entry, so the old 2-byte RoomRects
+; word is gone. TilePF0 is still derived as rects + 2 + 2*nrect.
+LEVEL3_RoomShapes:
+  .byte SHAPE_L3R1 ; room 0 (async)
+  .byte SHAPE_M4 ; room 1 (model 4)
+  .byte SHAPE_M5 ; room 2 (model 5)
+  .byte SHAPE_M6 ; room 3 (model 6)
+  .byte SHAPE_M7 ; room 4 (model 7)
+  .byte SHAPE_M1 ; room 5 (model 1)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
 ; (x<<4 | y) normalised to the level origin. Exits are DERIVED at
@@ -29,15 +33,15 @@ LEVEL3_RoomPositions:
   .byte $04 ; room 4 (0, 4)
   .byte $05 ; room 5 (0, 5)
 
-; Per-room enemy records: ONE byte (count<<6 | first record index<<1 | bottom-band flag). The band COLOR is the global BAND_COLOR (one water
-; color per game — the converter rejects a second one).
-LEVEL3_RoomEnemies:
-  .byte $00 ; room 0: 0 record(s) from 0
-  .byte $00 ; room 1: 0 record(s) from 0
-  .byte $80 ; room 2: 2 record(s) from 0
-  .byte $84 ; room 3: 2 record(s) from 2
-  .byte $88 ; room 4: 2 record(s) from 4
-  .byte $0c ; room 5: 0 record(s) from 6
+; Per-room enemy count (C2 2026-10-20): ONE byte = count<<6 |
+; extras index (0 = none; the record index is derived at room load).
+LEVEL3_RoomCounts:
+  .byte $00 ; room 0: 0 record(s)
+  .byte $00 ; room 1: 0 record(s)
+  .byte $80 ; room 2: 2 record(s)
+  .byte $80 ; room 3: 2 record(s)
+  .byte $80 ; room 4: 2 record(s)
+  .byte $00 ; room 5: 0 record(s)
 
 ; Enemy data: 6 enemy records across 6 rooms, 4 bytes each (type,x,y,dir).
 LEVEL3_EnemyDataTable:

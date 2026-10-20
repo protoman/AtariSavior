@@ -129,13 +129,14 @@ def convert(level_json: Path, tmp: Path) -> str:
 
 
 def parse_generated(text: str) -> tuple[list[int], int, int, int]:
-    words = len(re.findall(r"^  \.word ", text, re.M))
     pos = [int(h, 16) for h in re.findall(
         r"^  \.byte \$([0-9a-f]{2}) ; room \d+ \(\d+, \d+\)$", text, re.M)]
-    enemies = len(re.findall(
-        r"^  \.byte \$[0-9a-f]{2} ; room \d+: ", text, re.M))
+    shapes = len(re.findall(
+        r"^  \.byte SHAPE_\w+(?: \| \$[0-9a-f]{2})? ; room \d+ \(", text, re.M))
+    counts = len(re.findall(
+        r"^  \.byte \$[0-9a-f]{2} ; room \d+: \d record", text, re.M))
     records = len(re.findall(r"^  \.byte \d+, \d+, \d+, \d+$", text, re.M))
-    return pos, words, enemies, records
+    return pos, shapes, counts, records
 
 
 def expected(room: int) -> dict[int, int | None]:
@@ -154,11 +155,13 @@ def expected(room: int) -> dict[int, int | None]:
 
 
 # The level block base is staged in ZP. The handlers take LevelPFDataLo/Hi as
-# the base and add 2n to reach RoomPositions, so the column is laid out at
-# base + 2n (exactly where the converter puts it). $A3 + 40 = $CB keeps all
-# 20 bytes inside RAM and clear of every ZP var the handlers touch.
+# the base and add n to reach RoomPositions (C2 2026-10-20: the 3 B room record
+# is three 1 B columns, so the position column starts one block-of-n in, not
+# two), so the column is laid out at base + n (exactly where the converter puts
+# it). $A3 + 40 = $CB keeps all 20 bytes inside RAM and clear of every ZP var
+# the handlers touch.
 BASE = 0xA3
-POS_AT = BASE + 2 * len(ROOMS)
+POS_AT = BASE + len(ROOMS)
 
 
 def _zp(mem: Mem, name: str, value: int) -> None:
@@ -204,27 +207,29 @@ def main() -> int:
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    positions, words, enemies, records = parse_generated(text)
+    positions, shapes, counts, records = parse_generated(text)
 
     # --- converter: table shape + the 20-room cap ---------------------------
     n = len(ROOMS)
-    assert n == 20, "synthetic level must hold 20 rooms (the C1 target)"
+    assert n == 20, "synthetic level must hold 20 rooms"
     assert len(positions) == n, (
         f"RoomPositions: {len(positions)} bytes for {n} rooms")
-    assert words == n and enemies == n, (
-        f"RoomDataTable {words} words / RoomEnemies {enemies} bytes for {n} "
-        "rooms")
+    assert shapes == n and counts == n, (
+        f"RoomShapes {shapes} bytes / RoomCounts {counts} bytes for {n} rooms")
     assert len(set(positions)) == n, "grid positions must be unique"
     for i, (x, y) in enumerate(ROOMS):
         assert positions[i] == ((x << 4) | y), (
             f"room {i}: position ${positions[i]:02x} != ({x},{y})")
         assert (positions[i] >> 4) < 15 and (positions[i] & 0x0F) < 15, (
             f"room {i}: nibble 15 is the off-grid sentinel, never emitted")
-    # 2 B shape word + 1 B position + 1 B RoomEnemies = 4 B/room (was 5)
-    assert words * 2 + len(positions) + enemies == 4 * n, "4 B/room contract"
+    # C2 (2026-10-20): shape index + position + enemy count = 3 B/room, no
+    # per-room block word (was 4 B after C1).
+    assert shapes + len(positions) + counts == 3 * n, "3 B/room contract"
+    assert "RoomDataTable" not in text, (
+        "C2: the per-room block word must be gone (shape index instead)")
     print(f"test_grid_conn: converter OK — {n} rooms, "
-          f"{words * 2 + len(positions) + enemies} B of room tables "
-          f"(4 B/room, {n} > the retired 15-room cap), {records} enemy records")
+          f"{shapes + len(positions) + counts} B of room tables "
+          f"(3 B/room, {n} > the retired 15-room cap), {records} enemy records")
 
     # --- runtime: every (room, direction) through the real handlers ---------
     mem = Mem()

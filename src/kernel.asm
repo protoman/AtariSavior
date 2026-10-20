@@ -142,11 +142,11 @@ Hover           byte            ; ($9C) respawn hover flag (bugs.md #1): 1 while
                                 ;       gravity is suppressed after a respawn
 MelPtr          byte            ; ($9D) intro music: melody stream index (bank1)
 MelTimer        byte            ; ($9E) intro music: melody frames left
-LevelPFDataLo   byte            ; pointer to level's RoomDataTable (low)
-LevelPFDataHi   byte            ; pointer to level's RoomDataTable (high)
-LevelRoomN      byte            ; rooms in this level (C4 2026-10-20): the
-                                ;   Connections / RoomEnemies / enemy-record
-                                ;   bases are the block's +2n / +3n / +4n
+LevelPFDataLo   byte            ; pointer to the level's RoomShapes column (low)
+LevelPFDataHi   byte            ; pointer to the level's RoomShapes column (high)
+LevelRoomN      byte            ; rooms in this level (C4 2026-10-20, C2 3 B
+                                ;   record): the RoomPositions / RoomCounts /
+                                ;   enemy-record bases are its +n / +2n / +3n
 LevelConnSpare  byte            ; C1 2026-10-20: exit-scan target byte in
                                 ;   bank2 (was LevelConnHi — its pointer is
                                 ;   derived; the byte stays allocated so the
@@ -167,8 +167,8 @@ TickCounter     byte            ; frame counter (60 frames = 1 bar step = 1s)
 BarLevel        byte            ; timer bar level (120=full, 0=empty)
 
 ; Enemy ZP variables
-LevelEnemySpare byte            ; free (was LevelEnemyLo — the RoomEnemies base
-                                ;   is now base+3n, derived in EnterRoomB2; the
+LevelEnemySpare byte            ; free (was LevelEnemyLo — the RoomCounts base
+                                ;   is now base+2n, derived in EnterRoomB2; the
                                 ;   bytes stay allocated so ZP does not shift)
 LevelEnemySpare2 byte           ; free (was LevelEnemyHi)
 EnemyDataLo     byte            ; pointer to current room enemy data (low)
@@ -573,8 +573,8 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     jsr CallPad_BuildColupF    ; stripe+hot COLUPF bytes into ColupfBuf ($E7-$F2)
 
     ; --- Band color: RoomBandColor ($BC) is staged ONCE per room by
-    ; EnterRoomB2 (byte +1 of the 2-byte RoomEnemies record since C2, which
-    ; replaced the 4-byte per-room record; the 2026-10-04 up-exit fix). The
+    ; EnterRoomB2 (C2 2026-10-20: b6 of the room's RoomShapes byte; the
+    ; 2026-10-04 up-exit fix). The
     ; old per-frame VBL fold that re-read the same ROM byte is
     ; REDUNDANT since then and is deleted (2026-10-19): it saved nothing the
     ; kernel needs, cost ~30c of VBL time, and it was a level-data read in
@@ -1723,8 +1723,8 @@ DEYDelta:                      ; A = delta, then add ROM spawn y
 ;   level-start placement, `jmp DropArm`) stays in bank0 so the call chain and
 ;   the measured stack depth are UNCHANGED (0 extra jsr levels, 0 pushes).
 ; Entry layout: stride 7 = miner_room (b7 = faces right), miner_x, wall color,
-; wall color 2, block base word (RoomDataTable), room count n (the Connections
-; /RoomEnemies/enemy-record bases are that block's +2n/+3n/+4n offsets).
+; wall color 2, block base word (RoomShapes), room count n (the RoomPositions
+; /RoomCounts/enemy-record bases are that block's +n/+2n/+3n offsets, C2).
 ; Guards: verify_build.check_callpads pins the entry pad bytes + operand,
 ; check_loadlevel_tramp pins the return half; tools/test_respawn_hover.py,
 ; test_room_dark.py and test_level_bank.py read the bank2 body.
@@ -2341,18 +2341,20 @@ ENEMY_RAFT     = 7             ; type-7 enemy record = the moving, rideable raft
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 4             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $F700        ; frozen address of bank2's LevelDataTable
+LEVEL_DATA_ADDR = $F718        ; frozen address of bank2's LevelDataTable
                                 ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
                                 ;  −$FA86 as the ≤2-object room migration
                                 ;  shrank the tables; check_frozen_addrs
                                 ;  enforces)
                                 ; (test asserts bank2.lst label == this)
-LEVEL_FORMAT   = $02           ; C1 2026-10-20: room-record format. 2 = grid
-                                ; position byte (x<<4|y) + derived exits, 1 B
-                                ; per room (was 2 B nibble connections). Hand
-                                ; copy of the generated EQU (bank1 carries the
-                                ; twin — check_equ_sync; verify_build compares
-                                ; both to generated/levels_index.asm)
+LEVEL_FORMAT   = $03           ; C2 2026-10-20: room-record format. 3 = shape
+                                ; index (b5-0 | band b6 | owns-extras b7),
+                                ; position byte, enemy count <<6 | extras
+                                ; index (3 B/room, block word dropped; the
+                                ; first enemy record is derived). Hand copy of
+                                ; the generated EQU (bank1 carries the twin —
+                                ; check_equ_sync; verify_build compares both
+                                ; to generated/levels_index.asm)
 ; ==============================================================================
 ; YToRowTable — convert scanline to 48-line band row (0-2), idx A>>2
 ; ==============================================================================

@@ -121,14 +121,14 @@ while frame < 520:
     if mem.bank == 0 and mpu.pc == ENTERROOM:
         # A = target room index (all callers: exits pass the room index the
         # position scan found, LoadLevel passes LevelStartRoom). ZP holds the
-        # level block base + the room count; the room's band FLAG is b0 of its
-        # ONE-byte RoomEnemies record (C1 2026-10-20: base + 3n + room).
+        # level block base + the room count; the room's band FLAG is b6 of its
+        # ONE-byte RoomShapes record (C2 2026-10-20: base + room).
         room = mpu.a
         n = mem.ram[I_ROOMN]
         base = mem.ram[I_LPF] | (mem.ram[I_LPF + 1] << 8)
-        rec = base + 3 * n + room
+        rec = base + room
         if 0xF000 <= rec <= 0xFFFF:
-            BANKS[2][rec - 0xF000] |= 0x01     # bottom-band flag
+            BANKS[2][rec - 0xF000] |= 0x40     # bottom-band flag
             pokes += 1
             print(f"band flag @ ${rec:04X} forced at f{frame} "
                   f"(room {room}, n={n})")

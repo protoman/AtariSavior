@@ -1218,3 +1218,108 @@ so the *next* cap a 20-level game hits is ROM size (plan §2), not connections.
 Gates: `./build.sh` green (verify_build OK, `sim_bomb_fuse` OK,
 `sim_frame_budget` OK), banks re-frozen, 43/43 `tools/test_*.py` +
 `src/tools/test_title_demo.py` green.
+
+---
+
+## C2 (2026-10-20) — 3 B shape-index room records, `LEVEL_FORMAT = 3`
+
+The per-room block word is gone. A room is now **three 1 B columns** (a 3 B
+record spread over three arrays — SoA, not AoS) and the block address is a
+6-bit **shape index** into one global word table:
+
+```
+base + 0    RoomShapes     1 B/room   idx b5-0 | band b6 | owns-extras b7
+base + n    RoomPositions  1 B/room   (x<<4|y — C1, unchanged)
+base + 2n   RoomCounts     1 B/room   count<<6 | extras index (b5-0)
+base + 3n   EnemyDataTable 4 B/record (contiguous in room order)
+```
+
+`LEVEL_ShapeTable` (in `levels_index.asm`) holds one `.word <block>RoomRects`
+per distinct block; `SHAPE_<label> = n` EQUs let the room tables stay symbolic,
+so `dedupe_room_blocks()` keeps working without rewriting room lines (the
+duplicate's EQU resolves to the surviving block's ordinal).
+
+### Why SoA instead of the plan's literal `+0/+1/+2`
+
+An interleaved record would have made the **exit scan** step 3 bytes, which
+needs a scan limit (`3n+1`) — a new ZP byte, a divide-by-3 on the hit path, and
+~30 B inside the pinned `$FC4F-$FCB7` window (9 B slack). Column layout keeps
+`ExitScanB2` byte-identical (`base + n`, `Y` = room, `cpy LevelRoomN`) and keeps
+the derived enemy index a stride-1 sum. Total record width is still exactly
+3 B/room, as specified.
+
+### Runtime (cold path only)
+
+* `EnterRoomB2`: shape byte → `LEVEL_ShapeTable` word → `RoomRectsLo/Hi`
+  (replaces the 2 B word read); band b6 staged to `RoomBandColor` **before**
+  the block reader (only writer, unchanged address); count byte → `EnemyCount`;
+  first record index = sum of the count bytes of rooms `0..room-1`
+  (`LevelConnSpare` is the accumulator — the exit scan has already returned),
+  records base = `base + 3n`, `+4*index`.
+* `ExitDirB2`: stages `base + n` (was `+2n`). One instruction fewer.
+* `B3RoomBlocks` / `StageBandTab` / `B3StageBand` / `PhaseBlink`: unchanged —
+  they read `RoomRectsLo/Hi`, `PF0Buf` and the staged `RoomMetaA/B`.
+* Caps removed: **31 enemy records/level** (the packed index field) and the
+  4 B room row. New cap: **64 distinct blocks** (6-bit shape index), which is
+  the C2 form of the plan's "≤63 shapes per level" — global here because the
+  model blocks are shared across levels.
+
+### Size
+
+| | before | after | delta |
+|---|---|---|---|
+| room rows (16 rooms) | 4 B/room = 64 B | **3 B/room = 48 B** | **−16 B (−1 B/room)** |
+| shape address table (12 blocks) | — | 24 B (2 B/block) | **+24 B** |
+| enemy records (9) | 36 B | 36 B | 0 |
+| level index | 28 B | 28 B | 0 |
+| **level data total** | **394 B** | **402 B** | **+8 B** |
+| bank2 code | 2077 | 2107 | +30 |
+| bank2 used / free | 2605 / 1491 | 2643 / 1453 | −38 B free |
+
+**Marginal room = 3 B + 2 B per NEW block + 4 B/enemy.** C2 does **not** shrink
+level data at this stage's density (16 rooms, **12 distinct blocks** — models 1-8
++ one surviving async block per shape class): the plan's −1 B/room holds only
+when rooms outnumber shapes 2:1, i.e. `R·1 B − S·2 B > 0` → `R > 2S`. Today
+`16 < 24`. At the plan's 210-room density (105 shapes, 2 rooms/shape) C2 is
+−210 B; at 400 rooms/200 shapes it is −400 B. The 8 B gap is the price of
+addressing blocks from 6 bits; the only zero-table alternative is a
+length-walk over the block stream, which would cap the whole game at 64 shapes
+**and** contradict the plan's own 105-shape target, so it was rejected.
+
+### C5 (async extras) NOT folded
+
+C2 is correct without the extras stream: an async room keeps its own block and
+the shape table routes to it (asserted per live async room in
+`test_band_restage`). Folding C5 now would be **wrong, not just early**: an
+async room's block contains its own **solid rect list** (patch cells change
+solidity, e.g. L1R1 has 3 rects with different bounds than model 0), and
+rebuilding rects at load needs C4's cell collision (`cell_collision_plan`
+5.1b/7.1) — the plan's "4-6 B extras rebuilt from the model + patches" is only
+true once the rect cache is gone. The record's b7 / extras-index bits are
+therefore **reserved 0** and hard-failed by guards if anything sets them.
+
+### Versioning + guards
+
+* `convert_level.LEVEL_FORMAT = 3` (C1 was 2); `kernel.asm` + `bank1.asm` hand
+  copies bumped (paired by `check_equ_sync`).
+* `verify_build.check_level_format` rewritten for format 3: format byte in all
+  three places; per level exactly 1 B of shapes + 1 B positions + 1 B counts
+  per room, in that order; every shape label has an EQU **inside**
+  `LEVEL_ShapeTable`; `LEVEL_SHAPE_COUNT == table words <= 64`; every table
+  entry referenced; no `RoomDataTable`/`RoomEnemies` label survives (stale
+  block word); count bytes must have a **zero extras index** and count ≤ 3;
+  shape bytes may only set b6 (b7 reserved); positions keep the nibble-15
+  off-grid sentinel rule.
+* `check_exit_handlers`: `ExitDirB2` must stage `base + n` (was `+2n`).
+* `test_level_bank`: new record shape, shape registry/table pair, counts sum ==
+  enemy records, extras-index rule.
+* `test_grid_conn`: 3 B/room contract; base+n staging for the exit handlers.
+* `test_band_restage`: symbol set → `LEVELn_RoomShapes`/`LEVELn_RoomCounts`;
+  derived enemy base checked per room; **new assertion** that an async room's
+  loaded block is not the shared model block.
+* `test_raft` / `test_water_band` / `test_water_respawn`: label rename; the
+  respawn poke now sets b6 of the shape byte (`base + room`).
+
+Gates: `./build.sh` green (verify_build OK, `sim_bomb_fuse` OK,
+`sim_frame_budget` OK — no kernel/VBL/overscan change), banks re-frozen,
+44/44 `tools/test_*.py` + `src/tools/test_title_demo.py` green.

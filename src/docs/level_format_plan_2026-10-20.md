@@ -374,7 +374,10 @@ Gate: `test_grid_conn` converts a 20-room level and drives the frozen handlers
 for every (room, direction); `test_band_restage` still drives real `EnterRoom`
 per room of the live stage.
 
-**C2 — 3 B room record (shape index + derived enemy base).**
+**C2 — 3 B room record (shape index + derived enemy base) — LANDED 2026-10-20**
+(see the C2 entry in `docs/compaction_findings_2026-10-19.md`; the record is
+three 1 B columns, `LEVEL_FORMAT = 3`; level data 394 → 402 B because the
+2 B/block address table is +24 B at today's 12-blocks/16-rooms density).
 Drop the 2 B absolute word → 1 B shape index into a fixed 3 B shape table;
 derive the first enemy record from the count sum (removes the 31-record cap).
 Files: `EnterRoomB2`, `B3RoomBlocks` (shape base), converter (`write_tables`,
@@ -462,12 +465,13 @@ Content limits that 20 levels surface (not ROM capacity, but must be decided):
 |---|---|---|---|---|---|
 | bank0 | 3027 | 370 | 681 | 3397 | 699 |
 | bank1 | 2490 | 434 | 978 | 2924 | 1172 |
-| bank2 | 2077 | 528 | 1490 | 2605 | 1491 |
+| bank2 | 2107 | 536 | 1452 | 2643 | 1453 |
 | bank3 | 5 | 5 | 4085 | 10 | 4086 |
-| **total** | **7599** | **1337** | **7234** | **8936** | **7448** |
+| **total** | **7629** | **1345** | **7196** | **8974** | **7410** |
 
-Level data **394 B** = index 28 + tables/blocks 200 + models 166 (C1: room
-tables **4 B/room**: shape word 2 + RoomPositions 1 + RoomEnemies 1).
+Level data **402 B** = index 52 + tables/blocks 184 + models 166 (C2: room
+tables **3 B/room** (shapes + positions + counts) and a 24 B shape address
+table for 12 distinct blocks; was 394 B at C1).
 bank2 free windows (emitted-byte occupancy): `$F453` 429, `$F790` 295, `$FDDE`
 184, `$F6A8` 88, `$FF98` 87, `$FE9C` 84, `$F0CE` 66, `$F411` 63, then 33/30/29/29/16.
 

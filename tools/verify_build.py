@@ -804,8 +804,10 @@ def check_loadlevel_tramp(src: Path) -> None:
 def check_exit_handlers(src: Path) -> None:
     """C1/C3 (2026-10-20): the four room-exit handlers live in bank2.
 
-    LEVEL_FORMAT 2: there is no connection table. A room owns ONE grid-position
-    byte at level base + 2n, and an exit steps that byte by a direction delta
+    LEVEL_FORMAT 2/3: there is no connection table. A room owns ONE
+    grid-position byte at level base + n (C2 2026-10-20: the room record is
+    three 1 B columns, so the position column still starts one block-of-n in),
+    and an exit steps that byte by a direction delta
     ($FF up / $01 down / $F0 left / $10 right) and SCANS the level's position
     column (unconditional, <= LevelRoomN iterations). Invariants that a
     "harmless" edit can silently break:
@@ -855,9 +857,10 @@ def check_exit_handlers(src: Path) -> None:
     b = body("ExitDirB2")
     if b is not None:
         adc_n = sum(1 for ln in b if ln == "adc LevelRoomN")
-        if adc_n != 2 or "sta FetchPtr" not in b:
-            err(f"ExitDirB2: FetchPtr must stage level base + 2n "
-                f"(RoomPositions) — found {adc_n} `adc LevelRoomN`")
+        if adc_n != 1 or "sta FetchPtr" not in b:
+            err(f"ExitDirB2: FetchPtr must stage level base + n "
+                f"(RoomPositions, C2 3 B columns) — found {adc_n} "
+                "`adc LevelRoomN`")
         if "adc ExitDeltaTab,X" not in b:
             err("ExitDirB2: neighbour position must be `adc ExitDeltaTab,X` "
                 "(nibble-wrap = off-grid, no guard code)")
@@ -928,27 +931,40 @@ def check_exit_handlers(src: Path) -> None:
 
 
 def check_level_format(src: Path) -> None:
-    """C1 (2026-10-20): LEVEL_FORMAT 2 = grid-position room records.
+    """C2 (2026-10-20): LEVEL_FORMAT 3 = 3 B shape-index room records.
 
     The generated level index is the converter's truth; kernel.asm and
     bank1.asm carry hand copies (bank1's is also paired by check_equ_sync).
-    A stale generated/ tree (format 1 = 2 B connection nibbles) would be
-    misread by bank2's +2n/+3n/+4n offsets, so it must fail the build.
+    A stale generated/ tree is exactly the failure this guard exists for:
+    format 2 rows carried a 2 B RoomRects word, so bank2's `base + n / +2n /
+    +3n` columns would read the wrong bytes and EnterRoom would jump through
+    a garbage block pointer. Layout per level (n = room count):
+
+        base +  0   RoomShapes     1 B  (idx b5-0 | band b6 | extras b7)
+        base +  n   RoomPositions  1 B  (x<<4|y)
+        base + 2n   RoomCounts     1 B  (count<<6 | extras index)
+        base + 3n   EnemyDataTable 4 B/record
+
+    The block address is `LEVEL_ShapeTable[shape index]` (a 2 B word table in
+    levels_index.asm), so the record no longer stores one. The extras index
+    is reserved 0 until the C5 async stream: a non-zero byte here means the
+    reader would need a stream that does not exist yet — hard-fail it.
     """
     idx = src / "generated" / "levels_index.asm"
     if not idx.exists():
         err("generated/levels_index.asm missing (level-format check)")
         return
-    m = re.search(r"^LEVEL_FORMAT = \$([0-9a-fA-F]{2})\b",
-                  idx.read_text(errors="replace"), re.M)
+    idx_text = idx.read_text(errors="replace")
+    m = re.search(r"^LEVEL_FORMAT = \$([0-9a-fA-F]{2})\b", idx_text, re.M)
     if not m:
         err("levels_index.asm does not declare LEVEL_FORMAT — rerun ./build.sh "
-            "(format 2 = C1 grid-position connections)")
+            "(format 3 = C2 shape-index room records)")
         return
     gen_fmt = int(m.group(1), 16)
-    if gen_fmt != 2:
+    if gen_fmt != 3:
         err(f"generated LEVEL_FORMAT = {gen_fmt}, the bank2 reader implements "
-            "2 (grid positions) — stale generated tree or half-done migration")
+            "3 (shape-index room records) — stale generated tree or half-done "
+            "migration")
     for name in ("kernel.asm", "bank1.asm"):
         p = src / name
         if not p.exists():
@@ -956,27 +972,84 @@ def check_level_format(src: Path) -> None:
         hm = re.search(r"^LEVEL_FORMAT\s*=\s*\$([0-9a-fA-F]{2})\b",
                        p.read_text(errors="replace"), re.M)
         if not hm:
-            err(f"{name}: LEVEL_FORMAT hand copy missing (C1)")
+            err(f"{name}: LEVEL_FORMAT hand copy missing (C2)")
         elif int(hm.group(1), 16) != gen_fmt:
             err(f"{name}: LEVEL_FORMAT ${hm.group(1)} != generated "
                 f"${gen_fmt:02X} — stale hand copy")
-    # per-level tables: 1 B/room positions + 1 B/room RoomEnemies, positions
-    # with both nibbles in 0..14 (15 is the off-grid sentinel)
+
+    # --- shape registry + address table -----------------------------------
+    shape_equ = {name: int(value) for name, value in re.findall(
+        r"^SHAPE_(\w+) = (\d+)$", idx_text, re.M)}
+    m = re.search(r"^LEVEL_SHAPE_COUNT = (\d+)$", idx_text, re.M)
+    if not m:
+        err("levels_index.asm must declare LEVEL_SHAPE_COUNT (C2)")
+        shape_count = 0
+    else:
+        shape_count = int(m.group(1))
+        if shape_count > 64:
+            err(f"LEVEL_SHAPE_COUNT = {shape_count} > 64 — the room record "
+                "shape index is 6 bits (b5-0)")
+    table = re.search(r"^LEVEL_ShapeTable:\n((?:  \.word \w+RoomRects\n)+)",
+                      idx_text, re.M)
+    if not table:
+        err("levels_index.asm must emit LEVEL_ShapeTable (C2 word table)")
+    else:
+        words = len(re.findall(r"^  \.word ", table.group(1), re.M))
+        if words != shape_count:
+            err(f"LEVEL_ShapeTable has {words} words but LEVEL_SHAPE_COUNT = "
+                f"{shape_count}")
+    used: set = set()
     for path in sorted((src / "generated").glob("level_*_rooms.asm")):
         text = path.read_text(errors="replace")
+        if "RoomDataTable" in text or "RoomEnemies" in text:
+            err(f"{path.name}: stale room-table label (RoomDataTable/"
+                "RoomEnemies) — LEVEL_FORMAT 3 has no per-room block word")
+        shapes = re.findall(
+            r"^  \.byte (SHAPE_\w+)(?: \| \$([0-9a-f]{2}))? ; room (\d+) \(",
+            text, re.M)
         pos = re.findall(r"^  \.byte \$([0-9a-f]{2}) ; room \d+ \(\d+, \d+\)$",
                          text, re.M)
-        enemies = re.findall(r"^  \.byte \$[0-9a-f]{2} ; room \d+: ", text, re.M)
-        if not pos or len(pos) != len(enemies):
-            err(f"{path.name}: {len(pos)} position bytes vs {len(enemies)} "
-                "RoomEnemies records — LEVEL_FORMAT 2 emits exactly 1 B of "
-                "each per room")
+        counts = re.findall(r"^  \.byte \$([0-9a-f]{2}) ; room \d+: "
+                            r"(\d) record", text, re.M)
+        if not shapes or not (len(shapes) == len(pos) == len(counts)):
+            err(f"{path.name}: {len(shapes)} shape bytes vs {len(pos)} "
+                f"positions vs {len(counts)} counts — LEVEL_FORMAT 3 emits "
+                "exactly 1 B of each per room")
             continue
+        if [int(i) for _n, _b, i in shapes] != list(range(len(shapes))):
+            err(f"{path.name}: room indices are not 0..n-1 in order")
+        for name, band, index in shapes:
+            shape = name[6:]
+            if shape not in shape_equ:
+                err(f"{path.name}: room {index} shape {name} has no "
+                    "`SHAPE_<label> = n` EQU in levels_index.asm")
+                continue
+            value = shape_equ[shape]
+            if value >= shape_count:
+                err(f"{path.name}: room {index} shape {name} = {value} is "
+                    f"outside LEVEL_ShapeTable (0..{shape_count - 1})")
+            used.add(value)
+            if band and int(band, 16) != 0x40:
+                err(f"{path.name}: room {index} sets unsupported shape-byte "
+                    f"bits ${band} (only b6 = band flag is defined; b7 is "
+                    "reserved for the C5 extras stream)")
         for hexv in pos:
             b = int(hexv, 16)
             if (b >> 4) == 0xF or (b & 0x0F) == 0xF:
                 err(f"{path.name}: position byte ${hexv} has a nibble of 15 — "
                     "reserved as the off-grid sentinel (POSITION_SPAN 15)")
+        for hexv, count in counts:
+            b = int(hexv, 16)
+            if b & 0x3F:
+                err(f"{path.name}: count byte ${hexv} has a non-zero extras "
+                    "index — the C5 extras stream does not exist in "
+                    "LEVEL_FORMAT 3 (bank2 would read garbage)")
+            if int(count) > 3:
+                err(f"{path.name}: room has {count} enemy records > 3 "
+                    "(MAX_ENEMIES)")
+    if shape_count and used != set(range(shape_count)):
+        err(f"LEVEL_ShapeTable entries {sorted(set(range(shape_count)) - used)} "
+            "are unreferenced — the shape stream and the table drifted")
 
 
 def check_tramp_targets(src: Path) -> None:

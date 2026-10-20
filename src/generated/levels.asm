@@ -5,7 +5,7 @@
     include "generated/level_003_rooms.asm"
     include "generated/level_004_rooms.asm"
 
-LEVEL_FORMAT = $02
+LEVEL_FORMAT = $03
 LEVEL_DATA_STRIDE = 7
 LEVEL_COUNT = 4
 
@@ -13,27 +13,59 @@ LEVEL_COUNT = 4
 ; colors, then the level's room-table base and its ROOM COUNT.
 ; start x/y (32/24), start_room (0) and miner_y (84) are kernel
 ; constants now — the converter rejects other values.
-; Inside a level block (n = ROOM COUNT, C1/C2/C3/C4 2026-10-20):
-;   base + 0   RoomDataTable    2 B/room (RoomRects ptr; TilePF0 =
-;                               rects + 2 + 2*nrect)
-;   base + 2n  RoomPositions    1 B/room (LEVEL_FORMAT 2: x<<4|y,
+; Inside a level block (n = ROOM COUNT, C2 2026-10-20):
+;   base + 0   RoomShapes     1 B/room (shape idx b5-0 | band b6 |
+;                               owns-extras b7; block = the table below)
+;   base + n   RoomPositions  1 B/room (LEVEL_FORMAT 2: x<<4|y,
 ;                               exits derived by scanning it)
-;   base + 3n  RoomEnemies      1 B/room ((count<<6 | rec idx<<1 | band))
-;   base + 4n  EnemyDataTable   4 B/record
+;   base + 2n  RoomCounts     1 B/room (count<<6 | extras index)
+;   base + 3n  EnemyDataTable 4 B/record (first record index derived)
+LEVEL_SHAPE_COUNT = 12
+SHAPE_M1 = 0
+SHAPE_M2 = 1
+SHAPE_M3 = 2
+SHAPE_M4 = 3
+SHAPE_M5 = 4
+SHAPE_M6 = 5
+SHAPE_M7 = 6
+SHAPE_M8 = 7
+SHAPE_L1R1 = 8
+SHAPE_L4R2 = 9
+SHAPE_L4R5 = 10
+SHAPE_L4R6 = 11
+SHAPE_L3R1 = 8
+SHAPE_L4R1 = 8
+
+; Shape address table: SHAPE_<label> indices above are the row here.
+; LEVEL_SHAPE_COUNT = number of distinct blocks in the whole game
+; (6-bit index ceiling: 64).
+LEVEL_ShapeTable:
+  .word M1RoomRects
+  .word M2RoomRects
+  .word M3RoomRects
+  .word M4RoomRects
+  .word M5RoomRects
+  .word M6RoomRects
+  .word M7RoomRects
+  .word M8RoomRects
+  .word L1R1RoomRects
+  .word L4R2RoomRects
+  .word L4R5RoomRects
+  .word L4R6RoomRects
 ; BAND_COLOR = $80 — the single bottom-band color (every
 ; bottom_band room must resolve to it; bank2.asm carries the EQU and
 ; test_level_bank asserts the pair).
 LevelDataTable:
   .byte LEVEL1_MINER_ROOM, LEVEL1_MINER_X, LEVEL1_WALL_COLOR, LEVEL1_WALL_COLOR2
-  .word LEVEL1_RoomDataTable
+  .word LEVEL1_RoomShapes
   .byte 2 ; LEVEL1 rooms
   .byte LEVEL2_MINER_ROOM, LEVEL2_MINER_X, LEVEL2_WALL_COLOR, LEVEL2_WALL_COLOR2
-  .word LEVEL2_RoomDataTable
+  .word LEVEL2_RoomShapes
   .byte 2 ; LEVEL2 rooms
   .byte LEVEL3_MINER_ROOM, LEVEL3_MINER_X, LEVEL3_WALL_COLOR, LEVEL3_WALL_COLOR2
-  .word LEVEL3_RoomDataTable
+  .word LEVEL3_RoomShapes
   .byte 6 ; LEVEL3 rooms
   .byte LEVEL4_MINER_ROOM, LEVEL4_MINER_X, LEVEL4_WALL_COLOR, LEVEL4_WALL_COLOR2
-  .word LEVEL4_RoomDataTable
+  .word LEVEL4_RoomShapes
   .byte 6 ; LEVEL4 rooms
 
