@@ -46,12 +46,11 @@ assert "ora #$18" not in body, "CEH_Key must NOT auto-open doors"
 assert "LoseLife" not in body, "CEH_Key must not kill the player"
 
 B2 = (SRC / "bank2.asm").read_text()
-# C1 2026-10-20: SelectActiveObject moved to bank2 and READS LevelStartRoom
-# (it owns the type-6 gate now), so bank2 legitimately carries the hand copy
-# again. It must be the same byte kernel.asm gives it — verify_build's
-# check_equ_sync is the authority; this pins the intent at the reader.
+# bank2 keeps the LevelStartRoom hand copy for LoadLevelB2 (it writes the
+# start-room constant there; A1 2026-10-20 moved the renderer, not this).
+# verify_build's check_equ_sync is the authority on the value.
 assert "LevelStartRoom = $A7" in B2, \
-    "bank2 must hand-copy LevelStartRoom ($A7) for SelectActiveObject"
+    "bank2 must hand-copy LevelStartRoom ($A7) for LoadLevelB2"
 # Touch-to-open: the M1 (left door) strip opens only when the player's box
 # overlaps it AND KeyHeld (not by merely holding the key). The overlay
 # cluster lives in bank0 since repack chunk 4 (2026-10-20).
@@ -65,14 +64,14 @@ assert "lda LevelStartRoom" in sh and "ora #$08" in sh, \
     "OvShutBand must key-unlock a right door (b3) on touch"
 assert "cmp #$ff" not in sh, "the retired VcrBand gate still in OvShutBand"
 
-# The renderer is bank2's now (C1): same gate, same parked-ObjTop rule.
-so = B2[B2.index("\nSelectActiveObject:"):B2.index("\nEnemyColorTable:")]
+# The renderer is bank0's again (A1): same gate, same parked-ObjTop rule.
+so = K[K.index("\nSelectActiveObject:"):K.index("\nEnemyColorTable:")]
 assert "cpx #KEY" in so and "bmi .SOEnemySkip" in so, \
     "SelectActiveObject must skip a type-6 render while KeyHeld"
 # The parked "off" object must compensate RoomY (a constant 144 wrapped into
 # view for RoomY >= 112 and leaked ObjSprites[row+$FF] = slot 0 = the key art).
-noobj = B2[B2.index(".SONoObj:"):]
-noobj = noobj[:noobj.index("jmp ReturnPad")]
+noobj = K[K.index(".SONoObj:"):]
+noobj = noobj[:noobj.index("rts")]
 assert "sbc RoomY" in noobj, \
     "off-object ObjTop must be RoomY-compensated (never wraps into view)"
 

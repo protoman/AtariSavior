@@ -1062,3 +1062,56 @@ declare 6 wall rects > the 5-rect cache (documented cell-swap requirement).
    level-data window +193 B, still used 410 B.
 4. 43/43 tests, and `test_water_respawn` can actually fail again.
 5. Total ROM −1291 B vs the campaign start despite the last +121 B trade.
+
+---
+
+## A1 (2026-10-20): SelectActiveObject back to bank0 — C1 reverted
+
+C1 bought ~86 B of ROM by moving the GRP1 renderer into bank2, paying with a
+cross-bank pad and a duplicated SetObjectXPos/fineAdjust/reflection helper
+set. Bank0 is no longer the binding resource (680 B contiguous at
+`$F615-$F8BF`), so A1 reverses the trade: the body goes back into that
+window, bank2 gets ~360 B of contiguous slack for the bank3 evacuation, and
+the ROM shrinks.
+
+| | before (C1) | after (A1) | delta |
+|---|---|---|---|
+| bank0 used | 3092 | 3397 | **+305** (body 289 @ `$F615` + tables 16 @ `$F736`; fill left 378 B to the `$F8C0` pin) |
+| bank1 used | 2924 | 2924 | 0 |
+| bank2 used | 1770 | 1382 | **−388** (body+helpers+tables+pad half) |
+| bank3 used | 1285 | 1285 | 0 |
+| **total ROM** | 9071 | **8988** | **−83** |
+| VBL worst (sim) | 1013c | **1057c** | **+44c** (1472c `#23` window → 415c margin) |
+| wall model | cave 267.0 / title 265.0 | unchanged | 0 |
+
+Placement: the body + `EnemyColorTable`/`ObjSpriteOffTable` sit in the
+`$F8C0` fill (nothing ahead of them moves address), so **no fold pad, no twin
+and no branch page-cross audit was needed**: caller and body are both bank0.
+
+What came back with the body: `jsr FoldIndirect` for the enemy type (level
+data lives in bank2/bank3) and `jsr CallPad_IsRoomDark` (bank1), i.e. the
+per-draw 2 switches C1 had removed. Bank2 loses `SelectActiveObject`, its
+`SetObjectXPos_b2`/`fineAdjustBegin_b2`/`SetObjReflection_b2` copies, the two
+type tables, `BitMaskTab`, and the `$FC20 jmp SelectActiveObject` pad half.
+
+Corridor pads: `CallPad_SelectObject` ($FC1D) is retired, but its **3 bytes
+stay as dead fill** — `CallPad_LoadLevel` must keep its $FC20 pin, because
+bank2's $FC23/$FC26 halves are addressed from there.
+
+Guards/tests retargeted (all watch bank0 again, no stale bank2 watches):
+- `verify_build.check_bank2_xpos` **deleted** (its subject left the bank);
+  bank0's pinned SetObjectXPos page contract guard is unchanged.
+- `verify_build.CORRIDOR_PADS` loses the `CallPad_SelectObject` entry.
+- `test_bomb_render_x` watches `$FF0F` in bank 0.
+- `test_room_dark.check_select_object_dark` now drives the real cross-bank
+  dark path (bank0 body → `CallPad_IsRoomDark` → bank1 `IsRoomDark` →
+  `ReturnPad`) instead of the deleted inline mask, and its FoldIndirect type
+  read is exercised too.
+- `test_key_pickup`, `test_enemy_movement`, `test_raft.tally_gate` read/slice
+  the bank0 body; `test_level_bank` fold/stage lower bounds go back up
+  (9 live fold sites, 8 `sta FetchPtr` lines).
+
+Gates: `./build.sh` green (verify_build OK, `sim_bomb_fuse` OK,
+`sim_frame_budget` OK — VBL max 1057c), banks re-frozen, 43/43 battery incl.
+`src/tools/test_title_demo.py`. Same three pre-existing verify warnings
+(pre-pad headroom 16 B, models 5/6 rect counts).

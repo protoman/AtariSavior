@@ -143,19 +143,18 @@ def run_bcf(room_no, d, ls, bomb=0):
 
 
 def check_select_object_dark() -> None:
-    """C1: the bank2 SelectActiveObject inline dark test must agree with the
-    bank1 IsRoomDark split (rooms 0-3 = EnemyRamD b4-7, rooms 4-7 = LaserState
-    b2-5, rooms 8+ always lit).
+    """A1: SelectActiveObject (bank0) must color a dark-room enemy grey through
+    the REAL cross-bank dark path — bank0 body -> CallPad_IsRoomDark ($FC0E
+    `sta $1FF7`) -> bank1 IsRoomDark -> ReturnPad -> bank0.
 
-    The renderer moved to bank2 (2026-10-20) and bank1's IsRoomDark cannot be
-    called from there (it ends `jmp ReturnPad` -> bank0), so the split is
-    re-implemented inline. This drives the REAL pad path (bank0
-    `CallPad_SelectObject` -> `sta $1FF8` -> bank2 body -> ReturnPad) over a
-    fabricated one-enemy room and reads COLUP1, so a drift in the inline mask
-    (bit index, the >>2 for rooms 4-7, or the rooms-8+ guard) fails here."""
-    pad = parse_labels(FROZEN / "bank0.lst", {"CallPad_SelectObject"})
-    assert "CallPad_SelectObject" in pad, \
-        "frozen bank0.lst has no CallPad_SelectObject (re-freeze?)"
+    C1 (2026-10-20) had moved the body to bank2, where the split was
+    re-implemented inline; A1 moved it back, so this drives the bank0 routine
+    over a fabricated one-enemy room and reads COLUP1. It also exercises the
+    body's FoldIndirect read of the enemy TYPE (bank0 -> bank2 -> bank0), so a
+    broken fold or a stale pad shows up as a wrong color / a hang here."""
+    lab = parse_labels(FROZEN / "bank0.lst", {"SelectActiveObject"})
+    assert "SelectActiveObject" in lab, \
+        "frozen bank0.lst has no SelectActiveObject (re-freeze?)"
     rts = 0x0101                       # RTS_SENTINEL (test_cell_map)
     MOTH = 4
     OBJ_MOTH, COLOR_DARK_OBJ, COLOR_MOTH = 8, 0x0A, 0x22
@@ -200,7 +199,7 @@ def check_select_object_dark() -> None:
         r[Z["RoomY"]] = 0x50
         r[Z["ObjBase"]] = 0xAA         # sentinel: must be rewritten
         mpu = MPU(memory=mem)
-        mpu.pc = pad["CallPad_SelectObject"]
+        mpu.pc = lab["SelectActiveObject"]
         mpu.sp = 0xFD
         mem[0x1FF] = 0x01
         mem[0x1FE] = 0x00
@@ -286,7 +285,7 @@ def main() -> int:
     assert BANK1_SRC.count("cmp #8") >= 2, \
         "IsRoomDark/SetRoomDark must guard rooms 8+"
 
-    # --- C1: bank2 renderer's inline dark test agrees with the split ------
+    # --- A1: the bank0 renderer's dark path (pad -> bank1 IsRoomDark) -----
     check_select_object_dark()
 
     print("room-dark 8-bit mask: OK "
