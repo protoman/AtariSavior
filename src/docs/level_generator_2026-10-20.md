@@ -173,6 +173,8 @@ add red/hot walls, water, tentacles, snakes, spiders and the keyed door):
 | 6 | keyed gate: row-1 gate shape, one `LOCKED_DOOR` cell, key in an earlier room |
 | 7 | tentacle on the water goal's surface (replaces the raft) |
 | 9 | two-object rooms (bat + spider, one per row) |
+| 11 | **phase** gate: the row-1 gap blinks (45 solid / 45 open) |
+| 14 | **hcrunch** band: fixed 10-cell row-1 prefix, room is object-free |
 
 Hazards alternate with "breather" rooms; the shape library grows to ~10
 entries (exit masks x hazard role) and the converter still fits: 211 rooms
