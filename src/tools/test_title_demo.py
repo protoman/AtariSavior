@@ -110,7 +110,9 @@ assert "ldx #13" in footer and "lda #<(FooterFont+70)" in footer
 tail = section(kernel, "TitleTailAudio:", ".TWwait:")
 assert "cmp #$FF" in tail and "jsr CallPad_MusicTick" in tail, \
     "music must tick on $FF title frames"
-assert "MusicTick:" in bank1 and "MusicMel:" in bank1
+assert "MusicTick:" in bank1 and 'include "art/intro_theme.asm"' in bank1, \
+    "MusicTick + the theme include must stay in bank1"
+assert "MelPtr" in bank1 and "MusicMel-1" not in bank1
 
 # --- PickPlayerFrame moved to bank0 (repack chunk 1) ----------------------
 assert "TitleJetSprite:" not in bank2, "bank2 art twin must be gone"
