@@ -951,8 +951,10 @@ def check_callpads(src: Path) -> None:
     def at(bank: int, addr: int, n: int) -> bytes:
         return banks[bank][addr - 0xF000:addr - 0xF000 + n]
 
-    # --- ReturnPad: every bank switches to bank0; bank0 serves the `rts` ----
-    for idx in (0, 1, 2, 3):
+    # --- ReturnPad: every bank that HAS bodies switches to bank0; bank0
+    # serves the `rts`. C3 2026-10-20: bank3 is boot-only (no bodies), so it is
+    # no longer expected to carry the pad — 0/1/2 are.
+    for idx in (0, 1, 2):
         rp = labels[idx].get("ReturnPad")
         if rp is not None and rp != PAD_LO:
             err(f"bank{idx} ReturnPad ${rp:04X} != ${PAD_LO:04X} (every "

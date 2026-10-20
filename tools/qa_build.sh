@@ -11,9 +11,9 @@
 # LIVE stage content (tentacle room, 2-object room) that the sweep level does
 # not have. They still run on the final live rebuild below. Verified: bank0 +
 # bank1 are byte-identical to the live ROM; bank2 differs only in the level/
-# model data (plus the PhaseBlink jsr operand that tracks it) and bank3 only
-# in the 4-byte .PhRec tramp literal that tracks bank2's label — no
-# instruction changes, so the CI-level guarantees are unaffected.
+# model data (plus the $FFEF HotOverlapBody literal that tracks it) and bank3
+# is the 11-byte boot stub either way — no instruction changes, so the
+# CI-level guarantees are unaffected.
 #
 # Run: bash tools/qa_build.sh [out.bin]
 set -e
