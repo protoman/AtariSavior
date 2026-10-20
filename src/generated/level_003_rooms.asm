@@ -9,7 +9,7 @@ LEVEL3_MINER_Y = 84
 ; Room data: one (L3R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
 ; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
 LEVEL3_RoomDataTable:
-  .word L3R1TilePF0, L3R1RoomRects ; room 0 (async)
+  .word L1R1TilePF0, L1R1RoomRects ; room 0 (async) [shared with L1R1]
   .word M4TilePF0, M4RoomRects ; room 1 (model 4)
   .word M5TilePF0, M5RoomRects ; room 2 (model 5)
   .word M6TilePF0, M6RoomRects ; room 3 (model 6)

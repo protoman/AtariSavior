@@ -135,88 +135,70 @@
       7  f000		       f1 f9	   L1R1TilePF0 =	$F1F9
       8  f000		       f1 fc	   L1R1TilePF1 =	$F1FC
       9  f000		       f1 ff	   L1R1TilePF2 =	$F1FF
-     10  f000		       f2 15	   L3R1MetaA  =	$F215
-     11  f000		       f2 16	   L3R1MetaB  =	$F216
-     12  f000		       f2 04	   L3R1RoomRects =	$F204
-     13  f000		       f2 0c	   L3R1TilePF0 =	$F20C
-     14  f000		       f2 0f	   L3R1TilePF1 =	$F20F
-     15  f000		       f2 12	   L3R1TilePF2 =	$F212
-     16  f000		       f2 2d	   L3R2MetaA  =	$F22D
-     17  f000		       f2 2e	   L3R2MetaB  =	$F22E
-     18  f000		       f2 17	   L3R2RoomRects =	$F217
-     19  f000		       f2 24	   L3R2TilePF0 =	$F224
-     20  f000		       f2 27	   L3R2TilePF1 =	$F227
-     21  f000		       f2 2a	   L3R2TilePF2 =	$F22A
-     22  f000		       f2 40	   L4R1MetaA  =	$F240
-     23  f000		       f2 41	   L4R1MetaB  =	$F241
-     24  f000		       f2 2f	   L4R1RoomRects =	$F22F
-     25  f000		       f2 37	   L4R1TilePF0 =	$F237
-     26  f000		       f2 3a	   L4R1TilePF1 =	$F23A
-     27  f000		       f2 3d	   L4R1TilePF2 =	$F23D
-     28  f000		       f2 58	   L4R2MetaA  =	$F258
-     29  f000		       f2 59	   L4R2MetaB  =	$F259
-     30  f000		       f2 42	   L4R2RoomRects =	$F242
-     31  f000		       f2 4f	   L4R2TilePF0 =	$F24F
-     32  f000		       f2 52	   L4R2TilePF1 =	$F252
-     33  f000		       f2 55	   L4R2TilePF2 =	$F255
-     34  f000		       f2 69	   L4R5MetaA  =	$F269
-     35  f000		       f2 6a	   L4R5MetaB  =	$F26A
-     36  f000		       f2 5a	   L4R5RoomRects =	$F25A
-     37  f000		       f2 60	   L4R5TilePF0 =	$F260
-     38  f000		       f2 63	   L4R5TilePF1 =	$F263
-     39  f000		       f2 66	   L4R5TilePF2 =	$F266
-     40  f000		       f2 7a	   L4R6MetaA  =	$F27A
-     41  f000		       f2 7b	   L4R6MetaB  =	$F27B
-     42  f000		       f2 7c	   L4R6RightPF0 =	$F27C
-     43  f000		       f2 7f	   L4R6RightPF1 =	$F27F
-     44  f000		       f2 82	   L4R6RightPF2 =	$F282
-     45  f000		       f2 85	   L4R6RightRects =	$F285
-     46  f000		       f2 6b	   L4R6RoomRects =	$F26B
-     47  f000		       f2 71	   L4R6TilePF0 =	$F271
-     48  f000		       f2 74	   L4R6TilePF1 =	$F274
-     49  f000		       f2 77	   L4R6TilePF2 =	$F277
-     50  f000		       f1 71	   M1MetaA    =	$F171
-     51  f000		       f1 72	   M1MetaB    =	$F172
-     52  f000		       f1 60	   M1RoomRects =	$F160
-     53  f000		       f1 68	   M1TilePF0  =	$F168
-     54  f000		       f1 6b	   M1TilePF1  =	$F16B
-     55  f000		       f1 6e	   M1TilePF2  =	$F16E
-     56  f000		       f1 84	   M2MetaA    =	$F184
-     57  f000		       f1 85	   M2MetaB    =	$F185
-     58  f000		       f1 73	   M2RoomRects =	$F173
-     59  f000		       f1 7b	   M2TilePF0  =	$F17B
-     60  f000		       f1 7e	   M2TilePF1  =	$F17E
-     61  f000		       f1 81	   M2TilePF2  =	$F181
-     62  f000		       f1 97	   M3MetaA    =	$F197
-     63  f000		       f1 98	   M3MetaB    =	$F198
-     64  f000		       f1 86	   M3RoomRects =	$F186
-     65  f000		       f1 8e	   M3TilePF0  =	$F18E
-     66  f000		       f1 91	   M3TilePF1  =	$F191
-     67  f000		       f1 94	   M3TilePF2  =	$F194
-     68  f000		       f1 b0	   M5MetaA    =	$F1B0
-     69  f000		       f1 b1	   M5MetaB    =	$F1B1
-     70  f000		       f1 99	   M5RoomRects =	$F199
-     71  f000		       f1 a7	   M5TilePF0  =	$F1A7
-     72  f000		       f1 aa	   M5TilePF1  =	$F1AA
-     73  f000		       f1 ad	   M5TilePF2  =	$F1AD
-     74  f000		       f1 c9	   M6MetaA    =	$F1C9
-     75  f000		       f1 ca	   M6MetaB    =	$F1CA
-     76  f000		       f1 b2	   M6RoomRects =	$F1B2
-     77  f000		       f1 c0	   M6TilePF0  =	$F1C0
-     78  f000		       f1 c3	   M6TilePF1  =	$F1C3
-     79  f000		       f1 c6	   M6TilePF2  =	$F1C6
-     80  f000		       f1 dc	   M7MetaA    =	$F1DC
-     81  f000		       f1 dd	   M7MetaB    =	$F1DD
-     82  f000		       f1 cb	   M7RoomRects =	$F1CB
-     83  f000		       f1 d3	   M7TilePF0  =	$F1D3
-     84  f000		       f1 d6	   M7TilePF1  =	$F1D6
-     85  f000		       f1 d9	   M7TilePF2  =	$F1D9
-     86  f000		       f1 ef	   M8MetaA    =	$F1EF
-     87  f000		       f1 f0	   M8MetaB    =	$F1F0
-     88  f000		       f1 de	   M8RoomRects =	$F1DE
-     89  f000		       f1 e6	   M8TilePF0  =	$F1E6
-     90  f000		       f1 e9	   M8TilePF1  =	$F1E9
-     91  f000		       f1 ec	   M8TilePF2  =	$F1EC
+     10  f000		       f2 1a	   L3R2MetaA  =	$F21A
+     11  f000		       f2 1b	   L3R2MetaB  =	$F21B
+     12  f000		       f2 04	   L3R2RoomRects =	$F204
+     13  f000		       f2 11	   L3R2TilePF0 =	$F211
+     14  f000		       f2 14	   L3R2TilePF1 =	$F214
+     15  f000		       f2 17	   L3R2TilePF2 =	$F217
+     16  f000		       f2 2b	   L4R5MetaA  =	$F22B
+     17  f000		       f2 2c	   L4R5MetaB  =	$F22C
+     18  f000		       f2 1c	   L4R5RoomRects =	$F21C
+     19  f000		       f2 22	   L4R5TilePF0 =	$F222
+     20  f000		       f2 25	   L4R5TilePF1 =	$F225
+     21  f000		       f2 28	   L4R5TilePF2 =	$F228
+     22  f000		       f2 3c	   L4R6MetaA  =	$F23C
+     23  f000		       f2 3d	   L4R6MetaB  =	$F23D
+     24  f000		       f2 3e	   L4R6RightPF0 =	$F23E
+     25  f000		       f2 41	   L4R6RightPF1 =	$F241
+     26  f000		       f2 44	   L4R6RightPF2 =	$F244
+     27  f000		       f2 47	   L4R6RightRects =	$F247
+     28  f000		       f2 2d	   L4R6RoomRects =	$F22D
+     29  f000		       f2 33	   L4R6TilePF0 =	$F233
+     30  f000		       f2 36	   L4R6TilePF1 =	$F236
+     31  f000		       f2 39	   L4R6TilePF2 =	$F239
+     32  f000		       f1 71	   M1MetaA    =	$F171
+     33  f000		       f1 72	   M1MetaB    =	$F172
+     34  f000		       f1 60	   M1RoomRects =	$F160
+     35  f000		       f1 68	   M1TilePF0  =	$F168
+     36  f000		       f1 6b	   M1TilePF1  =	$F16B
+     37  f000		       f1 6e	   M1TilePF2  =	$F16E
+     38  f000		       f1 84	   M2MetaA    =	$F184
+     39  f000		       f1 85	   M2MetaB    =	$F185
+     40  f000		       f1 73	   M2RoomRects =	$F173
+     41  f000		       f1 7b	   M2TilePF0  =	$F17B
+     42  f000		       f1 7e	   M2TilePF1  =	$F17E
+     43  f000		       f1 81	   M2TilePF2  =	$F181
+     44  f000		       f1 97	   M3MetaA    =	$F197
+     45  f000		       f1 98	   M3MetaB    =	$F198
+     46  f000		       f1 86	   M3RoomRects =	$F186
+     47  f000		       f1 8e	   M3TilePF0  =	$F18E
+     48  f000		       f1 91	   M3TilePF1  =	$F191
+     49  f000		       f1 94	   M3TilePF2  =	$F194
+     50  f000		       f1 b0	   M5MetaA    =	$F1B0
+     51  f000		       f1 b1	   M5MetaB    =	$F1B1
+     52  f000		       f1 99	   M5RoomRects =	$F199
+     53  f000		       f1 a7	   M5TilePF0  =	$F1A7
+     54  f000		       f1 aa	   M5TilePF1  =	$F1AA
+     55  f000		       f1 ad	   M5TilePF2  =	$F1AD
+     56  f000		       f1 c9	   M6MetaA    =	$F1C9
+     57  f000		       f1 ca	   M6MetaB    =	$F1CA
+     58  f000		       f1 b2	   M6RoomRects =	$F1B2
+     59  f000		       f1 c0	   M6TilePF0  =	$F1C0
+     60  f000		       f1 c3	   M6TilePF1  =	$F1C3
+     61  f000		       f1 c6	   M6TilePF2  =	$F1C6
+     62  f000		       f1 dc	   M7MetaA    =	$F1DC
+     63  f000		       f1 dd	   M7MetaB    =	$F1DD
+     64  f000		       f1 cb	   M7RoomRects =	$F1CB
+     65  f000		       f1 d3	   M7TilePF0  =	$F1D3
+     66  f000		       f1 d6	   M7TilePF1  =	$F1D6
+     67  f000		       f1 d9	   M7TilePF2  =	$F1D9
+     68  f000		       f1 ef	   M8MetaA    =	$F1EF
+     69  f000		       f1 f0	   M8MetaB    =	$F1F0
+     70  f000		       f1 de	   M8RoomRects =	$F1DE
+     71  f000		       f1 e6	   M8TilePF0  =	$F1E6
+     72  f000		       f1 e9	   M8TilePF1  =	$F1E9
+     73  f000		       f1 ec	   M8TilePF2  =	$F1EC
 ------- FILE bank2.asm
     127  f000
     128  f000							; --- 5-byte stub ---
@@ -1168,8 +1150,8 @@
       9  f764							; Room data: one (L3R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
      10  f764							; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
      11  f764				   LEVEL3_RoomDataTable
-     12  f764		       0c f2 04 f2	      .word.w	L3R1TilePF0, L3R1RoomRects	; room 0 (async)
-     13  f768		       24 f2 17 f2	      .word.w	L3R2TilePF0, L3R2RoomRects	; room 1 (async)
+     12  f764		       f9 f1 f1 f1	      .word.w	L1R1TilePF0, L1R1RoomRects	; room 0 (async) [shared with L1R1]
+     13  f768		       11 f2 04 f2	      .word.w	L3R2TilePF0, L3R2RoomRects	; room 1 (async)
      14  f76c		       a7 f1 99 f1	      .word.w	M5TilePF0, M5RoomRects	; room 2 (model 5)
      15  f770		       c0 f1 b2 f1	      .word.w	M6TilePF0, M6RoomRects	; room 3 (model 6)
      16  f774		       d3 f1 cb f1	      .word.w	M7TilePF0, M7RoomRects	; room 4 (model 7)
@@ -1215,12 +1197,12 @@
       9  f7b8							; Room data: one (L4R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
      10  f7b8							; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
      11  f7b8				   LEVEL4_RoomDataTable
-     12  f7b8		       37 f2 2f f2	      .word.w	L4R1TilePF0, L4R1RoomRects	; room 0 (async)
-     13  f7bc		       4f f2 42 f2	      .word.w	L4R2TilePF0, L4R2RoomRects	; room 1 (async)
+     12  f7b8		       f9 f1 f1 f1	      .word.w	L1R1TilePF0, L1R1RoomRects	; room 0 (async) [shared with L1R1]
+     13  f7bc		       11 f2 04 f2	      .word.w	L3R2TilePF0, L3R2RoomRects	; room 1 (async) [shared with L3R2]
      14  f7c0		       a7 f1 99 f1	      .word.w	M5TilePF0, M5RoomRects	; room 2 (model 5)
      15  f7c4		       e6 f1 de f1	      .word.w	M8TilePF0, M8RoomRects	; room 3 (model 8)
-     16  f7c8		       60 f2 5a f2	      .word.w	L4R5TilePF0, L4R5RoomRects	; room 4 (async)
-     17  f7cc		       71 f2 6b f2	      .word.w	L4R6TilePF0, L4R6RoomRects	; room 5 (async)
+     16  f7c8		       22 f2 1c f2	      .word.w	L4R5TilePF0, L4R5RoomRects	; room 4 (async)
+     17  f7cc		       33 f2 2d f2	      .word.w	L4R6TilePF0, L4R6RoomRects	; room 5 (async)
      18  f7d0
      19  f7d0							; Room connections: 2 bytes/room, nibble-packed (up<<4|down, left<<4|right); $F = none.
      20  f7d0				   LEVEL4_RoomConnections
