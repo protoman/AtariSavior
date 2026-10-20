@@ -405,6 +405,34 @@ def main() -> int:
                           "(hot ceiling + raft)")
                     return 1
 
+        # --- no two levels may be the same playable content ---------------
+        # (user report 2026-10-20: levels 1 and 2 were identical — both are
+        # 2-room levels, so the start enemy type/cell and the snake's patrol
+        # direction now vary per level).
+        sigs = []
+        for level in levels:
+            sig = []
+            for room in level["rooms"]:
+                sig.append((
+                    room["model_id"],
+                    tuple(sorted((e.get("type"), e.get("x"), e.get("y"))
+                                 for e in room.get("enemies") or [])),
+                    tuple(sorted((l.get("x"), l.get("y"))
+                                 for l in room.get("lamps") or [])),
+                    bool(room.get("bottom_band")),
+                    tuple(tuple(p) for p in room.get("asym_patches") or []),
+                    tuple(tuple(c) for c in room.get("feature_cells") or []),
+                ))
+            sigs.append(tuple(sig))
+        if len(set(sigs)) != len(sigs):
+            dup = [i + 1 for i in range(len(sigs))
+                   if sigs.count(sigs[i]) > 1]
+            print(f"FAIL: duplicate level content at levels {dup}")
+            return 1
+        if sigs[0] == sigs[1]:
+            print("FAIL: levels 1 and 2 are identical")
+            return 1
+
         # --- convert + capacity (the C7 windows) ---------------------------
         gen = tmp / "conv" / "generated"
         rooms_dir = tmp / "conv" / "rooms"
