@@ -1998,10 +1998,11 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
 def sync_kernel_literals(src: Path) -> int:
     """Pre-assembly self-heal (build.sh: after level gen + bank2, before bank0).
 
-    Patches kernel.asm hand-copied literals whose values the assembler bakes
-    into bank0 immediates and that move whenever level data changes:
-      LEVEL_DATA_ADDR <- bank2.lst LevelDataTable
-      LEVEL_COUNT     <- generated/levels.asm
+    Patches hand-copied literals whose values the assembler bakes in and that
+    move whenever level data changes:
+      kernel.asm LEVEL_DATA_ADDR <- bank2.lst LevelDataTable
+      kernel.asm LEVEL_COUNT     <- generated/levels.asm (game wrap)
+      bank1.asm  LEVEL_COUNT     <- generated/levels.asm (TITLE SELECT wrap)
     Safety nets stay: check_frozen_addrs + test_level_bank verify afterwards.
     """
     kernel_p = src / "kernel.asm"
@@ -2030,13 +2031,29 @@ def sync_kernel_literals(src: Path) -> int:
         changed.append(f"LEVEL_DATA_ADDR ${int(m.group(1), 16):04X} -> ${got:04X}")
 
     levels_asm = src / "generated" / "levels.asm"
+    gen_count = None
     if levels_asm.exists():
         mg = re.search(r"^LEVEL_COUNT = (\d+)",
                        levels_asm.read_text(encoding="utf-8"), re.M)
+        if mg:
+            gen_count = int(mg.group(1))
+    if gen_count is not None:
         mk = re.search(r"^LEVEL_COUNT\s*=\s*(\d+)", text, re.M)
-        if mg and mk and int(mg.group(1)) != int(mk.group(1)):
-            text = text[:mk.start()] + f"LEVEL_COUNT    = {mg.group(1)}" + text[mk.end():]
-            changed.append(f"LEVEL_COUNT {mk.group(1)} -> {mg.group(1)}")
+        if mk and int(mk.group(1)) != gen_count:
+            text = text[:mk.start()] + f"LEVEL_COUNT    = {gen_count}" + text[mk.end():]
+            changed.append(f"LEVEL_COUNT {mk.group(1)} -> {gen_count}")
+        # bank1's own copy wraps the TITLE SELECT cycle (TitleSelect) — an
+        # unsynced copy silently caps level selection at the old count (2026-10-20:
+        # a 20-level stage could only be selected up to level 4).
+        bank1_p = src / "bank1.asm"
+        if bank1_p.exists():
+            b1 = bank1_p.read_text(encoding="utf-8")
+            m1 = re.search(r"^LEVEL_COUNT\s*=\s*(\d+)", b1, re.M)
+            if m1 and int(m1.group(1)) != gen_count:
+                b1 = (b1[:m1.start()] + f"LEVEL_COUNT = {gen_count}"
+                      + b1[m1.end():])
+                bank1_p.write_text(b1, encoding="utf-8")
+                changed.append(f"bank1 LEVEL_COUNT {m1.group(1)} -> {gen_count}")
 
     if changed:
         kernel_p.write_text(text, encoding="utf-8")

@@ -2877,11 +2877,36 @@ M1OffTab:                       ; MetaA b0 -> M1 x-offset.
     .byte $ff, $4f              ; B3StageBand has the twin.
 
 ; ------------------------------------------------------------------------------
+; TitleBcd (2026-10-20) — A = 1-based level number → packed BCD in ScoreTe.
+; The title's level display IS the HUD score field, read as packed BCD
+; (tens = ScoreTe>>4, ones = ScoreTe&$F); writing raw binary broke the number
+; at level 10 (10 → blank glyph). Cold path (title entry / SELECT only).
+; Lives in the retired $FB00/$FB37 fill so the pre-pad END stays $FC58.
+; Clobbers A/X only; ScoreTh/Hu are zeroed by the caller.
+; ------------------------------------------------------------------------------
 ; $FB00/$FB37 pins RETIRED (repack chunk 4, 2026-10-20): TitleFont lives in
 ; bank1 and TitleIntro died with the merged title, so both .ds boundaries
 ; were dead — the overlay cluster now runs straight through them into the
 ; $FBD0 pin below (EnterRoom tramp twin, still live).
 ; ------------------------------------------------------------------------------
+TitleBcd:
+    ldx #0
+.TLBcd:                         ; A = level number → X = tens, A = ones
+    cmp #10
+    bcc .TLBcdDone
+    sbc #10
+    inx
+    bne .TLBcd
+.TLBcdDone:
+    sta ScoreTe                 ; ones (high nibble 0)
+    txa
+    asl
+    asl
+    asl
+    asl                         ; tens << 4
+    ora ScoreTe
+    sta ScoreTe
+    rts
 
     .ds $FBD0 - *, 0            ; #22: pin tramp at $FBD0 — bank2's twin
                                  ;   sits at the same address (pin moved from
@@ -3243,9 +3268,9 @@ DropArm:
     sta LaserState
     lda Level
     clc
-    adc #1
-    sta ScoreTe                 ; ones digit (LEVEL_COUNT ≤ 9 — ≥10 needs
-    lda #0                      ;  a packed-BCD tens digit here)
+    adc #1                      ; 1-based level number (the title SELECT)
+    jsr TitleBcd                ; A → packed BCD in ScoreTe (bank0 fill)
+    lda #0
     sta ScoreTh
     sta ScoreHu
     clc

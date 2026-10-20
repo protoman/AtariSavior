@@ -142,9 +142,12 @@ def main() -> None:
         encoding="utf-8")
     n_levels = len(re.findall(r"^\s*\.word\s+LEVEL\d+_RoomShapes",
                               gen, re.M))
-    m = re.search(r"^LEVEL_COUNT\s*=\s*(\d+)", KERNEL, re.M)
-    assert m and int(m.group(1)) == n_levels, \
-        f"LEVEL_COUNT = {m and m.group(1)} != {n_levels} generated levels"
+    for name, text in (("kernel.asm", KERNEL), ("bank1.asm", BANK1)):
+        m = re.search(r"^LEVEL_COUNT\s*=\s*(\d+)", text, re.M)
+        assert m and int(m.group(1)) == n_levels, (
+            f"{name}: LEVEL_COUNT = {m and m.group(1)} != {n_levels} "
+            "generated levels (bank1's copy drives the TITLE SELECT wrap; "
+            "the build's --sync patches both, a stale tree is a red gate)")
 
     # --- frozen data address: hand-copy matches bank2 listing --------------
     lst = (ROOT / "src" / "bank2.lst").read_text(encoding="utf-8")
