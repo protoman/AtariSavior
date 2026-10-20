@@ -22,6 +22,7 @@
 #include <iostream>
 #include <filesystem>
 #include <map>
+#include <set>
 #include <sstream>
 #include <iterator>
 
@@ -36,7 +37,7 @@ constexpr int kPhaseTile = 10;
 constexpr int kVcrunchTile = 11;
 constexpr int kHcrunchTile = 12;
 constexpr int kSolidWall = 1;
-constexpr int kRoomWidth = 10;
+// kRoomWidth lives in LevelData.hpp (shared with the exit-span constants).
 
 bool IsFeatureTile(int t) {
     return t == kPhaseTile || t == kVcrunchTile || t == kHcrunchTile;
@@ -341,147 +342,270 @@ static const int kLevelPalettes[20][3] = {
     {220, 220, 220}  // L20: Silver Gray
 };
 
-static ModelData CreateDefaultModel(int modelId) {
+// ---------------------------------------------------------------------------
+// E2 (2026-10-20): the 20-LEVEL STAGE GENERATOR.
+//
+// Goal: level n has n rooms (1..20 = 210 rooms) at a ROM cost the C7 level-data
+// split can hold. The cost lever is SHARED MODEL SHAPES: the converter emits
+// one shape block per REFERENCED model id, so 210 rooms must resolve to a
+// handful of shapes instead of one model per room (the retired
+// GenerateAll20DefaultLevels built a fresh 60-tile model per room).
+//
+// SHAPE LIBRARY — keyed by the CARVED exits, three bits only:
+//   SHAPE_N / SHAPE_S  room above / below  (every vertical pair is a corridor)
+//   SHAPE_H            the mirrored horizontal opening (west AND east) is cut
+// West and east share ONE bit on purpose: the playfield is REFLECTED, so cell 0
+// (the room's outer edge) is drawn on both sides of the room and collision
+// mirrors too (PlayerHitsMap maps display col >= 20 to 39-col). There is no
+// way to cut only one side — and two models differing only in "which side"
+// would be byte-identical anyway (the converter still counts them separately).
+//
+// LAYOUT — a 2-column serpentine, mirror-safe:
+//   level n <= 10 : x=0, y=0..n-1                   (pure vertical corridor)
+//   level n >  10 : x=0, y=0..9, the turn, then x=1, y=9 -> 10-m going UP
+// Exits are DERIVED FROM ADJACENCY at run time (C1: bank2 ExitScanB2 scans the
+// stored position column), so the carve MUST agree with the neighbour set:
+//   * every vertically adjacent pair is carved on BOTH sides;
+//   * horizontally, both columns are occupied on many rows, so every such pair
+//     is WALLED (solid col 0 / row 1 in both models): the ROM still sees the
+//     adjacency, but the player can never reach the edge to use it;
+//   * the ONE carved horizontal pair is the turn, and both of its rooms carry
+//     SHAPE_H — a one-sided carve would drop the player inside the neighbour's
+//     wall (EnterRoom places him at x=4 = that room's col 0).
+// The turn rooms also show a dead aperture on their far side (nobody there):
+// the exit scan finds no room (bank2 ExitNoneB2) and the player stops at the
+// edge. That is the only layout artefact, and it cannot tear a transition.
+//
+// Deterministic BY CONSTRUCTION: no RNG, no clock, no unordered container; the
+// model ids are the ascending shape keys and rooms are emitted in walk order,
+// so two runs are byte-identical (tools/test_generator.py asserts it).
+// ---------------------------------------------------------------------------
+namespace {
+
+constexpr int kStageLevels = 20;     // level n = 1..20
+constexpr int kColumnRooms = 10;     // rooms per serpentine column (< span 15)
+constexpr int kTurnY = kColumnRooms - 1;
+constexpr int kShapeMax = 16;        // the exit mask ceiling the task fixes
+enum ShapeBits { SHAPE_N = 1, SHAPE_S = 2, SHAPE_H = 4, SHAPE_START = 8 };
+
+// Grid cell of a room in the level (x = column, y = row; rooms at the same y
+// in different columns are horizontally adjacent and therefore "connected"
+// as far as the ROM is concerned).
+struct GridPos {
+    int x = 0;
+    int y = 0;
+};
+
+std::string ShapeName(int mask) {
+    if (mask == 0) {
+        return "Sealed";
+    }
+    std::string name;
+    if (mask & SHAPE_N) name += "N";
+    if (mask & SHAPE_S) name += name.empty() ? "S" : "+S";
+    if (mask & SHAPE_H) name += name.empty() ? "H" : "+H";
+    if (mask & SHAPE_START) name += name.empty() ? "Start" : "+Start";
+    return name;
+}
+
+ModelData MakeShapeModel(int modelId, int mask) {
     ModelData model;
     model.id = modelId;
-    model.name = "Model " + std::to_string(modelId + 1);
-    model.width = 10;   // D7 grid: 10 cells per half
-    model.height = 3;
-    model.tiles.resize(10 * 3, (int)TileType::AIR);
-
-    // Standard border walls
-    for (int x = 0; x < 10; ++x) {
-        model.tiles[0 * 10 + x] = (int)TileType::SOLID_WALL;
-        model.tiles[2 * 10 + x] = (int)TileType::SOLID_WALL;
+    model.name = "Shape " + ShapeName(mask);
+    model.width = kRoomWidth;
+    model.height = kRoomHeight;
+    model.tiles.assign(kRoomWidth * kRoomHeight, (int)TileType::AIR);
+    // Border walls: rows 0 and 2 are full bands (a floor/ceiling row), and the
+    // middle band's only wall is COL 0 — the mirrored OUTER edge. Col 9 is the
+    // centre seam, NOT a boundary: a solid cell there would split the middle
+    // band into two chambers and choke the vertical shaft (the live rooms keep
+    // it open too: row 1 = "#.........").
+    for (int x = 0; x < kRoomWidth; ++x) {
+        model.tiles[x] = (int)TileType::SOLID_WALL;                    // row 0
+        model.tiles[(kRoomHeight - 1) * kRoomWidth + x] =
+            (int)TileType::SOLID_WALL;                                 // row 2
     }
-    for (int y = 0; y < 3; ++y) {
-        model.tiles[y * 10 + 0] = (int)TileType::SOLID_WALL;
-        model.tiles[y * 10 + 9] = (int)TileType::SOLID_WALL;
+    for (int y = 0; y < kRoomHeight; ++y) {
+        model.tiles[y * kRoomWidth] = (int)TileType::SOLID_WALL;        // col 0
+    }
+
+    if (mask & SHAPE_N) {
+        for (int x = kVertExitA; x <= kVertExitB; ++x)
+            model.tiles[x] = (int)TileType::AIR;
+    }
+    if (mask & SHAPE_S) {
+        for (int x = kVertExitA; x <= kVertExitB; ++x)
+            model.tiles[(kRoomHeight - 1) * kRoomWidth + x] =
+                (int)TileType::AIR;
+    }
+    if (mask & SHAPE_H) {
+        for (int y = kHorizExitA; y <= kHorizExitB; ++y)
+            model.tiles[y * kRoomWidth + kHorizExitCol] = (int)TileType::AIR;
+    }
+    if (mask & SHAPE_START) {
+        // Level start rooms: the kernel drops the player in at LevelStartX/Y =
+        // (32, 24) px = display col 8 = CELL 4 of the TOP band, and DropStep
+        // bypasses collision — a solid band there would drop him INSIDE a wall.
+        // Cells 2..9 open (the live stage's start room is "##........"), the
+        // outer 16 px of the band staying solid.
+        for (int x = 2; x < kRoomWidth; ++x)
+            model.tiles[x] = (int)TileType::AIR;
     }
     return model;
 }
 
-static RoomData CreateRoomWithModel(int roomId, int modelId, int roomX, int roomY) {
-    RoomData room;
-    room.room_id = roomId;
-    room.model_id = modelId;
-    room.room_x = roomX;
-    room.room_y = roomY;
-    return room;
+std::vector<GridPos> LevelWalk(int rooms) {
+    std::vector<GridPos> walk;
+    walk.reserve(rooms);
+    const int firstColumn = rooms < kColumnRooms ? rooms : kColumnRooms;
+    for (int y = 0; y < firstColumn; ++y) {
+        walk.push_back(GridPos{0, y});          // down column 0 (the start room)
+    }
+    for (int i = firstColumn; i < rooms; ++i) {
+        walk.push_back(GridPos{1, kTurnY - (i - firstColumn)});   // up col 1
+    }
+    return walk;
 }
 
-void DataSerializer::GenerateAll20DefaultLevels(const std::string& outputDirectory) {
-    std::filesystem::create_directories(outputDirectory);
-
-    // Collect all models across all levels into a global models vector
-    std::vector<ModelData> allModels;
-    int nextModelId = 0;
-
-    for (int l = 1; l <= 20; ++l) {
-        LevelData lvl;
-        lvl.level_id = l;
-        lvl.name = "Level " + std::to_string(l);
-        lvl.wall_r = kLevelPalettes[l - 1][0];
-        lvl.wall_g = kLevelPalettes[l - 1][1];
-        lvl.wall_b = kLevelPalettes[l - 1][2];
-
-        lvl.start_room = 0;
-
-        int numRooms = 2 + (l / 2);
-        if (numRooms > 8) numRooms = 8;
-
-        lvl.miner_room = numRooms - 1;
-        lvl.miner_x = 13.0f;
-        lvl.miner_y = 10.0f;
-
-        for (int r = 0; r < numRooms; ++r) {
-            // Each room gets its own model
-            ModelData model = CreateDefaultModel(nextModelId);
-            model.name = "Level " + std::to_string(l) + " Room " + std::to_string(r + 1);
-
-            // Open shaft connection between vertical rooms
-            if (r < numRooms - 1) {
-                for (int x = 8; x <= 11; ++x) {
-                    model.tiles[2 * 20 + x] = (int)TileType::AIR;
-                }
-            }
-            if (r > 0) {
-                for (int x = 8; x <= 11; ++x) {
-                    model.tiles[0 * 20 + x] = (int)TileType::AIR;
-                }
-            }
-
-            if (r == 0) {
-                for (int x = 8; x <= 11; ++x) {
-                    model.tiles[2 * 20 + x] = (int)TileType::AIR;
-                }
-            } else if (r == numRooms - 1) {
-                for (int x = 8; x <= 11; ++x) {
-                    model.tiles[2 * 20 + x] = (int)TileType::AIR;
-                }
-            } else {
-                model.tiles[1 * 20 + 4] = (int)TileType::SOLID_WALL;
-                model.tiles[1 * 20 + 12] = (int)TileType::SOLID_WALL;
-            }
-
-            allModels.push_back(model);
-
-            // Create room referencing this model
-            RoomData room = CreateRoomWithModel(r, nextModelId, 0, r);
-            nextModelId++;
-
-            // Entity placement
-            if (r == 0) {
-                EnemyData spider;
-                spider.type = (int)EnemyType::SPIDER;
-                spider.x = 10.0f;
-                spider.y = 3.0f;
-                spider.range_min = 2.0f;
-                spider.range_max = 8.0f;
-                spider.speed = 1.0f + (l * 0.1f);
-                spider.dir = 1;
-                room.enemies.push_back(spider);
-            } else if (r == numRooms - 1) {
-                EnemyData snake;
-                snake.type = (int)EnemyType::SNAKE;
-                snake.x = 8.0f;
-                snake.y = 10.0f;
-                snake.range_min = 6.0f;
-                snake.range_max = 12.0f;
-                snake.speed = 1.2f + (l * 0.1f);
-                snake.dir = 1;
-                room.enemies.push_back(snake);
-            } else {
-                if (r % 2 == 1) {
-                    EnemyData bat;
-                    bat.type = (int)EnemyType::BAT;
-                    bat.x = 4.0f;
-                    bat.y = 4.0f;
-                    bat.range_min = 2.0f;
-                    bat.range_max = 13.0f;
-                    bat.speed = 1.5f + (l * 0.15f);
-                    bat.dir = 1;
-                    room.enemies.push_back(bat);
-                }
-                if (l >= 2 && r % 2 == 0) {
-                    LampData lamp;
-                    lamp.x = 3.5f;
-                    lamp.y = 10.5f;
-                    room.lamps.push_back(lamp);
-                }
-            }
-
-            lvl.rooms.push_back(room);
+bool HasRoomAt(const std::vector<GridPos>& walk, int x, int y) {
+    for (const GridPos& pos : walk) {
+        if (pos.x == x && pos.y == y) {
+            return true;
         }
+    }
+    return false;
+}
 
-        std::string filename = outputDirectory + "/level_" + (l < 10 ? "0" : "") + std::to_string(l) + ".json";
-        SaveLevelToFile(lvl, filename);
+// Exit mask a room's SHAPE must carry (see the layout notes above).
+int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
+                  const GridPos& pos, int roomIndex) {
+    int mask = 0;
+    if (HasRoomAt(walk, pos.x, pos.y - 1)) mask |= SHAPE_N;
+    if (HasRoomAt(walk, pos.x, pos.y + 1)) mask |= SHAPE_S;
+    if (levelNumber > kColumnRooms && pos.y == kTurnY) mask |= SHAPE_H;
+    if (roomIndex == 0) mask |= SHAPE_START;   // the level's spawn room
+    return mask;
+}
+
+int Lift(int value) {                 // a lighter wall colour for the row-1 band
+    return value + 40 > 255 ? 255 : value + 40;
+}
+
+// One room's objects. The editor's caps are the contract: <= 2 objects per
+// room (enemies + lamps + miner) and <= 1 element per tile row (MapCanvas
+// kMaxRoomElements / ElementInRow, verify_build repeats the 2-object cap).
+void FillRoomObjects(int levelNumber, int roomIndex, int roomCount,
+                     RoomData& room) {
+    if (roomIndex == roomCount - 1) {
+        // Last room: the goal. A wall snake plus the miner, on separate rows.
+        if (roomCount > 1) {
+            EnemyData snake;
+            snake.type = (int)EnemyType::SNAKE;
+            // The snake lives INSIDE a wall cell. Cell 0 of the TOP band is
+            // solid in every shape (only the centre cells 8/9 are ever carved),
+            // so it is the one placement that works for all of them — including
+            // the horizontal-doorway shape, whose whole middle band is open.
+            snake.x = 1.0f;
+            snake.y = 3.0f;
+            snake.range_min = 0.0f;
+            snake.range_max = 4.0f;
+            snake.speed = 1.5f + 0.5f * (levelNumber % 2);
+            snake.dir = 1;
+            room.enemies.push_back(snake);
+        }
+        return;
+    }
+    if (roomIndex == 0) {
+        EnemyData spider;
+        spider.type = (int)EnemyType::SPIDER;
+        spider.x = 10.0f;
+        spider.y = 5.0f;
+        spider.range_min = 2.0f;
+        spider.range_max = 8.0f;
+        spider.speed = 1.0f + 0.25f * (levelNumber % 4);
+        spider.dir = 1;
+        room.enemies.push_back(spider);
+        return;
+    }
+    // Middle rooms alternate bat/lamp. A LAMP only matters where the room
+    // darkness mask reaches (EnemyRamD bits: rooms 0-7 — verify_build warns
+    // about a lamp beyond it), so a deeper room gets a bat instead of a lamp
+    // that could never darken anything.
+    if (roomIndex % 2 == 1 || roomIndex >= 8) {
+        EnemyData bat;
+        bat.type = (int)EnemyType::BAT;
+        bat.x = 4.0f;
+        bat.y = 4.0f;
+        bat.range_min = 2.0f;
+        bat.range_max = 13.0f;
+        bat.speed = 1.25f + 0.25f * (levelNumber % 4);
+        bat.dir = 1;
+        room.enemies.push_back(bat);
+        return;
+    }
+    LampData lamp;
+    lamp.x = 6.0f;
+    lamp.y = 4.0f;
+    lamp.lit = true;
+    room.lamps.push_back(lamp);
+}
+
+}  // namespace
+
+void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
+                                       std::vector<ModelData>& models) {
+    // 1. Every level's walk + the shape mask of each of its rooms.
+    std::vector<std::vector<GridPos>> walks(kStageLevels);
+    std::vector<std::vector<int>> masks(kStageLevels);
+    std::set<int> used;
+    for (int l = 1; l <= kStageLevels; ++l) {
+        walks[l - 1] = LevelWalk(l);
+        for (size_t i = 0; i < walks[l - 1].size(); ++i) {
+            const int mask = RoomShapeMask(l, walks[l - 1], walks[l - 1][i],
+                                           (int)i);
+            masks[l - 1].push_back(mask);
+            used.insert(mask);
+        }
     }
 
-    // Save all models to models/models.json
-    std::string modelsDir = outputDirectory + "/models";
-    std::filesystem::create_directories(modelsDir);
-    SaveModelsToFile(allModels, modelsDir + "/models.json");
+    // 2. The shape library: model ids ARE the ascending masks (deterministic).
+    models.clear();
+    std::map<int, int> shapeId;
+    for (int mask : used) {
+        shapeId[mask] = (int)models.size();
+        models.push_back(MakeShapeModel(shapeId[mask], mask));
+    }
+
+    // 3. The levels, in play order.
+    levels.clear();
+    levels.reserve(kStageLevels);
+    for (int l = 1; l <= kStageLevels; ++l) {
+        LevelData level;
+        level.level_id = l;
+        level.name = "Level " + std::to_string(l);
+        level.wall_r = kLevelPalettes[l - 1][0];
+        level.wall_g = kLevelPalettes[l - 1][1];
+        level.wall_b = kLevelPalettes[l - 1][2];
+        level.wall2_r = Lift(level.wall_r);
+        level.wall2_g = Lift(level.wall_g);
+        level.wall2_b = Lift(level.wall_b);
+        level.start_room = 0;                 // convert: 0 is the kernel constant
+        const int roomCount = (int)walks[l - 1].size();
+        level.miner_room = roomCount - 1;     // the goal is the last room
+        level.miner_x = 4.0f;                 // clear of the bottom-centre hole
+        level.miner_y = 7.0f;                 // convert hard-fails any other row
+        level.miner_dir = 1;
+        for (int i = 0; i < roomCount; ++i) {
+            RoomData room;
+            room.room_id = i;
+            room.model_id = shapeId[masks[l - 1][i]];
+            room.room_x = walks[l - 1][i].x;
+            room.room_y = walks[l - 1][i].y;
+            FillRoomObjects(l, i, roomCount, room);
+            level.rooms.push_back(room);
+        }
+        levels.push_back(level);
+    }
 }
 
 // ---------------------------------------------------------------------------

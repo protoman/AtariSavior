@@ -40,13 +40,18 @@ namespace editor {
 
 // D7 grid: 10 cells per half (8px each = 20 display cols/half, 40 total),
 // 3 bands tall. (Pre-D7 was 20 cells/half at 4px.)
-static constexpr int kRoomWidth = 10;
-static constexpr int kRoomHeight = 3;
-// Centered passages carved for room connections.
-static constexpr int kVertExitA = 8;   // vertical exit column range
-static constexpr int kVertExitB = 11;
-static constexpr int kHorizExitA = 1;  // middle color band
-static constexpr int kHorizExitB = 1;
+// The room grid + exit spans live in LevelData.hpp (hero::kRoomWidth / ...) so
+// the editor's "Add Room" carving and the E2 stage generator share ONE
+// definition — the old local copy still carved the 8..11 span of the retired
+// 20-cell grid (it wrote into the next row's cells 0/1) and put the EAST
+// opening at the centre seam instead of the mirrored outer edge.
+using hero::kRoomWidth;
+using hero::kRoomHeight;
+using hero::kVertExitA;
+using hero::kVertExitB;
+using hero::kHorizExitA;
+using hero::kHorizExitB;
+using hero::kHorizExitCol;
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     SetupUI();
@@ -388,6 +393,7 @@ void MainWindow::SetupUI() {
     fileMenu->addAction("&Open Stage...", this, &MainWindow::OpenStage);
     fileMenu->addAction("Save Stage", this, &MainWindow::SaveStage);
     fileMenu->addAction("&Convert Project to Single Stage File...", this, &MainWindow::ConvertProjectToStage);
+    fileMenu->addAction("&Generate 20-Level Stage...", this, &MainWindow::GenerateLevelStage);
     fileMenu->addSeparator();
     fileMenu->addAction("&Set Game Data Directory...", this, &MainWindow::SelectGameDataDir);
     fileMenu->addSeparator();
@@ -609,15 +615,16 @@ void MainWindow::CreateRoomInDirection(int dirX, int dirY) {
     if (curModelId < 0 || curModelId >= (int)m_models.size()) return;
     auto& curModel = m_models[curModelId];
 
-    // Carve exit in current room's model
+    // Carve exit in current room's model. Horizontally there is only ONE cell:
+    // the mirrored OUTER edge (col 0, row 1) — it is drawn at the room's west
+    // AND east edge, so an east exit is the same carve as a west exit (col 9 is
+    // the centre seam, not an edge).
     if (dirY == -1) {
         for (int x = kVertExitA; x <= kVertExitB; ++x) curModel.tiles[0 * kRoomWidth + x] = (int)hero::TileType::AIR;
     } else if (dirY == 1) {
         for (int x = kVertExitA; x <= kVertExitB; ++x) curModel.tiles[(kRoomHeight - 1) * kRoomWidth + x] = (int)hero::TileType::AIR;
-    } else if (dirX == -1) {
-        for (int y = kHorizExitA; y <= kHorizExitB; ++y) curModel.tiles[y * kRoomWidth + 0] = (int)hero::TileType::AIR;
-    } else if (dirX == 1) {
-        for (int y = kHorizExitA; y <= kHorizExitB; ++y) curModel.tiles[y * kRoomWidth + (kRoomWidth - 1)] = (int)hero::TileType::AIR;
+    } else if (dirX != 0) {
+        for (int y = kHorizExitA; y <= kHorizExitB; ++y) curModel.tiles[y * kRoomWidth + kHorizExitCol] = (int)hero::TileType::AIR;
     }
 
     // Reuse the first available model for the new room; create one only if none exist.
@@ -642,15 +649,15 @@ void MainWindow::CreateRoomInDirection(int dirX, int dirY) {
     int newModelId = 0;
     auto& newModel = m_models[newModelId];
 
-    // Carve entry in reused model (side facing the current room)
+    // Carve entry in reused model. A vertical entry is the opposite border span
+    // (up neighbour -> its bottom row); a horizontal entry is the SAME outer
+    // cell as the exit carve (mirrored playfield: col 0 is both edges).
     if (dirY == -1) {
         for (int x = kVertExitA; x <= kVertExitB; ++x) newModel.tiles[(kRoomHeight - 1) * kRoomWidth + x] = (int)hero::TileType::AIR;
     } else if (dirY == 1) {
         for (int x = kVertExitA; x <= kVertExitB; ++x) newModel.tiles[0 * kRoomWidth + x] = (int)hero::TileType::AIR;
-    } else if (dirX == -1) {
-        for (int y = kHorizExitA; y <= kHorizExitB; ++y) newModel.tiles[y * kRoomWidth + (kRoomWidth - 1)] = (int)hero::TileType::AIR;
-    } else if (dirX == 1) {
-        for (int y = kHorizExitA; y <= kHorizExitB; ++y) newModel.tiles[y * kRoomWidth + 0] = (int)hero::TileType::AIR;
+    } else if (dirX != 0) {
+        for (int y = kHorizExitA; y <= kHorizExitB; ++y) newModel.tiles[y * kRoomWidth + kHorizExitCol] = (int)hero::TileType::AIR;
     }
     SaveModels(); // Save global models after carving the entry
 
@@ -1034,6 +1041,38 @@ void MainWindow::ConvertProjectToStage() {
     statusBar()->showMessage(
         QString("Wrote %1 levels to %2 (legacy files untouched)")
             .arg((int)levels.size()).arg(path), 6000);
+}
+
+void MainWindow::GenerateLevelStage() {
+    // E2 (2026-10-20): the 20-level stage (level n = n rooms, 210 rooms, shared
+    // shape library). The Save dialog is the ONLY way this writes anything: the
+    // generator never picks a path itself, so the live stage (rooms/stage.json,
+    // level_*.json, models.json) can only be overwritten if the user selects it
+    // on purpose — and the dialog asks before replacing an existing file.
+    const QString suggested = QDir(m_gameDataDir).filePath("stage20.json");
+    const QString path = QFileDialog::getSaveFileName(
+        this, "Generate 20-Level Stage (210 rooms)",
+        suggested, "JSON Stage Files (*.json)");
+    if (path.isEmpty()) return;
+
+    std::vector<hero::LevelData> levels;
+    std::vector<hero::ModelData> models;
+    hero::DataSerializer::Build20LevelStage(levels, models);
+    size_t rooms = 0;
+    for (const auto& level : levels) {
+        rooms += level.rooms.size();
+    }
+    if (!hero::DataSerializer::SaveStageToFile(
+            levels, models, path.toStdString())) {
+        QMessageBox::critical(this, "Error",
+            "Failed to write the generated stage file!");
+        return;
+    }
+    statusBar()->showMessage(
+        QString("Generated %1 levels / %2 rooms / %3 shapes -> %4 "
+                "(current project untouched, file not opened)")
+            .arg((int)levels.size()).arg((int)rooms)
+            .arg((int)models.size()).arg(path), 8000);
 }
 
 void MainWindow::RemoveRoom() {

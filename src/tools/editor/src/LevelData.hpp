@@ -27,6 +27,27 @@
 
 namespace hero {
 
+// Room grid (D7 2026-10-20): 10 cells per half (8 px each = 20 display columns
+// per half, 40 total), 3 bands tall (each band = 48 scanlines, 4 display rows).
+//
+// THE PLAYFIELD IS LEFT-RIGHT MIRRORED (CTRLPF reflection), so the half is
+// drawn TWICE: cell 0 is the screen's OUTER edge on BOTH sides (display columns
+// 0-7 and 152-159) and cell 9 is the CENTER seam (columns 72-87). That is why
+// a horizontal exit is ONE cell (col 0, row 1) and is inherently two-sided:
+// carving it opens the west and the east edge of the room at once, and
+// collision mirrors too (PlayerHitsMap maps display col >= 20 to 39-col).
+//
+// Exit spans — ONE definition, shared by the editor's "Add Room" carving and
+// DataSerializer::Build20LevelStage (E2). The vertical span used to read 8..11
+// from the retired 20-cell grid, which wrote into the NEXT row's cells 0/1.
+constexpr int kRoomWidth = 10;
+constexpr int kRoomHeight = 3;
+constexpr int kVertExitA = 8;    // top/bottom opening: cells 8..9 (centre)
+constexpr int kVertExitB = 9;
+constexpr int kHorizExitA = 1;   // left/right opening: row 1 (middle band)
+constexpr int kHorizExitB = 1;
+constexpr int kHorizExitCol = 0; // the mirrored OUTER edge, not the seam (9)
+
 enum class TileType : int {
     AIR = 0,
     SOLID_WALL = 1,      // Indestructible wall

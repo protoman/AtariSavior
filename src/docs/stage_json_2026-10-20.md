@@ -103,3 +103,25 @@ in play order) into a path outside `src/rooms`; building its demo is just
 `STAGE_FILE=/path/stage.json ./build.sh`. Nothing in the converter needs to
 change for it: shared model shapes are already deduplicated by model id and the
 row-pool dictionary is global.
+
+## 8. Generator (E2, landed)
+
+`DataSerializer::Build20LevelStage` (used by the File menu action and the
+headless `savior_editor --generate-stage <path>`) writes the canonical stage
+with **20 levels, level n = n rooms (210 rooms)**, deterministic (two runs are
+byte-identical).
+
+* **Layout**: 2-column serpentine, up to 10 rows per column; the only
+  horizontal connection is the turn row. The playfield is mirrored, so a west
+  opening is also drawn east — every other pair stays walled, and the test
+  proves each adjacent pair is either connected on both sides or solid.
+* **Shape library**: one model per exit mask (N/S/E/W), currently **7
+  shapes** total for all 210 rooms. The converter's row pool then collapses
+  those to a handful of distinct bands — that is the generator's size lever.
+* **Content**: palettes from `kLevelPalettes`, miner in the last room,
+  objects within the editor caps (≤2 per room, ≤1 per row); lamps only in
+  rooms 0-7 (the dark-room mask has 8 bits — accepted limitation).
+* **Measured capacity** at 210 rooms / 7 shapes: bank2 level tables
+  **717 B slack**, bank3 shape data **991 B slack**; `tools/test_generator.py`
+  covers determinism, adjacency/mirror rule, object caps, shape reuse and the
+  converter's capacity check.
