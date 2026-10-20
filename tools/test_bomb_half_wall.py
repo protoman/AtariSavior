@@ -151,7 +151,7 @@ def load_room(room):
     (StageBandTab Meta, hot stream walk) stays fixture-true. C4: no rect
     cache (cell collision)."""
     model = MODEL[room]
-    a_pf0, a_rr = L3[f"M{model}TilePF0"], L3[f"M{model}RoomRects"]
+    a_rr = L3[f"M{model}RoomRects"]
     # C5: MetaA/MetaB are staged from the room's extras record.
     mem.ram[I_PF0LO] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
     mem.ram[I_PF0HI] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]

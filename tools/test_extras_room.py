@@ -31,7 +31,8 @@ from test_cell_map import parse_labels  # noqa: E402
 
 NAMES = {"B3RoomBlocks", "ERBlocksDone", "PF0Buf", "RoomRectsLo", "RoomRectsHi",
          "RoomPF0Lo", "RoomPF0Hi", "RoomMetaA", "RoomMetaB", "LevelPFDataLo",
-         "LevelPFDataHi", "LevelRoomN", "RoomNo"}
+         "LevelPFDataHi", "LevelRoomN", "RoomNo",
+         "RowPoolPF0", "RowPoolPF1", "RowPoolPF2"}
 LAB = parse_labels(SRC / "bank2.lst", NAMES)
 missing = NAMES - LAB.keys()
 if missing:
@@ -54,8 +55,38 @@ def put(addr: int, data: bytes) -> None:
     BANK2[off:off + len(data)] = data
 
 
-put(SHAPE_A, bytes([0]) + PF_A)                        # hot count 0 + PF
-put(SHAPE_B, bytes([0]) + PF_B)
+def install_rows(pf9: bytes) -> list[int]:
+    """C3 (2026-10-20): write a 9-byte PF triple's three band rows into the
+    private pool image and return its three row indices (band 0..2).
+
+    A shape block no longer carries PF bytes — it carries 3 one-byte indices
+    into `RowPoolPF0/1/2`, which the loader expands into PF0Buf. The test
+    OWNS these pool slots (the private bank copy is never played), so the
+    columns are rebuilt from a deterministic walk of both fixtures."""
+    global _POOL
+    rows = [(pf9[b], pf9[3 + b], pf9[6 + b]) for b in range(3)]
+    idx = []
+    for row in rows:
+        if row not in _POOL:
+            _POOL.append(row)
+        idx.append(_POOL.index(row))
+    for column, reg in (("RowPoolPF0", 0), ("RowPoolPF1", 1),
+                        ("RowPoolPF2", 2)):
+        base = LAB[column] - 0xF000
+        for i, r in enumerate(_POOL):
+            BANK2[base + i] = r[reg]
+    return idx
+
+
+def shape_with(pf9: bytes, hot: bytes = b"\x00") -> bytes:
+    """hot stream bytes + the 3 row indices (the C3 block layout)."""
+    return hot + bytes(install_rows(pf9))
+
+
+_POOL: list[tuple[int, int, int]] = []
+
+put(SHAPE_A, shape_with(PF_A))                         # hot count 0 + rows
+put(SHAPE_B, shape_with(PF_B))
 
 # --- level block: n = 3 rooms -> shapes / positions / counts / (no enemies)
 # / extras. Room 0 = plain, room 1 = patch-only, room 2 = hcrunch feature.
@@ -150,11 +181,11 @@ def main() -> int:
     assert BANK2[ROOM2_HOT - 0xF000 + 1] == 0x82, "feature record class"
 
     # --- 4. ordinary-room hot bit: a hot shape derives MetaB b6 -----------
-    put(SHAPE_A, bytes([1, 0x08, 0, 1, 2, 1]) + PF_A)   # 1 hot record
+    put(SHAPE_A, shape_with(PF_A, bytes([1, 0x08, 0, 1, 2, 1])))   # 1 hot record
     r = run_room(0, SHAPE_A)
     assert meta(r) == (0, 0x40), (
         f"hot shape meta ${meta(r)[0]:02X}/${meta(r)[1]:02X}, want $00/$40")
-    put(SHAPE_A, bytes([0]) + PF_A)
+    put(SHAPE_A, shape_with(PF_A))
 
     # --- 5. the ordinal walk skipped record 1 to reach record 2 -----------
     assert REC1 < REC2 and BANK2[REC1 - 0xF000 + 1] == 0x90, (

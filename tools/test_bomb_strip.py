@@ -95,14 +95,14 @@ L0 = parse_labels(SRC / "bank0.lst", {"BombX", "LineCount",
                                 "EnemyDeadMask", "CollisionX",
                                 "BombPacked", "PF0Buf", "PF1Buf",
                                 "PF2Buf"})
-L2 = parse_labels(SRC / "bank2.lst", {"M0TilePF0", "M3TilePF0",
+L2 = parse_labels(SRC / "bank2.lst", {"M0Rows", "M3Rows",
                                       "LEVEL1_AsyncExtras"})
 # StageBandTab lives in bank3 (chunk A2); relocated $F0A3 -> $FC38 in chunk 5
 # (repack 2026-10-20) so the level-data window could start at $F0A3.
-L3 = parse_labels(SRC / "bank2.lst", {"B3StageBand", "M0TilePF0",
-                                      "M3TilePF0", "LEVEL1_AsyncExtras"})
+L3 = parse_labels(SRC / "bank2.lst", {"B3StageBand", "M0Rows",
+                                      "M3Rows", "LEVEL1_AsyncExtras"})
 # A3: level/model blocks live in bank3 — block labels AND bytes from there.
-L2.update({k: L3[k] for k in ("M0TilePF0", "M3TilePF0",
+L2.update({k: L3[k] for k in ("M0Rows", "M3Rows",
                               "LEVEL1_AsyncExtras")})
 L2.update(parse_equ(SRC / "bank2.lst",
                     {"BandTab", "CollisionEndY", "CollisionEndX",
@@ -111,7 +111,7 @@ need = ({"BombMarkWalls", "StripBlastCheck", "M1StripBlast"} - L1.keys()) | \
        ({"BombX", "LineCount", "EnemyDeadMask", "CollisionX",
          "BombPacked", "PF0Buf", "PF1Buf", "PF2Buf"}
         - L0.keys()) | \
-       ({"M0TilePF0", "M3TilePF0", "LEVEL1_AsyncExtras",
+       ({"M0Rows", "M3Rows", "LEVEL1_AsyncExtras",
          "BandTab", "CollisionEndY", "CollisionEndX",
          "RoomPF0Lo", "RoomRectsLo"} - L2.keys()) | ({"B3StageBand"} - L3.keys())
 if need:
@@ -143,7 +143,7 @@ for _f in ("kernel.asm", "bank1.asm", "bank2.asm", "bank3.asm"):
 # block and lives in the level's async-extras record (ordinal 1 -> +1/+2, the
 # record's header is flags, MetaA, MetaB). Expectations below are derived from
 # the ROM bytes so the test tracks models.json edits (bugs.md 28 point 1).
-M0 = L2["M0TilePF0"]
+M0 = L2["M0Rows"]
 _EXOFF = L2["LEVEL1_AsyncExtras"] - 0xF000
 META_A = BANKS[2][_EXOFF + 1]
 META_B = BANKS[2][_EXOFF + 2]

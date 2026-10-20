@@ -932,6 +932,7 @@ def check_exit_handlers(src: Path) -> None:
 
 def check_level_format(src: Path) -> None:
     """C5 (2026-10-20): LEVEL_FORMAT 4 = shape-index records + async extras.
+    C3 (2026-10-20): 5 = ... + shape blocks carry 3 row-pool indices.
 
     The generated level index is the converter's truth; kernel.asm and
     bank1.asm carry hand copies (bank1's is also paired by check_equ_sync).
@@ -964,10 +965,10 @@ def check_level_format(src: Path) -> None:
             "(format 3 = C2 shape-index room records)")
         return
     gen_fmt = int(m.group(1), 16)
-    if gen_fmt != 4:
+    if gen_fmt != 5:
         err(f"generated LEVEL_FORMAT = {gen_fmt}, the bank2 reader implements "
-            "4 (shape-index records + async extras) — stale generated tree or "
-            "half-done migration")
+            "5 (shape-index records + async extras + row-pool shape blocks) — "
+            "stale generated tree or half-done migration")
     for name in ("kernel.asm", "bank1.asm"):
         p = src / name
         if not p.exists():
@@ -1103,6 +1104,121 @@ def check_level_format(src: Path) -> None:
     if shape_count and used != set(range(shape_count)):
         err(f"LEVEL_ShapeTable entries {sorted(set(range(shape_count)) - used)} "
             "are unreferenced — the shape stream and the table drifted")
+
+
+def check_shape_blocks(src: Path) -> None:
+    """C3 (2026-10-20): a shape block = hot stream + 3 row-pool indices.
+
+    The 9 raw PF bytes are gone from every model block; the row dictionary
+    (`RowPoolPF0/1/2`, 3 SoA columns of 1 B/row in models_data.asm, i.e. in
+    bank2's level-data block slot) holds one entry per DISTINCT band row and
+    bank2's `B3RoomBlocks` expands each index into `PF0Buf`. Guards:
+
+      1. `LEVEL_ROW_COUNT` == the emitted pool size (and <= 256: the index is
+         one byte);
+      2. every shape block is exactly `1 + 5*hot + 3` bytes, its `Rows` label
+         carries 3 indices and every index is < LEVEL_ROW_COUNT;
+      3. no pool entry is unused (pool and blocks would have drifted — an
+         unused row is dead ROM and a sign the pass ran twice);
+      4. no raw `TilePF*` label survives in a block, and the loader really
+         reads the pool (`lda RowPoolPF0,X`), so a rename cannot pass;
+      5. the pool labels resolve in the level data (models_data.asm is
+         included from the block slot, and bank2.lst has the symbols after a
+         build).
+    """
+    gen = src / "generated"
+    mda_p = gen / "models_data.asm"
+    if not mda_p.exists():
+        err("generated/models_data.asm missing (shape row-pool check)")
+        return
+    mda = mda_p.read_text(errors="replace")
+    text = "\n".join(line.split(";")[0] for line in mda.splitlines())
+
+    m = re.search(r"^LEVEL_ROW_COUNT = (\d+)$", text, re.M)
+    if not m:
+        err("models_data.asm must declare LEVEL_ROW_COUNT (C3 row pool)")
+        return
+    row_count = int(m.group(1))
+    if row_count > 0x100:
+        err(f"LEVEL_ROW_COUNT = {row_count} > 256 — a row index is one byte")
+    columns = {}
+    for name in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2"):
+        hit = re.search(rf"^{name}:\n  \.byte ([^\n]+)", text, re.M)
+        if not hit:
+            err(f"models_data.asm must emit {name} (C3 row pool)")
+            continue
+        columns[name] = [int(v.strip().lstrip("$"), 16)
+                         for v in hit.group(1).split(",")]
+    for name, values in columns.items():
+        if len(values) != row_count:
+            err(f"{name} has {len(values)} rows but LEVEL_ROW_COUNT = "
+                f"{row_count}")
+
+    # --- shape blocks: hot stream then the 3 indices -----------------------
+    blocks = re.finditer(
+        r"^(M\d+)RoomRects:\n"
+        r"  \.byte (\d+)\s*; number of hot rectangles\n"
+        r"((?:  \.byte [^\n]*\n)*)"
+        r"\1Rows:\n  \.byte ([^\n]+)\n?",
+        mda, re.M)
+    seen_blocks = 0
+    referenced: set[int] = set()
+    for hit in blocks:
+        tag, hot_s, records, rows_s = hit.groups()
+        seen_blocks += 1
+        hot = int(hot_s)
+        rec_lines = [ln for ln in records.splitlines() if ln.strip()]
+        if len(rec_lines) != hot:
+            err(f"{tag}RoomRects: hot count {hot} but {len(rec_lines)} record "
+                "lines (C3 block = count + 5 B/record + 3 row indices)")
+        for ln in rec_lines:
+            n = len([v for v in ln.split(".byte", 1)[1].split(",") if v.strip()])
+            if n != 5:
+                err(f"{tag}RoomRects: hot record is {n} B, want 5")
+        indices = [int(v.strip().lstrip("$"), 16)
+                   for v in rows_s.split(";")[0].split(",")]
+        if len(indices) != 3:
+            err(f"{tag}Rows: {len(indices)} indices, want 3 (band 0/1/2)")
+        for band, idx in enumerate(indices):
+            if idx >= row_count:
+                err(f"{tag}Rows: band {band} index {idx} >= LEVEL_ROW_COUNT "
+                    f"{row_count} — pool overflow, the loader would read "
+                    "past the column")
+            referenced.add(idx)
+    if not seen_blocks:
+        err("models_data.asm has no shape block in the C3 form "
+            "(hot count, 5 B records, `<tag>Rows:` with 3 indices)")
+    if row_count and referenced != set(range(row_count)):
+        missing = sorted(set(range(row_count)) - referenced)
+        if missing:
+            err(f"row pool entries {missing} are never referenced — the pool "
+                "is dead ROM (stale models_data.asm)")
+    if "TilePF" in text:
+        err("models_data.asm still carries a raw PF label (TilePF*) — a shape "
+            "block must store 3 row-pool indices (C3)")
+
+    # --- the loader must read the pool, and the pool must be included -----
+    bank2_p = src / "bank2.asm"
+    if bank2_p.exists():
+        loader = bank2_p.read_text(errors="replace")
+        if not re.search(r"lda\s+RowPoolPF0,X", loader, re.M):
+            err("bank2.asm B3RoomBlocks does not read RowPoolPF0,X — the "
+                "row-pool expansion is missing (C3)")
+        if re.search(r"cpy\s+#9\b", loader):
+            err("bank2.asm still assembles the retired 9-byte PF copy "
+                "(cpy #9) — C3 replaces it with 3 pool lookups")
+    spill = gen / "spill_bank3.asm"
+    if not spill.exists() or "models_data.asm" not in spill.read_text(
+            errors="replace"):
+        err("generated/spill_bank3.asm must include models_data.asm — the "
+            "row pool lives in the level-data block slot (C3)")
+    lst = src / "bank2.lst"
+    if lst.exists():
+        labels, _ = parse_lst(lst.read_text(errors="replace").splitlines())
+        for name in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2"):
+            if name not in labels:
+                err(f"bank2.lst has no {name} — the pool did not assemble "
+                    "into the level-data slot")
 
 
 def check_tramp_targets(src: Path) -> None:
@@ -1468,9 +1584,9 @@ def check_levels(src: Path) -> None:
 
     # C5 (2026-10-20) shape + extras cross-check. Async lives on the ROOM and
     # now rides the level's AsyncExtras stream; the shared M<id> SHAPE block is
-    # the static hot stream + PF triple ONLY. So:
+    # the static hot stream + 3 row-pool indices ONLY (C3). So:
     #   1. no emitted shape carries the retired meta/right sections;
-    #   2. every shape's PF triple equals pf_values(model rows);
+    #   2. every shape's expanded rows equal pf_values(model rows);
     #   3. every AsyncExtras record re-derives, byte for byte, from the JSON
     #      through the same envelope convert uses (an independent gate: the
     #      loader stages MetaA/MetaB and the PF feature cells from it).
@@ -1482,9 +1598,17 @@ def check_levels(src: Path) -> None:
 
         mda = (gen_dir / "models_data.asm").read_text() \
             if (gen_dir / "models_data.asm").exists() else ""
+        pools: dict[int, list[int]] = {}
+        for reg, name in enumerate(("RowPoolPF0", "RowPoolPF1", "RowPoolPF2")):
+            hit = re.search(rf"^{name}:\s*\n\s*\.byte([^\n]+)", mda, re.M)
+            if hit:
+                pools[reg] = [int(b.strip().lstrip("$"), 16)
+                              for b in hit.group(1).split(";")[0].split(",")]
         for mid, model in sorted(models.items()):
             tag = f"M{mid}"
-            if f"{tag}TilePF0:" not in mda:
+            hit = re.search(rf"^{re.escape(tag)}Rows:\s*\n\s*\.byte([^\n]+)",
+                            mda, re.M)
+            if not hit:
                 continue                      # model not referenced by any room
             if re.search(rf"^{re.escape(tag)}(MetaA|MetaB|RightPF\d|"
                          rf"RightRects):", mda, re.M):
@@ -1496,19 +1620,24 @@ def check_levels(src: Path) -> None:
             except (ValueError, KeyError, TypeError) as exc:
                 err(f"models.json model {mid}: {exc}")
                 continue
-            for reg, name in enumerate(("TilePF0", "TilePF1", "TilePF2")):
-                hit = re.search(
-                    rf"^{re.escape(tag + name)}:\s*\n\s*\.byte([^\n]+)",
-                    mda, re.M)
-                if not hit:
-                    err(f"models.json model {mid}: {tag}{name} missing")
+            idx = [int(b.strip().lstrip("$"), 16)
+                   for b in hit.group(1).split(";")[0].split(",")]
+            if len(idx) != 3:
+                err(f"models.json model {mid}: {tag}Rows has {len(idx)} "
+                    "indices, want 3 (band 0/1/2)")
+                continue
+            for reg, name in enumerate(("RowPoolPF0", "RowPoolPF1",
+                                        "RowPoolPF2")):
+                if reg not in pools:
+                    err(f"models_data.asm: {name} missing (C3 row pool)")
                     continue
-                got = [int(b.strip().lstrip("$"), 16)
-                       for b in hit.group(1).split(",")]
+                got = [pools[reg][i] if i < len(pools[reg]) else None
+                       for i in idx]
                 want = [pf_values(r)[reg] for r in left]
                 if got != want:
-                    err(f"models.json model {mid}: {tag}{name} = {got}, want "
-                        f"{want} (PF triple must be the model rows)")
+                    err(f"models.json model {mid}: {tag}Rows -> {name} = "
+                        f"{got}, want {want} (the row pool must hold the "
+                        "model's rows)")
 
         for jp in sorted(rooms_dir.glob("level_[0-9][0-9][0-9].json")):
             level_n = int(re.search(r"(\d+)", jp.stem).group(1))
@@ -2122,6 +2251,7 @@ def main() -> int:
     check_loadlevel_tramp(src)
     check_exit_handlers(src)
     check_level_format(src)
+    check_shape_blocks(src)
     check_tramp_targets(src)
     check_callpads(src)
     check_levels(src)

@@ -1330,6 +1330,12 @@ Gates: `./build.sh` green (verify_build OK, `sim_bomb_fuse` OK,
 
 ## C3 (2026-10-20) — row dictionary: MEASURED, **not implemented** (under the gate)
 
+> **SUPERSEDED — LANDED the same day, see "C3 LANDED (2026-10-20)" at the end
+> of this file.** The user waived the 40 B gate (foundation for 20 levels);
+> the landed reader costs +6 B instead of +16 (it drops the pointer copy) and
+> the pool lives in `models_data.asm`. The measurement below is kept as the
+> historical reason the first attempt stopped.
+
 Task gate: "if the measured saving is <40 B or the reader change costs more than
 it saves, stop and report". Measured **36 B of level data** (net **+30 B** after
 the reader), so the chunk was stopped before any edit. `src/`, `tools/` and the
@@ -1401,3 +1407,137 @@ already pooled, +3 at one new row, 0 at two, **-3 when all 3 bands are new**
 
 Gates for the retry: `./build.sh`, freeze, full battery, ledger — the same
 checklist as C2, plus `test_cell_map`'s pure-PF parity.
+
+---
+
+## C3 LANDED (2026-10-20) — row dictionary (`LEVEL_FORMAT = 5`)
+
+The 40 B gate above was **waived by user direction**: this is the foundation
+for the 20-level / 210–400-room generator, where it is worth `6·S − 3·U`
+≈ **−540 B at 105 shapes** and **−1 065 B at 200**. The retry design above
+was implemented with three corrections (each measured, not assumed):
+
+1. **Pool location**: models_data.asm (bank2's `$F307-$F44F` level-data block
+   slot) with the shapes — not `levels_index.asm`. The loader and the pool are
+   then in the same bank, and `emit_spills`' sizing (bugs.md 27b) sees the
+   bytes. Labels: `LEVEL_ROW_COUNT` + `RowPoolPF0/1/2` (SoA, 1 B/row).
+2. **The rows offset did not move**: with C4/C5 the block is
+   `hot count | 5 B/record | <rows>`, so `<rows> = block + 1 + 5·hot` — the
+   same address the raw PF triple had. The reader keeps the count math and
+   drops the 8 B pointer copy instead (the math now targets `FetchPtr`
+   directly), which is what pays for the expansion loop:
+   **assembled 53 B → 59 B (+6 B)**, measured with dasm on both variants.
+3. **Meta is C5's job**: no MetaA/MetaB ever enters this block, so the retry's
+   "meta moves Y=9/10 → 3/4" note is moot.
+
+### Emission (converter)
+
+* `convert_room.RowPool`: one GLOBAL pool per build, dedupe keyed by the
+  `(PF0,PF1,PF2)` triple, first-use index (models walk in sorted id order).
+  `index_of()` re-asserts on a hit, `lines()` emits `LEVEL_ROW_COUNT` + the
+  three SoA columns. >256 rows raises.
+* `convert_room.lines(..., with_meta=False, pool=...)` emits
+  `[hot count][5 B/record][idx0..idx2]` under `<prefix>Rows:` and **asserts**
+  that `pool.rows[idx]` equals `pf_values(row)` band by band. A shape form
+  without a pool raises (so a raw-PF shape cannot be emitted by accident).
+* `with_meta=True` (the standalone `convert_room.py` CLI + the converter unit
+  tests) keeps the legacy `TilePF0/1/2` + meta pair — that output is not
+  included by any bank.
+* `convert_level.write_levels_index()` creates the pool, passes it through
+  `emit_room_block()`, appends `pool.lines()`, and bumps `LEVEL_FORMAT = 5`
+  (kernel.asm + bank1.asm hand copies follow, `check_level_format` pairs them).
+
+### Reader (bank2 `B3RoomBlocks`)
+
+```
+      ; hot count -> FetchPtr = block + 1 + 5*hot   (unchanged math, now
+      ;                                            writing FetchPtr directly)
+      ldy #2
+.EBpf: lda (FetchPtr),Y   ; row index for band Y
+      tax
+      lda RowPoolPF0,X / sta PF0Buf,Y
+      lda RowPoolPF1,X / sta PF0Buf+3,Y
+      lda RowPoolPF2,X / sta PF0Buf+6,Y
+      dey
+      bpl .EBpf
+```
+
+Y is the band for BOTH the index read and the three stores; X is the pool row.
+SoA columns mean one index register serves PF0/PF1/PF2 (`sta PF0Buf+3,Y` is
+abs,Y = 3 B, no ZP change). Cold path only, **0 pushes** (SP floor rule kept),
+`ExtrasLoad`'s tail contract untouched: a shape byte with b7 still tail-jumps
+and the feature/patch/hot-stream handling is byte-identical.
+
+### Measured bytes
+
+| item | before | after |
+|---|---|---|
+| shape blocks | 11 × 10 B = 110 | 11 × 4 B = 44 |
+| row pool | — | 12 entries × 3 B = 36 |
+| **models (level data)** | **110 B** | **80 B (−30)** |
+| level data total | 277 B | **247 B (−30)** |
+| bank2 code | — | **+6 B** (loader 53 → 59 B) |
+| bank2 used / free | 2920 / 1176 | **2896 / 1200 (−24)** |
+| total free | 7192 | **7216 (+24)** |
+
+Pool saturation matches the pre-C3 measurement exactly: 36 band slots → **12
+distinct** rows. Per new model: −6 B when its 3 bands are pooled, −3 at one
+new row, 0 at two, +3 when all three are new (break-even = 2 shared bands).
+
+### PF byte-equivalence (three independent gates)
+
+1. **Converter**: `convert_room.lines()` expands every emitted index and
+   compares to `pf_values(row)` (raises on drift).
+2. **`test_band_restage`** (the real `EnterRoom` for all 16 live rooms): the
+   loaded `PF0Buf` ($C3-$CB) must equal the pool expansion of the room's OWN
+   shape indices, which must equal `pf_values(model rows)`; feature rooms add
+   the loader's OR bits on top. The test previously computed `want_pf` and
+   never compared it — that dead variable is now the assertion.
+3. **`test_cell_map`**: `M<id>Rows` → pool → `pf_values(geometry)` for every
+   model in the (frozen) stage, plus `idx < LEVEL_ROW_COUNT` bounds.
+
+### Guards (`tools/verify_build.py`)
+
+* `check_level_format`: `LEVEL_FORMAT = 5` generated ↔ kernel.asm/bank1.asm
+  hand copies (stale-tree guard).
+* New `check_shape_blocks`: `LEVEL_ROW_COUNT` == every pool column's length
+  (≤256); every block is `count + 5 B/record + 3 indices` under `<tag>Rows:`;
+  every index < count; **no unused pool entry**; no `TilePF*` label survives;
+  bank2 really contains `lda RowPoolPF0,X` and no `cpy #9`; the pool is
+  included from the block slot and resolves in `bank2.lst`.
+* `check_levels`' models.json ↔ generated cross-check was silently dead
+  (`M<id>TilePF0` no longer exists) — rewritten to expand the pool, so a
+  models.json edit that the converter missed is red again.
+* Negative-tested: out-of-range index, an extra pool row, and a renamed
+  `TilePF` label each hard-fail.
+
+### Tests touched (all frozen-data, no live `src/tests` + live-label mix)
+
+`test_band_restage` (pool expansion + PF0Buf equality + `RowPoolPF*` labels),
+`test_cell_map` (`M0Rows` label, pool↔geometry parity),
+`test_extras_room` (installs its own pool rows in its private bank copy, so
+the real loader still yields its fixture PF; `RowPoolPF*` labels added),
+`test_fixtures` (`M0Rows` names in the selfcheck; PFX stays test-owned),
+`test_bomb_strip` / `test_bomb_half_wall` / `test_bomb_user_sequence` /
+`test_laser_close` (per-model `M<id>Rows` + `shape_pf()` pool expansion instead
+of `TilePF0`), `test_asym_data` (shape form needs a pool; asserts the
+expansion equals the raw rows), `test_level_bank` (format 5).
+
+### M10/M11 aliasing — NOT done (reported, not silently skipped)
+
+The two models are still byte-identical, but after C3 each shape block is
+**4 B, not 10 B**, so aliasing them is worth 4 B. It also needs machinery the
+chunk was told to avoid: the alias must survive as `SHAPE_M11` (rooms
+reference it) while `M11RoomRects`/`M11Rows` disappear from `bank2.lst`, and
+every ROM-byte test resolves `M{model}Rows` per model (`test_cell_map`,
+`test_band_restage`, the bomb/laser harnesses) — so an alias map would have to
+be emitted and taught to those tests. Left for the chunk that also has to make
+the per-model lookup alias-aware.
+
+### Gates run
+
+`./build.sh` green (verify_build OK, `sim_bomb_fuse` OK, `sim_frame_budget`
+OK — no kernel/VBL/overscan change: room-load only), banks re-frozen
+(`tools/freeze_test_banks.sh`), **46/46 `tools/test_*.py` +
+`src/tools/test_title_demo.py` green**, ledger repasted into
+`docs/level_format_plan_2026-10-20.md` §7.

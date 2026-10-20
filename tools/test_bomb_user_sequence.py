@@ -148,9 +148,24 @@ def step():
         frame += 1
 
 
+def shape_pf(model):
+    """The 9 PF bytes of model `model`'s shape: C3 row-pool expansion.
+
+    A shape block is `hot count | 5 B/record | 3 row indices`; the loader
+    (bank2 B3RoomBlocks) expands the indices through RowPoolPF0/1/2 into
+    PF0Buf, so this reads the SAME bytes via the label addresses."""
+    at = L3[f"M{model}Rows"] - 0xF000
+    idx = BANKS[2][at:at + 3]
+    out = bytearray()
+    for col in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2"):
+        base = L3[col] - 0xF000
+        out += bytes(BANKS[2][base + i] for i in idx)
+    return bytes(out)
+
+
 def load_room(room):
     model = MODEL[room]
-    a_pf0, a_rr = L3[f"M{model}TilePF0"], L3[f"M{model}RoomRects"]
+    pf9, a_rr = shape_pf(model), L3[f"M{model}RoomRects"]
     # C5: the meta pair comes from the room's extras record (level 1 room 0 =
     # model 0 is the async room, ordinal 1 -> +1/+2). C4: no rect cache.
     mem.ram[I_PF0LO] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
@@ -159,8 +174,7 @@ def load_room(room):
     mem.ram[I_RRHI] = a_rr >> 8
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
         for row in range(3):
-            mem.ram[(dst + row) & 0x7F] = BANKS[2][
-                ((a_pf0 + i * 3 + row) - 0xF000) & 0xFFFF]
+            mem.ram[(dst + row) & 0x7F] = pf9[i * 3 + row]
 
 
 def pin(y=70):

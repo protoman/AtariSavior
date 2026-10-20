@@ -822,11 +822,15 @@ ERBlocksPad:
 ; (`jmp B3RoomBlocks`), tail-exits `jmp ERBlocksDone`; 0 pushes (the room-load
 ; chain sits at the measured SP floor).
 ;
-; Shape block (C4/C5) = HOT STREAM | PF TRIPLE. The MetaA/MetaB pair is NOT
-; in the block any more: `TilePF0+9/+10` is retired. A room with the shape
+; Shape block (C4/C5/C3) = HOT STREAM | ROW INDICES. The MetaA/MetaB pair is
+; NOT in the block any more: `TilePF0+9/+10` is retired. A room with the shape
 ; byte's b7 set reads its pair (+patches+features) from the level's async
 ; extras stream; every other room derives MetaA = 0 and MetaB = $40 iff the
 ; shape carries hot records (row-1 'H' cells).
+; C3 (2026-10-20): the 9 raw PF bytes became 3 one-byte indices (band 0/1/2)
+; into the global `RowPoolPF0/1/2` columns (models_data.asm). The rows sit at
+; block + 1 + 5*hot — the same address the raw PF triple used to — so only the
+; copy loop changed: one (FetchPtr),Y index read + 3 pool reads per band.
 ; ------------------------------------------------------------------------------
 B3RoomBlocks:
     lda RoomRectsLo
@@ -841,27 +845,29 @@ B3RoomBlocks:
     clc
     adc RectCount                   ; 5n
     clc
-    adc #1                          ; +1 count byte = TilePF0 offset
+    adc #1                          ; +1 count byte = rows offset
     clc
-    adc RoomRectsLo
-    sta RoomPF0Lo
-    lda RoomRectsHi
-    adc #0
-    sta RoomPF0Hi
-
-    ; --- PF rebuild: one 9-byte read (PF0+PF1+PF2 rows are contiguous in
-    ;     ROM and in RAM: PF0Buf $C3 + Y covers $C3-$CB = all 9 rows) ---
-    lda RoomPF0Lo
+    adc FetchPtr
     sta FetchPtr
-    lda RoomPF0Hi
+    lda FetchPtr+1
+    adc #0
     sta FetchPtr+1
-    ldy #0
+
+    ; --- C3 PF rebuild: 3 row-pool indices -> PF0Buf ($C3-$CB) ---
+    ;     Y = band (2..0) for BOTH the index read and the three PF stores;
+    ;     X = pool row. SoA columns, so one index register serves all three.
+    ldy #2
 .EBpf:
-    lda (FetchPtr),Y
+    lda (FetchPtr),Y                ; row index for this band
+    tax
+    lda RowPoolPF0,X
     sta PF0Buf,Y
-    iny
-    cpy #9
-    bne .EBpf
+    lda RowPoolPF1,X
+    sta PF0Buf+3,Y
+    lda RowPoolPF2,X
+    sta PF0Buf+6,Y
+    dey
+    bpl .EBpf
 
     ; --- C5 meta source: owns-extras (shape byte b7) → the extras stream;
     ;     otherwise MetaA = 0 and MetaB = $40 iff the shape has hot records.
