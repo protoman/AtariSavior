@@ -63,7 +63,9 @@ def main() -> None:
     for name, addr in want.items():
         m = re.search(rf"^{name}\s*=\s*\$([0-9a-fA-F]+)", bank2, re.M)
         assert not m, f"bank2 EQU {name} must be gone"
-    for name, addr in (("Grp0Ptr", 0x86), ("Grp0PtrHi", 0x87), ("SWCHA", 0x0280)):
+    # SWCHA is allowed back: bank2 EBLER_Done re-reads the joystick port to
+    # restore bank0's Temp shadow after EnterRoom clobbers it (2026-10-20).
+    for name, addr in (("Grp0Ptr", 0x86), ("Grp0PtrHi", 0x87)):
         m = re.search(rf"^{name}\s*=\s*\$([0-9a-fA-F]+)", bank2, re.M)
         assert not m, f"bank2 EQU {name} must be gone"
 
