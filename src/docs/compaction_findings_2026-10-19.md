@@ -1323,3 +1323,79 @@ therefore **reserved 0** and hard-failed by guards if anything sets them.
 Gates: `./build.sh` green (verify_build OK, `sim_bomb_fuse` OK,
 `sim_frame_budget` OK — no kernel/VBL/overscan change), banks re-frozen,
 44/44 `tools/test_*.py` + `src/tools/test_title_demo.py` green.
+
+---
+
+## C3 (2026-10-20) — row dictionary: MEASURED, **not implemented** (under the gate)
+
+Task gate: "if the measured saving is <40 B or the reader change costs more than
+it saves, stop and report". Measured **36 B of level data** (net **+30 B** after
+the reader), so the chunk was stopped before any edit. `src/`, `tools/` and the
+frozen banks are untouched.
+
+### The measurement (live HEAD 00caed2, all emitted blocks)
+
+Every emitted block's PF triple was extracted from `generated/models_data.asm`
+(8 shared `M<id>` blocks) + `generated/level_*_blocks.asm` (4 per-room blocks —
+`L1R1`, `L4R2`, `L4R5`, `L4R6`), i.e. the 12 rows of `LEVEL_ShapeTable`:
+
+```
+12 blocks x 3 bands = 36 band slots -> 12 DISTINCT (PF0,PF1,PF2) rows
+raw   9 B/block x 12 = 108 B
+after 3 B/block     x 12 =  36 B  (row indices)
+    + 3 B/row       x 12 =  36 B  (pool)
+                            =  72 B            -> -36 B (-3 B/block)
+```
+
+Level data **402 B -> 366 B** (the plan's own pool line, §3.2, agrees: saving
+= `6·S − 3·U`, S = shapes, U = unique rows). The chunk's "~70-106 B" estimate
+double-counted: 108 -> 72 is 36 B, not ~72 B.
+
+### Reader cost (assembled with dasm, not estimated)
+
+The block layout keeps the reader's arithmetic: rows sit at
+`block + 2 + 2·nrect` — **the same address as today's `TilePF0` base** — so only
+the copy loop and the meta offset change (meta moves Y=9/10 -> 3/4):
+
+| variant | bytes |
+|---|---|
+| today: `lda (FetchPtr),Y` 9-byte copy + meta (incl. the 10 B pointer copy) | 29 |
+| pool expansion, pointer copy kept | 45 (**+16**) |
+| pool expansion, `nrect` math folded into `FetchPtr` (drops the 10 B copy) | **35 (+6)** |
+
+So the honest total is **-36 B data + 6 B code = net +30 B**, and the pool is a
+*scaling* investment, not a today win. Per new model: +6 B when its 3 bands are
+already pooled, +3 at one new row, 0 at two, **-3 when all 3 bands are new**
+(break-even = 2 shared bands).
+
+### What the numbers say about ordering
+
+* Today's saving is small because there are only 12 blocks. At the plan's
+  targets it is `6·S − 3·U`: **~540 B at 105 shapes** (U=30), **~1 065 B at 200
+  shapes** (U=45), minus the 6 B reader.
+* C5 *shrinks* C3's today value (the 4 per-room blocks disappear -> only 8
+  blocks left -> 12 B), so C3 should land **after** C6/C7 grow the shape pool,
+  or be bundled with C4 (the always-emitted hot-count byte is 12 B of the same
+  per-block class).
+* C4 alone is **-62 B today** and independent — better next chunk.
+
+### Design kept for the retry (files, layout, guards)
+
+* Block: `[count][2 B/rect][0 = hot count][row0,row1,row2][MetaA][MetaB]`;
+  pool emitted in `levels_index.asm` as **3 SoA columns** (`LEVEL_RowPoolPF0/1/2`,
+  1 B/row) so the reader needs no second pointer: `lda PoolPF0,X / sta PF0Buf,Y /
+  sta +3,+6` over `Y = 2..0`, `X = (FetchPtr),Y`.
+* Converter: `convert_room.lines()` gains the pool (global dedupe keyed by the
+  3-byte triple, across models **and** per-room blocks), `write_levels_index()`
+  emits `LEVEL_ROW_COUNT` + the columns; `_gen_data_size` unchanged.
+* `verify_build`: `LEVEL_ROW_COUNT` == emitted rows (<=256), every index < count,
+  every row referenced, no `TilePF*` label left in any block, rows base ==
+  `block + 2 + 2·nrect`.
+* PF parity: the pool holds the *same* triples, so parity is structural —
+  assert it in the converter (expanded bytes == the pre-C3 triple) **and** keep
+  `test_band_restage`'s PF-cache assertions (they read the loaded `PF0Buf`).
+* Zero kernel/VBL/overscan impact (room load only), no ZP change, no `src/rooms`
+  edit: the format stays fully derived from the JSON.
+
+Gates for the retry: `./build.sh`, freeze, full battery, ledger — the same
+checklist as C2, plus `test_cell_map`'s pure-PF parity.
