@@ -525,6 +525,26 @@ int main(int argc, char* argv[]) {
         QApplication app(argc, argv);
         return RunBrushTest();
     }
+    if (argc == 3 && std::string(argv[1]) == "--generate-stage") {
+        // E2 (2026-10-20): write the deterministic 20-level stage to <path>.
+        // Headless because the editor selftests run without a display; the
+        // File menu action is the GUI twin (both go through Build20LevelStage,
+        // and BOTH write only to the path the caller chose).
+        std::vector<hero::LevelData> levels;
+        std::vector<hero::ModelData> models;
+        hero::DataSerializer::Build20LevelStage(levels, models);
+        size_t rooms = 0;
+        for (const auto& level : levels) {
+            rooms += level.rooms.size();
+        }
+        if (!hero::DataSerializer::SaveStageToFile(levels, models, argv[2])) {
+            std::fprintf(stderr, "generatestage: cannot write %s\n", argv[2]);
+            return 2;
+        }
+        std::printf("generatestage: OK (%zu levels, %zu rooms, %zu shapes) "
+                    "-> %s\n", levels.size(), rooms, models.size(), argv[2]);
+        return 0;
+    }
     if (argc == 3 && std::string(argv[1]) == "--selftest") {
         const int rc = RunSelfTest(argv[2]);
         if (rc != 0) {

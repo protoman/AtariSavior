@@ -1644,7 +1644,12 @@ def stage_rooms_dir(stage_path: Path) -> Path:
     (out / "models" / "models.json").write_text(
         json.dumps({"models_file": {"models": stage.get("models", [])}}))
     for n, level in enumerate(stage.get("levels", []), start=1):
-        payload = level.get("level", level)
+        payload = dict(level.get("level", level))
+        # cereal writes `cereal_class_version` ONCE per archive (the first
+        # level of the array); these per-level files are separate archives, so
+        # re-add the migrated version the loader/format checks expect (E2:
+        # otherwise every level file after the first failed check_level_format).
+        payload.setdefault("cereal_class_version", 1)
         (out / f"level_{n:03d}.json").write_text(json.dumps({"level": payload}))
     return out
 

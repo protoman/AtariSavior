@@ -51,7 +51,15 @@ public:
     static bool MigrateAsyncToRooms(std::vector<ModelData>& models,
                                     const std::string& levelsDir,
                                     const std::string& modelsPath);
-    static void GenerateAll20DefaultLevels(const std::string& outputDirectory);
+    // E2 (2026-10-20): the 20-level stage. Level n has n rooms (1..20 = 210
+    // rooms) built from a SHARED SHAPE LIBRARY keyed by the carved exit set, so
+    // 210 rooms cost a handful of model shapes (see the layout notes at the
+    // implementation). Deterministic by construction: no RNG, no clock — two
+    // calls produce identical data, so two saved files are byte-identical.
+    // Build only: the caller decides where the file goes (the editor never
+    // writes a stage path on its own).
+    static void Build20LevelStage(std::vector<LevelData>& levels,
+                                  std::vector<ModelData>& models);
     // Converts the pixel-decoded authentic H.E.R.O. stage maps into standard
     // level JSON files. Returns false if the intermediate file is missing.
     static bool ImportAuthenticMaps(const std::string& intermediateJsonPath, const std::string& outputDirectory);

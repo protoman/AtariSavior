@@ -59,6 +59,10 @@ private slots:
     void OpenStage();
     void SaveStage();
     void ConvertProjectToStage();
+    // E2 (2026-10-20): write the deterministic 20-level (210-room) stage to a
+    // path the user picks in a Save dialog. The current project is never
+    // touched and the generated file is not opened.
+    void GenerateLevelStage();
     void SelectGameDataDir();
     void PerformUndo();
 
