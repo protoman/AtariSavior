@@ -532,6 +532,8 @@ struct LevelPlan {
     bool extra = false;     // second enemy in normal rooms
     bool phase = false;     // blinking gate (timing room)
     bool hcrunch = false;   // horizontal crunch band (object-free room)
+    bool patch = false;     // solid async block in normal rooms (a ledge)
+    bool patch2 = false;    // a second block, opposite side (same room)
 };
 
 LevelPlan PlanFor(int level) {
@@ -543,6 +545,8 @@ LevelPlan PlanFor(int level) {
     p.extra = level >= 9;
     p.phase = level >= 11;      // the blink opens the gate for 45 frames
     p.hcrunch = level >= 14;    // crunch band sweeps the row-1 prefix
+    p.patch = level >= 7;       // async block, now and then in normal rooms
+    p.patch2 = level >= 12;     // two blocks (one per side) in that room
     return p;
 }
 
@@ -768,6 +772,21 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 for (int c = 0; c < kRoomWidth; ++c) {
                     room.feature_cells.push_back(
                         {1, c, (int)TileType::HCRUNCH});
+                }
+            }
+            // Async BLOCKS: a plain solid patch (not a special) sprinkled
+            // through ordinary rooms so async rides WITH enemies. The gate/
+            // phase/hcrunch rooms keep their own special alone; the start and
+            // goal rooms stay clean (spawn/pickup).
+            if (roles[l - 1][i] == Role::Normal && i > 0
+                    && i < roomCount - 1 && plan.patch && i % 3 == 2) {
+                const int side = (i % 2 == 1) ? 1 : 0;   // M1 / ball half
+                const int col = 2 + (i % 2);             // clear of the gap (4)
+                room.asym_patches.push_back(
+                    {1, col, (int)TileType::SOLID_WALL, side});
+                if (plan.patch2) {
+                    room.asym_patches.push_back(
+                        {1, col, (int)TileType::SOLID_WALL, side == 0 ? 1 : 0});
                 }
             }
             FillRoomObjects(l, i, roomCount, roles[l - 1][i], plan, room);

@@ -275,10 +275,16 @@ def main() -> int:
                 # Async is one of three generated specials, all row 1:
                 # LOCKED_DOOR (gate), PHASE (blinking gate), HCRUNCH (10-cell
                 # prefix). A hcrunch room must be object-free (convert rule).
-                for patch in room.get("asym_patches") or []:
-                    if len(patch) < 3 or patch[0] != 1 or patch[2] != 9:
+                patches = room.get("asym_patches") or []
+                if len(patches) > 2:
+                    print(f"FAIL: level {level_n} room {room['room_id']} "
+                          f"has {len(patches)} patches (convert cap 2)")
+                    return 1
+                for patch in patches:
+                    if len(patch) < 3 or patch[0] != 1 or patch[2] not in (1, 9):
                         print(f"FAIL: level {level_n} room {room['room_id']} "
-                              f"has unexpected async {patch}")
+                              f"has unexpected async {patch} (only a row-1 "
+                              "solid block or LOCKED_DOOR)")
                         return 1
                 feats = room.get("feature_cells") or []
                 kinds = {c[2] for c in feats}
@@ -311,7 +317,7 @@ def main() -> int:
         for level_n, level in enumerate(levels, start=1):
             rooms = level["rooms"]
             hot = water = doors = keys = tents = rafts = two_obj = 0
-            phases = hcrunches = 0
+            phases = hcrunches = blocks = two_blocks = 0
             for room in rooms:
                 model = shapes[room["model_id"]]
                 if model.get("mid_band_type"):
@@ -321,8 +327,14 @@ def main() -> int:
                 feats = {c[2] for c in room.get("feature_cells") or []}
                 phases += 10 in feats
                 hcrunches += 12 in feats
-                if room.get("asym_patches"):
-                    doors += 1
+                door_patches = [p for p in room.get("asym_patches") or []
+                                if len(p) >= 3 and p[2] == 9]
+                block_patches = [p for p in room.get("asym_patches") or []
+                                 if len(p) >= 3 and p[2] == 1]
+                doors += bool(door_patches)
+                blocks += bool(block_patches)
+                two_blocks += len(block_patches) >= 2
+                if door_patches:
                     objs = (len(room.get("enemies") or [])
                             + len(room.get("lamps") or []))
                     if objs > 1:
@@ -363,6 +375,12 @@ def main() -> int:
                 return 1
             if level_n >= 14 and hcrunches == 0:
                 print(f"FAIL: level {level_n} has no hcrunch band")
+                return 1
+            if level_n >= 7 and blocks == 0:
+                print(f"FAIL: level {level_n} has no async block room")
+                return 1
+            if level_n >= 12 and two_blocks == 0:
+                print(f"FAIL: level {level_n} has no two-block async room")
                 return 1
 
         # --- convert + capacity (the C7 windows) ---------------------------
