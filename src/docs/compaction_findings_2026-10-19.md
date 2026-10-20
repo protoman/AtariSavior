@@ -254,6 +254,29 @@ ours is an entity with ferry gating, inertia, playfield turn-around and tide
 alignment. Copying HERO's model would mean deleting those behaviours, not
 refactoring the body.
 
-`hcrunch` still untraced; the raft result suggests it will also be room
-data/gates rather than a 1.5 KB machine — same trap method (trapWrite on the
-band variable) would settle it in one run.
+## 9. HERO hcrunch — FOUND (hcrunch.png + hcrunch_002.png)
+
+The red band is a **PF byte override**, not a machine. Bank 1:
+
+```
+$F2F1-$F2F4  LDA $FC00,Y / STA $C3        ; band PF byte from the room table
+$F355-$F372  LDA $C3 / CMP #$7F / BNE
+             LDA $C0 / CMP #$FF / BNE
+             LDA $F5 / CMP #$0D / BCC
+             LDA $FD / LSR A / LSR A / LSR A
+             AND #$07 / TAX
+             LDA $FFB8,X / STA $C3        ; 0F 1F 3F 7F FF 7F 3F 1F
+```
+
+- The gap is the `$FFB8` triangle applied to the staged PF byte `$C3`; phase =
+  `($FD >> 3) & 7`. The clean band data (`$C3=$7F`, `$C0=$FF`) is the room
+  table; the override only runs for that band (`$F5 >= $0D`).
+- The red pixels are the hazard (HERO's generic PF-touch death); the moving gap
+  is the safe passage. There is no close-kill test, no push, no solidity, no
+  latch, no per-frame hit box.
+- Cost: ~24 B code + 8 B table = **~32 B**.
+- Ours: 1521 B (`VCS3`/`HOVFeatEntry`/`HcrPush`/`VcrShutter`/staging/overlays).
+
+Measured verdict on the whole suspicion: HERO's raft ≈ **55-70 B** vs our 318 B;
+HERO's hcrunch ≈ **32 B** vs our 1521 B. The gap is behaviour (moving entity,
+kill timing, push, tide) and a mask-vs-subsystem design, not sloppy code.
