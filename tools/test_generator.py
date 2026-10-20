@@ -61,17 +61,23 @@ def generate(binary: Path, out: Path) -> str:
     return (r.stdout or "").strip()
 
 
-def edge_open(rows, direction: str) -> bool:
-    """Is the room's opening on `direction` carved?
+def edge_cells(rows, direction: str) -> set[int]:
+    """Open cells on an edge.
 
-    Vertical exits are the centre cells 8-9 of the top/bottom band; horizontal
-    is ONE cell (row 1, col 0) — the mirrored outer edge, drawn at BOTH sides.
+    Vertical links are either the centre pair (8,9) or the TWO-GAP scheme
+    (cells 3 and 6, levels 5/9/13/17). The next room must repeat the SAME
+    cells, or a drop lands inside a wall (2026-10-20 route-choice rule).
+    Horizontal is ONE cell (row 1, col 0), mirrored on both sides.
     """
     if direction == "north":
-        return rows[0][8] == "." and rows[0][9] == "."
+        return {x for x in range(10) if rows[0][x] == "."}
     if direction == "south":
-        return rows[2][8] == "." and rows[2][9] == "."
-    return rows[1][0] == "."          # west == east == mirror of cell 0
+        return {x for x in range(10) if rows[2][x] == "."}
+    return {0} if rows[1][0] == "." else set()
+
+
+def edge_open(rows, direction: str) -> bool:
+    return bool(edge_cells(rows, direction))
 
 
 def main() -> int:
