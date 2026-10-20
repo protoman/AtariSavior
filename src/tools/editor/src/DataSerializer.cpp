@@ -385,7 +385,8 @@ namespace {
 constexpr int kStageLevels = 20;     // level n = 1..20
 constexpr int kColumnRooms = 10;     // rooms per serpentine column (< span 15)
 constexpr int kTurnY = kColumnRooms - 1;
-constexpr int kShapeMax = 16;        // the exit mask ceiling the task fixes
+// 4 bits -> at most 16 distinct shapes (tools/test_generator.py asserts the
+// budget); this stage uses 7.
 enum ShapeBits { SHAPE_N = 1, SHAPE_S = 2, SHAPE_H = 4, SHAPE_START = 8 };
 
 // Grid cell of a room in the level (x = column, y = row; rooms at the same y
