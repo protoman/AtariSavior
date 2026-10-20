@@ -1233,8 +1233,38 @@ def check_levels(src: Path) -> None:
                     text = asm.read_text() if asm.exists() else ""
                     tag = f"L{level_n}R{rid + 1}"
                     if f"{tag}TilePF0:" not in text:
-                        err(f"{label}: room owns async but no {tag} block was "
-                            f"emitted ({asm.name})")
+                        # C1 (2026-10-20): a byte-identical block owned by
+                        # another level's room is emitted ONCE; the duplicate
+                        # carries a note and its table points at the survivor.
+                        # Cross-check the survivor's bytes against THIS room's
+                        # expected meta/right rows — same bytes, so a stale
+                        # note cannot hide a mismatch.
+                        hit = re.search(
+                            rf"^;\s*({re.escape(tag)}) block SHARED with "
+                            rf"(L\d+R\d+)\b", text, re.M)
+                        shared_text = None
+                        if hit:
+                            for other in sorted(
+                                    (src / "generated").glob(
+                                        "level_[0-9][0-9][0-9]_blocks.asm")):
+                                body = other.read_text()
+                                if f"{hit.group(2)}TilePF0:" in body:
+                                    shared_text = body
+                                    break
+                        if not hit:
+                            err(f"{label}: room owns async but no {tag} block "
+                                f"was emitted ({asm.name})")
+                        elif shared_text is None:
+                            err(f"{label}: {tag} claims to share "
+                                f"{hit.group(2)} but no such block exists")
+                        else:
+                            try:
+                                left = rows_from_json(r, models)
+                            except (ValueError, KeyError, TypeError) as exc:
+                                err(f"{label}: {exc}")
+                            else:
+                                block_checks(hit.group(2), shared_text,
+                                             models[mid], r, left, label)
                     else:
                         try:
                             left = rows_from_json(r, models)

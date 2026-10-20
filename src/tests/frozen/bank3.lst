@@ -485,133 +485,81 @@
       1  f204							; Generated from New Level (level 3) — per-room PF/meta blocks. Do not edit by hand.
       2  f204
       3  f204							; Generated from room 0 (model 0). Do not edit by hand.
-      4  f204				   L3R1RoomRects
-      5  f204		       03		      .byte.b	3	; number of rectangles
-      6  f205		       00 11		      .byte.b	$00, $11	; packed (x<<2|y, w<<2|h)
-      7  f207		       01 09		      .byte.b	$01, $09	; packed (x<<2|y, w<<2|h)
-      8  f209		       02 49		      .byte.b	$02, $49	; packed (x<<2|y, w<<2|h)
-      9  f20b		       00		      .byte.b	0	; number of hot rectangles
-     10  f20c				   L3R1TilePF0
-     11  f20c		       f0 30 f0 	      .byte.b	$f0, $30, $f0
-     12  f20f				   L3R1TilePF1
-     13  f20f		       00 00 ff 	      .byte.b	$00, $00, $ff
-     14  f212				   L3R1TilePF2
-     15  f212		       00 00 3f 	      .byte.b	$00, $00, $3f
-     16  f215				   L3R1MetaA
-     17  f215		       90		      .byte.b	$90	; (m1_col+1)<<4 | band mask
-     18  f216				   L3R1MetaB
-     19  f216		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
-     20  f217
-     21  f217							; Generated from room 1 (model 4). Do not edit by hand.
-     22  f217				   L3R2RoomRects
-     23  f217		       03		      .byte.b	3	; number of rectangles
-     24  f218		       00 49		      .byte.b	$00, $49	; packed (x<<2|y, w<<2|h)
-     25  f21a		       02 11		      .byte.b	$02, $11	; packed (x<<2|y, w<<2|h)
-     26  f21c		       1a 39		      .byte.b	$1a, $39	; packed (x<<2|y, w<<2|h)
-     27  f21e		       01		      .byte.b	1	; number of hot rectangles
-     28  f21f		       82 00 01 14*	      .byte.b	$82, 0, 1, 20, 1	; hcrunch band prefix
-     29  f224				   L3R2TilePF0
-     30  f224		       f0 f0 f0 	      .byte.b	$f0, $f0, $f0
-     31  f227				   L3R2TilePF1
-     32  f227		       ff ff 3f 	      .byte.b	$ff, $ff, $3f
-     33  f22a				   L3R2TilePF2
-     34  f22a		       3f ff ff 	      .byte.b	$3f, $ff, $ff
-     35  f22d				   L3R2MetaA
-     36  f22d		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
-     37  f22e				   L3R2MetaB
-     38  f22e		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
+      4  f204							; L3R1 block SHARED with L1R1 (byte-identical dedupe)
+      5  f204				   L3R2RoomRects
+      6  f204		       03		      .byte.b	3	; number of rectangles
+      7  f205		       00 49		      .byte.b	$00, $49	; packed (x<<2|y, w<<2|h)
+      8  f207		       02 11		      .byte.b	$02, $11	; packed (x<<2|y, w<<2|h)
+      9  f209		       1a 39		      .byte.b	$1a, $39	; packed (x<<2|y, w<<2|h)
+     10  f20b		       01		      .byte.b	1	; number of hot rectangles
+     11  f20c		       82 00 01 14*	      .byte.b	$82, 0, 1, 20, 1	; hcrunch band prefix
+     12  f211				   L3R2TilePF0
+     13  f211		       f0 f0 f0 	      .byte.b	$f0, $f0, $f0
+     14  f214				   L3R2TilePF1
+     15  f214		       ff ff 3f 	      .byte.b	$ff, $ff, $3f
+     16  f217				   L3R2TilePF2
+     17  f217		       3f ff ff 	      .byte.b	$3f, $ff, $ff
+     18  f21a				   L3R2MetaA
+     19  f21a		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
+     20  f21b				   L3R2MetaB
+     21  f21b		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
 ------- FILE generated/spill_bank3.asm
 ------- FILE generated/level_004_blocks.asm LEVEL 3 PASS 2
-      0  f22f					      include	"generated/level_004_blocks.asm"
-      1  f22f							; Generated from New Level (level 4) — per-room PF/meta blocks. Do not edit by hand.
-      2  f22f
-      3  f22f							; Generated from room 0 (model 0). Do not edit by hand.
-      4  f22f				   L4R1RoomRects
-      5  f22f		       03		      .byte.b	3	; number of rectangles
-      6  f230		       00 11		      .byte.b	$00, $11	; packed (x<<2|y, w<<2|h)
-      7  f232		       01 09		      .byte.b	$01, $09	; packed (x<<2|y, w<<2|h)
-      8  f234		       02 49		      .byte.b	$02, $49	; packed (x<<2|y, w<<2|h)
-      9  f236		       00		      .byte.b	0	; number of hot rectangles
-     10  f237				   L4R1TilePF0
-     11  f237		       f0 30 f0 	      .byte.b	$f0, $30, $f0
-     12  f23a				   L4R1TilePF1
-     13  f23a		       00 00 ff 	      .byte.b	$00, $00, $ff
-     14  f23d				   L4R1TilePF2
-     15  f23d		       00 00 3f 	      .byte.b	$00, $00, $3f
-     16  f240				   L4R1MetaA
-     17  f240		       90		      .byte.b	$90	; (m1_col+1)<<4 | band mask
-     18  f241				   L4R1MetaB
-     19  f241		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
-     20  f242
-     21  f242							; Generated from room 1 (model 4). Do not edit by hand.
-     22  f242				   L4R2RoomRects
-     23  f242		       03		      .byte.b	3	; number of rectangles
-     24  f243		       00 49		      .byte.b	$00, $49	; packed (x<<2|y, w<<2|h)
-     25  f245		       02 11		      .byte.b	$02, $11	; packed (x<<2|y, w<<2|h)
-     26  f247		       1a 39		      .byte.b	$1a, $39	; packed (x<<2|y, w<<2|h)
-     27  f249		       01		      .byte.b	1	; number of hot rectangles
-     28  f24a		       82 00 01 14*	      .byte.b	$82, 0, 1, 20, 1	; hcrunch band prefix
-     29  f24f				   L4R2TilePF0
-     30  f24f		       f0 f0 f0 	      .byte.b	$f0, $f0, $f0
-     31  f252				   L4R2TilePF1
-     32  f252		       ff ff 3f 	      .byte.b	$ff, $ff, $3f
-     33  f255				   L4R2TilePF2
-     34  f255		       3f ff ff 	      .byte.b	$3f, $ff, $ff
-     35  f258				   L4R2MetaA
-     36  f258		       00		      .byte.b	$00	; (m1_col+1)<<4 | band mask
-     37  f259				   L4R2MetaB
-     38  f259		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
-     39  f25a
-     40  f25a							; Generated from room 4 (model 11). Do not edit by hand.
-     41  f25a				   L4R5RoomRects
-     42  f25a		       02		      .byte.b	2	; number of rectangles
-     43  f25b		       00 51		      .byte.b	$00, $51	; packed (x<<2|y, w<<2|h)
-     44  f25d		       02 51		      .byte.b	$02, $51	; packed (x<<2|y, w<<2|h)
-     45  f25f		       00		      .byte.b	0	; number of hot rectangles
-     46  f260				   L4R5TilePF0
-     47  f260		       f0 00 f0 	      .byte.b	$f0, $00, $f0
-     48  f263				   L4R5TilePF1
-     49  f263		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-     50  f266				   L4R5TilePF2
-     51  f266		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-     52  f269				   L4R5MetaA
-     53  f269		       10		      .byte.b	$10	; (m1_col+1)<<4 | band mask
-     54  f26a				   L4R5MetaB
-     55  f26a		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
-     56  f26b
-     57  f26b							; Generated from room 5 (model 10). Do not edit by hand.
-     58  f26b				   L4R6RoomRects
-     59  f26b		       02		      .byte.b	2	; number of rectangles
-     60  f26c		       00 51		      .byte.b	$00, $51	; packed (x<<2|y, w<<2|h)
-     61  f26e		       02 51		      .byte.b	$02, $51	; packed (x<<2|y, w<<2|h)
-     62  f270		       00		      .byte.b	0	; number of hot rectangles
-     63  f271				   L4R6TilePF0
-     64  f271		       f0 00 f0 	      .byte.b	$f0, $00, $f0
-     65  f274				   L4R6TilePF1
-     66  f274		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-     67  f277				   L4R6TilePF2
-     68  f277		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-     69  f27a				   L4R6MetaA
-     70  f27a		       02		      .byte.b	$02	; (m1_col+1)<<4 | band mask
-     71  f27b				   L4R6MetaB
-     72  f27b		       0a		      .byte.b	$0a	; (ball_col+1)
-     73  f27c				   L4R6RightPF0
-     74  f27c		       f0 30 f0 	      .byte.b	$f0, $30, $f0
-     75  f27f				   L4R6RightPF1
-     76  f27f		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-     77  f282				   L4R6RightPF2
-     78  f282		       ff 00 ff 	      .byte.b	$ff, $00, $ff
-     79  f285				   L4R6RightRects
-     80  f285		       03		      .byte.b	3	; number of rectangles
-     81  f286		       00 00 14 01	      .byte.b	0, 0, 20, 1	; x(right_col*2), y, w, h
-     82  f28a		       12 01 02 01	      .byte.b	18, 1, 2, 1	; x(right_col*2), y, w, h
-     83  f28e		       00 02 14 01	      .byte.b	0, 2, 20, 1	; x(right_col*2), y, w, h
-     84  f292		       00		      .byte.b	0	; number of hot rectangles
+      0  f21c					      include	"generated/level_004_blocks.asm"
+      1  f21c							; Generated from New Level (level 4) — per-room PF/meta blocks. Do not edit by hand.
+      2  f21c
+      3  f21c							; Generated from room 0 (model 0). Do not edit by hand.
+      4  f21c							; L4R1 block SHARED with L1R1 (byte-identical dedupe)
+      5  f21c							; L4R2 block SHARED with L3R2 (byte-identical dedupe)
+      6  f21c				   L4R5RoomRects
+      7  f21c		       02		      .byte.b	2	; number of rectangles
+      8  f21d		       00 51		      .byte.b	$00, $51	; packed (x<<2|y, w<<2|h)
+      9  f21f		       02 51		      .byte.b	$02, $51	; packed (x<<2|y, w<<2|h)
+     10  f221		       00		      .byte.b	0	; number of hot rectangles
+     11  f222				   L4R5TilePF0
+     12  f222		       f0 00 f0 	      .byte.b	$f0, $00, $f0
+     13  f225				   L4R5TilePF1
+     14  f225		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+     15  f228				   L4R5TilePF2
+     16  f228		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+     17  f22b				   L4R5MetaA
+     18  f22b		       10		      .byte.b	$10	; (m1_col+1)<<4 | band mask
+     19  f22c				   L4R5MetaB
+     20  f22c		       00		      .byte.b	$00	; (ball_col+1), 0 = no ball
+     21  f22d
+     22  f22d							; Generated from room 5 (model 10). Do not edit by hand.
+     23  f22d				   L4R6RoomRects
+     24  f22d		       02		      .byte.b	2	; number of rectangles
+     25  f22e		       00 51		      .byte.b	$00, $51	; packed (x<<2|y, w<<2|h)
+     26  f230		       02 51		      .byte.b	$02, $51	; packed (x<<2|y, w<<2|h)
+     27  f232		       00		      .byte.b	0	; number of hot rectangles
+     28  f233				   L4R6TilePF0
+     29  f233		       f0 00 f0 	      .byte.b	$f0, $00, $f0
+     30  f236				   L4R6TilePF1
+     31  f236		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+     32  f239				   L4R6TilePF2
+     33  f239		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+     34  f23c				   L4R6MetaA
+     35  f23c		       02		      .byte.b	$02	; (m1_col+1)<<4 | band mask
+     36  f23d				   L4R6MetaB
+     37  f23d		       0a		      .byte.b	$0a	; (ball_col+1)
+     38  f23e				   L4R6RightPF0
+     39  f23e		       f0 30 f0 	      .byte.b	$f0, $30, $f0
+     40  f241				   L4R6RightPF1
+     41  f241		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+     42  f244				   L4R6RightPF2
+     43  f244		       ff 00 ff 	      .byte.b	$ff, $00, $ff
+     44  f247				   L4R6RightRects
+     45  f247		       03		      .byte.b	3	; number of rectangles
+     46  f248		       00 00 14 01	      .byte.b	0, 0, 20, 1	; x(right_col*2), y, w, h
+     47  f24c		       12 01 02 01	      .byte.b	18, 1, 2, 1	; x(right_col*2), y, w, h
+     48  f250		       00 02 14 01	      .byte.b	0, 2, 20, 1	; x(right_col*2), y, w, h
+     49  f254		       00		      .byte.b	0	; number of hot rectangles
 ------- FILE generated/spill_bank3.asm
-      8  f293
+      8  f255
 ------- FILE bank3.asm
-    316  f293
-    317  f293		       00 00 00 00*	      .ds	$F3AC - *, 0	; PIN: bank2 BCFDarkRun's `sta $1FF9` ends
+    316  f255
+    317  f255		       00 00 00 00*	      .ds	$F3AC - *, 0	; PIN: bank2 BCFDarkRun's `sta $1FF9` ends
     318  f3ac							;   here (sta +3) — this image is what runs.
     319  f3ac		       4c a3 f0 	      .byte.b	$4C, <B3StageBand, >B3StageBand	; jmp B3StageBand
     320  f3af
