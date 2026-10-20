@@ -11,7 +11,7 @@ for content and never written):
 
   * shape: canonical wrapped `{"stage": {...}}`, 20 levels, level n has n rooms,
     211 rooms total;
-  * model library: <= 32 shapes, ids 0..n-1 contiguous, EVERY model referenced
+  * model library: <= 64 shapes (format cap), ids 0..n-1 contiguous, EVERY model referenced
     by at least one room (the converter only emits referenced ones);
   * positions: unique per level, inside the 15x15 C1 grid, no nibble 15;
   * LAYOUT (the tear rule): connections are DERIVED FROM ADJACENCY at run time,
@@ -47,7 +47,7 @@ import test_editor_roundtrip as ER   # noqa: E402  (editor build + PY constant)
 LEVELS = 20
 ROOMS = 2 + sum(range(2, LEVELS + 1))   # 211 (level 1 has 2 rooms too)
 GRID_SPAN = 15                          # C1: nibble 15 is the no-room sentinel
-MAX_SHAPES = 32
+MAX_SHAPES = 64   # format cap: 6-bit shape index
 MAX_OBJECTS = 2                         # editor kMaxRoomElements / verify_build
 START_CELL = 4                          # LevelStartX 32 px / 8 px per cell
 
