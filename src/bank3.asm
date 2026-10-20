@@ -1,6 +1,6 @@
     processor 6502
 ; ==============================================================================
-; Bank3 — power-up stub + Phase-4 crunch bodies (vcrunch/hcrunch)
+; Bank3 — power-up stub + Phase-4 crunch body (hcrunch)
 ; ==============================================================================
 ; Power-up bank (F6: selected at reset). The 5-byte stub switches to bank0
 ; and the rest of the 4K was free until Phase 4 (2026-10-13) — bank0 has 1B
@@ -54,7 +54,6 @@ EnemyDeadMask = $BA              ; b5 phase armed, b6 phase removed,
                                  ; b7 crunch-kill latch (EnterRoom zeroes)
 EnemyRamP = $C2                  ; free-running frame clock
 PF0Buf = $C3                     ; PF buffers rows 0-2 (9B: +0/3/6 per reg)
-RoomX = $80                      ; player X (0-159) — HcrPush clamp target
 RoomPF0Lo = $99                  ; TilePF0 pointer (MetaB at (ptr),10)
 RoomPF0Hi = $9A
 RoomMetaA = $99                  ; staged MetaA/MetaB (floor + ptr pair reuse)
@@ -79,65 +78,6 @@ EnemyRamD = $C1
 BandTab = $ED                    ; band gate bytes (B3StageBand writes)
 CTRLPF = $0A                     ; TIA (ball width $35 during staging)
 NUSIZ1 = $05                     ; TIA (P1 single, M1 8 clk)
-
-; ==============================================================================
-; HcrPush — cold growth push (user 2026-10-16): while the hcrunch prefix
-; ADVANCES it shoves the player toward center, so a cold shutter cannot
-; trap them inside (hot = kill semantics, unchanged). Called from
-; PhHcrEntry on the 16f grow-step edge (EnemyRamP & $0F == 0) with the
-; spent (b7) latch filtered; this body re-checks the phase (s4-12).
-; In:  CollisionX = 8n (prefix width px), CollisionCellX = band (0-2),
-;      Y = hot (full MetaB byte, bank2-staged; masked here). Out: RoomX
-;      clamped out of the left prefix [0,8n) / the TIA mirror [160-8n,160);
-;      A/X/Y + CollisionX clobbered.
-; ==============================================================================
-    org $F010
-HcrPush:
-    tya                 ; hot (MetaB b6, $40/0 — bank2-side, passed in Y)
-    and #$40
-    bne .Hpd            ; hot: kill semantics own it — no push
-    lda EnemyRamP
-    lsr
-    lsr
-    lsr
-    lsr                 ; s = P>>4
-    cmp #4
-    bcc .Hpd            ; s0-3 dwell: stub static, no push
-    cmp #13
-    bcs .Hpd            ; s13-15 retract: opening, no push
-    ldx CollisionCellX
-    clc
-    lda RoomY
-    adc #11             ; PLAYER_SPRITE_H-1
-    sec
-    sbc HcrBandLo,X     ; bottom - band_lo (0/48/96)
-    bcc .Hpd            ; entirely above the band
-    cmp #59             ; 48+11: bottom-band_lo >= 59 → entirely below
-    bcs .Hpd
-    lda CollisionX      ; 8n
-    cmp #80
-    bcs .Hpd            ; sealed (n>=10): no aperture — HOVhcrunch kills
-    clc
-    adc #7              ; aperture_lo = 8n+7
-    cmp RoomX
-    bcc .Hrr            ; clear of the left prefix
-    beq .Hrr            ; flush = clear
-    sta RoomX           ; left overlap: clamp right
-.Hrr:
-    lda CollisionX      ; 8n
-    clc
-    adc RoomX
-    cmp #160
-    bcc .Hpd            ; clear of the mirror prefix
-    lda #159
-    sec
-    sbc CollisionX      ; 159-8n
-    sta RoomX           ; right overlap: clamp left
-.Hpd:
-    rts
-    org $F0A0
-HcrBandLo:
-    .byte 0, 48, 96                ; band → band_lo
 
 ; ==============================================================================
 ; B3StageBand — StageBandTab, MOVED from bank2 (chunk A2, 2026-10-19).
@@ -259,7 +199,7 @@ B3StageBand:
     sta CTRLPF
     lda RoomMetaB           ; MetaB = ball_col+1 (0 = none)
     and #$0F                ; ball_col+1 is b0-b3 only (max 10); drops b7
-                            ; (vcrunch) AND b6 (hot) — b6 used to survive
+                            ; (retired door/vcrunch flag) AND b6 (hot) — b6 used to survive
                             ; and fake a 1-cell ball at x72-79 on a
                             ; hot-without-ball model
     beq .SBTnoBall
@@ -533,11 +473,8 @@ PhRec:
     beq .PhPhase
     cmp #$82
     bne .PhSkip             ; unknown b7 class: skip 4
-    ; A3b: stage MetaB (b6 = hot) for HcrClock's cold/hot gate, then enter the
-    ; hcrunch body DIRECTLY — FetchPtr still points at this record, so no
-    ; field pre-read/push shuttle is needed (same-bank walker now).
-    lda RoomMetaB
-    sta LineCount
+    ; hcrunch: enter the body DIRECTLY — the record fields are ignored
+    ; (fixed band 1 + fixed 10-cell prefix), FetchPtr is not read here.
     jmp PhHcrEntry
 .PhPhase:
     iny                     ; Y → 2c (even, 0-18)
@@ -644,7 +581,7 @@ BuildColupF:
     pha
     lda (FetchPtr),Y            ; record class/mask
     bmi .BCFrectDone            ; b7 set = feature record ($80 phase /
-                                 ;   $81 vcrunch / $82 hcrunch) — NOT a
+                                 ;   $82 hcrunch; $81 is inert) — NOT a
                                  ;   hot band; its rows keep the stripe
                                  ;   color (the phase cell's own blink
                                  ;   lives in the PF bits, not the color)
@@ -758,7 +695,7 @@ HotOverlapBody:
     ; Any other mask = wall piece → dies when that piece is blasted.
     lda (FetchPtr),Y            ; hot parent mask
     bmi .HOVfeature             ; b7 set = feature record ($80 phase /
-                                 ;   $81 vcrunch / $82 hcrunch) — NOT a
+                                 ;   $82 hcrunch; $81 is inert) — NOT a
                                  ;   legacy death rect (see .HOVfeature
                                  ;   after .HOVdone).
     bne .HOVwallGate
@@ -833,23 +770,19 @@ HOVnext:
     sec                         ; tail-call contract: return C=1
     jmp ReturnPad                   ; ReturnPad → original caller (C survives)
 
-; Feature-record dispatch ($80 phase / $81 vcrunch / $82 hcrunch — Phase 4):
+; Feature-record dispatch ($80 phase / $82 hcrunch; $81 inert):
 ; armed/overlap/kill tests live in bank3 (HOVFeatEntry). $80 phase: b5 armed
 ; (staged by PhaseBlink each VBL) + candidate-box overlap → shared Hot hit
 ; (Temp b7 → bank0 `jsr LoseLife`); kill gated on armed-and-not-removed
 ; (`and #$60 / cmp #$20`), latches b6, PhaseBlink punch forced OFF while b6
 ; set (walls REMOVED, same-room only — EnterRoom zeroes the mask).
-; $81 vcrunch: sprite shutter — the kill rides the OverlayTramp MISS path
-; (OvShutTest/OvShutBand, MetaB b7 gate) because the punched cell never
-; trips this walk. The record path (loop push + HOVFeatPre's 4 field pushes
-; + bank3 jsr HOVvcrunch) measured SP=$F6 = real BombTimer ($F7) stomp
-; (sim_bomb_fuse mirror stomp, 2026-10-13) — skip the record here.
+; $81 (retired vcrunch, tile 11 removed 2026-10-19) stays inert: skip.
 ; Entered with Y = record base + pushed Y (loop invariant), A = mask.
 ; 15B kept: the cmp/beq/jmp + pad replace the old tramp byte-for-byte —
 ; the BombEnemyBlastBody $FD87 pin (kernel tramp operand) must not move.
 .HOVfeature:
     cmp #$81
-    beq HOVnext             ; vcrunch skip (HOVnext pops the loop Y)
+    beq HOVnext             ; unknown legacy class → pass (pops the loop Y)
     ; LineCount is clobbered by the kernel .Row between this VBL staging and
     ; the overscan walk, so the hot byte (MetaB b6) is re-staged HERE, at the
     ; call, exactly like the old bank2 pre-read did.
@@ -869,83 +802,32 @@ HOVnext:
 
 ; ==============================================================================
 ; PhHcrEntry — PhaseBlink $82 (hcrunch) tramp target.
-; Record: $82, 0, band (row), w (4px = 2*cells), 1. Single-row band
-; prefix from col 0: cells 0..n-1 covered (n = HcrClock(full)), the
-; rest of the full bbox cleared. PF = (row & ~P(full)) | P(n) — fused in
-; ONE pass (P(n) ⊆ P(full), so AND-then-OR collapses; one pass halves the
-; buffer reads). Y = class on entry; tail leaves Y = base+2. Clobbers
-; A/X/Y + LineCount/CCX/CEY.
+; Contract (user decision 2026-10-19): the crunch band is ALWAYS band 1,
+; ALWAYS hot, ALWAYS the same geometry — a fixed 10-cell prefix (half the
+; playfield width). The record fields x/band/w/h are IGNORED; the $82
+; class byte and the 5-byte stride stay only so the walker is untouched.
+; PF band1 = P(n), n = HcrClock(10): the prefix rows are entirely covered
+; by the crunch, so the prefix mask is the whole row (no AND pass).
+; IN: Y = record base, FetchPtr unused. OUT: Y = base+4 (.PhRec contract).
+; Clobbers A/X/Y + CollisionX (HcrClock scratch); no stack use.
 ; ==============================================================================
     org $F880
 PhHcrEntry:
-    ; $82 hcrunch. IN: Y = record base, A = class (ignored), FetchPtr = record
-    ; stream, LineCount = MetaB (b6 hot; staged by PhaseBlink's $82 arm).
-    ; Record: [$82, x, y(band), w(2*cells), h]. Same bank as the walker now
-    ; (A3), so fields are read DIRECTLY — the old 4-field stack shuttle is
-    ; gone and only the record base is pushed (stack floor eases by ~7 bytes).
-    ; Y = base+4 on exit (PhRec contract).
     tya
-    pha                     ; [base] — only saved value
-    iny
-    iny
-    lda (FetchPtr),Y        ; band
-    sta CollisionEndX       ; band scratch for the staging (PHM restages it)
-    sta CollisionCellX      ; HcrPush's band input (its band-range gate)
-    iny
-    lda (FetchPtr),Y        ; w
-    lsr                     ; full cells (w is even, 2*cells)
-    tax                     ; X = full
-    jsr HcrClock            ; A = n covered cells (1..full); b7 → 1 (spent)
-    sta CollisionX          ; n
-    ; --- cold growth push on the 16f step edge (spent never pushes) ---
-    lda EnemyRamP
-    and #$0F
-    bne .HcStage
-    lda EnemyDeadMask
-    and #$80
-    bne .HcStage
-    lda CollisionX
-    asl
-    asl
-    asl                     ; 8n (prefix width px) — HcrPush's only ext input
-    sta CollisionX
-    lda LineCount           ; hot (MetaB b6, $40/0)
-    tay                     ; Y = hot
-    jsr HcrPush
-    jmp .HcDone             ; push frame: skip the staging (see plan)
-.HcStage:
-    ; Fused bbox-open + prefix-close, ONE band row:
-    ;   PF[row] = (PF[row] & ~P(full)) | P(n)
-    ; X still = full (HcrClock preserves X/Y).
-    txa                     ; full
-    tay
+    pha                     ; [base] — PhRec needs Y = base+4
+    lda #10
+    tax                     ; full = 10 cells
+    jsr HcrClock            ; A = n covered (1..10); X/Y preserved
+    tay                     ; Y = n
     lda CrPfx0,Y
-    eor #$FF
-    sta LineCount
+    sta PF0Buf+1
     lda CrPfx1,Y
-    eor #$FF
-    sta CollisionCellX
+    sta PF0Buf+4            ; PF1Buf band1
     lda CrPfx2,Y
-    eor #$FF
-    sta CollisionEndY
-    ldx CollisionEndX       ; band → PF buffer row
-    ldy CollisionX          ; n → CrPfx index
-    lda PF0Buf,X
-    and LineCount
-    ora CrPfx0,Y
-    sta PF0Buf,X
-    lda PF0Buf+3,X
-    and CollisionCellX
-    ora CrPfx1,Y
-    sta PF0Buf+3,X
-    lda PF0Buf+6,X
-    and CollisionEndY
-    ora CrPfx2,Y
-    sta PF0Buf+6,X
-.HcDone:
-    pla                     ; base
+    sta PF0Buf+7            ; PF2Buf band1
+    pla
     clc
-    adc #4                  ; base+4 = record end (PhRec iny → next class)
+    adc #4
     tay
     jmp PhRec
 
@@ -962,13 +844,14 @@ CrPfx2:
 
 ; ==============================================================================
 ; PhVcApplyOR / PhVcApplyAND DELETED (2026-10-19) — same retired vcrunch
-; tramp path; hcrunch fuses its AND+OR pass inside PhHcrEntry.
+; tramp path. PhHcrEntry now stores the prefix mask directly (fixed 10).
 ; ==============================================================================
 ; ==============================================================================
-; HcrClock — retuned shutter clock (hcrunch-only; 2026-10-16 retune).
+; HcrClock — hcrunch animation clock (fixed full=10 since 2026-10-19).
 ;   In:  X = full extent (cells, ≥1); reads EnemyRamP (StartFrame-pinned)
 ;   Out: A = covered (1..full) — never 0 (always-solid stub)
-;   Clobbers A (X/Y preserved — unlike CrunchClock)
+;   Clobbers A (X/Y preserved — unlike CrunchClock). No latch: the kill
+;   repeats on contact (DropArm respawns at the room top, so no loop).
 ; s = EnemyRamP>>4 (0..15, one 256f period = 16 buckets of 16f):
 ;   s 0-3   dwell at home  (eff 0)       -> n=1, 64f stub
 ;   s 4-12  grow to center  (eff s-3)    -> n 2..full (1..9 cells of
@@ -978,15 +861,10 @@ CrPfx2:
 ; covered = 1 + min(eff, full-1). CrunchClock (sc>>2 triangle, ~4f/step)
 ; stays for its VCR mirrors + verify_build token gate — only the two
 ; hcrunch call sites moved here (16f/step, grow-to-center ruling
-; 2026-10-16).
+; 2026-10-16). Both callers pass full=10 (PhHcrEntry stages it, HOV
+; tests it); the latch freeze was removed with the 2026-10-19 contract.
 ; ==============================================================================
 HcrClock:
-    lda EnemyDeadMask
-    and #$80            ; b7: crunch kill latched this visit?
-    beq .hcLive
-    lda #1              ; spent — freeze the shutter at the home stub
-    rts                 ;   (min width) for the rest of the visit
-.hcLive:
     cpx #1
     bne .hcN
     lda #1              ; full=1: n always 1
@@ -1032,11 +910,8 @@ HcrClock:
 ; $FCCx pad (the pushed Y survives — HOVnext/HOVlegHit pop it).
 ;   $80 phase:  armed (b5) && !removed (b6) → .HOVafterGate overlap
 ;               tests → shared Hot hit (bank2 latches b6, Temp b7)
-;   $82 hcrunch: covered extent vs player box →
-;               HOVcKill (latch b7) → HOVlegHit (Temp b7 → LoseLife).
-;               b7 latch = kill ONCE per room visit (DropArm respawns at
-;               the death spot; the shutter is always-solid so a re-kill
-;               loop would be instant death). EnterRoom zeroes b7.
+;   $82 hcrunch: ANY overlap with the fixed band-1 / 10-cell prefix →
+;               HOVlegHit (Temp b7 → LoseLife). No latch (2026-10-19).
 ; ==============================================================================
     org $FA40
 HOVFeatEntry:
@@ -1049,50 +924,26 @@ HOVFeatEntry:
     bne .HFnotPhase
     jmp .HFphase                ; (far trampoline; Y = base preserved)
 .HFnotPhase:
-    lda EnemyDeadMask
-    and #$80                    ; b7: crunch kill already happened?
-    beq .HFnotLatched
-    jmp .HFmiss                 ; yes → pass (wall stays, no re-kill)
-.HFnotLatched:
-    lda (FetchPtr),Y            ; class byte (A was consumed by the mask test)
+    lda (FetchPtr),Y            ; class byte
     cmp #$82
     beq .HFh_begin
-    jmp .HFmiss
+    jmp .HFmiss                 ; $81 and unknown classes are inert
 .HFh_begin:
 
-    ; ---------------- $82 hcrunch: band ∈ [top,bottom] ----------------
-    iny
-    iny
-    lda (FetchPtr),Y            ; y = band
-    cmp CollisionCellY
-    bcs .HFh_lo
-    jmp .HFmissD                ; band < top
-.HFh_lo:
-    cmp CollisionEndY
-    beq .HFh2
-    bcc .HFh2                   ; band <= bottom
-    jmp .HFmissD                ; band > bottom
-.HFh2:
-    iny
-    lda (FetchPtr),Y            ; w
-    lsr                         ; full cells
-    tax
-    ; Rule (user 2026-10-16): cold kill while CLOSING (sc<52 = dwell+grow);
-    ; hot (LineCount = MetaB, staged by PhaseBlink's $82 arm; asl×2 brings
-    ; b6 to C) exempts — any phase/extent kills. Opening never kills.
-    lda LineCount
-    asl
-    asl                         ; b7 out, b6 -> C
-    bcs .HFh3                   ; hot → any phase/extent kills
-    lda EnemyRamP
-    lsr
-    lsr                         ; sc
-    cmp #52
-    bcc .HFh3                   ; closing half
-    jmp .HFmissJ                ; opening half → no kill
-.HFh3:
-    jsr HcrClock                ; A = n (1..full); X/Y preserved
-    asl                         ; n covered cells in 4px cols
+    ; ---------------- $82 hcrunch: fixed band 1 + fixed 10-cell prefix ---
+    ; Record fields ignored (user decision 2026-10-19): the band is always
+    ; band 1 and the prefix is always 10 cells. ALWAYS HOT: any overlap of
+    ; the player box with the covered prefix kills, at any phase/extent
+    ; (the clock animation only moves the covered prefix).
+    lda CollisionCellY
+    cmp #2                      ; top row below band1 → miss
+    bcs .HFmissD
+    lda CollisionEndY
+    cmp #1                      ; bottom row above band1 → miss
+    bcc .HFmissD
+    ldx #10
+    jsr HcrClock                ; A = n covered cells; X/Y preserved
+    asl                         ; 2n = covered 4px cols from col 0
     cmp CollisionEndX           ; covered_w vs min col (strict >)
     bcc .HFmissJ
     beq .HFmissJ
@@ -1102,9 +953,6 @@ HOVFeatEntry:
     jmp .HFmissD
 
 .HFkill:
-    lda EnemyDeadMask
-    ora #$80                    ; b7: crunch kill latch
-    sta EnemyDeadMask
     jmp HOVlegHit               ; loop Y still on the stack (popped there)
 .HFmissD:
 .HFmiss:

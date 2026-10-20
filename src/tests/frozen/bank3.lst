@@ -1,7 +1,7 @@
 ------- FILE bank3.asm LEVEL 1 PASS 2
       1  fffe					      processor	6502
       2  10000 ????						; ==============================================================================
-      3  10000 ????						; Bank3 — power-up stub + Phase-4 crunch bodies (vcrunch/hcrunch)
+      3  10000 ????						; Bank3 — power-up stub + Phase-4 crunch body (hcrunch)
       4  10000 ????						; ==============================================================================
       5  10000 ????						; Power-up bank (F6: selected at reset). The 5-byte stub switches to bank0
       6  10000 ????						; and the rest of the 4K was free until Phase 4 (2026-10-13) — bank0 has 1B
@@ -55,324 +55,264 @@
      54  f008							; b7 crunch-kill latch (EnterRoom zeroes)
      55  f008		       00 c2	   EnemyRamP  =	$C2	; free-running frame clock
      56  f008		       00 c3	   PF0Buf     =	$C3	; PF buffers rows 0-2 (9B: +0/3/6 per reg)
-     57  f008		       00 80	   RoomX      =	$80	; player X (0-159) — HcrPush clamp target
-     58  f008		       00 99	   RoomPF0Lo  =	$99	; TilePF0 pointer (MetaB at (ptr),10)
-     59  f008		       00 9a	   RoomPF0Hi  =	$9A
-     60  f008		       00 99	   RoomMetaA  =	$99	; staged MetaA/MetaB (floor + ptr pair reuse)
-     61  f008		       00 9a	   RoomMetaB  =	$9A
-     62  f008		       00 90	   RoomRectsLo =	$90	; rect stream ptr (bank2 EnterRoomB2 stages)
-     63  f008		       00 91	   RoomRectsHi =	$91
-     64  f008		       00 89	   RcBase     =	$89	; rect count for the ZP walk cache
-     65  f008		       00 cc	   RcW1       =	$CC	; uniform 4B rect cache
-     66  f008		       00 98	   RoomNo     =	$98
-     67  f008		       00 aa	   LevelWallColor =	$AA	; BuildColupF stripe rows 0+2
-     68  f008		       00 ab	   LevelWallColor2 =	$AB	; stripe row 1
-     69  f008		       00 ad	   TickCounter =	$AD	; hot-pulse phase bit 4
-     70  f008		       00 e7	   ColupfBuf  =	$E7
-     71  f008		       00 00	   COLOR_CAVE_BG =	$00
-     72  f008		       00 04	   COLOR_DARK_PF =	$04
-     73  f008		       00 1c	   COLOR_HOT_Y =	$1C
-     74  f008		       00 44	   COLOR_HOT_R =	$44
-     75  f008		       00 03	   TILE_ROWS  =	3
-     76  f008		       00 b5	   BombPacked =	$B5
-     77  f008		       00 c0	   LaserState =	$C0
-     78  f008		       00 c1	   EnemyRamD  =	$C1
-     79  f008		       00 ed	   BandTab    =	$ED	; band gate bytes (B3StageBand writes)
-     80  f008		       00 0a	   CTRLPF     =	$0A	; TIA (ball width $35 during staging)
-     81  f008		       00 05	   NUSIZ1     =	$05	; TIA (P1 single, M1 8 clk)
-     82  f008
-     83  f008							; ==============================================================================
-     84  f008							; HcrPush — cold growth push (user 2026-10-16): while the hcrunch prefix
-     85  f008							; ADVANCES it shoves the player toward center, so a cold shutter cannot
-     86  f008							; trap them inside (hot = kill semantics, unchanged). Called from
-     87  f008							; PhHcrEntry on the 16f grow-step edge (EnemyRamP & $0F == 0) with the
-     88  f008							; spent (b7) latch filtered; this body re-checks the phase (s4-12).
-     89  f008							; In:	CollisionX = 8n (prefix width px), CollisionCellX = band (0-2),
-     90  f008							;	Y = hot (full MetaB byte, bank2-staged; masked here). Out: RoomX
-     91  f008							;	clamped out of the left prefix [0,8n) / the TIA mirror [160-8n,160);
-     92  f008							;	A/X/Y + CollisionX clobbered.
-     93  f008							; ==============================================================================
-     94  f010					      org	$F010
-     95  f010				   HcrPush
-     96  f010		       98		      tya		; hot (MetaB b6, $40/0 — bank2-side, passed in Y)
-     97  f011		       29 40		      and	#$40
-     98  f013		       d0 40		      bne	.Hpd	; hot: kill semantics own it — no push
-     99  f015		       a5 c2		      lda	EnemyRamP
-    100  f017		       4a		      lsr
-    101  f018		       4a		      lsr
-    102  f019		       4a		      lsr
-    103  f01a		       4a		      lsr		; s = P>>4
-    104  f01b		       c9 04		      cmp	#4
-    105  f01d		       90 36		      bcc	.Hpd	; s0-3 dwell: stub static, no push
-    106  f01f		       c9 0d		      cmp	#13
-    107  f021		       b0 32		      bcs	.Hpd	; s13-15 retract: opening, no push
-    108  f023		       a6 8c		      ldx	CollisionCellX
-    109  f025		       18		      clc
-    110  f026		       a5 81		      lda	RoomY
-    111  f028		       69 0b		      adc	#11	; PLAYER_SPRITE_H-1
-    112  f02a		       38		      sec
-    113  f02b		       fd a0 f0 	      sbc	HcrBandLo,X	; bottom - band_lo (0/48/96)
-    114  f02e		       90 25		      bcc	.Hpd	; entirely above the band
-    115  f030		       c9 3b		      cmp	#59	; 48+11: bottom-band_lo >= 59 → entirely below
-    116  f032		       b0 21		      bcs	.Hpd
-    117  f034		       a5 8b		      lda	CollisionX	; 8n
-    118  f036		       c9 50		      cmp	#80
-    119  f038		       b0 1b		      bcs	.Hpd	; sealed (n>=10): no aperture — HOVhcrunch kills
-    120  f03a		       18		      clc
-    121  f03b		       69 07		      adc	#7	; aperture_lo = 8n+7
-    122  f03d		       c5 80		      cmp	RoomX
-    123  f03f		       90 04		      bcc	.Hrr	; clear of the left prefix
-    124  f041		       f0 02		      beq	.Hrr	; flush = clear
-    125  f043		       85 80		      sta	RoomX	; left overlap: clamp right
-    126  f045				   .Hrr
-    127  f045		       a5 8b		      lda	CollisionX	; 8n
-    128  f047		       18		      clc
-    129  f048		       65 80		      adc	RoomX
-    130  f04a		       c9 a0		      cmp	#160
-    131  f04c		       90 07		      bcc	.Hpd	; clear of the mirror prefix
-    132  f04e		       a9 9f		      lda	#159
-    133  f050		       38		      sec
-    134  f051		       e5 8b		      sbc	CollisionX	; 159-8n
-    135  f053		       85 80		      sta	RoomX	; right overlap: clamp left
-    136  f055				   .Hpd
-    137  f055		       60		      rts
-    138  f0a0					      org	$F0A0
-    139  f0a0				   HcrBandLo
-    140  f0a0		       00 30 60 	      .byte.b	0, 48, 96	; band → band_lo
-    141  f0a3
-    142  f0a3							; ==============================================================================
-    143  f0a3							; B3StageBand — StageBandTab, MOVED from bank2 (chunk A2, 2026-10-19).
-    144  f0a3							;
-    145  f0a3							; Tail-entered from bank2 BCFDarkRun at $F3A9:
-    146  f0a3							;   jsr PhaseBlink   (stays bank2 — it walks the rect stream)
-    147  f0a3							;   sta $1FF9
-    148  f0a3							;   jmp $F0A3	      <- OPCODE fetched from THIS bank at $F3AF
-    149  f0a3							; so bank3 MUST hold `jmp $F0A3` at $F3AF (pinned at the end of this block).
-    150  f0a3							; Zero pushes end to end: this body ends `jmp $FBF8` (ReturnPad), whose
-    151  f0a3							; `sta $1FF6 / rts` pops the ORIGINAL bank0 VBL jsr — the chain never nests.
-    152  f0a3							;
-    153  f0a3							; Reads ZP ONLY: RoomMetaA/B are staged at room entry (bank2 EnterRoomB2),
-    154  f0a3							; so no level-data access and therefore no bank2 read tramp is needed.
-    155  f0a3							;
-    156  f0a3							; Packed meta (bugs.md 28 point 1): MetaA = (m1_col+1)<<4 | band_mask
-    157  f0a3							; (b0-2 = band0/1/2 gates); MetaB = ball_col+1 (0 = feature absent).
-    158  f0a3							; Expanded every VBL to:
-    159  f0a3							;   BandTab ($ED-$EF) <- $ff/$00 per-band ENABL gates
-    160  f0a3							;   Temp    ($88)     <- BallX = 87+8*ball_col (0 = symmetric -> skip)
-    161  f0a3							;   CollisionEndX ($8E) <- M1X = 7+8*m1_col (0 = no M1; kill-gated below)
-    162  f0a3							; Window: this VBL write -> cave read -> bank1 HUD stomps $ED-$EF after the
-    163  f0a3							; cave read -> overscan rewrites $88 (joystick) after the ball read.
-    164  f0a3							; ==============================================================================
-    165  f0a3					      org	$F0A3
-    166  f0a3				   B3StageBand
-    167  f0a3							; --- expand band mask -> BandTab $ff/$00 ×3 (bit0 ENABL + bit7 pack) ---
-    168  f0a3							; --- Phase 5: stage the M1 x-offset for the door SIDE. A door has no
-    169  f0a3							; ball (its asym rows resolve to None → band mask $00), so MetaA bit0
-    170  f0a3							; is free: 1 = M1 strip on the RIGHT half (x = 87+8*col → offset +79),
-    171  f0a3							; 0 = left (x = 7+8*col → offset -1). The M1 block adds it via
-    172  f0a3							; clc/adc RectCount. MetaA bit0 is ALSO the band-0 ball gate — the
-    173  f0a3							; no-ball path below blanks BandTab so it never enables the ball.
-    174  f0a3							; RectCount ($92) is free in the VBL (kernel re-inits RowIdx at entry;
-    175  f0a3							; the pack uses $8F).
-    176  f0a3		       a5 99		      lda	RoomMetaA	; MetaA
-    177  f0a5		       29 01		      and	#$01
-    178  f0a7		       aa		      tax
-    179  f0a8		       bd 5c f1 	      lda	M1OffTab,X
-    180  f0ab		       85 92		      sta	RectCount
-    181  f0ad		       a5 99		      lda	RoomMetaA	; MetaA
-    182  f0af		       4a		      lsr		; band0 bit -> carry
-    183  f0b0		       a9 00		      lda	#0
-    184  f0b2		       2a		      rol
-    185  f0b3		       f0 02		      beq	.SBTb0z
-    186  f0b5		       a9 ff		      lda	#$ff
-    187  f0b7				   .SBTb0z
-    188  f0b7		       85 ed		      sta	BandTab
-    189  f0b9		       a5 99		      lda	RoomMetaA
-    190  f0bb		       4a		      lsr
-    191  f0bc		       4a		      lsr		; band1 bit -> carry
-    192  f0bd		       a9 00		      lda	#0
-    193  f0bf		       2a		      rol
-    194  f0c0		       f0 02		      beq	.SBTb1z
-    195  f0c2		       a9 ff		      lda	#$ff
-    196  f0c4				   .SBTb1z
-    197  f0c4		       85 ee		      sta	BandTab+1
-    198  f0c6		       a5 99		      lda	RoomMetaA
-    199  f0c8		       4a		      lsr
-    200  f0c9		       4a		      lsr
-    201  f0ca		       4a		      lsr		; band2 bit -> carry
-    202  f0cb		       a9 00		      lda	#0
-    203  f0cd		       2a		      rol
-    204  f0ce		       f0 02		      beq	.SBTb2z
-    205  f0d0		       a9 ff		      lda	#$ff
-    206  f0d2				   .SBTb2z
-    207  f0d2		       85 ef		      sta	BandTab+2
-    208  f0d4							; --- strip destroyed by a bomb? (EnemyDeadMask b3 — StripBlastCheck
-    209  f0d4							; set it this overscan) → blank all band gates so the cave renders no
-    210  f0d4							; strip; the pack below then emits mask 0 → every overlay stays
-    211  f0d4							; transparent too. BandTab restages from ROM next room entry. ---
-    212  f0d4		       a5 ba		      lda	EnemyDeadMask
-    213  f0d6		       29 08		      and	#$08
-    214  f0d8		       f0 08		      beq	.SBTstripAlive
-    215  f0da		       a9 00		      lda	#0
-    216  f0dc		       85 ed		      sta	BandTab
-    217  f0de		       85 ee		      sta	BandTab+1
-    218  f0e0		       85 ef		      sta	BandTab+2
-    219  f0e2				   .SBTstripAlive
-    220  f0e2							; --- D6 M1 (left-col block): M1X = 8*(m1_col+1)-1 -> CollisionEndX ($8E) ---
-    221  f0e2							; 0 = no M1 patch. Window: this VBL write -> PositionBallM1 reads it
-    222  f0e2							; later the same VBL (staged-file pattern like Temp/BallX). Overscan
-    223  f0e2							; routines (PHM/LWC/blast/laser) restage their own CollisionEndX values
-    224  f0e2							; AFTER the cave read, so the alias never crosses a frame boundary.
-    225  f0e2							; NOT zeroed with BandTab on strip kill — M1 is a whole-cave latch and
-    226  f0e2							; convert guarantees its cell is solid/unpatched (wall) where it must hide.
-    227  f0e2							; M1 strip DESTROYED (EnemyDeadMask b4, StripBlastCheck's M1 twin) →
-    228  f0e2							; stage 0: PositionBallM1 skips ENAM1, the pack's b3 flag clears, and
-    229  f0e2							; both overlay paths (PHM/blast) treat the strip as gone next frame.
-    230  f0e2		       a5 99		      lda	RoomMetaA
-    231  f0e4		       4a		      lsr
-    232  f0e5		       4a		      lsr
-    233  f0e6		       4a		      lsr
-    234  f0e7		       4a		      lsr		; m1_col+1 (0 = no M1 patch)
-    235  f0e8		       f0 09		      beq	.M1zero
-    236  f0ea		       0a		      asl
-    237  f0eb		       0a		      asl
-    238  f0ec		       0a		      asl		; *8
-    239  f0ed		       18		      clc
-    240  f0ee		       65 92		      adc	RectCount	; staged offset: -1 (left, $FF) / +79 (right,$4f)
-    241  f0f0		       4c f5 f0 	      jmp	.M1got
-    242  f0f3				   .M1zero
-    243  f0f3		       a9 00		      lda	#0
-    244  f0f5				   .M1got
-    245  f0f5		       85 8e		      sta	CollisionEndX
-    246  f0f7		       a5 ba		      lda	EnemyDeadMask
-    247  f0f9		       29 10		      and	#$10	; b4 = M1 strip destroyed (room-scoped)
-    248  f0fb		       f0 04		      beq	.M1stage
-    249  f0fd		       a9 00		      lda	#0
-    250  f0ff		       85 8e		      sta	CollisionEndX
-    251  f101				   .M1stage
-    252  f101							; --- BallX staging: Temp ($88) ---
-    253  f101							; 0 ⇔ symmetric (kernel ball block skips; verify_build enforces).
-    254  f101							; CTRLPF: constant $35 (8-clk ball) — the P2 door 4clk eor ($B5) is
-    255  f101							; GONE (user 2026-10-12: door must look like the plain async strip;
-    256  f101							; only the key/bomb semantics differ). One write per VBL is the
-    257  f101							; cave's value (the HUD's own $05/$35 dance runs after the cave).
-    258  f101		       a9 35		      lda	#$35
-    259  f103		       85 0a		      sta	CTRLPF
-    260  f105		       a5 9a		      lda	RoomMetaB	; MetaB = ball_col+1 (0 = none)
-    261  f107		       29 0f		      and	#$0F	; ball_col+1 is b0-b3 only (max 10); drops b7
-    262  f109							; (vcrunch) AND b6 (hot) — b6 used to survive
-    263  f109							; and fake a 1-cell ball at x72-79 on a
-    264  f109							; hot-without-ball model
-    265  f109		       f0 0b		      beq	.SBTnoBall
-    266  f10b		       0a		      asl
-    267  f10c		       0a		      asl
-    268  f10d		       0a		      asl		; *8
-    269  f10e		       18		      clc
-    270  f10f		       69 4f		      adc	#79	; 8*(ball_col+1)+79 = 87+8*ball_col — the
-    271  f111							; calibrated SetObjectXPos arg (S6b: arg A
-    272  f111							; draws clocks [A-7, A]; right_col c occupies
-    273  f111							; [80+8c, 87+8c]). PHMOverlay recomputes this
-    274  f111							; value independently (:1992) — the two MUST
-    275  f111							; agree or the stripe draws beside its own
-    276  f111							; collision cell (was #86 = +7px ≈ one cell
-    277  f111							; right; user-spotted 2026-10-12).
-    278  f111		       85 88		      sta	Temp
-    279  f113		       4c 20 f1 	      jmp	.SBTballDone
-    280  f116				   .SBTnoBall
-    281  f116		       a9 00		      lda	#0
-    282  f118		       85 88		      sta	Temp
-    283  f11a							; --- No ball in this room → BE the ball gate off. ---------------------
-    284  f11a							; BandTab is the per-band ENABL gate for the cave (.Row). MetaA bit0 is
-    285  f11a							; the band-0 gate AND (for a door) the "M1 strip on the RIGHT half"
-    286  f11a							; flag — a door has no ball, so its bit0 must NOT enable one. Before
-    287  f11a							; this, the door room rendered a wall-coloured (COLUPF) ball bar over
-    288  f11a							; the band-0 opening: ENABL on, RESPBL never strobed (Temp=0) → the
-    289  f11a							; ball free-ran at x72-79 (user screenshot 2026-10-17, door_right.png).
-    290  f11a		       85 ed		      sta	BandTab
-    291  f11c		       85 ee		      sta	BandTab+1
-    292  f11e		       85 ef		      sta	BandTab+2
-    293  f120				   .SBTballDone
-    294  f120							; --- NUSIZ1 owned here since P2b (kernel's VBL $30 restore deleted) ---
-    295  f120							; Constant $30 (P1 single, M1 8 clk): the door distinction is COLOR
-    296  f120							; (yellow $1C staged below), not width — the 4clk block read as "half
-    297  f120							; a tile", the 2clk thin stripe as "only one strip" (user, 2026-10-12).
-    298  f120		       a9 30		      lda	#$30
-    299  f122		       85 05		      sta	NUSIZ1
-    300  f124							; Door stripe color ($8D) is staged inside PhaseBlink (this window
-    301  f124							; is full to the $F4C4 pin — the 14B staging block lives with the
-    302  f124							; walk where there is hole).
-    303  f124							; --- Phase 3: phase-cell blink (PF buffer pokes) ----------------------
-    304  f124							; Body moved after the level data (PhaseBlink, ~130B — the StageBandTab
-    305  f124							; window $F3C4..$F4C4 was full; the data window has the only free
-    306  f124							; hole). Contract: clobbers A/X/Y/FetchPtr/RectCount/LineCount/
-    307  f124							; CollisionCellX/CollisionEndY ($8F scratch — the pack below rebuilds
-    308  f124							; it). The PF buffers ARE the collision map (cell walk + laser read
-    309  f124							; them) — toggling the cell's two bits THERE makes render + PHM +
-    310  f124							; laser follow with zero kernel cost. 64f full cycle = EnemyRamP bit5
-    311  f124							; (32 on + 32 off; clock-derived, no state bytes — locked plan).
-    312  f124							; --- PhaseBlink ping-pong (chunk A2): it MUST run after the band/ball
-    313  f124							; staging above and before the pack below (the crunch walk overwrites
-    314  f124							; Temp/BandTab for its cell — running it earlier let SBT's own staging
-    315  f124							; erase the crunch mask, and every crunch kill stopped latching).
-    316  f124							; Leg 1: this `sta` runs here, the fetch at $F803 is bank2's
-    317  f124							; `jmp PhBlinkTail` (byte-image pinned in bank2.asm).
-    318  f124							; --- A3: PhaseBlink is LOCAL now (the record stream lives in bank3) ---
-    319  f124		       20 5e f4 	      jsr	PhaseBlink
-    320  f127				   SBT_B
-    321  f127							; --- Phase 4: pack collision overlay byte → CollisionEndY ($8F) ---
-    322  f127							; b4-b7 = right_col+1, b0-2 = ball band mask, b3 = M1 present
-    323  f127							; (staged $8E != 0), 0 = symmetric. Cave never
-    324  f127							; writes $8F; bank1 HUD entry copies it to LineCount ($84 — cave .Row
-    325  f127							; clobbers it) before overscan PHM reads. BallX in Temp stays raw (the
-    326  f127							; kernel's ball block reads it later this VBL).
-    327  f127							; b3 seeds BEFORE the Temp=0 early-out so an M1-ONLY room still packs
-    328  f127							; nonzero (kernel OverlayTramp gates on LineCount != 0 — no M1 cross
-    329  f127							; otherwise).
-    330  f127		       a5 8e		      lda	CollisionEndX	; staged M1X (kill-gated above)
-    331  f129		       f0 02		      beq	.M1nof	; 0 = no M1 → seed 0 (A is 0)
-    332  f12b		       a9 08		      lda	#$08	; b3 = M1 present
-    333  f12d				   .M1nof
-    334  f12d		       85 8f		      sta	CollisionEndY
-    335  f12f		       a5 88		      lda	Temp
-    336  f131		       f0 26		      beq	.SBTPack	; no ball → keep b3-only (or 0) pack
-    337  f133		       38		      sec
-    338  f134		       e9 4f		      sbc	#79	; (BallX-79)>>3 = ball_col+1 (BallX =
-    339  f136		       4a		      lsr		;   87+8*ball_col) → <<4 lands it in b4-b7
-    340  f137		       4a		      lsr		;   with ONE sbc (was sbc #87 + adc #$10)
-    341  f138		       4a		      lsr
-    342  f139		       0a		      asl
-    343  f13a		       0a		      asl
-    344  f13b		       0a		      asl
-    345  f13c		       0a		      asl
-    346  f13d		       05 8f		      ora	CollisionEndY	; merge with the b3 seed
-    347  f13f		       85 8f		      sta	CollisionEndY
-    348  f141							; BandTab bytes are $ff/$00 → their bit7 IS the gate.
-    349  f141		       a9 00		      lda	#0
-    350  f143		       24 ed		      bit	BandTab
-    351  f145		       10 02		      bpl	.SBTp0
-    352  f147		       09 01		      ora	#$01
-    353  f149				   .SBTp0
-    354  f149		       24 ee		      bit	BandTab+1
-    355  f14b		       10 02		      bpl	.SBTp1
-    356  f14d		       09 02		      ora	#$02
-    357  f14f				   .SBTp1
-    358  f14f		       24 ef		      bit	BandTab+2
-    359  f151		       10 02		      bpl	.SBTp2
-    360  f153		       09 04		      ora	#$04
-    361  f155				   .SBTp2
-    362  f155		       05 8f		      ora	CollisionEndY
-    363  f157		       85 8f		      sta	CollisionEndY
-    364  f159				   .SBTPack
-    365  f159		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad → bank0 VBLANK caller
-    366  f15c				   M1OffTab		; Phase 5: MetaA b0 → M1 x-offset (left/right)
-    367  f15c		       ff 4f		      .byte.b	$ff, $4f
-    368  f15e
-    369  f15e							; --- A3 level data (2026-10-19): shared model blocks + every per-room
-    370  f15e							;     PF/meta block. Emitted by convert_level --levels into
-    371  f15e							;     generated/spill_bank3.asm; bank2 keeps only the room TABLES (they
-    372  f15e							;     resolve these labels through generated/bank3_labels.asm).
-    373  f15e							;     ~350B; the block below starts at $F3B0 after the pinned image.
-    374  f160					      org	$F160
+     57  f008		       00 99	   RoomPF0Lo  =	$99	; TilePF0 pointer (MetaB at (ptr),10)
+     58  f008		       00 9a	   RoomPF0Hi  =	$9A
+     59  f008		       00 99	   RoomMetaA  =	$99	; staged MetaA/MetaB (floor + ptr pair reuse)
+     60  f008		       00 9a	   RoomMetaB  =	$9A
+     61  f008		       00 90	   RoomRectsLo =	$90	; rect stream ptr (bank2 EnterRoomB2 stages)
+     62  f008		       00 91	   RoomRectsHi =	$91
+     63  f008		       00 89	   RcBase     =	$89	; rect count for the ZP walk cache
+     64  f008		       00 cc	   RcW1       =	$CC	; uniform 4B rect cache
+     65  f008		       00 98	   RoomNo     =	$98
+     66  f008		       00 aa	   LevelWallColor =	$AA	; BuildColupF stripe rows 0+2
+     67  f008		       00 ab	   LevelWallColor2 =	$AB	; stripe row 1
+     68  f008		       00 ad	   TickCounter =	$AD	; hot-pulse phase bit 4
+     69  f008		       00 e7	   ColupfBuf  =	$E7
+     70  f008		       00 00	   COLOR_CAVE_BG =	$00
+     71  f008		       00 04	   COLOR_DARK_PF =	$04
+     72  f008		       00 1c	   COLOR_HOT_Y =	$1C
+     73  f008		       00 44	   COLOR_HOT_R =	$44
+     74  f008		       00 03	   TILE_ROWS  =	3
+     75  f008		       00 b5	   BombPacked =	$B5
+     76  f008		       00 c0	   LaserState =	$C0
+     77  f008		       00 c1	   EnemyRamD  =	$C1
+     78  f008		       00 ed	   BandTab    =	$ED	; band gate bytes (B3StageBand writes)
+     79  f008		       00 0a	   CTRLPF     =	$0A	; TIA (ball width $35 during staging)
+     80  f008		       00 05	   NUSIZ1     =	$05	; TIA (P1 single, M1 8 clk)
+     81  f008
+     82  f008							; ==============================================================================
+     83  f008							; B3StageBand — StageBandTab, MOVED from bank2 (chunk A2, 2026-10-19).
+     84  f008							;
+     85  f008							; Tail-entered from bank2 BCFDarkRun at $F3A9:
+     86  f008							;   jsr PhaseBlink   (stays bank2 — it walks the rect stream)
+     87  f008							;   sta $1FF9
+     88  f008							;   jmp $F0A3	      <- OPCODE fetched from THIS bank at $F3AF
+     89  f008							; so bank3 MUST hold `jmp $F0A3` at $F3AF (pinned at the end of this block).
+     90  f008							; Zero pushes end to end: this body ends `jmp $FBF8` (ReturnPad), whose
+     91  f008							; `sta $1FF6 / rts` pops the ORIGINAL bank0 VBL jsr — the chain never nests.
+     92  f008							;
+     93  f008							; Reads ZP ONLY: RoomMetaA/B are staged at room entry (bank2 EnterRoomB2),
+     94  f008							; so no level-data access and therefore no bank2 read tramp is needed.
+     95  f008							;
+     96  f008							; Packed meta (bugs.md 28 point 1): MetaA = (m1_col+1)<<4 | band_mask
+     97  f008							; (b0-2 = band0/1/2 gates); MetaB = ball_col+1 (0 = feature absent).
+     98  f008							; Expanded every VBL to:
+     99  f008							;   BandTab ($ED-$EF) <- $ff/$00 per-band ENABL gates
+    100  f008							;   Temp    ($88)     <- BallX = 87+8*ball_col (0 = symmetric -> skip)
+    101  f008							;   CollisionEndX ($8E) <- M1X = 7+8*m1_col (0 = no M1; kill-gated below)
+    102  f008							; Window: this VBL write -> cave read -> bank1 HUD stomps $ED-$EF after the
+    103  f008							; cave read -> overscan rewrites $88 (joystick) after the ball read.
+    104  f008							; ==============================================================================
+    105  f0a3					      org	$F0A3
+    106  f0a3				   B3StageBand
+    107  f0a3							; --- expand band mask -> BandTab $ff/$00 ×3 (bit0 ENABL + bit7 pack) ---
+    108  f0a3							; --- Phase 5: stage the M1 x-offset for the door SIDE. A door has no
+    109  f0a3							; ball (its asym rows resolve to None → band mask $00), so MetaA bit0
+    110  f0a3							; is free: 1 = M1 strip on the RIGHT half (x = 87+8*col → offset +79),
+    111  f0a3							; 0 = left (x = 7+8*col → offset -1). The M1 block adds it via
+    112  f0a3							; clc/adc RectCount. MetaA bit0 is ALSO the band-0 ball gate — the
+    113  f0a3							; no-ball path below blanks BandTab so it never enables the ball.
+    114  f0a3							; RectCount ($92) is free in the VBL (kernel re-inits RowIdx at entry;
+    115  f0a3							; the pack uses $8F).
+    116  f0a3		       a5 99		      lda	RoomMetaA	; MetaA
+    117  f0a5		       29 01		      and	#$01
+    118  f0a7		       aa		      tax
+    119  f0a8		       bd 5c f1 	      lda	M1OffTab,X
+    120  f0ab		       85 92		      sta	RectCount
+    121  f0ad		       a5 99		      lda	RoomMetaA	; MetaA
+    122  f0af		       4a		      lsr		; band0 bit -> carry
+    123  f0b0		       a9 00		      lda	#0
+    124  f0b2		       2a		      rol
+    125  f0b3		       f0 02		      beq	.SBTb0z
+    126  f0b5		       a9 ff		      lda	#$ff
+    127  f0b7				   .SBTb0z
+    128  f0b7		       85 ed		      sta	BandTab
+    129  f0b9		       a5 99		      lda	RoomMetaA
+    130  f0bb		       4a		      lsr
+    131  f0bc		       4a		      lsr		; band1 bit -> carry
+    132  f0bd		       a9 00		      lda	#0
+    133  f0bf		       2a		      rol
+    134  f0c0		       f0 02		      beq	.SBTb1z
+    135  f0c2		       a9 ff		      lda	#$ff
+    136  f0c4				   .SBTb1z
+    137  f0c4		       85 ee		      sta	BandTab+1
+    138  f0c6		       a5 99		      lda	RoomMetaA
+    139  f0c8		       4a		      lsr
+    140  f0c9		       4a		      lsr
+    141  f0ca		       4a		      lsr		; band2 bit -> carry
+    142  f0cb		       a9 00		      lda	#0
+    143  f0cd		       2a		      rol
+    144  f0ce		       f0 02		      beq	.SBTb2z
+    145  f0d0		       a9 ff		      lda	#$ff
+    146  f0d2				   .SBTb2z
+    147  f0d2		       85 ef		      sta	BandTab+2
+    148  f0d4							; --- strip destroyed by a bomb? (EnemyDeadMask b3 — StripBlastCheck
+    149  f0d4							; set it this overscan) → blank all band gates so the cave renders no
+    150  f0d4							; strip; the pack below then emits mask 0 → every overlay stays
+    151  f0d4							; transparent too. BandTab restages from ROM next room entry. ---
+    152  f0d4		       a5 ba		      lda	EnemyDeadMask
+    153  f0d6		       29 08		      and	#$08
+    154  f0d8		       f0 08		      beq	.SBTstripAlive
+    155  f0da		       a9 00		      lda	#0
+    156  f0dc		       85 ed		      sta	BandTab
+    157  f0de		       85 ee		      sta	BandTab+1
+    158  f0e0		       85 ef		      sta	BandTab+2
+    159  f0e2				   .SBTstripAlive
+    160  f0e2							; --- D6 M1 (left-col block): M1X = 8*(m1_col+1)-1 -> CollisionEndX ($8E) ---
+    161  f0e2							; 0 = no M1 patch. Window: this VBL write -> PositionBallM1 reads it
+    162  f0e2							; later the same VBL (staged-file pattern like Temp/BallX). Overscan
+    163  f0e2							; routines (PHM/LWC/blast/laser) restage their own CollisionEndX values
+    164  f0e2							; AFTER the cave read, so the alias never crosses a frame boundary.
+    165  f0e2							; NOT zeroed with BandTab on strip kill — M1 is a whole-cave latch and
+    166  f0e2							; convert guarantees its cell is solid/unpatched (wall) where it must hide.
+    167  f0e2							; M1 strip DESTROYED (EnemyDeadMask b4, StripBlastCheck's M1 twin) →
+    168  f0e2							; stage 0: PositionBallM1 skips ENAM1, the pack's b3 flag clears, and
+    169  f0e2							; both overlay paths (PHM/blast) treat the strip as gone next frame.
+    170  f0e2		       a5 99		      lda	RoomMetaA
+    171  f0e4		       4a		      lsr
+    172  f0e5		       4a		      lsr
+    173  f0e6		       4a		      lsr
+    174  f0e7		       4a		      lsr		; m1_col+1 (0 = no M1 patch)
+    175  f0e8		       f0 09		      beq	.M1zero
+    176  f0ea		       0a		      asl
+    177  f0eb		       0a		      asl
+    178  f0ec		       0a		      asl		; *8
+    179  f0ed		       18		      clc
+    180  f0ee		       65 92		      adc	RectCount	; staged offset: -1 (left, $FF) / +79 (right,$4f)
+    181  f0f0		       4c f5 f0 	      jmp	.M1got
+    182  f0f3				   .M1zero
+    183  f0f3		       a9 00		      lda	#0
+    184  f0f5				   .M1got
+    185  f0f5		       85 8e		      sta	CollisionEndX
+    186  f0f7		       a5 ba		      lda	EnemyDeadMask
+    187  f0f9		       29 10		      and	#$10	; b4 = M1 strip destroyed (room-scoped)
+    188  f0fb		       f0 04		      beq	.M1stage
+    189  f0fd		       a9 00		      lda	#0
+    190  f0ff		       85 8e		      sta	CollisionEndX
+    191  f101				   .M1stage
+    192  f101							; --- BallX staging: Temp ($88) ---
+    193  f101							; 0 ⇔ symmetric (kernel ball block skips; verify_build enforces).
+    194  f101							; CTRLPF: constant $35 (8-clk ball) — the P2 door 4clk eor ($B5) is
+    195  f101							; GONE (user 2026-10-12: door must look like the plain async strip;
+    196  f101							; only the key/bomb semantics differ). One write per VBL is the
+    197  f101							; cave's value (the HUD's own $05/$35 dance runs after the cave).
+    198  f101		       a9 35		      lda	#$35
+    199  f103		       85 0a		      sta	CTRLPF
+    200  f105		       a5 9a		      lda	RoomMetaB	; MetaB = ball_col+1 (0 = none)
+    201  f107		       29 0f		      and	#$0F	; ball_col+1 is b0-b3 only (max 10); drops b7
+    202  f109							; (retired door/vcrunch flag) AND b6 (hot) — b6 used to survive
+    203  f109							; and fake a 1-cell ball at x72-79 on a
+    204  f109							; hot-without-ball model
+    205  f109		       f0 0b		      beq	.SBTnoBall
+    206  f10b		       0a		      asl
+    207  f10c		       0a		      asl
+    208  f10d		       0a		      asl		; *8
+    209  f10e		       18		      clc
+    210  f10f		       69 4f		      adc	#79	; 8*(ball_col+1)+79 = 87+8*ball_col — the
+    211  f111							; calibrated SetObjectXPos arg (S6b: arg A
+    212  f111							; draws clocks [A-7, A]; right_col c occupies
+    213  f111							; [80+8c, 87+8c]). PHMOverlay recomputes this
+    214  f111							; value independently (:1992) — the two MUST
+    215  f111							; agree or the stripe draws beside its own
+    216  f111							; collision cell (was #86 = +7px ≈ one cell
+    217  f111							; right; user-spotted 2026-10-12).
+    218  f111		       85 88		      sta	Temp
+    219  f113		       4c 20 f1 	      jmp	.SBTballDone
+    220  f116				   .SBTnoBall
+    221  f116		       a9 00		      lda	#0
+    222  f118		       85 88		      sta	Temp
+    223  f11a							; --- No ball in this room → BE the ball gate off. ---------------------
+    224  f11a							; BandTab is the per-band ENABL gate for the cave (.Row). MetaA bit0 is
+    225  f11a							; the band-0 gate AND (for a door) the "M1 strip on the RIGHT half"
+    226  f11a							; flag — a door has no ball, so its bit0 must NOT enable one. Before
+    227  f11a							; this, the door room rendered a wall-coloured (COLUPF) ball bar over
+    228  f11a							; the band-0 opening: ENABL on, RESPBL never strobed (Temp=0) → the
+    229  f11a							; ball free-ran at x72-79 (user screenshot 2026-10-17, door_right.png).
+    230  f11a		       85 ed		      sta	BandTab
+    231  f11c		       85 ee		      sta	BandTab+1
+    232  f11e		       85 ef		      sta	BandTab+2
+    233  f120				   .SBTballDone
+    234  f120							; --- NUSIZ1 owned here since P2b (kernel's VBL $30 restore deleted) ---
+    235  f120							; Constant $30 (P1 single, M1 8 clk): the door distinction is COLOR
+    236  f120							; (yellow $1C staged below), not width — the 4clk block read as "half
+    237  f120							; a tile", the 2clk thin stripe as "only one strip" (user, 2026-10-12).
+    238  f120		       a9 30		      lda	#$30
+    239  f122		       85 05		      sta	NUSIZ1
+    240  f124							; Door stripe color ($8D) is staged inside PhaseBlink (this window
+    241  f124							; is full to the $F4C4 pin — the 14B staging block lives with the
+    242  f124							; walk where there is hole).
+    243  f124							; --- Phase 3: phase-cell blink (PF buffer pokes) ----------------------
+    244  f124							; Body moved after the level data (PhaseBlink, ~130B — the StageBandTab
+    245  f124							; window $F3C4..$F4C4 was full; the data window has the only free
+    246  f124							; hole). Contract: clobbers A/X/Y/FetchPtr/RectCount/LineCount/
+    247  f124							; CollisionCellX/CollisionEndY ($8F scratch — the pack below rebuilds
+    248  f124							; it). The PF buffers ARE the collision map (cell walk + laser read
+    249  f124							; them) — toggling the cell's two bits THERE makes render + PHM +
+    250  f124							; laser follow with zero kernel cost. 64f full cycle = EnemyRamP bit5
+    251  f124							; (32 on + 32 off; clock-derived, no state bytes — locked plan).
+    252  f124							; --- PhaseBlink ping-pong (chunk A2): it MUST run after the band/ball
+    253  f124							; staging above and before the pack below (the crunch walk overwrites
+    254  f124							; Temp/BandTab for its cell — running it earlier let SBT's own staging
+    255  f124							; erase the crunch mask, and every crunch kill stopped latching).
+    256  f124							; Leg 1: this `sta` runs here, the fetch at $F803 is bank2's
+    257  f124							; `jmp PhBlinkTail` (byte-image pinned in bank2.asm).
+    258  f124							; --- A3: PhaseBlink is LOCAL now (the record stream lives in bank3) ---
+    259  f124		       20 5e f4 	      jsr	PhaseBlink
+    260  f127				   SBT_B
+    261  f127							; --- Phase 4: pack collision overlay byte → CollisionEndY ($8F) ---
+    262  f127							; b4-b7 = right_col+1, b0-2 = ball band mask, b3 = M1 present
+    263  f127							; (staged $8E != 0), 0 = symmetric. Cave never
+    264  f127							; writes $8F; bank1 HUD entry copies it to LineCount ($84 — cave .Row
+    265  f127							; clobbers it) before overscan PHM reads. BallX in Temp stays raw (the
+    266  f127							; kernel's ball block reads it later this VBL).
+    267  f127							; b3 seeds BEFORE the Temp=0 early-out so an M1-ONLY room still packs
+    268  f127							; nonzero (kernel OverlayTramp gates on LineCount != 0 — no M1 cross
+    269  f127							; otherwise).
+    270  f127		       a5 8e		      lda	CollisionEndX	; staged M1X (kill-gated above)
+    271  f129		       f0 02		      beq	.M1nof	; 0 = no M1 → seed 0 (A is 0)
+    272  f12b		       a9 08		      lda	#$08	; b3 = M1 present
+    273  f12d				   .M1nof
+    274  f12d		       85 8f		      sta	CollisionEndY
+    275  f12f		       a5 88		      lda	Temp
+    276  f131		       f0 26		      beq	.SBTPack	; no ball → keep b3-only (or 0) pack
+    277  f133		       38		      sec
+    278  f134		       e9 4f		      sbc	#79	; (BallX-79)>>3 = ball_col+1 (BallX =
+    279  f136		       4a		      lsr		;   87+8*ball_col) → <<4 lands it in b4-b7
+    280  f137		       4a		      lsr		;   with ONE sbc (was sbc #87 + adc #$10)
+    281  f138		       4a		      lsr
+    282  f139		       0a		      asl
+    283  f13a		       0a		      asl
+    284  f13b		       0a		      asl
+    285  f13c		       0a		      asl
+    286  f13d		       05 8f		      ora	CollisionEndY	; merge with the b3 seed
+    287  f13f		       85 8f		      sta	CollisionEndY
+    288  f141							; BandTab bytes are $ff/$00 → their bit7 IS the gate.
+    289  f141		       a9 00		      lda	#0
+    290  f143		       24 ed		      bit	BandTab
+    291  f145		       10 02		      bpl	.SBTp0
+    292  f147		       09 01		      ora	#$01
+    293  f149				   .SBTp0
+    294  f149		       24 ee		      bit	BandTab+1
+    295  f14b		       10 02		      bpl	.SBTp1
+    296  f14d		       09 02		      ora	#$02
+    297  f14f				   .SBTp1
+    298  f14f		       24 ef		      bit	BandTab+2
+    299  f151		       10 02		      bpl	.SBTp2
+    300  f153		       09 04		      ora	#$04
+    301  f155				   .SBTp2
+    302  f155		       05 8f		      ora	CollisionEndY
+    303  f157		       85 8f		      sta	CollisionEndY
+    304  f159				   .SBTPack
+    305  f159		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad → bank0 VBLANK caller
+    306  f15c				   M1OffTab		; Phase 5: MetaA b0 → M1 x-offset (left/right)
+    307  f15c		       ff 4f		      .byte.b	$ff, $4f
+    308  f15e
+    309  f15e							; --- A3 level data (2026-10-19): shared model blocks + every per-room
+    310  f15e							;     PF/meta block. Emitted by convert_level --levels into
+    311  f15e							;     generated/spill_bank3.asm; bank2 keeps only the room TABLES (they
+    312  f15e							;     resolve these labels through generated/bank3_labels.asm).
+    313  f15e							;     ~350B; the block below starts at $F3B0 after the pinned image.
+    314  f160					      org	$F160
 ------- FILE generated/spill_bank3.asm LEVEL 2 PASS 2
       0  f160					      include	"generated/spill_bank3.asm"
       1  f160							; Generated by convert_level.py --levels (A3 2026-10-19).
@@ -670,768 +610,676 @@
 ------- FILE generated/spill_bank3.asm
       8  f293
 ------- FILE bank3.asm
-    376  f293
-    377  f293		       00 00 00 00*	      .ds	$F3AC - *, 0	; PIN: bank2 BCFDarkRun's `sta $1FF9` ends
-    378  f3ac							;   here (sta +3) — this image is what runs.
-    379  f3ac		       4c a3 f0 	      .byte.b	$4C, <B3StageBand, >B3StageBand	; jmp B3StageBand
-    380  f3af
-    381  f3af							; ==============================================================================
-    382  f3af							; A3 (2026-10-19): level-data walkers moved from bank2 — the record stream
-    383  f3af							; (rects/meta) lives in THIS bank now, so these read it directly.
-    384  f3af							; ==============================================================================
-    385  f3b0					      org	$F3B0
-    386  f3b0
-    387  f3b0							; ==============================================================================
-    388  f3b0							; B3RoomBlocks — EnterRoomB2's level-data half (A3 2026-10-19).
-    389  f3b0							; Reached by a tail-jump from bank2 ERBlocksPad (`sta $1FF9 / jmp $F3B0`),
-    390  f3b0							; returns with `sta $1FF8 / jmp $F45B` (bank2's ERBlocksDone).
-    391  f3b0							; Reads the room block from THIS bank: rect stream → ZP cache, 9-byte PF
-    392  f3b0							; rebuild, then MetaA/MetaB into the dead pointer pair ($99/$9A).
-    393  f3b0							; 0 pushes; clobbers A/X/Y/FetchPtr (bank2 restages every one of them).
-    394  f3b0							; ==============================================================================
-    395  f3b0				   B3RoomBlocks
-    396  f3b0							; --- copy solid rect list → ZP cache: ROM is packed 2B/rect
-    397  f3b0							;     [x<<2|y, w<<2|h], cache keeps the uniform 4B walk form.
-    398  f3b0							;     Copies 5 slots unconditionally (count = RcBase gates walkers).
-    399  f3b0		       a5 90		      lda	RoomRectsLo
-    400  f3b2		       85 e5		      sta	FetchPtr
-    401  f3b4		       a5 91		      lda	RoomRectsHi
-    402  f3b6		       85 e6		      sta	FetchPtr+1
-    403  f3b8		       a0 00		      ldy	#0
-    404  f3ba		       b1 e5		      lda	(FetchPtr),Y	; count
-    405  f3bc		       c9 06		      cmp	#6
-    406  f3be		       90 02		      bcc	.EBrcCntOk
-    407  f3c0		       a9 05		      lda	#5	; rect5+ not cached (ZP ends $DF) — clamp
-    408  f3c2				   .EBrcCntOk
-    409  f3c2		       85 89		      sta	RcBase
-    410  f3c4		       c8		      iny		; Y = first packed byte
-    411  f3c5		       a2 00		      ldx	#0	; dest offset in rect0..4 ($CC+)
-    412  f3c7				   .EBrcW
-    413  f3c7		       b1 e5		      lda	(FetchPtr),Y
-    414  f3c9		       4a		      lsr
-    415  f3ca		       4a		      lsr		; x = p0 >> 2
-    416  f3cb		       95 cc		      sta	RcW1,X
-    417  f3cd		       b1 e5		      lda	(FetchPtr),Y
-    418  f3cf		       29 03		      and	#3	; y = p0 & 3
-    419  f3d1		       95 cd		      sta	RcW1+1,X
-    420  f3d3		       c8		      iny
-    421  f3d4		       b1 e5		      lda	(FetchPtr),Y
-    422  f3d6		       4a		      lsr
-    423  f3d7		       4a		      lsr		; w = p1 >> 2
-    424  f3d8		       95 ce		      sta	RcW1+2,X
-    425  f3da		       b1 e5		      lda	(FetchPtr),Y
-    426  f3dc		       29 03		      and	#3	; h = p1 & 3
-    427  f3de		       95 cf		      sta	RcW1+3,X
-    428  f3e0		       c8		      iny
-    429  f3e1		       e8		      inx
-    430  f3e2		       e8		      inx
-    431  f3e3		       e8		      inx
-    432  f3e4		       e8		      inx
-    433  f3e5		       e0 14		      cpx	#20
-    434  f3e7		       d0 de		      bne	.EBrcW
-    435  f3e9
-    436  f3e9							; --- PF rebuild: one 9-byte read (PF0+PF1+PF2 rows are contiguous in
-    437  f3e9							;     ROM and in RAM: PF0Buf $C3 + Y covers $C3-$CB = all 9 rows) ---
-    438  f3e9		       a5 99		      lda	RoomPF0Lo
-    439  f3eb		       85 e5		      sta	FetchPtr
-    440  f3ed		       a5 9a		      lda	RoomPF0Hi
-    441  f3ef		       85 e6		      sta	FetchPtr+1
-    442  f3f1		       a0 00		      ldy	#0
-    443  f3f3				   .EBpf
-    444  f3f3		       b1 e5		      lda	(FetchPtr),Y
-    445  f3f5		       99 c3 00 	      sta	PF0Buf,Y
-    446  f3f8		       c8		      iny
-    447  f3f9		       c0 09		      cpy	#9
-    448  f3fb		       d0 f6		      bne	.EBpf
-    449  f3fd
-    450  f3fd							; --- room meta staging: MetaA/MetaB → the pointer bytes ($99/$9A) ---
-    451  f3fd							; Y = 9 on entry from the copy loop above (so no LDY here).
-    452  f3fd		       b1 e5		      lda	(FetchPtr),Y	; MetaA (Y = 9)
-    453  f3ff		       85 99		      sta	RoomMetaA	; = RoomPF0Lo — pointer lo dies here
-    454  f401		       c8		      iny
-    455  f402		       b1 e5		      lda	(FetchPtr),Y	; MetaB (Y = 10)
-    456  f404		       85 9a		      sta	RoomMetaB	; = RoomPF0Hi — pointer hi dies here
-    457  f406		       4c 58 f4 	      jmp	$F458	; return tail (pinned after the image)
-    458  f409
-    459  f409
-    460  f409
-    461  f409
-    462  f409							; --- fixed entry image: bank2 ERBlocksPad's `jmp` operand is fetched HERE ---
-    463  f409		       00 00 00 00*	      .ds	$F453 - *, 0
-    464  f453		       4c b0 f3 	      .byte.b	$4C, <B3RoomBlocks, >B3RoomBlocks	; jmp B3RoomBlocks
-    465  f456							; --- return tail PINNED at $F458: bank2's $F45B is a row start ---
-    466  f456		       00 00		      .ds	$F458 - *, 0
-    467  f458		       8d f8 1f 	      sta	$1FF8	; back to bank2
-    468  f45b		       4c 5b f4 	      jmp	$F45B	; ERBlocksDone (operand fetched bank2-side)
-    469  f45e
-    470  f45e
-    471  f45e				   PhaseBlink
-    472  f45e							; Door stripe color → CollisionCellY ($8D): $80 = no door (the kernel
-    473  f45e		       a9 80		      lda	#$80
-    474  f460							; band-setup line keeps the band color on COLUP1); $1C = yellow
-    475  f460							; (hue1 luma6 — doors + key are yellow, user ruling 2026-10-12; the
-    476  f460							; +10c door branch cost +2 cave frame lines — wall-model retargeted
-    477  f460							; per-kernel, bugs.md #32 closed). The overscan PHM prologue restages
-    478  f460							; $8D as its own top-row temp AFTER the kernel — no lifecycle overlap.
-    479  f460							; (Staged here, not in StageBandTab: that window is pin-full.)
-    480  f460		       a9 80		      lda	#$80
-    481  f462		       85 8d		      sta	CollisionCellY
-    482  f464		       a5 99		      lda	RoomMetaA	; MetaA
-    483  f466		       29 08		      and	#$08	; b3 = left door
-    484  f468		       f0 04		      beq	.PhNoDoor
-    485  f46a		       a9 1c		      lda	#$1C	; yellow door stripe
-    486  f46c		       85 8d		      sta	CollisionCellY
-    487  f46e				   .PhNoDoor
-    488  f46e							; --- blink phase → EnemyDeadMask b5 (armed = cell solid this frame) --
-    489  f46e							; mod-90 clock: 45 ON / 45 OFF (+76f tail per 256 wrap) = ~+40% over the
-    490  f46e							; old raw bit5 32/32 blink (user, 2026-10-13). Staged here every VBL so
-    491  f46e							; overscan HotOverlapBody can read the SAME frame's state: EnemyRamP is
-    492  f46e							; incremented at overscan entry (RefreshEnemyY), so a raw-clock read in
-    493  f46e							; HOV would be one frame ahead of the kernel's rendered blink.
-    494  f46e		       a5 c2		      lda	EnemyRamP
-    495  f470		       c9 5a		      cmp	#90
-    496  f472		       90 02		      bcc	.Phm1
-    497  f474		       e9 5a		      sbc	#90
-    498  f476				   .Phm1
-    499  f476		       c9 5a		      cmp	#90
-    500  f478		       90 02		      bcc	.Phm2
-    501  f47a		       e9 5a		      sbc	#90
-    502  f47c				   .Phm2
-    503  f47c		       c9 2d		      cmp	#45	; C=1 ⟺ phase ≥ 45 ⟺ blink OFF
-    504  f47e		       a5 ba		      lda	EnemyDeadMask	; (LDA preserves C)
-    505  f480		       b0 04		      bcs	.PhfOff
-    506  f482		       09 20		      ora	#$20
-    507  f484		       90 02		      bcc	.PhfSt	; C=0 → always taken (skips the AND)
-    508  f486				   .PhfOff
-    509  f486		       29 df		      and	#$DF
-    510  f488				   .PhfSt
-    511  f488		       85 ba		      sta	EnemyDeadMask
-    512  f48a		       a5 90		      lda	RoomRectsLo
-    513  f48c		       85 e5		      sta	FetchPtr
-    514  f48e		       a5 91		      lda	RoomRectsHi
-    515  f490		       85 e6		      sta	FetchPtr+1
-    516  f492		       a0 00		      ldy	#0
-    517  f494		       b1 e5		      lda	(FetchPtr),Y	; solid count
-    518  f496		       0a		      asl
-    519  f497		       18		      clc
-    520  f498		       69 01		      adc	#1
-    521  f49a		       a8		      tay		; Y → hot count
-    522  f49b		       b1 e5		      lda	(FetchPtr),Y
-    523  f49d		       f0 6b		      beq	.PhDone	; no hot records at all
-    524  f49f		       85 92		      sta	RectCount
-    525  f4a1				   PhRec
-    526  f4a1		       a5 92		      lda	RectCount
-    527  f4a3		       f0 65		      beq	.PhDone
-    528  f4a5		       c6 92		      dec	RectCount
-    529  f4a7		       c8		      iny		; Y → record class
-    530  f4a8		       b1 e5		      lda	(FetchPtr),Y
-    531  f4aa		       10 57		      bpl	.PhSkip	; legacy hot rect — not a blink cell
-    532  f4ac		       c9 80		      cmp	#$80
-    533  f4ae		       f0 0b		      beq	.PhPhase
-    534  f4b0		       c9 82		      cmp	#$82
-    535  f4b2		       d0 4f		      bne	.PhSkip	; unknown b7 class: skip 4
-    536  f4b4							; A3b: stage MetaB (b6 = hot) for HcrClock's cold/hot gate, then enter the
-    537  f4b4							; hcrunch body DIRECTLY — FetchPtr still points at this record, so no
-    538  f4b4							; field pre-read/push shuttle is needed (same-bank walker now).
-    539  f4b4		       a5 9a		      lda	RoomMetaB
-    540  f4b6		       85 84		      sta	LineCount
-    541  f4b8		       4c 80 f8 	      jmp	PhHcrEntry
-    542  f4bb				   .PhPhase
-    543  f4bb		       c8		      iny		; Y → 2c (even, 0-18)
-    544  f4bc		       b1 e5		      lda	(FetchPtr),Y
-    545  f4be		       4a		      lsr		; pair index 0-9
-    546  f4bf		       aa		      tax
-    547  f4c0		       bd bd f5 	      lda	PhMaskTab,X	; two adjacent PF bits for the cell pair
-    548  f4c3		       85 8c		      sta	CollisionCellX	; mask (scratch — overscan restages $8C)
-    549  f4c5		       49 ff		      eor	#$FF
-    550  f4c7		       85 8f		      sta	CollisionEndY	; ~mask (scratch — pack rebuild overwrites)
-    551  f4c9							; buffer offset: pair<2 → PF0 (0), <6 → PF1 (3), else PF2 (6)
-    552  f4c9		       a9 00		      lda	#0
-    553  f4cb		       e0 02		      cpx	#2
-    554  f4cd		       90 08		      bcc	.PhOffA
-    555  f4cf		       a9 03		      lda	#3
-    556  f4d1		       e0 06		      cpx	#6
-    557  f4d3		       90 02		      bcc	.PhOffA
-    558  f4d5		       a9 06		      lda	#6
-    559  f4d7				   .PhOffA
-    560  f4d7		       85 84		      sta	LineCount	; offset scratch
-    561  f4d9		       c8		      iny		; Y → row (band 0-2)
-    562  f4da		       b1 e5		      lda	(FetchPtr),Y
-    563  f4dc		       18		      clc
-    564  f4dd		       65 84		      adc	LineCount	; A = buffer offset + row (0-8 → $C3+A)
-    565  f4df		       aa		      tax
-    566  f4e0		       a5 ba		      lda	EnemyDeadMask	; b5 flag staged above this frame
-    567  f4e2		       29 40		      and	#$40	; b6: walls removed by crush kill
-    568  f4e4		       d0 0f		      bne	.PhOff	; force open every VBL until EnterRoom clears
-    569  f4e6		       a5 ba		      lda	EnemyDeadMask	; b5 flag staged above this frame
-    570  f4e8		       29 20		      and	#$20	; armed ⟺ cell solid
-    571  f4ea		       f0 09		      beq	.PhOff
-    572  f4ec		       b5 c3		      lda	PF0Buf,X
-    573  f4ee		       05 8c		      ora	CollisionCellX
-    574  f4f0		       95 c3		      sta	PF0Buf,X
-    575  f4f2		       4c fe f4 	      jmp	PhNext
-    576  f4f5				   .PhOff
-    577  f4f5		       b5 c3		      lda	PF0Buf,X
-    578  f4f7		       25 8f		      and	CollisionEndY
-    579  f4f9		       95 c3		      sta	PF0Buf,X
-    580  f4fb		       4c fe f4 	      jmp	PhNext
-    581  f4fe				   PhNext		; Y = row (base+2): skip w/h → next class.
-    582  f4fe							; GLOBAL: bank3 crunch bodies tail-jmp here
-    583  f4fe							; via the $FCC1 pads (Y left at base+2).
-    584  f4fe		       c8		      iny		; Y → w
-    585  f4ff		       c8		      iny		; Y → h (record last byte)
-    586  f500		       4c a1 f4 	      jmp	PhRec
-    587  f503				   .PhSkip		; non-phase record: skip its last 4 bytes
-    588  f503		       c8		      iny
-    589  f504		       c8		      iny
-    590  f505		       c8		      iny
-    591  f506		       c8		      iny		; Y → h (record last byte)
-    592  f507		       4c a1 f4 	      jmp	PhRec
-    593  f50a				   .PhDone
-    594  f50a		       60		      rts
-    595  f50b
-    596  f50b							; ------------------------------------------------------------------------------
-    597  f50b
-    598  f50b
-    599  f50b				   BuildColupF
-    600  f50b							; Bomb save ($F0-$F2 → collision temps) deleted S3.0b: this body writes
-    601  f50b							; ColupfBuf rows 0-2 only — it never reached $F0-$F2 (vestigial from
-    602  f50b							; the 12-row era; kernel .AfterRows restore deleted in the same commit).
-    603  f50b							; --- stripe fill ---
-    604  f50b		       a2 00		      ldx	#0
-    605  f50d				   .BCFstripe
-    606  f50d		       e0 01		      cpx	#1
-    607  f50f		       d0 05		      bne	.BCFc1
-    608  f511		       a5 ab		      lda	LevelWallColor2
-    609  f513		       4c 18 f5 	      jmp	.BCFstore
-    610  f516				   .BCFc1
-    611  f516		       a5 aa		      lda	LevelWallColor
-    612  f518				   .BCFstore
-    613  f518		       95 e7		      sta	ColupfBuf,X
-    614  f51a		       e8		      inx
-    615  f51b		       e0 03		      cpx	#TILE_ROWS
-    616  f51d		       d0 ee		      bne	.BCFstripe
-    617  f51f							; --- pulse color → Temp (free until .BgStore) ---
-    618  f51f		       a5 ad		      lda	TickCounter
-    619  f521		       29 10		      and	#$10
-    620  f523		       f0 05		      beq	.BCFpulseY
-    621  f525		       a9 44		      lda	#COLOR_HOT_R
-    622  f527		       4c 2c f5 	      jmp	.BCFpulse
-    623  f52a				   .BCFpulseY
-    624  f52a		       a9 1c		      lda	#COLOR_HOT_Y
-    625  f52c				   .BCFpulse
-    626  f52c		       85 88		      sta	Temp
-    627  f52e							; --- walk hot rects, overwrite those rows ---
-    628  f52e		       a5 90		      lda	RoomRectsLo
-    629  f530		       85 e5		      sta	FetchPtr
-    630  f532		       a5 91		      lda	RoomRectsHi
-    631  f534		       85 e6		      sta	FetchPtr+1
-    632  f536		       a0 00		      ldy	#0
-    633  f538		       b1 e5		      lda	(FetchPtr),Y	; solid count (direct read — data in bank2)
-    634  f53a		       0a		      asl		; packed 2B/rect stream
-    635  f53b		       18		      clc
-    636  f53c		       69 01		      adc	#1
-    637  f53e		       a8		      tay		; Y → hot count
-    638  f53f		       b1 e5		      lda	(FetchPtr),Y
-    639  f541		       f0 34		      beq	.BCFdone
-    640  f543		       85 92		      sta	RectCount
-    641  f545		       c8		      iny
-    642  f546				   .BCFrect
-    643  f546		       98		      tya
-    644  f547		       48		      pha
-    645  f548		       b1 e5		      lda	(FetchPtr),Y	; record class/mask
-    646  f54a		       30 22		      bmi	.BCFrectDone	; b7 set = feature record ($80 phase /
-    647  f54c							;   $81 vcrunch / $82 hcrunch) — NOT a
-    648  f54c							;   hot band; its rows keep the stripe
-    649  f54c							;   color (the phase cell's own blink
-    650  f54c							;   lives in the PF bits, not the color)
-    651  f54c		       c8		      iny
-    652  f54d		       c8		      iny		; Y = base+2 (y; record = mask, x, y, w, h)
-    653  f54e		       b1 e5		      lda	(FetchPtr),Y
-    654  f550		       85 8c		      sta	CollisionCellX	; first row
-    655  f552		       c8		      iny
-    656  f553		       c8		      iny		; Y = base+4 (h)
-    657  f554		       18		      clc
-    658  f555		       b1 e5		      lda	(FetchPtr),Y
-    659  f557		       65 8c		      adc	CollisionCellX
-    660  f559		       85 8b		      sta	CollisionX	; one-past last row
-    661  f55b		       a6 8c		      ldx	CollisionCellX
-    662  f55d				   .BCFrow
-    663  f55d		       e0 03		      cpx	#TILE_ROWS
-    664  f55f		       b0 0d		      bcs	.BCFrectDone
-    665  f561		       e0 0c		      cpx	#12
-    666  f563		       b0 09		      bcs	.BCFrectDone
-    667  f565		       a5 88		      lda	Temp
-    668  f567		       95 e7		      sta	ColupfBuf,X
-    669  f569		       e8		      inx
-    670  f56a		       e4 8b		      cpx	CollisionX
-    671  f56c		       d0 ef		      bne	.BCFrow
-    672  f56e				   .BCFrectDone
-    673  f56e		       68		      pla
-    674  f56f		       18		      clc
-    675  f570		       69 05		      adc	#5
-    676  f572		       a8		      tay
-    677  f573		       c6 92		      dec	RectCount
-    678  f575		       d0 cf		      bne	.BCFrect
-    679  f577				   .BCFdone
-    680  f577							; --- Dark room: walls black; fuse (state=1) walls dark grey ---
-    681  f577							; Moved to BCFDarkRun (pre-level-data gap): the $FCF0 pin left <8 B
-    682  f577							; here once the dark mask grew to rooms 4-7. Still inlined in THIS
-    683  f577							; bank — pads cannot nest (ReturnPad switches to bank0).
-    684  f577		       4c 7a f5 	      jmp	BCFDarkRun
-    685  f57a
-    686  f57a							; ------------------------------------------------------------------------------
-    687  f57a
-    688  f57a
-    689  f57a				   BCFDarkRun
-    690  f57a		       a5 98		      lda	RoomNo
-    691  f57c		       c9 04		      cmp	#4
-    692  f57e		       b0 0a		      bcs	.BCFhi
-    693  f580		       aa		      tax
-    694  f581		       bd b5 f5 	      lda	BCFDarkMask,X	; rooms 0-3: $10/$20/$40/$80
-    695  f584		       25 c1		      and	EnemyRamD
-    696  f586		       f0 27		      beq	.BCFdarkDone	; lit → keep stripe/hot colors
-    697  f588		       d0 0e		      bne	.BCFon	; dark (Z clear — beq just fell through)
-    698  f58a				   .BCFhi
-    699  f58a		       c9 08		      cmp	#8
-    700  f58c		       b0 21		      bcs	.BCFdarkDone	; rooms 8+ never dark (no mask bit)
-    701  f58e		       aa		      tax
-    702  f58f		       bd b5 f5 	      lda	BCFDarkMask,X	; rooms 4-7: $10/$20/$40/$80
-    703  f592		       4a		      lsr
-    704  f593		       4a		      lsr		; → $04/$08/$10/$20 = LaserState b2-5
-    705  f594		       25 c0		      and	LaserState
-    706  f596		       f0 17		      beq	.BCFdarkDone	; lit → keep stripe/hot colors
-    707  f598				   .BCFon
-    708  f598		       a5 b5		      lda	BombPacked
-    709  f59a		       29 03		      and	#%00000011
-    710  f59c		       c9 01		      cmp	#1
-    711  f59e		       f0 04		      beq	.BCFFuseGrey	; bomb fuse active → dark grey walls
-    712  f5a0		       a9 00		      lda	#COLOR_CAVE_BG	; black walls (matches black background)
-    713  f5a2		       f0 02		      beq	.BCFdarkFill	; A=$00 (COLOR_CAVE_BG) → always taken
-    714  f5a4				   .BCFFuseGrey
-    715  f5a4		       a9 04		      lda	#COLOR_DARK_PF	; hue 0 luma 2 = very dark grey walls
-    716  f5a6				   .BCFdarkFill
-    717  f5a6		       a2 00		      ldx	#0
-    718  f5a8				   .BCFdarkLoop
-    719  f5a8		       95 e7		      sta	ColupfBuf,X
-    720  f5aa		       e8		      inx
-    721  f5ab		       e0 03		      cpx	#TILE_ROWS
-    722  f5ad		       d0 f9		      bne	.BCFdarkLoop
-    723  f5af				   .BCFdarkDone
-    724  f5af		       4c a3 f0 	      jmp	B3StageBand	; A3: local (PhaseBlink/pack live here now)
-    725  f5b2		       8d f9 1f 	      sta	$1FF9	; chunk A2: StageBandTab lives in bank3
-    726  f5b5				   BCFDarkMask
-    727  f5b5		       10 20 40 80	      .byte.b	$10, $20, $40, $80	; rooms 0-3 → EnemyRamD bits 4-7
-    728  f5b9		       10 20 40 80	      .byte.b	$10, $20, $40, $80	; rooms 4-7 → lsr×2 = LaserState bits 2-5
-    729  f5bd
-    730  f5bd
-    731  f5bd				   PhMaskTab
-    732  f5bd		       30 c0		      .byte.b	$30, $C0	; PF0 pairs (0,1) (2,3)
-    733  f5bf		       c0 30 0c 03	      .byte.b	$C0, $30, $0C, $03	; PF1 pairs (4,5) (6,7) (8,9) (10,11)
-    734  f5c3		       03 0c 30 c0	      .byte.b	$03, $0C, $30, $C0	; PF2 pairs (12,13) ... (18,19)
-    735  f5c7
-    736  f5c7
-    737  f5c7				   HotOverlapBody
-    738  f5c7		       a5 90		      lda	RoomRectsLo
-    739  f5c9		       85 e5		      sta	FetchPtr
-    740  f5cb		       a5 91		      lda	RoomRectsHi
-    741  f5cd		       85 e6		      sta	FetchPtr+1
-    742  f5cf		       a0 00		      ldy	#0
-    743  f5d1		       b1 e5		      lda	(FetchPtr),Y	; solid count (direct read — data in this bank)
-    744  f5d3		       0a		      asl		; packed 2B/rect stream
-    745  f5d4		       18		      clc
-    746  f5d5		       69 01		      adc	#1	; +1 count byte → hot count offset
-    747  f5d7		       a8		      tay
-    748  f5d8		       b1 e5		      lda	(FetchPtr),Y	; hot count
-    749  f5da		       f0 6f		      beq	.HOVdone	; no hot rects
-    750  f5dc		       85 92		      sta	RectCount
-    751  f5de		       c8		      iny		; first hot rect base
-    752  f5df				   .HOVloop
-    753  f5df		       98		      tya
-    754  f5e0		       48		      pha
-    755  f5e1							; Parent gate: mask $00 = M1 block rect → dies with the STRIP
-    756  f5e1							; (EnemyDeadMask b4), never with a wall (walk hits the floor cell
-    757  f5e1							; under the block reach this body even after the strip is gone).
-    758  f5e1							; Any other mask = wall piece → dies when that piece is blasted.
-    759  f5e1		       b1 e5		      lda	(FetchPtr),Y	; hot parent mask
-    760  f5e3		       30 6a		      bmi	.HOVfeature	; b7 set = feature record ($80 phase /
-    761  f5e5							;   $81 vcrunch / $82 hcrunch) — NOT a
-    762  f5e5							;   legacy death rect (see .HOVfeature
-    763  f5e5							;   after .HOVdone).
-    764  f5e5		       d0 08		      bne	.HOVwallGate
-    765  f5e7		       a5 ba		      lda	EnemyDeadMask
-    766  f5e9		       29 10		      and	#$10	; b4: strip destroyed → M1 rect dead
-    767  f5eb		       d0 55		      bne	HOVnext	; (HOVnext pops the loop's pushed Y)
-    768  f5ed		       f0 04		      beq	HOVafterGate	; strip alive → continue (result was 0)
-    769  f5ef				   .HOVwallGate
-    770  f5ef		       25 b5		      and	BombPacked
-    771  f5f1		       d0 4f		      bne	HOVnext
-    772  f5f3				   HOVafterGate
-    773  f5f3		       c8		      iny		; Y = base+1 (x)
-    774  f5f4							; Column overlap (same tests as PlayerHitsMap)
-    775  f5f4		       b1 e5		      lda	(FetchPtr),Y	; rect.x
-    776  f5f6		       c5 8c		      cmp	CollisionCellX
-    777  f5f8		       f0 04		      beq	.HOVcolOk
-    778  f5fa		       90 02		      bcc	.HOVcolOk
-    779  f5fc		       d0 44		      bne	HOVnext	; A > cellX → Z=0 (was jmp, -1B)
-    780  f5fe				   .HOVcolOk
-    781  f5fe		       85 8b		      sta	CollisionX
-    782  f600		       c8		      iny
-    783  f601		       c8		      iny		; Y = base+3 (w)
-    784  f602		       18		      clc
-    785  f603		       b1 e5		      lda	(FetchPtr),Y	; rect.w
-    786  f605		       65 8b		      adc	CollisionX
-    787  f607		       c5 8e		      cmp	CollisionEndX
-    788  f609		       f0 37		      beq	HOVnext
-    789  f60b		       90 35		      bcc	HOVnext
-    790  f60d							; Row overlap (base+3 → base+2 = y, same as PlayerHitsMap dey).
-    791  f60d		       88		      dey		; Y = base+2 (y)
-    792  f60e		       b1 e5		      lda	(FetchPtr),Y	; rect.y
-    793  f610		       c5 8f		      cmp	CollisionEndY
-    794  f612		       f0 04		      beq	.HOVrowOk
-    795  f614		       90 02		      bcc	.HOVrowOk
-    796  f616		       d0 2a		      bne	HOVnext	; A > endY → Z=0 (was jmp, -1B)
-    797  f618				   .HOVrowOk
-    798  f618		       c8		      iny
-    799  f619		       c8		      iny		; Y = base+4 (h)
-    800  f61a		       18		      clc
-    801  f61b		       b1 e5		      lda	(FetchPtr),Y	; rect.h
-    802  f61d		       85 8b		      sta	CollisionX
-    803  f61f		       88		      dey
-    804  f620		       88		      dey		; Y = base+2 (y)
-    805  f621		       b1 e5		      lda	(FetchPtr),Y	; rect.y (re-read for y+h)
-    806  f623		       65 8b		      adc	CollisionX	; y+h
-    807  f625		       c5 8d		      cmp	CollisionCellY
-    808  f627		       f0 19		      beq	HOVnext
-    809  f629		       90 17		      bcc	HOVnext
-    810  f62b							; Hot hit
-    811  f62b		       88		      dey
-    812  f62c		       88		      dey		; Y = base+2 → base (record class)
-    813  f62d		       b1 e5		      lda	(FetchPtr),Y
-    814  f62f		       10 06		      bpl	HOVlegHit	; legacy hot rect → no phase latch
-    815  f631		       a5 ba		      lda	EnemyDeadMask
-    816  f633		       09 40		      ora	#$40	; b6: phase dead — walls removed from now on
-    817  f635		       85 ba		      sta	EnemyDeadMask	;   (PhaseBlink forces punch-OFF, kill gated)
-    818  f637				   HOVlegHit
-    819  f637		       68		      pla
-    820  f638		       a5 88		      lda	Temp
-    821  f63a		       09 80		      ora	#%10000000
-    822  f63c		       85 88		      sta	Temp
-    823  f63e		       38		      sec		; tail-call contract: return C=1
-    824  f63f		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad → original caller (C survives)
-    825  f642				   HOVnext
-    826  f642		       68		      pla
-    827  f643		       18		      clc
-    828  f644		       69 05		      adc	#5
-    829  f646		       a8		      tay
-    830  f647		       c6 92		      dec	RectCount
-    831  f649		       d0 94		      bne	.HOVloop
-    832  f64b				   .HOVdone
-    833  f64b		       38		      sec		; tail-call contract: return C=1
-    834  f64c		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad → original caller (C survives)
-    835  f64f
-    836  f64f							; Feature-record dispatch ($80 phase / $81 vcrunch / $82 hcrunch — Phase 4):
-    837  f64f							; armed/overlap/kill tests live in bank3 (HOVFeatEntry). $80 phase: b5 armed
-    838  f64f							; (staged by PhaseBlink each VBL) + candidate-box overlap → shared Hot hit
-    839  f64f							; (Temp b7 → bank0 `jsr LoseLife`); kill gated on armed-and-not-removed
-    840  f64f							; (`and #$60 / cmp #$20`), latches b6, PhaseBlink punch forced OFF while b6
-    841  f64f							; set (walls REMOVED, same-room only — EnterRoom zeroes the mask).
-    842  f64f							; $81 vcrunch: sprite shutter — the kill rides the OverlayTramp MISS path
-    843  f64f							; (OvShutTest/OvShutBand, MetaB b7 gate) because the punched cell never
-    844  f64f							; trips this walk. The record path (loop push + HOVFeatPre's 4 field pushes
-    845  f64f							; + bank3 jsr HOVvcrunch) measured SP=$F6 = real BombTimer ($F7) stomp
-    846  f64f							; (sim_bomb_fuse mirror stomp, 2026-10-13) — skip the record here.
-    847  f64f							; Entered with Y = record base + pushed Y (loop invariant), A = mask.
-    848  f64f							; 15B kept: the cmp/beq/jmp + pad replace the old tramp byte-for-byte —
-    849  f64f							; the BombEnemyBlastBody $FD87 pin (kernel tramp operand) must not move.
-    850  f64f				   .HOVfeature
-    851  f64f		       c9 81		      cmp	#$81
-    852  f651		       f0 ef		      beq	HOVnext	; vcrunch skip (HOVnext pops the loop Y)
-    853  f653							; LineCount is clobbered by the kernel .Row between this VBL staging and
-    854  f653							; the overscan walk, so the hot byte (MetaB b6) is re-staged HERE, at the
-    855  f653							; call, exactly like the old bank2 pre-read did.
-    856  f653		       a5 9a		      lda	RoomMetaB
-    857  f655		       85 84		      sta	LineCount
-    858  f657		       b1 e5		      lda	(FetchPtr),Y	; restore the class (Y = record base)
-    859  f659		       4c 40 fa 	      jmp	HOVFeatEntry	; A3b: same-bank, fields read from FetchPtr
-    860  f65c		       00 00 00 00*	      .ds	8, 0	; pad: 2+2+3+8 = 15B = old body size
-    861  f664
-    862  f664							; ------------------------------------------------------------------------------
-    863  f664
-    864  f664
-    865  f664							; A3b (2026-10-19): HOVFeatPre / PhHcrPre DELETED. Both bodies are in
-    866  f664							; this bank now, so the feature dispatchers read the record fields
-    867  f664							; straight from FetchPtr with Y = record base — no 4-field stack
-    868  f664							; shuttle (the stack floor improves by ~7 bytes on both paths).
-    869  f664
-    870  f664							; ==============================================================================
-    871  f664							; PhHcrEntry — PhaseBlink $82 (hcrunch) tramp target.
-    872  f664							; Record: $82, 0, band (row), w (4px = 2*cells), 1. Single-row band
-    873  f664							; prefix from col 0: cells 0..n-1 covered (n = HcrClock(full)), the
-    874  f664							; rest of the full bbox cleared. PF = (row & ~P(full)) | P(n) — fused in
-    875  f664							; ONE pass (P(n) ⊆ P(full), so AND-then-OR collapses; one pass halves the
-    876  f664							; buffer reads). Y = class on entry; tail leaves Y = base+2. Clobbers
-    877  f664							; A/X/Y + LineCount/CCX/CEY.
-    878  f664							; ==============================================================================
-    879  f880					      org	$F880
-    880  f880				   PhHcrEntry
-    881  f880							; $82 hcrunch. IN: Y = record base, A = class (ignored), FetchPtr = record
-    882  f880							; stream, LineCount = MetaB (b6 hot; staged by PhaseBlink's $82 arm).
-    883  f880							; Record: [$82, x, y(band), w(2*cells), h]. Same bank as the walker now
-    884  f880							; (A3), so fields are read DIRECTLY — the old 4-field stack shuttle is
-    885  f880							; gone and only the record base is pushed (stack floor eases by ~7 bytes).
-    886  f880							; Y = base+4 on exit (PhRec contract).
-    887  f880		       98		      tya
-    888  f881		       48		      pha		; [base] — only saved value
-    889  f882		       c8		      iny
-    890  f883		       c8		      iny
-    891  f884		       b1 e5		      lda	(FetchPtr),Y	; band
-    892  f886		       85 8e		      sta	CollisionEndX	; band scratch for the staging (PHM restages it)
-    893  f888		       85 8c		      sta	CollisionCellX	; HcrPush's band input (its band-range gate)
-    894  f88a		       c8		      iny
-    895  f88b		       b1 e5		      lda	(FetchPtr),Y	; w
-    896  f88d		       4a		      lsr		; full cells (w is even, 2*cells)
-    897  f88e		       aa		      tax		; X = full
-    898  f88f		       20 a1 f9 	      jsr	HcrClock	; A = n covered cells (1..full); b7 → 1 (spent)
-    899  f892		       85 8b		      sta	CollisionX	; n
-    900  f894							; --- cold growth push on the 16f step edge (spent never pushes) ---
-    901  f894		       a5 c2		      lda	EnemyRamP
-    902  f896		       29 0f		      and	#$0F
-    903  f898		       d0 16		      bne	.HcStage
-    904  f89a		       a5 ba		      lda	EnemyDeadMask
-    905  f89c		       29 80		      and	#$80
-    906  f89e		       d0 10		      bne	.HcStage
-    907  f8a0		       a5 8b		      lda	CollisionX
-    908  f8a2		       0a		      asl
-    909  f8a3		       0a		      asl
-    910  f8a4		       0a		      asl		; 8n (prefix width px) — HcrPush's only ext input
-    911  f8a5		       85 8b		      sta	CollisionX
-    912  f8a7		       a5 84		      lda	LineCount	; hot (MetaB b6, $40/0)
-    913  f8a9		       a8		      tay		; Y = hot
-    914  f8aa		       20 10 f0 	      jsr	HcrPush
-    915  f8ad		       4c e6 f8 	      jmp	.HcDone	; push frame: skip the staging (see plan)
-    916  f8b0				   .HcStage
-    917  f8b0							; Fused bbox-open + prefix-close, ONE band row:
-    918  f8b0							;   PF[row] = (PF[row] & ~P(full)) | P(n)
-    919  f8b0							; X still = full (HcrClock preserves X/Y).
-    920  f8b0		       8a		      txa		; full
-    921  f8b1		       a8		      tay
-    922  f8b2		       b9 80 f9 	      lda	CrPfx0,Y
-    923  f8b5		       49 ff		      eor	#$FF
-    924  f8b7		       85 84		      sta	LineCount
-    925  f8b9		       b9 8b f9 	      lda	CrPfx1,Y
-    926  f8bc		       49 ff		      eor	#$FF
-    927  f8be		       85 8c		      sta	CollisionCellX
-    928  f8c0		       b9 96 f9 	      lda	CrPfx2,Y
-    929  f8c3		       49 ff		      eor	#$FF
-    930  f8c5		       85 8f		      sta	CollisionEndY
-    931  f8c7		       a6 8e		      ldx	CollisionEndX	; band → PF buffer row
-    932  f8c9		       a4 8b		      ldy	CollisionX	; n → CrPfx index
-    933  f8cb		       b5 c3		      lda	PF0Buf,X
-    934  f8cd		       25 84		      and	LineCount
-    935  f8cf		       19 80 f9 	      ora	CrPfx0,Y
-    936  f8d2		       95 c3		      sta	PF0Buf,X
-    937  f8d4		       b5 c6		      lda	PF0Buf+3,X
-    938  f8d6		       25 8c		      and	CollisionCellX
-    939  f8d8		       19 8b f9 	      ora	CrPfx1,Y
-    940  f8db		       95 c6		      sta	PF0Buf+3,X
-    941  f8dd		       b5 c9		      lda	PF0Buf+6,X
-    942  f8df		       25 8f		      and	CollisionEndY
-    943  f8e1		       19 96 f9 	      ora	CrPfx2,Y
-    944  f8e4		       95 c9		      sta	PF0Buf+6,X
-    945  f8e6				   .HcDone
-    946  f8e6		       68		      pla		; base
-    947  f8e7		       18		      clc
-    948  f8e8		       69 04		      adc	#4	; base+4 = record end (PhRec iny → next class)
-    949  f8ea		       a8		      tay
-    950  f8eb		       4c a1 f4 	      jmp	PhRec
-    951  f8ee
-    952  f8ee							; Prefix tables: P(n) for n pairs from pair 0 — n = 0..10.
-    953  f8ee							; Pair → register: 0-1 PF0 ($30,$C0), 2-5 PF1 ($C0,$30,$0C,$03),
-    954  f8ee							; 6-9 PF2 ($03,$0C,$30,$C0). PF0 maxes at n=2, PF1 at n=6, PF2 at n=10.
-    955  f980					      org	$F980
-    956  f980				   CrPfx0
-    957  f980		       00 30 f0 f0*	      .byte.b	$00, $30, $F0, $F0, $F0, $F0, $F0, $F0, $F0, $F0, $F0
-    958  f98b				   CrPfx1
-    959  f98b		       00 00 00 c0*	      .byte.b	$00, $00, $00, $C0, $F0, $FC, $FF, $FF, $FF, $FF, $FF
-    960  f996				   CrPfx2
-    961  f996		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $03, $0F, $3F, $FF
-    962  f9a1
-    963  f9a1							; ==============================================================================
-    964  f9a1							; PhVcApplyOR / PhVcApplyAND DELETED (2026-10-19) — same retired vcrunch
-    965  f9a1							; tramp path; hcrunch fuses its AND+OR pass inside PhHcrEntry.
-    966  f9a1							; ==============================================================================
-    967  f9a1							; ==============================================================================
-    968  f9a1							; HcrClock — retuned shutter clock (hcrunch-only; 2026-10-16 retune).
-    969  f9a1							;   In:  X = full extent (cells, ≥1); reads EnemyRamP (StartFrame-pinned)
-    970  f9a1							;   Out: A = covered (1..full) — never 0 (always-solid stub)
-    971  f9a1							;   Clobbers A (X/Y preserved — unlike CrunchClock)
-    972  f9a1							; s = EnemyRamP>>4 (0..15, one 256f period = 16 buckets of 16f):
-    973  f9a1							;   s 0-3   dwell at home  (eff 0)	  -> n=1, 64f stub
-    974  f9a1							;   s 4-12  grow to center  (eff s-3)	  -> n 2..full (1..9 cells of
-    975  f9a1							;	    8px — full=w>>1; w=20 record = center of the screen)
-    976  f9a1							;   s 13-15 fast retract    (eff 3*(15-s) = 6,3,0) — wipe home in 3
-    977  f9a1							;	    steps (the old instant far-end turn, stretched to center)
-    978  f9a1							; covered = 1 + min(eff, full-1). CrunchClock (sc>>2 triangle, ~4f/step)
-    979  f9a1							; stays for its VCR mirrors + verify_build token gate — only the two
-    980  f9a1							; hcrunch call sites moved here (16f/step, grow-to-center ruling
-    981  f9a1							; 2026-10-16).
-    982  f9a1							; ==============================================================================
-    983  f9a1				   HcrClock
-    984  f9a1		       a5 ba		      lda	EnemyDeadMask
-    985  f9a3		       29 80		      and	#$80	; b7: crunch kill latched this visit?
-    986  f9a5		       f0 03		      beq	.hcLive
-    987  f9a7		       a9 01		      lda	#1	; spent — freeze the shutter at the home stub
-    988  f9a9		       60		      rts		;   (min width) for the rest of the visit
-    989  f9aa				   .hcLive
-    990  f9aa		       e0 01		      cpx	#1
-    991  f9ac		       d0 03		      bne	.hcN
-    992  f9ae		       a9 01		      lda	#1	; full=1: n always 1
-    993  f9b0		       60		      rts
-    994  f9b1				   .hcN
-    995  f9b1		       a5 c2		      lda	EnemyRamP
-    996  f9b3		       4a		      lsr
-    997  f9b4		       4a		      lsr
-    998  f9b5		       4a		      lsr
-    999  f9b6		       4a		      lsr		; s = P>>4
-   1000  f9b7		       c9 04		      cmp	#4
-   1001  f9b9		       b0 04		      bcs	.hcNd
-   1002  f9bb		       a9 00		      lda	#0	; s0-3 dwell: eff 0
-   1003  f9bd		       f0 11		      beq	.hcOut	; (always)
-   1004  f9bf				   .hcNd
-   1005  f9bf		       c9 0d		      cmp	#13
-   1006  f9c1		       b0 05		      bcs	.hcNf
-   1007  f9c3		       38		      sec
-   1008  f9c4		       e9 03		      sbc	#3	; s4-12: eff = s-3 (1..9) — grow to center
-   1009  f9c6		       b0 08		      bcs	.hcOut	; (always, no borrow)
-   1010  f9c8				   .hcNf
-   1011  f9c8		       49 0f		      eor	#$0F	; s13-15: t = 15-s (2,1,0) — fast retract
-   1012  f9ca		       85 8b		      sta	CollisionX
-   1013  f9cc		       0a		      asl
-   1014  f9cd		       18		      clc
-   1015  f9ce		       65 8b		      adc	CollisionX	; eff = 3t (6,3,0)
-   1016  f9d0				   .hcOut
-   1017  f9d0		       18		      clc
-   1018  f9d1		       69 01		      adc	#1	; candidate = eff+1
-   1019  f9d3		       85 8b		      sta	CollisionX	; scratch (HOV owns Temp; VBL path owns no consumer)
-   1020  f9d5		       8a		      txa		; full
-   1021  f9d6		       c5 8b		      cmp	CollisionX
-   1022  f9d8		       b0 01		      bcs	.hcR
-   1023  f9da		       60		      rts		; full < candidate -> A = full already
-   1024  f9db				   .hcR
-   1025  f9db		       a5 8b		      lda	CollisionX
-   1026  f9dd		       60		      rts
-   1027  f9de
-   1028  f9de							; ==============================================================================
-   1029  f9de							; HOVFeatEntry — .HOVfeature tramp target ($FD7B → here). Feature-record
-   1030  f9de							; dispatch for HotOverlapBody. Stack: pushed record-base Y (.HOVloop
-   1031  f9de							; invariant); A = record class. Every exit tail-jmps back through a
-   1032  f9de							; $FCCx pad (the pushed Y survives — HOVnext/HOVlegHit pop it).
-   1033  f9de							;   $80 phase:  armed (b5) && !removed (b6) → .HOVafterGate overlap
-   1034  f9de							;		 tests → shared Hot hit (bank2 latches b6, Temp b7)
-   1035  f9de							;   $82 hcrunch: covered extent vs player box →
-   1036  f9de							;		 HOVcKill (latch b7) → HOVlegHit (Temp b7 → LoseLife).
-   1037  f9de							;		 b7 latch = kill ONCE per room visit (DropArm respawns at
-   1038  f9de							;		 the death spot; the shutter is always-solid so a re-kill
-   1039  f9de							;		 loop would be instant death). EnterRoom zeroes b7.
-   1040  f9de							; ==============================================================================
-   1041  fa40					      org	$FA40
-   1042  fa40				   HOVFeatEntry
-   1043  fa40							; .HOVfeature dispatch. IN: A = record class, Y = record base,
-   1044  fa40							; FetchPtr = record stream (all same-bank since A3). No field pre-read and
-   1045  fa40							; no stack: fields are read at (FetchPtr),base+1..4 as needed. Returns to
-   1046  fa40							; HOVnext / HOVlegHit (both pop the .HOVloop base) or HOVafterGate ($80,
-   1047  fa40							; which needs Y = base — the $80 path never touches Y).
-   1048  fa40		       c9 80		      cmp	#$80
-   1049  fa42		       d0 03		      bne	.HFnotPhase
-   1050  fa44		       4c 9f fa 	      jmp	.HFphase	; (far trampoline; Y = base preserved)
-   1051  fa47				   .HFnotPhase
-   1052  fa47		       a5 ba		      lda	EnemyDeadMask
-   1053  fa49		       29 80		      and	#$80	; b7: crunch kill already happened?
-   1054  fa4b		       f0 03		      beq	.HFnotLatched
-   1055  fa4d		       4c 9c fa 	      jmp	.HFmiss	; yes → pass (wall stays, no re-kill)
-   1056  fa50				   .HFnotLatched
-   1057  fa50		       b1 e5		      lda	(FetchPtr),Y	; class byte (A was consumed by the mask test)
-   1058  fa52		       c9 82		      cmp	#$82
-   1059  fa54		       f0 03		      beq	.HFh_begin
-   1060  fa56		       4c 9c fa 	      jmp	.HFmiss
-   1061  fa59				   .HFh_begin
-   1062  fa59
-   1063  fa59							; ---------------- $82 hcrunch: band ∈ [top,bottom] ----------------
-   1064  fa59		       c8		      iny
-   1065  fa5a		       c8		      iny
-   1066  fa5b		       b1 e5		      lda	(FetchPtr),Y	; y = band
-   1067  fa5d		       c5 8d		      cmp	CollisionCellY
-   1068  fa5f		       b0 03		      bcs	.HFh_lo
-   1069  fa61		       4c 9c fa 	      jmp	.HFmissD	; band < top
-   1070  fa64				   .HFh_lo
-   1071  fa64		       c5 8f		      cmp	CollisionEndY
-   1072  fa66		       f0 05		      beq	.HFh2
-   1073  fa68		       90 03		      bcc	.HFh2	; band <= bottom
-   1074  fa6a		       4c 9c fa 	      jmp	.HFmissD	; band > bottom
-   1075  fa6d				   .HFh2
-   1076  fa6d		       c8		      iny
-   1077  fa6e		       b1 e5		      lda	(FetchPtr),Y	; w
-   1078  fa70		       4a		      lsr		; full cells
-   1079  fa71		       aa		      tax
-   1080  fa72							; Rule (user 2026-10-16): cold kill while CLOSING (sc<52 = dwell+grow);
-   1081  fa72							; hot (LineCount = MetaB, staged by PhaseBlink's $82 arm; asl×2 brings
-   1082  fa72							; b6 to C) exempts — any phase/extent kills. Opening never kills.
-   1083  fa72		       a5 84		      lda	LineCount
-   1084  fa74		       0a		      asl
-   1085  fa75		       0a		      asl		; b7 out, b6 -> C
-   1086  fa76		       b0 0b		      bcs	.HFh3	; hot → any phase/extent kills
-   1087  fa78		       a5 c2		      lda	EnemyRamP
-   1088  fa7a		       4a		      lsr
-   1089  fa7b		       4a		      lsr		; sc
-   1090  fa7c		       c9 34		      cmp	#52
-   1091  fa7e		       90 03		      bcc	.HFh3	; closing half
-   1092  fa80		       4c 90 fa 	      jmp	.HFmissJ	; opening half → no kill
-   1093  fa83				   .HFh3
-   1094  fa83		       20 a1 f9 	      jsr	HcrClock	; A = n (1..full); X/Y preserved
-   1095  fa86		       0a		      asl		; n covered cells in 4px cols
-   1096  fa87		       c5 8e		      cmp	CollisionEndX	; covered_w vs min col (strict >)
-   1097  fa89		       90 05		      bcc	.HFmissJ
-   1098  fa8b		       f0 03		      beq	.HFmissJ
-   1099  fa8d		       4c 93 fa 	      jmp	.HFkill
-   1100  fa90
-   1101  fa90				   .HFmissJ
-   1102  fa90		       4c 9c fa 	      jmp	.HFmissD
-   1103  fa93
-   1104  fa93				   .HFkill
-   1105  fa93		       a5 ba		      lda	EnemyDeadMask
-   1106  fa95		       09 80		      ora	#$80	; b7: crunch kill latch
-   1107  fa97		       85 ba		      sta	EnemyDeadMask
-   1108  fa99		       4c 37 f6 	      jmp	HOVlegHit	; loop Y still on the stack (popped there)
-   1109  fa9c				   .HFmissD
-   1110  fa9c				   .HFmiss
-   1111  fa9c		       4c 42 f6 	      jmp	HOVnext	; loop Y still on the stack (popped there)
-   1112  fa9f				   .HFphase
-   1113  fa9f		       a5 ba		      lda	EnemyDeadMask
-   1114  faa1		       29 60		      and	#$60	; b5 armed | b6 phase dead
-   1115  faa3		       c9 20		      cmp	#$20	; armed AND not yet removed?
-   1116  faa5		       d0 f5		      bne	.HFmiss
-   1117  faa7		       4c f3 f5 	      jmp	HOVafterGate	; A3: local (Y = base still live)
-   1118  faaa
-   1119  faaa							; ==============================================================================
-   1120  faaa							; A3 (2026-10-19): the pre-read/return tramp images are gone — PhaseBlink,
-   1121  faaa							; HotOverlapBody and the HOV feature dispatcher all live in bank3 now, so
-   1122  faaa							; those paths are plain local jmps. What remains here is the entry image
-   1123  faaa							; fetched after a bank0/bank1 `sta $1FF9`.
-   1124  faaa							; ==============================================================================
-   1125  faaa		       00 00 00 00*	      .ds	$FBF8 - *, 0	; B3StageBand/BuildColupF exit: jmp ReturnPad.
-   1126  fbf8				   ReturnPad		;   The `sta $1FF6` runs HERE, the `rts` opcode
-   1127  fbf8		       8d f6 1f 	      sta	$1FF6	;   is fetched from bank0 at $FBF9 -> pops the
-   1128  fbfb		       60		      rts		;   bank0 VBL/jsr caller.
-   1129  fbfc		       00 00 00 00*	      .ds	$FC35 - *, 0	; CallPad_BuildColupF entry image: bank0/bank1
-   1130  fc35		       4c 0b f5 	      jmp	BuildColupF	;   execute `sta $1FF9`, this fetch is bank3-side
-   1131  fc38
-   1132  fc38		       00 00 00 00*	      .ds	$FFEF - *, 0	; HotOverlapFlag entry image: bank0
-   1133  ffef							;   executes `sta $1FF9` at $FFEC, the
-   1134  ffef							;   jmp at +3 is fetched HERE
-   1135  ffef		       4c c7 f5 	      jmp	HotOverlapBody
-   1136  fff2
-   1137  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0
-   1138  fffa		       00 f0		      .word.w	$F000	; NMI vector
-   1139  fffc		       00 f0		      .word.w	$F000	; RESET vector ← power-up entry
-   1140  fffe		       00 f0		      .word.w	$F000	; IRQ vector
+    316  f293
+    317  f293		       00 00 00 00*	      .ds	$F3AC - *, 0	; PIN: bank2 BCFDarkRun's `sta $1FF9` ends
+    318  f3ac							;   here (sta +3) — this image is what runs.
+    319  f3ac		       4c a3 f0 	      .byte.b	$4C, <B3StageBand, >B3StageBand	; jmp B3StageBand
+    320  f3af
+    321  f3af							; ==============================================================================
+    322  f3af							; A3 (2026-10-19): level-data walkers moved from bank2 — the record stream
+    323  f3af							; (rects/meta) lives in THIS bank now, so these read it directly.
+    324  f3af							; ==============================================================================
+    325  f3b0					      org	$F3B0
+    326  f3b0
+    327  f3b0							; ==============================================================================
+    328  f3b0							; B3RoomBlocks — EnterRoomB2's level-data half (A3 2026-10-19).
+    329  f3b0							; Reached by a tail-jump from bank2 ERBlocksPad (`sta $1FF9 / jmp $F3B0`),
+    330  f3b0							; returns with `sta $1FF8 / jmp $F45B` (bank2's ERBlocksDone).
+    331  f3b0							; Reads the room block from THIS bank: rect stream → ZP cache, 9-byte PF
+    332  f3b0							; rebuild, then MetaA/MetaB into the dead pointer pair ($99/$9A).
+    333  f3b0							; 0 pushes; clobbers A/X/Y/FetchPtr (bank2 restages every one of them).
+    334  f3b0							; ==============================================================================
+    335  f3b0				   B3RoomBlocks
+    336  f3b0							; --- copy solid rect list → ZP cache: ROM is packed 2B/rect
+    337  f3b0							;     [x<<2|y, w<<2|h], cache keeps the uniform 4B walk form.
+    338  f3b0							;     Copies 5 slots unconditionally (count = RcBase gates walkers).
+    339  f3b0		       a5 90		      lda	RoomRectsLo
+    340  f3b2		       85 e5		      sta	FetchPtr
+    341  f3b4		       a5 91		      lda	RoomRectsHi
+    342  f3b6		       85 e6		      sta	FetchPtr+1
+    343  f3b8		       a0 00		      ldy	#0
+    344  f3ba		       b1 e5		      lda	(FetchPtr),Y	; count
+    345  f3bc		       c9 06		      cmp	#6
+    346  f3be		       90 02		      bcc	.EBrcCntOk
+    347  f3c0		       a9 05		      lda	#5	; rect5+ not cached (ZP ends $DF) — clamp
+    348  f3c2				   .EBrcCntOk
+    349  f3c2		       85 89		      sta	RcBase
+    350  f3c4		       c8		      iny		; Y = first packed byte
+    351  f3c5		       a2 00		      ldx	#0	; dest offset in rect0..4 ($CC+)
+    352  f3c7				   .EBrcW
+    353  f3c7		       b1 e5		      lda	(FetchPtr),Y
+    354  f3c9		       4a		      lsr
+    355  f3ca		       4a		      lsr		; x = p0 >> 2
+    356  f3cb		       95 cc		      sta	RcW1,X
+    357  f3cd		       b1 e5		      lda	(FetchPtr),Y
+    358  f3cf		       29 03		      and	#3	; y = p0 & 3
+    359  f3d1		       95 cd		      sta	RcW1+1,X
+    360  f3d3		       c8		      iny
+    361  f3d4		       b1 e5		      lda	(FetchPtr),Y
+    362  f3d6		       4a		      lsr
+    363  f3d7		       4a		      lsr		; w = p1 >> 2
+    364  f3d8		       95 ce		      sta	RcW1+2,X
+    365  f3da		       b1 e5		      lda	(FetchPtr),Y
+    366  f3dc		       29 03		      and	#3	; h = p1 & 3
+    367  f3de		       95 cf		      sta	RcW1+3,X
+    368  f3e0		       c8		      iny
+    369  f3e1		       e8		      inx
+    370  f3e2		       e8		      inx
+    371  f3e3		       e8		      inx
+    372  f3e4		       e8		      inx
+    373  f3e5		       e0 14		      cpx	#20
+    374  f3e7		       d0 de		      bne	.EBrcW
+    375  f3e9
+    376  f3e9							; --- PF rebuild: one 9-byte read (PF0+PF1+PF2 rows are contiguous in
+    377  f3e9							;     ROM and in RAM: PF0Buf $C3 + Y covers $C3-$CB = all 9 rows) ---
+    378  f3e9		       a5 99		      lda	RoomPF0Lo
+    379  f3eb		       85 e5		      sta	FetchPtr
+    380  f3ed		       a5 9a		      lda	RoomPF0Hi
+    381  f3ef		       85 e6		      sta	FetchPtr+1
+    382  f3f1		       a0 00		      ldy	#0
+    383  f3f3				   .EBpf
+    384  f3f3		       b1 e5		      lda	(FetchPtr),Y
+    385  f3f5		       99 c3 00 	      sta	PF0Buf,Y
+    386  f3f8		       c8		      iny
+    387  f3f9		       c0 09		      cpy	#9
+    388  f3fb		       d0 f6		      bne	.EBpf
+    389  f3fd
+    390  f3fd							; --- room meta staging: MetaA/MetaB → the pointer bytes ($99/$9A) ---
+    391  f3fd							; Y = 9 on entry from the copy loop above (so no LDY here).
+    392  f3fd		       b1 e5		      lda	(FetchPtr),Y	; MetaA (Y = 9)
+    393  f3ff		       85 99		      sta	RoomMetaA	; = RoomPF0Lo — pointer lo dies here
+    394  f401		       c8		      iny
+    395  f402		       b1 e5		      lda	(FetchPtr),Y	; MetaB (Y = 10)
+    396  f404		       85 9a		      sta	RoomMetaB	; = RoomPF0Hi — pointer hi dies here
+    397  f406		       4c 58 f4 	      jmp	$F458	; return tail (pinned after the image)
+    398  f409
+    399  f409
+    400  f409
+    401  f409
+    402  f409							; --- fixed entry image: bank2 ERBlocksPad's `jmp` operand is fetched HERE ---
+    403  f409		       00 00 00 00*	      .ds	$F453 - *, 0
+    404  f453		       4c b0 f3 	      .byte.b	$4C, <B3RoomBlocks, >B3RoomBlocks	; jmp B3RoomBlocks
+    405  f456							; --- return tail PINNED at $F458: bank2's $F45B is a row start ---
+    406  f456		       00 00		      .ds	$F458 - *, 0
+    407  f458		       8d f8 1f 	      sta	$1FF8	; back to bank2
+    408  f45b		       4c 5b f4 	      jmp	$F45B	; ERBlocksDone (operand fetched bank2-side)
+    409  f45e
+    410  f45e
+    411  f45e				   PhaseBlink
+    412  f45e							; Door stripe color → CollisionCellY ($8D): $80 = no door (the kernel
+    413  f45e		       a9 80		      lda	#$80
+    414  f460							; band-setup line keeps the band color on COLUP1); $1C = yellow
+    415  f460							; (hue1 luma6 — doors + key are yellow, user ruling 2026-10-12; the
+    416  f460							; +10c door branch cost +2 cave frame lines — wall-model retargeted
+    417  f460							; per-kernel, bugs.md #32 closed). The overscan PHM prologue restages
+    418  f460							; $8D as its own top-row temp AFTER the kernel — no lifecycle overlap.
+    419  f460							; (Staged here, not in StageBandTab: that window is pin-full.)
+    420  f460		       a9 80		      lda	#$80
+    421  f462		       85 8d		      sta	CollisionCellY
+    422  f464		       a5 99		      lda	RoomMetaA	; MetaA
+    423  f466		       29 08		      and	#$08	; b3 = left door
+    424  f468		       f0 04		      beq	.PhNoDoor
+    425  f46a		       a9 1c		      lda	#$1C	; yellow door stripe
+    426  f46c		       85 8d		      sta	CollisionCellY
+    427  f46e				   .PhNoDoor
+    428  f46e							; --- blink phase → EnemyDeadMask b5 (armed = cell solid this frame) --
+    429  f46e							; mod-90 clock: 45 ON / 45 OFF (+76f tail per 256 wrap) = ~+40% over the
+    430  f46e							; old raw bit5 32/32 blink (user, 2026-10-13). Staged here every VBL so
+    431  f46e							; overscan HotOverlapBody can read the SAME frame's state: EnemyRamP is
+    432  f46e							; incremented at overscan entry (RefreshEnemyY), so a raw-clock read in
+    433  f46e							; HOV would be one frame ahead of the kernel's rendered blink.
+    434  f46e		       a5 c2		      lda	EnemyRamP
+    435  f470		       c9 5a		      cmp	#90
+    436  f472		       90 02		      bcc	.Phm1
+    437  f474		       e9 5a		      sbc	#90
+    438  f476				   .Phm1
+    439  f476		       c9 5a		      cmp	#90
+    440  f478		       90 02		      bcc	.Phm2
+    441  f47a		       e9 5a		      sbc	#90
+    442  f47c				   .Phm2
+    443  f47c		       c9 2d		      cmp	#45	; C=1 ⟺ phase ≥ 45 ⟺ blink OFF
+    444  f47e		       a5 ba		      lda	EnemyDeadMask	; (LDA preserves C)
+    445  f480		       b0 04		      bcs	.PhfOff
+    446  f482		       09 20		      ora	#$20
+    447  f484		       90 02		      bcc	.PhfSt	; C=0 → always taken (skips the AND)
+    448  f486				   .PhfOff
+    449  f486		       29 df		      and	#$DF
+    450  f488				   .PhfSt
+    451  f488		       85 ba		      sta	EnemyDeadMask
+    452  f48a		       a5 90		      lda	RoomRectsLo
+    453  f48c		       85 e5		      sta	FetchPtr
+    454  f48e		       a5 91		      lda	RoomRectsHi
+    455  f490		       85 e6		      sta	FetchPtr+1
+    456  f492		       a0 00		      ldy	#0
+    457  f494		       b1 e5		      lda	(FetchPtr),Y	; solid count
+    458  f496		       0a		      asl
+    459  f497		       18		      clc
+    460  f498		       69 01		      adc	#1
+    461  f49a		       a8		      tay		; Y → hot count
+    462  f49b		       b1 e5		      lda	(FetchPtr),Y
+    463  f49d		       f0 67		      beq	.PhDone	; no hot records at all
+    464  f49f		       85 92		      sta	RectCount
+    465  f4a1				   PhRec
+    466  f4a1		       a5 92		      lda	RectCount
+    467  f4a3		       f0 61		      beq	.PhDone
+    468  f4a5		       c6 92		      dec	RectCount
+    469  f4a7		       c8		      iny		; Y → record class
+    470  f4a8		       b1 e5		      lda	(FetchPtr),Y
+    471  f4aa		       10 53		      bpl	.PhSkip	; legacy hot rect — not a blink cell
+    472  f4ac		       c9 80		      cmp	#$80
+    473  f4ae		       f0 07		      beq	.PhPhase
+    474  f4b0		       c9 82		      cmp	#$82
+    475  f4b2		       d0 4b		      bne	.PhSkip	; unknown b7 class: skip 4
+    476  f4b4							; hcrunch: enter the body DIRECTLY — the record fields are ignored
+    477  f4b4							; (fixed band 1 + fixed 10-cell prefix), FetchPtr is not read here.
+    478  f4b4		       4c 80 f8 	      jmp	PhHcrEntry
+    479  f4b7				   .PhPhase
+    480  f4b7		       c8		      iny		; Y → 2c (even, 0-18)
+    481  f4b8		       b1 e5		      lda	(FetchPtr),Y
+    482  f4ba		       4a		      lsr		; pair index 0-9
+    483  f4bb		       aa		      tax
+    484  f4bc		       bd b9 f5 	      lda	PhMaskTab,X	; two adjacent PF bits for the cell pair
+    485  f4bf		       85 8c		      sta	CollisionCellX	; mask (scratch — overscan restages $8C)
+    486  f4c1		       49 ff		      eor	#$FF
+    487  f4c3		       85 8f		      sta	CollisionEndY	; ~mask (scratch — pack rebuild overwrites)
+    488  f4c5							; buffer offset: pair<2 → PF0 (0), <6 → PF1 (3), else PF2 (6)
+    489  f4c5		       a9 00		      lda	#0
+    490  f4c7		       e0 02		      cpx	#2
+    491  f4c9		       90 08		      bcc	.PhOffA
+    492  f4cb		       a9 03		      lda	#3
+    493  f4cd		       e0 06		      cpx	#6
+    494  f4cf		       90 02		      bcc	.PhOffA
+    495  f4d1		       a9 06		      lda	#6
+    496  f4d3				   .PhOffA
+    497  f4d3		       85 84		      sta	LineCount	; offset scratch
+    498  f4d5		       c8		      iny		; Y → row (band 0-2)
+    499  f4d6		       b1 e5		      lda	(FetchPtr),Y
+    500  f4d8		       18		      clc
+    501  f4d9		       65 84		      adc	LineCount	; A = buffer offset + row (0-8 → $C3+A)
+    502  f4db		       aa		      tax
+    503  f4dc		       a5 ba		      lda	EnemyDeadMask	; b5 flag staged above this frame
+    504  f4de		       29 40		      and	#$40	; b6: walls removed by crush kill
+    505  f4e0		       d0 0f		      bne	.PhOff	; force open every VBL until EnterRoom clears
+    506  f4e2		       a5 ba		      lda	EnemyDeadMask	; b5 flag staged above this frame
+    507  f4e4		       29 20		      and	#$20	; armed ⟺ cell solid
+    508  f4e6		       f0 09		      beq	.PhOff
+    509  f4e8		       b5 c3		      lda	PF0Buf,X
+    510  f4ea		       05 8c		      ora	CollisionCellX
+    511  f4ec		       95 c3		      sta	PF0Buf,X
+    512  f4ee		       4c fa f4 	      jmp	PhNext
+    513  f4f1				   .PhOff
+    514  f4f1		       b5 c3		      lda	PF0Buf,X
+    515  f4f3		       25 8f		      and	CollisionEndY
+    516  f4f5		       95 c3		      sta	PF0Buf,X
+    517  f4f7		       4c fa f4 	      jmp	PhNext
+    518  f4fa				   PhNext		; Y = row (base+2): skip w/h → next class.
+    519  f4fa							; GLOBAL: bank3 crunch bodies tail-jmp here
+    520  f4fa							; via the $FCC1 pads (Y left at base+2).
+    521  f4fa		       c8		      iny		; Y → w
+    522  f4fb		       c8		      iny		; Y → h (record last byte)
+    523  f4fc		       4c a1 f4 	      jmp	PhRec
+    524  f4ff				   .PhSkip		; non-phase record: skip its last 4 bytes
+    525  f4ff		       c8		      iny
+    526  f500		       c8		      iny
+    527  f501		       c8		      iny
+    528  f502		       c8		      iny		; Y → h (record last byte)
+    529  f503		       4c a1 f4 	      jmp	PhRec
+    530  f506				   .PhDone
+    531  f506		       60		      rts
+    532  f507
+    533  f507							; ------------------------------------------------------------------------------
+    534  f507
+    535  f507
+    536  f507				   BuildColupF
+    537  f507							; Bomb save ($F0-$F2 → collision temps) deleted S3.0b: this body writes
+    538  f507							; ColupfBuf rows 0-2 only — it never reached $F0-$F2 (vestigial from
+    539  f507							; the 12-row era; kernel .AfterRows restore deleted in the same commit).
+    540  f507							; --- stripe fill ---
+    541  f507		       a2 00		      ldx	#0
+    542  f509				   .BCFstripe
+    543  f509		       e0 01		      cpx	#1
+    544  f50b		       d0 05		      bne	.BCFc1
+    545  f50d		       a5 ab		      lda	LevelWallColor2
+    546  f50f		       4c 14 f5 	      jmp	.BCFstore
+    547  f512				   .BCFc1
+    548  f512		       a5 aa		      lda	LevelWallColor
+    549  f514				   .BCFstore
+    550  f514		       95 e7		      sta	ColupfBuf,X
+    551  f516		       e8		      inx
+    552  f517		       e0 03		      cpx	#TILE_ROWS
+    553  f519		       d0 ee		      bne	.BCFstripe
+    554  f51b							; --- pulse color → Temp (free until .BgStore) ---
+    555  f51b		       a5 ad		      lda	TickCounter
+    556  f51d		       29 10		      and	#$10
+    557  f51f		       f0 05		      beq	.BCFpulseY
+    558  f521		       a9 44		      lda	#COLOR_HOT_R
+    559  f523		       4c 28 f5 	      jmp	.BCFpulse
+    560  f526				   .BCFpulseY
+    561  f526		       a9 1c		      lda	#COLOR_HOT_Y
+    562  f528				   .BCFpulse
+    563  f528		       85 88		      sta	Temp
+    564  f52a							; --- walk hot rects, overwrite those rows ---
+    565  f52a		       a5 90		      lda	RoomRectsLo
+    566  f52c		       85 e5		      sta	FetchPtr
+    567  f52e		       a5 91		      lda	RoomRectsHi
+    568  f530		       85 e6		      sta	FetchPtr+1
+    569  f532		       a0 00		      ldy	#0
+    570  f534		       b1 e5		      lda	(FetchPtr),Y	; solid count (direct read — data in bank2)
+    571  f536		       0a		      asl		; packed 2B/rect stream
+    572  f537		       18		      clc
+    573  f538		       69 01		      adc	#1
+    574  f53a		       a8		      tay		; Y → hot count
+    575  f53b		       b1 e5		      lda	(FetchPtr),Y
+    576  f53d		       f0 34		      beq	.BCFdone
+    577  f53f		       85 92		      sta	RectCount
+    578  f541		       c8		      iny
+    579  f542				   .BCFrect
+    580  f542		       98		      tya
+    581  f543		       48		      pha
+    582  f544		       b1 e5		      lda	(FetchPtr),Y	; record class/mask
+    583  f546		       30 22		      bmi	.BCFrectDone	; b7 set = feature record ($80 phase /
+    584  f548							;   $82 hcrunch; $81 is inert) — NOT a
+    585  f548							;   hot band; its rows keep the stripe
+    586  f548							;   color (the phase cell's own blink
+    587  f548							;   lives in the PF bits, not the color)
+    588  f548		       c8		      iny
+    589  f549		       c8		      iny		; Y = base+2 (y; record = mask, x, y, w, h)
+    590  f54a		       b1 e5		      lda	(FetchPtr),Y
+    591  f54c		       85 8c		      sta	CollisionCellX	; first row
+    592  f54e		       c8		      iny
+    593  f54f		       c8		      iny		; Y = base+4 (h)
+    594  f550		       18		      clc
+    595  f551		       b1 e5		      lda	(FetchPtr),Y
+    596  f553		       65 8c		      adc	CollisionCellX
+    597  f555		       85 8b		      sta	CollisionX	; one-past last row
+    598  f557		       a6 8c		      ldx	CollisionCellX
+    599  f559				   .BCFrow
+    600  f559		       e0 03		      cpx	#TILE_ROWS
+    601  f55b		       b0 0d		      bcs	.BCFrectDone
+    602  f55d		       e0 0c		      cpx	#12
+    603  f55f		       b0 09		      bcs	.BCFrectDone
+    604  f561		       a5 88		      lda	Temp
+    605  f563		       95 e7		      sta	ColupfBuf,X
+    606  f565		       e8		      inx
+    607  f566		       e4 8b		      cpx	CollisionX
+    608  f568		       d0 ef		      bne	.BCFrow
+    609  f56a				   .BCFrectDone
+    610  f56a		       68		      pla
+    611  f56b		       18		      clc
+    612  f56c		       69 05		      adc	#5
+    613  f56e		       a8		      tay
+    614  f56f		       c6 92		      dec	RectCount
+    615  f571		       d0 cf		      bne	.BCFrect
+    616  f573				   .BCFdone
+    617  f573							; --- Dark room: walls black; fuse (state=1) walls dark grey ---
+    618  f573							; Moved to BCFDarkRun (pre-level-data gap): the $FCF0 pin left <8 B
+    619  f573							; here once the dark mask grew to rooms 4-7. Still inlined in THIS
+    620  f573							; bank — pads cannot nest (ReturnPad switches to bank0).
+    621  f573		       4c 76 f5 	      jmp	BCFDarkRun
+    622  f576
+    623  f576							; ------------------------------------------------------------------------------
+    624  f576
+    625  f576
+    626  f576				   BCFDarkRun
+    627  f576		       a5 98		      lda	RoomNo
+    628  f578		       c9 04		      cmp	#4
+    629  f57a		       b0 0a		      bcs	.BCFhi
+    630  f57c		       aa		      tax
+    631  f57d		       bd b1 f5 	      lda	BCFDarkMask,X	; rooms 0-3: $10/$20/$40/$80
+    632  f580		       25 c1		      and	EnemyRamD
+    633  f582		       f0 27		      beq	.BCFdarkDone	; lit → keep stripe/hot colors
+    634  f584		       d0 0e		      bne	.BCFon	; dark (Z clear — beq just fell through)
+    635  f586				   .BCFhi
+    636  f586		       c9 08		      cmp	#8
+    637  f588		       b0 21		      bcs	.BCFdarkDone	; rooms 8+ never dark (no mask bit)
+    638  f58a		       aa		      tax
+    639  f58b		       bd b1 f5 	      lda	BCFDarkMask,X	; rooms 4-7: $10/$20/$40/$80
+    640  f58e		       4a		      lsr
+    641  f58f		       4a		      lsr		; → $04/$08/$10/$20 = LaserState b2-5
+    642  f590		       25 c0		      and	LaserState
+    643  f592		       f0 17		      beq	.BCFdarkDone	; lit → keep stripe/hot colors
+    644  f594				   .BCFon
+    645  f594		       a5 b5		      lda	BombPacked
+    646  f596		       29 03		      and	#%00000011
+    647  f598		       c9 01		      cmp	#1
+    648  f59a		       f0 04		      beq	.BCFFuseGrey	; bomb fuse active → dark grey walls
+    649  f59c		       a9 00		      lda	#COLOR_CAVE_BG	; black walls (matches black background)
+    650  f59e		       f0 02		      beq	.BCFdarkFill	; A=$00 (COLOR_CAVE_BG) → always taken
+    651  f5a0				   .BCFFuseGrey
+    652  f5a0		       a9 04		      lda	#COLOR_DARK_PF	; hue 0 luma 2 = very dark grey walls
+    653  f5a2				   .BCFdarkFill
+    654  f5a2		       a2 00		      ldx	#0
+    655  f5a4				   .BCFdarkLoop
+    656  f5a4		       95 e7		      sta	ColupfBuf,X
+    657  f5a6		       e8		      inx
+    658  f5a7		       e0 03		      cpx	#TILE_ROWS
+    659  f5a9		       d0 f9		      bne	.BCFdarkLoop
+    660  f5ab				   .BCFdarkDone
+    661  f5ab		       4c a3 f0 	      jmp	B3StageBand	; A3: local (PhaseBlink/pack live here now)
+    662  f5ae		       8d f9 1f 	      sta	$1FF9	; chunk A2: StageBandTab lives in bank3
+    663  f5b1				   BCFDarkMask
+    664  f5b1		       10 20 40 80	      .byte.b	$10, $20, $40, $80	; rooms 0-3 → EnemyRamD bits 4-7
+    665  f5b5		       10 20 40 80	      .byte.b	$10, $20, $40, $80	; rooms 4-7 → lsr×2 = LaserState bits 2-5
+    666  f5b9
+    667  f5b9
+    668  f5b9				   PhMaskTab
+    669  f5b9		       30 c0		      .byte.b	$30, $C0	; PF0 pairs (0,1) (2,3)
+    670  f5bb		       c0 30 0c 03	      .byte.b	$C0, $30, $0C, $03	; PF1 pairs (4,5) (6,7) (8,9) (10,11)
+    671  f5bf		       03 0c 30 c0	      .byte.b	$03, $0C, $30, $C0	; PF2 pairs (12,13) ... (18,19)
+    672  f5c3
+    673  f5c3
+    674  f5c3				   HotOverlapBody
+    675  f5c3		       a5 90		      lda	RoomRectsLo
+    676  f5c5		       85 e5		      sta	FetchPtr
+    677  f5c7		       a5 91		      lda	RoomRectsHi
+    678  f5c9		       85 e6		      sta	FetchPtr+1
+    679  f5cb		       a0 00		      ldy	#0
+    680  f5cd		       b1 e5		      lda	(FetchPtr),Y	; solid count (direct read — data in this bank)
+    681  f5cf		       0a		      asl		; packed 2B/rect stream
+    682  f5d0		       18		      clc
+    683  f5d1		       69 01		      adc	#1	; +1 count byte → hot count offset
+    684  f5d3		       a8		      tay
+    685  f5d4		       b1 e5		      lda	(FetchPtr),Y	; hot count
+    686  f5d6		       f0 6f		      beq	.HOVdone	; no hot rects
+    687  f5d8		       85 92		      sta	RectCount
+    688  f5da		       c8		      iny		; first hot rect base
+    689  f5db				   .HOVloop
+    690  f5db		       98		      tya
+    691  f5dc		       48		      pha
+    692  f5dd							; Parent gate: mask $00 = M1 block rect → dies with the STRIP
+    693  f5dd							; (EnemyDeadMask b4), never with a wall (walk hits the floor cell
+    694  f5dd							; under the block reach this body even after the strip is gone).
+    695  f5dd							; Any other mask = wall piece → dies when that piece is blasted.
+    696  f5dd		       b1 e5		      lda	(FetchPtr),Y	; hot parent mask
+    697  f5df		       30 6a		      bmi	.HOVfeature	; b7 set = feature record ($80 phase /
+    698  f5e1							;   $82 hcrunch; $81 is inert) — NOT a
+    699  f5e1							;   legacy death rect (see .HOVfeature
+    700  f5e1							;   after .HOVdone).
+    701  f5e1		       d0 08		      bne	.HOVwallGate
+    702  f5e3		       a5 ba		      lda	EnemyDeadMask
+    703  f5e5		       29 10		      and	#$10	; b4: strip destroyed → M1 rect dead
+    704  f5e7		       d0 55		      bne	HOVnext	; (HOVnext pops the loop's pushed Y)
+    705  f5e9		       f0 04		      beq	HOVafterGate	; strip alive → continue (result was 0)
+    706  f5eb				   .HOVwallGate
+    707  f5eb		       25 b5		      and	BombPacked
+    708  f5ed		       d0 4f		      bne	HOVnext
+    709  f5ef				   HOVafterGate
+    710  f5ef		       c8		      iny		; Y = base+1 (x)
+    711  f5f0							; Column overlap (same tests as PlayerHitsMap)
+    712  f5f0		       b1 e5		      lda	(FetchPtr),Y	; rect.x
+    713  f5f2		       c5 8c		      cmp	CollisionCellX
+    714  f5f4		       f0 04		      beq	.HOVcolOk
+    715  f5f6		       90 02		      bcc	.HOVcolOk
+    716  f5f8		       d0 44		      bne	HOVnext	; A > cellX → Z=0 (was jmp, -1B)
+    717  f5fa				   .HOVcolOk
+    718  f5fa		       85 8b		      sta	CollisionX
+    719  f5fc		       c8		      iny
+    720  f5fd		       c8		      iny		; Y = base+3 (w)
+    721  f5fe		       18		      clc
+    722  f5ff		       b1 e5		      lda	(FetchPtr),Y	; rect.w
+    723  f601		       65 8b		      adc	CollisionX
+    724  f603		       c5 8e		      cmp	CollisionEndX
+    725  f605		       f0 37		      beq	HOVnext
+    726  f607		       90 35		      bcc	HOVnext
+    727  f609							; Row overlap (base+3 → base+2 = y, same as PlayerHitsMap dey).
+    728  f609		       88		      dey		; Y = base+2 (y)
+    729  f60a		       b1 e5		      lda	(FetchPtr),Y	; rect.y
+    730  f60c		       c5 8f		      cmp	CollisionEndY
+    731  f60e		       f0 04		      beq	.HOVrowOk
+    732  f610		       90 02		      bcc	.HOVrowOk
+    733  f612		       d0 2a		      bne	HOVnext	; A > endY → Z=0 (was jmp, -1B)
+    734  f614				   .HOVrowOk
+    735  f614		       c8		      iny
+    736  f615		       c8		      iny		; Y = base+4 (h)
+    737  f616		       18		      clc
+    738  f617		       b1 e5		      lda	(FetchPtr),Y	; rect.h
+    739  f619		       85 8b		      sta	CollisionX
+    740  f61b		       88		      dey
+    741  f61c		       88		      dey		; Y = base+2 (y)
+    742  f61d		       b1 e5		      lda	(FetchPtr),Y	; rect.y (re-read for y+h)
+    743  f61f		       65 8b		      adc	CollisionX	; y+h
+    744  f621		       c5 8d		      cmp	CollisionCellY
+    745  f623		       f0 19		      beq	HOVnext
+    746  f625		       90 17		      bcc	HOVnext
+    747  f627							; Hot hit
+    748  f627		       88		      dey
+    749  f628		       88		      dey		; Y = base+2 → base (record class)
+    750  f629		       b1 e5		      lda	(FetchPtr),Y
+    751  f62b		       10 06		      bpl	HOVlegHit	; legacy hot rect → no phase latch
+    752  f62d		       a5 ba		      lda	EnemyDeadMask
+    753  f62f		       09 40		      ora	#$40	; b6: phase dead — walls removed from now on
+    754  f631		       85 ba		      sta	EnemyDeadMask	;   (PhaseBlink forces punch-OFF, kill gated)
+    755  f633				   HOVlegHit
+    756  f633		       68		      pla
+    757  f634		       a5 88		      lda	Temp
+    758  f636		       09 80		      ora	#%10000000
+    759  f638		       85 88		      sta	Temp
+    760  f63a		       38		      sec		; tail-call contract: return C=1
+    761  f63b		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad → original caller (C survives)
+    762  f63e				   HOVnext
+    763  f63e		       68		      pla
+    764  f63f		       18		      clc
+    765  f640		       69 05		      adc	#5
+    766  f642		       a8		      tay
+    767  f643		       c6 92		      dec	RectCount
+    768  f645		       d0 94		      bne	.HOVloop
+    769  f647				   .HOVdone
+    770  f647		       38		      sec		; tail-call contract: return C=1
+    771  f648		       4c f8 fb 	      jmp	ReturnPad	; ReturnPad → original caller (C survives)
+    772  f64b
+    773  f64b							; Feature-record dispatch ($80 phase / $82 hcrunch; $81 inert):
+    774  f64b							; armed/overlap/kill tests live in bank3 (HOVFeatEntry). $80 phase: b5 armed
+    775  f64b							; (staged by PhaseBlink each VBL) + candidate-box overlap → shared Hot hit
+    776  f64b							; (Temp b7 → bank0 `jsr LoseLife`); kill gated on armed-and-not-removed
+    777  f64b							; (`and #$60 / cmp #$20`), latches b6, PhaseBlink punch forced OFF while b6
+    778  f64b							; set (walls REMOVED, same-room only — EnterRoom zeroes the mask).
+    779  f64b							; $81 (retired vcrunch, tile 11 removed 2026-10-19) stays inert: skip.
+    780  f64b							; Entered with Y = record base + pushed Y (loop invariant), A = mask.
+    781  f64b							; 15B kept: the cmp/beq/jmp + pad replace the old tramp byte-for-byte —
+    782  f64b							; the BombEnemyBlastBody $FD87 pin (kernel tramp operand) must not move.
+    783  f64b				   .HOVfeature
+    784  f64b		       c9 81		      cmp	#$81
+    785  f64d		       f0 ef		      beq	HOVnext	; unknown legacy class → pass (pops the loop Y)
+    786  f64f							; LineCount is clobbered by the kernel .Row between this VBL staging and
+    787  f64f							; the overscan walk, so the hot byte (MetaB b6) is re-staged HERE, at the
+    788  f64f							; call, exactly like the old bank2 pre-read did.
+    789  f64f		       a5 9a		      lda	RoomMetaB
+    790  f651		       85 84		      sta	LineCount
+    791  f653		       b1 e5		      lda	(FetchPtr),Y	; restore the class (Y = record base)
+    792  f655		       4c 40 fa 	      jmp	HOVFeatEntry	; A3b: same-bank, fields read from FetchPtr
+    793  f658		       00 00 00 00*	      .ds	8, 0	; pad: 2+2+3+8 = 15B = old body size
+    794  f660
+    795  f660							; ------------------------------------------------------------------------------
+    796  f660
+    797  f660
+    798  f660							; A3b (2026-10-19): HOVFeatPre / PhHcrPre DELETED. Both bodies are in
+    799  f660							; this bank now, so the feature dispatchers read the record fields
+    800  f660							; straight from FetchPtr with Y = record base — no 4-field stack
+    801  f660							; shuttle (the stack floor improves by ~7 bytes on both paths).
+    802  f660
+    803  f660							; ==============================================================================
+    804  f660							; PhHcrEntry — PhaseBlink $82 (hcrunch) tramp target.
+    805  f660							; Contract (user decision 2026-10-19): the crunch band is ALWAYS band 1,
+    806  f660							; ALWAYS hot, ALWAYS the same geometry — a fixed 10-cell prefix (half the
+    807  f660							; playfield width). The record fields x/band/w/h are IGNORED; the $82
+    808  f660							; class byte and the 5-byte stride stay only so the walker is untouched.
+    809  f660							; PF band1 = P(n), n = HcrClock(10): the prefix rows are entirely covered
+    810  f660							; by the crunch, so the prefix mask is the whole row (no AND pass).
+    811  f660							; IN: Y = record base, FetchPtr unused. OUT: Y = base+4 (.PhRec contract).
+    812  f660							; Clobbers A/X/Y + CollisionX (HcrClock scratch); no stack use.
+    813  f660							; ==============================================================================
+    814  f880					      org	$F880
+    815  f880				   PhHcrEntry
+    816  f880		       98		      tya
+    817  f881		       48		      pha		; [base] — PhRec needs Y = base+4
+    818  f882		       a9 0a		      lda	#10
+    819  f884		       aa		      tax		; full = 10 cells
+    820  f885		       20 a1 f9 	      jsr	HcrClock	; A = n covered (1..10); X/Y preserved
+    821  f888		       a8		      tay		; Y = n
+    822  f889		       b9 80 f9 	      lda	CrPfx0,Y
+    823  f88c		       85 c4		      sta	PF0Buf+1
+    824  f88e		       b9 8b f9 	      lda	CrPfx1,Y
+    825  f891		       85 c7		      sta	PF0Buf+4	; PF1Buf band1
+    826  f893		       b9 96 f9 	      lda	CrPfx2,Y
+    827  f896		       85 ca		      sta	PF0Buf+7	; PF2Buf band1
+    828  f898		       68		      pla
+    829  f899		       18		      clc
+    830  f89a		       69 04		      adc	#4
+    831  f89c		       a8		      tay
+    832  f89d		       4c a1 f4 	      jmp	PhRec
+    833  f8a0
+    834  f8a0							; Prefix tables: P(n) for n pairs from pair 0 — n = 0..10.
+    835  f8a0							; Pair → register: 0-1 PF0 ($30,$C0), 2-5 PF1 ($C0,$30,$0C,$03),
+    836  f8a0							; 6-9 PF2 ($03,$0C,$30,$C0). PF0 maxes at n=2, PF1 at n=6, PF2 at n=10.
+    837  f980					      org	$F980
+    838  f980				   CrPfx0
+    839  f980		       00 30 f0 f0*	      .byte.b	$00, $30, $F0, $F0, $F0, $F0, $F0, $F0, $F0, $F0, $F0
+    840  f98b				   CrPfx1
+    841  f98b		       00 00 00 c0*	      .byte.b	$00, $00, $00, $C0, $F0, $FC, $FF, $FF, $FF, $FF, $FF
+    842  f996				   CrPfx2
+    843  f996		       00 00 00 00*	      .byte.b	$00, $00, $00, $00, $00, $00, $00, $03, $0F, $3F, $FF
+    844  f9a1
+    845  f9a1							; ==============================================================================
+    846  f9a1							; PhVcApplyOR / PhVcApplyAND DELETED (2026-10-19) — same retired vcrunch
+    847  f9a1							; tramp path. PhHcrEntry now stores the prefix mask directly (fixed 10).
+    848  f9a1							; ==============================================================================
+    849  f9a1							; ==============================================================================
+    850  f9a1							; HcrClock — hcrunch animation clock (fixed full=10 since 2026-10-19).
+    851  f9a1							;   In:  X = full extent (cells, ≥1); reads EnemyRamP (StartFrame-pinned)
+    852  f9a1							;   Out: A = covered (1..full) — never 0 (always-solid stub)
+    853  f9a1							;   Clobbers A (X/Y preserved — unlike CrunchClock). No latch: the kill
+    854  f9a1							;   repeats on contact (DropArm respawns at the room top, so no loop).
+    855  f9a1							; s = EnemyRamP>>4 (0..15, one 256f period = 16 buckets of 16f):
+    856  f9a1							;   s 0-3   dwell at home  (eff 0)	  -> n=1, 64f stub
+    857  f9a1							;   s 4-12  grow to center  (eff s-3)	  -> n 2..full (1..9 cells of
+    858  f9a1							;	    8px — full=w>>1; w=20 record = center of the screen)
+    859  f9a1							;   s 13-15 fast retract    (eff 3*(15-s) = 6,3,0) — wipe home in 3
+    860  f9a1							;	    steps (the old instant far-end turn, stretched to center)
+    861  f9a1							; covered = 1 + min(eff, full-1). CrunchClock (sc>>2 triangle, ~4f/step)
+    862  f9a1							; stays for its VCR mirrors + verify_build token gate — only the two
+    863  f9a1							; hcrunch call sites moved here (16f/step, grow-to-center ruling
+    864  f9a1							; 2026-10-16). Both callers pass full=10 (PhHcrEntry stages it, HOV
+    865  f9a1							; tests it); the latch freeze was removed with the 2026-10-19 contract.
+    866  f9a1							; ==============================================================================
+    867  f9a1				   HcrClock
+    868  f9a1		       e0 01		      cpx	#1
+    869  f9a3		       d0 03		      bne	.hcN
+    870  f9a5		       a9 01		      lda	#1	; full=1: n always 1
+    871  f9a7		       60		      rts
+    872  f9a8				   .hcN
+    873  f9a8		       a5 c2		      lda	EnemyRamP
+    874  f9aa		       4a		      lsr
+    875  f9ab		       4a		      lsr
+    876  f9ac		       4a		      lsr
+    877  f9ad		       4a		      lsr		; s = P>>4
+    878  f9ae		       c9 04		      cmp	#4
+    879  f9b0		       b0 04		      bcs	.hcNd
+    880  f9b2		       a9 00		      lda	#0	; s0-3 dwell: eff 0
+    881  f9b4		       f0 11		      beq	.hcOut	; (always)
+    882  f9b6				   .hcNd
+    883  f9b6		       c9 0d		      cmp	#13
+    884  f9b8		       b0 05		      bcs	.hcNf
+    885  f9ba		       38		      sec
+    886  f9bb		       e9 03		      sbc	#3	; s4-12: eff = s-3 (1..9) — grow to center
+    887  f9bd		       b0 08		      bcs	.hcOut	; (always, no borrow)
+    888  f9bf				   .hcNf
+    889  f9bf		       49 0f		      eor	#$0F	; s13-15: t = 15-s (2,1,0) — fast retract
+    890  f9c1		       85 8b		      sta	CollisionX
+    891  f9c3		       0a		      asl
+    892  f9c4		       18		      clc
+    893  f9c5		       65 8b		      adc	CollisionX	; eff = 3t (6,3,0)
+    894  f9c7				   .hcOut
+    895  f9c7		       18		      clc
+    896  f9c8		       69 01		      adc	#1	; candidate = eff+1
+    897  f9ca		       85 8b		      sta	CollisionX	; scratch (HOV owns Temp; VBL path owns no consumer)
+    898  f9cc		       8a		      txa		; full
+    899  f9cd		       c5 8b		      cmp	CollisionX
+    900  f9cf		       b0 01		      bcs	.hcR
+    901  f9d1		       60		      rts		; full < candidate -> A = full already
+    902  f9d2				   .hcR
+    903  f9d2		       a5 8b		      lda	CollisionX
+    904  f9d4		       60		      rts
+    905  f9d5
+    906  f9d5							; ==============================================================================
+    907  f9d5							; HOVFeatEntry — .HOVfeature tramp target ($FD7B → here). Feature-record
+    908  f9d5							; dispatch for HotOverlapBody. Stack: pushed record-base Y (.HOVloop
+    909  f9d5							; invariant); A = record class. Every exit tail-jmps back through a
+    910  f9d5							; $FCCx pad (the pushed Y survives — HOVnext/HOVlegHit pop it).
+    911  f9d5							;   $80 phase:  armed (b5) && !removed (b6) → .HOVafterGate overlap
+    912  f9d5							;		 tests → shared Hot hit (bank2 latches b6, Temp b7)
+    913  f9d5							;   $82 hcrunch: ANY overlap with the fixed band-1 / 10-cell prefix →
+    914  f9d5							;		 HOVlegHit (Temp b7 → LoseLife). No latch (2026-10-19).
+    915  f9d5							; ==============================================================================
+    916  fa40					      org	$FA40
+    917  fa40				   HOVFeatEntry
+    918  fa40							; .HOVfeature dispatch. IN: A = record class, Y = record base,
+    919  fa40							; FetchPtr = record stream (all same-bank since A3). No field pre-read and
+    920  fa40							; no stack: fields are read at (FetchPtr),base+1..4 as needed. Returns to
+    921  fa40							; HOVnext / HOVlegHit (both pop the .HOVloop base) or HOVafterGate ($80,
+    922  fa40							; which needs Y = base — the $80 path never touches Y).
+    923  fa40		       c9 80		      cmp	#$80
+    924  fa42		       d0 03		      bne	.HFnotPhase
+    925  fa44		       4c 74 fa 	      jmp	.HFphase	; (far trampoline; Y = base preserved)
+    926  fa47				   .HFnotPhase
+    927  fa47		       b1 e5		      lda	(FetchPtr),Y	; class byte
+    928  fa49		       c9 82		      cmp	#$82
+    929  fa4b		       f0 03		      beq	.HFh_begin
+    930  fa4d		       4c 71 fa 	      jmp	.HFmiss	; $81 and unknown classes are inert
+    931  fa50				   .HFh_begin
+    932  fa50
+    933  fa50							; ---------------- $82 hcrunch: fixed band 1 + fixed 10-cell prefix ---
+    934  fa50							; Record fields ignored (user decision 2026-10-19): the band is always
+    935  fa50							; band 1 and the prefix is always 10 cells. ALWAYS HOT: any overlap of
+    936  fa50							; the player box with the covered prefix kills, at any phase/extent
+    937  fa50							; (the clock animation only moves the covered prefix).
+    938  fa50		       a5 8d		      lda	CollisionCellY
+    939  fa52		       c9 02		      cmp	#2	; top row below band1 → miss
+    940  fa54		       b0 1b		      bcs	.HFmissD
+    941  fa56		       a5 8f		      lda	CollisionEndY
+    942  fa58		       c9 01		      cmp	#1	; bottom row above band1 → miss
+    943  fa5a		       90 15		      bcc	.HFmissD
+    944  fa5c		       a2 0a		      ldx	#10
+    945  fa5e		       20 a1 f9 	      jsr	HcrClock	; A = n covered cells; X/Y preserved
+    946  fa61		       0a		      asl		; 2n = covered 4px cols from col 0
+    947  fa62		       c5 8e		      cmp	CollisionEndX	; covered_w vs min col (strict >)
+    948  fa64		       90 05		      bcc	.HFmissJ
+    949  fa66		       f0 03		      beq	.HFmissJ
+    950  fa68		       4c 6e fa 	      jmp	.HFkill
+    951  fa6b
+    952  fa6b				   .HFmissJ
+    953  fa6b		       4c 71 fa 	      jmp	.HFmissD
+    954  fa6e
+    955  fa6e				   .HFkill
+    956  fa6e		       4c 33 f6 	      jmp	HOVlegHit	; loop Y still on the stack (popped there)
+    957  fa71				   .HFmissD
+    958  fa71				   .HFmiss
+    959  fa71		       4c 3e f6 	      jmp	HOVnext	; loop Y still on the stack (popped there)
+    960  fa74				   .HFphase
+    961  fa74		       a5 ba		      lda	EnemyDeadMask
+    962  fa76		       29 60		      and	#$60	; b5 armed | b6 phase dead
+    963  fa78		       c9 20		      cmp	#$20	; armed AND not yet removed?
+    964  fa7a		       d0 f5		      bne	.HFmiss
+    965  fa7c		       4c ef f5 	      jmp	HOVafterGate	; A3: local (Y = base still live)
+    966  fa7f
+    967  fa7f							; ==============================================================================
+    968  fa7f							; A3 (2026-10-19): the pre-read/return tramp images are gone — PhaseBlink,
+    969  fa7f							; HotOverlapBody and the HOV feature dispatcher all live in bank3 now, so
+    970  fa7f							; those paths are plain local jmps. What remains here is the entry image
+    971  fa7f							; fetched after a bank0/bank1 `sta $1FF9`.
+    972  fa7f							; ==============================================================================
+    973  fa7f		       00 00 00 00*	      .ds	$FBF8 - *, 0	; B3StageBand/BuildColupF exit: jmp ReturnPad.
+    974  fbf8				   ReturnPad		;   The `sta $1FF6` runs HERE, the `rts` opcode
+    975  fbf8		       8d f6 1f 	      sta	$1FF6	;   is fetched from bank0 at $FBF9 -> pops the
+    976  fbfb		       60		      rts		;   bank0 VBL/jsr caller.
+    977  fbfc		       00 00 00 00*	      .ds	$FC35 - *, 0	; CallPad_BuildColupF entry image: bank0/bank1
+    978  fc35		       4c 07 f5 	      jmp	BuildColupF	;   execute `sta $1FF9`, this fetch is bank3-side
+    979  fc38
+    980  fc38		       00 00 00 00*	      .ds	$FFEF - *, 0	; HotOverlapFlag entry image: bank0
+    981  ffef							;   executes `sta $1FF9` at $FFEC, the
+    982  ffef							;   jmp at +3 is fetched HERE
+    983  ffef		       4c c3 f5 	      jmp	HotOverlapBody
+    984  fff2
+    985  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0
+    986  fffa		       00 f0		      .word.w	$F000	; NMI vector
+    987  fffc		       00 f0		      .word.w	$F000	; RESET vector ← power-up entry
+    988  fffe		       00 f0		      .word.w	$F000	; IRQ vector
