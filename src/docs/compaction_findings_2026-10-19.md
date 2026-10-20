@@ -675,3 +675,49 @@ Room 0 only: L2's start room is the one the scenario enters; the layout for
 every other room stays pinned by `test_band_restage` / `test_level_bank`.
 
 ROM: 0 B. Battery + freeze green.
+
+## 2. Dead pins removed — 7 directives, 0 ROM bytes (audit 2, item 2)
+
+Each pin was verified before deletion: the source line is a bare
+`.ds $ADDR - *, 0`, no label/byte sits at the address, no `$ADDR` literal
+appears in any bank's code (only in comments), and no guard asserts the
+absolute (except `test_bomb_strip:126`, rewritten below).
+
+| pin | bank | what it was | verdict |
+|---|---|---|---|
+| `$F3C4` | 2 | PickPlayerFrame body entry (chunk 1) | **deleted** — nothing followed it until the `$F450` pad |
+| `$F4C4` | 2 | TitleSequenceFold jmp operand | **deleted** — TitleSequence retired 2026-10-19 |
+| `$F5CF` | 2 | "TitleSequence retired" | **deleted** — ColOff is a label read, it floats |
+| `$F970` | 2 | M1StripBlast body entry (chunk 2) | **KEPT** — the address is the `spill_F901` data-slot END (`convert_level._SPILL_SLOTS` + `verify_build.bank2_data_slots` read the `.ds` line); deleting it silently widens the slot and desyncs the converter's capacity table |
+| `$F9B8` | 2 | overlay tramp twin (chunk 4) | **deleted** — the twin lives in bank0 |
+| `$FDE1` | 2 | PickPlayerFrame tramp mirror | **deleted** — body moved to bank0 (chunk 1) |
+| `$F9AC` | 1 | shared 12 B M1 hop pad | **deleted** — chain is same-bank since chunk 2 |
+| `$F937` | 1 | bank2 M1StripBlast back-jmp operand | **deleted** — `StripBlastCheck` is reached by label |
+| `$F9B8` | 0 | overlay tramp address sharing | **SKIPPED** — `OverlayTramp` is LIVE at that address; removing the pin shifts `EnemyOffTable`+`OverlayTramp`+`PositionBallM1`+`KernelInit`+`DropSpeedTable`+`PickPlayerFrame` and every later label by 3 B for **0 B gained**, across cycle/page contracts. The audit's entry is about the *sharing* being unnecessary, which is already true; the pin also anchors live code. |
+
+Two things MOVED as a result (both label-reached, both re-verified by the
+battery):
+
+- bank2 `ColOff`/`ColMask`: `$F5CF` → `$F45E` (right after the ERBlocks return
+  tail). The `$F600` pin still holds `LWpSetup`/`LWpSolid`/`LWpNotPatch`.
+- bank1 `StripBlastCheck`: `$F937` → `$F8C6` (right after the raft tramp twin),
+  ends before the `$F9AC`-anchored sound leaves.
+
+**Window bytes opened: 0 net.** A `.ds` pin emits no byte, so the window
+measurement already counted its address as free — deleting pins cannot create
+free space, it removes a *growth cap*. Measured with the listing-row method
+(after = this commit, before = the audit's §B table):
+
+| bank | window | before | after |
+|---|---|---|---|
+| 2 | after the ERBlocks tail | `$F45E-$F5CE` 369 + `$F5F8-$F5FF` 8 | `$F486-$F5FF` **378** (+9, merged; ColOff moved in) |
+| 2 | `$F307-$F44F` | 329 | 329 (cap lifted 186 B) |
+| 2 | `$F7A8-$FBCF` | 1064 | 1064 (cap lifted 72 B at `$F9B8`) |
+| 2 | `$FDDE-$FE95` | 184 | 184 (cap lifted 3 B at `$FDE1`) |
+| 1 | strip/sound gap | `$F8C6-$F936` 113 + `$F995-$F9BF` 43 | `$F924-$F9BF` **156** (one run; body moved in, cap lifted 113 B) |
+| 1 | `$F9AC-$F9BF` | 20 (merged above) | — |
+
+ROM totals unchanged (8974 used / 7410 free, level data 434 B) — verified.
+`test_bomb_strip` now pins the invariants instead of one absolute:
+`M1StripBlast == $F41F`, chain order, `$F8C6 <= StripBlastCheck < $F9AC`, and
+**no `$F937`/`$F9AC` literal in any bank's CODE** (comments may mention them).

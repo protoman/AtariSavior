@@ -1189,7 +1189,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta HMOVE
 
     ; --- Score digits + #18 LV001 banner pointers (sub with the glyphs
-    ; at $FD.. — bank1 pre-pad $F937 pin has ~1B slack, nothing fits).
+    ; at $FD.. — bank1's pre-pad region is tight, nothing fits).
     jsr SetupScorePointers
 
     ; --- Clear sprites before loop (3-write pattern for VDELP) ---
@@ -1386,19 +1386,22 @@ RaftCellMasks:                  ; mask for source column 0..19: PF0 cols 0-3 —
 ; the fetch at $F8C3 comes from THIS bank: `jmp $FDE3` = RaftBody below. Neither
 ; bank runs the other's half — bank0's operand bytes are never fetched, bank1's
 ; `sta $1FF7` is never executed (it is only the swapped-out image's prefix).
-; In bank1's $F822-$F936 fill, so the $F937 pin does not move.
+; In bank1's $F822-$F8C6 fill; StripBlastCheck follows it directly ($F937 pin
+; deleted 2026-10-20 — the body floats and the $F9AC pin bounds the leaves).
 ; ------------------------------------------------------------------------------
     .ds $F8C0 - *, 0
     .byte $8D, $F7, $1F         ; sta $1FF7 (twin)
     .byte $4C, $E3, $FD         ; jmp $FDE3 (twin — fetched post-switch)
 
-    .ds $F937 - *, 0            ; pinned: bank2 M1StripBlast back-jmp operand
-                                 ; ($F937) — test_bomb_strip asserts both literals
+; ($F937 pin DELETED 2026-10-20, audit round 2: it pinned bank2's
+;  M1StripBlast back-jmp operand, and that body is same-bank now — the chain
+;  is .BMWDone -> M1StripBlast -> StripBlastCheck inside bank1, so
+;  StripBlastCheck is reached by label and floats. It now starts right after
+;  the raft tramp twin; the $F9AC pin still bounds the sound-leaf block.)
 ; StripBlastCheck — Phase 4: bomb blast vs the D6 patch strips. Tail-jumped
-; from BombMarkWalls .BMWDone, which now crosses to bank2 FIRST (M1 twin,
-; `sta $1FF8 / jmp $F970` — the meta lives in bank2's ROM) and comes back
-; here (`sta $1FF7 / jmp $F937`). Still 0 pushes (the jsr+pha version
-; measured SP $F7 < the $F8 gameplay guard, and the pha leaked on the
+; from BombMarkWalls .BMWDone through M1StripBlast (same bank, label `jmp`s
+; — repack chunk 2; 0 pushes, no switch). Still 0 pushes (the jsr+pha
+; version measured SP $F7 < the $F8 gameplay guard, and the pha leaked on the
 ; early-exit path -> runaway work -> 309-line frames in Stella 2026-10-04).
 ; Every exit ends in ReturnPad with A = count.
 ; In: BMWScratch = strip left col pL in RIGHT-half space ($FF = none/sym,
@@ -1477,10 +1480,9 @@ StripBlastCheck:
     lda CollisionX              ; A = walls newly broken (caller contract)
     jmp ReturnPad                   ; ReturnPad → bank0 caller (0 push)
 
-    .ds $F9AC - *, 0            ; (was the shared 12 B M1-hop pad — deleted
-                                 ;   2026-10-20 with the M1StripBlast move: the
-                                 ;   chain .BMWDone → M1StripBlast →
-                                 ;   StripBlastCheck is same-bank now)
+; ($F9AC pin DELETED 2026-10-20, audit round 2: the shared 12 B M1-hop pad
+;  died with the M1StripBlast move — .BMWDone -> M1StripBlast ->
+;  StripBlastCheck is same-bank now, so $F9AC held no byte.)
 
 ; ========================================================================
 ; Leaf routines relocated from bank0 — batch A, sounds (leaf_move_plan)
@@ -2214,8 +2216,8 @@ DigitGfx:
 ; frame points scorePtr1-6 at DigitGfx+digit*8 (right-aligned "00ThHu.."),
 ; or — while LevelShowTimer > 0 — at "L V 0 tens ones _" for Level+1
 ; (hundreds stays '0'; LEVEL_COUNT <= 99). Decrements LevelShowTimer
-; once per banner frame. Lives with the glyphs: bank1 pre-pad $F937 pin
-; has ~1B slack (score section is a jsr here from MenuMain).
+; once per banner frame. Lives with the glyphs (bank1's pre-pad region is
+; tight; the score section is a jsr here from MenuMain).
 SetupScorePointers:
     ; --- Initialize score to 0 on first frame ---
     lda Temp

@@ -3502,7 +3502,8 @@ ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
 ; deleted: the region re-packs into the gap before the $FBD6 fold pin
 ; (pre-pad headroom stays 1B — pins absorb upstream shrink, not the org).
 ; TWIN: bank2.asm mirrors these exact 6 bytes at $FDD8 (the pad after
-; .HOVdone). The PickPlayerFrame `.ds $FDE1` below absorbs the size.
+; .HOVdone). The PickPlayerFrame pin that used to absorb the size is gone
+; (retired 2026-10-20); the $FC49 / $FBF8 pins bound this block today.
 ; ------------------------------------------------------------------------------
     .ds $FDD8 - *, 0            ; pin: bank2's blast-tramp mirror is at $FDD8
 BombEnemyBlast:
