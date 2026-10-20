@@ -983,63 +983,13 @@ TallySum:
     ; Phase 3 blink masks — pair index (2c>>1) → the two adjacent PF bits
     ; for that left-half cell (PF0: bits4-7 left-to-right; PF1: bits7-0;
     ; PF2: bits0-7 reversed). Pairs never straddle a register (even 2c).
-    .ds $F970 - *, 0            ; pinned: bank1 .BMWDone jmp operand ($F970)
-M1StripBlast:
-    ; Phase 4 M1 strip blast — entered from bank1 BombMarkWalls .BMWDone
-    ; via the $F9AC shared pad (`sta $1FF8 / jmp $F970`; 0 pushes). Bank2-
-    ; only job (P2b stager): the packed meta (TilePF0+9/+10) lives in THIS
-    ; bank's ROM — read the door flags + left-strip dcol, stage them, let
-    ; bank1 StripBlastCheck run BOTH overlap takes (the blast window is
-    ; left-half cols 0..19 and stays READ-ONLY here).
-    ; Staging contract (both scratch bytes free in this flow):
-    ;   RectCount := 2ℓ left-strip dcol, or $FF = none/door/right-bomb;
-    ;   Temp ($88 = bank1 BMWScratch) := $FF when MetaB b7 (right door)
-    ;   so the ball-strip take can never fire. Key pickup (P5) sets b3/b4
-    ;   for doors instead (comment hook at the takes).
-    lda RectCount               ; original screen col (BMW prologue stash)
-    cmp #20
-    bcs .M1SBnone               ; right bomb → left strip unreachable
-    lda EnemyDeadMask
-    and #$10                    ; b4 already set → nothing to stage
-    bne .M1SBnone
-    lda RoomMetaA               ; MetaA
-    and #$08                    ; b3 = left door (key-only, bomb-immune)
-    bne .M1SBnone               ; stays $FF: bank1 takes no left strip
-    lda RoomMetaA               ; reload (and clobbered A)
-    lsr
-    lsr
-    lsr
-    lsr                         ; m1_col+1 (0 = no M1 → 2ℓ = $FE, off the
-                                ;   high end — bank1's hi test rejects)
-    sec
-    sbc #1                      ; ℓ = left_col
-    asl                         ; 2ℓ = strip left dcol
-    sta RectCount               ; staged (nothing after this reads the col)
-    jmp .M1SBdoorR
-.M1SBnone:
-    lda #$FF
-    sta RectCount               ; no left strip this frame
-.M1SBdoorR:
-    lda RoomMetaB               ; MetaB, b7 = right door
-    bpl .M1SBout
-    ldy #$FF
-    sty Temp                    ; = bank1's BMWScratch ($88) — "no strip"
-.M1SBout:
-    jmp M1ToBank1               ; shared pad $F9B2 (sta $1FF7 / jmp $F937,
-                                 ; byte-identical in bank1) → StripBlastCheck
-
-    .ds $F9AC - *, 0            ; shared cross-bank pad — byte-IDENTICAL twin
-                                 ; of bank1's $F9A4 block (identity asserted
-                                 ; in test_bomb_strip). After either `sta $1FFx`
-                                 ; the next opcode fetch comes from the newly
-                                 ; selected bank at pc+3, so the `jmp` bytes
-                                 ; must match in both banks (F6 pad rule).
-M1ToBank2:                      ; reached bank1-side after `sta $1FF8`
-    sta $1FF8                   ; switch bank1 → bank2
-    jmp $F970                   ; M1StripBlast
-M1ToBank1:                      ; = $F9B2 — M1StripBlast jmps here bank2-side
-    sta $1FF7                   ; switch bank2 → bank1
-    jmp $F937                   ; StripBlastCheck
+    .ds $F970 - *, 0            ; (was M1StripBlast's body entry pin — body
+                                 ;   moved to bank1 2026-10-20, repack chunk 2)
+; ------------------------------------------------------------------------------
+; M1StripBlast MOVED to bank1 ($F41F fill, repack chunk 2 2026-10-20): it
+; reads ZP only, so the .BMWDone -> M1StripBlast -> StripBlastCheck chain is
+; same-bank there. Bank2's 12 B hop pads at $F9AC went with it.
+; ------------------------------------------------------------------------------
 
     .ds $F9B8 - *, 0            ; Phase 4 overlay tramp twin (kernel.asm's
                                  ; copy sits at the same address — bank0
