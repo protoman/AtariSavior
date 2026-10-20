@@ -120,10 +120,10 @@ TitleSelect:
     jmp ReturnPad
 
 ; ==============================================================================
-; Title subsystem — MOVED from bank0 (TitleKernel/TitleFont) + bank2 (bands/
-; fonts/sprites) 2026-10-16 (docs/refactor_v4_plan.md Phase 3). Kernel + band
-; bodies share bank1; bank0 enters via CallPad_TitleKernel ($FC55); tail-exits
-; via CallPad_Overscan ($FC5B). Band bodies end in rts (same-bank).
+; Merged title screen (2026-10-19): banner shown over the CAVE kernel? No —
+; TitleKernel is the title frame itself: stage PF (rows 0-2) + player + logo
+; + credit footer + the HUD band (jmp MenuMain). bank0 enters via
+; CallPad_TitleKernel ($FC55) and the frame ends in the HUD → Overscan.
 ; ==============================================================================
 RoomX        = $80
 RoomY        = $81
@@ -143,12 +143,44 @@ FooterPtr3   = $E4
 FooterPtr4   = $E6
 FooterPtr5   = $E8
 FooterPtr6   = $EA
+TPtr1        = $E0               ; logo slot pointers (= FooterPtr1-6 slots)
+TPtr2        = $E2
+TPtr3        = $E4
+TPtr4        = $E6
+TPtr5        = $E8
+TPtr6        = $EA
 
-    .ds $F07A - *, 0            ; bank1 PlayerWalkA/B copies retired with
-                                 ;   the title player band (2026-10-19)
+PlayerWalkA:
+    .byte %00111100             ; row 0 torso (sprites.png 2026-10-03)
+    .byte %01111110             ; row 1
+    .byte %01111100             ; row 2 — yellow face
+    .byte %01111110             ; row 3
+    .byte %01111100             ; row 4 — grey pack
+    .byte %11111110             ; row 5
+    .byte %11111110             ; row 6
+    .byte %00111110             ; row 7  legs
+    .byte %00111110             ; row 8
+    .byte %00010100             ; row 9
+    .byte %00100010             ; row 10 boots apart (spread)
+    .byte %01000010             ; row 11 boots apart
 
+PlayerWalkB:
+    .byte %00111100             ; row 0 torso
+    .byte %01111110             ; row 1
+    .byte %01111100             ; row 2 — yellow face
+    .byte %01111110             ; row 3
+    .byte %01111100             ; row 4 — grey pack
+    .byte %11111110             ; row 5
+    .byte %11111110             ; row 6
+    .byte %00111110             ; row 7  legs
+    .byte %00111110             ; row 8
+    .byte %00010100             ; row 9
+    .byte %00011000             ; row 10 boots together (passing)
+    .byte %00011000             ; row 11 boots together
+
+    .ds $F080 - *, 0            ; TitleKernel pin (CallPad_TitleKernel literal)
 TitleKernel:
-    sta WSYNC                    ; entry-line overrun guard (KernelInit+dispatch)
+    sta WSYNC                    ; entry-line overrun guard
     lda #0
     sta COLUBK
     sta PF0
@@ -157,35 +189,95 @@ TitleKernel:
     sta COLUPF
     sta GRP0
     sta GRP1
-    sta GRP0                     ; flush VDEL buffers (score-technique pattern)
+    sta GRP0                     ; flush VDEL buffers
     sta REFP0
     sta REFP1
     sta ENABL
     sta ENAM1
-    lda #COLOR_TITLE
+    sta ENAM0
+
+    ; ==================================================================
+    ; Band 0 (48 lines): stage top row + the player at RoomY.
+    ; The merged title previews the LIVE stage: PF/color come from the
+    ; room buffers EnterRoom staged. The game is stopped, so it is static.
+    ; ==================================================================
+    lda PF0Buf
+    sta PF0
+    lda PF1Buf
+    sta PF1
+    lda ColupfBuf
+    sta COLUPF
+    lda PF2Buf
+    sta PF2
+    lda BandTab
+    sta ENABL
+    lda #$0E                     ; player suit (single colour on the title)
     sta COLUP0
-    sta COLUP1
-    lda #6                       ; NUSIZ = 3 copies, 32px pitch (title widen #16)
+    ldx #0
+    lda RoomX
+    jsr SetObjectXPos_b1         ; 1 line
+    sta WSYNC
+    sta HMOVE                    ; 1 line
+    ldx #22                      ; blanks up to the player window (RoomY 24)
+.TkB0Bl:
+    sta WSYNC
+    dex
+    bne .TkB0Bl
+    lda EnemyRamP                ; walk cycle A/B on the free-running clock
+    and #8
+    beq .TkPlrA
+    lda #<PlayerWalkB
+    ldy #>PlayerWalkB
+    bne .TkPlrSet                ; unconditional (hi != 0)
+.TkPlrA:
+    lda #<PlayerWalkA
+    ldy #>PlayerWalkA
+.TkPlrSet:
+    sta Grp0Ptr
+    sty Grp0PtrHi
+    ldy #0
+.TkPlr:
+    lda (Grp0Ptr),Y
+    sta GRP0
+    sta WSYNC
+    iny
+    cpy #12
+    bne .TkPlr
+    lda #0
+    sta GRP0
+    ldx #12
+.TkB0Bl2:
+    sta WSYNC
+    dex
+    bne .TkB0Bl2
+
+    ; ==================================================================
+    ; Band 1 (48 lines): stage middle row + logo + credit footer.
+    ; ==================================================================
+    lda PF0Buf+1
+    sta PF0
+    lda PF1Buf+1
+    sta PF1
+    lda ColupfBuf+1
+    sta COLUPF
+    lda PF2Buf+1
+    sta PF2
+    lda BandTab+1
+    sta ENABL
+    lda #6                       ; 3 copies, 32px pitch (48px logo)
     sta NUSIZ0
     sta NUSIZ1
-    lda #1                       ; VDELP = ON (cross-buffer active)
+    lda #1                       ; VDEL cross-buffer
     sta VDELP0
     sta VDELP1
-    lda #41
     ldx #0
-    jsr SetObjectXPos_b1            ; P0 slot base: drawn x34 (grid p=34 — V/P0c1
-    lda #57                      ;  must clear the S->V swap at x64, see #16)
+    lda #41
+    jsr SetObjectXPos_b1
     ldx #1
-    jsr SetObjectXPos_b1            ; P1 slot base: drawn x50
+    lda #57
+    jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
-    ; --- Six font pointers for the VDEL sprite pipeline. ---
-TPtr1 = $E0                       ; font ptrs lo/hi: $E0/$E1, $E2/$E3,
-TPtr2 = $E2                       ;   $E4/$E5, $E6/$E7, $E8/$E9, $EA/$EB
-TPtr3 = $E4
-TPtr4 = $E6
-TPtr5 = $E8
-TPtr6 = $EA
     lda #>TitleFont
     sta TPtr1+1
     sta TPtr2+1
@@ -193,7 +285,7 @@ TPtr6 = $EA
     sta TPtr4+1
     sta TPtr5+1
     sta TPtr6+1
-    lda #<TitleFont              ; $FB00
+    lda #<TitleFont
     sta TPtr1
     lda #<TitleFont+8
     sta TPtr2
@@ -205,103 +297,39 @@ TPtr6 = $EA
     sta TPtr5
     lda #<TitleFont+40
     sta TPtr6
-    ldx #8                       ; blank lines before text
-.TkBlnk:
-    sta WSYNC
-    dex
-    bne .TkBlnk
     lda #COLOR_TITLE
     sta COLUP0
     sta COLUP1
     ldx #7
-    stx LineCount                ; rows left (7..1 — byte0 blank, score parity)
+    stx LineCount                ; rows left (7..1 — byte0 blank)
 .TkLoop:
     ldy LineCount
     lda (TPtr6),Y                ; slot 6 = "R." — font byte7 = TOP row
-    tax                          ; cache slot 6
+    tax
     sta WSYNC
     lda (TPtr1),Y                ; slot 1 = "S."
-    sta.w GRP0                   ; digit 1 -> GRP0A buffer
+    sta.w GRP0
     lda (TPtr2),Y                ; slot 2 = "A."
-    sta GRP1                     ; digit 2 -> GRP1A, digit 1 live on P0c1
+    sta GRP1
     lda (TPtr3),Y                ; slot 3 = "V."
-    sta GRP0                     ; digit 3 -> GRP0A, digit 2 live on P1c1
+    sta GRP0
     lda (TPtr4),Y                ; slot 4 = "I."
-    sta Temp                     ; cache digit 4
+    sta Temp
     lda (TPtr5),Y                ; slot 5 = "O."
     ldy Temp
-    sty GRP1                     ; digit 4 -> GRP1A, digit 3 live on P0c2
-    sta GRP0                     ; digit 5 -> GRP0A, digit 4 live on P1c2
-    stx GRP1                     ; digit 6 -> GRP1A, digit 5 live on P0c3
-    stx GRP0                     ; digit 6 -> GRP0A, digit 6 live on P1c3
+    sty GRP1
+    sta GRP0
+    stx GRP1
+    stx GRP0
     dec LineCount
     bne .TkLoop
-    sta WSYNC                    ; close the last text line and clear VDEL slots
+    sta WSYNC
     lda #0
     sta GRP0
     sta GRP1
     sta GRP0
     sta GRP1
-    ldx #157                    ; 117 pre-pad: logo 8+63 + the retired
-                                ;   player band 52 (merged title, 2026-10-19)
-.TkFooterPad:
-    sta WSYNC
-    dex
-    cpx #40
-    bne .TkFooterPad             ; 64 lines before the flight window
-    ; --- level-number band (merged title screen, 2026-10-19): two digits
-    ;     from DigitGfx under the logo, same VDEL cross-buffer as the logo.
-    ;     Lines: 2 SOXP + HMOVE + 8 rows + flush = 12; the retired player
-    ;     band's 52 extra lines moved into .TkFooterPad above.
-    lda #0
-    sta NUSIZ0
-    sta NUSIZ1                  ; single copies (logo/footer use 3)
-    ldx #0
-    lda #30
-    jsr SetObjectXPos_b1
-    ldx #1
-    lda #46
-    jsr SetObjectXPos_b1
-    sta WSYNC
-    sta HMOVE
-    lda Level
-    clc
-    adc #1                      ; 1-based level number
-    ldx #0
-.LVTens2:
-    cmp #10
-    bcc .LVTensDone2
-    sbc #10
-    inx
-    bne .LVTens2
-.LVTensDone2:
-    asl
-    asl
-    asl                         ; ones * 8
-    sta TPtr2
-    txa
-    asl
-    asl
-    asl                         ; tens * 8
-    sta TPtr1
-    lda #>DigitGfx
-    sta TPtr1+1
-    sta TPtr2+1
-    sta WSYNC                   ; settle the pointer math off the glyph line
-    ldy #7
-.LDigitLoop:
-    lda (TPtr1),Y
-    sta GRP0
-    lda (TPtr2),Y
-    sta GRP1
-    sta WSYNC
-    dey
-    bpl .LDigitLoop
-    lda #0
-    sta GRP0
-    sta GRP1
-    sta WSYNC
-    ; --- footer text: 3 copies on both players at the title positions ---
+    ; --- credit footer: 3 copies on both players at 60/68 ---
     lda #3
     sta NUSIZ0
     sta NUSIZ1
@@ -313,17 +341,40 @@ TPtr6 = $EA
     jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
-    ldx #31                     ; fixed title-kernel line budget: 37 - 6
-                                ;   (footer grew 7 -> 13 rows, 2026-10-12)
-.TkPostFooterPad:
-    sta WSYNC
-    dex
-    bne .TkPostFooterPad
-    lda #$0E                     ; white
+    lda #$0E
     sta COLUP0
     sta COLUP1
-    jsr FooterBand               ; bank2 text band
-    jmp CallPad_Overscan
+    jsr FooterBand
+    ldx #19                      ; band-1 tail: logo 11 + footer 18 = 29
+.TkB1Bl:
+    sta WSYNC
+    dex
+    bne .TkB1Bl
+
+    ; ==================================================================
+    ; Band 2 (48 lines): stage bottom row.
+    ; ==================================================================
+    lda PF0Buf+2
+    sta PF0
+    lda PF1Buf+2
+    sta PF1
+    lda ColupfBuf+2
+    sta COLUPF
+    lda PF2Buf+2
+    sta PF2
+    lda BandTab+2
+    sta ENABL
+    ldx #48
+.TkB2Bl:
+    sta WSYNC
+    dex
+    bne .TkB2Bl
+
+    ; --- HUD band: score shows level+1 (DropArm .DATitle), lives/bombs/bar ---
+    lda #0
+    sta ENABL
+    sta ENAM1
+    jmp MenuMain
 
 TitleFont:
     ; slot 1 "S."
@@ -399,9 +450,6 @@ TitleFont:
 ; have DropTarget=$FD so ownership stays clean).
 ; Clobbers A/X/Temp. Ends at TitleTailAudio (silence + overscan wait).
 ; ------------------------------------------------------------------------------
-
-    .ds $F214 - *, 0            ; TitleBandPrep/TitlePlayerBand retired
-                                 ;   (merged title screen, 2026-10-19)
 
 FooterBand:
     sta WSYNC
@@ -616,6 +664,9 @@ vyHi        = $94           ; Y velocity hi
 PF0Buf      = $C3
 PF1Buf      = $C6                ; packed rows 0-2 (S3.1; was $CF)
 PF2Buf      = $C9                ; packed rows 0-2 (S3.1; was $DB)
+ColupfBuf   = $E7                ; BuildColupF image (VBL, 12 bytes)
+BandTab     = $ED                ; per-band ENABL gate (VBL StageBandTab)
+EnemyRamP   = $C2                ; free-running frame clock (player walk)
 CollisionX  = $8B
 CollisionCellX = $8C
 CollisionCellY = $8D            ; plan 5.1 punch: rect idx save across ClearPFColumn
@@ -1868,11 +1919,11 @@ CallPad_TitleSelect:
     .ds $FC55 - *, 0
 CallPad_TitleKernel:
     sta $1FF7
-    jmp TitleKernel
+    jmp $F080
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F1A7
+    jmp $F19F
     .ds $FC61 - *, 0
 CallPad_MusicTick:
     sta $1FF7
@@ -1889,7 +1940,7 @@ CallPad_MusicTick:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F1A7           ; Overscan in bank0 (must match bank0 ToGameStub;
+    jmp $F19F           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; verify_build --sync-overscan patches this from
                         ; bank0.lst after every bank0 build)
 

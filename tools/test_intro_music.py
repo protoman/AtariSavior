@@ -1,7 +1,7 @@
 #!/home/iuri/python3/bin/python3
 """Intro music guard (2026-10-16).
 
-Boots the ROM (power-on = the $FD intro), runs intro frames, and asserts the
+Boots the ROM (power-on = the $FF merged title), runs title frames, and asserts the
 original "Hollow Earth" theme drives AUD0: Lead ($0C), volume in {0,7}
 ($FE rests silence it), and the melody pitch (AUDF0) advances. The bass
 voice (AUD1) must stay muted.
@@ -84,7 +84,7 @@ while frame < 1400:
     mpu.step()
     if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
         frame += 1
-        if mem.ram[I_DROP] == 0xFD:
+        if mem.ram[I_DROP] == 0xFF:
             intro += 1
             if mem.tia[AUDV0] != 0:
                 seen_c0 = seen_c0 or mem.tia[AUDC0] == 0x0C
