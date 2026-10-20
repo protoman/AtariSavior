@@ -1,6 +1,8 @@
 # PF-Map Collision Rearchitecture Plan (kill the 5-rect limit)
 
-**Status:** PLANNED — not started. Update checkboxes/notes as steps land.
+**Status:** DONE 2026-10-20 (phases 1-7 landed; 2.2/3.1/4.1 Stella gates
+were user-run at the time, 5.1b/7.1 landed as chunk C4). Update the notes
+as behaviour changes.
 **Motivation (2026-10-02):** level_003 rooms 2/3 (models 5/6) need 6 wall rects
 each; the ZP rect cache holds 5 ($CC-$DF, stomp-zone boundary above, PF buffers
 below). Exact minimal cover = 6 for both models — geometry, not greedy. A 6-rect
@@ -240,16 +242,31 @@ Tables: `ColOff[c]` = {0×4, 3×8, 6×8} (offset from `$C3+row`), `ColMask[c]` =
 
 ## Phase 7 — Cleanup & room freedom
 
-- [ ] **7.1 Data pipeline.** Stop emitting solid rects from
-      `convert_room`/models_data (keep hot only if 6.1 kept lists); remove or
-      re-scope the interim `check_model_rects` ≤5 guard (may become: no
-      constraint at all, or only a hot-count one).
-      **Check:** models 5/6 untouched → build green → A1 verified end-to-end.
-- [ ] **7.2 Docs.** AGENTS Phase-3 notes, `docs/zp_layout_skill.md` rect-cache
-      rows, S6 walk-cycle lessons (`.RectLoop` gone — restate around cells),
-      close this plan with outcome notes.
-      **Check:** grep shows no stale `RcW1`/5-rect claims; final battery +
-      both sims + clean Stella session of level_003.
+- [x] **7.1 Data pipeline — LANDED 2026-10-20 (chunk C4).**
+      `convert_room.lines` emits `RoomRects: hot count, 5 B/hot record,
+      TilePF0/1/2, MetaA/B` — no solid rect list. The shape table entry /
+      `RoomRectsLo` still point at the block base (label kept). `TilePF0`
+      is now `block + 1 + 5*hot_count` (`B3RoomBlocks`), and the three
+      hot-stream readers (`HotOverlapBody`, `PhaseBlink`, `BCFDarkRun`)
+      read the count at offset 0. The hot record's mask byte is now
+      zero/nonzero only (zero = M1-strip gate, nonzero = PF-cell parent
+      gate). `check_model_rects` deleted (models 5/6 no longer warn); a
+      `check_equ_sync` guard keeps `RcBase`/`RcW1` from coming back and
+      pins `ZPSpare89 = $89`. `B3RoomBlocks`' rect-cache copy deleted
+      (−25 B code); the ZP cache is freed (20 B, `$CC-$DF`).
+      Measured data: level data **402 → 308 B** (−94 B; models 166 → 96,
+      per-room blocks 184 → 160 incl. two dedupes).
+      At 400 unique models the removed lists are ≈ −3.9 KB (est., §4 of
+      `level_format_plan_2026-10-20.md`).
+      Regression: `test_cell_map` now asserts, for every model with >5
+      rects (stage models 5/6 = 6 rects), that all 30 cells per model are
+      solid EXACTLY where the PF triple says (real moth cell walk).
+- [x] **7.2 Docs — LANDED 2026-10-20** (with chunk C4): AGENTS Phase 3,
+      `docs/zp_layout_skill.md` ($89 free slot, $CC-$DF free, WallMask
+      retired), `docs/level_format_plan_2026-10-20.md` C4 + ledger.
+      **Remaining Stella pass:** user eyeball of level 3 rooms 2/3 (models
+      5/6) for walls/exits + a bomb on a thin wall + laser through the
+      hole (the sims and the py65 battery cover the contract).
 
 ## Sequencing note
 

@@ -414,8 +414,6 @@ PlayerWalkA              fdde              (R )
 PlayerWalkB              fdea              (R )
 PlayerYSub               0095              (R )
 PositionBallM1           f9c1              (R )
-RcBase                   0089                  
-RcW1                     00cc                  
 RectCount                0092              (R )
 REFP0                    000b              (R )
 REFP1                    000c              (R )
@@ -484,4 +482,5 @@ vyHi                     0094              (R )
 vyLo                     0093              (R )
 WSYNC                    0002              (R )
 YToRowTable              f901              (R )
+ZPSpare89                0089                  
 --- End of Symbol List.

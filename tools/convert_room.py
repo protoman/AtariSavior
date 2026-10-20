@@ -8,20 +8,17 @@ reflects the 40-pixel playfield (CTRLPF D0=1), so rooms must be left-right
 symmetric; the kernel emits one PF0/PF1/PF2 triple per tile row, written
 once per 48-line band.
 
-Emitted data:
-  - RoomRects: compressed rectangle list for the 6502 collision code.
-    Format: 1 byte count, then count * 2 packed bytes —
-    [x<<2|y], [w<<2|h] (x,w <= 63 in 4px cols; y,h band 0-3).
-    The EnterRoom cache copy unpacks to the 4-byte walk form (x, y, w, h).
+Emitted data (block = the shape table entry / RoomRectsLo target):
+  - RoomRects (historical label; the block base since plan C4): the HOT
+    stream only — 1 byte count, then count * 5 B records (mask, x, y, w, h).
     Coordinates are DISPLAY columns (4 color clocks each, left half =
-    columns 0-19) — the runtime compares them against px/4 text columns
-    directly, so logical cell c is emitted as x=2c, w=2*cell_w (D7 pair).
-    The collision routine mirrors each rectangle to the right half at
-    runtime, so only the left-half layout is stored.
-    Hot records (5 bytes: mask, x, y, w, h) stay UNPACKED after the
-    hot-count byte.
+    columns 0-19) and band rows; the runtime mirrors to the right half.
+    The SOLID rect list is gone (2026-10-20): every collision walker
+    (player, laser, moth, bomb punch, hot parent) tests the PF buffers, so
+    the PF triple below IS the collision map.
   - TilePF0/TilePF1/TilePF2: one byte per tile row for the kernel; each
-    logical cell sets a PF bit PAIR (encoder bit-pairing, D7).
+    logical cell sets a PF bit PAIR (encoder bit-pairing, D7). TilePF0 sits
+    at block + 1 + 5*hot_count (bank2 B3RoomBlocks derives it).
 All per-row tables (PF triples) are emitted at TABLE_STRIDE (= 3, the
 playable bands) since S4.2; only the first 3 entries are drawn — the old
 12-byte padding existed for bank0's +12/+12 pointer arithmetic, which
@@ -35,7 +32,8 @@ WIDTH = 10                  # D7: logical cells per half (was 20 pre-D7)
 HEIGHT = 3                  # playable color bands (HUD is drawn separately)
 TABLE_STRIDE = 3            # S4.2: per-row table size = the 3 playable bands
                             # (was 12 — kernel EnterRoom now does +3/+3)
-MASK_BITS = (0x08, 0x10, 0x20, 0x40)  # kernel BombMaskBit, wall rects 0-3
+MASK_BITS = (0x08, 0x10, 0x20, 0x40)  # RightRects hot parents only (left list retired, C4)
+WALL_PARENT_MASK = 0x08      # hot record mask: nonzero = PF-cell parent gate
 
 
 def read_room(path: Path) -> list[str]:
@@ -204,26 +202,22 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     # every VBL from the clock (row & ~P(full) | P(n)), and the PF cell
     # walk follows the buffers. A static C-rect would wall the whole
     # sweep corridor once the C extent grows to the screen center.
-    rects = find_rectangles(rows, solids="#HPV")
+    # C4 (2026-10-20): the SOLID rect list is RETIRED — every collision
+    # walker tests the PF buffers (cell_collision_plan 2.1/3.1/4.1/5.1b), so
+    # the block is hot stream | PF | meta and the PF triple IS the map.
+    # `walls` is still computed for the hot parent mask only.
+    walls = find_rectangles(rows, solids="#HPV")
     hot_rects = find_rectangles(rows, solids="H")
-    # find_rectangles works in logical cells (0..9); the runtime compares
-    # rect x/w against 4-px display columns, so emit x/w in pairs (D7).
-    rect_name = prefix + "RoomRects"
-    out.append(f"{rect_name}:")
-    out.append(f"  .byte {len(rects)}                  ; number of rectangles")
-    for x, y, w, h in rects:
-        p0, p1 = (2 * x) << 2 | y, (2 * w) << 2 | h
-        if p0 > 255 or p1 > 255 or y > 3 or h > 3:
-            raise ValueError(
-                f"rect out of pack range: x={2*x} y={y} w={2*w} h={h} "
-                f"(need x,w<=63 and y,h<=3 for the 2-byte rect format)")
-        out.append(f"  .byte ${p0:02x}, ${p1:02x}  ; packed (x<<2|y, w<<2|h)")
-    # Hot-only block after solid rects: death + pulse. Walks of solid rects
-    # must stop at the count byte and never enter this section.
-    # Record = mask, x, y, w, h (5 bytes). mask = BombMaskBit of the solid
-    # rect that contains this hot rect (kernel's death check skips the hot
-    # piece once that wall is blasted — hot_rock_wall_plan rule 4);
-    # $00 = no blastable parent (parent outside rects 0-3, or none) → never dies.
+    # Emitted block layout (RoomRects is the BLOCK base — the shape table and
+    # RoomRectsLo point at it, so the label name stays):
+    #   RoomRects:  hot count, 5 B/hot record
+    #   TilePF0/1/2 (3 B each), MetaA/MetaB  -> TilePF0 = RoomRects+1+5*hot
+    #   [asym] RightPF0/1/2 at TilePF0+11, RightRects after them
+    # Record = mask, x, y, w, h (5 bytes). mask: b7 = feature class; $00 =
+    # M1 block cell (dies with the strip, EnemyDeadMask b4); nonzero = wall
+    # parent (the runtime gates on that parent's PF cell still being solid,
+    # so a thin parent dies with the bomb punch and a thick one never does).
+    hot_lines: list[str] = []
     m1_hot = list(hot_m1 or ())
     # Feature cells (P phase, V vertical crunch, C horizontal crunch) ride
     # the hot record stream with b7 set in the mask byte — legacy masks
@@ -276,13 +270,11 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         feats.append(
             f"  .byte $82, 0, {next(iter(bands))}, {2 * (cols[-1] + 1)}, 1  "
             f"; hcrunch band prefix")
-    out.append(f"  .byte {len(hot_rects) + len(m1_hot) + len(feats)}              "
-               f"; number of hot rectangles")
     for hx, hy, hw, hh in hot_rects:
         parent = next(
             (
                 i
-                for i, (x, y, w, h) in enumerate(rects)
+                for i, (x, y, w, h) in enumerate(walls)
                 if x <= hx and y <= hy and hx + hw <= x + w and hy + hh <= y + h
             ),
             None,
@@ -293,21 +285,26 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
                 file=sys.stderr,
             )
             mask = 0
-        elif parent < len(MASK_BITS):
-            mask = MASK_BITS[parent]
         else:
-            mask = 0
-        out.append(f"  .byte ${mask:02x}, {2 * hx}, {hy}, {2 * hw}, {hh}  ; mask, x, y, w, h (4px cols)")
+            # nonzero = "wall parent" (PF-cell gate). The old BombMaskBit
+            # index died with the rect list; only zero/nonzero matters now.
+            mask = WALL_PARENT_MASK
+        hot_lines.append(f"  .byte ${mask:02x}, {2 * hx}, {hy}, {2 * hw}, {hh}  ; mask, x, y, w, h (4px cols)")
 
     # M1 patch cells on the hot band (PF-open by envelope → not in the 'H'
     # walk): mask $00 = never dies with a wall; the strip itself dies via
     # EnemyDeadMask b4 (OvM1Block skips the block path before the hot check).
     for mrow, mcol in m1_hot:
-        out.append(f"  .byte $00, {2 * mcol}, {mrow}, 2, 1  "
-                   f"; mask, x, y, w, h (M1 block cell, hot band)")
+        hot_lines.append(f"  .byte $00, {2 * mcol}, {mrow}, 2, 1  "
+                         f"; mask, x, y, w, h (M1 block cell, hot band)")
+
+
+    out.append("; C4 (2026-10-20): block base = hot stream (no solid rect list)")
+    out.append(f"{prefix}RoomRects:")
+    out.append(f"  .byte {len(hot_lines) + len(feats)}              "
+               f"; number of hot rectangles")
+    out.extend(hot_lines)
     out.extend(feats)
-
-
     for name, register in zip(("TilePF0", "TilePF1", "TilePF2"), range(3)):
         out.append(f"{prefix}{name}:")
         table = [f"${triple[register]:02x}" for triple in triples]

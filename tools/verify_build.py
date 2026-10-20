@@ -17,12 +17,12 @@ Checks:
           truncation; slot 3 would collide with LaserState at $C0),
           room_id/grid/start/miner validity, enemy bounds/types,
           model_id exists, generated room .txt shape.
-  Models - solid-rect count <= 5 per model (ZP rect cache; EnterRoom copies
-          5 but RcBase keeps the raw count -> walker reads $E0+ garbage).
+  Cell   - no model-rect cap: every collision walker tests PF cells, the
+          solid rect list and the ZP rect cache are retired (plan C4).
   EQU   - cross-bank `Name = $XX` sync vs kernel authority (S3.0); allows
           documented aliases (ZP_ALLOW: bank1 Temp = $AD).
   Frozen - LEVEL_DATA_ADDR literal == bank2.lst LevelDataTable (models_data
-           regeneration shifts bank2 labels; stale literal = empty rect cache).
+           regeneration shifts bank2 labels; stale literal = empty PF block).
            Build self-heals first: `verify_build.py --sync SRC` patches the
            hand-copied kernel literals (LEVEL_DATA_ADDR, LEVEL_COUNT) from
            fresh sources; the checks below still verify the final ROM.
@@ -1291,7 +1291,7 @@ def check_equ_sync(src: Path) -> None:
     # scorePtr1's leading-zero lo byte zeroed it every HUD frame, and
     # probes walked through rect4 walls. ColupfBuf ($E7, VBL rebuild) and
     # EnemyRamY ($E2, window-ordered) are the two documented exceptions.
-    PERSIST_BELOW_E0 = ("RcBase", "RcW1", "PF0Buf", "PF1Buf", "PF2Buf",
+    PERSIST_BELOW_E0 = ("PF0Buf", "PF1Buf", "PF2Buf",
                         "RoomBandColor", "BombX", "BombTimer")
     for name in PERSIST_BELOW_E0:
         v = auth.get(name)
@@ -1301,11 +1301,17 @@ def check_equ_sync(src: Path) -> None:
         elif 0xE0 <= v <= 0xEF:
             err(f"equ-sync: {name} = ${v:02X} is inside bank1's $E0-$EF "
                 f"stomp zone — HUD will corrupt it every frame")
-    rw1 = auth.get("RcW1")
-    if rw1 is not None and rw1 + 20 > 0xE0:   # exclusive end ≤ $E0 → last byte ≤ $DF
-        err(f"equ-sync: rect cache RcW1=${rw1:02X} spans to "
-            f"${rw1 + 19:02X} — rect bytes would sit in the "
-            f"bank1 stomp zone (tentacle-wall bug family)")
+    # C4 (2026-10-20): the rect cache is retired — RcBase/RcW1 must not come
+    # back as code in any bank (they would silently re-introduce a second
+    # collision source next to the PF cells).
+    for name in ("RcBase", "RcW1"):
+        if auth.get(name) is not None:
+            err(f"equ-sync: kernel still declares {name} — the rect cache is "
+                f"retired (plan C4); keep the address in ZPSpare89 instead")
+    rw1 = auth.get("ZPSpare89")
+    if rw1 != 0x89:
+        err(f"equ-sync: kernel ZPSpare89 = ${rw1 if rw1 is not None else -1:02X}"
+            f" != $89 (the freed rect-count slot must stay allocated)")
 
     for bank in ("bank1.asm", "bank2.asm"):
         p = src / bank
@@ -1793,46 +1799,6 @@ def sync_kernel_literals(src: Path) -> int:
     return 0
 
 
-def check_model_rects(src: Path) -> None:
-    """Every model's solid-rect count must fit the game's ZP rect cache.
-
-    The cache is 5 uniform slots ($CC-$DF, walk Y=0..19). EnterRoom copies
-    exactly 5 rects but stores the RAW count in RcBase — a 6-rect model
-    loses its last rect (no collision under it) AND the walker's 6th
-    iteration reads $E0+ (bank1 scorePtr garbage) as a phantom rect.
-    Seen 2026-10-02: level_003 room 3 / model 6 needed 6 rects for its
-    geometry; the player fell through the bottom band.
-    """
-    mp = src / "rooms" / "models" / "models.json"
-    if not mp.exists():
-        return
-    try:
-        md = json.loads(mp.read_text())
-    except ValueError as exc:
-        err(f"models.json: {exc}")
-        return
-    ml = md.get("models_file", md).get("models", [])
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from convert_level import rows_from_json          # noqa: PLC0415
-    from convert_room import find_rectangles          # noqa: PLC0415
-    by_id = {m.get("id"): m for m in ml}
-    for m in ml:
-        try:
-            rows = rows_from_json({"model_id": m.get("id")}, by_id)
-        except (KeyError, TypeError, ValueError) as exc:
-            err(f"model {m.get('id')}: {exc}")
-            continue
-        rects = find_rectangles(rows, solids="#")
-        if len(rects) > 5:
-            # Transition (cell_collision_plan): >5 rects only SAFE once every
-            # cache walker is cell-based (PHM 2.1, LWC 3.1, moth 4.1, bombs 5.x).
-            # During the swap this stays a WARN so sims/battery can gate each
-            # step; the whole check dies at phase 7.1 (rect cache retired).
-            warn(f"model {m.get('id')}: {len(rects)} wall rects > 5 — "
-                 f"cell-swap must cover all cache walkers before release; "
-                 f"rects={rects}")
-
-
 def sync_overscan_literal(src: Path) -> int:
     """Post-bank0 self-heal (build.sh: after bank0, before bank1).
 
@@ -2150,7 +2116,6 @@ def main() -> int:
     check_tramp_targets(src)
     check_callpads(src)
     check_levels(src)
-    check_model_rects(src)
     check_equ_sync(src)
     check_frozen_addrs(src)
 

@@ -155,12 +155,13 @@ def main() -> None:
     # Patch the record's y and w in the PRIVATE bank copy: fields must be
     # ignored (band stays 1, prefix stays 10).
     off = W.L3["L3R2RoomRects"] - 0xF000
-    count = W.BANKS[2][off]
-    rec = off + 1 + 2 * count + 1          # class byte +1 = x
-    assert W.BANKS[2][rec] == 0x82, f"fixture class {W.BANKS[2][rec]:02X}"
+    count = W.BANKS[2][off]                # hot-record count (C4: no rects)
+    rec = off + 1                          # first record's class byte
+    assert count and W.BANKS[2][rec] == 0x82, \
+        f"fixture class {W.BANKS[2][rec]:02X}"
     W.BANKS[2][rec + 2] = 2                # y(band) -> 2 (ignored)
     W.BANKS[2][rec + 3] = 4                # w -> 4 cells (ignored)
-    assert rec + 4 <= off + 1 + 2 * count + 1 + 5, "record stride changed"
+    assert rec + 4 <= off + 1 + 5, "record stride changed"
 
     # --- 1. arm + ignored record fields ---------------------------------
     pf0, pf1, pf2, dead, _lv = probe(clock=8)
@@ -276,7 +277,8 @@ def main() -> None:
     if "HcrPush:" in b3:
         fails.append("HcrPush still present")
     stream = FX.M4_STREAM
-    if len(stream) < 9 or stream[-5] != 0x82:
+    # C4: hot count at +0, first record class at +1 (5 B records).
+    if len(stream) < 6 or stream[0] != 1 or stream[1] != 0x82:
         fails.append("fixture record stride/class changed")
 
     if fails:

@@ -63,16 +63,16 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $86 | Grp0Ptr | Player sprite ptr lo (scratch) |
 | $87 | Grp0PtrHi | Player sprite ptr hi (scratch) |
 | $88 | Temp | General scratch (VBLANK COLUBK, ObjectCount, …) |
-| $89 | RcBase | Rect cache **count** (sequential decl — was MapPtrLo; the $89 slot now hosts the count so the 20 rect bytes fit $CC-$DF clear of bank1's $E0 stomp — S3.2-fix, see cache row) |
+| $89 | ZPSpare89 | **FREE** (was `RcBase`, the rect-cache count — retired with the cache by plan C4 2026-10-20; kept allocated so the sequential block does not shift. bank1's `ClearPFColumn` uses it as `CPCScratch` during a bomb punch) |
 | $8A | DropTarget | Spawn drop-in target Y (0 = idle; **$FF = title-screen sentinel**, valid targets ≤ 191). Was MapPtrPad1 dead pad — slot kept so the sequential block doesn't shift |
 | $8B | CollisionX | Collision/mirror scratch |
 | $8C | CollisionCellX | Player max tile col |
 | $8D | CollisionCellY | Player top tile row; **time-partitioned**: VBL `StageBandTab` stages the P2b door stripe color ($80 = none / $1C = yellow) for the cave band-setup line's `COLUP1` write; overscan PHM's prologue restages it as the top-row temp AFTER the kernel — lifecycles never overlap |
 | $8E | CollisionEndX | Player min tile col; **time-partitioned**: overscan PHM/LWC/blast/laser stage+read their own min-col, and VBL `StageBandTab` stages the D6 M1X (TilePF0+14, 0=none) for `PositionBallM1`'s same-VBL read — window closes before overscan restages, so the alias never crosses frames |
 | $8F | CollisionEndY | Player bottom tile row |
-| $90 | RoomRectsLo | Room rect list ptr lo |
-| $91 | RoomRectsHi | Room rect list ptr hi |
-| $92 | RectCount / RowIdx | Rect loop counter (post-kernel); kernel tile-row index (alias, re-inited at kernel entry) |
+| $90 | RoomRectsLo | Room DATA BLOCK ptr lo (historical name: the block now starts with the hot stream — plan C4; no solid rect list) |
+| $91 | RoomRectsHi | Room data block ptr hi |
+| $92 | RectCount / RowIdx | Hot-record loop counter (post-kernel; also room-block scratch in `B3RoomBlocks`); kernel tile-row index (alias, re-inited at kernel entry) |
 | $93 | vyLo | Y velocity lo (signed 16) |
 | $94 | vyHi | Y velocity hi |
 | $95 | PlayerYSub | Y subpixel accumulator |
@@ -131,7 +131,7 @@ sequential byte would be `$BC`, but `$BD+` are explicit EQUs and `$BC` is
 | $C3-$C5 | PF0Buf | TilePF0 rows 0-2 (**packed S3.1**, was `$C3-$CE`). Rows 0-2 pure since S3.4 (Y → `$E2`); pattern written by EnterRoom `LoadPFBuffer` only, never stomped. |
 | $C6-$C8 | PF1Buf | TilePF1 rows 0-2 (**packed S3.1**, was `$CF`). Kernel `.Row` X=0..2 + bank1 `ClearPFColumn`. |
 | $C9-$CB | PF2Buf | TilePF2 rows 0-2 (**packed S3.1**, was `$DB`). |
-| $89 + $CC-$DF | Rect cache | **count + rects0-4 UNIFORM (S3.2)** — count `RcBase=$89` (sequential decl), walk base `RcW1=$CC`, stride 4 for all five rects (Y=0..19): no windows, no `.Stage3` (both deleted), mask index4 = `$00` table entry (rect4 never in WallMask). rect4 x,y,w,h = `$DC-$DF`. ABW tables EQU-derived — cannot go stale. **STOMP-ZONE RULE:** every persistent byte here must stay < `$E0` — the first S3.2 layout ended at `$E0` and bank1's `scorePtr1` lo (leading zero) zeroed rect4.h every HUD frame → probes passed through rect4 walls (tentacle walked inside walls). Guarded by `check_equ_sync` (`RcW1+19 ≤ $DF`). FetchPtr lives at `$E5` (fold operand byte-guarded: FOLD_BYTES). |
+| $CC-$DF | **FREE (20 B)** | Was the solid-rect ZP cache (rect0-4, `RcW1`). **Retired by plan C4 (2026-10-20)**: every collision walker (player, laser, moth, bomb punch, hot parent) tests the PF buffers, so there is no cache and no rect list in the block data. Reclaim, not a shift: nothing is allocated here. **STOMP-ZONE RULE still applies to every persistent byte** — the first S3.2 layout ended at `$E0` and bank1's `scorePtr1` lo zeroed rect4.h every HUD frame, which is why the old cache had to stay below `$E0`. FetchPtr lives at `$E5`. |
 | $E2-$E4 | EnemyRamY | Live Y, private 3B (S3.4) — sits in the bank1 stomp zone but window-safe (write/read between stomps — kernel ZP contract block). |
 | $E5-$E6 | FetchPtr | Fold-indirect pointer (moved `$E0→$E5` S3.2 to free `$E0`, then out of the cache entirely). Staged-only: batch stage→read inside one VBL/overscan window; bank1 `scorePtr3+1/scorePtr4` share the bytes in HUD. Fold operand is byte-guarded (`FOLD_BYTES` in verify_build). |
 | $EA-$EC | (free in gameplay) | Tile 11 VCRUNCH was removed 2026-10-19, together with its `VcrState`/`VcrNext`/`VcrBand` slice staging; the cave kernel derives every band length locally now. The bytes remain bank1-only ($EA/$EB = scorePtr6 lo/hi, $EC = scbrdCnt) and are built after the cave read, so a future gameplay writer may use them only with the usual staged-only window (rule 6). |
@@ -224,13 +224,14 @@ must never allocate a ZP address kernel doesn't define.
 | BombTimer | $F7 EQU | 180 fuse / 60 explode |
 | ~~RoomWallMask~~ | ~~$F2 EQU~~ | **deleted, plan 5.2 (D1-B)** — `$F2` now FREE |
 
-WallMask bits b3-6 = rect index 0-3 (`BombMaskBit` ROM table
-`$08,$10,$20,$40,$00` — 5th entry `$00` since S3.2: the uniform walk
-touches index 4 (rect4), which is never masked). Kernel copy deleted with
-`ApplyBombWalls` (5.2); **bank1 copy lives** — hot parent-mask AND reads
-b3-6 until Phase 6.
+~~WallMask b3-6~~ — **retired, plan 5.1b/C4 (2026-10-20)**: `BombMarkWalls`
+no longer sets mask bits (`BombMaskBit`, the ABW rect tables and `PairGone`
+are gone). A repeat blast is blocked by the buffer itself (the punched D7
+cell is empty). The hot parent gate (`HotOverlapBody`) now tests the
+parent cell's PF bit (`HOVHotPfGate`), so a hot piece dies with a punched
+thin wall and thick parents stay lethal.
 EnterRoom pack/restore into `$F2` deleted (5.2, D1-B): holes reset on
-room change, persist in-room via BombPacked b3-6.
+room change, and the re-entered wall is bombable again (buffer clear).
 
 ## Stack depth (re-measured 2026-10-01, after Phase 3)
 

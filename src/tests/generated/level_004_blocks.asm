@@ -1,12 +1,10 @@
 ; Generated from New Level (level 4) — per-room PF/meta blocks. Do not edit by hand.
 
 ; Generated from room 0 (model 0). Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
 ; L4R1 block SHARED with L1R1 (byte-identical dedupe)
 ; L4R2 block SHARED with L3R2 (byte-identical dedupe)
 L4R5RoomRects:
-  .byte 2                  ; number of rectangles
-  .byte $00, $51  ; packed (x<<2|y, w<<2|h)
-  .byte $02, $51  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 L4R5TilePF0:
   .byte $f0, $00, $f0
@@ -20,10 +18,8 @@ L4R5MetaB:
   .byte $00                  ; (ball_col+1), 0 = no ball
 
 ; Generated from room 5 (model 10). Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
 L4R6RoomRects:
-  .byte 2                  ; number of rectangles
-  .byte $00, $51  ; packed (x<<2|y, w<<2|h)
-  .byte $02, $51  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 L4R6TilePF0:
   .byte $f0, $00, $f0

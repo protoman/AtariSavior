@@ -615,14 +615,16 @@ stella -debug savior.bin # debugger
 - [x] Collision box matching visual sprite (PlayerHitsMap cell range)
 
 ### Phase 3: Collision Detection
-- [x] Player-to-playfield collision — implemented as the **rect-cache walk**
-      (PlayerHitsMap), NOT TIA CXP0FB: rooms ship x/y/w/h rect lists
+- [x] Player-to-playfield collision — implemented as the **PF cell walk**
+      (PlayerHitsMap), NOT TIA CXP0FB: the PF buffers ARE the collision map
+      (plan C4 2026-10-20 — the solid rect lists and the ZP rect cache are
+      retired; only hot records stay as a data stream)
 - [x] Wall collision prevention (don't walk through walls)
 - [x] Room boundary checks (don't leave room edges — exit handlers)
 - [x] Collision response (stop + hot-rock bump)
 
 ### Phase 4: Room System
-- [x] Room data format (rooms/*.txt → convert_level → PF + rect lists in ROM)
+- [x] Room data format (rooms/*.txt → convert_level → PF + hot stream in ROM)
 - [x] Room connections (up/down/left/right exits — LevelConn*)
 - [x] Room transitions (load new room on exit — EnterRoom)
 - [x] Multiple rooms per level (2 levels, LEVEL_COUNT guarded)
@@ -678,7 +680,9 @@ was the disproven claim.
 ### Phase 7: Gameplay
 - [x] Laser/weapon system (missile 0) — LaserInput/ENAM0/BeamMask/LaserHitTest
 - [x] Bomb system (bomb sprite + fuse timer, NOT the ball — BombPacked state machine)
-- [x] Wall destruction (BombMarkWalls/ApplyBombWalls, WallMask b3-6)
+- [x] Wall destruction (BombMarkWalls cell punch: a thin wall = one solid
+      D7 cell whose neighbours are empty; the PF buffer is the double-score
+      guard — WallMask/ApplyBombWalls retired by C4)
 - [x] Item collection (CheckMinerPickup → next level)
 - [x] Level progression (inc Level, wraps at LEVEL_COUNT)
 

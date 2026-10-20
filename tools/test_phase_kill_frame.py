@@ -83,8 +83,6 @@ I_CEX, I_CEFY = 0x0E, 0x0F  # CollisionEndX / CollisionEndY ($8E/$8F)
 I_TEMP = 0x08            # Temp ($88)
 I_RRLO, I_RRHI = 0x10, 0x11  # RoomRectsLo/Hi
 I_PF0LO, I_PF0HI = 0x19, 0x1A  # RoomPF0Lo/Hi (StageBandTab MetaA/MetaB)
-I_RCBASE = 0x09          # staged rect-cache count (bomb-test layout)
-RECTS0 = 0x4C            # staged rect-cache base
 I_PF1BAND1 = 0x47          # PF1Buf band1 row1 ($C7) — V punch lives here
 
 CELL_X, CELL_Y = 127, 48   # inside the containment window (frozen fixture
@@ -113,16 +111,8 @@ def load_room_m2():
         for row in range(3):
             mem.ram[(dst + row) & 0x7F] = BANKS[2][
                 ((a_pf0 + i * 3 + row) - 0xF000) & 0xFFFF]
-    off = (a_rr - 0xF000) & 0xFFFF
-    count = BANKS[2][off]
-    mem.ram[I_RCBASE] = min(count, 5)
-    for i in range(min(count, 5)):
-        p0 = BANKS[2][off + 1 + 2 * i]
-        p1 = BANKS[2][off + 2 + 2 * i]
-        mem.ram[RECTS0 + 4 * i + 0] = p0 >> 2
-        mem.ram[RECTS0 + 4 * i + 1] = p0 & 3
-        mem.ram[RECTS0 + 4 * i + 2] = p1 >> 2
-        mem.ram[RECTS0 + 4 * i + 3] = p1 & 3
+    # C4 (2026-10-20): no rect-cache staging — the block is
+    # hot stream | PF | meta and RoomRectsLo is its base.
 
 
 class Mem:

@@ -148,10 +148,11 @@ def main() -> int:
                         f"level {n} room {i}: symmetric room loaded "
                         f"${rects:04X}, want the model block {label} "
                         f"${model_blocks[label]:04X} (shape index/table)")
-            # C2 (2026-10-20): the blocks + their walker live in bank2 now.
+            # C4 (2026-10-20): block = hot stream | PF | meta; the solid
+            # rect list is retired, so TilePF0 = block + 1 + 5*hot_count.
             blocks = _CM.BANK2
-            nrect = blocks[rects - 0xF000]
-            pf0 = rects + 2 + 2 * nrect
+            nhot = blocks[rects - 0xF000]
+            pf0 = rects + 1 + 5 * nhot
             want_pf = bytes(blocks[pf0 - 0xF000:pf0 - 0xF000 + 9])
             got_pf = bytes(mem.ram[L0["PF0Buf"] - 0x80:
                                    L0["PF0Buf"] - 0x80 + 9])

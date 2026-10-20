@@ -396,10 +396,19 @@ copy loop + meta offset move) = net +30 B. Per model: +6 with pooled bands, −3
 when all three bands are new. Delta at scale: **−540 B at 105 shapes**,
 **−1 065 B at 200** — so land it after C6/C7, or bundle with C4.
 
-**C4 — cell collision completion (the 6-rect fix, §4 option A).**
-`BombMarkWalls` cell punch + stop emitting solid rects + delete the `EnterRoom`
-cache copy + retire `check_model_rects`. Delta: −62 B data today, −3.9 KB at 400;
-+20 B ZP free. Risk: medium (own Stella gate for bombs/laser/hot).
+**C4 — cell collision completion (the 6-rect fix, §4 option A) — LANDED
+2026-10-20.** `BombMarkWalls` is a cell punch (PF buffers, thin cell =
+solid + empty neighbours); the converter no longer emits solid rects; the
+`B3RoomBlocks` cache copy is deleted; `check_model_rects` is retired (models
+5/6 stop warning). Hot records keep their 5 B stream (behaviour); their
+mask byte is zero/nonzero only (M1 strip vs PF-cell parent gate).
+**Measured delta: level data 402 → 308 B (−94 B: models 166 → 96 = the
+rect bytes + count, per-room blocks 184 → 160, plus two room blocks that
+became byte-identical and deduped); ZP $CC-$DF (20 B) freed, $89 kept
+allocated as a spare.** At 400 unique
+models the removed lists are ≈ −3.9 KB (est.). Gates: both sims, the full
+battery, `sim_bomb_fuse`'s new thin-cell punch probe, `test_bomb_half_wall`
+(user bugs #10), and `test_cell_map`'s per-cell 6-rect solidity sweep.
 
 **C5 — async extras (retire per-room blocks) + meta migration.**
 Patches/feature-cells into the extras stream; meta into the room record; PF cells
@@ -468,14 +477,14 @@ Content limits that 20 levels surface (not ROM capacity, but must be decided):
 | bank | code | data | fill | used | free |
 |---|---|---|---|---|---|
 | bank0 | 3027 | 370 | 681 | 3397 | 699 |
-| bank1 | 2490 | 434 | 978 | 2924 | 1172 |
-| bank2 | 2107 | 536 | 1452 | 2643 | 1453 |
+| bank1 | 2416 | 449 | 1037 | 2865 | 1231 |
+| bank2 | 2067 | 442 | 1586 | 2509 | 1587 |
 | bank3 | 5 | 5 | 4085 | 10 | 4086 |
-| **total** | **7629** | **1345** | **7196** | **8974** | **7410** |
+| **total** | **7515** | **1266** | **7389** | **8781** | **7603** |
 
-Level data **402 B** = index 52 + tables/blocks 184 + models 166 (C2: room
-tables **3 B/room** (shapes + positions + counts) and a 24 B shape address
-table for 12 distinct blocks; was 394 B at C1).
+Level data **308 B** = index 52 + tables/blocks 160 + models 96 (C4: no
+solid rect lists — models emit hot stream + PF + meta only; room tables
+remain **3 B/room** with the 12-block shape table).
 bank2 free windows (emitted-byte occupancy): `$F453` 429, `$F790` 295, `$FDDE`
 184, `$F6A8` 88, `$FF98` 87, `$FE9C` 84, `$F0CE` 66, `$F411` 63, then 33/30/29/29/16.
 

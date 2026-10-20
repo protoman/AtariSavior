@@ -724,7 +724,8 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
         ";   b6   bottom-band flag",
         ";   b7   owns-extras (reserved 0: the async stream is C5)",
         "; The block address is the table entry, so the old 2-byte RoomRects",
-        "; word is gone. TilePF0 is still derived as rects + 2 + 2*nrect.",
+        "; word is gone. C4 (2026-10-20): the block is hot stream | PF | meta",
+        "; (no solid rect list) — TilePF0 = block + 1 + 5*hot_count.",
         f"{prefix}_RoomShapes:",
     ]
     for index, room in enumerate(rooms):

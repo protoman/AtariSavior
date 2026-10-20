@@ -74,8 +74,6 @@ EnemyDeadMask = $BA              ; b0-2 enemy kills; b3 = ball strip
                                  ; destroyed (bank1 StripBlastCheck); b4 = M1
                                  ; strip destroyed (M1StripBlast) — check_equ_sync
                                  ; pairs this with kernel's decl)
-RcBase = $89                    ; count — outside bank1's $E0-$EF stomp zone
-RcW1 = $CC                       ; walk base — uniform stride incl. rect4 (S3.2)
 EnemyRamX = $BD
 LaserState = $C0                  ; b5-2 = RoomDarkMask rooms 4-7 (BCFDarkRun)
 EnemyRamD = $C1                  ; dir bits: 1 = right, 0 = left
@@ -985,63 +983,31 @@ LoadLevelB2:
     .ds $F8B7 - *, 0
 
 B3RoomBlocks:
-    ; --- copy solid rect list → ZP cache: ROM is packed 2B/rect
-    ;     [x<<2|y, w<<2|h], cache keeps the uniform 4B walk form.
-    ;     Copies 5 slots unconditionally (count = RcBase gates walkers).
+    ; --- plan C4 (2026-10-20): the block is HOT STREAM | PF | META. The
+    ;     solid rect list is gone (collision is cell-based), and with it the
+    ;     ZP rect cache copy. Layout:
+    ;       block+0     hot count
+    ;       block+1..   hot records (5 B each)
+    ;       TilePF0     = block + 1 + 5*hot_count
     lda RoomRectsLo
     sta FetchPtr
     lda RoomRectsHi
     sta FetchPtr+1
     ldy #0
-    lda (FetchPtr),Y                ; count (RAW — the cache below clamps to 5)
-    ; C3 2026-10-20: TilePF0 = rects + 2 + 2*nrect (count byte + the always-0
-    ; hot-count byte sit between the rect list and the PF triple in the block).
-    ; The per-room word pair dropped this second pointer.
-    asl                             ; 2*nrect
+    lda (FetchPtr),Y                ; hot count
+    sta RectCount                   ; scratch (kernel re-inits RowIdx)
+    asl                             ; 2n
+    asl                             ; 4n
+    clc
+    adc RectCount                   ; 5n
+    clc
+    adc #1                          ; +1 count byte = TilePF0 offset
     clc
     adc RoomRectsLo
     sta RoomPF0Lo
     lda RoomRectsHi
     adc #0
     sta RoomPF0Hi
-    lda RoomPF0Lo
-    clc
-    adc #2
-    sta RoomPF0Lo
-    bcc .EBpf0Ok
-    inc RoomPF0Hi
-.EBpf0Ok:
-    lda (FetchPtr),Y                ; count again for the cache clamp
-    cmp #6
-    bcc .EBrcCntOk
-    lda #5                          ; rect5+ not cached (ZP ends $DF) — clamp
-.EBrcCntOk:
-    sta RcBase
-    iny                             ; Y = first packed byte
-    ldx #0                          ; dest offset in rect0..4 ($CC+)
-.EBrcW:
-    lda (FetchPtr),Y
-    lsr
-    lsr                             ; x = p0 >> 2
-    sta RcW1,X
-    lda (FetchPtr),Y
-    and #3                          ; y = p0 & 3
-    sta RcW1+1,X
-    iny
-    lda (FetchPtr),Y
-    lsr
-    lsr                             ; w = p1 >> 2
-    sta RcW1+2,X
-    lda (FetchPtr),Y
-    and #3                          ; h = p1 & 3
-    sta RcW1+3,X
-    iny
-    inx
-    inx
-    inx
-    inx
-    cpx #20
-    bne .EBrcW
 
     ; --- PF rebuild: one 9-byte read (PF0+PF1+PF2 rows are contiguous in
     ;     ROM and in RAM: PF0Buf $C3 + Y covers $C3-$CB = all 9 rows) ---
@@ -1073,12 +1039,7 @@ HotOverlapBody:
     lda RoomRectsHi
     sta FetchPtr+1
     ldy #0
-    lda (FetchPtr),Y            ; solid count (direct read — data in this bank)
-    asl                          ; packed 2B/rect stream
-    clc
-    adc #1                      ; +1 count byte → hot count offset
-    tay
-    lda (FetchPtr),Y            ; hot count
+    lda (FetchPtr),Y            ; hot count (C4: block starts with it)
     beq .HOVdone                ; no hot rects
     sta RectCount
     iny                         ; first hot rect base
@@ -1252,12 +1213,7 @@ PhaseBlink:
     lda RoomRectsHi
     sta FetchPtr+1
     ldy #0
-    lda (FetchPtr),Y        ; solid count
-    asl
-    clc
-    adc #1
-    tay                     ; Y → hot count
-    lda (FetchPtr),Y
+    lda (FetchPtr),Y        ; hot count (C4: no solid rect list)
     beq .PhDone             ; no hot records at all
     sta RectCount
 PhRec:
@@ -1365,12 +1321,7 @@ BuildColupF:
     lda RoomRectsHi
     sta FetchPtr+1
     ldy #0
-    lda (FetchPtr),Y            ; solid count (direct read — data in bank2)
-    asl                          ; packed 2B/rect stream
-    clc
-    adc #1
-    tay                         ; Y → hot count
-    lda (FetchPtr),Y
+    lda (FetchPtr),Y            ; hot count (C4: no solid rect list)
     beq .BCFdone
     sta RectCount
     iny

@@ -72,7 +72,7 @@ MODEL = {0: ("L1R1TilePF0", "L1R1RoomRects")}
 # EnterRoom re-entry) see the fixture as well — live room edits cannot
 # move the stage and no ROM-equality gate exists to drift.
 FIXTURE_PF = FX.M0_PF            # rows: PF0|PF1|PF2
-FIXTURE_RR = FX.M0_STREAM[:-1]   # count + 3 packed rects (hot tail cut)
+FIXTURE_RR = FX.M0_STREAM        # C4: hot-count byte only (no rects)
 
 
 class Mem:
@@ -146,10 +146,10 @@ def step():
 
 
 def load_room(room):
-    """Hand-EnterRoom: pointers + PF buffers + real rect cache (same
-    unpack as bank2 EnterRoomB2) — staged from the FROZEN fixture;
-    pointers target the injected copy so every pointer-based read
-    (StageBandTab Meta, stream walk) stays fixture-true."""
+    """Hand-EnterRoom: pointers + PF buffers — staged from the FROZEN
+    fixture; pointers target the injected copy so every pointer-based read
+    (StageBandTab Meta, hot stream walk) stays fixture-true. C4: no rect
+    cache (cell collision)."""
     pf0, rr = MODEL[room]
     a_pf0, a_rr = L3[pf0], L3[rr]
     mem.ram[I_PF0LO] = a_pf0 & 0xFF
@@ -159,15 +159,8 @@ def load_room(room):
     for i in range(3):
         for row in range(3):
             mem.ram[(0xC3 + i * 3 + row) & 0x7F] = FIXTURE_PF[i * 3 + row]
-    count = FIXTURE_RR[0]
-    mem.ram[I_RCBASE] = min(count, 5)
-    for i in range(min(count, 5)):
-        p0 = FIXTURE_RR[1 + 2 * i]
-        p1 = FIXTURE_RR[2 + 2 * i]
-        mem.ram[RECTS0 + 4 * i + 0] = p0 >> 2
-        mem.ram[RECTS0 + 4 * i + 1] = p0 & 3
-        mem.ram[RECTS0 + 4 * i + 2] = p1 >> 2
-        mem.ram[RECTS0 + 4 * i + 3] = p1 & 3
+    # C4 (2026-10-20): no rect cache to stage — the punch reads the PF
+    # buffers, and the fixture's PF rows below ARE the collision map.
 
 
 def pin(y=70):

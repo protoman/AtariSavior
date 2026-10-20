@@ -758,14 +758,10 @@ LineCount   = $84
 ; --- BombMarkWalls (S5.2, moved from bank0) — must match kernel.asm ---
 BombX      = $F6                ; read-only here (see $F6 note above)
 BMWScratch = $88                ; kernel Temp — NOT bank1's Temp ($AD)
-RcBase     = $89                ; rect cache count (S3.2-fix: count sits on
-                                 ; the $89 pad so rects fit $CC-$DF — clear
-                                 ; of bank1's $E0 stomp that ate rect4.h)
-RcW1       = $CC                ; rect0.x — cache base for ABW tables
 CPCScratch = $89                ; ClearPFColumn AND-mask (plan 5.1b: was
-                                 ; bank1 Temp = $AD = bank0 TickCounter;
-                                 ; RcBase is unread once the punch is
-                                 ; cell-based, so its slot takes the write)
+                                 ; bank1 Temp = $AD = bank0 TickCounter).
+                                 ; $89 was RcBase; the rect cache is retired
+                                 ; (plan C4 2026-10-20), so the slot is free.
 RectCount  = $92                ; walk temp — BMW stashes the original screen
                                  ; col here (hand-copy of kernel's decl —
                                  ; check_equ_sync pair); M1StripBlast restages

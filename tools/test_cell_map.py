@@ -31,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 
 from convert_level import rows_from_json  # noqa: E402
-from convert_room import pf_values  # noqa: E402
+from convert_room import find_rectangles, pf_values  # noqa: E402
 
 SRC = ROOT / "src"
 FROZEN = SRC / "tests" / "frozen"   # test-owned banks+labels (never live src/)
@@ -518,6 +518,31 @@ def main() -> int:
                             f"{name} moth box cols {lo}..{hi} rows "
                             f"{top}..{bot}: HIT={got} want {want}")
                         moth_checks += 1
+    # --- C4 regression (2026-10-20): a model with >5 wall rects (the old
+    # ZP-cache limit; stage models 5/6 carry 6) must be solid EXACTLY where
+    # its PF triple says solid. The solid rect list is retired, so this is
+    # the whole collision contract: one cell box (lo=2c, hi=2c+1) per cell,
+    # driven through the real moth cell walk.
+    six = [(nm, rows) for nm, rows in cases
+           if len(find_rectangles(rows, solids="#")) > 5]
+    assert six, "stage has no >5-rect model — the 6-rect regression is moot"
+    six_checks = 0
+    for name, rows in six:
+        mem6 = Mem()
+        load_case(mem6, rows)
+        triples = [pf_values(r) for r in rows]
+        for row in range(3):
+            for col in range(10):                  # left-half D7 cells
+                lo, hi = 2 * col, 2 * col + 1      # one cell = 2 display cols
+                want = box_hit(rows, lo, hi, row, row)
+                got = run_moth(mem6, lo, hi, row, row, temp)
+                assert got == want, (
+                    f"{name} 6-rect cell (row {row}, col {col}): "
+                    f"HIT={got} want {want} (PF={triples[row]})")
+                six_checks += 1
+    print(f"C4 6-rect solidity: {len(six)} models x 30 cells = "
+          f"{six_checks} cells match the PF map")
+
     # --- Phase 4: asym overlay (packed LineCount) — crossing + px/band ---
     asym = asym_checks(cases[0][1])
     strip = moth_strip_checks()

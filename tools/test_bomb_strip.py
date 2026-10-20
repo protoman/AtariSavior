@@ -91,7 +91,7 @@ def parse_equ(path: Path, names: set) -> dict:
 
 L1 = parse_labels(SRC / "bank1.lst", {"BombMarkWalls", "StripBlastCheck",
                                       "M1StripBlast"})
-L0 = parse_labels(SRC / "bank0.lst", {"BombX", "LineCount", "RcBase",
+L0 = parse_labels(SRC / "bank0.lst", {"BombX", "LineCount",
                                 "EnemyDeadMask", "CollisionX",
                                 "BombPacked", "PF0Buf", "PF1Buf",
                                 "PF2Buf"})
@@ -107,7 +107,7 @@ L2.update(parse_equ(SRC / "bank2.lst",
                     {"BandTab", "CollisionEndY", "CollisionEndX",
                      "RoomPF0Lo", "RoomRectsLo"}))
 need = ({"BombMarkWalls", "StripBlastCheck", "M1StripBlast"} - L1.keys()) | \
-       ({"BombX", "LineCount", "RcBase", "EnemyDeadMask", "CollisionX",
+       ({"BombX", "LineCount", "EnemyDeadMask", "CollisionX",
          "BombPacked", "PF0Buf", "PF1Buf", "PF2Buf"}
         - L0.keys()) | \
        ({"L1R1TilePF0", "M3TilePF0",
@@ -157,8 +157,9 @@ def run_bmw(mem: Mem1, bomb_x: int, line_count: int,
     """Drive BombMarkWalls; return the count A (walls newly broken).
 
     meta = TilePF0 address staged into RoomPF0Lo (M1X read target);
-    defaults to model 0. rects = list of (x, y, w, h) staged into the
-    ZP cache (RcBase = len); bomb_packed seeds BombPacked (WallMask)."""
+    defaults to model 0. rects = list of (x, y, w, h) — INERT since plan
+    5.1b (no rect cache); bomb_packed seeds BombPacked (state bits only —
+    WallMask b3-6 retired)."""
     r = mem.ram
     meta = M0 if meta is None else meta
     if meta >= 0xF000:                   # ROM block: read its MetaA/B
@@ -174,7 +175,6 @@ def run_bmw(mem: Mem1, bomb_x: int, line_count: int,
     r[L0["EnemyDeadMask"] - 0x80] = 0
     r[L0["BombPacked"] - 0x80] = bomb_packed
     rects = rects or []          # plan 5.1b: cache is inert (no reader)
-    r[L0["RcBase"] - 0x80] = len(rects)
     for i, (x, y, w, h) in enumerate(rects):
         off = 0xCC - 0x80 + 4 * i
         r[off], r[off + 1], r[off + 2], r[off + 3] = x, y, w, h
@@ -238,7 +238,6 @@ def main() -> int:
         r[L0["EnemyDeadMask"] - 0x80] = deadmask_pre
         r[L0["BombX"] - 0x80] = bomb_x
         r[L0["LineCount"] - 0x80] = line_count
-        r[L0["RcBase"] - 0x80] = 0
         mem.bank = 1
         mpu = MPU(memory=mem)
         mpu.pc = L1["BombMarkWalls"]
@@ -309,7 +308,6 @@ def main() -> int:
     r[L2["RoomPF0Lo"] + 1 - 0x80] = M0 >> 8
     r[L0["BombX"] - 0x80] = 71
     r[L0["LineCount"] - 0x80] = 0
-    r[L0["RcBase"] - 0x80] = 0
     memd.bank = 1
     mpu = MPU(memory=memd)
     mpu.pc = L1["BombMarkWalls"]
@@ -505,7 +503,7 @@ def main() -> int:
     def stage_phase(clock):
         mem = Mem1()
         r = mem.ram
-        r[0xA0 - 0x80:0xA0 - 0x80 + 7] = bytes([0, 1, 0x80, 4, 1, 2, 1])
+        r[0xA0 - 0x80:0xA0 - 0x80 + 6] = bytes([1, 0x80, 4, 1, 2, 1])
         r[L2["RoomRectsLo"] - 0x80] = 0xA0
         r[L2["RoomRectsLo"] + 1 - 0x80] = 0x00
         r[L2["RoomPF0Lo"] - 0x80] = 0x90   # staged MetaA: plain M1 (no door)
