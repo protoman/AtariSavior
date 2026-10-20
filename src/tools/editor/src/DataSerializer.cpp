@@ -385,9 +385,18 @@ namespace {
 constexpr int kStageLevels = 20;     // level n = 1..20
 constexpr int kColumnRooms = 10;     // rooms per serpentine column (< span 15)
 constexpr int kTurnY = kColumnRooms - 1;
-// 4 bits -> at most 16 distinct shapes (tools/test_generator.py asserts the
-// budget); this stage uses 7.
-enum ShapeBits { SHAPE_N = 1, SHAPE_S = 2, SHAPE_H = 4, SHAPE_START = 8 };
+// Exit bits + hazard bits (2026-10-20: the generated stage got its HERO-style
+// variety — hot bands, a keyed gate, water goals with raft/tentacle).
+enum ShapeBits {
+    SHAPE_N = 1,
+    SHAPE_S = 2,
+    SHAPE_H = 4,
+    SHAPE_START = 8,
+    SHAPE_HOT = 16,      // row-1 walls hot (model mid_band_type = 1)
+    SHAPE_GATE = 32,     // row-1 wall with ONE open gap (door / gate column)
+    SHAPE_WATER = 64     // row-2 open water (bottom band, raft/tentacle)
+};
+constexpr int kGateCol = 4;          // the gate/door cell in row 1
 
 // Grid cell of a room in the level (x = column, y = row; rooms at the same y
 // in different columns are horizontally adjacent and therefore "connected"
@@ -402,10 +411,16 @@ std::string ShapeName(int mask) {
         return "Sealed";
     }
     std::string name;
-    if (mask & SHAPE_N) name += "N";
-    if (mask & SHAPE_S) name += name.empty() ? "S" : "+S";
-    if (mask & SHAPE_H) name += name.empty() ? "H" : "+H";
-    if (mask & SHAPE_START) name += name.empty() ? "Start" : "+Start";
+    auto add = [&name](const char* part) {
+        name += name.empty() ? part : std::string("+") + part;
+    };
+    if (mask & SHAPE_N) add("N");
+    if (mask & SHAPE_S) add("S");
+    if (mask & SHAPE_H) add("H");
+    if (mask & SHAPE_START) add("Start");
+    if (mask & SHAPE_HOT) add("Hot");
+    if (mask & SHAPE_GATE) add("Gate");
+    if (mask & SHAPE_WATER) add("Water");
     return name;
 }
 
@@ -452,6 +467,32 @@ ModelData MakeShapeModel(int modelId, int mask) {
         for (int x = 2; x < kRoomWidth; ++x)
             model.tiles[x] = (int)TileType::AIR;
     }
+    if (mask & SHAPE_HOT) {
+        // HERO-style hot band: two symmetric wall blocks narrow the middle
+        // band, the shaft keeps cells 1/4/5/8/9. mid_band_type = 1 makes
+        // convert promote every row-1 wall to H (solid + lethal touch).
+        for (int x : {2, 3, 6, 7}) {
+            model.tiles[1 * kRoomWidth + x] = (int)TileType::SOLID_WALL;
+        }
+        model.mid_band_type = 1;
+    }
+    if (mask & SHAPE_GATE) {
+        // Keyed gate: row 1 is a wall except ONE gap; the room's door patch
+        // (LOCKED_DOOR) fills that gap and only the key opens it.
+        for (int x = 1; x < kRoomWidth; ++x) {
+            model.tiles[1 * kRoomWidth + x] =
+                x == kGateCol ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
+        }
+    }
+    if (mask & SHAPE_WATER) {
+        // Water goal: the bottom band is open, so the water strip shows and
+        // kills; the raft floats on an open cell (row 2) and the miner waits
+        // on row 1.
+        for (int x = 1; x < kRoomWidth; ++x) {
+            model.tiles[(kRoomHeight - 1) * kRoomWidth + x] =
+                (int)TileType::AIR;
+        }
+    }
     return model;
 }
 
@@ -477,14 +518,60 @@ bool HasRoomAt(const std::vector<GridPos>& walk, int x, int y) {
     return false;
 }
 
+// --- 2026-10-20: per-room ROLE (the HERO-style variety) ---------------------
+// The generated stage used to be one shape with a bat; a level now alternates
+// hazard rooms and normal rooms, and the last room can be a WATER goal
+// (raft/tentacle + miner). Thresholds grow with the level number.
+enum class Role { Normal, Hot, Gate, WaterGoal };
+
+struct LevelPlan {
+    bool hot = false;       // hot row-1 bands
+    bool gate = false;      // keyed gate room
+    bool water = false;     // water goal (last room)
+    bool tentacle = false;  // water goal hazard (otherwise a raft)
+    bool extra = false;     // second enemy in normal rooms
+};
+
+LevelPlan PlanFor(int level) {
+    LevelPlan p;
+    p.hot = level >= 3;
+    p.water = level >= 4;
+    p.gate = level >= 6;
+    p.tentacle = level >= 7;
+    p.extra = level >= 9;
+    return p;
+}
+
+std::vector<Role> HazardCycle(const LevelPlan& p) {
+    std::vector<Role> h;
+    if (p.hot) h.push_back(Role::Hot);
+    if (p.gate) h.push_back(Role::Gate);
+    return h;
+}
+
+Role RoleForRoom(int roomIndex, int roomCount, const LevelPlan& p) {
+    if (roomIndex == roomCount - 1) {
+        return p.water ? Role::WaterGoal : Role::Normal;
+    }
+    if (roomIndex == 0 || roomIndex % 2 == 0) {
+        return Role::Normal;              // hazards alternate with breathers
+    }
+    const std::vector<Role> h = HazardCycle(p);
+    if (h.empty()) return Role::Normal;
+    return h[((roomIndex - 1) / 2) % h.size()];
+}
+
 // Exit mask a room's SHAPE must carry (see the layout notes above).
 int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
-                  const GridPos& pos, int roomIndex) {
+                  const GridPos& pos, int roomIndex, Role role) {
     int mask = 0;
     if (HasRoomAt(walk, pos.x, pos.y - 1)) mask |= SHAPE_N;
     if (HasRoomAt(walk, pos.x, pos.y + 1)) mask |= SHAPE_S;
     if (levelNumber > kColumnRooms && pos.y == kTurnY) mask |= SHAPE_H;
     if (roomIndex == 0) mask |= SHAPE_START;   // the level's spawn room
+    if (role == Role::Hot) mask |= SHAPE_HOT;
+    if (role == Role::Gate) mask |= SHAPE_GATE;
+    if (role == Role::WaterGoal) mask |= SHAPE_WATER;
     return mask;
 }
 
@@ -495,75 +582,120 @@ int Lift(int value) {                 // a lighter wall colour for the row-1 ban
 // One room's objects. The editor's caps are the contract: <= 2 objects per
 // room (enemies + lamps + miner) and <= 1 element per tile row (MapCanvas
 // kMaxRoomElements / ElementInRow, verify_build repeats the 2-object cap).
-void FillRoomObjects(int levelNumber, int roomIndex, int roomCount,
-                     RoomData& room) {
+// Row = y/4 (rows 0/1/2), the same conversion convert uses.
+void AddEnemy(RoomData& room, EnemyType type, float x, float y, float speed,
+              float rangeMax) {
+    EnemyData e;
+    e.type = (int)type;
+    e.x = x;
+    e.y = y;
+    e.range_min = 0.0f;
+    e.range_max = rangeMax;
+    e.speed = speed;
+    e.dir = 1;
+    room.enemies.push_back(e);
+}
+
+int RowOf(float y) { return (int)y / 4; }
+
+bool RowOccupied(const RoomData& room, int row) {
+    for (const EnemyData& e : room.enemies) {
+        if (RowOf(e.y) == row) return true;
+    }
+    for (const LampData& l : room.lamps) {
+        if (RowOf(l.y) == row) return true;
+    }
+    return false;
+}
+
+int ObjectCount(const RoomData& room) {
+    return (int)(room.enemies.size() + room.lamps.size());
+}
+
+void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
+                     const LevelPlan& plan, RoomData& room) {
     if (roomIndex == roomCount - 1) {
-        // Last room: the goal. A wall snake plus the miner, on separate rows.
-        if (roomCount > 1) {
-            EnemyData snake;
-            snake.type = (int)EnemyType::SNAKE;
-            // The snake lives INSIDE a wall cell. Cell 0 of the TOP band is
-            // solid in every shape (only the centre cells 8/9 are ever carved),
-            // so it is the one placement that works for all of them — including
-            // the horizontal-doorway shape, whose whole middle band is open.
-            snake.x = 1.0f;
-            snake.y = 3.0f;
-            snake.range_min = 0.0f;
-            snake.range_max = 4.0f;
-            snake.speed = 1.5f + 0.5f * (levelNumber % 2);
-            snake.dir = 1;
-            room.enemies.push_back(snake);
+        if (role == Role::WaterGoal) {
+            // Water goal: the miner waits above the water; the raft ferries
+            // (early levels) or a tentacle guards the surface (level 7+).
+            room.bottom_band = true;
+            room.bottom_r = 24;
+            room.bottom_g = 88;
+            room.bottom_b = 208;
+            if (plan.tentacle) {
+                AddEnemy(room, EnemyType::TENTACLE, 10.0f, 8.0f,
+                         1.0f, 0.0f);
+            } else {
+                AddEnemy(room, EnemyType::RAFT, 4.0f, 8.0f, 1.0f, 0.0f);
+            }
+        } else if (roomCount > 1) {
+            // Last room: the goal. A wall snake on the top band.
+            AddEnemy(room, EnemyType::SNAKE, 1.0f, 3.0f,
+                     1.5f + 0.5f * (levelNumber % 2), 4.0f);
         }
         return;
     }
     if (roomIndex == 0) {
-        EnemyData spider;
-        spider.type = (int)EnemyType::SPIDER;
-        spider.x = 10.0f;
-        spider.y = 5.0f;
-        spider.range_min = 2.0f;
-        spider.range_max = 8.0f;
-        spider.speed = 1.0f + 0.25f * (levelNumber % 4);
-        spider.dir = 1;
-        room.enemies.push_back(spider);
+        AddEnemy(room, EnemyType::SPIDER, 10.0f, 5.0f,
+                 1.0f + 0.25f * (levelNumber % 4), 8.0f);
         return;
     }
-    // Middle rooms alternate bat/lamp. A LAMP only matters where the room
-    // darkness mask reaches (EnemyRamD bits: rooms 0-7 — verify_build warns
-    // about a lamp beyond it), so a deeper room gets a bat instead of a lamp
-    // that could never darken anything.
+    if (role == Role::Gate) {
+        // Door rooms allow ONE non-key enemy (convert rule) — a bat.
+        AddEnemy(room, EnemyType::BAT, 4.0f, 4.0f,
+                 1.25f + 0.25f * (levelNumber % 4), 13.0f);
+        return;
+    }
+    if (role == Role::Hot) {
+        AddEnemy(room, EnemyType::BAT, 4.0f, 4.0f,
+                 1.25f + 0.25f * (levelNumber % 4), 13.0f);
+        return;
+    }
+    // Normal room: bat/lamp. A LAMP only matters where the dark mask reaches
+    // (rooms 0-7), so deeper rooms get a bat.
     if (roomIndex % 2 == 1 || roomIndex >= 8) {
-        EnemyData bat;
-        bat.type = (int)EnemyType::BAT;
-        bat.x = 4.0f;
-        bat.y = 4.0f;
-        bat.range_min = 2.0f;
-        bat.range_max = 13.0f;
-        bat.speed = 1.25f + 0.25f * (levelNumber % 4);
-        bat.dir = 1;
-        room.enemies.push_back(bat);
-        return;
+        AddEnemy(room, EnemyType::BAT, 4.0f, 4.0f,
+                 1.25f + 0.25f * (levelNumber % 4), 13.0f);
+    } else {
+        LampData lamp;
+        lamp.x = 6.0f;
+        lamp.y = 4.0f;
+        lamp.lit = true;
+        room.lamps.push_back(lamp);
     }
-    LampData lamp;
-    lamp.x = 6.0f;
-    lamp.y = 4.0f;
-    lamp.lit = true;
-    room.lamps.push_back(lamp);
+    if (plan.extra) {
+        // Level 9+: a second object on a free row (cap = 2, one per row).
+        if (!RowOccupied(room, 2)) {
+            AddEnemy(room, EnemyType::SPIDER, 10.0f, 8.0f,
+                     1.0f + 0.25f * (levelNumber % 4), 8.0f);
+        } else if (!RowOccupied(room, 0)) {
+            AddEnemy(room, EnemyType::SNAKE, 1.0f, 3.0f, 1.5f, 4.0f);
+        }
+    }
 }
 
 }  // namespace
 
 void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                                        std::vector<ModelData>& models) {
-    // 1. Every level's walk + the shape mask of each of its rooms.
+    // 1. Every level's walk + the shape mask of each of its rooms. A room's
+    //    ROLE (hot / gate / water goal) is part of the shape, so the library
+    //    carries hazard variants as well as exit masks.
     std::vector<std::vector<GridPos>> walks(kStageLevels);
     std::vector<std::vector<int>> masks(kStageLevels);
+    std::vector<std::vector<Role>> roles(kStageLevels);
     std::set<int> used;
     for (int l = 1; l <= kStageLevels; ++l) {
-        walks[l - 1] = LevelWalk(l);
-        for (size_t i = 0; i < walks[l - 1].size(); ++i) {
+        // User rule 2026-10-20: 2 rooms is the floor, so level 1 has 2 rooms
+        // and the serpentine still grows by one per level (2,2,3,...,20).
+        walks[l - 1] = LevelWalk(l < 2 ? 2 : l);
+        const LevelPlan plan = PlanFor(l);
+        const int count = (int)walks[l - 1].size();
+        for (int i = 0; i < count; ++i) {
+            const Role role = RoleForRoom(i, count, plan);
+            roles[l - 1].push_back(role);
             const int mask = RoomShapeMask(l, walks[l - 1], walks[l - 1][i],
-                                           (int)i);
+                                           i, role);
             masks[l - 1].push_back(mask);
             used.insert(mask);
         }
@@ -596,14 +728,34 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         level.miner_x = 4.0f;                 // clear of the bottom-centre hole
         level.miner_y = 7.0f;                 // convert hard-fails any other row
         level.miner_dir = 1;
+        const LevelPlan plan = PlanFor(l);
         for (int i = 0; i < roomCount; ++i) {
             RoomData room;
             room.room_id = i;
             room.model_id = shapeId[masks[l - 1][i]];
             room.room_x = walks[l - 1][i].x;
             room.room_y = walks[l - 1][i].y;
-            FillRoomObjects(l, i, roomCount, room);
+            if (roles[l - 1][i] == Role::Gate) {
+                // One LOCKED_DOOR cell in the gate gap (left/M1 side). Solid
+                // until the level's key is held, then touch opens it.
+                room.asym_patches.push_back(
+                    {1, kGateCol, (int)TileType::LOCKED_DOOR, 1});
+            }
+            FillRoomObjects(l, i, roomCount, roles[l - 1][i], plan, room);
             level.rooms.push_back(room);
+        }
+        // Keys: one per gate, placed in the nearest earlier room that is not
+        // another gate and has a free row (row 2 first). Row = y/4.
+        for (int i = 1; i < roomCount; ++i) {
+            if (roles[l - 1][i] != Role::Gate) continue;
+            for (int j = i - 1; j >= 0; --j) {
+                if (roles[l - 1][j] == Role::Gate) continue;
+                if (ObjectCount(level.rooms[j]) >= 2) continue;
+                if (RowOccupied(level.rooms[j], 2)) continue;
+                AddEnemy(level.rooms[j], EnemyType::KEY, 10.0f, 8.0f,
+                         1.0f, 0.0f);
+                break;
+            }
         }
         levels.push_back(level);
     }

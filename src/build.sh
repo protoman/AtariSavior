@@ -11,23 +11,25 @@ ROOT="$(cd "$DIR/.." && pwd)"
 
 echo "Building F6 ROM (4 banks)..."
 
-# Generate level data. E1 (2026-10-20): precedence is
-#   $STAGE_FILE (env override)  >  rooms/stage.json  >  legacy per-level files.
-# The stage file holds models + every level; a generated/alternative stage can
-# be built without touching rooms/ by setting STAGE_FILE. Room .txt mirrors go
-# next to the stage file (the live rooms/ tree is the user's).
+# Generate level data. A stage file holds models + every level:
+#   STAGE_FILE=rooms/stage.json ./build.sh     (the editor's single-file stage)
+# The default repo build keeps the LEGACY per-level stage until the live-
+# tracking tests are migrated: several of them pin level 1's tutorial room and
+# the ROM labels of its extras stream, so auto-selecting rooms/stage.json made
+# the suite red against a perfectly good ROM (2026-10-20).
 STAGE_FILE="${STAGE_FILE:-}"
-if [ -z "$STAGE_FILE" ] && [ -f "$DIR/rooms/stage.json" ]; then
-    STAGE_FILE="$DIR/rooms/stage.json"
-fi
 if [ -n "$STAGE_FILE" ]; then
     echo "  Level source: unified stage file $STAGE_FILE"
-    STAGE_ROOMS="$DIR/rooms"
-    if [ "$(cd "$(dirname "$STAGE_FILE")" && pwd)" != "$(cd "$DIR/rooms" && pwd)" ]; then
-        STAGE_ROOMS="$(dirname "$STAGE_FILE")"
-    fi
+    # No level files here: the stage IS the source, and the .txt mirrors are
+    # build scratch. They go to a temp dir (never the user's rooms/ tree) and
+    # the same dir is handed to verify_build via the environment (2026-10-20:
+    # writing them into rooms/ polluted the live stage, and an unexported
+    # STAGE_FILE made verify compare the ROM against the LEGACY models.json).
+    STAGE_ROOMS="$(mktemp -d "${TMPDIR:-/tmp}/savior_stage_rooms.XXXXXX")"
+    trap 'rm -rf "$STAGE_ROOMS"' EXIT
     python3 "$ROOT/tools/convert_level.py" --stage "$STAGE_FILE" \
         "$DIR/generated" "$STAGE_ROOMS"
+    export STAGE_FILE STAGE_ROOMS
 else
     echo "  Level source: legacy per-level JSON ($DIR/rooms/level_NNN.json)"
     # Generate level data from JSON (every rooms/level_XXX.json — no hardcode)

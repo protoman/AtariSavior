@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """E2 (2026-10-20): the 20-level stage generator (`savior_editor --generate-stage`).
 
-Level n has n rooms (1..20 = 210 rooms), built from a SHARED SHAPE LIBRARY keyed
-by the carved exits, so the whole stage costs a handful of model shapes and the
+Level n has n rooms with a floor of 2 (2,2,3,..,20 = 211 rooms), built from a
+SHARED SHAPE LIBRARY keyed by the carved exits AND the room's hazard role, so
+the whole stage costs a handful of model shapes and the
 C7 level-data windows still fit.
 
 Gates (all on the GENERATED file in a temp dir — the live stage is never read
 for content and never written):
 
   * shape: canonical wrapped `{"stage": {...}}`, 20 levels, level n has n rooms,
-    210 rooms total;
-  * model library: <= 16 shapes, ids 0..n-1 contiguous, EVERY model referenced
+    211 rooms total;
+  * model library: <= 32 shapes, ids 0..n-1 contiguous, EVERY model referenced
     by at least one room (the converter only emits referenced ones);
   * positions: unique per level, inside the 15x15 C1 grid, no nibble 15;
   * LAYOUT (the tear rule): connections are DERIVED FROM ADJACENCY at run time,
@@ -44,9 +45,9 @@ import convert_level as C            # noqa: E402  (rows_from_json / load_stage)
 import test_editor_roundtrip as ER   # noqa: E402  (editor build + PY constant)
 
 LEVELS = 20
-ROOMS = LEVELS * (LEVELS + 1) // 2      # 210
+ROOMS = 2 + sum(range(2, LEVELS + 1))   # 211 (level 1 has 2 rooms too)
 GRID_SPAN = 15                          # C1: nibble 15 is the no-room sentinel
-MAX_SHAPES = 16
+MAX_SHAPES = 32
 MAX_OBJECTS = 2                         # editor kMaxRoomElements / verify_build
 START_CELL = 4                          # LevelStartX 32 px / 8 px per cell
 
@@ -100,8 +101,9 @@ def main() -> int:
             print(f"FAIL: {len(levels)} levels, want {LEVELS}")
             return 1
         counts = [len(level["rooms"]) for level in levels]
-        if counts != list(range(1, LEVELS + 1)):
-            print(f"FAIL: rooms per level {counts} != 1..{LEVELS}")
+        want_counts = [2] + list(range(2, LEVELS + 1))   # 2-room floor
+        if counts != want_counts:
+            print(f"FAIL: rooms per level {counts} != {want_counts}")
             return 1
         if sum(counts) != ROOMS:
             print(f"FAIL: {sum(counts)} rooms, want {ROOMS}")
@@ -174,7 +176,12 @@ def main() -> int:
                     mine = here
                     other = pos.get(other_pos)
                     if other is None:
-                        if direction == "south" and edge_open(mine, "south"):
+                        # A WATER goal's row-2 air IS the surface, not an exit
+                        # (the ROM's exit scan finds no room and the water kill
+                        # fires first); every other room must be sealed south.
+                        is_water = bool(rooms[rid].get("bottom_band"))
+                        if (direction == "south" and edge_open(mine, "south")
+                                and not is_water):
                             print(f"FAIL: level {level_n} room {rid} has a "
                                   "south opening with no room below")
                             return 1
@@ -265,15 +272,75 @@ def main() -> int:
                               f"{room['room_id']}: enemy at "
                               f"({enemy['x']}, {enemy['y']})")
                         return 1
-                if room.get("asym_patches") or room.get("feature_cells"):
-                    print(f"FAIL: level {level_n} room {room['room_id']} "
-                          "carries async (the generator emits symmetric rooms)")
+                # The ONLY async the generator emits is the keyed gate: one
+                # LOCKED_DOOR cell in row 1 (phase/hcrunch stay hand-authored).
+                for patch in room.get("asym_patches") or []:
+                    if (len(patch) < 3 or patch[0] != 1
+                            or patch[2] != 9):
+                        print(f"FAIL: level {level_n} room {room['room_id']} "
+                              f"has unexpected async {patch} (only a row-1 "
+                              "LOCKED_DOOR gate is generated)")
+                        return 1
+                if room.get("feature_cells"):
+                    print(f"FAIL: level {level_n} room {room['room_id']} has "
+                          "feature cells (not generated)")
                     return 1
 
         if referenced != set(shapes):
             print(f"FAIL: models {sorted(set(shapes) - referenced)} are never "
                   "referenced (the converter would not emit them)")
             return 1
+
+        # --- feature progression (2026-10-20: HERO-style variety) ----------
+        # Every level must add/keep challenges: hot bands from 3, a water goal
+        # from 4 (raft, then tentacle from 7), a keyed gate from 6, two-object
+        # rooms from 9. A gate room is limited to ONE non-key enemy (convert).
+        for level_n, level in enumerate(levels, start=1):
+            rooms = level["rooms"]
+            hot = water = doors = keys = tents = rafts = two_obj = 0
+            for room in rooms:
+                model = shapes[room["model_id"]]
+                if model.get("mid_band_type"):
+                    hot += 1
+                if room.get("bottom_band"):
+                    water += 1
+                if room.get("asym_patches"):
+                    doors += 1
+                    objs = (len(room.get("enemies") or [])
+                            + len(room.get("lamps") or []))
+                    if objs > 1:
+                        print(f"FAIL: level {level_n} door room has {objs} objects")
+                        return 1
+                for e in room.get("enemies") or []:
+                    kind = e.get("type")
+                    keys += kind == 6
+                    tents += kind == 3
+                    rafts += kind == 7
+                objs = (len(room.get("enemies") or [])
+                        + len(room.get("lamps") or []))
+                two_obj += objs >= 2
+            if level_n >= 3 and hot == 0:
+                print(f"FAIL: level {level_n} has no hot room")
+                return 1
+            if level_n >= 4 and water != 1:
+                print(f"FAIL: level {level_n} has no water goal (water={water})")
+                return 1
+            if level_n >= 4 and rafts + tents != 1:
+                print(f"FAIL: level {level_n} water goal has no raft/tentacle")
+                return 1
+            if level_n < 7 and level_n >= 4 and rafts == 0:
+                print(f"FAIL: level {level_n} water goal should carry a raft")
+                return 1
+            if level_n >= 6 and (doors == 0 or keys != doors):
+                print(f"FAIL: level {level_n} gate/key mismatch "
+                      f"(doors={doors}, keys={keys})")
+                return 1
+            if level_n >= 7 and tents == 0:
+                print(f"FAIL: level {level_n} has no tentacle")
+                return 1
+            if level_n >= 9 and two_obj == 0:
+                print(f"FAIL: level {level_n} has no two-object room")
+                return 1
 
         # --- convert + capacity (the C7 windows) ---------------------------
         gen = tmp / "conv" / "generated"
