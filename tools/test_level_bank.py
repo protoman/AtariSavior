@@ -97,25 +97,25 @@ def main() -> None:
     # so 27. S4 (2026-10-19) dropped the two start_x/start_y table fields,
     # so 25. C4 (2026-10-20) dropped the two derived pointer words from the
     # per-level entry (4 reads), so 21. The 2026-10-20 micro-pack dropped
-    # start_room + miner_y from the entry (2 reads), so 20. C1 (2026-10-20)
-    # moved SelectActiveObject to bank2 (2 sites: lit + dark reloads), so 18.
-    # C2 (2026-10-20) moved LoadLevel to bank2: its 7 reads of the 7-byte level
-    # entry are now direct (FetchPtr),Y in bank2, so 12 — that is the whole
-    # point of the move (the entry IS bank2 level data).
-    # C3 (2026-10-20) moved the 4 room-exit handlers to bank2: their
-    # GetConnIdx pad + FoldIndirect hops became one in-bank conn read, so 8.
-    assert KERNEL.count("jsr FoldIndirect") >= 8, (
-        f"expected >=8 fold call sites (P3.1 enemy derives; EnterRoom, "
-        f"SelectActiveObject, LoadLevel and the exit handlers read level data "
-        f"in-bank now), got {KERNEL.count('jsr FoldIndirect')}")
+    # start_room + miner_y from the entry (2 reads), so 20. C2 (2026-10-20)
+    # moved LoadLevel to bank2: its 7 reads of the 7-byte level entry are now
+    # direct (FetchPtr),Y in bank2, so 13 — that is the whole point of the move
+    # (the entry IS bank2 level data). C3 (2026-10-20) moved the 4 room-exit
+    # handlers to bank2: their GetConnIdx pad + FoldIndirect hops became one
+    # in-bank conn read, so 9. A1 (2026-10-20) moved SelectActiveObject BACK
+    # into bank0 (C1 had taken it out), so its staging pair + 2 fold sites
+    # return: 9 -> 11.
+    assert KERNEL.count("jsr FoldIndirect") >= 9, (
+        f"expected >=9 fold call sites (P3.1 enemy derives + the bank0 "
+        f"renderer; EnterRoom, LoadLevel and the exit handlers read level data "
+        f"in-bank), got {KERNEL.count('jsr FoldIndirect')}")
     # every fold batch stages FetchPtr immediately before its reads
-    # C1 (2026-10-20): SelectActiveObject's staging pair (EnemyDataLo/Hi ->
-    # FetchPtr) left with the body to bank2, which reads (EnemyDataLo),Y
-    # directly: 10 -> 8. C2 (2026-10-20): LoadLevel's staging pair left too
-    # (it reads LevelDataTable in-bank): 8 -> 6.
+    # C2 (2026-10-20): LoadLevel's staging pair left (it reads LevelDataTable
+    # in-bank): 10 -> 8. A1 (2026-10-20): the renderer's EnemyDataLo/Hi pair is
+    # back in bank0: 6 -> 8.
     stages = len(re.findall(r"^\s+sta FetchPtr\+?1?\s*$", KERNEL, re.M))
-    assert stages >= 6, \
-        f"expected >=6 sta FetchPtr lines, got {stages}"
+    assert stages >= 8, \
+        f"expected >=8 sta FetchPtr lines, got {stages}"
 
     # --- P2.5: band-color cache contract ----------------------------------
     # FIX 2026-09-28: was $D1 = PF1Buf[2] — collides with kernel .Row

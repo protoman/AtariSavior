@@ -12,10 +12,9 @@ the SPRITE was wrong.
 Contract: on a bomb-draw frame, SetObjectXPos is called with (A=BombX, X=1)
 (the .SODone tail positions P1 from ActiveObjectX for every object path).
 
-C1 2026-10-20: SelectActiveObject moved to bank2, so the tail now calls the
-bank2 copy (`SetObjectXPos_b2`, page-pinned at $F80F + its own fineAdjust) —
-this test watches THAT PC in bank 2. A stale bank0 watch would silently pass
-by never observing a call, so the address comes from the frozen bank2 labels.
+C1 2026-10-20 moved the renderer to bank2; A1 2026-10-20 moved it back, so
+the tail calls bank0's pinned SetObjectXPos ($FF0F) again — this test watches
+THAT PC in bank 0 (the pre-C1 contract).
 
 Boots to the gameplay room (has an enemy so non-bomb frames move P1), then
 forces a bomb-draw frame (BombPacked state=1, BombTimer&3==0) for two BombX
@@ -26,8 +25,8 @@ import sys
 
 import test_laser_walk_wall as W
 
-SOXP = W.L2["SetObjectXPos_b2"]     # bank2 copy (bank0 ROM is invisible there)
-SO_BANK = 2
+SOXP = 0xFF0F                       # SetObjectXPos (jsr target, pinned)
+SO_BANK = 0
 
 
 def boot_to_landed():

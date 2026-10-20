@@ -113,6 +113,24 @@
 3.REYLoop                fd83              (R )
 3.REYRts                 fda7              (R )
 3.SetGrpPtr              fa28              (R )
+3.SOCount                f665              (R )
+3.SODone                 f711              (R )
+3.SODoneNoPos            f71c              (R )
+3.SOEnemy                f6ae              (R )
+3.SOEnemyColorDone       f704                  
+3.SOEnemyLit             f6ee              (R )
+3.SOEnemyNoMinerOffset   f6b7              (R )
+3.SOEnemyPattern         f6f7              (R )
+3.SOEnemySkip            f70d              (R )
+3.SOEnemyValid           f6c5              (R )
+3.SOFull                 f642              (R )
+3.SOModDone              f68e              (R )
+3.SOModLoop              f680              (R )
+3.SONoMiner              f673              (R )
+3.SONoObj                f72e              (R )
+3.SONotNothing           f680              (R )
+3.SOPNorm                f6ff              (R )
+3.SOTallyMiner           f62c              (R )
 3.TLive                  fecc              (R )
 3.TNoScore               fea9              (R )
 3.TNotWrap               feba              (R )
@@ -181,7 +199,6 @@ CallPad_LoadLevel        fc20
 CallPad_MothYDerive      fee7              (R )
 CallPad_MusicTick        fc55              (R )
 CallPad_RaftBody         f8c0              (R )
-CallPad_SelectObject     fc1d              (R )
 CallPad_SetRoomDark      fc11              (R )
 CallPad_TitleBand        fc52              (R )
 CallPad_TitleSelect      fc4f              (R )
@@ -211,10 +228,10 @@ ColMask                  fdbc              (R )
 ColOff                   fda8              (R )
 COLOR_BLINK_R            0044              (R )
 COLOR_BLINK_Y            001c              (R )
-COLOR_BOMBS              0046                  
+COLOR_BOMBS              0046              (R )
 COLOR_CAVE_BG            0000              (R )
 COLOR_CAVE_WALL          0084                  
-COLOR_DARK_OBJ           000a                  
+COLOR_DARK_OBJ           000a              (R )
 COLOR_DARK_PF            0004                  
 COLOR_HOT_R              0044                  
 COLOR_HOT_Y              001c                  
@@ -253,6 +270,7 @@ ENEMY_SPIDER             0000
 ENEMY_TENTACLE           0003                  
 ENEMY_WIDTH              0008              (R )
 EnemyBitTable            f3b2              (R )
+EnemyColorTable          f736              (R )
 EnemyCount               00b3              (R )
 EnemyDataHi              00b2              (R )
 EnemyDataLo              00b1              (R )
@@ -273,7 +291,7 @@ FACING_RIGHT             0000              (R )
 FetchPtr                 00e5              (R )
 fineAdjustBegin          ff00              (R )
 fineAdjustTable          fe0f              (R )
-FlickerFrame             00b4                  
+FlickerFrame             00b4              (R )
 FoldIndirect             fef6              (R )
 GameStart                f008              (R )
 GRAVITY                  0008              (R )
@@ -347,18 +365,19 @@ MinerY                   00a6              (R )
 MothExitPad              fc49                  
 NUSIZ0                   0004              (R )
 NUSIZ1                   0005                  
-OBJ_BAT                  0028                  
-OBJ_BOMB                 0040                  
-OBJ_KEY                  0000                  
-OBJ_LAMP                 0018                  
+OBJ_BAT                  0028              (R )
+OBJ_BOMB                 0040              (R )
+OBJ_KEY                  0000              (R )
+OBJ_LAMP                 0018              (R )
 OBJ_MINER                0038              (R )
-OBJ_MOTH                 0008                  
+OBJ_MOTH                 0008              (R )
 OBJ_NONE                 0000                  
-OBJ_SNAKE                0030                  
-OBJ_SPIDER               0010                  
-OBJ_TENTACLE             0020                  
+OBJ_SNAKE                0030              (R )
+OBJ_SPIDER               0010              (R )
+OBJ_TENTACLE             0020              (R )
 ObjBase                  00b6              (R )
 ObjColorTab              fe00              (R )
+ObjSpriteOffTable        f73e              (R )
 ObjSprites               fe48              (R )
 ObjTop                   00bb              (R )
 OverlayTramp             f9b8              (R )
@@ -416,8 +435,9 @@ RowIdx                   0092              (R )
 ScoreHu                  00f4              (R )
 ScoreTe                  00f5              (R )
 ScoreTh                  00f3              (R )
+SelectActiveObject       f615              (R )
 SetObjectXPos            ff0f              (R )
-SetObjReflection         ff20                  
+SetObjReflection         ff20              (R )
 SNAKE_PATROL             0004              (R )
 StartFrame               f039              (R )
 StepDelta                ffde              (R )

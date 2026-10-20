@@ -66,55 +66,6 @@ def parse_lst(lines: list[str]) -> tuple[dict[str, int], list[tuple[int, str]]]:
     return labels, rows
 
 
-def check_bank2_xpos(src: Path) -> None:
-    """C1: bank2's SetObjectXPos copy (SelectActiveObject moved out of bank0).
-
-    Same 5c/iteration contract as bank0's pinned copy: `bcs .Div15Loop` must
-    share a page with its target and the whole routine must fit one page, or
-    RESP1 fires 3 color-clocks late per coarse step (GRP1 drifts right and
-    wraps past 160 — the laser-S1 bug). The fineAdjust table must start on a
-    page boundary AND its base (begin-241) must sit in the previous page, so
-    every `lda fineAdjustTable,Y` is a guaranteed page cross = 5c, constant.
-    """
-    lp = src / "bank2.lst"
-    if not lp.exists():
-        err("bank2.lst missing (SelectActiveObject XPos check)")
-        return
-    lines = lp.read_text(errors="replace").splitlines()
-    labels, rows = parse_lst(lines)
-    need = {k: labels.get(k) for k in
-            ("fineAdjustBegin_b2", "SetObjectXPos_b2", "SelectActiveObject")}
-    missing = [k for k, v in need.items() if v is None]
-    if missing:
-        err(f"bank2.lst missing {missing} (SelectActiveObject XPos check)")
-        return
-    begin = need["fineAdjustBegin_b2"]
-    if begin & 0xFF:
-        err(f"bank2 fineAdjustBegin ${begin:04X} is not page-aligned — the "
-            "table read would not be a guaranteed 5c page cross")
-    elif ((begin - 241) >> 8) == (begin >> 8):
-        err(f"bank2 fineAdjustBegin ${begin:04X}: base ${begin - 241:04X} is "
-            "in the same page, so some entries read in 4c (jitter)")
-    div15 = None
-    bcs_at = None
-    for addr, text in rows:
-        t = text.strip()
-        if t == ".Div15Loop":
-            div15 = addr
-        if (not t.startswith(";")) and "bcs" in t and ".Div15Loop" in t:
-            bcs_at = addr
-    if div15 is None or bcs_at is None:
-        err("bank2 SetObjectXPos_b2: .Div15Loop/bcs not found")
-        return
-    if (bcs_at + 2) >> 8 != div15 >> 8:
-        err(f"bank2 bcs at ${bcs_at:04X} page-crosses to ${div15:04X} "
-            "(6c/iteration, contract 5c) -> GRP1 X drift")
-    routine = need["SetObjectXPos_b2"]
-    if (routine >> 8) != (routine + 16) >> 8:
-        err(f"bank2 SetObjectXPos_b2 ${routine:04X} straddles a page — the "
-            "whole routine must sit inside one page")
-
-
 def check_rom(src: Path) -> bytes | None:
     banks: dict[int, bytes] = {}
     for i in range(4):
@@ -525,7 +476,9 @@ CORRIDOR_PADS = (
     ("CallPad_UpdateLaserSound", 0xFC14, 1, "UpdateLaserSound"),
     ("CallPad_BuildColupF", 0xFC17, 3, "BuildColupF"),
     ("CallPad_BombMarkWalls", 0xFC1A, 1, "BombMarkWalls"),
-    ("CallPad_SelectObject", 0xFC1D, 2, "SelectActiveObject"),
+    # $FC1D (CallPad_SelectObject) RETIRED by A1 2026-10-20:
+    # SelectActiveObject is back in bank0, called directly. The 3 bytes
+    # stay dead so CallPad_LoadLevel keeps its $FC20 pin.
     ("CallPad_LoadLevel", 0xFC20, 2, "LoadLevelB2"),
 )
 
@@ -2026,7 +1979,6 @@ def main() -> int:
     check_exit_handlers(src)
     check_tramp_targets(src)
     check_callpads(src)
-    check_bank2_xpos(src)
     check_levels(src)
     check_model_rects(src)
     check_equ_sync(src)
