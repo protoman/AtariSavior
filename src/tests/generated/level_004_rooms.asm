@@ -16,14 +16,18 @@ LEVEL4_RoomDataTable:
   .word L4R5RoomRects ; room 4 (async)
   .word L4R6RoomRects ; room 5 (async)
 
-; Room connections: 2 bytes/room, nibble-packed (up<<4|down, left<<4|right); $F = none.
-LEVEL4_RoomConnections:
-  .byte $f1, $ff ; room 0
-  .byte $02, $ff ; room 1
-  .byte $13, $ff ; room 2
-  .byte $2f, $45 ; room 3
-  .byte $ff, $f3 ; room 4
-  .byte $ff, $3f ; room 5
+; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
+; (x<<4 | y) normalised to the level origin. Exits are DERIVED at
+; room load by scanning this column (bank2 ExitScanB2), so no
+; connection bytes are stored: a nibble of 15 never occurs and marks
+; a neighbour outside the grid.
+LEVEL4_RoomPositions:
+  .byte $10 ; room 0 (1, 0)
+  .byte $11 ; room 1 (1, 1)
+  .byte $12 ; room 2 (1, 2)
+  .byte $13 ; room 3 (1, 3)
+  .byte $03 ; room 4 (0, 3)
+  .byte $23 ; room 5 (2, 3)
 
 ; Per-room enemy records: ONE byte (count<<6 | first record index<<1 | bottom-band flag). The band COLOR is the global BAND_COLOR (one water
 ; color per game — the converter rejects a second one).

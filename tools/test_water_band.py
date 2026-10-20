@@ -71,8 +71,8 @@ def run(room_y, band, lives=3, stage_level=False, stop_at_drop=0,
         # the exhausted path reaches ReloadLevel, which folds the level tables:
         # point the level pointers at the frozen level-1 data (as
         # test_band_restage does) so the reload is real, not garbage.
-        # C4 (2026-10-20): base + room count; Connections/RoomEnemies are the
-        # block's +2n/+4n offsets, derived by the readers.
+        # C4 (2026-10-20): base + room count; RoomPositions/RoomEnemies are
+        # the block's +2n/+3n offsets (C1 2026-10-20), derived by the readers.
         r[Z["LevelPFDataLo"]] = L2["LEVEL1_RoomDataTable"] & 0xFF
         r[Z["LevelPFDataHi"]] = L2["LEVEL1_RoomDataTable"] >> 8
         r[Z["LevelRoomN"]] = L2["LEVEL1_ROOMS"]

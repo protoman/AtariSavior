@@ -146,8 +146,9 @@ LevelPFDataLo   byte            ; pointer to level's RoomDataTable (low)
 LevelPFDataHi   byte            ; pointer to level's RoomDataTable (high)
 LevelRoomN      byte            ; rooms in this level (C4 2026-10-20): the
                                 ;   Connections / RoomEnemies / enemy-record
-                                ;   bases are the block's +2n / +4n / +5n
-LevelConnSpare  byte            ; free (was LevelConnHi — its pointer is now
+                                ;   bases are the block's +2n / +3n / +4n
+LevelConnSpare  byte            ; C1 2026-10-20: exit-scan target byte in
+                                ;   bank2 (was LevelConnHi — its pointer is
                                 ;   derived; the byte stays allocated so the
                                 ;   hand-copied ZP blocks do not shift)
 
@@ -167,7 +168,7 @@ BarLevel        byte            ; timer bar level (120=full, 0=empty)
 
 ; Enemy ZP variables
 LevelEnemySpare byte            ; free (was LevelEnemyLo — the RoomEnemies base
-                                ;   is now base+4n, derived in EnterRoomB2; the
+                                ;   is now base+3n, derived in EnterRoomB2; the
                                 ;   bytes stay allocated so ZP does not shift)
 LevelEnemySpare2 byte           ; free (was LevelEnemyHi)
 EnemyDataLo     byte            ; pointer to current room enemy data (low)
@@ -1723,7 +1724,7 @@ DEYDelta:                      ; A = delta, then add ROM spawn y
 ;   the measured stack depth are UNCHANGED (0 extra jsr levels, 0 pushes).
 ; Entry layout: stride 7 = miner_room (b7 = faces right), miner_x, wall color,
 ; wall color 2, block base word (RoomDataTable), room count n (the Connections
-; /RoomEnemies/enemy-record bases are that block's +2n/+4n/+5n offsets).
+; /RoomEnemies/enemy-record bases are that block's +2n/+3n/+4n offsets).
 ; Guards: verify_build.check_callpads pins the entry pad bytes + operand,
 ; check_loadlevel_tramp pins the return half; tools/test_respawn_hover.py,
 ; test_room_dark.py and test_level_bank.py read the bank2 body.
@@ -2346,6 +2347,12 @@ LEVEL_DATA_ADDR = $F700        ; frozen address of bank2's LevelDataTable
                                 ;  shrank the tables; check_frozen_addrs
                                 ;  enforces)
                                 ; (test asserts bank2.lst label == this)
+LEVEL_FORMAT   = $02           ; C1 2026-10-20: room-record format. 2 = grid
+                                ; position byte (x<<4|y) + derived exits, 1 B
+                                ; per room (was 2 B nibble connections). Hand
+                                ; copy of the generated EQU (bank1 carries the
+                                ; twin — check_equ_sync; verify_build compares
+                                ; both to generated/levels_index.asm)
 ; ==============================================================================
 ; YToRowTable — convert scanline to 48-line band row (0-2), idx A>>2
 ; ==============================================================================

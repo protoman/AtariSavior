@@ -1115,3 +1115,106 @@ Gates: `./build.sh` green (verify_build OK, `sim_bomb_fuse` OK,
 `sim_frame_budget` OK — VBL max 1057c), banks re-frozen, 43/43 battery incl.
 `src/tools/test_title_demo.py`. Same three pre-existing verify warnings
 (pre-pad headroom 16 B, models 5/6 rect counts).
+
+---
+
+## C1 (2026-10-20) — grid-position connections, `LEVEL_FORMAT = 2`
+
+The generator stored exits as a 2 B **nibble room-index** pack (`$F` = none),
+which hard-capped a level at **15 rooms** — the blocker for the 20-rooms-per-
+level goal of `docs/level_format_plan_2026-10-20.md`. C1 replaces it with
+**1 B per room holding the room's grid position**, and exits are *derived* at
+room load by scanning that column. Nothing about the stage changes: the
+positions come from `room_x`/`room_y`, which the editor already authors.
+
+### Record + encoding
+
+```
+level base + 0    RoomDataTable   2 B/room (shape word, unchanged)
+level base + 2n   RoomPositions   1 B/room  (x<<4 | y, level-origin normalised)
+level base + 3n   RoomEnemies     1 B/room  (was +4n)
+level base + 4n   EnemyDataTable  4 B/record (was +5n)
+```
+
+* Position nibbles are **0..14**; **nibble 15 is the off-grid sentinel**. That
+  is the whole boundary guard: stepping a neighbour position with plain byte
+  arithmetic (`$FF` up / `$01` down / `$F0` left / `$10` right) off the grid
+  always lands a nibble at 15, which no room may own, so the scan reports "no
+  exit" with **zero guard code**. Cost: the cell space is **15×15 = 225**, not
+  the plan's 256 — irrelevant at 20 rooms/level, and cheap insurance against a
+  silently wrong connection (`tests/grid_conn` pins the property).
+* Normalising per level (`min_x`/`min_y`) keeps adjacency intact and lets a
+  stage sit anywhere in the editor grid (level 4 currently uses `room_x = -1`).
+  A level spanning >15 cells on either axis is rejected by the converter with
+  the measured span in the message.
+* Duplicate positions are rejected (the scan would silently pick the first).
+
+### Runtime (bank2, cold path only)
+
+`ExitUpB2`/`ExitDownB2`/`ExitLeftB2`/`ExitRightB2` are now 3-byte stubs that
+load a direction index and tail-jmp one shared body (`ExitDirB2`): stage
+`FetchPtr = base + 2n`, read the room's own position, `adc ExitDeltaTab,X`,
+`jsr ExitScanB2` (linear scan, ≤ `LevelRoomN` iterations, returns the room
+index + carry), then the same opposite-edge placement and `jmp EnterRoomB2`
+with the room index still in A. `LevelConnB2` is gone (the staging is inline:
+one push fewer). The scan's target byte lives in `LevelConnSpare` (`$A2`),
+the ZP byte freed when `LevelConnHi` died — new hand copy in bank2, paired by
+`check_equ_sync`.
+
+**Frame cost: zero.** No kernel/VBL/overscan code changed — `sim_frame_budget`
+and `sim_bomb_fuse` are green unchanged (cave 267.0 / title 265.0).
+
+### Size
+
+| | before | after | delta |
+|---|---|---|---|
+| room tables (16 rooms) | 5 B/room = 80 B | **4 B/room = 64 B** | **−16 B (−1 B/room)** |
+| enemy records (9) | 36 B | 36 B | 0 |
+| level index (4 levels × 7) | 28 B | 28 B | 0 |
+| **level data total** | **410 B** | **394 B** | **−16 B** |
+| bank2 code | 2096 | 2077 | **−19** (EnterRoomB2 −2, exit block net −17) |
+| bank2 used / free | 2632 / 1464 | **2605 / 1491** | **+27 free** |
+
+Marginal room (shared model, no enemies): **4 B** (was 5). Level data numbers
+are `tools/rom_size_report.py --md` at this HEAD; the code delta is the `.lst`
+code-column difference (the exit block still fits the pinned `$FC4F-$FCB7`
+105 B window — it now ends at `$FCAE`, 9 B slack).
+
+### Versioning + guards
+
+* `convert_level.LEVEL_FORMAT = 2` is emitted as `LEVEL_FORMAT = $02` into
+  `generated/levels_index.asm`; `kernel.asm` and `bank1.asm` carry hand copies
+  (bank1's is paired with kernel by the existing `check_equ_sync`).
+* `verify_build.check_level_format` (new): generated == kernel == bank1 == 2,
+  every generated level file has exactly 1 B of positions and 1 B of RoomEnemies
+  per room, positions unique-by-construction are re-checked, and **no position
+  may use nibble 15**. A stale `generated/` tree (format 1) fails here instead
+  of being misread by the `+2n/+3n/+4n` offsets.
+* `verify_build.check_exit_handlers` rewritten for the new bodies: direction
+  stubs must load the index matching their direction, `ExitDirB2` must stage
+  `+2n`, `adc ExitDeltaTab,X`, `jsr ExitScanB2`, branch on carry, `sty RoomY/X`
+  before `jmp EnterRoomB2`, and the two tables must keep the
+  up/down/left/right order. `bank2.asm` may not mention `RoomConnections`.
+* `test_level_bank`: block order/offsets, 1 B position + 1 B enemy per room,
+  unique positions, `LEVEL_FORMAT` in all three places, 225-cell cap.
+* `test_grid_conn` (**new**): converts a test-owned **20-room** level (15-wide
+  row + 5-room second row, built in a temp dir from `src/tests/rooms` models)
+  and drives the **frozen bank2 handlers** for every (room, direction): 46 real
+  exits land on the JSON-adjacent room with the right edge placement, 34
+  no-exits stay put, and each of the 18 off-grid steps is proved to land in the
+  nibble-15 sentinel.
+* `test_band_restage` / `test_water_band` / `test_water_respawn`: offset
+  comments + the respawn band poke moved `base + 3n`.
+* Frozen banks + frozen `src/tests/generated/` re-frozen (they carry the new
+  table layout); `test_editor_roundtrip` regenerates against the frozen copies.
+
+### Cap proof
+
+`tools/test_grid_conn.py` converts and resolves a 20-room level end-to-end;
+20 > the retired 15-room nibble cap, and the encoding's own ceiling is 225 rooms
+(15×15 cells, one unique position each) — comfortably above the 20/level goal,
+so the *next* cap a 20-level game hits is ROM size (plan §2), not connections.
+
+Gates: `./build.sh` green (verify_build OK, `sim_bomb_fuse` OK,
+`sim_frame_budget` OK), banks re-frozen, 43/43 `tools/test_*.py` +
+`src/tools/test_title_demo.py` green.

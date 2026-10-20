@@ -31,7 +31,10 @@ import convert_room
 WIDTH = 10                  # D7: logical cells per half (was 20 pre-D7)
 # Playable color bands per room (the bottom 48 scanlines render as HUD).
 HEIGHT = 3
-ROOM_NONE = 0xFF
+# C1 (2026-10-20): 2 = grid-position connections (1 B/room, exits derived).
+# Sequential: 3 = shape-index room records (C2), so a generated/ tree can be
+# recognised as stale against the reader that consumes it.
+LEVEL_FORMAT = 2
 # New tile values (ai_new_tiles plan Phase 1). LOCKED_DOOR lives ONLY in
 # asym_patches (side 0 = async ball strip, MetaB b7); the three grid tiles
 # paint model cells and emit b7 feature records in the hot record stream.
@@ -600,40 +603,49 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                     "water (paint the cell as air)")
 
 
-def connection_bytes(rooms: list[dict]) -> list[list[int]]:
-    """Per-room [up, down, left, right] neighbours, by room_x/room_y adjacency."""
-    twelve = ROOM_NONE
-    result = []
-    for i, room in enumerate(rooms):
-        up = down = left_ = right = ROOM_NONE
-        for j, other in enumerate(rooms):
-            if i == j:
-                continue
-            same_x = room["room_x"] == other["room_x"]
-            same_y = room["room_y"] == other["room_y"]
-            dy = other["room_y"] - room["room_y"]
-            dx = other["room_x"] - room["room_x"]
-            if same_x and dy == -1:
-                up = j
-            elif same_x and dy == 1:
-                down = j
-            elif same_y and dx == -1:
-                left_ = j
-            elif same_y and dx == 1:
-                right = j
-        result.append([up, down, left_, right])
-    return result
+# C1 (2026-10-20) — grid-position connections (LEVEL_FORMAT = 2).
+# A room stores ONE byte: (x - level_min_x) << 4 | (y - level_min_y), each
+# nibble 0..14. Nibble 15 is the "no room" sentinel and is never emitted, so
+# the runtime exit scan can step a neighbour position with plain byte
+# arithmetic: a wrap at a grid edge (x-1 at x=0, y+1 at y=14, ...) always
+# lands in a nibble-15 byte, which no room owns -> "no exit", with no guard
+# code. Per-axis span 15 (225 cells), i.e. up to 20 rooms/level with room to
+# spare (the old nibble-room-index pack capped a level at 15 ROOMS).
+POSITION_SPAN = 15
 
 
-def nibble_room(value: int, direction: str) -> int:
-    """Room index or none for one nibble of a packed connection byte."""
-    if value == ROOM_NONE:
-        return 0xF
-    if value > 14:
+def position_bytes(rooms: list[dict]) -> list[int]:
+    """Per-room `(x<<4|y)` grid-position byte, normalised to the level origin.
+
+    Connections are NOT stored any more: they are the JSON's room_x/room_y
+    adjacency, resolved at run time by scanning this column (bank2
+    ExitScanB2, cold path). Normalising per level keeps adjacency while
+    letting a level sit anywhere in the editor grid (level 4 uses room_x=-1).
+    """
+    xs = [int(room.get("room_x", 0)) for room in rooms]
+    ys = [int(room.get("room_y", 0)) for room in rooms]
+    if not rooms:
+        raise ValueError("level has no rooms")
+    min_x, min_y = min(xs), min(ys)
+    span_x, span_y = max(xs) - min_x, max(ys) - min_y
+    if span_x >= POSITION_SPAN or span_y >= POSITION_SPAN:
         raise ValueError(
-            f"room index {value} for {direction}: nibble pack allows 0-14 "
-            "($F = none)")
-    return value
+            f"level spans {span_x + 1} columns x {span_y + 1} rows — the "
+            f"grid-position byte supports {POSITION_SPAN} x {POSITION_SPAN} "
+            "cells (nibble 15 is the no-room sentinel); move the rooms closer")
+    result: list[int] = []
+    owner: dict[int, int] = {}
+    for index, room in enumerate(rooms):
+        pos = ((int(room.get("room_x", 0)) - min_x) << 4) | (
+            int(room.get("room_y", 0)) - min_y)
+        if pos in owner:
+            raise ValueError(
+                f"rooms {owner[pos]} and {index} share grid position "
+                f"({room.get('room_x')}, {room.get('room_y')}) — exits are "
+                "resolved by scanning positions, so positions must be unique")
+        owner[pos] = index
+        result.append(pos)
+    return result
 
 
 def px(value, per_tile: int) -> int:
@@ -661,7 +673,7 @@ def level_number_from_path(path: Path) -> int:
     return int(match.group(1)) if match else 0
 
 
-def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
+def write_tables(level: dict, rooms: list[dict], positions: list[int],
                  output: Path, level_n: int, models_by_id: dict = None) -> None:
     prefix = f"LEVEL{level_n}"
     room_prefix = f"L{level_n}R"
@@ -725,15 +737,18 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
                 f"  .word {room_prefix}{index + 1}RoomRects ; room {index}{why}")
     lines.append("")
     lines.append(
-        "; Room connections: 2 bytes/room, nibble-packed "
-        "(up<<4|down, left<<4|right); $F = none.")
-    lines.append(f"{prefix}_RoomConnections:")
-    for index, conn in enumerate(connections):
-        up, down, left_, right = conn
-        lines.append(
-            f"  .byte ${nibble_room(up, 'up'):01x}{nibble_room(down, 'down'):01x}, "
-            f"${nibble_room(left_, 'left'):01x}{nibble_room(right, 'right'):01x} "
-            f"; room {index}")
+        "; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,")
+    lines.append(
+        "; (x<<4 | y) normalised to the level origin. Exits are DERIVED at")
+    lines.append(
+        "; room load by scanning this column (bank2 ExitScanB2), so no")
+    lines.append(
+        "; connection bytes are stored: a nibble of 15 never occurs and marks")
+    lines.append("; a neighbour outside the grid.")
+    lines.append(f"{prefix}_RoomPositions:")
+    for index, pos in enumerate(positions):
+        lines.append(f"  .byte ${pos:02x} ; room {index} "
+                     f"({pos >> 4}, {pos & 0x0F})")
     lines += _enemy_tables(prefix, rooms)
 
     output.write_text("\n".join(lines) + "\n")
@@ -1099,6 +1114,7 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
 
     tail_lines = [
         "",
+        f"LEVEL_FORMAT = ${LEVEL_FORMAT:02x}",
         "LEVEL_DATA_STRIDE = 7",
         f"LEVEL_COUNT = {len(levels)}",
         "",
@@ -1106,12 +1122,13 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         "; colors, then the level's room-table base and its ROOM COUNT.",
         "; start x/y (32/24), start_room (0) and miner_y (84) are kernel",
         "; constants now — the converter rejects other values.",
-        "; Inside a level block (n = ROOM COUNT, C2/C3/C4 2026-10-20):",
+        "; Inside a level block (n = ROOM COUNT, C1/C2/C3/C4 2026-10-20):",
         ";   base + 0   RoomDataTable    2 B/room (RoomRects ptr; TilePF0 =",
         ";                               rects + 2 + 2*nrect)",
-        ";   base + 2n  RoomConnections  2 B/room",
-        ";   base + 4n  RoomEnemies      1 B/room ((count<<6 | rec idx<<1 | band))",
-        ";   base + 5n  EnemyDataTable   4 B/record",
+        ";   base + 2n  RoomPositions    1 B/room (LEVEL_FORMAT 2: x<<4|y,",
+        ";                               exits derived by scanning it)",
+        ";   base + 3n  RoomEnemies      1 B/room ((count<<6 | rec idx<<1 | band))",
+        ";   base + 4n  EnemyDataTable   4 B/record",
         f"; BAND_COLOR = ${band_color:02x} — the single bottom-band color (every",
         "; bottom_band room must resolve to it; bank2.asm carries the EQU and",
         "; test_level_bank asserts the pair).",
@@ -1160,7 +1177,8 @@ def _gen_data_size(path: Path) -> int:
 # they could hold fits the one remaining window, and their addresses are now
 # reserved code space for the evacuated bank3 runs (see bank2.asm's slot map).
 # $F5A4 (92B) is also unusable: it assembles BEFORE levels_index defines
-# ROOM_NONE — a spill slot must sit after the index in source order.
+# LEVEL_FORMAT/LEVEL_DATA_STRIDE — a spill slot must sit after the index in
+# source order.
 _SPILL_SLOTS = [
     ("spill_F767", 0xF854),   # after FooterFont lead-in  ($F700, 340B)
 ]
@@ -1185,7 +1203,7 @@ def emit_spills(generated: Path) -> None:
     """bugs.md 27b: place level files into bank2's data slots and write
     generated/spill_*.asm include-lists — adding a level never touches
     bank2.asm. Greedy first-fit, big levels first; within a slot the
-    index stays first (defines ROOM_NONE) and rooms sort ASC (stable
+    index stays first (defines LEVEL_FORMAT) and rooms sort ASC (stable
     addresses per slot). Overflow here = precheck also fails after build.
     """
     idx = "generated/levels_index.asm"
@@ -1288,7 +1306,7 @@ def main(argv: list[str]) -> int:
             txt = rooms_dir / f"level_{level_n:03d}_room_{index + 1:03d}.txt"
             txt.write_text("\n".join(rows) + "\n")
 
-        connections = connection_bytes(rooms)
+        connections = position_bytes(rooms)
         tables = Path(str(out_prefix) + "_rooms.asm")
         write_tables(level, rooms, connections, tables, level_n, models_by_id)
 

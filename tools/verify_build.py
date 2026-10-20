@@ -802,64 +802,181 @@ def check_loadlevel_tramp(src: Path) -> None:
 
 
 def check_exit_handlers(src: Path) -> None:
-    """C3 (2026-10-20): the four room-exit handlers live in bank2.
+    """C1/C3 (2026-10-20): the four room-exit handlers live in bank2.
 
-    Each one now reads the connection record in-bank and tail-jmps
-    `EnterRoomB2` with the ROOM INDEX still in A. Two invariants that a
+    LEVEL_FORMAT 2: there is no connection table. A room owns ONE grid-position
+    byte at level base + 2n, and an exit steps that byte by a direction delta
+    ($FF up / $01 down / $F0 left / $10 right) and SCANS the level's position
+    column (unconditional, <= LevelRoomN iterations). Invariants that a
     "harmless" edit can silently break:
 
     1. **A must still hold the room index at the `jmp EnterRoomB2`** — the edge
-       placement therefore writes RoomY/RoomX through Y (`ldy #... / sty ...`).
-       Storing `lda #PLAYER_MIN_Y / sta RoomY` would pass 0/4/132/159 as the
-       room number (EnterRoomB2 does `sta RoomNo` first).
+       placement therefore writes RoomY/RoomX through Y (`ldy ExitEdgeTab,X` /
+       `sty ...`). Storing `lda #PLAYER_MIN_Y / sta RoomY` would pass
+       0/4/132/159 as the room number (EnterRoomB2 does `sta RoomNo` first).
     2. **the placement must precede EnterRoomB2** — EnterRoomB2 + B3RoomBlocks
        read neither RoomX nor RoomY, so writing them first is equivalent to the
-       old post-call store, and it lets the whole tail stay in bank2 (0 pushes:
-       EnterRoomB2's ReturnPad pops the original bank0 `jsr ExitRoomXxx`).
+       old post-call store, and it lets the whole tail stay in bank2 (0 extra
+       pushes: EnterRoomB2's ReturnPad pops the original bank0 `jsr ExitRoomXxx`).
+    3. **the direction stubs must load the table index that matches their
+       direction** (ExitDeltaTab/ExitEdgeTab order = up, down, left, right).
+       Swapping two stubs would silently connect the wrong neighbours.
+    4. **the no-exit path must be a branch to ExitNoneB2** (C from the scan) —
+       ExitNoneB2 tail-jmps ReturnPad.
     """
     b2p = src / "bank2.asm"
     if not b2p.exists():
         err("bank2.asm missing (exit handlers check)")
         return
     text = b2p.read_text(errors="replace")
-    edges = {"ExitDownB2": "PLAYER_MIN_Y", "ExitUpB2": "PLAYER_MAX_Y",
-             "ExitLeftB2": "PLAYER_MAX_X", "ExitRightB2": "PLAYER_MIN_X"}
-    for name, edge in edges.items():
-        m = re.search(rf"^{name}:\n(.*?)(?=^[A-Za-z_.][A-Za-z0-9_.]*:)", text,
-                      re.M | re.S)
+
+    def body(name: str) -> list[str] | None:
+        m = re.search(rf"^{name}:\n(.*?)(?=^[A-Za-z_][A-Za-z0-9_]*:)",
+                      text, re.M | re.S)
         if not m:
             err(f"{name} body not found in bank2.asm")
+            return None
+        code = [ln.split(";")[0].strip() for ln in m.group(1).splitlines()]
+        return [ln for ln in code if ln]
+
+    # 3: stub -> direction index (table order up, down, left, right)
+    for name, idx in (("ExitUpB2", 0), ("ExitDownB2", 1),
+                      ("ExitLeftB2", 2), ("ExitRightB2", 3)):
+        b = body(name)
+        if b is None:
             continue
-        body = [ln.split(";")[0].strip() for ln in m.group(1).splitlines()]
-        body = [ln for ln in body if ln]
-        if f"ldy #{edge}" not in body or not any(
-                ln.startswith("sty Room") for ln in body):
-            err(f"{name}: opposite-edge placement must be `ldy #{edge}` + "
-                "`sty RoomY/RoomX` (A must keep the room index for EnterRoomB2)")
-        if "jmp EnterRoomB2" not in body:
-            err(f"{name}: exit must tail-jmp EnterRoomB2 (its ReturnPad pops "
+        if f"ldx #{idx}" not in b:
+            err(f"{name}: must select direction {idx} (`ldx #{idx}`) — "
+                "ExitDeltaTab/ExitEdgeTab order is up, down, left, right")
+        if "jmp ExitDirB2" not in b and name != "ExitRightB2":
+            err(f"{name}: must tail-jmp ExitDirB2 (shared body)")
+
+    # shared body
+    b = body("ExitDirB2")
+    if b is not None:
+        adc_n = sum(1 for ln in b if ln == "adc LevelRoomN")
+        if adc_n != 2 or "sta FetchPtr" not in b:
+            err(f"ExitDirB2: FetchPtr must stage level base + 2n "
+                f"(RoomPositions) — found {adc_n} `adc LevelRoomN`")
+        if "adc ExitDeltaTab,X" not in b:
+            err("ExitDirB2: neighbour position must be `adc ExitDeltaTab,X` "
+                "(nibble-wrap = off-grid, no guard code)")
+        if "jsr ExitScanB2" not in b:
+            err("ExitDirB2: the exit must scan the position column "
+                "(jsr ExitScanB2)")
+        if "bcs ExitNoneB2" not in b:
+            err("ExitDirB2: no-exit path must branch on the scan carry")
+        if not any(ln.startswith("sty Room") for ln in b):
+            err("ExitDirB2: opposite-edge placement must `sty RoomY/RoomX` "
+                "(A must keep the room index for EnterRoomB2)")
+        if "jmp EnterRoomB2" not in b:
+            err("ExitDirB2: exit must tail-jmp EnterRoomB2 (its ReturnPad pops "
                 "the bank0 caller frame — an `rts` here would strand bank2)")
         else:
-            pos = body.index("jmp EnterRoomB2")
-            sty = max(i for i, ln in enumerate(body) if ln.startswith("sty Room"))
-            if sty > pos:
-                err(f"{name}: edge store sits AFTER `jmp EnterRoomB2` in the "
+            pos = len(b) - 1 - b[::-1].index("jmp EnterRoomB2")
+            sty = [i for i, ln in enumerate(b) if ln.startswith("sty Room")]
+            if not sty or max(sty) > pos:
+                err("ExitDirB2: edge store sits AFTER `jmp EnterRoomB2` in the "
                     "list (unreachable code)")
-        if not any(ln == "beq ExitNoneB2" for ln in body):
-            err(f"{name}: no-exit path must branch to ExitNoneB2")
-        if not re.search(rf"^{name}:\n\s+jsr LevelConnB2", text, re.M):
-            err(f"{name}: must start with `jsr LevelConnB2` (in-bank conn read)")
+        if not any(ln.startswith("ldy ExitEdgeTab,X") for ln in b):
+            err("ExitDirB2: the edge value must come from ExitEdgeTab,X")
+
+    # tables: order IS the direction contract
+    m = re.search(r"^ExitDeltaTab:\n\s*\.byte\s*([^\n]+)", text, re.M)
+    if not m:
+        err("ExitDeltaTab not found in bank2.asm")
+    else:
+        vals = [v.strip() for v in m.group(1).split(";")[0].split(",")]
+        if vals[:4] != ["$FF", "$01", "$F0", "$10"]:
+            err(f"ExitDeltaTab must be $FF,$01,$F0,$10 (up,down,left,right) "
+                f"— got {vals[:4]}")
+    m = re.search(r"^ExitEdgeTab:\n\s*\.byte\s*([^\n]+)", text, re.M)
+    if not m:
+        err("ExitEdgeTab not found in bank2.asm")
+    else:
+        want = ["PLAYER_MAX_Y", "PLAYER_MIN_Y", "PLAYER_MAX_X", "PLAYER_MIN_X"]
+        got = [v.strip() for v in m.group(1).split(";")[0].split(",")][:4]
+        if got != want:
+            err(f"ExitEdgeTab must be {want} (up enters at the bottom edge, "
+                f"down at the top, left at the right, right at the left) — "
+                f"got {got}")
+
+    # scan loop: bounded by the level's room count, returns a room index
+    b = body("ExitScanB2")
+    if b is not None:
+        if not any(ln.startswith("cpy LevelRoomN") for ln in b):
+            err("ExitScanB2: the scan must be bounded by `cpy LevelRoomN`")
+        if "tya" not in b:
+            err("ExitScanB2: a hit must return the ROOM INDEX (tya)")
+        if "sec" not in b or "clc" not in b:
+            err("ExitScanB2: must return C=0 hit / C=1 none")
+
     if not re.search(r"^ExitNoneB2:\n\s+jmp ReturnPad", text, re.M):
         err("ExitNoneB2 must tail-jmp ReturnPad (only exit back to bank0)")
-    # bank1's GetConnIdx must no longer be reachable from the handlers
+    # the retired connection table must be gone from the reader bank
+    if "RoomConnections" in text:
+        err("bank2.asm still reads RoomConnections — LEVEL_FORMAT 2 uses the "
+            "1 B RoomPositions grid byte (C1)")
+    # bank1's GetConnIdx must no longer be reachable, and bank0 must not define
+    # the handler bodies (they live in bank2 only)
     ksrc = (src / "kernel.asm").read_text(errors="replace")
-    for name in edges:
-        if re.search(rf"^ExitRoom\w*:\n\s+jsr CallPad_GetConnIdx", ksrc, re.M):
-            err("bank0 still runs a GetConnIdx exit handler (C3 moved it)")
-            break
-    for name in edges:
+    if re.search(r"^ExitRoom\w*:\n\s+jsr CallPad_GetConnIdx", ksrc, re.M):
+        err("bank0 still runs a GetConnIdx exit handler (C3 moved it)")
+    for name in ("ExitUpB2", "ExitDownB2", "ExitLeftB2", "ExitRightB2"):
         if name in re.findall(r"^(\w+):", ksrc, re.M):
-            err(f"bank0.asm defines {name} (body must live in bank2 only)")
+            err(f"kernel.asm defines {name} (body must live in bank2 only)")
+
+
+def check_level_format(src: Path) -> None:
+    """C1 (2026-10-20): LEVEL_FORMAT 2 = grid-position room records.
+
+    The generated level index is the converter's truth; kernel.asm and
+    bank1.asm carry hand copies (bank1's is also paired by check_equ_sync).
+    A stale generated/ tree (format 1 = 2 B connection nibbles) would be
+    misread by bank2's +2n/+3n/+4n offsets, so it must fail the build.
+    """
+    idx = src / "generated" / "levels_index.asm"
+    if not idx.exists():
+        err("generated/levels_index.asm missing (level-format check)")
+        return
+    m = re.search(r"^LEVEL_FORMAT = \$([0-9a-fA-F]{2})\b",
+                  idx.read_text(errors="replace"), re.M)
+    if not m:
+        err("levels_index.asm does not declare LEVEL_FORMAT — rerun ./build.sh "
+            "(format 2 = C1 grid-position connections)")
+        return
+    gen_fmt = int(m.group(1), 16)
+    if gen_fmt != 2:
+        err(f"generated LEVEL_FORMAT = {gen_fmt}, the bank2 reader implements "
+            "2 (grid positions) — stale generated tree or half-done migration")
+    for name in ("kernel.asm", "bank1.asm"):
+        p = src / name
+        if not p.exists():
+            continue
+        hm = re.search(r"^LEVEL_FORMAT\s*=\s*\$([0-9a-fA-F]{2})\b",
+                       p.read_text(errors="replace"), re.M)
+        if not hm:
+            err(f"{name}: LEVEL_FORMAT hand copy missing (C1)")
+        elif int(hm.group(1), 16) != gen_fmt:
+            err(f"{name}: LEVEL_FORMAT ${hm.group(1)} != generated "
+                f"${gen_fmt:02X} — stale hand copy")
+    # per-level tables: 1 B/room positions + 1 B/room RoomEnemies, positions
+    # with both nibbles in 0..14 (15 is the off-grid sentinel)
+    for path in sorted((src / "generated").glob("level_*_rooms.asm")):
+        text = path.read_text(errors="replace")
+        pos = re.findall(r"^  \.byte \$([0-9a-f]{2}) ; room \d+ \(\d+, \d+\)$",
+                         text, re.M)
+        enemies = re.findall(r"^  \.byte \$[0-9a-f]{2} ; room \d+: ", text, re.M)
+        if not pos or len(pos) != len(enemies):
+            err(f"{path.name}: {len(pos)} position bytes vs {len(enemies)} "
+                "RoomEnemies records — LEVEL_FORMAT 2 emits exactly 1 B of "
+                "each per room")
+            continue
+        for hexv in pos:
+            b = int(hexv, 16)
+            if (b >> 4) == 0xF or (b & 0x0F) == 0xF:
+                err(f"{path.name}: position byte ${hexv} has a nibble of 15 — "
+                    "reserved as the off-grid sentinel (POSITION_SPAN 15)")
 
 
 def check_tramp_targets(src: Path) -> None:
@@ -1956,6 +2073,7 @@ def main() -> int:
     check_blast_tramp(src)
     check_loadlevel_tramp(src)
     check_exit_handlers(src)
+    check_level_format(src)
     check_tramp_targets(src)
     check_callpads(src)
     check_levels(src)

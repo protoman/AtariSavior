@@ -359,16 +359,20 @@ still fits the split.
 Build + both sims + battery + re-freeze before each commit; each chunk leaves the
 stage playable.
 
-**C1 — grid-position connections (safest, highest value; do first).**
+### C1 — grid-position connections — **LANDED 2026-10-20** (see the C1 entry
+in `docs/compaction_findings_2026-10-19.md`)
 Replace `RoomConnections` (2 B/room, nibble, **≤15 rooms**) with a 1 B
 `(x<<4|y)` position byte and resolve exits by scanning it. Files:
-`convert_level.py` (`position_bytes`, `write_tables`), `bank2.asm`
-(`LevelConnB2` + 4 exit handlers), `verify_build`, `test_band_restage`,
-`test_level_bank` (record shape), converter tests. Delta: **−1 B/room**
-(210 rooms: −210 B), **cap 15 → 256 rooms/level**, zero frame cost.
-Risk: low — cold path only; the room *layout* grid is already the authoring
-truth, so the emitted bytes are re-derived, not invented. Gate: play one stage
-end-to-end with every exit (`test_band_restage` drives real `EnterRoom` per room).
+`convert_level.py` (`position_bytes`, `write_tables`), `bank2.asm` (shared
+`ExitDirB2` + `ExitScanB2` + 4 stubs), `verify_build` (`check_level_format`,
+`check_exit_handlers`), `test_band_restage`, `test_level_bank` (record shape),
+new `test_grid_conn`. Delta measured: **−1 B/room** (level data 410 → 394 B,
+bank2 free +27 B), zero frame cost. **Cap: 225 cells (15×15), not 256** — the
+nibble-15 value is kept as the off-grid sentinel, which removes every
+boundary guard from the exit scan and caps a level at 225 rooms (≥ 20 target).
+Gate: `test_grid_conn` converts a 20-room level and drives the frozen handlers
+for every (room, direction); `test_band_restage` still drives real `EnterRoom`
+per room of the live stage.
 
 **C2 — 3 B room record (shape index + derived enemy base).**
 Drop the 2 B absolute word → 1 B shape index into a fixed 3 B shape table;
@@ -458,11 +462,12 @@ Content limits that 20 levels surface (not ROM capacity, but must be decided):
 |---|---|---|---|---|---|
 | bank0 | 3027 | 370 | 681 | 3397 | 699 |
 | bank1 | 2490 | 434 | 978 | 2924 | 1172 |
-| bank2 | 2096 | 536 | 1463 | 2632 | 1464 |
+| bank2 | 2077 | 528 | 1490 | 2605 | 1491 |
 | bank3 | 5 | 5 | 4085 | 10 | 4086 |
-| **total** | **7618** | **1345** | **7207** | **8963** | **7421** |
+| **total** | **7599** | **1337** | **7234** | **8936** | **7448** |
 
-Level data **410 B** = index 28 + tables/blocks 216 + models 166.
+Level data **394 B** = index 28 + tables/blocks 200 + models 166 (C1: room
+tables **4 B/room**: shape word 2 + RoomPositions 1 + RoomEnemies 1).
 bank2 free windows (emitted-byte occupancy): `$F453` 429, `$F790` 295, `$FDDE`
 184, `$F6A8` 88, `$FF98` 87, `$FE9C` 84, `$F0CE` 66, `$F411` 63, then 33/30/29/29/16.
 

@@ -63,8 +63,8 @@ for n in (1, 2, 3):
 
 def enter_room(mem: Mem, table: int, room_count: int, room: int) -> None:
     """Stage what LoadLevel stages (C4): the level block base + its room count.
-    The Connections / RoomEnemies / enemy-record bases are the block's
-    +2n / +4n / +5n offsets, derived by the readers."""
+    The RoomPositions / RoomEnemies / enemy-record bases are the block's
+    +2n / +3n / +4n offsets (C1 2026-10-20), derived by the readers."""
     r = mem.ram
     r[L0["LevelPFDataLo"] - 0x80] = table & 0xFF
     r[L0["LevelPFDataHi"] - 0x80] = table >> 8

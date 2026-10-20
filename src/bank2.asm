@@ -46,6 +46,9 @@ RoomMetaB = $9A                 ; staged MetaB (ball col/hot/door-R+shutter b7)
 LevelPFDataLo = $9F             ; RoomDataTable pointer low (kernel decl)
 LevelPFDataHi = $A0             ; RoomDataTable pointer high (kernel decl)
 LevelRoomN = $A1                ; rooms in the level (kernel decl, C4 2026-10-20)
+LevelConnSpare = $A2            ; C1 2026-10-20: exit-scan target byte (the
+                                ;   byte was freed when LevelConnHi died;
+                                ;   exit handlers are cold path, single frame)
 RoomBandColor = $BC             ; band-color cache (kernel EQU, S3.1)
 BandTab = $ED                   ; Phase 3 band gate bytes — staged here,
                                  ; read by kernel .Row in bank0
@@ -178,8 +181,9 @@ ERBlocksDone:
 
     ; --- enemy record for this room (C2 2026-10-20, packed 1 B 2026-10-20) ---
     ; byte = count<<6 | first record index<<1 | bottom-band flag.
-    ; RoomEnemies = level base + 4n, enemy records = level base + 5n
-    ; (2026-10-20: the enemy record is ONE byte/room now)
+    ; RoomEnemies = level base + 3n, enemy records = level base + 4n
+    ; (C1 2026-10-20: RoomPositions took over the old +2n..+3n slot at
+    ; 1 B/room, so the enemy tables moved down one block-n).
     ; (n = LevelRoomN; the record index replaces the old absolute pointer).
     ; The band COLOR is the global BAND_COLOR (one water color per game).
     lda RoomNo
@@ -188,8 +192,7 @@ ERBlocksDone:
     clc
     adc LevelRoomN
     adc LevelRoomN
-    adc LevelRoomN
-    adc LevelRoomN                  ; base + 4n = RoomEnemies
+    adc LevelRoomN                  ; base + 3n = RoomEnemies
     sta FetchPtr
     lda LevelPFDataHi
     adc #0
@@ -204,7 +207,7 @@ ERBlocksDone:
     sta EnemyCount
     lda FetchPtr
     clc
-    adc LevelRoomN                  ; base + 5n = enemy records (1 B/room)
+    adc LevelRoomN                  ; base + 4n = enemy records (1 B/room)
     sta EnemyDataLo
     lda FetchPtr+1
     adc #0
@@ -917,16 +920,16 @@ LoadLevelB2:
     lda (FetchPtr),Y
     sta LevelWallColor2
     iny
-    ; +4..+5: block base (RoomDataTable; the conn/enemy words are its
-    ; +2n/+4n/+5n offsets, see EnterRoomB2 + bank1 GetConnIdx)
+    ; +4..+5: block base (RoomDataTable; the positions/enemy tables are its
+    ; +2n/+3n/+4n offsets, see EnterRoomB2 + the exit handlers below)
     lda (FetchPtr),Y
     sta LevelPFDataLo
     iny
     lda (FetchPtr),Y
     sta LevelPFDataHi
     iny
-    ; +6: room count n → GetConnIdx (bank1) and EnterRoomB2 (bank2) derive the
-    ; Connections / RoomEnemies / enemy-record bases from it
+    ; +6: room count n → EnterRoomB2 / ExitScanB2 (both in this bank) derive
+    ; the RoomPositions / RoomEnemies / enemy-record bases from it
     lda (FetchPtr),Y
     sta LevelRoomN
     jmp LF_TailSwap             ; bank0: EnterRoom + placement + jmp DropArm
@@ -1597,10 +1600,19 @@ MothExitPad:
 
 ; ==============================================================================
 ; Room-exit handlers — MOVED from bank0 (C3, 2026-10-20; were $F4DB-$F535 = 90 B).
-; Connections are 2 nibble-packed bytes per room (up<<4|down, left<<4|right) at
-; level base + 2n = bank2 level data, so each handler reads its own record
-; directly: the bank1 `CallPad_GetConnIdx` hop AND the `jsr FoldIndirect` hop
-; are gone (cold path, so cycles do not matter, but 2 switches/crossing do).
+; C1 (2026-10-20): LEVEL_FORMAT 2 — there is NO connection table any more. Each
+; room owns ONE grid-position byte (x<<4|y, normalised to the level origin) at
+; level base + 2n, and an exit is resolved by stepping that byte by a direction
+; delta ($FF up / $01 down / $F0 left / $10 right) and SCANNING the level's
+; position column for a match (<= 20 iterations, cold path = room load only).
+;
+; Why no boundary guard is needed: a nibble of 15 never occurs in a stored
+; position (POSITION_SPAN = 15 in convert_level.py, nibble 15 = sentinel), and
+; stepping off the grid always wraps the moved nibble to 15 — so an exit past
+; the grid edge can never match a room. The old nibble-room-index pack capped a
+; level at 15 rooms; this lifts it to 225 grid cells (20 rooms/level with room
+; to spare) at 1 B/room instead of 2.
+;
 ; Entry: bank0's `jsr ExitRoomXxx` pad ($FBD9-$FBE4, `sta $1FF8`) -> the `jmp`
 ; halves at $FBDC-$FBE5 above. Every exit path ends in a `jmp`:
 ;   * no exit      -> ReturnPad (bank0 `rts` pops the caller's jsr frame)
@@ -1611,13 +1623,42 @@ MothExitPad:
 ; Guard: verify_build.check_exit_handlers.
 ; ==============================================================================
     .ds $FC4F - *, 0
-; Stage FetchPtr = level base + 2n (RoomConnections) and Y = RoomNo*2 — the
-; same math as bank1's GetConnIdx (the second `adc LevelRoomN` carries), but
-; in-bank, so no pad and no fold. Clobbers A/Y (X untouched).
-LevelConnB2:
-    lda RoomNo
-    asl
-    tay
+; Scan the level's position column for the target byte.
+; In: A = target position, FetchPtr = level base + 2n. Out: A = room index,
+; C = 0 found / 1 none. Clobbers A/Y only (X is the caller's direction).
+ExitScanB2:
+    sta LevelConnSpare
+    ldy #0
+.EScanLoop:
+    lda (FetchPtr),Y
+    cmp LevelConnSpare
+    beq .EScanHit
+    iny
+    cpy LevelRoomN
+    bne .EScanLoop
+    sec                         ; ran off the end: no room at that position
+    rts
+.EScanHit:
+    tya                         ; room index
+    clc
+    rts
+
+; Shared body: X = direction (0 up, 1 down, 2 left, 3 right).
+; Stages FetchPtr = level base + 2n (RoomPositions), reads this room's own
+; position, steps it by the direction delta and scans (no jsr for the staging:
+; one push fewer than the old LevelConnB2 helper).
+ExitUpB2:
+    ldx #0
+    jmp ExitDirB2
+ExitDownB2:
+    ldx #1
+    jmp ExitDirB2
+ExitLeftB2:
+    ldx #2
+    jmp ExitDirB2
+ExitRightB2:
+    ldx #3                      ; (falls through: last stub)
+ExitDirB2:
     lda LevelPFDataLo
     clc
     adc LevelRoomN
@@ -1626,57 +1667,26 @@ LevelConnB2:
     lda LevelPFDataHi
     adc #0
     sta FetchPtr+1
-    rts
-
-ExitDownB2:
-    jsr LevelConnB2
-    lda (FetchPtr),Y            ; +0 = up/down byte
-    and #$0f                    ; down = low nibble
-    cmp #$0f
-    beq ExitNoneB2
-    ldy #PLAYER_MIN_Y           ; A stays = target room for EnterRoomB2
-    sty RoomY                   ; enter at the top edge
+    ldy RoomNo
+    lda (FetchPtr),Y            ; own position (x<<4|y)
+    clc
+    adc ExitDeltaTab,X          ; neighbour position (nibble 15 = off grid)
+    jsr ExitScanB2
+    bcs ExitNoneB2              ; nobody there: stay here
+    cpx #2
+    bcc .EDvertical
+    ldy ExitEdgeTab,X           ; left/right: enter at the opposite X edge
+    sty RoomX
+    jmp EnterRoomB2
+.EDvertical:
+    ldy ExitEdgeTab,X           ; up/down: enter at the opposite Y edge
+    sty RoomY
     jmp EnterRoomB2
 
-ExitUpB2:
-    jsr LevelConnB2
-    lda (FetchPtr),Y
-    lsr                         ; up = high nibble -> low
-    lsr
-    lsr
-    lsr
-    and #$0f
-    cmp #$0f
-    beq ExitNoneB2
-    ldy #PLAYER_MAX_Y
-    sty RoomY                   ; enter at the bottom edge
-    jmp EnterRoomB2
-
-ExitLeftB2:
-    jsr LevelConnB2
-    iny                         ; +1 = left/right byte
-    lda (FetchPtr),Y
-    and #$0f                    ; left = low nibble
-    cmp #$0f
-    beq ExitNoneB2
-    ldy #PLAYER_MAX_X
-    sty RoomX                   ; enter at the right edge
-    jmp EnterRoomB2
-
-ExitRightB2:
-    jsr LevelConnB2
-    iny
-    lda (FetchPtr),Y
-    lsr                         ; right = high nibble -> low
-    lsr
-    lsr
-    lsr
-    and #$0f
-    cmp #$0f
-    beq ExitNoneB2
-    ldy #PLAYER_MIN_X
-    sty RoomX                   ; enter at the left edge
-    jmp EnterRoomB2
+ExitDeltaTab:
+    .byte $FF, $01, $F0, $10    ; up, down, left, right
+ExitEdgeTab:
+    .byte PLAYER_MAX_Y, PLAYER_MIN_Y, PLAYER_MAX_X, PLAYER_MIN_X
 
 ExitNoneB2:
     jmp ReturnPad               ; no exit: stay here, back to the bank0 caller
