@@ -716,7 +716,7 @@ int Lift(int value) {                 // a lighter wall colour for the row-1 ban
 // kMaxRoomElements / ElementInRow, verify_build repeats the 2-object cap).
 // Row = y/4 (rows 0/1/2), the same conversion convert uses.
 void AddEnemy(RoomData& room, EnemyType type, float x, float y, float speed,
-              float rangeMax) {
+              float rangeMax, int dir = 1) {
     EnemyData e;
     e.type = (int)type;
     e.x = x;
@@ -724,7 +724,7 @@ void AddEnemy(RoomData& room, EnemyType type, float x, float y, float speed,
     e.range_min = 0.0f;
     e.range_max = rangeMax;
     e.speed = speed;
-    e.dir = 1;
+    e.dir = dir;
     room.enemies.push_back(e);
 }
 
@@ -765,13 +765,24 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
             // border (cell 0): that band is otherwise open, so it can come
             // out and be shot. The top band's border is 8 cells deep — a snake
             // there is walled in and useless (user report 2026-10-20).
+            // The patrol dir/speed vary per level so even the 2-room levels
+            // are not identical (user report 2026-10-20: levels 1 and 2 were
+            // the same).
             AddEnemy(room, EnemyType::SNAKE, 1.0f, 5.0f,
-                     1.5f + 0.5f * (levelNumber % 2), 4.0f);
+                     1.5f + 0.5f * (levelNumber % 2), 4.0f,
+                     (levelNumber % 2) ? 1 : -1);
         }
         return;
     }
     if (roomIndex == 0) {
-        AddEnemy(room, EnemyType::SPIDER, 10.0f, 5.0f,
+        // Start room: type AND cell vary by level (2-room levels must not
+        // repeat: level 1 vs 2 was a user report). All three x cells are open
+        // in every start shape.
+        const int mod = levelNumber % 3;
+        const float sx = mod == 0 ? 6.0f : (mod == 1 ? 10.0f : 14.0f);
+        const bool spider = (levelNumber % 2) != 0;
+        AddEnemy(room, spider ? EnemyType::SPIDER : EnemyType::BAT, sx,
+                 spider ? 5.0f : 4.0f,
                  1.0f + 0.25f * (levelNumber % 4), 8.0f);
         return;
     }
@@ -797,7 +808,8 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
     // Normal room: bat/lamp. A LAMP only matters where the dark mask reaches
     // (rooms 0-7), so deeper rooms get a bat.
     if (roomIndex % 2 == 1 || roomIndex >= 8) {
-        AddEnemy(room, EnemyType::BAT, 4.0f, 4.0f,
+        AddEnemy(room, EnemyType::BAT, 4.0f,
+                 (levelNumber % 2) ? 4.0f : 5.0f,
                  1.25f + 0.25f * (levelNumber % 4), 13.0f);
     } else {
         LampData lamp;
