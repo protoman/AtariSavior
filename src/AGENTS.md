@@ -373,17 +373,52 @@ Consequences that are easy to get wrong:
   `block + 1 + 5*hot` — where the raw triple used to be — and the loader
   expands them into `PF0Buf` (`lda RowPoolPFn,X / sta PF0Buf+3n,Y`). Never emit
   raw PF into a shape: `verify_build.check_shape_blocks` hard-fails it.
-- `bank2.B3RoomBlocks` (in the free `$F453` window) expands the shape rows, then
-  either derives `MetaA=0 / MetaB=$40*hot` (no extras) or tail-jumps to
-  `ExtrasLoad`, which walks the stream (`base + 3n + 4*total enemies`), ORs the
-  side-0 patch rows into MetaA, sets the feature PF bits, and repoints
-  `RoomRectsLo/Hi` at the extras hot stream. `B3StageBand` still reads only the
-  STAGED `$99/$9A` pair, so the runtime contract is unchanged.
-- Those extras records are emitted into the LEVEL TABLE FILE
-  (`generated/level_00N_rooms.asm`), so `emit_spills` (bugs.md 27b) sizes and
-  relocates them. Net-new level data must never be added inside
-  `level_00N_rooms_data.asm` — that file is invisible to the spill accounting
-  and silently overruns the `$F9D9..$FBD0` window with code.
+- **The level-data subsystem is SPLIT across two banks (C7 2026-10-20)** and
+  the split is the invariant: a routine may only dereference data in ITS OWN
+  bank. **bank2 = the ROOM half** (`LevelDataTable` entries, the per-level
+  `RoomShapes`/`RoomPositions`/`RoomCounts` block + flat `EnemyDataTable`) with
+  its walkers `EnterRoomB2`, `ExitScanB2`/`ExitDirB2` + the four exit bodies,
+  `LoadLevelB2`, `MothRoutine`, `LaserWallClamp`/`LaserHitTestBody`,
+  `BombEnemyBlastBody`. **bank3 = the SHAPE half** (shape blocks + row pool +
+  `LEVEL_ShapeTable` + the async extras streams + the `LevExtrasLo/Hi` base
+  table) with its walkers `B3RoomBlocks`/`ExtrasLoad`, `PhaseBlink`/
+  `BuildColupF`/`BCFDarkRun`, `HotOverlapBody`/`HOVHotPfGate`/`HOVFeatEntry`,
+  `B3StageBand`, `PhHcrEntry`/`CrPfx`/`HcrClock`.
+- `bank3.B3RoomBlocks` (PINNED at `$F453`) expands the shape rows, then either
+  derives `MetaA=0 / MetaB=$40*hot` (no extras) or tail-jumps to
+  `ExtrasLoad`, which indexes bank3's `LevExtrasLo/Hi[Level]`, walks the
+  stream by the room's 1-based ordinal, ORs the side-0 patch rows into MetaA,
+  sets the feature PF bits, and repoints `RoomRectsLo/Hi` at the extras hot
+  stream. `B3StageBand` still reads only the STAGED `$99/$9A` pair, so the
+  runtime contract is unchanged.
+- **The ONE cross-bank call of the room load**: `EnterRoomB2` stages the raw
+  shapes byte in `RoomPF0Lo` ($99, loader scratch) + the extras ordinal in
+  `LevelConnSpare` ($A2), then executes `sta $1FF9` at `$F450`; the opcode
+  fetch at `$F453` comes from bank3, so `B3RoomBlocks` MUST stay pinned there
+  (`verify_build.check_bank3_entry`). There is no return pad and no twin: the
+  shape step runs **last**, so bank3's chain ends in **bank3's own
+  `ReturnPad`** (`sta $1FF6` at `$FBF8`, the `rts` served by bank0) — 0 extra
+  stack pushes, which is what keeps `sim_bomb_fuse`'s SP floor.
+- **Two traps the C7 order creates** (both cost a debug pass): `ExtrasLoad`
+  runs AFTER `LoadEnemyRam`, so it must NOT use `EnemyDataLo` as scratch (its
+  feature counter is `EnemyIndex`); and the joystick-shadow refresh moved into
+  bank3's `ERLoadDone` because every shape walker uses `Temp` as scratch while
+  bank0's input block keeps reading `Temp` for the rest of the frame (the
+  2026-10-20 "eye snaps right" lesson).
+- The extras records are emitted into `generated/level_00N_extras.asm` (bank3,
+  with `levels_extras.asm` as the per-level base table), NOT into the level
+  table file: a feature room's hot stream lives inside its record and the VBL
+  walkers read it in-bank. `emit_spills` (bugs.md 27b) places only THIS
+  stage's `level_00N_rooms.asm` files (never a glob — a leftover tree from
+  another stage would reference shape labels that no longer exist), and
+  `levels_index.asm` owns the FIRST window in source order (`spill_F307`)
+  because it defines `LEVEL_FORMAT` + the `SHAPE_*` EQUs the room tables use.
+  Net-new level data must never be added inside `level_00N_rooms_data.asm` —
+  that file is invisible to the spill accounting.
+- bank2's level-table windows are the six freed shape clusters plus `$F700`
+  (`_SPILL_SLOTS` in `convert_level.py`, 2 323 B; bank2.asm carries the
+  matching `.ds` pads). bank3's data window is `$F010-$F44F` (1 088 B,
+  `_BANK3_DATA_SLOT`), capacity-checked by `emit_spills`.
 - `emit_spills` slot starts must be the REAL bank2 include site: `spill_F767`
   begins at `$F700` (bank2 `.ds $F700 - *`), worth 103 B that the old
   `$F767` start hid.
@@ -415,8 +450,10 @@ in `src/` as a standalone project with no dependencies on the older prototype.
 **Standing rule (2026-10-14): do NOT add new data or features to bank0.**
 Bank0 pre-pad headroom is ~1 byte (build warning `ends $FC67, limit $FC68`)
 and the fold pads are pinned — every addition forces a reshuffle or a cut.
-New ROM content goes to bank2's free gap ($F37C–$F9D8, the move pattern) or
-banks 1/3. If a change seems to need bank0 space, move a leaf helper after
+New ROM content goes to bank2's table slots ($F307/$F453/$F8B7/$F9D9/$FCB8/
+$FF59/$FE9C/$F700, `_SPILL_SLOTS`) or bank3's free tail; a smaller leaf helper
+can also go after bank0's pads. If a change seems to need bank0 space, move a
+leaf helper after
 the pads or into bank2 first; only touch bank0 for in-place edits to existing
 code. This is why we keep extracting routines out of bank0 every time it fills.
 
@@ -434,9 +471,9 @@ data by `abs` — moving a table requires moving its reader (or a fold) too.
 | Bank | Address Range | Power-up | Contents |
 |------|--------------|----------|----------|
 | Bank0 | $F000-$FFFF | — | Game code + cave kernel |
-| Bank1 | $F000-$FFFF | — | Stub → bank0 |
-| Bank2 | $F000-$FFFF | — | Stub → bank0 |
-| Bank3 | $F000-$FFFF | Yes | Stub → bank0 + reset vector |
+| Bank1 | $F000-$FFFF | — | HUD band, title, sound, fonts, raft body, bomb punch |
+| Bank2 | $F000-$FFFF | — | Room half of the level data (entries, room tables, enemy records) + its walkers, moth, LWC/LHT, blast, exits, `LoadLevelB2`, 8 table slots |
+| Bank3 | $F000-$FFFF | Yes | Shape half (shape blocks, row pool, shape table, extras streams) + its walkers, boot stub + reset vector |
 
 Bank select: `STA $1FF6` (bank0), `$1FF7` (bank1), `$1FF8` (bank2), `$1FF9` (bank3).
 Power-up bank is bank3; its reset vector at $FFFC points to the stub which switches to bank0.

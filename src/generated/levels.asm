@@ -42,21 +42,11 @@ SHAPE_M11 = 10
 ; Shape block (C3 2026-10-20): hot count | 5 B/record | 3 row-pool
 ;   indices (band 0/1/2 -> RowPoolPF0/1/2 in models_data.asm; the
 ;   loader expands them into PF0Buf). LEVEL_ROW_COUNT = pool rows.
-; Shape address table: SHAPE_<label> indices above are the row here.
-; LEVEL_SHAPE_COUNT = number of distinct blocks in the whole game
-; (6-bit index ceiling: 64).
-LEVEL_ShapeTable:
-  .word M0RoomRects
-  .word M1RoomRects
-  .word M2RoomRects
-  .word M3RoomRects
-  .word M4RoomRects
-  .word M5RoomRects
-  .word M6RoomRects
-  .word M7RoomRects
-  .word M8RoomRects
-  .word M10RoomRects
-  .word M11RoomRects
+; ASYNC EXTRAS (C7 2026-10-20): the per-room records moved OUT of this
+;   block into generated/level_00N_extras.asm (bank3) — a feature
+;   room's hot stream lives inside its record and the VBL walkers read
+;   it in-bank, so record walkers and records share a bank. This bank
+;   keeps the counts byte's b5-0 ORDINAL and the 3 B/room columns.
 ; BAND_COLOR = $80 — the single bottom-band color (every
 ; bottom_band room must resolve to it; bank2.asm carries the EQU and
 ; test_level_bank asserts the pair).

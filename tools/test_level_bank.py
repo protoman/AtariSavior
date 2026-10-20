@@ -200,9 +200,12 @@ def main() -> None:
     assert shape_count <= 64, (
         f"LEVEL_SHAPE_COUNT {shape_count} > 64 — the record shape index "
         "is b5-0")
+    # C7 (2026-10-20): the address table lives in BANK3 next to the blocks
+    # (models_data.asm), so bank2 stages only the 6-bit shape index.
     table = re.search(r"^LEVEL_ShapeTable:\n((?:  \.word \w+RoomRects\n)+)",
-                      index, re.M)
-    assert table, "levels_index.asm must emit LEVEL_ShapeTable (C2)"
+                      (ROOT / "src" / "generated" / "models_data.asm"
+                       ).read_text(encoding="utf-8"), re.M)
+    assert table, "models_data.asm must emit LEVEL_ShapeTable (C7)"
     assert table.group(1).count("  .word ") == shape_count, (
         "LEVEL_ShapeTable entry count != LEVEL_SHAPE_COUNT")
     equ_map = {name: int(value) for name, value in re.findall(
@@ -282,19 +285,23 @@ def main() -> None:
             total += packed >> 6
         assert ordinals == list(range(1, len(ordinals) + 1)), (
             f"LEVEL{n}: extras ordinals {ordinals} are not 1..N in room order")
-        enemy_end = text.find(f"LEVEL{n}_AsyncExtras:")
-        enemy_text = text[pos[f"LEVEL{n}_EnemyDataTable"]:
-                          enemy_end if enemy_end >= 0 else len(text)]
+        # C7 (2026-10-20): the extras stream is its own BANK3 file now, so the
+        # enemy records run to the end of the rooms file.
+        enemy_text = text[pos[f"LEVEL{n}_EnemyDataTable"]:]
         records = enemy_text.count("  .byte ")
         assert records == total, (
             f"LEVEL{n}: EnemyDataTable has {records} records but the counts "
             f"account for {total} (4 B/record)")
-        extras_at = text.find(f"LEVEL{n}_AsyncExtras:")
+        extras_path = (ROOT / "src" / "generated" /
+                       f"level_{int(n):03d}_extras.asm")
+        extras_text = (extras_path.read_text(encoding="utf-8")
+                       if extras_path.exists() else "")
+        extras_at = extras_text.find(f"LEVEL{n}_AsyncExtras:")
         if ordinals:
             assert extras_at >= 0, (
                 f"LEVEL{n}: {len(ordinals)} owns-extras rooms but no "
                 "AsyncExtras stream")
-            lines = text[extras_at:].splitlines()[1:]
+            lines = extras_text[extras_at:].splitlines()[1:]
             lines = [ln for ln in lines if ln.startswith("  .byte")]
             assert len(lines) == len(ordinals), (
                 f"LEVEL{n}: {len(lines)} extras records for {len(ordinals)} "

@@ -7,7 +7,7 @@ directions. C flag after the routine must equal "box overlaps a solid cell"
 computed from model geometry through the SAME prologue math (visible-left,
 endpoint mirror, min/max swap, YToRow rows).
 
-Hit path runs the real bank2 HotOverlapBody (Mem emulates the F6 $1FF8
+Hit path runs the real bank3 HotOverlapBody (Mem emulates the F6 $1FF9
 switch, RoomRects pointed at a known hot-count-0 stream) — so the C=1
 tail contract is exercised too.
 
@@ -82,16 +82,22 @@ if missing:
     sys.exit(f"bank0.lst labels missing: {sorted(missing)}")
 PHM = L0["PlayerHitsMap"]
 
-need2 = {"M5RoomRects", "M0RoomRects", ".MothColsOk", "M0Rows",
-         "RoomPF0Lo"}
+need2 = {".MothColsOk", "RoomPF0Lo"}
 # C2 (2026-10-20): the level/model BLOCKS moved into bank2, so the code
 # labels and the block labels come from ONE listing now (bank3 is the boot
 # stub only). C3: a shape block ends in `<tag>Rows` (3 row-pool indices).
+# C7 (2026-10-20): the SHAPE half (model blocks, the row pool and the async
+# extras streams) moved back to bank3 with the walkers that read them; bank2
+# keeps the room/enemy tables. Code labels still come from bank2.lst, block
+# data labels from bank3.lst.
 blk = {"M5RoomRects", "M0RoomRects", "M0Rows",
        "LEVEL1_AsyncExtras"}
 L2 = parse_labels(FROZEN / "bank2.lst", need2 | blk)
+L3 = parse_labels(FROZEN / "bank3.lst", blk)
 if not need2 <= L2.keys():
     sys.exit(f"bank2 labels missing: {sorted(need2 - L2.keys())}")
+if not blk <= L3.keys():
+    sys.exit(f"bank3 labels missing: {sorted(blk - L3.keys())}")
 
 PF0_BUF = 0xC3
 YTOROW = [min(i // 12, 2) for i in range(48)]  # kernel YToRowTable: 36
@@ -298,10 +304,10 @@ def asym_checks(rows: list[str]) -> int:
     # C5 (2026-10-20): MetaA/MetaB live in the level's AsyncExtras record
     # (level 1 room 0 is an async room; its record is ordinal 1, so the pair
     # is at LEVEL1_AsyncExtras+1/+2). M1X = 8*(m1_col+1)-1, 0 = no M1.
-    m1n = BANK2[L2["LEVEL1_AsyncExtras"] - 0xF000 + 1] >> 4
+    m1n = BANK3[L3["LEVEL1_AsyncExtras"] - 0xF000 + 1] >> 4
     m1x = 8 * m1n - 1 if m1n else 0
-    r[L2["RoomPF0Lo"] - 0x80] = BANK2[L2["LEVEL1_AsyncExtras"] - 0xF000 + 1]
-    r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK2[L2["LEVEL1_AsyncExtras"] - 0xF000 + 2]
+    r[L2["RoomPF0Lo"] - 0x80] = BANK3[L3["LEVEL1_AsyncExtras"] - 0xF000 + 1]
+    r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK3[L3["LEVEL1_AsyncExtras"] - 0xF000 + 2]
     r[L0["EnemyDeadMask"] - 0x80] = 0
     # packed configs: (right_col, band mask); 0 = symmetric control
     configs = [(0, 0), (0, 1), (5, 4), (9, 7), (9, 4)]
@@ -401,14 +407,14 @@ def hot_death_checks(rows: list[str]) -> int:
     mem = Mem()
     load_case(mem, rows)
     r = mem.ram
-    r[L0["RoomRectsLo"] - 0x80] = L2["M0RoomRects"] & 0xFF
-    r[L0["RoomRectsHi"] - 0x80] = L2["M0RoomRects"] >> 8
-    r[L2["RoomPF0Lo"] - 0x80] = BANK2[L2["LEVEL1_AsyncExtras"] - 0xF000 + 1]
-    r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK2[L2["LEVEL1_AsyncExtras"] - 0xF000 + 2]
+    r[L0["RoomRectsLo"] - 0x80] = L3["M0RoomRects"] & 0xFF
+    r[L0["RoomRectsHi"] - 0x80] = L3["M0RoomRects"] >> 8
+    r[L2["RoomPF0Lo"] - 0x80] = BANK3[L3["LEVEL1_AsyncExtras"] - 0xF000 + 1]
+    r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK3[L3["LEVEL1_AsyncExtras"] - 0xF000 + 2]
     r[L0["BombPacked"] - 0x80] = 0
     packed = 0x11                         # rc=0, band0 -> tramp crosses
     r[L0["LineCount"] - 0x80] = packed
-    m1n = BANK2[L2["LEVEL1_AsyncExtras"] - 0xF000 + 1] >> 4
+    m1n = BANK3[L3["LEVEL1_AsyncExtras"] - 0xF000 + 1] >> 4
     m1x = 8 * m1n - 1 if m1n else 0
     hot_rects = ((0, 1, 2, 1), (16, 1, 2, 1))   # x,y,w,h (4px cols/tile rows)
     checks = 0
@@ -454,8 +460,8 @@ def load_case(mem: Mem, rows: list[str]) -> None:
     mem.ram[L0["RoomY"] - 0x80] = 0
     mem.ram[L0["PlayerDir"] - 0x80] = 0
     mem.ram[L0["BombPacked"] - 0x80] = 0
-    mem.ram[L0["RoomRectsLo"] - 0x80] = L2["M5RoomRects"] & 0xFF
-    mem.ram[L0["RoomRectsHi"] - 0x80] = L2["M5RoomRects"] >> 8
+    mem.ram[L0["RoomRectsLo"] - 0x80] = L3["M5RoomRects"] & 0xFF
+    mem.ram[L0["RoomRectsHi"] - 0x80] = L3["M5RoomRects"] >> 8
 
 
 def main() -> int:

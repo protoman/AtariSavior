@@ -280,10 +280,12 @@ MOTH_ENTRY = 0xFEF0
 MOTH_EXIT = 0xFC49
 # sta $1FF8 (entry) / sta $1FF6 (exit) — the switch halves of the E4 tramps.
 MOTH_STA18 = bytes([0x8D, 0xF8, 0x1F])
+MOTH_STA19 = bytes([0x8D, 0xF9, 0x1F])   # C7: bank3 halves
 MOTH_STA16 = bytes([0x8D, 0xF6, 0x1F])
 
 # S5.3 HOF entry tramp — same pattern as the moth entry: bank0 executes
-# `sta $1FF8` at $FE90, the fetch at $FE93 comes from bank2 = `jmp` target.
+# `sta $1FF9` (C7: bank3) at $FFEC, the fetch at $FFEF comes from bank3 =
+# `jmp` target.
 # (shifted +$10 from $FE80 when the aligned ObjColorTab/ObjSprites pair
 #  took $FE00-$FE8F; mirrors in both banks moved together.)
 HOF_ENTRY = 0xFFEC   # A3: moved off $FE90 (bank3 $FE93 = .OSline)
@@ -330,6 +332,8 @@ def check_moth_tramp(src: Path) -> None:
     labels2, _ = parse_lst(lst2_path.read_text(errors="replace").splitlines())
     labels1, _ = parse_lst((src / "bank1.lst").read_text(
         errors="replace").splitlines())
+    labels3, _ = parse_lst((src / "bank3.lst").read_text(
+        errors="replace").splitlines())
 
     eoff = MOTH_ENTRY - 0xF000
     e0 = banks[0][eoff:eoff + 6]
@@ -353,25 +357,25 @@ def check_moth_tramp(src: Path) -> None:
         err(f"UE_MothTramp at {shown}, expected ${MOTH_ENTRY:04X} "
             "(dispatch jmp target moved off the pad)")
 
-    # HOF tramp ($FFEC) — bank0 runs `sta $1FF8`, the opcode+operand are
-    # fetched from BANK2's image at +3 ($FFEF). (C2 2026-10-20: the body moved
-    # from bank3 to bank2's $F8B7 cluster with the rest of the record walkers.)
+    # HOF tramp ($FFEC) — bank0 runs `sta $1FF9`, the opcode+operand are
+    # fetched from BANK3's image at +3 ($FFEF). (C7 2026-10-20: the body went
+    # back to bank3 with the shape/extras stream it walks.)
     hoff = HOF_ENTRY - 0xF000
     g0 = banks[0][hoff:hoff + 6]
-    g2 = banks[2][hoff + 3:hoff + 6]
-    if g0[:3] != MOTH_STA18:
+    g2 = banks[3][hoff + 3:hoff + 6]
+    if g0[:3] != MOTH_STA19:
         err(f"bank0 HOF entry ${HOF_ENTRY:04X} = {g0.hex()} "
-            f"(expected {MOTH_STA18.hex()} + jmp)")
+            f"(expected {MOTH_STA19.hex()} + jmp)")
     if len(g2) != 3 or g2[0] != 0x4C:
-        err(f"bank2 HOF image ${HOF_ENTRY + 3:04X} = {g2.hex()} "
+        err(f"bank3 HOF image ${HOF_ENTRY + 3:04X} = {g2.hex()} "
             "(expected jmp image)")
-    hof = labels2.get("HotOverlapBody")
+    hof = labels3.get("HotOverlapBody")
     hof_tgt = (g2[1] | (g2[2] << 8)) if len(g2) == 3 else None
     if hof is None:
-        err("HotOverlapBody label not found in bank2.lst")
+        err("HotOverlapBody label not found in bank3.lst")
     elif hof_tgt != hof:
         err(f"HOF entry jmp ${hof_tgt if hof_tgt is not None else 0:04X} != "
-            f"bank2 HotOverlapBody ${hof:04X} (tramp operand stale)")
+            f"bank3 HotOverlapBody ${hof:04X} (tramp operand stale)")
     hof_tramp = labels0.get("HotOverlapFlag")
     if hof_tramp != HOF_ENTRY:
         shown = f"${hof_tramp:04X}" if hof_tramp is not None else "None"
@@ -473,7 +477,7 @@ CORRIDOR_PADS = (
     ("CallPad_IsRoomDark", 0xFC0E, 1, "IsRoomDark"),
     ("CallPad_SetRoomDark", 0xFC11, 1, "SetRoomDark"),
     ("CallPad_UpdateLaserSound", 0xFC14, 1, "UpdateLaserSound"),
-    ("CallPad_BuildColupF", 0xFC17, 2, "BuildColupF"),
+    ("CallPad_BuildColupF", 0xFC17, 3, "BuildColupF"),   # C7: back to bank3
     ("CallPad_BombMarkWalls", 0xFC1A, 1, "BombMarkWalls"),
     # $FC1D (CallPad_SelectObject) RETIRED by A1 2026-10-20:
     # SelectActiveObject is back in bank0, called directly. The 3 bytes
@@ -993,17 +997,33 @@ def check_level_format(src: Path) -> None:
         if shape_count > 64:
             err(f"LEVEL_SHAPE_COUNT = {shape_count} > 64 — the room record "
                 "shape index is 6 bits (b5-0)")
+    # C7 (2026-10-20): the address table lives in BANK3 with the blocks it
+    # points at (models_data.asm), so bank2's EnterRoomB2 stages only the
+    # 6-bit index and needs no bank3 label.
+    mda_path = src / "generated" / "models_data.asm"
+    mda_text = mda_path.read_text(errors="replace") if mda_path.exists() else ""
     table = re.search(r"^LEVEL_ShapeTable:\n((?:  \.word \w+RoomRects\n)+)",
-                      idx_text, re.M)
+                      mda_text, re.M)
     if not table:
-        err("levels_index.asm must emit LEVEL_ShapeTable (C2 word table)")
+        err("models_data.asm must emit LEVEL_ShapeTable (C7: bank3 word table)")
     else:
         words = len(re.findall(r"^  \.word ", table.group(1), re.M))
         if words != shape_count:
             err(f"LEVEL_ShapeTable has {words} words but LEVEL_SHAPE_COUNT = "
                 f"{shape_count}")
     used: set = set()
-    for path in sorted((src / "generated").glob("level_*_rooms.asm")):
+    # C7: check only THIS stage's level files (LEVEL_COUNT from the index) —
+    # a leftover 210-room tree in generated/ must not be validated against a
+    # 4-level ROM.
+    mcount = re.search(r"^LEVEL_COUNT = (\d+)$", idx_text, re.M)
+    gen_count = int(mcount.group(1)) if mcount else 0
+    level_paths = [src / "generated" / f"level_{n:03d}_rooms.asm"
+                   for n in range(1, gen_count + 1)]
+    level_paths = [p for p in level_paths if p.exists()]
+    if len(level_paths) != gen_count:
+        err(f"{gen_count - len(level_paths)} of LEVEL_COUNT={gen_count} "
+            "generated level table files are missing")
+    for path in level_paths:
         text = path.read_text(errors="replace")
         if "RoomDataTable" in text or "RoomEnemies" in text:
             err(f"{path.name}: stale room-table label (RoomDataTable/"
@@ -1060,15 +1080,22 @@ def check_level_format(src: Path) -> None:
             if int(count) > 3:
                 err(f"{path.name}: room has {count} enemy records > 3 "
                     "(MAX_ENEMIES)")
-        # --- C5 extras stream: one record per owns-extras room, in order ---
+        # --- C5/C7 extras stream: one record per owns-extras room, in order.
+        # C7 (2026-10-20): the stream is its own file (BANK3 — a feature
+        # room's hot stream lives inside the record and the VBL walkers read
+        # it in-bank).
+        extras_p = path.with_name(path.name.replace("_rooms.asm",
+                                                    "_extras.asm"))
+        extras_text = (extras_p.read_text(errors="replace")
+                       if extras_p.exists() else "")
         hit = re.search(r"^LEVEL\d+_AsyncExtras:\n((?:  \.byte[^\n]*\n)+)",
-                        text, re.M)
+                        extras_text, re.M)
         records = hit.group(1).splitlines() if hit else []
         if ordinals != list(range(1, len(ordinals) + 1)):
             err(f"{path.name}: extras ordinals {ordinals} are not 1..N in "
                 "room order (the loader walks the stream by ordinal)")
         if len(records) != len(ordinals):
-            err(f"{path.name}: {len(records)} AsyncExtras records for "
+            err(f"{extras_p.name}: {len(records)} AsyncExtras records for "
                 f"{len(ordinals)} owns-extras rooms")
         for n, line in enumerate(records):
             payload = line.split(".byte", 1)[1].split(";")[0]
@@ -1198,27 +1225,83 @@ def check_shape_blocks(src: Path) -> None:
             "block must store 3 row-pool indices (C3)")
 
     # --- the loader must read the pool, and the pool must be included -----
-    bank2_p = src / "bank2.asm"
-    if bank2_p.exists():
-        loader = bank2_p.read_text(errors="replace")
+    # C7 (2026-10-20): the loader and the pool live in BANK3 now — the shapes
+    # (and the walkers that read them) moved back together, so the reads are
+    # plain in-bank (FetchPtr),Y.
+    bank3_p = src / "bank3.asm"
+    if bank3_p.exists():
+        loader = bank3_p.read_text(errors="replace")
         if not re.search(r"lda\s+RowPoolPF0,X", loader, re.M):
-            err("bank2.asm B3RoomBlocks does not read RowPoolPF0,X — the "
+            err("bank3.asm B3RoomBlocks does not read RowPoolPF0,X — the "
                 "row-pool expansion is missing (C3)")
         if re.search(r"cpy\s+#9\b", loader):
-            err("bank2.asm still assembles the retired 9-byte PF copy "
+            err("bank3.asm still assembles the retired 9-byte PF copy "
                 "(cpy #9) — C3 replaces it with 3 pool lookups")
+        if "LEVEL_ShapeTable" not in loader:
+            err("bank3.asm B3RoomBlocks does not read LEVEL_ShapeTable — the "
+                "shape index must resolve in-bank (C7)")
     spill = gen / "spill_bank3.asm"
     if not spill.exists() or "models_data.asm" not in spill.read_text(
             errors="replace"):
         err("generated/spill_bank3.asm must include models_data.asm — the "
-            "row pool lives in the level-data block slot (C3)")
-    lst = src / "bank2.lst"
+            "row pool lives in bank3's $F010 data window (C7)")
+    lst = src / "bank3.lst"
     if lst.exists():
         labels, _ = parse_lst(lst.read_text(errors="replace").splitlines())
-        for name in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2"):
+        for name in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2",
+                     "LEVEL_ShapeTable", "LevExtrasLo", "LevExtrasHi"):
             if name not in labels:
-                err(f"bank2.lst has no {name} — the pool did not assemble "
-                    "into the level-data slot")
+                err(f"bank3.lst has no {name} — the level-data window did not "
+                    "assemble into bank3 ($F010)")
+
+
+def check_bank3_entry(src: Path) -> None:
+    """C7 (2026-10-20): the ONE cross-bank call of the room load.
+
+    bank2's EnterRoomB2 ends `jmp ERBlocksPad`, whose live half is a 3-byte
+    `sta $1FF9` at $F450. The F6 switch happens on that write, so the opcode
+    fetch at $F453 already comes from BANK3 — B3RoomBlocks MUST be assembled
+    at $F453 (`bank3.asm` `.ds $F453 - *, 0`). A shift here is a silent jump
+    into whatever bank3 holds at $F453, exactly the raft-twin failure mode.
+
+    Also asserts the body split: B3RoomBlocks/ExtrasLoad must NOT resolve in
+    bank2 any more (the "data in two banks, readers split" state), and bank3
+    must carry its own ReturnPad at $FBF8 (`sta $1FF6`; the rts is bank0's).
+    """
+    for bank in (2, 3):
+        b = src / f"bank{bank}.bin"
+        l = src / f"bank{bank}.lst"
+        if not b.exists() or not l.exists():
+            err(f"bank{bank}.bin/.lst missing (bank3 entry check)")
+            return
+    banks = {b: (src / f"bank{b}.bin").read_bytes() for b in (2, 3)}
+    labels = {b: parse_lst((src / f"bank{b}.lst").read_text(
+        errors="replace").splitlines())[0] for b in (2, 3)}
+    pad = banks[2][0xF450 - 0xF000:0xF450 - 0xF000 + 3]
+    if pad != MOTH_STA19:
+        err(f"bank2 ERBlocksPad ${0xF450:04X} = {pad.hex()} != sta $1FF9 "
+            f"({MOTH_STA19.hex()}) — the shape reader is bank3's")
+    if labels[3].get("B3RoomBlocks") != 0xF453:
+        got = labels[3].get("B3RoomBlocks")
+        err(f"bank3 B3RoomBlocks at "
+            f"${got if got is not None else -1:04X} != $F453 — the fetch after "
+            "bank2's `sta $1FF9` at $F450 lands here")
+    for name in ("B3RoomBlocks", "ExtrasLoad", "BuildColupF", "PhaseBlink",
+                 "HotOverlapBody", "B3StageBand", "HOVFeatEntry"):
+        if name in labels[2]:
+            err(f"bank2.lst still defines {name} — the shape half must live "
+                "ONLY in bank3 (a duplicate body is a silent wrong-bank read)")
+        if name not in labels[3]:
+            err(f"bank3.lst has no {name} — the shape half did not assemble "
+                "into bank3")
+    rp = banks[3][PAD_LO - 0xF000:PAD_LO - 0xF000 + 3]
+    if rp != bytes([0x8D, 0xF6, 0x1F]):
+        err(f"bank3 ${PAD_LO:04X} = {rp.hex()} != sta $1FF6 — every bank3 body "
+            "tails jmp $FBF8 and needs this half")
+    if labels[3].get("ReturnPad") != PAD_LO:
+        got = labels[3].get("ReturnPad")
+        err(f"bank3 ReturnPad at ${got if got is not None else -1:04X} != "
+            f"${PAD_LO:04X}")
 
 
 def check_tramp_targets(src: Path) -> None:
@@ -1311,9 +1394,9 @@ def check_callpads(src: Path) -> None:
         return banks[bank][addr - 0xF000:addr - 0xF000 + n]
 
     # --- ReturnPad: every bank that HAS bodies switches to bank0; bank0
-    # serves the `rts`. C3 2026-10-20: bank3 is boot-only (no bodies), so it is
-    # no longer expected to carry the pad — 0/1/2 are.
-    for idx in (0, 1, 2):
+    # serves the `rts`. C7 2026-10-20: bank3 has bodies again (the shape
+    # half), so 0/1/2/3 all carry the pad.
+    for idx in (0, 1, 2, 3):
         rp = labels[idx].get("ReturnPad")
         if rp is not None and rp != PAD_LO:
             err(f"bank{idx} ReturnPad ${rp:04X} != ${PAD_LO:04X} (every "
@@ -1482,7 +1565,7 @@ def check_equ_sync(src: Path) -> None:
         err(f"equ-sync: kernel ZPSpare89 = ${rw1 if rw1 is not None else -1:02X}"
             f" != $89 (the freed rect-count slot must stay allocated)")
 
-    for bank in ("bank1.asm", "bank2.asm"):
+    for bank in ("bank1.asm", "bank2.asm", "bank3.asm"):
         p = src / bank
         if not p.exists():
             err(f"{bank} missing (equ-sync)")
@@ -1544,8 +1627,32 @@ def check_room_txt(path: Path, label: str) -> None:
             err(f"{label}: row {li} has invalid chars {sorted(bad)}")
 
 
-def check_levels(src: Path) -> None:
-    rooms_dir = src / "rooms"
+def stage_rooms_dir(stage_path: Path) -> Path:
+    """Materialise a STAGE_FILE as a per-level JSON tree (C7).
+
+    `build.sh STAGE_FILE=...` builds a stage that is NOT src/rooms — the
+    level/model cross-checks must then read the same source the converter
+    did, or every check compares the new ROM against the user's live stage
+    and fails on unrelated content. The generated room .txt mirrors already
+    sit next to the stage file (convert_level --stage writes them there).
+    """
+    import tempfile  # noqa: PLC0415
+    data = json.loads(stage_path.read_text())
+    stage = data.get("stage", data)
+    out = Path(tempfile.mkdtemp(prefix="verify_stage_"))
+    (out / "models").mkdir(parents=True, exist_ok=True)
+    (out / "models" / "models.json").write_text(
+        json.dumps({"models_file": {"models": stage.get("models", [])}}))
+    for n, level in enumerate(stage.get("levels", []), start=1):
+        payload = level.get("level", level)
+        (out / f"level_{n:03d}.json").write_text(json.dumps({"level": payload}))
+    return out
+
+
+def check_levels(src: Path, rooms_dir: Path | None = None,
+                 txt_dir: Path | None = None) -> None:
+    rooms_dir = rooms_dir or src / "rooms"
+    txt_dir = txt_dir or rooms_dir
     models: dict = {}
     mp = rooms_dir / "models" / "models.json"
     if mp.exists():
@@ -1649,7 +1756,7 @@ def check_levels(src: Path) -> None:
             lvl = doc.get("level", doc)
             rooms = sorted(lvl.get("rooms") or [],
                            key=lambda r: r["room_id"])
-            gen = gen_dir / f"level_{level_n:03d}_rooms.asm"
+            gen = gen_dir / f"level_{level_n:03d}_extras.asm"
             if not gen.exists():
                 err(f"{gen.name}: missing (async extras cross-check)")
                 continue
@@ -1885,7 +1992,7 @@ def check_levels(src: Path) -> None:
                     err(f"{label}: {k}={v!r} out of 0..255")
 
             check_room_txt(
-                rooms_dir / f"level_{level_n:03d}_room_{rid + 1:03d}.txt", label)
+                txt_dir / f"level_{level_n:03d}_room_{rid + 1:03d}.txt", label)
 
 
 def sync_kernel_literals(src: Path) -> int:
@@ -2173,15 +2280,15 @@ def sync_hof_literal(src: Path) -> int:
     label too, so this is the only literal left. Size-preserving: only the 4
     hex digits change, so bank0's addresses are unaffected.
     """
-    lst2 = src / "bank2.lst"
-    if not lst2.exists():
-        print("sync-hof: bank2.lst missing — assemble bank2 first",
+    lst3 = src / "bank3.lst"
+    if not lst3.exists():
+        print("sync-hof: bank3.lst missing — assemble bank3 first",
               file=sys.stderr)
         return 1
-    labels, _ = parse_lst(lst2.read_text(errors="replace").splitlines())
+    labels, _ = parse_lst(lst3.read_text(errors="replace").splitlines())
     addr = labels.get("HotOverlapBody")
     if addr is None:
-        print("sync-hof: HotOverlapBody label not in bank2.lst",
+        print("sync-hof: HotOverlapBody label not in bank3.lst",
               file=sys.stderr)
         return 1
     kernel_p = src / "kernel.asm"
@@ -2252,9 +2359,16 @@ def main() -> int:
     check_exit_handlers(src)
     check_level_format(src)
     check_shape_blocks(src)
+    check_bank3_entry(src)
     check_tramp_targets(src)
     check_callpads(src)
-    check_levels(src)
+    import os as _os  # noqa: PLC0415
+    _stage = _os.environ.get("STAGE_FILE")
+    if _stage and Path(_stage).exists():
+        print(f"level source: stage file {_stage} (STAGE_FILE override)")
+        check_levels(src, stage_rooms_dir(Path(_stage)), Path(_stage).parent)
+    else:
+        check_levels(src)
     check_equ_sync(src)
     check_frozen_addrs(src)
 

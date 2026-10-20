@@ -47,14 +47,16 @@ fi
 python3 "$ROOT/tools/verify_build.py" --precheck "$DIR"
 
 # Assemble each bank (from src/ so include paths resolve)
-# C2 (2026-10-20): single pass per bank. bank2 now owns the level data AND its
-# walkers, so the old A3 dance (bank3 pass 1 -> --sync-bank3-labels -> bank2 ->
-# ... -> bank3 pass 2) is gone: bank2 first, then the two bank0 literals that
-# track it (HOF pad operand, LEVEL_DATA_ADDR), then bank0 -> bank1 -> bank3.
+# C7 (2026-10-20): the level-data subsystem is SPLIT — bank3 owns the shape
+# blocks + extras streams and every walker that reads them, bank2 owns the
+# level/room/enemy tables and theirs. bank3 assembles FIRST (the HOF pad
+# literal is patched from its listing), then bank2, then the bank0 literals.
 cd "$DIR"
+dasm bank3.asm -f3 -obank3.bin -lbank3.lst
+echo "  bank3: OK"
 dasm bank2.asm -f3 -obank2.bin -lbank2.lst
 echo "  bank2: OK"
-# kernel's HotOverlapFlag pad ends `jmp $xxxx` -> bank2 HotOverlapBody
+# kernel's HotOverlapFlag pad ends `jmp $xxxx` -> bank3 HotOverlapBody
 python3 "$ROOT/tools/verify_build.py" --sync-hof "$DIR"
 python3 "$ROOT/tools/verify_build.py" --sync "$DIR"
 dasm kernel.asm -f3 -obank0.bin -lbank0.lst -sgenerated/symbols.asm
@@ -64,8 +66,6 @@ echo "  bank0: OK"
 python3 "$ROOT/tools/verify_build.py" --sync-overscan "$DIR"
 dasm bank1.asm -f3 -obank1.bin -lbank1.lst
 echo "  bank1: OK"
-dasm bank3.asm -f3 -obank3.bin -lbank3.lst
-echo "  bank3: OK"
 
 # Pad each bank to exactly 4K (DASM doesn't emit trailing zeros)
 for i in 0 1 2 3; do

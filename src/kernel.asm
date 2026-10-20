@@ -2332,7 +2332,7 @@ ENEMY_RAFT     = 7             ; type-7 enemy record = the moving, rideable raft
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 4             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $F716        ; frozen address of bank2's LevelDataTable
+LEVEL_DATA_ADDR = $F307        ; frozen address of bank2's LevelDataTable
                                 ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
                                 ;  −$FA86 as the ≤2-object room migration
                                 ;  shrank the tables; check_frozen_addrs
@@ -2968,7 +2968,8 @@ CallPad_SetRoomDark:
 CallPad_UpdateLaserSound:
     sta $1FF7
 CallPad_BuildColupF:
-    sta $1FF8                   ; C2: body lives in bank2 now ($F9D9 cluster)
+    sta $1FF9                   ; C7: body lives in bank3 now ($F9D9 cluster —
+                                ;   it walks the shape/extras stream there)
 CallPad_BombMarkWalls:
     sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
     .byte 0,0,0                 ; $FC1D-$FC1F: CallPad_SelectObject retired by
@@ -3910,16 +3911,15 @@ TallyTramp:
     jmp TallyEntry
 
 ; ------------------------------------------------------------------------------
-; HotOverlapFlag — bank2 entry tramp (C2 2026-10-20: the body moved from
-; bank3 to bank2's $F8B7 cluster). Moved off $FE90 (bank3 $FE93 belongs to
-; OvShutBand's .OSline) into the 6-byte gap after TallyTramp. bank0 executes
-; `sta $1FF8`; the `jmp` at +3 is fetched from bank2's image at $FFEF
-; (guard: check_moth_tramp).
+; HotOverlapFlag — bank3 entry tramp (C7 2026-10-20: the hot walk went back
+; to bank3 with the shape/extras stream it reads). Moved off $FE90 into the
+; 6-byte gap after TallyTramp. bank0 executes `sta $1FF9`; the `jmp` at +3 is
+; fetched from bank3's image at $FFEF (guard: check_moth_tramp).
 ; ------------------------------------------------------------------------------
     .ds $FFEC - *, 0
 HotOverlapFlag:
-    sta $1FF8                   ; select bank2 (record stream lives there)
-    jmp $F8F8                   ; bank2 HotOverlapBody (synced by verify_build)
+    sta $1FF9                   ; select bank3 (record stream lives there)
+    jmp $F8F8                   ; bank3 HotOverlapBody (synced by verify_build)
     .ds $FFF2 - *, 0            ; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
 
 ; ------------------------------------------------------------------------------

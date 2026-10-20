@@ -92,7 +92,7 @@ echo "freeze: refreshing src/tests/generated/ from the staged conversion ..."
 for f in "$DIR"/generated/level_[0-9][0-9][0-9]_*.asm \
          "$DIR"/generated/levels.asm "$DIR"/generated/levels_data.asm \
          "$DIR"/generated/levels_index.asm "$DIR"/generated/levels_equ.asm \
-         "$DIR"/generated/models_data.asm \
+         "$DIR"/generated/models_data.asm "$DIR"/generated/levels_extras.asm \
          "$DIR"/generated/spill_*.asm; do
     [ -f "$f" ] && cp "$f" "$DIR/tests/generated/$(basename "$f")"
 done

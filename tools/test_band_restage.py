@@ -44,7 +44,7 @@ Mem = _CM.Mem
 
 need0 = {"EnterRoom", "RoomBandColor", "LevelPFDataLo", "LevelPFDataHi",
          "LevelRoomN", "EnemyCount", "RoomNo", "RoomRectsLo", "RoomRectsHi",
-         "EnemyDataLo", "EnemyDataHi", "PF0Buf"}
+         "EnemyDataLo", "EnemyDataHi", "PF0Buf", "Level"}
 L0 = parse_labels(SRC / "bank0.lst", need0)
 missing0 = need0 - L0.keys()
 if missing0:
@@ -66,7 +66,7 @@ if {"RoomMetaA", "RoomMetaB"} - ZMETA.keys():
 
 # C3 (2026-10-20): the row dictionary — the shape block stores 3 indices and
 # the loader expands them through these three SoA columns into PF0Buf.
-POOL = parse_labels(SRC / "bank2.lst",
+POOL = parse_labels(SRC / "bank3.lst",
                     {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2"})
 if {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2"} - POOL.keys():
     sys.exit(f"bank2.lst labels missing: {sorted(set(POOL) or {'RowPool'})}")
@@ -78,7 +78,8 @@ import convert_room as CR  # noqa: E402
 MODELS = CL.load_models(SRC / "rooms" / "models" / "models.json")
 
 
-def enter_room(mem: Mem, table: int, room_count: int, room: int) -> None:
+def enter_room(mem: Mem, table: int, room_count: int, room: int,
+               level: int = 1) -> None:
     """Stage what LoadLevel stages (C4): the level block base + its room count.
     The RoomPositions / RoomCounts / enemy-record bases are the block's
     +n / +2n / +3n offsets (C2 2026-10-20: 3 B shape-index room records),
@@ -87,6 +88,10 @@ def enter_room(mem: Mem, table: int, room_count: int, room: int) -> None:
     r[L0["LevelPFDataLo"] - 0x80] = table & 0xFF
     r[L0["LevelPFDataHi"] - 0x80] = table >> 8
     r[L0["LevelRoomN"] - 0x80] = room_count
+    # C7 (2026-10-20): ExtrasLoad indexes bank3's per-level extras base table
+    # with `Level` ($A3) — LoadLevelB2 sets it in the real game; the harness
+    # stages what LoadLevel would (level is 1-based on the command line).
+    r[L0["Level"] - 0x80] = level - 1
     mpu = MPU(memory=mem)
     mpu.pc = L0["EnterRoom"]
     mpu.a = room
@@ -107,7 +112,7 @@ def main() -> int:
     # C2: model block addresses (the shared M<id> blocks) — an async room must
     # NOT land on one of these, whatever its shape index says.
     model_blocks = parse_labels(
-        SRC / "bank2.lst", {f"M{mid}RoomRects" for mid in range(16)})
+        SRC / "bank3.lst", {f"M{mid}RoomRects" for mid in range(16)})
     for n, syms in levels:
         data = json.loads((ROOMS / f"level_{n:03d}.json").read_text())
         level = data.get("level", data)
@@ -118,7 +123,7 @@ def main() -> int:
                   for r in rooms]
         for i, room in enumerate(rooms):
             mem = Mem()
-            enter_room(mem, table, len(rooms), i)
+            enter_room(mem, table, len(rooms), i, n)
             band = mem.ram[L0["RoomBandColor"] - 0x80]
             want_on = bool(room.get("bottom_band"))
             if want_on:
@@ -169,7 +174,7 @@ def main() -> int:
             # C4/C3 (2026-10-20): block = hot stream | 3 row-pool indices;
             # the rows sit at block + 1 + 5*hot (the old raw-PF offset), so
             # the loader expands them through RowPoolPF0/1/2 into PF0Buf.
-            blocks = _CM.BANK2
+            blocks = _CM.BANK3
             nhot = blocks[shape - 0xF000]
             rows_at = shape + 1 + 5 * nhot
             idx = blocks[rows_at - 0xF000:rows_at - 0xF000 + 3]

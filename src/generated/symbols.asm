@@ -333,7 +333,7 @@ LaserState               00c0              (R )
 LaserX                   0083              (R )
 Level                    00a3              (R )
 LEVEL_COUNT              0004              (R )
-LEVEL_DATA_ADDR          f716                  
+LEVEL_DATA_ADDR          f307                  
 LEVEL_FORMAT             0005                  
 LevelConnSpare           00a2                  
 LevelEnemySpare          00af                  

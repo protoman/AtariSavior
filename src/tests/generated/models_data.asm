@@ -89,3 +89,20 @@ RowPoolPF1:
 RowPoolPF2:
   .byte $00, $00, $3f, $ff, $3f, $00, $ff, $ff, $ff, $fc, $ff, $00
 
+
+; C7 (2026-10-20): shape ADDRESS table — bank3's B3RoomBlocks
+; reads it in-bank; the 6-bit room-record index is the row.
+; LEVEL_SHAPE_COUNT = 11 (6-bit index ceiling: 64)
+LEVEL_ShapeTable:
+  .word M0RoomRects
+  .word M1RoomRects
+  .word M2RoomRects
+  .word M3RoomRects
+  .word M4RoomRects
+  .word M5RoomRects
+  .word M6RoomRects
+  .word M7RoomRects
+  .word M8RoomRects
+  .word M10RoomRects
+  .word M11RoomRects
+

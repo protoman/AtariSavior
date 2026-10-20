@@ -155,12 +155,12 @@ def main() -> None:
     # Patch the record's y and w in the PRIVATE bank copy: fields must be
     # ignored (band stays 1, prefix stays 10).
     off = W.L3["M4RoomRects"] - 0xF000
-    count = W.BANKS[2][off]                # hot-record count (C4: no rects)
+    count = W.BANKS[3][off]                # hot-record count (C4: no rects)
     rec = off + 1                          # first record's class byte
-    assert count and W.BANKS[2][rec] == 0x82, \
-        f"fixture class {W.BANKS[2][rec]:02X}"
-    W.BANKS[2][rec + 2] = 2                # y(band) -> 2 (ignored)
-    W.BANKS[2][rec + 3] = 4                # w -> 4 cells (ignored)
+    assert count and W.BANKS[3][rec] == 0x82, \
+        f"fixture class {W.BANKS[3][rec]:02X}"
+    W.BANKS[3][rec + 2] = 2                # y(band) -> 2 (ignored)
+    W.BANKS[3][rec + 3] = 4                # w -> 4 cells (ignored)
     assert rec + 4 <= off + 1 + 5, "record stride changed"
 
     # --- 1. arm + ignored record fields ---------------------------------
@@ -265,7 +265,7 @@ def main() -> None:
     print("  nopush: grow edge leaves RoomX untouched (left + right)")
 
     # --- 13. static: no record reads, no push, stride kept --------------
-    b3 = (SRC / "bank2.asm").read_text()  # C2: walkers in bank2
+    b3 = (SRC / "bank3.asm").read_text()  # C7: the crunch walkers are bank3
     ph = b3[b3.index("PhHcrEntry:"):]
     ph = ph[:ph.index("; Prefix tables")]
     if "(FetchPtr),Y" in ph:
