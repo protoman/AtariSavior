@@ -17,10 +17,11 @@ LEVEL2_RoomConnections:
   .byte $f1, $ff ; room 0
   .byte $0f, $ff ; room 1
 
-; Per-room enemy records: (count<<5 | first record index), bottom_color.
+; Per-room enemy records: ONE byte (count<<6 | first record index<<1 | bottom-band flag). The band COLOR is the global BAND_COLOR (one water
+; color per game — the converter rejects a second one).
 LEVEL2_RoomEnemies:
-  .byte $00, $00 ; room 0: 0 record(s) from 0
-  .byte $20, $80 ; room 1: 1 record(s) from 0
+  .byte $00 ; room 0: 0 record(s) from 0
+  .byte $41 ; room 1: 1 record(s) from 0, bottom band
 
 ; Enemy data: 1 enemy records across 2 rooms, 4 bytes each (type,x,y,dir).
 LEVEL2_EnemyDataTable:

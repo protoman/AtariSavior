@@ -746,7 +746,7 @@
     731  f560		       00 c2	   EnemyRamP  =	$C2	; free-running frame clock (bank0 RefreshEnemyY incs)
     732  f560		       00 98	   RoomNo     =	$98
     733  f560		       00 9f	   LevelPFDataLo =	$9F	; level block base (C4: conn/enemy ptrs are
-    734  f560		       00 a0	   LevelPFDataHi =	$A0	;   block offsets +2n/+4n/+6n now)
+    734  f560		       00 a0	   LevelPFDataHi =	$A0	;   block offsets +2n/+4n/+5n now)
     735  f560		       00 a1	   LevelRoomN =	$A1	; rooms in the level (C4 2026-10-20)
     736  f560		       00 e5	   FetchPtr   =	$E5	; moved S3.2 (was $E0) — must match kernel
     737  f560		       00 c1	   EnemyRamD  =	$C1

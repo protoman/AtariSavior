@@ -5,29 +5,33 @@
     include "generated/level_003_rooms.asm"
     include "generated/level_004_rooms.asm"
 
-LEVEL_DATA_STRIDE = 9
+LEVEL_DATA_STRIDE = 7
 LEVEL_COUNT = 4
 
-; Per-level entry (stride 9): start room, miner room/x/y, both wall
+; Per-level entry (stride 7, (d) 2026-10-20): miner room/x, both wall
 ; colors, then the level's room-table base and its ROOM COUNT.
-; Start x/y are the fixed constants 32/24 (kernel.asm LoadLevel).
+; start x/y (32/24), start_room (0) and miner_y (84) are kernel
+; constants now — the converter rejects other values.
 ; Inside a level block (n = ROOM COUNT, C2/C3/C4 2026-10-20):
 ;   base + 0   RoomDataTable    2 B/room (RoomRects ptr; TilePF0 =
 ;                               rects + 2 + 2*nrect)
 ;   base + 2n  RoomConnections  2 B/room
-;   base + 4n  RoomEnemies      2 B/room ((count<<5 | rec idx), band)
-;   base + 6n  EnemyDataTable   4 B/record
+;   base + 4n  RoomEnemies      1 B/room ((count<<6 | rec idx<<1 | band))
+;   base + 5n  EnemyDataTable   4 B/record
+; BAND_COLOR = $80 — the single bottom-band color (every
+; bottom_band room must resolve to it; bank2.asm carries the EQU and
+; test_level_bank asserts the pair).
 LevelDataTable:
-  .byte LEVEL1_START_ROOM, LEVEL1_MINER_ROOM, LEVEL1_MINER_X, LEVEL1_MINER_Y, LEVEL1_WALL_COLOR, LEVEL1_WALL_COLOR2
+  .byte LEVEL1_MINER_ROOM, LEVEL1_MINER_X, LEVEL1_WALL_COLOR, LEVEL1_WALL_COLOR2
   .word LEVEL1_RoomDataTable
   .byte 2 ; LEVEL1 rooms
-  .byte LEVEL2_START_ROOM, LEVEL2_MINER_ROOM, LEVEL2_MINER_X, LEVEL2_MINER_Y, LEVEL2_WALL_COLOR, LEVEL2_WALL_COLOR2
+  .byte LEVEL2_MINER_ROOM, LEVEL2_MINER_X, LEVEL2_WALL_COLOR, LEVEL2_WALL_COLOR2
   .word LEVEL2_RoomDataTable
   .byte 2 ; LEVEL2 rooms
-  .byte LEVEL3_START_ROOM, LEVEL3_MINER_ROOM, LEVEL3_MINER_X, LEVEL3_MINER_Y, LEVEL3_WALL_COLOR, LEVEL3_WALL_COLOR2
+  .byte LEVEL3_MINER_ROOM, LEVEL3_MINER_X, LEVEL3_WALL_COLOR, LEVEL3_WALL_COLOR2
   .word LEVEL3_RoomDataTable
   .byte 6 ; LEVEL3 rooms
-  .byte LEVEL4_START_ROOM, LEVEL4_MINER_ROOM, LEVEL4_MINER_X, LEVEL4_MINER_Y, LEVEL4_WALL_COLOR, LEVEL4_WALL_COLOR2
+  .byte LEVEL4_MINER_ROOM, LEVEL4_MINER_X, LEVEL4_WALL_COLOR, LEVEL4_WALL_COLOR2
   .word LEVEL4_RoomDataTable
   .byte 6 ; LEVEL4 rooms
 

@@ -147,7 +147,7 @@
     146 U00a0		       00	   LevelPFDataHi byte.b		; pointer to level's RoomDataTable (high)
     147 U00a1		       00	   LevelRoomN byte.b		; rooms in this level (C4 2026-10-20): the
     148 U00a2							;   Connections / RoomEnemies / enemy-record
-    149 U00a2							;   bases are the block's +2n / +4n / +6n
+    149 U00a2							;   bases are the block's +2n / +4n / +5n
     150 U00a2		       00	   LevelConnSpare byte.b		; free (was LevelConnHi — its pointer is now
     151 U00a3							;   derived; the byte stays allocated so the
     152 U00a3							;   hand-copied ZP blocks do not shift)
@@ -554,7 +554,7 @@
     553  f05c							; --- Select which object GRP1 draws this frame (miner or enemy) ---
     554  f05c							; Reads EnemyRamY ($E2) — no VBL writer of $E2 exists (Y writers are
     555  f05c							; overscan-only, score ptrs are HUD-only), so no ordering constraint.
-    556  f05c		       20 d9 f5 	      jsr	SelectActiveObject
+    556  f05c		       20 d5 f5 	      jsr	SelectActiveObject
     557  f05f
     558  f05f							; --- PF0: NO per-frame refresh since S3.4 — EnemyRamY moved to $E2-$E4,
     559  f05f							; so $C3-$C5 keep the EnterRoom pattern forever (the old LoadPF0Only
@@ -599,7 +599,7 @@
     598  f077		       e5 f7		      sbc	BombTimer
     599  f079		       29 03		      and	#3
     600  f07b		       a8		      tay
-    601  f07c		       b9 ec f7 	      lda	BombBlinkColors,Y
+    601  f07c		       b9 e8 f7 	      lda	BombBlinkColors,Y
     602  f07f		       4c 84 f0 	      jmp	.BgStore
     603  f082				   .BgIdle
     604  f082		       a9 00		      lda	#COLOR_CAVE_BG
@@ -1301,16 +1301,16 @@
    1300  f315		       20 b6 f3 	      jsr	UpdateEnemies
    1301  f318
    1302  f318							; --- Check miner pickup (advances to next level) ---
-   1303  f318		       20 b5 f5 	      jsr	CheckMinerPickup
+   1303  f318		       20 b1 f5 	      jsr	CheckMinerPickup
    1304  f31b
    1305  f31b							; --- Check enemy collision (lose life on hit) ---
-   1306  f31b		       20 0a f7 	      jsr	CheckEnemyHit
+   1306  f31b		       20 06 f7 	      jsr	CheckEnemyHit
    1307  f31e
    1308  f31e				   OverscanAudio		; rejoin for the spawn drop-in (DropStep tail):
    1309  f31e							;     bomb fuse keeps ticking during the fall — only BombPlayerBlast is
    1310  f31e							;     gated (a mid-fall explosion must not cost a 2nd life/re-drop).
    1311  f31e							; --- Bomb fuse/explode tick (frames) ---
-   1312  f31e		       20 84 f7 	      jsr	BombTick
+   1312  f31e		       20 80 f7 	      jsr	BombTick
    1313  f321
    1314  f321							; --- Bomb audio: hold registers while BombSnd > 0, else silence ---
    1315  f321		       20 fc fb 	      jsr	CallPad_UpdateBombSound
@@ -1469,7 +1469,7 @@
    1468  f3d1		       d0 4d		      bne	UE_Next	; dead enemy does not move
    1469  f3d3		       bc b2 f9 	      ldy	EnemyOffTable,X	; Y = X*4 = type offset
    1470  f3d6		       20 f6 fe 	      jsr	FoldIndirect	; type
-   1471  f3d9		       4c fe f7 	      jmp	UEDispatch	; UEDispatch ($F82C pin gap) replaces the old
+   1471  f3d9		       4c fa f7 	      jmp	UEDispatch	; UEDispatch ($F82C pin gap) replaces the old
    1472  f3dc							; 18 B per-type compare chain with one 3 B jmp:
    1473  f3dc							; frees 15 B of pre-pad headroom and gives the
    1474  f3dc							; type tables room for the raft byte.
@@ -1753,644 +1753,644 @@
    1752  f535							; Level management
    1753  f535							; ==============================================================================
    1754  f535							; LoadLevel: read LevelDataTable entry for current Level, init pointers, enter room.
-   1755  f535							; LevelDataTable stride: 9 bytes (C4 2026-10-20: the Connections / RoomEnemies
+   1755  f535							; LevelDataTable stride: 7 bytes (C4 2026-10-20: the Connections / RoomEnemies
    1756  f535							; word pointers were redundant — both are fixed offsets inside the level block,
    1757  f535							; see the layout comment in generated/levels_index.asm. start_x/y dropped
-   1758  f535							; 2026-10-19: they were always the constants 32/24)
-   1759  f535							;   +0: start_room
-   1760  f535							;   +1..+3: miner_room (b7 = faces right), miner_x, miner_y
-   1761  f535							;   +4..+5: wall colors
-   1762  f535							;   +6..+7: level block base (RoomDataTable)
-   1763  f535							;   +8: room count n — readers derive Connections (+2n), RoomEnemies (+4n)
-   1764  f535							;	 and the enemy records (+6n) from it (C2/C3)
-   1765  f535							; ------------------------------------------------------------------------------
-   1766  f535				   LoadLevel
-   1767  f535							; Stage leave/reload/advance: walls return + bombs refill to 5
-   1768  f535		       a9 00		      lda	#0
-   1769  f537		       85 b5		      sta	BombPacked	; state + WallMask bits (D1-B: no $F2 mirror)
-   1770  f539		       85 f7		      sta	BombTimer
-   1771  f53b		       85 c1		      sta	EnemyRamD	; clear dir + RoomDarkMask (bits 4-7) — level reset
-   1772  f53d		       85 82		      sta	PlayerDir	; face right on every stage entry (new stage,
-   1773  f53f							;  game-over restart = LoseLife->ReloadLevel->
-   1774  f53f							;  here; same-stage respawn keeps facing)
-   1775  f53f		       85 9c		      sta	Hover	; bugs.md #1: stage entry lands normally; the
-   1776  f541							;   respawn hover is armed only by LoseLife
-   1777  f541		       a5 c0		      lda	LaserState
-   1778  f543		       29 c7		      and	#%11000111	; clear RoomDarkMask rooms 4-7 (LaserState b5-2)
-   1779  f545		       85 c0		      sta	LaserState
-   1780  f547		       a9 05		      lda	#BOMBS_MAX
-   1781  f549		       85 f0		      sta	PlayerBombs
-   1782  f54b		       a5 8a		      lda	DropTarget	; #18: arm the LV001 banner except on the
-   1783  f54d		       c9 ff		      cmp	#$FF	; title preview (HUD score shows level+1)
-   1784  f54f		       f0 04		      beq	.NoBanner
-   1785  f551		       a9 f8		      lda	#(LV_SHOW_FRAMES|$80)	; bit7 = banner flag: decs down to $80; any
-   1786  f553		       85 f2		      sta	LevelShowTimer	; tally ARM (<=127) kills it instantly
-   1787  f555				   .NoBanner
-   1788  f555							; Compute LevelDataTable pointer: base + Level * 9 (C4: was *12)
-   1789  f555							; Stride 9: start_room(1) + miner(3) + wall_colors(2) + base ptr(2) + rooms(1)
-   1790  f555		       a5 a3		      lda	Level
-   1791  f557		       0a		      asl		; *2
-   1792  f558		       0a		      asl		; *4
-   1793  f559		       0a		      asl		; *8
-   1794  f55a		       18		      clc
-   1795  f55b		       65 a3		      adc	Level	; *9
-   1796  f55d		       a8		      tay		; Y = Level * 9
-   1797  f55e
-   1798  f55e							; --- Fold batch (P2.7): LevelDataTable lives in bank2 at the frozen
-   1799  f55e							; address. Stage FetchPtr immediately before the batch; FoldIndirect
-   1800  f55e							; preserves X and Y (iny flow below unchanged), returns the byte in A.
-   1801  f55e							; The ldx #0 is kept for callers that expect X clear on entry. ---
-   1802  f55e		       a9 00		      lda	#<LEVEL_DATA_ADDR
-   1803  f560		       85 e5		      sta	FetchPtr
-   1804  f562		       a9 f7		      lda	#>LEVEL_DATA_ADDR
-   1805  f564		       85 e6		      sta	FetchPtr+1
-   1806  f566		       a2 00		      ldx	#0
-   1807  f568
-   1808  f568							; +0: start room; start x/y are the fixed constants 32/24
-   1809  f568		       20 f6 fe 	      jsr	FoldIndirect
-   1810  f56b		       85 a7		      sta	LevelStartRoom
-   1811  f56d		       a9 20		      lda	#32
-   1812  f56f		       85 a8		      sta	LevelStartX
-   1813  f571		       a9 18		      lda	#24
-   1814  f573		       85 a9		      sta	LevelStartY
-   1815  f575		       c8		      iny
-   1816  f576							; +1..+3: miner room, x, y
-   1817  f576		       20 f6 fe 	      jsr	FoldIndirect
-   1818  f579		       85 a4		      sta	LevelMinerRoom
-   1819  f57b		       c8		      iny
-   1820  f57c		       20 f6 fe 	      jsr	FoldIndirect
-   1821  f57f		       85 a5		      sta	MinerX
-   1822  f581		       c8		      iny
-   1823  f582		       20 f6 fe 	      jsr	FoldIndirect
-   1824  f585		       85 a6		      sta	MinerY
-   1825  f587		       c8		      iny
-   1826  f588							; +4..+5: wall colors
-   1827  f588		       20 f6 fe 	      jsr	FoldIndirect
-   1828  f58b		       85 aa		      sta	LevelWallColor
-   1829  f58d		       c8		      iny
-   1830  f58e		       20 f6 fe 	      jsr	FoldIndirect
-   1831  f591		       85 ab		      sta	LevelWallColor2
-   1832  f593		       c8		      iny
-   1833  f594							; +6..+7: level block base (RoomDataTable; C4 dropped the conn/enemy words
-   1834  f594							; — they are the block's +2n / +4n / +6n offsets, see the readers)
-   1835  f594		       20 f6 fe 	      jsr	FoldIndirect
-   1836  f597		       85 9f		      sta	LevelPFDataLo
-   1837  f599		       c8		      iny
-   1838  f59a		       20 f6 fe 	      jsr	FoldIndirect
-   1839  f59d		       85 a0		      sta	LevelPFDataHi
-   1840  f59f		       c8		      iny
-   1841  f5a0							; +8: room count → GetConnIdx (bank1) and EnterRoomB2 (bank2) derive the
-   1842  f5a0							; Connections / RoomEnemies / enemy-record bases from it
-   1843  f5a0		       20 f6 fe 	      jsr	FoldIndirect
-   1844  f5a3		       85 a1		      sta	LevelRoomN
-   1845  f5a5
-   1846  f5a5							; Enter the starting room
-   1847  f5a5		       a5 a7		      lda	LevelStartRoom
-   1848  f5a7		       20 d0 fb 	      jsr	EnterRoom
-   1849  f5aa
-   1850  f5aa							; Place player at level start
-   1851  f5aa		       a5 a8		      lda	LevelStartX
-   1852  f5ac		       85 80		      sta	RoomX
-   1853  f5ae		       a5 a9		      lda	LevelStartY
-   1854  f5b0		       85 81		      sta	RoomY
-   1855  f5b2
-   1856  f5b2							; Drop-in from the screen top to the start Y (DropArm also zeroes the
-   1857  f5b2							; jetpack state + laser — stage start, game over and level advance all
-   1858  f5b2							; land here).
-   1859  f5b2		       4c c7 fc 	      jmp	DropArm
-   1860  f5b5
-   1861  f5b5							; ==============================================================================
-   1862  f5b5							; Miner pickup — check if player overlaps miner, advance to next level
-   1863  f5b5							; ==============================================================================
-   1864  f5b5				   CheckMinerPickup
-   1865  f5b5		       a5 a4		      lda	LevelMinerRoom
-   1866  f5b7		       29 7f		      and	#$7f
-   1867  f5b9		       c5 98		      cmp	RoomNo
-   1868  f5bb		       d0 1b		      bne	.CMPDone	; not in miner's room
-   1869  f5bd							; X overlap: player [RoomX, +6] vs 4px miner.
-   1870  f5bd							; Accept iff RoomX - MinerX in [-6, +3].
-   1871  f5bd		       a5 80		      lda	RoomX
-   1872  f5bf		       38		      sec
-   1873  f5c0		       e5 a5		      sbc	MinerX
-   1874  f5c2		       18		      clc
-   1875  f5c3		       69 06		      adc	#PLAYER_WIDTH - 1
-   1876  f5c5		       c9 0a		      cmp	#PLAYER_WIDTH + MINER_WIDTH - 1
-   1877  f5c7		       b0 0f		      bcs	.CMPDone	; no X overlap
-   1878  f5c9							; Y overlap: player [RoomY, +11] vs miner [MinerY, +7]
-   1879  f5c9							; accept iff RoomY - MinerY in [-11, +7]  (add 11, compare 19)
-   1880  f5c9		       a5 81		      lda	RoomY
-   1881  f5cb		       38		      sec
-   1882  f5cc		       e5 a6		      sbc	MinerY
-   1883  f5ce		       18		      clc
-   1884  f5cf		       69 0b		      adc	#PLAYER_SPRITE_H - 1
-   1885  f5d1		       c9 13		      cmp	#PLAYER_SPRITE_H + PLAYER_HEIGHT - 1
-   1886  f5d3		       b0 03		      bcs	.CMPDone	; no Y overlap
-   1887  f5d5							; Pickup! Arm the level-bonus tally (frozen count-up, then advance).
-   1888  f5d5							; TallyArm (bank2, via TallyTramp) snapshots time/bombs/lives into
-   1889  f5d5							; TallyTicks and sets DropTarget=$FE; each frame's dispatch then runs
-   1890  f5d5							; TallyWork, whose done path does the old tail (level++/LoadLevel/bar).
-   1891  f5d5		       20 e6 ff 	      jsr	TallyTramp
-   1892  f5d8				   .CMPDone
-   1893  f5d8		       60		      rts
-   1894  f5d9
-   1895  f5d9							; ==============================================================================
-   1896  f5d9							; SelectActiveObject — choose the single GRP1 object to draw this frame.
-   1897  f5d9							; The TIA has one GRP1 sprite, so objects flicker by rotating slots each frame.
-   1898  f5d9							; Sets ObjBase, ActiveObjectX, ActiveObjectY, ObjTop, COLUP1.
-   1899  f5d9							; Slot count (enemies + miner?) lives in Temp for this VBLANK only.
-   1900  f5d9							; Bomb fuse (state=1): low-priority — bomb only when (BombTimer&3)==0
-   1901  f5d9							; (~15 Hz); other frames normal miner/enemy rotation (FlickerFrame alone).
-   1902  f5d9							; One GRP1: cannot draw bomb + entity same frame.
-   1903  f5d9							; ------------------------------------------------------------------------------
-   1904  f5d9				   SelectActiveObject
-   1905  f5d9							; Tally / frozen scene (DropTarget = $FE): show the PLAYER and the MINER
-   1906  f5d9							; only — no enemies, no raft, no bomb. That frame bypasses the overscan, so
-   1907  f5d9							; RefreshEnemyY never runs while bank1's HUD writes $E0-$EF: EnemyRamY
-   1908  f5d9							; ($E2-$E4) is left holding score-pointer bytes, and any enemy drawn then
-   1909  f5d9							; jumps to a garbage Y (user report 2026-10-18: the raft "moved up to the
-   1910  f5d9							; middle of the screen" the moment the points counting started).
-   1911  f5d9		       a5 8a		      lda	DropTarget
-   1912  f5db		       c9 fe		      cmp	#$FE
-   1913  f5dd		       d0 27		      bne	.SOFull
-   1914  f5df		       a9 00		      lda	#0
-   1915  f5e1		       85 b4		      sta	FlickerFrame	; keep the modulo counter bounded (2026-10-16)
-   1916  f5e3		       85 b6		      sta	ObjBase	; 0 = no object
-   1917  f5e5		       a5 a4		      lda	LevelMinerRoom
-   1918  f5e7		       29 7f		      and	#$7f
-   1919  f5e9		       c5 98		      cmp	RoomNo
-   1920  f5eb		       f0 03		      beq	.SOTallyMiner
-   1921  f5ed		       4c d5 f6 	      jmp	.SODone	; miner not here -> nothing drawn
-   1922  f5f0				   .SOTallyMiner
-   1923  f5f0		       a9 38		      lda	#OBJ_MINER
-   1924  f5f2		       85 b6		      sta	ObjBase
-   1925  f5f4		       a5 a5		      lda	MinerX
-   1926  f5f6		       85 b7		      sta	ActiveObjectX
-   1927  f5f8		       a5 a6		      lda	MinerY
-   1928  f5fa		       18		      clc
-   1929  f5fb		       69 03		      adc	#3	; same 3px offset as the normal miner path
-   1930  f5fd		       85 b8		      sta	ActiveObjectY
-   1931  f5ff		       a9 66		      lda	#$66	; purple (hue 6, luma 3)
-   1932  f601		       85 07		      sta	COLUP1
-   1933  f603		       4c d5 f6 	      jmp	.SODone
-   1934  f606				   .SOFull
-   1935  f606		       e6 b4		      inc	FlickerFrame	; advance every frame (bomb + enemy paths)
-   1936  f608							; --- Bomb fuse (state=1): 1 of 4 frames = bomb (enemies keep priority) ---
-   1937  f608		       a5 b5		      lda	BombPacked
-   1938  f60a		       29 03		      and	#%00000011
-   1939  f60c		       c9 01		      cmp	#1
-   1940  f60e		       d0 19		      bne	.SOCount
-   1941  f610		       a5 f7		      lda	BombTimer
-   1942  f612		       29 03		      and	#3
-   1943  f614		       d0 13		      bne	.SOCount	; 3 of 4 -> miner/enemy
-   1944  f616		       a9 40		      lda	#OBJ_BOMB	; bomb design offset into ObjSprites
-   1945  f618		       85 b6		      sta	ObjBase
-   1946  f61a		       a5 f6		      lda	BombX
-   1947  f61c		       85 b7		      sta	ActiveObjectX
-   1948  f61e		       a5 85		      lda	BombY
-   1949  f620		       85 b8		      sta	ActiveObjectY
-   1950  f622		       a9 46		      lda	#COLOR_BOMBS	; $46 red (P1 X set by the .SODone tail)
-   1951  f624		       85 07		      sta	COLUP1
-   1952  f626		       4c d5 f6 	      jmp	.SODone	; ObjTop/Bot from ActiveObjectY
-   1953  f629				   .SOCount
-   1954  f629							; Count objects: enemies + miner if in miner's room (Temp = count; VBLANK-safe)
-   1955  f629		       a5 b3		      lda	EnemyCount
-   1956  f62b		       85 88		      sta	Temp
-   1957  f62d		       a5 a4		      lda	LevelMinerRoom
-   1958  f62f		       29 7f		      and	#$7f
-   1959  f631		       c5 98		      cmp	RoomNo
-   1960  f633		       d0 02		      bne	.SONoMiner
-   1961  f635		       e6 88		      inc	Temp	; miner counts as a slot
-   1962  f637				   .SONoMiner
-   1963  f637		       a5 88		      lda	Temp
-   1964  f639		       d0 09		      bne	.SONotNothing
-   1965  f63b							; No objects this frame: A = Temp = 0. Blank the sprite AND reset the
-   1966  f63b							; flicker counter — with no objects the modulo below never runs, so
-   1967  f63b							; FlickerFrame would grow unbounded and .SOModLoop (a subtract loop)
-   1968  f63b							; would run O(FlickerFrame) iterations in the VBL on the next room with
-   1969  f63b							; objects (measured +533c / +7 lines room-crossing spike, 2026-10-16).
-   1970  f63b		       85 b4		      sta	FlickerFrame
-   1971  f63d		       a9 ff		      lda	#$FF
-   1972  f63f		       85 b6		      sta	ObjBase
-   1973  f641		       4c d5 f6 	      jmp	.SODone
-   1974  f644				   .SONotNothing
-   1975  f644							; FlickerFrame already advanced at entry — modulo into 0..(slot count-1)
-   1976  f644				   .SOModLoop
-   1977  f644		       a5 b4		      lda	FlickerFrame
-   1978  f646		       c5 88		      cmp	Temp
-   1979  f648		       90 08		      bcc	.SOModDone
-   1980  f64a		       38		      sec
-   1981  f64b		       e5 88		      sbc	Temp
-   1982  f64d		       85 b4		      sta	FlickerFrame
-   1983  f64f		       4c 44 f6 	      jmp	.SOModLoop
-   1984  f652				   .SOModDone
-   1985  f652							; FlickerFrame is now 0..(slot count-1)
-   1986  f652							; Check if slot 0 is the miner
-   1987  f652		       a5 b4		      lda	FlickerFrame
-   1988  f654		       d0 1c		      bne	.SOEnemy
-   1989  f656		       a5 88		      lda	Temp
-   1990  f658		       c5 b3		      cmp	EnemyCount
-   1991  f65a		       f0 16		      beq	.SOEnemy	; no miner slot in this room
-   1992  f65c							; This slot is the miner
-   1993  f65c		       a9 38		      lda	#OBJ_MINER	; miner design offset into ObjSprites
-   1994  f65e		       85 b6		      sta	ObjBase
-   1995  f660		       a5 a5		      lda	MinerX
-   1996  f662		       85 b7		      sta	ActiveObjectX
-   1997  f664		       a5 a6		      lda	MinerY
-   1998  f666		       18		      clc
-   1999  f667		       69 03		      adc	#3	; draw 3px below data Y (miner_position.png —
-   2000  f669							; sprite floated above the floor line; tuning
-   2001  f669							; constant — pickup box still uses MinerY)
-   2002  f669		       85 b8		      sta	ActiveObjectY
-   2003  f66b		       a9 66		      lda	#$66	; purple (hue 6, luma 3)
-   2004  f66d		       85 07		      sta	COLUP1
-   2005  f66f		       4c d5 f6 	      jmp	.SODone
-   2006  f672
-   2007  f672				   .SOEnemy
-   2008  f672							; Walk enemy list: find the (FlickerFrame - (miner_offset))th enemy
-   2009  f672							; If miner room and FlickerFrame > 0, subtract 1 for miner slot
-   2010  f672		       a6 b4		      ldx	FlickerFrame
-   2011  f674		       a5 88		      lda	Temp
-   2012  f676		       c5 b3		      cmp	EnemyCount
-   2013  f678		       f0 01		      beq	.SOEnemyNoMinerOffset
-   2014  f67a		       ca		      dex		; skip miner slot
-   2015  f67b				   .SOEnemyNoMinerOffset
-   2016  f67b							; A = enemy index in list
-   2017  f67b		       8a		      txa
-   2018  f67c		       85 b9		      sta	EnemyIndex
-   2019  f67e							; Check if index < EnemyCount
-   2020  f67e		       c5 b3		      cmp	EnemyCount
-   2021  f680		       90 07		      bcc	.SOEnemyValid
-   2022  f682							; Out of range — no object this slot
-   2023  f682		       a9 ff		      lda	#$FF
-   2024  f684		       85 b6		      sta	ObjBase
-   2025  f686		       4c d5 f6 	      jmp	.SODone
-   2026  f689				   .SOEnemyValid
-   2027  f689							; Skip if this enemy is dead (mask bit = index); A already = EnemyIndex
-   2028  f689		       aa		      tax
-   2029  f68a		       a5 ba		      lda	EnemyDeadMask
-   2030  f68c		       3d b2 f3 	      and	EnemyBitTable,X
-   2031  f68f		       d0 40		      bne	.SOEnemySkip
-   2032  f691							; Live X from RAM; Y from RAM (EnemyRamY) at .SOEnemyColorDone
-   2033  f691		       a6 b9		      ldx	EnemyIndex
-   2034  f693		       b5 bd		      lda	EnemyRamX,X
-   2035  f695		       85 b7		      sta	ActiveObjectX
-   2036  f697		       bc b2 f9 	      ldy	EnemyOffTable,X	; Y = EnemyIndex * 4 = type offset
-   2037  f69a							; --- Fold batch (P3.1): enemy record staged before IsRoomDark (A-only,
-   2038  f69a							; Y and FetchPtr survive the call). ---
-   2039  f69a		       a5 b1		      lda	EnemyDataLo
-   2040  f69c		       85 e5		      sta	FetchPtr
-   2041  f69e		       a5 b2		      lda	EnemyDataHi
-   2042  f6a0		       85 e6		      sta	FetchPtr+1
-   2043  f6a2		       20 0e fc 	      jsr	CallPad_IsRoomDark	; clobbers X — Y still = type offset
-   2044  f6a5		       f0 0b		      beq	.SOEnemyLit
-   2045  f6a7		       a9 0a		      lda	#COLOR_DARK_OBJ	; dark room: lamp + enemies medium grey
-   2046  f6a9		       85 07		      sta	COLUP1
-   2047  f6ab		       20 f6 fe 	      jsr	FoldIndirect	; reload type
-   2048  f6ae		       aa		      tax
-   2049  f6af		       4c bb f6 	      jmp	.SOEnemyPattern
-   2050  f6b2				   .SOEnemyLit
-   2051  f6b2		       20 f6 fe 	      jsr	FoldIndirect	; reload type (X was clobbered by IsRoomDark)
-   2052  f6b5		       aa		      tax
-   2053  f6b6		       bd fa f6 	      lda	EnemyColorTable,X
-   2054  f6b9		       85 07		      sta	COLUP1
-   2055  f6bb				   .SOEnemyPattern
-   2056  f6bb		       e0 06		      cpx	#KEY
-   2057  f6bd		       d0 04		      bne	.SOPNorm
-   2058  f6bf		       a5 a7		      lda	LevelStartRoom	; Phase 5: KeyHeld ($A7 b7) → key already
-   2059  f6c1		       30 0e		      bmi	.SOEnemySkip	;   taken → skip render (never reappears)
-   2060  f6c3				   .SOPNorm
-   2061  f6c3		       bd 02 f7 	      lda	ObjSpriteOffTable,X	; type → ObjSprites design offset
-   2062  f6c6		       85 b6		      sta	ObjBase
-   2063  f6c8				   .SOEnemyColorDone
-   2064  f6c8		       a6 b9		      ldx	EnemyIndex
-   2065  f6ca		       b5 e2		      lda	EnemyRamY,X	; live Y from $E2 (private since S3.4)
-   2066  f6cc		       85 b8		      sta	ActiveObjectY
-   2067  f6ce		       4c d5 f6 	      jmp	.SODone
-   2068  f6d1
-   2069  f6d1				   .SOEnemySkip
-   2070  f6d1		       a9 ff		      lda	#$FF
-   2071  f6d3		       85 b6		      sta	ObjBase
-   2072  f6d5
-   2073  f6d5				   .SODone
-   2074  f6d5							; Position GRP1 from ActiveObjectX — ONE shared call for every object
-   2075  f6d5							; path (bomb/miner/enemy). ac4c3ee moved the bomb's SOXP to the drop and
-   2076  f6d5							; the bomb path skipped it, so the bomb rendered at the last enemy/miner
-   2077  f6d5							; X (looked fixed). ObjBase==0 (no object / dead-enemy slot) skips it.
-   2078  f6d5		       a5 b6		      lda	ObjBase
-   2079  f6d7		       30 07		      bmi	.SODoneNoPos
-   2080  f6d9		       a5 b7		      lda	ActiveObjectX
-   2081  f6db		       a2 01		      ldx	#1
-   2082  f6dd		       20 0f ff 	      jsr	SetObjectXPos
-   2083  f6e0				   .SODoneNoPos
-   2084  f6e0		       20 20 ff 	      jsr	SetObjReflection
-   2085  f6e3							; Set ObjTop for kernel GRP1 visibility check.
-   2086  f6e3							; S2.2: ObjTop stored RoomY-relative (ObjTopRel = ActiveObjectY-RoomY+1) so
-   2087  f6e3							; the kernel compares against running-Y (`tya`) instead of `lda Scanline`
-   2088  f6e3							; — frees 9c/line (lda Scanline + inc Scanline) for the laser beam write.
-   2089  f6e3							; Kernel .Grp1 does: tya / sec / sbc ObjTop / cmp #8 / bcs .ObjZero.
-   2090  f6e3							; ObjBot (write-only, no readers): stores removed S1.5, decl removed
-   2091  f6e3							; S3.0b (was last sequential decl — no address shift).
-   2092  f6e3		       a5 b6		      lda	ObjBase
-   2093  f6e5		       30 0b		      bmi	.SONoObj
-   2094  f6e7		       a5 b8		      lda	ActiveObjectY
-   2095  f6e9		       38		      sec
-   2096  f6ea		       e5 81		      sbc	RoomY
-   2097  f6ec		       18		      clc
-   2098  f6ed		       69 01		      adc	#1	; A = ActiveObjectY - RoomY + 1 (mod 256)
-   2099  f6ef		       85 bb		      sta	ObjTop
-   2100  f6f1		       60		      rts
-   2101  f6f2				   .SONoObj
-   2102  f6f2		       a9 90		      lda	#144	; Park the GRP1 window off-cave for EVERY
-   2103  f6f4		       38		      sec		; RoomY. The kernel draws when running-Y
-   2104  f6f5		       e5 81		      sbc	RoomY	; (Scanline-RoomY) - ObjTopRel ∈ [0,7] =
-   2105  f6f7		       85 bb		      sta	ObjTop	; Scanline-(RoomY+ObjTopRel); parking ObjTopRel
-   2106  f6f9		       60		      rts		; = 144-RoomY → Scanline-144 ∈ [112,255] →
-   2107  f6fa							; never <8 → never drawn. A CONSTANT 144
-   2108  f6fa							; wrapped for RoomY ≥ 112 (Scanline-(144+RY)
-   2109  f6fa							; mod 256 ∈ [0,7]) and drew ObjSprites[row+
-   2110  f6fa							; ObjBase]; with the key art now at slot 0
-   2111  f6fa							; (ObjBase=$FF → row 1..7 = index 0..6) that
-   2112  f6fa							; leaked the key onto the player's rows
-   2113  f6fa							; (user 2026-10-17). The old blank slot 0 had
-   2114  f6fa							; hidden this latent bug.
-   2115  f6fa
-   2116  f6fa							; ==============================================================================
-   2117  f6fa							; Enemy color table (emulator-aware: hue<<4 | luma<<1)
-   2118  f6fa				   EnemyColorTable
-   2119  f6fa		       14		      .byte.b	$14	; spider — hue 1 luma 2 = dark yellow
-   2120  f6fb		       f2		      .byte.b	$f2	; bat — hue 15 luma 7 = brown
-   2121  f6fc		       c4		      .byte.b	$c4	; snake — hue 12 luma 2 = green
-   2122  f6fd		       0e		      .byte.b	$0e	; tentacle — hue 0 luma 7 = white
-   2123  f6fe		       22		      .byte.b	$22	; moth — hue 2 luma 1 = dark orange
-   2124  f6ff		       0e		      .byte.b	$0e	; lamp (type 5) — white; dark rooms override to grey
-   2125  f700		       1c		      .byte.b	$1C	; key (type 6) — yellow
-   2126  f701		       c4		      .byte.b	$c4	; raft (type 7) — green, matching the SNAKE art
-   2127  f702							; slot it borrows ($c4 = ObjColorTab slot 6). User
-   2128  f702							; 2026-10-18: keep the SOLID block and read it as
-   2129  f702							; a trunk/log — the solid art also looks bigger
-   2130  f702							; than the notched LAMP one, so the player lands
-   2131  f702							; on it more confidently.
-   2132  f702
-   2133  f702							; Enemy type → ObjSprites design offset (index = ENEMY_* type)
-   2134  f702				   ObjSpriteOffTable
-   2135  f702		       10		      .byte.b	OBJ_SPIDER	; 0
-   2136  f703		       28		      .byte.b	OBJ_BAT	; 1
-   2137  f704		       30		      .byte.b	OBJ_SNAKE	; 2
-   2138  f705		       20		      .byte.b	OBJ_TENTACLE	; 3
-   2139  f706		       08		      .byte.b	OBJ_MOTH	; 4
-   2140  f707		       18		      .byte.b	OBJ_LAMP	; 5 (LAMP)
-   2141  f708		       00		      .byte.b	OBJ_KEY	; 6 (KEY — offset-0 slot)
-   2142  f709		       30		      .byte.b	OBJ_SNAKE	; 7 (RAFT — the solid 8x8 block: a log/trunk over
-   2143  f70a							; the water, and the most "landable" shape in the
-   2144  f70a							; table. ObjSprites is exactly 72 B and ends at
-   2145  f70a							; $FF00, so a dedicated design needs 8 art bytes
-   2146  f70a							; freed; every entry is 8x8, so nothing is
-   2147  f70a							; "larger" — solid just reads bigger than notched.)
-   2148  f70a
-   2149  f70a							; ==============================================================================
-   2150  f70a							; CheckEnemyHit — player overlaps an enemy → remove enemy, lose life
-   2151  f70a							; ------------------------------------------------------------------------------
-   2152  f70a				   CheckEnemyHit
-   2153  f70a							; Walk enemy list, check footprint overlap with each
-   2154  f70a		       a5 b3		      lda	EnemyCount
-   2155  f70c		       d0 03		      bne	CEH_HasEnemies
-   2156  f70e		       4c 83 f7 	      jmp	CEH_NoHit	; no enemies
-   2157  f711				   CEH_HasEnemies
-   2158  f711							; --- Fold batch (P3.1): enemy record staged once — the loop reads type
-   2159  f711							; at CEH_HasMore and writes no FetchPtr. ---
-   2160  f711		       a5 b1		      lda	EnemyDataLo
-   2161  f713		       85 e5		      sta	FetchPtr
-   2162  f715		       a5 b2		      lda	EnemyDataHi
-   2163  f717		       85 e6		      sta	FetchPtr+1
-   2164  f719		       a0 00		      ldy	#0
-   2165  f71b				   CEH_Loop
-   2166  f71b		       c4 b3		      cpy	EnemyCount
-   2167  f71d		       90 03		      bcc	CEH_HasMore
-   2168  f71f		       4c 83 f7 	      jmp	CEH_NoHit	; walked all enemies, no hit
-   2169  f722				   CEH_HasMore
-   2170  f722		       84 b9		      sty	EnemyIndex
-   2171  f724							; Skip dead enemies
-   2172  f724		       a5 ba		      lda	EnemyDeadMask
-   2173  f726		       39 b2 f3 	      and	EnemyBitTable,Y
-   2174  f729		       d0 52		      bne	CEHNext
-   2175  f72b							; Live X and Y from RAM shadow (Y = slot here)
-   2176  f72b		       b9 bd 00 	      lda	EnemyRamX,Y
-   2177  f72e		       85 b7		      sta	ActiveObjectX
-   2178  f730		       b9 e2 00 	      lda	EnemyRamY,Y
-   2179  f733		       85 b8		      sta	ActiveObjectY
-   2180  f735							; Broad object bounds; lamp gets its 4px lit-width check after Y overlap.
-   2181  f735		       a5 80		      lda	RoomX
-   2182  f737		       38		      sec
-   2183  f738		       e5 b7		      sbc	ActiveObjectX
-   2184  f73a		       18		      clc
-   2185  f73b		       69 06		      adc	#PLAYER_WIDTH - 1
-   2186  f73d		       c9 0e		      cmp	#PLAYER_WIDTH + ENEMY_WIDTH - 1
-   2187  f73f		       b0 3c		      bcs	CEHNext	; no X overlap
-   2188  f741		       85 8b		      sta	CollisionX	; keep x-overlap span for lamp's narrower box
-   2189  f743							; Y overlap: player [RoomY, +11] vs enemy [ActiveObjectY, +7] — exact
-   2190  f743		       a5 81		      lda	RoomY
-   2191  f745		       38		      sec
-   2192  f746		       e5 b8		      sbc	ActiveObjectY
-   2193  f748		       18		      clc
-   2194  f749		       69 0b		      adc	#PLAYER_SPRITE_H - 1
-   2195  f74b		       c9 13		      cmp	#PLAYER_SPRITE_H + PLAYER_HEIGHT - 1
-   2196  f74d		       b0 2e		      bcs	CEHNext	; no Y overlap
-   2197  f74f							; Lamp (type 5): crash → RoomDarkMask; lamp stays in rotation (grey), no life
-   2198  f74f		       a6 b9		      ldx	EnemyIndex
-   2199  f751		       bc b2 f9 	      ldy	EnemyOffTable,X	; Y = EnemyIndex * 4
-   2200  f754		       20 f6 fe 	      jsr	FoldIndirect	; type
-   2201  f757		       c9 05		      cmp	#LAMP
-   2202  f759		       f0 18		      beq	CEH_Lamp
-   2203  f75b		       c9 06		      cmp	#KEY	; type 6 = key: collect, no life loss
-   2204  f75d		       90 05		      bcc	.CEHkill	; 0-4 (LAMP handled above) = enemy: lose life
-   2205  f75f		       d0 1c		      bne	CEHNext	; 7 = RAFT: a platform is walked on, not hit
-   2206  f761		       4c f0 f7 	      jmp	CEH_Key	; 6 = key
-   2207  f764				   .CEHkill
-   2208  f764							; Hit! Mark this enemy dead (bit = index)
-   2209  f764		       a5 ba		      lda	EnemyDeadMask
-   2210  f766		       1d b2 f3 	      ora	EnemyBitTable,X	; X = EnemyIndex (set at CEH hit)
-   2211  f769		       85 ba		      sta	EnemyDeadMask
-   2212  f76b		       a9 50		      lda	#$50	; +50 points per kill
-   2213  f76d		       20 0b fc 	      jsr	CallPad_AddScore
-   2214  f770							; Lose a life (shared path — tail jmp: its rts returns to caller)
-   2215  f770		       4c 8d fc 	      jmp	LoseLife
-   2216  f773				   CEH_Lamp
-   2217  f773							; Broad overlap guarantees lower bound; narrow to lamp's 4 lit pixels.
-   2218  f773		       a5 8b		      lda	CollisionX
-   2219  f775		       c9 0a		      cmp	#PLAYER_WIDTH + LAMP_WIDTH - 1
-   2220  f777		       b0 04		      bcs	CEHNext
-   2221  f779							; Only fire once (bit already set → no-op); no life loss, not EnemyDeadMask
-   2222  f779		       20 11 fc 	      jsr	CallPad_SetRoomDark
-   2223  f77c		       60		      rts
-   2224  f77d				   CEHNext
-   2225  f77d		       a4 b9		      ldy	EnemyIndex
-   2226  f77f		       c8		      iny
-   2227  f780		       4c 1b f7 	      jmp	CEH_Loop
-   2228  f783				   CEH_NoHit
-   2229  f783		       60		      rts
-   2230  f784
-   2231  f784							; ------------------------------------------------------------------------------
-   2232  f784							; BombTick — per-frame state machine (overscan).
-   2233  f784							;   state1 fuse: dec BombTimer, at 0 → state=2 timer=60 (blast = S5/S6/S9)
-   2234  f784							;   state2: dec BombTimer, at 0 → state=0 (mask stays; saved on EnterRoom)
-   2235  f784							; ------------------------------------------------------------------------------
-   2236  f784				   BombTick   subroutine
-   2237  f784		       a5 b5		      lda	BombPacked
-   2238  f786		       29 03		      and	#%00000011	; state
-   2239  f788		       f0 41		      beq	.BTDone	; none
-   2240  f78a		       c9 01		      cmp	#1
-   2241  f78c		       f0 0f		      beq	.BTFuse
-   2242  f78e							; state 2 — exploding
-   2243  f78e		       c6 f7		      dec	BombTimer
-   2244  f790		       d0 39		      bne	.BTDone
-   2245  f792		       a5 b5		      lda	BombPacked	; clear state bits only (keep mask + DownPrev)
-   2246  f794		       29 fc		      and	#%11111100
-   2247  f796		       85 b5		      sta	BombPacked
-   2248  f798		       a9 00		      lda	#0
-   2249  f79a		       85 f7		      sta	BombTimer
-   2250  f79c		       60		      rts
-   2251  f79d				   .BTFuse
-   2252  f79d		       c6 f7		      dec	BombTimer
-   2253  f79f		       d0 2a		      bne	.BTDone
-   2254  f7a1		       a5 b5		      lda	BombPacked	; 1 → 2
-   2255  f7a3		       29 fc		      and	#%11111100
-   2256  f7a5		       09 02		      ora	#%00000010
-   2257  f7a7		       85 b5		      sta	BombPacked
-   2258  f7a9		       a9 3c		      lda	#60
-   2259  f7ab		       85 f7		      sta	BombTimer
-   2260  f7ad		       20 1a fc 	      jsr	CallPad_BombMarkWalls	; S6.3: set WallMask; A = #walls newly broken
-   2261  f7b0		       aa		      tax
-   2262  f7b1		       f0 08		      beq	.BTNoScore
-   2263  f7b3				   .BTScore
-   2264  f7b3		       a9 75		      lda	#$75	; +75 points per broken wall (moved out of
-   2265  f7b5		       20 0b fc 	      jsr	CallPad_AddScore	;   BMW — pads cannot nest from a pad body)
-   2266  f7b8		       ca		      dex
-   2267  f7b9		       d0 f8		      bne	.BTScore
-   2268  f7bb				   .BTNoScore
-   2269  f7bb		       20 d8 fd 	      jsr	BombEnemyBlast	; S9: A = 1 kill (bank2, lamp-safe), 0 none
-   2270  f7be		       f0 05		      beq	.BTNoKill
-   2271  f7c0		       a9 50		      lda	#$50	; +50 per kill — moved out of the pad body
-   2272  f7c2		       20 0b fc 	      jsr	CallPad_AddScore	;   (pads cannot nest; same shape as BMW above)
-   2273  f7c5				   .BTNoKill
-   2274  f7c5		       20 cc f7 	      jsr	BombPlayerBlast	; S5: player ±1 col any Y → life (may ReloadLevel → clears masks)
-   2275  f7c8		       20 05 fc 	      jsr	CallPad_BombSndExplode	; S10: noise burst
-   2276  f7cb				   .BTDone
-   2277  f7cb		       60		      rts
-   2278  f7cc
-   2279  f7cc							; ------------------------------------------------------------------------------
-   2280  f7cc							; BombPlayerBlast — on explode, if player col in ±1 col of bomb col (any Y):
-   2281  f7cc							;   lose 1 life (shared LoseLife path).
-   2282  f7cc							; Cols = px/4 (0..39 screen). Y ignored.
-   2283  f7cc							; ------------------------------------------------------------------------------
-   2284  f7cc				   BombPlayerBlast
-   2285  f7cc		       a5 8a		      lda	DropTarget
-   2286  f7ce		       d0 1b		      bne	.BPBMiss	; spawn drop-in: falling = invulnerable
-   2287  f7d0		       a5 f6		      lda	BombX
-   2288  f7d2		       4a		      lsr
-   2289  f7d3		       4a		      lsr		; bomb col = BombX/4
-   2290  f7d4		       85 88		      sta	Temp
-   2291  f7d6		       a5 80		      lda	RoomX
-   2292  f7d8		       4a		      lsr
-   2293  f7d9		       4a		      lsr		; player col = RoomX/4
-   2294  f7da		       38		      sec
-   2295  f7db		       e5 88		      sbc	Temp
-   2296  f7dd		       b0 05		      bcs	.BPBColAbs
-   2297  f7df		       49 ff		      eor	#$ff
-   2298  f7e1		       18		      clc
-   2299  f7e2		       69 01		      adc	#1
-   2300  f7e4				   .BPBColAbs
-   2301  f7e4		       c9 02		      cmp	#2	; |dcol| < 2 → any Y kills
-   2302  f7e6		       b0 03		      bcs	.BPBMiss
-   2303  f7e8		       4c 8d fc 	      jmp	LoseLife	; shared life path (tail: rts to caller)
-   2304  f7eb				   .BPBMiss
-   2305  f7eb		       60		      rts
-   2306  f7ec
-   2307  f7ec							; Bomb audio bodies (BombSndDrop/BombSndExplode) moved to bank1
-   2308  f7ec							; (leaf_move_plan batch A) — called via CallPad_BombSnd*.
-   2309  f7ec
-   2310  f7ec							; ------------------------------------------------------------------------------
-   2311  f7ec							; BombMarkWalls — MOVED to bank1 (S5.2) — CallPad_BombMarkWalls ($FB10).
-   2312  f7ec							;   Returns A = #walls newly broken; the fuse-expiry caller scores +75 each
-   2313  f7ec							;   (pads cannot nest: ReturnPad switches to bank0 mid-call). bank1 owns the
-   2314  f7ec							;   ABW tables + BombMaskBit now (plan 5.2 deleted the kernel copies along
-   2315  f7ec							;   with ApplyBombWalls).
-   2316  f7ec							; ------------------------------------------------------------------------------
-   2317  f7ec
-   2318  f7ec
-   2319  f7ec							; ==============================================================================
-   2320  f7ec							; Data tables
-   2321  f7ec							; ==============================================================================
-   2322  f7ec
-   2323  f7ec							; --- Explosion blink COLUBK: index = (60-BombTimer) % 3 ---
-   2324  f7ec				   BombBlinkColors
-   2325  f7ec		       00		      .byte.b	COLOR_CAVE_BG	; 0 black
-   2326  f7ed		       1c		      .byte.b	COLOR_BLINK_Y	; 1 yellow
-   2327  f7ee		       44		      .byte.b	COLOR_BLINK_R	; 2 red
-   2328  f7ef		       1c		      .byte.b	COLOR_BLINK_Y	; 3 yellow (4-phase blink: b/y/r/y)
-   2329  f7f0
-   2330  f7f0							; BombMaskBit: bank1-only now (plan 5.2 — kernel copy died with ApplyBombWalls).
-   2331  f7f0
-   2332  f7f0							; BombClearMask moved to bank1 with ClearPFColumn (leaf_move_plan batch B).
-   2333  f7f0
-   2334  f7f0							; --- Player sprites: 8x12, all 8 pixels wide (bit7 = leftmost pixel) ---
-   2335  f7f0							; Frame A = normal, frame B = jet legs (rows 7-8 differ; 3 pixels changed).
-   2336  f7f0							; Per-row colors in PlayerColTable (RED/RED/YELLOW/RED/GRAY/RED/.../BLACK/BLACK).
-   2337  f7f0							; ------------------------------------------------------------------------------
-   2338  f7f0							; CEH_Key — type-6 key pickup (docs/feature_tiles_plan.md Phase 5): latch
-   2339  f7f0							; KeyHeld ($A7 b7) and mark the key slot dead so it vanishes, with NO life
-   2340  f7f0							; loss. X = EnemyIndex (set by CheckEnemyHit's hit path); reached via
-   2341  f7f0							; `jmp CEH_Key` from that dispatch. Lives in the $F82C pre-pad pin gap
-   2342  f7f0							; (177B slack before the $F8DD sprite pin); pre-pad END headroom is 1B but
-   2343  f7f0							; this region is upstream of the pin, so it costs nothing at $FC67.
-   2344  f7f0							; KEY is one per level, so KeyHeld is a single bit (no per-key storage).
-   2345  f7f0							; LevelStartRoom b7 resets when LoadLevel rewrites $A7 (:1875) before its own
-   2346  f7f0							; read at :1922, so no reader mask is needed; KeyHeld survives room changes
-   2347  f7f0							; and normal deaths, resets on game-over reload.
-   2348  f7f0							; ------------------------------------------------------------------------------
-   2349  f7f0				   CEH_Key
-   2350  f7f0		       a5 ba		      lda	EnemyDeadMask
-   2351  f7f2		       1d b2 f3 	      ora	EnemyBitTable,X
-   2352  f7f5		       85 ba		      sta	EnemyDeadMask
-   2353  f7f7		       a5 a7		      lda	LevelStartRoom
-   2354  f7f9		       09 80		      ora	#$80	; KeyHeld = b7
-   2355  f7fb		       85 a7		      sta	LevelStartRoom
-   2356  f7fd		       60		      rts
-   2357  f7fe
-   2358  f7fe							; ------------------------------------------------------------------------------
-   2359  f7fe							; UEDispatch — the enemy-type dispatch tail, moved out of UpdateEnemies into the
-   2360  f7fe							; $F82C pin gap (upstream of the $F8DD sprite pin, so the pre-pad END is
-   2361  f7fe							; unaffected and the 15 B the folded chain frees stays free). Every non-raft arm
-   2362  f7fe							; tail-jumps, exactly like the old inline chain, so the stack depth is unchanged.
-   2363  f7fe							; ------------------------------------------------------------------------------
-   2364  f7fe				   UEDispatch
-   2365  f7fe		       c9 07		      cmp	#ENEMY_RAFT
-   2366  f800		       d0 06		      bne	.UEDNotRaft
-   2367  f802		       20 c0 f8 	      jsr	CallPad_RaftBody	; bank1 body; returns past this jmp (ReturnPad)
-   2368  f805		       4c 20 f4 	      jmp	UE_Next
-   2369  f808				   .UEDNotRaft
-   2370  f808		       c9 03		      cmp	#ENEMY_TENTACLE
-   2371  f80a		       d0 03		      bne	.UEDNotTent
-   2372  f80c		       4c 25 f4 	      jmp	UE_Tentacle	; tail jmp: saves 2 push bytes (stack guard)
-   2373  f80f				   .UEDNotTent
-   2374  f80f		       c9 04		      cmp	#ENEMY_MOTH	; E4: moth body runs in bank2 (code fold)
-   2375  f811		       d0 03		      bne	.UEDNotMoth
-   2376  f813		       4c f0 fe 	      jmp	UE_MothTramp	; tail jmp: 0 push (stack guard, like tentacle)
-   2377  f816				   .UEDNotMoth
-   2378  f816		       c9 02		      cmp	#ENEMY_SNAKE
-   2379  f818		       d0 03		      bne	.UEDNotSnake
-   2380  f81a		       4c dc f3 	      jmp	UE_SnakeBody
-   2381  f81d				   .UEDNotSnake
-   2382  f81d		       4c 20 f4 	      jmp	UE_Next	; other types: no X motion (Y is derived)
-   2383  f820							; (absolute jmps: this block is far from the
-   2384  f820							;  bodies — relative branches do not reach)
-   2385  f820
-   2386  f820							; CallPad_RaftBody — bank1 RaftBody entry. Pinned at $F8C0 with a
-   2387  f820							; BYTE-IDENTICAL twin in bank1 (bank1.asm, same address): the `sta $1FF7`
-   2388  f820							; switches banks, so the `jmp` opcode AND its operand are fetched from bank1,
-   2389  f820							; not from here. That is the same FoldIndirect discipline every other tramp
-   2390  f820							; uses — the twin cannot be skipped or shortened.
-   2391  f820							; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
-   2392  f820		       00 00 00 00*	      .ds	$F8C0 - *, 0
+   1758  f535							; 2026-10-19 (constants 32/24); start_room and miner_y dropped 2026-10-20
+   1759  f535							; (constants 0 / 84) — the converter rejects any other value)
+   1760  f535							;   +0: miner_room (b7 = faces right)
+   1761  f535							;   +1: miner_x
+   1762  f535							;   +2..+3: wall colors
+   1763  f535							;   +4..+5: level block base (RoomDataTable)
+   1764  f535							;   +6: room count n — readers derive Connections (+2n), RoomEnemies (+4n)
+   1765  f535							;	 and the enemy records (+5n — 1 B/room since 2026-10-20) from it (C2/C3)
+   1766  f535							; ------------------------------------------------------------------------------
+   1767  f535				   LoadLevel
+   1768  f535							; Stage leave/reload/advance: walls return + bombs refill to 5
+   1769  f535		       a9 00		      lda	#0
+   1770  f537		       85 b5		      sta	BombPacked	; state + WallMask bits (D1-B: no $F2 mirror)
+   1771  f539		       85 f7		      sta	BombTimer
+   1772  f53b		       85 c1		      sta	EnemyRamD	; clear dir + RoomDarkMask (bits 4-7) — level reset
+   1773  f53d		       85 82		      sta	PlayerDir	; face right on every stage entry (new stage,
+   1774  f53f							;  game-over restart = LoseLife->ReloadLevel->
+   1775  f53f							;  here; same-stage respawn keeps facing)
+   1776  f53f		       85 9c		      sta	Hover	; bugs.md #1: stage entry lands normally; the
+   1777  f541							;   respawn hover is armed only by LoseLife
+   1778  f541		       a5 c0		      lda	LaserState
+   1779  f543		       29 c7		      and	#%11000111	; clear RoomDarkMask rooms 4-7 (LaserState b5-2)
+   1780  f545		       85 c0		      sta	LaserState
+   1781  f547		       a9 05		      lda	#BOMBS_MAX
+   1782  f549		       85 f0		      sta	PlayerBombs
+   1783  f54b		       a5 8a		      lda	DropTarget	; #18: arm the LV001 banner except on the
+   1784  f54d		       c9 ff		      cmp	#$FF	; title preview (HUD score shows level+1)
+   1785  f54f		       f0 04		      beq	.NoBanner
+   1786  f551		       a9 f8		      lda	#(LV_SHOW_FRAMES|$80)	; bit7 = banner flag: decs down to $80; any
+   1787  f553		       85 f2		      sta	LevelShowTimer	; tally ARM (<=127) kills it instantly
+   1788  f555				   .NoBanner
+   1789  f555							; Compute LevelDataTable pointer: base + Level * 7
+   1790  f555							; Stride 7: miner(2) + wall_colors(2) + base ptr(2) + rooms(1)
+   1791  f555		       a5 a3		      lda	Level
+   1792  f557		       0a		      asl		; *2
+   1793  f558		       0a		      asl		; *4
+   1794  f559		       0a		      asl		; *8
+   1795  f55a		       38		      sec
+   1796  f55b		       e5 a3		      sbc	Level	; *7
+   1797  f55d		       a8		      tay		; Y = Level * 7
+   1798  f55e
+   1799  f55e							; --- Fold batch (P2.7): LevelDataTable lives in bank2 at the frozen
+   1800  f55e							; address. Stage FetchPtr immediately before the batch; FoldIndirect
+   1801  f55e							; preserves X and Y (iny flow below unchanged), returns the byte in A.
+   1802  f55e							; The ldx #0 is kept for callers that expect X clear on entry. ---
+   1803  f55e		       a9 00		      lda	#<LEVEL_DATA_ADDR
+   1804  f560		       85 e5		      sta	FetchPtr
+   1805  f562		       a9 f7		      lda	#>LEVEL_DATA_ADDR
+   1806  f564		       85 e6		      sta	FetchPtr+1
+   1807  f566		       a2 00		      ldx	#0
+   1808  f568
+   1809  f568							; +0: miner room (b7 = faces right). start room/x/y and the miner's y are
+   1810  f568							; kernel constants now (0 / 32 / 24 / 84 px = 7 rows).
+   1811  f568		       a9 00		      lda	#0
+   1812  f56a		       85 a7		      sta	LevelStartRoom
+   1813  f56c		       a9 20		      lda	#32
+   1814  f56e		       85 a8		      sta	LevelStartX
+   1815  f570		       a9 18		      lda	#24
+   1816  f572		       85 a9		      sta	LevelStartY
+   1817  f574		       20 f6 fe 	      jsr	FoldIndirect
+   1818  f577		       85 a4		      sta	LevelMinerRoom
+   1819  f579		       c8		      iny
+   1820  f57a							; +1: miner x
+   1821  f57a		       20 f6 fe 	      jsr	FoldIndirect
+   1822  f57d		       85 a5		      sta	MinerX
+   1823  f57f		       a9 54		      lda	#84
+   1824  f581		       85 a6		      sta	MinerY
+   1825  f583		       c8		      iny
+   1826  f584							; +2..+3: wall colors
+   1827  f584		       20 f6 fe 	      jsr	FoldIndirect
+   1828  f587		       85 aa		      sta	LevelWallColor
+   1829  f589		       c8		      iny
+   1830  f58a		       20 f6 fe 	      jsr	FoldIndirect
+   1831  f58d		       85 ab		      sta	LevelWallColor2
+   1832  f58f		       c8		      iny
+   1833  f590							; +4..+5: level block base (RoomDataTable; C4 dropped the conn/enemy words
+   1834  f590							; — they are the block's +2n / +4n / +5n offsets, see the readers)
+   1835  f590		       20 f6 fe 	      jsr	FoldIndirect
+   1836  f593		       85 9f		      sta	LevelPFDataLo
+   1837  f595		       c8		      iny
+   1838  f596		       20 f6 fe 	      jsr	FoldIndirect
+   1839  f599		       85 a0		      sta	LevelPFDataHi
+   1840  f59b		       c8		      iny
+   1841  f59c							; +6: room count → GetConnIdx (bank1) and EnterRoomB2 (bank2) derive the
+   1842  f59c							; Connections / RoomEnemies / enemy-record bases from it
+   1843  f59c		       20 f6 fe 	      jsr	FoldIndirect
+   1844  f59f		       85 a1		      sta	LevelRoomN
+   1845  f5a1
+   1846  f5a1							; Enter the starting room
+   1847  f5a1		       a5 a7		      lda	LevelStartRoom
+   1848  f5a3		       20 d0 fb 	      jsr	EnterRoom
+   1849  f5a6
+   1850  f5a6							; Place player at level start
+   1851  f5a6		       a5 a8		      lda	LevelStartX
+   1852  f5a8		       85 80		      sta	RoomX
+   1853  f5aa		       a5 a9		      lda	LevelStartY
+   1854  f5ac		       85 81		      sta	RoomY
+   1855  f5ae
+   1856  f5ae							; Drop-in from the screen top to the start Y (DropArm also zeroes the
+   1857  f5ae							; jetpack state + laser — stage start, game over and level advance all
+   1858  f5ae							; land here).
+   1859  f5ae		       4c c7 fc 	      jmp	DropArm
+   1860  f5b1
+   1861  f5b1							; ==============================================================================
+   1862  f5b1							; Miner pickup — check if player overlaps miner, advance to next level
+   1863  f5b1							; ==============================================================================
+   1864  f5b1				   CheckMinerPickup
+   1865  f5b1		       a5 a4		      lda	LevelMinerRoom
+   1866  f5b3		       29 7f		      and	#$7f
+   1867  f5b5		       c5 98		      cmp	RoomNo
+   1868  f5b7		       d0 1b		      bne	.CMPDone	; not in miner's room
+   1869  f5b9							; X overlap: player [RoomX, +6] vs 4px miner.
+   1870  f5b9							; Accept iff RoomX - MinerX in [-6, +3].
+   1871  f5b9		       a5 80		      lda	RoomX
+   1872  f5bb		       38		      sec
+   1873  f5bc		       e5 a5		      sbc	MinerX
+   1874  f5be		       18		      clc
+   1875  f5bf		       69 06		      adc	#PLAYER_WIDTH - 1
+   1876  f5c1		       c9 0a		      cmp	#PLAYER_WIDTH + MINER_WIDTH - 1
+   1877  f5c3		       b0 0f		      bcs	.CMPDone	; no X overlap
+   1878  f5c5							; Y overlap: player [RoomY, +11] vs miner [MinerY, +7]
+   1879  f5c5							; accept iff RoomY - MinerY in [-11, +7]  (add 11, compare 19)
+   1880  f5c5		       a5 81		      lda	RoomY
+   1881  f5c7		       38		      sec
+   1882  f5c8		       e5 a6		      sbc	MinerY
+   1883  f5ca		       18		      clc
+   1884  f5cb		       69 0b		      adc	#PLAYER_SPRITE_H - 1
+   1885  f5cd		       c9 13		      cmp	#PLAYER_SPRITE_H + PLAYER_HEIGHT - 1
+   1886  f5cf		       b0 03		      bcs	.CMPDone	; no Y overlap
+   1887  f5d1							; Pickup! Arm the level-bonus tally (frozen count-up, then advance).
+   1888  f5d1							; TallyArm (bank2, via TallyTramp) snapshots time/bombs/lives into
+   1889  f5d1							; TallyTicks and sets DropTarget=$FE; each frame's dispatch then runs
+   1890  f5d1							; TallyWork, whose done path does the old tail (level++/LoadLevel/bar).
+   1891  f5d1		       20 e6 ff 	      jsr	TallyTramp
+   1892  f5d4				   .CMPDone
+   1893  f5d4		       60		      rts
+   1894  f5d5
+   1895  f5d5							; ==============================================================================
+   1896  f5d5							; SelectActiveObject — choose the single GRP1 object to draw this frame.
+   1897  f5d5							; The TIA has one GRP1 sprite, so objects flicker by rotating slots each frame.
+   1898  f5d5							; Sets ObjBase, ActiveObjectX, ActiveObjectY, ObjTop, COLUP1.
+   1899  f5d5							; Slot count (enemies + miner?) lives in Temp for this VBLANK only.
+   1900  f5d5							; Bomb fuse (state=1): low-priority — bomb only when (BombTimer&3)==0
+   1901  f5d5							; (~15 Hz); other frames normal miner/enemy rotation (FlickerFrame alone).
+   1902  f5d5							; One GRP1: cannot draw bomb + entity same frame.
+   1903  f5d5							; ------------------------------------------------------------------------------
+   1904  f5d5				   SelectActiveObject
+   1905  f5d5							; Tally / frozen scene (DropTarget = $FE): show the PLAYER and the MINER
+   1906  f5d5							; only — no enemies, no raft, no bomb. That frame bypasses the overscan, so
+   1907  f5d5							; RefreshEnemyY never runs while bank1's HUD writes $E0-$EF: EnemyRamY
+   1908  f5d5							; ($E2-$E4) is left holding score-pointer bytes, and any enemy drawn then
+   1909  f5d5							; jumps to a garbage Y (user report 2026-10-18: the raft "moved up to the
+   1910  f5d5							; middle of the screen" the moment the points counting started).
+   1911  f5d5		       a5 8a		      lda	DropTarget
+   1912  f5d7		       c9 fe		      cmp	#$FE
+   1913  f5d9		       d0 27		      bne	.SOFull
+   1914  f5db		       a9 00		      lda	#0
+   1915  f5dd		       85 b4		      sta	FlickerFrame	; keep the modulo counter bounded (2026-10-16)
+   1916  f5df		       85 b6		      sta	ObjBase	; 0 = no object
+   1917  f5e1		       a5 a4		      lda	LevelMinerRoom
+   1918  f5e3		       29 7f		      and	#$7f
+   1919  f5e5		       c5 98		      cmp	RoomNo
+   1920  f5e7		       f0 03		      beq	.SOTallyMiner
+   1921  f5e9		       4c d1 f6 	      jmp	.SODone	; miner not here -> nothing drawn
+   1922  f5ec				   .SOTallyMiner
+   1923  f5ec		       a9 38		      lda	#OBJ_MINER
+   1924  f5ee		       85 b6		      sta	ObjBase
+   1925  f5f0		       a5 a5		      lda	MinerX
+   1926  f5f2		       85 b7		      sta	ActiveObjectX
+   1927  f5f4		       a5 a6		      lda	MinerY
+   1928  f5f6		       18		      clc
+   1929  f5f7		       69 03		      adc	#3	; same 3px offset as the normal miner path
+   1930  f5f9		       85 b8		      sta	ActiveObjectY
+   1931  f5fb		       a9 66		      lda	#$66	; purple (hue 6, luma 3)
+   1932  f5fd		       85 07		      sta	COLUP1
+   1933  f5ff		       4c d1 f6 	      jmp	.SODone
+   1934  f602				   .SOFull
+   1935  f602		       e6 b4		      inc	FlickerFrame	; advance every frame (bomb + enemy paths)
+   1936  f604							; --- Bomb fuse (state=1): 1 of 4 frames = bomb (enemies keep priority) ---
+   1937  f604		       a5 b5		      lda	BombPacked
+   1938  f606		       29 03		      and	#%00000011
+   1939  f608		       c9 01		      cmp	#1
+   1940  f60a		       d0 19		      bne	.SOCount
+   1941  f60c		       a5 f7		      lda	BombTimer
+   1942  f60e		       29 03		      and	#3
+   1943  f610		       d0 13		      bne	.SOCount	; 3 of 4 -> miner/enemy
+   1944  f612		       a9 40		      lda	#OBJ_BOMB	; bomb design offset into ObjSprites
+   1945  f614		       85 b6		      sta	ObjBase
+   1946  f616		       a5 f6		      lda	BombX
+   1947  f618		       85 b7		      sta	ActiveObjectX
+   1948  f61a		       a5 85		      lda	BombY
+   1949  f61c		       85 b8		      sta	ActiveObjectY
+   1950  f61e		       a9 46		      lda	#COLOR_BOMBS	; $46 red (P1 X set by the .SODone tail)
+   1951  f620		       85 07		      sta	COLUP1
+   1952  f622		       4c d1 f6 	      jmp	.SODone	; ObjTop/Bot from ActiveObjectY
+   1953  f625				   .SOCount
+   1954  f625							; Count objects: enemies + miner if in miner's room (Temp = count; VBLANK-safe)
+   1955  f625		       a5 b3		      lda	EnemyCount
+   1956  f627		       85 88		      sta	Temp
+   1957  f629		       a5 a4		      lda	LevelMinerRoom
+   1958  f62b		       29 7f		      and	#$7f
+   1959  f62d		       c5 98		      cmp	RoomNo
+   1960  f62f		       d0 02		      bne	.SONoMiner
+   1961  f631		       e6 88		      inc	Temp	; miner counts as a slot
+   1962  f633				   .SONoMiner
+   1963  f633		       a5 88		      lda	Temp
+   1964  f635		       d0 09		      bne	.SONotNothing
+   1965  f637							; No objects this frame: A = Temp = 0. Blank the sprite AND reset the
+   1966  f637							; flicker counter — with no objects the modulo below never runs, so
+   1967  f637							; FlickerFrame would grow unbounded and .SOModLoop (a subtract loop)
+   1968  f637							; would run O(FlickerFrame) iterations in the VBL on the next room with
+   1969  f637							; objects (measured +533c / +7 lines room-crossing spike, 2026-10-16).
+   1970  f637		       85 b4		      sta	FlickerFrame
+   1971  f639		       a9 ff		      lda	#$FF
+   1972  f63b		       85 b6		      sta	ObjBase
+   1973  f63d		       4c d1 f6 	      jmp	.SODone
+   1974  f640				   .SONotNothing
+   1975  f640							; FlickerFrame already advanced at entry — modulo into 0..(slot count-1)
+   1976  f640				   .SOModLoop
+   1977  f640		       a5 b4		      lda	FlickerFrame
+   1978  f642		       c5 88		      cmp	Temp
+   1979  f644		       90 08		      bcc	.SOModDone
+   1980  f646		       38		      sec
+   1981  f647		       e5 88		      sbc	Temp
+   1982  f649		       85 b4		      sta	FlickerFrame
+   1983  f64b		       4c 40 f6 	      jmp	.SOModLoop
+   1984  f64e				   .SOModDone
+   1985  f64e							; FlickerFrame is now 0..(slot count-1)
+   1986  f64e							; Check if slot 0 is the miner
+   1987  f64e		       a5 b4		      lda	FlickerFrame
+   1988  f650		       d0 1c		      bne	.SOEnemy
+   1989  f652		       a5 88		      lda	Temp
+   1990  f654		       c5 b3		      cmp	EnemyCount
+   1991  f656		       f0 16		      beq	.SOEnemy	; no miner slot in this room
+   1992  f658							; This slot is the miner
+   1993  f658		       a9 38		      lda	#OBJ_MINER	; miner design offset into ObjSprites
+   1994  f65a		       85 b6		      sta	ObjBase
+   1995  f65c		       a5 a5		      lda	MinerX
+   1996  f65e		       85 b7		      sta	ActiveObjectX
+   1997  f660		       a5 a6		      lda	MinerY
+   1998  f662		       18		      clc
+   1999  f663		       69 03		      adc	#3	; draw 3px below data Y (miner_position.png —
+   2000  f665							; sprite floated above the floor line; tuning
+   2001  f665							; constant — pickup box still uses MinerY)
+   2002  f665		       85 b8		      sta	ActiveObjectY
+   2003  f667		       a9 66		      lda	#$66	; purple (hue 6, luma 3)
+   2004  f669		       85 07		      sta	COLUP1
+   2005  f66b		       4c d1 f6 	      jmp	.SODone
+   2006  f66e
+   2007  f66e				   .SOEnemy
+   2008  f66e							; Walk enemy list: find the (FlickerFrame - (miner_offset))th enemy
+   2009  f66e							; If miner room and FlickerFrame > 0, subtract 1 for miner slot
+   2010  f66e		       a6 b4		      ldx	FlickerFrame
+   2011  f670		       a5 88		      lda	Temp
+   2012  f672		       c5 b3		      cmp	EnemyCount
+   2013  f674		       f0 01		      beq	.SOEnemyNoMinerOffset
+   2014  f676		       ca		      dex		; skip miner slot
+   2015  f677				   .SOEnemyNoMinerOffset
+   2016  f677							; A = enemy index in list
+   2017  f677		       8a		      txa
+   2018  f678		       85 b9		      sta	EnemyIndex
+   2019  f67a							; Check if index < EnemyCount
+   2020  f67a		       c5 b3		      cmp	EnemyCount
+   2021  f67c		       90 07		      bcc	.SOEnemyValid
+   2022  f67e							; Out of range — no object this slot
+   2023  f67e		       a9 ff		      lda	#$FF
+   2024  f680		       85 b6		      sta	ObjBase
+   2025  f682		       4c d1 f6 	      jmp	.SODone
+   2026  f685				   .SOEnemyValid
+   2027  f685							; Skip if this enemy is dead (mask bit = index); A already = EnemyIndex
+   2028  f685		       aa		      tax
+   2029  f686		       a5 ba		      lda	EnemyDeadMask
+   2030  f688		       3d b2 f3 	      and	EnemyBitTable,X
+   2031  f68b		       d0 40		      bne	.SOEnemySkip
+   2032  f68d							; Live X from RAM; Y from RAM (EnemyRamY) at .SOEnemyColorDone
+   2033  f68d		       a6 b9		      ldx	EnemyIndex
+   2034  f68f		       b5 bd		      lda	EnemyRamX,X
+   2035  f691		       85 b7		      sta	ActiveObjectX
+   2036  f693		       bc b2 f9 	      ldy	EnemyOffTable,X	; Y = EnemyIndex * 4 = type offset
+   2037  f696							; --- Fold batch (P3.1): enemy record staged before IsRoomDark (A-only,
+   2038  f696							; Y and FetchPtr survive the call). ---
+   2039  f696		       a5 b1		      lda	EnemyDataLo
+   2040  f698		       85 e5		      sta	FetchPtr
+   2041  f69a		       a5 b2		      lda	EnemyDataHi
+   2042  f69c		       85 e6		      sta	FetchPtr+1
+   2043  f69e		       20 0e fc 	      jsr	CallPad_IsRoomDark	; clobbers X — Y still = type offset
+   2044  f6a1		       f0 0b		      beq	.SOEnemyLit
+   2045  f6a3		       a9 0a		      lda	#COLOR_DARK_OBJ	; dark room: lamp + enemies medium grey
+   2046  f6a5		       85 07		      sta	COLUP1
+   2047  f6a7		       20 f6 fe 	      jsr	FoldIndirect	; reload type
+   2048  f6aa		       aa		      tax
+   2049  f6ab		       4c b7 f6 	      jmp	.SOEnemyPattern
+   2050  f6ae				   .SOEnemyLit
+   2051  f6ae		       20 f6 fe 	      jsr	FoldIndirect	; reload type (X was clobbered by IsRoomDark)
+   2052  f6b1		       aa		      tax
+   2053  f6b2		       bd f6 f6 	      lda	EnemyColorTable,X
+   2054  f6b5		       85 07		      sta	COLUP1
+   2055  f6b7				   .SOEnemyPattern
+   2056  f6b7		       e0 06		      cpx	#KEY
+   2057  f6b9		       d0 04		      bne	.SOPNorm
+   2058  f6bb		       a5 a7		      lda	LevelStartRoom	; Phase 5: KeyHeld ($A7 b7) → key already
+   2059  f6bd		       30 0e		      bmi	.SOEnemySkip	;   taken → skip render (never reappears)
+   2060  f6bf				   .SOPNorm
+   2061  f6bf		       bd fe f6 	      lda	ObjSpriteOffTable,X	; type → ObjSprites design offset
+   2062  f6c2		       85 b6		      sta	ObjBase
+   2063  f6c4				   .SOEnemyColorDone
+   2064  f6c4		       a6 b9		      ldx	EnemyIndex
+   2065  f6c6		       b5 e2		      lda	EnemyRamY,X	; live Y from $E2 (private since S3.4)
+   2066  f6c8		       85 b8		      sta	ActiveObjectY
+   2067  f6ca		       4c d1 f6 	      jmp	.SODone
+   2068  f6cd
+   2069  f6cd				   .SOEnemySkip
+   2070  f6cd		       a9 ff		      lda	#$FF
+   2071  f6cf		       85 b6		      sta	ObjBase
+   2072  f6d1
+   2073  f6d1				   .SODone
+   2074  f6d1							; Position GRP1 from ActiveObjectX — ONE shared call for every object
+   2075  f6d1							; path (bomb/miner/enemy). ac4c3ee moved the bomb's SOXP to the drop and
+   2076  f6d1							; the bomb path skipped it, so the bomb rendered at the last enemy/miner
+   2077  f6d1							; X (looked fixed). ObjBase==0 (no object / dead-enemy slot) skips it.
+   2078  f6d1		       a5 b6		      lda	ObjBase
+   2079  f6d3		       30 07		      bmi	.SODoneNoPos
+   2080  f6d5		       a5 b7		      lda	ActiveObjectX
+   2081  f6d7		       a2 01		      ldx	#1
+   2082  f6d9		       20 0f ff 	      jsr	SetObjectXPos
+   2083  f6dc				   .SODoneNoPos
+   2084  f6dc		       20 20 ff 	      jsr	SetObjReflection
+   2085  f6df							; Set ObjTop for kernel GRP1 visibility check.
+   2086  f6df							; S2.2: ObjTop stored RoomY-relative (ObjTopRel = ActiveObjectY-RoomY+1) so
+   2087  f6df							; the kernel compares against running-Y (`tya`) instead of `lda Scanline`
+   2088  f6df							; — frees 9c/line (lda Scanline + inc Scanline) for the laser beam write.
+   2089  f6df							; Kernel .Grp1 does: tya / sec / sbc ObjTop / cmp #8 / bcs .ObjZero.
+   2090  f6df							; ObjBot (write-only, no readers): stores removed S1.5, decl removed
+   2091  f6df							; S3.0b (was last sequential decl — no address shift).
+   2092  f6df		       a5 b6		      lda	ObjBase
+   2093  f6e1		       30 0b		      bmi	.SONoObj
+   2094  f6e3		       a5 b8		      lda	ActiveObjectY
+   2095  f6e5		       38		      sec
+   2096  f6e6		       e5 81		      sbc	RoomY
+   2097  f6e8		       18		      clc
+   2098  f6e9		       69 01		      adc	#1	; A = ActiveObjectY - RoomY + 1 (mod 256)
+   2099  f6eb		       85 bb		      sta	ObjTop
+   2100  f6ed		       60		      rts
+   2101  f6ee				   .SONoObj
+   2102  f6ee		       a9 90		      lda	#144	; Park the GRP1 window off-cave for EVERY
+   2103  f6f0		       38		      sec		; RoomY. The kernel draws when running-Y
+   2104  f6f1		       e5 81		      sbc	RoomY	; (Scanline-RoomY) - ObjTopRel ∈ [0,7] =
+   2105  f6f3		       85 bb		      sta	ObjTop	; Scanline-(RoomY+ObjTopRel); parking ObjTopRel
+   2106  f6f5		       60		      rts		; = 144-RoomY → Scanline-144 ∈ [112,255] →
+   2107  f6f6							; never <8 → never drawn. A CONSTANT 144
+   2108  f6f6							; wrapped for RoomY ≥ 112 (Scanline-(144+RY)
+   2109  f6f6							; mod 256 ∈ [0,7]) and drew ObjSprites[row+
+   2110  f6f6							; ObjBase]; with the key art now at slot 0
+   2111  f6f6							; (ObjBase=$FF → row 1..7 = index 0..6) that
+   2112  f6f6							; leaked the key onto the player's rows
+   2113  f6f6							; (user 2026-10-17). The old blank slot 0 had
+   2114  f6f6							; hidden this latent bug.
+   2115  f6f6
+   2116  f6f6							; ==============================================================================
+   2117  f6f6							; Enemy color table (emulator-aware: hue<<4 | luma<<1)
+   2118  f6f6				   EnemyColorTable
+   2119  f6f6		       14		      .byte.b	$14	; spider — hue 1 luma 2 = dark yellow
+   2120  f6f7		       f2		      .byte.b	$f2	; bat — hue 15 luma 7 = brown
+   2121  f6f8		       c4		      .byte.b	$c4	; snake — hue 12 luma 2 = green
+   2122  f6f9		       0e		      .byte.b	$0e	; tentacle — hue 0 luma 7 = white
+   2123  f6fa		       22		      .byte.b	$22	; moth — hue 2 luma 1 = dark orange
+   2124  f6fb		       0e		      .byte.b	$0e	; lamp (type 5) — white; dark rooms override to grey
+   2125  f6fc		       1c		      .byte.b	$1C	; key (type 6) — yellow
+   2126  f6fd		       c4		      .byte.b	$c4	; raft (type 7) — green, matching the SNAKE art
+   2127  f6fe							; slot it borrows ($c4 = ObjColorTab slot 6). User
+   2128  f6fe							; 2026-10-18: keep the SOLID block and read it as
+   2129  f6fe							; a trunk/log — the solid art also looks bigger
+   2130  f6fe							; than the notched LAMP one, so the player lands
+   2131  f6fe							; on it more confidently.
+   2132  f6fe
+   2133  f6fe							; Enemy type → ObjSprites design offset (index = ENEMY_* type)
+   2134  f6fe				   ObjSpriteOffTable
+   2135  f6fe		       10		      .byte.b	OBJ_SPIDER	; 0
+   2136  f6ff		       28		      .byte.b	OBJ_BAT	; 1
+   2137  f700		       30		      .byte.b	OBJ_SNAKE	; 2
+   2138  f701		       20		      .byte.b	OBJ_TENTACLE	; 3
+   2139  f702		       08		      .byte.b	OBJ_MOTH	; 4
+   2140  f703		       18		      .byte.b	OBJ_LAMP	; 5 (LAMP)
+   2141  f704		       00		      .byte.b	OBJ_KEY	; 6 (KEY — offset-0 slot)
+   2142  f705		       30		      .byte.b	OBJ_SNAKE	; 7 (RAFT — the solid 8x8 block: a log/trunk over
+   2143  f706							; the water, and the most "landable" shape in the
+   2144  f706							; table. ObjSprites is exactly 72 B and ends at
+   2145  f706							; $FF00, so a dedicated design needs 8 art bytes
+   2146  f706							; freed; every entry is 8x8, so nothing is
+   2147  f706							; "larger" — solid just reads bigger than notched.)
+   2148  f706
+   2149  f706							; ==============================================================================
+   2150  f706							; CheckEnemyHit — player overlaps an enemy → remove enemy, lose life
+   2151  f706							; ------------------------------------------------------------------------------
+   2152  f706				   CheckEnemyHit
+   2153  f706							; Walk enemy list, check footprint overlap with each
+   2154  f706		       a5 b3		      lda	EnemyCount
+   2155  f708		       d0 03		      bne	CEH_HasEnemies
+   2156  f70a		       4c 7f f7 	      jmp	CEH_NoHit	; no enemies
+   2157  f70d				   CEH_HasEnemies
+   2158  f70d							; --- Fold batch (P3.1): enemy record staged once — the loop reads type
+   2159  f70d							; at CEH_HasMore and writes no FetchPtr. ---
+   2160  f70d		       a5 b1		      lda	EnemyDataLo
+   2161  f70f		       85 e5		      sta	FetchPtr
+   2162  f711		       a5 b2		      lda	EnemyDataHi
+   2163  f713		       85 e6		      sta	FetchPtr+1
+   2164  f715		       a0 00		      ldy	#0
+   2165  f717				   CEH_Loop
+   2166  f717		       c4 b3		      cpy	EnemyCount
+   2167  f719		       90 03		      bcc	CEH_HasMore
+   2168  f71b		       4c 7f f7 	      jmp	CEH_NoHit	; walked all enemies, no hit
+   2169  f71e				   CEH_HasMore
+   2170  f71e		       84 b9		      sty	EnemyIndex
+   2171  f720							; Skip dead enemies
+   2172  f720		       a5 ba		      lda	EnemyDeadMask
+   2173  f722		       39 b2 f3 	      and	EnemyBitTable,Y
+   2174  f725		       d0 52		      bne	CEHNext
+   2175  f727							; Live X and Y from RAM shadow (Y = slot here)
+   2176  f727		       b9 bd 00 	      lda	EnemyRamX,Y
+   2177  f72a		       85 b7		      sta	ActiveObjectX
+   2178  f72c		       b9 e2 00 	      lda	EnemyRamY,Y
+   2179  f72f		       85 b8		      sta	ActiveObjectY
+   2180  f731							; Broad object bounds; lamp gets its 4px lit-width check after Y overlap.
+   2181  f731		       a5 80		      lda	RoomX
+   2182  f733		       38		      sec
+   2183  f734		       e5 b7		      sbc	ActiveObjectX
+   2184  f736		       18		      clc
+   2185  f737		       69 06		      adc	#PLAYER_WIDTH - 1
+   2186  f739		       c9 0e		      cmp	#PLAYER_WIDTH + ENEMY_WIDTH - 1
+   2187  f73b		       b0 3c		      bcs	CEHNext	; no X overlap
+   2188  f73d		       85 8b		      sta	CollisionX	; keep x-overlap span for lamp's narrower box
+   2189  f73f							; Y overlap: player [RoomY, +11] vs enemy [ActiveObjectY, +7] — exact
+   2190  f73f		       a5 81		      lda	RoomY
+   2191  f741		       38		      sec
+   2192  f742		       e5 b8		      sbc	ActiveObjectY
+   2193  f744		       18		      clc
+   2194  f745		       69 0b		      adc	#PLAYER_SPRITE_H - 1
+   2195  f747		       c9 13		      cmp	#PLAYER_SPRITE_H + PLAYER_HEIGHT - 1
+   2196  f749		       b0 2e		      bcs	CEHNext	; no Y overlap
+   2197  f74b							; Lamp (type 5): crash → RoomDarkMask; lamp stays in rotation (grey), no life
+   2198  f74b		       a6 b9		      ldx	EnemyIndex
+   2199  f74d		       bc b2 f9 	      ldy	EnemyOffTable,X	; Y = EnemyIndex * 4
+   2200  f750		       20 f6 fe 	      jsr	FoldIndirect	; type
+   2201  f753		       c9 05		      cmp	#LAMP
+   2202  f755		       f0 18		      beq	CEH_Lamp
+   2203  f757		       c9 06		      cmp	#KEY	; type 6 = key: collect, no life loss
+   2204  f759		       90 05		      bcc	.CEHkill	; 0-4 (LAMP handled above) = enemy: lose life
+   2205  f75b		       d0 1c		      bne	CEHNext	; 7 = RAFT: a platform is walked on, not hit
+   2206  f75d		       4c ec f7 	      jmp	CEH_Key	; 6 = key
+   2207  f760				   .CEHkill
+   2208  f760							; Hit! Mark this enemy dead (bit = index)
+   2209  f760		       a5 ba		      lda	EnemyDeadMask
+   2210  f762		       1d b2 f3 	      ora	EnemyBitTable,X	; X = EnemyIndex (set at CEH hit)
+   2211  f765		       85 ba		      sta	EnemyDeadMask
+   2212  f767		       a9 50		      lda	#$50	; +50 points per kill
+   2213  f769		       20 0b fc 	      jsr	CallPad_AddScore
+   2214  f76c							; Lose a life (shared path — tail jmp: its rts returns to caller)
+   2215  f76c		       4c 8d fc 	      jmp	LoseLife
+   2216  f76f				   CEH_Lamp
+   2217  f76f							; Broad overlap guarantees lower bound; narrow to lamp's 4 lit pixels.
+   2218  f76f		       a5 8b		      lda	CollisionX
+   2219  f771		       c9 0a		      cmp	#PLAYER_WIDTH + LAMP_WIDTH - 1
+   2220  f773		       b0 04		      bcs	CEHNext
+   2221  f775							; Only fire once (bit already set → no-op); no life loss, not EnemyDeadMask
+   2222  f775		       20 11 fc 	      jsr	CallPad_SetRoomDark
+   2223  f778		       60		      rts
+   2224  f779				   CEHNext
+   2225  f779		       a4 b9		      ldy	EnemyIndex
+   2226  f77b		       c8		      iny
+   2227  f77c		       4c 17 f7 	      jmp	CEH_Loop
+   2228  f77f				   CEH_NoHit
+   2229  f77f		       60		      rts
+   2230  f780
+   2231  f780							; ------------------------------------------------------------------------------
+   2232  f780							; BombTick — per-frame state machine (overscan).
+   2233  f780							;   state1 fuse: dec BombTimer, at 0 → state=2 timer=60 (blast = S5/S6/S9)
+   2234  f780							;   state2: dec BombTimer, at 0 → state=0 (mask stays; saved on EnterRoom)
+   2235  f780							; ------------------------------------------------------------------------------
+   2236  f780				   BombTick   subroutine
+   2237  f780		       a5 b5		      lda	BombPacked
+   2238  f782		       29 03		      and	#%00000011	; state
+   2239  f784		       f0 41		      beq	.BTDone	; none
+   2240  f786		       c9 01		      cmp	#1
+   2241  f788		       f0 0f		      beq	.BTFuse
+   2242  f78a							; state 2 — exploding
+   2243  f78a		       c6 f7		      dec	BombTimer
+   2244  f78c		       d0 39		      bne	.BTDone
+   2245  f78e		       a5 b5		      lda	BombPacked	; clear state bits only (keep mask + DownPrev)
+   2246  f790		       29 fc		      and	#%11111100
+   2247  f792		       85 b5		      sta	BombPacked
+   2248  f794		       a9 00		      lda	#0
+   2249  f796		       85 f7		      sta	BombTimer
+   2250  f798		       60		      rts
+   2251  f799				   .BTFuse
+   2252  f799		       c6 f7		      dec	BombTimer
+   2253  f79b		       d0 2a		      bne	.BTDone
+   2254  f79d		       a5 b5		      lda	BombPacked	; 1 → 2
+   2255  f79f		       29 fc		      and	#%11111100
+   2256  f7a1		       09 02		      ora	#%00000010
+   2257  f7a3		       85 b5		      sta	BombPacked
+   2258  f7a5		       a9 3c		      lda	#60
+   2259  f7a7		       85 f7		      sta	BombTimer
+   2260  f7a9		       20 1a fc 	      jsr	CallPad_BombMarkWalls	; S6.3: set WallMask; A = #walls newly broken
+   2261  f7ac		       aa		      tax
+   2262  f7ad		       f0 08		      beq	.BTNoScore
+   2263  f7af				   .BTScore
+   2264  f7af		       a9 75		      lda	#$75	; +75 points per broken wall (moved out of
+   2265  f7b1		       20 0b fc 	      jsr	CallPad_AddScore	;   BMW — pads cannot nest from a pad body)
+   2266  f7b4		       ca		      dex
+   2267  f7b5		       d0 f8		      bne	.BTScore
+   2268  f7b7				   .BTNoScore
+   2269  f7b7		       20 d8 fd 	      jsr	BombEnemyBlast	; S9: A = 1 kill (bank2, lamp-safe), 0 none
+   2270  f7ba		       f0 05		      beq	.BTNoKill
+   2271  f7bc		       a9 50		      lda	#$50	; +50 per kill — moved out of the pad body
+   2272  f7be		       20 0b fc 	      jsr	CallPad_AddScore	;   (pads cannot nest; same shape as BMW above)
+   2273  f7c1				   .BTNoKill
+   2274  f7c1		       20 c8 f7 	      jsr	BombPlayerBlast	; S5: player ±1 col any Y → life (may ReloadLevel → clears masks)
+   2275  f7c4		       20 05 fc 	      jsr	CallPad_BombSndExplode	; S10: noise burst
+   2276  f7c7				   .BTDone
+   2277  f7c7		       60		      rts
+   2278  f7c8
+   2279  f7c8							; ------------------------------------------------------------------------------
+   2280  f7c8							; BombPlayerBlast — on explode, if player col in ±1 col of bomb col (any Y):
+   2281  f7c8							;   lose 1 life (shared LoseLife path).
+   2282  f7c8							; Cols = px/4 (0..39 screen). Y ignored.
+   2283  f7c8							; ------------------------------------------------------------------------------
+   2284  f7c8				   BombPlayerBlast
+   2285  f7c8		       a5 8a		      lda	DropTarget
+   2286  f7ca		       d0 1b		      bne	.BPBMiss	; spawn drop-in: falling = invulnerable
+   2287  f7cc		       a5 f6		      lda	BombX
+   2288  f7ce		       4a		      lsr
+   2289  f7cf		       4a		      lsr		; bomb col = BombX/4
+   2290  f7d0		       85 88		      sta	Temp
+   2291  f7d2		       a5 80		      lda	RoomX
+   2292  f7d4		       4a		      lsr
+   2293  f7d5		       4a		      lsr		; player col = RoomX/4
+   2294  f7d6		       38		      sec
+   2295  f7d7		       e5 88		      sbc	Temp
+   2296  f7d9		       b0 05		      bcs	.BPBColAbs
+   2297  f7db		       49 ff		      eor	#$ff
+   2298  f7dd		       18		      clc
+   2299  f7de		       69 01		      adc	#1
+   2300  f7e0				   .BPBColAbs
+   2301  f7e0		       c9 02		      cmp	#2	; |dcol| < 2 → any Y kills
+   2302  f7e2		       b0 03		      bcs	.BPBMiss
+   2303  f7e4		       4c 8d fc 	      jmp	LoseLife	; shared life path (tail: rts to caller)
+   2304  f7e7				   .BPBMiss
+   2305  f7e7		       60		      rts
+   2306  f7e8
+   2307  f7e8							; Bomb audio bodies (BombSndDrop/BombSndExplode) moved to bank1
+   2308  f7e8							; (leaf_move_plan batch A) — called via CallPad_BombSnd*.
+   2309  f7e8
+   2310  f7e8							; ------------------------------------------------------------------------------
+   2311  f7e8							; BombMarkWalls — MOVED to bank1 (S5.2) — CallPad_BombMarkWalls ($FB10).
+   2312  f7e8							;   Returns A = #walls newly broken; the fuse-expiry caller scores +75 each
+   2313  f7e8							;   (pads cannot nest: ReturnPad switches to bank0 mid-call). bank1 owns the
+   2314  f7e8							;   ABW tables + BombMaskBit now (plan 5.2 deleted the kernel copies along
+   2315  f7e8							;   with ApplyBombWalls).
+   2316  f7e8							; ------------------------------------------------------------------------------
+   2317  f7e8
+   2318  f7e8
+   2319  f7e8							; ==============================================================================
+   2320  f7e8							; Data tables
+   2321  f7e8							; ==============================================================================
+   2322  f7e8
+   2323  f7e8							; --- Explosion blink COLUBK: index = (60-BombTimer) % 3 ---
+   2324  f7e8				   BombBlinkColors
+   2325  f7e8		       00		      .byte.b	COLOR_CAVE_BG	; 0 black
+   2326  f7e9		       1c		      .byte.b	COLOR_BLINK_Y	; 1 yellow
+   2327  f7ea		       44		      .byte.b	COLOR_BLINK_R	; 2 red
+   2328  f7eb		       1c		      .byte.b	COLOR_BLINK_Y	; 3 yellow (4-phase blink: b/y/r/y)
+   2329  f7ec
+   2330  f7ec							; BombMaskBit: bank1-only now (plan 5.2 — kernel copy died with ApplyBombWalls).
+   2331  f7ec
+   2332  f7ec							; BombClearMask moved to bank1 with ClearPFColumn (leaf_move_plan batch B).
+   2333  f7ec
+   2334  f7ec							; --- Player sprites: 8x12, all 8 pixels wide (bit7 = leftmost pixel) ---
+   2335  f7ec							; Frame A = normal, frame B = jet legs (rows 7-8 differ; 3 pixels changed).
+   2336  f7ec							; Per-row colors in PlayerColTable (RED/RED/YELLOW/RED/GRAY/RED/.../BLACK/BLACK).
+   2337  f7ec							; ------------------------------------------------------------------------------
+   2338  f7ec							; CEH_Key — type-6 key pickup (docs/feature_tiles_plan.md Phase 5): latch
+   2339  f7ec							; KeyHeld ($A7 b7) and mark the key slot dead so it vanishes, with NO life
+   2340  f7ec							; loss. X = EnemyIndex (set by CheckEnemyHit's hit path); reached via
+   2341  f7ec							; `jmp CEH_Key` from that dispatch. Lives in the $F82C pre-pad pin gap
+   2342  f7ec							; (177B slack before the $F8DD sprite pin); pre-pad END headroom is 1B but
+   2343  f7ec							; this region is upstream of the pin, so it costs nothing at $FC67.
+   2344  f7ec							; KEY is one per level, so KeyHeld is a single bit (no per-key storage).
+   2345  f7ec							; LevelStartRoom b7 resets when LoadLevel rewrites $A7 (:1875) before its own
+   2346  f7ec							; read at :1922, so no reader mask is needed; KeyHeld survives room changes
+   2347  f7ec							; and normal deaths, resets on game-over reload.
+   2348  f7ec							; ------------------------------------------------------------------------------
+   2349  f7ec				   CEH_Key
+   2350  f7ec		       a5 ba		      lda	EnemyDeadMask
+   2351  f7ee		       1d b2 f3 	      ora	EnemyBitTable,X
+   2352  f7f1		       85 ba		      sta	EnemyDeadMask
+   2353  f7f3		       a5 a7		      lda	LevelStartRoom
+   2354  f7f5		       09 80		      ora	#$80	; KeyHeld = b7
+   2355  f7f7		       85 a7		      sta	LevelStartRoom
+   2356  f7f9		       60		      rts
+   2357  f7fa
+   2358  f7fa							; ------------------------------------------------------------------------------
+   2359  f7fa							; UEDispatch — the enemy-type dispatch tail, moved out of UpdateEnemies into the
+   2360  f7fa							; $F82C pin gap (upstream of the $F8DD sprite pin, so the pre-pad END is
+   2361  f7fa							; unaffected and the 15 B the folded chain frees stays free). Every non-raft arm
+   2362  f7fa							; tail-jumps, exactly like the old inline chain, so the stack depth is unchanged.
+   2363  f7fa							; ------------------------------------------------------------------------------
+   2364  f7fa				   UEDispatch
+   2365  f7fa		       c9 07		      cmp	#ENEMY_RAFT
+   2366  f7fc		       d0 06		      bne	.UEDNotRaft
+   2367  f7fe		       20 c0 f8 	      jsr	CallPad_RaftBody	; bank1 body; returns past this jmp (ReturnPad)
+   2368  f801		       4c 20 f4 	      jmp	UE_Next
+   2369  f804				   .UEDNotRaft
+   2370  f804		       c9 03		      cmp	#ENEMY_TENTACLE
+   2371  f806		       d0 03		      bne	.UEDNotTent
+   2372  f808		       4c 25 f4 	      jmp	UE_Tentacle	; tail jmp: saves 2 push bytes (stack guard)
+   2373  f80b				   .UEDNotTent
+   2374  f80b		       c9 04		      cmp	#ENEMY_MOTH	; E4: moth body runs in bank2 (code fold)
+   2375  f80d		       d0 03		      bne	.UEDNotMoth
+   2376  f80f		       4c f0 fe 	      jmp	UE_MothTramp	; tail jmp: 0 push (stack guard, like tentacle)
+   2377  f812				   .UEDNotMoth
+   2378  f812		       c9 02		      cmp	#ENEMY_SNAKE
+   2379  f814		       d0 03		      bne	.UEDNotSnake
+   2380  f816		       4c dc f3 	      jmp	UE_SnakeBody
+   2381  f819				   .UEDNotSnake
+   2382  f819		       4c 20 f4 	      jmp	UE_Next	; other types: no X motion (Y is derived)
+   2383  f81c							; (absolute jmps: this block is far from the
+   2384  f81c							;  bodies — relative branches do not reach)
+   2385  f81c
+   2386  f81c							; CallPad_RaftBody — bank1 RaftBody entry. Pinned at $F8C0 with a
+   2387  f81c							; BYTE-IDENTICAL twin in bank1 (bank1.asm, same address): the `sta $1FF7`
+   2388  f81c							; switches banks, so the `jmp` opcode AND its operand are fetched from bank1,
+   2389  f81c							; not from here. That is the same FoldIndirect discipline every other tramp
+   2390  f81c							; uses — the twin cannot be skipped or shortened.
+   2391  f81c							; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
+   2392  f81c		       00 00 00 00*	      .ds	$F8C0 - *, 0
    2393  f8c0				   CallPad_RaftBody
    2394  f8c0		       8d f7 1f 	      sta	$1FF7	; select bank1 (last byte fetched from bank0)
    2395  f8c3		       4c e3 fd 	      jmp	$FDE3	; bank1 RaftBody — returns via bank1's ReturnPad
@@ -3388,7 +3388,7 @@
    3387  fd60		       c9 ff		      cmp	#$FF	;   no bomb fuse/tick on title frames
    3388  fd62		       f0 0e		      beq	.TWmusic
    3389  fd64		       d0 03		      bne	.TWnoTick	;   BombTick's blast side effects on titles
-   3390  fd66		       20 84 f7 	      jsr	BombTick
+   3390  fd66		       20 80 f7 	      jsr	BombTick
    3391  fd69				   .TWnoTick
    3392  fd69		       20 fc fb 	      jsr	CallPad_UpdateBombSound
    3393  fd6c		       a9 00		      lda	#0

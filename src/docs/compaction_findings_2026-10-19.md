@@ -721,3 +721,66 @@ ROM totals unchanged (8974 used / 7410 free, level data 434 B) — verified.
 `test_bomb_strip` now pins the invariants instead of one absolute:
 `M1StripBlast == $F41F`, chain order, `$F8C6 <= StripBlastCheck < $F9AC`, and
 **no `$F937`/`$F9AC` literal in any bank's CODE** (comments may mention them).
+
+## 3. Level-data micro-pack — 2 of the 4 sub-items, 24 B data (audit 2, item 3)
+
+Converter-side only; `src/rooms` untouched; the `TilePF0+9/+10` meta contract
+is unchanged (none of the emitted blocks changed shape). Baseline 434 B.
+
+**Done (d): index constants — 8 B.** `start_room` (0 in all 4 levels) and
+`miner_y` (84 px = 7 rows in all 4) left the per-level entry, exactly like
+`start_x/y` did on 2026-10-19. Entry 9 → **7 B**:
+`miner_room, miner_x, wall, wall2, base word, room count`. `LoadLevel` computes
+`Level*7` (`asl×3 / sec / sbc`, −2 B), writes `LevelStartRoom = 0` and
+`MinerY = 84` as constants (−2 B), and drops two `jsr FoldIndirect` reads.
+The converter now **hard-fails** on any other value instead of silently
+dropping it.
+
+**Done (a): sparse band — 16 B (audit projected 14).** The per-room
+`bottom_color` byte is gone. `RoomEnemies` is **1 B/room**:
+
+```
+bit 7-6  enemy count (0..3)
+bit 5-1  first enemy-record index (0..31)
+bit 0    bottom-band FLAG
+```
+
+The COLOR is one game-wide `BAND_COLOR`, emitted as `generated/levels_equ.asm`
+(`BAND_COLOR = $80`, 0 ROM bytes) and included by **bank2.asm before
+`EnterRoomB2`** (which does `lda #BAND_COLOR` when the flag is set).
+`convert_level` **hard-fails** when two bottom-band rooms resolve to different
+colors ("extend the format first"). That is the trade the audit's own
+"(room, color) pair for L2R1" also makes (one band setup per level); this
+costs 0 bytes instead of 2.
+
+Consequence: the block's enemy-record base moved `+6n` → **+5n** (1 B/room
+instead of 2). Updated in `EnterRoomB2` (one `adc` dropped), the kernel/bank1
+comments, `docs/zp_layout_skill.md`, `test_band_restage` (it asserts the record
+base per room), `test_level_bank` (stride/format), `test_water_band` (stride),
+and `test_water_respawn` (the band poke is the FLAG bit at
+`base + 4n + room`, and the expected staged color is the emitted `BAND_COLOR`
+— `$80` live, not the old `$1C` debug value).
+
+Measured ROM −24 B, and it is all level data (bank0 code −4, bank2 code +4):
+
+| after | bank0 | bank1 | bank2 | bank3 | total | level data |
+|---|---|---|---|---|---|---|
+| baseline bc63451 | 3572 | 2948 | 1169 | 1285 | **8974** | 434 |
+| item 2 (pins) | 3572 | 2948 | 1169 | 1285 | **8974** | 434 |
+| item 3 (micro-pack) | 3568 | 2948 | 1149 | 1285 | **8950** | **410** |
+
+### Skipped, with the re-measurement
+
+- **(b) hot-flag bit (`nrect` b7) — 11 B data, ~6 B code, net ~5 B.**
+  The count byte only disappears for the 11 hot-less blocks if the hot area
+  moves to a derivable offset; making `TilePF0` = `rects+1+2*nrect` costs
+  `and #$7F` in the `B3RoomBlocks` cache clamp (+2) and a `bpl` gate in BOTH
+  hot-prefix walkers (`PhaseBlink`, `BuildColupF`; +2 each). Under the line.
+- **(c) 3-byte enemy records — 9 B data, ~4 B code, net ~5 B.** The only
+  reader of the ROM `dir` byte is `EBLER`; packing dir into byte0's b7 costs
+  the reload/`eor #$80` dance (+4 B). Also the audit's bit budget is wrong:
+  `y` reaches 132 px (row 11 × 12), so it needs **8** bits, not 7 — 3 B works
+  only with 3+1+8+8 = 20 of 24 bits. Skipped: ~5 B net plus a 10-file test
+  restage (every py65 test that fabricates a 4-byte record).
+- **(b') share one hot prefix** (L4R2 is the only block with hot records):
+  0 B, it is already one block.

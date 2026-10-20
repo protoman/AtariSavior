@@ -96,8 +96,9 @@ def main() -> None:
     # reads; then the redundant VBL band-color fold left (EnterRoom stages it),
     # so 27. S4 (2026-10-19) dropped the two start_x/start_y table fields,
     # so 25. C4 (2026-10-20) dropped the two derived pointer words from the
-    # per-level entry (4 reads), so 21.
-    assert KERNEL.count("jsr FoldIndirect") >= 21, \
+    # per-level entry (4 reads), so 21. The 2026-10-20 micro-pack dropped
+    # start_room + miner_y from the entry (2 reads), so 20.
+    assert KERNEL.count("jsr FoldIndirect") >= 20, \
         f"expected >=21 fold call sites (conn/LoadLevel + P3.1 enemy " \
         f"derives; EnterRoom folds moved to bank2 direct reads), " \
         f"got {KERNEL.count('jsr FoldIndirect')}"
@@ -144,23 +145,37 @@ def main() -> None:
         f"LEVEL_DATA_ADDR ${m2 and m2.group(1)} != " \
         f"bank2 LevelDataTable ${m.group(1)}"
 
-    # --- C2/C3/C4 (2026-10-20): packed level / room tables ------------------
+    # --- C2/C3/C4 (2026-10-20) + the 2026-10-20 micro-pack ----------------
     # The readers hardcode the block layout: RoomDataTable (2 B/room),
-    # RoomConnections (2 B/room), RoomEnemies (2 B/room), EnemyDataTable
-    # (4 B/record). The per-level entry is 6 scalars + base word + room count,
+    # RoomConnections (2 B/room), RoomEnemies (1 B/room), EnemyDataTable
+    # (4 B/record). The per-level entry is 4 scalars + base word + room count,
     # and the Connections/RoomEnemies/enemy-record bases are the block's
-    # +2n / +4n / +6n offsets, so the emission order IS the contract.
+    # +2n / +4n / +5n offsets, so the emission order IS the contract.
     index = (ROOT / "src" / "generated" / "levels_index.asm").read_text(
         encoding="utf-8")
-    assert "LEVEL_DATA_STRIDE = 9" in index, (
-        "level index stride is not the C4 9-byte layout (kernel LoadLevel "
-        "computes Level*9)")
+    assert "LEVEL_DATA_STRIDE = 7" in index, (
+        "level index stride is not the 7-byte layout (kernel LoadLevel "
+        "computes Level*7; start_room and miner_y are kernel constants)")
     assert "  .word LEVEL" in index and "  .byte " in index
-    entries = re.findall(r"^\s*\.word (LEVEL(\d+)_RoomDataTable)\n"
+    entries = re.findall(r"^\s*\.byte (LEVEL(\d+)_MINER_ROOM), "
+                         r"LEVEL\2_MINER_X, LEVEL\2_WALL_COLOR, "
+                         r"LEVEL\2_WALL_COLOR2\n"
+                         r"\s*\.word (LEVEL\2_RoomDataTable)\n"
                          r"\s*\.byte (\d+) ;", index, re.M)
     assert len(entries) == n_levels, (
-        f"level index has {len(entries)} 9-byte entries, want {n_levels}")
-    for _label, n, rooms in entries:
+        f"level index has {len(entries)} 7-byte entries, want {n_levels} "
+        "(miner room/x + 2 wall colors + base word + room count)")
+    assert "LEVEL1_START_ROOM," not in index and "MINER_Y," not in index, (
+        "start_room / miner_y must not be emitted into the entry (kernel "
+        "constants 0 / 84; convert_level rejects other values)")
+    # one bottom-band COLOR for the game — bank2 reads the emitted EQU
+    equ = (ROOT / "src" / "generated" / "levels_equ.asm").read_text()
+    m = re.search(r"^BAND_COLOR = \$([0-9a-f]{2})", equ, re.M)
+    assert m, "generated/levels_equ.asm must define BAND_COLOR"
+    assert 'include "generated/levels_equ.asm"' in BANK2, (
+        "bank2.asm must include generated/levels_equ.asm (BAND_COLOR) BEFORE "
+        "EnterRoomB2 uses it")
+    for _ml, n, _rd, rooms in entries:
         rooms = int(rooms)
         text = (ROOT / "src" / "generated" / f"level_{int(n):03d}_rooms.asm"
                 ).read_text(encoding="utf-8")
@@ -171,23 +186,25 @@ def main() -> None:
                 < pos[f"LEVEL{n}_RoomEnemies"]
                 < pos[f"LEVEL{n}_EnemyDataTable"]), (
             f"LEVEL{n}: block order must be RoomData/Conn/RoomEnemies/"
-            f"EnemyData — the readers use +2n/+4n/+6n offsets")
+            f"EnemyData — the readers use +2n/+4n/+5n offsets")
         chunk = text[pos[f"LEVEL{n}_RoomDataTable"]:pos[f"LEVEL{n}_EnemyDataTable"]]
         assert chunk.count("  .word ") == rooms, (
             f"LEVEL{n}: RoomDataTable must be ONE word per room (C3)")
-        # one 2-byte line per room in each of Connections and RoomEnemies
+        # Connections: 2 bytes/room; RoomEnemies: ONE byte/room (2026-10-20)
         assert chunk.count("  .byte ") == 2 * rooms, (
-            f"LEVEL{n}: Connections + RoomEnemies must be 2 bytes/room each "
-            f"(C2) — got {chunk.count('  .byte ')} lines for {rooms} rooms")
+            f"LEVEL{n}: one Connections line (2 B) + one RoomEnemies line "
+            f"(1 B) per room — got {chunk.count('  .byte ')} for "
+            f"{rooms} rooms")
         enemies = text[pos[f"LEVEL{n}_RoomEnemies"]:
                        pos[f"LEVEL{n}_EnemyDataTable"]]
-        goals = re.findall(r"^  \.byte \$([0-9a-f]{2}), \$[0-9a-f]{2} ; room (\d+)",
-                           enemies, re.M)
+        goals = re.findall(r"^  \.byte \$([0-9a-f]{2}) ; room (\d+)", enemies, re.M)
         assert len(goals) == rooms, f"LEVEL{n}: RoomEnemies record count"
         prev = 0
         for hexv, room in goals:
             packed = int(hexv, 16)
-            first, count = packed & 0x1F, packed >> 5
+            count, first = packed >> 6, (packed >> 1) & 0x1F
+            assert count <= 3, (
+                f"LEVEL{n} room {room}: count {count} > 3 (b7-6)")
             assert first == prev, (
                 f"LEVEL{n} room {room}: packed first index {first} != {prev} "
                 f"(records must stay contiguous in room order)")
@@ -196,6 +213,10 @@ def main() -> None:
         assert records == prev, (
             f"LEVEL{n}: EnemyDataTable has {records} records but the packed "
             f"indices account for {prev} (4 B/record)")
+        # the bottom-band FLAG is b0 only; the color is the global EQU
+        for hexv, _room in goals:
+            if int(hexv, 16) & 0x01:
+                assert int(hexv, 16) >> 6 <= 3
 
     print("test_level_bank: all asserts passed")
     return 0

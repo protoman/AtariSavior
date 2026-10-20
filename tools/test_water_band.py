@@ -43,8 +43,8 @@ if not L2:
 # room count n for the level block, from the frozen emitted index (C4: the
 # entry carries one base word + the count; 0x = LEVEL_DATA_STRIDE).
 _INDEX = FROZEN.parent / "generated" / "levels_index.asm"
-assert "LEVEL_DATA_STRIDE = 9" in _INDEX.read_text(), (
-    "frozen level index is not the C4 9-byte layout — re-freeze the banks")
+assert "LEVEL_DATA_STRIDE = 7" in _INDEX.read_text(), (
+    "frozen level index is not the 7-byte layout — re-freeze the banks")
 L2["LEVEL1_ROOMS"] = int(re.search(r"^\s*\.byte (\d+) ; LEVEL1 rooms",
                                    _INDEX.read_text(), re.M).group(1))
 Z = {k: v & 0x7F for k, v in L0.items() if 0x80 <= v <= 0xFF}
