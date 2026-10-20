@@ -120,13 +120,13 @@ def integration() -> None:
     assert a[3:6] == bytes([0x4C, RAFT & 0xFF, RAFT >> 8]), (
         f"raft tramp target {a[3:6].hex()} != bank1 RaftBody ${RAFT:04X}")
 
-    L2 = parse_labels(FROZEN / "bank2.lst", {"LEVEL1_RoomDataTable"})
-    assert "LEVEL1_RoomDataTable" in L2, "frozen bank2 level table label"
+    L2 = parse_labels(FROZEN / "bank2.lst", {"LEVEL1_RoomShapes"})
+    assert "LEVEL1_RoomShapes" in L2, "frozen bank2 level table label"
     b2 = (FROZEN / "bank2.bin").read_bytes()
     # RaftBody reads NO record field (it lives off EnemyRam*/the playfield), so
     # any bank2 byte that reads 7 in the type slot stages a raft for real. Prefer
     # a hit inside the level-data area so the fake record looks like data.
-    base = L2["LEVEL1_RoomDataTable"] & 0xFFF0
+    base = L2["LEVEL1_RoomShapes"] & 0xFFF0
     off = next((i for i in range(base - 0xF000, 0xF000)
                 if b2[i] == 7), None)
     assert off is not None, "no bank2 byte reads 7 to stage a raft type"

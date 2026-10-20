@@ -32,9 +32,11 @@ WIDTH = 10                  # D7: logical cells per half (was 20 pre-D7)
 # Playable color bands per room (the bottom 48 scanlines render as HUD).
 HEIGHT = 3
 # C1 (2026-10-20): 2 = grid-position connections (1 B/room, exits derived).
-# Sequential: 3 = shape-index room records (C2), so a generated/ tree can be
-# recognised as stale against the reader that consumes it.
-LEVEL_FORMAT = 2
+# C2 (2026-10-20): 3 = shape-index room records. The per-room block word is
+# gone: a room stores a 6-bit SHAPE INDEX (one byte column), the grid position
+# and the enemy count; the block address comes from LEVEL_ShapeTable and the
+# first enemy record is derived by summing the earlier rooms' counts.
+LEVEL_FORMAT = 3
 # New tile values (ai_new_tiles plan Phase 1). LOCKED_DOOR lives ONLY in
 # asym_patches (side 0 = async ball strip, MetaB b7); the three grid tiles
 # paint model cells and emit b7 feature records in the hot record stream.
@@ -716,25 +718,26 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
         f"{prefix}_MINER_Y = {px(level.get('miner_y', 0), 12)}",
         "",
     ]
-    lines.append(
-        f"; Room data: ONE word per room (the block's RoomRects label), indexed"
-        " by RoomNo. TilePF0 is derived at room load as")
-    lines.append(
-        "; rects + 2 + 2*nrect (C3 2026-10-20: it always sits 2 bytes past the"
-        " rect list in the same block, so the second word was redundant).")
-    lines.append(f"{prefix}_RoomDataTable:")
+    lines += [
+        "; Room shape index (C2 2026-10-20): ONE byte per room =",
+        ";   b5-0 SHAPE INDEX into LEVEL_ShapeTable (levels_index.asm)",
+        ";   b6   bottom-band flag",
+        ";   b7   owns-extras (reserved 0: the async stream is C5)",
+        "; The block address is the table entry, so the old 2-byte RoomRects",
+        "; word is gone. TilePF0 is still derived as rects + 2 + 2*nrect.",
+        f"{prefix}_RoomShapes:",
+    ]
     for index, room in enumerate(rooms):
         model = models_by_id.get(room.get("model_id")) if models_by_id else None
         if model is not None and not room_has_async(room):
-            mid = model["id"]
-            lines.append(
-                f"  .word M{mid}RoomRects ; room {index} (model {mid})")
+            shape = f"SHAPE_M{model['id']}"
+            why = f"model {model['id']}"
         else:
-            why = "" if model is not None else " (no model)"
-            if model is not None:
-                why = " (async)"
-            lines.append(
-                f"  .word {room_prefix}{index + 1}RoomRects ; room {index}{why}")
+            shape = f"SHAPE_{room_prefix}{index + 1}"
+            why = "no model" if model is None else "async"
+        band = 0x40 if _room_bottom_color(room) else 0
+        value = f"{shape} | $40" if band else shape
+        lines.append(f"  .byte {value} ; room {index} ({why})")
     lines.append("")
     lines.append(
         "; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,")
@@ -804,7 +807,7 @@ def _room_bottom_color(room: dict) -> int:
 
 
 def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
-    """Emit the level's flat enemy table and the per-room enemy records.
+    """Emit the level's per-room enemy counts and its flat enemy table.
 
     Enemies are positioned in EDITOR stage coordinates: x is a full-stage
     display column (0..39 across both mirror halves, so the game screens can
@@ -816,18 +819,17 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
     LEVEL{n}_EnemyDataTable is a flat list of ENEMY_STRIDE-byte records:
     type, x, y, dir (S4.1 — range_min/range_max dropped from ROM: nothing
     read them; the editor JSON still carries those fields).
-    LEVEL{n}_RoomEnemies has one 2-byte record per room (C2 2026-10-20):
-    (count << 5 | first record index), bottom_color (0 = no bottom band).
-    The records are contiguous in room order, so the index replaces the old
-    absolute pointer: the loader reads the level's RoomEnemies base
-    (RoomDataTable + 4*rooms) and the enemy records base
-    (RoomDataTable + 6*rooms), both from the level entry's room count.
+
+    LEVEL{n}_RoomCounts has one byte per room (C2 2026-10-20):
+    (count << 6 | extras index). The records stay contiguous in room order,
+    so the FIRST record index is DERIVED at room load by summing the counts
+    of the rooms before it (bank2 EnterRoomB2) — the old packed index field
+    capped a level at 31 records and is gone. The extras index is reserved 0
+    until the C5 async stream; the band flag moved to the shape column.
     """
     flat: list[tuple[int, int, int, int]] = []
     counts: list[int] = []
-    bottoms: list[int] = []
     # Lamp entries are merged into the enemy table as type=5 (kernel LAMP).
-    # Same 4-byte stride / RoomEnemies records — no separate lamp table.
     LAMP_TYPE = 5
     for index, room in enumerate(rooms):
         entities = [e for e in (room.get("enemies") or [])]
@@ -840,7 +842,6 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
             })
         entities = entities[:MAX_ENEMIES]
         counts.append(len(entities))
-        bottoms.append(_room_bottom_color(room))
         for enemy in entities:
             type_ = int(enemy.get("type", 0))
             x = float(enemy.get("x", 0))
@@ -852,29 +853,17 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
                 px(float(enemy.get("y", 0)), 12),
                 int(enemy.get("dir", 1)),
             ))
-    assert len(flat) <= 31, (
-        f"{prefix}: {len(flat)} enemy records > 31 — the packed "
-        f"RoomEnemies index field (b5-1) would overflow")
-    first = 0
     lines = [""]
     lines += [
-        "; Per-room enemy records: ONE byte (count<<6 | first record index<<1 |"
-        " bottom-band flag). The band COLOR is the global BAND_COLOR (one water",
-        "; color per game — the converter rejects a second one).",
-        f"{prefix}_RoomEnemies:",
+        "; Per-room enemy count (C2 2026-10-20): ONE byte = count<<6 |",
+        "; extras index (0 = none; the record index is derived at room load).",
+        f"{prefix}_RoomCounts:",
     ]
     for index, count in enumerate(counts):
-        color = bottoms[index]
         assert count <= 3, f"{prefix}: room {index} has {count} records (>3)"
-        assert first <= 31, (
-            f"{prefix}: room {index} first record {first} > 31 (b5-1)")
-        packed = (count << 6) | (first << 1) | (1 if color else 0)
-        assert packed <= 0xFF
+        packed = count << 6
         lines.append(
-            f"  .byte ${packed:02x} "
-            f"; room {index}: {count} record(s) from {first}"
-            f"{', bottom band' if color else ''}")
-        first += count
+            f"  .byte ${packed:02x} ; room {index}: {count} record(s)")
     lines += [
         "",
         f"; Enemy data: {len(flat)} enemy records across {len(rooms)} rooms, "
@@ -934,6 +923,33 @@ def room_has_async(room: dict) -> bool:
 # points the duplicates' room tables at it, so the bytes exist once.
 _BLOCK_START = re.compile(r"^(L\d+R\d+)RoomRects:\s*$")
 _SHARED_NOTE = "; {tag} block SHARED with {canon} (byte-identical dedupe)"
+
+# C2 (2026-10-20): the room record stores the shape index in b5-0, so the
+# whole game can address 64 distinct blocks. That is the plan's C3 ceiling
+# until the row dictionary lands; fail loudly instead of emitting a truncated
+# index.
+MAX_SHAPES = 64
+
+
+def _shape_stream(generated: Path) -> list[str]:
+    """Block labels in spill_bank3.asm include order (= the shape index).
+
+    This order IS the contract: bank2's EnterRoomB2 reads
+    `LEVEL_ShapeTable[index]`, and the converter numbers the table by walking
+    the SAME files in the same order. Byte-identical duplicates were already
+    dropped by dedupe_room_blocks(), which is why their labels are resolved
+    through the {dup: canon} map instead of appearing here.
+    """
+    pattern = re.compile(r"^(M\d+|L\d+R\d+)RoomRects:")
+    order: list[str] = []
+    files = [generated / "models_data.asm"] + sorted(
+        generated.glob("level_[0-9][0-9][0-9]_blocks.asm"))
+    for path in files:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            match = pattern.match(line.strip())
+            if match:
+                order.append(match.group(1))
+    return order
 
 
 def _block_payload(chunk: list[str], prefix: str) -> tuple:
@@ -1090,7 +1106,7 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
     (generated / "spill_bank3.asm").write_text("\n".join(bank3_lines) + "\n")
 
     # (a) 2026-10-20: one bottom-band COLOR for the whole game. The per-room
-    # flag stays in the RoomEnemies byte; the color is a kernel-side constant
+    # flag stays in the RoomShapes byte (b6, C2); the color is a constant
     # (bank2.asm carries the EQU, test_level_bank asserts it matches this).
     band_colors = {
         _room_bottom_color(room)
@@ -1099,18 +1115,40 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
     if len(band_colors) > 1:
         raise ValueError(
             f"{len(band_colors)} distinct bottom-band colors "
-            f"{sorted(hex(c) for c in band_colors)} — the packed RoomEnemies "
-            "record keeps only the band FLAG (one color per game); unify the "
+            f"{sorted(hex(c) for c in band_colors)} — the room record keeps "
+            "only the band FLAG (one color per game); unify the "
             "water color or extend the format")
     band_color = band_colors.pop() if band_colors else BAND_COLOR_FALLBACK
     # (a) 2026-10-20: the single water color, as an EARLY include (< $F010 in
     # bank2), so EnterRoomB2 can `lda #BAND_COLOR` without a hand-copy.
     (generated / "levels_equ.asm").write_text(
         "; Generated by convert_level.py --levels. Do not edit by hand.\n"
-        "; One bottom-band color for the whole game: the packed RoomEnemies\n"
-        "; record keeps only the per-room FLAG (convert_level rejects a second\n"
+        "; One bottom-band color for the whole game: the room record keeps only\n"
+        "; the per-room FLAG (convert_level rejects a second\n"
         "; color — extend the format first if that is ever needed).\n"
         f"BAND_COLOR = ${band_color:02x}\n")
+
+    # --- C2 (2026-10-20): shape registry + address table -------------------
+    # A room record holds a 6-bit SHAPE INDEX; the block address lives here.
+    # The ordinal IS the emission order of spill_bank3.asm (models sorted by
+    # id, then each level's per-room blocks in room order) — that keeps the
+    # index stable without a second sort, and dedupe_room_blocks() has already
+    # dropped byte-identical duplicates, whose labels resolve to the surviving
+    # block's ordinal (shared_blocks).
+    shapes = _shape_stream(generated)
+    if len(shapes) > MAX_SHAPES:
+        raise ValueError(
+            f"{len(shapes)} distinct shape blocks > the {MAX_SHAPES} the 6-bit "
+            "room-record shape index can address — share a model or wait for "
+            "the C3 row dictionary")
+    shape_index = {name: i for i, name in enumerate(shapes)}
+    for dup, canon in shared_blocks.items():
+        shape_index[dup] = shape_index[canon]
+    equ_lines = [f"LEVEL_SHAPE_COUNT = {len(shapes)}"]
+    for name in shapes:
+        equ_lines.append(f"SHAPE_{name} = {shape_index[name]}")
+    for dup in sorted(shared_blocks):
+        equ_lines.append(f"SHAPE_{dup} = {shape_index[dup]}")
 
     tail_lines = [
         "",
@@ -1122,13 +1160,23 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         "; colors, then the level's room-table base and its ROOM COUNT.",
         "; start x/y (32/24), start_room (0) and miner_y (84) are kernel",
         "; constants now — the converter rejects other values.",
-        "; Inside a level block (n = ROOM COUNT, C1/C2/C3/C4 2026-10-20):",
-        ";   base + 0   RoomDataTable    2 B/room (RoomRects ptr; TilePF0 =",
-        ";                               rects + 2 + 2*nrect)",
-        ";   base + 2n  RoomPositions    1 B/room (LEVEL_FORMAT 2: x<<4|y,",
+        "; Inside a level block (n = ROOM COUNT, C2 2026-10-20):",
+        ";   base + 0   RoomShapes     1 B/room (shape idx b5-0 | band b6 |",
+        ";                               owns-extras b7; block = the table below)",
+        ";   base + n   RoomPositions  1 B/room (LEVEL_FORMAT 2: x<<4|y,",
         ";                               exits derived by scanning it)",
-        ";   base + 3n  RoomEnemies      1 B/room ((count<<6 | rec idx<<1 | band))",
-        ";   base + 4n  EnemyDataTable   4 B/record",
+        ";   base + 2n  RoomCounts     1 B/room (count<<6 | extras index)",
+        ";   base + 3n  EnemyDataTable 4 B/record (first record index derived)",
+    ] + equ_lines + [
+        "",
+        "; Shape address table: SHAPE_<label> indices above are the row here.",
+        "; LEVEL_SHAPE_COUNT = number of distinct blocks in the whole game",
+        f"; (6-bit index ceiling: {MAX_SHAPES}).",
+        "LEVEL_ShapeTable:",
+    ]
+    for name in shapes:
+        tail_lines.append(f"  .word {name}RoomRects")
+    tail_lines += [
         f"; BAND_COLOR = ${band_color:02x} — the single bottom-band color (every",
         "; bottom_band room must resolve to it; bank2.asm carries the EQU and",
         "; test_level_bank asserts the pair).",
@@ -1139,7 +1187,7 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         tail_lines += [
             f"  .byte {prefix}_MINER_ROOM, {prefix}_MINER_X, "
             f"{prefix}_WALL_COLOR, {prefix}_WALL_COLOR2",
-            f"  .word {prefix}_RoomDataTable",
+            f"  .word {prefix}_RoomShapes",
             f"  .byte {len(level['rooms'])} ; {prefix} rooms",
         ]
     tail_lines += [""]

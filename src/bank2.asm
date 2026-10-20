@@ -43,12 +43,14 @@ RoomPF0Hi = $9A                 ; After the 9-byte PF copy + meta read, entry
                                  ; bytes carry the meta for the whole visit.
 RoomMetaA = $99                 ; staged MetaA (band mask/m1 col/side/door-L)
 RoomMetaB = $9A                 ; staged MetaB (ball col/hot/door-R+shutter b7)
-LevelPFDataLo = $9F             ; RoomDataTable pointer low (kernel decl)
-LevelPFDataHi = $A0             ; RoomDataTable pointer high (kernel decl)
+LevelPFDataLo = $9F             ; level block base = RoomShapes column (kernel
+LevelPFDataHi = $A0             ;   decl; C2: shape idx | band | extras)
 LevelRoomN = $A1                ; rooms in the level (kernel decl, C4 2026-10-20)
 LevelConnSpare = $A2            ; C1 2026-10-20: exit-scan target byte (the
                                 ;   byte was freed when LevelConnHi died;
-                                ;   exit handlers are cold path, single frame)
+                                ;   exit handlers are cold path, single frame).
+                                ;   C2 2026-10-20: also the first-record sum
+                                ;   in EnterRoomB2 (scan already returned).
 RoomBandColor = $BC             ; band-color cache (kernel EQU, S3.1)
 BandTab = $ED                   ; Phase 3 band gate bytes — staged here,
                                  ; read by kernel .Row in bank0
@@ -158,17 +160,28 @@ PLAYER_MAX_Y = 132               ; kernel EQU (CAVE_LINES - PLAYER_SPRITE_H)
     .ds $F010 - *, 0
 EnterRoomB2:
     sta RoomNo
-    asl
-    tay                             ; Y = room * 2 (C3: ONE word per room)
+    tay                             ; Y = room (C2: every column is 1 B/room)
     lda LevelPFDataLo
     sta FetchPtr
     lda LevelPFDataHi
     sta FetchPtr+1
-    lda (FetchPtr),Y                ; RoomDataTable: rects ptr lo
+    lda (FetchPtr),Y                ; RoomShapes: idx b5-0 | band b6 | b7 extras
+    sta Temp
+    and #$3F                        ; shape index (C2 2026-10-20)
+    asl                             ; *2: LEVEL_ShapeTable is a word table
+    tax
+    lda LEVEL_ShapeTable,X          ; block address = the table entry
     sta RoomRectsLo
-    iny
-    lda (FetchPtr),Y                ; rects ptr hi
+    lda LEVEL_ShapeTable+1,X
     sta RoomRectsHi
+    ; band flag b6 → RoomBandColor (staged BEFORE the block reader — the
+    ; reader never writes it, and this is the only writer in the game).
+    lda Temp
+    and #$40
+    beq .EBnoBand
+    lda #BAND_COLOR
+.EBnoBand:
+    sta RoomBandColor
     ; TilePF0 is no longer stored per room: bank3's block reader derives it
     ; as rects + 2 + 2*nrect from the rect list it already copies (C3).
 
@@ -179,20 +192,20 @@ EnterRoomB2:
     jmp ERBlocksPad
 ERBlocksDone:
 
-    ; --- enemy record for this room (C2 2026-10-20, packed 1 B 2026-10-20) ---
-    ; byte = count<<6 | first record index<<1 | bottom-band flag.
-    ; RoomEnemies = level base + 3n, enemy records = level base + 4n
-    ; (C1 2026-10-20: RoomPositions took over the old +2n..+3n slot at
-    ; 1 B/room, so the enemy tables moved down one block-n).
-    ; (n = LevelRoomN; the record index replaces the old absolute pointer).
-    ; The band COLOR is the global BAND_COLOR (one water color per game).
+    ; --- enemies (C2 2026-10-20): count column = base + 2n, records = base
+    ; + 3n (n = LevelRoomN). The count byte is count<<6 | extras index; the
+    ; FIRST RECORD INDEX is DERIVED by summing the counts of rooms 0..room-1
+    ; (records stay contiguous in room order), so the old packed index byte
+    ; and its 31-record/level cap are gone. The band COLOR is the global
+    ; BAND_COLOR (one water color per game).
+    ; LevelConnSpare is free here: it only carries the exit-scan target, and
+    ; that scan has already returned when EnterRoomB2 is entered.
     lda RoomNo
     tay                             ; Y = room (one byte per record)
     lda LevelPFDataLo
     clc
     adc LevelRoomN
-    adc LevelRoomN
-    adc LevelRoomN                  ; base + 3n = RoomEnemies
+    adc LevelRoomN                  ; base + 2n = RoomCounts
     sta FetchPtr
     lda LevelPFDataHi
     adc #0
@@ -205,30 +218,42 @@ ERBlocksDone:
     lsr
     lsr                             ; count = b7-6
     sta EnemyCount
+    sty Temp                        ; room index (Temp free until EBLER)
+    ldy #0
+    lda #0
+    sta LevelConnSpare              ; running first-record index
+.EBSumLoop:
+    cpy Temp
+    beq .EBSumDone
+    lda (FetchPtr),Y
+    lsr
+    lsr
+    lsr
+    lsr
+    lsr
+    lsr                             ; each earlier room's count (0..3)
+    clc
+    adc LevelConnSpare
+    sta LevelConnSpare
+    iny
+    jmp .EBSumLoop
+.EBSumDone:
     lda FetchPtr
     clc
-    adc LevelRoomN                  ; base + 4n = enemy records (1 B/room)
+    adc LevelRoomN                  ; base + 3n = enemy records (1 B/room)
     sta EnemyDataLo
     lda FetchPtr+1
     adc #0
     sta EnemyDataHi
-    lda (FetchPtr),Y
-    lsr                             ; first record index → b4-0 (was b5-1)
-    and #$1F
+    lda LevelConnSpare
     asl
-    asl                             ; *4 (index <= 31 → fits one byte)
+    asl                             ; *4 (records are 4 B; index <= 63)
     clc
     adc EnemyDataLo
     sta EnemyDataLo
     lda EnemyDataHi
     adc #0
     sta EnemyDataHi
-    lda (FetchPtr),Y                ; raw record: b0 = bottom-band flag
-    and #$01
-    beq .EBnoBand
-    lda #BAND_COLOR
-.EBnoBand:
-    sta RoomBandColor               ; SOURCE room's band on the transition frame
     lda #0                          ; (also the bomb reset seed below)
     sta EnemyDeadMask               ; no dead enemies in new room
 
@@ -856,7 +881,7 @@ FooterPtr6 = $EA
 ; Why: the level index + tables ARE bank2 level data, so the 7 FoldIndirect
 ; reads (7 x 25c, 14 switches) are direct (FetchPtr),Y reads here.
 ; Entry layout (7 B stride): miner_room (b7 = faces right), miner_x, wall
-; color, wall color 2, block base word (RoomDataTable), room count n. The
+; color, wall color 2, block base word (RoomShapes), room count n. The
 ; start room / start x / start y / miner y are kernel constants (0/32/24/84).
 ; ==============================================================================
     .ds $F640 - *, 0
@@ -920,8 +945,9 @@ LoadLevelB2:
     lda (FetchPtr),Y
     sta LevelWallColor2
     iny
-    ; +4..+5: block base (RoomDataTable; the positions/enemy tables are its
-    ; +2n/+3n/+4n offsets, see EnterRoomB2 + the exit handlers below)
+    ; +4..+5: block base (RoomShapes; RoomPositions / RoomCounts / enemy
+    ; records are its +n/+2n/+3n offsets, see EnterRoomB2 + the exit
+    ; handlers below — C2 2026-10-20: 3 B/room, no block word)
     lda (FetchPtr),Y
     sta LevelPFDataLo
     iny
@@ -929,7 +955,7 @@ LoadLevelB2:
     sta LevelPFDataHi
     iny
     ; +6: room count n → EnterRoomB2 / ExitScanB2 (both in this bank) derive
-    ; the RoomPositions / RoomEnemies / enemy-record bases from it
+    ; the RoomPositions / RoomCounts / enemy-record bases from it
     lda (FetchPtr),Y
     sta LevelRoomN
     jmp LF_TailSwap             ; bank0: EnterRoom + placement + jmp DropArm
@@ -1602,9 +1628,11 @@ MothExitPad:
 ; Room-exit handlers — MOVED from bank0 (C3, 2026-10-20; were $F4DB-$F535 = 90 B).
 ; C1 (2026-10-20): LEVEL_FORMAT 2 — there is NO connection table any more. Each
 ; room owns ONE grid-position byte (x<<4|y, normalised to the level origin) at
-; level base + 2n, and an exit is resolved by stepping that byte by a direction
-; delta ($FF up / $01 down / $F0 left / $10 right) and SCANNING the level's
-; position column for a match (<= 20 iterations, cold path = room load only).
+; level base + n (C2 2026-10-20: the 3 B record is three columns, so the
+; position column still starts one block-of-n in), and an exit is resolved by
+; stepping that byte by a direction delta ($FF up / $01 down / $F0 left /
+; $10 right) and SCANNING the level's position column for a match (<= 20
+; iterations, cold path = room load only).
 ;
 ; Why no boundary guard is needed: a nibble of 15 never occurs in a stored
 ; position (POSITION_SPAN = 15 in convert_level.py, nibble 15 = sentinel), and
@@ -1624,7 +1652,7 @@ MothExitPad:
 ; ==============================================================================
     .ds $FC4F - *, 0
 ; Scan the level's position column for the target byte.
-; In: A = target position, FetchPtr = level base + 2n. Out: A = room index,
+; In: A = target position, FetchPtr = level base + n. Out: A = room index,
 ; C = 0 found / 1 none. Clobbers A/Y only (X is the caller's direction).
 ExitScanB2:
     sta LevelConnSpare
@@ -1644,9 +1672,11 @@ ExitScanB2:
     rts
 
 ; Shared body: X = direction (0 up, 1 down, 2 left, 3 right).
-; Stages FetchPtr = level base + 2n (RoomPositions), reads this room's own
-; position, steps it by the direction delta and scans (no jsr for the staging:
-; one push fewer than the old LevelConnB2 helper).
+; Stages FetchPtr = level base + n (RoomPositions, C2 2026-10-20: the room
+; record is 3 B spread over three columns, so the position column still starts
+; one block-of-n in), reads this room's own position, steps it by the
+; direction delta and scans (no jsr for the staging: one push fewer than the
+; old LevelConnB2 helper).
 ExitUpB2:
     ldx #0
     jmp ExitDirB2
@@ -1661,7 +1691,6 @@ ExitRightB2:
 ExitDirB2:
     lda LevelPFDataLo
     clc
-    adc LevelRoomN
     adc LevelRoomN
     sta FetchPtr
     lda LevelPFDataHi

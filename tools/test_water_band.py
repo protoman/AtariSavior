@@ -37,7 +37,7 @@ missing = NEED - L0.keys()
 if missing:
     sys.exit(f"labels missing: {sorted(missing)}")
 L2 = parse_labels(FROZEN / "bank2.lst",
-                  {"LEVEL1_RoomDataTable", "LEVEL1_RoomEnemies"})
+                  {"LEVEL1_RoomShapes", "LEVEL1_RoomCounts"})
 if not L2:
     sys.exit("bank2 level tables missing (frozen labels)")
 # room count n for the level block, from the frozen emitted index (C4: the
@@ -71,10 +71,10 @@ def run(room_y, band, lives=3, stage_level=False, stop_at_drop=0,
         # the exhausted path reaches ReloadLevel, which folds the level tables:
         # point the level pointers at the frozen level-1 data (as
         # test_band_restage does) so the reload is real, not garbage.
-        # C4 (2026-10-20): base + room count; RoomPositions/RoomEnemies are
-        # the block's +2n/+3n offsets (C1 2026-10-20), derived by the readers.
-        r[Z["LevelPFDataLo"]] = L2["LEVEL1_RoomDataTable"] & 0xFF
-        r[Z["LevelPFDataHi"]] = L2["LEVEL1_RoomDataTable"] >> 8
+        # C2 (2026-10-20): the base points at the RoomShapes column; the
+        # positions/counts/enemy records are its +n/+2n/+3n offsets.
+        r[Z["LevelPFDataLo"]] = L2["LEVEL1_RoomShapes"] & 0xFF
+        r[Z["LevelPFDataHi"]] = L2["LEVEL1_RoomShapes"] >> 8
         r[Z["LevelRoomN"]] = L2["LEVEL1_ROOMS"]
     mpu = MPU(memory=mem)
     mpu.pc = L0["CheckBandTouch"]
