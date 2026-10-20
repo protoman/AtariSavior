@@ -403,6 +403,28 @@ enum ShapeBits {
 constexpr int kGateCol = 4;          // the gate/door cell in row 1
 constexpr int kGapA = 3;             // 2-gap columns (model cells)
 constexpr int kGapB = 6;
+// Archetype interior (HERO-like variety for ordinary/hot rooms): 3 bits in
+// the mask, applied AFTER the exits/hazards. Ids 1..5 = normal families,
+// 6..8 = hot families. Only cells 1..7 are ever touched (0 = H exit, 8/9 =
+// the vertical shaft), and the 2-gap cells are re-opened afterwards.
+constexpr int kArchShift = 9;
+constexpr int kArchMask = 15;   // 4 bits: hot archetypes use id 8
+const char* const kArch[6][3] = {
+    {"..........", "..........", ".........."},          // 0 shaft
+    {"..###.....", "..........", ".....###.."},          // 1 ledge ladder
+    {"..........", "...#.#....", ".........."},          // 2 pillars
+    {"...#......", "....#.....", ".........."},          // 3 steps
+    {"......#...", "......##..", ".........."},          // 4 side pocket
+    {"..##......", ".....#....", "......##.."},          // 5 zigzag
+};
+const char* const kArchHot[3] = {
+    "..##..##..",                                        // 6 two blocks
+    "....#.....",                                        // 7 centre block
+    "..#...#...",                                        // 8 staggered
+};
+const char* const kArchName[9] = {
+    "", "Ladder", "Pillars", "Steps", "Pocket", "Zigzag",
+    "Hot2", "HotMid", "HotStag"};
 
 // Grid cell of a room in the level (x = column, y = row; rooms at the same y
 // in different columns are horizontally adjacent and therefore "connected"
@@ -434,9 +456,12 @@ std::string ShapeName(int mask) {
     if (mask & SHAPE_S) add("S");
     if (mask & SHAPE_H) add("H");
     if (mask & SHAPE_START) add("Start");
-    if (mask & SHAPE_HOT) add("Hot");
     if (mask & SHAPE_GATE) add("Gate");
     if (mask & SHAPE_WATER) add("Water");
+    if (mask & SHAPE_CHANNEL) add("Channel");
+    if (mask & SHAPE_2GAP) add("2Gap");
+    const int arch = (mask >> kArchShift) & kArchMask;
+    if (arch) add(kArchName[arch]);
     return name;
 }
 
@@ -549,6 +574,40 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 (int)TileType::AIR;
         }
     }
+    // Archetype interior (HERO-like normality): cells 1..7 only, applied
+    // AFTER the functional carving, then the 2-gap corridor is re-opened.
+    const int arch = (mask >> kArchShift) & kArchMask;
+    if (arch >= 1 && arch <= 5) {
+        for (int row = 0; row < kRoomHeight; ++row) {
+            for (int x = 0; x < kRoomWidth; ++x) {
+                if (kArch[arch][row][x] == '#') {
+                    model.tiles[row * kRoomWidth + x] =
+                        (int)TileType::SOLID_WALL;
+                }
+            }
+        }
+    } else if (arch >= 6) {
+        const char* pat = kArchHot[arch - 6];
+        for (int x = 0; x < kRoomWidth; ++x) {
+            if (pat[x] == '#') {
+                model.tiles[1 * kRoomWidth + x] = (int)TileType::SOLID_WALL;
+            }
+        }
+        model.mid_band_type = 1;
+    }
+    if (arch && (mask & SHAPE_2GAP)) {
+        model.tiles[1 * kRoomWidth + kGapA] = (int)TileType::AIR;
+        model.tiles[1 * kRoomWidth + kGapB] = (int)TileType::AIR;
+        if (mask & SHAPE_N) {
+            model.tiles[kGapA] = (int)TileType::AIR;
+            model.tiles[kGapB] = (int)TileType::AIR;
+        }
+        if (mask & SHAPE_S) {
+            const int base = (kRoomHeight - 1) * kRoomWidth;
+            model.tiles[base + kGapA] = (int)TileType::AIR;
+            model.tiles[base + kGapB] = (int)TileType::AIR;
+        }
+    }
     return model;
 }
 
@@ -642,7 +701,6 @@ int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
     if (IsChannelTurn(levelNumber, pos)) {
         mask |= SHAPE_CHANNEL;
     } else {
-        if (role == Role::Hot) mask |= SHAPE_HOT;
         if (role == Role::Gate || role == Role::Phase) mask |= SHAPE_GATE;
         if (role == Role::WaterGoal) mask |= SHAPE_WATER;
     }
@@ -783,8 +841,17 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             Role role = RoleForRoom(i, count, plan);
             if (IsChannelTurn(l, walks[l - 1][i])) role = Role::Normal;
             roles[l - 1].push_back(role);
+            int arch = 0;
+            if (!IsChannelTurn(l, walks[l - 1][i])) {
+                if (role == Role::Hot) {
+                    arch = 6 + (l % 3);
+                } else if (role == Role::Normal && i > 0 && i < count - 1) {
+                    arch = 1 + ((l + i) % 5);
+                }
+            }
             const int mask = RoomShapeMask(l, walks[l - 1], walks[l - 1][i],
-                                           i, role, plan.twogap);
+                                           i, role, plan.twogap)
+                             | (arch << kArchShift);
             masks[l - 1].push_back(mask);
             used.insert(mask);
         }
@@ -848,13 +915,32 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             // goal rooms stay clean (spawn/pickup).
             if (roles[l - 1][i] == Role::Normal && i > 0
                     && i < roomCount - 1 && plan.patch && i % 3 == 2) {
+                // The block must sit on an OPEN cell AND its mirror must be
+                // open too, or the asym row equals the plain mirror (MetaA
+                // band mask stays 0) and convert rejects the drift. The
+                // archetype interior can fill cells, so scan for a free one.
+                const ModelData& sm = models[shapeId[masks[l - 1][i]]];
                 const int side = (i % 2 == 1) ? 1 : 0;   // M1 / ball half
-                const int col = 2 + (i % 2);             // clear of the gap (4)
-                room.asym_patches.push_back(
-                    {1, col, (int)TileType::SOLID_WALL, side});
-                if (plan.patch2) {
+                int col = -1;
+                for (int c = 1; c <= 7; ++c) {
+                    const int mc = (side == 0) ? kRoomWidth - 1 - c : c;
+                    const int mirror = kRoomWidth - 1 - mc;
+                    if (sm.tiles[1 * kRoomWidth + mc] == 0
+                            && sm.tiles[1 * kRoomWidth + mirror] == 0) {
+                        col = c;
+                        break;
+                    }
+                }
+                if (col >= 0) {
                     room.asym_patches.push_back(
-                        {1, col, (int)TileType::SOLID_WALL, side == 0 ? 1 : 0});
+                        {1, col, (int)TileType::SOLID_WALL, side});
+                    if (plan.patch2) {
+                        // Second block on the opposite half (same col). Its
+                        // cell is the mirror we just proved open.
+                        room.asym_patches.push_back(
+                            {1, col, (int)TileType::SOLID_WALL,
+                             side == 0 ? 1 : 0});
+                    }
                 }
             }
             if (masks[l - 1][i] & SHAPE_CHANNEL) {

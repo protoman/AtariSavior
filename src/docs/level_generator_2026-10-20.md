@@ -240,3 +240,30 @@ sliding windows) yields **512 distinct 10x3 patterns** and **137 distinct
 an upper bound/direction — but our 18 shapes / 12 bands is clearly the low end.
 Format ceilings: shape index is 6 bits (**<= 64 shapes**), row-pool index is
 1 byte (**<= 255 bands**) — a 30-60 archetype library fits.
+
+## G5 (2026-10-20): archetype gallery (HERO-like variety)
+
+Ordinary and hot rooms now get an INTERIOR archetype, chosen deterministically
+(3 bits in the shape mask, so the shared-shape dedupe still works):
+
+| id | name | interior (cells 1..7 only) |
+|---|---|---|
+| 0 | shaft | plain |
+| 1 | ladder | ledge row 0 (2-4) + ledge row 2 (5-7) |
+| 2 | pillars | row-1 pillars at 3 and 5 |
+| 3 | steps | row-0 block 3 + row-1 step 4 |
+| 4 | pocket | row-1 niche at 6-7 + row-0 block 6 |
+| 5 | zigzag | row-0 2-3 + row-1 5 + row-2 6-7 |
+| 6 | Hot2 | row-1 hot blocks 2,3 + 6,7 |
+| 7 | HotMid | row-1 hot block 4 (weave) |
+| 8 | HotStag | row-1 hot blocks 2 and 6 |
+
+Rules: start/goal/special rooms stay plain; hot rooms pick 6..8 by level;
+normal middle rooms pick 1..5 by (level+room); the 2-gap corridor cells are
+re-opened after the interior. Special rooms (gate/phase/hcrunch/water/channel)
+keep their functional shapes. Async blocks scan for a cell whose MIRROR is
+also open, or the MetaA band mask cannot differ from the plain mirror (convert
+guard).
+
+Measured: 211 rooms, **37 shapes** (cap 64), staged build `verify_build OK`,
+bank2 tables 298 B slack, bank3 shape data **143 B** slack.
