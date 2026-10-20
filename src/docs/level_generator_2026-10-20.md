@@ -196,3 +196,26 @@ surface, not an exit), determinism and the converter capacity.
 * Build the editor's stage with `STAGE_FILE=rooms/stage.json ./build.sh`; the
   default `./build.sh` still builds the legacy per-level stage until the
   live-tracking tests are migrated (they pin level 1's tutorial room).
+
+
+## G3 (2026-10-20): placement fixes + two-gap route choice
+
+* **Snake** lives in the MIDDLE band's left border (cell 0, y=5), not the top
+  band: the middle band is open next to it, so it can come out and be shot.
+  (The top band's border is 8 cells deep — a snake there was walled in.)
+* **Bats/keys/extras** only land on cells the shape actually leaves open:
+  gate/phase gap (cell 4), hot shape cell 4, normal cell 2/5, exit corridors
+  (cell 8) for the second object and the key fallback. 0 embedded non-snake
+  objects across the stage (was 181).
+* **Two-gap links** (levels 5, 9, 13, 17): every vertical link uses TWO gaps
+  (model cells 3 and 6) in the ceiling and the floor; the room below repeats
+  the SAME pair, which the test asserts cell-by-cell (a boolean "open" check
+  would hide an 8/9 vs 3/6 mismatch and drop the player into a wall).
+* One gap carries a **lamp** (even rooms) or a **spider** (odd rooms), the
+  other is empty: the drop is a route choice. Gate/hcrunch rooms and the goal
+  room stay out of it (door rule / object cap / miner).
+* Water goals in a two-gap level join a two-gap ceiling to the open water
+  floor, so the drop always enters through an actual ceiling gap.
+
+Measured: 211 rooms, 20 shapes, staged build `verify_build OK`, bank2 tables
+326 B slack, bank3 shape data 317 B slack.

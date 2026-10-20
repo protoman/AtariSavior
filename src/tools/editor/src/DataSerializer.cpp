@@ -394,9 +394,13 @@ enum ShapeBits {
     SHAPE_START = 8,
     SHAPE_HOT = 16,      // row-1 walls hot (model mid_band_type = 1)
     SHAPE_GATE = 32,     // row-1 wall with ONE open gap (door / gate column)
-    SHAPE_WATER = 64     // row-2 open water (bottom band, raft/tentacle)
+    SHAPE_WATER = 64,    // row-2 open water (bottom band, raft/tentacle)
+    SHAPE_2GAP = 128     // TWO vertical gaps (cells 3 and 6) instead of the
+                         // centre 8-9: the next room must repeat the pair
 };
 constexpr int kGateCol = 4;          // the gate/door cell in row 1
+constexpr int kGapA = 3;             // 2-gap columns (model cells)
+constexpr int kGapB = 6;
 
 // Grid cell of a room in the level (x = column, y = row; rooms at the same y
 // in different columns are horizontally adjacent and therefore "connected"
@@ -484,6 +488,27 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 x == kGateCol ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
         }
     }
+    if (mask & SHAPE_2GAP) {
+        // Two vertical gaps: the pair is repeated in the ceiling and the
+        // floor, so a room below inherits BOTH openings. START rooms keep
+        // their drop opening in the top band (the drop is not an exit).
+        if (mask & SHAPE_N) {
+            for (int x = 0; x < kRoomWidth; ++x) model.tiles[x] =
+                (int)TileType::SOLID_WALL;
+            model.tiles[kGapA] = model.tiles[kGapB] = (int)TileType::AIR;
+            if (mask & SHAPE_START) {
+                for (int x = 2; x < kRoomWidth; ++x)
+                    model.tiles[x] = (int)TileType::AIR;
+            }
+        }
+        if (mask & SHAPE_S) {
+            const int base = (kRoomHeight - 1) * kRoomWidth;
+            for (int x = 0; x < kRoomWidth; ++x) model.tiles[base + x] =
+                (int)TileType::SOLID_WALL;
+            model.tiles[base + kGapA] = model.tiles[base + kGapB] =
+                (int)TileType::AIR;
+        }
+    }
     if (mask & SHAPE_WATER) {
         // Water goal: the bottom band is open, so the water strip shows and
         // kills; the raft floats on an open cell (row 2) and the miner waits
@@ -534,6 +559,7 @@ struct LevelPlan {
     bool hcrunch = false;   // horizontal crunch band (object-free room)
     bool patch = false;     // solid async block in normal rooms (a ledge)
     bool patch2 = false;    // a second block, opposite side (same room)
+    bool twogap = false;    // two-gap vertical links (route choice)
 };
 
 LevelPlan PlanFor(int level) {
@@ -547,6 +573,7 @@ LevelPlan PlanFor(int level) {
     p.hcrunch = level >= 14;    // crunch band sweeps the row-1 prefix
     p.patch = level >= 7;       // async block, now and then in normal rooms
     p.patch2 = level >= 12;     // two blocks (one per side) in that room
+    p.twogap = level >= 5 && level % 4 == 1;   // 5, 9, 13, 17
     return p;
 }
 
@@ -573,8 +600,10 @@ Role RoleForRoom(int roomIndex, int roomCount, const LevelPlan& p) {
 
 // Exit mask a room's SHAPE must carry (see the layout notes above).
 int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
-                  const GridPos& pos, int roomIndex, Role role) {
+                  const GridPos& pos, int roomIndex, Role role,
+                  bool twogap) {
     int mask = 0;
+    if (twogap) mask |= SHAPE_2GAP;
     if (HasRoomAt(walk, pos.x, pos.y - 1)) mask |= SHAPE_N;
     if (HasRoomAt(walk, pos.x, pos.y + 1)) mask |= SHAPE_S;
     if (levelNumber > kColumnRooms && pos.y == kTurnY) mask |= SHAPE_H;
@@ -639,8 +668,11 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
                 AddEnemy(room, EnemyType::RAFT, 4.0f, 8.0f, 1.0f, 0.0f);
             }
         } else if (roomCount > 1) {
-            // Last room: the goal. A wall snake on the top band.
-            AddEnemy(room, EnemyType::SNAKE, 1.0f, 3.0f,
+            // Last room: the goal. The snake lives in the MIDDLE band's left
+            // border (cell 0): that band is otherwise open, so it can come
+            // out and be shot. The top band's border is 8 cells deep — a snake
+            // there is walled in and useless (user report 2026-10-20).
+            AddEnemy(room, EnemyType::SNAKE, 1.0f, 5.0f,
                      1.5f + 0.5f * (levelNumber % 2), 4.0f);
         }
         return;
@@ -650,15 +682,11 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
                  1.0f + 0.25f * (levelNumber % 4), 8.0f);
         return;
     }
-    if (role == Role::Gate) {
-        // Door rooms allow ONE non-key enemy (convert rule) — a bat.
-        AddEnemy(room, EnemyType::BAT, 4.0f, 4.0f,
-                 1.25f + 0.25f * (levelNumber % 4), 13.0f);
-        return;
-    }
-    if (role == Role::Phase) {
-        // Timing gate: the blink opens the row-1 gap; a bat still patrols.
-        AddEnemy(room, EnemyType::BAT, 4.0f, 4.0f,
+    if (role == Role::Gate || role == Role::Phase) {
+        // Door rooms allow ONE non-key enemy (convert rule). The gate shape is
+        // row-1 wall except cell 4, so the bat goes in the GAP (cell 4 = x 8)
+        // — never inside the wall (user report: an unreachable bat).
+        AddEnemy(room, EnemyType::BAT, 8.0f, 4.0f,
                  1.25f + 0.25f * (levelNumber % 4), 13.0f);
         return;
     }
@@ -668,7 +696,8 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         return;
     }
     if (role == Role::Hot) {
-        AddEnemy(room, EnemyType::BAT, 4.0f, 4.0f,
+        // Hot shapes keep cells 1/4/5/8/9 open; cell 4 (x 8) is clear.
+        AddEnemy(room, EnemyType::BAT, 8.0f, 4.0f,
                  1.25f + 0.25f * (levelNumber % 4), 13.0f);
         return;
     }
@@ -685,12 +714,15 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         room.lamps.push_back(lamp);
     }
     if (plan.extra) {
-        // Level 9+: a second object on a free row (cap = 2, one per row).
-        if (!RowOccupied(room, 2)) {
-            AddEnemy(room, EnemyType::SPIDER, 10.0f, 8.0f,
+        // Level 9+: a second object on a free row (cap = 2, one per row). Row
+        // 2 is SOLID in a normal shape, so the only open cells are the exit
+        // corridors: cell 8 of the top band (the N opening).
+        if (!RowOccupied(room, 0)) {
+            AddEnemy(room, EnemyType::SPIDER, 16.0f, 3.0f,
                      1.0f + 0.25f * (levelNumber % 4), 8.0f);
-        } else if (!RowOccupied(room, 0)) {
-            AddEnemy(room, EnemyType::SNAKE, 1.0f, 3.0f, 1.5f, 4.0f);
+        } else if (!RowOccupied(room, 2)) {
+            AddEnemy(room, EnemyType::SPIDER, 16.0f, 8.0f,
+                     1.0f + 0.25f * (levelNumber % 4), 8.0f);
         }
     }
 }
@@ -716,7 +748,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             const Role role = RoleForRoom(i, count, plan);
             roles[l - 1].push_back(role);
             const int mask = RoomShapeMask(l, walks[l - 1], walks[l - 1][i],
-                                           i, role);
+                                           i, role, plan.twogap);
             masks[l - 1].push_back(mask);
             used.insert(mask);
         }
@@ -800,10 +832,45 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 if (roles[l - 1][j] == Role::Gate) continue;
                 if (roles[l - 1][j] == Role::Hcrunch) continue;  // no objects
                 if (ObjectCount(level.rooms[j]) >= 2) continue;
-                if (RowOccupied(level.rooms[j], 2)) continue;
-                AddEnemy(level.rooms[j], EnemyType::KEY, 10.0f, 8.0f,
-                         1.0f, 0.0f);
+                // Free cells the shape actually has open: row 1 cell 5 (x 10)
+                // on normal/hot shapes, else the exit corridor (cell 8, x 16).
+                float kx = 10.0f, ky = 5.0f;
+                if (RowOccupied(level.rooms[j], 1)) {
+                    if (!RowOccupied(level.rooms[j], 0)) {
+                        kx = 16.0f; ky = 3.0f;
+                    } else if (!RowOccupied(level.rooms[j], 2)) {
+                        kx = 16.0f; ky = 8.0f;
+                    } else {
+                        continue;
+                    }
+                }
+                AddEnemy(level.rooms[j], EnemyType::KEY, kx, ky, 1.0f, 0.0f);
                 break;
+            }
+        }
+        // Two-gap route choice (user rule 2026-10-20): one of the two
+        // ceiling gaps carries a lamp (even rooms) or a spider (odd rooms),
+        // the other stays empty — dropping blind is the risk. Runs AFTER the
+        // keys so a gate's host room keeps its free slot; gate/hcrunch rooms
+        // are skipped (door rule / no objects).
+        if (plan.twogap) {
+            for (int i = 1; i < roomCount - 1; ++i) {
+                if (roles[l - 1][i] == Role::Hcrunch
+                        || roles[l - 1][i] == Role::Gate) continue;
+                RoomData& room = level.rooms[i];
+                if (ObjectCount(room) >= 2 || RowOccupied(room, 0)) continue;
+                const int gap = (i % 2) ? kGapB : kGapA;
+                const float gx = (float)(gap * 2);
+                if (i % 2) {
+                    AddEnemy(room, EnemyType::SPIDER, gx, 3.0f,
+                             1.0f + 0.25f * (l % 4), 8.0f);
+                } else {
+                    LampData lamp;
+                    lamp.x = gx;
+                    lamp.y = 3.0f;
+                    lamp.lit = true;
+                    room.lamps.push_back(lamp);
+                }
             }
         }
         levels.push_back(level);
