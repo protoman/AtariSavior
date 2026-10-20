@@ -385,12 +385,16 @@ Files: `EnterRoomB2`, `B3RoomBlocks` (shape base), converter (`write_tables`,
 record is 4 B after C1) → 210: −210 B; 400: −400 B. Risk: medium — room load and
 enemy staging.
 
-**C3 — shape dictionary (row triples).**
+**C3 — shape dictionary (row triples) — MEASURED 2026-10-20, NOT IMPLEMENTED
+(36 B today, under the 40 B gate; see the C3 entry in
+`docs/compaction_findings_2026-10-19.md`).**
 3 B shape records + a 3 B/row pool; `B3RoomBlocks` does 3 dictionary lookups at
 load. Renders byte-identically (the PF bytes copied into `PF0Buf` are unchanged).
-Delta: **−16 B/model** today (20.75 → 3 B + ~1.5 B of pool share); −1.7 KB at
-210 (105 models), −3.2 KB at 400 (200 models). Risk: medium —
-room-load only, verified by `test_cell_map` (pure PF parity) + `test_band_restage`.
+Measured today: 12 blocks -> 12 unique rows, i.e. `6·S − 3·U` = **−36 B data**
+(402 -> 366) and **+6 B reader** (rows base stays `block+2+2·nrect`, so only the
+copy loop + meta offset move) = net +30 B. Per model: +6 with pooled bands, −3
+when all three bands are new. Delta at scale: **−540 B at 105 shapes**,
+**−1 065 B at 200** — so land it after C6/C7, or bundle with C4.
 
 **C4 — cell collision completion (the 6-rect fix, §4 option A).**
 `BombMarkWalls` cell punch + stop emitting solid rects + delete the `EnterRoom`
