@@ -648,80 +648,10 @@ MothGate:
     jmp MothDoWalk
 
 ; ------------------------------------------------------------------------------
-; TallyEntry — level-bonus tally body (user spec 2026-10-02). Entered from
-; bank0's TallyTramp ($FFE6) via jsr; tail-jmps ReturnPad ($FBF8) so A (and
-; Z) survive back to the bank0 caller.
-;   DropTarget == 0 (pickup frame) -> ARM: snapshot the bonus into TallyTicks
-;     in 50-pt units — 20 = miner (1000), (BarLevel+3)/6 = remaining time
-;     (50% -> 10 ticks -> 500), 1/bomb, 2/life — then arm the 4-frame pace
-;     divider (TickCounter), clear jet/beam, set DropTarget = $FE.
-;   DropTarget == $FE (every frame) -> STEP: dec TickCounter; on 0 reload 4,
-;     dec TallyTicks. Event A: b0 = add 50, b1 = coin tone written here
-;     (AUDC/F/V + BombSnd=8; bank0 TallyWork's UpdateBombSound holds it,
-;     coin = every 4 ticks = 200 pts), b2 = done (last tick consumed).
-; Pinned $F313 (org $F9D9 below: level data pins the overflow = build fails).
-; Was $F310 → $F313 (Phase 4 walk-head; kernel TallyEntry EQU moves with
-; it — both jmp operands are symbolic). The LWC M1 tip test (2026-10-08)
-; funds itself by moving ColOff/ColMask past this pin (see their comment).
+; TallyEntry MOVED to bank1 (repack chunk 3, 2026-10-20): ZP/TIA only,
+; and the tally frame is the bank1 HUD frame anyway. The hard `org $F313`
+; pin died with it; the region is fill up to the $F3C4 pin below.
 ; ------------------------------------------------------------------------------
-    .ds $F313 - *, 0
-TallyEntry:
-    lda DropTarget
-    beq .TEArm
-    dec TickCounter             ; pace: 1 tick per 4 frames
-    bne .TEIdle
-    lda #4
-    sta TickCounter
-    dec TallyTicks
-    beq .TEFinal                ; last unit: event = tick+coin+done
-    lda TallyTicks
-    and #3
-    bne .TEOne                  ; tick only
-    lda #8                      ; --- coin blip (200 pts = every 4th tick)
-    sta BombSnd
-    lda #4
-    sta AUDC0                   ; square
-    lda #24
-    sta AUDF0                   ; high pitch — distinct from bomb drop ($0A)
-    lda #8
-    sta AUDV0
-    lda #3                      ; tick + coin
-    jmp ReturnPad
-.TEOne:
-    lda #1                      ; tick only
-    jmp ReturnPad
-.TEFinal:
-    lda #7                      ; tick + coin + done
-    jmp ReturnPad
-.TEIdle:
-    lda #0                      ; no event (Z set for bank0 beq)
-    jmp ReturnPad
-.TEArm:
-    lda BarLevel
-    clc
-    adc #3                      ; round-to-nearest: (BarLevel+3)/6
-    ldx #0
-.TEDiv:
-    cmp #6
-    bcc .TEDivSum
-    sec
-    sbc #6
-    inx                         ; X = time ticks (0..20; BarLevel <= 120)
-    bne .TEDiv
-.TEDivSum:
-    jsr TallySum                ; TallyTicks = ticks + 20 + bombs + 2*lives
-                                ; (masking the raft's ramp bits out of
-                                ; PlayerBombs needs room this region lacks)
-    lda #4
-    sta TickCounter             ; fresh pace divider
-    lda #0
-    sta JetPower                ; frozen frame: no thrust flutter
-    sta LaserX                  ; drop any live beam (travel restarts on press)
-    lda #$FE
-    sta DropTarget
-    lda #0
-    jmp ReturnPad
-
 ; ------------------------------------------------------------------------------
 ; BCFDarkRun / BuildColupF / PhaseBlink / HotOverlapBody moved to
 ; bank3 (A3 2026-10-19 — they walk the level-data record stream, which now
@@ -868,29 +798,8 @@ FooterPtr6 = $EA
     .ds $F864 - *, 0            ; #27b level spill slot ($F864, 28B; empty until
     include "generated/spill_F840.asm" ;  convert_level places a level here)
     .ds $F880 - *, 0
-; TallySum — the level-bonus total for TallyEntry (frozen-scene frame).
-; Split OUT of the inline TallyEntry region (it ends at a hard org) into bank2's
-; free slack before the $F970 pin. IN: X = time ticks (0..20). OUT: TallyTicks
-; set; A clobbered, X/Y kept. The bomb count MUST be masked: PlayerBombs' high
-; bits carry the raft's take-off ramp state (b7 flag, b6-3 level — see the
-; kernel EQU contract), and a stale ride would otherwise inflate the bonus.
-; Temp ($88) is free here: the tally frame bypasses the input (its joystick
-; store) and the next VBL restages Temp anyway.
-TallySum:
-    lda PlayerBombs
-    and #%00000111              ; bombs only, never the ramp bits
-    sta Temp
-    txa
-    clc
-    adc #20                     ; miner reach = 1000 pts
-    adc Temp                    ; + 50 per unspent bomb (chain carry ok)
-    sta TallyTicks
-    lda PlayerLives
-    asl                         ; + 100 per life = 2 ticks
-    clc
-    adc TallyTicks
-    sta TallyTicks
-    rts
+; TallySum MOVED to bank1 (repack chunk 3, 2026-10-20) — same-bank jsr from
+; TallyEntry there. This slot is fill again.
 
     .ds $F8B7 - *, 0            ; spill-pool gap
                                 ; (was the $F8DD jet-art twin pin — deleted
@@ -1190,13 +1099,10 @@ EnemyOffTable:
 EnemyBitTable:
     .byte $01, $02, $04, $08
 
-    ; Tally entry tramp slice ($FFE6-$FFEB, byte-identical with kernel.asm —
-; guard: check_moth_tramp). bank0 executes `sta $1FF8`; the fetch at $FFE9
-; comes from THIS bank = `jmp TallyEntry`. Neither bank runs its other half.
+    ; Tally entry tramp slice RETIRED here (repack chunk 3, 2026-10-20): the
+; body moved to bank1, so the $FFE6 twin lives in bank1 now. This bank's
+; $FFE6-$FFEB bytes are fill.
     .ds $FFE6 - *, 0
-TallyTramp:
-    sta $1FF8
-    jmp TallyEntry
 
 ; ------------------------------------------------------------------------------
 ; HotOverlapFlag (bank2-side) RETIRED 2026-10-20 (repack chunk 4): its only

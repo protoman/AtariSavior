@@ -290,9 +290,9 @@ HOF_ENTRY = 0xFFEC   # A3: moved off $FE90 (bank3 $FE93 = .OSline)
 # S5.4 LaserHitTest entry tramp — same pattern: `sta $1FF8` at $FE96,
 # fetch at $FE89 from bank2 = `jmp LaserHitTestBody`.
 LHT_ENTRY = 0xFE96
-# Tally entry tramp — same pattern: `sta $1FF8` at $FFE6 (after BeamMask,
-# fetch at $FFE9 from bank2 = `jmp TallyEntry`). Ends $FFEB so $FFF2-$FFF9
-# (F6 hotspot mirrors) stay fill.
+# Tally entry tramp — same pattern: `sta $1FF7` at $FFE6 (after BeamMask,
+# fetch at $FFE9 from BANK1 = `jmp TallyEntry`, repack chunk 3). Ends $FFEB so
+# $FFF2-$FFF9 (F6 hotspot mirrors) stay fill.
 TALLY_ENTRY = 0xFFE6
 
 
@@ -311,7 +311,7 @@ def check_moth_tramp(src: Path) -> None:
     flips banks mid-instruction (the 2026-09-30 frame-3 crash).
     """
     banks: dict[int, bytes] = {}
-    for idx in (0, 2, 3):
+    for idx in (0, 1, 2, 3):
         p = src / f"bank{idx}.bin"
         if not p.exists():
             err(f"bank{idx}.bin missing (moth tramp check)")
@@ -328,6 +328,8 @@ def check_moth_tramp(src: Path) -> None:
         return
     labels0, _ = parse_lst(lst0_path.read_text(errors="replace").splitlines())
     labels2, _ = parse_lst(lst2_path.read_text(errors="replace").splitlines())
+    labels1, _ = parse_lst((src / "bank1.lst").read_text(
+        errors="replace").splitlines())
 
     eoff = MOTH_ENTRY - 0xF000
     e0 = banks[0][eoff:eoff + 6]
@@ -403,23 +405,24 @@ def check_moth_tramp(src: Path) -> None:
             "(LaserInput jsr target moved off the pad)")
 
     # Tally entry tramp ($FFE6) — same discipline: byte-identity slice in
-    # bank0/bank2 + operand == bank2 TallyEntry + label pin (kernel jsrs).
+    # bank0/BANK1 (repack chunk 3: body moved to bank1) + operand == bank1
+    # TallyEntry + label pin (kernel jsrs).
     yoff = TALLY_ENTRY - 0xF000
     y0 = banks[0][yoff:yoff + 6]
-    y2 = banks[2][yoff:yoff + 6]
-    if y0[:3] != MOTH_STA18:
+    y1 = banks[1][yoff:yoff + 6]
+    if y0[:3] != bytes([0x8D, 0xF7, 0x1F]):
         err(f"bank0 tally entry ${TALLY_ENTRY:04X} = {y0.hex()} "
-            f"(expected {MOTH_STA18.hex()} + jmp)")
-    if y0 != y2:
-        err(f"tally entry bank0[${TALLY_ENTRY:04X}] {y0.hex()} != bank2 "
-            f"{y2.hex()} (byte-identity broken)")
-    tally = labels2.get("TallyEntry")
+            "(expected 8df71f + jmp — sta $1FF7 to bank1)")
+    if y0 != y1:
+        err(f"tally entry bank0[${TALLY_ENTRY:04X}] {y0.hex()} != bank1 "
+            f"{y1.hex()} (byte-identity broken)")
+    tally = labels1.get("TallyEntry")
     tally_tgt = (y0[4] | (y0[5] << 8)) if len(y0) == 6 else None
     if tally is None:
-        err("TallyEntry label not found in bank2.lst")
+        err("TallyEntry label not found in bank1.lst")
     elif tally_tgt != tally:
         err(f"tally entry jmp ${tally_tgt if tally_tgt is not None else 0:04X} "
-            f"!= bank2 TallyEntry ${tally:04X} (tramp operand stale)")
+            f"!= bank1 TallyEntry ${tally:04X} (tramp operand stale)")
     tally_tramp = labels0.get("TallyTramp")
     if tally_tramp != TALLY_ENTRY:
         shown = f"${tally_tramp:04X}" if tally_tramp is not None else "None"

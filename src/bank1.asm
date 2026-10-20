@@ -555,6 +555,99 @@ M1StripBlast:
 .M1SBout:
     jmp StripBlastCheck         ; same bank now (was the $F9B2 pad)
 
+; ------------------------------------------------------------------------------
+; TallyEntry — level-bonus tally body (moved from bank2 2026-10-20, repack
+; chunk 3: it touches ZP/TIA only, and the tally frame runs the bank1 HUD
+; anyway). Entered from bank0's TallyTramp ($FFE6) via jsr; tail-jmps
+; ReturnPad ($FBF8, bank1 copy) so A (and Z) survive back to the bank0 caller.
+;   DropTarget == 0 (pickup frame) -> ARM: snapshot the bonus into TallyTicks
+;     in 50-pt units — 20 = miner (1000), (BarLevel+3)/6 = remaining time
+;     (50% -> 10 ticks -> 500), 1/bomb, 2/life — then arm the 4-frame pace
+;     divider (TickCounter), clear jet/beam, set DropTarget = $FE.
+;   DropTarget == $FE (every frame) -> STEP: dec TickCounter; on 0 reload 4,
+;     dec TallyTicks. Event A: b0 = add 50, b1 = coin tone written here
+;     (AUDC/F/V + BombSnd=8; bank0 TallyWork's UpdateBombSound holds it,
+;     coin = every 4 ticks = 200 pts), b2 = done (last tick consumed).
+; The old hard `org $F313` pin and bank2's `org $F880` TallySum slot are gone
+; with the move; both bodies now flow in bank1's $F41F-$F53F fill.
+; ------------------------------------------------------------------------------
+TallyEntry:
+    lda DropTarget
+    beq .TEArm
+    dec TickCounter             ; pace: 1 tick per 4 frames
+    bne .TEIdle
+    lda #4
+    sta TickCounter
+    dec TallyTicks
+    beq .TEFinal                ; last unit: event = tick+coin+done
+    lda TallyTicks
+    and #3
+    bne .TEOne                  ; tick only
+    lda #8                      ; --- coin blip (200 pts = every 4th tick)
+    sta BombSnd
+    lda #4
+    sta AUDC0                   ; square
+    lda #24
+    sta AUDF0                   ; high pitch — distinct from bomb drop ($0A)
+    lda #8
+    sta AUDV0
+    lda #3                      ; tick + coin
+    jmp ReturnPad
+.TEOne:
+    lda #1                      ; tick only
+    jmp ReturnPad
+.TEFinal:
+    lda #7                      ; tick + coin + done
+    jmp ReturnPad
+.TEIdle:
+    lda #0                      ; no event (Z set for bank0 beq)
+    jmp ReturnPad
+.TEArm:
+    lda BarLevel
+    clc
+    adc #3                      ; round-to-nearest: (BarLevel+3)/6
+    ldx #0
+.TEDiv:
+    cmp #6
+    bcc .TEDivSum
+    sec
+    sbc #6
+    inx                         ; X = time ticks (0..20; BarLevel <= 120)
+    bne .TEDiv
+.TEDivSum:
+    jsr TallySum                ; TallyTicks = ticks + 20 + bombs + 2*lives
+                                ; (masking the raft's ramp bits out of
+                                ; PlayerBombs needs the split helper below)
+    lda #4
+    sta TickCounter             ; fresh pace divider
+    lda #0
+    sta JetPower                ; frozen frame: no thrust flutter
+    sta LaserX                  ; drop any live beam (travel restarts on press)
+    lda #$FE
+    sta DropTarget
+    lda #0
+    jmp ReturnPad
+
+; TallySum — the level-bonus total for TallyEntry (frozen-scene frame).
+; Split out of the inline region in bank2 (which ended at a hard org); now a
+; same-bank jsr in the same fill.
+TallySum:
+    lda PlayerBombs
+    and #%00000111              ; bombs only, never the raft ramp bits
+    sta BMWScratch              ; $88 = kernel Temp — NOT bank1's Temp ($AD =
+                                ; TickCounter: writing it stalls the game timer)
+    txa
+    clc
+    adc #20                     ; miner reach = 1000 pts
+    adc BMWScratch              ; + 50 per unspent bomb (chain carry ok)
+    sta TallyTicks
+    lda PlayerLives
+    asl                         ; + 100 per life = 2 ticks
+    clc
+    adc TallyTicks
+    sta TallyTicks
+    rts
+
     org $F540
 MenuMain:
     ; ========================================================================
@@ -663,6 +756,7 @@ RectCount  = $92                ; walk temp — BMW stashes the original screen
 BombPacked = $B5                ; state+DownPrev+WallMask (b3-6)
 RoomMetaA = $99                 ; staged MetaA (hand-copy of bank2's EQU —
 RoomMetaB = $9A                 ;   M1StripBlast reads the door/m1 nibbles)
+LaserX     = $83                 ; hand-copy: TallyEntry drops a live beam
 EnemyDeadMask = $BA             ; b0-2 enemy kills (hand-copy of kernel's
                                  ; decl — check_equ_sync pair); b3 = D6 ball
                                  ; strip destroyed (StripBlastCheck); b4 = M1
@@ -2436,6 +2530,18 @@ fineAdjustBegin_b1:
   .byte %10100000
   .byte %10010000
 fineAdjustTable_b1 EQU fineAdjustBegin_b1 - %11110001
+
+; ------------------------------------------------------------------------------
+; Tally entry tramp slice ($FFE6-$FFEB) — byte-identical with kernel.asm's
+; copy at the same address (F6 pad rule). bank0 executes `sta $1FF7` at
+; $FFE6-$FFE8; the fetch at $FFE9 comes from THIS bank = `jmp TallyEntry`
+; ($F44F — moved here from bank2, repack chunk 3, 2026-10-20). Neither bank
+; runs its other half. $FFF2-$FFF9 stay fill (hotspot mirrors).
+; ------------------------------------------------------------------------------
+    .ds $FFE6 - *, 0
+TallyTramp_b1:
+    sta $1FF7
+    jmp TallyEntry
 
 ; ========================================================================
 ; Interrupt vectors

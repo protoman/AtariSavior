@@ -447,7 +447,7 @@ StepsLeft                0097              (R )
 StepUp                   f38e              (R )
 SWCHA                    0280              (R )
 SWCHB                    0282              (R )
-TallyEntry               f313              (R )
+TallyEntry               f44f              (R )
 TallyTicks               00f2                  
 TallyTramp               ffe6              (R )
 TallyWork                fe9c              (R )

@@ -287,3 +287,24 @@ Pins/twins killed: bank2 `$F9B8` overlay tramp, `$FE00` PHMOverlay pin,
 patches the HOF pad in kernel.asm only; `test_key_pickup` reads the cluster
 from kernel.asm and asserts bank2's `LevelStartRoom` copy is gone;
 `test_respawn_hover` anchors on the `$FBD0` pin.
+
+### Chunk 4 (plan chunk 3) — Tally → bank1 ($F44F + $FFE6 pad) — LANDED
+
+| | before | after | Δ |
+|---|---|---|---|
+| bank0 | 3642 | 3642 | 0 |
+| bank1 | 2923 | 3049 | +126 |
+| bank2 | 1348 | 1222 | **−126** |
+| bank3 | 1263 | 1263 | 0 |
+| **total** | **9176** | **9176** | 0 |
+
+`TallyEntry` (97 B) + `TallySum` (23 B) + the `$FFE6` tramp (6 B) moved to
+bank1's `$F41F-$F53F` fill; both landed at `$F44F`/`$F4B0`. Hard `org $F313`
+and the bank2 `org $F880` slot are gone. Kernel `TallyTramp` now `sta $1FF7`
++ `jmp $F44F`; bank1 carries the byte-identical `$FFE6` twin.
+**Same `Temp` trap as chunk 2:** bank1's `Temp` is `$AD` (= kernel
+`TickCounter`), so `TallySum` uses `BMWScratch` (`$88`) for BOTH the store
+and the `adc` — missing the second one inflated the bonus (201 vs 38 ticks)
+and `test_tally` caught it. `LaserX` ($83) hand-copied into bank1.
+Guards: `verify_build` tally slice now compares bank0/bank1 with `8d f7 1f`
+and reads bank1's `TallyEntry`.
