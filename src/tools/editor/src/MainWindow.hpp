@@ -53,15 +53,14 @@ private slots:
     void OpenLevel();
     void SaveLevel();
     void SaveLevelAs();
-    // E1 (2026-10-20): unified stage file — models + every level in one json.
-    // The legacy per-level open/save above keeps working unchanged; a stage is
-    // an additional (opt-in) way to edit a whole project.
-    void OpenStage();
+    // 2026-10-20 (user): ONE stage file (models + all 20 levels) is the only
+    // project shape. The editor loads <gameDataDir>/stage.json at start
+    // (importing legacy level_*.json into memory if that is all it finds) and
+    // Save/Generate always write that one path — no dialogs.
+    void LoadDefaultStage();
     void SaveStage();
-    void ConvertProjectToStage();
-    // E2 (2026-10-20): write the deterministic 20-level (210-room) stage to a
-    // path the user picks in a Save dialog. The current project is never
-    // touched and the generated file is not opened.
+    // E2 (2026-10-20): build the deterministic 20-level (210-room) stage,
+    // replace the current one and save it immediately.
     void GenerateLevelStage();
     void SelectGameDataDir();
     void PerformUndo();
