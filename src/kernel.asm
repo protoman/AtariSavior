@@ -3941,16 +3941,16 @@ StepDelta:                      ; travel step per PlayerDir (0=right, 1=left)
     .ds $FFE6 - *, 0            ; pin TallyTramp (BeamMask moved to $FExx
                                  ; freed 12B here — drift must not move it)
 ; ------------------------------------------------------------------------------
-; TallyTramp ($FFE6, byte-identical with bank2 — guard: check_moth_tramp).
-; bank0 jsr's here (CheckMinerPickup arm / TallyWork step): `sta $1FF8`
-; selects bank2, then the jmp operand is fetched from bank2's image at the
-; same PC (FoldIndirect discipline). The bank2 body tail-jmps ReturnPad
-; ($FBF8) -> rts back to the bank0 jsr. Ends $FFEB — $FFF2-$FFF9 stay fill
-; (F6 hotspot mirrors).
+; TallyTramp ($FFE6, byte-identical with BANK1 now — the body moved there in
+; repack chunk 3, 2026-10-20; guard: verify_build). bank0 jsr's here
+; (CheckMinerPickup arm / TallyWork step): `sta $1FF7` selects bank1, then the
+; jmp operand is fetched from bank1's image at the same PC (FoldIndirect
+; discipline). The bank1 body tail-jmps ReturnPad ($FBF8) -> rts back to the
+; bank0 jsr. Ends $FFEB — $FFF2-$FFF9 stay fill (F6 hotspot mirrors).
 ; ------------------------------------------------------------------------------
-TallyEntry = $F313              ; bank2 TallyEntry — operand must match label
+TallyEntry = $F44F              ; bank1 TallyEntry — operand must match label
 TallyTramp:
-    sta $1FF8
+    sta $1FF7
     jmp TallyEntry
 
 ; ------------------------------------------------------------------------------

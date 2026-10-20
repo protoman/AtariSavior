@@ -3942,17 +3942,17 @@
    3941  ffe0		       00 00 00 00*	      .ds	$FFE6 - *, 0	; pin TallyTramp (BeamMask moved to $FExx
    3942  ffe6							; freed 12B here — drift must not move it)
    3943  ffe6							; ------------------------------------------------------------------------------
-   3944  ffe6							; TallyTramp ($FFE6, byte-identical with bank2 — guard: check_moth_tramp).
-   3945  ffe6							; bank0 jsr's here (CheckMinerPickup arm / TallyWork step): `sta $1FF8`
-   3946  ffe6							; selects bank2, then the jmp operand is fetched from bank2's image at the
-   3947  ffe6							; same PC (FoldIndirect discipline). The bank2 body tail-jmps ReturnPad
-   3948  ffe6							; ($FBF8) -> rts back to the bank0 jsr. Ends $FFEB — $FFF2-$FFF9 stay fill
-   3949  ffe6							; (F6 hotspot mirrors).
+   3944  ffe6							; TallyTramp ($FFE6, byte-identical with BANK1 now — the body moved there in
+   3945  ffe6							; repack chunk 3, 2026-10-20; guard: verify_build). bank0 jsr's here
+   3946  ffe6							; (CheckMinerPickup arm / TallyWork step): `sta $1FF7` selects bank1, then the
+   3947  ffe6							; jmp operand is fetched from bank1's image at the same PC (FoldIndirect
+   3948  ffe6							; discipline). The bank1 body tail-jmps ReturnPad ($FBF8) -> rts back to the
+   3949  ffe6							; bank0 jsr. Ends $FFEB — $FFF2-$FFF9 stay fill (F6 hotspot mirrors).
    3950  ffe6							; ------------------------------------------------------------------------------
-   3951  ffe6		       f3 13	   TallyEntry =	$F313	; bank2 TallyEntry — operand must match label
+   3951  ffe6		       f4 4f	   TallyEntry =	$F44F	; bank1 TallyEntry — operand must match label
    3952  ffe6				   TallyTramp
-   3953  ffe6		       8d f8 1f 	      sta	$1FF8
-   3954  ffe9		       4c 13 f3 	      jmp	TallyEntry
+   3953  ffe6		       8d f7 1f 	      sta	$1FF7
+   3954  ffe9		       4c 4f f4 	      jmp	TallyEntry
    3955  ffec
    3956  ffec							; ------------------------------------------------------------------------------
    3957  ffec							; HotOverlapFlag — bank3 entry tramp (A3 2026-10-19). Moved off $FE90 (bank3
