@@ -155,12 +155,12 @@ def main() -> None:
         f"LEVEL_DATA_ADDR ${m2 and m2.group(1)} != " \
         f"bank2 LevelDataTable ${m.group(1)}"
 
-    # --- C2/C3/C4 (2026-10-20) + the 2026-10-20 micro-pack ----------------
+    # --- C1/C2/C3/C4 (2026-10-20) + the 2026-10-20 micro-pack -------------
     # The readers hardcode the block layout: RoomDataTable (2 B/room),
-    # RoomConnections (2 B/room), RoomEnemies (1 B/room), EnemyDataTable
-    # (4 B/record). The per-level entry is 4 scalars + base word + room count,
-    # and the Connections/RoomEnemies/enemy-record bases are the block's
-    # +2n / +4n / +5n offsets, so the emission order IS the contract.
+    # RoomPositions (1 B/room, LEVEL_FORMAT 2), RoomEnemies (1 B/room),
+    # EnemyDataTable (4 B/record). The per-level entry is 4 scalars + base word
+    # + room count, and the positions/RoomEnemies/enemy-record bases are the
+    # block's +2n / +3n / +4n offsets, so the emission order IS the contract.
     index = (ROOT / "src" / "generated" / "levels_index.asm").read_text(
         encoding="utf-8")
     assert "LEVEL_DATA_STRIDE = 7" in index, (
@@ -185,26 +185,55 @@ def main() -> None:
     assert 'include "generated/levels_equ.asm"' in BANK2, (
         "bank2.asm must include generated/levels_equ.asm (BAND_COLOR) BEFORE "
         "EnterRoomB2 uses it")
+    # LEVEL_FORMAT 2 must be declared by the generator and by the consumers
+    m = re.search(r"^LEVEL_FORMAT = \$([0-9a-f]{2})", index, re.M)
+    assert m and int(m.group(1), 16) == 2, (
+        "generated level index must declare LEVEL_FORMAT = $02 (C1 grid "
+        "positions)")
+    for name, body in (("kernel.asm", KERNEL), ("bank1.asm", BANK1)):
+        hm = re.search(r"^LEVEL_FORMAT\s*=\s*\$([0-9a-f]{2})", body, re.M)
+        assert hm and int(hm.group(1), 16) == 2, (
+            f"{name}: LEVEL_FORMAT hand copy must be $02 (C1)")
     for _ml, n, _rd, rooms in entries:
         rooms = int(rooms)
         text = (ROOT / "src" / "generated" / f"level_{int(n):03d}_rooms.asm"
                 ).read_text(encoding="utf-8")
         pos = {k: text.index(f"{k}:") for k in (
-            f"LEVEL{n}_RoomDataTable", f"LEVEL{n}_RoomConnections",
+            f"LEVEL{n}_RoomDataTable", f"LEVEL{n}_RoomPositions",
             f"LEVEL{n}_RoomEnemies", f"LEVEL{n}_EnemyDataTable")}
-        assert (pos[f"LEVEL{n}_RoomDataTable"] < pos[f"LEVEL{n}_RoomConnections"]
+        assert (pos[f"LEVEL{n}_RoomDataTable"] < pos[f"LEVEL{n}_RoomPositions"]
                 < pos[f"LEVEL{n}_RoomEnemies"]
                 < pos[f"LEVEL{n}_EnemyDataTable"]), (
-            f"LEVEL{n}: block order must be RoomData/Conn/RoomEnemies/"
-            f"EnemyData — the readers use +2n/+4n/+5n offsets")
+            f"LEVEL{n}: block order must be RoomData/Positions/RoomEnemies/"
+            f"EnemyData — the readers use +2n/+3n/+4n offsets")
         chunk = text[pos[f"LEVEL{n}_RoomDataTable"]:pos[f"LEVEL{n}_EnemyDataTable"]]
         assert chunk.count("  .word ") == rooms, (
             f"LEVEL{n}: RoomDataTable must be ONE word per room (C3)")
-        # Connections: 2 bytes/room; RoomEnemies: ONE byte/room (2026-10-20)
+        # RoomPositions: ONE byte/room (C1); RoomEnemies: ONE byte/room
         assert chunk.count("  .byte ") == 2 * rooms, (
-            f"LEVEL{n}: one Connections line (2 B) + one RoomEnemies line "
+            f"LEVEL{n}: one RoomPositions line (1 B) + one RoomEnemies line "
             f"(1 B) per room — got {chunk.count('  .byte ')} for "
             f"{rooms} rooms")
+        # C1: the position column is the exit source of truth — both nibbles
+        # in 0..14 (15 = off-grid sentinel) and every position unique
+        positions = re.findall(
+            r"^  \.byte \$([0-9a-f]{2}) ; room \d+ \((\d+), (\d+)\)",
+            text, re.M)
+        assert len(positions) == rooms, (
+            f"LEVEL{n}: RoomPositions must hold one byte per room")
+        assert len({hexv for hexv, _x, _y in positions}) == rooms, (
+            f"LEVEL{n}: duplicate grid positions — exits are resolved by "
+            "scanning positions, so they must be unique")
+        for hexv, gx, gy in positions:
+            value = int(hexv, 16)
+            assert value >> 4 == int(gx) and value & 0x0F == int(gy), (
+                f"LEVEL{n}: position ${hexv} does not decode to ({gx}, {gy})")
+            assert (value >> 4) < 15 and (value & 0x0F) < 15, (
+                f"LEVEL{n}: position ${hexv} uses nibble 15 (off-grid "
+                "sentinel) — the exit scan would never match it")
+        assert rooms <= 225, (
+            f"LEVEL{n}: {rooms} rooms > the 15x15 grid-position space (225) "
+            "— C1 lifts the old 15-room cap to 225 cells, not unbounded")
         enemies = text[pos[f"LEVEL{n}_RoomEnemies"]:
                        pos[f"LEVEL{n}_EnemyDataTable"]]
         goals = re.findall(r"^  \.byte \$([0-9a-f]{2}) ; room (\d+)", enemies, re.M)

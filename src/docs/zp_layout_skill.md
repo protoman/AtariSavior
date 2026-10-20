@@ -87,8 +87,8 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $9E | MelTimer | Intro music: melody frames left (bank1 MusicTick) |
 | $9F | LevelPFDataLo | Level RoomDataTable lo |
 | $A0 | LevelPFDataHi | Level RoomDataTable hi |
-| $A1 | LevelRoomN | Rooms in this level (C4 2026-10-20: Connections = block+2n, RoomEnemies = +4n (1 B/room since 2026-10-20), enemy records = +5n) |
-| $A2 | LevelConnSpare | FREE (was LevelConnHi — pointer now derived) |
+| $A1 | LevelRoomN | Rooms in this level (C1/C4 2026-10-20: RoomPositions = block+2n (1 B/room, LEVEL_FORMAT 2), RoomEnemies = +3n, enemy records = +4n) |
+| $A2 | LevelConnSpare | bank2 exit-scan target (C1 2026-10-20; was LevelConnHi, pointer derived) |
 | $A3 | Level | Level index |
 | $A4 | LevelMinerRoom | Miner room index |
 | $A5 | MinerX | Miner X |

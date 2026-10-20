@@ -125,7 +125,7 @@ shared twins; the kernel+`TitleFont` are the movable part.
 
   | label | size | purpose |
   |---|---|---|
-  | `LevelDataTable` (+ per-level) | — | level start/miner/colors + `RoomDataTable`/`RoomConnections`/`RoomEnemies`; generated `spill_*.asm` |
+  | `LevelDataTable` (+ per-level) | — | level start/miner/colors + `RoomDataTable`/`RoomPositions`/`RoomEnemies` (LEVEL_FORMAT 2); generated `spill_*.asm` |
   | `MothBitTable` / `MothRowTable` | 3 / 48 | moth enemy turn bits / row lookup |
   | `BCFDarkMask` | 8 | `BuildColupF` dark-room mask per room |
   | `ColOff` / `ColMask` | 20 / 12 | cell-walk copies (bank2-side walkers) |
