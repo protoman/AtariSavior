@@ -29,6 +29,16 @@ public:
     static bool LoadLevelFromFile(LevelData& level, const std::string& filepath);
     static bool SaveModelsToFile(const std::vector<ModelData>& models, const std::string& filepath);
     static bool LoadModelsFromFile(std::vector<ModelData>& models, const std::string& filepath);
+    // Unified stage file (E1 2026-10-20): models + every level in one json.
+    // Save always writes the canonical `{"stage": {...}}` form; Load accepts
+    // both that and the bare `{"models": ..., "levels": ...}` form, and keeps
+    // the levels in file order (the converter's play order / LevelDataTable).
+    static bool SaveStageToFile(const std::vector<LevelData>& levels,
+                                const std::vector<ModelData>& models,
+                                const std::string& filepath);
+    static bool LoadStageFromFile(std::vector<LevelData>& levels,
+                                  std::vector<ModelData>& models,
+                                  const std::string& filepath);
     // 2026-10-17 format change: async walls moved from the MODEL to the ROOM
     // (RoomData::asym_patches / feature_cells) so a model SHAPE can be reused
     // by rooms with different async. This migrates a legacy project in place:

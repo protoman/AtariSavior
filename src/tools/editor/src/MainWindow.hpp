@@ -53,6 +53,12 @@ private slots:
     void OpenLevel();
     void SaveLevel();
     void SaveLevelAs();
+    // E1 (2026-10-20): unified stage file — models + every level in one json.
+    // The legacy per-level open/save above keeps working unchanged; a stage is
+    // an additional (opt-in) way to edit a whole project.
+    void OpenStage();
+    void SaveStage();
+    void ConvertProjectToStage();
     void SelectGameDataDir();
     void PerformUndo();
 
@@ -97,6 +103,11 @@ private:
     void CreateRoomInDirection(int dirX, int dirY);
     bool RoomExistsAt(int rx, int ry) const;
 
+    // Unified stage file (E1 2026-10-20): the current level is a slot of
+    // m_stageLevels; SaveStage writes models + every level to m_stageFilePath.
+    bool SyncCurrentLevelToStage();
+    void EnterStageMode(const std::string& path);
+
     QIcon MakeToolIcon(BrushTool tool) const;
     void RefreshToolIcons();
 
@@ -110,6 +121,12 @@ private:
     QString m_currentFilePath;
     QString m_modelsFilePath;
     QString m_gameDataDir;
+    // Unified stage mode (E1): when set, the combo lists the stage's levels and
+    // saves write the ONE stage file (models included) — never models.json.
+    QString m_stageFilePath;
+    bool m_stageMode = false;
+    int m_stageLevelIndex = -1;
+    std::vector<hero::LevelData> m_stageLevels;
     bool m_ignoreComboEvents = false;
     EditMode m_editMode = EditMode::MODEL_EDIT;
 

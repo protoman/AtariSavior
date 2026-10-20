@@ -11,16 +11,36 @@ ROOT="$(cd "$DIR/.." && pwd)"
 
 echo "Building F6 ROM (4 banks)..."
 
-# Generate level data from JSON (every rooms/level_XXX.json — no hardcode)
-echo "  Generating level data..."
-LEVELS=("$DIR"/rooms/level_[0-9][0-9][0-9].json)
-for J in "${LEVELS[@]}"; do
-    python3 "$ROOT/tools/convert_level.py" "$J" "$DIR/generated/$(basename "$J" .json)" "$DIR/rooms"
-done
+# Generate level data. E1 (2026-10-20): precedence is
+#   $STAGE_FILE (env override)  >  rooms/stage.json  >  legacy per-level files.
+# The stage file holds models + every level; a generated/alternative stage can
+# be built without touching rooms/ by setting STAGE_FILE. Room .txt mirrors go
+# next to the stage file (the live rooms/ tree is the user's).
+STAGE_FILE="${STAGE_FILE:-}"
+if [ -z "$STAGE_FILE" ] && [ -f "$DIR/rooms/stage.json" ]; then
+    STAGE_FILE="$DIR/rooms/stage.json"
+fi
+if [ -n "$STAGE_FILE" ]; then
+    echo "  Level source: unified stage file $STAGE_FILE"
+    STAGE_ROOMS="$DIR/rooms"
+    if [ "$(cd "$(dirname "$STAGE_FILE")" && pwd)" != "$(cd "$DIR/rooms" && pwd)" ]; then
+        STAGE_ROOMS="$(dirname "$STAGE_FILE")"
+    fi
+    python3 "$ROOT/tools/convert_level.py" --stage "$STAGE_FILE" \
+        "$DIR/generated" "$STAGE_ROOMS"
+else
+    echo "  Level source: legacy per-level JSON ($DIR/rooms/level_NNN.json)"
+    # Generate level data from JSON (every rooms/level_XXX.json — no hardcode)
+    echo "  Generating level data..."
+    LEVELS=("$DIR"/rooms/level_[0-9][0-9][0-9].json)
+    for J in "${LEVELS[@]}"; do
+        python3 "$ROOT/tools/convert_level.py" "$J" "$DIR/generated/$(basename "$J" .json)" "$DIR/rooms"
+    done
 
-# Generate levels index (LevelDataTable with all levels)
-python3 "$ROOT/tools/convert_level.py" --levels "$DIR/generated/levels.asm" \
-    "${LEVELS[@]}"
+    # Generate levels index (LevelDataTable with all levels)
+    python3 "$ROOT/tools/convert_level.py" --levels "$DIR/generated/levels.asm" \
+        "${LEVELS[@]}"
+fi
 
 # level-data window pre-check (bugs.md 27): fail early with the placement
 # map instead of DASM's cryptic `Origin Reverse-indexed` at the pad line

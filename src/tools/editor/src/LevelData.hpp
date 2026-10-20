@@ -251,6 +251,21 @@ struct ModelsFile {
     }
 };
 
+// Unified stage file (E1 2026-10-20): models + every level in ONE json.
+// Canonical on-disk form is `{"stage": {"models": [...], "levels": [...]}}`;
+// each entry of `levels` is exactly a legacy level_00N.json's `level` payload
+// (so the converter and the editor see the same objects). The bare
+// `{"models": ..., "levels": ...}` form is accepted on load.
+struct StageFile {
+    std::vector<ModelData> models;
+    std::vector<LevelData> levels;
+
+    template <class Archive>
+    void serialize(Archive& ar) {
+        ar(CEREAL_NVP(models), CEREAL_NVP(levels));
+    }
+};
+
 } // namespace hero
 
 CEREAL_CLASS_VERSION(hero::LevelData, 1)

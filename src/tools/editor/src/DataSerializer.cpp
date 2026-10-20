@@ -201,6 +201,122 @@ bool DataSerializer::LoadModelsFromFile(std::vector<ModelData>& models, const st
     }
 }
 
+// ---------------------------------------------------------------------------
+// Unified stage file (E1 2026-10-20): models + every level in ONE json.
+// ---------------------------------------------------------------------------
+namespace {
+// cereal's class-version mechanism throws when `cereal_class_version` is
+// absent, so a hand-written or generator-emitted stage file would lose the
+// optional level fields (miner_dir). Inject the key into every level object
+// (elements of the top-level `levels` array) when the file has none.
+std::string VersionStageLevels(const std::string& json) {
+    if (json.find("\"cereal_class_version\"") != std::string::npos) {
+        return json;
+    }
+    const size_t key = json.find("\"levels\"");
+    if (key == std::string::npos) return json;
+    const size_t start = json.find('[', key);
+    if (start == std::string::npos) return json;
+
+    std::vector<size_t> inserts;   // positions right after each level's '{'
+    int depth = 0;
+    bool inString = false;
+    bool escape = false;
+    for (size_t i = start + 1; i < json.size(); ++i) {
+        const char c = json[i];
+        if (inString) {
+            if (escape) {
+                escape = false;
+            } else if (c == '\\') {
+                escape = true;
+            } else if (c == '"') {
+                inString = false;
+            }
+            continue;
+        }
+        if (c == '"') {
+            inString = true;
+        } else if (c == '{') {
+            if (depth == 0) inserts.push_back(i + 1);
+            ++depth;
+        } else if (c == '}') {
+            --depth;
+        } else if (c == ']' && depth == 0) {
+            break;
+        }
+    }
+    std::string out = json;
+    // Back to front so the earlier offsets stay valid.
+    for (auto it = inserts.rbegin(); it != inserts.rend(); ++it) {
+        out.insert(*it, "\n\"cereal_class_version\": 1,");
+    }
+    return out;
+}
+}  // namespace
+
+bool DataSerializer::SaveStageToFile(const std::vector<LevelData>& levels,
+                                     const std::vector<ModelData>& models,
+                                     const std::string& filepath) {
+    try {
+        std::ofstream os(filepath);
+        if (!os.is_open()) return false;
+        cereal::JSONOutputArchive archive(os);
+        StageFile stage;
+        stage.models = models;
+        stage.levels = levels;
+        archive(cereal::make_nvp("stage", stage));
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to save stage to " << filepath << ": "
+                  << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool DataSerializer::LoadStageFromFile(std::vector<LevelData>& levels,
+                                       std::vector<ModelData>& models,
+                                       const std::string& filepath) {
+    std::string json;
+    try {
+        std::ifstream is(filepath);
+        if (!is.is_open()) return false;
+        json.assign((std::istreambuf_iterator<char>(is)),
+                    std::istreambuf_iterator<char>());
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to read stage " << filepath << ": " << e.what()
+                  << std::endl;
+        return false;
+    }
+    const std::string versioned = VersionStageLevels(json);
+    // Canonical form first ({"stage": {...}}), then the bare form.
+    try {
+        std::istringstream input(versioned);
+        cereal::JSONInputArchive archive(input);
+        StageFile stage;
+        archive(cereal::make_nvp("stage", stage));
+        levels = stage.levels;
+        models = stage.models;
+        return true;
+    } catch (const cereal::Exception&) {
+        // fall through to the bare form
+    } catch (const std::exception&) {
+        // fall through too — the bare attempt reports the real error
+    }
+    try {
+        std::istringstream input(versioned);
+        cereal::JSONInputArchive archive(input);
+        StageFile stage;
+        archive(stage);
+        levels = stage.levels;
+        models = stage.models;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to load stage from " << filepath << ": "
+                  << e.what() << std::endl;
+        return false;
+    }
+}
+
 // Atari 2600-inspired cave palettes per level (RGB), shared by generators
 static const int kLevelPalettes[20][3] = {
     {180, 80, 0},    // L1: Red/Orange

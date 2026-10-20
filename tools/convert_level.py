@@ -15,6 +15,11 @@ With `--levels LEVELS.asm a.json b.json ...` it also emits a single index:
                                        and the per-level LevelDataTable the game
                                        reads to start a level / place the miner.
 
+With `--stage STAGE.json OUTDIR [ROOMS_DIR]` the same outputs are produced from
+ONE unified stage file (`{"stage": {"models": [...], "levels": [...]}}`; the
+bare form is accepted too) whose `models` list replaces models/models.json and
+whose `levels` array is the play order (level number = ordinal). E1 2026-10-20.
+
 Rooms in the JSON keep their order as the game's room index (0-based). Symbols
 are prefixed per level (LEVEL{n}_*, L{n}R{room}) so several levels can coexist
 in one ROM without collisions. The level number comes from the input file name
@@ -1088,6 +1093,93 @@ def _shape_stream(generated: Path) -> list[str]:
 def write_levels_index(output: Path, json_paths: list[Path]) -> None:
     """Emit models_data.asm + levels_data.asm (includes) + levels.asm (tables).
 
+    Legacy per-level entry point (build.sh's `--levels`): models come from
+    models/models.json next to the level files and the level number comes from
+    the file name. The unified stage file uses `write_stage()` below, which
+    feeds the SAME emitter with the stage's own `models` list.
+    """
+    models_by_id = load_models(json_paths[0].parent / "models" / "models.json")
+    levels = []
+    for path in json_paths:
+        level = json.loads(path.read_text())
+        if "level" in level:          # cereal wraps the level in an NVP
+            level = level["level"]
+        level_n = level_number_from_path(path) or int(level.get("level_id", 1))
+        levels.append((level_n, level))
+    _write_levels_index(output, levels, models_by_id)
+
+
+def write_stage(stage_path: Path, outdir: Path,
+                rooms_dir: Path | None = None) -> None:
+    """Convert a unified stage file (models + every level) — E1 2026-10-20.
+
+    The stage file is `{"stage": {"models": [...], "levels": [...]}}`; the
+    bare `{"models": ..., "levels": ...}` form is accepted too. Each level
+    object is EXACTLY the payload of a legacy `level_00N.json` `level` NVP, so
+    the emitted bytes are identical to the legacy per-level invocation for the
+    same content (see tools/test_stage_json.py).
+
+    The level number is the level's ORDINAL in `levels` (1-based, play order
+    = LevelDataTable order). It cannot come from `level_id`: the project's
+    files all carry level_id 1 (legacy naming came from the file name), and
+    two stage levels may legitimately share a level_id. Ordinal + play order
+    is the single stable rule for a file that has no file names.
+    Writes the same per-room .txt mirrors and per-level .asm files as
+    `convert_level.py LEVEL.json OUT_PREFIX ROOMS_DIR`, then the shared index.
+    """
+    models_by_id, raw_levels = load_stage(stage_path)
+    rooms_dir = rooms_dir or stage_path.parent
+    generated = outdir
+    levels = []
+    for level_n, level in enumerate(raw_levels, start=1):
+        rooms = list(level["rooms"])
+        rooms.sort(key=lambda r: r["room_id"])
+        level = dict(level, rooms=rooms)
+        levels.append((level_n, level))
+        for index, room in enumerate(rooms):
+            rows = rows_from_json(room, models_by_id)
+            txt = rooms_dir / f"level_{level_n:03d}_room_{index + 1:03d}.txt"
+            txt.write_text("\n".join(rows) + "\n")
+        connections = position_bytes(rooms)
+        write_tables(level, rooms, connections,
+                     generated / f"level_{level_n:03d}_rooms.asm",
+                     level_n, models_by_id)
+        (generated / f"level_{level_n:03d}_rooms_data.asm").write_text(
+            "; All rooms use shared model data (models_data.asm).\n")
+    _write_levels_index(generated / "levels.asm", levels, models_by_id)
+
+
+def load_stage(stage_path: Path) -> tuple[dict, list[dict]]:
+    """stage.json -> ({model_id: model}, [level, ...]).
+
+    Accepts the canonical wrapped form and the bare form; a `level` NVP inside
+    a level object (cereal's per-level write) is unwrapped for convenience.
+    """
+    data = json.loads(stage_path.read_text())
+    stage = data.get("stage", data)
+    models = stage.get("models")
+    levels = stage.get("levels")
+    if not isinstance(models, list) or not isinstance(levels, list):
+        raise ValueError(
+            f"{stage_path}: a stage file needs `models` and `levels` lists "
+            "(optionally under a `stage` key)")
+    models_by_id = {}
+    for model in models:
+        if not isinstance(model, dict) or "id" not in model:
+            raise ValueError(f"{stage_path}: every model needs an `id`")
+        models_by_id[model["id"]] = model
+    unwrapped = []
+    for level in levels:
+        if not isinstance(level, dict):
+            raise ValueError(f"{stage_path}: levels must be objects")
+        unwrapped.append(level.get("level", level))
+    return models_by_id, unwrapped
+
+
+def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
+                        models_by_id: dict) -> None:
+    """Emit models_data.asm + levels_data.asm (includes) + levels.asm (tables).
+
     The game reads LevelDataTable[Level] to start a level and place the miner.
     miner_room's high bit carries miner-facing-right; low 7 bits remain room id.
     The entry is 6 scalar bytes + the level block base word + the room count
@@ -1096,19 +1188,14 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
 
     models_data.asm holds each referenced model's PF/rect data ONCE, shared by
     every room (across all levels) whose RoomDataTable points at that model.
+    `levels` is [(level_n, level dict)] in play order; `models_by_id` is the
+    model registry (legacy project or the stage file's own list).
     """
     generated = output.parent
     data_lines = ["; Generated by convert_level.py --levels. Do not edit by hand.", ""]
     table_lines = ["; Generated by convert_level.py --levels. Do not edit by hand.", ""]
-    levels = []
     referenced: set = set()
-    models_by_id = load_models(json_paths[0].parent / "models" / "models.json")
-    for path in json_paths:
-        level = json.loads(path.read_text())
-        if "level" in level:          # cereal wraps the level in an NVP
-            level = level["level"]
-        level_n = level_number_from_path(path) or int(level.get("level_id", 1))
-        levels.append((level_n, level))
+    for level_n, level in levels:
         for room in level["rooms"]:
             model = models_by_id.get(room.get("model_id"))
             if model is None:
@@ -1164,8 +1251,10 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
         "; Include list for bank2's $F307 level-data block slot — see bank2.asm.",
         f'    include "generated/models_data.asm"',
     ]
-    for path in sorted(json_paths):
-        level_n = level_number_from_path(path) or 0
+    # Include order = level number ASC. Identical to the old `sorted(paths)`
+    # for level_00N.json names, and it keeps the order well-defined for a
+    # stage file (which has no file names).
+    for level_n, _level in sorted(levels, key=lambda item: item[0]):
         bank3_lines.append(
             f'    include "generated/level_{level_n:03d}_blocks.asm"')
     bank3_lines.append("")
@@ -1380,6 +1469,26 @@ def emit_spills(generated: Path) -> None:
 
 
 def main(argv: list[str]) -> int:
+    if argv and argv[0] == "--stage":
+        # E1 (2026-10-20): ONE stage file for models + every level.
+        #   convert_level.py --stage STAGE.json OUTDIR [ROOMS_DIR]
+        # Emits exactly what the legacy per-level invocation + --levels emit
+        # for the same content; OUTDIR is the generated/ directory.
+        if len(argv) not in (3, 4):
+            print("usage: convert_level.py --stage STAGE.json OUTDIR [ROOMS_DIR]",
+                  file=sys.stderr)
+            return 2
+        stage_path = Path(argv[1])
+        outdir = Path(argv[2])
+        rooms_dir = Path(argv[3]) if len(argv) > 3 else None
+        try:
+            write_stage(stage_path, outdir, rooms_dir)
+        except (OSError, ValueError, KeyError) as error:
+            print(error, file=sys.stderr)
+            return 1
+        print(f"wrote stage -> {outdir} (from {stage_path})")
+        return 0
+
     if argv and argv[0] == "--levels":
         if len(argv) < 3:
             print("usage: convert_level.py --levels OUTPUT_INDEX_ASM LEVEL.json...",
