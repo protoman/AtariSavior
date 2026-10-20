@@ -2338,10 +2338,12 @@ LEVEL_DATA_ADDR = $F716        ; frozen address of bank2's LevelDataTable
                                 ;  shrank the tables; check_frozen_addrs
                                 ;  enforces)
                                 ; (test asserts bank2.lst label == this)
-LEVEL_FORMAT   = $04           ; C5 2026-10-20: room-record format. 4 =
-                                ; C2 shape index (b5-0 | band b6 | owns-extras
-                                ; b7), position byte, enemy count <<6 | extras
-                                ; ordinal, then the level's AsyncExtras stream.
+LEVEL_FORMAT   = $05           ; C3 2026-10-20: room-record + shape format. 5 =
+                                ; 4 (shape index b5-0 | band b6 | owns-extras
+                                ; b7, position byte, enemy count <<6 | extras
+                                ; ordinal, then the level's AsyncExtras stream)
+                                ; + shape blocks store 3 row-pool indices
+                                ; instead of 9 raw PF bytes (C3 row dictionary).
                                 ; Hand copy of the generated EQU (bank1 carries
                                 ; the twin — check_equ_sync; verify_build
                                 ; compares both to generated/levels_index.asm)

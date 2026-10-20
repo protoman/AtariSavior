@@ -4,120 +4,88 @@
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M0RoomRects:
   .byte 0              ; number of hot rectangles
-M0TilePF0:
-  .byte $f0, $30, $f0
-M0TilePF1:
-  .byte $00, $00, $ff
-M0TilePF2:
-  .byte $00, $00, $3f
+M0Rows:
+  .byte $00, $01, $02  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 1. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M1RoomRects:
   .byte 0              ; number of hot rectangles
-M1TilePF0:
-  .byte $f0, $30, $f0
-M1TilePF1:
-  .byte $ff, $00, $ff
-M1TilePF2:
-  .byte $3f, $00, $ff
+M1Rows:
+  .byte $02, $01, $03  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 2. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M2RoomRects:
   .byte 0              ; number of hot rectangles
-M2TilePF0:
-  .byte $f0, $30, $30
-M2TilePF1:
-  .byte $00, $00, $ff
-M2TilePF2:
-  .byte $00, $00, $3f
+M2Rows:
+  .byte $00, $01, $04  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 3. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M3RoomRects:
   .byte 0              ; number of hot rectangles
-M3TilePF0:
-  .byte $30, $30, $f0
-M3TilePF1:
-  .byte $ff, $00, $f0
-M3TilePF2:
-  .byte $3f, $00, $00
+M3Rows:
+  .byte $04, $01, $05  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 4. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M4RoomRects:
   .byte 0              ; number of hot rectangles
-M4TilePF0:
-  .byte $f0, $30, $f0
-M4TilePF1:
-  .byte $ff, $00, $3f
-M4TilePF2:
-  .byte $3f, $00, $ff
+M4Rows:
+  .byte $02, $01, $06  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 5. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M5RoomRects:
   .byte 0              ; number of hot rectangles
-M5TilePF0:
-  .byte $f0, $30, $f0
-M5TilePF1:
-  .byte $3f, $03, $f0
-M5TilePF2:
-  .byte $ff, $ff, $ff
+M5Rows:
+  .byte $06, $07, $08  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 6. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M6RoomRects:
   .byte 0              ; number of hot rectangles
-M6TilePF0:
-  .byte $f0, $f0, $30
-M6TilePF1:
-  .byte $f0, $00, $3f
-M6TilePF2:
-  .byte $ff, $fc, $ff
+M6Rows:
+  .byte $08, $09, $0a  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 7. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M7RoomRects:
   .byte 0              ; number of hot rectangles
-M7TilePF0:
-  .byte $30, $30, $f0
-M7TilePF1:
-  .byte $3f, $00, $ff
-M7TilePF2:
-  .byte $ff, $00, $3f
+M7Rows:
+  .byte $0a, $01, $02  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 8. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M8RoomRects:
   .byte 0              ; number of hot rectangles
-M8TilePF0:
-  .byte $f0, $00, $f0
-M8TilePF1:
-  .byte $f0, $00, $ff
-M8TilePF2:
-  .byte $ff, $00, $ff
+M8Rows:
+  .byte $08, $0b, $03  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 10. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M10RoomRects:
   .byte 0              ; number of hot rectangles
-M10TilePF0:
-  .byte $f0, $00, $f0
-M10TilePF1:
-  .byte $ff, $00, $ff
-M10TilePF2:
-  .byte $ff, $00, $ff
+M10Rows:
+  .byte $03, $0b, $03  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 11. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M11RoomRects:
   .byte 0              ; number of hot rectangles
-M11TilePF0:
-  .byte $f0, $00, $f0
-M11TilePF1:
-  .byte $ff, $00, $ff
-M11TilePF2:
-  .byte $ff, $00, $ff
+M11Rows:
+  .byte $03, $0b, $03  ; row-pool indices (band 0-2)
+
+; C3 (2026-10-20): ROW DICTIONARY — one 3 B entry per DISTINCT
+; (PF0,PF1,PF2) band row for the whole game. A shape block carries
+; 3 one-byte indices (band 0/1/2) into these SoA columns; bank2's
+; B3RoomBlocks expands them into PF0Buf at room load.
+LEVEL_ROW_COUNT = 12
+RowPoolPF0:
+  .byte $f0, $30, $f0, $f0, $30, $f0, $f0, $30, $f0, $f0, $30, $00
+RowPoolPF1:
+  .byte $00, $00, $ff, $ff, $ff, $f0, $3f, $03, $f0, $00, $3f, $00
+RowPoolPF2:
+  .byte $00, $00, $3f, $ff, $3f, $00, $ff, $ff, $ff, $fc, $ff, $00
 

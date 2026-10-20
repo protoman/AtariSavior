@@ -202,10 +202,23 @@ def main() -> int:
     # --- 4. C5 (2026-10-20): the SHAPE is meta-free and the room extras
     # record carries the pair + the patch bytes. Same synthetic model as
     # case 1 (patches on bands 0+2, right_col 0).
+    # C3 (2026-10-20): the shape stores 3 row-pool indices, so it needs a
+    # pool; the emitted indices must expand to the RAW rows (equivalence).
+    pool = convert_room.RowPool()
     shape = convert_room.lines(left, prefix="M90", source="test",
-                               with_meta=False)
+                               with_meta=False, pool=pool)
     assert not any("MetaA" in l or "MetaB" in l for l in shape), \
         "with_meta=False must not emit the pair (TilePF0+9/+10 retired)"
+    assert not any("TilePF" in l for l in shape), \
+        "the shape block must not carry raw PF bytes (C3 row dictionary)"
+    i = shape.index("M90Rows:")
+    idx = [int(v.strip().lstrip("$"), 16)
+           for v in shape[i + 1].split(".byte", 1)[1].split(";")[0].split(",")]
+    assert len(idx) == 3, f"M90Rows: {len(idx)} indices"
+    assert [pool.rows[k] for k in idx] == [
+        convert_room.pf_values(r) for r in left], (
+        "expanded rows != pf_values(rows) — the row dictionary changed bytes")
+    assert pool.uses == 3, f"pool uses {pool.uses} != 3 (one per band)"
     room = {"room_id": 0, "model_id": 90,
             "asym_patches": [[0, 0, 1], [2, 0, 1]]}
     record, nfeat = convert_level.room_extras(

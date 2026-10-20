@@ -68,6 +68,22 @@ def lst_labels(path):
 L0 = lst_labels(SRC / "bank0.lst")
 L2 = lst_labels(SRC / "bank2.lst")
 L3 = lst_labels(SRC / "bank2.lst")   # A3: level/model blocks
+
+def shape_pf(model):
+    """The 9 PF bytes of model `model`'s shape: C3 row-pool expansion.
+
+    A shape block is `hot count | 5 B/record | 3 row indices`; the loader
+    (bank2 B3RoomBlocks) expands the indices through RowPoolPF0/1/2 into
+    PF0Buf, so this reads the SAME bytes via the label addresses."""
+    at = L3[f"M{model}Rows"] - 0xF000
+    idx = BANKS[2][at:at + 3]
+    out = bytearray()
+    for col in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2"):
+        base = L3[col] - 0xF000
+        out += bytes(BANKS[2][base + i] for i in idx)
+    return bytes(out)
+
+
 PC_STARTFRAME = L0["StartFrame"]
 
 # ZP indices (addr & 0x7F) — from bank0.lst U00xx decl lines
@@ -178,18 +194,17 @@ def load_room(room):
     """Hand-EnterRoom: pointers + PF buffers + rects ptr (cache unused by
     the laser). VBL StageBandTab rebuilds the overlay pack itself."""
     model = MODEL[room]
-    a_pf0, a_rr = L3[f"M{model}TilePF0"], L3[f"M{model}RoomRects"]
+    pf9, a_rr = shape_pf(model), L3[f"M{model}RoomRects"]
     # C5: MetaA/MetaB live in the level's AsyncExtras record (level 1 room 0
     # is the async room, ordinal 1 -> +1/+2).
     mem.ram[I_PF0LO] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
     mem.ram[I_PF0HI] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
-    # ROM: TilePF0/1/2 = 3 band-row bytes each, in order after the label
+    # ROM: C3 row-pool expansion of the shape's 3 indices
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
         for row in range(3):
-            mem.ram[(dst + row) & 0x7F] = BANKS[2][
-                ((a_pf0 + i * 3 + row) - 0xF000) & 0xFFFF]
+            mem.ram[(dst + row) & 0x7F] = pf9[i * 3 + row]
 
 
 def meta_a(room):

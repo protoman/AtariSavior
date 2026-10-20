@@ -16,9 +16,13 @@ Emitted data (block = the shape table entry / RoomRectsLo target):
     The SOLID rect list is gone (2026-10-20): every collision walker
     (player, laser, moth, bomb punch, hot parent) tests the PF buffers, so
     the PF triple below IS the collision map.
-  - TilePF0/TilePF1/TilePF2: one byte per tile row for the kernel; each
-    logical cell sets a PF bit PAIR (encoder bit-pairing, D7). TilePF0 sits
-    at block + 1 + 5*hot_count (bank2 B3RoomBlocks derives it).
+  - Rows (C3 2026-10-20): three 1 B ROW-POOL indices (band 0/1/2) at
+    block + 1 + 5*hot_count (bank2 B3RoomBlocks derives the offset and
+    expands each index through the global `RowPoolPF0/1/2` columns into
+    PF0Buf). The 9 raw PF bytes are gone from the block: a row is stored
+    ONCE for the whole game (3 B), so the block pays 3 B instead of 9.
+    The legacy per-grid form (`with_meta=True`, the standalone
+    convert_room.py CLI output) still emits TilePF0/TilePF1/TilePF2.
 C5 (2026-10-20): the MetaA/MetaB pair left this block (the fixed
 `TilePF0+9/+10` contract is retired) — it lives in the room EXTRAS stream
 (`meta_bytes`), and the RightPF/RightRects payload is gone (dead since C4).
@@ -59,6 +63,72 @@ def read_room(path: Path) -> list[str]:
 
 def _is_solid(cell: str, solids: str) -> bool:
     return cell in solids
+
+
+class RowPool:
+    """C3 (2026-10-20) — the global row dictionary (one per build).
+
+    Every model band is a (PF0, PF1, PF2) triple; the stage has far fewer
+    DISTINCT rows than row slots (12 distinct / 36 slots at C3 landing), so
+    the pool stores each row once (3 B) and the shape block carries a 1 B
+    index per band instead of the 9 raw PF bytes.
+
+    Emission form: three SoA columns (`RowPoolPF0/1/2`, 1 B/row) so the
+    loader needs ONE index register (X) and no second pointer:
+
+        lda RowPoolPF0,X / sta PF0Buf,Y
+        lda RowPoolPF1,X / sta PF0Buf+3,Y
+        lda RowPoolPF2,X / sta PF0Buf+6,Y
+
+    Indices are stable (first-use order) because conversion walks the models
+    in sorted id order; the pool is emitted after all shapes, in
+    models_data.asm, so `_shape_stream()`'s label order is untouched.
+    """
+
+    def __init__(self) -> None:
+        self.rows: list[tuple[int, int, int]] = []
+        self._index: dict[tuple[int, int, int], int] = {}
+        self.uses = 0
+
+    def index_of(self, triple: tuple[int, int, int],
+                 source: str = "room") -> int:
+        idx = self._index.get(triple)
+        if idx is None:
+            if len(self.rows) > 0xFF:
+                raise ValueError(
+                    f"{source}: row pool needs more than 256 rows "
+                    "(3 rows x 256 = 768 B > bank2's block slot) — merge "
+                    "model bands or split the level-data bank")
+            idx = len(self.rows)
+            self._index[triple] = idx
+            self.rows.append(triple)
+        else:
+            # dedupe must never rewrite a row: the loader expands indices
+            assert self.rows[idx] == triple, (
+                f"{source}: row pool index {idx} holds {self.rows[idx]} "
+                f"but asked for {triple}")
+        self.uses += 1
+        return idx
+
+    def lines(self) -> list[str]:
+        """asm for LEVEL_ROW_COUNT + the three columns (models_data.asm)."""
+        out = [
+            "",
+            "; C3 (2026-10-20): ROW DICTIONARY — one 3 B entry per DISTINCT",
+            "; (PF0,PF1,PF2) band row for the whole game. A shape block carries",
+            "; 3 one-byte indices (band 0/1/2) into these SoA columns; bank2's",
+            "; B3RoomBlocks expands them into PF0Buf at room load.",
+            f"LEVEL_ROW_COUNT = {len(self.rows)}",
+        ]
+        for name, reg in (("RowPoolPF0", 0), ("RowPoolPF1", 1),
+                          ("RowPoolPF2", 2)):
+            out.append(f"{name}:")
+            if self.rows:
+                out.append("  .byte " + ", ".join(
+                    f"${row[reg]:02x}" for row in self.rows))
+            else:
+                out.append("  .byte $00  ; no rows (empty stage)")
+        return out
 
 
 def pf_values(row: str) -> tuple[int, int, int]:
@@ -302,7 +372,8 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
           m1_door: bool = False,
           m1_right: bool = False,
           hot: bool | None = None,
-          with_meta: bool = True) -> list[str]:
+          with_meta: bool = True,
+          pool: RowPool | None = None) -> list[str]:
     """Build the asm lines for a grid (shared by per-room and per-model emission).
 
     asym_rows (D2/D3, models only): resolved right-half rows in right_col
@@ -323,8 +394,14 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     it moved into the room EXTRAS stream (`meta_bytes` feeds it). The
     RightPF/RightRects payload is gone too (dead since C4 — the D6 ball
     overlay and the cell walk replaced right-rect collision). So a block is
-    now exactly `hot count + records + PF0/PF1/PF2` and its PF triple IS
-    both the render and the collision map.
+    now exactly `hot count + records + PF rows`.
+
+    C3 (2026-10-20): a SHAPE block (`with_meta=False`) stores the bands as
+    three 1 B indices into the shared `RowPool` (3 B/row emitted once for the
+    whole game), not the 9 raw PF bytes: `[hot count][5 B/record][idx x3]`.
+    `pool` is REQUIRED for that form. The standalone per-grid form
+    (`with_meta=True`) keeps TilePF0/1/2 + the packed meta pair for the
+    converter unit tests.
 
     `with_meta=False` emits the shape-only block (what convert_level writes
     for the shared M<id> shapes). with_meta=True keeps the historical
@@ -352,14 +429,31 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
                f"; number of hot rectangles")
     out.extend(hot_lines)
     out.extend(feats)
+    if not with_meta:
+        # C3 (2026-10-20): 3 row-pool indices instead of 9 raw PF bytes.
+        if pool is None:
+            raise ValueError(
+                f"{source}: with_meta=False needs a RowPool — a shape block "
+                "stores row-pool indices (C3)")
+        indices = [pool.index_of(triple, source) for triple in triples]
+        # Equivalence gate: expanding the emitted indices must reproduce the
+        # pre-C3 raw bytes, band for band. The loader does exactly this
+        # expansion, so a drift here would show up as wrong playfield cells.
+        for band, want in enumerate(triples):
+            got = pool.rows[indices[band]]
+            if got != want:
+                raise ValueError(
+                    f"{source}: band {band} expands to {got} but the rows "
+                    f"encode {want} (row pool drift)")
+        out.append(f"{prefix}Rows:")
+        out.append("  .byte " + ", ".join(
+            f"${idx:02x}" for idx in indices) + "  ; row-pool indices (band 0-2)")
+        return out
     for name, register in zip(("TilePF0", "TilePF1", "TilePF2"), range(3)):
         out.append(f"{prefix}{name}:")
         table = [f"${triple[register]:02x}" for triple in triples]
         table += ["$00"] * (stride - len(table))
         out.append("  .byte " + ", ".join(table))
-
-    if not with_meta:
-        return out
     meta_a, meta_b = meta_bytes(rows, asym_rows=asym_rows,
                                asym_ball_x=asym_ball_x, asym_m1_x=asym_m1_x,
                                hot=hot, door=door, m1_door=m1_door,

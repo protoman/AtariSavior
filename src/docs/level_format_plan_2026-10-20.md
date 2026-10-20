@@ -385,16 +385,23 @@ Files: `EnterRoomB2`, `B3RoomBlocks` (shape base), converter (`write_tables`,
 record is 4 B after C1) → 210: −210 B; 400: −400 B. Risk: medium — room load and
 enemy staging.
 
-**C3 — shape dictionary (row triples) — MEASURED 2026-10-20, NOT IMPLEMENTED
-(36 B today, under the 40 B gate; see the C3 entry in
-`docs/compaction_findings_2026-10-19.md`).**
-3 B shape records + a 3 B/row pool; `B3RoomBlocks` does 3 dictionary lookups at
-load. Renders byte-identically (the PF bytes copied into `PF0Buf` are unchanged).
-Measured today: 12 blocks -> 12 unique rows, i.e. `6·S − 3·U` = **−36 B data**
-(402 -> 366) and **+6 B reader** (rows base stays `block+2+2·nrect`, so only the
-copy loop + meta offset move) = net +30 B. Per model: +6 with pooled bands, −3
-when all three bands are new. Delta at scale: **−540 B at 105 shapes**,
-**−1 065 B at 200** — so land it after C6/C7, or bundle with C4.
+**C3 — shape dictionary (row triples) — LANDED 2026-10-20** (was measured-only
+at the 36 B gate; the gate was waived by user direction — it is the
+foundation for the 20-level content generator, worth −540 B at 105 shapes).
+A shape block is now `hot count | 5 B/record | 3 row-pool indices`
+(`LEVEL_FORMAT = 5`); the global pool is 3 SoA columns (`RowPoolPF0/1/2`,
+3 B per DISTINCT row) emitted once in `models_data.asm` (bank2's level-data
+block slot) with `LEVEL_ROW_COUNT`. `B3RoomBlocks` expands the 3 indices
+through the pool into `PF0Buf` at room load. Measured: models **110 → 80 B**
+(11 shapes × 4 B = 44 + 12 pool entries × 3 B = 36), level data
+**277 → 247 B (−30)**, bank2 code **+6 B** (assembled loader: $35 → $3B),
+bank2 used **2920 → 2896 (−24)**, total free **7192 → 7216 (+24)**. PF parity
+is structural and now asserted three ways (converter expansion assert,
+`test_band_restage`'s loaded-`PF0Buf` equality for all 16 live rooms,
+`test_cell_map`'s pool↔geometry parity). M10/M11 were left as two (identical,
+4 B) blocks: aliasing them now saves 4 B and would delete the
+`M11RoomRects`/`M11Rows` labels that the per-model label lookups in the ROM
+tests resolve — needs an alias map first, so it belongs with a later chunk.
 
 **C4 — cell collision completion (the 6-rect fix, §4 option A) — LANDED
 2026-10-20.** `BombMarkWalls` is a cell punch (PF buffers, thin cell =
@@ -481,23 +488,30 @@ Content limits that 20 levels surface (not ROM capacity, but must be decided):
 5. **Never author 20 rooms into the current format** — the converter raises at
    room index 15, and a level with >31 enemy records overflows the b5-1 index.
 
-## 7. Size ledger (measured at this HEAD — post C5)
+## 7. Size ledger (measured at this HEAD — post C3)
 
 | bank | code | data | fill | used | free |
 |---|---|---|---|---|---|
 | bank0 | 3027 | 370 | 681 | 3397 | 699 |
 | bank1 | 2416 | 449 | 1037 | 2865 | 1231 |
-| bank2 | 2409 | 411 | 1275 | 2820 | 1276 |
+| bank2 | 2515 | 381 | 1199 | 2896 | 1200 |
 | bank3 | 5 | 5 | 4085 | 10 | 4086 |
-| **total** | **7857** | **1235** | **7078** | **9092** | **7292** |
+| **total** | **7963** | **1205** | **7002** | **9168** | **7216** |
 
-Level data **277 B** = index 50 + tables/blocks 117 + models 110 (C5: no
-per-room blocks — an async room carries a variable extras record and every
-referenced model now has a shape, M0/M10/M11 included; room tables remain
-**3 B/room** plus the shape table).
-bank2 windows moved: `ColOff`/`ColMask` now sit in the `$F854` fill and the
-room-block loader (`B3RoomBlocks` + `ExtrasLoad`) occupies `$F453-$F5EB`
-(23 B slack before the `$F600` pin); the `$F8B7` window is HotOverlapBody only.
+C3 delta vs the pre-C3 tree (bank2 2920 used / 1176 free, total free 7192):
+**bank2 −24 B used (code +6, data −30), total free +24 B.**
+
+Level data **247 B** = index 50 + tables/blocks 117 + models 80. The models
+line is now `11 shapes × 4 B (hot count + 3 row indices) = 44` +
+`12 pool rows × 3 B = 36`; the pre-C3 tree paid `11 × 10 = 110 B` of raw PF.
+An async room still carries a variable extras record and every referenced
+model has a shape (M0/M10/M11 included); room tables remain **3 B/room** plus
+the shape table.
+bank2 windows: `ColOff`/`ColMask` now sit in the `$F854` fill and the
+room-block loader (`B3RoomBlocks` + `ExtrasLoad`) occupies `$F453-$F5EF`
+(16 B slack before the `$F600` pin); the level-data block slot
+(`$F307-$F44F`) holds models_data at 80/329 B (249 B slack); the `$F8B7`
+window is HotOverlapBody only.
 Re-measure with `tools/rom_size_report.py --md` after any change.
 
 ## 8. Measurement appendix

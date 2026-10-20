@@ -15,7 +15,12 @@ C5 (2026-10-20): a shape block is `hot stream | PF triple` — the MetaA/MetaB
 pair moved to the room extras and `TilePF0+9/+10` is retired. Test harnesses
 therefore take the PF and the meta pair from the FROZEN CONSTANTS here
 (`PFX` / `METAX`) instead of reading them out of ROM: the fixture block only
-has to hold the (small) stream, which fits inside the live 10 B shape.
+has to hold the (small) stream, which fits inside the live shape.
+
+C3 (2026-10-20): the block's PF triple became 3 one-byte ROW-POOL indices
+(`<tag>Rows`, expanded by the loader through `RowPoolPF0/1/2`). The harnesses
+still stage PF from `PFX`, and the injected stream overwrites only the hot
+stream / the (unused here) index bytes, so no freeze constant changed.
 
 Addresses may move with live data; bytes never change until someone
 deliberately re-freezes here.
@@ -131,25 +136,25 @@ def _selfcheck():
                      line)
         if m:
             labels[m.group(2)] = int(m.group(1), 16)
-    for name in ("M0RoomRects", "M0TilePF0", "M2RoomRects", "M2TilePF0",
-                 "M4RoomRects", "M4TilePF0"):
+    for name in ("M0RoomRects", "M0Rows", "M2RoomRects", "M2Rows",
+                 "M4RoomRects", "M4Rows"):
         if name not in labels:
             raise SystemExit(f"selfcheck FAIL: {name} missing in bank2.lst")
     bank = bytearray(open(src / "bank2.bin", "rb").read())
     freeze_m0(bank, labels)
     freeze_m2(bank, labels)
     freeze_m4(bank, labels)
-    # Streams land at the block base and must fit BETWEEN base and TilePF0
-    # (C4: TilePF0 = block + 1 + 5*hot). M0's stream is a single count byte;
-    # the synthetic $81/$82 streams overwrite the first PF bytes, which the
-    # harnesses never read (PFX is test-owned).
-    for tag, stream, base, pf in (
-        ("M0", M0_STREAM, "M0RoomRects", "M0TilePF0"),
-        ("M2", M2_STREAM, "M2RoomRects", "M2TilePF0"),
-        ("M4", M4_STREAM, "M4RoomRects", "M4TilePF0"),
+    # Streams land at the block base and must fit BETWEEN base and the ROW
+    # INDICES (C4: rows at block + 1 + 5*hot; C3: the 3 indices there are
+    # read only by the LOADER, and these harnesses hand-stage the PF from the
+    # test-owned PFX constants, so overwriting them is harmless).
+    for tag, stream, base, rows in (
+        ("M0", M0_STREAM, "M0RoomRects", "M0Rows"),
+        ("M2", M2_STREAM, "M2RoomRects", "M2Rows"),
+        ("M4", M4_STREAM, "M4RoomRects", "M4Rows"),
     ):
         off = labels[base] - 0xF000
-        fit = min(len(stream), labels[pf] - labels[base])
+        fit = min(len(stream), labels[rows] - labels[base])
         assert bytes(bank[off:off + fit]) == stream[:fit], tag
     # fixtures must be self-consistent with the walk/punch assumptions
     assert M0_STREAM[0] == 0 and len(M0_STREAM) == 1      # hot count only

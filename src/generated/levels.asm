@@ -5,7 +5,7 @@
     include "generated/level_003_rooms.asm"
     include "generated/level_004_rooms.asm"
 
-LEVEL_FORMAT = $04
+LEVEL_FORMAT = $05
 LEVEL_DATA_STRIDE = 7
 LEVEL_COUNT = 4
 
@@ -39,6 +39,9 @@ SHAPE_M8 = 8
 SHAPE_M10 = 9
 SHAPE_M11 = 10
 
+; Shape block (C3 2026-10-20): hot count | 5 B/record | 3 row-pool
+;   indices (band 0/1/2 -> RowPoolPF0/1/2 in models_data.asm; the
+;   loader expands them into PF0Buf). LEVEL_ROW_COUNT = pool rows.
 ; Shape address table: SHAPE_<label> indices above are the row here.
 ; LEVEL_SHAPE_COUNT = number of distinct blocks in the whole game
 ; (6-bit index ceiling: 64).

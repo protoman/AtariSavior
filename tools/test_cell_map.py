@@ -82,12 +82,12 @@ if missing:
     sys.exit(f"bank0.lst labels missing: {sorted(missing)}")
 PHM = L0["PlayerHitsMap"]
 
-need2 = {"M5RoomRects", "M0RoomRects", ".MothColsOk", "M0TilePF0",
+need2 = {"M5RoomRects", "M0RoomRects", ".MothColsOk", "M0Rows",
          "RoomPF0Lo"}
 # C2 (2026-10-20): the level/model BLOCKS moved into bank2, so the code
 # labels and the block labels come from ONE listing now (bank3 is the boot
-# stub only).
-blk = {"M5RoomRects", "M0RoomRects", "M0TilePF0",
+# stub only). C3: a shape block ends in `<tag>Rows` (3 row-pool indices).
+blk = {"M5RoomRects", "M0RoomRects", "M0Rows",
        "LEVEL1_AsyncExtras"}
 L2 = parse_labels(FROZEN / "bank2.lst", need2 | blk)
 if not need2 <= L2.keys():
@@ -459,27 +459,42 @@ def load_case(mem: Mem, rows: list[str]) -> None:
 
 
 def main() -> int:
-    # --- generator parity: models_data.asm PF bytes == pf_values ----------
+    # --- generator parity: the ROW POOL + shape indices == pf_values ------
+    # C3 (2026-10-20): a shape block carries 3 one-byte row-pool indices, not
+    # the 9 PF bytes, so parity is `pool[idx]` per band.
     md = json.loads(
         (TESTS / "rooms" / "models" / "models.json").read_text())
     ml = md.get("models_file", md).get("models", [])
     by_id = {m.get("id"): m for m in ml}
     mda = (TESTS / "generated" / "models_data.asm").read_text()
+    pool: dict[str, list[int]] = {}
+    for name in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2"):
+        hit = re.search(rf"^{name}:\s*\n\s*\.byte([^\n]+)", mda, re.M)
+        assert hit, f"generated models_data.asm has no {name} (C3 row pool)"
+        pool[name] = [int(b.strip().lstrip("$"), 16)
+                      for b in hit.group(1).split(",")]
+    row_count = int(re.search(r"^LEVEL_ROW_COUNT = (\d+)$", mda, re.M).group(1))
+    assert all(len(v) == row_count for v in pool.values()), (
+        f"pool columns {[(k, len(v)) for k, v in pool.items()]} vs "
+        f"LEVEL_ROW_COUNT {row_count}")
     cases = []
     for m in ml:
         mid = m.get("id")
         rows = rows_from_json({"model_id": mid}, by_id)
         cases.append((f"model{mid}", rows))
-        for reg in ("PF0", "PF1", "PF2"):
-            hit = re.search(rf"^M{mid}Tile{reg}:\s*\n\s*\.byte([^\n]+)",
-                            mda, re.M)
-            if not hit:
-                continue                  # unreferenced model: not in ROM
-            got = [int(b.strip().lstrip("$"), 16)
-                   for b in hit.group(1).split(",")]
-            want = [pf_values(r)[int(reg[2])] for r in rows]
-            assert got == want, (f"M{mid}Tile{reg}: generated {got} "
+        hit = re.search(rf"^M{mid}Rows:\s*\n\s*\.byte([^\n]+)", mda, re.M)
+        if not hit:
+            continue                      # unreferenced model: not in ROM
+        idx = [int(b.strip().lstrip("$"), 16)
+               for b in hit.group(1).split(";")[0].split(",")]
+        assert len(idx) == 3, f"M{mid}Rows: {len(idx)} indices, want 3"
+        for reg, name in enumerate(("RowPoolPF0", "RowPoolPF1", "RowPoolPF2")):
+            got = [pool[name][i] for i in idx]
+            want = [pf_values(r)[reg] for r in rows]
+            assert got == want, (f"M{mid}Rows -> {name}: generated {got} "
                                  f"!= geometry {want}")
+        for band, i in enumerate(idx):
+            assert i < row_count, f"M{mid}Rows band {band}: {i} >= {row_count}"
 
     # --- py65: box parity, all models, full X sweep, row-pair reps --------
     # Row pairs realized by the prologue: (0,0) Y0-36, (0,1) Y37-47,

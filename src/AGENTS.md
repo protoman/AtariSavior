@@ -359,14 +359,21 @@ with different async, and the editor edits the room, not the model.
 
 Consequences that are easy to get wrong:
 - **A room points at its shared MODEL SHAPE; async rides a per-level EXTRAS
-  stream** (C5 2026-10-20). The shape block is `hot stream | PF triple` only —
-  the `TilePF0+9/+10` MetaA/MetaB contract is RETIRED. A room with the shape
+  stream** (C5 2026-10-20). The shape block is `hot stream | 3 row-pool
+  indices` only (C3 2026-10-20, `LEVEL_FORMAT = 5`) — the `TilePF0+9/+10`
+  MetaA/MetaB contract is RETIRED. A room with the shape
   byte's b7 set carries an extras record (selected by the counts byte's b5-0
   ordinal): `flags (n_patches b1-0 | n_features b5-2)`, `MetaA`, `MetaB`,
   1 B/patch (`row b7-6 | side b4 | col b3-0`), 1 B/feature (`kind b7-6 | col
   b3-0`), then — feature rooms only — the ROOM's hot stream (count + 5 B
   records), because feature cells split the shape's own hot cells.
-- `bank2.B3RoomBlocks` (in the free `$F453` window) copies the shape PF, then
+- **The shape's PF bytes are a ROW DICTIONARY** (C3 2026-10-20): each band is a
+  1 B index into the global `RowPoolPF0/1/2` columns (3 B per DISTINCT row,
+  emitted once in `models_data.asm` with `LEVEL_ROW_COUNT`). Indices sit at
+  `block + 1 + 5*hot` — where the raw triple used to be — and the loader
+  expands them into `PF0Buf` (`lda RowPoolPFn,X / sta PF0Buf+3n,Y`). Never emit
+  raw PF into a shape: `verify_build.check_shape_blocks` hard-fails it.
+- `bank2.B3RoomBlocks` (in the free `$F453` window) expands the shape rows, then
   either derives `MetaA=0 / MetaB=$40*hot` (no extras) or tail-jumps to
   `ExtrasLoad`, which walks the stream (`base + 3n + 4*total enemies`), ORs the
   side-0 patch rows into MetaA, sets the feature PF bits, and repoints
