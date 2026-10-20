@@ -1691,68 +1691,19 @@ DEYDelta:                      ; A = delta, then add ROM spawn y
 ; ==============================================================================
 ; Room exit handlers — check connection table, switch rooms, reposition player
 ; ==============================================================================
-; Connection table: 2 nibble-packed bytes per room (up<<4|down, left<<4|right),
-; $F = no exit. After transition: player is placed at the OPPOSITE edge of the
-; new room. Jetpack velocity carries over (matches comparison/hero pattern).
-; GetConnIdx moved to bank1 (leaf_move_plan batch B) — CallPad_GetConnIdx.
-
-ExitRoomDown:
-    jsr CallPad_GetConnIdx
-    jsr FoldIndirect         ; +0 = up/down byte
-    and #$0f                 ; down = low nibble
-    cmp #$0f
-    beq .NoDown
-    jsr EnterRoom
-    lda #PLAYER_MIN_Y
-    sta RoomY               ; enter at the top edge
-.NoDown:
-    rts
-
-ExitRoomUp:
-    jsr CallPad_GetConnIdx          ; +0 = up/down byte
-    jsr FoldIndirect
-    lsr                     ; up = high nibble -> low
-    lsr
-    lsr
-    lsr
-    and #$0f
-    cmp #$0f
-    beq .NoUp
-    jsr EnterRoom
-    lda #PLAYER_MAX_Y
-    sta RoomY               ; enter at the bottom edge
-.NoUp:
-    rts
-
-ExitRoomLeft:
-    jsr CallPad_GetConnIdx
-    iny                     ; +1 = left/right byte
-    jsr FoldIndirect
-    and #$0f                 ; left = low nibble
-    cmp #$0f
-    beq .NoLeft
-    jsr EnterRoom
-    lda #PLAYER_MAX_X
-    sta RoomX               ; enter at the right edge
-.NoLeft:
-    rts
-
-ExitRoomRight:
-    jsr CallPad_GetConnIdx
-    iny                     ; +1 = left/right byte
-    jsr FoldIndirect
-    lsr                     ; right = high nibble -> low
-    lsr
-    lsr
-    lsr
-    and #$0f
-    cmp #$0f
-    beq .NoRight
-    jsr EnterRoom
-    lda #PLAYER_MIN_X
-    sta RoomX               ; enter at the left edge
-.NoRight:
-    rts
+; ------------------------------------------------------------------------------
+; C3 (2026-10-20): the four handlers MOVED to bank2 ($FC4F cluster) — the
+; connection table is level data in bank2, so each handler now reads its own
+; 2-byte conn record directly (bank1 GetConnIdx + FoldIndirect hops gone).
+; bank0 keeps only the entry pads at $FBD9-$FBE4 (3 B each, `sta $1FF8`;
+; bank2 serves the `jmp` at A+3). The OPPOSITE-EDGE placement is written
+; BEFORE `jmp EnterRoomB2`, because EnterRoom never touches RoomX/RoomY
+; (checked: EnterRoomB2 + B3RoomBlocks read neither) — that keeps the whole
+; tail in bank2 with 0 pushes: EnterRoomB2's `jmp ReturnPad` pops the
+; ORIGINAL `jsr ExitRoomXxx` frame, exactly like the old in-bank return.
+; Guard: verify_build.CORRIDOR_PADS (4 pads) + check_exit_handlers (edge
+; placement precedes the EnterRoomB2 tail; no-exit path ends in ReturnPad).
+; ------------------------------------------------------------------------------
 
 ; ==============================================================================
 ; Level management
@@ -2691,6 +2642,29 @@ EnterRoom:
     sta $1FF8
     jmp $F010                    ; EnterRoomB2 — fetched from bank2 twin
 
+; ------------------------------------------------------------------------------
+; C3 (2026-10-20): room-exit entry pads. Four `sta $1FF8` halves packed 3 B
+; apart (the corridor rule): a bank0 caller `jsr ExitRoomXxx` lands here, and
+; the fetch at A+3 comes from BANK2, which holds the matching `jmp ExitXxxB2`
+; ($FBDC/$FBDF/$FBE2/$FBE5). The bodies live at bank2's $FC4F cluster; their
+; no-exit and post-EnterRoom paths tail-jmp ReturnPad, so the caller's jsr
+; frame is popped exactly once. Guards: verify_build.CORRIDOR_PADS +
+; check_exit_handlers.
+; ------------------------------------------------------------------------------
+    .ds $FBD9 - *, 0
+CallPad_ExitDown:
+ExitRoomDown:
+    sta $1FF8                   ; C3: body = bank2 $FC4F cluster
+CallPad_ExitUp:
+ExitRoomUp:
+    sta $1FF8
+CallPad_ExitLeft:
+ExitRoomLeft:
+    sta $1FF8
+CallPad_ExitRight:
+ExitRoomRight:
+    sta $1FF8
+
     .ds $FBF8 - *, 0            ; TitleSequenceFold / FooterFold /
                                  ;   TitlePlayerFold retired with the intro
                                  ;   movie (merged title, 2026-10-19)
@@ -2710,7 +2684,7 @@ ReturnPad:
 ;   A=$FBFF sta $1FF7   A+3=$FC02 -> bank1 jmp UpdateJetSound
 ;   A=$FC02 sta $1FF7   A+3=$FC05 -> bank1 jmp BombSndDrop
 ;   A=$FC05 sta $1FF7   A+3=$FC08 -> bank1 jmp BombSndExplode
-;   A=$FC08 sta $1FF7   A+3=$FC0B -> bank1 jmp GetConnIdx
+;   A=$FC08 RETIRED by C3 (the exit handlers read the conn table in bank2)
 ;   A=$FC0B sta $1FF7   A+3=$FC0E -> bank1 jmp AddScore
 ;   A=$FC0E sta $1FF7   A+3=$FC11 -> bank1 jmp IsRoomDark
 ;   A=$FC11 sta $1FF7   A+3=$FC14 -> bank1 jmp SetRoomDark
@@ -2728,8 +2702,7 @@ CallPad_BombSndDrop:
     sta $1FF7
 CallPad_BombSndExplode:
     sta $1FF7
-CallPad_GetConnIdx:
-    sta $1FF7
+    .byte 0,0,0                 ; $FC08: CallPad_GetConnIdx retired by C3
 CallPad_AddScore:
     sta $1FF7
 CallPad_IsRoomDark:
