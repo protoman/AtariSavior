@@ -97,7 +97,8 @@ L0 = parse_labels(SRC / "bank0.lst", {"BombX", "LineCount", "RcBase",
                                 "PF2Buf"})
 L2 = parse_labels(SRC / "bank2.lst", {"L1R1TilePF0", "M3TilePF0",
                                       "M1StripBlast"})
-# StageBandTab MOVED to bank3 (chunk A2) — B3StageBand at $F0A3.
+# StageBandTab lives in bank3 (chunk A2); relocated $F0A3 -> $FC38 in chunk 5
+# (repack 2026-10-20) so the level-data window could start at $F0A3.
 L3 = parse_labels(SRC / "bank3.lst", {"B3StageBand", "L1R1TilePF0",
                                       "M3TilePF0"})
 # A3: level/model blocks live in bank3 — block labels AND bytes from there.
