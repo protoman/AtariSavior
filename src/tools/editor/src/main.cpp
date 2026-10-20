@@ -18,6 +18,7 @@
 
 #include <QApplication>
 #include <algorithm>
+#include <cereal/archives/json.hpp>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -376,6 +377,149 @@ static int RunBrushTest() {
     return 0;
 }
 
+// Unified stage file selftest (E1 2026-10-20): save the frozen project's
+// models + every level as ONE stage file, reload it and prove (a) the bytes
+// are stable across a save->load->save round trip and (b) each reloaded level
+// serializes byte-identically to its legacy per-level source (semantic and
+// field preservation, including room-level async). Also proves the bare
+// `{"models": ..., "levels": ...}` form loads. Everything is TEMP only.
+static int RunStageSelftest(const char* roomsDirPath) {
+    namespace fs = std::filesystem;
+    const fs::path roomsDir(roomsDirPath);
+    const fs::path modelsPath = roomsDir / "models" / "models.json";
+
+    std::vector<hero::ModelData> models;
+    if (!hero::DataSerializer::LoadModelsFromFile(models, modelsPath.string())) {
+        std::fprintf(stderr, "stageselftest: cannot load %s\n",
+                     modelsPath.string().c_str());
+        return 2;
+    }
+    std::vector<fs::path> levelFiles;
+    for (const auto& e : fs::directory_iterator(roomsDir)) {
+        const std::string n = e.path().filename().string();
+        if (n.rfind("level_", 0) == 0 && e.path().extension() == ".json") {
+            levelFiles.push_back(e.path());
+        }
+    }
+    std::sort(levelFiles.begin(), levelFiles.end());
+    if (levelFiles.empty()) {
+        std::fprintf(stderr, "stageselftest: no level_*.json in %s\n",
+                     roomsDir.string().c_str());
+        return 2;
+    }
+
+    std::vector<hero::LevelData> levels;
+    for (const auto& path : levelFiles) {
+        hero::LevelData level;
+        if (!hero::DataSerializer::LoadLevelFromFile(level, path.string())) {
+            std::fprintf(stderr, "stageselftest: cannot load %s\n",
+                         path.string().c_str());
+            return 2;
+        }
+        levels.push_back(level);
+    }
+
+    const fs::path tmp1 =
+        fs::temp_directory_path() / "savior_stage_selftest_1.json";
+    const fs::path tmp2 =
+        fs::temp_directory_path() / "savior_stage_selftest_2.json";
+    const fs::path bare =
+        fs::temp_directory_path() / "savior_stage_selftest_bare.json";
+    if (!hero::DataSerializer::SaveStageToFile(levels, models, tmp1.string())) {
+        std::fprintf(stderr, "stageselftest: save failed\n");
+        return 2;
+    }
+
+    std::vector<hero::LevelData> levels2;
+    std::vector<hero::ModelData> models2;
+    if (!hero::DataSerializer::LoadStageFromFile(levels2, models2,
+                                                 tmp1.string())) {
+        std::fprintf(stderr, "stageselftest: reload failed\n");
+        fs::remove(tmp1);
+        return 2;
+    }
+    if (levels2.size() != levels.size() || models2.size() != models.size()) {
+        std::fprintf(stderr, "stageselftest: counts changed "
+                     "(%zu/%zu levels, %zu/%zu models)\n",
+                     levels.size(), levels2.size(),
+                     models.size(), models2.size());
+        fs::remove(tmp1);
+        return 1;
+    }
+    if (!hero::DataSerializer::SaveStageToFile(levels2, models2, tmp2.string())) {
+        std::fprintf(stderr, "stageselftest: second save failed\n");
+        fs::remove(tmp1);
+        return 2;
+    }
+
+    auto readAll = [](const fs::path& p) {
+        std::ifstream in(p, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(in)),
+                           std::istreambuf_iterator<char>());
+    };
+    const std::string first = readAll(tmp1);
+    const bool byteStable = first == readAll(tmp2);
+    fs::remove(tmp2);
+
+    // Each reloaded stage level must serialize identically to its legacy file.
+    const fs::path tmpLevel =
+        fs::temp_directory_path() / "savior_stage_selftest_level.json";
+    for (size_t i = 0; i < levels.size(); ++i) {
+        if (!hero::DataSerializer::SaveLevelToFile(levels[i],
+                                                   tmpLevel.string())) {
+            std::fprintf(stderr, "stageselftest: level %zu save failed\n", i);
+            return 2;
+        }
+        const std::string legacyBytes = readAll(tmpLevel);
+        if (!hero::DataSerializer::SaveLevelToFile(levels2[i],
+                                                   tmpLevel.string())) {
+            std::fprintf(stderr, "stageselftest: level %zu save failed\n", i);
+            return 2;
+        }
+        if (legacyBytes != readAll(tmpLevel)) {
+            std::fprintf(stderr,
+                         "stageselftest: stage level %zu differs from the "
+                         "legacy level after save->load\n", i);
+            return 1;
+        }
+    }
+    fs::remove(tmpLevel);
+
+    // Bare form (no `stage` wrapper) must load too.
+    bool bareOk = false;
+    {
+        std::ofstream os(bare.string());
+        if (os.is_open()) {
+            hero::StageFile sf;
+            sf.models = models;
+            sf.levels = levels;
+            cereal::JSONOutputArchive archive(os);
+            archive(sf);
+        }
+        std::vector<hero::LevelData> bareLevels;
+        std::vector<hero::ModelData> bareModels;
+        bareOk = hero::DataSerializer::LoadStageFromFile(
+                     bareLevels, bareModels, bare.string()) &&
+                 bareLevels.size() == levels.size();
+        fs::remove(bare);
+    }
+
+    if (!byteStable) {
+        std::fprintf(stderr, "stageselftest: save->load->save is not "
+                     "byte-identical\n");
+        return 1;
+    }
+    if (!bareOk) {
+        std::fprintf(stderr, "stageselftest: bare {models, levels} form "
+                     "does not load\n");
+        return 1;
+    }
+    std::printf("stageselftest: OK (%zu levels, %zu models, byte-stable, "
+                "bare form accepted)\n",
+                levels.size(), models.size());
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     if (argc == 2 && std::string(argv[1]) == "--brushtest") {
         QApplication app(argc, argv);
@@ -386,7 +530,15 @@ int main(int argc, char* argv[]) {
         if (rc != 0) {
             return rc;
         }
-        return RunLevelAsyncSelftest(argv[2]);
+        const int rc2 = RunLevelAsyncSelftest(argv[2]);
+        if (rc2 != 0) {
+            return rc2;
+        }
+        // models.json lives in <rooms>/models/ -> the frozen levels are next
+        // to that folder.
+        const std::filesystem::path roomsDir =
+            std::filesystem::path(argv[2]).parent_path().parent_path();
+        return RunStageSelftest(roomsDir.string().c_str());
     }
     QApplication app(argc, argv);
     app.setApplicationName("Savior AI Level Editor");
