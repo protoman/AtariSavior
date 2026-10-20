@@ -109,7 +109,9 @@
 3.DSdone                 fd34              (R )
 3.DSfall                 fd17              (R )
 3.firstOk                f95f              (R )
+3.FrameA                 fa27              (R )
 3.gotVL                  f94e              (R )
+3.Jet                    fa1a              (R )
 3.lastOk                 f972              (R )
 3.LLBdone                fcc6              (R )
 3.LLBstore               fcc1              (R )
@@ -120,6 +122,7 @@
 3.REYDone                fd8c              (R )
 3.REYLoop                fd83              (R )
 3.REYRts                 fda7              (R )
+3.SetGrpPtr              fa2b              (R )
 3.TLive                  fecc              (R )
 3.TNoScore               fea9              (R )
 3.TNotWrap               feba              (R )
@@ -133,6 +136,7 @@
 3.UEDNotRaft             f81e              (R )
 3.UEDNotSnake            f833              (R )
 3.UEDNotTent             f825              (R )
+3.WalkA                  fa13              (R )
 4.Div15Loop              ff12              (R )
 4.LAdvCap                ff71              (R )
 4.LAdvCapL               ff81              (R )
@@ -282,7 +286,7 @@ GameStart                f008              (R )
 GRAVITY                  0008              (R )
 GRP0                     001b              (R )
 Grp0Ptr                  0086              (R )
-Grp0PtrHi                0087                  
+Grp0PtrHi                0087              (R )
 GRP1                     001c              (R )
 HMBL                     0024                  
 HMCLR                    002b                  
@@ -372,7 +376,7 @@ PF1                      000e              (R )
 PF1Buf                   00c6              (R )
 PF2                      000f              (R )
 PF2Buf                   00c9              (R )
-PickPlayerFrame          fde1              (R )
+PickPlayerFrame          f9f5              (R )
 PLAYER_HEIGHT            0008              (R )
 PLAYER_MAX_X             009f              (R )
 PLAYER_MAX_Y             0084              (R )
@@ -385,10 +389,10 @@ PlayerColTable           f8f5              (R )
 PlayerDir                0082              (R )
 PlayerHitsMap            f926              (R )
 PlayerLives              00ac              (R )
-PlayerSpriteA            f8dd                  
-PlayerSpriteB            f8e9                  
-PlayerWalkA              fde7                  
-PlayerWalkB              fdf3                  
+PlayerSpriteA            f8dd              (R )
+PlayerSpriteB            f8e9              (R )
+PlayerWalkA              fdde              (R )
+PlayerWalkB              fdea              (R )
 PlayerYSub               0095              (R )
 PositionBallM1           f9c4              (R )
 RcBase                   0089                  

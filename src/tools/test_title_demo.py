@@ -112,9 +112,8 @@ assert "cmp #$FF" in tail and "jsr CallPad_MusicTick" in tail, \
     "music must tick on $FF title frames"
 assert "MusicTick:" in bank1 and "MusicMel:" in bank1
 
-# --- bank2 keeps the PlayerSpriteA twin (PickPlayerFrame reads it) --------
-assert "TitleJetSprite:" in bank2, "bank2 art twin must stay"
-sprite = section(bank2, "TitleJetSprite:", "; --- Level-data spill 2")
-assert sprite.count(".byte") == 6, "twin art is 24 B (6 rows x 4)"
+# --- PickPlayerFrame moved to bank0 (repack chunk 1) ----------------------
+assert "TitleJetSprite:" not in bank2, "bank2 art twin must be gone"
+assert "PickPlayerFrame:" in kernel, "frame picker body must live in bank0"
 
 print("test_title_demo: OK (cave band 0 + TitleBand logo/credits/HUD)")

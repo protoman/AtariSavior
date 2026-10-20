@@ -565,48 +565,23 @@ def check_raft_tramp(src: Path) -> None:
 
 
 def check_frame_tramp(src: Path) -> None:
-    """PickPlayerFrame VBL tramp: bank0/bank2 byte-identity + operand = body.
+    """PickPlayerFrame lives in bank0 (repack chunk 1, 2026-10-20).
 
-    bank0 executes `sta $1FF8` at labels0['PickPlayerFrame'] ($FDE1); the
-    following `jmp` is FETCHED from bank2's mirror at the same address
-    (FoldIndirect discipline), so all 6 bytes must match and the operand
-    must equal bank2's PickPlayerFrame body label (pinned $F3C0 by .ds).
+    The VBL `jsr PickPlayerFrame` now resolves in-bank, so bank2 must no
+    longer carry the body, the $FDE1 tramp mirror or the $F8DD/$FDE7 art
+    twins. Guard the regression: a bank2 PickPlayerFrame label would mean a
+    stray twin came back (and a switch bank0 no longer performs).
     """
-    bins: dict[int, bytes] = {}
-    for idx in (0, 2):
-        p = src / f"bank{idx}.bin"
-        if not p.exists():
-            err(f"bank{idx}.bin missing (frame tramp check)")
-            return
-        d = p.read_bytes()
-        if len(d) == 4096:
-            bins[idx] = d
-    if len(bins) < 2:
-        return
     l0p, l2p = src / "bank0.lst", src / "bank2.lst"
     if not l0p.exists() or not l2p.exists():
         err("bank0.lst/bank2.lst missing (frame tramp check)")
         return
     labels0, _ = parse_lst(l0p.read_text(errors="replace").splitlines())
     labels2, _ = parse_lst(l2p.read_text(errors="replace").splitlines())
-    tramp = labels0.get("PickPlayerFrame")
-    body = labels2.get("PickPlayerFrame")
-    if tramp is None or body is None:
-        err("PickPlayerFrame label missing (bank0 tramp / bank2 body)")
-        return
-    off = tramp - 0xF000
-    b0 = bins[0][off:off + 6]
-    b2 = bins[2][off:off + 6]
-    if len(b0) == 6 and b0[:3] != bytes((0x8D, 0xF8, 0x1F)):
-        err(f"bank0 frame tramp ${tramp:04X} = {b0.hex()} (expected 8df81f + jmp)")
-    if b0 != b2:
-        err(f"frame tramp bank0[${tramp:04X}] {b0.hex()} != bank2 {b2.hex()} "
-            f"(byte-identity broken)")
-    if len(b0) == 6:
-        tgt = b0[4] | (b0[5] << 8)
-        if tgt != body:
-            err(f"frame tramp jmp ${tgt:04X} != bank2 PickPlayerFrame "
-                f"${body:04X} (operand stale)")
+    if "PickPlayerFrame" not in labels0:
+        err("PickPlayerFrame body missing from bank0.lst")
+    if "PickPlayerFrame" in labels2:
+        err("PickPlayerFrame still in bank2.lst (tramp/twin must be gone)")
 
 
 def check_enterroom_tramp(src: Path) -> None:
