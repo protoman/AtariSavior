@@ -119,6 +119,7 @@ AUDV0 = $19
 ; A3: level-data block labels (M<id>*, L<n>R<r>*) live in bank3 now — the
 ; room tables below need their absolute values as plain EQUs.
     include "generated/bank3_labels.asm"
+    include "generated/levels_equ.asm"   ; BAND_COLOR (0 bytes of ROM)
 
     ; --- 5-byte stub ---
     lda #0
@@ -156,13 +157,14 @@ EnterRoomB2:
     jmp ERBlocksPad
 ERBlocksDone:
 
-    ; --- enemy record for this room (C2 2026-10-20: 2 bytes) ------------------
-    ; byte0 = count<<5 | first record index, byte1 = bottom-band color.
-    ; RoomEnemies = level base + 4n, enemy records = level base + 6n
+    ; --- enemy record for this room (C2 2026-10-20, packed 1 B 2026-10-20) ---
+    ; byte = count<<6 | first record index<<1 | bottom-band flag.
+    ; RoomEnemies = level base + 4n, enemy records = level base + 5n
+    ; (2026-10-20: the enemy record is ONE byte/room now)
     ; (n = LevelRoomN; the record index replaces the old absolute pointer).
+    ; The band COLOR is the global BAND_COLOR (one water color per game).
     lda RoomNo
-    asl
-    tay                             ; Y = room * 2
+    tay                             ; Y = room (one byte per record)
     lda LevelPFDataLo
     clc
     adc LevelRoomN
@@ -178,18 +180,19 @@ ERBlocksDone:
     lsr
     lsr
     lsr
-    lsr                             ; count = b7-5
+    lsr
+    lsr                             ; count = b7-6
     sta EnemyCount
     lda FetchPtr
     clc
-    adc LevelRoomN
-    adc LevelRoomN                  ; base + 6n = enemy records
+    adc LevelRoomN                  ; base + 5n = enemy records (1 B/room)
     sta EnemyDataLo
     lda FetchPtr+1
     adc #0
     sta EnemyDataHi
     lda (FetchPtr),Y
-    and #$1F                        ; first record index
+    lsr                             ; first record index → b4-0 (was b5-1)
+    and #$1F
     asl
     asl                             ; *4 (index <= 31 → fits one byte)
     clc
@@ -198,8 +201,11 @@ ERBlocksDone:
     lda EnemyDataHi
     adc #0
     sta EnemyDataHi
-    iny
-    lda (FetchPtr),Y                ; bottom-band color
+    lda (FetchPtr),Y                ; raw record: b0 = bottom-band flag
+    and #$01
+    beq .EBnoBand
+    lda #BAND_COLOR
+.EBnoBand:
     sta RoomBandColor               ; SOURCE room's band on the transition frame
     lda #0                          ; (also the bomb reset seed below)
     sta EnemyDeadMask               ; no dead enemies in new room

@@ -86,7 +86,12 @@ ENTERROOM = _LBL["EnterRoom"]          # $FBD0: bank0 half of the tramp
 I_ROOMY, I_LPF, I_ROOMN = 0x01, 0x1F, 0x21        # $81 $9F $A1
 I_LIVES, I_DROP, I_HOVER = 0x2C, 0x0A, 0x1C       # $AC $8A $9C
 I_BAND = 0x3C                                     # $BC RoomBandColor
-BAND_COLOR = 0x1C
+# The staged color comes from the ROM: one bottom-band color per game, emitted
+# by convert_level into generated/levels_equ.asm (2026-10-20 pack).
+_BAND_EQU = SRC / "generated" / "levels_equ.asm"
+_m = re.search(r"^BAND_COLOR = \$([0-9a-fA-F]{2})", _BAND_EQU.read_text(),
+               re.M) if _BAND_EQU.exists() else None
+BAND_COLOR = int(_m.group(1), 16) if _m else 0
 
 
 def at_init_jsr():
@@ -116,19 +121,19 @@ while frame < 520:
     if mem.bank == 0 and mpu.pc == ENTERROOM:
         # A = target room index (all callers: exits pass the connection
         # nibble, LoadLevel passes LevelStartRoom). ZP holds the level block
-        # base + the room count; the room's band byte is
-        #   base + 4n (RoomEnemies) + 2*room + 1
+        # base + the room count; the room's band FLAG is b0 of its ONE-byte
+        # RoomEnemies record (2026-10-20 pack): base + 4n + room.
         room = mpu.a
         n = mem.ram[I_ROOMN]
         base = mem.ram[I_LPF] | (mem.ram[I_LPF + 1] << 8)
-        band = base + 4 * n + 2 * room + 1
-        if 0xF000 <= band <= 0xFFFF:
-            BANKS[2][band - 0xF000] = BAND_COLOR
+        rec = base + 4 * n + room
+        if 0xF000 <= rec <= 0xFFFF:
+            BANKS[2][rec - 0xF000] |= 0x01     # bottom-band flag
             pokes += 1
-            print(f"band byte @ ${band:04X} forced at f{frame} "
+            print(f"band flag @ ${rec:04X} forced at f{frame} "
                   f"(room {room}, n={n})")
         else:
-            sys.exit(f"band address ${band:04X} outside bank2 (room {room})")
+            sys.exit(f"band record ${rec:04X} outside bank2 (room {room})")
     elif mem.bank == 0 and mpu.pc == PC_STARTFRAME:
         frame += 1
         mem.swchb = 0xFE if frame in (2, 5) else 0xFF
@@ -166,9 +171,10 @@ print("last 100 frames RoomY min/max:", (min(tail), max(tail)) if tail else None
 if not pokes:
     print("FAIL: EnterRoom was never hooked — scenario did not run")
     sys.exit(1)
-if band_live != BAND_COLOR:
+if not BAND_COLOR or band_live != BAND_COLOR:
     print(f"FAIL: RoomBandColor=${band_live:02X}, expected ${BAND_COLOR:02X} "
-          "(the band poke landed after the room load)")
+          "(the band flag poke landed after the room load, or levels_equ.asm "
+          "is stale)")
     sys.exit(1)
 if len(deaths) < 1 or min_lives > 2:
     print("FAIL: the water never killed him — the gate cannot be trusted")

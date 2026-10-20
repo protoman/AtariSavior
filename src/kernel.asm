@@ -146,7 +146,7 @@ LevelPFDataLo   byte            ; pointer to level's RoomDataTable (low)
 LevelPFDataHi   byte            ; pointer to level's RoomDataTable (high)
 LevelRoomN      byte            ; rooms in this level (C4 2026-10-20): the
                                 ;   Connections / RoomEnemies / enemy-record
-                                ;   bases are the block's +2n / +4n / +6n
+                                ;   bases are the block's +2n / +4n / +5n
 LevelConnSpare  byte            ; free (was LevelConnHi — its pointer is now
                                 ;   derived; the byte stays allocated so the
                                 ;   hand-copied ZP blocks do not shift)
@@ -1752,16 +1752,17 @@ ExitRoomRight:
 ; Level management
 ; ==============================================================================
 ; LoadLevel: read LevelDataTable entry for current Level, init pointers, enter room.
-; LevelDataTable stride: 9 bytes (C4 2026-10-20: the Connections / RoomEnemies
+; LevelDataTable stride: 7 bytes (C4 2026-10-20: the Connections / RoomEnemies
 ; word pointers were redundant — both are fixed offsets inside the level block,
 ; see the layout comment in generated/levels_index.asm. start_x/y dropped
-; 2026-10-19: they were always the constants 32/24)
-;   +0: start_room
-;   +1..+3: miner_room (b7 = faces right), miner_x, miner_y
-;   +4..+5: wall colors
-;   +6..+7: level block base (RoomDataTable)
-;   +8: room count n — readers derive Connections (+2n), RoomEnemies (+4n)
-;       and the enemy records (+6n) from it (C2/C3)
+; 2026-10-19 (constants 32/24); start_room and miner_y dropped 2026-10-20
+; (constants 0 / 84) — the converter rejects any other value)
+;   +0: miner_room (b7 = faces right)
+;   +1: miner_x
+;   +2..+3: wall colors
+;   +4..+5: level block base (RoomDataTable)
+;   +6: room count n — readers derive Connections (+2n), RoomEnemies (+4n)
+;       and the enemy records (+5n — 1 B/room since 2026-10-20) from it (C2/C3)
 ; ------------------------------------------------------------------------------
 LoadLevel:
     ; Stage leave/reload/advance: walls return + bombs refill to 5
@@ -1785,15 +1786,15 @@ LoadLevel:
     lda #(LV_SHOW_FRAMES|$80)  ; bit7 = banner flag: decs down to $80; any
     sta LevelShowTimer         ; tally ARM (<=127) kills it instantly
 .NoBanner:
-    ; Compute LevelDataTable pointer: base + Level * 9 (C4: was *12)
-    ; Stride 9: start_room(1) + miner(3) + wall_colors(2) + base ptr(2) + rooms(1)
+    ; Compute LevelDataTable pointer: base + Level * 7
+    ; Stride 7: miner(2) + wall_colors(2) + base ptr(2) + rooms(1)
     lda Level
     asl                         ; *2
     asl                         ; *4
     asl                         ; *8
-    clc
-    adc Level                   ; *9
-    tay                         ; Y = Level * 9
+    sec
+    sbc Level                   ; *7
+    tay                         ; Y = Level * 7
 
     ; --- Fold batch (P2.7): LevelDataTable lives in bank2 at the frozen
     ; address. Stage FetchPtr immediately before the batch; FoldIndirect
@@ -1805,40 +1806,39 @@ LoadLevel:
     sta FetchPtr+1
     ldx #0
 
-    ; +0: start room; start x/y are the fixed constants 32/24
-    jsr FoldIndirect
+    ; +0: miner room (b7 = faces right). start room/x/y and the miner's y are
+    ; kernel constants now (0 / 32 / 24 / 84 px = 7 rows).
+    lda #0
     sta LevelStartRoom
     lda #32
     sta LevelStartX
     lda #24
     sta LevelStartY
-    iny
-    ; +1..+3: miner room, x, y
     jsr FoldIndirect
     sta LevelMinerRoom
     iny
+    ; +1: miner x
     jsr FoldIndirect
     sta MinerX
-    iny
-    jsr FoldIndirect
+    lda #84
     sta MinerY
     iny
-    ; +4..+5: wall colors
+    ; +2..+3: wall colors
     jsr FoldIndirect
     sta LevelWallColor
     iny
     jsr FoldIndirect
     sta LevelWallColor2
     iny
-    ; +6..+7: level block base (RoomDataTable; C4 dropped the conn/enemy words
-    ; — they are the block's +2n / +4n / +6n offsets, see the readers)
+    ; +4..+5: level block base (RoomDataTable; C4 dropped the conn/enemy words
+    ; — they are the block's +2n / +4n / +5n offsets, see the readers)
     jsr FoldIndirect
     sta LevelPFDataLo
     iny
     jsr FoldIndirect
     sta LevelPFDataHi
     iny
-    ; +8: room count → GetConnIdx (bank1) and EnterRoomB2 (bank2) derive the
+    ; +6: room count → GetConnIdx (bank1) and EnterRoomB2 (bank2) derive the
     ; Connections / RoomEnemies / enemy-record bases from it
     jsr FoldIndirect
     sta LevelRoomN

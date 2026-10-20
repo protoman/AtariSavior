@@ -87,7 +87,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $9E | MelTimer | Intro music: melody frames left (bank1 MusicTick) |
 | $9F | LevelPFDataLo | Level RoomDataTable lo |
 | $A0 | LevelPFDataHi | Level RoomDataTable hi |
-| $A1 | LevelRoomN | Rooms in this level (C4 2026-10-20: Connections = block+2n, RoomEnemies = +4n, enemy records = +6n) |
+| $A1 | LevelRoomN | Rooms in this level (C4 2026-10-20: Connections = block+2n, RoomEnemies = +4n (1 B/room since 2026-10-20), enemy records = +5n) |
 | $A2 | LevelConnSpare | FREE (was LevelConnHi — pointer now derived) |
 | $A3 | Level | Level index |
 | $A4 | LevelMinerRoom | Miner room index |
@@ -181,9 +181,11 @@ only and nothing else touched `$F0-$F2` between save and restore.
   EQU). First attempt `$EC` failed (inside `ColupfBuf` row 5); then `$D1` =
   `PF1Buf[2]` failed (kernel `lda PF1Buf,X` X=2 rendered the band color as the
   bottom-band PF1 wall — phase_1 dump `$D1=00` vs model `$ff`).
-- Band color is the SECOND byte of the RoomEnemies per-room record
-  (`count<<5 | first record index`, `bottom_color` — C2 2026-10-20; the record
-  was 4 bytes with absolute pointers before).
+- Band color is NOT in the RoomEnemies record any more (2026-10-20 pack): the
+  record is ONE byte (`count<<6 | first record index<<1 | bottom-band flag`)
+  and the color is the single game-wide `BAND_COLOR` (generated
+  `levels_equ.asm`, included by bank2 before `EntryRoomB2`). Convert rejects a
+  second water color.
   Read via `LoadRoomBottomColor` (`.WaterRow` band strip + overscan `CheckBandTouch`).
 - Sequential map remains full after bomb work; do not add a new sequential
   `byte` casually. (Band color: since **S3.1** it has its own byte at `$BC` —

@@ -731,7 +731,7 @@ LaserState  = $C0       ; b7 fire held this frame, b5-2 = RoomDarkMask rooms
 EnemyRamP   = $C2       ; free-running frame clock (bank0 RefreshEnemyY incs)
 RoomNo      = $98
 LevelPFDataLo = $9F              ; level block base (C4: conn/enemy ptrs are
-LevelPFDataHi = $A0              ;   block offsets +2n/+4n/+6n now)
+LevelPFDataHi = $A0              ;   block offsets +2n/+4n/+5n now)
 LevelRoomN  = $A1                ; rooms in the level (C4 2026-10-20)
 FetchPtr    = $E5                ; moved S3.2 (was $E0) — must match kernel
 EnemyRamD   = $C1
