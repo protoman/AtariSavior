@@ -245,19 +245,9 @@ while frame < 420:
             # EnterRoom
             mem.ram[POKE_ENEMYCOUNT] = 2
             mem.ram[POKE_TENT_X] = 36
-            # room1's only maskable rect was (17,0,1,2), but the
-            # spawn bomb blasts c4-8 (c18-19 = cave mouth, no floor, so the
-            # player can't stand over there either). Poke rect1 -> the
-            # floor stub (4,2,2,1): same bits PF renders there (band2
-            # display cols4-5 = D7 cell2 pair set by M3 row2 wall cols0-7),
-            # blast c4-8 reaches x=4, w==2 maskable (D7 thin wall = 1 cell =
-            # 2 display cols) — exercises the plan 5.1 BombMarkWalls ->
-            # ClearPFColumn punch end to end.
-            mem.ram[0x50:0x54] = bytes((4, 2, 2, 1))
             poked = True
             print(f'tentacle coverage poked at f{frame}: EnemyCount=2, '
-                  f'slot0 X=36 (staged tentacle at ${TENT_REC:04X}), '
-                  f'rect1=(4,2,2,1)')
+                  f'slot0 X=36 (staged tentacle at ${TENT_REC:04X})')
         if poked and mem.ram[POKE_DROP] not in (0xFF, 0xFD):
             # keep the staging alive: EnterRoom/reloads re-derive the pointer,
             # and the sim's own bomb blast sets EnemyDeadMask bits — a dead
@@ -275,6 +265,16 @@ while frame < 420:
         states_seen.append((frame, st))
         if drop_frame is None and mem.ram[IDX_F0] < 5:
             drop_frame = frame
+            # plan 5.1b (2026-10-20): the punch is CELL-based, so fabricate a
+            # THIN wall in the PF buffers instead of a rect-cache entry (the
+            # cache has no reader). The bomb is drawn at BombX-7 -> display
+            # col 6 -> blast cols 4-8, so band 1 cols 6-7 (PF1 row1 = $30) is
+            # a D7 cell3: one 2-col cell with empty neighbours. Poked at DROP
+            # time — the player has already landed (Y=132 = band 2), so the
+            # band-1 cell cannot break his fall. BombMarkWalls ->
+            # ClearPFColumn clears it at the blast edge (row 1 only: row 2 is
+            # a wide slab, row 0 a wide slab).
+            mem.ram[0x46 + 1] = 0x30       # PF1Buf row1: cols 6,7
             pre_pf = bytes(mem.ram[0x43:0x4C])     # PF0/1/2Buf rows 0-2
             pre_b5 = mem.ram[IDX_B5]
             print(f'drop detected f{frame}: bombs={mem.ram[IDX_F0]} '
@@ -350,7 +350,9 @@ if pre_pf is not None and post_pf is not None:
     print(f'  cleared bytes={cleared}, set bytes={setb}, '
           f'WallMask new bits=${mask_new:02X}')
     hole_pf = cleared > 0 and setb == 0
-    hole_mask = mask_new != 0
+    # plan 5.1b: WallMask (BombPacked b3-6) is retired — the PF buffer is the
+    # double-score guard. The punch must leave the mask bits untouched.
+    hole_mask = mask_new == 0
 else:
     print(f'  pre={pre_pf is not None} post={post_pf is not None} '
           f'blast={blast_frame}')
@@ -375,7 +377,7 @@ checks = [
     ('tentacle coverage (probe ran + EnemyCount live)',
      probe_ran and mem.ram[POKE_ENEMYCOUNT] == 2),
     ('hole: PF bits cleared at blast, none set (window visible)', hole_pf),
-    ('hole: WallMask b3-6 selected at blast (BombMarkWalls ran)', hole_mask),
+    ('hole: WallMask b3-6 stays clear (cell punch guard)', hole_mask),
 ]
 print('\n== assertions ==')
 ok = True

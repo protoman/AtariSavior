@@ -3657,7 +3657,7 @@ BeamMask:
     .ds $FEE7 - *, 0            ; bank0↔bank1 CallPad (leaf_move_plan Step 0)
 CallPad_MothYDerive:
     sta $1FF7
-    jmp $F029
+    jmp $F038
 
     .ds $FEF0 - *, 0            ; fill tramp..moth gap (drift-proof)
 UE_MothTramp:

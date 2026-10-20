@@ -173,7 +173,7 @@ def run_bmw(mem: Mem1, bomb_x: int, line_count: int,
     r[L0["LineCount"] - 0x80] = line_count
     r[L0["EnemyDeadMask"] - 0x80] = 0
     r[L0["BombPacked"] - 0x80] = bomb_packed
-    rects = rects or []
+    rects = rects or []          # plan 5.1b: cache is inert (no reader)
     r[L0["RcBase"] - 0x80] = len(rects)
     for i, (x, y, w, h) in enumerate(rects):
         off = 0xCC - 0x80 + 4 * i
@@ -361,25 +361,26 @@ def main() -> int:
     memr = Mem1()
     r = memr.ram
     r[L0["PF1Buf"] - 0x80] = 0x03
+    # plan 5.1b (2026-10-20): NO rect cache — the punch reads the PF buffers.
+    # Cell 5 (cols 10-11) is thin: neighbours (cols 8-9 / 12-13) are clear.
+    # The buffer IS the double-score guard (the punch empties the pair), and
+    # WallMask (BombPacked b3-6) is retired — it must stay untouched.
     gotr = run_bmw(memr, 51, 0, rects=r5)
-    assert gotr == 1, f"rect4 thin must break (count={gotr})"
-    assert not r[L0["PF1Buf"] - 0x80] & 0x03, "rect4 punch must clear pair"
+    assert gotr == 1, f"thin cell must break (count={gotr})"
+    assert not r[L0["PF1Buf"] - 0x80] & 0x03, "punch must clear both cols"
     assert not r[L0["BombPacked"] - 0x80] & 0x78, (
-        f"rect4 must not set WallMask (packed=${r[L0['BombPacked'] - 0x80]:02X})")
+        f"punch must not set WallMask (packed=${r[L0['BombPacked'] - 0x80]:02X})")
     gotr2 = run_bmw(memr, 51, 0, rects=r5)   # pair now clear in PF1Buf
-    assert gotr2 == 0, f"rect4 re-blast must not count (count={gotr2})"
+    assert gotr2 == 0, f"re-blast must not count (count={gotr2})"
 
-    # idx0 keeps the mask path: WallMask blocks a re-blast even with the
-    # pair re-solidified (mask is the guard for idx0-3, buffer is not).
+    # parity (the reason the cache could go): a cell that joins a wider run
+    # is a THICK wall — never breakable, exactly like the old w==2 rect test.
     memq = Mem1()
     r = memq.ram
-    r[L0["PF1Buf"] - 0x80] = 0x03
-    gotq = run_bmw(memq, 51, 0, rects=[(10, 0, 2, 1)])
-    assert gotq == 1, f"idx0 thin must break (count={gotq})"
-    assert r[L0["BombPacked"] - 0x80] & 0x08, "idx0 must set WallMask b3"
-    r[L0["PF1Buf"] - 0x80] = 0x03
-    gotq2 = run_bmw(memq, 51, 0, rects=[(10, 0, 2, 1)], bomb_packed=0x08)
-    assert gotq2 == 0, f"idx0 mask must block re-blast (count={gotq2})"
+    r[L0["PF1Buf"] - 0x80] = 0x0F    # cols 8-11 solid: cell5 has a neighbour
+    gotq = run_bmw(memq, 51, 0)
+    assert gotq == 0, f"thick wall must not break (count={gotq})"
+    assert r[L0["PF1Buf"] - 0x80] == 0x0F, "thick wall must stay solid"
 
     # --- P2b doors (key-only, bomb-immune) ------------------------------
     # Synthetic meta blob in ZP ($A0..$AA): +9 MetaA, +10 MetaB.

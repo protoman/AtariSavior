@@ -3658,7 +3658,7 @@
    3657  fee7					      .ds	$FEE7 - *, 0	; bank0↔bank1 CallPad (leaf_move_plan Step 0)
    3658  fee7				   CallPad_MothYDerive
    3659  fee7		       8d f7 1f 	      sta	$1FF7
-   3660  feea		       4c 29 f0 	      jmp	$F029
+   3660  feea		       4c 38 f0 	      jmp	$F038
    3661  feed
    3662  feed		       00 00 00 	      .ds	$FEF0 - *, 0	; fill tramp..moth gap (drift-proof)
    3663  fef0				   UE_MothTramp
