@@ -150,126 +150,52 @@ TPtr4        = $E6
 TPtr5        = $E8
 TPtr6        = $EA
 
-PlayerWalkA:
-    .byte %00111100             ; row 0 torso (sprites.png 2026-10-03)
-    .byte %01111110             ; row 1
-    .byte %01111100             ; row 2 — yellow face
-    .byte %01111110             ; row 3
-    .byte %01111100             ; row 4 — grey pack
-    .byte %11111110             ; row 5
-    .byte %11111110             ; row 6
-    .byte %00111110             ; row 7  legs
-    .byte %00111110             ; row 8
-    .byte %00010100             ; row 9
-    .byte %00100010             ; row 10 boots apart (spread)
-    .byte %01000010             ; row 11 boots apart
-
-PlayerWalkB:
-    .byte %00111100             ; row 0 torso
-    .byte %01111110             ; row 1
-    .byte %01111100             ; row 2 — yellow face
-    .byte %01111110             ; row 3
-    .byte %01111100             ; row 4 — grey pack
-    .byte %11111110             ; row 5
-    .byte %11111110             ; row 6
-    .byte %00111110             ; row 7  legs
-    .byte %00111110             ; row 8
-    .byte %00010100             ; row 9
-    .byte %00011000             ; row 10 boots together (passing)
-    .byte %00011000             ; row 11 boots together
-
-    .ds $F080 - *, 0            ; TitleKernel pin (CallPad_TitleKernel literal)
-TitleKernel:
-    sta WSYNC                    ; entry-line overrun guard
-    lda #0
-    sta COLUBK
-    sta PF0
-    sta PF1
-    sta PF2
-    sta COLUPF
-    sta GRP0
-    sta GRP1
-    sta GRP0                     ; flush VDEL buffers
-    sta REFP0
-    sta REFP1
-    sta ENABL
-    sta ENAM1
-    sta ENAM0
-
-    ; ==================================================================
-    ; Band 0 (48 lines): stage top row + the player at RoomY.
-    ; The merged title previews the LIVE stage: PF/color come from the
-    ; room buffers EnterRoom staged. The game is stopped, so it is static.
-    ; ==================================================================
-    lda PF0Buf
-    sta PF0
-    lda PF1Buf
-    sta PF1
-    lda ColupfBuf
-    sta COLUPF
-    lda PF2Buf
-    sta PF2
-    lda BandTab
-    sta ENABL
-    lda #$0E                     ; player suit (single colour on the title)
-    sta COLUP0
-    ldx #0
-    lda RoomX
-    jsr SetObjectXPos_b1         ; 1 line
-    sta WSYNC
-    sta HMOVE                    ; 1 line
-    ldx #22                      ; blanks up to the player window (RoomY 24)
-.TkB0Bl:
-    sta WSYNC
-    dex
-    bne .TkB0Bl
-    lda EnemyRamP                ; walk cycle A/B on the free-running clock
-    and #8
-    beq .TkPlrA
-    lda #<PlayerWalkB
-    ldy #>PlayerWalkB
-    bne .TkPlrSet                ; unconditional (hi != 0)
-.TkPlrA:
-    lda #<PlayerWalkA
-    ldy #>PlayerWalkA
-.TkPlrSet:
-    sta Grp0Ptr
-    sty Grp0PtrHi
-    ldy #0
-.TkPlr:
-    lda (Grp0Ptr),Y
-    sta GRP0
-    sta WSYNC
-    iny
-    cpy #12
-    bne .TkPlr
-    lda #0
-    sta GRP0
-    ldx #12
-.TkB0Bl2:
-    sta WSYNC
-    dex
-    bne .TkB0Bl2
-
+    .ds $F080 - *, 0            ; TitleBand pin (CallPad_TitleBand literal)
+; ==============================================================================
+; TitleBand — merged title, bands 1-2 (2026-10-19 refactor).
+; Band 0 is drawn by the CAVE kernel (stage PF + COLUPF from the room buffers,
+; player via PlayerColTable/Grp0Ptr), so the title reuses the real kernel
+; instead of duplicating its band rendering. The bank0 row-advance tail
+; diverts here when DropTarget=$FF, exactly where band 1 would start.
+; This routine: band 1 stage row + the 48px S.A.V.I.O.R. logo + the credit
+; footer, then band 2's stage row + 48 lines, then the HUD band (score =
+; level+1, lives/bombs/bar via MenuMain). No object is drawn on the title:
+; DropArm .DATitle clears EnemyCount/LevelMinerRoom and the laser on every
+; title LoadLevel, so SelectActiveObject parks GRP1.
+; Entered via CallPad_TitleBand ($FC55). ZP: LineCount ($84) + Temp ($88) as
+; loop counter/tmp — idle on title frames (cave overscan bypassed).
+; ==============================================================================
+TitleBand:
     ; ==================================================================
     ; Band 1 (48 lines): stage middle row + logo + credit footer.
+    ; Same store order as the cave .Row (PF0, PF1, COLUPF, ENABL, PF2 last)
+    ; so the band-transition line keeps the left half on band 0.
     ; ==================================================================
+    ; Cave band 0 leaves the missiles latched (the .AfterRows clear is
+    ; skipped on the title). The 48px footer sets NUSIZ=3, so a live M0/M1
+    ; would draw 1-clock vertical lines through bands 1/2 — clear both here.
+    lda #0
+    sta ENAM0
+    sta ENAM1
     lda PF0Buf+1
     sta PF0
     lda PF1Buf+1
     sta PF1
     lda ColupfBuf+1
     sta COLUPF
-    lda PF2Buf+1
-    sta PF2
     lda BandTab+1
     sta ENABL
+    lda PF2Buf+1
+    sta PF2
     lda #6                       ; 3 copies, 32px pitch (48px logo)
     sta NUSIZ0
     sta NUSIZ1
     lda #1                       ; VDEL cross-buffer
     sta VDELP0
     sta VDELP1
+    lda #0                       ; logo slots are not mirrored
+    sta REFP0
+    sta REFP1
     ldx #0
     lda #41
     jsr SetObjectXPos_b1
@@ -287,15 +213,15 @@ TitleKernel:
     sta TPtr6+1
     lda #<TitleFont
     sta TPtr1
-    lda #<TitleFont+8
+    lda #<(TitleFont+8)
     sta TPtr2
-    lda #<TitleFont+16
+    lda #<(TitleFont+16)
     sta TPtr3
-    lda #<TitleFont+24
+    lda #<(TitleFont+24)
     sta TPtr4
-    lda #<TitleFont+32
+    lda #<(TitleFont+32)
     sta TPtr5
-    lda #<TitleFont+40
+    lda #<(TitleFont+40)
     sta TPtr6
     lda #COLOR_TITLE
     sta COLUP0
@@ -360,10 +286,10 @@ TitleKernel:
     sta PF1
     lda ColupfBuf+2
     sta COLUPF
-    lda PF2Buf+2
-    sta PF2
     lda BandTab+2
     sta ENABL
+    lda PF2Buf+2
+    sta PF2
     ldx #48
 .TkB2Bl:
     sta WSYNC
@@ -462,15 +388,15 @@ FooterBand:
     sta FooterPtr6+1
     lda #<FooterFont
     sta FooterPtr1
-    lda #<FooterFont+14
+    lda #<(FooterFont+14)
     sta FooterPtr2
-    lda #<FooterFont+28
+    lda #<(FooterFont+28)
     sta FooterPtr3
-    lda #<FooterFont+42
+    lda #<(FooterFont+42)
     sta FooterPtr4
-    lda #<FooterFont+56
+    lda #<(FooterFont+56)
     sta FooterPtr5
-    lda #<FooterFont+70
+    lda #<(FooterFont+70)
     sta FooterPtr6
     ldx #13
     stx LineCount
@@ -1917,13 +1843,13 @@ CallPad_TitleSelect:
     sta $1FF7
     jmp TitleSelect
     .ds $FC55 - *, 0
-CallPad_TitleKernel:
+CallPad_TitleBand:
     sta $1FF7
     jmp $F080
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F184
+    jmp $F18A
     .ds $FC61 - *, 0
 CallPad_MusicTick:
     sta $1FF7
@@ -1940,7 +1866,7 @@ CallPad_MusicTick:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F184           ; Overscan in bank0 (must match bank0 ToGameStub;
+    jmp $F18A           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; verify_build --sync-overscan patches this from
                         ; bank0.lst after every bank0 build)
 

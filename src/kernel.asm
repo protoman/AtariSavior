@@ -902,7 +902,13 @@ CaveKernelRow:
     cpx #TILE_ROWS
     beq .WaterRow                ; row 2 done -> water strip pass
     bcs .AfterRows               ; X=4 (C=1,Z=0): water pass done
-    jmp .Row
+    ; Title ($FF): band 0 was the real cave stage; bands 1-2 (logo/footer +
+    ; bottom row) are bank1's TitleBand. Gameplay falls through to .Row,
+    ; +5c on this setup line only (measured: wall model unchanged).
+    lda DropTarget
+    cmp #$FF
+    bne .Row
+    jmp CallPad_TitleBand
 .GrpSkip:                       ; A0 >= 11 (incl $ff): no color/beam/fetch on
     iny                         ;   this line — advance running Y, then blank
     jmp .GrpZero                ;   GRP0 for the next line. Relocated here
@@ -2718,16 +2724,13 @@ PositionBallM1:
     rts
 
 ; ------------------------------------------------------------------------------
-; KernelInit — title/cave dispatch + cave running-Y (fill: pre-pad headroom 1B).
+; KernelInit — cave running-Y (fill: pre-pad headroom 1B).
 ; TIA inits moved to the VBL tail 2026-10-06 (entry-span budget — see there).
-; Title path (DropTarget=$FF sentinel) → TitleKernel (pops this jsr first!);
-; cave path (play) → rts → CaveKernelRow. Cave side
-; effects: RowIdx=0, Y=-RoomY, X=0, A=0. ENAM0/ENAM1 NOT touched.
+; The title ($FF sentinel) runs THIS kernel too: band 0 is the real stage,
+; then the row-advance tail diverts to bank1's TitleBand (logo/footer/band 2).
+; Effects: RowIdx=0, Y=-RoomY, X=0, A=0. ENAM0/ENAM1 NOT touched.
 ; ------------------------------------------------------------------------------
 KernelInit:
-    lda DropTarget
-    cmp #$FF
-    beq .TkPath
     lda #0
     sta RowIdx                    ; tile-row counter (0-2)
     sec
@@ -2735,21 +2738,6 @@ KernelInit:
     tay                           ; running-Y for cave .Line
     ldx #0
     rts                           ; → CaveKernelRow (.Row follows the jsr)
-.TkPath:
-    pla                           ; drop jsr KernelInit return — title continues
-    pla                           ;   via jmp (jmp alone would leak 2B/frame)
-    lda #0
-    sta ENAM0                     ; clear the laser missile before the title
-    jmp CallPad_TitleKernel
-
-; ------------------------------------------------------------------------------
-; TitleKernel — merged title ($FF): the live stage (room PF + player) with
-; "S.A.V.I.O.R." + the credit footer drawn over it; the HUD band follows and
-; its score shows level+1. SELECT/RESET handling stays in TitleWork.
-; ZP: LineCount ($84) + Temp ($88) as loop counter/tmp — idle on title frames
-; (cave kernel not running; bank1 HUD not running; overscan probes bypassed).
-; ------------------------------------------------------------------------------
-; TitleKernel — MOVED to bank1 (docs/refactor_v4_plan.md Phase 3).
 
 ; DropSpeedTable — drop-in 8.8 px/frame per Y>>4 tier (Y = tier*16+8), read
 ; abs,Y by DropStep (post-pad) — moved here to free post-pad room (bugs.md #1).
@@ -2835,13 +2823,13 @@ CallPad_TitleSelect:
     sta $1FF7
     jmp $F041
     .ds $FC55 - *, 0
-CallPad_TitleKernel:
+CallPad_TitleBand:
     sta $1FF7
     jmp $F080
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F184
+    jmp $F18A
     .ds $FC61 - *, 0            ; bank0↔bank1 intro-music tick
 CallPad_MusicTick:
     sta $1FF7
@@ -3050,6 +3038,13 @@ DropArm:
     sta EnemyCount
     lda #$FF
     sta LevelMinerRoom          ; ROOM_NONE: no miner slot, no pickup
+    ; No beam on the title: band 0 is the CAVE .Line now, which re-enables
+    ; ENAM0 from BeamMask & LaserState. Clear held+gate (b7/b1) only —
+    ; LASER_KEEP keeps b0 and the rooms 4-7 dark mask, so a dark-room
+    ; preview still renders dark.
+    lda LaserState
+    and #LASER_KEEP
+    sta LaserState
     lda Level
     clc
     adc #1
