@@ -2,16 +2,17 @@
 """New-tile data pipeline fixtures (ai_new_tiles plan Phase 1 / CHECK 1).
 
 Covers:
-   1. feature chars flow: grid tiles 10/11/12 -> P/V/C on the middle
-      band (row 1, rule 2026-10-14), solid for pf_values, kept off the
-      hot-band coercion; hot + phase stays mutually exclusive (vcrunch
-      now ALLOWED on hot — user rule 2026-10-14, MetaB b6 flags it);
+   1. feature chars flow: grid tiles 10/12 -> P/C on the middle band
+      (row 1, rule 2026-10-14), solid for pf_values, kept off the
+      hot-band coercion; hot + phase stays mutually exclusive (hcrunch
+      ALLOWED on hot — user rule 2026-10-14, MetaB b6 flags it);
    2. convert_room.lines emits b7 feature records in the hot stream:
-      $80 per phase cell, $81 vcrunch bbox, $82 hcrunch band prefix —
-      all carrying y=1, and the hot count byte includes them;
-   3. special-feature rejects (fail loudly): P/V/C off row 1 (both
+      $80 per phase cell, $82 hcrunch band prefix — all carrying y=1,
+      and the hot count byte includes them. Tile 11 (vcrunch) is REMOVED
+      and must fail loudly at every layer;
+   3. special-feature rejects (fail loudly): P/C off row 1 (both
       layers), hcrunch spanning bands / non-prefix cols, door XOR
-      feature exclusivity, mixed P/V/C;
+      feature exclusivity, mixed P/C;
    4. LOCKED_DOOR rejects in the grid (rows_from_json);
    5. door (row-1 patch only): resolve passes on side 0, room_door_flag,
       MetaB b7 set (ball_col+1 | $80), mixed side-0 tiles rejected, door
@@ -139,14 +140,14 @@ def main() -> int:
     # --- 1. feature chars: middle band (row 1), PF-solid, hot off -------
     # Special features live ONLY on row 1 (rule 2026-10-14); phase is
     # mutually exclusive with hot here, so no hot flag in this model.
-    m = model(grid(["." * 10, "P.V.C.....", "." * 10]),
+    m = model(grid(["." * 10, "P..C......", "." * 10]),
               mid_band_type=0)
     rows = rows_of(m)
-    assert rows[1] == "P.V.C.....", rows
+    assert rows[1] == "P..C......", rows
     assert rows[0] == "." * 10 and rows[2] == "." * 10, rows
     pf = convert_room.pf_values(rows[1])
-    # P at cell0 (pairs 0-1), V cell2 (4-5), C cell4 (8-9)
-    assert pf == (0x30, 0xCC, 0x00), pf
+    # P at cell0 (pairs 0-1), C cell3 (pairs 6-7)
+    assert pf == (0x30, 0x30, 0x00), pf
     # plain walls on the hot band still go H (no features in that model)
     walls = model(grid(["." * 10, "#" * 10, "." * 10]), mid_band_type=1)
     assert rows_of(walls)[1] == "H" * 10, rows
@@ -162,24 +163,19 @@ def main() -> int:
     assert count == 2 and recs == [(0x80, 0, 1, 2, 1), (0x80, 4, 1, 2, 1)], \
         (count, recs)
 
-    # vcrunch bbox: cells (1,0..2) -> x0 y1 w6 h1 (the sprite shutter
-    # slices only the middle band)
-    count, recs = hot_records(emitted(model(
-        grid(["." * 10, "VVV" + "." * 7, "." * 10]))))
-    assert count == 1 and recs == [(0x81, 0, 1, 6, 1)], (count, recs)
-
-    # special features off row 1 = hard error (entry/exit corridors)
+    # tile 11 (vcrunch) is REMOVED — every layer must reject it
     expect_reject(
-        lambda: emitted(model(grid(["." * 10, "." * 10, "V" + "." * 9]))),
-        "special features live on the middle band")
-    expect_reject(
-        lambda: emitted(model(grid(["P" + "." * 9, "." * 10, "." * 10]))),
-        "special features live on the middle band")
-    # convert_room's own band check (belt for direct, non-JSON callers)
+        lambda: emitted(model(grid(["." * 10, "VVV" + "." * 7, "." * 10]))),
+        "tile 11 (VCRUNCH) removed; use PHASE 10")
     expect_reject(
         lambda: convert_room.lines(["V" + "." * 9, "." * 10, "." * 10],
                                    prefix="M91", source="test"),
-        "vcrunch cells at rows")
+        "tile 11 (VCRUNCH) removed; use PHASE 10")
+
+    # special features off row 1 = hard error (entry/exit corridors)
+    expect_reject(
+        lambda: emitted(model(grid(["P" + "." * 9, "." * 10, "." * 10]))),
+        "special features live on the middle band")
 
     # hcrunch off row 1 = hard error
     expect_reject(
@@ -213,26 +209,7 @@ def main() -> int:
         lambda: emitted(model(grid(["." * 10, "P" + "." * 9, "." * 10]),
                               mid_band_type=1)),
         "phase on the hot middle band")
-    # vcrunch on the hot middle band = ALLOWED (user rule 2026-10-14:
-    # both crunch walls respect the hot flag) — MetaB b6 carries it.
-    # All-V row = no 'H' cell, so the flag must ride the explicit hot=.
-    m_vhot = model(grid(["." * 10, "." * 9 + "V", "." * 10]),
-                   mid_band_type=1)
-    assert rows_of(m_vhot)[1] == "." * 9 + "V", rows_of(m_vhot)
-    vb = byte_line(emitted(m_vhot), "M91MetaB:")
-    assert vb == [0xC0], f"vcrunch+hot MetaB {vb} != [C0] (b7 shutter|b6 hot)"
-    # same model cold (no flag) -> $80 only
-    vcold = model(grid(["." * 10, "." * 9 + "V", "." * 10]))
-    assert byte_line(emitted(vcold), "M91MetaB:") == [0x80]
-    # vcrunch cannot share the M1 slot with a side-1 strip / door
-    # (M1 envelope: patch col open in its band, walls in the others)
-    expect_reject(
-        lambda: emitted(model(grid(["#" + "." * 9, "." * 9 + "V",
-                                    "#" + "." * 9]),
-                              asym_patches=[[1, 0, 1, 1]])),
-        "shutter owns the M1 slot")
-
-    # exclusivity (rule 2026-10-14): door XOR phase XOR vcrunch XOR hcrunch
+    # exclusivity (rule 2026-10-14): door XOR phase XOR hcrunch
     expect_reject(
         lambda: emitted(model(grid(["." * 10, "P" + "." * 9, "." * 10]),
                               asym_patches=[[1, 3,
@@ -240,7 +217,7 @@ def main() -> int:
         ["special features are alone per room", "wall-hide guard"])
     expect_reject(
         lambda: emitted(model(grid(["." * 10,
-                                    "P" + "." * 4 + "V" + "." * 4,
+                                    "P" + "." * 4 + "C" + "." * 4,
                                     "." * 10]))),
         "mixed special features")
 

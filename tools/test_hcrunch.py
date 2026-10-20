@@ -28,9 +28,9 @@ the seal-moment catch is the crunch). Hot exempts — any phase/extent
 kills. Opening (sc>=52) never kills. Frozen M4 MetaB = $00 (cold only).
 
 Cases:
-   1. arm     — after load: VcrBand idle $FF (no $81), PhaseBlink ran,
-                 PF band1 staged $30 at clock 8 (dwell n=1 — also proves
-                 staging is live: the raw fixture row is $F0);
+   1. arm     — after load: PhaseBlink ran, PF band1 staged $30 at clock 8
+                 (dwell n=1 — also proves staging is live: the raw fixture
+                 row is $F0);
    2. curve   — pinned clock s*16+8 for s 0..15: PF0/1/2 band1 must
                  equal P(covered()) (full triples, $30 stub .. $F0/FF/FF
                  center);
@@ -82,7 +82,6 @@ I_VYLO, I_VYHI = W.I_VYLO, W.I_VYHI
 I_DEAD = W.I_DEAD                       # $BA EnemyDeadMask (b7 = kill latch)
 I_RAMP = 0x42                           # $C2 EnemyRamP frame clock
 I_LIVES = 0x2C                          # $AC PlayerLives
-I_VBAND = 0x6C                          # $EC VcrBand ($FF = idle, no $81)
 
 # HUD fold: first bank0->bank1 fold after the cave kernel — VBL staging
 # is still the frame's (bank1 stomps $EA-$EF only after entering HUD).
@@ -146,8 +145,7 @@ def boot():
 
 def run_frames(n, pins, samples):
     """n frames with pins poked at each StartFrame; append
-    (PF0b1, PF1b1, PF2b1, DeadMask, Lives, VcrBand) at every HUD fold
-    (VcrBand sampled AT the fold — bank1's $EC stomp lands after it)."""
+    (PF0b1, PF1b1, PF2b1, DeadMask, Lives) at every HUD fold."""
     for _ in range(n):
         pins()
         while True:
@@ -155,7 +153,7 @@ def run_frames(n, pins, samples):
             if W.mem.bank == 0 and W.mpu.pc == HUD_JMP:
                 r = W.mem.ram
                 samples.append((r[PF0_B1], r[PF1_B1], r[PF2_B1],
-                                r[I_DEAD], r[I_LIVES], r[I_VBAND]))
+                                r[I_DEAD], r[I_LIVES]))
             if W.mem.bank == 0 and W.mpu.pc == W.PC_STARTFRAME:
                 break
 
@@ -203,10 +201,7 @@ def main() -> None:
     # --- case 1: arm/staging --------------------------------------------
     # y20/band0 x70 keeps the walk off the kill path during staging
     # checks (a latch would block re-kill for the rest of the visit).
-    pf0, pf1, pf2, dead, _lv, vband = probe(clock=8)
-    if vband != 0xFF:
-        fails.append(f"arm: VcrBand=${vband:02X}, want $FF "
-                     f"(no $81 in model4)")
+    pf0, pf1, pf2, dead, _lv = probe(clock=8)
     if pf0 != 0x30:
         fails.append(f"arm: PF0 band1=${pf0:02X}, want $30 (dwell n=1 "
                      f"staged; $F0 = raw fixture row, PhHcrEntry never ran)")
@@ -214,7 +209,7 @@ def main() -> None:
         fails.append(f"arm: PF1/2 band1=${pf1:02X}/${pf2:02X}, want $00/$00")
     if dead & 0x80:
         fails.append("arm: kill latch set at settle (y20 band0 must not kill)")
-    print(f"  arm: PF0b1=${pf0:02X} VcrBand=${vband:02X} (staged dwell n=1)")
+    print(f"  arm: PF0b1=${pf0:02X} (staged dwell n=1)")
 
     # --- case 2: curve (grow-to-center contract) ------------------------
     mid_n, late_n = [], []

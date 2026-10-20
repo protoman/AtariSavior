@@ -7,7 +7,7 @@ script in /tmp (lost with the temp dir). Re-run it after editing the layouts,
 rebuild with tools/qa_build.sh, then re-run tools/qa_sweep.py.
 
 Format note (2026-10-17 async move): the models hold the SHAPE only. A feature
-char in a layout row (P/V/C) becomes SOLID_WALL in the model (same PF byte —
+char in a layout row (P/C) becomes SOLID_WALL in the model (same PF byte —
 tile_to_char always drew it solid) and the ROOM carries the behaviour cell in
 feature_cells. That is exactly what tools/migrate_async_to_rooms.py does to
 real data, so authoring here in the readable P/V/C form is safe.
@@ -33,8 +33,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 QA = ROOT / "src" / "tests" / "qa" / "rooms"
-T = {".": 0, "#": 1, "R": 6, "H": 8, "P": 10, "V": 11, "C": 12}
-FEATURE_TILES = (10, 11, 12)
+T = {".": 0, "#": 1, "R": 6, "H": 8, "P": 10, "C": 12}
+FEATURE_TILES = (10, 12)
 SOLID_WALL = 1
 
 # (id, name, row0, row1, row2, asym_patches|None)
@@ -43,7 +43,7 @@ MODELS = [
     (21, "QA key",      "######..##", "#.........", "######..##", None),
     (22, "QA phase",    "######..##", "#.......PP", "####..####", None),
     (23, "QA door",     "####..####", "..........", "##..######", [[1, 0, 9]]),
-    (24, "QA vcrunch",  "##..######", "#.V.......", "##..######", None),
+    (24, "QA clear",    "##..######", "#.........", "##..######", None),
     (25, "QA hcrunch",  "##..######", "CCCCCCCCCC", "##..######", None),
     # Water room: cells 0,1 are OPEN (the killing water), 2,3 the entry ledge
     # (matched to the hcrunch exit lane), 4-7 the RAFT bridge, 8,9 the far

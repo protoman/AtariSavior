@@ -280,3 +280,30 @@ $F355-$F372  LDA $C3 / CMP #$7F / BNE
 Measured verdict on the whole suspicion: HERO's raft ≈ **55-70 B** vs our 318 B;
 HERO's hcrunch ≈ **32 B** vs our 1521 B. The gap is behaviour (moving entity,
 kill timing, push, tide) and a mask-vs-subsystem design, not sloppy code.
+
+## 10. Chunk 1 — vcrunch (tile 11) removed
+
+User decision 2026-10-19: the vertical-crunch feature is deleted. No stage
+room used it (`V` never appears in `src/rooms` or `src/tests/rooms`), so no
+data migration. Removed: the bank0 slice hook + RowSlice/SBmask/SBod, bank3
+VcrShutter/PFOffTab/VcrStateTab/VCS3 + the `$81` PhaseBlink/HOV arms, bank2
+OvShutScan + the `$FD80` tramp, the Vcr* ZP EQUs, converter/editor/gate
+support. `tools/test_vcr_shutter.py` now proves the converter + CLI reject
+tile 11; `test_phase_kill_frame.py` proves a stale `$81` record is inert.
+
+Size ledger after chunk 1:
+
+| bank | code | data | fill | used | free |
+|---|---|---|---|---|---|
+| bank0 | 3027 | 350 | 717 | 3377 | 719 |
+| bank1 | 2513 | 502 | 719 | 3015 | 1081 |
+| bank2 | 1399 | 361 | 2314 | 1760 | 2336 |
+| bank3 | 1211 | 371 | 1718 | 1582 | 2514 |
+| **total** | **8150** | **1584** | **5468** | **9734** | **6650** |
+
+level data 548 B (index 48 + tables/blocks 334 + models 166).
+
+Delta vs the section-0 table: bank0 −$3F used, bank2 −$2D, bank3 −$208
+(free +$208). Kernel main-region code shrank 27 B (Overscan $F19F→$F184),
+but the fixed `$F8C0` pin absorbs it (fill grew 0x75→0x90), so the first
+growable pin (`$FC49`) still has 11 B free — usable headroom gained: 0 B.

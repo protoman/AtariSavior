@@ -54,15 +54,14 @@ static int MirrorColumn(int displayCol, int roomWidth) {
 }
 
 // Special-feature presence bits for a ROOM (user rule 2026-10-14: door,
-// phase, vcrunch, hcrunch are ALONE per room). Async lives on the ROOM since
+// phase, hcrunch are ALONE per room). Async lives on the ROOM since
 // the 2026-10-17 format change — 1=door (LOCKED_DOOR strip), 2=phase,
-// 4=vcrunch, 8=hcrunch (the room's feature cells).
+// 8=hcrunch (the room's feature cells).
 static int RoomSpecialBits(const hero::RoomData& r) {
     int bits = 0;
     for (const auto& c : r.feature_cells) {
         if (c.size() < 3) continue;
         if (c[2] == (int)hero::TileType::PHASE) bits |= 2;
-        else if (c[2] == (int)hero::TileType::VCRUNCH) bits |= 4;
         else if (c[2] == (int)hero::TileType::HCRUNCH) bits |= 8;
     }
     for (const auto& p : r.asym_patches) {
@@ -72,7 +71,7 @@ static int RoomSpecialBits(const hero::RoomData& r) {
     return bits;
 }
 
-// Room feature cell at (row, col): TileType::PHASE/VCRUNCH/HCRUNCH or -1.
+// Room feature cell at (row, col): TileType::PHASE/HCRUNCH or -1.
 static int FindFeature(const hero::RoomData& r, int row, int col) {
     for (const auto& c : r.feature_cells) {
         if (c.size() >= 3 && c[0] == row && c[1] == col) return c[2];
@@ -308,8 +307,6 @@ QColor MapCanvas::GetTileColor(int tileType, int tileY) const {
             return QColor(150, 154, 170);   // async door = grey 4clk stripe
         case hero::TileType::PHASE:
             return QColor(0, 180, 90);
-        case hero::TileType::VCRUNCH:
-            return QColor(150, 70, 210);
         case hero::TileType::HCRUNCH:
             return QColor(0, 170, 200);
         default:
@@ -407,11 +404,10 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             // every wall there hot (convert promotes row 1 to 'H' the same
             // way — the legacy HOT_ROCK tile value is gone as a brush).
             // Feature tiles keep their own color (convert keeps their
-            // P/V/C chars even on the hot band — hot+phase is rejected
-            // in ValidateFeatureTiles, hcrunch/vcrunch are allowed).
+            // P/C chars even on the hot band — hot+phase is rejected
+            // in ValidateFeatureTiles, hcrunch is allowed).
             const bool featureTile =
                 tileType == (int)hero::TileType::PHASE ||
-                tileType == (int)hero::TileType::VCRUNCH ||
                 tileType == (int)hero::TileType::HCRUNCH ||
                 tileType == (int)hero::TileType::LOCKED_DOOR;
             if (model->mid_band_type != 0 && modelY == 1 &&
@@ -574,12 +570,11 @@ int MapCanvas::CountRoomElements() const {
 }
 
 bool MapCanvas::RoomHasCrunch() const {
-    // vcrunch/hcrunch are ROOM feature cells since the 2026-10-17 async move.
+    // hcrunch is a ROOM feature cell since the 2026-10-17 async move.
     const hero::RoomData* r = AsyncRoomRef();
     if (!r) return false;
     for (const auto& c : r->feature_cells) {
-        if (c.size() >= 3 && (c[2] == (int)hero::TileType::VCRUNCH ||
-                              c[2] == (int)hero::TileType::HCRUNCH))
+        if (c.size() >= 3 && c[2] == (int)hero::TileType::HCRUNCH)
             return true;
     }
     return false;
@@ -660,7 +655,7 @@ void MapCanvas::WarnAsyncBrushNeedsRoomEditor() {
     QMessageBox::information(
         nullptr, QObject::tr("Async Walls Are Room-Level Now"),
         QObject::tr(
-            "Doors, phase walls and vcrunch/hcrunch shutters are ROOM "
+            "Doors, phase walls and hcrunch bands are ROOM "
             "properties since the 2026-10-17 format change: they live in the "
             "room's async layer (room.asym_patches / room.feature_cells) so "
             "one model shape can be reused by rooms with different async.\n\n"
@@ -695,14 +690,13 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
     int brushVal = static_cast<int>(m_currentBrush);
 
     // -----------------------------------------------------------------------
-    // Async walls (door strip / phase / vcrunch / hcrunch) are ROOM-level since
+    // Async walls (door strip / phase / hcrunch) are ROOM-level since
     // the 2026-10-17 format change: they live in RoomData::asym_patches /
     // feature_cells, never on the model. The brush UI for the room-level layer
     // is the next editor step, so REFUSE here instead of writing the retired
     // model fields — convert hard-fails a model that still carries async.
     // -----------------------------------------------------------------------
     if (m_currentBrush == BrushTool::PHASE_TILE ||
-        m_currentBrush == BrushTool::VCRUNCH_TILE ||
         m_currentBrush == BrushTool::HCRUNCH_TILE ||
         m_currentBrush == BrushTool::DOOR_TILE ||
         m_currentBrush == BrushTool::ASYM_PATCH) {
@@ -768,30 +762,27 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         emit levelModified();
         update();
     } else if (m_currentBrush == BrushTool::PHASE_TILE ||
-               m_currentBrush == BrushTool::VCRUNCH_TILE ||
                m_currentBrush == BrushTool::HCRUNCH_TILE) {
         // Feature grid tiles (convert maps them to chars P/V/C and emits
         // b7 feature records; ERASE_AIR clears them like any tile).
         if (!model || !room) return;      // features are ROOM cells
-        // Special features are alone per room (door XOR phase XOR vcrunch
-        // XOR hcrunch) and live ONLY on the middle band (row 1) — top and
-        // bottom bands are entry/exit corridors (user rule 2026-10-14).
+        // Special features are alone per room (door XOR phase XOR hcrunch)
+        // and live ONLY on the middle band (row 1) — top and bottom bands
+        // are entry/exit corridors (user rule 2026-10-14).
         {
             const int brushBit =
-                (m_currentBrush == BrushTool::PHASE_TILE) ? 2 :
-                (m_currentBrush == BrushTool::VCRUNCH_TILE) ? 4 : 8;
+                (m_currentBrush == BrushTool::PHASE_TILE) ? 2 : 8;
             const int other = RoomSpecialBits(*room) & ~brushBit;
             if (other) {
                 QMessageBox::warning(
                     nullptr, QObject::tr("Special Features"),
                     QObject::tr("Special features are alone per room "
-                                "(door XOR phase XOR vcrunch XOR hcrunch). "
+                                "(door XOR phase XOR hcrunch). "
                                 "Erase the other special feature first."));
                 return;
             }
         }
-        if ((m_currentBrush == BrushTool::VCRUNCH_TILE ||
-             m_currentBrush == BrushTool::HCRUNCH_TILE) &&
+        if (m_currentBrush == BrushTool::HCRUNCH_TILE &&
             CountRoomElements() > 0) {
             QMessageBox::warning(
                 nullptr, QObject::tr("Crunch Room"),
@@ -809,32 +800,15 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                             "too)."));
             return;
         }
-        if (m_currentBrush == BrushTool::VCRUNCH_TILE) {
-            int vCount = 0;
-            for (const auto& c : room->feature_cells)
-                if (c.size() >= 3 && c[2] == (int)hero::TileType::VCRUNCH)
-                    ++vCount;
-            if (vCount >= 1 &&
-                FindFeature(*room, modelY, tileX)
-                    != (int)hero::TileType::VCRUNCH) {
-                QMessageBox::warning(
-                    nullptr, QObject::tr("Vcrunch"),
-                    QObject::tr("A room can have only ONE vcrunch cell. "
-                                "Erase the existing V first."));
-                return;
-            }
-        }
         int tileVal = (int)hero::TileType::PHASE;
-        if (m_currentBrush == BrushTool::VCRUNCH_TILE)
-            tileVal = (int)hero::TileType::VCRUNCH;
-        else if (m_currentBrush == BrushTool::HCRUNCH_TILE)
+        if (m_currentBrush == BrushTool::HCRUNCH_TILE)
             tileVal = (int)hero::TileType::HCRUNCH;
         // convert allows ONE special kind per room, row 1 only — refuse here
         // instead of writing data that fails the build (user 2026-10-18).
         if (modelY != 1) {
             QMessageBox::warning(
                 nullptr, QObject::tr("Special feature"),
-                QObject::tr("Phase / vcrunch / hcrunch live on row 1 only."));
+                QObject::tr("Phase / hcrunch live on row 1 only."));
             return;
         }
         for (const auto& c : room->feature_cells) {
@@ -900,7 +874,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                 QMessageBox::warning(
                     nullptr, QObject::tr("Special Features"),
                     QObject::tr("Special features are alone per room "
-                                "(door XOR phase XOR vcrunch XOR hcrunch). "
+                                "(door XOR phase XOR hcrunch). "
                                 "Erase the other special feature first."));
                 return;
             }
@@ -1258,7 +1232,6 @@ void MapCanvas::mouseReleaseEvent(QMouseEvent* event) {
     // legitimately passes through invalid layouts cell by cell).
     if (m_modelMode &&
         (m_currentBrush == BrushTool::PHASE_TILE ||
-         m_currentBrush == BrushTool::VCRUNCH_TILE ||
          m_currentBrush == BrushTool::HCRUNCH_TILE)) {
         ValidateFeatureTiles();
     }
@@ -1280,18 +1253,17 @@ void MapCanvas::ValidateFeatureTiles() {
         QStringList kinds;
         if (bits & 1) kinds << "door";
         if (bits & 2) kinds << "phase";
-        if (bits & 4) kinds << "vcrunch";
         if (bits & 8) kinds << "hcrunch";
         if (kinds.size() > 1)
             problems << tr("Mixed special features %1 — specials are alone "
-                           "per room (door XOR phase XOR vcrunch XOR "
-                           "hcrunch); convert will fail.")
+                           "per room (door XOR phase XOR hcrunch); "
+                           "convert will fail.")
                         .arg(kinds.join(", "));
     }
 
-    // phase on the hot middle band (convert: hard error). vcrunch/hcrunch
-    // ARE allowed on hot (user rule 2026-10-14: both crunch walls respect
-    // the hot flag — convert flags it in MetaB b6).
+    // phase on the hot middle band (convert: hard error). hcrunch IS
+    // allowed on hot (user rule 2026-10-14: the crunch band respects the
+    // hot flag — convert flags it in MetaB b6).
     if (model.mid_band_type != 0) {
         QStringList hits;
         for (const auto& c : ar->feature_cells) {
@@ -1307,35 +1279,6 @@ void MapCanvas::ValidateFeatureTiles() {
                         .arg(hits.join(", "));
     }
 
-    // vcrunch: at most one cell per room (user rule 2026-10-14 — multiple
-    // V cells collapse into one bbox; a single cell keeps the shutter
-    // visually clean as one 8px column).
-    if (RoomSpecialBits(*ar) & 4) {
-        int vCount = 0;
-        for (const auto& c : ar->feature_cells)
-            if (c.size() >= 3 && c[2] == (int)hero::TileType::VCRUNCH)
-                ++vCount;
-        if (vCount > 1)
-            problems << tr("Multiple VCRUNCH cells (%1) — only one "
-                           "allowed per room; convert collapses them "
-                           "into one bbox.")
-                        .arg(vCount);
-    }
-
-    // vcrunch cannot share the M1 slot with a side-1 strip/door patch
-    // (convert: hard error — the shutter stages CollisionEndX every frame)
-    if (RoomSpecialBits(*ar) & 4) {
-        for (const auto& p : ar->asym_patches) {
-            int side = p.size() >= 4 ? p[3] : 0;
-            if (side == 1) {
-                problems << tr("Vcrunch shares a side-1 (M1) patch/door — "
-                               "the shutter owns the M1 slot every frame; "
-                               "convert will fail.");
-                break;
-            }
-        }
-    }
-
     // Special features off the middle band (row 1) — convert: hard error.
     // Top/bottom bands are entry/exit corridors (user rule 2026-10-14).
     {
@@ -1345,7 +1288,6 @@ void MapCanvas::ValidateFeatureTiles() {
             for (int c = 0; c < model.width && c < 10; ++c) {
                 int t = model.tiles[r * model.width + c];
                 if (t == (int)hero::TileType::PHASE ||
-                    t == (int)hero::TileType::VCRUNCH ||
                     t == (int)hero::TileType::HCRUNCH)
                     hits << QString("%1,%2").arg(r + 1).arg(c + 1);
             }

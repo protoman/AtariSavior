@@ -1055,11 +1055,6 @@ def check_levels(src: Path) -> None:
                     f"((m1_col+1)<<4 | band_mask=${band_mask:02X}"
                     f"{' | $08 door' if room_m1_door_flag(room) else ''})")
             ball_n = ((ball_x - 87) >> 3) + 1 if ball_x else 0
-            try:
-                if any(c[2] == 11 for c in room_feature_cells(room)):
-                    ball_n |= 0x80        # vcrunch shutter flag
-            except ValueError as exc:
-                err(f"{who}: {exc}")
             if model.get("mid_band_type"):
                 ball_n |= 0x40            # hot band (touch-kill semantics)
             got_b = meta_byte(text, tag, "MetaB")
@@ -1181,9 +1176,9 @@ def check_levels(src: Path) -> None:
                     f"LaserState at $C0)")
 
             # Special-feature room rules (user rule 2026-10-14): specials
-            # are alone per room; vcrunch/hcrunch own the sprite slot (no
-            # objects at all); door allows a single non-key enemy and no
-            # lamp/miner; raft models need water rooms (bottom_band).
+            # are alone per room; hcrunch owns the sprite slot (no objects
+            # at all); door allows a single non-key enemy and no lamp/miner;
+            # raft models need water rooms (bottom_band).
             specials = []
             door_model = False
             has_raft = False
@@ -1201,13 +1196,11 @@ def check_levels(src: Path) -> None:
             if len(specials) > 1:
                 err(f"{label}: room mixes special features "
                     f"{specials} — specials are alone per room "
-                    "(door XOR phase XOR vcrunch XOR hcrunch)")
-            if (("vcrunch" in specials or "hcrunch" in specials)
-                    and objs > 0):
-                err(f"{label}: room has "
-                    f"{'vcrunch' if 'vcrunch' in specials else 'hcrunch'} "
-                    f"but room has {objs} object(s) (enemies+lamps+miner) "
-                    "— the shutter needs the sprite slot")
+                    "(door XOR phase XOR hcrunch)")
+            if "hcrunch" in specials and objs > 0:
+                err(f"{label}: room has hcrunch but room has {objs} "
+                    "object(s) (enemies+lamps+miner) — the crunch band needs "
+                    "the sprite slot")
             if door_model:
                 if len(enemies) > 1:
                     err(f"{label}: door room has {len(enemies)} enemies "
@@ -1645,111 +1638,6 @@ def check_level_window(src: Path) -> None:
             warn(f"slot ${s['pad']:04X} nearly full: slack {slack}B")
 
 
-def check_crunch_clock(src: Path) -> None:
-    """The vcrunch ping-pong formula vs the VBL state table.
-
-    VCS3 (bank3) executes the fold/dwell; VcrStateTab (bank2) is the VBL
-    hot-path form. The `cmp #32` fold and `cmp #4`/`sbc #4` dwell must stay
-    in step or the rendered aperture drifts from the kill test.
-    """
-    tokens = ("cmp #32", "eor #$3F", "cmp #4", "sbc #4")
-
-    def window(path: Path, label: str, lines_after: int) -> str:
-        if not path.exists():
-            return ""
-        text = path.read_text()
-        m = re.search(rf"^{re.escape(label)}:", text, re.M)
-        if not m:
-            return ""
-        tail = text[m.start():]
-        return "\n".join(tail.splitlines()[:lines_after])
-
-    b3v = window(src / "bank3.asm", "VCS3", 50)
-    if not b3v:
-        err("bank3.asm: VCS3 label not found (OvShutScan body)")
-        return
-    # 2026-10-19: both mirrors are gone. VcrCoveredState had no callers once
-    # VcrStateTab took the VBL hot path, and CrunchClock/CrunchMasks died with
-    # PhVcrEntry (the retired vcrunch tramp). The formula now exists only
-    # where it EXECUTES — VCS3 (bank3) — and the VcrStateTab bytes below are
-    # checked against the re-derived values.
-    for tok in tokens:
-        if tok not in b3v:
-            err(f"bank3.asm VCS3: expected {tok!r} in first 50 lines")
-    # VcrStateTab (bank2 $FE64, 32B) — the VBL hot-path form of the same
-    # formula (VcrShutter lookup, 2026-10-15: −21c/frame vs the jsr).
-    # Guard the table BYTES against the formula or render drifts from the
-    # kill test with no code change to notice.
-    lst2 = src / "bank3.lst"       # A3: VcrShutter/VcrStateTab moved to bank3
-    bin2 = src / "bank3.bin"
-    if lst2.exists() and bin2.exists():
-        addr = None
-        for _l in lst2.read_text(errors="replace").splitlines():
-            _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+VcrStateTab\s*$",
-                          _l.split(";")[0])
-            if _m:
-                addr = int(_m.group(1), 16)
-                break
-        if addr is None:
-            err("bank3.lst: VcrStateTab label not found")
-        else:
-            rom = bin2.read_bytes()
-            got = rom[addr - 0xF000: addr - 0xF000 + 32]
-            want = []
-            for sc in range(32):
-                e = sc - 4 if sc >= 4 else sc
-                want.append(0x00 if e < 4 else
-                            0x11 if e < 9 else 0x1B if e < 18 else 0x1F)
-            if list(got) != want:
-                err(f"VcrStateTab @ ${addr:04X}: bytes drift from the "
-                    f"shutter formula\n    got  {bytes(got).hex()}\n"
-                    f"    want {bytes(want).hex()}")
-
-
-def check_scan_tramp(src: Path) -> None:
-    """OvShutScan (bank2 tramp) ↔ bank3 VCS3 wiring — pins + twin bytes.
-
-    bank2 OvShutScan: sta $1FF9 + jmp $FD80 at $FE48; the jmp OPCODE is
-    fetched from bank3's image at the same address ($FE51 = jmp $FD80).
-    Return = the $FBEE pad (sta $1FF8 / rts), byte-identical in bank2
-    (Bank2ReturnPad) and bank3 — rts is fetched bank2-side post-switch,
-    so a silent drift in either copy strands the overlay or returns to
-    the wrong bank.
-    """
-    b2 = (src / "bank2.asm").read_text() if (src / "bank2.asm").exists() else ""
-    b3 = (src / "bank3.asm").read_text() if (src / "bank3.asm").exists() else ""
-    if not b2 or not b3:
-        err("bank2.asm/bank3.asm missing (scan tramp check)")
-        return
-    m = re.search(r"^VCS3:", b3, re.M)
-    if not m:
-        err("bank3.asm: VCS3 label not found")
-    elif "jmp $FD80" not in b2:
-        err("bank2.asm OvShutScan: jmp $FD80 literal missing (VCS3 moved?)")
-    if ".byte $4C, $80, $FD" not in b3 or "jmp $FD80" not in b3:
-        err("bank3.asm: $FE51 entry image (jmp $FD80) missing/stale")
-    # Byte-level pins below (text shape alone cannot see operand drift).
-    bin2 = src / "bank2.bin"
-    bin3 = src / "bank3.bin"
-    if bin2.exists() and bin3.exists():
-        a2 = bin2.read_bytes()
-        a3 = bin3.read_bytes()
-        sl2 = a2[0xBEE:0xBF2]
-        sl3 = a3[0xBEE:0xBF2]
-        if sl2 != bytes((0x8D, 0xF8, 0x1F, 0x60)):
-            err(f"$FBEE twin bank2 = {sl2.hex()} (want 8df81f60)")
-        if sl3 != sl2:
-            err(f"$FBEE twin bank3 = {sl3.hex()} != bank2 {sl2.hex()}")
-        # $FE57 entry image: both banks hold `jmp $FD80` (4C 80 FD) —
-        # bank2's live tramp fetch + bank3's pre-switch copy.
-        img2 = a2[0xE57:0xE5A]
-        img3 = a3[0xE57:0xE5A]
-        if img2 != bytes((0x4C, 0x80, 0xFD)):
-            err(f"$FE57 image bank2 = {img2.hex()} (want 4c80fd)")
-        if img3 != img2:
-            err(f"$FE57 image bank3 = {img3.hex()} != bank2 {img2.hex()}")
-
-
 def sync_bank3_labels(src: Path) -> int:
     """Post-bank3-pass1 (build.sh): export block labels + self-heal pads.
 
@@ -1866,8 +1754,6 @@ def main() -> int:
     check_levels(src)
     check_model_rects(src)
     check_equ_sync(src)
-    check_crunch_clock(src)
-    check_scan_tramp(src)
     check_frozen_addrs(src)
 
     for w in WARNS:

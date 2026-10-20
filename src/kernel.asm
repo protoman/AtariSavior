@@ -273,27 +273,6 @@ BandTab         = $ED           ; Phase 3 asym ball: staged Band0/1/2
                                 ; $ED-$EF (scbrdTmp etc.) only AFTER the
                                 ; cave read — staged-only window, like
                                 ; FetchPtr. Next VBL restages.
-; Vcrunch shutter slice staging (vcrunch_shutter_plan Phase C) — same
-; staged-only lifecycle as BandTab: bank2 PhaseBlink prologue restages
-; EVERY gameplay VBL (defaults $FF/0/0), VcrShutter arm overwrites for
-; shutter rooms, the cave kernel reads them, bank1 HUD then stomps
-; $EA/$EB/$EC (scorePtr6 lo/hi, scbrdCnt — title/footer/HUD-only roles,
-; all frame-disjoint from gameplay). Aliases (docs/zp_layout_skill.md).
-; Title-era frames never run PhaseBlink — their $EA-$EC garbage must be
-; inert (VcrBand=$FF by scbrdCnt underflow, VcrNext=$00 via ZP font ptr);
-; the .Row derive + dispatch idle guard make stale values read as 48/none.
-VcrState        = $EA           ; slice state byte: b0-4 = slice0-4 closed
-                                ;   ($11/$1B/$1F from VcrCoveredState)
-VcrNext         = $EB           ; next slice to render (armed = 1..5; idle 0).
-                                ;   .Row derives the band0 slice length from
-                                ;   VcrBand/VcrNext — no staged length byte:
-                                ;   the title HUD's $EE (DelayCnt) stomp left
-                                ;   a stale $FF on the title->game frames and
-                                ;   rows 0/1 ran 255 lines each (+414 wall).
-VcrBand         = $EC           ; tile band holding the shutter (1, middle
-                                ;   band — specials rule 2026-10-14) or $FF
-                                ;   (idle — tail dispatch skips slicing)
-
 ; Enemy RAM shadow — live X/Y + packed flags. ROM records are read-only.
 ; Sequential vars end at $BB (ObjBot removed S3.0b); $BC = RoomBandColor,
 ; $BD-$BF EnemyRam, $C0 LaserState, $C1-$C2 EnemyRamD/P.
@@ -811,23 +790,8 @@ CaveKernelRow:
     ; was never required; keep the store strictly between WSYNC and .Line.
     cpx #TILE_ROWS-1
     beq .RowLinesTide        ; row 2: tide count (36+off) from CollisionX
-    ; rows 0/1: derive the shutter-band length (armed = 8, else 48) instead
-    ; of reading a staged byte — any ZP-staged length is garbage on the
-    ; title->game frames (title HUD stomps $EE, PhaseBlink hasn't run:
-    ; measured $FF -> 255-line rows -> 681-line boot frames). Armed is
-    ; (RowIdx == VcrBand && VcrNext != 0); with VcrBand=1 (middle band,
-    ; specials rule 2026-10-14) row1 takes the 8-line derive and row0
-    ; reads 48 exactly as before. +12c on these two setup lines — already
-    ; stall lines (84-86c, d=152 double) ✓.
-    cpx VcrBand
-    bne .R1Full
-    lda VcrNext
-    beq .R1Full
-    lda #8
-    bne .R1Len              ; taken (A=8, Z=0)
-.R1Full:
+    ; rows 0/1: fixed 48 lines (the vcrunch shutter slice derive is gone).
     lda #48
-.R1Len:
     ; --- Sync to next scanline (rows 0/1) ---
     sta WSYNC
     sta LineCount
@@ -839,8 +803,6 @@ CaveKernelRow:
     sta LineCount
 
 .Line:
-SliceReentry:                 ; global alias ON .Line — RowSlice's tail
-                              ;   jmp lands here (its scope can't see .Line)
     ; --- Player sprite: color for THIS line, graphics byte for NEXT line ---
     ; GRP0 written on line S displays on line S+1 (latched at the sprite's
     ; window start after the write) — index graphics with A0+1 ($ff wraps
@@ -932,35 +894,7 @@ SliceReentry:                 ; global alias ON .Line — RowSlice's tail
     bne .Line                   ; loop if more scanlines in this row
 
     ; --- Advance to next tile row (X clobbered by object section: reload) ---
-    ; Phase C vcrunch shutter: while the band's slice run is live
-    ; (RowIdx == VcrBand, VcrNext in 1..4) the row does NOT advance — the
-    ; tail hands the setup line to RowSlice, which renders the next
-    ; sub-slice of the shutter band and jumps to SliceReentry. Slice path
-    ; ≈59c + jmp 3c = 62c from the previous WSYNC (<=73 => single line);
-    ; non-shutter pass-end +10c (three zp compares — VcrNext=0 is the
-    ; idle marker so a title-stomp VcrBand=0 coincidences cannot slice)
-    ; — measured segments stay under the 152c double-line ceiling.
-    ; RowSlice lives in the $FBD0 fill hole (below). TAIL JMP, not jsr:
-    ; the slice loop would otherwise push 4 returns per frame that the
-    ; jmp re-entry never pops (stack decay — F6-hotspot family), and the
-    ; old jsr + rts + lda/sta GRP0 + jmp tail was +14c on the first body
-    ; line after each slice setup (82c measured; >=74 = stall line).
-    ; SP: ZERO extra dips at kernel depth (jsr removed) — sim_bomb_fuse
-    ; gate (gameplay min SP >= $F8) can only improve.
-    ; SliceReentry is a GLOBAL label: .Line is local to CaveKernelRow's
-    ; scope and is not referenceable from RowSlice's scope (DASM has no
-    ; external-local syntax).
     ldx RowIdx
-    cpx VcrBand                ; $FF idle (default) → never matches rows 0-2
-    bne .RowAdv
-    lda VcrNext
-    beq .RowAdv                ; 0 = idle marker (arm starts at 1)
-    cmp #5                     ; slices 0-4 done (VcrNext disarmed to 5)
-    bcs .RowAdv
-    jmp RowSlice               ; bookkeeping + iny + sta WSYNC, then
-                               ;   jmp SliceReentry (no stack push; the
-                               ;   trampoline label sits ON .Line below)
-.RowAdv:
     inx
     stx RowIdx
     ; Phase 3: single cpx + bcs replaces `cpx #TILE_ROWS / cpx #TILE_ROWS+1`
@@ -2836,54 +2770,6 @@ DropSpeedTable:
     .ds $FB37 - *, 0            ; TitleIntro retired — merged title screen
                                  ;   (2026-10-19): $FD now goes to TitleWork
 
-; ------------------------------------------------------------------------------
-; RowSlice — Phase C vcrunch shutter: render ONE sub-slice of the shutter
-; band (VcrBand=1, middle band — specials rule 2026-10-14).
-; jsr-entered from the kernel row-advance (rts back, then `jmp .Line` —
-; DASM has no external-local syntax so the loop re-entry stays in-scope)
-; while RowIdx == VcrBand and VcrNext in 1..4. Replaces the .Row setup
-; line for slices 1-4 (slice0 ran via the kernel-entry .Row with the
-; derived 8-line count):
-;   ranges   [0,9) [9,18) [18,31) [31,40) [40,49)  = 5 setups + 44 bodies
-;            = 49 WSYNCs — exactly band0's original count (wall unchanged).
-; ENABL/ENAM1 = per-slice state gates (ball $ff/$00, left-mirror M1
-; $02/$00 — Step 4) — written early on the setup line (well before the
-; block's ball pixels, so no transition seam); PF/palette persist from
-; .Row's band setup. Setup line WSYNCS (visible) but does NOT enter .Line —
-; Y (running A0) must still advance so the next .Line pass indexes the
-; correct sprite row (bug: skipped iny delayed GRP0 3 lines when armed).
-; .Line inherits Y = A0+1 exactly as after a body WSYNC.
-; Cycles: tail ≈19 + body ≈36 + jsr/rts 12 ≈ 67-71 from the previous
-; WSYNC (<= 76 → the setup line does not stall; band0 keeps its measured
-; wall contribution). Step 4: +6/+8 for the ENAM1 pair, −5 from moving
-; `inc VcrNext` after the WSYNC — net inside the same window.
-; SBmask entries = VcrState bit per slice; SBod = bodies per slice
-; (index 0 = slice0, correct-but-unused: slice0 count comes from the
-; kernel-entry .Row derive).
-; ------------------------------------------------------------------------------
-RowSlice:
-    ldx VcrNext
-    lda SBmask,X
-    and VcrState
-    beq .RSopen
-    lda #$ff
-.RSopen:
-    sta ENABL
-    lda SBod,X
-    sta LineCount
-    inc VcrNext
-    iny                     ; running A0: setup WSYNC is a visible line like
-                            ;   a body — without this the next .Line indexes
-                            ;   sprite row A0 (armed sprite sat ~4 lines low)
-    sta WSYNC               ; this line = the slice setup line
-    jmp SliceReentry        ; tail re-enters .Line via the global trampoline
-                            ;   (jsr/rts replaced 2026-10-15: +14c tail
-                            ;   stalled the first slice body line at 82c;
-                            ;   tail jmp costs 3c and pushes no stack)
-SBmask:
-    .byte 1,2,4,8,16         ; state bit for slices 0-4
-SBod:
-    .byte 8,8,12,8,8         ; body lines per slice (5 setups + 44 = 49)
 
     .ds $FBD0 - *, 0            ; #22: pin tramp at $FBD0 — bank2's twin
                                  ;   sits at the same address (pin moved from
@@ -2934,7 +2820,7 @@ CallPad_UpdateLaserSound:
     jmp $FAA4
 CallPad_BuildColupF:
     sta $1FF9                   ; A3: body lives in bank3 (record stream)
-    jmp $F5C7                   ; BuildColupF (bank3; synced by verify_build)
+    jmp $F50B                   ; BuildColupF (bank3; synced by verify_build)
 CallPad_BombMarkWalls:
     sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
     jmp $FB10
@@ -2955,7 +2841,7 @@ CallPad_TitleKernel:
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F19F
+    jmp $F184
     .ds $FC61 - *, 0            ; bank0↔bank1 intro-music tick
 CallPad_MusicTick:
     sta $1FF7
@@ -3853,7 +3739,7 @@ TallyTramp:
     .ds $FFEC - *, 0
 HotOverlapFlag:
     sta $1FF9                   ; select bank3 (record stream lives there)
-    jmp $F683                   ; bank3 HotOverlapBody (synced by verify_build)
+    jmp $F5C7                   ; bank3 HotOverlapBody (synced by verify_build)
     .ds $FFF2 - *, 0            ; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
 
 ; ------------------------------------------------------------------------------

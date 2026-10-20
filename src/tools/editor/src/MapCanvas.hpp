@@ -52,8 +52,7 @@ enum class BrushTool {
     // are taken; ApplyBrushAt maps them to TileType 9-12).
     DOOR_TILE = 21,     // TileType::LOCKED_DOOR as an async side-0 patch
     PHASE_TILE = 22,    // TileType::PHASE grid cell
-    VCRUNCH_TILE = 23,  // TileType::VCRUNCH grid cell
-    HCRUNCH_TILE = 24   // TileType::HCRUNCH grid cell
+    HCRUNCH_TILE = 23   // TileType::HCRUNCH grid cell
 };
 
 class MapCanvas : public QWidget {
@@ -102,13 +101,13 @@ public:
 private:
     void MouseToTile(const QPointF& pos, bool apply);
     // Warn (once per mouse RELEASE, never mid-drag) about feature layouts
-    // convert would reject at build: phase/vcrunch on the hot middle band,
+    // convert would reject at build: phase on the hot middle band,
     // hcrunch cells outside one band / not a contiguous prefix from col 0.
     void ValidateFeatureTiles();
     // The room that owns the async layer being edited/drawn (the ACTIVE room
     // in level mode; NULL in model mode, where the async brushes refuse).
     const hero::RoomData* AsyncRoomRef() const;
-    // Async walls (door/phase/vcrunch/hcrunch) are ROOM properties since the
+    // Async walls (door/phase/hcrunch) are ROOM properties since the
     // 2026-10-17 format change; the room-level brush UI is the next editor
     // step. The legacy brushes refuse (one dialog per session) instead of
     // writing the retired model fields.
@@ -118,10 +117,10 @@ private:
     void DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int dir) const;
     // Miner + enemies + lamps in the active room (flicker budget).
     int CountRoomElements() const;
-    // Same count for an explicit room index (vcrunch rule scans every room
+    // Same count for an explicit room index (crunch rule scans every room
     // that shares a model).
     int CountRoomElementsIn(int roomIdx) const;
-    // True if the ACTIVE ROOM has a vcrunch/hcrunch feature cell.
+    // True if the ACTIVE ROOM has an hcrunch feature cell.
     bool RoomHasCrunch() const;
     // False + warning dialog if adding would exceed kMaxRoomElements.
     // asEnemy=true relaxes the door-room cap (a door room allows a single
