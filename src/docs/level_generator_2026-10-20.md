@@ -219,3 +219,24 @@ surface, not an exit), determinism and the converter capacity.
 
 Measured: 211 rooms, 20 shapes, staged build `verify_build OK`, bank2 tables
 326 B slack, bank3 shape data 317 B slack.
+
+## G4 (2026-10-20): HERO-style water channel + HERO map measurement
+
+**Channel turn** (level 11+): the serpentine's column-0 turn room becomes a
+water crossing — hot row-1 ceiling on cells 1..7, the centre cells 8/9 stay the
+N shaft, cell 0 is the H exit; the floor is open water with a raft. Flying
+across at row 1 is lethal, so the player drops to the low channel and rides the
+raft to the side exit (HERO-like, option B). In two-gap levels the ceiling's
+two gaps are opened through the hot row so the entry lands in the channel.
+Only the column-0 room becomes a channel (the column-1 room is the goal at
+n=11 and would put the miner in the water).
+
+**HERO 2600 map measurement** (vgmaps PNGs, levels 1/4/8/12/16/20): the caves
+are 153x253 px (level 1, ~1x1.8 room-screens) up to 1071x1267 (level 16,
+~6.7x8.8). Slicing them into our 10x3-cell grid (80x144 px half-room, 2030
+sliding windows) yields **512 distinct 10x3 patterns** and **137 distinct
+10-cell bands**. Sliding windows over a continuous cave inflate the count
+(shifts of one ledge look new) and the empty pattern dominates, so read it as
+an upper bound/direction — but our 18 shapes / 12 bands is clearly the low end.
+Format ceilings: shape index is 6 bits (**<= 64 shapes**), row-pool index is
+1 byte (**<= 255 bands**) — a 30-60 archetype library fits.

@@ -395,8 +395,10 @@ enum ShapeBits {
     SHAPE_HOT = 16,      // row-1 walls hot (model mid_band_type = 1)
     SHAPE_GATE = 32,     // row-1 wall with ONE open gap (door / gate column)
     SHAPE_WATER = 64,    // row-2 open water (bottom band, raft/tentacle)
-    SHAPE_2GAP = 128     // TWO vertical gaps (cells 3 and 6) instead of the
+    SHAPE_2GAP = 128,    // TWO vertical gaps (cells 3 and 6) instead of the
                          // centre 8-9: the next room must repeat the pair
+    SHAPE_CHANNEL = 256  // HERO-style water crossing: hot row-1 ceiling
+                         // (cells 1..7), low channel over the water, raft
 };
 constexpr int kGateCol = 4;          // the gate/door cell in row 1
 constexpr int kGapA = 3;             // 2-gap columns (model cells)
@@ -409,6 +411,16 @@ struct GridPos {
     int x = 0;
     int y = 0;
 };
+// The serpentine's turn room (N in, H out) becomes the water crossing from
+// level 11: a hot row-1 ceiling forces the player down to the low channel,
+// where the raft crosses the water to the side exit (HERO-like).
+bool IsChannelTurn(int level, const GridPos& pos) {
+    // Column 0 only: the room BEFORE the turn (N in, H out). The column-1 room
+    // shares the same opening but is the goal at n=11 and a normal room after;
+    // turning that one into a channel would put the miner in the water.
+    return level >= 11 && level > kColumnRooms
+           && pos.x == 0 && pos.y == kTurnY;
+}
 
 std::string ShapeName(int mask) {
     if (mask == 0) {
@@ -506,6 +518,25 @@ ModelData MakeShapeModel(int modelId, int mask) {
             for (int x = 0; x < kRoomWidth; ++x) model.tiles[base + x] =
                 (int)TileType::SOLID_WALL;
             model.tiles[base + kGapA] = model.tiles[base + kGapB] =
+                (int)TileType::AIR;
+        }
+    }
+    if (mask & SHAPE_CHANNEL) {
+        // Hot ceiling cells 1..7; cells 8/9 stay the N shaft, cell 0 is the
+        // H exit. The floor is open water: crossing low on the raft is the
+        // only safe route (row 1 is lethal wall).
+        for (int x = 1; x <= 7; ++x) {
+            model.tiles[1 * kRoomWidth + x] = (int)TileType::SOLID_WALL;
+        }
+        model.mid_band_type = 1;
+        if (mask & SHAPE_2GAP) {
+            // The 2-gap ceiling above must drop INTO the channel, not onto a
+            // hot cell: open the same two cells in the hot row.
+            model.tiles[1 * kRoomWidth + kGapA] = (int)TileType::AIR;
+            model.tiles[1 * kRoomWidth + kGapB] = (int)TileType::AIR;
+        }
+        for (int x = 1; x < kRoomWidth; ++x) {
+            model.tiles[(kRoomHeight - 1) * kRoomWidth + x] =
                 (int)TileType::AIR;
         }
     }
@@ -608,9 +639,13 @@ int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
     if (HasRoomAt(walk, pos.x, pos.y + 1)) mask |= SHAPE_S;
     if (levelNumber > kColumnRooms && pos.y == kTurnY) mask |= SHAPE_H;
     if (roomIndex == 0) mask |= SHAPE_START;   // the level's spawn room
-    if (role == Role::Hot) mask |= SHAPE_HOT;
-    if (role == Role::Gate || role == Role::Phase) mask |= SHAPE_GATE;
-    if (role == Role::WaterGoal) mask |= SHAPE_WATER;
+    if (IsChannelTurn(levelNumber, pos)) {
+        mask |= SHAPE_CHANNEL;
+    } else {
+        if (role == Role::Hot) mask |= SHAPE_HOT;
+        if (role == Role::Gate || role == Role::Phase) mask |= SHAPE_GATE;
+        if (role == Role::WaterGoal) mask |= SHAPE_WATER;
+    }
     return mask;
 }
 
@@ -745,7 +780,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         const LevelPlan plan = PlanFor(l);
         const int count = (int)walks[l - 1].size();
         for (int i = 0; i < count; ++i) {
-            const Role role = RoleForRoom(i, count, plan);
+            Role role = RoleForRoom(i, count, plan);
+            if (IsChannelTurn(l, walks[l - 1][i])) role = Role::Normal;
             roles[l - 1].push_back(role);
             const int mask = RoomShapeMask(l, walks[l - 1], walks[l - 1][i],
                                            i, role, plan.twogap);
@@ -821,7 +857,20 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                         {1, col, (int)TileType::SOLID_WALL, side == 0 ? 1 : 0});
                 }
             }
-            FillRoomObjects(l, i, roomCount, roles[l - 1][i], plan, room);
+            if (masks[l - 1][i] & SHAPE_CHANNEL) {
+                // Water crossing: raft on the open water + one bat in the
+                // centre shaft (cell 8). No role objects (the hot ceiling is
+                // the challenge).
+                room.bottom_band = true;
+                room.bottom_r = 24;
+                room.bottom_g = 88;
+                room.bottom_b = 208;
+                AddEnemy(room, EnemyType::RAFT, 4.0f, 8.0f, 1.0f, 0.0f);
+                AddEnemy(room, EnemyType::BAT, 16.0f, 4.0f,
+                         1.25f + 0.25f * (l % 4), 13.0f);
+            } else {
+                FillRoomObjects(l, i, roomCount, roles[l - 1][i], plan, room);
+            }
             level.rooms.push_back(room);
         }
         // Keys: one per gate, placed in the nearest earlier room that is not
