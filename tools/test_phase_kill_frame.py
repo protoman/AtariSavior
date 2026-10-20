@@ -39,7 +39,7 @@ def lst_labels(path):
 L0 = lst_labels(SRC / "bank0.lst")
 L1 = lst_labels(SRC / "bank1.lst")
 L2 = lst_labels(SRC / "bank2.lst")
-L3 = lst_labels(SRC / "bank2.lst")   # C2: level blocks + HOV walker (bank2)
+L3 = lst_labels(SRC / "bank3.lst")   # C7: shape blocks + HOV walker (bank3)
 
 import test_fixtures as FX  # noqa: E402
 FX.freeze_m2(BANKS, L3)     # frozen model2 into the private copy (rule 2026-10-14)
@@ -57,8 +57,8 @@ PC_HOV_FEAT = L3[".HOVfeature"]
 
 
 def _b3_pc(pattern: str) -> int:
-    """PC of the first bank2.lst row whose source matches `pattern`."""
-    for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
+    """PC of the first bank3.lst row whose source matches `pattern`."""
+    for _l in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+", _l)
         if _m and re.search(pattern, _l):
             return int(_m.group(1), 16)
@@ -196,7 +196,7 @@ def step():
     if mem.bank == 0 and mpu.pc == PC_LOSECALL:
         counts["losecall"] += 1
         loses.append(frame)
-    if mem.bank == 2:      # C2: bank2 owns the walker
+    if mem.bank == 3:      # C7: bank3 owns the hot walker
         if mpu.pc == PC_HOV_BEQCNT:
             counts["beqdone"] += 1
         elif mpu.pc == PC_HOV_BMI:
@@ -213,7 +213,7 @@ def step():
         hits.append((frame, mem.ram[I_CCX], mem.ram[I_CCY],
                      mem.ram[I_CEX], mem.ram[I_CEFY],
                      mem.ram[I_DEAD], mem.ram[I_ROOMX], mem.ram[I_ROOMY]))
-    if mem.bank == 2 and mpu.pc == PC_HOV:
+    if mem.bank == 3 and mpu.pc == PC_HOV:
         hovs.append((frame, (mem.ram[I_DEAD] >> 5) & 1, mem.ram[I_DEAD],
                      mem.ram[I_CCX], mem.ram[I_CCY], mem.ram[I_TEMP]))
         if len(hovs) == 1:

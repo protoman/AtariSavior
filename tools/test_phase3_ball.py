@@ -49,13 +49,13 @@ PC_START = LABELS["StartFrame"]
 # sits at LEVEL1_AsyncExtras+1/+2 (header = flags, MetaA, MetaB).
 _pat = re.compile(r"^\s*\d+\s+([0-9a-f]{4})\s+LEVEL1_AsyncExtras\s*$")
 EXTRAS = None
-for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
+for _l in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
     _m = _pat.match(_l)
     if _m:
         EXTRAS = int(_m.group(1), 16)
         break
 if EXTRAS is None:
-    sys.exit("LEVEL1_AsyncExtras label not found in bank2.lst")
+    sys.exit("LEVEL1_AsyncExtras label not found in bank3.lst")
 
 
 def run(rom: Path, band1: int = 0xFF) -> dict:
@@ -64,15 +64,15 @@ def run(rom: Path, band1: int = 0xFF) -> dict:
     banks = [bytearray(blob[4096 * i:4096 * (i + 1)]) for i in range(4)]
     # MetaA band mask: band1 parameterized for the partial-mask run
     mask = 0x07 if band1 else 0x05
-    banks[2][(EXTRAS + 1) & 0xFFF] = mask          # MetaA
-    banks[2][(EXTRAS + 2) & 0xFFF] = META_B_POKE   # MetaB (ball col)
+    banks[3][(EXTRAS + 1) & 0xFFF] = mask          # MetaA
+    banks[3][(EXTRAS + 2) & 0xFFF] = META_B_POKE   # MetaB (ball col)
     # C5: the loader ALSO derives the band gates from the SIDE-0 patch bytes
     # (row b7-6 | side b4 | col b3-0) and ORs them into MetaA, so the patch
     # rows must agree with the poked mask (row 0 + row 1 for the full run,
     # rows 0 + 2 for the band-1-partial run).
     prow = (0, 1) if band1 else (0, 2)
-    banks[2][(EXTRAS + 3) & 0xFFF] = prow[0] << 6
-    banks[2][(EXTRAS + 4) & 0xFFF] = prow[1] << 6
+    banks[3][(EXTRAS + 3) & 0xFFF] = prow[0] << 6
+    banks[3][(EXTRAS + 4) & 0xFFF] = prow[1] << 6
     respbl_temp = []
 
     class ProbeMem(Mem):

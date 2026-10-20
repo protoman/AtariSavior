@@ -95,13 +95,11 @@ L0 = parse_labels(SRC / "bank0.lst", {"BombX", "LineCount",
                                 "EnemyDeadMask", "CollisionX",
                                 "BombPacked", "PF0Buf", "PF1Buf",
                                 "PF2Buf"})
-L2 = parse_labels(SRC / "bank2.lst", {"M0Rows", "M3Rows",
-                                      "LEVEL1_AsyncExtras"})
-# StageBandTab lives in bank3 (chunk A2); relocated $F0A3 -> $FC38 in chunk 5
-# (repack 2026-10-20) so the level-data window could start at $F0A3.
-L3 = parse_labels(SRC / "bank2.lst", {"B3StageBand", "M0Rows",
+L2 = {}
+# C7 (2026-10-20): the stage/band walker and the shape blocks + extras
+# streams live in bank3 again; bank2 keeps the room/enemy tables.
+L3 = parse_labels(SRC / "bank3.lst", {"B3StageBand", "M0Rows",
                                       "M3Rows", "LEVEL1_AsyncExtras"})
-# A3: level/model blocks live in bank3 — block labels AND bytes from there.
 L2.update({k: L3[k] for k in ("M0Rows", "M3Rows",
                               "LEVEL1_AsyncExtras")})
 L2.update(parse_equ(SRC / "bank2.lst",
@@ -145,8 +143,10 @@ for _f in ("kernel.asm", "bank1.asm", "bank2.asm", "bank3.asm"):
 # the ROM bytes so the test tracks models.json edits (bugs.md 28 point 1).
 M0 = L2["M0Rows"]
 _EXOFF = L2["LEVEL1_AsyncExtras"] - 0xF000
-META_A = BANKS[2][_EXOFF + 1]
-META_B = BANKS[2][_EXOFF + 2]
+# C7 (2026-10-20): the extras records live in BANK3 (the shape half), so the
+# bytes come from that image.
+META_A = BANKS[3][_EXOFF + 1]
+META_B = BANKS[3][_EXOFF + 2]
 BALLX = 8 * META_B + 86 if META_B else 0    # 87+8*ball_col
 BANDS = tuple(0xFF if META_A & (1 << i) else 0 for i in range(3))
 BAND_MASK = META_A & 0x07
@@ -197,7 +197,7 @@ def stage(deadmask: int) -> tuple[tuple, int, int]:
     r[L2["RoomPF0Lo"] - 0x80] = META_A          # staged meta (room entry)
     r[(L2["RoomPF0Lo"] + 1) - 0x80] = META_B
     r[L0["EnemyDeadMask"] - 0x80] = deadmask
-    mem.bank = 2            # C2: moved body lives in bank2
+    mem.bank = 3            # C7: the band walker lives in bank3
     mpu = MPU(memory=mem)
     mpu.pc = L3["B3StageBand"]
     mpu.a = mpu.x = mpu.y = 0
@@ -424,7 +424,7 @@ def main() -> int:
         r[L2["RoomPF0Lo"] - 0x80] = meta_a         # staged MetaA
         r[L2["RoomPF0Lo"] + 1 - 0x80] = 0x00
         r[L0["EnemyDeadMask"] - 0x80] = 0
-        mem.bank = 2            # C2: moved body lives in bank2
+        mem.bank = 3            # C7: the band walker lives in bank3
         mpu = MPU(memory=mem)
         mpu.pc = L3["B3StageBand"]
         mpu.a = mpu.x = mpu.y = 0
@@ -459,7 +459,7 @@ def main() -> int:
         r[L2["RoomPF0Lo"] - 0x80] = meta_a        # staged MetaA
         r[L2["RoomPF0Lo"] + 1 - 0x80] = meta_b    # staged MetaB
         r[L0["EnemyDeadMask"] - 0x80] = 0
-        mem.bank = 2            # C2: moved body lives in bank2
+        mem.bank = 3            # C7: the band walker lives in bank3
         mpu = MPU(memory=mem)
         mpu.pc = L3["B3StageBand"]
         mpu.a = mpu.x = mpu.y = 0
@@ -505,7 +505,7 @@ def main() -> int:
         r[L0["EnemyDeadMask"] - 0x80] = 0
         r[0xC2 - 0x80] = clock             # EnemyRamP
         r[0xC7 - 0x80] = 0xC0              # PF1Buf row1 pre-seeded ON
-        mem.bank = 2            # C2: moved body lives in bank2
+        mem.bank = 3            # C7: the band walker lives in bank3
         mpu = MPU(memory=mem)
         mpu.pc = L3["B3StageBand"]
         mpu.a = mpu.x = mpu.y = 0

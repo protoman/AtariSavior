@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""C5 async extras loader — test-owned level block, real bank2 loader.
+"""C5/C7 async extras loader — test-owned shapes + stream, real bank3 loader.
 
 The live stage cannot prove the extras path on its own: every async room in it
 is a patch-only M1 strip or the one hcrunch room, so a regression in (say) the
 record-skip arithmetic would only show up when a level carries SEVERAL async
 rooms, or a phase room, or a feature room whose shape is hot. This test
-therefore AUTHORS its own level block (user rule 2026-10-14: tests own their
-data) and drives the REAL `B3RoomBlocks` / `ExtrasLoad` in py65:
+therefore AUTHORS its own shapes + extras stream (user rule 2026-10-14: tests
+own their data) and drives the REAL `B3RoomBlocks` / `ExtrasLoad` in py65:
 
   * a non-async room  -> MetaA = 0, MetaB = $40 iff the shape has hot records,
                          hot stream = the shape;
@@ -14,8 +14,15 @@ data) and drives the REAL `B3RoomBlocks` / `ExtrasLoad` in py65:
                          hot stream = the shape (patches paint via ball/M1);
   * a feature room    -> the feature cells are OR'd into the PF triple and
                          RoomRectsLo/Hi repoint at the extras' hot stream;
-  * the record-skip walk reaches record N (ordinal indexing) and the stream
-    base is derived as base + 3n + 4*total(enemy records).
+  * the record-skip walk reaches record N (ordinal indexing).
+
+C7 (2026-10-20) contract — the loader is BANK3 and takes:
+  * `RoomPF0Lo` ($99) = the raw shapes byte (idx b5-0 | band b6 | extras b7),
+    staged by bank2's EnterRoomB2;
+  * `LevelConnSpare` ($A2) = the room's 1-based extras ordinal;
+  * `Level` ($A3) = the level index into the generated `LevExtrasLo/Hi` base
+    table, and `LEVEL_ShapeTable` for the block address. Both live in bank3,
+    so the harness patches them in its PRIVATE bank3 copy.
 
 Run: /home/iuri/python3/bin/python3 tools/test_extras_room.py
 """
@@ -29,22 +36,24 @@ sys.path.insert(0, str(ROOT / "tools"))
 import test_cell_map as _CM  # noqa: E402
 from test_cell_map import parse_labels  # noqa: E402
 
-NAMES = {"B3RoomBlocks", "ERBlocksDone", "PF0Buf", "RoomRectsLo", "RoomRectsHi",
-         "RoomPF0Lo", "RoomPF0Hi", "RoomMetaA", "RoomMetaB", "LevelPFDataLo",
-         "LevelPFDataHi", "LevelRoomN", "RoomNo",
+NAMES = {"B3RoomBlocks", "PF0Buf", "RoomRectsLo", "RoomRectsHi",
+         "RoomPF0Lo", "RoomPF0Hi", "RoomMetaA", "RoomMetaB", "Level",
+         "LevelConnSpare", "RoomNo", "LEVEL_ShapeTable",
+         "LevExtrasLo", "LevExtrasHi",
          "RowPoolPF0", "RowPoolPF1", "RowPoolPF2"}
-LAB = parse_labels(SRC / "bank2.lst", NAMES)
+LAB = parse_labels(SRC / "bank3.lst", NAMES)
 missing = NAMES - LAB.keys()
 if missing:
-    sys.exit(f"bank2.lst labels missing: {sorted(missing)}")
+    sys.exit(f"bank3.lst labels missing: {sorted(missing)}")
 
-BANK2 = bytearray((SRC / "bank2.bin").read_bytes())
+BANK3 = bytearray((SRC / "bank3.bin").read_bytes())
 
-# --- test-owned staging area: bank2's FooterFont/fill tail ($F800-$F8F7) is
-# not executed by this test (only B3RoomBlocks + the tail jump run) --------
-SHAPE_A = 0xF800          # non-async shape (cold: no hot records)
-SHAPE_B = 0xF80B          # feature-room shape (cold)
-LEVEL = 0xF820            # synthetic level block
+# --- test-owned staging area inside bank3's $F010 data window tail ----------
+SHAPE_A = 0xF400          # non-async shape (cold: no hot records)
+SHAPE_B = 0xF40B          # feature-room shape (cold)
+EXTRAS = 0xF420           # synthetic extras stream (level 0's base)
+ROW_POOL_SLOT = 0xF430    # private pool image (the loader reads the REAL
+                          # pool column addresses, see install_rows)
 
 PF_A = bytes.fromhex("f0 30 f0 ff 00 ff 3f 0c ff")
 PF_B = bytes.fromhex("f0 f0 f0 ff ff 3f 3f 00 ff")
@@ -52,7 +61,7 @@ PF_B = bytes.fromhex("f0 f0 f0 ff ff 3f 3f 00 ff")
 
 def put(addr: int, data: bytes) -> None:
     off = addr - 0xF000
-    BANK2[off:off + len(data)] = data
+    BANK3[off:off + len(data)] = data
 
 
 def install_rows(pf9: bytes) -> list[int]:
@@ -61,7 +70,7 @@ def install_rows(pf9: bytes) -> list[int]:
 
     A shape block no longer carries PF bytes — it carries 3 one-byte indices
     into `RowPoolPF0/1/2`, which the loader expands into PF0Buf. The test
-    OWNS these pool slots (the private bank copy is never played), so the
+    OWNS these pool slots (the private bank3 copy is never played), so the
     columns are rebuilt from a deterministic walk of both fixtures."""
     global _POOL
     rows = [(pf9[b], pf9[3 + b], pf9[6 + b]) for b in range(3)]
@@ -74,7 +83,7 @@ def install_rows(pf9: bytes) -> list[int]:
                         ("RowPoolPF2", 2)):
         base = LAB[column] - 0xF000
         for i, r in enumerate(_POOL):
-            BANK2[base + i] = r[reg]
+            BANK3[base + i] = r[reg]
     return idx
 
 
@@ -88,13 +97,18 @@ _POOL: list[tuple[int, int, int]] = []
 put(SHAPE_A, shape_with(PF_A))                         # hot count 0 + rows
 put(SHAPE_B, shape_with(PF_B))
 
-# --- level block: n = 3 rooms -> shapes / positions / counts / (no enemies)
-# / extras. Room 0 = plain, room 1 = patch-only, room 2 = hcrunch feature.
-SHAPES = bytes([0x00, 0x80, 0x80])        # idx 0 plain | ... (shape addrs via
-                                          # RoomRectsLo below)
-POSITIONS = bytes([0x00, 0x01, 0x02])
-COUNTS = bytes([0x00, 0x01, 0x02])        # rooms 1/2 = ordinals 1/2
-EXTRAS = bytes([
+# The loader resolves the shape address through LEVEL_ShapeTable and the
+# extras base through LevExtrasLo/Hi[Level]; point rows 0..2 / level 0 at the
+# fixtures above (the private copy is the only one touched).
+for slot, shape in enumerate((SHAPE_A, SHAPE_A, SHAPE_B)):
+    off = LAB["LEVEL_ShapeTable"] - 0xF000 + 2 * slot
+    BANK3[off] = shape & 0xFF
+    BANK3[off + 1] = shape >> 8
+BANK3[LAB["LevExtrasLo"] - 0xF000] = EXTRAS & 0xFF
+BANK3[LAB["LevExtrasHi"] - 0xF000] = EXTRAS >> 8
+
+# --- extras stream: room 1 patch-only, room 2 hcrunch feature --------------
+STREAM = bytes([
     # room 1 (ordinal 1): 2 patches, 0 features, MetaA $90 (M1 col 8),
     # MetaB $00; patch bytes = row0/side0/col9 ($09) and row1/side1/col8
     # ($58) — the loader ORs band 0 from the side-0 patch only.
@@ -104,27 +118,26 @@ EXTRAS = bytes([
     0x04, 0x00, 0x00, 0x89,
     0x01, 0x82, 0x00, 0x01, 0x14, 0x01,
 ])
-put(LEVEL, SHAPES + POSITIONS + COUNTS + EXTRAS)
-EXTRAS_BASE = LEVEL + 3 * 3               # base + 3n + 4*0 enemy records
-REC1 = EXTRAS_BASE                        # room 1 record (5 B, no hot stream)
-REC2 = EXTRAS_BASE + 5                    # room 2 record (flags..hot count)
-ROOM2_HOT = REC2 + 4                      # 3 B header + 1 feature byte = the
-                                          # room's hot-stream count byte
+put(EXTRAS, STREAM)
+REC1 = EXTRAS                       # room 1 record (5 B, no hot stream)
+REC2 = EXTRAS + 5                   # room 2 record (flags..hot count)
+ROOM2_HOT = REC2 + 4                # 3 B header + 1 feature byte = the
+                                    # room's hot-stream count byte
+
+SHAPE_IDX = {0: 0, 1: 0, 2: 2}      # room -> synthetic table row
 
 
-def run_room(room: int, shape: int) -> bytearray:
-    """Drive B3RoomBlocks for `room`; stop at ERBlocksDone (tail of the
-    loader) and return the ZP image."""
-    _CM.BANK2 = bytearray(BANK2)          # fresh private copy per case
+def run_room(room: int, ordinal: int = 0) -> bytearray:
+    """Drive B3RoomBlocks; stop when the ReturnPad rts reaches the sentinel
+    and return the ZP image."""
+    _CM.BANK3 = bytearray(BANK3)          # fresh private copy per case
     mem = _CM.Mem()
-    mem.bank = 2                          # B3RoomBlocks lives in bank2
+    mem.bank = 3                          # B3RoomBlocks lives in bank3
     r = mem.ram
-    r[LAB["LevelPFDataLo"] - 0x80] = LEVEL & 0xFF
-    r[LAB["LevelPFDataHi"] - 0x80] = LEVEL >> 8
-    r[LAB["LevelRoomN"] - 0x80] = 3
+    r[LAB["RoomPF0Lo"] - 0x80] = SHAPE_IDX[room] | (0x80 if ordinal else 0)
+    r[LAB["LevelConnSpare"] - 0x80] = ordinal
+    r[LAB["Level"] - 0x80] = 0            # level 0 -> the fixture base
     r[LAB["RoomNo"] - 0x80] = room
-    r[LAB["RoomRectsLo"] - 0x80] = shape & 0xFF
-    r[LAB["RoomRectsHi"] - 0x80] = shape >> 8
     mpu = _CM.MPU(memory=mem) if hasattr(_CM, "MPU") else None
     if mpu is None:
         from py65.devices.mpu6502 import MPU  # noqa: PLC0415
@@ -135,9 +148,10 @@ def run_room(room: int, shape: int) -> bytearray:
     mem[0x1FE] = 0x00
     for _ in range(20000):
         mpu.step()
-        if mpu.pc == LAB["ERBlocksDone"] and mem.bank == 2:
+        if mpu.pc == _CM.RTS_SENTINEL:
+            assert mem.bank == 0, f"returned in bank {mem.bank}"
             return r
-    sys.exit(f"B3RoomBlocks(room={room}) never reached ERBlocksDone "
+    sys.exit(f"B3RoomBlocks(room={room}) never returned "
              f"(pc=${mpu.pc:04X}, bank={mem.bank})")
 
 
@@ -152,13 +166,13 @@ def hot_ptr(r: bytearray) -> int:
 
 def main() -> int:
     # --- 1. plain room: meta derived, hot stream stays the shape ----------
-    r = run_room(0, SHAPE_A)
+    r = run_room(0)
     assert meta(r) == (0, 0), f"plain room meta {meta(r)}"
     assert bytes(r[LAB["PF0Buf"] - 0x80:LAB["PF0Buf"] - 0x80 + 9]) == PF_A
     assert hot_ptr(r) == SHAPE_A, f"plain hot ptr ${hot_ptr(r):04X}"
 
     # --- 2. patch-only room: ORs the side-0 patch band into MetaA ---------
-    r = run_room(1, SHAPE_A)
+    r = run_room(1, ordinal=1)
     assert meta(r) == (0x91, 0x00), (
         f"patch room meta ${meta(r)[0]:02X}/${meta(r)[1]:02X}, want $91/$00 "
         "(stored $90 | side-0 patch row 0)")
@@ -166,7 +180,7 @@ def main() -> int:
     assert hot_ptr(r) == SHAPE_A, "patch-only room must keep the shape stream"
 
     # --- 3. feature room: PF cells + the extras hot stream ----------------
-    r = run_room(2, SHAPE_B)
+    r = run_room(2, ordinal=2)
     got = bytes(r[LAB["PF0Buf"] - 0x80:LAB["PF0Buf"] - 0x80 + 9])
     want = bytearray(PF_B)
     # hcrunch prefix cols 0..9 = the whole row-1 band solid (PF pairs)
@@ -177,22 +191,22 @@ def main() -> int:
     assert meta(r) == (0, 0), f"feature room meta {meta(r)}"
     assert hot_ptr(r) == ROOM2_HOT, (
         f"feature hot ptr ${hot_ptr(r):04X} != extras stream ${ROOM2_HOT:04X}")
-    assert BANK2[ROOM2_HOT - 0xF000] == 1, "extras hot count must be 1"
-    assert BANK2[ROOM2_HOT - 0xF000 + 1] == 0x82, "feature record class"
+    assert BANK3[ROOM2_HOT - 0xF000] == 1, "extras hot count must be 1"
+    assert BANK3[ROOM2_HOT - 0xF000 + 1] == 0x82, "feature record class"
 
     # --- 4. ordinary-room hot bit: a hot shape derives MetaB b6 -----------
-    put(SHAPE_A, shape_with(PF_A, bytes([1, 0x08, 0, 1, 2, 1])))   # 1 hot record
-    r = run_room(0, SHAPE_A)
+    put(SHAPE_A, shape_with(PF_A, bytes([1, 0x08, 0, 1, 2, 1])))   # 1 hot
+    r = run_room(0)
     assert meta(r) == (0, 0x40), (
         f"hot shape meta ${meta(r)[0]:02X}/${meta(r)[1]:02X}, want $00/$40")
     put(SHAPE_A, shape_with(PF_A))
 
     # --- 5. the ordinal walk skipped record 1 to reach record 2 -----------
-    assert REC1 < REC2 and BANK2[REC1 - 0xF000 + 1] == 0x90, (
+    assert REC1 < REC2 and BANK3[REC1 - 0xF000 + 1] == 0x90, (
         "record 1 MetaA sanity (the walk must step over it)")
-    assert BANK2[ROOM2_HOT - 0xF000] == 1, "record 2 hot count sanity"
-    print("test_extras_room: OK (plain/patch/feature/hot-shape cases; "
-          "extras base = base + 3n + 4*records, ordinal walk)")
+    assert BANK3[ROOM2_HOT - 0xF000] == 1, "record 2 hot count sanity"
+    print("test_extras_room: OK (plain/patch/feature/hot-shape cases; bank3 "
+          "loader, LevExtras base + ordinal walk)")
     return 0
 
 

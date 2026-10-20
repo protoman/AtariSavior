@@ -38,7 +38,7 @@ def lst_labels(path):
 L0 = lst_labels(SRC / "bank0.lst")
 L1 = lst_labels(SRC / "bank1.lst")
 L2 = lst_labels(SRC / "bank2.lst")
-L3 = lst_labels(SRC / "bank2.lst")   # A3: level/model blocks
+L3 = lst_labels(SRC / "bank3.lst")   # C7: shape blocks + extras (bank3)
 
 import test_fixtures as FX  # noqa: E402
 FX.freeze_m0(BANKS, L3)     # frozen model0 into the private copy (rule 2026-10-14)
@@ -153,8 +153,8 @@ def load_room(room):
     model = MODEL[room]
     a_rr = L3[f"M{model}RoomRects"]
     # C5: MetaA/MetaB are staged from the room's extras record.
-    mem.ram[I_PF0LO] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
-    mem.ram[I_PF0HI] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
+    mem.ram[I_PF0LO] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
+    mem.ram[I_PF0HI] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     for i in range(3):

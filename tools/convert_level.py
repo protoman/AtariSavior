@@ -881,15 +881,25 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
         lines.append(f"  .byte ${pos:02x} ; room {index} "
                      f"({pos >> 4}, {pos & 0x0F})")
     lines += _enemy_tables(prefix, rooms, extras_index)
+    output.write_text("\n".join(lines) + "\n")
+
+    # C7 (2026-10-20): the async EXTRAS stream is its OWN file now, because it
+    # lives in BANK3 with the shapes and the walkers that read it every VBL
+    # (a feature room's hot stream sits inside the record — record walkers and
+    # record data must share a bank, and a fold on the VBL path is 25c/byte).
+    # The space it used to take in the level's bank2 table block comes back to
+    # the table slots, so net level data is unchanged.
+    extras_path = output.with_name(
+        output.name.replace("_rooms.asm", "_extras.asm"))
     if extras_lines:
-        lines += [
-            "",
-            "; C5 (2026-10-20) async EXTRAS stream — one record per",
-            "; owns-extras room, in room order (the counts byte b5-0 is the",
-            "; 1-based ORDINAL). Record layout (hex per line below):",
+        extras_head = [
+            f"; Generated from {level.get('name', 'level')} (level {level_n}).",
+            "; Do not edit by hand. C7 (2026-10-20): bank3 async EXTRAS stream —",
+            "; one record per owns-extras room, in room order (the counts byte's",
+            "; b5-0 is the 1-based ORDINAL). Record layout:",
             ";   +0 flags: n_patches b1-0 | n_features b5-2",
-            ";   +1 MetaA  +2 MetaB  (the pair that used to sit at",
-            ";      TilePF0+9/+10 — the loader stages it into $99/$9A)",
+            ";   +1 MetaA  +2 MetaB  (the retired TilePF0+9/+10 pair — the",
+            ";      loader stages it into $99/$9A)",
             ";   +3.. 1 B/patch: row b7-6 | side b4 | col b3-0 (tile = wall)",
             ";   ..   1 B/feature: kind b7-6 (1 = phase, 2 = hcrunch",
             ";        prefix end) | col b3-0",
@@ -897,10 +907,16 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
             ";        ROOM's hot stream (feature cells split the shape's own",
             ";        hot rects, so the walkers read this copy instead).",
             f"{prefix}_AsyncExtras:",
+        ] + extras_lines
+    else:
+        extras_head = [
+            f"; Generated from {level.get('name', 'level')} (level {level_n}).",
+            "; C7 (2026-10-20): no async rooms in this level — the label is a",
+            "; ZERO so levels_extras.asm can index every level uniformly (the",
+            "; loader never dereferences it: no room has b7 set).",
+            f"{prefix}_AsyncExtras = 0",
         ]
-        lines += extras_lines
-
-    output.write_text("\n".join(lines) + "\n")
+    extras_path.write_text("\n".join(extras_head) + "\n")
 
     # C5 (2026-10-20): the per-room async blocks are RETIRED (the extras
     # stream above replaces them). Keep writing the *_blocks.asm file as a
@@ -1069,7 +1085,7 @@ def room_has_async(room: dict) -> bool:
 MAX_SHAPES = 64
 
 
-def _shape_stream(generated: Path) -> list[str]:
+def _shape_stream(generated: Path, level_numbers: list[int] | None = None) -> list[str]:
     """Block labels in spill_bank3.asm include order (= the shape index).
 
     This order IS the contract: bank2's EnterRoomB2 reads
@@ -1080,8 +1096,16 @@ def _shape_stream(generated: Path) -> list[str]:
     """
     pattern = re.compile(r"^(M\d+)RoomRects:")
     order: list[str] = []
-    files = [generated / "models_data.asm"] + sorted(
-        generated.glob("level_[0-9][0-9][0-9]_blocks.asm"))
+    # C7: only THIS stage's block files — a stale file from another stage
+    # (e.g. a leftover 210-room tree) must not contribute shape labels.
+    if level_numbers is None:
+        block_paths = sorted(
+            generated.glob("level_[0-9][0-9][0-9]_blocks.asm"))
+    else:
+        block_paths = [generated / f"level_{n:03d}_blocks.asm"
+                       for n in level_numbers]
+    files = [generated / "models_data.asm"] + [
+        p for p in block_paths if p.exists()]
     for path in files:
         for line in path.read_text(encoding="utf-8").splitlines():
             match = pattern.match(line.strip())
@@ -1237,27 +1261,47 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
     model_lines.append("")
     (generated / "models_data.asm").write_text("\n".join(model_lines) + "\n")
     # A3 (2026-10-19): models_data.asm is NOT a bank2 file any more — it is
-    # included from bank3 by spill_bank3.asm (level data bank). levels_data.asm
-    # is a legacy convenience list (nothing includes it); keep the per-level
-    # room-data stubs so old tooling keeps resolving.
+    # included from bank3 (C7 2026-10-20: the shape half of the level-data
+    # subsystem lives there). levels_data.asm is a legacy convenience list
+    # (nothing includes it); keep the per-level room-data stubs so old tooling
+    # keeps resolving.
     (generated / "levels_data.asm").write_text("\n".join(data_lines) + "\n")
 
-    # Level-data BLOCK include list: shared model blocks + every per-room
-    # block, in a deterministic order (models first, then level/room asc).
-    # C1 (2026-10-20): a BANK2 include list now (was bank3's data window);
-    # bank2.asm includes it in the $F307-$F44F slot.
-    bank3_lines = [
-        "; Generated by convert_level.py --levels (A3 2026-10-19).",
-        "; Include list for bank2's $F307 level-data block slot — see bank2.asm.",
-        f'    include "generated/models_data.asm"',
+    # --- C7 (2026-10-20): bank3 data include list -------------------------
+    # models_data.asm (shape blocks + row pool + LEVEL_ShapeTable, appended
+    # below once the shape order is known) and levels_extras.asm (the per-level
+    # async extras streams + their base table). bank3.asm includes this file in
+    # its $F010-$F44F data window; the fit is checked in emit_spills().
+    extras_lines = [
+        "; Generated by convert_level.py --levels. Do not edit by hand.",
+        "; C7 (2026-10-20): bank3's async EXTRAS streams, one file per level,",
+        "; plus the per-level BASE table ExtrasLoad indexes by `Level` ($A3).",
+        "; Bank2 stages only the room's 1-based ordinal (LevelConnSpare): the",
+        "; counts column lives in bank2, the records live here.",
     ]
-    # Include order = level number ASC. Identical to the old `sorted(paths)`
-    # for level_00N.json names, and it keeps the order well-defined for a
-    # stage file (which has no file names).
     for level_n, _level in sorted(levels, key=lambda item: item[0]):
-        bank3_lines.append(
-            f'    include "generated/level_{level_n:03d}_blocks.asm"')
-    bank3_lines.append("")
+        extras_lines.append(
+            f'    include "generated/level_{level_n:03d}_extras.asm"')
+    extras_lines.append(f"LEVEL_EXTRAS_COUNT = {len(levels)}")
+    extras_lines.append("LevExtrasLo:")
+    extras_lines.append("  .byte " + ", ".join(
+        f"<LEVEL{n}_AsyncExtras" for n, _l in sorted(levels,
+                                                    key=lambda i: i[0])))
+    extras_lines.append("LevExtrasHi:")
+    extras_lines.append("  .byte " + ", ".join(
+        f">LEVEL{n}_AsyncExtras" for n, _l in sorted(levels,
+                                                    key=lambda i: i[0])))
+    extras_lines.append("")
+    (generated / "levels_extras.asm").write_text(
+        "\n".join(extras_lines) + "\n")
+
+    bank3_lines = [
+        "; Generated by convert_level.py --levels (C7 2026-10-20).",
+        "; Include list for BANK3's $F010 data window — see bank3.asm.",
+        '    include "generated/models_data.asm"',
+        '    include "generated/levels_extras.asm"',
+        "",
+    ]
     (generated / "spill_bank3.asm").write_text("\n".join(bank3_lines) + "\n")
 
     # (a) 2026-10-20: one bottom-band COLOR for the whole game. The per-room
@@ -1288,7 +1332,7 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
     # The ordinal IS the emission order of spill_bank3.asm (models sorted by
     # id). C5 (2026-10-20): only shared model shapes exist now, so every
     # ordinal is referenced directly (no dedupe aliases).
-    shapes = _shape_stream(generated)
+    shapes = _shape_stream(generated, [n for n, _l in levels])
     if len(shapes) > MAX_SHAPES:
         raise ValueError(
             f"{len(shapes)} distinct shape blocks > the {MAX_SHAPES} the 6-bit "
@@ -1298,6 +1342,20 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
     equ_lines = [f"LEVEL_SHAPE_COUNT = {len(shapes)}"]
     for name in shapes:
         equ_lines.append(f"SHAPE_{name} = {shape_index[name]}")
+
+    # C7 (2026-10-20): the shape ADDRESS table lives in BANK3 next to the
+    # blocks (models_data.asm), so bank2's EnterRoomB2 stages only the shape
+    # INDEX and needs no bank3 label, no symbol export and no second pass.
+    # The ordinal contract is unchanged: SHAPE_<label> == row here.
+    with (generated / "models_data.asm").open("a", encoding="utf-8") as fh:
+        fh.write("\n; C7 (2026-10-20): shape ADDRESS table — bank3's B3RoomBlocks\n"
+                 "; reads it in-bank; the 6-bit room-record index is the row.\n")
+        fh.write(f"; LEVEL_SHAPE_COUNT = {len(shapes)} "
+                 f"(6-bit index ceiling: {MAX_SHAPES})\n")
+        fh.write("LEVEL_ShapeTable:\n")
+        for name in shapes:
+            fh.write(f"  .word {name}RoomRects\n")
+        fh.write("\n")
 
     tail_lines = [
         "",
@@ -1327,14 +1385,11 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
         "; Shape block (C3 2026-10-20): hot count | 5 B/record | 3 row-pool",
         ";   indices (band 0/1/2 -> RowPoolPF0/1/2 in models_data.asm; the",
         ";   loader expands them into PF0Buf). LEVEL_ROW_COUNT = pool rows.",
-        "; Shape address table: SHAPE_<label> indices above are the row here.",
-        "; LEVEL_SHAPE_COUNT = number of distinct blocks in the whole game",
-        f"; (6-bit index ceiling: {MAX_SHAPES}).",
-        "LEVEL_ShapeTable:",
-    ]
-    for name in shapes:
-        tail_lines.append(f"  .word {name}RoomRects")
-    tail_lines += [
+        "; ASYNC EXTRAS (C7 2026-10-20): the per-room records moved OUT of this",
+        ";   block into generated/level_00N_extras.asm (bank3) — a feature",
+        ";   room's hot stream lives inside its record and the VBL walkers read",
+        ";   it in-bank, so record walkers and records share a bank. This bank",
+        ";   keeps the counts byte's b5-0 ORDINAL and the 3 B/room columns.",
         f"; BAND_COLOR = ${band_color:02x} — the single bottom-band color (every",
         "; bottom_band room must resolve to it; bank2.asm carries the EQU and",
         "; test_level_bank asserts the pair).",
@@ -1358,7 +1413,7 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
         "; Tail only (EQUs + LevelDataTable) — see bugs.md 27 spill layout.",
     ] + tail_lines
     (generated / "levels_index.asm").write_text("\n".join(index_lines) + "\n")
-    emit_spills(generated)
+    emit_spills(generated, [n for n, _l in levels])
 
 
 def _gen_data_size(path: Path) -> int:
@@ -1373,64 +1428,92 @@ def _gen_data_size(path: Path) -> int:
     return n
 
 
-# bank2 data-slot gaps (bugs.md 27/27b): (name, slot end, capacity note).
-# Starts are pad-derived ($F767/$F901 from the fixed content above them);
-# tools/verify_build.py --precheck re-measures the REAL starts from
-# bank2.lst after every build and fails on overflow — keep here in sync.
+# bank2 data-slot gaps (bugs.md 27/27b): (name, slot end).
+# Starts come from _SPILL_ORG (the `.ds`/`org` pad that opens each window);
+# tools/verify_build.py --precheck re-measures the REAL starts from bank2.lst
+# after every build and fails on overflow — keep here in sync.
 #
-# C1 (2026-10-20, bank3 evacuation prep): the three empty slots
-# ($F864 spill_F840, $F901 spill_F901, $F9D9 spill_window) are GONE. Everything
-# they could hold fits the one remaining window, and their addresses are now
-# reserved code space for the evacuated bank3 runs (see bank2.asm's slot map).
-# $F5A4 (92B) is also unusable: it assembles BEFORE levels_index defines
-# LEVEL_FORMAT/LEVEL_DATA_STRIDE — a spill slot must sit after the index in
-# source order.
+# C7 (2026-10-20): the shape half moved to bank3, so the six windows it used
+# to occupy in bank2 are DATA SLOTS now. Order = first-fit preference; the
+# biggest windows first so a large level file lands where it fits and the
+# small tail slots absorb the index/odd sizes.
 _SPILL_SLOTS = [
-    ("spill_F767", 0xF854),   # after FooterFont lead-in  ($F700, 340B)
+    ("spill_F9D9", 0xFBD0),   # 503 B
+    ("spill_F767", 0xF854),   # 340 B (levels_index + room tables; historical)
+    ("spill_F453", 0xF600),   # 429 B
+    ("spill_F307", 0xF450),   # 329 B
+    ("spill_F8B7", 0xF9D9),   # 290 B
+    ("spill_FCB8", 0xFD87),   # 207 B
+    ("spill_FF59", 0xFFE6),   # 141 B
+    ("spill_FE9C", 0xFEF0),   #  84 B
 ]
 
-# Level-data BLOCKS (shared model blocks + every per-room block) are NOT part of
-# the greedy pool above: their include list is written by write_levels_index
-# (spill_bank3.asm) and included from bank2's $F307 slot. Their fit is checked
-# explicitly in emit_spills().
-_BLOCK_SLOT = (0xF307, 0xF450)   # start, end (bank2.asm `.ds` pads)
+# C7 (2026-10-20): BANK3's data window (bank3.asm `.ds $F010` .. `.ds $F453`).
+# models_data.asm (shapes + row pool + the shape ADDRESS table) and
+# levels_extras.asm (the per-level async extras streams + their base table)
+# live there; the include list is spill_bank3.asm, checked below.
+_BANK3_DATA_SLOT = (0xF010, 0xF450)   # start, end (bank3.asm `.ds` pads)
 
-_SPILL_ORG = {  # slot start for capacity of the window slot (org $F9D9)
-    # bank2's include for spill_F767 sits after `.ds $F700 - *`, so the slot
-    # really spans $F700..$F854 (340B): the index/LevelDataTable lands first at
-    # $F700. The old $F767 start under-counted 103B of usable capacity, which
-    # the level tables alone never needed — C1 folded the per-room async blocks
-    # and the tables into this one window.
-    "spill_F767": 0xF700,
+# C7: the index file DEFINES LEVEL_FORMAT / LEVEL_DATA_STRIDE / the SHAPE_*
+# EQUs, so it must be included before every room-table file (DASM needs the
+# EQUs at the point of use). It therefore owns the FIRST window in bank2's
+# source order ($F307) — the greedy pass places the room tables around it.
+_INDEX_SLOT = "spill_F307"
+
+_SPILL_ORG = {  # exact slot start (the pad that opens the window)
+    "spill_F767": 0xF700,   # include sits after `.ds $F700 - *`
+    "spill_F453": 0xF453,
+    "spill_F307": 0xF307,
+    "spill_F8B7": 0xF8B7,
+    "spill_F9D9": 0xF9D9,
+    "spill_FCB8": 0xFCB8,
+    "spill_FF59": 0xFF59,
+    "spill_FE9C": 0xFE9C,
 }
 
 
-def emit_spills(generated: Path) -> None:
+def emit_spills(generated: Path, level_numbers: list[int] | None = None) -> None:
     """bugs.md 27b: place level files into bank2's data slots and write
     generated/spill_*.asm include-lists — adding a level never touches
     bank2.asm. Greedy first-fit, big levels first; within a slot the
     index stays first (defines LEVEL_FORMAT) and rooms sort ASC (stable
     addresses per slot). Overflow here = precheck also fails after build.
+
+    C7 (2026-10-20): the slot pool is the whole level-table window set (the
+    shape half left for bank3), so 210 rooms fit with slack; the DATA stays in
+    one bank with its readers (EnterRoomB2 / exits / LoadLevelB2 / moth /
+    LWC / LHT / blast), which is the invariant the split is built on.
     """
     idx = "generated/levels_index.asm"
-    rooms = sorted(p.name for p in generated.glob("level_*_rooms.asm"))
+    if level_numbers is None:
+        rooms = sorted(p.name for p in generated.glob("level_*_rooms.asm"))
+    else:
+        # C7: the exact set this stage emits (never a glob — a previous
+        # stage's leftover files would be placed into the ROM and reference
+        # shape labels that no longer exist).
+        rooms = sorted(f"level_{n:03d}_rooms.asm" for n in level_numbers
+                       if (generated / f"level_{n:03d}_rooms.asm").exists())
     sizes = {}
     for name in [Path(idx).name] + rooms:
         p = generated / Path(idx).name if name == Path(idx).name else generated / name
         sizes[name] = _gen_data_size(p)
-    window_used = 0
-    # C1 (2026-10-20): the level TABLES all live in the one spill_F767 window
-    # now; the block data (models + per-room) has its own fixed slot below.
     caps = {}
     for name, end in _SPILL_SLOTS:
-        start = _SPILL_ORG.get(name)
-        if start is None:                       # pad-derived constant starts
-            start = {"spill_F767": 0xF767}[name]
+        start = _SPILL_ORG[name]
         caps[name] = end - start
     order = [Path(idx).name] + sorted(rooms, reverse=True)  # big first
     placed: dict = {name: [] for name, _ in _SPILL_SLOTS}
     for item in order:
         sz = sizes[item]
+        if item == Path(idx).name:
+            if sz > caps[_INDEX_SLOT]:
+                raise ValueError(
+                    f"levels_index.asm ({sz}B) does not fit the index slot "
+                    f"${_SPILL_ORG[_INDEX_SLOT]:04X} "
+                    f"({caps[_INDEX_SLOT]}B) — too many levels")
+            caps[_INDEX_SLOT] -= sz
+            placed[_INDEX_SLOT].append(item)
+            continue
         for name, _ in _SPILL_SLOTS:
             if sz <= caps[name]:
                 caps[name] -= sz
@@ -1442,30 +1525,54 @@ def emit_spills(generated: Path) -> None:
                 f"(remaining caps: {caps}) — grow a gap or split the level")
     for name, files in placed.items():
         room_files = sorted(f for f in files if f != Path(idx).name)
-        head = [f] if (f := Path(idx).name) in files else []
+        head = [Path(idx).name] if Path(idx).name in files else []
         lines = ["; Generated by convert_level.py --levels (bugs.md 27b)."
                  " Do not edit by hand.",
                  "; Include list for this bank2 gap — see emit_spills()."]
         for inc in head + room_files:
             lines.append(f'    include "generated/{inc}"')
         (generated / f"{name}.asm").write_text("\n".join(lines) + "\n")
+    total_used = sum(sizes.values())
+    print(f"level tables (bank2): {total_used}B in {len(order)} files, "
+          f"slot slack {sum(caps.values())}B")
 
-    # --- level-data BLOCK slot fit (bank2 $F307-$F44F, C1 2026-10-20) --------
-    # models_data + every per-room block file; the include list is written by
-    # write_levels_index (this is the bank3 payload, now a bank2 in-bank read).
+    # --- BANK3 data window fit (shapes + extras) ---------------------------
     blocks = generated / "spill_bank3.asm"
     if blocks.exists():
-        start, end = _BLOCK_SLOT
+        start, end = _BANK3_DATA_SLOT
         used = 0
-        for raw in blocks.read_text(encoding="utf-8").splitlines():
-            mi = re.match(r'\s*include\s+"([^"]+)"', raw)
-            if mi:
-                used += _gen_data_size(generated / Path(mi.group(1)).name)
-        if used > end - start:
+        for raw in _expand_includes(blocks, generated):
+            used += _gen_data_size(raw)
+        slack = end - start - used
+        print(f"bank3 data (shapes+extras): {used}B of {end - start}B, "
+              f"slack {slack}B")
+        if slack < 0:
             raise ValueError(
-                f"level-data blocks overflow the ${start:04X}-${end - 1:04X} "
-                f"bank2 slot: {used}B > {end - start}B — grow the slot (bank2 "
-                f"evac map) or trim a model/room block")
+                f"bank3 data overflow: {used}B > {end - start}B in "
+                f"${start:04X}-${end - 1:04X} — grow the window (bank3.asm) "
+                f"or trim a shape")
+
+
+def _expand_includes(list_path: Path, generated: Path,
+                     depth: int = 0) -> list[Path]:
+    """Flatten an include list (spill_bank3 -> levels_extras -> per-level)."""
+    out: list[Path] = []
+    text = list_path.read_text(encoding="utf-8")
+    for raw in text.splitlines():
+        mi = re.match(r'\s*include\s+"([^"]+)"', raw)
+        if not mi:
+            continue
+        p = generated / Path(mi.group(1)).name
+        if depth < 3 and p.exists() and 'include "' in p.read_text(
+                encoding="utf-8"):
+            out += _expand_includes(p, generated, depth + 1)
+            if any(ln.split(";")[0].strip().startswith((".byte", ".word"))
+                   for ln in p.read_text(encoding="utf-8").splitlines()):
+                out.append(p)      # the include list ALSO carries data bytes
+            continue
+        out.append(p)
+    return out
+
 
 
 def main(argv: list[str]) -> int:

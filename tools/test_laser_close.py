@@ -46,11 +46,11 @@ BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 # Zero M0/M1 hot counts (life-loss would end the sweep); strips stay real.
 for _name in ("M0RoomRects",):   # level 1 room 0 = model 0 (C5: shape)
                                    # L1R2 block was removed with it)
-    for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
+    for _l in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
         if _m:
             _a = int(_m.group(1), 16) - 0xF000
-            BANKS[2][_a] = 0                          # hot count = 0
+            BANKS[3][_a] = 0                          # hot count = 0
             break
     else:
         sys.exit(f"{_name} label missing in bank3.lst")
@@ -67,7 +67,7 @@ def lst_labels(path):
 
 L0 = lst_labels(SRC / "bank0.lst")
 L2 = lst_labels(SRC / "bank2.lst")
-L3 = lst_labels(SRC / "bank2.lst")   # A3: level/model blocks
+L3 = lst_labels(SRC / "bank3.lst")   # C7: shape blocks + extras
 
 def shape_pf(model):
     """The 9 PF bytes of model `model`'s shape: C3 row-pool expansion.
@@ -76,11 +76,11 @@ def shape_pf(model):
     (bank2 B3RoomBlocks) expands the indices through RowPoolPF0/1/2 into
     PF0Buf, so this reads the SAME bytes via the label addresses."""
     at = L3[f"M{model}Rows"] - 0xF000
-    idx = BANKS[2][at:at + 3]
+    idx = BANKS[3][at:at + 3]
     out = bytearray()
     for col in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2"):
         base = L3[col] - 0xF000
-        out += bytes(BANKS[2][base + i] for i in idx)
+        out += bytes(BANKS[3][base + i] for i in idx)
     return bytes(out)
 
 
@@ -197,8 +197,8 @@ def load_room(room):
     pf9, a_rr = shape_pf(model), L3[f"M{model}RoomRects"]
     # C5: MetaA/MetaB live in the level's AsyncExtras record (level 1 room 0
     # is the async room, ordinal 1 -> +1/+2).
-    mem.ram[I_PF0LO] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
-    mem.ram[I_PF0HI] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
+    mem.ram[I_PF0LO] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
+    mem.ram[I_PF0HI] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     # ROM: C3 row-pool expansion of the shape's 3 indices
@@ -209,7 +209,7 @@ def load_room(room):
 
 def meta_a(room):
     """MetaA = the room extras record's +1 (C5: the pair left the block)."""
-    return BANKS[2][L3["LEVEL1_AsyncExtras"] + 1 - 0xF000]
+    return BANKS[3][L3["LEVEL1_AsyncExtras"] + 1 - 0xF000]
 
 
 CASE_Y = (24, 45, 96)      # 24 = spawn/band0, 45 = straddle, 96 = band 2

@@ -91,17 +91,32 @@ def bank_sizes(bank: int) -> dict[str, int]:
 def level_data_sizes() -> dict[str, int]:
     gen = SRC / "generated"
     idx = gen / "levels_index.asm"
-    levels = sorted(gen.glob("level_*_rooms.asm"))
-    blocks = sorted(gen.glob("level_*_blocks.asm"))   # A3: bank3 blocks
+    # C7: exactly THIS stage's level files (LEVEL_COUNT from the index) — a
+    # leftover tree from another stage (e.g. a 210-room capacity build) must
+    # not inflate the ledger.
+    count = 0
+    if idx.exists():
+        m = re.search(r"^LEVEL_COUNT = (\d+)$",
+                      idx.read_text(encoding="utf-8"), re.M)
+        count = int(m.group(1)) if m else 0
+    names = [f"level_{n:03d}" for n in range(1, count + 1)]
+    levels = [gen / f"{n}_rooms.asm" for n in names]
+    blocks = [gen / f"{n}_blocks.asm" for n in names]
+    levels = [p for p in levels if p.exists()]
+    blocks = [p for p in blocks if p.exists()]
+    extras = [gen / f"{n}_extras.asm" for n in names]
+    extras = [p for p in extras if p.exists()]
     models = gen / "models_data.asm"
     return {
         "index": _gen_data_size(idx) if idx.exists() else 0,
         "levels": sum(_gen_data_size(p) for p in levels)
-        + sum(_gen_data_size(p) for p in blocks),
+        + sum(_gen_data_size(p) for p in blocks)
+        + sum(_gen_data_size(p) for p in extras),
         "models": _gen_data_size(models) if models.exists() else 0,
         "total": (_gen_data_size(idx) if idx.exists() else 0)
         + sum(_gen_data_size(p) for p in levels)
         + sum(_gen_data_size(p) for p in blocks)
+        + sum(_gen_data_size(p) for p in extras)
         + (_gen_data_size(models) if models.exists() else 0),
     }
 
@@ -123,8 +138,8 @@ def main() -> int:
         print(f"| **total** | **{tot_c}** | **{tot_d}** | **{tot_f}** | "
               f"**{tot_c + tot_d}** | **{16384 - tot_c - tot_d}** |")
         print()
-        print(f"level data: index {lv['index']} + tables/blocks {lv['levels']} "
-              f"+ models {lv['models']} = **{lv['total']} B**")
+        print(f"level data: index {lv['index']} + tables/blocks/extras "
+              f"{lv['levels']} + models {lv['models']} = **{lv['total']} B**")
         return 0
     for b in BANKS:
         s = banks[b]

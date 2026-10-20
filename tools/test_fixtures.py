@@ -91,13 +91,13 @@ def _freeze(bank, labels, label, data):
     bank[off:off + len(data)] = data
 
 
-def _as_bank2(banks):
-    # C2 (2026-10-20): the level/model BLOCKS moved from bank3 into bank2.
-    # Tests hand us their BANKS list of 4 banks; inject into bank2's image and
-    # pass labels parsed from bank2.lst. (A list passed straight to _freeze
-    # would slice-assign on the LIST — a silent no-op at offset 0x9FF —
-    # caught 2026-10-14.)
-    return banks[2] if isinstance(banks, (list, tuple)) else banks
+def _as_bank3(banks):
+    # C7 (2026-10-20): the level/model BLOCKS are back in bank3 (they moved to
+    # bank2 for C2 and returned with the shape half). Tests hand us their
+    # BANKS list of 4 banks; inject into bank3's image and pass labels parsed
+    # from bank3.lst. (A list passed straight to _freeze would slice-assign on
+    # the LIST — a silent no-op at offset 0x9FF — caught 2026-10-14.)
+    return banks[3] if isinstance(banks, (list, tuple)) else banks
 
 
 # Test-owned PF triple + staged meta pair per fixture model (C5: the ROM no
@@ -109,20 +109,20 @@ METAX = {0: M0_META, 2: M2_META, 4: M4_META}
 
 def freeze_m0(banks, labels):
     """Inject the bomb-contract stream at the shared model-0 shape."""
-    bank2 = _as_bank2(banks)
-    _freeze(bank2, labels, "M0RoomRects", M0_STREAM)
+    bank3 = _as_bank3(banks)
+    _freeze(bank3, labels, "M0RoomRects", M0_STREAM)
 
 
 def freeze_m2(banks, labels):
     """Inject the (inert) $81 stream at the shared model-2 shape."""
-    bank2 = _as_bank2(banks)
-    _freeze(bank2, labels, "M2RoomRects", M2_STREAM)
+    bank3 = _as_bank3(banks)
+    _freeze(bank3, labels, "M2RoomRects", M2_STREAM)
 
 
 def freeze_m4(banks, labels):
     """Inject the hcrunch $82 stream at the shared model-4 shape."""
-    bank2 = _as_bank2(banks)
-    _freeze(bank2, labels, "M4RoomRects", M4_STREAM)
+    bank3 = _as_bank3(banks)
+    _freeze(bank3, labels, "M4RoomRects", M4_STREAM)
 
 
 def _selfcheck():
@@ -131,7 +131,7 @@ def _selfcheck():
     src = (Path(__file__).resolve().parents[1] / "src" / "tests" / "frozen")
     # ^ test-owned frozen banks+labels (user rule: never live src/)
     labels = {}
-    for line in (src / "bank2.lst").read_text(errors="replace").splitlines():
+    for line in (src / "bank3.lst").read_text(errors="replace").splitlines():
         m = re.match(r"^\s+\d+\s+([0-9a-f]{4})\s+([A-Za-z_][A-Za-z0-9_]*)\s*$",
                      line)
         if m:
@@ -139,8 +139,8 @@ def _selfcheck():
     for name in ("M0RoomRects", "M0Rows", "M2RoomRects", "M2Rows",
                  "M4RoomRects", "M4Rows"):
         if name not in labels:
-            raise SystemExit(f"selfcheck FAIL: {name} missing in bank2.lst")
-    bank = bytearray(open(src / "bank2.bin", "rb").read())
+            raise SystemExit(f"selfcheck FAIL: {name} missing in bank3.lst")
+    bank = bytearray(open(src / "bank3.bin", "rb").read())
     freeze_m0(bank, labels)
     freeze_m2(bank, labels)
     freeze_m4(bank, labels)

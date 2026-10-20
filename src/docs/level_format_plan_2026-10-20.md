@@ -441,9 +441,42 @@ no meta/right sections; extras bytes), `test_level_bank`/`verify_build`
 palette table + 6 B level entry, `test_level_bank`, and the doc/ledger.
 Delta: −1 B/level + 40 B palette. Risk: low.
 
-**Optional C7 — split placement.** Move the shape subset (990 B code + shapes)
-back to bank3 per `evac_plan_2026-10-20.md` §3 (the reverse of C2/C3). Needed
-only when the room stream outgrows bank2; the §3.3 verdict says 400 rooms need it.
+**C7 — split placement: the LEVEL-DATA SUBSYSTEM lives in two banks — LANDED
+2026-10-20.** (Was "optional"; user goal = a generated 20-level stage, and the
+measured 210-room shape does not fit bank2's 1 200 B of free windows.) Full
+design + measurements in §7.1. Short form:
+
+* **bank2 keeps the ROOM half**: `LevelDataTable` (level entries), the
+  per-level table block (`RoomShapes` / `RoomPositions` / `RoomCounts` + the
+  flat `EnemyDataTable`) and every walker that reads THOSE —
+  `EnterRoomB2`, `ExitScanB2`/`ExitDirB2` + the four exit bodies,
+  `LoadLevelB2`, `MothRoutine`, `LaserWallClamp`/`LaserHitTestBody`,
+  `BombEnemyBlastBody`. All reads stay `lda (FetchPtr),Y` in-bank.
+* **bank3 takes the SHAPE half back**: the shape blocks + the global row pool
+  + `LEVEL_ShapeTable` + the async extras streams (+ their `LevExtrasLo/Hi`
+  base table) and the walkers that read them — `B3RoomBlocks`/`ExtrasLoad`,
+  `PhaseBlink`/`BuildColupF`/`BCFDarkRun`, `HotOverlapBody` (+
+  `HOVHotPfGate`, `HOVFeatEntry`), `B3StageBand`, `PhHcrEntry`/`CrPfx`/
+  `HcrClock`. The extras MUST travel with the shapes: a feature room's hot
+  stream sits inside its extras record and `PhaseBlink`/`BuildColupF` walk it
+  every VBL — record walkers and records share a bank (a fold there would cost
+  25c/byte on the VBL path).
+* **One cross-bank call in the whole room load**: bank2 executes
+  `sta $1FF9` at `$F450` and bank3's `B3RoomBlocks` is pinned at `$F453` (the
+  +3 fetch). No return pad and no twin bytes: the shape step runs LAST, so the
+  bank3 chain ends in **bank3's own `ReturnPad`** (`$FBF8`) — 0 extra pushes.
+  Guard: `verify_build.check_bank3_entry`.
+* `EnterRoomB2` order is now: shapes byte (→ `RoomPF0Lo`, band flag) → enemy
+  counts/records/`LoadEnemyRam` → stage the owns-extras ordinal in
+  `LevelConnSpare` → `jmp ERBlocksPad` → bank3 PF + meta + extras →
+  `ERLoadDone` (joystick-shadow refresh) → `ReturnPad`.
+* Converter: `LEVEL_ShapeTable` moved into `models_data.asm`; each level's
+  extras stream is its own `level_00N_extras.asm` plus `levels_extras.asm`
+  (per-level base table indexed by `Level`); `spill_bank3.asm` is bank3's data
+  include list, capacity-checked against `_BANK3_DATA_SLOT` ($F010-$F44F,
+  1 088 B). bank2's six freed windows became `_SPILL_SLOTS` (2 323 B total)
+  and `levels_index.asm` owns the first one in source order (`spill_F307`,
+  because it defines `LEVEL_FORMAT` + the `SHAPE_*` EQUs the room tables use).
 
 **Ledger note:** after each chunk run `tools/rom_size_report.py --md` and paste
 the table (§7) into this file.
@@ -488,31 +521,64 @@ Content limits that 20 levels surface (not ROM capacity, but must be decided):
 5. **Never author 20 rooms into the current format** — the converter raises at
    room index 15, and a level with >31 enemy records overflows the b5-1 index.
 
-## 7. Size ledger (measured at this HEAD — post C3)
+## 7. Size ledger (measured at this HEAD — post C7)
 
 | bank | code | data | fill | used | free |
 |---|---|---|---|---|---|
 | bank0 | 3027 | 370 | 681 | 3397 | 699 |
 | bank1 | 2416 | 449 | 1037 | 2865 | 1231 |
-| bank2 | 2515 | 381 | 1199 | 2896 | 1200 |
-| bank3 | 5 | 5 | 4085 | 10 | 4086 |
-| **total** | **7963** | **1205** | **7002** | **9168** | **7216** |
+| bank2 | 1270 | 193 | 2632 | 1463 | 2633 |
+| bank3 | 1205 | 237 | 2649 | 1442 | 2654 |
+| **total** | **7918** | **1249** | **6999** | **9167** | **7217** |
 
-C3 delta vs the pre-C3 tree (bank2 2920 used / 1176 free, total free 7192):
-**bank2 −24 B used (code +6, data −30), total free +24 B.**
+C7 delta vs post-C3 (bank2 2 896 used / 1 200 free, bank3 10 / 4 086, total
+free 7 216): **bank2 −1 433 used, bank3 +1 432 used, total free +1 B.** The
+move is a wash on the 16K budget (the duplicated `ColOff`/`ColMask` 40 B and
+the bank3 `ReturnPad`/`ERLoadDone` ~15 B pay for the deleted bank2 pads).
 
-Level data **247 B** = index 50 + tables/blocks 117 + models 80. The models
-line is now `11 shapes × 4 B (hot count + 3 row indices) = 44` +
-`12 pool rows × 3 B = 36`; the pre-C3 tree paid `11 × 10 = 110 B` of raw PF.
-An async room still carries a variable extras record and every referenced
-model has a shape (M0/M10/M11 included); room tables remain **3 B/room** plus
-the shape table.
-bank2 windows: `ColOff`/`ColMask` now sit in the `$F854` fill and the
-room-block loader (`B3RoomBlocks` + `ExtrasLoad`) occupies `$F453-$F5EF`
-(16 B slack before the `$F600` pin); the level-data block slot
-(`$F307-$F44F`) holds models_data at 80/329 B (249 B slack); the `$F8B7`
-window is HotOverlapBody only.
+Level data **247 B** = index 28 + tables/blocks/extras 117 + models 102. The
+models line is now `11 shapes × 4 B + 12 pool rows × 3 B = 80` **plus the
+22 B `LEVEL_ShapeTable`** that left `levels_index.asm` (which dropped 50 → 28):
+the total is unchanged, and the shape half is entirely bank3's.
+Bank2's table windows (2 323 B capacity, 8 slots): live stage uses 112 B;
+`levels_index` sits in `$F307` (first in source order — it defines the EQUs),
+the per-level tables in the other seven.
+Bank3: code 1 205 B, data 237 B; its `$F010-$F44F` data window holds
+models_data + levels_extras (live: 135/1 088 B).
 Re-measure with `tools/rom_size_report.py --md` after any change.
+
+### 7.1 C7 capacity proof — a generated 210-room stage fits
+
+Synthetic, test-owned stage (temp dir; never `src/rooms`): 20 levels,
+level *n* has *n* rooms (**210 rooms**), 1 enemy/room, 12 recycled shapes.
+Built with `STAGE_FILE=<tmp>/stage.json` (`build.sh`'s documented override),
+`SIM_PY=/bin/false` (the sims probe LIVE room content — same rule the
+`qa_build.sh` / `raft_build.sh` staged builds use; the live build keeps both
+sims green, see the gates below).
+
+| measurement | 210 rooms | capacity |
+|---|---|---|
+| level tables in bank2 (`levels_index` 140 + 20 table files 1 470) | **1 610 B** | 2 323 B in 8 slots → **slack 713 B** |
+| bank3 data window (models 108 + extras base table 40) | **148 B** | 1 088 B → **slack 940 B** |
+| level data total (`rom_size_report`) | **1 718 B** | (was 247 B for 16 rooms) |
+| bank2 | 2 961 used / **1 135 free** | report-style |
+| bank3 | 1 451 used / **2 645 free** | report-style |
+| total ROM | 10 674 used / **5 710 free** | of 16 384 |
+
+Placement map for the 210-room tree (precheck, all slots green):
+`$F307` 329/329 (index + 6 level files), `$F453` 427/429, `$F700` 336/340,
+`$F8B7` 21/290, `$F9D9` 497/503, `$FCB8` 0/207, `$FE9C` 0/84,
+`$FF59` 0/141. The tightest slot has 0 B left, so the next ~40 rooms would
+want the three still-empty slots ($FCB8/$FF59/$FE9C, 432 B) — the placement
+list is greedy first-fit, so it starts using them automatically.
+`verify_build` is green on that tree (`LEVEL_COUNT` self-heals 4 → 20), and
+DASM emits exactly 4 × 4 096 B.
+
+Not changed by C7: `LEVEL_FORMAT 5` (3 B room records, C3 row dictionary, C5
+extras stream), the room-load call chain depth (0 new pushes — the split is
+two tail jumps), and every per-frame path (the VBL/overscan clusters only
+gained a bank byte: `sim_frame_budget` cave 267 / title 265 unchanged).
+
 
 ## 8. Measurement appendix
 

@@ -40,18 +40,3 @@ LEVEL1_RoomCounts:
 LEVEL1_EnemyDataTable:
   .byte 2, 8, 60, 1
   .byte 0, 127, 60, -1
-
-; C5 (2026-10-20) async EXTRAS stream — one record per
-; owns-extras room, in room order (the counts byte b5-0 is the
-; 1-based ORDINAL). Record layout (hex per line below):
-;   +0 flags: n_patches b1-0 | n_features b5-2
-;   +1 MetaA  +2 MetaB  (the pair that used to sit at
-;      TilePF0+9/+10 — the loader stages it into $99/$9A)
-;   +3.. 1 B/patch: row b7-6 | side b4 | col b3-0 (tile = wall)
-;   ..   1 B/feature: kind b7-6 (1 = phase, 2 = hcrunch
-;        prefix end) | col b3-0
-;   ..   [n_features > 0] 1 B hot count + 5 B/hot record — the
-;        ROOM's hot stream (feature cells split the shape's own
-;        hot rects, so the walkers read this copy instead).
-LEVEL1_AsyncExtras:
-  .byte $02, $90, $00, $18, $58  ; room 0: 2 patch(es), 0 feature(s), MetaA $90 MetaB $00
