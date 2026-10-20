@@ -1,12 +1,9 @@
 ; Generated from New Level (level 3) — per-room PF/meta blocks. Do not edit by hand.
 
 ; Generated from room 0 (model 0). Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
 ; L3R1 block SHARED with L1R1 (byte-identical dedupe)
 L3R2RoomRects:
-  .byte 3                  ; number of rectangles
-  .byte $00, $49  ; packed (x<<2|y, w<<2|h)
-  .byte $02, $11  ; packed (x<<2|y, w<<2|h)
-  .byte $1a, $39  ; packed (x<<2|y, w<<2|h)
   .byte 1              ; number of hot rectangles
   .byte $82, 0, 1, 20, 1  ; hcrunch band prefix
 L3R2TilePF0:

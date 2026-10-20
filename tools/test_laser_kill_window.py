@@ -35,7 +35,7 @@ from test_cell_map import Mem, RTS_SENTINEL, parse_labels  # noqa: E402
 SRC = ROOT / "src"
 
 need0 = {"EnemyCount", "EnemyDeadMask", "EnemyRamX", "EnemyRamY", "RoomY",
-         "CollisionX", "CollisionEndX", "CollisionCellX", "RcBase",
+         "CollisionX", "CollisionEndX", "CollisionCellX",
          "EnemyDataLo", "EnemyDataHi", "PlayerDir", "LineCount",
          "RoomPF0Lo"}
 L0 = parse_labels(SRC / "bank0.lst", need0)
@@ -62,7 +62,6 @@ def fire(mem: Mem, e_x: int, e_y: int) -> tuple[bool, int]:
     r[L0["CollisionX"] - 0x80] = A
     r[L0["CollisionEndX"] - 0x80] = A >> 2      # path cols (no walls anyway)
     r[L0["CollisionCellX"] - 0x80] = A >> 2
-    r[L0["RcBase"] - 0x80] = 0                  # empty rect cache -> no clamp
     r[L0["PlayerDir"] - 0x80] = 0
     mem.bank = 2
     mpu = MPU(memory=mem)
@@ -117,7 +116,6 @@ def main() -> int:
         r[L0["CollisionX"] - 0x80] = tip
         r[L0["CollisionEndX"] - 0x80] = 20      # path cols: full right half
         r[L0["CollisionCellX"] - 0x80] = 39
-        r[L0["RcBase"] - 0x80] = 0              # empty cache: buffer = map
         r[L0["PlayerDir"] - 0x80] = 0           # right: tip = CollisionX
         r[L0["EnemyDeadMask"] - 0x80] = dead
         # M1X via the room-data pointer: body reads MetaA (RoomPF0Lo),Y=Y=9

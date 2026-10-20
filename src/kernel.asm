@@ -100,10 +100,10 @@ Grp0PtrHi       byte            ; pointer to player sprite data (hi)
 Temp            byte            ; general scratch
 
 ; Collision ZP variables (from comparison/lo-a-rad-dragon/bank0.asm)
-RcBase          byte            ; rect cache count ($89 — was MapPtrLo;
-                                ; rect4.x moved into the cache S3.2, and the
-                                ; count needs a byte OUTSIDE bank1's $E0-$EF
-                                ; stomp zone — see cache note below)
+ZPSpare89       byte            ; $89 FREE (was RcBase, the rect-cache count,
+                                ; retired by plan C4 2026-10-20: every walker
+                                ; is cell-based). Kept allocated so the
+                                ; sequential block does not shift.
 DropTarget      byte            ; spawn drop-in target Y (0 = idle); was
                                 ; MapPtrPad1/MapPtrHi dead pad — repurposed
                                 ; in place, keeps the sequential block from
@@ -221,26 +221,17 @@ ScoreTe         = $F5           ; score tens digit (0-9)
 ; PF0ScoreBuf/PF1ScoreBuf removed (S3.0): dead legacy EQUs — the 48px
 ; sprite score never used PF score buffers (decl-only, zero references).
 
-; P3.4 rect cache — solid rect list copied once per EnterRoom, walked directly
-; by PlayerHitsMap with NO bank2 fold (fold mid-function switched the EXECUTION
-; bank; only byte-identical pad code may span a switch). Layout (S3.2 —
-; UNIFORM STRIDE: all 5 rects contiguous, no windows, no .Stage3):
-;   $89       count        (RcBase — sequential decl; MUST stay outside
-;                           bank1's $E0-$EF stomp zone: the first attempt
-;                           had count/rect4.h inside it and scorePtr writes
-;                           zeroed rect4.h every HUD frame → probes passed
-;                           through rect4 walls = tentacle walked inside
-;                           walls. Keep ALL persistent cache bytes < $E0.)
-;   $CC-$DF  rect0..rect4 (walk: FetchPtr base RcW1=$CC, Y=0..19, stride 4;
-;                          mask index = Y>>2, table has a $00 entry for
-;                          index 4 = rect4 never masked)
-; rect4 x,y,w,h live IN the cache ($DC-$DF) since S3.2 — the old split
-; slots are gone (DropTarget $8A keeps the allocation byte), Rc4W retired.
+; Rect cache RETIRED (plan C4 / cell_collision_plan 7.1, 2026-10-20).
+; The solid rect list is no longer emitted and no walker reads a cache:
+; PlayerHitsMap, LaserWallClamp, the moth walk and BombMarkWalls all test
+; PF cells. $CC-$DF are FREE (20 B, the "option A" ZP reclaim); $89 stays
+; allocated as ZPSpare89 so the sequential block above does not shift.
+; History worth keeping: the cache lived at $CC-$DF because bank1's HUD
+; writes $E0-$EF every frame — rect4.h on $E0 was zeroed by scorePtr1 and
+; probes walked through rect4 walls (the $E0 stomp-zone rule still applies
+; to every persistent byte).
 ; Buffers packed: PF0 $C3-$C5, PF1 $C6-$C8, PF2 $C9-$CB (rows 0-2 only).
 ; ($E0/$E1 are spare/stomp-zone — never persistent bank0 state.)
-RcW1            = $CC           ; walk FetchPtr base (rect0 x at Y=0; Y→$DF)
-; Rc4W/Rc4H retired (S3.2): rect4.w/h = cache bytes $DE/$DF, reached by
-; the uniform stride like every other field. RcBase is the $89 decl above.
 
 ; PF cave buffers (copied from ROM during VBLANK, read by kernel via absolute indexed)
 ; These share ZP space with bank1's HUD variables — safe because bank1
@@ -3927,7 +3918,7 @@ TallyTramp:
     .ds $FFEC - *, 0
 HotOverlapFlag:
     sta $1FF8                   ; select bank2 (record stream lives there)
-    jmp $F929                   ; bank2 HotOverlapBody (synced by verify_build)
+    jmp $F8F8                   ; bank2 HotOverlapBody (synced by verify_build)
     .ds $FFF2 - *, 0            ; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
 
 ; ------------------------------------------------------------------------------

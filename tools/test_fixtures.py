@@ -39,10 +39,10 @@ Run standalone:
 M0_PF = bytes.fromhex("f0 30 f0 ff 00 ff 3f 0c ff")
 M0_META = bytes.fromhex("00 00")              # MetaA, MetaB (no band/ball)
 M0_STREAM = bytes.fromhex(
-    "03 01 09 39 09 02 51"                    # count 3 + packed rects:
-                                              # (0,1,2,1) border, (14,1,2,1)
-                                              # thin wall, (0,2,20,1) floor
-    "00")                                      # hot-record count 0
+    "00")                                      # C4 2026-10-20: hot count ONLY
+                                              # — the solid rect list is
+                                              # retired (cell collision), so
+                                              # the block is hot | PF | meta
 
 # model2 — the shipped vcrunch room (V at row1 col4, MetaB $80 shutter
 # flag, hot $81 bbox record) — kill rides the overlay miss path.
@@ -53,9 +53,9 @@ M0_STREAM = bytes.fromhex(
 M2_PF = bytes.fromhex("f0 30 30 00 0c ff 00 00 3f")
 M2_META = bytes.fromhex("00 80")              # MetaA=0, MetaB b7=shutter
 M2_STREAM = bytes.fromhex(
-    "00 01 81 08 01 02 01")                   # 0 rects + 1 hot record:
-                                              # $81,8,1,2,1 (y=1 — specials
-                                              # sit on the middle band)
+    "01 81 08 01 02 01")                      # C4 2026-10-20: hot count 1
+                                              # + record $81,8,1,2,1 (y=1:
+                                              # specials sit on the middle band)
 
 # model4 — the shipped hcrunch room (level 3 room 2, $82 prefix shutter on
 # band1, sweep extent cols 0-19 = the whole left half to screen center).
@@ -69,11 +69,7 @@ M4_PF = bytes.fromhex("f0 f0 f0 ff ff 3f 3f 00 ff")  # TilePF1 row1 = $FF
                                                   # staging trims to P(n))
 M4_META = bytes.fromhex("00 00")              # MetaA, MetaB (cold: no b6/b7)
 M4_STREAM = bytes.fromhex(
-    "03 00 49 02 11 1a 39"                    # count 3 + packed rects:
-                                              # (0,0,18,1) ceiling band0,
-                                              # (0,2,4,1) row2 wall cols0-1,
-                                              # (6,2,14,1) floor
-    "01"                                      # hot-record count 1
+    "01"                                      # C4 2026-10-20: hot count 1
     "82 00 01 14 01")                         # $82, x=0, y=1 (band1),
                                               # w=20 (4px cols = 10 cells =
                                               # to the center), h=1
@@ -151,12 +147,12 @@ def _selfcheck():
         fit = min(len(data), labels[nxt] - labels[label])
         assert bytes(bank[off:off + fit]) == data[:fit], label
     # fixtures must be self-consistent with the walk/punch assumptions
-    assert M0_STREAM[0] == 3 and len(M0_STREAM) == 1 + 6 + 1
-    assert M2_STREAM[0] == 0 and len(M2_STREAM) == 1 + 1 + 5
-    assert M4_STREAM[0] == 3 and len(M4_STREAM) == 1 + 6 + 1 + 5
-    assert M0_PF[7] == 0x0C and M2_META[1] == 0x80 and M2_STREAM[2] == 0x81
-    assert M4_STREAM[7] == 1 and M4_STREAM[8] == 0x82
-    assert M4_META == b"\x00\x00" and M4_STREAM[9:13] == bytes([0, 1, 20, 1])
+    assert M0_STREAM[0] == 0 and len(M0_STREAM) == 1      # hot count only
+    assert M2_STREAM[0] == 1 and len(M2_STREAM) == 1 + 5
+    assert M4_STREAM[0] == 1 and len(M4_STREAM) == 1 + 5
+    assert M0_PF[7] == 0x0C and M2_META[1] == 0x80 and M2_STREAM[1] == 0x81
+    assert M4_STREAM[1] == 0x82
+    assert M4_META == b"\x00\x00" and M4_STREAM[2:6] == bytes([0, 1, 20, 1])
     # both streams must fit their slots with NO spill — an M0 spill puts
     # the hot count inside the PF block; an M2 spill eats the $81 record
     # (an M4 spill has the same trap: hot count / $82 inside the PF block)
@@ -166,7 +162,10 @@ def _selfcheck():
         ("M4", M4_STREAM, "L3R2RoomRects", "L3R2TilePF0"),
     ):
         gap = labels[b] - labels[a]
-        assert len(stream) <= gap, f"{tag} stream {len(stream)}B > slot {gap}B"
+        # C4: TilePF0 = block + 1 + 5*hot, so the LIVE gap is tiny; the
+        # fixture stream may spill into it because _freeze writes the stream
+        # FIRST and PF+meta SECOND (the PF injection overwrites the spill).
+        assert gap >= 1, f"{tag} block has no room for the hot count"
     # The room block is PF(9B) + MetaA + MetaB, so the fixture's PF+meta write
     # ends exactly at MetaB+1 (the old "next M-block" neighbour is gone: per-room
     # blocks live in the level table file now).

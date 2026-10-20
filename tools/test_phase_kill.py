@@ -39,7 +39,7 @@ if need:
 TEMP = L2.get("Temp", 0x88)
 
 STREAM = 0xA0
-# synthetic hot stream: solid count 0, hot count 1, record = mask,x,y,w,h
+# synthetic hot stream (C4): hot count 1, then record = mask,x,y,w,h
 REC = {"x": 4, "y": 1, "w": 2, "h": 1}
 # box = (CollisionCellX max col, CollisionCellY top row,
 #        CollisionEndX min col, CollisionEndY bottom row) — PHM semantics;
@@ -60,8 +60,8 @@ def run(mask: int, box: tuple[int, int, int, int],
     is the blasted wall (the punch emptied the cell)."""
     mem = Mem02()
     r = mem.ram
-    r[STREAM - 0x80:STREAM - 0x80 + 7] = bytes(
-        [0, 1, mask, REC["x"], REC["y"], REC["w"], REC["h"]])
+    r[STREAM - 0x80:STREAM - 0x80 + 6] = bytes(
+        [1, mask, REC["x"], REC["y"], REC["w"], REC["h"]])
     for name, val in (("RoomRectsLo", STREAM),
                       ("CollisionCellX", box[0]), ("CollisionCellY", box[1]),
                       ("CollisionEndX", box[2]), ("CollisionEndY", box[3]),

@@ -1,11 +1,8 @@
 ; Generated from Level 1 (level 1) — per-room PF/meta blocks. Do not edit by hand.
 
 ; Generated from room 0 (model 0). Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
 L1R1RoomRects:
-  .byte 3                  ; number of rectangles
-  .byte $00, $11  ; packed (x<<2|y, w<<2|h)
-  .byte $01, $09  ; packed (x<<2|y, w<<2|h)
-  .byte $02, $49  ; packed (x<<2|y, w<<2|h)
   .byte 0              ; number of hot rectangles
 L1R1TilePF0:
   .byte $f0, $30, $f0
