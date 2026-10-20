@@ -694,24 +694,24 @@ def write_tables(level: dict, rooms: list[dict], connections: list[list[int]],
         "",
     ]
     lines.append(
-        f"; Room data: one ({room_prefix}<n>TilePF0, ...RoomRects) word pair per room,"
-        " indexed by RoomNo. Rooms pointing at a model share that model's")
+        f"; Room data: ONE word per room (the block's RoomRects label), indexed"
+        " by RoomNo. TilePF0 is derived at room load as")
     lines.append(
-        "; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).")
+        "; rects + 2 + 2*nrect (C3 2026-10-20: it always sits 2 bytes past the"
+        " rect list in the same block, so the second word was redundant).")
     lines.append(f"{prefix}_RoomDataTable:")
     for index, room in enumerate(rooms):
         model = models_by_id.get(room.get("model_id")) if models_by_id else None
         if model is not None and not room_has_async(room):
             mid = model["id"]
             lines.append(
-                f"  .word M{mid}TilePF0, M{mid}RoomRects ; room {index} (model {mid})")
+                f"  .word M{mid}RoomRects ; room {index} (model {mid})")
         else:
             why = "" if model is not None else " (no model)"
             if model is not None:
                 why = " (async)"
             lines.append(
-                f"  .word {room_prefix}{index + 1}TilePF0, "
-                f"{room_prefix}{index + 1}RoomRects ; room {index}{why}")
+                f"  .word {room_prefix}{index + 1}RoomRects ; room {index}{why}")
     lines.append("")
     lines.append(
         "; Room connections: 2 bytes/room, nibble-packed "
@@ -785,8 +785,12 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
     LEVEL{n}_EnemyDataTable is a flat list of ENEMY_STRIDE-byte records:
     type, x, y, dir (S4.1 — range_min/range_max dropped from ROM: nothing
     read them; the editor JSON still carries those fields).
-    LEVEL{n}_RoomEnemies has one 4-byte record per room:
-    ptr_lo, ptr_hi, count, bottom_color (0 = no bottom band).
+    LEVEL{n}_RoomEnemies has one 2-byte record per room (C2 2026-10-20):
+    (count << 5 | first record index), bottom_color (0 = no bottom band).
+    The records are contiguous in room order, so the index replaces the old
+    absolute pointer: the loader reads the level's RoomEnemies base
+    (RoomDataTable + 4*rooms) and the enemy records base
+    (RoomDataTable + 6*rooms), both from the level entry's room count.
     """
     flat: list[tuple[int, int, int, int]] = []
     counts: list[int] = []
@@ -817,31 +821,31 @@ def _enemy_tables(prefix: str, rooms: list[dict]) -> list[str]:
                 px(float(enemy.get("y", 0)), 12),
                 int(enemy.get("dir", 1)),
             ))
+    assert len(flat) <= 31, (
+        f"{prefix}: {len(flat)} enemy records > 31 — the packed "
+        f"RoomEnemies index field (b4-0) would overflow")
+    first = 0
     lines = [""]
     lines += [
+        "; Per-room enemy records: (count<<5 | first record index),"
+        " bottom_color.",
+        f"{prefix}_RoomEnemies:",
+    ]
+    for index, count in enumerate(counts):
+        color = bottoms[index]
+        assert (count << 5) | first <= 0xFF and count <= 7
+        lines.append(
+            f"  .byte ${(count << 5) | first:02x}, ${color:02x} "
+            f"; room {index}: {count} record(s) from {first}")
+        first += count
+    lines += [
+        "",
         f"; Enemy data: {len(flat)} enemy records across {len(rooms)} rooms, "
         f"{ENEMY_STRIDE} bytes each (type,x,y,dir).",
         f"{prefix}_EnemyDataTable:",
     ]
     for type_, x, y, dir_ in flat:
         lines.append(f"  .byte {type_}, {x}, {y}, {dir_}")
-    lines += [
-        "",
-        "; Per-room enemy records: ptr_lo, ptr_hi, count, bottom_color.",
-        f"{prefix}_RoomEnemies:",
-    ]
-    for index, count in enumerate(counts):
-        color = bottoms[index]
-        color_hex = f"${color:02x}"
-        if count:
-            start = sum(counts[:index]) * ENEMY_STRIDE
-            lines.append(
-                f"  .byte <({prefix}_EnemyDataTable+{start}), "
-                f">({prefix}_EnemyDataTable+{start}), {count}, {color_hex} ; room {index}")
-        else:
-            lines.append(
-                f"  .byte <({prefix}_EnemyDataTable), "
-                f">({prefix}_EnemyDataTable), 0, {color_hex} ; room {index}")
     return lines
 
 
@@ -950,7 +954,9 @@ def dedupe_room_blocks(generated: Path) -> dict:
         lines = []
         for line in path.read_text(encoding="utf-8").splitlines():
             for dup, canon in shared.items():
-                if f"{dup}TilePF0" in line:
+                # C3: the room table carries the RoomRects word only (TilePF0
+                # is derived from it), so RoomRects is the label to repoint.
+                if f"{dup}RoomRects" in line:
                     line = line.replace(f"{dup}TilePF0", f"{canon}TilePF0") \
                                .replace(f"{dup}RoomRects", f"{canon}RoomRects")
                     line = f"{line} [shared with {canon}]"
@@ -964,8 +970,9 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
 
     The game reads LevelDataTable[Level] to start a level and place the miner.
     miner_room's high bit carries miner-facing-right; low 7 bits remain room id.
-    The entry contains 6 scalar bytes followed by three word pointers (stride12;
-    start_x/start_y dropped 2026-10-19 — they were the constants 32/24).
+    The entry is 6 scalar bytes + the level block base word + the room count
+    (stride 9, C4 2026-10-20; start_x/start_y dropped 2026-10-19 — they were
+    the constants 32/24).
 
     models_data.asm holds each referenced model's PF/rect data ONCE, shared by
     every room (across all levels) whose RoomDataTable points at that model.
@@ -1045,21 +1052,28 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
 
     tail_lines = [
         "",
-        "LEVEL_DATA_STRIDE = 12",
+        "LEVEL_DATA_STRIDE = 9",
         f"LEVEL_COUNT = {len(levels)}",
         "",
-        "; Per-level entry (stride 12): start room, miner room/x/y, both wall",
-        "; colors, then the level's RoomDataTable and RoomConnections bases.",
+        "; Per-level entry (stride 9): start room, miner room/x/y, both wall",
+        "; colors, then the level's room-table base and its ROOM COUNT.",
         "; Start x/y are the fixed constants 32/24 (kernel.asm LoadLevel).",
+        "; Inside a level block (n = ROOM COUNT, C2/C3/C4 2026-10-20):",
+        ";   base + 0   RoomDataTable    2 B/room (RoomRects ptr; TilePF0 =",
+        ";                               rects + 2 + 2*nrect)",
+        ";   base + 2n  RoomConnections  2 B/room",
+        ";   base + 4n  RoomEnemies      2 B/room ((count<<5 | rec idx), band)",
+        ";   base + 6n  EnemyDataTable   4 B/record",
         "LevelDataTable:",
     ]
-    for level_n, _level in levels:
+    for level_n, level in levels:
         prefix = f"LEVEL{level_n}"
         tail_lines += [
             f"  .byte {prefix}_START_ROOM, {prefix}_MINER_ROOM, "
             f"{prefix}_MINER_X, {prefix}_MINER_Y, "
             f"{prefix}_WALL_COLOR, {prefix}_WALL_COLOR2",
-            f"  .word {prefix}_RoomDataTable, {prefix}_RoomConnections, {prefix}_RoomEnemies",
+            f"  .word {prefix}_RoomDataTable",
+            f"  .byte {len(level['rooms'])} ; {prefix} rooms",
         ]
     tail_lines += [""]
     table_lines += tail_lines

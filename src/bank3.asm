@@ -135,7 +135,25 @@ B3RoomBlocks:
     lda RoomRectsHi
     sta FetchPtr+1
     ldy #0
-    lda (FetchPtr),Y                ; count
+    lda (FetchPtr),Y                ; count (RAW — the cache below clamps to 5)
+    ; C3 2026-10-20: TilePF0 = rects + 2 + 2*nrect (count byte + the always-0
+    ; hot-count byte sit between the rect list and the PF triple in the block).
+    ; The per-room word pair dropped this second pointer.
+    asl                             ; 2*nrect
+    clc
+    adc RoomRectsLo
+    sta RoomPF0Lo
+    lda RoomRectsHi
+    adc #0
+    sta RoomPF0Hi
+    lda RoomPF0Lo
+    clc
+    adc #2
+    sta RoomPF0Lo
+    bcc .EBpf0Ok
+    inc RoomPF0Hi
+.EBpf0Ok:
+    lda (FetchPtr),Y                ; count again for the cache clamp
     cmp #6
     bcc .EBrcCntOk
     lda #5                          ; rect5+ not cached (ZP ends $DF) — clamp

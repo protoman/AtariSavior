@@ -45,8 +45,7 @@ RoomMetaA = $99                 ; staged MetaA (band mask/m1 col/side/door-L)
 RoomMetaB = $9A                 ; staged MetaB (ball col/hot/door-R+shutter b7)
 LevelPFDataLo = $9F             ; RoomDataTable pointer low (kernel decl)
 LevelPFDataHi = $A0             ; RoomDataTable pointer high (kernel decl)
-LevelEnemyLo = $AF              ; RoomEnemies pointer low (kernel decl)
-LevelEnemyHi = $B0              ; RoomEnemies pointer high (kernel decl)
+LevelRoomN = $A1                ; rooms in the level (kernel decl, C4 2026-10-20)
 RoomBandColor = $BC             ; band-color cache (kernel EQU, S3.1)
 BandTab = $ED                   ; Phase 3 band gate bytes — staged here,
                                  ; read by kernel .Row in bank0
@@ -137,23 +136,18 @@ AUDV0 = $19
 EnterRoomB2:
     sta RoomNo
     asl
-    asl
-    tay                             ; Y = room * 4
+    tay                             ; Y = room * 2 (C3: ONE word per room)
     lda LevelPFDataLo
     sta FetchPtr
     lda LevelPFDataHi
     sta FetchPtr+1
-    lda (FetchPtr),Y                ; RoomDataTable: PF0 ptr lo
-    sta RoomPF0Lo
-    iny
-    lda (FetchPtr),Y                ; PF0 ptr hi
-    sta RoomPF0Hi
-    iny
-    lda (FetchPtr),Y                ; rects ptr lo
+    lda (FetchPtr),Y                ; RoomDataTable: rects ptr lo
     sta RoomRectsLo
     iny
     lda (FetchPtr),Y                ; rects ptr hi
     sta RoomRectsHi
+    ; TilePF0 is no longer stored per room: bank3's block reader derives it
+    ; as rects + 2 + 2*nrect from the rect list it already copies (C3).
 
     ; --- A3 (2026-10-19): the rect stream, the PF block and the room meta
     ;     live in BANK3 (the level-data bank). One tail-jump into the block
@@ -162,24 +156,50 @@ EnterRoomB2:
     jmp ERBlocksPad
 ERBlocksDone:
 
-    ; --- enemy record for this room (4 bytes: ptr_lo, ptr_hi, count, band) ---
+    ; --- enemy record for this room (C2 2026-10-20: 2 bytes) ------------------
+    ; byte0 = count<<5 | first record index, byte1 = bottom-band color.
+    ; RoomEnemies = level base + 4n, enemy records = level base + 6n
+    ; (n = LevelRoomN; the record index replaces the old absolute pointer).
     lda RoomNo
     asl
-    asl
-    tay
-    lda LevelEnemyLo
+    tay                             ; Y = room * 2
+    lda LevelPFDataLo
+    clc
+    adc LevelRoomN
+    adc LevelRoomN
+    adc LevelRoomN
+    adc LevelRoomN                  ; base + 4n = RoomEnemies
     sta FetchPtr
-    lda LevelEnemyHi
+    lda LevelPFDataHi
+    adc #0
     sta FetchPtr+1
     lda (FetchPtr),Y
-    ldx #0                          ; EnemyDataLo/Hi/Count are contiguous
-.EBrec:
-    sta EnemyDataLo,X               ; $B1/$B2/$B3 (record bytes 0-2)
-    iny
-    inx
+    lsr
+    lsr
+    lsr
+    lsr
+    lsr                             ; count = b7-5
+    sta EnemyCount
+    lda FetchPtr
+    clc
+    adc LevelRoomN
+    adc LevelRoomN                  ; base + 6n = enemy records
+    sta EnemyDataLo
+    lda FetchPtr+1
+    adc #0
+    sta EnemyDataHi
     lda (FetchPtr),Y
-    cpx #3
-    bne .EBrec
+    and #$1F                        ; first record index
+    asl
+    asl                             ; *4 (index <= 31 → fits one byte)
+    clc
+    adc EnemyDataLo
+    sta EnemyDataLo
+    lda EnemyDataHi
+    adc #0
+    sta EnemyDataHi
+    iny
+    lda (FetchPtr),Y                ; bottom-band color
     sta RoomBandColor               ; SOURCE room's band on the transition frame
     lda #0                          ; (also the bomb reset seed below)
     sta EnemyDeadMask               ; no dead enemies in new room

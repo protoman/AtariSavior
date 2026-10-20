@@ -95,9 +95,10 @@ def main() -> None:
     # was 30: the snake's symmetric patrol (2026-10-19) dropped its two ROM-dir
     # reads; then the redundant VBL band-color fold left (EnterRoom stages it),
     # so 27. S4 (2026-10-19) dropped the two start_x/start_y table fields,
-    # so 25.
-    assert KERNEL.count("jsr FoldIndirect") >= 25, \
-        f"expected >=25 fold call sites (conn/LoadLevel + P3.1 enemy " \
+    # so 25. C4 (2026-10-20) dropped the two derived pointer words from the
+    # per-level entry (4 reads), so 21.
+    assert KERNEL.count("jsr FoldIndirect") >= 21, \
+        f"expected >=21 fold call sites (conn/LoadLevel + P3.1 enemy " \
         f"derives; EnterRoom folds moved to bank2 direct reads), " \
         f"got {KERNEL.count('jsr FoldIndirect')}"
     # every fold batch stages FetchPtr immediately before its reads
@@ -142,6 +143,59 @@ def main() -> None:
     assert m2 and m2.group(1).lower() == m.group(1), \
         f"LEVEL_DATA_ADDR ${m2 and m2.group(1)} != " \
         f"bank2 LevelDataTable ${m.group(1)}"
+
+    # --- C2/C3/C4 (2026-10-20): packed level / room tables ------------------
+    # The readers hardcode the block layout: RoomDataTable (2 B/room),
+    # RoomConnections (2 B/room), RoomEnemies (2 B/room), EnemyDataTable
+    # (4 B/record). The per-level entry is 6 scalars + base word + room count,
+    # and the Connections/RoomEnemies/enemy-record bases are the block's
+    # +2n / +4n / +6n offsets, so the emission order IS the contract.
+    index = (ROOT / "src" / "generated" / "levels_index.asm").read_text(
+        encoding="utf-8")
+    assert "LEVEL_DATA_STRIDE = 9" in index, (
+        "level index stride is not the C4 9-byte layout (kernel LoadLevel "
+        "computes Level*9)")
+    assert "  .word LEVEL" in index and "  .byte " in index
+    entries = re.findall(r"^\s*\.word (LEVEL(\d+)_RoomDataTable)\n"
+                         r"\s*\.byte (\d+) ;", index, re.M)
+    assert len(entries) == n_levels, (
+        f"level index has {len(entries)} 9-byte entries, want {n_levels}")
+    for _label, n, rooms in entries:
+        rooms = int(rooms)
+        text = (ROOT / "src" / "generated" / f"level_{int(n):03d}_rooms.asm"
+                ).read_text(encoding="utf-8")
+        pos = {k: text.index(f"{k}:") for k in (
+            f"LEVEL{n}_RoomDataTable", f"LEVEL{n}_RoomConnections",
+            f"LEVEL{n}_RoomEnemies", f"LEVEL{n}_EnemyDataTable")}
+        assert (pos[f"LEVEL{n}_RoomDataTable"] < pos[f"LEVEL{n}_RoomConnections"]
+                < pos[f"LEVEL{n}_RoomEnemies"]
+                < pos[f"LEVEL{n}_EnemyDataTable"]), (
+            f"LEVEL{n}: block order must be RoomData/Conn/RoomEnemies/"
+            f"EnemyData — the readers use +2n/+4n/+6n offsets")
+        chunk = text[pos[f"LEVEL{n}_RoomDataTable"]:pos[f"LEVEL{n}_EnemyDataTable"]]
+        assert chunk.count("  .word ") == rooms, (
+            f"LEVEL{n}: RoomDataTable must be ONE word per room (C3)")
+        # one 2-byte line per room in each of Connections and RoomEnemies
+        assert chunk.count("  .byte ") == 2 * rooms, (
+            f"LEVEL{n}: Connections + RoomEnemies must be 2 bytes/room each "
+            f"(C2) — got {chunk.count('  .byte ')} lines for {rooms} rooms")
+        enemies = text[pos[f"LEVEL{n}_RoomEnemies"]:
+                       pos[f"LEVEL{n}_EnemyDataTable"]]
+        goals = re.findall(r"^  \.byte \$([0-9a-f]{2}), \$[0-9a-f]{2} ; room (\d+)",
+                           enemies, re.M)
+        assert len(goals) == rooms, f"LEVEL{n}: RoomEnemies record count"
+        prev = 0
+        for hexv, room in goals:
+            packed = int(hexv, 16)
+            first, count = packed & 0x1F, packed >> 5
+            assert first == prev, (
+                f"LEVEL{n} room {room}: packed first index {first} != {prev} "
+                f"(records must stay contiguous in room order)")
+            prev += count
+        records = text[pos[f"LEVEL{n}_EnemyDataTable"]:].count("  .byte ")
+        assert records == prev, (
+            f"LEVEL{n}: EnemyDataTable has {records} records but the packed "
+            f"indices account for {prev} (4 B/record)")
 
     print("test_level_bank: all asserts passed")
     return 0

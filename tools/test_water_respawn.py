@@ -73,7 +73,10 @@ for _l in open(SRC / "bank0.lst", errors="replace"):
         _LBL.setdefault(_m.group(2), int(_m.group(1), 16))
 PC_STARTFRAME = _LBL["StartFrame"]
 LOADLEVEL = _LBL["LoadLevel"]
-I_ROOMY, I_LENEMY, I_LIVES, I_DROP, I_HOVER = 0x01, 0x2F, 0x2C, 0x0A, 0x1C
+# I_LPF/I_ROOMN = LevelPFDataLo ($9F) + LevelRoomN ($A1) — C4 2026-10-20 the
+# level entry carries one base word + the room count, not the enemy pointer.
+I_ROOMY, I_LPF, I_ROOMN, I_LIVES, I_DROP, I_HOVER = (0x01, 0x1F, 0x21, 0x2C,
+                                                    0x0A, 0x1C)
 
 
 def at_init_jsr():
@@ -104,13 +107,14 @@ while frame < 520:
         mem.swchb = 0xFE if frame in (2, 5) else 0xFF
         dt = mem.ram[I_DROP]
         if not band_poked and dt not in (0xFF, 0xFD) and mem.ram[I_LIVES] > 0:
-            lo, hi = mem.ram[I_LENEMY], mem.ram[I_LENEMY + 1]
-            band = (hi << 8) | lo
-            BANKS[2][band + 3 - 0xF000] = 0x1C      # room 0 band on
+            lo, hi = mem.ram[I_LPF], mem.ram[I_LPF + 1]
+            band = ((hi << 8) | lo) + 4 * mem.ram[I_ROOMN]   # RoomEnemies base
+            # C2: 2-byte per-room record — byte 1 is bottom_color
+            BANKS[2][band + 1 - 0xF000] = 0x1C      # room 0 band on
             band_poked = True
             armed = frame
             mem.ram[I_ROOMY] = 130
-            print(f"band byte @ ${band + 3:04X} forced; RoomY->130 at f{frame}")
+            print(f"band byte @ ${band + 1:04X} forced; RoomY->130 at f{frame}")
         if band_poked and armed is not None and frame > armed:
             y, lv, hv = mem.ram[I_ROOMY], mem.ram[I_LIVES], mem.ram[I_HOVER]
             mem.swcha = 0x6F            # hold Up + Right

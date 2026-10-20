@@ -144,8 +144,12 @@ MelPtr          byte            ; ($9D) intro music: melody stream index (bank1)
 MelTimer        byte            ; ($9E) intro music: melody frames left
 LevelPFDataLo   byte            ; pointer to level's RoomDataTable (low)
 LevelPFDataHi   byte            ; pointer to level's RoomDataTable (high)
-LevelConnLo     byte            ; pointer to level's RoomConnections (low)
-LevelConnHi     byte            ; pointer to level's RoomConnections (high)
+LevelRoomN      byte            ; rooms in this level (C4 2026-10-20): the
+                                ;   Connections / RoomEnemies / enemy-record
+                                ;   bases are the block's +2n / +4n / +6n
+LevelConnSpare  byte            ; free (was LevelConnHi — its pointer is now
+                                ;   derived; the byte stays allocated so the
+                                ;   hand-copied ZP blocks do not shift)
 
 ; Level/miner ZP variables
 Level           byte            ; current level index (0-based)
@@ -162,8 +166,10 @@ TickCounter     byte            ; frame counter (60 frames = 1 bar step = 1s)
 BarLevel        byte            ; timer bar level (120=full, 0=empty)
 
 ; Enemy ZP variables
-LevelEnemyLo    byte            ; pointer to level's RoomEnemies table (low)
-LevelEnemyHi    byte            ; pointer to level's RoomEnemies table (high)
+LevelEnemySpare byte            ; free (was LevelEnemyLo — the RoomEnemies base
+                                ;   is now base+4n, derived in EnterRoomB2; the
+                                ;   bytes stay allocated so ZP does not shift)
+LevelEnemySpare2 byte           ; free (was LevelEnemyHi)
 EnemyDataLo     byte            ; pointer to current room enemy data (low)
 EnemyDataHi     byte            ; pointer to current room enemy data (high)
 EnemyCount      byte            ; number of enemies in current room
@@ -558,8 +564,9 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     jsr CallPad_BuildColupF    ; stripe+hot COLUPF bytes into ColupfBuf ($E7-$F2)
 
     ; --- Band color: RoomBandColor ($BC) is staged ONCE per room by
-    ; EnterRoomB2 (+3 of the RoomEnemies record — the 2026-10-04 up-exit
-    ; fix). The old per-frame VBL fold that re-read the same ROM byte is
+    ; EnterRoomB2 (byte +1 of the 2-byte RoomEnemies record since C2, which
+    ; replaced the 4-byte per-room record; the 2026-10-04 up-exit fix). The
+    ; old per-frame VBL fold that re-read the same ROM byte is
     ; REDUNDANT since then and is deleted (2026-10-19): it saved nothing the
     ; kernel needs, cost ~30c of VBL time, and it was a level-data read in
     ; the VBL path (the read that made a bank3 data move need another
@@ -1745,13 +1752,16 @@ ExitRoomRight:
 ; Level management
 ; ==============================================================================
 ; LoadLevel: read LevelDataTable entry for current Level, init pointers, enter room.
-; LevelDataTable stride: 12 bytes (S4 2026-10-19: start_x/y dropped — they
-; were always the constants 32/24)
+; LevelDataTable stride: 9 bytes (C4 2026-10-20: the Connections / RoomEnemies
+; word pointers were redundant — both are fixed offsets inside the level block,
+; see the layout comment in generated/levels_index.asm. start_x/y dropped
+; 2026-10-19: they were always the constants 32/24)
 ;   +0: start_room
 ;   +1..+3: miner_room (b7 = faces right), miner_x, miner_y
-;   +4..+5: pfdata ptr (lo, hi)
-;   +6..+7: conn ptr (lo, hi)
-;   +8..+9: enemy ptr (lo, hi)
+;   +4..+5: wall colors
+;   +6..+7: level block base (RoomDataTable)
+;   +8: room count n — readers derive Connections (+2n), RoomEnemies (+4n)
+;       and the enemy records (+6n) from it (C2/C3)
 ; ------------------------------------------------------------------------------
 LoadLevel:
     ; Stage leave/reload/advance: walls return + bombs refill to 5
@@ -1775,17 +1785,15 @@ LoadLevel:
     lda #(LV_SHOW_FRAMES|$80)  ; bit7 = banner flag: decs down to $80; any
     sta LevelShowTimer         ; tally ARM (<=127) kills it instantly
 .NoBanner:
-    ; Compute LevelDataTable pointer: base + Level * 12
-    ; Stride 12: start_room(1) + miner(3) + wall_colors(2) + ptrs(3×2)
+    ; Compute LevelDataTable pointer: base + Level * 9 (C4: was *12)
+    ; Stride 9: start_room(1) + miner(3) + wall_colors(2) + base ptr(2) + rooms(1)
     lda Level
     asl                         ; *2
-    sta Temp                    ; Temp = L * 2
     asl                         ; *4
     asl                         ; *8
     clc
-    adc Temp                    ; *10
-    adc Temp                    ; *12
-    tay                         ; Y = Level * 12
+    adc Level                   ; *9
+    tay                         ; Y = Level * 9
 
     ; --- Fold batch (P2.7): LevelDataTable lives in bank2 at the frozen
     ; address. Stage FetchPtr immediately before the batch; FoldIndirect
@@ -1822,26 +1830,18 @@ LoadLevel:
     jsr FoldIndirect
     sta LevelWallColor2
     iny
-    ; +6..+7: pfdata ptr
+    ; +6..+7: level block base (RoomDataTable; C4 dropped the conn/enemy words
+    ; — they are the block's +2n / +4n / +6n offsets, see the readers)
     jsr FoldIndirect
     sta LevelPFDataLo
     iny
     jsr FoldIndirect
     sta LevelPFDataHi
     iny
-    ; +8..+9: conn ptr
+    ; +8: room count → GetConnIdx (bank1) and EnterRoomB2 (bank2) derive the
+    ; Connections / RoomEnemies / enemy-record bases from it
     jsr FoldIndirect
-    sta LevelConnLo
-    iny
-    jsr FoldIndirect
-    sta LevelConnHi
-    iny
-    ; +10..+11: enemy ptr
-    jsr FoldIndirect
-    sta LevelEnemyLo
-    iny
-    jsr FoldIndirect
-    sta LevelEnemyHi
+    sta LevelRoomN
 
     ; Enter the starting room
     lda LevelStartRoom
@@ -3036,7 +3036,7 @@ CallPad_GetConnIdx:
     jmp $FA26
 CallPad_AddScore:
     sta $1FF7
-    jmp $FA7C
+    jmp $FA83
 CallPad_IsRoomDark:
     sta $1FF7
     jmp $FC78
@@ -3045,7 +3045,7 @@ CallPad_SetRoomDark:
     jmp $FC9E
 CallPad_UpdateLaserSound:
     sta $1FF7
-    jmp $FAA4
+    jmp $FAAB
 CallPad_BuildColupF:
     sta $1FF9                   ; A3: body lives in bank3 (record stream)
     jmp $F507                   ; BuildColupF (bank3; synced by verify_build)

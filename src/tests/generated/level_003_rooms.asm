@@ -6,15 +6,15 @@ LEVEL3_MINER_ROOM = 133
 LEVEL3_MINER_X = 23
 LEVEL3_MINER_Y = 84
 
-; Room data: one (L3R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
-; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
+; Room data: ONE word per room (the block's RoomRects label), indexed by RoomNo. TilePF0 is derived at room load as
+; rects + 2 + 2*nrect (C3 2026-10-20: it always sits 2 bytes past the rect list in the same block, so the second word was redundant).
 LEVEL3_RoomDataTable:
-  .word L1R1TilePF0, L1R1RoomRects ; room 0 (async) [shared with L1R1]
-  .word L3R2TilePF0, L3R2RoomRects ; room 1 (async)
-  .word M5TilePF0, M5RoomRects ; room 2 (model 5)
-  .word M6TilePF0, M6RoomRects ; room 3 (model 6)
-  .word M7TilePF0, M7RoomRects ; room 4 (model 7)
-  .word M1TilePF0, M1RoomRects ; room 5 (model 1)
+  .word L1R1RoomRects ; room 0 (async) [shared with L1R1]
+  .word L3R2RoomRects ; room 1 (async)
+  .word M5RoomRects ; room 2 (model 5)
+  .word M6RoomRects ; room 3 (model 6)
+  .word M7RoomRects ; room 4 (model 7)
+  .word M1RoomRects ; room 5 (model 1)
 
 ; Room connections: 2 bytes/room, nibble-packed (up<<4|down, left<<4|right); $F = none.
 LEVEL3_RoomConnections:
@@ -25,6 +25,15 @@ LEVEL3_RoomConnections:
   .byte $35, $ff ; room 4
   .byte $4f, $ff ; room 5
 
+; Per-room enemy records: (count<<5 | first record index), bottom_color.
+LEVEL3_RoomEnemies:
+  .byte $00, $00 ; room 0: 0 record(s) from 0
+  .byte $00, $00 ; room 1: 0 record(s) from 0
+  .byte $40, $00 ; room 2: 2 record(s) from 0
+  .byte $42, $00 ; room 3: 2 record(s) from 2
+  .byte $44, $00 ; room 4: 2 record(s) from 4
+  .byte $06, $00 ; room 5: 0 record(s) from 6
+
 ; Enemy data: 6 enemy records across 6 rooms, 4 bytes each (type,x,y,dir).
 LEVEL3_EnemyDataTable:
   .byte 1, 127, 60, 1
@@ -33,12 +42,3 @@ LEVEL3_EnemyDataTable:
   .byte 2, 103, 60, 1
   .byte 4, 39, 60, 1
   .byte 5, 27, 18, 1
-
-; Per-room enemy records: ptr_lo, ptr_hi, count, bottom_color.
-LEVEL3_RoomEnemies:
-  .byte <(LEVEL3_EnemyDataTable), >(LEVEL3_EnemyDataTable), 0, $00 ; room 0
-  .byte <(LEVEL3_EnemyDataTable), >(LEVEL3_EnemyDataTable), 0, $00 ; room 1
-  .byte <(LEVEL3_EnemyDataTable+0), >(LEVEL3_EnemyDataTable+0), 2, $00 ; room 2
-  .byte <(LEVEL3_EnemyDataTable+8), >(LEVEL3_EnemyDataTable+8), 2, $00 ; room 3
-  .byte <(LEVEL3_EnemyDataTable+16), >(LEVEL3_EnemyDataTable+16), 2, $00 ; room 4
-  .byte <(LEVEL3_EnemyDataTable), >(LEVEL3_EnemyDataTable), 0, $00 ; room 5

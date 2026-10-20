@@ -87,8 +87,8 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $9E | MelTimer | Intro music: melody frames left (bank1 MusicTick) |
 | $9F | LevelPFDataLo | Level RoomDataTable lo |
 | $A0 | LevelPFDataHi | Level RoomDataTable hi |
-| $A1 | LevelConnLo | RoomConnections lo |
-| $A2 | LevelConnHi | RoomConnections hi |
+| $A1 | LevelRoomN | Rooms in this level (C4 2026-10-20: Connections = block+2n, RoomEnemies = +4n, enemy records = +6n) |
+| $A2 | LevelConnSpare | FREE (was LevelConnHi — pointer now derived) |
 | $A3 | Level | Level index |
 | $A4 | LevelMinerRoom | Miner room index |
 | $A5 | MinerX | Miner X |
@@ -101,8 +101,8 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $AC | PlayerLives | Lives 0-3 |
 | $AD | TickCounter | 1s power-bar step |
 | $AE | BarLevel | Power bar 0-16 |
-| $AF | LevelEnemyLo | Level enemy table lo |
-| $B0 | LevelEnemyHi | Level enemy table hi |
+| $AF | LevelEnemySpare | FREE (was LevelEnemyLo — base is now derived in EnterRoomB2) |
+| $B0 | LevelEnemySpare2 | FREE (was LevelEnemyHi) |
 | $B1 | EnemyDataLo | Room enemy data lo |
 | $B2 | EnemyDataHi | Room enemy data hi |
 | $B3 | EnemyCount | Enemies in room |
@@ -181,7 +181,9 @@ only and nothing else touched `$F0-$F2` between save and restore.
   EQU). First attempt `$EC` failed (inside `ColupfBuf` row 5); then `$D1` =
   `PF1Buf[2]` failed (kernel `lda PF1Buf,X` X=2 rendered the band color as the
   bottom-band PF1 wall — phase_1 dump `$D1=00` vs model `$ff`).
-- Band color is the RoomEnemies per-room 4th byte (`ptr_lo, ptr_hi, count, bottom_color`).
+- Band color is the SECOND byte of the RoomEnemies per-room record
+  (`count<<5 | first record index`, `bottom_color` — C2 2026-10-20; the record
+  was 4 bytes with absolute pointers before).
   Read via `LoadRoomBottomColor` (`.WaterRow` band strip + overscan `CheckBandTouch`).
 - Sequential map remains full after bomb work; do not add a new sequential
   `byte` casually. (Band color: since **S3.1** it has its own byte at `$BC` —

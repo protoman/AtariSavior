@@ -84,6 +84,19 @@ mkdir -p "$DIR/tests/frozen"
 cp bank0.bin bank1.bin bank2.bin bank3.bin "$DIR/tests/frozen/"
 cp bank0.lst bank1.lst bank2.lst bank3.lst "$DIR/tests/frozen/"
 
+# The test-owned convert outputs must match the test-owned rooms, or
+# test_editor_roundtrip compares fresh conversions against a stale snapshot
+# (2026-10-20: a converter format change left tests/generated on the old
+# level-table layout). Copy only what convert_level.py emits — symbols.asm
+# (dasm dump) and copyright_font.asm (editor tool) are separate snapshots.
+echo "freeze: refreshing src/tests/generated/ from the staged conversion ..."
+for f in "$DIR"/generated/level_[0-9][0-9][0-9]_*.asm \
+         "$DIR"/generated/levels.asm "$DIR"/generated/levels_data.asm \
+         "$DIR"/generated/levels_index.asm "$DIR"/generated/models_data.asm \
+         "$DIR"/generated/spill_*.asm; do
+    [ -f "$f" ] && cp "$f" "$DIR/tests/generated/$(basename "$f")"
+done
+
 echo "freeze: restoring live data + rebuilding the live ROM ..."
 rm -rf "$DIR/rooms" "$DIR/generated"
 cp -a "$TMP/rooms" "$DIR/rooms"
