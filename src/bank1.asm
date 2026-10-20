@@ -1986,22 +1986,20 @@ CallPad_BombMarkWalls:
     sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
     jmp $FB10
 
-; CallPad_TitleSelect twin — byte-identical with kernel.asm at $FC4F
-    .ds $FC4F - *, 0
-CallPad_TitleSelect:
-    sta $1FF7
+; CallPad tail pads (2026-10-20: SPLIT across the banks, no twin). kernel.asm
+; holds the three `sta $1FF7` at $FC4F/$FC52/$FC55; after the switch the fetch
+; at A+3 lands HERE, so bank1 keeps only the `jmp` halves. Nothing calls a
+; tail pad from bank1, so bank1's `sta` halves and bank0's `jmp` halves were
+; dead bytes — reclaiming them gave bank0 15 B of pre-pad headroom.
+;   $FC52 <-$FC4F+3 CallPad_TitleSelect
+;   $FC55 <-$FC52+3 CallPad_TitleBand
+;   $FC58 <-$FC55+3 CallPad_MusicTick
+; Guard: verify_build.check_callpads (per-pad A / A+3 contract).
+    .ds $FC52 - *, 0
     jmp TitleSelect
     .ds $FC55 - *, 0
-CallPad_TitleBand:
-    sta $1FF7
-    jmp $F080
-    .ds $FC5B - *, 0
-CallPad_Overscan:
-    sta $1FF6
-    jmp $F18A
-    .ds $FC61 - *, 0
-CallPad_MusicTick:
-    sta $1FF7
+    jmp $F080                   ; TitleBand
+    .ds $FC58 - *, 0
     jmp MusicTick
 
 ; ========================================================================

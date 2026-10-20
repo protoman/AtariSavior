@@ -418,6 +418,7 @@ the repack.
 | baseline 9a7f3f4 | 3642 | 3049 | 1222 | 1260 | **9173** | 510 |
 | 1. packed title theme | 3642 | 2993 | 1222 | 1260 | **9117** | 510 |
 | 2. level-data C2+C3+C4 | 3620 | 3000 | 1175 | 1285 | **9080** | 434 |
+| 3. tail pads split | 3605 | 2985 | 1175 | 1285 | **9050** | 434 |
 
 ## 1. Title theme packed 1 byte/step (−56 B, audit row 4)
 
@@ -513,3 +514,42 @@ stage base+count instead of the old pointers; `test_water_respawn`'s band poke
 follows the 2-byte record. `tools/freeze_test_banks.sh` now also refreshes
 `src/tests/generated/` from the staged conversion — a converter format change
 had left those snapshots stale (test_editor_roundtrip caught it).
+
+## 3. Tail-pad reclaim — split the 3 live pads, delete CallPad_Overscan (−15 B/bank)
+
+`docs/optimization_cuts_2026-10-20.md` §2 designed this and skipped it. The
+guard rewrite turned out to be smaller than feared, because the fears were
+misplaced: `check_callpads`' byte-identity comparison covers only the corridor
+`$FBF8-$FC48` (`PAD_HI = $FC49`), so the tail pads were never in it. What the
+tail pads DID have was their target check, via the `CallPad_x: sta / jmp $lit`
+parse of **kernel.asm** — and that is exactly what the packing removes, so the
+guard would have silently stopped covering them.
+
+F6 contract used: a bank0 caller runs `sta $1FF7` at A; the opcode fetch at
+A+3 already comes from bank1. So each pad needs one live half per bank:
+
+| pad | bank0 (A) | bank1 (A+3) |
+|---|---|---|
+| `CallPad_TitleSelect` | `$FC4F` `sta $1FF7` | `$FC52` `jmp TitleSelect` |
+| `CallPad_TitleBand` | `$FC52` `sta $1FF7` | `$FC55` `jmp $F080` |
+| `CallPad_MusicTick` | `$FC55` `sta $1FF7` | `$FC58` `jmp MusicTick` |
+
+`CallPad_Overscan` (12 B) had **no caller in any bank** and is deleted, along
+with its patch loop in `verify_build.sync_overscan` (the `$FC70` ToGameStub twin
+still tracks bank0's `Overscan`).
+
+Measured: bank0 pre-pad headroom **1 → 16 B** (flow now ends `$FC58`), bank0
+used 3620 → 3605; bank1 2985 (its `sta` halves and the Overscan pad were dead
+there too, −15). Total 9080 → **9050**.
+
+Replacement guard (`verify_build.check_callpads`), byte-level, not textual:
+for each of the three pads it pins the address, asserts
+`bank0[A..A+2] == 8D F7 1F`, and asserts `bank1[A+3..A+5] == 4C <label lo hi>`
+with the label resolved from **bank1.lst** — i.e. the same operand-equals-label
+contract as before, but read from the ROM where the fetch actually happens. It
+also fails if a tail pad regains a kernel `jmp`, if `CallPad_Overscan` comes
+back, or if any `CallPad_*` is neither a corridor pad nor a declared tail pad
+(so a new pad cannot escape the guard). Runtime proof: `test_intro_music`
+(MusicTick pad), `test_menu_flow` (SELECT/TitleSelect pad) and
+`sim_frame_budget`'s title-frame classification (TitleBand pad) all drive the
+real paths.
