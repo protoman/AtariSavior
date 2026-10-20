@@ -84,13 +84,8 @@ PF0Buf = $C3                   ; PF render buffers rows 0-2 ($C3-$CF) —
 PlayerDir = $82                ; must match kernel.asm — S6 LWC tip direction
 EnemyCount = $B3               ; LaserHitTest loop bound
 EnemyDeadMask = $BA            ; LaserHitTest dead bits (written on kill)
-Grp0Ptr = $86                  ; must match kernel.asm (PickPlayerFrame body)
-Grp0PtrHi = $87                ; must match kernel.asm
-SWCHA = $0280                  ; RIOT joystick (same in every bank)
-PlayerSpriteA = $f8dd           ; hand copies (bank0 symbols unreadable here);
-PlayerSpriteB = $f8e9           ; tools/test_miner_colors.py asserts vs bank0.lst
-PlayerWalkA = $fde7
-PlayerWalkB = $fdf3
+; Grp0Ptr/Grp0PtrHi/SWCHA/PlayerSprite*/PlayerWalk* EQUs retired 2026-10-20:
+; their only reader (PickPlayerFrame) moved to bank0 and uses the real labels.
 LAMP = 5                       ; enemy type: editor lamp — kernel LAMP must match
 RAFT = 7                       ; enemy type: moving raft — kernel ENEMY_RAFT
 SNAKE = 2                      ; enemy type: kernel ENEMY_SNAKE (load-dir invert)
@@ -736,47 +731,14 @@ M1OffTab:                       ; MetaA b0 -> M1 x-offset. PHMOverlay's own
 
 ; --- Level data (frozen addresses — pointer values must match bank0's
 ;     original layout, level_bank_plan P2.1: $F9D9-$FB1E = 326B) ---
-    .ds $F3C4 - *, 0            ; pin body entry = bank0 tramp's jmp operand
+    .ds $F3C4 - *, 0            ; (was PickPlayerFrame's body entry pin — body
+                                ;   moved to bank0 2026-10-20, repack chunk 1)
 ; ------------------------------------------------------------------------------
-; PickPlayerFrame body — entered from bank0's VBL via the $FDE1 tramp (the
-; jmp operand is fetched from THIS bank). GRP0 frame pick: jet flutter
-; (PlayerSpriteA/B) > ground walk (PlayerWalkA/B, phase EnemyRamP&$08) >
-; static A. Clobbers A/Y; sets Grp0Ptr/Grp0PtrHi; tail-jmps ReturnPad so the
-; VBL jsr returns in bank0 (pads must not nest — no rts here).
+; PickPlayerFrame MOVED to bank0 ($F9F5 region, repack chunk 1 2026-10-20).
+; With it went the $FDE1 tramp mirror and the $F8DD/$FDE7 art twins: the body
+; now reads bank0's PlayerSpriteA/B and PlayerWalkA/B while bank0 is active,
+; so bank2 needs neither the duplicate art nor the hand-copied EQUs.
 ; ------------------------------------------------------------------------------
-PickPlayerFrame:
-    lda JetPower
-    bne .Jet                   ; jet burning -> A/B flutter (existing)
-    lda BombPacked
-    bpl .FrameA                ; b7 OnGround clear (airborne) -> static
-    lda SWCHA
-    and #%11000000             ; D7 right / D6 left, active LOW
-    cmp #%11000000
-    beq .FrameA                ; neither held -> standing
-    lda EnemyRamP              ; free-running clock: bit3 = 8-frame
-    and #%00001000             ; half-cycle -> 16-frame full walk cycle
-    beq .WalkA                 ; (double speed of the 32-frame bit4 version)
-    lda #<PlayerWalkB
-    ldy #>PlayerWalkB
-    jmp .SetGrpPtr
-.WalkA:
-    lda #<PlayerWalkA
-    ldy #>PlayerWalkA
-    jmp .SetGrpPtr
-.Jet:
-    lda TickCounter
-    and #%00000100
-    beq .FrameA
-    lda #<PlayerSpriteB
-    ldy #>PlayerSpriteB
-    jmp .SetGrpPtr
-.FrameA:
-    lda #<PlayerSpriteA
-    ldy #>PlayerSpriteA
-.SetGrpPtr:
-    sta Grp0Ptr
-    sty Grp0PtrHi
-    jmp ReturnPad              ; sta $1FF6 (via ReturnPad) + rts -> VBL
 
 ; ------------------------------------------------------------------------------
 ; StageBandTab MOVED to bank3 (chunk A2, 2026-10-19): B3StageBand at $F0A3.
@@ -1013,15 +975,9 @@ TallySum:
     rts
 
     .ds $F8B7 - *, 0            ; spill-pool gap
-    .ds $F8DD - *, 0            ; twin: bank0 PlayerSpriteA lives here (test_miner)
-TitleJetSprite:
-    ; Exact A/B copies of PlayerSpriteA/B; game alternates every 4 frames.
-    .byte %00111100, %01111110, %01111100, %01111110
-    .byte %01111100, %11111110, %11111110, %00111110
-    .byte %00111110, %00010100, %00010100, %00010100
-    .byte %00111100, %01111110, %01111100, %01111110
-    .byte %01111100, %11111110, %11111110, %01111110
-    .byte %10111110, %00010100, %00010100, %00010100
+                                ; (was the $F8DD jet-art twin pin — deleted
+                                ;   2026-10-20 with the PickPlayerFrame move;
+                                ;   the spill include's own .ds absorbs the gap)
 ; --- Level-data spill 2 (bugs.md 27/27b): fill gap $F901..$F970 (111B) ---
     include "generated/spill_F901.asm"        ; #27b: placed by convert_level
     ; Phase 3 blink masks — pair index (2c>>1) → the two adjacent PF bits
@@ -1233,20 +1189,9 @@ BombEnemyBlastBody:
     .ds $FDD8 - *, 0
     .byte $8D, $F8, $1F         ; sta $1FF8 (twin)
     .byte $4C, $87, $FD         ; jmp $FD87 (twin — fetched post-switch)
-    .ds $FDE1 - *, 0            ; PickPlayerFrame tramp mirror (byte-identical
-                                 ; with kernel.asm's copy — verify_frame_tramp)
-PickPlayerFrameTramp:
-    sta $1FF8                   ; executed only as the post-switch fetch image
-    jmp $F3C4                   ; bank2 PickPlayerFrame body (this bank)
-    ; Twin of bank0 PlayerWalkA/B ($FDE7, 12+12 rows): PickPlayerFrame reads
-    ; the hand-copy EQUs while THIS bank is active — without these bytes the
-    ; walk frames fetched zeros and the sprite vanished (title + gameplay).
-    .byte %00111100, %01111110, %01111100, %01111110
-    .byte %01111100, %11111110, %11111110, %00111110
-    .byte %00111110, %00010100, %00100010, %01000010   ; walk A boots apart
-    .byte %00111100, %01111110, %01111100, %01111110
-    .byte %01111100, %11111110, %11111110, %00111110
-    .byte %00111110, %00010100, %00011000, %00011000   ; walk B boots together
+    .ds $FDE1 - *, 0            ; (was the PickPlayerFrame tramp mirror + the
+                                 ;   PlayerWalkA/B art twin: both deleted
+                                 ;   2026-10-20 — body moved to bank0)
 
     .ds $FE00 - *, 0            ; PHMOverlay pinned: bank0's dead jmp operand
                                  ; is the literal $FE00 (moth-style dead bytes;

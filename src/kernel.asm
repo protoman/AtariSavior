@@ -2744,6 +2744,51 @@ KernelInit:
 DropSpeedTable:
     .byte 32,85,128,163,192,216,238,255,255
 
+; ------------------------------------------------------------------------------
+; PickPlayerFrame — sprite frame pick (moved from bank2 2026-10-20, repack
+; chunk 1). The bank2 copy plus its two art twins ($F8DD/$FDE7) and the $FDE1
+; tramp are gone: the body now reads bank0's own PlayerSpriteA/B and
+; PlayerWalkA/B, so both the art duplicate and the per-frame bank switch
+; (jsr tramp + ReturnPad) disappear. Tail is `rts` (was `jmp ReturnPad`,
+; -2 B) because the caller is the bank0 VBL jsr — no switch to return from.
+; GRP0 frame pick: jet flutter (PlayerSpriteA/B) > ground walk
+; (PlayerWalkA/B, phase EnemyRamP&$08) > static A. Clobbers A/Y; sets
+; Grp0Ptr/Grp0PtrHi.
+; ------------------------------------------------------------------------------
+PickPlayerFrame:
+    lda JetPower
+    bne .Jet                   ; jet burning -> A/B flutter (existing)
+    lda BombPacked
+    bpl .FrameA                ; b7 OnGround clear (airborne) -> static
+    lda SWCHA
+    and #%11000000             ; D7 right / D6 left, active LOW
+    cmp #%11000000
+    beq .FrameA                ; neither held -> standing
+    lda EnemyRamP              ; free-running clock: bit3 = 8-frame
+    and #%00001000             ; half-cycle -> 16-frame full walk cycle
+    beq .WalkA                 ; (double speed of the 32-frame bit4 version)
+    lda #<PlayerWalkB
+    ldy #>PlayerWalkB
+    jmp .SetGrpPtr
+.WalkA:
+    lda #<PlayerWalkA
+    ldy #>PlayerWalkA
+    jmp .SetGrpPtr
+.Jet:
+    lda TickCounter
+    and #%00000100
+    beq .FrameA
+    lda #<PlayerSpriteB
+    ldy #>PlayerSpriteB
+    jmp .SetGrpPtr
+.FrameA:
+    lda #<PlayerSpriteA
+    ldy #>PlayerSpriteA
+.SetGrpPtr:
+    sta Grp0Ptr
+    sty Grp0PtrHi
+    rts                        ; back to the VBL jsr (same bank, no switch)
+
     .ds $FB00 - *, 0
 ; ------------------------------------------------------------------------------
 ; TitleFont — 6 slots × 8 bytes, "S.A.V.I.O.R." (#16 feedback: 5px letters
@@ -3267,23 +3312,11 @@ BombEnemyBlast:
                                 ;   via $CA)
 
 ; ------------------------------------------------------------------------------
-; PickPlayerFrame — VBL entry tramp: the VBL `jsr` lands here (bank0), `sta
-; $1FF8` switches to bank2, the `jmp` is fetched from bank2's byte-identical
-; mirror at this same address and lands on bank2's body ($F3C4). The body
-; tail-jmps ReturnPad ($FBF8) -> `sta $1FF6/rts` returns to the VBL jsr
-; (BuildColupF pad pattern; 0 extra stack depth).
-; Guards: verify_build check_frame_tramp (byte-identity + operand = bank2
-; label). Body logic: jet flutter (PlayerSpriteA/B) > walk (PlayerWalkA/B) >
-; static A; phase EnemyRamP&$08 (walk, 16-frame) / TickCounter&4 (jet).
-; PINNED: bank2's mirror is address-frozen at $FDE1 — the TitleSelect
-; TitleWork shrink (2026-10-06) moved this −20B and broke byte-identity;
-; any upstream size change must pad back to $FDE1 here.
+; PickPlayerFrame tramp RETIRED (2026-10-20, repack chunk 1): the body now
+; lives in bank0 ($F9F5 region), so the VBL `jsr PickPlayerFrame` resolves
+; in-bank and the 6-byte `sta $1FF8 / jmp $F3C4` pad plus its bank2 mirror
+; are gone. PlayerWalkA/B flow up to $FDDE (nothing pins them any more).
 ; ------------------------------------------------------------------------------
-    .ds $FDE1 - *, 0
-PickPlayerFrame:
-    sta $1FF8                   ; select bank2
-    jmp $F3C4                   ; bank2 PickPlayerFrame body (operand pinned
-                                ;   by verify_frame_tramp = bank2.lst label)
 
 ; ------------------------------------------------------------------------------
 ; PlayerWalkA/B — dedicated ground-walk frames (sprites.png 2026-10-03,

@@ -1,6 +1,6 @@
 # Code repack plan — moving code out of bank2/bank3 (2026-10-20)
 
-**Status: read-only plan.** Baseline: HEAD with `9452 used / 6932 free`
+**Status: executing (chunk ledger at the bottom).** Baseline: HEAD with `9452 used / 6932 free`
 (bank0 3376 = 3026 code + 350 data, bank1 3015 = 2513 + 502, bank2 1760 =
 1399 + 361, bank3 1301 = 933 + 368) from `tools/rom_size_report.py`.
 Per-label byte counts below are label spans measured from `bank*.lst`
@@ -211,3 +211,30 @@ switches per frame removed, and bank3's level-block window grown by 189 B.
   the `jmp` at T+3 while the source bank keeps a different `sta` (both halves
   must be identical at the same address); reuse a freed bank2 address as a new
   pad without checking `addr & $1FFF ∉ $1FF6-$1FF9`.
+
+---
+
+## 6. Execution ledger (measured after each move)
+
+Re-measured at the start of execution (HEAD `0110bb6`, C1 landed):
+`9283 used / 7101 free` — bank0 3373, bank1 2887, bank2 1760, bank3 1263,
+level data 510 B. The per-cluster sizes in §1 still hold (±8 B), so the
+chunk targets below were kept.
+
+### Chunk 1 — PickPlayerFrame → bank0 ($F9F5) — LANDED
+
+| | before | after | Δ |
+|---|---|---|---|
+| bank0 | 3373 | 3426 | +53 (59 B body − 6 B tramp) |
+| bank1 | 2887 | 2887 | 0 |
+| bank2 | 1760 | 1645 | **−115** (61 body + 6 tramp + 48 art) |
+| bank3 | 1263 | 1263 | 0 |
+| **total** | **9283** | **9221** | **−62** |
+
+Pins killed: `$FDE1` tramp (bank0 + bank2), `$F8DD` jet-art twin, `$FDE7`
+walk-art twin. Body tail is `rts` (−2 B) instead of `jmp ReturnPad`: the VBL
+`jsr` now resolves in-bank. Bank2's `Grp0Ptr`/`Grp0PtrHi`/`SWCHA`/art EQUs
+deleted with the body. `verify_build.check_frame_tramp` now asserts the body
+lives in bank0 and that bank2 has no `PickPlayerFrame` label; `test_miner_
+colors` section 2 checks the same + the bank0 `lda zp` entry, `test_title_
+demo` asserts the twin is gone.

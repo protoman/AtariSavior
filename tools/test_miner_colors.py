@@ -49,39 +49,36 @@ def main() -> None:
         "kernel .Grp1 does not read ObjColorTab,X"
     assert "sta COLUP1" in kernel, "no COLUP1 write in kernel"
 
-    # --- 2) bank2 hand copies vs bank0 labels ---------------------------
+    # --- 2) art + frame picker are bank0-only (repack chunk 1) ----------
+    # PickPlayerFrame moved out of bank2 (2026-10-20): it now reads bank0's
+    # own PlayerSprite*/PlayerWalk* labels, so both art twins and the
+    # hand-copied EQUs are gone. Guard: no duplicates may come back, and the
+    # body must live in the bank that owns the art.
     want = {k: labels0[k] for k in
             ("PlayerSpriteA", "PlayerSpriteB", "PlayerWalkA", "PlayerWalkB")}
+    labels2 = lst_labels(SRC / "bank2.lst")
+    for name in list(want) + ["PickPlayerFrame"]:
+        assert name not in labels2, f"bank2 still defines {name} (twin/tramp)"
+    assert "PickPlayerFrame" in labels0, "PickPlayerFrame body must be in bank0"
     for name, addr in want.items():
         m = re.search(rf"^{name}\s*=\s*\$([0-9a-fA-F]+)", bank2, re.M)
-        assert m, f"bank2 EQU {name} missing"
-        got = int(m.group(1), 16)
-        assert got == addr, f"bank2 {name} = ${got:04X}, bank0 = ${addr:04X}"
-    # bank2 must contain the ART BYTES at those addresses (PickPlayerFrame
-    # reads the EQUs while bank2 is active — stale/missing bytes = sprite
-    # renders zeros or band code, title AND gameplay)
-    rom2 = (SRC / "bank2.bin").read_bytes()
-    for name, addr in want.items():
-        o = addr - 0xF000
-        assert rom0[o:o + 12] == rom2[o:o + 12], \
-            f"bank2 art twin ${addr:04X} ({name}) != bank0 bytes"
+        assert not m, f"bank2 EQU {name} must be gone"
     for name, addr in (("Grp0Ptr", 0x86), ("Grp0PtrHi", 0x87), ("SWCHA", 0x0280)):
         m = re.search(rf"^{name}\s*=\s*\$([0-9a-fA-F]+)", bank2, re.M)
-        assert m, f"bank2 EQU {name} missing"
-        assert int(m.group(1), 16) == addr, f"bank2 {name} wrong"
+        assert not m, f"bank2 EQU {name} must be gone"
 
-    # --- 3) layout pins (4c fetches + tramp operand) ---------------------
+    # --- 3) layout pins (4c fetches) ------------------------------------
     obj = labels0["ObjSprites"]
     assert (obj & 0xFF) + 71 <= 0xFF and (obj >> 8) == ((obj + 71) >> 8), \
         f"ObjSprites ${obj:04X} page-crosses (+71)"
     assert (tab >> 8) == ((tab + 71) >> 8), f"ObjColorTab ${tab:04X} page-crosses"
-    labels2 = lst_labels(SRC / "bank2.lst")
-    tramp = labels0["PickPlayerFrame"]
-    tgt = rom0[tramp - 0xF000 + 4] | (rom0[tramp - 0xF000 + 5] << 8)
-    assert tgt == labels2["PickPlayerFrame"], "tramp operand != bank2 body"
+    frame = labels0["PickPlayerFrame"]
+    # body must be a real instruction start in bank0 (was a switch tramp)
+    assert rom0[frame - 0xF000] == 0xA5, \
+        f"PickPlayerFrame ${frame:04X} is not `lda zp` (stale tramp?)"
 
     print("test_miner_colors: OK "
-          f"(tab ${tab:04X}, sprites ${obj:04X}, tramp ${tramp:04X} -> ${tgt:04X})")
+          f"(tab ${tab:04X}, sprites ${obj:04X}, frame ${frame:04X})")
 
 
 if __name__ == "__main__":
