@@ -1062,7 +1062,7 @@ def check_levels(src: Path) -> None:
                 err(f"{who}: {tag}MetaB missing (must sit at TilePF0+10)")
             elif got_b != ball_n:
                 err(f"{who}: MetaB=${got_b:02X}, want ${ball_n:02X} "
-                    "(ball_col+1 | $80 vcrunch | $40 hot, 0 = no ball)")
+                    "(ball_col+1 | $80 door | $40 hot, 0 = no ball)")
             if asym is None:
                 if re.search(rf"^{re.escape(tag)}RightPF\d:", text, re.M):
                     err(f"{who}: symmetric but RightPF block emitted")

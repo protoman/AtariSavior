@@ -307,3 +307,33 @@ Delta vs the section-0 table: bank0 −$3F used, bank2 −$2D, bank3 −$208
 (free +$208). Kernel main-region code shrank 27 B (Overscan $F19F→$F184),
 but the fixed `$F8C0` pin absorbs it (fill grew 0x75→0x90), so the first
 growable pin (`$FC49`) still has 11 B free — usable headroom gained: 0 B.
+
+## 11. Chunk 2 — hcrunch simplified (fixed band 1, always hot, no push/latch)
+
+User decision 2026-10-19. New contract: the crunch band is ALWAYS band 1,
+ALWAYS hot (touch kills at any phase/extent), and ALWAYS the fixed 10-cell
+prefix (half playfield width). Removed: the cold "closing only" kill rule,
+HcrPush + HcrBandLo + its call, the one-kill-per-visit latch (EnemyDeadMask
+b7 is no longer written by the crunch path), and all per-record x/band/w/h
+reads (the `$82` class byte + 5-byte stride stay so the walker is
+untouched). Kept: the 16f/step clock animation (`HcrClock`, now always
+full=10) and the touch kill through the shared HOV path. `PhHcrEntry` now
+stores `P(n)` straight into PF band1; the HOV `$82` handler tests band 1 +
+`2n` covered 4px cols (no record reads). `tools/test_hcrunch.py` rewritten
+(13 cases, including patched record y/w proving they are ignored).
+
+Size ledger after chunk 2:
+
+| bank | code | data | fill | used | free |
+|---|---|---|---|---|---|
+| bank0 | 3027 | 350 | 717 | 3377 | 719 |
+| bank1 | 2513 | 502 | 719 | 3015 | 1081 |
+| bank2 | 1399 | 361 | 2314 | 1760 | 2336 |
+| bank3 | 933 | 368 | 1761 | 1301 | 2795 |
+| **total** | **7872** | **1581** | **5511** | **9453** | **6931** |
+
+level data 548 B (index 48 + tables/blocks 334 + models 166).
+
+Delta vs chunk 1: bank3 −278 code (−$116 used, free +$116). bank0/bank2
+unchanged (only the auto-synced CallPad literals moved: BuildColupF
+$F50B→$F507, HotOverlapBody $F5C7→$F5C3).

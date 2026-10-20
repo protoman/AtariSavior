@@ -1413,7 +1413,7 @@
    1132  fbfc		       00 00 00 00*	      .ds	$FC32 - *, 0
    1133  fc32				   CallPad_BuildColupF
    1134  fc32		       8d f9 1f 	      sta	$1FF9	; bank3 (level-data walker)
-   1135  fc35		       4c 0b f5 	      jmp	$F50B	; BuildColupF (bank3; synced by verify_build)
+   1135  fc35		       4c 07 f5 	      jmp	$F507	; BuildColupF (bank3; synced by verify_build)
    1136  fc38
    1137  fc38							; ------------------------------------------------------------------------------
    1138  fc38							; E4 moth exit tramp ($FC49-$FC4B) — byte-identical slice with kernel.asm's
@@ -1772,7 +1772,7 @@
    1491  ffec					      .ds	$FFEC - *, 0
    1492  ffec				   HotOverlapFlag
    1493  ffec		       8d f9 1f 	      sta	$1FF9	; select bank3
-   1494  ffef		       4c c7 f5 	      jmp	$F5C7	; bank3 HotOverlapBody (synced by verify_build)
+   1494  ffef		       4c c3 f5 	      jmp	$F5C3	; bank3 HotOverlapBody (synced by verify_build)
    1495  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
    1496  fff2
    1497  fff2							; Pad to vectors at $FFFA ($FFF2-$FFF9 = fill — never code: $FFF6-$FFF9
