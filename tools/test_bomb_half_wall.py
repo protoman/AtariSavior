@@ -38,7 +38,7 @@ def lst_labels(path):
 L0 = lst_labels(SRC / "bank0.lst")
 L1 = lst_labels(SRC / "bank1.lst")
 L2 = lst_labels(SRC / "bank2.lst")
-L3 = lst_labels(SRC / "bank3.lst")   # A3: level/model blocks
+L3 = lst_labels(SRC / "bank2.lst")   # A3: level/model blocks
 
 import test_fixtures as FX  # noqa: E402
 FX.freeze_m0(BANKS, L3)     # frozen model0 into the private copy (rule 2026-10-14)

@@ -63,11 +63,10 @@ done
 python3 "$ROOT/tools/convert_level.py" --levels "$DIR/generated/levels.asm" "${LEVELS[@]}"
 python3 "$ROOT/tools/verify_build.py" --precheck "$DIR"
 cd "$DIR"
-# A3 two-pass (same order as build.sh): bank3 pass 1 exports the level-data
-# block labels that bank2's room tables need.
-dasm bank3.asm -f3 -obank3.bin -lbank3.lst
-python3 "$ROOT/tools/verify_build.py" --sync-bank3-labels "$DIR"
+# C2 (2026-10-20): single pass, same order as build.sh — bank2 (which now owns
+# the level data AND its walkers), the HOF literal, bank0, bank1, bank3.
 dasm bank2.asm -f3 -obank2.bin -lbank2.lst
+python3 "$ROOT/tools/verify_build.py" --sync-hof "$DIR"
 python3 "$ROOT/tools/verify_build.py" --sync "$DIR"
 dasm kernel.asm -f3 -obank0.bin -lbank0.lst -s/tmp/opencode/frozen_symbols.asm
 python3 "$ROOT/tools/verify_build.py" --sync-overscan "$DIR"

@@ -2968,7 +2968,7 @@
    2967  fc14				   CallPad_UpdateLaserSound
    2968  fc14		       8d f7 1f 	      sta	$1FF7
    2969  fc17				   CallPad_BuildColupF
-   2970  fc17		       8d f9 1f 	      sta	$1FF9	; A3: body lives in bank3 (record stream)
+   2970  fc17		       8d f8 1f 	      sta	$1FF8	; C2: body lives in bank2 now ($F9D9 cluster)
    2971  fc1a				   CallPad_BombMarkWalls
    2972  fc1a		       8d f7 1f 	      sta	$1FF7	; S5.2: body lives in bank1 ($FB10)
    2973  fc1d		       00 00 00 	      .byte.b	0,0,0	; $FC1D-$FC1F: CallPad_SelectObject retired by
@@ -3910,36 +3910,37 @@
    3909  ffe9		       4c 4f f4 	      jmp	TallyEntry
    3910  ffec
    3911  ffec							; ------------------------------------------------------------------------------
-   3912  ffec							; HotOverlapFlag — bank3 entry tramp (A3 2026-10-19). Moved off $FE90 (bank3
-   3913  ffec							; $FE93 belongs to OvShutBand's .OSline) into the 6-byte gap after
-   3914  ffec							; TallyTramp. bank0 executes `sta $1FF9`; the `jmp` at +3 is fetched from
-   3915  ffec							; bank3's image at $FFEF (guard: check_moth_tramp).
-   3916  ffec							; ------------------------------------------------------------------------------
-   3917  ffec					      .ds	$FFEC - *, 0
-   3918  ffec				   HotOverlapFlag
-   3919  ffec		       8d f9 1f 	      sta	$1FF9	; select bank3 (record stream lives there)
-   3920  ffef		       4c c3 f5 	      jmp	$F5C3	; bank3 HotOverlapBody (synced by verify_build)
-   3921  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
-   3922  fff2
-   3923  fff2							; ------------------------------------------------------------------------------
-   3924  fff2							; LaserHitTest — MOVED to bank2 (S5.4, entry tramp $FE86 -> `jmp $FF00`).
-   3925  fff2							;   Fold-free: enemy records are level data in bank2 (direct (FetchPtr),Y),
-   3926  fff2							;   and the kill/lamp ACTIONS cannot run from a bank2 body (CallPads are
-   3927  fff2							;   bank0->bank1 only — pads cannot nest from a pad body). Body returns a
-   3928  fff2							;   RESULT CODE in A (+Z preserved through ReturnPad's sta/rts): 0 = miss,
-   3929  fff2							;   #$50 = kill (dead bit already set), 1 = lamp. LaserInput's tail does
-   3930  fff2							;   `beq / cmp #$50 / jsr CallPad_SetRoomDark | jsr CallPad_AddScore`.
-   3931  fff2							;   One less push level too (no fold / no pad call inside the body).
-   3932  fff2							;   Full behavior docs moved with the body.
-   3933  fff2							; ------------------------------------------------------------------------------
-   3934  fff2
-   3935  fff2							; ==============================================================================
-   3936  fff2							; Interrupt vectors ($FFF2-$FFF9 = fill — NEVER put code here: $FFF6-$FFF9
-   3937  fff2							; decode as F6 hotspot mirrors on peek (see MothExitPad comment at $FC49))
-   3938  fff2							; ==============================================================================
+   3912  ffec							; HotOverlapFlag — bank2 entry tramp (C2 2026-10-20: the body moved from
+   3913  ffec							; bank3 to bank2's $F8B7 cluster). Moved off $FE90 (bank3 $FE93 belongs to
+   3914  ffec							; OvShutBand's .OSline) into the 6-byte gap after TallyTramp. bank0 executes
+   3915  ffec							; `sta $1FF8`; the `jmp` at +3 is fetched from bank2's image at $FFEF
+   3916  ffec							; (guard: check_moth_tramp).
+   3917  ffec							; ------------------------------------------------------------------------------
+   3918  ffec					      .ds	$FFEC - *, 0
+   3919  ffec				   HotOverlapFlag
+   3920  ffec		       8d f8 1f 	      sta	$1FF8	; select bank2 (record stream lives there)
+   3921  ffef		       4c 29 f9 	      jmp	$F929	; bank2 HotOverlapBody (synced by verify_build)
+   3922  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
+   3923  fff2
+   3924  fff2							; ------------------------------------------------------------------------------
+   3925  fff2							; LaserHitTest — MOVED to bank2 (S5.4, entry tramp $FE86 -> `jmp $FF00`).
+   3926  fff2							;   Fold-free: enemy records are level data in bank2 (direct (FetchPtr),Y),
+   3927  fff2							;   and the kill/lamp ACTIONS cannot run from a bank2 body (CallPads are
+   3928  fff2							;   bank0->bank1 only — pads cannot nest from a pad body). Body returns a
+   3929  fff2							;   RESULT CODE in A (+Z preserved through ReturnPad's sta/rts): 0 = miss,
+   3930  fff2							;   #$50 = kill (dead bit already set), 1 = lamp. LaserInput's tail does
+   3931  fff2							;   `beq / cmp #$50 / jsr CallPad_SetRoomDark | jsr CallPad_AddScore`.
+   3932  fff2							;   One less push level too (no fold / no pad call inside the body).
+   3933  fff2							;   Full behavior docs moved with the body.
+   3934  fff2							; ------------------------------------------------------------------------------
+   3935  fff2
+   3936  fff2							; ==============================================================================
+   3937  fff2							; Interrupt vectors ($FFF2-$FFF9 = fill — NEVER put code here: $FFF6-$FFF9
+   3938  fff2							; decode as F6 hotspot mirrors on peek (see MothExitPad comment at $FC49))
    3939  fff2							; ==============================================================================
-   3940  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0	; pad to vectors at $FFFA
-   3941  fffa
-   3942  fffa		       08 f0		      .word.w	GameStart	; NMI vector
-   3943  fffc		       08 f0		      .word.w	GameStart	; RESET vector
-   3944  fffe		       08 f0		      .word.w	GameStart	; IRQ vector
+   3940  fff2							; ==============================================================================
+   3941  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0	; pad to vectors at $FFFA
+   3942  fffa
+   3943  fffa		       08 f0		      .word.w	GameStart	; NMI vector
+   3944  fffc		       08 f0		      .word.w	GameStart	; RESET vector
+   3945  fffe		       08 f0		      .word.w	GameStart	; IRQ vector

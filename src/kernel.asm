@@ -2967,7 +2967,7 @@ CallPad_SetRoomDark:
 CallPad_UpdateLaserSound:
     sta $1FF7
 CallPad_BuildColupF:
-    sta $1FF9                   ; A3: body lives in bank3 (record stream)
+    sta $1FF8                   ; C2: body lives in bank2 now ($F9D9 cluster)
 CallPad_BombMarkWalls:
     sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
     .byte 0,0,0                 ; $FC1D-$FC1F: CallPad_SelectObject retired by
@@ -3909,15 +3909,16 @@ TallyTramp:
     jmp TallyEntry
 
 ; ------------------------------------------------------------------------------
-; HotOverlapFlag — bank3 entry tramp (A3 2026-10-19). Moved off $FE90 (bank3
-; $FE93 belongs to OvShutBand's .OSline) into the 6-byte gap after
-; TallyTramp. bank0 executes `sta $1FF9`; the `jmp` at +3 is fetched from
-; bank3's image at $FFEF (guard: check_moth_tramp).
+; HotOverlapFlag — bank2 entry tramp (C2 2026-10-20: the body moved from
+; bank3 to bank2's $F8B7 cluster). Moved off $FE90 (bank3 $FE93 belongs to
+; OvShutBand's .OSline) into the 6-byte gap after TallyTramp. bank0 executes
+; `sta $1FF8`; the `jmp` at +3 is fetched from bank2's image at $FFEF
+; (guard: check_moth_tramp).
 ; ------------------------------------------------------------------------------
     .ds $FFEC - *, 0
 HotOverlapFlag:
-    sta $1FF9                   ; select bank3 (record stream lives there)
-    jmp $F5C3                   ; bank3 HotOverlapBody (synced by verify_build)
+    sta $1FF8                   ; select bank2 (record stream lives there)
+    jmp $F929                   ; bank2 HotOverlapBody (synced by verify_build)
     .ds $FFF2 - *, 0            ; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
 
 ; ------------------------------------------------------------------------------

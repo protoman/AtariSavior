@@ -68,7 +68,7 @@ PF0_B1, PF1_B1, PF2_B1 = 0xC4 & 0x7F, 0xC7 & 0x7F, 0xCA & 0x7F
 PF0_B2 = 0xC5 & 0x7F
 FULL = 10
 
-# P(n) prefix masks (mirror of bank3 CrPfx0/1/2 — change both together).
+# P(n) prefix masks (mirror of bank2 CrPfx0/1/2 — change both together).
 P_TRIPLE = {
     1: (0x30, 0x00, 0x00), 2: (0xF0, 0x00, 0x00), 3: (0xF0, 0xC0, 0x00),
     4: (0xF0, 0xF0, 0x00), 5: (0xF0, 0xFC, 0x00), 6: (0xF0, 0xFF, 0x00),
@@ -155,11 +155,11 @@ def main() -> None:
     # Patch the record's y and w in the PRIVATE bank copy: fields must be
     # ignored (band stays 1, prefix stays 10).
     off = W.L3["L3R2RoomRects"] - 0xF000
-    count = W.BANKS[3][off]
+    count = W.BANKS[2][off]
     rec = off + 1 + 2 * count + 1          # class byte +1 = x
-    assert W.BANKS[3][rec] == 0x82, f"fixture class {W.BANKS[3][rec]:02X}"
-    W.BANKS[3][rec + 2] = 2                # y(band) -> 2 (ignored)
-    W.BANKS[3][rec + 3] = 4                # w -> 4 cells (ignored)
+    assert W.BANKS[2][rec] == 0x82, f"fixture class {W.BANKS[2][rec]:02X}"
+    W.BANKS[2][rec + 2] = 2                # y(band) -> 2 (ignored)
+    W.BANKS[2][rec + 3] = 4                # w -> 4 cells (ignored)
     assert rec + 4 <= off + 1 + 2 * count + 1 + 5, "record stride changed"
 
     # --- 1. arm + ignored record fields ---------------------------------
@@ -264,7 +264,7 @@ def main() -> None:
     print("  nopush: grow edge leaves RoomX untouched (left + right)")
 
     # --- 13. static: no record reads, no push, stride kept --------------
-    b3 = (SRC / "bank3.asm").read_text()
+    b3 = (SRC / "bank2.asm").read_text()  # C2: walkers in bank2
     ph = b3[b3.index("PhHcrEntry:"):]
     ph = ph[:ph.index("; Prefix tables")]
     if "(FetchPtr),Y" in ph:

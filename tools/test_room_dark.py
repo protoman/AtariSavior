@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_cell_map import parse_labels, FROZEN, Mem as BankMem  # noqa: E402
 BANK1 = (SRC / "bank1.bin").read_bytes()
 BANK2 = (SRC / "bank2.bin").read_bytes()
-BANK3 = (SRC / "bank3.bin").read_bytes()
+BANK2_BLK = (SRC / "bank2.bin").read_bytes()  # C2: BuildColupF in bank2
 KERNEL = (SRC / "kernel.asm").read_text(encoding="utf-8")
 BANK1_SRC = (SRC / "bank1.asm").read_text(encoding="utf-8")
 BANK2_SRC = (SRC / "bank2.asm").read_text(encoding="utf-8")
@@ -38,14 +38,14 @@ for need in ("IsRoomDark", "SetRoomDark", "ReturnPad"):
 ADDR = {k: labels[k] for k in ("IsRoomDark", "SetRoomDark", "ReturnPad")}
 
 labels2 = {}
-for line in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
+for line in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
     m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+"
                  r"([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$", line)
     if m:
         labels2.setdefault(m.group(2), int(m.group(1), 16))
 for need in ("BuildColupF", "ReturnPad"):
     if need not in labels2:
-        sys.exit(f"label {need} missing from bank3.lst")
+        sys.exit(f"label {need} missing from bank2.lst")
 ADDR2 = {k: labels2[k] for k in ("BuildColupF", "ReturnPad")}
 
 ROOM_NO = 0x98
@@ -119,7 +119,7 @@ def run_bcf(room_no, d, ls, bomb=0):
     Rect stream at $00A0: solid count 0, hot count 0 → the hot walk
     beq's straight to the dark check (no ROM stream needed).
     """
-    mem = Mem(rom=BANK3)
+    mem = Mem(rom=BANK2_BLK)
     r = mem.ram
     r[ROOM_NO - 0x80] = room_no
     r[ENEMY_RAM_D - 0x80] = d
