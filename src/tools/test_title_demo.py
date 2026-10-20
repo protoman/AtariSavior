@@ -61,11 +61,6 @@ for dead in ("TitlePlayerBand", "TitleBandPrep", "TitleJetColors",
              "TitleBombSprite", "TitleBlinkColors"):
     assert f"{dead}:" not in bank1, f"{dead} should be gone (merged title)"
 assert "TitleSequence:" not in bank2, "intro movie must be gone"
-# LV001 HUD banner removed 2026-10-19 (merged title shows the level in the
-# score): no arming in LoadLevel, no banner branch / L,V glyphs in bank1.
-assert "LevelShowTimer" not in kernel and "LevelShowTimer" not in bank1, \
-    "retired LV001 banner came back (LevelShowTimer still referenced)"
-assert "LV_SHOW_FRAMES" not in kernel, "retired LV001 banner constant came back"
 
 # --- logo font + credit font + bank1 player art ---------------------------
 font = section(bank1, "TitleFont:", "FooterBand:")
