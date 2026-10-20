@@ -298,24 +298,33 @@ last bytes are the `CallPad_MusicTick` pad. Consequence: **bank0's 1-byte
 pre-pad headroom is structural**, not a compaction failure; any new bank0
 feature needs a bank0 deletion, not a size win elsewhere.
 
-### Merged title screen (2026-10-19, same day)
+### Merged title screen over the live stage (2026-10-19, same day)
 
 The old two-step title (intro splash `$FD` + "old title" level select `$FF`)
-was merged into ONE `$FD` screen: logo + 2-digit level number + credit footer +
-theme. SELECT cycles the level; RESET starts. Boot/return-to-title both use
-`$FD`, so `LoadLevel`'s banner gate (`cmp #$FD`) also suppresses LV001 on
-title frames.
+was merged into ONE `$FF` screen. Design (user spec): the **stage itself** is
+the background — the TitleKernel draws the room's three PF rows from the
+buffers `EnterRoom` staged, plus the player at the level start — with the
+S.A.V.I.O.R. logo and the credit footer drawn over it. The HUD band follows
+(`jmp MenuMain`), so **the score shows level+1**, lives/bombs/bar unchanged.
+The theme plays on `$FF`; SELECT cycles the level (loads the preview), RESET
+starts the game (drop-in). `LoadLevel`'s banner gate skips LV001 on `$FF`.
 
 Removed (measured from the listings, replaced with `.ds` where addresses are
 pinned): bank2 `TitleSequence` 267 + dead fold images 12; bank1 `TitleBandPrep`
-104, `TitlePlayerBand` 89, jet/bomb/blink art 52, `TitleKernel` player block
-(61→pad) 51 net; bank0 `TitleIntro` 55, three folds 18, `DropStep` `$FF`
-branch 7. Added: the two-digit band (~52 B incl. pad re-budget) → **−563 B
-used** (10896 → 10333), bank1 +204 free, bank2 +285 free.
+104, `TitlePlayerBand` 89, jet/bomb/blink art 52; bank0 `TitleIntro` 55, three
+folds 18, `DropStep` `$FF` shim 7. Added: `TitleKernel` rewritten as the
+stage-band kernel (PF rows + player + logo + footer + HUD), the bank1 player
+art twins (24 B) and the earlier digits band removed. Result: **10896 → 10362
+(-534 B used)**; the black-screen variant measured 10303, so the stage variant
+costs **+59 B** — it reconstructs the stage in a dedicated kernel instead of
+hijacking the cave kernel's bands (the safe choice: the row-2 setup line has
+zero cycle margin, see below).
 
-Title frame budget is 265.0 again (pad `ldx #157` + priming WSYNC + 31-line
-post pad); `test_title_demo.py` and `test_menu_flow.py` were rewritten to the
-merged contract (both green).
+Line budget: the title frame is a full 3-band + HUD frame, so the wall target
+is **267.0 for both kinds** (`sim_frame_budget.target_for` no longer returns
+265.0 for title frames; the old black title kernel skipped `.Row`). Tests
+`test_title_demo.py`, `test_menu_flow.py` and `test_intro_music.py` follow the
+`$FF` contract (score follows the selected level, music ticks on title frames).
 
 Remaining reductions are feature decisions, not compaction:
 - LV001 banner: ~76 B (banner path + `L`/`V` glyphs) — now redundant-ish: the

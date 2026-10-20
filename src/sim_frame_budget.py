@@ -615,7 +615,9 @@ import collections as _c
 _lines_hist = _c.Counter(round(v) for _, v in frame_lines)
 print(f'wall-model frame lines: {dict(sorted(_lines_hist.items()))}')
 _lines_raw = [(f, round(v, 2)) for f, v in frame_lines]
-# wall-model: per-kernel targets. Cave = 267.0 since the P2b door-yellow
+# wall-model: per-kernel targets. 267.0 for BOTH kinds since the merged
+# title (2026-10-19) runs TitleKernel as a full 3-band stage + HUD frame.
+# (Historical: the old black title kernel skipped .Row and stayed 265.0.)
 # COLUP1 branch (+10c on the cave band-setup line crossed 76c on two
 # setup lines — measured 267, user-approved retarget 2026-10-12; the
 # title kernel skips .Row and stays 265.0). 267 = 262 NTSC + 5 (two
@@ -625,7 +627,7 @@ _lines_raw = [(f, round(v, 2)) for f, v in frame_lines]
 # stall lines, 2026-10-06) so frame phase stays continuous across the
 # title->game switch — at its OWN 265 total.
 def _tgt(f):
-    return 265.0 if frame_ker.get(f, 'cave') == 'title' else 267.0
+    return 267.0
 def _wall_bad(f, v):
     if f < 2:
         return False
@@ -805,7 +807,7 @@ if _ev:
             print(f'  {_lb}: {_d}')
 
 # hard invariant: every real frame (>=2, boot excluded) sits at its
-# kernel target +/-0.15 — cave 267.0 / title 265.0 (the wall-model line
+# kernel target +/-0.15 — 267.0 for both kinds (merged title, 2026-10-19;
 # count). VBL/OVER cpu budgets are secondary guards.
 _bad_lines = [(f, v, frame_ker.get(f, 'cave')) for f, v in _lines_raw
               if _wall_bad(f, v)]
