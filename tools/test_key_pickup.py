@@ -23,7 +23,7 @@ SRC = TOOLS.parent / "src"
 sys.path.insert(0, str(TOOLS))
 
 from test_cell_map import (  # noqa: E402
-    Mem, RTS_SENTINEL, parse_labels, BANK0,
+    Mem, RTS_SENTINEL, parse_labels, BANK0, FROZEN,
 )
 
 K = (SRC / "kernel.asm").read_text()
@@ -46,8 +46,12 @@ assert "ora #$18" not in body, "CEH_Key must NOT auto-open doors"
 assert "LoseLife" not in body, "CEH_Key must not kill the player"
 
 B2 = (SRC / "bank2.asm").read_text()
-assert "LevelStartRoom = $A7" not in B2, \
-    "bank2 LevelStartRoom copy is dead (overlay cluster moved to bank0)"
+# C1 2026-10-20: SelectActiveObject moved to bank2 and READS LevelStartRoom
+# (it owns the type-6 gate now), so bank2 legitimately carries the hand copy
+# again. It must be the same byte kernel.asm gives it — verify_build's
+# check_equ_sync is the authority; this pins the intent at the reader.
+assert "LevelStartRoom = $A7" in B2, \
+    "bank2 must hand-copy LevelStartRoom ($A7) for SelectActiveObject"
 # Touch-to-open: the M1 (left door) strip opens only when the player's box
 # overlaps it AND KeyHeld (not by merely holding the key). The overlay
 # cluster lives in bank0 since repack chunk 4 (2026-10-20).
@@ -61,13 +65,14 @@ assert "lda LevelStartRoom" in sh and "ora #$08" in sh, \
     "OvShutBand must key-unlock a right door (b3) on touch"
 assert "cmp #$ff" not in sh, "the retired VcrBand gate still in OvShutBand"
 
-so = K[K.index("\nSelectActiveObject:"):K.index("\nEnemyColorTable:")]
+# The renderer is bank2's now (C1): same gate, same parked-ObjTop rule.
+so = B2[B2.index("\nSelectActiveObject:"):B2.index("\nEnemyColorTable:")]
 assert "cpx #KEY" in so and "bmi .SOEnemySkip" in so, \
     "SelectActiveObject must skip a type-6 render while KeyHeld"
 # The parked "off" object must compensate RoomY (a constant 144 wrapped into
 # view for RoomY >= 112 and leaked ObjSprites[row+$FF] = slot 0 = the key art).
-noobj = K[K.index(".SONoObj:"):]
-noobj = noobj[:noobj.index("rts")]
+noobj = B2[B2.index(".SONoObj:"):]
+noobj = noobj[:noobj.index("jmp ReturnPad")]
 assert "sbc RoomY" in noobj, \
     "off-object ObjTop must be RoomY-compensated (never wraps into view)"
 
@@ -75,11 +80,14 @@ assert re.search(r"\.byte\s+\$1c,\$1c,\$1c,\$1c", K), \
     "ObjColorTab slot 0 must be $1C (yellow) — per-row table overrides frame"
 
 # --- 2. py65 run of CEH_Key -------------------------------------------------
+# FROZEN labels: the ROM bytes come from src/tests/frozen/bank0.bin, so the
+# label set must be the frozen one too (a live *.lst + frozen *.bin pair reads
+# the wrong bytes after any bank0 layout change — C1 2026-10-20 caught this).
 want = {"CEH_Key", "EnemyBitTable", "EnemyDeadMask", "LevelStartRoom"}
-L0 = parse_labels(SRC / "bank0.lst", want)
+L0 = parse_labels(FROZEN / "bank0.lst", want)
 missing = want - L0.keys()
 if missing:
-    sys.exit(f"bank0.lst labels missing: {sorted(missing)}")
+    sys.exit(f"frozen bank0.lst labels missing: {sorted(missing)}")
 
 KEY = 6
 idx = 2

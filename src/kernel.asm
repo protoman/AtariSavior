@@ -527,6 +527,10 @@ StartFrame:
     ; --- Set TIM64T for VBLANK ---
     ; P3.4 measured: VBLANK work worst 1311c (mean 1235c) after the rect
     ; cache (enter-copy + direct walk). #23 = 1472c = 161c headroom.
+    ; C1 2026-10-20: SelectActiveObject moved to bank2 and its per-object
+    ; FoldIndirect + CallPad_IsRoomDark are gone -> -46c on EVERY measured
+    ; worst frame (sim_frame_budget: default 1059->1013c, FLY=Y 1124->1078c,
+    ; FLY=X 1098->1052c, FLY=M 1097->1051c; wall model unchanged).
     ; Frame budget: V(#23) + O(#50) = 73 TIM64T units → 3 + 19.4 + 197.5 +
     ; 42.1 = 262 lines. (#75 was the pre-trim 293-line frame.)
 VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
@@ -553,7 +557,9 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; --- Select which object GRP1 draws this frame (miner or enemy) ---
     ; Reads EnemyRamY ($E2) — no VBL writer of $E2 exists (Y writers are
     ; overscan-only, score ptrs are HUD-only), so no ordering constraint.
-    jsr SelectActiveObject
+    ; C1 2026-10-20: the body lives in bank2 (call pad below) — the records it
+    ; reads are level data in THAT bank, so the per-draw fold switch is gone.
+    jsr CallPad_SelectObject
 
     ; --- PF0: NO per-frame refresh since S3.4 — EnemyRamY moved to $E2-$E4,
     ; so $C3-$C5 keep the EnterRoom pattern forever (the old LoadPF0Only
@@ -1893,258 +1899,19 @@ CheckMinerPickup:
     rts
 
 ; ==============================================================================
-; SelectActiveObject — choose the single GRP1 object to draw this frame.
-; The TIA has one GRP1 sprite, so objects flicker by rotating slots each frame.
-; Sets ObjBase, ActiveObjectX, ActiveObjectY, ObjTop, COLUP1.
-; Slot count (enemies + miner?) lives in Temp for this VBLANK only.
-; Bomb fuse (state=1): low-priority — bomb only when (BombTimer&3)==0
-; (~15 Hz); other frames normal miner/enemy rotation (FlickerFrame alone).
-; One GRP1: cannot draw bomb + entity same frame.
-; ------------------------------------------------------------------------------
-SelectActiveObject:
-    ; Tally / frozen scene (DropTarget = $FE): show the PLAYER and the MINER
-    ; only — no enemies, no raft, no bomb. That frame bypasses the overscan, so
-    ; RefreshEnemyY never runs while bank1's HUD writes $E0-$EF: EnemyRamY
-    ; ($E2-$E4) is left holding score-pointer bytes, and any enemy drawn then
-    ; jumps to a garbage Y (user report 2026-10-18: the raft "moved up to the
-    ; middle of the screen" the moment the points counting started).
-    lda DropTarget
-    cmp #$FE
-    bne .SOFull
-    lda #0
-    sta FlickerFrame            ; keep the modulo counter bounded (2026-10-16)
-    sta ObjBase                 ; 0 = no object
-    lda LevelMinerRoom
-    and #$7f
-    cmp RoomNo
-    beq .SOTallyMiner
-    jmp .SODone                 ; miner not here -> nothing drawn
-.SOTallyMiner:
-    lda #OBJ_MINER
-    sta ObjBase
-    lda MinerX
-    sta ActiveObjectX
-    lda MinerY
-    clc
-    adc #3                      ; same 3px offset as the normal miner path
-    sta ActiveObjectY
-    lda #$66                    ; purple (hue 6, luma 3)
-    sta COLUP1
-    jmp .SODone
-.SOFull:
-    inc FlickerFrame            ; advance every frame (bomb + enemy paths)
-    ; --- Bomb fuse (state=1): 1 of 4 frames = bomb (enemies keep priority) ---
-    lda BombPacked
-    and #%00000011
-    cmp #1
-    bne .SOCount
-    lda BombTimer
-    and #3
-    bne .SOCount                ; 3 of 4 -> miner/enemy
-    lda #OBJ_BOMB               ; bomb design offset into ObjSprites
-    sta ObjBase
-    lda BombX
-    sta ActiveObjectX
-    lda BombY
-    sta ActiveObjectY
-    lda #COLOR_BOMBS             ; $46 red (P1 X set by the .SODone tail)
-    sta COLUP1
-    jmp .SODone                  ; ObjTop/Bot from ActiveObjectY
-.SOCount:
-    ; Count objects: enemies + miner if in miner's room (Temp = count; VBLANK-safe)
-    lda EnemyCount
-    sta Temp
-    lda LevelMinerRoom
-    and #$7f
-    cmp RoomNo
-    bne .SONoMiner
-    inc Temp                    ; miner counts as a slot
-.SONoMiner:
-    lda Temp
-    bne .SONotNothing
-    ; No objects this frame: A = Temp = 0. Blank the sprite AND reset the
-    ; flicker counter — with no objects the modulo below never runs, so
-    ; FlickerFrame would grow unbounded and .SOModLoop (a subtract loop)
-    ; would run O(FlickerFrame) iterations in the VBL on the next room with
-    ; objects (measured +533c / +7 lines room-crossing spike, 2026-10-16).
-    sta FlickerFrame
-    lda #$FF
-    sta ObjBase
-    jmp .SODone
-.SONotNothing:
-    ; FlickerFrame already advanced at entry — modulo into 0..(slot count-1)
-.SOModLoop:
-    lda FlickerFrame
-    cmp Temp
-    bcc .SOModDone
-    sec
-    sbc Temp
-    sta FlickerFrame
-    jmp .SOModLoop
-.SOModDone:
-    ; FlickerFrame is now 0..(slot count-1)
-    ; Check if slot 0 is the miner
-    lda FlickerFrame
-    bne .SOEnemy
-    lda Temp
-    cmp EnemyCount
-    beq .SOEnemy               ; no miner slot in this room
-    ; This slot is the miner
-    lda #OBJ_MINER              ; miner design offset into ObjSprites
-    sta ObjBase
-    lda MinerX
-    sta ActiveObjectX
-    lda MinerY
-    clc
-    adc #3                      ; draw 3px below data Y (miner_position.png —
-                                ; sprite floated above the floor line; tuning
-                                ; constant — pickup box still uses MinerY)
-    sta ActiveObjectY
-    lda #$66                    ; purple (hue 6, luma 3)
-    sta COLUP1
-    jmp .SODone
-
-.SOEnemy:
-    ; Walk enemy list: find the (FlickerFrame - (miner_offset))th enemy
-    ; If miner room and FlickerFrame > 0, subtract 1 for miner slot
-    ldx FlickerFrame
-    lda Temp
-    cmp EnemyCount
-    beq .SOEnemyNoMinerOffset
-    dex                         ; skip miner slot
-.SOEnemyNoMinerOffset:
-    ; A = enemy index in list
-    txa
-    sta EnemyIndex
-    ; Check if index < EnemyCount
-    cmp EnemyCount
-    bcc .SOEnemyValid
-    ; Out of range — no object this slot
-    lda #$FF
-    sta ObjBase
-    jmp .SODone
-.SOEnemyValid:
-    ; Skip if this enemy is dead (mask bit = index); A already = EnemyIndex
-    tax
-    lda EnemyDeadMask
-    and EnemyBitTable,X
-    bne .SOEnemySkip
-    ; Live X from RAM; Y from RAM (EnemyRamY) at .SOEnemyColorDone
-    ldx EnemyIndex
-    lda EnemyRamX,X
-    sta ActiveObjectX
-    ldy EnemyOffTable,X         ; Y = EnemyIndex * 4 = type offset
-    ; --- Fold batch (P3.1): enemy record staged before IsRoomDark (A-only,
-    ; Y and FetchPtr survive the call). ---
-    lda EnemyDataLo
-    sta FetchPtr
-    lda EnemyDataHi
-    sta FetchPtr+1
-    jsr CallPad_IsRoomDark              ; clobbers X — Y still = type offset
-    beq .SOEnemyLit
-    lda #COLOR_DARK_OBJ         ; dark room: lamp + enemies medium grey
-    sta COLUP1
-    jsr FoldIndirect            ; reload type
-    tax
-    jmp .SOEnemyPattern
-.SOEnemyLit:
-    jsr FoldIndirect            ; reload type (X was clobbered by IsRoomDark)
-    tax
-    lda EnemyColorTable,X
-    sta COLUP1
-.SOEnemyPattern:
-    cpx #KEY
-    bne .SOPNorm
-    lda LevelStartRoom          ; Phase 5: KeyHeld ($A7 b7) → key already
-    bmi .SOEnemySkip            ;   taken → skip render (never reappears)
-.SOPNorm:
-    lda ObjSpriteOffTable,X     ; type → ObjSprites design offset
-    sta ObjBase
-.SOEnemyColorDone:
-    ldx EnemyIndex
-    lda EnemyRamY,X             ; live Y from $E2 (private since S3.4)
-    sta ActiveObjectY
-    jmp .SODone
-
-.SOEnemySkip:
-    lda #$FF
-    sta ObjBase
-
-.SODone:
-    ; Position GRP1 from ActiveObjectX — ONE shared call for every object
-    ; path (bomb/miner/enemy). ac4c3ee moved the bomb's SOXP to the drop and
-    ; the bomb path skipped it, so the bomb rendered at the last enemy/miner
-    ; X (looked fixed). ObjBase==0 (no object / dead-enemy slot) skips it.
-    lda ObjBase
-    bmi .SODoneNoPos
-    lda ActiveObjectX
-    ldx #1
-    jsr SetObjectXPos
-.SODoneNoPos:
-    jsr SetObjReflection
-    ; Set ObjTop for kernel GRP1 visibility check.
-    ; S2.2: ObjTop stored RoomY-relative (ObjTopRel = ActiveObjectY-RoomY+1) so
-    ; the kernel compares against running-Y (`tya`) instead of `lda Scanline`
-    ; — frees 9c/line (lda Scanline + inc Scanline) for the laser beam write.
-    ; Kernel .Grp1 does: tya / sec / sbc ObjTop / cmp #8 / bcs .ObjZero.
-    ; ObjBot (write-only, no readers): stores removed S1.5, decl removed
-    ; S3.0b (was last sequential decl — no address shift).
-    lda ObjBase
-    bmi .SONoObj
-    lda ActiveObjectY
-    sec
-    sbc RoomY
-    clc
-    adc #1                      ; A = ActiveObjectY - RoomY + 1 (mod 256)
-    sta ObjTop
-    rts
-.SONoObj:
-    lda #144                    ; Park the GRP1 window off-cave for EVERY
-    sec                         ; RoomY. The kernel draws when running-Y
-    sbc RoomY                   ; (Scanline-RoomY) - ObjTopRel ∈ [0,7] =
-    sta ObjTop                  ; Scanline-(RoomY+ObjTopRel); parking ObjTopRel
-    rts                         ; = 144-RoomY → Scanline-144 ∈ [112,255] →
-                                ; never <8 → never drawn. A CONSTANT 144
-                                ; wrapped for RoomY ≥ 112 (Scanline-(144+RY)
-                                ; mod 256 ∈ [0,7]) and drew ObjSprites[row+
-                                ; ObjBase]; with the key art now at slot 0
-                                ; (ObjBase=$FF → row 1..7 = index 0..6) that
-                                ; leaked the key onto the player's rows
-                                ; (user 2026-10-17). The old blank slot 0 had
-                                ; hidden this latent bug.
-
+; SelectActiveObject MOVED to bank2 (C1, 2026-10-20) — body at $F486, entered
+; by CallPad_SelectObject (corridor pad at $FC1D: `sta $1FF8`); the `jmp` half
+; lives in bank2 at $FC20. Why: the bank0 flow is the scarce resource — the
+; move frees the 289 B body + the 16 B colour/offset tables (flow tail 14 ->
+; 319 B) and removes one FoldIndirect (25c, 2 switches) and one
+; CallPad_IsRoomDark per object draw, because the enemy records live in bank2.
+; Behaviour, ZP outputs and the SetObjectXPos/SetObjReflection/ObjTop contract
+; are unchanged; the VBL work window DROPS by ~44c (sim_frame_budget).
+; Guards: verify_build.check_callpads pins both pad halves; tools/test_raft.py
+; (tally gate + integration) drives the real pad path; tools/test_room_dark.py
+; pins the inline dark test against bank1's IsRoomDark split; test_key_pickup
+; slices the bank2 body for the type-6 / parked-ObjTop contracts.
 ; ==============================================================================
-; Enemy color table (emulator-aware: hue<<4 | luma<<1)
-EnemyColorTable:
-    .byte $14                   ; spider — hue 1 luma 2 = dark yellow
-    .byte $f2                   ; bat — hue 15 luma 7 = brown
-    .byte $c4                   ; snake — hue 12 luma 2 = green
-    .byte $0e                   ; tentacle — hue 0 luma 7 = white
-    .byte $22                   ; moth — hue 2 luma 1 = dark orange
-    .byte $0e                   ; lamp (type 5) — white; dark rooms override to grey
-    .byte $1C                   ; key (type 6) — yellow
-    .byte $c4                   ; raft (type 7) — green, matching the SNAKE art
-                                ; slot it borrows ($c4 = ObjColorTab slot 6). User
-                                ; 2026-10-18: keep the SOLID block and read it as
-                                ; a trunk/log — the solid art also looks bigger
-                                ; than the notched LAMP one, so the player lands
-                                ; on it more confidently.
-
-; Enemy type → ObjSprites design offset (index = ENEMY_* type)
-ObjSpriteOffTable:
-    .byte OBJ_SPIDER            ; 0
-    .byte OBJ_BAT               ; 1
-    .byte OBJ_SNAKE             ; 2
-    .byte OBJ_TENTACLE          ; 3
-    .byte OBJ_MOTH              ; 4
-    .byte OBJ_LAMP              ; 5 (LAMP)
-    .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
-    .byte OBJ_SNAKE             ; 7 (RAFT — the solid 8x8 block: a log/trunk over
-                                ; the water, and the most "landable" shape in the
-                                ; table. ObjSprites is exactly 72 B and ends at
-                                ; $FF00, so a dedicated design needs 8 art bytes
-                                ; freed; every entry is 8x8, so nothing is
-                                ; "larger" — solid just reads bigger than notched.)
 
 ; ==============================================================================
 ; CheckEnemyHit — player overlaps an enemy → remove enemy, lose life
@@ -3039,6 +2806,7 @@ ReturnPad:
 ;   A=$FC14 sta $1FF7   A+3=$FC17 -> bank1 jmp UpdateLaserSound
 ;   A=$FC17 sta $1FF9   A+3=$FC1A -> bank3 jmp BuildColupF (record stream)
 ;   A=$FC1A sta $1FF7   A+3=$FC1D -> bank1 jmp BombMarkWalls ($FB10)
+;   A=$FC1D sta $1FF8   A+3=$FC20 -> bank2 jmp SelectActiveObject (C1)
 ; Guard: verify_build.check_callpads pins each A and asserts the ROM bytes of
 ; BOTH halves (bank0 sta / target-bank jmp operand == its .lst label).
 CallPad_UpdateBombSound:
@@ -3063,6 +2831,10 @@ CallPad_BuildColupF:
     sta $1FF9                   ; A3: body lives in bank3 (record stream)
 CallPad_BombMarkWalls:
     sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
+CallPad_SelectObject:
+    sta $1FF8                   ; C1: body lives in bank2 ($F486); bank2's
+                                ; $FC20 `jmp SelectActiveObject` is the live
+                                ; half fetched after this write
 
     .ds $FC49 - *, 0             ; pin (main growth past $FC49 = build error)
 MothExitPad:
