@@ -238,3 +238,22 @@ deleted with the body. `verify_build.check_frame_tramp` now asserts the body
 lives in bank0 and that bank2 has no `PickPlayerFrame` label; `test_miner_
 colors` section 2 checks the same + the bank0 `lda zp` entry, `test_title_
 demo` asserts the twin is gone.
+
+### Chunk 2 — M1StripBlast → bank1 ($F41F) — LANDED
+
+| | before | after | Δ |
+|---|---|---|---|
+| bank0 | 3426 | 3426 | 0 |
+| bank1 | 2887 | 2923 | +36 (48 B body − 12 B pads) |
+| bank2 | 1645 | 1585 | **−60** (48 body + 12 pads) |
+| bank3 | 1263 | 1263 | 0 |
+| **total** | **9221** | **9197** | **−24** |
+
+`BombMarkWalls .BMWDone → M1StripBlast → StripBlastCheck` is now same-bank
+(0 switches instead of 2). Pins killed: bank2 `$F970`, the 12 B shared hop pad
+at `$F9AC` (both banks). One trap paid for: `Temp` in bank1 is `$AD`
+(= bank0 `TickCounter`), so the staging write uses `BMWScratch` (`$88`) —
+the bank2 copy's `sty Temp` would have killed the game timer. `RoomMetaA/B`
+EQUs hand-copied into bank1. `test_bomb_strip` now asserts the body at
+`$F41F`, that bank2 no longer has `M1StripBlast`, and keeps the `$F937`
+layout pin.

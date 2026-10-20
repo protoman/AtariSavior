@@ -511,6 +511,50 @@ MusicTick:
 
     include "art/intro_theme.asm"
 
+; ------------------------------------------------------------------------------
+; M1StripBlast — Phase 4 M1 strip blast (moved from bank2 2026-10-20, repack
+; chunk 2). Reads ZP ONLY (RectCount / RoomMetaA-B / EnemyDeadMask /
+; BMWScratch), so it runs here and the old two-hop pad chain
+; (.BMWDone -> pad $F9AC -> bank2 -> pad $F9B2) collapses to a same-bank
+; jal: BombMarkWalls .BMWDone -> M1StripBlast -> StripBlastCheck, 0 switches.
+; Staging contract (both scratch bytes free in this flow):
+;   RectCount := 2ℓ left-strip dcol, or $FF = none/door/right-bomb;
+;   BMWScratch ($88 = kernel Temp, NOT bank1's Temp $AD) := $FF when MetaB
+;   b7 (right door) so the ball-strip take can never fire. Key pickup (P5)
+;   sets b3/b4 for doors instead (comment hook at the takes).
+; ------------------------------------------------------------------------------
+M1StripBlast:
+    lda RectCount               ; original screen col (BMW prologue stash)
+    cmp #20
+    bcs .M1SBnone               ; right bomb → left strip unreachable
+    lda EnemyDeadMask
+    and #$10                    ; b4 already set → nothing to stage
+    bne .M1SBnone
+    lda RoomMetaA               ; MetaA
+    and #$08                    ; b3 = left door (key-only, bomb-immune)
+    bne .M1SBnone               ; stays $FF: bank1 takes no left strip
+    lda RoomMetaA               ; reload (and clobbered A)
+    lsr
+    lsr
+    lsr
+    lsr                         ; m1_col+1 (0 = no M1 → 2ℓ = $FE, off the
+                                ;   high end — StripBlastCheck rejects)
+    sec
+    sbc #1                      ; ℓ = left_col
+    asl                         ; 2ℓ = strip left dcol
+    sta RectCount               ; staged (nothing after this reads the col)
+    jmp .M1SBdoorR
+.M1SBnone:
+    lda #$FF
+    sta RectCount               ; no left strip this frame
+.M1SBdoorR:
+    lda RoomMetaB               ; MetaB, b7 = right door
+    bpl .M1SBout
+    ldy #$FF
+    sty BMWScratch              ; $88 = StripBlastCheck's "no strip"
+.M1SBout:
+    jmp StripBlastCheck         ; same bank now (was the $F9B2 pad)
+
     org $F540
 MenuMain:
     ; ========================================================================
@@ -617,6 +661,8 @@ RectCount  = $92                ; walk temp — BMW stashes the original screen
                                  ; it as the left-strip dcol (2ℓ / $FF) that
                                  ; StripBlastCheck's left take reads
 BombPacked = $B5                ; state+DownPrev+WallMask (b3-6)
+RoomMetaA = $99                 ; staged MetaA (hand-copy of bank2's EQU —
+RoomMetaB = $9A                 ;   M1StripBlast reads the door/m1 nibbles)
 EnemyDeadMask = $BA             ; b0-2 enemy kills (hand-copy of kernel's
                                  ; decl — check_equ_sync pair); b3 = D6 ball
                                  ; strip destroyed (StripBlastCheck); b4 = M1
@@ -1322,19 +1368,10 @@ StripBlastCheck:
     lda CollisionX              ; A = walls newly broken (caller contract)
     jmp ReturnPad                   ; ReturnPad → bank0 caller (0 push)
 
-    .ds $F9AC - *, 0            ; shared cross-bank pad — bank2 carries the
-                                 ; SAME 12 bytes at $F9AC (identity asserted
-                                 ; in test_bomb_strip): after `sta $1FF8` the
-                                 ; NEXT opcode fetch is from the NEW bank at
-                                 ; pc+3, so both banks must hold the identical
-                                 ; `jmp` (F6 pad rule — ReturnPad/OverlayTramp
-                                 ; do the same).
-M1ToBank2:                      ; reached bank1-side: .BMWDone jmps here
-    sta $1FF8                   ; switch bank1 → bank2
-    jmp $F970                   ; M1StripBlast
-M1ToBank1:                      ; = $F9B2 (M1StripBlast jmps here bank2-side;
-    sta $1FF7                   ; after that switch bank1 executes this copy)
-    jmp $F937                   ; StripBlastCheck
+    .ds $F9AC - *, 0            ; (was the shared 12 B M1-hop pad — deleted
+                                 ;   2026-10-20 with the M1StripBlast move: the
+                                 ;   chain .BMWDone → M1StripBlast →
+                                 ;   StripBlastCheck is same-bank now)
 
 ; ========================================================================
 ; Leaf routines relocated from bank0 — batch A, sounds (leaf_move_plan)
@@ -1781,13 +1818,11 @@ BombMarkWalls:
     dex
     bpl .BMWLoop
 .BMWDone:
-    jmp M1ToBank2               ; shared pad $F9AC (sta $1FF8 / jmp $F970,
-                                 ; byte-identical in bank2) → M1StripBlast
-                                 ; sets b4 if the blast covers the left strip,
-                                 ; then the pad's back-half crosses to
-                                 ; StripBlastCheck. Still 0 push — SP guard
-                                 ; unchanged; the check ends in ReturnPad with
-                                 ; A = count.
+    jmp M1StripBlast            ; same bank (repack chunk 2, 2026-10-20):
+                                 ; M1StripBlast stages the left-strip dcol and
+                                 ; sets b4, then tail-jmps StripBlastCheck.
+                                 ; Still 0 push — SP guard unchanged; the
+                                 ; check ends in ReturnPad with A = count.
 
 ; ABWXTab/ABWWTab/ABWYTab/ABWHTab/BombMaskBit live at $F010 (top-of-bank
 ; fill gap) — relocated 2026-10-10 when the BMW span fix overflowed the

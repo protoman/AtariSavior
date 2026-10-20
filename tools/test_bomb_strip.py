@@ -11,13 +11,13 @@ Three halves of the fix, driven against the real routines:
    in-body (39-x). Controls: sym run, non-overlapping bomb, no double
    count on a second blast.
 
-2. bank2 M1StripBlast (Phase 4 M1 twin): the left strip's dcols [2ℓ,
-   2ℓ+1] share the window's LEFT-half frame — a LEFT-side bomb covering
-   them sets EnemyDeadMask b4 (+1 count) via the $F9AC shared pad
-   (bank1→bank2 `sta $1FF8`, byte-identical both banks); a RIGHT-side
-   bomb's window is mirror-space so the original screen col (RectCount,
-   BMW prologue stash) >= 20 skips the test; M1X=0 meta and a pre-set
-   b4 are no-ops. Pad identity + both crossing literals are asserted.
+2. bank1 M1StripBlast (Phase 4 M1 twin, moved from bank2 2026-10-20): the
+   left strip's dcols [2ℓ, 2ℓ+1] share the window's LEFT-half frame — a
+   LEFT-side bomb covering them sets EnemyDeadMask b4 (+1 count); a
+   RIGHT-side bomb's window is mirror-space so the original screen col
+   (RectCount, BMW prologue stash) >= 20 skips the test; M1X=0 meta and a
+   pre-set b4 are no-ops. The whole chain .BMWDone -> M1StripBlast ->
+   StripBlastCheck is same-bank (the $F9AC hop pad is gone).
 
 3. bank2 StageBandTab: b3 (ball strip dead) blanks BandTab; b4 (M1
    dead) stages M1X=0 and clears the packed b3 presence flag. Expectations
@@ -90,7 +90,7 @@ def parse_equ(path: Path, names: set) -> dict:
 
 
 L1 = parse_labels(SRC / "bank1.lst", {"BombMarkWalls", "StripBlastCheck",
-                                      "M1ToBank2", "M1ToBank1"})
+                                      "M1StripBlast"})
 L0 = parse_labels(SRC / "bank0.lst", {"BombX", "LineCount", "RcBase",
                                 "EnemyDeadMask", "CollisionX",
                                 "BombPacked", "PF0Buf", "PF1Buf",
@@ -105,34 +105,25 @@ L2.update({k: L3[k] for k in ("L1R1TilePF0", "M3TilePF0")})
 L2.update(parse_equ(SRC / "bank2.lst",
                     {"BandTab", "CollisionEndY", "CollisionEndX",
                      "RoomPF0Lo", "RoomRectsLo"}))
-need = ({"BombMarkWalls", "StripBlastCheck", "M1ToBank2", "M1ToBank1"}
-        - L1.keys()) | \
+need = ({"BombMarkWalls", "StripBlastCheck", "M1StripBlast"} - L1.keys()) | \
        ({"BombX", "LineCount", "RcBase", "EnemyDeadMask", "CollisionX",
          "BombPacked", "PF0Buf", "PF1Buf", "PF2Buf"}
         - L0.keys()) | \
-       ({"L1R1TilePF0", "M3TilePF0", "M1StripBlast",
+       ({"L1R1TilePF0", "M3TilePF0",
          "BandTab", "CollisionEndY", "CollisionEndX",
          "RoomPF0Lo", "RoomRectsLo"} - L2.keys()) | ({"B3StageBand"} - L3.keys())
 if need:
     sys.exit(f"labels missing: {sorted(need)}")
 
-# Shared cross-bank pad: bank1 .BMWDone jumps here; the 12 bytes must be
-# IDENTICAL in both banks (after `sta $1FFx` the next opcode fetch comes
-# from the newly selected bank at pc+3 — F6 pad rule).
-PAD = 0xF9AC
-PAD_BYTES = bytes.fromhex("8df81f4c70f9"    # sta $1FF8 / jmp $F970 (→bank2)
-                          "8df71f4c37f9")   # sta $1FF7 / jmp $F937 (→bank1)
-for i in (1, 2):
-    got = bytes(BANKS[i][PAD - 0xF000:PAD + 12 - 0xF000])
-    assert got == PAD_BYTES, (
-        f"bank{i} pad @${PAD:04X} = {got.hex()} != {PAD_BYTES.hex()}")
-assert L1["M1ToBank2"] == PAD and L1["M1ToBank1"] == PAD + 6, (
-    f"bank1 pad labels {L1['M1ToBank2']:04X}/{L1['M1ToBank1']:04X} != "
-    f"{PAD:04X}/{PAD + 6:04X}")
+# Repack chunk 2 (2026-10-20): M1StripBlast lives in bank1 ($F41F fill) and
+# the .BMWDone -> M1StripBlast -> StripBlastCheck chain is same-bank, so the
+# old 12 B hop pad at $F9AC and bank2's copy of the body must be gone.
+assert "M1StripBlast" not in L2, "bank2 must not carry M1StripBlast any more"
+assert L1["M1StripBlast"] == 0xF41F, (
+    f"M1StripBlast ${L1['M1StripBlast']:04X} != $F41F (placement drift)")
+assert L1["M1StripBlast"] < L1["StripBlastCheck"], "strip chain out of order"
 assert L1["StripBlastCheck"] == 0xF937, (
     f"StripBlastCheck ${L1['StripBlastCheck']:04X} != $F937 (pin drift)")
-assert L2["M1StripBlast"] == 0xF970, (
-    f"M1StripBlast ${L2['M1StripBlast']:04X} != $F970 (pin drift)")
 
 # Model 0 meta (bank2 ROM): MetaA+9 = (m1_col+1)<<4 | band_mask,
 # MetaB+10 = ball_col+1 — expectations below are derived from these so the
