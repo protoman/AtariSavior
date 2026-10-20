@@ -308,3 +308,26 @@ and the `adc` — missing the second one inflated the bonus (201 vs 38 ticks)
 and `test_tally` caught it. `LaserX` ($83) hand-copied into bank1.
 Guards: `verify_build` tally slice now compares bank0/bank1 with `8d f7 1f`
 and reads bank1's `TallyEntry`.
+
+### Chunk 5 (plan chunk 6) — bank3: B3StageBand $F0A3 → $FC38 — LANDED
+
+| | before | after | Δ |
+|---|---|---|---|
+| bank0 | 3642 | 3642 | 0 |
+| bank1 | 3049 | 3049 | 0 |
+| bank2 | 1222 | 1222 | 0 |
+| bank3 | 1263 | 1260 | **−3** |
+| **total** | **9176** | **9173** | **−3** |
+
+The dead `$F3AC` `jmp B3StageBand` image (its only entry became a local jmp
+in A3) was deleted with the body, so the level-data window starts at
+`$F0A3` instead of `$F160`: **588 → 781 B** (+193; ~304 B used, slack 477).
+
+Two traps paid for, both worth recording:
+- **DASM `org` is forward-only here.** Putting the body at `$FC38` *before*
+  the `$F0A3` data in source order fails with `Origin Reverse-indexed`, so
+  the whole block (body + `M1OffTab`) was moved textually after the
+  `$FC35` CallPad image — the file now emits in ascending address order.
+- **`.ds` writes at its org.** A `.ds $FFEF` after the body would fill
+  *over* `$FC38-$FCEE`. The `$FCF3→$FFEF` fill is therefore emitted right
+  after the body (forward), and the HOF entry image uses `org $FFEF`.
