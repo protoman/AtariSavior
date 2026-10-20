@@ -63,8 +63,9 @@ BombX = $F6                      ; hand-copy kernel EQU — title: 68 = no bomb,
                                  ;   140 = armed (TitleKernel P1 SOXP reads it)
 BombTimer = $F7                  ; hand-copy kernel EQU — title fuse/explode
 EnemyIndex = $B9                 ; slot save around the col swap + rect walk
-LevelStartRoom = $A7             ; hand-copy kernel EQU — b7 = KeyHeld
-                                 ;   (Phase 5); EnterRoom re-opens doors
+                                 ; (LevelStartRoom hand-copy retired 2026-10-20:
+                                 ;   its readers OvM1Block/OvShutBand moved to
+                                 ;   bank0, which reads the byte natively)
 EnemyDeadMask = $BA              ; b0-2 enemy kills; b3 = ball strip
                                  ; destroyed (bank1 StripBlastCheck); b4 = M1
                                  ; strip destroyed (M1StripBlast) — check_equ_sync
@@ -726,8 +727,16 @@ TallyEntry:
 ; bank3 (A3 2026-10-19 — they walk the level-data record stream, which now
 ; lives there).
 ; ------------------------------------------------------------------------------
-M1OffTab:                       ; MetaA b0 -> M1 x-offset. PHMOverlay's own
-    .byte $ff, $4f              ;   copy (2 B); B3StageBand has the twin.
+; M1OffTab MOVED to bank0 with PHMOverlay (repack chunk 4); bank3 keeps its
+; own twin for B3StageBand.
+; OvHead/OvTail STAY here: the overlay cluster moved to bank0 (which has its
+; own copy), but bank2's MothDoWalk patch test and LWC's .LWpSetup still read
+; these band-edge masks in-bank (cross-bank reads are impossible, so the 6 B
+; genuinely duplicate).
+OvHead:
+    .byte 7,6,4                 ; rows 0..2 → mask bits >= row
+OvTail:
+    .byte 1,3,7                 ; rows 0..2 → mask bits <= row
 
 ; --- Level data (frozen addresses — pointer values must match bank0's
 ;     original layout, level_bank_plan P2.1: $F9D9-$FB1E = 326B) ---
@@ -823,99 +832,8 @@ LWpTest:
 .LWhit:
     jmp LWpSolid                ; strip col → wall contact A=2 (LWC, same bank)
 
-OvM1Block:
-    ; Phase 4 M1 (left strip) collision overlay. Entered by JMP from
-    ; PHMOverlay's .OvClear (right-strip miss) — 0 pushes; both exits
-    ; ReturnPad ($FBF8). In: CollisionX = vl, CollisionCellY/EndY =
-    ; player row range (survive the right tests — do NOT clobber the
-    ; prologue box: CellX/EndX/CellY/EndY must stay intact, the block
-    ; path hands them to HotOverlapFlag). Scratch = RectCount ($92; M1X,
-    ; then ℓ math — see PHMOverlay note). Kill-aware
-    ; (EnemyDeadMask b4); a row blocks iff its PF cell at col ℓ is open —
-    ; the wall-hide envelope guarantees open ⟺ patched (every band at ℓ
-    ; is wall or M1-patched, never plain-open).
-    lda EnemyDeadMask
-    and #$10                    ; b4 = M1 strip destroyed → transparent
-    bne .OvM1no
-    lda RoomMetaA               ; MetaA
-    and #$01                    ; Phase 5: b0 = M1 strip on the RIGHT half
-    tax                         ;   (door band mask is $02 → b0 free)
-    lda RoomMetaA               ; reload MetaA
-    lsr
-    lsr
-    lsr
-    lsr                         ; m1_col+1 (0 = no M1 patch)
-    beq .OvM1no
-    asl
-    asl
-    asl                         ; 8*(m1_col+1)
-    clc
-    adc M1OffTab,X              ; -1 (left, $FF) / +79 (right, $4f) → the
-                                ;   side's M1X (7+8*col / 87+8*col) — MUST
-                                ;   match the bank2 StageBandTab staging.
-    sta RectCount               ; scratch M1X (EndX = prologue min col is
-                                ; CollisionEndX — kept intact for HotOverlapFlag)
-    lda CollisionX              ; vl
-    cmp RectCount                ; vl vs M1X (same shape as the ball test)
-    bcc .OvM1T2
-    beq .OvM1T2
-    bcs .OvM1no                 ; vl > M1X → player fully left of strip
-.OvM1T2:
-    lda RectCount
-    cmp #13
-    bcc .OvM1Band               ; M1X < 13 (ℓ = 0): M1X-13 wraps — skip
-    sec                         ; the second test (test 1 already implies
-    sbc #13                     ; overlap for every valid vl)
-    cmp CollisionX
-    bcc .OvM1Band
-    beq .OvM1Band
-    bcs .OvM1no                 ; M1X-13 > vl → player fully right
-.OvM1Band:
-    lda RectCount
-    sec
-    sbc #7
-    lsr
-    lsr
-    lsr                         ; ℓ = (M1X-7)/8
-    tax                         ; X = ℓ (PHM callers preserve X themselves)
-    lda CollisionCellY
-    sta RectCount               ; $92 walk temp — free after the cell walk
-                                ; (RowIdx re-inits at kernel entry)
-.OvM1Row:
-    lda RectCount
-    tay
-    tya
-    clc
-    adc ColOff,X                ; PF0/PF1/PF2 group offset (0/3/6)
-    tay
-    lda PF0Buf,Y                ; same cell read as PlayerHitsMap
-    and ColMask,X
-    beq .OvM1block              ; open → patch cell active in this row
-    lda RectCount
-    cmp CollisionEndY
-    beq .OvM1no
-    inc RectCount
-    bne .OvM1Row                ; row never wraps to 0
-.OvM1block:
-    ; Blocked by the M1 cell: run the hot check too — convert emits the
-    ; M1 patch cell as a hot rect on the hot band (mask $00, never dies
-    ; with a wall), so touching the block on a hot band = death, exactly
-    ; like a hot PF wall. Off-band / non-hot: body finds no rect → sec,
-    ; still blocked. b4 (strip destroyed) never reaches here (.OvM1no).
-    ; Phase 5 key: touching the M1 strip (left door) while KeyHeld removes
-    ; it (b4) — touch, not mere possession.
-    lda LevelStartRoom
-    bmi .OvM1unlock
-    jmp HotOverlapFlag          ; C=1 contract; body sets Temp b7 on hot hit
-.OvM1unlock:
-    lda EnemyDeadMask
-    ora #$10                    ; b4 = M1 strip (left door) destroyed
-    sta EnemyDeadMask
-    clc
-    jmp ReturnPad               ; passable
-.OvM1no:
-    clc
-    jmp ReturnPad
+; OvM1Block MOVED to bank0 (repack chunk 4, 2026-10-20) with PHMOverlay
+; and OvShutBand — it reads ZP + PF0Buf and bank0's ColOff/ColMask.
 
 FooterPtr1 = $E0                 ; title-only pointer block; overwritten by HUD
 FooterPtr2 = $E2
@@ -991,18 +909,9 @@ TallySum:
 ; same-bank there. Bank2's 12 B hop pads at $F9AC went with it.
 ; ------------------------------------------------------------------------------
 
-    .ds $F9B8 - *, 0            ; Phase 4 overlay tramp twin (kernel.asm's
-                                 ; copy sits at the same address — bank0
-                                 ; executes +0..+6, the bank2 fetch starts
-                                 ; at the jmp; the clc/rts tail is bank0-only)
-OverlayTramp:
-    lda LineCount                ; dead in bank2 (entry arrives at +7)
-    beq .OTsym
-    sta $1FF8
-    jmp PHMOverlay
-.OTsym:
-    clc
-    rts
+    .ds $F9B8 - *, 0            ; (was the Phase 4 overlay tramp twin — the
+                                 ;   whole overlay cluster moved to bank0
+                                 ;   2026-10-20, repack chunk 4)
 
     ; --- Level data, main window $F9D9..$FBD6 (509B; pads pin the end).
     ; A3 (2026-10-19): models_data + per-room blocks moved to bank3; only the
@@ -1143,77 +1052,15 @@ BombEnemyBlastBody:
                                  ;   PlayerWalkA/B art twin: both deleted
                                  ;   2026-10-20 — body moved to bank0)
 
-    .ds $FE00 - *, 0            ; PHMOverlay pinned: bank0's dead jmp operand
-                                 ; is the literal $FE00 (moth-style dead bytes;
-                                 ; body only ever runs bank2-side)
-PHMOverlay:
-    ; Phase 4 asym-patch collision (entered via OverlayTramp, 0 pushes).
-    ; LineCount packed: b4-b7 = right_col+1, b0-2 = bands with the painted
-    ; ball-strip ($ff BandTab entries). D6 envelope: ONE right column
-    ; [BallX-7, BallX] px, BallX = 87+8*rc — overlay is additive (cells
-    ; painted only where the mirrored cell is open, never hot).
-    ; Exact visible_left (same math as PHM's prologue), then px overlap of
-    ; [vl, vl+6] (PLAYER_WIDTH=7 lit) with the patch column, then band x rows.
-    sec
-    lda RoomX
-    sbc PlayerDir
-    cmp #15
-    bcs .Ov7
-    sec
-    sbc #4
-    jmp .OvVL
-.Ov7:
-    sbc #7
-.OvVL:
-    clc
-    adc PlayerDir               ; A = visible_left px
-    sta CollisionX              ; walk temps are free on the miss path
-    lda LineCount
-    lsr
-    lsr
-    lsr
-    lsr                         ; n = right_col+1 (1..10)
-    asl
-    asl
-    asl                         ; 8n
-    clc
-    adc #79                     ; BallX = 79+8n = 87+8*rc (patch right edge)
-    sta RectCount               ; scratch (NOT CollisionCellX): the prologue
-                                ; box must survive for HotOverlapFlag — OvM1Block
-                                ; funnels block hits there for hot-death. Scratch
-                                ; = RectCount ($92): free after the cell walk,
-                                ; RowIdx re-inits at kernel entry. NEVER Temp —
-                                ; CheckP0Left/Right read the joystick in Temp
-                                ; AFTER this physics call (Temp scratch here
-                                ; left D3=0 = phantom right-press = drift bug).
-    lda CollisionX
-    cmp RectCount                ; vl vs BallX
-    bcc .OvT2
-    beq .OvT2
-    bcs .OvClear                ; vl > BallX → player fully right of patch
-.OvT2:
-    lda RectCount
-    sec
-    sbc #13                     ; BallX-13 (lit span is 7px, not 8: [vl,vl+6])
-    cmp CollisionX              ; vs vl: overlap iff BallX-13 <= vl
-    bcc .OvBand
-    beq .OvBand
-.OvClear:
-    jmp OvM1Block               ; right-strip miss → M1 (left) strip test;
-                                 ; IT returns via ReturnPad (C set/clear).
-                                 ; Shutter rooms: miss here = player left of
-                                 ; the VISIBLE right-half block → passable
-                                 ; (kill follows the drawn block only, async
-                                 ; ruling 2026-10-14 — no left mirror)
-.OvBand:
-    jmp OvShutBand              ; band overlap → shutter kill / strip solid
-                                 ; (body in the $FE9C hole; band test lives
-                                 ; there so the $FE00-$FE90 window stays fit)
-OvHead:
-    .byte 7,6,4                 ; rows 0..2 → mask bits >= row
-OvTail:
-    .byte 1,3,7                 ; rows 0..2 → mask bits <= row
-
+    .ds $FE00 - *, 0            ; (was PHMOverlay's pin — the overlay
+                                 ;   cluster moved to bank0 2026-10-20,
+                                 ;   repack chunk 4)
+; ------------------------------------------------------------------------------
+; PHMOverlay / OvM1Block / OvShutBand / OvHead / OvTail / M1OffTab MOVED to
+; bank0 (repack chunk 4, 2026-10-20): they read ZP + PF0Buf only, and bank0
+; already owns ColOff/ColMask + the $FFEC HotOverlapFlag pad, so the per-miss
+; bank switch disappears and the tables stop being duplicated.
+; ------------------------------------------------------------------------------
     .ds $FE96 - *, 0            ; S5.4 LHT tramp — byte-identical w/ kernel.asm
                                 ; (shifted +$10 with kernel's tables)
 LaserHitTest:
@@ -1221,35 +1068,9 @@ LaserHitTest:
     jmp LaserHitTestBody        ; == $FF00 — operand guard vs bank0 literal
 
 ; ------------------------------------------------------------------------------
-; OvShutBand — right-column strip on the PHMOverlay miss path. Entered from
-; PHMOverlay .OvBand (right-column + player-band overlap). MetaB b7 marks a
-; LOCKED_DOOR right strip; b7 clear is a plain D6 strip. A plain strip is
-; solid. A door strip is solid until the key is held, then the touch
-; destroys it (EnemyDeadMask b3) and the walk passes (Phase 5).
-; Kill follows the VISIBLE right-half block only (async ruling 2026-10-14 —
-; no left mirror). The retired vcrunch kill test is gone.
+; OvShutBand MOVED to bank0 (repack chunk 4, 2026-10-20) with PHMOverlay and
+; OvM1Block. The $FE9C hole is fill again.
 ; ------------------------------------------------------------------------------
-    .ds $FE9C - *, 0            ; free hole before the moth tramp ($FEF0)
-OvShutBand:
-    ldx CollisionCellY
-    lda OvHead,X                ; bits >= row
-    ldx CollisionEndY
-    and OvTail,X                ; bits <= row
-    and LineCount               ; active-band mask (b0-2)
-    beq .OSBm1                  ; not in a painted band → M1 strip test
-    lda RoomMetaB               ; MetaB
-    bpl .OSBsolid               ; b7=0: plain D6 strip → solid
-    lda LevelStartRoom          ; KeyHeld?
-    bpl .OSBsolid               ; no key → locked (solid)
-    lda EnemyDeadMask           ; key held: the touch destroys the strip
-    ora #$08                    ; b3 = ball strip (right door) destroyed
-    sta EnemyDeadMask
-    jmp .OSBm1                  ; passable (strip blanked next StageBandTab)
-.OSBsolid:
-    sec
-    jmp ReturnPad
-.OSBm1:
-    jmp OvM1Block
 
 ; ------------------------------------------------------------------------------
 ; FoldIndirect — byte-identical copy of kernel.asm's block (same $FEF6
@@ -1378,15 +1199,10 @@ TallyTramp:
     jmp TallyEntry
 
 ; ------------------------------------------------------------------------------
-; HotOverlapFlag (bank2-side, A3): OvM1Block/OvShutBand reach it with `jmp`
-; while bank2 is selected, so THIS copy is the live one. Bank3 has no room
-; at $FE93 (OvShutBand .OSline), so the pad sits at $FFEC like bank0's;
-; the `jmp` at +3 is fetched from bank3's $FFEF image.
+; HotOverlapFlag (bank2-side) RETIRED 2026-10-20 (repack chunk 4): its only
+; callers (OvM1Block/OvShutBand) moved to bank0, so the live pad is bank0's
+; own $FFEC copy. No bank2 code tails there any more.
 ; ------------------------------------------------------------------------------
-    .ds $FFEC - *, 0
-HotOverlapFlag:
-    sta $1FF9                   ; select bank3
-    jmp $F5C3                   ; bank3 HotOverlapBody (synced by verify_build)
     .ds $FFF2 - *, 0            ; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
 
     ; Pad to vectors at $FFFA ($FFF2-$FFF9 = fill — never code: $FFF6-$FFF9
