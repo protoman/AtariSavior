@@ -746,6 +746,16 @@ OvTail:
 ; BombY is never set: the band bottom-aligns the bomb to RoomY==48's sprite
 ; window (armed only while grounded), so there is no reader for it.
 ; ------------------------------------------------------------------------------
+; --- C1 (2026-10-20): bank3-evacuation slot map -----------------------------
+; Windows reserved by the .ds pads below (measured empty at HEAD 36d3d06):
+;   $F307-$F44F  329 B  level-data blocks (models_data + per-room blocks)
+;   $F8B7-$F9D8  290 B  B3RoomBlocks + the HotOverlapBody cluster
+;   $F9D9-$FBCF  503 B  PhaseBlink/BuildColupF/BCFDarkRun + hcrunch tables
+;   $FCB8-$FD86  207 B  B3StageBand (+ M1OffTab)
+;   $FF59-$FFE5  141 B  HOVFeatEntry
+; Reserving them turns an overflow into a named pad instead of a ROM error.
+; ------------------------------------------------------------------------------
+    .ds $F307 - *, 0
     .ds $F450 - *, 0            ; EnterRoomB2 block-reader pad (A3)
 ERBlocksPad:
     sta $1FF9                   ; select bank3 (level-data bank)
@@ -926,50 +936,20 @@ LoadLevelB2:
 
 
 ; ------------------------------------------------------------------------------
-; StageBandTab ping-pong (chunk A2, 2026-10-19). bank3 B3StageBand stages the
-; band/ball state, then `jmp $F800` (its `sta $1FF8` runs there); the fetch at
-; $F803 is THIS bank's `jmp PhBlinkTail`. PhaseBlink stays here (it walks the
-; rect stream), then the tail switches back so bank3 can run the overlay pack.
-; Zero pushes both ways — the bank0 VBL jsr frame is never touched.
+; C1 (2026-10-20) evac window: $F8B7-$F9D8 (290 B) — B3RoomBlocks and the
+; HotOverlapBody cluster land here next chunk. Nothing else may claim it.
+; (Retired tenants of this area: FooterFont sprite/color data ends $F854; the
+; two empty #27b spill slots $F864/$F901 were folded into the window above,
+; and the A2 StageBandTab ping-pong died with A3's same-bank move.)
 ; ------------------------------------------------------------------------------
     .ds $F854 - *, 0            ; FooterFont ends $F854 (13-row) — sprite/color data
-    .ds $F864 - *, 0            ; #27b level spill slot ($F864, 28B; empty until
-    include "generated/spill_F840.asm" ;  convert_level places a level here)
-    .ds $F880 - *, 0
-; TallySum MOVED to bank1 (repack chunk 3, 2026-10-20) — same-bank jsr from
-; TallyEntry there. This slot is fill again.
 
-    .ds $F8B7 - *, 0            ; spill-pool gap
-                                ; (was the $F8DD jet-art twin pin — deleted
-                                ;   2026-10-20 with the PickPlayerFrame move;
-                                ;   the spill include's own .ds absorbs the gap)
-; --- Level-data spill 2 (bugs.md 27/27b): fill gap $F901..$F970 (111B) ---
-    include "generated/spill_F901.asm"        ; #27b: placed by convert_level
-    ; Phase 3 blink masks — pair index (2c>>1) → the two adjacent PF bits
-    ; for that left-half cell (PF0: bits4-7 left-to-right; PF1: bits7-0;
-    ; PF2: bits0-7 reversed). Pairs never straddle a register (even 2c).
-    .ds $F970 - *, 0            ; LOAD-BEARING (kept): the END of the
-                                ;   spill_F901 data slot — convert_level's
-                                ;   _SPILL_SLOTS and verify_build's
-                                ;   bank2_data_slots both read THIS line.
-                                ;   M1StripBlast's body entry pin retired
-                                ;   2026-10-20 (repack chunk 2); the address
-                                ;   stays because it is the window bound.
 ; ------------------------------------------------------------------------------
-; M1StripBlast MOVED to bank1 ($F41F fill, repack chunk 2 2026-10-20): it
-; reads ZP only, so the .BMWDone -> M1StripBlast -> StripBlastCheck chain is
-; same-bank there. Bank2's 12 B hop pads at $F9AC went with it.
+; C1 (2026-10-20) evac window: $F9D9-$FBCF (503 B) — PhaseBlink/BuildColupF/
+; BCFDarkRun + the hcrunch tables land here next chunk. The per-room TABLES
+; that used to sit here moved into the spill_F767 window ($F700-$F853); their
+; M<id>/L<n>R<r> word pairs still resolve through generated/bank3_labels.asm.
 ; ------------------------------------------------------------------------------
-
-; ($F9B8 pin DELETED 2026-10-20, audit round 2: the Phase 4 overlay tramp
-;  twin moved to bank0 with the whole cluster — no bank2 byte lives at $F9B8.)
-
-    ; --- Level data, main window $F9D9..$FBD6 (509B; pads pin the end).
-    ; A3 (2026-10-19): models_data + per-room blocks moved to bank3; only the
-    ; per-room TABLES stay here (RoomDataTable/connections/enemy tables) —
-    ; their M<id>/L<n>R<r> word pairs resolve through generated/bank3_labels.asm.
-    org $F9D9
-    include "generated/spill_window.asm"       ; #27b: level tables, placed by convert_level
 
 ; ReturnPad ($FBF8) — bank2's live half is the `sta $1FF6` only: every body
 ; here tail-jmps `$FBF8`, the sta switches to bank0, and the `rts` at $FBFB is
