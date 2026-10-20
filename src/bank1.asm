@@ -730,8 +730,9 @@ LaserState  = $C0       ; b7 fire held this frame, b5-2 = RoomDarkMask rooms
                         ; preserve b5-2 — see LaserInput/DropArm)
 EnemyRamP   = $C2       ; free-running frame clock (bank0 RefreshEnemyY incs)
 RoomNo      = $98
-LevelConnLo = $A1
-LevelConnHi = $A2
+LevelPFDataLo = $9F              ; level block base (C4: conn/enemy ptrs are
+LevelPFDataHi = $A0              ;   block offsets +2n/+4n/+6n now)
+LevelRoomN  = $A1                ; rooms in the level (C4 2026-10-20)
 FetchPtr    = $E5                ; moved S3.2 (was $E0) — must match kernel
 EnemyRamD   = $C1
 EnemyRamX   = $BD           ; 3 bytes live enemy X (slots 0-2) — raft body
@@ -1566,15 +1567,20 @@ BombSndExplode:
 
 ; GetConnIdx — stage FetchPtr for the four exit handlers' folds.
 ; Conn table lives in bank2; the fold read happens in the bank0 CALLER's
-; jsr FoldIndirect after return. Returns Y = RoomNo*2 (2 packed bytes per
-; room: up/down, left/right), X = 0.
+; jsr FoldIndirect after return. C4 2026-10-20: the table address is the level
+; block's +2n (n = LevelRoomN), so no pointer word is stored per level.
+; Returns Y = RoomNo*2 (2 packed bytes per room: up/down, left/right), X = 0.
 GetConnIdx:
     lda RoomNo
     asl
     tay
-    lda LevelConnLo
+    lda LevelPFDataLo
+    clc
+    adc LevelRoomN              ; +n
+    adc LevelRoomN              ; +2n (carry of the first add rides along)
     sta FetchPtr
-    lda LevelConnHi
+    lda LevelPFDataHi
+    adc #0
     sta FetchPtr+1
     ldx #0
     jmp ReturnPad
@@ -1963,7 +1969,7 @@ CallPad_GetConnIdx:
     jmp $FA26
 CallPad_AddScore:
     sta $1FF7
-    jmp $FA7C
+    jmp AddScore                ; label, not the literal: bank1 shifts move it
 CallPad_IsRoomDark:
     sta $1FF7
     jmp $FC78
@@ -1972,7 +1978,7 @@ CallPad_SetRoomDark:
     jmp $FC9E
 CallPad_UpdateLaserSound:
     sta $1FF7
-    jmp $FAA4
+    jmp UpdateLaserSound        ; label, not the literal (bank1 shifts)
 CallPad_BuildColupF:
     sta $1FF9                   ; A3: body lives in bank3 (record stream)
     jmp $F507                   ; BuildColupF (bank3; synced by verify_build)

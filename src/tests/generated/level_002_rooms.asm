@@ -6,22 +6,22 @@ LEVEL2_MINER_ROOM = 129
 LEVEL2_MINER_X = 19
 LEVEL2_MINER_Y = 84
 
-; Room data: one (L2R<n>TilePF0, ...RoomRects) word pair per room, indexed by RoomNo. Rooms pointing at a model share that model's
-; M<id>TilePF0 / M<id>RoomRects (emitted once in models_data.asm).
+; Room data: ONE word per room (the block's RoomRects label), indexed by RoomNo. TilePF0 is derived at room load as
+; rects + 2 + 2*nrect (C3 2026-10-20: it always sits 2 bytes past the rect list in the same block, so the second word was redundant).
 LEVEL2_RoomDataTable:
-  .word M2TilePF0, M2RoomRects ; room 0 (model 2)
-  .word M3TilePF0, M3RoomRects ; room 1 (model 3)
+  .word M2RoomRects ; room 0 (model 2)
+  .word M3RoomRects ; room 1 (model 3)
 
 ; Room connections: 2 bytes/room, nibble-packed (up<<4|down, left<<4|right); $F = none.
 LEVEL2_RoomConnections:
   .byte $f1, $ff ; room 0
   .byte $0f, $ff ; room 1
 
+; Per-room enemy records: (count<<5 | first record index), bottom_color.
+LEVEL2_RoomEnemies:
+  .byte $00, $00 ; room 0: 0 record(s) from 0
+  .byte $20, $80 ; room 1: 1 record(s) from 0
+
 ; Enemy data: 1 enemy records across 2 rooms, 4 bytes each (type,x,y,dir).
 LEVEL2_EnemyDataTable:
   .byte 3, 71, 132, 1
-
-; Per-room enemy records: ptr_lo, ptr_hi, count, bottom_color.
-LEVEL2_RoomEnemies:
-  .byte <(LEVEL2_EnemyDataTable), >(LEVEL2_EnemyDataTable), 0, $00 ; room 0
-  .byte <(LEVEL2_EnemyDataTable+0), >(LEVEL2_EnemyDataTable+0), 1, $80 ; room 1

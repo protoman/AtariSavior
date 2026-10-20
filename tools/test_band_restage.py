@@ -43,7 +43,8 @@ for _i in range(4):
 Mem = _CM.Mem
 
 need0 = {"EnterRoom", "RoomBandColor", "LevelPFDataLo", "LevelPFDataHi",
-         "LevelEnemyLo", "LevelEnemyHi", "EnemyCount", "RoomNo"}
+         "LevelRoomN", "EnemyCount", "RoomNo", "RoomRectsLo", "RoomRectsHi",
+         "EnemyDataLo", "EnemyDataHi", "PF0Buf"}
 L0 = parse_labels(SRC / "bank0.lst", need0)
 missing0 = need0 - L0.keys()
 if missing0:
@@ -51,7 +52,8 @@ if missing0:
 
 levels = []
 for n in (1, 2, 3):
-    names = {f"LEVEL{n}_RoomDataTable", f"LEVEL{n}_RoomEnemies"}
+    names = {f"LEVEL{n}_RoomDataTable", f"LEVEL{n}_RoomEnemies",
+             f"LEVEL{n}_EnemyDataTable"}
     got = parse_labels(SRC / "bank2.lst", names)
     missing = names - got.keys()
     if missing:
@@ -59,12 +61,14 @@ for n in (1, 2, 3):
     levels.append((n, got))
 
 
-def enter_room(mem: Mem, table: int, enemies: int, room: int) -> None:
+def enter_room(mem: Mem, table: int, room_count: int, room: int) -> None:
+    """Stage what LoadLevel stages (C4): the level block base + its room count.
+    The Connections / RoomEnemies / enemy-record bases are the block's
+    +2n / +4n / +6n offsets, derived by the readers."""
     r = mem.ram
     r[L0["LevelPFDataLo"] - 0x80] = table & 0xFF
     r[L0["LevelPFDataHi"] - 0x80] = table >> 8
-    r[L0["LevelEnemyLo"] - 0x80] = enemies & 0xFF
-    r[L0["LevelEnemyHi"] - 0x80] = enemies >> 8
+    r[L0["LevelRoomN"] - 0x80] = room_count
     mpu = MPU(memory=mem)
     mpu.pc = L0["EnterRoom"]
     mpu.a = room
@@ -86,10 +90,13 @@ def main() -> int:
         data = json.loads((ROOMS / f"level_{n:03d}.json").read_text())
         level = data.get("level", data)
         table = syms[f"LEVEL{n}_RoomDataTable"]
-        enemies = syms[f"LEVEL{n}_RoomEnemies"]
-        for i, room in enumerate(level["rooms"]):
+        enemy_data = syms[f"LEVEL{n}_EnemyDataTable"]
+        rooms = level["rooms"]
+        counts = [min(len(r.get("enemies") or []) + len(r.get("lamps") or []), 3)
+                  for r in rooms]
+        for i, room in enumerate(rooms):
             mem = Mem()
-            enter_room(mem, table, enemies, i)
+            enter_room(mem, table, len(rooms), i)
             band = mem.ram[L0["RoomBandColor"] - 0x80]
             want_on = bool(room.get("bottom_band"))
             if want_on:
@@ -106,8 +113,28 @@ def main() -> int:
             assert got_count == want_count, (
                 f"level {n} room {i}: EnemyCount={got_count} want "
                 f"{want_count} (wrong LevelEnemy record?)")
+            # --- C2: packed per-room record → the right enemy record base ---
+            want_rec = enemy_data + 4 * sum(counts[:i])
+            got_rec = (mem.ram[L0["EnemyDataLo"] - 0x80]
+                       | (mem.ram[L0["EnemyDataHi"] - 0x80] << 8))
+            assert got_rec == want_rec, (
+                f"level {n} room {i}: enemy record base ${got_rec:04X} want "
+                f"${want_rec:04X} (packed count/index field misread)")
+            # --- C3: TilePF0 derived from the rect list (rects + 2 + 2*n) ---
+            rects = (mem.ram[L0["RoomRectsLo"] - 0x80]
+                     | (mem.ram[L0["RoomRectsHi"] - 0x80] << 8))
+            bank3 = _CM.BANK3
+            nrect = bank3[rects - 0xF000]
+            pf0 = rects + 2 + 2 * nrect
+            want_pf = bytes(bank3[pf0 - 0xF000:pf0 - 0xF000 + 9])
+            got_pf = bytes(mem.ram[L0["PF0Buf"] - 0x80:
+                                   L0["PF0Buf"] - 0x80 + 9])
+            assert got_pf == want_pf, (
+                f"level {n} room {i}: PF cache {got_pf.hex()} != the block's "
+                f"PF triple at ${pf0:04X} {want_pf.hex()} (TilePF0 derivation)")
             checks += 1
-    print(f"test_band_restage: OK ({checks} rooms, RoomBandColor restaged "
+    print(f"test_band_restage: OK ({checks} rooms, RoomBandColor + packed "
+          f"enemy record + derived TilePF0 "
           f"per room)")
     return 0
 

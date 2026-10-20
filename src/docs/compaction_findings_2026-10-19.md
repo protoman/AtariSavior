@@ -417,6 +417,7 @@ the repack.
 |---|---|---|---|---|---|---|
 | baseline 9a7f3f4 | 3642 | 3049 | 1222 | 1260 | **9173** | 510 |
 | 1. packed title theme | 3642 | 2993 | 1222 | 1260 | **9117** | 510 |
+| 2. level-data C2+C3+C4 | 3620 | 3000 | 1175 | 1285 | **9080** | 434 |
 
 ## 1. Title theme packed 1 byte/step (−56 B, audit row 4)
 
@@ -457,3 +458,58 @@ subroutine; `MelPtr` advances by 1). bank1 data 478 → 431, code 2571 → 2562.
   `MusicMel`/`MelDur` bytes equal `gen_intro_theme.pack(THEME)`/`MELDUR`
   (it used to be a pitch-count smoke test only); `src/tools/test_title_demo.py`
   follows the theme into the include instead of matching `MusicMel:` inline.
+
+## 2. Level-data C2 + C3 + C4 (−76 B data, net −37 B; audit row 5)
+
+Re-measured on the post-repack tree: 16 rooms (L1 2, L2 2, L3 6, L4 6) and 4
+levels, so the audit's 32/32/12 split holds. **The audit did not count the
+reader code**; that is where most of the win goes. `docs/handoff_2026-10-19_next.md`
+§S2 records an earlier attempt at C2 alone as "TRIED + REVERTED: +36 B decode →
+net +12 B worse" — that version kept a running prefix sum. This one removes the
+sum entirely by packing the record index instead.
+
+New per-level block (`n` = the level's room count, all offsets from ONE base):
+
+```
+base + 0    RoomDataTable    2 B/room  (RoomRects ptr only — C3)
+base + 2n   RoomConnections  2 B/room
+base + 4n   RoomEnemies      2 B/room  ((count<<5 | first record), band)
+base + 6n   EnemyDataTable   4 B/record
+```
+
+- **C3**: `TilePF0` always sits `rects + 2 + 2*nrect` inside the same block
+  (count byte + the always-zero hot-count byte), so the second word was
+  redundant. The derivation happens in `bank3.B3RoomBlocks`, which already
+  reads the count, using the RAW count (the ZP rect cache clamps to 5).
+- **C2**: the per-room record was `(ptr_lo, ptr_hi, count, band)`. The records
+  are contiguous in room order, so `ptr` is `EnemyDataTable + 4*record_index`;
+  `record_index` fits 5 bits (≤ 31 records) and `count` 3 bits. `EnterRoomB2`
+  reads the base from the level entry (base+4n), then derives the enemy record
+  pointer (base+6n + 4*index). **No prefix-sum loop at room load**: the packed
+  field is the sum, computed once by the converter.
+- **C4**: the level entry is `6 scalars + base word + room count` = **9 B**
+  (was 12: three word pointers). `kernel.LoadLevel` computes `Level*9` and reads
+  one word + the count; `bank1.GetConnIdx` derives `+2n`, `EnterRoomB2` derives
+  `+4n`/`+6n`.
+- ZP: `$A1` is now `LevelRoomN`; `$A2`, `$AF`, `$B0` are documented FREE (the
+  bytes stay allocated so the hand-copied blocks do not shift —
+  `docs/zp_layout_skill.md` updated, `check_equ_sync` still green).
+
+Measured: data −76 (level data 510 → 434; bank2 data 311 → 235), code +39
+(bank2 +29 = the two derived pointers, bank3 +25 = the TilePF0 derivation,
+bank1 +7 = GetConnIdx), bank0 **−22** (`LoadLevel` lost 4 fold reads and the
+`*12` ladder). Net ROM **−37 B**, and bank0 — the bank with a 1-byte pre-pad
+ceiling — gains 22 B of headroom.
+
+Gates: `tools/test_band_restage.py` drives the REAL `EnterRoom` for every live
+room and now asserts (a) `RoomBandColor`, (b) `EnemyCount`, (c) the **enemy
+record base** equals `EnemyDataTable + 4*prefix`, and (d) the **PF cache** (9 B)
+equals the block's PF triple at the derived `rects + 2 + 2*nrect` — so the two
+new derivations are checked against ROM bytes, not against a restatement of the
+formula. `tools/test_level_bank.py` pins the stride (9), the emission ORDER
+(RoomData → Conn → RoomEnemies → EnemyData, which IS the reader contract) and
+the packed index contiguity; `tools/test_water_band.py` / `test_water_respawn.py`
+stage base+count instead of the old pointers; `test_water_respawn`'s band poke
+follows the 2-byte record. `tools/freeze_test_banks.sh` now also refreshes
+`src/tests/generated/` from the staged conversion — a converter format change
+had left those snapshots stale (test_editor_roundtrip caught it).

@@ -19,6 +19,7 @@ Cases (driving the real overscan entry CheckBandTouch):
 
 Run: /home/iuri/python3/bin/python3 tools/test_water_band.py
 """
+import re
 import sys
 from pathlib import Path
 
@@ -29,8 +30,8 @@ from py65.devices.mpu6502 import MPU  # noqa: E402
 
 FROZEN = ROOT / "src" / "tests" / "frozen"
 NEED = {"CheckBandTouch", "RoomBandColor", "RoomY", "PlayerLives", "DropTarget",
-        "Hover", "DropArm", "LevelPFDataLo", "LevelPFDataHi", "LevelEnemyLo",
-        "LevelEnemyHi", "RoomNo"}
+        "Hover", "DropArm", "LevelPFDataLo", "LevelPFDataHi", "LevelRoomN",
+        "RoomNo"}
 L0 = parse_labels(FROZEN / "bank0.lst", NEED)
 missing = NEED - L0.keys()
 if missing:
@@ -39,6 +40,13 @@ L2 = parse_labels(FROZEN / "bank2.lst",
                   {"LEVEL1_RoomDataTable", "LEVEL1_RoomEnemies"})
 if not L2:
     sys.exit("bank2 level tables missing (frozen labels)")
+# room count n for the level block, from the frozen emitted index (C4: the
+# entry carries one base word + the count; 0x = LEVEL_DATA_STRIDE).
+_INDEX = FROZEN.parent / "generated" / "levels_index.asm"
+assert "LEVEL_DATA_STRIDE = 9" in _INDEX.read_text(), (
+    "frozen level index is not the C4 9-byte layout — re-freeze the banks")
+L2["LEVEL1_ROOMS"] = int(re.search(r"^\s*\.byte (\d+) ; LEVEL1 rooms",
+                                   _INDEX.read_text(), re.M).group(1))
 Z = {k: v & 0x7F for k, v in L0.items() if 0x80 <= v <= 0xFF}
 BAND_ON = 0x1C                       # any non-zero staged band color byte
 DROP_ARM = L0["DropArm"]
@@ -63,10 +71,11 @@ def run(room_y, band, lives=3, stage_level=False, stop_at_drop=0,
         # the exhausted path reaches ReloadLevel, which folds the level tables:
         # point the level pointers at the frozen level-1 data (as
         # test_band_restage does) so the reload is real, not garbage.
+        # C4 (2026-10-20): base + room count; Connections/RoomEnemies are the
+        # block's +2n/+4n offsets, derived by the readers.
         r[Z["LevelPFDataLo"]] = L2["LEVEL1_RoomDataTable"] & 0xFF
         r[Z["LevelPFDataHi"]] = L2["LEVEL1_RoomDataTable"] >> 8
-        r[Z["LevelEnemyLo"]] = L2["LEVEL1_RoomEnemies"] & 0xFF
-        r[Z["LevelEnemyHi"]] = L2["LEVEL1_RoomEnemies"] >> 8
+        r[Z["LevelRoomN"]] = L2["LEVEL1_ROOMS"]
     mpu = MPU(memory=mem)
     mpu.pc = L0["CheckBandTouch"]
     mpu.a = mpu.x = mpu.y = 0
