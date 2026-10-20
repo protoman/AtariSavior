@@ -517,7 +517,8 @@ CORRIDOR_PADS = (
     ("CallPad_UpdateJetSound", 0xFBFF, 1, "UpdateJetSound"),
     ("CallPad_BombSndDrop", 0xFC02, 1, "BombSndDrop"),
     ("CallPad_BombSndExplode", 0xFC05, 1, "BombSndExplode"),
-    ("CallPad_GetConnIdx", 0xFC08, 1, "GetConnIdx"),
+    # $FC08 (CallPad_GetConnIdx) RETIRED by C3: the exit handlers read the
+    # connection table in bank2 (LevelConnB2), so the pad lost its last caller.
     ("CallPad_AddScore", 0xFC0B, 1, "AddScore"),
     ("CallPad_IsRoomDark", 0xFC0E, 1, "IsRoomDark"),
     ("CallPad_SetRoomDark", 0xFC11, 1, "SetRoomDark"),
@@ -528,13 +529,22 @@ CORRIDOR_PADS = (
     ("CallPad_LoadLevel", 0xFC20, 2, "LoadLevelB2"),
 )
 
+# C3 (2026-10-20): room-exit entry pads — packed before the $FBF8 ReturnPad.
+# bank0 half = `sta $1FF8` at A, bank2 half = `jmp ExitXxxB2` at A+3.
+EXIT_PADS = (
+    ("CallPad_ExitDown", 0xFBD9, 2, "ExitDownB2"),
+    ("CallPad_ExitUp", 0xFBDC, 2, "ExitUpB2"),
+    ("CallPad_ExitLeft", 0xFBDF, 2, "ExitLeftB2"),
+    ("CallPad_ExitRight", 0xFBE2, 2, "ExitRightB2"),
+)
+
 # Tail pads (title/music): same split contract, packed after the $FC49 pin.
 TAIL_PADS = (
     ("CallPad_TitleSelect", 0xFC4F, 1, "TitleSelect"),
     ("CallPad_TitleBand", 0xFC52, 1, "TitleBand"),
     ("CallPad_MusicTick", 0xFC55, 1, "MusicTick"),
 )
-SPLIT_PADS = CORRIDOR_PADS + TAIL_PADS
+SPLIT_PADS = CORRIDOR_PADS + EXIT_PADS + TAIL_PADS
 
 # Pinned twin tramps: these two keep BOTH halves in bank0 and bank1 (their
 # byte-identity is guarded by check_raft_tramp / check_moth_tramp); listed
@@ -839,6 +849,67 @@ def check_loadlevel_tramp(src: Path) -> None:
         err("bank0.lst has a LoadLevelB2 label (body must live in bank2 only)")
 
 
+def check_exit_handlers(src: Path) -> None:
+    """C3 (2026-10-20): the four room-exit handlers live in bank2.
+
+    Each one now reads the connection record in-bank and tail-jmps
+    `EnterRoomB2` with the ROOM INDEX still in A. Two invariants that a
+    "harmless" edit can silently break:
+
+    1. **A must still hold the room index at the `jmp EnterRoomB2`** — the edge
+       placement therefore writes RoomY/RoomX through Y (`ldy #... / sty ...`).
+       Storing `lda #PLAYER_MIN_Y / sta RoomY` would pass 0/4/132/159 as the
+       room number (EnterRoomB2 does `sta RoomNo` first).
+    2. **the placement must precede EnterRoomB2** — EnterRoomB2 + B3RoomBlocks
+       read neither RoomX nor RoomY, so writing them first is equivalent to the
+       old post-call store, and it lets the whole tail stay in bank2 (0 pushes:
+       EnterRoomB2's ReturnPad pops the original bank0 `jsr ExitRoomXxx`).
+    """
+    b2p = src / "bank2.asm"
+    if not b2p.exists():
+        err("bank2.asm missing (exit handlers check)")
+        return
+    text = b2p.read_text(errors="replace")
+    edges = {"ExitDownB2": "PLAYER_MIN_Y", "ExitUpB2": "PLAYER_MAX_Y",
+             "ExitLeftB2": "PLAYER_MAX_X", "ExitRightB2": "PLAYER_MIN_X"}
+    for name, edge in edges.items():
+        m = re.search(rf"^{name}:\n(.*?)(?=^[A-Za-z_.][A-Za-z0-9_.]*:)", text,
+                      re.M | re.S)
+        if not m:
+            err(f"{name} body not found in bank2.asm")
+            continue
+        body = [ln.split(";")[0].strip() for ln in m.group(1).splitlines()]
+        body = [ln for ln in body if ln]
+        if f"ldy #{edge}" not in body or not any(
+                ln.startswith("sty Room") for ln in body):
+            err(f"{name}: opposite-edge placement must be `ldy #{edge}` + "
+                "`sty RoomY/RoomX` (A must keep the room index for EnterRoomB2)")
+        if "jmp EnterRoomB2" not in body:
+            err(f"{name}: exit must tail-jmp EnterRoomB2 (its ReturnPad pops "
+                "the bank0 caller frame — an `rts` here would strand bank2)")
+        else:
+            pos = body.index("jmp EnterRoomB2")
+            sty = max(i for i, ln in enumerate(body) if ln.startswith("sty Room"))
+            if sty > pos:
+                err(f"{name}: edge store sits AFTER `jmp EnterRoomB2` in the "
+                    "list (unreachable code)")
+        if not any(ln == "beq ExitNoneB2" for ln in body):
+            err(f"{name}: no-exit path must branch to ExitNoneB2")
+        if not re.search(rf"^{name}:\n\s+jsr LevelConnB2", text, re.M):
+            err(f"{name}: must start with `jsr LevelConnB2` (in-bank conn read)")
+    if not re.search(r"^ExitNoneB2:\n\s+jmp ReturnPad", text, re.M):
+        err("ExitNoneB2 must tail-jmp ReturnPad (only exit back to bank0)")
+    # bank1's GetConnIdx must no longer be reachable from the handlers
+    ksrc = (src / "kernel.asm").read_text(errors="replace")
+    for name in edges:
+        if re.search(rf"^ExitRoom\w*:\n\s+jsr CallPad_GetConnIdx", ksrc, re.M):
+            err("bank0 still runs a GetConnIdx exit handler (C3 moved it)")
+            break
+    for name in edges:
+        if name in re.findall(r"^(\w+):", ksrc, re.M):
+            err(f"bank0.asm defines {name} (body must live in bank2 only)")
+
+
 def check_tramp_targets(src: Path) -> None:
     """Generic: every `sta $1FFx` + `jmp $Fxxx` pair must land on a
     destination-bank listing row start (label/instruction/data start).
@@ -1012,6 +1083,10 @@ def check_callpads(src: Path) -> None:
     if re.search(r"^CallPad_Overscan:", ksrc, re.M):
         err("CallPad_Overscan is back: it has no caller in any bank (deleted "
             "2026-10-20 with the tail-pad packing)")
+    if re.search(r"^CallPad_GetConnIdx:", ksrc, re.M):
+        err("CallPad_GetConnIdx is back: C3 moved the exit handlers to bank2 "
+            "(LevelConnB2 reads the conn table in-bank), so the pad has no "
+            "caller")
     known = {n for n, _a, _t, _l in SPLIT_PADS}
     known |= {n for n, _a, _t in TWIN_PADS}
     for name in sorted(set(re.findall(r"^CallPad_(\w+):", ksrc, re.M))):
@@ -1948,6 +2023,7 @@ def main() -> int:
     check_enterroom_tramp(src)
     check_blast_tramp(src)
     check_loadlevel_tramp(src)
+    check_exit_handlers(src)
     check_tramp_targets(src)
     check_callpads(src)
     check_bank2_xpos(src)

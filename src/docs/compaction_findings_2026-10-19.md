@@ -929,3 +929,76 @@ advance. Cold path only, no frame-budget impact (`sim_frame_budget` unchanged).
   `LoadLevel` from `bank0.lst` and match the `jsr` opcode+operand, which now
   points at the `$FC20` pad — the poke still lands before the body reads
   `Level` (the sim prints the pad PC).
+
+## C3 — room-exit handlers → bank2 (2026-10-20, audit round 3 #C3)
+
+Re-measured first: the four handlers were `$F4DB-$F535` = **90 B** (the audit's
+figure), and the audit's "needs 3 local call variants" was right in spirit but
+one of them turned out to be unnecessary — see the A-register trick below.
+
+| used | before (9a9a3f8, after C2) | after | Δ |
+|---|---|---|---|
+| bank0 | 3170 | **3092** | **−78** |
+| bank1 | 2948 | **2924** | **−24** |
+| bank2 | 1650 | **1770** | +120 |
+| bank3 | 1285 | 1285 | 0 |
+| total | 9053 | 9071 | +18 |
+
+- bank0: −90 B of flow (`CheckMinerPickup` moved `$F535` → `$F4DB`) + 12 B of
+  entry pads in the `$FBD9-$FBE4` fill.
+- bank1: −24 (GetConnIdx body 15 B + its `jmp` half 3 B + 3 B fill + alignment).
+- bank2: +120 — `LevelConnB2` 20 B at `$FC4F`, the four handler bodies to
+  `$FCB7` (105 B total), four `jmp` halves at `$FBDC-$FBE7` (12 B), 3 B dead.
+
+### Local variants: two of the three the audit listed, the third avoided
+
+- **conn-index read** → `LevelConnB2` (in-bank `FetchPtr = level base + 2n`,
+  `Y = RoomNo*2`; same math as bank1's GetConnIdx, carry trick included).
+- **fold** → direct `lda (FetchPtr),Y`.
+- **`EnterRoom` local `rts` tail** → **not needed.** The old tail was
+  `jsr EnterRoom` *then* `lda #edge / sta RoomY`. `EnterRoomB2` + bank3's
+  `B3RoomBlocks` read NEITHER RoomX nor RoomY (grepped before the edit), so
+  the edge store can happen BEFORE the call and the handler then
+  `jmp EnterRoomB2`, whose own `jmp ReturnPad` pops the original bank0
+  `jsr ExitRoomXxx` frame. 0 pushes, 0 extra jsr levels, no ghost pad.
+  The one trap: the store must not clobber A, because `EnterRoomB2` starts
+  with `sta RoomNo` — so the edge goes through Y (`ldy #PLAYER_MIN_Y /
+  sty RoomY`), never `lda #… / sta RoomY` (that would pass 0/4/132/159 as the
+  room number). `verify_build.check_exit_handlers` pins exactly this, plus
+  "placement before the EnterRoomB2 tail" and "no-exit path ends in ReturnPad".
+
+### Pads retired: `CallPad_GetConnIdx`
+
+C3 removed its last caller, so the pad and its body are gone: bank0 `$FC08`
+(the `sta $1FF7` half) and bank1's `$FC0B` `jmp GetConnIdx` half became fill,
+and bank1's 15 B `GetConnIdx` body was deleted. `verify_build` now rejects a
+returning `CallPad_GetConnIdx` (same class as the `CallPad_Overscan` guard).
+The corridor stays packed 3 B apart — the removed slot is `$FC08` only; every
+other pad and its twin kept its address (`AddScore` still at `$FC0B`).
+
+### Cycles
+
+Cold path (a room crossing once per transition): each exit pays `jsr
+LevelConnB2` (6c) + the direct read (5c) instead of `CallPad_GetConnIdx`
+(~12c + 8c of pad) + `jsr FoldIndirect` (25c), and the crossing then enters
+`EnterRoomB2` (already in-bank). Net ≈ **−30c per crossing**; the audit
+expected +8-11c, i.e. dropping the fold hop paid for the rest. No frame-budget
+effect: `sim_frame_budget`'s down-crossing scenario (EXIT='down') drives this
+exact path and stayed green.
+
+### Guards added / changed
+
+- `verify_build.EXIT_PADS` (4 entries) folded into `SPLIT_PADS`: bank0
+  `sta $1FF8` at `$FBD9/$FBDC/$FBDF/$FBE2`, target-bank `jmp` operand resolved
+  from `bank2.lst`.
+- NEW `verify_build.check_exit_handlers`: per body, `jsr LevelConnB2` first,
+  `ldy #<edge>` + `sty RoomY/RoomX` (never `lda`), `beq ExitNoneB2`,
+  `jmp EnterRoomB2` as the last instruction, shared `ExitNoneB2: jmp ReturnPad`,
+  and no handler label left in kernel.asm.
+- `verify_build.CORRIDOR_PADS` lost the `GetConnIdx` entry; the
+  "CallPad_GetConnIdx is back" anti-regression check was added.
+- `test_enemy_movement`: the `DeriveEnemyY` slice terminator moved from
+  `ExitRoomDown:` (which is now a pad at `$FBD9`, far below) to
+  `CheckMinerPickup:` — the first routine after the derive cluster in source
+  order.
+- `test_level_bank`: fold sites 12 → 8 (4 exit-handler folds gone).

@@ -1567,25 +1567,10 @@ BombSndExplode:
 ; Leaf routines relocated from bank0 — batch B (leaf_move_plan)
 ; ========================================================================
 
-; GetConnIdx — stage FetchPtr for the four exit handlers' folds.
-; Conn table lives in bank2; the fold read happens in the bank0 CALLER's
-; jsr FoldIndirect after return. C4 2026-10-20: the table address is the level
-; block's +2n (n = LevelRoomN), so no pointer word is stored per level.
-; Returns Y = RoomNo*2 (2 packed bytes per room: up/down, left/right), X = 0.
-GetConnIdx:
-    lda RoomNo
-    asl
-    tay
-    lda LevelPFDataLo
-    clc
-    adc LevelRoomN              ; +n
-    adc LevelRoomN              ; +2n (carry of the first add rides along)
-    sta FetchPtr
-    lda LevelPFDataHi
-    adc #0
-    sta FetchPtr+1
-    ldx #0
-    jmp ReturnPad
+; GetConnIdx RETIRED (C3, 2026-10-20): the four exit handlers moved to
+; bank2 and read the connection record in-bank (LevelConnB2), so this pad's
+; body had no caller. Deleting it (plus the bank0 `sta` half and this bank's
+; `jmp` half) reclaimed 15 B here and removed a live-but-uncalled pad.
 
 ; ClearPFColumn — A = left-half col 0..19; LineCount ($84) = first row;
 ;   CollisionEndY = last row (inclusive). AND-clear that col's
@@ -1958,7 +1943,7 @@ BombMarkWalls:
 ;   $FC02 <-$FBFF+3 UpdateJetSound       $FC11 <-$FC0E+3 IsRoomDark
 ;   $FC05 <-$FC02+3 BombSndDrop          $FC14 <-$FC11+3 SetRoomDark
 ;   $FC08 <-$FC05+3 BombSndExplode       $FC17 <-$FC14+3 UpdateLaserSound
-;   $FC0B <-$FC08+3 GetConnIdx           $FC1D <-$FC1A+3 BombMarkWalls
+;   ($FC0B retired by C3)               $FC1D <-$FC1A+3 BombMarkWalls
 ; $FC1A (BuildColupF's +3) belongs to BANK3 — its pad is `sta $1FF9`.
 ; ========================================================================
     .ds $FBF8 - *, 0
@@ -1969,7 +1954,7 @@ ReturnPad:
     jmp UpdateJetSound
     jmp BombSndDrop
     jmp BombSndExplode
-    jmp GetConnIdx
+    .byte 0,0,0                 ; $FC0B: GetConnIdx's half, retired by C3
     jmp AddScore                ; label, not the literal: bank1 shifts move it
     jmp IsRoomDark
     jmp SetRoomDark

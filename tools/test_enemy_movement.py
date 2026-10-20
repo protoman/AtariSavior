@@ -206,9 +206,11 @@ def main() -> None:
     assert "sta EnemyDeadMask" in KERNEL, "dead-mask kill path intact"
 
     # --- E1/E-gates: derives read the free-running clock EnemyRamP ---------
-    # end marker: GetConnIdx moved to bank1 (leaf_move_plan); its old label
-    # was the slice terminator — ExitRoomDown now sits at that spot.
-    dey = KERNEL.split("DeriveEnemyY:")[1].split("ExitRoomDown:")[0]
+    # end marker: the first routine after the derive cluster. (Was
+    # ExitRoomDown, then GetConnIdx — both moved out of bank0: GetConnIdx to
+    # bank1, the 4 exit handlers to bank2 in C3 2026-10-20, so the next label
+    # in source order is now CheckMinerPickup.)
+    dey = KERNEL.split("DeriveEnemyY:")[1].split("CheckMinerPickup:")[0]
     assert "cmp #ENEMY_BAT" in dey, "DeriveEnemyY must special-case the bat"
     assert "sta Temp" in dey and "adc Temp" in dey, \
         "bat delta must be added to ROM spawn y"

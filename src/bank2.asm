@@ -148,6 +148,11 @@ Hover = $9C                      ; respawn hover flag — cleared on stage entry
 LevelShowTimer = $F2             ; LV001 banner countdown (kernel $F2)
 BOMBS_MAX = 5                    ; kernel constant
 LV_SHOW_FRAMES = 120             ; kernel constant (banner frames)
+; --- room-exit handlers (MOVED here, C3 2026-10-20) — hand-copies, equ-sync --
+PLAYER_MIN_X = 4                 ; kernel EQU (sprite flush with the left edge)
+PLAYER_MAX_X = 159               ; kernel EQU (horizontal logical clamp)
+PLAYER_MIN_Y = 0
+PLAYER_MAX_Y = 132               ; kernel EQU (CAVE_LINES - PLAYER_SPRITE_H)
 
 ; A3: level-data block labels (M<id>*, L<n>R<r>*) live in bank3 now — the
 ; room tables below need their absolute values as plain EQUs.
@@ -1314,6 +1319,21 @@ BitMaskTab:
                                  ;   address — jmp operand fetched here after
                                  ;   bank0's sta $1FF8, so bytes must match)
 ; ------------------------------------------------------------------------------
+; C3 (2026-10-20): room-exit pad halves. bank0's four `sta $1FF8` pads sit at
+; $FBD9/$FBDC/$FBDF/$FBE2, so each post-switch fetch lands HERE at A+3:
+;   $FBDC -> jmp ExitDownB2   $FBDF -> jmp ExitUpB2
+;   $FBE2 -> jmp ExitLeftB2   $FBE5 -> jmp ExitRightB2
+; $FBD9-$FBDB are dead (bank0's Down pad byte lives there).
+; Guard: verify_build.check_callpads (CORRIDOR_PADS) resolves every operand
+; from THIS listing; check_exit_handlers pins the bodies.
+; ------------------------------------------------------------------------------
+    .ds $FBD9 - *, 0
+    .byte 0,0,0                 ; $FBD9-$FBDB — bank0 `sta $1FF8` is fetched there
+    jmp ExitDownB2              ; $FBDC
+    jmp ExitUpB2                ; $FBDF
+    jmp ExitLeftB2              ; $FBE2
+    jmp ExitRightB2             ; $FBE5
+; ------------------------------------------------------------------------------
 ; CallPad_BuildColupF's bank2 image RETIRED 2026-10-20 (chunk 4): the corridor
 ; pads are split now, so bank0's `sta $1FF9` at $FC17 pairs with BANK3's `jmp`
 ; at $FC1A. Nothing in bank2 ever called this pad (verify_build.check_callpads
@@ -1361,6 +1381,92 @@ LF_TailSwap:
     .ds $FC49 - *, 0
 MothExitPad:
     sta $1FF6
+
+; ==============================================================================
+; Room-exit handlers — MOVED from bank0 (C3, 2026-10-20; were $F4DB-$F535 = 90 B).
+; Connections are 2 nibble-packed bytes per room (up<<4|down, left<<4|right) at
+; level base + 2n = bank2 level data, so each handler reads its own record
+; directly: the bank1 `CallPad_GetConnIdx` hop AND the `jsr FoldIndirect` hop
+; are gone (cold path, so cycles do not matter, but 2 switches/crossing do).
+; Entry: bank0's `jsr ExitRoomXxx` pad ($FBD9-$FBE4, `sta $1FF8`) -> the `jmp`
+; halves at $FBDC-$FBE5 above. Every exit path ends in a `jmp`:
+;   * no exit      -> ReturnPad (bank0 `rts` pops the caller's jsr frame)
+;   * room changed -> `jmp EnterRoomB2`, whose own `jmp ReturnPad` does the same
+; The opposite-edge placement is written BEFORE EnterRoomB2 because EnterRoom
+; never reads/writes RoomX/RoomY (verified in EnterRoomB2 + B3RoomBlocks), and
+; Y is used for the constant so A keeps the ROOM INDEX EnterRoomB2 stores.
+; Guard: verify_build.check_exit_handlers.
+; ==============================================================================
+    .ds $FC4F - *, 0
+; Stage FetchPtr = level base + 2n (RoomConnections) and Y = RoomNo*2 — the
+; same math as bank1's GetConnIdx (the second `adc LevelRoomN` carries), but
+; in-bank, so no pad and no fold. Clobbers A/Y (X untouched).
+LevelConnB2:
+    lda RoomNo
+    asl
+    tay
+    lda LevelPFDataLo
+    clc
+    adc LevelRoomN
+    adc LevelRoomN
+    sta FetchPtr
+    lda LevelPFDataHi
+    adc #0
+    sta FetchPtr+1
+    rts
+
+ExitDownB2:
+    jsr LevelConnB2
+    lda (FetchPtr),Y            ; +0 = up/down byte
+    and #$0f                    ; down = low nibble
+    cmp #$0f
+    beq ExitNoneB2
+    ldy #PLAYER_MIN_Y           ; A stays = target room for EnterRoomB2
+    sty RoomY                   ; enter at the top edge
+    jmp EnterRoomB2
+
+ExitUpB2:
+    jsr LevelConnB2
+    lda (FetchPtr),Y
+    lsr                         ; up = high nibble -> low
+    lsr
+    lsr
+    lsr
+    and #$0f
+    cmp #$0f
+    beq ExitNoneB2
+    ldy #PLAYER_MAX_Y
+    sty RoomY                   ; enter at the bottom edge
+    jmp EnterRoomB2
+
+ExitLeftB2:
+    jsr LevelConnB2
+    iny                         ; +1 = left/right byte
+    lda (FetchPtr),Y
+    and #$0f                    ; left = low nibble
+    cmp #$0f
+    beq ExitNoneB2
+    ldy #PLAYER_MAX_X
+    sty RoomX                   ; enter at the right edge
+    jmp EnterRoomB2
+
+ExitRightB2:
+    jsr LevelConnB2
+    iny
+    lda (FetchPtr),Y
+    lsr                         ; right = high nibble -> low
+    lsr
+    lsr
+    lsr
+    and #$0f
+    cmp #$0f
+    beq ExitNoneB2
+    ldy #PLAYER_MIN_X
+    sty RoomX                   ; enter at the left edge
+    jmp EnterRoomB2
+
+ExitNoneB2:
+    jmp ReturnPad               ; no exit: stay here, back to the bank0 caller
 
 ; ------------------------------------------------------------------------------
 ; BuildColupF + HotOverlapBody moved to bank3 (A3 2026-10-19 — they walk the

@@ -102,10 +102,12 @@ def main() -> None:
     # C2 (2026-10-20) moved LoadLevel to bank2: its 7 reads of the 7-byte level
     # entry are now direct (FetchPtr),Y in bank2, so 12 — that is the whole
     # point of the move (the entry IS bank2 level data).
-    assert KERNEL.count("jsr FoldIndirect") >= 12, (
-        f"expected >=12 fold call sites (P3.1 enemy derives; EnterRoom, "
-        f"SelectActiveObject and LoadLevel folds moved to bank2 direct reads), "
-        f"got {KERNEL.count('jsr FoldIndirect')}")
+    # C3 (2026-10-20) moved the 4 room-exit handlers to bank2: their
+    # GetConnIdx pad + FoldIndirect hops became one in-bank conn read, so 8.
+    assert KERNEL.count("jsr FoldIndirect") >= 8, (
+        f"expected >=8 fold call sites (P3.1 enemy derives; EnterRoom, "
+        f"SelectActiveObject, LoadLevel and the exit handlers read level data "
+        f"in-bank now), got {KERNEL.count('jsr FoldIndirect')}")
     # every fold batch stages FetchPtr immediately before its reads
     # C1 (2026-10-20): SelectActiveObject's staging pair (EnemyDataLo/Hi ->
     # FetchPtr) left with the body to bank2, which reads (EnemyDataLo),Y
