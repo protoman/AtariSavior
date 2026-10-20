@@ -522,7 +522,7 @@ bool HasRoomAt(const std::vector<GridPos>& walk, int x, int y) {
 // The generated stage used to be one shape with a bat; a level now alternates
 // hazard rooms and normal rooms, and the last room can be a WATER goal
 // (raft/tentacle + miner). Thresholds grow with the level number.
-enum class Role { Normal, Hot, Gate, WaterGoal };
+enum class Role { Normal, Hot, Gate, WaterGoal, Phase, Hcrunch };
 
 struct LevelPlan {
     bool hot = false;       // hot row-1 bands
@@ -530,6 +530,8 @@ struct LevelPlan {
     bool water = false;     // water goal (last room)
     bool tentacle = false;  // water goal hazard (otherwise a raft)
     bool extra = false;     // second enemy in normal rooms
+    bool phase = false;     // blinking gate (timing room)
+    bool hcrunch = false;   // horizontal crunch band (object-free room)
 };
 
 LevelPlan PlanFor(int level) {
@@ -539,6 +541,8 @@ LevelPlan PlanFor(int level) {
     p.gate = level >= 6;
     p.tentacle = level >= 7;
     p.extra = level >= 9;
+    p.phase = level >= 11;      // the blink opens the gate for 45 frames
+    p.hcrunch = level >= 14;    // crunch band sweeps the row-1 prefix
     return p;
 }
 
@@ -546,6 +550,8 @@ std::vector<Role> HazardCycle(const LevelPlan& p) {
     std::vector<Role> h;
     if (p.hot) h.push_back(Role::Hot);
     if (p.gate) h.push_back(Role::Gate);
+    if (p.phase) h.push_back(Role::Phase);
+    if (p.hcrunch) h.push_back(Role::Hcrunch);
     return h;
 }
 
@@ -570,7 +576,7 @@ int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
     if (levelNumber > kColumnRooms && pos.y == kTurnY) mask |= SHAPE_H;
     if (roomIndex == 0) mask |= SHAPE_START;   // the level's spawn room
     if (role == Role::Hot) mask |= SHAPE_HOT;
-    if (role == Role::Gate) mask |= SHAPE_GATE;
+    if (role == Role::Gate || role == Role::Phase) mask |= SHAPE_GATE;
     if (role == Role::WaterGoal) mask |= SHAPE_WATER;
     return mask;
 }
@@ -644,6 +650,17 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         // Door rooms allow ONE non-key enemy (convert rule) — a bat.
         AddEnemy(room, EnemyType::BAT, 4.0f, 4.0f,
                  1.25f + 0.25f * (levelNumber % 4), 13.0f);
+        return;
+    }
+    if (role == Role::Phase) {
+        // Timing gate: the blink opens the row-1 gap; a bat still patrols.
+        AddEnemy(room, EnemyType::BAT, 4.0f, 4.0f,
+                 1.25f + 0.25f * (levelNumber % 4), 13.0f);
+        return;
+    }
+    if (role == Role::Hcrunch) {
+        // Convert rule: an hcrunch room has NO objects (the band owns the
+        // sprite slot), so this room is empty on purpose.
         return;
     }
     if (role == Role::Hot) {
@@ -741,6 +758,18 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 room.asym_patches.push_back(
                     {1, kGateCol, (int)TileType::LOCKED_DOOR, 1});
             }
+            if (roles[l - 1][i] == Role::Phase) {
+                // The gate gap blinks: 45 frames solid, 45 open.
+                room.feature_cells.push_back(
+                    {1, kGateCol, (int)TileType::PHASE});
+            }
+            if (roles[l - 1][i] == Role::Hcrunch) {
+                // Fixed 10-cell prefix on the middle band (live stage form).
+                for (int c = 0; c < kRoomWidth; ++c) {
+                    room.feature_cells.push_back(
+                        {1, c, (int)TileType::HCRUNCH});
+                }
+            }
             FillRoomObjects(l, i, roomCount, roles[l - 1][i], plan, room);
             level.rooms.push_back(room);
         }
@@ -750,6 +779,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             if (roles[l - 1][i] != Role::Gate) continue;
             for (int j = i - 1; j >= 0; --j) {
                 if (roles[l - 1][j] == Role::Gate) continue;
+                if (roles[l - 1][j] == Role::Hcrunch) continue;  // no objects
                 if (ObjectCount(level.rooms[j]) >= 2) continue;
                 if (RowOccupied(level.rooms[j], 2)) continue;
                 AddEnemy(level.rooms[j], EnemyType::KEY, 10.0f, 8.0f,
