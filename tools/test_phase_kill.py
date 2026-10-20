@@ -26,7 +26,7 @@ sys.path.insert(0, str(TOOLS))
 from py65.devices.mpu6502 import MPU  # noqa: E402
 from test_cell_map import Mem as Mem02, RTS_SENTINEL, parse_labels  # noqa: E402
 
-L2 = parse_labels(SRC / "bank3.lst", {
+L2 = parse_labels(SRC / "bank2.lst", {
     "HotOverlapBody", "CollisionCellX", "CollisionCellY",
     "CollisionEndX", "CollisionEndY", "RoomRectsLo",
     "EnemyDeadMask", "BombPacked", "Temp",
@@ -64,7 +64,7 @@ def run(mask: int, box: tuple[int, int, int, int],
                       ("BombPacked", bomb_packed)):
         r[L2[name] - 0x80] = val
     r[TEMP - 0x80] = 0
-    mem.bank = 3
+    mem.bank = 2            # C2: the walkers moved to bank2
     mpu = MPU(memory=mem)
     mpu.pc = L2["HotOverlapBody"]
     mpu.a = mpu.x = mpu.y = 0

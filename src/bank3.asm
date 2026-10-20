@@ -206,18 +206,9 @@ B3RoomBlocks:
     iny
     lda (FetchPtr),Y                ; MetaB (Y = 10)
     sta RoomMetaB                   ; = RoomPF0Hi — pointer hi dies here
-    jmp $F458                       ; return tail (pinned after the image)
-
-
-
-
-; --- fixed entry image: bank2 ERBlocksPad's `jmp` operand is fetched HERE ---
-    .ds $F453 - *, 0
-    .byte $4C, <B3RoomBlocks, >B3RoomBlocks   ; jmp B3RoomBlocks
-; --- return tail PINNED at $F458: bank2's $F45B is a row start ---
-    .ds $F458 - *, 0
-    sta $1FF8                       ; back to bank2
-    jmp $F45B                       ; ERBlocksDone (operand fetched bank2-side)
+    jmp ReturnPad                   ; C2: this copy is UNREACHABLE (bank2 owns
+                                    ;   the live pad); exits locally so no dead
+                                    ;   literal points into bank2's layout
 
 
 PhaseBlink:

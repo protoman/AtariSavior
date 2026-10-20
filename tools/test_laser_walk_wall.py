@@ -48,7 +48,7 @@ def lst_labels(path):
 
 L0 = lst_labels(FROZEN / "bank0.lst")
 L2 = lst_labels(FROZEN / "bank2.lst")
-L3 = lst_labels(FROZEN / "bank3.lst")   # A3: level/model blocks
+L3 = lst_labels(FROZEN / "bank2.lst")   # A3: level/model blocks
 PC_STARTFRAME = L0["StartFrame"]
 
 import test_fixtures as FX  # noqa: E402
@@ -177,22 +177,22 @@ def load_room(room):
     a_pf0, a_rr = L3[pf0], L3[rr]
     # RoomMetaA/B are staged at room entry (bank2 EnterRoomB2 reads the
     # block's +9/+10 and overwrites the pointer pair) — stage them directly.
-    mem.ram[I_PF0LO] = BANKS[3][(a_pf0 + 9 - 0xF000) & 0xFFFF]
-    mem.ram[I_PF0HI] = BANKS[3][(a_pf0 + 10 - 0xF000) & 0xFFFF]
+    mem.ram[I_PF0LO] = BANKS[2][(a_pf0 + 9 - 0xF000) & 0xFFFF]
+    mem.ram[I_PF0HI] = BANKS[2][(a_pf0 + 10 - 0xF000) & 0xFFFF]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     # ROM: TilePF0/1/2 = 3 band-row bytes each, in order after the label
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
         for row in range(3):
-            mem.ram[(dst + row) & 0x7F] = BANKS[3][
+            mem.ram[(dst + row) & 0x7F] = BANKS[2][
                 ((a_pf0 + i * 3 + row) - 0xF000) & 0xFFFF]
     # rect cache (EnterRoomB2 .EBrcW): count + unpack 4B/rect slots
     off = (a_rr - 0xF000) & 0xFFFF
-    count = BANKS[3][off]
+    count = BANKS[2][off]
     mem.ram[I_RCBASE] = min(count, 5)
     for i in range(min(count, 5)):
-        p0 = BANKS[3][off + 1 + 2 * i]
-        p1 = BANKS[3][off + 2 + 2 * i]
+        p0 = BANKS[2][off + 1 + 2 * i]
+        p1 = BANKS[2][off + 2 + 2 * i]
         mem.ram[RECTS0 + 4 * i + 0] = p0 >> 2      # x
         mem.ram[RECTS0 + 4 * i + 1] = p0 & 3       # y
         mem.ram[RECTS0 + 4 * i + 2] = p1 >> 2      # w
@@ -201,7 +201,7 @@ def load_room(room):
 
 def meta_a(room):
     a_pf0 = L3[MODEL[room][0]]
-    return BANKS[3][a_pf0 + 9 - 0xF000]
+    return BANKS[2][a_pf0 + 9 - 0xF000]
 
 
 def step_frame(y_pin, capture=True):
@@ -262,11 +262,11 @@ def vcrunch_bbox_overlaps(room, rows, wl, wr):
     [class, x, y, w, h] — x = 4px display col (left half), y = band."""
     _, rr = MODEL[room]
     off = (L3[rr] - 0xF000) & 0xFFFF
-    count = BANKS[3][off]
-    hot = BANKS[3][off + 1 + 2 * count]
+    count = BANKS[2][off]
+    hot = BANKS[2][off + 1 + 2 * count]
     base = off + 2 + 2 * count
     for i in range(hot):
-        cls, x, y, w, h = BANKS[3][base + 5 * i:base + 5 * i + 5]
+        cls, x, y, w, h = BANKS[2][base + 5 * i:base + 5 * i + 5]
         if cls != 0x81:
             continue
         if not any(y <= r < y + h for r in rows):

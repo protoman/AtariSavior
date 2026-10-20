@@ -123,10 +123,11 @@ def main() -> int:
             # --- C3: TilePF0 derived from the rect list (rects + 2 + 2*n) ---
             rects = (mem.ram[L0["RoomRectsLo"] - 0x80]
                      | (mem.ram[L0["RoomRectsHi"] - 0x80] << 8))
-            bank3 = _CM.BANK3
-            nrect = bank3[rects - 0xF000]
+            # C2 (2026-10-20): the blocks + their walker live in bank2 now.
+            blocks = _CM.BANK2
+            nrect = blocks[rects - 0xF000]
             pf0 = rects + 2 + 2 * nrect
-            want_pf = bytes(bank3[pf0 - 0xF000:pf0 - 0xF000 + 9])
+            want_pf = bytes(blocks[pf0 - 0xF000:pf0 - 0xF000 + 9])
             got_pf = bytes(mem.ram[L0["PF0Buf"] - 0x80:
                                    L0["PF0Buf"] - 0x80 + 9])
             assert got_pf == want_pf, (

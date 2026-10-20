@@ -27,14 +27,15 @@ python3 "$ROOT/tools/convert_level.py" --levels "$DIR/generated/levels.asm" \
 python3 "$ROOT/tools/verify_build.py" --precheck "$DIR"
 
 # Assemble each bank (from src/ so include paths resolve)
-# A3 two-pass: bank3 pass 1 exports the level-data block labels (bank2's room
-# tables use them), then bank2 → bank0 → bank1, then bank3 pass 2 ships.
+# C2 (2026-10-20): single pass per bank. bank2 now owns the level data AND its
+# walkers, so the old A3 dance (bank3 pass 1 -> --sync-bank3-labels -> bank2 ->
+# ... -> bank3 pass 2) is gone: bank2 first, then the two bank0 literals that
+# track it (HOF pad operand, LEVEL_DATA_ADDR), then bank0 -> bank1 -> bank3.
 cd "$DIR"
-dasm bank3.asm -f3 -obank3.bin -lbank3.lst
-echo "  bank3 (pass 1): OK"
-python3 "$ROOT/tools/verify_build.py" --sync-bank3-labels "$DIR"
 dasm bank2.asm -f3 -obank2.bin -lbank2.lst
 echo "  bank2: OK"
+# kernel's HotOverlapFlag pad ends `jmp $xxxx` -> bank2 HotOverlapBody
+python3 "$ROOT/tools/verify_build.py" --sync-hof "$DIR"
 python3 "$ROOT/tools/verify_build.py" --sync "$DIR"
 dasm kernel.asm -f3 -obank0.bin -lbank0.lst -sgenerated/symbols.asm
 echo "  bank0: OK"
@@ -43,10 +44,8 @@ echo "  bank0: OK"
 python3 "$ROOT/tools/verify_build.py" --sync-overscan "$DIR"
 dasm bank1.asm -f3 -obank1.bin -lbank1.lst
 echo "  bank1: OK"
-# bank3 pass 2: the shipping image (pass 1's labels are what bank2 used; the
-# syncs above only rewrite literals, never sizes, so addresses are stable).
 dasm bank3.asm -f3 -obank3.bin -lbank3.lst
-echo "  bank3 (pass 2): OK"
+echo "  bank3: OK"
 
 # Pad each bank to exactly 4K (DASM doesn't emit trailing zeros)
 for i in 0 1 2 3; do

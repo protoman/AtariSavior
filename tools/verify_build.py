@@ -353,26 +353,25 @@ def check_moth_tramp(src: Path) -> None:
         err(f"UE_MothTramp at {shown}, expected ${MOTH_ENTRY:04X} "
             "(dispatch jmp target moved off the pad)")
 
-    # HOF tramp ($FFEC, A3) — bank0 runs `sta $1FF9`, the opcode+operand are
-    # fetched from BANK3's image at +3 ($FFEF).
+    # HOF tramp ($FFEC) — bank0 runs `sta $1FF8`, the opcode+operand are
+    # fetched from BANK2's image at +3 ($FFEF). (C2 2026-10-20: the body moved
+    # from bank3 to bank2's $F8B7 cluster with the rest of the record walkers.)
     hoff = HOF_ENTRY - 0xF000
     g0 = banks[0][hoff:hoff + 6]
-    g3 = banks[3][hoff + 3:hoff + 6]
-    if g0[:3] != bytes([0x8D, 0xF9, 0x1F]):
+    g2 = banks[2][hoff + 3:hoff + 6]
+    if g0[:3] != MOTH_STA18:
         err(f"bank0 HOF entry ${HOF_ENTRY:04X} = {g0.hex()} "
-            "(expected 8df91f + jmp)")
-    if len(g3) != 3 or g3[0] != 0x4C:
-        err(f"bank3 HOF image ${HOF_ENTRY + 3:04X} = {g3.hex()} "
+            f"(expected {MOTH_STA18.hex()} + jmp)")
+    if len(g2) != 3 or g2[0] != 0x4C:
+        err(f"bank2 HOF image ${HOF_ENTRY + 3:04X} = {g2.hex()} "
             "(expected jmp image)")
-    labels3, _ = parse_lst((src / "bank3.lst").read_text(
-        errors="replace").splitlines())
-    hof = labels3.get("HotOverlapBody")
-    hof_tgt = (g3[1] | (g3[2] << 8)) if len(g3) == 3 else None
+    hof = labels2.get("HotOverlapBody")
+    hof_tgt = (g2[1] | (g2[2] << 8)) if len(g2) == 3 else None
     if hof is None:
-        err("HotOverlapBody label not found in bank3.lst")
+        err("HotOverlapBody label not found in bank2.lst")
     elif hof_tgt != hof:
         err(f"HOF entry jmp ${hof_tgt if hof_tgt is not None else 0:04X} != "
-            f"bank3 HotOverlapBody ${hof:04X} (tramp operand stale)")
+            f"bank2 HotOverlapBody ${hof:04X} (tramp operand stale)")
     hof_tramp = labels0.get("HotOverlapFlag")
     if hof_tramp != HOF_ENTRY:
         shown = f"${hof_tramp:04X}" if hof_tramp is not None else "None"
@@ -474,7 +473,7 @@ CORRIDOR_PADS = (
     ("CallPad_IsRoomDark", 0xFC0E, 1, "IsRoomDark"),
     ("CallPad_SetRoomDark", 0xFC11, 1, "SetRoomDark"),
     ("CallPad_UpdateLaserSound", 0xFC14, 1, "UpdateLaserSound"),
-    ("CallPad_BuildColupF", 0xFC17, 3, "BuildColupF"),
+    ("CallPad_BuildColupF", 0xFC17, 2, "BuildColupF"),
     ("CallPad_BombMarkWalls", 0xFC1A, 1, "BombMarkWalls"),
     # $FC1D (CallPad_SelectObject) RETIRED by A1 2026-10-20:
     # SelectActiveObject is back in bank0, called directly. The 3 bytes
@@ -1735,8 +1734,10 @@ def data_size(path: Path) -> int:
 
 def bank2_data_slots(bank2: str) -> list[dict]:
     """Data slots (bugs.md 27): include-blocks terminated by a pad
-    `.ds $ADDR - *, 0`. Returns [{pad, files, org}] where org is the
-    nearest literal `org $X` above the block (exact start) or None."""
+    `.ds $ADDR - *, 0`. Returns [{pad, files, org}] where org is the exact
+    slot start: the nearest literal `org $X` above the block, or the
+    `.ds $X - *, 0` pad that opens it (same semantics — both set PC to X), or
+    None (then slot_start falls back to the block's first label)."""
     lines = bank2.splitlines()
     slots = []
     for i, raw in enumerate(lines):
@@ -1764,7 +1765,8 @@ def bank2_data_slots(bank2: str) -> list[dict]:
             if not s or s.startswith(";"):
                 k -= 1
                 continue
-            mo = re.match(r"org\s+\$([0-9A-Fa-f]+)", s)
+            mo = (re.match(r"org\s+\$([0-9A-Fa-f]+)", s)
+                  or re.match(r"\.ds\s+\$([0-9A-Fa-f]+)\s+-\s+\*\s*,\s*0", s))
             if mo:
                 org = int(mo.group(1), 16)
             break
@@ -1861,75 +1863,50 @@ def check_level_window(src: Path) -> None:
             warn(f"slot ${s['pad']:04X} nearly full: slack {slack}B")
 
 
-def sync_bank3_labels(src: Path) -> int:
-    """Post-bank3-pass1 (build.sh): export block labels + self-heal pads.
+def sync_hof_literal(src: Path) -> int:
+    """Post-bank2 self-heal (build.sh: after dasm bank2, before bank0).
 
-    A3 (2026-10-19): the level data (shared model blocks + per-room blocks)
-    lives in bank3. bank2's room TABLES still need those labels as plain
-    absolute addresses, so pass 1 of bank3 is assembled, its labels are
-    exported into generated/bank3_labels.asm (included by bank2), and the
-    `jmp` literals of the two pads whose bodies moved to bank3 are patched
-    (kernel/bank1/bank2 `CallPad_BuildColupF`, kernel/bank2 `HotOverlapFlag`).
-    Size-preserving: only the 4 hex digits change, so pass 2's addresses are
-    identical to pass 1's.
+    kernel.asm's `HotOverlapFlag` pad ends in `jmp $Fxxx` -> bank2's
+    HotOverlapBody. That body moves whenever bank2 code above it shifts, and
+    the operand is a hand-copied literal in bank0's last 6 bytes (bank2's own
+    $FFEF image is a label, so it self-heals). Patch it from bank2.lst.
+
+    C2 (2026-10-20): replaces --sync-bank3-labels. The block-label export
+    (generated/bank3_labels.asm) retired when the level data moved into bank2 —
+    bank2 now defines those labels itself; CallPad_BuildColupF's image is a
+    label too, so this is the only literal left. Size-preserving: only the 4
+    hex digits change, so bank0's addresses are unaffected.
     """
-    lst3 = src / "bank3.lst"
-    if not lst3.exists():
-        print("sync-bank3: bank3.lst missing — assemble bank3 pass 1 first",
+    lst2 = src / "bank2.lst"
+    if not lst2.exists():
+        print("sync-hof: bank2.lst missing — assemble bank2 first",
               file=sys.stderr)
         return 1
-    labels, _ = parse_lst(lst3.read_text(errors="replace").splitlines())
-    block = re.compile(r"^(M\d+|L\d+R\d+)(TilePF[0-2]|RoomRects|Meta[AB]|"
-                       r"RightPF[0-2]|RightRects)$")
-    lines = ["; Generated by verify_build.py --sync-bank3-labels. Do not edit.",
-             "; bank3 level-data block labels (absolute addresses for bank2's",
-             "; room tables)."]
-    n = 0
-    for name in sorted(labels):
-        if block.match(name):
-            lines.append(f"{name} = ${labels[name]:04X}")
-            n += 1
-    if not n:
-        print("sync-bank3: no block labels found in bank3.lst", file=sys.stderr)
+    labels, _ = parse_lst(lst2.read_text(errors="replace").splitlines())
+    addr = labels.get("HotOverlapBody")
+    if addr is None:
+        print("sync-hof: HotOverlapBody label not in bank2.lst",
+              file=sys.stderr)
         return 1
-    (src / "generated" / "bank3_labels.asm").write_text("\n".join(lines) + "\n")
-    print(f"sync-bank3: exported {n} block labels -> generated/bank3_labels.asm")
+    kernel_p = src / "kernel.asm"
+    text = kernel_p.read_text(encoding="utf-8")
+    pat = re.compile(
+        r"(^HotOverlapFlag:\s*\n(?:[^\n]*\n){0,3}?\s*jmp \$)"
+        r"([0-9A-Fa-f]{4})", re.M)
 
-    # (bank2's HotOverlapFlag pad retired 2026-10-20: OvM1Block/OvShutBand
-    #  moved to bank0, so only kernel.asm carries the live pad.)
-    # CallPad_BuildColupF is GONE from this patch list (chunk 4, 2026-10-20):
-    # the pads are split, so bank0 holds only `sta $1FF9` and BANK3's image is
-    # `jmp BuildColupF` — a label, self-healing, no literal to sync.
-    targets = {"HotOverlapFlag": ("HotOverlapBody", ("kernel.asm",))}
+    def repl(m):
+        old = int(m.group(2), 16)
+        if old != addr:
+            print(f"sync-hof: kernel.asm HotOverlapFlag ${old:04X} -> "
+                  f"${addr:04X}")
+        return m.group(1) + f"{addr:04X}"
 
-    for fname in ("kernel.asm", "bank1.asm", "bank2.asm"):
-        p = src / fname
-        if not p.exists():
-            continue
-        text = p.read_text(encoding="utf-8")
-        orig = text
-        for pad, (label, files) in targets.items():
-            if fname not in files:
-                continue
-            addr = labels.get(label)
-            if addr is None:
-                err(f"bank3.lst: {label} label missing (pad {pad})")
-                return 1
-            pat = re.compile(
-                rf"(^{re.escape(pad)}:\s*\n(?:[^\n]*\n){{0,3}}?\s*jmp \$)"
-                rf"([0-9A-Fa-f]{{4}})", re.M)
-            def repl(m, addr=addr, pad=pad, fname=fname):
-                old = int(m.group(2), 16)
-                if old != addr:
-                    print(f"sync-bank3: {fname} {pad} ${old:04X} -> "
-                          f"${addr:04X}")
-                return m.group(1) + f"{addr:04X}"
-            text, k = pat.subn(repl, text, count=1)
-            if not k:
-                err(f"{fname}: {pad} pad not found (sync-bank3)")
-                return 1
-        if text != orig:
-            p.write_text(text, encoding="utf-8")
+    text, k = pat.subn(repl, text, count=1)
+    if not k:
+        print("sync-hof: kernel.asm HotOverlapFlag pad not found",
+              file=sys.stderr)
+        return 1
+    kernel_p.write_text(text, encoding="utf-8")
     return 0
 
 
@@ -1947,10 +1924,10 @@ def main() -> int:
         src = (Path(argv[1]) if len(argv) > 1
                else Path(__file__).resolve().parent.parent / "src")
         return sync_phrec_literal(src)
-    if argv and argv[0] == "--sync-bank3-labels":
+    if argv and argv[0] == "--sync-hof":
         src = (Path(argv[1]) if len(argv) > 1
                else Path(__file__).resolve().parent.parent / "src")
-        return sync_bank3_labels(src)
+        return sync_hof_literal(src)
     if argv and argv[0] == "--precheck":
         src = (Path(argv[1]) if len(argv) > 1
                else Path(__file__).resolve().parent.parent / "src")

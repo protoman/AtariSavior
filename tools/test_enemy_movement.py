@@ -29,7 +29,6 @@ ROOT = Path(__file__).resolve().parents[1]
 KERNEL = (ROOT / "src" / "kernel.asm").read_text(encoding="utf-8")
 # S5.4: LaserHitTest body moved to bank2 (entry tramp stays in kernel.asm)
 BANK2 = (ROOT / "src" / "bank2.asm").read_text(encoding="utf-8")
-BANK3 = (ROOT / "src" / "bank3.asm").read_text(encoding="utf-8")
 
 
 def loader_run(records, dark=0x00):
@@ -107,13 +106,13 @@ def main() -> None:
         "kernel still jsrs LoadPFBuffer — PF loads inline in bank2 EnterRoomB2"
     assert not re.search(r"jsr\s+LoadEnemyRam\b", KERNEL), \
         "kernel still jsrs LoadEnemyRam — enemy copy inline in bank2 EnterRoomB2"
-    # A3: the rect/PF/meta block reader lives in bank3 (B3RoomBlocks) and is
-    # tail-jumped from EnterRoomB2 BEFORE the enemy shadow loop, so PF is still
-    # loaded first (the ordering the original assertion pinned).
-    assert ".EBpf:" in BANK3.split("B3RoomBlocks:")[1]
+    # C2 (2026-10-20): the rect/PF/meta block reader (B3RoomBlocks) moved into
+    # bank2 and is tail-jumped from EnterRoomB2 BEFORE the enemy shadow loop, so
+    # PF is still loaded first (the ordering the original assertion pinned).
+    assert ".EBpf:" in BANK2.split("B3RoomBlocks:")[1]
     assert "jmp ERBlocksPad" in BANK2
     assert BANK2.index("jmp ERBlocksPad") < BANK2.index("EBLER_Loop"), \
-        "EnterRoomB2 must enter the bank3 PF block reader before enemy RAM"
+        "EnterRoomB2 must enter the bank2 PF block reader before enemy RAM"
 
     # --- per-frame refresh (safe window: post-HUD-stomp, pre-read) --------
     rey = line_no(r"^\s*jsr\s+RefreshEnemyY\b")
