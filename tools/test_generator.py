@@ -357,13 +357,18 @@ def main() -> int:
             if level_n >= 3 and hot == 0:
                 print(f"FAIL: level {level_n} has no hot room")
                 return 1
-            if level_n >= 4 and water != 1:
-                print(f"FAIL: level {level_n} has no water goal (water={water})")
+            if level_n >= 4 and (water < 1
+                                 or not rooms[-1].get("bottom_band")):
+                print(f"FAIL: level {level_n} last room is not a water goal "
+                      f"(water={water})")
                 return 1
-            if level_n >= 4 and rafts + tents != 1:
-                print(f"FAIL: level {level_n} water goal has no raft/tentacle")
+            goal_hazards = [e.get("type") for e in rooms[-1].get("enemies") or []
+                            if e.get("type") in (3, 7)]
+            if level_n >= 4 and len(goal_hazards) != 1:
+                print(f"FAIL: level {level_n} water goal needs exactly one "
+                      f"raft/tentacle (got {goal_hazards})")
                 return 1
-            if level_n < 7 and level_n >= 4 and rafts == 0:
+            if 4 <= level_n < 7 and 7 not in goal_hazards:
                 print(f"FAIL: level {level_n} water goal should carry a raft")
                 return 1
             if level_n >= 6 and (doors == 0 or keys != doors):
@@ -388,6 +393,17 @@ def main() -> int:
             if level_n >= 12 and two_blocks == 0:
                 print(f"FAIL: level {level_n} has no two-block async room")
                 return 1
+            if level_n >= 11:
+                # HERO-style crossing: hot ceiling + open water + raft.
+                channels = [r for r in rooms
+                            if shapes[r["model_id"]].get("mid_band_type")
+                            and r.get("bottom_band")
+                            and any(e.get("type") == 7
+                                    for e in r.get("enemies") or [])]
+                if not channels:
+                    print(f"FAIL: level {level_n} has no water channel "
+                          "(hot ceiling + raft)")
+                    return 1
 
         # --- convert + capacity (the C7 windows) ---------------------------
         gen = tmp / "conv" / "generated"
