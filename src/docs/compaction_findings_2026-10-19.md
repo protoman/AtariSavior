@@ -1002,3 +1002,63 @@ exact path and stayed green.
   `CheckMinerPickup:` — the first routine after the derive cluster in source
   order.
 - `test_level_bank`: fold sites 12 → 8 (4 exit-handler folds gone).
+
+---
+
+## Campaign summary — 2026-10-20
+
+Starting point (post merged-title, `fbfe84e`): 10362 used / 6022 free.
+Earlier peak reference (pre-title work): 11076 used.
+
+| step | total used | note |
+|---|---|---|
+| vcrunch removal + hcrunch simplification | 9453 | −909 |
+| (banner removed then reverted) | 9452 | parser fix only |
+| title kernel band reuse | 9321 | −131 |
+| level-data C1 (shared blocks) | 9283 | −38 |
+| repack moves 1-5 (PickPlayerFrame, M1StripBlast, PHM/M1 overlay, Tally, B3StageBand) | 9173 | −110, bank2 −538 |
+| music pack + C2/C3/C4 + tail pads | 9050 | −123 |
+| CallPad corridor split | 8974 | −76 |
+| water_respawn gate fix + dead pins + data micro-pack | 8950 | −24, level data 410 |
+| C1 SelectActiveObject → bank2 | 9036 | +86 total, **bank0 −302**, VBL −46c |
+| C2 LoadLevel → bank2, C3 exits → bank2 | 9071 | +35 total, **bank0 −214 more** |
+
+Final measured state: **9071 used / 7313 free**; bank0 3092, bank1 2924,
+bank2 1770, bank3 1285; level data 410 B; bank0 has a **680 B contiguous
+org-able block** at `$F618-$F8BF` plus 197 B at `$FB0B` and the tail slots.
+
+Why total went up at the end: the last two chunks trade ~121 B of total ROM for
+~516 B of bank0 flow. Bank0 was the only binding resource; total ROM is not.
+
+Gates at the end: `./build.sh` (verify + sim_bomb_fuse + sim_frame_budget),
+`freeze_test_banks.sh`, 43/43 battery incl. `src/tools/test_title_demo.py`.
+Wall model unchanged (cave 267.0, title 265.0). Min stack SP improved
+`$F7`→`$F9`. Three pre-existing `verify_build` warnings remain: models 5/6
+declare 6 wall rects > the 5-rect cache (documented cell-swap requirement).
+
+### Measured leftovers, not done (and why)
+
+- PF row pool: 13 B net straight, 26 B only by breaking the `TilePF0+9/+10`
+  meta contract. Not worth the contract risk.
+- Hot-flag bit (5 B net), 3-byte enemy records (5 B net): both below the
+  value floor and both touch walked formats.
+- Dead pad halves: 40 B exist but 0 are insertable (each sits between a pin
+  and the mandatory live `jmp` at A+3).
+- LWC move: costs +16 B.
+- HUD PF-table: rejected — only lives+bombs are PF-able (~139 B net), the
+  display changes, and bar/score are already at parity.
+- Rotation → multiplexing: rejected — `.Grp1` is 69c of a 72c window; indexed
+  slots cost +2-3c/line and 2 lines per reposition, and flicker survives
+  because `DeriveEnemyY` overlaps Y windows.
+- Laser clamp move: +16 B, 2 switches/beam frame.
+
+### What the campaign actually bought
+
+1. +680 B of bank0 leaf space (was 1 B append / 16 B tail) — new bank0
+   content is now possible without a repack.
+2. Level data 548 → 410 B (−25%), with converter-side ownership and honest
+   readers.
+3. Bank2 1399 → ~1515 code after gaining SO/LoadLevel/exits; bank3's
+   level-data window +193 B, still used 410 B.
+4. 43/43 tests, and `test_water_respawn` can actually fail again.
+5. Total ROM −1291 B vs the campaign start despite the last +121 B trade.
