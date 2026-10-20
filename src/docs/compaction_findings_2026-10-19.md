@@ -627,3 +627,51 @@ bank0's pre-pad headroom stays 16 B (the flow still ends at the `$FC58` tail
 pad); the reclaimed bank0 space is fill between `$FC1D` and the `$FC48`
 MothExitPad pin — 44 B, usable by an `org`'d leaf helper, not by sequential
 flow. That is the same trade the tail-pad split made.
+
+---
+
+# Audit round 2 implementation — 2026-10-20 (HEAD bc63451)
+
+`docs/audit_round2_2026-10-20.md` top three, one commit each. Baseline measured
+at `bc63451`: bank0 3572 / bank1 2948 / bank2 1169 / bank3 1285 = **8974 used**,
+7410 free, level data **434 B**.
+
+## 1. `tools/test_water_respawn.py` fixed (0 ROM)
+
+The test could not fail: the band poke landed at **f3**, after
+`LoadLevel → EnterRoom` (frames 0-1) had already staged `RoomBandColor` from
+`RoomEnemies[room]+1`, so the byte stayed `$00`, `CheckBandTouch` never fired
+and the player rested at `RoomY=131` in a room with no water. The gate
+(`loop_deaths = len(deaths)-1`) was 0 for both "no loop" and "no death".
+
+Fixed per the audit's §E:
+
+- **Hook `EnterRoom` ($FBD0, bank0), not a `StartFrame`.** That is the only
+  point where the level block base (`$9F/$A0`), the room count (`$A1`) and the
+  target room (in **A** — every caller passes the room index: exits pass the
+  connection nibble, `LoadLevel` passes `LevelStartRoom`) are final and bank2
+  has not read the band byte yet. It fires twice (boot load + the RESET pulse)
+  and again on every respawn — 2 pokes in the run, no extra state.
+- **Exact address: `base + 4n + 2*room + 1`.** The old
+  `base + 4*LevelRoomN + 1` is only right for room 0.
+- **Drop-in gate for the `RoomY=131` staging**: forced only once the poke is in
+  and `DropTarget == 0`. Forcing it mid drop-in (`DropTarget=$18`) was the
+  second half of the old defect.
+- **Positive gate, three ways**: `pokes > 0`, `RoomBandColor == $1C`, and
+  `len(deaths) >= 1` with `min_lives <= 2`. Any of them missing = FAIL.
+
+Measured on HEAD: `band byte @ $F741 forced at f0` (+f2 from the RESET pulse),
+`RoomY->131 at f76`, `f77: DEATH (lives=2, RoomY=0)`, then the player falls to
+`Y=119` (the room floor, 6 px above the 125 water line) and stays — 1 death,
+0 loop deaths, `PASS`.
+
+Proof the fixed test can fail: with the hook reverted to the old StartFrame
+poke (temporary mutation, not committed) the same file reports
+`band pokes=1, RoomBandColor=$00, total deaths=0` and exits **1**
+(`FAIL: RoomBandColor=$00, expected $1C (the band poke landed after the room
+load)`).
+
+Room 0 only: L2's start room is the one the scenario enters; the layout for
+every other room stays pinned by `test_band_restage` / `test_level_bank`.
+
+ROM: 0 B. Battery + freeze green.

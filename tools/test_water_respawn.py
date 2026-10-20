@@ -1,12 +1,20 @@
 #!/home/iuri/python3/bin/python3
 """Auto-repro bugs.md #1: water death -> respawn -> hold Up.
 
-Boots the real savior.bin, forces Level=1 (second level), turns room 0 into a
-water room (pokes the level's band byte), drops the player into the band (a
-water death), then holds Up+Right and watches whether he survives the respawn
-or falls back into the band (death loop).
+Boots the real savior.bin, forces Level=1 (second level), turns the entered
+room into a water room (pokes the level's band byte AT THE ROOM LOAD), lets the
+band kill the player, then holds Up+Right and watches whether he survives the
+respawn or falls back into the band (death loop).
 
-Exit 0 = no post-respawn death loop, 1 = still looping.
+The band byte is poked on the EnterRoom ($FBD0) trampoline: that is the only
+point where (a) the level base/count and the target room are all final in ZP
+and (b) bank2 has not yet read RoomEnemies[room]+1 (EnterRoomB2 stages
+RoomBandColor once per room). Poking at a StartFrame instead lands AFTER the
+room load, so RoomBandColor stays $00 and the water never exists — the old
+version of this test did exactly that and passed with zero deaths.
+
+Exit 0 = the water killed him and he did NOT loop; 1 = no death at all (the
+scenario never ran — fail loudly) or a post-respawn death loop.
 """
 import re
 import sys
@@ -73,10 +81,12 @@ for _l in open(SRC / "bank0.lst", errors="replace"):
         _LBL.setdefault(_m.group(2), int(_m.group(1), 16))
 PC_STARTFRAME = _LBL["StartFrame"]
 LOADLEVEL = _LBL["LoadLevel"]
-# I_LPF/I_ROOMN = LevelPFDataLo ($9F) + LevelRoomN ($A1) — C4 2026-10-20 the
-# level entry carries one base word + the room count, not the enemy pointer.
-I_ROOMY, I_LPF, I_ROOMN, I_LIVES, I_DROP, I_HOVER = (0x01, 0x1F, 0x21, 0x2C,
-                                                    0x0A, 0x1C)
+ENTERROOM = _LBL["EnterRoom"]          # $FBD0: bank0 half of the tramp
+# ZP index = address - $80 (the Mem view maps $80-$FF onto ram[0..127]).
+I_ROOMY, I_LPF, I_ROOMN = 0x01, 0x1F, 0x21        # $81 $9F $A1
+I_LIVES, I_DROP, I_HOVER = 0x2C, 0x0A, 0x1C       # $AC $8A $9C
+I_BAND = 0x3C                                     # $BC RoomBandColor
+BAND_COLOR = 0x1C
 
 
 def at_init_jsr():
@@ -94,51 +104,77 @@ while not at_init_jsr():
 mem.ram[0x23] = 1        # second level
 
 frame = 0
-band_poked = False
-armed = None            # frame we dropped him into the water
-deaths = []             # frames (after the initial) where a life was lost
+pokes = 0
+armed = None             # frame the player was placed in the water
+dropped = False          # RoomY forced once, after the drop-in finishes
+deaths = []              # frames where a life was lost
 last_lives = 3
 log = []
 
 while frame < 520:
     mpu.step()
-    if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
+    if mem.bank == 0 and mpu.pc == ENTERROOM:
+        # A = target room index (all callers: exits pass the connection
+        # nibble, LoadLevel passes LevelStartRoom). ZP holds the level block
+        # base + the room count; the room's band byte is
+        #   base + 4n (RoomEnemies) + 2*room + 1
+        room = mpu.a
+        n = mem.ram[I_ROOMN]
+        base = mem.ram[I_LPF] | (mem.ram[I_LPF + 1] << 8)
+        band = base + 4 * n + 2 * room + 1
+        if 0xF000 <= band <= 0xFFFF:
+            BANKS[2][band - 0xF000] = BAND_COLOR
+            pokes += 1
+            print(f"band byte @ ${band:04X} forced at f{frame} "
+                  f"(room {room}, n={n})")
+        else:
+            sys.exit(f"band address ${band:04X} outside bank2 (room {room})")
+    elif mem.bank == 0 and mpu.pc == PC_STARTFRAME:
         frame += 1
         mem.swchb = 0xFE if frame in (2, 5) else 0xFF
-        dt = mem.ram[I_DROP]
-        if not band_poked and dt not in (0xFF, 0xFD) and mem.ram[I_LIVES] > 0:
-            lo, hi = mem.ram[I_LPF], mem.ram[I_LPF + 1]
-            band = ((hi << 8) | lo) + 4 * mem.ram[I_ROOMN]   # RoomEnemies base
-            # C2: 2-byte per-room record — byte 1 is bottom_color
-            BANKS[2][band + 1 - 0xF000] = 0x1C      # room 0 band on
-            band_poked = True
+        # Place him IN the band only after (a) the water room was loaded with
+        # the poked band byte and (b) the drop-in finished ($8A==0); forcing
+        # RoomY mid drop-in fought DropArm.
+        if pokes and not dropped and mem.ram[I_DROP] == 0:
+            mem.ram[I_ROOMY] = 131
+            dropped = True
             armed = frame
-            mem.ram[I_ROOMY] = 130
-            print(f"band byte @ ${band + 1:04X} forced; RoomY->130 at f{frame}")
-        if band_poked and armed is not None and frame > armed:
+            print(f"RoomY->131 (in the band) at f{frame}, "
+                  f"RoomBandColor=${mem.ram[I_BAND]:02X}")
+        if dropped and armed is not None and frame > armed:
             y, lv, hv = mem.ram[I_ROOMY], mem.ram[I_LIVES], mem.ram[I_HOVER]
             mem.swcha = 0x6F            # hold Up + Right
             if lv < last_lives:
                 last_lives = lv
-                if deaths:
-                    deaths.append(frame)
-                else:
-                    deaths.append(frame)  # first real death (the armed one)
+                deaths.append(frame)
                 print(f"  f{frame}: DEATH (lives={lv}, RoomY={y})")
             log.append((frame, y, lv, hv))
             if frame % 10 == 0 and frame >= armed:
                 print(f"  f{frame}: Y={y} vy={mem.ram[0x14]:02X}{mem.ram[0x13]:02X} "
                       f"JP={mem.ram[0x16]:02X} Hover={hv}")
 
+band_live = mem.ram[I_BAND]
 min_lives = min((lv for _, _, lv, _ in log), default=3)
 loop_deaths = max(0, len(deaths) - 1)
 tail = [y for (f, y, lv, hv) in log if f >= log[-1][0] - 100] if log else []
-print(f"\ntotal deaths={len(deaths)} (lives lost {3 - min_lives}); "
+print(f"\nband pokes={pokes}, RoomBandColor=${band_live:02X}, "
+      f"total deaths={len(deaths)} (lives lost {3 - min_lives}); "
       f"loop deaths after respawn={loop_deaths}")
 print("last 100 frames RoomY min/max:", (min(tail), max(tail)) if tail else None,
       "(band starts at 125)")
+
+if not pokes:
+    print("FAIL: EnterRoom was never hooked — scenario did not run")
+    sys.exit(1)
+if band_live != BAND_COLOR:
+    print(f"FAIL: RoomBandColor=${band_live:02X}, expected ${BAND_COLOR:02X} "
+          "(the band poke landed after the room load)")
+    sys.exit(1)
+if len(deaths) < 1 or min_lives > 2:
+    print("FAIL: the water never killed him — the gate cannot be trusted")
+    sys.exit(1)
 if loop_deaths == 0:
-    print("PASS: no water death loop after respawn")
+    print("PASS: water killed him once, no death loop after respawn")
     sys.exit(0)
 print("FAIL: water death loop")
 sys.exit(1)
