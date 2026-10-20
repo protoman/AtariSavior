@@ -64,6 +64,23 @@ mem = Mem()
 from py65.devices.mpu6502 import MPU  # noqa: E402
 mpu = MPU(memory=mem)
 
+# --- packed theme: ROM data must equal tools/gen_intro_theme.py ------------
+sys.path.insert(0, str(SRC.parent))
+from tools import gen_intro_theme  # noqa: E402
+
+_b1 = {}
+for _l in open(SRC / "bank1.lst", errors="replace"):
+    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$", _l)
+    if _m:
+        _b1.setdefault(_m.group(2), int(_m.group(1), 16))
+_packed = gen_intro_theme.pack(gen_intro_theme.THEME)
+_mel = _b1["MusicMel"]
+assert bytes(BANKS[1][_mel - 0xF000:_mel - 0xF000 + len(_packed)]) == bytes(_packed), \
+    "bank1 MusicMel != the readable theme in tools/gen_intro_theme.py"
+_dur = _b1["MelDur"]
+assert bytes(BANKS[1][_dur - 0xF000:_dur - 0xF000 + 4]) == bytes(gen_intro_theme.MELDUR), \
+    "bank1 MelDur != the generator's duration table"
+
 _LBL = {}
 for _l in open(SRC / "bank0.lst", errors="replace"):
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$", _l)
