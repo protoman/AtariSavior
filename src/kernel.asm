@@ -2332,20 +2332,19 @@ ENEMY_RAFT     = 7             ; type-7 enemy record = the moving, rideable raft
 ENEMY_DATA_STRIDE = 6
 LEVEL_COUNT    = 4             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
-LEVEL_DATA_ADDR = $F718        ; frozen address of bank2's LevelDataTable
+LEVEL_DATA_ADDR = $F716        ; frozen address of bank2's LevelDataTable
                                 ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
                                 ;  −$FA86 as the ≤2-object room migration
                                 ;  shrank the tables; check_frozen_addrs
                                 ;  enforces)
                                 ; (test asserts bank2.lst label == this)
-LEVEL_FORMAT   = $03           ; C2 2026-10-20: room-record format. 3 = shape
-                                ; index (b5-0 | band b6 | owns-extras b7),
-                                ; position byte, enemy count <<6 | extras
-                                ; index (3 B/room, block word dropped; the
-                                ; first enemy record is derived). Hand copy of
-                                ; the generated EQU (bank1 carries the twin —
-                                ; check_equ_sync; verify_build compares both
-                                ; to generated/levels_index.asm)
+LEVEL_FORMAT   = $04           ; C5 2026-10-20: room-record format. 4 =
+                                ; C2 shape index (b5-0 | band b6 | owns-extras
+                                ; b7), position byte, enemy count <<6 | extras
+                                ; ordinal, then the level's AsyncExtras stream.
+                                ; Hand copy of the generated EQU (bank1 carries
+                                ; the twin — check_equ_sync; verify_build
+                                ; compares both to generated/levels_index.asm)
 ; ==============================================================================
 ; YToRowTable — convert scanline to 48-line band row (0-2), idx A>>2
 ; ==============================================================================

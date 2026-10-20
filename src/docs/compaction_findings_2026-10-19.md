@@ -1286,7 +1286,9 @@ addressing blocks from 6 bits; the only zero-table alternative is a
 length-walk over the block stream, which would cap the whole game at 64 shapes
 **and** contradict the plan's own 105-shape target, so it was rejected.
 
-### C5 (async extras) NOT folded
+### C5 (async extras) — NOT folded at C2; **LANDED 2026-10-20 (C5)**
+
+Landed exactly as the level-format plan's C5: the per-room blocks are gone, the MetaA/MetaB pair moved into the level's AsyncExtras stream, and the loader repoints the hot stream for feature rooms. Level data 308 -> 277 B (measured). See docs/level_format_plan_2026-10-20.md C5 + the ledger.
 
 C2 is correct without the extras stream: an async room keeps its own block and
 the shape table routes to it (asserted per live async room in

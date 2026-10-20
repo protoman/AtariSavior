@@ -110,16 +110,10 @@ def main() -> int:
         "MetaA must be the byte right after TilePF2's .byte line"
     assert lines.index("M90MetaB:") == lines.index("M90MetaA:") + 2, \
         "MetaB must be the byte right after MetaA's .byte line"
-    assert lines.index("M90RightPF0:") == lines.index("M90MetaB:") + 2, \
-        "RightPF0 must follow MetaB (meta = 2 bytes, RightPF at +11)"
-    assert byte_line(lines, "M90RightPF0:") == [0x00, 0xF0, 0x00]
-    assert byte_line(lines, "M90RightPF1:") == [0x00, 0xFF, 0x00]
-    assert byte_line(lines, "M90RightPF2:") == [0xC0, 0x0F, 0xC0]
-    assert "M90RightRects:" in lines
-    # right rects: col0 rows0/2 (band1 open there breaks the spine) +
-    # band1 cols2-9 -> 3 rects (<= budget 4)
-    rc = byte_line(lines, "M90RightRects:")
-    assert rc[0] == 3, f"right rect count {rc[0]} != 3"
+    # C5 (2026-10-20): RightPF/RightRects are RETIRED (no reader since C4) —
+    # the per-grid meta-pair emission stays for the extras/unit-test path.
+    assert not any("RightPF" in l or "RightRects" in l for l in lines), \
+        "C5: the right-half block must not be emitted"
 
     # --- 2. legacy model (no field): meta 0,0, no Right block ------------
     legacy = make_model(patches=None)
@@ -155,8 +149,6 @@ def main() -> int:
     assert byte_line(out_m, "M90MetaA:") == [0x40], \
         "M1-only: (m1_col+1)=4 in high nibble, band mask 0"
     assert byte_line(out_m, "M90MetaB:") == [0], "M1-only MetaB = 0 (no ball)"
-    assert not any("RightPF" in l or "RightRects" in l for l in out_m), \
-        "M1-only: right half is mirror, no Right block"
 
     # --- 2d. case 3: side-by-side same band, different x (ball + M1) -----
     # tiles: band0 all open; bands 1/2 wall at cell 8 (M1 wall-hide).
@@ -171,8 +163,8 @@ def main() -> int:
     assert byte_line(out_c, "M90MetaA:") == [0x91], \
         "(m1_col+1)=9 high nibble | band0 mask -> $91"
     assert byte_line(out_c, "M90MetaB:") == [0x08], "ball_col 7 -> MetaB 8"
-    rc3 = byte_line(out_c, "M90RightRects:")
-    assert 0 < rc3[0] <= 4, f"case3 right rects {rc3[0]} outside 1..4"
+    assert not any("RightPF" in l or "RightRects" in l for l in out_c), \
+        "case3: no right-half block (C5 retirement)"
 
     # --- 3. envelope rejects --------------------------------------------
     # subtractive: band0 is open, its mirror at right_col0 is open too —
@@ -207,28 +199,32 @@ def main() -> int:
     expect_reject(make_model(patches=[[0, 3, 1, 1], [1, 3, 1, 1]]),
                   "hide the patch")
 
-    # --- 4. convert-side right-rect budget (Risk 1) ----------------------
-    five_rects = ["#.#.#.#.#.", "..........", ".........."]
-    try:
-        convert_room.lines(left, prefix="M90", source="test",
-                           asym_rows=five_rects)
-    except ValueError as exc:
-        assert "WallMask budget" in str(exc), f"budget reason: {exc}"
-    else:
-        raise AssertionError("5 right wall rects must hard-fail (Risk 1)")
+    # --- 4. C5 (2026-10-20): the SHAPE is meta-free and the room extras
+    # record carries the pair + the patch bytes. Same synthetic model as
+    # case 1 (patches on bands 0+2, right_col 0).
+    shape = convert_room.lines(left, prefix="M90", source="test",
+                               with_meta=False)
+    assert not any("MetaA" in l or "MetaB" in l for l in shape), \
+        "with_meta=False must not emit the pair (TilePF0+9/+10 retired)"
+    room = {"room_id": 0, "model_id": 90,
+            "asym_patches": [[0, 0, 1], [2, 0, 1]]}
+    record, nfeat = convert_level.room_extras(
+        room, legacy, convert_level.rows_from_json(room, {90: legacy}),
+        "test room")
+    # flags (2 patches, 0 features) | MetaA $05 | MetaB $01 | 2 patch bytes
+    # (row<<6 | side<<4 | col: $00 and $80)
+    assert record == bytes([0x02, 0x05, 0x01, 0x00, 0x80]), record.hex()
+    assert nfeat == 0
 
-    # --- 5. combined left+right budget is DEFERRED (Phase 4 item 2 gate:
-    # 'once flag-gated masks exist' — right rects are ROM-only today and
-    # every real model's mirror fragments past 4). left 1 + right 4 must
-    # EMIT (per-side <= 4 still enforced: see section 4). ----------
-    four_right = ["#.#.#.#...", "..........", ".........."]
-    try:
-        emit_lines = convert_room.lines(left, prefix="M90", source="test",
-                                        asym_rows=four_right)
-    except ValueError as exc:
-        raise AssertionError(
-            f"combined 1+4 must emit while right<=4 (deferral): {exc}")
-    assert any("M90RightRects:" in l for l in emit_lines), "right block missing"
+    # --- 5. M1-only extras: MetaA carries (m1_col+1)<<4 and no band mask,
+    # and a side-1 patch byte sets b4 (row 0 -> $10 | col 3 = $13).
+    room_m = {"room_id": 0, "model_id": 90,
+              "asym_patches": [[0, 3, 1, 1], [2, 3, 1, 1]]}
+    rec_m, nf_m = convert_level.room_extras(
+        room_m, legacy, convert_level.rows_from_json(room_m, {90: legacy}),
+        "test room m1")
+    assert rec_m == bytes([0x02, 0x40, 0x00, 0x13, 0x93]), rec_m.hex()
+    assert nf_m == 0
 
     print("test_asym_data: OK (valid + partial bands + M1-only + case3 + "
           "legacy + 11 envelope rejects + right budget + combined deferred)")

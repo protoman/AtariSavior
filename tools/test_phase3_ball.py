@@ -44,17 +44,18 @@ ENABL, RESBL, HMBL = 0x1F, 0x14, 0x24
 
 PC_START = LABELS["StartFrame"]
 
-# bank2 packed-meta labels (models_data.asm) -> poke address
-LAB2 = {}
-# model blocks (M<id>) AND per-room blocks (L<level>R<room>): async
-# moved to the room 2026-10-17, so the played room owns its meta.
-_pat = re.compile(r"^\s*\d+\s+([0-9a-f]{4})\s+((?:M\d+|L\d+R\d+)Meta[AB])\b")
+# C5 (2026-10-20): the boot room (level 1 room 0, model 0) is ASYNC, so its
+# MetaA/MetaB live in level 1's AsyncExtras record — ordinal 1, so the pair
+# sits at LEVEL1_AsyncExtras+1/+2 (header = flags, MetaA, MetaB).
+_pat = re.compile(r"^\s*\d+\s+([0-9a-f]{4})\s+LEVEL1_AsyncExtras\s*$")
+EXTRAS = None
 for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
     _m = _pat.match(_l)
     if _m:
-        LAB2.setdefault(_m.group(2), int(_m.group(1), 16))
-if not LAB2:
-    sys.exit("no *MetaA/MetaB labels found in bank2.lst")
+        EXTRAS = int(_m.group(1), 16)
+        break
+if EXTRAS is None:
+    sys.exit("LEVEL1_AsyncExtras label not found in bank2.lst")
 
 
 def run(rom: Path, band1: int = 0xFF) -> dict:
@@ -63,11 +64,15 @@ def run(rom: Path, band1: int = 0xFF) -> dict:
     banks = [bytearray(blob[4096 * i:4096 * (i + 1)]) for i in range(4)]
     # MetaA band mask: band1 parameterized for the partial-mask run
     mask = 0x07 if band1 else 0x05
-    for name, addr in LAB2.items():
-        if name.endswith("MetaB"):
-            banks[2][addr & 0xFFF] = META_B_POKE  # C2: blocks in bank2
-        else:  # MetaA
-            banks[2][addr & 0xFFF] = mask
+    banks[2][(EXTRAS + 1) & 0xFFF] = mask          # MetaA
+    banks[2][(EXTRAS + 2) & 0xFFF] = META_B_POKE   # MetaB (ball col)
+    # C5: the loader ALSO derives the band gates from the SIDE-0 patch bytes
+    # (row b7-6 | side b4 | col b3-0) and ORs them into MetaA, so the patch
+    # rows must agree with the poked mask (row 0 + row 1 for the full run,
+    # rows 0 + 2 for the band-1-partial run).
+    prow = (0, 1) if band1 else (0, 2)
+    banks[2][(EXTRAS + 3) & 0xFFF] = prow[0] << 6
+    banks[2][(EXTRAS + 4) & 0xFFF] = prow[1] << 6
     respbl_temp = []
 
     class ProbeMem(Mem):
@@ -199,7 +204,7 @@ def main() -> int:
           f"partial mask band1=0 -> 2 ff/frame, "
           f"RESPBL+HMBL every frame (Temp=${want_temp:02X} at RESPBL), "
           f"min SP ${r['min_sp']:02X}, "
-          f"poked {len(LAB2)} meta bytes)")
+          f"poked extras meta + patch rows)")
     return 0
 
 

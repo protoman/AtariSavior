@@ -348,12 +348,21 @@ with a migration hint. Why the room owns it: one model shape is reused by rooms
 with different async, and the editor edits the room, not the model.
 
 Consequences that are easy to get wrong:
-- **A room that owns async gets its OWN `(PF + MetaA/B [+ RightPF/RightRects])`
-  block**, because `bank2.StageBandTab` reads the meta at the FIXED offset
-  `TilePF0+9/+10` of the block the room points at — a room cannot share a
-  model's PF and still carry its own door/ball meta. Async-free rooms still
-  point at the shared `M<id>` block (byte-identical legacy path).
-- Those per-room blocks are emitted into the LEVEL TABLE FILE
+- **A room points at its shared MODEL SHAPE; async rides a per-level EXTRAS
+  stream** (C5 2026-10-20). The shape block is `hot stream | PF triple` only —
+  the `TilePF0+9/+10` MetaA/MetaB contract is RETIRED. A room with the shape
+  byte's b7 set carries an extras record (selected by the counts byte's b5-0
+  ordinal): `flags (n_patches b1-0 | n_features b5-2)`, `MetaA`, `MetaB`,
+  1 B/patch (`row b7-6 | side b4 | col b3-0`), 1 B/feature (`kind b7-6 | col
+  b3-0`), then — feature rooms only — the ROOM's hot stream (count + 5 B
+  records), because feature cells split the shape's own hot cells.
+- `bank2.B3RoomBlocks` (in the free `$F453` window) copies the shape PF, then
+  either derives `MetaA=0 / MetaB=$40*hot` (no extras) or tail-jumps to
+  `ExtrasLoad`, which walks the stream (`base + 3n + 4*total enemies`), ORs the
+  side-0 patch rows into MetaA, sets the feature PF bits, and repoints
+  `RoomRectsLo/Hi` at the extras hot stream. `B3StageBand` still reads only the
+  STAGED `$99/$9A` pair, so the runtime contract is unchanged.
+- Those extras records are emitted into the LEVEL TABLE FILE
   (`generated/level_00N_rooms.asm`), so `emit_spills` (bugs.md 27b) sizes and
   relocates them. Net-new level data must never be added inside
   `level_00N_rooms_data.asm` — that file is invisible to the spill accounting
@@ -363,6 +372,12 @@ Consequences that are easy to get wrong:
   `$F767` start hid.
 - `resolve_asym_patches(model, room, left_rows)`; `room_door_flag` /
   `room_m1_door_flag` / `async_kinds(room)` replaced the model-level helpers.
+  `room_extras()` (convert_level) is the single extras emitter; the loader and
+  `verify_build` both re-derive its bytes from the JSON, so a drift is red.
+- `RightPF0/1/2` + `RightRects` are GONE (no reader since C4) and
+  `dedupe_room_blocks` is retired — there are no per-room blocks to dedupe;
+  byte-identical MODELS are still emitted once each (the C3 row dictionary is
+  the future fix for that).
 - ROM-byte tests read FROZEN banks AND frozen labels (`src/tests/frozen/`) —
   never frozen bytes with live `src/bank2.lst` labels (that mismatch silently
   reads the wrong block; it bit `test_band_restage`, `test_bomb_strip` and

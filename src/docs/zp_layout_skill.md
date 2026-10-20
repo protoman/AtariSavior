@@ -79,8 +79,8 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $96 | JetPower | Jet thrust 0..JET_MAX |
 | $97 | StepsLeft | Vertical step budget |
 | $98 | RoomNo | Current room index |
-| $99 | RoomPF0Lo | TilePF0 ptr lo (the 3 PF rows are contiguous from here: `(RoomPF0Lo),Y`, Y spans rows 0-2 — no separate PF1/PF2 ptrs) |
-| $9A | RoomPF0Hi | TilePF0 ptr hi |
+| $99 | RoomPF0Lo | Block-loader scratch: TilePF0 ptr lo inside B3RoomBlocks/ExtrasLoad, then OVERWRITTEN with the room's staged MetaA for the whole visit (`RoomMetaA` — same byte; the 3 PF rows are contiguous from TilePF0) |
+| $9A | RoomPF0Hi | Same dual use: TilePF0 ptr hi during the load, then the staged MetaB (`RoomMetaB`; C5 2026-10-20: the pair comes from the room extras, not the block) |
 | $9B | BarIdx | Power-bar table idx `(BarLevel+7)>>3` (synced in kernel overscan, read by bank1 HUD) |
 | $9C | Hover | Respawn hover flag (bugs.md #1): 1 while armed (LoseLife), cleared at LoadLevel |
 | $9D | MelPtr | Intro music: melody stream index (bank1 MusicTick) |

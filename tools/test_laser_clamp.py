@@ -34,22 +34,23 @@ BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 # Model 0 meta/hot zeroing (same as test_laser_wall): strip/hot contacts
 # must never masquerade as wall hits in this deterministic probe.
-_L2 = {}
+# C5 (2026-10-20): the model-0 room's MetaA/MetaB live in the level's
+# async-extras record (ordinal 1 -> +1/+2); zero them so the strip stays
+# symmetric. The hot count is the block's FIRST byte now (C4).
+_EX = None
+_M0RR = None
 for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
-    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(L1R1(?:MetaA|MetaB))\s*$", _l)
+    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(LEVEL1_AsyncExtras|"
+                  r"M0RoomRects)\s*$", _l)
     if _m:
-        _L2[_m.group(2)] = int(_m.group(1), 16)
-assert len(_L2) == 2, f"bank3 L1R1 meta labels missing: {sorted(_L2)}"
-for _n in ("L1R1MetaA", "L1R1MetaB"):
-    BANKS[2][_L2[_n] - 0xF000] = 0
-for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
-    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+L1R1RoomRects\s*$", _l)
-    if _m:
-        _a = int(_m.group(1), 16) - 0xF000
-        BANKS[2][_a + 1 + 2 * BANKS[2][_a]] = 0   # hot count = 0
-        break
-else:
-    sys.exit("L1R1RoomRects label missing in bank3.lst")
+        if _m.group(2) == "LEVEL1_AsyncExtras":
+            _EX = int(_m.group(1), 16)
+        else:
+            _M0RR = int(_m.group(1), 16)
+assert _EX is not None and _M0RR is not None, "bank2 level labels missing"
+BANKS[2][_EX + 1 - 0xF000] = 0
+BANKS[2][_EX + 2 - 0xF000] = 0
+BANKS[2][_M0RR - 0xF000] = 0                  # hot count = 0
 
 # bank0 labels (addresses move every commit)
 LABELS = {}

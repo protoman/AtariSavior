@@ -95,14 +95,15 @@ L0 = parse_labels(SRC / "bank0.lst", {"BombX", "LineCount",
                                 "EnemyDeadMask", "CollisionX",
                                 "BombPacked", "PF0Buf", "PF1Buf",
                                 "PF2Buf"})
-L2 = parse_labels(SRC / "bank2.lst", {"L1R1TilePF0", "M3TilePF0",
-                                      "M1StripBlast"})
+L2 = parse_labels(SRC / "bank2.lst", {"M0TilePF0", "M3TilePF0",
+                                      "LEVEL1_AsyncExtras"})
 # StageBandTab lives in bank3 (chunk A2); relocated $F0A3 -> $FC38 in chunk 5
 # (repack 2026-10-20) so the level-data window could start at $F0A3.
-L3 = parse_labels(SRC / "bank2.lst", {"B3StageBand", "L1R1TilePF0",
-                                      "M3TilePF0"})
+L3 = parse_labels(SRC / "bank2.lst", {"B3StageBand", "M0TilePF0",
+                                      "M3TilePF0", "LEVEL1_AsyncExtras"})
 # A3: level/model blocks live in bank3 — block labels AND bytes from there.
-L2.update({k: L3[k] for k in ("L1R1TilePF0", "M3TilePF0")})
+L2.update({k: L3[k] for k in ("M0TilePF0", "M3TilePF0",
+                              "LEVEL1_AsyncExtras")})
 L2.update(parse_equ(SRC / "bank2.lst",
                     {"BandTab", "CollisionEndY", "CollisionEndX",
                      "RoomPF0Lo", "RoomRectsLo"}))
@@ -110,7 +111,7 @@ need = ({"BombMarkWalls", "StripBlastCheck", "M1StripBlast"} - L1.keys()) | \
        ({"BombX", "LineCount", "EnemyDeadMask", "CollisionX",
          "BombPacked", "PF0Buf", "PF1Buf", "PF2Buf"}
         - L0.keys()) | \
-       ({"L1R1TilePF0", "M3TilePF0",
+       ({"M0TilePF0", "M3TilePF0", "LEVEL1_AsyncExtras",
          "BandTab", "CollisionEndY", "CollisionEndX",
          "RoomPF0Lo", "RoomRectsLo"} - L2.keys()) | ({"B3StageBand"} - L3.keys())
 if need:
@@ -138,13 +139,14 @@ for _f in ("kernel.asm", "bank1.asm", "bank2.asm", "bank3.asm"):
         assert "$F937" not in _code and "$F9AC" not in _code, (
             f"{_f}:{_n}: stale strip address literal in code: {_line.strip()}")
 
-# Model 0 meta (bank2 ROM): MetaA+9 = (m1_col+1)<<4 | band_mask,
-# MetaB+10 = ball_col+1 — expectations below are derived from these so the
-# test tracks models.json edits (packed meta, bugs.md 28 point 1).
-M0 = L2["L1R1TilePF0"]
-_M0OFF = M0 - 0xF000
-META_A = BANKS[2][_M0OFF + 9]
-META_B = BANKS[2][_M0OFF + 10]
+# Model 0 (level 1 room 0) meta — C5 (2026-10-20): the pair left the shape
+# block and lives in the level's async-extras record (ordinal 1 -> +1/+2, the
+# record's header is flags, MetaA, MetaB). Expectations below are derived from
+# the ROM bytes so the test tracks models.json edits (bugs.md 28 point 1).
+M0 = L2["M0TilePF0"]
+_EXOFF = L2["LEVEL1_AsyncExtras"] - 0xF000
+META_A = BANKS[2][_EXOFF + 1]
+META_B = BANKS[2][_EXOFF + 2]
 BALLX = 8 * META_B + 86 if META_B else 0    # 87+8*ball_col
 BANDS = tuple(0xFF if META_A & (1 << i) else 0 for i in range(3))
 BAND_MASK = META_A & 0x07
@@ -153,21 +155,16 @@ M1X = 8 * _m1n - 1 if _m1n else 0           # 7+8*m1_col
 
 
 def run_bmw(mem: Mem1, bomb_x: int, line_count: int,
-            meta: int = None, rects=None, bomb_packed: int = 0) -> int:
+            meta_pair: tuple = None, rects=None, bomb_packed: int = 0) -> int:
     """Drive BombMarkWalls; return the count A (walls newly broken).
 
-    meta = TilePF0 address staged into RoomPF0Lo (M1X read target);
-    defaults to model 0. rects = list of (x, y, w, h) — INERT since plan
+    meta_pair = (MetaA, MetaB) staged into RoomMetaA/B (C5: the loader reads
+    them from the room extras, so tests pass the pair explicitly); defaults to
+    model 0's extras pair. rects = list of (x, y, w, h) — INERT since plan
     5.1b (no rect cache); bomb_packed seeds BombPacked (state bits only —
     WallMask b3-6 retired)."""
     r = mem.ram
-    meta = M0 if meta is None else meta
-    if meta >= 0xF000:                   # ROM block: read its MetaA/B
-        _off = (meta - 0xF000) & 0xFFFF
-        _ma, _mb = BANKS[2][_off + 9], BANKS[2][_off + 10]
-    else:                                # legacy RAM blob at Y=+9/+10
-        _ma = r[(meta + 9) & 0x7F]
-        _mb = r[(meta + 10) & 0x7F]
+    _ma, _mb = (META_A, META_B) if meta_pair is None else meta_pair
     r[L2["RoomPF0Lo"] - 0x80] = _ma       # staged room meta
     r[L2["RoomPF0Lo"] + 1 - 0x80] = _mb
     r[L0["BombX"] - 0x80] = bomb_x
@@ -323,7 +320,7 @@ def main() -> int:
 
     # meta with M1X=0 (model 3, ball-only): left bomb → no M1 effect
     memz = Mem1()
-    gotz = run_bmw(memz, 71, 0, meta=L2["M3TilePF0"])
+    gotz = run_bmw(memz, 71, 0, meta_pair=(0, 0))   # M3: symmetric
     assert gotz == 0 and not memz.ram[L0["EnemyDeadMask"] - 0x80], (
         f"M1X=0 meta must skip the M1 test (count={gotz})")
 
@@ -381,13 +378,10 @@ def main() -> int:
     assert r[L0["PF1Buf"] - 0x80] == 0x0F, "thick wall must stay solid"
 
     # --- P2b doors (key-only, bomb-immune) ------------------------------
-    # Synthetic meta blob in ZP ($A0..$AA): +9 MetaA, +10 MetaB.
     def door_run(meta_a, meta_b, bomb_x, line_count):
         mem = Mem1()
         r = mem.ram
-        r[0xA0 - 0x80 + 9] = meta_a
-        r[0xA0 - 0x80 + 10] = meta_b
-        got = run_bmw(mem, bomb_x, line_count, meta=0xA0)
+        got = run_bmw(mem, bomb_x, line_count, meta_pair=(meta_a, meta_b))
         return got, r[L0["EnemyDeadMask"] - 0x80]
 
     # 8a. RIGHT door: MetaB b7 set, same strip geometry as case 1

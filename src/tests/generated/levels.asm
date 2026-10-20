@@ -5,7 +5,7 @@
     include "generated/level_003_rooms.asm"
     include "generated/level_004_rooms.asm"
 
-LEVEL_FORMAT = $03
+LEVEL_FORMAT = $04
 LEVEL_DATA_STRIDE = 7
 LEVEL_COUNT = 4
 
@@ -13,44 +13,47 @@ LEVEL_COUNT = 4
 ; colors, then the level's room-table base and its ROOM COUNT.
 ; start x/y (32/24), start_room (0) and miner_y (84) are kernel
 ; constants now — the converter rejects other values.
-; Inside a level block (n = ROOM COUNT, C2 2026-10-20):
+; Inside a level block (n = ROOM COUNT, C2 2026-10-20; C5 extras):
 ;   base + 0   RoomShapes     1 B/room (shape idx b5-0 | band b6 |
-;                               owns-extras b7; block = the table below)
+;                               owns-extras b7; shape = the table below)
 ;   base + n   RoomPositions  1 B/room (LEVEL_FORMAT 2: x<<4|y,
 ;                               exits derived by scanning it)
-;   base + 2n  RoomCounts     1 B/room (count<<6 | extras index)
+;   base + 2n  RoomCounts     1 B/room (count<<6 | extras ordinal)
 ;   base + 3n  EnemyDataTable 4 B/record (first record index derived)
+;   ..         AsyncExtras    variable, one record per owns-extras room
+;                               (C5; after the enemy records — the
+;                               loader derives its base from the count
+;                               column sum). Flags/MetaA/MetaB,
+;                               1 B/patch, 1 B/feature, then the
+;                               room's hot stream when it has features.
 LEVEL_SHAPE_COUNT = 11
-SHAPE_M1 = 0
-SHAPE_M2 = 1
-SHAPE_M3 = 2
-SHAPE_M5 = 3
-SHAPE_M6 = 4
-SHAPE_M7 = 5
-SHAPE_M8 = 6
-SHAPE_L1R1 = 7
-SHAPE_L3R2 = 8
-SHAPE_L4R5 = 9
-SHAPE_L4R6 = 10
-SHAPE_L3R1 = 7
-SHAPE_L4R1 = 7
-SHAPE_L4R2 = 8
+SHAPE_M0 = 0
+SHAPE_M1 = 1
+SHAPE_M2 = 2
+SHAPE_M3 = 3
+SHAPE_M4 = 4
+SHAPE_M5 = 5
+SHAPE_M6 = 6
+SHAPE_M7 = 7
+SHAPE_M8 = 8
+SHAPE_M10 = 9
+SHAPE_M11 = 10
 
 ; Shape address table: SHAPE_<label> indices above are the row here.
 ; LEVEL_SHAPE_COUNT = number of distinct blocks in the whole game
 ; (6-bit index ceiling: 64).
 LEVEL_ShapeTable:
+  .word M0RoomRects
   .word M1RoomRects
   .word M2RoomRects
   .word M3RoomRects
+  .word M4RoomRects
   .word M5RoomRects
   .word M6RoomRects
   .word M7RoomRects
   .word M8RoomRects
-  .word L1R1RoomRects
-  .word L3R2RoomRects
-  .word L4R5RoomRects
-  .word L4R6RoomRects
+  .word M10RoomRects
+  .word M11RoomRects
 ; BAND_COLOR = $80 — the single bottom-band color (every
 ; bottom_band room must resolve to it; bank2.asm carries the EQU and
 ; test_level_bank asserts the pair).

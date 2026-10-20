@@ -26,13 +26,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
-for _name in ("L1R1RoomRects",):   # level 1 has one room (the
+for _name in ("M0RoomRects",):   # level 1 room 0 = model 0 (C5: shape)
                                    # L1R2 block was removed with it)
     for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
         if _m:
             _a = int(_m.group(1), 16) - 0xF000
-            BANKS[2][_a + 1 + 2 * BANKS[2][_a]] = 0
+            BANKS[2][_a] = 0      # hot count (C4: block starts with it)
             break
     else:
         sys.exit(f"{_name} label missing in bank3.lst")
@@ -71,7 +71,7 @@ RECTS0 = 0x4C
 PF_ROWS = range(0xC3, 0xCC)
 PF_IDX = [a & 0x7F for a in PF_ROWS]
 
-MODEL = {1: ("L1R1TilePF0", "L1R1RoomRects")}   # level 1 has one room
+MODEL = {1: 0}   # room index -> fixture MODEL id (level 1 room 0 = M0)
 
 
 class Mem:
@@ -149,26 +149,18 @@ def step():
 
 
 def load_room(room):
-    pf0, rr = MODEL[room]
-    a_pf0, a_rr = L3[pf0], L3[rr]
-    mem.ram[I_PF0LO] = a_pf0 & 0xFF
-    mem.ram[I_PF0HI] = a_pf0 >> 8
+    model = MODEL[room]
+    a_pf0, a_rr = L3[f"M{model}TilePF0"], L3[f"M{model}RoomRects"]
+    # C5: the meta pair comes from the room's extras record (level 1 room 0 =
+    # model 0 is the async room, ordinal 1 -> +1/+2). C4: no rect cache.
+    mem.ram[I_PF0LO] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
+    mem.ram[I_PF0HI] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
         for row in range(3):
             mem.ram[(dst + row) & 0x7F] = BANKS[2][
                 ((a_pf0 + i * 3 + row) - 0xF000) & 0xFFFF]
-    off = (a_rr - 0xF000) & 0xFFFF
-    count = BANKS[2][off]
-    mem.ram[I_RCBASE] = min(count, 5)
-    for i in range(min(count, 5)):
-        p0 = BANKS[2][off + 1 + 2 * i]
-        p1 = BANKS[2][off + 2 + 2 * i]
-        mem.ram[RECTS0 + 4 * i + 0] = p0 >> 2
-        mem.ram[RECTS0 + 4 * i + 1] = p0 & 3
-        mem.ram[RECTS0 + 4 * i + 2] = p1 >> 2
-        mem.ram[RECTS0 + 4 * i + 3] = p1 & 3
 
 
 def pin(y=70):

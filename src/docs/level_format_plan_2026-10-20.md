@@ -410,13 +410,22 @@ models the removed lists are ≈ −3.9 KB (est.). Gates: both sims, the full
 battery, `sim_bomb_fuse`'s new thin-cell punch probe, `test_bomb_half_wall`
 (user bugs #10), and `test_cell_map`'s per-cell 6-rect solidity sweep.
 
-**C5 — async extras (retire per-room blocks) + meta migration.**
-Patches/feature-cells into the extras stream; meta into the room record; PF cells
-for feature columns synthesised at load; delete `L<n>R<n>` blocks and
-`dedupe_room_blocks`. Delta: −1.3 KB at 210, −2.1 KB at 400 vs today's per-room
-blocks. Risk: medium-high — the `TilePF0+9/+10` contract dies here; gate
-`test_features_data`, `test_asym_data`, `test_hcrunch`, `test_phase_kill`,
-`test_band_restage`, plus a Stella pass on level 3/4 async rooms.
+**C5 — async extras (retire per-room blocks) + meta migration — LANDED 2026-10-20.**
+Patches/feature-cells/meta ride the level's `AsyncExtras` stream; the loader
+(`bank2.ExtrasLoad`, tail-entered from `B3RoomBlocks`) applies them, so an async
+room points at its shared MODEL shape and `TilePF0+9/+10` is retired. Measured:
+level data **308 → 277 B** (index 52→50, tables/blocks 160→117, models 96→110
+because M0/M10/M11 are now referenced shapes too), per-room marginal for a
+symmetric room unchanged (**3 B tables + 4 B/enemy**), an async room now **+3 B
+record + 3–10 B extras** instead of a 12–35 B block (patch-only 4–5 B, hcrunch
+feature 10 B inc. its hot stream), and `RightPF/RightRects` (23 B in L4R6) is
+gone. bank2 code +342 B (the extras loader), total free 7603 → 7292 B.
+Gates: `test_band_restage` (all 16 live rooms: PF + staged meta byte-identical
+through real `EnterRoom`, feature rooms repointing the hot stream),
+`test_extras_room` (test-owned level block driven through the real loader:
+plain/patch/feature/hot-shape + the ordinal walk), `test_asym_data` (shape has
+no meta/right sections; extras bytes), `test_level_bank`/`verify_build`
+(format 4, record structure, JSON-derived extras bytes), plus the full battery.
 
 **C6 — 20-level plumbing (small but mandatory).**
 `LEVEL_COUNT` 4 → 20 (3 hand copies: `kernel.asm:2341`, `bank1.asm:101`,
@@ -472,21 +481,24 @@ Content limits that 20 levels surface (not ROM capacity, but must be decided):
 5. **Never author 20 rooms into the current format** — the converter raises at
    room index 15, and a level with >31 enemy records overflows the b5-1 index.
 
-## 7. Size ledger (measured at this HEAD)
+## 7. Size ledger (measured at this HEAD — post C5)
 
 | bank | code | data | fill | used | free |
 |---|---|---|---|---|---|
 | bank0 | 3027 | 370 | 681 | 3397 | 699 |
 | bank1 | 2416 | 449 | 1037 | 2865 | 1231 |
-| bank2 | 2067 | 442 | 1586 | 2509 | 1587 |
+| bank2 | 2409 | 411 | 1275 | 2820 | 1276 |
 | bank3 | 5 | 5 | 4085 | 10 | 4086 |
-| **total** | **7515** | **1266** | **7389** | **8781** | **7603** |
+| **total** | **7857** | **1235** | **7078** | **9092** | **7292** |
 
-Level data **308 B** = index 52 + tables/blocks 160 + models 96 (C4: no
-solid rect lists — models emit hot stream + PF + meta only; room tables
-remain **3 B/room** with the 12-block shape table).
-bank2 free windows (emitted-byte occupancy): `$F453` 429, `$F790` 295, `$FDDE`
-184, `$F6A8` 88, `$FF98` 87, `$FE9C` 84, `$F0CE` 66, `$F411` 63, then 33/30/29/29/16.
+Level data **277 B** = index 50 + tables/blocks 117 + models 110 (C5: no
+per-room blocks — an async room carries a variable extras record and every
+referenced model now has a shape, M0/M10/M11 included; room tables remain
+**3 B/room** plus the shape table).
+bank2 windows moved: `ColOff`/`ColMask` now sit in the `$F854` fill and the
+room-block loader (`B3RoomBlocks` + `ExtrasLoad`) occupies `$F453-$F5EB`
+(23 B slack before the `$F600` pin); the `$F8B7` window is HotOverlapBody only.
+Re-measure with `tools/rom_size_report.py --md` after any change.
 
 ## 8. Measurement appendix
 

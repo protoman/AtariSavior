@@ -98,21 +98,21 @@ RESPAWN_FRAME = 150       # frames to let DropArm respawn settle
 
 
 def load_room_m2():
-    """Stage model2 (the vcrunch room: V at row1 col4, $81 bbox record +
-    MetaB $80) after boot — start_room-agnostic."""
-    a_pf0 = L3["M2TilePF0"]
+    """Stage model2 (the retired vcrunch room: $81 bbox record + MetaB $80)
+    after boot — start_room-agnostic.
+
+    C5 (2026-10-20): the shape block is `hot stream | PF` and the meta pair
+    lives in the room extras, so the fixture's stream, PF and meta come from
+    test_fixtures' frozen constants (the injected stream sits at the M2 block
+    base — the walker reads it there)."""
     a_rr = L3["M2RoomRects"]
-    off = (a_pf0 - 0xF000) & 0xFFFF   # MetaA/MetaB staged at room entry
-    mem.ram[I_PF0LO] = BANKS[2][off + 9]
-    mem.ram[I_PF0HI] = BANKS[2][off + 10]
+    mem.ram[I_PF0LO] = FX.METAX[2][0]
+    mem.ram[I_PF0HI] = FX.METAX[2][1]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
         for row in range(3):
-            mem.ram[(dst + row) & 0x7F] = BANKS[2][
-                ((a_pf0 + i * 3 + row) - 0xF000) & 0xFFFF]
-    # C4 (2026-10-20): no rect-cache staging — the block is
-    # hot stream | PF | meta and RoomRectsLo is its base.
+            mem.ram[(dst + row) & 0x7F] = FX.PFX[2][i * 3 + row]
 
 
 class Mem:

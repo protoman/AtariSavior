@@ -154,7 +154,7 @@ def main() -> None:
 
     # Patch the record's y and w in the PRIVATE bank copy: fields must be
     # ignored (band stays 1, prefix stays 10).
-    off = W.L3["L3R2RoomRects"] - 0xF000
+    off = W.L3["M4RoomRects"] - 0xF000
     count = W.BANKS[2][off]                # hot-record count (C4: no rects)
     rec = off + 1                          # first record's class byte
     assert count and W.BANKS[2][rec] == 0x82, \

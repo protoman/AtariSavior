@@ -44,13 +44,13 @@ SRC = ROOT / "src"
 BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 # Zero M0/M1 hot counts (life-loss would end the sweep); strips stay real.
-for _name in ("L1R1RoomRects",):   # level 1 has one room (the
+for _name in ("M0RoomRects",):   # level 1 room 0 = model 0 (C5: shape)
                                    # L1R2 block was removed with it)
     for _l in (SRC / "bank2.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
         if _m:
             _a = int(_m.group(1), 16) - 0xF000
-            BANKS[2][_a + 1 + 2 * BANKS[2][_a]] = 0   # hot count = 0
+            BANKS[2][_a] = 0                          # hot count = 0
             break
     else:
         sys.exit(f"{_name} label missing in bank3.lst")
@@ -82,9 +82,7 @@ I_BOMBP = 0x35                      # $B5
 I_DEAD = 0x3A                       # $BA EnemyDeadMask
 
 OV_HEAD, OV_TAIL = L2["OvHead"], L2["OvTail"]
-MODEL = {  # room 0-based -> (TilePF0 label, RoomRects label)
-    0: ("L1R1TilePF0", "L1R1RoomRects"),
-}
+MODEL = {0: 0}   # room 0-based -> fixture MODEL id (level 1 room 0 = M0)
 
 RANGE_LO = L0["LaserInput"]
 RANGE_HI = L0.get("TallyTramp", 0xFFF0)
@@ -179,10 +177,12 @@ def eye_of(roomx, facing):
 def load_room(room):
     """Hand-EnterRoom: pointers + PF buffers + rects ptr (cache unused by
     the laser). VBL StageBandTab rebuilds the overlay pack itself."""
-    pf0, rr = MODEL[room]
-    a_pf0, a_rr = L3[pf0], L3[rr]
-    mem.ram[I_PF0LO] = BANKS[2][(a_pf0 + 9 - 0xF000) & 0xFFFF]   # MetaA
-    mem.ram[I_PF0HI] = BANKS[2][(a_pf0 + 10 - 0xF000) & 0xFFFF]  # MetaB
+    model = MODEL[room]
+    a_pf0, a_rr = L3[f"M{model}TilePF0"], L3[f"M{model}RoomRects"]
+    # C5: MetaA/MetaB live in the level's AsyncExtras record (level 1 room 0
+    # is the async room, ordinal 1 -> +1/+2).
+    mem.ram[I_PF0LO] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
+    mem.ram[I_PF0HI] = BANKS[2][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     # ROM: TilePF0/1/2 = 3 band-row bytes each, in order after the label
@@ -193,9 +193,8 @@ def load_room(room):
 
 
 def meta_a(room):
-    """MetaA = (RoomPF0 stream)+9 — same addressing LWtipC uses."""
-    a_pf0 = L3[MODEL[room][0]]
-    return BANKS[2][a_pf0 + 9 - 0xF000]
+    """MetaA = the room extras record's +1 (C5: the pair left the block)."""
+    return BANKS[2][L3["LEVEL1_AsyncExtras"] + 1 - 0xF000]
 
 
 CASE_Y = (24, 45, 96)      # 24 = spawn/band0, 45 = straddle, 96 = band 2

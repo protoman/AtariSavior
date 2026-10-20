@@ -9,12 +9,15 @@ LEVEL1_MINER_Y = 84
 ; Room shape index (C2 2026-10-20): ONE byte per room =
 ;   b5-0 SHAPE INDEX into LEVEL_ShapeTable (levels_index.asm)
 ;   b6   bottom-band flag
-;   b7   owns-extras (reserved 0: the async stream is C5)
-; The block address is the table entry, so the old 2-byte RoomRects
-; word is gone. C4 (2026-10-20): the block is hot stream | PF | meta
-; (no solid rect list) — TilePF0 = block + 1 + 5*hot_count.
+;   b7   owns-extras (C5): the room has a record in the level's
+;        AsyncExtras stream (selected by the counts byte's b5-0)
+; C5 (2026-10-20): an async room points at its SHARED MODEL shape;
+; the patches/features/meta come from the extras record, so there are
+; no per-room blocks any more. A room without a model is rejected
+; (the shape must be shared). C4: block = hot stream | PF triple —
+; TilePF0 = block + 1 + 5*hot_count.
 LEVEL1_RoomShapes:
-  .byte SHAPE_L1R1 ; room 0 (async)
+  .byte SHAPE_M0 | $80 ; room 0 (async extras)
   .byte SHAPE_M1 ; room 1 (model 1)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
@@ -27,12 +30,28 @@ LEVEL1_RoomPositions:
   .byte $01 ; room 1 (0, 1)
 
 ; Per-room enemy count (C2 2026-10-20): ONE byte = count<<6 |
-; extras index (0 = none; the record index is derived at room load).
+; extras ordinal (C5: 1-based index into LEVELn_AsyncExtras, 0 =
+; none; the enemy record index is derived at room load).
 LEVEL1_RoomCounts:
-  .byte $40 ; room 0: 1 record(s)
+  .byte $41 ; room 0: 1 record(s), extras 1
   .byte $40 ; room 1: 1 record(s)
 
 ; Enemy data: 2 enemy records across 2 rooms, 4 bytes each (type,x,y,dir).
 LEVEL1_EnemyDataTable:
   .byte 2, 8, 60, 1
   .byte 0, 127, 60, -1
+
+; C5 (2026-10-20) async EXTRAS stream — one record per
+; owns-extras room, in room order (the counts byte b5-0 is the
+; 1-based ORDINAL). Record layout (hex per line below):
+;   +0 flags: n_patches b1-0 | n_features b5-2
+;   +1 MetaA  +2 MetaB  (the pair that used to sit at
+;      TilePF0+9/+10 — the loader stages it into $99/$9A)
+;   +3.. 1 B/patch: row b7-6 | side b4 | col b3-0 (tile = wall)
+;   ..   1 B/feature: kind b7-6 (1 = phase, 2 = hcrunch
+;        prefix end) | col b3-0
+;   ..   [n_features > 0] 1 B hot count + 5 B/hot record — the
+;        ROOM's hot stream (feature cells split the shape's own
+;        hot rects, so the walkers read this copy instead).
+LEVEL1_AsyncExtras:
+  .byte $02, $90, $00, $18, $58  ; room 0: 2 patch(es), 0 feature(s), MetaA $90 MetaB $00
