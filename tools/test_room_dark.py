@@ -24,6 +24,7 @@ BANK2 = (SRC / "bank2.bin").read_bytes()
 BANK3 = (SRC / "bank3.bin").read_bytes()
 KERNEL = (SRC / "kernel.asm").read_text(encoding="utf-8")
 BANK1_SRC = (SRC / "bank1.asm").read_text(encoding="utf-8")
+BANK2_SRC = (SRC / "bank2.asm").read_text(encoding="utf-8")
 
 labels = {}
 for line in (SRC / "bank1.lst").read_text(errors="replace").splitlines():
@@ -280,8 +281,8 @@ def main() -> int:
         "DropArm must mask with LASER_DARK"
     assert KERNEL.count("and #LASER_KEEP") >= 1, \
         "LaserInput prologue must mask with LASER_KEEP (dark|rearm b0)"
-    assert re.search(r"and #%11000111\s*;.*rooms 4-7", KERNEL), \
-        "LoadLevel must clear LaserState dark bits"
+    assert re.search(r"and #%11000111\s*;.*rooms 4-7", BANK2_SRC), \
+        "LoadLevelB2 (bank2 since C2) must clear LaserState dark bits"
     assert BANK1_SRC.count("cmp #8") >= 2, \
         "IsRoomDark/SetRoomDark must guard rooms 8+"
 

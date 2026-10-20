@@ -99,17 +99,21 @@ def main() -> None:
     # per-level entry (4 reads), so 21. The 2026-10-20 micro-pack dropped
     # start_room + miner_y from the entry (2 reads), so 20. C1 (2026-10-20)
     # moved SelectActiveObject to bank2 (2 sites: lit + dark reloads), so 18.
-    assert KERNEL.count("jsr FoldIndirect") >= 18, \
-        f"expected >=18 fold call sites (conn/LoadLevel + P3.1 enemy " \
-        f"derives; EnterRoom + SelectActiveObject folds moved to bank2 " \
-        f"direct reads), got {KERNEL.count('jsr FoldIndirect')}"
+    # C2 (2026-10-20) moved LoadLevel to bank2: its 7 reads of the 7-byte level
+    # entry are now direct (FetchPtr),Y in bank2, so 12 — that is the whole
+    # point of the move (the entry IS bank2 level data).
+    assert KERNEL.count("jsr FoldIndirect") >= 12, (
+        f"expected >=12 fold call sites (P3.1 enemy derives; EnterRoom, "
+        f"SelectActiveObject and LoadLevel folds moved to bank2 direct reads), "
+        f"got {KERNEL.count('jsr FoldIndirect')}")
     # every fold batch stages FetchPtr immediately before its reads
     # C1 (2026-10-20): SelectActiveObject's staging pair (EnemyDataLo/Hi ->
     # FetchPtr) left with the body to bank2, which reads (EnemyDataLo),Y
-    # directly: 10 -> 8.
+    # directly: 10 -> 8. C2 (2026-10-20): LoadLevel's staging pair left too
+    # (it reads LevelDataTable in-bank): 8 -> 6.
     stages = len(re.findall(r"^\s+sta FetchPtr\+?1?\s*$", KERNEL, re.M))
-    assert stages >= 8, \
-        f"expected >=8 sta FetchPtr lines, got {stages}"
+    assert stages >= 6, \
+        f"expected >=6 sta FetchPtr lines, got {stages}"
 
     # --- P2.5: band-color cache contract ----------------------------------
     # FIX 2026-09-28: was $D1 = PF1Buf[2] — collides with kernel .Row

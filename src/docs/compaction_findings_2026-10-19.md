@@ -856,3 +856,76 @@ The audit listed "remove the IsRoomDark pad". It cannot be removed: the VBL's
 band-color path (`COLOR_CAVE_BG` on bomb states) still calls it every frame,
 and the pad is a byte-identity-pinned corridor slot. Only the per-object call
 left (the reason it was removable in the plan).
+
+## C2 — `LoadLevel` → bank2 (2026-10-20, audit round 3 #C2)
+
+Audit said "−26 B flow (32 body, +6 pad)". **The measured body was 124 B**
+(`$F535-$F5B0` in the pre-change `bank0.lst`, = the whole "level mgmt" cluster
+row of the audit's own composition table), so the move is 4.8x bigger than
+the ranking table claimed. Re-measured before touching anything.
+
+| used | before (f53b99f) | after | Δ |
+|---|---|---|---|
+| bank0 | 3266 | **3170** | **−96** |
+| bank1 | 2948 | 2948 | 0 |
+| bank2 | 1537 | **1650** | +113 |
+| bank3 | 1285 | 1285 | 0 |
+| total | 9036 | 9053 | +17 |
+
+- bank0 = **−124 B of flow** (`CheckMinerPickup` moved `$F5B1` → `$F535`) plus
+  +22 code (`sta $1FF8` pad 3 + `LF_B0Tail` stub 19) and +6 data (the two
+  `.byte 0,0,0` dead halves), all landing in the corridor fill → used −96.
+- bank2 = +113 used (code +110, data +3): the 102 B body at `$F640-$F6A5`
+  (`.ds $F700` pin intact, so `LevelDataTable` stays frozen at `$F700`), the
+  6 B pad halves at `$FC23`/`$FC26` and the 3 B dead half.
+
+### Shape: one dual pad, zero pushes
+
+`LoadLevel` used to tail into `DropArm` and had 5 call sites (boot `$F02E`,
+`ReloadLevel` tail, two title paths, tally done). Keeping that drop-in tail in
+bank0 is what makes the move stack-neutral:
+
+```
+A=$FC20  bank0: sta $1FF8        bank2: (dead)          <- entry, bank0 runs
+A+3=$FC23 bank0: .byte 0,0,0     bank2: jmp LoadLevelB2
+$FC26    bank0: .byte 0,0,0      bank2: sta $1FF6       <- return, bank2 runs
+$FC29    bank0: jmp LF_B0Tail    bank2: .byte 0,0,0
+$FC2C    bank0: LF_B0Tail: lda LevelStartRoom / jsr EnterRoom /
+         lda LevelStartX / sta RoomX / lda LevelStartY / sta RoomY / jmp DropArm
+```
+
+So both directions are "caller `sta $1FFx` + target-bank `jmp` at A+3" (F6
+discipline), and neither direction pushes: boot/RESET SP depth is unchanged
+(gated by `sim_bomb_fuse` + `test_tally`). The `EnterRoom` call, the level-start
+placement and `DropArm` stay in bank0 — that is the reason no local
+`rts`-tail `EnterRoom` variant was needed (the audit assumed one; a bank2
+`jsr EnterRoomB2` cannot work because its tail is `sta $1FF6 / rts`, i.e. it
+always pops a BANK0 frame).
+
+### Cycles: −140c cold path
+
+7 `jsr FoldIndirect` → 7 `lda (FetchPtr),Y` (25c → 5c each). Same bank for the
+reader and `LevelDataTable`, so no switch at all; the two pad entries add 7c
+each (entry + return). Net **−140c** on level load / death reload / tally
+advance. Cold path only, no frame-budget impact (`sim_frame_budget` unchanged).
+
+### Guards added / changed
+
+- `verify_build.CORRIDOR_PADS += ("CallPad_LoadLevel", $FC20, bank2,
+  "LoadLevelB2")` — entry half byte-checked, operand resolved from `bank2.lst`.
+- NEW `verify_build.check_loadlevel_tramp`: pins the inverted return half
+  (`bank2 $FC26 = sta $1FF6`, `bank0 $FC29 = jmp LF_B0Tail`), `bank0.lst
+  LoadLevel == $FC20`, bank2 has the body label, bank0 has none, and the
+  `LF_B0Tail` instruction shape (`lda LevelStartRoom / jsr EnterRoom /
+  lda LevelStartX / sta RoomX / lda LevelStartY / sta RoomY / jmp DropArm`) —
+  a silent relocation of the tail back into bank2 would grow the stack depth.
+- `test_respawn_hover`: reads `LoadLevelB2` in bank2 for the `sta Hover` clear
+  and asserts bank0's `LoadLevel` is still the `$1FF8` pad.
+- `test_room_dark`: the `LaserState` dark-bit clear assertion now reads
+  bank2.asm.
+- `test_level_bank`: fold sites 18 → 12, `sta FetchPtr` 8 → 6 (the 7 level
+  reads left the flow).
+- `sim_bomb_fuse` / `sim_frame_budget` hooks needed no edit: both resolve
+  `LoadLevel` from `bank0.lst` and match the `jsr` opcode+operand, which now
+  points at the `$FC20` pad — the poke still lands before the body reads
+  `Level` (the sim prints the pad PC).
