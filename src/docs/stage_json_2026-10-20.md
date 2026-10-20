@@ -125,3 +125,16 @@ byte-identical).
   **717 B slack**, bank3 shape data **991 B slack**; `tools/test_generator.py`
   covers determinism, adjacency/mirror rule, object caps, shape reuse and the
   converter's capacity check.
+
+## 9. Editor workflow (E3, 2026-10-20 user rule)
+
+The editor has exactly ONE project shape: a stage file with all 20 levels.
+* Start = `LoadDefaultStage()`: `<gameDataDir>/stage.json` if present; else the
+  legacy `level_*.json` files are imported into memory (files left untouched);
+  else the 20-level generator runs in memory.
+* `File > Save Stage` (Ctrl+S) writes `<gameDataDir>/stage.json` — no dialog.
+* `File > Generate 20 Levels` replaces the levels + models and **saves
+  immediately** to that same path — no save dialog, no path question.
+* Removed from the menu: New Level, Open Level, Save Level/As, Open Stage,
+  Convert Project. `--generate-stage <path>` remains only as the headless test
+  hook (used by `tools/test_generator.py`).

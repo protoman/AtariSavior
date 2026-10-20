@@ -62,15 +62,56 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // Load global models
     LoadModels();
 
-    // Populate stage combo from game data directory
-    PopulateStageCombo();
+    // 2026-10-20 (user): the editor always works on ONE stage file with all
+    // levels (rooms/stage.json). No per-level files, no New/Open Level.
+    LoadDefaultStage();
+}
 
-    // Create initial level or load first stage
-    if (m_stageCombo->count() > 0) {
-        OnStageSelected(0);
-    } else {
-        NewLevel();
+// LoadDefaultStage — the single-file entry point.
+//   1. <gameDataDir>/stage.json   → load it (the normal case)
+//   2. legacy level_*.json files   → import them into memory; Save writes the
+//      single stage file (the legacy files stay on disk, untouched)
+//   3. nothing                     → generate the 20-level stage in memory
+void MainWindow::LoadDefaultStage() {
+    const QString stagePath = QDir(m_gameDataDir).filePath("stage.json");
+    std::vector<hero::LevelData> levels;
+    std::vector<hero::ModelData> models;
+
+    if (QFile::exists(stagePath) &&
+        hero::DataSerializer::LoadStageFromFile(
+            levels, models, stagePath.toStdString()) && !levels.empty()) {
+        m_stageLevels = levels;
+        m_models = models;
+        EnterStageMode(stagePath.toStdString());
+        statusBar()->showMessage(
+            QString("Stage: %1 (%2 levels)").arg(stagePath).arg((int)levels.size()),
+            4000);
+        return;
     }
+
+    QDir dir(m_gameDataDir);
+    const QStringList legacy = dir.entryList(
+        QStringList() << "level_*.json", QDir::Files, QDir::Name);
+    for (const QString& name : legacy) {
+        hero::LevelData level;
+        if (hero::DataSerializer::LoadLevelFromFile(
+                level, dir.absoluteFilePath(name).toStdString())) {
+            levels.push_back(level);
+        }
+    }
+    if (!levels.empty()) {
+        m_stageLevels = levels;              // models = the loaded models.json
+        EnterStageMode(stagePath.toStdString());
+        statusBar()->showMessage(
+            QString("Imported %1 legacy level(s) — Save writes %2")
+                .arg((int)levels.size()).arg(stagePath), 6000);
+        return;
+    }
+
+    hero::DataSerializer::Build20LevelStage(m_stageLevels, m_models);
+    EnterStageMode(stagePath.toStdString());
+    statusBar()->showMessage(
+        QString("Generated 20 levels — Save writes %1").arg(stagePath), 6000);
 }
 
 MainWindow::~MainWindow() {}
@@ -130,10 +171,7 @@ void MainWindow::SelectGameDataDir() {
         m_stageLevels.clear();
         m_stageLevelIndex = -1;
         LoadModels();
-        PopulateStageCombo();
-        if (m_stageCombo->count() > 0) {
-            OnStageSelected(0);
-        }
+        LoadDefaultStage();
     }
 }
 
@@ -385,15 +423,11 @@ void MainWindow::SetupUI() {
 
     // Menus
     QMenu* fileMenu = menuBar()->addMenu("&File");
-    fileMenu->addAction("&New Level", QKeySequence::New, this, &MainWindow::NewLevel);
-    fileMenu->addAction("&Open Level...", QKeySequence::Open, this, &MainWindow::OpenLevel);
-    fileMenu->addAction("&Save Level", QKeySequence::Save, this, &MainWindow::SaveLevel);
-    fileMenu->addAction("Save Level &As...", QKeySequence::SaveAs, this, &MainWindow::SaveLevelAs);
-    fileMenu->addSeparator();
-    fileMenu->addAction("&Open Stage...", this, &MainWindow::OpenStage);
-    fileMenu->addAction("Save Stage", this, &MainWindow::SaveStage);
-    fileMenu->addAction("&Convert Project to Single Stage File...", this, &MainWindow::ConvertProjectToStage);
-    fileMenu->addAction("&Generate 20-Level Stage...", this, &MainWindow::GenerateLevelStage);
+    // 2026-10-20 (user): ONE stage file with the 20 levels — no per-level
+    // New/Open/Save-As and no Open Stage: the editor loads stage.json on
+    // start and Generate replaces + saves it in place.
+    fileMenu->addAction("&Save Stage", QKeySequence::Save, this, &MainWindow::SaveStage);
+    fileMenu->addAction("&Generate 20 Levels", this, &MainWindow::GenerateLevelStage);
     fileMenu->addSeparator();
     fileMenu->addAction("&Set Game Data Directory...", this, &MainWindow::SelectGameDataDir);
     fileMenu->addSeparator();
@@ -952,28 +986,6 @@ void MainWindow::EnterStageMode(const std::string& path) {
     }
 }
 
-void MainWindow::OpenStage() {
-    QString path = QFileDialog::getOpenFileName(
-        this, "Open S.A.V.I.O.R. Stage JSON", m_gameDataDir,
-        "JSON Stage Files (*.json)");
-    if (path.isEmpty()) return;
-
-    std::vector<hero::LevelData> levels;
-    std::vector<hero::ModelData> models;
-    if (!hero::DataSerializer::LoadStageFromFile(
-            levels, models, path.toStdString()) || levels.empty()) {
-        QMessageBox::critical(this, "Error",
-            "Failed to load stage file (needs `models` and `levels`).");
-        return;
-    }
-    m_stageLevels = levels;
-    m_models = models;
-    EnterStageMode(path.toStdString());
-    statusBar()->showMessage(
-        QString("Loaded stage %1 (%2 levels)").arg(path).arg((int)levels.size()),
-        4000);
-}
-
 void MainWindow::SaveStage() {
     if (m_stageLevels.empty()) {
         QMessageBox::warning(this, "No Stage Open",
@@ -981,12 +993,8 @@ void MainWindow::SaveStage() {
         return;
     }
     if (m_stageFilePath.isEmpty()) {
-        QString path = QFileDialog::getSaveFileName(
-            this, "Save S.A.V.I.O.R. Stage JSON",
-            QDir(m_gameDataDir).filePath("stage.json"),
-            "JSON Stage Files (*.json)");
-        if (path.isEmpty()) return;
-        m_stageFilePath = path;
+        // Single-file rule: no dialog, the stage lives at <gameDataDir>/stage.json.
+        m_stageFilePath = QDir(m_gameDataDir).filePath("stage.json");
     }
     if (!SyncCurrentLevelToStage() ||
         !hero::DataSerializer::SaveStageToFile(
@@ -1002,77 +1010,29 @@ void MainWindow::SaveStage() {
             .arg(m_stageFilePath).arg((int)m_stageLevels.size()), 4000);
 }
 
-void MainWindow::ConvertProjectToStage() {
-    QDir dir(m_gameDataDir);
-    QStringList files = dir.entryList(QStringList() << "level_*.json",
-                                      QDir::Files, QDir::Name);
-    if (files.isEmpty()) {
-        QMessageBox::warning(this, "No Levels",
-            "No legacy level_*.json files in the game data directory.");
-        return;
-    }
-    std::vector<hero::LevelData> levels;
-    for (const QString& name : files) {
-        hero::LevelData level;
-        if (!hero::DataSerializer::LoadLevelFromFile(
-                level, dir.absoluteFilePath(name).toStdString())) {
-            QMessageBox::critical(this, "Error",
-                QString("Failed to load %1 — conversion aborted.").arg(name));
-            return;
-        }
-        levels.push_back(level);
-    }
-    std::vector<hero::ModelData> models;
-    const QString modelsPath = dir.absoluteFilePath("models/models.json");
-    if (!hero::DataSerializer::LoadModelsFromFile(models, modelsPath.toStdString())) {
-        models = m_models;   // fall back to the in-memory models
-    }
-    QString path = QFileDialog::getSaveFileName(
-        this, "Save Single Stage File",
-        dir.absoluteFilePath("stage.json"), "JSON Stage Files (*.json)");
-    if (path.isEmpty()) return;
-    // NEW file only: the legacy level_*.json / models.json files stay exactly
-    // where they are (the user migrates when they choose to).
-    if (!hero::DataSerializer::SaveStageToFile(
-            levels, models, path.toStdString())) {
-        QMessageBox::critical(this, "Error", "Failed to write the stage file!");
-        return;
-    }
-    statusBar()->showMessage(
-        QString("Wrote %1 levels to %2 (legacy files untouched)")
-            .arg((int)levels.size()).arg(path), 6000);
-}
-
 void MainWindow::GenerateLevelStage() {
-    // E2 (2026-10-20): the 20-level stage (level n = n rooms, 210 rooms, shared
-    // shape library). The Save dialog is the ONLY way this writes anything: the
-    // generator never picks a path itself, so the live stage (rooms/stage.json,
-    // level_*.json, models.json) can only be overwritten if the user selects it
-    // on purpose — and the dialog asks before replacing an existing file.
-    const QString suggested = QDir(m_gameDataDir).filePath("stage20.json");
-    const QString path = QFileDialog::getSaveFileName(
-        this, "Generate 20-Level Stage (210 rooms)",
-        suggested, "JSON Stage Files (*.json)");
-    if (path.isEmpty()) return;
-
+    // E2 (2026-10-20) + user rule 2026-10-20: generate 20 levels (level n =
+    // n rooms, 210 rooms, shared shape library) and SAVE them immediately to
+    // the one stage file — no save dialog, no path question. The generator is
+    // deterministic, so a re-run reproduces the same stage.
     std::vector<hero::LevelData> levels;
     std::vector<hero::ModelData> models;
     hero::DataSerializer::Build20LevelStage(levels, models);
+
+    m_stageLevels = levels;
+    m_models = models;
+    m_stageFilePath = QDir(m_gameDataDir).filePath("stage.json");
+    EnterStageMode(m_stageFilePath.toStdString());
+    SaveStage();                             // SyncCurrentLevelToStage + write
+
     size_t rooms = 0;
     for (const auto& level : levels) {
         rooms += level.rooms.size();
     }
-    if (!hero::DataSerializer::SaveStageToFile(
-            levels, models, path.toStdString())) {
-        QMessageBox::critical(this, "Error",
-            "Failed to write the generated stage file!");
-        return;
-    }
     statusBar()->showMessage(
-        QString("Generated %1 levels / %2 rooms / %3 shapes -> %4 "
-                "(current project untouched, file not opened)")
+        QString("Generated %1 levels / %2 rooms / %3 shapes -> %4")
             .arg((int)levels.size()).arg((int)rooms)
-            .arg((int)models.size()).arg(path), 8000);
+            .arg((int)models.size()).arg(m_stageFilePath), 8000);
 }
 
 void MainWindow::RemoveRoom() {
