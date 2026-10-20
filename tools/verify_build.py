@@ -455,10 +455,43 @@ def check_moth_tramp(src: Path) -> None:
                 "$FFF6-$FFF9 are F6 hotspot mirrors on peek)")
 
 
-# Cross-bank call pads (leaf_move_plan): ReturnPad + CallPads must be
-# byte-identical in bank0/bank1 (first 5 bytes fetched pre-switch, jmp/pla/
-# rts post-switch), and every CallPad jmp literal must equal the bank1 label.
+# Cross-bank call pads (leaf_move_plan, SPLIT 2026-10-20 chunk 4): each pad is
+# ONE live half per bank. A bank0 caller executes `sta $1FFx` at A; the opcode
+# fetch at A+3 already comes from the TARGET bank, so the target keeps only the
+# `jmp`. Table = (kernel label, A in bank0, target bank, sta operand byte,
+# target label in that bank).
 PAD_LO, PAD_HI = 0xFBF8, 0xFC49   # inclusive start, exclusive end (FC48 last)
+PAD_BANK_BYTE = {0: 0xF6, 1: 0xF7, 2: 0xF8, 3: 0xF9}
+
+CORRIDOR_PADS = (
+    ("CallPad_UpdateBombSound", 0xFBFC, 1, "UpdateBombSound"),
+    ("CallPad_UpdateJetSound", 0xFBFF, 1, "UpdateJetSound"),
+    ("CallPad_BombSndDrop", 0xFC02, 1, "BombSndDrop"),
+    ("CallPad_BombSndExplode", 0xFC05, 1, "BombSndExplode"),
+    ("CallPad_GetConnIdx", 0xFC08, 1, "GetConnIdx"),
+    ("CallPad_AddScore", 0xFC0B, 1, "AddScore"),
+    ("CallPad_IsRoomDark", 0xFC0E, 1, "IsRoomDark"),
+    ("CallPad_SetRoomDark", 0xFC11, 1, "SetRoomDark"),
+    ("CallPad_UpdateLaserSound", 0xFC14, 1, "UpdateLaserSound"),
+    ("CallPad_BuildColupF", 0xFC17, 3, "BuildColupF"),
+    ("CallPad_BombMarkWalls", 0xFC1A, 1, "BombMarkWalls"),
+)
+
+# Tail pads (title/music): same split contract, packed after the $FC49 pin.
+TAIL_PADS = (
+    ("CallPad_TitleSelect", 0xFC4F, 1, "TitleSelect"),
+    ("CallPad_TitleBand", 0xFC52, 1, "TitleBand"),
+    ("CallPad_MusicTick", 0xFC55, 1, "MusicTick"),
+)
+SPLIT_PADS = CORRIDOR_PADS + TAIL_PADS
+
+# Pinned twin tramps: these two keep BOTH halves in bank0 and bank1 (their
+# byte-identity is guarded by check_raft_tramp / check_moth_tramp); listed
+# here so the "every CallPad_* is declared" test covers them too.
+TWIN_PADS = (
+    ("CallPad_RaftBody", 0xF8C0, "RaftBody"),
+    ("CallPad_MothYDerive", 0xFEE7, "MothYDerive"),
+)
 
 
 
@@ -735,8 +768,18 @@ def check_tramp_targets(src: Path) -> None:
 
 
 def check_callpads(src: Path) -> None:
+    """Cross-bank call pads: ONE live half per bank (split, 2026-10-20 chunk 4).
+
+    F6 contract: a bank0 caller executes `sta $1FFx` at A; the bank switch
+    happens on that write, so the NEXT opcode fetch (A+3) already comes from
+    the TARGET bank. Only bank0 calls pads (checked below), therefore bank0
+    needs the `sta` half alone and the target bank needs the `jmp` half alone;
+    the mirror halves were dead bytes. Both halves are pinned here in ROM
+    bytes and the jump operand is resolved against the target bank's .lst — a
+    wrong pad address or a stale operand is a silent wrong-bank jump.
+    """
     banks: dict[int, bytes] = {}
-    for idx in (0, 1):
+    for idx in (0, 1, 2, 3):
         p = src / f"bank{idx}.bin"
         if not p.exists():
             err(f"bank{idx}.bin missing (callpad check)")
@@ -744,120 +787,110 @@ def check_callpads(src: Path) -> None:
         data = p.read_bytes()
         if len(data) == 4096:
             banks[idx] = data
-    if len(banks) < 2:
+    if len(banks) != 4:
         return
-    b0 = banks[0][PAD_LO - 0xF000:PAD_HI - 0xF000]
-    b1 = banks[1][PAD_LO - 0xF000:PAD_HI - 0xF000]
-    if b0 != b1:
-        first = next((i for i, (x, y) in enumerate(zip(b0, b1)) if x != y), 0)
-        err(f"callpad block bank0[${PAD_LO + first:04X}] != bank1 "
-            "(byte-identity broken — ReturnPad/CallPads must match)")
-
-    labels0: dict[str, int] = {}
-    labels1: dict[str, int] = {}
-    labels2: dict[str, int] = {}
-    labels3: dict[str, int] = {}
-    for idx, out in ((0, "labels0"), (1, "labels1"), (2, "labels2"),
-                     (3, "labels3")):
+    labels: dict[int, dict[str, int]] = {}
+    for idx in (0, 1, 2, 3):
         lp = src / f"bank{idx}.lst"
         if not lp.exists():
             err(f"bank{idx}.lst missing (callpad label check)")
             return
-        labs, _ = parse_lst(lp.read_text(errors="replace").splitlines())
-        if idx == 0:
-            labels0 = labs
-        elif idx == 1:
-            labels1 = labs
-        elif idx == 2:
-            labels2 = labs
-        else:
-            labels3 = labs
-    for side, labs in (("bank0", labels0), ("bank1", labels1)):
-        rp = labs.get("ReturnPad")
-        if rp != PAD_LO:
-            err(f"{side} ReturnPad ${rp if rp is not None else -1:04X} "
-                f"!= ${PAD_LO:04X} (bank1 body tails jmp literal $FBF8)")
+        labels[idx], _ = parse_lst(lp.read_text(errors="replace").splitlines())
 
-    ksrc = (src / "kernel.asm").read_text(errors="replace")
-    # ReturnPad must switch back WITHOUT touching A/flags/stack:
-    # `sta $1FF6 / rts` (F6 hotspot ignores the written value).
-    rp = banks[0][PAD_LO - 0xF000:PAD_LO - 0xF000 + 4]
-    if rp != bytes([0x8D, 0xF6, 0x1F, 0x60]):
-        err(f"ReturnPad bytes {rp.hex()} != sta $1FF6/rts "
-            "(any A-clobbering sequence breaks pad arg/flag pass-through)")
-    pads = re.findall(
-        r"^CallPad_(\w+):\s*\n((?:[^\n]*\n){1,3}?)\s*jmp \$([0-9A-Fa-f]{4})",
-        ksrc, re.M)
-    if not pads:
-        err("no CallPad_* definitions found in kernel.asm")
-        return
-    for name, body, hexv in pads:
-        if re.search(r"\b(lda|tax|tay|txa|tya|pha|pla)\b", body):
-            err(f"CallPad_{name}: pad body clobbers A/X/Y/stack — pads must "
-                "be `sta $1FFx / jmp` only (value ignored by F6 hotspot)")
-        want = int(hexv, 16)
-        # `sta $1FF8` pads jump to a bank2 body (e.g. BuildColupF: the hot-rect
-        # stream lives in bank2); `sta $1FF7` pads jump to bank1; `sta $1FF6`
-        # pads are bank1->bank0 tail exits.
-        if "sta $1FF8" in body:
-            tgt_labs, tgt_side = labels2, "bank2"
-        elif "sta $1FF9" in body:
-            tgt_labs, tgt_side = labels3, "bank3"   # A3: level-data walkers
-        elif "sta $1FF6" in body:
-            tgt_labs, tgt_side = labels0, "bank0"
-        else:
-            tgt_labs, tgt_side = labels1, "bank1"
-        got = tgt_labs.get(name)
-        if got is None:
-            err(f"CallPad_{name}: jmp ${want:04X} but {name} not in "
-                f"{tgt_side}.lst")
-        elif got != want:
-            err(f"CallPad_{name}: jmp ${want:04X} != {tgt_side} {name} "
-                f"${got:04X} (stale literal — pads must be byte-identical)")
+    def at(bank: int, addr: int, n: int) -> bytes:
+        return banks[bank][addr - 0xF000:addr - 0xF000 + n]
 
-    # --- tail pads: SPLIT across the banks (2026-10-20) ---------------------
-    # A bank0 caller executes the `sta $1FF7` AT A; the next opcode fetch is at
-    # A+3 and comes from BANK1, so bank1 must hold `jmp <label>` there. The
-    # old form twinned the whole 6-byte pad in both banks and its target check
-    # came from parsing kernel's `jmp`; with the jmp moved to bank1 that parse
-    # would silently stop covering these pads, so they get an explicit ROM-byte
-    # contract instead: bank0[A] == 8D F7 1F, bank1[A+3] == 4C <label>.
-    tail_pads = (("CallPad_TitleSelect", "TitleSelect", 0xFC4F),
-                 ("CallPad_TitleBand", "TitleBand", 0xFC52),
-                 ("CallPad_MusicTick", "MusicTick", 0xFC55))
-    jmp_names = {name for name, _b, _h in pads}
-    for pad, target, want_addr in tail_pads:
-        a0 = labels0.get(pad)
-        if a0 != want_addr:
-            err(f"{pad} at ${a0 if a0 is not None else -1:04X}, expected "
-                f"${want_addr:04X} (tail pads are packed: the next pad's A+3 "
-                f"is this pad's sta + 3)")
+    # --- ReturnPad: every bank switches to bank0; bank0 serves the `rts` ----
+    for idx in (0, 1, 2, 3):
+        rp = labels[idx].get("ReturnPad")
+        if rp is not None and rp != PAD_LO:
+            err(f"bank{idx} ReturnPad ${rp:04X} != ${PAD_LO:04X} (every "
+                "bank's body tails jmp $FBF8)")
             continue
-        got = banks[0][a0 - 0xF000:a0 - 0xF000 + 3]
-        if got != bytes([0x8D, 0xF7, 0x1F]):
-            err(f"{pad} bank0 ${a0:04X} = {got.hex()} != sta $1FF7 "
-                "(8d f7 1f) — the bank0 half must select bank1")
-        tgt = labels1.get(target)
+        if at(idx, PAD_LO, 3) != bytes([0x8D, 0xF6, 0x1F]):
+            err(f"bank{idx} ${PAD_LO:04X} = {at(idx, PAD_LO, 3).hex()} != "
+                "sta $1FF6 (8d f6 1f) — `sta` is the whole live half there, "
+                "and the bodies reach it by the $FBF8 literal")
+    # The `rts` is fetched from bank0 after the `sta`: `sta` preserves
+    # A/X/Y/flags/stack, which is what the pad argument pass-through needs.
+    if at(0, PAD_LO, 4) != bytes([0x8D, 0xF6, 0x1F, 0x60]):
+        err(f"bank0 ReturnPad {at(0, PAD_LO, 4).hex()} != sta $1FF6/rts "
+            "(the target banks' bodies rely on bank0's rts at $FBFB)")
+
+    # --- split pads: bank0 `sta` at A, target-bank `jmp` at A+3 --------------
+    last_corridor = max((a for _n, a, _t, _l in CORRIDOR_PADS), default=0)
+    if last_corridor + 6 > PAD_HI:
+        err(f"corridor pads run past ${PAD_HI:04X} (last pad ${last_corridor:04X}"
+            ") — they must stay below the $FC49 MothExitPad pin")
+    for pad, addr, tbank, target in SPLIT_PADS:
+        a0 = labels[0].get(pad)
+        if a0 != addr:
+            err(f"{pad} at ${a0 if a0 is not None else -1:04X}, expected "
+                f"${addr:04X} (pads are packed 3 B apart: A+3 is the "
+                "target-bank jmp slot)")
+            continue
+        want = bytes([0x8D, PAD_BANK_BYTE[tbank], 0x1F])
+        got = at(0, a0, 3)
+        if got != want:
+            err(f"{pad} bank0 ${a0:04X} = {got.hex()} != {want.hex()} "
+                "(sta $1FFx) — the bank0 half selects the target bank and must "
+                "clobber nothing")
+        if at(0, a0 + 3, 1) == b"\x4c":
+            err(f"{pad}: bank0 ${a0 + 3:04X} holds a `jmp` — the pad's jmp half "
+                "must live in the TARGET bank, where the post-switch fetch "
+                "lands (a bank0 copy is a dead byte)")
+        tgt = labels[tbank].get(target)
+        if tgt is None:
+            err(f"{pad}: target {target} not in bank{tbank}.lst")
+            continue
+        got = at(tbank, a0 + 3, 3)
+        want_b = bytes([0x4C, tgt & 0xFF, tgt >> 8])
+        if got != want_b:
+            err(f"{pad} bank{tbank} ${a0 + 3:04X} = {got.hex()} != "
+                f"{want_b.hex()} (jmp {target} ${tgt:04X}, fetched from "
+                f"bank{tbank} after the $1FF{'6789'[tbank]} write — stale "
+                "operand or an overwritten slot)")
+
+    # --- pinned twin tramps keep both halves (identity guarded elsewhere) ---
+    for pad, addr, target in TWIN_PADS:
+        a0 = labels[0].get(pad)
+        if a0 != addr:
+            err(f"{pad} at ${a0 if a0 is not None else -1:04X}, expected "
+                f"${addr:04X}")
+            continue
+        if at(0, a0, 3) != bytes([0x8D, 0xF7, 0x1F]):
+            err(f"{pad} bank0 ${a0:04X} = {at(0, a0, 3).hex()} != sta $1FF7")
+        tgt = labels[1].get(target)
         if tgt is None:
             err(f"{pad}: target {target} not in bank1.lst")
             continue
-        got = banks[1][a0 + 3 - 0xF000:a0 + 3 - 0xF000 + 3]
+        got = at(1, a0 + 3, 3)
         want_b = bytes([0x4C, tgt & 0xFF, tgt >> 8])
         if got != want_b:
             err(f"{pad} bank1 ${a0 + 3:04X} = {got.hex()} != {want_b.hex()} "
-                f"(jmp {target} ${tgt:04X}, fetched from bank1 after the "
-                f"$1FF7 write — stale operand or an overwritten slot)")
-        if pad[len("CallPad_"):] in jmp_names:
-            err(f"{pad} still carries a kernel-side `jmp` — the tail pads must "
-                "keep only the sta half in bank0 (bank1 owns the jmp)")
+                f"(jmp {target} ${tgt:04X})")
+
+    # --- nobody but bank0 may call a pad ------------------------------------
+    for idx in (1, 2, 3):
+        text = (src / f"bank{idx}.asm").read_text(errors="replace")
+        for ln, line in enumerate(text.splitlines(), 1):
+            code = line.split(";")[0]
+            if re.search(r"\b(jsr|jmp)\s+CallPad_\w+", code):
+                err(f"bank{idx}.asm:{ln} calls a pad ({code.strip()}) — pads "
+                    "are bank0-entry only: the target bank holds just the jmp "
+                    "half, so it has no `sta` half to switch back with")
+
+    ksrc = (src / "kernel.asm").read_text(errors="replace")
     if re.search(r"^CallPad_Overscan:", ksrc, re.M):
         err("CallPad_Overscan is back: it has no caller in any bank (deleted "
             "2026-10-20 with the tail-pad packing)")
-    tail_names = {n[len("CallPad_"):] for n, _t, _a in tail_pads}
-    for name in sorted(set(re.findall(r"^CallPad_(\w+):", ksrc, re.M))
-                       - jmp_names - tail_names):
-        err(f"CallPad_{name} is neither a corridor pad (sta + jmp) nor a "
-            "declared tail pad — add it to tail_pads with its address")
+    known = {n for n, _a, _t, _l in SPLIT_PADS}
+    known |= {n for n, _a, _t in TWIN_PADS}
+    for name in sorted(set(re.findall(r"^CallPad_(\w+):", ksrc, re.M))):
+        if f"CallPad_{name}" not in known:
+            err(f"CallPad_{name} is not declared in verify_build's pad table "
+                "(SPLIT_PADS for split halves / TWIN_PADS for pinned tramps) "
+                "— add it with its bank0 address and target bank")
 
 
 # S3.0: cross-bank EQU sync --------------------------------------------------
@@ -1706,12 +1739,13 @@ def sync_bank3_labels(src: Path) -> int:
     (src / "generated" / "bank3_labels.asm").write_text("\n".join(lines) + "\n")
     print(f"sync-bank3: exported {n} block labels -> generated/bank3_labels.asm")
 
-    targets = {"CallPad_BuildColupF": ("BuildColupF",
-                                        ("kernel.asm", "bank1.asm", "bank2.asm")),
-               "HotOverlapFlag": ("HotOverlapBody",
-                                  ("kernel.asm",))}
     # (bank2's HotOverlapFlag pad retired 2026-10-20: OvM1Block/OvShutBand
     #  moved to bank0, so only kernel.asm carries the live pad.)
+    # CallPad_BuildColupF is GONE from this patch list (chunk 4, 2026-10-20):
+    # the pads are split, so bank0 holds only `sta $1FF9` and BANK3's image is
+    # `jmp BuildColupF` — a label, self-healing, no literal to sync.
+    targets = {"HotOverlapFlag": ("HotOverlapBody", ("kernel.asm",))}
+
     for fname in ("kernel.asm", "bank1.asm", "bank2.asm"):
         p = src / fname
         if not p.exists():

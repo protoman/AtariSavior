@@ -3019,39 +3019,50 @@ EnterRoom:
 ReturnPad:
     sta $1FF6
     rts
+
+; 2026-10-20 (chunk 4): the corridor pads are SPLIT across the banks, exactly
+; like the tail pads below. A bank0 caller runs `sta $1FFx` AT A; the next
+; opcode fetch (A+3) already comes from the TARGET bank, which keeps only the
+; `jmp` half. Nothing in bank1/bank2/bank3 calls a CallPad (only `jmp
+; ReturnPad`), so bank0's `jmp` halves and the target banks' `sta` halves were
+; dead bytes — packing the live halves reclaimed 70 B of code (bank0 −33,
+; bank1 −37). The whole block is still 0 push / 0 cycles: `sta` changes no
+; register, no flag, no stack byte.
+;   A=$FBFC sta $1FF7   A+3=$FBFF -> bank1 jmp UpdateBombSound
+;   A=$FBFF sta $1FF7   A+3=$FC02 -> bank1 jmp UpdateJetSound
+;   A=$FC02 sta $1FF7   A+3=$FC05 -> bank1 jmp BombSndDrop
+;   A=$FC05 sta $1FF7   A+3=$FC08 -> bank1 jmp BombSndExplode
+;   A=$FC08 sta $1FF7   A+3=$FC0B -> bank1 jmp GetConnIdx
+;   A=$FC0B sta $1FF7   A+3=$FC0E -> bank1 jmp AddScore
+;   A=$FC0E sta $1FF7   A+3=$FC11 -> bank1 jmp IsRoomDark
+;   A=$FC11 sta $1FF7   A+3=$FC14 -> bank1 jmp SetRoomDark
+;   A=$FC14 sta $1FF7   A+3=$FC17 -> bank1 jmp UpdateLaserSound
+;   A=$FC17 sta $1FF9   A+3=$FC1A -> bank3 jmp BuildColupF (record stream)
+;   A=$FC1A sta $1FF7   A+3=$FC1D -> bank1 jmp BombMarkWalls ($FB10)
+; Guard: verify_build.check_callpads pins each A and asserts the ROM bytes of
+; BOTH halves (bank0 sta / target-bank jmp operand == its .lst label).
 CallPad_UpdateBombSound:
     sta $1FF7
-    jmp $F9C0
 CallPad_UpdateJetSound:
     sta $1FF7
-    jmp $F9CF
 CallPad_BombSndDrop:
     sta $1FF7
-    jmp $FA00
 CallPad_BombSndExplode:
     sta $1FF7
-    jmp $FA13
 CallPad_GetConnIdx:
     sta $1FF7
-    jmp $FA26
 CallPad_AddScore:
     sta $1FF7
-    jmp $FA83
 CallPad_IsRoomDark:
     sta $1FF7
-    jmp $FC78
 CallPad_SetRoomDark:
     sta $1FF7
-    jmp $FC9E
 CallPad_UpdateLaserSound:
     sta $1FF7
-    jmp $FAAB
 CallPad_BuildColupF:
     sta $1FF9                   ; A3: body lives in bank3 (record stream)
-    jmp $F507                   ; BuildColupF (bank3; synced by verify_build)
 CallPad_BombMarkWalls:
     sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
-    jmp $FB10
 
     .ds $FC49 - *, 0             ; pin (main growth past $FC49 = build error)
 MothExitPad:

@@ -849,10 +849,9 @@ FooterPtr6 = $EA
     org $F9D9
     include "generated/spill_window.asm"       ; #27b: level tables, placed by convert_level
 
-; ReturnPad ($FBF8) — byte-identical to kernel.asm's copy (sta $1FF6 / rts).
-; S5.1 pad bodies (BuildColupF) tail-jmp here: sta switches this bank to
-; bank0, the rts is then fetched from bank0's identical copy, and the stack
-; still holds the bank0 jsr CallPad_* return address.
+; ReturnPad ($FBF8) — bank2's live half is the `sta $1FF6` only: every body
+; here tail-jmps `$FBF8`, the sta switches to bank0, and the `rts` at $FBFB is
+; fetched from bank0 (so bank0's copy must keep `sta $1FF6 / rts`).
 ; ------------------------------------------------------------------------------
     .ds $FBD0 - *, 0            ; #22 EnterRoom tramp twin — byte-identical
                                  ;   with kernel.asm at $FBD0 (pin moved from
@@ -864,19 +863,18 @@ FooterPtr6 = $EA
     .ds $FBD6 - *, 0            ; TitleSequenceFold twin (kernel.asm same
                                  ;   address — jmp operand fetched here after
                                  ;   bank0's sta $1FF8, so bytes must match)
+; ------------------------------------------------------------------------------
+; CallPad_BuildColupF's bank2 image RETIRED 2026-10-20 (chunk 4): the corridor
+; pads are split now, so bank0's `sta $1FF9` at $FC17 pairs with BANK3's `jmp`
+; at $FC1A. Nothing in bank2 ever called this pad (verify_build.check_callpads
+; rejects `jsr/jmp CallPad_*` outside kernel.asm), and after the split the
+; twin here would be a broken image (its +3 lands on fill), so it is gone
+; rather than left as a trap.
+; ------------------------------------------------------------------------------
     .ds $FBF8 - *, 0
 ReturnPad:
-    sta $1FF6
-    rts
-
-; ------------------------------------------------------------------------------
-; CallPad_BuildColupF twin — bank3 body now (A3). bank0/bank1 execute
-; `sta $1FF9`; the `jmp` at +3 is fetched from BANK3 (its $FC3B image).
-; ------------------------------------------------------------------------------
-    .ds $FC32 - *, 0
-CallPad_BuildColupF:
-    sta $1FF9                   ; bank3 (level-data walker)
-    jmp $F507                   ; BuildColupF (bank3; synced by verify_build)
+    sta $1FF6                   ; the `rts` at $FBFB is served by bank0
+    rts                         ; (dead byte here: kept, zero cost to change)
 
 ; ------------------------------------------------------------------------------
 ; E4 moth exit tramp ($FC49-$FC4B) — byte-identical slice with kernel.asm's
