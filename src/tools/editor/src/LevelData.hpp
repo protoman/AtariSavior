@@ -40,7 +40,6 @@ enum class TileType : int {
     LOCKED_DOOR = 9,     // async side-0 PATCH tile only (never grid — convert
                          // rejects it in tiles[]; MetaB b7 in ROM)
     PHASE = 10,          // grid: blinking wall (PF bit swap + rect w toggle)
-    VCRUNCH = 11,        // grid: vertical crunch cell
     HCRUNCH = 12         // grid: horizontal crunch band (prefix cols 0..n)
 };
 
@@ -161,8 +160,8 @@ struct RoomData {
     //   asym_patches : [row, col, tile] (right/ball) or [row, col, tile, side]
     //                  (side 0 = right/ball, 1 = left/M1); col is the half's
     //                  own cell index; TWO entries max (one x per side).
-    //   feature_cells: [row, col, tile] with tile 10/11/12 (PHASE/VCRUNCH/
-    //                  HCRUNCH), row 1 only, one kind per room.
+    //   feature_cells: [row, col, tile] with tile 10/12 (PHASE/HCRUNCH),
+    //                  row 1 only, one kind per room.
     // Optional in the file: absent/empty = no async, so a room without async
     // stays key-less (byte-identical to the pre-2026-10-17 emission).
     std::vector<std::vector<int>> asym_patches;

@@ -206,7 +206,7 @@ void MainWindow::SetupUI() {
     m_modelToolList->setSpacing(3);
     m_modelToolList->setUniformItemSizes(true);
     struct ToolInfo { BrushTool tool; QString text; };
-    // Async walls (strip / door / phase / vcrunch / hcrunch) are ROOM
+    // Async walls (strip / door / phase / hcrunch) are ROOM
     // properties since the 2026-10-17 format change, so their brushes live in
     // the LEVEL tab's tool list below — one model shape can be reused with
     // different async per room.
@@ -310,12 +310,11 @@ void MainWindow::SetupUI() {
     m_levelToolList->setUniformItemSizes(true);
     ToolInfo levelTools[] = {
         // Room async layer (was the model tab): door strip / phase wall /
-        // crunch shutters. One special kind per room (door XOR phase XOR
-        // vcrunch XOR hcrunch) — the brush refuses a mix on mouse release.
+        // crunch band. One special kind per room (door XOR phase XOR
+        // hcrunch) — the brush refuses a mix on mouse release.
         { BrushTool::DOOR_TILE, "D. Async Door" },
         { BrushTool::ASYM_PATCH, "A. Async Strip" },
         { BrushTool::PHASE_TILE, "P. Phase Wall" },
-        { BrushTool::VCRUNCH_TILE, "V. Vertical Crunch" },
         { BrushTool::HCRUNCH_TILE, "C. Horizontal Crunch" },
         { BrushTool::SET_MINER_GOAL, "M. Miner Goal" },
         { BrushTool::ADD_SPIDER, "S. Spider" },
@@ -978,11 +977,6 @@ QIcon MainWindow::MakeToolIcon(BrushTool tool) const {
             p.fillRect(r, QColor(0, 180, 90));
             p.setPen(Qt::white);
             p.drawText(r, Qt::AlignCenter, "P");
-            break;
-        case BrushTool::VCRUNCH_TILE:
-            p.fillRect(r, QColor(150, 70, 210));
-            p.setPen(Qt::white);
-            p.drawText(r, Qt::AlignCenter, "V");
             break;
         case BrushTool::HCRUNCH_TILE:
             p.fillRect(r, QColor(0, 170, 200));

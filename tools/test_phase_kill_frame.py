@@ -1,37 +1,20 @@
 #!/usr/bin/env python3
-"""Vcrunch full-frame kill chain — kill once + b7 latch + respawn (py65).
+"""Tile 11 removal at full-frame scale — a $81 record cannot kill (py65).
 
-Retargeted 2026-10-14 to the SHIPPED vcrunch (model2: V at row1 col4 —
-specials rule 2026-10-14; $81 bbox record + MetaB $80) — the original
-model1 phase-cell staging never had hot records (M1 hot count = 0;
-model1's row1 wall was also removed from the live models.json), so the
-old chain could never arm.
+Tile 11 (VCRUNCH) was removed 2026-10-19. This test still stages the
+frozen model2 fixture (test-owned, carries a retired $81 bbox record +
+MetaB $80) because it must prove the RETIRED path is inert in a real
+game frame:
 
-Stages model2 from the FROZEN copy in test_fixtures.py (freeze_m2 injects
-it into this test's private bank2.bin copy — live model edits cannot move
-the stage; user rule 2026-10-14). Boots the ROM first, then stages
-explicitly after landing (load_room_m2 — PF buffers, rect cache, AND both
-room pointers: RoomRects* for the stream walk, RoomPF0* for StageBandTab's
-MetaA/MetaB gate),
-pins the player INSIDE the shutter block, crunched below the aperture
-(x127 y48 — the containment window + Rule 1's closing phase; clock 64 =
-$1B CLOSING, sc=16<32 — $1F closed is a wall now, no kill), holds
-RIGHT so PHM proposes every frame (walk -> punched-cell MISS ->
-OverlayTramp -> OvShutScan/OvShutBand), and
-asserts the full chain (kill rides the OVERLAY miss path — the $81
-record walk is deliberately skipped in .HOVfeature, stack-stomp
-2026-10-13):
+  * boot, land, stage model2 (PF + meta + rect/hot stream),
+  * pin the player at the OLD kill spot (x127/y48, clock 64 = the old
+    "closing" phase) and hold RIGHT so PlayerHitsMap/hot-overlap runs
+    every frame,
+  * the HOV feature dispatcher must reach the record (feat > 0) and
+    pass it (unknown class), so NO life is lost and EnemyDeadMask b7
+    (the retired crunch latch) is never set;
+  * bank2's $FE57 entry image is no longer `jmp $FD80` (VCS3 gone).
 
-  1. kill: overlay band scan -> Temp b7 -> bank0 hot-bump -> LoseLife,
-     PlayerLives drops exactly once (3 -> 2 baseline-independent)
-  2. latch: EnemyDeadMask b7 (crunch-kill) set at the kill; suppressed
-     so DropArm respawn-at-death-spot cannot re-kill
-  3. respawn: DropArm drops the player back at the death spot; no second
-     kill (b7 crunch-kill latch suppresses re-kill), b7 survives
-     (no EnterRoom on .LLStay)
-
-Pins/coords ported from test_vcr_shutter case5 (the green unit proof);
-this test adds the exactly-once + respawn contracts it does not cover.
 Run: /home/iuri/python3/bin/python3 tools/test_phase_kill_frame.py
 """
 import re
@@ -223,7 +206,7 @@ def step():
     if mem.bank == 0 and mpu.pc == PC_LOSECALL:
         counts["losecall"] += 1
         loses.append(frame)
-    if mem.bank == 2:
+    if mem.bank == 3:
         if mpu.pc == PC_HOV_BEQCNT:
             counts["beqdone"] += 1
         elif mpu.pc == PC_HOV_BMI:
@@ -287,74 +270,40 @@ def main():
 
     load_room_m2()
     loses_boot = len(loses)
-
-    # arm: VcrShutter stages from the pinned clock each VBL ($1F closed);
-    # dead mask clear so the b7 latch is writable
     mem.ram[I_DEAD] = 0x00
     mem.ram[I_RP] = CLOCK
     lives0 = mem.ram[I_LIVES]
-    print(f"start: lives={lives0} dead=${mem.ram[I_DEAD]:02X} "
-          f"rp=${mem.ram[I_RP]:02X}")
+    print(f"start: lives={lives0} dead=${mem.ram[I_DEAD]:02X}")
 
     arm_f0 = frame
-    pf_dumped = False
     while frame < arm_f0 + ARM_FRAME:
         pin()
-        mem.ram[I_ROOMX] = CELL_X
-        mem.ram[I_ROOMY] = CELL_Y
-        step()
-        if not pf_dumped and frame >= arm_f0 + 10:
-            pf_dumped = True
-            print("PF rows f+10: " + " ".join(
-                f"${a:02X}=${mem.ram[a]:02X}" for a in range(0x43, 0x4C)))
-        if mem.ram[I_LIVES] < lives0:
-            break
-
-    lives1 = mem.ram[I_LIVES]
-    dead_kill = mem.ram[I_DEAD]
-    loses_kill = len(loses) - loses_boot
-    print(f"after {frame - arm_f0} frames: lives={lives1} "
-          f"dead=${dead_kill:02X} loses={loses_kill}")
-    print(f"counts: {counts}")
-    print(f"PHM HIT -> HotOverlapFlag: {len(hits)}")
-    print(f"LoseLife frames: {loses}")
-    print(f"temp b7 first seen: {tempb7_first}")
-
-    # ---- contract 1: kill fired exactly once ----
-    if lives1 >= lives0:
-        sys.exit("FAIL: no life lost in-cell — chain broken (see trace)")
-    if loses_kill != 1:
-        sys.exit(f"FAIL: expected exactly 1 LoseLife, got {loses_kill}")
-    # ---- contract 2: b7 crunch-kill latch set at the kill ----
-    # (1-row vcrunch has no retractable extent; the always-solid shutter
-    #  latches b7 so DropArm's respawn-at-death-spot cannot re-kill.)
-    if not (dead_kill & 0x80):
-        sys.exit(f"FAIL: b7 (crunch-kill latch) not set — dead=${dead_kill:02X}")
-
-    # ---- contract 3: respawn (DropArm) — no re-kill ----
-    # (1-row vcrunch is always-solid: no retractable extent to "open".)
-    mem.swcha = 0xFF                    # release stick: let physics run free
-    resp_f0 = frame
-    while frame < resp_f0 + RESPAWN_FRAME:
-        mem.ram[I_ENCOUNT] = 0          # no enemy interference (pin's job)
         step()
 
-    lives2 = mem.ram[I_LIVES]
-    dead2 = mem.ram[I_DEAD]
-    cell2 = mem.ram[I_PF1BAND1]
-    loses2 = len(loses) - loses_boot
-    print(f"respawn f+{frame - resp_f0}: lives={lives2} dead=${dead2:02X} "
-          f"cell2=${cell2:02X} loses={loses2} "
-          f"RoomX={mem.ram[I_ROOMX]} RoomY={mem.ram[I_ROOMY]}")
-    if lives2 != lives0 - 1:
-        sys.exit(f"FAIL: re-kill during respawn — lives {lives0} -> {lives2}")
-    if loses2 != 1:
-        sys.exit(f"FAIL: LoseLife fired {loses2} times (expected 1)")
-    if not (dead2 & 0x80):
-        sys.exit(f"FAIL: b7 lost during respawn (EnterRoom?) dead=${dead2:02X}")
+    dead_now = mem.ram[I_DEAD]
+    loses_now = len(loses) - loses_boot
+    print(f"after {frame - arm_f0} frames: lives={mem.ram[I_LIVES]} "
+          f"dead=${dead_now:02X} loses={loses_now} counts={counts}")
 
-    print("test_phase_kill_frame: OK (kill once, b7 latched, "
-          "no re-kill on respawn)")
+    # ---- retired path is inert: no kill, no latch, but the record was met
+    if mem.ram[I_LIVES] != lives0:
+        sys.exit(f"FAIL: tile 11 killed the player — lives {lives0} -> "
+                 f"{mem.ram[I_LIVES]}")
+    if loses_now != 0:
+        sys.exit(f"FAIL: LoseLife fired {loses_now} time(s) for a $81 record")
+    if dead_now & 0x80:
+        sys.exit(f"FAIL: retired b7 crunch latch set — dead=${dead_now:02X}")
+    if counts["feat"] == 0:
+        sys.exit("FAIL: the $81 record never reached HOVFeatEntry "
+                 "(staging broken — test proves nothing)")
+
+    # ---- ROM: the VCS3 entry image is gone ------------------------------
+    img = BANKS[2][0xE57:0xE5A]
+    if img == bytes((0x4C, 0x80, 0xFD)):
+        sys.exit("FAIL: bank2 $FE57 still holds jmp $FD80 (VCS3 tramp)")
+
+    print("test_phase_kill_frame: OK ($81 record reaches the dispatcher and "
+          "is inert; no kill, no latch; VCS3 tramp gone)")
 
 
 if __name__ == "__main__":

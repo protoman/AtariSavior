@@ -68,9 +68,9 @@ def pf_values(row: str) -> tuple[int, int, int]:
       expanded cols 4-11  -> PF1 bits 7-0 (bit 7 = display col 4)
       expanded cols 12-19 -> PF2 bits 0-7 (bit 0 = display col 12)
     Hot rock (H) is solid for the playfield, same as #; feature cells
-    (P phase / V vertical crunch / C horizontal crunch) are solid too.
+    (P phase / C horizontal crunch) are solid too.
     """
-    solid = [cell in "#HPVC" for cell in row]
+    solid = [cell in "#HPC" for cell in row]
     if len(solid) != WIDTH:
         raise ValueError(f"pf_values: expected {WIDTH} columns, got {len(row)}")
     s20 = [s for s in solid for _ in (0, 1)]   # D7 bit-pairing
@@ -167,13 +167,12 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
                       as $01/$00. m1_col+1: 0 = no M1 patch. b3 set = the
                       M1 strip is a LOCKED_DOOR async patch — P2b sizes M1
                       to 4 clk and the key (not the bomb) opens it.)
-        M<id>MetaB:  .byte (ball_col+1) or 0, b7 = async door/vcrunch,
+        M<id>MetaB:  .byte (ball_col+1) or 0, b7 = async door,
                      b6 = mid_band_type hot (rule 2026-10-14)
                      (ball_col: BallX = 87+8*ball_col, staged to Temp $88
                       via 8*(ball_col+1)+86; 0 = no ball = symmetric.
                       b7 set = the model's side-0 strip is a LOCKED_DOOR
-                      async patch — P2 stages CTRLPF $25 instead of $35
-                      (also set for vcrunch: the shutter kill gate).
+                      async patch — P2 stages CTRLPF $25 instead of $35.
                       Staging must mask b7/b6 out of the ball-col math.
                       b6 set = the model's mid_band_type is Hot: the
                       shutter/crunch kill tests use touch semantics (any
@@ -232,51 +231,37 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     # (byte-identical when no feature char is present).
     #   $80 phase   : [mask, 2c, row, 2, 1] one record per cell (left-half
     #                  coords; the runtime mirrors like rects)
-    #   $81 vcrunch : [mask, x, y, w, h] bbox of all V cells
     #   $82 hcrunch : [mask, 0, band, w, 1] band + prefix extent from col 0
     phase_cells: list[tuple[int, int]] = []
-    v_cells: list[tuple[int, int]] = []
+    if any(cell == "V" for row in rows for cell in row):
+        raise ValueError(
+            f"{source}: tile 11 (VCRUNCH) removed; use PHASE 10")
     c_cells: list[tuple[int, int]] = []
     for r, row in enumerate(rows):
         for c, cell in enumerate(row):
             if cell == "P":
                 phase_cells.append((r, c))
-            elif cell == "V":
-                v_cells.append((r, c))
             elif cell == "C":
                 c_cells.append((r, c))
     feats: list[str] = []
     special_kinds = {ch for ch, cells in (("P", phase_cells),
-                                          ("V", v_cells),
                                           ("C", c_cells)) if cells}
     if door and special_kinds:
         raise ValueError(
             f"{source}: door model also has feature tile(s) "
             f"{sorted(special_kinds)} — special features are alone per room "
-            "(door XOR phase XOR vcrunch XOR hcrunch)")
+            "(door XOR phase XOR hcrunch)")
     if len(special_kinds) > 1:
         raise ValueError(
             f"{source}: mixed special features {sorted(special_kinds)} — "
             "special features are alone per room "
-            "(door XOR phase XOR vcrunch XOR hcrunch)")
+            "(door XOR phase XOR hcrunch)")
     for r, c in phase_cells:
         if r != 1:
             raise ValueError(
                 f"{source}: phase cell at row {r} — special features live "
                 "on the middle band (row 1)")
         feats.append(f"  .byte $80, {2 * c}, {r}, 2, 1  ; phase cell")
-    if v_cells:
-        rs = [r for r, _ in v_cells]
-        cs = [c for _, c in v_cells]
-        if any(r != 1 for r in rs):
-            raise ValueError(
-                f"{source}: vcrunch cells at rows {sorted(set(rs))} — the "
-                "sprite shutter slices only the middle band (row 1; "
-                "top/bottom bands are entry/exit corridors)")
-        feats.append(
-            f"  .byte $81, {2 * min(cs)}, {min(rs)}, "
-            f"{2 * (max(cs) - min(cs) + 1)}, {max(rs) - min(rs) + 1}  "
-            f"; vcrunch bbox")
     if c_cells:
         bands = {r for r, _ in c_cells}
         if bands != {1}:
@@ -353,22 +338,8 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     ball_col_plus = 0
     if asym_ball_x:
         ball_col_plus = ((asym_ball_x - 87) >> 3) + 1
-    # Sprite shutter (vcrunch_shutter_plan Phase B): a vcrunch model packs
-    # MetaB b7 so bank2 PHMOverlay's miss path runs the shutter kill test
-    # (the punched-open cell no longer trips the PF cell walk). b7 shares
-    # its slot with the door flag — door+feature is rejected via "special
-    # features are alone per room" above. The M1 slot cannot be shared
-    # (the shutter stages CollisionEndX for its mirror M1 each frame):
-    # an M1 strip patch or side-1 door would fight it every frame.
-    # A side-0 ball patch IS allowed (user model 2026-10-14): the shutter
-    # owns Temp $88/BallX while it runs; the static band marker yields.
     if hot is None:
         hot = any("H" in row for row in rows)
-    has_vcrunch = any(cell == "V" for row in rows for cell in row)
-    if has_vcrunch and (m1_door or asym_m1_x):
-        raise ValueError(
-            f"{source}: vcrunch cannot share a model with an M1 strip/side-1 "
-            f"door (the shutter owns the M1 slot every frame)")
     if door:
         if not asym_ball_x:
             raise ValueError(
@@ -381,10 +352,9 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     else:
         out.append(f"{prefix}MetaB:")
         out.append(
-            f"  .byte ${ball_col_plus | (0x80 if has_vcrunch else 0) | (0x40 if hot else 0):02x}"
+            f"  .byte ${ball_col_plus | (0x40 if hot else 0):02x}"
             "                  ; (ball_col+1)"
-            + (" | $80 vcrunch shutter" if has_vcrunch else
-               ", 0 = no ball")
+            + (", 0 = no ball" if not ball_col_plus else "")
             + (" | $40 hot" if hot else ""))
 
     if asym_rows is not None:

@@ -69,7 +69,7 @@ L4R6TilePF2:
 L4R6MetaA:
   .byte $02                  ; (m1_col+1)<<4 | band mask
 L4R6MetaB:
-  .byte $0a                  ; (ball_col+1), 0 = no ball
+  .byte $0a                  ; (ball_col+1)
 L4R6RightPF0:
   .byte $f0, $30, $f0
 L4R6RightPF1:

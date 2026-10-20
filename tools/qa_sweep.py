@@ -11,9 +11,8 @@ every feature actually works where the player meets it:
                  stagings) and the player must reach the next room alive
   room 3 door    land, walk into the M1 bar with the key -> touch-unlock
                  (EnemyDeadMask b4) THEN pass through
-  room 4 vcrunch the shutter must arm (VcrBand=1) and stage the block at
-                 BallX=111 (= 159-8*6, the lane's mirror) while the player
-                 drops through the punched V cell
+  room 4 clear   plain corridor (tile-11 vcrunch was removed 2026-10-19) —
+                 the player drops the open lane to room 5
   room 5 hcrunch band 1 must be staged to P(n) (>=2 distinct stagings) and
                  the player must time the aperture to reach the last room
   room 6 goal    walk into the miner -> level tally starts (DropTarget=$FE)
@@ -41,7 +40,7 @@ L0 = parse_labels(L0P, {
     "StartFrame", "RoomX", "RoomY", "RoomNo", "EnemyCount", "EnemyRamP",
     "EnemyDeadMask", "LevelStartRoom", "BombPacked", "DropTarget", "Hover",
     "BandTab", "CollisionEndX", "CollisionEndY", "Temp", "PF0Buf", "PF1Buf",
-    "PF2Buf", "VcrBand", "VcrNext", "VcrState", "vyLo", "vyHi"})
+    "PF2Buf", "vyLo", "vyHi"})
 PC_SF = L0["StartFrame"]
 
 # QA_SHOTS=1 also writes a PNG per room (tools/qa_shots.py): Stella cannot
@@ -124,34 +123,18 @@ PF1, PF2 = L0["PF1Buf"] & 0x7F, L0["PF2Buf"] & 0x7F
 FAILS, NOTES = [], []
 
 
-FOLD_PC = 0xFC68            # bank0 HUD fold pad: after VBL staging, before
-                            # bank1's $EA-$EF stomp (VcrBand/VcrNext live here)
-
-
 def frame():
-    """One whole frame with the current joystick; returns samples.
-
-    Vcrunch state is captured AT THE HUD FOLD: $EA-$EF is bank1's stomp zone,
-    so a StartFrame read of VcrBand/VcrNext/VcrState/Temp is the stomped
-    garbage (Temp is the overscan joystick byte by then)."""
-    fold = {}
+    """One whole frame with the current joystick; returns samples."""
     mpu.step()
     while not (mem.bank == 0 and mpu.pc == PC_SF):
-        if mem.bank == 0 and mpu.pc == FOLD_PC and not fold:
-            fold = dict(fvband=R[L0["VcrBand"] & 0x7F],
-                        fvnext=R[L0["VcrNext"] & 0x7F],
-                        fvstate=R[L0["VcrState"] & 0x7F],
-                        ftemp=R[L0["Temp"] & 0x7F])
         mpu.step()
     out = dict(room=R[ROOM], x=R[X], y=R[Y], ec=R[L0["EnemyCount"] & 0x7F],
                 dead=R[L0["EnemyDeadMask"] & 0x7F],
                 key=bool(R[L0["LevelStartRoom"] & 0x7F] & KEY_HELD),
                 temp=R[L0["Temp"] & 0x7F],
-                vband=R[L0["VcrBand"] & 0x7F], vnext=R[L0["VcrNext"] & 0x7F],
                 pf1=[R[(PF1 + i) & 0x7F] for i in range(3)],
                 pf2=[R[(PF2 + i) & 0x7F] for i in range(3)],
                 dt=R[L0["DropTarget"] & 0x7F], bomb=R[0x35])
-    out.update(fold)
     return out
 
 
@@ -340,22 +323,10 @@ def main() -> int:
         return report()
     NOTES.append("room3: passed the opened door and dropped the exit lane")
 
-    shot("vcrunch", "room 4 entry: V cell across the lane")
-    # room 4 -- vcrunch: shutter armed; the block is staged at the lane's
-    # mirror (V cell2 -> BallX = 159-8*2 = 143). The player drops the punched
-    # left lane at x23-31.
+    # room 4 -- plain corridor (vcrunch removed): just reach room 5.
     seen = wait_room(5, maxf=1200, tag="room4->5")
-    if not any(s.get("fvband") == 1 for s in seen):
-        FAILS.append(f"room4: VcrBand never armed at the HUD fold "
-                     f"({sorted({s.get('fvband') for s in seen})})")
-    if not any(s.get("fvstate") for s in seen):
-        FAILS.append(f"room4: shutter never staged a slice state "
-                     f"({sorted({s.get('fvstate') for s in seen})})")
     if not FAILS:
-        NOTES.append("room4: VcrBand=1 + slice states "
-                     + str(sorted({s.get("fvstate") for s in seen}))
-                     + f" (record Temp={sorted({s.get('ftemp') for s in seen})}); "
-                     "dropped the punched lane")
+        NOTES.append("room4: passed the open corridor")
 
     shot("hcrunch", "room 5 entry: hcrunch prefix across band 1")
     # room 5 -- hcrunch: band 1 must be staged to P(n) (>=2 distinct shapings)

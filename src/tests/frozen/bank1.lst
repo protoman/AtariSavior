@@ -1920,7 +1920,7 @@
    1906  fc2f		       4c a4 fa 	      jmp	$FAA4
    1907  fc32				   CallPad_BuildColupF
    1908  fc32		       8d f9 1f 	      sta	$1FF9	; A3: body lives in bank3 (record stream)
-   1909  fc35		       4c c7 f5 	      jmp	$F5C7	; BuildColupF (bank3; synced by verify_build)
+   1909  fc35		       4c 0b f5 	      jmp	$F50B	; BuildColupF (bank3; synced by verify_build)
    1910  fc38				   CallPad_BombMarkWalls
    1911  fc38		       8d f7 1f 	      sta	$1FF7	; S5.2: body lives in bank1 ($FB10)
    1912  fc3b		       4c 10 fb 	      jmp	$FB10
@@ -1937,7 +1937,7 @@
    1923  fc5b					      .ds	$FC5B - *, 0
    1924  fc5b				   CallPad_Overscan
    1925  fc5b		       8d f6 1f 	      sta	$1FF6
-   1926  fc5e		       4c 9f f1 	      jmp	$F19F
+   1926  fc5e		       4c 84 f1 	      jmp	$F184
    1927  fc61					      .ds	$FC61 - *, 0
    1928  fc61				   CallPad_MusicTick
    1929  fc61		       8d f7 1f 	      sta	$1FF7
@@ -1954,7 +1954,7 @@
    1940  fc70					      .ds	$FC70 - *, 0
    1941  fc70		       a9 00		      lda	#0
    1942  fc72		       8d f6 1f 	      sta	$1FF6
-   1943  fc75		       4c 9f f1 	      jmp	$F19F	; Overscan in bank0 (must match bank0 ToGameStub;
+   1943  fc75		       4c 84 f1 	      jmp	$F184	; Overscan in bank0 (must match bank0 ToGameStub;
    1944  fc78							; verify_build --sync-overscan patches this from
    1945  fc78							; bank0.lst after every bank0 build)
    1946  fc78

@@ -365,7 +365,6 @@ static int RunBrushTest() {
     if (!model.asym_patches.empty() ||
         std::any_of(model.tiles.begin(), model.tiles.end(), [](int t) {
             return t == (int)hero::TileType::PHASE ||
-                   t == (int)hero::TileType::VCRUNCH ||
                    t == (int)hero::TileType::HCRUNCH;
         })) {
         std::fprintf(stderr, "brushtest: async brush wrote the MODEL "

@@ -1906,7 +1906,7 @@ CallPad_UpdateLaserSound:
     jmp $FAA4
 CallPad_BuildColupF:
     sta $1FF9                   ; A3: body lives in bank3 (record stream)
-    jmp $F5C7                   ; BuildColupF (bank3; synced by verify_build)
+    jmp $F50B                   ; BuildColupF (bank3; synced by verify_build)
 CallPad_BombMarkWalls:
     sta $1FF7                   ; S5.2: body lives in bank1 ($FB10)
     jmp $FB10
@@ -1923,7 +1923,7 @@ CallPad_TitleKernel:
     .ds $FC5B - *, 0
 CallPad_Overscan:
     sta $1FF6
-    jmp $F19F
+    jmp $F184
     .ds $FC61 - *, 0
 CallPad_MusicTick:
     sta $1FF7
@@ -1940,7 +1940,7 @@ CallPad_MusicTick:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F19F           ; Overscan in bank0 (must match bank0 ToGameStub;
+    jmp $F184           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; verify_build --sync-overscan patches this from
                         ; bank0.lst after every bank0 build)
 

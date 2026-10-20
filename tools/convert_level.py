@@ -37,14 +37,15 @@ ROOM_NONE = 0xFF
 # paint model cells and emit b7 feature records in the hot record stream.
 LOCKED_DOOR = 9
 PHASE = 10
-VCRUNCH = 11
+VCRUNCH = 11                # RETIRED 2026-10-19 (vertical crunch removed)
 HCRUNCH = 12
 RAFT = 6                    # RAFT **tile**: a static row-2 platform
 RAFT_ENTITY = 7             # RAFT **entity** (enemies[] type 7): the moving,
                             # rideable raft (plans/raft_moving_plan.md)
 MAGMA_FALL = 7
-FEATURE_TILES = (PHASE, VCRUNCH, HCRUNCH)
-FEATURE_NAME = {PHASE: "phase", VCRUNCH: "vcrunch", HCRUNCH: "hcrunch"}
+FEATURE_TILES = (PHASE, HCRUNCH)
+FEATURE_NAME = {PHASE: "phase", HCRUNCH: "hcrunch"}
+VCRUNCH_REMOVED = "tile 11 (VCRUNCH) removed; use PHASE 10"
 # Byte that renders the editor default (56,104,144 = hue A, luma 2) under the
 # emulator-aware encoding in nearest_byte: (hue << 4) | (luma << 1) = 0xA4.
 LEVEL_WALL_COLOR_DEFAULT = 0xA4
@@ -148,7 +149,7 @@ def tile_to_char(value: int) -> str:
     if value == PHASE:
         return "P"
     if value == VCRUNCH:
-        return "V"
+        raise ValueError(VCRUNCH_REMOVED)
     if value == HCRUNCH:
         return "C"
     return "#"
@@ -196,10 +197,12 @@ def room_feature_cells(room: dict) -> list[tuple[int, int, int]]:
             raise ValueError(
                 f"{who}: feature cell {cell!r} must be [row, col, tile]")
         row, col, tile = cell
+        if tile == VCRUNCH:
+            raise ValueError(f"{who}: {VCRUNCH_REMOVED}")
         if tile not in FEATURE_TILES:
             raise ValueError(
                 f"{who}: feature tile {tile} is not a feature tile "
-                f"({FEATURE_NAME} — 10/11/12)")
+                f"({FEATURE_NAME} — 10/12)")
         if not 0 <= row < HEIGHT:
             raise ValueError(f"{who}: feature row {row} out of 0..{HEIGHT - 1}")
         if not 0 <= col < WIDTH:
@@ -242,7 +245,7 @@ def room_m1_door_flag(room: dict) -> bool:
 
 def async_kinds(room: dict) -> list[str]:
     """Special-feature kinds present in a ROOM's async: door first, then
-    phase/vcrunch/hcrunch by tile id."""
+    phase/hcrunch by tile id."""
     kinds: list[str] = []
     if room_door_flag(room):
         kinds.append("door")
@@ -275,10 +278,8 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
     # authoritative for row 1 — every non-AIR cell there becomes 'H'.
     # Rows 0/2 never get hot; a legacy tile 8 there coerces to '#'.
     # Phase is FORBIDDEN on the hot band (rule 2026-10-12: hot and
-    # blinking are mutually exclusive). Vcrunch IS allowed on hot (user
-    # rule 2026-10-14: both crunch walls respect the hot flag — hot ON
-    # = touching any part of the drawn block kills). Hcrunch was already
-    # allowed: its cells keep the 'C' char (the band's other cells are H).
+    # blinking are mutually exclusive). Hcrunch is allowed on hot: its cells
+    # keep the 'C' char (the band's other cells are H).
     hot = bool((model if model else room).get("mid_band_type", 0))
     who = room_who(room)
     feats = {(r, c): t for r, c, t in room_feature_cells(room)}
@@ -391,7 +392,7 @@ def resolve_asym_patches(model: dict, room: dict,
         if tile in FEATURE_TILES:
             raise ValueError(
                 f"{who}: tile {tile} is a grid tile — feature tiles "
-                "(phase/vcrunch/hcrunch) cannot be asym patches")
+                "(phase/hcrunch) cannot be asym patches")
         if tile == LOCKED_DOOR:
             if row != 1:
                 raise ValueError(
@@ -527,7 +528,7 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                                miner_room: int = -1) -> None:
     """Per-room object rules against the room's model special (2026-10-14).
 
-    vcrunch/hcrunch rooms: no objects at all. Door rooms: at most one
+    hcrunch rooms: no objects at all. Door rooms: at most one
     enemy, and never a key/lamp/miner. Raft models need water rooms
     (bottom_band). Tentacles live in the water on the bottom band.
     """
@@ -542,12 +543,11 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
         enemies = room.get("enemies") or []
         lamps = room.get("lamps") or []
         miner = miner_room == index
-        if "vcrunch" in kinds or "hcrunch" in kinds:
-            kind = "vcrunch" if "vcrunch" in kinds else "hcrunch"
+        if "hcrunch" in kinds:
             if enemies or lamps or miner:
                 raise ValueError(
-                    f"{who}: {kind} room has objects (enemies/lamps/miner) "
-                    "— the shutter needs the sprite slot")
+                    f"{who}: hcrunch room has objects (enemies/lamps/miner) "
+                    "— the crunch band needs the sprite slot")
         if "door" in kinds:
             if len(enemies) > 1:
                 raise ValueError(
