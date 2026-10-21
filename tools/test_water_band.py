@@ -56,9 +56,12 @@ def run(room_y, band, lives=3, stage_level=False, stop_at_drop=0,
         max_steps=40000):
     """Drive CheckBandTouch and sample the state where it matters.
 
-    The lose-a-life chain TAIL-JUMPS (`LoseLifeBand` -> `jmp DropArm` twice), so
-    there is no rts to wait for on that path: stop at the Nth DropArm entry
-    instead. Set stop_at_drop=0 for the inert paths (they rts normally)."""
+    The lose-a-life chain TAIL-JUMPS (`LoseLifeBand` -> `jmp LoseLife` ->
+    `jmp DropArm`), so there is no rts to wait for on that path: stop at the
+    DropArm entry (it reads RoomY AS the destiny before zeroing it). ONE entry
+    since 2026-10-21: LoseLifeBand shifts RoomY BEFORE the handover (the old
+    double-DropArm left the first drop landing inside the water).
+    Set stop_at_drop=0 for the inert paths (they rts normally)."""
     mem = Mem()
     mem.bank = 0
     r = mem.ram
@@ -109,7 +112,7 @@ def main() -> int:
 
     # 3/4. band on inside the strip: a life + the respawn destiny one tile up
     for y, want in ((125, 113), (132, 120)):
-        s = run(y, BAND_ON, stop_at_drop=2)
+        s = run(y, BAND_ON, stop_at_drop=1)
         assert s["lives"] == 2, f"y={y}: expected 1 life lost, got {s}"
         assert s["room_y"] == want, (
             f"y={y}: respawn destiny RoomY {s['room_y']} != {want} (one tile "
