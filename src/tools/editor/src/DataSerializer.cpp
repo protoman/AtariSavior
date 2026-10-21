@@ -440,6 +440,10 @@ const char* const kArchHot[7] = {
                     //    else the spawn lands on a hot wall (budget mode)
 };
 const int kArchHotGapX[7] = {10, 6, 10, 4, 4, 2, 8};   // cell*2
+// The miner (LevelMinerX = 4 px, 4 px wide -> cells 2..3) must STAND on a
+// solid block (user rule 2026-10-21: a person to rescue does not swim/fly).
+const int kMinerCell = 2;
+const float kMinerX = (float)(kMinerCell * 2);
 const char* const kArchName[15] = {
     "", "Ladder", "Pillars", "Steps", "Pocket", "Zigzag", "Spiral",
     "Gallery", "HotGate", "HotSplit", "HotComb", "HotAlign", "HotTwin",
@@ -593,11 +597,16 @@ ModelData MakeShapeModel(int modelId, int mask) {
     }
     if (mask & SHAPE_WATER) {
         // Water goal: the bottom band is open, so the water strip shows and
-        // kills; the raft floats on an open cell (row 2) and the miner waits
-        // on row 1.
+        // kills; the miner waits on row 1 STANDING ON A ROCK (user rule
+        // 2026-10-21 — a person to rescue does not swim or fly), and the raft
+        // floats on another open cell so it never spawns inside the rock.
         for (int x = 1; x < kRoomWidth; ++x) {
             model.tiles[(kRoomHeight - 1) * kRoomWidth + x] =
                 (int)TileType::AIR;
+        }
+        for (int x = kMinerCell; x <= kMinerCell + 1; ++x) {
+            model.tiles[(kRoomHeight - 1) * kRoomWidth + x] =
+                (int)TileType::SOLID_WALL;
         }
     }
     // Archetype interior (HERO-like normality): cells 1..7 only, applied
@@ -770,8 +779,52 @@ int ObjectCount(const RoomData& room) {
     return (int)(room.enemies.size() + room.lamps.size());
 }
 
+// ---- placement primitives (user rules 2026-10-21) -------------------------
+// A shape's tiles: 0 = air, non-zero = wall (a hot row-1 wall is still solid).
+// Enemies and lamps must never sit inside a wall — the SNAKE is the documented
+// exception (it lives in the wall and needs open air on the side it faces).
+bool CellAir(const ModelData& m, int band, int cell) {
+    return cell >= 0 && cell < kRoomWidth
+        && m.tiles[band * kRoomWidth + cell] == 0;
+}
+
+// Nearest AIR cell of `band` to `prefer` (search outward), or -1 if the band is
+// fully solid.
+int NearestAir(const ModelData& m, int band, int prefer) {
+    if (prefer < 0) prefer = 0;
+    if (prefer >= kRoomWidth) prefer = kRoomWidth - 1;
+    if (CellAir(m, band, prefer)) return prefer;
+    for (int d = 1; d < kRoomWidth; ++d) {
+        if (CellAir(m, band, prefer - d)) return prefer - d;
+        if (CellAir(m, band, prefer + d)) return prefer + d;
+    }
+    return -1;
+}
+
+// A lamp hangs in a GAP, on the side next to a wall (user rule 2026-10-21):
+// an air cell whose left or right neighbour is a REAL wall. The screen edge
+// and the reflected centre seam are open space, not walls, so the test is
+// explicit about the cell range (a lamp at cell 9 against the mirror is
+// floating — user report: "between the tiles"). Returns cell or -1.
+int LampCell(const ModelData& m, int band, int prefer) {
+    if (prefer < 0) prefer = 0;
+    if (prefer >= kRoomWidth) prefer = kRoomWidth - 1;
+    auto wallAt = [&](int c) {
+        return c >= 0 && c < kRoomWidth && !CellAir(m, band, c);
+    };
+    for (int d = 0; d < kRoomWidth; ++d) {
+        for (int s = 0; s < 2; ++s) {
+            const int c = prefer + (s ? d : -d);
+            if (!CellAir(m, band, c)) continue;
+            if (wallAt(c - 1) || wallAt(c + 1)) return c;
+        }
+    }
+    return -1;
+}
+
 void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
                      const LevelPlan& plan, RoomData& room,
+                     const ModelData& shape,
                      bool roomIsKeyHost = false, int arch = 0) {
     if (roomIndex == roomCount - 1) {
         if (role == Role::WaterGoal) {
@@ -785,16 +838,20 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
                 AddEnemy(room, EnemyType::TENTACLE, 10.0f, 8.0f,
                          1.0f, 0.0f);
             } else {
-                AddEnemy(room, EnemyType::RAFT, 4.0f, 8.0f, 1.0f, 0.0f);
+                // Off the miner's rock (cells 2..3): ferry lane at cell 6.
+                AddEnemy(room, EnemyType::RAFT, 12.0f, 8.0f, 1.0f, 0.0f);
             }
         } else if (roomCount > 1 && levelNumber >= 2) {
             // Goal room: the miner sits at x=4, so an enemy past it (the old
             // wall snake at cell 0) was never fought (user rule 2026-10-21).
             // From level 2 one bat guards the APPROACH corridor (cell 8),
             // which also keeps the 2-room levels distinct (L1 is clean).
-            AddEnemy(room, EnemyType::BAT, 16.0f,
-                     (levelNumber % 2) ? 4.0f : 5.0f,
-                     1.25f + 0.25f * (levelNumber % 4), 13.0f);
+            const int cell = NearestAir(shape, 1, 8);
+            if (cell >= 0) {
+                AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
+                         (levelNumber % 2) ? 4.0f : 5.0f,
+                         1.25f + 0.25f * (levelNumber % 4), 13.0f);
+            }
         }
         return;
     }
@@ -806,11 +863,15 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         return;
     }
     if (role == Role::Gate || role == Role::Phase) {
-        // Door rooms allow ONE non-key enemy (convert rule). The gate shape is
-        // row-1 wall except cell 4, so the bat goes in the GAP (cell 4 = x 8)
-        // — never inside the wall (user report: an unreachable bat).
-        AddEnemy(room, EnemyType::BAT, 8.0f, 4.0f,
-                 1.25f + 0.25f * (levelNumber % 4), 13.0f);
+        // Door rooms allow ONE non-key enemy (convert rule). The gap itself is
+        // a LOCKED_DOOR / PHASE cell — a bat there is inside the door half the
+        // time — so it guards the descent ABOVE the gap (band 0), on the
+        // nearest open cell (user rule 2026-10-21: no enemy inside a wall).
+        const int cell = NearestAir(shape, 0, 4);
+        if (cell >= 0) {
+            AddEnemy(room, EnemyType::BAT, (float)(cell * 2), 3.0f,
+                     1.25f + 0.25f * (levelNumber % 4), 13.0f);
+        }
         return;
     }
     if (role == Role::Hcrunch) {
@@ -820,46 +881,69 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
     }
     if (role == Role::Hot) {
         // HOT rooms: NO middle-band objects (user rule 2026-10-21) — the
-        // other two bands may carry one each. Cell 8 is the open shaft in
-        // both (N and S exits), so the guards sit on the descent line.
+        // other two bands may each carry one. The gap archetypes block the
+        // CENTRE (row 1), so the guards go on the OPEN cells of bands 0/2
+        // near that gap — never inside the band-0/2 walls (user report
+        // 2026-10-21: a bat inside the wall at level 3 room 2).
         const int hidx = (arch >= 8 && arch <= 14) ? arch - 8 : 0;
-        const int gapx = kArchHotGapX[hidx];
-        AddEnemy(room, EnemyType::BAT, (float)gapx, 3.0f,
-                 1.25f + 0.25f * (levelNumber % 4), 13.0f);
+        const int gapCell = kArchHotGapX[hidx] / 2;
+        const int bcell = NearestAir(shape, 0, gapCell);
+        if (bcell >= 0) {
+            AddEnemy(room, EnemyType::BAT, (float)(bcell * 2), 3.0f,
+                     1.25f + 0.25f * (levelNumber % 4), 13.0f);
+        }
         if (levelNumber >= 5) {
-            AddEnemy(room, EnemyType::SPIDER, (float)(gapx == 6 ? 12 : 6), 8.0f,
-                     1.0f + 0.25f * (levelNumber % 4), 8.0f);
+            const int scell = NearestAir(shape, 2, gapCell == 3 ? 6 : 3);
+            if (scell >= 0) {
+                AddEnemy(room, EnemyType::SPIDER, (float)(scell * 2), 8.0f,
+                         1.0f + 0.25f * (levelNumber % 4), 8.0f);
+            }
         }
         return;
     }
     // Normal room: bat/lamp. A LAMP only matters where the dark mask reaches
     // (rooms 0-7), so deeper rooms get a bat.
-    // Normal rooms: one object in the middle band (the shaft, x 16) and, from
+    // Normal rooms: one object in the middle band (the shaft, cell 8) and, from
     // level 5, a second on ANOTHER band (top corridor, cell 8) — 2 objects per
     // room, one per band, as the user asked (2026-10-21). Flicker is the
     // kernel's job (one sprite), not a reason to starve the rooms.
     if (roomIndex % 2 == 1 || roomIndex >= 8) {
-        AddEnemy(room, EnemyType::BAT, 16.0f,
-                 (levelNumber % 2) ? 4.0f : 5.0f,
-                 1.25f + 0.25f * (levelNumber % 4), 13.0f);
+        const int cell = NearestAir(shape, 1, 8);
+        if (cell >= 0) {
+            AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
+                     (levelNumber % 2) ? 4.0f : 5.0f,
+                     1.25f + 0.25f * (levelNumber % 4), 13.0f);
+        }
     } else {
-        LampData lamp;
-        lamp.x = 16.0f;      // in the shaft, so the player meets it
-        lamp.y = 4.0f;
-        lamp.lit = true;
-        room.lamps.push_back(lamp);
+        // A lamp hangs in a gap next to a wall (user rule 2026-10-21): a lamp
+        // floating in open air reads as "between the tiles" (level 4 room 3).
+        int cell = LampCell(shape, 1, 8);
+        if (cell < 0) cell = NearestAir(shape, 1, 8);
+        if (cell >= 0) {
+            LampData lamp;
+            lamp.x = (float)(cell * 2);
+            lamp.y = 4.0f;
+            lamp.lit = true;
+            room.lamps.push_back(lamp);
+        }
     }
     // From level 5 a second object on another band. Skip the room right
     // before a gate: it is the key host (the key needs a free slot, and a key
     // in the START room would break the clean-spawn rule).
     if (levelNumber >= 5 && !roomIsKeyHost
             && !RowOccupied(room, 0)) {
-        AddEnemy(room, EnemyType::SPIDER, 16.0f, 3.0f,
-                 1.0f + 0.25f * (levelNumber % 4), 8.0f);
+        const int cell = NearestAir(shape, 0, 8);
+        if (cell >= 0) {
+            AddEnemy(room, EnemyType::SPIDER, (float)(cell * 2), 3.0f,
+                     1.0f + 0.25f * (levelNumber % 4), 8.0f);
+        }
     } else if (levelNumber >= 5 && !roomIsKeyHost
                && !RowOccupied(room, 2)) {
-        AddEnemy(room, EnemyType::SPIDER, 16.0f, 8.0f,
-                 1.0f + 0.25f * (levelNumber % 4), 8.0f);
+        const int cell = NearestAir(shape, 2, 8);
+        if (cell >= 0) {
+            AddEnemy(room, EnemyType::SPIDER, (float)(cell * 2), 8.0f,
+                     1.0f + 0.25f * (levelNumber % 4), 8.0f);
+        }
     }
 }
 
@@ -945,7 +1029,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         level.start_room = 0;                 // convert: 0 is the kernel constant
         const int roomCount = (int)walks[l - 1].size();
         level.miner_room = roomCount - 1;     // the goal is the last room
-        level.miner_x = 4.0f;                 // clear of the bottom-centre hole
+        level.miner_x = kMinerX;              // on the water-goal rock
         level.miner_y = 7.0f;                 // convert hard-fails any other row
         level.miner_dir = 1;
         const LevelPlan plan = PlanFor(l);
@@ -1057,14 +1141,19 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 room.bottom_g = 88;
                 room.bottom_b = 208;
                 AddEnemy(room, EnemyType::RAFT, 4.0f, 8.0f, 1.0f, 0.0f);
-                AddEnemy(room, EnemyType::BAT, 16.0f, 3.0f,
-                         1.25f + 0.25f * (l % 4), 13.0f);
+                const int chBat = NearestAir(models[shapeId[masks[l - 1][i]]],
+                                             0, 8);
+                if (chBat >= 0) {
+                    AddEnemy(room, EnemyType::BAT, (float)(chBat * 2), 3.0f,
+                             1.25f + 0.25f * (l % 4), 13.0f);
+                }
             } else {
                 const bool keyHost = (i + 1 < roomCount
                                       && roles[l - 1][i + 1] == Role::Gate);
                 const int roomArch = (masks[l - 1][i] >> kArchShift) & kArchMask;
+                const ModelData& roomShape = models[shapeId[masks[l - 1][i]]];
                 FillRoomObjects(l, i, roomCount, roles[l - 1][i], plan, room,
-                                keyHost, roomArch);
+                                roomShape, keyHost, roomArch);
             }
             level.rooms.push_back(room);
         }
@@ -1081,23 +1170,32 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 if (ObjectCount(level.rooms[j]) >= 2) continue;
                 // Free cells the shape actually has open: row 1 cell 5 (x 10)
                 // on normal/hot shapes, else the exit corridor (cell 8, x 16).
-                float kx = 10.0f, ky = 5.0f;
+                const ModelData& kShape = models[shapeId[masks[l - 1][j]]];
+                int kband = 1, kprefer = 5;
+                float ky = 5.0f;
                 if (RowOccupied(level.rooms[j], 1)) {
                     if (!RowOccupied(level.rooms[j], 0)) {
-                        kx = 16.0f; ky = 3.0f;
+                        kband = 0; kprefer = 8; ky = 3.0f;
                     } else if (!RowOccupied(level.rooms[j], 2)) {
-                        kx = 16.0f; ky = 8.0f;
+                        kband = 2; kprefer = 8; ky = 8.0f;
                     } else {
                         continue;
                     }
                 }
-                AddEnemy(level.rooms[j], EnemyType::KEY, kx, ky, 1.0f, 0.0f);
+                const int kcell = NearestAir(kShape, kband, kprefer);
+                if (kcell < 0) continue;
+                AddEnemy(level.rooms[j], EnemyType::KEY, (float)(kcell * 2),
+                         ky, 1.0f, 0.0f);
                 keyPlaced = true;
             }
             if (!keyPlaced && ObjectCount(level.rooms[0]) < 2
                     && !RowOccupied(level.rooms[0], 1)) {
-                AddEnemy(level.rooms[0], EnemyType::KEY, 10.0f, 5.0f,
-                         1.0f, 0.0f);   // last-resort host (clean spawn ideal)
+                const int kcell = NearestAir(
+                    models[shapeId[masks[l - 1][0]]], 1, 5);
+                if (kcell >= 0) {
+                    AddEnemy(level.rooms[0], EnemyType::KEY,
+                             (float)(kcell * 2), 5.0f, 1.0f, 0.0f);
+                }
             }
         }
         // Two-gap route choice (user rule 2026-10-20): one of the two
@@ -1112,13 +1210,17 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 RoomData& room = level.rooms[i];
                 if (ObjectCount(room) >= 2 || RowOccupied(room, 0)) continue;
                 const int gap = (i % 2) ? kGapB : kGapA;
-                const float gx = (float)(gap * 2);
+                const ModelData& gShape = models[shapeId[masks[l - 1][i]]];
                 if (i % 2 || i >= 8) {   // lamps only where the dark mask works
-                    AddEnemy(room, EnemyType::SPIDER, gx, 3.0f,
-                             1.0f + 0.25f * (l % 4), 8.0f);
+                    const int gcell = NearestAir(gShape, 0, gap);
+                    if (gcell < 0) continue;
+                    AddEnemy(room, EnemyType::SPIDER, (float)(gcell * 2),
+                             3.0f, 1.0f + 0.25f * (l % 4), 8.0f);
                 } else {
+                    const int gcell = LampCell(gShape, 0, gap);
+                    if (gcell < 0) continue;
                     LampData lamp;
-                    lamp.x = gx;
+                    lamp.x = (float)(gcell * 2);
                     lamp.y = 3.0f;
                     lamp.lit = true;
                     room.lamps.push_back(lamp);

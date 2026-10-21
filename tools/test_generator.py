@@ -25,6 +25,10 @@ for content and never written):
     CELL 4 of the top band with collision bypassed, so that cell must be air;
   * object caps: enemies + lamps + miner <= 2 per room, <= 1 element per tile
     row (the editor's kMaxRoomElements / ElementInRow rules);
+  * object PLACEMENT (user rules 2026-10-21): every enemy and lamp sits on an
+    AIR cell — the SNAKE is the one exception (it patrols out of a wall) and
+    must have open air on the side its dir names. A lamp hangs in a gap next
+    to a real wall (the screen edge / mirror seam does not count);
   * determinism: two runs are byte-identical;
   * hot start rooms: the spawn drops down cell 4, and convert promotes every
     row-1 wall of a hot model to a hot cell — so row-1 cell 4 must be AIR
@@ -272,6 +276,18 @@ def main() -> int:
                       f"{len(seen)}/{len(rooms)} rooms reachable from the start")
                 return 1
 
+            # Miner stands on a solid block (user rule 2026-10-21): a person
+            # to rescue does not float over water/air. MinerX = 4 px (cells
+            # 2-3) and MinerY = 84 px (band 1), so band 2 under him is solid.
+            miner_id = int(level["miner_room"]) & 0x7F
+            miner_rows = rows[miner_id]
+            for c in (2, 3):
+                if miner_rows[2][c] == ".":
+                    print(f"FAIL: level {level_n} miner room {miner_id} has "
+                          f"no block under the miner at cell {c} "
+                          f"({miner_rows[2]!r})")
+                    return 1
+
             # Objects: the editor caps (2 per room, 1 per tile row).
             for room in rooms:
                 enemies = room.get("enemies") or []
@@ -296,6 +312,43 @@ def main() -> int:
                         print(f"FAIL: level {level_n} room "
                               f"{room['room_id']}: enemy at "
                               f"({enemy['x']}, {enemy['y']})")
+                        return 1
+                # Placement: air cells only (snake = wall patroller).
+                band_rows = rows[room["room_id"]]
+                for enemy in enemies:
+                    cell = int(float(enemy["x"])) // 2
+                    band = int(float(enemy["y"])) // 4
+                    here = band_rows[band][cell]
+                    if int(enemy["type"]) == 2:      # SNAKE lives in the wall
+                        d = -1 if int(enemy.get("dir", 1)) < 0 else 1
+                        face = cell + d
+                        face_ch = (band_rows[band][face]
+                                   if 0 <= face < 10 else ".")
+                        if here != "." and face_ch != ".":
+                            print(f"FAIL: level {level_n} room "
+                                  f"{room['room_id']}: snake at cell {cell} "
+                                  f"has walls on BOTH sides (faces {d:+d})")
+                            return 1
+                    elif here != ".":
+                        print(f"FAIL: level {level_n} room {room['room_id']}: "
+                              f"enemy type {enemy['type']} at cell {cell}/"
+                              f"band {band} is inside a wall ({here!r})")
+                        return 1
+                for lamp in room.get("lamps") or []:
+                    cell = int(float(lamp["x"])) // 2
+                    band = int(float(lamp["y"])) // 4
+                    if band_rows[band][cell] != ".":
+                        print(f"FAIL: level {level_n} room {room['room_id']}: "
+                              f"lamp at cell {cell}/band {band} is inside a "
+                              "wall")
+                        return 1
+                    left = band_rows[band][cell - 1] if cell > 0 else "."
+                    right = (band_rows[band][cell + 1]
+                             if cell < 9 else ".")
+                    if left == "." and right == ".":
+                        print(f"FAIL: level {level_n} room {room['room_id']}: "
+                              f"lamp at cell {cell}/band {band} floats in a "
+                              "gap with no wall beside it")
                         return 1
                 # Async is one of three generated specials, all row 1:
                 # LOCKED_DOOR (gate), PHASE (blinking gate), HCRUNCH (10-cell
