@@ -434,8 +434,19 @@ Consequences that are easy to get wrong:
   that file is invisible to the spill accounting.
 - bank2's level-table windows are the six freed shape clusters plus `$F700`
   (`_SPILL_SLOTS` in `convert_level.py`, 2 323 B; bank2.asm carries the
-  matching `.ds` pads). bank3's data window is `$F010-$F44F` (1 088 B,
-  `_BANK3_DATA_SLOT`), capacity-checked by `emit_spills`.
+  matching `.ds` pads). bank3's level data uses **TWO windows** (C12
+  2026-10-21): extras (async streams + base table) at `$F010-$F44F` (1 088 B,
+  `_BANK3_EXTRAS_SLOT`) and shapes (blocks + row pool + address table) at
+  `$F5CC-$F8B6` (747 B, `_BANK3_SHAPES_SLOT`), each capacity-checked by
+  `emit_spills`; the shape include list is `spill_bank3_shapes.asm`. The
+  shapes window starts where `ERLoadDone` ends — do NOT lower the `.ds` target
+  below `*` (DASM `Origin Reverse-indexed`; the old `$F5BF` figure was a stale
+  binary measurement).
+- The generator has a declared shape budget (`kShapeBudget` in
+  `DataSerializer.cpp`, currently 56, two-pass: base library first, extra
+  archetypes only if the base fits). `test_generator` gates the shape count,
+  a >= 64 B slack floor in every window, and the hot-start drop column
+  (HotDrop keeps row-1 cell 4 open).
 - `emit_spills` slot starts must be the REAL bank2 include site: `spill_F767`
   begins at `$F700` (bank2 `.ds $F700 - *`), worth 103 B that the old
   `$F767` start hid.
