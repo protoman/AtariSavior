@@ -117,6 +117,15 @@ protected:
             p.drawText(tagRect.adjusted(3, 1, 0, 0), Qt::AlignLeft, tag);
         }
 
+        // Room divider guides (user 2026-10-21, HERO atlas style): a grid of
+        // room-sized cells across the whole canvas. Drawn ON TOP of the rooms
+        // so a passage keeps a visible seam at the room border.
+        p.setPen(QPen(QColor(125, 125, 150), 1));
+        for (int x = kMargin; x <= width(); x += kRoomW)
+            p.drawLine(x, 0, x, height());
+        for (int y = kHeader + kMargin; y <= height(); y += kRoomH)
+            p.drawLine(0, y, width(), y);
+
         p.setPen(QColor(220, 220, 230));
         QFont head = font();
         head.setPixelSize(11);
