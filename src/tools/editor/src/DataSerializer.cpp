@@ -746,7 +746,8 @@ int ObjectCount(const RoomData& room) {
 }
 
 void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
-                     const LevelPlan& plan, RoomData& room) {
+                     const LevelPlan& plan, RoomData& room,
+                     bool roomIsKeyHost = false) {
     if (roomIndex == roomCount - 1) {
         if (role == Role::WaterGoal) {
             // Water goal: the miner waits above the water; the raft ferries
@@ -793,19 +794,24 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         return;
     }
     if (role == Role::Hot) {
-        // Hot shapes keep cells 1/4/5/8/9 open; the bat guards the centre
-        // shaft (cell 8 = x 16), i.e. the path the player must fall through.
-        AddEnemy(room, EnemyType::BAT, 16.0f,
-                 (levelNumber % 2) ? 4.0f : 5.0f,
+        // HOT rooms: NO middle-band objects (user rule 2026-10-21) — the
+        // other two bands may carry one each. Cell 8 is the open shaft in
+        // both (N and S exits), so the guards sit on the descent line.
+        AddEnemy(room, EnemyType::BAT, 16.0f, 3.0f,
                  1.25f + 0.25f * (levelNumber % 4), 13.0f);
+        if (levelNumber >= 5) {
+            AddEnemy(room, EnemyType::SPIDER, 16.0f, 8.0f,
+                     1.0f + 0.25f * (levelNumber % 4), 8.0f);
+        }
         return;
     }
     // Normal room: bat/lamp. A LAMP only matters where the dark mask reaches
     // (rooms 0-7), so deeper rooms get a bat.
-    // One object per room (the GRP1 sprite rotates with the miner, so a second
-    // enemy doubles the flicker for no gameplay gain — user report 2026-10-21).
+    // Normal rooms: one object in the middle band (the shaft, x 16) and, from
+    // level 5, a second on ANOTHER band (top corridor, cell 8) — 2 objects per
+    // room, one per band, as the user asked (2026-10-21). Flicker is the
+    // kernel's job (one sprite), not a reason to starve the rooms.
     if (roomIndex % 2 == 1 || roomIndex >= 8) {
-        // Bat in the centre shaft (cell 8) — the path the player takes.
         AddEnemy(room, EnemyType::BAT, 16.0f,
                  (levelNumber % 2) ? 4.0f : 5.0f,
                  1.25f + 0.25f * (levelNumber % 4), 13.0f);
@@ -815,6 +821,18 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         lamp.y = 4.0f;
         lamp.lit = true;
         room.lamps.push_back(lamp);
+    }
+    // From level 5 a second object on another band. Skip the room right
+    // before a gate: it is the key host (the key needs a free slot, and a key
+    // in the START room would break the clean-spawn rule).
+    if (levelNumber >= 5 && !roomIsKeyHost
+            && !RowOccupied(room, 0)) {
+        AddEnemy(room, EnemyType::SPIDER, 16.0f, 3.0f,
+                 1.0f + 0.25f * (levelNumber % 4), 8.0f);
+    } else if (levelNumber >= 5 && !roomIsKeyHost
+               && !RowOccupied(room, 2)) {
+        AddEnemy(room, EnemyType::SPIDER, 16.0f, 8.0f,
+                 1.0f + 0.25f * (levelNumber % 4), 8.0f);
     }
 }
 
@@ -972,10 +990,13 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 room.bottom_g = 88;
                 room.bottom_b = 208;
                 AddEnemy(room, EnemyType::RAFT, 4.0f, 8.0f, 1.0f, 0.0f);
-                AddEnemy(room, EnemyType::BAT, 16.0f, 4.0f,
+                AddEnemy(room, EnemyType::BAT, 16.0f, 3.0f,
                          1.25f + 0.25f * (l % 4), 13.0f);
             } else {
-                FillRoomObjects(l, i, roomCount, roles[l - 1][i], plan, room);
+                const bool keyHost = (i + 1 < roomCount
+                                      && roles[l - 1][i + 1] == Role::Gate);
+                FillRoomObjects(l, i, roomCount, roles[l - 1][i], plan, room,
+                                keyHost);
             }
             level.rooms.push_back(room);
         }
@@ -983,7 +1004,10 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         // another gate and has a free row (row 2 first). Row = y/4.
         for (int i = 1; i < roomCount; ++i) {
             if (roles[l - 1][i] != Role::Gate) continue;
-            for (int j = i - 1; j >= 0; --j) {
+            // Host search: PREFER middle rooms (the start room is the clean
+            // spawn — no enemies/items unless there is no other host).
+            bool keyPlaced = false;
+            for (int j = i - 1; j >= 1 && !keyPlaced; --j) {
                 if (roles[l - 1][j] == Role::Gate) continue;
                 if (roles[l - 1][j] == Role::Hcrunch) continue;  // no objects
                 if (ObjectCount(level.rooms[j]) >= 2) continue;
@@ -1000,7 +1024,12 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     }
                 }
                 AddEnemy(level.rooms[j], EnemyType::KEY, kx, ky, 1.0f, 0.0f);
-                break;
+                keyPlaced = true;
+            }
+            if (!keyPlaced && ObjectCount(level.rooms[0]) < 2
+                    && !RowOccupied(level.rooms[0], 1)) {
+                AddEnemy(level.rooms[0], EnemyType::KEY, 10.0f, 5.0f,
+                         1.0f, 0.0f);   // last-resort host (clean spawn ideal)
             }
         }
         // Two-gap route choice (user rule 2026-10-20): one of the two
