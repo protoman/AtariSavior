@@ -724,6 +724,56 @@ ModelData MakeShapeModel(int modelId, int mask) {
             model.tiles[base + kGapB] = (int)TileType::AIR;
         }
     }
+    // --- NO DEAD AIR POCKETS (user rule 2026-10-21) -----------------------
+    // A band-1 air cell that cannot be reached from any band-0/2 opening (or
+    // from the horizontal exit) is decoration the player can never use — the
+    // HotComb leftover at cells 7/8 was the reported "nothing to do here"
+    // room. Close every such component; the corridor and the aisle always
+    // anchor to an edge, so they are never touched.
+    {
+        bool ink[3][kRoomWidth] = {};
+        for (int b = 0; b < kRoomHeight; ++b)
+            for (int x = 0; x < kRoomWidth; ++x)
+                ink[b][x] = model.tiles[b * kRoomWidth + x]
+                                == (int)TileType::AIR;
+        bool seen[3][kRoomWidth] = {};
+        for (int x = 0; x < kRoomWidth; ++x) {
+            for (int b : {1}) {
+                if (!ink[b][x] || seen[b][x]) continue;
+                bool anchored = false;
+                std::vector<std::pair<int, int>> comp, stack{{b, x}};
+                seen[b][x] = true;
+                while (!stack.empty()) {
+                    auto [y, c] = stack.back();
+                    stack.pop_back();
+                    comp.push_back({y, c});
+                    if ((y == 1 && c == 0 && (mask & SHAPE_H)) ||
+                        (y > 0 && ink[y - 1][c]) ||
+                        (y < kRoomHeight - 1 && ink[y + 1][c])) {
+                        anchored = true;
+                    }
+                    for (int dy : {-1, 0, 1}) {
+                        for (int dx : {-1, 0, 1}) {
+                            if (std::abs(dx) + std::abs(dy) != 1) continue;
+                            const int ny = y + dy, nx = c + dx;
+                            if (ny < 0 || ny >= kRoomHeight || nx < 0
+                                    || nx >= kRoomWidth) continue;
+                            if (!ink[ny][nx] || seen[ny][nx]) continue;
+                            seen[ny][nx] = true;
+                            stack.push_back({ny, nx});
+                        }
+                    }
+                }
+                if (!anchored) {
+                    for (auto [y, c] : comp) {
+                        model.tiles[y * kRoomWidth + c] =
+                            (int)TileType::SOLID_WALL;
+                    }
+                }
+            }
+        }
+    }
+
     // --- THIN WALLS (user rule 2026-10-21) --------------------------------
     // The bomb punch removes a THIN wall — a solid cell with air on both
     // sides — so a decorative 1-cell pillar is a pointless bomb target. A
@@ -1332,40 +1382,32 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             // through ordinary rooms so async rides WITH enemies. The gate/
             // phase/hcrunch rooms keep their own special alone; the start and
             // goal rooms stay clean (spawn/pickup).
+            //
+            // M1 (side 1) is the primary: the whole-cave latch needs the
+            // patched band OPEN and the other two bands WALLED at that column.
+            // The optional second block is the BALL (side 0, additive) on the
+            // mirrored cell — it only needs band 1 open there.
             if (roles[l - 1][i] == Role::Normal && i > 0
                     && i < roomCount - 1 && plan.patch && i % 3 == 2) {
-                // The block must sit on an OPEN cell AND its mirror must be
-                // open too, or the asym row equals the plain mirror (MetaA
-                // band mask stays 0) and convert rejects the drift. The
-                // archetype interior can fill cells, so scan for a free one.
                 const ModelData& sm = models[shapeId[masks[l - 1][i]]];
-                const int side = (i % 2 == 1) ? 1 : 0;   // M1 / ball half
                 int col = -1;
                 for (int c = 1; c <= 7; ++c) {
-                    const int mc = (side == 0) ? kRoomWidth - 1 - c : c;
-                    const int mirror = kRoomWidth - 1 - mc;
-                    // The M1/ball strip is a whole-cave latch: the patched
-                    // band must be OPEN, the other two bands WALLED at that
-                    // column (the wall-hide envelope convert enforces).
-                    if (sm.tiles[1 * kRoomWidth + mc] == 0
-                            && sm.tiles[1 * kRoomWidth + mirror] == 0
-                            && sm.tiles[0 * kRoomWidth + mc] != 0
-                            && sm.tiles[2 * kRoomWidth + mc] != 0
-                            && sm.tiles[0 * kRoomWidth + mirror] != 0
-                            && sm.tiles[2 * kRoomWidth + mirror] != 0) {
+                    if (sm.tiles[1 * kRoomWidth + c] == 0
+                            && sm.tiles[0 * kRoomWidth + c] != 0
+                            && sm.tiles[2 * kRoomWidth + c] != 0) {
                         col = c;
                         break;
                     }
                 }
                 if (col >= 0) {
                     room.asym_patches.push_back(
-                        {1, col, (int)TileType::SOLID_WALL, side});
+                        {1, col, (int)TileType::SOLID_WALL, 1});
                     if (plan.patch2) {
-                        // Second block on the opposite half (same col). Its
-                        // cell is the mirror we just proved open.
-                        room.asym_patches.push_back(
-                            {1, col, (int)TileType::SOLID_WALL,
-                             side == 0 ? 1 : 0});
+                        const int other = kRoomWidth - 1 - col;
+                        if (sm.tiles[1 * kRoomWidth + other] == 0) {
+                            room.asym_patches.push_back(
+                                {1, other, (int)TileType::SOLID_WALL, 0});
+                        }
                     }
                 }
             }

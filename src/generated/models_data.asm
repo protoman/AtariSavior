@@ -108,7 +108,7 @@ M20Rows:
 ; Generated from models.json model 21. Do not edit by hand.
 M21Shape:
 M21Rows:
-  .byte $00, $05, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $0e, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 22. Do not edit by hand.
 M22Shape:
@@ -128,7 +128,7 @@ M24Rows:
 ; Generated from models.json model 25. Do not edit by hand.
 M25Shape:
 M25Rows:
-  .byte $00, $0e, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $00, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 26. Do not edit by hand.
 M26Shape:
@@ -138,12 +138,12 @@ M26Rows:
 ; Generated from models.json model 27. Do not edit by hand.
 M27Shape:
 M27Rows:
-  .byte $07, $0c, $02  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $07, $10, $02  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 28. Do not edit by hand.
 M28Shape:
 M28Rows:
-  .byte $00, $10, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $0d, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 29. Do not edit by hand.
 M29Shape:
@@ -158,12 +158,12 @@ M30Rows:
 ; Generated from models.json model 31. Do not edit by hand.
 M31Shape:
 M31Rows:
-  .byte $00, $11, $12  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $0d, $11  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 32. Do not edit by hand.
 M32Shape:
 M32Rows:
-  .byte $07, $13, $07  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $07, $12, $07  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 33. Do not edit by hand.
 M33Shape:
@@ -173,7 +173,7 @@ M33Rows:
 ; Generated from models.json model 34. Do not edit by hand.
 M34Shape:
 M34Rows:
-  .byte $00, $11, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $0d, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 35. Do not edit by hand.
 M35Shape:
@@ -183,7 +183,7 @@ M35Rows:
 ; Generated from models.json model 36. Do not edit by hand.
 M36Shape:
 M36Rows:
-  .byte $07, $13, $07  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $07, $12, $07  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 37. Do not edit by hand.
 M37Shape:
@@ -193,37 +193,37 @@ M37Rows:
 ; Generated from models.json model 38. Do not edit by hand.
 M38Shape:
 M38Rows:
-  .byte $00, $94, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $80, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 39. Do not edit by hand.
 M39Shape:
 M39Rows:
-  .byte $07, $95, $07  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $07, $93, $07  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 40. Do not edit by hand.
 M40Shape:
 M40Rows:
-  .byte $00, $96, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $80, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 41. Do not edit by hand.
 M41Shape:
 M41Rows:
-  .byte $00, $97, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $94, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 42. Do not edit by hand.
 M42Shape:
 M42Rows:
-  .byte $07, $98, $07  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $07, $95, $07  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 43. Do not edit by hand.
 M43Shape:
 M43Rows:
-  .byte $00, $99, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $80, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 44. Do not edit by hand.
 M44Shape:
 M44Rows:
-  .byte $03, $9a, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $03, $96, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 45. Do not edit by hand.
 M45Shape:
@@ -234,13 +234,13 @@ M45Rows:
 ; (PF0,PF1,PF2) band row for the whole game. A shape block carries
 ; 3 one-byte indices (band 0/1/2) into these SoA columns; bank2's
 ; B3RoomBlocks expands them into PF0Buf at room load.
-LEVEL_ROW_COUNT = 27
+LEVEL_ROW_COUNT = 23
 RowPoolPF0:
-  .byte $f0, $30, $f0, $f0, $f0, $30, $00, $f0, $f0, $f0, $f0, $30, $00, $30, $30, $30, $30, $f0, $f0, $f0, $f0, $f0, $f0, $f0, $f0, $30, $f0
+  .byte $f0, $30, $f0, $f0, $f0, $30, $00, $f0, $f0, $f0, $f0, $30, $00, $f0, $f0, $30, $00, $f0, $f0, $f0, $f0, $f0, $f0
 RowPoolPF1:
-  .byte $ff, $00, $ff, $00, $ff, $3c, $00, $cf, $00, $c0, $cf, $0f, $00, $f3, $00, $00, $03, $c3, $ff, $cf, $cf, $cf, $3f, $3f, $0f, $ff, $f3
+  .byte $ff, $00, $ff, $00, $ff, $3c, $00, $cf, $00, $c0, $cf, $0f, $00, $ff, $fc, $00, $00, $ff, $cf, $cf, $ff, $0f, $f3
 RowPoolPF2:
-  .byte $0f, $00, $ff, $c0, $cf, $00, $00, $fc, $fc, $fc, $ff, $00, $3c, $03, $0f, $3c, $03, $03, $3f, $00, $0f, $f0, $0f, $03, $f0, $0f, $0f
+  .byte $0f, $00, $ff, $c0, $cf, $00, $00, $fc, $fc, $fc, $ff, $00, $3c, $00, $00, $fc, $fc, $3f, $00, $f0, $03, $f0, $0f
 
 
 ; C7 (2026-10-20): shape ADDRESS table — bank3's B3RoomBlocks
