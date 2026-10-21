@@ -3,6 +3,54 @@ Strategic Aerial Vehicle Infiltration Operations Rescue
 #########################################################################################################################################################################
 Nome personagem: Eorley Savior.
 
+Now, I want to understand, how HERO can have sprites for player and enemies, bigger and with more colors than ours?
+
+#########################################################################################################################################################################
+
+=========================================================================================================================================================================
+
+
+Occupied by the boot stub ($F000), HcrPush ($F010), HcrBandLo ($F0A0), and the Phase-4 crunch bodies ($F800-$FD80+tramp pads).
+=========================================================================================================================================================================
+
+
+Good catch — bank3 is the asset I under-used. Let me give you the real numbers on it.
+bank3 today
+- Free: $F0A3-$F7FF = 1885 B contiguous, plus $FECC-$FFF9 (~300 B in gaps).
+- Occupied by the boot stub ($F000), HcrPush ($F010), HcrBandLo ($F0A0), and the Phase-4 crunch bodies ($F800-$FD80+tramp pads).
+- It already speaks the tramp language (sta $1FF9 / twin jmp images / sta $1FF8 tails), so hosting level data + readers there is idiomatic, not new machinery.
+Capacity for level data: ~1885 − ~370 B of duplicated readers ≈ 1.5 KB (vs the 656 B bank2 currently has). Plus the $FECC-$FFF9 gap for small tables.
+What it buys, and why compaction is still needed
+Per-level cost today (measured): 14 B index + 8 B/room + 4 B/entity + 13+2R B per model/async block.
+campaign	today's format	compacted (~2.2×)
+20 × 4 rooms	≈1.7 KB (over 1.5 KB)	≈0.8 KB (fits easily)
+20 × 5-6 rooms	≈2.3 KB	≈1.1 KB (fits)
+today (4 levels)	500 B of blocks + 56 index	—
+So: bank3 makes 20 levels possible; compaction makes them roomy enough to be interesting (and gives headroom for the generator's varied shapes).
+What moving the data actually costs
+Data must move with its readers, because bank2 code can't read bank3 by absolute address:
+1. EnterRoomB2 copy in bank3 ($F0A3+), bank0's tramp byte sta $1FF8 → sta $1FF9, twin jmp at bank3's $FBD3 (currently fill).
+2. StageBandTab copy in bank3 (reads model meta at +9/+10), reached by a tramp at BuildColupF's tail.
+3. A ~10 B BankReadByte twin so MothRoutine / LaserHitTestBody (staying in bank2) can read enemy records from bank3.
+4. Keep the level index in bank2 (LoadLevel unchanged, 260 B of the freed slots).
+5. Delete the VBL band-color fold (§ below) — EnterRoom already stages RoomBandColor since 70a4493; the per-frame ROM re-read is redundant, and it's exactly the kind of level-data read that would otherwise need a third reader in bank3.
+6. convert: emit per-level tables/blocks into bank3 include lists, bank2 keeps levels_index; verify_build --precheck gets a bank3 slot map instead of bank2's four slots.
+7. ~22 tests read level bytes from bank2.bin + bank2.lst; they move to bank3.bin/bank3.lst (labels already come from .lst, so mostly mechanical).
+No mapper change, no ROM size change. Bank2 ends up nearly free (index + code), which also gives back the headroom the pre-pad has been begging for.
+Compaction targets (the "decrease data size" part)
+Ordered by payoff, all independent of the bank move:
+item	now	proposed	saves (live stage / 120-room campaign)
+collision rects	2R+2 B per block	derived from PF cells at load	~130 B / ~525 B
+PF rows	9 B (4+8+8 bits)	30-bit cell rows (4 B)	~75 B / ~325 B
+room record	4 B/room	2 B (offset + count, color per level)	32 B / 240 B
+enemy record	4 B (type,x,y,dir)	2 B packed	18 B / 320 B
+level index	14 B	12-13 B (drop start x/y, add fields)	16 B / 60 B
+Careful part: rect derivation must reproduce convert's greedy decomposition (bomb WallMask bits + hot-parent masks are rect-indexed), so it's a faithful 6502 port of find_rectangles, not an ad-hoc scan.
+Proposed order
+1. Move level data + readers to bank3 (format unchanged) → 1.5 KB, build/battery green.
+2. Compact the format (rects derived, PF cells, packed records) → ~2.2× smaller.
+3. Generator against the new budget.
+Step 1 is architectural (touches readers + 22 tests), so tell me to go and I'll start it. If you prefer, I can do step 2 first (pure data win, no bank move) — but then the readers get edited twice.
 
 #########################################################################################################################################################################
 
