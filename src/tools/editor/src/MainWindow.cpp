@@ -1311,10 +1311,13 @@ void MainWindow::ShowLevelMap() {
     if (!m_mapWindow) {
         m_mapWindow = new LevelMapWindow(this);
     }
-    RefreshMap();
     m_mapWindow->show();
     m_mapWindow->raise();
     m_mapWindow->activateWindow();
+    // AFTER show(): RefreshMap skips a hidden window, so painting first left
+    // the fresh window blank until the user switched levels (user report
+    // 2026-10-21: level 1 showed nothing until level 2 was selected).
+    RefreshMap();
 }
 
 void MainWindow::RefreshMap() {
