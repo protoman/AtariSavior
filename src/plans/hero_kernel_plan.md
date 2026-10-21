@@ -270,6 +270,12 @@ the physics does not allow it.
   hosts slot 1) so the setup line's `cpx Obj1Band / bne` is 4 B of hook.
   `SelectActiveObject` becomes the stager (no rotation); the slot-0 path and
   the bomb/miner/tally special cases keep their current priority rules.
+  **ZP has no free 4th byte for `Obj1Band`** — two ways out, decide at
+  implementation time: (a) encode the band in `ObjBase1` bit 7 (all `OBJ_*`
+  bases are < 128), or (b) derive it on the setup line from
+  `ObjTop1 + RoomY` with two compares (~12 c of the ~60 free). Also keep the
+  invariant **slot 0 = the lower band**: bands run 0→1→2, so slot 1's copy can
+  never need restoring after a later band.
 - Result: `SelectActiveObject` stops rotating — it becomes the staging routine;
   both objects draw every frame, each with its own colour.
 
