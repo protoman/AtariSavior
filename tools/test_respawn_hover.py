@@ -22,15 +22,17 @@ K = (SRC / "kernel.asm").read_text()
 # keeps only the pad + the drop-in tail (LF_B0Tail).
 B2 = (SRC / "bank2.asm").read_text()
 
+B1 = (SRC / "bank1.asm").read_text()
 GRAVITY = int(re.search(r"^GRAVITY\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 16)
 JET_MAX = int(re.search(r"^JET_MAX\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 16)
 
 # --- 1. asm structure -------------------------------------------------------
-HOVER_FRAMES = int(re.search(r"^HOVER_FRAMES\s*=\s*(\d+)", K, re.M).group(1))
-# LoseLife arms the hover countdown on every death
+HOVER_FRAMES = int(re.search(r"^HOVER_FRAMES\s*=\s*(\d+)", B1, re.M).group(1))
+# LoseLife ARMS the hover ($FF = waiting for the first input; user rule: an
+# untouched player must not start falling after a death)
 ll = K[K.index("LoseLife:"):K.index(".LLStay:")]
-assert re.search(r"lda #HOVER_FRAMES\s*\n\s*sta Hover", ll), \
-    "LoseLife must arm Hover with HOVER_FRAMES"
+assert re.search(r"lda #\$FF\s*\n\s*sta Hover", ll), \
+    "LoseLife must arm Hover = $FF (waiting for input)"
 # LoadLevel clears Hover (stage entry lands normally): the body moved to bank2
 # (C2), the bank0 half must stay a pad-only entry so the drop-in tail runs.
 assert re.search(r"\nLoadLevel:\n\s+sta \$1FF8", K), \
@@ -41,10 +43,19 @@ assert re.search(r"sta Hover", loadlvl), "LoadLevelB2 must clear Hover"
 # UpdateP0Vertical checks Hover + pins vy (at .Integrate, all paths reach it)
 up = K[K.index("UpdateP0Vertical:"):K.index(".DoInt:")]
 assert "lda Hover" in up and "sta Hover" in up, "physics must read+clear Hover"
-# ...and RefreshEnemyY ticks the grace down once per gameplay frame
-rey = K[K.index("RefreshEnemyY:"):K.index(".REYDone:")]
-assert re.search(r"lda Hover[^\n]*\n\s*beq \.REYNoHover[^\n]*\n\s*dec Hover", rey), \
-    "RefreshEnemyY must decrement the hover grace once per frame"
+# ...and the bank1 HUD band ticks the grace once per gameplay frame
+assert re.search(r"^Hover\s*=\s*\$9C", B1, re.M), "bank1 must map Hover ($9C)"
+tick = B1[B1.index("Respawn hover (user rule 2026-10-21)"):]
+tick = tick[:tick.index(".HoverDone:")]
+assert re.search(r"lda Hover", tick) and re.search(r"dec Hover", tick), \
+    "bank1 HUD must tick the hover grace"
+assert re.search(r"lda SWCHA", tick) and re.search(r"lda INPT4", tick), \
+    "the armed state must watch BOTH the joystick and the fire button"
+assert re.search(r"lda #HOVER_FRAMES\s*\n\s*sta Hover", tick), \
+    "the first input must start the grace (HOVER_FRAMES)"
+# the tick must run before the HUD's first WSYNC (its cycles get absorbed)
+assert B1.index("Respawn hover (user rule 2026-10-21)") < B1.index(".TopGap:"), \
+    "hover tick must stay before the TopGap WSYNC loop"
 assert re.search(r"cmp #GRAVITY \+ 1", up), "lift threshold must be GRAVITY+1"
 assert up.index(".Integrate:") < up.index("lda Hover"), \
     "Hover check must sit at .Integrate (clamp jmps there)"
@@ -54,13 +65,17 @@ tbl = K.index("DropSpeedTable:")
 assert tbl < K.index("    .ds $FBD0 - *, 0"), "DropSpeedTable must be pre-pad"
 
 # --- 2. physics simulation (mirrors UpdateP0Vertical's arithmetic) ----------
-def simulate(up_held, frames):
+def simulate(up_held, frames, first_input=None):
+    """first_input = frame index of the first direction/fire press (None =
+    untouched). Hover = $FF waits for it; the press starts HOVER_FRAMES."""
     vyLo = vyHi = sub = jp = 0
-    hover = HOVER_FRAMES
+    hover = 0xFF
     roomy = 48
     for f in range(frames):
-        if hover:                          # RefreshEnemyY, once per frame
-            hover -= 1
+        if hover == 0xFF and first_input is not None and f >= first_input:
+            hover = HOVER_FRAMES           # the press arms the grace
+        elif 0 < hover < 0xFF:
+            hover -= 1                     # grace ticks down once per frame
         if up_held and (f & 3) == 0 and jp < JET_MAX:
             jp += 1
         if hover:
@@ -83,10 +98,14 @@ def simulate(up_held, frames):
         roomy += A if A < 128 else A - 256
     return roomy
 
-# idle (or sideways-only) input: pinned during the grace, then FALLS
-assert simulate(False, HOVER_FRAMES - 5) == 48, \
-    "idle respawn must stay pinned during the grace window"
-y = simulate(False, 180)
+# untouched player: hovers FOREVER (no fall even after 300 frames)
+assert simulate(False, 300) == 48, \
+    "an untouched player must not start falling after a death"
+# sideways input (no Up): pinned until the press, then during the grace, then
+# FALLS on its own
+assert simulate(False, 60, first_input=10) == 48, \
+    "input must start the grace (still pinned)"
+y = simulate(False, 10 + HOVER_FRAMES + 90, first_input=10)
 assert y > 48 + 20, f"after the grace the player must fall (got RoomY {y})"
 # Up held: never falls, and lifts above the spawn altitude
 y = simulate(True, 240)

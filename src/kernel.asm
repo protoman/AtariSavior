@@ -358,11 +358,7 @@ JET_MAX         = $14           ; max jet thrust accumulator = 20. With the
                                 ; spin-up (bugs.md #31); was $20 (÷1 ramp:
                                 ; lift after 0.25s — too snappy).
 MAX_FALL        = $0200         ; max fall speed (positive = down)
-HOVER_FRAMES    = 90            ; respawn hover grace: 1.5 s at 60 Hz. The
-                                ; player hangs while the jet ramps (lift at
-                                ; 60f); after this the physics resumes even
-                                ; with no Up input — moving sideways must not
-                                ; keep him floating (user report 2026-10-21).
+
 JET_AUD_BASE    = $0F           ; engine AUDF base: freq = base - JetPower/8 - sputter
 JET_AUD_VOL     = $08           ; engine volume while Up is held
 LASER_AUD_C     = 2             ; laser ch0 control: div-15 tone = low pitch
@@ -3148,9 +3144,11 @@ ReloadLevel:
 ; action (bar reload, RoomY shift). Tail-callable (`jmp LoseLife`).
 ; ------------------------------------------------------------------------------
 LoseLife:
-    lda #HOVER_FRAMES
-    sta Hover                   ; bugs.md #1 + user rule 2026-10-21: hover for
-                                ; 1.5 s (time to ramp the jet), then fall
+    lda #$FF
+    sta Hover                   ; bugs.md #1 + user rule 2026-10-21: WAIT for
+                                ; the player's first input ($FF = armed, grace
+                                ; not started); the 1.5 s grace starts on the
+                                ; first direction/attack press.
                                 ;   (LoadLevel clears it on a stage-entry reset)
     dec PlayerLives
     bpl .LLStay
@@ -3389,10 +3387,7 @@ TitleTailAudio:                 ; tail: TitleWork falls in (no rts)
 ; block after the pads; pre-pad headroom is 1B).
 ; ------------------------------------------------------------------------------
 RefreshEnemyY:
-    lda Hover                   ; respawn-hover grace, decremented once per
-    beq .REYNoHover             ; frame (this runs every gameplay frame)
-    dec Hover
-.REYNoHover:
+
     inc EnemyRamP                ; free-running frame clock (wraps 0-255).
                                  ; TickCounter is the 60-frame GAME timer
                                  ; (decrements 60->1, reloads) — gates derived
