@@ -533,7 +533,12 @@ int main(int argc, char* argv[]) {
         // and BOTH write only to the path the caller chose).
         std::vector<hero::LevelData> levels;
         std::vector<hero::ModelData> models;
-        hero::DataSerializer::Build20LevelStage(levels, models);
+        try {
+            hero::DataSerializer::Build20LevelStage(levels, models);
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "generatestage: %s\n", e.what());
+            return 2;
+        }
         size_t rooms = 0;
         for (const auto& level : levels) {
             rooms += level.rooms.size();

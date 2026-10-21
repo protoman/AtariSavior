@@ -268,6 +268,15 @@ def main() -> int:
                               f"{opposite}={edge_open(theirs, opposite)}) — "
                               "one-sided carve tears the transition")
                         return 1
+                    shared = (edge_cells(mine, direction)
+                              & edge_cells(theirs, opposite))
+                    if edge_open(mine, direction) and not shared:
+                        print(f"FAIL: level {level_n} rooms {rid} and {other} "
+                              f"open the {direction} edge on DIFFERENT cells "
+                              f"({sorted(edge_cells(mine, direction))} vs "
+                              f"{sorted(edge_cells(theirs, opposite))}) — the "
+                              "player would drop into a wall")
+                        return 1
                     # count each PASSAGE once (adjacent-but-walled pairs are
                     # legal and are not passages)
                     if direction == "south" and edge_open(mine, "south"):
@@ -336,6 +345,33 @@ def main() -> int:
                 print(f"FAIL: level {level_n} miner room {miner_id} has no "
                       f"block under the miner at cell {half_cell} "
                       f"({miner_rows[2]!r})")
+                return 1
+            # ...and the player must be able to REACH him: his own cell is
+            # air and an entry cell of the room floods to it.
+            if miner_rows[1][half_cell] != ".":
+                print(f"FAIL: level {level_n} miner sits in a wall at cell "
+                      f"{half_cell} ({miner_rows[1]!r})")
+                return 1
+            seen = {(1, half_cell)}
+            stack = [(1, half_cell)]
+            while stack:
+                my, mx = stack.pop()
+                for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    ny, nx = my + dy, mx + dx
+                    if (0 <= ny < 3 and 0 <= nx < 10
+                            and (ny, nx) not in seen
+                            and miner_rows[ny][nx] not in STRUCTURAL_WALLS):
+                        seen.add((ny, nx))
+                        stack.append((ny, nx))
+            edges = [(0, x) for x in range(10)
+                     if miner_rows[0][x] not in STRUCTURAL_WALLS]
+            edges += [(2, x) for x in range(10)
+                      if miner_rows[2][x] not in STRUCTURAL_WALLS]
+            if miner_rows[1][0] not in STRUCTURAL_WALLS:
+                edges.append((1, 0))
+            if not any(e in seen for e in edges):
+                print(f"FAIL: level {level_n} miner room {miner_id} has no "
+                      "entry cell connected to the miner")
                 return 1
             # A SIDE entry must put the miner on the OPPOSITE side (user rule
             # 2026-10-21): walked rooms are in order, so the room before the

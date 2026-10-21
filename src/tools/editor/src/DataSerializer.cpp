@@ -26,6 +26,8 @@
 #include <vector>
 #include <sstream>
 #include <iterator>
+#include <stdexcept>
+#include <string>
 
 namespace hero {
 
@@ -896,6 +898,57 @@ int LampCell(const ModelData& m, int band, int prefer) {
     return -1;
 }
 
+// --- completability guard (user 2026-10-21) --------------------------------
+// A generated room must let the player THROUGH: every way in (top edge, and
+// the row-1 cell 0 horizontal edge) must reach a way out (bottom edge / the
+// horizontal edge) through air. PF walls span the full 48-line band, so a
+// band-1 wall that misses the vertical corridor seals the room — exactly the
+// family that soft-locked level 13. Phase/hcrunch cells are gated at run time
+// and therefore count as passable; a LOCKED door never sits on the generator's
+// models (the door is a room patch).
+// Returns an empty string when the room is fine, else a short description.
+std::string RoomConnectivityProblem(const ModelData& m) {
+    auto air = [&](int band, int x) { return CellAir(m, band, x); };
+    std::vector<std::pair<int, int>> ins, outs;
+    for (int x = 0; x < kRoomWidth; ++x) {
+        if (air(0, x)) ins.push_back({0, x});
+        if (air(2, x)) outs.push_back({2, x});
+    }
+    if (air(1, 0)) {
+        ins.push_back({1, 0});
+        outs.push_back({1, 0});
+    }
+    if (ins.empty() || outs.empty()) return "";   // sentinel / dead end
+    for (const auto& start : ins) {
+        bool seen[3][hero::kRoomWidth] = {};
+        std::vector<std::pair<int, int>> stack{start};
+        seen[start.first][start.second] = true;
+        while (!stack.empty()) {
+            auto [y, x] = stack.back();
+            stack.pop_back();
+            static const int dy[4] = {1, -1, 0, 0};
+            static const int dx[4] = {0, 0, 1, -1};
+            for (int k = 0; k < 4; ++k) {
+                const int ny = y + dy[k], nx = x + dx[k];
+                if (ny < 0 || ny >= kRoomHeight || nx < 0
+                        || nx >= kRoomWidth) continue;
+                if (seen[ny][nx] || !CellAir(m, ny, nx)) continue;
+                seen[ny][nx] = true;
+                stack.push_back({ny, nx});
+            }
+        }
+        bool reaches = false;
+        for (const auto& goal : outs) {
+            if (seen[goal.first][goal.second]) { reaches = true; break; }
+        }
+        if (!reaches) {
+            return "entry cell (" + std::to_string(start.first) + ","
+                 + std::to_string(start.second) + ") reaches no exit";
+        }
+    }
+    return "";
+}
+
 void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
                      const LevelPlan& plan, RoomData& room,
                      const ModelData& shape,
@@ -1090,6 +1143,17 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
     // 3. The levels, in play order.
     levels.clear();
     levels.reserve(kStageLevels);
+    // COMPLETABILITY GUARD: refuse to emit a stage whose rooms cannot be
+    // crossed (construction opens the corridor, but a future edit could break
+    // it; the editor and the CLI both surface this as a hard error).
+    for (const ModelData& m : models) {
+        const std::string problem = RoomConnectivityProblem(m);
+        if (!problem.empty()) {
+            throw std::runtime_error("generated room '" + m.name + "' is "
+                                     "impassable: " + problem);
+        }
+    }
+
     for (int l = 1; l <= kStageLevels; ++l) {
         LevelData level;
         level.level_id = l;

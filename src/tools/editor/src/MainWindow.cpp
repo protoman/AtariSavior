@@ -1014,7 +1014,15 @@ void MainWindow::GenerateLevelStage() {
     // deterministic, so a re-run reproduces the same stage.
     std::vector<hero::LevelData> levels;
     std::vector<hero::ModelData> models;
-    hero::DataSerializer::Build20LevelStage(levels, models);
+    try {
+        hero::DataSerializer::Build20LevelStage(levels, models);
+    } catch (const std::exception& e) {
+        // Completability guard: never save a stage whose rooms cannot be
+        // crossed (see DataSerializer::RoomConnectivityProblem).
+        QMessageBox::critical(this, "Generate 20 Levels",
+                              QString("Generation aborted: %1").arg(e.what()));
+        return;
+    }
 
     m_stageLevels = levels;
     m_models = models;
