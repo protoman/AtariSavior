@@ -668,8 +668,23 @@ ModelData MakeShapeModel(int modelId, int mask) {
             // corridor cell here (it would bypass the gate).
             corrB = corrA;
         }
-        for (int x = corrA; x <= corrB; ++x) {
-            model.tiles[1 * kRoomWidth + x] = (int)TileType::AIR;
+        if (mask & SHAPE_2GAP) {
+            // Only the two gap cells — opening the intervening span erased the
+            // archetype interior (Spiral/Pocket rooms became plain shafts the
+            // player can only fall through). A horizontal room is the
+            // exception: its aisle meets the corridor on the near side, so the
+            // far gap must reach it through band 1.
+            model.tiles[1 * kRoomWidth + corrA] = (int)TileType::AIR;
+            model.tiles[1 * kRoomWidth + corrB] = (int)TileType::AIR;
+            if (mask & SHAPE_H) {
+                for (int x = corrA; x <= corrB; ++x) {
+                    model.tiles[1 * kRoomWidth + x] = (int)TileType::AIR;
+                }
+            }
+        } else {
+            for (int x = corrA; x <= corrB; ++x) {
+                model.tiles[1 * kRoomWidth + x] = (int)TileType::AIR;
+            }
         }
         if (mask & SHAPE_H) {
             // Horizontal entrance: a band-1 aisle from the outer edge (cell 0)
@@ -707,6 +722,54 @@ ModelData MakeShapeModel(int modelId, int mask) {
             const int base = (kRoomHeight - 1) * kRoomWidth;
             model.tiles[base + kGapA] = (int)TileType::AIR;
             model.tiles[base + kGapB] = (int)TileType::AIR;
+        }
+    }
+    // --- THIN WALLS (user rule 2026-10-21) --------------------------------
+    // The bomb punch removes a THIN wall — a solid cell with air on both
+    // sides — so a decorative 1-cell pillar is a pointless bomb target. A
+    // generated wall must be a RUN: an isolated cell is thickened on a side
+    // that carries no path (vertical corridor / horizontal aisle / start
+    // drop); if both sides carry the path, the decoration is removed. The
+    // intentional bombable blocks live on ROOMS (asym patches), never here.
+    {
+        const int pa = (mask & SHAPE_2GAP) ? kGapA : kVertExitA;
+        const int pb = (mask & SHAPE_2GAP) ? kGapB : kVertExitB;
+        const int near = pa < pb ? pa : pb;
+        const bool start = (mask & SHAPE_START) != 0;
+        const int startNear = (mask & SHAPE_2GAP) ? kGapA : kVertExitA;
+        // Is this cell part of a path the room needs (and so may not become
+        // a wall)? The corridor spans every band; the horizontal aisle only
+        // band 1; the spawn drop only bands 0/1.
+        auto keep = [&](int band, int x) {
+            if (x == pa || x == pb) return true;            // vertical corridor
+            if ((mask & SHAPE_H) && band == 1 && x <= near) return true;
+            if (start && band == 0 && x >= 2 && x <= startNear) return true;
+            if (start && band == 1 && x == 4) return true;  // HotDrop column
+            return false;
+        };
+        auto solid = [&](int band, int x) {
+            return model.tiles[band * kRoomWidth + x]
+                       != (int)TileType::AIR;
+        };
+        for (int band = 0; band < kRoomHeight; ++band) {
+            for (int x = 1; x < kRoomWidth - 1; ++x) {
+                if (!solid(band, x) || solid(band, x - 1)
+                        || solid(band, x + 1)) {
+                    continue;                     // part of a run
+                }
+                const bool leftFree = !keep(band, x - 1);
+                const bool rightFree = !keep(band, x + 1);
+                int cand = -1;
+                if (leftFree && !rightFree) cand = x - 1;
+                else if (rightFree && !leftFree) cand = x + 1;
+                else if (leftFree && rightFree) cand = (x < 5) ? x - 1 : x + 1;
+                if (cand >= 0) {
+                    model.tiles[band * kRoomWidth + cand] =
+                        model.tiles[band * kRoomWidth + x];
+                } else {
+                    model.tiles[band * kRoomWidth + x] = (int)TileType::AIR;
+                }
+            }
         }
     }
     return model;
@@ -962,8 +1025,13 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
             room.bottom_g = 88;
             room.bottom_b = 208;
             if (plan.tentacle) {
-                AddEnemy(room, EnemyType::TENTACLE, 10.0f, 8.0f,
-                         1.0f, 0.0f);
+                // On open water: the row may carry the miner rock / two-gap
+                // walls, so snap to the nearest air cell (band 2).
+                const int tcell = NearestAir(shape, 2, 5);
+                if (tcell >= 0) {
+                    AddEnemy(room, EnemyType::TENTACLE, (float)(tcell * 2),
+                             8.0f, 1.0f, 0.0f);
+                }
             } else {
                 // Off the miner's rock (cells 2..3): ferry lane at cell 6.
                 AddEnemy(room, EnemyType::RAFT, 12.0f, 8.0f, 1.0f, 0.0f);
@@ -1276,8 +1344,15 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 for (int c = 1; c <= 7; ++c) {
                     const int mc = (side == 0) ? kRoomWidth - 1 - c : c;
                     const int mirror = kRoomWidth - 1 - mc;
+                    // The M1/ball strip is a whole-cave latch: the patched
+                    // band must be OPEN, the other two bands WALLED at that
+                    // column (the wall-hide envelope convert enforces).
                     if (sm.tiles[1 * kRoomWidth + mc] == 0
-                            && sm.tiles[1 * kRoomWidth + mirror] == 0) {
+                            && sm.tiles[1 * kRoomWidth + mirror] == 0
+                            && sm.tiles[0 * kRoomWidth + mc] != 0
+                            && sm.tiles[2 * kRoomWidth + mc] != 0
+                            && sm.tiles[0 * kRoomWidth + mirror] != 0
+                            && sm.tiles[2 * kRoomWidth + mirror] != 0) {
                         col = c;
                         break;
                     }
