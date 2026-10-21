@@ -1466,7 +1466,7 @@ UE_Alive:
     lda EnemyDeadMask
     and EnemyBitTable,X
     bne UE_Next                  ; dead enemy does not move
-    ldy EnemyOffTable,X          ; Y = X*4 = type offset
+    ldy EnemyOffTable,X          ; Y = X*3 = type offset
     jsr FoldIndirect             ; type
     jmp UEDispatch               ; UEDispatch ($F82C pin gap) replaces the old
                                  ; 18 B per-type compare chain with one 3 B jmp:
@@ -1817,7 +1817,7 @@ CEH_HasMore:
     bcs CEHNext                ; no Y overlap
         ; Lamp (type 5): crash → RoomDarkMask; lamp stays in rotation (grey), no life
     ldx EnemyIndex
-    ldy EnemyOffTable,X         ; Y = EnemyIndex * 4
+    ldy EnemyOffTable,X         ; Y = EnemyIndex * 3
     jsr FoldIndirect            ; type
     cmp #LAMP
     beq CEH_Lamp
@@ -2145,7 +2145,7 @@ SelectActiveObject:
     ldx EnemyIndex
     lda EnemyRamX,X
     sta ActiveObjectX
-    ldy EnemyOffTable,X         ; Y = EnemyIndex * 4 = type offset
+    ldy EnemyOffTable,X         ; Y = EnemyIndex * 3 = type offset
     ; --- Fold batch (P3.1): enemy record staged before IsRoomDark (A-only,
     ; Y and FetchPtr survive the call). ---
     lda EnemyDataLo
@@ -2508,8 +2508,8 @@ PlayerHitsMap:
     jmp OverlayTramp
 
 EnemyOffTable:
-    .byte 0,4,8                 ; enemy index * 4 (stride S4.1; offset into
-                                ; enemy data type,x,y,dir)
+    .byte 0,3,6                 ; enemy index * 3 (2026-10-21: 3 B record —
+                                ; type b3-0|dir b7, x, y)
 
 ; BitMaskTable moved to bank1 with IsRoomDark/SetRoomDark (leaf_move_plan).
 

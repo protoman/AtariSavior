@@ -35,8 +35,9 @@ BANK3 = (ROOT / "src" / "bank3.asm").read_text(encoding="utf-8")
 def loader_run(records, dark=0x00):
     """Run bank2's REAL enemy loader (EBLER_Loop) over fabricated records.
 
-    Records are 4 B [type, x, y, dir] in EnemyOffTable order, staged in RAM
-    (FetchPtr = $0180) so the test owns its data. Entry is mid-routine with
+    Records are 3 B [type|dir b7, x, y] in EnemyOffTable order (2026-10-21;
+    bit7 set = dir left), staged in RAM (FetchPtr = $0180) so the test owns
+    its data. Entry is mid-routine with
     FetchPtr/EnemyCount staged exactly as EnterRoomB2 has them; the loop stops
     at EBLER_Done (before `jmp ReturnPad`), so it never touches TIA or the
     stack. Returns the live shadow: right[] (EnemyRamD bits), x[], and
@@ -58,10 +59,9 @@ def loader_run(records, dark=0x00):
     r = mem.ram
     rec = 0x180                      # RAM window FetchPtr reads (no stack)
     for i, (typ, dir_) in enumerate(records):
-        mem[rec + 4 * i + 0] = typ
-        mem[rec + 4 * i + 1] = 100 - 10 * i     # spawn x
-        mem[rec + 4 * i + 2] = 84               # y
-        mem[rec + 4 * i + 3] = dir_
+        mem[rec + 3 * i + 0] = typ | (0x80 if (dir_ & 0x80) else 0)
+        mem[rec + 3 * i + 1] = 100 - 10 * i     # spawn x
+        mem[rec + 3 * i + 2] = 84               # y
     r[lbl["FetchPtr"] & 0x7F] = rec & 0xFF
     r[(lbl["FetchPtr"] & 0x7F) + 1] = 0        # $180 -> hi 0
     r[lbl["EnemyCount"] & 0x7F] = len(records)
@@ -141,15 +141,28 @@ def main() -> None:
     # its wall. The loader is dir's only consumer (the patrol bounds are
     # spawn ± SNAKE_PATROL), so this invert is the whole feature.
     ler_code = "\n".join(ln.split(";")[0] for ln in ler_body.splitlines())
-    assert re.search(r"cpy\s+#SNAKE\s*\n\s*bne\s+EBLER_Dir\s*\n\s*"
-                     r"eor\s+#\$FF\s*\nEBLER_Dir:\s*\n\s*tay\s*\n\s*"
-                     r"bmi\s+EBLER_Left",
+    assert re.search(r"and\s+#\$0F\s*\n\s*cmp\s+#SNAKE\s*\n\s*"
+                     r"bne\s+EBLER_Dir\s*\n\s*lda\s+Temp\s*\n\s*"
+                     r"eor\s+#\$80\s*\n\s*sta\s+Temp\s*\nEBLER_Dir:",
                      ler_code), \
-        "snake live dir must be inverted at load (eor #$FF before the bmi; "\
-        "art: bank2 SNAKE = kernel ENEMY_SNAKE = 2). The tay is load-bearing: "\
-        "cpy clobbers the N flag the bmi reads, so it must be re-set from A"
+        "snake live dir must be inverted at load (eor #$80 flips the dir bit "\
+        "in the packed type byte; art: bank2 SNAKE = kernel ENEMY_SNAKE = 2)"
     assert re.search(r"lda\s+\(FetchPtr\),Y\s*\n\s*sta\s+Temp", ler_code), \
-        "loader must read the record TYPE (+0) into Temp for the snake test"
+        "loader must read the packed record byte (+0) into Temp for the snake test"
+    # --- stride guard: the 3 B record must stay 3 B in BOTH hand-copied
+    # EnemyOffTable tables (kernel + bank2) and in the loader's *3 base math.
+    for who, text in (("kernel.asm", KERNEL), ("bank2.asm", BANK2)):
+        m_off = re.search(r"^EnemyOffTable:\n\s+\.byte ([\d,\s]+)", text, re.M)
+        assert m_off, f"{who}: EnemyOffTable literal missing"
+        vals = [int(v) for v in m_off.group(1).replace(" ", "").split(",") if v]
+        assert vals == [0, 3, 6], (
+            f"{who}: EnemyOffTable = {vals}, want [0, 3, 6] (3 B enemy "
+            "records, 2026-10-21)")
+    base = BANK2.split(".EBSumDone:")[1].split("LoadEnemyRam:")[0]
+    base_code = "\n".join(ln.split(";")[0] for ln in base.splitlines())
+    assert re.search(r"asl\s*\n\s*clc\s*\n\s*adc\s+LevelConnSpare", base_code), \
+        "record base must be 3*index (asl then + index); a lone `asl asl` " \
+        "is the retired 4 B stride"
     assert re.search(r"^SNAKE\s*=\s*2\b", BANK2, re.M) and \
         re.search(r"^ENEMY_SNAKE\s*=\s*2\b", KERNEL, re.M), \
         "bank2's SNAKE copy must match kernel ENEMY_SNAKE"

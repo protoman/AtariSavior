@@ -239,10 +239,10 @@ EnterRoomB2:
     adc #0
     sta EnemyDataHi
     lda LevelConnSpare
-    asl
-    asl                             ; *4 (records are 4 B; index <= 63)
+    asl                             ; 2*first (records are 3 B, 2026-10-21)
     clc
-    adc EnemyDataLo
+    adc LevelConnSpare              ; 3*first; C = carry out (not dropped)
+    adc EnemyDataLo                 ; + record base (C saved for the high byte)
     sta EnemyDataLo
     lda EnemyDataHi
     adc #0
@@ -272,30 +272,29 @@ EnterRoomB2:
 EBLER_Loop:
     cpx EnemyCount
     bcs EBLER_Done
-    ldy EnemyOffTable,X             ; Y = X*4 type offset
-    lda (FetchPtr),Y                ; +0 = type (kept for the snake invert)
-    sta Temp                        ; Temp = record type (EnterRoom: free)
+    ldy EnemyOffTable,X             ; Y = X*3 record offset
+    lda (FetchPtr),Y                ; +0 = type (b3-0) | dir (b7: 1 = left)
+    sta Temp                        ; Temp = raw record byte (free: EnterRoom)
     iny                             ; +1 = x
     lda (FetchPtr),Y
     sta EnemyRamX,X
     iny                             ; +2 = y
     lda (FetchPtr),Y
     sta EnemyRamY,X
-    iny                             ; +3 = dir ($FF = left)
-    lda (FetchPtr),Y
-    ldy Temp                        ; record type
-    cpy #SNAKE
+    lda Temp
+    and #$0F                        ; record type
+    cmp #SNAKE
     bne EBLER_Dir
-    eor #$FF                        ; SNAKE: the authored dir = where it will
+    lda Temp
+    eor #$80                        ; SNAKE: the authored dir = where it will
                                     ; come OUT, so invert the live bit — the
                                     ; first move must be the retreat into its
                                     ; wall (user 2026-10-19). Nothing else
                                     ; reads the ROM dir: the patrol bounds are
                                     ; spawn ± SNAKE_PATROL.
+    sta Temp
 EBLER_Dir:
-    tay                             ; Y = dir, re-setting N from A (the cpy
-                                    ; above clobbered the flags `bmi` needs;
-                                    ; Y is reloaded at the loop top)
+    lda Temp                        ; b7 = 1 -> left (sets N)
     bmi EBLER_Left
     lda EnemyBitTable,X             ; face right → set bit
     ora EnemyRamD
@@ -1226,7 +1225,7 @@ BombEnemyBlastBody:
     lda EnemyDeadMask
     and EnemyBitTable,X
     bne .BEBNext                ; already dead
-    ldy EnemyOffTable,X         ; Y = X*4 = type offset (record: type,x,y,dir)
+    ldy EnemyOffTable,X         ; Y = X*3 = type offset (record: type|dir,x,y)
     lda (EnemyDataLo),Y
     cmp #LAMP
     beq .BEBNext                ; lamp: blast passes through (item 3 fix)
@@ -1483,11 +1482,11 @@ LaserClampDone:
     lda #0                      ; result: miss (Z set for caller's beq)
     jmp ReturnPad
 
-; Type-offset table (copy of kernel EnemyOffTable: enemy index * 4; S4.1) and
-; dead-bit table (copy of kernel EnemyBitTable) — bank0 ROM is not visible
-; from here; labels keep the kernel-side test anchors working.
+; Type-offset table (copy of kernel EnemyOffTable: enemy index * 3; 2026-10-21
+; 3 B enemy records) and dead-bit table (copy of kernel EnemyBitTable) —
+; bank0 ROM is not visible from here; labels keep the kernel-side anchors.
 EnemyOffTable:
-    .byte 0,4,8
+    .byte 0,3,6
 
 EnemyBitTable:
     .byte $01, $02, $04, $08

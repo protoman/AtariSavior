@@ -160,7 +160,8 @@ def main() -> None:
 
     # --- C2 (2026-10-20): 3 B shape-index room records ---------------------
     # The readers hardcode the block layout: RoomShapes / RoomPositions /
-    # RoomCounts (1 B/room each) then EnemyDataTable (4 B/record). The
+    # RoomCounts (1 B/room each) then EnemyDataTable (3 B/record since
+    # 2026-10-21: type b3-0 | dir b7, x, y). The
     # per-level entry is 4 scalars + base word + room count, and the position /
     # count / enemy-record bases are the block's +n / +2n / +3n offsets, so the
     # emission order IS the contract. The block address is no longer stored per
@@ -291,10 +292,22 @@ def main() -> None:
         # C7 (2026-10-20): the extras stream is its own BANK3 file now, so the
         # enemy records run to the end of the rooms file.
         enemy_text = text[pos[f"LEVEL{n}_EnemyDataTable"]:]
-        records = enemy_text.count("  .byte ")
+        record_lines = [ln for ln in enemy_text.splitlines()
+                        if ln.startswith("  .byte ")]
+        records = len(record_lines)
         assert records == total, (
             f"LEVEL{n}: EnemyDataTable has {records} records but the counts "
-            f"account for {total} (4 B/record)")
+            f"account for {total} (3 B/record)")
+        for ln in record_lines:
+            vals = [v.strip() for v in ln[len("  .byte "):].split(",")]
+            assert len(vals) == 3, (
+                f"LEVEL{n}: enemy record {ln!r} is not 3 B "
+                "(type|dir, x, y) — stale converter")
+            raw = vals[0]
+            typ = int(raw[1:], 16) if raw.startswith("$") else int(raw)
+            assert typ <= 7, (
+                f"LEVEL{n}: enemy record type ${typ:02x} does not fit "
+                "b3-0 with dir in b7")
         extras_path = (ROOT / "src" / "generated" /
                        f"level_{int(n):03d}_extras.asm")
         extras_text = (extras_path.read_text(encoding="utf-8")

@@ -948,7 +948,7 @@ def check_level_format(src: Path) -> None:
         base +  0   RoomShapes     1 B  (idx b5-0 | band b6 | extras b7)
         base +  n   RoomPositions  1 B  (x<<4|y)
         base + 2n   RoomCounts     1 B  (count<<6 | extras ordinal)
-        base + 3n   EnemyDataTable 4 B/record
+        base + 3n   EnemyDataTable 3 B/record (type b3-0|dir b7, x, y)
         ..          LEVELn_AsyncExtras  variable records (C5)
 
     The block address is `LEVEL_ShapeTable[shape index]` (a 2 B word table in
@@ -1080,6 +1080,39 @@ def check_level_format(src: Path) -> None:
             if int(count) > 3:
                 err(f"{path.name}: room has {count} enemy records > 3 "
                     "(MAX_ENEMIES)")
+        # --- enemy records: 3 B each (2026-10-21) -------------------------
+        # byte 0 = type (b3-0) | dir (b7 = left), byte 1 = x, byte 2 = y.
+        # The reader hardcodes this: EnemyOffTable = 0,3,6 and EnterRoomB2
+        # derives the base as 3*index. A stale 4 B table (dir as its own
+        # byte) is the failure this block exists for — it would make every
+        # slot read its neighbour's x as a type. Hard-fail on the record
+        # LENGTH, not just the count.
+        mrec = re.search(r"^LEVEL(\d+)_EnemyDataTable:\n((?:  \.byte[^\n]*\n)*)",
+                         text, re.M)
+        total_records = sum(int(c) for _h, c in counts)
+        if not mrec:
+            err(f"{path.name}: no LEVELn_EnemyDataTable label "
+                "(LEVEL_FORMAT 5 emits it after the counts column)")
+        else:
+            rec_lines = mrec.group(2).splitlines()
+            if len(rec_lines) != total_records:
+                err(f"{path.name}: EnemyDataTable has {len(rec_lines)} "
+                    f"records, the RoomCounts column accounts for "
+                    f"{total_records} — stale table or a drifted converter")
+            for n, line in enumerate(rec_lines):
+                payload = line.split(".byte", 1)[1].split(";")[0]
+                vals = [v.strip() for v in payload.split(",") if v.strip()]
+                if len(vals) != 3:
+                    err(f"{path.name}: enemy record {n} is {len(vals)} B — "
+                        "the loader is stride 3 (type|dir, x, y); a 4 B "
+                        "record (dir as its own byte) is the retired format")
+                    break
+                packed = int(vals[0].lstrip("$"), 16)
+                if packed & 0x70:
+                    err(f"{path.name}: enemy record {n} type byte "
+                        f"${packed:02x} sets b6-4 (only b3-0 type + b7 dir "
+                        "are defined)")
+                    break
         # --- C5/C7 extras stream: one record per owns-extras room, in order.
         # C7 (2026-10-20): the stream is its own file (BANK3 — a feature
         # room's hot stream lives inside the record and the VBL walkers read
@@ -1131,6 +1164,34 @@ def check_level_format(src: Path) -> None:
     if shape_count and used != set(range(shape_count)):
         err(f"LEVEL_ShapeTable entries {sorted(set(range(shape_count)) - used)} "
             "are unreferenced — the shape stream and the table drifted")
+    # --- 3 B enemy records (2026-10-21): the slot stride lives in TWO
+    # hand-copied tables (kernel + bank2) and the loader derives the record
+    # base from the index. A stale [0,4,8] or a `asl asl` base read makes
+    # every slot resolve one byte into its neighbour — hard-fail both.
+    for name in ("kernel.asm", "bank2.asm"):
+        p = src / name
+        if not p.exists():
+            continue
+        hit = re.search(r"^EnemyOffTable:\n\s+\.byte ([^\n]*)",
+                        p.read_text(errors="replace"), re.M)
+        if not hit:
+            err(f"{name}: EnemyOffTable missing (enemy slot stride table)")
+            continue
+        raw = hit.group(1).split(";")[0].replace(" ", "")
+        vals = [int(v) for v in raw.split(",") if v]
+        if vals != [0, 3, 6]:
+            err(f"{name}: EnemyOffTable = {vals}, want [0, 3, 6] — enemy "
+                "records are 3 B (type|dir, x, y) since 2026-10-21")
+    b2p = src / "bank2.asm"
+    if b2p.exists():
+        code = "\n".join(ln.split(";")[0]
+                         for ln in b2p.read_text(errors="replace").splitlines())
+        if not re.search(r"asl\s*\n\s*clc\s*\n\s*adc\s+LevelConnSpare", code):
+            err("bank2.asm: enemy record base is not 3*index (asl + add); "
+                "the retired 4 B stride was `asl asl`")
+        if not re.search(r"and\s+#\$0F\s*\n\s*cmp\s+#SNAKE", code):
+            err("bank2.asm: enemy loader does not mask the type out of the "
+                "packed record byte (and #$0F) — dir rides b7")
 
 
 def check_shape_blocks(src: Path) -> None:

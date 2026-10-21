@@ -184,7 +184,7 @@ def check_select_object_dark() -> None:
         r = mem.ram
         r[Z["EnemyDataLo"]] = 0x80     # record base = $0180 (RAM, test-owned)
         r[Z["EnemyDataHi"]] = 0x01
-        r[0x00] = MOTH                 # type at record +0 (EnemyOffTable stride 4)
+        r[0x00] = MOTH                 # type at record +0 (EnemyOffTable stride 3)
         r[Z["EnemyCount"]] = 1
         r[Z["FlickerFrame"]] = 0
         r[Z["BombPacked"]] = 0

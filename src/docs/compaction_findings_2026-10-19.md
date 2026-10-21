@@ -776,12 +776,13 @@ Measured ROM −24 B, and it is all level data (bank0 code −4, bank2 code +4):
   moves to a derivable offset; making `TilePF0` = `rects+1+2*nrect` costs
   `and #$7F` in the `B3RoomBlocks` cache clamp (+2) and a `bpl` gate in BOTH
   hot-prefix walkers (`PhaseBlink`, `BuildColupF`; +2 each). Under the line.
-- **(c) 3-byte enemy records — 9 B data, ~4 B code, net ~5 B.** The only
-  reader of the ROM `dir` byte is `EBLER`; packing dir into byte0's b7 costs
-  the reload/`eor #$80` dance (+4 B). Also the audit's bit budget is wrong:
-  `y` reaches 132 px (row 11 × 12), so it needs **8** bits, not 7 — 3 B works
-  only with 3+1+8+8 = 20 of 24 bits. Skipped: ~5 B net plus a 10-file test
-  restage (every py65 test that fabricates a 4-byte record).
+- **(c) 3-byte enemy records — DONE in G12 (2026-10-21), see the G12 section
+  at the end of this file.** Skipped here at 9 B data / ~5 B net, which was the
+  4-level, 16-room, 9-record stage: the record is the only per-record cost, so
+  the same change is **299 B** on the 20-level / 299-record stage. Packing is
+  3+1+8+8 = 20 of 24 bits (y reaches 132 px, so it needs all 8) and the snake
+  invert became `eor #$80` — the estimate's "+4 B code" was right (measured
+  +5 B), the data estimate was the stale part.
 - **(b') share one hot prefix** (L4R2 is the only block with hot records):
   0 B, it is already one block.
 
@@ -1541,3 +1542,69 @@ OK — no kernel/VBL/overscan change: room-load only), banks re-frozen
 (`tools/freeze_test_banks.sh`), **46/46 `tools/test_*.py` +
 `src/tools/test_title_demo.py` green**, ledger repasted into
 `docs/level_format_plan_2026-10-20.md` §7.
+
+---
+
+## G12 — 3 B enemy records (2026-10-21, the deferred item (c))
+
+`ENEMY_STRIDE` 4 → **3**: byte 0 = `type (b3-0) | dir (b7, 1 = left)`,
+byte 1 = x, byte 2 = y. `range_*` stay out of ROM (S4.1). Editor JSON and
+stage data are unchanged — the converter packs, so nothing migrates.
+
+### Size (measured, `tools/rom_size_report.py --md`, live 20-level stage)
+
+| | bank0 | bank1 | bank2 | bank3 | total | level data |
+|---|---|---|---|---|---|---|
+| before (24fc7e5) | 3421 | 2865 | 3318 | 2313 | **11917** | 3012 |
+| after | 3421 | 2865 | 3024 | 2313 | **11623** | **2713** |
+| delta | 0 | 0 | **−294** | 0 | **−294** | **−299** |
+
+Bank2 detail: code 1268 → **1273 (+5)**, data 2050 → **1751 (−299)**, fill
+777 → 1071, used 3318 → **3024**, free 778 → **1072**. The +5 code is the
+loader's packed-byte handling (`and #$0F` / `eor #$80` / `sta Temp`); the
+−299 data is 299 records × 1 B (index 140 + models 472 + index-only terms
+unchanged; tables/blocks/extras 2400 → 2101). Level-data total 3012 → **2713 B**.
+Bank2 table slack was 354 B, now **653 B**; bank3 is untouched (its 5 B
+shape-window slack does not move).
+
+### Readers touched (every one)
+
+* `tools/convert_level.py` `_enemy_tables`: emits `.byte $type|dir, x, y`.
+* `src/bank2.asm` `EnterRoomB2`: record base `4·idx` → `3·idx`
+  (`asl` + `adc LevelConnSpare`, carry carried into the base add).
+* `src/bank2.asm` `EBLER_Loop`: one read of the packed byte, `and #$0F` for
+  the type, `eor #$80` for the snake invert; the x/y `iny` offsets are
+  unchanged (layout is still type,x,y).
+* `src/kernel.asm` + `src/bank2.asm` `EnemyOffTable`: `0,4,8` → `0,3,6`
+  (both hand copies; every kernel reader — `UpdateEnemies`, `DeriveEnemyY`,
+  `CheckEnemyHit`, `SelectActiveObject` — and every bank2 reader
+  (`MothRoutine`, `LaserTipEnemy`, `LaserHitTestBody`,
+  `BombEnemyBlastBody`) goes through it, so no per-site offset edits).
+* Comments in both banks that claimed `X*4` / `dir ($FF = left)`.
+
+### Guards (`tools/verify_build.py`, all inside `check_level_format`)
+
+Hard-fail on: an enemy record line with ≠ 3 values (the retired
+`type,x,y,dir`), a record count that disagrees with the RoomCounts column, a
+type byte with b6-4 set, either `EnemyOffTable` literal ≠ `0,3,6`, a record
+base that is not the `asl`/`adc LevelConnSpare` 3·idx idiom (a lone `asl asl`
+is the 4 B stride), and an `EBLER` that does not mask with `and #$0F`.
+
+### Tests touched
+
+`test_enemy_movement` (fabricates 3 B records, drives the REAL frozen
+`EBLER_Loop`, pins both stride tables + the 3·idx base + the `eor #$80`
+invert), `test_band_restage` (record base `enemy_data + 3·Σcounts`),
+`test_level_bank` (record lines must be 3 values, type ≤ 7),
+`test_bomb_lamp` (staged records 3 B), `test_laser_snake` (record 0 packed,
+no separate dir byte), `test_features_data` (`$06`/`$04` emission + a
+`dir = -1` → `$84` b7 case). `tools/freeze_test_banks.sh` re-froze
+`src/tests/frozen/` **and** `src/tests/generated/` (the converter format
+changed, so the test-owned snapshot had to follow).
+
+### Gates
+
+`./build.sh` green (verify_build OK, `sim_bomb_fuse` OK, `sim_frame_budget`
+OK — room-load only, no kernel/VBL/overscan change); the explicit staged
+build `STAGE_FILE=rooms/stage.json ./build.sh` green; frozen banks rebuilt;
+**50/50 `tools/test_*.py` + `src/tools/test_title_demo.py`** green.

@@ -19,7 +19,8 @@ LEVEL_COUNT = 4
 ;   base + n   RoomPositions  1 B/room (LEVEL_FORMAT 2: x<<4|y,
 ;                               exits derived by scanning it)
 ;   base + 2n  RoomCounts     1 B/room (count<<6 | extras ordinal)
-;   base + 3n  EnemyDataTable 4 B/record (first record index derived)
+;   base + 3n  EnemyDataTable 3 B/record (type b3-0|dir b7, x, y;
+;                               first record index derived)
 ;   ..         AsyncExtras    variable, one record per owns-extras room
 ;                               (C5; after the enemy records — the
 ;                               loader derives its base from the count
