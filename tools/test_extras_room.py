@@ -31,6 +31,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
+FROZEN = SRC / "tests" / "frozen"   # test-owned banks+labels
 sys.path.insert(0, str(ROOT / "tools"))
 
 import test_cell_map as _CM  # noqa: E402
@@ -41,12 +42,12 @@ NAMES = {"B3RoomBlocks", "PF0Buf", "RoomRectsLo", "RoomRectsHi",
          "LevelConnSpare", "RoomNo", "LEVEL_ShapeTable",
          "LevExtrasLo", "LevExtrasHi",
          "RowPoolPF0", "RowPoolPF1", "RowPoolPF2"}
-LAB = parse_labels(SRC / "bank3.lst", NAMES)
+LAB = parse_labels(FROZEN / "bank3.lst", NAMES)
 missing = NAMES - LAB.keys()
 if missing:
     sys.exit(f"bank3.lst labels missing: {sorted(missing)}")
 
-BANK3 = bytearray((SRC / "bank3.bin").read_bytes())
+BANK3 = bytearray((FROZEN / "bank3.bin").read_bytes())
 
 # --- test-owned staging area inside bank3's $F010 data window tail ----------
 SHAPE_A = 0xF400          # non-async shape (cold: no hot records)
