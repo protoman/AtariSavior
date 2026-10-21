@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Respawn hover guard (bugs.md #1).
 
-After a respawn the player must NOT fall: holding Up spins the jet up while
-Y is pinned; once thrust beats gravity (JetPower >= GRAVITY+1) the hover
-clears and normal physics resumes. Idle (no Up) hovers in place.
+After a respawn the player hovers for a GRACE WINDOW (HOVER_FRAMES = 1.5 s):
+holding Up spins the jet up while Y is pinned; once thrust beats gravity
+(JetPower >= GRAVITY+1) the hover clears and he lifts off. The grace then
+EXPIRES on its own — no Up input (or only sideways input) must start the fall
+after ~1-2 s (user report 2026-10-21: the player could stay afloat forever by
+moving sideways).
 
 Two checks:
   1. asm structure — DropStep arms Hover, UpdateP0Vertical pins vy while
@@ -23,9 +26,11 @@ GRAVITY = int(re.search(r"^GRAVITY\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 1
 JET_MAX = int(re.search(r"^JET_MAX\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 16)
 
 # --- 1. asm structure -------------------------------------------------------
-# LoseLife arms Hover on every death
+HOVER_FRAMES = int(re.search(r"^HOVER_FRAMES\s*=\s*(\d+)", K, re.M).group(1))
+# LoseLife arms the hover countdown on every death
 ll = K[K.index("LoseLife:"):K.index(".LLStay:")]
-assert re.search(r"lda #1\s*\n\s*sta Hover", ll), "LoseLife must arm Hover=1"
+assert re.search(r"lda #HOVER_FRAMES\s*\n\s*sta Hover", ll), \
+    "LoseLife must arm Hover with HOVER_FRAMES"
 # LoadLevel clears Hover (stage entry lands normally): the body moved to bank2
 # (C2), the bank0 half must stay a pad-only entry so the drop-in tail runs.
 assert re.search(r"\nLoadLevel:\n\s+sta \$1FF8", K), \
@@ -36,6 +41,10 @@ assert re.search(r"sta Hover", loadlvl), "LoadLevelB2 must clear Hover"
 # UpdateP0Vertical checks Hover + pins vy (at .Integrate, all paths reach it)
 up = K[K.index("UpdateP0Vertical:"):K.index(".DoInt:")]
 assert "lda Hover" in up and "sta Hover" in up, "physics must read+clear Hover"
+# ...and RefreshEnemyY ticks the grace down once per gameplay frame
+rey = K[K.index("RefreshEnemyY:"):K.index(".REYDone:")]
+assert re.search(r"lda Hover[^\n]*\n\s*beq \.REYNoHover[^\n]*\n\s*dec Hover", rey), \
+    "RefreshEnemyY must decrement the hover grace once per frame"
 assert re.search(r"cmp #GRAVITY \+ 1", up), "lift threshold must be GRAVITY+1"
 assert up.index(".Integrate:") < up.index("lda Hover"), \
     "Hover check must sit at .Integrate (clamp jmps there)"
@@ -47,9 +56,11 @@ assert tbl < K.index("    .ds $FBD0 - *, 0"), "DropSpeedTable must be pre-pad"
 # --- 2. physics simulation (mirrors UpdateP0Vertical's arithmetic) ----------
 def simulate(up_held, frames):
     vyLo = vyHi = sub = jp = 0
-    hover = 1
+    hover = HOVER_FRAMES
     roomy = 48
     for f in range(frames):
+        if hover:                          # RefreshEnemyY, once per frame
+            hover -= 1
         if up_held and (f & 3) == 0 and jp < JET_MAX:
             jp += 1
         if hover:
@@ -72,8 +83,11 @@ def simulate(up_held, frames):
         roomy += A if A < 128 else A - 256
     return roomy
 
-# idle: never falls (exactly pinned at spawn)
-assert simulate(False, 180) == 48, "idle respawn must hover (no fall)"
+# idle (or sideways-only) input: pinned during the grace, then FALLS
+assert simulate(False, HOVER_FRAMES - 5) == 48, \
+    "idle respawn must stay pinned during the grace window"
+y = simulate(False, 180)
+assert y > 48 + 20, f"after the grace the player must fall (got RoomY {y})"
 # Up held: never falls, and lifts above the spawn altitude
 y = simulate(True, 240)
 assert y <= 48, f"holding Up must never fall (got RoomY {y})"
