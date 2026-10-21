@@ -18,6 +18,7 @@
 
 #include "MainWindow.hpp"
 #include "DataSerializer.hpp"
+#include "LevelMapWindow.hpp"
 
 #include <QMenuBar>
 #include <QMenu>
@@ -436,6 +437,13 @@ void MainWindow::SetupUI() {
     QMenu* editMenu = menuBar()->addMenu("&Edit");
     m_undoAction = editMenu->addAction("&Undo", QKeySequence::Undo, this, &MainWindow::PerformUndo);
     m_undoAction->setEnabled(false);
+
+    // View -> Map (user 2026-10-21): the whole level on one canvas, with a
+    // corridor drawn only where BOTH rooms carve the shared opening. Useful
+    // to judge paths/loops at a glance; refreshed on every edit.
+    QMenu* viewMenu = menuBar()->addMenu("&View");
+    QAction* mapAction = viewMenu->addAction("&Map", this, &MainWindow::ShowLevelMap);
+    mapAction->setShortcut(QKeySequence("Ctrl+M"));
 
     statusBar()->showMessage("Ready");
 
@@ -1280,6 +1288,7 @@ void MainWindow::OnLevelModified() {
         PushUndoState();
         UpdateRoomDirectionButtons();
     }
+    RefreshMap();
 }
 
 void MainWindow::OnMouseMovedToTile(int tileX, int tileY) {
@@ -1296,6 +1305,26 @@ void MainWindow::ToggleInitialFacing() {
     if (!m_canvas) return;
     m_canvas->SetInitialFacing(-m_canvas->InitialFacing());
     OnFacingChanged(m_canvas->InitialFacing());
+}
+
+void MainWindow::ShowLevelMap() {
+    if (!m_mapWindow) {
+        m_mapWindow = new LevelMapWindow(this);
+    }
+    RefreshMap();
+    m_mapWindow->show();
+    m_mapWindow->raise();
+    m_mapWindow->activateWindow();
+}
+
+void MainWindow::RefreshMap() {
+    // Only the OPEN window is kept in sync (cheap: 211 rooms at most).
+    if (!m_mapWindow || !m_mapWindow->isVisible()) return;
+    const int levelNumber = (m_stageMode && m_stageLevelIndex >= 0)
+                                ? m_stageLevelIndex + 1
+                                : (m_levelData.level_id > 0
+                                       ? m_levelData.level_id : 1);
+    m_mapWindow->SetLevel(m_levelData, m_models, levelNumber);
 }
 
 void MainWindow::UpdateUIFromLevel() {
@@ -1340,6 +1369,7 @@ void MainWindow::UpdateUIFromLevel() {
     m_ignoreComboEvents = false;
 
     UpdateRoomDirectionButtons();
+    RefreshMap();
 }
 
 } // namespace editor

@@ -27,6 +27,7 @@
 #include <vector>
 #include "DataSerializer.hpp"
 #include "LevelData.hpp"
+#include "LevelMapWindow.hpp"
 #include "MainWindow.hpp"
 #include "MapCanvas.hpp"
 
@@ -543,6 +544,29 @@ int main(int argc, char* argv[]) {
         }
         std::printf("generatestage: OK (%zu levels, %zu rooms, %zu shapes) "
                     "-> %s\n", levels.size(), rooms, models.size(), argv[2]);
+        return 0;
+    }
+    if ((argc == 4 || argc == 5) && std::string(argv[1]) == "--map-png") {
+        // Dev/CI: render one level's View -> Map canvas to a PNG.
+        QApplication app(argc, argv);
+        std::vector<hero::LevelData> levels;
+        std::vector<hero::ModelData> models;
+        if (!hero::DataSerializer::LoadStageFromFile(levels, models, argv[2])) {
+            std::fprintf(stderr, "map-png: cannot load %s\n", argv[2]);
+            return 2;
+        }
+        const int levelNumber = argc == 5 ? std::atoi(argv[4]) : 1;
+        if (levelNumber < 1 || levelNumber > (int)levels.size()) {
+            std::fprintf(stderr, "map-png: level %d out of range (1..%zu)\n",
+                         levelNumber, levels.size());
+            return 2;
+        }
+        if (!editor::RenderLevelMapPng(levels[levelNumber - 1], models,
+                                       levelNumber, argv[3])) {
+            std::fprintf(stderr, "map-png: cannot write %s\n", argv[3]);
+            return 2;
+        }
+        std::printf("map-png: level %d -> %s\n", levelNumber, argv[3]);
         return 0;
     }
     if (argc == 3 && std::string(argv[1]) == "--selftest") {

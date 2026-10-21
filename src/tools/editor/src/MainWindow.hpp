@@ -41,6 +41,8 @@ enum class EditMode {
     LEVEL_EDIT
 };
 
+class LevelMapWindow;   // View -> Map (LevelMapWindow.hpp)
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
@@ -64,6 +66,8 @@ private slots:
     void GenerateLevelStage();
     void SelectGameDataDir();
     void PerformUndo();
+    // View -> Map: whole-level overview window (follows the carved links).
+    void ShowLevelMap();
 
     void AddRoomAbove();
     void AddRoomBelow();
@@ -99,6 +103,7 @@ private:
     void PopulateRoomCombo();
     void PopulateModelCombo();
     void UpdateUIFromLevel();
+    void RefreshMap();
     void UpdateRoomDirectionButtons();
     void SwitchEditMode(EditMode mode);
     void RefreshToolList();
@@ -138,6 +143,7 @@ private:
     QAction* m_undoAction = nullptr;
 
     MapCanvas* m_canvas = nullptr;
+    LevelMapWindow* m_mapWindow = nullptr;
 
     QComboBox* m_stageCombo = nullptr;
     QComboBox* m_roomCombo = nullptr;
