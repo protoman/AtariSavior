@@ -455,7 +455,10 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
             raise ValueError(
                 f"{source}: row-pool index > $7F — band 1's b7 is the "
                 "mid_band_type hot flag (LEVEL_ROW_COUNT must stay <= 128)")
-        if hot:
+        # C11: the flag rides the middle band. Derive it defensively too: a
+        # shape whose rows contain 'H' IS hot (rows_from_json derives 'H'
+        # from mid_band_type, so the two can only disagree by a caller bug).
+        if hot or any(cell == "H" for row in rows for cell in row):
             indices[1] |= 0x80      # C11: hot flag rides the middle band
         out.append(f"{prefix}Shape:")
         out.append(f"{prefix}Rows:")
