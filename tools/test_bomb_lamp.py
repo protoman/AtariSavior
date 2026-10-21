@@ -62,10 +62,10 @@ def run(records, ram_x, dead_mask=0, bomb_x=BOMB_X):
     records = [(type, x), ...] in slot order, staged at SCRATCH in the private
     frozen bank2 image (restored afterwards, so runs stay independent)."""
     off = SCRATCH - 0xF000
-    size = 4 * len(records)
+    size = 3 * len(records)
     saved = bytes(CM.BANK2[off:off + size])
     for i, (t, x) in enumerate(records):
-        CM.BANK2[off + 4 * i:off + 4 * i + 4] = bytes((t, x, 0, 1))
+        CM.BANK2[off + 3 * i:off + 3 * i + 3] = bytes((t, x, 0))
     try:
         mem = Mem()                   # frozen banks; bank=2 for the body
         mem.bank = 2

@@ -937,8 +937,9 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
 # enemies+lamps <=2); this slice only guards the hardware slot bound.
 MAX_ENEMIES = 3
 # Per-enemy byte layout in LEVEL{n}_EnemyDataTable (see _enemy_tables).
-ENEMY_STRIDE = 4  # S4.1: was 6 — range_min/range_max dropped from ROM (dead:
-                  # kernel skips them; editor JSON keeps the fields)
+ENEMY_STRIDE = 3  # S4.1: 6 -> 4 (range_min/range_max dropped from ROM, dead:
+                  # kernel skips them); 2026-10-21: 4 -> 3 (dir packed into
+                  # type's b7: 1 = left). Layout = type|dir, x, y.
 
 
 # A level with no bottom_band room still needs a BAND_COLOR equ for the
@@ -969,8 +970,9 @@ def _enemy_tables(prefix: str, rooms: list[dict],
     at the tile center and shifted left by half its 4px sprite width.
 
     LEVEL{n}_EnemyDataTable is a flat list of ENEMY_STRIDE-byte records:
-    type, x, y, dir (S4.1 — range_min/range_max dropped from ROM: nothing
-    read them; the editor JSON still carries those fields).
+    byte 0 = type (b3-0) | dir (b7: 1 = left, matching the old $FF dir byte),
+    byte 1 = x, byte 2 = y (2026-10-21: 3 B; range_min/range_max dropped from
+    ROM in S4.1 — nothing read them; the editor JSON still carries those).
 
     LEVEL{n}_RoomCounts has one byte per room (C2 2026-10-20):
     (count << 6 | extras index). The records stay contiguous in room order,
@@ -1024,11 +1026,13 @@ def _enemy_tables(prefix: str, rooms: list[dict],
     lines += [
         "",
         f"; Enemy data: {len(flat)} enemy records across {len(rooms)} rooms, "
-        f"{ENEMY_STRIDE} bytes each (type,x,y,dir).",
+        f"{ENEMY_STRIDE} bytes each (type|dir, x, y).",
         f"{prefix}_EnemyDataTable:",
     ]
     for type_, x, y, dir_ in flat:
-        lines.append(f"  .byte {type_}, {x}, {y}, {dir_}")
+        assert 0 <= type_ <= 7, f"{prefix}: enemy type {type_} does not fit b3-0"
+        packed = type_ | (0x80 if dir_ < 0 else 0)
+        lines.append(f"  .byte ${packed:02x}, {x}, {y}")
     return lines
 
 
@@ -1373,7 +1377,8 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
         ";   base + n   RoomPositions  1 B/room (LEVEL_FORMAT 2: x<<4|y,",
         ";                               exits derived by scanning it)",
         ";   base + 2n  RoomCounts     1 B/room (count<<6 | extras ordinal)",
-        ";   base + 3n  EnemyDataTable 4 B/record (first record index derived)",
+        ";   base + 3n  EnemyDataTable 3 B/record (type b3-0|dir b7, x, y;",
+        ";                               first record index derived)",
         ";   ..         AsyncExtras    variable, one record per owns-extras room",
         ";                               (C5; after the enemy records — the",
         ";                               loader derives its base from the count",

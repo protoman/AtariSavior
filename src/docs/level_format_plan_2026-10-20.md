@@ -602,3 +602,66 @@ gained a bank byte: `sim_frame_budget` cave 267 / title 265 unchanged).
 * Cycle/capacity claims about the kernel are cited from `sim_frame_budget`
   (cave 267.0 / title 265.0) and the audits' VBL/overscan margins (VBL 1311/1472c,
   overscan 2104/3200c); not re-simulated here (read-only design).
+
+---
+
+## G12 (2026-10-21) — the 3 B enemy record, landed (supersedes §1.2/§1.3's 4 B)
+
+The long-deferred "3 B enemy" is in. `ENEMY_STRIDE` 4 → **3**:
+
+```
+byte 0  type (b3-0) | dir (b7: 1 = left)   ← dir's separate byte is gone
+byte 1  x   (full-stage display column -> px, 4 px/col)
+byte 2  y   (room row -> scanline, 12 px/row; needs all 8 bits, max 132)
+```
+
+`range_min`/`range_max` stay out of ROM (nothing reads them; S4.1), and the
+bit budget is 4 + 1 + 8 + 8 = 21 of 24. The editor JSON is unchanged — the
+converter packs, so no data migration is needed.
+
+### Readers (all of them)
+
+| reader | change |
+|---|---|
+| bank2 `EnterRoomB2` record base | `4·idx` → `3·idx` (`asl` + `adc idx`, carry kept into the base add) |
+| bank2 `EBLER_Loop` | reads the packed byte once into `Temp`, `and #$0F` for the type, `eor #$80` for the snake invert; `iny` x/y offsets unchanged (+1/+2) |
+| kernel + bank2 `EnemyOffTable` | `0,4,8` → `0,3,6` in BOTH hand-copied tables |
+| kernel `UpdateEnemies` / `DeriveEnemyY` / `CheckEnemyHit` / `SelectActiveObject` | offsets only (`EnemyOffTable`), +1/+2 iny reads unchanged |
+| bank2 `MothRoutine`, `LaserTipEnemy`, `LaserHitTestBody`, `BombEnemyBlastBody` | type via `EnemyOffTable` (stride table), +1 spawn-x iny unchanged |
+
+The snake's authored dir semantics are untouched: the loader still inverts the
+live bit (authored dir = where it comes OUT), now by flipping b7.
+
+### Measured (20-level live stage, 211 rooms, 299 enemy/object records)
+
+| | before (24fc7e5) | after | delta |
+|---|---|---|---|
+| level data total | **3 012 B** | **2 713 B** | **−299 B** |
+| — index (20 × 7) | 140 | 140 | 0 |
+| — tables/blocks/extras | 2 400 | 2 101 | −299 |
+| — models (shapes + row pool) | 472 | 472 | 0 |
+| bank2 code / data / used / free | 1 268 / 2 050 / 3 318 / 778 | 1 273 / 1 751 / 3 024 / 1 072 | +5 / −299 / −294 / +294 |
+| bank3 (unchanged) | 1 136 / 1 177 / 2 313 / 1 783 | same | 0 |
+| total used / free | 11 917 / 4 467 | 11 623 / 4 761 | −294 / +294 |
+
+The 5 code bytes are the loader's mask/invert (`and #$0F`, `eor #$80`,
+`sta Temp`), paid from the freed data.
+
+### Guards
+
+`verify_build.check_level_format` now hard-fails: (a) an enemy record line that
+is not exactly 3 values (the retired 4 B `type,x,y,dir`), (b) a record count
+that disagrees with the RoomCounts column, (c) a type byte with b6-4 set,
+(d) either `EnemyOffTable` literal ≠ `0,3,6`, (e) a recorded base that is not
+the `asl` + `adc LevelConnSpare` 3·idx idiom, (f) an `EBLER` that does not mask
+the type with `and #$0F`. `test_level_bank` re-checks the emitted record
+lengths + types, `test_enemy_movement` drives the REAL frozen `EBLER_Loop` over
+3 B fixtures and pins both stride tables plus the 3·idx base math.
+
+### Note on the earlier "skip"
+
+`compaction_findings_2026-10-19.md` §"Level-data micro-pack" item (c) skipped
+this at **9 B data / ~5 B net** — that estimate was taken on the 4-level,
+16-room, 9-record stage. At the 20-level stage the same change is **299 B**:
+enemy records are the one per-record cost that scales with content, so the
+decision flipped with the stage.

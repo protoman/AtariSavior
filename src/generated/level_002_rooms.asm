@@ -36,6 +36,6 @@ LEVEL2_RoomCounts:
   .byte $00 ; room 0: 0 record(s)
   .byte $40 ; room 1: 1 record(s)
 
-; Enemy data: 1 enemy records across 2 rooms, 4 bytes each (type,x,y,dir).
+; Enemy data: 1 enemy records across 2 rooms, 3 bytes each (type|dir, x, y).
 LEVEL2_EnemyDataTable:
-  .byte 1, 71, 60, 1
+  .byte $01, 71, 60

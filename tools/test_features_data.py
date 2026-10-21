@@ -320,14 +320,21 @@ def main() -> int:
     assert all(r[0] < 0x80 for r in recs), "no b7 masks in legacy stream"
 
     # --- 7. KEY = enemy type 6 flows through _enemy_tables ---------------
+    # 2026-10-21: 3 B records, type byte is emitted as hex ($06) because dir
+    # rides its b7 bit.
     rooms = [{"room_id": 0, "enemies": [{"type": 6, "x": 5.0, "y": 4.0,
                                          "dir": 1}], "lamps": []}]
     tbl = "\n".join(convert_level._enemy_tables("LEVEL1", rooms))
-    assert ".byte 6, " in tbl, f"KEY type missing:\n{tbl}"
+    assert ".byte $06, " in tbl, f"KEY type missing:\n{tbl}"
     # lamp stays 5 and type range check in verify_build allows 0-4,6
     rooms[0]["enemies"][0]["type"] = 4
-    assert ".byte 4, " in "\n".join(
+    assert ".byte $04, " in "\n".join(
         convert_level._enemy_tables("LEVEL1", rooms))
+    # dir left must set b7 of the type byte (the loader reads it there)
+    rooms[0]["enemies"][0]["dir"] = -1
+    assert ".byte $84, " in "\n".join(
+        convert_level._enemy_tables("LEVEL1", rooms)), \
+        "dir < 0 must pack as the record type byte's b7"
 
     print("test_features_data: OK (chars + records + rejects + door MetaB + "
           "legacy identical + KEY type 6)")

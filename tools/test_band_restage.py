@@ -153,7 +153,8 @@ def main() -> int:
                 f"level {n} room {i}: EnemyCount={got_count} want "
                 f"{want_count} (wrong LevelEnemy record?)")
             # --- C2: packed per-room record → the right enemy record base ---
-            want_rec = enemy_data + 4 * sum(counts[:i])
+            # (2026-10-21: records are 3 B — type|dir, x, y)
+            want_rec = enemy_data + 3 * sum(counts[:i])
             got_rec = (mem.ram[L0["EnemyDataLo"] - 0x80]
                        | (mem.ram[L0["EnemyDataHi"] - 0x80] << 8))
             assert got_rec == want_rec, (

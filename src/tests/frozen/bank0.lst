@@ -1467,7 +1467,7 @@
    1466  f3cc		       a5 ba		      lda	EnemyDeadMask
    1467  f3ce		       3d b2 f3 	      and	EnemyBitTable,X
    1468  f3d1		       d0 4d		      bne	UE_Next	; dead enemy does not move
-   1469  f3d3		       bc b2 f9 	      ldy	EnemyOffTable,X	; Y = X*4 = type offset
+   1469  f3d3		       bc b2 f9 	      ldy	EnemyOffTable,X	; Y = X*3 = type offset
    1470  f3d6		       20 f6 fe 	      jsr	FoldIndirect	; type
    1471  f3d9		       4c f3 f5 	      jmp	UEDispatch	; UEDispatch ($F82C pin gap) replaces the old
    1472  f3dc							; 18 B per-type compare chain with one 3 B jmp:
@@ -1818,7 +1818,7 @@
    1817  f542		       b0 2e		      bcs	CEHNext	; no Y overlap
    1818  f544							; Lamp (type 5): crash → RoomDarkMask; lamp stays in rotation (grey), no life
    1819  f544		       a6 b9		      ldx	EnemyIndex
-   1820  f546		       bc b2 f9 	      ldy	EnemyOffTable,X	; Y = EnemyIndex * 4
+   1820  f546		       bc b2 f9 	      ldy	EnemyOffTable,X	; Y = EnemyIndex * 3
    1821  f549		       20 f6 fe 	      jsr	FoldIndirect	; type
    1822  f54c		       c9 05		      cmp	#LAMP
    1823  f54e		       f0 18		      beq	CEH_Lamp
@@ -2146,7 +2146,7 @@
    2145  f6cd		       a6 b9		      ldx	EnemyIndex
    2146  f6cf		       b5 bd		      lda	EnemyRamX,X
    2147  f6d1		       85 b7		      sta	ActiveObjectX
-   2148  f6d3		       bc b2 f9 	      ldy	EnemyOffTable,X	; Y = EnemyIndex * 4 = type offset
+   2148  f6d3		       bc b2 f9 	      ldy	EnemyOffTable,X	; Y = EnemyIndex * 3 = type offset
    2149  f6d6							; --- Fold batch (P3.1): enemy record staged before IsRoomDark (A-only,
    2150  f6d6							; Y and FetchPtr survive the call). ---
    2151  f6d6		       a5 b1		      lda	EnemyDataLo
@@ -2509,8 +2509,8 @@
    2508  f9af		       4c b8 f9 	      jmp	OverlayTramp
    2509  f9b2
    2510  f9b2				   EnemyOffTable
-   2511  f9b2		       00 04 08 	      .byte.b	0,4,8	; enemy index * 4 (stride S4.1; offset into
-   2512  f9b5							; enemy data type,x,y,dir)
+   2511  f9b2		       00 03 06 	      .byte.b	0,3,6	; enemy index * 3 (2026-10-21: 3 B record —
+   2512  f9b5							; type b3-0|dir b7, x, y)
    2513  f9b5
    2514  f9b5							; BitMaskTable moved to bank1 with IsRoomDark/SetRoomDark (leaf_move_plan).
    2515  f9b5
