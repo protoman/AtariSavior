@@ -191,6 +191,13 @@ unchanged (`sim_frame_budget` cave target stays 267.0).
 
 ## Phase 3 — Async-block tint: a CARRIER fix, not kernel work
 
+> **Sequencing note (2026-10-21):** with the live stage cut to 4 levels the
+> generator emits **no async blocks at all** (`patch = level >= 7`) and no
+> phase rooms (`>= 6`), so this phase is deferred until the stage grows again.
+> The kernel paths stay covered by `src/tests/rooms` (async + phase rooms) and
+> by `tools/test_generator.py` (20 levels, temp dir). Re-open this phase when
+> level 7 exists — the design below is unchanged.
+
 **Corrected by Phase 0** (`plans/hero_cycle_ledger.md` §4): the `.ObjZero` A==8
 `COLUP1` restore is *already in the kernel* (`$f176`, +6 c, already inside the
 A==8 path). The sticky colour is fixed. What remains is the 8 scanlines where
