@@ -32,7 +32,6 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parent
 BANKS = [open(SRC / f'bank{i}.bin', 'rb').read() for i in range(4)]
-
 VBL_BUDGET = 1472          # TIM64T #23 (kernel.asm:449)
 OVER_BUDGET = 3200         # TIM64T #50 (kernel.asm:776)
 # Assert band = 3223 (documented fill absorb: INTIM poll granularity lets
@@ -105,7 +104,8 @@ OVER_MARKS = {LABELS[_n]: _n for _n in
                'AddScore', 'EnterRoom', '.WaitOverscan')
               if _n in LABELS}
 mark_events = []                 # (frame, mark, window_cycles) per measurement
-pc_cycles = {}                   # (bank,pc) -> cycles in CURRENT frame (OVER)
+pc_cycles = {}
+vbl_pc = {}                   # (bank,pc) -> cycles in CURRENT frame (OVER)
 pc_hist_keep = {}                # frame -> {(bank,pc): cycles} for top over frames
 _gs_dumped = False               # silent-reboot guard: one report per run
 over_trail = {}                  # frame -> [((bank,pc), cum, c)] OVER steps
@@ -225,8 +225,9 @@ DROP_IDX = zp_byte_addr('DropTarget') - 0x80
 # ---- boot pokes: default Level=1/Room=1 (the flicker repro room);
 # SIM_LEVEL=0 keeps the boot defaults (level 0, start_room 0) ----
 if SIM_LEVEL == '0':
-    poked_level = poked_room = True
-    print('boot defaults kept: level 0 room 0')
+    poked_level = True
+    poked_room = (SIM_ROOM == '0')
+    print('boot defaults kept: level 0 (room poke allowed)')
 boot_steps = 0
 while not poked_level:
     mpu.step()
@@ -340,6 +341,8 @@ while frame < 1100:
     # -- accumulate into the phase the executed code belonged to --
     if phase == PH_VBL:
         vbl_acc += c
+        if os.environ.get('SIM_VBLPROF'):
+            vbl_pc[(bk, pc)] = vbl_pc.get((bk, pc), 0) + c
     elif phase == PH_KER:
         gap += c
     elif phase == PH_OVER:
@@ -605,6 +608,8 @@ print(f'VBL    max {max_vbl}c / {VBL_BUDGET}c  (f{max_vbl_f})')
 print(f'OVER   max {max_over}c / {OVER_BUDGET}c  (f{max_over_f})')
 print(f'KERNEL max gap {max_gap}c (informational; tail gaps >{GAP_LIMIT}c: {gap_tail})')
 print('gap_log first 8:', gap_log[:8])
+if os.environ.get('SIM_VBLPROF'):
+    print('VBL top PCs:', sorted(vbl_pc.items(), key=lambda kv: -kv[1])[:15])
 print('wall_segs f2..f9:', wall_segs[0:8])
 print('frame_stats f2..f9:', frame_stats[0:8])
 import collections as _c

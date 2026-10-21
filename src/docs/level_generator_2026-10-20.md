@@ -311,3 +311,41 @@ The flicker itself (one GRP1 sprite rotating between the two objects) is a
 kernel chunk: per-band multiplexing (draw object A in its band, switch sprite
 data/position at the band boundary). The band rule above is exactly what makes
 that possible.
+
+## G10 (2026-10-21): flicker root cause (hot-room VBL) + model-3 design note
+
+**Flicker (level 3/4 hot rooms, 268-line frames).** Reproduced with
+`SIM_LEVEL=3 SIM_ROOM=1` on the live stage: the VBL worked **1414c** against
+the 1472c timer window and crossed a 64-tick phase boundary, adding one line
+per frame (the whole-screen jump). The cost was `BuildColupF` walking the hot
+rect stream **every VBL** to derive "row 1 is hot" — which is exactly what
+`MetaB b6` already says.
+
+Fix (bank3 `BuildColupF`): write the 3 stripe colors, then (if `MetaB b6`) set
+row 1 to the hot pulse color. No per-frame stream walk. Measured:
+hot room VBL **1414c → 1101c**, frame lines **268 → 267**, wall model clean;
+level 7's hot room 1082c. Battery 0 fails.
+
+**Model-3 design note (user, 2026-10-21 — a good example, keep it).**
+`Shape S+Start` (id 2 in the current stage):
+
+```
+1100000111   row 0: spawn/corridor opening cells 2..6, ledges 7..9
+1000000000   row 1: only the outer wall (col 0)
+1111111100   row 2: floor with the S gap at 8/9
+```
+
+Why it reads well: an **asymmetric top shelf** instead of the bare centre
+notch, one clean wall on the left, and the S gap offset from the opening — the
+room looks like a cave mouth, not a tube. It works as a **spawn room** (the
+drop slot is at cell 4) and, visually/structurally, as a **deeper room**
+(pair it with a room whose floor gap matches 2..6, or enter it sideways). Use
+this as a template for future archetypes: offset openings + one-sided ledges
+beat symmetric centre cutouts.
+
+Test fixture: `src/tests/stages/level4_only.json` = the current level 4 (rooms
++ models), so the hot-room flicker/design can be probed without live changes:
+`STAGE_FILE=src/tests/stages/level4_only.json ./build.sh`, then
+`SIM_LEVEL=0 SIM_ROOM=1 python3 sim_frame_budget.py`.
+`sim_frame_budget` also gained `SIM_VBLPROF=1` (VBL PC histogram) for this class
+of investigation.
