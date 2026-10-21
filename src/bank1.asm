@@ -696,6 +696,10 @@ scbrdTmp    = $ED       ; mid-scanline temp cache
 DelayCnt    = $EE       ; bar delay A preloaded once per frame (bank1; ColupfBuf+7)
 FineCnt     = $EF       ; bar fine delay cycles 0/2/3/4 (H3; bank1 only)
 Temp        = $AD       ; scratch variable
+Hover       = $9C       ; respawn hover (kernel ZP): $FF = armed/waiting for
+                        ; the first input, 1..HOVER_FRAMES = grace running,
+                        ; 0 = normal physics (ticked in this band).
+HOVER_FRAMES = 90       ; 1.5 s at 60 Hz: the jet reaches lift in 1.0 s.
 ; Score digits live at $F3-$F6 — MUST match bank0 Score* EQUs.
 ; Old home $BF-$C2 collided with EnemyRamX[2]/[3]/D/P during game HUD.
 ScoreTh     = $F3       ; score thousands digit (must match bank0)
@@ -800,6 +804,28 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; score-ptr stomp window; overscan PHM reads $84 (OverlayTramp gate).
     lda CollisionEndY
     sta LineCount
+
+    ; --- Respawn hover (user rule 2026-10-21) --------------------------------
+    ; $FF = armed at death (kernel LoseLife): an untouched player keeps
+    ; hovering. The FIRST direction/fire press starts the 1.5 s grace, which
+    ; then expires on its own so a sideways-only player still falls. Runs on
+    ; the pre-TopGap line: the block's first WSYNC absorbs the cycles.
+    lda Hover
+    beq .HoverDone
+    bmi .HoverWait              ; bit 7 set = armed ($FF)
+    dec Hover                   ; grace running
+    jmp .HoverDone
+.HoverWait:
+    lda SWCHA                   ; D4..D7: 0 = pressed (any direction)
+    eor #$FF
+    and #$F0
+    bne .HoverArm
+    lda INPT4                   ; D7: 0 = fire pressed
+    bmi .HoverDone              ; still untouched -> keep waiting
+.HoverArm:
+    lda #HOVER_FRAMES
+    sta Hover
+.HoverDone:
 
     ; --- Top gap: 6 scanlines (lower HUD elements) ---
     ; 4 + the 2 lines the removed ball-at-boundary block used to occupy:
