@@ -95,7 +95,7 @@ MothYDerive:
 ; (sta $1FF6/rts), which returns to the bank0 caller with C intact.
 SWCHB       = $0282
 StepsLeft   = $97               ; bank0 per-frame step latch (ZP byte block)
-LEVEL_COUNT = 4                 ; hand copy of kernel LEVEL_COUNT
+LEVEL_COUNT = 20                 ; hand copy of kernel LEVEL_COUNT
 TitleSelect:
     lda StepsLeft
     and #%00000010

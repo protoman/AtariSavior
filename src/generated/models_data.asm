@@ -12,87 +12,288 @@ M0Rows:
 M1RoomRects:
   .byte 0              ; number of hot rectangles
 M1Rows:
-  .byte $02, $01, $03  ; row-pool indices (band 0-2)
+  .byte $00, $01, $00  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 2. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M2RoomRects:
   .byte 0              ; number of hot rectangles
 M2Rows:
-  .byte $00, $01, $04  ; row-pool indices (band 0-2)
+  .byte $03, $01, $00  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 3. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M3RoomRects:
   .byte 0              ; number of hot rectangles
 M3Rows:
-  .byte $04, $01, $05  ; row-pool indices (band 0-2)
+  .byte $00, $04, $00  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 4. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M4RoomRects:
   .byte 0              ; number of hot rectangles
 M4Rows:
-  .byte $02, $01, $06  ; row-pool indices (band 0-2)
+  .byte $00, $01, $01  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 5. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M5RoomRects:
   .byte 0              ; number of hot rectangles
 M5Rows:
-  .byte $06, $07, $08  ; row-pool indices (band 0-2)
+  .byte $02, $01, $01  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 6. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M6RoomRects:
   .byte 0              ; number of hot rectangles
 M6Rows:
-  .byte $08, $09, $0a  ; row-pool indices (band 0-2)
+  .byte $02, $05, $01  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 7. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M7RoomRects:
   .byte 0              ; number of hot rectangles
 M7Rows:
-  .byte $0a, $01, $02  ; row-pool indices (band 0-2)
+  .byte $06, $01, $06  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 8. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M8RoomRects:
   .byte 0              ; number of hot rectangles
 M8Rows:
-  .byte $08, $0b, $03  ; row-pool indices (band 0-2)
+  .byte $03, $01, $06  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 9. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M9RoomRects:
+  .byte 0              ; number of hot rectangles
+M9Rows:
+  .byte $06, $04, $06  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 10. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M10RoomRects:
   .byte 0              ; number of hot rectangles
 M10Rows:
-  .byte $03, $0b, $03  ; row-pool indices (band 0-2)
+  .byte $06, $01, $01  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 11. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M11RoomRects:
   .byte 0              ; number of hot rectangles
 M11Rows:
-  .byte $03, $0b, $03  ; row-pool indices (band 0-2)
+  .byte $02, $01, $01  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 12. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M12RoomRects:
+  .byte 1              ; number of hot rectangles
+  .byte $08, 2, 1, 14, 1  ; mask, x, y, w, h (4px cols)
+M12Rows:
+  .byte $00, $07, $01  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 13. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M13RoomRects:
+  .byte 3              ; number of hot rectangles
+  .byte $08, 2, 1, 4, 1  ; mask, x, y, w, h (4px cols)
+  .byte $08, 8, 1, 4, 1  ; mask, x, y, w, h (4px cols)
+  .byte $08, 14, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+M13Rows:
+  .byte $06, $08, $01  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 14. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M14RoomRects:
+  .byte 0              ; number of hot rectangles
+M14Rows:
+  .byte $00, $01, $00  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 15. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M15RoomRects:
+  .byte 0              ; number of hot rectangles
+M15Rows:
+  .byte $00, $05, $02  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 16. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M16RoomRects:
+  .byte 0              ; number of hot rectangles
+M16Rows:
+  .byte $06, $01, $06  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 17. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M17RoomRects:
+  .byte 0              ; number of hot rectangles
+M17Rows:
+  .byte $00, $09, $00  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 18. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M18RoomRects:
+  .byte 0              ; number of hot rectangles
+M18Rows:
+  .byte $00, $0a, $02  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 19. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M19RoomRects:
+  .byte 0              ; number of hot rectangles
+M19Rows:
+  .byte $06, $0b, $06  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 20. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M20RoomRects:
+  .byte 0              ; number of hot rectangles
+M20Rows:
+  .byte $00, $0c, $00  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 21. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M21RoomRects:
+  .byte 0              ; number of hot rectangles
+M21Rows:
+  .byte $00, $0d, $02  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 22. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M22RoomRects:
+  .byte 0              ; number of hot rectangles
+M22Rows:
+  .byte $06, $0c, $06  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 23. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M23RoomRects:
+  .byte 0              ; number of hot rectangles
+M23Rows:
+  .byte $06, $0d, $02  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 24. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M24RoomRects:
+  .byte 0              ; number of hot rectangles
+M24Rows:
+  .byte $00, $0e, $00  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 25. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M25RoomRects:
+  .byte 0              ; number of hot rectangles
+M25Rows:
+  .byte $00, $0f, $02  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 26. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M26RoomRects:
+  .byte 0              ; number of hot rectangles
+M26Rows:
+  .byte $06, $10, $06  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 27. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M27RoomRects:
+  .byte 0              ; number of hot rectangles
+M27Rows:
+  .byte $06, $11, $02  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 28. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M28RoomRects:
+  .byte 0              ; number of hot rectangles
+M28Rows:
+  .byte $00, $0b, $00  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 29. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M29RoomRects:
+  .byte 0              ; number of hot rectangles
+M29Rows:
+  .byte $00, $12, $02  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 30. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M30RoomRects:
+  .byte 0              ; number of hot rectangles
+M30Rows:
+  .byte $06, $0b, $06  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 31. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M31RoomRects:
+  .byte 3              ; number of hot rectangles
+  .byte $08, 0, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+  .byte $08, 4, 1, 4, 1  ; mask, x, y, w, h (4px cols)
+  .byte $08, 12, 1, 4, 1  ; mask, x, y, w, h (4px cols)
+M31Rows:
+  .byte $00, $13, $00  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 32. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M32RoomRects:
+  .byte 3              ; number of hot rectangles
+  .byte $08, 0, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+  .byte $08, 4, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+  .byte $08, 14, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+M32Rows:
+  .byte $06, $14, $06  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 33. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M33RoomRects:
+  .byte 2              ; number of hot rectangles
+  .byte $08, 0, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+  .byte $08, 8, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+M33Rows:
+  .byte $00, $0c, $00  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 34. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M34RoomRects:
+  .byte 2              ; number of hot rectangles
+  .byte $08, 0, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+  .byte $08, 8, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+M34Rows:
+  .byte $06, $0c, $06  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 35. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M35RoomRects:
+  .byte 3              ; number of hot rectangles
+  .byte $08, 0, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+  .byte $08, 4, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+  .byte $08, 12, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+M35Rows:
+  .byte $00, $15, $00  ; row-pool indices (band 0-2)
+
+; Generated from models.json model 36. Do not edit by hand.
+; C4 (2026-10-20): block base = hot stream (no solid rect list)
+M36RoomRects:
+  .byte 2              ; number of hot rectangles
+  .byte $08, 0, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+  .byte $08, 4, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+M36Rows:
+  .byte $06, $16, $06  ; row-pool indices (band 0-2)
 
 ; C3 (2026-10-20): ROW DICTIONARY — one 3 B entry per DISTINCT
 ; (PF0,PF1,PF2) band row for the whole game. A shape block carries
 ; 3 one-byte indices (band 0/1/2) into these SoA columns; bank2's
 ; B3RoomBlocks expands them into PF0Buf at room load.
-LEVEL_ROW_COUNT = 12
+LEVEL_ROW_COUNT = 23
 RowPoolPF0:
-  .byte $f0, $30, $f0, $f0, $30, $f0, $f0, $30, $f0, $f0, $30, $00
+  .byte $f0, $30, $f0, $f0, $f0, $00, $f0, $c0, $c0, $30, $00, $30, $30, $00, $30, $00, $30, $00, $00, $30, $30, $30, $30
 RowPoolPF1:
-  .byte $00, $00, $ff, $ff, $ff, $f0, $3f, $03, $f0, $00, $3f, $00
+  .byte $ff, $00, $ff, $00, $f3, $00, $cf, $ff, $cf, $33, $33, $03, $0c, $0c, $00, $00, $00, $00, $03, $f0, $c0, $c0, $c0
 RowPoolPF2:
-  .byte $00, $00, $3f, $ff, $3f, $00, $ff, $ff, $ff, $fc, $ff, $00
+  .byte $0f, $00, $ff, $00, $ff, $00, $fc, $0f, $0c, $00, $00, $00, $00, $00, $0f, $0f, $0c, $0c, $00, $0f, $0c, $03, $00
 
 
 ; C7 (2026-10-20): shape ADDRESS table — bank3's B3RoomBlocks
 ; reads it in-bank; the 6-bit room-record index is the row.
-; LEVEL_SHAPE_COUNT = 11 (6-bit index ceiling: 64)
+; LEVEL_SHAPE_COUNT = 37 (6-bit index ceiling: 64)
 LEVEL_ShapeTable:
   .word M0RoomRects
   .word M1RoomRects
@@ -103,6 +304,32 @@ LEVEL_ShapeTable:
   .word M6RoomRects
   .word M7RoomRects
   .word M8RoomRects
+  .word M9RoomRects
   .word M10RoomRects
   .word M11RoomRects
+  .word M12RoomRects
+  .word M13RoomRects
+  .word M14RoomRects
+  .word M15RoomRects
+  .word M16RoomRects
+  .word M17RoomRects
+  .word M18RoomRects
+  .word M19RoomRects
+  .word M20RoomRects
+  .word M21RoomRects
+  .word M22RoomRects
+  .word M23RoomRects
+  .word M24RoomRects
+  .word M25RoomRects
+  .word M26RoomRects
+  .word M27RoomRects
+  .word M28RoomRects
+  .word M29RoomRects
+  .word M30RoomRects
+  .word M31RoomRects
+  .word M32RoomRects
+  .word M33RoomRects
+  .word M34RoomRects
+  .word M35RoomRects
+  .word M36RoomRects
 

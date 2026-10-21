@@ -1,9 +1,9 @@
-; Generated from New Level (level 3). Do not edit by hand.
+; Generated from Level 3 (level 3). Do not edit by hand.
 LEVEL3_START_ROOM = 0
-LEVEL3_WALL_COLOR = $92
-LEVEL3_WALL_COLOR2 = $96
-LEVEL3_MINER_ROOM = 133
-LEVEL3_MINER_X = 23
+LEVEL3_WALL_COLOR = $c4
+LEVEL3_WALL_COLOR2 = $c6
+LEVEL3_MINER_ROOM = 130
+LEVEL3_MINER_X = 39
 LEVEL3_MINER_Y = 84
 
 ; Room shape index (C2 2026-10-20): ONE byte per room =
@@ -17,12 +17,9 @@ LEVEL3_MINER_Y = 84
 ; (the shape must be shared). C4: block = hot stream | PF triple —
 ; TilePF0 = block + 1 + 5*hot_count.
 LEVEL3_RoomShapes:
-  .byte SHAPE_M0 | $80 ; room 0 (async extras)
-  .byte SHAPE_M4 ; room 1 (model 4)
-  .byte SHAPE_M5 ; room 2 (model 5)
-  .byte SHAPE_M6 ; room 3 (model 6)
-  .byte SHAPE_M7 ; room 4 (model 7)
-  .byte SHAPE_M1 ; room 5 (model 1)
+  .byte SHAPE_M2 ; room 0 (model 2)
+  .byte SHAPE_M31 ; room 1 (model 31)
+  .byte SHAPE_M0 ; room 2 (model 0)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
 ; (x<<4 | y) normalised to the level origin. Exits are DERIVED at
@@ -33,26 +30,17 @@ LEVEL3_RoomPositions:
   .byte $00 ; room 0 (0, 0)
   .byte $01 ; room 1 (0, 1)
   .byte $02 ; room 2 (0, 2)
-  .byte $03 ; room 3 (0, 3)
-  .byte $04 ; room 4 (0, 4)
-  .byte $05 ; room 5 (0, 5)
 
 ; Per-room enemy count (C2 2026-10-20): ONE byte = count<<6 |
 ; extras ordinal (C5: 1-based index into LEVELn_AsyncExtras, 0 =
 ; none; the enemy record index is derived at room load).
 LEVEL3_RoomCounts:
-  .byte $01 ; room 0: 0 record(s), extras 1
-  .byte $00 ; room 1: 0 record(s)
-  .byte $80 ; room 2: 2 record(s)
-  .byte $80 ; room 3: 2 record(s)
-  .byte $80 ; room 4: 2 record(s)
-  .byte $00 ; room 5: 0 record(s)
+  .byte $40 ; room 0: 1 record(s)
+  .byte $40 ; room 1: 1 record(s)
+  .byte $40 ; room 2: 1 record(s)
 
-; Enemy data: 6 enemy records across 6 rooms, 4 bytes each (type,x,y,dir).
+; Enemy data: 3 enemy records across 3 rooms, 4 bytes each (type,x,y,dir).
 LEVEL3_EnemyDataTable:
-  .byte 1, 127, 60, 1
-  .byte 5, 27, 18, 1
-  .byte 0, 23, 108, 1
-  .byte 2, 103, 60, 1
-  .byte 4, 39, 60, 1
-  .byte 5, 27, 18, 1
+  .byte 0, 31, 60, 1
+  .byte 1, 39, 48, 1
+  .byte 2, 8, 60, 1

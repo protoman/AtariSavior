@@ -41,7 +41,7 @@ from py65.devices.mpu6502 import MPU  # noqa: E402
 
 from test_cell_map import Mem as Mem02, RTS_SENTINEL, parse_labels  # noqa: E402
 
-BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
+BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 
 class Mem1:
@@ -89,20 +89,20 @@ def parse_equ(path: Path, names: set) -> dict:
     return out
 
 
-L1 = parse_labels(SRC / "bank1.lst", {"BombMarkWalls", "StripBlastCheck",
+L1 = parse_labels(FROZEN / "bank1.lst", {"BombMarkWalls", "StripBlastCheck",
                                       "M1StripBlast"})
-L0 = parse_labels(SRC / "bank0.lst", {"BombX", "LineCount",
+L0 = parse_labels(FROZEN / "bank0.lst", {"BombX", "LineCount",
                                 "EnemyDeadMask", "CollisionX",
                                 "BombPacked", "PF0Buf", "PF1Buf",
                                 "PF2Buf"})
 L2 = {}
 # C7 (2026-10-20): the stage/band walker and the shape blocks + extras
 # streams live in bank3 again; bank2 keeps the room/enemy tables.
-L3 = parse_labels(SRC / "bank3.lst", {"B3StageBand", "M0Rows",
+L3 = parse_labels(FROZEN / "bank3.lst", {"B3StageBand", "M0Rows",
                                       "M3Rows", "LEVEL1_AsyncExtras"})
 L2.update({k: L3[k] for k in ("M0Rows", "M3Rows",
                               "LEVEL1_AsyncExtras")})
-L2.update(parse_equ(SRC / "bank2.lst",
+L2.update(parse_equ(FROZEN / "bank2.lst",
                     {"BandTab", "CollisionEndY", "CollisionEndX",
                      "RoomPF0Lo", "RoomRectsLo"}))
 need = ({"BombMarkWalls", "StripBlastCheck", "M1StripBlast"} - L1.keys()) | \

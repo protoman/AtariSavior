@@ -30,7 +30,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
+FROZEN = ROOT / "src" / "tests" / "frozen"   # test-owned banks+labels
+BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 # Model 0 meta/hot zeroing (same as test_laser_wall): strip/hot contacts
 # must never masquerade as wall hits in this deterministic probe.
@@ -39,7 +40,7 @@ BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
 # symmetric. The hot count is the block's FIRST byte now (C4).
 _EX = None
 _M0RR = None
-for _l in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank3.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(LEVEL1_AsyncExtras|"
                   r"M0RoomRects)\s*$", _l)
     if _m:
@@ -54,7 +55,7 @@ BANKS[3][_M0RR - 0xF000] = 0                  # hot count = 0
 
 # bank0 labels (addresses move every commit)
 LABELS = {}
-for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+([A-Za-z_][A-Za-z0-9_]*)\s*$",
                   _l)
     if _m and _m.group(2) not in LABELS:
@@ -76,7 +77,7 @@ PF0BUF, PF1BUF, PF2BUF = 0x43, 0x46, 0x49     # $C3/$C6/$C9 & 0x7F
 RANGE_LO = LABELS["LaserInput"]
 RANGE_HI = LABELS.get("TallyTramp", 0xFFF0)
 rts_pcs = set()
-for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(?:[0-9a-f]{2}[ \t]+)+rts\b", _l)
     if _m:
         a = int(_m.group(1), 16)

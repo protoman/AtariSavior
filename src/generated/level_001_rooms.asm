@@ -1,9 +1,9 @@
 ; Generated from Level 1 (level 1). Do not edit by hand.
 LEVEL1_START_ROOM = 0
-LEVEL1_WALL_COLOR = $20
-LEVEL1_WALL_COLOR2 = $22
+LEVEL1_WALL_COLOR = $32
+LEVEL1_WALL_COLOR2 = $36
 LEVEL1_MINER_ROOM = 129
-LEVEL1_MINER_X = 27
+LEVEL1_MINER_X = 39
 LEVEL1_MINER_Y = 84
 
 ; Room shape index (C2 2026-10-20): ONE byte per room =
@@ -17,8 +17,8 @@ LEVEL1_MINER_Y = 84
 ; (the shape must be shared). C4: block = hot stream | PF triple —
 ; TilePF0 = block + 1 + 5*hot_count.
 LEVEL1_RoomShapes:
-  .byte SHAPE_M0 | $80 ; room 0 (async extras)
-  .byte SHAPE_M1 ; room 1 (model 1)
+  .byte SHAPE_M2 ; room 0 (model 2)
+  .byte SHAPE_M0 ; room 1 (model 0)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
 ; (x<<4 | y) normalised to the level origin. Exits are DERIVED at
@@ -33,10 +33,10 @@ LEVEL1_RoomPositions:
 ; extras ordinal (C5: 1-based index into LEVELn_AsyncExtras, 0 =
 ; none; the enemy record index is derived at room load).
 LEVEL1_RoomCounts:
-  .byte $41 ; room 0: 1 record(s), extras 1
+  .byte $40 ; room 0: 1 record(s)
   .byte $40 ; room 1: 1 record(s)
 
 ; Enemy data: 2 enemy records across 2 rooms, 4 bytes each (type,x,y,dir).
 LEVEL1_EnemyDataTable:
+  .byte 0, 47, 60, 1
   .byte 2, 8, 60, 1
-  .byte 0, 127, 60, -1

@@ -2330,7 +2330,7 @@ ENEMY_RAFT     = 7             ; type-7 enemy record = the moving, rideable raft
                                ; water of model row 2, carries the player and
                                ; returns; body lives in bank1 (RaftBody)
 ENEMY_DATA_STRIDE = 6
-LEVEL_COUNT    = 4             ; hand copy of generated LEVEL_COUNT (cmp in
+LEVEL_COUNT    = 20             ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync)
 LEVEL_DATA_ADDR = $F307        ; frozen address of bank2's LevelDataTable
                                 ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
