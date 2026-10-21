@@ -42,7 +42,7 @@ L2 = lst_labels(FROZEN / "bank2.lst")
 L3 = lst_labels(FROZEN / "bank3.lst")   # C7: shape blocks + extras (bank3)
 
 import test_fixtures as FX  # noqa: E402
-FX.freeze_m0(BANKS, L3)     # frozen model0 into the private copy (rule 2026-10-14)
+
 PC_STARTFRAME = L0["StartFrame"]
 PC_BMW = L1["BombMarkWalls"]
 
@@ -65,15 +65,11 @@ PF_IDX = [a & 0x7F for a in PF_ROWS]   # bytearray indices
 MODEL = {0: 0}   # room -> fixture MODEL id (C5: shared M0 shape)
 
 # Frozen copy of the bomb-contract geometry lives in tools/test_fixtures.py
-# (the tests-folder copy, user rule 2026-10-14) — at the M0 labels, the
-# model the game's own EnterRoom restages (a fixture at M1 was stomped by
-# live M0 bytes whenever they diverged). freeze_m0 above injected it into
-# THIS test's private bank2.bin copy, so the pointer-based reads
-# (StageBandTab MetaA/MetaB, the rect/hot stream walk, and any mid-test
-# EnterRoom re-entry) see the fixture as well — live room edits cannot
-# move the stage and no ROM-equality gate exists to drift.
+# (the tests-folder copy, user rule 2026-10-14). C11 (2026-10-21): the shape
+# block is 3 row-pool indices and carries no record stream, so the harness
+# stages the frozen PF/meta constants directly and points RoomRects at
+# bank3's no-stream sentinel.
 FIXTURE_PF = FX.M0_PF            # rows: PF0|PF1|PF2
-FIXTURE_RR = FX.M0_STREAM        # C4: hot-count byte only (no rects)
 
 
 class Mem:
@@ -152,7 +148,7 @@ def load_room(room):
     (StageBandTab Meta, hot stream walk) stays fixture-true. C4: no rect
     cache (cell collision)."""
     model = MODEL[room]
-    a_rr = L3[f"M{model}RoomRects"]
+    a_rr = L3[f"M{model}Shape"]
     # C5: MetaA/MetaB are staged from the room's extras record.
     mem.ram[I_PF0LO] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
     mem.ram[I_PF0HI] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 2 - 0xF000)]

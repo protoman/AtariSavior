@@ -191,13 +191,13 @@ def main() -> None:
         "EnterRoomB2 uses it")
     # LEVEL_FORMAT 5 must be declared by the generator and by the consumers
     m = re.search(r"^LEVEL_FORMAT = \$([0-9a-f]{2})", index, re.M)
-    assert m and int(m.group(1), 16) == 5, (
-        "generated level index must declare LEVEL_FORMAT = $05 (C3 "
-        "row-pool shape blocks on top of C5 extras)")
+    assert m and int(m.group(1), 16) == 6, (
+        "generated level index must declare LEVEL_FORMAT = $06 (C11 "
+        "PF-derived hot on top of the C3 row-pool shape blocks)")
     for name, body in (("kernel.asm", KERNEL), ("bank1.asm", BANK1)):
         hm = re.search(r"^LEVEL_FORMAT\s*=\s*\$([0-9a-f]{2})", body, re.M)
-        assert hm and int(hm.group(1), 16) == 5, (
-            f"{name}: LEVEL_FORMAT hand copy must be $05 (C3)")
+        assert hm and int(hm.group(1), 16) == 6, (
+            f"{name}: LEVEL_FORMAT hand copy must be $06 (C11)")
     # --- shape registry: table <-> EQUs <-> 6-bit index --------------------
     shape_count = int(re.search(r"^LEVEL_SHAPE_COUNT = (\d+)$", index, re.M)
                       .group(1))
@@ -206,7 +206,7 @@ def main() -> None:
         "is b5-0")
     # C7 (2026-10-20): the address table lives in BANK3 next to the blocks
     # (models_data.asm), so bank2 stages only the 6-bit shape index.
-    table = re.search(r"^LEVEL_ShapeTable:\n((?:  \.word \w+RoomRects\n)+)",
+    table = re.search(r"^LEVEL_ShapeTable:\n((?:  \.word \w+Shape\n)+)",
                       (ROOT / "src" / "generated" / "models_data.asm"
                        ).read_text(encoding="utf-8"), re.M)
     assert table, "models_data.asm must emit LEVEL_ShapeTable (C7)"

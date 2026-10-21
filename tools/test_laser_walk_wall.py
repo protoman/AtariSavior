@@ -52,7 +52,6 @@ L3 = lst_labels(FROZEN / "bank3.lst")   # C7: shape blocks + extras (bank3)
 PC_STARTFRAME = L0["StartFrame"]
 
 import test_fixtures as FX  # noqa: E402
-FX.freeze_m0(BANKS, L3)     # frozen model0: interior wall + hot count 0
 
 # ZP indices (addr & 0x7F) — from bank0.lst decl lines
 I_ROOMX, I_ROOMY, I_DIR, I_LASERX = 0x00, 0x01, 0x02, 0x03   # $80..$83
@@ -179,7 +178,9 @@ def load_room(room):
     fixture stream pointer (the real loader is exercised by test_band_restage).
     """
     model = MODEL[room]
-    a_rr = L3[f"M{model}RoomRects"]
+    # C11 (2026-10-21): a shape block is 3 row-pool indices, NOT a record
+    # stream — point RoomRects at bank3's static $00 count (no stream).
+    a_rr = L3["RoomNoStream"]
     meta_a_bytes, meta_b = FX.METAX[model]
     mem.ram[I_PF0LO] = meta_a_bytes
     mem.ram[I_PF0HI] = meta_b
@@ -250,7 +251,7 @@ def vcrunch_bbox_overlaps(room, rows, wl, wr):
     """True if a hot $81 (vcrunch bbox) record covers the wall run.
     Hot records: after packed count + hot count, 5B each
     [class, x, y, w, h] — x = 4px display col (left half), y = band."""
-    rr = f"M{MODEL[room]}RoomRects"
+    rr = f"M{MODEL[room]}Shape"
     off = (L3[rr] - 0xF000) & 0xFFFF
     count = BANKS[3][off]
     hot = BANKS[3][off + 1 + 2 * count]

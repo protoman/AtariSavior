@@ -8,26 +8,21 @@ reflects the 40-pixel playfield (CTRLPF D0=1), so rooms must be left-right
 symmetric; the kernel emits one PF0/PF1/PF2 triple per tile row, written
 once per 48-line band.
 
-Emitted data (block = the shape table entry / RoomRectsLo target):
-  - RoomRects (historical label; the block base since plan C4): the HOT
-    stream only — 1 byte count, then count * 5 B records (mask, x, y, w, h).
-    Coordinates are DISPLAY columns (4 color clocks each, left half =
-    columns 0-19) and band rows; the runtime mirrors to the right half.
-    The SOLID rect list is gone (2026-10-20): every collision walker
-    (player, laser, moth, bomb punch, hot parent) tests the PF buffers, so
-    the PF triple below IS the collision map.
-  - Rows (C3 2026-10-20): three 1 B ROW-POOL indices (band 0/1/2) at
-    block + 1 + 5*hot_count (bank2 B3RoomBlocks derives the offset and
-    expands each index through the global `RowPoolPF0/1/2` columns into
-    PF0Buf). The 9 raw PF bytes are gone from the block: a row is stored
-    ONCE for the whole game (3 B), so the block pays 3 B instead of 9.
-    The legacy per-grid form (`with_meta=True`, the standalone
-    convert_room.py CLI output) still emits TilePF0/TilePF1/TilePF2.
+Emitted data (C11 2026-10-21 — a SHAPE block is 3 bytes):
+  - Shape/Rows: three 1 B ROW-POOL indices (band 0/1/2), expanded by bank3
+    `B3RoomBlocks` through the global `RowPoolPF0/1/2` columns into PF0Buf.
+    Band 1's index byte b7 = the model's `mid_band_type` (hot) flag: hot
+    cells only ever exist on model row 1, so the flag rides that band.
+    The hot count + 5 B/record stream is GONE — HOT collision is derived
+    from the PF row 1 the loader expands (`HotOverlapBody`, gated by MetaB
+    b6), so a bombed parent cell stops being hot automatically (the punch
+    clears the PF cell).
+  - The legacy per-grid form (`with_meta=True`, the standalone convert_room
+    CLI output) still emits RoomRects (count + 5 B records), TilePF0/1/2 and
+    the packed meta pair — converter unit tests only, no stage data.
 C5 (2026-10-20): the MetaA/MetaB pair left this block (the fixed
 `TilePF0+9/+10` contract is retired) — it lives in the room EXTRAS stream
 (`meta_bytes`), and the RightPF/RightRects payload is gone (dead since C4).
-`lines(..., with_meta=False)` is the shape-only form convert_level emits for
-the shared M<id> shapes.
 All per-row tables (PF triples) are emitted at TABLE_STRIDE (= 3, the
 playable bands) since S4.2; only the first 3 entries are drawn — the old
 12-byte padding existed for bank0's +12/+12 pointer arithmetic, which
@@ -382,26 +377,29 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
     resolve_asym_patches — emitted with the flag.
     asym_m1_x: D6 M1 x (left-col block, SetObjectXPos arg) — 0 = no M1.
     hot_m1: (row, col) cells of side-1 (M1) patches that sit on the hot
-    band (mid_band_type) — emitted as mask-$00 hot records in the LEFT
-    stream: the M1 cell is PF-open by envelope so it never lands in
-    find_rectangles(rows, "H") — without this record touching the block
-    on a hot band never ran the hot-death check (and a hot-only model
-    would not even pulse its band). $00 = no blastable parent → never
-    dies with a wall (the strip dies via EnemyDeadMask b4 instead).
+    band (mid_band_type) — emitted as mask-$00 hot records in the LEGACY
+    per-grid stream (with_meta=True, converter unit tests only). Stage data
+    no longer carries them: C11 (2026-10-21) derives the M1 block cell from
+    the extras patch list at load (`RoomM1Hot`).
 
     C5 (2026-10-20) contract change — the MetaA/MetaB pair no longer lives
     in this block (the `TilePF0+9/+10` fixed-offset contract is retired):
     it moved into the room EXTRAS stream (`meta_bytes` feeds it). The
     RightPF/RightRects payload is gone too (dead since C4 — the D6 ball
-    overlay and the cell walk replaced right-rect collision). So a block is
-    now exactly `hot count + records + PF rows`.
+    overlay and the cell walk replaced right-rect collision).
 
     C3 (2026-10-20): a SHAPE block (`with_meta=False`) stores the bands as
     three 1 B indices into the shared `RowPool` (3 B/row emitted once for the
-    whole game), not the 9 raw PF bytes: `[hot count][5 B/record][idx x3]`.
+    whole game), not the 9 raw PF bytes.
+
+    C11 (2026-10-21): the shape block is EXACTLY those 3 index bytes — the
+    hot count and the 5 B/record hot stream are gone (hot is derived from
+    the PF row 1 that the loader expands, gated by MetaB b6). Band 1's index
+    byte carries b7 = `mid_band_type` (hot cells only ever exist on model
+    row 1, so the flag rides that band's index; pool rows stay <= 127).
     `pool` is REQUIRED for that form. The standalone per-grid form
-    (`with_meta=True`) keeps TilePF0/1/2 + the packed meta pair for the
-    converter unit tests.
+    (`with_meta=True`) keeps the historical stream + TilePF0/1/2 + the
+    packed meta pair for the converter unit tests.
 
     `with_meta=False` emits the shape-only block (what convert_level writes
     for the shared M<id> shapes). with_meta=True keeps the historical
@@ -418,18 +416,26 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         out.append(f"ROOM_TILE_COLUMNS = {WIDTH}")
         out.append(f"ROOM_TILE_ROWS = {len(rows)}")
 
-    # Hot stream section (hot records + feature records) — shared with the
-    # per-room extras path (C5) so the two cannot drift.
-    hot_lines, feats = hot_records(rows, hot_m1=hot_m1, hot=hot, door=door,
-                                   source=source)
-
-    out.append("; C4 (2026-10-20): block base = hot stream (no solid rect list)")
-    out.append(f"{prefix}RoomRects:")
-    out.append(f"  .byte {len(hot_lines) + len(feats)}              "
-               f"; number of hot rectangles")
-    out.extend(hot_lines)
-    out.extend(feats)
+    # C11 (2026-10-21): the SHAPE block is 3 row-pool indices ONLY. hot is
+    # derived at runtime from the PF row 1 the loader expands (gated by MetaB
+    # b6), so the legacy hot stream is not emitted into stage data.
+    # hot_records still runs for the LEGACY per-grid form and, for a shape,
+    # only to raise the precise reason when a feature tile sneaks into the
+    # grid (VCRUNCH / mixed / off-band). Its FEATURE section feeds the room
+    # extras stream in convert_level.
+    hot_lines, feats = [], []
+    if with_meta or any(cell in "PCV" for row in rows for cell in row):
+        hot_lines, feats = hot_records(rows, hot_m1=hot_m1, hot=hot,
+                                       door=door, source=source)
     if not with_meta:
+        if hot_m1:
+            raise ValueError(
+                f"{source}: a shape block cannot carry M1 hot records — the "
+                "M1 block cell is derived from the room's patch list at load")
+        if feats:
+            raise ValueError(
+                f"{source}: feature cell(s) in a shared shape block — feature "
+                "cells live on the ROOM (room.feature_cells + extras)")
         # C3 (2026-10-20): 3 row-pool indices instead of 9 raw PF bytes.
         if pool is None:
             raise ValueError(
@@ -445,10 +451,26 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
                 raise ValueError(
                     f"{source}: band {band} expands to {got} but the rows "
                     f"encode {want} (row pool drift)")
+        if any(idx > 0x7F for idx in indices):
+            raise ValueError(
+                f"{source}: row-pool index > $7F — band 1's b7 is the "
+                "mid_band_type hot flag (LEVEL_ROW_COUNT must stay <= 128)")
+        if hot:
+            indices[1] |= 0x80      # C11: hot flag rides the middle band
+        out.append(f"{prefix}Shape:")
         out.append(f"{prefix}Rows:")
         out.append("  .byte " + ", ".join(
-            f"${idx:02x}" for idx in indices) + "  ; row-pool indices (band 0-2)")
+            f"${idx:02x}" for idx in indices)
+            + "  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)")
         return out
+
+    out.append("; LEGACY per-grid block (converter unit tests only): hot "
+               "stream + PF + meta")
+    out.append(f"{prefix}RoomRects:")
+    out.append(f"  .byte {len(hot_lines) + len(feats)}              "
+               f"; number of hot rectangles")
+    out.extend(hot_lines)
+    out.extend(feats)
     for name, register in zip(("TilePF0", "TilePF1", "TilePF2"), range(3)):
         out.append(f"{prefix}{name}:")
         table = [f"${triple[register]:02x}" for triple in triples]

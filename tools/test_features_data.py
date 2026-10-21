@@ -103,7 +103,7 @@ def byte_line(lines, label):
 
 def hot_records(lines):
     """(count, [(mask, x, y, w, h), ...]) from the hot stream."""
-    i = lines.index("M91RoomRects:")
+    i = lines.index("M91RoomRects:")   # legacy per-grid block label
     count_line = None
     for j in range(i, len(lines)):
         if "number of hot rectangles" in lines[j]:

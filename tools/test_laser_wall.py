@@ -55,7 +55,7 @@ _EX = None
 _M0RR = None
 for _l in (FROZEN / "bank3.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(LEVEL1_AsyncExtras|"
-                  r"M0RoomRects)\s*$", _l)
+                  r"M0Shape)\s*$", _l)
     if _m:
         if _m.group(2) == "LEVEL1_AsyncExtras":
             _EX = int(_m.group(1), 16)

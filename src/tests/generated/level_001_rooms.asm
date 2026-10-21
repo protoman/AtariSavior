@@ -14,8 +14,8 @@ LEVEL1_MINER_Y = 84
 ; C5 (2026-10-20): an async room points at its SHARED MODEL shape;
 ; the patches/features/meta come from the extras record, so there are
 ; no per-room blocks any more. A room without a model is rejected
-; (the shape must be shared). C4: block = hot stream | PF triple —
-; TilePF0 = block + 1 + 5*hot_count.
+; (the shape must be shared). C11 (2026-10-21): block = 3 row-pool
+; indices — the hot count/stream is gone (hot derives from PF row 1).
 LEVEL1_RoomShapes:
   .byte SHAPE_M0 | $80 ; room 0 (async extras)
   .byte SHAPE_M1 ; room 1 (model 1)

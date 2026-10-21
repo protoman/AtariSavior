@@ -45,7 +45,12 @@ SRC = W.SRC
 FROZEN = W.SRC / "tests" / "frozen"   # test-owned banks+labels
 
 import test_fixtures as FX          # noqa: E402
-FX.freeze_m4(W.BANKS, W.L3)         # frozen model4 (user rule 2026-10-14)
+
+# C11 (2026-10-21): a shape block carries no record stream — the $82 hcrunch
+# record is staged as synthetic RAM data and RoomRects points at it.
+STREAM_ADDR = 0xA0
+I_RRLO, I_RRHI = 0x10, 0x11             # $90/$91 RoomRects ptr
+I_M1HOT = 0x2F                          # $AF RoomM1Hot
 
 I_ROOMX, I_ROOMY = W.I_ROOMX, W.I_ROOMY
 I_VYLO, I_VYHI = W.I_VYLO, W.I_VYHI
@@ -151,16 +156,24 @@ def main() -> None:
     fails = []
     boot()
     W.load_room(4)
+    # C11 (2026-10-21): stage the frozen $82 record as synthetic RAM data and
+    # point RoomRects at it (a shape block carries no record stream any more).
+    for _i, _b in enumerate(FX.M4_STREAM):
+        W.mem.ram[STREAM_ADDR + _i - 0x80] = _b
+    W.mem.ram[I_RRLO] = STREAM_ADDR & 0xFF
+    W.mem.ram[I_RRHI] = STREAM_ADDR >> 8
+    W.mem.ram[I_M1HOT] = 0                # no hot-band M1 block cell
+    W.mem.ram[0x1A] = 0                   # $9A RoomMetaB: cold (no hot sweep)
 
     # Patch the record's y and w in the PRIVATE bank copy: fields must be
     # ignored (band stays 1, prefix stays 10).
-    off = W.L3["M4RoomRects"] - 0xF000
-    count = W.BANKS[3][off]                # hot-record count (C4: no rects)
+    off = STREAM_ADDR
+    count = W.mem.ram[off - 0x80]          # record count (C11: features only)
     rec = off + 1                          # first record's class byte
-    assert count and W.BANKS[3][rec] == 0x82, \
-        f"fixture class {W.BANKS[3][rec]:02X}"
-    W.BANKS[3][rec + 2] = 2                # y(band) -> 2 (ignored)
-    W.BANKS[3][rec + 3] = 4                # w -> 4 cells (ignored)
+    assert count and W.mem.ram[rec - 0x80] == 0x82, (
+        f"fixture class {W.mem.ram[rec - 0x80]:02X}")
+    W.mem.ram[rec + 2 - 0x80] = 2          # y(band) -> 2 (ignored)
+    W.mem.ram[rec + 3 - 0x80] = 4          # w -> 4 cells (ignored)
     assert rec + 4 <= off + 1 + 5, "record stride changed"
 
     # --- 1. arm + ignored record fields ---------------------------------

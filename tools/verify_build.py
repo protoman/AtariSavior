@@ -969,10 +969,10 @@ def check_level_format(src: Path) -> None:
             "(format 3 = C2 shape-index room records)")
         return
     gen_fmt = int(m.group(1), 16)
-    if gen_fmt != 5:
+    if gen_fmt != 6:
         err(f"generated LEVEL_FORMAT = {gen_fmt}, the bank2 reader implements "
-            "5 (shape-index records + async extras + row-pool shape blocks) — "
-            "stale generated tree or half-done migration")
+            "6 (shape-index records + async extras + row-pool shape blocks + "
+            "PF-derived hot) — stale generated tree or half-done migration")
     for name in ("kernel.asm", "bank1.asm"):
         p = src / name
         if not p.exists():
@@ -1002,7 +1002,7 @@ def check_level_format(src: Path) -> None:
     # 6-bit index and needs no bank3 label.
     mda_path = src / "generated" / "models_data.asm"
     mda_text = mda_path.read_text(errors="replace") if mda_path.exists() else ""
-    table = re.search(r"^LEVEL_ShapeTable:\n((?:  \.word \w+RoomRects\n)+)",
+    table = re.search(r"^LEVEL_ShapeTable:\n((?:  \.word \w+Shape\n)+)",
                       mda_text, re.M)
     if not table:
         err("models_data.asm must emit LEVEL_ShapeTable (C7: bank3 word table)")
@@ -1142,13 +1142,27 @@ def check_level_format(src: Path) -> None:
             npatch, nfeat = flags & 0x03, (flags >> 2) & 0x0F
             want = 3 + npatch + nfeat
             if nfeat:
-                hot_at = want
-                if len(vals) <= hot_at:
-                    err(f"{path.name}: extras record {n + 1} has no hot "
-                        "count byte (n_features > 0 requires the room's hot "
-                        "stream)")
+                rec_at = want
+                if len(vals) <= rec_at:
+                    err(f"{path.name}: extras record {n + 1} has no record "
+                        "count byte (n_features > 0 requires the room's "
+                        "feature-record stream)")
                     continue
-                want += 1 + 5 * vals[hot_at]
+                want += 1 + 5 * vals[rec_at]
+                # C11 (2026-10-21): the extras stream holds FEATURE records
+                # only ($80 phase / $82 hcrunch) — the shape's static hot
+                # cells are derived from the PF row 1 and the M1 block cell
+                # from the patch list, so a mask-$00/$08 record here means a
+                # stale converter copied the retired hot stream back in.
+                for k in range(vals[rec_at]):
+                    cls_at = rec_at + 1 + 5 * k
+                    if cls_at >= len(vals):
+                        break
+                    if not vals[cls_at] & 0x80:
+                        err(f"{path.name}: extras record {n + 1} feature "
+                            f"record {k} class ${vals[cls_at]:02x} — only "
+                            "b7-set feature records belong here (C11)")
+                        break
             if flags & 0xC0:
                 err(f"{path.name}: extras record {n + 1} sets reserved flags "
                     f"${flags:02x} (only b5-0 are n_features/n_patches)")
@@ -1195,24 +1209,21 @@ def check_level_format(src: Path) -> None:
 
 
 def check_shape_blocks(src: Path) -> None:
-    """C3 (2026-10-20): a shape block = hot stream + 3 row-pool indices.
+    """C11 (2026-10-21): a shape block is EXACTLY 3 row-pool indices.
 
-    The 9 raw PF bytes are gone from every model block; the row dictionary
-    (`RowPoolPF0/1/2`, 3 SoA columns of 1 B/row in models_data.asm, i.e. in
-    bank2's level-data block slot) holds one entry per DISTINCT band row and
-    bank2's `B3RoomBlocks` expands each index into `PF0Buf`. Guards:
+    The 9 raw PF bytes are gone from every model block (C3 row dictionary:
+    `RowPoolPF0/1/2`, 3 SoA columns of 1 B/row in models_data.asm, i.e. in
+    bank3's level-data slot) AND so is the per-shape hot stream (C11: hot
+    collision is derived from the PF row 1 the loader expands). Guards:
 
-      1. `LEVEL_ROW_COUNT` == the emitted pool size (and <= 256: the index is
-         one byte);
-      2. every shape block is exactly `1 + 5*hot + 3` bytes, its `Rows` label
-         carries 3 indices and every index is < LEVEL_ROW_COUNT;
-      3. no pool entry is unused (pool and blocks would have drifted — an
-         unused row is dead ROM and a sign the pass ran twice);
-      4. no raw `TilePF*` label survives in a block, and the loader really
-         reads the pool (`lda RowPoolPF0,X`), so a rename cannot pass;
-      5. the pool labels resolve in the level data (models_data.asm is
-         included from the block slot, and bank2.lst has the symbols after a
-         build).
+      1. `LEVEL_ROW_COUNT` == the emitted pool size and <= 128 (band 1's
+         index byte carries b7 = `mid_band_type`);
+      2. every shape block is exactly `<tag>Shape:`/`<tag>Rows:` + 3 index
+         bytes, each index < LEVEL_ROW_COUNT (b7 masked on band 1);
+      3. no hot count / 5 B record / `RoomRects` label survives in a block;
+      4. no pool entry is unused (pool and blocks would have drifted);
+      5. no raw `TilePF*` label survives in a block, and the loader really
+         reads the pool (`lda RowPoolPF0,X`) and the hot flag.
     """
     gen = src / "generated"
     mda_p = gen / "models_data.asm"
@@ -1227,8 +1238,9 @@ def check_shape_blocks(src: Path) -> None:
         err("models_data.asm must declare LEVEL_ROW_COUNT (C3 row pool)")
         return
     row_count = int(m.group(1))
-    if row_count > 0x100:
-        err(f"LEVEL_ROW_COUNT = {row_count} > 256 — a row index is one byte")
+    if row_count > 0x80:
+        err(f"LEVEL_ROW_COUNT = {row_count} > 128 — band 1's index byte b7 "
+            "is the mid_band_type hot flag (C11)")
     columns = {}
     for name in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2"):
         hit = re.search(rf"^{name}:\n  \.byte ([^\n]+)", text, re.M)
@@ -1242,35 +1254,25 @@ def check_shape_blocks(src: Path) -> None:
             err(f"{name} has {len(values)} rows but LEVEL_ROW_COUNT = "
                 f"{row_count}")
 
-    # --- shape blocks: hot stream then the 3 indices -----------------------
+    # --- shape blocks: exactly the 3 row-pool indices (C11) ---------------
     blocks = re.finditer(
-        r"^(M\d+)RoomRects:\n"
-        r"  \.byte (\d+)\s*; number of hot rectangles\n"
-        r"((?:  \.byte [^\n]*\n)*)"
+        r"^(M\d+)Shape:\n"
         r"\1Rows:\n  \.byte ([^\n]+)\n?",
         mda, re.M)
     seen_blocks = 0
     referenced: set[int] = set()
     for hit in blocks:
-        tag, hot_s, records, rows_s = hit.groups()
+        tag, rows_s = hit.groups()
         seen_blocks += 1
-        hot = int(hot_s)
-        rec_lines = [ln for ln in records.splitlines() if ln.strip()]
-        if len(rec_lines) != hot:
-            err(f"{tag}RoomRects: hot count {hot} but {len(rec_lines)} record "
-                "lines (C3 block = count + 5 B/record + 3 row indices)")
-        for ln in rec_lines:
-            # Strip the trailing comment FIRST: the hot-record comment itself
-            # contains commas ("mask, x, y, w, h"), which used to inflate the
-            # count to 9 for generated hot bands (2026-10-20).
-            values = ln.split(";", 1)[0].split(".byte", 1)[1]
-            n = len([v for v in values.split(",") if v.strip()])
-            if n != 5:
-                err(f"{tag}RoomRects: hot record is {n} B, want 5")
-        indices = [int(v.strip().lstrip("$"), 16)
-                   for v in rows_s.split(";")[0].split(",")]
-        if len(indices) != 3:
-            err(f"{tag}Rows: {len(indices)} indices, want 3 (band 0/1/2)")
+        raw = [int(v.strip().lstrip("$"), 16)
+               for v in rows_s.split(";")[0].split(",") if v.strip()]
+        if len(raw) != 3:
+            err(f"{tag}Rows: {len(raw)} indices, want 3 (band 0/1/2)")
+            continue
+        if (raw[0] | raw[2]) & 0x80:
+            err(f"{tag}Rows: b7 set outside band 1 — only the middle band "
+                "carries the mid_band_type flag (C11)")
+        indices = [idx & 0x7F for idx in raw]
         for band, idx in enumerate(indices):
             if idx >= row_count:
                 err(f"{tag}Rows: band {band} index {idx} >= LEVEL_ROW_COUNT "
@@ -1278,8 +1280,14 @@ def check_shape_blocks(src: Path) -> None:
                     "past the column")
             referenced.add(idx)
     if not seen_blocks:
-        err("models_data.asm has no shape block in the C3 form "
-            "(hot count, 5 B records, `<tag>Rows:` with 3 indices)")
+        err("models_data.asm has no shape block in the C11 form "
+            "(`<tag>Shape:` / `<tag>Rows:` + 3 row indices, no hot stream)")
+    if re.search(r"^(M\d+)RoomRects:", mda, re.M):
+        err("models_data.asm still emits a `RoomRects` shape label — C11 "
+            "dropped the hot stream: a block is `<tag>Shape:` + 3 indices")
+    if re.search(r"number of hot rectangles|number of hot records", mda):
+        err("models_data.asm still emits a hot count byte — C11 derives hot "
+            "from the PF row 1 (shape block = 3 row-pool indices)")
     if row_count and referenced != set(range(row_count)):
         missing = sorted(set(range(row_count)) - referenced)
         if missing:
@@ -1305,6 +1313,19 @@ def check_shape_blocks(src: Path) -> None:
         if "LEVEL_ShapeTable" not in loader:
             err("bank3.asm B3RoomBlocks does not read LEVEL_ShapeTable — the "
                 "shape index must resolve in-bank (C7)")
+        # C11 (2026-10-21): the hot flag rides band 1's index byte and the
+        # overscan hot test must read the PF buffers, not a record stream.
+        if not re.search(r"and\s+#\$80\s*\n\s*lsr\b", loader):
+            err("bank3.asm B3RoomBlocks does not derive the hot flag from "
+                "band 1's index b7 (and #$80 / lsr → MetaB b6) — C11")
+        if not re.search(r"lda\s+RoomM1Hot", loader):
+            err("bank3.asm has no RoomM1Hot reader — the hot-band M1 block "
+                "cell is PF-open and must be staged from the patch list (C11)")
+        hov = loader[loader.index("HotOverlapBody:"):]
+        hov = hov[:hov.index(".HOVstream:")]
+        if "and #$40" not in hov or "PF0Buf,Y" not in hov:
+            err("bank3.asm HotOverlapBody lost the PF row-1 hot sweep "
+                "(MetaB b6 gate + PF0Buf read) — C11")
     spill = gen / "spill_bank3.asm"
     if not spill.exists() or "models_data.asm" not in spill.read_text(
             errors="replace"):
@@ -1788,10 +1809,11 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
             if not hit:
                 continue                      # model not referenced by any room
             if re.search(rf"^{re.escape(tag)}(MetaA|MetaB|RightPF\d|"
-                         rf"RightRects):", mda, re.M):
+                         rf"RightRects|RoomRects):", mda, re.M):
                 err(f"models.json model {mid}: shape block still carries a "
-                    "retired meta/right section — C5 moved MetaA/MetaB to the "
-                    "level extras and dropped RightPF/RightRects")
+                    "retired meta/right/hot-stream section — C5 moved "
+                    "MetaA/MetaB to the level extras, C11 dropped the hot "
+                    "stream (block = 3 row-pool indices)")
             try:
                 left = rows_from_json({"model_id": mid}, models)
             except (ValueError, KeyError, TypeError) as exc:
@@ -1803,6 +1825,14 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
                 err(f"models.json model {mid}: {tag}Rows has {len(idx)} "
                     "indices, want 3 (band 0/1/2)")
                 continue
+            hot = bool(model.get("mid_band_type"))
+            want_hot = 0x80 if hot else 0
+            if (idx[1] & 0x80) != want_hot or (idx[0] | idx[2]) & 0x80:
+                err(f"models.json model {mid}: {tag}Rows b7 flags "
+                    f"${idx[0]:02x}/${idx[1]:02x}/${idx[2]:02x} — band 1's "
+                    f"b7 must be {want_hot:#04x} (mid_band_type="
+                    f"{int(hot)}) and no other band may set b7 (C11)")
+            idx = [i & 0x7F for i in idx]
             for reg, name in enumerate(("RowPoolPF0", "RowPoolPF1",
                                         "RowPoolPF2")):
                 if reg not in pools:

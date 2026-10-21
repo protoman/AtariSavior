@@ -44,15 +44,20 @@ HEIGHT = 3
 # C5 (2026-10-20): 4 = async EXTRAS stream. A room record's b7 (owns-extras)
 # + the count byte's extras index select a variable-length record in the
 # level's extras stream (after the enemy records): flags, MetaA/MetaB,
-# 1 B/patch, 1 B/feature, then [feature rooms] the room's hot stream. That
-# retired the per-room blocks and the `TilePF0+9/+10` meta contract: a room
-# points at its shared model SHAPE and the loader (bank2 ExtrasLoad) applies
-# the patches/features and stages MetaA/MetaB.
-# C3 (2026-10-20): 5 = ROW DICTIONARY. A shape block keeps the hot stream and
-# then stores 3 one-byte row-pool indices (band 0/1/2) instead of the 9 raw
-# PF bytes; the pool (3 B per DISTINCT row) is emitted once per game in
-# models_data.asm as `RowPoolPF0/1/2` + `LEVEL_ROW_COUNT`.
-LEVEL_FORMAT = 5
+# 1 B/patch, 1 B/feature, then [feature rooms] the room's FEATURE-record
+# stream. That retired the per-room blocks and the `TilePF0+9/+10` meta
+# contract: a room points at its shared model SHAPE and the loader (bank2
+# ExtrasLoad) applies the patches/features and stages MetaA/MetaB.
+# C3 (2026-10-20): 5 = ROW DICTIONARY. A shape block stores 3 one-byte
+# row-pool indices (band 0/1/2) instead of the 9 raw PF bytes; the pool (3 B
+# per DISTINCT row) is emitted once per game in models_data.asm as
+# `RowPoolPF0/1/2` + `LEVEL_ROW_COUNT`.
+# C11 (2026-10-21): 6 = PF-DERIVED HOT. The shape block is EXACTLY the 3 row
+# indices — the hot count byte and the 5 B/record hot stream are gone (hot
+# cells ARE the solid row-1 PF cells of a hot shape), band 1's index b7 carries
+# `mid_band_type`, and the extras record stream keeps FEATURE records only
+# (M1/hot records are derived). `HotOverlapBody` sweeps the expanded PF row 1.
+LEVEL_FORMAT = 6
 # New tile values (ai_new_tiles plan Phase 1). LOCKED_DOOR lives ONLY in
 # asym_patches (side 0 = async ball strip, MetaB b7); the three grid tiles
 # paint model cells and emit b7 feature records in the hot record stream.
@@ -693,7 +698,8 @@ def level_number_from_path(path: Path) -> int:
 
 # --- C5 (2026-10-20): async extras records ---------------------------------
 # Feature kind nibble in the 1 B/feature entries (the record class byte in the
-# hot stream is $80 phase / $82 hcrunch; the extras byte uses compact kinds).
+# extras FEATURE record stream is $80 phase / $82 hcrunch; the extras byte
+# uses compact kinds).
 EXTRAS_PHASE = 1
 EXTRAS_HCRUNCH = 2
 
@@ -708,22 +714,23 @@ def room_extras(room: dict, model: dict, rows: list[str],
                 who: str) -> tuple[bytes, int]:
     """Build one C5 extras record for an async room: (bytes, n_features).
 
-    Layout (see LEVELn_AsyncExtras): flags, MetaA, MetaB, 1 B/patch, 1 B/
-    feature, then [features] the ROOM's hot stream (count + 5 B records).
+    Layout: flags, MetaA, MetaB, 1 B/patch, 1 B/feature, then [features] the
+    room's FEATURE-record stream (count + 5 B records).
     The meta pair is the retired `TilePF0+9/+10` payload; the patch list is
     the live geometry the loader derives the MetaA band mask from (asserted
     here so the two encodings cannot drift).
+
+    C11 (2026-10-21): the record stream holds FEATURE records only ($80 phase
+    / $82 hcrunch) — the shape's static hot cells and the M1 block cell are
+    no longer copied here. Hot collision is derived from the PF row 1 the
+    loader expands (a feature room's phase/hcrunch cells MOVE PF bits every
+    VBL, so the live PF is the correct source), and the M1 block cell is
+    re-derived from the patch list at load (`RoomM1Hot`).
     """
     res = resolve_asym_patches(model, room, rows)
     asym, ball_x, m1_x, m1_door, m1_right = (
         res if res else (None, 0, 0, False, False))
     hot = bool(model.get("mid_band_type"))
-    hot_m1 = []
-    if hot:
-        for patch in room_patches(room):
-            side = patch[3] if len(patch) == 4 else 0
-            if side == 1 and patch[0] == 1:
-                hot_m1.append((patch[0], patch[1]))
     meta_a, meta_b = convert_room.meta_bytes(
         rows, asym_rows=asym, asym_ball_x=ball_x, asym_m1_x=m1_x,
         hot=hot, door=False, m1_door=m1_door, m1_right=m1_right, source=who)
@@ -770,9 +777,9 @@ def room_extras(room: dict, model: dict, rows: list[str],
     out += bytes(patch_bytes)
     out += bytes(feature_bytes)
     if feature_bytes:
-        hot_lines, feat_lines = convert_room.hot_records(
-            rows, hot_m1=hot_m1, hot=hot, door=False, source=who)
-        records = [_parse_hot_line(line) for line in hot_lines + feat_lines]
+        _hot_lines, feat_lines = convert_room.hot_records(
+            rows, hot_m1=(), hot=hot, door=False, source=who)
+        records = [_parse_hot_line(line) for line in feat_lines]
         out.append(len(records))
         for record in records:
             out += bytes(record)
@@ -839,8 +846,8 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
         "; C5 (2026-10-20): an async room points at its SHARED MODEL shape;",
         "; the patches/features/meta come from the extras record, so there are",
         "; no per-room blocks any more. A room without a model is rejected",
-        "; (the shape must be shared). C4: block = hot stream | PF triple —",
-        "; TilePF0 = block + 1 + 5*hot_count.",
+        "; (the shape must be shared). C11 (2026-10-21): block = 3 row-pool",
+        "; indices — the hot count/stream is gone (hot derives from PF row 1).",
         f"{prefix}_RoomShapes:",
     ]
     extras_index: dict[int, int] = {}
@@ -885,8 +892,9 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
 
     # C7 (2026-10-20): the async EXTRAS stream is its OWN file now, because it
     # lives in BANK3 with the shapes and the walkers that read it every VBL
-    # (a feature room's hot stream sits inside the record — record walkers and
-    # record data must share a bank, and a fold on the VBL path is 25c/byte).
+    # (a feature room's FEATURE-record stream sits inside the record — record
+    # walkers and record data must share a bank, and a fold on the VBL path is
+    # 25c/byte).
     # The space it used to take in the level's bank2 table block comes back to
     # the table slots, so net level data is unchanged.
     extras_path = output.with_name(
@@ -903,9 +911,10 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
             ";   +3.. 1 B/patch: row b7-6 | side b4 | col b3-0 (tile = wall)",
             ";   ..   1 B/feature: kind b7-6 (1 = phase, 2 = hcrunch",
             ";        prefix end) | col b3-0",
-            ";   ..   [n_features > 0] 1 B hot count + 5 B/hot record — the",
-            ";        ROOM's hot stream (feature cells split the shape's own",
-            ";        hot rects, so the walkers read this copy instead).",
+            ";   ..   [n_features > 0] 1 B count + 5 B/FEATURE record — the",
+            ";        live feature geometry ($80 phase cell / $82 hcrunch",
+            ";        prefix). Static hot + the M1 block cell are derived by",
+            ";        the loader (PF row 1 + the patch list) — C11.",
             f"{prefix}_AsyncExtras:",
         ] + extras_lines
     else:
@@ -1038,13 +1047,15 @@ def _enemy_tables(prefix: str, rooms: list[dict],
 
 def emit_room_block(prefix: str, room: dict, model: dict, rows: list[str],
                     source: str, pool) -> list[str]:
-    """One shared model SHAPE block (hot stream + row-pool indices) for `prefix`.
+    """One shared model SHAPE block (3 row-pool indices) for `prefix`.
 
     C5 (2026-10-20): the model block is the STATIC shape only — the
     MetaA/MetaB pair moved to the room extras stream, so `with_meta=False`.
     There are no per-room blocks any more (async rooms share the model shape
     and carry an extras record). C3 (2026-10-20): the 9 raw PF bytes became 3
-    one-byte row-pool indices (`pool`, built once for the whole game)."""
+    one-byte row-pool indices (`pool`, built once for the whole game).
+    C11 (2026-10-21): the hot stream is gone too — the block is exactly the
+    three indices (band 1's b7 = `mid_band_type`)."""
     if model is None:
         res = None
         hot = False
@@ -1053,18 +1064,10 @@ def emit_room_block(prefix: str, room: dict, model: dict, rows: list[str],
         hot = bool(model.get("mid_band_type"))
     asym, ball_x, m1_x, m1_door, m1_right = (
         res if res else (None, 0, 0, False, False))
-    # M1 strips on the hot band: the cells are PF-open so the 'H' walk never
-    # sees them -> convert_room emits mask-$00 records for them.
-    hot_m1 = []
-    if hot:
-        for patch in room_patches(room):
-            side = patch[3] if len(patch) == 4 else 0
-            if side == 1 and patch[0] == 1:
-                hot_m1.append((patch[0], patch[1]))
     return convert_room.lines(
         rows, prefix=prefix, source=source,
         asym_rows=asym, asym_ball_x=ball_x, asym_m1_x=m1_x,
-        hot_m1=hot_m1,
+        hot_m1=(),
         door=False,          # Phase 5: no ball doors — a side-0 door is the
                              # right M1 door (MetaA b0=1)
         m1_door=room_m1_door_flag(room),
@@ -1098,7 +1101,7 @@ def _shape_stream(generated: Path, level_numbers: list[int] | None = None) -> li
     shapes are emitted (the per-room block stream is retired, and its
     byte-identical dedupe pass with it).
     """
-    pattern = re.compile(r"^(M\d+)RoomRects:")
+    pattern = re.compile(r"^(M\d+)Shape:")
     order: list[str] = []
     # C7: only THIS stage's block files — a stale file from another stage
     # (e.g. a leftover 210-room tree) must not contribute shape labels.
@@ -1358,7 +1361,7 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
                  f"(6-bit index ceiling: {MAX_SHAPES})\n")
         fh.write("LEVEL_ShapeTable:\n")
         for name in shapes:
-            fh.write(f"  .word {name}RoomRects\n")
+            fh.write(f"  .word {name}Shape\n")
         fh.write("\n")
 
     tail_lines = [
@@ -1384,15 +1387,17 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
         ";                               loader derives its base from the count",
         ";                               column sum). Flags/MetaA/MetaB,",
         ";                               1 B/patch, 1 B/feature, then the",
-        ";                               room's hot stream when it has features.",
+        ";                               FEATURE-record stream when the room",
+        ";                               has feature cells (C11: no hot records).",
     ] + equ_lines + [
         "",
-        "; Shape block (C3 2026-10-20): hot count | 5 B/record | 3 row-pool",
-        ";   indices (band 0/1/2 -> RowPoolPF0/1/2 in models_data.asm; the",
-        ";   loader expands them into PF0Buf). LEVEL_ROW_COUNT = pool rows.",
+        "; Shape block (C11 2026-10-21): EXACTLY 3 row-pool indices (band",
+        ";   0/1/2 -> RowPoolPF0/1/2 in models_data.asm; the loader expands",
+        ";   them into PF0Buf). Band 1's b7 = mid_band_type (hot); hot death",
+        ";   is derived from the expanded PF row 1. LEVEL_ROW_COUNT = rows.",
         "; ASYNC EXTRAS (C7 2026-10-20): the per-room records moved OUT of this",
         ";   block into generated/level_00N_extras.asm (bank3) — a feature",
-        ";   room's hot stream lives inside its record and the VBL walkers read",
+        ";   room's record stream lives inside it and the VBL walkers read",
         ";   it in-bank, so record walkers and records share a bank. This bank",
         ";   keeps the counts byte's b5-0 ORDINAL and the 3 B/room columns.",
         f"; BAND_COLOR = ${band_color:02x} — the single bottom-band color (every",

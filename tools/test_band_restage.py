@@ -86,9 +86,11 @@ if {"RoomMetaA", "RoomMetaB"} - ZMETA.keys():
 # C3 (2026-10-20): the row dictionary — the shape block stores 3 indices and
 # the loader expands them through these three SoA columns into PF0Buf.
 POOL = parse_labels(SRC / "bank3.lst",
-                    {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2"})
-if {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2"} - POOL.keys():
+                    {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2",
+                     "RoomNoStream"})
+if {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2", "RoomNoStream"} - POOL.keys():
     sys.exit(f"bank2.lst labels missing: {sorted(set(POOL) or {'RowPool'})}")
+nostream = POOL["RoomNoStream"]
 
 
 
@@ -126,7 +128,7 @@ def main() -> int:
     # C2: model block addresses (the shared M<id> blocks) — an async room must
     # NOT land on one of these, whatever its shape index says.
     model_blocks = parse_labels(
-        SRC / "bank3.lst", {f"M{mid}RoomRects" for mid in range(64)})
+        SRC / "bank3.lst", {f"M{mid}Shape" for mid in range(64)})
     for n, syms, level in levels:
         table = syms[f"LEVEL{n}_RoomShapes"]
         enemy_data = syms[f"LEVEL{n}_EnemyDataTable"]
@@ -160,37 +162,41 @@ def main() -> int:
             assert got_rec == want_rec, (
                 f"level {n} room {i}: enemy record base ${got_rec:04X} want "
                 f"${want_rec:04X} (packed count/index field misread)")
-            # --- C3: TilePF0 derived from the rect list (rects + 2 + 2*n) ---
+            # --- C11 (2026-10-21): the record-stream pointer -------------
+            # A room with FEATURE cells points RoomRects at its extras record
+            # stream; every other room points at bank3's static $00 count
+            # (no stream) — the hot death test no longer reads a shape stream.
             rects = (mem.ram[L0["RoomRectsLo"] - 0x80]
                      | (mem.ram[L0["RoomRectsHi"] - 0x80] << 8))
             # --- C5 (2026-10-20): every room points at its shared MODEL
             # shape; the async extras are applied on top (patches/features/
-            # meta) by the loader. So the block equals the model block for
-            # every room, and the PF/meta/patch state must match the JSON.
+            # meta) by the loader. So the PF/meta/patch state must match the
+            # JSON for every room.
             model = room.get("model_id")
-            label = f"M{int(model)}RoomRects" if model is not None else None
+            label = f"M{int(model)}Shape" if model is not None else None
             assert model is not None, (
                 f"level {n} room {i}: no model_id (C5 needs a shared shape)")
             assert label in model_blocks, (
                 f"level {n} room {i}: model {model} has no emitted shape "
                 f"({label})")
-            # A patch-only (or plain) room keeps the shape as its hot stream;
-            # a FEATURE room repoints it at the extras copy, so the shape
-            # identity is only directly observable in the non-feature case
-            # (the PF bytes below still prove the shape was the source).
             feats_room = CL.room_feature_cells(room)
             shape = model_blocks[label]
             if not feats_room:
-                assert rects == shape, (
-                    f"level {n} room {i}: block ${rects:04X} != model shape "
-                    f"{label} ${shape:04X}")
-            # C4/C3 (2026-10-20): block = hot stream | 3 row-pool indices;
-            # the rows sit at block + 1 + 5*hot (the old raw-PF offset), so
-            # the loader expands them through RowPoolPF0/1/2 into PF0Buf.
+                assert rects == nostream, (
+                    f"level {n} room {i}: stream ptr ${rects:04X} != the "
+                    f"no-stream sentinel ${nostream:04X} (non-feature room "
+                    "must have no record stream)")
+            # C11: the shape block is EXACTLY the 3 row-pool indices at
+            # block + 0..2 (band 0/1/2); band 1's b7 = mid_band_type.
             blocks = _CM.BANK3
-            nhot = blocks[shape - 0xF000]
-            rows_at = shape + 1 + 5 * nhot
-            idx = blocks[rows_at - 0xF000:rows_at - 0xF000 + 3]
+            idx = blocks[shape - 0xF000:shape - 0xF000 + 3]
+            hot = bool(MODELS[int(model)].get("mid_band_type"))
+            assert (idx[1] & 0x80) == (0x80 if hot else 0), (
+                f"level {n} room {i}: shape band-1 index ${idx[1]:02X} hot "
+                f"flag != mid_band_type={int(hot)} (C11)")
+            assert not ((idx[0] | idx[2]) & 0x80), (
+                f"level {n} room {i}: b7 set outside band 1 (C11)")
+            idx = [i & 0x7F for i in idx]
             want_pf = bytearray()
             for column in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2"):
                 base = POOL[column] - 0xF000
@@ -229,11 +235,11 @@ def main() -> int:
                     f"${got_a:02X}/${got_b:02X} != JSON "
                     f"${want_a:02X}/${want_b:02X} (extras record misread)")
             else:
-                want_hot = 0x40 if nhot else 0
+                want_hot = 0x40 if hot else 0
                 assert (got_a, got_b) == (0, want_hot), (
                     f"level {n} room {i}: symmetric room must derive MetaA=0 "
                     f"and MetaB=$40*hot, got ${got_a:02X}/${got_b:02X} "
-                    f"(hot count {nhot})")
+                    f"(mid_band_type={int(hot)})")
             # feature cells: solid in the PF buffer (loader applies them) and
             # the hot stream comes from the extras copy
             feats = feats_room
@@ -253,15 +259,20 @@ def main() -> int:
                 f"level {n} room {i}: loaded PF0Buf {got_pf.hex()} != "
                 f"expected {bytes(want_pf).hex()} (row-pool expansion)")
             if feats:
-                assert hot_ptr != shape, (
-                    f"level {n} room {i}: feature room must point the hot "
-                    "stream at its extras record, not the model shape")
-                assert blocks[hot_ptr - 0xF000] == 1, (
-                    f"level {n} room {i}: extras hot stream count should be 1 "
-                    f"(got {blocks[hot_ptr - 0xF000]})")
+                assert hot_ptr != shape and hot_ptr != nostream, (
+                    f"level {n} room {i}: feature room must point the record "
+                    "stream at its extras record")
+                assert blocks[hot_ptr - 0xF000] >= 1, (
+                    f"level {n} room {i}: extras record stream count should "
+                    f"be >= 1 (got {blocks[hot_ptr - 0xF000]})")
+                assert blocks[hot_ptr - 0xF000 + 1] & 0x80, (
+                    f"level {n} room {i}: extras stream class "
+                    f"${blocks[hot_ptr - 0xF000 + 1]:02X} must be a FEATURE "
+                    "record (b7 set) — C11 dropped the hot records")
             else:
-                assert hot_ptr == shape, (
-                    f"level {n} room {i}: hot stream must stay the shape")
+                assert hot_ptr == nostream, (
+                    f"level {n} room {i}: non-feature room must point "
+                    f"RoomRects at the $F8B7 sentinel (got ${hot_ptr:04X})")
             checks += 1
     print(f"test_band_restage: OK ({checks} rooms, RoomBandColor + derived "
           f"enemy record + shared model shape + PF/extras equivalence "

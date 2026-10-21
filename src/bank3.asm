@@ -124,8 +124,13 @@ RAFT = 7                       ; enemy type: moving raft — kernel ENEMY_RAFT
 SNAKE = 2                      ; enemy type: kernel ENEMY_SNAKE (load-dir invert)
 ; --- BuildColupF (S5.1, moved from bank0) — addresses must match kernel.asm ---
 TILE_ROWS = 3                     ; playable color bands (rows 0-2 of ColupfBuf)
-RoomRectsLo = $90                 ; hot/solid rect stream — read directly here
+RoomRectsLo = $90                 ; FEATURE-record stream ptr (C11): the room's
+                                  ;   extras record stream, or RoomNoStream
+                                  ;   ($00 count) when it has none
 RoomRectsHi = $91
+RoomM1Hot   = $AF                 ; C11: hot-band M1 block cell = col+1
+                                  ;   (0 = none), staged by ExtrasLoad from the
+                                  ;   patch list — kernel decl LevelEnemySpare
 RoomNo      = $98
 LevelWallColor = $AA              ; stripe rows 0+2
 LevelWallColor2 = $AB              ; stripe row 1
@@ -185,10 +190,12 @@ PLAYER_MIN_Y = 0
 ; B3RoomBlocks — shape → PF0Buf + staged meta/extras (C7: bank2 tail-jumps
 ; here; ends `jmp ReturnPad`).
 ;
-; Shape block (C3/C4/C5) = HOT STREAM | ROW INDICES. MetaA/MetaB are NOT in
-; the block: an owns-extras room reads its pair (+patches+features) from the
-; level's async extras stream; every other room derives MetaA = 0 and
-; MetaB = $40 iff the shape carries hot records.
+; Shape block (C11 2026-10-21) = EXACTLY 3 row-pool indices (band 0/1/2).
+; Band 1's index byte carries b7 = mid_band_type (hot): hot cells only ever
+; exist on model row 1, so the flag rides that band and the block needs no
+; flags byte. MetaA/MetaB are NOT in the block: an owns-extras room reads its
+; pair (+patches+features) from the level's async extras stream; every other
+; room derives MetaA = 0 and MetaB = $40 iff the shape is hot.
 ; ==============================================================================
 B3RoomBlocks:
     ; C7: the shape ADDRESS comes from THIS bank's LEVEL_ShapeTable, so bank2
@@ -199,33 +206,28 @@ B3RoomBlocks:
     asl                             ; *2: LEVEL_ShapeTable is a word table
     tax
     lda LEVEL_ShapeTable,X          ; block address = the table entry
-    sta RoomRectsLo
     sta FetchPtr
     lda LEVEL_ShapeTable+1,X
+    sta FetchPtr+1
+    ; C11: no stream by default — a room only gets one from its extras record
+    ; (feature records). RoomMetaB/RoomM1Hot are staged below or by ExtrasLoad.
+    ; RoomRects points at a static $00 count byte so the walkers (overscan
+    ; HotOverlapBody / VBL PhaseBlink) read "empty stream", never TIA.
+    lda #0
+    sta RoomM1Hot
+    lda #<RoomNoStream
+    sta RoomRectsLo
+    lda #>RoomNoStream
     sta RoomRectsHi
-    sta FetchPtr+1
-    ldy #0
-    lda (FetchPtr),Y                ; hot count
-    sta RectCount                   ; also the MetaB hot flag below
-    asl                             ; 2n
-    asl                             ; 4n
-    clc
-    adc RectCount                   ; 5n
-    clc
-    adc #1                          ; +1 count byte = rows offset
-    clc
-    adc FetchPtr
-    sta FetchPtr
-    lda FetchPtr+1
-    adc #0
-    sta FetchPtr+1
 
     ; --- C3 PF rebuild: 3 row-pool indices -> PF0Buf ($C3-$CB) ---
     ;     Y = band (2..0) for BOTH the index read and the three PF stores;
     ;     X = pool row. SoA columns, so one index register serves all three.
+    ;     C11: mask b7 (band 1's hot flag) before the pool lookup.
     ldy #2
 .EBpf:
     lda (FetchPtr),Y                ; row index for this band
+    and #$7F
     tax
     lda RowPoolPF0,X
     sta PF0Buf,Y
@@ -237,15 +239,16 @@ B3RoomBlocks:
     bpl .EBpf
 
     ; --- C5 meta source: owns-extras (shape byte b7) → the extras stream;
-    ;     otherwise MetaA = 0 and MetaB = $40 iff the shape has hot records.
+    ;     otherwise MetaA = 0 and MetaB = $40 iff the shape is hot (C11: the
+    ;     flag is band 1's index b7).
     lda RoomPF0Lo
     bmi .EBextras
     lda #0
     sta RoomMetaA
-    lda RectCount
-    beq .EBmetaDone
-    lda #$40
-.EBmetaDone:
+    ldy #1
+    lda (FetchPtr),Y                ; band-1 index | hot b7
+    and #$80
+    lsr                             ; $80 -> $40 (MetaB b6)
     sta RoomMetaB
     jmp ERLoadDone
 .EBextras:
@@ -338,7 +341,7 @@ ExtrasLoad:
 .EXLpatch:
     lda (FetchPtr),Y
     and #$10                        ; side b4: nonzero = M1 side
-    bne .EXLpatchNext
+    bne .EXLm1
     lda (FetchPtr),Y
     and #$C0                        ; row b7-6
     beq .EXLrowB0
@@ -354,6 +357,25 @@ ExtrasLoad:
 .EXLrowOr:
     ora Temp
     sta Temp
+    jmp .EXLpatchNext
+.EXLm1:
+    ; C11 (2026-10-21): an M1 patch on the HOT band is a PF-OPEN cell (the
+    ; strip paints there, the wall-hide envelope keeps the cell open), so the
+    ; overscan PF sweep cannot see it. Stage its cell (col+1, 0 = none) from
+    ; the patch list — this replaced the extras' mask-$00 hot record. A cold
+    ; room's M1 patch was never a death cell, so the b6 gate is the contract.
+    lda RoomMetaB
+    and #$40                        ; hot shape?
+    beq .EXLpatchNext
+    lda (FetchPtr),Y
+    and #$C0
+    cmp #$40                        ; row 1 only (the hot band)
+    bne .EXLpatchNext
+    lda (FetchPtr),Y
+    and #$0F                        ; col b3-0 (0-9, left cell)
+    clc
+    adc #1                          ; store col+1 so 0 means "absent"
+    sta RoomM1Hot
 .EXLpatchNext:
     iny
     dex
@@ -451,12 +473,19 @@ ERLoadDone:
 
 ; ------------------------------------------------------------------------------
 ; C2 (2026-10-20): $F8B7 window — the level-data block reader and the
-; HotOverlapBody walk. Both walk the block stream that now lives in THIS bank
-; ($F307 slot), so `lda (FetchPtr),Y` is a plain in-bank read — no tramp, no
-; switch, no fold. Entered from ERBlocksPad / bank0's HotOverlapFlag pad
-; ($FFEC -> bank2 $FFEF image) and exited through ReturnPad or ERBlocksDone.
+; HotOverlapBody walk. Both read THIS bank, so `lda (FetchPtr),Y` is a plain
+; in-bank read — no tramp, no switch, no fold. Entered from ERBlocksPad /
+; bank0's HotOverlapFlag pad ($FFEC -> bank2 $FFEF image) and exited through
+; ReturnPad.
 ; ------------------------------------------------------------------------------
     .ds $F8B7 - *, 0
+
+; C11 (2026-10-21): the "no record stream" sentinel. RoomRectsLo/Hi point here
+; whenever the room owns no FEATURE records (B3RoomBlocks stages it; only an
+; extras record with feature cells repoints the pair), so the overscan walk
+; and the VBL PhaseBlink walk read a $00 count instead of a TIA address.
+RoomNoStream:
+    .byte $00
 
 ; C5 (2026-10-20): B3RoomBlocks MOVED to the free $F453 window (it grew by
 ; the async-extras dispatch). The window start stays reserved and
@@ -464,33 +493,87 @@ ERLoadDone:
     .ds $F8F8 - *, 0
 
 HotOverlapBody:
+    ; ==========================================================================
+    ; C11 (2026-10-21): HOT DEATH IS DERIVED FROM THE PF BUFFERS.
+    ; convert promotes EVERY row-1 wall cell of a mid_band_type=1 model, so a
+    ; hot shape's hot cells ARE its solid row-1 PF cells; the C4 bomb punch
+    ; clears PF0Buf cells, so a blasted (thin) parent cell stops being hot with
+    ; no record stream and no parent gate. Hot cells never exist on rows 0/2.
+    ; The per-shape 5 B/record stream is gone (LEVEL_FORMAT 6); MetaB b6 —
+    ; staged at room load — gates the sweep so only hot rooms pay for it.
+    ; ==========================================================================
+    lda RoomMetaB
+    and #$40                    ; b6 = mid_band_type hot
+    beq .HOVstream              ; cold room: feature records only
+    ; Hot cells only live on model row 1 → the box must include it.
+    lda CollisionCellY          ; top row
+    cmp #2
+    bcs .HOVstream              ; top row 2 → box is below the hot band
+    lda CollisionEndY           ; bottom row
+    beq .HOVstream              ; bottom row 0 → box is above the hot band
+    ; Sweep the box's display columns over PF row 1 — the SAME cell store the
+    ; player walk reads (PF0Buf + row + ColOff[X], bit ColMask[X]). Reached
+    ; only from a cell-walk hit, so this is "the wall I bumped is hot".
+    ldx CollisionEndX           ; min col
+.HOVpfCol:
+    lda ColOff,X                ; PF0/PF1/PF2 group offset (0/3/6)
+    clc
+    adc #1                      ; +1 = row 1 in the 3-row buffer
+    tay
+    lda PF0Buf,Y
+    and ColMask,X               ; bit for this source col
+    bne .HOVkill                ; solid row-1 cell in a hot room → death
+    cpx CollisionCellX          ; col == max?
+    beq .HOVm1
+    inx
+    bne .HOVpfCol
+.HOVm1:
+    ; M1 block cell on the hot band: PF-OPEN by envelope (the strip paints
+    ; there), so the sweep above cannot see it. ExtrasLoad staged its cell
+    ; (col+1) from the room's patch list; it dies with the STRIP (b4).
+    lda RoomM1Hot
+    beq .HOVstream
+    lda EnemyDeadMask
+    and #$10                    ; b4: strip destroyed → cell transparent
+    bne .HOVstream
+    lda RoomM1Hot
+    asl                         ; A = 2*(col+1) = the cell's display right edge
+    cmp CollisionEndX           ; right edge > box min col?
+    beq .HOVstream
+    bcc .HOVstream
+    sec
+    sbc #2                      ; A = 2*col = the cell's display left edge
+    cmp CollisionCellX          ; left edge <= box max col?
+    beq .HOVkill
+    bcc .HOVkill
+    bne .HOVstream
+.HOVkill:
+    lda Temp
+    ora #%10000000
+    sta Temp
+    sec                         ; tail-call contract: return C=1
+    jmp ReturnPad               ; ReturnPad → original caller (C survives)
+
+    ; --- feature-record stream (extras, feature rooms only) -----------------
+.HOVstream:
     lda RoomRectsLo
     sta FetchPtr
     lda RoomRectsHi
     sta FetchPtr+1
     ldy #0
-    lda (FetchPtr),Y            ; hot count (C4: block starts with it)
-    beq .HOVdone                ; no hot rects
+    lda (FetchPtr),Y            ; record count (0 = no stream)
+    beq .HOVdone
     sta RectCount
-    iny                         ; first hot rect base
+    iny                         ; first record base
 .HOVloop:
     tya
     pha
-    ; Parent gate: mask $00 = M1 block rect → dies with the STRIP
-    ; (EnemyDeadMask b4), never with a wall (walk hits the floor cell
-    ; under the block reach this body even after the strip is gone).
-    ; Any other mask = wall piece → dies when that piece is blasted.
-    lda (FetchPtr),Y            ; hot parent mask
-    bmi .HOVfeature             ; b7 set = feature record ($80 phase /
-                                 ;   $82 hcrunch; $81 is inert) — NOT a
-                                 ;   legacy death rect (see .HOVfeature
-                                 ;   after .HOVdone).
-    bne HOVafterGate           ; nonzero = wall piece → PF gate at the hit
-                               ;   (plan 5.1b: no WallMask bits any more)
-    lda EnemyDeadMask
-    and #$10                    ; b4: strip destroyed → M1 rect dead
-    bne HOVnext                ; (HOVnext pops the loop's pushed Y)
-    beq HOVafterGate           ; strip alive → continue (result was 0)
+    ; C11: only FEATURE records ($80 phase / $82 hcrunch / $81 inert) are
+    ; emitted into the extras stream now — static hot and the M1 block cell are
+    ; derived above. A b7-clear class is stale: skip it.
+    lda (FetchPtr),Y            ; record class
+    bpl HOVnext
+    jmp .HOVfeature
 HOVafterGate:
     iny                         ; Y = base+1 (x)
     ; Column overlap (same tests as PlayerHitsMap)
@@ -529,31 +612,15 @@ HOVafterGate:
     cmp CollisionCellY
     beq HOVnext
     bcc HOVnext
-    ; Hot hit
-    dey
-    dey                         ; Y = base+2 → base (record class)
-    lda (FetchPtr),Y
-    bmi .HOVphaseLatch         ; b7 set = feature record → phase latch
-    ; Legacy hot rect (plan 5.1b): its parent wall must still be SOLID in
-    ; the PF buffers. A thin parent is a bombable cell, so a blast punches
-    ; it and the hot piece dies with the wall (the old WallMask AND). Mask
-    ; $00 (M1 block cell, PF-open by envelope) is gated above → no read.
-    ; The probe lives AFTER the $F9D9 window (HOVHotPfGate) so this pinned
-    ; 290 B window does not grow.
-    beq HOVlegHit
-    jmp HOVHotPfGate
-HOVlegHit:
-    pla
-    lda Temp
-    ora #%10000000
-    sta Temp
-    sec                         ; tail-call contract: return C=1
-    jmp ReturnPad                   ; ReturnPad → original caller (C survives)
+    ; Hot hit — only the phase record reaches the overlap box (C11: no legacy
+    ; rects), so latch the phase-removed flag and fall into the kill tail.
 .HOVphaseLatch:
     lda EnemyDeadMask
     ora #$40                    ; b6: phase dead — walls removed from now on
     sta EnemyDeadMask           ;   (PhaseBlink forces punch-OFF, kill gated)
-    jmp HOVlegHit
+HOVlegHit:
+    pla                         ; pop the loop's pushed Y
+    jmp .HOVkill                ; shared kill tail (sets Temp b7, C=1)
 HOVnext:
     pla
     clc
@@ -1125,39 +1192,12 @@ M1OffTab:                           ; Phase 5: MetaA b0 → M1 x-offset (left/ri
     .byte $ff, $4f
 
 ; ------------------------------------------------------------------------------
-; HOVHotPfGate (plan 5.1b) — legacy hot rect parent test: the record's own PF
-; cell must still be solid. Entered from HotOverlapBody's hit path with Y =
-; record base. Placed in the $FE9C-$FEB9 hole (below the ColOff copy).
-; ------------------------------------------------------------------------------
-
-    .ds $FE9C - *, 0
-; HOVHotPfGate (plan 5.1b, 2026-10-20) — legacy hot rect parent test. The
-; record's own PF cell must still be solid: a thin parent wall is a bombable
-; cell, so a blast punches it and the hot piece dies with the wall (this is
-; the PF form of the retired WallMask AND). Entered from HotOverlapBody's hit
-; path with Y = record base (mask,x,y,w,h) after the box overlap passed.
-; Exits: cell solid -> HOVlegHit (kill), cell empty -> HOVnext (pass/advance).
-; Placed in the $FEA6-$FEEF hole (the $F8B7 window is pin-full).
-HOVHotPfGate:
-    iny
-    lda (FetchPtr),Y            ; x (left-half display col 0..19)
-    tax
-    iny
-    lda (FetchPtr),Y            ; y (band row 0..2)
-    clc
-    adc ColOff,X
-    tay
-    lda PF0Buf,Y
-    and ColMask,X
-    beq .HOVPFskip             ; parent wall blasted (cell punched) -> pass
-    jmp HOVlegHit
-.HOVPFskip:
-    jmp HOVnext
-
-; ------------------------------------------------------------------------------
 ; ColOff/ColMask — cell-walk lookup tables (bank0 has the authoritative copy;
-; this bank needs its own because HOVHotPfGate reads the PF buffer in-bank).
+; this bank needs its own for the C11 hot PF sweep in HotOverlapBody).
 ; Same bytes as kernel.asm (guard: check_bank3_coloff).
+; C11 (2026-10-21): HOVHotPfGate is GONE — hot death reads the PF cell the
+; player bumped (sweep) instead of gating a per-shape wall record, so the
+; $FE9C window is fill again.
 ; ------------------------------------------------------------------------------
     .ds $FEC0 - *, 0
 ColOff:     .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6

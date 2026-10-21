@@ -38,7 +38,7 @@ L2 = parse_labels(FROZEN / "bank2.lst",
                   NEED | {"BombEnemyBlastBody"})
 # C7: the shape blocks live in bank3, so the scratch address is a bank3 label
 # (same address space; the private bank2 copy is only the staging buffer).
-L3 = parse_labels(FROZEN / "bank3.lst", {"M5RoomRects"})
+L3 = parse_labels(FROZEN / "bank3.lst", {"M5Shape"})
 missing = (NEED | {"BombEnemyBlastBody"}) - set(L0) - set(L2)
 if missing:
     sys.exit(f"labels missing: {sorted(missing)}")
@@ -49,7 +49,7 @@ CM.BANK2 = bytearray(CM.BANK2)
 
 Z = {k: v & 0x7F for k, v in L2.items() if 0x80 <= v <= 0xFF}
 BODY = L2["BombEnemyBlastBody"]
-SCRATCH = L3["M5RoomRects"]      # private bank2 copy holds the staged records
+SCRATCH = L3["M5Shape"]      # private bank2 copy holds the staged records
 
 LAMP = 5
 ENEMY = 1

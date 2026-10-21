@@ -42,7 +42,6 @@ L2 = lst_labels(SRC / "bank2.lst")
 L3 = lst_labels(SRC / "bank3.lst")   # C7: shape blocks + HOV walker (bank3)
 
 import test_fixtures as FX  # noqa: E402
-FX.freeze_m2(BANKS, L3)     # frozen model2 into the private copy (rule 2026-10-14)
 PC_STARTFRAME = L0["StartFrame"]
 PC_PHM = L0["PlayerHitsMap"]
 PC_HOF = L0["HotOverlapFlag"]
@@ -54,6 +53,9 @@ PC_BUMPCHK = 0xF303         # bank0: lda Temp / bpl .NoHotBump (overscan)
 PC_LOSECALL = L0["LoseLife"]  # entry — kill rides the KERNEL hot-bump
                               # (Temp b7 -> jsr LoseLife), not F305
 PC_HOV_FEAT = L3[".HOVfeature"]
+# C11: a shape block carries no record stream, so the fixture stages the
+# feature stream in test-owned ZP ($CC-$DF are free since C4).
+STREAM_ADDR = 0xCC
 
 
 def _b3_pc(pattern: str) -> int:
@@ -66,9 +68,13 @@ def _b3_pc(pattern: str) -> int:
 
 
 PC_HOV_BEQCNT = _b3_pc(r"beq\s+\.HOVdone")      # hot count==0 -> skip
-PC_HOV_BMI = _b3_pc(r"bmi\s+\.HOVfeature")
+# C11: non-feature records are skipped with `bpl HOVnext`; the feature
+# path is a tail jmp, so pin that instead of the old bmi.
+PC_HOV_BMI = _b3_pc(r"jmp\s+\.HOVfeature")
 PC_HOV_JMP = _b3_pc(r"jmp\s+HOVafterGate")
 PC_HOV_ORA = _b3_pc(r"ora\s+#%10000000")
+
+STREAM_ADDR = 0xA0         # C11: synthetic record stream (test-owned RAM)
 
 I_ROOMX, I_ROOMY = 0x00, 0x01
 I_VYLO, I_VYHI = 0x13, 0x14
@@ -101,15 +107,16 @@ def load_room_m2():
     """Stage model2 (the retired vcrunch room: $81 bbox record + MetaB $80)
     after boot — start_room-agnostic.
 
-    C5 (2026-10-20): the shape block is `hot stream | PF` and the meta pair
-    lives in the room extras, so the fixture's stream, PF and meta come from
-    test_fixtures' frozen constants (the injected stream sits at the M2 block
-    base — the walker reads it there)."""
-    a_rr = L3["M2RoomRects"]
+    C11 (2026-10-21): a shape block is 3 row-pool indices and carries NO
+    record stream, so the fixture stages the frozen $81 stream as synthetic
+    RAM data (test-owned) and points RoomRects at it. The meta pair still
+    comes from test_fixtures' frozen constants."""
+    a_rr = STREAM_ADDR
     mem.ram[I_PF0LO] = FX.METAX[2][0]
     mem.ram[I_PF0HI] = FX.METAX[2][1]
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
+    FX.stage_stream(mem.ram, a_rr, FX.M2_STREAM)
     for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
         for row in range(3):
             mem.ram[(dst + row) & 0x7F] = FX.PFX[2][i * 3 + row]

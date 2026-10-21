@@ -336,9 +336,8 @@ LaserX                   0083              (R )
 Level                    00a3              (R )
 LEVEL_COUNT              0014              (R )
 LEVEL_DATA_ADDR          f307                  
-LEVEL_FORMAT             0005                  
+LEVEL_FORMAT             0006                  
 LevelConnSpare           00a2                  
-LevelEnemySpare          00af                  
 LevelEnemySpare2         00b0                  
 LevelMinerRoom           00a4              (R )
 LevelPFDataHi            00a0                  
@@ -425,6 +424,7 @@ RESP0                    0010              (R )
 RESP1                    0011                  
 ReturnPad                fbf8                  
 RoomBandColor            00bc              (R )
+RoomM1Hot                00af                  
 RoomNo                   0098              (R )
 RoomPF0Hi                009a              (R )
 RoomPF0Lo                0099              (R )

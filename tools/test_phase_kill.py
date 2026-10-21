@@ -1,18 +1,21 @@
-"""Phase-cell crush kill — HotOverlapBody .HOVfeature unit test (2026-10-13).
+"""Hot-overlap death — HotOverlapBody unit test (C11 PF-derived hot, 2026-10-21).
 
-User ruling: when a phase wall APPEARS while the player is inside the cell,
-it kills (hot-rock death path, Temp b7 → bank0 `jsr LoseLife`).
+C11 replaced the per-shape 5 B/record hot stream with a PF sweep: convert
+promotes EVERY row-1 wall of a mid_band_type=1 model, so the hot cells ARE the
+solid row-1 PF cells; the C4 bomb punch clears PF0Buf cells, so a blasted
+parent cell stops being hot automatically. Contract under test:
 
-Contract under test (bank2.asm .HOVfeature):
-  * $80 record + EnemyDeadMask b5 armed + candidate box contained in the
-    cell rect → Temp b7 set (kill), C=1 exit.
-  * b5 clear (blink OFF half) → pass, no kill.
-  * $81 (vcrunch) is SKIPPED in .HOVfeature (record-path walk, stack-stomp
-    2026-10-13) — kill rides OvShutBand's overlay miss path instead
-    (test_vcr_shutter case5 + test_phase_kill_frame); $82 (hcrunch, not
-    generated yet) likewise takes the record path only when shipped.
-  * Legacy b7-clear records unchanged: mask bit matches BombPacked → skip,
-    unbombed wall piece + inside → kill (parity with pre-feature behavior).
+  * MetaB b6 (hot room) + a SOLID row-1 cell inside the player box → kill
+    (Temp b7 set, C=1 exit);
+  * the same box in a COLD room (b6 clear) → pass, even over a solid cell
+    (that solidity is ordinary collision, handled before this body);
+  * a bomb-PUNCHED (empty) row-1 cell + hot room → pass (the punched parent
+    must not kill: test_bomb_half_wall rides the same path);
+  * the box must overlap ROW 1: a box entirely on rows 0/2 never kills;
+  * hot-band M1 block cell (PF-open, staged in RoomM1Hot): kills while the
+    strip is alive (EnemyDeadMask b4 clear), passes once the strip is dead;
+  * feature-record stream: $80 phase needs b5 armed + box overlap (then
+    latches b6); $82 hcrunch is always hot on band 1; $81 is inert.
 
 Run: /home/iuri/python3/bin/python3 tools/test_phase_kill.py  (from src/)
 """
@@ -28,50 +31,58 @@ from test_cell_map import Mem as Mem02, RTS_SENTINEL, parse_labels  # noqa: E402
 
 L2 = parse_labels(SRC / "bank3.lst", {   # C7: HotOverlapBody is bank3
     "HotOverlapBody", "CollisionCellX", "CollisionCellY",
-    "CollisionEndX", "CollisionEndY", "RoomRectsLo",
-    "EnemyDeadMask", "BombPacked", "Temp", "PF0Buf",
+    "CollisionEndX", "CollisionEndY", "RoomRectsLo", "RoomRectsHi",
+    "RoomMetaB", "RoomM1Hot", "EnemyDeadMask", "BombPacked", "Temp",
+    "PF0Buf",
 })
 need = ({"HotOverlapBody", "CollisionCellX", "CollisionCellY",
-         "CollisionEndX", "CollisionEndY", "RoomRectsLo",
-         "EnemyDeadMask", "BombPacked", "PF0Buf"} - L2.keys())
+         "CollisionEndX", "CollisionEndY", "RoomRectsLo", "RoomRectsHi",
+         "RoomMetaB", "RoomM1Hot", "EnemyDeadMask", "BombPacked", "PF0Buf"} -
+        L2.keys())
 if need:
     sys.exit(f"labels missing: {sorted(need)}")
 TEMP = L2.get("Temp", 0x88)
 
 STREAM = 0xA0
-# synthetic hot stream (C4): hot count 1, then record = mask,x,y,w,h
-REC = {"x": 4, "y": 1, "w": 2, "h": 1}
+HOT = 0x40                 # MetaB b6: mid_band_type hot
 # box = (CollisionCellX max col, CollisionCellY top row,
 #        CollisionEndX min col, CollisionEndY bottom row) — PHM semantics;
-# HOV overlap = box vs [x, x+w) x [y, y+h), inclusive-edge overlap.
-INSIDE = (5, 1, 4, 1)      # same cols/row as the record
-OUTSIDE = (1, 1, 0, 1)     # box left of the record
-BELOW = (5, 2, 4, 2)       # same cols, row under the record
+# the sweep is display cols min..max over PF row 1.
+INSIDE = (5, 1, 4, 1)      # row-1 box over display cols 4-5
+OUTSIDE = (1, 1, 0, 1)     # same row, cols 0-1 (cell bit clear)
+BELOW = (5, 2, 4, 2)       # same cols, rows below the hot band
 ARMED = 0x20               # EnemyDeadMask b5 = blink solid this frame
+PHASE_REC = [0x80, 4, 1, 2, 1]       # class,x,y,w,h (one phase cell)
+HCRUNCH_REC = [0x82, 0, 1, 20, 1]    # class,x,y,w,h (fixed prefix)
 
 
-def run(mask: int, box: tuple[int, int, int, int],
-        dead_mask: int, bomb_packed: int = 0, pf_solid: bool = True) -> int:
-    """HotOverlapBody over one record; returns Temp (b7 = kill).
+def run(mask_hot: bool = True, box=(5, 1, 4, 1), dead_mask: int = 0,
+        pf_row1: int = 0x80, stream: list[int] | None = None,
+        m1hot: int = 0) -> int:
+    """HotOverlapBody over one staged room state; returns Temp (b7 = kill).
 
-    plan 5.1b: a legacy (nonzero, b7-clear) record's parent gate is now the
-    PF cell under the record (x=4, y=1 -> PF1Buf row1, col 4 = bit 7), not
-    the WallMask AND. pf_solid stages that cell (wall intact); pf_solid=False
-    is the blasted wall (the punch emptied the cell)."""
+    pf_row1 stages the PF row-1 cell at display col 4 (PF1Buf row 1, bit 7);
+    0x00 = the parent cell was bomb-punched."""
     mem = Mem02()
     r = mem.ram
-    r[STREAM - 0x80:STREAM - 0x80 + 6] = bytes(
-        [1, mask, REC["x"], REC["y"], REC["w"], REC["h"]])
-    for name, val in (("RoomRectsLo", STREAM),
+    if stream:
+        payload = bytes([len(stream)] + stream)
+        r[STREAM - 0x80:STREAM - 0x80 + len(payload)] = payload
+        ptr = STREAM
+    else:
+        ptr = 0xF8B7                      # bank3's static $00 count byte
+    for name, val in (("RoomRectsLo", ptr & 0xFF), ("RoomRectsHi", ptr >> 8),
                       ("CollisionCellX", box[0]), ("CollisionCellY", box[1]),
                       ("CollisionEndX", box[2]), ("CollisionEndY", box[3]),
+                      ("RoomMetaB", HOT if mask_hot else 0),
+                      ("RoomM1Hot", m1hot),
                       ("EnemyDeadMask", dead_mask),
-                      ("BombPacked", bomb_packed)):
+                      ("BombPacked", 0)):
         r[L2[name] - 0x80] = val
     r[TEMP - 0x80] = 0
-    # PF cell of the record (x=4 -> PF1Buf; row 1) — see pf_solid above.
-    r[L2["PF0Buf"] + 3 + 1 - 0x80] = 0x80 if pf_solid else 0x00
-    mem.bank = 3            # C7: the hot walkers live in bank3
+    # PF row 1, display col 4 -> PF1Buf + 1, bit 7 (ColMask[4] = $80).
+    r[L2["PF0Buf"] + 3 + 1 - 0x80] = pf_row1
+    mem.bank = 3              # C7: the hot walkers live in bank3
     mpu = MPU(memory=mem)
     mpu.pc = L2["HotOverlapBody"]
     mpu.a = mpu.x = mpu.y = 0
@@ -90,24 +101,41 @@ def killed(temp: int) -> bool:
 
 
 cases = [
-    ("armed + inside", run(0x80, INSIDE, ARMED), True),
-    ("disarmed + inside", run(0x80, INSIDE, 0), False),
-    ("armed + outside", run(0x80, OUTSIDE, ARMED), False),
-    ("armed + below", run(0x80, BELOW, ARMED), False),
-    ("armed + inside + $81 vcrunch -> record path skipped (kill = OvShutBand)",
-     run(0x81, INSIDE, ARMED), False),
-    ("legacy $40 wall intact + inside", run(0x40, INSIDE, 0, 0x00), True),
-    # plan 5.1b: the parent gate is the PF cell — a punched (empty) cell
-    # means the wall was blasted, so the hot piece passes. WallMask bits
-    # (BombPacked b3-6) are retired and must NOT matter.
-    ("legacy $40 wall punched + inside",
-     run(0x40, INSIDE, 0, 0x40, pf_solid=False), False),
+    ("hot + solid row-1 cell + inside", run(True, INSIDE), True),
+    ("hot + box off the solid cell", run(True, OUTSIDE), False),
+    ("hot + box below the hot band", run(True, BELOW), False),
+    ("cold room + solid cell (no hot sweep)", run(False, INSIDE), False),
+    # C4 punch: a thin parent cell is emptied in the PF buffer, so the hot
+    # piece dies with the wall — no record gate needed any more.
+    ("hot + bomb-punched parent cell", run(True, INSIDE, pf_row1=0x00), False),
+    # --- hot-band M1 block cell (PF-open, staged at load) ---------------
+    ("hot + M1 cell col 2 + strip alive", run(True, (5, 1, 4, 1), m1hot=3,
+                                             pf_row1=0x00), True),
+    ("hot + M1 cell col 2 + strip dead", run(True, (5, 1, 4, 1), dead_mask=0x10,
+                                            m1hot=3, pf_row1=0x00), False),
+    ("hot + M1 cell away from the box", run(True, (5, 1, 4, 1), m1hot=9,
+                                            pf_row1=0x00), False),
+    # --- feature records -------------------------------------------------
+    ("phase armed + inside", run(False, INSIDE, dead_mask=ARMED,
+                                stream=PHASE_REC), True),
+    ("phase disarmed + inside", run(False, INSIDE, stream=PHASE_REC), False),
+    ("phase armed + outside", run(False, OUTSIDE, dead_mask=ARMED,
+                                stream=PHASE_REC), False),
+    ("phase armed + below", run(False, BELOW, dead_mask=ARMED,
+                               stream=PHASE_REC), False),
+    ("$81 inert", run(False, INSIDE, dead_mask=ARMED,
+                      stream=[0x81, 4, 1, 2, 1]), False),
+    # hcrunch: the covered prefix always starts at col 0, so the box must
+    # reach display col 0/1 (n=1 at clock 0 = the first 2-col cell).
+    ("hcrunch + inside band 1", run(False, (1, 1, 0, 1),
+                                   stream=HCRUNCH_REC), True),
+    ("hcrunch + box below band 1", run(False, BELOW, stream=HCRUNCH_REC),
+     False),
 ]
 bad = [(n, t, want) for n, t, want in cases if killed(t) != want]
 if bad:
     for n, t, want in bad:
         print(f"FAIL {n}: Temp=${t:02X} kill={killed(t)} want={want}")
     sys.exit(1)
-print("test_phase_kill: OK (crush kill armed/inside only; $81 record path "
-      "skipped, $82 gated; bombed/disarmed/outside pass; legacy gates "
-      "unchanged)")
+print("test_phase_kill: OK (PF-derived hot sweep, punched parent passes, "
+      "M1 block cell gated on the strip, phase/hcrunch/inert records)")
