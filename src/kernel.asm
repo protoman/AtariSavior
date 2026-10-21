@@ -357,7 +357,9 @@ JET_MAX         = $14           ; max jet thrust accumulator = 20. With the
                                 ; net lift (vy=0) at exactly 60f = 1.0s
                                 ; spin-up (bugs.md #31); was $20 (÷1 ramp:
                                 ; lift after 0.25s — too snappy).
-MAX_FALL        = $0200         ; max fall speed (positive = down)
+MAX_FALL        = $0180         ; max fall speed (positive = down). Was $0200
+                                ; (2.0 px/frame) — the terminal fall felt too
+                                ; fast (user report 2026-10-21): 1.5 px/frame.
 
 JET_AUD_BASE    = $0F           ; engine AUDF base: freq = base - JetPower/8 - sputter
 JET_AUD_VOL     = $08           ; engine volume while Up is held
@@ -3195,23 +3197,26 @@ CheckBandTouch:
     rts
 
 ; ------------------------------------------------------------------------------
-; LoseLifeBand — life path + RoomY -= 12 (min 0; spec: respawn just above
-; the water strip). Full reload skips the shift
-; (LoadLevel already places the player safely).
+; LoseLifeBand — life path + respawn just above the water strip.
+; The shift MUST happen BEFORE LoseLife: its stay path tail-jumps DropArm,
+; which freezes RoomY as the drop destiny. Shifting after the call was dead
+; code — a water death respawned at the death Y (inside the strip, >= 125) and
+; the player died again on landing, unable to fly out (user report 2026-10-21).
+; The shift is one tile (spec: -= 12, not the whole band): the band check
+; tests the sprite ORIGIN (RoomY >= 125), so 125 -> 113 clears the strip.
+; Tail-jmps LoseLife (never returns here): its exhausted path rts straight to
+; CheckBandTouch.
 ; ------------------------------------------------------------------------------
 LoseLifeBand:
-    jsr LoseLife
-    bcs .LLBdone               ; exhausted: ReloadLevel placed the player
-    lda DropTarget             ; armed death Y (DropArm already zeroed RoomY)
+    lda RoomY
     sec
-    sbc #12                     ; clear the strip (spec: -= 12, not whole band)
+    sbc #12                     ; one tile up
     bcs .LLBstore
-    lda #0
+    lda #0                      ; near the top: clamp at 0
 .LLBstore:
     sta RoomY
-    jmp DropArm                 ; same code, destiny Y = one tile above water
-.LLBdone:
-    rts
+    jmp LoseLife                ; freezes this Y as DropTarget and drops in
+
 
 ; ------------------------------------------------------------------------------
 ; DropArm / DropStep — the ONE spawn drop-in (user rule: same code for every
