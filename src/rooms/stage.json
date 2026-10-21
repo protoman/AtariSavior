@@ -1507,7 +1507,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
@@ -1580,7 +1580,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -1671,7 +1671,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.5,
@@ -1679,8 +1679,8 @@
                             },
                             {
                                 "type": 0,
-                                "x": 12.0,
-                                "y": 3.0,
+                                "x": 16.0,
+                                "y": 8.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
                                 "speed": 1.25,
@@ -1698,16 +1698,21 @@
                         "model_id": 22,
                         "room_x": 0,
                         "room_y": 2,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.25,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
                                 "y": 4.0,
-                                "lit": true
-                            },
-                            {
-                                "x": 6.0,
-                                "y": 3.0,
                                 "lit": true
                             }
                         ],
@@ -1725,7 +1730,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.5,
@@ -1733,8 +1738,8 @@
                             },
                             {
                                 "type": 0,
-                                "x": 12.0,
-                                "y": 3.0,
+                                "x": 16.0,
+                                "y": 8.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
                                 "speed": 1.25,
@@ -1807,10 +1812,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
                                 "dir": 1
                             }
                         ],
@@ -1883,7 +1897,17 @@
                         "model_id": 14,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -1964,10 +1988,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
                                 "dir": 1
                             }
                         ],
@@ -2048,7 +2081,17 @@
                         "model_id": 17,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -2070,10 +2113,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
                                 "dir": 1
                             }
                         ],
@@ -2151,10 +2203,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
                                 "dir": 1
                             }
                         ],
@@ -2235,7 +2296,17 @@
                         "model_id": 20,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -2257,10 +2328,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
                                 "dir": 1
                             }
                         ],
@@ -2275,7 +2355,17 @@
                         "model_id": 28,
                         "room_x": 0,
                         "room_y": 6,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -2356,7 +2446,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.5,
@@ -2364,8 +2454,8 @@
                             },
                             {
                                 "type": 0,
-                                "x": 12.0,
-                                "y": 3.0,
+                                "x": 16.0,
+                                "y": 8.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
                                 "speed": 1.25,
@@ -2449,16 +2539,21 @@
                         "model_id": 26,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.25,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
                                 "y": 4.0,
-                                "lit": true
-                            },
-                            {
-                                "x": 6.0,
-                                "y": 3.0,
                                 "lit": true
                             }
                         ],
@@ -2476,7 +2571,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.5,
@@ -2484,8 +2579,8 @@
                             },
                             {
                                 "type": 0,
-                                "x": 12.0,
-                                "y": 3.0,
+                                "x": 16.0,
+                                "y": 8.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
                                 "speed": 1.25,
@@ -2624,10 +2719,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
                                 "dir": 1
                             }
                         ],
@@ -2708,7 +2812,17 @@
                         "model_id": 28,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -2730,10 +2844,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
                                 "dir": 1
                             }
                         ],
@@ -2814,6 +2937,15 @@
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
                                 "dir": 1
                             }
                         ],
@@ -2899,10 +3031,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
                                 "dir": 1
                             }
                         ],
@@ -2983,7 +3124,17 @@
                         "model_id": 14,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -3030,7 +3181,17 @@
                         "model_id": 20,
                         "room_x": 0,
                         "room_y": 6,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -3052,10 +3213,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
                                 "dir": 1
                             }
                         ],
@@ -3078,6 +3248,15 @@
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
                                 "dir": 1
                             }
                         ],
@@ -3113,7 +3292,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
@@ -3194,10 +3373,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
                                 "dir": 1
                             }
                         ],
@@ -3284,7 +3472,17 @@
                         "model_id": 17,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -3331,7 +3529,17 @@
                         "model_id": 24,
                         "room_x": 0,
                         "room_y": 6,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -3353,10 +3561,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
                                 "dir": 1
                             }
                         ],
@@ -3379,6 +3596,15 @@
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
                                 "dir": 1
                             }
                         ],
@@ -3420,7 +3646,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -3446,6 +3672,15 @@
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
                                 "dir": 1
                             }
                         ],
@@ -3523,7 +3758,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.5,
@@ -3531,8 +3766,8 @@
                             },
                             {
                                 "type": 0,
-                                "x": 12.0,
-                                "y": 3.0,
+                                "x": 16.0,
+                                "y": 8.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
                                 "speed": 1.25,
@@ -3622,16 +3857,21 @@
                         "model_id": 22,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.25,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
                                 "y": 4.0,
-                                "lit": true
-                            },
-                            {
-                                "x": 6.0,
-                                "y": 3.0,
                                 "lit": true
                             }
                         ],
@@ -3683,16 +3923,21 @@
                         "model_id": 30,
                         "room_x": 0,
                         "room_y": 6,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.25,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
                                 "y": 4.0,
-                                "lit": true
-                            },
-                            {
-                                "x": 6.0,
-                                "y": 3.0,
                                 "lit": true
                             }
                         ],
@@ -3710,7 +3955,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.5,
@@ -3718,8 +3963,8 @@
                             },
                             {
                                 "type": 0,
-                                "x": 12.0,
-                                "y": 3.0,
+                                "x": 16.0,
+                                "y": 8.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
                                 "speed": 1.25,
@@ -3749,7 +3994,7 @@
                             },
                             {
                                 "type": 0,
-                                "x": 6.0,
+                                "x": 16.0,
                                 "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
@@ -3795,7 +4040,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.5,
@@ -3825,7 +4070,7 @@
                             },
                             {
                                 "type": 0,
-                                "x": 6.0,
+                                "x": 16.0,
                                 "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
@@ -3945,10 +4190,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
                                 "dir": 1
                             }
                         ],
@@ -4035,7 +4289,17 @@
                         "model_id": 24,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -4082,7 +4346,17 @@
                         "model_id": 14,
                         "room_x": 0,
                         "room_y": 6,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -4173,6 +4447,15 @@
                                 "range_max": 13.0,
                                 "speed": 1.75,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -4213,7 +4496,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
@@ -4301,6 +4584,15 @@
                                 "range_max": 13.0,
                                 "speed": 1.75,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -4377,10 +4669,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
                                 "dir": 1
                             }
                         ],
@@ -4467,7 +4768,17 @@
                         "model_id": 28,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -4514,7 +4825,17 @@
                         "model_id": 17,
                         "room_x": 0,
                         "room_y": 6,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -4605,6 +4926,15 @@
                                 "range_max": 13.0,
                                 "speed": 2.0,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -4645,7 +4975,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
@@ -4732,6 +5062,15 @@
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
                                 "dir": 1
                             }
                         ],
@@ -4838,10 +5177,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
                                 "dir": 1
                             }
                         ],
@@ -4928,7 +5276,17 @@
                         "model_id": 14,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -4975,7 +5333,17 @@
                         "model_id": 20,
                         "room_x": 0,
                         "room_y": 6,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -5066,6 +5434,15 @@
                                 "range_max": 13.0,
                                 "speed": 1.25,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -5106,7 +5483,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -5194,6 +5571,15 @@
                                 "range_max": 13.0,
                                 "speed": 1.25,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -5244,6 +5630,15 @@
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
                                 "dir": 1
                             }
                         ],
@@ -5335,7 +5730,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.5,
@@ -5343,8 +5738,8 @@
                             },
                             {
                                 "type": 0,
-                                "x": 12.0,
-                                "y": 3.0,
+                                "x": 16.0,
+                                "y": 8.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
                                 "speed": 1.25,
@@ -5434,16 +5829,21 @@
                         "model_id": 19,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.25,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
                                 "y": 4.0,
-                                "lit": true
-                            },
-                            {
-                                "x": 6.0,
-                                "y": 3.0,
                                 "lit": true
                             }
                         ],
@@ -5495,16 +5895,21 @@
                         "model_id": 26,
                         "room_x": 0,
                         "room_y": 6,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.25,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
                                 "y": 4.0,
-                                "lit": true
-                            },
-                            {
-                                "x": 6.0,
-                                "y": 3.0,
                                 "lit": true
                             }
                         ],
@@ -5594,7 +5999,7 @@
                             },
                             {
                                 "type": 0,
-                                "x": 6.0,
+                                "x": 16.0,
                                 "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
@@ -5640,7 +6045,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.5,
@@ -5731,7 +6136,7 @@
                             },
                             {
                                 "type": 0,
-                                "x": 6.0,
+                                "x": 16.0,
                                 "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
@@ -5800,7 +6205,7 @@
                             },
                             {
                                 "type": 0,
-                                "x": 6.0,
+                                "x": 16.0,
                                 "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
@@ -5960,10 +6365,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
                                 "dir": 1
                             }
                         ],
@@ -6050,7 +6464,17 @@
                         "model_id": 20,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -6097,7 +6521,17 @@
                         "model_id": 28,
                         "room_x": 0,
                         "room_y": 6,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -6188,6 +6622,15 @@
                                 "range_max": 13.0,
                                 "speed": 1.75,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -6228,7 +6671,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
@@ -6316,6 +6759,15 @@
                                 "range_max": 13.0,
                                 "speed": 1.75,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -6366,6 +6818,15 @@
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
                                 "dir": 1
                             }
                         ],
@@ -6467,6 +6928,15 @@
                                 "range_max": 13.0,
                                 "speed": 1.75,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.5,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -6543,10 +7013,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
                                 "dir": 1
                             }
                         ],
@@ -6633,7 +7112,17 @@
                         "model_id": 24,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -6680,7 +7169,17 @@
                         "model_id": 14,
                         "room_x": 0,
                         "room_y": 6,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -6771,6 +7270,15 @@
                                 "range_max": 13.0,
                                 "speed": 2.0,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -6811,7 +7319,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
@@ -6899,6 +7407,15 @@
                                 "range_max": 13.0,
                                 "speed": 2.0,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -6949,6 +7466,15 @@
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
                                 "dir": 1
                             }
                         ],
@@ -7050,6 +7576,15 @@
                                 "range_max": 13.0,
                                 "speed": 2.0,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -7067,10 +7602,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 2.0,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.75,
                                 "dir": 1
                             }
                         ],
@@ -7148,10 +7692,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
                                 "dir": 1
                             }
                         ],
@@ -7238,7 +7791,17 @@
                         "model_id": 28,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -7285,7 +7848,17 @@
                         "model_id": 17,
                         "room_x": 0,
                         "room_y": 6,
-                        "enemies": [],
+                        "enemies": [
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
+                            }
+                        ],
                         "lamps": [
                             {
                                 "x": 16.0,
@@ -7376,6 +7949,15 @@
                                 "range_max": 13.0,
                                 "speed": 1.25,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -7416,7 +7998,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 4.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -7504,6 +8086,15 @@
                                 "range_max": 13.0,
                                 "speed": 1.25,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -7554,6 +8145,15 @@
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
                                 "dir": 1
                             }
                         ],
@@ -7655,6 +8255,15 @@
                                 "range_max": 13.0,
                                 "speed": 1.25,
                                 "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -7672,10 +8281,19 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 3.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 8.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
                                 "dir": 1
                             }
                         ],
@@ -7698,6 +8316,15 @@
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
+                                "dir": 1
+                            },
+                            {
+                                "type": 0,
+                                "x": 16.0,
+                                "y": 3.0,
+                                "range_min": 0.0,
+                                "range_max": 8.0,
+                                "speed": 1.0,
                                 "dir": 1
                             }
                         ],

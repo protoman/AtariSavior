@@ -289,3 +289,25 @@ bank2 tables 298 B slack, bank3 shape data **143 B** slack.
 
 Measured: 211 rooms, 36 shapes (hot families trimmed to two for capacity),
 bank2 610 B / bank3 122 B slack, staged build verify_build OK, battery green.
+
+## G9 (2026-10-21): 2 objects per room restored (band rule)
+
+The user needs TWO objects per room; not drawing one was the wrong fix — the
+flicker is the kernel's problem, not the content's.
+
+* Normal rooms: one object in the middle band (the shaft) + from level 5 a
+  second on ANOTHER band (top corridor) => 2 objects, one per band.
+* HOT rooms: **no object in the hot middle band** (user rule); the other two
+  bands may carry one each (bat band 0, spider band 2, both on the shaft).
+* Start room: still clean (no enemies/lamps). The key host search now prefers
+  middle rooms and the room right before a gate is RESERVED (no second object),
+  so a key never falls back into the spawn room.
+* Channel bat moved to band 0 (the channel is a hot room).
+* `test_generator` pins the rules: 2-object rooms from level 5, clean spawn
+  room, no middle-band object in a hot room.
+
+36 shapes; bank2 354 B / bank3 122 B slack; staged build OK, battery 0 fails.
+The flicker itself (one GRP1 sprite rotating between the two objects) is a
+kernel chunk: per-band multiplexing (draw object A in its band, switch sprite
+data/position at the band boundary). The band rule above is exactly what makes
+that possible.

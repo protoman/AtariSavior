@@ -378,9 +378,24 @@ def main() -> int:
             if level_n >= 7 and tents == 0:
                 print(f"FAIL: level {level_n} has no tentacle")
                 return 1
-            if level_n >= 9 and two_obj == 0:
+            if level_n >= 5 and two_obj == 0:
                 print(f"FAIL: level {level_n} has no two-object room")
                 return 1
+            # 2026-10-21 rules: clean spawn room; hot rooms carry no object in
+            # the hot middle band (bands 0/2 only).
+            start_room = rooms[0]
+            if start_room.get("enemies") or start_room.get("lamps"):
+                print(f"FAIL: level {level_n} start room has objects")
+                return 1
+            for room in rooms:
+                if not shapes[room["model_id"]].get("mid_band_type"):
+                    continue
+                ys = [e.get("y") for e in room.get("enemies") or []]
+                ys += [x.get("y") for x in room.get("lamps") or []]
+                if any(int(float(y)) // 4 == 1 for y in ys):
+                    print(f"FAIL: level {level_n} room {room['room_id']} has "
+                          "an object in a HOT middle band")
+                    return 1
             if level_n >= 11 and phases == 0:
                 print(f"FAIL: level {level_n} has no phase wall")
                 return 1
