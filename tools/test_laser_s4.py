@@ -94,10 +94,13 @@ def main() -> None:
     assert "sta HMM0" in lw, "release must clear the stale fine offset"
 
     # --- kernel gate: ENAM0 = BeamMask & LaserState (b1) ------------------
-    assert re.search(r"lda BeamMask,Y[^\n]*\n\s*and LaserState", text), \
-        ".Line beam gate must AND LaserState (b1 armed)"
-    assert re.search(r"BeamMask:\s*\n\s*\.byte 0,0,2,0,0,0,0,0,0,0,0,0", text), \
-        "beam = single yellow row 2 (red row-3 strip removed 2026-10-08)"
+    assert re.search(r"lda PlayerColTable,Y[^\n]*\n\s*sta COLUP0[^\n]*\n"
+                     r"\s*and LaserState[^\n]*\n\s*sta ENAM0", text), \
+        ".Line beam gate must be PlayerColTable bit1 & LaserState (b1 armed)"
+    assert not re.search(r"^\s*lda\s+BeamMask,Y", text, re.M), \
+        "BeamMask fetch retired by the phase 0 fold (bit1 of PlayerColTable is \
+         the enable; verify_build pins rows == [2])"
+    assert not re.search(r"^BeamMask:", text, re.M), "BeamMask table retired"
     assert "and LaserBeamOn" not in text, "old LaserBeamOn gate still present"
     assert re.search(r"LaserX\s+byte", text), "LaserX ZP decl missing"
     assert re.search(r"LaserState\s*=\s*\$C0", text), "LaserState moved"

@@ -4,26 +4,10 @@
     include "generated/level_002_rooms.asm"
     include "generated/level_003_rooms.asm"
     include "generated/level_004_rooms.asm"
-    include "generated/level_005_rooms.asm"
-    include "generated/level_006_rooms.asm"
-    include "generated/level_007_rooms.asm"
-    include "generated/level_008_rooms.asm"
-    include "generated/level_009_rooms.asm"
-    include "generated/level_010_rooms.asm"
-    include "generated/level_011_rooms.asm"
-    include "generated/level_012_rooms.asm"
-    include "generated/level_013_rooms.asm"
-    include "generated/level_014_rooms.asm"
-    include "generated/level_015_rooms.asm"
-    include "generated/level_016_rooms.asm"
-    include "generated/level_017_rooms.asm"
-    include "generated/level_018_rooms.asm"
-    include "generated/level_019_rooms.asm"
-    include "generated/level_020_rooms.asm"
 
 LEVEL_FORMAT = $06
 LEVEL_DATA_STRIDE = 7
-LEVEL_COUNT = 20
+LEVEL_COUNT = 4
 
 ; Per-level entry (stride 7, (d) 2026-10-20): miner room/x, both wall
 ; colors, then the level's room-table base and its ROOM COUNT.
@@ -44,60 +28,13 @@ LEVEL_COUNT = 20
 ;                               1 B/patch, 1 B/feature, then the
 ;                               FEATURE-record stream when the room
 ;                               has feature cells (C11: no hot records).
-LEVEL_SHAPE_COUNT = 53
+LEVEL_SHAPE_COUNT = 6
 SHAPE_M0 = 0
 SHAPE_M1 = 1
 SHAPE_M2 = 2
-SHAPE_M3 = 3
-SHAPE_M4 = 4
-SHAPE_M5 = 5
-SHAPE_M6 = 6
-SHAPE_M7 = 7
-SHAPE_M8 = 8
-SHAPE_M9 = 9
-SHAPE_M10 = 10
-SHAPE_M11 = 11
-SHAPE_M12 = 12
-SHAPE_M13 = 13
-SHAPE_M14 = 14
-SHAPE_M15 = 15
-SHAPE_M16 = 16
-SHAPE_M17 = 17
-SHAPE_M18 = 18
-SHAPE_M19 = 19
-SHAPE_M20 = 20
-SHAPE_M21 = 21
-SHAPE_M22 = 22
-SHAPE_M23 = 23
-SHAPE_M24 = 24
-SHAPE_M25 = 25
-SHAPE_M26 = 26
-SHAPE_M27 = 27
-SHAPE_M28 = 28
-SHAPE_M29 = 29
-SHAPE_M30 = 30
-SHAPE_M31 = 31
-SHAPE_M32 = 32
-SHAPE_M33 = 33
-SHAPE_M34 = 34
-SHAPE_M35 = 35
-SHAPE_M36 = 36
-SHAPE_M37 = 37
-SHAPE_M38 = 38
-SHAPE_M39 = 39
-SHAPE_M40 = 40
-SHAPE_M41 = 41
-SHAPE_M42 = 42
-SHAPE_M43 = 43
-SHAPE_M44 = 44
-SHAPE_M45 = 45
-SHAPE_M46 = 46
-SHAPE_M47 = 47
-SHAPE_M48 = 48
-SHAPE_M49 = 49
-SHAPE_M50 = 50
-SHAPE_M51 = 51
-SHAPE_M52 = 52
+SHAPE_M14 = 3
+SHAPE_M16 = 4
+SHAPE_M17 = 5
 
 ; Shape block (C11 2026-10-21): EXACTLY 3 row-pool indices (band
 ;   0/1/2 -> RowPoolPF0/1/2 in models_data.asm; the loader expands
@@ -124,52 +61,4 @@ LevelDataTable:
   .byte LEVEL4_MINER_ROOM, LEVEL4_MINER_X, LEVEL4_WALL_COLOR, LEVEL4_WALL_COLOR2
   .word LEVEL4_RoomShapes
   .byte 4 ; LEVEL4 rooms
-  .byte LEVEL5_MINER_ROOM, LEVEL5_MINER_X, LEVEL5_WALL_COLOR, LEVEL5_WALL_COLOR2
-  .word LEVEL5_RoomShapes
-  .byte 5 ; LEVEL5 rooms
-  .byte LEVEL6_MINER_ROOM, LEVEL6_MINER_X, LEVEL6_WALL_COLOR, LEVEL6_WALL_COLOR2
-  .word LEVEL6_RoomShapes
-  .byte 6 ; LEVEL6 rooms
-  .byte LEVEL7_MINER_ROOM, LEVEL7_MINER_X, LEVEL7_WALL_COLOR, LEVEL7_WALL_COLOR2
-  .word LEVEL7_RoomShapes
-  .byte 7 ; LEVEL7 rooms
-  .byte LEVEL8_MINER_ROOM, LEVEL8_MINER_X, LEVEL8_WALL_COLOR, LEVEL8_WALL_COLOR2
-  .word LEVEL8_RoomShapes
-  .byte 8 ; LEVEL8 rooms
-  .byte LEVEL9_MINER_ROOM, LEVEL9_MINER_X, LEVEL9_WALL_COLOR, LEVEL9_WALL_COLOR2
-  .word LEVEL9_RoomShapes
-  .byte 9 ; LEVEL9 rooms
-  .byte LEVEL10_MINER_ROOM, LEVEL10_MINER_X, LEVEL10_WALL_COLOR, LEVEL10_WALL_COLOR2
-  .word LEVEL10_RoomShapes
-  .byte 10 ; LEVEL10 rooms
-  .byte LEVEL11_MINER_ROOM, LEVEL11_MINER_X, LEVEL11_WALL_COLOR, LEVEL11_WALL_COLOR2
-  .word LEVEL11_RoomShapes
-  .byte 11 ; LEVEL11 rooms
-  .byte LEVEL12_MINER_ROOM, LEVEL12_MINER_X, LEVEL12_WALL_COLOR, LEVEL12_WALL_COLOR2
-  .word LEVEL12_RoomShapes
-  .byte 12 ; LEVEL12 rooms
-  .byte LEVEL13_MINER_ROOM, LEVEL13_MINER_X, LEVEL13_WALL_COLOR, LEVEL13_WALL_COLOR2
-  .word LEVEL13_RoomShapes
-  .byte 13 ; LEVEL13 rooms
-  .byte LEVEL14_MINER_ROOM, LEVEL14_MINER_X, LEVEL14_WALL_COLOR, LEVEL14_WALL_COLOR2
-  .word LEVEL14_RoomShapes
-  .byte 14 ; LEVEL14 rooms
-  .byte LEVEL15_MINER_ROOM, LEVEL15_MINER_X, LEVEL15_WALL_COLOR, LEVEL15_WALL_COLOR2
-  .word LEVEL15_RoomShapes
-  .byte 15 ; LEVEL15 rooms
-  .byte LEVEL16_MINER_ROOM, LEVEL16_MINER_X, LEVEL16_WALL_COLOR, LEVEL16_WALL_COLOR2
-  .word LEVEL16_RoomShapes
-  .byte 16 ; LEVEL16 rooms
-  .byte LEVEL17_MINER_ROOM, LEVEL17_MINER_X, LEVEL17_WALL_COLOR, LEVEL17_WALL_COLOR2
-  .word LEVEL17_RoomShapes
-  .byte 17 ; LEVEL17 rooms
-  .byte LEVEL18_MINER_ROOM, LEVEL18_MINER_X, LEVEL18_WALL_COLOR, LEVEL18_WALL_COLOR2
-  .word LEVEL18_RoomShapes
-  .byte 18 ; LEVEL18 rooms
-  .byte LEVEL19_MINER_ROOM, LEVEL19_MINER_X, LEVEL19_WALL_COLOR, LEVEL19_WALL_COLOR2
-  .word LEVEL19_RoomShapes
-  .byte 19 ; LEVEL19 rooms
-  .byte LEVEL20_MINER_ROOM, LEVEL20_MINER_X, LEVEL20_WALL_COLOR, LEVEL20_WALL_COLOR2
-  .word LEVEL20_RoomShapes
-  .byte 20 ; LEVEL20 rooms
 
