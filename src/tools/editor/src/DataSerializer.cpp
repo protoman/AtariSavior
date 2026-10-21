@@ -408,31 +408,48 @@ constexpr int kGapB = 6;
 // 6..8 = hot families. Only cells 1..7 are ever touched (0 = H exit, 8/9 =
 // the vertical shaft), and the 2-gap cells are re-opened afterwards.
 constexpr int kArchShift = 9;
-constexpr int kArchMask = 15;   // 4 bits: hot archetypes use id 8
-const char* const kArch[6][3] = {
+constexpr int kArchMask = 15;   // 4 bits: hot archetypes use ids 8..14
+// Shape budget: extra archetype variants are enabled ONLY while the library
+// fits. The base schedule is 40 shapes (the current bank3 slot); after the
+// two-slot split raises the shape slot, bump this (tools/bank3_data_sizes.py
+// reports the headroom). With the budget at the current count the generator
+// output is byte-identical to the pre-budget build.
+constexpr int kShapeBudget = 40;
+const char* const kArch[8][3] = {
     {"..........", "..........", ".........."},          // 0 shaft
     {"..###.....", "..........", ".....###.."},          // 1 ledge ladder
     {"..........", "...#.#....", ".........."},          // 2 pillars
     {"...#......", "....#.....", ".........."},          // 3 steps
     {"......#...", "......##..", ".........."},          // 4 side pocket
     {"..##......", ".....#....", "......##.."},          // 5 zigzag
+    // extra families (shape-budget mode only)
+    {".#.#......", "..#..#....", "......#.#."},          // 6 spiral
+    {"..#.......", "..#..#....", ".......#.."},          // 7 gallery
 };
-// Hot archetypes must SHAPE THE PATH (user 2026-10-21): the old side blocks
-// left the centre shaft free, so the player just fell through and the hot
-// walls were decoration. All three now block the centre (cells 8/9 = the
-// vertical shaft) and force a detour through an offset gap.
-const char* const kArchHot[4] = {
-    "#####.####",   // 6 gate: one gap at cell 5 (the shaft is hot)
-    "###.##.###",   // 7 split: gaps at 3 and 6 (choose)
-    "#.#.#.#.##",   // 8 comb: weave through 1/3/5/7
-    "##.#######",   // 9 align (>level 10): a single offset gap at cell 2 —
-                    //   stop the fall and line up (usefull_hot_walls_003)
+// Hot archetypes must SHAPE THE PATH (user 2026-10-21): every one blocks the
+// centre (cells 8/9 = the vertical shaft) and forces a detour through an
+// offset gap. Ids 8..14.
+const char* const kArchHot[7] = {
+    "#####.####",   // 8  gate: one gap at cell 5 (the shaft is hot)
+    "###.##.###",   // 9  split: gaps at 3 and 6 (choose)
+    "#.#.#.#.##",   // 10 comb: weave through 1/3/5/7
+    "##.#######",   // 11 align (>level 10): single offset gap at cell 2
+    "##.####.##",   // 12 twin gaps at 2 and 7 (budget)
+    "#.####.###",   // 13 stairs: gaps at 1 and 6 (budget)
+    "####.#####",   // 14 HOT START: the drop column (cell 4) stays open,
+                    //    else the spawn lands on a hot wall (budget mode)
 };
-// Display column of the first hazard gap per hot archetype (objects guard it).
-const int kArchHotGapX[4] = {10, 6, 10, 4};
-const char* const kArchName[10] = {
-    "", "Ladder", "Pillars", "Steps", "Pocket", "Zigzag",
-    "HotGate", "HotSplit", "HotComb", "HotAlign"};
+const int kArchHotGapX[7] = {10, 6, 10, 4, 4, 2, 4};
+const char* const kArchName[15] = {
+    "", "Ladder", "Pillars", "Steps", "Pocket", "Zigzag", "Spiral",
+    "Gallery", "HotGate", "HotSplit", "HotComb", "HotAlign", "HotTwin",
+    "HotStair", "HotDrop"};
+// Base choices vs budget-enabled choices (ids).
+const int kNormalBase[5] = {1, 2, 3, 4, 5};
+const int kNormalExtra[7] = {1, 2, 3, 4, 5, 6, 7};
+const int kHotBase[3] = {8, 9, 10};
+const int kHotLate[4] = {8, 9, 10, 11};
+const int kHotExtra[6] = {8, 9, 10, 11, 12, 13};
 
 // Grid cell of a room in the level (x = column, y = row; rooms at the same y
 // in different columns are horizontally adjacent and therefore "connected"
@@ -586,7 +603,7 @@ ModelData MakeShapeModel(int modelId, int mask) {
     // Archetype interior (HERO-like normality): cells 1..7 only, applied
     // AFTER the functional carving, then the 2-gap corridor is re-opened.
     const int arch = (mask >> kArchShift) & kArchMask;
-    if (arch >= 1 && arch <= 5) {
+    if (arch >= 1 && arch <= 7) {
         for (int row = 0; row < kRoomHeight; ++row) {
             for (int x = 0; x < kRoomWidth; ++x) {
                 if (kArch[arch][row][x] == '#') {
@@ -595,8 +612,8 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 }
             }
         }
-    } else if (arch >= 6) {
-        const char* pat = kArchHot[arch - 6];
+    } else if (arch >= 8 && arch <= 14) {
+        const char* pat = kArchHot[arch - 8];
         for (int x = 0; x < kRoomWidth; ++x) {
             if (pat[x] == '#') {
                 model.tiles[1 * kRoomWidth + x] = (int)TileType::SOLID_WALL;
@@ -755,7 +772,7 @@ int ObjectCount(const RoomData& room) {
 
 void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
                      const LevelPlan& plan, RoomData& room,
-                     bool roomIsKeyHost = false) {
+                     bool roomIsKeyHost = false, int arch = 0) {
     if (roomIndex == roomCount - 1) {
         if (role == Role::WaterGoal) {
             // Water goal: the miner waits above the water; the raft ferries
@@ -805,8 +822,8 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         // HOT rooms: NO middle-band objects (user rule 2026-10-21) — the
         // other two bands may carry one each. Cell 8 is the open shaft in
         // both (N and S exits), so the guards sit on the descent line.
-        const int idx = levelNumber % (levelNumber > 10 ? 4 : 3);
-        const int gapx = kArchHotGapX[idx];
+        const int hidx = (arch >= 8 && arch <= 14) ? arch - 8 : 0;
+        const int gapx = kArchHotGapX[hidx];
         AddEnemy(room, EnemyType::BAT, (float)gapx, 3.0f,
                  1.25f + 0.25f * (levelNumber % 4), 13.0f);
         if (levelNumber >= 5) {
@@ -852,37 +869,56 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                                        std::vector<ModelData>& models) {
     // 1. Every level's walk + the shape mask of each of its rooms. A room's
     //    ROLE (hot / gate / water goal) is part of the shape, so the library
-    //    carries hazard variants as well as exit masks.
+    //    carries hazard variants as well as exit masks. Two passes: the base
+    //    library first; if it fits under kShapeBudget the EXTRA archetype
+    //    variants are enabled (the generator spends real headroom, never
+    //    guesses).
     std::vector<std::vector<GridPos>> walks(kStageLevels);
     std::vector<std::vector<int>> masks(kStageLevels);
     std::vector<std::vector<Role>> roles(kStageLevels);
     std::set<int> used;
-    for (int l = 1; l <= kStageLevels; ++l) {
-        // User rule 2026-10-20: 2 rooms is the floor, so level 1 has 2 rooms
-        // and the serpentine still grows by one per level (2,2,3,...,20).
-        walks[l - 1] = LevelWalk(l < 2 ? 2 : l);
-        const LevelPlan plan = PlanFor(l);
-        const int count = (int)walks[l - 1].size();
-        for (int i = 0; i < count; ++i) {
-            Role role = RoleForRoom(i, count, plan);
-            if (IsChannelTurn(l, walks[l - 1][i])) role = Role::Normal;
-            roles[l - 1].push_back(role);
-            int arch = 0;
-            if (!IsChannelTurn(l, walks[l - 1][i])) {
-                if (role == Role::Hot) {
-                    arch = 6 + (l % (l > 10 ? 4 : 3));
-                } else if (i == 0 && l >= 8) {
-                    arch = 7;             // hot start walls (no enemies)
-                } else if (role == Role::Normal && i > 0 && i < count - 1) {
-                    arch = 1 + ((l + i) % 5);
+    auto buildLibrary = [&](bool withExtras) {
+        used.clear();
+        for (int l = 1; l <= kStageLevels; ++l) {
+            walks[l - 1] = LevelWalk(l < 2 ? 2 : l);
+            const LevelPlan plan = PlanFor(l);
+            const int count = (int)walks[l - 1].size();
+            masks[l - 1].clear();
+            roles[l - 1].clear();
+            for (int i = 0; i < count; ++i) {
+                Role role = RoleForRoom(i, count, plan);
+                if (IsChannelTurn(l, walks[l - 1][i])) role = Role::Normal;
+                roles[l - 1].push_back(role);
+                int arch = 0;
+                if (!IsChannelTurn(l, walks[l - 1][i])) {
+                    if (role == Role::Hot) {
+                        const int* pool = withExtras ? kHotExtra
+                                          : (l > 10 ? kHotLate : kHotBase);
+                        const int n = withExtras ? 6 : (l > 10 ? 4 : 3);
+                        arch = pool[l % n];
+                    } else if (i == 0 && l >= 8) {
+                        // base keeps the shipped pattern byte-identical;
+                        // budget mode uses HotDrop (spawn column open).
+                        arch = withExtras ? 14 : 9;
+                    } else if (role == Role::Normal && i > 0
+                               && i < count - 1) {
+                        const int* pool = withExtras ? kNormalExtra
+                                                     : kNormalBase;
+                        const int n = withExtras ? 7 : 5;
+                        arch = pool[(l + i) % n];
+                    }
                 }
+                const int mask = RoomShapeMask(l, walks[l - 1], walks[l - 1][i],
+                                               i, role, plan.twogap)
+                                 | (arch << kArchShift);
+                masks[l - 1].push_back(mask);
+                used.insert(mask);
             }
-            const int mask = RoomShapeMask(l, walks[l - 1], walks[l - 1][i],
-                                           i, role, plan.twogap)
-                             | (arch << kArchShift);
-            masks[l - 1].push_back(mask);
-            used.insert(mask);
         }
+    };
+    buildLibrary(false);
+    if ((int)used.size() < kShapeBudget) {
+        buildLibrary(true);
     }
 
     // 2. The shape library: model ids ARE the ascending masks (deterministic).
@@ -943,7 +979,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             // in bands 0/2, so scan for a legal cell near the gap.
             if (roles[l - 1][i] == Role::Hot && l > 10) {
                 const ModelData& sm = models[shapeId[masks[l - 1][i]]];
-                const int gapCell = kArchHotGapX[l % 4] / 2;
+                const int hidx = ((masks[l - 1][i] >> kArchShift) & kArchMask) - 8;
+                const int gapCell = kArchHotGapX[hidx] / 2;
                 for (int c = gapCell; c <= gapCell + 1; ++c) {
                     if (c < 1 || c > 7) continue;
                     if (sm.tiles[1 * kRoomWidth + c] == 0
@@ -1023,8 +1060,9 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             } else {
                 const bool keyHost = (i + 1 < roomCount
                                       && roles[l - 1][i + 1] == Role::Gate);
+                const int roomArch = (masks[l - 1][i] >> kArchShift) & kArchMask;
                 FillRoomObjects(l, i, roomCount, roles[l - 1][i], plan, room,
-                                keyHost);
+                                keyHost, roomArch);
             }
             level.rooms.push_back(room);
         }
