@@ -359,20 +359,34 @@ with different async, and the editor edits the room, not the model.
 
 Consequences that are easy to get wrong:
 - **A room points at its shared MODEL SHAPE; async rides a per-level EXTRAS
-  stream** (C5 2026-10-20). The shape block is `hot stream | 3 row-pool
-  indices` only (C3 2026-10-20, `LEVEL_FORMAT = 5`) — the `TilePF0+9/+10`
-  MetaA/MetaB contract is RETIRED. A room with the shape
-  byte's b7 set carries an extras record (selected by the counts byte's b5-0
-  ordinal): `flags (n_patches b1-0 | n_features b5-2)`, `MetaA`, `MetaB`,
-  1 B/patch (`row b7-6 | side b4 | col b3-0`), 1 B/feature (`kind b7-6 | col
-  b3-0`), then — feature rooms only — the ROOM's hot stream (count + 5 B
-  records), because feature cells split the shape's own hot cells.
+  stream** (C5 2026-10-20). The shape block is EXACTLY the 3 row-pool indices
+  (C11 2026-10-21, `LEVEL_FORMAT = 6`) — both the `TilePF0+9/+10`
+  MetaA/MetaB contract AND the per-shape hot stream are RETIRED. A room with
+  the shape byte's b7 set carries an extras record (selected by the counts
+  byte's b5-0 ordinal): `flags (n_patches b1-0 | n_features b5-2)`, `MetaA`,
+  `MetaB`, 1 B/patch (`row b7-6 | side b4 | col b3-0`), 1 B/feature (`kind
+  b7-6 | col b3-0`), then — feature rooms only — the room's FEATURE-record
+  stream (`count` + 5 B records, all b7-set classes: `$80` phase cell / `$82`
+  hcrunch prefix). Hot cells are NOT records: see the hot bullet below.
+- **HOT DEATH IS PF-DERIVED** (C11 2026-10-21): convert promotes EVERY row-1
+  wall cell of a `mid_band_type=1` model, so a hot shape's hot cells ARE its
+  solid row-1 PF cells, and the C4 bomb punch clears PF cells — a blasted
+  (thin) parent cell stops being hot with no record and no parent gate.
+  `HotOverlapBody` (bank3) sweeps the player box's display columns over
+  `PF0Buf + 1 + ColOff[X]` gated by `MetaB` b6 (hot rooms only; it only runs
+  on a cell-walk hit). The one PF-OPEN hot cell — the M1 block on the hot band
+  — is staged by `ExtrasLoad` in `RoomM1Hot` (`$AF`, col+1) from the room's
+  side-1 row-1 patch and dies with the strip (`EnemyDeadMask` b4). Hot cells
+  never exist on rows 0/2. Do NOT re-introduce per-shape hot records: the
+  shape block is 3 bytes and `verify_build.check_shape_blocks` hard-fails a
+  count byte / `RoomRects` label / 5 B record.
 - **The shape's PF bytes are a ROW DICTIONARY** (C3 2026-10-20): each band is a
   1 B index into the global `RowPoolPF0/1/2` columns (3 B per DISTINCT row,
-  emitted once in `models_data.asm` with `LEVEL_ROW_COUNT`). Indices sit at
-  `block + 1 + 5*hot` — where the raw triple used to be — and the loader
-  expands them into `PF0Buf` (`lda RowPoolPFn,X / sta PF0Buf+3n,Y`). Never emit
-  raw PF into a shape: `verify_build.check_shape_blocks` hard-fails it.
+  emitted once in `models_data.asm` with `LEVEL_ROW_COUNT`). The indices sit at
+  `block + 0..2` (C11) and band 1's b7 = the model's `mid_band_type` hot flag,
+  so `LEVEL_ROW_COUNT` must stay ≤ 128. The loader expands them into `PF0Buf`
+  (`lda RowPoolPFn,X / sta PF0Buf+3n,Y`). Never emit raw PF into a shape:
+  `verify_build.check_shape_blocks` hard-fails it.
 - **The level-data subsystem is SPLIT across two banks (C7 2026-10-20)** and
   the split is the invariant: a routine may only dereference data in ITS OWN
   bank. **bank2 = the ROOM half** (`LevelDataTable` entries, the per-level
@@ -382,15 +396,17 @@ Consequences that are easy to get wrong:
   `BombEnemyBlastBody`. **bank3 = the SHAPE half** (shape blocks + row pool +
   `LEVEL_ShapeTable` + the async extras streams + the `LevExtrasLo/Hi` base
   table) with its walkers `B3RoomBlocks`/`ExtrasLoad`, `PhaseBlink`/
-  `BuildColupF`/`BCFDarkRun`, `HotOverlapBody`/`HOVHotPfGate`/`HOVFeatEntry`,
+  `BuildColupF`/`BCFDarkRun`, `HotOverlapBody`/`HOVFeatEntry`,
   `B3StageBand`, `PhHcrEntry`/`CrPfx`/`HcrClock`.
 - `bank3.B3RoomBlocks` (PINNED at `$F453`) expands the shape rows, then either
-  derives `MetaA=0 / MetaB=$40*hot` (no extras) or tail-jumps to
-  `ExtrasLoad`, which indexes bank3's `LevExtrasLo/Hi[Level]`, walks the
-  stream by the room's 1-based ordinal, ORs the side-0 patch rows into MetaA,
-  sets the feature PF bits, and repoints `RoomRectsLo/Hi` at the extras hot
-  stream. `B3StageBand` still reads only the STAGED `$99/$9A` pair, so the
-  runtime contract is unchanged.
+  derives `MetaA=0 / MetaB=$40*hot` (no extras; the hot flag is band 1's index
+  b7, C11) or tail-jumps to `ExtrasLoad`, which indexes bank3's
+  `LevExtrasLo/Hi[Level]`, walks the stream by the room's 1-based ordinal, ORs
+  the side-0 patch rows into MetaA, stages `RoomM1Hot` from a side-1 row-1
+  patch, sets the feature PF bits, and repoints `RoomRectsLo/Hi` at the
+  extras FEATURE-record stream (`RoomNoStream` when the room has none).
+  `B3StageBand` still reads only the STAGED `$99/$9A` pair, so the runtime
+  contract is unchanged.
 - **The ONE cross-bank call of the room load**: `EnterRoomB2` stages the raw
   shapes byte in `RoomPF0Lo` ($99, loader scratch) + the extras ordinal in
   `LevelConnSpare` ($A2), then executes `sta $1FF9` at `$F450`; the opcode
@@ -407,8 +423,9 @@ Consequences that are easy to get wrong:
   2026-10-20 "eye snaps right" lesson).
 - The extras records are emitted into `generated/level_00N_extras.asm` (bank3,
   with `levels_extras.asm` as the per-level base table), NOT into the level
-  table file: a feature room's hot stream lives inside its record and the VBL
-  walkers read it in-bank. `emit_spills` (bugs.md 27b) places only THIS
+  table file: a feature room's FEATURE-record stream lives inside its record
+  and the VBL walkers read it in-bank. `emit_spills` (bugs.md 27b) places only
+  THIS
   stage's `level_00N_rooms.asm` files (never a glob — a leftover tree from
   another stage would reference shape labels that no longer exist), and
   `levels_index.asm` owns the FIRST window in source order (`spill_F307`)

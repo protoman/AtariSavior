@@ -1608,3 +1608,126 @@ changed, so the test-owned snapshot had to follow).
 OK — room-load only, no kernel/VBL/overscan change); the explicit staged
 build `STAGE_FILE=rooms/stage.json ./build.sh` green; frozen banks rebuilt;
 **50/50 `tools/test_*.py` + `src/tools/test_title_demo.py`** green.
+
+---
+
+## C11 — hot collision derived from the PF buffers (2026-10-21)
+
+**Why it paid:** the shape block carried a per-shape hot stream (`count` +
+5 B/record) whose only job was to say "these row-1 cells are solid AND hot".
+But convert promotes **every** row-1 wall cell of a `mid_band_type=1` model,
+so the hot cells ARE the shape's solid row-1 PF cells — data the loader
+already expands into `PF0Buf` — and the C4 bomb punch clears PF cells, so a
+blasted (thin) parent stopped being hot with no record and no gate. The
+stream was 200 B of duplicated truth on the live 20-level stage.
+
+### New format (`LEVEL_FORMAT = 6`)
+
+* **Shape block = EXACTLY 3 bytes**: the row-pool indices for bands 0/1/2,
+  at `block + 0..2`. No count byte, no records, no `RoomRects` label.
+  Band 1's index **b7 = `mid_band_type`** (hot cells only ever exist on row 1,
+  so the flag rides that band) → `LEVEL_ROW_COUNT ≤ 128`.
+* **Extras record**: `flags | MetaA | MetaB | 1 B/patch | 1 B/feature`, then —
+  feature rooms only — `count` + 5 B **FEATURE** records (`$80` phase cell /
+  `$82` hcrunch prefix, every class has b7 set). The shape's static hot cells
+  and the M1 block record are gone from the data.
+* **`HotOverlapBody`** (bank3): gated by `MetaB` b6, it sweeps the player
+  box's display columns over `PF0Buf + 1 + ColOff[X]` with `ColMask[X]` — the
+  same cell store the player walk reads, so "the wall I bumped is hot" is one
+  bit test. It still only runs on a cell-walk hit, so the box-vs-rect
+  relation is preserved exactly (row-1 cells only, row gate `top<2 && bot>=1`).
+  `HOVHotPfGate` (the per-record parent gate) is **deleted**.
+* The one PF-OPEN hot cell — the **M1 block on the hot band** — cannot be
+  seen by a PF sweep, so `ExtrasLoad` stages it in **`RoomM1Hot` (`$AF`,
+  col+1, 0 = none)** from the room's side-1 row-1 patch while walking the
+  patch list it already walks. It keeps the strip gate (`EnemyDeadMask` b4).
+  `$AF` was `LevelEnemySpare` (documented free); the kernel decl carries the
+  new name and `check_equ_sync` pairs it with bank3's EQU.
+* `RoomRectsLo/Hi` now point at the extras **feature** stream, or at bank3's
+  static `RoomNoStream` (`$00` count at `$F8B7`) when the room has none —
+  no walker ever reads TIA through a zero pointer.
+
+### Size (measured, `tools/rom_size_report.py --md`, live 20-level stage)
+
+| | bank0 | bank1 | bank2 | bank3 | total | level data |
+|---|---|---|---|---|---|---|
+| before (a7a297d) | 3421 | 2865 | 3024 | 2313 | 11623 | 2713 |
+| after C11 | 3421 | 2865 | 3024 | 2206 | 11516 | **2513** |
+| after C11+C12 (HEAD) | 3421 | 2865 | 3024 | 2206 | 11516 | 2567 |
+
+C11 alone: level data **2713 → 2513 B (−200)**, measured on the stage that
+was live at a7a297d: **40 count bytes + 32 hot records × 5 B = exactly
+200 B** of per-shape stream (the records named "hot count" in
+`models_data.asm`). The code side is a wash: `B3RoomBlocks` loses the `5n+1`
+pointer arithmetic and gains the flag read, `HotOverlapBody` shrinks,
+`HOVHotPfGate`'s 24 B go away. The bank3 shape window went from **5 B to
+205 B of slack** — which is what C12 spent to give the shapes their own
+`$F5CC-$F8B6` window (473/425 B slack) and a 47-shape budget. The stage then
+grew from 40 to 47 shapes (29 pool rows), which is content, not C11: at HEAD
+`models = 322 B = 47 × 3 (blocks) + 29 × 3 (pool) + 47 × 2 (address table)` —
+**zero stream bytes** — so level data reads 2567 B with 7 more models than the
+measurement above.
+
+### Readers touched (every one)
+
+* `tools/convert_room.py`: `lines(with_meta=False)` emits `<tag>Shape:` /
+  `<tag>Rows:` + 3 indices (band 1 flagged) and REJECTS feature tiles in a
+  shape; the legacy per-grid form (`with_meta=True`, converter unit tests
+  only) keeps the stream + `TilePF0/1/2` + meta pair.
+* `tools/convert_level.py`: `emit_room_block` (no `hot_m1`, no stream),
+  `room_extras` (feature records only), `_shape_stream` regex
+  (`M<id>Shape:`), `LEVEL_Format = 6`, the emitted comments/EQUs.
+* `src/bank3.asm`: `B3RoomBlocks` (indices at block+0, `and #$7F`, `MetaB` =
+  band-1 b7 >> 1, clears `RoomM1Hot` + points `RoomRects` at
+  `RoomNoStream`), `ExtrasLoad` (stages `RoomM1Hot`), `HotOverlapBody`
+  (PF sweep + M1 cell + feature walk), `HOVHotPfGate` deleted,
+  `RoomNoStream` added.
+* `src/kernel.asm` / `src/bank1.asm`: `LEVEL_FORMAT = $06`; kernel ZP decl
+  `LevelEnemySpare` → `RoomM1Hot`.
+
+### Guards (`tools/verify_build.py`)
+
+`check_shape_blocks` now hard-fails: a `RoomRects` shape label, a hot count
+byte, any 5 B record, a block that is not exactly 3 indices, an index ≥
+`LEVEL_ROW_COUNT`, b7 outside band 1, a band-1 b7 that disagrees with the
+model's `mid_band_type`, `LEVEL_ROW_COUNT > 128`, and a loader that stops
+reading `RowPoolPF0,X` / the flag / the PF sweep / `RoomM1Hot`. The extras
+check additionally hard-fails a non-b7 record class (a stale converter
+copying hot records back in). `test_level_bank` pins `LEVEL_FORMAT = $06`.
+
+### Tests touched
+
+`test_extras_room` (plain / hot / patch-only / feature cases; the hot flag,
+`RoomM1Hot`, the sentinel pointer and the ordinal walk), `test_phase_kill`
+(rewritten: PF sweep, cold control, bomb-punched parent, M1 cell alive/dead,
+phase/hcrunch/inert records), `test_cell_map` (hot sweep is LIVE again: 6 240
+box cases over an authored hot room — solid row 1, punched row 1, M1 cell
+strip alive/dead, cold control; row-pool parity masks band 1's b7),
+`test_mid_band_hot` (asserts the C11 block form), `test_band_restage` (block
+layout, `RoomRects` sentinel vs extras stream, `MetaB` from the flag),
+`test_extras_room`, `test_fixtures` (freeze_* retired: streams are RAM blobs
+now), `test_hcrunch` / `test_phase_kill_frame` (stage the frozen stream in
+test RAM), `test_laser_close` / `test_laser_walk_wall` /
+`test_bomb_user_sequence` / `test_bomb_half_wall` (sentinel pointer),
+`test_features_data` (legacy label), `test_bomb_strip` unchanged (it already
+staged its phase stream in RAM).
+
+### Gates
+
+`./build.sh` green (verify_build OK, `sim_bomb_fuse` OK, `sim_frame_budget`
+OK — room-load + overscan only, no kernel/VBL change); the explicit staged
+build `STAGE_FILE=rooms/stage.json ./build.sh` green; frozen banks rebuilt
+from `src/tests/rooms` (labels and `tests/generated/` refreshed);
+**50/50 `tools/test_*.py` + `src/tools/test_title_demo.py`** green.
+
+### Behaviour parity — what was checked, and the one thing records did that PF does not
+
+The record walk and the PF sweep agree because both are "does the player box
+overlap a solid row-1 cell of a hot shape": the rect box test compared
+display columns against `[x, x+w)` and rows against `[y, y+h)` with all hot
+records at `y=1,h=1`, and the sweep compares the same display columns against
+the PF row-1 bits, requiring `top<2 && bot>=1`. The M1 cell was the ONE case
+records covered that PF cannot (its cell is PF-open by the wall-hide
+envelope), which is why it is staged from the patch list instead. The
+`test_cell_map` sweep asserts the equivalence over every X / facing / row-pair
+combination, and its punched pass proves the bomb case stays green.

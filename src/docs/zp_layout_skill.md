@@ -70,7 +70,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $8D | CollisionCellY | Player top tile row; **time-partitioned**: VBL `StageBandTab` stages the P2b door stripe color ($80 = none / $1C = yellow) for the cave band-setup line's `COLUP1` write; overscan PHM's prologue restages it as the top-row temp AFTER the kernel — lifecycles never overlap |
 | $8E | CollisionEndX | Player min tile col; **time-partitioned**: overscan PHM/LWC/blast/laser stage+read their own min-col, and VBL `StageBandTab` stages the D6 M1X (TilePF0+14, 0=none) for `PositionBallM1`'s same-VBL read — window closes before overscan restages, so the alias never crosses frames |
 | $8F | CollisionEndY | Player bottom tile row |
-| $90 | RoomRectsLo | Room DATA BLOCK ptr lo (historical name: the block now starts with the hot stream — plan C4; no solid rect list) |
+| $90 | RoomRectsLo | Record-stream ptr lo: the room's extras FEATURE-record stream, or the static `RoomNoStream` `$00` count (C11 2026-10-21 — a shape block carries no stream any more) |
 | $91 | RoomRectsHi | Room data block ptr hi |
 | $92 | RectCount / RowIdx | Hot-record loop counter (post-kernel; also room-block scratch in `B3RoomBlocks`); kernel tile-row index (alias, re-inited at kernel entry) |
 | $93 | vyLo | Y velocity lo (signed 16) |
@@ -101,7 +101,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $AC | PlayerLives | Lives 0-3 |
 | $AD | TickCounter | 1s power-bar step |
 | $AE | BarLevel | Power bar 0-16 |
-| $AF | LevelEnemySpare | FREE (was LevelEnemyLo — base is now derived in EnterRoomB2) |
+| $AF | RoomM1Hot | C11 2026-10-21: hot-band M1 block cell = `col+1` (0 = none), staged by bank3's `ExtrasLoad` from the room's side-1 row-1 patch (was `LevelEnemySpare`; kernel decl carries the new name — `check_equ_sync` pairs it with bank3's EQU) |
 | $B0 | LevelEnemySpare2 | FREE (was LevelEnemyHi) |
 | $B1 | EnemyDataLo | Room enemy data lo |
 | $B2 | EnemyDataHi | Room enemy data hi |
@@ -227,9 +227,11 @@ must never allocate a ZP address kernel doesn't define.
 ~~WallMask b3-6~~ — **retired, plan 5.1b/C4 (2026-10-20)**: `BombMarkWalls`
 no longer sets mask bits (`BombMaskBit`, the ABW rect tables and `PairGone`
 are gone). A repeat blast is blocked by the buffer itself (the punched D7
-cell is empty). The hot parent gate (`HotOverlapBody`) now tests the
-parent cell's PF bit (`HOVHotPfGate`), so a hot piece dies with a punched
-thin wall and thick parents stay lethal.
+cell is empty). **C11 (2026-10-21): `HOVHotPfGate` is gone.** Hot death is
+derived from the PF buffers directly — `HotOverlapBody` sweeps the player
+box's display columns over PF row 1 (gated by `RoomMetaB` b6), so a punched
+thin parent is simply not solid and stops being hot: no record, no gate.
+`$AF RoomM1Hot` stages the one PF-OPEN hot cell (the M1 block).
 EnterRoom pack/restore into `$F2` deleted (5.2, D1-B): holes reset on
 room change, and the re-entered wall is bombable again (buffer clear).
 
