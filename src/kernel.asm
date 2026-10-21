@@ -167,9 +167,12 @@ TickCounter     byte            ; frame counter (60 frames = 1 bar step = 1s)
 BarLevel        byte            ; timer bar level (120=full, 0=empty)
 
 ; Enemy ZP variables
-LevelEnemySpare byte            ; free (was LevelEnemyLo — the RoomCounts base
-                                ;   is now base+2n, derived in EnterRoomB2; the
-                                ;   bytes stay allocated so ZP does not shift)
+RoomM1Hot       byte            ; C11 2026-10-21: hot-band M1 block cell =
+                                ;   col+1 (0 = none), staged by bank3's
+                                ;   ExtrasLoad from the room's patch list (was
+                                ;   LevelEnemyLo; the RoomCounts base is
+                                ;   now base+2n, derived in EnterRoomB2 — the
+                                ;   byte stays allocated so ZP does not shift)
 LevelEnemySpare2 byte           ; free (was LevelEnemyHi)
 EnemyDataLo     byte            ; pointer to current room enemy data (low)
 EnemyDataHi     byte            ; pointer to current room enemy data (high)
@@ -2338,7 +2341,7 @@ LEVEL_DATA_ADDR = $F307        ; frozen address of bank2's LevelDataTable
                                 ;  shrank the tables; check_frozen_addrs
                                 ;  enforces)
                                 ; (test asserts bank2.lst label == this)
-LEVEL_FORMAT   = $05           ; C3 2026-10-20: room-record + shape format. 5 =
+LEVEL_FORMAT   = $06           ; C11 2026-10-21: room-record + shape format. 6 =
                                 ; 4 (shape index b5-0 | band b6 | owns-extras
                                 ; b7, position byte, enemy count <<6 | extras
                                 ; ordinal, then the level's AsyncExtras stream)

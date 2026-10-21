@@ -90,8 +90,8 @@ need2 = {".MothColsOk", "RoomPF0Lo"}
 # extras streams) moved back to bank3 with the walkers that read them; bank2
 # keeps the room/enemy tables. Code labels still come from bank2.lst, block
 # data labels from bank3.lst.
-blk = {"M5RoomRects", "M0RoomRects", "M0Rows",
-       "LEVEL1_AsyncExtras"}
+blk = {"M5Shape", "M0Shape", "M0Rows",
+       "LEVEL1_AsyncExtras", "RoomNoStream", "RoomMetaB", "RoomM1Hot"}
 L2 = parse_labels(FROZEN / "bank2.lst", need2 | blk)
 L3 = parse_labels(FROZEN / "bank3.lst", blk)
 if not need2 <= L2.keys():
@@ -390,7 +390,7 @@ def hot_death_checks(rows: list[str]) -> int:
     Envelope tightened to #13; repro: ry=60 facing right, rx=64 flush
     (live) vs rx=65 first px into the block (die).
 
-    RoomRects -> M0RoomRects: BOTH model-0 hot rects are gated — the 'H'
+    RoomRects -> M0Shape: BOTH model-0 hot rects are gated — the 'H'
     wall (mask $10, x=0,y=1,w=2,h=1) and the M1 block (mask $00, x=16,
     y=1, w=2, h=1). `entered` = walk-hit OR M1-overlay funnel — the two
     ways PHM reaches HotOverlapBody. The ball overlay never funnels to
@@ -407,8 +407,8 @@ def hot_death_checks(rows: list[str]) -> int:
     mem = Mem()
     load_case(mem, rows)
     r = mem.ram
-    r[L0["RoomRectsLo"] - 0x80] = L3["M0RoomRects"] & 0xFF
-    r[L0["RoomRectsHi"] - 0x80] = L3["M0RoomRects"] >> 8
+    r[L0["RoomRectsLo"] - 0x80] = L3["M0Shape"] & 0xFF
+    r[L0["RoomRectsHi"] - 0x80] = L3["M0Shape"] >> 8
     r[L2["RoomPF0Lo"] - 0x80] = BANK3[L3["LEVEL1_AsyncExtras"] - 0xF000 + 1]
     r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK3[L3["LEVEL1_AsyncExtras"] - 0xF000 + 2]
     r[L0["BombPacked"] - 0x80] = 0
@@ -460,8 +460,12 @@ def load_case(mem: Mem, rows: list[str]) -> None:
     mem.ram[L0["RoomY"] - 0x80] = 0
     mem.ram[L0["PlayerDir"] - 0x80] = 0
     mem.ram[L0["BombPacked"] - 0x80] = 0
-    mem.ram[L0["RoomRectsLo"] - 0x80] = L3["M5RoomRects"] & 0xFF
-    mem.ram[L0["RoomRectsHi"] - 0x80] = L3["M5RoomRects"] >> 8
+    # C11 (2026-10-21): a shape block carries no record stream any more —
+    # point RoomRects at bank3's static $00 count (the "no stream" sentinel).
+    mem.ram[L0["RoomRectsLo"] - 0x80] = L3["RoomNoStream"] & 0xFF
+    mem.ram[L0["RoomRectsHi"] - 0x80] = L3["RoomNoStream"] >> 8
+    mem.ram[L3["RoomMetaB"] - 0x80] = 0        # cold room (no hot sweep)
+    mem.ram[L3["RoomM1Hot"] - 0x80] = 0        # no hot-band M1 block cell
 
 
 def main() -> int:
@@ -494,6 +498,13 @@ def main() -> int:
         idx = [int(b.strip().lstrip("$"), 16)
                for b in hit.group(1).split(";")[0].split(",")]
         assert len(idx) == 3, f"M{mid}Rows: {len(idx)} indices, want 3"
+        # C11: band 1's index byte b7 = mid_band_type (the hot flag).
+        want_hot = 0x80 if m.get("mid_band_type") else 0
+        assert (idx[1] & 0x80) == want_hot, (
+            "M%sRows band1 $%02x: b7 must be $%02x (mid_band_type=%d)"
+            % (mid, idx[1], want_hot, 1 if want_hot else 0))
+        assert not ((idx[0] | idx[2]) & 0x80), "M%dRows: b7 outside band 1" % mid
+        idx = [i & 0x7F for i in idx]
         for reg, name in enumerate(("RowPoolPF0", "RowPoolPF1", "RowPoolPF2")):
             got = [pool[name][i] for i in idx]
             want = [pf_values(r)[reg] for r in rows]
@@ -571,7 +582,7 @@ def main() -> int:
     strip = moth_strip_checks()
     # mid_band_type FEATURE stays (generator fixtures always covered by
     # test_mid_band_hot); this runtime envelope check is M0-specific
-    # (M0RoomRects/M0TilePF0 below). Model 0 dropped the key 2026-10-08 —
+    # (M0Shape/M0TilePF0 below). Model 0 dropped the key 2026-10-08 —
     # dormant until model 0 sets mid_band_type again.
     if by_id.get(0, {}).get("mid_band_type"):
         hot = hot_death_checks(cases[0][1])

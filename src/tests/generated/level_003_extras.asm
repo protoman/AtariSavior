@@ -8,9 +8,10 @@
 ;   +3.. 1 B/patch: row b7-6 | side b4 | col b3-0 (tile = wall)
 ;   ..   1 B/feature: kind b7-6 (1 = phase, 2 = hcrunch
 ;        prefix end) | col b3-0
-;   ..   [n_features > 0] 1 B hot count + 5 B/hot record — the
-;        ROOM's hot stream (feature cells split the shape's own
-;        hot rects, so the walkers read this copy instead).
+;   ..   [n_features > 0] 1 B count + 5 B/FEATURE record — the
+;        live feature geometry ($80 phase cell / $82 hcrunch
+;        prefix). Static hot + the M1 block cell are derived by
+;        the loader (PF row 1 + the patch list) — C11.
 LEVEL3_AsyncExtras:
   .byte $02, $90, $00, $18, $58  ; room 0: 2 patch(es), 0 feature(s), MetaA $90 MetaB $00
   .byte $04, $00, $00, $89, $01, $82, $00, $01, $20, $01  ; room 1: 0 patch(es), 1 feature(s), MetaA $00 MetaB $00

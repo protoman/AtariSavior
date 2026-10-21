@@ -27,7 +27,7 @@ SRC = ROOT / "src"
 FROZEN = ROOT / "src" / "tests" / "frozen"   # test-owned banks+labels
 BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
-for _name in ("M0RoomRects",):   # level 1 room 0 = model 0 (C5: shape)
+for _name in ("M0Shape",):   # level 1 room 0 = model 0 (C5: shape)
                                    # L1R2 block was removed with it)
     for _l in (FROZEN / "bank3.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
@@ -166,7 +166,7 @@ def shape_pf(model):
 
 def load_room(room):
     model = MODEL[room]
-    pf9, a_rr = shape_pf(model), L3[f"M{model}RoomRects"]
+    pf9, a_rr = shape_pf(model), L3["RoomNoStream"]   # C11: no stream in a shape
     # C5: the meta pair comes from the room's extras record (level 1 room 0 =
     # model 0 is the async room, ordinal 1 -> +1/+2). C4: no rect cache.
     mem.ram[I_PF0LO] = BANKS[3][(L3["LEVEL1_AsyncExtras"] + 1 - 0xF000)]
