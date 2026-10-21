@@ -26,8 +26,12 @@ for content and never written):
   * object caps: enemies + lamps + miner <= 2 per room, <= 1 element per tile
     row (the editor's kMaxRoomElements / ElementInRow rules);
   * determinism: two runs are byte-identical;
+  * hot start rooms: the spawn drops down cell 4, and convert promotes every
+    row-1 wall of a hot model to a hot cell — so row-1 cell 4 must be AIR
+    (HotDrop) or the player lands on a hot wall at the drop-in (2026-10-21);
   * convert: `convert_level.py --stage` into a temp `generated/` — the bank2
-    level-table spill and the bank3 shape window must both report slack.
+    level-table spill and BOTH bank3 windows (extras, shapes) must report at
+    least SLACK_FLOOR bytes free.
 
 Run: /home/iuri/python3/bin/python3 tools/test_generator.py
 """
@@ -48,6 +52,8 @@ LEVELS = 20
 ROOMS = 2 + sum(range(2, LEVELS + 1))   # 211 (level 1 has 2 rooms too)
 GRID_SPAN = 15                          # C1: nibble 15 is the no-room sentinel
 MAX_SHAPES = 64   # format cap: 6-bit shape index
+SHAPE_BUDGET = 56 # generator kShapeBudget (declared cap; extras on below it)
+SLACK_FLOOR = 64  # B that must stay free in each bank3 window
 MAX_OBJECTS = 2                         # editor kMaxRoomElements / verify_build
 START_CELL = 4                          # LevelStartX 32 px / 8 px per cell
 
@@ -121,7 +127,12 @@ def main() -> int:
             print(f"FAIL: model ids {ids} are not 0..n-1")
             return 1
         if not 0 < len(models) <= MAX_SHAPES:
-            print(f"FAIL: {len(models)} shapes > the {MAX_SHAPES} budget")
+            print(f"FAIL: {len(models)} shapes > the {MAX_SHAPES} format cap")
+            return 1
+        if len(models) > SHAPE_BUDGET:
+            print(f"FAIL: {len(models)} shapes > the generator budget "
+                  f"{SHAPE_BUDGET} — raise kShapeBudget only with a measured "
+                  "window fit")
             return 1
         shapes = {m["id"]: m for m in models}
         referenced = set()
@@ -171,6 +182,14 @@ def main() -> int:
                 print(f"FAIL: level {level_n} start room top band cell "
                       f"{START_CELL} is {start_rows[0][START_CELL]!r} — the "
                       "spawn drop would land inside the ceiling")
+                return 1
+            # A hot start room must keep the drop COLUMN open: the player
+            # falls through band 1 at cell 4.
+            if shapes[rooms[0]["model_id"]].get("mid_band_type") and \
+                    start_rows[1][START_CELL] != ".":
+                print(f"FAIL: level {level_n} hot start room has "
+                      f"{start_rows[1][START_CELL]!r} at row-1 cell "
+                      f"{START_CELL} — the drop lands on a hot wall (HotDrop)")
                 return 1
 
             # Adjacent pairs: the carve must agree on BOTH sides (tear rule).
@@ -459,19 +478,22 @@ def main() -> int:
         if r.returncode != 0:
             print(f"FAIL: convert_level --stage failed:\n{r.stderr[-2000:]}")
             return 1
-        tables_slack = bank3_slack = None
+        tables_slack = extras_slack = shapes_slack = None
         for line in r.stdout.splitlines():
             if "level tables (bank2)" in line:
                 tables_slack = int(re.search(r"slot slack (\d+)B", line).group(1))
-            if "bank3 data" in line:
-                bank3_slack = int(re.search(r"slack (\d+)B", line).group(1))
-        if tables_slack is None or bank3_slack is None:
+            if "bank3 extras:" in line:
+                extras_slack = int(re.search(r"slack (\d+)B", line).group(1))
+            if "bank3 shapes:" in line:
+                shapes_slack = int(re.search(r"slack (\d+)B", line).group(1))
+        if tables_slack is None or extras_slack is None or shapes_slack is None:
             print(f"FAIL: no capacity report in the converter output:\n"
                   f"{r.stdout[-2000:]}")
             return 1
-        if tables_slack <= 0 or bank3_slack <= 0:
-            print(f"FAIL: capacity — bank2 slack {tables_slack}B, "
-                  f"bank3 slack {bank3_slack}B")
+        if min(tables_slack, extras_slack, shapes_slack) < SLACK_FLOOR:
+            print(f"FAIL: capacity — bank2 slack {tables_slack}B, bank3 "
+                  f"extras slack {extras_slack}B, shapes slack "
+                  f"{shapes_slack}B (floor {SLACK_FLOOR}B)")
             return 1
         index = (gen / "levels_index.asm").read_text()
         m = re.search(r"^LEVEL_COUNT = (\d+)$", index, re.M)
@@ -490,7 +512,8 @@ def main() -> int:
 
         print(f"test_generator: OK (20 levels, {ROOMS} rooms, "
               f"{len(models)} shapes, byte-identical reruns, "
-              f"bank2 slack {tables_slack}B, bank3 slack {bank3_slack}B)")
+              f"bank2 slack {tables_slack}B, bank3 extras {extras_slack}B / "
+              f"shapes {shapes_slack}B)")
     return 0
 
 
