@@ -303,7 +303,7 @@ LaserState      = $C0           ; laser: b7 fire held this frame,
                                 ;   b6 fire held last frame (press-edge),
                                 ;   b5-2 RoomDarkMask rooms 4-7,
                                 ;   b1 beam gate for the kernel .Line
-                                ;     (BeamMask = $02 shares b1; mirror of b7)
+                                ;     (PlayerColTable bit1 on the beam row shares b1; mirror of b7)
 EnemyRamD       = $C1           ; dir bits 0-3 = enemy 0-3 (1=right, 0=left)
 EnemyRamP       = $C2           ; bits0-3 moth phase (shared/sync); bits4-7
                                 ;   vdir for spider/bat/tentacle (1=down)
@@ -374,8 +374,9 @@ FACING_LEFT     = 1
 
 ; LaserState bits
 LASER_HELD      = %10000000     ; b7: fire held this frame (INPT4 D7=0)
-LASER_ARMED     = %00000010     ; b1: kernel .Line beam gate (BeamMask $02
-                                ;   shares b1 — ENAM0 = BeamMask & LaserState)
+LASER_ARMED     = %00000010     ; b1: kernel .Line beam gate — ENAM0 =
+                                ;   (PlayerColTable bit1) & b1, so the beam
+                                ;   row is the table's bit1 row (index 2)
 LASER_ON        = %10000010     ; b7+b1 in one ora (held AND armed)
 LASER_DARK      = %00111100     ; b5-2: RoomDarkMask rooms 4-7 (IsRoomDark/SetRoomDark)
 LASER_REARM     = %00000001     ; b0: contact consumed last frame — next held
@@ -831,7 +832,7 @@ CaveKernelRow:
     ; line (24 stalls in the SIM_LEVEL=2 window, always even frames —
     ; SelectActiveObject parity rotation). Root fix: the color/beam gate
     ; below stops at A0=10; row 11 inherits row 10's COLUP0/ENAM0 writes
-    ; (PlayerColTable/BeamMask [10]==[11], verify_build asserts) because
+    ; (PlayerColTable [10]==[11], verify_build asserts) because
     ; GRP0 row11 is fetched on line A0=10 already ("row11 shows via
     ; line10"). Worst path measured 2026-10-15 (vcrunch jitter hunt):
     ; in-window color/beam/GRP0 + object in-range = 69c between WSs,
@@ -841,8 +842,8 @@ CaveKernelRow:
     ; <= 70c / d <= 73 — a 74-76 segment stalls a full scanline.
     ; ObjSprites+71 must stay in the $FExx page (else lda ObjSprites,X
     ; page-crosses, +1c on the GRP1 fetch) — verify_build enforces this.
-    ; Branch targets all same-page (3c taken) and BeamMask operand in $FExx
-    ; (4c fetch, no-cross — verify_build S2.2 guard).
+    ; Branch targets all same-page (3c taken) and PlayerColTable in $F8xx
+    ; (verify_build guards the A0=10 page-cross budget).
     ; GRP1 object section clobbers X (ObjSprites index) — row counter lives in
     ; RowIdx and X is reloaded after bne. Row-advance +6c on the .Row setup
     ; scanline (segment 63c -> 69c <= 76c): frame length unchanged.
@@ -856,16 +857,17 @@ CaveKernelRow:
                                 ; A0=11 skips too (Class-A stall line): rows
                                 ; 10/11 share color+beam bytes, so row 10's
                                 ; writes are still in effect here.
-    lda PlayerColTable,Y        ; 4c — per-row color from ROM
-    sta COLUP0                  ; COLUP0 has no latch: applies to this line
-    ; --- Laser S2.2: ENAM0 = beam mask for THIS line (in-window only) ---
-    ; BeamMask = {0,0,2,0,0...} → ENAM0 on RoomY+2 only (single yellow
-    ; strip — user directive 2026-10-08: the red row-3 strip is gone;
-    ; kill window in LaserHitTestBody keeps rows RoomY+2..3 = superset).
-    ; In-window path is the only safe place (Y<11 guaranteed); outside the
-    ; window ENAM0 keeps its last in-window write ($00 at A0=10) — no HUD
-    ; artifact. Table lives in $FExx (no-cross = 4c, verify_build guard).
-    lda BeamMask,Y              ; 4c (no-cross $FExx) — table MUST stay $FExx
+    ; --- Laser S2.2: ENAM0 = PlayerColTable bit1 & LaserState.b1 ----------
+    ; Phase 0 (2026-10-21): the retired BeamMask table duplicated bit 1 of
+    ; PlayerColTable for a separate 4c fetch. One yellow strip on RoomY+2
+    ; only (user directive 2026-10-08: the red row-3 strip is gone; the kill
+    ; window in LaserHitTestBody keeps rows RoomY+2..3 = superset of the
+    ; draw). In-window path only (Y<=11), so outside the window ENAM0 keeps
+    ; its last write ($00 at A0=10) — no HUD artifact. verify_build asserts
+    ; bit1 is set at index 2 and nowhere else, and that rows 10/11 stay equal
+    ; (the A0=11 gate skip inherits row 10's writes).
+    lda PlayerColTable,Y        ; 4c — per-row color; bit 1 = ENAM0 enable
+    sta COLUP0                  ; applies to this line (colour bit0 = don't-care)
     and LaserState              ; 3c — beam gate: b1 armed only while fire held
     sta ENAM0                   ; 3c (bar showed without fire before this)
     iny                         ; Y = A0+1 ($ff wraps to 0 = sprite row 0).
@@ -897,7 +899,7 @@ CaveKernelRow:
     sta GRP1
     lda ObjColorTab,X      ; per-row object color (+5c cross — the cycle sum
                            ; equals the probe's proven pass: 5c beam + 4c
-                           ; color before the BeamMask same-page move)
+                           ; color after phase 0's beam fold)
     sta COLUP1
 .AfterObj:
 
@@ -2336,8 +2338,12 @@ ENEMY_RAFT     = 7             ; type-7 enemy record = the moving, rideable raft
                                ; water of model row 2, carries the player and
                                ; returns; body lives in bank1 (RaftBody)
 ENEMY_DATA_STRIDE = 6
-LEVEL_COUNT    = 20             ; hand copy of generated LEVEL_COUNT (cmp in
-                                ; LoadLevel advance guard — test asserts sync)
+LEVEL_COUNT    = 4              ; hand copy of generated LEVEL_COUNT (cmp in
+                                ; LoadLevel advance guard — test asserts sync).
+                                ; 2026-10-21: live stage cut 20 -> 4 levels to
+                                ; fund the HERO kernel plan (bank0 eviction);
+                                ; the 20-level stage is kept at
+                                ; src/tests/stages/stage_20_levels.json
 LEVEL_DATA_ADDR = $F307        ; frozen address of bank2's LevelDataTable
                                 ; (S4.1 −$FAFA, S4.2 −$FA8E, 2026-10-02
                                 ;  −$FA86 as the ≤2-object room migration
@@ -3272,7 +3278,7 @@ DropArm:
     lda #$FF
     sta LevelMinerRoom          ; ROOM_NONE: no miner slot, no pickup
     ; No beam on the title: band 0 is the CAVE .Line now, which re-enables
-    ; ENAM0 from BeamMask & LaserState. Clear held+gate (b7/b1) only —
+    ; ENAM0 from PlayerColTable bit1 & LaserState. Clear held+gate (b7/b1) only —
     ; LASER_KEEP keeps b0 and the rooms 4-7 dark mask, so a dark-room
     ; preview still renders dark.
     lda LaserState
@@ -3668,21 +3674,6 @@ TallyWork:
     bne .TWait
     jmp StartFrame
 
-; ------------------------------------------------------------------------------
-; BeamMask — per-scanline ENAM0 values for the in-window kernel path (S2.2).
-; Indexed by Y = A0 = Scanline - RoomY, rows 0-11 only.
-; Rows 2-3 = $02 (beam on: RoomY+2..RoomY+3 = eye rows — yellow face row 2 +
-; red row 3 = two-tone beam; kept per user decision: single-red rows could
-; not also reach floor-standing enemies without kill-window churn); rest $00.
-; 2026-10-08 user directive: ONE strip, yellow — row 2 only ($02 at index 2),
-; row 3 dropped. Kill window in LaserHitTestBody stays rows RoomY+2..3 = a
-; superset of the 1-line draw (floor-standing reach preserved).
-; Lives in the $FExx page: `lda BeamMask,Y` from .Line ($F1xx) fetches in
-; 4c when operand+11 stays in-page (1c reclaim toward the ObjColorTab
-; write; verify_build asserts the no-cross operand range).
-; ------------------------------------------------------------------------------
-BeamMask:
-    .byte 0,0,2,0,0,0,0,0,0,0,0,0
 
 
     .ds $FEE7 - *, 0            ; bank0↔bank1 CallPad (leaf_move_plan Step 0)
@@ -3794,7 +3785,7 @@ SetObjReflection:
 ; PIXEL MODEL (unchanged): SetObjectXPos arg A -> drawn M0 = [A-7, A].
 ; LaserState: b7 held, b6 prev (press edge), b5-2 dark, b1 = .Line gate,
 ; b0 = rearm (contact consumed last frame — re-test the eye next frame)
-; (BeamMask = $02 shares b1 — ENAM0 = BeamMask & LaserState; the old
+; (PlayerColTable bit1 shares b1 — ENAM0 = bit1 & LaserState; the old
 ; LaserBeamOn $02 byte now holds LaserX, there was no free ZP byte).
 ; S5.4: kill/lamp/wall ACTIONS run here (pad body returns only A).
 ; Overscan: VBLANK on, end waits on TIM64T — SetObjectXPos's WSYNC costs 1
@@ -3933,7 +3924,7 @@ LaserInput:
 StepDelta:                      ; travel step per PlayerDir (0=right, 1=left)
     .byte 4, 252
 
-    .ds $FFE6 - *, 0            ; pin TallyTramp (BeamMask moved to $FExx
+    .ds $FFE6 - *, 0            ; pin TallyTramp (was the BeamMask slot)
                                  ; freed 12B here — drift must not move it)
 ; ------------------------------------------------------------------------------
 ; TallyTramp ($FFE6, byte-identical with BANK1 now — the body moved there in

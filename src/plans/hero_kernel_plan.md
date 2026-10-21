@@ -46,9 +46,14 @@ kept as a test-owned reference and the generator still exercises 20 levels in
 - Live stage: **28 of 42** async rooms show the enemy-coloured dash (all blocks
   sit on band 1, the band enemies live in).
 
-**Estimate after the 4-level cut** (to be re-measured, never assumed):
-bank2 level-table slot ≈ 335 B used → **≈ 1.9 KB free for code**; bank3 extras
-≈ 130 B (≈ 950 free); shapes ≈ 120 B (≈ 620 free).
+**Measured after the 4-level cut** (Phase 1 step 5, 2026-10-21):
+
+- level data **2602 B → 127 B** (index 28 + tables/blocks/extras 51 + models 48);
+- bank2 level-table slot: 79 B used → **slack 2244 B** (the eviction target);
+- bank3 extras **8 B / 1088** (slack 1080), shapes **48 B / 747** (slack 699);
+- bank0 pre-pad headroom **16 B** (ends `$FC58`) — the AGENTS "1 B" note was
+  stale; the 12 B `BeamMask` table plus the folded fetch went into the `$FExx`
+  fill, so the pre-pad figure did not move.
 
 ---
 
@@ -94,7 +99,7 @@ plan. Gate: tree unchanged except the new doc; `sim_frame_budget` untouched.
 
 ---
 
-## Phase 1 — Space: 4-level stage + bank0 eviction
+## Phase 1 — Space: 4-level stage (✅ done) + bank0 eviction (next)
 
 **Why:** Phases 2-6 need bank0 bytes and a *move target*. The level cut is the
 only source of free space that costs no gameplay.
@@ -137,7 +142,13 @@ new tables) and the tree green with the 4-level stage as the default build.
 
 ---
 
-## Phase 2 — Reclaim per-line cycles (fund the features)
+## Phase 2 — Reclaim per-line cycles — ✅ the beam fold LANDED (2026-10-21)
+
+Measured after the fold (`tools/cycle_ledger.py`): P1 **72 → 68**, P2 65 → 61,
+P3 70 → 66 line cycles; `BeamMask` deleted, `verify_build` pins PlayerColTable
+bit 1 == row 2 only, `test_laser_s4` rewritten. Wall model unchanged (267.0).
+
+
 
 **Phase 0 closed two of the three candidates** (`plans/hero_cycle_ledger.md`
 §2): the object window is already minimal (7 c to compute the row + 4 c to test)
@@ -286,8 +297,8 @@ Gate: battery + sims + SCN oracle; screenshots per converted type.
 | Phase | Effort | Risk |
 |---|---|---|
 | 0 ledger | done | none (read-only) |
-| 1 space (cut + evict) | 1-2 | medium (bank moves) |
-| 2 cycles | 1 | medium-high (kernel timing) |
+| 1 space (cut done, evict next) | 1-2 | medium (bank moves) |
+| 2 cycles (beam fold done) | 1 | medium-high (kernel timing) |
 | 3 tint fix | 0.5 | low once 2 lands |
 | 4 VDEL/colour table | 0.5-1 | medium |
 | 5 second window | 1-2 | high (extra lines + HMOVE) |

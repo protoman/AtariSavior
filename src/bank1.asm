@@ -95,7 +95,7 @@ MothYDerive:
 ; (sta $1FF6/rts), which returns to the bank0 caller with C intact.
 SWCHB       = $0282
 StepsLeft   = $97               ; bank0 per-frame step latch (ZP byte block)
-LEVEL_COUNT = 20                 ; hand copy of kernel LEVEL_COUNT
+LEVEL_COUNT = 4                 ; hand copy of kernel LEVEL_COUNT
 TitleSelect:
     lda StepsLeft
     and #%00000010
@@ -1974,7 +1974,7 @@ ReturnPad:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF6
-    jmp $F18A           ; Overscan in bank0 (must match bank0 ToGameStub;
+    jmp $F187           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; verify_build --sync-overscan patches this from
                         ; bank0.lst after every bank0 build)
 

@@ -7,25 +7,9 @@
     include "generated/level_002_extras.asm"
     include "generated/level_003_extras.asm"
     include "generated/level_004_extras.asm"
-    include "generated/level_005_extras.asm"
-    include "generated/level_006_extras.asm"
-    include "generated/level_007_extras.asm"
-    include "generated/level_008_extras.asm"
-    include "generated/level_009_extras.asm"
-    include "generated/level_010_extras.asm"
-    include "generated/level_011_extras.asm"
-    include "generated/level_012_extras.asm"
-    include "generated/level_013_extras.asm"
-    include "generated/level_014_extras.asm"
-    include "generated/level_015_extras.asm"
-    include "generated/level_016_extras.asm"
-    include "generated/level_017_extras.asm"
-    include "generated/level_018_extras.asm"
-    include "generated/level_019_extras.asm"
-    include "generated/level_020_extras.asm"
-LEVEL_EXTRAS_COUNT = 20
+LEVEL_EXTRAS_COUNT = 4
 LevExtrasLo:
-  .byte <LEVEL1_AsyncExtras, <LEVEL2_AsyncExtras, <LEVEL3_AsyncExtras, <LEVEL4_AsyncExtras, <LEVEL5_AsyncExtras, <LEVEL6_AsyncExtras, <LEVEL7_AsyncExtras, <LEVEL8_AsyncExtras, <LEVEL9_AsyncExtras, <LEVEL10_AsyncExtras, <LEVEL11_AsyncExtras, <LEVEL12_AsyncExtras, <LEVEL13_AsyncExtras, <LEVEL14_AsyncExtras, <LEVEL15_AsyncExtras, <LEVEL16_AsyncExtras, <LEVEL17_AsyncExtras, <LEVEL18_AsyncExtras, <LEVEL19_AsyncExtras, <LEVEL20_AsyncExtras
+  .byte <LEVEL1_AsyncExtras, <LEVEL2_AsyncExtras, <LEVEL3_AsyncExtras, <LEVEL4_AsyncExtras
 LevExtrasHi:
-  .byte >LEVEL1_AsyncExtras, >LEVEL2_AsyncExtras, >LEVEL3_AsyncExtras, >LEVEL4_AsyncExtras, >LEVEL5_AsyncExtras, >LEVEL6_AsyncExtras, >LEVEL7_AsyncExtras, >LEVEL8_AsyncExtras, >LEVEL9_AsyncExtras, >LEVEL10_AsyncExtras, >LEVEL11_AsyncExtras, >LEVEL12_AsyncExtras, >LEVEL13_AsyncExtras, >LEVEL14_AsyncExtras, >LEVEL15_AsyncExtras, >LEVEL16_AsyncExtras, >LEVEL17_AsyncExtras, >LEVEL18_AsyncExtras, >LEVEL19_AsyncExtras, >LEVEL20_AsyncExtras
+  .byte >LEVEL1_AsyncExtras, >LEVEL2_AsyncExtras, >LEVEL3_AsyncExtras, >LEVEL4_AsyncExtras
 

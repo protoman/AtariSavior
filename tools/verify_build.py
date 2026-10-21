@@ -191,22 +191,23 @@ def check_rom(src: Path) -> bytes | None:
                 err(f".Line branch page-cross: {t.split(';')[0].strip()} at "
                     f"${addr:04X} targets ${tgt:04X} (4c, budget 3c) -> "
                     f"WSYNC overrun")
-    # 4) Laser S2.2: `lda BeamMask,Y` fetch budgeted at 4c = no page-cross
-    #    (kernel $F1xx -> table $FExx, operand + Y(<=11) must stay in $FExx).
-    #    A cross would add 1c to the object-path worst case (WSYNC guard).
-    for addr, text in rows:
-        t = text.strip()
-        if t.startswith(";"):
-            continue
-        m = re.match(r"^((?:[0-9a-f]{2}[ \t])+)\s*lda\s+BeamMask,Y\b", t)
-        if m:
-            bs = m.group(1).split()
-            if len(bs) != 3 or int(bs[2], 16) != 0xFE or int(bs[1], 16) > 0xF4:
-                err(f"BeamMask fetch operand ${''.join(bs[-2:])} at "
-                    f"${addr:04X} not no-cross in $FExx (budget assumes 4c)")
-            break
-    else:
-        err("lda BeamMask,Y not found in bank0.lst")
+    # 4) Phase 0 (2026-10-21): the beam enable is PlayerColTable's bit 1 —
+    #    `lda PlayerColTable,Y / sta COLUP0 / and LaserState / sta ENAM0`
+    #    must be the only ENAM0 gate in the hot loop (the retired BeamMask
+    #    table duplicated that bit for a separate 4c fetch).
+    ops = []
+    for _, x in rows:
+        o = re.sub(r"^\s*[0-9a-f]{2}(?:\s+[0-9a-f]{2})*\s*\*?\s*", "", x)
+        o = re.sub(r"\s+", " ", o.split(";")[0]).strip().lower()
+        if o:
+            ops.append(o)
+    seq = ["lda playercoltable,y", "sta colup0", "and laserstate",
+           "sta enam0"]
+    if not any(ops[i:i + 4] == seq for i in range(len(ops) - 3)):
+        err("beam gate sequence lda PlayerColTable,Y / sta COLUP0 / "
+            "and LaserState / sta ENAM0 not found (phase 0 fold broken)")
+    if any(o.startswith("lda beammask") for o in ops):
+        err("lda BeamMask,Y is back — the table was retired in phase 0")
     # 5) Class-A jitter guard (bugs.md #29): the color/beam gate skips A0=11
     #    (`cpy #PLAYER_SPRITE_H - 1`) — line A0=11 inherits row 10's COLUP0
     #    and ENAM0 writes. Requires [10]==[11] in both tables (row 11 render
@@ -214,7 +215,7 @@ def check_rom(src: Path) -> bytes | None:
     #    stale beam bit, silent). Removing the -1 gate without recounting
     #    the .Line worst path is also an error (78c stall, +1 scanline).
     if 0 in banks:
-        for name in ("PlayerColTable", "BeamMask"):
+        for name in ("PlayerColTable",):
             a = labels.get(name)
             if a is None:
                 err(f"{name} label not found in bank0.lst")
@@ -225,6 +226,11 @@ def check_rom(src: Path) -> bytes | None:
             elif tbl[10] != tbl[11]:
                 err(f"{name}[10]=${tbl[10]:02X} != [11]=${tbl[11]:02X} — "
                     "A0=11 gate skip inherits row 10 (verify_build #5)")
+            else:
+                beam = [i for i, v in enumerate(tbl) if v & 0x02]
+                if beam != [2]:
+                    err(f"{name} bit1 rows {beam} != [2] — bit1 is the "
+                        "ENAM0 enable (phase 0 fold): exactly the beam row 2")
     if not any(re.search(r"\bcpy\s+#PLAYER_SPRITE_H\s*-\s*1\b", t)
                for _, t in rows):
         err("color gate `cpy #PLAYER_SPRITE_H - 1` not found in bank0.lst "

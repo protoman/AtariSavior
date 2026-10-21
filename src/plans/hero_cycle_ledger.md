@@ -94,6 +94,21 @@ the running sprite row (`A0+1`), so the counter must live in ZP:
 
 ---
 
+### Post-fold measurement (Phase 2 landed, commit follows)
+
+| path | before | after beam fold |
+|---|---|---|
+| P1 player-in + object-in | 72 | **68** |
+| P2 player-in, object-out | 65 | **61** |
+| P3 player-in, A==8 | 70 | **66** |
+
+The `A0=10` page-cross line is now 69 — **4 c inside the 73 c contract and 7 c
+inside the absolute line**. That 4 c is the whole budget for later `.Line`
+work. `BeamMask` (12 B) is gone; `verify_build` now pins "bit 1 set only at
+index 2 of PlayerColTable" instead of the old fetch/page guard.
+
+---
+
 ## 3. `.Row` setup line — it is a **2-scanline window with ~60 free cycles**
 
 Store phases (gameplay, no door; the door path lands COLUP1 at c64 instead):
