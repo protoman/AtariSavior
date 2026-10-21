@@ -90,6 +90,50 @@ def edge_open(rows, direction: str) -> bool:
     return bool(edge_cells(rows, direction))
 
 
+# Structural walls: hot, phase, door and hcrunch are GATED (they open at run
+# time), so only rock/solid/void block a path for this check.
+STRUCTURAL_WALLS = set("#H")   # rock + hot; P/C are gated (open at run time)
+
+
+def entries_connected(rows) -> bool:
+    """Every carved edge opening must reach the others through open cells.
+
+    PF walls span a whole 48-line band, so a band-1 wall that does not line up
+    with the vertical corridor makes a room impassable (user reports
+    2026-10-21: level 13 rooms 11-13 unreachable; level 13 room 4 door
+    unreachable). Rooms with fewer than two edge sides are dead ends/goals.
+    """
+    edges = []
+    for x in range(10):
+        if rows[0][x] not in STRUCTURAL_WALLS:
+            edges.append((0, x))
+        if rows[2][x] not in STRUCTURAL_WALLS:
+            edges.append((2, x))
+    if rows[1][0] not in STRUCTURAL_WALLS:
+        edges.append((1, 0))
+    sides = set()
+    for y, _x in edges:
+        sides.add(("N" if y == 0 else "S" if y == 2 else "H"))
+    if len(sides) < 2:
+        return True
+    entries = [e for e in edges if e[0] in (0, 1)]   # N and H ways in
+    exits = [e for e in edges if e[0] in (2, 1)]     # S and H ways out
+    for start in entries:
+        seen = {start}
+        stack = [start]
+        while stack:
+            y, x = stack.pop()
+            for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                ny, nx = y + dy, x + dx
+                if (0 <= ny < 3 and 0 <= nx < 10 and (ny, nx) not in seen
+                        and rows[ny][nx] not in STRUCTURAL_WALLS):
+                    seen.add((ny, nx))
+                    stack.append((ny, nx))
+        if not any(t in seen for t in exits):
+            return False
+    return True
+
+
 def main() -> int:
     binary = ER.ensure_editor()
 
@@ -308,6 +352,36 @@ def main() -> int:
                               f"at cell {miner_cell} (same side)")
                         return 1
 
+            # Connectivity + gate alignment (user reports 2026-10-21).
+            for room in rooms:
+                rrows = rows[room["room_id"]]
+                if not entries_connected(rrows):
+                    print(f"FAIL: level {level_n} room {room['room_id']} "
+                          "does not connect its carved entries — a band-1 "
+                          f"wall is off the corridor {rrows}")
+                    return 1
+                corridor = {x for x in range(10)
+                            if rrows[0][x] == "." and rrows[2][x] == "."}
+                door_cols = [int(patch[1])
+                             for patch in room.get("asym_patches") or []
+                             if len(patch) >= 3 and patch[2] == 9]
+                phase_cols = [int(feat[1])
+                              for feat in room.get("feature_cells") or []
+                              if len(feat) == 3 and feat[2] == 10]
+                if door_cols or phase_cols:
+                    if not corridor:
+                        print(f"FAIL: level {level_n} room "
+                              f"{room['room_id']} has a gate but no vertical "
+                              "corridor")
+                        return 1
+                    for col in door_cols + phase_cols:
+                        if col not in corridor:
+                            print(f"FAIL: level {level_n} room "
+                                  f"{room['room_id']} gate/blink at cell {col} "
+                                  f"is OFF the corridor {sorted(corridor)} — "
+                                  "unreachable")
+                            return 1
+
             # Objects: the editor caps (2 per room, 1 per tile row).
             for room in rooms:
                 enemies = room.get("enemies") or []
@@ -463,9 +537,13 @@ def main() -> int:
             if 4 <= level_n < 7 and 7 not in goal_hazards:
                 print(f"FAIL: level {level_n} water goal should carry a raft")
                 return 1
-            if level_n >= 6 and (doors == 0 or keys != doors):
-                print(f"FAIL: level {level_n} gate/key mismatch "
-                      f"(doors={doors}, keys={keys})")
+            # Locked doors are disabled (M1 stripe cannot gate a vertical
+            # corridor — see DataSerializer PlanFor); the gate role is the
+            # blinking PHASE corridor from level 6.
+            if doors or keys:
+                print(f"FAIL: level {level_n} has locked doors/keys "
+                      f"(doors={doors}, keys={keys}) — disabled until the "
+                      "per-pair exit redesign")
                 return 1
             if level_n >= 7 and tents == 0:
                 print(f"FAIL: level {level_n} has no tentacle")
@@ -488,7 +566,7 @@ def main() -> int:
                     print(f"FAIL: level {level_n} room {room['room_id']} has "
                           "an object in a HOT middle band")
                     return 1
-            if level_n >= 11 and phases == 0:
+            if level_n >= 6 and phases == 0:
                 print(f"FAIL: level {level_n} has no phase wall")
                 return 1
             if level_n >= 14 and hcrunches == 0:

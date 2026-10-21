@@ -23,6 +23,7 @@
 #include <filesystem>
 #include <map>
 #include <set>
+#include <vector>
 #include <sstream>
 #include <iterator>
 
@@ -552,12 +553,19 @@ ModelData MakeShapeModel(int modelId, int mask) {
         model.mid_band_type = 1;
     }
     if (mask & SHAPE_GATE) {
-        // Keyed gate: row 1 is a wall except ONE gap; the room's door patch
-        // (LOCKED_DOOR) fills that gap and only the key opens it.
+        // Keyed gate: row 1 is a wall except the room's VERTICAL CORRIDOR,
+        // which is where the door patches sit. A gap anywhere else is
+        // unreachable — the player descends through the corridor cells, and a
+        // door at cell 4 while the exits are 8/9 (or 3/6) soft-locked the
+        // level (user report 2026-10-21: level 13 room 4 could not be passed).
         for (int x = 1; x < kRoomWidth; ++x) {
-            model.tiles[1 * kRoomWidth + x] =
-                x == kGateCol ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
+            model.tiles[1 * kRoomWidth + x] = (int)TileType::SOLID_WALL;
         }
+        // ONE door cell: the M1 patch strip allows a single column per side,
+        // and the door must be the only way down (the other corridor cell
+        // stays a wall, a dead-end niche from band 0/2).
+        const int doorCell = (mask & SHAPE_2GAP) ? kGapA : kVertExitA;
+        model.tiles[1 * kRoomWidth + doorCell] = (int)TileType::AIR;
     }
     if (mask & SHAPE_2GAP) {
         // Two vertical gaps: the pair is repeated in the ceiling and the
@@ -567,7 +575,16 @@ ModelData MakeShapeModel(int modelId, int mask) {
             for (int x = 0; x < kRoomWidth; ++x) model.tiles[x] =
                 (int)TileType::SOLID_WALL;
             model.tiles[kGapA] = model.tiles[kGapB] = (int)TileType::AIR;
-            if (mask & SHAPE_START) {
+            if ((mask & SHAPE_GATE) && (mask & SHAPE_2GAP)) {
+            // A two-gap ceiling reaches the door through band 0: the top
+            // corridor is a lobby, so an entry arriving at the OTHER gap still
+            // finds the door. (The south edge keeps only the two carved cells
+            // — widening it would drop the player into the next room's wall.)
+            for (int x = kGapA; x <= kGapB; ++x) {
+                model.tiles[x] = (int)TileType::AIR;
+            }
+        }
+        if (mask & SHAPE_START) {
                 for (int x = 2; x <= 6; ++x)
                     model.tiles[x] = (int)TileType::AIR;
             }
@@ -632,6 +649,51 @@ ModelData MakeShapeModel(int modelId, int mask) {
         }
         model.mid_band_type = 1;
     }
+    // --- CONNECTIVITY GUARANTEE (user reports 2026-10-21) ------------------
+    // PF walls are one pattern per 48-line band, so an entry only works if
+    // band 1 is open on the same column. Two failure families seen live:
+    //   * a hot/gate/archetype row-1 wall cut the vertical corridor (cells
+    //     8-9, or the two-gap cells 3/6) -> the room was impassable;
+    //   * a horizontal exit at row-1 cell 0 had no band-1 path to the
+    //     corridor -> level 13 rooms 11-13 could not be reached.
+    // Guarantee both, then the doors/blink cells (patched on top at runtime)
+    // sit ON the only passage, which is the point of a gate.
+    {
+        int corrA = (mask & SHAPE_2GAP) ? kGapA : kVertExitA;
+        int corrB = (mask & SHAPE_2GAP) ? kGapB : kVertExitB;
+        if (mask & SHAPE_GATE) {
+            // The keyed door is the ONLY passage: do not re-open the other
+            // corridor cell here (it would bypass the gate).
+            corrB = corrA;
+        }
+        for (int x = corrA; x <= corrB; ++x) {
+            model.tiles[1 * kRoomWidth + x] = (int)TileType::AIR;
+        }
+        if (mask & SHAPE_H) {
+            // Horizontal entrance: a band-1 aisle from the outer edge (cell 0)
+            // to the nearest corridor cell.
+            const int near = corrA < corrB ? corrA : corrB;
+            for (int x = 0; x <= near; ++x) {
+                model.tiles[1 * kRoomWidth + x] = (int)TileType::AIR;
+            }
+        }
+        if ((mask & SHAPE_GATE) && (mask & SHAPE_2GAP)) {
+            // A two-gap ceiling reaches the door through band 0: the top
+            // corridor is a lobby, so an entry arriving at the OTHER gap still
+            // finds the door. (The south edge keeps only the two carved cells
+            // — widening it would drop the player into the next room's wall.)
+            for (int x = kGapA; x <= kGapB; ++x) {
+                model.tiles[x] = (int)TileType::AIR;
+            }
+        }
+        if (mask & SHAPE_START) {
+            // Start drop (band 0 cells 2..6) must reach the corridor too.
+            const int near = (mask & SHAPE_2GAP) ? kGapA : kVertExitA;
+            for (int x = 2; x <= near; ++x) {
+                model.tiles[x] = (int)TileType::AIR;
+            }
+        }
+    }
     if (arch && (mask & SHAPE_2GAP)) {
         model.tiles[1 * kRoomWidth + kGapA] = (int)TileType::AIR;
         model.tiles[1 * kRoomWidth + kGapB] = (int)TileType::AIR;
@@ -693,10 +755,16 @@ LevelPlan PlanFor(int level) {
     LevelPlan p;
     p.hot = level >= 3;
     p.water = level >= 4;
-    p.gate = level >= 6;
+    // Locked doors are DISABLED (user report 2026-10-21: level 13 could not
+    // be completed). The door is an M1 column stripe, so it may only sit on a
+    // column walled in bands 0/2 — i.e. NOT on a vertical corridor — and the
+    // corridor is the only vertical passage. A true locked door needs
+    // per-PAIR exit columns (a redesign); until then the gate role is played
+    // by the blinking PHASE corridor, which does gate the corridor legally.
+    p.gate = false;
     p.tentacle = level >= 7;
     p.extra = level >= 9;
-    p.phase = level >= 11;      // the blink opens the gate for 45 frames
+    p.phase = level >= 6;       // timing gate on the corridor (was >= 11)
     p.hcrunch = level >= 14;    // crunch band sweeps the row-1 prefix
     p.patch = level >= 7;       // async block, now and then in normal rooms
     p.patch2 = level >= 12;     // two blocks (one per side) in that room
@@ -1053,15 +1121,28 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             room.room_x = walks[l - 1][i].x;
             room.room_y = walks[l - 1][i].y;
             if (roles[l - 1][i] == Role::Gate) {
-                // One LOCKED_DOOR cell in the gate gap (left/M1 side). Solid
-                // until the level's key is held, then touch opens it.
+                // LOCKED_DOOR cells ON THE CORRIDOR (left/M1 side), one per
+                // corridor cell (2 max = the patch cap). Solid until the
+                // level's key is held, then touch opens the room's door.
+                const int doorCol = (masks[l - 1][i] & SHAPE_2GAP)
+                                        ? kGapA : kVertExitA;
                 room.asym_patches.push_back(
-                    {1, kGateCol, (int)TileType::LOCKED_DOOR, 1});
+                    {1, doorCol, (int)TileType::LOCKED_DOOR, 1});
             }
             if (roles[l - 1][i] == Role::Phase) {
-                // The gate gap blinks: 45 frames solid, 45 open.
-                room.feature_cells.push_back(
-                    {1, kGateCol, (int)TileType::PHASE});
+                // The corridor blinks: 45 frames solid, 45 open. Both
+                // corridor cells so the blink gates the whole passage.
+                if (masks[l - 1][i] & SHAPE_2GAP) {
+                    room.feature_cells.push_back(
+                        {1, kGapA, (int)TileType::PHASE});
+                    room.feature_cells.push_back(
+                        {1, kGapB, (int)TileType::PHASE});
+                } else {
+                    for (int x = kVertExitA; x <= kVertExitB; ++x) {
+                        room.feature_cells.push_back(
+                            {1, x, (int)TileType::PHASE});
+                    }
+                }
             }
             if (roles[l - 1][i] == Role::Hcrunch) {
                 // Fixed 10-cell prefix on the middle band (live stage form).
