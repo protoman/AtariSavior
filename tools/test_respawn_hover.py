@@ -46,16 +46,13 @@ assert "lda Hover" in up and "sta Hover" in up, "physics must read+clear Hover"
 # ...and the bank1 HUD band ticks the grace once per gameplay frame
 assert re.search(r"^Hover\s*=\s*\$9C", B1, re.M), "bank1 must map Hover ($9C)"
 tick = B1[B1.index("Respawn hover (user rule 2026-10-21)"):]
-tick = tick[:tick.index(".HoverDone:")]
-assert re.search(r"lda Hover", tick) and re.search(r"dec Hover", tick), \
-    "bank1 HUD must tick the hover grace"
-assert re.search(r"lda SWCHA", tick) and re.search(r"lda INPT4", tick), \
-    "the armed state must watch BOTH the joystick and the fire button"
-assert re.search(r"lda #HOVER_FRAMES\s*\n\s*sta Hover", tick), \
-    "the first input must start the grace (HOVER_FRAMES)"
-# the tick must run before the HUD's first WSYNC (its cycles get absorbed)
-assert B1.index("Respawn hover (user rule 2026-10-21)") < B1.index(".TopGap:"), \
-    "hover tick must stay before the TopGap WSYNC loop"
+tick = tick[:tick.index("dec Hover")]
+assert re.search(r"lda DropTarget\s*\n\s*bne \.HoverDone", tick), \
+    "tick must freeze while a drop-in/title/tally owns the player"
+loop = B1[B1.index(".TopGap:"):B1.index(".TGskip:")]
+assert "Respawn hover (user rule 2026-10-21)" in loop, \
+    "tick must run inside the TopGap padding (the next WSYNC absorbs it)"
+assert "cpx #6" in loop, "tick must run on ONE TopGap line only"
 assert re.search(r"cmp #GRAVITY \+ 1", up), "lift threshold must be GRAVITY+1"
 assert up.index(".Integrate:") < up.index("lda Hover"), \
     "Hover check must sit at .Integrate (clamp jmps there)"
