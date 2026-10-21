@@ -382,70 +382,77 @@ def moth_strip_checks() -> int:
     return checks
 
 
-def hot_death_checks(rows: list[str]) -> int:
-    """Hot-death regression (user bug 2026-10-05): touching the M1 block on
-    the hot band must set Temp b7 (HotBump -> LoseLife). The old envelope
-    (sbc/cmp #14) assumed an 8px sprite span, but PLAYER_WIDTH=7 (lit
-    [vl, vl+6]) — 1px dead zone: blocked at X, killed only at X+1.
-    Envelope tightened to #13; repro: ry=60 facing right, rx=64 flush
-    (live) vs rx=65 first px into the block (die).
+HOT_ROWS = [
+    "..........",
+    "HHHH....##",        # row 1: hot cells cols 0-3, plain wall cols 8-9
+    "..........",
+]
+HOT_M1_COL = 5           # PF-OPEN row-1 cell (the M1 strip paints there)
 
-    RoomRects -> M0Shape: BOTH model-0 hot rects are gated — the 'H'
-    wall (mask $10, x=0,y=1,w=2,h=1) and the M1 block (mask $00, x=16,
-    y=1, w=2, h=1). `entered` = walk-hit OR M1-overlay funnel — the two
-    ways PHM reaches HotOverlapBody. The ball overlay never funnels to
-    the hot body (returns C=1 directly, "never hot"), and its envelope
-    (vl >= BallX-13 >= 74) is disjoint from M1's (vl <= M1X <= 71) for
-    this model, so it can mask nothing here.
 
-    Two passes (user bug 2, 2026-10-05): dead=0 strip alive; dead=$10
-    strip destroyed — the M1 hot rect must die WITH the strip (mask $00
-    gates on EnemyDeadMask b4, not BombPacked): walking the landing
-    proposal (rows straddle into the floor band) still hits the floor
-    cell under the block, reaches the body unconditionally, and must NOT
-    fire b7 where the block used to be."""
-    mem = Mem()
-    load_case(mem, rows)
-    r = mem.ram
-    r[L0["RoomRectsLo"] - 0x80] = L3["M0Shape"] & 0xFF
-    r[L0["RoomRectsHi"] - 0x80] = L3["M0Shape"] >> 8
-    r[L2["RoomPF0Lo"] - 0x80] = BANK3[L3["LEVEL1_AsyncExtras"] - 0xF000 + 1]
-    r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK3[L3["LEVEL1_AsyncExtras"] - 0xF000 + 2]
-    r[L0["BombPacked"] - 0x80] = 0
-    packed = 0x11                         # rc=0, band0 -> tramp crosses
-    r[L0["LineCount"] - 0x80] = packed
-    m1n = BANK3[L3["LEVEL1_AsyncExtras"] - 0xF000 + 1] >> 4
-    m1x = 8 * m1n - 1 if m1n else 0
-    hot_rects = ((0, 1, 2, 1), (16, 1, 2, 1))   # x,y,w,h (4px cols/tile rows)
+def hot_death_checks(rows_unused: list[str] | None = None) -> int:
+    """C11 (2026-10-21) hot-death sweeps — PF-derived hot, test-owned room.
+
+    Hot cells of a mid_band_type=1 model ARE its solid row-1 PF cells
+    (convert promotes every row-1 wall), so HotOverlapBody sweeps the box's
+    display columns over PF row 1 whenever MetaB b6 is set. The sweep is
+    reached only from a cell-walk hit, so the contract is:
+
+        Temp b7 ⟺ the player bumped something AND the box overlaps a SOLID
+        row-1 cell (in a hot room), or the staged hot-band M1 block cell.
+
+    Two passes:
+      A. PF sweep (no M1 cell): every X x both facings x row-pair reps.
+      B. M1 block cell (PF-open, staged in RoomM1Hot = col+1): strip alive
+         (EnemyDeadMask b4 clear) → kill; strip destroyed → pass.
+      C. PUNCHED parents: the same hot room with row 1 emptied (= what the
+         bomb punch does to the PF cell) must never fire Temp b7, even
+         though the box still overlaps row 1 — the bombed hot wall stops
+         being hot with no record gate.
+    The cold control (MetaB b6 clear) must never fire Temp b7 — normal
+    collision is the cell walk's own C=1, not a death.
+    """
+    punched = [HOT_ROWS[0], "..........", HOT_ROWS[2]]   # row 1 blasted out
     checks = 0
-    for dead in (0, 0x10):        # strip alive / destroyed (EnemyDeadMask b4)
+    for rows, hot, m1, dead in (
+            (HOT_ROWS, True, False, 0), (HOT_ROWS, True, True, 0),
+            (HOT_ROWS, True, True, 0x10), (HOT_ROWS, False, False, 0),
+            (punched, True, False, 0)):
+        mem = Mem()
+        load_case(mem, rows)
+        r = mem.ram
+        r[L3["RoomMetaB"] - 0x80] = 0x40 if hot else 0
+        r[L3["RoomM1Hot"] - 0x80] = HOT_M1_COL + 1 if m1 else 0
         r[L0["EnemyDeadMask"] - 0x80] = dead
-        # destroyed strip kills the M1 rect too; the 'H' wall rect stays
-        # (BombPacked = 0, wall not blasted)
-        rects = hot_rects if dead == 0 else hot_rects[:1]
+        r[L0["BombPacked"] - 0x80] = 0
+        r[L0["LineCount"] - 0x80] = 0        # no ball/M1 overlay: entered =
+        #                                      the cell walk's own result
         for rd in (0, 1):
             for rx in range(4, 160):
-                for ry in (40, 60, 90, 120):  # rows {0,1},{1,1},{1,2},{2,2}
+                for ry in (40, 60, 90, 120):   # rows {0,1},{1,1},{1,2},{2,2}
                     r[L0["RoomX"] - 0x80] = rx
                     r[L0["PlayerDir"] - 0x80] = rd
                     r[L0["RoomY"] - 0x80] = ry
                     r[L0["Temp"] - 0x80] = 0x0F    # joystick: nothing pressed
                     lo, hi = visible_range(rx, rd)
                     top, bot = row_range(ry)
-                    entered = (expected_hit(rows, rx, rd, ry)
-                               or m1_overlay_hit(rx, rd, ry, rows, m1x, dead))
-                    want = entered and any(
-                        hx <= hi and hx + hw > lo and hy <= bot
-                        and hy + hh > top
-                        for hx, hy, hw, hh in rects)
+                    entered = expected_hit(rows, rx, rd, ry)
+                    row1 = top <= 1 <= bot
+                    solid = any(rows[1][c >> 1] in "#H"
+                                for c in range(lo, hi + 1))
+                    m1_cell = (m1 and dead == 0 and row1
+                               and 2 * HOT_M1_COL <= hi
+                               and 2 * HOT_M1_COL + 2 > lo)
+                    want = entered and hot and row1 and (solid or m1_cell)
                     run_phm(mem, rx, ry, rd)
                     got = bool(r[L0["Temp"] - 0x80] & 0x80)
                     assert got == want, (
-                        f"hot death dead=${dead:02X} X={rx} Y={ry} "
-                        f"dir={rd}: Temp.b7={int(got)} want {int(want)} "
-                        f"(entered={int(entered)} box "
-                        f"{lo}..{hi} {top}..{bot} "
-                        f"vl={visible_left_px(rx, rd)})")
+                        f"hot sweep hot={int(hot)} m1={int(m1)} "
+                        f"dead=${dead:02X} X={rx} Y={ry} dir={rd}: "
+                        f"Temp.b7={int(got)} want {int(want)} "
+                        f"(entered={int(entered)} row1={int(row1)} "
+                        f"solid={int(solid)} m1cell={int(m1_cell)} box "
+                        f"{lo}..{hi} {top}..{bot})")
                     checks += 1
     return checks
 
@@ -580,14 +587,11 @@ def main() -> int:
     # --- Phase 4: asym overlay (packed LineCount) — crossing + px/band ---
     asym = asym_checks(cases[0][1])
     strip = moth_strip_checks()
-    # mid_band_type FEATURE stays (generator fixtures always covered by
-    # test_mid_band_hot); this runtime envelope check is M0-specific
-    # (M0Shape/M0TilePF0 below). Model 0 dropped the key 2026-10-08 —
-    # dormant until model 0 sets mid_band_type again.
-    if by_id.get(0, {}).get("mid_band_type"):
-        hot = hot_death_checks(cases[0][1])
-    else:
-        hot = "dormant (model 0 has no mid_band_type)"
+    # C11 (2026-10-21): hot death is PF-derived, so the sweep no longer needs
+    # a live hot model — it authors its own hot room in this file
+    # (HOT_ROWS) and covers the PF sweep, the bomb-punched parent and the
+    # hot-band M1 block cell (strip alive/destroyed) plus the cold control.
+    hot = hot_death_checks()
     # --- #4 tentacle probe origin (UE_Tentacle RoomX = cand-1) -------------
     # Column-set inclusion, geometry-free: PHM's row range (Y..Y+11) always
     # covers the tentacle ink rows (Y+1..Y+8), so cols-coverage implies the

@@ -78,12 +78,38 @@ assert "H" not in "".join(rows)
 rows = rows_of(make_model(hot=1, tiles=t8))
 assert rows[1] == "H.........", f"hot row1 with legacy tile {rows[1]!r}"
 
-# --- 4. hot-rect stream emission ------------------------------------------
-cold = convert_room.lines(rows_of(make_model()), prefix="T0", source="test")
-assert hot_counts(cold) == [0], f"default hot rects {hot_counts(cold)}"
-hot = convert_room.lines(rows_of(make_model(hot=1)), prefix="T1", source="test")
-assert hot_counts(hot) == [1], (
-    f"hot model row1 cols0-7 must emit one hot rect, got {hot_counts(hot)}")
+# --- 4. shape block emission (C11 2026-10-21) -----------------------------
+# A SHAPE block is exactly `T<id>Shape:` / `T<id>Rows:` + 3 row-pool indices,
+# band 1's b7 = the selector. The hot stream is GONE from stage blocks: hot
+# death derives from the PF row 1 the loader expands (see test_phase_kill's
+# HotOverlapBody cases and test_cell_map's hot sweep).
+from convert_room import RowPool  # noqa: E402
+
+pool = RowPool()
+cold = convert_room.lines(rows_of(make_model()), prefix="T0", source="test",
+                          pool=pool, with_meta=False)
+hot = convert_room.lines(rows_of(make_model(hot=1)), prefix="T1",
+                         source="test", pool=pool, with_meta=False)
+assert "number of hot rectangles" not in " ".join(cold + hot), (
+    "a shape block must not carry a hot count / record stream (C11)")
+
+
+def shape_idx(lines, prefix):
+    line = lines[lines.index(prefix + "Rows:") + 1]
+    return [int(v.strip().lstrip("$"), 16)
+            for v in line.split(".byte", 1)[1].split(";")[0].split(",")]
+
+
+assert [i & 0x80 for i in shape_idx(cold, "T0")] == [0, 0, 0], (
+    f"cold shape indices must have b7 clear, got {shape_idx(cold, 'T0')}")
+assert [i & 0x80 for i in shape_idx(hot, "T1")] == [0, 0x80, 0], (
+    f"hot flag must ride band 1 only, got {shape_idx(hot, 'T1')}")
+# legacy per-grid form (converter unit tests only) still shows the stream
+legacy_hot = convert_room.lines(rows_of(make_model(hot=1)), prefix="T1",
+                                source="test")
+assert hot_counts(legacy_hot) == [1], (
+    f"legacy hot-rect stream: row1 cols0-7 must be one rect, got "
+    f"{hot_counts(legacy_hot)}")
 
 # --- 5. ball patch on row 1 follows the selector --------------------------
 # Patch col 0 (mirror open at left col 9): ball ADDS a wall cell on row 1.
