@@ -696,6 +696,9 @@ scbrdTmp    = $ED       ; mid-scanline temp cache
 DelayCnt    = $EE       ; bar delay A preloaded once per frame (bank1; ColupfBuf+7)
 FineCnt     = $EF       ; bar fine delay cycles 0/2/3/4 (H3; bank1 only)
 Temp        = $AD       ; scratch variable
+DropTarget  = $8A       ; hand-copy of kernel ZP byte (spawn drop-in / title /
+                        ; tally sentinel): the hover grace must not run during
+                        ; a drop-in, or it expires before the player lands.
 Hover       = $9C       ; respawn hover (kernel ZP): $FF = armed/waiting for
                         ; the first input, 1..HOVER_FRAMES = grace running,
                         ; 0 = normal physics (ticked in this band).
@@ -805,17 +808,27 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     lda CollisionEndY
     sta LineCount
 
-    ; --- Respawn hover (user rule 2026-10-21) --------------------------------
+    ; --- Top gap: 6 scanlines (lower HUD elements) ---
+    ; 4 + the 2 lines the removed ball-at-boundary block used to occupy:
+    ; bar/lives/bombs/score keep their exact scanlines (HudPad stays 9).
+    ldx #6
+.TopGap:
+    sta WSYNC
+    cpx #6
+    bne .TGskip
+    ; --- Respawn hover (user rule 2026-10-21) ------------------------------
     ; $FF = armed at death (kernel LoseLife): an untouched player keeps
     ; hovering. The FIRST direction/fire press starts the 1.5 s grace, which
-    ; then expires on its own so a sideways-only player still falls. Runs on
-    ; the pre-TopGap line: the block's first WSYNC absorbs the cycles.
+    ; then expires on its own so a sideways-only player still falls. Frozen
+    ; while a drop-in/title/tally owns the player (DropTarget != 0) — otherwise
+    ; the grace expires before he lands and the water death repeats.
+    ; Runs on the FIRST TopGap line only: the next WSYNC absorbs its variable
+    ; cycles, so the HUD band's line count and its cycle-tuned lines never move.
     lda Hover
     beq .HoverDone
-    bmi .HoverWait              ; bit 7 set = armed ($FF)
-    dec Hover                   ; grace running
-    jmp .HoverDone
-.HoverWait:
+    bpl .HoverTick              ; 1..HOVER_FRAMES = grace running
+    lda DropTarget
+    bne .HoverDone
     lda SWCHA                   ; D4..D7: 0 = pressed (any direction)
     eor #$FF
     and #$F0
@@ -825,14 +838,11 @@ INPT4       = $0C       ; fire button (active low, bit 7)
 .HoverArm:
     lda #HOVER_FRAMES
     sta Hover
+    jmp .HoverDone
+.HoverTick:
+    dec Hover
 .HoverDone:
-
-    ; --- Top gap: 6 scanlines (lower HUD elements) ---
-    ; 4 + the 2 lines the removed ball-at-boundary block used to occupy:
-    ; bar/lives/bombs/score keep their exact scanlines (HudPad stays 9).
-    ldx #6
-.TopGap:
-    sta WSYNC
+.TGskip:
     dex
     bne .TopGap
 
@@ -1520,7 +1530,7 @@ JET_AUD_BASE = $0F           ; mirrors kernel.asm EQU (value guarded by tests)
 JET_AUD_VOL  = $08
 LASER_AUD_C  = 2             ; mirrors kernel.asm EQU: div-15 tone = low pitch
 LASER_AUD_V  = 9
-DropTarget = $8A             ; hand-copy of kernel ZP byte (spawn drop-in)
+
 
 UpdateBombSound:
     lda BombSnd

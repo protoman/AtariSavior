@@ -51,6 +51,27 @@ def destiny(death_y: int) -> int:
 # The band check tests the ORIGIN (RoomY >= 125), so one tile up clears it.
 # A death can only happen at the line (the check fires the first frame the
 # origin reaches it), i.e. 125..126 with subpixel carry.
+# --- 4. the drop-in must not burn the grace (the repeated-death bug) -------
+# LoseLife arms $FF; the drop then owns the player for many frames. If the
+# grace started on input DURING the drop it expired before landing and the
+# player fell straight back into the water — the "dies in sequence" report.
+def sequence(drop_frames: int, input_held: bool) -> int:
+    """Hover value after the drop + 1 landed frame (input held throughout)."""
+    hover = 0xFF
+    for f in range(drop_frames + 1):
+        drop = f < drop_frames
+        if drop:
+            continue                      # DropTarget != 0: tick frozen
+        if hover == 0xFF and input_held:
+            hover = 90                    # first landed-frame input arms it
+        elif 0 < hover < 0xFF:
+            hover -= 1
+    return hover
+
+
+assert sequence(40, True) == 90, "the grace must start AFTER landing"
+assert sequence(40, False) == 0xFF, "an untouched landed player keeps hovering"
+
 for death_y in (KILL, KILL + 1):
     y = destiny(death_y)
     assert y < KILL, (
@@ -95,6 +116,27 @@ def fly(y0: int, frames: int = 180) -> list[int]:
         trace.append(roomy)
     return trace
 
+
+# --- 4. the drop-in must not burn the grace (the repeated-death bug) -------
+# LoseLife arms $FF; the drop then owns the player for many frames. If the
+# grace started on input DURING the drop it expired before landing and the
+# player fell straight back into the water — the "dies in sequence" report.
+def sequence(drop_frames: int, input_held: bool) -> int:
+    """Hover value after the drop + 1 landed frame (input held throughout)."""
+    hover = 0xFF
+    for f in range(drop_frames + 1):
+        drop = f < drop_frames
+        if drop:
+            continue                      # DropTarget != 0: tick frozen
+        if hover == 0xFF and input_held:
+            hover = 90                    # first landed-frame input arms it
+        elif 0 < hover < 0xFF:
+            hover -= 1
+    return hover
+
+
+assert sequence(40, True) == 90, "the grace must start AFTER landing"
+assert sequence(40, False) == 0xFF, "an untouched landed player keeps hovering"
 
 for death_y in (KILL, KILL + 1):
     y = destiny(death_y)
