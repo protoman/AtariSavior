@@ -440,10 +440,14 @@ const char* const kArchHot[7] = {
                     //    else the spawn lands on a hot wall (budget mode)
 };
 const int kArchHotGapX[7] = {10, 6, 10, 4, 4, 2, 8};   // cell*2
-// The miner (LevelMinerX = 4 px, 4 px wide -> cells 2..3) must STAND on a
-// solid block (user rule 2026-10-21: a person to rescue does not swim/fly).
-const int kMinerCell = 2;
-const float kMinerX = (float)(kMinerCell * 2);
+// The miner must STAND on a solid block (user rule 2026-10-21: a person to
+// rescue does not swim/fly). miner_x is in CELL units: the converter turns it
+// into display col `miner_x * 2` (8 px per cell), so cell 4 = px 32 and the
+// mirrored cell (editor x 15) = px 120. The water-goal rock sits on cell 4 in
+// the half-model, which the reflected playfield also draws on the right.
+const int kMinerCell = 4;
+const float kMinerX = (float)kMinerCell;      // display col 8  (px 32)
+const float kMinerFarX = 15.0f;               // display col 30 (px 120)
 const char* const kArchName[15] = {
     "", "Ladder", "Pillars", "Steps", "Pocket", "Zigzag", "Spiral",
     "Gallery", "HotGate", "HotSplit", "HotComb", "HotAlign", "HotTwin",
@@ -604,10 +608,8 @@ ModelData MakeShapeModel(int modelId, int mask) {
             model.tiles[(kRoomHeight - 1) * kRoomWidth + x] =
                 (int)TileType::AIR;
         }
-        for (int x = kMinerCell; x <= kMinerCell + 1; ++x) {
-            model.tiles[(kRoomHeight - 1) * kRoomWidth + x] =
-                (int)TileType::SOLID_WALL;
-        }
+        model.tiles[(kRoomHeight - 1) * kRoomWidth + kMinerCell] =
+            (int)TileType::SOLID_WALL;
     }
     // Archetype interior (HERO-like normality): cells 1..7 only, applied
     // AFTER the functional carving, then the 2-gap corridor is re-opened.
@@ -1030,6 +1032,17 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         const int roomCount = (int)walks[l - 1].size();
         level.miner_room = roomCount - 1;     // the goal is the last room
         level.miner_x = kMinerX;              // on the water-goal rock
+        // User rule 2026-10-21: if the walk enters the goal room from a SIDE,
+        // the miner waits on the OPPOSITE side (on the entry side the room is
+        // trivial). Vertical entry keeps the left-positioned miner.
+        if (roomCount >= 2) {
+            const GridPos& goalPos = walks[l - 1][roomCount - 1];
+            const GridPos& prevPos = walks[l - 1][roomCount - 2];
+            if (prevPos.x != goalPos.x) {
+                level.miner_x = (prevPos.x < goalPos.x) ? kMinerFarX
+                                                        : kMinerX;
+            }
+        }
         level.miner_y = 7.0f;                 // convert hard-fails any other row
         level.miner_dir = 1;
         const LevelPlan plan = PlanFor(l);

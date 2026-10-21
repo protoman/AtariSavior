@@ -98,8 +98,8 @@ protected:
             }
             // Miner dot at its game position (room px -> display grid).
             if (r.miner) {
-                const int mx = ox + (int)(r.minerX / 4.0f) * kColW;
-                const int my = oy + (int)(r.minerY / 12.0f) * kRowH;
+                const int mx = ox + (int)(r.minerX * 2.0f) * kColW;
+                const int my = oy + (int)r.minerY * kRowH;
                 p.setPen(Qt::NoPen);
                 p.setBrush(QColor(255, 140, 180));
                 p.drawEllipse(QPoint(mx + kColW / 2, my + kRowH / 2), 6, 6);
@@ -183,8 +183,8 @@ void LevelMapWindow::SetLevel(const hero::LevelData& level,
         v.start = (room.room_id == level.start_room);
         v.miner = (room.room_id == minerRoom);
         v.water = room.bottom_band;
-        v.minerX = level.miner_x;
-        v.minerY = level.miner_y * 12.0f;   // rows -> px (kernel: 84)
+        v.minerX = level.miner_x;   // CELL units (display col = x * 2)
+        v.minerY = level.miner_y;   // display row (kernel: 7 = 84 px)
         for (int row = 0; row < hero::kRoomHeight; ++row) {
             QString line(hero::kRoomWidth, '.');
             if (model) {

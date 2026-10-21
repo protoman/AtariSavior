@@ -277,16 +277,36 @@ def main() -> int:
                 return 1
 
             # Miner stands on a solid block (user rule 2026-10-21): a person
-            # to rescue does not float over water/air. MinerX = 4 px (cells
-            # 2-3) and MinerY = 84 px (band 1), so band 2 under him is solid.
+            # to rescue does not float over water/air. miner_x is in CELL
+            # units (converter: display col = x*2); MinerY = 84 px (band 1),
+            # so the band-2 cell under him must be solid.
             miner_id = int(level["miner_room"]) & 0x7F
             miner_rows = rows[miner_id]
-            for c in (2, 3):
-                if miner_rows[2][c] == ".":
-                    print(f"FAIL: level {level_n} miner room {miner_id} has "
-                          f"no block under the miner at cell {c} "
-                          f"({miner_rows[2]!r})")
-                    return 1
+            miner_cell = int(round(float(level["miner_x"])))
+            if not 0 <= miner_cell < 20:
+                print(f"FAIL: level {level_n} miner_x {level['miner_x']} is "
+                      "outside the 20-cell stage")
+                return 1
+            half_cell = (miner_cell if miner_cell < 10 else 19 - miner_cell)
+            if miner_rows[2][half_cell] == ".":
+                print(f"FAIL: level {level_n} miner room {miner_id} has no "
+                      f"block under the miner at cell {half_cell} "
+                      f"({miner_rows[2]!r})")
+                return 1
+            # A SIDE entry must put the miner on the OPPOSITE side (user rule
+            # 2026-10-21): walked rooms are in order, so the room before the
+            # goal is where the player comes from.
+            if len(rooms) > 1:
+                prev, goal = rooms[-2], rooms[-1]
+                if int(prev["room_y"]) == int(goal["room_y"]) and \
+                        int(prev["room_x"]) != int(goal["room_x"]):
+                    from_west = int(prev["room_x"]) < int(goal["room_x"])
+                    want_right = from_west
+                    if (miner_cell >= 10) != want_right:
+                        print(f"FAIL: level {level_n} miner entered from "
+                              f"{'west' if from_west else 'east'} but sits "
+                              f"at cell {miner_cell} (same side)")
+                        return 1
 
             # Objects: the editor caps (2 per room, 1 per tile row).
             for room in rooms:
