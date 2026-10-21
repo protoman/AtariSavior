@@ -400,8 +400,14 @@ enum ShapeBits {
     SHAPE_WATER = 64,    // row-2 open water (bottom band, raft/tentacle)
     SHAPE_2GAP = 128,    // TWO vertical gaps (cells 3 and 6) instead of the
                          // centre 8-9: the next room must repeat the pair
-    SHAPE_CHANNEL = 256  // HERO-style water crossing: hot row-1 ceiling
+    SHAPE_CHANNEL = 256, // HERO-style water crossing: hot row-1 ceiling
                          // (cells 1..7), low channel over the water, raft
+    // User rule 2026-10-21: no room may be a straight vertical fall. From
+    // level 6 every LINK is NARROW (one corridor cell) or WIDE (both), and
+    // consecutive links alternate, so each through-room has a different number
+    // of exits at the top and the bottom and the player has to line up.
+    SHAPE_N1 = 1 << 13,  // narrow TOP opening (cell vA only)
+    SHAPE_S1 = 1 << 14   // narrow BOTTOM opening
 };
 constexpr int kGateCol = 4;          // the gate/door cell in row 1
 constexpr int kGapA = 3;             // 2-gap columns (model cells)
@@ -488,8 +494,8 @@ std::string ShapeName(int mask) {
     auto add = [&name](const char* part) {
         name += name.empty() ? part : std::string("+") + part;
     };
-    if (mask & SHAPE_N) add("N");
-    if (mask & SHAPE_S) add("S");
+    if (mask & SHAPE_N) add((mask & SHAPE_N1) ? "n" : "N");
+    if (mask & SHAPE_S) add((mask & SHAPE_S1) ? "s" : "S");
     if (mask & SHAPE_H) add("H");
     if (mask & SHAPE_START) add("Start");
     if (mask & SHAPE_GATE) add("Gate");
@@ -651,64 +657,70 @@ ModelData MakeShapeModel(int modelId, int mask) {
         }
         model.mid_band_type = 1;
     }
-    // --- CONNECTIVITY GUARANTEE (user reports 2026-10-21) ------------------
+    // --- EXIT GEOMETRY + CONNECTIVITY (user rules 2026-10-21) -------------
     // PF walls are one pattern per 48-line band, so an entry only works if
-    // band 1 is open on the same column. Two failure families seen live:
-    //   * a hot/gate/archetype row-1 wall cut the vertical corridor (cells
-    //     8-9, or the two-gap cells 3/6) -> the room was impassable;
-    //   * a horizontal exit at row-1 cell 0 had no band-1 path to the
-    //     corridor -> level 13 rooms 11-13 could not be reached.
-    // Guarantee both, then the doors/blink cells (patched on top at runtime)
-    // sit ON the only passage, which is the point of a gate.
+    // band 1 is open on the same column. The generator now:
+    //   * forces the carved edge cells (WIDE = both corridor cells, NARROW =
+    //     one), which is what makes consecutive links alternate;
+    //   * opens band 1 across the span between the top and bottom cells, so
+    //     the player can LINE UP (the "space in the middle band" a dogleg
+    //     room needs) — never a straight empty fall;
+    //   * gives a horizontal room its aisle from cell 0;
+    //   * lets a gate keep only the door column open in band 1.
     {
-        int corrA = (mask & SHAPE_2GAP) ? kGapA : kVertExitA;
-        int corrB = (mask & SHAPE_2GAP) ? kGapB : kVertExitB;
-        if (mask & SHAPE_GATE) {
-            // The keyed door is the ONLY passage: do not re-open the other
-            // corridor cell here (it would bypass the gate).
-            corrB = corrA;
-        }
-        if (mask & SHAPE_2GAP) {
-            // Only the two gap cells — opening the intervening span erased the
-            // archetype interior (Spiral/Pocket rooms became plain shafts the
-            // player can only fall through). A horizontal room is the
-            // exception: its aisle meets the corridor on the near side, so the
-            // far gap must reach it through band 1.
-            model.tiles[1 * kRoomWidth + corrA] = (int)TileType::AIR;
-            model.tiles[1 * kRoomWidth + corrB] = (int)TileType::AIR;
-            if (mask & SHAPE_H) {
-                for (int x = corrA; x <= corrB; ++x) {
-                    model.tiles[1 * kRoomWidth + x] = (int)TileType::AIR;
-                }
+        const int vA = (mask & SHAPE_2GAP) ? kGapA : kVertExitA;
+        const int vB = (mask & SHAPE_2GAP) ? kGapB : kVertExitB;
+        std::vector<int> nCells, sCells;
+        if (mask & SHAPE_N) {
+            model.tiles[vA] = (int)TileType::AIR;
+            nCells.push_back(vA);
+            if (mask & SHAPE_N1) {
+                model.tiles[vB] = (int)TileType::SOLID_WALL;
+            } else {
+                model.tiles[vB] = (int)TileType::AIR;
+                nCells.push_back(vB);
             }
-        } else {
-            for (int x = corrA; x <= corrB; ++x) {
+        }
+        if (mask & SHAPE_S) {
+            const int base = (kRoomHeight - 1) * kRoomWidth;
+            model.tiles[base + vA] = (int)TileType::AIR;
+            sCells.push_back(vA);
+            if (mask & SHAPE_S1) {
+                model.tiles[base + vB] = (int)TileType::SOLID_WALL;
+            } else {
+                model.tiles[base + vB] = (int)TileType::AIR;
+                sCells.push_back(vB);
+            }
+        }
+        int lo = kRoomWidth, hi = -1;
+        for (int c : nCells) { if (c < lo) lo = c; if (c > hi) hi = c; }
+        for (int c : sCells) { if (c < lo) lo = c; if (c > hi) hi = c; }
+        if (mask & SHAPE_GATE) {
+            // The keyed door is the ONLY passage: band 1 keeps just the first
+            // corridor cell (the door column).
+            hi = lo;
+        }
+        if (hi >= lo) {
+            for (int x = lo; x <= hi; ++x) {
                 model.tiles[1 * kRoomWidth + x] = (int)TileType::AIR;
             }
         }
         if (mask & SHAPE_H) {
-            // Horizontal entrance: a band-1 aisle from the outer edge (cell 0)
-            // to the nearest corridor cell.
-            const int near = corrA < corrB ? corrA : corrB;
+            const int near = (hi >= lo) ? lo : 0;
             for (int x = 0; x <= near; ++x) {
                 model.tiles[1 * kRoomWidth + x] = (int)TileType::AIR;
             }
         }
         if ((mask & SHAPE_GATE) && (mask & SHAPE_2GAP)) {
-            // A two-gap ceiling reaches the door through band 0: the top
-            // corridor is a lobby, so an entry arriving at the OTHER gap still
-            // finds the door. (The south edge keeps only the two carved cells
-            // — widening it would drop the player into the next room's wall.)
+            // Top lobby: an entry arriving at the other gap still finds the
+            // door (the south edge keeps the carved cells; widening it would
+            // drop the player into the next room's wall).
             for (int x = kGapA; x <= kGapB; ++x) {
                 model.tiles[x] = (int)TileType::AIR;
             }
         }
         if (mask & SHAPE_START) {
-            // Start drop (band 0 cells 2..6) must reach the corridor too.
-            const int near = (mask & SHAPE_2GAP) ? kGapA : kVertExitA;
-            for (int x = 2; x <= near; ++x) {
-                model.tiles[x] = (int)TileType::AIR;
-            }
+            for (int x = 2; x <= vA; ++x) model.tiles[x] = (int)TileType::AIR;
         }
     }
     if (arch && (mask & SHAPE_2GAP)) {
@@ -716,12 +728,14 @@ ModelData MakeShapeModel(int modelId, int mask) {
         model.tiles[1 * kRoomWidth + kGapB] = (int)TileType::AIR;
         if (mask & SHAPE_N) {
             model.tiles[kGapA] = (int)TileType::AIR;
-            model.tiles[kGapB] = (int)TileType::AIR;
+            if (!(mask & SHAPE_N1)) model.tiles[kGapB] = (int)TileType::AIR;
         }
         if (mask & SHAPE_S) {
             const int base = (kRoomHeight - 1) * kRoomWidth;
             model.tiles[base + kGapA] = (int)TileType::AIR;
-            model.tiles[base + kGapB] = (int)TileType::AIR;
+            if (!(mask & SHAPE_S1)) {
+                model.tiles[base + kGapB] = (int)TileType::AIR;
+            }
         }
     }
     // --- NO DEAD AIR POCKETS (user rule 2026-10-21) -----------------------
@@ -920,6 +934,13 @@ int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
     if (twogap) mask |= SHAPE_2GAP;
     if (HasRoomAt(walk, pos.x, pos.y - 1)) mask |= SHAPE_N;
     if (HasRoomAt(walk, pos.x, pos.y + 1)) mask |= SHAPE_S;
+    // Link `i` joins walk[i] -> walk[i+1]; a room's TOP uses link i-1 and its
+    // BOTTOM uses link i, so alternating the width per link makes every
+    // through-room's top/bottom differ (user rule 2026-10-21).
+    if (levelNumber >= 6) {
+        if ((mask & SHAPE_N) && (roomIndex - 1) % 2 == 0) mask |= SHAPE_N1;
+        if ((mask & SHAPE_S) && roomIndex % 2 == 0) mask |= SHAPE_S1;
+    }
     if (levelNumber > kColumnRooms && pos.y == kTurnY) mask |= SHAPE_H;
     if (roomIndex == 0) mask |= SHAPE_START;   // the level's spawn room
     if (IsChannelTurn(levelNumber, pos)) {
@@ -1221,9 +1242,17 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 int arch = 0;
                 if (!IsChannelTurn(l, walks[l - 1][i])) {
                     if (role == Role::Hot) {
-                        const int* pool = withExtras ? kHotExtra
-                                          : (l > 10 ? kHotLate : kHotBase);
-                        const int n = withExtras ? 6 : (l > 10 ? 4 : 3);
+                        // The advanced hot archetypes (HotAlign/Twin/Stair)
+                        // are > level 10 only, extras mode included.
+                        const int* pool;
+                        int n;
+                        if (l > 10) {
+                            pool = withExtras ? kHotExtra : kHotLate;
+                            n = withExtras ? 6 : 4;
+                        } else {
+                            pool = kHotBase;
+                            n = 3;
+                        }
                         arch = pool[l % n];
                     } else if (i == 0 && l >= 8) {
                         // base keeps the shipped pattern byte-identical;
@@ -1318,17 +1347,11 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             if (roles[l - 1][i] == Role::Phase) {
                 // The corridor blinks: 45 frames solid, 45 open. Both
                 // corridor cells so the blink gates the whole passage.
-                if (masks[l - 1][i] & SHAPE_2GAP) {
-                    room.feature_cells.push_back(
-                        {1, kGapA, (int)TileType::PHASE});
-                    room.feature_cells.push_back(
-                        {1, kGapB, (int)TileType::PHASE});
-                } else {
-                    for (int x = kVertExitA; x <= kVertExitB; ++x) {
-                        room.feature_cells.push_back(
-                            {1, x, (int)TileType::PHASE});
-                    }
-                }
+                // The phase sits on the room's PASSAGE cell: a gate shape
+                // keeps band 1 open at the first corridor cell only.
+                room.feature_cells.push_back(
+                    {1, (masks[l - 1][i] & SHAPE_2GAP) ? kGapA : kVertExitA,
+                     (int)TileType::PHASE});
             }
             if (roles[l - 1][i] == Role::Hcrunch) {
                 // Fixed 10-cell prefix on the middle band (live stage form).

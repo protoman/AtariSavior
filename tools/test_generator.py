@@ -388,6 +388,24 @@ def main() -> int:
                               f"at cell {miner_cell} (same side)")
                         return 1
 
+            # NO STRAIGHT VERTICAL FALL (user rule 2026-10-21): from level 6
+            # every through-room must change its exit COUNT or WIDTH between
+            # the top and the bottom (links alternate narrow/wide). A room
+            # with a horizontal exit is exempt — its route already turns.
+            if level_n >= 6:
+                for room in rooms:
+                    r2 = rows[room["room_id"]]
+                    nset = {x for x in range(10)
+                            if r2[0][x] not in STRUCTURAL_WALLS}
+                    sset = {x for x in range(10)
+                            if r2[2][x] not in STRUCTURAL_WALLS}
+                    if (nset and sset and r2[1][0] in STRUCTURAL_WALLS
+                            and nset == sset):
+                        print(f"FAIL: level {level_n} room "
+                              f"{room['room_id']} is a straight vertical fall "
+                              f"(top and bottom both open {sorted(nset)})")
+                        return 1
+
             # Connectivity + gate alignment (user reports 2026-10-21).
             for room in rooms:
                 rrows = rows[room["room_id"]]
