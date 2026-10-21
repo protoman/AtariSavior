@@ -33,10 +33,8 @@ LEVEL1_RoomPositions:
 ; extras ordinal (C5: 1-based index into LEVELn_AsyncExtras, 0 =
 ; none; the enemy record index is derived at room load).
 LEVEL1_RoomCounts:
-  .byte $40 ; room 0: 1 record(s)
-  .byte $40 ; room 1: 1 record(s)
+  .byte $00 ; room 0: 0 record(s)
+  .byte $00 ; room 1: 0 record(s)
 
-; Enemy data: 2 enemy records across 2 rooms, 4 bytes each (type,x,y,dir).
+; Enemy data: 0 enemy records across 2 rooms, 4 bytes each (type,x,y,dir).
 LEVEL1_EnemyDataTable:
-  .byte 0, 47, 60, 1
-  .byte 2, 8, 60, 1

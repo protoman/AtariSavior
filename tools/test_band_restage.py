@@ -58,7 +58,9 @@ import convert_room as CR  # noqa: E402
 # (the editor's single-file project, 20 generated levels), else the legacy
 # per-level jsons. The ROM image read above matches it, so labels and payloads
 # cannot drift.
-stage_path = ROOMS / "stage.json"
+import os
+stage_path = Path(os.environ["STAGE_FILE"]) if os.environ.get("STAGE_FILE") \
+    else ROOMS / "stage.json"
 if stage_path.exists():
     MODELS, raw_levels = CL.load_stage(stage_path)
     payloads = list(raw_levels)

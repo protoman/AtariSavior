@@ -42,7 +42,7 @@ LEVEL_COUNT = 20
 ;                               column sum). Flags/MetaA/MetaB,
 ;                               1 B/patch, 1 B/feature, then the
 ;                               room's hot stream when it has features.
-LEVEL_SHAPE_COUNT = 37
+LEVEL_SHAPE_COUNT = 36
 SHAPE_M0 = 0
 SHAPE_M1 = 1
 SHAPE_M2 = 2
@@ -79,7 +79,6 @@ SHAPE_M32 = 32
 SHAPE_M33 = 33
 SHAPE_M34 = 34
 SHAPE_M35 = 35
-SHAPE_M36 = 36
 
 ; Shape block (C3 2026-10-20): hot count | 5 B/record | 3 row-pool
 ;   indices (band 0/1/2 -> RowPoolPF0/1/2 in models_data.asm; the

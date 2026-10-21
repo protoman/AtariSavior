@@ -267,3 +267,25 @@ guard).
 
 Measured: 211 rooms, **37 shapes** (cap 64), staged build `verify_build OK`,
 bank2 tables 298 B slack, bank3 shape data **143 B** slack.
+
+## G8 (2026-10-21): placement rules from playtest
+
+* **The start room has NO enemies** (user rule): the spawn room is a corridor,
+  an enemy behind the spawn is never met. From level 8 it may carry **hot
+  walls** (single HotMid archetype, capacity) and from level 7 an **async
+  block** beside the exit gap (col 7, or the first column whose band-0/2 cells
+  are walled — the M1 whole-cave strip requires that).
+* **Enemies sit in the player's path**: bats/spiders in the centre shaft
+  (cell 8, x=16) that every descent crosses; gate/phase bats in the gate gap.
+  The goal room's enemy (level 2+) guards the APPROACH corridor — the old wall
+  snake at cell 0 was past the miner (x=4) and never fought.
+* **One object per room** (miner counts): the extra second enemy from level 9
+  is gone — the single GRP1 sprite rotates with the miner, so a second enemy
+  doubles the flicker for no gameplay gain (playtest: a room "flickered so much
+  it stayed off screen"). Level 1's goal is miner-only, which also keeps the
+  two 2-room levels distinct.
+* Start top-band opening narrowed to cells 2..6 (the drop slot), keeping 7..9
+  walled so the async block's M1 column has walls in bands 0/2.
+
+Measured: 211 rooms, 36 shapes (hot families trimmed to two for capacity),
+bank2 610 B / bank3 122 B slack, staged build verify_build OK, battery green.

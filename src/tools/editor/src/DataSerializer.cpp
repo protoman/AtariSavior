@@ -503,9 +503,10 @@ ModelData MakeShapeModel(int modelId, int mask) {
         // Level start rooms: the kernel drops the player in at LevelStartX/Y =
         // (32, 24) px = display col 8 = CELL 4 of the TOP band, and DropStep
         // bypasses collision — a solid band there would drop him INSIDE a wall.
-        // Cells 2..9 open (the live stage's start room is "##........"), the
-        // outer 16 px of the band staying solid.
-        for (int x = 2; x < kRoomWidth; ++x)
+        // Open cells 2..6 (the drop slot); 7..9 stay solid so an async block
+        // can sit at row 1 col 7 (the M1 column must be walled in the other
+        // bands, 2026-10-21).
+        for (int x = 2; x <= 6; ++x)
             model.tiles[x] = (int)TileType::AIR;
     }
     if (mask & SHAPE_HOT) {
@@ -534,7 +535,7 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 (int)TileType::SOLID_WALL;
             model.tiles[kGapA] = model.tiles[kGapB] = (int)TileType::AIR;
             if (mask & SHAPE_START) {
-                for (int x = 2; x < kRoomWidth; ++x)
+                for (int x = 2; x <= 6; ++x)
                     model.tiles[x] = (int)TileType::AIR;
             }
         }
@@ -760,30 +761,22 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
             } else {
                 AddEnemy(room, EnemyType::RAFT, 4.0f, 8.0f, 1.0f, 0.0f);
             }
-        } else if (roomCount > 1) {
-            // Last room: the goal. The snake lives in the MIDDLE band's left
-            // border (cell 0): that band is otherwise open, so it can come
-            // out and be shot. The top band's border is 8 cells deep — a snake
-            // there is walled in and useless (user report 2026-10-20).
-            // The patrol dir/speed vary per level so even the 2-room levels
-            // are not identical (user report 2026-10-20: levels 1 and 2 were
-            // the same).
-            AddEnemy(room, EnemyType::SNAKE, 1.0f, 5.0f,
-                     1.5f + 0.5f * (levelNumber % 2), 4.0f,
-                     (levelNumber % 2) ? 1 : -1);
+        } else if (roomCount > 1 && levelNumber >= 2) {
+            // Goal room: the miner sits at x=4, so an enemy past it (the old
+            // wall snake at cell 0) was never fought (user rule 2026-10-21).
+            // From level 2 one bat guards the APPROACH corridor (cell 8),
+            // which also keeps the 2-room levels distinct (L1 is clean).
+            AddEnemy(room, EnemyType::BAT, 16.0f,
+                     (levelNumber % 2) ? 4.0f : 5.0f,
+                     1.25f + 0.25f * (levelNumber % 4), 13.0f);
         }
         return;
     }
     if (roomIndex == 0) {
-        // Start room: type AND cell vary by level (2-room levels must not
-        // repeat: level 1 vs 2 was a user report). All three x cells are open
-        // in every start shape.
-        const int mod = levelNumber % 3;
-        const float sx = mod == 0 ? 6.0f : (mod == 1 ? 10.0f : 14.0f);
-        const bool spider = (levelNumber % 2) != 0;
-        AddEnemy(room, spider ? EnemyType::SPIDER : EnemyType::BAT, sx,
-                 spider ? 5.0f : 4.0f,
-                 1.0f + 0.25f * (levelNumber % 4), 8.0f);
+        // Start room: NO enemies (user rule 2026-10-21) — the player spawns
+        // here and an enemy behind spawn is never met. Hot walls are allowed
+        // on advanced levels (see the archetype pick in Build20LevelStage),
+        // and async blocks sit near the exit gap.
         return;
     }
     if (role == Role::Gate || role == Role::Phase) {
@@ -800,35 +793,28 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         return;
     }
     if (role == Role::Hot) {
-        // Hot shapes keep cells 1/4/5/8/9 open; cell 4 (x 8) is clear.
-        AddEnemy(room, EnemyType::BAT, 8.0f, 4.0f,
+        // Hot shapes keep cells 1/4/5/8/9 open; the bat guards the centre
+        // shaft (cell 8 = x 16), i.e. the path the player must fall through.
+        AddEnemy(room, EnemyType::BAT, 16.0f,
+                 (levelNumber % 2) ? 4.0f : 5.0f,
                  1.25f + 0.25f * (levelNumber % 4), 13.0f);
         return;
     }
     // Normal room: bat/lamp. A LAMP only matters where the dark mask reaches
     // (rooms 0-7), so deeper rooms get a bat.
+    // One object per room (the GRP1 sprite rotates with the miner, so a second
+    // enemy doubles the flicker for no gameplay gain — user report 2026-10-21).
     if (roomIndex % 2 == 1 || roomIndex >= 8) {
-        AddEnemy(room, EnemyType::BAT, 4.0f,
+        // Bat in the centre shaft (cell 8) — the path the player takes.
+        AddEnemy(room, EnemyType::BAT, 16.0f,
                  (levelNumber % 2) ? 4.0f : 5.0f,
                  1.25f + 0.25f * (levelNumber % 4), 13.0f);
     } else {
         LampData lamp;
-        lamp.x = 6.0f;
+        lamp.x = 16.0f;      // in the shaft, so the player meets it
         lamp.y = 4.0f;
         lamp.lit = true;
         room.lamps.push_back(lamp);
-    }
-    if (plan.extra) {
-        // Level 9+: a second object on a free row (cap = 2, one per row). Row
-        // 2 is SOLID in a normal shape, so the only open cells are the exit
-        // corridors: cell 8 of the top band (the N opening).
-        if (!RowOccupied(room, 0)) {
-            AddEnemy(room, EnemyType::SPIDER, 16.0f, 3.0f,
-                     1.0f + 0.25f * (levelNumber % 4), 8.0f);
-        } else if (!RowOccupied(room, 2)) {
-            AddEnemy(room, EnemyType::SPIDER, 16.0f, 8.0f,
-                     1.0f + 0.25f * (levelNumber % 4), 8.0f);
-        }
     }
 }
 
@@ -856,7 +842,9 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             int arch = 0;
             if (!IsChannelTurn(l, walks[l - 1][i])) {
                 if (role == Role::Hot) {
-                    arch = 6 + (l % 3);
+                    arch = 6 + (l % 2);   // two hot families (capacity)
+                } else if (i == 0 && l >= 8) {
+                    arch = 7;             // hot start walls (no enemies)
                 } else if (role == Role::Normal && i > 0 && i < count - 1) {
                     arch = 1 + ((l + i) % 5);
                 }
@@ -919,6 +907,26 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 for (int c = 0; c < kRoomWidth; ++c) {
                     room.feature_cells.push_back(
                         {1, c, (int)TileType::HCRUNCH});
+                }
+            }
+            // Start room: an async block beside the exit gap from level 7
+            // (user rule 2026-10-21: first room has no enemies, but async in
+            // the path is welcome). Cell 7 + its mirror cell 2 are open in
+            // every start shape (row 1 is '#.........').
+            if (i == 0 && plan.patch && l >= 7) {
+                // M1 guard: the patch cell must be OPEN in band 1 and WALLED in
+                // bands 0/2 (the whole-cave strip paints/hides the column).
+                // Prefer col 7 (next to the exit gap); hot archetypes may fill
+                // it, so fall back to 1.
+                const ModelData& sm0 = models[shapeId[masks[l - 1][i]]];
+                for (int c : {7, 6, 5, 4, 3, 2, 1}) {
+                    if (sm0.tiles[1 * kRoomWidth + c] == 0
+                            && sm0.tiles[0 * kRoomWidth + c] != 0
+                            && sm0.tiles[2 * kRoomWidth + c] != 0) {
+                        room.asym_patches.push_back(
+                            {1, c, (int)TileType::SOLID_WALL, 1});
+                        break;
+                    }
                 }
             }
             // Async BLOCKS: a plain solid patch (not a special) sprinkled
@@ -1008,7 +1016,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 if (ObjectCount(room) >= 2 || RowOccupied(room, 0)) continue;
                 const int gap = (i % 2) ? kGapB : kGapA;
                 const float gx = (float)(gap * 2);
-                if (i % 2) {
+                if (i % 2 || i >= 8) {   // lamps only where the dark mask works
                     AddEnemy(room, EnemyType::SPIDER, gx, 3.0f,
                              1.0f + 0.25f * (l % 4), 8.0f);
                 } else {
