@@ -3,9 +3,9 @@
 #include <QColor>
 #include <QFont>
 #include <QPainter>
+#include <QPixmap>
 #include <QScrollArea>
 #include <QVBoxLayout>
-#include <QPixmap>
 
 #include <algorithm>
 
@@ -13,14 +13,20 @@ namespace editor {
 
 namespace {
 
-constexpr int kCellW = 8;      // px per room cell (10 cells x 3 bands)
-constexpr int kCellH = 8;
-constexpr int kRoomW = hero::kRoomWidth * kCellW;      // 60
-constexpr int kRoomH = hero::kRoomHeight * kCellH;     // 18
-constexpr int kGap = 24;       // gap between room boxes (link corridor)
-constexpr int kStep = kRoomW + kGap;
+// HERO-atlas geometry: a room is the FULL mirrored stage (40 display columns
+// x 12 display rows, the same mapping the level canvas uses), and linked
+// rooms are drawn FLUSH — no gap, no link strip. A carved opening then shows
+// as a real passage between two rooms, exactly like a HERO map sheet.
+constexpr int kCols = 40;      // display columns (10 cells x 2, mirrored)
+// 3x the readable minimum (user 2026-10-21): a room is a 480 x 216 canvas,
+// so the scroll area shows a HERO-like sheet at a comfortable size.
+constexpr int kColW = 12;      // px per display column
+constexpr int kRows = 12;      // display rows (3 bands x 4 rows)
+constexpr int kRowH = 18;      // px per display row
+constexpr int kRoomW = kCols * kColW;   // 480 px
+constexpr int kRoomH = kRows * kRowH;   // 216 px
 constexpr int kMargin = 16;
-constexpr int kHeader = 22;    // title line above the grid
+constexpr int kHeader = 22;
 constexpr int kGrid = 15;      // C1: nibble 15 is the no-room sentinel
 
 struct RoomView {
@@ -30,9 +36,9 @@ struct RoomView {
     bool start = false;
     bool miner = false;
     bool water = false;
+    float minerX = 0.0f;   // game px, only meaningful in the miner room
+    float minerY = 0.0f;
 };
-
-bool Open(char c) { return c == '.' || c == 'W'; }
 
 }  // namespace
 
@@ -42,8 +48,8 @@ bool Open(char c) { return c == '.' || c == 'W'; }
 class LevelMapView : public QWidget {
 public:
     explicit LevelMapView(QWidget* parent = nullptr) : QWidget(parent) {
-        setMinimumSize(2 * kMargin + kGrid * kStep,
-                       kHeader + 2 * kMargin + kGrid * kStep);
+        setMinimumSize(2 * kMargin + kGrid * kRoomW,
+                       kHeader + 2 * kMargin + kGrid * kRoomH);
     }
 
     void SetData(std::vector<RoomView> rooms, int levelNumber,
@@ -52,14 +58,13 @@ public:
         m_level = levelNumber;
         m_wall1 = wall1;
         m_wall2 = wall2;
-        // Fit the actual extent so a small level opens in a small window.
         int maxX = 0, maxY = 0;
         for (const RoomView& r : m_rooms) {
             maxX = std::max(maxX, r.x);
             maxY = std::max(maxY, r.y);
         }
-        setMinimumSize(2 * kMargin + (maxX + 1) * kStep,
-                       kHeader + 2 * kMargin + (maxY + 1) * kStep + 18);
+        setMinimumSize(2 * kMargin + (maxX + 1) * kRoomW,
+                       kHeader + 2 * kMargin + (maxY + 1) * kRoomH + 18);
         update();
     }
 
@@ -67,86 +72,49 @@ protected:
     void paintEvent(QPaintEvent*) override {
         QPainter p(this);
         p.fillRect(rect(), QColor(12, 12, 20));
-        p.setRenderHint(QPainter::Antialiasing, false);
 
-        const RoomView* at[kGrid][kGrid] = {};
         for (const RoomView& r : m_rooms) {
-            if (r.x >= 0 && r.x < kGrid && r.y >= 0 && r.y < kGrid)
-                at[r.x][r.y] = &r;
-        }
-
-        // Links first (under the room boxes), so a corridor visually joins.
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(150, 150, 90));
-        for (int y = 0; y < kGrid; ++y) {
-            for (int x = 0; x < kGrid; ++x) {
-                const RoomView* a = at[x][y];
-                if (!a) continue;
-                const RoomView* south = (y + 1 < kGrid) ? at[x][y + 1] : nullptr;
-                if (south) {
-                    for (int c = 0; c < hero::kRoomWidth; ++c) {
-                        if (!Open(a->rows[2][c].toLatin1())) continue;
-                        if (!Open(south->rows[0][c].toLatin1())) continue;
-                        const int px = kMargin + x * kStep + c * kCellW;
-                        const int py = kHeader + kMargin + y * kStep + kRoomH;
-                        p.drawRect(px, py, kCellW, kGap);
-                    }
-                }
-                const RoomView* east = (x + 1 < kGrid) ? at[x + 1][y] : nullptr;
-                if (east) {
-                    // Mirrored playfield: cell 0 is BOTH side edges, so a
-                    // horizontal passage needs cell 0 cut in both rooms.
-                    if (Open(a->rows[1][0].toLatin1())
-                            && Open(east->rows[1][0].toLatin1())) {
-                        const int px = kMargin + x * kStep + kRoomW;
-                        const int py = kHeader + kMargin + y * kStep + kCellH;
-                        p.drawRect(px, py, kGap, kCellH);
-                    }
-                }
-            }
-        }
-
-        QFont small = font();
-        small.setPixelSize(9);
-        for (const RoomView& r : m_rooms) {
-            const int ox = kMargin + r.x * kStep;
-            const int oy = kHeader + kMargin + r.y * kStep;
-            for (int row = 0; row < hero::kRoomHeight; ++row) {
-                for (int c = 0; c < hero::kRoomWidth; ++c) {
-                    const char t = r.rows[row][c].toLatin1();
+            const int ox = kMargin + r.x * kRoomW;
+            const int oy = kHeader + kMargin + r.y * kRoomH;
+            // Display column -> model cell (mirrored half, 2 cols per cell).
+            for (int row = 0; row < kRows; ++row) {
+                const int band = row / 4;
+                for (int dcol = 0; dcol < kCols; ++dcol) {
+                    const int src = (dcol < kCols / 2) ? dcol
+                                                      : (kCols - 1 - dcol);
+                    const int cell = src / 2;
+                    const char t = r.rows[band][cell].toLatin1();
                     QColor col(32, 32, 44);                 // air
                     if (t == '#' || t == 'C') col = m_wall1;
-                    else if (t == 'H') col = QColor(214, 58, 40);   // hot
-                    else if (t == 'D') col = QColor(232, 196, 48);  // door
-                    else if (t == 'P') col = QColor(64, 196, 224);  // phase
-                    else if (t == 'W') col = QColor(28, 72, 176);   // water
-                    p.fillRect(ox + c * kCellW, oy + row * kCellH,
-                               kCellW, kCellH, col);
+                    else if (t == 'H') col = QColor(214, 58, 40);
+                    else if (t == 'D') col = QColor(232, 196, 48);
+                    else if (t == 'P') col = QColor(64, 196, 224);
+                    else if (t == 'W') col = QColor(28, 72, 176);
+                    // Band 1 uses the room's second wall color (kernel rule).
+                    if (t == '#' && band == 1) col = m_wall2;
+                    p.fillRect(ox + dcol * kColW, oy + row * kRowH,
+                               kColW, kRowH, col);
                 }
             }
-            // Row-1 walls use the second wall color (kernel band color).
-            for (int c = 0; c < hero::kRoomWidth; ++c) {
-                const char t = r.rows[1][c].toLatin1();
-                if (t == '#')
-                    p.fillRect(ox + c * kCellW, oy + kCellH, kCellW, kCellH,
-                               m_wall2);
+            // Miner dot at its game position (room px -> display grid).
+            if (r.miner) {
+                const int mx = ox + (int)(r.minerX / 4.0f) * kColW;
+                const int my = oy + (int)(r.minerY / 12.0f) * kRowH;
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(255, 140, 180));
+                p.drawEllipse(QPoint(mx + kColW / 2, my + kRowH / 2), 6, 6);
             }
-            // Frame: start room green, miner room gold, other rooms grey.
-            QColor frame(96, 96, 110);
-            int pen = 1;
-            if (r.start) { frame = QColor(80, 220, 120); pen = 2; }
-            if (r.miner) { frame = QColor(240, 200, 90); pen = 2; }
-            p.setPen(QPen(frame, pen));
-            p.setBrush(Qt::NoBrush);
-            p.drawRect(ox - 1, oy - 1, kRoomW + 2, kRoomH + 2);
-
+            QFont small = font();
+            small.setPixelSize(11);
+            small.setBold(true);
             p.setFont(small);
-            p.setPen(QColor(170, 170, 180));
             QString tag = QString::number(r.id + 1);   // user counts from 1
-            if (r.start) tag += " S";
-            if (r.miner) tag += " M";
-            if (r.water) tag += " W";
-            p.drawText(ox, oy + kRoomH + 12, tag);
+            if (r.start) tag += "S";
+            if (r.miner) tag += "M";
+            const QRect tagRect(ox + 2, oy + 2, 14 + 8 * tag.size(), 14);
+            p.fillRect(tagRect, QColor(0, 0, 0, 170));
+            p.setPen(QColor(235, 235, 240));
+            p.drawText(tagRect.adjusted(3, 1, 0, 0), Qt::AlignLeft, tag);
         }
 
         p.setPen(QColor(220, 220, 230));
@@ -154,7 +122,7 @@ protected:
         head.setPixelSize(11);
         p.setFont(head);
         p.drawText(kMargin, kHeader - 6,
-                   QString("Level %1 map — %2 rooms")
+                   QString("Level %1 map — %2 rooms (linked rooms are flush)")
                        .arg(m_level).arg((int)m_rooms.size()));
     }
 
@@ -170,7 +138,7 @@ private:
 // ---------------------------------------------------------------------------
 LevelMapWindow::LevelMapWindow(QWidget* parent) : QDialog(parent) {
     setWindowTitle("Level Map");
-    resize(900, 700);
+    resize(1000, 760);
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     m_scroll = new QScrollArea(this);
@@ -206,6 +174,8 @@ void LevelMapWindow::SetLevel(const hero::LevelData& level,
         v.start = (room.room_id == level.start_room);
         v.miner = (room.room_id == minerRoom);
         v.water = room.bottom_band;
+        v.minerX = level.miner_x;
+        v.minerY = level.miner_y * 12.0f;   // rows -> px (kernel: 84)
         for (int row = 0; row < hero::kRoomHeight; ++row) {
             QString line(hero::kRoomWidth, '.');
             if (model) {
