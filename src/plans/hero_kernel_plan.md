@@ -137,8 +137,26 @@ Steps:
    survive), `verify_build` pins updated, then build + both sims + battery.
    Commit per chunk.
 
-Gate: **bank0 pre-pad headroom ≥ 40 B** (Phases 2-5 add instructions, twins and
-new tables) and the tree green with the 4-level stage as the default build.
+Gate: tree green with the 4-level stage as the default build (done), and the
+remaining eviction scoped as a **re-pin**, not a chunk move.
+
+### Eviction is a re-pin, and Phases 5-6 mostly need it only for DATA
+
+`plans/bank0_space_plan.md`'s correction applies: content before a `.ds` pin
+cannot be moved without shifting the pin **and every cross-bank twin**
+(`$F8DD $F9B8 $FB00 $FBD0 $FBFC $FC49 $FE00 $FE48 $FE90 $FEF0 $FEF6 $FF00
+$FFE6`). Consequences for this plan:
+
+- **Code bodies do not need the re-pin.** The kernel's 16 B of pre-pad slack
+  (`$FC58-$FC67`) is enough for `jsr` hooks; bodies live in the bank2 slot
+  (2244 B free) behind a CallPad + `ReturnPad`, the established pattern.
+- **Art data does.** `ObjSprites` ($FE48-$FE8F) and `ObjColorTab`
+  ($FE00-$FE47) sit flush against the `$FE90`/`$FE48` pins, so tall art (Phase
+  6) needs the `$FE00` cluster re-pinned down by the added rows — a coordinated
+  4-bank move (bank0 art + every twin + `verify_build` pins + `frozen/`).
+  Do that once, for a batch of types, not per type.
+- `BeamMask`'s 12 B freed by Phase 2 went into the `$FExx` fill (the pads absorb
+  it), so the pre-pad figure did not move — expected, same reason.
 
 ---
 
@@ -228,10 +246,23 @@ the physics does not allow it.
   timing-critical store moves). The `HMOVE` strobe needs HBLANK: the CPU already
   resumes at **cycle 0-3 of the band's first body line**, so `sta HMOVE` inserted
   between the setup's `sta LineCount` and `.Line` lands in HBLANK for free.
-- If the coarse `RESP1` needs a WSYNC-anchored slot, it can use the halt tail of
-  the setup window (the CPU resumes exactly at the third line's cycle 0), which
-  is why the wall model can stay **267.0**. If it cannot, the sim decides and the
-  target is updated in the same commit.
+- **Measured correction (2026-10-21, after reading `SetObjectXPos`): a
+  reposition costs +2 lines, not 0.** `SetObjectXPos` opens with `sta WSYNC`
+  (it must start on a line boundary) and its div15 loop runs inside that line;
+  the `HMOVE` then needs the NEXT line's HBLANK. So a repositioned band costs
+  setup (2 lines) + positioning (1) + HMOVE (1) = **+2 lines vs today**.
+  Same cost for phase 6's taller window? No — that is +1 c on the window test,
+  no lines.
+  Therefore: reposition **only the band that actually hosts the second object**
+  (a room with 1 object pays nothing), and expect the wall model to become
+  room-dependent — `sim_frame_budget` keeps its 267.0 assertion for the
+  single-object scenario and gains a second scenario for the 2-object one.
+- Two-slot staging fits the "free in gameplay, bank1-only after the cave read"
+  bytes at `$EA-$EC` (ZP map rule 6): slot-1 `ObjBase1/ObjTop1/ObjX1`, staged in
+  the VBL exactly like the slot-0 trio, plus one `Obj1Band` byte (which band
+  hosts slot 1) so the setup line's `cpx Obj1Band / bne` is 4 B of hook.
+  `SelectActiveObject` becomes the stager (no rotation); the slot-0 path and
+  the bomb/miner/tally special cases keep their current priority rules.
 - Result: `SelectActiveObject` stops rotating — it becomes the staging routine;
   both objects draw every frame, each with its own colour.
 
