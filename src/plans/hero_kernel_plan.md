@@ -285,6 +285,46 @@ enemy + miner + player in one frame with no flicker.
 
 ---
 
+## Phase 5 — LANDED (2026-10-21): second GRP1 window, no flicker
+
+`kernel.asm`: `StageSlot1` (VBLANK, called from both `SelectActiveObject` tails)
++ `Slot1Hook` (inline in the `.Row` setup after `sta PF2`) + `BandStart` table.
+ZP slot 1 = `$EA/$EB/$EC` (`ObjBase1/ObjTop1/ObjX1`), the bank1-HUD-only bytes
+(ZP doc rule 6: VBL write -> cave read is the safe window).
+
+**Rule (jitter-proof, and the reason for the shape of the code):** slot 1
+depends ONLY on the room's geometry, never on `SelectActiveObject`'s rotation.
+It is staged only when the room's live candidates (enemies + miner) span two
+bands, and then it is the HIGHEST-band candidate. The first version used
+"first candidate above slot 0's band", which made the frame alternate
+**267/269 lines every 4th frame** (the bomb owns `BombTimer&3==0`, so slot 0's
+band flipped with it) — `sim_frame_budget` caught it immediately
+(`cave kernel WSYNC diverged: [195, 197]`). Never re-derive slot 1 from slot 0.
+
+**Cost:** the early-out (5c) sits in the setup line's free tail, so a
+single-band room pays 0. A room that DOES host slot 1 pays 2 lines at that
+band (SetObjectXPos must start on a line boundary; the HMOVE needs the next
+line's HBLANK) -> 269 lines. Constant per room, so no shimmer.
+
+**Known limits (by design, not bugs):**
+- Same-band rooms keep the old 30 Hz rotation: two objects in one band cannot
+  share one GRP1 sprite.
+- Slot 0 still owns its rotation (bomb priority), so a lower-band object
+  blinks on the bomb's 1-of-4 frames.
+- `REFP1` is not switched per band yet: slot 1 draws with slot 0's reflection.
+
+**Current reach: zero.** The live 4-level stage has NO room with two objects
+(`rooms/*.json`: 0 rooms with 2+ objects), and neither does `src/tests/rooms`,
+so the path is inert and the sim never enters it (wall model stays 267
+everywhere: `{265: 3, 267: 1098}`).
+
+**Verification recipe when a 2-object stage exists** (do this BEFORE trusting
+it in play): author a room in `src/tests/rooms` with one enemy at Y<48 and one
+at 48<=Y<96, `bash tools/freeze_test_banks.sh`, then assert (a) the room's
+frames measure 269 lines, (b) both objects are drawn in the SAME frame
+(py65: GRP1 writes in two bands with `ObjBase` swapped at the band boundary),
+(c) the solo-object rooms still measure 267.
+
 ## Phase 6 — Taller, richer sprites (the payoff)
 
 - The object path already indexes `ObjSprites`/`ObjColorTab` by
