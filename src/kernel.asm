@@ -181,6 +181,14 @@ FlickerFrame    byte            ; GRP1 slot index for flicker
 BombPacked      byte            ; bomb state at $B5 (was ephemeral ObjectCount):
                                 ;   b0-1 state 0=none,1=fuse,2=explode
                                 ;   b2 DownPrev edge, b3-6 WallMask, b7 OnGround
+ObjBase1        = $EA               ; Phase 5 slot-1 staging: sprite base
+ObjTop1         = $EB               ;   ($FF = none), ObjTop (RoomY-relative)
+ObjX1           = $EC               ;   and object X. Bank1's HUD owns these
+                                ;   three bytes ($EA/$EB = scorePtr6, $EC =
+                                ;   scbrdCnt) but rebuilds them AFTER the cave
+                                ;   read, so the VBL write -> cave read window
+                                ;   is safe (ZP doc rule 6). Staged every VBL by
+                                ;   StageSlot1, consumed by Slot1Hook.
 ObjBase         byte            ; GRP1 sprite base offset into ObjSprites (0 = off)
 ActiveObjectX   byte            ; active object X (room pixel coords)
 ActiveObjectY   byte            ; active object Y (scanline coords)
@@ -780,6 +788,15 @@ CaveKernelRow:
     sta ENABL
     lda PF2Buf,X
     sta PF2
+    ; --- Phase 5: is the second GRP1 object in THIS band? ---------------
+    ; Sits in the setup window's free tail (~59c after PF2, before the WSYNC
+    ; that ends the pass, so the phased stores above never move). The early
+    ; out costs 5c; Slot1Hook pays 2 extra lines ONLY on the band that hosts
+    ; slot 1 (SetObjectXPos WSYNC line + the HMOVE line).
+    lda ObjBase1
+    bmi .RowNoSlot1
+    jsr Slot1Hook
+.RowNoSlot1:
     ; (2026-10-15) GRP0 blank REMOVED: +5c pushed the rows0/1 setup
     ; segment to 75c armed (>=74 = write lands next line = +1 stall line
     ; = whole-screen shift). The blank only traded a stale-byte duplicate
@@ -2217,12 +2234,14 @@ SelectActiveObject:
     clc
     adc #1                      ; A = ActiveObjectY - RoomY + 1 (mod 256)
     sta ObjTop
+    jsr StageSlot1              ; Phase 5: pair a second object in a higher band
     rts
 .SONoObj:
     lda #144                    ; Park the GRP1 window off-cave for EVERY
     sec                         ; RoomY. The kernel draws when running-Y
     sbc RoomY                   ; (Scanline-RoomY) - ObjTopRel ∈ [0,7] =
     sta ObjTop                  ; Scanline-(RoomY+ObjTopRel); parking ObjTopRel
+    jsr StageSlot1              ; clears slot 1 too (no slot 0 to pair with)
     rts                         ; = 144-RoomY → Scanline-144 ∈ [112,255] →
                                 ; never <8 → never drawn. A CONSTANT 144
                                 ; wrapped for RoomY ≥ 112 (Scanline-(144+RY)
@@ -2265,6 +2284,190 @@ ObjSpriteOffTable:
                                 ; $FF00, so a dedicated design needs 8 art bytes
                                 ; freed; every entry is 8x8, so nothing is
                                 ; "larger" — solid just reads bigger than notched.)
+
+; ==============================================================================
+; Phase 5 — second GRP1 object (no flicker). TIA has one GRP1 sprite, so two
+; objects in a room used to alternate frames (30 Hz flicker each). When they
+; live in DIFFERENT cave bands each can be drawn on ALL of its scanlines: the
+; band's setup swaps the live trio (ObjBase/ObjTop/ActiveObjectX) for slot 1
+; and repositions P1 there. The per-line object path is untouched — it already
+; draws from the live trio and takes COLUP1 from ObjColorTab[ObjBase+row].
+;
+; Invariant (do not relax): slot 1's band is STRICTLY HIGHER than slot 0's.
+; Bands are set up 0->1->2, so no later band has to restore slot 0's trio.
+; Rooms whose two objects share a band keep the old behaviour (slot 0 only,
+; rotation in SelectActiveObject unchanged).
+; Cost: the band-compare early-out sits in the setup line's free tail (0
+; lines); a band that DOES host slot 1 pays 2 lines (SetObjectXPos must start
+; on a line boundary and the HMOVE needs the next line's HBLANK).
+;
+; StageSlot1 (VBLANK, after SelectActiveObject): stages ObjBase1/ObjTop1/ObjX1,
+; $FF = none. Slot 1 = the miner or the first live enemy whose Y is in a band
+; above slot 0's. The KEY skip mirrors the slot-0 path (KeyHeld = LevelStartRoom
+; b7). Tally frames ($FE) are gated out: EnemyRamY holds score-pointer bytes
+; then (AGENTS: tally frame draws the MINER only).
+; ==============================================================================
+StageSlot1:
+    lda #$FF
+    sta ObjBase1                ; default: no second object
+    lda DropTarget
+    cmp #$FE
+    bne .S1go
+    rts                         ; tally frame: miner only (stale EnemyRamY)
+.S1go:
+    ; --- scan the room's LIVE candidates (enemies + miner): min Y, max Y ---
+    ; Slot 1 must NOT depend on SelectActiveObject's rotation: with the bomb
+    ; taking 1 of 4 frames the frame length would alternate 267/269 (sim
+    ; caught it, 2026-10-21). It depends only on the room's geometry.
+    lda #$FF
+    sta Temp                    ; min Y ($FF = no candidates)
+    lda #0
+    sta FetchPtr                ; max Y
+    sta FetchPtr+1              ; max candidate index ($FF = the miner)
+    ldx #0
+.S1scan:
+    cpx EnemyCount
+    bcs .S1cand
+    lda EnemyDeadMask
+    and EnemyBitTable,X
+    bne .S1snext
+    lda EnemyRamY,X
+    cmp Temp
+    bcs .S1notMin
+    sta Temp
+.S1notMin:
+    cmp FetchPtr
+    bcc .S1snext
+    sta FetchPtr
+    stx FetchPtr+1
+.S1snext:
+    inx
+    jmp .S1scan
+.S1cand:
+    lda LevelMinerRoom
+    and #$7f
+    cmp RoomNo
+    bne .S1span
+    lda MinerY
+    clc
+    adc #3                      ; same +3 draw offset as the slot-0 miner path
+    cmp Temp
+    bcs .S1minOk
+    sta Temp
+.S1minOk:
+    cmp FetchPtr
+    bcc .S1span
+    sta FetchPtr
+    lda #$FF
+    sta FetchPtr+1              ; the miner owns the top slot
+.S1span:
+    lda Temp
+    cmp #$FF
+    beq .S1ret                  ; no candidates at all
+    ; slot 1 exists only when the candidates span TWO bands: one per band is
+    ; what removes the flicker. Same-band rooms keep the old rotation (a swap
+    ; there would hide the other object forever).
+    jsr .S1band
+    sta EnemyIndex              ; band(min)
+    lda FetchPtr
+    jsr .S1band
+    cmp EnemyIndex
+    beq .S1ret                  ; all candidates in one band
+    ; --- stage the highest-band candidate as slot 1 ---
+    ldx FetchPtr+1
+    cpx #$FF
+    beq .S1stageMiner
+    ldy EnemyOffTable,X         ; Y = record offset (FoldIndirect preserves Y)
+    lda EnemyDataLo
+    sta FetchPtr
+    lda EnemyDataHi
+    sta FetchPtr+1
+    txa
+    pha                         ; keep the candidate index across the type read
+    jsr FoldIndirect            ; A = type (bank2 record through the twin)
+    tax
+    cpx #KEY
+    bne .S1stageEnemy
+    lda LevelStartRoom          ; b7 = key already taken -> never reappears
+    bmi .S1retPop
+.S1stageEnemy:
+    lda ObjSpriteOffTable,X
+    sta ObjBase1
+    pla                         ; X = candidate index
+    tax
+    lda EnemyRamX,X
+    sta ObjX1
+    lda EnemyRamY,X
+    sec
+    sbc RoomY
+    clc
+    adc #1
+    sta ObjTop1
+    rts
+.S1stageMiner:
+    lda #OBJ_MINER
+    sta ObjBase1
+    lda MinerX
+    sta ObjX1
+    lda MinerY
+    clc
+    adc #3
+    sec
+    sbc RoomY
+    clc
+    adc #1
+    sta ObjTop1
+    rts
+.S1band:
+    ldy #0
+    cmp #48
+    bcc .S1bRet
+    iny
+    cmp #96
+    bcc .S1bRet
+    iny
+.S1bRet:
+    tya
+    rts
+.S1retPop:
+    pla
+.S1ret:
+    rts
+
+; Slot1Hook — called from the .Row setup (X = RowIdx = band). Swaps the live
+; trio when slot 1 lives in this band, then repositions P1 and strobes HMOVE
+; on the following line's HBLANK. Preserves X (RowIdx) and Y (running-Y: the
+; .Line loop relies on it being untouched between rows).
+Slot1Hook:
+    tya
+    pha                         ; save running-Y (SetObjectXPos does `tay`)
+    lda ObjTop1
+    clc
+    adc RoomY
+    sec
+    sbc #1                      ; A = slot 1's absolute room Y
+    cmp BandStart,X
+    bcc .SHout                  ; above this band
+    cmp BandStart+1,X
+    bcs .SHout                  ; in a later band
+    lda ObjBase1
+    sta ObjBase
+    lda ObjTop1
+    sta ObjTop
+    lda ObjX1
+    sta ActiveObjectX
+    ldx #1
+    jsr SetObjectXPos           ; its own WSYNC starts the positioning line
+    ldx RowIdx
+    sta WSYNC                   ; end of the positioning line
+    sta HMOVE                   ; cycle 0 of the next line = HBLANK
+.SHout:
+    pla
+    tay
+    rts
+
+BandStart:
+    .byte 0,48,96,144           ; first scanline of bands 0..3
 
 ; CallPad_RaftBody — bank1 RaftBody entry. Pinned at $F8C0 with a
 ; BYTE-IDENTICAL twin in bank1 (bank1.asm, same address): the `sta $1FF7`

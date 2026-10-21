@@ -1989,7 +1989,7 @@
    1974  fc70					      .ds	$FC70 - *, 0
    1975  fc70		       a9 00		      lda	#0
    1976  fc72		       8d f6 1f 	      sta	$1FF6
-   1977  fc75		       4c 87 f1 	      jmp	$F187	; Overscan in bank0 (must match bank0 ToGameStub;
+   1977  fc75		       4c 8e f1 	      jmp	$F18E	; Overscan in bank0 (must match bank0 ToGameStub;
    1978  fc78							; verify_build --sync-overscan patches this from
    1979  fc78							; bank0.lst after every bank0 build)
    1980  fc78
