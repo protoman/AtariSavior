@@ -422,6 +422,13 @@ Consequences that are easy to get wrong:
 - `emit_spills` slot starts must be the REAL bank2 include site: `spill_F767`
   begins at `$F700` (bank2 `.ds $F700 - *`), worth 103 B that the old
   `$F767` start hid.
+- **Never add `n` twice to a 16-bit base with two `adc n`s**: the first carry
+  is folded into the second add and lost when the second does not overflow, so
+  `base + 2n` points one page low for some room counts (2026-10-20: level 14 of
+  the 20-level stage read `EnemyCount=0`; fixed by computing `2n` with `asl`
+  first in `EnterRoomB2` and `ExtrasLoad`). The legacy 4-level stage never hit
+  the overflow, which is why it survived for so long — guard tests that walk
+  every level of the live stage (`test_band_restage`).
 - `resolve_asym_patches(model, room, left_rows)`; `room_door_flag` /
   `room_m1_door_flag` / `async_kinds(room)` replaced the model-level helpers.
   `room_extras()` (convert_level) is the single extras emitter; the loader and

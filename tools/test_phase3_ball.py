@@ -32,8 +32,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import py65.devices.mpu6502 as m
 
 from test_phase2_ball import Mem, LABELS
+import frozen_rom  # noqa: E402
 
 SRC = Path(__file__).resolve().parent.parent / "src"
+FROZEN = SRC / "tests" / "frozen"   # test-owned banks+labels
 FRAMES = 60
 META_B_POKE = 2                   # ball_col+1 -> staged BallX = 8*2+79 = 95
                                   # (calibrated SetObjectXPos arg; must equal
@@ -49,7 +51,7 @@ PC_START = LABELS["StartFrame"]
 # sits at LEVEL1_AsyncExtras+1/+2 (header = flags, MetaA, MetaB).
 _pat = re.compile(r"^\s*\d+\s+([0-9a-f]{4})\s+LEVEL1_AsyncExtras\s*$")
 EXTRAS = None
-for _l in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank3.lst").read_text(errors="replace").splitlines():
     _m = _pat.match(_l)
     if _m:
         EXTRAS = int(_m.group(1), 16)
@@ -144,7 +146,7 @@ def run(rom: Path, band1: int = 0xFF) -> dict:
 
 
 def main() -> int:
-    r = run(SRC / "savior.bin")
+    r = run(frozen_rom.path())
     fails = []
 
     bad = [f"${v:02X}" for v in r["enabl_vals"] if v not in (0x00, 0xFF)]
@@ -186,7 +188,7 @@ def main() -> int:
     # partial mask (case-1 stacked blocks: bands 0+2 painted, band1 mirror):
     # the band gate must skip band1 -> exactly 2 ENABL $ff writes per frame.
     if not fails:
-        rp = run(SRC / "savior.bin", band1=0x00)
+        rp = run(frozen_rom.path(), band1=0x00)
         weak2 = [f for f in range(3, rp["frames"])
                  if rp["ff_per_frame"].get(f, 0) != 2]
         if weak2:

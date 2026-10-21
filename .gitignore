@@ -18,3 +18,7 @@ src/screenshots/
 !src/tests/frozen/
 !src/tests/frozen/*.bin
 !src/tests/frozen/*.lst
+
+# Generated level slices: build artifacts (the stage json is the source).
+# The live set (level_001..004) stays TRACKED; anything beyond is ignored.
+src/generated/level_0[0-9][0-9]_*.asm

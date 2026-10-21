@@ -24,11 +24,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
+FROZEN = ROOT / "src" / "tests" / "frozen"   # test-owned banks+labels
+BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 for _name in ("M0RoomRects",):   # level 1 room 0 = model 0 (C5: shape)
                                    # L1R2 block was removed with it)
-    for _l in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
+    for _l in (FROZEN / "bank3.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
         if _m:
             _a = int(_m.group(1), 16) - 0xF000
@@ -47,10 +48,10 @@ def lst_labels(path):
     return out
 
 
-L0 = lst_labels(SRC / "bank0.lst")
-L1 = lst_labels(SRC / "bank1.lst")
-L2 = lst_labels(SRC / "bank2.lst")
-L3 = lst_labels(SRC / "bank3.lst")   # C7: shape blocks + extras
+L0 = lst_labels(FROZEN / "bank0.lst")
+L1 = lst_labels(FROZEN / "bank1.lst")
+L2 = lst_labels(FROZEN / "bank2.lst")
+L3 = lst_labels(FROZEN / "bank3.lst")   # C7: shape blocks + extras
 PC_STARTFRAME = L0["StartFrame"]
 PC_BMW = L1["BombMarkWalls"]
 

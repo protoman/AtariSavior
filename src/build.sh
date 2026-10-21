@@ -12,12 +12,15 @@ ROOT="$(cd "$DIR/.." && pwd)"
 echo "Building F6 ROM (4 banks)..."
 
 # Generate level data. A stage file holds models + every level:
-#   STAGE_FILE=rooms/stage.json ./build.sh     (the editor's single-file stage)
-# The default repo build keeps the LEGACY per-level stage until the live-
-# tracking tests are migrated: several of them pin level 1's tutorial room and
-# the ROM labels of its extras stream, so auto-selecting rooms/stage.json made
-# the suite red against a perfectly good ROM (2026-10-20).
+#   rooms/stage.json exists -> it IS the project (the editor's single file)
+#   STAGE_FILE=...          -> build any other stage without touching rooms/
+#   otherwise               -> legacy per-level level_NNN.json files
+# ROM-behaviour tests boot the FROZEN banks, so the live stage can be the
+# generated one (2026-10-20).
 STAGE_FILE="${STAGE_FILE:-}"
+if [ -z "$STAGE_FILE" ] && [ -f "$DIR/rooms/stage.json" ]; then
+    STAGE_FILE="$DIR/rooms/stage.json"
+fi
 if [ -n "$STAGE_FILE" ]; then
     echo "  Level source: unified stage file $STAGE_FILE"
     # No level files here: the stage IS the source, and the .txt mirrors are

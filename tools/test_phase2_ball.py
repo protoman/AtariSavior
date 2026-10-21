@@ -40,9 +40,11 @@ import sys
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parent.parent / "src"
+FROZEN = SRC / "tests" / "frozen"   # test-owned banks+labels
+import frozen_rom  # noqa: E402  (frozen 16K image for code-behaviour probes)
 
 LABELS = {}
-for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+"
                   r"([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$", _l)
     if _m:
@@ -224,7 +226,7 @@ def check(r: dict, want_ctrlpf: int, log_fallback: bool = False) -> list[str]:
 
 
 def main() -> int:
-    new = SRC / "savior.bin"
+    new = frozen_rom.path()          # frozen code+level-data image
     r = run(new)
     fails = check(r, 0x35)
 

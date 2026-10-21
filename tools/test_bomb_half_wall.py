@@ -23,7 +23,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
+FROZEN = ROOT / "src" / "tests" / "frozen"   # test-owned banks+labels
+BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 
 def lst_labels(path):
@@ -35,10 +36,10 @@ def lst_labels(path):
     return out
 
 
-L0 = lst_labels(SRC / "bank0.lst")
-L1 = lst_labels(SRC / "bank1.lst")
-L2 = lst_labels(SRC / "bank2.lst")
-L3 = lst_labels(SRC / "bank3.lst")   # C7: shape blocks + extras (bank3)
+L0 = lst_labels(FROZEN / "bank0.lst")
+L1 = lst_labels(FROZEN / "bank1.lst")
+L2 = lst_labels(FROZEN / "bank2.lst")
+L3 = lst_labels(FROZEN / "bank3.lst")   # C7: shape blocks + extras (bank3)
 
 import test_fixtures as FX  # noqa: E402
 FX.freeze_m0(BANKS, L3)     # frozen model0 into the private copy (rule 2026-10-14)

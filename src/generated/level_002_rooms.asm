@@ -1,9 +1,9 @@
-; Generated from New Level (level 2). Do not edit by hand.
+; Generated from Level 2 (level 2). Do not edit by hand.
 LEVEL2_START_ROOM = 0
-LEVEL2_WALL_COLOR = $d2
-LEVEL2_WALL_COLOR2 = $c4
+LEVEL2_WALL_COLOR = $a4
+LEVEL2_WALL_COLOR2 = $a8
 LEVEL2_MINER_ROOM = 129
-LEVEL2_MINER_X = 19
+LEVEL2_MINER_X = 39
 LEVEL2_MINER_Y = 84
 
 ; Room shape index (C2 2026-10-20): ONE byte per room =
@@ -18,7 +18,7 @@ LEVEL2_MINER_Y = 84
 ; TilePF0 = block + 1 + 5*hot_count.
 LEVEL2_RoomShapes:
   .byte SHAPE_M2 ; room 0 (model 2)
-  .byte SHAPE_M3 | $40 ; room 1 (model 3)
+  .byte SHAPE_M0 ; room 1 (model 0)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
 ; (x<<4 | y) normalised to the level origin. Exits are DERIVED at
@@ -33,9 +33,10 @@ LEVEL2_RoomPositions:
 ; extras ordinal (C5: 1-based index into LEVELn_AsyncExtras, 0 =
 ; none; the enemy record index is derived at room load).
 LEVEL2_RoomCounts:
-  .byte $00 ; room 0: 0 record(s)
+  .byte $40 ; room 0: 1 record(s)
   .byte $40 ; room 1: 1 record(s)
 
-; Enemy data: 1 enemy records across 2 rooms, 4 bytes each (type,x,y,dir).
+; Enemy data: 2 enemy records across 2 rooms, 4 bytes each (type,x,y,dir).
 LEVEL2_EnemyDataTable:
-  .byte 7, 119, 96, -1
+  .byte 1, 63, 48, 1
+  .byte 2, 8, 60, -1

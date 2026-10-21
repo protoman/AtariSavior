@@ -1,9 +1,9 @@
-; Generated from New Level (level 4). Do not edit by hand.
+; Generated from Level 4 (level 4). Do not edit by hand.
 LEVEL4_START_ROOM = 0
-LEVEL4_WALL_COLOR = $52
-LEVEL4_WALL_COLOR2 = $56
-LEVEL4_MINER_ROOM = 5
-LEVEL4_MINER_X = 147
+LEVEL4_WALL_COLOR = $16
+LEVEL4_WALL_COLOR2 = $18
+LEVEL4_MINER_ROOM = 131
+LEVEL4_MINER_X = 39
 LEVEL4_MINER_Y = 84
 
 ; Room shape index (C2 2026-10-20): ONE byte per room =
@@ -17,12 +17,10 @@ LEVEL4_MINER_Y = 84
 ; (the shape must be shared). C4: block = hot stream | PF triple —
 ; TilePF0 = block + 1 + 5*hot_count.
 LEVEL4_RoomShapes:
-  .byte SHAPE_M0 | $80 ; room 0 (async extras)
-  .byte SHAPE_M4 | $80 ; room 1 (async extras)
-  .byte SHAPE_M5 ; room 2 (model 5)
-  .byte SHAPE_M8 ; room 3 (model 8)
-  .byte SHAPE_M11 | $80 ; room 4 (async extras)
-  .byte SHAPE_M10 | $80 ; room 5 (async extras)
+  .byte SHAPE_M2 ; room 0 (model 2)
+  .byte SHAPE_M33 ; room 1 (model 33)
+  .byte SHAPE_M17 ; room 2 (model 17)
+  .byte SHAPE_M4 | $40 ; room 3 (model 4)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
 ; (x<<4 | y) normalised to the level origin. Exits are DERIVED at
@@ -30,23 +28,23 @@ LEVEL4_RoomShapes:
 ; connection bytes are stored: a nibble of 15 never occurs and marks
 ; a neighbour outside the grid.
 LEVEL4_RoomPositions:
-  .byte $10 ; room 0 (1, 0)
-  .byte $11 ; room 1 (1, 1)
-  .byte $12 ; room 2 (1, 2)
-  .byte $13 ; room 3 (1, 3)
-  .byte $03 ; room 4 (0, 3)
-  .byte $23 ; room 5 (2, 3)
+  .byte $00 ; room 0 (0, 0)
+  .byte $01 ; room 1 (0, 1)
+  .byte $02 ; room 2 (0, 2)
+  .byte $03 ; room 3 (0, 3)
 
 ; Per-room enemy count (C2 2026-10-20): ONE byte = count<<6 |
 ; extras ordinal (C5: 1-based index into LEVELn_AsyncExtras, 0 =
 ; none; the enemy record index is derived at room load).
 LEVEL4_RoomCounts:
-  .byte $01 ; room 0: 0 record(s), extras 1
-  .byte $02 ; room 1: 0 record(s), extras 2
-  .byte $00 ; room 2: 0 record(s)
-  .byte $00 ; room 3: 0 record(s)
-  .byte $03 ; room 4: 0 record(s), extras 3
-  .byte $04 ; room 5: 0 record(s), extras 4
+  .byte $40 ; room 0: 1 record(s)
+  .byte $40 ; room 1: 1 record(s)
+  .byte $40 ; room 2: 1 record(s)
+  .byte $40 ; room 3: 1 record(s)
 
-; Enemy data: 0 enemy records across 6 rooms, 4 bytes each (type,x,y,dir).
+; Enemy data: 4 enemy records across 4 rooms, 4 bytes each (type,x,y,dir).
 LEVEL4_EnemyDataTable:
+  .byte 1, 47, 48, 1
+  .byte 1, 39, 48, 1
+  .byte 5, 29, 48, 1
+  .byte 7, 23, 96, 1

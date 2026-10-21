@@ -191,10 +191,14 @@ EnterRoomB2:
     ; that scan has already returned when EnterRoomB2 is entered.
     lda RoomNo
     tay                             ; Y = room (one byte per record)
-    lda LevelPFDataLo
+    ; base + 2n = RoomCounts. 2n is computed FIRST: adding n twice to the
+    ; low byte loses the first carry (the second `adc n` consumes it) and the
+    ; high byte then misses that carry — level 14 of a 20-level stage read its
+    ; counts from base+2n-0x100 and saw EnemyCount=0 (2026-10-20).
+    lda LevelRoomN
+    asl                             ; 2n (n <= 20 rooms -> <= 40, fits a byte)
     clc
-    adc LevelRoomN
-    adc LevelRoomN                  ; base + 2n = RoomCounts
+    adc LevelPFDataLo
     sta FetchPtr
     lda LevelPFDataHi
     adc #0
@@ -318,10 +322,14 @@ EBLER_Done:
     ;     1-based ordinal here, before the switch.
     lda RoomPF0Lo
     bpl .EBnoExtras                 ; b7 clear = symmetric room, no record
-    lda LevelPFDataLo
+    ; base + 2n = RoomCounts. 2n is computed FIRST: adding n twice to the
+    ; low byte loses the first carry (the second `adc n` consumes it) and the
+    ; high byte then misses that carry — level 14 of a 20-level stage read its
+    ; counts from base+2n-0x100 and saw EnemyCount=0 (2026-10-20).
+    lda LevelRoomN
+    asl                             ; 2n (n <= 20 rooms -> <= 40, fits a byte)
     clc
-    adc LevelRoomN
-    adc LevelRoomN                  ; base + 2n = RoomCounts
+    adc LevelPFDataLo
     sta FetchPtr
     lda LevelPFDataHi
     adc #0

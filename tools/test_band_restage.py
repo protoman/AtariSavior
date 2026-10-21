@@ -50,15 +50,32 @@ missing0 = need0 - L0.keys()
 if missing0:
     sys.exit(f"bank0.lst labels missing: {sorted(missing0)}")
 
+sys.path.insert(0, str(ROOT / "tools"))
+import convert_level as CL  # noqa: E402
+import convert_room as CR  # noqa: E402
+
+# Level source = whatever build.sh used: the unified stage file when present
+# (the editor's single-file project, 20 generated levels), else the legacy
+# per-level jsons. The ROM image read above matches it, so labels and payloads
+# cannot drift.
+stage_path = ROOMS / "stage.json"
+if stage_path.exists():
+    MODELS, raw_levels = CL.load_stage(stage_path)
+    payloads = list(raw_levels)
+else:
+    MODELS = CL.load_models(ROOMS / "models" / "models.json")
+    payloads = [json.loads((ROOMS / f"level_{n:03d}.json").read_text())["level"]
+                for n in (1, 2, 3, 4)]
+
 levels = []
-for n in (1, 2, 3, 4):
+for n, payload in enumerate(payloads, start=1):
     names = {f"LEVEL{n}_RoomShapes", f"LEVEL{n}_RoomCounts",
              f"LEVEL{n}_EnemyDataTable"}
     got = parse_labels(SRC / "bank2.lst", names)
     missing = names - got.keys()
     if missing:
         sys.exit(f"bank2.lst labels missing: {sorted(missing)}")
-    levels.append((n, got))
+    levels.append((n, got, payload))
 
 ZMETA = parse_labels(SRC / "bank2.lst", {"RoomMetaA", "RoomMetaB"})
 if {"RoomMetaA", "RoomMetaB"} - ZMETA.keys():
@@ -71,11 +88,6 @@ POOL = parse_labels(SRC / "bank3.lst",
 if {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2"} - POOL.keys():
     sys.exit(f"bank2.lst labels missing: {sorted(set(POOL) or {'RowPool'})}")
 
-sys.path.insert(0, str(ROOT / "tools"))
-import convert_level as CL  # noqa: E402
-import convert_room as CR  # noqa: E402
-
-MODELS = CL.load_models(SRC / "rooms" / "models" / "models.json")
 
 
 def enter_room(mem: Mem, table: int, room_count: int, room: int,
@@ -112,10 +124,8 @@ def main() -> int:
     # C2: model block addresses (the shared M<id> blocks) — an async room must
     # NOT land on one of these, whatever its shape index says.
     model_blocks = parse_labels(
-        SRC / "bank3.lst", {f"M{mid}RoomRects" for mid in range(16)})
-    for n, syms in levels:
-        data = json.loads((ROOMS / f"level_{n:03d}.json").read_text())
-        level = data.get("level", data)
+        SRC / "bank3.lst", {f"M{mid}RoomRects" for mid in range(64)})
+    for n, syms, level in levels:
         table = syms[f"LEVEL{n}_RoomShapes"]
         enemy_data = syms[f"LEVEL{n}_EnemyDataTable"]
         rooms = level["rooms"]
@@ -198,9 +208,7 @@ def main() -> int:
             assert bytes(want_pf) == want_from_rows, (
                 f"level {n} room {i}: expanded rows {bytes(want_pf).hex()} != "
                 f"pf_values(room rows) {want_from_rows.hex()}")
-            res = CL.resolve_asym_patches(CL.load_models(
-                SRC / "rooms" / "models" / "models.json")[int(model)],
-                room, rows)
+            res = CL.resolve_asym_patches(MODELS[int(model)], room, rows)
             asym, ball_x, m1_x, m1_door, m1_right = (
                 res if res else (None, 0, 0, False, False))
             want_a, want_b = CR.meta_bytes(

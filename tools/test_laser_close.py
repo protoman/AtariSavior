@@ -41,12 +41,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-BANKS = [bytearray(open(SRC / f"bank{i}.bin", "rb").read()) for i in range(4)]
+FROZEN = ROOT / "src" / "tests" / "frozen"   # test-owned banks+labels
+BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(4)]
 
 # Zero M0/M1 hot counts (life-loss would end the sweep); strips stay real.
 for _name in ("M0RoomRects",):   # level 1 room 0 = model 0 (C5: shape)
                                    # L1R2 block was removed with it)
-    for _l in (SRC / "bank3.lst").read_text(errors="replace").splitlines():
+    for _l in (FROZEN / "bank3.lst").read_text(errors="replace").splitlines():
         _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+" + _name + r"\s*$", _l)
         if _m:
             _a = int(_m.group(1), 16) - 0xF000
@@ -65,9 +66,9 @@ def lst_labels(path):
     return out
 
 
-L0 = lst_labels(SRC / "bank0.lst")
-L2 = lst_labels(SRC / "bank2.lst")
-L3 = lst_labels(SRC / "bank3.lst")   # C7: shape blocks + extras
+L0 = lst_labels(FROZEN / "bank0.lst")
+L2 = lst_labels(FROZEN / "bank2.lst")
+L3 = lst_labels(FROZEN / "bank3.lst")   # C7: shape blocks + extras
 
 def shape_pf(model):
     """The 9 PF bytes of model `model`'s shape: C3 row-pool expansion.
@@ -103,7 +104,7 @@ MODEL = {0: 0}   # room 0-based -> fixture MODEL id (level 1 room 0 = M0)
 RANGE_LO = L0["LaserInput"]
 RANGE_HI = L0.get("TallyTramp", 0xFFF0)
 rts_pcs = set()
-for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
+for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
     _m = re.match(r"^\s+\d+\s+([0-9a-f]{4})\s+(?:[0-9a-f]{2}[ \t]+)+rts\b", _l)
     if _m:
         a = int(_m.group(1), 16)
