@@ -768,7 +768,11 @@ LevelPlan PlanFor(int level) {
     p.hcrunch = level >= 14;    // crunch band sweeps the row-1 prefix
     p.patch = level >= 7;       // async block, now and then in normal rooms
     p.patch2 = level >= 12;     // two blocks (one per side) in that room
-    p.twogap = level >= 5 && level % 4 == 1;   // 5, 9, 13, 17
+    // Exit-count variety (user rule 2026-10-21): from level 6 alternate the
+    // vertical link scheme. A two-gap level has TWO separate exits at the top
+    // and at the bottom (cells 3 and 6); a plain level has ONE wide exit
+    // (cells 8-9). Same shape library, so the 6-bit shape index still fits.
+    p.twogap = level >= 6 && level % 2 == 0;   // 6, 8, 10, ... 20
     return p;
 }
 

@@ -18,8 +18,8 @@ LEVEL4_MINER_Y = 84
 ; indices — the hot count/stream is gone (hot derives from PF row 1).
 LEVEL4_RoomShapes:
   .byte SHAPE_M2 ; room 0 (model 2)
-  .byte SHAPE_M42 ; room 1 (model 42)
-  .byte SHAPE_M33 ; room 2 (model 33)
+  .byte SHAPE_M41 ; room 1 (model 41)
+  .byte SHAPE_M34 ; room 2 (model 34)
   .byte SHAPE_M4 | $40 ; room 3 (model 4)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
