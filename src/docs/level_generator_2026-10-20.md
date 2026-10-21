@@ -349,3 +349,30 @@ Test fixture: `src/tests/stages/level4_only.json` = the current level 4 (rooms
 `SIM_LEVEL=0 SIM_ROOM=1 python3 sim_frame_budget.py`.
 `sim_frame_budget` also gained `SIM_VBLPROF=1` (VBL PC histogram) for this class
 of investigation.
+
+## G11 (2026-10-21): hot walls must shape the path (playtest screenshots)
+
+Bad (user screenshots `useless_hot_walls*.png`): hot blocks at the sides of the
+middle band leave the centre shaft free — the player just falls through and the
+hazard is decoration.
+
+Hot archetypes now block the CENTRE (cells 8/9 = the vertical shaft) and force
+a detour through an offset gap; objects guard the gap columns:
+
+| id | name | row 1 | use |
+|---|---|---|---|
+| 6 | HotGate | `#####.####` — one gap at cell 5 | from level 3 |
+| 7 | HotSplit | `###.##.###` — gaps at 3 and 6 (choose) | from level 3 |
+| 8 | HotComb | `#.#.#.#.##` — weave through 1/3/5/7 | from level 3 |
+| 9 | HotAlign | `##.#######` — a single gap at cell 2, far from the shaft | **> level 10** |
+
+`usefull_hot_walls_003` (stop the fall and line up with the gap) = HotAlign.
+`usefull_hot_walls_004` (pick the entry, squeeze into the gap, bomb the async
+wall) = from level 11 every hot room also gets a **solid async block in its
+gap** (thin, bombable, M1 column walled in bands 0/2) — bomb it or take the
+longer way around. The inverse case (two paths into one, with the hot wall in
+your path) falls out of the same patch.
+
+Capacity note: 40 shapes, bank3 data **5 B slack** — very tight. Further hot
+archetypes/variants need a bigger bank3 data window (move the include to a
+larger bank3 gap) before landing.

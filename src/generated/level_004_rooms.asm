@@ -18,7 +18,7 @@ LEVEL4_MINER_Y = 84
 ; TilePF0 = block + 1 + 5*hot_count.
 LEVEL4_RoomShapes:
   .byte SHAPE_M2 ; room 0 (model 2)
-  .byte SHAPE_M31 ; room 1 (model 31)
+  .byte SHAPE_M33 ; room 1 (model 33)
   .byte SHAPE_M17 ; room 2 (model 17)
   .byte SHAPE_M4 | $40 ; room 3 (model 4)
 
@@ -44,6 +44,6 @@ LEVEL4_RoomCounts:
 
 ; Enemy data: 3 enemy records across 4 rooms, 4 bytes each (type,x,y,dir).
 LEVEL4_EnemyDataTable:
-  .byte 1, 71, 36, 1
+  .byte 1, 31, 36, 1
   .byte 5, 69, 48, 1
   .byte 7, 23, 96, 1

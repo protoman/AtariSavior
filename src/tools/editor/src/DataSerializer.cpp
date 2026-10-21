@@ -417,14 +417,22 @@ const char* const kArch[6][3] = {
     {"......#...", "......##..", ".........."},          // 4 side pocket
     {"..##......", ".....#....", "......##.."},          // 5 zigzag
 };
-const char* const kArchHot[3] = {
-    "..##..##..",                                        // 6 two blocks
-    "....#.....",                                        // 7 centre block
-    "..#...#...",                                        // 8 staggered
+// Hot archetypes must SHAPE THE PATH (user 2026-10-21): the old side blocks
+// left the centre shaft free, so the player just fell through and the hot
+// walls were decoration. All three now block the centre (cells 8/9 = the
+// vertical shaft) and force a detour through an offset gap.
+const char* const kArchHot[4] = {
+    "#####.####",   // 6 gate: one gap at cell 5 (the shaft is hot)
+    "###.##.###",   // 7 split: gaps at 3 and 6 (choose)
+    "#.#.#.#.##",   // 8 comb: weave through 1/3/5/7
+    "##.#######",   // 9 align (>level 10): a single offset gap at cell 2 —
+                    //   stop the fall and line up (usefull_hot_walls_003)
 };
-const char* const kArchName[9] = {
+// Display column of the first hazard gap per hot archetype (objects guard it).
+const int kArchHotGapX[4] = {10, 6, 10, 4};
+const char* const kArchName[10] = {
     "", "Ladder", "Pillars", "Steps", "Pocket", "Zigzag",
-    "Hot2", "HotMid", "HotStag"};
+    "HotGate", "HotSplit", "HotComb", "HotAlign"};
 
 // Grid cell of a room in the level (x = column, y = row; rooms at the same y
 // in different columns are horizontally adjacent and therefore "connected"
@@ -797,10 +805,12 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         // HOT rooms: NO middle-band objects (user rule 2026-10-21) — the
         // other two bands may carry one each. Cell 8 is the open shaft in
         // both (N and S exits), so the guards sit on the descent line.
-        AddEnemy(room, EnemyType::BAT, 16.0f, 3.0f,
+        const int idx = levelNumber % (levelNumber > 10 ? 4 : 3);
+        const int gapx = kArchHotGapX[idx];
+        AddEnemy(room, EnemyType::BAT, (float)gapx, 3.0f,
                  1.25f + 0.25f * (levelNumber % 4), 13.0f);
         if (levelNumber >= 5) {
-            AddEnemy(room, EnemyType::SPIDER, 16.0f, 8.0f,
+            AddEnemy(room, EnemyType::SPIDER, (float)(gapx == 6 ? 12 : 6), 8.0f,
                      1.0f + 0.25f * (levelNumber % 4), 8.0f);
         }
         return;
@@ -860,7 +870,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             int arch = 0;
             if (!IsChannelTurn(l, walks[l - 1][i])) {
                 if (role == Role::Hot) {
-                    arch = 6 + (l % 2);   // two hot families (capacity)
+                    arch = 6 + (l % (l > 10 ? 4 : 3));
                 } else if (i == 0 && l >= 8) {
                     arch = 7;             // hot start walls (no enemies)
                 } else if (role == Role::Normal && i > 0 && i < count - 1) {
@@ -925,6 +935,24 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 for (int c = 0; c < kRoomWidth; ++c) {
                     room.feature_cells.push_back(
                         {1, c, (int)TileType::HCRUNCH});
+                }
+            }
+            // Advanced hot rooms (> level 10): a solid async block sits in
+            // the gap the player must use — bomb it (thin cell) or take the
+            // longer gap (usefull_hot_walls_004). The M1 column needs walls
+            // in bands 0/2, so scan for a legal cell near the gap.
+            if (roles[l - 1][i] == Role::Hot && l > 10) {
+                const ModelData& sm = models[shapeId[masks[l - 1][i]]];
+                const int gapCell = kArchHotGapX[l % 4] / 2;
+                for (int c = gapCell; c <= gapCell + 1; ++c) {
+                    if (c < 1 || c > 7) continue;
+                    if (sm.tiles[1 * kRoomWidth + c] == 0
+                            && sm.tiles[0 * kRoomWidth + c] != 0
+                            && sm.tiles[2 * kRoomWidth + c] != 0) {
+                        room.asym_patches.push_back(
+                            {1, c, (int)TileType::SOLID_WALL, 1});
+                        break;
+                    }
                 }
             }
             // Start room: an async block beside the exit gap from level 7
