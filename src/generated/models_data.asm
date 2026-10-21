@@ -234,12 +234,11 @@ M31Rows:
 ; Generated from models.json model 32. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M32RoomRects:
-  .byte 3              ; number of hot rectangles
+  .byte 2              ; number of hot rectangles
   .byte $08, 0, 1, 2, 1  ; mask, x, y, w, h (4px cols)
-  .byte $08, 4, 1, 2, 1  ; mask, x, y, w, h (4px cols)
-  .byte $08, 14, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+  .byte $08, 8, 1, 2, 1  ; mask, x, y, w, h (4px cols)
 M32Rows:
-  .byte $06, $14, $06  ; row-pool indices (band 0-2)
+  .byte $00, $0c, $00  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 33. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
@@ -248,7 +247,7 @@ M33RoomRects:
   .byte $08, 0, 1, 2, 1  ; mask, x, y, w, h (4px cols)
   .byte $08, 8, 1, 2, 1  ; mask, x, y, w, h (4px cols)
 M33Rows:
-  .byte $00, $0c, $00  ; row-pool indices (band 0-2)
+  .byte $03, $0c, $00  ; row-pool indices (band 0-2)
 
 ; Generated from models.json model 34. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
@@ -262,38 +261,28 @@ M34Rows:
 ; Generated from models.json model 35. Do not edit by hand.
 ; C4 (2026-10-20): block base = hot stream (no solid rect list)
 M35RoomRects:
-  .byte 3              ; number of hot rectangles
-  .byte $08, 0, 1, 2, 1  ; mask, x, y, w, h (4px cols)
-  .byte $08, 4, 1, 2, 1  ; mask, x, y, w, h (4px cols)
-  .byte $08, 12, 1, 2, 1  ; mask, x, y, w, h (4px cols)
-M35Rows:
-  .byte $00, $15, $00  ; row-pool indices (band 0-2)
-
-; Generated from models.json model 36. Do not edit by hand.
-; C4 (2026-10-20): block base = hot stream (no solid rect list)
-M36RoomRects:
   .byte 2              ; number of hot rectangles
   .byte $08, 0, 1, 2, 1  ; mask, x, y, w, h (4px cols)
-  .byte $08, 4, 1, 2, 1  ; mask, x, y, w, h (4px cols)
-M36Rows:
-  .byte $06, $16, $06  ; row-pool indices (band 0-2)
+  .byte $08, 8, 1, 2, 1  ; mask, x, y, w, h (4px cols)
+M35Rows:
+  .byte $03, $0c, $06  ; row-pool indices (band 0-2)
 
 ; C3 (2026-10-20): ROW DICTIONARY — one 3 B entry per DISTINCT
 ; (PF0,PF1,PF2) band row for the whole game. A shape block carries
 ; 3 one-byte indices (band 0/1/2) into these SoA columns; bank2's
 ; B3RoomBlocks expands them into PF0Buf at room load.
-LEVEL_ROW_COUNT = 23
+LEVEL_ROW_COUNT = 20
 RowPoolPF0:
-  .byte $f0, $30, $f0, $f0, $f0, $00, $f0, $c0, $c0, $30, $00, $30, $30, $00, $30, $00, $30, $00, $00, $30, $30, $30, $30
+  .byte $f0, $30, $f0, $f0, $f0, $00, $f0, $c0, $c0, $30, $00, $30, $30, $00, $30, $00, $30, $00, $00, $30
 RowPoolPF1:
-  .byte $ff, $00, $ff, $00, $f3, $00, $cf, $ff, $cf, $33, $33, $03, $0c, $0c, $00, $00, $00, $00, $03, $f0, $c0, $c0, $c0
+  .byte $ff, $00, $ff, $00, $f3, $00, $cf, $ff, $cf, $33, $33, $03, $0c, $0c, $00, $00, $00, $00, $03, $f0
 RowPoolPF2:
-  .byte $0f, $00, $ff, $00, $ff, $00, $fc, $0f, $0c, $00, $00, $00, $00, $00, $0f, $0f, $0c, $0c, $00, $0f, $0c, $03, $00
+  .byte $0f, $00, $ff, $fc, $ff, $00, $fc, $0f, $0c, $00, $00, $00, $00, $00, $0f, $0f, $0c, $0c, $00, $0f
 
 
 ; C7 (2026-10-20): shape ADDRESS table — bank3's B3RoomBlocks
 ; reads it in-bank; the 6-bit room-record index is the row.
-; LEVEL_SHAPE_COUNT = 37 (6-bit index ceiling: 64)
+; LEVEL_SHAPE_COUNT = 36 (6-bit index ceiling: 64)
 LEVEL_ShapeTable:
   .word M0RoomRects
   .word M1RoomRects
@@ -331,5 +320,4 @@ LEVEL_ShapeTable:
   .word M33RoomRects
   .word M34RoomRects
   .word M35RoomRects
-  .word M36RoomRects
 

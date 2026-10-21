@@ -18,7 +18,7 @@ LEVEL4_MINER_Y = 84
 ; TilePF0 = block + 1 + 5*hot_count.
 LEVEL4_RoomShapes:
   .byte SHAPE_M2 ; room 0 (model 2)
-  .byte SHAPE_M33 ; room 1 (model 33)
+  .byte SHAPE_M31 ; room 1 (model 31)
   .byte SHAPE_M17 ; room 2 (model 17)
   .byte SHAPE_M4 | $40 ; room 3 (model 4)
 
@@ -37,14 +37,13 @@ LEVEL4_RoomPositions:
 ; extras ordinal (C5: 1-based index into LEVELn_AsyncExtras, 0 =
 ; none; the enemy record index is derived at room load).
 LEVEL4_RoomCounts:
-  .byte $40 ; room 0: 1 record(s)
+  .byte $00 ; room 0: 0 record(s)
   .byte $40 ; room 1: 1 record(s)
   .byte $40 ; room 2: 1 record(s)
   .byte $40 ; room 3: 1 record(s)
 
-; Enemy data: 4 enemy records across 4 rooms, 4 bytes each (type,x,y,dir).
+; Enemy data: 3 enemy records across 4 rooms, 4 bytes each (type,x,y,dir).
 LEVEL4_EnemyDataTable:
-  .byte 1, 47, 48, 1
-  .byte 1, 39, 48, 1
-  .byte 5, 29, 48, 1
+  .byte 1, 71, 60, 1
+  .byte 5, 69, 48, 1
   .byte 7, 23, 96, 1

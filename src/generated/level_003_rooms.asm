@@ -18,7 +18,7 @@ LEVEL3_MINER_Y = 84
 ; TilePF0 = block + 1 + 5*hot_count.
 LEVEL3_RoomShapes:
   .byte SHAPE_M2 ; room 0 (model 2)
-  .byte SHAPE_M31 ; room 1 (model 31)
+  .byte SHAPE_M32 ; room 1 (model 32)
   .byte SHAPE_M0 ; room 2 (model 0)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
@@ -35,12 +35,11 @@ LEVEL3_RoomPositions:
 ; extras ordinal (C5: 1-based index into LEVELn_AsyncExtras, 0 =
 ; none; the enemy record index is derived at room load).
 LEVEL3_RoomCounts:
-  .byte $40 ; room 0: 1 record(s)
+  .byte $00 ; room 0: 0 record(s)
   .byte $40 ; room 1: 1 record(s)
   .byte $40 ; room 2: 1 record(s)
 
-; Enemy data: 3 enemy records across 3 rooms, 4 bytes each (type,x,y,dir).
+; Enemy data: 2 enemy records across 3 rooms, 4 bytes each (type,x,y,dir).
 LEVEL3_EnemyDataTable:
-  .byte 0, 31, 60, 1
-  .byte 1, 39, 48, 1
-  .byte 2, 8, 60, 1
+  .byte 1, 71, 48, 1
+  .byte 1, 71, 48, 1
