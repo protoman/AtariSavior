@@ -717,80 +717,32 @@ PhNext:                     ; Y = row (base+2): skip w/h → next class.
 
 
 BuildColupF:
-    ; Bomb save ($F0-$F2 → collision temps) deleted S3.0b: this body writes
-    ; ColupfBuf rows 0-2 only — it never reached $F0-$F2 (vestigial from
-    ; the 12-row era; kernel .AfterRows restore deleted in the same commit).
-    ; --- stripe fill ---
-    ldx #0
-.BCFstripe:
-    cpx #1
-    bne .BCFc1
-    lda LevelWallColor2
-    jmp .BCFstore
-.BCFc1:
+    ; --- stripe colors (3 bands, written once) ---------------------------
     lda LevelWallColor
-.BCFstore:
-    sta ColupfBuf,X
-    inx
-    cpx #TILE_ROWS
-    bne .BCFstripe
-    ; --- pulse color → Temp (free until .BgStore) ---
+    sta ColupfBuf+0
+    sta ColupfBuf+2
+    lda LevelWallColor2
+    sta ColupfBuf+1
+    ; --- hot middle band: ONE row, ONE color ----------------------------
+    ; C10 (2026-10-21): hot cells only ever exist on model row 1 (convert
+    ; promotes EVERY row-1 wall to H when mid_band_type=1), so the old
+    ; per-frame walk of the hot rect stream just re-derived "row 1 is hot".
+    ; MetaB b6 IS that flag — reading it removes ~200c of VBL work per frame
+    ; in hot rooms, which is what pushed the VBL past its line boundary and
+    ; made the whole screen flicker (level 3/4 hot rooms, 268-line frames).
+    lda RoomMetaB
+    and #$40                    ; b6 = mid_band_type hot
+    beq .BCFdone
     lda TickCounter
     and #$10
     beq .BCFpulseY
     lda #COLOR_HOT_R
-    jmp .BCFpulse
+    bne .BCFhotStore
 .BCFpulseY:
     lda #COLOR_HOT_Y
-.BCFpulse:
-    sta Temp
-    ; --- walk hot rects, overwrite those rows ---
-    lda RoomRectsLo
-    sta FetchPtr
-    lda RoomRectsHi
-    sta FetchPtr+1
-    ldy #0
-    lda (FetchPtr),Y            ; hot count (C4: no solid rect list)
-    beq .BCFdone
-    sta RectCount
-    iny
-.BCFrect:
-    tya
-    pha
-    lda (FetchPtr),Y            ; record class/mask
-    bmi .BCFrectDone            ; b7 set = feature record ($80 phase /
-                                 ;   $82 hcrunch; $81 is inert) — NOT a
-                                 ;   hot band; its rows keep the stripe
-                                 ;   color (the phase cell's own blink
-                                 ;   lives in the PF bits, not the color)
-    iny
-    iny                         ; Y = base+2 (y; record = mask, x, y, w, h)
-    lda (FetchPtr),Y
-    sta CollisionCellX          ; first row
-    iny
-    iny                         ; Y = base+4 (h)
-    clc
-    lda (FetchPtr),Y
-    adc CollisionCellX
-    sta CollisionX              ; one-past last row
-    ldx CollisionCellX
-.BCFrow:
-    cpx #TILE_ROWS
-    bcs .BCFrectDone
-    cpx #12
-    bcs .BCFrectDone
-    lda Temp
-    sta ColupfBuf,X
-    inx
-    cpx CollisionX
-    bne .BCFrow
-.BCFrectDone:
-    pla
-    clc
-    adc #5
-    tay
-    dec RectCount
-    bne .BCFrect
+.BCFhotStore:
+    sta Temp                    ; keep the pulse-color contract
+    sta ColupfBuf+1
 .BCFdone:
     ; --- Dark room: walls black; fuse (state=1) walls dark grey ---
     ; Moved to BCFDarkRun (pre-level-data gap): the $FCF0 pin left <8 B
