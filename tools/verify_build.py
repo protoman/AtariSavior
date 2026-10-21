@@ -1327,10 +1327,18 @@ def check_shape_blocks(src: Path) -> None:
             err("bank3.asm HotOverlapBody lost the PF row-1 hot sweep "
                 "(MetaB b6 gate + PF0Buf read) — C11")
     spill = gen / "spill_bank3.asm"
-    if not spill.exists() or "models_data.asm" not in spill.read_text(
+    if not spill.exists() or "levels_extras.asm" not in spill.read_text(
             errors="replace"):
-        err("generated/spill_bank3.asm must include models_data.asm — the "
-            "row pool lives in bank3's $F010 data window (C7)")
+        err("generated/spill_bank3.asm must include levels_extras.asm — the "
+            "async extras streams live in bank3's $F010 data window (C12)")
+    spill_shapes = gen / "spill_bank3_shapes.asm"
+    if not spill_shapes.exists() or "models_data.asm" not in \
+            spill_shapes.read_text(errors="replace"):
+        err("generated/spill_bank3_shapes.asm must include models_data.asm — "
+            "the shape blocks + row pool live in bank3's $F5CC window (C12)")
+    if "models_data.asm" in spill.read_text(errors="replace"):
+        err("generated/spill_bank3.asm still includes models_data.asm — the "
+            "$F010 window is EXTRAS only since C12 (shapes -> $F5BF)")
     lst = src / "bank3.lst"
     if lst.exists():
         labels, _ = parse_lst(lst.read_text(errors="replace").splitlines())
@@ -1338,7 +1346,11 @@ def check_shape_blocks(src: Path) -> None:
                      "LEVEL_ShapeTable", "LevExtrasLo", "LevExtrasHi"):
             if name not in labels:
                 err(f"bank3.lst has no {name} — the level-data window did not "
-                    "assemble into bank3 ($F010)")
+                    "assemble into bank3 ($F010/$F5BF)")
+        # C12: the shape half must really sit in its own window.
+        if "M0Shape" in labels and not 0xF5CC <= labels["M0Shape"] < 0xF8B7:
+            err(f"bank3.lst: M0Shape at ${labels['M0Shape']:04X} is outside "
+                "the $F5CC-$F8B6 shape window (C12 split)")
 
 
 def check_bank3_entry(src: Path) -> None:

@@ -376,3 +376,36 @@ your path) falls out of the same patch.
 Capacity note: 40 shapes, bank3 data **5 B slack** — very tight. Further hot
 archetypes/variants need a bigger bank3 data window (move the include to a
 larger bank3 gap) before landing.
+
+## G12 (2026-10-21): shape budget — the shape library is no longer window-capped
+
+C11 removed the per-shape hot stream (a block is 3 row-pool indices; hot death
+derives from the PF row 1), returning ~200 B. `tools/bank3_data_sizes.py` then
+measured the two halves: shapes 272 B, extras 611 B — the old single 1 088 B
+window had only 5 B slack, which capped the library at 40 shapes.
+
+The bank3 data window is now **two** windows (C12):
+
+| window | address | size | content |
+|---|---|---|---|
+| extras | `$F010-$F44F` | 1 088 B | per-level async streams + base table |
+| shapes | `$F5CC-$F8B6` | 747 B | shape blocks + row pool + shape address table |
+
+The shape half starts where `ERLoadDone` ends (`$F5CC`, not the stale `$F5BF`
+figure measured from an older binary — a `.ds` target below the program
+counter is a DASM `Origin Reverse-indexed` error, which is exactly how the
+first attempt failed). `B3RoomBlocks` reads both halves in-bank, so the split
+adds no tramp and no per-frame cost.
+
+The generator now has a **declared shape budget** (`kShapeBudget`, two-pass:
+base library first, extra archetypes only if the base fits):
+
+* base: Ladder/Pillars/Steps/Pocket/Zigzag + HotGate/HotSplit/HotComb
+  (+ HotAlign > level 10) — 40 shapes;
+* budget mode: **Spiral**, **Gallery** (normal), **HotTwin**, **HotStair**
+  (hot) and **HotDrop** for hot start rooms — 47 shapes, 322 B of the 747 B
+  window (425 B slack);
+* `test_generator` gates: shapes <= `SHAPE_BUDGET` (56), every bank3 window
+  keeps >= 64 B slack, and a hot start room must keep row-1 cell 4 open
+  (HotDrop: the spawn falls down cell 4, and convert promotes every row-1
+  wall to a hot cell — HotSplit put a hot cell under the drop).

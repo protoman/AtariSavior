@@ -414,7 +414,7 @@ constexpr int kArchMask = 15;   // 4 bits: hot archetypes use ids 8..14
 // two-slot split raises the shape slot, bump this (tools/bank3_data_sizes.py
 // reports the headroom). With the budget at the current count the generator
 // output is byte-identical to the pre-budget build.
-constexpr int kShapeBudget = 40;
+constexpr int kShapeBudget = 56;
 const char* const kArch[8][3] = {
     {"..........", "..........", ".........."},          // 0 shaft
     {"..###.....", "..........", ".....###.."},          // 1 ledge ladder

@@ -177,11 +177,10 @@ PLAYER_MIN_Y = 0
     sta $1FF6                       ; select bank0
 
 ; ------------------------------------------------------------------------------
-; DATA WINDOW $F010-$F44F (1 088 B): shape blocks + row pool + shape address
-; table (models_data.asm) and the per-level async extras streams + their base
-; table (levels_extras.asm), emitted by tools/convert_level.py and listed in
-; generated/spill_bank3.asm; capacity-checked there (`_BANK3_DATA_SLOT`).
-; Nothing else may live here.
+; DATA WINDOW 1 — $F010-$F44F (1 088 B): the per-level async EXTRAS streams +
+; their base table (levels_extras.asm), emitted by tools/convert_level.py and
+; listed in generated/spill_bank3.asm; capacity-checked there
+; (`_BANK3_EXTRAS_SLOT`). Nothing else may live here.
 ; ------------------------------------------------------------------------------
     .ds $F010 - *, 0
     include "generated/spill_bank3.asm"
@@ -463,6 +462,15 @@ ERLoadDone:
     lsr
     sta Temp
     jmp ReturnPad
+
+; ------------------------------------------------------------------------------
+; DATA WINDOW 2 — $F5CC-$F8B6 (747 B): the shape blocks + row pool + shape
+; address table (models_data.asm), listed in generated/spill_bank3_shapes.asm.
+; C12 (2026-10-21): split off the $F010 window so the shape library is not
+; capped by it. B3RoomBlocks (in-bank) is the only reader, so no new tramp.
+; ------------------------------------------------------------------------------
+    .ds $F5CC - *, 0
+    include "generated/spill_bank3_shapes.asm"
 
 
 ; ------------------------------------------------------------------------------
