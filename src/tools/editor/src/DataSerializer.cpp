@@ -439,7 +439,7 @@ const char* const kArchHot[7] = {
     "####.#####",   // 14 HOT START: the drop column (cell 4) stays open,
                     //    else the spawn lands on a hot wall (budget mode)
 };
-const int kArchHotGapX[7] = {10, 6, 10, 4, 4, 2, 4};
+const int kArchHotGapX[7] = {10, 6, 10, 4, 4, 2, 8};   // cell*2
 const char* const kArchName[15] = {
     "", "Ladder", "Pillars", "Steps", "Pocket", "Zigzag", "Spiral",
     "Gallery", "HotGate", "HotSplit", "HotComb", "HotAlign", "HotTwin",
@@ -977,7 +977,9 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             // the gap the player must use — bomb it (thin cell) or take the
             // longer gap (usefull_hot_walls_004). The M1 column needs walls
             // in bands 0/2, so scan for a legal cell near the gap.
-            if (roles[l - 1][i] == Role::Hot && l > 10) {
+            // Start rooms never take a hot gap block: their drop column must
+            // stay open (HotDrop), and they carry their own async rule below.
+            if (roles[l - 1][i] == Role::Hot && l > 10 && i != 0) {
                 const ModelData& sm = models[shapeId[masks[l - 1][i]]];
                 const int hidx = ((masks[l - 1][i] >> kArchShift) & kArchMask) - 8;
                 const int gapCell = kArchHotGapX[hidx] / 2;
