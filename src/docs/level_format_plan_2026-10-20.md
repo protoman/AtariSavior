@@ -665,3 +665,30 @@ this at **9 B data / ~5 B net** — that estimate was taken on the 4-level,
 16-room, 9-record stage. At the 20-level stage the same change is **299 B**:
 enemy records are the one per-record cost that scales with content, so the
 decision flipped with the stage.
+
+## 7.2 C11+C12 ledger (measured 2026-10-21, `tools/rom_size_report.py --md`)
+
+| bank | code | data | fill | used | free |
+|---|---|---|---|---|---|
+| bank0 | 3051 | 370 | 657 | 3421 | 675 |
+| bank1 | 2416 | 449 | 1037 | 2865 | 1231 |
+| bank2 | 1273 | 1751 | 1071 | 3024 | 1072 |
+| bank3 | 1174 | 1032 | 1885 | 2206 | 1890 |
+| **total** | **7914** | **3602** | **4650** | **11516** | **4868** |
+
+Level data **2567 B** = index 140 + tables/blocks/extras 2105 + models 322.
+
+C11 removed the per-shape hot stream (a shape block is 3 row-pool indices;
+hot death derives from the PF row 1), taking level data 2713 -> 2567 B and the
+bank3 data window from 5 B to 205 B of slack. C12 then split that window:
+
+| window | address | size | live | slack |
+|---|---|---|---|---|
+| extras (async streams + base table) | `$F010-$F44F` | 1088 B | 615 B | 473 B |
+| shapes (blocks + row pool + table) | `$F5CC-$F8B6` | 747 B | 322 B | 425 B |
+
+The split point is `ERLoadDone`'s end (`$F5CC`); the old `$F5BF` figure was a
+stale binary measurement and a `.ds` target below `*` is a DASM
+`Origin Reverse-indexed` error. Both halves are read in-bank by
+`B3RoomBlocks`, so the split costs no tramp and no per-frame cycles. Bank2
+table slack 653 B; the live stage is 47 shapes / 211 rooms.
