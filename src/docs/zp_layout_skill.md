@@ -37,7 +37,30 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
    `$AD` bank1 `Temp` (bank0 `TickCounter`), `$BD-$BF`+`$C1-$C2` EnemyRam,
    `$C0` LaserState (bank0 laser S1),
    `$B5` BombPacked, `$85` BombY.
-6. **STOMP-ZONE RULE (S3.2, machine-enforced):** bank1 HUD writes `$E0-$EF`
+7. **PHASE-SHARING RULE (2026-10-22): a byte may be shared by two owners when
+   their LIFETIMES never overlap — but only with a documented contract, a
+   reset at the phase boundary, and a grep proving the other owner is dead.**
+   The first case, and the shape to copy: the title melody needed two bytes
+   (`MelPtr`/`MelTimer`) only while the TITLE runs, and on title frames the
+   bomb block never executes (`DropTarget != 0` → `DropStep`), so the melody
+   now lives in `$F6`/`$F7` (= `BombX`/`BombTimer`). That freed `$9D`/`$9E`,
+   which the CAVE kernel needs on **both** kinds of frame (the title previews
+   the stage with real room objects) — so those two could not be shared, the
+   music's could. On the way back to the title (`SELECT+RESET` at
+   `GameStart`'s tail) the two bytes are cleared, so the theme restarts instead
+   of reading `MusicMel` with a stale gameplay value.
+   Checklist before sharing: (a) name the two phases, (b) grep every reader of
+   the byte in all four banks and prove the non-owner never runs in the other
+   phase, (c) reset at the transition (the phase that "receives" the byte must
+   not inherit the other's state), (d) write the contract at the EQU in BOTH
+   banks, (e) if the read can happen in both phases, sharing is NOT allowed.
+   **The room-change case is the same rule:** anything scoped to a ROOM
+   (`EnemyDataLo/Hi`, `EnemyCount`, `EnemyRamX/Y/D/P`, `RoomRectsLo/Hi`,
+   `RoomMetaA/B`, `LevelConnSpare`) is re-derived by `EnterRoomB2` every time a
+   room is entered — a new per-room byte MUST be staged on that path (and
+   nothing may read it before the first room load), otherwise it silently
+   carries the previous room's value, exactly like the 2026-10-22 melody bug.
+8. **STOMP-ZONE RULE (S3.2, machine-enforced):** bank1 HUD writes `$E0-$EF`
    every frame (score ptrs + bar temps). Bank0 state written ONCE and read
    across frames must live **below `$E0`**. Documented exceptions (both
    window-ordered, both machine-checked ordering): `ColupfBuf` `$E7`

@@ -140,8 +140,14 @@ RoomPF0Hi       byte            ; pointer to current room's TilePF0 (high)
 BarIdx          byte            ; ($9B) bar table idx (BarLevel+7)>>3 (D2 sync)
 Hover           byte            ; ($9C) respawn hover flag (bugs.md #1): 1 while
                                 ;       gravity is suppressed after a respawn
-MelPtr          byte            ; ($9D) intro music: melody stream index (bank1)
-MelTimer        byte            ; ($9E) intro music: melody frames left
+ObjHeight       byte            ; ($9D) GRP1 draw window for slot 0, staged per
+                                ;       VBL from the object's design (Phase 6
+                                ;       tall art). Was the title melody index
+                                ;       MelPtr — the melody moved to BombX
+                                ;       ($F6), which is dead on title frames.
+ObjHeight1      byte            ; ($9E) the same for slot 1, staged by
+                                ;       StageSlot1 and swapped in by Slot1Hook.
+                                ;       Was MelTimer.
 LevelPFDataLo   byte            ; pointer to the level's RoomShapes column (low)
 LevelPFDataHi   byte            ; pointer to the level's RoomShapes column (high)
 LevelRoomN      byte            ; rooms in this level (C4 2026-10-20, C2 3 B
@@ -3652,6 +3658,10 @@ RefreshEnemyY:
     beq .REYRts                 ; neither pressed
     lda #$FF
     sta DropTarget              ; merged title sentinel ($FF, 2026-10-19)
+    lda #0                      ; restart the title theme: bank1's melody state
+    sta BombX                   ;   lives in BombX/BombTimer while the title
+    sta BombTimer               ;   runs (both dead there), so returning from a
+                                ;   game must clear them for a clean melody
     jsr LoadLevel               ; reload the level-start room for the preview
     pla                         ; drop OUR return address (LoadLevel already
     pla                         ;   popped its own) — tail into TitleWork

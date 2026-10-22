@@ -1079,6 +1079,21 @@ myScanlineCountLast}`) — **left box first, right box second:**
 
 ### Lessons Learned
 
+**ZP bytes are a PHASE resource — share them by lifetime, and reset at the
+handover (2026-10-22).** The title melody held `$9D`/`$9E` (`MelPtr`/
+`MelTimer`) even though it only runs on title frames, which blocked the
+per-type object height (the cave kernel needs two bytes on BOTH title and
+gameplay frames, because the title previews the stage with real objects). Fix:
+the melody moved to `$F6`/`$F7` = `BombX`/`BombTimer`, which are dead on title
+frames (`DropTarget != 0` → `DropStep` skips the bomb block), and the
+`SELECT+RESET` title entry clears them so the theme restarts instead of reading
+`MusicMel` with a stale gameplay index. Rule + the audit checklist in
+`docs/zp_layout_skill.md` rule 7. **The room-change case obeys the same law**:
+every per-room byte (`EnemyDataLo/Hi`, `EnemyCount`, `EnemyRamX/Y/D/P`,
+`RoomRectsLo/Hi`, `RoomMetaA/B`, `LevelConnSpare`) is re-derived by
+`EnterRoomB2`; a new per-room byte must be staged on that path or it carries
+the previous room's value.
+
 **Room entry must refresh the joystick shadow `Temp` (2026-10-20, user
 report: the eye snapped right on every transition + a 1 px twitch):** bank0's
 overscan input block stages `SWCHA>>4` into `Temp` and keeps reading it for
