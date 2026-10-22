@@ -325,6 +325,48 @@ frames measure 269 lines, (b) both objects are drawn in the SAME frame
 (py65: GRP1 writes in two bands with `ObjBase` swapped at the band boundary),
 (c) the solo-object rooms still measure 267.
 
+## Phase 6 — tall sprites: table relocation DONE (2026-10-21), growth next
+
+`ObjColorTab` (72 B) + `ObjSprites` (72 B) were RELOCATED out of the pinned
+`$FE00-$FE8F` cluster into free fills, so they can grow without shifting a
+single pin. Zero behaviour change; build + both sims + full battery green.
+
+- Colour table -> `$FB20` fill (176 B, 32 B spare at 8-row size).
+- Art table -> `$F744` fill, right after the Phase 5 code.
+- `$FE00-$FE8F` is now `    .ds $FE90 - *, 0`, which keeps `FoldIndirect` at
+  `$FE90` (the old HOF tramp) — do not delete that fill.
+- `verify_build` needed no change: its only art guard is
+  "`ObjSprites+<max offset>` stays in one page", and it resolves the label.
+  New base low byte + max offset must stay <= 255.
+
+### Measured facts that shape the growth (2026-10-21)
+
+- The GRP1 draw window is `cmp #PLAYER_HEIGHT` (`kernel.asm` .Grp1, `$F1xx`)
+  with `PLAYER_HEIGHT = 8`. **Growing the art means a bigger window**, so the
+  growth step introduces `OBJ_WINDOW` for the draw test and leaves
+  `PLAYER_HEIGHT` at 8: `PLAYER_HEIGHT` also feeds the enemy/player overlap
+  test (`#PLAYER_SPRITE_H + PLAYER_HEIGHT - 1`, two sites) — changing it would
+  change collision and `test_cell_map`/`test_phm_walk` expectations.
+- Per-type blocks are indexed as `ObjBase + row`, offsets come from
+  `ObjSpriteOffTable` and the `OBJ_*` EQUs, so ALL types must share one stride.
+- Space: 12 rows/type = 108 B per table (216 B total). Art (108) fits the
+  `$F744` fill, colour (108) fits the `$FB20` fill -> split them, 12 rows is
+  affordable; 16 rows (144 B each) does not fit without moving the Phase 5
+  code first.
+- Colour rows 8-11 must NOT be left as junk: they tint the M1 block on those
+  scanlines (Phase 3, deferred) — use the type's own colour, not 0.
+
+### Growth step (next commit)
+
+1. `OBJ_WINDOW = 12`; use it in `.Grp1`'s `cmp` (the reflection branch's flags
+   follow the same cmp — no second change).
+2. `OBJ_*` EQUs -> 0,12,24,...,96 and `ObjSpriteOffTable` -> the same values.
+3. Art: 12 rows per type (4 new rows invented per type; the miner needs real
+   legs so its feet read correctly).
+4. Colour: 12 rows per type, rows 8-11 = the type's dominant colour.
+5. Verify: `ObjSprites` low byte + 107 <= 255 (page guard), build, sims,
+   battery, then a screenshot A/B against the previous ROM.
+
 ## Phase 6 — Taller, richer sprites (the payoff)
 
 - The object path already indexes `ObjSprites`/`ObjColorTab` by
