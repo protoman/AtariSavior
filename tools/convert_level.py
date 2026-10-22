@@ -549,9 +549,14 @@ def check_model_objects(model: dict, who: str) -> None:
                 "bottom band (row 2, the water strip)")
 
 
+BAND_RULE_HARD = False   # flip to True once the live stage has no violators
+_BAND_WARNED: set[str] = set()   # one line per room (the pass runs twice)
+
+
 def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                                who_prefix: str,
-                               miner_room: int = -1) -> None:
+                               miner_room: int = -1,
+                               miner_y: float | None = None) -> None:
     """Per-room object rules against the room's model special (2026-10-14).
 
     hcrunch rooms: no objects at all. Door rooms: at most one
@@ -587,6 +592,31 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                 raise ValueError(
                     f"{who}: door room has a lamp/miner — door rooms allow "
                     "a single enemy only")
+        # --- one object per 48-line BAND, the miner included -----------------
+        # The kernel has ONE GRP1: StageSlot1 pairs two objects only when they
+        # are in different bands (tools/test_slot1_pair.py). Two objects on the
+        # same scanlines keep the 30 Hz rotation, which reads as flicker.
+        # Tile row -> px = row*12, band = px//48 = row//4.
+        seated = [(f"enemy {i}", float(e.get("y", 0)))
+                  for i, e in enumerate(enemies)]
+        seated += [(f"lamp {i}", float(l.get("y", 0)))
+                   for i, l in enumerate(lamps)]
+        if miner and miner_y is not None:
+            seated.append(("the miner", float(miner_y)))
+        bands: dict[int, list[str]] = {}
+        for what, tile in seated:
+            bands.setdefault(int(tile) // 4, []).append(what)
+        for band, whats in sorted(bands.items()):
+            if len(whats) > 1:
+                msg = (f"{who}: {len(whats)} objects in band {band} "
+                       f"({', '.join(whats)}) — one GRP1 cannot draw them on "
+                       "the same scanlines; move one into another band "
+                       "(the miner counts as an occupant)")
+                if BAND_RULE_HARD:
+                    raise ValueError(msg)
+                if msg not in _BAND_WARNED:
+                    _BAND_WARNED.add(msg)
+                    print(f"WARN: {msg}")
         tiles = model.get("tiles") or []
         if any(t == RAFT for t in tiles) and not room.get("bottom_band"):
             raise ValueError(
@@ -812,7 +842,8 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
         miner_room |= 0x80  # kernel uses bit 7 as miner-facing-right flag
     check_rooms_against_models(rooms, models_by_id,
                                f"level {level_n}",
-                               int(level.get("miner_room", 0)) & 0x7F)
+                               int(level.get("miner_room", 0)) & 0x7F,
+                               level.get("miner_y", 0))
     lines = [
         f"; Generated from {level.get('name', 'level')} (level {level_n}). "
         "Do not edit by hand."
@@ -1250,7 +1281,8 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
             referenced.add(model["id"])
         check_rooms_against_models(level.get("rooms") or [], models_by_id,
                                    f"level {level_n}",
-                                   int(level.get("miner_room", 0)) & 0x7F)
+                                   int(level.get("miner_room", 0)) & 0x7F,
+                                   level.get("miner_y", 0))
         rel = generated.name
         data_lines.append(f'    include "{rel}/level_{level_n:03d}_rooms_data.asm"')
         table_lines.append(f'    include "{rel}/level_{level_n:03d}_rooms.asm"')
