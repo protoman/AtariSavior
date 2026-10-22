@@ -155,7 +155,7 @@ def check_rom(src: Path) -> bytes | None:
     if obj is None:
         err("ObjSprites label not found in bank0.lst")
     elif (obj + 71) >> 8 != obj >> 8:
-        err(f"ObjSprites ${obj:04X}+71 crosses a page -> kernel "
+        err(f"ObjSprites ${obj:04X}+107 crosses a page -> kernel "
             f"lda ObjSprites,X costs 5c (budget assumes 4c)")
     # 3) Laser S2.2: every relative branch inside the .Line hot loop
     #    (.Line .. bne .Line) must share a page with its target (3c taken

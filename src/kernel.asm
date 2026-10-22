@@ -323,6 +323,8 @@ EnemyRamY       = $E2           ; 3 bytes: live Y per enemy ($E2-$E4) —
 ; ==============================================================================
 PLAYER_HEIGHT   = 8             ; GRP1 object (enemy/miner) height; player uses PLAYER_SPRITE_H
 PLAYER_SPRITE_H = 12            ; player sprite height in scanlines (8x12)
+OBJ_WINDOW      = 12            ; GRP1 draw window (Phase 6 tall art);
+                                ;   PLAYER_HEIGHT stays 8 (collision box)
 PLAYER_WIDTH    = 7             ; lit player sprite spans 7 pixels; REFP0 shift handled
 ENEMY_WIDTH     = 8             ; snake GRP1 width ($ff = 8 px) — flush-out span
 LAMP_WIDTH      = 4             ; OBJ_LAMP uses GRP1's leftmost 4 lit pixels
@@ -340,17 +342,17 @@ HUD_ROWS        = 1             ; HUD band (48 scanlines)
 CAVE_LINES      = 144           ; TILE_ROWS × LINES_PER_TILE
 VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × LINES_PER_TILE)
 
-; GRP1 sprite design offsets into ObjSprites (8 bytes each; 0 = blank/off)
+; GRP1 sprite design offsets into ObjSprites (12 bytes each; 0 = blank/off)
 OBJ_NONE        = 0
-OBJ_KEY         = 0             ; type-6 KEY design = the offset-0 slot
-OBJ_MOTH        = 8
-OBJ_SPIDER      = 16
-OBJ_LAMP        = 24
-OBJ_TENTACLE    = 32
-OBJ_BAT         = 40
-OBJ_SNAKE       = 48
-OBJ_MINER       = 56
-OBJ_BOMB        = 64
+OBJ_KEY         = 0     ; type-6 KEY design = the offset-0 slot
+OBJ_MOTH        = 12
+OBJ_SPIDER      = 24
+OBJ_LAMP        = 36
+OBJ_TENTACLE    = 48
+OBJ_BAT         = 60
+OBJ_SNAKE       = 72
+OBJ_MINER       = 84
+OBJ_BOMB        = 96
 
 ; Player bounds (must stay inside cave walls)
 PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
@@ -908,7 +910,7 @@ CaveKernelRow:
     tya
     sec
     sbc ObjTop                  ; A = Y - ObjTopRel (= Scanline - ObjTop, mod 256)
-    cmp #PLAYER_HEIGHT
+    cmp #OBJ_WINDOW
     bcs .ObjZero                ; above (negative mod ≥65) or at/below bottom
     adc ObjBase
     tax
@@ -2475,6 +2477,32 @@ BandStart:
 ; not from here. That is the same FoldIndirect discipline every other tramp
 ; uses — the twin cannot be skipped or shortened.
 ; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
+    .ds $F850 - *, 0            ; ObjSprites: 12 rows/type = 108 B.
+                                 ; Base low byte $50 + max index 107 =
+                                 ; 187 -> `lda ObjSprites,X` stays in one
+                                 ; page (verify_build guard).
+; 12 rows per type, bits 7-4 (col0 = bit7). Offsets come from the OBJ_*
+; EQUs via ObjSpriteOffTable (stride 12).
+ObjSprites:
+    .byte $3C,$42,$5A,$42,$3C,$18,$18,$14   ; OBJ_KEY (offset 0)
+    .byte $18,$1c,$18,$10                   ;  (shaft teeth)
+    .byte $90,$60,$f0,$f0,$60,$90,$60,$60   ; OBJ_MOTH
+    .byte $60,$30,$30,$18                   ;  (legs)
+    .byte $60,$f0,$f0,$60,$90,$60,$90,$90   ; OBJ_SPIDER
+    .byte $c0,$60,$30,$18                   ;  (legs)
+    .byte $f0,$f0,$60,$60,$f0,$f0,$f0,$60   ; OBJ_LAMP
+    .byte $60,$60,$60,$60                   ;  (post / base)
+    .byte $60,$90,$80,$60,$30,$30,$30,$30   ; OBJ_TENTACLE
+    .byte $18,$18,$0c,$0c                   ;  (taper)
+    .byte $90,$60,$f0,$60,$60,$90,$90,$00   ; OBJ_BAT
+    .byte $60,$30,$18,$00                   ;  (tail)
+    .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff   ; OBJ_SNAKE (8 px solid)
+    .byte $ff,$ff,$ff,$ff                   ;  (fills its wall cell)
+    .byte $0c,$1c,$4c,$36,$0f,$07,$3f,$6e   ; OBJ_MINER (mirrored, faces left)
+    .byte $1c,$1c,$0c,$04                   ;  (legs)
+    .byte $10,$20,$20,$60,$f0,$f0,$f0,$60   ; OBJ_BOMB
+    .byte $30,$18,$18,$0c                   ;  (tail)
+
     .ds $F8C0 - *, 0
 CallPad_RaftBody:
     sta $1FF7                    ; select bank1 (last byte fetched from bank0)
@@ -3123,16 +3151,18 @@ TitleBcd:
     sta ScoreTe
     rts
 
+; 12 rows per type (Phase 6 tall art). Color rows 8-11 = the type's own
+; color (they tint the M1 block on those lines when a room has an M1 patch).
 ObjColorTab:
-    .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c   ; 0 KEY    ($1c yellow; was NONE/blank)
-    .byte $22,$22,$22,$22,$22,$22,$22,$22   ; 1 MOTH   ($22 dark orange)
-    .byte $14,$14,$14,$14,$14,$14,$14,$14   ; 2 SPIDER ($14 dark yellow)
-    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 3 LAMP   ($0e white)
-    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 4 TENTACLE ($0e white)
-    .byte $f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2   ; 5 BAT    ($f2 brown)
-    .byte $c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4   ; 6 SNAKE  ($c4 green)
-    .byte $54,$54,$4a,$54,$54,$08,$54,$54   ; 7 MINER  purple/pink face/grey tool
-    .byte $46,$46,$46,$46,$46,$46,$46,$46   ; 8 BOMB   ($46 red)
+    .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c   ; 0 KEY   ($1c yellow)
+    .byte $22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22   ; 1 MOTH  ($22 dark orange)
+    .byte $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14   ; 2 SPIDER
+    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 3 LAMP  ($0e white)
+    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 4 TENTACLE
+    .byte $f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2   ; 5 BAT   ($f2 brown)
+    .byte $c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4   ; 6 SNAKE ($c4 green)
+    .byte $54,$54,$4a,$54,$54,$08,$54,$54,$08,$08,$08,$08   ; 7 MINER (r8-r11 grey legs)
+    .byte $46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46   ; 8 BOMB  ($46 red)
 
 ; ------------------------------------------------------------------------------
 ; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
@@ -3141,17 +3171,6 @@ ObjColorTab:
 ; latching, same as before.
 ; Offset = OBJ_* constant; index 0 = blank (object off).
 ; ------------------------------------------------------------------------------
-ObjSprites:
-    .byte $3C,$42,$5A,$42,$3C,$18,$18,$14   ; OBJ_KEY (offset 0 = key art)
-    .byte $90,$60,$f0,$f0,$60,$90,$60,$60   ; OBJ_MOTH
-    .byte $60,$f0,$f0,$60,$90,$60,$90,$90   ; OBJ_SPIDER
-    .byte $f0,$f0,$60,$60,$f0,$f0,$f0,$60   ; OBJ_LAMP
-    .byte $60,$90,$80,$60,$30,$30,$30,$30   ; OBJ_TENTACLE
-    .byte $90,$60,$f0,$60,$60,$90,$90,$00   ; OBJ_BAT
-    .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff   ; OBJ_SNAKE (8 px)
-    .byte $0c,$1c,$4c,$36,$0f,$07,$3f,$6e   ; OBJ_MINER (miner.png 2026-10-03,
-                                 ; mirrored — faces left; r2 pink face, r5 grey)
-    .byte $10,$20,$20,$60,$f0,$f0,$f0,$60   ; OBJ_BOMB
 
     .ds $FBD0 - *, 0            ; #22: pin tramp at $FBD0 — bank2's twin
                                  ;   sits at the same address (pin moved from

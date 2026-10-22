@@ -325,6 +325,40 @@ frames measure 269 lines, (b) both objects are drawn in the SAME frame
 (py65: GRP1 writes in two bands with `ObjBase` swapped at the band boundary),
 (c) the solo-object rooms still measure 267.
 
+## Phase 6 — tall enemy art LANDED (2026-10-21)
+
+Every GRP1 object (enemy/miner/bomb/raft/key) is now **12 rows tall** instead
+of 8: `OBJ_WINDOW = 12` is the draw window, `PLAYER_HEIGHT` stays 8 so the
+collision/overlap tests (`#PLAYER_SPRITE_H + PLAYER_HEIGHT - 1`) are unchanged.
+
+- `OBJ_*` EQUs and `ObjSpriteOffTable` use stride 12 (0,12,...,96); max index
+  107. `verify_build`'s page guard was bumped 71 -> 107.
+- `ObjColorTab` (108 B) lives in the `$FB20` fill at `$FB1F`; `ObjSprites`
+  (108 B) in the `$F744` fill tail at `$F850` (pinned by `.ds $F850`; low byte
+  $50 + 107 = 187, one page).
+- Art: each type keeps its 8 original rows and gains 4 (legs / tail / taper /
+  post / teeth). Colour rows 8-11 = the type's own colour (miner = grey legs).
+- Zero cycle cost: only the compare constant and the index offsets changed, so
+  `sim_frame_budget` still reports the same wall model (267) and the battery is
+  0 fails.
+
+**Trap fixed on the way:** `parse_lst` in `verify_build` only sees a label line
+with NO trailing comment — putting `; ...` on `ObjSprites:` / `ObjColorTab:`
+makes the label invisible and the guards fail with "label not found".
+
+**Stale-expectation tests updated with the stride** (they hardcode offsets, not
+labels): `test_miner_colors` (56/8/40/64 -> 84/12/60/96), `test_raft`
+(OBJ_MINER 56 -> 84), `test_room_dark` (OBJ_MOTH 8 -> 12).
+
+### Next in Phase 6 (optional)
+
+- Art polish: the 4 new rows per type are first-pass; a screenshot pass can
+  improve legs/wings.
+- 16 rows/type (144 B each) does NOT fit yet: it needs the Phase 5 code moved
+  out of the `$F744` fill first.
+- Colour rows 8-11 tint the M1 block on those lines (Phase 3, deferred — the
+  live 4-level stage emits no async blocks).
+
 ## Phase 6 — tall sprites: table relocation DONE (2026-10-21), growth next
 
 `ObjColorTab` (72 B) + `ObjSprites` (72 B) were RELOCATED out of the pinned

@@ -185,7 +185,7 @@ def tally_gate() -> None:
     L = parse_labels(FROZEN / "bank0.lst", need)
     assert not (need - L.keys()), f"labels missing: {sorted(need - L.keys())}"
     Z = {k: v & 0x7F for k, v in L.items() if 0x80 <= v <= 0xFF}
-    OBJ_MINER = 56
+    OBJ_MINER = 84
 
     def one(miner_room, room_no):
         mem = Mem()
