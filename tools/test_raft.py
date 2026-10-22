@@ -308,6 +308,30 @@ def main() -> int:
     s = run(82, parity=0, room_x=79, room_y=raft_top(0) - PIN_FIT, pf1=0xFF)
     assert (s["room_y"], s["room_x"]) == (raft_top(0) - PIN_FIT, 80), f"re-pin: {s}"
 
+    # 5b. BOXED-IN raft (user report 2026-10-22, level 4 room 4): the authored
+    #     row-2 cells (PF0 $90 / PF1 $80 / PF2 $98 = solid logical cols 0,3,4,
+    #     15,16,19) leave the raft's x=12 span inside the ledge, so BOTH probes
+    #     hit walls and it turns every frame without moving. The rider must
+    #     still be PINNED on those turn frames — otherwise he sank through the
+    #     raft into the 125 water line and respawned forever ("position keeps
+    #     changing, zig-zags").
+    #    (feed a FALLING rider: on a turn frame the old code returned before
+    #    the pin, so this is the assertion that used to sink him)
+    s = run(12, parity=0, room_x=12, room_y=raft_top(0) + 2, vyhi=1,
+            pf0=0x90, pf1=0x80, pf2=0x98)
+    assert s["x"] == 12, f"the boxed-in raft must not move: {s}"
+    assert s["room_y"] == raft_top(0) - PIN_FIT, (
+        f"a turn frame must still pin the rider: {s}")
+    assert s["vyhi"] == 0, f"turn frame must zero the fall speed: {s}"
+    #    long chain: no frame may let him sink (the bug's symptom)
+    x, rx, par, d = 12, 12, 0, True
+    for _ in range(40):
+        r = run(x, dir_right=d, parity=par, room_x=rx,
+                room_y=raft_top(par) + 2, vyhi=1, pf0=0x90, pf1=0x80, pf2=0x98)
+        assert r["room_y"] == raft_top(par) - PIN_FIT, (
+            f"boxed-in chain lost the pin: {r}")
+        x, rx, par, d = r["x"], r["room_x"], (par + 1) & 0xFF, r["right"]
+
     # 6. thrust escapes: while rising (vyHi < 0) the pin is skipped
     s = run(80, parity=0, room_x=77, room_y=raft_top(0) + 2, vyhi=0xFF,
             pf1=0xFF)

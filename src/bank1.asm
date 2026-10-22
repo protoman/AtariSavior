@@ -2368,6 +2368,20 @@ RaftBody:
     sta $F0
     jmp ReturnPad
 .RaftGo:
+    ; --- pin FIRST: the rider stays on the raft even on a TURN frame --------
+    ; A raft boxed in by solid row-2 cells (or parked against a rail) turns
+    ; every frame and never moves; the turn path returns before the carry, so
+    ; pinning here is what keeps a rider standing on it. Without it he fell
+    ; through a stuck raft into the water kill line and respawned forever
+    ; (user report 2026-10-22: "player position keeps changing, zig-zags").
+    ; The vyHi < 0 escape is the gate's `.RaftNoRide` (rising is not a ride).
+    lda EnemyRamY,X
+    sec
+    sbc #RAFTER_PINFIT
+    sta RoomY                   ; feet on the raft's top
+    lda #0
+    sta vyLo
+    sta vyHi                    ; landing kills the accumulated fall speed
     ; --- take-off ramp (inertia): heaviest right after boarding -------------
     ; State = PlayerBombs' ($F0) spare HIGH bits: b7 = "ridden last frame",
     ; b6-b3 = the ramp level (0-15); b2-0 stay the bomb count. Adding $10 never
@@ -2441,16 +2455,7 @@ RaftBody:
     sta EnemyRamX,X
     ; ---- carry + pin while the player is aboard -----------------------------
 .RaftRide:
-    lda vyHi
-    bmi .RaftNoPin              ; rising: pin skipped, carry still happens
-    lda EnemyRamY,X
-    sec
-    sbc #RAFTER_PINFIT
-    sta RoomY                   ; feet on the raft's top
-    lda #0
-    sta vyLo
-    sta vyHi                    ; landing kills the accumulated fall speed
-.RaftNoPin:
+    ; (the Y pin ran at .RaftGo — it must not depend on the raft moving)
     ; ramp: arm the flag, and +1 level every 2nd frame (capped at 15)
     lda $F0
     ora #%10000000
