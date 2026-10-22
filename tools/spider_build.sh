@@ -1,10 +1,13 @@
 #!/bin/bash
-# Spider demo build: a throwaway ROM whose level-2 room 2 carries the SPIDER
-# (the 26-row art landed 2026-10-22) instead of its bat, so the new art can be
-# played without touching the user's stage.
+# Enemy-art demo build: a throwaway ROM whose level-2 room 2 carries the enemy
+# type you name instead of its bat, so a new sprite can be played without
+# touching the user's stage.
 #
-# Run: bash tools/spider_build.sh [out.bin]   (default /tmp/opencode/savior_spider.bin)
-# In game: level 2 -> descend from the start room; room 2 has the spider.
+# Run: bash tools/spider_build.sh [out.bin] [type]
+#      type defaults to 0 = SPIDER (1 BAT, 2 SNAKE, 3 TENTACLE, 4 MOTH,
+#      5 LAMP, 6 KEY, 7 RAFT); out defaults to /tmp/opencode/savior_demo_<type>.bin
+#      (kept as savior_spider.bin for type 0).
+# In game: level 2 -> descend from the start room; room 2 has the enemy.
 #
 # Why a staged COPY of the live stage (same pattern as raft_build.sh):
 # src/rooms/ + src/generated/ belong to the user. Copy them, edit the COPY,
@@ -13,7 +16,12 @@
 set -e
 DIR="$(cd "$(dirname "$0")/../src" && pwd)"
 PY="${PY:-python3}"
-OUT="${1:-/tmp/opencode/savior_spider.bin}"
+TYPE="${2:-0}"
+if [ "$TYPE" = 0 ]; then
+    OUT="${1:-/tmp/opencode/savior_spider.bin}"
+else
+    OUT="${1:-/tmp/opencode/savior_demo_${TYPE}.bin}"
+fi
 TMP="$(mktemp -d)"
 DONE=0
 
@@ -44,17 +52,17 @@ cp -a "$DIR/generated" "$TMP/generated"
 LIVE_SHA="$(cd "$DIR" && find rooms -type f -print0 | sort -z | \
             xargs -0 sha256sum | sha256sum)"
 
-echo "spider_build: staging a stage copy with the SPIDER in level 2 room 2 ..."
-"$PY" - "$DIR/rooms" <<'PY'
+echo "spider_build: staging a stage copy with enemy type $TYPE in level 2 room 2 ..."
+"$PY" - "$DIR/rooms" "$TYPE" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 rooms = Path(sys.argv[1])
+SPIDER = int(sys.argv[2])
 targets = [p for p in (rooms / "stage.json",
                        rooms / "level_002.json") if p.exists()]
 assert targets, "no stage.json / level_002.json in the staged copy"
-SPIDER = 0
 for path in targets:
     d = json.load(open(path))
     unified = "stage" in d
@@ -74,7 +82,7 @@ for path in targets:
                 out.append(e)
             r["enemies"] = out
     json.dump(d, open(path, "w"), indent=1)
-    print(f"  {path.name}: {hit} enemy(ies) -> SPIDER")
+    print(f"  {path.name}: {hit} enemy(ies) -> type {SPIDER}")
     assert hit, f"no enemy found in level 2 room 2 of {path.name}"
 PY
 
