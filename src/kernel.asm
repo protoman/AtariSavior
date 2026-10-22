@@ -195,6 +195,15 @@ ObjX1           = $EC               ;   and object X. Bank1's HUD owns these
                                 ;   read, so the VBL write -> cave read window
                                 ;   is safe (ZP doc rule 6). Staged every VBL by
                                 ;   StageSlot1, consumed by Slot1Hook.
+ObjSwap         = $A2           ; Phase 5b (2026-10-22): the A0 at which the
+                                ;   MID-BAND slot swap must run, = ObjTop1-1
+                                ;   ($FF = no mid-band swap). Shares bank2's
+                                ;   LevelConnSpare: that byte is room-load
+                                ;   scratch (exit scan / ExtrasLoad ordinal)
+                                ;   written in the OVERSCAN, and StageSlot1
+                                ;   restages this every VBL, so the cave always
+                                ;   reads a fresh value. Do not read $A2 in the
+                                ;   overscan for anything but the room load.
 ObjBase         byte            ; GRP1 sprite base offset into ObjSprites (0 = off)
 ActiveObjectX   byte            ; active object X (room pixel coords)
 ActiveObjectY   byte            ; active object Y (scanline coords)
@@ -881,6 +890,9 @@ CaveKernelRow:
     sta LineCount
 
 .Line:
+CaveLine:                       ; global alias: SwapSlot1Now (its own local
+                                ;   scope) re-enters the body from the HMOVE
+                                ;   line, and `.Line` is scoped to CaveKernelRow
     ; --- Player sprite: color for THIS line, graphics byte for NEXT line ---
     ; GRP0 written on line S displays on line S+1 (latched at the sprite's
     ; window start after the write) — index graphics with A0+1 ($ff wraps
@@ -1055,8 +1067,16 @@ CaveKernelRow:
 .ObjNoRes:
     lda #0
     sta GRP1
-    beq .AfterObj              ; Z=1 from lda #0 — always taken (3c = jmp,
-                               ; saves 1B vs jmp: net +1B total = $FC67 fit)
+    cpy ObjSwap                 ; Phase 5b (2026-10-22): a SAME-BAND pair swaps
+    bne .AfterObj               ;   the live trio here, on the line before
+                                ;   slot 1's first art row (ObjSwap = ObjTop1-1,
+                                ;   $FF = no mid-band swap, never matches an A0).
+                                ;   +3 net c (the old `beq .AfterObj` became
+                                ;   cpy+bne): P3 66 -> 69, contract <=73.
+    sta WSYNC                   ; halt HERE: a jsr+prologue on this line lands
+                                ;   past c76 (3rd lost line). The body runs from
+                                ;   the next line's cycle 0.
+    jmp SwapSlot1Now            ; body lives in the $F744 fill (pre-pad is 16 B)
 .AfterRows:
     ; Phase 3: cave may leave the ball on (band2 BandTab=$ff) — clear ENABL
     ; at the very start of the HUD line, before bank1's first WSYNC and
@@ -2404,6 +2424,49 @@ Slot1Hook:
     pla
     tay
     rts
+
+; ------------------------------------------------------------------------------
+; SwapSlot1Now — the SAME-BAND pair's mid-band swap (Phase 5b, 2026-10-22).
+; `jsr`'d from .ObjNoRes when the running A0 reaches ObjSwap (= ObjTop1-1);
+; lives here (the $F744 fill) because bank0's pre-pad only has 16 B.
+;
+; Why it exists: StageSlot1 can pair two candidates only through the band-start
+; hook when slot 1 is in a HIGHER band. When both live in ONE band (the miner
+; sitting while an enemy walks past, their drawn windows disjoint by at least
+; OBJ_WINDOW lines) the object sprite has to change X inside the frame. This is
+; the one place our kernel does what HERO's line code does continuously
+; (docs/hero_async.md §2: HMP1 per row + HMOVE inside the line code).
+;
+; Cost: 2 SCANLINES (SetObjectXPos' own WSYNC line + the HMOVE line) — the frame
+; reaches 269 in rooms that use the exception, and both lines show the band's
+; uniform PF twice. Y is NOT advanced: the trigger line is re-run, so slot 1's
+; row 0 lands on its own scanline. Y must survive SetObjectXPos (`tay`).
+; The fine regs of the OTHER objects are cleared before the WSYNC — the
+; 2026-10-22 lesson in Slot1Hook (a late HMOVE, or a second HMOVE applying the
+; player's HMP0 again, is the "zig-zag" / "moves one tile at a time" family).
+; ------------------------------------------------------------------------------
+SwapSlot1Now:
+    ; Entered with `jmp` from the trigger line's `sta WSYNC` (= cycle 0 here).
+    lda #0
+    sta HMP0                    ; clear the fine regs of the OTHER objects
+    sta HMM0                    ;   (player/laser/ball) — a second HMOVE must
+    sta HMBL                    ;   not re-apply them (2026-10-22 lesson)
+    lda ObjBase1
+    and #$7F                    ; strip the same-band flag staged by StageSlot1
+    sta ObjBase
+    lda ObjTop1
+    sta ObjTop
+    lda ObjX1
+    sta ActiveObjectX
+    ldx #1
+    jsr SetObjectXPos           ; its own WSYNC starts the positioning line
+    sta WSYNC                   ; end of the positioning line
+    sta HMOVE                   ; cycle 0 of the next line = HBLANK
+    jmp CaveLine                ; that line IS the re-run of A0 = ObjSwap, so
+                                ;   slot 1's row 0 keeps its scanline. Entry at
+                                ;   cycle ~7 (normal is 8) — Y is untouched
+                                ;   (`jmp` skips the loop's dec/bne on purpose:
+                                ;   the 2 lost lines are not band lines).
 
 ; CallPad_RaftBody — bank1 RaftBody entry. Pinned at $F8C0 with a
 ; BYTE-IDENTICAL twin in bank1 (bank1.asm, same address): the `sta $1FF7`

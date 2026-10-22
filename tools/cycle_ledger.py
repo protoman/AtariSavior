@@ -67,7 +67,7 @@ BASE = {
     ("adc", "imm"): 2, ("adc", "zp"): 3,
     ("sbc", "imm"): 2, ("sbc", "zp"): 3,
     ("cmp", "imm"): 2, ("cmp", "zp"): 3,
-    ("cpx", "imm"): 2, ("cpy", "imm"): 2, ("bit", "zp"): 3,
+    ("cpx", "imm"): 2, ("cpy", "imm"): 2, ("cpy", "zp"): 3, ("bit", "zp"): 3,
     ("asl", "acc"): 2, ("lsr", "acc"): 2, ("rol", "acc"): 2, ("ror", "acc"): 2,
     ("dec", "zp"): 5, ("inc", "zp"): 5,
     ("tax", "imp"): 2, ("tay", "imp"): 2, ("txa", "imp"): 2, ("tya", "imp"): 2,

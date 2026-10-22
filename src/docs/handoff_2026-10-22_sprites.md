@@ -139,6 +139,30 @@ Ways to clear the two same-band rooms (all outside the kernel):
 Ruled out by measurement: a mid-band reposition (it needs a per-line line
 counter compare, ~6-8 c/line, and `.Line` has 4 c).
 
+## Step 4 landed (2026-10-22): mid-band slot swap — the miner+enemy exception
+
+`StageSlot1` now pairs two candidates in ONE band when their drawn windows are
+at least `OBJ_WINDOW` (16) lines apart (the miner sitting, an enemy walking
+past). The pair is staged with `ObjBase1` **bit 7 set** (so the `.Row` hook
+skips it for free) plus `ObjSwap` = `ObjTop1-1`; `.ObjNoRes` runs the swap at
+that line: copy the trio, `SetObjectXPos`, HMOVE, then `jmp CaveLine` so the
+HMOVE line re-runs `A0 = ObjSwap` (slot 1's row 0 keeps its scanline).
+
+- Cost: **+3 scanlines** in rooms that pair (constant, 267 → 270);
+  `.Line` trigger +3 c (P3 69 against the ≤73 contract); ~+20 c in the VBL,
+  which in the asym-ball scenario alone costs +1 line (268 there).
+- ZP: `ObjSwap = $A2` shares `LevelConnSpare` (room-load scratch, overscan) —
+  restaged every VBL, documented in the kernel EQU block.
+- Converter: the band rule is now a HARD error and allows same-band pairs with
+  >= 16 px of drawn-Y separation. The live stage passes (L2 room 2: 87 vs 60,
+  L3 room 3: 87 vs 48, L4 room 4: 87 vs 96 = cross-band).
+- Guards: `tools/test_slot1_pair.py` (pair / cross-band / overlap cases),
+  `tools/test_slot1_midband.py` (real ROM, both designs in one frame).
+
+**User check:** the two rooms that used to flicker (L2 room 2, L3 room 3) must
+now show the miner AND the enemy in every frame; their frames are 3 lines
+longer, so those rooms' bands are 3 lines taller (a uniform PF stretch).
+
 ## Agreed order (do not reorder without a reason)
 
 1. **Space move (next step, mechanical).** Move `StageSlot1` (194 B) out of the
