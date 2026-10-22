@@ -149,13 +149,14 @@ def check_rom(src: Path) -> bytes | None:
         # and org $FF20: whole routine inside one page = bcs contract safe.
         err(f"SetObjectXPos .Div15Loop at ${div15:04X} outside the "
             f"$FF10-$FF1F gap (expected ${0xFF12:04X}-${0xFF1B:04X})")
-    # 2) Kernel GRP1 fetch: `lda ObjSprites,X` (X <= 71) must stay in-page
-    #    (4c) or the .Line loop gains 1c on object rows (row-stretch risk).
+    # 2) Kernel GRP1 fetch: `lda ObjSprites,X` (X <= 143 = 9 designs x 16 rows,
+    #    Phase 6) must stay in-page (4c) or the .Line loop gains 1c on object
+    #    rows (row-stretch risk).
     obj = labels.get("ObjSprites")
     if obj is None:
         err("ObjSprites label not found in bank0.lst")
-    elif (obj + 71) >> 8 != obj >> 8:
-        err(f"ObjSprites ${obj:04X}+107 crosses a page -> kernel "
+    elif (obj + 143) >> 8 != obj >> 8:
+        err(f"ObjSprites ${obj:04X}+143 crosses a page -> kernel "
             f"lda ObjSprites,X costs 5c (budget assumes 4c)")
     # 3) Laser S2.2: every relative branch inside the .Line hot loop
     #    (.Line .. bne .Line) must share a page with its target (3c taken
@@ -1685,10 +1686,13 @@ def check_equ_sync(src: Path) -> None:
         side = bank.split(".")[0]
         for line in p.read_text(encoding="utf-8").splitlines():
             m = re.match(
-                r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\$([0-9A-Fa-f]+)\b", line)
+                r"^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\$[0-9A-Fa-f]+|\d+)\b",
+                line)
             if not m:
                 continue
-            name, val = m.group(1), int(m.group(2), 16)
+            raw = m.group(2)
+            name = m.group(1)
+            val = int(raw[1:], 16) if raw.startswith("$") else int(raw)
             if (side, name) in ZP_ALLOW:
                 continue
             if name in auth and auth[name] != val:

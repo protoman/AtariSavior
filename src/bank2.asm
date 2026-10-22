@@ -145,15 +145,15 @@ ObjBase1 = $EA                   ; slot-1 trio, staged every VBL in THIS bank no
 ObjTop1 = $EB
 ObjX1 = $EC
 KEY = 6                          ; enemy record type 6 = the phase-5 key
-OBJ_KEY = 0                      ; GRP1 design offsets (stride 12 into ObjSprites)
-OBJ_MOTH = 12
-OBJ_SPIDER = 24
-OBJ_LAMP = 36
-OBJ_TENTACLE = 48
-OBJ_BAT = 60
-OBJ_SNAKE = 72
-OBJ_MINER = 84
-OBJ_BOMB = 96
+OBJ_KEY = 0                      ; GRP1 design offsets (stride 16 = OBJ_WINDOW,
+OBJ_MOTH = 16                    ;   Phase 6; hand-copies of kernel.asm — the
+OBJ_SPIDER = 32                  ;   equ-sync guard now also checks decimals)
+OBJ_LAMP = 48
+OBJ_TENTACLE = 64
+OBJ_BAT = 80
+OBJ_SNAKE = 96
+OBJ_MINER = 112
+OBJ_BOMB = 128
 
 ; C2 (2026-10-20): the level-data block labels (M<id>*, L<n>R<r>*) live in
 ; THIS bank now ($F307 slot include below), so the room tables resolve them
