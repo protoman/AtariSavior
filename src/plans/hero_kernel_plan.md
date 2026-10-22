@@ -762,10 +762,6 @@ general law. `$9D`/`$9E` are now `ObjHeight`/`ObjHeight1`.
 4. Then art per type (art + `ObjColorTab` rows + the table byte), one commit
    each, with the hit box still 12 until a gameplay ruling.
 
-through the existing 16-row window).
-
----
-
 ## Phase 5b — mid-band slot swap: ATTEMPTED AND WITHDRAWN (2026-10-22)
 
 **Goal:** let the miner share a 48-line band with an enemy (it sits, the enemy
