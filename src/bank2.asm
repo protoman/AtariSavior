@@ -152,12 +152,12 @@ OBJ_WINDOW = 16                  ; kernel constant: the GRP1 draw window rows
 OBJ_KEY = 0                      ; GRP1 design offsets (per-type heights,
 OBJ_MOTH = 16                    ;   hand-copies of kernel.asm — the equ-sync
 OBJ_SPIDER = 32                  ;   guard checks hex AND decimal values)
-OBJ_LAMP = 58
-OBJ_TENTACLE = 74
-OBJ_BAT = 90
-OBJ_SNAKE = 106
-OBJ_MINER = 122
-OBJ_BOMB = 138
+OBJ_LAMP = 47
+OBJ_TENTACLE = 63
+OBJ_BAT = 79
+OBJ_SNAKE = 95
+OBJ_MINER = 111
+OBJ_BOMB = 127
 
 ; C2 (2026-10-20): the level-data block labels (M<id>*, L<n>R<r>*) live in
 ; THIS bank now ($F307 slot include below), so the room tables resolve them
@@ -1245,7 +1245,7 @@ PinSlot0:
 ; enemy TYPE -> draw window rows: byte-identical twin of kernel.asm's
 ; ObjHeightTab (the records are in this bank, so slot 1's window is staged here).
 ObjHeightTab:
-    .byte 26,         OBJ_WINDOW
+    .byte 15,         OBJ_WINDOW
     .byte OBJ_WINDOW, OBJ_WINDOW
     .byte OBJ_WINDOW, OBJ_WINDOW
     .byte OBJ_WINDOW, OBJ_WINDOW

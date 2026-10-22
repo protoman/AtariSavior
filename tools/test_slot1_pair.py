@@ -157,10 +157,10 @@ t0 = b0[L0["ObjHeightTab"] - 0xF000:][:8]
 t2 = b2[L2["ObjHeightTab"] - 0xF000:][:8]
 assert t0 == t2, (f"ObjHeightTab twins differ: bank0 {t0.hex()} vs bank2 "
                   f"{t2.hex()} — a stale hand-copy would clip slot 1")
-assert set(t0) <= {16, 26}, f"unexpected window rows {sorted(set(t0))}"
-# SPIDER graduated to the 26-row art: its declared draw window must equal the
-# art block it occupies, or .Line reads into the next design.
-assert t0[0] == 26, f"ObjHeightTab[SPIDER]={t0[0]}, want 26 (26-row art)"
+assert set(t0) <= {15, 16}, f"unexpected window rows {sorted(set(t0))}"
+# SPIDER graduated to its own (15-row) art height: its declared draw window
+# must equal the art block it occupies, or .Line reads into the next design.
+assert t0[0] == 15, f"ObjHeightTab[SPIDER]={t0[0]}, want 15 (15-row art)"
 _sp = int(re.search(r"^OBJ_LAMP\s*=\s*(\d+)", K, re.M).group(1))
 _sp0 = int(re.search(r"^OBJ_SPIDER\s*=\s*(\d+)", K, re.M).group(1))
 assert _sp - _sp0 == t0[0], (
