@@ -1742,6 +1742,9 @@ DeriveEnemyY:
     sta FetchPtr+1
     ldy EnemyOffTable,X
     jsr FoldIndirect            ; type
+    and #%01111111              ; b7 = dir: without the mask every compare below
+                                ;   missed and a dir-left enemy fell through to
+                                ;   .DEYStatic (no bob)
     cmp #ENEMY_BAT
     beq .DEYTickNoShift
     cmp #ENEMY_TENTACLE
@@ -2291,10 +2294,14 @@ SelectActiveObject:
     lda #COLOR_DARK_OBJ         ; dark room: lamp + enemies medium grey
     sta COLUP1
     jsr FoldIndirect            ; reload type
-    tax
-    jmp .SOEnemyPattern
+    and #%01111111              ; b7 = dir: the tables below are indexed by the
+    tax                         ;   TYPE only (a dir-left record read $80|type
+    jmp .SOEnemyPattern         ;   and drew ObjBase/ObjHeight from past the end
+                                ;   of both tables = the object vanished; user
+                                ;   report 2026-10-22, the tentacle demo)
 .SOEnemyLit:
     jsr FoldIndirect            ; reload type (X was clobbered by IsRoomDark)
+    and #%01111111              ; b7 = dir (see above)
     tax
     lda EnemyColorTable,X
     sta COLUP1
