@@ -1519,8 +1519,8 @@ UE_Alive:
     and EnemyBitTable,X
     bne UE_Next                  ; dead enemy does not move
     ldy EnemyOffTable,X          ; Y = X*3 = type offset
-    jsr FoldIndirect             ; type
-    jmp UEDispatch               ; UEDispatch ($F82C pin gap) replaces the old
+    jsr FoldIndirect             ; type|dir (UEDispatch masks b7)
+    jmp UEDispatch               ; UEDispatch replaces the old
                                  ; 18 B per-type compare chain with one 3 B jmp:
                                  ; frees 15 B of pre-pad headroom and gives the
                                  ; type tables room for the raft byte.
@@ -1870,7 +1870,10 @@ CEH_HasMore:
         ; Lamp (type 5): crash → RoomDarkMask; lamp stays in rotation (grey), no life
     ldx EnemyIndex
     ldy EnemyOffTable,X         ; Y = EnemyIndex * 3
-    jsr FoldIndirect            ; type
+    jsr FoldIndirect            ; type|dir
+    and #%01111111              ; b7 = dir: without the mask a dir=right
+                                ;   enemy read $81+ and fell through `bne`
+                                ;   CEHNext — harmless and unkillable
     cmp #LAMP
     beq CEH_Lamp
     cmp #KEY                    ; type 6 = key: collect, no life loss
@@ -2035,6 +2038,11 @@ CEH_Key:
 ; tail-jumps, exactly like the old inline chain, so the stack depth is unchanged.
 ; ------------------------------------------------------------------------------
 UEDispatch:
+    and #%01111111               ; record byte = type|dir (b7): mask it here, at
+                                 ;   the single type-compare entry. 2026-10-22:
+                                 ;   a raft authored dir=right read $87, missed
+                                 ;   `cmp #ENEMY_RAFT` and its body never ran
+                                 ;   (no tide, no motion, no rider pin).
     cmp #ENEMY_RAFT
     bne .UEDNotRaft
     jsr CallPad_RaftBody         ; bank1 body; returns past this jmp (ReturnPad)
@@ -2492,9 +2500,6 @@ Slot1Hook:
     pla
     tay
     rts
-
-BandStart:
-    .byte 0,48,96,144           ; first scanline of bands 0..3
 
 ; CallPad_RaftBody — bank1 RaftBody entry. Pinned at $F8C0 with a
 ; BYTE-IDENTICAL twin in bank1 (bank1.asm, same address): the `sta $1FF7`
@@ -3832,6 +3837,13 @@ PlayerWalkB:
 
 
     .ds $FE00 - *, 0            ; ObjColorTab $FE00-$FE47, ObjSprites $FE48-$FE8F:
+; BandStart — first scanline of bands 0..3 (moved here 2026-10-22: the
+; $F744 fill was 4 B over after the type-mask fix; this fill is free and
+; `cmp BandStart,X` is abs,X, so the address is irrelevant — low byte
+; $00 + 3 stays in one page).
+BandStart:
+    .byte 0,48,96,144           ; first scanline of bands 0..3
+
     .ds $FE90 - *, 0            ; ObjColorTab/ObjSprites moved to the
                                  ; $F744 fill (Phase 6: tall art). The $FE8F
                                  ; end is kept so FoldIndirect stays at $FE90.

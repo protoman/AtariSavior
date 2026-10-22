@@ -46,4 +46,4 @@ LEVEL4_RoomCounts:
 LEVEL4_EnemyDataTable:
   .byte $01, 71, 36
   .byte $05, 53, 48
-  .byte $07, 55, 96
+  .byte $07, 111, 96

@@ -325,6 +325,39 @@ frames measure 269 lines, (b) both objects are drawn in the SAME frame
 (py65: GRP1 writes in two bands with `ObjBase` swapped at the band boundary),
 (c) the solo-object rooms still measure 267.
 
+## Raft: the REAL cause was the record's dir bit (2026-10-22, follow-up)
+
+The user was right that the raft was not on a wall. Editor enemy `x` is a
+DISPLAY COLUMN (0..39): `convert_level.enemy_x_px(12)` = **55 px**, and the
+converter hard-fails a raft whose cell is not open water — so the raft was
+never boxed in. (An earlier note in this file claiming x=12 px was wrong:
+editor column 12 -> 55 px.)
+
+Real cause: the enemy record packs **type|dir in ONE byte** (b7 = dir) and
+`UEDispatch` compared it RAW against `cmp #ENEMY_RAFT`. The user's raft had
+dir=right, so it read **$87** and fell through every type arm — `RaftBody`
+never ran. Measured in the real ROM (level 4 room 4, `EnemyData=$FA09`):
+record `$87,111,96`, `RaftBody` never entered, `EnemyRamY` stuck at the
+authored 96 (no tide), so nothing floated and no rider could be pinned.
+
+Fix: mask b7 at the single type-compare entry (`UEDispatch: and #%01111111`)
+and in `CheckEnemyHit` (a dir=right enemy read $81 and was unkillable). Lamps
+and rafts have no direction, so the converter now emits `dir: 0` for them —
+that restores the RAW `cmp #LAMP` guards in the bomb blast and both laser hit
+bodies at zero ROM cost (a b7-set lamp read $85 and was blast-killable).
+
+Verified in the real frame loop: `ran=True`, `EnemyRamY` = 125/126 (tide),
+rider offset **0** on every frame (`dx == dRaft`).
+
+Guards: `tools/test_raft.py` case 5c (UEDispatch must dispatch `$07` AND
+`$87`) and `tools/test_enemy_movement.py` (static: the mask at UEDispatch's
+entry and in CheckEnemyHit). Space: the +4 B pushed the `$F744` fill 4 B over,
+so `BandStart` moved into the free `$FE00` fill (`cmp BandStart,X` is abs,X).
+
+**Lesson:** one byte carrying two fields is a trap for every `cmp` — mask at
+the compare site, and prefer emitting a canonical value (dir 0) for types that
+do not use the field.
+
 ## Jet: the REAL cause was the fall clamp (2026-10-22, follow-up)
 
 The ramp change alone did not fix the user report ("press Up after a room
