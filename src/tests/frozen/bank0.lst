@@ -366,15 +366,15 @@
     365 U00bc
     366 U00bc							; GRP1 sprite design offsets into ObjSprites (12 bytes each; 0 = blank/off)
     367 U00bc		       00 00	   OBJ_NONE   =	0
-    368 U00bc		       00 00	   OBJ_KEY    =	0	; design offsets. The stride is a design's OWN height
-    369 U00bc		       00 10	   OBJ_MOTH   =	16	; (Phase 6): 16 rows unless the type graduated to the
-    370 U00bc		       00 20	   OBJ_SPIDER =	32	; 26-row HERO-height art (SPIDER, 2026-10-22), so every
-    371 U00bc		       00 3a	   OBJ_LAMP   =	58	; later offset shifts when a type grows. ObjHeightTab
-    372 U00bc		       00 4a	   OBJ_TENTACLE =	74	; carries the matching row count.
-    373 U00bc		       00 5a	   OBJ_BAT    =	90
-    374 U00bc		       00 6a	   OBJ_SNAKE  =	106
-    375 U00bc		       00 7a	   OBJ_MINER  =	122
-    376 U00bc		       00 8a	   OBJ_BOMB   =	138	; = $8A: bit 7 set, so never test a design with `bmi`
+    368 U00bc		       00 00	   OBJ_KEY    =	0	; design offsets. A design owns its block, so each
+    369 U00bc		       00 10	   OBJ_MOTH   =	16	; offset = the sum of the heights above it; ObjHeightTab
+    370 U00bc		       00 20	   OBJ_SPIDER =	32	; carries the matching row count. SPIDER graduated to
+    371 U00bc		       00 2f	   OBJ_LAMP   =	47	; per-type height first (15 rows, user art 2026-10-22).
+    372 U00bc		       00 3f	   OBJ_TENTACLE =	63
+    373 U00bc		       00 4f	   OBJ_BAT    =	79
+    374 U00bc		       00 5f	   OBJ_SNAKE  =	95
+    375 U00bc		       00 6f	   OBJ_MINER  =	111
+    376 U00bc		       00 7f	   OBJ_BOMB   =	127
     377 U00bc
     378 U00bc							; Player bounds (must stay inside cave walls)
     379 U00bc		       00 04	   PLAYER_MIN_X =	4	; sprite flush with left edge (HERO)
@@ -982,7 +982,7 @@
     981  f12d		       b0 4c		      bcs	.ObjZero	; above (negative mod ≥65) or at/below bottom
     982  f12f		       65 b6		      adc	ObjBase
     983  f131		       aa		      tax
-    984  f132		       bd 26 f8 	      lda	ObjSprites,X
+    984  f132		       bd 30 f8 	      lda	ObjSprites,X
     985  f135		       85 1c		      sta	GRP1
     986  f137		       bd 1f fb 	      lda	ObjColorTab,X	; per-row object color (+5c cross — the cycle sum
     987  f13a							; equals the probe's proven pass: 5c beam + 4c
@@ -2161,7 +2161,7 @@
    2160  f63f		       f0 03		      beq	.SOTallyMiner
    2161  f641		       4c 3a f7 	      jmp	.SODone	; miner not here -> nothing drawn
    2162  f644				   .SOTallyMiner
-   2163  f644		       a9 7a		      lda	#OBJ_MINER
+   2163  f644		       a9 6f		      lda	#OBJ_MINER
    2164  f646		       85 b6		      sta	ObjBase
    2165  f648		       a9 10		      lda	#OBJ_WINDOW	; miner design height (tally path)
    2166  f64a		       85 9d		      sta	ObjHeight
@@ -2184,7 +2184,7 @@
    2183  f668		       a5 f7		      lda	BombTimer
    2184  f66a		       29 03		      and	#3
    2185  f66c		       d0 17		      bne	.SOCount	; 3 of 4 -> miner/enemy
-   2186  f66e		       a9 8a		      lda	#OBJ_BOMB	; bomb design offset into ObjSprites
+   2186  f66e		       a9 7f		      lda	#OBJ_BOMB	; bomb design offset into ObjSprites
    2187  f670		       85 b6		      sta	ObjBase
    2188  f672		       a9 10		      lda	#OBJ_WINDOW	; bomb design height
    2189  f674		       85 9d		      sta	ObjHeight
@@ -2235,7 +2235,7 @@
    2234  f6b4		       c5 b3		      cmp	EnemyCount
    2235  f6b6		       f0 1a		      beq	.SOEnemy	; no miner slot in this room
    2236  f6b8							; This slot is the miner
-   2237  f6b8		       a9 7a		      lda	#OBJ_MINER	; miner design offset into ObjSprites
+   2237  f6b8		       a9 6f		      lda	#OBJ_MINER	; miner design offset into ObjSprites
    2238  f6ba		       85 b6		      sta	ObjBase
    2239  f6bc		       a9 10		      lda	#OBJ_WINDOW	; miner design height
    2240  f6be		       85 9d		      sta	ObjHeight
@@ -2436,7 +2436,7 @@
    2435  f79f							; bank2 carries a byte-identical twin (StageSlot1 stages slot 1's window) —
    2436  f79f							; guard: tools/test_slot1_pair.py compares both tables.
    2437  f79f				   ObjHeightTab
-   2438  f79f		       1a 10		      .byte.b	26, OBJ_WINDOW	; 0 SPIDER (26-row art)
+   2438  f79f		       0f 10		      .byte.b	15, OBJ_WINDOW	; 0 SPIDER (15-row art)
    2439  f7a1		       10 10		      .byte.b	OBJ_WINDOW, OBJ_WINDOW	; 1 BAT  2 SNAKE
    2440  f7a3		       10 10		      .byte.b	OBJ_WINDOW, OBJ_WINDOW	; 3 TENT 4 MOTH
    2441  f7a5		       10 10		      .byte.b	OBJ_WINDOW, OBJ_WINDOW	; 5 LAMP 6 KEY
@@ -2448,47 +2448,47 @@
    2447  f7a7							; not from here. That is the same FoldIndirect discipline every other tramp
    2448  f7a7							; uses — the twin cannot be skipped or shortened.
    2449  f7a7							; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
-   2450  f7a7		       00 00 00 00*	      .ds	$F826 - *, 0	; ObjSprites: per-type heights, 154 B now
-   2451  f826							;   (SPIDER 26 + 8 types x 16).
-   2452  f826							; Base low byte $26 + max index 153 = $BF ->
-   2453  f826							; `lda ObjSprites,X` stays in ONE page
-   2454  f826							; (verify_build guard). The base moved
-   2455  f826							; $F850 -> $F830 with the Phase 6 growth so
-   2456  f826							; the table still ENDS at the $F8C0 RaftBody
-   2457  f826							; pin; the 32 B it took came from the $F744
-   2458  f826							; fill freed by the StageSlot1 eviction.
-   2459  f826							; 16 rows per type = OBJ_WINDOW, bits 7-4 (col0 = bit7). Offsets come from the
-   2460  f826							; OBJ_* EQUs via ObjSpriteOffTable (stride 16). Rows 12-15 of every design are
-   2461  f826							; $00 RESERVED for taller art: they draw nothing today, so the window grew
-   2462  f826							; with NO visual change. Fill them (and the matching ObjColorTab rows) when a
-   2463  f826							; type's art is authored.
-   2464  f826				   ObjSprites
-   2465  f826							; KEY (offset 0): bow, shaft, stepped teeth
-   2466  f826		       3c 42 5a 42*	      .byte.b	$3C,$42,$5A,$42,$3C,$18,$18,$18,$18,$1C,$18,$10,$00,$00,$00,$00
-   2467  f836							; MOTH (16): antennae, upper wing pair, body, lower wing pair, taper
-   2468  f836		       90 60 f0 f0*	      .byte.b	$90,$60,$F0,$F0,$60,$90,$F0,$F0,$60,$90,$60,$30,$00,$00,$00,$00
-   2469  f846							; SPIDER (32): 26 rows (user art 2026-10-22) — four legs per side,
-   2470  f846							; bright abdomen band rows 10-14, olive legs, orange thorax
-   2471  f846		       a5 a5 5a 5a*	      .byte.b	$A5,$A5,$5A,$5A,$A5,$A5,$A5,$5A,$3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C,$3C,$7E,$7E,$3C,$3C,$5A,$A5,$A5,$5A,$A5
-   2472  f860							; LAMP (48): shade, neck, bowl, post, wide base
-   2473  f860		       f0 f0 60 60*	      .byte.b	$F0,$F0,$60,$60,$F0,$F0,$F0,$60,$60,$60,$3C,$3C,$00,$00,$00,$00
-   2474  f870							; TENTACLE (64): bulky shoulder tapering to a tip
-   2475  f870		       60 90 80 60*	      .byte.b	$60,$90,$80,$60,$30,$30,$30,$18,$18,$0C,$0C,$04,$00,$00,$00,$00
-   2476  f880							; BAT (80): wing pair, body, hanging tail
-   2477  f880		       90 60 f0 60*	      .byte.b	$90,$60,$F0,$60,$60,$90,$90,$60,$30,$18,$0C,$00,$00,$00,$00,$00
-   2478  f890							; SNAKE (96): HALF-HEIGHT solid block (user 2026-10-22: the snake and the
-   2479  f890							; raft read too tall). Only rows 0-5 are solid: the raft's sprite top is
-   2480  f890							; RAFTER_BASE (125) and its row 7 is the water surface line (132+off), so
-   2481  f890							; the solid half floats ON the water instead of sinking 4 rows into it.
-   2482  f890							; The snake itself lives inside a solid wall cell, so its blank half is
-   2483  f890							; invisible; the object WINDOW stays 12 rows (hit box unchanged).
-   2484  f890		       ff ff ff ff*	      .byte.b	$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
-   2485  f8a0							; MINER (112): helmet, pink face, body, tool, hips, legs
-   2486  f8a0		       0c 1c 4c 36*	      .byte.b	$0C,$1C,$4C,$36,$0F,$07,$3F,$6E,$3C,$3C,$18,$18,$00,$00,$00,$00
-   2487  f8b0							; BOMB (128): fuse, round body, tapered nose
-   2488  f8b0		       10 20 20 60*	      .byte.b	$10,$20,$20,$60,$F0,$F0,$F0,$60,$30,$18,$18,$0C,$00,$00,$00,$00
-   2489  f8c0
-   2490  f8c0					      .ds	$F8C0 - *, 0
+   2450  f7a7		       00 00 00 00*	      .ds	$F830 - *, 0	; ObjSprites: per-type heights, 143 B now
+   2451  f830							;   (SPIDER 15 + 8 types x 16).
+   2452  f830							; Base low byte $30 + max index 142 = $BE ->
+   2453  f830							; `lda ObjSprites,X` stays in ONE page
+   2454  f830							; (verify_build guard). The base moved
+   2455  f830							; $F850 -> $F830 with the Phase 6 growth so
+   2456  f830							; the table still ENDS at the $F8C0 RaftBody
+   2457  f830							; pin; the 32 B it took came from the $F744
+   2458  f830							; fill freed by the StageSlot1 eviction.
+   2459  f830							; 16 rows per type = OBJ_WINDOW, bits 7-4 (col0 = bit7). Offsets come from the
+   2460  f830							; OBJ_* EQUs via ObjSpriteOffTable (stride 16). Rows 12-15 of every design are
+   2461  f830							; $00 RESERVED for taller art: they draw nothing today, so the window grew
+   2462  f830							; with NO visual change. Fill them (and the matching ObjColorTab rows) when a
+   2463  f830							; type's art is authored.
+   2464  f830				   ObjSprites
+   2465  f830							; KEY (offset 0): bow, shaft, stepped teeth
+   2466  f830		       3c 42 5a 42*	      .byte.b	$3C,$42,$5A,$42,$3C,$18,$18,$18,$18,$1C,$18,$10,$00,$00,$00,$00
+   2467  f840							; MOTH (16): antennae, upper wing pair, body, lower wing pair, taper
+   2468  f840		       90 60 f0 f0*	      .byte.b	$90,$60,$F0,$F0,$60,$90,$F0,$F0,$60,$90,$60,$30,$00,$00,$00,$00
+   2469  f850							; SPIDER (32): 15 rows (user art 2026-10-22, reduced design) — four
+   2470  f850							; legs per side, bright abdomen rows 6-8, orange thorax, olive legs
+   2471  f850		       a5 a5 a5 5a*	      .byte.b	$A5,$A5,$A5,$5A,$3C,$7E,$FF,$FF,$7E,$3C,$7E,$7E,$3C,$5A,$A5
+   2472  f85f							; LAMP (48): shade, neck, bowl, post, wide base
+   2473  f85f		       f0 f0 60 60*	      .byte.b	$F0,$F0,$60,$60,$F0,$F0,$F0,$60,$60,$60,$3C,$3C,$00,$00,$00,$00
+   2474  f86f							; TENTACLE (64): bulky shoulder tapering to a tip
+   2475  f86f		       60 90 80 60*	      .byte.b	$60,$90,$80,$60,$30,$30,$30,$18,$18,$0C,$0C,$04,$00,$00,$00,$00
+   2476  f87f							; BAT (80): wing pair, body, hanging tail
+   2477  f87f		       90 60 f0 60*	      .byte.b	$90,$60,$F0,$60,$60,$90,$90,$60,$30,$18,$0C,$00,$00,$00,$00,$00
+   2478  f88f							; SNAKE (96): HALF-HEIGHT solid block (user 2026-10-22: the snake and the
+   2479  f88f							; raft read too tall). Only rows 0-5 are solid: the raft's sprite top is
+   2480  f88f							; RAFTER_BASE (125) and its row 7 is the water surface line (132+off), so
+   2481  f88f							; the solid half floats ON the water instead of sinking 4 rows into it.
+   2482  f88f							; The snake itself lives inside a solid wall cell, so its blank half is
+   2483  f88f							; invisible; the object WINDOW stays 12 rows (hit box unchanged).
+   2484  f88f		       ff ff ff ff*	      .byte.b	$FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+   2485  f89f							; MINER (112): helmet, pink face, body, tool, hips, legs
+   2486  f89f		       0c 1c 4c 36*	      .byte.b	$0C,$1C,$4C,$36,$0F,$07,$3F,$6E,$3C,$3C,$18,$18,$00,$00,$00,$00
+   2487  f8af							; BOMB (128): fuse, round body, tapered nose
+   2488  f8af		       10 20 20 60*	      .byte.b	$10,$20,$20,$60,$F0,$F0,$F0,$60,$30,$18,$18,$0C,$00,$00,$00,$00
+   2489  f8bf
+   2490  f8bf		       00		      .ds	$F8C0 - *, 0
    2491  f8c0				   CallPad_RaftBody
    2492  f8c0		       8d f7 1f 	      sta	$1FF7	; select bank1 (last byte fetched from bank0)
    2493  f8c3		       4c e3 fd 	      jmp	$FDE3	; bank1 RaftBody — returns via bank1's ReturnPad
@@ -3144,28 +3144,28 @@
    3143  fb1f				   ObjColorTab
    3144  fb1f		       1c 1c 1c 1c*	      .byte.b	$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c	; 0 KEY   ($1c yellow)
    3145  fb2f		       22 22 22 22*	      .byte.b	$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22	; 1 MOTH  ($22 dark orange)
-   3146  fb3f		       14 14 14 14*	      .byte.b	$14,$14,$14,$14,$14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$1C,$1C,$22,$22,$22,$22,$22,$14,$14,$14,$14,$14,$14	; 2 SPIDER (26 rows)
-   3147  fb59		       0e 0e 0e 0e*	      .byte.b	$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 3 LAMP  ($0e white)
-   3148  fb69		       0e 0e 0e 0e*	      .byte.b	$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 4 TENTACLE
-   3149  fb79		       f2 f2 f2 f2*	      .byte.b	$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2	; 5 BAT   ($f2 brown)
-   3150  fb89		       c4 c4 c4 c4*	      .byte.b	$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4	; 6 SNAKE ($c4 green)
-   3151  fb99		       54 54 4a 54*	      .byte.b	$54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08,$08,$08,$08,$08	; 7 MINER (hips purple, legs grey)
-   3152  fba9		       46 46 46 46*	      .byte.b	$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46	; 8 BOMB  ($46 red)
-   3153  fbb9
-   3154  fbb9							; ------------------------------------------------------------------------------
-   3155  fbb9							; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
-   3156  fbb9							; Row r displays on scanline RoomY+ObjTop-1+r (ObjTop is RoomY-relative since
-   3157  fbb9							; S2.2; .Grp1 checks r = Y-ObjTop where Y = running A0+1). GRP1 write
-   3158  fbb9							; latching, same as before.
-   3159  fbb9							; Offset = OBJ_* constant; index 0 = blank (object off).
-   3160  fbb9							; ------------------------------------------------------------------------------
-   3161  fbb9
-   3162  fbb9							; ------------------------------------------------------------------------------
-   3163  fbb9							; PinSlot0 MOVED to bank2 with StageSlot1 (its only caller, 2026-10-22).
-   3164  fbb9							; ------------------------------------------------------------------------------
-   3165  fbb9
-   3166  fbb9
-   3167  fbb9		       00 00 00 00*	      .ds	$FBD0 - *, 0	; #22: pin tramp at $FBD0 — bank2's twin
+   3146  fb3f		       14 14 14 14*	      .byte.b	$14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$22,$22,$22,$14,$14,$14	; 2 SPIDER (15 rows)
+   3147  fb4e		       0e 0e 0e 0e*	      .byte.b	$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 3 LAMP  ($0e white)
+   3148  fb5e		       0e 0e 0e 0e*	      .byte.b	$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 4 TENTACLE
+   3149  fb6e		       f2 f2 f2 f2*	      .byte.b	$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2	; 5 BAT   ($f2 brown)
+   3150  fb7e		       c4 c4 c4 c4*	      .byte.b	$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4	; 6 SNAKE ($c4 green)
+   3151  fb8e		       54 54 4a 54*	      .byte.b	$54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08,$08,$08,$08,$08	; 7 MINER (hips purple, legs grey)
+   3152  fb9e		       46 46 46 46*	      .byte.b	$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46	; 8 BOMB  ($46 red)
+   3153  fbae
+   3154  fbae							; ------------------------------------------------------------------------------
+   3155  fbae							; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
+   3156  fbae							; Row r displays on scanline RoomY+ObjTop-1+r (ObjTop is RoomY-relative since
+   3157  fbae							; S2.2; .Grp1 checks r = Y-ObjTop where Y = running A0+1). GRP1 write
+   3158  fbae							; latching, same as before.
+   3159  fbae							; Offset = OBJ_* constant; index 0 = blank (object off).
+   3160  fbae							; ------------------------------------------------------------------------------
+   3161  fbae
+   3162  fbae							; ------------------------------------------------------------------------------
+   3163  fbae							; PinSlot0 MOVED to bank2 with StageSlot1 (its only caller, 2026-10-22).
+   3164  fbae							; ------------------------------------------------------------------------------
+   3165  fbae
+   3166  fbae
+   3167  fbae		       00 00 00 00*	      .ds	$FBD0 - *, 0	; #22: pin tramp at $FBD0 — bank2's twin
    3168  fbd0							;   sits at the same address (pin moved from
    3169  fbd0							;   $FB84 2026-10-13 for PhaseBlink staging,
    3170  fbd0							;   then $FBC0 → $FBD0 2026-10-14: model2
@@ -3845,13 +3845,13 @@
    3844  fe0c							; Enemy type → ObjSprites design offset (index = ENEMY_* type)
    3845  fe0c				   ObjSpriteOffTable
    3846  fe0c		       20		      .byte.b	OBJ_SPIDER	; 0
-   3847  fe0d		       5a		      .byte.b	OBJ_BAT	; 1
-   3848  fe0e		       6a		      .byte.b	OBJ_SNAKE	; 2
-   3849  fe0f		       4a		      .byte.b	OBJ_TENTACLE	; 3
+   3847  fe0d		       4f		      .byte.b	OBJ_BAT	; 1
+   3848  fe0e		       5f		      .byte.b	OBJ_SNAKE	; 2
+   3849  fe0f		       3f		      .byte.b	OBJ_TENTACLE	; 3
    3850  fe10		       10		      .byte.b	OBJ_MOTH	; 4
-   3851  fe11		       3a		      .byte.b	OBJ_LAMP	; 5 (LAMP)
+   3851  fe11		       2f		      .byte.b	OBJ_LAMP	; 5 (LAMP)
    3852  fe12		       00		      .byte.b	OBJ_KEY	; 6 (KEY — offset-0 slot)
-   3853  fe13		       6a		      .byte.b	OBJ_SNAKE	; 7 (RAFT — the solid 8x8 block: a log/trunk over
+   3853  fe13		       5f		      .byte.b	OBJ_SNAKE	; 7 (RAFT — the solid 8x8 block: a log/trunk over
    3854  fe14							; the water, and the most "landable" shape in the
    3855  fe14							; table. ObjSprites is exactly 72 B and ends at
    3856  fe14							; $FF00, so a dedicated design needs 8 art bytes
@@ -4057,7 +4057,7 @@
    4056  ff20		       a9 00		      lda	#0
    4057  ff22		       85 0c		      sta	REFP1
    4058  ff24		       a5 b6		      lda	ObjBase
-   4059  ff26		       c9 7a		      cmp	#OBJ_MINER
+   4059  ff26		       c9 6f		      cmp	#OBJ_MINER
    4060  ff28		       d0 08		      bne	.SORdone
    4061  ff2a		       a5 a4		      lda	LevelMinerRoom
    4062  ff2c		       10 04		      bpl	.SORdone

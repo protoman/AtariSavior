@@ -82,7 +82,7 @@ def main() -> None:
     # last byte of a table = base + size - 1; the size is the sum of the
     # per-type heights, so take it from the .lst (ObjColorTab end is the
     # next label) rather than hard-coding 154.
-    last = 153
+    last = 142
     assert (obj & 0xFF) + last <= 0xFF and (obj >> 8) == ((obj + last) >> 8), \
         f"ObjSprites ${obj:04X} page-crosses (+{last})"
     assert (tab >> 8) == ((tab + last) >> 8), f"ObjColorTab ${tab:04X} page-crosses"
