@@ -1132,7 +1132,10 @@ StageSlot1B2:
     txa
     pha                         ; keep the candidate index across the type read
     lda (FetchPtr),Y            ; A = type — DIRECT, the record is in THIS bank
-    tax
+    and #%01111111              ; b7 = dir (the record packs type|dir): indexing
+    tax                         ;   the tables with it read past their end, so
+                                ;   slot 1 got ObjBase1/ObjHeight1 = 0 and the
+                                ;   object never drew (2026-10-22 tentacle demo)
     cpx #KEY
     bne .S1stageEnemy
     lda LevelStartRoom          ; b7 = key already taken -> never reappears

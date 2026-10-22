@@ -31,7 +31,8 @@ from test_cell_map import Mem, parse_labels  # noqa: E402
 SRC = Path(__file__).resolve().parent.parent / "src"
 FROZEN = SRC / "tests" / "frozen"
 
-LAB = parse_labels(FROZEN / "bank0.lst", {"StageSlot1"})
+LAB = parse_labels(FROZEN / "bank0.lst",
+                   {"StageSlot1", "SelectActiveObject"})
 if "StageSlot1" not in LAB:
     sys.exit("frozen bank0.lst has no StageSlot1 (re-freeze?)")
 
@@ -41,7 +42,7 @@ Z = dict(EnemyCount=0x33, EnemyDeadMask=0x3A, EnemyRamY=0x62, EnemyRamX=0x3D,
          EnemyDataLo=0x31, EnemyDataHi=0x32, ObjBase1=0x6A, ObjTop1=0x6B,
          ObjX1=0x6C, FlickerFrame=0x34, DropTarget=0x0A, RoomNo=0x18,
          LevelMinerRoom=0x24, RoomY=0x01, ObjBase=0x36, MinerX=0x25,
-         MinerY=0x26, ObjHeight1=0x1E)
+         MinerY=0x26, ObjHeight1=0x1E, ObjHeight=0x1D, BombPacked=0x35)
 # $EA/$EB/$EC -> RAM $6A/$6B/$6C; $B3/$BA/$BD/$E2/$B1/$B2/$B4/$8A/$98/$A4/$81
 # $B6/$A5/$A6 -> the indices above. Assert rather than trust the table:
 for name, idx in list(Z.items()):
@@ -146,6 +147,66 @@ assert got["base1"] == OBJ_MINER, \
 assert got["x1"] == 40, f"slot 1 must be the miner, X={got['x1']}"
 assert got["top1"] == (96 + 3 - 0 + 1) & 0xFF, (
     f"ObjTop1={got['top1']} — the miner's +3 draw offset must be included")
+
+# --- case 4: a dir-left record (type | $80) must still resolve its design ---
+# THE 2026-10-22 bug the user hit ("no tentacle, just a dash"): the record packs
+# type|dir in one byte. Slot 1 indexed ObjSpriteOffTable/ObjHeightTab with the
+# RAW byte ($80|type), read past the end of both tables and staged
+# ObjBase1/ObjHeight1 = 0/0 — an object that can never draw. Mask b7 at the read.
+got = call_stage_slot1(ys=[60, 96], xs=[71, 100], types=[MOTH, MOTH | 0x80])
+assert got["base1"] == OBJ_MOTH, (
+    f"dir-left record staged ObjBase1=${got['base1']:02X}, want ${OBJ_MOTH:02X}: "
+    "the type byte's b7 (dir) must be masked before indexing the type tables")
+assert got["height1"] == MOTH_H, (
+    f"dir-left record staged ObjHeight1={got['height1']}, want {MOTH_H}")
+assert got["x1"] == 100 and got["top1"] == (96 + 1) & 0xFF, (
+    f"dir-left record staged the wrong slot: x1={got['x1']} top1={got['top1']}")
+
+# --- case 5: the SAME masking in SelectActiveObject (slot 0) ---------------
+def call_select_active_object(record_type):
+    """One enemy, no miner: run SelectActiveObject, report what it staged."""
+    mem = Watch()
+    r = mem.ram
+    r[Z["EnemyRamY"]] = 96
+    r[Z["EnemyRamX"]] = 100
+    r[REC & 0x7F] = record_type
+    r[Z["EnemyCount"]] = 1
+    r[Z["EnemyDeadMask"]] = 0
+    r[Z["EnemyDataLo"]] = REC & 0xFF
+    r[Z["EnemyDataHi"]] = REC >> 8
+    r[Z["FlickerFrame"]] = 0
+    r[Z["DropTarget"]] = 0
+    r[Z["RoomNo"]] = 0
+    r[Z["LevelMinerRoom"]] = 0x7F
+    r[Z["BombPacked"]] = 0
+    r[Z["ObjBase"]] = 0xAA
+    mem.bank = 0
+    from py65.devices.mpu6502 import MPU  # noqa: E402
+    mpu = MPU(memory=mem)
+    mpu.pc = LAB["SelectActiveObject"]
+    mpu.a = mpu.x = mpu.y = 0
+    mpu.sp = 0xFD
+    mem[0x1FF] = 0x01
+    mem[0x1FE] = 0x00
+    for _ in range(6000):
+        mpu.step()
+        if mpu.pc == 0x0101:
+            break
+    else:
+        sys.exit(f"SelectActiveObject never returned (pc=${mpu.pc:04X}, "
+                 f"bank={mem.bank})")
+    return r[Z["ObjBase"]], r[Z["ObjHeight"]]
+
+
+base, height = call_select_active_object(MOTH)
+assert (base, height) == (OBJ_MOTH, MOTH_H), (
+    f"plain record staged ObjBase=${base:02X} ObjHeight={height}, want "
+    f"${OBJ_MOTH:02X}/{MOTH_H}")
+base, height = call_select_active_object(MOTH | 0x80)
+assert (base, height) == (OBJ_MOTH, MOTH_H), (
+    f"dir-left record staged ObjBase=${base:02X} ObjHeight={height}, want "
+    f"${OBJ_MOTH:02X}/{MOTH_H}: SelectActiveObject must mask b7 (dir) before "
+    "indexing EnemyColorTable/ObjSpriteOffTable/ObjHeightTab")
 
 # --- the height tables must be byte-identical (bank2 stages slot 1) --------
 L2 = parse_labels(FROZEN / "bank2.lst", {"ObjHeightTab"})
