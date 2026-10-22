@@ -327,9 +327,18 @@ EnemyRamY       = $E2           ; 3 bytes: live Y per enemy ($E2-$E4) —
 ; ==============================================================================
 ; Constants
 ; ==============================================================================
-PLAYER_HEIGHT   = 12            ; GRP1 object (enemy/miner) height AND hit box
-                                ;   (Phase 6 tall art 2026-10-22); player uses
-                                ;   PLAYER_SPRITE_H
+PLAYER_HEIGHT   = 12            ; GRP1 object HIT BOX rows (enemy/miner) — the
+                                ;   player-vs-object overlap tests use this. It
+                                ;   is deliberately NOT the drawing window any
+                                ;   more (Phase 6, 2026-10-22): tall art must
+                                ;   not silently enlarge the hit boxes.
+OBJ_WINDOW      = 16            ; GRP1 drawing window rows: the .Line test
+                                ;   `Y - ObjTop < OBJ_WINDOW`. Every design's
+                                ;   art + colour rows are sized to this
+                                ;   (ObjSprites/ObjColorTab, 9 x 16 = 144 B
+                                ;   each). Growing a design's ART past its old
+                                ;   12 rows is a per-type art change; the
+                                ;   window has the room reserved already.
 PLAYER_SPRITE_H = 12            ; player sprite height in scanlines (8x12)
 PLAYER_WIDTH    = 7             ; lit player sprite spans 7 pixels; REFP0 shift handled
 ENEMY_WIDTH     = 8             ; snake GRP1 width ($ff = 8 px) — flush-out span
@@ -351,14 +360,14 @@ VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × LINES_PER_TILE)
 ; GRP1 sprite design offsets into ObjSprites (12 bytes each; 0 = blank/off)
 OBJ_NONE        = 0
 OBJ_KEY         = 0     ; type-6 KEY design = the offset-0 slot
-OBJ_MOTH        = 12
-OBJ_SPIDER      = 24
-OBJ_LAMP        = 36
-OBJ_TENTACLE    = 48
-OBJ_BAT         = 60
-OBJ_SNAKE       = 72
-OBJ_MINER       = 84
-OBJ_BOMB        = 96
+OBJ_MOTH        = 16    ; stride = OBJ_WINDOW (16 rows/design, Phase 6)
+OBJ_SPIDER      = 32
+OBJ_LAMP        = 48
+OBJ_TENTACLE    = 64
+OBJ_BAT         = 80
+OBJ_SNAKE       = 96
+OBJ_MINER       = 112
+OBJ_BOMB        = 128
 
 ; Player bounds (must stay inside cave walls)
 PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
@@ -829,8 +838,10 @@ CaveKernelRow:
     ; that ends the pass, so the phased stores above never move). The early
     ; out costs 5c; Slot1Hook pays 2 extra lines ONLY on the band that hosts
     ; slot 1 (SetObjectXPos WSYNC line + the HMOVE line).
-    lda ObjBase1
-    bmi .RowNoSlot1
+    lda ObjBase1                ; $FF = none. `bmi` is still valid HERE (slot 1
+    bmi .RowNoSlot1             ;   only holds an enemy design or the miner,
+                                ;   all < $80; the bomb never reaches slot 1).
+                                ;   Slot 0 must use `cmp #$FF` — see .SODone.
     jsr Slot1Hook
 .RowNoSlot1:
     ; (2026-10-15) GRP0 blank REMOVED: +5c pushed the rows0/1 setup
@@ -948,13 +959,15 @@ CaveKernelRow:
     ; ObjTop..ObjTop+11 window → row byte from ObjSprites[ObjBase + offset].
     ; Object off: ObjBase=$FF sentinel (ObjTop parked 144). S2.2: ObjTop is RoomY-relative;
     ; Y here = A0+1 = next line's A0, so `Y - ObjTopRel` = Scanline - ObjTop
-    ; (mod 256, exact). In-object iff result 0..11 → `cmp #12/bcs` (C=0 in
-    ; range → adc adds exact ObjBase). Replaces `lda Scanline/sec/sbc/bcc`
-    ; (−6c in-range) and the `inc Scanline` (−5c) — Scanline now unused.
+    ; (mod 256, exact). In-object iff result 0..OBJ_WINDOW-1 → `cmp/bcs`
+    ; (C=0 in range → adc adds exact ObjBase). Replaces
+    ; `lda Scanline/sec/sbc/bcc` (−6c in-range) and the `inc Scanline` (−5c)
+    ; — Scanline now unused. OBJ_WINDOW (16) is the DRAWING window; the hit
+    ; box stays PLAYER_HEIGHT (12) — see the constant block.
     tya
     sec
     sbc ObjTop                  ; A = Y - ObjTopRel (= Scanline - ObjTop, mod 256)
-    cmp #PLAYER_HEIGHT
+    cmp #OBJ_WINDOW
     bcs .ObjZero                ; above (negative mod ≥65) or at/below bottom
     adc ObjBase
     tax
@@ -1022,11 +1035,12 @@ CaveKernelRow:
     sta GRP0
     jmp .Grp1
 .ObjZero:
-    bne .ObjNoRes           ; flags live from `cmp #PLAYER_HEIGHT` upstream:
-                            ; A==8 ONLY = first line below the window — the
-                            ; only line where COLUP1 still holds the object
-                            ; color (all other obj-out lines: band color from
-                            ; .Row is intact, or this line already restored).
+    bne .ObjNoRes           ; flags live from `cmp #OBJ_WINDOW` upstream:
+                            ; Z set ONLY at A == OBJ_WINDOW = the first line
+                            ; below the window — the only line where COLUP1
+                            ; still holds the object color (all other obj-out
+                            ; lines: band color from .Row is intact, or this
+                            ; line already restored).
                             ; A!=8 (above window / below first line): skip the
                             ; restore — this was the A0=11 worst line
                             ; (color+beam+GrpZero+restore = 77c > 76 → WSYNC
@@ -2286,23 +2300,30 @@ SelectActiveObject:
     ; Position GRP1 from ActiveObjectX — ONE shared call for every object
     ; path (bomb/miner/enemy). ac4c3ee moved the bomb's SOXP to the drop and
     ; the bomb path skipped it, so the bomb rendered at the last enemy/miner
-    ; X (looked fixed). ObjBase==0 (no object / dead-enemy slot) skips it.
+    ; X (looked pinned near the room's other object).
+    ; Phase 6 (2026-10-22): ONE `cmp #$FF` decides BOTH "position P1" and
+    ; "stage or park ObjTop". The old `bmi` sentinel test died with the 16-row
+    ; stride: OBJ_BOMB = 128 = $80 sets bit 7, so the bomb's P1 was never
+    ; positioned and its ObjTop was parked (tools/test_bomb_render_x.py).
+    ; It is ONE comparison because the VBL window pays for 2 c but not the
+    ; 6 c that three `cmp/beq` sites cost (test_phase3_ball: 268-line frames).
+    ; RULE: never test ObjBase/ObjBase1 with `bmi` — $FF is the ONLY
+    ; "no object" (slot 1 only ever holds enemies/miner, all < $80, but slot 0
+    ; reaches $80 with the bomb).
     lda ObjBase
-    bmi .SODoneNoPos
+    cmp #$FF
+    beq .SOBlank
     lda ActiveObjectX
     ldx #1
     jsr SetObjectXPos
-.SODoneNoPos:
     jsr SetObjReflection
     ; Set ObjTop for kernel GRP1 visibility check.
     ; S2.2: ObjTop stored RoomY-relative (ObjTopRel = ActiveObjectY-RoomY+1) so
     ; the kernel compares against running-Y (`tya`) instead of `lda Scanline`
     ; — frees 9c/line (lda Scanline + inc Scanline) for the laser beam write.
-    ; Kernel .Grp1 does: tya / sec / sbc ObjTop / cmp #8 / bcs .ObjZero.
+    ; Kernel .Grp1 does: tya / sec / sbc ObjTop / cmp #OBJ_WINDOW / bcs.
     ; ObjBot (write-only, no readers): stores removed S1.5, decl removed
     ; S3.0b (was last sequential decl — no address shift).
-    lda ObjBase
-    bmi .SONoObj
     lda ActiveObjectY
     sec
     sbc RoomY
@@ -2311,21 +2332,23 @@ SelectActiveObject:
     sta ObjTop
     jsr StageSlot1              ; Phase 5: pair a second object in a higher band
     rts
-.SONoObj:
+.SOBlank:
+    jsr SetObjReflection        ; REFP1/NUSIZ1 are reset EVERY frame (the bank1
+                                ;   HUD leaves both set for the score)
     lda #144                    ; Park the GRP1 window off-cave for EVERY
     sec                         ; RoomY. The kernel draws when running-Y
-    sbc RoomY                   ; (Scanline-RoomY) - ObjTopRel ∈ [0,7] =
+    sbc RoomY                   ; (Scanline-RoomY) - ObjTopRel < OBJ_WINDOW =
     sta ObjTop                  ; Scanline-(RoomY+ObjTopRel); parking ObjTopRel
-    jsr StageSlot1              ; clears slot 1 too (no slot 0 to pair with)
-    rts                         ; = 144-RoomY → Scanline-144 ∈ [112,255] →
-                                ; never <8 → never drawn. A CONSTANT 144
-                                ; wrapped for RoomY ≥ 112 (Scanline-(144+RY)
-                                ; mod 256 ∈ [0,7]) and drew ObjSprites[row+
-                                ; ObjBase]; with the key art now at slot 0
-                                ; (ObjBase=$FF → row 1..7 = index 0..6) that
-                                ; leaked the key onto the player's rows
-                                ; (user 2026-10-17). The old blank slot 0 had
-                                ; hidden this latent bug.
+    jmp StageSlot1              ; = 144-RoomY → Scanline-144 ∈ [112,255] →
+                                ; never in window. Tail-jmp (not jsr/rts): the
+                                ; ORIGINAL caller frame, 9 c cheaper, and it
+                                ; still clears slot 1 (no slot 0 to pair).
+                                ; A CONSTANT 144 wrapped for RoomY ≥ 112
+                                ; (Scanline-(144+RY) mod 256 ∈ [0,7]) and drew
+                                ; ObjSprites[row+ObjBase]; with the key art at
+                                ; slot 0 (ObjBase=$FF → row 1..11 = KEY rows)
+                                ; that leaked the key onto the player's rows
+                                ; (user 2026-10-17).
 
 ; ==============================================================================
 ; StageSlot1 MOVED to bank2 (the $FAC0 block) on 2026-10-22: the $F744 fill
@@ -2388,37 +2411,43 @@ Slot1Hook:
 ; not from here. That is the same FoldIndirect discipline every other tramp
 ; uses — the twin cannot be skipped or shortened.
 ; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
-    .ds $F850 - *, 0            ; ObjSprites: 12 rows/type = 108 B.
-                                 ; Base low byte $94 + max index 107 = 255 ->
-                                 ; `lda ObjSprites,X` still stays in ONE page
-                                 ; (verify_build guard); pinned at $794 (was
-                                 ; $850) to pay for the Slot1Hook HMOVE fix.
-; 12 rows per type, bits 7-4 (col0 = bit7). Offsets come from the OBJ_*
-; EQUs via ObjSpriteOffTable (stride 12).
+    .ds $F830 - *, 0            ; ObjSprites: 16 rows/type = 144 B (Phase 6).
+                                 ; Base low byte $30 + max index 143 = $BF ->
+                                 ; `lda ObjSprites,X` stays in ONE page
+                                 ; (verify_build guard). The base moved
+                                 ; $F850 -> $F830 with the Phase 6 growth so
+                                 ; the table still ENDS at the $F8C0 RaftBody
+                                 ; pin; the 32 B it took came from the $F744
+                                 ; fill freed by the StageSlot1 eviction.
+; 16 rows per type = OBJ_WINDOW, bits 7-4 (col0 = bit7). Offsets come from the
+; OBJ_* EQUs via ObjSpriteOffTable (stride 16). Rows 12-15 of every design are
+; $00 RESERVED for taller art: they draw nothing today, so the window grew
+; with NO visual change. Fill them (and the matching ObjColorTab rows) when a
+; type's art is authored.
 ObjSprites:
     ; KEY (offset 0): bow, shaft, stepped teeth
-    .byte $3C,$42,$5A,$42,$3C,$18,$18,$18,$18,$1C,$18,$10
-    ; MOTH (12): antennae, upper wing pair, body, lower wing pair, taper
-    .byte $90,$60,$F0,$F0,$60,$90,$F0,$F0,$60,$90,$60,$30
-    ; SPIDER (24): round body, then four leg rows spreading down
-    .byte $60,$F0,$F0,$60,$90,$60,$90,$90,$48,$24,$12,$06
-    ; LAMP (36): shade, neck, bowl, post, wide base
-    .byte $F0,$F0,$60,$60,$F0,$F0,$F0,$60,$60,$60,$3C,$3C
-    ; TENTACLE (48): bulky shoulder tapering to a tip
-    .byte $60,$90,$80,$60,$30,$30,$30,$18,$18,$0C,$0C,$04
-    ; BAT (60): wing pair, body, hanging tail
-    .byte $90,$60,$F0,$60,$60,$90,$90,$60,$30,$18,$0C,$00
-    ; SNAKE (72): HALF-HEIGHT solid block (user 2026-10-22: the snake and the
+    .byte $3C,$42,$5A,$42,$3C,$18,$18,$18,$18,$1C,$18,$10,$00,$00,$00,$00
+    ; MOTH (16): antennae, upper wing pair, body, lower wing pair, taper
+    .byte $90,$60,$F0,$F0,$60,$90,$F0,$F0,$60,$90,$60,$30,$00,$00,$00,$00
+    ; SPIDER (32): round body, then four leg rows spreading down
+    .byte $60,$F0,$F0,$60,$90,$60,$90,$90,$48,$24,$12,$06,$00,$00,$00,$00
+    ; LAMP (48): shade, neck, bowl, post, wide base
+    .byte $F0,$F0,$60,$60,$F0,$F0,$F0,$60,$60,$60,$3C,$3C,$00,$00,$00,$00
+    ; TENTACLE (64): bulky shoulder tapering to a tip
+    .byte $60,$90,$80,$60,$30,$30,$30,$18,$18,$0C,$0C,$04,$00,$00,$00,$00
+    ; BAT (80): wing pair, body, hanging tail
+    .byte $90,$60,$F0,$60,$60,$90,$90,$60,$30,$18,$0C,$00,$00,$00,$00,$00
+    ; SNAKE (96): HALF-HEIGHT solid block (user 2026-10-22: the snake and the
     ; raft read too tall). Only rows 0-5 are solid: the raft's sprite top is
     ; RAFTER_BASE (125) and its row 7 is the water surface line (132+off), so
     ; the solid half floats ON the water instead of sinking 4 rows into it.
     ; The snake itself lives inside a solid wall cell, so its blank half is
     ; invisible; the object WINDOW stays 12 rows (hit box unchanged).
-    .byte $FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00
-    ; MINER (84): helmet, pink face, body, tool, hips, legs
-    .byte $0C,$1C,$4C,$36,$0F,$07,$3F,$6E,$3C,$3C,$18,$18
-    ; BOMB (96): fuse, round body, tapered nose
-    .byte $10,$20,$20,$60,$F0,$F0,$F0,$60,$30,$18,$18,$0C
+    .byte $FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    ; MINER (112): helmet, pink face, body, tool, hips, legs
+    .byte $0C,$1C,$4C,$36,$0F,$07,$3F,$6E,$3C,$3C,$18,$18,$00,$00,$00,$00
+    ; BOMB (128): fuse, round body, tapered nose
+    .byte $10,$20,$20,$60,$F0,$F0,$F0,$60,$30,$18,$18,$0C,$00,$00,$00,$00
 
     .ds $F8C0 - *, 0
 CallPad_RaftBody:
@@ -3070,18 +3099,19 @@ TitleBcd:
     sta ScoreTe
     rts
 
-; 12 rows per type (Phase 6 tall art). Color rows 8-11 = the type's own
-; color (they tint the M1 block on those lines when a room has an M1 patch).
+; 16 rows per type = OBJ_WINDOW (Phase 6). Same X as ObjSprites (stride
+; 16); rows 8-15 carry the type's own color, which is what tints an M1
+; block sharing those scanlines.
 ObjColorTab:
-    .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c   ; 0 KEY   ($1c yellow)
-    .byte $22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22   ; 1 MOTH  ($22 dark orange)
-    .byte $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14   ; 2 SPIDER
-    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 3 LAMP  ($0e white)
-    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 4 TENTACLE
-    .byte $f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2   ; 5 BAT   ($f2 brown)
-    .byte $c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4   ; 6 SNAKE ($c4 green)
-    .byte $54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08   ; 7 MINER (hips purple, legs grey)
-    .byte $46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46   ; 8 BOMB  ($46 red)
+    .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c ; 0 KEY   ($1c yellow)
+    .byte $22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22 ; 1 MOTH  ($22 dark orange)
+    .byte $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14 ; 2 SPIDER
+    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e ; 3 LAMP  ($0e white)
+    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e ; 4 TENTACLE
+    .byte $f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2 ; 5 BAT   ($f2 brown)
+    .byte $c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4 ; 6 SNAKE ($c4 green)
+    .byte $54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08,$08,$08,$08,$08 ; 7 MINER (hips purple, legs grey)
+    .byte $46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46 ; 8 BOMB  ($46 red)
 
 ; ------------------------------------------------------------------------------
 ; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.

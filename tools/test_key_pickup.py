@@ -70,7 +70,7 @@ assert "cpx #KEY" in so and "bmi .SOEnemySkip" in so, \
     "SelectActiveObject must skip a type-6 render while KeyHeld"
 # The parked "off" object must compensate RoomY (a constant 144 wrapped into
 # view for RoomY >= 112 and leaked ObjSprites[row+$FF] = slot 0 = the key art).
-noobj = K[K.index(".SONoObj:"):]
+noobj = K[K.index(".SOBlank:"):]
 noobj = noobj[:noobj.index("rts")]
 assert "sbc RoomY" in noobj, \
     "off-object ObjTop must be RoomY-compensated (never wraps into view)"

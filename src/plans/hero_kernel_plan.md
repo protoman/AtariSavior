@@ -683,10 +683,12 @@ Everything below is a known open item; the order is by "risk removed per byte".
    colour sources become HERO's one-byte-per-line "colour + draw flag" staged
    at room load. Gate: identical output, `.Line` worst path not worse. This is
    a kernel + staging restructure — start it as its own chunk.
-3. **Phase 6 — 16-row art.** 144 B/type does not fit: the Phase 5 code must
+
    move out of the `$F744` fill first (it is full again after the HMOVE fix),
    e.g. `StageSlot1` into a bank2 slot behind a `jsr`. Then the object window
    constant and the art/colour tables grow together.
+   ✅ **FORMAT DONE 2026-10-22** — see the Phase 6 section below (16-row window,
+   4 blank rows reserved per design; authoring the art is what remains).
    ✅ **The eviction is DONE (2026-10-22)**: `StageSlot1` + `PinSlot0` are in
    bank2 (`$FAC0`), the `$F744` fill has **202 B** free between `Slot1Hook`
    (`$F750`) and the `ObjSprites` pin (`$F850`), and the pad is
@@ -709,6 +711,38 @@ fresh. If that order ever changes, give `BallX` its own byte.
 **Standing rule (guarded by `tools/test_slot1_hmove.py`):** a second `HMOVE` in
 a frame must clear every fine register it must not re-apply (`HMP0`/`HMM0`/
 `HMBL`) and those clears must sit BEFORE the `WSYNC` that precedes the `HMOVE`.
+
+## Phase 6 — 16-row object window (LANDED 2026-10-22, format only)
+
+**What landed:** `OBJ_WINDOW = 16` is now a constant *separate from*
+`PLAYER_HEIGHT = 12` (the hit box), `ObjSprites`/`ObjColorTab` are 9 × 16 =
+144 B each (stride-16 `OBJ_*` EQUs, `ObjSprites` base moved `$F850 → $F830` so
+the table still ends at the `$F8C0` RaftBody pin, page guard `+71 → +143`), and
+every design got 4 extra rows: **art = `$00` blanks reserved for authoring,
+colour = the design's own colour**. Visual output is unchanged; the window just
+has room now. Cost: +72 B, **0 c** (`cmp #OBJ_WINDOW` replaces `cmp #12`).
+
+**Two traps this dug up — both now guarded:**
+
+1. **`$FF` sentinels vs. bit 7.** `OBJ_BOMB` is now 128 = `$80`, and the tail's
+   `lda ObjBase / bmi` "no object" test read it as empty: the bomb's `P1` was
+   never positioned and its `ObjTop` was parked (caught by
+   `tools/test_bomb_render_x.py`). Slot 0 now uses one `cmp #$FF`, and both
+   `P1`-positioning and `ObjTop` staging branch from it (`.SOBlank` replaced
+   `.SONoObj`). Slot 1 keeps `bmi` — it only ever holds an enemy design or the
+   miner (< `$80`); that invariant is commented at the `.Row` early-out.
+   **Cost note:** three `cmp/beq` sites cost **6 c** in the VBL and pushed
+   `test_phase3_ball` to 268-line frames; **2 c** is what the window pays.
+2. **equ-sync only checked hex.** The bank2 `OBJ_*` hand-copies are decimal, so
+   the stride change drifted silently. `check_equ_sync` now also compares
+   `Name = <decimal>` — with the copy fixed to stride 16.
+
+**Still open (art-led, one type per commit):** fill a design's rows 12-15 (art
++ the matching `ObjColorTab` rows). HERO's object is 26 lines with a colour per
+line; ours is per-design, so a taller design costs 2 B per row. The hit box
+stays 12 until a gameplay ruling — drawing height must not silently enlarge it.
+
+---
 
 ## Verification protocol (every phase, non-negotiable)
 

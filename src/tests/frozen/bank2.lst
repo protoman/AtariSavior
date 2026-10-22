@@ -146,15 +146,15 @@
     145  f000		       00 eb	   ObjTop1    =	$EB
     146  f000		       00 ec	   ObjX1      =	$EC
     147  f000		       00 06	   KEY	      =	6	; enemy record type 6 = the phase-5 key
-    148  f000		       00 00	   OBJ_KEY    =	0	; GRP1 design offsets (stride 12 into ObjSprites)
-    149  f000		       00 0c	   OBJ_MOTH   =	12
-    150  f000		       00 18	   OBJ_SPIDER =	24
-    151  f000		       00 24	   OBJ_LAMP   =	36
-    152  f000		       00 30	   OBJ_TENTACLE =	48
-    153  f000		       00 3c	   OBJ_BAT    =	60
-    154  f000		       00 48	   OBJ_SNAKE  =	72
-    155  f000		       00 54	   OBJ_MINER  =	84
-    156  f000		       00 60	   OBJ_BOMB   =	96
+    148  f000		       00 00	   OBJ_KEY    =	0	; GRP1 design offsets (stride 16 = OBJ_WINDOW,
+    149  f000		       00 10	   OBJ_MOTH   =	16	;   Phase 6; hand-copies of kernel.asm — the
+    150  f000		       00 20	   OBJ_SPIDER =	32	;   equ-sync guard now also checks decimals)
+    151  f000		       00 30	   OBJ_LAMP   =	48
+    152  f000		       00 40	   OBJ_TENTACLE =	64
+    153  f000		       00 50	   OBJ_BAT    =	80
+    154  f000		       00 60	   OBJ_SNAKE  =	96
+    155  f000		       00 70	   OBJ_MINER  =	112
+    156  f000		       00 80	   OBJ_BOMB   =	128
     157  f000
     158  f000							; C2 (2026-10-20): the level-data block labels (M<id>*, L<n>R<r>*) live in
     159  f000							; THIS bank now ($F307 slot include below), so the room tables resolve them
@@ -1449,7 +1449,7 @@
    1148  fb5d		       85 eb		      sta	ObjTop1
    1149  fb5f		       4c f8 fb 	      jmp	ReturnPad
    1150  fb62				   .S1stageMiner
-   1151  fb62		       a9 54		      lda	#OBJ_MINER
+   1151  fb62		       a9 70		      lda	#OBJ_MINER
    1152  fb64		       85 ea		      sta	ObjBase1
    1153  fb66		       a5 a5		      lda	MinerX
    1154  fb68		       85 ec		      sta	ObjX1
@@ -1491,7 +1491,7 @@
    1190  fb8c							; ------------------------------------------------------------------------------
    1191  fb8c				   PinSlot0
    1192  fb8c		       a5 b6		      lda	ObjBase
-   1193  fb8e		       c9 60		      cmp	#OBJ_BOMB
+   1193  fb8e		       c9 80		      cmp	#OBJ_BOMB
    1194  fb90		       f0 35		      beq	.PSout	; bomb frame: leave the bomb alone
    1195  fb92		       a5 a4		      lda	LevelMinerRoom
    1196  fb94		       29 7f		      and	#$7f
@@ -1536,14 +1536,14 @@
    1235  fbc8							; Enemy type -> ObjSprites design offset (copy of kernel.asm's table: bank0's
    1236  fbc8							; ROM is not visible from here). Index = ENEMY_* type, stride 12.
    1237  fbc8				   ObjSpriteOffTable
-   1238  fbc8		       18		      .byte.b	OBJ_SPIDER	; 0
-   1239  fbc9		       3c		      .byte.b	OBJ_BAT	; 1
-   1240  fbca		       48		      .byte.b	OBJ_SNAKE	; 2
-   1241  fbcb		       30		      .byte.b	OBJ_TENTACLE	; 3
-   1242  fbcc		       0c		      .byte.b	OBJ_MOTH	; 4
-   1243  fbcd		       24		      .byte.b	OBJ_LAMP	; 5 (LAMP)
+   1238  fbc8		       20		      .byte.b	OBJ_SPIDER	; 0
+   1239  fbc9		       50		      .byte.b	OBJ_BAT	; 1
+   1240  fbca		       60		      .byte.b	OBJ_SNAKE	; 2
+   1241  fbcb		       40		      .byte.b	OBJ_TENTACLE	; 3
+   1242  fbcc		       10		      .byte.b	OBJ_MOTH	; 4
+   1243  fbcd		       30		      .byte.b	OBJ_LAMP	; 5 (LAMP)
    1244  fbce		       00		      .byte.b	OBJ_KEY	; 6 (KEY — offset-0 slot)
-   1245  fbcf		       48		      .byte.b	OBJ_SNAKE	; 7 (RAFT borrows the solid snake block)
+   1245  fbcf		       60		      .byte.b	OBJ_SNAKE	; 7 (RAFT borrows the solid snake block)
    1246  fbd0
    1247  fbd0							; ReturnPad ($FBF8) — bank2's live half is the `sta $1FF6` only: every body
    1248  fbd0							; here tail-jmps `$FBF8`, the sta switches to bank0, and the `rts` at $FBFB is

@@ -86,6 +86,43 @@ BandStart           $FE00      EnemyColorTable $FE04   ObjSpriteOffTable $FE0C
   X ∈ [44,113) (it used to be one line high there). Eyeball it in Stella: art
   and colours must line up row-for-row, no flicker/seam changes.
 
+## Step 3 landed (2026-10-22): Phase 6 FORMAT — 16-row object window
+
+`OBJ_WINDOW = 16` split from `PLAYER_HEIGHT = 12` (hit box), tables 9 × 16 =
+144 B each, stride-16 `OBJ_*`, `ObjSprites` base `$F850 → $F830` (still ends at
+the `$F8C0` pin), page guard `+71 → +143`. Every design has 4 new rows: art
+`$00` blanks (reserved), colour = the design's own. **Zero visual change, 0 c**
+(`cmp #OBJ_WINDOW` = same size). Full details + the two traps in
+`plans/hero_kernel_plan.md` § "Phase 6 — 16-row object window".
+
+Traps this dug up (both guarded now):
+- `OBJ_BOMB = 128 = $80` broke the `bmi` "no object" sentinel: the bomb's `P1`
+  was never positioned (`test_bomb_render_x`). Slot 0 now branches once on
+  `cmp #$FF` (`.SOBlank` replaced `.SONoObj`); slot 1 keeps `bmi` (miner/enemies
+  < `$80`) with the invariant commented. **Budget:** 6 c of comparisons in the
+  VBL = 268-line frames in `test_phase3_ball`; 2 c is what fits.
+- `check_equ_sync` only compared `$hex` values, so the decimal `OBJ_*`
+  hand-copies in bank2 drifted silently — the guard now compares decimals too.
+
+Remaining Phase 6 work is **art-led**: fill rows 12-15 of a design (+ its
+colour rows), one type per commit. Hit box stays 12 until a gameplay ruling.
+
+## OPEN — user report 2026-10-22: "miner + enemy flickering again"
+
+Reported right after the StageSlot1/PinSlot0 eviction (step 1) — that move was
+verified instruction-identical, so check the geometry FIRST:
+
+1. Which level/room? Are the two objects in the **same 48-line band**
+   (`y // 48` equal)? Same-band rooms keep the old 30 Hz rotation **by design**
+   (`StageSlot1` only pairs candidates that span two bands).
+2. Three candidates in the room (2 enemies + miner)? `PinSlot0` skips the pin at
+   ≥ 3 (a588479) and the middle object is then only reached by rotation.
+3. Is one of them the **bomb**? The bomb owns 1 of 4 frames and skips the pin.
+4. `ObjWindow` grew 12 → 16 in step 3: a window can now cross a band boundary
+   more easily, and the band swap would blank the crossing rows (pre-existing
+   hazard, now likelier). Check whether the flicker room has an object near
+   y % 48 ∈ [40,47].
+
 ## Agreed order (do not reorder without a reason)
 
 1. **Space move (next step, mechanical).** Move `StageSlot1` (194 B) out of the

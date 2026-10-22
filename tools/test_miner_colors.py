@@ -38,12 +38,12 @@ def main() -> None:
     # --- 1) color table bytes -------------------------------------------
     tab = labels0["ObjColorTab"]
     off = tab - 0xF000
-    miner = list(rom0[off + 84: off + 92])
+    miner = list(rom0[off + 112: off + 120])
     assert miner == MINER_COLORS, f"miner color slot = {[hex(v) for v in miner]}"
     # slot colors must match EnemyColorTable / frame colors for non-miner types
-    assert rom0[off + 12] == 0x22 and rom0[off + 60] == 0xF2, \
+    assert rom0[off + 16] == 0x22 and rom0[off + 80] == 0xF2, \
         "moth/bat slot colors drifted from EnemyColorTable"
-    assert rom0[off + 96] == 0x46, "bomb slot != COLOR_BOMBS ($46)"
+    assert rom0[off + 128] == 0x46, "bomb slot != COLOR_BOMBS ($46)"
     # kernel reads it with the sprite index
     assert re.search(r"lda\s+ObjColorTab,X\s*;[^\n]*", kernel), \
         "kernel .Grp1 does not read ObjColorTab,X"
@@ -71,9 +71,9 @@ def main() -> None:
 
     # --- 3) layout pins (4c fetches) ------------------------------------
     obj = labels0["ObjSprites"]
-    assert (obj & 0xFF) + 71 <= 0xFF and (obj >> 8) == ((obj + 71) >> 8), \
-        f"ObjSprites ${obj:04X} page-crosses (+71)"
-    assert (tab >> 8) == ((tab + 71) >> 8), f"ObjColorTab ${tab:04X} page-crosses"
+    assert (obj & 0xFF) + 143 <= 0xFF and (obj >> 8) == ((obj + 143) >> 8), \
+        f"ObjSprites ${obj:04X} page-crosses (+143)"
+    assert (tab >> 8) == ((tab + 143) >> 8), f"ObjColorTab ${tab:04X} page-crosses"
     frame = labels0["PickPlayerFrame"]
     # body must be a real instruction start in bank0 (was a switch tramp)
     assert rom0[frame - 0xF000] == 0xA5, \
