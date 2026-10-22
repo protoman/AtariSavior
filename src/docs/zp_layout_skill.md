@@ -226,6 +226,27 @@ of kernel addresses — **`check_equ_sync` verifies every shared name each
 build** (historical bugs: stale `TickCounter=$AC`, stale `RcBase`). Bank2
 must never allocate a ZP address kernel doesn't define.
 
+## Lifetime audit (2026-10-22) — who re-stages what, and when
+
+Rule 7 says a shared byte must be reset at the phase handover. This is the map
+of that handover for every existing ZP byte, produced by
+`tools/zp_lifetime_audit.py` (re-run it after adding any byte):
+
+| lifetime | bytes | re-staged by |
+|---|---|---|
+| **frame scratch** (never crosses a phase) | `Temp`, `FetchPtr`, `EnemyIndex`, `CollisionX/CellX/CellY/EndX/EndY`, `RectCount`, `StepsLeft`, `BarIdx`, `ObjBase/ObjTop/ActiveObject*`, `ObjBase1/ObjTop1/ObjX1`, `ObjHeight/ObjHeight1`, `FlickerFrame`, `BallX`(Temp), `BandTab` | every frame, by design — nothing to reset |
+| **room** | `EnemyDataLo/Hi`, `EnemyCount`, `EnemyRamX/Y/D/P`, `EnemyDeadMask`, `RoomRectsLo/Hi`, `RoomMetaA/B`(= `RoomPF0Lo/Hi`), `RoomNo`, `RoomBandColor`, `LevelConnSpare` | `EnterRoomB2` → `LoadEnemyRam` (EBLER_Loop) → `B3RoomBlocks`/`ExtrasLoad` — **every** room entry, including the first |
+| **level** | `Level`, `LevelRoomN`, `LevelPFDataLo/Hi`, `LevelStartRoom/X/Y`, `LevelWallColor/2`, `MinerX`, `MinerY`, `LevelMinerRoom` | `LoadLevelB2` — once per level (the miner is level data: one per level, deliberately NOT per room) |
+| **run** (survives level changes) | `PlayerLives` (GameStart/LoseLife), score (`ScoreHu/Th/Te`), `PlayerBombs` (LoadLevelB2 re-fills) | `GameStart` |
+| **phase** (title ⇄ game ⇄ tally) | `DropTarget` (sentinel), `BombX`/`BombTimer` (= the title melody, rule 7) | the phase entry itself: `GameStart` ($FF title), `DropArm`, `TallyEntry` ($FE) |
+| **window-ordered exceptions** | `ColupfBuf` `$E7`, `EnemyRamY` `$E2-$E4`, staged-only bytes in `$E0-$EF` | see rule 8 (stomp zone) |
+
+Audit result: every room-scoped byte has a writer on the room-load path, so
+entering a room cannot inherit the previous room's geometry. The one deliberate
+exception is the miner trio (`MinerX`/`MinerY`/`LevelMinerRoom`): it is LEVEL
+data — if a future feature wants a per-room miner, it must be staged inside
+`EnterRoomB2` and this table updated.
+
 ## Historical Crashes
 
 - **$E0-$EB conflict (fixed):** bank1 digit pointers overwrote bank0 level
