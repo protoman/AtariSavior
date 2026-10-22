@@ -62,6 +62,30 @@ BandStart           $FE00      EnemyColorTable $FE04   ObjSpriteOffTable $FE0C
   any growth there fails the build with `Origin Reverse-indexed` — that is the
   intended alarm, not a bug.
 
+## Step 2 landed (2026-10-22): Phase 4's VDEL premise was wrong — P0 half only
+
+**Read `plans/hero_kernel_plan.md` § "Phase 4" first.** Short form:
+
+- **VDEL is a cross-buffer latch, not a one-line delay** (Stella
+  `Player::grp`/`updatePattern`/`shufflePatterns`): a GRP write lands in
+  `myPatternNew` and renders at once; with VDEL the live pattern is
+  `myPatternOld`, latched by the OTHER player's write. HERO also clears
+  `VDELP0/1` at cave entry — it uses VDEL only for its HUD text.
+- Measured `.Line` store phases: `COLUP0 c19`, `ENAM0 c25`, `GRP0 c35`,
+  `GRP1 c58`, `COLUP1 c65`. A sprite's pixels start at `(61+X)/3`, so a store
+  reaches the next line only for sprites left of `GRP0→44 px`, `GRP1→113 px`,
+  `COLUP1→134 px`.
+- **Landed:** cave `VDELP0 = 1`, `VDELP1 = 0` (VBL init, +2 B, 0 c). The
+  player's art/colour boundary moves from X < 44 to X < 113 px *and* art row r
+  now shares a scanline with `PlayerColTable[r]`. Wall model unchanged
+  (`{265: 3, 267: 1098}`), every path cycle identical. Guard:
+  `tools/test_vdel_cave.py`.
+- **Not landed:** P1 VDEL (would latch on the earlier `GRP0` store = worse), and
+  the per-line staged colour byte (needs **+6 c**, the worst path has **4 c**).
+- **USER CHECK NEEDED:** the player sprite now sits one scanline lower for
+  X ∈ [44,113) (it used to be one line high there). Eyeball it in Stella: art
+  and colours must line up row-for-row, no flicker/seam changes.
+
 ## Agreed order (do not reorder without a reason)
 
 1. **Space move (next step, mechanical).** Move `StageSlot1` (194 B) out of the
@@ -76,6 +100,11 @@ BandStart           $FE00      EnemyColorTable $FE04   ObjSpriteOffTable $FE0C
    ahead + HERO's one-byte-per-line "colour + draw flag" staged at room load.
    Gate: byte-identical output, `.Line` worst path not worse, Stella SCN/seam
    oracles. Must land alone.
+   ⚠️ **PREMISE REFUTED 2026-10-22** — VDEL is a cross-buffer latch, not a
+   one-line delay, and HERO clears it for the cave. The affordable half landed
+   (`VDELP0 = 1`, player art/colour now aligned for X < 113 px); P1 VDEL would
+   be worse and the staged colour byte is 2 c short. Details + measured split
+   table in `plans/hero_kernel_plan.md` § "Phase 4".
 3. **Phase 6 — 16-row art** (144 B/type), in the format Phase 4 leaves behind.
    One pass over the tables; window constant and art/colour rows grow together.
 4. **Phase 3 — async tint** (content-gated: nothing to fix until level 7).

@@ -699,8 +699,32 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; its own NUSIZ1 (:2595/:2683/:2695) per frame.
     lda #COLOR_PLAYER             ; restore player color (HUD had it green)
     sta COLUP0
-    lda #0                        ; clear VDELP0/VDELP1 (HUD sets them to 1)
+    ; --- VDEL: P0 ON, P1 OFF. NOT the HUD's 13+2 usage — this is the cave's
+    ; one-line-ahead discipline, and it is x-INDEPENDENT only when the landing
+    ; point of the write is RIGHT of every sprite pixel.
+    ; Facts (Stella `Player::grp` / `updatePattern`): without VDEL a GRP write
+    ; lands in `myPatternNew` and is rendered immediately, so a mid-line write
+    ; affects the CURRENT line when the sprite has not started yet (its pixels
+    ; begin at cycle ~(61+X)/3) and the NEXT line otherwise. `myPatternOld`,
+    ; the VDEL slot, is latched when the OTHER player is written
+    ; (`shufflePatterns`), so VDEL does NOT delay by a line on its own — it
+    ; moves the landing point to the other register's store cycle.
+    ; Measured store phases (`tools/cycle_ledger.py`, P1 worst path):
+    ;   COLUP0 c19 (< all pixels: the per-row colour is always this line),
+    ;   GRP0 c35, GRP1 c58, COLUP1 c65.
+    ; P0: VDELP0=1 moves its landing from GRP0's c35 (= correct art only for
+    ;   X < 44 px) to GRP1's c58 (X < 113 px) and, in the same stroke, aligns
+    ;   the art with PlayerColTable (today art row r sits one line above its
+    ;   colour for X >= 44). P1 keep VDELP1=0: its latch would be GRP0's c35,
+    ;   i.e. a WORSE split than today's c58, and P1's colour would stay at c65.
+    ; Every .Line body writes GRP1 exactly once on every path (.Grp1 in-window
+    ; or .ObjNoRes blank), so the P0 latch is driven every scanline; that is
+    ; the contract `tools/test_vdel_cave.py` guards. HERO clears both bits at
+    ; cave entry and uses VDEL only for its HUD text, so this is the one place
+    ; we deliberately differ (measured, not guessed).
+    lda #1
     sta VDELP0
+    lda #0
     sta VDELP1
     sta ENABL                     ; HUD-bar leftover off before first visible
                                   ;   line (.Row row0 BandTab rewrites next)
@@ -850,6 +874,16 @@ CaveKernelRow:
     ; GRP0 written on line S displays on line S+1 (latched at the sprite's
     ; window start after the write) — index graphics with A0+1 ($ff wraps
     ; to 0 = row0 on the line before the sprite).
+    ; CORRECTED 2026-10-22 (Phase 4): that "line S+1" is only true for a
+    ; sprite whose pixels come AFTER the store. Per Stella's Player::grp /
+    ; updatePattern, a GRP write lands in myPatternNew and renders at once, so
+    ; the boundary is the sprite's own pixel start (cycle ~(61+X)/3). With
+    ; VDELP0=1 (set in the VBL, see the comment there) the live pattern is
+    ; `myPatternOld`, latched by the GRP1 store at c58, so P0 is correct for
+    ; every X < 113 px and its art row r sits on the SAME scanline as
+    ; PlayerColTable[r] (COLUP0 lands at c19, before all pixels) — i.e. the
+    ; art and its per-row colours finally agree. Do not reorder the colour
+    ; path behind the graphics: COLUP0 must stay the first store in the body.
     ; Running-Y: Y = A0 = Scanline - RoomY is computed ONCE at kernel entry
     ; (sec/sbc RoomY/tay); .Line's iny advances it (Y = A0+1 after the
     ; graphics write = A0 of the next line). Nothing between rows may touch
