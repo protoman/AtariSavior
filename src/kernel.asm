@@ -2361,6 +2361,7 @@ StageSlot1:
     jsr .S1band
     cmp EnemyIndex
     beq .S1ret                  ; all candidates in one band
+    jsr PinSlot0                ; slot 0 = the OTHER candidate (no 1-of-2 flicker)
     ; --- stage the highest-band candidate as slot 1 ---
     ldx FetchPtr+1
     cpx #$FF
@@ -3176,6 +3177,57 @@ ObjColorTab:
 ; latching, same as before.
 ; Offset = OBJ_* constant; index 0 = blank (object off).
 ; ------------------------------------------------------------------------------
+
+; ------------------------------------------------------------------------------
+; PinSlot0 — with TWO candidates spanning two bands, slot 1 owns the highest
+; band, so slot 0 must be the OTHER one. Left to the rotation, the lower-band
+; object (the miner) was drawn only on 1 of 2 frames = flicker (user 2026-10-22).
+; SelectActiveObject does `inc FlickerFrame` then reduces it modulo the slot
+; count, so writing (desired + count - 1) makes the next frame land on
+; `desired` exactly. The bomb keeps its own 1-of-4 frames (skip while it is the
+; drawn object). In: FetchPtr+1 = max-Y candidate index ($FF = the miner),
+; Temp = its Y (unused here). Clobbers A.
+; ------------------------------------------------------------------------------
+PinSlot0:
+    lda ObjBase
+    cmp #OBJ_BOMB
+    beq .PSout                  ; bomb frame: leave the bomb alone
+    lda LevelMinerRoom
+    and #$7f
+    cmp RoomNo
+    bne .PSnoMiner
+    ; miner in this room: slot 1 = miner -> slot 0 = enemy 0 (frame index 1);
+    ; slot 1 = an enemy -> slot 0 = the miner (frame index 0)
+    lda FetchPtr+1
+    cmp #$FF
+    bne .PSdes0
+    lda #1
+    bne .PSadd
+.PSdes0:
+    lda #0
+    beq .PSadd
+.PSnoMiner:
+    lda FetchPtr+1              ; two enemies: the other slot
+    eor #$01
+.PSadd:
+    clc
+    adc EnemyCount              ; + slot count
+    pha
+    lda LevelMinerRoom
+    and #$7f
+    cmp RoomNo
+    bne .PSnm
+    pla
+    clc
+    adc #1                      ; the miner is a slot too
+    pha
+.PSnm:
+    pla
+    sec
+    sbc #1                      ; -1 for the entry `inc FlickerFrame`
+    sta FlickerFrame
+.PSout:
+    rts
 
     .ds $FBD0 - *, 0            ; #22: pin tramp at $FBD0 — bank2's twin
                                  ;   sits at the same address (pin moved from

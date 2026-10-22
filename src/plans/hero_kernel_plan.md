@@ -325,6 +325,25 @@ frames measure 269 lines, (b) both objects are drawn in the SAME frame
 (py65: GRP1 writes in two bands with `ObjBase` swapped at the band boundary),
 (c) the solo-object rooms still measure 267.
 
+## Two-band rooms: no more 1-of-2 flicker (2026-10-22)
+
+`StageSlot1` pinned slot 1 to the highest-band candidate, but slot 0 kept
+ROTATING through all candidates (`FlickerFrame` modulo the count), so in a room
+whose two objects span two bands (raft in band 2 + miner in band 1) the lower
+one was drawn only on the frames the rotation landed on it — the miner flicker
+the user reported.
+
+Fix: `PinSlot0` (new, in the free `$FB20` fill), called from `StageSlot1` right
+after the two-band check. It writes `FlickerFrame = desired + count - 1` so the
+next frame's `inc` + modulo lands exactly on the OTHER candidate:
+- slot 1 = the miner -> slot 0 = enemy slot 0;
+- slot 1 = an enemy -> slot 0 = the miner;
+- no miner (two enemies) -> slot 0 = `max_index ^ 1`.
+The bomb keeps its own 1-of-4 frames (the pin is skipped while `ObjBase` is
+`OBJ_BOMB`). Same-band rooms never reach the pin, so their rotation is
+unchanged. Verified in py65 in the raft+miner room: `FlickerFrame` pinned,
+slot 1 = the raft, slot 0 = the miner every frame.
+
 ## Phantom M1 dash fixed (2026-10-22)
 
 `PositionBallM1` enabled M1 whenever `CollisionEndX` was non-zero, but that byte
