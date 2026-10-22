@@ -3224,7 +3224,10 @@ PinSlot0:
 .PSnm:
     pla
     sec
-    sbc #1                      ; -1 for the entry `inc FlickerFrame`
+    sbc #1                      ; A = slot count - 1 (for the entry `inc`)
+    cmp #2
+    bcs .PSout                  ; 3+ candidates: the pin cannot name the middle
+                                ;   one — leave the rotation alone
     sta FlickerFrame
 .PSout:
     rts
