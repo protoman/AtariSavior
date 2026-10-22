@@ -157,7 +157,7 @@ def check_select_object_dark() -> None:
         "frozen bank0.lst has no SelectActiveObject (re-freeze?)"
     rts = 0x0101                       # RTS_SENTINEL (test_cell_map)
     MOTH = 4
-    OBJ_MOTH, COLOR_DARK_OBJ, COLOR_MOTH = 8, 0x0A, 0x22
+    OBJ_MOTH, COLOR_DARK_OBJ, COLOR_MOTH = 12, 0x0A, 0x22
     Z = {"EnemyDataLo": 0x31, "EnemyDataHi": 0x32, "EnemyCount": 0x33,
          "FlickerFrame": 0x34, "BombPacked": 0x35, "RoomNo": 0x18,
          "LevelMinerRoom": 0x24, "EnemyDeadMask": 0x3A, "COLUP1": 0x07,

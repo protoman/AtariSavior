@@ -38,12 +38,12 @@ def main() -> None:
     # --- 1) color table bytes -------------------------------------------
     tab = labels0["ObjColorTab"]
     off = tab - 0xF000
-    miner = list(rom0[off + 56: off + 64])
+    miner = list(rom0[off + 84: off + 92])
     assert miner == MINER_COLORS, f"miner color slot = {[hex(v) for v in miner]}"
     # slot colors must match EnemyColorTable / frame colors for non-miner types
-    assert rom0[off + 8] == 0x22 and rom0[off + 40] == 0xF2, \
+    assert rom0[off + 12] == 0x22 and rom0[off + 60] == 0xF2, \
         "moth/bat slot colors drifted from EnemyColorTable"
-    assert rom0[off + 64] == 0x46, "bomb slot != COLOR_BOMBS ($46)"
+    assert rom0[off + 96] == 0x46, "bomb slot != COLOR_BOMBS ($46)"
     # kernel reads it with the sprite index
     assert re.search(r"lda\s+ObjColorTab,X\s*;[^\n]*", kernel), \
         "kernel .Grp1 does not read ObjColorTab,X"
