@@ -331,6 +331,11 @@ Every GRP1 object (enemy/miner/bomb/raft/key) is now **12 rows tall** instead
 of 8: `OBJ_WINDOW = 12` is the draw window, `PLAYER_HEIGHT` stays 8 so the
 collision/overlap tests (`#PLAYER_SPRITE_H + PLAYER_HEIGHT - 1`) are unchanged.
 
+- **Hit box matches the art (2026-10-22):** `PLAYER_HEIGHT = 12` is now both the
+  draw window and the enemy/miner collision box, so the `objToObj` Y tests
+  (`#PLAYER_SPRITE_H + PLAYER_HEIGHT - 1`) accept RoomY - objY in [-11, +11].
+  The separate `OBJ_WINDOW` alias from the first cut was folded back into
+  `PLAYER_HEIGHT` — one constant, no indirection. Battery stayed 0 fails.
 - `OBJ_*` EQUs and `ObjSpriteOffTable` use stride 12 (0,12,...,96); max index
   107. `verify_build`'s page guard was bumped 71 -> 107.
 - `ObjColorTab` (108 B) lives in the `$FB20` fill at `$FB1F`; `ObjSprites`

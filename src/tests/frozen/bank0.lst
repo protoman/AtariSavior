@@ -322,10 +322,10 @@
     321 U00bc							; ==============================================================================
     322 U00bc							; Constants
     323 U00bc							; ==============================================================================
-    324 U00bc		       00 08	   PLAYER_HEIGHT =	8	; GRP1 object (enemy/miner) height; player uses PLAYER_SPRITE_H
-    325 U00bc		       00 0c	   PLAYER_SPRITE_H =	12	; player sprite height in scanlines (8x12)
-    326 U00bc		       00 0c	   OBJ_WINDOW =	12	; GRP1 draw window (Phase 6 tall art);
-    327 U00bc							;   PLAYER_HEIGHT stays 8 (collision box)
+    324 U00bc		       00 0c	   PLAYER_HEIGHT =	12	; GRP1 object (enemy/miner) height AND hit box
+    325 U00bc							;   (Phase 6 tall art 2026-10-22); player uses
+    326 U00bc							;   PLAYER_SPRITE_H
+    327 U00bc		       00 0c	   PLAYER_SPRITE_H =	12	; player sprite height in scanlines (8x12)
     328 U00bc		       00 07	   PLAYER_WIDTH =	7	; lit player sprite spans 7 pixels; REFP0 shift handled
     329 U00bc		       00 08	   ENEMY_WIDTH =	8	; snake GRP1 width ($ff = 8 px) — flush-out span
     330 U00bc		       00 04	   LAMP_WIDTH =	4	; OBJ_LAMP uses GRP1's leftmost 4 lit pixels
@@ -902,7 +902,7 @@
     901  f125				   .Grp1
     902  f125
     903  f125							; --- GRP1 SECOND (object/enemy sprite): one design row per scanline ---
-    904  f125							; ObjTop..ObjTop+7 window → row byte from ObjSprites[ObjBase + offset].
+    904  f125							; ObjTop..ObjTop+11 window → row byte from ObjSprites[ObjBase + offset].
     905  f125							; Object off: ObjBase=$FF sentinel (ObjTop parked 144). S2.2: ObjTop is RoomY-relative;
     906  f125							; Y here = A0+1 = next line's A0, so `Y - ObjTopRel` = Scanline - ObjTop
     907  f125							; (mod 256, exact). In-object iff result 0..7 → `cmp #8/bcs` (C=0 in
@@ -911,7 +911,7 @@
     910  f125		       98		      tya
     911  f126		       38		      sec
     912  f127		       e5 bb		      sbc	ObjTop	; A = Y - ObjTopRel (= Scanline - ObjTop, mod 256)
-    913  f129		       c9 0c		      cmp	#OBJ_WINDOW
+    913  f129		       c9 0c		      cmp	#PLAYER_HEIGHT
     914  f12b		       b0 4c		      bcs	.ObjZero	; above (negative mod ≥65) or at/below bottom
     915  f12d		       65 b6		      adc	ObjBase
     916  f12f		       aa		      tax
@@ -1765,14 +1765,14 @@
    1764  f4ed		       69 06		      adc	#PLAYER_WIDTH - 1
    1765  f4ef		       c9 0a		      cmp	#PLAYER_WIDTH + MINER_WIDTH - 1
    1766  f4f1		       b0 0f		      bcs	.CMPDone	; no X overlap
-   1767  f4f3							; Y overlap: player [RoomY, +11] vs miner [MinerY, +7]
-   1768  f4f3							; accept iff RoomY - MinerY in [-11, +7]  (add 11, compare 19)
+   1767  f4f3							; Y overlap: player [RoomY, +11] vs miner [MinerY, +11]
+   1768  f4f3							; accept iff RoomY - MinerY in [-11, +11]  (add 11, compare 23)
    1769  f4f3		       a5 81		      lda	RoomY
    1770  f4f5		       38		      sec
    1771  f4f6		       e5 a6		      sbc	MinerY
    1772  f4f8		       18		      clc
    1773  f4f9		       69 0b		      adc	#PLAYER_SPRITE_H - 1
-   1774  f4fb		       c9 13		      cmp	#PLAYER_SPRITE_H + PLAYER_HEIGHT - 1
+   1774  f4fb		       c9 17		      cmp	#PLAYER_SPRITE_H + PLAYER_HEIGHT - 1
    1775  f4fd		       b0 03		      bcs	.CMPDone	; no Y overlap
    1776  f4ff							; Pickup! Arm the level-bonus tally (frozen count-up, then advance).
    1777  f4ff							; TallyArm (bank2, via TallyTramp) snapshots time/bombs/lives into
@@ -1835,13 +1835,13 @@
    1834  f536		       c9 0e		      cmp	#PLAYER_WIDTH + ENEMY_WIDTH - 1
    1835  f538		       b0 3c		      bcs	CEHNext	; no X overlap
    1836  f53a		       85 8b		      sta	CollisionX	; keep x-overlap span for lamp's narrower box
-   1837  f53c							; Y overlap: player [RoomY, +11] vs enemy [ActiveObjectY, +7] — exact
+   1837  f53c							; Y overlap: player [RoomY, +11] vs enemy [ActiveObjectY, +11] — exact
    1838  f53c		       a5 81		      lda	RoomY
    1839  f53e		       38		      sec
    1840  f53f		       e5 b8		      sbc	ActiveObjectY
    1841  f541		       18		      clc
    1842  f542		       69 0b		      adc	#PLAYER_SPRITE_H - 1
-   1843  f544		       c9 13		      cmp	#PLAYER_SPRITE_H + PLAYER_HEIGHT - 1
+   1843  f544		       c9 17		      cmp	#PLAYER_SPRITE_H + PLAYER_HEIGHT - 1
    1844  f546		       b0 2e		      bcs	CEHNext	; no Y overlap
    1845  f548							; Lamp (type 5): crash → RoomDarkMask; lamp stays in rotation (grey), no life
    1846  f548		       a6 b9		      ldx	EnemyIndex
