@@ -367,13 +367,13 @@ VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × LINES_PER_TILE)
 OBJ_NONE        = 0
 OBJ_KEY         = 0     ; design offsets. A design owns its block, so each
 OBJ_MOTH        = 16    ; offset = the sum of the heights above it; ObjHeightTab
-OBJ_SPIDER      = 32    ; carries the matching row count. SPIDER graduated to
-OBJ_LAMP        = 47    ; per-type height first (15 rows, user art 2026-10-22).
+OBJ_SPIDER      = 32    ; carries the matching row count. SPIDER (15) and BAT
+OBJ_LAMP        = 47    ; (10) carry per-type heights (user art 2026-10-22).
 OBJ_TENTACLE    = 63
 OBJ_BAT         = 79
-OBJ_SNAKE       = 95
-OBJ_MINER       = 111
-OBJ_BOMB        = 127
+OBJ_SNAKE       = 89
+OBJ_MINER       = 105
+OBJ_BOMB        = 121
 
 ; Player bounds (must stay inside cave walls)
 PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
@@ -2435,8 +2435,8 @@ Slot1Hook:
 ; bank2 carries a byte-identical twin (StageSlot1 stages slot 1's window) —
 ; guard: tools/test_slot1_pair.py compares both tables.
 ObjHeightTab:
-    .byte 15,         OBJ_WINDOW                            ; 0 SPIDER (15-row art)
-    .byte OBJ_WINDOW, OBJ_WINDOW                            ; 1 BAT  2 SNAKE
+    .byte 15,         10                                    ; 0 SPIDER 1 BAT
+    .byte OBJ_WINDOW, OBJ_WINDOW                            ; 2 SNAKE  3 TENT
     .byte OBJ_WINDOW, OBJ_WINDOW                            ; 3 TENT 4 MOTH
     .byte OBJ_WINDOW, OBJ_WINDOW                            ; 5 LAMP 6 KEY
                                                             ; 7 RAFT
@@ -2447,9 +2447,9 @@ ObjHeightTab:
 ; not from here. That is the same FoldIndirect discipline every other tramp
 ; uses — the twin cannot be skipped or shortened.
 ; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
-    .ds $F830 - *, 0            ; ObjSprites: per-type heights, 143 B now
-                                 ;   (SPIDER 15 + 8 types x 16).
-                                 ; Base low byte $30 + max index 142 = $BE ->
+    .ds $F830 - *, 0            ; ObjSprites: per-type heights, 137 B now
+                                 ;   (SPIDER 15, BAT 10, 7 types x 16).
+                                 ; Base low byte $30 + max index 136 = $B8 ->
                                  ; `lda ObjSprites,X` stays in ONE page
                                  ; (verify_build guard). The base moved
                                  ; $F850 -> $F830 with the Phase 6 growth so
@@ -2473,8 +2473,9 @@ ObjSprites:
     .byte $F0,$F0,$60,$60,$F0,$F0,$F0,$60,$60,$60,$3C,$3C,$00,$00,$00,$00
     ; TENTACLE (64): bulky shoulder tapering to a tip
     .byte $60,$90,$80,$60,$30,$30,$30,$18,$18,$0C,$0C,$04,$00,$00,$00,$00
-    ; BAT (80): wing pair, body, hanging tail
-    .byte $90,$60,$F0,$60,$60,$90,$90,$60,$30,$18,$0C,$00,$00,$00,$00,$00
+    ; BAT (79): 10 rows (user art 2026-10-22) — hanging wing tips, wing
+    ; shoulders, purple body, dark-purple core, dark-blue tail
+    .byte $81,$C3,$66,$24,$3C,$7E,$FF,$99,$18,$24
     ; SNAKE (96): HALF-HEIGHT solid block (user 2026-10-22: the snake and the
     ; raft read too tall). Only rows 0-5 are solid: the raft's sprite top is
     ; RAFTER_BASE (125) and its row 7 is the water surface line (132+off), so
@@ -3146,7 +3147,7 @@ ObjColorTab:
     .byte $14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$22,$22,$22,$14,$14,$14 ; 2 SPIDER (15 rows)
     .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e ; 3 LAMP  ($0e white)
     .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e ; 4 TENTACLE
-    .byte $f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2 ; 5 BAT   ($f2 brown)
+    .byte $06,$06,$6C,$6C,$68,$68,$64,$64,$82,$82 ; 5 BAT (10 rows: grey wings, purple body, dark blue tail)
     .byte $c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4 ; 6 SNAKE ($c4 green)
     .byte $54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08,$08,$08,$08,$08 ; 7 MINER (hips purple, legs grey)
     .byte $46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46 ; 8 BOMB  ($46 red)

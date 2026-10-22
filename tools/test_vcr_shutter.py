@@ -101,9 +101,10 @@ with tempfile.TemporaryDirectory() as td:
     assert res.returncode == 0, res.stderr[-300:]
 
 # --- 3. no $81 records / retired state in the shipped sources ----------------
-for path in list(SRC.glob("generated/*.asm")) + [SRC / "kernel.asm",
-                                                 SRC / "bank2.asm",
-                                                 SRC / "bank3.asm"]:
+# NOTE: only files that can EMIT a record are scanned for the raw $81 byte —
+# sprite art rows are hex too and $81 is a legal GRP1 row (BAT row 0, 2026-10-22),
+# so scanning kernel.asm for `$81,` is a false positive. Symbols stay global.
+for path in list(SRC.glob("generated/*.asm")) + [SRC / "bank3.asm"]:
     text = path.read_text(errors="replace")
     assert not re.search(r"\.byte\s+\$81,", text), \
         f"{path.name}: emits a retired $81 vcrunch record"
