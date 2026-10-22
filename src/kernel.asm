@@ -1124,10 +1124,13 @@ UpdateP0Vertical:
     and #%01111111
     sta Temp
 
-; --- Jet thrust accumulator: +1 every 4th frame while Up is held
-;     (cap JET_MAX). BUGS #31 (2026-10-11, clarified spec):
-;       * spin-up: ÷4 ramp gate (EnemyRamP & 3) — net lift at exactly
-;         60f = 1.0s of held-Up (user-confirmed "perfect").
+; --- Jet thrust accumulator while Up is held (cap JET_MAX).
+;     2026-10-22 (user report: a full-speed fall could not be stopped):
+;       * FALLING (vy > 0): thrust jumps straight to JET_MAX — the jet
+;         catches the fall in ~10 frames from terminal $0180.
+;       * from rest / while rising: +1 EVERY frame, so take-off eases in.
+;       * the old ÷4 ramp gate (EnemyRamP & 3, ~1s spin-up, bugs #31) is
+;         gone: it kept thrust below gravity for ~32 frames.
 ;       * release -> FLOAT: JetPower takes b7 as the float flag and the
 ;         low 7 bits as a 54-frame countdown ($80|54 = $B6). Phase A:
 ;         gravity-only decel stops the climb in ~0.3s; then Y is pinned
@@ -1220,10 +1223,21 @@ UpdateP0Vertical:
 .ThrustSkip:
 
 ; --- Clamp fall speed: down at MAX_FALL, up at -$0100. ---
+; The high byte alone is NOT enough (2026-10-22): `cmp #>MAX_FALL` with vyHi
+; == $01 is EQUAL, so the old code rewrote vy to exactly $0180 for every speed
+; in $0100..$017F — a falling player's thrust was computed and then thrown
+; away every frame (vy: $0180 -> $0188 -> $0158 -> clamped back to $0180), so
+; the jet could not slow a fall at all. Compare the low byte when the high
+; bytes match.
     lda vyHi
     bmi .RiseClamp
     cmp #>MAX_FALL
-    bcc .Integrate
+    bcc .Integrate              ; below 1 px/frame: no clamp
+    bne .FallClamp              ; above: clamp
+    lda vyLo
+    cmp #<MAX_FALL
+    bcc .Integrate              ; $01xx but under MAX_FALL: no clamp
+.FallClamp:
     lda #>MAX_FALL
     sta vyHi
     lda #<MAX_FALL
