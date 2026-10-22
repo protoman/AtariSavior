@@ -1472,7 +1472,7 @@ def _gen_data_size(path: Path) -> int:
 # biggest windows first so a large level file lands where it fits and the
 # small tail slots absorb the index/odd sizes.
 _SPILL_SLOTS = [
-    ("spill_F9D9", 0xFBD0),   # 503 B
+    ("spill_F9D9", 0xFAC0),   # 231 B (end moved down: StageSlot1 body, 2026-10-22)
     ("spill_F767", 0xF854),   # 340 B (levels_index + room tables; historical)
     ("spill_F453", 0xF600),   # 429 B
     ("spill_F307", 0xF450),   # 329 B

@@ -506,7 +506,15 @@ TAIL_PADS = (
     ("CallPad_TitleBand", 0xFC52, 1, "TitleBand"),
     ("CallPad_MusicTick", 0xFC55, 1, "MusicTick"),
 )
-SPLIT_PADS = CORRIDOR_PADS + EXIT_PADS + TAIL_PADS
+
+# 2026-10-22: the Phase 5 slot-1 stager moved out of bank0's $F744 fill (the
+# Phase 4/6 workspace). Same split contract as the exit pads — bank0 keeps the
+# `sta $1FF8` at $FBE5, bank2 serves `jmp StageSlot1B2` from $FBE8.
+MOVE_PADS = (
+    ("CallPad_StageSlot1", 0xFBE5, 2, "StageSlot1B2"),
+)
+
+SPLIT_PADS = CORRIDOR_PADS + EXIT_PADS + TAIL_PADS + MOVE_PADS
 
 # Pinned twin tramps: these two keep BOTH halves in bank0 and bank1 (their
 # byte-identity is guarded by check_raft_tramp / check_moth_tramp); listed

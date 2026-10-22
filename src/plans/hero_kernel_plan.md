@@ -55,6 +55,29 @@ kept as a test-owned reference and the generator still exercises 20 levels in
   stale; the 12 B `BeamMask` table plus the folded fetch went into the `$FExx`
   fill, so the pre-pad figure did not move.
 
+**Measured after the StageSlot1 eviction** (step 1 of the 2026-10-22 handoff,
+`tools/rom_size_report.py --md`):
+
+| bank | code | data | fill | used | free |
+|---|---|---|---|---|---|
+| bank0 | 3128 | 434 | 516 | 3562 | 534 |
+| bank1 | 2448 | 449 | 1005 | 2897 | 1199 |
+| bank2 | 1537 | 168 | 2390 | 1705 | 2391 |
+| bank3 | 1174 | 155 | 2766 | 1329 | 2767 |
+
+- bank0 **3816 → 3562 used** (−254 B); the `$F744` fill now holds only
+  `Slot1Hook` (`$F750`) and **202 B** of free space up to the `ObjSprites` pin
+  (`$F850`) — that is the Phase 4/6 workspace.
+- `StageSlot1` + `PinSlot0` + an `ObjSpriteOffTable` copy live in bank2's
+  `$FAC0-$FBCF` block (slot `spill_F9D9` end moved `$FBD0 → $FAC0`; the level
+  data still starts at `$F9D9`, so no generated address moved). Block is
+  flush against the `$FBD0` EnterRoom twin pin: growth there fails the build.
+- Entry is the split pad `CallPad_StageSlot1` at `$FBE5` / bank2 `jmp` at
+  `$FBE8` (`verify_build.MOVE_PADS`). Frame budget unchanged: wall model
+  `{265: 3, 267: 1098}`, cave WSYNC 195 — i.e. the eviction cost no line.
+- bank2 level-table slack **2244 → 1969 B** (the eviction target for Phases 5-6
+  data is still open).
+
 ---
 
 ## Phase 0 — Cycle ledger from `bank0.lst` — ✅ DONE (2026-10-21)
@@ -629,6 +652,11 @@ Everything below is a known open item; the order is by "risk removed per byte".
    move out of the `$F744` fill first (it is full again after the HMOVE fix),
    e.g. `StageSlot1` into a bank2 slot behind a `jsr`. Then the object window
    constant and the art/colour tables grow together.
+   ✅ **The eviction is DONE (2026-10-22)**: `StageSlot1` + `PinSlot0` are in
+   bank2 (`$FAC0`), the `$F744` fill has **202 B** free between `Slot1Hook`
+   (`$F750`) and the `ObjSprites` pin (`$F850`), and the pad is
+   `CallPad_StageSlot1` (`$FBE5`). Phase 6 can grow the art down from `$F850`
+   once the `$FE00` cluster re-pin is planned.
 4. **Phase 3 — async-block tint** (blocked on stage content: no async blocks
    exist until level 7). Needs the carrier decision (generator band separation /
    ball-`COLUPF` carrier / PF pillar), bank3 `RoomM1Hot` display-cell staging,
