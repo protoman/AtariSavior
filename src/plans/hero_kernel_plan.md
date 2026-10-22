@@ -325,6 +325,34 @@ frames measure 269 lines, (b) both objects are drawn in the SAME frame
 (py65: GRP1 writes in two bands with `ObjBase` swapped at the band boundary),
 (c) the solo-object rooms still measure 267.
 
+## The "raft zig-zag" was the slot-1 mid-frame HMOVE (2026-10-22, root cause)
+
+User repro: level 4 room 4, hands off, the rider slides relative to the raft.
+Debugger RAM (from the user's screenshots — the ZP grid is already in them)
+showed `RoomX` = 55,56,57,58,59,59 = **+1 px/frame, exactly the raft's step**,
+so the carry was right. The *drawn* player, though, advanced ~2 px/frame and
+sawed back and forth — a fine-adjust (HMP0) artifact, not logic.
+
+Cause: `Slot1Hook` (Phase 5) repositions the second object mid-frame and strobes
+its own `HMOVE`. HMP0/HMM0/HMBL still hold the PLAYER's / laser's / ball's fine
+values from the VBL, so that second HMOVE applied them again — the player's fine
+adjust doubled. As `RoomX` walks through a coarse cell the fine value cycles
+0..14, so the drawn X jumps +15 and back: the visible zig-zag. It needs TWO
+objects spanning two bands (here raft + miner), which is why other rooms are
+clean.
+
+Fix: before the hook's HMOVE, clear HMP0/HMM0/HMBL (HMP1 stays — it belongs to
+the slot-1 sprite, set just above). Verified in py65: the VBL HMOVE ($F0AC)
+carries HMP0 = $10/$F0/$E0..., the hook HMOVE ($F844) now carries **$00**.
+
+Guard: `tools/test_slot1_hmove.py` (static: the three clears must precede the
+hook's HMOVE, and HMP1 must not be cleared). Space: +11 B in the `$F744` fill,
+paid by moving `EnemyColorTable` + `ObjSpriteOffTable` (both `abs,X`) into the
+free `$FE00` fill.
+
+**Rule:** any second `HMOVE` in a frame must be preceded by clearing every fine
+register it must not re-apply — HMOVE is not idempotent for untouched HMPs.
+
 ## Raft: the REAL cause was the record's dir bit (2026-10-22, follow-up)
 
 The user was right that the raft was not on a wall. Editor enemy `x` is a
