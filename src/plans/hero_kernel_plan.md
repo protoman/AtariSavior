@@ -325,6 +325,26 @@ frames measure 269 lines, (b) both objects are drawn in the SAME frame
 (py65: GRP1 writes in two bands with `ObjBase` swapped at the band boundary),
 (c) the solo-object rooms still measure 267.
 
+## Jet physics: HERO feel (2026-10-22, user report)
+
+Symptom: falling at terminal speed, pressing Up barely helped — the fall only
+reversed after ~1 s (more than a room height). Cause: thrust was a ramped
+accumulator behind a `EnemyRamP & 3` gate, so JetPower grew 1/4 frames and
+stayed BELOW gravity (8) for ~32 frames; at terminal 1.5 px/frame the net
+deceleration was 12/256 px/frame² → ~32 frames after the ramp finally caught up.
+
+Fix (behaviour, HERO-style — a held jet catches a fall immediately):
+- While FALLING (vy > 0) and Up held: `JetPower = JET_MAX` at once.
+- From rest / while rising: ramp +1 EVERY frame (gate removed) to JET_MAX.
+- `JET_MAX` $14 -> $30 (48): net climb accel 40/frame², capped by the -$0100
+  rise clamp, so max climb stays 1 px/frame; a terminal fall stops in 10 frames.
+- Float-on-release ($B6 countdown) and the respawn hover are untouched (they
+  key off `JetPower >= GRAVITY+1`, which is reached sooner now, not later).
+
+Guards: `tools/test_respawn_hover.py` (new `brake_frames()` assertion: <= 12
+frames from a terminal fall, plus the updated ramp mirror) and
+`tools/test_water_respawn.py` (same mirror). Both sims green, battery 0 fails.
+
 ## Raft bug fixed (2026-10-22, user report: rider "zig-zags" on the raft)
 
 **Cause (proven, not guessed):** in the authored raft room (level 4 room 4 of

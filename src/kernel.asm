@@ -362,11 +362,15 @@ PLAYER_MAX_Y    = 132           ; CAVE_LINES - PLAYER_SPRITE_H
 
 ; Jetpack physics constants (HERO-style)
 GRAVITY         = $0008         ; gravity per frame (signed 16-bit, + = down)
-JET_MAX         = $14           ; max jet thrust accumulator = 20. With the
-                                ; ÷4 ramp gate below: full thrust at 80f,
-                                ; net lift (vy=0) at exactly 60f = 1.0s
-                                ; spin-up (bugs.md #31); was $20 (÷1 ramp:
-                                ; lift after 0.25s — too snappy).
+JET_MAX         = $30           ; max jet thrust accumulator = 48 (was $20).
+                                ; Net climb accel = JET_MAX - GRAVITY = 40/frame^2,
+                                ; capped by the -$0100 rise clamp. From rest the
+                                ; ramp (+1/frame) clears gravity at ~9 frames, so
+                                ; take-off still eases in (~0.15 s); from a
+                                ; terminal 1.5 px/frame fall a held jet applies
+                                ; JET_MAX immediately and stops it in ~10 frames
+                                ; (HERO feel, user report 2026-10-22 — the old
+                                ; ÷4 gate needed ~80 frames to beat gravity).
 MAX_FALL        = $0180         ; max fall speed (positive = down). Was $0200
                                 ; (2.0 px/frame) — the terminal fall felt too
                                 ; fast (user report 2026-10-21): 1.5 px/frame.
@@ -1142,22 +1146,29 @@ UpdateP0Vertical:
     bit Temp
     bne .JetDecay
     lda JetPower                ; Up held: cancel an active float first
-    bpl .RampStart              ;   (b7 flag) — WITHOUT this guard the
+    bpl .JetRamp                ;   (b7 flag) — WITHOUT this guard the
     lda #0                      ;   clear would wipe JetPower every held
     sta JetPower                ;   frame and the ramp could never build
-.RampStart:
-    lda EnemyRamP               ; ramp gate: +1 only on the free-running
-    and #3                      ;   clock's phase 0 (every 4th frame)
-    bne .Gravity
+.JetRamp:
+    ; HERO feel (user 2026-10-22): a HELD jet catches a fall at once. While
+    ; falling, thrust jumps straight to JET_MAX, so a terminal 1.5 px/frame
+    ; fall is stopped in ~10 frames instead of the ~1 s spin-up the old
+    ; `EnemyRamP & 3` ramp gate needed (thrust stayed under gravity for
+    ; ~80 frames = more than a room height of extra falling). The ramp only
+    ; applies from rest / while already rising, so take-off still eases in.
+    lda vyHi
+    bmi .JetClimb               ; already rising -> ramp
+    ora vyLo
+    beq .JetClimb               ; at rest -> ramp
+    lda #JET_MAX                ; falling: full thrust this frame
+    sta JetPower
+    jmp .Gravity
+.JetClimb:
     lda JetPower
     cmp #JET_MAX
-    bcs .JetCapped
+    bcs .Gravity                ; already full: nothing to add
     clc
-    adc #1
-    jmp .JetSet
-.JetCapped:
-    lda #JET_MAX
-.JetSet:
+    adc #1                      ; +1 EVERY frame (ramp gate removed)
     sta JetPower
     jmp .Gravity
 .JetDecay:                      ; Up NOT held this frame

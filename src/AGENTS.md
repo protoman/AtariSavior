@@ -797,7 +797,12 @@ was the disproven claim.
 
 ### Phase 8: Jetpack Physics
 - [x] Gravity (constant downward force — vyLo/vyHi integration)
-- [x] Thrust (upward force when button held — JetPower ramp; ÷4 clock gate + JET_MAX=$14 = ~1s spin-up/float, bugs #31)
+- [x] Thrust (upward force when button held — JetPower; **HERO feel 2026-10-22**: while
+      FALLING a held jet jumps straight to JET_MAX ($30) and stops a terminal
+      1.5 px/frame fall in ~10 frames; from rest / while rising it still ramps
+      +1/frame so take-off eases in. The old `EnemyRamP & 3` gate + JET_MAX=$14
+      needed ~80 frames to beat gravity = a room height of extra falling, bugs #31
+      superseded — do not re-add the ÷4 gate to the falling case.)
 - [x] Inertia (momentum — subpixel accumulator PlayerYSub)
 - [ ] Fuel management (no fuel system; the power bar is the game TIMER)
 - [x] Vertical collision with ceiling (StepUp stops flush)

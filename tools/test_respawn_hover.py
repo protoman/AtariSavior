@@ -73,8 +73,11 @@ def simulate(up_held, frames, first_input=None):
             hover = HOVER_FRAMES           # the press arms the grace
         elif 0 < hover < 0xFF:
             hover -= 1                     # grace ticks down once per frame
-        if up_held and (f & 3) == 0 and jp < JET_MAX:
-            jp += 1
+        if up_held:
+            if not hover and (vyHi & 0x80) == 0 and (vyHi or vyLo):
+                jp = JET_MAX           # falling: the jet catches at once
+            elif jp < JET_MAX:
+                jp += 1                # rest / rising: +1 every frame
         if hover:
             if jp >= GRAVITY + 1:
                 hover = 0
@@ -108,5 +111,31 @@ assert y > 48 + 20, f"after the grace the player must fall (got RoomY {y})"
 y = simulate(True, 240)
 assert y <= 48, f"holding Up must never fall (got RoomY {y})"
 assert y < 48, f"holding Up must lift off (got RoomY {y})"
+
+# --- HERO-feel brake (user report 2026-10-22): a HELD jet must arrest a
+# terminal 1.5 px/frame fall in a handful of frames, not after a room height.
+MAX_FALL = int(re.search(r"^MAX_FALL\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 16)
+
+def brake_frames(vy0=MAX_FALL):
+    vyLo, vyHi, jp = vy0 & 0xFF, (vy0 >> 8) & 0xFF, 0
+    for f in range(60):
+        if not (vyHi & 0x80) and (vyHi or vyLo):
+            jp = JET_MAX
+        elif jp < JET_MAX:
+            jp += 1
+        t = vyLo + GRAVITY
+        vyLo, vyHi = t & 0xFF, (vyHi + (t >> 8)) & 0xFF
+        t = vyLo - jp
+        vyLo = t & 0xFF
+        if t < 0:
+            vyHi = (vyHi - 1) & 0xFF
+        if vyHi & 0x80:
+            return f + 1
+    return None
+
+bf = brake_frames()
+assert bf is not None and bf <= 12, (
+    f"a held jet needs {bf} frames to arrest a terminal fall (want <= 12)")
+print(f"fall brake OK ({bf} frames from a terminal fall; JET_MAX={JET_MAX})")
 
 print("respawn hover OK (GRAVITY=%d JET_MAX=%d; idle pins Y; Up lifts)" % (GRAVITY, JET_MAX))
