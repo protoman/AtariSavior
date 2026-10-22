@@ -803,6 +803,11 @@ was the disproven claim.
       +1/frame so take-off eases in. The old `EnemyRamP & 3` gate + JET_MAX=$14
       needed ~80 frames to beat gravity = a room height of extra falling, bugs #31
       superseded — do not re-add the ÷4 gate to the falling case.)
+      **The velocity clamp must compare the low byte** when `vyHi == >MAX_FALL`
+      (2026-10-22): the old high-byte-only `cmp` rewrote every speed in
+      `$0100..$017F` to exactly `$0180`, so thrust was computed and thrown away
+      every frame and no jet could slow a fall. Guard: `tools/test_jet_clamp.py`
+      (ROM-level — model-based tests use a proper `>` compare and cannot see it).
 - [x] Inertia (momentum — subpixel accumulator PlayerYSub)
 - [ ] Fuel management (no fuel system; the power bar is the game TIMER)
 - [x] Vertical collision with ceiling (StepUp stops flush)
