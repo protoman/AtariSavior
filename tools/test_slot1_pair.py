@@ -40,7 +40,7 @@ Z = dict(EnemyCount=0x33, EnemyDeadMask=0x3A, EnemyRamY=0x62, EnemyRamX=0x3D,
          EnemyDataLo=0x31, EnemyDataHi=0x32, ObjBase1=0x6A, ObjTop1=0x6B,
          ObjX1=0x6C, FlickerFrame=0x34, DropTarget=0x0A, RoomNo=0x18,
          LevelMinerRoom=0x24, RoomY=0x01, ObjBase=0x36, MinerX=0x25,
-         MinerY=0x26, EnemyOffTable=None)
+         MinerY=0x26, ObjHeight1=0x1E)
 # $EA/$EB/$EC -> RAM $6A/$6B/$6C; $B3/$BA/$BD/$E2/$B1/$B2/$B4/$8A/$98/$A4/$81
 # $B6/$A5/$A6 -> the indices above. Assert rather than trust the table:
 for name, idx in list(Z.items()):
@@ -107,7 +107,8 @@ def call_stage_slot1(*, ys, xs, types, miner=False, miner_y=0, flicker=0):
     assert 2 in mem.banks, ("bank2 never executed — the $FBE5 pad / $FBE8 jmp "
                             "half is broken")
     return dict(base1=r[Z["ObjBase1"]], top1=r[Z["ObjTop1"]],
-                x1=r[Z["ObjX1"]], flicker=r[Z["FlickerFrame"]])
+                x1=r[Z["ObjX1"]], flicker=r[Z["FlickerFrame"]],
+                height1=r[Z["ObjHeight1"]])
 
 
 # --- case 1: two enemies, bands 1 and 2 -> pair + pin ------------------------
@@ -116,6 +117,9 @@ assert got["base1"] == OBJ_MOTH, f"slot 1 base ${got['base1']:02X} != 16"
 assert got["x1"] == 100, f"slot 1 must be the higher-band enemy, X={got['x1']}"
 assert got["top1"] == (96 - 0 + 1) & 0xFF, \
     f"ObjTop1={got['top1']} (must stay RoomY-relative)"
+assert got["height1"] == 16, (
+    f"ObjHeight1={got['height1']}, want 16 (OBJ_WINDOW): slot 1's draw window "
+    "must travel with its design or a taller type would be clipped")
 assert got["flicker"] == 1, (
     f"PinSlot0 FlickerFrame={got['flicker']}, want 1 = desired(0) + count(2) "
     "- 1: SelectActiveObject's `inc` must land on 0 next frame")
@@ -138,7 +142,21 @@ assert got["x1"] == 40, f"slot 1 must be the miner, X={got['x1']}"
 assert got["top1"] == (96 + 3 - 0 + 1) & 0xFF, (
     f"ObjTop1={got['top1']} — the miner's +3 draw offset must be included")
 
-print("OK: slot-1 pairing across banks + PinSlot0 (pair, same-band skip, miner)")
+# --- the height tables must be byte-identical (bank2 stages slot 1) --------
+L2 = parse_labels(FROZEN / "bank2.lst", {"ObjHeightTab"})
+L0 = parse_labels(FROZEN / "bank0.lst", {"ObjHeightTab"})
+if "ObjHeightTab" not in L0 or "ObjHeightTab" not in L2:
+    sys.exit("ObjHeightTab missing from a frozen listing (re-freeze?)")
+b0 = (FROZEN / "bank0.bin").read_bytes()
+b2 = (FROZEN / "bank2.bin").read_bytes()
+t0 = b0[L0["ObjHeightTab"] - 0xF000:][:8]
+t2 = b2[L2["ObjHeightTab"] - 0xF000:][:8]
+assert t0 == t2, (f"ObjHeightTab twins differ: bank0 {t0.hex()} vs bank2 "
+                  f"{t2.hex()} — a stale hand-copy would clip slot 1")
+assert set(t0) <= {16}, f"unexpected window rows {sorted(set(t0))}"
+
+print("OK: slot-1 pairing across banks + PinSlot0 (pair, same-band skip, miner) "
+      "+ ObjHeightTab twins identical")
 
 
 def _checkpage():  # pragma: no cover - documented invariant, checked above

@@ -973,7 +973,11 @@ CaveKernelRow:
     tya
     sec
     sbc ObjTop                  ; A = Y - ObjTopRel (= Scanline - ObjTop, mod 256)
-    cmp #OBJ_WINDOW
+    cmp ObjHeight               ; per-type window (all 16 today). COST: a ZP
+                                ;   compare is 3 c vs the immediate's 2 c, so
+                                ;   the worst path is 60 -> 61 and the WSYNC
+                                ;   store c68 -> c69 (contract <= 73; measured
+                                ;   by tools/cycle_ledger.py)
     bcs .ObjZero                ; above (negative mod ≥65) or at/below bottom
     adc ObjBase
     tax
@@ -2145,7 +2149,11 @@ SelectActiveObject:
     bne .SOFull
     lda #0
     sta FlickerFrame            ; keep the modulo counter bounded (2026-10-16)
-    sta ObjBase                 ; 0 = no object
+    lda #$FF
+    sta ObjBase                 ; $FF = no object (0 is the KEY design — the old
+                                ;   `0 = no object` comment was wrong and the
+                                ;   tally-without-miner frame staged ObjTop from
+                                ;   a stale Y, i.e. a stray key sprite)
     lda LevelMinerRoom
     and #$7f
     cmp RoomNo
@@ -2154,6 +2162,8 @@ SelectActiveObject:
 .SOTallyMiner:
     lda #OBJ_MINER
     sta ObjBase
+    lda #OBJ_WINDOW             ; miner design height (tally path)
+    sta ObjHeight
     lda MinerX
     sta ActiveObjectX
     lda MinerY
@@ -2175,6 +2185,8 @@ SelectActiveObject:
     bne .SOCount                ; 3 of 4 -> miner/enemy
     lda #OBJ_BOMB               ; bomb design offset into ObjSprites
     sta ObjBase
+    lda #OBJ_WINDOW             ; bomb design height
+    sta ObjHeight
     lda BombX
     sta ActiveObjectX
     lda BombY
@@ -2224,6 +2236,8 @@ SelectActiveObject:
     ; This slot is the miner
     lda #OBJ_MINER              ; miner design offset into ObjSprites
     sta ObjBase
+    lda #OBJ_WINDOW             ; miner design height
+    sta ObjHeight
     lda MinerX
     sta ActiveObjectX
     lda MinerY
@@ -2292,6 +2306,8 @@ SelectActiveObject:
 .SOPNorm:
     lda ObjSpriteOffTable,X     ; type → ObjSprites design offset
     sta ObjBase
+    lda ObjHeightTab,X          ; type → draw window (art rows available)
+    sta ObjHeight
 .SOEnemyColorDone:
     ldx EnemyIndex
     lda EnemyRamY,X             ; live Y from $E2 (private since S3.4)
@@ -2383,6 +2399,8 @@ Slot1Hook:
     bcs .SHout                  ; in a later band
     lda ObjBase1
     sta ObjBase
+    lda ObjHeight1
+    sta ObjHeight               ; slot 1's own window travels with the trio
     lda ObjTop1
     sta ObjTop
     lda ObjX1
@@ -2410,6 +2428,17 @@ Slot1Hook:
     pla
     tay
     rts
+
+; ObjHeightTab — enemy TYPE -> GRP1 draw window rows (Phase 6, 2026-10-22).
+; Every design is 16 rows today (OBJ_WINDOW), so this is the seam for taller
+; art: grow a design's rows in ObjSprites/ObjColorTab, then raise its byte here.
+; bank2 carries a byte-identical twin (StageSlot1 stages slot 1's window) —
+; guard: tools/test_slot1_pair.py compares both tables.
+ObjHeightTab:
+    .byte OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW   ; 0 SPIDER  1 BAT
+    .byte OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW   ; 2 SNAKE 3 TENT
+                                                            ; 4 MOTH 5 LAMP
+                                                            ; 6 KEY   7 RAFT
 
 ; CallPad_RaftBody — bank1 RaftBody entry. Pinned at $F8C0 with a
 ; BYTE-IDENTICAL twin in bank1 (bank1.asm, same address): the `sta $1FF7`

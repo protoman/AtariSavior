@@ -144,7 +144,11 @@ ObjBase = $B6                    ; live GRP1 design offset (PinSlot0 tests it)
 ObjBase1 = $EA                   ; slot-1 trio, staged every VBL in THIS bank now
 ObjTop1 = $EB
 ObjX1 = $EC
+ObjHeight1 = $9E                 ; slot 1's draw window (= kernel ObjHeight1,
+                                 ;   staged here, copied by Slot1Hook)
 KEY = 6                          ; enemy record type 6 = the phase-5 key
+OBJ_WINDOW = 16                  ; kernel constant: the GRP1 draw window rows
+                                 ;   (every design's art is sized to it)
 OBJ_KEY = 0                      ; GRP1 design offsets (stride 16 = OBJ_WINDOW,
 OBJ_MOTH = 16                    ;   Phase 6; hand-copies of kernel.asm — the
 OBJ_SPIDER = 32                  ;   equ-sync guard now also checks decimals)
@@ -1047,7 +1051,7 @@ ColMask:
 ; tools/test_slot1_hmove.py still covers Slot1Hook, which stays inline in
 ; bank0's .Row setup (it owns the in-band swap and its own HMOVE).
 ; ==============================================================================
-    .ds $FAC0 - *, 0            ; slot end moved DOWN from $FBD0: the pad below
+    .ds $FAA0 - *, 0            ; slot end moved DOWN from $FBD0: the pad below
                                  ;   is the EnterRoom twin pin ($FBD0)
 StageSlot1B2:
     lda #$FF
@@ -1136,6 +1140,8 @@ StageSlot1B2:
 .S1stageEnemy:
     lda ObjSpriteOffTable,X
     sta ObjBase1
+    lda ObjHeightTab,X          ; the type's draw window travels with the design
+    sta ObjHeight1
     pla                         ; X = candidate index
     tax
     lda EnemyRamX,X
@@ -1150,6 +1156,8 @@ StageSlot1B2:
 .S1stageMiner:
     lda #OBJ_MINER
     sta ObjBase1
+    lda #OBJ_WINDOW
+    sta ObjHeight1
     lda MinerX
     sta ObjX1
     lda MinerY
@@ -1234,6 +1242,12 @@ PinSlot0:
 
 ; Enemy type -> ObjSprites design offset (copy of kernel.asm's table: bank0's
 ; ROM is not visible from here). Index = ENEMY_* type, stride 12.
+; enemy TYPE -> draw window rows: byte-identical twin of kernel.asm's
+; ObjHeightTab (the records are in this bank, so slot 1's window is staged here).
+ObjHeightTab:
+    .byte OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW
+    .byte OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW
+
 ObjSpriteOffTable:
     .byte OBJ_SPIDER            ; 0
     .byte OBJ_BAT               ; 1

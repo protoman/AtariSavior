@@ -216,7 +216,10 @@ def tally_gate() -> None:
     obj, flick = one(miner_room=3, room_no=3)
     assert obj == OBJ_MINER, f"the tally must draw the MINER, got ObjBase={obj}"
     obj, flick = one(miner_room=1, room_no=3)
-    assert obj == 0, f"the tally must draw NOTHING else, got ObjBase={obj}"
+    assert obj == 0xFF, (
+        f"the tally must stage NOTHING when the miner is elsewhere, got "
+        f"ObjBase={obj} ($FF is the only 'no object' sentinel — 0 is the KEY "
+        "design and .SODone would park/stage from a stale Y)")
     assert flick == 0, f"the tally must zero FlickerFrame, got {flick}"
 
 
