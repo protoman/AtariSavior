@@ -746,15 +746,23 @@ has room now. Cost: +72 B, **0 c** (`cmp #OBJ_WINDOW` replaces `cmp #12`).
 line; ours is per-design, so a taller design costs 2 B per row. The hit box
 stays 12 until a gameplay ruling — drawing height must not silently enlarge it.
 
-**BLOCKER for art taller than 16 rows (measured 2026-10-22): the window must
-become per-type, and that needs TWO ZP bytes** (`ObjHeight` for slot 0 plus a
-slot-1 twin swapped by `Slot1Hook`): the hot-path test is
-`tya/sec/sbc ObjTop` (7 c) + `cmp ObjHeight` (2 c), and no cheaper form can
-express two bounds. The ZP map has exactly ONE byte free in gameplay
-(`$A2 LevelConnSpare`, room-load scratch), so:
+**ZP blocker RESOLVED (2026-10-22).** The melody only runs on title frames while
+the bomb block never does (`DropTarget != 0` → `DropStep`), so the melody state
+moved to `$F6`/`$F7` (= `BombX`/`BombTimer`) and the title entry clears it —
+`docs/zp_layout_skill.md` rule 7 (PHASE-SHARING) + § "Lifetime audit" record the
+general law. `$9D`/`$9E` are now `ObjHeight`/`ObjHeight1`.
 
-| option | verdict |
-|---|---|
+**Next step (plumbing, no visual change):**
+1. `ObjHeightTable` (9 B, design offset / 16) in the `$F744` fill.
+2. Stage `ObjHeight` next to `ObjBase` in `SelectActiveObject` (enemy path:
+   `lda ObjHeightTable,X`; miner/bomb: a constant) and `ObjHeight1` in
+   `StageSlot1`; `Slot1Hook` copies it with the trio.
+3. `.Line`: `cmp ObjHeight` replaces `cmp #OBJ_WINDOW` — a ZP compare is 2 c,
+   exactly the same as the immediate, so the worst path does not move.
+4. Then art per type (art + `ObjColorTab` rows + the table byte), one commit
+   each, with the hit box still 12 until a gameplay ruling.
+
+---|---|
 | drop the TITLE music, reuse `$9D MelPtr` + `$9E MelTimer` | **2 bytes = both slots** — needs a user ruling (the melody plays on the title only) |
 | pack both heights into `$A2` as 4+4 bits | caps at 15 rows — useless, we are at 16 |
 | keep `OBJ_WINDOW = 16` (today) | no tall art; rows 12-15 stay reserved |
