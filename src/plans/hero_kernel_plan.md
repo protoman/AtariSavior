@@ -744,66 +744,42 @@ stays 12 until a gameplay ruling — drawing height must not silently enlarge it
 
 ---
 
-## Phase 5b — mid-band slot swap (same-band exception) — DESIGN, 2026-10-22
+## Phase 5b — mid-band slot swap: ATTEMPTED AND WITHDRAWN (2026-10-22)
 
-**Why:** the editor wants "one object per band" relaxed: the miner sits, an enemy
-walks past at a different Y, so both can share a band *if their drawn windows
-never overlap*. HERO gets this because its kernel re-times the object's X inside
-the frame (`docs/hero_async.md` §2: `$D12C` HMP1 per row, `$D19C` HMOVE inside
-the line code). Our kernel pins P1's X once per band, so a same-band pair
-rotates at 30 Hz.
+**Goal:** let the miner share a 48-line band with an enemy (it sits, the enemy
+walks past, their windows never overlap) without the 30 Hz rotation.
 
-**Mechanism (keep both paths, pick per pair):**
+**Mechanism that was built:** `StageSlot1` paired same-band candidates whose
+drawn windows were >= `OBJ_WINDOW` apart, staged the pair with `ObjBase1` bit 7
+set (so the `.Row` hook skips it) plus `ObjSwap` (= `ObjTop1-1`, in `$A2`
+shared with `LevelConnSpare`), and `.ObjNoRes` ran the swap at that line: copy
+the trio, `SetObjectXPos`, `HMOVE`, then `jmp CaveLine` to re-run the row.
 
-| pair geometry | swap | cost |
-|---|---|---|
-| slot 1 in a HIGHER band | `.Row` hook `Slot1Hook` (existing) | 0 extra lines (setup line) |
-| slot 1 in the SAME band, windows disjoint | **new mid-band swap** at slot 1's first line | **+3 scanlines** in that room (267 → 270, measured) |
+**It works** (`tools/test_slot1_midband.py` proved both designs in one frame),
+**but two artifacts are inherent to it** and both were visible in play:
 
-- `StageSlot1` decides: same band + `Δ(drawn Y) >= OBJ_WINDOW` → stage slot 1
-  with **`ObjBase1` bit 7 set** (the flag is free: design offsets are ≤ 128 but
-  slot 1 only holds enemies/miner < `$80`, and `$FF` = none) and
-  `ObjSwap = ObjTop1 - 1`. Cross-band → bit 7 clear, `ObjSwap = $FF`.
-  `.Row`'s existing `bmi` early-out then skips the same-band pair for free, and
-  `Slot1Hook`'s `lda ObjBase1 / sta ObjBase` never sees the flag.
-- `.ObjNoRes` (out-of-window path) gains `cpy ObjSwap / bne` (**+3 net c**:
-  the old `beq .AfterObj` became cpy+bne, P3 66 → 69, contract ≤73). On a hit
-  it does `sta WSYNC` (so the trigger line never overruns) and `jmp`s to
-  `SwapSlot1Now` in the `$F744` fill, which clears HMP0/HMM0/HMBL, copies the
-  trio (`and #$7F` on the base), `jsr SetObjectXPos` (its WSYNC line), `sta
-  WSYNC` (the div15 line), `sta HMOVE` and `jmp CaveLine` — the HMOVE line IS
-  the re-run of `A0 = ObjSwap`, entering the body at cycle ~7 (normal is 8).
-  **Measured +3 scanlines**, not 2: the trigger line's body runs but does not
-  decrement `LineCount` (it is re-run), plus SOXP's line and the HMOVE line.
-  `CaveLine` is a global alias because `.Line` is scoped to `CaveKernelRow`.
-- The two lost lines are *re-run* (Y does not advance), so the trigger line is
-  not skipped: slot 1's row 0 write happens on the first post-swap line. The
-  band shows its (uniform) PF twice there; a player standing exactly on those
-  two lines gets 2 duplicated sprite rows — same class of artifact as the
-  existing band-setup stretch, and only in rooms that use the exception.
+1. **One duplicated sprite row.** The swap needs `SetObjectXPos`' own scanline
+   plus its HMOVE line; on those lines the body does not run, so the GRP0 latch
+   keeps the previous byte — the player's art row is displayed twice (the
+   reported "legs repeated").
+2. **The band grows 2-3 scanlines taller**, so every band below it is drawn
+   2-3 px lower than the collision map says — the player appears to sink into
+   / float above the walls (the reported "inside the PF"). A band's PF is
+   uniform, so nothing *looks* wrong inside the band; the damage is the band
+   BOUNDARY moving.
 
-**ZP:** `ObjSwap = $A2` — shares `LevelConnSpare`, which is room-load scratch
-(bank2 exit scan / `ExtrasLoad` ordinal) written in the overscan; the VBL
-restages it every frame, so the cave always reads a fresh value. Documented in
-`docs/zp_layout_skill.md`.
+Also dug out on the way (worth keeping in mind for any future mid-frame
+reposition): **`SetObjectXPos` ends with `tay`** and destroys the `.Line`
+running row — the first version of the swap did not re-seed Y and drew the
+player as a few rows in the wrong place ("the miner vanishes" was the same
+bug). The guard `tools/test_slot1_midband.py` now asserts that a same-band pair
+changes neither the frame length nor the player's art row count.
 
-**Editor/converter rule after this:** at most 2 objects per band AND their drawn
-Ys must differ by >= `OBJ_WINDOW` (16 px = 2 tile rows; the miner is drawn at
-`MinerY + 3`). The live stage satisfies it in all four levels (L2 room 2:
-87 vs 60, L3 room 3: 87 vs 48), so `BAND_RULE_HARD` flips to `True` here.
-
-**Verification:** `tools/test_slot1_pair.py` (pairing cases + flag +
-`ObjSwap`), `tools/test_slot1_midband.py` (real ROM: baseline 267 → paired 270,
-both designs in ONE frame), battery.
-
-**Cost ledger (measured):**
-
-| what | cost |
-|---|---|
-| `.Line` trigger (`cpy ObjSwap / bne`) | +3 net c, P3 66 → 69 (≤73 ✓) |
-| mid-band swap, rooms that pair | **+3 scanlines** (constant) |
-| `StageSlot1` staging (every cave frame) | ~+20 c in the VBL; in a VBL that already sits on a line boundary (the asym-ball scenario) that alone is **+1 line**, i.e. 268 there — `test_phase3_ball` now accepts `{268, 271}` and ordinary rooms stay 267 |
-| a same-band pair that OVERLAPS | no pair: 30 Hz rotation, by design (one GRP1) |
+**Rule that stands: one GRP1 object per 48-line band, the miner included.**
+`tools/convert_level.py` warns per offending room (level 2 room 2 and level 3
+room 3 on the current stage) — it is a WARNING because the live stage still has
+them. Moving an object into another band, or Phase 7 (the ball/M1 as a real
+second channel — the miner is only 4 px wide) are the ways to clear it.
 
 ---
 

@@ -627,20 +627,8 @@ _lines_raw = [(f, round(v, 2)) for f, v in frame_lines]
 # matches cave+HUD by construction (198 clean WSYNCs vs 195 + 3 HUD
 # stall lines, 2026-10-06) so frame phase stays continuous across the
 # title->game switch — at its OWN 265 total.
-# Phase 5b (2026-10-22): the cave target is now ROOM-DEPENDENT, because a
-# same-band pair (the miner sitting while an enemy walks past, windows >=
-# OBJ_WINDOW apart) runs the MID-BAND slot swap: SetObjectXPos' own line + its
-# HMOVE line + the trigger line's tail overrunning into SOXP's WSYNC = +3
-# scanlines (measured, WSYNC count 195 -> 197). This sim's room pokes two
-# enemy records, so it hosts such a pair: target 270 (was 267).
-# The SINGLE-object / empty room stays 267 and is asserted by
-# tools/test_phase3_ball.py (its room has no objects) — both geometries keep a
-# CONSTANT per-frame length, which is what this wall model exists to catch.
-CAVE_TGT = 270.0
-
-
 def _tgt(f):
-    return CAVE_TGT
+    return 267.0
 def _wall_bad(f, v):
     if f < 2:
         return False
@@ -832,7 +820,7 @@ checks = [
      f'({{k: sorted(v) for k, v in ...}} = '
      f'{ {k: sorted(v) for k, v in kwsync_by_kind.items()} })',
      all(len(v) == 1 for v in kwsync_by_kind.values())),
-    (f'wall-model lines per kernel target (cave {CAVE_TGT} / title 265.0) '
+    (f'wall-model lines per kernel target (cave 267.0 / title 265.0) '
      f'+/-0.15 on all frames >=2 (bad: {_bad_lines[:6]})',
      not _bad_lines),
     ('bomb dropped (state1 seen)', 1 in bomb_states),
