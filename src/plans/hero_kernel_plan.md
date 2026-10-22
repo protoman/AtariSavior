@@ -596,6 +596,39 @@ labels): `test_miner_colors` (56/8/40/64 -> 84/12/60/96), `test_raft`
 - Colour rows 8-11 tint the M1 block on those lines (Phase 3, deferred — the
   live 4-level stage emits no async blocks).
 
+## Phase 6 — first 26-row design LANDED: SPIDER (2026-10-22, user art)
+
+The user authored the SPIDER as a 26-row, 8-px design (HERO's object height,
+measured from `hero.bin` `$DD69` bit0 = rows 11..36). This is the first type to
+use the per-type `ObjHeightTab`, so it also exercised every consequence of a
+design growing:
+
+- **Offsets are no longer a uniform stride.** A design owns its block, so
+  SPIDER (26) pushes everything after it: KEY 0, MOTH 16, SPIDER 32, LAMP 58,
+  TENTACLE 74, BAT 90, SNAKE 106, MINER 122, BOMB 138 → table size 154 B
+  (was 144). `ObjHeightTab[SPIDER] = 26`, every other type still `OBJ_WINDOW`.
+- **`ObjSprites` base moved `$F830` → `$F826`** so the table still ends before
+  the `$F8C0` RaftBody pin AND stays in one page (`$26 + 153 = $BF`).
+  `verify_build`'s page guard is now `+153` (was `+143`), and
+  `test_miner_colors` checks the same bound.
+- **`ObjColorTab` is 154 B at `$FB1F`** (ends `$FBB9`, still clear of the
+  `$FBD0` pin). SPIDER colour bands: `$14` legs (rows 0-8), `$22` thorax,
+  `$1C` bright abdomen (rows 10-14), `$22`, `$14` legs again.
+- **`OBJ_BOMB = 138 = $8A` has bit 7 set.** Safe only because nothing tests a
+  *drawable* design with `bmi` — `.Row`'s `bmi` is `ObjBase1` (slot 1) and the
+  bomb never reaches slot 1; `.SODone` compares `#OBJ_BOMB` for equality and
+  the blank sentinel is `$FF`. Keep it that way.
+- **Tests derive the offsets instead of hardcoding them** (`test_miner_colors`,
+  `test_raft`, `test_slot1_pair` parse the `OBJ_*` EQUs from `kernel.asm`), and
+  `test_slot1_pair` now also asserts `OBJ_LAMP - OBJ_SPIDER ==
+  ObjHeightTab[SPIDER]` so the art block and the draw window can never drift.
+- Zero cycle cost: the `.Line` worst path is unchanged (61 c, WSYNC store 69),
+  wall model unchanged, both sims + full battery green, pre-pad headroom 16 B.
+
+Still 16 rows: BAT, MOTH, TENTACLE, PLAYER (+ the small objects LAMP/KEY/
+SNAKE/RAFT/MINER/BOMB). Each one that graduates moves the offsets below it —
+the tests now follow automatically.
+
 ## Phase 6 — tall sprites: table relocation DONE (2026-10-21), growth next
 
 `ObjColorTab` (72 B) + `ObjSprites` (72 B) were RELOCATED out of the pinned

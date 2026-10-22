@@ -149,15 +149,15 @@ ObjHeight1 = $9E                 ; slot 1's draw window (= kernel ObjHeight1,
 KEY = 6                          ; enemy record type 6 = the phase-5 key
 OBJ_WINDOW = 16                  ; kernel constant: the GRP1 draw window rows
                                  ;   (every design's art is sized to it)
-OBJ_KEY = 0                      ; GRP1 design offsets (stride 16 = OBJ_WINDOW,
-OBJ_MOTH = 16                    ;   Phase 6; hand-copies of kernel.asm — the
-OBJ_SPIDER = 32                  ;   equ-sync guard now also checks decimals)
-OBJ_LAMP = 48
-OBJ_TENTACLE = 64
-OBJ_BAT = 80
-OBJ_SNAKE = 96
-OBJ_MINER = 112
-OBJ_BOMB = 128
+OBJ_KEY = 0                      ; GRP1 design offsets (per-type heights,
+OBJ_MOTH = 16                    ;   hand-copies of kernel.asm — the equ-sync
+OBJ_SPIDER = 32                  ;   guard checks hex AND decimal values)
+OBJ_LAMP = 58
+OBJ_TENTACLE = 74
+OBJ_BAT = 90
+OBJ_SNAKE = 106
+OBJ_MINER = 122
+OBJ_BOMB = 138
 
 ; C2 (2026-10-20): the level-data block labels (M<id>*, L<n>R<r>*) live in
 ; THIS bank now ($F307 slot include below), so the room tables resolve them
@@ -1245,8 +1245,10 @@ PinSlot0:
 ; enemy TYPE -> draw window rows: byte-identical twin of kernel.asm's
 ; ObjHeightTab (the records are in this bank, so slot 1's window is staged here).
 ObjHeightTab:
-    .byte OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW
-    .byte OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW
+    .byte 26,         OBJ_WINDOW
+    .byte OBJ_WINDOW, OBJ_WINDOW
+    .byte OBJ_WINDOW, OBJ_WINDOW
+    .byte OBJ_WINDOW, OBJ_WINDOW
 
 ObjSpriteOffTable:
     .byte OBJ_SPIDER            ; 0
