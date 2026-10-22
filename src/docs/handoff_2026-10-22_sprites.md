@@ -35,6 +35,33 @@ BandStart           $FE00      EnemyColorTable $FE04   ObjSpriteOffTable $FE0C
   low byte + 107 must stay ≤ 255 (currently `$50`+107 = 187 ✓).
 - Sizes: bank0 used 3816 / free 280; level data 127 B.
 
+## Step 1 landed (2026-10-22): `StageSlot1` + `PinSlot0` are in bank2
+
+| what | where |
+|---|---|
+| `StageSlot1B2` (+ `PinSlot0`, `ObjSpriteOffTable` copy) | bank2 `$FAC0-$FBCF` |
+| entry pad | kernel `CallPad_StageSlot1` = `StageSlot1` at `$FBE5` (`sta $1FF8`) |
+| pad's other half | bank2 `$FBE8` = `jmp StageSlot1B2` |
+| exits | `jmp ReturnPad` (`$FBF8`) → `sta $1FF6` + bank0's `rts` |
+| guard | `verify_build.MOVE_PADS` (both halves + operand) |
+| freed | bank0 `$F744` fill: **202 B** between `Slot1Hook` (`$F750`) and the `ObjSprites` pin (`$F850`) |
+
+- Bank0 went **3816 → 3562 used**; bank2's `spill_F9D9` slot end moved
+  `$FBD0 → $FAC0`, so level data still starts at `$F9D9` and **no generated
+  address moved** (only `generated/symbols.asm` changed, which is bank0's own
+  symbol dump).
+- The body is instruction-for-instruction the old one: the only two changes are
+  `jsr FoldIndirect` → `lda (FetchPtr),Y` (the records live in bank2, so the two
+  bank switches per read are gone) and every `rts` → `jmp ReturnPad`. Verified
+  by a normalised diff of `git show HEAD:src/kernel.asm` against the new block —
+  119/119 and 40/40 lines identical.
+- Frame budget **unchanged** (`{265: 3, 267: 1098}`, cave WSYNC 195), so the
+  pad's extra bank switch cost no scanline. Full battery green after
+  `freeze_test_banks.sh`.
+- The bank2 block ends **flush** at `$FBCF` (the `$FBD0` EnterRoom twin pin):
+  any growth there fails the build with `Origin Reverse-indexed` — that is the
+  intended alarm, not a bug.
+
 ## Agreed order (do not reorder without a reason)
 
 1. **Space move (next step, mechanical).** Move `StageSlot1` (194 B) out of the
@@ -44,6 +71,7 @@ BandStart           $FE00      EnemyColorTable $FE04   ObjSpriteOffTable $FE0C
    (it is inline in `.Row`, branch targets inside it) unless it also fits.
    Verify: `verify_build` pins/twins + both sims + full battery (this step must
    be **behaviour-identical**; no visual check needed).
+   ✅ **DONE 2026-10-22** — see "Step 1 landed" below.
 2. **Phase 4 — VDEL pipeline.** `VDELP1` for `GRP1`/`COLUP1` written a line
    ahead + HERO's one-byte-per-line "colour + draw flag" staged at room load.
    Gate: byte-identical output, `.Line` worst path not worse, Stella SCN/seam

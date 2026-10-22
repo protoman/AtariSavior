@@ -138,6 +138,22 @@ PLAYER_MIN_X = 4                 ; kernel EQU (sprite flush with the left edge)
 PLAYER_MAX_X = 159               ; kernel EQU (horizontal logical clamp)
 PLAYER_MIN_Y = 0
 PLAYER_MAX_Y = 132               ; kernel EQU (CAVE_LINES - PLAYER_SPRITE_H)
+; --- StageSlot1 (MOVED here, 2026-10-22) — hand-copies, check_equ_sync ------
+FlickerFrame = $B4               ; slot-0 rotation index (PinSlot0 writes it)
+ObjBase = $B6                    ; live GRP1 design offset (PinSlot0 tests it)
+ObjBase1 = $EA                   ; slot-1 trio, staged every VBL in THIS bank now
+ObjTop1 = $EB
+ObjX1 = $EC
+KEY = 6                          ; enemy record type 6 = the phase-5 key
+OBJ_KEY = 0                      ; GRP1 design offsets (stride 12 into ObjSprites)
+OBJ_MOTH = 12
+OBJ_SPIDER = 24
+OBJ_LAMP = 36
+OBJ_TENTACLE = 48
+OBJ_BAT = 60
+OBJ_SNAKE = 72
+OBJ_MINER = 84
+OBJ_BOMB = 96
 
 ; C2 (2026-10-20): the level-data block labels (M<id>*, L<n>R<r>*) live in
 ; THIS bank now ($F307 slot include below), so the room tables resolve them
@@ -1015,6 +1031,219 @@ ColMask:
     .ds $F9D9 - *, 0
     include "generated/spill_F9D9.asm"
 
+; ==============================================================================
+; StageSlot1 — the Phase 5 second-GRP1-slot stager, MOVED here from bank0's
+; $F744 fill (2026-10-22: that fill is the Phase 4/6 workspace and this body
+; was its largest tenant). Behaviour is IDENTICAL; only the call shape changed:
+;   bank0 `jsr StageSlot1` -> pad $FBE5 `sta $1FF8` -> the fetch at $FBE8 comes
+;   from THIS bank = `jmp StageSlot1B2`; every exit tail-jmps $FBF8 ReturnPad
+;   (`sta $1FF6` + bank0's `rts`), so the caller's frame is popped exactly
+;   once — 0 extra pushes, stack depth unchanged.
+; The enemy record is a DIRECT (FetchPtr),Y read here (the level data lives in
+; this bank): the two FoldIndirect hops and their bank switches are gone.
+; PinSlot0 came along (its only caller) and ObjSpriteOffTable is a copy —
+; bank0's ROM is not visible from here.
+; Guards: verify_build.check_callpads pins both pad halves + the jmp operand;
+; tools/test_slot1_hmove.py still covers Slot1Hook, which stays inline in
+; bank0's .Row setup (it owns the in-band swap and its own HMOVE).
+; ==============================================================================
+    .ds $FAC0 - *, 0            ; slot end moved DOWN from $FBD0: the pad below
+                                 ;   is the EnterRoom twin pin ($FBD0)
+StageSlot1B2:
+    lda #$FF
+    sta ObjBase1                ; default: no second object
+    lda DropTarget
+    cmp #$FE
+    bne .S1go
+    jmp ReturnPad               ; tally frame: miner only (stale EnemyRamY)
+.S1go:
+    ; --- scan the room's LIVE candidates (enemies + miner): min Y, max Y ---
+    ; Slot 1 must NOT depend on SelectActiveObject's rotation: with the bomb
+    ; taking 1 of 4 frames the frame length would alternate 267/269 (sim
+    ; caught it, 2026-10-21). It depends only on the room's geometry.
+    lda #$FF
+    sta Temp                    ; min Y ($FF = no candidates)
+    lda #0
+    sta FetchPtr                ; max Y
+    sta FetchPtr+1              ; max candidate index ($FF = the miner)
+    ldx #0
+.S1scan:
+    cpx EnemyCount
+    bcs .S1cand
+    lda EnemyDeadMask
+    and EnemyBitTable,X
+    bne .S1snext
+    lda EnemyRamY,X
+    cmp Temp
+    bcs .S1notMin
+    sta Temp
+.S1notMin:
+    cmp FetchPtr
+    bcc .S1snext
+    sta FetchPtr
+    stx FetchPtr+1
+.S1snext:
+    inx
+    jmp .S1scan
+.S1cand:
+    lda LevelMinerRoom
+    and #$7f
+    cmp RoomNo
+    bne .S1span
+    lda MinerY
+    clc
+    adc #3                      ; same +3 draw offset as the slot-0 miner path
+    cmp Temp
+    bcs .S1minOk
+    sta Temp
+.S1minOk:
+    cmp FetchPtr
+    bcc .S1span
+    sta FetchPtr
+    lda #$FF
+    sta FetchPtr+1              ; the miner owns the top slot
+.S1span:
+    lda Temp
+    cmp #$FF
+    beq .S1ret                  ; no candidates at all
+    ; slot 1 exists only when the candidates span TWO bands: one per band is
+    ; what removes the flicker. Same-band rooms keep the old rotation (a swap
+    ; there would hide the other object forever).
+    jsr .S1band
+    sta EnemyIndex              ; band(min)
+    lda FetchPtr
+    jsr .S1band
+    cmp EnemyIndex
+    beq .S1ret                  ; all candidates in one band
+    jsr PinSlot0                ; slot 0 = the OTHER candidate (no 1-of-2 flicker)
+    ; --- stage the highest-band candidate as slot 1 ---
+    ldx FetchPtr+1
+    cpx #$FF
+    beq .S1stageMiner
+    ldy EnemyOffTable,X         ; Y = record offset
+    lda EnemyDataLo
+    sta FetchPtr
+    lda EnemyDataHi
+    sta FetchPtr+1
+    txa
+    pha                         ; keep the candidate index across the type read
+    lda (FetchPtr),Y            ; A = type — DIRECT, the record is in THIS bank
+    tax
+    cpx #KEY
+    bne .S1stageEnemy
+    lda LevelStartRoom          ; b7 = key already taken -> never reappears
+    bmi .S1retPop
+.S1stageEnemy:
+    lda ObjSpriteOffTable,X
+    sta ObjBase1
+    pla                         ; X = candidate index
+    tax
+    lda EnemyRamX,X
+    sta ObjX1
+    lda EnemyRamY,X
+    sec
+    sbc RoomY
+    clc
+    adc #1
+    sta ObjTop1
+    jmp ReturnPad
+.S1stageMiner:
+    lda #OBJ_MINER
+    sta ObjBase1
+    lda MinerX
+    sta ObjX1
+    lda MinerY
+    clc
+    adc #3
+    sec
+    sbc RoomY
+    clc
+    adc #1
+    sta ObjTop1
+    jmp ReturnPad
+.S1band:
+    ldy #0
+    cmp #48
+    bcc .S1bRet
+    iny
+    cmp #96
+    bcc .S1bRet
+    iny
+.S1bRet:
+    tya
+    rts
+.S1retPop:
+    pla
+.S1ret:
+    jmp ReturnPad
+
+; ------------------------------------------------------------------------------
+; PinSlot0 — with TWO candidates spanning two bands, slot 1 owns the highest
+; band, so slot 0 must be the OTHER one. Left to the rotation, the lower-band
+; object (the miner) was drawn only on 1 of 2 frames = flicker (user 2026-10-22).
+; SelectActiveObject does `inc FlickerFrame` then reduces it modulo the slot
+; count, so writing (desired + count - 1) makes the next frame land on
+; `desired` exactly. The bomb keeps its own 1-of-4 frames (skip while it is the
+; drawn object). In: FetchPtr+1 = max-Y candidate index ($FF = the miner),
+; Temp = its Y (unused here). Clobbers A.
+; (MOVED here with StageSlot1 — its only caller; kernel.asm keeps a marker.)
+; ------------------------------------------------------------------------------
+PinSlot0:
+    lda ObjBase
+    cmp #OBJ_BOMB
+    beq .PSout                  ; bomb frame: leave the bomb alone
+    lda LevelMinerRoom
+    and #$7f
+    cmp RoomNo
+    bne .PSnoMiner
+    ; miner in this room: slot 1 = miner -> slot 0 = enemy 0 (frame index 1);
+    ; slot 1 = an enemy -> slot 0 = the miner (frame index 0)
+    lda FetchPtr+1
+    cmp #$FF
+    bne .PSdes0
+    lda #1
+    bne .PSadd
+.PSdes0:
+    lda #0
+    beq .PSadd
+.PSnoMiner:
+    lda FetchPtr+1              ; two enemies: the other slot
+    eor #$01
+.PSadd:
+    clc
+    adc EnemyCount              ; + slot count
+    pha
+    lda LevelMinerRoom
+    and #$7f
+    cmp RoomNo
+    bne .PSnm
+    pla
+    clc
+    adc #1                      ; the miner is a slot too
+    pha
+.PSnm:
+    pla
+    sec
+    sbc #1                      ; A = slot count - 1 (for the entry `inc`)
+    cmp #2
+    bcs .PSout                  ; 3+ candidates: the pin cannot name the middle
+                                ;   one — leave the rotation alone
+    sta FlickerFrame
+.PSout:
+    rts
+
+; Enemy type -> ObjSprites design offset (copy of kernel.asm's table: bank0's
+; ROM is not visible from here). Index = ENEMY_* type, stride 12.
+ObjSpriteOffTable:
+    .byte OBJ_SPIDER            ; 0
+    .byte OBJ_BAT               ; 1
+    .byte OBJ_SNAKE             ; 2
+    .byte OBJ_TENTACLE          ; 3
+    .byte OBJ_MOTH              ; 4
+    .byte OBJ_LAMP              ; 5 (LAMP)
+    .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
+    .byte OBJ_SNAKE             ; 7 (RAFT borrows the solid snake block)
+
 ; ReturnPad ($FBF8) — bank2's live half is the `sta $1FF6` only: every body
 ; here tail-jmps `$FBF8`, the sta switches to bank0, and the `rts` at $FBFB is
 ; fetched from bank0 (so bank0's copy must keep `sta $1FF6 / rts`).
@@ -1044,6 +1273,13 @@ ColMask:
     jmp ExitUpB2                ; $FBDF
     jmp ExitLeftB2              ; $FBE2
     jmp ExitRightB2             ; $FBE5
+; ------------------------------------------------------------------------------
+; StageSlot1 pad half (2026-10-22): bank0's `sta $1FF8` sits at $FBE5, so the
+; post-switch fetch lands at $FBE8 = `jmp StageSlot1B2` (the body above).
+; bank0's $FBE5-$FBE7 stay dead there (same split contract as the exit pads).
+; ------------------------------------------------------------------------------
+    .ds $FBE8 - *, 0
+    jmp StageSlot1B2            ; $FBE8
 ; ------------------------------------------------------------------------------
 ; CallPad_BuildColupF's bank2 image RETIRED 2026-10-20 (chunk 4): the corridor
 ; pads are split now, so bank0's `sta $1FF9` at $FC17 pairs with BANK3's `jmp`
