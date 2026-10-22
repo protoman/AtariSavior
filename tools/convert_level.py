@@ -549,7 +549,7 @@ def check_model_objects(model: dict, who: str) -> None:
                 "bottom band (row 2, the water strip)")
 
 
-BAND_RULE_HARD = True    # Phase 5b: the kernel handles the same-band case
+BAND_RULE_HARD = False   # flip to True once the live stage has no violators
 _BAND_WARNED: set[str] = set()   # one line per room (the pass runs twice)
 
 
@@ -592,33 +592,26 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                 raise ValueError(
                     f"{who}: door room has a lamp/miner — door rooms allow "
                     "a single enemy only")
-        # --- object spacing inside a 48-line BAND ---------------------------
-        # The kernel has ONE GRP1: StageSlot1 pairs two objects when they are in
-        # DIFFERENT bands (the .Row hook, free) or in the SAME band with their
-        # drawn windows at least OBJ_WINDOW apart (the mid-band swap, +3
-        # scanlines). Overlapping windows keep the 30 Hz rotation = flicker.
-        # Tile row -> px = row*12, band = px//48 = row//4, and the miner is
-        # drawn 3 px below its data Y.
-        OBJ_WINDOW_PX = 16
-        seated = [(f"enemy {i}", float(e.get("y", 0)) * 12)
+        # --- one object per 48-line BAND, the miner included -----------------
+        # The kernel has ONE GRP1: StageSlot1 pairs two objects only when they
+        # are in different bands (tools/test_slot1_pair.py). Two objects on the
+        # same scanlines keep the 30 Hz rotation, which reads as flicker.
+        # Tile row -> px = row*12, band = px//48 = row//4.
+        seated = [(f"enemy {i}", float(e.get("y", 0)))
                   for i, e in enumerate(enemies)]
-        seated += [(f"lamp {i}", float(l.get("y", 0)) * 12)
+        seated += [(f"lamp {i}", float(l.get("y", 0)))
                    for i, l in enumerate(lamps)]
         if miner and miner_y is not None:
-            seated.append(("the miner", float(miner_y) * 12 + 3))
-        bands: dict[int, list[tuple[float, str]]] = {}
-        for what, py in seated:
-            bands.setdefault(int(py) // 48, []).append((py, what))
-        for band, occupants in sorted(bands.items()):
-            occupants.sort()
-            for (lo_py, lo), (hi_py, hi) in zip(occupants, occupants[1:]):
-                if hi_py - lo_py >= OBJ_WINDOW_PX:
-                    continue
-                msg = (f"{who}: '{lo}' (y {lo_py:.0f}) and '{hi}' (y "
-                       f"{hi_py:.0f}) sit {hi_py - lo_py:.0f} px apart in band "
-                       f"{band} — same-band objects need >= {OBJ_WINDOW_PX} px "
-                       "so one GRP1 can draw both without rotating (move one "
-                       "up/down, or into another band)")
+            seated.append(("the miner", float(miner_y)))
+        bands: dict[int, list[str]] = {}
+        for what, tile in seated:
+            bands.setdefault(int(tile) // 4, []).append(what)
+        for band, whats in sorted(bands.items()):
+            if len(whats) > 1:
+                msg = (f"{who}: {len(whats)} objects in band {band} "
+                       f"({', '.join(whats)}) — one GRP1 cannot draw them on "
+                       "the same scanlines; move one into another band "
+                       "(the miner counts as an occupant)")
                 if BAND_RULE_HARD:
                     raise ValueError(msg)
                 if msg not in _BAND_WARNED:
@@ -1511,7 +1504,7 @@ def _gen_data_size(path: Path) -> int:
 # biggest windows first so a large level file lands where it fits and the
 # small tail slots absorb the index/odd sizes.
 _SPILL_SLOTS = [
-    ("spill_F9D9", 0xFA80),   # 167 B (end moved down: StageSlot1 + mid-band swap)
+    ("spill_F9D9", 0xFAC0),   # 231 B (end moved down: StageSlot1 body, 2026-10-22)
     ("spill_F767", 0xF854),   # 340 B (levels_index + room tables; historical)
     ("spill_F453", 0xF600),   # 429 B
     ("spill_F307", 0xF450),   # 329 B

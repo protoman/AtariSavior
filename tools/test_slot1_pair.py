@@ -40,7 +40,7 @@ Z = dict(EnemyCount=0x33, EnemyDeadMask=0x3A, EnemyRamY=0x62, EnemyRamX=0x3D,
          EnemyDataLo=0x31, EnemyDataHi=0x32, ObjBase1=0x6A, ObjTop1=0x6B,
          ObjX1=0x6C, FlickerFrame=0x34, DropTarget=0x0A, RoomNo=0x18,
          LevelMinerRoom=0x24, RoomY=0x01, ObjBase=0x36, MinerX=0x25,
-         MinerY=0x26, ObjSwap=0x22)
+         MinerY=0x26, EnemyOffTable=None)
 # $EA/$EB/$EC -> RAM $6A/$6B/$6C; $B3/$BA/$BD/$E2/$B1/$B2/$B4/$8A/$98/$A4/$81
 # $B6/$A5/$A6 -> the indices above. Assert rather than trust the table:
 for name, idx in list(Z.items()):
@@ -107,8 +107,7 @@ def call_stage_slot1(*, ys, xs, types, miner=False, miner_y=0, flicker=0):
     assert 2 in mem.banks, ("bank2 never executed — the $FBE5 pad / $FBE8 jmp "
                             "half is broken")
     return dict(base1=r[Z["ObjBase1"]], top1=r[Z["ObjTop1"]],
-                x1=r[Z["ObjX1"]], flicker=r[Z["FlickerFrame"]],
-                swap=r[Z["ObjSwap"]])
+                x1=r[Z["ObjX1"]], flicker=r[Z["FlickerFrame"]])
 
 
 # --- case 1: two enemies, bands 1 and 2 -> pair + pin ------------------------
@@ -117,46 +116,24 @@ assert got["base1"] == OBJ_MOTH, f"slot 1 base ${got['base1']:02X} != 16"
 assert got["x1"] == 100, f"slot 1 must be the higher-band enemy, X={got['x1']}"
 assert got["top1"] == (96 - 0 + 1) & 0xFF, \
     f"ObjTop1={got['top1']} (must stay RoomY-relative)"
-assert got["swap"] == 0xFF, (
-    "a cross-band pair must leave ObjSwap=$FF: Slot1Hook swaps at the band "
-    "setup for free, no mid-band swap")
 assert got["flicker"] == 1, (
     f"PinSlot0 FlickerFrame={got['flicker']}, want 1 = desired(0) + count(2) "
     "- 1: SelectActiveObject's `inc` must land on 0 next frame")
 
-# --- case 2: same band, windows DISJOINT -> pair with the mid-band flag ----
-# Drawn Y 50 vs 80: both band 1 (48-95), 30 px apart >= OBJ_WINDOW (16), so one
-# GRP1 can serve both (the miner sitting while an enemy walks past). ObjBase1
-# bit 7 keeps the .Row hook out of it and ObjSwap names the swap line.
-got = call_stage_slot1(ys=[50, 80], xs=[71, 100], types=[MOTH, MOTH],
-                       flicker=7)
-assert got["base1"] == (0x80 | OBJ_MOTH), (
-    f"same-band disjoint windows must pair with bit 7 set, got "
-    f"base1=${got['base1']:02X}")
-assert got["swap"] == ((80 - 0 + 1) - 1) & 0xFF, (
-    f"ObjSwap={got['swap']:02X}, want ObjTop1-1 = the line before slot 1's "
-    "first art row")
-assert got["flicker"] == 1, (
-    f"FlickerFrame={got['flicker']}, want 1 = desired(0) + count(2) - 1: with "
-    "two enemies slot 0 is the LOWER one (index 0), so SelectActiveObject's "
-    "`inc` + modulo lands on 0 next frame")
-
-# --- case 2b: same band, windows OVERLAP -> no pair -----------------------
-got = call_stage_slot1(ys=[50, 60], xs=[71, 100], types=[MOTH, MOTH],
+# --- case 2: same band -> no pair, rotation untouched ----------------------
+got = call_stage_slot1(ys=[60, 84], xs=[71, 100], types=[MOTH, MOTH],
                        flicker=7)
 assert got["base1"] == 0xFF, (
-    f"overlapping same-band windows must NOT pair (base1=${got['base1']:02X}): "
-    "both need the same scanlines")
-assert got["swap"] == 0xFF, f"ObjSwap={got['swap']:02X}, want $FF (no swap)"
+    f"same-band candidates must NOT pair (base1=${got['base1']:02X}): one GRP1 "
+    "cannot draw two objects on the same scanlines")
 assert got["flicker"] == 7, (
     f"FlickerFrame={got['flicker']}, want 7 (UNTOUCHED): PinSlot0 runs only on "
-    "a real pair")
+    "a real pair, so a same-band room keeps SelectActiveObject's rotation")
 
 # --- case 3: the miner is the higher candidate ----------------------------
 got = call_stage_slot1(ys=[60], xs=[71], types=[MOTH],
                        miner=True, miner_y=96)
-assert got["base1"] & 0x7F == 112, (
-    f"slot 1 base ${got['base1']:02X} is not OBJ_MINER (112) plus its flags")
+assert got["base1"] == 112, f"slot 1 base ${got['base1']:02X} != OBJ_MINER 112"
 assert got["x1"] == 40, f"slot 1 must be the miner, X={got['x1']}"
 assert got["top1"] == (96 + 3 - 0 + 1) & 0xFF, (
     f"ObjTop1={got['top1']} — the miner's +3 draw offset must be included")

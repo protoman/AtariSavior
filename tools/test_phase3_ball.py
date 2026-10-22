@@ -13,7 +13,7 @@ Assertions (frames >= 2, after the RESET-pulse title -> game start):
     block ran SetObjectXPos selector 4 (the Phase 3 staging path);
   * Temp ($88) at every bank0 RESPBL write == 95 (8*2+79) — pins the
     staged-BallX constant to the calibrated arg / PHMOverlay math;
-  * frame line count constant across frames >= 3 and in {268, 271} (5b:
+  * frame line count constant across frames >= 3 and in {266, 267} (the
     asym VBL growth must not add a scanline; 265 = 262 NTSC + 3 since the
     2026-10-11 VSYNC re-anchor fix for bugs.md #29 Class C);
   * min SP (frames >= 2) >= $F7 (documented whole-run stack guard).
@@ -179,15 +179,8 @@ def main() -> int:
             f"{[f'${t:02X}' for t in bad_temp]}, want ${want_temp:02X}")
 
     lens = sorted({r["per_frame"].get(f) for f in range(3, r["frames"])})
-    # Phase 5b (2026-10-22): this scenario has an asym ball strip AND two
-    # enemies that settle into a same-band pair around f9 — the legal values
-    # are 268 (bigger StageSlot1 in a VBL that already sat on a line boundary)
-    # and then 271 (+3 for the mid-band slot swap). Each state is CONSTANT;
-    # that is what this gate exists for. Empty/single-object rooms stay 267
-    # (tools/test_slot1_midband.py asserts that baseline).
-    if not set(lens) <= {268, 271}:
-        fails.append(f"frame line counts (f>=3) = {lens}, want a subset of "
-                     "{268, 271}")
+    if len(lens) != 1 or lens[0] not in (266, 267):
+        fails.append(f"frame line counts (f>=3) = {lens}, want one of [266,267]")
 
     if r["min_sp"] < 0xF7:
         fails.append(f"min SP (f>=2) = ${r['min_sp']:02X}, want >= $F7")

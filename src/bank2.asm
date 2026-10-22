@@ -144,14 +144,7 @@ ObjBase = $B6                    ; live GRP1 design offset (PinSlot0 tests it)
 ObjBase1 = $EA                   ; slot-1 trio, staged every VBL in THIS bank now
 ObjTop1 = $EB
 ObjX1 = $EC
-ObjSwap = $A2                    ; mid-band swap line (= ObjTop1-1, $FF = none).
-                                 ; Shares LevelConnSpare ON PURPOSE: that byte
-                                 ; is written by THIS bank's room load in the
-                                 ; overscan and restaged here every VBL.
 KEY = 6                          ; enemy record type 6 = the phase-5 key
-OBJ_WINDOW = 16                  ; kernel constant: the GRP1 draw window (and
-                                 ;   the minimum gap between two same-band
-                                 ;   windows for StageSlot1 to pair them)
 OBJ_KEY = 0                      ; GRP1 design offsets (stride 16 = OBJ_WINDOW,
 OBJ_MOTH = 16                    ;   Phase 6; hand-copies of kernel.asm — the
 OBJ_SPIDER = 32                  ;   equ-sync guard now also checks decimals)
@@ -1054,18 +1047,15 @@ ColMask:
 ; tools/test_slot1_hmove.py still covers Slot1Hook, which stays inline in
 ; bank0's .Row setup (it owns the in-band swap and its own HMOVE).
 ; ==============================================================================
-    .ds $FA80 - *, 0            ; slot end moved DOWN from $FBD0: the pad below
+    .ds $FAC0 - *, 0            ; slot end moved DOWN from $FBD0: the pad below
                                  ;   is the EnterRoom twin pin ($FBD0)
 StageSlot1B2:
     lda #$FF
     sta ObjBase1                ; default: no second object
-    sta ObjSwap                 ; default: no mid-band swap (one store reuses
-                                ;   the loaded $FF — this path runs EVERY cave
-                                ;   frame in the VBL, so it is kept at 3 c)
     lda DropTarget
     cmp #$FE
     bne .S1go
-    jmp .S1ret                  ; tally frame: miner only (stale EnemyRamY)
+    jmp ReturnPad               ; tally frame: miner only (stale EnemyRamY)
 .S1go:
     ; --- scan the room's LIVE candidates (enemies + miner): min Y, max Y ---
     ; Slot 1 must NOT depend on SelectActiveObject's rotation: with the bomb
@@ -1115,34 +1105,16 @@ StageSlot1B2:
 .S1span:
     lda Temp
     cmp #$FF
-    bne .S1haveCand             ; long-branch idiom: .S1ret is >127 B away
-    jmp .S1ret                  ; no candidates at all
-.S1haveCand:
-    ; slot 1 exists only when the two candidates' drawn windows do not overlap.
-    ; Same band = the mid-band swap (ObjSwap + the bit-7 flag); a HIGHER band =
-    ; the .Row hook, which is free. Both are one object per scanline, ever.
+    beq .S1ret                  ; no candidates at all
+    ; slot 1 exists only when the candidates span TWO bands: one per band is
+    ; what removes the flicker. Same-band rooms keep the old rotation (a swap
+    ; there would hide the other object forever).
     jsr .S1band
     sta EnemyIndex              ; band(min)
     lda FetchPtr
     jsr .S1band
     cmp EnemyIndex
-    bne .S1cross                ; different bands -> band-start hook
-    ; Same band: require the windows to be disjoint (>= OBJ_WINDOW apart). The
-    ; miner sits while an enemy walks past — that is the whole exception.
-    lda FetchPtr
-    sec
-    sbc Temp
-    cmp #OBJ_WINDOW
-    bcs .S1disjoint             ; long-branch idiom (same reason)
-    jmp .S1ret                  ; windows overlap: rotation is unavoidable
-.S1disjoint:
-    lda #$80
-    sta EnemyIndex              ; same-band flag (cold path: EnemyIndex is free)
-    jmp .S1pair
-.S1cross:
-    lda #0
-    sta EnemyIndex              ; higher band: .Row hook handles it
-.S1pair:
+    beq .S1ret                  ; all candidates in one band
     jsr PinSlot0                ; slot 0 = the OTHER candidate (no 1-of-2 flicker)
     ; --- stage the highest-band candidate as slot 1 ---
     ldx FetchPtr+1
@@ -1174,7 +1146,7 @@ StageSlot1B2:
     clc
     adc #1
     sta ObjTop1
-    jmp .S1tail
+    jmp ReturnPad
 .S1stageMiner:
     lda #OBJ_MINER
     sta ObjBase1
@@ -1188,24 +1160,7 @@ StageSlot1B2:
     clc
     adc #1
     sta ObjTop1
-.S1tail:
-    lda EnemyIndex              ; same-band flag from .S1span
-    beq .S1bandSwap
-    lda ObjBase1
-    ora #$80                    ; $80: "mid-band swap" — the .Row hook's `bmi`
-    sta ObjBase1                ;   then skips it (slot 1 never reaches 128)
-    lda ObjTop1
-    sec
-    sbc #1                      ; the line BEFORE slot 1's first art write
-    sta ObjSwap
     jmp ReturnPad
-.S1bandSwap:
-    jmp ReturnPad               ; ObjSwap is already $FF (set at entry): the
-                                ;   HIGHER-band case is Slot1Hook's job
-.S1retPop:
-    pla
-.S1ret:
-    jmp ReturnPad               ; ObjSwap was cleared at entry ($FF)
 .S1band:
     ldy #0
     cmp #48
@@ -1217,6 +1172,10 @@ StageSlot1B2:
 .S1bRet:
     tya
     rts
+.S1retPop:
+    pla
+.S1ret:
+    jmp ReturnPad
 
 ; ------------------------------------------------------------------------------
 ; PinSlot0 — with TWO candidates spanning two bands, slot 1 owns the highest
