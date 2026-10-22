@@ -250,17 +250,52 @@ the physics does not allow it.
 
 ---
 
-## Phase 4 — VDEL pipeline (HERO's write discipline)
+## Phase 4 — VDEL pipeline: the premise was WRONG (2026-10-22); P0 half landed
 
-- Use `VDELP1` (and keep the score's `VDELP0/1` usage) so `GRP1`/`COLUP1` can be
-  written one line ahead of the pixels; the colour write leaves the critical
-  window and per-line colour changes stop being cycle-critical.
-- In the same phase, replace the per-band + per-object colour sources with the
-  HERO shape: **one byte per line = colour + draw flag** for the object window
-  (the `$DD69`/CTL analogue), staged per room, so "who owns this line's colour"
-  is decided at room load instead of by runtime persistence.
-- Gate: visual output identical to Phase 3 (VDEL is invisible when staged
-  correctly), sim + battery green, `.Line` worst path not worse.
+**VDEL is not a one-line delay.** Stella (`Player::grp` / `updatePattern` /
+`shufflePatterns`) is explicit: a `GRP` write lands in `myPatternNew` and is
+rendered **immediately**; with VDEL the live pattern is `myPatternOld`, which is
+latched when the **other** player is written. So VDEL moves the landing point to
+the other register's store cycle — it cannot make a "written one line ahead"
+pipeline by itself, and for P1 it would make things worse (its latch is `GRP0`'s
+earlier store). HERO agrees: it clears `VDELP0`/`VDELP1` at cave entry
+(`$F2xx: lda #0 / sta $25 / sta $26 / sta $1B / sta $1C`) and uses VDEL only for
+its HUD text.
+
+**Measured store phases in our `.Line`** (`tools/cycle_ledger.py`, P1):
+`COLUP0 c19`, `ENAM0 c25`, `GRP0 c35`, `GRP1 c58`, `COLUP1 c65`, `WSYNC c68`.
+A sprite's pixels start at cycle `(61+X)/3`, so a store only reaches the NEXT
+line when the sprite sits left of the boundary:
+
+| store | lands on this line for X ≥ | meaning |
+|---|---|---|
+| `COLUP0` c19 | — (never) | per-row colour is always this line ✓ |
+| `GRP0` c35 | 44 px | player art one line HIGH + colour row off by one |
+| `GRP1` c58 | 113 px | object art one line high |
+| `COLUP1` c65 | 134 px | object colour row off by one in X∈[113,134) |
+
+**Landed (this pass): `VDELP0 = 1`, `VDELP1 = 0` for the cave** (VBL init,
++2 B, **0 c**). P0's landing moves from `GRP0`'s c35 to `GRP1`'s c58, so the
+player's art is correct for **X < 113 px (was < 44)** *and* art row `r` now sits
+on the same scanline as `PlayerColTable[r]` — today the art is one line above
+its colour for X ≥ 44. Cost: nothing; the wall model stays `{265: 3, 267: 1098}`
+and every `.Line` path cycle is byte-identical. Guard:
+`tools/test_vdel_cave.py` (frozen-image VDEL init + "every `.Line` path stores
+`GRP1`", which is what drives P0's latch — a missing store freezes the player at
+the last latched row).
+
+**Not landed — P1 stays immediate, on purpose:** `VDELP1` would latch on
+`GRP0`'s c35 store (worse than its own c58) while its colour stays at c65.
+
+**Not landed — the "one byte per line = colour + draw flag" staging: 2 c short.**
+A deterministic per-line colour needs the `COLUP1` store in the horizontal
+blank (≤ c22), i.e. the byte fetched by the previous line and written from ZP at
+the head: `.Grp1` `lda ObjColorTab,X / sta ObjCol` (7 c, unchanged) + head
+`lda ObjCol / sta COLUP1` (6 c) = **+6 c** against the **4 c** the worst path
+has (WSYNC at c68, `A0=10` crossing line c69, contract ≤ c73). Parked, not
+abandoned: the shapes that fit are (a) `ObjSprites+ObjBase` pre-staged into a
+2-byte ZP pointer so `lda (ptr),Y` replaces `adc ObjBase/tax/lda abs,X`
+(−4 c, needs 2 free ZP bytes — none), or (b) a cut elsewhere.
 
 ---
 
