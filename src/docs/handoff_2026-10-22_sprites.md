@@ -109,19 +109,35 @@ colour rows), one type per commit. Hit box stays 12 until a gameplay ruling.
 
 ## OPEN — user report 2026-10-22: "miner + enemy flickering again"
 
-Reported right after the StageSlot1/PinSlot0 eviction (step 1) — that move was
-verified instruction-identical, so check the geometry FIRST:
+**Diagnosed: same-band, and that is the documented limit — not a regression.**
+`StageSlot1` only pairs candidates that sit in DIFFERENT 48-line bands; two
+objects on the same scanlines cannot share one GRP1. Measured from the live
+stage (`miner_y` is a tile row → `px*12`, enemy `y` likewise):
 
-1. Which level/room? Are the two objects in the **same 48-line band**
-   (`y // 48` equal)? Same-band rooms keep the old 30 Hz rotation **by design**
-   (`StageSlot1` only pairs candidates that span two bands).
-2. Three candidates in the room (2 enemies + miner)? `PinSlot0` skips the pin at
-   ≥ 3 (a588479) and the middle object is then only reached by rotation.
-3. Is one of them the **bomb**? The bomb owns 1 of 4 frames and skips the pin.
-4. `ObjWindow` grew 12 → 16 in step 3: a window can now cross a band boundary
-   more easily, and the band swap would blank the crossing rows (pre-existing
-   hazard, now likelier). Check whether the flicker room has an object near
-   y % 48 ∈ [40,47].
+| level / room | miner (drawn) | enemy | bands | verdict |
+|---|---|---|---|---|
+| L2 room 2 | 84 (+3 = 87) | y row 5 → 60 | 1 / 1 | **same band → 30 Hz rotation** |
+| L3 room 3 | 87 | y row 4 → 48 | 1 / 1 | **same band → 30 Hz rotation** |
+| L4 room 4 | 87 | y row 8 → 96 | 1 / 2 | paired ✓ (the case `PinSlot0` exists for) |
+
+The panel is built: `tools/test_slot1_pair.py` drives the REAL `jsr StageSlot1`
+through the bank switch (pad `$FBE5` → bank2 `$FBE8`) and asserts the pair, the
+`PinSlot0` value (`desired + count - 1`), the same-band skip, and the miner's
+`+3` draw offset — so the two-band path is provably sound.
+
+Ways to clear the two same-band rooms (all outside the kernel):
+1. **Stage edit (user).** Move ONE of the two objects into another band:
+   L2 room 2 enemy row 5 → row 3 (36, band 0) or row 8 (96, band 2);
+   L3 room 3 enemy row 4 → row 3 or row 8 (`miner_y` 7 could move instead, but
+   it is one number per level). Cell must be air and respect 1 element/row.
+2. **Accept** 30 Hz on those two rooms (HERO flickers the same way when two
+   objects share a band).
+3. **Phase 7** (ball/M1 as a third channel) — the miner is 4 px wide
+   (`MINER_WIDTH`), so the ball *could* carry a 4-px vertical silhouette, but
+   that is a new renderer, not a fix.
+
+Ruled out by measurement: a mid-band reposition (it needs a per-line line
+counter compare, ~6-8 c/line, and `.Line` has 4 c).
 
 ## Agreed order (do not reorder without a reason)
 
