@@ -612,6 +612,41 @@ Gate: battery + sims + SCN oracle; screenshots per converted type.
 
 ---
 
+## Backlog after Phase 6 (ordered, 2026-10-22)
+
+Everything below is a known open item; the order is by "risk removed per byte".
+
+1. **`PinSlot0` assumes at most 2 candidates.** With three (two enemies + the
+   miner) slot 0 = the miner and slot 1 = the max-Y enemy, so the middle object
+   is never drawn. Guard: skip the pin when the candidate count is >= 3 (the
+   rotation then handles it, flicker and all). ~5 B in the `$FB20` fill.
+2. **Phase 4 — VDEL pipeline** (next sprite-architecture step): `VDELP1` so
+   `GRP1`/`COLUP1` are written a line ahead, and the per-band + per-object
+   colour sources become HERO's one-byte-per-line "colour + draw flag" staged
+   at room load. Gate: identical output, `.Line` worst path not worse. This is
+   a kernel + staging restructure — start it as its own chunk.
+3. **Phase 6 — 16-row art.** 144 B/type does not fit: the Phase 5 code must
+   move out of the `$F744` fill first (it is full again after the HMOVE fix),
+   e.g. `StageSlot1` into a bank2 slot behind a `jsr`. Then the object window
+   constant and the art/colour tables grow together.
+4. **Phase 3 — async-block tint** (blocked on stage content: no async blocks
+   exist until level 7). Needs the carrier decision (generator band separation /
+   ball-`COLUPF` carrier / PF pillar), bank3 `RoomM1Hot` display-cell staging,
+   `.OSBsolid -> jmp HotOverlapFlag`, and it must stage `M1X = $B0` (reserved,
+   deliberately never written today).
+5. **Phase 7 (optional)** — ball/M1 as real extra slots for rooms that want a
+   third element.
+
+**Checked and NOT a bug (do not "fix" it):** `BallX` still lives in `Temp`,
+which `StageSlot1` clobbers — but the VBL order is `SelectActiveObject` (and its
+`StageSlot1` tail) -> `CallPad_BuildColupF` (bank2 `StageBandTab` re-stages
+`BallX` into `Temp`) -> `PositionBallM1` (reads it). The staged value is always
+fresh. If that order ever changes, give `BallX` its own byte.
+
+**Standing rule (guarded by `tools/test_slot1_hmove.py`):** a second `HMOVE` in
+a frame must clear every fine register it must not re-apply (`HMP0`/`HMM0`/
+`HMBL`) and those clears must sit BEFORE the `WSYNC` that precedes the `HMOVE`.
+
 ## Verification protocol (every phase, non-negotiable)
 
 1. `./build.sh` (runs both sims: `sim_bomb_fuse`, `sim_frame_budget`).
