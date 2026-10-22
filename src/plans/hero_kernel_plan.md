@@ -757,8 +757,9 @@ general law. `$9D`/`$9E` are now `ObjHeight`/`ObjHeight1`.
 2. Stage `ObjHeight` next to `ObjBase` in `SelectActiveObject` (enemy path:
    `lda ObjHeightTable,X`; miner/bomb: a constant) and `ObjHeight1` in
    `StageSlot1`; `Slot1Hook` copies it with the trio.
-3. `.Line`: `cmp ObjHeight` replaces `cmp #OBJ_WINDOW` — a ZP compare is 2 c,
-   exactly the same as the immediate, so the worst path does not move.
+3. `.Line`: `cmp ObjHeight` replaces `cmp #OBJ_WINDOW`. **Measured: a ZP
+   compare is 3 c, not 2 c** — the worst path goes 60 → 61 and the WSYNC store
+   c68 → c69 (contract ≤ 73, so it lands with 4 c to spare).
 4. Then art per type (art + `ObjColorTab` rows + the table byte), one commit
    each, with the hit box still 12 until a gameplay ruling.
 
