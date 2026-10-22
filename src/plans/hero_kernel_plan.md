@@ -667,6 +667,10 @@ Gate: battery + sims + SCN oracle; screenshots per converted type.
   `COLUP1`, so only for wall-coloured or same-colour elements). With Phase 3 in
   place the async block no longer *needs* this; it is a capacity feature for
   rooms that want a third element.
+- **There is exactly ONE ball**, and Phase 3 wants it as the async-block
+  carrier while Phase 7 wants it for the miner (only 4 px wide, so the ball
+  *could* carry a 4-px silhouette). A room cannot have both an async block and
+  a ball-carried object — decide which before building either.
 
 ---
 
@@ -741,6 +745,24 @@ has room now. Cost: +72 B, **0 c** (`cmp #OBJ_WINDOW` replaces `cmp #12`).
 + the matching `ObjColorTab` rows). HERO's object is 26 lines with a colour per
 line; ours is per-design, so a taller design costs 2 B per row. The hit box
 stays 12 until a gameplay ruling — drawing height must not silently enlarge it.
+
+**BLOCKER for art taller than 16 rows (measured 2026-10-22): the window must
+become per-type, and that needs TWO ZP bytes** (`ObjHeight` for slot 0 plus a
+slot-1 twin swapped by `Slot1Hook`): the hot-path test is
+`tya/sec/sbc ObjTop` (7 c) + `cmp ObjHeight` (2 c), and no cheaper form can
+express two bounds. The ZP map has exactly ONE byte free in gameplay
+(`$A2 LevelConnSpare`, room-load scratch), so:
+
+| option | verdict |
+|---|---|
+| drop the TITLE music, reuse `$9D MelPtr` + `$9E MelTimer` | **2 bytes = both slots** — needs a user ruling (the melody plays on the title only) |
+| pack both heights into `$A2` as 4+4 bits | caps at 15 rows — useless, we are at 16 |
+| keep `OBJ_WINDOW = 16` (today) | no tall art; rows 12-15 stay reserved |
+| per-design height table read in the hot path | +6 c or more — no budget (worst path 69 of 73) |
+
+So Phase 6's payoff is blocked on **one ZP decision**, not on kernel work.
+Until it is made, the useful art step is filling a design's rows 12-15 (visible
+through the existing 16-row window).
 
 ---
 
