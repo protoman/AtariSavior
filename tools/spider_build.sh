@@ -3,10 +3,12 @@
 # type you name instead of its bat, so a new sprite can be played without
 # touching the user's stage.
 #
-# Run: bash tools/spider_build.sh [out.bin] [type]
+# Run: bash tools/spider_build.sh [out.bin] [type] [level] [room]
 #      type defaults to 0 = SPIDER (1 BAT, 2 SNAKE, 3 TENTACLE, 4 MOTH,
 #      5 LAMP, 6 KEY, 7 RAFT); out defaults to /tmp/opencode/savior_demo_<type>.bin
-#      (kept as savior_spider.bin for type 0).
+#      (kept as savior_spider.bin for type 0). level/room are 1-BASED and
+#      default to 2/2; some types need a specific room (a TENTACLE must be in
+#      a water room, i.e. level 4 room 4, which carries the raft).
 # In game: level 2 -> descend from the start room; room 2 has the enemy.
 #
 # Why a staged COPY of the live stage (same pattern as raft_build.sh):
@@ -17,6 +19,8 @@ set -e
 DIR="$(cd "$(dirname "$0")/../src" && pwd)"
 PY="${PY:-python3}"
 TYPE="${2:-0}"
+LEVEL="${3:-2}"
+ROOM="${4:-2}"
 if [ "$TYPE" = 0 ]; then
     OUT="${1:-/tmp/opencode/savior_spider.bin}"
 else
@@ -52,14 +56,16 @@ cp -a "$DIR/generated" "$TMP/generated"
 LIVE_SHA="$(cd "$DIR" && find rooms -type f -print0 | sort -z | \
             xargs -0 sha256sum | sha256sum)"
 
-echo "spider_build: staging a stage copy with enemy type $TYPE in level 2 room 2 ..."
-"$PY" - "$DIR/rooms" "$TYPE" <<'PY'
+echo "spider_build: staging a stage copy with enemy type $TYPE in level $LEVEL room $ROOM ..."
+"$PY" - "$DIR/rooms" "$TYPE" "$LEVEL" "$ROOM" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 rooms = Path(sys.argv[1])
 SPIDER = int(sys.argv[2])
+WANT_LEVEL = int(sys.argv[3])
+WANT_ROOM = int(sys.argv[4])
 targets = [p for p in (rooms / "stage.json",
                        rooms / "level_002.json") if p.exists()]
 assert targets, "no stage.json / level_002.json in the staged copy"
@@ -70,10 +76,10 @@ for path in targets:
     hit = 0
     for level in levels:
         # stage.json: level_id is 1-BASED (2 = the user's level 2)
-        if unified and int(level.get("level_id", 0)) != 2:
+        if unified and int(level.get("level_id", 0)) != WANT_LEVEL:
             continue
         for r in level["rooms"]:
-            if int(r.get("room_id", -1)) != 1:      # room_id is 0-based: 1 = room 2
+            if int(r.get("room_id", -1)) != WANT_ROOM - 1:   # room_id is 0-based
                 continue
             out = []
             for e in r.get("enemies") or []:
@@ -83,7 +89,11 @@ for path in targets:
             r["enemies"] = out
     json.dump(d, open(path, "w"), indent=1)
     print(f"  {path.name}: {hit} enemy(ies) -> type {SPIDER}")
-    assert hit, f"no enemy found in level 2 room 2 of {path.name}"
+    # stage.json is what the build reads; the legacy per-level file only has
+    # level 2, so a miss there is expected when another level was targeted.
+    if unified:
+        assert hit, (f"no enemy found in level {WANT_LEVEL} room {WANT_ROOM} of "
+                     f"{path.name}")
 PY
 
 echo "spider_build: building the demo ROM (sims skipped — they probe live content) ..."
