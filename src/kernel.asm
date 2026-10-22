@@ -3123,6 +3123,36 @@ TitleBcd:
     sta ScoreTe
     rts
 
+ObjColorTab:
+    .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c   ; 0 KEY    ($1c yellow; was NONE/blank)
+    .byte $22,$22,$22,$22,$22,$22,$22,$22   ; 1 MOTH   ($22 dark orange)
+    .byte $14,$14,$14,$14,$14,$14,$14,$14   ; 2 SPIDER ($14 dark yellow)
+    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 3 LAMP   ($0e white)
+    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 4 TENTACLE ($0e white)
+    .byte $f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2   ; 5 BAT    ($f2 brown)
+    .byte $c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4   ; 6 SNAKE  ($c4 green)
+    .byte $54,$54,$4a,$54,$54,$08,$54,$54   ; 7 MINER  purple/pink face/grey tool
+    .byte $46,$46,$46,$46,$46,$46,$46,$46   ; 8 BOMB   ($46 red)
+
+; ------------------------------------------------------------------------------
+; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
+; Row r displays on scanline RoomY+ObjTop-1+r (ObjTop is RoomY-relative since
+; S2.2; .Grp1 checks r = Y-ObjTop where Y = running A0+1). GRP1 write
+; latching, same as before.
+; Offset = OBJ_* constant; index 0 = blank (object off).
+; ------------------------------------------------------------------------------
+ObjSprites:
+    .byte $3C,$42,$5A,$42,$3C,$18,$18,$14   ; OBJ_KEY (offset 0 = key art)
+    .byte $90,$60,$f0,$f0,$60,$90,$60,$60   ; OBJ_MOTH
+    .byte $60,$f0,$f0,$60,$90,$60,$90,$90   ; OBJ_SPIDER
+    .byte $f0,$f0,$60,$60,$f0,$f0,$f0,$60   ; OBJ_LAMP
+    .byte $60,$90,$80,$60,$30,$30,$30,$30   ; OBJ_TENTACLE
+    .byte $90,$60,$f0,$60,$60,$90,$90,$00   ; OBJ_BAT
+    .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff   ; OBJ_SNAKE (8 px)
+    .byte $0c,$1c,$4c,$36,$0f,$07,$3f,$6e   ; OBJ_MINER (miner.png 2026-10-03,
+                                 ; mirrored — faces left; r2 pink face, r5 grey)
+    .byte $10,$20,$20,$60,$f0,$f0,$f0,$60   ; OBJ_BOMB
+
     .ds $FBD0 - *, 0            ; #22: pin tramp at $FBD0 — bank2's twin
                                  ;   sits at the same address (pin moved from
                                  ;   $FB84 2026-10-13 for PhaseBlink staging,
@@ -3758,6 +3788,9 @@ PlayerWalkB:
 
 
     .ds $FE00 - *, 0            ; ObjColorTab $FE00-$FE47, ObjSprites $FE48-$FE8F:
+    .ds $FE90 - *, 0            ; ObjColorTab/ObjSprites moved to the
+                                 ; $F744 fill (Phase 6: tall art). The $FE8F
+                                 ; end is kept so FoldIndirect stays at $FE90.
                                  ; BOTH same-page 4c fetches (verify guards);
                                  ; end $FE8F -> HOF tramp $FE90 (shifted +$10,
                                  ; mirrors+HOF_ENTRY/LHT_ENTRY synced)
@@ -3771,35 +3804,6 @@ PlayerWalkB:
 ; NOTE: dark rooms no longer force grey objects — the frame-level $0A write
 ; is overridden per row (no budget for a dark skip flag; see .Line probe).
 ; ------------------------------------------------------------------------------
-ObjColorTab:
-    .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c   ; 0 KEY    ($1c yellow; was NONE/blank)
-    .byte $22,$22,$22,$22,$22,$22,$22,$22   ; 1 MOTH   ($22 dark orange)
-    .byte $14,$14,$14,$14,$14,$14,$14,$14   ; 2 SPIDER ($14 dark yellow)
-    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 3 LAMP   ($0e white)
-    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 4 TENTACLE ($0e white)
-    .byte $f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2   ; 5 BAT    ($f2 brown)
-    .byte $c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4   ; 6 SNAKE  ($c4 green)
-    .byte $54,$54,$4a,$54,$54,$08,$54,$54   ; 7 MINER  purple/pink face/grey tool
-    .byte $46,$46,$46,$46,$46,$46,$46,$46   ; 8 BOMB   ($46 red)
-
-; ------------------------------------------------------------------------------
-; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
-; Row r displays on scanline RoomY+ObjTop-1+r (ObjTop is RoomY-relative since
-; S2.2; .Grp1 checks r = Y-ObjTop where Y = running A0+1). GRP1 write
-; latching, same as before.
-; Offset = OBJ_* constant; index 0 = blank (object off).
-; ------------------------------------------------------------------------------
-ObjSprites:
-    .byte $3C,$42,$5A,$42,$3C,$18,$18,$14   ; OBJ_KEY (offset 0 = key art)
-    .byte $90,$60,$f0,$f0,$60,$90,$60,$60   ; OBJ_MOTH
-    .byte $60,$f0,$f0,$60,$90,$60,$90,$90   ; OBJ_SPIDER
-    .byte $f0,$f0,$60,$60,$f0,$f0,$f0,$60   ; OBJ_LAMP
-    .byte $60,$90,$80,$60,$30,$30,$30,$30   ; OBJ_TENTACLE
-    .byte $90,$60,$f0,$60,$60,$90,$90,$00   ; OBJ_BAT
-    .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff   ; OBJ_SNAKE (8 px)
-    .byte $0c,$1c,$4c,$36,$0f,$07,$3f,$6e   ; OBJ_MINER (miner.png 2026-10-03,
-                                 ; mirrored — faces left; r2 pink face, r5 grey)
-    .byte $10,$20,$20,$60,$f0,$f0,$f0,$60   ; OBJ_BOMB
 
 ; ------------------------------------------------------------------------------
 ; FoldIndirect — cross-bank data fetch (HERO fold, write-triggered;
