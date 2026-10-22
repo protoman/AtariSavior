@@ -325,6 +325,29 @@ frames measure 269 lines, (b) both objects are drawn in the SAME frame
 (py65: GRP1 writes in two bands with `ObjBase` swapped at the band boundary),
 (c) the solo-object rooms still measure 267.
 
+## Raft bug fixed (2026-10-22, user report: rider "zig-zags" on the raft)
+
+**Cause (proven, not guessed):** in the authored raft room (level 4 room 4 of
+`rooms/stage.json`: model 2, `bottom_band`) row 2 is solid at logical cols
+0,3,4 / 15,16,19 (PF0 $90, PF1 $80, PF2 $98). The raft's authored x=12 puts its
+span (cols 1..3) INSIDE that ledge, so BOTH probes hit a wall and it turns
+every frame without ever moving (unit chain: 13 frames, 0 px). `.RaftTurn`
+returns before `.RaftRide`, so the pin never ran → the rider fell through the
+stuck raft, crossed the 125 water-kill line, respawned, and repeated. That
+position churn is the "keeps changing / zig-zags very fast" report.
+
+**Fix:** the rider pin moved from `.RaftRide` into `.RaftGo` (right after the
+ride gate), so it no longer depends on the raft being able to move. Rising
+still escapes through the gate (`vyHi < 0` → `.RaftNoRide`), so the thrust rule
+is intact. Guard: `tools/test_raft.py` case 5b — a boxed-in raft must not move,
+must still pin the rider to `raft_top - 12`, and must zero the fall speed, over
+a 40-frame chain (fails on the pre-fix frozen bank, passes after).
+
+**Still a DATA issue:** the raft cannot ferry anything while it is boxed in.
+The open water in that room is logical cols 5..14 (x 20..59), so the raft's
+record should sit around x=40. The live stage is the user's — tell them, do not
+edit it.
+
 ## Phase 6 — tall enemy art LANDED (2026-10-21)
 
 Every GRP1 object (enemy/miner/bomb/raft/key) is now **12 rows tall** instead

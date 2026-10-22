@@ -58,6 +58,11 @@ Invariants (each one has a reason, do not "clean up"):
   `UpdateEnemies`: **the two formulas must be kept in step by hand** (the tide
   block in the VBL and `.RaftTide` in bank1), and `tools/test_raft.py` pins the
   triangle against every phase.
+- **The rider pin runs at `.RaftGo`, not on the move path** (2026-10-22): a raft
+  boxed in by solid row-2 cells turns every frame and `.RaftTurn` returns before
+  the carry, so pinning on the move path let the rider sink through a stuck
+  raft into the water-kill loop. Rising still escapes via the ride gate. Never
+  move the pin back into `.RaftRide`; guard `tools/test_raft.py` case 5b.
 - **A rider is pinned to the raft's top minus 12** (`113+off`, worst case 116)
   — always clear of the 125 water-kill line — with `vyLo/vyHi` zeroed so gravity
   cannot accumulate into the water. Thrust (vyHi < 0) skips the pin, so the
