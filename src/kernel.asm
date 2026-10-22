@@ -2526,8 +2526,13 @@ ObjSprites:
     .byte $60,$90,$80,$60,$30,$30,$30,$18,$18,$0C,$0C,$04
     ; BAT (60): wing pair, body, hanging tail
     .byte $90,$60,$F0,$60,$60,$90,$90,$60,$30,$18,$0C,$00
-    ; SNAKE (72): solid block (it lives inside its wall cell; the raft rides it)
-    .byte $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    ; SNAKE (72): HALF-HEIGHT solid block (user 2026-10-22: the snake and the
+    ; raft read too tall). Only rows 0-5 are solid: the raft's sprite top is
+    ; RAFTER_BASE (125) and its row 7 is the water surface line (132+off), so
+    ; the solid half floats ON the water instead of sinking 4 rows into it.
+    ; The snake itself lives inside a solid wall cell, so its blank half is
+    ; invisible; the object WINDOW stays 12 rows (hit box unchanged).
+    .byte $FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00
     ; MINER (84): helmet, pink face, body, tool, hips, legs
     .byte $0C,$1C,$4C,$36,$0F,$07,$3F,$6E,$3C,$3C,$18,$18
     ; BOMB (96): fuse, round body, tapered nose
