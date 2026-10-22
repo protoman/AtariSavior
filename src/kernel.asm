@@ -2484,24 +2484,24 @@ BandStart:
 ; 12 rows per type, bits 7-4 (col0 = bit7). Offsets come from the OBJ_*
 ; EQUs via ObjSpriteOffTable (stride 12).
 ObjSprites:
-    .byte $3C,$42,$5A,$42,$3C,$18,$18,$14   ; OBJ_KEY (offset 0)
-    .byte $18,$1c,$18,$10                   ;  (shaft teeth)
-    .byte $90,$60,$f0,$f0,$60,$90,$60,$60   ; OBJ_MOTH
-    .byte $60,$30,$30,$18                   ;  (legs)
-    .byte $60,$f0,$f0,$60,$90,$60,$90,$90   ; OBJ_SPIDER
-    .byte $c0,$60,$30,$18                   ;  (legs)
-    .byte $f0,$f0,$60,$60,$f0,$f0,$f0,$60   ; OBJ_LAMP
-    .byte $60,$60,$60,$60                   ;  (post / base)
-    .byte $60,$90,$80,$60,$30,$30,$30,$30   ; OBJ_TENTACLE
-    .byte $18,$18,$0c,$0c                   ;  (taper)
-    .byte $90,$60,$f0,$60,$60,$90,$90,$00   ; OBJ_BAT
-    .byte $60,$30,$18,$00                   ;  (tail)
-    .byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff   ; OBJ_SNAKE (8 px solid)
-    .byte $ff,$ff,$ff,$ff                   ;  (fills its wall cell)
-    .byte $0c,$1c,$4c,$36,$0f,$07,$3f,$6e   ; OBJ_MINER (mirrored, faces left)
-    .byte $1c,$1c,$0c,$04                   ;  (legs)
-    .byte $10,$20,$20,$60,$f0,$f0,$f0,$60   ; OBJ_BOMB
-    .byte $30,$18,$18,$0c                   ;  (tail)
+    ; KEY (offset 0): bow, shaft, stepped teeth
+    .byte $3C,$42,$5A,$42,$3C,$18,$18,$18,$18,$1C,$18,$10
+    ; MOTH (12): antennae, upper wing pair, body, lower wing pair, taper
+    .byte $90,$60,$F0,$F0,$60,$90,$F0,$F0,$60,$90,$60,$30
+    ; SPIDER (24): round body, then four leg rows spreading down
+    .byte $60,$F0,$F0,$60,$90,$60,$90,$90,$48,$24,$12,$06
+    ; LAMP (36): shade, neck, bowl, post, wide base
+    .byte $F0,$F0,$60,$60,$F0,$F0,$F0,$60,$60,$60,$3C,$3C
+    ; TENTACLE (48): bulky shoulder tapering to a tip
+    .byte $60,$90,$80,$60,$30,$30,$30,$18,$18,$0C,$0C,$04
+    ; BAT (60): wing pair, body, hanging tail
+    .byte $90,$60,$F0,$60,$60,$90,$90,$60,$30,$18,$0C,$00
+    ; SNAKE (72): solid block (it lives inside its wall cell; the raft rides it)
+    .byte $FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+    ; MINER (84): helmet, pink face, body, tool, hips, legs
+    .byte $0C,$1C,$4C,$36,$0F,$07,$3F,$6E,$3C,$3C,$18,$18
+    ; BOMB (96): fuse, round body, tapered nose
+    .byte $10,$20,$20,$60,$F0,$F0,$F0,$60,$30,$18,$18,$0C
 
     .ds $F8C0 - *, 0
 CallPad_RaftBody:
@@ -3161,7 +3161,7 @@ ObjColorTab:
     .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e   ; 4 TENTACLE
     .byte $f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2   ; 5 BAT   ($f2 brown)
     .byte $c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4   ; 6 SNAKE ($c4 green)
-    .byte $54,$54,$4a,$54,$54,$08,$54,$54,$08,$08,$08,$08   ; 7 MINER (r8-r11 grey legs)
+    .byte $54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08   ; 7 MINER (hips purple, legs grey)
     .byte $46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46   ; 8 BOMB  ($46 red)
 
 ; ------------------------------------------------------------------------------

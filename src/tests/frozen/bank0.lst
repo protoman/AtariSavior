@@ -860,7 +860,7 @@
     859  f113							; +1-line jitter) until the dead `cpy #12 / bcs .GrpZero` (4c, never
     860  f113							; taken on the A0<=10 color path) moved to .GrpSkip. Budget: work
     861  f113							; <= 70c / d <= 73 — a 74-76 segment stalls a full scanline.
-    862  f113							; ObjSprites+71 must stay in the $FExx page (else lda ObjSprites,X
+    862  f113							; ObjSprites+107 must stay in ONE page (else lda ObjSprites,X
     863  f113							; page-crosses, +1c on the GRP1 fetch) — verify_build enforces this.
     864  f113							; Branch targets all same-page (3c taken) and PlayerColTable in $F8xx
     865  f113							; (verify_build guards the A0=10 page-cross budget).
@@ -905,7 +905,7 @@
     904  f125							; ObjTop..ObjTop+11 window → row byte from ObjSprites[ObjBase + offset].
     905  f125							; Object off: ObjBase=$FF sentinel (ObjTop parked 144). S2.2: ObjTop is RoomY-relative;
     906  f125							; Y here = A0+1 = next line's A0, so `Y - ObjTopRel` = Scanline - ObjTop
-    907  f125							; (mod 256, exact). In-object iff result 0..7 → `cmp #8/bcs` (C=0 in
+    907  f125							; (mod 256, exact). In-object iff result 0..11 → `cmp #12/bcs` (C=0 in
     908  f125							; range → adc adds exact ObjBase). Replaces `lda Scanline/sec/sbc/bcc`
     909  f125							; (−6c in-range) and the `inc Scanline` (−5c) — Scanline now unused.
     910  f125		       98		      tya
@@ -2485,24 +2485,24 @@
    2484  f850							; 12 rows per type, bits 7-4 (col0 = bit7). Offsets come from the OBJ_*
    2485  f850							; EQUs via ObjSpriteOffTable (stride 12).
    2486  f850				   ObjSprites
-   2487  f850		       3c 42 5a 42*	      .byte.b	$3C,$42,$5A,$42,$3C,$18,$18,$14	; OBJ_KEY (offset 0)
-   2488  f858		       18 1c 18 10	      .byte.b	$18,$1c,$18,$10	;  (shaft teeth)
-   2489  f85c		       90 60 f0 f0*	      .byte.b	$90,$60,$f0,$f0,$60,$90,$60,$60	; OBJ_MOTH
-   2490  f864		       60 30 30 18	      .byte.b	$60,$30,$30,$18	;  (legs)
-   2491  f868		       60 f0 f0 60*	      .byte.b	$60,$f0,$f0,$60,$90,$60,$90,$90	; OBJ_SPIDER
-   2492  f870		       c0 60 30 18	      .byte.b	$c0,$60,$30,$18	;  (legs)
-   2493  f874		       f0 f0 60 60*	      .byte.b	$f0,$f0,$60,$60,$f0,$f0,$f0,$60	; OBJ_LAMP
-   2494  f87c		       60 60 60 60	      .byte.b	$60,$60,$60,$60	;  (post / base)
-   2495  f880		       60 90 80 60*	      .byte.b	$60,$90,$80,$60,$30,$30,$30,$30	; OBJ_TENTACLE
-   2496  f888		       18 18 0c 0c	      .byte.b	$18,$18,$0c,$0c	;  (taper)
-   2497  f88c		       90 60 f0 60*	      .byte.b	$90,$60,$f0,$60,$60,$90,$90,$00	; OBJ_BAT
-   2498  f894		       60 30 18 00	      .byte.b	$60,$30,$18,$00	;  (tail)
-   2499  f898		       ff ff ff ff*	      .byte.b	$ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; OBJ_SNAKE (8 px solid)
-   2500  f8a0		       ff ff ff ff	      .byte.b	$ff,$ff,$ff,$ff	;  (fills its wall cell)
-   2501  f8a4		       0c 1c 4c 36*	      .byte.b	$0c,$1c,$4c,$36,$0f,$07,$3f,$6e	; OBJ_MINER (mirrored, faces left)
-   2502  f8ac		       1c 1c 0c 04	      .byte.b	$1c,$1c,$0c,$04	;  (legs)
-   2503  f8b0		       10 20 20 60*	      .byte.b	$10,$20,$20,$60,$f0,$f0,$f0,$60	; OBJ_BOMB
-   2504  f8b8		       30 18 18 0c	      .byte.b	$30,$18,$18,$0c	;  (tail)
+   2487  f850							; KEY (offset 0): bow, shaft, stepped teeth
+   2488  f850		       3c 42 5a 42*	      .byte.b	$3C,$42,$5A,$42,$3C,$18,$18,$18,$18,$1C,$18,$10
+   2489  f85c							; MOTH (12): antennae, upper wing pair, body, lower wing pair, taper
+   2490  f85c		       90 60 f0 f0*	      .byte.b	$90,$60,$F0,$F0,$60,$90,$F0,$F0,$60,$90,$60,$30
+   2491  f868							; SPIDER (24): round body, then four leg rows spreading down
+   2492  f868		       60 f0 f0 60*	      .byte.b	$60,$F0,$F0,$60,$90,$60,$90,$90,$48,$24,$12,$06
+   2493  f874							; LAMP (36): shade, neck, bowl, post, wide base
+   2494  f874		       f0 f0 60 60*	      .byte.b	$F0,$F0,$60,$60,$F0,$F0,$F0,$60,$60,$60,$3C,$3C
+   2495  f880							; TENTACLE (48): bulky shoulder tapering to a tip
+   2496  f880		       60 90 80 60*	      .byte.b	$60,$90,$80,$60,$30,$30,$30,$18,$18,$0C,$0C,$04
+   2497  f88c							; BAT (60): wing pair, body, hanging tail
+   2498  f88c		       90 60 f0 60*	      .byte.b	$90,$60,$F0,$60,$60,$90,$90,$60,$30,$18,$0C,$00
+   2499  f898							; SNAKE (72): solid block (it lives inside its wall cell; the raft rides it)
+   2500  f898		       ff ff ff ff*	      .byte.b	$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF,$FF
+   2501  f8a4							; MINER (84): helmet, pink face, body, tool, hips, legs
+   2502  f8a4		       0c 1c 4c 36*	      .byte.b	$0C,$1C,$4C,$36,$0F,$07,$3F,$6E,$3C,$3C,$18,$18
+   2503  f8b0							; BOMB (96): fuse, round body, tapered nose
+   2504  f8b0		       10 20 20 60*	      .byte.b	$10,$20,$20,$60,$F0,$F0,$F0,$60,$30,$18,$18,$0C
    2505  f8bc
    2506  f8bc		       00 00 00 00	      .ds	$F8C0 - *, 0
    2507  f8c0				   CallPad_RaftBody
@@ -3162,7 +3162,7 @@
    3161  fb4f		       0e 0e 0e 0e*	      .byte.b	$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e	; 4 TENTACLE
    3162  fb5b		       f2 f2 f2 f2*	      .byte.b	$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2	; 5 BAT   ($f2 brown)
    3163  fb67		       c4 c4 c4 c4*	      .byte.b	$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4	; 6 SNAKE ($c4 green)
-   3164  fb73		       54 54 4a 54*	      .byte.b	$54,$54,$4a,$54,$54,$08,$54,$54,$08,$08,$08,$08	; 7 MINER (r8-r11 grey legs)
+   3164  fb73		       54 54 4a 54*	      .byte.b	$54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08	; 7 MINER (hips purple, legs grey)
    3165  fb7f		       46 46 46 46*	      .byte.b	$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46	; 8 BOMB  ($46 red)
    3166  fb8b
    3167  fb8b							; ------------------------------------------------------------------------------
