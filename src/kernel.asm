@@ -321,10 +321,10 @@ EnemyRamY       = $E2           ; 3 bytes: live Y per enemy ($E2-$E4) —
 ; ==============================================================================
 ; Constants
 ; ==============================================================================
-PLAYER_HEIGHT   = 8             ; GRP1 object (enemy/miner) height; player uses PLAYER_SPRITE_H
+PLAYER_HEIGHT   = 12            ; GRP1 object (enemy/miner) height AND hit box
+                                ;   (Phase 6 tall art 2026-10-22); player uses
+                                ;   PLAYER_SPRITE_H
 PLAYER_SPRITE_H = 12            ; player sprite height in scanlines (8x12)
-OBJ_WINDOW      = 12            ; GRP1 draw window (Phase 6 tall art);
-                                ;   PLAYER_HEIGHT stays 8 (collision box)
 PLAYER_WIDTH    = 7             ; lit player sprite spans 7 pixels; REFP0 shift handled
 ENEMY_WIDTH     = 8             ; snake GRP1 width ($ff = 8 px) — flush-out span
 LAMP_WIDTH      = 4             ; OBJ_LAMP uses GRP1's leftmost 4 lit pixels
@@ -859,7 +859,7 @@ CaveKernelRow:
     ; +1-line jitter) until the dead `cpy #12 / bcs .GrpZero` (4c, never
     ; taken on the A0<=10 color path) moved to .GrpSkip. Budget: work
     ; <= 70c / d <= 73 — a 74-76 segment stalls a full scanline.
-    ; ObjSprites+71 must stay in the $FExx page (else lda ObjSprites,X
+    ; ObjSprites+107 must stay in ONE page (else lda ObjSprites,X
     ; page-crosses, +1c on the GRP1 fetch) — verify_build enforces this.
     ; Branch targets all same-page (3c taken) and PlayerColTable in $F8xx
     ; (verify_build guards the A0=10 page-cross budget).
@@ -901,16 +901,16 @@ CaveKernelRow:
 .Grp1:
 
     ; --- GRP1 SECOND (object/enemy sprite): one design row per scanline ---
-    ; ObjTop..ObjTop+7 window → row byte from ObjSprites[ObjBase + offset].
+    ; ObjTop..ObjTop+11 window → row byte from ObjSprites[ObjBase + offset].
     ; Object off: ObjBase=$FF sentinel (ObjTop parked 144). S2.2: ObjTop is RoomY-relative;
     ; Y here = A0+1 = next line's A0, so `Y - ObjTopRel` = Scanline - ObjTop
-    ; (mod 256, exact). In-object iff result 0..7 → `cmp #8/bcs` (C=0 in
+    ; (mod 256, exact). In-object iff result 0..11 → `cmp #12/bcs` (C=0 in
     ; range → adc adds exact ObjBase). Replaces `lda Scanline/sec/sbc/bcc`
     ; (−6c in-range) and the `inc Scanline` (−5c) — Scanline now unused.
     tya
     sec
     sbc ObjTop                  ; A = Y - ObjTopRel (= Scanline - ObjTop, mod 256)
-    cmp #OBJ_WINDOW
+    cmp #PLAYER_HEIGHT
     bcs .ObjZero                ; above (negative mod ≥65) or at/below bottom
     adc ObjBase
     tax
@@ -1764,8 +1764,8 @@ CheckMinerPickup:
     adc #PLAYER_WIDTH - 1
     cmp #PLAYER_WIDTH + MINER_WIDTH - 1
     bcs .CMPDone                ; no X overlap
-    ; Y overlap: player [RoomY, +11] vs miner [MinerY, +7]
-    ; accept iff RoomY - MinerY in [-11, +7]  (add 11, compare 19)
+    ; Y overlap: player [RoomY, +11] vs miner [MinerY, +11]
+    ; accept iff RoomY - MinerY in [-11, +11]  (add 11, compare 23)
     lda RoomY
     sec
     sbc MinerY
@@ -1834,7 +1834,7 @@ CEH_HasMore:
     cmp #PLAYER_WIDTH + ENEMY_WIDTH - 1
     bcs CEHNext                ; no X overlap
     sta CollisionX              ; keep x-overlap span for lamp's narrower box
-    ; Y overlap: player [RoomY, +11] vs enemy [ActiveObjectY, +7] — exact
+    ; Y overlap: player [RoomY, +11] vs enemy [ActiveObjectY, +11] — exact
     lda RoomY
     sec
     sbc ActiveObjectY
