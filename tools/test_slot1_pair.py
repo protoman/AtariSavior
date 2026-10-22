@@ -50,6 +50,7 @@ for name, idx in list(Z.items()):
     assert 0 <= idx < 0x80, name
 
 MOTH, OBJ_MOTH, KEY_BYTE = 4, 16, 6
+MOTH_H = 14        # MOTH art height (user design 2026-10-22) = ObjHeightTab[4]
 REC = 0x01C0            # fabricated enemy-record base: the Mem model maps
                         # $0100-$01FF onto the 128-byte RAM, so the record
                         # aliases ZP $C0/$C3 — bytes StageSlot1/PinSlot0 never
@@ -118,9 +119,9 @@ assert got["base1"] == OBJ_MOTH, f"slot 1 base ${got['base1']:02X} != 16"
 assert got["x1"] == 100, f"slot 1 must be the higher-band enemy, X={got['x1']}"
 assert got["top1"] == (96 - 0 + 1) & 0xFF, \
     f"ObjTop1={got['top1']} (must stay RoomY-relative)"
-assert got["height1"] == 16, (
-    f"ObjHeight1={got['height1']}, want 16 (OBJ_WINDOW): slot 1's draw window "
-    "must travel with its design or a taller type would be clipped")
+assert got["height1"] == MOTH_H, (
+    f"ObjHeight1={got['height1']}, want {MOTH_H} (the MOTH art height): slot 1's "
+    "draw window must travel with its design or a taller type would be clipped")
 assert got["flicker"] == 1, (
     f"PinSlot0 FlickerFrame={got['flicker']}, want 1 = desired(0) + count(2) "
     "- 1: SelectActiveObject's `inc` must land on 0 next frame")
@@ -157,7 +158,7 @@ t0 = b0[L0["ObjHeightTab"] - 0xF000:][:8]
 t2 = b2[L2["ObjHeightTab"] - 0xF000:][:8]
 assert t0 == t2, (f"ObjHeightTab twins differ: bank0 {t0.hex()} vs bank2 "
                   f"{t2.hex()} — a stale hand-copy would clip slot 1")
-assert set(t0) <= {10, 15, 16}, f"unexpected window rows {sorted(set(t0))}"
+assert set(t0) <= {10, 14, 15, 16}, f"unexpected window rows {sorted(set(t0))}"
 # SPIDER graduated to its own (15-row) art height: its declared draw window
 # must equal the art block it occupies, or .Line reads into the next design.
 assert t0[0] == 15, f"ObjHeightTab[SPIDER]={t0[0]}, want 15 (15-row art)"

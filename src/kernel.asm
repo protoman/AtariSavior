@@ -365,15 +365,15 @@ VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × LINES_PER_TILE)
 
 ; GRP1 sprite design offsets into ObjSprites (12 bytes each; 0 = blank/off)
 OBJ_NONE        = 0
-OBJ_KEY         = 0     ; design offsets. A design owns its block, so each
-OBJ_MOTH        = 16    ; offset = the sum of the heights above it; ObjHeightTab
-OBJ_SPIDER      = 32    ; carries the matching row count. SPIDER (15) and BAT
-OBJ_LAMP        = 47    ; (10) carry per-type heights (user art 2026-10-22).
-OBJ_TENTACLE    = 63
-OBJ_BAT         = 79
-OBJ_SNAKE       = 89
-OBJ_MINER       = 105
-OBJ_BOMB        = 121
+OBJ_KEY         = 0          ; design offsets. A design owns its block, so each
+OBJ_MOTH        = 16         ; offset = the sum of the heights above it;
+OBJ_SPIDER      = 30         ; ObjHeightTab carries the matching row count.
+OBJ_LAMP        = 45         ; Per-type heights (user art 2026-10-22):
+OBJ_TENTACLE    = 61         ;   MOTH 14, SPIDER 15, BAT 10, rest 16.
+OBJ_BAT         = 77
+OBJ_SNAKE       = 87
+OBJ_MINER       = 103
+OBJ_BOMB        = 119
 
 ; Player bounds (must stay inside cave walls)
 PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
@@ -2434,9 +2434,11 @@ Slot1Hook:
 ; art: grow a design's rows in ObjSprites/ObjColorTab, then raise its byte here.
 ; bank2 carries a byte-identical twin (StageSlot1 stages slot 1's window) —
 ; guard: tools/test_slot1_pair.py compares both tables.
-ObjHeightTab:
+ObjHeightTab:                                              ; by ENEMY type
     .byte 15,         10                                    ; 0 SPIDER 1 BAT
     .byte OBJ_WINDOW, OBJ_WINDOW                            ; 2 SNAKE  3 TENT
+    .byte 14,         OBJ_WINDOW                            ; 4 MOTH   5 LAMP
+    .byte OBJ_WINDOW, OBJ_WINDOW                            ; 6 KEY    7 RAFT
     .byte OBJ_WINDOW, OBJ_WINDOW                            ; 3 TENT 4 MOTH
     .byte OBJ_WINDOW, OBJ_WINDOW                            ; 5 LAMP 6 KEY
                                                             ; 7 RAFT
@@ -2447,9 +2449,9 @@ ObjHeightTab:
 ; not from here. That is the same FoldIndirect discipline every other tramp
 ; uses — the twin cannot be skipped or shortened.
 ; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
-    .ds $F830 - *, 0            ; ObjSprites: per-type heights, 137 B now
-                                 ;   (SPIDER 15, BAT 10, 7 types x 16).
-                                 ; Base low byte $30 + max index 136 = $B8 ->
+    .ds $F830 - *, 0            ; ObjSprites: per-type heights, 135 B now
+                                 ;   (MOTH 14, SPIDER 15, BAT 10, 6 x 16).
+                                 ; Base low byte $30 + max index 134 = $B6 ->
                                  ; `lda ObjSprites,X` stays in ONE page
                                  ; (verify_build guard). The base moved
                                  ; $F850 -> $F830 with the Phase 6 growth so
@@ -2464,8 +2466,9 @@ ObjHeightTab:
 ObjSprites:
     ; KEY (offset 0): bow, shaft, stepped teeth
     .byte $3C,$42,$5A,$42,$3C,$18,$18,$18,$18,$1C,$18,$10,$00,$00,$00,$00
-    ; MOTH (16): antennae, upper wing pair, body, lower wing pair, taper
-    .byte $90,$60,$F0,$F0,$60,$90,$F0,$F0,$60,$90,$60,$30,$00,$00,$00,$00
+    ; MOTH (16): 14 rows (user art 2026-10-22) — cream antennae wing tips,
+    ; brown wing shoulders, gold body bands, brown lower wings
+    .byte $24,$42,$66,$E7,$FF,$7E,$3C,$18,$3C,$7E,$FF,$E7,$66,$24
     ; SPIDER (32): 15 rows (user art 2026-10-22, reduced design) — four
     ; legs per side, bright abdomen rows 6-8, orange thorax, olive legs
     .byte $A5,$A5,$A5,$5A,$3C,$7E,$FF,$FF,$7E,$3C,$7E,$7E,$3C,$5A,$A5
@@ -3143,7 +3146,7 @@ TitleBcd:
 ; block sharing those scanlines.
 ObjColorTab:
     .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c ; 0 KEY   ($1c yellow)
-    .byte $22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22 ; 1 MOTH  ($22 dark orange)
+    .byte $0E,$0E,$F2,$F2,$1C,$1C,$F2,$F2,$F2,$1C,$1C,$F2,$F2,$0E ; 1 MOTH  (14 rows: cream tips, brown wings, gold body)
     .byte $14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$22,$22,$22,$14,$14,$14 ; 2 SPIDER (15 rows)
     .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e ; 3 LAMP  ($0e white)
     .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e ; 4 TENTACLE
