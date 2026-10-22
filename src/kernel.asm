@@ -2289,59 +2289,6 @@ SelectActiveObject:
 
 ; ==============================================================================
 ; Enemy color table (emulator-aware: hue<<4 | luma<<1)
-EnemyColorTable:
-    .byte $14                   ; spider — hue 1 luma 2 = dark yellow
-    .byte $f2                   ; bat — hue 15 luma 7 = brown
-    .byte $c4                   ; snake — hue 12 luma 2 = green
-    .byte $0e                   ; tentacle — hue 0 luma 7 = white
-    .byte $22                   ; moth — hue 2 luma 1 = dark orange
-    .byte $0e                   ; lamp (type 5) — white; dark rooms override to grey
-    .byte $1C                   ; key (type 6) — yellow
-    .byte $c4                   ; raft (type 7) — green, matching the SNAKE art
-                                ; slot it borrows ($c4 = ObjColorTab slot 6). User
-                                ; 2026-10-18: keep the SOLID block and read it as
-                                ; a trunk/log — the solid art also looks bigger
-                                ; than the notched LAMP one, so the player lands
-                                ; on it more confidently.
-
-; Enemy type → ObjSprites design offset (index = ENEMY_* type)
-ObjSpriteOffTable:
-    .byte OBJ_SPIDER            ; 0
-    .byte OBJ_BAT               ; 1
-    .byte OBJ_SNAKE             ; 2
-    .byte OBJ_TENTACLE          ; 3
-    .byte OBJ_MOTH              ; 4
-    .byte OBJ_LAMP              ; 5 (LAMP)
-    .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
-    .byte OBJ_SNAKE             ; 7 (RAFT — the solid 8x8 block: a log/trunk over
-                                ; the water, and the most "landable" shape in the
-                                ; table. ObjSprites is exactly 72 B and ends at
-                                ; $FF00, so a dedicated design needs 8 art bytes
-                                ; freed; every entry is 8x8, so nothing is
-                                ; "larger" — solid just reads bigger than notched.)
-
-; ==============================================================================
-; Phase 5 — second GRP1 object (no flicker). TIA has one GRP1 sprite, so two
-; objects in a room used to alternate frames (30 Hz flicker each). When they
-; live in DIFFERENT cave bands each can be drawn on ALL of its scanlines: the
-; band's setup swaps the live trio (ObjBase/ObjTop/ActiveObjectX) for slot 1
-; and repositions P1 there. The per-line object path is untouched — it already
-; draws from the live trio and takes COLUP1 from ObjColorTab[ObjBase+row].
-;
-; Invariant (do not relax): slot 1's band is STRICTLY HIGHER than slot 0's.
-; Bands are set up 0->1->2, so no later band has to restore slot 0's trio.
-; Rooms whose two objects share a band keep the old behaviour (slot 0 only,
-; rotation in SelectActiveObject unchanged).
-; Cost: the band-compare early-out sits in the setup line's free tail (0
-; lines); a band that DOES host slot 1 pays 2 lines (SetObjectXPos must start
-; on a line boundary and the HMOVE needs the next line's HBLANK).
-;
-; StageSlot1 (VBLANK, after SelectActiveObject): stages ObjBase1/ObjTop1/ObjX1,
-; $FF = none. Slot 1 = the miner or the first live enemy whose Y is in a band
-; above slot 0's. The KEY skip mirrors the slot-0 path (KeyHeld = LevelStartRoom
-; b7). Tally frames ($FE) are gated out: EnemyRamY holds score-pointer bytes
-; then (AGENTS: tally frame draws the MINER only).
-; ==============================================================================
 StageSlot1:
     lda #$FF
     sta ObjBase1                ; default: no second object
@@ -2495,6 +2442,16 @@ Slot1Hook:
     jsr SetObjectXPos           ; its own WSYNC starts the positioning line
     ldx RowIdx
     sta WSYNC                   ; end of the positioning line
+    lda #0
+    ; The frame's ONE HMOVE already ran in the VBL; this second one exists only
+    ; for slot 1's own fine adjust. HMP0/HMM0/HMBL still hold the PLAYER's,
+    ; the laser's and the ball's fine values, and HMOVE would apply them a
+    ; second time — the player's fine adjust doubled (drawn X advanced 2 px per
+    ; 1 px of RoomX, sawing +/-15 px as the fine value cycled: the "raft
+    ; zig-zag", user 2026-10-22). Clear them; HMP1 stays (set above).
+    sta HMP0
+    sta HMM0
+    sta HMBL
     sta HMOVE                   ; cycle 0 of the next line = HBLANK
 .SHout:
     pla
@@ -2508,9 +2465,10 @@ Slot1Hook:
 ; uses — the twin cannot be skipped or shortened.
 ; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
     .ds $F850 - *, 0            ; ObjSprites: 12 rows/type = 108 B.
-                                 ; Base low byte $50 + max index 107 =
-                                 ; 187 -> `lda ObjSprites,X` stays in one
-                                 ; page (verify_build guard).
+                                 ; Base low byte $94 + max index 107 = 255 ->
+                                 ; `lda ObjSprites,X` still stays in ONE page
+                                 ; (verify_build guard); pinned at $794 (was
+                                 ; $850) to pay for the Slot1Hook HMOVE fix.
 ; 12 rows per type, bits 7-4 (col0 = bit7). Offsets come from the OBJ_*
 ; EQUs via ObjSpriteOffTable (stride 12).
 ObjSprites:
@@ -3848,6 +3806,63 @@ PlayerWalkB:
 ; $00 + 3 stays in one page).
 BandStart:
     .byte 0,48,96,144           ; first scanline of bands 0..3
+
+; --- EnemyColorTable + ObjSpriteOffTable (moved here 2026-10-22: the
+; $F744 fill needed 11 B for the Slot1Hook HMOVE fix; both are read
+; abs,X so their address is irrelevant) ---
+EnemyColorTable:
+    .byte $14                   ; spider — hue 1 luma 2 = dark yellow
+    .byte $f2                   ; bat — hue 15 luma 7 = brown
+    .byte $c4                   ; snake — hue 12 luma 2 = green
+    .byte $0e                   ; tentacle — hue 0 luma 7 = white
+    .byte $22                   ; moth — hue 2 luma 1 = dark orange
+    .byte $0e                   ; lamp (type 5) — white; dark rooms override to grey
+    .byte $1C                   ; key (type 6) — yellow
+    .byte $c4                   ; raft (type 7) — green, matching the SNAKE art
+                                ; slot it borrows ($c4 = ObjColorTab slot 6). User
+                                ; 2026-10-18: keep the SOLID block and read it as
+                                ; a trunk/log — the solid art also looks bigger
+                                ; than the notched LAMP one, so the player lands
+                                ; on it more confidently.
+
+; Enemy type → ObjSprites design offset (index = ENEMY_* type)
+ObjSpriteOffTable:
+    .byte OBJ_SPIDER            ; 0
+    .byte OBJ_BAT               ; 1
+    .byte OBJ_SNAKE             ; 2
+    .byte OBJ_TENTACLE          ; 3
+    .byte OBJ_MOTH              ; 4
+    .byte OBJ_LAMP              ; 5 (LAMP)
+    .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
+    .byte OBJ_SNAKE             ; 7 (RAFT — the solid 8x8 block: a log/trunk over
+                                ; the water, and the most "landable" shape in the
+                                ; table. ObjSprites is exactly 72 B and ends at
+                                ; $FF00, so a dedicated design needs 8 art bytes
+                                ; freed; every entry is 8x8, so nothing is
+                                ; "larger" — solid just reads bigger than notched.)
+
+; ==============================================================================
+; Phase 5 — second GRP1 object (no flicker). TIA has one GRP1 sprite, so two
+; objects in a room used to alternate frames (30 Hz flicker each). When they
+; live in DIFFERENT cave bands each can be drawn on ALL of its scanlines: the
+; band's setup swaps the live trio (ObjBase/ObjTop/ActiveObjectX) for slot 1
+; and repositions P1 there. The per-line object path is untouched — it already
+; draws from the live trio and takes COLUP1 from ObjColorTab[ObjBase+row].
+;
+; Invariant (do not relax): slot 1's band is STRICTLY HIGHER than slot 0's.
+; Bands are set up 0->1->2, so no later band has to restore slot 0's trio.
+; Rooms whose two objects share a band keep the old behaviour (slot 0 only,
+; rotation in SelectActiveObject unchanged).
+; Cost: the band-compare early-out sits in the setup line's free tail (0
+; lines); a band that DOES host slot 1 pays 2 lines (SetObjectXPos must start
+; on a line boundary and the HMOVE needs the next line's HBLANK).
+;
+; StageSlot1 (VBLANK, after SelectActiveObject): stages ObjBase1/ObjTop1/ObjX1,
+; $FF = none. Slot 1 = the miner or the first live enemy whose Y is in a band
+; above slot 0's. The KEY skip mirrors the slot-0 path (KeyHeld = LevelStartRoom
+; b7). Tally frames ($FE) are gated out: EnemyRamY holds score-pointer bytes
+; then (AGENTS: tally frame draws the MINER only).
+; ==============================================================================
 
     .ds $FE90 - *, 0            ; ObjColorTab/ObjSprites moved to the
                                  ; $F744 fill (Phase 6: tall art). The $FE8F
