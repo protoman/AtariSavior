@@ -24,11 +24,15 @@ if "Slot1Hook:" not in K or ".SHout:" not in K:
 hook = K.split("Slot1Hook:")[1].split(".SHout:")[0]
 assert "sta HMOVE" in hook, "Slot1Hook must still strobe its own HMOVE"
 hmove = hook.index("sta HMOVE")
+wsync = hook.rindex("sta WSYNC", 0, hmove)
 for reg in ("HMP0", "HMM0", "HMBL"):
     at = hook.find(f"sta {reg}")
     assert at != -1, (
         f"Slot1Hook must clear {reg} before its HMOVE (double fine-adjust)")
-    assert at < hmove, f"the {reg} clear must come BEFORE `sta HMOVE`"
+    assert at < wsync, (
+        f"the {reg} clear must come BEFORE the `sta WSYNC` that precedes HMOVE:"
+        " ~14 cycles between WSYNC and HMOVE make it a LATE HMOVE, which gives"
+        " up part of slot 1's fine shift (sprite snaps in ~4 px steps)")
 assert "sta HMP1" not in hook, (
     "HMP1 belongs to SetObjectXPos for slot 1 — do not clear it here")
 

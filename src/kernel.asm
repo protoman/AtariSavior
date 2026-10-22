@@ -2440,18 +2440,22 @@ Slot1Hook:
     sta ActiveObjectX
     ldx #1
     jsr SetObjectXPos           ; its own WSYNC starts the positioning line
-    ldx RowIdx
-    sta WSYNC                   ; end of the positioning line
-    lda #0
     ; The frame's ONE HMOVE already ran in the VBL; this second one exists only
     ; for slot 1's own fine adjust. HMP0/HMM0/HMBL still hold the PLAYER's,
     ; the laser's and the ball's fine values, and HMOVE would apply them a
     ; second time — the player's fine adjust doubled (drawn X advanced 2 px per
     ; 1 px of RoomX, sawing +/-15 px as the fine value cycled: the "raft
     ; zig-zag", user 2026-10-22). Clear them; HMP1 stays (set above).
+    ; THESE CLEARS MUST SIT BEFORE THE `sta WSYNC` BELOW: they cost ~14 cycles,
+    ; and an HMOVE written after cycle 0 of HBLANK gives up part of the fine
+    ; shift (late-HMOVE penalty) — slot 1's sprite then snaps in ~4 px steps
+    ; (user 2026-10-22: "raft moves one tile at a time").
+    lda #0
     sta HMP0
     sta HMM0
     sta HMBL
+    ldx RowIdx
+    sta WSYNC                   ; end of the positioning line
     sta HMOVE                   ; cycle 0 of the next line = HBLANK
 .SHout:
     pla
