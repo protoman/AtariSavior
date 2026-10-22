@@ -99,8 +99,10 @@ def fly(y0: int, frames: int = 180) -> list[int]:
                 hover = 90              # first press starts the 1.5 s grace
             else:
                 hover -= 1
-        if (f & 3) == 0 and jp < JET_MAX:
-            jp += 1
+        if not hover and (vyHi & 0x80) == 0 and (vyHi or vyLo):
+            jp = JET_MAX                # falling: jet catches at once
+        elif jp < JET_MAX:
+            jp += 1                     # rest / rising: +1 every frame
         if not hover:
             t = vyLo + GRAVITY
             vyLo, vyHi = t & 0xFF, (vyHi + (t >> 8)) & 0xFF
