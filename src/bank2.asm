@@ -1216,10 +1216,10 @@ BombEnemyBlastBody:
     lsr
     lsr
     sta CollisionCellX          ; bomb screen col
-    lda #0
-    sta EnemyIndex
+    ldx #0                      ; X = slot (2026-10-22: was EnemyIndex — the
+                                ;   abs loads/stores cost 9 B the lamp/raft
+                                ;   dir-mask needed; the caller only reads A)
 .BEBLoop:
-    ldx EnemyIndex
     cpx EnemyCount
     bcs .BEBnone
     lda EnemyDeadMask
@@ -1227,6 +1227,8 @@ BombEnemyBlastBody:
     bne .BEBNext                ; already dead
     ldy EnemyOffTable,X         ; Y = X*3 = type offset (record: type|dir,x,y)
     lda (EnemyDataLo),Y
+    and #%01111111              ; b7 = dir (2026-10-22): an unmasked compare
+                                ;   let a dir=right lamp be destroyed
     cmp #LAMP
     beq .BEBNext                ; lamp: blast passes through (item 3 fix)
     cmp #RAFT
@@ -1251,7 +1253,7 @@ BombEnemyBlastBody:
     lda #1                      ; killed — bank0 caller awards +50
     jmp ReturnPad                   ; ReturnPad
 .BEBNext:
-    inc EnemyIndex
+    inx
     jmp .BEBLoop
 .BEBnone:
     lda #0                      ; Z set for caller's beq

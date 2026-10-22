@@ -22,7 +22,8 @@ FROZEN = ROOT / "src" / "tests" / "frozen"
 L0 = parse_labels(FROZEN / "bank0.lst", {
     "EnemyRamX", "EnemyRamY", "EnemyRamD", "EnemyRamP", "RoomX", "RoomY",
     "vyLo", "vyHi", "Temp", "PlayerBombs", "UpdateEnemies", "EnemyCount",
-    "EnemyDataLo", "EnemyDataHi", "EnemyDeadMask"})
+    "EnemyDataLo", "EnemyDataHi", "EnemyDeadMask", "UEDispatch", "UE_Next"})
+OBJ_RAFT_TYPE = 7
 L1 = parse_labels(FROZEN / "bank1.lst", {"RaftBody"})
 missing = ({"EnemyRamX", "EnemyRamY", "EnemyRamD", "EnemyRamP", "RoomX",
             "RoomY", "vyLo", "vyHi"} - L0.keys()) | ({"RaftBody"} - L1.keys())
@@ -331,6 +332,41 @@ def main() -> int:
         assert r["room_y"] == raft_top(par) - PIN_FIT, (
             f"boxed-in chain lost the pin: {r}")
         x, rx, par, d = r["x"], r["room_x"], (par + 1) & 0xFF, r["right"]
+
+    # 5c. DIR BIT (user bug 2026-10-22): the enemy record packs type|dir in one
+    #     byte, so a raft authored dir=right reads $87. UEDispatch must mask b7
+    #     before `cmp #ENEMY_RAFT` — without the mask the body never ran (no
+    #     tide, no motion, no pin) and the rider fell into the water.
+    def dispatches(type_byte):
+        mem = Mem()
+        mem.bank = 0
+        r = mem.ram
+        r[X["EnemyRamX"]] = 60
+        r[X["EnemyRamD"]] = 0x01
+        r[X["EnemyRamP"]] = 0
+        r[X["RoomX"]] = 60
+        r[X["RoomY"]] = 113
+        r[X["vyLo"]] = 0
+        r[X["vyHi"]] = 0
+        mpu = MPU(memory=mem)
+        mpu.pc = L0["UEDispatch"]
+        mpu.a = type_byte
+        mpu.x = 0
+        mpu.y = 0
+        mpu.sp = 0xFD
+        mem[0x1FF] = RTS_SENTINEL & 0xFF
+        mem[0x1FE] = RTS_SENTINEL >> 8
+        for _ in range(4000):
+            mpu.step()
+            if mem.bank == 1 and mpu.pc == RAFT:
+                return True
+            if mpu.pc == L0["UE_Next"]:
+                return False
+        return False
+
+    assert dispatches(OBJ_RAFT_TYPE) is True, "plain raft record must dispatch"
+    assert dispatches(OBJ_RAFT_TYPE | 0x80) is True, (
+        "a raft authored dir=right ($87) must still dispatch — mask b7")
 
     # 6. thrust escapes: while rising (vyHi < 0) the pin is skipped
     s = run(80, parity=0, room_x=77, room_y=raft_top(0) + 2, vyhi=0xFF,

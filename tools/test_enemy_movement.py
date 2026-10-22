@@ -205,6 +205,15 @@ def main() -> None:
     # invariant to keep is: dispatch FIRST, then the handler's own gate.
     ue = KERNEL.split("UpdateEnemies:")[1].split("UE_Next:")[0]
     assert "jmp UEDispatch" in ue, "dispatch must fold into UEDispatch"
+    # the record packs type|dir (b7), and UEDispatch compares the RAW byte:
+    # without the mask a dir=right object ($87 raft / $81 spider) never matches
+    # its type (user bug 2026-10-22: the raft body never ran).
+    disp_src = KERNEL.split("UEDispatch:")[1].split("CallPad_RaftBody:")[0]
+    assert disp_src.lstrip().startswith("and #%01111111"), (
+        "UEDispatch must mask the record's dir bit (b7) before its type compares")
+    ceh = KERNEL.split("CheckEnemyHit:")[1].split(".CEHkill:")[0]
+    assert "and #%01111111" in ceh, (
+        "CheckEnemyHit must mask the dir bit before its lamp/key/raft compares")
     disp = KERNEL.split("UEDispatch:")[1].split("CallPad_RaftBody:")[0]
     for t in ("cmp #ENEMY_RAFT", "cmp #ENEMY_TENTACLE", "cmp #ENEMY_MOTH",
               "cmp #ENEMY_SNAKE"):

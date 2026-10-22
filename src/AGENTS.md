@@ -78,6 +78,15 @@ Invariants (each one has a reason, do not "clean up"):
   39-col), mask table `RaftCellMasks`. It therefore works in any water span and
   needs no new ZP and no new ROM data. `RaftBitTab` exists because bank1 cannot
   read bank0's `EnemyBitTable`.
+- **The enemy record packs `type|dir` in ONE byte (b7 = dir)** — every type
+  compare must mask b7 (`UEDispatch: and #%01111111`, `CheckEnemyHit`, and the
+  bank2 blast/laser bodies). 2026-10-22: the user's raft had dir=right, read
+  `$87`, missed `cmp #ENEMY_RAFT`, and its body never ran (no tide, no motion,
+  no rider pin) — the "raft jitter" report. Lamps/rafts carry no direction, so
+  the converter emits `dir: 0` for them (keeps the RAW `cmp #LAMP` guards in
+  the blast + both laser bodies working). Editor enemy `x` is a DISPLAY COLUMN
+  (0..39): `enemy_x_px(c) = c*4 + (4 if c*4 < 11 else 7)` — never read it as a
+  pixel X.
 - **`EnemyRamD` bits 4-7 are bank1's RoomDarkMask** — never usable as raft
   state (that is why there is no speed ramp).
 - Bank1 body rules apply: it must not call a CallPad or any bank0 routine, and

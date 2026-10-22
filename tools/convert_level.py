@@ -1003,7 +1003,12 @@ def _enemy_tables(prefix: str, rooms: list[dict],
                 "type": LAMP_TYPE,
                 "x": lamp.get("x", 0),
                 "y": lamp.get("y", 0),
-                "dir": 1,
+                # dir 0 (2026-10-22): the record packs type|dir in one byte and
+                # several runtime compares (`cmp #LAMP` in the bomb blast and
+                # both laser hit bodies) read it RAW — a b7-set lamp read $85
+                # and slipped past its own guard (killable lamp, no dark-room
+                # trigger, phantom +50). A lamp has no direction.
+                "dir": 0,
             })
         entities = entities[:MAX_ENEMIES]
         counts.append(len(entities))
@@ -1012,11 +1017,16 @@ def _enemy_tables(prefix: str, rooms: list[dict],
             x = float(enemy.get("x", 0))
             if type_ == LAMP_TYPE:
                 x -= 0.5  # editor stores lamp center; GRP1 data is left-aligned
+            # The RAFT has no authored direction either: its dir bit lives in
+            # EnemyRamD and only seeds the first patrol leg. Emitting b7 made
+            # `cmp #RAFT` in the bomb blast miss, so a dir=right raft could be
+            # destroyed by its own rider's bomb.
+            direction = 0 if type_ == RAFT_ENTITY else int(enemy.get("dir", 1))
             flat.append((
                 type_,
                 enemy_x_px(x),
                 px(float(enemy.get("y", 0)), 12),
-                int(enemy.get("dir", 1)),
+                direction,
             ))
     lines = [""]
     lines += [
