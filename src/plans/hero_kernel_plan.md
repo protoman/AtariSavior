@@ -361,6 +361,11 @@ single pin. Zero behaviour change; build + both sims + full battery green.
 1. `OBJ_WINDOW = 12`; use it in `.Grp1`'s `cmp` (the reflection branch's flags
    follow the same cmp — no second change).
 2. `OBJ_*` EQUs -> 0,12,24,...,96 and `ObjSpriteOffTable` -> the same values.
+   The art table must then start on a page-safe address: max index is
+   `OBJ_BOMB + 11 = 107`, so the base's low byte must be <= 148. Use
+   `    .ds $F780 - *, 0` before `ObjSprites` (low byte $80 + 107 = 235, one
+   page) — the Phase 5 code currently ends in that fill, so the pad both pins
+   the address and proves the code still fits.
 3. Art: 12 rows per type (4 new rows invented per type; the miner needs real
    legs so its feet read correctly).
 4. Colour: 12 rows per type, rows 8-11 = the type's dominant colour.
