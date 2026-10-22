@@ -365,15 +365,15 @@ VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × LINES_PER_TILE)
 
 ; GRP1 sprite design offsets into ObjSprites (12 bytes each; 0 = blank/off)
 OBJ_NONE        = 0
-OBJ_KEY         = 0     ; type-6 KEY design = the offset-0 slot
-OBJ_MOTH        = 16    ; stride = OBJ_WINDOW (16 rows/design, Phase 6)
-OBJ_SPIDER      = 32
-OBJ_LAMP        = 48
-OBJ_TENTACLE    = 64
-OBJ_BAT         = 80
-OBJ_SNAKE       = 96
-OBJ_MINER       = 112
-OBJ_BOMB        = 128
+OBJ_KEY         = 0     ; design offsets. The stride is a design's OWN height
+OBJ_MOTH        = 16    ; (Phase 6): 16 rows unless the type graduated to the
+OBJ_SPIDER      = 32    ; 26-row HERO-height art (SPIDER, 2026-10-22), so every
+OBJ_LAMP        = 58    ; later offset shifts when a type grows. ObjHeightTab
+OBJ_TENTACLE    = 74    ; carries the matching row count.
+OBJ_BAT         = 90
+OBJ_SNAKE       = 106
+OBJ_MINER       = 122
+OBJ_BOMB        = 138   ; = $8A: bit 7 set, so never test a design with `bmi`
 
 ; Player bounds (must stay inside cave walls)
 PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
@@ -2435,10 +2435,11 @@ Slot1Hook:
 ; bank2 carries a byte-identical twin (StageSlot1 stages slot 1's window) —
 ; guard: tools/test_slot1_pair.py compares both tables.
 ObjHeightTab:
-    .byte OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW   ; 0 SPIDER  1 BAT
-    .byte OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW, OBJ_WINDOW   ; 2 SNAKE 3 TENT
-                                                            ; 4 MOTH 5 LAMP
-                                                            ; 6 KEY   7 RAFT
+    .byte 26,         OBJ_WINDOW                            ; 0 SPIDER (26-row art)
+    .byte OBJ_WINDOW, OBJ_WINDOW                            ; 1 BAT  2 SNAKE
+    .byte OBJ_WINDOW, OBJ_WINDOW                            ; 3 TENT 4 MOTH
+    .byte OBJ_WINDOW, OBJ_WINDOW                            ; 5 LAMP 6 KEY
+                                                            ; 7 RAFT
 
 ; CallPad_RaftBody — bank1 RaftBody entry. Pinned at $F8C0 with a
 ; BYTE-IDENTICAL twin in bank1 (bank1.asm, same address): the `sta $1FF7`
@@ -2446,8 +2447,9 @@ ObjHeightTab:
 ; not from here. That is the same FoldIndirect discipline every other tramp
 ; uses — the twin cannot be skipped or shortened.
 ; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
-    .ds $F830 - *, 0            ; ObjSprites: 16 rows/type = 144 B (Phase 6).
-                                 ; Base low byte $30 + max index 143 = $BF ->
+    .ds $F826 - *, 0            ; ObjSprites: per-type heights, 154 B now
+                                 ;   (SPIDER 26 + 8 types x 16).
+                                 ; Base low byte $26 + max index 153 = $BF ->
                                  ; `lda ObjSprites,X` stays in ONE page
                                  ; (verify_build guard). The base moved
                                  ; $F850 -> $F830 with the Phase 6 growth so
@@ -2464,8 +2466,9 @@ ObjSprites:
     .byte $3C,$42,$5A,$42,$3C,$18,$18,$18,$18,$1C,$18,$10,$00,$00,$00,$00
     ; MOTH (16): antennae, upper wing pair, body, lower wing pair, taper
     .byte $90,$60,$F0,$F0,$60,$90,$F0,$F0,$60,$90,$60,$30,$00,$00,$00,$00
-    ; SPIDER (32): round body, then four leg rows spreading down
-    .byte $60,$F0,$F0,$60,$90,$60,$90,$90,$48,$24,$12,$06,$00,$00,$00,$00
+    ; SPIDER (32): 26 rows (user art 2026-10-22) — four legs per side,
+    ; bright abdomen band rows 10-14, olive legs, orange thorax
+    .byte $A5,$A5,$5A,$5A,$A5,$A5,$A5,$5A,$3C,$7E,$FF,$FF,$FF,$FF,$7E,$3C,$3C,$7E,$7E,$3C,$3C,$5A,$A5,$A5,$5A,$A5
     ; LAMP (48): shade, neck, bowl, post, wide base
     .byte $F0,$F0,$60,$60,$F0,$F0,$F0,$60,$60,$60,$3C,$3C,$00,$00,$00,$00
     ; TENTACLE (64): bulky shoulder tapering to a tip
@@ -3140,7 +3143,7 @@ TitleBcd:
 ObjColorTab:
     .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c ; 0 KEY   ($1c yellow)
     .byte $22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22,$22 ; 1 MOTH  ($22 dark orange)
-    .byte $14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14,$14 ; 2 SPIDER
+    .byte $14,$14,$14,$14,$14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$1C,$1C,$22,$22,$22,$22,$22,$14,$14,$14,$14,$14,$14 ; 2 SPIDER (26 rows)
     .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e ; 3 LAMP  ($0e white)
     .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e ; 4 TENTACLE
     .byte $f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2,$f2 ; 5 BAT   ($f2 brown)

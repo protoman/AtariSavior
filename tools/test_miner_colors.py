@@ -36,14 +36,22 @@ def main() -> None:
     bank2 = (SRC / "bank2.asm").read_text(encoding="utf-8")
 
     # --- 1) color table bytes -------------------------------------------
+    # design offsets come from kernel.asm (they move whenever a type
+    # graduates to taller art — per-type heights since Phase 6)
+    def obj_off(name: str) -> int:
+        m = re.search(rf"^{name}\s*=\s*(\d+)", kernel, re.M)
+        assert m, f"{name} EQU not found in kernel.asm"
+        return int(m.group(1))
+    O_MINER, O_MOTH, O_BAT, O_BOMB = (obj_off(n) for n in
+                                     ("OBJ_MINER", "OBJ_MOTH", "OBJ_BAT", "OBJ_BOMB"))
     tab = labels0["ObjColorTab"]
     off = tab - 0xF000
-    miner = list(rom0[off + 112: off + 120])
+    miner = list(rom0[off + O_MINER: off + O_MINER + 8])
     assert miner == MINER_COLORS, f"miner color slot = {[hex(v) for v in miner]}"
     # slot colors must match EnemyColorTable / frame colors for non-miner types
-    assert rom0[off + 16] == 0x22 and rom0[off + 80] == 0xF2, \
+    assert rom0[off + O_MOTH] == 0x22 and rom0[off + O_BAT] == 0xF2, \
         "moth/bat slot colors drifted from EnemyColorTable"
-    assert rom0[off + 128] == 0x46, "bomb slot != COLOR_BOMBS ($46)"
+    assert rom0[off + O_BOMB] == 0x46, "bomb slot != COLOR_BOMBS ($46)"
     # kernel reads it with the sprite index
     assert re.search(r"lda\s+ObjColorTab,X\s*;[^\n]*", kernel), \
         "kernel .Grp1 does not read ObjColorTab,X"
@@ -71,9 +79,13 @@ def main() -> None:
 
     # --- 3) layout pins (4c fetches) ------------------------------------
     obj = labels0["ObjSprites"]
-    assert (obj & 0xFF) + 143 <= 0xFF and (obj >> 8) == ((obj + 143) >> 8), \
-        f"ObjSprites ${obj:04X} page-crosses (+143)"
-    assert (tab >> 8) == ((tab + 143) >> 8), f"ObjColorTab ${tab:04X} page-crosses"
+    # last byte of a table = base + size - 1; the size is the sum of the
+    # per-type heights, so take it from the .lst (ObjColorTab end is the
+    # next label) rather than hard-coding 154.
+    last = 153
+    assert (obj & 0xFF) + last <= 0xFF and (obj >> 8) == ((obj + last) >> 8), \
+        f"ObjSprites ${obj:04X} page-crosses (+{last})"
+    assert (tab >> 8) == ((tab + last) >> 8), f"ObjColorTab ${tab:04X} page-crosses"
     frame = labels0["PickPlayerFrame"]
     # body must be a real instruction start in bank0 (was a switch tramp)
     assert rom0[frame - 0xF000] == 0xA5, \

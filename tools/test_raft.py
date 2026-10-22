@@ -10,6 +10,7 @@ invariant that matters most: a rider is held well above the 125 water-kill line.
 Frozen banks + labels (src/tests/frozen/) only — never the live build.
 Run: /home/iuri/python3/bin/python3 tools/test_raft.py
 """
+import re
 import sys
 from pathlib import Path
 
@@ -186,7 +187,10 @@ def tally_gate() -> None:
     L = parse_labels(FROZEN / "bank0.lst", need)
     assert not (need - L.keys()), f"labels missing: {sorted(need - L.keys())}"
     Z = {k: v & 0x7F for k, v in L.items() if 0x80 <= v <= 0xFF}
-    OBJ_MINER = 112
+    km = re.search(r"^OBJ_MINER\s*=\s*(\d+)",
+                   (ROOT / "src" / "kernel.asm").read_text(), re.M)
+    assert km, "OBJ_MINER EQU not found"
+    OBJ_MINER = int(km.group(1))
 
     def one(miner_room, room_no):
         mem = Mem()

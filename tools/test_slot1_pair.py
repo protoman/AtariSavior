@@ -20,6 +20,7 @@ Cases (fabricated enemy records in RAM, no stage data involved):
 
 Run: /home/iuri/python3/bin/python3 tools/test_slot1_pair.py
 """
+import re
 import sys
 from pathlib import Path
 
@@ -137,7 +138,10 @@ assert got["flicker"] == 7, (
 # --- case 3: the miner is the higher candidate ----------------------------
 got = call_stage_slot1(ys=[60], xs=[71], types=[MOTH],
                        miner=True, miner_y=96)
-assert got["base1"] == 112, f"slot 1 base ${got['base1']:02X} != OBJ_MINER 112"
+K = (Path(__file__).resolve().parents[1] / "src" / "kernel.asm").read_text()
+OBJ_MINER = int(re.search(r"^OBJ_MINER\s*=\s*(\d+)", K, re.M).group(1))
+assert got["base1"] == OBJ_MINER, \
+    f"slot 1 base ${got['base1']:02X} != OBJ_MINER {OBJ_MINER}"
 assert got["x1"] == 40, f"slot 1 must be the miner, X={got['x1']}"
 assert got["top1"] == (96 + 3 - 0 + 1) & 0xFF, (
     f"ObjTop1={got['top1']} — the miner's +3 draw offset must be included")
@@ -153,7 +157,14 @@ t0 = b0[L0["ObjHeightTab"] - 0xF000:][:8]
 t2 = b2[L2["ObjHeightTab"] - 0xF000:][:8]
 assert t0 == t2, (f"ObjHeightTab twins differ: bank0 {t0.hex()} vs bank2 "
                   f"{t2.hex()} — a stale hand-copy would clip slot 1")
-assert set(t0) <= {16}, f"unexpected window rows {sorted(set(t0))}"
+assert set(t0) <= {16, 26}, f"unexpected window rows {sorted(set(t0))}"
+# SPIDER graduated to the 26-row art: its declared draw window must equal the
+# art block it occupies, or .Line reads into the next design.
+assert t0[0] == 26, f"ObjHeightTab[SPIDER]={t0[0]}, want 26 (26-row art)"
+_sp = int(re.search(r"^OBJ_LAMP\s*=\s*(\d+)", K, re.M).group(1))
+_sp0 = int(re.search(r"^OBJ_SPIDER\s*=\s*(\d+)", K, re.M).group(1))
+assert _sp - _sp0 == t0[0], (
+    f"SPIDER art block is {_sp - _sp0} B but ObjHeightTab says {t0[0]} rows")
 
 print("OK: slot-1 pairing across banks + PinSlot0 (pair, same-band skip, miner) "
       "+ ObjHeightTab twins identical")
