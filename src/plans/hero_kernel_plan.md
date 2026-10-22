@@ -350,8 +350,16 @@ hook's HMOVE, and HMP1 must not be cleared). Space: +11 B in the `$F744` fill,
 paid by moving `EnemyColorTable` + `ObjSpriteOffTable` (both `abs,X`) into the
 free `$FE00` fill.
 
-**Rule:** any second `HMOVE` in a frame must be preceded by clearing every fine
-register it must not re-apply — HMOVE is not idempotent for untouched HMPs.
+**Rule 1:** any second `HMOVE` in a frame must be preceded by clearing every
+fine register it must not re-apply — HMOVE is not idempotent for untouched HMPs.
+
+**Rule 2 (the follow-up bug, same session):** those clears must sit BEFORE the
+`sta WSYNC` that precedes the HMOVE, never between WSYNC and HMOVE. They cost
+~14 cycles, and an HMOVE written after cycle 0 of HBLANK gives up part of the
+fine shift (late-HMOVE penalty) — slot 1's sprite then snaps in ~4 px steps
+("the raft moves one tile at a time"). Verified in py65: the hook's HMOVE is
+3 cycles after its WSYNC, the same as the VBL reference HMOVE ($F0AC), with
+HMP0 = 0. `tools/test_slot1_hmove.py` now asserts clears < WSYNC < HMOVE.
 
 ## Raft: the REAL cause was the record's dir bit (2026-10-22, follow-up)
 
