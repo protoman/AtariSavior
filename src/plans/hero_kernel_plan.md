@@ -325,6 +325,37 @@ frames measure 269 lines, (b) both objects are drawn in the SAME frame
 (py65: GRP1 writes in two bands with `ObjBase` swapped at the band boundary),
 (c) the solo-object rooms still measure 267.
 
+## Jet: the REAL cause was the fall clamp (2026-10-22, follow-up)
+
+The ramp change alone did not fix the user report ("press Up after a room
+change and he does not stop until the ground"). Reproduced in the simulator on
+level 4 (3 stacked gap rooms): after the transition `JetPower` was $30 (thrust
+at max) yet `vy` stayed **exactly $0180** every frame.
+
+Write-trace of one frame: `vyLo` = $88 (gravity) -> $58 (thrust subtracted) ->
+**$80** (clamp). The down clamp compared only the HIGH byte:
+
+    cmp #>MAX_FALL / bcc .Integrate / lda #>MAX_FALL ... sta vyLo
+
+With `vyHi == $01` the `cmp` is EQUAL, so every speed in $0100..$017F was
+rewritten to exactly $0180. Thrust was computed and thrown away — a falling
+player could never be slowed, at any JetPower.
+
+Fix: compare the low byte when the high bytes match (`bne .FallClamp` /
+`lda vyLo / cmp #<MAX_FALL / bcc .Integrate`). Verified in the real frame loop:
+`vy` now steps $0180 -> $0158 -> $0130 -> ... -> rising, arresting in 10 frames.
+
+Guard: `tools/test_jet_clamp.py` (new) drives the real inline
+`UpdateP0Vertical` block on the frozen banks with a poked airborne state:
+terminal-fall thrust must reduce vy by exactly `JET_MAX - GRAVITY`, the brake
+must finish in <= 12 frames, a 2.0 px/frame overspeed must still clamp to
+MAX_FALL, and a sub-1 px/frame fall must be left alone. It was RED on the
+pre-fix frozen bank.
+
+**Lesson:** a byte-wise clamp that compares only the high byte *rewrites* every
+value in the same high-byte page. Model-based tests (which use a proper `>`
+compare) cannot see it — only a ROM-level test can.
+
 ## Jet physics: HERO feel (2026-10-22, user report)
 
 Symptom: falling at terminal speed, pressing Up barely helped — the fall only
