@@ -762,14 +762,6 @@ general law. `$9D`/`$9E` are now `ObjHeight`/`ObjHeight1`.
 4. Then art per type (art + `ObjColorTab` rows + the table byte), one commit
    each, with the hit box still 12 until a gameplay ruling.
 
----|---|
-| drop the TITLE music, reuse `$9D MelPtr` + `$9E MelTimer` | **2 bytes = both slots** — needs a user ruling (the melody plays on the title only) |
-| pack both heights into `$A2` as 4+4 bits | caps at 15 rows — useless, we are at 16 |
-| keep `OBJ_WINDOW = 16` (today) | no tall art; rows 12-15 stay reserved |
-| per-design height table read in the hot path | +6 c or more — no budget (worst path 69 of 73) |
-
-So Phase 6's payoff is blocked on **one ZP decision**, not on kernel work.
-Until it is made, the useful art step is filling a design's rows 12-15 (visible
 through the existing 16-row window).
 
 ---
