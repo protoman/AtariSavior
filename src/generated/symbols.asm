@@ -352,7 +352,7 @@ LEVEL_COUNT              0004              (R )
 LEVEL_DATA_ADDR          f307                  
 LEVEL_FORMAT             0006                  
 LevelConnSpare           00a2                  
-LevelEnemySpare2         00b0                  
+LevelEnemySpare2         00b0              (R )
 LevelMinerRoom           00a4              (R )
 LevelPFDataHi            00a0                  
 LevelPFDataLo            009f                  
@@ -371,6 +371,7 @@ LoseLife                 fc8d              (R )
 LoseLifeBand             fcb3              (R )
 LV_SHOW_FRAMES           0078                  
 M1OffTab                 fb06              (R )
+M1X                      00b0              (R )
 MAX_FALL                 0180              (R )
 MelPtr                   009d                  
 MelTimer                 009e                  

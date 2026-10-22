@@ -173,7 +173,13 @@ RoomM1Hot       byte            ; C11 2026-10-21: hot-band M1 block cell =
                                 ;   LevelEnemyLo; the RoomCounts base is
                                 ;   now base+2n, derived in EnterRoomB2 — the
                                 ;   byte stays allocated so ZP does not shift)
-LevelEnemySpare2 byte           ; free (was LevelEnemyHi)
+LevelEnemySpare2 byte           ; M1X (2026-10-22): the async M1
+                                ;   block's X, staged by the room load.
+                                ;   NEVER reuse as scratch — the old
+                                ;   source (CollisionEndX) is the laser
+                                ;   wall-clamp's scratch, so a leftover
+                                ;   value enabled a phantom M1 dash.
+M1X = LevelEnemySpare2          ; read by PositionBallM1 (same byte)
 EnemyDataLo     byte            ; pointer to current room enemy data (low)
 EnemyDataHi     byte            ; pointer to current room enemy data (high)
 EnemyCount      byte            ; number of enemies in current room
@@ -629,7 +635,7 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; --- D6 objects (asym ball + M1): ONE VBL call (pre-pad = 1B headroom) ---
     ; PositionBallM1 (fill hole at $F9C4, bank0-only) reads Temp (staged
     ; BallX; 0 ⇔ symmetric → no RESPBL/HMBL, sym frames bit-identical) and
-    ; CollisionEndX (staged M1X; 0 → no M1) — ball selector 4, M1 selector 3,
+    ; M1X (LevelEnemySpare2; 0 → no M1) — ball selector 4, M1 selector 3,
     ; ENAM1 latched on when M1X≠0. Runs before the single HMOVE below
     ; (HMP0+X shadow registers accumulate). Per-band ENABL comes from BandTab
     ; at each .Row setup line; .AfterRows clears ENABL+ENAM1 before the HUD.
@@ -2807,7 +2813,9 @@ OverlayTramp:
 ; $F9C4 & $1FFF = $19C4 ∉ $1FF6-$1FF9; bank0-only, not a fold twin).
 ;   Temp          = staged BallX (bank2 StageBandTab): 0 = symmetric → skip.
 ;                   selector 4 = HMBL/RESPBL, ball x drawn clocks [A-7,A].
-;   CollisionEndX = staged M1X (MetaA nibble, bank2 StageBandTab):
+;   M1X ($B0) = the async M1 block's X (staged by the room load; 0 = none).
+;   It must be its OWN byte: CollisionEndX is the laser wall-clamp's
+;   scratch and a leftover there drew a phantom M1 dash (2026-10-22).
 ;                   0 = no M1 patch → skip.
 ;                   selector 3 = HMM1/RESM1, left-col block x = 7+8*col
 ;                   (passed to SetObjectXPos as M1X+1 — Stella draws 8-wide
@@ -2831,7 +2839,7 @@ PositionBallM1:
     ldx #4                      ; selector 4: HMP0+4=HMBL, RESP0+4=RESPBL
     jsr SetObjectXPos
 .M1:
-    lda CollisionEndX
+    lda M1X
     beq .Done
     clc
     adc #1                      ; Stella renders 8-wide M1 one clock left of

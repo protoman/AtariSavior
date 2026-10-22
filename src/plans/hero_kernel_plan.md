@@ -325,6 +325,18 @@ frames measure 269 lines, (b) both objects are drawn in the SAME frame
 (py65: GRP1 writes in two bands with `ObjBase` swapped at the band boundary),
 (c) the solo-object rooms still measure 267.
 
+## Phantom M1 dash fixed (2026-10-22)
+
+`PositionBallM1` enabled M1 whenever `CollisionEndX` was non-zero, but that byte
+is the **laser wall-clamp's scratch** (`LaserWallClamp .LWpSet` writes a marker
+there every frame) and the async M1 staging does not exist yet (Phase 3 is
+deferred). So any leftover marker lit M1 at a garbage X — the short dash the
+user saw hovering over the raft (band colour, 1 line tall).
+
+Fix: the M1 X now lives in its **own** byte, `M1X = LevelEnemySpare2 ($B0)`
+(documented FREE), read by `PositionBallM1`. Nothing writes it today, so no
+phantom; the Phase 3 room load must stage it (and only it).
+
 ## The "raft zig-zag" was the slot-1 mid-frame HMOVE (2026-10-22, root cause)
 
 User repro: level 4 room 4, hands off, the rider slides relative to the raft.

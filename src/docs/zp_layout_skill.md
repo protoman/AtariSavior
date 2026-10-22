@@ -102,7 +102,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $AD | TickCounter | 1s power-bar step |
 | $AE | BarLevel | Power bar 0-16 |
 | $AF | RoomM1Hot | C11 2026-10-21: hot-band M1 block cell = `col+1` (0 = none), staged by bank3's `ExtrasLoad` from the room's side-1 row-1 patch (was `LevelEnemySpare`; kernel decl carries the new name — `check_equ_sync` pairs it with bank3's EQU) |
-| $B0 | LevelEnemySpare2 | FREE (was LevelEnemyHi) |
+| $B0 | M1X (LevelEnemySpare2) | async M1 block X, staged by the room load (0 = none). **Never use as scratch**: the old source was `CollisionEndX`, the laser wall-clamp's scratch, and a leftover there drew a phantom M1 dash in every room (fixed 2026-10-22) |
 | $B1 | EnemyDataLo | Room enemy data lo |
 | $B2 | EnemyDataHi | Room enemy data hi |
 | $B3 | EnemyCount | Enemies in room |
