@@ -365,15 +365,15 @@ VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × LINES_PER_TILE)
 
 ; GRP1 sprite design offsets into ObjSprites (12 bytes each; 0 = blank/off)
 OBJ_NONE        = 0
-OBJ_KEY         = 0          ; design offsets. A design owns its block, so each
-OBJ_MOTH        = 16         ; offset = the sum of the heights above it;
-OBJ_SPIDER      = 30         ; ObjHeightTab carries the matching row count.
-OBJ_LAMP        = 45         ; Per-type heights (user art 2026-10-22):
-OBJ_TENTACLE    = 61         ;   MOTH 14, SPIDER 15, BAT 10, rest 16.
-OBJ_BAT         = 77
-OBJ_SNAKE       = 87
-OBJ_MINER       = 103
-OBJ_BOMB        = 119
+OBJ_KEY         = 0              ; design offsets. A design owns its block, so each
+OBJ_MOTH        = 16             ; offset = the sum of the heights above it;
+OBJ_SPIDER      = 30             ; ObjHeightTab carries the matching row count.
+OBJ_LAMP        = 45             ; Per-type heights (user art 2026-10-22):
+OBJ_TENTACLE    = 61             ;   MOTH 14, SPIDER 15, TENTACLE 14,
+OBJ_BAT         = 75             ;   BAT 10, rest 16.
+OBJ_SNAKE       = 85
+OBJ_MINER       = 101
+OBJ_BOMB        = 117
 
 ; Player bounds (must stay inside cave walls)
 PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
@@ -2436,7 +2436,7 @@ Slot1Hook:
 ; guard: tools/test_slot1_pair.py compares both tables.
 ObjHeightTab:                                              ; by ENEMY type
     .byte 15,         10                                    ; 0 SPIDER 1 BAT
-    .byte OBJ_WINDOW, OBJ_WINDOW                            ; 2 SNAKE  3 TENT
+    .byte OBJ_WINDOW, 14                               ; 2 SNAKE  3 TENT
     .byte 14,         OBJ_WINDOW                            ; 4 MOTH   5 LAMP
     .byte OBJ_WINDOW, OBJ_WINDOW                            ; 6 KEY    7 RAFT
     .byte OBJ_WINDOW, OBJ_WINDOW                            ; 3 TENT 4 MOTH
@@ -2449,9 +2449,10 @@ ObjHeightTab:                                              ; by ENEMY type
 ; not from here. That is the same FoldIndirect discipline every other tramp
 ; uses — the twin cannot be skipped or shortened.
 ; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
-    .ds $F830 - *, 0            ; ObjSprites: per-type heights, 135 B now
-                                 ;   (MOTH 14, SPIDER 15, BAT 10, 6 x 16).
-                                 ; Base low byte $30 + max index 134 = $B6 ->
+    .ds $F830 - *, 0            ; ObjSprites: per-type heights, 133 B now
+                                 ;   MOTH 14, TENTACLE 14, SPIDER 15,
+                                 ;   BAT 10, the rest 16.
+                                 ; Base low byte $30 + max index 132 = $B4 ->
                                  ; `lda ObjSprites,X` stays in ONE page
                                  ; (verify_build guard). The base moved
                                  ; $F850 -> $F830 with the Phase 6 growth so
@@ -2474,8 +2475,9 @@ ObjSprites:
     .byte $A5,$A5,$A5,$5A,$3C,$7E,$FF,$FF,$7E,$3C,$7E,$7E,$3C,$5A,$A5
     ; LAMP (48): shade, neck, bowl, post, wide base
     .byte $F0,$F0,$60,$60,$F0,$F0,$F0,$60,$60,$60,$3C,$3C,$00,$00,$00,$00
-    ; TENTACLE (64): bulky shoulder tapering to a tip
-    .byte $60,$90,$80,$60,$30,$30,$30,$18,$18,$0C,$0C,$04,$00,$00,$00,$00
+    ; TENTACLE (61): 14 rows (user art 2026-10-22) — pink head, light
+    ; purple neck, purple limb, dark purple taper, blue base pad
+    .byte $1C,$22,$24,$18,$0C,$14,$18,$28,$30,$50,$70,$FC,$FF,$BD
     ; BAT (79): 10 rows (user art 2026-10-22) — hanging wing tips, wing
     ; shoulders, purple body, dark-purple core, dark-blue tail
     .byte $81,$C3,$66,$24,$3C,$7E,$FF,$99,$18,$24
@@ -3149,7 +3151,7 @@ ObjColorTab:
     .byte $0E,$0E,$F2,$F2,$1C,$1C,$F2,$F2,$F2,$1C,$1C,$F2,$F2,$0E ; 1 MOTH  (14 rows: cream tips, brown wings, gold body)
     .byte $14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$22,$22,$22,$14,$14,$14 ; 2 SPIDER (15 rows)
     .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e ; 3 LAMP  ($0e white)
-    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e ; 4 TENTACLE
+    .byte $4C,$4C,$4C,$6C,$6C,$6C,$68,$68,$68,$64,$64,$82,$82,$82 ; 4 TENTACLE (14 rows: pink head -> blue base)
     .byte $06,$06,$6C,$6C,$68,$68,$64,$64,$82,$82 ; 5 BAT (10 rows: grey wings, purple body, dark blue tail)
     .byte $c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4 ; 6 SNAKE ($c4 green)
     .byte $54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08,$08,$08,$08,$08 ; 7 MINER (hips purple, legs grey)
