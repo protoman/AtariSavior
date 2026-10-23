@@ -1058,3 +1058,43 @@ standing rule forbids me from writing it; say the word if you want a separate
 
 Bank map today (F4): bank0 kernel, bank1 HUD/title/sound, bank2 room half,
 bank3 shape half, **bank4/5/6 free (12K)**, bank7 boot + vectors.
+
+## Same-band split — implementation design (measured 2026-10-22, NOT built)
+
+Prerequisite DONE: `ffd1abb` made the slot-1 hook pay for its own 2 scanlines,
+so a band that hosts slot 1 is 48 lines again. That is the accounting the split
+needs.
+
+**Wiring, in order:**
+
+1. **Staging (bank2 `StageSlot1B2`, 88 B free before the `$F700` slot).** Today
+   `.S1span` returns when `band(min) == band(max)`. Add: if the bands are equal
+   but `half(min) != half(max)` (half = 1 when the row's absolute Y is past the
+   band's 24-line midpoint), pair anyway — slot 1 = max (the lower half) — and
+   store the band index in **`ZPSpare89` ($89, free)** so the kernel knows a
+   mid-band swap is pending. `PinSlot0` already pins slot 0 to the min candidate
+   (reuse the cross-band path).
+2. **Kernel, band start.** `Slot1Hook` must NOT fire for a split band (slot 1 is
+   in this band, but it belongs to the second half): `cpx ZPSpare89 / beq .SHout`
+   at the top (+4 B, its early-out already jumps to `Slot1Keep`).
+3. **Kernel, loop exit.** Before the row-advance (`ldx RowIdx / inx`): if
+   `ZPSpare89 == RowIdx`, run the mid-band swap instead — trio swap (ObjBase1/
+   ObjHeight1/ObjTop1/ObjX1 -> live), blank GRP1, `SetObjectXPos`, the HMP0/HMM0/
+   HMBL clears, `sta WSYNC / sta HMOVE`, then `LineCount = 24 - 2` and jump into
+   `CaveLine`; else clear the flag and advance normally.
+4. The swap costs its own 2 lines, so the second half is 22 bodies — the band
+   stays 48 lines and the frame 265.
+
+**Space (the reason this is not in yet):** step 3 is ~40 B and bank0's pre-pad
+has ~15 B. The route that fits: put the swap body in **bank4** (empty 4K) behind
+a new 3 B pad in the pre-pad headroom, whose twin sits at the same address in
+bank4. The body's return is the tricky half: it must come back into bank0's
+`CaveLine` — i.e. `sta $1FF4` followed by a `jmp CaveLine` whose three bytes are
+fetched from bank0 at that address, which needs a second 3 B twin pad in bank0.
+That is the established tramp discipline (see the raft/`ReturnPad` notes), just
+with a jump instead of an `rts`.
+
+**Cheaper alternative if the split is deferred:** move the two live same-band
+bats one band down in the editor (level 2 room 2: y 5 -> 9; level 3 room 3:
+y 4 -> 9). Both rooms then pair through the existing cross-band hook and draw
+both objects every frame, zero ROM.
