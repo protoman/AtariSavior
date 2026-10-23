@@ -305,7 +305,10 @@ def main() -> None:
                 "(type|dir, x, y) — stale converter")
             raw = vals[0]
             typ = int(raw[1:], 16) if raw.startswith("$") else int(raw)
-            assert typ <= 7, (
+            # b7 = direction (AGENTS: the enemy record packs type|dir in ONE
+            # byte, and every type compare masks b7) — mask before the range
+            # test, or a dir=-1 enemy fails this gate (2026-10-23).
+            assert (typ & 0x7F) <= 7, (
                 f"LEVEL{n}: enemy record type ${typ:02x} does not fit "
                 "b3-0 with dir in b7")
         extras_path = (ROOT / "src" / "generated" /

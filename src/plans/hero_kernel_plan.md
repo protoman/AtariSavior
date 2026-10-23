@@ -1280,3 +1280,51 @@ async strip, the strip's left edge must sit exactly where it did before.
 2. If the exit line cannot be shared, take it out of the count explicitly:
    first half 23 bodies -> swap preamble (exit line + positioning line) ->
    second half 22. That keeps 48 without depending on where the exit lands.
+
+## Async side-1 (M1) elements: solid but INVISIBLE — found and fixed (2026-10-23)
+
+**Symptom (user report):** an async wall strip added to level 1 room 2 is
+invisible yet solid and blastable; a LOCKED_DOOR added to level 4 room 3 "is
+just not there".
+
+**Live data check (the stage is `rooms/stage.json` — the `rooms/level_00N.json`
+files are LEGACY leftovers and must not be read by any tool; an earlier pass in
+this session was misled by them and produced a wrong conclusion):**
+
+- L1 R2: `asym_patches = [[1, 6, 1, 1]]` -> row 1, col 6, tile 1 (wall), side 1
+- L4 R3: `asym_patches = [[1, 6, 9, 1]]` -> row 1, col 6, tile 9 (LOCKED_DOOR),
+  side 1, plus enemy type 6 (KEY) at x26,y7
+
+Both are **side 1**, and the generated extras confirm it:
+`LEVEL1_AsyncExtras: $01, $70, $00, $56` and `LEVEL4_AsyncExtras: $01, $78,
+$00, $56` — patch byte `$56` = row 1, side 1, col 6; MetaA `$70`/`$78` =
+`m1_col_plus = 7` (+ the door bit for `$78`); MetaB `$00` (no ball).
+
+So a side-1 patch is an **M1 (missile 1)** element: the collision cell comes
+from `RoomM1Hot` and the sprite is drawn by `PositionBallM1`.
+
+**Root cause: `M1X` ($B0) had NO writer at all.** `PositionBallM1` did
+`lda M1X / beq .Done` and latched `ENAM1` only when it was non-zero; the room
+loader staged `RoomM1Hot` ($AF, the collision cell) and stopped. Hence every
+side-1 element was solid + blastable + invisible. The hot-overlap box test also
+reads `M1X`, so that was dead for cold rooms too.
+
+**Fix (bank0):** derive `M1X` in `PositionBallM1` via a new fill helper
+`M1ColFromMeta`: `M1X = 8*col + 7` from MetaA's `m1_col+1` nibble ($99 = bank0's
+`RoomPF0Lo`), the exact inverse of `convert_room.meta_bytes`, and store it back
+to `M1X` so the box test sees the same column. It lives in the $F7CD-$F82F fill
+because bank3's code region is pinned full at `$F5CC`.
+`RoomM1Hot` keeps its hot-only gate (that is the DEATH-cell contract, not a
+drawing gate).
+
+**To verify in Stella:** L1 R2 must show the strip (M1) at col 6, and L4 R3 the
+door at col 6; both stay solid/blastable as before. Also check a room with no
+side-1 patch is unchanged (no stray M1 anywhere).
+
+**Follow-ups this exposed:**
+1. Retire `rooms/level_00N.json` + the `.txt` mirrors: build.sh already prefers
+   `rooms/stage.json`; the legacy files only mislead tools (they did, twice).
+   `verify_build`/tests must read `stage.json` only.
+2. The one-async-kind-per-room rule (user proposal): worth adopting. It makes
+   "is this an M1 room or a ball room" a single staged kind instead of layering
+   ball + M1 + door + hot, and gives the converter an invariant to enforce.
