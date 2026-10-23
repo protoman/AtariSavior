@@ -1130,3 +1130,44 @@ Space findings worth keeping: **$CC-$DF is 20 free bytes** (the "option A"
 reclaim), the **$F7CD-$F82F window is 99 B** of bank0 pad that code can consume
 (it shrinks the `.ds $F830` pad, so the pre-pad end does not move), and bank2's
 **$F6A8-$F6FF window is 88 B**.
+
+## Same-band split, attempt 2 (2026-10-22) — blocked on CYCLE BUDGET, not logic
+
+Second pass re-implemented the split with a per-band `BandLines` table
+(`$CC-$CE`, boot-initialised to 48 in `GameStart`) and measured each piece
+separately with py65 on the frozen banks. Everything functional worked; the
+frame grew, and the measurements name exactly why.
+
+**1. The `.Row` rows-0/1 setup line has ZERO cycle margin.** Replacing
+`lda #48` (2c) with `lda BandLines,X` (4c) cost **+2 frame lines**
+(267 -> 269) with the split FORCED OFF and no swap ever running: the setup
+line's `sta WSYNC` write crossed the line boundary on both rows-0/1 bands.
+Any per-band count needs a freed 2c on that line. Cheapest source found:
+replace the 8c slot-1 early-out `lda ObjBase1 / bmi Slot1Keep / jmp Slot1Hook`
+with a 5c `cpx HookBand / beq Slot1Hook` (band staged in the VBL), -3c.
+
+**2. The VBL is at its edge in some rooms.** The v1 staging (jsr + 3-byte
+table write, ~50c) cost **+1 line** in the same room with the split forced
+off. v2 (one extra store + a ~40c decision routine that only runs when the
+bands are equal) still costs a line there. The decision has to become
+near-free (e.g. pay only when the separation straddles the band midpoint).
+
+**3. The positioning preamble is not deterministic — fix this first.** With
+the swap enabled the second half measured 22 bodies -> 267 in one room and
+269 in another, 21 bodies -> 266. Same zero-margin family: after
+`SetObjectXPos` the code does three `sta` clears plus `sta WSYNC` (~18-21c)
+on a line that the div15 loop (up to ~50c at far-right X) has already
+filled. **Move the `HMP0/HMM0/HMBL` clears BEFORE `jsr SetObjectXPos`** so the
+post-RESP line only runs `rts / ldx RowIdx / sta WSYNC` (~12c) and the
+preamble is a deterministic 2 lines. This applies to `Slot1Hook` too:
+ffd1abb's "2 lines" accounting is only verified for the sim's scenario, not
+for a far-right object.
+
+**4. Bug found on the way:** `.S1trySplit` used `SplitBand` ($89) as the
+midpoint scratch and left it at 72 ($48) on the no-split path. Harmless
+(`cpx SplitBand` against RowIdx 0-2 never matches) but dirty — use another
+scratch byte.
+
+**Order for the next attempt:** (a) free 2c on the rows-0/1 setup line,
+(b) clears before `SetObjectXPos` in both `Slot1Hook` and the swap, (c) make
+the VBL decision near-free. Then the split lands with a 22-body second half.
