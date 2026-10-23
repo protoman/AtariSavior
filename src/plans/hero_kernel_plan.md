@@ -908,7 +908,12 @@ Consequences, all landed together:
   numbers. `test_cell_map`'s Y sweep no longer probes above `PLAYER_MAX_Y`
   (the bottom row index must stay inside `YToRowTable`).
 
-## LAMP wall-side mirror — designed 2026-10-22, BLOCKED on ROM bytes
+## LAMP wall-side mirror — LANDED 2026-10-22 (a99f0d5), type 13
+
+Status: implemented exactly as the resume plan below describes. Residual: a
+mirrored lamp that lands in SLOT 1 draws the unmirrored design (StageSlot1B2
+masks b3 to index the 8-entry bank2 tables) — lift it when bank2 can afford
+12 B for 14-entry table copies.
 
 User ruling: the wall lamp hangs on the wall it is drawn against, and the
 converter should pick the side automatically (**no editor change**). The art as
