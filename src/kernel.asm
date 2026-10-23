@@ -351,7 +351,8 @@ PLAYER_WIDTH    = 7             ; lit player sprite spans 7 pixels; REFP0 shift 
 ENEMY_WIDTH     = 8             ; snake GRP1 width ($ff = 8 px) — flush-out span
 LAMP_WIDTH      = 8             ; OBJ_LAMP's art spans all 8 pixels now
                                 ;   (4 missed the bulb from the far side)
-MINER_WIDTH     = 4             ; OBJ_MINER spans 4 lit GRP1 pixels
+MINER_WIDTH     = 4             ; OBJ_MINER's lit pixels start at col 0 (the
+                                ;   art is stored facing right)
 SNAKE_PATROL    = 4             ; ONE TILE each side of the spawn (user
                                 ; 2026-10-19): the patrol is SYMMETRIC about the
                                 ; placed X, so the snake retreats a tile behind
@@ -2524,8 +2525,11 @@ ObjSprites:
     ; SNAKE (85): 6 rows (user art 2026-10-22) — head pointing left, tail
     ; coiling right; light green back, green body, dark green belly/head.
     .byte $06,$0F,$F8,$F8,$0F,$06
-    ; MINER (112): helmet, pink face, body, tool, hips, legs
-    .byte $0C,$1C,$4C,$36,$0F,$07,$3F,$6E,$3C,$3C,$18,$18,$00,$00,$00,$00
+    ; MINER (112): helmet, pink face, body, tool, hips, legs. Stored MIRRORED
+    ; (user 2026-10-22): the cave no longer writes REFP1 (one register, two
+    ; objects per frame), so the art itself must face RIGHT — the level's
+    ; miner_dir used to do this with a hardware mirror.
+    .byte $30,$38,$32,$6C,$F0,$E0,$FC,$76,$3C,$3C,$18,$18,$00,$00,$00,$00
     ; BOMB (101): 8 rows (user art 2026-10-22) - yellow fuse at the top
     ; right, grey collar, red round body tapering to the nose.
     .byte $04,$08,$08,$18,$3C,$3C,$3C,$18
