@@ -972,3 +972,24 @@ priority: (a) forbid a mirrored lamp and the mirrored miner in one room,
 (b) mirror by design block (art table) for every type that can share a room,
 (c) keep a per-room "no rotation" rule. The type-13 lamp already uses (b), so
 the miner is the only REFP1 user left.
+
+## REFP1-per-object bug FIXED 2026-10-22 (b04c01b) + PinSlot0 guard verified
+
+REFP1 is one register for GRP1 while a frame can draw two objects (Phase 5 band
+pairing or the 1-of-2 rotation), so SetObjReflection driving it from the ACTIVE
+object made a mirrored miner flip sides every other frame in any room that also
+had an object. The miner's mirror (a per-LEVEL flag, miner_room b7) could not
+become a design-based mirror like the LAMP's type 13: that needs 16 art rows +
+16 colour rows and ObjSprites has 6 B left below the $F8C0 raft-tramp pin.
+
+Fix: SetObjReflection and both its calls are gone. Every GRP1 object is drawn
+unmirrored, which is exactly what REFP1 is — the bank1 HUD writes 0 for its
+score. Freed 6 B pre-pad + 19 B post-pad. LevelMinerRoom's b7 and the editor's
+miner_dir survive in the data but no longer reach the screen; restoring the
+facing needs 32 B of art space (or a room-level art selection), not a REFP1
+write. verify_build now rejects any `sta REFP1` in bank0.
+
+PinSlot0's 3-candidate guard was already in the source (`cmp #2 / bcs .PSout`);
+test_slot1_pair gained the case that proves it (2 enemies + the miner keeps
+FlickerFrame untouched, so the rotation stays in charge and the middle object
+still gets its frames).
