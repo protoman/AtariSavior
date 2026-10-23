@@ -159,6 +159,7 @@ OBJ_SNAKE = 79
 OBJ_MINER = 85
 OBJ_BOMB = 101
 OBJ_RAFT = 109
+OBJ_LAMP_R = 111                 ; type 13 = the wall-mirrored lamp
 
 ; C2 (2026-10-20): the level-data block labels (M<id>*, L<n>R<r>*) live in
 ; THIS bank now ($F307 slot include below), so the room tables resolve them
@@ -1133,7 +1134,7 @@ StageSlot1B2:
     txa
     pha                         ; keep the candidate index across the type read
     lda (FetchPtr),Y            ; A = type — DIRECT, the record is in THIS bank
-    and #%01111111              ; b7 = dir (the record packs type|dir): indexing
+    and #%00000111              ; b7 = dir (the record packs type|dir): indexing
     tax                         ;   the tables with it read past their end, so
                                 ;   slot 1 got ObjBase1/ObjHeight1 = 0 and the
                                 ;   object never drew (2026-10-22 tentacle demo)
@@ -1253,6 +1254,7 @@ ObjHeightTab:
     .byte 6,          OBJ_WINDOW
     .byte 14,         10
     .byte OBJ_WINDOW, 2
+    .byte 0,0,0,0,0,  10
 
 ObjSpriteOffTable:
     .byte OBJ_SPIDER            ; 0
@@ -1483,7 +1485,7 @@ BombEnemyBlastBody:
     bne .BEBNext                ; already dead
     ldy EnemyOffTable,X         ; Y = X*3 = type offset (record: type|dir,x,y)
     lda (EnemyDataLo),Y
-    and #%01111111              ; b7 = dir (2026-10-22): an unmasked compare
+    and #%00000111              ; b7 = dir (2026-10-22): an unmasked compare
                                 ;   let a dir=right lamp be destroyed
     cmp #LAMP
     beq .BEBNext                ; lamp: blast passes through (item 3 fix)
@@ -1596,6 +1598,8 @@ LaserTipEnemy:
     bcs .LTEnext
     ldy EnemyOffTable,X         ; type offset into the staged record
     lda (FetchPtr),Y            ; direct — enemy records are in THIS bank
+    and #%00000111              ; type 13 = the wall-mirrored lamp: without
+                                ;   the mask it read as an enemy and was killed
     cmp #LAMP
     beq .LTElamp
     lda EnemyDeadMask
@@ -1723,6 +1727,8 @@ LaserClampDone:
 .LHHit:
     ldy EnemyOffTable,X         ; type offset into staged record
     lda (FetchPtr),Y            ; direct — level data in this bank (was fold)
+    and #%00000111              ; type 13 = the wall-mirrored lamp: without
+                                ;   the mask it read as an enemy and was killed
     cmp #LAMP
     beq .LHLamp
     lda EnemyDeadMask
@@ -1740,14 +1746,6 @@ LaserClampDone:
     lda #0                      ; result: miss (Z set for caller's beq)
     jmp ReturnPad
 
-; Type-offset table (copy of kernel EnemyOffTable: enemy index * 3; 2026-10-21
-; 3 B enemy records) and dead-bit table (copy of kernel EnemyBitTable) —
-; bank0 ROM is not visible from here; labels keep the kernel-side anchors.
-EnemyOffTable:
-    .byte 0,3,6
-
-EnemyBitTable:
-    .byte $01, $02, $04, $08
 
     ; Tally entry tramp slice RETIRED here (repack chunk 3, 2026-10-20): the
 ; body moved to bank1, so the $FFE6 twin lives in bank1 now. This bank's
@@ -1761,6 +1759,16 @@ EnemyBitTable:
     .ds $FF59 - *, 0
     include "generated/spill_FF59.asm"
     .ds $FFE6 - *, 0
+
+; Type-offset table (copy of kernel EnemyOffTable: enemy index * 3; 2026-10-21
+; 3 B enemy records) and dead-bit table (copy of kernel EnemyBitTable).
+; Moved here 2026-10-22: the pre-$FF59 block needed 4 B for the laser bodies'
+; lamp masks. $FFE6-$FFF1 is safe for DATA (abs,X reads, X <= 3 never reaches
+; the $FFF6-$FFF9 F6 hotspot mirrors).
+EnemyOffTable:
+    .byte 0,3,6
+EnemyBitTable:
+    .byte $01, $02, $04, $08
 
     .ds $FFF2 - *, 0            ; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
 

@@ -377,6 +377,10 @@ OBJ_SNAKE       = 79
 OBJ_MINER       = 85
 OBJ_BOMB        = 101
 OBJ_RAFT        = 109
+OBJ_LAMP_R      = 111            ; the wall-MIRRORED lamp: enemy TYPE 13
+                                 ;   (b3-0 holds 8-15 unused). The converter
+                                 ;   picks 5 or 13 from the wall the lamp
+                                 ;   hangs on (user 2026-10-22).
 OBJ_BOMB_H      = 8              ; the bomb owns no type slot: its draw window
                                  ;   is staged by hand in SelectActiveObject
 
@@ -1943,9 +1947,11 @@ CEH_HasMore:
     ldx EnemyIndex
     ldy EnemyOffTable,X         ; Y = EnemyIndex * 3
     jsr FoldIndirect            ; type|dir
-    and #%01111111              ; b7 = dir: without the mask a dir=right
-                                ;   enemy read $81+ and fell through `bne`
-                                ;   CEHNext — harmless and unkillable
+    and #%00000111              ; b7 = dir AND b3 = the LAMP's mirror flag
+                                ;   (type 13 = the wall-mirrored design), so
+                                ;   both lamp types land on `cmp #LAMP`. Without
+                                ;   it a dir=right enemy read $81+ and fell
+                                ;   through `bne` — harmless and unkillable
     cmp #LAMP
     beq CEH_Lamp
     cmp #KEY                    ; type 6 = key: collect, no life loss
@@ -2452,6 +2458,7 @@ ObjHeightTab:                                              ; by ENEMY type
     .byte 6,          OBJ_WINDOW                            ; 2 SNAKE  3 TENT
     .byte 14,         10                                    ; 4 MOTH   5 LAMP
     .byte OBJ_WINDOW, 2                                     ; 6 KEY    7 RAFT
+    .byte 0,0,0,0,0,          10                            ; 8-12 unused, 13 LAMP_R
 
 ; CallPad_RaftBody — bank1 RaftBody entry. Pinned at $F8C0 with a
 ; BYTE-IDENTICAL twin in bank1 (bank1.asm, same address): the `sta $1FF7`
@@ -2459,11 +2466,11 @@ ObjHeightTab:                                              ; by ENEMY type
 ; not from here. That is the same FoldIndirect discipline every other tramp
 ; uses — the twin cannot be skipped or shortened.
 ; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
-    .ds $F830 - *, 0            ; ObjSprites: per-type heights, 111 B now
+    .ds $F830 - *, 0            ; ObjSprites: per-type heights, 121 B now
                                  ;   KEY 16, MOTH 14, SPIDER 15, LAMP 10,
                                  ;   TENT 14, BAT 10, SNAKE 6, MINER 16,
-                                 ;   BOMB 8, RAFT 2.
-                                 ; Base low byte $30 + max index 110 = $9E ->
+                                 ;   BOMB 8, RAFT 2, LAMP_R 10.
+                                 ; Base low byte $30 + max index 120 = $A8 ->
                                  ; `lda ObjSprites,X` stays in ONE page
                                  ; (verify_build guard). The base moved
                                  ; $F850 -> $F830 with the Phase 6 growth so
@@ -2507,6 +2514,20 @@ ObjSprites:
     ; raft. RAFTER_BASE moved to 131 so the plank's bottom row (top+1) sits ON
     ; the water surface (132+off).
     .byte $FF,$FF
+    ; LAMP_R (111): the wall-mirrored LAMP (type 13) - the bracket moves to the
+    ; lamp's RIGHT for a wall on that side. Only rows 0-1 differ: the bulb is
+    ; symmetric.
+    .byte $3F,$3F,$18,$18,$3C,$7E,$FF,$FF,$7E,$3C
+
+; Enemy type -> ObjSprites design offset (index = ENEMY_* type). 14 entries:
+; 8-12 unused, 13 = the wall-mirrored LAMP. Moved here 2026-10-22 (type 13
+; needed 6 more entries and the $FE0C slot was full). abs,X read, so the
+; address is irrelevant; base low byte $AC + 13 = $B9 stays in one page.
+    .ds $F8AC - *, 0
+ObjSpriteOffTable:
+    .byte OBJ_SPIDER, OBJ_BAT, OBJ_SNAKE, OBJ_TENTACLE
+    .byte OBJ_MOTH, OBJ_LAMP, OBJ_KEY, OBJ_RAFT
+    .byte 0, 0, 0, 0, 0, OBJ_LAMP_R
 
     .ds $F8C0 - *, 0
 CallPad_RaftBody:
@@ -3138,6 +3159,7 @@ ObjColorTab:
     .byte $54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08,$08,$08,$08,$08 ; 7 MINER (hips purple, legs grey)
     .byte $1C,$1C,$1C,$06,$46,$46,$46,$46 ; 8 BOMB  (8 rows: yellow fuse, grey collar, red body)
     .byte $0E,$0E ; 9 RAFT  (2 rows, white — user 2026-10-22)
+    .byte $06,$06,$06,$06,$0E,$0E,$0E,$0E,$0E,$0E ; 10 LAMP_R (10 rows: same colours, bracket mirrored)
 
 ; ------------------------------------------------------------------------------
 ; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
@@ -3804,17 +3826,6 @@ EnemyColorTable:
                                 ; than the notched LAMP one, so the player lands
                                 ; on it more confidently.
 
-; Enemy type → ObjSprites design offset (index = ENEMY_* type)
-ObjSpriteOffTable:
-    .byte OBJ_SPIDER            ; 0
-    .byte OBJ_BAT               ; 1
-    .byte OBJ_SNAKE             ; 2
-    .byte OBJ_TENTACLE          ; 3
-    .byte OBJ_MOTH              ; 4
-    .byte OBJ_LAMP              ; 5 (LAMP)
-    .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
-    .byte OBJ_RAFT              ; 7 (RAFT — its own 2-row white plank since
-                                ;   2026-10-22; it used to borrow the snake)
 
 ; ==============================================================================
 ; Phase 5 — second GRP1 object (no flicker). TIA has one GRP1 sprite, so two
