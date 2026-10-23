@@ -3865,17 +3865,17 @@ PlayerSpriteA:
     .byte %01111110             ; row  1
     .byte %01111110             ; row  2
     .byte %01111110             ; row  3
-    .byte %01111100             ; row  4 — visor / beam row
+    .byte %01111000             ; row  4 — visor / beam row
     .byte %01111110             ; row  5
     .byte %00111100             ; row  6
     .byte %01111100             ; row  7
     .byte %11111110             ; row  8
     .byte %11111110             ; row  9
-    .byte %11111110             ; row 10
-    .byte %11111110             ; row 11
-    .byte %11111110             ; row 12
-    .byte %11111110             ; row 13
-    .byte %01111100             ; row 14
+    .byte %10111110             ; row 10
+    .byte %10111110             ; row 11
+    .byte %11001110             ; row 12
+    .byte %10111110             ; row 13
+    .byte %11111100             ; row 14
     .byte %10111100             ; row 15
     .byte %10111000             ; row 16
     .byte %00101000             ; row 17
@@ -3889,20 +3889,20 @@ PlayerSpriteB:
     .byte %01111110             ; row  1
     .byte %01111110             ; row  2
     .byte %01111110             ; row  3
-    .byte %01111100             ; row  4 — visor / beam row
+    .byte %01111000             ; row  4 — visor / beam row
     .byte %01111110             ; row  5
     .byte %00111100             ; row  6
     .byte %01111100             ; row  7
     .byte %11111110             ; row  8
     .byte %11111110             ; row  9
-    .byte %11111110             ; row 10
-    .byte %11111110             ; row 11
-    .byte %11111110             ; row 12
-    .byte %11111110             ; row 13
-    .byte %01111100             ; row 14
-    .byte %10011110             ; row 15
-    .byte %11111000             ; row 16
-    .byte %10101000             ; row 17
+    .byte %10111110             ; row 10
+    .byte %10111110             ; row 11
+    .byte %11001110             ; row 12
+    .byte %10111110             ; row 13
+    .byte %11111100             ; row 14
+    .byte %00111100             ; row 15
+    .byte %00111000             ; row 16
+    .byte %00101000             ; row 17
     .byte %00101000             ; row 18
     .byte %00101000             ; row 19
     .byte %00101000             ; row 20
@@ -3918,19 +3918,19 @@ PlayerWalkA:
     .byte %01111110             ; row  1
     .byte %01111110             ; row  2
     .byte %01111110             ; row  3
-    .byte %01111100             ; row  4 — visor / beam row
+    .byte %01111000             ; row  4 — visor / beam row
     .byte %01111110             ; row  5
     .byte %00111100             ; row  6
     .byte %01111100             ; row  7
     .byte %11111110             ; row  8
     .byte %11111110             ; row  9
-    .byte %11111110             ; row 10
-    .byte %11111110             ; row 11
-    .byte %11111110             ; row 12
-    .byte %11111110             ; row 13
-    .byte %01111100             ; row 14
-    .byte %01111100             ; row 15
-    .byte %01111000             ; row 16
+    .byte %10111110             ; row 10
+    .byte %10111110             ; row 11
+    .byte %11001110             ; row 12
+    .byte %10111110             ; row 13
+    .byte %11111100             ; row 14
+    .byte %00111100             ; row 15
+    .byte %00111000             ; row 16
     .byte %01001000             ; row 17
     .byte %01001000             ; row 18
     .byte %10000100             ; row 19
@@ -3942,19 +3942,19 @@ PlayerWalkB:
     .byte %01111110             ; row  1
     .byte %01111110             ; row  2
     .byte %01111110             ; row  3
-    .byte %01111100             ; row  4 — visor / beam row
+    .byte %01111000             ; row  4 — visor / beam row
     .byte %01111110             ; row  5
     .byte %00111100             ; row  6
     .byte %01111100             ; row  7
     .byte %11111110             ; row  8
     .byte %11111110             ; row  9
-    .byte %11111110             ; row 10
-    .byte %11111110             ; row 11
-    .byte %11111110             ; row 12
-    .byte %11111110             ; row 13
-    .byte %01111100             ; row 14
-    .byte %01111100             ; row 15
-    .byte %01111000             ; row 16
+    .byte %10111110             ; row 10
+    .byte %10111110             ; row 11
+    .byte %11001110             ; row 12
+    .byte %10111110             ; row 13
+    .byte %11111100             ; row 14
+    .byte %00111100             ; row 15
+    .byte %00111000             ; row 16
     .byte %00110000             ; row 17
     .byte %00110000             ; row 18
     .byte %00110000             ; row 19
@@ -3970,7 +3970,7 @@ PlayerColTable:
     .byte $1E, $0C, $0C, $08   ; rows 4:Amarelo, 5:Branco, 6:Branco, 7:Cinza
     .byte $48, $48, $48, $48   ; rows 8:Vermelho, 9:Vermelho, 10:Vermelho, 11:Vermelho
     .byte $48, $48, $08, $2C   ; rows 12:Vermelho, 13:Vermelho, 14:Cinza, 15:Laranja
-    .byte $2C, $88, $88, $04   ; rows 16:Laranja, 17:Azul, 18:Azul, 19:Cinza Escuro
+    .byte $2C, $88, $88, $88   ; rows 16:Laranja, 17:Azul, 18:Azul, 19:Azul
     .byte $04, $04   ; rows 20:Cinza Escuro, 21:Cinza Escuro
 
     .ds $FE90 - *, 0            ; ObjColorTab/ObjSprites moved to the

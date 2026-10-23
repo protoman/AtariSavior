@@ -3866,17 +3866,17 @@
    3865  fe0d		       7e		      .byte.b	%01111110	; row	1
    3866  fe0e		       7e		      .byte.b	%01111110	; row	2
    3867  fe0f		       7e		      .byte.b	%01111110	; row	3
-   3868  fe10		       7c		      .byte.b	%01111100	; row	4 — visor / beam row
+   3868  fe10		       78		      .byte.b	%01111000	; row	4 — visor / beam row
    3869  fe11		       7e		      .byte.b	%01111110	; row	5
    3870  fe12		       3c		      .byte.b	%00111100	; row	6
    3871  fe13		       7c		      .byte.b	%01111100	; row	7
    3872  fe14		       fe		      .byte.b	%11111110	; row	8
    3873  fe15		       fe		      .byte.b	%11111110	; row	9
-   3874  fe16		       fe		      .byte.b	%11111110	; row 10
-   3875  fe17		       fe		      .byte.b	%11111110	; row 11
-   3876  fe18		       fe		      .byte.b	%11111110	; row 12
-   3877  fe19		       fe		      .byte.b	%11111110	; row 13
-   3878  fe1a		       7c		      .byte.b	%01111100	; row 14
+   3874  fe16		       be		      .byte.b	%10111110	; row 10
+   3875  fe17		       be		      .byte.b	%10111110	; row 11
+   3876  fe18		       ce		      .byte.b	%11001110	; row 12
+   3877  fe19		       be		      .byte.b	%10111110	; row 13
+   3878  fe1a		       fc		      .byte.b	%11111100	; row 14
    3879  fe1b		       bc		      .byte.b	%10111100	; row 15
    3880  fe1c		       b8		      .byte.b	%10111000	; row 16
    3881  fe1d		       28		      .byte.b	%00101000	; row 17
@@ -3890,20 +3890,20 @@
    3889  fe23		       7e		      .byte.b	%01111110	; row	1
    3890  fe24		       7e		      .byte.b	%01111110	; row	2
    3891  fe25		       7e		      .byte.b	%01111110	; row	3
-   3892  fe26		       7c		      .byte.b	%01111100	; row	4 — visor / beam row
+   3892  fe26		       78		      .byte.b	%01111000	; row	4 — visor / beam row
    3893  fe27		       7e		      .byte.b	%01111110	; row	5
    3894  fe28		       3c		      .byte.b	%00111100	; row	6
    3895  fe29		       7c		      .byte.b	%01111100	; row	7
    3896  fe2a		       fe		      .byte.b	%11111110	; row	8
    3897  fe2b		       fe		      .byte.b	%11111110	; row	9
-   3898  fe2c		       fe		      .byte.b	%11111110	; row 10
-   3899  fe2d		       fe		      .byte.b	%11111110	; row 11
-   3900  fe2e		       fe		      .byte.b	%11111110	; row 12
-   3901  fe2f		       fe		      .byte.b	%11111110	; row 13
-   3902  fe30		       7c		      .byte.b	%01111100	; row 14
-   3903  fe31		       9e		      .byte.b	%10011110	; row 15
-   3904  fe32		       f8		      .byte.b	%11111000	; row 16
-   3905  fe33		       a8		      .byte.b	%10101000	; row 17
+   3898  fe2c		       be		      .byte.b	%10111110	; row 10
+   3899  fe2d		       be		      .byte.b	%10111110	; row 11
+   3900  fe2e		       ce		      .byte.b	%11001110	; row 12
+   3901  fe2f		       be		      .byte.b	%10111110	; row 13
+   3902  fe30		       fc		      .byte.b	%11111100	; row 14
+   3903  fe31		       3c		      .byte.b	%00111100	; row 15
+   3904  fe32		       38		      .byte.b	%00111000	; row 16
+   3905  fe33		       28		      .byte.b	%00101000	; row 17
    3906  fe34		       28		      .byte.b	%00101000	; row 18
    3907  fe35		       28		      .byte.b	%00101000	; row 19
    3908  fe36		       28		      .byte.b	%00101000	; row 20
@@ -3919,19 +3919,19 @@
    3918  fe39		       7e		      .byte.b	%01111110	; row	1
    3919  fe3a		       7e		      .byte.b	%01111110	; row	2
    3920  fe3b		       7e		      .byte.b	%01111110	; row	3
-   3921  fe3c		       7c		      .byte.b	%01111100	; row	4 — visor / beam row
+   3921  fe3c		       78		      .byte.b	%01111000	; row	4 — visor / beam row
    3922  fe3d		       7e		      .byte.b	%01111110	; row	5
    3923  fe3e		       3c		      .byte.b	%00111100	; row	6
    3924  fe3f		       7c		      .byte.b	%01111100	; row	7
    3925  fe40		       fe		      .byte.b	%11111110	; row	8
    3926  fe41		       fe		      .byte.b	%11111110	; row	9
-   3927  fe42		       fe		      .byte.b	%11111110	; row 10
-   3928  fe43		       fe		      .byte.b	%11111110	; row 11
-   3929  fe44		       fe		      .byte.b	%11111110	; row 12
-   3930  fe45		       fe		      .byte.b	%11111110	; row 13
-   3931  fe46		       7c		      .byte.b	%01111100	; row 14
-   3932  fe47		       7c		      .byte.b	%01111100	; row 15
-   3933  fe48		       78		      .byte.b	%01111000	; row 16
+   3927  fe42		       be		      .byte.b	%10111110	; row 10
+   3928  fe43		       be		      .byte.b	%10111110	; row 11
+   3929  fe44		       ce		      .byte.b	%11001110	; row 12
+   3930  fe45		       be		      .byte.b	%10111110	; row 13
+   3931  fe46		       fc		      .byte.b	%11111100	; row 14
+   3932  fe47		       3c		      .byte.b	%00111100	; row 15
+   3933  fe48		       38		      .byte.b	%00111000	; row 16
    3934  fe49		       48		      .byte.b	%01001000	; row 17
    3935  fe4a		       48		      .byte.b	%01001000	; row 18
    3936  fe4b		       84		      .byte.b	%10000100	; row 19
@@ -3943,19 +3943,19 @@
    3942  fe4f		       7e		      .byte.b	%01111110	; row	1
    3943  fe50		       7e		      .byte.b	%01111110	; row	2
    3944  fe51		       7e		      .byte.b	%01111110	; row	3
-   3945  fe52		       7c		      .byte.b	%01111100	; row	4 — visor / beam row
+   3945  fe52		       78		      .byte.b	%01111000	; row	4 — visor / beam row
    3946  fe53		       7e		      .byte.b	%01111110	; row	5
    3947  fe54		       3c		      .byte.b	%00111100	; row	6
    3948  fe55		       7c		      .byte.b	%01111100	; row	7
    3949  fe56		       fe		      .byte.b	%11111110	; row	8
    3950  fe57		       fe		      .byte.b	%11111110	; row	9
-   3951  fe58		       fe		      .byte.b	%11111110	; row 10
-   3952  fe59		       fe		      .byte.b	%11111110	; row 11
-   3953  fe5a		       fe		      .byte.b	%11111110	; row 12
-   3954  fe5b		       fe		      .byte.b	%11111110	; row 13
-   3955  fe5c		       7c		      .byte.b	%01111100	; row 14
-   3956  fe5d		       7c		      .byte.b	%01111100	; row 15
-   3957  fe5e		       78		      .byte.b	%01111000	; row 16
+   3951  fe58		       be		      .byte.b	%10111110	; row 10
+   3952  fe59		       be		      .byte.b	%10111110	; row 11
+   3953  fe5a		       ce		      .byte.b	%11001110	; row 12
+   3954  fe5b		       be		      .byte.b	%10111110	; row 13
+   3955  fe5c		       fc		      .byte.b	%11111100	; row 14
+   3956  fe5d		       3c		      .byte.b	%00111100	; row 15
+   3957  fe5e		       38		      .byte.b	%00111000	; row 16
    3958  fe5f		       30		      .byte.b	%00110000	; row 17
    3959  fe60		       30		      .byte.b	%00110000	; row 18
    3960  fe61		       30		      .byte.b	%00110000	; row 19
@@ -3971,7 +3971,7 @@
    3970  fe68		       1e 0c 0c 08	      .byte.b	$1E, $0C, $0C, $08	; rows 4:Amarelo, 5:Branco, 6:Branco, 7:Cinza
    3971  fe6c		       48 48 48 48	      .byte.b	$48, $48, $48, $48	; rows 8:Vermelho, 9:Vermelho, 10:Vermelho, 11:Vermelho
    3972  fe70		       48 48 08 2c	      .byte.b	$48, $48, $08, $2C	; rows 12:Vermelho, 13:Vermelho, 14:Cinza, 15:Laranja
-   3973  fe74		       2c 88 88 04	      .byte.b	$2C, $88, $88, $04	; rows 16:Laranja, 17:Azul, 18:Azul, 19:Cinza Escuro
+   3973  fe74		       2c 88 88 88	      .byte.b	$2C, $88, $88, $88	; rows 16:Laranja, 17:Azul, 18:Azul, 19:Azul
    3974  fe78		       04 04		      .byte.b	$04, $04	; rows 20:Cinza Escuro, 21:Cinza Escuro
    3975  fe7a
    3976  fe7a		       00 00 00 00*	      .ds	$FE90 - *, 0	; ObjColorTab/ObjSprites moved to the
