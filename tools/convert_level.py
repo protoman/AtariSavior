@@ -1002,6 +1002,19 @@ def _room_bottom_color(room: dict) -> int:
     return color if color != 0 else 1  # never emit 0 when band is on
 
 
+def lamp_x_px(col: float) -> int:
+    """Display column -> requested sprite X with the art LEFT-ALIGNED in its cell.
+
+    The lamp art is a full 8 px cell (2 display columns), so the sprite must
+    start on a cell boundary; the editor may store any point inside the cell
+    (a lamp centre is often an x.5 tile centre). The TIA draws the visible left
+    edge 4 px below X=15 and 7 px from X=15 up (the same correction enemy_x_px
+    documents), so the requested X is derived from the wanted left pixel.
+    """
+    left = (int(float(col) * 4) // 8) * 8
+    return left + (7 if left + 7 >= 15 else 4)
+
+
 def _lamp_type(room: dict, col: float, y: float, models_by_id: dict | None) -> int:
     """Which lamp DESIGN this placement uses (user 2026-10-22).
 
@@ -1021,9 +1034,8 @@ def _lamp_type(room: dict, col: float, y: float, models_by_id: dict | None) -> i
     if len(tiles) != width * HEIGHT:
         return LAMP_ENTITY              # no grid to read: keep the drawn art
     band = max(0, min(int(y) // 4, HEIGHT - 1))   # 4 rows of 12 px per band
-    c = int(round(float(col)))
-    logical = c if c < 20 else 39 - c              # mirrored stage: 39-c
-    cell = min(logical // 2, width - 1)            # 2 display cols per cell
+    logical = float(col) if float(col) < 20 else 39 - float(col)   # 39-col mirror
+    cell = min(int(logical * 4) // 8, width - 1)   # 8 px cell, 4 px columns
 
     def solid(cell_index: int) -> bool:
         return tiles[band * width + cell_index] != 0
@@ -1088,7 +1100,10 @@ def _enemy_tables(prefix: str, rooms: list[dict],
             type_ = int(enemy.get("type", 0))
             x = float(enemy.get("x", 0))
             if type_ in (LAMP_ENTITY, LAMP_MIRROR):
-                x -= 0.5  # editor stores lamp center; GRP1 data is left-aligned
+                # The art is a full 8 px cell: left-align it in the cell that
+                # holds the authored x (a -0.5 column shift was correct for the
+                # old 4 px lamp and put this one half inside the wall).
+                flat_x = lamp_x_px(x)
             # The RAFT has no authored direction either: its dir bit lives in
             # EnemyRamD and only seeds the first patrol leg. Emitting b7 made
             # `cmp #RAFT` in the bomb blast miss, so a dir=right raft could be
@@ -1096,7 +1111,7 @@ def _enemy_tables(prefix: str, rooms: list[dict],
             direction = 0 if type_ == RAFT_ENTITY else int(enemy.get("dir", 1))
             flat.append((
                 type_,
-                enemy_x_px(x),
+                flat_x if type_ in (LAMP_ENTITY, LAMP_MIRROR) else enemy_x_px(x),
                 px(float(enemy.get("y", 0)), 12),
                 direction,
             ))
