@@ -1171,3 +1171,63 @@ scratch byte.
 **Order for the next attempt:** (a) free 2c on the rows-0/1 setup line,
 (b) clears before `SetObjectXPos` in both `Slot1Hook` and the swap, (c) make
 the VBL decision near-free. Then the split lands with a 22-body second half.
+
+## 76c work + split attempt 3 (2026-10-22) — exact measurements, one real bug
+
+**1. The band-setup line's margin is exactly 1 cycle.** `lda #48` -> `lda
+BandLines,X` (+2c) alone gives 268/269. Trading the title test
+`lda DropTarget / cmp #$FF / bne .Row` (7c) for a VBL-staged
+`lda TitleFlag / bmi .Row` (6c) recovered 1c — the line then sits ON the
+boundary (268 on ~half the frames, 267 on the rest, a clean phase split).
+
+A second win exists and is proven to assemble and run (reverted only because
+it needs a pixel check): **the door/M1 colour block can reuse A** —
+`lda ColupfBuf,X` is already loaded for COLUPF, so
+
+    lda ColupfBuf,X / sta COLUPF / sta Temp / sta COLUP1   ; c51, as documented
+    lda CollisionCellY / bmi .M1done / sta COLUP1 / sta Temp
+
+= 18c (no door) vs 22c, 18 B vs 25 B. It moves the ENABL/PF2 stores 4c
+earlier (PF2 c65 -> c61 = x484, still past x449; ENABL c58 -> c54) and the
+ball's left edge is not pixel-verified — apply it together with the split,
+after a Stella check of the per-band ball.
+
+**2. The split band comes out 49 lines at N=2** (`setup + 24 + swap 2 + 22`),
+and N=3 gives 266 everywhere in the sim room: the crux is the line SHARING —
+in the normal path the line after the last body is the next band's setup line,
+and the swap spends that line. Any count-only scheme has to answer "who owns
+that line".
+
+**3. REAL BUG FOUND (pre-existing, high value): `Slot1Hook` calls
+`jsr SetObjectXPos` with A = 0.** The trio swap does
+`lda ObjX1 / sta ActiveObjectX`, then `lda #0 / sta GRP1` + the HMP clears
+leave A = 0, and `SetObjectXPos` uses **A as the coarse X**: the div15 loop
+runs zero iterations and `lda fineAdjustTable,Y` indexes with Y = $F1
+(garbage fine adjust). Slot 1 is therefore drawn at a fixed wrong X (left
+edge), not at its own `ObjX1`. The ROM tests only assert the staged `ObjX1`,
+so nothing caught it.
+It also hides a second problem: with the loop skipped, the RESP line is ~24c,
+which is why the hook's "2 lines" accounting holds. Fixing A makes the RESP
+line ~70c at far-right X and the hook then costs 3 lines unless the return
+work is trimmed — so the fix must ALSO inline the positioning (drop the
+`jsr/rts` 6c, move `ldx RowIdx` past the WSYNC): that is exactly what
+`MidBandSwap` now does, and it is the shape the hook needs too. Needs a
+drawn-position guard (pixel test), not just an `ObjX1` assertion.
+
+**4. Diagnostic that made this readable:** the sim room alternates between a
+cross-band pair (hook path, 267 OK) and a same-band pair (split path, +1) as
+the bats bob — the "268 on odd frames only" signature. Splitting the two paths
+(forcing `.S1trySplit` to `.S1tsNo`) isolates them: hook-only = green.
+
+**Next step, in order:**
+1. Fix `Slot1Hook`'s A + inline its positioning; assert the hook's band is
+   still 48 lines and add a drawn-X guard for slot 1.
+2. Land the colour-block win (-4c/-7B) with a Stella ball check.
+3. Then the split: with the hook correct and 3c of line margin, N=2 has room
+   for the 49th line; if not, take the swap's count from the "who owns the
+   exit line" rule explicitly (first half 25 bodies at the setup line, swap
+   preamble on the exit line).
+
+Scratch files left behind (safe to delete): `tools/_dbg_split.py`,
+`tools/_dbg_pair.py` — debug harness copies, not picked up by the battery
+glob.
