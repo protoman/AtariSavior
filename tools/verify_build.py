@@ -254,6 +254,15 @@ def check_rom(src: Path) -> bytes | None:
                      r"-\s*OBJ_BOMB_H[^\n]*\n\s*sta\s+BombY", ksrc):
         err("bomb drop Y is not `RoomY + PLAYER_SPRITE_H - OBJ_BOMB_H` — the "
             "bomb must land with its bottom row on the player's feet line")
+    # REFP1 is ONE register for GRP1, but a frame can draw two objects (band
+    # pairing or the 1-of-2 rotation). Driving it from the ACTIVE object made a
+    # mirrored miner flip sides every other frame in any room that also had an
+    # object (user report 2026-10-22). The miner's mirror is gone and every GRP1
+    # object is drawn unmirrored, so bank0 must never write REFP1: the bank1 HUD
+    # writes 0 for its score, which is what the cave wants.
+    if re.search(r"sta\s+REFP1", ksrc):
+        err("bank0 writes REFP1 — a per-frame mirror cannot serve two GRP1 "
+            "objects; draw a mirrored DESIGN instead (see OBJ_LAMP_R / type 13)")
     return pad0
 
 

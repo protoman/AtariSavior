@@ -228,8 +228,22 @@ _sp0 = int(re.search(r"^OBJ_SPIDER\s*=\s*(\d+)", K, re.M).group(1))
 assert _sp - _sp0 == t0[0], (
     f"SPIDER art block is {_sp - _sp0} B but ObjHeightTab says {t0[0]} rows")
 
-print("OK: slot-1 pairing across banks + PinSlot0 (pair, same-band skip, miner) "
-      "+ ObjHeightTab twins identical")
+# --- case 6: THREE candidates (2 enemies + the miner) ----------------------
+# PinSlot0's pin can only name one of the two ends, so with three candidates it
+# must leave the rotation completely alone (FlickerFrame untouched). Before the
+# guard, slot 0 got the miner and slot 1 the highest enemy, and the middle
+# object was never drawn (backlog item 2026-10-22).
+got = call_stage_slot1(ys=[60, 96], xs=[71, 100], types=[MOTH, MOTH],
+                       miner=True, miner_y=120, flicker=5)
+assert got["base1"] == OBJ_MINER, (
+    f"slot 1 base ${got['base1']:02X}: the highest candidate (the miner at "
+    "y=120) must still pair")
+assert got["flicker"] == 5, (
+    f"FlickerFrame={got['flicker']}, want 5 (UNTOUCHED): with 3 candidates the "
+    "pin cannot name the middle object, so the rotation must stay in charge")
+
+print("OK: slot-1 pairing across banks + PinSlot0 (pair, same-band skip, miner, "
+      "3-candidate skip) + ObjHeightTab twins identical")
 
 
 def _checkpage():  # pragma: no cover - documented invariant, checked above

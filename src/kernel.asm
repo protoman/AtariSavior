@@ -2372,7 +2372,14 @@ SelectActiveObject:
     lda ActiveObjectX
     ldx #1
     jsr SetObjectXPos
-    jsr SetObjReflection
+    ; NO REFP1 write here (2026-10-22): REFP1 is ONE register for GRP1, but a
+    ; frame can draw TWO objects (band pairing, or the 1-of-2 rotation). Driving
+    ; it from the ACTIVE object made the mirrored miner flip sides every other
+    ; frame in any room that also had another object. The miner's mirror is
+    ; gone (a design-based mirror like the LAMP's type 13 needs 32 more art
+    ; bytes and the table ends 6 B below the $F8C0 pin), so every GRP1 object
+    ; is drawn unmirrored and REFP1 stays 0 — the bank1 HUD writes 0 for its
+    ; score, which is exactly what the cave wants.
     ; Set ObjTop for kernel GRP1 visibility check.
     ; S2.2: ObjTop stored RoomY-relative (ObjTopRel = ActiveObjectY-RoomY+1) so
     ; the kernel compares against running-Y (`tya`) instead of `lda Scanline`
@@ -2389,8 +2396,6 @@ SelectActiveObject:
     jsr StageSlot1              ; Phase 5: pair a second object in a higher band
     rts
 .SOBlank:
-    jsr SetObjReflection        ; REFP1/NUSIZ1 are reset EVERY frame (the bank1
-                                ;   HUD leaves both set for the score)
     lda #144                    ; Park the GRP1 window off-cave for EVERY
     sec                         ; RoomY. The kernel draws when running-Y
     sbc RoomY                   ; (Scanline-RoomY) - ObjTopRel < OBJ_WINDOW =
@@ -4148,20 +4153,6 @@ SetObjectXPos subroutine
     rts
 
     org $FF20
-
-; Set REFP1/NUSIZ1 each frame; bank1 HUD may have changed both registers.
-SetObjReflection:
-    lda #0
-    sta REFP1
-    lda ObjBase
-    cmp #OBJ_MINER
-    bne .SORdone
-    lda LevelMinerRoom
-    bpl .SORdone
-    lda #$08
-    sta REFP1
-.SORdone:
-    rts
 
 ; ------------------------------------------------------------------------------
 ; LaserInput — contact missile (redesign 2026-10-08, replaces the S3 sweep):
