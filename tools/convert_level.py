@@ -1028,8 +1028,11 @@ def _lamp_type(room: dict, col: float, y: float, models_by_id: dict | None) -> i
     def solid(cell_index: int) -> bool:
         return tiles[band * width + cell_index] != 0
 
-    left = solid(cell - 1) if cell > 0 else True   # screen edge counts as wall
-    right = solid(cell + 1) if cell < width - 1 else True
+    # A screen edge and the mirror seam are OPEN: the playfield reflects at
+    # cell width-1, so there is no solid cell beyond either -- a lamp there
+    # would hang on nothing.
+    left = solid(cell - 1) if cell > 0 else False
+    right = solid(cell + 1) if cell < width - 1 else False
     if right and not left:
         return LAMP_MIRROR                        # wall on the right: mirror
     return LAMP_ENTITY
