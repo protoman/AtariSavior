@@ -3153,21 +3153,22 @@ OvM1Block:
                                 ;   match B3StageBand's staging (its own twin)
     sta RectCount               ; scratch M1X (EndX = prologue min col is
                                 ; CollisionEndX — kept intact for HotOverlapFlag)
-    lda CollisionX              ; vl
-    cmp RectCount                ; vl vs M1X (same shape as the ball test)
-    bcc .OvM1T2
-    beq .OvM1T2
-    bcs .OvM1no                 ; vl > M1X → player fully left of strip
-.OvM1T2:
-    lda RectCount
-    cmp #13
-    bcc .OvM1Band               ; M1X < 13 (ℓ = 0): M1X-13 wraps — skip
-    sec                         ; the second test (test 1 already implies
-    sbc #13                     ; overlap for every valid vl)
-    cmp CollisionX
-    bcc .OvM1Band
-    beq .OvM1Band
-    bcs .OvM1no                 ; M1X-13 > vl → player fully right
+    ; --- symmetric overlap test (2026-10-23) -------------------------------
+    ; The block fires whenever the player's BOX spans the strip column,
+    ; whichever side he comes from:  vl <= M1X <= vl + PLAYER_WIDTH-1.
+    ; The old shape was a one-sided 13 px window (vl in [M1X-12, M1X]): a
+    ; right-wall door is approached from its left, so it blocked; a
+    ; left-wall door can only be approached from its RIGHT, which the window
+    ; excluded, so it never blocked (user report, screenshot:
+    ; RoomX=$42 band 1, strip col 5, staging all correct).
+    lda CollisionX              ; vl = the box's left edge
+    cmp RectCount               ; M1X = the strip column
+    beq .OvM1Band               ; the column is the box's left edge
+    bcs .OvM1no                 ; vl > M1X → the strip is left of the box
+    clc
+    adc #PLAYER_WIDTH - 1       ; vl + width - 1 = the box's right edge
+    cmp RectCount
+    bcc .OvM1no                 ; right edge < M1X → no overlap
 .OvM1Band:
     lda RectCount
     sec
