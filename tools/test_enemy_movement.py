@@ -212,8 +212,11 @@ def main() -> None:
     assert disp_src.lstrip().startswith("and #%01111111"), (
         "UEDispatch must mask the record's dir bit (b7) before its type compares")
     ceh = KERNEL.split("CheckEnemyHit:")[1].split(".CEHkill:")[0]
-    assert "and #%01111111" in ceh, (
-        "CheckEnemyHit must mask the dir bit before its lamp/key/raft compares")
+    # b3 too: the wall-mirrored LAMP is enemy TYPE 13 (user 2026-10-22), and
+    # this compare chain must land both lamp types on `cmp #LAMP`.
+    assert "and #%00000111" in ceh, (
+        "CheckEnemyHit must mask dir (b7) AND the lamp's mirror flag (b3) "
+        "before its lamp/key/raft compares")
     disp = KERNEL.split("UEDispatch:")[1].split("CallPad_RaftBody:")[0]
     for t in ("cmp #ENEMY_RAFT", "cmp #ENEMY_TENTACLE", "cmp #ENEMY_MOTH",
               "cmp #ENEMY_SNAKE"):

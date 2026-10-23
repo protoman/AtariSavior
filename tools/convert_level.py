@@ -68,6 +68,10 @@ HCRUNCH = 12
 RAFT = 6                    # RAFT **tile**: a static row-2 platform
 RAFT_ENTITY = 7             # RAFT **entity** (enemies[] type 7): the moving,
                             # rideable raft (plans/raft_moving_plan.md)
+LAMP_ENTITY = 5             # wall lamp: the drawn art (bracket on its LEFT)
+LAMP_MIRROR = 13            # wall lamp, MIRRORED design (bracket on its right).
+                            # b3-0 carries the type, so 8-15 are free; the kernel
+                            # maps both to `cmp #LAMP` with `and #%00000111`.
 MAGMA_FALL = 7
 FEATURE_TILES = (PHASE, HCRUNCH)
 FEATURE_NAME = {PHASE: "phase", HCRUNCH: "hcrunch"}
@@ -918,7 +922,7 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
     for index, pos in enumerate(positions):
         lines.append(f"  .byte ${pos:02x} ; room {index} "
                      f"({pos >> 4}, {pos & 0x0F})")
-    lines += _enemy_tables(prefix, rooms, extras_index)
+    lines += _enemy_tables(prefix, rooms, extras_index, models_by_id)
     output.write_text("\n".join(lines) + "\n")
 
     # C7 (2026-10-20): the async EXTRAS stream is its OWN file now, because it
@@ -998,8 +1002,42 @@ def _room_bottom_color(room: dict) -> int:
     return color if color != 0 else 1  # never emit 0 when band is on
 
 
+def _lamp_type(room: dict, col: float, y: float, models_by_id: dict | None) -> int:
+    """Which lamp DESIGN this placement uses (user 2026-10-22).
+
+    The art carries its wall bracket on the LEFT, i.e. the lamp faces right.
+    A lamp whose wall is on its right therefore needs the mirrored design,
+    which is enemy TYPE 13 (the kernel maps 5 and 13 to the same lamp).
+
+    The editor stores a lamp at the centre of its 8 px cell. Display columns
+    are 4 px and the stage is mirrored (cols 20-39 map back to 19..0), so the
+    logical cell is (col if col < 20 else 39 - col) // 2 — 10 cells per half.
+    A screen edge counts as a wall.
+    """
+    model = models_by_id.get(room.get("model_id")) if models_by_id else None
+    src = model or room
+    tiles = src.get("tiles") or []
+    width = int(src.get("width", WIDTH))
+    if len(tiles) != width * HEIGHT:
+        return LAMP_ENTITY              # no grid to read: keep the drawn art
+    band = max(0, min(int(y) // 4, HEIGHT - 1))   # 4 rows of 12 px per band
+    c = int(round(float(col)))
+    logical = c if c < 20 else 39 - c              # mirrored stage: 39-c
+    cell = min(logical // 2, width - 1)            # 2 display cols per cell
+
+    def solid(cell_index: int) -> bool:
+        return tiles[band * width + cell_index] != 0
+
+    left = solid(cell - 1) if cell > 0 else True   # screen edge counts as wall
+    right = solid(cell + 1) if cell < width - 1 else True
+    if right and not left:
+        return LAMP_MIRROR                        # wall on the right: mirror
+    return LAMP_ENTITY
+
+
 def _enemy_tables(prefix: str, rooms: list[dict],
-                  extras_index: dict[int, int] | None = None) -> list[str]:
+                  extras_index: dict[int, int] | None = None,
+                  models_by_id: dict | None = None) -> list[str]:
     """Emit the level's per-room enemy counts and its flat enemy table.
 
     Enemies are positioned in EDITOR stage coordinates: x is a full-stage
@@ -1025,20 +1063,20 @@ def _enemy_tables(prefix: str, rooms: list[dict],
     flat: list[tuple[int, int, int, int]] = []
     counts: list[int] = []
     extras_index = extras_index or {}
-    # Lamp entries are merged into the enemy table as type=5 (kernel LAMP).
-    LAMP_TYPE = 5
+    # Lamp entries are merged into the enemy table as type 5 (kernel LAMP) or
+    # 13 (the wall-mirrored design; see _lamp_type).
+    LAMP_TYPE = LAMP_ENTITY
     for index, room in enumerate(rooms):
         entities = [e for e in (room.get("enemies") or [])]
         for lamp in (room.get("lamps") or []):
             entities.append({
-                "type": LAMP_TYPE,
+                # 5 = drawn art, 13 = its mirror: chosen from the wall the lamp
+                # hangs on, so no dir bit is needed (a b7-set lamp used to slip
+                # past the raw `cmp #LAMP` guards in the laser bodies).
+                "type": _lamp_type(room, lamp.get("x", 0), lamp.get("y", 0),
+                                   models_by_id),
                 "x": lamp.get("x", 0),
                 "y": lamp.get("y", 0),
-                # dir 0 (2026-10-22): the record packs type|dir in one byte and
-                # several runtime compares (`cmp #LAMP` in the bomb blast and
-                # both laser hit bodies) read it RAW — a b7-set lamp read $85
-                # and slipped past its own guard (killable lamp, no dark-room
-                # trigger, phantom +50). A lamp has no direction.
                 "dir": 0,
             })
         entities = entities[:MAX_ENEMIES]
@@ -1046,7 +1084,7 @@ def _enemy_tables(prefix: str, rooms: list[dict],
         for enemy in entities:
             type_ = int(enemy.get("type", 0))
             x = float(enemy.get("x", 0))
-            if type_ == LAMP_TYPE:
+            if type_ in (LAMP_ENTITY, LAMP_MIRROR):
                 x -= 0.5  # editor stores lamp center; GRP1 data is left-aligned
             # The RAFT has no authored direction either: its dir bit lives in
             # EnemyRamD and only seeds the first patrol leg. Emitting b7 made
@@ -1080,7 +1118,7 @@ def _enemy_tables(prefix: str, rooms: list[dict],
         f"{prefix}_EnemyDataTable:",
     ]
     for type_, x, y, dir_ in flat:
-        assert 0 <= type_ <= 7, f"{prefix}: enemy type {type_} does not fit b3-0"
+        assert 0 <= type_ <= 13, f"{prefix}: enemy type {type_} does not fit b3-0"
         packed = type_ | (0x80 if dir_ < 0 else 0)
         lines.append(f"  .byte ${packed:02x}, {x}, {y}")
     return lines
