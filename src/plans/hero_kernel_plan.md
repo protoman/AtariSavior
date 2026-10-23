@@ -1328,3 +1328,55 @@ side-1 patch is unchanged (no stray M1 anywhere).
 2. The one-async-kind-per-room rule (user proposal): worth adopting. It makes
    "is this an M1 room or a ball room" a single staged kind instead of layering
    ball + M1 + door + hot, and gives the converter an invariant to enforce.
+
+## Door (LOCKED_DOOR / M1 left door): collision path never reached (2026-10-23)
+
+**State:** the async strip is fully working (visible, solid, blastable, vanishes
+after the blast). The DOOR is visible but does NOT block, with or without the
+key, and the key indicator does not exist in bank1.
+
+**Probe result:** `DoorLocked` was temporarily changed to `sec/rts`
+(unconditional block) and the user still walked through → the door's collision
+path is NOT reached at all. So the bug is upstream, in the overlay routing, not
+in the locked/unlocked decision.
+
+**What the code does (all verified by reading):**
+
+- `EnemyDeadMask` b4 = "M1 strip destroyed" — the drawing now honours it
+  (`1e21b4c`), the overlay already did.
+- bank3's VBL stages `CollisionEndX` = the M1 column from MetaA's `m1_col+1`
+  (+M1OffTab: -1 left / +79 right), kill-gated, then packs the overlay byte into
+  `CollisionEndY` ($8F): b3 = M1 present, b4-7 = ball column.
+- bank1's HUD entry copies $8F -> `LineCount` ($84) because the cave `.Row`
+  clobbers $84; the overscan `PlayerHitsMap` -> `OverlayTramp` gates on it.
+- `PHMOverlay` tests the BALL first, using the packed byte's high nibble:
+  `BallX = 79 + 8n`. **A room with NO ball has n = 0, so this invents a phantom
+  ball at x79** — if the player stands within 13 px of it the flow goes to
+  `.OvBand` -> `OvShutBand` (the shutter/right-door path) instead of
+  `.OvClear` -> `OvM1Block` (the left/M1 door path). That is the prime suspect
+  for "path never reached".
+- `OvM1Block` then: b4 gate -> MetaA b0 (right half) -> `m1_col+1` (0 = none) ->
+  `RectCount = 8*(col+1) + M1OffTab[X]` -> `vl` vs that column -> row scan
+  (`PF0Buf & ColMask`) -> `.OvM1block` (open cell = door) -> `DoorLocked`.
+
+**Next step: `tools/test_door.py` (real path, real room).** Technique from
+`sim_bomb_fuse.py`: run to the `jsr LoadLevel` in GameStart, force `Level` ($A3),
+then poke the room's async state (`RoomPF0Lo` = MetaA $78, `RoomPF0Hi` = MetaB,
+clear the door cell in the PF buffers) — bank3's VBL then packs everything the
+same way a real door room does — put the player on the door column and assert:
+1. no key -> `RoomX` does not advance past the door (blocked);
+2. `LevelStartRoom` b7 set -> the player passes and `EnemyDeadMask` b4 is set.
+This both reproduces the bug headlessly and guards the whole feature afterwards
+(the current `test_key_pickup` only calls `CEH_Key` directly, so it cannot see
+any of this).
+
+## HUD: key-held indicator (user request, queued)
+
+Yellow square on the **lives row, right side**, drawn only while `KeyHeld`
+(`LevelStartRoom` b7) is set. That row draws with P0 only, so P1 is free and
+colour is per-sprite (`COLUP1`), so no new glyph bank is needed.
+
+**Cost: 1 scanline** (P1's `SetObjectXPos_b1` call) and the HUD band is a hard
+48-line budget, so the first step is the budget: count the current lives row and
+gaps, find the pad line, then place the square at X ~132. Do NOT code it before
+the 48-line sum is written down (project rule).
