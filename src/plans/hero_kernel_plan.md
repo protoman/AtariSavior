@@ -1036,3 +1036,25 @@ frame. The converter already warns about the clash.
 cycle margin), then the half-band split, then the pairing rule. Gate: frame
 lines stay 265 in every room (the wall model), and the affected rooms show both
 objects on every frame.
+
+## F4 space backlog (2026-10-22, user-requested) — what the 12K buys
+
+Recorded here (NOT in `src/TODO.txt`, which is the user's private file — the
+standing rule forbids me from writing it; say the word if you want a separate
+`todo.md` and I will create one).
+
+1. **Kill folds in hot paths.** A routine and its data in the same bank removes
+   the `jsr FoldIndirect` cost (~5-8c) and the twin discipline. The level-data
+   walkers are the candidates (bank2/bank3 halves already read in-bank; the
+   remaining folds are in bank0's hot paths).
+2. **Per-scanline PF tables** (HERO's own trick): bake each band's PF/colour
+   bytes into a table and load them directly — pure ROM-for-cycles, now
+   affordable. Kills the stripe/hot test in `.Row` and the row math.
+3. **Unrolling / duplicated kernels per band:** more ROM = fewer loop/branch
+   cycles; duplicated band code with constants baked in is the classic 2600
+   trade, and banks 4-6 are empty.
+4. **Art + level data:** KEY redesign (still the old 16-row stub), miner
+   mirror (32 B for the design block — now affordable), more rooms/levels.
+
+Bank map today (F4): bank0 kernel, bank1 HUD/title/sound, bank2 room half,
+bank3 shape half, **bank4/5/6 free (12K)**, bank7 boot + vectors.
