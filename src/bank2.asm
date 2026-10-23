@@ -153,12 +153,12 @@ OBJ_KEY = 0                      ; GRP1 design offsets (per-type heights,
 OBJ_MOTH = 16                    ;   hand-copies of kernel.asm — the equ-sync
 OBJ_SPIDER = 30                  ;   guard checks hex AND decimal values)
 OBJ_LAMP = 45
-OBJ_TENTACLE = 61
-OBJ_BAT = 75
-OBJ_SNAKE = 85
-OBJ_MINER = 91
-OBJ_BOMB = 107
-OBJ_RAFT = 123
+OBJ_TENTACLE = 55
+OBJ_BAT = 69
+OBJ_SNAKE = 79
+OBJ_MINER = 85
+OBJ_BOMB = 101
+OBJ_RAFT = 109
 
 ; C2 (2026-10-20): the level-data block labels (M<id>*, L<n>R<r>*) live in
 ; THIS bank now ($F307 slot include below), so the room tables resolve them
@@ -1251,7 +1251,7 @@ PinSlot0:
 ObjHeightTab:
     .byte 15,         10
     .byte 6,          OBJ_WINDOW
-    .byte 14,         OBJ_WINDOW
+    .byte 14,         10
     .byte OBJ_WINDOW, 2
 
 ObjSpriteOffTable:

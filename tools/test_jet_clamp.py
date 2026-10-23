@@ -35,7 +35,13 @@ assert MAX_FALL == 0x0180, f"MAX_FALL is ${MAX_FALL:04x}"
 assert JET_MAX > GRAVITY, "the jet must out-thrust gravity"
 
 NEED = {"RoomY", "vyLo", "vyHi", "JetPower", "Temp", "Hover", "PlayerYSub",
-        "BombPacked", "PF0Buf", "UpdateP0Vertical", "CheckP0Left"}
+        "BombPacked", "PF0Buf", "UpdateP0Vertical", "CheckP0Left",
+        # The vertical block calls PlayerHitsMap, which walks the PF by COLUMN:
+        # left unpoked, RoomX = 0 makes the visible-left column wrap to $FC and
+        # `and ColMask,X` reads past the table -- the result then depended on
+        # whatever bytes followed it (an art re-layout flipped this test). Pin
+        # the horizontal state too so the walk is a real, in-range walk.
+        "RoomX", "PlayerDir"}
 L0 = parse_labels(FROZEN / "bank0.lst", NEED)
 missing = NEED - L0.keys()
 if missing:
@@ -57,6 +63,8 @@ def vert(vy, jp, up=True, room_y=20, temp=None):
     for i in range(9):                       # no walls anywhere
         r[(base + i) & 0x7F] = 0
     r[Z["RoomY"]] = room_y
+    r[Z["RoomX"]] = 20                       # mid-room: the PF walk stays in range
+    r[Z["PlayerDir"]] = 0                    # facing right (RoomX-4 shift)
     r[Z["vyLo"]] = vy & 0xFF
     r[Z["vyHi"]] = (vy >> 8) & 0xFF
     r[Z["JetPower"]] = jp
