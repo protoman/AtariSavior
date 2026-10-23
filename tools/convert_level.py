@@ -498,11 +498,15 @@ def resolve_asym_patches(model: dict, room: dict,
     m1_x = 0
     if left_cols:
         m1_col = next(iter(left_cols))
-        # A right-half door's M1 bar sits at x = 87+8*col, but its wall-hide
-        # depends on the reflected PF as well: one of {col, WIDTH-1-col} can
-        # be open while the other is wall, and ENAM1 latches the WHOLE cave —
-        # so require BOTH columns to satisfy the envelope for a right door.
-        cols = ({m1_col, WIDTH - 1 - m1_col} if m1_door_right else {m1_col})
+        # A right-half door's M1 bar sits at x = 87 + 8*col, i.e. DISPLAY
+        # column WIDTH + col, whose playfield cell is the MIRROR of left column
+        # WIDTH-1-col. That mirrored cell is the only one the strip can paint
+        # (MetaA b0 selects the +79 offset, deterministically), so the
+        # envelope test belongs on it alone. Checking {col, WIDTH-1-col} (the
+        # pre-2026-10-23 rule) rejected legal placements: a door at col 6 on a
+        # 10-cell half paints display col 16 = left col 3, yet the guard also
+        # demanded left col 6 be wall-or-patched (user report).
+        cols = ({WIDTH - 1 - m1_col} if m1_door_right else {m1_col})
         for b in range(HEIGHT):
             for cc in sorted(cols):
                 cell = left_rows[b][cc]
@@ -782,11 +786,17 @@ def room_extras(room: dict, model: dict, rows: list[str],
         row, col = patch[0], patch[1]
         side = patch[3] if len(patch) == 4 else 0
         patch_bytes.append((row << 6) | (side << 4) | col)
-        if side == 0:
-            derived_mask |= 1 << row   # ball band gate (MetaA b0-2)
-    if (meta_a & 0x07) != derived_mask:
+        # The ball band gate is for BALL strips only. A side-0 LOCKED_DOOR is
+        # drawn by M1 (m1_right) and paints no ball, so it must not contribute
+        # to the mask (2026-10-23: a right-side door tripped this check).
+        if side == 0 and patch[2] != LOCKED_DOOR:
+            derived_mask |= 1 << row   # ball band gate (MetaA b1-2 for doors)
+    # MetaA bit 0 is the ball gate for a plain strip, but m1_right for a door
+    # ("door band mask is $02 -> b0 free"), so mask it out when m1_right is set.
+    meta_mask = (meta_a & 0x06) if m1_right else (meta_a & 0x07)
+    if meta_mask != derived_mask:
         raise ValueError(
-            f"{who}: MetaA band mask ${meta_a & 0x07:02x} != the side-0 patch "
+            f"{who}: MetaA band mask ${meta_mask:02x} != the side-0 patch "
             f"rows ${derived_mask:02x} — the extras patch list and the packed "
             "meta drifted")
     feats = room_feature_cells(room)
