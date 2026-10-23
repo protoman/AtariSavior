@@ -2530,6 +2530,31 @@ ObjHeightTab:                                              ; by ENEMY type
 ; not from here. That is the same FoldIndirect discipline every other tramp
 ; uses — the twin cannot be skipped or shortened.
 ; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
+; ------------------------------------------------------------------------------
+; M1ColFromMeta — A = the async M1 sprite column (M1X) for this room, or 0 when
+; the room carries no side-1 patch.
+; MetaA ($99, RoomPF0Lo here) = ((m1_col+1) << 4) | band_mask | b3, written
+; convert_room.meta_bytes; M1X = 8*col + 7 is that field's inverse. Deriving it
+; here (instead of staging at room load) keeps bank3's pinned code untouched,
+; and it feeds the hot-overlap box test too, which reads M1X.
+; Flags: Z is left SET when A = 0, so the caller can branch right after.
+; ------------------------------------------------------------------------------
+M1ColFromMeta:
+    lda RoomPF0Lo               ; bank3 stages MetaA over this dead pointer byte
+
+    lsr
+    lsr
+    lsr
+    lsr                         ; A = m1_col+1 (0 = no side-1 strip)
+    beq .M1Cdone
+    asl
+    asl
+    asl                         ; 8*(col+1)
+    sec
+    sbc #1                      ; 8*col+7 = the M1 column
+.M1Cdone:
+    rts
+
     .ds $F830 - *, 0            ; ObjSprites: per-type heights, 121 B now
                                  ;   KEY 16, MOTH 14, SPIDER 15, LAMP 10,
                                  ;   TENT 14, BAT 10, SNAKE 6, MINER 16,
@@ -2895,8 +2920,13 @@ PositionBallM1:
     ldx #4                      ; selector 4: HMP0+4=HMBL, RESP0+4=RESPBL
     jsr SetObjectXPos
 .M1:
-    lda M1X
+    ; 2026-10-23: M1X had NO writer, so ENAM1 was never latched and every
+    ; side-1 patch (async wall strip AND side-1 LOCKED_DOOR) drew nothing while
+    ; staying solid and blastable. Derive it from the room's MetaA m1_col
+    ; nibble (see M1ColFromMeta) and keep it in M1X for the hot-overlap box.
+    jsr M1ColFromMeta           ; A = M1X (0 = this room has no side-1 strip)
     beq .Done
+    sta M1X
     clc
     adc #1                      ; Stella renders 8-wide M1 one clock left of
                                 ;   the [A-7,A] contract (pixel-measured 2026-10-06,
