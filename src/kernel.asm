@@ -1019,15 +1019,25 @@ CaveKernelRow:
     cmp #$FF
     bne .Row
     jmp CallPad_TitleBand
-.GrpSkip:                       ; A0 >= 11 (incl $ff): no color/beam/fetch on
-    iny                         ;   this line — advance running Y, then blank
-    jmp .GrpZero                ;   GRP0 for the next line. Relocated here
-                                ;   (was inline after sta ENAM0) so the color
-                                ;   path drops its dead cpy/bcs (4c — worst
-                                ;   path 73c work/76 start-to-start = stall
-                                ;   zone -> 69c/72, single line). bcs .GrpSkip
-                                ;   stays same-page 3c (F136 -> F1xx, rel8
-                                ;   fits; verify_build branch guard).
+.GrpSkip:                       ; A0 >= PLAYER_SPRITE_H-1 (incl $ff): no
+    iny                         ;   color/beam/fetch on this line — advance
+                                ;   running Y, then blank GRP0 for the next
+                                ;   line. Relocated here (was inline after sta
+                                ;   ENAM0) so the color path drops its dead
+                                ;   cpy/bcs (4c — worst path 73c work/76
+                                ;   start-to-start = stall zone -> 69c/72,
+                                ;   single line). bcs .GrpSkip stays same-page
+                                ;   3c (verify_build branch guard).
+    bne .GrpZero                ; A0 != $ff: an ordinary skipped line, blank.
+    ; A0 = $ff is the scanline JUST ABOVE the sprite, and with VDELP0 the
+    ; pattern written there is the one DISPLAYED on the sprite's first line --
+    ; so art row 0 is fetched HERE (Y wrapped to 0). Blanking this line ate
+    ; the top row of the art (user report 2026-10-22: the helmet's narrow
+    ; first row never appeared, so the sprite looked one row short and sat
+    ; one pixel high).
+    lda (Grp0Ptr),Y             ; 5c — art row 0
+    sta GRP0
+    jmp .Grp1
 .WaterRow:
     ; PF0/1/2 + COLUPF persist from row 2's setup; COLUBK = the VBL .BgStore
     ; value (Phase 3: .Row no longer re-stores it per band) — the strip
@@ -1048,8 +1058,8 @@ CaveKernelRow:
     sta LineCount
     sta WSYNC
     jmp .Line
-.GrpZero:                       ; dead space: entered only from .GrpSkip
-                                ;   (bcs A0>=11 -> iny -> jmp here)
+.GrpZero:                       ; entered from .GrpSkip on every skipped
+                                ;   line EXCEPT the one above the sprite
     lda #0                      ; (nothing falls through `jmp .Row`)
     sta GRP0
     jmp .Grp1
