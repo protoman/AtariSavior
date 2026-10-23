@@ -29,7 +29,7 @@ from test_cell_map import RTS_SENTINEL, parse_labels  # noqa: E402
 SRC = ROOT / "src"
 FROZEN = SRC / "tests" / "frozen"
 
-for _i in range(4):
+for _i in range(8):
     setattr(_CM, f"BANK{_i}", (FROZEN / f"bank{_i}.bin").read_bytes())
 Mem = _CM.Mem
 

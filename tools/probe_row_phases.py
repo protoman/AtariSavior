@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parent.parent / "src"
-BANKS = [open(SRC / f"bank{i}.bin", "rb").read() for i in range(4)]
+BANKS = [open(SRC / f"bank{i}.bin", "rb").read() for i in range(8)]
 
 LABELS = {}
 for _l in (SRC / "bank0.lst").read_text(errors="replace").splitlines():
@@ -55,7 +55,7 @@ class Mem:
     def __init__(self):
         self.ram = bytearray(128)
         self.tia = bytearray(0x40)
-        self.bank = 3                 # F6 power-up
+        self.bank = 7                 # F4 power-up (LAST bank)
         self.swcha = 0xFF
         self.swchb = 0xFF
         self.inpt4 = 0x00             # fire held (laser path active)
@@ -88,8 +88,8 @@ class Mem:
     def __setitem__(self, a, v):
         a &= 0xFFFF
         v &= 0xFF
-        if 0x1FF6 <= a <= 0x1FF9:
-            self.bank = a - 0x1FF6
+        if 0x1FF4 <= a <= 0x1FFB:
+            self.bank = a - 0x1FF4
             return
         if a >= 0xF000:
             return

@@ -1,0 +1,15 @@
+    processor 6502
+    seg code
+    org $F000
+; ==============================================================================
+; Bank5 — free 4K window in the F4 (32K, 8 banks) layout.
+; ==============================================================================
+; Nothing lives here yet. The file still assembles to a full 4K image: the tail
+; is filled to the vector area, and the vectors are emitted (unused, but every
+; bank image must be 4096 B and DASM only writes what is emitted).
+; Hotspot for this bank: $1FF9 (F4: bank = addr - $1FF4).
+; ==============================================================================
+    .ds $FFFA - *, 0
+    .word $F000
+    .word $F000
+    .word $F000

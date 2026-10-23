@@ -66,7 +66,7 @@ class Mem:
         self.banks = banks
         self.ram = bytearray(128)
         self.tia = bytearray(0x40)
-        self.bank = 3
+        self.bank = 7
         self.swcha = 0xFF              # neutral stick
         self.swchb = 0xFF
         self.inpt4 = 0xFF              # fire released
@@ -94,7 +94,7 @@ class Mem:
             return min(0xFF, max(1, (dl - self.wall + 63) // 64))
         if a == 0x000C:
             return self.inpt4
-        if 0x1FF6 <= a <= 0x1FF9:
+        if 0x1FF4 <= a <= 0x1FFB:
             return 0
         if a <= 0x003F or 0x0100 <= a <= 0x017F:
             return self.tia[a & 0x3F]
@@ -103,8 +103,8 @@ class Mem:
     def __setitem__(self, a, v):
         a &= 0xFFFF
         v &= 0xFF
-        if 0x1FF6 <= a <= 0x1FF9:
-            self.bank = a - 0x1FF6
+        if 0x1FF4 <= a <= 0x1FFB:
+            self.bank = a - 0x1FF4
             return
         if a >= 0xF000:
             return
@@ -126,8 +126,8 @@ class Mem:
 def run(rom: Path) -> dict:
     import py65.devices.mpu6502 as m
     blob = rom.read_bytes()
-    assert len(blob) == 16384, f"{rom} is {len(blob)} bytes, want 16K"
-    banks = [blob[4096 * i:4096 * (i + 1)] for i in range(4)]
+    assert len(blob) in (16384, 32768), f"{rom} is {len(blob)} bytes, want 32K"
+    banks = [blob[4096 * i:4096 * (i + 1)] for i in range(len(blob) // 4096)]
     mem = Mem(banks)
     mpu = m.MPU(memory=mem)
     prev = 0

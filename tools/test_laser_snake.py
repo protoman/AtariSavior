@@ -37,7 +37,7 @@ FROZEN = SRC / "tests" / "frozen"
 
 # Frozen ROM image + labels (AGENTS test-data rule). Mutate the image copy so
 # the staged enemy record can be authored in place.
-for _i in range(4):
+for _i in range(8):
     setattr(_CM, f"BANK{_i}", bytearray((FROZEN / f"bank{_i}.bin").read_bytes()))
 Mem = _CM.Mem
 BANKS = {i: getattr(_CM, f"BANK{i}") for i in range(4)}

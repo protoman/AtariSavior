@@ -24,7 +24,7 @@ ASSERTIONS (exit 1 on any failure):
 
 TIA/RIOT stubs: INTIM always reads 0 (all `lda INTIM` waits exit at once),
 WSYNC/TIM64T writes ignored, SWCHA scripted, INPT4 = released ($40).
-F6 banking: writes to $1FF6-$1FF9 select the 4K bank at $F000-$FFFF.
+F6 banking: writes to $1FF4-$1FF7 select the 4K bank at $F000-$FFFF.
 
 NOTE: PC labels in the diagnostic output come from bank0.lst — after moving
 bank0 code, re-check addresses there (assertions do NOT depend on PCs).
@@ -35,13 +35,13 @@ import sys
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parent
-BANKS = [open(SRC / f'bank{i}.bin', 'rb').read() for i in range(4)]
+BANKS = [open(SRC / f'bank{i}.bin', 'rb').read() for i in range(8)]
 
 class Mem:
     def __init__(self):
         self.ram = bytearray(128)
         self.tia = bytearray(0x40)
-        self.bank = 3                     # F6 power-up bank
+        self.bank = 7                     # F6 power-up bank
         self.swcha = 0xFF                 # nothing pressed
         self.swchb = 0xFF
         self.inpt4 = 0x40                 # fire released
@@ -57,14 +57,14 @@ class Mem:
         if a == 0x0282: return self.swchb
         if a == 0x0284: return 0          # INTIM: expired -> waits pass
         if a == 0x000C: return self.inpt4 # INPT4
-        if 0x1FF6 <= a <= 0x1FF9: return 0
+        if 0x1FF4 <= a <= 0x1FF7: return 0
         if a <= 0x003F or 0x0100 <= a <= 0x017F:
             return self.tia[a & 0x3F]
         return 0
     def __setitem__(self, a, v):
         a &= 0xFFFF; v &= 0xFF
-        if 0x1FF6 <= a <= 0x1FF9:
-            self.bank = a - 0x1FF6        # F6 hotspot
+        if 0x1FF4 <= a <= 0x1FF7:
+            self.bank = a - 0x1FF4        # F6 hotspot
             return
         if a >= 0xF000:
             return                        # no ROM writes expected

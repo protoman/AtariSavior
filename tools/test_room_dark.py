@@ -77,7 +77,7 @@ class Mem:
         a &= 0xFFFF
         if 0x80 <= a <= 0xFF or 0x180 <= a <= 0x1FF:
             self.ram[a & 0x7F] = v & 0xFF
-        # everything else (incl. $1FF6 bank hotspots) ignored
+        # everything else (incl. $1FF4 bank hotspots) ignored
 
 
 from py65.devices.mpu6502 import MPU  # noqa: E402
@@ -94,7 +94,7 @@ def call(entry: int, room_no: int, enemy_ram_d: int, laser_state: int):
     mpu.sp = 0xFF                      # ReturnPad's rts never runs (we stop first)
     for _ in range(64):
         mpu.step()
-        if mpu.pc == ADDR["ReturnPad"]:   # sta $1FF6/rts not yet executed
+        if mpu.pc == ADDR["ReturnPad"]:   # sta $1FF4/rts not yet executed
             return (mpu.a, mpu.p,
                     mem.ram[ENEMY_RAM_D - 0x80], mem.ram[LASER_STATE - 0x80])
     sys.exit(f"routine ${entry:04X} never returned (pc=${mpu.pc:04X})")
@@ -145,7 +145,7 @@ def run_bcf(room_no, d, ls, bomb=0):
 def check_select_object_dark() -> None:
     """A1: SelectActiveObject (bank0) must color a dark-room enemy grey through
     the REAL cross-bank dark path — bank0 body -> CallPad_IsRoomDark ($FC0E
-    `sta $1FF7`) -> bank1 IsRoomDark -> ReturnPad -> bank0.
+    `sta $1FF5`) -> bank1 IsRoomDark -> ReturnPad -> bank0.
 
     C1 (2026-10-20) had moved the body to bank2, where the split was
     re-implemented inline; A1 moved it back, so this drives the bank0 routine

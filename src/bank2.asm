@@ -168,11 +168,11 @@ OBJ_LAMP_R = 111                 ; type 13 = the wall-mirrored lamp
 
     ; --- 5-byte stub ---
     lda #0
-    sta $1FF6                       ; select bank0
+    sta $1FF4                       ; select bank0
     jmp $F005                       ; GameStart in bank0
 
     ; --- #22 EnterRoomB2 ($F010) -----------------------------------------------
-    ; Body of bank0's EnterRoom (tramp at $FBD0: sta $1FF8 / jmp $F010).
+    ; Body of bank0's EnterRoom (tramp at $FBD0: sta $1FF6 / jmp $F010).
     ; Reached with A = room index; returns via jmp ReturnPad (X = EnemyCount).
     ; Level data lives in THIS bank → direct (FetchPtr),Y reads, NO folds
     ; (same transcription as MothRoutine below). Saves ~1660c per room change.
@@ -360,12 +360,12 @@ EBLER_Done:
     and #$3F                        ; extras ordinal (0 = none)
     sta LevelConnSpare              ; bank3 ExtrasLoad reads this
 .EBnoExtras:
-    jmp ERBlocksPad                 ; $F450 `sta $1FF9` → bank3 $F453
+    jmp ERBlocksPad                 ; $F450 `sta $1FF7` → bank3 $F453
 
     ; --- E4 moth body (bank2 free space $F008-$F9D8) -------------------------
-    ; Entered from bank0 via the $FEF0 entry tramp (sta $1FF8 lands on the
+    ; Entered from bank0 via the $FEF0 entry tramp (sta $1FF6 lands on the
     ; jmp below at $FEF3). Exits via `jmp MothExitPad` ($FC49): bank2 runs
-    ; sta $1FF6, bank0 serves jmp UE_Next. Rules:
+    ; sta $1FF4, bank0 serves jmp UE_Next. Rules:
     ;   - NEVER jsr FoldIndirect or any bank0 routine (a fold from inside
     ;     bank2 would switch away mid-routine = frozen player).
     ;   - Enemy records ARE here (org $F9D9) — read directly, no fold needed.
@@ -384,7 +384,7 @@ MothRoutine:
     ; (mid-bank2 fold = frozen player). Slot is saved to EnemyIndex because
     ; the col swap and walk both use X (E3 lesson). Every exit re-stages
     ; FetchPtr (the walk overwrites it with window bytes) then
-    ; jmp MothExitPad (sta $1FF6 / jmp UE_Next in bank0).
+    ; jmp MothExitPad (sta $1FF4 / jmp UE_Next in bank0).
     lda EnemyRamP
     and #1
     beq .MothRun              ; branch-over-jmp (tail labels exceed ±127)
@@ -837,7 +837,7 @@ OvTail:
     include "generated/spill_F307.asm"
     .ds $F450 - *, 0            ; C7: the only cross-bank call in the room load
 ERBlocksPad:
-    sta $1FF9                   ; bank3 B3RoomBlocks MUST start at $F453 (the
+    sta $1FF7                   ; bank3 B3RoomBlocks MUST start at $F453 (the
                                 ;   fetch at +3 comes from bank3) — guard:
                                 ;   verify_build.check_bank3_entry
     .ds $F453 - *, 0            ; data slot START (never fetched in bank2)
@@ -909,8 +909,8 @@ FooterPtr6 = $EA
 ; ------------------------------------------------------------------------------
 ; ==============================================================================
 ; LoadLevelB2 — MOVED from bank0 (C2, 2026-10-20; was $F535-$F5B1 = 124 B).
-; Entry: bank0 `jsr LoadLevel` ($FC20 `sta $1FF8`) -> the fetch at $FC23 is
-; THIS bank's `jmp LoadLevelB2`. Tail: `jmp LF_TailSwap` ($FC26 = `sta $1FF6`
+; Entry: bank0 `jsr LoadLevel` ($FC20 `sta $1FF6`) -> the fetch at $FC23 is
+; THIS bank's `jmp LoadLevelB2`. Tail: `jmp LF_TailSwap` ($FC26 = `sta $1FF4`
 ; here) -> bank0's `jmp LF_B0Tail`, which runs EnterRoom + the level-start
 ; placement + `jmp DropArm` in bank0. 0 extra jsr levels, 0 pushes: the stack
 ; depth of boot/RESET/title/tally (sim_bomb_fuse, test_tally) is unchanged.
@@ -1041,9 +1041,9 @@ ColMask:
 ; StageSlot1 — the Phase 5 second-GRP1-slot stager, MOVED here from bank0's
 ; $F744 fill (2026-10-22: that fill is the Phase 4/6 workspace and this body
 ; was its largest tenant). Behaviour is IDENTICAL; only the call shape changed:
-;   bank0 `jsr StageSlot1` -> pad $FBE5 `sta $1FF8` -> the fetch at $FBE8 comes
+;   bank0 `jsr StageSlot1` -> pad $FBE5 `sta $1FF6` -> the fetch at $FBE8 comes
 ;   from THIS bank = `jmp StageSlot1B2`; every exit tail-jmps $FBF8 ReturnPad
-;   (`sta $1FF6` + bank0's `rts`), so the caller's frame is popped exactly
+;   (`sta $1FF4` + bank0's `rts`), so the caller's frame is popped exactly
 ;   once — 0 extra pushes, stack depth unchanged.
 ; The enemy record is a DIRECT (FetchPtr),Y read here (the level data lives in
 ; this bank): the two FoldIndirect hops and their bank switches are gone.
@@ -1266,22 +1266,22 @@ ObjSpriteOffTable:
     .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
     .byte OBJ_RAFT              ; 7 (RAFT — own 2-row white plank)
 
-; ReturnPad ($FBF8) — bank2's live half is the `sta $1FF6` only: every body
+; ReturnPad ($FBF8) — bank2's live half is the `sta $1FF4` only: every body
 ; here tail-jmps `$FBF8`, the sta switches to bank0, and the `rts` at $FBFB is
-; fetched from bank0 (so bank0's copy must keep `sta $1FF6 / rts`).
+; fetched from bank0 (so bank0's copy must keep `sta $1FF4 / rts`).
 ; ------------------------------------------------------------------------------
     .ds $FBD0 - *, 0            ; #22 EnterRoom tramp twin — byte-identical
                                  ;   with kernel.asm at $FBD0 (pin moved from
                                  ;   $FB84 2026-10-13, then $FBC0 2026-10-14:
                                  ;   model2 asym data +49B pushed the window —
                                  ;   growth past this pin fails the build)
-    sta $1FF8
+    sta $1FF6
     jmp $F010                    ; EnterRoomB2 — this half fetched after bank0's sta
     .ds $FBD6 - *, 0            ; TitleSequenceFold twin (kernel.asm same
                                  ;   address — jmp operand fetched here after
-                                 ;   bank0's sta $1FF8, so bytes must match)
+                                 ;   bank0's sta $1FF6, so bytes must match)
 ; ------------------------------------------------------------------------------
-; C3 (2026-10-20): room-exit pad halves. bank0's four `sta $1FF8` pads sit at
+; C3 (2026-10-20): room-exit pad halves. bank0's four `sta $1FF6` pads sit at
 ; $FBD9/$FBDC/$FBDF/$FBE2, so each post-switch fetch lands HERE at A+3:
 ;   $FBDC -> jmp ExitDownB2   $FBDF -> jmp ExitUpB2
 ;   $FBE2 -> jmp ExitLeftB2   $FBE5 -> jmp ExitRightB2
@@ -1290,13 +1290,13 @@ ObjSpriteOffTable:
 ; from THIS listing; check_exit_handlers pins the bodies.
 ; ------------------------------------------------------------------------------
     .ds $FBD9 - *, 0
-    .byte 0,0,0                 ; $FBD9-$FBDB — bank0 `sta $1FF8` is fetched there
+    .byte 0,0,0                 ; $FBD9-$FBDB — bank0 `sta $1FF6` is fetched there
     jmp ExitDownB2              ; $FBDC
     jmp ExitUpB2                ; $FBDF
     jmp ExitLeftB2              ; $FBE2
     jmp ExitRightB2             ; $FBE5
 ; ------------------------------------------------------------------------------
-; StageSlot1 pad half (2026-10-22): bank0's `sta $1FF8` sits at $FBE5, so the
+; StageSlot1 pad half (2026-10-22): bank0's `sta $1FF6` sits at $FBE5, so the
 ; post-switch fetch lands at $FBE8 = `jmp StageSlot1B2` (the body above).
 ; bank0's $FBE5-$FBE7 stay dead there (same split contract as the exit pads).
 ; ------------------------------------------------------------------------------
@@ -1304,7 +1304,7 @@ ObjSpriteOffTable:
     jmp StageSlot1B2            ; $FBE8
 ; ------------------------------------------------------------------------------
 ; CallPad_BuildColupF's bank2 image RETIRED 2026-10-20 (chunk 4): the corridor
-; pads are split now, so bank0's `sta $1FF9` at $FC17 pairs with BANK3's `jmp`
+; pads are split now, so bank0's `sta $1FF7` at $FC17 pairs with BANK3's `jmp`
 ; at $FC1A. Nothing in bank2 ever called this pad (verify_build.check_callpads
 ; rejects `jsr/jmp CallPad_*` outside kernel.asm), and after the split the
 ; twin here would be a broken image (its +3 lands on fill), so it is gone
@@ -1312,31 +1312,31 @@ ObjSpriteOffTable:
 ; ------------------------------------------------------------------------------
     .ds $FBF8 - *, 0
 ReturnPad:
-    sta $1FF6                   ; the `rts` at $FBFB is served by bank0
+    sta $1FF4                   ; the `rts` at $FBFB is served by bank0
     rts                         ; (dead byte here: kept, zero cost to change)
 
 ; ------------------------------------------------------------------------------
 ; C2 (2026-10-20): LoadLevel return halves (see LoadLevelB2 + kernel.asm $FC20).
-;   $FC23 `jmp LoadLevelB2`  — fetched bank2-side after bank0's `sta $1FF8`
+;   $FC23 `jmp LoadLevelB2`  — fetched bank2-side after bank0's `sta $1FF6`
 ;                              at $FC20 (entry; bank0's $FC23-$FC25 are dead)
-;   $FC26 `sta $1FF6`        — the body tail `jmp LF_TailSwap` lands here;
+;   $FC26 `sta $1FF4`        — the body tail `jmp LF_TailSwap` lands here;
 ;                              the fetch at $FC29 comes from bank0, whose
 ;                              `jmp LF_B0Tail` is the live half
 ; Guard: verify_build.check_loadlevel_tramp asserts all 12 bytes + operands.
 ; ------------------------------------------------------------------------------
     .ds $FC1A - *, 0            ; C7: CallPad_BuildColupF's +3 image is BANK3's
-                                ;   now (bank0 runs `sta $1FF9` at $FC17); the
+                                ;   now (bank0 runs `sta $1FF7` at $FC17); the
                                 ;   3 bytes here stay fill.
     .ds $FC23 - *, 0
     jmp LoadLevelB2             ; $FC23
 LF_TailSwap:
-    sta $1FF6                   ; $FC26 — bank0 serves the `jmp LF_B0Tail`
+    sta $1FF4                   ; $FC26 — bank0 serves the `jmp LF_B0Tail`
     .byte 0,0,0                 ; $FC29-$FC2B dead (bank0's jmp fetched there)
 
 ; ------------------------------------------------------------------------------
 ; E4 moth exit tramp ($FC49-$FC4B) — byte-identical slice with kernel.asm's
 ; MothExitPad (guard: verify_build check_moth_tramp). bank2 executes
-; `sta $1FF6`; the fetch at $FC4C comes from bank0 = `jmp UE_Next`
+; `sta $1FF4`; the fetch at $FC4C comes from bank0 = `jmp UE_Next`
 ; (bank0's own label). This file's bytes from $FC4C never run.
 ; Pinned at $FC49 (NOT $FFF2): $FFF6-$FFF9 are F6 hotspot mirrors — a peek
 ; of those addresses calls checkSwitchBank in Stella and flips banks
@@ -1344,7 +1344,7 @@ LF_TailSwap:
 ; ------------------------------------------------------------------------------
     .ds $FC49 - *, 0
 MothExitPad:
-    sta $1FF6
+    sta $1FF4
 
 ; ==============================================================================
 ; Room-exit handlers — MOVED from bank0 (C3, 2026-10-20; were $F4DB-$F535 = 90 B).
@@ -1363,7 +1363,7 @@ MothExitPad:
 ; level at 15 rooms; this lifts it to 225 grid cells (20 rooms/level with room
 ; to spare) at 1 B/room instead of 2.
 ;
-; Entry: bank0's `jsr ExitRoomXxx` pad ($FBD9-$FBE4, `sta $1FF8`) -> the `jmp`
+; Entry: bank0's `jsr ExitRoomXxx` pad ($FBD9-$FBE4, `sta $1FF6`) -> the `jmp`
 ; halves at $FBDC-$FBE5 above. Every exit path ends in a `jmp`:
 ;   * no exit      -> ReturnPad (bank0 `rts` pops the caller's jsr frame)
 ;   * room changed -> `jmp EnterRoomB2`, whose own `jmp ReturnPad` does the same
@@ -1459,7 +1459,7 @@ ExitNoneB2:
 ; BombEnemyBlast body — kill first live enemy |dcol| < 2 (any Y). Type check:
 ; LAMP (5) is NOT killable — the old inline loop set the dead bit on lamps too
 ; (lost lamp, no dark-room trigger, +50 score for nothing — bugs.md 3).
-; Entered from bank0 stub (sta $1FF8 / jmp <here> — operand in kernel.asm,
+; Entered from bank0 stub (sta $1FF6 / jmp <here> — operand in kernel.asm,
 ; twin at $FDD8 below), 0 pushes; every exit `jmp $FBF8` ReturnPad.
 ; Out: A = 1 kill (caller awards +50 — pads cannot nest), 0 none (Z set).
 ; Clobbers A/X/Y. Level enemy records live in THIS bank, so the type read
@@ -1519,7 +1519,7 @@ BombEnemyBlastBody:
 
 ; ------------------------------------------------------------------------------
 ; HOF entry tramp ($FE80-$FE85) — byte-identical with kernel.asm's copy
-; (guard: verify_build check_moth_tramp). bank0 executes `sta $1FF8` at
+; (guard: verify_build check_moth_tramp). bank0 executes `sta $1FF6` at
 ; $FE80-$FE82; the fetch at $FE83 comes from THIS bank = `jmp $FCF0`. Neither
 ; bank runs its other half: bank0 is switched away at $FE82, bank2 never
 ; enters at $FE80. Pinned $FE80: the $FBF8-$FC48 pad window is full (5 B
@@ -1529,14 +1529,14 @@ BombEnemyBlastBody:
 ; ------------------------------------------------------------------------------
 ; BombEnemyBlast tramp mirror ($FDD8-$FDDD) — byte-identical with kernel.asm's
 ; copy at the same address (bomb-lamp fix 2026-10-07). bank0 executes `sta
-; $1FF8` at $FDD8-$FDDA; the fetch at $FDDB comes from THIS bank = `jmp $FD87`
+; $1FF6` at $FDD8-$FDDA; the fetch at $FDDB comes from THIS bank = `jmp $FD87`
 ; (BombEnemyBlastBody). Neither bank runs its other half: bank0 is switched
 ; away at $FDDA, bank2 never enters at $FDD8 (the .HOVdone tail-jmps $FBF8
 ; before this pad). $FDE1 no longer pins anything (PickPlayerFrame's tramp
 ; mirror retired 2026-10-20).
 ; ------------------------------------------------------------------------------
     .ds $FDD8 - *, 0
-    .byte $8D, $F8, $1F         ; sta $1FF8 (twin)
+    .byte $8D, $F6, $1F         ; sta $1FF6 (twin)
     .byte $4C, $87, $FD         ; jmp $FD87 (twin — fetched post-switch)
 ; ($FDE1 pin DELETED 2026-10-20, audit round 2: PickPlayerFrame's tramp mirror
 ;  and the PlayerWalkA/B art twin moved to bank0 — nothing sits at $FDE1.)
@@ -1620,7 +1620,7 @@ LaserTipEnemy:
     .ds $FE96 - *, 0            ; S5.4 LHT tramp — byte-identical w/ kernel.asm
                                 ; (shifted +$10 with kernel's tables)
 LaserHitTest:
-    sta $1FF8                   ; dead in bank2 (entry arrives at $FE89)
+    sta $1FF6                   ; dead in bank2 (entry arrives at $FE89)
     jmp LaserHitTestBody        ; == $FF00 — operand guard vs bank0 literal
 
 ; ------------------------------------------------------------------------------
@@ -1630,17 +1630,17 @@ LaserHitTest:
 
 ; ------------------------------------------------------------------------------
 ; FoldIndirect — byte-identical copy of kernel.asm's block (same $FEF6
-; address). bank0 executes bytes 1-3 (`sta $1FF8`, absolute — P3.1 deviation,
+; address). bank0 executes bytes 1-3 (`sta $1FF6`, absolute — P3.1 deviation,
 ; see kernel.asm) then fetches bytes 4-9
-; here (data bank active); `sta $1FF6` switches back, rts fetched from bank0.
+; here (data bank active); `sta $1FF4` switches back, rts fetched from bank0.
 ; Guard: verify_build compares bank0/bank2 regions byte-for-byte.
 ; ------------------------------------------------------------------------------
 ; ------------------------------------------------------------------------------
 ; E4 moth entry tramp — byte-identical with kernel.asm's $FEF0 copy
-; (guard: verify_build check_moth_tramp). bank2's `sta $1FF8` half never
+; (guard: verify_build check_moth_tramp). bank2's `sta $1FF6` half never
 ; runs (entry always arrives from bank0); the `jmp MothRoutine` half at
 ; $FEF3 runs after bank0's switch. Assembles to the same 6 bytes as
-; kernel's `sta $1FF8 / jmp $F110` — operand drift fails the guard.
+; kernel's `sta $1FF6 / jmp $F110` — operand drift fails the guard.
 ; ------------------------------------------------------------------------------
 ; C7 (2026-10-20): HOVHotPfGate moved to bank3 with the rest of the hot
 ; walk (it needs ColOff/ColMask and the PF buffers of that walk).
@@ -1648,13 +1648,13 @@ LaserHitTest:
     include "generated/spill_FE9C.asm"
     .ds $FEF0 - *, 0
 UE_MothTramp:
-    sta $1FF8
+    sta $1FF6
     jmp MothRoutine
     .ds $FEF6 - *, 0
 FoldIndirect:
-    sta $1FF8
-    lda (FetchPtr),Y
     sta $1FF6
+    lda (FetchPtr),Y
+    sta $1FF4
     rts
 
 ; ------------------------------------------------------------------------------

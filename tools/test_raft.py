@@ -116,9 +116,9 @@ def integration() -> None:
     b1 = (FROZEN / "bank1.bin").read_bytes()
     a = b0[TRAMP - 0xF000:TRAMP - 0xF000 + 6]
     b = b1[TRAMP - 0xF000:TRAMP - 0xF000 + 6]
-    assert a == b and a[:3] == bytes([0x8D, 0xF7, 0x1F]), (
+    assert a == b and a[:3] == bytes([0x8D, 0xF5, 0x1F]), (
         f"raft tramp ${TRAMP:04X} not twinned: bank0 {a.hex()} bank1 {b.hex()} "
-        "(the jmp is fetched from bank1 after sta $1FF7)")
+        "(the jmp is fetched from bank1 after sta $1FF5)")
     assert a[3:6] == bytes([0x4C, RAFT & 0xFF, RAFT >> 8]), (
         f"raft tramp target {a[3:6].hex()} != bank1 RaftBody ${RAFT:04X}")
 

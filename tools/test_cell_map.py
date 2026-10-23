@@ -7,7 +7,7 @@ directions. C flag after the routine must equal "box overlaps a solid cell"
 computed from model geometry through the SAME prologue math (visible-left,
 endpoint mirror, min/max swap, YToRow rows).
 
-Hit path runs the real bank3 HotOverlapBody (Mem emulates the F6 $1FF9
+Hit path runs the real bank3 HotOverlapBody (Mem emulates the F6 $1FF7
 switch, RoomRects pointed at a known hot-count-0 stream) — so the C=1
 tail contract is exercised too.
 
@@ -40,6 +40,10 @@ BANK0 = (FROZEN / "bank0.bin").read_bytes()
 BANK1 = (FROZEN / "bank1.bin").read_bytes()
 BANK2 = (FROZEN / "bank2.bin").read_bytes()
 BANK3 = (FROZEN / "bank3.bin").read_bytes()
+BANK4 = (FROZEN / "bank4.bin").read_bytes()
+BANK5 = (FROZEN / "bank5.bin").read_bytes()
+BANK6 = (FROZEN / "bank6.bin").read_bytes()
+BANK7 = (FROZEN / "bank7.bin").read_bytes()
 
 
 def parse_labels(path: Path, names: set[str]) -> dict[str, int]:
@@ -116,21 +120,30 @@ class Mem:
     def __getitem__(self, a):
         a &= 0xFFFF
         if 0xF000 <= a <= 0xFFFF:
-            return {0: BANK0, 1: BANK1, 2: BANK2, 3: BANK3}.get(self.bank, BANK0)[a - 0xF000]
+            return {0: BANK0, 1: BANK1, 2: BANK2, 3: BANK3,
+                                      4: BANK4, 5: BANK5, 6: BANK6, 7: BANK7}.get(self.bank, BANK0)[a - 0xF000]
         if 0x80 <= a <= 0xFF or 0x180 <= a <= 0x1FF:
             return self.ram[a & 0x7F]
         return 0
 
     def __setitem__(self, a, v):
         a &= 0xFFFF
-        if a == 0x1FF6:
+        if a == 0x1FF4:
             self.bank = 0
-        elif a == 0x1FF7:
+        elif a == 0x1FF5:
             self.bank = 1
-        elif a == 0x1FF8:
+        elif a == 0x1FF6:
             self.bank = 2
-        elif a == 0x1FF9:
+        elif a == 0x1FF7:
             self.bank = 3
+        elif a == 0x1FF8:
+            self.bank = 4
+        elif a == 0x1FF9:
+            self.bank = 5
+        elif a == 0x1FFA:
+            self.bank = 6
+        elif a == 0x1FFB:
+            self.bank = 7
         elif 0x80 <= a <= 0xFF or 0x180 <= a <= 0x1FF:
             self.ram[a & 0x7F] = v & 0xFF
         # other hotspots ignored

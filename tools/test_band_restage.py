@@ -38,7 +38,7 @@ ROOMS = SRC / "rooms"
 # this test without duplicating the Mem class. (Reading frozen banks here
 # mixes the test-owned level layout with live labels → EnterRoom reads the
 # wrong table and the run never returns.)
-for _i in range(4):
+for _i in range(8):
     setattr(_CM, f"BANK{_i}", (SRC / f"bank{_i}.bin").read_bytes())
 Mem = _CM.Mem
 

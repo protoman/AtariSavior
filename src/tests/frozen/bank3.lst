@@ -25,10 +25,10 @@
      24  f000							; Cross-bank contract (the ONLY one this file has):
      25  f000							;   bank2 EnterRoomB2 stages the ROM shapes byte in RoomPF0Lo ($99, loader
      26  f000							;   scratch) and, for an owns-extras room, the 1-based ordinal in
-     27  f000							;   LevelConnSpare ($A2), then executes `sta $1FF9` at $F450. The opcode
+     27  f000							;   LevelConnSpare ($A2), then executes `sta $1FF7` at $F450. The opcode
      28  f000							;   fetch at $F453 already comes from THIS bank, so B3RoomBlocks MUST start
      29  f000							;   at $F453 (`check_bank3_entry` pins it). Every exit is `jmp ReturnPad`
-     30  f000							;   ($FBF8 in this bank: `sta $1FF6`, rts fetched from bank0) — no return
+     30  f000							;   ($FBF8 in this bank: `sta $1FF4`, rts fetched from bank0) — no return
      31  f000							;   pad, no twin, 0 extra stack pushes.
      32  f000							;
      33  f000							; `Level` ($A3) indexes this bank's per-level extras base table
@@ -175,7 +175,7 @@
     174  f000
     175  f000							; --- 5-byte stub: select bank0, then the fetch at $F005 is bank0's ---
     176  f000		       a9 00		      lda	#0
-    177  f002		       8d f6 1f 	      sta	$1FF6	; select bank0
+    177  f002		       8d f4 1f 	      sta	$1FF4	; select bank0
     178  f005
     179  f005							; ------------------------------------------------------------------------------
     180  f005							; DATA WINDOW 1 — $F010-$F44F (1 088 B): the per-level async EXTRAS streams +
@@ -273,7 +273,7 @@
 ------- FILE generated/spill_bank3.asm
       4  f043
 ------- FILE bank3.asm
-    187  f043		       00 00 00 00*	      .ds	$F453 - *, 0	; bank2's $F450 `sta $1FF9` fetch target
+    187  f043		       00 00 00 00*	      .ds	$F453 - *, 0	; bank2's $F450 `sta $1FF7` fetch target
     188  f453							; ==============================================================================
     189  f453							; B3RoomBlocks — shape → PF0Buf + staged meta/extras (C7: bank2 tail-jumps
     190  f453							; here; ends `jmp ReturnPad`).
@@ -657,7 +657,7 @@
     474  f627
     475  f627
     476  f627							; ------------------------------------------------------------------------------
-    477  f627							; HotOverlapBody — bank0's HotOverlapFlag pad (`sta $1FF9` at $FFEC -> the
+    477  f627							; HotOverlapBody — bank0's HotOverlapFlag pad (`sta $1FF7` at $FFEC -> the
     478  f627							; `jmp` image at $FFEF) enters here; it walks THIS bank's hot stream with a
     479  f627							; plain (FetchPtr),Y read. Exits through ReturnPad with C=1.
     480  f627							; ------------------------------------------------------------------------------
@@ -1047,7 +1047,7 @@
     864  fad1		       d0 f9		      bne	.BCFdarkLoop
     865  fad3				   .BCFdarkDone
     866  fad3		       4c b8 fc 	      jmp	B3StageBand	; A3: local (PhaseBlink/pack live here now)
-    867  fad6		       8d f9 1f 	      sta	$1FF9	; chunk A2: StageBandTab lives in bank3
+    867  fad6		       8d f7 1f 	      sta	$1FF7	; chunk A2: StageBandTab lives in bank3
     868  fad9				   BCFDarkMask
     869  fad9		       10 20 40 80	      .byte.b	$10, $20, $40, $80	; rooms 0-3 → EnemyRamD bits 4-7
     870  fadd		       10 20 40 80	      .byte.b	$10, $20, $40, $80	; rooms 4-7 → lsr×2 = LaserState bits 2-5
@@ -1150,12 +1150,12 @@
     967  fb60
     968  fb60							; ------------------------------------------------------------------------------
     969  fb60							; ReturnPad ($FBF8) — C7: bank3's copy. Every body here tail-jmps `$FBF8`;
-    970  fb60							; the `sta $1FF6` switches to bank0 and the `rts` at $FBFB is fetched from
-    971  fb60							; bank0 (bank0's copy must keep `sta $1FF6 / rts`).
+    970  fb60							; the `sta $1FF4` switches to bank0 and the `rts` at $FBFB is fetched from
+    971  fb60							; bank0 (bank0's copy must keep `sta $1FF4 / rts`).
     972  fb60							; ------------------------------------------------------------------------------
     973  fb60		       00 00 00 00*	      .ds	$FBF8 - *, 0
     974  fbf8				   ReturnPad
-    975  fbf8		       8d f6 1f 	      sta	$1FF6
+    975  fbf8		       8d f4 1f 	      sta	$1FF4
     976  fbfb		       60		      rts
     977  fbfc
     978  fbfc							; ------------------------------------------------------------------------------
@@ -1163,7 +1163,7 @@
     980  fbfc							; runs HERE. (Same addresses as before the C2 move, so bank0's literals and
     981  fbfc							; the guard tables keep their meaning.)
     982  fbfc							; ------------------------------------------------------------------------------
-    983  fbfc		       00 00 00 00*	      .ds	$FC1A - *, 0	; CallPad_BuildColupF's +3 ($FC17 sta $1FF9)
+    983  fbfc		       00 00 00 00*	      .ds	$FC1A - *, 0	; CallPad_BuildColupF's +3 ($FC17 sta $1FF7)
     984  fc1a		       4c 7b fa 	      jmp	BuildColupF
     985  fc1d
     986  fc1d
@@ -1458,7 +1458,7 @@
    1275  ff95		       4c 62 f9 	      jmp	HOVafterGate	; A3: local (Y = base still live)
    1276  ff98
    1277  ff98		       00 00 00 00*	      .ds	$FFEF - *, 0	; HotOverlapFlag image — bank0 runs
-   1278  ffef		       4c f8 f8 	      jmp	HotOverlapBody	;   `sta $1FF9` at $FFEC, the jmp at +3
+   1278  ffef		       4c f8 f8 	      jmp	HotOverlapBody	;   `sta $1FF7` at $FFEC, the jmp at +3
    1279  fff2							;   is fetched HERE
    1280  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
    1281  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0

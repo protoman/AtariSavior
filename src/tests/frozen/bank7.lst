@@ -1,0 +1,21 @@
+------- FILE bank7.asm LEVEL 1 PASS 1
+      1  0000					      processor	6502
+      2  0000 ????				      seg	code
+      3  f000					      org	$F000
+      4  f000							; ==============================================================================
+      5  f000							; Bank7 — POWER-UP BANK for F4 (32K, 8 banks)
+      6  f000							; ==============================================================================
+      7  f000							; F4 reads the reset vector from the LAST bank, so the entry stub lives here:
+      8  f000							; EXACTLY five bytes — `lda #0 / sta $1FF4` — because after that write the next
+      9  f000							; fetch at $F005 comes from bank0, whose pad is byte-identical there
+     10  f000							; ($F005: jmp GameStart). Anything longer would land mid-instruction in bank0.
+     11  f000							; Guard: tools/verify_build.py check_boot_banks.
+     12  f000							; Hotspot for this bank: $1FFB.
+     13  f000							; ==============================================================================
+     14  f000		       a9 00		      lda	#0
+     15  f002		       8d f4 1f 	      sta	$1FF4	; select bank0 — the fetch at $F005 is its
+     16  f005
+     17  f005		       00 00 00 00*	      .ds	$FFFA - *, 0
+     18  fffa		       00 f0		      .word.w	$F000	; NMI (never used: sei)
+     19  fffc		       00 f0		      .word.w	$F000	; RESET -> this bank's stub
+     20  fffe		       00 f0		      .word.w	$F000	; IRQ (never used)

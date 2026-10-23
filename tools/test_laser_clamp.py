@@ -31,7 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 FROZEN = ROOT / "src" / "tests" / "frozen"   # test-owned banks+labels
-BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(4)]
+BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(8)]
 
 # Model 0 meta/hot zeroing (same as test_laser_wall): strip/hot contacts
 # must never masquerade as wall hits in this deterministic probe.
@@ -90,7 +90,7 @@ class Mem:
     def __init__(self):
         self.ram = bytearray(128)
         self.tia = bytearray(0x40)
-        self.bank = 3
+        self.bank = 7
         self.swcha = 0xFF
         self.swchb = 0xFF
         self.inpt4 = 0x00          # fire held from boot
@@ -109,7 +109,7 @@ class Mem:
             return 0
         if a == 0x000C:
             return self.inpt4
-        if 0x1FF6 <= a <= 0x1FF9:
+        if 0x1FF4 <= a <= 0x1FFB:
             return 0
         if a <= 0x003F or 0x0100 <= a <= 0x017F:
             return self.tia[a & 0x3F]
@@ -118,8 +118,8 @@ class Mem:
     def __setitem__(self, a, v):
         a &= 0xFFFF
         v &= 0xFF
-        if 0x1FF6 <= a <= 0x1FF9:
-            self.bank = a - 0x1FF6
+        if 0x1FF4 <= a <= 0x1FFB:
+            self.bank = a - 0x1FF4
             return
         if a >= 0xF000:
             return

@@ -35,7 +35,7 @@ if not (ROM.exists() and L0P.exists() and L2P.exists()):
     sys.exit(f"{ROM} (+ .bank0.lst/.bank2.lst) missing — run: "
              f"bash tools/qa_build.sh")
 
-BANKS = [bytearray(ROM.read_bytes()[4096 * i:4096 * (i + 1)]) for i in range(4)]
+BANKS = [bytearray(ROM.read_bytes()[4096 * i:4096 * (i + 1)]) for i in range(8)]
 L0 = parse_labels(L0P, {
     "StartFrame", "RoomX", "RoomY", "RoomNo", "EnemyCount", "EnemyRamP",
     "EnemyDeadMask", "LevelStartRoom", "BombPacked", "DropTarget", "Hover",
@@ -70,7 +70,7 @@ class Mem:
     def __init__(self):
         self.ram = bytearray(128)
         self.tia = bytearray(0x40)
-        self.bank = 3
+        self.bank = 7
         self.swcha = NONE
         self.swchb = 0xFF
         self.inpt4 = 0x80
@@ -89,7 +89,7 @@ class Mem:
             return 0
         if a == 0x000C:
             return self.inpt4
-        if 0x1FF6 <= a <= 0x1FF9:
+        if 0x1FF4 <= a <= 0x1FFB:
             return 0
         if a <= 0x003F or 0x0100 <= a <= 0x017F:
             return self.tia[a & 0x3F]
@@ -98,8 +98,8 @@ class Mem:
     def __setitem__(self, a, v):
         a &= 0xFFFF
         v &= 0xFF
-        if 0x1FF6 <= a <= 0x1FF9:
-            self.bank = a - 0x1FF6
+        if 0x1FF4 <= a <= 0x1FFB:
+            self.bank = a - 0x1FF4
             return
         if a >= 0xF000:
             return

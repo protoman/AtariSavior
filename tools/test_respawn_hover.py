@@ -35,8 +35,8 @@ assert re.search(r"lda #\$FF\s*\n\s*sta Hover", ll), \
     "LoseLife must arm Hover = $FF (waiting for input)"
 # LoadLevel clears Hover (stage entry lands normally): the body moved to bank2
 # (C2), the bank0 half must stay a pad-only entry so the drop-in tail runs.
-assert re.search(r"\nLoadLevel:\n\s+sta \$1FF8", K), \
-    "bank0 LoadLevel must stay the $FC20 entry pad ($1FF8 -> bank2 body)"
+assert re.search(r"\nLoadLevel:\n\s+sta \$1FF6", K), \
+    "bank0 LoadLevel must stay the $FC20 entry pad ($1FF6 -> bank2 body)"
 loadlvl = B2[B2.index("\nLoadLevelB2:"):]
 loadlvl = loadlvl[:loadlvl.index("\n    jmp LF_TailSwap")]
 assert re.search(r"sta Hover", loadlvl), "LoadLevelB2 must clear Hover"

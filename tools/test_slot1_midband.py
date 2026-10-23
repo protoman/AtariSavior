@@ -47,8 +47,9 @@ PC_START = LABELS["StartFrame"]
 
 def main() -> int:
     blob = ROM.read_bytes()
-    assert len(blob) == 16384, f"{ROM} is {len(blob)} bytes, want 16K"
-    banks = [bytearray(blob[4096 * i:4096 * (i + 1)]) for i in range(4)]
+    assert len(blob) in (16384, 32768), f"{ROM} is {len(blob)} bytes, want 32K"
+    banks = [bytearray(blob[4096 * i:4096 * (i + 1)])
+             for i in range(len(blob) // 4096)]
     mem = Mem(banks)
     mpu = MPU(memory=mem)
     prev = 0

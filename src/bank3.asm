@@ -24,10 +24,10 @@
 ; Cross-bank contract (the ONLY one this file has):
 ;   bank2 EnterRoomB2 stages the ROM shapes byte in RoomPF0Lo ($99, loader
 ;   scratch) and, for an owns-extras room, the 1-based ordinal in
-;   LevelConnSpare ($A2), then executes `sta $1FF9` at $F450. The opcode
+;   LevelConnSpare ($A2), then executes `sta $1FF7` at $F450. The opcode
 ;   fetch at $F453 already comes from THIS bank, so B3RoomBlocks MUST start
 ;   at $F453 (`check_bank3_entry` pins it). Every exit is `jmp ReturnPad`
-;   ($FBF8 in this bank: `sta $1FF6`, rts fetched from bank0) — no return
+;   ($FBF8 in this bank: `sta $1FF4`, rts fetched from bank0) — no return
 ;   pad, no twin, 0 extra stack pushes.
 ;
 ; `Level` ($A3) indexes this bank's per-level extras base table
@@ -174,7 +174,7 @@ PLAYER_MIN_Y = 0
 
     ; --- 5-byte stub: select bank0, then the fetch at $F005 is bank0's ---
     lda #0
-    sta $1FF6                       ; select bank0
+    sta $1FF4                       ; select bank0
 
 ; ------------------------------------------------------------------------------
 ; DATA WINDOW 1 — $F010-$F44F (1 088 B): the per-level async EXTRAS streams +
@@ -184,7 +184,7 @@ PLAYER_MIN_Y = 0
 ; ------------------------------------------------------------------------------
     .ds $F010 - *, 0
     include "generated/spill_bank3.asm"
-    .ds $F453 - *, 0                ; bank2's $F450 `sta $1FF9` fetch target
+    .ds $F453 - *, 0                ; bank2's $F450 `sta $1FF7` fetch target
 ; ==============================================================================
 ; B3RoomBlocks — shape → PF0Buf + staged meta/extras (C7: bank2 tail-jumps
 ; here; ends `jmp ReturnPad`).
@@ -474,7 +474,7 @@ ERLoadDone:
 
 
 ; ------------------------------------------------------------------------------
-; HotOverlapBody — bank0's HotOverlapFlag pad (`sta $1FF9` at $FFEC -> the
+; HotOverlapBody — bank0's HotOverlapFlag pad (`sta $1FF7` at $FFEC -> the
 ; `jmp` image at $FFEF) enters here; it walks THIS bank's hot stream with a
 ; plain (FetchPtr),Y read. Exits through ReturnPad with C=1.
 ; ------------------------------------------------------------------------------
@@ -864,7 +864,7 @@ BCFDarkRun:
     bne .BCFdarkLoop
 .BCFdarkDone:
     jmp B3StageBand            ; A3: local (PhaseBlink/pack live here now)
-    sta $1FF9                   ; chunk A2: StageBandTab lives in bank3
+    sta $1FF7                   ; chunk A2: StageBandTab lives in bank3
 BCFDarkMask:
     .byte $10, $20, $40, $80    ; rooms 0-3 → EnemyRamD bits 4-7
     .byte $10, $20, $40, $80    ; rooms 4-7 → lsr×2 = LaserState bits 2-5
@@ -967,12 +967,12 @@ HcrClock:
 
 ; ------------------------------------------------------------------------------
 ; ReturnPad ($FBF8) — C7: bank3's copy. Every body here tail-jmps `$FBF8`;
-; the `sta $1FF6` switches to bank0 and the `rts` at $FBFB is fetched from
-; bank0 (bank0's copy must keep `sta $1FF6 / rts`).
+; the `sta $1FF4` switches to bank0 and the `rts` at $FBFB is fetched from
+; bank0 (bank0's copy must keep `sta $1FF4 / rts`).
 ; ------------------------------------------------------------------------------
     .ds $FBF8 - *, 0
 ReturnPad:
-    sta $1FF6
+    sta $1FF4
     rts
 
 ; ------------------------------------------------------------------------------
@@ -980,7 +980,7 @@ ReturnPad:
 ; runs HERE. (Same addresses as before the C2 move, so bank0's literals and
 ; the guard tables keep their meaning.)
 ; ------------------------------------------------------------------------------
-    .ds $FC1A - *, 0                ; CallPad_BuildColupF's +3 ($FC17 sta $1FF9)
+    .ds $FC1A - *, 0                ; CallPad_BuildColupF's +3 ($FC17 sta $1FF7)
     jmp BuildColupF
 
 
@@ -1275,7 +1275,7 @@ HOVFeatEntry:
     jmp HOVafterGate            ; A3: local (Y = base still live)
 
     .ds $FFEF - *, 0                ; HotOverlapFlag image — bank0 runs
-    jmp HotOverlapBody              ;   `sta $1FF9` at $FFEC, the jmp at +3
+    jmp HotOverlapBody              ;   `sta $1FF7` at $FFEC, the jmp at +3
                                     ;   is fetched HERE
     .ds $FFF2 - *, 0                ; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
     .ds $FFFA - *, 0

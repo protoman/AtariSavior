@@ -1,7 +1,7 @@
 #!/bin/bash
-# Build the savior kernel ROM (F6 bankswitch, 16K)
+# Build the savior kernel ROM (F4 bankswitch, 32K)
 # Usage: ./build.sh [filename]
-# Output: savior.bin (16K, 4 × 4K banks)
+# Output: savior.bin (32K, 8 x 4K banks)
 
 set -e
 
@@ -9,7 +9,7 @@ OUTPUT="${1:-savior.bin}"
 DIR="$(dirname "$0")"
 ROOT="$(cd "$DIR/.." && pwd)"
 
-echo "Building F6 ROM (4 banks)..."
+echo "Building F4 ROM (8 banks)..."
 
 # Generate level data. A stage file holds models + every level:
 #   rooms/stage.json exists -> it IS the project (the editor's single file)
@@ -71,9 +71,15 @@ echo "  bank0: OK"
 python3 "$ROOT/tools/verify_build.py" --sync-overscan "$DIR"
 dasm bank1.asm -f3 -obank1.bin -lbank1.lst
 echo "  bank1: OK"
+# F4 (32K): banks 4-6 are free windows, bank7 is the power-up bank (F4 reads
+# its reset vector from the LAST bank). No cross-bank literals in them yet.
+for b in 4 5 6 7; do
+    dasm "bank$b.asm" -f3 -o"bank$b.bin" -l"bank$b.lst"
+    echo "  bank$b: OK"
+done
 
 # Pad each bank to exactly 4K (DASM doesn't emit trailing zeros)
-for i in 0 1 2 3; do
+for i in 0 1 2 3 4 5 6 7; do
     SIZE=$(wc -c < "bank${i}.bin")
     if [ "$SIZE" -lt 4096 ]; then
         PAD=$((4096 - SIZE))
@@ -107,7 +113,8 @@ else
 fi
 
 # Concatenate into 16K ROM
-cat bank0.bin bank1.bin bank2.bin bank3.bin > "$OUTPUT"
+cat bank0.bin bank1.bin bank2.bin bank3.bin \
+    bank4.bin bank5.bin bank6.bin bank7.bin > "$OUTPUT"
 
 # Headless frame-budget sim: worst-case frame (fly + laser held + bomb +
 # 2 objects) must hold 263 lines/frame — hard-fails on flicker regressions.
@@ -124,4 +131,4 @@ else
 fi
 
 SIZE=$(wc -c < "$OUTPUT")
-echo "Done: $OUTPUT ($SIZE bytes, F6 bankswitch)"
+echo "Done: $OUTPUT ($SIZE bytes, F4 bankswitch)"
