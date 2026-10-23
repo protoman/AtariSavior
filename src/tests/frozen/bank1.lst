@@ -1373,7 +1373,7 @@
    1358  f84a							;	       into CollisionX, kernel draws the strip as the band's last
    1359  f84a							;	       (12-off) lines), so the raft is placed at 125+off and its bottom
    1360  f84a							;	       row sits exactly on the moving surface — it rides the wave the
-   1361  f84a							;	       water does. The rider's pin (top-12 = 113+off, worst case 116)
+   1361  f84a							;	       water does. The rider's pin (top-22 = 103+off, worst case 106)
    1362  f84a							;	       stays clear of the 125 water-kill line at every tide phase.
    1363  f84a							;	       This write lands after RefreshEnemyY, so the VBL draws it.
    1364  f84a							;   Speed   = 1 px on even frames, 2 px on odd (EnemyRamP parity) = 1.5 px/frame.
@@ -2321,9 +2321,9 @@
    2306  fde3							; never hard-code the Y: the surface MOVES.
    2307  fde3		       00 06	   RAFTER_XOFF =	6	; PLAYER_WIDTH-1: spawn x of the body span
    2308  fde3		       00 0e	   RAFTER_XSPAN =	14	; PLAYER_WIDTH+ENEMY_WIDTH-1: no-overlap gate
-   2309  fde3		       00 12	   RAFTER_YSPAN =	18	; PLAYER_SPRITE_H+6: riding when the feet are
-   2310  fde3							; from 12 px above the raft's top to 5 px into it
-   2311  fde3		       00 0c	   RAFTER_PINFIT =	12	; PLAYER_SPRITE_H: pin = raft top - this
+   2309  fde3		       00 1c	   RAFTER_YSPAN =	28	; PLAYER_SPRITE_H+6: riding when the feet are
+   2310  fde3							; from 22 px above the raft's top to 5 px into it
+   2311  fde3		       00 16	   RAFTER_PINFIT =	22	; PLAYER_SPRITE_H: pin = raft top - this
    2312  fde3
    2313  fde3				   RaftBody
    2314  fde3							; --- float ON the water surface, riding the TIDE ------------------------
@@ -2377,8 +2377,8 @@
    2362  fe11		       38		      sec
    2363  fe12		       f5 e2		      sbc	EnemyRamY,X
    2364  fe14		       18		      clc
-   2365  fe15		       69 0c		      adc	#RAFTER_PINFIT
-   2366  fe17		       c9 12		      cmp	#RAFTER_YSPAN
+   2365  fe15		       69 16		      adc	#RAFTER_PINFIT
+   2366  fe17		       c9 1c		      cmp	#RAFTER_YSPAN
    2367  fe19		       b0 07		      bcs	.RaftNoRide	; not in the raft's upper rows
    2368  fe1b		       a5 94		      lda	vyHi
    2369  fe1d		       30 03		      bmi	.RaftNoRide	; rising: let him fly away (no pin)
@@ -2400,7 +2400,7 @@
    2385  fe2b							; The vyHi < 0 escape is the gate's `.RaftNoRide` (rising is not a ride).
    2386  fe2b		       b5 e2		      lda	EnemyRamY,X
    2387  fe2d		       38		      sec
-   2388  fe2e		       e9 0c		      sbc	#RAFTER_PINFIT
+   2388  fe2e		       e9 16		      sbc	#RAFTER_PINFIT
    2389  fe30		       85 81		      sta	RoomY	; feet on the raft's top
    2390  fe32		       a9 00		      lda	#0
    2391  fe34		       85 93		      sta	vyLo

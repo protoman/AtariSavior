@@ -18,7 +18,7 @@ Drives the real bank2 body (LaserWallClamp with an empty rect cache ->
 no clamp, then the enemy loop) and asserts the kill interval in X and Y:
 
   X: kill iff eX in [A-7, A+7]      (beam [A-7,A] x enemy [eX-7,eX])
-  Y: kill iff eY in [RoomY-5, RoomY+3] (beam rows RoomY+2..3 x enemy 8px)
+  Y: kill iff eY in [RoomY-3, RoomY+5] (beam rows RoomY+4..5 x enemy 8px)
 
 Run: /home/iuri/python3/bin/python3 tools/test_laser_kill_window.py
 """
@@ -93,13 +93,13 @@ def main() -> int:
         f"kill X window {kill_x} != drawn-overlap {want_x} "
         f"(beam [A-7,A]=[73,80], enemy [eX-7,eX])")
 
-    # --- Y sweep: beam rows RoomY+2..3 vs enemy [eY, eY+7] ---------------
+    # --- Y sweep: beam rows RoomY+4..5 vs enemy [eY, eY+7] ---------------
     kill_y = []
     for e_y in range(BEAM_Y - 10, BEAM_Y + 8):
         killed, _ = fire(mem, A, e_y)
         if killed:
             kill_y.append(e_y)
-    want_y = list(range(BEAM_Y - 5, BEAM_Y + 4))
+    want_y = list(range(BEAM_Y - 3, BEAM_Y + 6))
     assert kill_y == want_y, (
         f"kill Y window {kill_y} != beam-row overlap {want_y}")
 

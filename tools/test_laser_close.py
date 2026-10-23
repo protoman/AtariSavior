@@ -280,7 +280,7 @@ def main() -> None:
                         # it) — derive contact from THAT, since the consume
                         # restart rewrites LaserX to the eye.
                         tip = cx if facing == 0 else cx - 7
-                        rows = (band_row_of(y + 2), band_row_of(y + 3))
+                        rows = (band_row_of(y + 4), band_row_of(y + 5))
                         wallish = any(cell_solid(tip, r) for r in rows)
                         # extension: LWtipC left strip window (raw M1X)
                         if m1x is not None and not (mem.ram[I_DEAD] & 0x10):

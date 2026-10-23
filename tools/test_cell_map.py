@@ -176,9 +176,15 @@ def visible_range(room_x: int, player_dir: int) -> tuple[int, int]:
     return endx, cellx
 
 
+PLAYER_SPRITE_H = int(re.search(r"^PLAYER_SPRITE_H\s*=\s*(\d+)",
+                                 (Path(__file__).resolve().parents[1] /
+                                  "src" / "kernel.asm").read_text(), re.M).group(1))
+
+
 def row_range(room_y: int) -> tuple[int, int]:
+    """Player box rows: PHM's bottom row = RoomY + PLAYER_SPRITE_H - 1."""
     return (YTOROW[(room_y >> 2) & 0x3F],
-            YTOROW[((room_y + 11) >> 2) & 0x3F])
+            YTOROW[((room_y + PLAYER_SPRITE_H - 1) >> 2) & 0x3F])
 
 
 def tentacle_ink_cells(cand: int) -> tuple[int, int] | None:
@@ -521,10 +527,12 @@ def main() -> int:
             assert i < row_count, f"M{mid}Rows band {band}: {i} >= {row_count}"
 
     # --- py65: box parity, all models, full X sweep, row-pair reps --------
-    # Row pairs realized by the prologue: (0,0) Y0-36, (0,1) Y37-47,
-    # (1,1) Y48-84, (1,2) Y85-95, (2,2) Y96-132 — one rep each; +134 =
-    # tentacle bob top (EndY idx36 = the bugs.md #13 clamp entry).
-    y_reps = (0, 40, 60, 90, 120, 134)
+    # Row pairs realized by the prologue: (0,0) Y0-11, (0,1) Y12-23,
+    # (1,1) Y24-59, (1,2) Y60-71, (2,2) Y72-122 — one rep each. The LAST
+    # rep is PLAYER_MAX_Y (122): the bottom row is (Y+PLAYER_SPRITE_H-1)>>2
+    # and must stay inside YToRowTable (idx <= 36 = the clamp entry), so a
+    # Y above the reachable range reads past the table and is not a case.
+    y_reps = (0, 40, 60, 90, 120, 122)
     checks = 0
     moth_checks = 0
     temp = 0x42                        # candidate != sentinel 0xAA

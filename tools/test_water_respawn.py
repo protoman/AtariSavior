@@ -13,7 +13,7 @@ The guard checks:
   1. LoseLifeBand shifts RoomY BEFORE handing over to LoseLife (the death Y
      must never become the drop destiny).
   2. Arithmetic: the respawn origin is one tile above the strip and clears the
-     kill line, which tests the sprite ORIGIN (RoomY >= 125).
+     kill line, which tests the sprite ORIGIN (RoomY >= 115).
   3. A thrust simulation: from the respawn Y the player can fly UP without ever
      entering the kill zone (the old code fails check 1/2 immediately).
   4. Gravity feel (same report): the terminal fall speed is MAX_FALL = $0180
@@ -27,7 +27,7 @@ K = (SRC / "kernel.asm").read_text()
 
 # --- 1. asm structure -------------------------------------------------------
 cbt = K[K.index("CheckBandTouch:"):K.index(".CBTdone:")]
-assert re.search(r"cmp #125", cbt), "water kill line must stay 125"
+assert re.search(r"cmp #115", cbt), "water kill origin must stay 115"
 assert "jsr LoseLifeBand" in cbt, "water death must go through LoseLifeBand"
 
 llb = K[K.index("LoseLifeBand:"):]
@@ -42,7 +42,7 @@ assert "jsr LoseLife" not in llb, \
     "LoseLifeBand must TAIL-jump LoseLife (DropArm returns to CheckBandTouch)"
 
 PLAYER_H = int(re.search(r"^PLAYER_SPRITE_H\s*=\s*(\d+)", K, re.M).group(1))
-KILL = 125
+KILL = 115
 
 # --- 2. arithmetic: every death Y in the strip respawns clear --------------
 def destiny(death_y: int) -> int:
@@ -50,7 +50,7 @@ def destiny(death_y: int) -> int:
 
 # The band check tests the ORIGIN (RoomY >= 125), so one tile up clears it.
 # A death can only happen at the line (the check fires the first frame the
-# origin reaches it), i.e. 125..126 with subpixel carry.
+# origin reaches it), i.e. 115..116 with subpixel carry.
 # --- 4. the drop-in must not burn the grace (the repeated-death bug) -------
 # LoseLife arms $FF; the drop then owns the player for many frames. If the
 # grace started on input DURING the drop it expired before landing and the
@@ -76,7 +76,7 @@ for death_y in (KILL, KILL + 1):
     y = destiny(death_y)
     assert y < KILL, (
         f"death at {death_y} respawns at {y}: still at/inside the kill line")
-assert destiny(125) == 113 and destiny(126) == 114
+assert destiny(115) == 103 and destiny(116) == 104
 
 # --- 3. thrust simulation from the respawn Y -------------------------------
 GRAVITY = int(re.search(r"^GRAVITY\s*=\s*\$([0-9A-Fa-f]+)", K, re.M).group(1), 16)

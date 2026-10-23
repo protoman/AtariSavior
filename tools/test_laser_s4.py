@@ -10,7 +10,7 @@ Contract (redesign 2026-10-08 — single travelling missile, no sweep):
           (triangle-loop parity — user: beam "moved way beyond the limit");
           press edge (b7 held / b6 prev) re-anchors.
   vertical:  (RoomY - eY) + 3 < 9     <=> eY in [RoomY-5, RoomY+3]
-             (kill rows RoomY+2..3 vs enemy [eY, eY+7]; draw = row 2 only)
+             (kill rows RoomY+4..5 vs enemy [eY, eY+7]; draw = visor row 4)
   horizontal: (eLo - lo) + 7 < 15     <=> |eLo - lo| <= 7
              (both boxes right-anchored [arg-7, arg] — proven by
              CheckEnemyHit/kill_window: beam [lo-7,lo] vs enemy [eLo-7,eLo])
@@ -32,15 +32,15 @@ from pathlib import Path
 
 MISSILE_W = 8   # NUSIZ0=$30 -> 8-clock M0
 ENEMY_W = 8     # kernel.asm ENEMY_WIDTH
-BEAM_ROWS = (2, 3)  # kill window rows (bank2 hard-coded RoomY+2..3);
+BEAM_ROWS = (4, 5)  # kill window rows (bank2 hard-coded RoomY+4..5);
                     # the DRAW is row 2 only — BeamMask {0,0,2,0,...}
 TRAVEL = 4      # px per held frame (contact missile)
 
 
 def vert_hit(room_y: int, enemy_y: int) -> bool:
-    """Exact mirror of the asm: sec/sbc RoomY-eY, clc/adc #3, cmp #9."""
+    """Exact mirror of the asm: sec/sbc RoomY-eY, clc/adc #5, cmp #9."""
     a = (room_y - enemy_y) & 0xFF
-    return ((a + 3) & 0xFF) < 9
+    return ((a + 5) & 0xFF) < 9
 
 
 def horiz_hit(lo: int, enemy_x: int) -> bool:
@@ -109,7 +109,7 @@ def main() -> None:
     hit = text2.split("LaserHitTestBody:")[1].split("EnemyOffTable:")
     hit = hit[0] if isinstance(hit, list) else hit  # keep str slice
     hit = "\n".join(l.split(";")[0] for l in hit.splitlines())  # ignore comments
-    assert "adc #3" in hit and "cmp #9" in hit, "vertical window changed"
+    assert "adc #5" in hit and "cmp #9" in hit, "vertical window changed"
     # kill == drawn overlap (beam [A-7,A] x enemy [eX-7,eX] — the arg-box
     # convention CheckEnemyHit proves) -> eX in [A-7, A+7] = adc #7.
     assert "adc #7" in hit and "cmp #15" in hit, "horizontal window changed"
@@ -201,10 +201,10 @@ def main() -> None:
         assert eye in seq[1:], "left travel must loop back to the eye"
 
     # --- vertical: exact window edges ------------------------------------
-    ry = 60
-    for ey in range(ry - 5, ry + 4):
+    ry = 60                      # beam rows ry+4..ry+5 vs enemy [ey, ey+7]
+    for ey in range(ry - 3, ry + 6):
         assert vert_hit(ry, ey), f"must hit ey={ey}"
-    for ey in (ry - 6, ry + 4):
+    for ey in (ry - 4, ry + 6):
         assert not vert_hit(ry, ey), f"must miss ey={ey}"
     # byte-walk agreement with the reference on the full round-trip range
     for ry2 in (0, 1, 5, 60, 191):

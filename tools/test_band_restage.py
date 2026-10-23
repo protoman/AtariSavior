@@ -2,7 +2,7 @@
 """EnterRoom must restage RoomBandColor (regression: level 1 room 1 death).
 
 Bug (user report 2026-10-04): leaving level-002 room 1 (the ONLY band-on
-room in the game) upward spawned at Y=PLAYER_MAX_Y=132 >= 125 with the
+room in the game) upward spawned at Y=PLAYER_MAX_Y=122 >= 115 with the
 SOURCE room's still-staged ON band color -> CheckBandTouch killed the
 player inside the band-less target room. Other levels: every room's band
 is off, so the stale value was 0 and nothing fired.

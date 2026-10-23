@@ -106,12 +106,12 @@ def main() -> int:
             f"band off at y={y} must be inert, got {s}")
 
     # 2. band on but still above the strip
-    s = run(124, BAND_ON)
-    assert (s["lives"], s["drop"], s["room_y"]) == (3, 0, 124), (
-        f"y=124 is above the strip (>=125 kills): {s}")
+    s = run(114, BAND_ON)
+    assert (s["lives"], s["drop"], s["room_y"]) == (3, 0, 114), (
+        f"y=114 is above the strip (>=115 kills): {s}")
 
     # 3/4. band on inside the strip: a life + the respawn destiny one tile up
-    for y, want in ((125, 113), (132, 120)):
+    for y, want in ((115, 103), (132, 120)):
         s = run(y, BAND_ON, stop_at_drop=1)
         assert s["lives"] == 2, f"y={y}: expected 1 life lost, got {s}"
         assert s["room_y"] == want, (
