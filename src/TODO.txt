@@ -3,7 +3,111 @@ Strategic Aerial Vehicle Infiltration Operations Rescue
 #########################################################################################################################################################################
 Nome personagem: Eorley Savior.
 
-Now, I want to understand, how HERO can have sprites for player and enemies, bigger and with more colors than ours?
+
+
+Queue, refreshed after this batch (sprites, lamp, player row 0, bomb Y, REFP1, PinSlot0 all landed):
+Object drawing / kernel
+1. Same-band flicker (the remaining half of the REFP1 story). Two objects in different bands now pair cleanly, but two in the same band still rotate → each drawn 1 of 2 frames (30 Hz strobe). Fixes: move one object a band (editor), a smarter rotation (e.g. alternate per band/scanline instead of per frame), or the ball channel. Biggest visible win per byte, IMO.
+2. Phase 4, second half — GRP1 VDEL pipeline: VDELP1 + HERO's one-byte-per-line "colour + draw flag" staged at room load. The P0 half already landed. Kernel + staging restructure, own chunk.
+3. HERO leftovers: 13+2 (ball/M1 as extra HUD columns — lives row could use it), per-scanline PF tables for cave patterns, font into ZP (partial today).
+Content-dependent (blocked on stage)
+4. Phase 3 — async-block tint: no async blocks exist yet; needs the carrier decision (ball COLUPF vs PF pillar).
+5. Phase 7 — ball/M1 as a third object slot: one ball total, conflicts with 3; decide which before building either.
+Gameplay / systems
+6. Fuel management — the power bar is a pure timer today, no fuel.
+7. In-game music, screen transitions, game-over screen, difficulty settings.
+8. Content: 5+ levels, per-level enemy patterns, boss, secret rooms, high score.
+Art / stage
+9. KEY is the last old-scale design (16-row stub). MINER you said is fine; the rest are done.
+10. Tentacle vs the water band — you wanted to check placement in the editor.
+Bookkeeping
+11. Frame-budget residual flicker investigation — still paused, your call to resume.
+12. miner_dir is now inert (bit kept in the data). Restoring the miner's facing needs 32 B of art space.
+13. 25 B just freed in bank0 (6 pre-pad + 19 post-pad) — enough to seed a small feature without a cut.
+
+My suggestion: take 1 next (same-band flicker) since it's the last visual defect we know of and it's kernel-local, then keep alternating with art (KEY) while the bigger Phase 4 chunk gets its own session.
+
+
+
+/tmp/opencode/savior_lamp3.bin - screenshots/bugs/lamp_inside_wall.png
+/tmp/opencode/savior_lamp3_mirror.bin - screenshots/bugs/lamp_outside_wall.png
+
+screenshots/bugs/player_sprite_top.png
+
+
+row  SpriteA  SpriteB  WalkA    WalkB     cor
+ 0   ..####..  ..####..  ..####.. ..####..  cinza claro      $0C
+ 1   .######.  .######.  .######. .######.  cinza claro      $0C
+ 2   .######.  .######.  .######. .######.  cinza claro      $0C
+ 3   .######.  .######.  .######. .######.  cinza claro      $0C
+ 4   .####...  .####...  .####... .####...  amarelo (visor)  $1E
+ 5   .######.  .######.  .######. .######.  cinza claro      $0C
+ 6   ..####..  ..####..  ..####.. ..####..  cinza claro      $0C
+ 7   .#####..  .#####..  .#####.. .#####..  cinza médio      $08
+ 8   #######.  #######.  #######. #######.  vermelho         $48
+ 9   #######.  #######.  #######. #######.  vermelho         $48
+10   #.#####.  #.#####.  #.#####. #.#####.  vermelho         $48
+11   #.#####.  #.#####.  #.#####. #.#####.  vermelho         $48
+12   ##..###.  ##..###.  ##..###. ##..###.  vermelho         $48
+13   #.#####.  #.#####.  #.#####. #.#####.  vermelho         $48
+14   ######..  ######..  ######.. ######..  cinza médio      $08
+15   #.####..  ..####..  ..####.. ..####..  laranja          $2C
+16   #.###...  ..###...  ..###... ..###...  laranja          $2C
+17   ..#.#...  ..#.#...  .#..#... ..##....  azul             $88
+18   ..#.#...  ..#.#...  .#..#... ..##....  azul             $88
+19   ..#.#...  ..#.#...  #....#.. ..##....  azul             $88
+20   ..#.#...  ..#.#...  #....#.. ..##....  cinza escuro     $04
+21   ..#.#...  ..#.#...  #....#.. ..##....  cinza escuro     $04
+
+#########################################################################################################################################################################
+
+Open items, cheapest/next-first:
+Art finish (in flow, you're driving)
+1. Remaining enemies at the new scale: SNAKE, LAMP, KEY, MINER, BOMB, RAFT still 16-row stubs — you said small objects later.
+2. Object flicker, same-band rooms (level 2 room 2, level 3 room 3): Phase 5 handles two different bands; same-band pairs still alternate. Fix is either moving one object a band in the editor, or the ball/M1 channel (conflicts with Phase 3).
+3. Tentacle placement over water — you wanted to check that in the editor.
+4. PinSlot0 assumes ≤2 candidates: with two enemies plus the miner, the middle object never draws. ~5 B guard in the $FB20 fill.
+5. Player rows 15-16 are one colour for all frames (shared table) — resolvable only with a per-frame colour table.
+Kernel / HERO parity (big chunks, need your go-ahead)
+6. Phase 4 — VDEL pipeline (VDELP1 + one byte per line "colour + draw flag" staged at room load). Kernel + staging restructure, own session.
+7. HERO leftovers: 13+2 (ball/M1 as extra HUD columns), per-scanline PF tables for cave patterns, font into ZP.
+8. Phase 3 — async-block tint (blocked: no async blocks exist in the stage yet).
+9. Phase 7 — ball/M1 as third object slots (one ball total — must choose vs Phase 3).
+Gameplay / content
+10. Enemy vs player overlap tuning — the hit box is now 22 rows, so enemy contact reaches further down.
+11. Fuel management (none today; the power bar is the game timer).
+12. In-game music, screen transitions, game-over screen, difficulty settings.
+13. Content: 5+ levels, level-specific enemy patterns, boss, secret rooms, high score.
+14. Residual frame-budget flicker investigation (paused, user-led since S6.6).
+
+
+
+
+Verde-claro  .....##.
+Verde-claro  ....####
+Verde        #####...
+Verde        #####...
+Verde-escuro ....####
+Verde-escuro .....##.
+
+
+
+
+
+One thing only you can judge: the player sprite now sits one scanline lower for x ∈ [44,113) (it used to be one line high there). Please run stella savior.bin and check — art and colours should line up row-for-row, no flicker/seam change. If it looks worse, git revert 8ac7f3b restores the old behaviour exactly.
+
+
+#########################################################################################################################################################################
+
+
+
+
+
+OK, let me ask one thing, the async block, is there a way it won't show the color of the enemy in the same row?
+
+Now, I want to understand, how HERO can have sprites for player and enemies,
+bigger and with more colors than ours and not affecting the async walls,
+nor needing flicker to have multiple enemies and objects at same room?
 
 #########################################################################################################################################################################
 

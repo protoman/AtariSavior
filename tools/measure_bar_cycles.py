@@ -414,7 +414,7 @@ if __name__ == "__main__":
     # before PC reaches .AfterRows ($F191). Count cycles from that WSYNC to
     # the first bank1 TopGap WSYNC. This is the cycle-precise handoff span.
     AFTERROWS = _LBL0.get(".AfterRows", 0xF191)
-    LINE_PC = _LBL0.get(".Line", 0xF122)
+    LINE_PC = _LBL0.get("CaveLine", 0xF122)
     spans = []
     for f in range(150):
         g = 0
@@ -791,7 +791,7 @@ if __name__ == "__main__":
     # the gap for each WSYNC from the cave's last .Line through TopGap.
     AFTERROWS = _LBL0.get(".AfterRows", 0xF191)
     ROW_PC = _LBL0.get(".Row", None)
-    LINE_PC = _LBL0.get(".Line", 0xF122)
+    LINE_PC = _LBL0.get("CaveLine", 0xF122)
     if ROW_PC:
         print(f"\n WSYNC write-cycle margin (thrust+fire), cave last lines -> TopGap:")
         from collections import Counter

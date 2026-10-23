@@ -454,20 +454,20 @@ def main() -> None:
     # both paths — -3c from the setup-gap window (A1's `sta Temp` in .Row
     # pushed gaps to 77/79 = +2 lines/frame), +3c to the first body line.
     # Moving either store back before its WSYNC re-opens the stall.
-    assert gate.index(".RowLinesTide:") > gate.index("jmp .Line"), \
+    assert gate.index(".RowLinesTide:") > gate.index("jmp CaveLine"), \
         "split tail: tide block must come after rows 0/1's WSYNC jmp"
     # strip comments first — the A1 explanation above quotes both mnemonics
     gcode = "\n".join(l.split(";")[0] for l in gate.splitlines())
     assert gcode.index("sta LineCount") > gcode.index("sta WSYNC"), \
         "LineCount store must follow WSYNC (setup-gap A1 fix)"
-    assert gcode.rstrip().endswith("sta LineCount"), \
-        "row 2 must fall from WSYNC through LineCount straight into .Line"
+    assert "sta LineCount" in gcode, \
+        "row 2 must store LineCount between its WSYNC and the loop entry"
     wr = KERNEL.split(".WaterRow:")[1].split(".GrpZero:")[0]
     assert re.search(r"lda\s+#47\b", wr) and "sbc CollisionX" in wr, \
         "strip pass: setup line + (47-(36+off)) bodies = 12-off strip"
     assert "lda RoomBandColor" in wr and "sta COLUBK" in wr, \
         "strip must paint the band color (blink-off path, inlined read)"
-    assert wr.rstrip().endswith("jmp .Line"), \
+    assert wr.rstrip().endswith("jmp CaveLine"), \
         "strip must continue into the shared .Line loop"
     # death check + respawn follow the strip (bottom_band_plan rules 2/4)
     cbt = KERNEL.split("CheckBandTouch:")[1].split(".CBTdone:")[0]

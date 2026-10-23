@@ -176,7 +176,7 @@ def branches_to(*names):
             if mode_of(i) == "rel" and target_of(i) in want}
 
 
-line0, row0 = L(".Line"), L(".Row")
+line0, row0 = L("CaveLine"), L(".Row")
 grp_skip, obj_zero, obj_nores = L(".GrpSkip"), L(".ObjZero"), L(".ObjNoRes")
 
 ply_b = next(i["addr"] for i in insns
@@ -231,7 +231,7 @@ print("\n== .Row setup line (gameplay, no door: CollisionCellY b7=1) ==")
 def setup(cfg_tide: bool):
     dec = dict(always)
     dec[ply_b], dec[obj_b], dec[a8_b] = "not", "taken", "taken"
-    for pc in branches_to(".Line"):
+    for pc in branches_to("CaveLine"):
         dec[pc] = "not"          # line count reached 0
     for pc in branches_to(".Row"):
         dec[pc] = "taken"        # gameplay, DropTarget != $FF
