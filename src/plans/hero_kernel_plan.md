@@ -1098,3 +1098,35 @@ with a jump instead of an `rts`.
 bats one band down in the editor (level 2 room 2: y 5 -> 9; level 3 room 3:
 y 4 -> 9). Both rooms then pair through the existing cross-band hook and draw
 both objects every frame, zero ROM.
+
+## Same-band split — BUILT AND REVERTED 2026-10-22 (line accounting wobbles)
+
+The whole mechanism was implemented and worked functionally:
+
+- bank2 `StageSlot1B2` paired two candidates in ONE band when their windows sit
+  on opposite sides of the band midpoint (24 lines in), staged `SplitBand` ($89)
+  and a **per-band `BandLines` table at $CC-$CE** (48/48/48, 24 for the split
+  band's first half). Guard test: `test_slot1_pair` case 7 (ys 60/84 -> band 1,
+  SplitBand=1, BandLines=[48,24,48]); case 2 retargeted to a same-half pair.
+- bank0: `Slot1Hook` skips a split band, the loop exit jumps to `MidBandSwap`
+  (in the free $F7CD-$F82F fill) which swaps the trio, blanks GRP1, positions P1,
+  clears HMP0/HMM0/HMBL, HMOVEs, stores the second-half count and jumps into
+  `CaveLine`.
+
+**Why it was reverted:** the swap's real line cost is not constant — the second
+half measured 2 lines short in one room (`test_phase3_ball` 268) and 3 in another
+(`test_slot1_midband` 267). The band therefore lands on 48 or 49 lines depending
+on where the band's loop-exit line falls, i.e. the frame length wobbles with the
+room. A kernel whose frame length depends on content is not shippable (every
+anim/colour/timing contract rides on it).
+
+Next attempt should remove the guess: make the loop-exit jump happen INSIDE the
+`dec/bne` path so the swap prologue runs on the last body's line (no extra entry
+line), or derive the second-half count from the remaining budget instead of a
+constant. Both need the exit line measured per band, which `sim_frame_budget`
+can do (it already reports WSYNC counts per frame).
+
+Space findings worth keeping: **$CC-$DF is 20 free bytes** (the "option A"
+reclaim), the **$F7CD-$F82F window is 99 B** of bank0 pad that code can consume
+(it shrinks the `.ds $F830` pad, so the pre-pad end does not move), and bank2's
+**$F6A8-$F6FF window is 88 B**.
