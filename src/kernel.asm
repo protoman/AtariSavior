@@ -3840,48 +3840,48 @@ PlayerSpriteA:
     .byte %01111110             ; row  1
     .byte %01111110             ; row  2
     .byte %01111110             ; row  3
-    .byte %01111100             ; row  4
+    .byte %01111100             ; row  4 — visor / beam row
     .byte %01111110             ; row  5
     .byte %00111100             ; row  6
-    .byte %01111100             ; row  7 — jet frame A
+    .byte %01111100             ; row  7
     .byte %11111110             ; row  8
     .byte %11111110             ; row  9
     .byte %11111110             ; row 10
-    .byte %01111100             ; row 11
+    .byte %11111110             ; row 11
     .byte %11111110             ; row 12
     .byte %11111110             ; row 13
     .byte %01111100             ; row 14
-    .byte %10011110             ; row 15
-    .byte %10011100             ; row 16
-    .byte %00010100             ; row 17
-    .byte %00010100             ; row 18
-    .byte %00010100             ; row 19
-    .byte %00010100             ; row 20
-    .byte %00010100             ; row 21
+    .byte %10111100             ; row 15
+    .byte %10111000             ; row 16
+    .byte %00101000             ; row 17
+    .byte %00101000             ; row 18
+    .byte %00101000             ; row 19
+    .byte %00101000             ; row 20
+    .byte %00101000             ; row 21
 
 PlayerSpriteB:
     .byte %00111100             ; row  0
     .byte %01111110             ; row  1
     .byte %01111110             ; row  2
     .byte %01111110             ; row  3
-    .byte %01111100             ; row  4
+    .byte %01111100             ; row  4 — visor / beam row
     .byte %01111110             ; row  5
     .byte %00111100             ; row  6
-    .byte %01111100             ; row  7 — jet frame B (flame kicks left)
+    .byte %01111100             ; row  7
     .byte %11111110             ; row  8
     .byte %11111110             ; row  9
     .byte %11111110             ; row 10
-    .byte %01111100             ; row 11
+    .byte %11111110             ; row 11
     .byte %11111110             ; row 12
     .byte %11111110             ; row 13
     .byte %01111100             ; row 14
     .byte %10011110             ; row 15
-    .byte %11011100             ; row 16
-    .byte %10010100             ; row 17
-    .byte %00010100             ; row 18
-    .byte %00010100             ; row 19
-    .byte %00010100             ; row 20
-    .byte %00010100             ; row 21
+    .byte %11111000             ; row 16
+    .byte %10101000             ; row 17
+    .byte %00101000             ; row 18
+    .byte %00101000             ; row 19
+    .byte %00101000             ; row 20
+    .byte %00101000             ; row 21
 
 
 ; PlayerWalkA/B moved INTO the $F8DD art block (2026-10-22): the 22-row
@@ -3893,59 +3893,60 @@ PlayerWalkA:
     .byte %01111110             ; row  1
     .byte %01111110             ; row  2
     .byte %01111110             ; row  3
-    .byte %01111100             ; row  4
+    .byte %01111100             ; row  4 — visor / beam row
     .byte %01111110             ; row  5
     .byte %00111100             ; row  6
     .byte %01111100             ; row  7
     .byte %11111110             ; row  8
     .byte %11111110             ; row  9
     .byte %11111110             ; row 10
-    .byte %01111100             ; row 11
+    .byte %11111110             ; row 11
     .byte %11111110             ; row 12
     .byte %11111110             ; row 13
     .byte %01111100             ; row 14
-    .byte %00111110             ; row 15 — walk A (stride)
-    .byte %00111100             ; row 16
-    .byte %00100100             ; row 17
-    .byte %00100100             ; row 18
-    .byte %01000010             ; row 19
-    .byte %01000010             ; row 20
-    .byte %01000010             ; row 21
+    .byte %01111100             ; row 15
+    .byte %01111000             ; row 16
+    .byte %01001000             ; row 17
+    .byte %01001000             ; row 18
+    .byte %10000100             ; row 19
+    .byte %10000100             ; row 20
+    .byte %10000100             ; row 21
 
 PlayerWalkB:
     .byte %00111100             ; row  0
     .byte %01111110             ; row  1
     .byte %01111110             ; row  2
     .byte %01111110             ; row  3
-    .byte %01111100             ; row  4
+    .byte %01111100             ; row  4 — visor / beam row
     .byte %01111110             ; row  5
     .byte %00111100             ; row  6
     .byte %01111100             ; row  7
     .byte %11111110             ; row  8
     .byte %11111110             ; row  9
     .byte %11111110             ; row 10
-    .byte %01111100             ; row 11
+    .byte %11111110             ; row 11
     .byte %11111110             ; row 12
     .byte %11111110             ; row 13
     .byte %01111100             ; row 14
-    .byte %00111110             ; row 15 — walk B (passing)
-    .byte %00111100             ; row 16
-    .byte %00011000             ; row 17
-    .byte %00011000             ; row 18
-    .byte %00011000             ; row 19
-    .byte %00011000             ; row 20
-    .byte %00011000             ; row 21
+    .byte %01111100             ; row 15
+    .byte %01111000             ; row 16
+    .byte %00110000             ; row 17
+    .byte %00110000             ; row 18
+    .byte %00110000             ; row 19
+    .byte %00110000             ; row 20
+    .byte %00110000             ; row 21
 
 PlayerColTable:
-    ; 22 rows for EVERY frame (one table, shared): $1E (bit1) is the
-    ; beam row 4; $0C white, $08 grey, $04 dark grey, $48 red,
-    ; $2C orange, $88 blue — all bit1=0 and even (no stray ENAM0).
-    .byte $0C, $0C, $0C, $0C   ; rows 0:W, 1:W, 2:W, 3:W
-    .byte $1E, $0C, $0C, $08   ; rows 4:beam, 5:W, 6:W, 7:gry
-    .byte $48, $48, $48, $08   ; rows 8:red, 9:red, 10:red, 11:gry
-    .byte $48, $48, $08, $2C   ; rows 12:red, 13:red, 14:gry, 15:org
-    .byte $2C, $88, $88, $04   ; rows 16:org, 17:blu, 18:blu, 19:dgy
-    .byte $04, $04   ; rows 20:dgy, 21:dgy
+    ; 22 rows for EVERY frame (one shared table): $1E (bit 1) is the
+    ; ONLY beam row (4); every other byte is even with bit 1 clear so
+    ; ENAM0 cannot fire on it. Names: Branco, Amarelo=beam, Cinza,
+    ; Vermelho, Laranja, Azul, Cinza Escuro.
+    .byte $0C, $0C, $0C, $0C   ; rows 0:Branco, 1:Branco, 2:Branco, 3:Branco
+    .byte $1E, $0C, $0C, $08   ; rows 4:Amarelo, 5:Branco, 6:Branco, 7:Cinza
+    .byte $48, $48, $48, $48   ; rows 8:Vermelho, 9:Vermelho, 10:Vermelho, 11:Vermelho
+    .byte $48, $48, $08, $2C   ; rows 12:Vermelho, 13:Vermelho, 14:Cinza, 15:Laranja
+    .byte $2C, $88, $88, $04   ; rows 16:Laranja, 17:Azul, 18:Azul, 19:Cinza Escuro
+    .byte $04, $04   ; rows 20:Cinza Escuro, 21:Cinza Escuro
 
     .ds $FE90 - *, 0            ; ObjColorTab/ObjSprites moved to the
                                  ; $F744 fill (Phase 6: tall art). The $FE8F
