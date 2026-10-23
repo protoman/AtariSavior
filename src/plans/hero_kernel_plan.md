@@ -907,3 +907,47 @@ Consequences, all landed together:
   laser-window, raft-pin, grid-exit and midband tests derive/carry the new
   numbers. `test_cell_map`'s Y sweep no longer probes above `PLAYER_MAX_Y`
   (the bottom row index must stay inside `YToRowTable`).
+
+## LAMP wall-side mirror — designed 2026-10-22, BLOCKED on ROM bytes
+
+User ruling: the wall lamp hangs on the wall it is drawn against, and the
+converter should pick the side automatically (**no editor change**). The art as
+committed (`6155b3d`) carries the bracket on the lamp's LEFT, i.e. it faces
+RIGHT; a lamp whose wall is on its right needs the mirrored design.
+
+**Why REFP1 was rejected** (measured, not guessed): `SetObjReflection` is the
+only writer that survives the HUD band, and it lives at $FF20 — bank0's
+post-pad is FULL (last used byte $FFEF, `.ds $FFF2` follows), so the minimal
+15-19 B version does not fit. It would also give ONE mirror value for both
+GRP1 slots, so a mirrored lamp and the mirrored miner could not coexist.
+
+**Space audit done in the attempt:**
+- bank2's pre-$FF59 block is full too: moving `EnemyOffTable` + `EnemyBitTable`
+  (7 B) into the $FFE6 fill frees exactly enough for the 4 B of laser masks
+  (both laser bodies read the record RAW and would destroy a b7 lamp) and
+  nothing more. That move is safe (abs,X reads, X <= 3, never reaches the
+  $FFF6-$FFF9 F6 hotspot mirrors) and is part of the resume plan.
+
+**RESUME HERE — encode the mirror as a TYPE (no b7, no REFP1):**
+1. Mirrored lamp = type **13** (b3-0 is 4 bits, 8-15 unused). `dir` stays 0, so
+   no record byte changes shape.
+2. bank0 data only: `ObjSpriteOffTable` grows to 14 entries (move it from
+   $FE0C, which is full, into the $F8A0 fill — 33 B free; index 13 =
+   `OBJ_LAMP_R`), `ObjHeightTab` index 13 = 10 (grows into the $F830 pad).
+3. `OBJ_LAMP_R` = a 10-row horizontal mirror of LAMP + its 10 colour rows,
+   appended after RAFT: offsets 111..120, `ObjSprites` 121 B, page guard +120,
+   `test_miner_colors` last = 120.
+4. Every `cmp #LAMP` masks `and #%00000111` instead of `%01111111` (SIZE
+   NEUTRAL — same 2-byte instruction): kernel `CEH_Lamp`, bank2 blast, bank2
+   `StageSlot1B2`. The two laser bodies have no mask today: add
+   `and #%00000111` (4 B, funded by the table move above).
+5. Known limitation to document in the code: `StageSlot1B2`'s mask drops b3, so
+   a mirrored lamp that lands in SLOT 1 draws the unmirrored design. Lifting it
+   needs 12 B in bank2 for 14-entry table copies.
+6. Converter: `_lamp_dir(room, x, y, models)` returns 5 (wall on the LEFT) or
+   13 (wall on the RIGHT), reading `tiles[band*width + cell]` with
+   band = y//4 and cell = (col if col < 20 else 39-col)//2; a screen edge
+   counts as a wall. The emitter's `type <= 7` assert becomes `<= 13`.
+7. Guards: converter test (wall left -> type 5, wall right -> type 13) + a ROM
+   test that the design at index 13 is the horizontal mirror of index 5 over
+   its 10 rows.
