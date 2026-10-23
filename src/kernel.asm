@@ -2540,20 +2540,37 @@ ObjHeightTab:                                              ; by ENEMY type
 ; Flags: Z is left SET when A = 0, so the caller can branch right after.
 ; ------------------------------------------------------------------------------
 M1ColFromMeta:
+    lda EnemyDeadMask
+    and #$10                    ; b4 = M1 strip destroyed -> transparent
+    bne .M1Cgone                ;   (the collision overlay honours the same
+                                ;   bit, so the sprite now dies with it)
     lda RoomPF0Lo               ; bank3 stages MetaA over this dead pointer byte
-
     lsr
     lsr
     lsr
     lsr                         ; A = m1_col+1 (0 = no side-1 strip)
-    beq .M1Cdone
+    beq .M1Cnone
     asl
     asl
     asl                         ; 8*(col+1)
     sec
-    sbc #1                      ; 8*col+7 = the M1 column
-.M1Cdone:
-    rts
+    sbc #1                      ; 8*col+7 = the LEFT-half M1 column
+    pha
+    lda RoomPF0Lo
+    and #$01                    ; MetaA b0 = strip on the RIGHT half
+    beq .M1Cleft
+    pla
+    clc
+    adc #80                     ; right half: 87 + 8*col
+    rts                         ; Z clear
+.M1Cleft:
+    pla
+    rts                         ; A = 7 + 8*col, Z clear
+.M1Cgone:
+    lda #0
+    sta M1X                     ; strip destroyed: keep the byte honest too
+.M1Cnone:
+    rts                         ; A = 0, Z set -> caller skips the sprite
 
     .ds $F830 - *, 0            ; ObjSprites: per-type heights, 121 B now
                                  ;   KEY 16, MOTH 14, SPIDER 15, LAMP 10,
