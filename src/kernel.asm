@@ -1176,7 +1176,12 @@ Overscan:
     lda RoomX
     sta BombX
     lda RoomY
-    sta BombY
+    clc
+    adc #PLAYER_SPRITE_H - OBJ_BOMB_H   ; the bomb's LAST row rests on the
+    sta BombY                           ;   player's feet line (22-row art: it
+                                        ;   used to be dropped at his head,
+                                        ;   which was the feet line back when
+                                        ;   he was 12 rows tall)
     lda #180
     sta BombTimer
     lda BombX                    ; position P1 ONCE here (overscan, timer-gated);

@@ -244,6 +244,16 @@ def check_rom(src: Path) -> bytes | None:
                for _, t in rows):
         err("color gate `cpy #PLAYER_SPRITE_H - 1` not found in bank0.lst "
             "(A0=11 worst-line skip removed — recount the .Line worst path)")
+    # The bomb must be dropped with its LAST row on the player's feet line:
+    # BombY = RoomY + PLAYER_SPRITE_H - OBJ_BOMB_H. It used to be plain RoomY
+    # (the player's head) — which WAS the feet line back when the art was 12
+    # rows; after the 22-row art the bomb hung ~10 px above the ground (user
+    # report 2026-10-22). Hardcoding 14 would drift with either constant.
+    ksrc = (Path(src) / "kernel.asm").read_text()
+    if not re.search(r"lda\s+RoomY\s*\n\s*clc\s*\n\s*adc\s+#PLAYER_SPRITE_H\s*"
+                     r"-\s*OBJ_BOMB_H[^\n]*\n\s*sta\s+BombY", ksrc):
+        err("bomb drop Y is not `RoomY + PLAYER_SPRITE_H - OBJ_BOMB_H` — the "
+            "bomb must land with its bottom row on the player's feet line")
     return pad0
 
 
