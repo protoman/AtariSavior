@@ -2449,31 +2449,44 @@ Slot1Hook:
     sta ObjTop
     lda ObjX1
     sta ActiveObjectX
-    ldx #1
-    lda #0                      ; this hook spends TWO lines (SetObjectXPos's
-    sta GRP1                    ; own WSYNC + the HMOVE line). .Row already
-                                ; wrote COLUP1 for THIS band, so without this
-                                ; blank the TIA keeps showing the previous
-                                ; band's last GRP1 pattern in the new colour:
-                                ; an enemy straddling the boundary grew a
-                                ; 2-row tail tinted as the band's walls (hot
-                                ; pulse = yellow/red, user report 2026-10-22)
-    jsr SetObjectXPos           ; its own WSYNC starts the positioning line
+    lda #0                      ; this hook spends TWO lines (the positioning
+    sta GRP1                    ; line + the HMOVE line). .Row already wrote
+                                ; COLUP1 for THIS band, so without this blank
+                                ; the TIA keeps showing the previous band's last
+                                ; GRP1 pattern in the new colour: an enemy
+                                ; straddling the boundary grew a 2-row tail
+                                ; tinted as the band's walls (hot pulse =
+                                ; yellow/red, user report 2026-10-22)
     ; The frame's ONE HMOVE already ran in the VBL; this second one exists only
     ; for slot 1's own fine adjust. HMP0/HMM0/HMBL still hold the PLAYER's,
     ; the laser's and the ball's fine values, and HMOVE would apply them a
     ; second time — the player's fine adjust doubled (drawn X advanced 2 px per
     ; 1 px of RoomX, sawing +/-15 px as the fine value cycled: the "raft
-    ; zig-zag", user 2026-10-22). Clear them; HMP1 stays (set above).
-    ; THESE CLEARS MUST SIT BEFORE THE `sta WSYNC` BELOW: they cost ~14 cycles,
-    ; and an HMOVE written after cycle 0 of HBLANK gives up part of the fine
-    ; shift (late-HMOVE penalty) — slot 1's sprite then snaps in ~4 px steps
-    ; (user 2026-10-22: "raft moves one tile at a time").
-    lda #0
+    ; zig-zag", user 2026-10-22). Clear them; HMP1 is set by the positioning
+    ; below. They sit BEFORE the positioning so the RESP line stays short.
     sta HMP0
     sta HMM0
     sta HMBL
-    ldx RowIdx
+    ; --- slot 1 coarse+fine positioning, INLINED ---------------------------
+    ; 2026-10-22: SetObjectXPos takes the coarse X in A and this code reached
+    ; it with A = 0 (the GRP1 blank + clears above), so the div15 loop ran ZERO
+    ; iterations and `fineAdjustTable,Y` was indexed with Y = $F1: slot 1 was
+    ; drawn at a fixed wrong column (left edge + garbage fine adjust) while
+    ; collision/laser/blast used its real ObjX1. Load A here.
+    ; Inlined because with the loop running the RESP line is ~74c at far-right
+    ; X: the jsr/rts plus `ldx RowIdx` + `sta WSYNC` would spill into a third
+    ; scanline and stretch the band (the count below assumes exactly 2).
+    lda ActiveObjectX
+    ldx #1
+    sta WSYNC                   ; align (the hook enters mid-line)
+    sec
+.SHDiv15:
+    sbc #15
+    bcs .SHDiv15
+    tay
+    lda fineAdjustTable,Y       ; 5c, same table + index as SetObjectXPos
+    sta HMP0,X
+    sta RESP0,X
     sta WSYNC                   ; end of the positioning line
     sta HMOVE                   ; cycle 0 of the next line = HBLANK
     ; --- this hook spent TWO lines inside the band: take them out of the ---
@@ -2487,7 +2500,7 @@ Slot1Hook:
 .SHcount:
     sta LineCount               ; .Row's own count store is skipped on this
                                 ;   path (we jump straight into the bodies)
-    pla                         ; running-Y back (SetObjectXPos did `tay`)
+    pla                         ; running-Y back (the div15 loop did `tay`)
     tay
     jmp CaveLine
 .SHout:
