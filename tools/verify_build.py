@@ -88,7 +88,7 @@ def check_rom(src: Path) -> bytes | None:
         if pad0 == bytes(16):
             err("bank0 fold pads are all zero")
 
-    for idx in (0, 3):  # bank0 vectors + bank3 power-up vectors
+    for idx in (0, 7):  # bank0 vectors + bank7 power-up vectors (F4)
         if idx in banks and banks[idx][0xFFC:0x1000] == bytes(4):
             err(f"bank{idx} reset vector is zero")
 
@@ -267,10 +267,10 @@ def check_rom(src: Path) -> bytes | None:
 
 
 FOLD_ADDR = 0xFEF6
-# sta $1FF8 / lda (FetchPtr),Y / sta $1FF6 / rts — plan §0.1, hand-copy
+# sta $1FF6 / lda (FetchPtr),Y / sta $1FF4 / rts — plan §0.1, hand-copy
 # forbidden: change the block → change these bytes + plan together.
-# P3.1: bank select is absolute (was sta $1FF8,X) — see kernel.asm deviation.
-FOLD_BYTES = bytes([0x8D, 0xF8, 0x1F, 0xB1, 0xE5, 0x8D, 0xF6, 0x1F, 0x60])
+# P3.1: bank select is absolute (was sta $1FF6,X) — see kernel.asm deviation.
+FOLD_BYTES = bytes([0x8D, 0xF6, 0x1F, 0xB1, 0xE5, 0x8D, 0xF4, 0x1F, 0x60])
 # 0xE5 = FetchPtr (moved $E0→$E5 in S3.2 to free $E0 for rect4.h)
 
 
@@ -312,37 +312,38 @@ def check_fold_block(src: Path) -> None:
 
 MOTH_ENTRY = 0xFEF0
 MOTH_EXIT = 0xFC49
-# sta $1FF8 (entry) / sta $1FF6 (exit) — the switch halves of the E4 tramps.
-MOTH_STA18 = bytes([0x8D, 0xF8, 0x1F])
-MOTH_STA19 = bytes([0x8D, 0xF9, 0x1F])   # C7: bank3 halves
-MOTH_STA16 = bytes([0x8D, 0xF6, 0x1F])
+# sta $1FF6 (entry) / sta $1FF4 (exit) — the switch halves of the E4 tramps.
+MOTH_STA18 = bytes([0x8D, 0xF6, 0x1F])
+MOTH_STA19 = bytes([0x8D, 0xF7, 0x1F])   # C7: bank3 halves
+MOTH_STA16 = bytes([0x8D, 0xF4, 0x1F])
 
 # S5.3 HOF entry tramp — same pattern as the moth entry: bank0 executes
-# `sta $1FF9` (C7: bank3) at $FFEC, the fetch at $FFEF comes from bank3 =
+# `sta $1FF7` (C7: bank3) at $FFEC, the fetch at $FFEF comes from bank3 =
 # `jmp` target.
 # (shifted +$10 from $FE80 when the aligned ObjColorTab/ObjSprites pair
 #  took $FE00-$FE8F; mirrors in both banks moved together.)
 HOF_ENTRY = 0xFFEC   # A3: moved off $FE90 (bank3 $FE93 = .OSline)
-# S5.4 LaserHitTest entry tramp — same pattern: `sta $1FF8` at $FE96,
+# S5.4 LaserHitTest entry tramp — same pattern: `sta $1FF6` at $FE96,
 # fetch at $FE89 from bank2 = `jmp LaserHitTestBody`.
 LHT_ENTRY = 0xFE96
-# Tally entry tramp — same pattern: `sta $1FF7` at $FFE6 (after BeamMask,
+# Tally entry tramp — same pattern: `sta $1FF5` at $FFE6 (after BeamMask,
 # fetch at $FFE9 from BANK1 = `jmp TallyEntry`, repack chunk 3). Ends $FFEB so
-# $FFF2-$FFF9 (F6 hotspot mirrors) stay fill.
+# $FFF2-$FFF9 stay fill (F4 hotspot mirrors are $FFF4-$FFF9;
+# $FFFA/$FFFB carry the NMI vector and are never read - no interrupts).
 TALLY_ENTRY = 0xFFE6
 
 
 def check_moth_tramp(src: Path) -> None:
     """E4: moth code-fold tramps — byte-identity slices + address pins.
 
-    Entry $FEF0: bank0 runs `sta $1FF8`, bank2 serves `jmp MothRoutine`
-    ($FEF3). Exit $FC49: bank2 runs `sta $1FF6`, bank0 serves `jmp UE_Next`
+    Entry $FEF0: bank0 runs `sta $1FF6`, bank2 serves `jmp MothRoutine`
+    ($FEF3). Exit $FC49: bank2 runs `sta $1FF4`, bank0 serves `jmp UE_Next`
     ($FC4C). Each bank only executes its own half, but both halves are written
     in both sources (FoldIndirect discipline) so a straight byte-compare pins
     the whole block: operand drift (e.g. bank2's MothRoutine moving while
     kernel.asm's literal stays) fails loudly.
-    Also asserts $FFF2-$FFF9 stay fill in both banks: $FFF6-$FFF9 are F6
-    hotspot mirrors ((addr & $1FFF) in $1FF6-$1FF9) — Stella peek() calls
+    Also asserts $FFF2-$FFF9 stay fill in both banks: $FFF4-$FFF9 are F4
+    hotspot mirrors ((addr & $1FFF) in $1FF4-$1FF7) — Stella peek() calls
     checkSwitchBank on reads (CartEnh.cxx:157), so any fetched byte there
     flips banks mid-instruction (the 2026-09-30 frame-3 crash).
     """
@@ -391,7 +392,7 @@ def check_moth_tramp(src: Path) -> None:
         err(f"UE_MothTramp at {shown}, expected ${MOTH_ENTRY:04X} "
             "(dispatch jmp target moved off the pad)")
 
-    # HOF tramp ($FFEC) — bank0 runs `sta $1FF9`, the opcode+operand are
+    # HOF tramp ($FFEC) — bank0 runs `sta $1FF7`, the opcode+operand are
     # fetched from BANK3's image at +3 ($FFEF). (C7 2026-10-20: the body went
     # back to bank3 with the shape/extras stream it walks.)
     hoff = HOF_ENTRY - 0xF000
@@ -415,7 +416,7 @@ def check_moth_tramp(src: Path) -> None:
         shown = f"${hof_tramp:04X}" if hof_tramp is not None else "None"
         err(f"HotOverlapFlag at {shown}, expected ${HOF_ENTRY:04X} "
             "(PlayerHitsMap jmp target moved off the pad)")
-    # $FFF2-$FFF9 must stay fill (hotspot mirrors) — bank0 pad now ends $FFF1.
+    # $FFF2-$FFF9 must stay fill (F4 hotspot mirrors) — bank0 pad ends $FFF1.
 
 
     # S5.4 LaserHitTest tramp ($FE86) — same discipline again.
@@ -447,9 +448,9 @@ def check_moth_tramp(src: Path) -> None:
     yoff = TALLY_ENTRY - 0xF000
     y0 = banks[0][yoff:yoff + 6]
     y1 = banks[1][yoff:yoff + 6]
-    if y0[:3] != bytes([0x8D, 0xF7, 0x1F]):
+    if y0[:3] != bytes([0x8D, 0xF5, 0x1F]):
         err(f"bank0 tally entry ${TALLY_ENTRY:04X} = {y0.hex()} "
-            "(expected 8df71f + jmp — sta $1FF7 to bank1)")
+            "(expected 8df51f + jmp — sta $1FF5 to bank1)")
     if y0 != y1:
         err(f"tally entry bank0[${TALLY_ENTRY:04X}] {y0.hex()} != bank1 "
             f"{y1.hex()} (byte-identity broken)")
@@ -471,7 +472,7 @@ def check_moth_tramp(src: Path) -> None:
     x2 = banks[2][xoff:xoff + 3]
     if x0 != MOTH_STA16 or x2 != MOTH_STA16:
         err(f"moth exit slice bank0 {x0.hex()} / bank2 {x2.hex()} != "
-            f"{MOTH_STA16.hex()} (sta $1FF6)")
+            f"{MOTH_STA16.hex()} (sta $1FF4)")
     if banks[0][xoff + 3] != 0x4C:
         err(f"bank0 ${MOTH_EXIT + 3:04X} is not a jmp (expected jmp UE_Next)")
     else:
@@ -482,14 +483,14 @@ def check_moth_tramp(src: Path) -> None:
         elif op != un:
             err(f"moth exit jmp ${op:04X} != UE_Next ${un:04X}")
 
-    # F6 hotspot mirror zone: a fetch of $FFF6-$FFF9 peeks a hotspot
+    # F4 hotspot mirror zone: a fetch of $FFF4-$FFF9 peeks a hotspot
     # (ADDR_MASK=$1FFF) and flips banks mid-instruction (Stella peek side
     # effect). Must stay fill — no code — in every executing bank.
     for idx, data in banks.items():
         zone = data[0xFF2:0xFFA]
         if any(zone):
             err(f"bank{idx} $FFF2-$FFF9 = {zone.hex()} (must be fill: "
-                "$FFF6-$FFF9 are F6 hotspot mirrors on peek)")
+                "$FFF4-$FFF9 are F4 hotspot mirrors on peek)")
 
 
 # Cross-bank call pads (leaf_move_plan, SPLIT 2026-10-20 chunk 4): each pad is
@@ -498,7 +499,8 @@ def check_moth_tramp(src: Path) -> None:
 # `jmp`. Table = (kernel label, A in bank0, target bank, sta operand byte,
 # target label in that bank).
 PAD_LO, PAD_HI = 0xFBF8, 0xFC49   # inclusive start, exclusive end (FC48 last)
-PAD_BANK_BYTE = {0: 0xF6, 1: 0xF7, 2: 0xF8, 3: 0xF9}
+# F4 (32K): bank N's hotspot byte is 0xF4 + N ($1FF4-$1FFB).
+PAD_BANK_BYTE = {0: 0xF4, 1: 0xF5, 2: 0xF6, 3: 0xF7}
 
 CORRIDOR_PADS = (
     ("CallPad_UpdateBombSound", 0xFBFC, 1, "UpdateBombSound"),
@@ -520,7 +522,7 @@ CORRIDOR_PADS = (
 )
 
 # C3 (2026-10-20): room-exit entry pads — packed before the $FBF8 ReturnPad.
-# bank0 half = `sta $1FF8` at A, bank2 half = `jmp ExitXxxB2` at A+3.
+# bank0 half = `sta $1FF6` at A, bank2 half = `jmp ExitXxxB2` at A+3.
 EXIT_PADS = (
     ("CallPad_ExitDown", 0xFBD9, 2, "ExitDownB2"),
     ("CallPad_ExitUp", 0xFBDC, 2, "ExitUpB2"),
@@ -537,7 +539,7 @@ TAIL_PADS = (
 
 # 2026-10-22: the Phase 5 slot-1 stager moved out of bank0's $F744 fill (the
 # Phase 4/6 workspace). Same split contract as the exit pads — bank0 keeps the
-# `sta $1FF8` at $FBE5, bank2 serves `jmp StageSlot1B2` from $FBE8.
+# `sta $1FF6` at $FBE5, bank2 serves `jmp StageSlot1B2` from $FBE8.
 MOVE_PADS = (
     ("CallPad_StageSlot1", 0xFBE5, 2, "StageSlot1B2"),
 )
@@ -587,7 +589,7 @@ def check_boot_banks(src: Path) -> None:
     """F6 power-up robustness: the bank latch is UNDEFINED at power-up on real
     hardware, so any of the four banks can be the first one fetched. Every bank
     therefore needs the same 5-byte "select bank0" prefix at $F000
-    (`lda #0 / sta $1FF6`), with bank0 holding `jmp GameStart` at $F005 — the
+    (`lda #0 / sta $1FF4`), with bank0 holding `jmp GameStart` at $F005 — the
     post-switch fetch reads those three bytes from BANK0, so banks 1-3 can
     leave them as anything. Each bank's RESET vector must lead there (bank0
     jumps straight to GameStart at $F008).
@@ -595,7 +597,7 @@ def check_boot_banks(src: Path) -> None:
     Regression this exists for: bank1 shipped with a bank-select-less
     `jmp $F008`, i.e. a 1-in-4 chance of booting into zero fill (BRK loop).
     """
-    PREFIX = bytes([0xA9, 0x00, 0x8D, 0xF6, 0x1F])   # lda #0 / sta $1FF6
+    PREFIX = bytes([0xA9, 0x00, 0x8D, 0xF4, 0x1F])   # lda #0 / sta $1FF4
     bins: dict[int, bytes] = {}
     for idx in range(4):
         p = src / f"bank{idx}.bin"
@@ -608,7 +610,7 @@ def check_boot_banks(src: Path) -> None:
         off = 0xF000 - 0xF000
         if d[off:off + 5] != PREFIX:
             err(f"bank{idx} $F000 = {d[off:off + 5].hex()} — every bank must "
-                "start with `lda #0 / sta $1FF6` (F6 can power up in ANY bank)")
+                "start with `lda #0 / sta $1FF4` (F4 powers up in the LAST bank)")
         res = d[0xFFFC - 0xF000] | (d[0xFFFD - 0xF000] << 8)
         want = 0xF008 if idx == 0 else 0xF000
         if res != want:
@@ -620,7 +622,7 @@ def check_boot_banks(src: Path) -> None:
 
 
 def check_raft_tramp(src: Path) -> None:
-    """Raft entry tramp: bank0 executes `sta $1FF7` at $F8C0; the `jmp` opcode
+    """Raft entry tramp: bank0 executes `sta $1FF5` at $F8C0; the `jmp` opcode
     and operand are FETCHED from bank1's mirror at the same address (CallPad /
     FoldIndirect discipline). So the 6 bytes must be byte-identical in
     bank0/bank1 and the operand must be bank1's RaftBody body label (pinned
@@ -682,7 +684,7 @@ def check_frame_tramp(src: Path) -> None:
 def check_enterroom_tramp(src: Path) -> None:
     """#22 EnterRoom tramp: bank0/bank2 byte-identity + operand = body.
 
-    bank0 executes `sta $1FF8` at labels0['EnterRoom'] ($FB84); the
+    bank0 executes `sta $1FF6` at labels0['EnterRoom'] ($FB84); the
     following `jmp` is FETCHED from bank2's twin at the same address, so
     all 6 bytes must match and the operand must equal bank2's EnterRoomB2
     body label (pinned $F010 by .ds).
@@ -712,8 +714,8 @@ def check_enterroom_tramp(src: Path) -> None:
     off = tramp - 0xF000
     b0 = bins[0][off:off + 6]
     b2 = bins[2][off:off + 6]
-    if len(b0) == 6 and b0[:3] != bytes((0x8D, 0xF8, 0x1F)):
-        err(f"bank0 EnterRoom tramp ${tramp:04X} = {b0.hex()} (expected 8df81f + jmp)")
+    if len(b0) == 6 and b0[:3] != bytes((0x8D, 0xF6, 0x1F)):
+        err(f"bank0 EnterRoom tramp ${tramp:04X} = {b0.hex()} (expected 8df61f + jmp)")
     if b0 != b2:
         err(f"enterroom tramp bank0[${tramp:04X}] {b0.hex()} != bank2 {b2.hex()} "
             f"(byte-identity broken — bank2 twin missing/moved)")
@@ -758,8 +760,8 @@ def check_blast_tramp(src: Path) -> None:
     off = tramp - 0xF000
     b0 = bins[0][off:off + 6]
     b2 = bins[2][off:off + 6]
-    if len(b0) == 6 and b0[:3] != bytes((0x8D, 0xF8, 0x1F)):
-        err(f"bank0 BombEnemyBlast tramp ${tramp:04X} = {b0.hex()} (expected 8df81f + jmp)")
+    if len(b0) == 6 and b0[:3] != bytes((0x8D, 0xF6, 0x1F)):
+        err(f"bank0 BombEnemyBlast tramp ${tramp:04X} = {b0.hex()} (expected 8df61f + jmp)")
     if b0 != b2:
         err(f"blast tramp bank0[${tramp:04X}] {b0.hex()} != bank2 {b2.hex()} "
             f"(byte-identity broken — bank2 twin missing/moved)")
@@ -773,9 +775,9 @@ def check_blast_tramp(src: Path) -> None:
 def check_loadlevel_tramp(src: Path) -> None:
     """C2 (2026-10-20): LoadLevel lives in bank2; the RETURN half is inverted.
 
-    Entry is an ordinary split pad (SPLIT_PADS: bank0 `sta $1FF8` at $FC20,
+    Entry is an ordinary split pad (SPLIT_PADS: bank0 `sta $1FF6` at $FC20,
     bank2 `jmp LoadLevelB2` at $FC23). The return is the mirror image: the
-    bank2 body tail `jmp $FC26` executes BANK2's `sta $1FF6` there, so the
+    bank2 body tail `jmp $FC26` executes BANK2's `sta $1FF4` there, so the
     fetch at $FC29 comes from bank0, which must hold `jmp LF_B0Tail` (the
     drop-in tail: EnterRoom + placement + `jmp DropArm`). Both halves are
     pinned byte-for-byte, and the drop-in tail's shape is pinned too: if it
@@ -808,9 +810,9 @@ def check_loadlevel_tramp(src: Path) -> None:
     if labels0.get("LoadLevel") != PAD_ENTRY:
         err(f"bank0 LoadLevel ${labels0.get('LoadLevel', -1):04X} != "
             f"${PAD_ENTRY:04X} (entry pad)")
-    if at(0, PAD_ENTRY, 3) != bytes((0x8D, 0xF8, 0x1F)):
+    if at(0, PAD_ENTRY, 3) != bytes((0x8D, 0xF6, 0x1F)):
         err(f"bank0 ${PAD_ENTRY:04X} = {at(0, PAD_ENTRY, 3).hex()} != "
-            "sta $1FF8 (8d f8 1f)")
+            "sta $1FF6 (8d f8 1f)")
     body = labels2.get("LoadLevelB2")
     if body is None:
         err("bank2 LoadLevelB2 label missing")
@@ -819,8 +821,8 @@ def check_loadlevel_tramp(src: Path) -> None:
     if got != bytes((0x4C, body & 0xFF, body >> 8)):
         err(f"bank2 ${PAD_ENTRY + 3:04X} = {got.hex()} != jmp LoadLevelB2 "
             f"${body:04X} (stale operand)")
-    if at(2, PAD_RET, 3) != bytes((0x8D, 0xF6, 0x1F)):
-        err(f"bank2 ${PAD_RET:04X} = {at(2, PAD_RET, 3).hex()} != sta $1FF6 "
+    if at(2, PAD_RET, 3) != bytes((0x8D, 0xF4, 0x1F)):
+        err(f"bank2 ${PAD_RET:04X} = {at(2, PAD_RET, 3).hex()} != sta $1FF4 "
             "(the body tail jmp $FC26 must land on the bank0 switch)")
     tail = labels0.get("LF_B0Tail")
     if tail is None:
@@ -1399,14 +1401,14 @@ def check_bank3_entry(src: Path) -> None:
     """C7 (2026-10-20): the ONE cross-bank call of the room load.
 
     bank2's EnterRoomB2 ends `jmp ERBlocksPad`, whose live half is a 3-byte
-    `sta $1FF9` at $F450. The F6 switch happens on that write, so the opcode
+    `sta $1FF7` at $F450. The F6 switch happens on that write, so the opcode
     fetch at $F453 already comes from BANK3 — B3RoomBlocks MUST be assembled
     at $F453 (`bank3.asm` `.ds $F453 - *, 0`). A shift here is a silent jump
     into whatever bank3 holds at $F453, exactly the raft-twin failure mode.
 
     Also asserts the body split: B3RoomBlocks/ExtrasLoad must NOT resolve in
     bank2 any more (the "data in two banks, readers split" state), and bank3
-    must carry its own ReturnPad at $FBF8 (`sta $1FF6`; the rts is bank0's).
+    must carry its own ReturnPad at $FBF8 (`sta $1FF4`; the rts is bank0's).
     """
     for bank in (2, 3):
         b = src / f"bank{bank}.bin"
@@ -1419,13 +1421,13 @@ def check_bank3_entry(src: Path) -> None:
         errors="replace").splitlines())[0] for b in (2, 3)}
     pad = banks[2][0xF450 - 0xF000:0xF450 - 0xF000 + 3]
     if pad != MOTH_STA19:
-        err(f"bank2 ERBlocksPad ${0xF450:04X} = {pad.hex()} != sta $1FF9 "
+        err(f"bank2 ERBlocksPad ${0xF450:04X} = {pad.hex()} != sta $1FF7 "
             f"({MOTH_STA19.hex()}) — the shape reader is bank3's")
     if labels[3].get("B3RoomBlocks") != 0xF453:
         got = labels[3].get("B3RoomBlocks")
         err(f"bank3 B3RoomBlocks at "
             f"${got if got is not None else -1:04X} != $F453 — the fetch after "
-            "bank2's `sta $1FF9` at $F450 lands here")
+            "bank2's `sta $1FF7` at $F450 lands here")
     for name in ("B3RoomBlocks", "ExtrasLoad", "BuildColupF", "PhaseBlink",
                  "HotOverlapBody", "B3StageBand", "HOVFeatEntry"):
         if name in labels[2]:
@@ -1435,8 +1437,8 @@ def check_bank3_entry(src: Path) -> None:
             err(f"bank3.lst has no {name} — the shape half did not assemble "
                 "into bank3")
     rp = banks[3][PAD_LO - 0xF000:PAD_LO - 0xF000 + 3]
-    if rp != bytes([0x8D, 0xF6, 0x1F]):
-        err(f"bank3 ${PAD_LO:04X} = {rp.hex()} != sta $1FF6 — every bank3 body "
+    if rp != bytes([0x8D, 0xF4, 0x1F]):
+        err(f"bank3 ${PAD_LO:04X} = {rp.hex()} != sta $1FF4 — every bank3 body "
             "tails jmp $FBF8 and needs this half")
     if labels[3].get("ReturnPad") != PAD_LO:
         got = labels[3].get("ReturnPad")
@@ -1455,7 +1457,7 @@ def check_tramp_targets(src: Path) -> None:
     is emitted by build.sh (added 2026-10-16 — it was a silent fossil
     before, misdirecting label lookups).
     """
-    hot = {"$1FF6": 0, "$1FF7": 1, "$1FF8": 2, "$1FF9": 3}
+    hot = {"$1FF4": 0, "$1FF5": 1, "$1FF6": 2, "$1FF7": 3}
     starts: dict[int, set[int]] = {}
     for b in range(4):
         p = src / f"bank{b}.lst"
@@ -1542,14 +1544,14 @@ def check_callpads(src: Path) -> None:
             err(f"bank{idx} ReturnPad ${rp:04X} != ${PAD_LO:04X} (every "
                 "bank's body tails jmp $FBF8)")
             continue
-        if at(idx, PAD_LO, 3) != bytes([0x8D, 0xF6, 0x1F]):
+        if at(idx, PAD_LO, 3) != bytes([0x8D, 0xF4, 0x1F]):
             err(f"bank{idx} ${PAD_LO:04X} = {at(idx, PAD_LO, 3).hex()} != "
-                "sta $1FF6 (8d f6 1f) — `sta` is the whole live half there, "
+                "sta $1FF4 (8d f6 1f) — `sta` is the whole live half there, "
                 "and the bodies reach it by the $FBF8 literal")
     # The `rts` is fetched from bank0 after the `sta`: `sta` preserves
     # A/X/Y/flags/stack, which is what the pad argument pass-through needs.
-    if at(0, PAD_LO, 4) != bytes([0x8D, 0xF6, 0x1F, 0x60]):
-        err(f"bank0 ReturnPad {at(0, PAD_LO, 4).hex()} != sta $1FF6/rts "
+    if at(0, PAD_LO, 4) != bytes([0x8D, 0xF4, 0x1F, 0x60]):
+        err(f"bank0 ReturnPad {at(0, PAD_LO, 4).hex()} != sta $1FF4/rts "
             "(the target banks' bodies rely on bank0's rts at $FBFB)")
 
     # --- split pads: bank0 `sta` at A, target-bank `jmp` at A+3 --------------
@@ -1593,8 +1595,8 @@ def check_callpads(src: Path) -> None:
             err(f"{pad} at ${a0 if a0 is not None else -1:04X}, expected "
                 f"${addr:04X}")
             continue
-        if at(0, a0, 3) != bytes([0x8D, 0xF7, 0x1F]):
-            err(f"{pad} bank0 ${a0:04X} = {at(0, a0, 3).hex()} != sta $1FF7")
+        if at(0, a0, 3) != bytes([0x8D, 0xF5, 0x1F]):
+            err(f"{pad} bank0 ${a0:04X} = {at(0, a0, 3).hex()} != sta $1FF5")
         tgt = labels[1].get(target)
         if tgt is None:
             err(f"{pad}: target {target} not in bank1.lst")

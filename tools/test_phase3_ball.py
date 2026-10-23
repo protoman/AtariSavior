@@ -62,8 +62,9 @@ if EXTRAS is None:
 
 def run(rom: Path, band1: int = 0xFF) -> dict:
     blob = rom.read_bytes()
-    assert len(blob) == 16384, f"{rom} is {len(blob)} bytes, want 16K"
-    banks = [bytearray(blob[4096 * i:4096 * (i + 1)]) for i in range(4)]
+    assert len(blob) in (16384, 32768), f"{rom} is {len(blob)} bytes, want 32K"
+    banks = [bytearray(blob[4096 * i:4096 * (i + 1)])
+             for i in range(len(blob) // 4096)]
     # MetaA band mask: band1 parameterized for the partial-mask run
     mask = 0x07 if band1 else 0x05
     banks[3][(EXTRAS + 1) & 0xFFF] = mask          # MetaA

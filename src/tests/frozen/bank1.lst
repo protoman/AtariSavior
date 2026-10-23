@@ -47,14 +47,14 @@
      46  f000
      47  f000							; --- power-up stub: the F6 latch powers up in an UNDEFINED bank on real
      48  f000							; hardware (Stella only randomises it with developer settings), so every
-     49  f000							; bank must be able to start. This is 5 bytes on purpose: `sta $1FF6`
+     49  f000							; bank must be able to start. This is 5 bytes on purpose: `sta $1FF4`
      50  f000							; switches to bank0, and the next fetch ($F005) then comes from BANK0,
      51  f000							; where a `jmp $F008` (GameStart) sits — the same 5-byte prefix bank2 and
      52  f000							; bank3 carry. Never shorten it to a bare `jmp`: that is what this bank had
      53  f000							; (a bank-select-less `jmp $F008` = BRK loop into zero fill).
      54  f000							; Guard: verify_build.check_boot_banks + tools/test_boot_banks.py.
      55  f000		       a9 00		      lda	#0
-     56  f002		       8d f6 1f 	      sta	$1FF6	; select bank0 (hotspot: the DATA is ignored)
+     56  f002		       8d f4 1f 	      sta	$1FF4	; select bank0 (hotspot: the DATA is ignored)
      57  f005
      58  f005							; --- ColOff/ColMask (plan 5.1b, 2026-10-20) ---
      59  f005							; The cell punch reads PF cells directly: PF0Buf/Y with ColOff,X (row
@@ -93,7 +93,7 @@
      92  f050							; TitleSelect — moved from bank0 (refactor_v4_plan Phase 3.1 canary, 2026-10-16).
      93  f050							; Pure leaf (no calls); returns C=1 edge (caller runs LoadLevel) / C=0 no-edge.
      94  f050							; Entered via CallPad_TitleSelect ($FC4F); tail-exits through ReturnPad
-     95  f050							; (sta $1FF6/rts), which returns to the bank0 caller with C intact.
+     95  f050							; (sta $1FF4/rts), which returns to the bank0 caller with C intact.
      96  f050		       02 82	   SWCHB      =	$0282
      97  f050		       00 97	   StepsLeft  =	$97	; bank0 per-frame step latch (ZP byte block)
      98  f050		       00 04	   LEVEL_COUNT =	4	; hand copy of kernel LEVEL_COUNT
@@ -1358,7 +1358,7 @@
    1343  f84a							; ==============================================================================
    1344  f84a							; Raft (enemy type 7) — the moving, rideable platform. plans/raft_moving_plan.md
    1345  f84a							; ==============================================================================
-   1346  f84a							; Entrance: bank0 UEDispatch -> CallPad_RaftBody (sta $1FF7 / jmp $F822) -> here;
+   1346  f84a							; Entrance: bank0 UEDispatch -> CallPad_RaftBody (sta $1FF5 / jmp $F822) -> here;
    1347  f84a							; exit: jmp ReturnPad ($FBF8, bank1's twin) -> bank0's jmp UE_Next.
    1348  f84a							; CallPad rules honoured: no nested CallPad, no bank0 jsr, ZP is shared RAM.
    1349  f84a							; ZP ALIAS WARNING: this code uses bank0's Temp at $88 (free here — every other
@@ -1440,15 +1440,15 @@
    1425  f87c		       10 20 40 80	      .byte.b	$10, $20, $40, $80
    1426  f880							; ------------------------------------------------------------------------------
    1427  f880							; CallPad_RaftBody twin — BYTE-IDENTICAL with kernel.asm's copy at $F8C0 (guard:
-   1428  f880							; verify_build.check_raft_tramp). bank0 executes `sta $1FF7` at $F8C0-$F8C2 and
+   1428  f880							; verify_build.check_raft_tramp). bank0 executes `sta $1FF5` at $F8C0-$F8C2 and
    1429  f880							; the fetch at $F8C3 comes from THIS bank: `jmp $FDE3` = RaftBody below. Neither
    1430  f880							; bank runs the other's half — bank0's operand bytes are never fetched, bank1's
-   1431  f880							; `sta $1FF7` is never executed (it is only the swapped-out image's prefix).
+   1431  f880							; `sta $1FF5` is never executed (it is only the swapped-out image's prefix).
    1432  f880							; In bank1's $F822-$F8C6 fill; StripBlastCheck follows it directly ($F937 pin
    1433  f880							; deleted 2026-10-20 — the body floats and the $F9AC pin bounds the leaves).
    1434  f880							; ------------------------------------------------------------------------------
    1435  f880		       00 00 00 00*	      .ds	$F8C0 - *, 0
-   1436  f8c0		       8d f7 1f 	      .byte.b	$8D, $F7, $1F	; sta $1FF7 (twin)
+   1436  f8c0		       8d f5 1f 	      .byte.b	$8D, $F5, $1F	; sta $1FF5 (twin)
    1437  f8c3		       4c e3 fd 	      .byte.b	$4C, $E3, $FD	; jmp $FDE3 (twin — fetched post-switch)
    1438  f8c6
    1439  f8c6							; ($F937 pin DELETED 2026-10-20, audit round 2: it pinned bank2's
@@ -1952,11 +1952,11 @@
    1937  fbce							;   $FC05 <-$FC02+3 BombSndDrop	  $FC14 <-$FC11+3 SetRoomDark
    1938  fbce							;   $FC08 <-$FC05+3 BombSndExplode	  $FC17 <-$FC14+3 UpdateLaserSound
    1939  fbce							;   ($FC0B retired by C3)		 $FC1D <-$FC1A+3 BombMarkWalls
-   1940  fbce							; $FC1A (BuildColupF's +3) belongs to BANK3 — its pad is `sta $1FF9`.
+   1940  fbce							; $FC1A (BuildColupF's +3) belongs to BANK3 — its pad is `sta $1FF7`.
    1941  fbce							; ========================================================================
    1942  fbce		       00 00 00 00*	      .ds	$FBF8 - *, 0
    1943  fbf8				   ReturnPad
-   1944  fbf8		       8d f6 1f 	      sta	$1FF6	; the `rts` at $FBFB is served by bank0
+   1944  fbf8		       8d f4 1f 	      sta	$1FF4	; the `rts` at $FBFB is served by bank0
    1945  fbfb		       00 00 00 00	      .ds	$FBFF - *, 0
    1946  fbff		       4c c0 f9 	      jmp	UpdateBombSound
    1947  fc02		       4c cf f9 	      jmp	UpdateJetSound
@@ -1971,7 +1971,7 @@
    1956  fc1d		       4c 10 fb 	      jmp	BombMarkWalls	; S5.2: body lives in bank1 ($FB10)
    1957  fc20
    1958  fc20							; CallPad tail pads (2026-10-20: SPLIT across the banks, no twin). kernel.asm
-   1959  fc20							; holds the three `sta $1FF7` at $FC4F/$FC52/$FC55; after the switch the fetch
+   1959  fc20							; holds the three `sta $1FF5` at $FC4F/$FC52/$FC55; after the switch the fetch
    1960  fc20							; at A+3 lands HERE, so bank1 keeps only the `jmp` halves. Nothing calls a
    1961  fc20							; tail pad from bank1, so bank1's `sta` halves and bank0's `jmp` halves were
    1962  fc20							; dead bytes — reclaiming them gave bank0 15 B of pre-pad headroom.
@@ -1991,12 +1991,12 @@
    1976  fc5b							; ========================================================================
    1977  fc5b		       00 00 00 00*	      .ds	$FC68 - *, 0
    1978  fc68		       a9 01		      lda	#1
-   1979  fc6a		       8d f7 1f 	      sta	$1FF7
+   1979  fc6a		       8d f5 1f 	      sta	$1FF5
    1980  fc6d		       4c 40 f5 	      jmp	$F540
    1981  fc70
    1982  fc70					      .ds	$FC70 - *, 0
    1983  fc70		       a9 00		      lda	#0
-   1984  fc72		       8d f6 1f 	      sta	$1FF6
+   1984  fc72		       8d f4 1f 	      sta	$1FF4
    1985  fc75		       4c 96 f1 	      jmp	$F196	; Overscan in bank0 (must match bank0 ToGameStub;
    1986  fc78							; verify_build --sync-overscan patches this from
    1987  fc78							; bank0.lst after every bank0 build)
@@ -2515,7 +2515,7 @@
    2500  fed2		       4c f8 fb 	      jmp	ReturnPad
    2501  fed5
    2502  fed5		       00 00 00 00*	      .ds	$FEE7 - *, 0
-   2503  fee7		       8d f7 1f 	      sta	$1FF7
+   2503  fee7		       8d f5 1f 	      sta	$1FF5
    2504  feea		       4c 38 f0 	      jmp	$F038
    2505  feed
    2506  feed							; ========================================================================
@@ -2542,14 +2542,14 @@
    2527  ff0f
    2528  ff0f							; ------------------------------------------------------------------------------
    2529  ff0f							; Tally entry tramp slice ($FFE6-$FFEB) — byte-identical with kernel.asm's
-   2530  ff0f							; copy at the same address (F6 pad rule). bank0 executes `sta $1FF7` at
+   2530  ff0f							; copy at the same address (F6 pad rule). bank0 executes `sta $1FF5` at
    2531  ff0f							; $FFE6-$FFE8; the fetch at $FFE9 comes from THIS bank = `jmp TallyEntry`
    2532  ff0f							; ($F44F — moved here from bank2, repack chunk 3, 2026-10-20). Neither bank
    2533  ff0f							; runs its other half. $FFF2-$FFF9 stay fill (hotspot mirrors).
    2534  ff0f							; ------------------------------------------------------------------------------
    2535  ff0f		       00 00 00 00*	      .ds	$FFE6 - *, 0
    2536  ffe6				   TallyTramp_b1
-   2537  ffe6		       8d f7 1f 	      sta	$1FF7
+   2537  ffe6		       8d f5 1f 	      sta	$1FF5
    2538  ffe9		       4c 4f f4 	      jmp	TallyEntry
    2539  ffec
    2540  ffec							; ========================================================================

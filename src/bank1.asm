@@ -46,14 +46,14 @@ VDELP1  = $26
 
     ; --- power-up stub: the F6 latch powers up in an UNDEFINED bank on real
     ; hardware (Stella only randomises it with developer settings), so every
-    ; bank must be able to start. This is 5 bytes on purpose: `sta $1FF6`
+    ; bank must be able to start. This is 5 bytes on purpose: `sta $1FF4`
     ; switches to bank0, and the next fetch ($F005) then comes from BANK0,
     ; where a `jmp $F008` (GameStart) sits — the same 5-byte prefix bank2 and
     ; bank3 carry. Never shorten it to a bare `jmp`: that is what this bank had
     ; (a bank-select-less `jmp $F008` = BRK loop into zero fill).
     ; Guard: verify_build.check_boot_banks + tools/test_boot_banks.py.
     lda #0
-    sta $1FF6                       ; select bank0 (hotspot: the DATA is ignored)
+    sta $1FF4                       ; select bank0 (hotspot: the DATA is ignored)
 
     ; --- ColOff/ColMask (plan 5.1b, 2026-10-20) ---
     ; The cell punch reads PF cells directly: PF0Buf/Y with ColOff,X (row
@@ -92,7 +92,7 @@ MothYDerive:
 ; TitleSelect — moved from bank0 (refactor_v4_plan Phase 3.1 canary, 2026-10-16).
 ; Pure leaf (no calls); returns C=1 edge (caller runs LoadLevel) / C=0 no-edge.
 ; Entered via CallPad_TitleSelect ($FC4F); tail-exits through ReturnPad
-; (sta $1FF6/rts), which returns to the bank0 caller with C intact.
+; (sta $1FF4/rts), which returns to the bank0 caller with C intact.
 SWCHB       = $0282
 StepsLeft   = $97               ; bank0 per-frame step latch (ZP byte block)
 LEVEL_COUNT = 4                 ; hand copy of kernel LEVEL_COUNT
@@ -1343,7 +1343,7 @@ BarFineTable:           ; (B+7)>>3, 15 entries; ∈{0,1,2,3,4}
 ; ==============================================================================
 ; Raft (enemy type 7) — the moving, rideable platform. plans/raft_moving_plan.md
 ; ==============================================================================
-; Entrance: bank0 UEDispatch -> CallPad_RaftBody (sta $1FF7 / jmp $F822) -> here;
+; Entrance: bank0 UEDispatch -> CallPad_RaftBody (sta $1FF5 / jmp $F822) -> here;
 ; exit: jmp ReturnPad ($FBF8, bank1's twin) -> bank0's jmp UE_Next.
 ; CallPad rules honoured: no nested CallPad, no bank0 jsr, ZP is shared RAM.
 ; ZP ALIAS WARNING: this code uses bank0's Temp at $88 (free here — every other
@@ -1425,15 +1425,15 @@ RaftCellMasks:                  ; mask for source column 0..19: PF0 cols 0-3 —
     .byte $10, $20, $40, $80
 ; ------------------------------------------------------------------------------
 ; CallPad_RaftBody twin — BYTE-IDENTICAL with kernel.asm's copy at $F8C0 (guard:
-; verify_build.check_raft_tramp). bank0 executes `sta $1FF7` at $F8C0-$F8C2 and
+; verify_build.check_raft_tramp). bank0 executes `sta $1FF5` at $F8C0-$F8C2 and
 ; the fetch at $F8C3 comes from THIS bank: `jmp $FDE3` = RaftBody below. Neither
 ; bank runs the other's half — bank0's operand bytes are never fetched, bank1's
-; `sta $1FF7` is never executed (it is only the swapped-out image's prefix).
+; `sta $1FF5` is never executed (it is only the swapped-out image's prefix).
 ; In bank1's $F822-$F8C6 fill; StripBlastCheck follows it directly ($F937 pin
 ; deleted 2026-10-20 — the body floats and the $F9AC pin bounds the leaves).
 ; ------------------------------------------------------------------------------
     .ds $F8C0 - *, 0
-    .byte $8D, $F7, $1F         ; sta $1FF7 (twin)
+    .byte $8D, $F5, $1F         ; sta $1FF5 (twin)
     .byte $4C, $E3, $FD         ; jmp $FDE3 (twin — fetched post-switch)
 
 ; ($F937 pin DELETED 2026-10-20, audit round 2: it pinned bank2's
@@ -1937,11 +1937,11 @@ BMWCellSolid:
 ;   $FC05 <-$FC02+3 BombSndDrop          $FC14 <-$FC11+3 SetRoomDark
 ;   $FC08 <-$FC05+3 BombSndExplode       $FC17 <-$FC14+3 UpdateLaserSound
 ;   ($FC0B retired by C3)               $FC1D <-$FC1A+3 BombMarkWalls
-; $FC1A (BuildColupF's +3) belongs to BANK3 — its pad is `sta $1FF9`.
+; $FC1A (BuildColupF's +3) belongs to BANK3 — its pad is `sta $1FF7`.
 ; ========================================================================
     .ds $FBF8 - *, 0
 ReturnPad:
-    sta $1FF6                   ; the `rts` at $FBFB is served by bank0
+    sta $1FF4                   ; the `rts` at $FBFB is served by bank0
     .ds $FBFF - *, 0
     jmp UpdateBombSound
     jmp UpdateJetSound
@@ -1956,7 +1956,7 @@ ReturnPad:
     jmp BombMarkWalls           ; S5.2: body lives in bank1 ($FB10)
 
 ; CallPad tail pads (2026-10-20: SPLIT across the banks, no twin). kernel.asm
-; holds the three `sta $1FF7` at $FC4F/$FC52/$FC55; after the switch the fetch
+; holds the three `sta $1FF5` at $FC4F/$FC52/$FC55; after the switch the fetch
 ; at A+3 lands HERE, so bank1 keeps only the `jmp` halves. Nothing calls a
 ; tail pad from bank1, so bank1's `sta` halves and bank0's `jmp` halves were
 ; dead bytes — reclaiming them gave bank0 15 B of pre-pad headroom.
@@ -1976,12 +1976,12 @@ ReturnPad:
 ; ========================================================================
     .ds $FC68 - *, 0
     lda #1
-    sta $1FF7
+    sta $1FF5
     jmp $F540
 
     .ds $FC70 - *, 0
     lda #0
-    sta $1FF6
+    sta $1FF4
     jmp $F196           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; verify_build --sync-overscan patches this from
                         ; bank0.lst after every bank0 build)
@@ -2500,7 +2500,7 @@ RaftBody:
     jmp ReturnPad
 
     .ds $FEE7 - *, 0
-    sta $1FF7
+    sta $1FF5
     jmp $F038
 
 ; ========================================================================
@@ -2527,14 +2527,14 @@ fineAdjustTable_b1 EQU fineAdjustBegin_b1 - %11110001
 
 ; ------------------------------------------------------------------------------
 ; Tally entry tramp slice ($FFE6-$FFEB) — byte-identical with kernel.asm's
-; copy at the same address (F6 pad rule). bank0 executes `sta $1FF7` at
+; copy at the same address (F6 pad rule). bank0 executes `sta $1FF5` at
 ; $FFE6-$FFE8; the fetch at $FFE9 comes from THIS bank = `jmp TallyEntry`
 ; ($F44F — moved here from bank2, repack chunk 3, 2026-10-20). Neither bank
 ; runs its other half. $FFF2-$FFF9 stay fill (hotspot mirrors).
 ; ------------------------------------------------------------------------------
     .ds $FFE6 - *, 0
 TallyTramp_b1:
-    sta $1FF7
+    sta $1FF5
     jmp TallyEntry
 
 ; ========================================================================

@@ -136,7 +136,7 @@ def main() -> int:
         tot_d = sum(s["data"] for s in banks.values())
         tot_f = sum(s["fill"] for s in banks.values())
         print(f"| **total** | **{tot_c}** | **{tot_d}** | **{tot_f}** | "
-              f"**{tot_c + tot_d}** | **{16384 - tot_c - tot_d}** |")
+              f"**{tot_c + tot_d}** | **{32768 - tot_c - tot_d}** |")
         print()
         print(f"level data: index {lv['index']} + tables/blocks/extras "
               f"{lv['levels']} + models {lv['models']} = **{lv['total']} B**")

@@ -4,10 +4,10 @@
 Source-shape contract for the cross-bank fold (HERO fold, write-triggered):
 
   - FoldIndirect block exists in kernel.asm AND bank2.asm with exactly the
-    four contracted instructions in order (sta $1FF8 / lda (FetchPtr),Y /
-    sta $1FF6 / rts) — hand-edited drift in one bank breaks execution at
+    four contracted instructions in order (sta $1FF6 / lda (FetchPtr),Y /
+    sta $1FF4 / rts) — hand-edited drift in one bank breaks execution at
     the switch point. P3.1: bank select absolute (X preserved; was
-    sta $1FF8,X).
+    sta $1FF6,X).
   - FetchPtr = $E0 defined in both files (operand is baked per file).
   - kernel.asm: block sits right before `.ds $FF00 - *, 0` (margin directive
     to the $FF00 fineAdjust anchor — an assembler error, not silent growth).
@@ -33,9 +33,9 @@ BANK1 = (ROOT / "src" / "bank1.asm").read_text(encoding="utf-8")
 BANK2 = (ROOT / "src" / "bank2.asm").read_text(encoding="utf-8")
 
 BLOCK = [
-    "sta $1FF8",
-    "lda (FetchPtr),Y",
     "sta $1FF6",
+    "lda (FetchPtr),Y",
+    "sta $1FF4",
     "rts",
 ]
 

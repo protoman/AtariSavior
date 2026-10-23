@@ -47,7 +47,7 @@ missing = NEED - L0.keys()
 if missing:
     sys.exit(f"frozen labels missing: {sorted(missing)}")
 
-BANKS = [(FROZEN / f"bank{i}.bin").read_bytes() for i in range(4)]
+BANKS = [(FROZEN / f"bank{i}.bin").read_bytes() for i in range(8)]
 Z = {k: v & 0x7F for k, v in L0.items() if 0x80 <= v <= 0xFF}
 
 

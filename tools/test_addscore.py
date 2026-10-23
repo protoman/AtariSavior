@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-BANKS = [open(SRC / f"bank{i}.bin", "rb").read() for i in range(4)]
+BANKS = [open(SRC / f"bank{i}.bin", "rb").read() for i in range(8)]
 
 SC_TH, SC_HU, SC_TE = 0x73, 0x74, 0x75   # $F3/$F4/$F5 (addr & $7F)
 PC_ENTRY, PC_RETURN = 0x80, 0x83         # jsr at $80, rts target $83
@@ -35,7 +35,7 @@ class Mem:
         a &= 0xFFFF
         if a >= 0xF000:
             return self.banks_[self.bank][a - 0xF000]
-        if 0x1FF6 <= a <= 0x1FF9:
+        if 0x1FF4 <= a <= 0x1FFB:
             return 0
         if 0x80 <= a <= 0xFF or 0x180 <= a <= 0x1FF:
             return self.ram[a & 0x7F]
@@ -44,8 +44,8 @@ class Mem:
     def __setitem__(self, a, v):
         a &= 0xFFFF
         v &= 0xFF
-        if 0x1FF6 <= a <= 0x1FF9:
-            self.bank = a - 0x1FF6
+        if 0x1FF4 <= a <= 0x1FFB:
+            self.bank = a - 0x1FF4
             return
         if a >= 0xF000:
             return

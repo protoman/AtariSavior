@@ -81,12 +81,12 @@ assert "jmp MenuMain" in title, "HUD band follows the title (score = level+1)"
 assert ".LDigitLoop" not in title, "digits band was retired with the black screen"
 
 # --- the title pads are SPLIT across the banks (2026-10-20) ----------------
-# bank0 keeps the three `sta $1FF7` ($FC4F/$FC52/$FC55); bank1 keeps the three
+# bank0 keeps the three `sta $1FF5` ($FC4F/$FC52/$FC55); bank1 keeps the three
 # `jmp` halves at A+3 ($FC52/$FC55/$FC58) — the fetch after the switch.
 for src, name in ((kernel, "kernel"), (bank1, "bank1")):
     assert "CallPad_TitleKernel:" not in src, \
         f"{name} still carries the retired TitleKernel pad"
-assert "CallPad_TitleBand:\n    sta $1FF7" in kernel, \
+assert "CallPad_TitleBand:\n    sta $1FF5" in kernel, \
     "kernel must keep the TitleBand sta half"
 assert "CallPad_Overscan:" not in kernel and "CallPad_Overscan:" not in bank1, \
     "CallPad_Overscan had no caller and was deleted with the tail-pad packing"

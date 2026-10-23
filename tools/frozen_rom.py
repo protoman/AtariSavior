@@ -15,13 +15,13 @@ _cache: Path | None = None
 
 
 def path() -> Path:
-    """Cached temp file with the frozen 16K image."""
+    """Cached temp file with the frozen 32K (F4, 8 banks) image."""
     global _cache
     if _cache is not None and _cache.exists():
         return _cache
     fd, name = tempfile.mkstemp(prefix="savior_frozen_", suffix=".bin")
     with open(fd, "wb") as out:
-        for i in range(4):
+        for i in range(8):
             out.write((FROZEN / f"bank{i}.bin").read_bytes())
     _cache = Path(name)
     return _cache

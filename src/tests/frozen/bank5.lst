@@ -1,0 +1,16 @@
+------- FILE bank5.asm LEVEL 1 PASS 1
+      1  0000					      processor	6502
+      2  0000 ????				      seg	code
+      3  f000					      org	$F000
+      4  f000							; ==============================================================================
+      5  f000							; Bank5 — free 4K window in the F4 (32K, 8 banks) layout.
+      6  f000							; ==============================================================================
+      7  f000							; Nothing lives here yet. The file still assembles to a full 4K image: the tail
+      8  f000							; is filled to the vector area, and the vectors are emitted (unused, but every
+      9  f000							; bank image must be 4096 B and DASM only writes what is emitted).
+     10  f000							; Hotspot for this bank: $1FF9 (F4: bank = addr - $1FF4).
+     11  f000							; ==============================================================================
+     12  f000		       00 00 00 00*	      .ds	$FFFA - *, 0
+     13  fffa		       00 f0		      .word.w	$F000
+     14  fffc		       00 f0		      .word.w	$F000
+     15  fffe		       00 f0		      .word.w	$F000

@@ -80,8 +80,8 @@ python3 "$ROOT/tools/verify_build.py" "$DIR"
 
 echo "freeze: capturing bank images + labels into src/tests/frozen/ ..."
 mkdir -p "$DIR/tests/frozen"
-cp bank0.bin bank1.bin bank2.bin bank3.bin "$DIR/tests/frozen/"
-cp bank0.lst bank1.lst bank2.lst bank3.lst "$DIR/tests/frozen/"
+cp bank0.bin bank1.bin bank2.bin bank3.bin bank4.bin bank5.bin bank6.bin bank7.bin "$DIR/tests/frozen/"
+cp bank0.lst bank1.lst bank2.lst bank3.lst bank4.lst bank5.lst bank6.lst bank7.lst "$DIR/tests/frozen/"
 
 # The test-owned convert outputs must match the test-owned rooms, or
 # test_editor_roundtrip compares fresh conversions against a stale snapshot

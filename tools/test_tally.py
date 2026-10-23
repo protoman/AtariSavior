@@ -28,7 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-BANKS = [open(SRC / f"bank{i}.bin", "rb").read() for i in range(4)]
+BANKS = [open(SRC / f"bank{i}.bin", "rb").read() for i in range(8)]
 
 # ZP indexes (addr & $7F)
 ROOMX, ROOMY = 0x00, 0x01
@@ -71,7 +71,7 @@ class Mem:
             return 0                     # INTIM expired -> waits pass
         if a == 0x000C:
             return self.inpt4
-        if 0x1FF6 <= a <= 0x1FF9:
+        if 0x1FF4 <= a <= 0x1FFB:
             return 0
         if a <= 0x003F or 0x0100 <= a <= 0x017F:
             return self.tia[a & 0x3F]
@@ -80,8 +80,8 @@ class Mem:
     def __setitem__(self, a, v):
         a &= 0xFFFF
         v &= 0xFF
-        if 0x1FF6 <= a <= 0x1FF9:
-            self.bank = a - 0x1FF6
+        if 0x1FF4 <= a <= 0x1FFB:
+            self.bank = a - 0x1FF4
             return
         if a >= 0xF000:
             return
@@ -132,7 +132,7 @@ calls = []                  # dynamic jsr chain: [(jsr_pc, ...)] like sim_bomb_f
 def in_loadlevel_chain():
     # any active jsr whose target is LoadLevel. Target captured at push time:
     # re-reading mem[pc] later can hit ANOTHER bank (fold/tramp switches
-    # $1FF6-$1FF9 mid-chain), giving a bogus operand.
+    # $1FF4-$1FF7 mid-chain), giving a bogus operand.
     return any(t == LOADLEVEL for _, t in calls)
 
 

@@ -2,7 +2,7 @@
 """Slot-1 pairing + PinSlot0 (the two-band de-flicker) — the cross-bank path.
 
 `StageSlot1` moved to bank2 on 2026-10-22 behind the split pad at $FBE5 (bank0
-`sta $1FF8` -> bank2 `jmp StageSlot1B2` -> `jmp ReturnPad`). Unit-reading the
+`sta $1FF6` -> bank2 `jmp StageSlot1B2` -> `jmp ReturnPad`). Unit-reading the
 source cannot see a broken pad, so this drives the REAL entry (`jsr StageSlot1`
 from bank0) through the bank switch, like tools/test_raft.py does for the raft
 tramp.
