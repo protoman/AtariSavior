@@ -659,6 +659,42 @@ def check_raft_tramp(src: Path) -> None:
             f"bank1 RaftBody ${tgt:04X}")
 
 
+def check_slot1_hook(src: Path) -> None:
+    """Slot1Hook must position P1 with slot 1's own X (2026-10-22).
+
+    `SetObjectXPos` takes the coarse X in A. The hook blanks GRP1 and clears
+    HMP0/HMM0/HMBL right before positioning, which wiped A: the div15 loop ran
+    ZERO iterations and `fineAdjustTable,Y` was indexed with Y = $F1, so slot 1
+    (the cross-band paired object) was drawn at a fixed wrong column near the
+    left edge while collision/laser/blast used its real ObjX1 (user report: the
+    miner + raft room). The hook must therefore load A = ActiveObjectX first,
+    and it must INLINE the positioning: with the loop running the line is ~74c
+    and the old jsr/rts + ldx + sta WSYNC spilled into a third scanline, which
+    stretches the band (the count below assumes exactly two).
+    """
+    k = src / "kernel.asm"
+    if not k.exists():
+        return
+    text = k.read_text(errors="replace")
+    m = re.search(r"^Slot1Hook:\n(.*?)^\.SHout:", text, re.S | re.M)
+    if not m:
+        err("Slot1Hook: label / .SHout not found in kernel.asm")
+        return
+    body = m.group(1)
+    if "lda ActiveObjectX" not in body:
+        err("Slot1Hook: no `lda ActiveObjectX` — P1 would be positioned with "
+            "A=0 again (slot 1 drawn at the left edge)")
+    if "jsr SetObjectXPos" in body:
+        err("Slot1Hook: positioning is a jsr again — its rts leaves ~80c on the "
+            "RESP line at far-right X, which costs a third scanline")
+    if ".SHDiv15:" not in body:
+        err("Slot1Hook: inline div15 loop (.SHDiv15) missing")
+    else:
+        pre = body.split(".SHDiv15:")[0]
+        if "lda ActiveObjectX" not in pre:
+            err("Slot1Hook: `lda ActiveObjectX` must come BEFORE the div15 loop")
+
+
 def check_frame_tramp(src: Path) -> None:
     """PickPlayerFrame lives in bank0 (repack chunk 1, 2026-10-20).
 
@@ -2525,6 +2561,7 @@ def main() -> int:
     check_moth_tramp(src)
     check_frame_tramp(src)
     check_raft_tramp(src)
+    check_slot1_hook(src)
     check_boot_banks(src)
     check_live_stage(src)
     check_enterroom_tramp(src)
