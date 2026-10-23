@@ -3,7 +3,7 @@ LEVEL4_START_ROOM = 0
 LEVEL4_WALL_COLOR = $16
 LEVEL4_WALL_COLOR2 = $18
 LEVEL4_MINER_ROOM = 131
-LEVEL4_MINER_X = 39
+LEVEL4_MINER_X = 31
 LEVEL4_MINER_Y = 84
 
 ; Room shape index (C2 2026-10-20): ONE byte per room =
@@ -19,7 +19,7 @@ LEVEL4_MINER_Y = 84
 LEVEL4_RoomShapes:
   .byte SHAPE_M1 ; room 0 (model 1)
   .byte SHAPE_M17 ; room 1 (model 17)
-  .byte SHAPE_M14 ; room 2 (model 14)
+  .byte SHAPE_M14 | $80 ; room 2 (async extras)
   .byte SHAPE_M2 | $40 ; room 3 (model 2)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
@@ -39,11 +39,11 @@ LEVEL4_RoomPositions:
 LEVEL4_RoomCounts:
   .byte $00 ; room 0: 0 record(s)
   .byte $40 ; room 1: 1 record(s)
-  .byte $40 ; room 2: 1 record(s)
+  .byte $41 ; room 2: 1 record(s), extras 1
   .byte $40 ; room 3: 1 record(s)
 
 ; Enemy data: 3 enemy records across 4 rooms, 3 bytes each (type|dir, x, y).
 LEVEL4_EnemyDataTable:
   .byte $01, 71, 36
-  .byte $05, 55, 48
-  .byte $07, 111, 96
+  .byte $06, 111, 84
+  .byte $83, 111, 96

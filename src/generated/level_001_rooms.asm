@@ -18,7 +18,7 @@ LEVEL1_MINER_Y = 84
 ; indices — the hot count/stream is gone (hot derives from PF row 1).
 LEVEL1_RoomShapes:
   .byte SHAPE_M1 ; room 0 (model 1)
-  .byte SHAPE_M0 ; room 1 (model 0)
+  .byte SHAPE_M0 | $80 ; room 1 (async extras)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
 ; (x<<4 | y) normalised to the level origin. Exits are DERIVED at
@@ -34,7 +34,7 @@ LEVEL1_RoomPositions:
 ; none; the enemy record index is derived at room load).
 LEVEL1_RoomCounts:
   .byte $00 ; room 0: 0 record(s)
-  .byte $00 ; room 1: 0 record(s)
+  .byte $01 ; room 1: 0 record(s), extras 1
 
 ; Enemy data: 0 enemy records across 2 rooms, 3 bytes each (type|dir, x, y).
 LEVEL1_EnemyDataTable:
