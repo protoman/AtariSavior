@@ -3170,12 +3170,18 @@ OvM1Block:
     cmp RectCount
     bcc .OvM1no                 ; right edge < M1X → no overlap
 .OvM1Band:
+    ; 2026-10-23: ℓ is the PF CELL of the strip (ColOff/ColMask are indexed by
+    ; x>>2, 20 cells = the 80 px half, mirrored) - it was (M1X-7)>>3, which
+    ; pointed one register off for a left strip: a door at col 7 (x=63, cell
+    ; 15, PF2 bit 3) was looked up as cell 7 (PF1 bit 4), the live $FC has that
+    ; bit set, so the scan read a WALL and called the door passable.
     lda RectCount
-    sec
-    sbc #7
     lsr
-    lsr
-    lsr                         ; ℓ = (M1X-7)/8
+    lsr                         ; ℓ = M1X / 4 = the PF cell (0..19 left half)
+    cmp #20                     ; the 80 px half = 20 PF cells (mirrored)
+    bcc .OvM1Cell
+    eor #%00011111              ; right half: mirror the cell (39 - ℓ)
+.OvM1Cell:
     tax                         ; X = ℓ (PHM callers preserve X themselves)
     lda CollisionCellY
     sta RectCount               ; $92 walk temp — free after the cell walk
