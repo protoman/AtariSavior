@@ -872,3 +872,38 @@ second channel — the miner is only 4 px wide) are the ways to clear it.
 | 5 second window | 1-2 | high (extra lines + HMOVE) |
 | 6 tall sprites | 1-2 | medium |
 | 7 extra slots | optional | low |
+
+## Player art: 22 rows, hit box follows the art (2026-10-22, user design)
+
+The user drew a 22-row, 8-px player (helmet / visor / jetpack / flame / legs /
+boots, 4 frames). User ruling: **the hit box follows the art**, so
+`PLAYER_HEIGHT = 22` and `PLAYER_SPRITE_H = 22` (was 12 for both).
+
+Consequences, all landed together:
+
+- `PLAYER_MAX_Y` 132 -> **122** (`CAVE_LINES - PLAYER_SPRITE_H`; the feet land
+  on 143 = the cave bottom). bank2's hand-copy of the EQU moved with it.
+- **Water kill origin 125 -> 115**: `CheckBandTouch` tests the sprite ORIGIN,
+  and the feet are `RoomY + 21`, so 115 keeps the same feet depth (136) the
+  12-row sprite had at 125. `LoseLifeBand`'s "-12 respawn" still clears it.
+- **Laser beam rows `RoomY+2..3` -> `RoomY+4..5`** (bank2 `LaserWallClamp` +
+  the two enemy Y tests, all `adc +2`), because the visor is art row 4. The
+  drawn beam is the row whose colour carries bit 1 — `PlayerColTable[4]`.
+- **Raft rider pin 12 -> 22** (`RAFTER_PINFIT`, `RAFTER_YSPAN` 28): the pin
+  puts the FEET on the raft top, so it must be the art height.
+- **One colour table for all four frames**: rows 15-16 are orange in every
+  frame (flame in the jet frames, lit belt/hip in the walk frames), rows 17-18
+  blue, 19-21 dark grey. Colours had to be chosen around bit 1 = ENAM0:
+  `$0E/$0A/$06/$2A/$82` all set bit 1 and would fire the beam on those rows,
+  so white = `$0C`, grey = `$08`, dark grey = `$04`, orange = `$2C`,
+  blue = `$88`, red = `$48`, beam = `$1E`.
+- **Space**: 4 x 22 + 22 B of art does not fit the old `$F8DD` window (36 B
+  there, and `PlayerHitsMap` follows it). The whole block (4 art tables +
+  `PlayerColTable`) moved into the **`$FE00` fill at `$FE14`**, is
+  relocatable (labels only: `PickPlayerFrame` uses `#<`/`#>`, the kernel reads
+  `(Grp0Ptr),Y` and `lda PlayerColTable,Y`), and the `$F8DD` pin is retired.
+- Guards updated: `verify_build` now reads `PLAYER_SPRITE_H` and checks
+  `[H-2] == [H-1]` (rows 20/21) + bit 1 ONLY at index 4; the cell-map, water,
+  laser-window, raft-pin, grid-exit and midband tests derive/carry the new
+  numbers. `test_cell_map`'s Y sweep no longer probes above `PLAYER_MAX_Y`
+  (the bottom row index must stay inside `YToRowTable`).

@@ -69,7 +69,7 @@ if not {"ExitUpB2", "ExitDownB2", "ExitLeftB2", "ExitRightB2",
     sys.exit(f"frozen bank2.lst is missing exit labels: {sorted(set(L2))}")
 
 PLAYER_MIN_X, PLAYER_MAX_X = 4, 159
-PLAYER_MIN_Y, PLAYER_MAX_Y = 0, 132
+PLAYER_MIN_Y, PLAYER_MAX_Y = 0, 122
 DIRS = [("ExitUpB2", -1, 0, PLAYER_MAX_Y, "room_y"),
         ("ExitDownB2", 0, 1, PLAYER_MIN_Y, "room_y"),
         ("ExitLeftB2", -1, 0, PLAYER_MAX_X, "room_x"),

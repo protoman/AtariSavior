@@ -137,7 +137,7 @@ LV_SHOW_FRAMES = 120             ; kernel constant (banner frames)
 PLAYER_MIN_X = 4                 ; kernel EQU (sprite flush with the left edge)
 PLAYER_MAX_X = 159               ; kernel EQU (horizontal logical clamp)
 PLAYER_MIN_Y = 0
-PLAYER_MAX_Y = 132               ; kernel EQU (CAVE_LINES - PLAYER_SPRITE_H)
+PLAYER_MAX_Y = 122               ; kernel EQU (CAVE_LINES - PLAYER_SPRITE_H)
 ; --- StageSlot1 (MOVED here, 2026-10-22) — hand-copies, check_equ_sync ------
 FlickerFrame = $B4               ; slot-0 rotation index (PinSlot0 writes it)
 ObjBase = $B6                    ; live GRP1 design offset (PinSlot0 tests it)
@@ -646,16 +646,16 @@ BandRowFromLine:
     .ds $F25A - *, 0            ; pin LWC entry (sim_frame_budget beam_cols
                                  ; gate + session ledgers key on $F25A)
 LaserWallClamp:
-    lda RoomY                   ; beam rows RoomY+2..3 -> band rows
-    clc
-    adc #2
+    lda RoomY                   ; beam rows RoomY+4..5 (visor row) -> band
+    clc                         ;   rows
+    adc #4
     lsr
     lsr
     jsr BandRowFromLine
     sta CollisionCellY          ; top band row
     lda RoomY
     clc
-    adc #3
+    adc #5
     lsr
     lsr
     jsr BandRowFromLine
@@ -1584,8 +1584,8 @@ LaserTipEnemy:
     sec
     sbc EnemyRamY,X
     clc
-    adc #3                      ; same vertical window as the body scan
-    cmp #9                      ; beam rows RoomY+2..3 vs enemy [Y, Y+7]
+    adc #5                      ; same vertical window as the body scan
+    cmp #9                      ; beam rows RoomY+4..5 vs enemy [Y, Y+7]
     bcs .LTEnext
     lda EnemyRamX,X
     sec
@@ -1702,8 +1702,8 @@ LaserClampDone:
     sec
     sbc EnemyRamY,X
     clc
-    adc #3                      ; (RoomY-eY)+3 in [0..8] = eY in [RoomY-5, RoomY+3]
-    cmp #9                      ; out of beam rows RoomY+2..3
+    adc #5                      ; (RoomY-eY)+5 in [0..8] = eY in [RoomY-3, RoomY+5]
+    cmp #9                      ; out of beam rows RoomY+4..5
     bcs .LHNext
     lda EnemyRamX,X
     sec

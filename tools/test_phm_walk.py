@@ -114,8 +114,8 @@ def main() -> None:
         "LWC must mask the cell bit with ColMask"
     assert re.search(r"cmp\s+#20\s*\n\s*bcc\s+\.LWsrc", lb), \
         "LWC must mirror right-half display cols (source = 39-d)"
-    assert "adc #2" in lb and "adc #3" in lb, \
-        "band rows must be RoomY+2..RoomY+3 (kill-window rows)"
+    assert "adc #4" in lb and "adc #5" in lb, \
+        "band rows must be RoomY+4..RoomY+5 (kill-window rows)"
     assert "jmp LWpSetup" in lb, \
         "tip col must go to the ball-strip test (LWpSetup) first"
     assert "RoomMetaA" in lb \

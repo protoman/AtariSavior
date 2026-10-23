@@ -107,6 +107,16 @@ def main() -> int:
 
     base_lines, base_g0, _ = frame(pair=False)
     pair_lines, pair_g0, pair_g1 = frame(pair=True)
+    # The player art has 4 frames (2 jet flutter phases, 2 walk phases) and
+    # the jet phase follows TickCounter, so ONE sampled frame can miss a
+    # byte that the other phase draws ($9C vs $DC/$94). Union three frames
+    # per configuration: the comparison is "does a pair LOSE art", not
+    # "which exact byte is drawn on this frame".
+    for _ in range(3):
+        _, g0, _ = frame(pair=False)
+        base_g0 |= set(g0)
+        _, g0, g1 = frame(pair=True)
+        pair_g0 |= set(g0)
     base_lines, pair_lines = round(base_lines), round(pair_lines)
     base_art = len({v for v in base_g0 if v})
     pair_art = len({v for v in pair_g0 if v})

@@ -1358,7 +1358,7 @@ BarFineTable:           ; (B+7)>>3, 15 entries; ∈{0,1,2,3,4}
 ;             into CollisionX, kernel draws the strip as the band's last
 ;             (12-off) lines), so the raft is placed at 125+off and its bottom
 ;             row sits exactly on the moving surface — it rides the wave the
-;             water does. The rider's pin (top-12 = 113+off, worst case 116)
+;             water does. The rider's pin (top-22 = 103+off, worst case 106)
 ;             stays clear of the 125 water-kill line at every tide phase.
 ;             This write lands after RefreshEnemyY, so the VBL draws it.
 ;   Speed   = 1 px on even frames, 2 px on odd (EnemyRamP parity) = 1.5 px/frame.
@@ -2306,9 +2306,9 @@ RAFTER_BASE   = 125             ; raft top when the tide is at 0 = the water
                                 ; never hard-code the Y: the surface MOVES.
 RAFTER_XOFF   = 6               ; PLAYER_WIDTH-1: spawn x of the body span
 RAFTER_XSPAN  = 14              ; PLAYER_WIDTH+ENEMY_WIDTH-1: no-overlap gate
-RAFTER_YSPAN  = 18              ; PLAYER_SPRITE_H+6: riding when the feet are
-                                ; from 12 px above the raft's top to 5 px into it
-RAFTER_PINFIT = 12              ; PLAYER_SPRITE_H: pin = raft top - this
+RAFTER_YSPAN  = 28              ; PLAYER_SPRITE_H+6: riding when the feet are
+                                ; from 22 px above the raft's top to 5 px into it
+RAFTER_PINFIT = 22              ; PLAYER_SPRITE_H: pin = raft top - this
 
 RaftBody:
     ; --- float ON the water surface, riding the TIDE ------------------------

@@ -333,11 +333,12 @@ EnemyRamY       = $E2           ; 3 bytes: live Y per enemy ($E2-$E4) —
 ; ==============================================================================
 ; Constants
 ; ==============================================================================
-PLAYER_HEIGHT   = 12            ; GRP1 object HIT BOX rows (enemy/miner) — the
-                                ;   player-vs-object overlap tests use this. It
-                                ;   is deliberately NOT the drawing window any
-                                ;   more (Phase 6, 2026-10-22): tall art must
-                                ;   not silently enlarge the hit boxes.
+PLAYER_HEIGHT   = 22            ; player-vs-object HIT BOX rows. User ruling
+                                ;   2026-10-22: the box FOLLOWS the player art
+                                ;   (22 rows), so the tall sprite is solid over
+                                ;   its whole height. GRP1 objects keep their
+                                ;   own per-type draw window (ObjHeightTab) —
+                                ;   their boxes stay PLAYER_HEIGHT-based.
 OBJ_WINDOW      = 16            ; GRP1 drawing window rows: the .Line test
                                 ;   `Y - ObjTop < OBJ_WINDOW`. Every design's
                                 ;   art + colour rows are sized to this
@@ -345,7 +346,7 @@ OBJ_WINDOW      = 16            ; GRP1 drawing window rows: the .Line test
                                 ;   each). Growing a design's ART past its old
                                 ;   12 rows is a per-type art change; the
                                 ;   window has the room reserved already.
-PLAYER_SPRITE_H = 12            ; player sprite height in scanlines (8x12)
+PLAYER_SPRITE_H = 22            ; player art height (8x22, user design 2026-10-22)
 PLAYER_WIDTH    = 7             ; lit player sprite spans 7 pixels; REFP0 shift handled
 ENEMY_WIDTH     = 8             ; snake GRP1 width ($ff = 8 px) — flush-out span
 LAMP_WIDTH      = 4             ; OBJ_LAMP uses GRP1's leftmost 4 lit pixels
@@ -379,7 +380,7 @@ OBJ_BOMB        = 117
 PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
 PLAYER_MAX_X    = 159           ; horizontal logical-position clamp
 PLAYER_MIN_Y    = 0
-PLAYER_MAX_Y    = 132           ; CAVE_LINES - PLAYER_SPRITE_H
+PLAYER_MAX_Y    = 122           ; CAVE_LINES - PLAYER_SPRITE_H (feet at 143)
 
 ; Jetpack physics constants (HERO-style)
 GRAVITY         = $0008         ; gravity per frame (signed 16-bit, + = down)
@@ -2505,46 +2506,12 @@ CallPad_RaftBody:
     sta $1FF7                    ; select bank1 (last byte fetched from bank0)
     jmp $FDE3                    ; bank1 RaftBody — returns via bank1's ReturnPad
 
-    .ds $F8DD - *, 0            ; PIN $F8DD: bank2 EQUs PlayerSpriteA/PlayerSpriteB/
-                                 ;   PlayerWalkA/B are address-frozen there; bank2
-                                 ;   holds art byte-twins at the SAME address
-                                 ;   (PickPlayerFrame reads its own EQUs while
-                                 ;   bank2 active — test_miner_colors asserts
-                                 ;   EQU == bank0 label AND byte identity). The
-                                 ;   S9 bomb-lamp stub deletion upstream must
-                                 ;   never shift these again.
-PlayerSpriteA:
-    .byte %00111100             ; row 0 (sprites.png 2026-10-03)
-    .byte %01111110             ; row 1
-    .byte %01111100             ; row 2 — yellow face
-    .byte %01111110             ; row 3
-    .byte %01111100             ; row 4 — grey pack
-    .byte %11111110             ; row 5
-    .byte %11111110             ; row 6
-    .byte %00111110             ; row 7 — jet frame A
-    .byte %00111110             ; row 8
-    .byte %00010100             ; row 9
-    .byte %00010100             ; row 10 — grey boots
-    .byte %00010100             ; row 11
+; PlayerSpriteA/B, PlayerWalkA/B + PlayerColTable MOVED to the $FE00
+; fill (2026-10-22): the 22-row art is 110 B and the $F8DD window had 36 B
+; (PlayerHitsMap follows the colour table, so nothing else could shift).
+; PickPlayerFrame uses `lda #<label / #>label` and .Line reads
+; `lda (Grp0Ptr),Y` + `lda PlayerColTable,Y`, so the block is relocatable.
 
-PlayerSpriteB:
-    .byte %00111100             ; row 0
-    .byte %01111110             ; row 1
-    .byte %01111100             ; row 2 — yellow face
-    .byte %01111110             ; row 3
-    .byte %01111100             ; row 4 — grey pack
-    .byte %11111110             ; row 5
-    .byte %11111110             ; row 6
-    .byte %01111110             ; row 7 — jet frame B (+1 px vs A)
-    .byte %10111110             ; row 8
-    .byte %00010100             ; row 9
-    .byte %00010100             ; row 10
-    .byte %00010100             ; row 11
-
-PlayerColTable:
-    .byte COLOR_P_RED, COLOR_P_RED, COLOR_P_YELLOW, COLOR_P_RED
-    .byte COLOR_P_GRAY, COLOR_P_RED, COLOR_P_RED, COLOR_P_RED
-    .byte COLOR_P_RED, COLOR_P_RED, COLOR_P_GRAY, COLOR_P_GRAY
 
 ; --- Level data ---
 ; Generated from level JSON via tools/convert_level.py.
@@ -2608,7 +2575,7 @@ LEVEL_FORMAT   = $06           ; C11 2026-10-21: room-record + shape format. 6 =
 ; frames → measured 0.125 px/f vs the &1 gate's 0.5 (bugs.md #13).
 ; Clamped value 2 = last cave row: box bottom (line 144-145) past the
 ; cave (0-143) walks row 2 = floor wall, never PF0Buf+3 (row 3 = $C6,
-; not a buffer byte). Player never reaches idx36 (PLAYER_MAX_Y=132).
+; not a buffer byte). Player never reaches idx36 (PLAYER_MAX_Y=122).
 YToRowTable:
     .byte 0,0,0,0,0,0,0,0,0,0,0,0
     .byte 1,1,1,1,1,1,1,1,1,1,1,1
@@ -3456,7 +3423,8 @@ LoseLife:
 ; ------------------------------------------------------------------------------
 ; CheckBandTouch — overscan: if band on and sprite touches the water strip →
 ; life. Strip = bottom ~12 lines of the cave (bottom_band_plan rule 2);
-; sprite origin RoomY >= 125 enters it (125 + PLAYER_SPRITE_H - 1 = 136).
+; sprite origin RoomY >= 115 enters it (115 + 21 = 136 = the same feet
+; depth the 12-row sprite had at 125).
 ; Same path as hot/enemy: lose life, then respawn 12 scanlines up (min 0).
 ; Band color = VBLANK-staged RoomBandColor ($D2, PF1Buf[3] dead-row alias;
 ; staged by the VBLANK fold from LevelEnemy+RoomNo*4+3 — a kernel-time fold
@@ -3466,7 +3434,7 @@ CheckBandTouch:
     lda RoomBandColor
     beq .CBTdone                ; band off
     lda RoomY
-    cmp #125
+    cmp #115                    ; feet (RoomY+21) reach 136 in the strip
     bcc .CBTdone                ; above strip
     jsr LoseLifeBand
 .CBTdone:
@@ -3479,7 +3447,7 @@ CheckBandTouch:
 ; code — a water death respawned at the death Y (inside the strip, >= 125) and
 ; the player died again on landing, unable to fly out (user report 2026-10-21).
 ; The shift is one tile (spec: -= 12, not the whole band): the band check
-; tests the sprite ORIGIN (RoomY >= 125), so 125 -> 113 clears the strip.
+; tests the sprite ORIGIN (RoomY >= 115), so 115 -> 103 clears the strip.
 ; Tail-jmps LoseLife (never returns here): its exhausted path rts straight to
 ; CheckBandTouch.
 ; ------------------------------------------------------------------------------
@@ -3797,33 +3765,7 @@ BombEnemyBlast:
 ; PlayerSpriteA; walk cycle alternates A<->B every 8 frames (EnemyRamP&$08,
 ; 16-frame full cycle) while grounded + L/R held.
 ; ------------------------------------------------------------------------------
-PlayerWalkA:
-    .byte %00111100             ; row 0 torso (sprites.png 2026-10-03)
-    .byte %01111110             ; row 1
-    .byte %01111100             ; row 2 — yellow face
-    .byte %01111110             ; row 3
-    .byte %01111100             ; row 4 — grey pack
-    .byte %11111110             ; row 5
-    .byte %11111110             ; row 6
-    .byte %00111110             ; row 7  legs
-    .byte %00111110             ; row 8
-    .byte %00010100             ; row 9
-    .byte %00100010             ; row 10 boots apart (spread)
-    .byte %01000010             ; row 11 boots apart
 
-PlayerWalkB:
-    .byte %00111100             ; row 0 torso (sprites.png 2026-10-03)
-    .byte %01111110             ; row 1
-    .byte %01111100             ; row 2 — yellow face
-    .byte %01111110             ; row 3
-    .byte %01111100             ; row 4 — grey pack
-    .byte %11111110             ; row 5
-    .byte %11111110             ; row 6
-    .byte %00111110             ; row 7  legs
-    .byte %00111110             ; row 8
-    .byte %00010100             ; row 9
-    .byte %00011000             ; row 10 boots together (passing)
-    .byte %00011000             ; row 11 boots together
 
 
 
@@ -3892,6 +3834,118 @@ ObjSpriteOffTable:
 ; b7). Tally frames ($FE) are gated out: EnemyRamY holds score-pointer bytes
 ; then (AGENTS: tally frame draws the MINER only).
 ; ==============================================================================
+
+PlayerSpriteA:
+    .byte %00111100             ; row  0
+    .byte %01111110             ; row  1
+    .byte %01111110             ; row  2
+    .byte %01111110             ; row  3
+    .byte %01111100             ; row  4
+    .byte %01111110             ; row  5
+    .byte %00111100             ; row  6
+    .byte %01111100             ; row  7 — jet frame A
+    .byte %11111110             ; row  8
+    .byte %11111110             ; row  9
+    .byte %11111110             ; row 10
+    .byte %01111100             ; row 11
+    .byte %11111110             ; row 12
+    .byte %11111110             ; row 13
+    .byte %01111100             ; row 14
+    .byte %10011110             ; row 15
+    .byte %10011100             ; row 16
+    .byte %00010100             ; row 17
+    .byte %00010100             ; row 18
+    .byte %00010100             ; row 19
+    .byte %00010100             ; row 20
+    .byte %00010100             ; row 21
+
+PlayerSpriteB:
+    .byte %00111100             ; row  0
+    .byte %01111110             ; row  1
+    .byte %01111110             ; row  2
+    .byte %01111110             ; row  3
+    .byte %01111100             ; row  4
+    .byte %01111110             ; row  5
+    .byte %00111100             ; row  6
+    .byte %01111100             ; row  7 — jet frame B (flame kicks left)
+    .byte %11111110             ; row  8
+    .byte %11111110             ; row  9
+    .byte %11111110             ; row 10
+    .byte %01111100             ; row 11
+    .byte %11111110             ; row 12
+    .byte %11111110             ; row 13
+    .byte %01111100             ; row 14
+    .byte %10011110             ; row 15
+    .byte %11011100             ; row 16
+    .byte %10010100             ; row 17
+    .byte %00010100             ; row 18
+    .byte %00010100             ; row 19
+    .byte %00010100             ; row 20
+    .byte %00010100             ; row 21
+
+
+; PlayerWalkA/B moved INTO the $F8DD art block (2026-10-22): the 22-row
+; art needs 110 B and this window only has 34. Label references keep it
+; relocatable (PickPlayerFrame uses `lda #<label / #>label`).
+
+PlayerWalkA:
+    .byte %00111100             ; row  0
+    .byte %01111110             ; row  1
+    .byte %01111110             ; row  2
+    .byte %01111110             ; row  3
+    .byte %01111100             ; row  4
+    .byte %01111110             ; row  5
+    .byte %00111100             ; row  6
+    .byte %01111100             ; row  7
+    .byte %11111110             ; row  8
+    .byte %11111110             ; row  9
+    .byte %11111110             ; row 10
+    .byte %01111100             ; row 11
+    .byte %11111110             ; row 12
+    .byte %11111110             ; row 13
+    .byte %01111100             ; row 14
+    .byte %00111110             ; row 15 — walk A (stride)
+    .byte %00111100             ; row 16
+    .byte %00100100             ; row 17
+    .byte %00100100             ; row 18
+    .byte %01000010             ; row 19
+    .byte %01000010             ; row 20
+    .byte %01000010             ; row 21
+
+PlayerWalkB:
+    .byte %00111100             ; row  0
+    .byte %01111110             ; row  1
+    .byte %01111110             ; row  2
+    .byte %01111110             ; row  3
+    .byte %01111100             ; row  4
+    .byte %01111110             ; row  5
+    .byte %00111100             ; row  6
+    .byte %01111100             ; row  7
+    .byte %11111110             ; row  8
+    .byte %11111110             ; row  9
+    .byte %11111110             ; row 10
+    .byte %01111100             ; row 11
+    .byte %11111110             ; row 12
+    .byte %11111110             ; row 13
+    .byte %01111100             ; row 14
+    .byte %00111110             ; row 15 — walk B (passing)
+    .byte %00111100             ; row 16
+    .byte %00011000             ; row 17
+    .byte %00011000             ; row 18
+    .byte %00011000             ; row 19
+    .byte %00011000             ; row 20
+    .byte %00011000             ; row 21
+
+PlayerColTable:
+    ; 22 rows for EVERY frame (one table, shared): $1E (bit1) is the
+    ; beam row 4; $0C white, $08 grey, $04 dark grey, $48 red,
+    ; $2C orange, $88 blue — all bit1=0 and even (no stray ENAM0).
+    .byte $0C, $0C, $0C, $0C   ; rows 0:W, 1:W, 2:W, 3:W
+    .byte $1E, $0C, $0C, $08   ; rows 4:beam, 5:W, 6:W, 7:gry
+    .byte $48, $48, $48, $08   ; rows 8:red, 9:red, 10:red, 11:gry
+    .byte $48, $48, $08, $2C   ; rows 12:red, 13:red, 14:gry, 15:org
+    .byte $2C, $88, $88, $04   ; rows 16:org, 17:blu, 18:blu, 19:dgy
+    .byte $04, $04   ; rows 20:dgy, 21:dgy
 
     .ds $FE90 - *, 0            ; ObjColorTab/ObjSprites moved to the
                                  ; $F744 fill (Phase 6: tall art). The $FE8F

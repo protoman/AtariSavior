@@ -38,7 +38,7 @@ PF0_R2, PF1_R2, PF2_R2 = 0xC5 - 0x80, 0xC8 - 0x80, 0xCB - 0x80
 RAFT_MIN_X, RAFT_MAX_X = 8, 148
 RAFTER_BASE = 125                  # raft top at tide off=0 (surface 132 - 7:
                                    # the bottom row sits ON the surface line)
-PIN_FIT = 12                       # PLAYER_SPRITE_H
+PIN_FIT = 22                       # PLAYER_SPRITE_H (22-row art)
 KILL_LINE = 125                    # CheckBandTouch: RoomY >= 125 is water
 
 

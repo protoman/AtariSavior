@@ -216,22 +216,30 @@ def check_rom(src: Path) -> bytes | None:
     #    stale beam bit, silent). Removing the -1 gate without recounting
     #    the .Line worst path is also an error (78c stall, +1 scanline).
     if 0 in banks:
+        # The gate skips the LAST row (A0 = PLAYER_SPRITE_H-1), which inherits
+        # the previous row's COLUP0/ENAM0 writes -> [H-2] == [H-1]. The beam
+        # row is the art's visor row (bit 1 = ENAM0), row 4 of the 22-row art
+        # (2026-10-22) — it must be the ONLY row with bit 1.
+        kh = re.search(r"^PLAYER_SPRITE_H\s*=\s*(\d+)",
+                       (Path(src) / "kernel.asm").read_text(), re.M)
+        ph = int(kh.group(1)) if kh else 22
         for name in ("PlayerColTable",):
             a = labels.get(name)
             if a is None:
                 err(f"{name} label not found in bank0.lst")
                 continue
-            tbl = banks[0][a - 0xF000:a - 0xF000 + 12]
-            if len(tbl) < 12:
+            tbl = banks[0][a - 0xF000:a - 0xF000 + ph]
+            if len(tbl) < ph:
                 err(f"{name} at ${a:04X}: only {len(tbl)} bytes in bank0")
-            elif tbl[10] != tbl[11]:
-                err(f"{name}[10]=${tbl[10]:02X} != [11]=${tbl[11]:02X} — "
-                    "A0=11 gate skip inherits row 10 (verify_build #5)")
+            elif tbl[ph - 2] != tbl[ph - 1]:
+                err(f"{name}[{ph - 2}]=${tbl[ph - 2]:02X} != "
+                    f"[{ph - 1}]=${tbl[ph - 1]:02X} — the A0={ph - 1} gate "
+                    "skip inherits the previous row (verify_build #5)")
             else:
                 beam = [i for i, v in enumerate(tbl) if v & 0x02]
-                if beam != [2]:
-                    err(f"{name} bit1 rows {beam} != [2] — bit1 is the "
-                        "ENAM0 enable (phase 0 fold): exactly the beam row 2")
+                if beam != [4]:
+                    err(f"{name} bit1 rows {beam} != [4] — bit1 is the "
+                        "ENAM0 enable (phase 0 fold): exactly the visor row 4")
     if not any(re.search(r"\bcpy\s+#PLAYER_SPRITE_H\s*-\s*1\b", t)
                for _, t in rows):
         err("color gate `cpy #PLAYER_SPRITE_H - 1` not found in bank0.lst "

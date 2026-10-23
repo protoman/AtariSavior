@@ -468,7 +468,7 @@ def main() -> None:
         "strip must continue into the shared .Line loop"
     # death check + respawn follow the strip (bottom_band_plan rules 2/4)
     cbt = KERNEL.split("CheckBandTouch:")[1].split(".CBTdone:")[0]
-    assert "cmp #125" in cbt, "band touch threshold must be RoomY >= 125"
+    assert "cmp #115" in cbt, "band touch origin must be RoomY >= 115"
     llb = KERNEL.split("LoseLifeBand:")[1].split("BuildColupF —")[0]
     assert re.search(r"sbc\s+#12\b", llb), \
         "band respawn must shift RoomY up by 12 (not the whole 48-line band)"
