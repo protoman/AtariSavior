@@ -818,24 +818,28 @@ CaveKernelRow:
     ; Inline stripe+hot test was 84-109c; budget is 76c/scanline.
     lda ColupfBuf,X
     sta COLUPF
-    sta Temp                      ; A1 (line-budget plan): stage band color
-                                  ; for .ObjZero's A==8 restore (moved up —
-                                  ; same A; Temp has no other kernel reader)
-    lda CollisionCellY            ; P2b door color staged by bank2 VBL:
+    sta Temp                      ; A1 (line-budget plan): band color for
+                                  ; .ObjZero's A==8 restore — A already holds
+                                  ; it, no reload
+    sta COLUP1                    ; D6: M1 band color (left-col block) — P1
+                                  ; inherits it until .Line's object path.
+                                  ; Same c51 slot the old no-door path used
+                                  ; (AFTER the left half, same rule as COLUPF)
+    lda CollisionCellY            ; P2b door color staged by the VBL:
                                   ; $80 = no door / $1C = yellow stripe
-    bmi .M1band
+    bmi .M1done                   ; no door: COLUP1/Temp already hold the band
+                                  ;   colour, nothing left to do
     sta COLUP1                    ; door: yellow (only visible on the door's
                                   ;   open bands — wall PF hides it elsewhere)
-    sta Temp                      ; bugs.md #15: also stage the door color into
-                                  ;   Temp, so .ObjZero's plain restore keeps
-                                  ;   the stripe yellow (0 extra cycles on the
-                                  ;   object line; +3c here on the setup line)
-    bpl .M1done                   ; $1C b7=0 → always
-.M1band:
-    lda ColupfBuf,X
-    sta COLUP1                    ; D6: M1 band color (left-col block) — P1
-                                  ; inherits it until .Line's object path
+    sta Temp                      ; bugs.md #15: .ObjZero's plain restore must
+                                  ;   keep the stripe yellow
 .M1done:
+                                  ; 2026-10-22 (76c work): the old shape staged
+                                  ; the band colour, then RELOADED ColupfBuf
+                                  ; after the door test (-4c, -7 B); A is still
+                                  ; the colour, so store it into COLUP1 too.
+                                  ; ENABL/PF2 shift 4c earlier (PF2 still well
+                                  ; past x449).
 
     ; --- Per-band ball gate (Phase 3): BandTab[row] $ff/$00 → ENABL ---
     ; Takes the slot of the per-band `lda Temp / sta COLUBK` (VBL writes

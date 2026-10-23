@@ -1231,3 +1231,52 @@ the bats bob — the "268 on odd frames only" signature. Splitting the two paths
 Scratch files left behind (safe to delete): `tools/_dbg_split.py`,
 `tools/_dbg_pair.py` — debug harness copies, not picked up by the battery
 glob.
+
+## Slot-1 positioning bug: CONFIRMED FIXED (2026-10-22/23)
+
+`Slot1Hook` called `jsr SetObjectXPos` with **A = 0** (the GRP1 blank + HMP
+clears wiped the X loaded from `ObjX1`), so the div15 loop ran zero iterations
+and `fineAdjustTable,Y` was indexed with Y = $F1. Slot 1 — the cross-band
+paired object — was drawn at a fixed wrong column near the left edge while
+collision, laser and blast used its real `ObjX1`.
+
+Fix (`07bfb65`): `lda ActiveObjectX` before positioning, and the positioning
+INLINED (no `jsr`/`rts`, `ldx RowIdx` moved past the WSYNC). Both halves are
+required together: with the loop actually running the RESP line is ~74c at
+far-right X, and the old post-work spilled into a third scanline.
+
+**User-confirmed**: the "dash" artifact in the miner + raft room is gone.
+
+**Guard**: `verify_build.check_slot1_hook` — fails the build if the hook loses
+`lda ActiveObjectX` (or puts it after the div15 loop) or goes back to
+`jsr SetObjectXPos`. Verified negatively (removing the line produces two
+errors). Note the guard reads `src/kernel.asm`, so it protects the source
+shape; the drawn X itself was confirmed by eye.
+
+## 76c win shipped: colour block reuses A (-4c, -7 B)
+
+    lda ColupfBuf,X / sta COLUPF / sta Temp / sta COLUP1   ; c51, as documented
+    lda CollisionCellY / bmi .M1done / sta COLUP1 / sta Temp
+
+The old shape staged the band colour, then RELOADED `ColupfBuf,X` after the
+door test. The setup line drops 74c -> ~70c, i.e. **4 cycles of margin** —
+enough for `lda BandLines,X` (+2c) when the split comes back.
+
+Side effects to eyeball: ENABL/PF2 now write 4c earlier (PF2 x492 vs x449 —
+still past the right-half PF2 pixels). The ball is the **asym strip** (door /
+M1 patch, `BandTab` per-band ENABL), so the check is: in a room with a door or
+async strip, the strip's left edge must sit exactly where it did before.
+
+## Next: the split, with the hook now correct and 4c in hand
+
+1. Give `MidBandSwap` the SAME shape as the corrected hook (it already does:
+   trio swap, blank, clears, `lda ActiveObjectX`, inline div15, `sta WSYNC`,
+   HMOVE, `ldx RowIdx`), then re-measure the band: N=2 was 49 lines, N=3 was
+   47/48. The open question is exactly ONE line: whether the loop-exit line
+   (which the next band's setup normally shares) is charged to the swap or not.
+   Measure per band, not per frame: instrument a counter at each `.Row` entry
+   and print the line number at each band start (the swap's own `sta WSYNC`
+   gives a clean anchor).
+2. If the exit line cannot be shared, take it out of the count explicitly:
+   first half 23 bodies -> swap preamble (exit line + positioning line) ->
+   second half 22. That keeps 48 without depending on where the exit lands.
