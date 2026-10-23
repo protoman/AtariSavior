@@ -526,15 +526,17 @@ def resolve_asym_patches(model: dict, room: dict,
                 if b in left_patch_rows and cell in "#H":
                     raise ValueError(
                         f"{who}: the async strip (col {cc}, band {b}) sits on "
-                        f"a WALL cell, so the wall would hide it. Open that "
-                        f"cell, or drop the patch for band {b}.")
+                        f"a WALL cell, so the wall would hide the patch. Open "
+                        f"that cell, or drop the patch for band {b} "
+                        f"(wall-hide guard).")
                 if b not in left_patch_rows and cell not in "#H":
                     raise ValueError(
                         f"{who}: the async strip is ONE 1-px column painted "
                         f"across the whole cave (a single M1 line per frame), "
                         f"but band {b} col {cc} is open air and has no patch — "
                         f"it would show a stray line there. Fix: make band {b} "
-                        f"col {cc} a wall, or add a patch for band {b}.")
+                        f"col {cc} a wall, or add a patch for band {b} "
+                        f"(wall-hide guard).")
         m1_x = 7 + 8 * m1_col
     ball_x = 87 + 8 * next(iter(right_cols)) if has_right else 0
     if has_right and model.get("mid_band_type"):

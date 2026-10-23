@@ -13,4 +13,4 @@
 ;        prefix). Static hot + the M1 block cell are derived by
 ;        the loader (PF row 1 + the patch list) — C11.
 LEVEL1_AsyncExtras:
-  .byte $01, $70, $00, $56  ; room 1: 1 patch(es), 0 feature(s), MetaA $70 MetaB $00
+  .byte $01, $70, $00, $56  ; room 2: 1 patch(es), 0 feature(s), MetaA $70 MetaB $00

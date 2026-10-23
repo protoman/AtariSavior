@@ -20,7 +20,7 @@ LEVEL4_RoomShapes:
   .byte SHAPE_M1 ; room 0 (model 1)
   .byte SHAPE_M17 ; room 1 (model 17)
   .byte SHAPE_M14 | $80 ; room 2 (async extras)
-  .byte SHAPE_M2 | $40 ; room 3 (model 2)
+  .byte SHAPE_M2 ; room 3 (model 2)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
 ; (x<<4 | y) normalised to the level origin. Exits are DERIVED at
@@ -37,13 +37,12 @@ LEVEL4_RoomPositions:
 ; extras ordinal (C5: 1-based index into LEVELn_AsyncExtras, 0 =
 ; none; the enemy record index is derived at room load).
 LEVEL4_RoomCounts:
-  .byte $00 ; room 0: 0 record(s)
+  .byte $40 ; room 0: 1 record(s)
   .byte $40 ; room 1: 1 record(s)
-  .byte $41 ; room 2: 1 record(s), extras 1
-  .byte $40 ; room 3: 1 record(s)
+  .byte $01 ; room 2: 0 record(s), extras 1
+  .byte $00 ; room 3: 0 record(s)
 
-; Enemy data: 3 enemy records across 4 rooms, 3 bytes each (type|dir, x, y).
+; Enemy data: 2 enemy records across 4 rooms, 3 bytes each (type|dir, x, y).
 LEVEL4_EnemyDataTable:
+  .byte $06, 147, 84
   .byte $01, 71, 36
-  .byte $06, 111, 84
-  .byte $83, 111, 96
