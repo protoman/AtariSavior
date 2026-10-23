@@ -956,3 +956,19 @@ GRP1 slots, so a mirrored lamp and the mirrored miner could not coexist.
 7. Guards: converter test (wall left -> type 5, wall right -> type 13) + a ROM
    test that the design at index 13 is the horizontal mirror of index 5 over
    its 10 rows.
+
+## KNOWN BUG (found 2026-10-22, not fixed): REFP1 follows the ACTIVE object
+
+A room that hosts TWO objects in the same band (e.g. a lamp + the miner) draws
+them on alternating frames, and SetObjReflection runs per frame for whichever
+object the rotation made active: the miner's mirror (LevelMinerRoom b7) is
+written on its frames and 0 on the other's, so the miner's sprite flips
+left/right every other frame ("miner goes nuts flipping side", user report with
+a lamp demo in level 2 room 2 — that room hosts the level-2 miner).
+
+REFP1 is ONE hardware register for GRP1, so it can only be right when every
+object drawn in a frame wants the same mirror. Options when this becomes a
+priority: (a) forbid a mirrored lamp and the mirrored miner in one room,
+(b) mirror by design block (art table) for every type that can share a room,
+(c) keep a per-room "no rotation" rule. The type-13 lamp already uses (b), so
+the miner is the only REFP1 user left.
