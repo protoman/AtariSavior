@@ -1380,3 +1380,40 @@ colour is per-sprite (`COLUP1`), so no new glyph bank is needed.
 48-line budget, so the first step is the budget: count the current lives row and
 gaps, find the pad line, then place the square at X ~132. Do NOT code it before
 the 48-line sum is written down (project rule).
+
+## Doors: RIGHT side works, LEFT side does not (2026-10-23)
+
+User-confirmed on the real stage (level 4 room 4, display column 16):
+
+- **side 0 (right half) LOCKED_DOOR: WORKS** — blocks without the key, opens
+  (strip destroyed, b4) with it. That is `x = 87 + 8*col` (MetaA b0 =
+  `m1_right`), and it proves the path `OverlayTramp -> OvM1Block -> DoorLocked`
+  IS reachable and that `DoorLocked`/the b4 drawing gate are correct.
+- **side 1 (left half) LOCKED_DOOR: does NOT block**, with or without an open
+  cell behind it (`x = 7 + 8*col`, MetaA b0 clear, `M1OffTab[0] = $FF`).
+
+So the remaining bug is the LEFT branch inside `OvM1Block` (the column
+arithmetic / the `vl` comparison for a left strip), not the door decision.
+Next step is the harness (`tools/dbg_door.py`), which must enter through
+`PlayerHitsMap` with a staged room; then diff the left vs right case (same
+code, only `M1OffTab` and the packed column differ) and fix it.
+
+## Converter: right-door fixes + a door-placement rule (2026-10-23)
+
+Two converter bugs found by the user's right-side door placement:
+
+1. **Wall-hide guard was over-strict for right doors.** A side-0 door at `col`
+   paints DISPLAY column `WIDTH + col`, whose PF cell is the MIRROR of left
+   column `WIDTH-1-col` — that cell alone decides the wall-hide. The guard
+   tested `{col, WIDTH-1-col}` and rejected legal placements (a door at col 6
+   on a 10-cell half needs left col 3 walled, not col 6).
+2. **The MetaA drift check counted a door as a ball band.** MetaA bit 0 is the
+   ball band gate for a plain strip but `m1_right` for a door ("door band mask
+   is $02 -> b0 free"), so a right door always tripped "meta drifted". Doors
+   no longer contribute to the mask, and b0 is masked out when `m1_right` is
+   set.
+
+New rule (user, 2026-10-23): **a door must have open cells on both sides** — a
+door inside a wall leads nowhere. Added as a converter guard for LOCKED_DOOR
+patches (checks the door's row, both neighbours in display space, skipping the
+room edge / mirror seam). The editor should also refuse it at paint time.

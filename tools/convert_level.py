@@ -431,6 +431,19 @@ def resolve_asym_patches(model: dict, room: dict,
                 f"{who}: tile {tile} is a grid tile — feature tiles "
                 "(phase/hcrunch) cannot be asym patches")
         if tile == LOCKED_DOOR:
+            # A door has to lead somewhere: the cells either side of it (in
+            # DISPLAY space) must be open, or it is a door inside a wall.
+            # side 0 paints display column WIDTH+col, whose cells map back to
+            # left column WIDTH-1-col; side 1 paints left column col.
+            dcol = (WIDTH - 1 - col) if side == 0 else col
+            for nb, side_name in ((dcol - 1, "left"), (dcol + 1, "right")):
+                if not 0 <= nb < WIDTH:
+                    continue          # room edge / mirror seam: out of scope
+                if left_rows[row][nb] in "#H":
+                    raise ValueError(
+                        f"{who}: LOCKED_DOOR at row {row} col {col} has a "
+                        f"WALL on its {side_name} (left col {nb}) — the door "
+                        f"leads nowhere. Open that cell or move the door.")
             if row != 1:
                 raise ValueError(
                     f"{who}: LOCKED_DOOR patch at row {row} — the "
