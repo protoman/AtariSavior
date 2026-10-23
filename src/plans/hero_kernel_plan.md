@@ -993,3 +993,46 @@ PinSlot0's 3-candidate guard was already in the source (`cmp #2 / bcs .PSout`);
 test_slot1_pair gained the case that proves it (2 enemies + the miner keeps
 FlickerFrame untouched, so the rotation stays in charge and the middle object
 still gets its frames).
+
+## Same-band flicker — design measured 2026-10-22, NOT started
+
+**Where it bites today** (live stage scan): only two rooms, both the same shape —
+level 2 room 2 and level 3 room 3, each `bat (y=5 / y=4) + MINER (y=7)` in band 1.
+Everything else is either a single object or already pairs across bands.
+
+**Why it flickers:** `StageSlot1B2` pairs only when slot 1's band is STRICTLY
+higher, so two objects in one band fall back to the 1-of-2 frame rotation in
+`SelectActiveObject` (each drawn 30 Hz).
+
+**Their windows do NOT overlap** (bat 60-69, miner 84-95): a half-band split at
+the band midpoint (band 1 = lines 48-95, split at 72) separates them cleanly, so
+this is the fix that fits the data.
+
+**Cost of the fix — the honest numbers:**
+1. A mid-band trio swap needs `SetObjectXPos` (its own WSYNC line) + the HMOVE
+   line = **2 scanlines**, exactly like `Slot1Hook` at a band boundary. The band
+   becomes 51 lines instead of 49 for a split band ⇒ +2 lines on those rooms,
+   on top of the +2 the cross-band hook already costs (the queued 267-line
+   issue). The two must be solved TOGETHER or the frame length keeps growing.
+2. The `.Line` tail (`sta WSYNC / dec LineCount / bne .Line`) is the cycle-tight
+   part (work ≤ 70c, d ≤ 73c). A per-line "is this the split line" compare
+   cannot be added there; the split must be a SECOND PASS with its own
+   `LineCount` (the `.WaterRow` pattern: band setup sets 24, the loop exits, the
+   split hook runs, the second pass sets 24). No per-line cost, which is why
+   this shape is the only viable one.
+3. The slot-1 hook's `.SHout` early-out must be reused for the same-band case
+   (band == slot band), and `StageSlot1B2`'s pairing rule must accept
+   `band1 == band0` when the windows fall on different sides of the midpoint.
+4. GRP1 must be blanked on the swap lines (learned from 9ae7ef6) or the tail of
+   the previous object shows in the new band colour.
+
+**Interim remedy, zero risk (recommended for the affected rooms now):** move the
+bat one band down (y 5 -> 9 or y 4 -> 9, i.e. band 2) in the editor; the pair
+then goes through the existing cross-band hook and both objects draw every
+frame. The converter already warns about the clash.
+
+**Plan of record when this chunk starts:** fix the `+2 lines` accounting first
+(band body count -2 when a hook ran, re-measuring the row-2 path that has ZERO
+cycle margin), then the half-band split, then the pairing rule. Gate: frame
+lines stay 265 in every room (the wall model), and the affected rooms show both
+objects on every frame.
