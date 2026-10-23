@@ -37,7 +37,7 @@ where the old inline `cmp #ENEMY_TENTACLE/MOTH/SNAKE` chain now lives, and
 whole debugging detour.** `sta $1FF5` switches banks, so the `jmp` OPCODE and
 its OPERAND are fetched from bank1 at the same address, not from the code that
 writes them. `bank1.asm` therefore carries the same 6 bytes at `$F8C0`
-(`.ds $F8C0 - *` in both files, then `$8D,$F7,$1F,$4C,$E3,$FD`), whose target
+(`.ds $F8C0 - *` in both files, then `$8D,$F5,$1F,$4C,$E3,$FD`), whose target
 is bank1's own `RaftBody`. Without the twin the tramp jumped into whatever
 bank1 held at that address. Guards: `verify_build.check_raft_tramp` (identity +
 operand == bank1's `RaftBody` label) and — the case that actually caught it —
@@ -1116,11 +1116,11 @@ and any new exit path must return through `EBLER_Done`. Guard:
 (2026-09-30, E4 moth exit tramp frame-3 crash):** Stella's
 `CartridgeEnhanced::peek` (`CartEnh.cxx:157`,
 `if(hotspot() >= 0x80 && checkSwitchBank(address & ADDR_MASK, 0) && myRandomHotspots)`,
-`ADDR_MASK=$1FFF`, F6 `hotspot()=$1FF4`) calls `checkSwitchBank` on **reads** —
+`ADDR_MASK=$1FFF`, F4 `hotspot()=$1FF4`) calls `checkSwitchBank` on **reads** —
 the side effect fires even when `myRandomHotspots` is false (the `&&` already
-evaluated it). So ANY instruction fetch at `$FFF6-$FFF9` (the only addresses in
-code space with `addr & $1FFF ∈ $1FF4-$1FF7`) switches banks MID-INSTRUCTION.
-Real F6 is write-only (reads don't switch), so this bites Stella only — but the
+evaluated it). So ANY instruction fetch at `$FFF4-$FFFB` (the only addresses in
+code space with `addr & $1FFF ∈ $1FF4-$1FFB`) switches banks MID-INSTRUCTION.
+Real F4 is write-only (reads don't switch), so this bites Stella only — but the
 frame died exactly like hardware: the E4 moth exit pad at $FFF2 was
 `sta $1FF4 / jmp UE_Next`; the `jmp`'s operand fetches at $FFF6/$FFF7 flipped
 bank0→bank1 → operand hi read as $00 → `jmp $007D` → bank1 FF-fill runaway →
@@ -1130,9 +1130,10 @@ re-entry leaked ~5 stack bytes → SP decayed $FF→$E1 over ~6 passes (~3 frame
 FetchPtr mirror, clobbered by DeriveEnemyY staging $FAC5 → `rts` → font data →
 SLO/JAM at $FAC9. **py65 could never see this** (its F6 mapper peeks pure ROM).
 Fix: exit pad moved to $FC49 (main headroom, `.ds $FC49 - *, 0` pin);
-guard `check_moth_tramp` now asserts `$FFF2-$FFF9` = fill in bank0/bank2.
-**Rule: treat `$xFFF6-$xFFF9` as reserved; before placing ANY code near
-$FFFx, check `addr & $1FFF` against $1FF4-$1FF7.** Recognize this bug family:
+guard `check_moth_tramp` now asserts `$FFF2-$FFF9` = fill in bank0/bank2
+(F4: $FFF4-$FFF9 are the hotspot mirrors).
+**Rule: treat `$xFFF4-$xFFFB` as reserved; before placing ANY code near
+$FFFx, check `addr & $1FFF` against $1FF4-$1FFB.** Recognize this bug family:
 sprite/enemy "teleports" + wall pass-through + odd frame lengths + a counter
 that decays in steps then never completes → look for a hidden bank flip, then
 for stack decay from mid-frame re-entries.
