@@ -78,5 +78,20 @@ if "VDELP1" not in b1 or b1.count("sta VDELP1") < 2:
     fail("bank1's HUD VDELP1 usage disappeared — the 48px score pipeline "
          "needs it and it is independent of the cave's P0 bit")
 
+# --- the line ABOVE the sprite must write art row 0 -----------------------
+# With VDELP0 the pattern displayed on the sprite's first line is the one
+# written on the scanline before it, so `.GrpSkip` must fetch row 0 on the
+# A0=$ff line instead of blanking. Blanking it ate the art's top row (user
+# report 2026-10-22: the helmet's narrow first row never appeared).
+kern = (SRC / "kernel.asm").read_text(errors="replace")
+skip = kern.split(".GrpSkip:")[1].split(".GrpZero:")[0]
+if "lda (Grp0Ptr),Y" not in skip:
+    fail(".GrpSkip does not write art row 0 on the A0=$ff line — the player's "
+         "top row would be blanked and the sprite would draw one row short")
+if "bne .GrpZero" not in skip:
+    fail(".GrpSkip must still blank every skipped line except the one above "
+         "the sprite (bne .GrpZero)")
+
 print("OK: cave VDELP0=1 / VDELP1=0, GRP1 stored on every .Line path, "
-      "COLUP0 ahead of GRP0, HUD VDELP1 intact")
+      "COLUP0 ahead of GRP0, HUD VDELP1 intact, art row 0 on the line above "
+      "the sprite")
