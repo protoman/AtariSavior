@@ -2539,6 +2539,25 @@ ObjHeightTab:                                              ; by ENEMY type
 ; and it feeds the hot-overlap box test too, which reads M1X.
 ; Flags: Z is left SET when A = 0, so the caller can branch right after.
 ; ------------------------------------------------------------------------------
+; ------------------------------------------------------------------------------
+; DoorLocked — a locked door (M1 patch cell, PF-open) hit by the player.
+; In: nothing new (the overlay's box scratch is live). Out: C=1 blocked, or a
+; tail jump into HotOverlapFlag when the room is HOT, where the overlap body
+; also gets to apply the hot hit.
+; Why: the locked case used to jump straight to HotOverlapFlag, and its bank3
+; body returns C=0 when the hot stream has no hit — a cold room's door was
+; therefore walk-through (user report: "door is not solid, neither with nor
+; without the key").
+; ------------------------------------------------------------------------------
+DoorLocked:
+    lda RoomPF0Hi               ; staged MetaB
+    and #$40                    ; b6 = mid_band_type hot shape
+    bne .DLhot
+    sec                         ; cold room: the door is simply solid
+    rts
+.DLhot:
+    jmp HotOverlapFlag          ; hot band: overlap body owns the hit (C=1)
+
 M1ColFromMeta:
     lda EnemyDeadMask
     and #$10                    ; b4 = M1 strip destroyed -> transparent
@@ -3179,7 +3198,7 @@ OvM1Block:
     ; it (b4) — touch, not mere possession.
     lda LevelStartRoom
     bmi .OvM1unlock
-    jmp HotOverlapFlag          ; C=1 contract; body sets Temp b7 on hot hit
+    jmp DoorLocked              ; locked: blocks in a cold room too (fill)
 .OvM1unlock:
     lda EnemyDeadMask
     ora #$10                    ; b4 = M1 strip (left door) destroyed
