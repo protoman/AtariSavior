@@ -1456,3 +1456,33 @@ left+key opens / right blocked) are the ones the feature needs.
 (wall-hide on the mirrored cell only; the MetaA drift check no longer counts a
 door as a ball band) and the "a door needs open cells on both sides" rule, plus
 1-based room numbers + the level in every async error message.
+
+## Door: the staged-ROM harness (2026-10-23, in /tmp, not the repo)
+
+To debug the door without navigating to level 4 room 3 I built a **staged copy of
+the stage whose LEVEL 1 ROOM 1 IS the door room**, then boot it in py65 and walk
+into the door:
+
+- `/tmp/opencode/mk_door_stage.py` — reads `rooms/stage.json`, appends a model
+  (10x3, `##########` / `####......` / `##########`), and sets level 1 room 1 to
+  it with `asym_patches = [[1, 5, 9, 1]]` (side-1 LOCKED_DOOR, strip at x=47).
+  Model needs `width: 10` AND `height: 3` (verify_build checks both).
+- build: `SIM_PY=/bin/false STAGE_FILE=/tmp/opencode/door_stage.json ./build.sh`
+  -> copy `src/savior.bin` to `/tmp/opencode/savior_door.bin`, then restore the
+  live ROM (`cp` the backup back) and `git checkout -- src/generated`.
+- `/tmp/opencode/drive_door2.py` — py65 driver: boots from the F4 reset vector
+  (bank 7 -> bank 0 via the `$1FF4` stub works), presses RESET at frames 2/3,
+  holds RIGHT from frame 8, records `RoomX` per frame, verdict blocked/passed.
+
+**Driver status:** it boots correctly but then loops around `$F051-$F054` (the
+VBL entry) and never writes WSYNC, so `frames` stays 0 and no verdict comes out.
+That is a driver bug (frame counting via WSYNC writes), not a ROM finding. Next:
+use the `test_phase3_ball` frame-loop recipe (its `mem.wall`/WSYNC counting and
+`PC_START` detection are known good) instead of this hand-rolled loop.
+
+**Data-side result that stands:** with the corrected strip-cell index, both
+currently-authored placements resolve to an OPEN playfield cell
+(`L1 R2` strip x55 -> PF cell 13 -> PF2 bit 1, byte $00; `L4 R3` door x103 ->
+PF cell 25 -> mirrored 14 -> PF2 bit 2, byte $00), so the row scan should take
+the door branch in both. The left door was user-confirmed fixed; the right-side
+report is still unverified (possibly tested on a pre-18:41 ROM).
