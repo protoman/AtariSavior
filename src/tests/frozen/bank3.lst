@@ -212,7 +212,7 @@
      13  f010							;	  prefix). Static hot + the M1 block cell are derived by
      14  f010							;	  the loader (PF row 1 + the patch list) — C11.
      15  f010				   LEVEL1_AsyncExtras
-     16  f010		       02 90 00 18*	      .byte.b	$02, $90, $00, $18, $58	; room 0: 2 patch(es), 0 feature(s), MetaA $90 MetaB $00
+     16  f010		       02 90 00 18*	      .byte.b	$02, $90, $00, $18, $58	; room 1: 2 patch(es), 0 feature(s), MetaA $90 MetaB $00
 ------- FILE generated/levels_extras.asm
 ------- FILE generated/level_002_extras.asm LEVEL 4 PASS 2
       0  f015					      include	"generated/level_002_extras.asm"
@@ -239,8 +239,8 @@
      13  f015							;	  prefix). Static hot + the M1 block cell are derived by
      14  f015							;	  the loader (PF row 1 + the patch list) — C11.
      15  f015				   LEVEL3_AsyncExtras
-     16  f015		       02 90 00 18*	      .byte.b	$02, $90, $00, $18, $58	; room 0: 2 patch(es), 0 feature(s), MetaA $90 MetaB $00
-     17  f01a		       04 00 00 89*	      .byte.b	$04, $00, $00, $89, $01, $82, $00, $01, $20, $01	; room 1: 0 patch(es), 1 feature(s), MetaA $00 MetaB $00
+     16  f015		       02 90 00 18*	      .byte.b	$02, $90, $00, $18, $58	; room 1: 2 patch(es), 0 feature(s), MetaA $90 MetaB $00
+     17  f01a		       04 00 00 89*	      .byte.b	$04, $00, $00, $89, $01, $82, $00, $01, $20, $01	; room 2: 0 patch(es), 1 feature(s), MetaA $00 MetaB $00
 ------- FILE generated/levels_extras.asm
 ------- FILE generated/level_004_extras.asm LEVEL 4 PASS 2
       0  f024					      include	"generated/level_004_extras.asm"
@@ -259,10 +259,10 @@
      13  f024							;	  prefix). Static hot + the M1 block cell are derived by
      14  f024							;	  the loader (PF row 1 + the patch list) — C11.
      15  f024				   LEVEL4_AsyncExtras
-     16  f024		       02 90 00 18*	      .byte.b	$02, $90, $00, $18, $58	; room 0: 2 patch(es), 0 feature(s), MetaA $90 MetaB $00
-     17  f029		       04 00 00 89*	      .byte.b	$04, $00, $00, $89, $01, $82, $00, $01, $20, $01	; room 1: 0 patch(es), 1 feature(s), MetaA $00 MetaB $00
-     18  f033		       01 10 00 50	      .byte.b	$01, $10, $00, $50	; room 4: 1 patch(es), 0 feature(s), MetaA $10 MetaB $00
-     19  f037		       01 02 0a 49	      .byte.b	$01, $02, $0a, $49	; room 5: 1 patch(es), 0 feature(s), MetaA $02 MetaB $0a
+     16  f024		       02 90 00 18*	      .byte.b	$02, $90, $00, $18, $58	; room 1: 2 patch(es), 0 feature(s), MetaA $90 MetaB $00
+     17  f029		       04 00 00 89*	      .byte.b	$04, $00, $00, $89, $01, $82, $00, $01, $20, $01	; room 2: 0 patch(es), 1 feature(s), MetaA $00 MetaB $00
+     18  f033		       01 10 00 50	      .byte.b	$01, $10, $00, $50	; room 5: 1 patch(es), 0 feature(s), MetaA $10 MetaB $00
+     19  f037		       01 02 0a 49	      .byte.b	$01, $02, $0a, $49	; room 6: 1 patch(es), 0 feature(s), MetaA $02 MetaB $0a
 ------- FILE generated/levels_extras.asm
      10  f037		       00 04	   LEVEL_EXTRAS_COUNT =	4
      11  f03b				   LevExtrasLo

@@ -38,7 +38,7 @@ LEVEL_ROW_COUNT = 6
 RowPoolPF0:
   .byte $f0, $30, $f0, $f0, $30, $f0
 RowPoolPF1:
-  .byte $ff, $00, $ff, $00, $3c, $ff
+  .byte $ff, $00, $ff, $00, $3c, $fc
 RowPoolPF2:
   .byte $0f, $00, $ff, $c0, $00, $00
 

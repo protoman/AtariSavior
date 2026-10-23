@@ -45,7 +45,7 @@ SHAPE_M17 = 5
 ;   room's record stream lives inside it and the VBL walkers read
 ;   it in-bank, so record walkers and records share a bank. This bank
 ;   keeps the counts byte's b5-0 ORDINAL and the 3 B/room columns.
-; BAND_COLOR = $84 — the single bottom-band color (every
+; BAND_COLOR = $01 — the single bottom-band color (every
 ; bottom_band room must resolve to it; bank2.asm carries the EQU and
 ; test_level_bank asserts the pair).
 LevelDataTable:

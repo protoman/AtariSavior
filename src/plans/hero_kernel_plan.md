@@ -1417,3 +1417,42 @@ New rule (user, 2026-10-23): **a door must have open cells on both sides** — a
 door inside a wall leads nowhere. Added as a converter guard for LOCKED_DOOR
 patches (checks the door's row, both neighbours in display space, skipping the
 room edge / mirror seam). The editor should also refuse it at paint time.
+
+## Door state at the end of 2026-10-23 (handoff)
+
+**Working (user-confirmed):**
+- async wall strip (side 1 / M1): visible, solid, blastable, vanishes after the
+  blast (`EnemyDeadMask` b4 gate on the drawing).
+- **RIGHT-half LOCKED_DOOR (side 0, x = 87 + 8*col)**: blocks without the key,
+  opens (strip destroyed) with it. This proves the whole chain is reachable:
+  `PlayerHitsMap` -> `OverlayTramp` -> `PHMOverlay` -> `.OvClear` ->
+  `OvM1Block` -> `DoorLocked`, plus the b4 drawing gate.
+- key pickup (key vanishes, `KeyHeld` = `LevelStartRoom` b7 latched).
+
+**Broken:** LEFT-half LOCKED_DOOR (side 1, x = 7 + 8*col) does NOT block — with
+or without a free cell behind it, and with the player standing in the door's
+own band (user-confirmed). Since the right door exercises the same code, the
+asymmetry is only in the column arithmetic (`M1OffTab[0] = $FF` vs `$4F`) or the
+`vl` comparisons that precede the row scan.
+
+Everything else in that path was verified by reading: the packed overlay byte
+(b3 = M1 present), the staged `CollisionEndX`/`RoomM1Hot`, `ℓ = (M1X-7)>>3`
+with the 20-entry `ColOff`/`ColMask` tables (display columns, so left -> col and
+right -> col+10 are both correct), the b4 gate, and `DoorLocked` (cold = block,
+hot = hot path). The failure is therefore a *comparison*, not a routing miss —
+which is why the next step is the harness, not another poke.
+
+**Harness (`tools/dbg_door.py`, deliberately NOT `test_*`):** it fabricates the
+door room (10-col half, door open in band 1, walls elsewhere at that column,
+free cells either side), stages the PF bytes via `convert_room.pf_values` and
+the metas, then calls `PlayerHitsMap`. It currently runs away into bank0's
+`GameStart` clear loop, i.e. the entry/return contract is wrong — the frozen
+`PlayerHitsMap` label is $F8EB (post-pad region) and the call needs a proper
+return frame (`sp`, sentinel) or a wrapper. Fix that first; the room/PF/meta
+staging in the file is already right, and its three assertions (left blocked /
+left+key opens / right blocked) are the ones the feature needs.
+
+**Also fixed today, worth keeping:** converter guards for right-side doors
+(wall-hide on the mirrored cell only; the MetaA drift check no longer counts a
+door as a ball band) and the "a door needs open cells on both sides" rule, plus
+1-based room numbers + the level in every async error message.
