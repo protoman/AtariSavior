@@ -162,17 +162,15 @@ def check_rom(src: Path) -> bytes | None:
     #    (.Line .. bne .Line) must share a page with its target (3c taken
     #    budgeted; a cross costs 4c -> WSYNC one cycle late -> duplicated
     #    scanline / frame-length oscillation).
-    line_at = None
+    line_at = labels.get("CaveLine")
     bne_at = None
     for addr, text in rows:
         t = text.strip()
-        if t == ".Line":
-            line_at = addr
         if (line_at is not None and addr > line_at
-                and re.match(r"^(?:[0-9a-f]{2}[ \t])+\s*b[a-z]{2}\s+\.Line\b", t)):
+                and re.match(r"^(?:[0-9a-f]{2}[ \t])+\s*b[a-z]{2}\s+CaveLine\b", t)):
             bne_at = addr
     if line_at is None or bne_at is None:
-        err(".Line / bne .Line not found in bank0.lst (branch guard)")
+        err("CaveLine / bne CaveLine not found in bank0.lst (branch guard)")
     else:
         for addr, text in rows:
             if not (line_at <= addr <= bne_at):

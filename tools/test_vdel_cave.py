@@ -63,7 +63,7 @@ if "sta GRP1" not in blank:
     fail(".ObjNoRes (out-of-window blank) lost its `sta GRP1` — same stall")
 
 # --- the player colour must be stored before the graphics ------------------
-line_body = K.split(".Line:", 1)[1].split(".AfterObj:")[0]
+line_body = K.split("CaveLine:", 1)[1].split(".AfterObj:")[0]
 i_col = line_body.find("sta COLUP0")
 i_grp = line_body.find("sta GRP0")
 if i_col < 0 or i_grp < 0:

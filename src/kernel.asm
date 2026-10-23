@@ -855,11 +855,15 @@ CaveKernelRow:
     ; out costs 5c; Slot1Hook pays 2 extra lines ONLY on the band that hosts
     ; slot 1 (SetObjectXPos WSYNC line + the HMOVE line).
     lda ObjBase1                ; $FF = none. `bmi` is still valid HERE (slot 1
-    bmi .RowNoSlot1             ;   only holds an enemy design or the miner,
+    bmi Slot1Keep             ;   only holds an enemy design or the miner,
                                 ;   all < $80; the bomb never reaches slot 1).
                                 ;   Slot 0 must use `cmp #$FF` — see .SODone.
-    jsr Slot1Hook
-.RowNoSlot1:
+    jmp Slot1Hook               ; NOT jsr: when the hook positions P1 it owns
+                                ;   the rest of this band (counts its own lines
+                                ;   and jumps into .Line), so a pushed return
+                                ;   address would leak 2 bytes every frame.
+                                ;   Its early-out jumps back to .RowNoSlot1.
+Slot1Keep:
     ; (2026-10-15) GRP0 blank REMOVED: +5c pushed the rows0/1 setup
     ; segment to 75c armed (>=74 = write lands next line = +1 stall line
     ; = whole-screen shift). The blank only traded a stale-byte duplicate
@@ -889,14 +893,14 @@ CaveKernelRow:
     ; --- Sync to next scanline (rows 0/1) ---
     sta WSYNC
     sta LineCount
-    jmp .Line
+    jmp CaveLine
 .RowLinesTide:
     lda CollisionX           ; 36..39 — VBL tide calc (see VBL comment)
     ; --- Sync to next scanline (row 2; falls straight into .Line) ---
     sta WSYNC
     sta LineCount
 
-.Line:
+CaveLine:
     ; --- Player sprite: color for THIS line, graphics byte for NEXT line ---
     ; GRP0 written on line S displays on line S+1 (latched at the sprite's
     ; window start after the write) — index graphics with A0+1 ($ff wraps
@@ -1002,7 +1006,7 @@ CaveKernelRow:
     ; --- Loop control ---
     sta WSYNC                   ; wait for end of this scanline
     dec LineCount               ; decrement scanlines remaining in row
-    bne .Line                   ; loop if more scanlines in this row
+    bne CaveLine                   ; loop if more scanlines in this row
 
     ; --- Advance to next tile row (X clobbered by object section: reload) ---
     ldx RowIdx
@@ -1058,7 +1062,7 @@ CaveKernelRow:
     sbc CollisionX
     sta LineCount
     sta WSYNC
-    jmp .Line
+    jmp CaveLine
 .GrpZero:                       ; entered from .GrpSkip on every skipped
                                 ;   line EXCEPT the one above the sprite
     lda #0                      ; (nothing falls through `jmp .Row`)
@@ -2472,10 +2476,24 @@ Slot1Hook:
     ldx RowIdx
     sta WSYNC                   ; end of the positioning line
     sta HMOVE                   ; cycle 0 of the next line = HBLANK
+    ; --- this hook spent TWO lines inside the band: take them out of the ---
+    ; --- body count, or the band (and the frame) grows by 2             ---
+    ; Rows 0/1 = 48 bodies, row 2 = 36..39 (tide, CollisionX). X = RowIdx.
+    lda #48 - 2
+    cpx #TILE_ROWS-1
+    bne .SHcount
+    lda CollisionX              ; C is still 1 from `cpx` (X == 2)
+    sbc #2                      ; row 2: tide count - 2
+.SHcount:
+    sta LineCount               ; .Row's own count store is skipped on this
+                                ;   path (we jump straight into the bodies)
+    pla                         ; running-Y back (SetObjectXPos did `tay`)
+    tay
+    jmp CaveLine
 .SHout:
     pla
     tay
-    rts
+    jmp Slot1Keep             ; not this band: no lines spent, plain path
 
 ; ObjHeightTab — enemy TYPE -> GRP1 draw window rows (Phase 6, 2026-10-22).
 ; Unlisted types draw OBJ_WINDOW rows; the listed ones are per-type, so

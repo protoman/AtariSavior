@@ -749,7 +749,7 @@ for _f, _d, _t in stall_log:
         continue
     _k = 'line' if _t[-1][0] == _dec_pc else (
          'rowsetup' if LABELS['.Row'] - 8 <= int(_t[0][0], 16)
-                      <= LABELS['.Line'] else 'other')
+                      <= LABELS['CaveLine'] else 'other')
     _b = sum(x[2] for x in _t)
     _cls.setdefault(_k, {}).setdefault(_b, 0)
     _cls[_k][_b] += 1
