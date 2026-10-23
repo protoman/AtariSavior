@@ -1047,10 +1047,15 @@ a lone hex PC is ambiguous.
 `*` is Stella's pointer operator: `print *$B5` uses the byte AT `$B5` as an
 address and shows THAT cell (observed: `print *$B5` → `ram_81` because
 `[$B5]=$81`; `print *$F7` → `CXBLPF|$30(R)` because `[$F7]=$35` pointed at
-the TIA collision register at `$35`). Reading a ZP variable raw:
-- `watch $XX` — prints the raw byte before every prompt (preferred), or
-- `ram` — full ZP dump, or
-- click the `00xx` RIOT grid cell (row = high nibble, col = low nibble).
+the TIA collision register at `$35`). Reading a ZP variable raw (measured 2026-10-23, Stella 7.0):
+- **`watch $XX` does NOT read memory - it evaluates the expression.** Watching
+  `$80`, `$92`, `$99`, `$9A`, `$84`, `$C7` printed the constants `$80`, `$92`,
+  `$99`, `$9A`, `$84`, `$C7` - every "value" equal to its own address. The
+  earlier note that called it a raw byte read was WRONG; do not use it.
+- **Use the hex grid** (the `00xx` table: rows = high nibble, cols = low
+  nibble) or the `ram` command. That is the reliable read.
+- `print *$XX` is the dereference form and is fine for a plain byte read:
+  `print *$9A` shows the byte AT $9A.
 Symptom of having used `*` by accident: output names a *different* address
 (TIA register or `ram_XX`) than the one you typed.
 
