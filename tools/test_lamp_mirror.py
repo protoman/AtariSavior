@@ -83,6 +83,17 @@ assert lamp_type(model_with(), 39, 3) == LAMP, "39 -> logical cell 0, same wall"
 assert lamp_type(model_with(5), 30, 3) == LAMP_MIRROR, (
     "display 30 -> logical 9 -> cell 4, right neighbour cell 5 is solid")
 
+# Placement (bug found 2026-10-22 with the demo ROMs): the art is a full 8 px
+# cell, so the record X must put the VISIBLE LEFT edge on a cell boundary. The
+# old 4-px-era "-0.5 column" shift left it straddling two cells - half inside
+# the wall it was supposed to hang from.
+for col, want_left in ((2, 8), (4, 16), (16, 64), (5.5, 16), (30, 120), (39, 152)):
+    x = CV.lamp_x_px(col)
+    visible = x - (4 if x < 15 else 7)
+    assert visible == want_left, (
+        f"lamp col {col}: X={x} draws its left edge at px {visible}, "
+        f"want the cell boundary {want_left}")
+
 # end to end: the emitted record byte is the mirrored type, never 0x80|type
 room = {"room_id": 0, "model_id": 7, "lamps": [{"x": 6, "y": 3}], "enemies": []}
 data = "\n".join(CV._enemy_tables("LEVEL1", [room], None, {7: model_with(4)}))
