@@ -197,9 +197,16 @@ def load_models(models_path: Path) -> dict:
         return {}
 
 
-def room_who(room: dict) -> str:
-    """Human identity for an error message (async lives on the ROOM now)."""
-    return f"room {room.get('room_id', '?')} (model {room.get('model_id', '?')})"
+def room_who(room: dict, level_n: int | None = None) -> str:
+    """Human identity for an error message (async lives on the ROOM now).
+
+    1-BASED room numbers, like the editor shows them, and the level when the
+    caller knows it: "level 4 room 4 (model 2)". A 0-based "room 3" in an error
+    message is how the user got sent to the wrong room (2026-10-23)."""
+    rid = room.get("room_id")
+    room_s = f"room {rid + 1}" if isinstance(rid, int) else "room ?"
+    lvl = f"level {level_n} " if level_n is not None else ""
+    return f"{lvl}{room_s} (model {room.get('model_id', '?')})"
 
 
 def room_patches(room: dict) -> list:
@@ -343,7 +350,7 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
 
 
 def resolve_asym_patches(model: dict, room: dict,
-                         left_rows: list[str]
+                         left_rows: list[str], who: str | None = None
                          ) -> tuple[list[str] | None, int, int, bool, bool] | None:
     """D3 asym_patches -> (right rows|None, ball x, m1 x), or None (no patches).
 
@@ -389,7 +396,7 @@ def resolve_asym_patches(model: dict, room: dict,
     if not patches:
         return None
     mid = model.get("id")
-    who = room_who(room)
+    who = who or room_who(room)
     if len(patches) > 2:
         raise ValueError(
             f"{who}: {len(patches)} asym patches — envelope allows "
@@ -501,15 +508,16 @@ def resolve_asym_patches(model: dict, room: dict,
                 cell = left_rows[b][cc]
                 if b in left_patch_rows and cell in "#H":
                     raise ValueError(
-                        f"{who}: M1 patch band {b} col {cc} is wall — "
-                        f"the whole-cave ENAM1 latch would hide the patch "
-                        f"(wall-hide guard)")
+                        f"{who}: the async strip (col {cc}, band {b}) sits on "
+                        f"a WALL cell, so the wall would hide it. Open that "
+                        f"cell, or drop the patch for band {b}.")
                 if b not in left_patch_rows and cell not in "#H":
                     raise ValueError(
-                        f"{who}: M1 cell col {cc} is open in band {b} "
-                        f"with no patch — the whole-cave ENAM1 latch would "
-                        f"paint it (wall-hide guard: wall the cell or patch "
-                        f"the band)")
+                        f"{who}: the async strip is ONE 1-px column painted "
+                        f"across the whole cave (a single M1 line per frame), "
+                        f"but band {b} col {cc} is open air and has no patch — "
+                        f"it would show a stray line there. Fix: make band {b} "
+                        f"col {cc} a wall, or add a patch for band {b}.")
         m1_x = 7 + 8 * m1_col
     ball_x = 87 + 8 * next(iter(right_cols)) if has_right else 0
     if has_right and model.get("mid_band_type"):
@@ -573,7 +581,7 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
         model = models_by_id.get(room.get("model_id"))
         if model is None:
             continue
-        who = f"{who_prefix} room {index} (model {model['id']})"
+        who = f"{who_prefix} room {index + 1} (model {model['id']})"
         kinds = async_kinds(room)
         enemies = room.get("enemies") or []
         lamps = room.get("lamps") or []
@@ -761,7 +769,7 @@ def room_extras(room: dict, model: dict, rows: list[str],
     VBL, so the live PF is the correct source), and the M1 block cell is
     re-derived from the patch list at load (`RoomM1Hot`).
     """
-    res = resolve_asym_patches(model, room, rows)
+    res = resolve_asym_patches(model, room, rows, who)
     asym, ball_x, m1_x, m1_door, m1_right = (
         res if res else (None, 0, 0, False, False))
     hot = bool(model.get("mid_band_type"))
@@ -904,10 +912,10 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
             continue
         rows = rows_from_json(room, models_by_id)
         record, nfeat = room_extras(room, model, rows,
-                                    f"level {level_n} room {index}")
+                                    f"level {level_n} room {index + 1}")
         extras_index[index] = len(extras_index) + 1
         extras_lines += extras_record_lines(record, nfeat,
-                                            f"room {index}")
+                                            f"room {index + 1}")
     lines.append("")
     lines.append(
         "; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,")
@@ -1157,7 +1165,7 @@ def emit_room_block(prefix: str, room: dict, model: dict, rows: list[str],
         res = None
         hot = False
     else:
-        res = resolve_asym_patches(model, room, rows)
+        res = resolve_asym_patches(model, room, rows, source)
         hot = bool(model.get("mid_band_type"))
     asym, ball_x, m1_x, m1_door, m1_right = (
         res if res else (None, 0, 0, False, False))
