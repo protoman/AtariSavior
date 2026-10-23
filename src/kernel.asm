@@ -2446,6 +2446,14 @@ Slot1Hook:
     lda ObjX1
     sta ActiveObjectX
     ldx #1
+    lda #0                      ; this hook spends TWO lines (SetObjectXPos's
+    sta GRP1                    ; own WSYNC + the HMOVE line). .Row already
+                                ; wrote COLUP1 for THIS band, so without this
+                                ; blank the TIA keeps showing the previous
+                                ; band's last GRP1 pattern in the new colour:
+                                ; an enemy straddling the boundary grew a
+                                ; 2-row tail tinted as the band's walls (hot
+                                ; pulse = yellow/red, user report 2026-10-22)
     jsr SetObjectXPos           ; its own WSYNC starts the positioning line
     ; The frame's ONE HMOVE already ran in the VBL; this second one exists only
     ; for slot 1's own fine adjust. HMP0/HMM0/HMBL still hold the PLAYER's,
