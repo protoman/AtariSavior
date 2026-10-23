@@ -349,7 +349,8 @@ OBJ_WINDOW      = 16            ; GRP1 drawing window rows: the .Line test
 PLAYER_SPRITE_H = 22            ; player art height (8x22, user design 2026-10-22)
 PLAYER_WIDTH    = 7             ; lit player sprite spans 7 pixels; REFP0 shift handled
 ENEMY_WIDTH     = 8             ; snake GRP1 width ($ff = 8 px) — flush-out span
-LAMP_WIDTH      = 4             ; OBJ_LAMP uses GRP1's leftmost 4 lit pixels
+LAMP_WIDTH      = 8             ; OBJ_LAMP's art spans all 8 pixels now
+                                ;   (4 missed the bulb from the far side)
 MINER_WIDTH     = 4             ; OBJ_MINER spans 4 lit GRP1 pixels
 SNAKE_PATROL    = 4             ; ONE TILE each side of the spawn (user
                                 ; 2026-10-19): the patrol is SYMMETRIC about the
@@ -370,12 +371,14 @@ OBJ_KEY         = 0              ; design offsets. A design owns its block, so e
 OBJ_MOTH        = 16             ; offset = the sum of the heights above it;
 OBJ_SPIDER      = 30             ; ObjHeightTab carries the matching row count.
 OBJ_LAMP        = 45             ; Heights (user art 2026-10-22): MOTH 14,
-OBJ_TENTACLE    = 61             ; SPIDER 15, TENTACLE 14, BAT 10, SNAKE 6,
-OBJ_BAT         = 75             ; RAFT 2, the rest 16.
-OBJ_SNAKE       = 85
-OBJ_MINER       = 91
-OBJ_BOMB        = 107
-OBJ_RAFT        = 123
+OBJ_TENTACLE    = 55             ; SPIDER 15, LAMP 10, TENTACLE 14, BAT 10,
+OBJ_BAT         = 69             ; SNAKE 6, MINER 16, BOMB 8, RAFT 2, KEY 16.
+OBJ_SNAKE       = 79
+OBJ_MINER       = 85
+OBJ_BOMB        = 101
+OBJ_RAFT        = 109
+OBJ_BOMB_H      = 8              ; the bomb owns no type slot: its draw window
+                                 ;   is staged by hand in SelectActiveObject
 
 ; Player bounds (must stay inside cave walls)
 PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
@@ -2190,7 +2193,8 @@ SelectActiveObject:
     bne .SOCount                ; 3 of 4 -> miner/enemy
     lda #OBJ_BOMB               ; bomb design offset into ObjSprites
     sta ObjBase
-    lda #OBJ_WINDOW             ; bomb design height
+    lda #OBJ_BOMB_H             ; bomb design height (8-row art; OBJ_WINDOW
+                                ;   would draw the RAFT rows underneath)
     sta ObjHeight
     lda BombX
     sta ActiveObjectX
@@ -2439,18 +2443,15 @@ Slot1Hook:
     rts
 
 ; ObjHeightTab — enemy TYPE -> GRP1 draw window rows (Phase 6, 2026-10-22).
-; Every design is 16 rows today (OBJ_WINDOW), so this is the seam for taller
-; art: grow a design's rows in ObjSprites/ObjColorTab, then raise its byte here.
+; Unlisted types draw OBJ_WINDOW rows; the listed ones are per-type, so
+; this is the seam for taller art: grow the rows, then set the byte here.
 ; bank2 carries a byte-identical twin (StageSlot1 stages slot 1's window) —
 ; guard: tools/test_slot1_pair.py compares both tables.
 ObjHeightTab:                                              ; by ENEMY type
     .byte 15,         10                                    ; 0 SPIDER 1 BAT
     .byte 6,          OBJ_WINDOW                            ; 2 SNAKE  3 TENT
-    .byte 14,         OBJ_WINDOW                            ; 4 MOTH   5 LAMP
+    .byte 14,         10                                    ; 4 MOTH   5 LAMP
     .byte OBJ_WINDOW, 2                                     ; 6 KEY    7 RAFT
-    .byte OBJ_WINDOW, OBJ_WINDOW                            ; 3 TENT 4 MOTH
-    .byte OBJ_WINDOW, OBJ_WINDOW                            ; 5 LAMP 6 KEY
-                                                            ; 7 RAFT
 
 ; CallPad_RaftBody — bank1 RaftBody entry. Pinned at $F8C0 with a
 ; BYTE-IDENTICAL twin in bank1 (bank1.asm, same address): the `sta $1FF7`
@@ -2458,18 +2459,18 @@ ObjHeightTab:                                              ; by ENEMY type
 ; not from here. That is the same FoldIndirect discipline every other tramp
 ; uses — the twin cannot be skipped or shortened.
 ; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
-    .ds $F830 - *, 0            ; ObjSprites: per-type heights, 125 B now
-                                 ;   KEY 16, MOTH 14, SPIDER 15, LAMP 16,
+    .ds $F830 - *, 0            ; ObjSprites: per-type heights, 111 B now
+                                 ;   KEY 16, MOTH 14, SPIDER 15, LAMP 10,
                                  ;   TENT 14, BAT 10, SNAKE 6, MINER 16,
-                                 ;   BOMB 16, RAFT 2.
-                                 ; Base low byte $30 + max index 124 = $AC ->
+                                 ;   BOMB 8, RAFT 2.
+                                 ; Base low byte $30 + max index 110 = $9E ->
                                  ; `lda ObjSprites,X` stays in ONE page
                                  ; (verify_build guard). The base moved
                                  ; $F850 -> $F830 with the Phase 6 growth so
                                  ; the table still ENDS at the $F8C0 RaftBody
                                  ; pin; the 32 B it took came from the $F744
                                  ; fill freed by the StageSlot1 eviction.
-; 16 rows per type = OBJ_WINDOW, bits 7-4 (col0 = bit7). Offsets come from the
+; Rows per type from ObjHeightTab, bits 7-4 (col0 = bit7). Offsets come from
 ; OBJ_* EQUs via ObjSpriteOffTable (stride 16). Rows 12-15 of every design are
 ; $00 RESERVED for taller art: they draw nothing today, so the window grew
 ; with NO visual change. Fill them (and the matching ObjColorTab rows) when a
@@ -2483,8 +2484,10 @@ ObjSprites:
     ; SPIDER (32): 15 rows (user art 2026-10-22, reduced design) — four
     ; legs per side, bright abdomen rows 6-8, orange thorax, olive legs
     .byte $A5,$A5,$A5,$5A,$3C,$7E,$FF,$FF,$7E,$3C,$7E,$7E,$3C,$5A,$A5
-    ; LAMP (48): shade, neck, bowl, post, wide base
-    .byte $F0,$F0,$60,$60,$F0,$F0,$F0,$60,$60,$60,$3C,$3C,$00,$00,$00,$00
+    ; LAMP (45): 10 rows (user art 2026-10-22) - grey wall bracket + neck in
+    ; the LEFT columns (the "facing right" version: REFP1 flips the side for a
+    ; wall on the right), then the white bowl/bulb.
+    .byte $FC,$FC,$18,$18,$3C,$7E,$FF,$FF,$7E,$3C
     ; TENTACLE (61): 14 rows (user art 2026-10-22) — pink head, light
     ; purple neck, purple limb, dark purple taper, blue base pad
     .byte $1C,$22,$24,$18,$0C,$14,$18,$28,$30,$50,$70,$FC,$FF,$BD
@@ -2496,9 +2499,10 @@ ObjSprites:
     .byte $06,$0F,$F8,$F8,$0F,$06
     ; MINER (112): helmet, pink face, body, tool, hips, legs
     .byte $0C,$1C,$4C,$36,$0F,$07,$3F,$6E,$3C,$3C,$18,$18,$00,$00,$00,$00
-    ; BOMB (107): fuse, round body, tapered nose
-    .byte $10,$20,$20,$60,$F0,$F0,$F0,$60,$30,$18,$18,$0C,$00,$00,$00,$00
-    ; RAFT (123): 2-row WHITE plank (user 2026-10-22). It got its OWN design:
+    ; BOMB (101): 8 rows (user art 2026-10-22) - yellow fuse at the top
+    ; right, grey collar, red round body tapering to the nose.
+    .byte $04,$08,$08,$18,$3C,$3C,$3C,$18
+    ; RAFT (109): 2-row WHITE plank (user 2026-10-22). It got its OWN design:
     ; it used to borrow the SNAKE block, so drawing a snake also redrew the
     ; raft. RAFTER_BASE moved to 131 so the plank's bottom row (top+1) sits ON
     ; the water surface (132+off).
@@ -3127,12 +3131,12 @@ ObjColorTab:
     .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c ; 0 KEY   ($1c yellow)
     .byte $0E,$0E,$F2,$F2,$1C,$1C,$F2,$F2,$F2,$1C,$1C,$F2,$F2,$0E ; 1 MOTH  (14 rows: cream tips, brown wings, gold body)
     .byte $14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$22,$22,$22,$14,$14,$14 ; 2 SPIDER (15 rows)
-    .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e ; 3 LAMP  ($0e white)
+    .byte $06,$06,$06,$06,$0E,$0E,$0E,$0E,$0E,$0E ; 3 LAMP  (10 rows: grey bracket/neck, white bowl)
     .byte $4C,$4C,$4C,$6C,$6C,$6C,$68,$68,$68,$64,$64,$82,$82,$82 ; 4 TENTACLE (14 rows: pink head -> blue base)
     .byte $06,$06,$6C,$6C,$68,$68,$64,$64,$82,$82 ; 5 BAT (10 rows: grey wings, purple body, dark blue tail)
     .byte $C8,$C8,$C4,$C4,$C2,$C2 ; 6 SNAKE (6 rows: claro/claro/verde/verde/escuro/escuro)
     .byte $54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08,$08,$08,$08,$08 ; 7 MINER (hips purple, legs grey)
-    .byte $46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46 ; 8 BOMB  ($46 red)
+    .byte $1C,$1C,$1C,$06,$46,$46,$46,$46 ; 8 BOMB  (8 rows: yellow fuse, grey collar, red body)
     .byte $0E,$0E ; 9 RAFT  (2 rows, white — user 2026-10-22)
 
 ; ------------------------------------------------------------------------------

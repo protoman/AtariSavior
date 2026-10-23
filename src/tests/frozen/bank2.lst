@@ -154,12 +154,12 @@
     153  f000		       00 10	   OBJ_MOTH   =	16	;   hand-copies of kernel.asm — the equ-sync
     154  f000		       00 1e	   OBJ_SPIDER =	30	;   guard checks hex AND decimal values)
     155  f000		       00 2d	   OBJ_LAMP   =	45
-    156  f000		       00 3d	   OBJ_TENTACLE =	61
-    157  f000		       00 4b	   OBJ_BAT    =	75
-    158  f000		       00 55	   OBJ_SNAKE  =	85
-    159  f000		       00 5b	   OBJ_MINER  =	91
-    160  f000		       00 6b	   OBJ_BOMB   =	107
-    161  f000		       00 7b	   OBJ_RAFT   =	123
+    156  f000		       00 37	   OBJ_TENTACLE =	55
+    157  f000		       00 45	   OBJ_BAT    =	69
+    158  f000		       00 4f	   OBJ_SNAKE  =	79
+    159  f000		       00 55	   OBJ_MINER  =	85
+    160  f000		       00 65	   OBJ_BOMB   =	101
+    161  f000		       00 6d	   OBJ_RAFT   =	109
     162  f000
     163  f000							; C2 (2026-10-20): the level-data block labels (M<id>*, L<n>R<r>*) live in
     164  f000							; THIS bank now ($F307 slot include below), so the room tables resolve them
@@ -1459,7 +1459,7 @@
    1158  fb44		       85 eb		      sta	ObjTop1
    1159  fb46		       4c f8 fb 	      jmp	ReturnPad
    1160  fb49				   .S1stageMiner
-   1161  fb49		       a9 5b		      lda	#OBJ_MINER
+   1161  fb49		       a9 55		      lda	#OBJ_MINER
    1162  fb4b		       85 ea		      sta	ObjBase1
    1163  fb4d		       a9 10		      lda	#OBJ_WINDOW
    1164  fb4f		       85 9e		      sta	ObjHeight1
@@ -1503,7 +1503,7 @@
    1202  fb77							; ------------------------------------------------------------------------------
    1203  fb77				   PinSlot0
    1204  fb77		       a5 b6		      lda	ObjBase
-   1205  fb79		       c9 6b		      cmp	#OBJ_BOMB
+   1205  fb79		       c9 65		      cmp	#OBJ_BOMB
    1206  fb7b		       f0 35		      beq	.PSout	; bomb frame: leave the bomb alone
    1207  fb7d		       a5 a4		      lda	LevelMinerRoom
    1208  fb7f		       29 7f		      and	#$7f
@@ -1552,18 +1552,18 @@
    1251  fbb3				   ObjHeightTab
    1252  fbb3		       0f 0a		      .byte.b	15, 10
    1253  fbb5		       06 10		      .byte.b	6, OBJ_WINDOW
-   1254  fbb7		       0e 10		      .byte.b	14, OBJ_WINDOW
+   1254  fbb7		       0e 0a		      .byte.b	14, 10
    1255  fbb9		       10 02		      .byte.b	OBJ_WINDOW, 2
    1256  fbbb
    1257  fbbb				   ObjSpriteOffTable
    1258  fbbb		       1e		      .byte.b	OBJ_SPIDER	; 0
-   1259  fbbc		       4b		      .byte.b	OBJ_BAT	; 1
-   1260  fbbd		       55		      .byte.b	OBJ_SNAKE	; 2
-   1261  fbbe		       3d		      .byte.b	OBJ_TENTACLE	; 3
+   1259  fbbc		       45		      .byte.b	OBJ_BAT	; 1
+   1260  fbbd		       4f		      .byte.b	OBJ_SNAKE	; 2
+   1261  fbbe		       37		      .byte.b	OBJ_TENTACLE	; 3
    1262  fbbf		       10		      .byte.b	OBJ_MOTH	; 4
    1263  fbc0		       2d		      .byte.b	OBJ_LAMP	; 5 (LAMP)
    1264  fbc1		       00		      .byte.b	OBJ_KEY	; 6 (KEY — offset-0 slot)
-   1265  fbc2		       7b		      .byte.b	OBJ_RAFT	; 7 (RAFT — own 2-row white plank)
+   1265  fbc2		       6d		      .byte.b	OBJ_RAFT	; 7 (RAFT — own 2-row white plank)
    1266  fbc3
    1267  fbc3							; ReturnPad ($FBF8) — bank2's live half is the `sta $1FF6` only: every body
    1268  fbc3							; here tail-jmps `$FBF8`, the sta switches to bank0, and the `rts` at $FBFB is

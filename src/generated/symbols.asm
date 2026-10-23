@@ -321,7 +321,7 @@ JetPower                 0096              (R )
 KernelInit               f9de              (R )
 KEY                      0006                  
 LAMP                     0005                  
-LAMP_WIDTH               0004              (R )
+LAMP_WIDTH               0008              (R )
 LASER_ARMED              0002                  
 LASER_AUD_C              0002                  
 LASER_AUD_V              0009                  
@@ -367,17 +367,18 @@ MinerY                   00a6              (R )
 MothExitPad              fc49                  
 NUSIZ0                   0004              (R )
 NUSIZ1                   0005                  
-OBJ_BAT                  004b              (R )
-OBJ_BOMB                 006b              (R )
+OBJ_BAT                  0045              (R )
+OBJ_BOMB                 0065              (R )
+OBJ_BOMB_H               0008              (R )
 OBJ_KEY                  0000              (R )
 OBJ_LAMP                 002d              (R )
-OBJ_MINER                005b              (R )
+OBJ_MINER                0055              (R )
 OBJ_MOTH                 0010              (R )
 OBJ_NONE                 0000                  
-OBJ_RAFT                 007b              (R )
-OBJ_SNAKE                0055              (R )
+OBJ_RAFT                 006d              (R )
+OBJ_SNAKE                004f              (R )
 OBJ_SPIDER               001e              (R )
-OBJ_TENTACLE             003d              (R )
+OBJ_TENTACLE             0037              (R )
 OBJ_WINDOW               0010              (R )
 ObjBase                  00b6              (R )
 ObjBase1                 00ea              (R )

@@ -48,11 +48,14 @@ def main() -> None:
     off = tab - 0xF000
     miner = list(rom0[off + O_MINER: off + O_MINER + 8])
     assert miner == MINER_COLORS, f"miner color slot = {[hex(v) for v in miner]}"
-    # slot colors must match EnemyColorTable / frame colors for non-miner types
-    # (moth/bat rows are art-authored per-row colours since 2026-10-22, so the
-    #  old EnemyColorTable equality check is retired on purpose: only the miner
-    #  slot and the bomb row still have a fixed meaning)
-    assert rom0[off + O_BOMB] == 0x46, "bomb slot != COLOR_BOMBS ($46)"
+    # slot colours are art-authored per row for every design since 2026-10-22,
+    # so the old EnemyColorTable equality is retired on purpose. What still has
+    # a fixed meaning: the miner slot, and the bomb BODY rows (red $46) under
+    # its yellow fuse / grey collar (user art: rows 0-2 fuse, 3 collar, 4-7 body).
+    bomb = list(rom0[off + O_BOMB: off + O_BOMB + 8])
+    assert bomb[0:3] == [0x1C, 0x1C, 0x1C], f"bomb fuse rows = {[hex(v) for v in bomb[0:3]]}"
+    assert bomb[3] == 0x06, f"bomb collar = ${bomb[3]:02X}, want $06"
+    assert bomb[4:] == [0x46] * 4, f"bomb body rows = {[hex(v) for v in bomb[4:]]}"
     # kernel reads it with the sprite index
     assert re.search(r"lda\s+ObjColorTab,X\s*;[^\n]*", kernel), \
         "kernel .Grp1 does not read ObjColorTab,X"
@@ -83,7 +86,7 @@ def main() -> None:
     # last byte of a table = base + size - 1; the size is the sum of the
     # per-type heights, so take it from the .lst (ObjColorTab end is the
     # next label) rather than hard-coding 154.
-    last = 124
+    last = 110
     assert (obj & 0xFF) + last <= 0xFF and (obj >> 8) == ((obj + last) >> 8), \
         f"ObjSprites ${obj:04X} page-crosses (+{last})"
     assert (tab >> 8) == ((tab + last) >> 8), f"ObjColorTab ${tab:04X} page-crosses"
