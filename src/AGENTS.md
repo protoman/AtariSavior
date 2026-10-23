@@ -20,7 +20,7 @@
 - HMOVE applied during HBLANK after RESP0/HMP0 are set
 - Joystick read from SWCHA with 4× LSR to shift bits to D0-D3
 - Frame timing: 3 VSYNC + 37 VBLANK + 192 kernel + 30 overscan = 262 scanlines
-- F6 bankswitching (16K, 4 banks × 4K)
+- F4 bankswitching (32K, 8 banks × 4K)
 
 ### Critical Rule: the Raft Is a Type-7 Entity With a Bank1 Body
 
@@ -28,13 +28,13 @@ The moving, rideable raft (`EnemyType 7`, user spec 2026-10-18) is **not a
 tile**: the `RAFT` tile 6 stays a static row-2 platform. The live raft is an
 enemy ENTITY whose body is **bank1 `RaftBody` at $FDE3** (bank1's `.ds $FEE7`
 fill — dead space), entered from bank0 by **`CallPad_RaftBody`, PINNED at
-$F8C0**, which is `sta $1FF7 / jmp $FDE3` (6 bytes in the `$F82C` gap). The
+$F8C0**, which is `sta $1FF5 / jmp $FDE3` (6 bytes in the `$F82C` gap). The
 type dispatch was folded into `UEDispatch` (same gap) to pay for it — that is
 where the old inline `cmp #ENEMY_TENTACLE/MOTH/SNAKE` chain now lives, and
 `test_enemy_movement.py` asserts against `UEDispatch`, not `UpdateEnemies`.
 
 **A cross-bank call needs a byte-identical TWIN — this is the trap that cost a
-whole debugging detour.** `sta $1FF7` switches banks, so the `jmp` OPCODE and
+whole debugging detour.** `sta $1FF5` switches banks, so the `jmp` OPCODE and
 its OPERAND are fetched from bank1 at the same address, not from the code that
 writes them. `bank1.asm` therefore carries the same 6 bytes at `$F8C0`
 (`.ds $F8C0 - *` in both files, then `$8D,$F7,$1F,$4C,$E3,$FD`), whose target
@@ -423,11 +423,11 @@ Consequences that are easy to get wrong:
   contract is unchanged.
 - **The ONE cross-bank call of the room load**: `EnterRoomB2` stages the raw
   shapes byte in `RoomPF0Lo` ($99, loader scratch) + the extras ordinal in
-  `LevelConnSpare` ($A2), then executes `sta $1FF9` at `$F450`; the opcode
+  `LevelConnSpare` ($A2), then executes `sta $1FF7` at `$F450`; the opcode
   fetch at `$F453` comes from bank3, so `B3RoomBlocks` MUST stay pinned there
   (`verify_build.check_bank3_entry`). There is no return pad and no twin: the
   shape step runs **last**, so bank3's chain ends in **bank3's own
-  `ReturnPad`** (`sta $1FF6` at `$FBF8`, the `rts` served by bank0) — 0 extra
+  `ReturnPad`** (`sta $1FF4` at `$FBF8`, the `rts` served by bank0) — 0 extra
   stack pushes, which is what keeps `sim_bomb_fuse`'s SP floor.
 - **Two traps the C7 order creates** (both cost a debug pass): `ExtrasLoad`
   runs AFTER `LoadEnemyRam`, so it must NOT use `EnemyDataLo` as scratch (its
@@ -491,10 +491,10 @@ in `src/` as a standalone project with no dependencies on the older prototype.
 
 ## ROM Layout
 
-- **16K ROM** — F6 bankswitch (4 banks × 4K each)
+- **32K ROM** — F4 bankswitch (8 banks × 4K each)
 - Bank0: `kernel.asm` — main game code, cave kernel, player logic
 - Bank1-3: stubs (switch to bank0, ready for future expansion)
-- Output: `savior.bin` (16K)
+- Output: `savior.bin` (32K)
 
 **Standing rule (2026-10-14): do NOT add new data or features to bank0.**
 Bank0 pre-pad headroom is ~1 byte (build warning `ends $FC67, limit $FC68`)
@@ -515,17 +515,23 @@ Phase 8 respawn hover, ~20B) could not be added at all. **Default answer to
 bank2 is the prime target). Cross-bank catch: bank0 cannot read bank1/bank2
 data by `abs` — moving a table requires moving its reader (or a fold) too.
 
-### F6 Bankswitching
+### F4 Bankswitching
 
 | Bank | Address Range | Power-up | Contents |
 |------|--------------|----------|----------|
 | Bank0 | $F000-$FFFF | — | Game code + cave kernel |
 | Bank1 | $F000-$FFFF | — | HUD band, title, sound, fonts, raft body, bomb punch |
 | Bank2 | $F000-$FFFF | — | Room half of the level data (entries, room tables, enemy records) + its walkers, moth, LWC/LHT, blast, exits, `LoadLevelB2`, 8 table slots |
-| Bank3 | $F000-$FFFF | Yes | Shape half (shape blocks, row pool, shape table, extras streams) + its walkers, boot stub + reset vector |
+| Bank7 | $F000-$FFFF | Yes | Shape half (shape blocks, row pool, shape table, extras streams) + its walkers, boot stub + reset vector |
 
-Bank select: `STA $1FF6` (bank0), `$1FF7` (bank1), `$1FF8` (bank2), `$1FF9` (bank3).
-Power-up bank is bank3; its reset vector at $FFFC points to the stub which switches to bank0.
+Bank select (F4): `STA $1FF4` (bank0), `$1FF5` (bank1), `$1FF6` (bank2),
+`$1FF7` (bank3), `$1FF8` (bank4), `$1FF9` (bank5), `$1FFA` (bank6),
+`$1FFB` (bank7). Power-up bank is **bank7** (F4 reads the reset vector from
+the LAST bank); its 5-byte stub is `lda #0 / sta $1FF4` and the fetch after
+it comes from bank0, whose $F005 is `jmp GameStart` (byte-identical hand-off).
+banks 4-6 are empty 4K windows (`src/bank4..6.asm`); bank7 holds the stub +
+vectors. F4's hotspot-mirror zone is **$FFF4-$FFFB** — $FFF4-$FFF9 stay fill;
+$FFFA/$FFFB carry the NMI vector and are never read (no interrupts).
 
 ## Frame Timing (262 scanlines @ 60Hz NTSC)
 
@@ -645,7 +651,7 @@ This saves three abs-stores per scanline for the whole cave
 ## Build
 
 ```bash
-./build.sh          # builds savior.bin (16K, F6)
+./build.sh          # builds savior.bin (32K, F4)
 ```
 
 Requires: `dasm` (6502 cross-assembler)
@@ -1110,13 +1116,13 @@ and any new exit path must return through `EBLER_Done`. Guard:
 (2026-09-30, E4 moth exit tramp frame-3 crash):** Stella's
 `CartridgeEnhanced::peek` (`CartEnh.cxx:157`,
 `if(hotspot() >= 0x80 && checkSwitchBank(address & ADDR_MASK, 0) && myRandomHotspots)`,
-`ADDR_MASK=$1FFF`, F6 `hotspot()=$1FF6`) calls `checkSwitchBank` on **reads** —
+`ADDR_MASK=$1FFF`, F6 `hotspot()=$1FF4`) calls `checkSwitchBank` on **reads** —
 the side effect fires even when `myRandomHotspots` is false (the `&&` already
 evaluated it). So ANY instruction fetch at `$FFF6-$FFF9` (the only addresses in
-code space with `addr & $1FFF ∈ $1FF6-$1FF9`) switches banks MID-INSTRUCTION.
+code space with `addr & $1FFF ∈ $1FF4-$1FF7`) switches banks MID-INSTRUCTION.
 Real F6 is write-only (reads don't switch), so this bites Stella only — but the
 frame died exactly like hardware: the E4 moth exit pad at $FFF2 was
-`sta $1FF6 / jmp UE_Next`; the `jmp`'s operand fetches at $FFF6/$FFF7 flipped
+`sta $1FF4 / jmp UE_Next`; the `jmp`'s operand fetches at $FFF6/$FFF7 flipped
 bank0→bank1 → operand hi read as $00 → `jmp $007D` → bank1 FF-fill runaway →
 HUD ran a 2nd time (+48 lines = 359/360-line frames) → each rogue Overscan
 re-entry leaked ~5 stack bytes → SP decayed $FF→$E1 over ~6 passes (~3 frames)
@@ -1126,7 +1132,7 @@ SLO/JAM at $FAC9. **py65 could never see this** (its F6 mapper peeks pure ROM).
 Fix: exit pad moved to $FC49 (main headroom, `.ds $FC49 - *, 0` pin);
 guard `check_moth_tramp` now asserts `$FFF2-$FFF9` = fill in bank0/bank2.
 **Rule: treat `$xFFF6-$xFFF9` as reserved; before placing ANY code near
-$FFFx, check `addr & $1FFF` against $1FF6-$1FF9.** Recognize this bug family:
+$FFFx, check `addr & $1FFF` against $1FF4-$1FF7.** Recognize this bug family:
 sprite/enemy "teleports" + wall pass-through + odd frame lengths + a counter
 that decays in steps then never completes → look for a hidden bank flip, then
 for stack decay from mid-frame re-entries.
