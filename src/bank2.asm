@@ -151,13 +151,14 @@ OBJ_WINDOW = 16                  ; kernel constant: the GRP1 draw window rows
                                  ;   (every design's art is sized to it)
 OBJ_KEY = 0                      ; GRP1 design offsets (per-type heights,
 OBJ_MOTH = 16                    ;   hand-copies of kernel.asm — the equ-sync
-OBJ_SPIDER = 32                  ;   guard checks hex AND decimal values)
+OBJ_SPIDER = 30                  ;   guard checks hex AND decimal values)
 OBJ_LAMP = 45
 OBJ_TENTACLE = 61
 OBJ_BAT = 75
 OBJ_SNAKE = 85
-OBJ_MINER = 101
-OBJ_BOMB = 117
+OBJ_MINER = 91
+OBJ_BOMB = 107
+OBJ_RAFT = 123
 
 ; C2 (2026-10-20): the level-data block labels (M<id>*, L<n>R<r>*) live in
 ; THIS bank now ($F307 slot include below), so the room tables resolve them
@@ -1249,9 +1250,9 @@ PinSlot0:
 ; ObjHeightTab (the records are in this bank, so slot 1's window is staged here).
 ObjHeightTab:
     .byte 15,         10
-    .byte OBJ_WINDOW, 14
+    .byte 6,          OBJ_WINDOW
     .byte 14,         OBJ_WINDOW
-    .byte OBJ_WINDOW, OBJ_WINDOW
+    .byte OBJ_WINDOW, 2
 
 ObjSpriteOffTable:
     .byte OBJ_SPIDER            ; 0
@@ -1261,7 +1262,7 @@ ObjSpriteOffTable:
     .byte OBJ_MOTH              ; 4
     .byte OBJ_LAMP              ; 5 (LAMP)
     .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
-    .byte OBJ_SNAKE             ; 7 (RAFT borrows the solid snake block)
+    .byte OBJ_RAFT              ; 7 (RAFT — own 2-row white plank)
 
 ; ReturnPad ($FBF8) — bank2's live half is the `sta $1FF6` only: every body
 ; here tail-jmps `$FBF8`, the sta switches to bank0, and the `rts` at $FBFB is

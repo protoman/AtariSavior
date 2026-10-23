@@ -2299,10 +2299,11 @@ SetupScorePointers:
 RAFT_MIN_X    = 8               ; the raft's logical X is its lit span's right
 RAFT_MAX_X    = 148             ; end, exactly like the player's [x-7,x]; these
                                 ; rails keep it inside the room
-RAFTER_BASE   = 125             ; raft top when the tide is at 0 = the water
+RAFTER_BASE   = 131             ; raft top when the tide is at 0: the 2-row
                                 ; surface (line 132) - 7, so its BOTTOM row
                                 ; sits exactly ON the surface. The live value is
-                                ; RAFTER_BASE + off (see the tide block below) —
+                                ; plank's BOTTOM row (top+1) lands on the water
+                                ; surface (132+off) — see the tide block below;
                                 ; never hard-code the Y: the surface MOVES.
 RAFTER_XOFF   = 6               ; PLAYER_WIDTH-1: spawn x of the body span
 RAFTER_XSPAN  = 14              ; PLAYER_WIDTH+ENEMY_WIDTH-1: no-overlap gate
@@ -2315,7 +2316,8 @@ RaftBody:
     ; The water band's surface drifts 0-3 lines (the tide): the VBL stages
     ; 36+off into CollisionX and the kernel draws the strip as the band's last
     ; (12-off) lines, so the surface line is 132+off. The raft's bottom row
-    ; (top+7) must land ON that line -> top = 125+off. This mirrors the VBL's
+    ; (top+1, a 2-row plank) must land ON that line -> top = 131+off.
+    ; This mirrors the VBL's
     ; triangle EXACTLY (p = EnemyRamP>>4: p0-3 down 0->3, p4-7 up 3->0,
     ; p8-15 rest), and this frame's EnemyRamP inc runs before UpdateEnemies,
     ; so both sides see the same p — the raft bobs with the water it floats on.
@@ -2340,7 +2342,7 @@ RaftBody:
     adc #7                      ; p4-7: off = 7-p
 .RaftTide:
     clc
-    adc #RAFTER_BASE            ; + 125 -> the surface line (132+off) minus 7
+    adc #RAFTER_BASE            ; + 131 -> the surface line (132+off) minus 1
     sta EnemyRamY,X             ; the authored y is ignored on purpose: the
                                 ; water line is what the raft floats on
 

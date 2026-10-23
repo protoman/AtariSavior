@@ -151,12 +151,12 @@ def check_rom(src: Path) -> bytes | None:
             f"$FF10-$FF1F gap (expected ${0xFF12:04X}-${0xFF1B:04X})")
     # 2) Kernel GRP1 fetch: `lda ObjSprites,X` must stay in-page (4c) or the
     #    .Line loop gains 1c on object rows (row-stretch risk). Max index =
-    #    the table size - 1 (133 B: MOTH 14 + TENTACLE 14 + SPIDER 15 + BAT 10).
+    #    the table size - 1 (125 B incl. the SNAKE 6 + RAFT 2 split).
     obj = labels.get("ObjSprites")
     if obj is None:
         err("ObjSprites label not found in bank0.lst")
-    elif (obj + 132) >> 8 != obj >> 8:
-        err(f"ObjSprites ${obj:04X}+132 crosses a page -> kernel "
+    elif (obj + 124) >> 8 != obj >> 8:
+        err(f"ObjSprites ${obj:04X}+124 crosses a page -> kernel "
             f"lda ObjSprites,X costs 5c (budget assumes 4c)")
     # 3) Laser S2.2: every relative branch inside the .Line hot loop
     #    (.Line .. bne .Line) must share a page with its target (3c taken

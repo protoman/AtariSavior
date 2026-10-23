@@ -369,12 +369,13 @@ OBJ_NONE        = 0
 OBJ_KEY         = 0              ; design offsets. A design owns its block, so each
 OBJ_MOTH        = 16             ; offset = the sum of the heights above it;
 OBJ_SPIDER      = 30             ; ObjHeightTab carries the matching row count.
-OBJ_LAMP        = 45             ; Per-type heights (user art 2026-10-22):
-OBJ_TENTACLE    = 61             ;   MOTH 14, SPIDER 15, TENTACLE 14,
-OBJ_BAT         = 75             ;   BAT 10, rest 16.
+OBJ_LAMP        = 45             ; Heights (user art 2026-10-22): MOTH 14,
+OBJ_TENTACLE    = 61             ; SPIDER 15, TENTACLE 14, BAT 10, SNAKE 6,
+OBJ_BAT         = 75             ; RAFT 2, the rest 16.
 OBJ_SNAKE       = 85
-OBJ_MINER       = 101
-OBJ_BOMB        = 117
+OBJ_MINER       = 91
+OBJ_BOMB        = 107
+OBJ_RAFT        = 123
 
 ; Player bounds (must stay inside cave walls)
 PLAYER_MIN_X    = 4             ; sprite flush with left edge (HERO)
@@ -2444,9 +2445,9 @@ Slot1Hook:
 ; guard: tools/test_slot1_pair.py compares both tables.
 ObjHeightTab:                                              ; by ENEMY type
     .byte 15,         10                                    ; 0 SPIDER 1 BAT
-    .byte OBJ_WINDOW, 14                               ; 2 SNAKE  3 TENT
+    .byte 6,          OBJ_WINDOW                            ; 2 SNAKE  3 TENT
     .byte 14,         OBJ_WINDOW                            ; 4 MOTH   5 LAMP
-    .byte OBJ_WINDOW, OBJ_WINDOW                            ; 6 KEY    7 RAFT
+    .byte OBJ_WINDOW, 2                                     ; 6 KEY    7 RAFT
     .byte OBJ_WINDOW, OBJ_WINDOW                            ; 3 TENT 4 MOTH
     .byte OBJ_WINDOW, OBJ_WINDOW                            ; 5 LAMP 6 KEY
                                                             ; 7 RAFT
@@ -2457,10 +2458,11 @@ ObjHeightTab:                                              ; by ENEMY type
 ; not from here. That is the same FoldIndirect discipline every other tramp
 ; uses — the twin cannot be skipped or shortened.
 ; Guard: verify_build.check_raft_tramp (identity + operand == bank1 RaftBody).
-    .ds $F830 - *, 0            ; ObjSprites: per-type heights, 133 B now
-                                 ;   MOTH 14, TENTACLE 14, SPIDER 15,
-                                 ;   BAT 10, the rest 16.
-                                 ; Base low byte $30 + max index 132 = $B4 ->
+    .ds $F830 - *, 0            ; ObjSprites: per-type heights, 125 B now
+                                 ;   KEY 16, MOTH 14, SPIDER 15, LAMP 16,
+                                 ;   TENT 14, BAT 10, SNAKE 6, MINER 16,
+                                 ;   BOMB 16, RAFT 2.
+                                 ; Base low byte $30 + max index 124 = $AC ->
                                  ; `lda ObjSprites,X` stays in ONE page
                                  ; (verify_build guard). The base moved
                                  ; $F850 -> $F830 with the Phase 6 growth so
@@ -2489,17 +2491,18 @@ ObjSprites:
     ; BAT (79): 10 rows (user art 2026-10-22) — hanging wing tips, wing
     ; shoulders, purple body, dark-purple core, dark-blue tail
     .byte $81,$C3,$66,$24,$3C,$7E,$FF,$99,$18,$24
-    ; SNAKE (96): HALF-HEIGHT solid block (user 2026-10-22: the snake and the
-    ; raft read too tall). Only rows 0-5 are solid: the raft's sprite top is
-    ; RAFTER_BASE (125) and its row 7 is the water surface line (132+off), so
-    ; the solid half floats ON the water instead of sinking 4 rows into it.
-    ; The snake itself lives inside a solid wall cell, so its blank half is
-    ; invisible; the object WINDOW stays 12 rows (hit box unchanged).
-    .byte $FF,$FF,$FF,$FF,$FF,$FF,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+    ; SNAKE (85): 6 rows (user art 2026-10-22) — head pointing left, tail
+    ; coiling right; light green back, green body, dark green belly/head.
+    .byte $06,$0F,$F8,$F8,$0F,$06
     ; MINER (112): helmet, pink face, body, tool, hips, legs
     .byte $0C,$1C,$4C,$36,$0F,$07,$3F,$6E,$3C,$3C,$18,$18,$00,$00,$00,$00
-    ; BOMB (128): fuse, round body, tapered nose
+    ; BOMB (107): fuse, round body, tapered nose
     .byte $10,$20,$20,$60,$F0,$F0,$F0,$60,$30,$18,$18,$0C,$00,$00,$00,$00
+    ; RAFT (123): 2-row WHITE plank (user 2026-10-22). It got its OWN design:
+    ; it used to borrow the SNAKE block, so drawing a snake also redrew the
+    ; raft. RAFTER_BASE moved to 131 so the plank's bottom row (top+1) sits ON
+    ; the water surface (132+off).
+    .byte $FF,$FF
 
     .ds $F8C0 - *, 0
 CallPad_RaftBody:
@@ -3127,9 +3130,10 @@ ObjColorTab:
     .byte $0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e,$0e ; 3 LAMP  ($0e white)
     .byte $4C,$4C,$4C,$6C,$6C,$6C,$68,$68,$68,$64,$64,$82,$82,$82 ; 4 TENTACLE (14 rows: pink head -> blue base)
     .byte $06,$06,$6C,$6C,$68,$68,$64,$64,$82,$82 ; 5 BAT (10 rows: grey wings, purple body, dark blue tail)
-    .byte $c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4,$c4 ; 6 SNAKE ($c4 green)
+    .byte $C8,$C8,$C4,$C4,$C2,$C2 ; 6 SNAKE (6 rows: claro/claro/verde/verde/escuro/escuro)
     .byte $54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08,$08,$08,$08,$08 ; 7 MINER (hips purple, legs grey)
     .byte $46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46,$46 ; 8 BOMB  ($46 red)
+    .byte $0E,$0E ; 9 RAFT  (2 rows, white — user 2026-10-22)
 
 ; ------------------------------------------------------------------------------
 ; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
@@ -3805,12 +3809,8 @@ ObjSpriteOffTable:
     .byte OBJ_MOTH              ; 4
     .byte OBJ_LAMP              ; 5 (LAMP)
     .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
-    .byte OBJ_SNAKE             ; 7 (RAFT — the solid 8x8 block: a log/trunk over
-                                ; the water, and the most "landable" shape in the
-                                ; table. ObjSprites is exactly 72 B and ends at
-                                ; $FF00, so a dedicated design needs 8 art bytes
-                                ; freed; every entry is 8x8, so nothing is
-                                ; "larger" — solid just reads bigger than notched.)
+    .byte OBJ_RAFT              ; 7 (RAFT — its own 2-row white plank since
+                                ;   2026-10-22; it used to borrow the snake)
 
 ; ==============================================================================
 ; Phase 5 — second GRP1 object (no flicker). TIA has one GRP1 sprite, so two
