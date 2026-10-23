@@ -3080,6 +3080,12 @@ PHMOverlay:
     lsr
     lsr
     lsr                         ; n = right_col+1 (1..10)
+    beq .OvClear                ; 2026-10-23: n = 0 means this room has NO ball
+                                ;   column. Without this the test invented a
+                                ;   phantom ball at x79 (BallX = 79 + 8n) and a
+                                ;   player standing near it was routed to the
+                                ;   shutter/right-door path, so the LEFT (M1)
+                                ;   door test never ran — the door never blocked.
     asl
     asl
     asl                         ; 8n
