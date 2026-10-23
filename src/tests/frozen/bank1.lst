@@ -2314,246 +2314,248 @@
    2299  fde3		       00 08	   RAFT_MIN_X =	8	; the raft's logical X is its lit span's right
    2300  fde3		       00 94	   RAFT_MAX_X =	148	; end, exactly like the player's [x-7,x]; these
    2301  fde3							; rails keep it inside the room
-   2302  fde3		       00 7d	   RAFTER_BASE =	125	; raft top when the tide is at 0 = the water
+   2302  fde3		       00 83	   RAFTER_BASE =	131	; raft top when the tide is at 0: the 2-row
    2303  fde3							; surface (line 132) - 7, so its BOTTOM row
    2304  fde3							; sits exactly ON the surface. The live value is
-   2305  fde3							; RAFTER_BASE + off (see the tide block below) —
-   2306  fde3							; never hard-code the Y: the surface MOVES.
-   2307  fde3		       00 06	   RAFTER_XOFF =	6	; PLAYER_WIDTH-1: spawn x of the body span
-   2308  fde3		       00 0e	   RAFTER_XSPAN =	14	; PLAYER_WIDTH+ENEMY_WIDTH-1: no-overlap gate
-   2309  fde3		       00 1c	   RAFTER_YSPAN =	28	; PLAYER_SPRITE_H+6: riding when the feet are
-   2310  fde3							; from 22 px above the raft's top to 5 px into it
-   2311  fde3		       00 16	   RAFTER_PINFIT =	22	; PLAYER_SPRITE_H: pin = raft top - this
-   2312  fde3
-   2313  fde3				   RaftBody
-   2314  fde3							; --- float ON the water surface, riding the TIDE ------------------------
-   2315  fde3							; The water band's surface drifts 0-3 lines (the tide): the VBL stages
-   2316  fde3							; 36+off into CollisionX and the kernel draws the strip as the band's last
-   2317  fde3							; (12-off) lines, so the surface line is 132+off. The raft's bottom row
-   2318  fde3							; (top+7) must land ON that line -> top = 125+off. This mirrors the VBL's
-   2319  fde3							; triangle EXACTLY (p = EnemyRamP>>4: p0-3 down 0->3, p4-7 up 3->0,
-   2320  fde3							; p8-15 rest), and this frame's EnemyRamP inc runs before UpdateEnemies,
-   2321  fde3							; so both sides see the same p — the raft bobs with the water it floats on.
-   2322  fde3							; CollisionX itself is unusable here: the input rect-walks clobber it
-   2323  fde3							; before UpdateEnemies runs. Keep the two formulas in step (AGENTS).
-   2324  fde3		       a5 c2		      lda	EnemyRamP
-   2325  fde5		       29 f0		      and	#$F0
-   2326  fde7		       f0 15		      beq	.RaftTide	; p=0 -> off 0 (A already 0)
-   2327  fde9		       4a		      lsr
-   2328  fdea		       4a		      lsr
-   2329  fdeb		       4a		      lsr
-   2330  fdec		       4a		      lsr		; A = p (1..15)
-   2331  fded		       c9 08		      cmp	#8
-   2332  fdef		       90 04		      bcc	.RaftTideTri
-   2333  fdf1		       a9 00		      lda	#0	; rest phase p8-15
-   2334  fdf3		       f0 09		      beq	.RaftTide	; always
-   2335  fdf5				   .RaftTideTri
-   2336  fdf5		       c9 04		      cmp	#4
-   2337  fdf7		       90 05		      bcc	.RaftTide	; p1-3: off = p
-   2338  fdf9		       49 ff		      eor	#$FF
-   2339  fdfb		       38		      sec
-   2340  fdfc		       69 07		      adc	#7	; p4-7: off = 7-p
-   2341  fdfe				   .RaftTide
-   2342  fdfe		       18		      clc
-   2343  fdff		       69 7d		      adc	#RAFTER_BASE	; + 125 -> the surface line (132+off) minus 7
-   2344  fe01		       95 e2		      sta	EnemyRamY,X	; the authored y is ignored on purpose: the
-   2345  fe03							; water line is what the raft floats on
-   2346  fe03
-   2347  fe03							; --- does the player count as "over the raft"? --------------------------
-   2348  fe03							; The raft is a FERRY (user rule 2026-10-18): it moves ONLY while he is over
-   2349  fe03							; it, parks the moment he steps off, and its position resets on room entry
-   2350  fe03							; (LoadEnemyRam re-copies the record's spawn x). Gating the whole motion
-   2351  fe03							; block here is what makes it park; the pin/carry later still applies while
-   2352  fe03							; riding. The test runs against the CURRENT x (before the step), i.e. the
-   2353  fe03							; raft he is actually standing on.
-   2354  fe03		       a5 80		      lda	RoomX
-   2355  fe05		       38		      sec
-   2356  fe06		       f5 bd		      sbc	EnemyRamX,X
-   2357  fe08		       18		      clc
-   2358  fe09		       69 06		      adc	#RAFTER_XOFF
-   2359  fe0b		       c9 0e		      cmp	#RAFTER_XSPAN
-   2360  fe0d		       b0 13		      bcs	.RaftNoRide	; no X overlap: nobody aboard
-   2361  fe0f		       a5 81		      lda	RoomY
-   2362  fe11		       38		      sec
-   2363  fe12		       f5 e2		      sbc	EnemyRamY,X
-   2364  fe14		       18		      clc
-   2365  fe15		       69 16		      adc	#RAFTER_PINFIT
-   2366  fe17		       c9 1c		      cmp	#RAFTER_YSPAN
-   2367  fe19		       b0 07		      bcs	.RaftNoRide	; not in the raft's upper rows
-   2368  fe1b		       a5 94		      lda	vyHi
-   2369  fe1d		       30 03		      bmi	.RaftNoRide	; rising: let him fly away (no pin)
-   2370  fe1f		       4c 2b fe 	      jmp	.RaftGo
-   2371  fe22				   .RaftNoRide
-   2372  fe22							; nobody over the raft: PARK it (no motion) and clear the ramp state so the
-   2373  fe22							; next take-off ramps again; the bomb count in b2-0 is preserved
-   2374  fe22		       a5 f0		      lda	$F0
-   2375  fe24		       29 07		      and	#%00000111
-   2376  fe26		       85 f0		      sta	$F0
-   2377  fe28		       4c f8 fb 	      jmp	ReturnPad
-   2378  fe2b				   .RaftGo
-   2379  fe2b							; --- pin FIRST: the rider stays on the raft even on a TURN frame --------
-   2380  fe2b							; A raft boxed in by solid row-2 cells (or parked against a rail) turns
-   2381  fe2b							; every frame and never moves; the turn path returns before the carry, so
-   2382  fe2b							; pinning here is what keeps a rider standing on it. Without it he fell
-   2383  fe2b							; through a stuck raft into the water kill line and respawned forever
-   2384  fe2b							; (user report 2026-10-22: "player position keeps changing, zig-zags").
-   2385  fe2b							; The vyHi < 0 escape is the gate's `.RaftNoRide` (rising is not a ride).
-   2386  fe2b		       b5 e2		      lda	EnemyRamY,X
-   2387  fe2d		       38		      sec
-   2388  fe2e		       e9 16		      sbc	#RAFTER_PINFIT
-   2389  fe30		       85 81		      sta	RoomY	; feet on the raft's top
-   2390  fe32		       a9 00		      lda	#0
-   2391  fe34		       85 93		      sta	vyLo
-   2392  fe36		       85 94		      sta	vyHi	; landing kills the accumulated fall speed
-   2393  fe38							; --- take-off ramp (inertia): heaviest right after boarding -------------
-   2394  fe38							; State = PlayerBombs' ($F0) spare HIGH bits: b7 = "ridden last frame",
-   2395  fe38							; b6-b3 = the ramp level (0-15); b2-0 stay the bomb count. Adding $10 never
-   2396  fe38							; carries into b2-0, and the drop's `dec` is guarded by a non-zero count so
-   2397  fe38							; it cannot borrow upward either (see the kernel EQU for the contract).
-   2398  fe38							; Riding advances the level every 2nd frame: the raft leaves at 1 px/frame
-   2399  fe38							; and reaches the full 1/2 parity (1.5 avg) after ~30 frames (~0.5 s), the
-   2400  fe38							; heavy take-off. Empty (b7 clear) or level 15: full speed straight away.
-   2401  fe38		       a5 f0		      lda	$F0
-   2402  fe3a		       10 08		      bpl	.RaftAtSpeed	; b7 clear = nobody aboard -> no ramp
-   2403  fe3c		       c9 f8		      cmp	#%11111000	; flag + all four level bits = spun up
-   2404  fe3e		       f0 04		      beq	.RaftAtSpeed
-   2405  fe40		       a9 01		      lda	#1	; still ramping: 1 px/frame
-   2406  fe42		       d0 07		      bne	.RaftHaveStep	; always
-   2407  fe44				   .RaftAtSpeed
-   2408  fe44		       a5 c2		      lda	EnemyRamP
-   2409  fe46		       29 01		      and	#1
-   2410  fe48		       18		      clc
-   2411  fe49		       69 01		      adc	#1	; 1 px even frames, 2 px odd = 1.5 px/frame
-   2412  fe4b				   .RaftHaveStep
-   2413  fe4b		       85 88		      sta	$88	; bank0 Temp = this frame's step
-   2414  fe4d		       bd 68 f8 	      lda	RaftBitTab,X
-   2415  fe50		       25 c1		      and	EnemyRamD
-   2416  fe52		       f0 29		      beq	.RaftLeft
-   2417  fe54							; ---- leading edge right: candidate = x + step ---------------------------
-   2418  fe54		       b5 bd		      lda	EnemyRamX,X
-   2419  fe56		       18		      clc
-   2420  fe57		       65 88		      adc	$88
-   2421  fe59		       b0 18		      bcs	.RaftTurn	; wrapped past 255
-   2422  fe5b		       c9 94		      cmp	#RAFT_MAX_X
-   2423  fe5d		       b0 14		      bcs	.RaftTurn	; right rail
-   2424  fe5f		       18		      clc
-   2425  fe60		       69 01		      adc	#1	; the cell just beyond the right edge
-   2426  fe62		       4a		      lsr
-   2427  fe63		       4a		      lsr
-   2428  fe64		       20 4a f8 	      jsr	RaftCellSolid
-   2429  fe67		       d0 0a		      bne	.RaftTurn	; solid ahead (ledge / room edge) -> turn
-   2430  fe69		       b5 bd		      lda	EnemyRamX,X
-   2431  fe6b		       18		      clc
-   2432  fe6c		       65 88		      adc	$88
-   2433  fe6e		       95 bd		      sta	EnemyRamX,X
-   2434  fe70		       4c 9d fe 	      jmp	.RaftRide
-   2435  fe73							; ---- turn-around (kept here: both arms branch to it, and the ramp pushed
-   2436  fe73							; ---- it past the 127-byte relative reach when it sat at the very end) ----
-   2437  fe73				   .RaftTurn
-   2438  fe73		       bd 68 f8 	      lda	RaftBitTab,X
-   2439  fe76		       45 c1		      eor	EnemyRamD
-   2440  fe78		       85 c1		      sta	EnemyRamD	; flip this slot's dir bit (the high nibble is
-   2441  fe7a							; bank1's RoomDarkMask — must be preserved)
-   2442  fe7a		       4c f8 fb 	      jmp	ReturnPad	; and the turn costs this frame (the inertia)
-   2443  fe7d							; ---- leading edge left --------------------------------------------------
-   2444  fe7d				   .RaftLeft
-   2445  fe7d		       b5 bd		      lda	EnemyRamX,X
-   2446  fe7f		       38		      sec
-   2447  fe80		       e5 88		      sbc	$88
-   2448  fe82		       90 ef		      bcc	.RaftTurn	; wrapped below 0
-   2449  fe84		       c9 08		      cmp	#RAFT_MIN_X
-   2450  fe86		       90 eb		      bcc	.RaftTurn	; left rail
-   2451  fe88		       38		      sec
-   2452  fe89		       e9 08		      sbc	#8	; the cell just beyond the left edge
-   2453  fe8b		       b0 02		      bcs	.RaftLeftCol
-   2454  fe8d		       a9 00		      lda	#0
-   2455  fe8f				   .RaftLeftCol
-   2456  fe8f		       4a		      lsr
-   2457  fe90		       4a		      lsr
-   2458  fe91		       20 4a f8 	      jsr	RaftCellSolid
-   2459  fe94		       d0 dd		      bne	.RaftTurn
-   2460  fe96		       b5 bd		      lda	EnemyRamX,X
-   2461  fe98		       38		      sec
-   2462  fe99		       e5 88		      sbc	$88
-   2463  fe9b		       95 bd		      sta	EnemyRamX,X
-   2464  fe9d							; ---- carry + pin while the player is aboard -----------------------------
-   2465  fe9d				   .RaftRide
-   2466  fe9d							; (the Y pin ran at .RaftGo — it must not depend on the raft moving)
-   2467  fe9d							; ramp: arm the flag, and +1 level every 2nd frame (capped at 15)
-   2468  fe9d		       a5 f0		      lda	$F0
-   2469  fe9f		       09 80		      ora	#%10000000
-   2470  fea1		       85 f0		      sta	$F0
-   2471  fea3		       a5 c2		      lda	EnemyRamP
-   2472  fea5		       4a		      lsr		; C = the frame-parity bit
-   2473  fea6		       b0 0f		      bcs	.RaftCarry	; odd frame: flag only this time
-   2474  fea8		       a5 f0		      lda	$F0
-   2475  feaa		       29 78		      and	#%01111000
-   2476  feac		       c9 78		      cmp	#%01111000
-   2477  feae		       f0 07		      beq	.RaftCarry	; already spun up
-   2478  feb0		       a5 f0		      lda	$F0
-   2479  feb2		       18		      clc
-   2480  feb3		       69 10		      adc	#%00010000
-   2481  feb5		       85 f0		      sta	$F0
-   2482  feb7				   .RaftCarry
-   2483  feb7		       bd 68 f8 	      lda	RaftBitTab,X
-   2484  feba		       25 c1		      and	EnemyRamD
-   2485  febc		       f0 0a		      beq	.RaftCarryL
-   2486  febe		       a5 80		      lda	RoomX
-   2487  fec0		       18		      clc
-   2488  fec1		       65 88		      adc	$88
-   2489  fec3		       85 80		      sta	RoomX
-   2490  fec5		       4c d2 fe 	      jmp	.RaftDone
-   2491  fec8				   .RaftCarryL
-   2492  fec8		       a5 80		      lda	RoomX
-   2493  feca		       38		      sec
-   2494  fecb		       e5 88		      sbc	$88
-   2495  fecd		       85 80		      sta	RoomX
-   2496  fecf		       4c d2 fe 	      jmp	.RaftDone
-   2497  fed2				   .RaftDone
-   2498  fed2		       4c f8 fb 	      jmp	ReturnPad
-   2499  fed5
-   2500  fed5		       00 00 00 00*	      .ds	$FEE7 - *, 0
-   2501  fee7		       8d f7 1f 	      sta	$1FF7
-   2502  feea		       4c 38 f0 	      jmp	$F038
-   2503  feed
-   2504  feed							; ========================================================================
-   2505  feed							; Fine-adjust table (page-aligned at $FF00)
+   2305  fde3							; plank's BOTTOM row (top+1) lands on the water
+   2306  fde3							; surface (132+off) — see the tide block below;
+   2307  fde3							; never hard-code the Y: the surface MOVES.
+   2308  fde3		       00 06	   RAFTER_XOFF =	6	; PLAYER_WIDTH-1: spawn x of the body span
+   2309  fde3		       00 0e	   RAFTER_XSPAN =	14	; PLAYER_WIDTH+ENEMY_WIDTH-1: no-overlap gate
+   2310  fde3		       00 1c	   RAFTER_YSPAN =	28	; PLAYER_SPRITE_H+6: riding when the feet are
+   2311  fde3							; from 22 px above the raft's top to 5 px into it
+   2312  fde3		       00 16	   RAFTER_PINFIT =	22	; PLAYER_SPRITE_H: pin = raft top - this
+   2313  fde3
+   2314  fde3				   RaftBody
+   2315  fde3							; --- float ON the water surface, riding the TIDE ------------------------
+   2316  fde3							; The water band's surface drifts 0-3 lines (the tide): the VBL stages
+   2317  fde3							; 36+off into CollisionX and the kernel draws the strip as the band's last
+   2318  fde3							; (12-off) lines, so the surface line is 132+off. The raft's bottom row
+   2319  fde3							; (top+1, a 2-row plank) must land ON that line -> top = 131+off.
+   2320  fde3							; This mirrors the VBL's
+   2321  fde3							; triangle EXACTLY (p = EnemyRamP>>4: p0-3 down 0->3, p4-7 up 3->0,
+   2322  fde3							; p8-15 rest), and this frame's EnemyRamP inc runs before UpdateEnemies,
+   2323  fde3							; so both sides see the same p — the raft bobs with the water it floats on.
+   2324  fde3							; CollisionX itself is unusable here: the input rect-walks clobber it
+   2325  fde3							; before UpdateEnemies runs. Keep the two formulas in step (AGENTS).
+   2326  fde3		       a5 c2		      lda	EnemyRamP
+   2327  fde5		       29 f0		      and	#$F0
+   2328  fde7		       f0 15		      beq	.RaftTide	; p=0 -> off 0 (A already 0)
+   2329  fde9		       4a		      lsr
+   2330  fdea		       4a		      lsr
+   2331  fdeb		       4a		      lsr
+   2332  fdec		       4a		      lsr		; A = p (1..15)
+   2333  fded		       c9 08		      cmp	#8
+   2334  fdef		       90 04		      bcc	.RaftTideTri
+   2335  fdf1		       a9 00		      lda	#0	; rest phase p8-15
+   2336  fdf3		       f0 09		      beq	.RaftTide	; always
+   2337  fdf5				   .RaftTideTri
+   2338  fdf5		       c9 04		      cmp	#4
+   2339  fdf7		       90 05		      bcc	.RaftTide	; p1-3: off = p
+   2340  fdf9		       49 ff		      eor	#$FF
+   2341  fdfb		       38		      sec
+   2342  fdfc		       69 07		      adc	#7	; p4-7: off = 7-p
+   2343  fdfe				   .RaftTide
+   2344  fdfe		       18		      clc
+   2345  fdff		       69 83		      adc	#RAFTER_BASE	; + 131 -> the surface line (132+off) minus 1
+   2346  fe01		       95 e2		      sta	EnemyRamY,X	; the authored y is ignored on purpose: the
+   2347  fe03							; water line is what the raft floats on
+   2348  fe03
+   2349  fe03							; --- does the player count as "over the raft"? --------------------------
+   2350  fe03							; The raft is a FERRY (user rule 2026-10-18): it moves ONLY while he is over
+   2351  fe03							; it, parks the moment he steps off, and its position resets on room entry
+   2352  fe03							; (LoadEnemyRam re-copies the record's spawn x). Gating the whole motion
+   2353  fe03							; block here is what makes it park; the pin/carry later still applies while
+   2354  fe03							; riding. The test runs against the CURRENT x (before the step), i.e. the
+   2355  fe03							; raft he is actually standing on.
+   2356  fe03		       a5 80		      lda	RoomX
+   2357  fe05		       38		      sec
+   2358  fe06		       f5 bd		      sbc	EnemyRamX,X
+   2359  fe08		       18		      clc
+   2360  fe09		       69 06		      adc	#RAFTER_XOFF
+   2361  fe0b		       c9 0e		      cmp	#RAFTER_XSPAN
+   2362  fe0d		       b0 13		      bcs	.RaftNoRide	; no X overlap: nobody aboard
+   2363  fe0f		       a5 81		      lda	RoomY
+   2364  fe11		       38		      sec
+   2365  fe12		       f5 e2		      sbc	EnemyRamY,X
+   2366  fe14		       18		      clc
+   2367  fe15		       69 16		      adc	#RAFTER_PINFIT
+   2368  fe17		       c9 1c		      cmp	#RAFTER_YSPAN
+   2369  fe19		       b0 07		      bcs	.RaftNoRide	; not in the raft's upper rows
+   2370  fe1b		       a5 94		      lda	vyHi
+   2371  fe1d		       30 03		      bmi	.RaftNoRide	; rising: let him fly away (no pin)
+   2372  fe1f		       4c 2b fe 	      jmp	.RaftGo
+   2373  fe22				   .RaftNoRide
+   2374  fe22							; nobody over the raft: PARK it (no motion) and clear the ramp state so the
+   2375  fe22							; next take-off ramps again; the bomb count in b2-0 is preserved
+   2376  fe22		       a5 f0		      lda	$F0
+   2377  fe24		       29 07		      and	#%00000111
+   2378  fe26		       85 f0		      sta	$F0
+   2379  fe28		       4c f8 fb 	      jmp	ReturnPad
+   2380  fe2b				   .RaftGo
+   2381  fe2b							; --- pin FIRST: the rider stays on the raft even on a TURN frame --------
+   2382  fe2b							; A raft boxed in by solid row-2 cells (or parked against a rail) turns
+   2383  fe2b							; every frame and never moves; the turn path returns before the carry, so
+   2384  fe2b							; pinning here is what keeps a rider standing on it. Without it he fell
+   2385  fe2b							; through a stuck raft into the water kill line and respawned forever
+   2386  fe2b							; (user report 2026-10-22: "player position keeps changing, zig-zags").
+   2387  fe2b							; The vyHi < 0 escape is the gate's `.RaftNoRide` (rising is not a ride).
+   2388  fe2b		       b5 e2		      lda	EnemyRamY,X
+   2389  fe2d		       38		      sec
+   2390  fe2e		       e9 16		      sbc	#RAFTER_PINFIT
+   2391  fe30		       85 81		      sta	RoomY	; feet on the raft's top
+   2392  fe32		       a9 00		      lda	#0
+   2393  fe34		       85 93		      sta	vyLo
+   2394  fe36		       85 94		      sta	vyHi	; landing kills the accumulated fall speed
+   2395  fe38							; --- take-off ramp (inertia): heaviest right after boarding -------------
+   2396  fe38							; State = PlayerBombs' ($F0) spare HIGH bits: b7 = "ridden last frame",
+   2397  fe38							; b6-b3 = the ramp level (0-15); b2-0 stay the bomb count. Adding $10 never
+   2398  fe38							; carries into b2-0, and the drop's `dec` is guarded by a non-zero count so
+   2399  fe38							; it cannot borrow upward either (see the kernel EQU for the contract).
+   2400  fe38							; Riding advances the level every 2nd frame: the raft leaves at 1 px/frame
+   2401  fe38							; and reaches the full 1/2 parity (1.5 avg) after ~30 frames (~0.5 s), the
+   2402  fe38							; heavy take-off. Empty (b7 clear) or level 15: full speed straight away.
+   2403  fe38		       a5 f0		      lda	$F0
+   2404  fe3a		       10 08		      bpl	.RaftAtSpeed	; b7 clear = nobody aboard -> no ramp
+   2405  fe3c		       c9 f8		      cmp	#%11111000	; flag + all four level bits = spun up
+   2406  fe3e		       f0 04		      beq	.RaftAtSpeed
+   2407  fe40		       a9 01		      lda	#1	; still ramping: 1 px/frame
+   2408  fe42		       d0 07		      bne	.RaftHaveStep	; always
+   2409  fe44				   .RaftAtSpeed
+   2410  fe44		       a5 c2		      lda	EnemyRamP
+   2411  fe46		       29 01		      and	#1
+   2412  fe48		       18		      clc
+   2413  fe49		       69 01		      adc	#1	; 1 px even frames, 2 px odd = 1.5 px/frame
+   2414  fe4b				   .RaftHaveStep
+   2415  fe4b		       85 88		      sta	$88	; bank0 Temp = this frame's step
+   2416  fe4d		       bd 68 f8 	      lda	RaftBitTab,X
+   2417  fe50		       25 c1		      and	EnemyRamD
+   2418  fe52		       f0 29		      beq	.RaftLeft
+   2419  fe54							; ---- leading edge right: candidate = x + step ---------------------------
+   2420  fe54		       b5 bd		      lda	EnemyRamX,X
+   2421  fe56		       18		      clc
+   2422  fe57		       65 88		      adc	$88
+   2423  fe59		       b0 18		      bcs	.RaftTurn	; wrapped past 255
+   2424  fe5b		       c9 94		      cmp	#RAFT_MAX_X
+   2425  fe5d		       b0 14		      bcs	.RaftTurn	; right rail
+   2426  fe5f		       18		      clc
+   2427  fe60		       69 01		      adc	#1	; the cell just beyond the right edge
+   2428  fe62		       4a		      lsr
+   2429  fe63		       4a		      lsr
+   2430  fe64		       20 4a f8 	      jsr	RaftCellSolid
+   2431  fe67		       d0 0a		      bne	.RaftTurn	; solid ahead (ledge / room edge) -> turn
+   2432  fe69		       b5 bd		      lda	EnemyRamX,X
+   2433  fe6b		       18		      clc
+   2434  fe6c		       65 88		      adc	$88
+   2435  fe6e		       95 bd		      sta	EnemyRamX,X
+   2436  fe70		       4c 9d fe 	      jmp	.RaftRide
+   2437  fe73							; ---- turn-around (kept here: both arms branch to it, and the ramp pushed
+   2438  fe73							; ---- it past the 127-byte relative reach when it sat at the very end) ----
+   2439  fe73				   .RaftTurn
+   2440  fe73		       bd 68 f8 	      lda	RaftBitTab,X
+   2441  fe76		       45 c1		      eor	EnemyRamD
+   2442  fe78		       85 c1		      sta	EnemyRamD	; flip this slot's dir bit (the high nibble is
+   2443  fe7a							; bank1's RoomDarkMask — must be preserved)
+   2444  fe7a		       4c f8 fb 	      jmp	ReturnPad	; and the turn costs this frame (the inertia)
+   2445  fe7d							; ---- leading edge left --------------------------------------------------
+   2446  fe7d				   .RaftLeft
+   2447  fe7d		       b5 bd		      lda	EnemyRamX,X
+   2448  fe7f		       38		      sec
+   2449  fe80		       e5 88		      sbc	$88
+   2450  fe82		       90 ef		      bcc	.RaftTurn	; wrapped below 0
+   2451  fe84		       c9 08		      cmp	#RAFT_MIN_X
+   2452  fe86		       90 eb		      bcc	.RaftTurn	; left rail
+   2453  fe88		       38		      sec
+   2454  fe89		       e9 08		      sbc	#8	; the cell just beyond the left edge
+   2455  fe8b		       b0 02		      bcs	.RaftLeftCol
+   2456  fe8d		       a9 00		      lda	#0
+   2457  fe8f				   .RaftLeftCol
+   2458  fe8f		       4a		      lsr
+   2459  fe90		       4a		      lsr
+   2460  fe91		       20 4a f8 	      jsr	RaftCellSolid
+   2461  fe94		       d0 dd		      bne	.RaftTurn
+   2462  fe96		       b5 bd		      lda	EnemyRamX,X
+   2463  fe98		       38		      sec
+   2464  fe99		       e5 88		      sbc	$88
+   2465  fe9b		       95 bd		      sta	EnemyRamX,X
+   2466  fe9d							; ---- carry + pin while the player is aboard -----------------------------
+   2467  fe9d				   .RaftRide
+   2468  fe9d							; (the Y pin ran at .RaftGo — it must not depend on the raft moving)
+   2469  fe9d							; ramp: arm the flag, and +1 level every 2nd frame (capped at 15)
+   2470  fe9d		       a5 f0		      lda	$F0
+   2471  fe9f		       09 80		      ora	#%10000000
+   2472  fea1		       85 f0		      sta	$F0
+   2473  fea3		       a5 c2		      lda	EnemyRamP
+   2474  fea5		       4a		      lsr		; C = the frame-parity bit
+   2475  fea6		       b0 0f		      bcs	.RaftCarry	; odd frame: flag only this time
+   2476  fea8		       a5 f0		      lda	$F0
+   2477  feaa		       29 78		      and	#%01111000
+   2478  feac		       c9 78		      cmp	#%01111000
+   2479  feae		       f0 07		      beq	.RaftCarry	; already spun up
+   2480  feb0		       a5 f0		      lda	$F0
+   2481  feb2		       18		      clc
+   2482  feb3		       69 10		      adc	#%00010000
+   2483  feb5		       85 f0		      sta	$F0
+   2484  feb7				   .RaftCarry
+   2485  feb7		       bd 68 f8 	      lda	RaftBitTab,X
+   2486  feba		       25 c1		      and	EnemyRamD
+   2487  febc		       f0 0a		      beq	.RaftCarryL
+   2488  febe		       a5 80		      lda	RoomX
+   2489  fec0		       18		      clc
+   2490  fec1		       65 88		      adc	$88
+   2491  fec3		       85 80		      sta	RoomX
+   2492  fec5		       4c d2 fe 	      jmp	.RaftDone
+   2493  fec8				   .RaftCarryL
+   2494  fec8		       a5 80		      lda	RoomX
+   2495  feca		       38		      sec
+   2496  fecb		       e5 88		      sbc	$88
+   2497  fecd		       85 80		      sta	RoomX
+   2498  fecf		       4c d2 fe 	      jmp	.RaftDone
+   2499  fed2				   .RaftDone
+   2500  fed2		       4c f8 fb 	      jmp	ReturnPad
+   2501  fed5
+   2502  fed5		       00 00 00 00*	      .ds	$FEE7 - *, 0
+   2503  fee7		       8d f7 1f 	      sta	$1FF7
+   2504  feea		       4c 38 f0 	      jmp	$F038
+   2505  feed
    2506  feed							; ========================================================================
-   2507  ff00					      org	$FF00
-   2508  ff00				   fineAdjustBegin_b1
-   2509  ff00		       70		      .byte.b	%01110000
-   2510  ff01		       60		      .byte.b	%01100000
-   2511  ff02		       50		      .byte.b	%01010000
-   2512  ff03		       40		      .byte.b	%01000000
-   2513  ff04		       30		      .byte.b	%00110000
-   2514  ff05		       20		      .byte.b	%00100000
-   2515  ff06		       10		      .byte.b	%00010000
-   2516  ff07		       00		      .byte.b	%00000000
-   2517  ff08		       f0		      .byte.b	%11110000
-   2518  ff09		       e0		      .byte.b	%11100000
-   2519  ff0a		       d0		      .byte.b	%11010000
-   2520  ff0b		       c0		      .byte.b	%11000000
-   2521  ff0c		       b0		      .byte.b	%10110000
-   2522  ff0d		       a0		      .byte.b	%10100000
-   2523  ff0e		       90		      .byte.b	%10010000
-   2524  ff0e		       fe 0f	   fineAdjustTable_b1 EQU	fineAdjustBegin_b1 - %11110001
-   2525  ff0f
-   2526  ff0f							; ------------------------------------------------------------------------------
-   2527  ff0f							; Tally entry tramp slice ($FFE6-$FFEB) — byte-identical with kernel.asm's
-   2528  ff0f							; copy at the same address (F6 pad rule). bank0 executes `sta $1FF7` at
-   2529  ff0f							; $FFE6-$FFE8; the fetch at $FFE9 comes from THIS bank = `jmp TallyEntry`
-   2530  ff0f							; ($F44F — moved here from bank2, repack chunk 3, 2026-10-20). Neither bank
-   2531  ff0f							; runs its other half. $FFF2-$FFF9 stay fill (hotspot mirrors).
-   2532  ff0f							; ------------------------------------------------------------------------------
-   2533  ff0f		       00 00 00 00*	      .ds	$FFE6 - *, 0
-   2534  ffe6				   TallyTramp_b1
-   2535  ffe6		       8d f7 1f 	      sta	$1FF7
-   2536  ffe9		       4c 4f f4 	      jmp	TallyEntry
-   2537  ffec
-   2538  ffec							; ========================================================================
-   2539  ffec							; Interrupt vectors
+   2507  feed							; Fine-adjust table (page-aligned at $FF00)
+   2508  feed							; ========================================================================
+   2509  ff00					      org	$FF00
+   2510  ff00				   fineAdjustBegin_b1
+   2511  ff00		       70		      .byte.b	%01110000
+   2512  ff01		       60		      .byte.b	%01100000
+   2513  ff02		       50		      .byte.b	%01010000
+   2514  ff03		       40		      .byte.b	%01000000
+   2515  ff04		       30		      .byte.b	%00110000
+   2516  ff05		       20		      .byte.b	%00100000
+   2517  ff06		       10		      .byte.b	%00010000
+   2518  ff07		       00		      .byte.b	%00000000
+   2519  ff08		       f0		      .byte.b	%11110000
+   2520  ff09		       e0		      .byte.b	%11100000
+   2521  ff0a		       d0		      .byte.b	%11010000
+   2522  ff0b		       c0		      .byte.b	%11000000
+   2523  ff0c		       b0		      .byte.b	%10110000
+   2524  ff0d		       a0		      .byte.b	%10100000
+   2525  ff0e		       90		      .byte.b	%10010000
+   2526  ff0e		       fe 0f	   fineAdjustTable_b1 EQU	fineAdjustBegin_b1 - %11110001
+   2527  ff0f
+   2528  ff0f							; ------------------------------------------------------------------------------
+   2529  ff0f							; Tally entry tramp slice ($FFE6-$FFEB) — byte-identical with kernel.asm's
+   2530  ff0f							; copy at the same address (F6 pad rule). bank0 executes `sta $1FF7` at
+   2531  ff0f							; $FFE6-$FFE8; the fetch at $FFE9 comes from THIS bank = `jmp TallyEntry`
+   2532  ff0f							; ($F44F — moved here from bank2, repack chunk 3, 2026-10-20). Neither bank
+   2533  ff0f							; runs its other half. $FFF2-$FFF9 stay fill (hotspot mirrors).
+   2534  ff0f							; ------------------------------------------------------------------------------
+   2535  ff0f		       00 00 00 00*	      .ds	$FFE6 - *, 0
+   2536  ffe6				   TallyTramp_b1
+   2537  ffe6		       8d f7 1f 	      sta	$1FF7
+   2538  ffe9		       4c 4f f4 	      jmp	TallyEntry
+   2539  ffec
    2540  ffec							; ========================================================================
-   2541  ffec		       00 00 00 00*	      .ds	$FFFA - *, 0
-   2542  fffa		       00 f0		      .word.w	$F000
-   2543  fffc		       00 f0		      .word.w	$F000
-   2544  fffe		       00 f0		      .word.w	$F000
+   2541  ffec							; Interrupt vectors
+   2542  ffec							; ========================================================================
+   2543  ffec		       00 00 00 00*	      .ds	$FFFA - *, 0
+   2544  fffa		       00 f0		      .word.w	$F000
+   2545  fffc		       00 f0		      .word.w	$F000
+   2546  fffe		       00 f0		      .word.w	$F000

@@ -368,12 +368,13 @@ MothExitPad              fc49
 NUSIZ0                   0004              (R )
 NUSIZ1                   0005                  
 OBJ_BAT                  004b              (R )
-OBJ_BOMB                 0075              (R )
+OBJ_BOMB                 006b              (R )
 OBJ_KEY                  0000              (R )
 OBJ_LAMP                 002d              (R )
-OBJ_MINER                0065              (R )
+OBJ_MINER                005b              (R )
 OBJ_MOTH                 0010              (R )
 OBJ_NONE                 0000                  
+OBJ_RAFT                 007b              (R )
 OBJ_SNAKE                0055              (R )
 OBJ_SPIDER               001e              (R )
 OBJ_TENTACLE             003d              (R )
