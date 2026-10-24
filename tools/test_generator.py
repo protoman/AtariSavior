@@ -77,13 +77,19 @@ def edge_cells(rows, direction: str) -> set[int]:
     Vertical links are either the centre pair (8,9) or the TWO-GAP scheme
     (cells 3 and 6, levels 5/9/13/17). The next room must repeat the SAME
     cells, or a drop lands inside a wall (2026-10-20 route-choice rule).
-    Horizontal is ONE cell (row 1, col 0), mirrored on both sides.
+    Horizontal is ONE column (col 0) across the WALKABLE bands — bands 1..2
+    of a 4-row model, band 1 only for a legacy 3-row plan — mirrored on
+    both sides.
     """
     if direction == "north":
         return {x for x in range(10) if rows[0][x] == "."}
     if direction == "south":
         return {x for x in range(10) if rows[-1][x] == "."}
-    return {0} if rows[1][0] == "." else set()
+    # N=4: a 4-row model's side opening spans bands 1..2, so a west/east exit
+    # can be taken from either walkable band. A 3-row model (legacy plan) keeps
+    # the single band-1 opening (its row 2 is the floor).
+    horiz = (1, 2) if len(rows) >= 4 else (1,)
+    return {0} if any(rows[b][0] == "." for b in horiz if b < len(rows))         else set()
 
 
 def edge_open(rows, direction: str) -> bool:
@@ -114,15 +120,18 @@ def entries_connected(rows) -> bool:
             edges.append((0, x))
         if rows[last][x] not in STRUCTURAL_WALLS:
             edges.append((last, x))
-    if rows[1][0] not in STRUCTURAL_WALLS:
-        edges.append((1, 0))
+    for b in ((1, 2) if len(rows) >= 4 else (1,)):
+        if b < len(rows) and rows[b][0] not in STRUCTURAL_WALLS:
+            edges.append((b, 0))
     sides = set()
     for y, _x in edges:
         sides.add("N" if y == 0 else "S" if y == last else "H")
     if len(sides) < 2:
         return True
-    entries = [e for e in edges if e[0] in (0, 1)]        # N and H ways in
-    exits = [e for e in edges if e[0] in (last, 1)]       # S and H ways out
+    horiz = tuple(b for b in ((1, 2) if len(rows) >= 4 else (1,))
+                  if b < len(rows))
+    entries = [e for e in edges if e[0] == 0 or e[0] in horiz]   # N + H in
+    exits = [e for e in edges if e[0] == last or e[0] in horiz]  # S + H out
     for start in entries:
         seen = {start}
         stack = [start]
@@ -404,8 +413,10 @@ def main() -> int:
                             if r2[0][x] not in STRUCTURAL_WALLS}
                     sset = {x for x in range(10)
                             if r2[2][x] not in STRUCTURAL_WALLS}
-                    if (nset and sset and r2[1][0] in STRUCTURAL_WALLS
-                            and nset == sset):
+                    if (nset and sset and nset == sset
+                            and all(r2[b][0] in STRUCTURAL_WALLS
+                                    for b in ((1, 2) if len(r2) >= 4 else (1,))
+                                    if b < len(r2))):
                         print(f"FAIL: level {level_n} room "
                               f"{room['room_id']} is a straight vertical fall "
                               f"(top and bottom both open {sorted(nset)})")
