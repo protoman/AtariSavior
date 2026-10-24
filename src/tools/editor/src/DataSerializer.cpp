@@ -487,8 +487,8 @@ static const int kLevelPalettes[20][3] = {
 namespace {
 
 constexpr int kStageLevels = 20;     // level n = 1..20
-constexpr int kColumnRooms = 10;     // rooms per serpentine column (< span 15)
-constexpr int kTurnY = kColumnRooms - 1;
+constexpr int kGridW = 5;            // layout lattice (positions are 4-bit)
+constexpr int kGridH = 5;
 // Exit bits + hazard bits (2026-10-20: the generated stage got its HERO-style
 // variety — hot bands, a keyed gate, water goals with raft/tentacle).
 enum ShapeBits {
@@ -524,7 +524,12 @@ constexpr int kArchMask = 15;   // 4 bits: hot archetypes use ids 8..14
 // two-slot split raises the shape slot, bump this (tools/bank3_data_sizes.py
 // reports the headroom). With the budget at the current count the generator
 // output is byte-identical to the pre-budget build.
-constexpr int kShapeBudget = 56;
+// Shape budget = the 6-bit index cap (64). The maze layout multiplies the
+// exit signatures (N/S/H x 2Gap x narrow-gap), so the archetype count is
+// the knob that is spent first (Build20LevelStage picks the widest set
+// that fits). Measured 2026-10-24: 63 shapes, bank3 shapes window fits
+// with the test_generator slack gate green.
+constexpr int kShapeBudget = 64;
 const char* const kArch[8][3] = {
     {"..........", "..........", ".........."},          // 0 shaft
     {"..###.....", "..........", ".....###.."},          // 1 ledge ladder
@@ -576,15 +581,39 @@ struct GridPos {
     int x = 0;
     int y = 0;
 };
-// The serpentine's turn room (N in, H out) becomes the water crossing from
-// level 11: a hot row-1 ceiling forces the player down to the low channel,
-// where the raft crosses the water to the side exit (HERO-like).
-bool IsChannelTurn(int level, const GridPos& pos) {
-    // Column 0 only: the room BEFORE the turn (N in, H out). The column-1 room
-    // shares the same opening but is the goal at n=11 and a normal room after;
-    // turning that one into a channel would put the miner in the water.
-    return level >= 11 && level > kColumnRooms
-           && pos.x == 0 && pos.y == kTurnY;
+bool HasRoomAt(const std::vector<GridPos>& walk, int x, int y);
+
+// The CHANNEL room (water crossing from level 11): a hot row-1 ceiling forces
+// the player down to the low channel, where the raft crosses the water to the
+// side exit (HERO-like). It needs a room that runs LEFT-RIGHT (a side
+// neighbour on each side), and it must not be the goal (the miner would stand
+// in the water). With the maze layout the room is chosen by distance to the
+// goal: the LAST room with both side neighbours.
+bool IsChannelRoom(int level, const std::vector<GridPos>& walk,
+                   const GridPos& pos) {
+    if (level < 11 || walk.size() < 3) return false;
+    const GridPos& goal = walk.back();
+    if (pos.x == goal.x && pos.y == goal.y) return false;
+    if (!HasRoomAt(walk, pos.x - 1, pos.y)
+            || !HasRoomAt(walk, pos.x + 1, pos.y)) {
+        return false;
+    }
+    // Nearest to the goal wins (deterministic: the first in row-major order).
+    const int want = std::abs(pos.x - goal.x) + std::abs(pos.y - goal.y);
+    for (const GridPos& other : walk) {
+        if (&other == &pos) continue;
+        if (other.x == goal.x && other.y == goal.y) continue;
+        if (!HasRoomAt(walk, other.x - 1, other.y)
+                || !HasRoomAt(walk, other.x + 1, other.y)) {
+            continue;
+        }
+        const int d = std::abs(other.x - goal.x) + std::abs(other.y - goal.y);
+        if (d < want || (d == want
+                && (other.y < pos.y || (other.y == pos.y && other.x < pos.x)))) {
+            return false;
+        }
+    }
+    return true;
 }
 
 std::string ShapeName(int mask) {
@@ -983,15 +1012,115 @@ ModelData MakeShapeModel(int modelId, int mask) {
     return model;
 }
 
-std::vector<GridPos> LevelWalk(int rooms) {
+// Deterministic integer mix: the layout's only source of (reproducible)
+// variation. No RNG, no clock — two runs must be byte-identical.
+unsigned LayoutMix(unsigned a, unsigned b) {
+    unsigned h = a * 2654435761u ^ (b + 0x9E3779B9u);
+    h ^= h >> 15;
+    h *= 2246822519u;
+    h ^= h >> 13;
+    return h;
+}
+
+// LAYOUT (user rule 2026-10-24): the room GRID comes first, the exits follow
+// from ADJACENCY (RoomShapeMask). A connected set of `rooms` cells is grown on
+// a 5x5 lattice, then the GOAL room is moved to the end of the walk: it is the
+// LEAF farthest from the start, because the miner stands there and the level
+// ends by touching him — a goal room continues nowhere.
+//
+// Complexity RAMPS with the level (user rule 2026-10-24: the multi-block maze
+// is a level-15+ shape of level; early levels stay corridors):
+//   maxTouch 1 (levels < 6)  : a new cell may touch ONE placed cell -> corridor
+//   maxTouch 2 (levels < 15) : a second touch is allowed -> one loop/branch
+//   maxTouch 3 (levels 15+)  : free growth -> the drawn maze, where the
+//                              approach to the goal can be reached two ways
+std::vector<GridPos> LevelLayout(int level, int rooms) {
+    const int n = rooms < 2 ? 2 : rooms;
+    const int maxTouch = level < 6 ? 1 : (level < 15 ? 2 : 3);
+    bool used[kGridH][kGridW] = {};
     std::vector<GridPos> walk;
-    walk.reserve(rooms);
-    const int firstColumn = rooms < kColumnRooms ? rooms : kColumnRooms;
-    for (int y = 0; y < firstColumn; ++y) {
-        walk.push_back(GridPos{0, y});          // down column 0 (the start room)
+    walk.reserve(n);
+    used[0][0] = true;                  // the start room (top-left)
+    walk.push_back(GridPos{0, 0});
+    auto touch = [&](int x, int y) {
+        int t = 0;
+        if (x > 0 && used[y][x - 1]) ++t;
+        if (x + 1 < kGridW && used[y][x + 1]) ++t;
+        if (y > 0 && used[y - 1][x]) ++t;
+        if (y + 1 < kGridH && used[y + 1][x]) ++t;
+        return t;
+    };
+    for (int step = 1; step < n; ++step) {
+        if (level < 6) {
+            // Levels 1-5 are a straight vertical corridor (the ramp the
+            // user asked for): the stem just keeps going down, which also
+            // guarantees the hazard roles have a vertical room to host.
+            const GridPos last = walk.back();
+            const GridPos down{last.x, last.y + 1};
+            if (down.y < kGridH) {
+                used[down.y][down.x] = true;
+                walk.push_back(down);
+                continue;
+            }
+        }
+        std::vector<GridPos> cand;
+        for (int y = 0; y < kGridH; ++y) {
+            for (int x = 0; x < kGridW; ++x) {
+                if (used[y][x]) continue;
+                const int t = touch(x, y);
+                if (t == 0 || t > maxTouch) continue;
+                cand.push_back(GridPos{x, y});
+            }
+        }
+        if (cand.empty()) {             // ramp too tight: relax to any touch
+            for (int y = 0; y < kGridH; ++y) {
+                for (int x = 0; x < kGridW; ++x) {
+                    if (!used[y][x] && touch(x, y) > 0) {
+                        cand.push_back(GridPos{x, y});
+                    }
+                }
+            }
+        }
+        if (cand.empty()) break;        // lattice full (cannot happen <= 20)
+        GridPos p;
+        const GridPos stem{0, 1};
+        bool stemmed = false;
+        if (step == 1) {
+            // The start room always opens DOWNWARD (a stem) before the layout
+            // fans out: the drawn layouts start with `S` above a single room,
+            // and it also guarantees a VERTICAL room early on, which the
+            // hazard roles (hot band, phase blink) need to exist at all.
+            for (const GridPos& c : cand) {
+                if (c.x == stem.x && c.y == stem.y) { p = c; stemmed = true; }
+            }
+        }
+        if (!stemmed) {
+            p = cand[LayoutMix((unsigned)level, (unsigned)step) % cand.size()];
+        }
+        used[p.y][p.x] = true;
+        walk.push_back(p);
     }
-    for (int i = firstColumn; i < rooms; ++i) {
-        walk.push_back(GridPos{1, kTurnY - (i - firstColumn)});   // up col 1
+    // Goal = the leaf (exactly one neighbour) farthest from the start.
+    auto degree = [&](const GridPos& p) {
+        int d = 0;
+        if (p.x > 0 && used[p.y][p.x - 1]) ++d;
+        if (p.x + 1 < kGridW && used[p.y][p.x + 1]) ++d;
+        if (p.y > 0 && used[p.y - 1][p.x]) ++d;
+        if (p.y + 1 < kGridH && used[p.y + 1][p.x]) ++d;
+        return d;
+    };
+    auto dist = [&](const GridPos& p) {
+        return std::abs(p.x) + std::abs(p.y);   // start is (0,0)
+    };
+    int best = -1;
+    int bestD = -1;
+    for (int i = 1; i < (int)walk.size(); ++i) {
+        if (degree(walk[i]) != 1) continue;     // leaves only: the goal never
+        const int d = dist(walk[i]);            // continues anywhere
+        if (d > bestD) { bestD = d; best = i; }
+    }
+    if (best > 0) {
+        std::swap(walk[best], walk.back());     // the goal room is the LAST room
     }
     return walk;
 }
@@ -1085,16 +1214,17 @@ int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
         if ((mask & SHAPE_N) && (roomIndex - 1) % 2 == 0) mask |= SHAPE_N1;
         if ((mask & SHAPE_S) && roomIndex % 2 == 0) mask |= SHAPE_S1;
     }
-    // Side openings follow ADJACENCY (user rule 2026-10-24) — but only once the
-    // LAYOUT stops being a serpentine: turning every grid adjacency into a
-    // passage on the 2-column serpentine makes a ladder (col 0 and col 1
-    // overlap on 10 rows) and the shape library jumps to 65 masks > the 64
-    // allowed by the 6-bit shape index. So the general rule ships WITH the
-    // maze layout (plans/layout_plan.md), and until then only the turn room
-    // carries SHAPE_H — which is exactly its only horizontal neighbour today.
-    if (levelNumber > kColumnRooms && pos.y == kTurnY) mask |= SHAPE_H;
+    // Side openings come from ADJACENCY (user rule 2026-10-24). ONE bit covers
+    // both sides: the playfield is reflected, cell 0 is drawn on both edges, so
+    // a room with a single horizontal neighbour also shows a dead aperture on
+    // its far side (the exit scan finds no room there and the player stops at
+    // the edge — it cannot tear a transition).
+    if (HasRoomAt(walk, pos.x - 1, pos.y)
+            || HasRoomAt(walk, pos.x + 1, pos.y)) {
+        mask |= SHAPE_H;
+    }
     if (roomIndex == 0) mask |= SHAPE_START;   // the level's spawn room
-    if (IsChannelTurn(levelNumber, pos)) {
+    if (IsChannelRoom(levelNumber, walk, pos)) {
         mask |= SHAPE_CHANNEL;
     } else {
         if (role == Role::Gate || role == Role::Phase) mask |= SHAPE_GATE;
@@ -1359,12 +1489,21 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
     } else {
         // A lamp hangs in a gap next to a wall (user rule 2026-10-21): a lamp
         // floating in open air reads as "between the tiles" (level 4 room 3).
+        // The lamp must hang in a gap NEXT TO A WALL (user rule 2026-10-21):
+        // a lamp floating in the open reads as "between the tiles". The maze
+        // layout has rooms whose band 1 is one wide aisle, so if no legal cell
+        // exists in band 1 try band 0 and otherwise SKIP the lamp — the old
+        // NearestAir fallback put it in the open.
         int cell = LampCell(shape, 1, 8);
-        if (cell < 0) cell = NearestAir(shape, 1, 8);
+        int lampBand = 1;
+        if (cell < 0) {
+            cell = LampCell(shape, 0, 8);
+            lampBand = 0;
+        }
         if (cell >= 0) {
             LampData lamp;
             lamp.x = (float)(cell * 2);
-            lamp.y = 4.0f;
+            lamp.y = BandY(shape, lampBand);
             lamp.lit = true;
             room.lamps.push_back(lamp);
         }
@@ -1372,21 +1511,19 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
     // From level 5 a second object on another band. Skip the room right
     // before a gate: it is the key host (the key needs a free slot, and a key
     // in the START room would break the clean-spawn rule).
-    if (levelNumber >= 5 && !roomIsKeyHost
-            && !RowOccupied(room, 0)) {
-        const int cell = NearestAir(shape, 0, 8);
-        if (cell >= 0) {
+    //
+    // Pick the first band that ACTUALLY has air (2026-10-24): the maze shapes
+    // have solid ceilings/ledges, so "row 0 is free" no longer implies an air
+    // cell there — the old if/else chain then placed nothing at all.
+    if (levelNumber >= 5 && !roomIsKeyHost) {
+        for (const int band : {0, FloorBand(shape), 2}) {
+            if (RowOccupied(room, band)) continue;
+            const int cell = NearestAir(shape, band, 8);
+            if (cell < 0) continue;
             AddEnemy(room, EnemyType::SPIDER, (float)(cell * 2),
-                     BandY(shape, 0),
+                     BandY(shape, band),
                      1.0f + 0.25f * (levelNumber % 4), 8.0f);
-        }
-    } else if (levelNumber >= 5 && !roomIsKeyHost
-               && !RowOccupied(room, FloorBand(shape))) {
-        const int cell = NearestAir(shape, FloorBand(shape), 8);
-        if (cell >= 0) {
-            AddEnemy(room, EnemyType::SPIDER, (float)(cell * 2),
-                     BandY(shape, FloorBand(shape)),
-                     1.0f + 0.25f * (levelNumber % 4), 8.0f);
+            break;
         }
     }
 }
@@ -1492,23 +1629,105 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
     std::vector<std::vector<int>> masks(kStageLevels);
     std::vector<std::vector<Role>> roles(kStageLevels);
     std::set<int> used;
-    auto buildLibrary = [&](bool withExtras) {
+    // `variety` = how many ARCHETYPES each room type may use. With the maze
+    // layout the exit combinations multiply (7 combos x 2Gap x role bits), so
+    // the archetype count is the budget knob: fixed pools wanted 103 shapes,
+    // over the 64 the 6-bit shape index allows (measured 2026-10-24).
+    auto buildLibrary = [&](bool withExtras, int variety) {
         used.clear();
         for (int l = 1; l <= kStageLevels; ++l) {
-            walks[l - 1] = LevelWalk(l < 2 ? 2 : l);
+            walks[l - 1] = LevelLayout(l, l < 2 ? 2 : l);
             const LevelPlan plan = PlanFor(l);
             const int count = (int)walks[l - 1].size();
             masks[l - 1].clear();
             roles[l - 1].clear();
+            // Pass 1: the roles. A hazard needs a room that can HOST it: the
+            // maze decides which rooms have a vertical passage, and the three
+            // vertical hazards (hot band, phase blink, crunch sweep) need one
+            // — a crunch room also cannot host a side link (its band 1 is one
+            // solid feature prefix). When the chosen room cannot host, the
+            // role MOVES to the first free room that can (user rule 2026-10-24:
+            // the layout decides the shapes, so the hazard follows the layout).
+            std::vector<bool> vroom(count, false), hroom(count, false);
+            std::vector<Role> rl(count, Role::Normal);
             for (int i = 0; i < count; ++i) {
-                Role role = RoleForRoom(i, count, plan);
-                if (IsChannelTurn(l, walks[l - 1][i])) role = Role::Normal;
+                const GridPos& p = walks[l - 1][i];
+                vroom[i] = HasRoomAt(walks[l - 1], p.x, p.y - 1)
+                        || HasRoomAt(walks[l - 1], p.x, p.y + 1);
+                hroom[i] = HasRoomAt(walks[l - 1], p.x - 1, p.y)
+                        || HasRoomAt(walks[l - 1], p.x + 1, p.y);
+                rl[i] = RoleForRoom(i, count, plan);
+                if (IsChannelRoom(l, walks[l - 1], p)) rl[i] = Role::Normal;
+            }
+            auto canHost = [&](int i, Role r) {
+                if (i <= 0 || i >= count - 1) return false;
+                if (r == Role::Hot || r == Role::Phase) return (bool)vroom[i];
+                if (r == Role::Hcrunch) return (bool)vroom[i] && !hroom[i];
+                return true;
+            };
+            // Most RESTRICTIVE first: the crunch needs a vertical-only room
+            // (its band 1 is one solid feature prefix, so it cannot host a
+            // side link), while hot/phase only need a vertical one. On a dense
+            // level the stem room is usually the only vertical-only room, so
+            // the crunch claims it and hot moves elsewhere.
+            for (const Role want : {Role::Hcrunch, Role::Hot, Role::Phase}) {
+                for (int i = 1; i < count - 1; ++i) {
+                    if (rl[i] != want || canHost(i, want)) continue;
+                    int host = -1;
+                    for (int j = 1; j < count - 1 && host < 0; ++j) {
+                        if (j != i && rl[j] == Role::Normal && canHost(j, want)) {
+                            host = j;
+                        }
+                    }
+                    if (host < 0) {
+                        // No free host: STEAL one from a less restrictive role
+                        // (hot/phase) that has somewhere else to go.
+                        for (int j = 1; j < count - 1 && host < 0; ++j) {
+                            if (j == i || !canHost(j, want)) continue;
+                            if (rl[j] == Role::Normal) {
+                                host = j;
+                                break;
+                            }
+                            if (rl[j] != Role::Hot && rl[j] != Role::Phase) {
+                                continue;
+                            }
+                            bool moved = false;
+                            for (int k = 1; k < count - 1; ++k) {
+                                if (k == i || k == j) continue;
+                                if (rl[k] == Role::Normal && canHost(k, rl[j])) {
+                                    rl[k] = rl[j];
+                                    moved = true;
+                                    break;
+                                }
+                            }
+                            // The crunch is the rarest hazard (it needs a
+                            // vertical-only room): if the victim cannot be
+                            // rehoused, it is dropped and the crunch takes the
+                            // host anyway.
+                            rl[j] = Role::Normal;
+                            host = j;
+                            (void)moved;
+                        }
+                    }
+                    if (host < 0) {
+                        rl[i] = Role::Normal;   // nowhere to host it: drop it
+                        continue;
+                    }
+                    rl[i] = Role::Normal;
+                    rl[host] = want;
+                }
+            }
+            // Pass 2: the shape mask (arch keyed by the room's role + the exit
+            // combination; corridor rooms stay plain, see below).
+            for (int i = 0; i < count; ++i) {
+                const Role role = rl[i];
                 roles[l - 1].push_back(role);
+                const GridPos& here = walks[l - 1][i];
+                const bool verticalRoom = vroom[i];
                 int arch = 0;
-                if (!IsChannelTurn(l, walks[l - 1][i])) {
+                if (verticalRoom
+                        && !IsChannelRoom(l, walks[l - 1], here)) {
                     if (role == Role::Hot) {
-                        // The advanced hot archetypes (HotAlign/Twin/Stair)
-                        // are > level 10 only, extras mode included.
                         const int* pool;
                         int n;
                         if (l > 10) {
@@ -1518,16 +1737,20 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                             pool = kHotBase;
                             n = 3;
                         }
+                        if (n > variety) n = variety;
                         arch = pool[l % n];
                     } else if (i == 0 && l >= 8) {
-                        // base keeps the shipped pattern byte-identical;
-                        // budget mode uses HotDrop (spawn column open).
-                        arch = withExtras ? 14 : 9;
+                        // The START room drops the player in at cell 4, so its
+                        // band 1 MUST keep that column open: arch 14 is
+                        // HotDrop, the only start archetype with the drop
+                        // column carved.
+                        arch = 14;
                     } else if (role == Role::Normal && i > 0
                                && i < count - 1) {
                         const int* pool = withExtras ? kNormalExtra
                                                      : kNormalBase;
-                        const int n = withExtras ? 7 : 5;
+                        int n = withExtras ? 7 : 5;
+                        if (n > variety) n = variety;
                         arch = pool[(l + i) % n];
                     }
                 }
@@ -1539,9 +1762,22 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             }
         }
     };
-    buildLibrary(false);
-    if ((int)used.size() < kShapeBudget) {
-        buildLibrary(true);
+    // Widest archetype set that fits the budget, then the richer archetypes
+    // if they also fit; otherwise keep the base library.
+    for (int variety = 3; variety >= 1; --variety) {
+        buildLibrary(false, variety);
+        if ((int)used.size() <= kShapeBudget) break;
+    }
+    {
+        const std::vector<std::vector<int>> baseMasks = masks;
+        const std::vector<std::vector<Role>> baseRoles = roles;
+        const std::set<int> baseUsed = used;
+        buildLibrary(true, 3);
+        if ((int)used.size() > kShapeBudget || (int)used.size() > 64) {
+            masks = baseMasks;
+            roles = baseRoles;
+            used = baseUsed;
+        }
     }
 
     // 2. The shape library: model ids ARE the ascending masks (deterministic).
@@ -1642,7 +1878,9 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     if (c < 1 || c > 7) continue;
                     if (sm.tiles[1 * kRoomWidth + c] == 0
                             && sm.tiles[0 * kRoomWidth + c] != 0
-                            && sm.tiles[2 * kRoomWidth + c] != 0) {
+                            && sm.tiles[2 * kRoomWidth + c] != 0
+                            && (sm.height <= 3
+                                || sm.tiles[3 * kRoomWidth + c] != 0)) {
                         room.asym_patches.push_back(
                             {1, c, (int)TileType::SOLID_WALL, 1});
                         break;
@@ -1662,7 +1900,9 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 for (int c : {7, 6, 5, 4, 3, 2, 1}) {
                     if (sm0.tiles[1 * kRoomWidth + c] == 0
                             && sm0.tiles[0 * kRoomWidth + c] != 0
-                            && sm0.tiles[2 * kRoomWidth + c] != 0) {
+                            && sm0.tiles[2 * kRoomWidth + c] != 0
+                            && (sm0.height <= 3
+                                || sm0.tiles[3 * kRoomWidth + c] != 0)) {
                         room.asym_patches.push_back(
                             {1, c, (int)TileType::SOLID_WALL, 1});
                         break;
@@ -1683,9 +1923,15 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 const ModelData& sm = models[shapeId[masks[l - 1][i]]];
                 int col = -1;
                 for (int c = 1; c <= 7; ++c) {
+                    // The M1 strip paints ONE column across the WHOLE cave, so
+                    // every band the patch does not paint must be walled there
+                    // — band 3 included now that the floor is its own band
+                    // (2026-10-24; the converter hard-fails otherwise).
                     if (sm.tiles[1 * kRoomWidth + c] == 0
                             && sm.tiles[0 * kRoomWidth + c] != 0
-                            && sm.tiles[2 * kRoomWidth + c] != 0) {
+                            && sm.tiles[2 * kRoomWidth + c] != 0
+                            && (sm.height <= 3
+                                || sm.tiles[3 * kRoomWidth + c] != 0)) {
                         col = c;
                         break;
                     }
