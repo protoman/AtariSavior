@@ -890,12 +890,17 @@ PhHcrEntry:
 ; Prefix tables: P(n) for n pairs from pair 0 — n = 0..10.
 ; Pair → register: 0-1 PF0 ($30,$C0), 2-5 PF1 ($C0,$30,$0C,$03),
 ; 6-9 PF2 ($03,$0C,$30,$C0). PF0 maxes at n=2, PF1 at n=6, PF2 at n=10.
+; Coverage starts at PAIR 1: pair 0 (display cols 0-1 + their mirror 38-39)
+; is never covered, so a crunch room keeps its side opening usable — the player
+; arrives in an 8-px vestibule and must time the crush to leave it. The static
+; row keeps cell 0 solid (the loader ORs the feature cells 0..9); the runtime
+; prefix below is what makes the side live.
 CrPfx0:
-    .byte $00, $30, $F0, $F0, $F0, $F0, $F0, $F0, $F0, $F0, $F0
+    .byte $00, $C0, $C0, $C0, $C0, $C0, $C0, $C0, $C0, $C0, $C0
 CrPfx1:
-    .byte $00, $00, $00, $C0, $F0, $FC, $FF, $FF, $FF, $FF, $FF
+    .byte $00, $00, $C0, $F0, $FC, $FF, $FF, $FF, $FF, $FF, $FF
 CrPfx2:
-    .byte $00, $00, $00, $00, $00, $00, $00, $03, $0F, $3F, $FF
+    .byte $00, $00, $00, $00, $00, $00, $03, $0F, $3F, $FF, $FF
 
 ; ==============================================================================
 ; PhVcApplyOR / PhVcApplyAND DELETED (2026-10-19) — same retired vcrunch

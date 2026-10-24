@@ -1662,7 +1662,10 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             auto canHost = [&](int i, Role r) {
                 if (i <= 0 || i >= count - 1) return false;
                 if (r == Role::Hot || r == Role::Phase) return (bool)vroom[i];
-                if (r == Role::Hcrunch) return (bool)vroom[i] && !hroom[i];
+                // Since 2026-10-24 the kernel prefix starts at pair 1, so a
+                // crunch room keeps its side link (the crush gates the way out of
+                // the 8-px edge vestibule); it still needs a vertical passage.
+                if (r == Role::Hcrunch) return (bool)vroom[i];
                 return true;
             };
             // Most RESTRICTIVE first: the crunch needs a vertical-only room

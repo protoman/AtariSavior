@@ -245,6 +245,14 @@ def main() -> int:
 
             rows = {room["room_id"]: C.rows_from_json(room, shapes)
                     for room in rooms}
+            # A crunch room's band 1 is authored solid 0..9 for the loader, but
+            # the kernel prefix starts at pair 1: cell 0 is passable at run time.
+            for room in rooms:
+                cells = [f[1] for f in (room.get("feature_cells") or [])
+                         if f[2] == 12]
+                if 0 in cells and len(rows[room["room_id"]]) > 1:
+                    r1 = rows[room["room_id"]][1]
+                    rows[room["room_id"]][1] = "." + r1[1:]
             # pos: (x, y) -> room_id (the C1 scan order); where: the reverse.
             where = {v: k for k, v in pos.items()}
 
@@ -676,26 +684,21 @@ def main() -> int:
             # air). The maze decides the geometry, so a crunch band is required
             # only when the level actually HAS a legal host room: a vertical
             # passage and no side opening.
+            # The crunch sweeps band 1 from pair 1 (pair 0 stays open so a
+            # crunch room can carry a side link), so ANY room with a vertical
+            # passage can host it.
             if level_n >= 14 and hcrunches == 0:
-                # Host = vertical grid neighbour, no side neighbour (the layout
-                # decides it; a carved lobby cell is NOT a passage).
                 host = False
                 for (hx, hy), hrid in pos.items():
-                    vert = (hx, hy - 1) in pos or (hx, hy + 1) in pos
-                    side = (hx - 1, hy) in pos or (hx + 1, hy) in pos
-                    if vert and not side and hrid != 0 and \
-                            hrid != level.get("miner_room"):
+                    if hrid == 0 or hrid == level.get("miner_room"):
+                        continue
+                    if (hx, hy - 1) in pos or (hx, hy + 1) in pos:
                         host = True
                         break
                 if host:
-                    # ponytail: best effort at 15+. The crunch needs a
-                    # vertical-only room and the dense maze rarely has one left
-                    # after hot/phase claim theirs; the clean fix is the crunch
-                    # prefix starting at cell 1 (kernel CrPfx tables), which lets
-                    # a crunch room keep its side link. Until then the hazard is
-                    # placed only when a host is free — reported, not fatal.
-                    print(f"WARN: level {level_n} has a crunch host room but no "
-                          "crunch band (prefix-at-cell-1 fix pending)")
+                    print(f"FAIL: level {level_n} has a crunch host room but "
+                          "no hcrunch band")
+                    return 1
             if level_n >= 7 and blocks == 0:
                 print(f"FAIL: level {level_n} has no async block room")
                 return 1
