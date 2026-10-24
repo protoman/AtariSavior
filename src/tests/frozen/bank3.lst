@@ -709,7 +709,7 @@
     526  f908							; only from a cell-walk hit, so this is "the wall I bumped is hot".
     527  f908		       a6 8e		      ldx	CollisionEndX	; min col
     528  f90a				   .HOVpfCol
-    529  f90a		       bd c0 fe 	      lda	ColOff,X	; PF0/PF1/PF2 group offset (0/3/6)
+    529  f90a		       bd c0 fe 	      lda	ColOff,X	; PF0/PF1/PF2 group offset (0/4/8)
     530  f90d		       18		      clc
     531  f90e		       69 01		      adc	#1	; +1 = row 1 in the 3-row buffer
     532  f910		       a8		      tay
@@ -1401,80 +1401,81 @@
    1218  fd77							; $FE9C window is fill again.
    1219  fd77							; ------------------------------------------------------------------------------
    1220  fd77		       00 00 00 00*	      .ds	$FEC0 - *, 0
-   1221  fec0		       00 00 00 00*ColOff     .byte.b	0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
-   1222  fed4		       10 20 40 80*ColMask    .byte.b	$10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
-   1223  fee0		       01 02 04 08*	      .byte.b	$01,$02,$04,$08,$10,$20,$40,$80
-   1224  fee8
+   1221  fec0		       00 00 00 00*ColOff     .byte.b	0,0,0,0, 4,4,4,4,4,4,4,4, 8,8,8,8,8,8,8,8
+   1222  fed4							; N=4 stride 4 (PF1/PF2 rows at +4/+8)
+   1223  fed4		       10 20 40 80*ColMask    .byte.b	$10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
+   1224  fee0		       01 02 04 08*	      .byte.b	$01,$02,$04,$08,$10,$20,$40,$80
    1225  fee8
-   1226  fee8							; ------------------------------------------------------------------------------
-   1227  fee8							; HOVFeatEntry — the $80 phase / $82 hcrunch dispatch for .HOVfeature;
-   1228  fee8							; fields read from FetchPtr in-bank. Returns to HOVnext / HOVlegHit (both pop
-   1229  fee8							; the .HOVloop base) or HOVafterGate.
-   1230  fee8							; ------------------------------------------------------------------------------
-   1231  fee8
-   1232  fee8							; ------------------------------------------------------------------
-   1233  fee8							; C2 (2026-10-20): HOVFeatEntry (was bank3 $FA40) — the $80 phase / $82
-   1234  fee8							; hcrunch dispatch for .HOVfeature; fields read from FetchPtr in-bank.
-   1235  fee8							; ------------------------------------------------------------------
-   1236  fee8		       00 00 00 00*	      .ds	$FF59 - *, 0
-   1237  ff59				   HOVFeatEntry
-   1238  ff59							; .HOVfeature dispatch. IN: A = record class, Y = record base,
-   1239  ff59							; FetchPtr = record stream (all same-bank since A3). No field pre-read and
-   1240  ff59							; no stack: fields are read at (FetchPtr),base+1..4 as needed. Returns to
-   1241  ff59							; HOVnext / HOVlegHit (both pop the .HOVloop base) or HOVafterGate ($80,
-   1242  ff59							; which needs Y = base — the $80 path never touches Y).
-   1243  ff59		       c9 80		      cmp	#$80
-   1244  ff5b		       d0 03		      bne	.HFnotPhase
-   1245  ff5d		       4c 8d ff 	      jmp	.HFphase	; (far trampoline; Y = base preserved)
-   1246  ff60				   .HFnotPhase
-   1247  ff60		       b1 e5		      lda	(FetchPtr),Y	; class byte
-   1248  ff62		       c9 82		      cmp	#$82
-   1249  ff64		       f0 03		      beq	.HFh_begin
-   1250  ff66		       4c 8a ff 	      jmp	.HFmiss	; $81 and unknown classes are inert
-   1251  ff69				   .HFh_begin
-   1252  ff69
-   1253  ff69							; ---------------- $82 hcrunch: fixed band 1 + fixed 10-cell prefix ---
-   1254  ff69							; Record fields ignored (user decision 2026-10-19): the band is always
-   1255  ff69							; band 1 and the prefix is always 10 cells. ALWAYS HOT: any overlap of
-   1256  ff69							; the player box with the covered prefix kills, at any phase/extent
-   1257  ff69							; (the clock animation only moves the covered prefix).
-   1258  ff69		       a5 8d		      lda	CollisionCellY
-   1259  ff6b		       c9 02		      cmp	#2	; top row below band1 → miss
-   1260  ff6d		       b0 1b		      bcs	.HFmissD
-   1261  ff6f		       a5 8f		      lda	CollisionEndY
-   1262  ff71		       c9 01		      cmp	#1	; bottom row above band1 → miss
-   1263  ff73		       90 15		      bcc	.HFmissD
-   1264  ff75		       a2 0a		      ldx	#10
-   1265  ff77		       20 2e fb 	      jsr	HcrClock	; A = n covered cells; X/Y preserved
-   1266  ff7a		       0a		      asl		; 2n = covered 4px cols from col 0
-   1267  ff7b		       c5 8e		      cmp	CollisionEndX	; covered_w vs min col (strict >)
-   1268  ff7d		       90 05		      bcc	.HFmissJ
-   1269  ff7f		       f0 03		      beq	.HFmissJ
-   1270  ff81		       4c 87 ff 	      jmp	.HFkill
-   1271  ff84
-   1272  ff84				   .HFmissJ
-   1273  ff84		       4c 8a ff 	      jmp	.HFmissD
-   1274  ff87
-   1275  ff87				   .HFkill
-   1276  ff87		       4c a0 f9 	      jmp	HOVlegHit	; loop Y still on the stack (popped there)
-   1277  ff8a				   .HFmissD
-   1278  ff8a				   .HFmiss
-   1279  ff8a		       4c a4 f9 	      jmp	HOVnext	; loop Y still on the stack (popped there)
-   1280  ff8d				   .HFphase
-   1281  ff8d		       a5 ba		      lda	EnemyDeadMask
-   1282  ff8f		       29 60		      and	#$60	; b5 armed | b6 phase dead
-   1283  ff91		       c9 20		      cmp	#$20	; armed AND not yet removed?
-   1284  ff93		       d0 f5		      bne	.HFmiss
-   1285  ff95		       4c 62 f9 	      jmp	HOVafterGate	; A3: local (Y = base still live)
-   1286  ff98
-   1287  ff98		       00 00 00 00*	      .ds	$FFEF - *, 0	; HotOverlapFlag image — bank0 runs
-   1288  ffef		       4c f8 f8 	      jmp	HotOverlapBody	;   `sta $1FF7` at $FFEC, the jmp at +3
-   1289  fff2							;   is fetched HERE
-   1290  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
-   1291  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0
-   1292  fffa
-   1293  fffa							; Interrupt vectors
-   1294  fffa		       00 f0		      .word.w	$F000	; NMI vector
-   1295  fffc		       00 f0		      .word.w	$F000	; RESET vector ← power-up entry
-   1296  fffe		       00 f0		      .word.w	$F000	; IRQ vector
-   1297  10000
+   1226  fee8
+   1227  fee8							; ------------------------------------------------------------------------------
+   1228  fee8							; HOVFeatEntry — the $80 phase / $82 hcrunch dispatch for .HOVfeature;
+   1229  fee8							; fields read from FetchPtr in-bank. Returns to HOVnext / HOVlegHit (both pop
+   1230  fee8							; the .HOVloop base) or HOVafterGate.
+   1231  fee8							; ------------------------------------------------------------------------------
+   1232  fee8
+   1233  fee8							; ------------------------------------------------------------------
+   1234  fee8							; C2 (2026-10-20): HOVFeatEntry (was bank3 $FA40) — the $80 phase / $82
+   1235  fee8							; hcrunch dispatch for .HOVfeature; fields read from FetchPtr in-bank.
+   1236  fee8							; ------------------------------------------------------------------
+   1237  fee8		       00 00 00 00*	      .ds	$FF59 - *, 0
+   1238  ff59				   HOVFeatEntry
+   1239  ff59							; .HOVfeature dispatch. IN: A = record class, Y = record base,
+   1240  ff59							; FetchPtr = record stream (all same-bank since A3). No field pre-read and
+   1241  ff59							; no stack: fields are read at (FetchPtr),base+1..4 as needed. Returns to
+   1242  ff59							; HOVnext / HOVlegHit (both pop the .HOVloop base) or HOVafterGate ($80,
+   1243  ff59							; which needs Y = base — the $80 path never touches Y).
+   1244  ff59		       c9 80		      cmp	#$80
+   1245  ff5b		       d0 03		      bne	.HFnotPhase
+   1246  ff5d		       4c 8d ff 	      jmp	.HFphase	; (far trampoline; Y = base preserved)
+   1247  ff60				   .HFnotPhase
+   1248  ff60		       b1 e5		      lda	(FetchPtr),Y	; class byte
+   1249  ff62		       c9 82		      cmp	#$82
+   1250  ff64		       f0 03		      beq	.HFh_begin
+   1251  ff66		       4c 8a ff 	      jmp	.HFmiss	; $81 and unknown classes are inert
+   1252  ff69				   .HFh_begin
+   1253  ff69
+   1254  ff69							; ---------------- $82 hcrunch: fixed band 1 + fixed 10-cell prefix ---
+   1255  ff69							; Record fields ignored (user decision 2026-10-19): the band is always
+   1256  ff69							; band 1 and the prefix is always 10 cells. ALWAYS HOT: any overlap of
+   1257  ff69							; the player box with the covered prefix kills, at any phase/extent
+   1258  ff69							; (the clock animation only moves the covered prefix).
+   1259  ff69		       a5 8d		      lda	CollisionCellY
+   1260  ff6b		       c9 02		      cmp	#2	; top row below band1 → miss
+   1261  ff6d		       b0 1b		      bcs	.HFmissD
+   1262  ff6f		       a5 8f		      lda	CollisionEndY
+   1263  ff71		       c9 01		      cmp	#1	; bottom row above band1 → miss
+   1264  ff73		       90 15		      bcc	.HFmissD
+   1265  ff75		       a2 0a		      ldx	#10
+   1266  ff77		       20 2e fb 	      jsr	HcrClock	; A = n covered cells; X/Y preserved
+   1267  ff7a		       0a		      asl		; 2n = covered 4px cols from col 0
+   1268  ff7b		       c5 8e		      cmp	CollisionEndX	; covered_w vs min col (strict >)
+   1269  ff7d		       90 05		      bcc	.HFmissJ
+   1270  ff7f		       f0 03		      beq	.HFmissJ
+   1271  ff81		       4c 87 ff 	      jmp	.HFkill
+   1272  ff84
+   1273  ff84				   .HFmissJ
+   1274  ff84		       4c 8a ff 	      jmp	.HFmissD
+   1275  ff87
+   1276  ff87				   .HFkill
+   1277  ff87		       4c a0 f9 	      jmp	HOVlegHit	; loop Y still on the stack (popped there)
+   1278  ff8a				   .HFmissD
+   1279  ff8a				   .HFmiss
+   1280  ff8a		       4c a4 f9 	      jmp	HOVnext	; loop Y still on the stack (popped there)
+   1281  ff8d				   .HFphase
+   1282  ff8d		       a5 ba		      lda	EnemyDeadMask
+   1283  ff8f		       29 60		      and	#$60	; b5 armed | b6 phase dead
+   1284  ff91		       c9 20		      cmp	#$20	; armed AND not yet removed?
+   1285  ff93		       d0 f5		      bne	.HFmiss
+   1286  ff95		       4c 62 f9 	      jmp	HOVafterGate	; A3: local (Y = base still live)
+   1287  ff98
+   1288  ff98		       00 00 00 00*	      .ds	$FFEF - *, 0	; HotOverlapFlag image — bank0 runs
+   1289  ffef		       4c f8 f8 	      jmp	HotOverlapBody	;   `sta $1FF7` at $FFEC, the jmp at +3
+   1290  fff2							;   is fetched HERE
+   1291  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
+   1292  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0
+   1293  fffa
+   1294  fffa							; Interrupt vectors
+   1295  fffa		       00 f0		      .word.w	$F000	; NMI vector
+   1296  fffc		       00 f0		      .word.w	$F000	; RESET vector ← power-up entry
+   1297  fffe		       00 f0		      .word.w	$F000	; IRQ vector
+   1298  10000

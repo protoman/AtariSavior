@@ -61,23 +61,38 @@ hot flag still rides band 1's index b7.
 
 ## Open items (in priority order)
 
-1. **Slot1Hook costs +2 lines when it fires** (flicker class — the only red
-   test). Repro: `tools/test_slot1_midband.py` (it stages the SAME two objects
-   in both configurations now, so the compare is like for like):
-   - same band (band 1, 44/60) → no pair → **270 lines**;
-   - different bands (44/100) → pair staged + hook → **272 lines**.
-   The hook is documented as "2 lines spent, `-2` on `LineCount`", and the
-   `-2` IS executed (`.SHcount`), so the extra must be a late `sta WSYNC` in
-   the inlined positioning: the measured WSYNC sequence for the hooked band has
-   two intervals of ~115c (a line + 39c) instead of the plain band's
-   `76,76,156`. Do NOT blind-patch the `-2` to `-3`/`-4`: the cost may depend on
-   `ActiveObjectX` (the div15 loop), so first measure at X=40 vs X=140 with the
-   same staged room (the midband test's `step()` can log WSYNC gaps — see the
-   git history of this file for the instrumented version). Fix belongs in the
-   hook's alignment: the first `sta WSYNC` must land before the line ends for
-   every X (the draw's c58 GRP1 write is the latest store in `.Row`'s setup).
-   Acceptance: `test_slot1_midband` green AND `sim_frame_budget` cave still
-   constant 270.0.
+1. **Cross-band pairs alternate 272/270 lines** (flicker class — the only red
+   test). Repro: `tools/test_slot1_midband.py`, which now asserts frame
+   constancy WITHIN a configuration (the cross-config delta is a
+   StartFrame-re-anchor phase, not a stretch):
+
+   | config | objects | lines |
+   |---|---|---|
+   | control (hook) | enemy y=44 (band 1) + miner y=100 (band 2) | **272, 270, 272, ...** |
+   | same band (no hook) | enemy y=44 + miner y=60 (both band 1) | 270, 270 |
+
+   Facts measured so far (do not re-derive):
+   - the +2 is **X-independent** (MinerX 8/40/100/150 all give 272) → not the
+     div15 loop;
+   - `sim_frame_budget` (the real stage's room, 2 objects) holds **270.0 ± 0.08
+     every frame**, so the shipped scenario does not alternate — the stage's
+     pair is staged deterministically;
+   - setting `.SHcount` to `LINES_PER_TILE - 3` makes the real cave frame **269**
+     (one line SHORT), so the `-2` compensation is correct for the hook's own
+     cost;
+   - the WSYNC sequence of a hooked band shows two ~115c intervals (a line plus
+     ~39c) instead of the plain band's `76,76,156`.
+
+   ⇒ the alternation is very likely the STAGING, not the hook: the test only
+   pokes `EnemyCount`/`EnemyRamY`/miner fields, so the ROM's per-frame rotation
+   may stage slot 1 on every other frame (the hook then runs half the frames and
+   the frame length alternates by 2). Next step: run the same room through the
+   real `SelectActiveObject` path (stage `FlickerFrame`, `ObjBase`, `RoomNo`,
+   `EnemyDataLo/Hi` the way the VBL does — `tools/test_slot1_pair.py` is the
+   model) and dump `ObjBase1` per frame; if it alternates between `$FF` and a
+   design, the fix belongs in the staging (it must be stable), not in the
+   kernel. Acceptance: `test_slot1_midband` green AND `sim_frame_budget` cave
+   still constant 270.0.
 2. **Async band mask still has 3 bits** (MetaA b0-2; b3 = the M1/door flag).
    Band 3 therefore mirrors band 2 for the ball/M1 gate (`B3StageBand` copies
    `BandTab+2` -> `BandTab+3`). `test_cell_map`'s asym sweep is restricted to
