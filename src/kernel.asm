@@ -3728,10 +3728,11 @@ DropArm:
     lda #$FF
     sta LevelMinerRoom          ; ROOM_NONE: no miner slot, no pickup
     ; Preview seat (user 2026-10-24): the title draws the REAL cave in band 0
-    ; and seats the player at RoomY = 0, the very TOP of the screen, so he
-    ; stands in band 0's open sky. (RoomY = 36 put him inside band 1's wall:
-    ; the playfield has priority over sprites, so he showed as a sliver.)
-    lda #0
+    ; and seats the player 6 px down from the very top, so his head is not
+    ; clipped by the top of the screen (RoomY = 0 cut it). (RoomY = 36 put him
+    ; inside band 1's wall: the playfield has priority over sprites, so he
+    ; showed as a sliver.)
+    lda #6
     sta RoomY
     ; No beam on the title: band 0 is the CAVE .Line now, which re-enables
     ; ENAM0 from PlayerColTable bit1 & LaserState. Clear held+gate (b7/b1) only —
