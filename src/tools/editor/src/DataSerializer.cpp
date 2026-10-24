@@ -1591,6 +1591,44 @@ std::vector<std::string> DataSerializer::StageConnectionProblems(
                         + " are side by side but only one has a side opening");
                 }
             }
+            // NO OPENING WITHOUT A NEIGHBOUR (user rule 2026-10-24): the
+            // playfield is reflected, so a side link opens BOTH edges and the
+            // end room of a horizontal run shows a dead aperture on its far
+            // side. It must be plugged with a solid async patch there (ball /
+            // M1 cell, indestructible — no bomb reaches an object patch).
+            {
+                const std::vector<int> open = sideBands(*a);
+                if (!open.empty()) {
+                    struct Side { const char* name; bool has; int col; int sid; };
+                    const Side sides[2] = {
+                        {"west", findRoom(room.room_x - 1, room.room_y) != nullptr,
+                         0, 1},
+                        {"east", findRoom(room.room_x + 1, room.room_y) != nullptr,
+                         9, 0},
+                    };
+                    for (const Side& sd : sides) {
+                        if (sd.has) continue;
+                        std::vector<int> plugged;
+                        for (const auto& pt : room.asym_patches) {
+                            if ((int)pt.size() > 3 && pt[3] == sd.sid
+                                    && pt[1] == sd.col) {
+                                plugged.push_back(pt[0]);
+                            }
+                        }
+                        for (int band : open) {
+                            bool has_plug = false;
+                            for (int b : plugged) has_plug = has_plug || b == band;
+                            if (has_plug) continue;
+                            out.push_back(
+                                "level " + std::to_string(level_n) + ": room "
+                                + std::to_string(room.room_id)
+                                + " has an opening on its " + sd.name
+                                + " edge but no room that way and no plug"
+                                  " (band " + std::to_string(band) + ")");
+                        }
+                    }
+                }
+            }
             if (const RoomData* south = findRoom(room.room_x, room.room_y + 1)) {
                 const ModelData* b = findModel(south->model_id);
                 if (!b || b->width <= 0) continue;
@@ -1947,6 +1985,43 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                         if (sm.tiles[1 * kRoomWidth + other] == 0) {
                             room.asym_patches.push_back(
                                 {1, other, (int)TileType::SOLID_WALL, 0});
+                        }
+                    }
+                }
+            }
+            // PLUG the dead side (user rule 2026-10-24, screenshot
+            // layout_invalid_exists.png): the playfield is REFLECTED, so a side
+            // link opens BOTH edges — a room with a single horizontal neighbour
+            // shows a hole on its far side. M1 (left) / ball (right) paint an
+            // 8-px cell there; both are OBJECTS, not PF, so no bomb can remove
+            // them (indestructible by construction — no new kernel code).
+            {
+                const GridPos& p = walks[l - 1][i];
+                const bool west = HasRoomAt(walks[l - 1], p.x - 1, p.y);
+                const bool east = HasRoomAt(walks[l - 1], p.x + 1, p.y);
+                if (west != east) {
+                    // The plug owns the room's patch slots (the async block is
+                    // optional, a hole is not).
+                    // The H aperture spans BOTH walkable bands (band 1 and
+                    // the derived band 2), so the plug needs one patch per
+                    // band: same column, two rows is legal (the one-column-
+                    // per-side rule keys on the x).
+                    // Only the bands where the shape really carries the
+                    // aperture get a plug: the wall-hide guard requires the
+                    // patched cell to be OPEN (a wall would hide the patch).
+                    room.asym_patches.clear();
+                    const ModelData& sm = models[shapeId[masks[l - 1][i]]];
+                    for (int band = kHorizExitA;
+                         band <= std::min(kHorizExitB, sm.height - 2); ++band) {
+                        if (sm.tiles[band * sm.width] != (int)TileType::AIR)
+                            continue;
+                        if (!west) {
+                            room.asym_patches.push_back(
+                                {band, 0, (int)TileType::SOLID_WALL, 1});
+                        }
+                        if (!east) {
+                            room.asym_patches.push_back(
+                                {band, 9, (int)TileType::SOLID_WALL, 0});
                         }
                     }
                 }

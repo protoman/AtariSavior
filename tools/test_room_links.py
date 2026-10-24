@@ -94,11 +94,38 @@ def main() -> int:
         ("band 1 vs band 2", side(True, False), side(False, True), True),
         ("one side closed", side(True, True), side(False, False), True),
     ]
+    # Plugs: a room with an edge opening and no room on that side carries a
+    # solid async patch on that edge in every aperture band (user rule
+    # 2026-10-24) — otherwise the link check refuses the stage for a dead
+    # aperture before it ever looks at the pair.
+    def plugged(rid, mid, x, rows, east_room):
+        r = room(rid, mid, x, 0)
+        bands = [b for b in (1, 2) if rows[b][0] == "."]
+        patches = []
+        if x == 0:
+            patches += [[b, 0, 1, 1] for b in bands]
+        if not east_room:
+            patches += [[b, 9, 1, 0] for b in bands]
+        if patches:
+            r["asym_patches"] = patches
+        return r
+
     for name, a, b, fail in cases:
         models = [model(0, a), model(1, b)]
-        rooms = [room(0, 0, 0, 0), room(1, 1, 1, 0)]
+        rooms = [plugged(0, 0, 0, a, True), plugged(1, 1, 1, b, False)]
         if not run(name, models, rooms, fail):
             fails += 1
+
+    # New rule (user 2026-10-24): an edge opening with NO room that way is a
+    # dead aperture — refuse it unless the edge is plugged. The lone room here
+    # opens band 1 on both edges, so it needs one plug per side.
+    models = [model(0, side(True, False))]
+    if not run("dead aperture unplugged", models, [room(0, 0, 0, 0)], True):
+        fails += 1
+    lone = room(0, 0, 0, 0)
+    lone["asym_patches"] = [[1, 0, 1, 1], [1, 9, 1, 0]]
+    if not run("dead aperture plugged", models, [lone], False):
+        fails += 1
 
     # Vertical: upper room's last band vs lower room's band 0.
     up_open = ["########..", "#.........", "########..", "########.."]

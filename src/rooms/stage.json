@@ -3474,7 +3474,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 1,
@@ -3496,7 +3504,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 2,
@@ -3547,6 +3563,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -3575,7 +3599,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 5,
@@ -3630,7 +3662,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
                             ]
@@ -3718,6 +3750,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -3781,9 +3821,9 @@
                         "asym_patches": [
                             [
                                 1,
+                                9,
                                 1,
-                                1,
-                                1
+                                0
                             ]
                         ]
                     },
@@ -3807,7 +3847,15 @@
                         "bottom_band": true,
                         "bottom_r": 24,
                         "bottom_g": 88,
-                        "bottom_b": 208
+                        "bottom_b": 208,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     }
                 ]
             },
@@ -3840,7 +3888,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
                             ]
@@ -3875,7 +3923,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 2,
@@ -3928,6 +3984,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -3987,7 +4051,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 6,
@@ -4015,7 +4087,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 7,
@@ -4037,7 +4117,15 @@
                         "bottom_band": true,
                         "bottom_r": 24,
                         "bottom_g": 88,
-                        "bottom_b": 208
+                        "bottom_b": 208,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     }
                 ]
             },
@@ -4070,7 +4158,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
                             ]
@@ -4215,7 +4303,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 6,
@@ -4243,7 +4339,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 7,
@@ -4296,7 +4400,15 @@
                         "bottom_band": true,
                         "bottom_r": 24,
                         "bottom_g": 88,
-                        "bottom_b": 208
+                        "bottom_b": 208,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     }
                 ]
             },
@@ -4356,7 +4468,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 2,
@@ -4409,6 +4529,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -4468,7 +4596,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 6,
@@ -4496,7 +4632,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 7,
@@ -4519,6 +4663,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -4586,7 +4738,15 @@
                         "bottom_band": true,
                         "bottom_r": 24,
                         "bottom_g": 88,
-                        "bottom_b": 208
+                        "bottom_b": 208,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     }
                 ]
             },
@@ -4619,7 +4779,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
                             ]
@@ -4658,7 +4818,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                0,
                                 1,
                                 1
                             ]
@@ -4715,6 +4875,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -4778,9 +4946,9 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                9,
                                 1,
-                                1
+                                0
                             ]
                         ]
                     },
@@ -4876,9 +5044,9 @@
                         "asym_patches": [
                             [
                                 1,
+                                9,
                                 1,
-                                1,
-                                1
+                                0
                             ]
                         ]
                     },
@@ -4924,7 +5092,15 @@
                         "bottom_band": true,
                         "bottom_r": 24,
                         "bottom_g": 88,
-                        "bottom_b": 208
+                        "bottom_b": 208,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     }
                 ]
             },
@@ -4957,7 +5133,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
                             ]
@@ -4996,7 +5172,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                0,
                                 1,
                                 1
                             ]
@@ -5045,6 +5221,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -5079,7 +5263,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 5,
@@ -5169,6 +5361,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -5210,15 +5410,9 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
-                            ],
-                            [
-                                1,
-                                8,
-                                1,
-                                0
                             ]
                         ]
                     },
@@ -5242,7 +5436,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 10,
@@ -5273,7 +5475,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 11,
@@ -5359,7 +5569,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                0,
                                 1,
                                 1
                             ]
@@ -5484,7 +5694,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                0,
                                 1,
                                 1
                             ]
@@ -5510,7 +5720,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 7,
@@ -5533,6 +5751,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -5574,15 +5800,9 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
-                            ],
-                            [
-                                1,
-                                8,
-                                1,
-                                0
                             ]
                         ]
                     },
@@ -5610,9 +5830,9 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                9,
                                 1,
-                                1
+                                0
                             ]
                         ]
                     },
@@ -5668,6 +5888,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -5696,7 +5924,15 @@
                         "bottom_band": true,
                         "bottom_r": 24,
                         "bottom_g": 88,
-                        "bottom_b": 208
+                        "bottom_b": 208,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     }
                 ]
             },
@@ -5729,7 +5965,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
                             ]
@@ -5865,7 +6101,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 5,
@@ -5992,7 +6236,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                0,
                                 1,
                                 1
                             ]
@@ -6041,6 +6285,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -6078,7 +6330,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 11,
@@ -6173,7 +6433,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 13,
@@ -6228,7 +6496,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
                             ]
@@ -6267,7 +6535,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                0,
                                 1,
                                 1
                             ]
@@ -6324,6 +6592,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -6479,9 +6755,9 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                9,
                                 1,
-                                1
+                                0
                             ]
                         ]
                     },
@@ -6551,6 +6827,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -6588,7 +6872,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 11,
@@ -6672,7 +6964,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 14,
@@ -6694,7 +6994,15 @@
                         "bottom_band": true,
                         "bottom_r": 24,
                         "bottom_g": 88,
-                        "bottom_b": 208
+                        "bottom_b": 208,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     }
                 ]
             },
@@ -6727,7 +7035,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
                             ]
@@ -6766,7 +7074,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                0,
                                 1,
                                 1
                             ]
@@ -6802,15 +7110,9 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
-                            ],
-                            [
-                                1,
-                                8,
-                                1,
-                                0
                             ]
                         ]
                     },
@@ -6999,9 +7301,9 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                9,
                                 1,
-                                1
+                                0
                             ]
                         ]
                     },
@@ -7071,6 +7373,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -7108,7 +7418,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 11,
@@ -7203,7 +7521,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 13,
@@ -7225,7 +7551,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 14,
@@ -7260,13 +7594,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
-                                1,
-                                1
-                            ],
-                            [
-                                1,
-                                8,
+                                9,
                                 1,
                                 0
                             ]
@@ -7292,7 +7620,15 @@
                         "bottom_band": true,
                         "bottom_r": 24,
                         "bottom_g": 88,
-                        "bottom_b": 208
+                        "bottom_b": 208,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     }
                 ]
             },
@@ -7325,7 +7661,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
                             ]
@@ -7364,7 +7700,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                0,
                                 1,
                                 1
                             ]
@@ -7480,6 +7816,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -7594,7 +7938,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                0,
                                 1,
                                 1
                             ]
@@ -7705,7 +8049,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 11,
@@ -7718,6 +8070,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -7800,7 +8160,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 13,
@@ -7826,9 +8194,9 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                9,
                                 1,
-                                1
+                                0
                             ]
                         ]
                     },
@@ -7865,13 +8233,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
-                                1,
-                                1
-                            ],
-                            [
-                                1,
-                                8,
+                                9,
                                 1,
                                 0
                             ]
@@ -7898,6 +8260,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -7990,7 +8360,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                0,
                                 1,
                                 1
                             ]
@@ -8053,6 +8423,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -8175,9 +8553,9 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                9,
                                 1,
-                                1
+                                0
                             ]
                         ]
                     },
@@ -8284,7 +8662,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 11,
@@ -8297,6 +8683,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -8401,7 +8795,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 14,
@@ -8469,6 +8871,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -8506,7 +8916,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 17,
@@ -8561,7 +8979,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
                             ]
@@ -8600,7 +9018,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                0,
                                 1,
                                 1
                             ]
@@ -8663,6 +9081,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -8691,7 +9117,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 5,
@@ -8704,6 +9138,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -9022,7 +9464,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 13,
@@ -9048,9 +9498,9 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                9,
                                 1,
-                                1
+                                0
                             ]
                         ]
                     },
@@ -9106,6 +9556,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -9156,6 +9614,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -9229,7 +9695,15 @@
                         "bottom_band": true,
                         "bottom_r": 24,
                         "bottom_g": 88,
-                        "bottom_b": 208
+                        "bottom_b": 208,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     }
                 ]
             },
@@ -9262,7 +9736,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
                             ]
@@ -9301,7 +9775,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                5,
+                                0,
                                 1,
                                 1
                             ]
@@ -9318,6 +9792,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -9661,6 +10143,14 @@
                         "bottom_r": 0,
                         "bottom_g": 0,
                         "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ],
                         "feature_cells": [
                             [
                                 1,
@@ -9733,13 +10223,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
-                                1,
-                                1
-                            ],
-                            [
-                                1,
-                                8,
+                                9,
                                 1,
                                 0
                             ]
@@ -9774,7 +10258,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 13,
@@ -9796,7 +10288,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                0,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 14,
@@ -9831,13 +10331,7 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
-                                1,
-                                1
-                            ],
-                            [
-                                1,
-                                8,
+                                9,
                                 1,
                                 0
                             ]
@@ -9903,7 +10397,15 @@
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                9,
+                                1,
+                                0
+                            ]
+                        ]
                     },
                     {
                         "room_id": 17,
@@ -9938,15 +10440,9 @@
                         "asym_patches": [
                             [
                                 1,
-                                1,
+                                0,
                                 1,
                                 1
-                            ],
-                            [
-                                1,
-                                8,
-                                1,
-                                0
                             ]
                         ]
                     },
