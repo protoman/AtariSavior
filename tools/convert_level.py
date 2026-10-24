@@ -609,7 +609,8 @@ _BAND_WARNED: set[str] = set()   # one line per room (the pass runs twice)
 def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                                who_prefix: str,
                                miner_room: int = -1,
-                               miner_y: float | None = None) -> None:
+                               miner_y: float | None = None,
+                               room_miner_x: float | None = None) -> None:
     """Per-room object rules against the room's model special (2026-10-14).
 
     hcrunch rooms: no objects at all. Door rooms: at most one
@@ -645,6 +646,35 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                 raise ValueError(
                     f"{who}: door room has a lamp/miner — door rooms allow "
                     "a single enemy only")
+        # --- MINER SEAT (user rule 2026-10-24, level 5 room 5) ---------------
+        # The playfield has PRIORITY over sprites (CTRLPF D2), so the miner is
+        # invisible wherever the PF cell he occupies is SOLID. His y (96 px on a
+        # 4-band room) is the FLOOR BAND's top edge minus 12, i.e. the LAST 12
+        # lines of the band ABOVE the floor — so the cell under him must be
+        # solid (he stands) and the cell he OCCUPIES must be air (he shows).
+        # 2026-10-24: the generator put him inside band 2's slab; every check
+        # only compared miner_y to a CONSTANT, never to the PF it lands on.
+        if miner and miner_y is not None:
+            rows = rows_from_json(room, models_by_id)
+            unit = units_per_band(model)
+            band = int(float(miner_y)) // unit
+            cell = int(float(room_miner_x if room_miner_x is not None else 0))
+            for c in (cell, cell + 1):
+                if not (0 <= band < len(rows) and 0 <= c < len(rows[band])):
+                    continue
+                if rows[band][c] in "#H":
+                    raise ValueError(
+                        f"{who}: the miner is drawn inside a WALL (band {band}, "
+                        f"cell {c} is '{rows[band][c]}') — the playfield has "
+                        "priority over sprites, so he is invisible. Carve a "
+                        "niche in that cell above his rock")
+            below = band + 1
+            if (below < len(rows) and 0 <= cell < len(rows[below])
+                    and rows[below][cell] not in "#H"):
+                raise ValueError(
+                    f"{who}: the miner has no floor under him (band {below}, "
+                    f"cell {cell} is '{rows[below][cell]}') — he must stand on "
+                    "a solid cell, not swim/fly")
         # --- one object per 48-line BAND, the miner included -----------------
         # The kernel has ONE GRP1: StageSlot1 pairs two objects only when they
         # are in different bands (tools/test_slot1_pair.py). Two objects on the
@@ -914,7 +944,8 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
     check_rooms_against_models(rooms, models_by_id,
                                f"level {level_n}",
                                int(level.get("miner_room", 0)) & 0x7F,
-                               level.get("miner_y", 0))
+                               level.get("miner_y", 0),
+                               level.get("miner_x", 0))
     lines = [
         f"; Generated from {level.get('name', 'level')} (level {level_n}). "
         "Do not edit by hand."
@@ -1523,7 +1554,8 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
         check_rooms_against_models(level.get("rooms") or [], models_by_id,
                                    f"level {level_n}",
                                    int(level.get("miner_room", 0)) & 0x7F,
-                                   level.get("miner_y", 0))
+                                   level.get("miner_y", 0),
+                                   level.get("miner_x", 0))
         rel = generated.name
         data_lines.append(f'    include "{rel}/level_{level_n:03d}_rooms_data.asm"')
         table_lines.append(f'    include "{rel}/level_{level_n:03d}_rooms.asm"')
