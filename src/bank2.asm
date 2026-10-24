@@ -967,10 +967,13 @@ LoadLevelB2:
     lda (FetchPtr),Y
     sta LevelMinerRoom
     iny
-    ; +1: miner x (miner y is the constant 84 px = 7 rows)
+    ; +1: miner x (miner y is the constant 96 px)
+    ;     N=4: the floor lives in the BOTTOM band (top = line 108) and the
+    ;     16 px art draws at MinerY+3, so 96 keeps the same 6 px overlap
+    ;     the 12-row-era 84 had against the old floor at 96.
     lda (FetchPtr),Y
     sta MinerX
-    lda #84
+    lda #96
     sta MinerY
     iny
     ; +2..+3: wall colors

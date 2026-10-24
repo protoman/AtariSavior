@@ -1936,11 +1936,11 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
                 got = [pools[reg][i] if i < len(pools[reg]) else None
                        for i in idx]
                 # C13 (N=4): the block carries 4 band indices; a 3-row
-                # authored model pads band 3 with a copy of band 2, so the
-                # expected column is the model's rows plus that repeat.
+                # authored model is migrated as [row0, row1, AIR, row2] so
+                # the authored floor stays in the bottom band.
                 want = [pf_values(r)[reg] for r in left]
-                while len(want) < 4:
-                    want.append(want[-1])
+                if len(want) < 4:
+                    want = (want[:-1] + [0] * (4 - len(want)) + [want[-1]])
                 if got != want:
                     err(f"models.json model {mid}: {tag}Rows -> {name} = "
                         f"{got}, want {want} (the row pool must hold the "
