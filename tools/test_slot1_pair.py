@@ -128,7 +128,9 @@ assert got["flicker"] == 1, (
     "- 1: SelectActiveObject's `inc` must land on 0 next frame")
 
 # --- case 2: same band -> no pair, rotation untouched ----------------------
-got = call_stage_slot1(ys=[60, 84], xs=[71, 100], types=[MOTH, MOTH],
+# N=4: a band is 36 lines, so the pair must sit inside 36..71 (60/84 used
+# to share the 48-line band 1; 84 is now band 2 and correctly pairs).
+got = call_stage_slot1(ys=[44, 64], xs=[71, 100], types=[MOTH, MOTH],
                        flicker=7)
 assert got["base1"] == 0xFF, (
     f"same-band candidates must NOT pair (base1=${got['base1']:02X}): one GRP1 "

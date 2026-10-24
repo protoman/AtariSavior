@@ -181,9 +181,9 @@ def cell_solid(tip_px, band_row):
     if src < 4:
         addr, mask = 0xC3 + band_row, 0x10 << src
     elif src < 12:
-        addr, mask = 0xC6 + band_row, 0x80 >> (src - 4)
+        addr, mask = 0xC7 + band_row, 0x80 >> (src - 4)
     else:
-        addr, mask = 0xC9 + band_row, 0x01 << (src - 12)
+        addr, mask = 0xCB + band_row, 0x01 << (src - 12)
     return bool(mem.ram[addr & 0x7F] & mask)
 
 
@@ -203,9 +203,12 @@ def load_room(room):
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
     # ROM: C3 row-pool expansion of the shape's 3 indices
-    for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
-        for row in range(3):
-            mem.ram[(dst + row) & 0x7F] = pf9[i * 3 + row]
+    # N=4 stride 4; the authored 3-row fixture pads band 3 with band 2.
+    # N=4 stride 4: 4 rows per register; the fixture carries 3 authored
+    # rows, so band 3 repeats band 2 (the converter's padding default).
+    for i, dst in enumerate((0xC3, 0xC7, 0xCB)):
+        for row in range(4):
+            mem.ram[(dst + row) & 0x7F] = pf9[i * 3 + min(row, 2)]
 
 
 def meta_a(room):
