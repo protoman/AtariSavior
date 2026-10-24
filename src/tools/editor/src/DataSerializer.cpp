@@ -1610,8 +1610,11 @@ std::vector<std::string> DataSerializer::StageConnectionProblems(
                         if (sd.has) continue;
                         std::vector<int> plugged;
                         for (const auto& pt : room.asym_patches) {
-                            if ((int)pt.size() > 3 && pt[3] == sd.sid
-                                    && pt[1] == sd.col) {
+                            // [row, col, tile] defaults to side 0
+                            // (right/ball), the 4-element form is explicit.
+                            if ((int)pt.size() >= 3 && pt[1] == sd.col
+                                    && (pt.size() > 3 ? pt[3] : 0)
+                                           == sd.sid) {
                                 plugged.push_back(pt[0]);
                             }
                         }
