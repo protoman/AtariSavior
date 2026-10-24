@@ -4,7 +4,7 @@ LEVEL4_WALL_COLOR = $16
 LEVEL4_WALL_COLOR2 = $18
 LEVEL4_MINER_ROOM = 131
 LEVEL4_MINER_X = 39
-LEVEL4_MINER_Y = 84
+LEVEL4_MINER_Y = 96
 
 ; Room shape index (C2 2026-10-20): ONE byte per room =
 ;   b5-0 SHAPE INDEX into LEVEL_ShapeTable (levels_index.asm)
@@ -44,6 +44,6 @@ LEVEL4_RoomCounts:
 
 ; Enemy data: 3 enemy records across 4 rooms, 3 bytes each (type|dir, x, y).
 LEVEL4_EnemyDataTable:
-  .byte $01, 71, 36
+  .byte $01, 71, 12
   .byte $05, 55, 48
-  .byte $07, 55, 96
+  .byte $07, 55, 120
