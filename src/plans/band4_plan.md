@@ -106,9 +106,32 @@ hot flag still rides band 1's index b7.
    overview text (`TILE_ROWS=3`, "one GRP1 object per 48-line band", the water
    split description, the frame total). Update in the docs pass (phase 4).
 
+## Editor (the ATARI stage editor is NOT in this repo)
+
+Path: **`/home/iuri/Desenvolvimento/atari_2600/batari_savior/editor/`**
+(Qt + cereal: `src/LevelData.hpp`, `MapCanvas.*`, `MainWindow.*`,
+`DataSerializer.*`, ~2600 lines; `cmake-build-debug/` exists). The
+`savior_sdl` editor is the SDL remake's, unrelated.
+
+What the 4-band migration needs there:
+
+1. `LevelData.hpp`: the model grid is **10 × 3**; it becomes **10 × 4** (a
+   `ROWS` constant, plus the serializer must accept the old 3-row JSON and
+   migrate it as `[row0, row1, AIR, row2]` — the same rule the converter uses).
+2. `MapCanvas.*`: the grid draw/click math (band height, row Y) must use 4
+   bands; the occupancy warning ("2 objects in band N") is per 36-line band.
+3. `DataSerializer.*`: emit 4-row models; keep `stage.json` readable for both
+   (migration on load, write the new shape back).
+4. `MainWindow.*`: the band selector / row labels and any 3-row assumption.
+
+Verify: build the editor (cmake) and round-trip the user's `stage.json`
+(`tools/test_stage_json.py` already gates the JSON side here).
+
 ## Phases
 
 1. **Kernel engine + data format** — DONE (commit `69723c5` + follow-ups).
 2. **MetaB band-3 bit** (open item 2) — small, converter + `B3StageBand` + pack.
 3. **Editor 10x4 + stage migration** — largest chunk; the user authors stages.
-4. **Docs/AGENTS pass** + delete the phase-1 bridge notes.
+4. **Editor 10x4** (see the section above) + the phase-1 bridge notes.
+5. **Docs/AGENTS pass**: 3x48 wording, the water split, the frame total
+   (cave 270), "one GRP1 object per 36-line band".
