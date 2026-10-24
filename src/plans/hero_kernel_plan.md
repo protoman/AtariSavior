@@ -798,7 +798,7 @@ general law. `$9D`/`$9E` are now `ObjHeight`/`ObjHeight1`.
 
 ## Phase 5b — mid-band slot swap: ATTEMPTED AND WITHDRAWN (2026-10-22)
 
-**Goal:** let the miner share a 48-line band with an enemy (it sits, the enemy
+**Goal:** let the miner share a band (36 lines since N=4) with an enemy (it sits, the enemy
 walks past, their windows never overlap) without the 30 Hz rotation.
 
 **Mechanism that was built:** `StageSlot1` paired same-band candidates whose
@@ -827,7 +827,8 @@ player as a few rows in the wrong place ("the miner vanishes" was the same
 bug). The guard `tools/test_slot1_midband.py` now asserts that a same-band pair
 changes neither the frame length nor the player's art row count.
 
-**Rule that stands: one GRP1 object per 48-line band, the miner included.**
+**Rule that stands: one GRP1 object per band (36 lines since N=4), the
+miner included.**
 `tools/convert_level.py` warns per offending room (level 2 room 2 and level 3
 room 3 on the current stage) — it is a WARNING because the live stage still has
 them. Moving an object into another band, or Phase 7 (the ball/M1 as a real

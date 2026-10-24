@@ -594,7 +594,7 @@ $FFFA/$FFFB carry the NMI vector and are never read (no interrupts).
 |------------|-----------|-------|
 | VSYNC      | 3         | Sync pulse |
 | VBLANK     | 37        | Game logic + sprite positioning |
-| Kernel     | 192       | 144 cave + 48 HUD band |
+| Kernel     | 192       | 144 cave (4 bands × 36) + 48 HUD band |
 | Overscan   | 30        | Input + movement |
 | **Total**  | **262**   | NTSC standard |
 
@@ -673,16 +673,19 @@ scanline, WSYNC stalls until the NEXT scanline, making the frame longer.
 ### Structure (HERO pattern)
 
 ```
-.Row (×TILE_ROWS=3): PF setup — write PF0/PF1/PF2 ONCE per 48-line band
+.Row (×TILE_ROWS=4): PF setup — write PF0/PF1/PF2 ONCE per 36-line band
                    (TIA registers persist — no need to rewrite per scanline)
-.Line (×48):      Sprite rendering — the tight inner loop (band 2 runs
-                   36 bodies + the 12-line .WaterRow strip)
+.Line (×36):      Sprite rendering — the tight inner loop (the bottom band
+                   runs 24 bodies + the 12-line .WaterRow strip)
                    Unconditional: same instruction stream every scanline
 ```
 
-*(Era note: this was "12 tile rows × 12 scanlines" until the 2026-09-28
-band cut — PF buffers shrink to rows 0-2, `LINES_PER_TILE=48`,
-`YToRowTable = line/48`. The 3-band structure is current.)*
+*(Era note: "12 tile rows × 12 scanlines" became 3 bands × 48 lines on
+2026-09-28 (`LINES_PER_TILE=48`, `YToRowTable = line/48`) and 4 bands × 36
+lines on 2026-10-23 (`CAVE_LINES = 144`, `YToRowTable = line/36`). Band
+geometry, the 4-band PF stride (`$CC-$DF`), `BandTab` and the extra TIA x
+values live in `plans/band4_plan.md`; the data format is `LEVEL_FORMAT = 7`
+with one shape row per drawn band.)*
 
 ### Per-scanline cycle budget (76 max)
 
@@ -778,8 +781,9 @@ stella -debug savior.bin # debugger
 
 ### Phase 1: Basic Rendering ✅
 - [x] VSYNC/VBLANK/Overscan frame timing
-- [x] Kernel: 3 bands × 48 scanlines + 48 HUD band (originally 12×12; band
-      cut 2026-09-28 — `TILE_ROWS=3`, `LINES_PER_TILE=48`)
+- [x] Kernel: 4 bands × 36 scanlines + 48 HUD band (originally 12×12; cut
+      to 3×48 on 2026-09-28, then to 4×36 on 2026-10-23 — `TILE_ROWS=4`,
+      `LINES_PER_TILE=36`, `CAVE_LINES=144`)
 - [x] Cave playfield with reflected mode (CTRLPF D0=1)
 - [x] Player sprite (GRP0) — 8×12, per-row colors, 2-frame jet animation, REFP0 mirror
 - [x] Joystick movement (up/down/left/right)
@@ -996,7 +1000,7 @@ PF0/PF1/PF2 define the left half; TIA mirrors the right.
 | Feature | HERO | This kernel |
 |---------|------|-------------|
 | ROM size | 8K (F8 bankswitch) | 16K (F6 bankswitch) |
-| PF writes | Per-scanline (ROM tables) | Per-band (3 × 48 lines, written once in `.Row`) |
+| PF writes | Per-scanline (ROM tables) | Per-band (4 × 36 lines, written once in `.Row`) |
 | Sprite data | `(zp),Y` from ROM | `(zp),Y` from ROM (`(Grp0Ptr),Y`, frame picked in VBLANK) |
 | VDEL | Used for sprite pipeline | Used by bank1 score (48px technique); cave kernel no |
 | Enemies | Yes (miner + enemies) | Yes — moth/spider/tentacle/bat/snake/lamp + miner |
