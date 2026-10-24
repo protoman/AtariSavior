@@ -2,4 +2,4 @@
 ; One bottom-band color for the whole game: the room record keeps only
 ; the per-room FLAG (convert_level rejects a second
 ; color — extend the format first if that is ever needed).
-BAND_COLOR = $01
+BAND_COLOR = $84
