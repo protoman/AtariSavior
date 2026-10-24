@@ -260,9 +260,9 @@ ScoreTe         = $F5           ; score tens digit (0-9)
 ; These share ZP space with bank1's HUD variables — safe because bank1
 ; runs AFTER the cave kernel. Bank1 overwrites them during HUD band;
 ; VBLANK re-populates them before the next kernel frame.
-PF0Buf          = $C3           ; 3 bytes: TilePF0 rows 0-2 (stride-3 data S4.2)
-                                ; (rows 0-2 pure since S3.4 — Y moved to $E2)
-PF1Buf          = $C6           ; rows 0-2 only (S3.1 packed; was $CF)
+PF0Buf          = $C3           ; 4 bytes: TilePF0 rows 0-3 (N=4 bands, stride 4)
+                                ; (rows pure since S3.4 — Y moved to $E2)
+PF1Buf          = $C7           ; rows 0-3 (stride 4 — label-based readers only)
 RoomBandColor   = $BC           ; band-color cache (level_bank_plan P2.5) —
                                 ; own byte since S3.1 (was $D2 = PF1Buf[3];
                                 ; history: FIX 2026-09-28 was $D1 = PF1Buf[2]
@@ -275,8 +275,13 @@ RoomBandColor   = $BC           ; band-color cache (level_bank_plan P2.5) —
                                 ; VBL write → kernel + overscan read same
                                 ; frame ($BC is nobody else's byte) → next
                                 ; VBL restages.
-PF2Buf          = $C9           ; rows 0-2 only (S3.1 packed; was $DB-$E6)
-ColupfBuf       = $E7           ; 12 bytes: final COLUPF per tile row (stripe+hot)
+PF2Buf          = $CB           ; rows 0-3 (stride 4)
+ColupfBuf       = $D3           ; 4 bytes: final COLUPF per band (stripe+hot).
+                                ; Moved out of the $E7 window with the N=4
+                                ; migration (was $E7; $ED-$EF BandTab now $CF
+                                ; and BombX $F0 blocked the grow) — inside the
+                                ; free retired-rect-cache window, so it is no
+                                ; longer a bank1-stomp-zone exception.
 FetchPtr        = $E5           ; fold-indirect pointer ($E5 lo, $E6 hi) —
                                 ; MOVED S3.2 to free $E0 for rect4.h (cache
                                 ; $CD-$E0 now uniform). Sits in bank1's
@@ -286,14 +291,12 @@ FetchPtr        = $E5           ; fold-indirect pointer ($E5 lo, $E6 hi) —
                                 ; HUD after both windows. Contract (fold
                                 ; wins): stage addr immediately before a
                                 ; FoldIndirect batch.
-BandTab         = $ED           ; Phase 3 asym ball: staged Band0/1/2
+BandTab         = $CF           ; N=4: per-band ENABL gate (4 bytes $CF-$D2)
                                 ; ($ff = ball band, $00 = mirror). Written
-                                ; by bank2 StageBandTab (BuildColupF tail,
+                                ; by bank3 StageBandTab (BuildColupF tail,
                                 ; every VBL) BEFORE this frame's cave; read
-                                ; by .Row's ENABL gate; bank1 HUD stomps
-                                ; $ED-$EF (scbrdTmp etc.) only AFTER the
-                                ; cave read — staged-only window, like
-                                ; FetchPtr. Next VBL restages.
+                                ; by .Row's ENABL gate. Moved off $ED (BombX
+                                ; is $F0) into the retired-rect-cache window.
 ; Enemy RAM shadow — live X/Y + packed flags. ROM records are read-only.
 ; Sequential vars end at $BB (ObjBot removed S3.0b); $BC = RoomBandColor,
 ; $BD-$BF EnemyRam, $C0 LaserState, $C1-$C2 EnemyRamD/P.
@@ -360,11 +363,18 @@ SNAKE_PATROL    = 4             ; ONE TILE each side of the spawn (user
                                 ; tiles of travel total. The editor cannot ask
                                 ; the user to place it 2 tiles from the border.
 TILE_COLUMNS    = 20            ; columns per half (reflected playfield)
-TILE_ROWS       = 3             ; number of playable color bands
-LINES_PER_TILE  = 48            ; scanlines per tile row
+TILE_ROWS       = 4             ; number of playable color bands (N=4, 2026-10-23)
+LINES_PER_TILE  = 36            ; scanlines per band. MUST stay a multiple of
+                                ;   4: YToRowTable is indexed by line>>2, so a
+                                ;   band boundary off the 4-line grid would map
+                                ;   up to 3 lines to the wrong band.
 HUD_ROWS        = 1             ; HUD band (48 scanlines)
-CAVE_LINES      = 144           ; TILE_ROWS × LINES_PER_TILE
-VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × LINES_PER_TILE)
+CAVE_LINES      = 144           ; TILE_ROWS × LINES_PER_TILE (unchanged from
+                                ;   the 3×48 era: the cave is the same height,
+                                ;   divided into one more band. PLAYER_MAX_Y,
+                                ;   the water surface and the raft tide all
+                                ;   keep their absolute line numbers.)
+VISIBLE_LINES   = 192           ; CAVE_LINES + (HUD_ROWS × 48)
 
 ; GRP1 sprite design offsets into ObjSprites (12 bytes each; 0 = blank/off)
 OBJ_NONE        = 0
@@ -693,7 +703,10 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     adc #7                   ; ~p + 7 + 1 = 7-p (mod 256)
 .TideBase:
     clc
-    adc #36
+    adc #LINES_PER_TILE-12      ; N=4: 24 (band 3's normal bodies; 12 = the
+                                ; water strip). CollisionX = 24+off → the first
+                                ; water body stays at cave line 132+off, exactly
+                                ; where it was with 3x48 bands.
     sta CollisionX
 
     ; --- Single HMOVE: apply P0 (player) + P1 (enemy) fine motion once ---
@@ -873,15 +886,17 @@ Slot1Keep:
     ; = whole-screen shift). The blank only traded a stale-byte duplicate
     ; for a blank line at band boundaries — shipped pre-99b8e86 without
     ; either; case15 filters zero writes so the Y-align guard is unaffected.
-    ; --- Scanlines this pass: rows 0/1 = 48; row 2 = 36+off (tide, CollisionX).
-    ; The bottom water strip (last 12-off lines, bottom_band_plan rule 2)
-    ; renders in .WaterRow after this pass — its own setup line + (11-off)
-    ; bodies keeps the row-2 total at 49 lines (setup+48) exactly.
-    ; Split tail (2026-10-05, row1 setup gap 77->74): row1 gate used to pay
-    ; `bne` 3c to skip the tide load AND share the WSYNC — gap was 77 (stall,
-    ; +1 line/frame). Rows 0/1 now store+WSYNC before the tide block, then
-    ; jmp over it (+3c charged to the FIRST body line = 66max+3jmp+3WSYNC
-    ; = 72 <=76). Row2 path byte-identical in cost (cpx/beqT/lda/sta/WSYNC
+    ; --- Scanlines this pass (N=4): bands 0-2 = 36; band 3 = 24+off (tide,
+    ; CollisionX). The bottom water strip (last 12-off lines,
+    ; bottom_band_plan rule 2) renders in .WaterRow after this pass — its own
+    ; setup line + (12-off) bodies, so the bottom band spans 38 picture lines
+    ; and the cave body count is exactly CAVE_LINES (144).
+    ; Split tail (2026-10-05, row1 setup gap 77->74): the non-bottom gate used
+    ; to pay `bne` 3c to skip the tide load AND share the WSYNC — gap was 77
+    ; (stall, +1 line/frame). Non-bottom bands now store+WSYNC before the tide
+    ; block, then jmp over it (+3c charged to the FIRST body line =
+    ; 66max+3jmp+3WSYNC = 72 <=76). Bottom-band path byte-identical in cost
+    ; (cpx/beqT/lda/sta/WSYNC
     ; = 11+3 = 76, zero margin — the `beq` target is 9 bytes ahead, same
     ; page, T=3c; do not let this block grow toward a page edge).
     ; A1 gap fix (2026-10-05): `sta Temp` (+3c in .Row) pushed gaps to
@@ -891,15 +906,15 @@ Slot1Keep:
     ; LineCount is not read until the line's `dec` tail — the early store
     ; was never required; keep the store strictly between WSYNC and .Line.
     cpx #TILE_ROWS-1
-    beq .RowLinesTide        ; row 2: tide count (36+off) from CollisionX
-    ; rows 0/1: fixed 48 lines (the vcrunch shutter slice derive is gone).
-    lda #48
+    beq .RowLinesTide        ; bottom band: tide count (24+off) from CollisionX
+    ; other bands: fixed LINES_PER_TILE bodies (36 since N=4).
+    lda #LINES_PER_TILE
     ; --- Sync to next scanline (rows 0/1) ---
     sta WSYNC
     sta LineCount
     jmp CaveLine
 .RowLinesTide:
-    lda CollisionX           ; 36..39 — VBL tide calc (see VBL comment)
+    lda CollisionX           ; 24..27 — VBL tide calc (see VBL comment)
     ; --- Sync to next scanline (row 2; falls straight into .Line) ---
     sta WSYNC
     sta LineCount
@@ -1061,9 +1076,11 @@ CaveLine:
     sta COLUBK
 .WRRestore:
 .WRSkip:
-    lda #47                     ; strip bodies = 47 - CollisionX (36+off)
-    sec                         ;   = 11-off: total row2 setup+48 unchanged
-    sbc CollisionX
+    lda #LINES_PER_TILE         ; strip bodies = LINES_PER_TILE - CollisionX
+    sec                         ;   N=4: 36 - (24+off) = 12-off, so the band
+    sbc CollisionX              ;   is exactly LINES_PER_TILE bodies tall and the
+                                ;   cave body count is exactly CAVE_LINES (144,
+                                ;   first water body still at 132+off).
     sta LineCount
     sta WSYNC
     jmp CaveLine
@@ -2495,12 +2512,12 @@ Slot1Hook:
     sta HMOVE                   ; cycle 0 of the next line = HBLANK
     ; --- this hook spent TWO lines inside the band: take them out of the ---
     ; --- body count, or the band (and the frame) grows by 2             ---
-    ; Rows 0/1 = 48 bodies, row 2 = 36..39 (tide, CollisionX). X = RowIdx.
-    lda #48 - 2
+    ; Rows 0-2 = 36 bodies, bottom band = 24..27 (tide, CollisionX). X = RowIdx.
+    lda #LINES_PER_TILE - 2
     cpx #TILE_ROWS-1
     bne .SHcount
-    lda CollisionX              ; C is still 1 from `cpx` (X == 2)
-    sbc #2                      ; row 2: tide count - 2
+    lda CollisionX              ; C is still 1 from `cpx` (X == last band)
+    sbc #2                      ; bottom band: tide count - 2
 .SHcount:
     sta LineCount               ; .Row's own count store is skipped on this
                                 ;   path (we jump straight into the bodies)
@@ -2701,7 +2718,10 @@ LEVEL_DATA_ADDR = $F307        ; frozen address of bank2's LevelDataTable
                                 ;  shrank the tables; check_frozen_addrs
                                 ;  enforces)
                                 ; (test asserts bank2.lst label == this)
-LEVEL_FORMAT   = $06           ; C11 2026-10-21: room-record + shape format. 6 =
+LEVEL_FORMAT   = $07           ; C13 2026-10-23 (N=4): 7 = the C11 format with
+                                ; FOUR row-pool indices per shape block (a
+                                ; 3-row authored model pads the bottom band by
+                                ; repeating its last row). 6 =
                                 ; 4 (shape index b5-0 | band b6 | owns-extras
                                 ; b7, position byte, enemy count <<6 | extras
                                 ; ordinal, then the level's AsyncExtras stream)
@@ -2711,7 +2731,7 @@ LEVEL_FORMAT   = $06           ; C11 2026-10-21: room-record + shape format. 6 =
                                 ; the twin — check_equ_sync; verify_build
                                 ; compares both to generated/levels_index.asm)
 ; ==============================================================================
-; YToRowTable — convert scanline to 48-line band row (0-2), idx A>>2
+; YToRowTable — convert scanline to band row (0-3, N=4), idx A>>2
 ; ==============================================================================
 ; The jsr wrapper that used to live here was dead (PlayerHitsMap inlines the
 ; lsr/lsr/tay/lda lookup — saves 2 JSR stack push levels to keep SP >= $F8)
@@ -2722,21 +2742,21 @@ LEVEL_FORMAT   = $06           ; C11 2026-10-21: room-record + shape format. 6 =
 ; Indexed by A>>2: 37 entries (idx 0-35 = A 0-143 = the player envelope
 ; "Max A = PLAYER_MAX_Y+11 = 143", + idx36 = the tentacle-bob clamp, below).
 ; Costs +4c/call vs the 192-entry table, saves 144 ROM bytes.
-; Row = idx/12 = scanline/48 (3 cave bands of 48 lines = rows 0-2).
+; Row = idx/9 = scanline/36 (N=4 cave bands of 36 lines = rows 0-3).
 ;
-; 36 entries: 12 each of 0,1,2 (value = index/12 = scanline/48) +
-; idx36 = 2: tentacle RoomY 133/134 (bob on spawn y=132) → A=(Y+11)>>2 =
-; 36 — WITHOUT this byte the lookup reads the OOB opcode ($A5 = `lda
-; RoomY`) → CollisionEndY garbage → cell walk false-hits ~24/32 bob
-; frames → measured 0.125 px/f vs the &1 gate's 0.5 (bugs.md #13).
-; Clamped value 2 = last cave row: box bottom (line 144-145) past the
-; cave (0-143) walks row 2 = floor wall, never PF0Buf+3 (row 3 = $C6,
-; not a buffer byte). Player never reaches idx36 (PLAYER_MAX_Y=122).
+; 36 entries: 9 each of 0,1,2,3 + idx36 = 3: tentacle RoomY 133/134 (bob on
+; spawn y=132) → A=(Y+11)>>2 = 36 — WITHOUT this byte the lookup reads the
+; OOB opcode ($A5 = `lda RoomY`) → CollisionEndY garbage → cell walk
+; false-hits ~24/32 bob frames → measured 0.125 px/f vs the &1 gate's 0.5
+; (bugs.md #13). Clamped value 3 = last cave band (idx36 = lines 144-147,
+; past the cave) so the box bottom walks the bottom band, never PF0Buf+4
+; (out of the 4-byte buffer). Player never reaches idx36 (PLAYER_MAX_Y=122).
 YToRowTable:
-    .byte 0,0,0,0,0,0,0,0,0,0,0,0
-    .byte 1,1,1,1,1,1,1,1,1,1,1,1
-    .byte 2,2,2,2,2,2,2,2,2,2,2,2
-    .byte 2                         ; idx36 — tentacle bob clamp (see above)
+    .byte 0,0,0,0,0,0,0,0,0
+    .byte 1,1,1,1,1,1,1,1,1
+    .byte 2,2,2,2,2,2,2,2,2
+    .byte 3,3,3,3,3,3,3,3,3
+    .byte 3                         ; idx36 — tentacle bob clamp (see above)
 
 ; ==============================================================================
 ; PlayerHitsMap — check player bounding box against the room's PF map
@@ -3897,16 +3917,16 @@ RefreshEnemyY:
 ;   Indexed by LEFT-HALF source col 0-19 (PHM prologue mirrors right-half
 ;   ranges before the walk; bank2 display-space walkers mirror first too).
 ;   ColOff: byte offset from PF0Buf+row ($C3+row) to the register holding
-;   that col (0/3/6 = PF0/PF1/PF2 row byte). ColMask: the col's bit in that
-;   byte — PF0 bit4+col (cols 0-3), PF1 MSB-first (4-11), PF2 LSB-first
-;   (12-19); matches convert_room.pf_values (plan 0.2 spec, proven by
-;   tools/test_cell_map.py).
+;   that col (0/4/8 = PF0/PF1/PF2 row byte, N=4 stride 4). ColMask: the col's
+;   bit in that byte — PF0 bit4+col (cols 0-3), PF1 MSB-first (4-11), PF2
+;   LSB-first (12-19); matches convert_room.pf_values (plan 0.2 spec, proven
+;   by tools/test_cell_map.py).
 ;   (The standalone CellSolid leaf that lived here moved INTO
 ;   PlayerHitsMap's walk as inline code — a jsr in the walk cost 2B of
 ;   stack depth and would break sim_bomb_fuse's gameplay min-SP >= $F8
 ;   guard; the post-pad slot keeps these tables abs,X-reachable.)
 ; ------------------------------------------------------------------------------
-ColOff:     .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
+ColOff:     .byte 0,0,0,0, 4,4,4,4,4,4,4,4, 8,8,8,8,8,8,8,8
 ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
             .byte $01,$02,$04,$08,$10,$20,$40,$80
 

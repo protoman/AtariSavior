@@ -65,7 +65,8 @@ VDELP1  = $26
     ; power-up stub's $F008 landing zone.
     .ds $F010 - *, 0
 ColOff:
-    .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
+    .byte 0,0,0,0, 4,4,4,4,4,4,4,4, 8,8,8,8,8,8,8,8
+                                ; N=4: stride 4 → PF1/PF2 rows at +4/+8
 ColMask:
     .byte $10,$20,$40,$80, $80,$40,$20,$10,$08,$04,$02,$01
     .byte $01,$02,$04,$08, $10,$20,$40,$80
@@ -269,14 +270,15 @@ TitleBand:
     sta COLUP0
     sta COLUP1
     jsr FooterBand
-    ldx #19                      ; band-1 tail: logo 11 + footer 18 = 29
+    ldx #7                       ; band-1 tail (N=4): logo 11 + footer 18 = 29
+                                 ;   of the 36-line band → 7 left
 .TkB1Bl:
     sta WSYNC
     dex
     bne .TkB1Bl
 
     ; ==================================================================
-    ; Band 2 (48 lines): stage bottom row.
+    ; Band 2 (36 lines): stage row 2.
     ; ==================================================================
     lda PF0Buf+2
     sta PF0
@@ -288,11 +290,32 @@ TitleBand:
     sta ENABL
     lda PF2Buf+2
     sta PF2
-    ldx #48
+    ldx #36
 .TkB2Bl:
     sta WSYNC
     dex
     bne .TkB2Bl
+
+    ; ==================================================================
+    ; Band 3 (36 lines, N=4): stage the new bottom row. The title frame
+    ; must still fill 3 cave bands after the cave kernel draws band 0
+    ; (36 + 36 + 36 + 36 = 144 visible lines).
+    ; ==================================================================
+    lda PF0Buf+3
+    sta PF0
+    lda PF1Buf+3
+    sta PF1
+    lda ColupfBuf+3
+    sta COLUPF
+    lda BandTab+3
+    sta ENABL
+    lda PF2Buf+3
+    sta PF2
+    ldx #36
+.TkB3Bl:
+    sta WSYNC
+    dex
+    bne .TkB3Bl
 
     ; --- HUD band: score shows level+1 (DropArm .DATitle), lives/bombs/bar ---
     lda #0
@@ -746,7 +769,7 @@ RoomNo      = $98
 LevelPFDataLo = $9F              ; level block base = RoomShapes column (C2:
 LevelPFDataHi = $A0              ;   pos/count/records are +n/+2n/+3n)
 LevelRoomN  = $A1                ; rooms in the level (C4 2026-10-20)
-LEVEL_FORMAT = $06               ; C11 2026-10-21 room-record format (hand copy;
+LEVEL_FORMAT = $07               ; C13 2026-10-23 N=4 shape format: 4 row indices (hand copy;
                                  ;   kernel.asm twin — check_equ_sync)
 FetchPtr    = $E5                ; moved S3.2 (was $E0) — must match kernel
 EnemyRamD   = $C1
@@ -755,10 +778,10 @@ EnemyRamY   = $E2           ; 3 bytes live enemy Y (private since S3.4)
 vyLo        = $93           ; Y velocity lo (signed 16) — raft riding pins it
 vyHi        = $94           ; Y velocity hi
 PF0Buf      = $C3
-PF1Buf      = $C6                ; packed rows 0-2 (S3.1; was $CF)
-PF2Buf      = $C9                ; packed rows 0-2 (S3.1; was $DB)
-ColupfBuf   = $E7                ; BuildColupF image (VBL, 12 bytes)
-BandTab     = $ED                ; per-band ENABL gate (VBL StageBandTab)
+PF1Buf      = $C7                ; N=4 stride 4 (rows 0-3)
+PF2Buf      = $CB                ; N=4 stride 4 (rows 0-3)
+ColupfBuf   = $D3                ; BuildColupF image (N=4, 4 bytes)
+BandTab     = $CF                ; per-band ENABL gate (N=4, 4 bytes)
 EnemyRamP   = $C2                ; free-running frame clock (player walk)
 CollisionX  = $8B
 CollisionCellX = $8C

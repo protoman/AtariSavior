@@ -189,15 +189,16 @@ def main() -> None:
     assert 'include "generated/levels_equ.asm"' in BANK2, (
         "bank2.asm must include generated/levels_equ.asm (BAND_COLOR) BEFORE "
         "EnterRoomB2 uses it")
-    # LEVEL_FORMAT 5 must be declared by the generator and by the consumers
+    # LEVEL_FORMAT 7 must be declared by the generator and by the consumers
     m = re.search(r"^LEVEL_FORMAT = \$([0-9a-f]{2})", index, re.M)
-    assert m and int(m.group(1), 16) == 6, (
-        "generated level index must declare LEVEL_FORMAT = $06 (C11 "
+    assert m and int(m.group(1), 16) == 7, (
+        "generated level index must declare LEVEL_FORMAT = $07 (C13 "
+        "N=4: four row-pool indices per shape; C11 "
         "PF-derived hot on top of the C3 row-pool shape blocks)")
     for name, body in (("kernel.asm", KERNEL), ("bank1.asm", BANK1)):
         hm = re.search(r"^LEVEL_FORMAT\s*=\s*\$([0-9a-f]{2})", body, re.M)
-        assert hm and int(hm.group(1), 16) == 6, (
-            f"{name}: LEVEL_FORMAT hand copy must be $06 (C11)")
+        assert hm and int(hm.group(1), 16) == 7, (
+            f"{name}: LEVEL_FORMAT hand copy must be $07 (C13 N=4)")
     # --- shape registry: table <-> EQUs <-> 6-bit index --------------------
     shape_count = int(re.search(r"^LEVEL_SHAPE_COUNT = (\d+)$", index, re.M)
                       .group(1))

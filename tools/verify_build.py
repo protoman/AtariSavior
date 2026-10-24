@@ -1047,10 +1047,11 @@ def check_level_format(src: Path) -> None:
             "(format 3 = C2 shape-index room records)")
         return
     gen_fmt = int(m.group(1), 16)
-    if gen_fmt != 6:
-        err(f"generated LEVEL_FORMAT = {gen_fmt}, the bank2 reader implements "
-            "6 (shape-index records + async extras + row-pool shape blocks + "
-            "PF-derived hot) — stale generated tree or half-done migration")
+    if gen_fmt != 7:
+        err(f"generated LEVEL_FORMAT = {gen_fmt}, the bank2/bank3 readers "
+            "implement 7 (C11 shape-index records + async extras + row-pool "
+            "shape blocks + PF-derived hot, now with FOUR row indices per "
+            "shape: N=4 bands) — stale generated tree or half-done migration")
     for name in ("kernel.asm", "bank1.asm"):
         p = src / name
         if not p.exists():
@@ -1287,7 +1288,7 @@ def check_level_format(src: Path) -> None:
 
 
 def check_shape_blocks(src: Path) -> None:
-    """C11 (2026-10-21): a shape block is EXACTLY 3 row-pool indices.
+    """C11/C13: a shape block is EXACTLY 4 row-pool indices (N=4 bands).
 
     The 9 raw PF bytes are gone from every model block (C3 row dictionary:
     `RowPoolPF0/1/2`, 3 SoA columns of 1 B/row in models_data.asm, i.e. in
@@ -1296,8 +1297,9 @@ def check_shape_blocks(src: Path) -> None:
 
       1. `LEVEL_ROW_COUNT` == the emitted pool size and <= 128 (band 1's
          index byte carries b7 = `mid_band_type`);
-      2. every shape block is exactly `<tag>Shape:`/`<tag>Rows:` + 3 index
-         bytes, each index < LEVEL_ROW_COUNT (b7 masked on band 1);
+      2. every shape block is exactly `<tag>Shape:`/`<tag>Rows:` + 4 index
+         bytes (N=4 bands: a 3-row authored model pads band 3 with its own
+         band-2 row), each index < LEVEL_ROW_COUNT (b7 masked on band 1);
       3. no hot count / 5 B record / `RoomRects` label survives in a block;
       4. no pool entry is unused (pool and blocks would have drifted);
       5. no raw `TilePF*` label survives in a block, and the loader really
@@ -1344,10 +1346,10 @@ def check_shape_blocks(src: Path) -> None:
         seen_blocks += 1
         raw = [int(v.strip().lstrip("$"), 16)
                for v in rows_s.split(";")[0].split(",") if v.strip()]
-        if len(raw) != 3:
-            err(f"{tag}Rows: {len(raw)} indices, want 3 (band 0/1/2)")
+        if len(raw) != 4:
+            err(f"{tag}Rows: {len(raw)} indices, want 4 (band 0-3, N=4)")
             continue
-        if (raw[0] | raw[2]) & 0x80:
+        if (raw[0] | raw[2] | raw[3]) & 0x80:
             err(f"{tag}Rows: b7 set outside band 1 — only the middle band "
                 "carries the mid_band_type flag (C11)")
         indices = [idx & 0x7F for idx in raw]
@@ -1358,11 +1360,11 @@ def check_shape_blocks(src: Path) -> None:
                     "past the column")
             referenced.add(idx)
     if not seen_blocks:
-        err("models_data.asm has no shape block in the C11 form "
-            "(`<tag>Shape:` / `<tag>Rows:` + 3 row indices, no hot stream)")
+        err("models_data.asm has no shape block in the C11/C13 form "
+            "(`<tag>Shape:` / `<tag>Rows:` + 4 row indices, no hot stream)")
     if re.search(r"^(M\d+)RoomRects:", mda, re.M):
         err("models_data.asm still emits a `RoomRects` shape label — C11 "
-            "dropped the hot stream: a block is `<tag>Shape:` + 3 indices")
+            "dropped the hot stream: a block is `<tag>Shape:` + 4 indices")
     if re.search(r"number of hot rectangles|number of hot records", mda):
         err("models_data.asm still emits a hot count byte — C11 derives hot "
             "from the PF row 1 (shape block = 3 row-pool indices)")
@@ -1373,7 +1375,7 @@ def check_shape_blocks(src: Path) -> None:
                 "is dead ROM (stale models_data.asm)")
     if "TilePF" in text:
         err("models_data.asm still carries a raw PF label (TilePF*) — a shape "
-            "block must store 3 row-pool indices (C3)")
+            "block must store 4 row-pool indices (C3/C13)")
 
     # --- the loader must read the pool, and the pool must be included -----
     # C7 (2026-10-20): the loader and the pool live in BANK3 now — the shapes
@@ -1387,7 +1389,7 @@ def check_shape_blocks(src: Path) -> None:
                 "row-pool expansion is missing (C3)")
         if re.search(r"cpy\s+#9\b", loader):
             err("bank3.asm still assembles the retired 9-byte PF copy "
-                "(cpy #9) — C3 replaces it with 3 pool lookups")
+                "(cpy #9) — C3 replaces it with per-band pool lookups")
         if "LEVEL_ShapeTable" not in loader:
             err("bank3.asm B3RoomBlocks does not read LEVEL_ShapeTable — the "
                 "shape index must resolve in-bank (C7)")
@@ -1906,7 +1908,7 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
                 err(f"models.json model {mid}: shape block still carries a "
                     "retired meta/right/hot-stream section — C5 moved "
                     "MetaA/MetaB to the level extras, C11 dropped the hot "
-                    "stream (block = 3 row-pool indices)")
+                    "stream (block = 4 row-pool indices, C13)")
             try:
                 left = rows_from_json({"model_id": mid}, models)
             except (ValueError, KeyError, TypeError) as exc:
@@ -1914,15 +1916,15 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
                 continue
             idx = [int(b.strip().lstrip("$"), 16)
                    for b in hit.group(1).split(";")[0].split(",")]
-            if len(idx) != 3:
+            if len(idx) != 4:
                 err(f"models.json model {mid}: {tag}Rows has {len(idx)} "
-                    "indices, want 3 (band 0/1/2)")
+                    "indices, want 4 (band 0-3, N=4)")
                 continue
             hot = bool(model.get("mid_band_type"))
             want_hot = 0x80 if hot else 0
-            if (idx[1] & 0x80) != want_hot or (idx[0] | idx[2]) & 0x80:
+            if (idx[1] & 0x80) != want_hot or (idx[0] | idx[2] | idx[3]) & 0x80:
                 err(f"models.json model {mid}: {tag}Rows b7 flags "
-                    f"${idx[0]:02x}/${idx[1]:02x}/${idx[2]:02x} — band 1's "
+                    f"${idx[0]:02x}/${idx[1]:02x}/{idx[2]:02x}/{idx[3]:02x} — band 1's "
                     f"b7 must be {want_hot:#04x} (mid_band_type="
                     f"{int(hot)}) and no other band may set b7 (C11)")
             idx = [i & 0x7F for i in idx]
@@ -1933,7 +1935,12 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
                     continue
                 got = [pools[reg][i] if i < len(pools[reg]) else None
                        for i in idx]
+                # C13 (N=4): the block carries 4 band indices; a 3-row
+                # authored model pads band 3 with a copy of band 2, so the
+                # expected column is the model's rows plus that repeat.
                 want = [pf_values(r)[reg] for r in left]
+                while len(want) < 4:
+                    want.append(want[-1])
                 if got != want:
                     err(f"models.json model {mid}: {tag}Rows -> {name} = "
                         f"{got}, want {want} (the row pool must hold the "

@@ -33,9 +33,14 @@ from pathlib import Path
 import sys
 
 WIDTH = 10                  # D7: logical cells per half (was 20 pre-D7)
-HEIGHT = 3                  # playable color bands (HUD is drawn separately)
-TABLE_STRIDE = 3            # S4.2: per-row table size = the 3 playable bands
-                            # (was 12 — kernel EnterRoom now does +3/+3)
+HEIGHT = 3                  # AUTHORED rows (the editor's grid). N=4 (C13,
+                            # 2026-10-23) needs 4 drawn bands, so a shape block
+                            # carries SHAPE_ROWS indices and a 3-row model is
+                            # padded by repeating its bottom row until the
+                            # editor grows a 4th row.
+SHAPE_ROWS = 4              # bands the kernel draws (kernel TILE_ROWS)
+TABLE_STRIDE = 3            # S4.2: per-row table size (was 12 — kernel
+                            # EnterRoom now does +3/+3)
 WALL_PARENT_MASK = 0x08      # hot record mask: nonzero = PF-cell parent gate
 
 
@@ -442,6 +447,11 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
                 f"{source}: with_meta=False needs a RowPool — a shape block "
                 "stores row-pool indices (C3)")
         indices = [pool.index_of(triple, source) for triple in triples]
+        # C13 (2026-10-23): the cave draws SHAPE_ROWS bands. Until the editor
+        # authors a 4th row, the bottom band repeats the last authored row
+        # (the same default the loader used during the kernel phase).
+        while len(indices) < SHAPE_ROWS:
+            indices.append(indices[-1])
         # Equivalence gate: expanding the emitted indices must reproduce the
         # pre-C3 raw bytes, band for band. The loader does exactly this
         # expansion, so a drift here would show up as wrong playfield cells.
@@ -464,7 +474,7 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         out.append(f"{prefix}Rows:")
         out.append("  .byte " + ", ".join(
             f"${idx:02x}" for idx in indices)
-            + "  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)")
+            + "  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)")
         return out
 
     out.append("; LEGACY per-grid block (converter unit tests only): hot "

@@ -99,7 +99,7 @@ def main() -> None:
     m = re.search(r"EnemyRamY\s*=\s*\$E2\b", KERNEL)
     assert m, "EnemyRamY must be $E2 (private since S3.4, was $C3 alias)"
     assert re.search(r"PF0Buf\s*=\s*\$C3\b", KERNEL), \
-        "PF0Buf must stay $C3 (rows 0-2 pure since S3.4)"
+        "PF0Buf must stay $C3 (4 rows stride 4 since N=4, was rows 0-2)"
 
     # --- ordering (#22: EnterRoom body moved to bank2; PF + enemy loads
     # are inline in EnterRoomB2, no more LoadPFBuffer/LoadEnemyRam jsrs) ---
@@ -352,9 +352,10 @@ def main() -> None:
         "rows must convert via the /48 band helper (the old >>4 = /16 gave " \
         "rows 3-4 = below every rect -> probe never hit -> walked into wall)"
     br = b2.split("BandRowFromLine:")[1].split("org")[0]
-    assert br.count("cmp #12") == 1 and br.count("cmp #24") == 1 and \
-        br.count("cmp #36") == 1, \
-        "BandRowFromLine must be the /48 compare ladder (12/24/36 thresholds)"
+    assert br.count("cmp #9") == 1 and br.count("cmp #18") == 1 and \
+        br.count("cmp #27") == 1, \
+        ("BandRowFromLine must be the /36 compare ladder (9/18/27 on the "
+         "line>>2 index = N=4 bands of 36 lines)")
     assert "MothRowTable:" not in b2, \
         "the 48-byte MothRowTable copy is replaced by the helper"
     assert ".byte $01, $02, $04" in b2, \
@@ -375,9 +376,10 @@ def main() -> None:
     operands = []
     for byte_line in re.findall(r"\.byte ([\d,]+)", table):
         operands += [int(v) for v in byte_line.split(",") if v.strip()]
-    expect = [0] * 12 + [1] * 12 + [2] * 13
+    # N=4: 9 entries per 36-line band (idx = line>>2) + idx36 clamp = 3
+    expect = [0] * 9 + [1] * 9 + [2] * 9 + [3] * 10
     assert operands == expect, \
-        f"YToRowTable must be the 37-entry A>>2 form (tentacle clamp), got {operands}"
+        f"YToRowTable must be the 37-entry A>>2 form (N=4 bands of 36), got {operands}"
 
     # --- E3: tentacle Y derived (÷8 bob), X chases via swap+PlayerHitsMap --
     assert "cmp #ENEMY_TENTACLE" in dey, \
@@ -455,16 +457,18 @@ def main() -> None:
     # pushed gaps to 77/79 = +2 lines/frame), +3c to the first body line.
     # Moving either store back before its WSYNC re-opens the stall.
     assert gate.index(".RowLinesTide:") > gate.index("jmp CaveLine"), \
-        "split tail: tide block must come after rows 0/1's WSYNC jmp"
+        "split tail: tide block must come after the fixed-band WSYNC jmp"
     # strip comments first — the A1 explanation above quotes both mnemonics
     gcode = "\n".join(l.split(";")[0] for l in gate.splitlines())
     assert gcode.index("sta LineCount") > gcode.index("sta WSYNC"), \
         "LineCount store must follow WSYNC (setup-gap A1 fix)"
     assert "sta LineCount" in gcode, \
-        "row 2 must store LineCount between its WSYNC and the loop entry"
+        "the bottom band must store LineCount between its WSYNC and the loop"
     wr = KERNEL.split(".WaterRow:")[1].split(".GrpZero:")[0]
-    assert re.search(r"lda\s+#47\b", wr) and "sbc CollisionX" in wr, \
-        "strip pass: setup line + (47-(36+off)) bodies = 12-off strip"
+    assert re.search(r"lda\s+#LINES_PER_TILE\b", wr) and \
+        "sbc CollisionX" in wr, \
+        ("strip pass: setup line + (LINES_PER_TILE-(24+off)) bodies = "
+         "12-off strip (N=4)")
     assert "lda RoomBandColor" in wr and "sta COLUBK" in wr, \
         "strip must paint the band color (blink-off path, inlined read)"
     assert wr.rstrip().endswith("jmp CaveLine"), \

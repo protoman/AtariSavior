@@ -214,9 +214,11 @@ def main() -> int:
     i = shape.index("M90Rows:")
     idx = [int(v.strip().lstrip("$"), 16)
            for v in shape[i + 1].split(".byte", 1)[1].split(";")[0].split(",")]
-    assert len(idx) == 3, f"M90Rows: {len(idx)} indices"
+    assert len(idx) == 4, f"M90Rows: {len(idx)} indices, want 4 (N=4)"
+    # N=4: 4 band indices; band 3 repeats the last authored row.
+    want_rows = list(left) + [left[-1]]
     assert [pool.rows[k] for k in idx] == [
-        convert_room.pf_values(r) for r in left], (
+        convert_room.pf_values(r) for r in want_rows], (
         "expanded rows != pf_values(rows) — the row dictionary changed bytes")
     assert pool.uses == 3, f"pool uses {pool.uses} != 3 (one per band)"
     room = {"room_id": 0, "model_id": 90,

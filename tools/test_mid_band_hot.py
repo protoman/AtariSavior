@@ -100,9 +100,9 @@ def shape_idx(lines, prefix):
             for v in line.split(".byte", 1)[1].split(";")[0].split(",")]
 
 
-assert [i & 0x80 for i in shape_idx(cold, "T0")] == [0, 0, 0], (
+assert [i & 0x80 for i in shape_idx(cold, "T0")] == [0, 0, 0, 0], (
     f"cold shape indices must have b7 clear, got {shape_idx(cold, 'T0')}")
-assert [i & 0x80 for i in shape_idx(hot, "T1")] == [0, 0x80, 0], (
+assert [i & 0x80 for i in shape_idx(hot, "T1")] == [0, 0x80, 0, 0], (
     f"hot flag must ride band 1 only, got {shape_idx(hot, 'T1')}")
 # legacy per-grid form (converter unit tests only) still shows the stream
 legacy_hot = convert_room.lines(rows_of(make_model(hot=1)), prefix="T1",

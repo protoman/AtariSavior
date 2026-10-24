@@ -616,7 +616,13 @@ import collections as _c
 _lines_hist = _c.Counter(round(v) for _, v in frame_lines)
 print(f'wall-model frame lines: {dict(sorted(_lines_hist.items()))}')
 _lines_raw = [(f, round(v, 2)) for f, v in frame_lines]
-# wall-model: per-kernel targets. 267.0 for BOTH kinds since the merged
+# wall-model: per-kernel targets. N=4 (2026-10-23): the cave draws FOUR
+# 36-line bands => 148 picture lines (4 setup + 144 bodies) instead of 147,
+# so the cave frame measures 270.0 (was 267.0 with 3x48). The title frame is
+# unchanged at 267.0: the cave kernel now draws a 36-line band 0 and bank1's
+# TitleBand draws three 36-line bands (36 + 3*36 = 144 visible, exactly the
+# old 48 + 2*48). Measured, not arithmetic — the sim is the oracle.
+# 267.0 for BOTH kinds since the merged
 # title (2026-10-19) runs TitleKernel as a full 3-band stage + HUD frame.
 # (Historical: the old black title kernel skipped .Row and stayed 265.0.)
 # COLUP1 branch (+10c on the cave band-setup line crossed 76c on two
@@ -628,7 +634,7 @@ _lines_raw = [(f, round(v, 2)) for f, v in frame_lines]
 # stall lines, 2026-10-06) so frame phase stays continuous across the
 # title->game switch — at its OWN 265 total.
 def _tgt(f):
-    return 267.0
+    return 267.0 if frame_ker.get(f) == 'title' else 270.0
 def _wall_bad(f, v):
     if f < 2:
         return False
@@ -727,6 +733,12 @@ if _badf:
                 print(f'  bounds f{_f}: pre(row->first)={_k["first"] - _k["row"]} '
                       f'post(last->over)={_k["over"] - _k["last"]} '
                       f'ker={_k["over"] - _k["row"]}')
+if os.environ.get('SIM_SEQ'):
+    for _f in [4, 5, 6]:
+        _seq = wsync_seq[_f]
+        print('SEQ f' + str(_f) + ' n=' + str(len(_seq)))
+        for _i, (_d, _pc, _bk) in enumerate(_seq):
+            print('  %3d d=%3d pc=%04X/%d' % (_i, _d, _pc, _bk))
 print(f'kernel WSYNC counts seen: {sorted(wsync_counts)}')
 from collections import Counter as _C2
 print(f'stall_log total: {len(stall_log)}; by last-pc: '
@@ -820,7 +832,7 @@ checks = [
      f'({{k: sorted(v) for k, v in ...}} = '
      f'{ {k: sorted(v) for k, v in kwsync_by_kind.items()} })',
      all(len(v) == 1 for v in kwsync_by_kind.values())),
-    (f'wall-model lines per kernel target (cave 267.0 / title 265.0) '
+    (f'wall-model lines per kernel target (cave 270.0 / title 267.0) '
      f'+/-0.15 on all frames >=2 (bad: {_bad_lines[:6]})',
      not _bad_lines),
     ('bomb dropped (state1 seen)', 1 in bomb_states),

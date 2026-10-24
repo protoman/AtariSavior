@@ -82,8 +82,10 @@ LevelConnSpare = $A2            ; C1 2026-10-20: exit-scan target byte (the
                                 ;   C2 2026-10-20: also the first-record sum
                                 ;   in EnterRoomB2 (scan already returned).
 RoomBandColor = $BC             ; band-color cache (kernel EQU, S3.1)
-BandTab = $ED                   ; Phase 3 band gate bytes — staged here,
+BandTab = $CF                   ; N=4 band gate bytes ($CF-$D2) — staged here,
                                  ; read by kernel .Row in bank0
+PF1Buf = $C7                    ; N=4 stride-4 PF row buffers (kernel twins)
+PF2Buf = $CB
 CollisionX = $8B
 CollisionCellX = $8C             ; max text column
 CollisionCellY = $8D             ; top tile row
@@ -123,7 +125,7 @@ LAMP = 5                       ; enemy type: editor lamp — kernel LAMP must ma
 RAFT = 7                       ; enemy type: moving raft — kernel ENEMY_RAFT
 SNAKE = 2                      ; enemy type: kernel ENEMY_SNAKE (load-dir invert)
 ; --- BuildColupF (S5.1, moved from bank0) — addresses must match kernel.asm ---
-TILE_ROWS = 3                     ; playable color bands (rows 0-2 of ColupfBuf)
+TILE_ROWS = 4                     ; playable color bands (rows 0-3 of ColupfBuf)
 RoomRectsLo = $90                 ; FEATURE-record stream ptr (C11): the room's
                                   ;   extras record stream, or RoomNoStream
                                   ;   ($00 count) when it has none
@@ -135,7 +137,7 @@ RoomNo      = $98
 LevelWallColor = $AA              ; stripe rows 0+2
 LevelWallColor2 = $AB              ; stripe row 1
 TickCounter = $AD                 ; 60-frame game timer — hot-pulse phase bit 4
-ColupfBuf   = $E7                 ; 12-byte COLUPF image (rows 0-2 used)
+ColupfBuf   = $D3                 ; 4-byte COLUPF image (N=4, rows 0-3)
 COLOR_BOMBS = $46                ; kernel COLOR_BOMBS — fuse bomb color
 COLOR_CAVE_BG = $00
 COLOR_DARK_PF = $04             ; dark-room fuse walls
@@ -219,11 +221,11 @@ B3RoomBlocks:
     lda #>RoomNoStream
     sta RoomRectsHi
 
-    ; --- C3 PF rebuild: 3 row-pool indices -> PF0Buf ($C3-$CB) ---
-    ;     Y = band (2..0) for BOTH the index read and the three PF stores;
+    ; --- C3/C13 PF rebuild: 4 row-pool indices -> PF buffers (N=4, stride 4) ---
+    ;     Y = band (3..0) for BOTH the index read and the three PF stores;
     ;     X = pool row. SoA columns, so one index register serves all three.
     ;     C11: mask b7 (band 1's hot flag) before the pool lookup.
-    ldy #2
+    ldy #TILE_ROWS-1
 .EBpf:
     lda (FetchPtr),Y                ; row index for this band
     and #$7F
@@ -231,9 +233,9 @@ B3RoomBlocks:
     lda RowPoolPF0,X
     sta PF0Buf,Y
     lda RowPoolPF1,X
-    sta PF0Buf+3,Y
+    sta PF1Buf,Y
     lda RowPoolPF2,X
-    sta PF0Buf+6,Y
+    sta PF2Buf,Y
     dey
     bpl .EBpf
 
@@ -414,13 +416,13 @@ ExtrasLoad:
     lda #0
     cpx #2
     bcc .EXLfOff
-    lda #3
+    lda #4
     cpx #6
     bcc .EXLfOff
-    lda #6
+    lda #8
 .EXLfOff:
     clc
-    adc #1                          ; row 1 in the 3-row PF buffer
+    adc #1                          ; row 1 in the 4-row (stride-4) buffer
     tax
     lda PF0Buf,X
     ora RectCount
@@ -743,20 +745,21 @@ PhRec:
     sta CollisionCellX      ; mask (scratch — overscan restages $8C)
     eor #$FF
     sta CollisionEndY       ; ~mask (scratch — pack rebuild overwrites)
-    ; buffer offset: pair<2 → PF0 (0), <6 → PF1 (3), else PF2 (6)
+    ; buffer offset: pair<2 → PF0 (0), <6 → PF1 (4), else PF2 (8) — N=4
+    ; stride 4, so PF1Buf($C7)/PF2Buf($CB) rows sit at +4/+8 from PF0Buf.
     lda #0
     cpx #2
     bcc .PhOffA
-    lda #3
+    lda #4
     cpx #6
     bcc .PhOffA
-    lda #6
+    lda #8
 .PhOffA:
     sta LineCount           ; offset scratch
-    iny                     ; Y → row (band 0-2)
+    iny                     ; Y → row (band 0-3)
     lda (FetchPtr),Y
     clc
-    adc LineCount           ; A = buffer offset + row (0-8 → $C3+A)
+    adc LineCount           ; A = buffer offset + row (0-11 → $C3+A)
     tax
     lda EnemyDeadMask           ; b5 flag staged above this frame
     and #$40                    ; b6: walls removed by crush kill
@@ -792,12 +795,13 @@ PhNext:                     ; Y = row (base+2): skip w/h → next class.
 
 
 BuildColupF:
-    ; --- stripe colors (3 bands, written once) ---------------------------
+    ; --- stripe colors (N=4 bands, written once) — alternate c1,c2,c1,c2 --
     lda LevelWallColor
     sta ColupfBuf+0
     sta ColupfBuf+2
     lda LevelWallColor2
     sta ColupfBuf+1
+    sta ColupfBuf+3
     ; --- hot middle band: ONE row, ONE color ----------------------------
     ; C10 (2026-10-21): hot cells only ever exist on model row 1 (convert
     ; promotes EVERY row-1 wall to H when mid_band_type=1), so the old
@@ -885,9 +889,9 @@ PhHcrEntry:
     lda CrPfx0,Y
     sta PF0Buf+1
     lda CrPfx1,Y
-    sta PF0Buf+4            ; PF1Buf band1
+    sta PF1Buf+1            ; band 1 (hcrunch) — stride-4 label form
     lda CrPfx2,Y
-    sta PF0Buf+7            ; PF2Buf band1
+    sta PF2Buf+1
     pla
     clc
     adc #4
@@ -1124,6 +1128,12 @@ B3StageBand:
     sta BandTab+1
     sta BandTab+2
 .SBTballDone:
+    ; --- N=4 bridge (phase 1: 3-row data) ---------------------------------
+    ; The kernel draws 4 bands, B3RoomBlocks mirrors PF row 2 into row 3, so
+    ; the async gate must mirror too or a bottom-band strip vanishes. Phase 2
+    ; (LEVEL_FORMAT 7) gives band 3 its own MetaB bit and this goes away.
+    lda BandTab+2
+    sta BandTab+3
     ; --- NUSIZ1 owned here since P2b (kernel's VBL $30 restore deleted) ---
     ; Constant $30 (P1 single, M1 8 clk): the door distinction is COLOR
     ; (yellow $1C staged below), not width — the 4clk block read as "half

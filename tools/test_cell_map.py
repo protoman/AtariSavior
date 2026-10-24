@@ -104,7 +104,9 @@ if not blk <= L3.keys():
     sys.exit(f"bank3 labels missing: {sorted(blk - L3.keys())}")
 
 PF0_BUF = 0xC3
-YTOROW = [min(i // 12, 2) for i in range(48)]  # kernel YToRowTable: 36
+# kernel YToRowTable (N=4): 36 entries of 9 (idx = line>>2, band =
+# line/36) + idx36 clamp = 3.
+YTOROW = [min(i // 9, 3) for i in range(37)]
                               # entries + idx36 tentacle-bob clamp = 2
                               # (bugs.md #13; box past cave bottom → row 2)
 Z_FLAG = 0x02
@@ -222,7 +224,8 @@ def box_hit(rows: list[str], lo: int, hi: int, top: int, bot: int) -> bool:
     """lo/hi are 4px display cols (0..19, walker space); D7 logical cell =
     col pair, so cell = col >> 1 (bit-pairing in pf_values)."""
     assert 0 <= lo <= hi <= 19, f"col range {lo}..{hi} out of spec"
-    assert 0 <= top <= bot <= 2, f"row range {top}..{bot} out of spec"
+    assert 0 <= top <= bot <= 3, (
+        f"row range {top}..{bot} out of spec (N=4: bands 0-3)")
     return any(rows[r][c >> 1] in "#HPVC" for r in range(top, bot + 1)
                for c in range(lo, hi + 1))
 
@@ -245,6 +248,11 @@ def run_moth(mem: Mem, lo: int, hi: int, top: int, bot: int,
     r[L0["EnemyRamD"] - 0x80] = 0x00
     r[L0["EnemyDataLo"] - 0x80] = 0x00      # restage-only on exit
     r[L0["EnemyDataHi"] - 0x80] = 0x00
+    # $84 LineCount = the packed asymmetric-overlay byte the walk's
+    # patch-strip block ANDs against the moth's band rows. A cell-walk test
+    # wants a symmetric room: 0 = no strip painted. Without this the value
+    # left by the PHM loop above leaked in (latent flake, N=4 surfaced it).
+    r[L0["LineCount"] - 0x80] = 0
     mpu = MPU(memory=mem)
     mpu.pc = L2[".MothColsOk"]
     mpu.a = mpu.x = mpu.y = 0
@@ -491,11 +499,16 @@ def hot_death_checks(rows_unused: list[str] | None = None) -> int:
 
 
 def load_case(mem: Mem, rows: list[str]) -> None:
-    for r, row in enumerate(rows):
+    # N=4 stride 4: PF0/PF1/PF2 rows live at +0/+4/+8. The authored 3-row
+    # grid pads band 3 with a copy of band 2 (converter/loader default).
+    padded = list(rows)
+    while len(padded) < 4:
+        padded.append(padded[-1])
+    for r, row in enumerate(padded):
         pf0, pf1, pf2 = pf_values(row)
         mem.ram[PF0_BUF - 0x80 + r] = pf0
-        mem.ram[PF0_BUF - 0x80 + 3 + r] = pf1
-        mem.ram[PF0_BUF - 0x80 + 6 + r] = pf2
+        mem.ram[PF0_BUF - 0x80 + 4 + r] = pf1
+        mem.ram[PF0_BUF - 0x80 + 8 + r] = pf2
     mem.ram[L0["RoomX"] - 0x80] = 0
     mem.ram[L0["RoomY"] - 0x80] = 0
     mem.ram[L0["PlayerDir"] - 0x80] = 0
@@ -531,13 +544,17 @@ def main() -> int:
     for m in ml:
         mid = m.get("id")
         rows = rows_from_json({"model_id": mid}, by_id)
+        # N=4: geometry checks run on the 4 drawn bands (band 3 = band 2).
+        while len(rows) < 4:
+            rows = rows + [rows[-1]]
         cases.append((f"model{mid}", rows))
         hit = re.search(rf"^M{mid}Rows:\s*\n\s*\.byte([^\n]+)", mda, re.M)
         if not hit:
             continue                      # unreferenced model: not in ROM
         idx = [int(b.strip().lstrip("$"), 16)
                for b in hit.group(1).split(";")[0].split(",")]
-        assert len(idx) == 3, f"M{mid}Rows: {len(idx)} indices, want 3"
+        assert len(idx) == 4, (f"M{mid}Rows: {len(idx)} indices, want 4 "
+                          "(N=4: band 0-3)")
         # C11: band 1's index byte b7 = mid_band_type (the hot flag).
         want_hot = 0x80 if m.get("mid_band_type") else 0
         assert (idx[1] & 0x80) == want_hot, (
@@ -548,23 +565,30 @@ def main() -> int:
         for reg, name in enumerate(("RowPoolPF0", "RowPoolPF1", "RowPoolPF2")):
             got = [pool[name][i] for i in idx]
             want = [pf_values(r)[reg] for r in rows]
+            # N=4: the shape carries 4 band indices; a 3-row authored model
+            # pads band 3 with a copy of band 2 (converter default until the
+            # editor grows a 4th row).
+            want = list(want)
+            while len(want) < 4:
+                want.append(want[-1])
             assert got == want, (f"M{mid}Rows -> {name}: generated {got} "
                                  f"!= geometry {want}")
         for band, i in enumerate(idx):
             assert i < row_count, f"M{mid}Rows band {band}: {i} >= {row_count}"
 
     # --- py65: box parity, all models, full X sweep, row-pair reps --------
-    # Row pairs realized by the prologue: (0,0) Y0-11, (0,1) Y12-23,
-    # (1,1) Y24-59, (1,2) Y60-71, (2,2) Y72-122 — one rep each. The LAST
-    # rep is PLAYER_MAX_Y (122): the bottom row is (Y+PLAYER_SPRITE_H-1)>>2
-    # and must stay inside YToRowTable (idx <= 36 = the clamp entry), so a
-    # Y above the reachable range reads past the table and is not a case.
-    y_reps = (0, 40, 60, 90, 120, 122)
+    # Row pairs realized by the prologue (N=4: bands are 36 lines, the box
+    # is 22 px, so (band, band) and (band, band+1) both occur): one
+    # representative Y per pair. The LAST rep is PLAYER_MAX_Y (122): the
+    # bottom row is (Y+PLAYER_SPRITE_H-1)>>2 and must stay inside
+    # YToRowTable (idx <= 36 = the clamp entry), so a Y above the reachable
+    # range reads past the table and is not a case.
+    y_reps = (0, 16, 20, 40, 52, 60, 76, 90, 112, 120, 122)
     checks = 0
     moth_checks = 0
     temp = 0x42                        # candidate != sentinel 0xAA
     for name, rows in cases:
-        assert len(rows) == 3 and all(len(r) == 10 for r in rows), name
+        assert len(rows) == 4 and all(len(r) == 10 for r in rows), name
         mem = Mem()
         load_case(mem, rows)
         for rd in (0, 1):                 # FACING_RIGHT / FACING_LEFT
@@ -590,6 +614,19 @@ def main() -> int:
                     for bot in range(top, 3):
                         want = box_hit(rows, lo, hi, top, bot)
                         got = run_moth(mem, lo, hi, top, bot, temp)
+                        if got != want:
+                            fresh = Mem()
+                            load_case(fresh, rows)
+                            got2 = run_moth(fresh, lo, hi, top, bot, temp)
+                            cfg = {k: hex(mem.ram[L0[k] - 0x80]) for k in
+                                   ("LineCount", "EnemyDeadMask", "EnemyRamD",
+                                    "RoomY")}
+                            print("DBG2", name, top, bot, lo, hi,
+                                  "got", got, "fresh", got2, cfg,
+                                  "rowbytes",
+                                  [hex(mem.ram[PF0_BUF - 0x80 + off + top])
+                                   for off in (0, 4, 8)])
+                            print("DBG2 row1 model", rows[1])
                         assert got == want, (
                             f"{name} moth box cols {lo}..{hi} rows "
                             f"{top}..{bot}: HIT={got} want {want}")

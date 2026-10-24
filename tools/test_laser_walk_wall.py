@@ -148,8 +148,9 @@ def step():
 
 
 def band_row_of(y):
+    # N=4: 9 entries per 36-line band on the line>>2 index
     idx = y >> 2
-    return 0 if idx < 12 else (1 if idx < 24 else 2)
+    return 0 if idx < 9 else (1 if idx < 18 else (2 if idx < 27 else 3))
 
 
 def cell_solid(tip_px, band_row):
@@ -160,9 +161,9 @@ def cell_solid(tip_px, band_row):
     if src < 4:
         addr, mask = 0xC3 + band_row, 0x10 << src
     elif src < 12:
-        addr, mask = 0xC6 + band_row, 0x80 >> (src - 4)
+        addr, mask = 0xC7 + band_row, 0x80 >> (src - 4)
     else:
-        addr, mask = 0xC9 + band_row, 0x01 << (src - 12)
+        addr, mask = 0xCB + band_row, 0x01 << (src - 12)
     return bool(mem.ram[addr & 0x7F] & mask)
 
 
@@ -186,9 +187,11 @@ def load_room(room):
     mem.ram[I_PF0HI] = meta_b
     mem.ram[I_RRLO] = a_rr & 0xFF
     mem.ram[I_RRHI] = a_rr >> 8
-    for i, dst in enumerate((0xC3, 0xC6, 0xC9)):
-        for row in range(3):
-            mem.ram[(dst + row) & 0x7F] = FX.PFX[model][i * 3 + row]
+    # N=4 stride 4: 4 rows per register; FX.PFX carries 3 authored rows,
+    # so row 3 repeats row 2 (the converter padding default).
+    for i, dst in enumerate((0xC3, 0xC7, 0xCB)):
+        for row in range(4):
+            mem.ram[(dst + row) & 0x7F] = FX.PFX[model][i * 3 + min(row, 2)]
 
 
 def meta_a(room):
@@ -438,7 +441,10 @@ def main() -> None:
                 step()
         mem.ram[I_DEAD] = 0xEF             # enemies dead, b4 strip ALIVE
         # Band-1 pins only: the fixture wall lives on the middle band.
-        for y in (56, 72, 88):
+        # N=4: band 1 spans lines 36-71 and the 22 px box must stay
+        # inside it (36..71), else the box reaches band 2 and the wall
+        # walk is blocked by the neighbouring band's cells.
+        for y in (38, 44, 50):
             for approach in (+1, -1):
                 run_case(room, y, approach, warns, fails, stats)
 

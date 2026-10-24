@@ -7,20 +7,22 @@ models.json having asymmetric content yet.
 
 Assertions (frames >= 2, after the RESET-pulse title -> game start):
   * bank0 ENABL ($1f) writes are only $00 or $ff;
-  * >= 3 bank0 $ff ENABL writes per frame (one per band gate: row0/1/2);
+  * >= 3 bank0 $ff ENABL writes per frame (one per band gate: N=4 bands);
   * >= 1 bank0 RESPBL ($14) AND >= 1 HMBL ($24) write per frame — proves
     bank2 StageBandTab staged a non-zero BallX into Temp and the VBL ball
     block ran SetObjectXPos selector 4 (the Phase 3 staging path);
   * Temp ($88) at every bank0 RESPBL write == 95 (8*2+79) — pins the
     staged-BallX constant to the calibrated arg / PHMOverlay math;
-  * frame line count constant across frames >= 3 and in {266, 267} (the
-    asym VBL growth must not add a scanline; 265 = 262 NTSC + 3 since the
-    2026-10-11 VSYNC re-anchor fix for bugs.md #29 Class C);
+  * frame line count constant across frames >= 3 and at 270 (N=4: four
+    36-line bands = cave 148 lines, +3 over the 3x48 era; measured, and
+    the re-anchor lines of bugs.md #29 Class C are inside it);
   * min SP (frames >= 2) >= $F7 (documented whole-run stack guard).
 
 Second run (partial mask, case-1 stacked blocks): MetaA band-mask bit1
 cleared (mask $05) while bits0/2 stay set -> the per-band gate must emit
-exactly 2 ENABL $ff-writes per frame (band1 skipped).
+exactly 2 ENABL $ff-writes per frame (band1 skipped; band 3 mirrors
+band 2 in the phase-1 3-row bridge, so a 3-bit mask still enables two
+gates when band 1 is the only one cleared).
 
 Run: /home/iuri/python3/bin/python3 tools/test_phase3_ball.py
 """
@@ -180,23 +182,27 @@ def main() -> int:
             f"{[f'${t:02X}' for t in bad_temp]}, want ${want_temp:02X}")
 
     lens = sorted({r["per_frame"].get(f) for f in range(3, r["frames"])})
-    if len(lens) != 1 or lens[0] not in (266, 267):
-        fails.append(f"frame line counts (f>=3) = {lens}, want one of [266,267]")
+    if len(lens) != 1 or lens[0] not in (270,):
+        fails.append(f"frame line counts (f>=3) = {lens}, want [270] "
+                     "(N=4 cave: 4x36 bands)")
 
     if r["min_sp"] < 0xF7:
         fails.append(f"min SP (f>=2) = ${r['min_sp']:02X}, want >= $F7")
 
     # partial mask (case-1 stacked blocks: bands 0+2 painted, band1 mirror):
-    # the band gate must skip band1 -> exactly 2 ENABL $ff writes per frame.
+    # the band gate must skip band1. N=4 cave: bands 0 and 2 are enabled
+    # and band 3 MIRRORS band 2 (the phase-1 3-row bridge: B3StageBand
+    # copies BandTab+2 into BandTab+3), so a mask with band1 clear yields
+    # exactly 3 ENABL $ff writes per frame (bands 0, 2, 3).
     if not fails:
         rp = run(frozen_rom.path(), band1=0x00)
         weak2 = [f for f in range(3, rp["frames"])
-                 if rp["ff_per_frame"].get(f, 0) != 2]
+                 if rp["ff_per_frame"].get(f, 0) != 3]
         if weak2:
             got = sorted({rp["ff_per_frame"].get(f, 0) for f in weak2})
             fails.append(
-                f"partial mask band1=0: frames with !=2 ENABL $ff writes "
-                f"{weak2[:6]} (counts {got})")
+                f"partial mask band1=0: frames with !=3 ENABL $ff writes "
+                f"{weak2[:6]} (counts {got}; band 3 mirrors band 2)")
 
     if fails:
         for f in fails:
