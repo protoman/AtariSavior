@@ -1371,6 +1371,37 @@ def check_stage_connections(models_by_id: dict, levels: list[tuple[int, dict]]) 
                         f"room {lone} has a side opening "
                         f"({sorted(a) if a else sorted(b)}) — carve the same "
                         "band on both sides")
+            # NO OPENING WITHOUT A NEIGHBOUR (user rule 2026-10-24, screenshot
+            # layout_invalid_exists.png). The playfield is reflected, so a side
+            # link always opens BOTH edges; the end room of a horizontal run
+            # therefore shows a dead aperture on its far side unless the model
+            # is plugged there — a ball/M1 patch fills the cell with an
+            # indestructible block (objects, not PF: no bomb can remove them).
+            # Raw model rows (no crunch override): the crunch prefix only
+            # frees PAIR 0 at run time, the model edge cell keeps its
+            # static wall — that is exactly what decides whether there is
+            # a visible opening on that side.
+            rows_room = rows_from_json(room, models_by_id)
+            open_bands = {b for b in (1, 2)
+                          if b < len(rows_room) and rows_room[b][0] == "."}
+            if open_bands:
+                patches = room.get("asym_patches") or []
+                for side_name, neighbour, col, side_id in (
+                        ("west", pos.get((x - 1, y)), 0, 1),
+                        ("east", pos.get((x + 1, y)), 9, 0)):
+                    if neighbour is not None:
+                        continue
+                    plugged = {p[0] for p in patches
+                               if len(p) > 3 and p[3] == side_id
+                               and p[1] == col}
+                    missing = sorted(open_bands - plugged)
+                    if missing:
+                        raise ValueError(
+                            f"level {level_n}: room {room.get('room_id')} "
+                            f"has a side opening on its {side_name} edge but "
+                            f"no room that way and no plug (bands {missing}) "
+                            "— plug the opening with a solid async patch "
+                            f"(col {col}, side {side_id}), or wall that edge")
             south = pos.get((x, y + 1))
             if south is not None:
                 up = {c for c, v in enumerate(rows_of(room)[-1]) if v == "."}
