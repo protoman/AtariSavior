@@ -21,7 +21,9 @@ constexpr int kCols = 40;      // display columns (10 cells x 2, mirrored)
 // 3x the readable minimum (user 2026-10-21): a room is a 480 x 216 canvas,
 // so the scroll area shows a HERO-like sheet at a comfortable size.
 constexpr int kColW = 12;      // px per display column
-constexpr int kRows = 12;      // display rows (3 bands x 4 rows)
+constexpr int kRows = 12;      // display rows (4 bands x 3 rows): the
+                               // cave is 144 px = 12 x 12-px rows and a
+                               // band is 36 lines = 3 rows (N=4)
 constexpr int kRowH = 18;      // px per display row
 constexpr int kRoomW = kCols * kColW;   // 480 px
 constexpr int kRoomH = kRows * kRowH;   // 216 px
@@ -78,7 +80,9 @@ protected:
             const int oy = kHeader + kMargin + r.y * kRoomH;
             // Display column -> model cell (mirrored half, 2 cols per cell).
             for (int row = 0; row < kRows; ++row) {
-                const int band = row / 4;
+                // 12-px display rows per DRAWN band: 36 lines / 12 = 3
+                // (was /4 while a band was 48 lines of 4 rows).
+                const int band = row / 3;
                 for (int dcol = 0; dcol < kCols; ++dcol) {
                     const int src = (dcol < kCols / 2) ? dcol
                                                       : (kCols - 1 - dcol);

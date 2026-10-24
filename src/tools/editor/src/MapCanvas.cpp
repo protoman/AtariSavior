@@ -1283,7 +1283,7 @@ void MapCanvas::ValidateFeatureTiles() {
     // Top/bottom bands are entry/exit corridors (user rule 2026-10-14).
     {
         QStringList hits;
-        for (int r = 0; r < model.height && r < 3; ++r) {
+        for (int r = 0; r < model.height; ++r) {
             if (r == 1) continue;
             for (int c = 0; c < model.width && c < 10; ++c) {
                 int t = model.tiles[r * model.width + c];
@@ -1300,10 +1300,10 @@ void MapCanvas::ValidateFeatureTiles() {
     }
 
     // hcrunch purity: ALL cells in ONE band + contiguous prefix from col 0
-    bool bandUsed[3] = {false, false, false};
+    std::array<bool, 8> bandUsed{};   // one per model row (N=4 now)
     bool colUsed[10] = {false};
     int maxCol = -1;
-    for (int r = 0; r < model.height && r < 3; ++r) {
+    for (int r = 0; r < model.height; ++r) {
         for (int c = 0; c < model.width && c < 10; ++c) {
             if (model.tiles[r * model.width + c] ==
                 (int)hero::TileType::HCRUNCH) {
@@ -1317,7 +1317,7 @@ void MapCanvas::ValidateFeatureTiles() {
         QStringList bands, cols;
         int bandCount = 0;
         bool prefixOk = true;
-        for (int r = 0; r < 3; ++r)
+        for (int r = 0; r < (int)bandUsed.size(); ++r)
             if (bandUsed[r]) { ++bandCount; bands << QString::number(r + 1); }
         for (int c = 0; c <= maxCol; ++c)
             if (!colUsed[c]) prefixOk = false;
