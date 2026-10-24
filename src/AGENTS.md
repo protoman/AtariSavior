@@ -159,6 +159,29 @@ Rules:
   other branch. "I checked and it should work" is not an answer.
 - Do not ask them to re-verify something they already verified; reproduce it.
 
+### Critical Rule: Red Test First — Reproduce, Then Fix
+
+**Before fixing a bug, write a test that FAILS because of that bug, run it and
+see it red, and only then touch the code. The fixed code must turn that same
+test green.** (User rule 2026-10-23.) A fix without a red test is a guess: it
+cannot show the bug was real, and nothing stops it from silently regressing.
+
+- **Prove the test is red on the unmodified build** — run it, read the failing
+  assertion, and keep that message naming the actual symptom (e.g. "right-side
+  locked door did NOT block"). A test that passes before the fix is testing
+  something else.
+- **Drive the real routine** (`tools/test_m1_door.py` calls the frozen
+  `OvM1Block` with a staged room; `test_jet_clamp.py` calls the real
+  `UpdateP0Vertical`) — not a re-implementation of the algorithm, or the test
+  can only ever agree with itself.
+- **Order that works with the frozen banks:** re-freeze FIRST
+  (`tools/freeze_test_banks.sh`) so the frozen image carries the buggy code,
+  watch the test go red, then fix, rebuild, re-freeze, watch it go green. A
+  stale frozen image makes the red step meaningless.
+- Keep the test afterwards as the regression guard, and keep the bug's date,
+  symptom and root cause in its docstring (see `test_m1_door.py`,
+  `test_jet_clamp.py`, `test_laser_clamp.py`).
+
 ### Critical Rule: the LIVE Stage Is the User's — Never Edit It
 
 `src/rooms/`, `src/rooms/models/models.json` and `src/generated/` are the user's
