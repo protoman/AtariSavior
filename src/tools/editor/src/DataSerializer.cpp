@@ -645,7 +645,10 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 (int)TileType::AIR;
     }
     if (mask & SHAPE_H) {
-        for (int y = kHorizExitA; y <= kHorizExitB; ++y)
+        // N=4: open the side in every WALKABLE band (row 1..height-2);
+        // a 3-row plan model only has band 1 there.
+        for (int y = kHorizExitA;
+             y <= std::min(kHorizExitB, kGenRows - 2); ++y)
             model.tiles[y * kRoomWidth + kHorizExitCol] = (int)TileType::AIR;
     }
     if (mask & SHAPE_START) {
@@ -1645,24 +1648,14 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         levels.push_back(level);
     }
 
-    // N=4 (2026-10-24): the PLANS are still built in 3 bands (band 0 ceiling /
-    // band 1 shaft+gate / band 2 floor), because every rule here — exits, gate
-    // columns, water rows, QA gates — speaks those three rows. The EMITTED
-    // models are 4-row, one row per drawn band: the pad inserts an AIR band 2
-    // and moves the plan's floor to band 3 (MigrateToFourBands), so a
-    // generated level opens in the 4-band editor and plays as a taller cave.
-    MigrateToFourBands(models, &levels);
-
-    // The pad changed the geometry: re-run the completability guard on the real
-    // 4-band shapes (the pass above checked the 3-band plans).
-    for (const ModelData& m : models) {
-        const std::string problem = RoomConnectivityProblem(m);
-        if (!problem.empty()) {
-            throw std::runtime_error("generated room '" + m.name + "' is "
-                                     "impassable after the 4-band pad: " +
-                                     problem);
-        }
-    }
+    // N=4 (2026-10-24): the PLANS are built in 3 bands (band 0 ceiling / band 1
+    // shaft+gate / band 2 floor) and the models are emitted 3-row, so the
+    // converter/editor pad them to [r0, r1, AIR, r2] on load. Emitting the pad
+    // here is NOT safe yet: the arch/gallery writers own band-2 cells of their
+    // shapes ("Shape N+s+2Gap+Gallery" lands its gallery exactly where the pad
+    // band goes), so the pad would collide with authored content and invent
+    // side links. Porting the plans (arch writers + gate columns + exits) to
+    // four real bands is the remaining chunk.
 
 }
 

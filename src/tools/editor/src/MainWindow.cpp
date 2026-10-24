@@ -666,7 +666,9 @@ void MainWindow::CreateRoomInDirection(int dirX, int dirY) {
     } else if (dirY == 1) {
         for (int x = kVertExitA; x <= kVertExitB; ++x) curModel.tiles[(kRoomHeight - 1) * kRoomWidth + x] = (int)hero::TileType::AIR;
     } else if (dirX != 0) {
-        for (int y = kHorizExitA; y <= kHorizExitB; ++y) curModel.tiles[y * kRoomWidth + kHorizExitCol] = (int)hero::TileType::AIR;
+        for (int y = kHorizExitA;
+             y <= std::min(kHorizExitB, curModel.height - 2); ++y)
+            curModel.tiles[y * kRoomWidth + kHorizExitCol] = (int)hero::TileType::AIR;
     }
 
     // Reuse the first available model for the new room; create one only if none exist.
@@ -699,7 +701,9 @@ void MainWindow::CreateRoomInDirection(int dirX, int dirY) {
     } else if (dirY == 1) {
         for (int x = kVertExitA; x <= kVertExitB; ++x) newModel.tiles[0 * kRoomWidth + x] = (int)hero::TileType::AIR;
     } else if (dirX != 0) {
-        for (int y = kHorizExitA; y <= kHorizExitB; ++y) newModel.tiles[y * kRoomWidth + kHorizExitCol] = (int)hero::TileType::AIR;
+        for (int y = kHorizExitA;
+             y <= std::min(kHorizExitB, newModel.height - 2); ++y)
+            newModel.tiles[y * kRoomWidth + kHorizExitCol] = (int)hero::TileType::AIR;
     }
     SaveModels(); // Save global models after carving the entry
 

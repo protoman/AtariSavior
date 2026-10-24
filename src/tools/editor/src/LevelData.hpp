@@ -45,8 +45,11 @@ constexpr int kRoomWidth = 10;
 constexpr int kRoomHeight = 4;   // N=4: one row per drawn band (36 lines)
 constexpr int kVertExitA = 8;    // top/bottom opening: cells 8..9 (centre)
 constexpr int kVertExitB = 9;
-constexpr int kHorizExitA = 1;   // left/right opening: row 1 (middle band)
-constexpr int kHorizExitB = 1;
+constexpr int kHorizExitA = 1;   // left/right opening: the WALKABLE bands,
+constexpr int kHorizExitB = 2;   //   i.e. rows 1..height-2 (a 4-band room opens
+                                 //   bands 1 AND 2 so a side exit can be taken
+                                 //   from either; a legacy 3-row model opens
+                                 //   band 1 only — its row 2 is the floor)
 constexpr int kHorizExitCol = 0; // the mirrored OUTER edge, not the seam (9)
 
 enum class TileType : int {
