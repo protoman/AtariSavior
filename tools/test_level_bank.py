@@ -309,7 +309,11 @@ def main() -> None:
             # b7 = direction (AGENTS: the enemy record packs type|dir in ONE
             # byte, and every type compare masks b7) — mask before the range
             # test, or a dir=-1 enemy fails this gate (2026-10-23).
-            assert (typ & 0x7F) <= 7, (
+            # b3-0 = type, b7 = dir. Legal types: 0-4 enemies, 5 LAMP,
+            # 6 KEY, 7 RAFT, and 13 = the MIRRORED lamp art (the kernel masks
+            # `and #%00000111` before `cmp #LAMP`, so 13 lands on the lamp
+            # path). The 4-bit field leaves 8-12 / 14-15 unused on purpose.
+            assert (typ & 0x7F) in tuple(range(8)) + (13,), (
                 f"LEVEL{n}: enemy record type ${typ:02x} does not fit "
                 "b3-0 with dir in b7")
         extras_path = (ROOT / "src" / "generated" /
