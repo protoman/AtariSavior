@@ -454,6 +454,36 @@ def main() -> int:
                               f"(top and bottom both open {sorted(nset)})")
                         return 1
 
+            # NO OBJECT ON THE ARRIVAL COLUMNS (user report 2026-10-24, level 6
+            # room 2: "on the next screen he stops falling"). A vertical link
+            # drops the player at the aperture columns with NO input yet, so an
+            # enemy parked there overlaps him on the frame the room loads and
+            # CheckEnemyHit costs a life before he can move — the respawn hover
+            # then holds him at the top, which reads as "stuck".
+            for room in rooms:
+                r2 = rows[room["room_id"]]
+                aper = set()
+                for x in range(10):
+                    if r2[0][x] not in STRUCTURAL_WALLS:
+                        aper.update((2 * x, 2 * x + 1))
+                if not aper:
+                    continue
+                # Enemies only: a LAMP is a collectible, harmless to touch.
+                rows_per_band = max(1, 12 // max(1, len(r2)))
+                for obj in (room.get("enemies") or []):
+                    # BAND 0 only: that is the frame the room loads, before any
+                    # input. From band 1 on he has landed and can react.
+                    if int(float(obj.get("y", 0))) // rows_per_band != 0:
+                        continue
+                    col = int(round(float(obj.get("x", 0))))
+                    if any(abs(col - c) <= 1 for c in aper):
+                        print(f"FAIL: level {level_n} room {room['room_id']} "
+                              f"puts an object on arrival column {col} "
+                              f"(band-0 aperture {sorted(aper)}) — the player "
+                              "enters there and dies on contact before he can "
+                              "move")
+                        return 1
+
             # Connectivity + gate alignment (user reports 2026-10-21).
             for room in rooms:
                 rrows = rows[room["room_id"]]

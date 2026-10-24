@@ -2359,6 +2359,79 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 }
             }
         }
+        // NO INSTANT DEATH ON ARRIVAL (user report 2026-10-24, level 6 room 2:
+        // "on the next screen he stops falling"). A vertical link drops the
+        // player at the band-0 aperture columns with NO input yet, so an enemy
+        // sitting there overlaps his box the frame the room loads and
+        // CheckEnemyHit takes a life before he can move; the respawn hover then
+        // holds him at the top. Runs AFTER the keys and the two-gap hazard so it
+        // sees every object. Only BAND 0 is instant: from band 1 on he has
+        // landed and can react — the two-gap "drop blind is the risk" hazard
+        // survives, one band lower. Lamps are collectibles, harmless to touch.
+        for (int j = 0; j < (int)level.rooms.size(); ++j) {
+            RoomData& room = level.rooms[j];
+            const ModelData& sm = models[shapeId[masks[l - 1][j]]];
+            const int rowsPerBand = std::max(1, 12 / std::max(1, sm.height));
+            auto airAt = [&](int band, int dcol) {
+                if (dcol < 0 || dcol > 19) return false;
+                const int cell = dcol / 2;
+                return band >= 0 && band < sm.height
+                    && sm.tiles[band * sm.width + cell]
+                           == (int)TileType::AIR;
+            };
+            std::vector<int> aper;
+            for (int x = 0; x < sm.width; ++x) {
+                if (sm.tiles[x] == (int)TileType::AIR) {   // band 0 = entry
+                    aper.push_back(2 * x);
+                    aper.push_back(2 * x + 1);
+                }
+            }
+            if (aper.empty()) continue;
+            auto onAperture = [&](int col) {
+                for (int c : aper) {
+                    if (std::abs(col - c) <= 1) return true;
+                }
+                return false;
+            };
+            std::set<int> taken;   // the editor's 1-object-per-row cap
+            for (const EnemyData& q : room.enemies) taken.insert((int)q.y / 4);
+            for (const LampData& q : room.lamps) taken.insert((int)q.y / 4);
+            for (size_t k = 0; k < room.enemies.size();) {
+                EnemyData& e = room.enemies[k];
+                if (e.type == (int)EnemyType::RAFT
+                        || (int)e.y / rowsPerBand != 0
+                        || !onAperture((int)std::lround(e.x))) {
+                    ++k;
+                    continue;
+                }
+                const int col = (int)std::lround(e.x);
+                bool placed = false;
+                for (int nb : {1, 2, 3}) {
+                    if (nb >= sm.height) continue;
+                    // A hot middle band is a hazard wall: an object parked in
+                    // it is invisible and unkillable (the generator's own rule).
+                    if (nb == 1 && sm.mid_band_type == 1) continue;
+                    if (taken.count((int)BandY(sm, nb) / 4)) continue;
+                    for (int d = 3; d <= 15 && !placed; d += 2) {
+                        for (int sign : {1, -1}) {
+                            const int cand = col + sign * d;
+                            if (!airAt(nb, cand) || onAperture(cand)) continue;
+                            e.x = (float)cand;
+                            e.y = BandY(sm, nb);
+                            taken.insert((int)e.y / 4);
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if (placed) break;
+                }
+                if (placed) {
+                    ++k;
+                    continue;
+                }
+                room.enemies.erase(room.enemies.begin() + (long)k);
+            }
+        }
         levels.push_back(level);
     }
 

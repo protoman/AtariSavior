@@ -41,5 +41,5 @@ LEVEL3_RoomCounts:
 
 ; Enemy data: 2 enemy records across 3 rooms, 3 bytes each (type|dir, x, y).
 LEVEL3_EnemyDataTable:
-  .byte $01, 71, 12
+  .byte $01, 51, 84
   .byte $01, 71, 48
