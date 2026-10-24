@@ -19,7 +19,9 @@ Cases:
   4. A open, B closed -> FAIL (half-carved link)
   5. vertical pair sharing a column -> OK
   6. vertical pair with disjoint columns -> FAIL
-  7. the live stage file -> OK (guards the current content)
+  7. vertical pair where the upper floor is open at a column the lower ceiling
+     walls -> FAIL (the player keeps his X through the link, 2026-10-24)
+  8. the live stage file -> OK (guards the current content)
 
 Run: /home/iuri/python3/bin/python3 tools/test_room_links.py
 """
@@ -137,6 +139,18 @@ def main() -> int:
         fails += 1
     models = [model(0, up_open), model(1, dn_other)]
     if not run("vertical disjoint columns", models,
+               [room(0, 0, 0, 0), room(1, 1, 0, 1)], True):
+        fails += 1
+    # User report 2026-10-24 (stuck_002.png): a merely SHARED column is not
+    # enough — the player KEEPS HIS X through a vertical link, so EVERY column
+    # the upper room's floor is open at must be open in the lower room's
+    # ceiling. Falling at the extra column spawns him inside the lower ceiling,
+    # where StepDown refuses until he walks out: "it stops falling when I
+    # appear on the next screen". This case PASSED before the rule (it shares
+    # column 8) and must fail now.
+    dn_partial = ["#######..#", "#.........", "########..", "########.."]
+    models = [model(0, up_open), model(1, dn_partial)]
+    if not run("vertical partial column", models,
                [room(0, 0, 0, 0), room(1, 1, 0, 1)], True):
         fails += 1
 

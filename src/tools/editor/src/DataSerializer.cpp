@@ -968,7 +968,13 @@ ModelData MakeShapeModel(int modelId, int mask) {
             return model.tiles[band * kRoomWidth + x]
                        != (int)TileType::AIR;
         };
-        for (int band = 0; band < kGenRows; ++band) {
+        // BAND 1 ONLY (user report 2026-10-24, screenshot stuck_002.png): the
+        // ceiling and floor rows are the VERTICAL APERTURES. Opening an
+        // isolated cell there invents a hole the room below/above need not
+        // have — the player fell through a 4/5 hole the neighbour's ceiling
+        // walls, landed inside it and stopped falling. Decoration lives in the
+        // walkable band, which is also the only one a bomb punch can reach.
+        for (int band = 1; band < 2; ++band) {
             for (int x = 1; x < kRoomWidth - 1; ++x) {
                 if (!solid(band, x) || solid(band, x - 1)
                         || solid(band, x + 1)) {
@@ -1866,6 +1872,111 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             roles = baseRoles;
             used = baseUsed;
         }
+    }
+
+    // --- VERTICAL APERTURE PAIRING (user report 2026-10-24, "stuck_002") ----
+    // The player keeps his X through a vertical link (ExitEdgeTab drops him at
+    // RoomY 0 with the same RoomX), so every column the room ABOVE can fall
+    // through MUST be open in the room BELOW's ceiling. The library has two
+    // vertical flavors — plain cells 8/9 (kVertExitA/B) and the 2-gap cells
+    // 3/6 (kGapA/B) — and a mixed pair drops him through a hole that is a
+    // solid cell below: StepDown then refuses for as long as he stands there,
+    // so he hangs at the top of the new screen until he walks out of it.
+    // Cure a broken pair by giving the room ABOVE the 2-gap flavor (its floor
+    // becomes {3,6}, which both ceilings contain), else the room BELOW.
+    // Water/channel floors are open 1..9 and are skipped: CheckBandTouch kills
+    // him in the strip (RoomY >= 115) before a down exit can happen.
+    {
+        auto vertCells = [](int mask, bool ceiling) {
+            // MakeShapeModel applies the 4-row expansion (the plan is 3 rows,
+            // band 2 is derived), so the FLOOR is the model's LAST row, not
+            // kGenRows-1 = the derived band 2 (which is open across the whole
+            // route and made every pair look broken).
+            const ModelData m = MakeShapeModel(0, mask);
+            const int rows = (int)m.tiles.size() / kRoomWidth;
+            const int base = ceiling ? 0 : (rows - 1) * kRoomWidth;
+            std::set<int> air;
+            for (int x = 0; x < kRoomWidth; ++x) {
+                if (m.tiles[base + x] == (int)TileType::AIR) air.insert(x);
+            }
+            return air;
+        };
+        // Adding the 2-gap flavor to one room changes BOTH of its rows, so a
+        // pair fixed here can break the pair below it: re-scan until stable.
+        for (int pass = 0; pass < 8; ++pass) {
+            bool changed = false;
+            for (int l = 1; l <= kStageLevels; ++l) {
+                const auto& wk = walks[l - 1];
+                std::map<std::pair<int, int>, int> at;
+                for (int i = 0; i < (int)wk.size(); ++i) {
+                    at[{wk[i].x, wk[i].y}] = i;
+                }
+                for (int i = 0; i < (int)wk.size(); ++i) {
+                    const auto it = at.find({wk[i].x, wk[i].y + 1});
+                    if (it == at.end()) continue;
+                    const int j = it->second;
+                    int& above = masks[l - 1][i];
+                    int& below = masks[l - 1][j];
+                    if (above & (SHAPE_WATER | SHAPE_CHANNEL)) continue;
+                    if (!(below & SHAPE_N)) continue;   // no ceiling opening
+                    auto paired = [&]() {
+                        const std::set<int> up = vertCells(above, false);
+                        const std::set<int> dn = vertCells(below, true);
+                        for (int c : up) {
+                            if (!dn.count(c)) return false;
+                        }
+                        return true;
+                    };
+                    if (paired()) continue;
+                    above |= SHAPE_2GAP;
+                    changed = true;
+                    if (!paired()) below |= SHAPE_2GAP;
+                    if (!paired()) {
+                        // The ceiling is NARROW (SHAPE_N1 opens cell 3 only, e.g.
+                        // a channel room): match it by narrowing the floor.
+                        above |= SHAPE_S1;
+                        changed = true;
+                        // ...unless that turns the room into a STRAIGHT DROP
+                        // (ceiling == floor, which the plan forbids): widen the
+                        // ceiling to the 2-gap flavor instead of leaving a
+                        // shaft the player falls through without steering.
+                        const std::set<int> top = vertCells(above, true);
+                        if (top == vertCells(above, false) && top.size() == 1) {
+                            above &= ~SHAPE_N1;
+                            above |= SHAPE_2GAP;
+                        }
+                    }
+                    if (!paired()) {
+                        const std::set<int> up = vertCells(above, false);
+                        const std::set<int> dn = vertCells(below, true);
+                        std::string u, d;
+                        for (int c : up) u += std::to_string(c);
+                        for (int c : dn) d += std::to_string(c);
+                        throw std::runtime_error(
+                                "level " + std::to_string(l) + ": rooms "
+                                + std::to_string(i) + " and "
+                                + std::to_string(j) + " are stacked but the "
+                                "upper floor {" + u + "} is not open in the "
+                                "lower ceiling {" + d + "} (masks "
+                                + std::to_string(above) + "/"
+                                + std::to_string(below) + ") — the player "
+                                "would land inside a wall");
+                    }
+                }
+            }
+            if (!changed) break;
+        }
+        // The pass REWRITES masks, so a pre-pass value that no room uses any
+        // more is an orphan MODEL (15 of them after the first run): drop it —
+        // model ids must stay contiguous with LEVEL_SHAPE_COUNT.
+        std::set<int> live;
+        for (const auto& row : masks) {
+            for (int m : row) live.insert(m);
+        }
+        for (auto it = used.begin(); it != used.end();) {
+            it = live.count(*it) ? std::next(it) : used.erase(it);
+        }
+        for (int m : live) used.insert(m);   // the post-pass masks themselves
     }
 
     // 2. The shape library: model ids ARE the ascending masks (deterministic).

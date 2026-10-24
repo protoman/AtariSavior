@@ -24,6 +24,7 @@ Run: /home/iuri/python3/bin/python3 tools/test_cell_map.py
 """
 import json
 import re
+import os
 import sys
 from pathlib import Path
 
@@ -34,7 +35,11 @@ from convert_level import rows_from_json  # noqa: E402
 from convert_room import find_rectangles, pf_values  # noqa: E402
 
 SRC = ROOT / "src"
-FROZEN = SRC / "tests" / "frozen"   # test-owned banks+labels (never live src/)
+# TEST_FROZEN lets a RED-PROOF run point at a patched copy of the frozen banks
+# (the harness pattern in AGENTS: "prove the test is red on the unmodified
+# build" — for a ROM-byte test that means the pre-fix BYTES).
+FROZEN = Path(os.environ.get("TEST_FROZEN")
+              or (SRC / "tests" / "frozen"))   # never live src/
 TESTS = SRC / "tests"          # frozen stage copies (AGENTS test-data rule)
 BANK0 = (FROZEN / "bank0.bin").read_bytes()
 BANK1 = (FROZEN / "bank1.bin").read_bytes()
