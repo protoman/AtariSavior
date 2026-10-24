@@ -527,6 +527,22 @@ HotOverlapBody:
     inx
     bne .HOVpfCol
 .HOVm1:
+    ; SIDE GATE (user report 2026-10-24, stuck_003_die_open.png: "I die where
+    ; there is no hot wall"). The PF is reflected, so the cell walk runs in
+    ; MIRROR space (display col 39-c) — but the strip is an OBJECT drawn on ONE
+    ; side only. A player at the MIRRORED column (display 37-38) therefore
+    ; compared equal to a strip drawn at display 2-3, ~80 px away, and died on
+    ; it. Require the player's PHYSICAL half to match the strip's side:
+    ;   C from `cmp #80` = 1 when the player is on the RIGHT half;
+    ;   MetaA b0       = 1 when the strip is on the RIGHT half;
+    ;   differing halves mean the overlap is the strip's MIRROR, not a touch.
+    lda RoomX
+    cmp #80
+    lda #0
+    rol
+    eor RoomMetaA
+    and #$01
+    bne .HOVstream          ; opposite half → ghost, no kill
     ; M1 block cell on the hot band: PF-OPEN by envelope (the strip paints
     ; there), so the sweep above cannot see it. ExtrasLoad staged its cell
     ; (col+1) from the room's patch list; it dies with the STRIP (b4).

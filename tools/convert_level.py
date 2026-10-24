@@ -1438,14 +1438,30 @@ def check_stage_connections(models_by_id: dict, levels: list[tuple[int, dict]]) 
                             f"(col {col}, side {side_id}), or wall that edge")
             south = pos.get((x, y + 1))
             if south is not None:
+                # VERTICAL LANDING (user report 2026-10-24, screenshot
+                # stuck_002.png): the player KEEPS HIS X through a vertical
+                # link, so a shared open column is not enough — every column he
+                # can fall through in the upper room must be open in the lower
+                # room's ceiling, or he spawns inside it and StepDown refuses
+                # until he walks out (the "stops falling on the next screen"
+                # report). A water room never passes a down exit (CheckBandTouch
+                # kills at RoomY >= 115, before PLAYER_MAX_Y), so its open floor
+                # is exempt.
                 up = {c for c, v in enumerate(rows_of(room)[-1]) if v == "."}
                 dn = {c for c, v in enumerate(rows_of(south)[0]) if v == "."}
-                if (up or dn) and not (up & dn):
+                if room.get("bottom_band"):
+                    up = set()
+                missing = sorted(up - dn)
+                if missing:
                     raise ValueError(
                         f"level {level_n}: rooms {room.get('room_id')} (above) "
-                        f"and {south.get('room_id')} (below) do not share an "
-                        f"open column (up {sorted(up)}, down {sorted(dn)}) — "
-                        "the player would arrive inside a wall")
+                        f"and {south.get('room_id')} (below) are stacked, but "
+                        f"the upper room's floor is open at columns {missing} "
+                        f"while the lower room's ceiling is walled there "
+                        f"(floor {sorted(up)}, ceiling {sorted(dn)}) — the "
+                        "player keeps his X through the link, so he would land "
+                        "inside a wall and stop falling; give both rooms the "
+                        "SAME vertical aperture (plain 8/9 or the 2-gap 3/6)")
 
 
 def write_stage(stage_path: Path, outdir: Path,
