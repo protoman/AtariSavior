@@ -151,31 +151,40 @@ TPtr6        = $EA
 
     .ds $F080 - *, 0            ; TitleBand pin (CallPad_TitleBand literal)
 ; ==============================================================================
-; TitleBand — merged title, bands 1-2 (2026-10-19 refactor).
+; TitleBand — merged title, bands 1-3 (N=4 layout, 2026-10-24).
 ; Band 0 is drawn by the CAVE kernel (stage PF + COLUPF from the room buffers,
 ; player via PlayerColTable/Grp0Ptr), so the title reuses the real kernel
 ; instead of duplicating its band rendering. The bank0 row-advance tail
 ; diverts here when DropTarget=$FF, exactly where band 1 would start.
-; This routine: band 1 stage row + the 48px S.A.V.I.O.R. logo + the credit
-; footer, then band 2's stage row + 48 lines, then the HUD band (score =
-; level+1, lives/bombs/bar via MenuMain). No object is drawn on the title:
-; DropArm .DATitle clears EnemyCount/LevelMinerRoom and the laser on every
-; title LoadLevel, so SelectActiveObject parks GRP1.
+; This routine: band 1 = stage row 1 (PREVIEW ONLY), band 2 = the TITLE PAD
+; (playfield blanked, 48px S.A.V.I.O.R. logo + credit footer), band 3 = stage
+; row 3, then the HUD band (score = level+1, lives/bombs/bar via MenuMain).
+; Why the split (user ruling 2026-10-24): with 36-line bands the text no longer
+; fitted under the player inside band 1 — the miner (band 0, Y 24..35) ran
+; straight into the logo. Preview up top, text one band lower, keeps the two
+; cleanly apart. No object is drawn on the title: DropArm .DATitle clears
+; EnemyCount/LevelMinerRoom and the laser on every title LoadLevel, so
+; SelectActiveObject parks GRP1.
 ; Entered via CallPad_TitleBand ($FC55). ZP: LineCount ($84) + Temp ($88) as
 ; loop counter/tmp — idle on title frames (cave overscan bypassed).
 ; ==============================================================================
 TitleBand:
     ; ==================================================================
-    ; Band 1 (48 lines): stage middle row + logo + credit footer.
+    ; Band 1 (36 lines): stage middle row — PREVIEW ONLY, no text.
     ; Same store order as the cave .Row (PF0, PF1, COLUPF, ENABL, PF2 last)
     ; so the band-transition line keeps the left half on band 0.
     ; ==================================================================
     ; Cave band 0 leaves the missiles latched (the .AfterRows clear is
-    ; skipped on the title). The 48px footer sets NUSIZ=3, so a live M0/M1
-    ; would draw 1-clock vertical lines through bands 1/2 — clear both here.
+    ; skipped on the title) and may leave the player's last GRP row live:
+    ; clear GRP with VDEL OFF first (a GRP write while VDELP=1 only reaches
+    ; the delayed slot — AGENTS "VDEL stale live-slot"). The missiles STAY
+    ; on: band 1 is a real room preview, so a latched M1 strip is the room's
+    ; own geometry (band 2 clears it before the 48px text).
     lda #0
-    sta ENAM0
-    sta ENAM1
+    sta VDELP0
+    sta VDELP1
+    sta GRP0
+    sta GRP1
     lda PF0Buf+1
     sta PF0
     lda PF1Buf+1
@@ -186,6 +195,31 @@ TitleBand:
     sta ENABL
     lda PF2Buf+1
     sta PF2
+    ldx #36
+.TkB1Bl:
+    sta WSYNC
+    dex
+    bne .TkB1Bl
+
+    ; ==================================================================
+    ; Band 2 (36 lines): the TITLE PAD — playfield blanked, then the 48px
+    ; S.A.V.I.O.R. logo + the credit footer (moved here 2026-10-24).
+    ; PF0/PF1/PF2 = 0 keeps the pad black even for a 4-row stage whose
+    ; band 2 carries walls.
+    ; ==================================================================
+    lda #0
+    sta PF0
+    sta PF1
+    sta PF2
+    sta ENABL
+    ; The 48px logo/footer set NUSIZ=3, so a live M0/M1 would draw 1-clock
+    ; vertical lines through the pad — clear both here.
+    sta ENAM0
+    sta ENAM1
+    sta VDELP0
+    sta VDELP1
+    sta GRP0
+    sta GRP1
     lda #6                       ; 3 copies, 32px pitch (48px logo)
     sta NUSIZ0
     sta NUSIZ1
@@ -270,33 +304,13 @@ TitleBand:
     sta COLUP0
     sta COLUP1
     jsr FooterBand
-    ldx #7                       ; band-1 tail (N=4): logo 11 + footer 18 = 29
-                                 ;   of the 36-line band → 7 left
-.TkB1Bl:
-    sta WSYNC
-    dex
-    bne .TkB1Bl
-
-    ; ==================================================================
-    ; Band 2 (36 lines): stage row 2.
-    ; ==================================================================
-    lda PF0Buf+2
-    sta PF0
-    lda PF1Buf+2
-    sta PF1
-    lda ColupfBuf+2
-    sta COLUPF
-    lda BandTab+2
-    sta ENABL
-    lda PF2Buf+2
-    sta PF2
-    ldx #36
+    ; band-2 tail: logo 11 + footer 18 = 29 of the 36-line pad -> 7 left
+    ldx #7
 .TkB2Bl:
     sta WSYNC
     dex
     bne .TkB2Bl
 
-    ; ==================================================================
     ; Band 3 (36 lines, N=4): stage the new bottom row. The title frame
     ; must still fill 3 cave bands after the cave kernel draws band 0
     ; (36 + 36 + 36 + 36 = 144 visible lines).
