@@ -1031,8 +1031,11 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 // ("the miner is inside the ground", user 2026-10-24, level 5
                 // room 5). Cell +1 too: his 8-px sprite starts at px 39, so it
                 // straddles two cells.
-                const bool minerNiche = (mask & SHAPE_WATER)
-                        && (x == kMinerCell || x == kMinerCell + 1);
+                // EVERY shape keeps the niche: the miner's room is not always
+                // a water room (level 1's goal is a plain shape), and the gate
+                // in convert now refuses any model where his body cell is
+                // solid. Two cells because his 8-px sprite straddles them.
+                const bool minerNiche = (x == kMinerCell || x == kMinerCell + 1);
                 const bool pillar = (x == 0 || x == 1 || x == 7);
                 const bool archWall = kArch[arch][2][x] == '#';
                 model.tiles[2 * kRoomWidth + x] = (route || minerNiche
@@ -1042,8 +1045,7 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 // Water rooms take this path (bandArt is off for them), so the
                 // miner niche has to be carved here.
                 model.tiles[2 * kRoomWidth + x] = (route
-                        || ((mask & SHAPE_WATER)
-                            && (x == kMinerCell || x == kMinerCell + 1)))
+                        || x == kMinerCell || x == kMinerCell + 1)
                         ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
             }
             model.tiles[3 * kRoomWidth + x] = three[2 * kRoomWidth + x];
