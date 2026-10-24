@@ -1798,8 +1798,10 @@ def check_room_txt(path: Path, label: str) -> None:
         err(f"{label}: generated room txt missing ({path.name})")
         return
     rows = [r for r in path.read_text().split("\n") if r]
-    if len(rows) != 3:
-        err(f"{label}: room txt has {len(rows)} rows, expected 3")
+    # N=4 (2026-10-24): a room txt mirror carries one row per DRAWN band, so a
+    # 4-row model writes 4 rows (a 3-row model still writes 3).
+    if len(rows) not in (3, 4):
+        err(f"{label}: room txt has {len(rows)} rows, expected 3 or 4")
     for li, row in enumerate(rows):
         if len(row) != 10:
             err(f"{label}: row {li} is {len(row)} chars, expected 10")
