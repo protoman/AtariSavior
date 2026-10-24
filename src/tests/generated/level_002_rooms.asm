@@ -18,7 +18,7 @@ LEVEL2_MINER_Y = 84
 ; indices — the hot count/stream is gone (hot derives from PF row 1).
 LEVEL2_RoomShapes:
   .byte SHAPE_M2 ; room 0 (model 2)
-  .byte SHAPE_M3 | $40 ; room 1 (model 3)
+  .byte SHAPE_M3 | $80 ; room 1 (model 3)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
 ; (x<<4 | y) normalised to the level origin. Exits are DERIVED at

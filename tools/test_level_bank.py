@@ -189,22 +189,23 @@ def main() -> None:
     assert 'include "generated/levels_equ.asm"' in BANK2, (
         "bank2.asm must include generated/levels_equ.asm (BAND_COLOR) BEFORE "
         "EnterRoomB2 uses it")
-    # LEVEL_FORMAT 7 must be declared by the generator and by the consumers
+    # LEVEL_FORMAT 8 must be declared by the generator and by the consumers
+    # (LAYOUT 8, 2026-10-24: 7-bit shape index + band flag b7; owns-extras is
+    # derived from the extras ordinal).
     m = re.search(r"^LEVEL_FORMAT = \$([0-9a-f]{2})", index, re.M)
-    assert m and int(m.group(1), 16) == 7, (
-        "generated level index must declare LEVEL_FORMAT = $07 (C13 "
-        "N=4: four row-pool indices per shape; C11 "
-        "PF-derived hot on top of the C3 row-pool shape blocks)")
+    assert m and int(m.group(1), 16) == 8, (
+        "generated level index must declare LEVEL_FORMAT = $08 (7-bit shape "
+        "index, band flag b7)")
     for name, body in (("kernel.asm", KERNEL), ("bank1.asm", BANK1)):
         hm = re.search(r"^LEVEL_FORMAT\s*=\s*\$([0-9a-f]{2})", body, re.M)
-        assert hm and int(hm.group(1), 16) == 7, (
-            f"{name}: LEVEL_FORMAT hand copy must be $07 (C13 N=4)")
+        assert hm and int(hm.group(1), 16) == 8, (
+            f"{name}: LEVEL_FORMAT hand copy must be $08 (7-bit shape index)")
     # --- shape registry: table <-> EQUs <-> 6-bit index --------------------
     shape_count = int(re.search(r"^LEVEL_SHAPE_COUNT = (\d+)$", index, re.M)
                       .group(1))
-    assert shape_count <= 64, (
-        f"LEVEL_SHAPE_COUNT {shape_count} > 64 — the record shape index "
-        "is b5-0")
+    assert shape_count <= 128, (
+        f"LEVEL_SHAPE_COUNT {shape_count} > 128 — the record shape index "
+        "is b6-0 (LAYOUT 8)")
     # C7 (2026-10-20): the address table lives in BANK3 next to the blocks
     # (models_data.asm), so bank2 stages only the 6-bit shape index.
     table = re.search(r"^LEVEL_ShapeTable:\n((?:  \.word \w+Shape\n)+)",
@@ -246,9 +247,9 @@ def main() -> None:
                 f"LEVEL{n} room {room}: {name} has no SHAPE_ EQU")
             assert equ_map[name[6:]] < shape_count, (
                 f"LEVEL{n} room {room}: {name} index outside the table")
-            assert not band or not (int(band, 16) & ~0xC0), (
-                f"LEVEL{n} room {room}: only b6 (band) and b7 (owns-extras) "
-                "may be set in the shape byte")
+            assert not band or not (int(band, 16) & ~0x80), (
+                f"LEVEL{n} room {room}: only b7 (bottom-band flag) may be set "
+                "in the shape byte (LAYOUT 8: the index is b6-0)")
         # C1: the position column is the exit source of truth — both nibbles
         # in 0..14 (15 = off-grid sentinel) and every position unique
         positions = re.findall(
@@ -280,11 +281,9 @@ def main() -> None:
                 f"LEVEL{n} room {room}: count comment {count} != b7-6")
             assert packed >> 6 <= 3, (
                 f"LEVEL{n} room {room}: count {packed >> 6} > 3 (b7-6)")
-            owns = bool(shapes[i][1]) and bool(int(shapes[i][1], 16) & 0x80)
-            assert bool(packed & 0x3F) == owns, (
-                f"LEVEL{n} room {room}: extras ordinal ${packed & 0x3F:02x} "
-                f"but the shape byte owns-extras={int(owns)} — the loader "
-                "dispatches on b7 and indexes with b5-0")
+            # LAYOUT 8: the counts ordinal IS the extras dispatch (0 = no
+            # record), so the shape byte carries no owns-extras bit any more;
+            # the ordinal sequence 1..N below is what keeps it honest.
             if packed & 0x3F:
                 ordinals.append(packed & 0x3F)
             total += packed >> 6

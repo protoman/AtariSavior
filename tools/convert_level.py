@@ -61,7 +61,7 @@ SHAPE_ROWS = MODEL_ROWS[-1]  # bands the kernel draws (rows in a 4-row model)
 # cells ARE the solid row-1 PF cells of a hot shape), band 1's index b7 carries
 # `mid_band_type`, and the extras record stream keeps FEATURE records only
 # (M1/hot records are derived). `HotOverlapBody` sweeps the expanded PF row 1.
-LEVEL_FORMAT = 7
+LEVEL_FORMAT = 8
 # New tile values (ai_new_tiles plan Phase 1). LOCKED_DOOR lives ONLY in
 # asym_patches (side 0 = async ball strip, MetaB b7); the three grid tiles
 # paint model cells and emit b7 feature records in the hot record stream.
@@ -976,8 +976,10 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
         shape = f"SHAPE_M{model['id']}"
         async_room = room_has_async(room)
         why = "async extras" if async_room else f"model {model['id']}"
-        flags = (0x40 if _room_bottom_color(room) else 0) | (
-            0x80 if async_room else 0)
+        # LAYOUT 8 (2026-10-24): shape index b6-0 (128 shapes) and the
+        # bottom-band flag b7. There is no owns-extras bit: a room carries an
+        # extras record iff its counts byte has a nonzero ordinal.
+        flags = 0x80 if _room_bottom_color(room) else 0
         value = f"{shape} | ${flags:02x}" if flags else shape
         lines.append(f"  .byte {value} ; room {index} ({why})")
         if not async_room:
@@ -1262,11 +1264,11 @@ def room_has_async(room: dict) -> bool:
     return bool(room.get("asym_patches") or room.get("feature_cells"))
 
 
-# C2 (2026-10-20): the room record stores the shape index in b5-0, so the
-# whole game can address 64 distinct blocks. That is the plan's C3 ceiling
-# until the row dictionary lands; fail loudly instead of emitting a truncated
-# index.
-MAX_SHAPES = 64
+# LAYOUT 8 (2026-10-24): the room record stores the shape index in b6-0 (the
+# bottom-band flag moved to b7), so the game can address 128 distinct blocks.
+# Fail loudly instead of emitting a truncated index — and note the real limit
+# is the bank3 shapes window, which emit_spills capacity-checks.
+MAX_SHAPES = 128
 
 
 def _shape_stream(generated: Path, level_numbers: list[int] | None = None) -> list[str]:
@@ -1637,9 +1639,8 @@ def _write_levels_index(output: Path, levels: list[tuple[int, dict]],
     shapes = _shape_stream(generated, [n for n, _l in levels])
     if len(shapes) > MAX_SHAPES:
         raise ValueError(
-            f"{len(shapes)} distinct shape blocks > the {MAX_SHAPES} the 6-bit "
-            "room-record shape index can address — share a model or wait for "
-            "the C3 row dictionary")
+            f"{len(shapes)} distinct shape blocks > the {MAX_SHAPES} the 7-bit "
+            "room-record shape index can address (LAYOUT 8) — share a model")
     shape_index = {name: i for i, name in enumerate(shapes)}
     equ_lines = [f"LEVEL_SHAPE_COUNT = {len(shapes)}"]
     for name in shapes:

@@ -21,7 +21,7 @@
     include "generated/level_019_rooms.asm"
     include "generated/level_020_rooms.asm"
 
-LEVEL_FORMAT = $07
+LEVEL_FORMAT = $08
 LEVEL_DATA_STRIDE = 7
 LEVEL_COUNT = 20
 
@@ -44,7 +44,7 @@ LEVEL_COUNT = 20
 ;                               1 B/patch, 1 B/feature, then the
 ;                               FEATURE-record stream when the room
 ;                               has feature cells (C11: no hot records).
-LEVEL_SHAPE_COUNT = 63
+LEVEL_SHAPE_COUNT = 88
 SHAPE_M0 = 0
 SHAPE_M1 = 1
 SHAPE_M2 = 2
@@ -108,6 +108,31 @@ SHAPE_M59 = 59
 SHAPE_M60 = 60
 SHAPE_M61 = 61
 SHAPE_M62 = 62
+SHAPE_M63 = 63
+SHAPE_M64 = 64
+SHAPE_M65 = 65
+SHAPE_M66 = 66
+SHAPE_M67 = 67
+SHAPE_M68 = 68
+SHAPE_M69 = 69
+SHAPE_M70 = 70
+SHAPE_M71 = 71
+SHAPE_M72 = 72
+SHAPE_M73 = 73
+SHAPE_M74 = 74
+SHAPE_M75 = 75
+SHAPE_M76 = 76
+SHAPE_M77 = 77
+SHAPE_M78 = 78
+SHAPE_M79 = 79
+SHAPE_M80 = 80
+SHAPE_M81 = 81
+SHAPE_M82 = 82
+SHAPE_M83 = 83
+SHAPE_M84 = 84
+SHAPE_M85 = 85
+SHAPE_M86 = 86
+SHAPE_M87 = 87
 
 ; Shape block (C11 2026-10-21): EXACTLY 3 row-pool indices (band
 ;   0/1/2 -> RowPoolPF0/1/2 in models_data.asm; the loader expands

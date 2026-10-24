@@ -2722,12 +2722,12 @@ LEVEL_DATA_ADDR = $F307        ; frozen address of bank2's LevelDataTable
                                 ;  shrank the tables; check_frozen_addrs
                                 ;  enforces)
                                 ; (test asserts bank2.lst label == this)
-LEVEL_FORMAT   = $07           ; C13 2026-10-23 (N=4): 7 = the C11 format with
-                                ; FOUR row-pool indices per shape block (a
-                                ; 3-row authored model pads the bottom band by
-                                ; repeating its last row). 6 =
-                                ; 4 (shape index b5-0 | band b6 | owns-extras
-                                ; b7, position byte, enemy count <<6 | extras
+LEVEL_FORMAT   = $08           ; 8 (2026-10-24): shape index is 7 bits
+                                ; (b6-0, 128 shapes) and the bottom-band flag
+                                ; moved to b7; the owns-extras bit is GONE —
+                                ; a room has an extras record iff its counts
+                                ; byte carries a nonzero ordinal. 7 = the C11
+                                ; format with FOUR row-pool indices per block.
                                 ; ordinal, then the level's AsyncExtras stream)
                                 ; + shape blocks store 3 row-pool indices
                                 ; instead of 9 raw PF bytes (C3 row dictionary).

@@ -5,7 +5,7 @@
     include "generated/level_003_rooms.asm"
     include "generated/level_004_rooms.asm"
 
-LEVEL_FORMAT = $07
+LEVEL_FORMAT = $08
 LEVEL_DATA_STRIDE = 7
 LEVEL_COUNT = 4
 

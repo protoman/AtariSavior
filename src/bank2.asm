@@ -186,16 +186,20 @@ EnterRoomB2:
     sta FetchPtr
     lda LevelPFDataHi
     sta FetchPtr+1
-    lda (FetchPtr),Y                ; RoomShapes: idx b5-0 | band b6 | b7 extras
+    lda (FetchPtr),Y                ; RoomShapes: idx b6-0 | band b7
     sta RoomPF0Lo                   ; C7: staged for bank3's B3RoomBlocks (the
                                     ;   SHAPE ADDRESS TABLE lives in that bank,
                                     ;   so bank2 needs no bank3 label). Loader
                                     ;   scratch: overwritten with MetaA later.
     sta Temp
-    ; band flag b6 → RoomBandColor (staged BEFORE the block reader — the
+    ; band flag b7 → RoomBandColor (staged BEFORE the block reader — the
     ; reader never writes it, and this is the only writer in the game).
+    ; LAYOUT 8 (2026-10-24): the index is 7 bits and the band flag moved to b7;
+    ; the owns-extras bit is GONE (a room has a record iff its counts byte
+    ; carries a nonzero extras ordinal, which is exactly what ExtrasLoad
+    ; indexes with — b7 was redundant).
     lda Temp
-    and #$40
+    and #$80
     beq .EBnoBand
     lda #BAND_COLOR
 .EBnoBand:
@@ -339,10 +343,9 @@ EBLER_Done:
     ;     shape blocks, the row pool and the async extras streams live
     ;     there). It is LAST on purpose: bank3's chain ends in its own
     ;     ReturnPad, so there is no cross-bank return pad and no extra push.
-    ;     The counts column is bank2 data — stage the owns-extras room's
-    ;     1-based ordinal here, before the switch.
-    lda RoomPF0Lo
-    bpl .EBnoExtras                 ; b7 clear = symmetric room, no record
+    ;     The counts column is bank2 data — stage the room's 1-based extras
+    ;     ordinal here, before the switch (0 = no record; bank3 dispatches on
+    ;     it, so the shape byte needs no owns-extras bit).
     ; base + 2n = RoomCounts. 2n is computed FIRST: adding n twice to the
     ; low byte loses the first carry (the second `adc n` consumes it) and the
     ; high byte then misses that carry — level 14 of a 20-level stage read its
@@ -358,8 +361,7 @@ EBLER_Done:
     ldy RoomNo
     lda (FetchPtr),Y
     and #$3F                        ; extras ordinal (0 = none)
-    sta LevelConnSpare              ; bank3 ExtrasLoad reads this
-.EBnoExtras:
+    sta LevelConnSpare              ; bank3 B3RoomBlocks/ExtrasLoad read this
     jmp ERBlocksPad                 ; $F450 `sta $1FF7` → bank3 $F453
 
     ; --- E4 moth body (bank2 free space $F008-$F9D8) -------------------------

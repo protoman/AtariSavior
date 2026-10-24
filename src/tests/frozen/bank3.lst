@@ -290,9 +290,9 @@
     201  f453				   B3RoomBlocks
     202  f453							; C7: the shape ADDRESS comes from THIS bank's LEVEL_ShapeTable, so bank2
     203  f453							; needs no bank3 label and no symbol export. RoomPF0Lo = the raw shapes
-    204  f453							; byte staged by EnterRoomB2 (idx b5-0 | band b6 | owns-extras b7).
+    204  f453							; byte staged by EnterRoomB2 (idx b6-0 | band b7; LAYOUT 8 2026-10-24).
     205  f453		       a5 99		      lda	RoomPF0Lo
-    206  f455		       29 3f		      and	#$3F	; shape index (C2 2026-10-20)
+    206  f455		       29 7f		      and	#$7F	; shape index, 7 bits (128 shapes)
     207  f457		       0a		      asl		; *2: LEVEL_ShapeTable is a word table
     208  f458		       aa		      tax
     209  f459		       bd 1c f6 	      lda	LEVEL_ShapeTable,X	; block address = the table entry
@@ -328,11 +328,11 @@
     239  f488		       88		      dey
     240  f489		       10 e6		      bpl	.EBpf
     241  f48b
-    242  f48b							; --- C5 meta source: owns-extras (shape byte b7) → the extras stream;
-    243  f48b							;     otherwise MetaA = 0 and MetaB = $40 iff the shape is hot (C11: the
-    244  f48b							;     flag is band 1's index b7).
-    245  f48b		       a5 99		      lda	RoomPF0Lo
-    246  f48d		       30 10		      bmi	.EBextras
+    242  f48b							; --- C5 meta source: the room's extras ordinal (LevelConnSpare, staged by
+    243  f48b							;     EnterRoomB2, 0 = none) → the extras stream; otherwise MetaA = 0 and
+    244  f48b							;     MetaB = $40 iff the shape is hot (C11: the flag is band 1's b7).
+    245  f48b		       a5 a2		      lda	LevelConnSpare
+    246  f48d		       d0 10		      bne	.EBextras
     247  f48f		       a9 00		      lda	#0
     248  f491		       85 99		      sta	RoomMetaA
     249  f493		       a0 01		      ldy	#1
@@ -628,7 +628,7 @@
      70  f61c
      71  f61c							; C7 (2026-10-20): shape ADDRESS table — bank3's B3RoomBlocks
      72  f61c							; reads it in-bank; the 6-bit room-record index is the row.
-     73  f61c							; LEVEL_SHAPE_COUNT = 11 (6-bit index ceiling: 64)
+     73  f61c							; LEVEL_SHAPE_COUNT = 11 (6-bit index ceiling: 128)
      74  f61c				   LEVEL_ShapeTable
      75  f61c		       cc f5		      .word.w	M0Shape
      76  f61e		       d0 f5		      .word.w	M1Shape

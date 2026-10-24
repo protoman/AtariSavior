@@ -524,12 +524,14 @@ constexpr int kArchMask = 15;   // 4 bits: hot archetypes use ids 8..14
 // two-slot split raises the shape slot, bump this (tools/bank3_data_sizes.py
 // reports the headroom). With the budget at the current count the generator
 // output is byte-identical to the pre-budget build.
-// Shape budget = the 6-bit index cap (64). The maze layout multiplies the
-// exit signatures (N/S/H x 2Gap x narrow-gap), so the archetype count is
-// the knob that is spent first (Build20LevelStage picks the widest set
-// that fits). Measured 2026-10-24: 63 shapes, bank3 shapes window fits
-// with the test_generator slack gate green.
-constexpr int kShapeBudget = 64;
+// Shape budget = the 7-bit index cap (128, LAYOUT 8 2026-10-24: the shape
+// index is b6-0 and the band flag moved to b7, so the old 6-bit/64 ceiling is
+// gone). The maze layout multiplies the exit signatures (N/S/H x 2Gap x
+// narrow-gap), so the archetype count is the knob that is spent first
+// (Build20LevelStage picks the widest set that fits) — and the REAL limit is
+// the bank3 shapes window (emit_spills hard-fails, test_generator gates a 64 B
+// slack floor), not the index.
+constexpr int kShapeBudget = 128;
 const char* const kArch[8][3] = {
     {"..........", "..........", ".........."},          // 0 shaft
     {"..###.....", "..........", ".....###.."},          // 1 ledge ladder
@@ -1817,7 +1819,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         const std::vector<std::vector<Role>> baseRoles = roles;
         const std::set<int> baseUsed = used;
         buildLibrary(true, 3);
-        if ((int)used.size() > kShapeBudget || (int)used.size() > 64) {
+        if ((int)used.size() > kShapeBudget) {
             masks = baseMasks;
             roles = baseRoles;
             used = baseUsed;

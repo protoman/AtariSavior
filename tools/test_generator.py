@@ -11,7 +11,7 @@ for content and never written):
 
   * shape: canonical wrapped `{"stage": {...}}`, 20 levels, level n has n rooms,
     211 rooms total;
-  * model library: <= 64 shapes (format cap), ids 0..n-1 contiguous, EVERY model referenced
+  * model library: <= 128 shapes (7-bit format cap, LAYOUT 8), ids 0..n-1 contiguous, EVERY model referenced
     by at least one room (the converter only emits referenced ones);
   * positions: unique per level, inside the 15x15 C1 grid, no nibble 15;
   * LAYOUT (the tear rule): connections are DERIVED FROM ADJACENCY at run time,
@@ -55,9 +55,9 @@ import test_editor_roundtrip as ER   # noqa: E402  (editor build + PY constant)
 LEVELS = 20
 ROOMS = 2 + sum(range(2, LEVELS + 1))   # 211 (level 1 has 2 rooms too)
 GRID_SPAN = 15                          # C1: nibble 15 is the no-room sentinel
-MAX_SHAPES = 64   # format cap: 6-bit shape index
-SHAPE_BUDGET = 64      # the 6-bit shape index cap; the maze layout spends
-                       # it (measured 2026-10-24: 63 shapes, windows fit)
+MAX_SHAPES = 128  # format cap: 7-bit shape index (LAYOUT 8, 2026-10-24)
+SHAPE_BUDGET = 128     # the format cap; the REAL limit is the bank3 shapes
+                       # window (SLACK_FLOOR below), measured every run
 SLACK_FLOOR = 64  # B that must stay free in each bank3 window
 MAX_OBJECTS = 2                         # editor kMaxRoomElements / verify_build
 START_CELL = 4                          # LevelStartX 32 px / 8 px per cell

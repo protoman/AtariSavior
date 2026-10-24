@@ -2723,12 +2723,12 @@
    2722  f8c6							;  shrank the tables; check_frozen_addrs
    2723  f8c6							;  enforces)
    2724  f8c6							; (test asserts bank2.lst label == this)
-   2725  f8c6		       00 07	   LEVEL_FORMAT =	$07	; C13 2026-10-23 (N=4): 7 = the C11 format with
-   2726  f8c6							; FOUR row-pool indices per shape block (a
-   2727  f8c6							; 3-row authored model pads the bottom band by
-   2728  f8c6							; repeating its last row). 6 =
-   2729  f8c6							; 4 (shape index b5-0 | band b6 | owns-extras
-   2730  f8c6							; b7, position byte, enemy count <<6 | extras
+   2725  f8c6		       00 08	   LEVEL_FORMAT =	$08	; 8 (2026-10-24): shape index is 7 bits
+   2726  f8c6							; (b6-0, 128 shapes) and the bottom-band flag
+   2727  f8c6							; moved to b7; the owns-extras bit is GONE —
+   2728  f8c6							; a room has an extras record iff its counts
+   2729  f8c6							; byte carries a nonzero ordinal. 7 = the C11
+   2730  f8c6							; format with FOUR row-pool indices per block.
    2731  f8c6							; ordinal, then the level's AsyncExtras stream)
    2732  f8c6							; + shape blocks store 3 row-pool indices
    2733  f8c6							; instead of 9 raw PF bytes (C3 row dictionary).

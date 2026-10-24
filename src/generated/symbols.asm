@@ -341,7 +341,7 @@ LaserX                   0083              (R )
 Level                    00a3              (R )
 LEVEL_COUNT              0014              (R )
 LEVEL_DATA_ADDR          f307                  
-LEVEL_FORMAT             0007                  
+LEVEL_FORMAT             0008                  
 LevelConnSpare           00a2                  
 LevelEnemySpare2         00b0              (R )
 LevelMinerRoom           00a4              (R )

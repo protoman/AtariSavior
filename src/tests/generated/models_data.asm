@@ -70,7 +70,7 @@ RowPoolPF2:
 
 ; C7 (2026-10-20): shape ADDRESS table — bank3's B3RoomBlocks
 ; reads it in-bank; the 6-bit room-record index is the row.
-; LEVEL_SHAPE_COUNT = 11 (6-bit index ceiling: 64)
+; LEVEL_SHAPE_COUNT = 11 (6-bit index ceiling: 128)
 LEVEL_ShapeTable:
   .word M0Shape
   .word M1Shape
