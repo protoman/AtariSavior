@@ -139,3 +139,49 @@ prefix skips pair 0. `convert_level.check_stage_connections` and
 
 Guards: `tools/test_hcrunch.py` mirrors the tables (`P_TRIPLE`); re-freeze the
 frozen banks after any `CrPfx` change (`tools/freeze_test_banks.sh`).
+
+## No opening without a neighbour (user rule 2026-10-24, screenshot
+`src/screenshots/bugs/layout_invalid_exists.png`)
+
+**The rule.** A room must not show a passage on a side where no room exists
+(level 15 rooms 8, 10, 11 and 14 in that shot).
+
+**Why models cannot fix it.** The playfield is REFLECTED (`CTRLPF` D0 = 1): model
+cell 0 is drawn at display cols 0-1 *and* 38-39, and `PlayerHitsMap` mirrors the
+same way. A side link therefore always opens BOTH edges, and the exit test fires
+at `RoomX == PLAYER_MIN_X/MAX_X`, so the opening has to reach the edge. Any
+horizontal run of rooms has two ends, and an end room has exactly one horizontal
+neighbour — so its far side always shows a dead aperture. More 32K models do not
+help: the limit is the mirror, not the library.
+
+**The fix (user's suggestion): a wave of INDESTRUCTIBLE PLUG.** Plug the dead
+side with a solid, never-destroyable column at the edge:
+* dead LEFT (no west room): M1 patch at `[1, 0, PLUG, 1]` (side 1 = left);
+* dead RIGHT (no east room): ball patch at `[1, 9, PLUG, 0]` (side 0 = right,
+  right_col 9 = display cols 38-39).
+Only rooms with exactly one horizontal neighbour need one, so the 2-patch room
+cap is never exceeded unless the room also carries an async block.
+
+What the kernel needs:
+1. **PLUG is not bombable.** The async solid block is a *thin* PF cell the bomb
+   can punch; the plug must be skipped by `BombMarkWalls` / the C4 punch (it is
+   an object patch, not PF, so it is already outside the PF punch — verify that
+   the bomb's enemy blast and the thin-wall punch never touch it).
+2. **Width 8 px.** The ball and the M1 both take a width: the plug must use the
+   8-px form (one model cell = 8 px) or it reads as a hairline, not a wall.
+3. **Indestructible = no key, no bomb, no blink.** No LOCKED_DOOR behaviour;
+   the door path stays disabled.
+
+Converter/editor:
+* accept the PLUG tile in `asym_patches` **only** at `(band 1, col 0, side 1)`
+  and `(band 1, col 9, side 0)`, and only when the room has no neighbour that
+  way (the generator knows the grid; the editor validates on save);
+* the wall-hide guard passes for free: bands 0/2/3 at those columns are already
+  wall, and band 1 is the painted one.
+* the generator emits the plug for every room with a single horizontal
+  neighbour, and `test_room_links` must treat a plugged edge as CLOSED (so a
+  one-sided link is legal when the far side is plugged).
+
+**Open question for the user:** with the plug in place, should the *layout*
+still allow dead-end side rooms (a corridor that stops), or should the generator
+prefer joining such rooms vertically so the plug is rare?
