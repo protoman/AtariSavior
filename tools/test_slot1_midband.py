@@ -78,8 +78,7 @@ def main() -> int:
         r[Z["EnemyDeadMask"]] = 0
         r[Z["EnemyRamX"]] = 71
         r[Z["LevelMinerRoom"]] = r[Z["RoomNo"]] & 0x7F
-        import os as _os
-        r[Z["MinerX"]] = int(_os.environ.get("MID_X", "40"))
+        r[Z["MinerX"]] = 40
         if pair:
             # The stage's own case: the enemy and the miner 20 lines below,
             # BOTH inside band 1 (lines 36..71; the miner draws at MinerY+3) —
@@ -134,11 +133,7 @@ def main() -> int:
         pair_g0 |= set(g0)
     base_lines, pair_lines = round(base_lines), round(pair_lines)
     base_lines2, pair_lines2 = round(base_lines2), round(pair_lines2)
-    import os as _os
-    if _os.environ.get("MID_X"):
-        print(f"   MIDX X={_os.environ['MID_X']} control={base_lines} "
-              f"same-band={pair_lines}")
-        return 0
+
     base_art = len({v for v in base_g0 if v})
     pair_art = len({v for v in pair_g0 if v})
 
@@ -150,6 +145,13 @@ def main() -> int:
     # staged (270.0 +/- 0.08), and setting the hook's body compensation to -3
     # was measured to make that frame 269 (one line SHORT). So do not compare
     # the two configurations against each other.
+    # Known red (2026-10-24): the fabricated room leaves ObjTop1=$FD / ObjX1=$00
+    # / ObjBase1=$50 in RAM, i.e. the pokes below do NOT make SelectActiveObject
+    # stage the pair the way the game does, and the Slot1Hook gate then runs a
+    # nonsense-Y prologue on every band. Diagnostic to finish this: drive the
+    # REAL staging route (see call_stage_slot1 in tools/test_slot1_pair.py)
+    # instead of poking ZP, then re-measure — the real stage holds a constant
+    # 270 in sim_frame_budget, so this is very likely test-side.
     for tag, a, b in (("control", base_lines, base_lines2),
                       ("same-band", pair_lines, pair_lines2)):
         if a != b:
