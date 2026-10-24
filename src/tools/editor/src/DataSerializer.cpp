@@ -1386,6 +1386,93 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
 
 }  // namespace
 
+// Stage-level LINK check (user rule 2026-10-24). See the header for the rule:
+// the runtime exit fires when the player reaches the screen edge and never
+// tests the neighbour's wall, so a half-carved link or a band mismatch drops
+// him inside a wall on the room change. This mirrors
+// tools/convert_level.check_stage_connections (the build gate).
+std::vector<std::string> DataSerializer::StageConnectionProblems(
+        const std::vector<LevelData>& levels,
+        const std::vector<ModelData>& models) {
+    std::vector<std::string> out;
+    auto findModel = [&](int id) -> const ModelData* {
+        for (const auto& m : models) {
+            if (m.id == id) return &m;
+        }
+        return nullptr;
+    };
+    auto sideBands = [](const ModelData& m) {
+        std::vector<int> v;
+        for (int band = 1; band <= 2; ++band) {
+            if (CellAir(m, band, 0)) v.push_back(band);
+        }
+        return v;
+    };
+    int level_n = 0;
+    for (const auto& level : levels) {
+        ++level_n;
+        auto findRoom = [&](int x, int y) -> const RoomData* {
+            for (const auto& r : level.rooms) {
+                if (r.room_x == x && r.room_y == y) return &r;
+            }
+            return nullptr;
+        };
+        for (const auto& room : level.rooms) {
+            const ModelData* a = findModel(room.model_id);
+            if (!a || a->width <= 0) continue;
+            const int bands = (int)a->tiles.size() / a->width;
+            if (bands < 3) continue;
+            if (const RoomData* east = findRoom(room.room_x + 1, room.room_y)) {
+                const ModelData* b = findModel(east->model_id);
+                if (!b) continue;
+                const std::vector<int> sa = sideBands(*a), sb = sideBands(*b);
+                bool shared = false;
+                for (int x : sa) {
+                    for (int y : sb) {
+                        if (x == y) shared = true;
+                    }
+                }
+                if (!sa.empty() && !sb.empty() && !shared) {
+                    out.push_back(
+                        "level " + std::to_string(level_n) + ": rooms "
+                        + std::to_string(room.room_id) + " and "
+                        + std::to_string(east->room_id)
+                        + " are side by side but open in different bands "
+                        "(landing inside a wall)");
+                } else if (sa.empty() != sb.empty()) {
+                    out.push_back(
+                        "level " + std::to_string(level_n) + ": rooms "
+                        + std::to_string(room.room_id) + " and "
+                        + std::to_string(east->room_id)
+                        + " are side by side but only one has a side opening");
+                }
+            }
+            if (const RoomData* south = findRoom(room.room_x, room.room_y + 1)) {
+                const ModelData* b = findModel(south->model_id);
+                if (!b || b->width <= 0) continue;
+                if ((int)b->tiles.size() / b->width < 1) continue;
+                bool shared = false, any = false;
+                for (int x = 0; x < kRoomWidth; ++x) {
+                    const bool up = CellAir(*a, bands - 1, x);
+                    const bool dn = CellAir(*b, 0, x);
+                    any = any || up || dn;
+                    shared = shared || (up && dn);
+                }
+                if (any && !shared) {
+                    out.push_back(
+                        "level " + std::to_string(level_n) + ": rooms "
+                        + std::to_string(room.room_id) + " (above) and "
+                        + std::to_string(south->room_id)
+                        + " (below) share no open column (landing inside a "
+                        "wall)");
+                }
+            }
+        }
+    }
+    return out;
+}
+
+
 void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                                        std::vector<ModelData>& models) {
     // 1. Every level's walk + the shape mask of each of its rooms. A room's

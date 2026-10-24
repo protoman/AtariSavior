@@ -1317,6 +1317,61 @@ def write_levels_index(output: Path, json_paths: list[Path]) -> None:
     _write_levels_index(output, levels, models_by_id)
 
 
+def check_stage_connections(models_by_id: dict, levels: list[tuple[int, dict]]) -> None:
+    """Adjacent rooms must share the SAME opening — or the player lands in a wall.
+
+    The runtime exit is triggered by the player reaching the screen edge
+    (`RoomX ==` min/max, and the vertical equivalent), NOT by testing the
+    neighbour's wall. So a passage that exists on one side only drops the
+    player inside a wall in the room he arrives in (user rule 2026-10-24).
+
+    * horizontal pair (same y, x and x+1): both rooms' side opening must share
+      at least one band in {1, 2} — the walkable bands. Band 0/3 side holes are
+      structural, not passages.
+    * vertical pair (same x, y and y+1): the upper room's LAST band and the
+      lower room's band 0 must share at least one open column.
+    """
+
+    def rows_of(room: dict) -> list[str]:
+        return rows_from_json(room, models_by_id)
+
+    for level_n, level in levels:
+        pos = {(int(r.get("room_x", 0)), int(r.get("room_y", 0))): r
+               for r in level.get("rooms") or []}
+        for (x, y), room in pos.items():
+            east = pos.get((x + 1, y))
+            if east is not None:
+                a = {b for b, row in enumerate(rows_of(room)) if row[0] == "."}
+                b = {b for b, row in enumerate(rows_of(east)) if row[0] == "."}
+                a &= {1, 2}
+                b &= {1, 2}
+                if a and b and not (a & b):
+                    raise ValueError(
+                        f"level {level_n}: rooms {room.get('room_id')} and "
+                        f"{east.get('room_id')} are side by side but their "
+                        f"openings are in different bands ({sorted(a)} vs "
+                        f"{sorted(b)}) — the player would arrive inside a "
+                        "wall; open the link in a shared band (1, 2 or both)")
+                if bool(a) != bool(b):
+                    lone = room.get("room_id") if a else east.get("room_id")
+                    raise ValueError(
+                        f"level {level_n}: rooms {room.get('room_id')} and "
+                        f"{east.get('room_id')} are side by side but only "
+                        f"room {lone} has a side opening "
+                        f"({sorted(a) if a else sorted(b)}) — carve the same "
+                        "band on both sides")
+            south = pos.get((x, y + 1))
+            if south is not None:
+                up = {c for c, v in enumerate(rows_of(room)[-1]) if v == "."}
+                dn = {c for c, v in enumerate(rows_of(south)[0]) if v == "."}
+                if (up or dn) and not (up & dn):
+                    raise ValueError(
+                        f"level {level_n}: rooms {room.get('room_id')} (above) "
+                        f"and {south.get('room_id')} (below) do not share an "
+                        f"open column (up {sorted(up)}, down {sorted(dn)}) — "
+                        "the player would arrive inside a wall")
+
+
 def write_stage(stage_path: Path, outdir: Path,
                 rooms_dir: Path | None = None) -> None:
     """Convert a unified stage file (models + every level) — E1 2026-10-20.
@@ -1344,6 +1399,11 @@ def write_stage(stage_path: Path, outdir: Path,
         rooms.sort(key=lambda r: r["room_id"])
         level = dict(level, rooms=rooms)
         levels.append((level_n, level))
+    # Pair openings first: a half-carved link or a band mismatch drops the
+    # player inside a wall on the room change (2026-10-24 user rule).
+    check_stage_connections(models_by_id, levels)
+    for level_n, level in levels:
+        rooms = level["rooms"]
         for index, room in enumerate(rooms):
             rows = rows_from_json(room, models_by_id)
             txt = rooms_dir / f"level_{level_n:03d}_room_{index + 1:03d}.txt"

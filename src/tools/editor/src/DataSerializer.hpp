@@ -69,6 +69,17 @@ public:
     // writes a stage path on its own).
     static void Build20LevelStage(std::vector<LevelData>& levels,
                                   std::vector<ModelData>& models);
+    // Stage-level LINK check (user rule 2026-10-24): every pair of ADJACENT
+    // rooms (same row, x and x+1; same column, y and y+1) must share its
+    // opening, because the runtime exit fires when the player reaches the
+    // screen edge — it never tests the neighbour's wall. A side link may be
+    // open in band 1, band 2 or both, but BOTH rooms must share at least one
+    // of those bands; a vertical link must share at least one gap column
+    // between the upper room's last band and the lower room's band 0.
+    // Returns one human-readable line per offending pair (empty = clean).
+    static std::vector<std::string> StageConnectionProblems(
+            const std::vector<LevelData>& levels,
+            const std::vector<ModelData>& models);
     // Converts the pixel-decoded authentic H.E.R.O. stage maps into standard
     // level JSON files. Returns false if the intermediate file is missing.
     static bool ImportAuthenticMaps(const std::string& intermediateJsonPath, const std::string& outputDirectory);
