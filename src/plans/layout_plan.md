@@ -114,3 +114,28 @@ archetype family), not applied as an independent multiplier.
   in bands 0 and 2: the band-2 archetype ledges provide those columns.
 - **Side links + water rooms**: the raft lane and the miner rock live in the
   bottom band; a side link does not touch them.
+
+## Crunch prefix: starts at pair 1 (2026-10-24)
+
+A crunch room can carry a side link now. The three representations are kept
+separate on purpose — do not "fix" one by bending another:
+
+| representation | content | consumers |
+|---|---|---|
+| model row (band 1) | PASSABLE — the room must be crossable | `RoomConnectivityProblem`, the link checks |
+| feature cells 0..9 | the static PF the LOADER ORs into `PF*Buf` | `test_band_restage`, the entry frame |
+| kernel `CrPfx0/1/2` | the animated crush, rewritten every VBL from PAIR 1 | the game |
+
+So pair 0 (display cols 0-1 and their mirror 38-39) is never covered by the
+crush: the player enters an 8-px vestibule at the edge and must time the crush
+to leave it. The crush still gates; the side link survives.
+
+**The trap (cost a revert):** authoring the feature cells on 1..9 so they match
+the model row makes the LOADER (which expands the prefix from col 0) disagree
+with the room rows — `test_band_restage` reads a row/PF mismatch and the link
+check calls the pair half-carved. The feature cells stay 0..9; only the KERNEL
+prefix skips pair 0. `convert_level.check_stage_connections` and
+`test_generator` therefore treat a crunch cell at (band 1, cell 0) as passable.
+
+Guards: `tools/test_hcrunch.py` mirrors the tables (`P_TRIPLE`); re-freeze the
+frozen banks after any `CrPfx` change (`tools/freeze_test_banks.sh`).
