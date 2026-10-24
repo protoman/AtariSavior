@@ -1662,7 +1662,11 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             auto canHost = [&](int i, Role r) {
                 if (i <= 0 || i >= count - 1) return false;
                 if (r == Role::Hot || r == Role::Phase) return (bool)vroom[i];
-                if (r == Role::Hcrunch) return (bool)vroom[i] && !hroom[i];
+                // A crunch room CAN keep a side link since 2026-10-24: the
+                // kernel prefix starts at pair 1, so the 8-px edge vestibule
+                // stays open and the crush gates the way out of it. It still
+                // needs a vertical passage (the crush sweeps band 1).
+                if (r == Role::Hcrunch) return (bool)vroom[i];
                 return true;
             };
             // Most RESTRICTIVE first: the crunch needs a vertical-only room
@@ -1858,8 +1862,10 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                      (int)TileType::PHASE});
             }
             if (roles[l - 1][i] == Role::Hcrunch) {
-                // Fixed 10-cell prefix on the middle band (live stage form).
-                for (int c = 0; c < kRoomWidth; ++c) {
+                // The crush sweeps band 1 from CELL 1 (kernel CrPfx tables):
+                // cell 0 stays the side opening, so the player enters an 8-px
+                // vestibule at the edge and must time the crush to leave it.
+                for (int c = 1; c < kRoomWidth; ++c) {
                     room.feature_cells.push_back(
                         {1, c, (int)TileType::HCRUNCH});
                 }

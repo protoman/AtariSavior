@@ -308,10 +308,13 @@ def hot_records(rows: list[str], hot_m1: list[tuple[int, int]] | None = None,
                 f"{source}: hcrunch cells at rows {sorted(bands)} — the "
                 "crunch band must be the middle band (row 1)")
         cols = sorted(c for _, c in c_cells)
-        if cols != list(range(cols[-1] + 1)):
+        # The crush sweeps a contiguous prefix that may start at cell 0 (no
+        # side link) or at cell 1 (cell 0 stays the side opening — since
+        # 2026-10-24 the kernel CrPfx tables leave pair 0 open).
+        if cols[0] not in (0, 1) or cols != list(range(cols[0], cols[-1] + 1)):
             raise ValueError(
                 f"{source}: hcrunch cells at cols {cols} are not a contiguous "
-                "prefix from col 0 (need cols 0..n in one band)")
+                "prefix from col 0 or col 1 (need cols n..m in one band)")
         feats.append(
             f"  .byte $82, 0, {next(iter(bands))}, {2 * (cols[-1] + 1)}, 1  "
             f"; hcrunch band prefix")
