@@ -3,44 +3,44 @@
 ; Generated from models.json model 0. Do not edit by hand.
 M0Shape:
 M0Rows:
-  .byte $00, $01, $02  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $01, $01, $02  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 1. Do not edit by hand.
 M1Shape:
 M1Rows:
-  .byte $03, $01, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $03, $01, $01, $00  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 2. Do not edit by hand.
 M2Shape:
 M2Rows:
-  .byte $00, $01, $04  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $01, $01, $04  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 14. Do not edit by hand.
 M14Shape:
 M14Rows:
-  .byte $00, $05, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $05, $06, $00  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 16. Do not edit by hand.
 M16Shape:
 M16Rows:
-  .byte $00, $80, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $80, $07, $00  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 17. Do not edit by hand.
 M17Shape:
 M17Rows:
-  .byte $00, $80, $00  ; row-pool indices (band 0-2; band1 b7 = mid_band hot)
+  .byte $00, $80, $07, $00  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; C3 (2026-10-20): ROW DICTIONARY — one 3 B entry per DISTINCT
 ; (PF0,PF1,PF2) band row for the whole game. A shape block carries
 ; 3 one-byte indices (band 0/1/2) into these SoA columns; bank2's
 ; B3RoomBlocks expands them into PF0Buf at room load.
-LEVEL_ROW_COUNT = 6
+LEVEL_ROW_COUNT = 8
 RowPoolPF0:
-  .byte $f0, $30, $f0, $f0, $30, $f0
+  .byte $f0, $30, $f0, $f0, $30, $f0, $f0, $00
 RowPoolPF1:
-  .byte $ff, $00, $ff, $00, $3c, $fc
+  .byte $ff, $00, $ff, $00, $3c, $fc, $00, $00
 RowPoolPF2:
-  .byte $0f, $00, $ff, $c0, $00, $00
+  .byte $0f, $00, $ff, $c0, $00, $00, $0c, $00
 
 
 ; C7 (2026-10-20): shape ADDRESS table — bank3's B3RoomBlocks
