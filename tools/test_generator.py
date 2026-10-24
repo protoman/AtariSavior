@@ -82,7 +82,7 @@ def edge_cells(rows, direction: str) -> set[int]:
     if direction == "north":
         return {x for x in range(10) if rows[0][x] == "."}
     if direction == "south":
-        return {x for x in range(10) if rows[2][x] == "."}
+        return {x for x in range(10) if rows[-1][x] == "."}
     return {0} if rows[1][0] == "." else set()
 
 
@@ -98,26 +98,31 @@ STRUCTURAL_WALLS = set("#H")   # rock + hot; P/C are gated (open at run time)
 def entries_connected(rows) -> bool:
     """Every carved edge opening must reach the others through open cells.
 
-    PF walls span a whole 48-line band, so a band-1 wall that does not line up
+    PF walls span a whole colour band, so a band-1 wall that does not line up
     with the vertical corridor makes a room impassable (user reports
     2026-10-21: level 13 rooms 11-13 unreachable; level 13 room 4 door
     unreachable). Rooms with fewer than two edge sides are dead ends/goals.
+
+    Height-agnostic (N=4, 2026-10-24): the south edge is the LAST row, whatever
+    the model height — a generated 4-row model's inserted AIR band is ordinary
+    open space for the flood fill.
     """
+    last = len(rows) - 1
     edges = []
     for x in range(10):
         if rows[0][x] not in STRUCTURAL_WALLS:
             edges.append((0, x))
-        if rows[2][x] not in STRUCTURAL_WALLS:
-            edges.append((2, x))
+        if rows[last][x] not in STRUCTURAL_WALLS:
+            edges.append((last, x))
     if rows[1][0] not in STRUCTURAL_WALLS:
         edges.append((1, 0))
     sides = set()
     for y, _x in edges:
-        sides.add(("N" if y == 0 else "S" if y == 2 else "H"))
+        sides.add("N" if y == 0 else "S" if y == last else "H")
     if len(sides) < 2:
         return True
-    entries = [e for e in edges if e[0] in (0, 1)]   # N and H ways in
-    exits = [e for e in edges if e[0] in (2, 1)]     # S and H ways out
+    entries = [e for e in edges if e[0] in (0, 1)]        # N and H ways in
+    exits = [e for e in edges if e[0] in (last, 1)]       # S and H ways out
     for start in entries:
         seen = {start}
         stack = [start]
@@ -125,7 +130,7 @@ def entries_connected(rows) -> bool:
             y, x = stack.pop()
             for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 ny, nx = y + dy, x + dx
-                if (0 <= ny < 3 and 0 <= nx < 10 and (ny, nx) not in seen
+                if (0 <= ny <= last and 0 <= nx < 10 and (ny, nx) not in seen
                         and rows[ny][nx] not in STRUCTURAL_WALLS):
                     seen.add((ny, nx))
                     stack.append((ny, nx))
@@ -341,10 +346,10 @@ def main() -> int:
                       "outside the 20-cell stage")
                 return 1
             half_cell = (miner_cell if miner_cell < 10 else 19 - miner_cell)
-            if miner_rows[2][half_cell] == ".":
+            if miner_rows[-1][half_cell] == ".":
                 print(f"FAIL: level {level_n} miner room {miner_id} has no "
                       f"block under the miner at cell {half_cell} "
-                      f"({miner_rows[2]!r})")
+                      f"({miner_rows[-1]!r})")
                 return 1
             # ...and the player must be able to REACH him: his own cell is
             # air and an entry cell of the room floods to it.
@@ -366,7 +371,7 @@ def main() -> int:
             edges = [(0, x) for x in range(10)
                      if miner_rows[0][x] not in STRUCTURAL_WALLS]
             edges += [(2, x) for x in range(10)
-                      if miner_rows[2][x] not in STRUCTURAL_WALLS]
+                      if miner_rows[-1][x] not in STRUCTURAL_WALLS]
             if miner_rows[1][0] not in STRUCTURAL_WALLS:
                 edges.append((1, 0))
             if not any(e in seen for e in edges):
@@ -415,7 +420,7 @@ def main() -> int:
                           f"wall is off the corridor {rrows}")
                     return 1
                 corridor = {x for x in range(10)
-                            if rrows[0][x] == "." and rrows[2][x] == "."}
+                            if rrows[0][x] == "." and rrows[-1][x] == "."}
                 door_cols = [int(patch[1])
                              for patch in room.get("asym_patches") or []
                              if len(patch) >= 3 and patch[2] == 9]
