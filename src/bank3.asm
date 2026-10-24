@@ -526,7 +526,7 @@ HotOverlapBody:
     ; only from a cell-walk hit, so this is "the wall I bumped is hot".
     ldx CollisionEndX           ; min col
 .HOVpfCol:
-    lda ColOff,X                ; PF0/PF1/PF2 group offset (0/3/6)
+    lda ColOff,X                ; PF0/PF1/PF2 group offset (0/4/8)
     clc
     adc #1                      ; +1 = row 1 in the 3-row buffer
     tay
@@ -1218,7 +1218,8 @@ M1OffTab:                           ; Phase 5: MetaA b0 → M1 x-offset (left/ri
 ; $FE9C window is fill again.
 ; ------------------------------------------------------------------------------
     .ds $FEC0 - *, 0
-ColOff:     .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
+ColOff:     .byte 0,0,0,0, 4,4,4,4,4,4,4,4, 8,8,8,8,8,8,8,8
+                                ; N=4 stride 4 (PF1/PF2 rows at +4/+8)
 ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
             .byte $01,$02,$04,$08,$10,$20,$40,$80
 

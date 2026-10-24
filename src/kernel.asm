@@ -3984,7 +3984,11 @@ BombEnemyBlast:
 ; `cmp BandStart,X` is abs,X, so the address is irrelevant — low byte
 ; $00 + 3 stays in one page).
 BandStart:
-    .byte 0,48,96,144           ; first scanline of bands 0..3
+    .byte 0,36,72,108,144       ; N=4: first scanline of bands 0..3 + the end
+                                ;   (the Slot1Hook gate reads [X] and [X+1], so
+                                ;   a stale 48/96/144 ladder made it swap on the
+                                ;   WRONG band: 2 extra lines in a band whose
+                                ;   body count was not reduced = +1 line/frame)
 
 ; --- EnemyColorTable + ObjSpriteOffTable (moved here 2026-10-22: the
 ; $F744 fill needed 11 B for the Slot1Hook HMOVE fix; both are read

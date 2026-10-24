@@ -63,16 +63,16 @@ for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
 PC_STARTFRAME = LABELS["StartFrame"]
 
 # LWC maps (RoomY+2)>>2 and (RoomY+3)>>2 through bank2's BandRowFromLine
-# ladder (floor(line/48)) — compute the same value here.
+# ladder (N=4: 9 entries per 36-line band) — compute the same value here.
 def band_row(line: int) -> int:
-    return min(line // 48, 3)
+    return min(line // 36, 3)
 
 # ZP indices (addr & 0x7F)
 I_ROOMX, I_ROOMY, I_DIR, I_LASERX = 0x00, 0x01, 0x02, 0x03
 I_BOMBP, I_DEADMASK, I_LSTATE = 0x35, 0x3A, 0x40
 I_COLLX = 0x0B                     # $8B CollisionX (tested candidate)
 I_VYLO, I_VYHI = 0x13, 0x14
-PF0BUF, PF1BUF, PF2BUF = 0x43, 0x46, 0x49     # $C3/$C6/$C9 & 0x7F
+PF0BUF, PF1BUF, PF2BUF = 0x43, 0x47, 0x4B     # $C3/$C7/$CB & 0x7F (N=4)
 
 RANGE_LO = LABELS["LaserInput"]
 RANGE_HI = LABELS.get("TallyTramp", 0xFFF0)

@@ -112,7 +112,7 @@ def main() -> int:
         r = mem.ram
         r[L0["EnemyCount"] - 0x80] = 0          # no enemies -> clean exit
         r[L0["LineCount"] - 0x80] = packed
-        r[L0["RoomY"] - 0x80] = BEAM_Y          # beam rows -> band 1
+        r[L0["RoomY"] - 0x80] = BEAM_Y          # beam rows -> BEAM_BAND
         r[L0["CollisionX"] - 0x80] = tip
         r[L0["CollisionEndX"] - 0x80] = 20      # path cols: full right half
         r[L0["CollisionCellX"] - 0x80] = 39
@@ -140,9 +140,12 @@ def main() -> int:
                 return mpu.a, r[L0["CollisionX"] - 0x80]
         sys.exit("LWC run never returned")
 
-    # packed: (right_col+1)<<4 | band mask; band 1 active only
-    active = (9 + 1) << 4 | 0x02
-    inactive = (9 + 1) << 4 | 0x01
+    # packed: (right_col+1)<<4 | band mask. N=4: the beam rows 82/83
+    # belong to band 2 (36-line bands) — the mask bit must be THAT band,
+    # not the 48-line era's band 1.
+    BEAM_BAND = min(((BEAM_Y + 4) >> 2) // 9, 3)
+    active = (9 + 1) << 4 | (1 << BEAM_BAND)
+    inactive = (9 + 1) << 4 | (1 << 0)
     a, cx = lwc_run(active, 159)
     assert a == 2, f"active strip must return A=2 (got {a})"
     assert cx == 159, f"contact must not move CollisionX (got {cx})"

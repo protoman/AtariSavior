@@ -492,7 +492,7 @@ def main() -> int:
     # --- Phase 3: phase-cell blink ---------------------------------------
     # Synthetic hot stream at $A0: solid count 0, hot count 1, record
     # $80, 2c=4 (pair idx 2 → PF1 bits7,6 = $C0), row 1 (PF1Buf row1 =
-    # $C7). mod-90 clock (2026-10-13): phase <45 = ON half (b5 armed,
+    # $C8). mod-90 clock (2026-10-13): phase <45 = ON half (b5 armed,
     # bits set); phase >=45 = OFF half (bits cleared).
     def stage_phase(clock):
         mem = Mem1()
@@ -504,7 +504,7 @@ def main() -> int:
         r[L2["RoomPF0Lo"] + 1 - 0x80] = 0x00   # staged MetaB
         r[L0["EnemyDeadMask"] - 0x80] = 0
         r[0xC2 - 0x80] = clock             # EnemyRamP
-        r[0xC7 - 0x80] = 0xC0              # PF1Buf row1 pre-seeded ON
+        r[0xC8 - 0x80] = 0xC0              # PF1Buf row1 (N=4: $C7+1) ON
         mem.bank = 3            # C7: the band walker lives in bank3
         mpu = MPU(memory=mem)
         mpu.pc = L3["B3StageBand"]
@@ -515,7 +515,7 @@ def main() -> int:
         for _ in range(8000):              # walk + jsr depth
             mpu.step()
             if mpu.pc == RTS_SENTINEL:
-                return r[0xC7 - 0x80]
+                return r[0xC8 - 0x80]
         sys.exit("StageBandTab (phase probe) never returned")
 
     assert stage_phase(0x2D) == 0x00, (

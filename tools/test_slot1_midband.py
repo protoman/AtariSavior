@@ -70,16 +70,27 @@ def main() -> int:
 
     def frame(*, pair):
         r = mem.ram
+        # Both configurations stage the SAME two objects (one room enemy + the
+        # miner); only their band layout differs, so the frame-length compare
+        # is like for like. (Pre-N=4 the control staged NOTHING and inherited
+        # the boot room, so the pair was measured against another object set.)
+        r[Z["EnemyCount"]] = 1
+        r[Z["EnemyDeadMask"]] = 0
+        r[Z["EnemyRamX"]] = 71
+        r[Z["LevelMinerRoom"]] = r[Z["RoomNo"]] & 0x7F
+        r[Z["MinerX"]] = 40
         if pair:
-            # The stage's own case: the room's enemy at y=60 and the miner 27
-            # lines below (same band 1) — the arrangement that must NOT pair.
-            r[Z["EnemyCount"]] = 1
-            r[Z["EnemyDeadMask"]] = 0
-            r[Z["EnemyRamY"]] = 60
-            r[Z["EnemyRamX"]] = 71
-            r[Z["LevelMinerRoom"]] = r[Z["RoomNo"]] & 0x7F
-            r[Z["MinerX"]] = 40
-            r[Z["MinerY"]] = 84
+            # The stage's own case: the enemy and the miner 20 lines below,
+            # BOTH inside band 1 (lines 36..71; the miner draws at MinerY+3) —
+            # the arrangement that must NOT pair. It was 60/84 while a band
+            # was 48 lines, where 84 still belonged to band 1.
+            r[Z["EnemyRamY"]] = 44
+            r[Z["MinerY"]] = 60
+        else:
+            # Control: the same two objects in DIFFERENT bands (44 = band 1,
+            # 100+3 = band 2) — the pair IS staged and the hook runs.
+            r[Z["EnemyRamY"]] = 44
+            r[Z["MinerY"]] = 100
         wall0 = mem.wall
         art[GRP0].clear()
         art[GRP1].clear()

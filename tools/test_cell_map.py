@@ -248,11 +248,6 @@ def run_moth(mem: Mem, lo: int, hi: int, top: int, bot: int,
     r[L0["EnemyRamD"] - 0x80] = 0x00
     r[L0["EnemyDataLo"] - 0x80] = 0x00      # restage-only on exit
     r[L0["EnemyDataHi"] - 0x80] = 0x00
-    # $84 LineCount = the packed asymmetric-overlay byte the walk's
-    # patch-strip block ANDs against the moth's band rows. A cell-walk test
-    # wants a symmetric room: 0 = no strip painted. Without this the value
-    # left by the PHM loop above leaked in (latent flake, N=4 surfaced it).
-    r[L0["LineCount"] - 0x80] = 0
     mpu = MPU(memory=mem)
     mpu.pc = L2[".MothColsOk"]
     mpu.a = mpu.x = mpu.y = 0
@@ -361,8 +356,12 @@ def asym_checks(rows: list[str]) -> int:
             r[L0["LineCount"] - 0x80] = packed
             r[L0["EnemyDeadMask"] - 0x80] = dead
             for rd in (0, 1):
-                for rx in range(4, 160):
-                    for ry in (0, 60, 120):
+                # N=4 bridge (phase 1): the async band mask has THREE bits
+                # (MetaA b0-2, b3 = the door flag), so band-3 overlay
+                # semantics are undefined until the format gains a 4th bit
+                # (plans/band4_plan.md, phase 2). Sweep the defined bands.
+                for ry in (0, 60):
+                    for rx in range(4, 160):
                         mem.ram[L0["RoomX"] - 0x80] = rx
                         mem.ram[L0["PlayerDir"] - 0x80] = rd
                         mem.ram[L0["RoomY"] - 0x80] = ry
@@ -453,11 +452,14 @@ def hot_death_checks(rows_unused: list[str] | None = None) -> int:
     The cold control (MetaB b6 clear) must never fire Temp b7 — normal
     collision is the cell walk's own C=1, not a death.
     """
-    punched = [HOT_ROWS[0], "..........", HOT_ROWS[2]]   # row 1 blasted out
+    # N=4: the hot sweep indexes rows up to band 3, so pad the authored
+    # 3-row fixtures the way the loader does (band 3 = a copy of band 2).
+    hot_rows = list(HOT_ROWS) + [HOT_ROWS[-1]]
+    punched = [hot_rows[0], "..........", hot_rows[2], hot_rows[3]]
     checks = 0
     for rows, hot, m1, dead in (
-            (HOT_ROWS, True, False, 0), (HOT_ROWS, True, True, 0),
-            (HOT_ROWS, True, True, 0x10), (HOT_ROWS, False, False, 0),
+            (hot_rows, True, False, 0), (hot_rows, True, True, 0),
+            (hot_rows, True, True, 0x10), (hot_rows, False, False, 0),
             (punched, True, False, 0)):
         mem = Mem()
         load_case(mem, rows)
@@ -470,7 +472,9 @@ def hot_death_checks(rows_unused: list[str] | None = None) -> int:
         #                                      the cell walk's own result
         for rd in (0, 1):
             for rx in range(4, 160):
-                for ry in (40, 60, 90, 120):   # rows {0,1},{1,1},{1,2},{2,2}
+                # N=4 rows: {1,1},{1,2},{2,2},{3,3} — the band-3 box is
+                # part of the sweep now (row 3 = the bridge's copy of row 2).
+                for ry in (40, 60, 90, 120):
                     r[L0["RoomX"] - 0x80] = rx
                     r[L0["PlayerDir"] - 0x80] = rd
                     r[L0["RoomY"] - 0x80] = ry
@@ -613,6 +617,11 @@ def main() -> int:
                 for top in range(3):
                     for bot in range(top, 3):
                         want = box_hit(rows, lo, hi, top, bot)
+                        # $84 LineCount = the packed overlay byte the walk's
+                        # patch-strip block ANDs against the band rows. A
+                        # cell-walk case wants a symmetric room (0 = no
+                        # strip); the PHM loop above leaves a live value.
+                        mem.ram[L0["LineCount"] - 0x80] = 0
                         got = run_moth(mem, lo, hi, top, bot, temp)
                         if got != want:
                             fresh = Mem()
