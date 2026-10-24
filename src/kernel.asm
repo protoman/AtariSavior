@@ -3289,9 +3289,9 @@ OvShutBand:
     jmp OvM1Block
 
 OvHead:
-    .byte 7,6,4                 ; rows 0..2 → mask bits >= row
+    .byte 15,14,12,8            ; rows 0..3 -> mask bits >= row (4 bands)
 OvTail:
-    .byte 1,3,7                 ; rows 0..2 → mask bits <= row
+    .byte 1,3,7,15              ; rows 0..3 -> mask bits <= row
 M1OffTab:                       ; MetaA b0 -> M1 x-offset.
     .byte $ff, $4f              ; B3StageBand has the twin.
 

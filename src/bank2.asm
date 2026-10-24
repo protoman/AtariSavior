@@ -1772,12 +1772,10 @@ LaserClampDone:
 ; lamp masks. $FFE6-$FFF1 is safe for DATA (abs,X reads, X <= 3 never reaches
 ; the $FFF6-$FFF9 F6 hotspot mirrors).
 OvHead:
-    .byte 7,6,4,4               ; rows 0..3 -> mask bits >= row. N=4:
-                                ;   band 3 mirrors band 2 (3-row bridge),
-                                ;   so its gate IS bit 2 - the pack has
-                                ;   3 mask bits only (b3 = M1 flag)
+    .byte 15,14,12,8            ; rows 0..3 -> mask bits >= row (N=4: the
+                                ;   pack carries four gates, b3 = band 3)
 OvTail:
-    .byte 1,3,7,7               ; rows 0..3 -> mask bits <= row
+    .byte 1,3,7,15              ; rows 0..3 -> mask bits <= row
 
 EnemyBitTable:
     .byte $01, $02, $04, $08    ; slot-indexed dead/dir bits

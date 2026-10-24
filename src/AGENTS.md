@@ -401,7 +401,9 @@ Consequences that are easy to get wrong:
   MetaA/MetaB contract AND the per-shape hot stream are RETIRED. A room with
   the shape byte's b7 set carries an extras record (selected by the counts
   byte's b5-0 ordinal): `flags (n_patches b1-0 | n_features b5-2)`, `MetaA`,
-  `MetaB`, 1 B/patch (`row b7-6 | side b4 | col b3-0`), 1 B/feature (`kind
+  `MetaB`, 1 B/patch (`band b7-6 | side b4 | col b3-0` — the DRAWN band, not
+  the authored row: a 3-row model's row 2 is band 3 and band 2 is the AIR
+  pad), 1 B/feature (`kind
   b7-6 | col b3-0`), then — feature rooms only — the room's FEATURE-record
   stream (`count` + 5 B records, all b7-set classes: `$80` phase cell / `$82`
   hcrunch prefix). Hot cells are NOT records: see the hot bullet below.
@@ -417,6 +419,18 @@ Consequences that are easy to get wrong:
   never exist on rows 0/2. Do NOT re-introduce per-shape hot records: the
   shape block is 3 bytes and `verify_build.check_shape_blocks` hard-fails a
   count byte / `RoomRects` label / 5 B record.
+- **Band gates: MetaA b0-2 + MetaB b4, and the collision pack has FOUR bits**
+  (2026-10-24). `BandTab` ($CF-$D2) is one $ff/$00 ENABL byte per band, staged
+  by `B3StageBand` from the 4-bit mask through `BandTpl` (16 rows x 4 B).
+  `MetaA` b3 is the left-door flag, so band 3's gate lives in `MetaB` b4; the
+  retired phase-1 bridge (`BandTab+2` -> `BandTab+3`) lit the ball in the AIR
+  band of a migrated room — never re-add a mirror. The VBL pack `$8F`
+  carries b0-3 = the four gates (b3 doubles as the M1-present flag when NO
+  band is painted, so an M1-only room still packs nonzero), b4-7 =
+  right_col+1; `OvHead/OvTail` are the 4-band pairs `15,14,12,8` / `1,3,7,15`
+  in BOTH bank0 and bank2 (a 3-entry copy made a band-3 strip pass-through).
+  Guards: `tools/test_async_band3.py`, `tools/test_phase3_ball.py`,
+  `tools/test_cell_map.py` (asym sweep covers band 3).
 - **The shape's PF bytes are a ROW DICTIONARY** (C3 2026-10-20): each band is a
   1 B index into the global `RowPoolPF0/1/2` columns (3 B per DISTINCT row,
   emitted once in `models_data.asm` with `LEVEL_ROW_COUNT`). The indices sit at

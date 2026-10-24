@@ -1017,7 +1017,7 @@
    1016  f12d		       aa		      tax
    1017  f12e		       bd 30 f8 	      lda	ObjSprites,X
    1018  f131		       85 1c		      sta	GRP1
-   1019  f133		       bd 1d fb 	      lda	ObjColorTab,X	; per-row object color (+5c cross — the cycle sum
+   1019  f133		       bd 1f fb 	      lda	ObjColorTab,X	; per-row object color (+5c cross — the cycle sum
    1020  f136							; equals the probe's proven pass: 5c beam + 4c
    1021  f136							; color after phase 0's beam fold)
    1022  f136		       85 07		      sta	COLUP1
@@ -3173,7 +3173,7 @@
    3172  fa85		       0a		      asl
    3173  fa86		       0a		      asl		; 8*(m1_col+1)
    3174  fa87		       18		      clc
-   3175  fa88		       7d 04 fb 	      adc	M1OffTab,X	; -1 (left, $FF) / +79 (right, $4f) → the
+   3175  fa88		       7d 06 fb 	      adc	M1OffTab,X	; -1 (left, $FF) / +79 (right, $4f) → the
    3176  fa8b							;   side's M1X (7+8*col / 87+8*col) — MUST
    3177  fa8b							;   match B3StageBand's staging (its own twin)
    3178  fa8b		       85 92		      sta	RectCount	; scratch M1X (EndX = prologue min col is
@@ -3272,7 +3272,7 @@
    3271  fada		       a6 8d		      ldx	CollisionCellY
    3272  fadc		       bd fe fa 	      lda	OvHead,X	; bits >= row
    3273  fadf		       a6 8f		      ldx	CollisionEndY
-   3274  fae1		       3d 01 fb 	      and	OvTail,X	; bits <= row
+   3274  fae1		       3d 02 fb 	      and	OvTail,X	; bits <= row
    3275  fae4		       25 84		      and	LineCount	; active-band mask (b0-2)
    3276  fae6		       f0 13		      beq	.OSBm1	; not in a painted band → M1 strip test
    3277  fae8		       a5 9a		      lda	RoomPF0Hi	; staged MetaB ($9A)
@@ -3290,74 +3290,74 @@
    3289  fafb		       4c 71 fa 	      jmp	OvM1Block
    3290  fafe
    3291  fafe				   OvHead
-   3292  fafe		       07 06 04 	      .byte.b	7,6,4	; rows 0..2 → mask bits >= row
-   3293  fb01				   OvTail
-   3294  fb01		       01 03 07 	      .byte.b	1,3,7	; rows 0..2 → mask bits <= row
-   3295  fb04				   M1OffTab		; MetaA b0 -> M1 x-offset.
-   3296  fb04		       ff 4f		      .byte.b	$ff, $4f	; B3StageBand has the twin.
-   3297  fb06
-   3298  fb06							; ------------------------------------------------------------------------------
-   3299  fb06							; TitleBcd (2026-10-20) — A = 1-based level number → packed BCD in ScoreTe.
-   3300  fb06							; The title's level display IS the HUD score field, read as packed BCD
-   3301  fb06							; (tens = ScoreTe>>4, ones = ScoreTe&$F); writing raw binary broke the number
-   3302  fb06							; at level 10 (10 → blank glyph). Cold path (title entry / SELECT only).
-   3303  fb06							; Lives in the retired $FB00/$FB37 fill so the pre-pad END stays $FC58.
-   3304  fb06							; Clobbers A/X only; ScoreTh/Hu are zeroed by the caller.
-   3305  fb06							; ------------------------------------------------------------------------------
-   3306  fb06							; $FB00/$FB37 pins RETIRED (repack chunk 4, 2026-10-20): TitleFont lives in
-   3307  fb06							; bank1 and TitleIntro died with the merged title, so both .ds boundaries
-   3308  fb06							; were dead — the overlay cluster now runs straight through them into the
-   3309  fb06							; $FBD0 pin below (EnterRoom tramp twin, still live).
-   3310  fb06							; ------------------------------------------------------------------------------
-   3311  fb06				   TitleBcd
-   3312  fb06		       a2 00		      ldx	#0
-   3313  fb08				   .TLBcd		; A = level number → X = tens, A = ones
-   3314  fb08		       c9 0a		      cmp	#10
-   3315  fb0a		       90 05		      bcc	.TLBcdDone
-   3316  fb0c		       e9 0a		      sbc	#10
-   3317  fb0e		       e8		      inx
-   3318  fb0f		       d0 f7		      bne	.TLBcd
-   3319  fb11				   .TLBcdDone
-   3320  fb11		       85 f5		      sta	ScoreTe	; ones (high nibble 0)
-   3321  fb13		       8a		      txa
-   3322  fb14		       0a		      asl
-   3323  fb15		       0a		      asl
-   3324  fb16		       0a		      asl
-   3325  fb17		       0a		      asl		; tens << 4
-   3326  fb18		       05 f5		      ora	ScoreTe
-   3327  fb1a		       85 f5		      sta	ScoreTe
-   3328  fb1c		       60		      rts
-   3329  fb1d
-   3330  fb1d							; 16 rows per type = OBJ_WINDOW (Phase 6). Same X as ObjSprites (stride
-   3331  fb1d							; 16); rows 8-15 carry the type's own color, which is what tints an M1
-   3332  fb1d							; block sharing those scanlines.
-   3333  fb1d				   ObjColorTab
-   3334  fb1d		       1c 1c 1c 1c*	      .byte.b	$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c	; 0 KEY   ($1c yellow)
-   3335  fb2d		       0e 0e f2 f2*	      .byte.b	$0E,$0E,$F2,$F2,$1C,$1C,$F2,$F2,$F2,$1C,$1C,$F2,$F2,$0E	; 1 MOTH  (14 rows: cream tips, brown wings, gold body)
-   3336  fb3b		       14 14 14 14*	      .byte.b	$14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$22,$22,$22,$14,$14,$14	; 2 SPIDER (15 rows)
-   3337  fb4a		       06 06 06 06*	      .byte.b	$06,$06,$06,$06,$0E,$0E,$0E,$0E,$0E,$0E	; 3 LAMP  (10 rows: grey bracket/neck, white bowl)
-   3338  fb54		       4c 4c 4c 6c*	      .byte.b	$4C,$4C,$4C,$6C,$6C,$6C,$68,$68,$68,$64,$64,$82,$82,$82	; 4 TENTACLE (14 rows: pink head -> blue base)
-   3339  fb62		       06 06 6c 6c*	      .byte.b	$06,$06,$6C,$6C,$68,$68,$64,$64,$82,$82	; 5 BAT (10 rows: grey wings, purple body, dark blue tail)
-   3340  fb6c		       c8 c8 c4 c4*	      .byte.b	$C8,$C8,$C4,$C4,$C2,$C2	; 6 SNAKE (6 rows: claro/claro/verde/verde/escuro/escuro)
-   3341  fb72		       54 54 4a 54*	      .byte.b	$54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08,$08,$08,$08,$08	; 7 MINER (hips purple, legs grey)
-   3342  fb82		       1c 1c 1c 06*	      .byte.b	$1C,$1C,$1C,$06,$46,$46,$46,$46	; 8 BOMB  (8 rows: yellow fuse, grey collar, red body)
-   3343  fb8a		       0e 0e		      .byte.b	$0E,$0E	; 9 RAFT  (2 rows, white — user 2026-10-22)
-   3344  fb8c		       06 06 06 06*	      .byte.b	$06,$06,$06,$06,$0E,$0E,$0E,$0E,$0E,$0E	; 10 LAMP_R (10 rows: same colours, bracket mirrored)
-   3345  fb96
-   3346  fb96							; ------------------------------------------------------------------------------
-   3347  fb96							; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
-   3348  fb96							; Row r displays on scanline RoomY+ObjTop-1+r (ObjTop is RoomY-relative since
-   3349  fb96							; S2.2; .Grp1 checks r = Y-ObjTop where Y = running A0+1). GRP1 write
-   3350  fb96							; latching, same as before.
-   3351  fb96							; Offset = OBJ_* constant; index 0 = blank (object off).
-   3352  fb96							; ------------------------------------------------------------------------------
-   3353  fb96
-   3354  fb96							; ------------------------------------------------------------------------------
-   3355  fb96							; PinSlot0 MOVED to bank2 with StageSlot1 (its only caller, 2026-10-22).
-   3356  fb96							; ------------------------------------------------------------------------------
-   3357  fb96
-   3358  fb96
-   3359  fb96		       00 00 00 00*	      .ds	$FBD0 - *, 0	; #22: pin tramp at $FBD0 — bank2's twin
+   3292  fafe		       0f 0e 0c 08	      .byte.b	15,14,12,8	; rows 0..3 -> mask bits >= row (4 bands)
+   3293  fb02				   OvTail
+   3294  fb02		       01 03 07 0f	      .byte.b	1,3,7,15	; rows 0..3 -> mask bits <= row
+   3295  fb06				   M1OffTab		; MetaA b0 -> M1 x-offset.
+   3296  fb06		       ff 4f		      .byte.b	$ff, $4f	; B3StageBand has the twin.
+   3297  fb08
+   3298  fb08							; ------------------------------------------------------------------------------
+   3299  fb08							; TitleBcd (2026-10-20) — A = 1-based level number → packed BCD in ScoreTe.
+   3300  fb08							; The title's level display IS the HUD score field, read as packed BCD
+   3301  fb08							; (tens = ScoreTe>>4, ones = ScoreTe&$F); writing raw binary broke the number
+   3302  fb08							; at level 10 (10 → blank glyph). Cold path (title entry / SELECT only).
+   3303  fb08							; Lives in the retired $FB00/$FB37 fill so the pre-pad END stays $FC58.
+   3304  fb08							; Clobbers A/X only; ScoreTh/Hu are zeroed by the caller.
+   3305  fb08							; ------------------------------------------------------------------------------
+   3306  fb08							; $FB00/$FB37 pins RETIRED (repack chunk 4, 2026-10-20): TitleFont lives in
+   3307  fb08							; bank1 and TitleIntro died with the merged title, so both .ds boundaries
+   3308  fb08							; were dead — the overlay cluster now runs straight through them into the
+   3309  fb08							; $FBD0 pin below (EnterRoom tramp twin, still live).
+   3310  fb08							; ------------------------------------------------------------------------------
+   3311  fb08				   TitleBcd
+   3312  fb08		       a2 00		      ldx	#0
+   3313  fb0a				   .TLBcd		; A = level number → X = tens, A = ones
+   3314  fb0a		       c9 0a		      cmp	#10
+   3315  fb0c		       90 05		      bcc	.TLBcdDone
+   3316  fb0e		       e9 0a		      sbc	#10
+   3317  fb10		       e8		      inx
+   3318  fb11		       d0 f7		      bne	.TLBcd
+   3319  fb13				   .TLBcdDone
+   3320  fb13		       85 f5		      sta	ScoreTe	; ones (high nibble 0)
+   3321  fb15		       8a		      txa
+   3322  fb16		       0a		      asl
+   3323  fb17		       0a		      asl
+   3324  fb18		       0a		      asl
+   3325  fb19		       0a		      asl		; tens << 4
+   3326  fb1a		       05 f5		      ora	ScoreTe
+   3327  fb1c		       85 f5		      sta	ScoreTe
+   3328  fb1e		       60		      rts
+   3329  fb1f
+   3330  fb1f							; 16 rows per type = OBJ_WINDOW (Phase 6). Same X as ObjSprites (stride
+   3331  fb1f							; 16); rows 8-15 carry the type's own color, which is what tints an M1
+   3332  fb1f							; block sharing those scanlines.
+   3333  fb1f				   ObjColorTab
+   3334  fb1f		       1c 1c 1c 1c*	      .byte.b	$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c	; 0 KEY   ($1c yellow)
+   3335  fb2f		       0e 0e f2 f2*	      .byte.b	$0E,$0E,$F2,$F2,$1C,$1C,$F2,$F2,$F2,$1C,$1C,$F2,$F2,$0E	; 1 MOTH  (14 rows: cream tips, brown wings, gold body)
+   3336  fb3d		       14 14 14 14*	      .byte.b	$14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$22,$22,$22,$14,$14,$14	; 2 SPIDER (15 rows)
+   3337  fb4c		       06 06 06 06*	      .byte.b	$06,$06,$06,$06,$0E,$0E,$0E,$0E,$0E,$0E	; 3 LAMP  (10 rows: grey bracket/neck, white bowl)
+   3338  fb56		       4c 4c 4c 6c*	      .byte.b	$4C,$4C,$4C,$6C,$6C,$6C,$68,$68,$68,$64,$64,$82,$82,$82	; 4 TENTACLE (14 rows: pink head -> blue base)
+   3339  fb64		       06 06 6c 6c*	      .byte.b	$06,$06,$6C,$6C,$68,$68,$64,$64,$82,$82	; 5 BAT (10 rows: grey wings, purple body, dark blue tail)
+   3340  fb6e		       c8 c8 c4 c4*	      .byte.b	$C8,$C8,$C4,$C4,$C2,$C2	; 6 SNAKE (6 rows: claro/claro/verde/verde/escuro/escuro)
+   3341  fb74		       54 54 4a 54*	      .byte.b	$54,$54,$4a,$54,$54,$08,$54,$54,$54,$54,$08,$08,$08,$08,$08,$08	; 7 MINER (hips purple, legs grey)
+   3342  fb84		       1c 1c 1c 06*	      .byte.b	$1C,$1C,$1C,$06,$46,$46,$46,$46	; 8 BOMB  (8 rows: yellow fuse, grey collar, red body)
+   3343  fb8c		       0e 0e		      .byte.b	$0E,$0E	; 9 RAFT  (2 rows, white — user 2026-10-22)
+   3344  fb8e		       06 06 06 06*	      .byte.b	$06,$06,$06,$06,$0E,$0E,$0E,$0E,$0E,$0E	; 10 LAMP_R (10 rows: same colours, bracket mirrored)
+   3345  fb98
+   3346  fb98							; ------------------------------------------------------------------------------
+   3347  fb98							; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
+   3348  fb98							; Row r displays on scanline RoomY+ObjTop-1+r (ObjTop is RoomY-relative since
+   3349  fb98							; S2.2; .Grp1 checks r = Y-ObjTop where Y = running A0+1). GRP1 write
+   3350  fb98							; latching, same as before.
+   3351  fb98							; Offset = OBJ_* constant; index 0 = blank (object off).
+   3352  fb98							; ------------------------------------------------------------------------------
+   3353  fb98
+   3354  fb98							; ------------------------------------------------------------------------------
+   3355  fb98							; PinSlot0 MOVED to bank2 with StageSlot1 (its only caller, 2026-10-22).
+   3356  fb98							; ------------------------------------------------------------------------------
+   3357  fb98
+   3358  fb98
+   3359  fb98		       00 00 00 00*	      .ds	$FBD0 - *, 0	; #22: pin tramp at $FBD0 — bank2's twin
    3360  fbd0							;   sits at the same address (pin moved from
    3361  fbd0							;   $FB84 2026-10-13 for PhaseBlink staging,
    3362  fbd0							;   then $FBC0 → $FBD0 2026-10-14: model2
@@ -3738,7 +3738,7 @@
    3737  fcf3		       a5 a3		      lda	Level
    3738  fcf5		       18		      clc
    3739  fcf6		       69 01		      adc	#1	; 1-based level number (the title SELECT)
-   3740  fcf8		       20 06 fb 	      jsr	TitleBcd	; A → packed BCD in ScoreTe (bank0 fill)
+   3740  fcf8		       20 08 fb 	      jsr	TitleBcd	; A → packed BCD in ScoreTe (bank0 fill)
    3741  fcfb		       a9 00		      lda	#0
    3742  fcfd		       85 f3		      sta	ScoreTh
    3743  fcff		       85 f4		      sta	ScoreHu

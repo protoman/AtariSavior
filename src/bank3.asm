@@ -343,21 +343,10 @@ ExtrasLoad:
     lda (FetchPtr),Y
     and #$10                        ; side b4: nonzero = M1 side
     bne .EXLm1
-    lda (FetchPtr),Y
-    and #$C0                        ; row b7-6
-    beq .EXLrowB0
-    cmp #$40
-    beq .EXLrowB1
-    lda #%00000100                  ; row 2
-    jmp .EXLrowOr
-.EXLrowB1:
-    lda #%00000010                  ; row 1
-    jmp .EXLrowOr
-.EXLrowB0:
-    lda #%00000001                  ; row 0
-.EXLrowOr:
-    ora Temp
-    sta Temp
+    lda (FetchPtr),Y                ; b7-6 = BAND 0-3 (the converter stores
+                                    ;   the DRAWN band: a 3-row model's row 2
+                                    ;   is band 3, band 2 is the AIR pad)
+    jsr BandGatePatch               ; A -> MetaA b0-2 / MetaB b4
     jmp .EXLpatchNext
 .EXLm1:
     ; C11 (2026-10-21): an M1 patch on the HOT band is a PF-OPEN cell (the
@@ -382,10 +371,10 @@ ExtrasLoad:
     dex
     bne .EXLpatch
     lda RoomMetaA
-    ora Temp                        ; keep the authored gates, add the
-    sta RoomMetaA                   ;   side-0 patch rows (the converter
-                                    ;   asserts they agree, so this is
-                                    ;   idempotent for real stage data)
+    ora Temp                        ; keep the authored gates, add the side-0
+    sta RoomMetaA                   ;   patch bands (the converter asserts
+                                    ;   they agree: idempotent on stage data).
+                                    ;   Band 3 went straight to MetaB above.
 .EXLfeat:
     ; --- feature cells: the PF pairs the retired per-room block carried.
     ;     A hcrunch entry ($80 kind) covers cols 0..col (contiguous prefix);
@@ -1015,33 +1004,30 @@ B3StageBand:
     tax
     lda M1OffTab,X
     sta RectCount
-    lda RoomMetaA           ; MetaA
-    lsr                     ; band0 bit -> carry
-    lda #0
-    rol
-    beq .SBTb0z
-    lda #$ff
-.SBTb0z:
+    ; --- band gates: a 4-bit mask -> one $ff/$00 byte per band ------------
+    ; b0-2 = MetaA, b3 = MetaB b4 (N=4, 2026-10-24: MetaA b3 is the left-door
+    ; flag, so the bottom band needs its own bit). The old code unrolled three
+    ; shift/rol/store triples (~16c each); a 16-row x 4 B template copy costs
+    ; about the same and pays for the fourth band inside the VBL budget.
+    ; LineCount ($84) is VBL scratch here — PhaseBlink clobbers it anyway.
+    lda RoomMetaA
+    and #$07
+    sta LineCount
+    lda RoomMetaB
+    and #$10
+    lsr                     ; b4 -> b3
+    ora LineCount           ; 4-bit gate mask
+    asl
+    asl                     ; *4 -> template row
+    tax
+    lda BandTpl+0,X
     sta BandTab
-    lda RoomMetaA
-    lsr
-    lsr                     ; band1 bit -> carry
-    lda #0
-    rol
-    beq .SBTb1z
-    lda #$ff
-.SBTb1z:
+    lda BandTpl+1,X
     sta BandTab+1
-    lda RoomMetaA
-    lsr
-    lsr
-    lsr                     ; band2 bit -> carry
-    lda #0
-    rol
-    beq .SBTb2z
-    lda #$ff
-.SBTb2z:
+    lda BandTpl+2,X
     sta BandTab+2
+    lda BandTpl+3,X
+    sta BandTab+3
     ; --- strip destroyed by a bomb? (EnemyDeadMask b3 — StripBlastCheck
     ; set it this overscan) → blank all band gates so the cave renders no
     ; strip; the pack below then emits mask 0 → every overlay stays
@@ -1053,6 +1039,7 @@ B3StageBand:
     sta BandTab
     sta BandTab+1
     sta BandTab+2
+    sta BandTab+3
 .SBTstripAlive:
     ; --- D6 M1 (left-col block): M1X = 8*(m1_col+1)-1 -> CollisionEndX ($8E) ---
     ; 0 = no M1 patch. Window: this VBL write -> PositionBallM1 reads it
@@ -1127,13 +1114,8 @@ B3StageBand:
     sta BandTab
     sta BandTab+1
     sta BandTab+2
-.SBTballDone:
-    ; --- N=4 bridge (phase 1: 3-row data) ---------------------------------
-    ; The kernel draws 4 bands, B3RoomBlocks mirrors PF row 2 into row 3, so
-    ; the async gate must mirror too or a bottom-band strip vanishes. Phase 2
-    ; (LEVEL_FORMAT 7) gives band 3 its own MetaB bit and this goes away.
-    lda BandTab+2
     sta BandTab+3
+.SBTballDone:
     ; --- NUSIZ1 owned here since P2b (kernel's VBL $30 restore deleted) ---
     ; Constant $30 (P1 single, M1 8 clk): the door distinction is COLOR
     ; (yellow $1C staged below), not width — the 4clk block read as "half
@@ -1162,21 +1144,38 @@ B3StageBand:
     jsr PhaseBlink
 SBT_B:
     ; --- Phase 4: pack collision overlay byte → CollisionEndY ($8F) ---
-    ; b4-b7 = right_col+1, b0-2 = ball band mask, b3 = M1 present
-    ; (staged $8E != 0), 0 = symmetric. Cave never
-    ; writes $8F; bank1 HUD entry copies it to LineCount ($84 — cave .Row
-    ; clobbers it) before overscan PHM reads. BallX in Temp stays raw (the
-    ; kernel's ball block reads it later this VBL).
-    ; b3 seeds BEFORE the Temp=0 early-out so an M1-ONLY room still packs
-    ; nonzero (kernel OverlayTramp gates on LineCount != 0 — no M1 cross
-    ; otherwise).
-    lda CollisionEndX           ; staged M1X (kill-gated above)
-    beq .M1nof                  ; 0 = no M1 → seed 0 (A is 0)
+    ; b4-b7 = right_col+1, b0-3 = the four ball band gates, 0 = symmetric.
+    ; When NO band is gated, b3 carries the M1-present flag instead, so an
+    ; M1-ONLY room still packs nonzero (the kernel's OverlayTramp gates on
+    ; LineCount != 0 — no M1 cross otherwise). The two uses cannot collide:
+    ; with a gate set, OvShutBand's mask comes from OvHead/OvTail, and a
+    ; player box in band 3 matches b3 only when a band-3 strip is drawn.
+    ; Cave never writes $8F; bank1 HUD entry copies it to LineCount ($84 —
+    ; cave .Row clobbers it) before overscan PHM reads. BallX in Temp stays
+    ; raw (the kernel's ball block reads it later this VBL).
+    ; Gate mask, rebuilt from the same two metas (PhaseBlink sits between the
+    ; staging and this pack and clobbers every other VBL scratch byte).
+    ; Temp = 0 means the room has NO ball column, so every gate is off —
+    ; that also keeps a DOOR room's MetaA b0 (the m1_right flag) from
+    ; reading as a band-0 gate.
+    lda Temp
+    beq .SBTmask0
+    lda RoomMetaA
+    and #$07
+    sta LineCount
+    lda RoomMetaB
+    and #$10
+    lsr
+    ora LineCount
+    bne .SBTmask                ; a gate is painted → keep the 4 bits
+.SBTmask0:
+    lda CollisionEndX           ; no ball band: M1-only rooms need a nonzero
+    beq .SBTmask                ;   pack (0 = nothing to overlay at all)
     lda #$08                    ; b3 = M1 present
-.M1nof:
+.SBTmask:
     sta CollisionEndY
     lda Temp
-    beq .SBTPack                ; no ball → keep b3-only (or 0) pack
+    beq .SBTPack                ; no ball → keep the gate/M1 byte
     sec
     sbc #79                     ; (BallX-79)>>3 = ball_col+1 (BallX =
     lsr                         ;   87+8*ball_col) → <<4 lands it in b4-b7
@@ -1186,22 +1185,6 @@ SBT_B:
     asl
     asl
     asl
-    ora CollisionEndY           ; merge with the b3 seed
-    sta CollisionEndY
-    ; BandTab bytes are $ff/$00 → their bit7 IS the gate.
-    lda #0
-    bit BandTab
-    bpl .SBTp0
-    ora #$01
-.SBTp0:
-    bit BandTab+1
-    bpl .SBTp1
-    ora #$02
-.SBTp1:
-    bit BandTab+2
-    bpl .SBTp2
-    ora #$04
-.SBTp2:
     ora CollisionEndY
     sta CollisionEndY
 .SBTPack:
@@ -1222,6 +1205,57 @@ ColOff:     .byte 0,0,0,0, 4,4,4,4,4,4,4,4, 8,8,8,8,8,8,8,8
                                 ; N=4 stride 4 (PF1/PF2 rows at +4/+8)
 ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
             .byte $01,$02,$04,$08,$10,$20,$40,$80
+; BandGatePatch: ExtrasLoad's side-0 patch -> band gate. A = the patch byte
+; (b7-6 = band). Bands 0-2 OR into Temp (staged into MetaA b0-2 at the end of
+; the patch walk); band 3 sets MetaB b4, because MetaA b3 is the left-door
+; flag. X and Y are LIVE in the walker (patches left / stream index), so this
+; clobbers A only. Reached by jsr from ExtrasLoad — never by fall-through.
+BandGatePatch:
+    pha
+    and #$C0
+    beq .BGPb0
+    cmp #$40
+    beq .BGPb1
+    cmp #$80
+    beq .BGPb2
+    lda RoomMetaB                   ; band 3 -> MetaB b4
+    ora #$10
+    sta RoomMetaB
+    pla
+    rts
+.BGPb0:
+    lda #%00000001
+    bne .BGPor
+.BGPb1:
+    lda #%00000010
+    bne .BGPor
+.BGPb2:
+    lda #%00000100
+.BGPor:
+    ora Temp
+    sta Temp
+    pla
+    rts
+
+; BandTpl: gate mask (4 bits) -> the four BandTab bytes ($ff/$00 each).
+; B3StageBand indexes it with mask*4; rows are [band0, band1, band2, band3].
+BandTpl:
+    .byte $00,$00,$00,$00
+    .byte $ff,$00,$00,$00
+    .byte $00,$ff,$00,$00
+    .byte $ff,$ff,$00,$00
+    .byte $00,$00,$ff,$00
+    .byte $ff,$00,$ff,$00
+    .byte $00,$ff,$ff,$00
+    .byte $ff,$ff,$ff,$00
+    .byte $00,$00,$00,$ff
+    .byte $ff,$00,$00,$ff
+    .byte $00,$ff,$00,$ff
+    .byte $ff,$ff,$00,$ff
+    .byte $00,$00,$ff,$ff
+    .byte $ff,$00,$ff,$ff
+    .byte $00,$ff,$ff,$ff
+    .byte $ff,$ff,$ff,$ff
 
 
 ; ------------------------------------------------------------------------------

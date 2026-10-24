@@ -41,6 +41,35 @@ HEIGHT = 3                  # AUTHORED rows (the editor's grid). N=4 (C13,
 SHAPE_ROWS = 4              # bands the kernel draws (kernel TILE_ROWS)
 TABLE_STRIDE = 3            # S4.2: per-row table size (was 12 — kernel
                             # EnterRoom now does +3/+3)
+
+
+def band_map(n_authored: int) -> list:
+    """Authored row -> drawn band (N=4). 3-row grids map [0, 1, 3].
+
+    Band 2 is the inserted AIR band, so the authored bottom row (the floor)
+    lands in band 3. The converter (index padding), the extras band gates and
+    ExtrasLoad's patch walk must all agree, so the rule lives here and the ASM
+    side is asserted against it by tools/test_async_band3.py.
+    """
+    if n_authored >= SHAPE_ROWS:
+        return list(range(n_authored))
+    return list(range(n_authored - 1)) + [SHAPE_ROWS - 1]
+
+
+def drawn_bands(n_authored: int) -> list:
+    """Drawn band -> authored row, or None for an inserted AIR band."""
+    out = [None] * SHAPE_ROWS
+    for row, band in enumerate(band_map(n_authored)):
+        out[band] = row
+    return out
+
+
+def pad_rows(rows: list) -> list:
+    """Pad an authored grid to SHAPE_ROWS drawn bands (AIR rows inserted)."""
+    if len(rows) >= SHAPE_ROWS:
+        return list(rows)
+    return (list(rows[:-1]) + ["." * WIDTH] * (SHAPE_ROWS - len(rows))
+            + [rows[-1]])
 WALL_PARENT_MASK = 0x08      # hot record mask: nonzero = PF-cell parent gate
 
 
@@ -325,10 +354,13 @@ def meta_bytes(rows: list[str], asym_rows: list[str] | None = None,
 
     MetaA = ((m1_col+1)<<4) | band_mask | b3 (left door) | b0 (right half)
             b0-2 = band0/1/2 ENABL gates: bit set = band differs from its
-            mirror = ball band; staged to BandTab $ED-$EF as $01/$00.
+            mirror = ball band; staged to BandTab $CF-$D1 as $ff/$00.
     MetaB = (ball_col+1) | b7 (async door) | b6 (mid_band_type hot)
+            | b4 (band 3 ENABL gate — N=4, 2026-10-24)
             ball_col: BallX = 87+8*ball_col, staged to Temp $88 via
             8*(ball_col+1)+86; 0 = no ball.
+    The rows passed in must be the DRAWN bands (pad_rows): a 3-row grid's
+    authored bottom row is band 3, band 2 is the inserted AIR band.
     """
     if asym_rows is not None:
         if len(asym_rows) != len(rows) or any(
@@ -337,7 +369,7 @@ def meta_bytes(rows: list[str], asym_rows: list[str] | None = None,
                 f"{source}: asym rows must be {len(rows)}x{WIDTH} like the left rows")
     band_mask = 0
     if asym_rows is not None:
-        for band in range(3):
+        for band in range(min(len(rows), SHAPE_ROWS)):
             if asym_rows[band] != rows[band][::-1]:
                 band_mask |= 1 << band
     m1_col_plus = 0
@@ -346,8 +378,9 @@ def meta_bytes(rows: list[str], asym_rows: list[str] | None = None,
     if m1_door and not asym_m1_x:
         raise ValueError(
             f"{source}: LOCKED_DOOR side 1 needs an M1 patch strip")
-    meta_a = ((m1_col_plus << 4) | band_mask
+    meta_a = ((m1_col_plus << 4) | (band_mask & 0x07)
               | (0x08 if m1_door else 0) | (0x01 if m1_right else 0))
+    band3_gate = 0x10 if band_mask & 0x08 else 0
     ball_col_plus = 0
     if asym_ball_x:
         ball_col_plus = ((asym_ball_x - 87) >> 3) + 1
@@ -357,9 +390,10 @@ def meta_bytes(rows: list[str], asym_rows: list[str] | None = None,
         if not asym_ball_x:
             raise ValueError(
                 f"{source}: LOCKED_DOOR needs a side-0 (ball) patch strip")
-        meta_b = ball_col_plus | 0x80 | (0x40 if hot else 0)
+        meta_b = (ball_col_plus | 0x80 | (0x40 if hot else 0)
+                  | band3_gate)
     else:
-        meta_b = ball_col_plus | (0x40 if hot else 0)
+        meta_b = ball_col_plus | (0x40 if hot else 0) | band3_gate
     return meta_a, meta_b
 
 
@@ -456,9 +490,9 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
         # band, so the copy would wall the room off.
         if len(indices) < SHAPE_ROWS:
             air = pool.index_of((0, 0, 0), source)
-            last = indices[-1]
-            indices = indices[:-1] + [air] * (SHAPE_ROWS - len(indices)) \
-                + [last]
+            src = list(indices)
+            indices = [air if row is None else src[row]
+                       for row in drawn_bands(len(src))]
         # Equivalence gate: expanding the emitted indices must reproduce the
         # pre-C3 raw bytes, band for band. The loader does exactly this
         # expansion, so a drift here would show up as wrong playfield cells.
