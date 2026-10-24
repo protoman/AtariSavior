@@ -566,10 +566,12 @@ def main() -> int:
                 # the plug for a side with no room needs one patch per band, at
                 # the same column and side as its row-1 partner.
                 plug_cols = {(p[1], p[3] if len(p) > 3 else 0)
-                             for p in patches if p[0] == 1 and len(p) > 3}
+                             for p in patches if p[0] == 1}
                 for patch in patches:
-                    is_plug = (patch[0] == 2 and len(patch) > 3
-                               and (patch[1], patch[3]) in plug_cols)
+                    is_plug = (patch[0] == 2
+                               and (patch[1],
+                                    patch[3] if len(patch) > 3 else 0)
+                               in plug_cols)
                     if (len(patch) < 3 or (patch[0] != 1 and not is_plug)
                             or patch[2] not in (1, 9)):
                         print(f"FAIL: level {level_n} room {room['room_id']} "

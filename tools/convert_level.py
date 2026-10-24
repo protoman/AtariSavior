@@ -1391,9 +1391,10 @@ def check_stage_connections(models_by_id: dict, levels: list[tuple[int, dict]]) 
                         ("east", pos.get((x + 1, y)), 9, 0)):
                     if neighbour is not None:
                         continue
-                    plugged = {p[0] for p in patches
-                               if len(p) > 3 and p[3] == side_id
-                               and p[1] == col}
+                    # [row, col, tile] defaults to side 0 (right/ball).
+                    plugged = {q[0] for q in patches if len(q) >= 3
+                               and q[1] == col
+                               and (q[3] if len(q) > 3 else 0) == side_id}
                     missing = sorted(open_bands - plugged)
                     if missing:
                         raise ValueError(
