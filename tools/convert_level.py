@@ -35,7 +35,11 @@ import convert_room
 
 WIDTH = 10                  # D7: logical cells per half (was 20 pre-D7)
 # Playable color bands per room (the bottom 48 scanlines render as HUD).
-HEIGHT = 3
+HEIGHT = 3                  # LEGACY authored rows (padded to SHAPE_ROWS)
+MODEL_ROWS = (3, 4)         # authored row counts a model may carry: 3 = the
+                            # pre-N=4 grid (migrated as [r0, r1, AIR, r2]),
+                            # 4 = one row per drawn band (editor 2026-10-24)
+SHAPE_ROWS = MODEL_ROWS[-1]  # bands the kernel draws (rows in a 4-row model)
 # C1 (2026-10-20): 2 = grid-position connections (1 B/room, exits derived).
 # C2 (2026-10-20): 3 = shape-index room records. The per-room block word is
 # gone: a room stores a 6-bit SHAPE INDEX (one byte column), the grid position
@@ -240,8 +244,9 @@ def room_feature_cells(room: dict) -> list[tuple[int, int, int]]:
             raise ValueError(
                 f"{who}: feature tile {tile} is not a feature tile "
                 f"({FEATURE_NAME} — 10/12)")
-        if not 0 <= row < HEIGHT:
-            raise ValueError(f"{who}: feature row {row} out of 0..{HEIGHT - 1}")
+        if not 0 <= row < SHAPE_ROWS:
+            raise ValueError(
+                f"{who}: feature row {row} out of 0..{SHAPE_ROWS - 1}")
         if not 0 <= col < WIDTH:
             raise ValueError(
                 f"{who}: feature col {col} out of 0..{WIDTH - 1} (D7 grid)")
@@ -308,9 +313,11 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
         width = room.get("width", WIDTH)
     if width != WIDTH:
         raise ValueError(f"room {room.get('room_id')}: width {width} != {WIDTH}")
-    if len(tiles) != WIDTH * HEIGHT:
+    if len(tiles) % WIDTH or len(tiles) // WIDTH not in MODEL_ROWS:
         raise ValueError(
-            f"room {room.get('room_id')}: expected {WIDTH * HEIGHT} tiles, got {len(tiles)}")
+            f"room {room.get('room_id')}: expected {WIDTH} columns x one of "
+            f"{MODEL_ROWS} rows of tiles, got {len(tiles)}")
+    n_rows = len(tiles) // WIDTH
     # mid_band_type (0/absent = Rock Solid, 1 = Hot): the selector is
     # authoritative for row 1 — every non-AIR cell there becomes 'H'.
     # Rows 0/2 never get hot; a legacy tile 8 there coerces to '#'.
@@ -325,7 +332,7 @@ def rows_from_json(room: dict, models_by_id: dict = None) -> list[str]:
             f"{who}: phase on the hot middle band — hot and blinking are "
             "mutually exclusive (turn the hot flag off)")
     rows = []
-    for y in range(HEIGHT):
+    for y in range(n_rows):
         line = []
         for x in range(WIDTH):
             t = tiles[y * WIDTH + x]
@@ -407,8 +414,9 @@ def resolve_asym_patches(model: dict, room: dict,
     seen: set[tuple[int, int, int]] = set()
     has_right = False
     m1_door_right = False
+    n_rows = len(left_rows)
     right = ["".join(left_rows[y][WIDTH - 1 - k] for k in range(WIDTH))
-             for y in range(HEIGHT)]
+             for y in range(n_rows)]
     for p in patches:
         if not (isinstance(p, (list, tuple)) and len(p) in (3, 4)
                 and all(isinstance(v, int) for v in p)):
@@ -453,8 +461,9 @@ def resolve_asym_patches(model: dict, room: dict,
                     f"{who}: LOCKED_DOOR on the hot middle band — "
                     "turn the hot flag off (door and hot are mutually "
                     "exclusive)")
-        if not 0 <= row < HEIGHT:
-            raise ValueError(f"{who}: patch row {row} out of 0..{HEIGHT - 1}")
+        if not 0 <= row < len(left_rows):
+            raise ValueError(
+                f"{who}: patch row {row} out of 0..{len(left_rows) - 1}")
         if not 0 <= col < WIDTH:
             raise ValueError(
                 f"{who}: patch col {col} out of 0..{WIDTH - 1} (D7 grid)")
@@ -520,7 +529,7 @@ def resolve_asym_patches(model: dict, room: dict,
         # 10-cell half paints display col 16 = left col 3, yet the guard also
         # demanded left col 6 be wall-or-patched (user report).
         cols = ({WIDTH - 1 - m1_col} if m1_door_right else {m1_col})
-        for b in range(HEIGHT):
+        for b in range(len(left_rows)):
             for cc in sorted(cols):
                 cell = left_rows[b][cc]
                 if b in left_patch_rows and cell in "#H":
@@ -1074,9 +1083,9 @@ def _lamp_type(room: dict, col: float, y: float, models_by_id: dict | None) -> i
     src = model or room
     tiles = src.get("tiles") or []
     width = int(src.get("width", WIDTH))
-    if len(tiles) != width * HEIGHT:
+    if not width or len(tiles) % width or len(tiles) // width not in MODEL_ROWS:
         return LAMP_ENTITY              # no grid to read: keep the drawn art
-    band = max(0, min(int(y) // 4, HEIGHT - 1))   # 4 rows of 12 px per band
+    band = max(0, min(int(y) // 4, len(tiles) // width - 1))  # 4 rows/band
     logical = float(col) if float(col) < 20 else 39 - float(col)   # 39-col mirror
     cell = min(int(logical * 4) // 8, width - 1)   # 8 px cell, 4 px columns
 

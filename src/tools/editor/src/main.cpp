@@ -208,8 +208,8 @@ static int RunLevelAsyncSelftest(const char* modelsPath) {
     lm.id = legacyId;
     lm.name = "legacy async";
     lm.width = 10;
-    lm.height = 3;
-    lm.tiles.assign(30, 0);
+    lm.height = 4;                              // N=4: one row per band
+    lm.tiles.assign(40, 0);
     lm.tiles[1 * 10 + 3] = 10;                  // a PHASE grid tile (legacy)
     lm.asym_patches = {{1, 2, 9}};              // a door patch (legacy)
     legacyModels.push_back(lm);
@@ -273,11 +273,13 @@ static int RunBrushTest() {
     model.id = 0;
     model.name = "brush shape";
     model.width = 10;
-    model.height = 3;
-    model.tiles.assign(30, (int)hero::TileType::AIR);
+    model.height = 4;
+    model.tiles.assign(40, (int)hero::TileType::AIR);
     for (int x = 0; x < 10; ++x) {
         model.tiles[0 * 10 + x] = (int)hero::TileType::SOLID_WALL;
-        if (x != 9) model.tiles[2 * 10 + x] = (int)hero::TileType::SOLID_WALL;
+        // N=4: the floor lives in the BOTTOM band (row 3); row 2 is the air
+        // band the migration inserts for 3-row models.
+        if (x != 9) model.tiles[3 * 10 + x] = (int)hero::TileType::SOLID_WALL;
     }
     model.tiles[1 * 10 + 0] = (int)hero::TileType::AIR;
     model.tiles[1 * 10 + 9] = (int)hero::TileType::AIR;   // right-door mirror
@@ -419,6 +421,11 @@ static int RunStageSelftest(const char* roomsDirPath) {
         }
         levels.push_back(level);
     }
+    // N=4: the editor migrates 3-row models to four bands on load (and moves
+    // the room patches that sat on the old bottom row with them); the legacy
+    // per-file loaders are raw, so the comparison below runs on the SAME
+    // migrated data the app would see.
+    hero::DataSerializer::MigrateToFourBands(models, &levels);
 
     const fs::path tmp1 =
         fs::temp_directory_path() / "savior_stage_selftest_1.json";

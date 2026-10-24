@@ -431,6 +431,24 @@ Consequences that are easy to get wrong:
   in BOTH bank0 and bank2 (a 3-entry copy made a band-3 strip pass-through).
   Guards: `tools/test_async_band3.py`, `tools/test_phase3_ball.py`,
   `tools/test_cell_map.py` (asym sweep covers band 3).
+- **The editor authors one ROW PER DRAWN BAND** (2026-10-24): `hero::kRoomHeight
+  = 4`, so `models.json`/`stage.json` may carry 4-row models (10x4). The
+  converter accepts BOTH: 3 rows = the legacy grid, expanded to
+  `[r0, r1, AIR, r2]` by `convert_room.band_map()`; 4 rows = one row per band
+  (identity). `DataSerializer::MigrateToFourBands` does that same expansion on
+  LOAD, so opening an old stage re-saves it 4-row, and it moves room patches
+  authored on the old bottom row (row 2 -> row 3). The E2 QA generator
+  (`Build20LevelStage`) still speaks THREE bands via its own `kGenRows` — its
+  plans, exits and QA expectations are 3-band, and its models migrate on load
+  like any legacy file.
+  **M1 strip caveat when a 3-row stage becomes 4-row:** the async M1 strip is
+  a WHOLE-CAVE latch (`ENAM1`), so its column must be wall-or-patched in EVERY
+  band. The old bottom row (the floor) hid it in band 2; the inserted AIR band
+  does not, so `resolve_asym_patches` now hard-fails with "band 2 col N is open
+  air and has no patch" and the editor prints the same warning on migration.
+  Fix per room: wall that cell, or extend the strip with a side-1 patch for
+  band 2. Do NOT auto-wall it in the migration — a wall cell is band-tall and
+  would split the corridor for the OTHER rooms sharing the model.
 - **The shape's PF bytes are a ROW DICTIONARY** (C3 2026-10-20): each band is a
   1 B index into the global `RowPoolPF0/1/2` columns (3 B per DISTINCT row,
   emitted once in `models_data.asm` with `LEVEL_ROW_COUNT`). The indices sit at

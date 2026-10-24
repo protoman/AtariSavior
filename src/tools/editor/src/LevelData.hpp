@@ -27,8 +27,9 @@
 
 namespace hero {
 
-// Room grid (D7 2026-10-20): 10 cells per half (8 px each = 20 display columns
-// per half, 40 total), 3 bands tall (each band = 48 scanlines, 4 display rows).
+// Room grid (D7 2026-10-20, N=4 2026-10-24): 10 cells per half (8 px each =
+// 20 display columns per half, 40 total), 4 bands tall (each band = 36
+// scanlines, 4 display rows). One model row == one drawn colour band.
 //
 // THE PLAYFIELD IS LEFT-RIGHT MIRRORED (CTRLPF reflection), so the half is
 // drawn TWICE: cell 0 is the screen's OUTER edge on BOTH sides (display columns
@@ -41,7 +42,7 @@ namespace hero {
 // DataSerializer::Build20LevelStage (E2). The vertical span used to read 8..11
 // from the retired 20-cell grid, which wrote into the NEXT row's cells 0/1.
 constexpr int kRoomWidth = 10;
-constexpr int kRoomHeight = 3;
+constexpr int kRoomHeight = 4;   // N=4: one row per drawn band (36 lines)
 constexpr int kVertExitA = 8;    // top/bottom opening: cells 8..9 (centre)
 constexpr int kVertExitB = 9;
 constexpr int kHorizExitA = 1;   // left/right opening: row 1 (middle band)
@@ -119,7 +120,9 @@ struct ModelData {
     int id = 0;
     std::string name = "Model";
     int width = 20;
-    int height = 3;
+    int height = kRoomHeight;   // 4 rows = 4 bands (legacy 3-row files are
+                                // migrated on load: see
+                                // DataSerializer::MigrateToFourBands)
     std::vector<int> tiles;
     // LEGACY (pre-2026-10-17): async walls used to live here; they are now
     // per-ROOM (RoomData::asym_patches / feature_cells). Kept so an older

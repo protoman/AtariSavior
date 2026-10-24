@@ -198,6 +198,7 @@ bool DataSerializer::LoadModelsFromFile(std::vector<ModelData>& models, const st
         ModelsFile mf;
         archive(cereal::make_nvp("models_file", mf));
         models = mf.models;
+        MigrateToFourBands(models, nullptr);   // N=4: 3-row files open 4-band
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Failed to load models from " << filepath << ": " << e.what() << std::endl;
@@ -277,6 +278,55 @@ bool DataSerializer::SaveStageToFile(const std::vector<LevelData>& levels,
     }
 }
 
+void DataSerializer::MigrateToFourBands(std::vector<ModelData>& models,
+                                        std::vector<LevelData>* levels) {
+    std::map<int, int> gained;   // model id -> 1 when a band was inserted
+    for (auto& m : models) {
+        const int w = m.width > 0 ? m.width : kRoomWidth;
+        if (m.height != 3 || (int)m.tiles.size() != w * 3) continue;
+        std::vector<int> next(m.tiles.begin(), m.tiles.begin() + 2 * w);
+        next.insert(next.end(), w, (int)TileType::AIR);
+        next.insert(next.end(), m.tiles.begin() + 2 * w, m.tiles.end());
+        m.tiles = std::move(next);
+        m.height = 4;
+        gained[m.id] = 1;
+    }
+    if (!levels || gained.empty()) return;
+    // M1 wall-hide: the async M1 strip is a WHOLE-CAVE latch (ENAM1), so its
+    // column must be wall-or-patched in EVERY band or a 1 px line shows in the
+    // band that is neither. The old bottom row was the floor and hid it; the
+    // inserted AIR band does not. Report it instead of inventing a wall (a
+    // wall cell is band-tall and could split a corridor for other rooms that
+    // share the model).
+    for (auto& level : *levels) {
+        for (auto& room : level.rooms) {
+            if (!gained.count(room.model_id)) continue;
+            for (const auto& p : room.asym_patches) {
+                if (p.size() == 4 && p[3] == 1) {
+                    std::cerr << "migrate: model " << room.model_id
+                              << " (room " << room.room_id << "): the M1 "
+                                 "strip is drawn in EVERY band, so band 2 "
+                                 "col " << p[1] << " must be WALL or carry "
+                                 "an M1 patch (otherwise a 1 px line shows "
+                                 "in the new air band)" << std::endl;
+                }
+            }
+        }
+    }
+    for (auto& level : *levels) {
+        for (auto& room : level.rooms) {
+            if (!gained.count(room.model_id)) continue;
+            // Authored rows ride the model: the old bottom row is band 3 now.
+            for (auto& p : room.asym_patches) {
+                if (!p.empty() && p[0] == 2) p[0] = 3;
+            }
+            for (auto& f : room.feature_cells) {
+                if (!f.empty() && f[0] == 2) f[0] = 3;
+            }
+        }
+    }
+}
+
 bool DataSerializer::LoadStageFromFile(std::vector<LevelData>& levels,
                                        std::vector<ModelData>& models,
                                        const std::string& filepath) {
@@ -300,6 +350,7 @@ bool DataSerializer::LoadStageFromFile(std::vector<LevelData>& levels,
         archive(cereal::make_nvp("stage", stage));
         levels = stage.levels;
         models = stage.models;
+        MigrateToFourBands(models, &levels);
         return true;
     } catch (const cereal::Exception&) {
         // fall through to the bare form
@@ -313,6 +364,7 @@ bool DataSerializer::LoadStageFromFile(std::vector<LevelData>& levels,
         archive(stage);
         levels = stage.levels;
         models = stage.models;
+        MigrateToFourBands(models, &levels);
         return true;
     } catch (const std::exception& e) {
         std::cerr << "Failed to load stage from " << filepath << ": "
@@ -507,13 +559,19 @@ std::string ShapeName(int mask) {
     return name;
 }
 
+// SIZE: the E2 stage generator still speaks THREE bands (its plans, exits and
+// QA expectations are built around 3 bands / 3 rows). The editor grid and
+// every loaded/saved model are 4 bands (kRoomHeight); a generated 3-row model
+// is migrated to [r0, r1, AIR, r2] on load, exactly like any legacy file.
+constexpr int kGenRows = 3;
+
 ModelData MakeShapeModel(int modelId, int mask) {
     ModelData model;
     model.id = modelId;
     model.name = "Shape " + ShapeName(mask);
     model.width = kRoomWidth;
-    model.height = kRoomHeight;
-    model.tiles.assign(kRoomWidth * kRoomHeight, (int)TileType::AIR);
+    model.height = kGenRows;
+    model.tiles.assign(kRoomWidth * kGenRows, (int)TileType::AIR);
     // Border walls: rows 0 and 2 are full bands (a floor/ceiling row), and the
     // middle band's only wall is COL 0 — the mirrored OUTER edge. Col 9 is the
     // centre seam, NOT a boundary: a solid cell there would split the middle
@@ -521,10 +579,10 @@ ModelData MakeShapeModel(int modelId, int mask) {
     // it open too: row 1 = "#.........").
     for (int x = 0; x < kRoomWidth; ++x) {
         model.tiles[x] = (int)TileType::SOLID_WALL;                    // row 0
-        model.tiles[(kRoomHeight - 1) * kRoomWidth + x] =
+        model.tiles[(kGenRows - 1) * kRoomWidth + x] =
             (int)TileType::SOLID_WALL;                                 // row 2
     }
-    for (int y = 0; y < kRoomHeight; ++y) {
+    for (int y = 0; y < kGenRows; ++y) {
         model.tiles[y * kRoomWidth] = (int)TileType::SOLID_WALL;        // col 0
     }
 
@@ -534,7 +592,7 @@ ModelData MakeShapeModel(int modelId, int mask) {
     }
     if (mask & SHAPE_S) {
         for (int x = kVertExitA; x <= kVertExitB; ++x)
-            model.tiles[(kRoomHeight - 1) * kRoomWidth + x] =
+            model.tiles[(kGenRows - 1) * kRoomWidth + x] =
                 (int)TileType::AIR;
     }
     if (mask & SHAPE_H) {
@@ -598,7 +656,7 @@ ModelData MakeShapeModel(int modelId, int mask) {
             }
         }
         if (mask & SHAPE_S) {
-            const int base = (kRoomHeight - 1) * kRoomWidth;
+            const int base = (kGenRows - 1) * kRoomWidth;
             for (int x = 0; x < kRoomWidth; ++x) model.tiles[base + x] =
                 (int)TileType::SOLID_WALL;
             model.tiles[base + kGapA] = model.tiles[base + kGapB] =
@@ -620,7 +678,7 @@ ModelData MakeShapeModel(int modelId, int mask) {
             model.tiles[1 * kRoomWidth + kGapB] = (int)TileType::AIR;
         }
         for (int x = 1; x < kRoomWidth; ++x) {
-            model.tiles[(kRoomHeight - 1) * kRoomWidth + x] =
+            model.tiles[(kGenRows - 1) * kRoomWidth + x] =
                 (int)TileType::AIR;
         }
     }
@@ -630,17 +688,17 @@ ModelData MakeShapeModel(int modelId, int mask) {
         // 2026-10-21 — a person to rescue does not swim or fly), and the raft
         // floats on another open cell so it never spawns inside the rock.
         for (int x = 1; x < kRoomWidth; ++x) {
-            model.tiles[(kRoomHeight - 1) * kRoomWidth + x] =
+            model.tiles[(kGenRows - 1) * kRoomWidth + x] =
                 (int)TileType::AIR;
         }
-        model.tiles[(kRoomHeight - 1) * kRoomWidth + kMinerCell] =
+        model.tiles[(kGenRows - 1) * kRoomWidth + kMinerCell] =
             (int)TileType::SOLID_WALL;
     }
     // Archetype interior (HERO-like normality): cells 1..7 only, applied
     // AFTER the functional carving, then the 2-gap corridor is re-opened.
     const int arch = (mask >> kArchShift) & kArchMask;
     if (arch >= 1 && arch <= 7) {
-        for (int row = 0; row < kRoomHeight; ++row) {
+        for (int row = 0; row < kGenRows; ++row) {
             for (int x = 0; x < kRoomWidth; ++x) {
                 if (kArch[arch][row][x] == '#') {
                     model.tiles[row * kRoomWidth + x] =
@@ -682,7 +740,7 @@ ModelData MakeShapeModel(int modelId, int mask) {
             }
         }
         if (mask & SHAPE_S) {
-            const int base = (kRoomHeight - 1) * kRoomWidth;
+            const int base = (kGenRows - 1) * kRoomWidth;
             model.tiles[base + vA] = (int)TileType::AIR;
             sCells.push_back(vA);
             if (mask & SHAPE_S1) {
@@ -731,7 +789,7 @@ ModelData MakeShapeModel(int modelId, int mask) {
             if (!(mask & SHAPE_N1)) model.tiles[kGapB] = (int)TileType::AIR;
         }
         if (mask & SHAPE_S) {
-            const int base = (kRoomHeight - 1) * kRoomWidth;
+            const int base = (kGenRows - 1) * kRoomWidth;
             model.tiles[base + kGapA] = (int)TileType::AIR;
             if (!(mask & SHAPE_S1)) {
                 model.tiles[base + kGapB] = (int)TileType::AIR;
@@ -746,7 +804,7 @@ ModelData MakeShapeModel(int modelId, int mask) {
     // anchor to an edge, so they are never touched.
     {
         bool ink[3][kRoomWidth] = {};
-        for (int b = 0; b < kRoomHeight; ++b)
+        for (int b = 0; b < kGenRows; ++b)
             for (int x = 0; x < kRoomWidth; ++x)
                 ink[b][x] = model.tiles[b * kRoomWidth + x]
                                 == (int)TileType::AIR;
@@ -763,14 +821,14 @@ ModelData MakeShapeModel(int modelId, int mask) {
                     comp.push_back({y, c});
                     if ((y == 1 && c == 0 && (mask & SHAPE_H)) ||
                         (y > 0 && ink[y - 1][c]) ||
-                        (y < kRoomHeight - 1 && ink[y + 1][c])) {
+                        (y < kGenRows - 1 && ink[y + 1][c])) {
                         anchored = true;
                     }
                     for (int dy : {-1, 0, 1}) {
                         for (int dx : {-1, 0, 1}) {
                             if (std::abs(dx) + std::abs(dy) != 1) continue;
                             const int ny = y + dy, nx = c + dx;
-                            if (ny < 0 || ny >= kRoomHeight || nx < 0
+                            if (ny < 0 || ny >= kGenRows || nx < 0
                                     || nx >= kRoomWidth) continue;
                             if (!ink[ny][nx] || seen[ny][nx]) continue;
                             seen[ny][nx] = true;
@@ -815,7 +873,7 @@ ModelData MakeShapeModel(int modelId, int mask) {
             return model.tiles[band * kRoomWidth + x]
                        != (int)TileType::AIR;
         };
-        for (int band = 0; band < kRoomHeight; ++band) {
+        for (int band = 0; band < kGenRows; ++band) {
             for (int x = 1; x < kRoomWidth - 1; ++x) {
                 if (!solid(band, x) || solid(band, x - 1)
                         || solid(band, x + 1)) {
@@ -1064,7 +1122,7 @@ std::string RoomConnectivityProblem(const ModelData& m) {
             static const int dx[4] = {0, 0, 1, -1};
             for (int k = 0; k < 4; ++k) {
                 const int ny = y + dy[k], nx = x + dx[k];
-                if (ny < 0 || ny >= kRoomHeight || nx < 0
+                if (ny < 0 || ny >= kGenRows || nx < 0
                         || nx >= kRoomWidth) continue;
                 if (seen[ny][nx] || !CellAir(m, ny, nx)) continue;
                 seen[ny][nx] = true;

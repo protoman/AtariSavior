@@ -13,9 +13,9 @@ Contract:
              `line>>2` indexing stays exact), CAVE_LINES = 144,
              PLAYER_MAX_Y = CAVE_LINES - PLAYER_SPRITE_H,
              YToRowTable maps every line to its band exactly;
-  converter  WIDTH 10, LEVEL_FORMAT 7, SHAPE_ROWS 4 (the editor still
-             authors HEIGHT = 3 rows, so a shape block pads band 3 with a
-             copy of band 2 — phase 3 of plans/band4_plan.md flips both);
+  converter  WIDTH 10, LEVEL_FORMAT 7, SHAPE_ROWS 4; a model may author 3
+             rows (legacy: padded to [r0, r1, AIR, r2]) or 4 (the editor's
+             one-row-per-band grid) and BOTH must expand to the same bands;
   data       every shape block carries SHAPE_ROWS row-pool indices.
 
 Run: /home/iuri/python3/bin/python3 tools/test_band_geometry.py
@@ -112,6 +112,37 @@ if not shapes:
 else:
     counts = {len([b for b in s.split(",") if b.strip()]) for s in shapes}
     want(counts, {WANT_BANDS}, "shape block index count(s)")
+
+# --- authored 4-row models (editor 2026-10-24) -----------------------------
+# The editor writes ONE ROW PER DRAWN BAND now. A legacy 3-row model and its
+# migration must expand to the SAME four bands, and a room patch authored on
+# the old bottom row must land on band 3 either way -- otherwise a stage that
+# was re-saved by the editor would convert to a different cave.
+sys.path.insert(0, str(ROOT / "tools"))
+import convert_level as _CLev      # noqa: E402
+import convert_room as _CRoom      # noqa: E402
+
+# Same fixture family as test_asym_data: band 1 is wall on cols 0-7 so the
+# side-0 patch has open cells to paint on the rows it uses.
+three = ["..........", "########..", ".........."]
+four = [three[0], three[1], "..........", three[2]]
+want(_CRoom.band_map(3), [0, 1, 3], "band_map(3-row) (band 2 = AIR pad)")
+want(_CRoom.band_map(4), [0, 1, 2, 3], "band_map(4-row) (identity)")
+want(_CRoom.pad_rows(three), four, "pad_rows(3-row) == the authored 4-row form")
+
+model3 = {"id": 1, "width": 10, "height": 3,
+          "tiles": [0 if c == "." else 1 for r in three for c in r]}
+model4 = {"id": 1, "width": 10, "height": 4,
+          "tiles": [0 if c == "." else 1 for r in four for c in r]}
+room3 = {"room_id": 0, "model_id": 1, "asym_patches": [[2, 0, 1]]}
+room4 = {"room_id": 0, "model_id": 1, "asym_patches": [[3, 0, 1]]}
+rec3, _ = _CLev.room_extras(
+    room3, model3, _CLev.rows_from_json(room3, {1: model3}), "t3")
+rec4, _ = _CLev.room_extras(
+    room4, model4, _CLev.rows_from_json(room4, {1: model4}), "t4")
+want(rec3, rec4, "extras record: 3-row row-2 patch == 4-row row-3 patch")
+want(_CLev.rows_from_json(room4, {1: model4}), four,
+     "rows_from_json(4-row model)")
 
 if fails:
     print("test_band_geometry: FAIL (3-band ROM)")
