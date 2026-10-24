@@ -40,10 +40,9 @@ LEVEL4_RoomCounts:
   .byte $00 ; room 0: 0 record(s)
   .byte $40 ; room 1: 1 record(s)
   .byte $40 ; room 2: 1 record(s)
-  .byte $40 ; room 3: 1 record(s)
+  .byte $00 ; room 3: 0 record(s)
 
-; Enemy data: 3 enemy records across 4 rooms, 3 bytes each (type|dir, x, y).
+; Enemy data: 2 enemy records across 4 rooms, 3 bytes each (type|dir, x, y).
 LEVEL4_EnemyDataTable:
   .byte $01, 71, 12
   .byte $05, 15, 48
-  .byte $07, 55, 120

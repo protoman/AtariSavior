@@ -18,6 +18,7 @@
 
 #include "DataSerializer.hpp"
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
@@ -1430,11 +1431,12 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
                     AddEnemy(room, EnemyType::TENTACLE, (float)(tcell * 2),
                              BandY(shape, FloorBand(shape)), 1.0f, 0.0f);
                 }
-            } else {
-                // Off the miner's rock (cells 2..3): ferry lane at cell 6.
-                AddEnemy(room, EnemyType::RAFT, 12.0f,
-                         BandY(shape, FloorBand(shape)), 1.0f, 0.0f);
             }
+            // No RAFT here (user report 2026-10-24: "the raft is useless"): the
+            // player has a jetpack, so open water in a goal room is always
+            // flyable and the ferry is pure decoration. The raft only earns its
+            // slot where the ceiling forces a LOW crossing — the CHANNEL rooms
+            // (hot row 1), which keep theirs.
         } else if (roomCount > 1 && levelNumber >= 2) {
             // Goal room: the miner sits at x=4, so an enemy past it (the old
             // wall snake at cell 0) was never fought (user rule 2026-10-21).
@@ -2115,6 +2117,45 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 const ModelData& roomShape = models[shapeId[masks[l - 1][i]]];
                 FillRoomObjects(l, i, roomCount, roles[l - 1][i], plan, room,
                                 roomShape, keyHost, roomArch);
+            }
+            // Two objects on the SAME display column blink vertically between
+            // their bands (ONE GRP1, 30 Hz rotation) and read as "I can barely
+            // see anything" until one dies (user report 2026-10-24: level 5
+            // room 2, two enemies at column 16 in bands 0 and 3). Nudge the
+            // later object at least 3 display columns away, onto an air cell of
+            // its own band; if no such cell exists, leave the pair alone.
+            {
+                const ModelData& sm = models[shapeId[masks[l - 1][i]]];
+                const int rowsPerBand = std::max(1, 12 / std::max(1, sm.height));
+                // Stay on the LEFT half: display col 0..19 (the playfield is
+                // mirrored, and convert/tests map a column with col/2).
+                auto airAt = [&](int band, int dcol) {
+                    if (dcol < 0 || dcol > 19) return false;
+                    const int cell = dcol / 2;
+                    return band >= 0 && band < sm.height
+                        && sm.tiles[band * sm.width + cell]
+                               == (int)TileType::AIR;
+                };
+                for (size_t b = 1; b < room.enemies.size(); ++b) {
+                    const int cb = (int)std::lround(room.enemies[b].x);
+                    const int bandB = (int)room.enemies[b].y / rowsPerBand;
+                    bool clash = false;
+                    for (size_t a = 0; a < b; ++a) {
+                        if (std::abs((int)std::lround(room.enemies[a].x) - cb) < 3)
+                            clash = true;
+                    }
+                    if (!clash) continue;
+                    for (int d = 3; d <= 9 && clash; d += 2) {
+                        for (int sign : {1, -1}) {
+                            const int cand = cb + sign * d;
+                            if (airAt(bandB, cand)) {
+                                room.enemies[b].x = (float)cand;
+                                clash = false;
+                                break;
+                            }
+                        }
+                    }
+                }
             }
             level.rooms.push_back(room);
         }

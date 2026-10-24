@@ -649,14 +649,20 @@ def main() -> int:
                 print(f"FAIL: level {level_n} last room is not a water goal "
                       f"(water={water})")
                 return 1
+            # The water goal carries the TENTACLE guard, never a RAFT (user
+            # rule 2026-10-24: with a jetpack an open-water goal is always
+            # flyable, so a ferry there is decoration — the raft only earns its
+            # slot in a CHANNEL room, where the hot ceiling forces a low
+            # crossing).
             goal_hazards = [e.get("type") for e in rooms[-1].get("enemies") or []
                             if e.get("type") in (3, 7)]
-            if level_n >= 4 and len(goal_hazards) != 1:
-                print(f"FAIL: level {level_n} water goal needs exactly one "
-                      f"raft/tentacle (got {goal_hazards})")
+            if level_n >= 4 and 7 in goal_hazards:
+                print(f"FAIL: level {level_n} water goal has a RAFT — the "
+                      "ferry is useless in open water (flyable with the jet)")
                 return 1
-            if 4 <= level_n < 7 and 7 not in goal_hazards:
-                print(f"FAIL: level {level_n} water goal should carry a raft")
+            if level_n >= 4 and len(goal_hazards) > 1:
+                print(f"FAIL: level {level_n} water goal has several guards "
+                      f"({goal_hazards})")
                 return 1
             # Locked doors are disabled (M1 stripe cannot gate a vertical
             # corridor — see DataSerializer PlanFor); the gate role is the
