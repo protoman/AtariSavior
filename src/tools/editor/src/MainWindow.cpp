@@ -1009,6 +1009,26 @@ void MainWindow::SaveStage() {
     statusBar()->showMessage(
         QString("Saved stage %1 (%2 levels)")
             .arg(m_stageFilePath).arg((int)m_stageLevels.size()), 4000);
+    // Link check (user rule 2026-10-24): adjacent rooms must share their
+    // opening, otherwise the room change drops the player inside a wall. Warn
+    // after the write — the file is valid, the layout is not.
+    const auto linkProblems =
+        hero::DataSerializer::StageConnectionProblems(m_stageLevels, m_models);
+    if (!linkProblems.empty()) {
+        QStringList lines;
+        for (const auto& p : linkProblems) {
+            lines << QString::fromStdString(p);
+        }
+        QString text = QString(
+            "%1 room pair(s) are adjacent but do not share an opening; the "
+            "player would land inside a wall when changing rooms:\n\n%2")
+            .arg((int)linkProblems.size())
+            .arg(lines.mid(0, 12).join("\n"));
+        if (lines.size() > 12) {
+            text += QString("\n… and %1 more").arg(lines.size() - 12);
+        }
+        QMessageBox::warning(this, "Room links", text);
+    }
 }
 
 void MainWindow::GenerateLevelStage() {
