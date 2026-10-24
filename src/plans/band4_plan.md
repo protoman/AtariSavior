@@ -102,10 +102,17 @@ hot flag still rides band 1's index b7.
    `tools/test_async_band3.py` (new), `test_phase3_ball`, `test_cell_map`.
    Measured: the VBL gained nothing (the template copy replaced three
    unrolled shift/rol triples), cave stays 270.0.
-3. **Editor** still authors 3 rows. Until it grows a 4th row the bottom band of
-   every room is a copy of the row above it (visible seam). Phase 3: 10x4 grid,
-   4 rows per model, `HEIGHT = 4`, band-occupancy warnings per 36-line band,
-   `stage.json` migration (band 3 = copy of band 2 as today's default).
+3. ~~Editor still authors 3 rows~~ **DONE 2026-10-24**: `hero::kRoomHeight = 4`
+   (one row per drawn band), `ModelData.height` defaults to it, and
+   `DataSerializer::MigrateToFourBands` expands a legacy 3-row model to
+   `[r0, r1, AIR, r2]` on load (same rule as `convert_room.band_map`) while
+   moving room patches on the old bottom row to row 3. The converter accepts
+   3- and 4-row models; `test_band_geometry` pins that both expand to the same
+   bands and the same extras record. The E2 QA generator keeps its own 3-band
+   world (`kGenRows`) so its plans/exits/QA gates stay green.
+   Open follow-up: a migrated stage with an M1 strip needs band 2's strip
+   column walled or patched (whole-cave `ENAM1`); the converter and the
+   editor migration both report the exact room/column.
 4. `plans/hero_kernel_plan.md` and `src/AGENTS.md` still describe 3x48 in the
    overview text (`TILE_ROWS=3`, "one GRP1 object per 48-line band", the water
    split description, the frame total). Update in the docs pass (phase 4).

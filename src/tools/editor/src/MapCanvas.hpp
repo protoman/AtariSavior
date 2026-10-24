@@ -63,7 +63,9 @@ public:
 
     // Fallback size used until a room is loaded.
     static constexpr int kDefaultRoomWidth = 10;  // D7 grid (cells/half)
-    static constexpr int kDefaultRoomHeight = 3;   // 48-scanline color bands
+    static constexpr int kDefaultRoomHeight = 4;   // 36-scanline color bands
+                                                   // (N=4: keep in step with
+                                                   // hero::kRoomHeight)
 
     void SetLevelData(hero::LevelData* levelData, std::vector<hero::ModelData>* models, int activeRoomIndex);
     void SetActiveRoom(int roomIndex);

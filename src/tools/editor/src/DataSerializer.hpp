@@ -25,6 +25,15 @@ namespace hero {
 
 class DataSerializer {
 public:
+    // N=4 (2026-10-24): migrate 3-row models to one row per drawn band.
+    // A 3-row model becomes [row0, row1, AIR, row2] — the SAME rule as
+    // tools/convert_room.band_map(), so the authored floor stays in the
+    // BOTTOM band (band 3) and band 2 becomes the inserted air band. Room
+    // patches authored on the old bottom row move with it (row 2 -> row 3).
+    // Idempotent: a 4-row model is left untouched.
+    static void MigrateToFourBands(std::vector<ModelData>& models,
+                                   std::vector<LevelData>* levels);
+public:
     static bool SaveLevelToFile(const LevelData& level, const std::string& filepath);
     static bool LoadLevelFromFile(LevelData& level, const std::string& filepath);
     static bool SaveModelsToFile(const std::vector<ModelData>& models, const std::string& filepath);

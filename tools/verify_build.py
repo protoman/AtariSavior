@@ -1847,10 +1847,15 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
             ml = md.get("models_file", md).get("models", [])
             models = {m["id"]: m for m in ml}
             for model in ml:
-                if model.get("width") != 10 or model.get("height") != 3:
-                    err(f"models.json model {model.get('id')}: expected 10x3 geometry")
-                if len(model.get("tiles", [])) != 30:
-                    err(f"models.json model {model.get('id')}: expected 30 band tiles")
+                # 3 rows = the legacy grid (padded to [r0, r1, AIR, r2] by the
+                # converter); 4 = one row per drawn band (editor, N=4).
+                if model.get("width") != 10 or model.get("height") not in (3, 4):
+                    err(f"models.json model {model.get('id')}: expected 10x3 "
+                        "or 10x4 geometry")
+                if len(model.get("tiles", [])) != 10 * int(
+                        model.get("height") or 3):
+                    err(f"models.json model {model.get('id')}: tile count "
+                        f"{len(model.get('tiles', []))} != 10 x height")
                 # Async lives on the ROOM (moved 2026-10-17): a model that
                 # still carries asym_patches or P/V/C grid tiles is stale
                 # data. RAFT stays a model grid object (row 2 only).
