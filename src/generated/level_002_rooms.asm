@@ -4,7 +4,7 @@ LEVEL2_WALL_COLOR = $a4
 LEVEL2_WALL_COLOR2 = $a8
 LEVEL2_MINER_ROOM = 129
 LEVEL2_MINER_X = 39
-LEVEL2_MINER_Y = 84
+LEVEL2_MINER_Y = 96
 
 ; Room shape index (C2 2026-10-20): ONE byte per room =
 ;   b5-0 SHAPE INDEX into LEVEL_ShapeTable (levels_index.asm)
