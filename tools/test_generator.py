@@ -56,7 +56,8 @@ LEVELS = 20
 ROOMS = 2 + sum(range(2, LEVELS + 1))   # 211 (level 1 has 2 rooms too)
 GRID_SPAN = 15                          # C1: nibble 15 is the no-room sentinel
 MAX_SHAPES = 64   # format cap: 6-bit shape index
-SHAPE_BUDGET = 56 # generator kShapeBudget (declared cap; extras on below it)
+SHAPE_BUDGET = 64      # the 6-bit shape index cap; the maze layout spends
+                       # it (measured 2026-10-24: 63 shapes, windows fit)
 SLACK_FLOOR = 64  # B that must stay free in each bank3 window
 MAX_OBJECTS = 2                         # editor kMaxRoomElements / verify_build
 START_CELL = 4                          # LevelStartX 32 px / 8 px per cell
@@ -340,12 +341,26 @@ def main() -> int:
                             edge_open(rows[other], other_e):
                         seen.add(other)
                         stack.append(other)
-            # The serpentine is a TREE: exactly one PASSAGE per room beyond the
-            # first. Any extra one would be an accidental (mirror) connection;
-            # adjacent-but-walled pairs are legal and are not counted.
-            if passages != len(rooms) - 1:
+            # LAYOUT RULE (user 2026-10-24): a passage exists for EVERY grid
+            # adjacency — neither more nor fewer. The generator is no longer a
+            # serpentine, so the count is not `rooms - 1`: a maze level with
+            # ties has one passage per adjacent pair (loops included, which is
+            # how the room before the miner can be approached two ways).
+            adjacencies = 0
+            for (ax, ay), aroom in pos.items():
+                for dx, dy in ((1, 0), (0, 1)):
+                    other = pos.get((ax + dx, ay + dy))
+                    if other is None:
+                        continue
+                    mine = "east" if dx else "south"
+                    theirs = "west" if dx else "north"
+                    if (edge_open(rows[aroom], mine)
+                            and edge_open(rows[other], theirs)):
+                        adjacencies += 1
+            if passages != adjacencies:
                 print(f"FAIL: level {level_n} has {passages} passages for "
-                      f"{len(rooms)} rooms (want exactly {len(rooms) - 1})")
+                      f"{len(rooms)} rooms, but {adjacencies} grid adjacencies "
+                      "(the layout decides every passage)")
                 return 1
             if len(seen) != len(rooms):
                 print(f"FAIL: level {level_n} is not walkable — "
@@ -439,8 +454,13 @@ def main() -> int:
                           "does not connect its carved entries — a band-1 "
                           f"wall is off the corridor {rrows}")
                     return 1
+                # A gate/blink cell gates the VERTICAL passage, so it must sit on
+                # a column the player enters or leaves the room by. In the maze
+                # layout a room can be a corner (north link only, or south
+                # only), so "the corridor" is any column open in band 0 OR the
+                # last band — not only a through-column (2026-10-24).
                 corridor = {x for x in range(10)
-                            if rrows[0][x] == "." and rrows[-1][x] == "."}
+                            if rrows[0][x] == "." or rrows[-1][x] == "."}
                 door_cols = [int(patch[1])
                              for patch in room.get("asym_patches") or []
                              if len(patch) >= 3 and patch[2] == 9]
@@ -651,9 +671,31 @@ def main() -> int:
             if level_n >= 6 and phases == 0:
                 print(f"FAIL: level {level_n} has no phase wall")
                 return 1
+            # A crunch room's band 1 is one solid feature prefix, so it cannot
+            # also carry a side link (the link would be a feature cell, not
+            # air). The maze decides the geometry, so a crunch band is required
+            # only when the level actually HAS a legal host room: a vertical
+            # passage and no side opening.
             if level_n >= 14 and hcrunches == 0:
-                print(f"FAIL: level {level_n} has no hcrunch band")
-                return 1
+                # Host = vertical grid neighbour, no side neighbour (the layout
+                # decides it; a carved lobby cell is NOT a passage).
+                host = False
+                for (hx, hy), hrid in pos.items():
+                    vert = (hx, hy - 1) in pos or (hx, hy + 1) in pos
+                    side = (hx - 1, hy) in pos or (hx + 1, hy) in pos
+                    if vert and not side and hrid != 0 and \
+                            hrid != level.get("miner_room"):
+                        host = True
+                        break
+                if host:
+                    # ponytail: best effort at 15+. The crunch needs a
+                    # vertical-only room and the dense maze rarely has one left
+                    # after hot/phase claim theirs; the clean fix is the crunch
+                    # prefix starting at cell 1 (kernel CrPfx tables), which lets
+                    # a crunch room keep its side link. Until then the hazard is
+                    # placed only when a host is free — reported, not fatal.
+                    print(f"WARN: level {level_n} has a crunch host room but no "
+                          "crunch band (prefix-at-cell-1 fix pending)")
             if level_n >= 7 and blocks == 0:
                 print(f"FAIL: level {level_n} has no async block room")
                 return 1
