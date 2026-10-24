@@ -293,23 +293,37 @@ def overlay_hit(rx: int, rd: int, ry: int, packed: int) -> bool:
 
 def m1_overlay_hit(rx: int, rd: int, ry: int, rows: list[str],
                    m1x: int, dead: int) -> bool:
-    """Spec of bank2 OvM1Block (Phase 4 M1/left strip overlay).
+    """Spec of bank0 OvM1Block (Phase 4 M1 strip overlay).
 
     Reached only when the tramp crossed (packed != 0 — checked by the
-    caller). Kill-aware (EnemyDeadMask b4); px overlap of [vl, vl+6]
-    (PLAYER_WIDTH=7 lit) with [M1X-7, M1X] = vl in [M1X-13, M1X] (the
-    M1X<13 second-test skip is covered by vl >= 0); band test = any player
-    row with PF-open cell at col ℓ (wall-hide envelope: open ⟺ M1-patched)."""
+    caller). Kill-aware (EnemyDeadMask b4). The door is a solid 8 px block
+    [M1X-7, M1X] and the player box is 7 lit px [vl, vl+6], so it blocks as
+    soon as the boxes TOUCH: vl in [M1X-13, M1X]. Symmetric by construction
+    (a left-wall door is approached from its right, a right-wall one from
+    its left). Cell = M1X>>2, mirrored to 39-cell on the right half (the
+    same reflect mapping as visible_range); band test = any player row with
+    the PF cell open (wall-hide envelope: open ⟺ M1-patched). The PF cell
+    is 4 px, the model grid above is 8 px (WIDTH 10), so the model index is
+    PF_cell >> 1."""
     if dead or m1x == 0:
         return False
     vl = visible_left_px(rx, rd)
-    if vl > m1x:
+    if vl > m1x or vl < m1x - 13:
         return False
-    if m1x >= 13 and vl < m1x - 13:
-        return False
-    ell = (m1x - 7) >> 3
+    ell = m1x >> 2
+    if ell >= 20:
+        ell = 39 - ell
+    ell >>= 1                      # the model grid is 8 px cells (WIDTH 10)
     top, bot = row_range(ry)
-    return any(rows[r][ell] == "." for r in range(top, bot + 1))
+    for r in range(top, bot + 1):
+        row = rows[r]
+        if len(row) <= ell:
+            raise AssertionError(
+                f"M1 spec: row {r} has {len(row)} cells, need index {ell} "
+                f"(M1X={m1x}); row={row!r}")
+        if row[ell] == ".":
+            return True
+    return False
 
 
 def asym_checks(rows: list[str]) -> int:

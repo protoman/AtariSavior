@@ -3153,22 +3153,26 @@ OvM1Block:
                                 ;   match B3StageBand's staging (its own twin)
     sta RectCount               ; scratch M1X (EndX = prologue min col is
                                 ; CollisionEndX — kept intact for HotOverlapFlag)
-    ; --- symmetric overlap test (2026-10-23) -------------------------------
-    ; The block fires whenever the player's BOX spans the strip column,
-    ; whichever side he comes from:  vl <= M1X <= vl + PLAYER_WIDTH-1.
-    ; The old shape was a one-sided 13 px window (vl in [M1X-12, M1X]): a
-    ; right-wall door is approached from its left, so it blocked; a
-    ; left-wall door can only be approached from its RIGHT, which the window
-    ; excluded, so it never blocked (user report, screenshot:
-    ; RoomX=$42 band 1, strip col 5, staging all correct).
+    ; --- contact test: the door is a solid 8 px block [M1X-7, M1X] --------
+    ; The player box is 7 lit px [vl, vl+6], so the block must fire as soon
+    ; as the boxes TOUCH: vl in [M1X-13, M1X]. Both sides are right-justified
+    ; (the M1 is drawn [x-7, x]), so the same window covers a left-wall door
+    ; approached from its right and a right-wall one from its left.
+    ; Two earlier shapes were wrong and are recorded here so they stay dead:
+    ;  - one-sided [M1X-12, M1X] blocked, but the LEFT door read the wrong PF
+    ;    register (the old (M1X-7)>>3 cell) and never fired;
+    ;  - [M1X-6, M1X] (span the strip's last px) fired only after the player
+    ;    had walked 7 px INTO the art: "I can enter inside it, but I can't
+    ;    pass its right side" — the block plane sat one tile right of the
+    ;    drawing (user report 2026-10-23).
     lda CollisionX              ; vl = the box's left edge
     cmp RectCount               ; M1X = the strip column
     beq .OvM1Band               ; the column is the box's left edge
     bcs .OvM1no                 ; vl > M1X → the strip is left of the box
     clc
-    adc #PLAYER_WIDTH - 1       ; vl + width - 1 = the box's right edge
+    adc #PLAYER_WIDTH + 6       ; vl + 13 = box right edge + the strip's 7 px
     cmp RectCount
-    bcc .OvM1no                 ; right edge < M1X → no overlap
+    bcc .OvM1no                 ; vl + 13 < M1X → no contact with [M1X-7, M1X]
 .OvM1Band:
     ; 2026-10-23: ℓ is the PF CELL of the strip (ColOff/ColMask are indexed by
     ; x>>2, 20 cells = the 80 px half, mirrored) - it was (M1X-7)>>3, which
@@ -3180,7 +3184,15 @@ OvM1Block:
     lsr                         ; ℓ = M1X / 4 = the PF cell (0..19 left half)
     cmp #20                     ; the 80 px half = 20 PF cells (mirrored)
     bcc .OvM1Cell
-    eor #%00011111              ; right half: mirror the cell (39 - ℓ)
+    eor #$FF                    ; right half: A = 255 - ℓ (one's complement)
+    sec
+    adc #39                     ; 255 - ℓ + 40 = 295 - ℓ = 39 - ℓ (mod 256)
+                                ; reflect mapping (test_cell_map.visible_range).
+                                ; Was `eor #%00011111` = 31 - ℓ, off by 8 cells:
+                                ; the level-4 room 3 door (M1X 103, cell 25)
+                                ; read cell 6, a WALL, and returned clc — the
+                                ; player walked through it (2026-10-23 trace:
+                                ; 268 overlaps, all .OvM1no, X=6 at $FAA6).
 .OvM1Cell:
     tax                         ; X = ℓ (PHM callers preserve X themselves)
     lda CollisionCellY
