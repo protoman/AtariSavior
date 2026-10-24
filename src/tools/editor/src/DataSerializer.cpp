@@ -1024,12 +1024,26 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 // 1 only) and the async block / door scan needs a column where
                 // band 2 is solid (a strip paints ONE band; every band it does
                 // not paint must be walled at its column, 2026-10-24).
+                // A WATER shape keeps a NICHE above the miner's rock: the
+                // miner stands on the floor band's top edge (y = 96 px for a
+                // 4-band room), which is the LAST 12 lines of band 2 — with the
+                // slab solid there the PF (priority) hid him inside the wall
+                // ("the miner is inside the ground", user 2026-10-24, level 5
+                // room 5). Cell +1 too: his 8-px sprite starts at px 39, so it
+                // straddles two cells.
+                const bool minerNiche = (mask & SHAPE_WATER)
+                        && (x == kMinerCell || x == kMinerCell + 1);
                 const bool pillar = (x == 0 || x == 1 || x == 7);
                 const bool archWall = kArch[arch][2][x] == '#';
-                model.tiles[2 * kRoomWidth + x] = (route || (!pillar && !archWall))
+                model.tiles[2 * kRoomWidth + x] = (route || minerNiche
+                        || (!pillar && !archWall))
                         ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
             } else {
-                model.tiles[2 * kRoomWidth + x] = route
+                // Water rooms take this path (bandArt is off for them), so the
+                // miner niche has to be carved here.
+                model.tiles[2 * kRoomWidth + x] = (route
+                        || ((mask & SHAPE_WATER)
+                            && (x == kMinerCell || x == kMinerCell + 1)))
                         ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
             }
             model.tiles[3 * kRoomWidth + x] = three[2 * kRoomWidth + x];
