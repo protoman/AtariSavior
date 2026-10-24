@@ -956,11 +956,15 @@ ModelData MakeShapeModel(int modelId, int mask) {
     // band and requires the others walled at its column), which is why band 2
     // is NOT a copy of band 1 — a copy left the block scan with no legal cell
     // and level 7 lost its async room entirely.
-    // Gate/phase shapes stay 3-row: their door cell IS the corridor, so band 2
-    // has to stay open there for the descent and the strip cannot be patched
-    // twice (band-1-only door rule + the 2-patch cap) — that is the landing
-    // redesign. The converter/editor pad those on load.
-    if (!(mask & SHAPE_GATE)) {
+    // Every planned shape takes this path, including the SHAPE_GATE ones: with
+    // locked doors disabled (PlanFor: p.gate = false) the only gate shapes are
+    // the PHASE corridors, whose blink is a band-1 PF cell on the corridor
+    // column — the same column band 2 keeps open — so the blink still gates the
+    // whole passage and no M1 strip is involved. A real LOCKED DOOR would have
+    // to come back here: its strip may only be painted on band 1 (2-patch cap)
+    // while band 2 must stay open for the descent, which needs the landing
+    // design (enter one side, cross the door, descend on the other).
+    {
         const int routeA = (mask & SHAPE_2GAP) ? kGapA : kVertExitA;
         const int routeB = (mask & SHAPE_2GAP) ? kGapB : kVertExitB;
         std::vector<int> three = model.tiles;   // rows 0,1,2
