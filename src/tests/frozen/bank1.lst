@@ -798,7 +798,7 @@
     783  f560		       00 9f	   LevelPFDataLo =	$9F	; level block base = RoomShapes column (C2:
     784  f560		       00 a0	   LevelPFDataHi =	$A0	;   pos/count/records are +n/+2n/+3n)
     785  f560		       00 a1	   LevelRoomN =	$A1	; rooms in the level (C4 2026-10-20)
-    786  f560		       00 07	   LEVEL_FORMAT =	$07	; C13 2026-10-23 N=4 shape format: 4 row indices (hand copy;
+    786  f560		       00 08	   LEVEL_FORMAT =	$08	; 2026-10-24: 7-bit shape index + band flag b7 (hand copy;
     787  f560							;   kernel.asm twin — check_equ_sync)
     788  f560		       00 e5	   FetchPtr   =	$E5	; moved S3.2 (was $E0) — must match kernel
     789  f560		       00 c1	   EnemyRamD  =	$C1

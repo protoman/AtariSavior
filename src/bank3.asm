@@ -201,9 +201,9 @@ PLAYER_MIN_Y = 0
 B3RoomBlocks:
     ; C7: the shape ADDRESS comes from THIS bank's LEVEL_ShapeTable, so bank2
     ; needs no bank3 label and no symbol export. RoomPF0Lo = the raw shapes
-    ; byte staged by EnterRoomB2 (idx b5-0 | band b6 | owns-extras b7).
+    ; byte staged by EnterRoomB2 (idx b6-0 | band b7; LAYOUT 8 2026-10-24).
     lda RoomPF0Lo
-    and #$3F                        ; shape index (C2 2026-10-20)
+    and #$7F                        ; shape index, 7 bits (128 shapes)
     asl                             ; *2: LEVEL_ShapeTable is a word table
     tax
     lda LEVEL_ShapeTable,X          ; block address = the table entry
@@ -239,11 +239,11 @@ B3RoomBlocks:
     dey
     bpl .EBpf
 
-    ; --- C5 meta source: owns-extras (shape byte b7) → the extras stream;
-    ;     otherwise MetaA = 0 and MetaB = $40 iff the shape is hot (C11: the
-    ;     flag is band 1's index b7).
-    lda RoomPF0Lo
-    bmi .EBextras
+    ; --- C5 meta source: the room's extras ordinal (LevelConnSpare, staged by
+    ;     EnterRoomB2, 0 = none) → the extras stream; otherwise MetaA = 0 and
+    ;     MetaB = $40 iff the shape is hot (C11: the flag is band 1's b7).
+    lda LevelConnSpare
+    bne .EBextras
     lda #0
     sta RoomMetaA
     ldy #1

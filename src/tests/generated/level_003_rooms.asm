@@ -17,8 +17,8 @@ LEVEL3_MINER_Y = 84
 ; (the shape must be shared). C11 (2026-10-21): block = 3 row-pool
 ; indices — the hot count/stream is gone (hot derives from PF row 1).
 LEVEL3_RoomShapes:
-  .byte SHAPE_M0 | $80 ; room 0 (async extras)
-  .byte SHAPE_M4 | $80 ; room 1 (async extras)
+  .byte SHAPE_M0 ; room 0 (async extras)
+  .byte SHAPE_M4 ; room 1 (async extras)
   .byte SHAPE_M5 ; room 2 (model 5)
   .byte SHAPE_M6 ; room 3 (model 6)
   .byte SHAPE_M7 ; room 4 (model 7)

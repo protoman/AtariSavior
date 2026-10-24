@@ -1032,9 +1032,9 @@ def check_level_format(src: Path) -> None:
     The block address is `LEVEL_ShapeTable[shape index]` (a 2 B word table in
     levels_index.asm); the MetaA/MetaB pair is no longer inside the block
     (`TilePF0+9/+10` retired) — it lives in the extras record. The counts
-    byte's b5-0 is the room's 1-based extras ordinal (0 = none) and MUST
-    agree with the shape byte's b7, or the loader would read a record that
-    is not there (or ignore one that is).
+    byte's b5-0 is the room's 1-based extras ordinal (0 = none) and IS the
+    dispatch: LAYOUT 8 dropped the shape byte's owns-extras bit, so a nonzero
+    ordinal means the room has a record and 0 means it does not.
     """
     idx = src / "generated" / "levels_index.asm"
     if not idx.exists():
@@ -1047,11 +1047,11 @@ def check_level_format(src: Path) -> None:
             "(format 3 = C2 shape-index room records)")
         return
     gen_fmt = int(m.group(1), 16)
-    if gen_fmt != 7:
+    if gen_fmt != 8:
         err(f"generated LEVEL_FORMAT = {gen_fmt}, the bank2/bank3 readers "
-            "implement 7 (C11 shape-index records + async extras + row-pool "
-            "shape blocks + PF-derived hot, now with FOUR row indices per "
-            "shape: N=4 bands) — stale generated tree or half-done migration")
+            "implement 8 (7-bit shape index b6-0, bottom-band flag b7, "
+            "extras dispatch on the counts ordinal) — stale generated tree "
+            "or half-done migration")
     for name in ("kernel.asm", "bank1.asm"):
         p = src / name
         if not p.exists():
@@ -1073,9 +1073,9 @@ def check_level_format(src: Path) -> None:
         shape_count = 0
     else:
         shape_count = int(m.group(1))
-        if shape_count > 64:
-            err(f"LEVEL_SHAPE_COUNT = {shape_count} > 64 — the room record "
-                "shape index is 6 bits (b5-0)")
+        if shape_count > 128:
+            err(f"LEVEL_SHAPE_COUNT = {shape_count} > 128 — the room record "
+                "shape index is 7 bits (b6-0, LAYOUT 8)")
     # C7 (2026-10-20): the address table lives in BANK3 with the blocks it
     # points at (models_data.asm), so bank2's EnterRoomB2 stages only the
     # 6-bit index and needs no bank3 label.
@@ -1134,10 +1134,10 @@ def check_level_format(src: Path) -> None:
                     f"outside LEVEL_ShapeTable (0..{shape_count - 1})")
             used.add(value)
             flags = int(flags_hex, 16) if flags_hex else 0
-            if flags & ~0xC0:
+            if flags & ~0x80:
                 err(f"{path.name}: room {index} sets unsupported shape-byte "
-                    f"bits ${flags:02x} (only b6 = band flag and b7 = "
-                    "owns-extras are defined)")
+                    f"bits ${flags:02x} (only b7 = bottom-band flag is "
+                    "defined; LAYOUT 8)")
             owns_flags.append(bool(flags & 0x80))
         for hexv in pos:
             b = int(hexv, 16)
@@ -1148,12 +1148,9 @@ def check_level_format(src: Path) -> None:
         for i, (hexv, count) in enumerate(counts):
             b = int(hexv, 16)
             ordinal = b & 0x3F
-            owns = owns_flags[i] if i < len(owns_flags) else False
-            if bool(ordinal) != owns:
-                err(f"{path.name}: room {i} shape b7 owns-extras={int(owns)} "
-                    f"but its count byte ${hexv} carries extras ordinal "
-                    f"{ordinal} — the loader dispatches on b7 and indexes "
-                    "with b5-0, so they must agree")
+            # LAYOUT 8: the ordinal IS the dispatch (0 = no record), so the
+            # old shape-b7 agreement check is gone; what must hold is that an
+            # ordinal points at a record — the extras emitter validates that.
             if ordinal:
                 ordinals.append(ordinal)
             if int(count) > 3:

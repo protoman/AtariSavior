@@ -32,7 +32,7 @@ CR = (ROOT / "tools" / "convert_room.py").read_text(encoding="utf-8")
 
 WANT_BANDS = 4
 WANT_LINES = 36           # 4 x 36 = 144 (CAVE_LINES unchanged)
-WANT_FORMAT = 7
+WANT_FORMAT = 8
 
 
 def kconst(name):

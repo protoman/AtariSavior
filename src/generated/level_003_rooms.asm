@@ -18,7 +18,7 @@ LEVEL3_MINER_Y = 96
 ; indices — the hot count/stream is gone (hot derives from PF row 1).
 LEVEL3_RoomShapes:
   .byte SHAPE_M3 ; room 0 (model 3)
-  .byte SHAPE_M21 ; room 1 (model 21)
+  .byte SHAPE_M26 ; room 1 (model 26)
   .byte SHAPE_M0 ; room 2 (model 0)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,

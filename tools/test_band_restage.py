@@ -17,6 +17,7 @@ LoadEnemyRam) for EVERY room of every level and asserts RoomBandColor
 Run: /home/iuri/python3/bin/python3 tools/test_band_restage.py
 """
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -127,8 +128,13 @@ def main() -> int:
     checks = 0
     # C2: model block addresses (the shared M<id> blocks) — an async room must
     # NOT land on one of these, whatever its shape index says.
+    # LAYOUT 8: the shape index is 7 bits, so the model ids run to
+    # LEVEL_SHAPE_COUNT-1 (read from the generated index, never hardcoded).
+    idx_text = (SRC / "generated" / "levels_index.asm").read_text()
+    shape_count = int(re.search(r"^LEVEL_SHAPE_COUNT = (\d+)$",
+                                idx_text, re.M).group(1))
     model_blocks = parse_labels(
-        SRC / "bank3.lst", {f"M{mid}Shape" for mid in range(64)})
+        SRC / "bank3.lst", {f"M{mid}Shape" for mid in range(shape_count)})
     for n, syms, level in levels:
         table = syms[f"LEVEL{n}_RoomShapes"]
         enemy_data = syms[f"LEVEL{n}_EnemyDataTable"]
