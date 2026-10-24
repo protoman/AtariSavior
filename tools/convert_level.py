@@ -1333,7 +1333,18 @@ def check_stage_connections(models_by_id: dict, levels: list[tuple[int, dict]]) 
     """
 
     def rows_of(room: dict) -> list[str]:
-        return rows_from_json(room, models_by_id)
+        rows = rows_from_json(room, models_by_id)
+        # A crunch room's band 1 is authored as crunch cells 0..9 (the loader
+        # ORs them into the static PF), but the kernel prefix starts at PAIR 1:
+        # pair 0 = cell 0 stays open at run time, so the side link is live.
+        if len(rows) > 1:
+            kind = {t for _, _, t in (room.get("feature_cells") or [])}
+            if HCRUNCH in kind:
+                cells = [f[1] for f in (room.get("feature_cells") or [])
+                         if f[2] == HCRUNCH]
+                if 0 in cells:
+                    rows[1] = "." + rows[1][1:]
+        return rows
 
     for level_n, level in levels:
         pos = {(int(r.get("room_x", 0)), int(r.get("room_y", 0))): r
