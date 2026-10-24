@@ -280,7 +280,32 @@ bool DataSerializer::SaveStageToFile(const std::vector<LevelData>& levels,
 
 void DataSerializer::MigrateToFourBands(std::vector<ModelData>& models,
                                         std::vector<LevelData>* levels) {
+    // 1. Collect, per model, the single M1 strip column that every room using
+    //    it agrees on (-1 = rooms disagree / no strip). The strip is a
+    //    WHOLE-CAVE latch (ENAM1), so its column must be wall-or-patched in
+    //    EVERY band; the inserted AIR band would expose it.
+    std::map<int, int> m1Col;
     std::map<int, int> gained;   // model id -> 1 when a band was inserted
+    if (levels) {
+        for (const auto& level : *levels) {
+            for (const auto& room : level.rooms) {
+                std::set<int> cols;
+                for (const auto& p : room.asym_patches) {
+                    if (p.size() == 4 && p[3] == 1) cols.insert(p[1]);
+                }
+                // A room with NO strip does not constrain the column: only the
+                // rooms that paint one must agree (the extra wall it adds in
+                // the new band is verified by the connectivity guard below).
+                if (cols.empty()) continue;
+                const int col = cols.size() == 1 ? *cols.begin() : -1;
+                auto it = m1Col.find(room.model_id);
+                if (it == m1Col.end()) m1Col[room.model_id] = col;
+                else if (it->second != col) it->second = -1;
+            }
+        }
+    }
+
+    // 2. Pad every 3-row model to [row0, row1, AIR, row2].
     for (auto& m : models) {
         const int w = m.width > 0 ? m.width : kRoomWidth;
         if (m.height != 3 || (int)m.tiles.size() != w * 3) continue;
@@ -292,38 +317,60 @@ void DataSerializer::MigrateToFourBands(std::vector<ModelData>& models,
         gained[m.id] = 1;
     }
     if (!levels || gained.empty()) return;
-    // M1 wall-hide: the async M1 strip is a WHOLE-CAVE latch (ENAM1), so its
-    // column must be wall-or-patched in EVERY band or a 1 px line shows in the
-    // band that is neither. The old bottom row was the floor and hid it; the
-    // inserted AIR band does not (a gate room's corridor IS that column, so the
-    // fix is per ROOM: wall it, or extend the strip with a band-2 M1 patch).
-    // Reported, never auto-applied: a wall cell is band-tall and would seal the
-    // corridor.
-    for (auto& level : *levels) {
-        for (auto& room : level.rooms) {
-            if (!gained.count(room.model_id)) continue;
-            for (const auto& p : room.asym_patches) {
-                if (p.size() == 4 && p[3] == 1) {
-                    std::cerr << "migrate: model " << room.model_id
-                              << " (room " << room.room_id << "): the M1 "
-                                 "strip is drawn in EVERY band, so band 2 "
-                                 "col " << p[1] << " must be WALL or carry "
-                                 "an M1 patch (otherwise a 1 px line shows "
-                                 "in the new air band)" << std::endl;
-                }
-            }
+
+    // 3. Hide the strip in the inserted band when the authored model already
+    //    has that column SOLID in every band the strip does not cross (the
+    //    generator's side-gate door). Repeating the wall cannot seal a
+    //    corridor: the column is solid above and below the door band already.
+    //    A ladder-style strip (open above/below, e.g. the live stage's L1R2)
+    //    is left alone — that is a per-room authoring call (patch or wall).
+    for (auto& m : models) {
+        auto it = m1Col.find(m.id);
+        if (it == m1Col.end() || it->second < 0 || !gained.count(m.id)) {
+            continue;
         }
+        const int w = m.width > 0 ? m.width : kRoomWidth;
+        const int col = it->second;
+        if (col >= w || (int)m.tiles.size() != w * 4) continue;
+        bool solidAround = true;
+        for (int band : {0, 3}) {
+            const int t = m.tiles[band * w + col];
+            if (t == (int)TileType::AIR) { solidAround = false; break; }
+        }
+        if (solidAround) m.tiles[2 * w + col] = (int)TileType::SOLID_WALL;
     }
 
+    // 4. Authored rows ride the model: the old bottom row is band 3 now.
     for (auto& level : *levels) {
         for (auto& room : level.rooms) {
             if (!gained.count(room.model_id)) continue;
-            // Authored rows ride the model: the old bottom row is band 3 now.
             for (auto& p : room.asym_patches) {
                 if (!p.empty() && p[0] == 2) p[0] = 3;
             }
             for (auto& f : room.feature_cells) {
                 if (!f.empty() && f[0] == 2) f[0] = 3;
+            }
+        }
+    }
+
+    // 5. Anything the auto-hide could not decide is the author's call.
+    for (auto& level : *levels) {
+        for (auto& room : level.rooms) {
+            if (!gained.count(room.model_id)) continue;
+            auto it = m1Col.find(room.model_id);
+            const bool hidden = it != m1Col.end() && it->second >= 0;
+            if (!hidden) {
+                for (const auto& p : room.asym_patches) {
+                    if (p.size() == 4 && p[3] == 1) {
+                        std::cerr << "migrate: model " << room.model_id
+                                  << " (room " << room.room_id << "): the "
+                                     "M1 strip is drawn in EVERY band, so "
+                                     "band 2 col " << p[1] << " must be "
+                                     "WALL or carry an M1 patch (otherwise "
+                                     "a 1 px line shows in the new air "
+                                     "band)" << std::endl;
+                    }
+                }
             }
         }
     }
@@ -1103,10 +1150,16 @@ int LampCell(const ModelData& m, int band, int prefer) {
 // Returns an empty string when the room is fine, else a short description.
 std::string RoomConnectivityProblem(const ModelData& m) {
     auto air = [&](int band, int x) { return CellAir(m, band, x); };
+    // Height-aware (N=4): the south edge is the LAST band and the pads add a
+    // band in the middle, so a generated 4-row model is checked as it ships.
+    const int bands = (m.width > 0)
+        ? (int)m.tiles.size() / m.width : 0;
+    if (bands < 3) return "";
+    const int last = bands - 1;
     std::vector<std::pair<int, int>> ins, outs;
     for (int x = 0; x < kRoomWidth; ++x) {
         if (air(0, x)) ins.push_back({0, x});
-        if (air(2, x)) outs.push_back({2, x});
+        if (air(last, x)) outs.push_back({last, x});
     }
     if (air(1, 0)) {
         ins.push_back({1, 0});
@@ -1114,7 +1167,7 @@ std::string RoomConnectivityProblem(const ModelData& m) {
     }
     if (ins.empty() || outs.empty()) return "";   // sentinel / dead end
     for (const auto& start : ins) {
-        bool seen[3][hero::kRoomWidth] = {};
+        bool seen[8][hero::kRoomWidth] = {};
         std::vector<std::pair<int, int>> stack{start};
         seen[start.first][start.second] = true;
         while (!stack.empty()) {
@@ -1124,7 +1177,7 @@ std::string RoomConnectivityProblem(const ModelData& m) {
             static const int dx[4] = {0, 0, 1, -1};
             for (int k = 0; k < 4; ++k) {
                 const int ny = y + dy[k], nx = x + dx[k];
-                if (ny < 0 || ny >= kGenRows || nx < 0
+                if (ny < 0 || ny >= bands || nx < 0
                         || nx >= kRoomWidth) continue;
                 if (seen[ny][nx] || !CellAir(m, ny, nx)) continue;
                 seen[ny][nx] = true;
@@ -1592,13 +1645,24 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         levels.push_back(level);
     }
 
-    // N=4 (2026-10-24): the PLANS stay 3-band (band 0 ceiling / band 1 shaft
-    // / band 2 floor: exits, gate columns and QA gates all speak those three
-    // rows). The models are therefore emitted 3-row and the converter pads
-    // them as [r0, r1, AIR, r2]; its M1 wall-hide guard only validates the
-    // AUTHORED rows, which is what keeps a gate room passable (walling the
-    // inserted band would seal the corridor the door sits on). Porting the
-    // plans to four real bands is a separate feature.
+    // N=4 (2026-10-24): the PLANS are still built in 3 bands (band 0 ceiling /
+    // band 1 shaft+gate / band 2 floor), because every rule here — exits, gate
+    // columns, water rows, QA gates — speaks those three rows. The EMITTED
+    // models are 4-row, one row per drawn band: the pad inserts an AIR band 2
+    // and moves the plan's floor to band 3 (MigrateToFourBands), so a
+    // generated level opens in the 4-band editor and plays as a taller cave.
+    MigrateToFourBands(models, &levels);
+
+    // The pad changed the geometry: re-run the completability guard on the real
+    // 4-band shapes (the pass above checked the 3-band plans).
+    for (const ModelData& m : models) {
+        const std::string problem = RoomConnectivityProblem(m);
+        if (!problem.empty()) {
+            throw std::runtime_error("generated room '" + m.name + "' is "
+                                     "impassable after the 4-band pad: " +
+                                     problem);
+        }
+    }
 
 }
 
