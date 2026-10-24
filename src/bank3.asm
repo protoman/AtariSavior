@@ -887,20 +887,15 @@ PhHcrEntry:
     tay
     jmp PhRec
 
-; Prefix tables: P(n) covers the n pairs starting at pair 1 — n = 0..10, i.e.
-; PAIR 0 (display columns 0-1 and their mirror 38-39) IS NEVER COVERED, so a
-; crunch room keeps its SIDE OPENINGS usable (the player arrives in an 8-px
-; vestibule at the edge and must time the crush to get out of it). Before
-; 2026-10-24 the prefix started at pair 0, which made a crunch room impossible
-; to combine with a side link — every level 15+ maze had nowhere to host it.
+; Prefix tables: P(n) for n pairs from pair 0 — n = 0..10.
 ; Pair → register: 0-1 PF0 ($30,$C0), 2-5 PF1 ($C0,$30,$0C,$03),
-; 6-9 PF2 ($03,$0C,$30,$C0). PF0 maxes at n>=1, PF1 at n=5, PF2 at n=9.
+; 6-9 PF2 ($03,$0C,$30,$C0). PF0 maxes at n=2, PF1 at n=6, PF2 at n=10.
 CrPfx0:
-    .byte $00, $C0, $C0, $C0, $C0, $C0, $C0, $C0, $C0, $C0, $C0
+    .byte $00, $30, $F0, $F0, $F0, $F0, $F0, $F0, $F0, $F0, $F0
 CrPfx1:
-    .byte $00, $00, $C0, $F0, $FC, $FF, $FF, $FF, $FF, $FF, $FF
+    .byte $00, $00, $00, $C0, $F0, $FC, $FF, $FF, $FF, $FF, $FF
 CrPfx2:
-    .byte $00, $00, $00, $00, $00, $00, $03, $0F, $3F, $FF, $FF
+    .byte $00, $00, $00, $00, $00, $00, $00, $03, $0F, $3F, $FF
 
 ; ==============================================================================
 ; PhVcApplyOR / PhVcApplyAND DELETED (2026-10-19) — same retired vcrunch

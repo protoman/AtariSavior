@@ -1317,16 +1317,10 @@ void MapCanvas::ValidateFeatureTiles() {
         QStringList bands, cols;
         int bandCount = 0;
         bool prefixOk = true;
-        int firstCol = -1;
-        for (int c = 0; c < 10; ++c)
-            if (colUsed[c]) { firstCol = c; break; }
         for (int r = 0; r < 3; ++r)
             if (bandUsed[r]) { ++bandCount; bands << QString::number(r + 1); }
-        // Contiguous from cell 0 (no side link) or from cell 1 (cell 0 stays
-        // the side opening: the kernel prefix leaves pair 0 open, 2026-10-24).
-        for (int c = firstCol; c <= maxCol; ++c)
+        for (int c = 0; c <= maxCol; ++c)
             if (!colUsed[c]) prefixOk = false;
-        if (firstCol > 1) prefixOk = false;
         for (int c = 0; c < 10; ++c)
             if (colUsed[c]) cols << QString::number(c + 1);
         if (bandCount != 1 || !bandUsed[1] || !prefixOk)
