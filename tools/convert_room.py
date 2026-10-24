@@ -447,15 +447,30 @@ def lines(rows: list[str], prefix: str = "", source: str = "room",
                 f"{source}: with_meta=False needs a RowPool — a shape block "
                 "stores row-pool indices (C3)")
         indices = [pool.index_of(triple, source) for triple in triples]
-        # C13 (2026-10-23): the cave draws SHAPE_ROWS bands. Until the editor
-        # authors a 4th row, the bottom band repeats the last authored row
-        # (the same default the loader used during the kernel phase).
-        while len(indices) < SHAPE_ROWS:
-            indices.append(indices[-1])
+        # C13 (2026-10-23): the cave draws SHAPE_ROWS bands. Until the
+        # editor authors a 4th row, a 3-row model is migrated as
+        # [row0, row1, AIR, row2] — an inserted AIR band BELOW the middle,
+        # so the authored floor (row 2) stays in the BOTTOM band (lines
+        # 108-143) instead of being duplicated into two bands. Duplicating
+        # row 1 would have been worse: on a hot model row 1 is a solid wall
+        # band, so the copy would wall the room off.
+        if len(indices) < SHAPE_ROWS:
+            air = pool.index_of((0, 0, 0), source)
+            last = indices[-1]
+            indices = indices[:-1] + [air] * (SHAPE_ROWS - len(indices)) \
+                + [last]
         # Equivalence gate: expanding the emitted indices must reproduce the
         # pre-C3 raw bytes, band for band. The loader does exactly this
         # expansion, so a drift here would show up as wrong playfield cells.
-        for band, want in enumerate(triples):
+        # N=4: a 3-row model's expected expansion is [r0, r1, AIR, r2] — the
+        # same pad rule as the indices above, kept in one place by deriving
+        # the expectation from the model's own authored rows.
+        want_bands = list(triples)
+        if len(want_bands) < SHAPE_ROWS:
+            want_bands = (want_bands[:-1]
+                          + [(0, 0, 0)] * (SHAPE_ROWS - len(want_bands))
+                          + [want_bands[-1]])
+        for band, want in enumerate(want_bands):
             got = pool.rows[indices[band]]
             if got != want:
                 raise ValueError(

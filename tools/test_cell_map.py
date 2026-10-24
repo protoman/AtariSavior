@@ -453,8 +453,8 @@ def hot_death_checks(rows_unused: list[str] | None = None) -> int:
     collision is the cell walk's own C=1, not a death.
     """
     # N=4: the hot sweep indexes rows up to band 3, so pad the authored
-    # 3-row fixtures the way the loader does (band 3 = a copy of band 2).
-    hot_rows = list(HOT_ROWS) + [HOT_ROWS[-1]]
+    # 3-row fixtures the way the loader does ([row0, row1, AIR, row2]).
+    hot_rows = [HOT_ROWS[0], HOT_ROWS[1], "..........", HOT_ROWS[2]]
     punched = [hot_rows[0], "..........", hot_rows[2], hot_rows[3]]
     checks = 0
     for rows, hot, m1, dead in (
@@ -503,11 +503,11 @@ def hot_death_checks(rows_unused: list[str] | None = None) -> int:
 
 
 def load_case(mem: Mem, rows: list[str]) -> None:
-    # N=4 stride 4: PF0/PF1/PF2 rows live at +0/+4/+8. The authored 3-row
-    # grid pads band 3 with a copy of band 2 (converter/loader default).
+    # N=4 stride 4: PF0/PF1/PF2 rows live at +0/+4/+8. A 3-row model is
+    # migrated as [row0, row1, AIR, row2] (converter/loader default).
     padded = list(rows)
-    while len(padded) < 4:
-        padded.append(padded[-1])
+    if len(padded) < 4:
+        padded = padded[:-1] + [".........."] * (4 - len(padded)) + [padded[-1]]
     for r, row in enumerate(padded):
         pf0, pf1, pf2 = pf_values(row)
         mem.ram[PF0_BUF - 0x80 + r] = pf0
@@ -548,9 +548,9 @@ def main() -> int:
     for m in ml:
         mid = m.get("id")
         rows = rows_from_json({"model_id": mid}, by_id)
-        # N=4: geometry checks run on the 4 drawn bands (band 3 = band 2).
-        while len(rows) < 4:
-            rows = rows + [rows[-1]]
+        # N=4: geometry checks run on the 4 drawn bands (band 2 = AIR).
+        if len(rows) < 4:
+            rows = rows[:-1] + [".........."] * (4 - len(rows)) + [rows[-1]]
         cases.append((f"model{mid}", rows))
         hit = re.search(rf"^M{mid}Rows:\s*\n\s*\.byte([^\n]+)", mda, re.M)
         if not hit:

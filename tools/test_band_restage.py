@@ -214,9 +214,10 @@ def main() -> int:
             shape_rows = CL.rows_from_json(
                 {"model_id": int(model), "tiles": mm.get("tiles"),
                  "width": mm.get("width", 10)}, MODELS)
-            # N=4: the emitted shape pads band 3 with a copy of the last
-            # authored row, so the expansion is 4 rows x 3 registers.
-            padded = list(shape_rows) + [shape_rows[-1]]
+            # N=4: a 3-row model is migrated as [row0, row1, AIR, row2],
+            # so the expansion is 4 rows x 3 registers.
+            padded = (list(shape_rows[:-1]) + [".........."]
+                      * (4 - len(shape_rows)) + [shape_rows[-1]])
             want_from_rows = bytes([CR.pf_values(r)[reg]
                                     for reg in range(3)
                                     for r in padded])
