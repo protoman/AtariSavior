@@ -2511,8 +2511,12 @@ Slot1Hook:
     sta WSYNC                   ; end of the positioning line
     sta HMOVE                   ; cycle 0 of the next line = HBLANK
     ; --- this hook spent TWO lines inside the band: take them out of the ---
-    ; --- body count, or the band (and the frame) grows by 2             ---
-    ; Rows 0-2 = 36 bodies, bottom band = 24..27 (tide, CollisionX). X = RowIdx.
+    ; --- body count, or the band (and the frame) grows by 2.  MEASURED ---
+    ; sim_frame_budget holds a constant cave frame with a pair staged, and
+    ; -3 was measured to make it 269 (one line short) — keep -2. The bigger
+    ; numbers test_slot1_midband reports across configs are the STARTFRAME
+    ; re-anchor phase, not a band stretch: see the note in that test.
+    ; Bands 0-2 = 36 bodies, bottom band = 24..27 (tide, CollisionX). X = RowIdx.
     lda #LINES_PER_TILE - 2
     cpx #TILE_ROWS-1
     bne .SHcount
