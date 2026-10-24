@@ -779,9 +779,20 @@ ModelData MakeShapeModel(int modelId, int mask) {
     }
     // Archetype interior (HERO-like normality): cells 1..7 only, applied
     // AFTER the functional carving, then the 2-gap corridor is re-opened.
+    //
+    // BAND-2 ARCHETYPES (user item 3, 2026-10-24): in a PLAIN room the
+    // archetype's third row is drawn into band 2 by the 4-band expansion below
+    // instead of into the floor band, so the room reads as a cave with ledges
+    // rather than an aisle over a solid slab. Hazard rooms (gate / hot /
+    // channel / water) keep the slab: their band 1 is the only way through, so
+    // an open band 2 would let the player fly around a locked door or a hot
+    // ceiling.
     const int arch = (mask >> kArchShift) & kArchMask;
+    const bool bandArt = arch >= 1 && arch <= 7
+            && !(mask & (SHAPE_GATE | SHAPE_CHANNEL | SHAPE_WATER | SHAPE_HOT));
     if (arch >= 1 && arch <= 7) {
         for (int row = 0; row < kGenRows; ++row) {
+            if (row == 2 && bandArt) continue;   // → band 2, see the expansion
             for (int x = 0; x < kRoomWidth; ++x) {
                 if (kArch[arch][row][x] == '#') {
                     model.tiles[row * kRoomWidth + x] =
@@ -1005,8 +1016,21 @@ ModelData MakeShapeModel(int modelId, int mask) {
             model.tiles[1 * kRoomWidth + x] = three[1 * kRoomWidth + x];
             const bool route = (x == routeA || x == routeB)
                     && three[1 * kRoomWidth + x] == (int)TileType::AIR;
-            model.tiles[2 * kRoomWidth + x] = route
-                    ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
+            if (bandArt) {
+                // The lower chamber: open, with the archetype's third row as
+                // its ledges. Cells 0/1/7 stay SOLID on purpose — the outer
+                // edge is a wall in every band (the H side link lives in band
+                // 1 only) and the async block / door scan needs a column where
+                // band 2 is solid (a strip paints ONE band; every band it does
+                // not paint must be walled at its column, 2026-10-24).
+                const bool pillar = (x == 0 || x == 1 || x == 7);
+                const bool archWall = kArch[arch][2][x] == '#';
+                model.tiles[2 * kRoomWidth + x] = (route || (!pillar && !archWall))
+                        ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
+            } else {
+                model.tiles[2 * kRoomWidth + x] = route
+                        ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
+            }
             model.tiles[3 * kRoomWidth + x] = three[2 * kRoomWidth + x];
         }
         model.height = 4;
