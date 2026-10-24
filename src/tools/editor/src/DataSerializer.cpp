@@ -1085,6 +1085,13 @@ int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
         if ((mask & SHAPE_N) && (roomIndex - 1) % 2 == 0) mask |= SHAPE_N1;
         if ((mask & SHAPE_S) && roomIndex % 2 == 0) mask |= SHAPE_S1;
     }
+    // Side openings follow ADJACENCY (user rule 2026-10-24) — but only once the
+    // LAYOUT stops being a serpentine: turning every grid adjacency into a
+    // passage on the 2-column serpentine makes a ladder (col 0 and col 1
+    // overlap on 10 rows) and the shape library jumps to 65 masks > the 64
+    // allowed by the 6-bit shape index. So the general rule ships WITH the
+    // maze layout (plans/layout_plan.md), and until then only the turn room
+    // carries SHAPE_H — which is exactly its only horizontal neighbour today.
     if (levelNumber > kColumnRooms && pos.y == kTurnY) mask |= SHAPE_H;
     if (roomIndex == 0) mask |= SHAPE_START;   // the level's spawn room
     if (IsChannelTurn(levelNumber, pos)) {
