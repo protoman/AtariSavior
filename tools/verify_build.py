@@ -2133,6 +2133,11 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
                     err(f"{label}: async room's shape byte is not flagged "
                         "owns-extras (C5 extras stream)")
 
+            _mm = (models or {}).get(mid) or {}
+            _mw = int(_mm.get("width", 10)) or 10
+            _mh = (len(_mm.get("tiles") or []) // _mw) or 3
+            _mbottom = _mh - 1
+            _band_units = max(1, 12 // _mh)   # 12-px display rows per band
             # Moving raft (type 7): water rooms only, bottom band only, and
             # the spawn cell must be OPEN water — the same contract convert
             # enforces (plans/raft_moving_plan.md).
@@ -2142,9 +2147,10 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
                 if not r.get("bottom_band"):
                     err(f"{label} enemy {i}: raft in a room without the "
                         "bottom band (water)")
-                if int(float(e.get("y", 0))) // 4 != 2:
+                if int(float(e.get("y", 0))) // _band_units != _mbottom:
                     err(f"{label} enemy {i}: raft at y={e.get('y')} — the "
-                        "raft lives on the bottom band (model row 2)")
+                        f"raft lives on the bottom band (model row "
+                        f"{_mbottom})")
 
             for i, e in enumerate(enemies):
                 el = f"{label} enemy {i}"
@@ -2171,10 +2177,11 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
                         err(f"{el}: tentacle in a room without the bottom "
                             "band — tentacles live in the water")
                     try:
-                        if int(float(e.get("y", 0))) // 4 != 2:
+                        if int(float(e.get("y", 0))) // _band_units \
+                                != _mbottom:
                             err(f"{el}: tentacle at y={e.get('y')} — "
                                 "tentacles live on the bottom band "
-                                "(display rows 8-11)")
+                                f"(model row {_mbottom})")
                     except (TypeError, ValueError):
                         pass  # non-numeric y already reported above
 

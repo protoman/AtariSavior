@@ -210,9 +210,18 @@ def main() -> int:
                 print(f"FAIL: level {level_n} start_room "
                       f"{level.get('start_room')} (kernel constant 0)")
                 return 1
-            if int(level.get("miner_y", -1) * 12) != 84:
+            # Miner Y = the goal rock top - 12 px: 84 px on a 3-band room,
+            # 96 px on a 4-band one (its floor band sits 36 px lower).
+            _mroom = next((r for r in rooms
+                           if r["room_id"] == level.get("miner_room")), None)
+            _mh = 3
+            if _mroom is not None:
+                _mh = len(C.rows_from_json(_mroom, shapes))
+            _want = 84 if _mh <= 3 else 96
+            if int(level.get("miner_y", -1) * 12) != _want:
                 print(f"FAIL: level {level_n} miner_y {level.get('miner_y')} "
-                      "(convert needs exactly 7 rows = 84 px)")
+                      f"(a {_mh}-band room needs {_want // 12} rows = "
+                      f"{_want} px)")
                 return 1
             pos = {}
             for room in rooms:
@@ -412,7 +421,7 @@ def main() -> int:
                     nset = {x for x in range(10)
                             if r2[0][x] not in STRUCTURAL_WALLS}
                     sset = {x for x in range(10)
-                            if r2[2][x] not in STRUCTURAL_WALLS}
+                            if r2[-1][x] not in STRUCTURAL_WALLS}  # floor band
                     if (nset and sset and nset == sset
                             and all(r2[b][0] in STRUCTURAL_WALLS
                                     for b in ((1, 2) if len(r2) >= 4 else (1,))
@@ -470,18 +479,20 @@ def main() -> int:
                     print(f"FAIL: level {level_n} room {room['room_id']}: "
                           f"two elements on one row {used_rows}")
                     return 1
+                band_rows = rows[room["room_id"]]
+                # y is in 12-px display rows: a band spans 12/height of them
+                units = 12 // len(band_rows)
                 for enemy in enemies:
                     if not (0 <= float(enemy["x"]) <= 39
-                            and 0 <= float(enemy["y"]) <= 11):
+                            and 0 <= float(enemy["y"]) <= 12 - 1):
                         print(f"FAIL: level {level_n} room "
                               f"{room['room_id']}: enemy at "
                               f"({enemy['x']}, {enemy['y']})")
                         return 1
                 # Placement: air cells only (snake = wall patroller).
-                band_rows = rows[room["room_id"]]
                 for enemy in enemies:
                     cell = int(float(enemy["x"])) // 2
-                    band = int(float(enemy["y"])) // 4
+                    band = int(float(enemy["y"])) // units
                     here = band_rows[band][cell]
                     if int(enemy["type"]) == 2:      # SNAKE lives in the wall
                         d = -1 if int(enemy.get("dir", 1)) < 0 else 1
@@ -500,7 +511,7 @@ def main() -> int:
                         return 1
                 for lamp in room.get("lamps") or []:
                     cell = int(float(lamp["x"])) // 2
-                    band = int(float(lamp["y"])) // 4
+                    band = int(float(lamp["y"])) // units
                     if band_rows[band][cell] != ".":
                         print(f"FAIL: level {level_n} room {room['room_id']}: "
                               f"lamp at cell {cell}/band {band} is inside a "
@@ -632,7 +643,8 @@ def main() -> int:
                     continue
                 ys = [e.get("y") for e in room.get("enemies") or []]
                 ys += [x.get("y") for x in room.get("lamps") or []]
-                if any(int(float(y)) // 4 == 1 for y in ys):
+                _u = 12 // len(rows[room["room_id"]])
+                if any(int(float(y)) // _u == 1 for y in ys):
                     print(f"FAIL: level {level_n} room {room['room_id']} has "
                           "an object in a HOT middle band")
                     return 1

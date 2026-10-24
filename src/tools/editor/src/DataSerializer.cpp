@@ -946,6 +946,36 @@ ModelData MakeShapeModel(int modelId, int mask) {
             }
         }
     }
+    // N=4 (2026-10-24): one row per drawn band. The plan is built in three
+    // rows (0 ceiling / 1 shaft / 2 floor+water); band 2 is DERIVED as the
+    // vertical route's continuation — open only at the room's exit columns
+    // (3/6 for a two-gap shape, 8/9 otherwise), walls everywhere else. So the
+    // cave has two real walkable bands with no inserted AIR pad, and every
+    // other band-1 column stays WALLED in band 2: that wall is exactly what
+    // the whole-cave M1 strip needs (a locked door / async block paints one
+    // band and requires the others walled at its column), which is why band 2
+    // is NOT a copy of band 1 — a copy left the block scan with no legal cell
+    // and level 7 lost its async room entirely.
+    // Gate/phase shapes stay 3-row: their door cell IS the corridor, so band 2
+    // has to stay open there for the descent and the strip cannot be patched
+    // twice (band-1-only door rule + the 2-patch cap) — that is the landing
+    // redesign. The converter/editor pad those on load.
+    if (!(mask & SHAPE_GATE)) {
+        const int routeA = (mask & SHAPE_2GAP) ? kGapA : kVertExitA;
+        const int routeB = (mask & SHAPE_2GAP) ? kGapB : kVertExitB;
+        std::vector<int> three = model.tiles;   // rows 0,1,2
+        model.tiles.assign(kRoomWidth * 4, (int)TileType::AIR);
+        for (int x = 0; x < kRoomWidth; ++x) {
+            model.tiles[0 * kRoomWidth + x] = three[0 * kRoomWidth + x];
+            model.tiles[1 * kRoomWidth + x] = three[1 * kRoomWidth + x];
+            const bool route = (x == routeA || x == routeB)
+                    && three[1 * kRoomWidth + x] == (int)TileType::AIR;
+            model.tiles[2 * kRoomWidth + x] = route
+                    ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
+            model.tiles[3 * kRoomWidth + x] = three[2 * kRoomWidth + x];
+        }
+        model.height = 4;
+    }
     return model;
 }
 
@@ -1121,6 +1151,20 @@ int NearestAir(const ModelData& m, int band, int prefer) {
     return -1;
 }
 
+// N=4 (2026-10-24): the PLANS speak three rows (0 ceiling / 1 shaft / 2 floor)
+// but a generated model carries one row per drawn band, band 2 being the
+// vertical route's continuation. Placement code that means "the floor / water
+// row" must ask for this band, never use the literal 2 (a literal 2 now lands
+// in the route shaft, where the cell is usually a wall).
+int FloorBand(const ModelData& m) { return m.height > 3 ? m.height - 1 : 2; }
+// Object y lives in DISPLAY ROW units of 12 px over the 144-px cave, so a band
+// spans 12/height units (4 for a 3-row model, 3 for a 4-row one).
+int BandUnits(const ModelData& m) { return m.height > 0 ? 12 / m.height : 4; }
+float BandY(const ModelData& m, int band) {
+    const int u = BandUnits(m);
+    return (float)(band * u + (band == 0 ? 1 : u / 2));
+}
+
 // A lamp hangs in a GAP, on the side next to a wall (user rule 2026-10-21):
 // an air cell whose left or right neighbour is a REAL wall. The screen edge
 // and the reflected centre seam are open space, not walls, so the test is
@@ -1213,15 +1257,16 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
             room.bottom_b = 208;
             if (plan.tentacle) {
                 // On open water: the row may carry the miner rock / two-gap
-                // walls, so snap to the nearest air cell (band 2).
-                const int tcell = NearestAir(shape, 2, 5);
+                // walls, so snap to the nearest air cell (the water band).
+                const int tcell = NearestAir(shape, FloorBand(shape), 5);
                 if (tcell >= 0) {
                     AddEnemy(room, EnemyType::TENTACLE, (float)(tcell * 2),
-                             8.0f, 1.0f, 0.0f);
+                             BandY(shape, FloorBand(shape)), 1.0f, 0.0f);
                 }
             } else {
                 // Off the miner's rock (cells 2..3): ferry lane at cell 6.
-                AddEnemy(room, EnemyType::RAFT, 12.0f, 8.0f, 1.0f, 0.0f);
+                AddEnemy(room, EnemyType::RAFT, 12.0f,
+                         BandY(shape, FloorBand(shape)), 1.0f, 0.0f);
             }
         } else if (roomCount > 1 && levelNumber >= 2) {
             // Goal room: the miner sits at x=4, so an enemy past it (the old
@@ -1251,7 +1296,8 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         // nearest open cell (user rule 2026-10-21: no enemy inside a wall).
         const int cell = NearestAir(shape, 0, 4);
         if (cell >= 0) {
-            AddEnemy(room, EnemyType::BAT, (float)(cell * 2), 3.0f,
+            AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
+                     BandY(shape, 0),
                      1.25f + 0.25f * (levelNumber % 4), 13.0f);
         }
         return;
@@ -1271,13 +1317,16 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         const int gapCell = kArchHotGapX[hidx] / 2;
         const int bcell = NearestAir(shape, 0, gapCell);
         if (bcell >= 0) {
-            AddEnemy(room, EnemyType::BAT, (float)(bcell * 2), 3.0f,
+            AddEnemy(room, EnemyType::BAT, (float)(bcell * 2),
+                     BandY(shape, 0),
                      1.25f + 0.25f * (levelNumber % 4), 13.0f);
         }
         if (levelNumber >= 5) {
-            const int scell = NearestAir(shape, 2, gapCell == 3 ? 6 : 3);
+            const int scell = NearestAir(shape, FloorBand(shape),
+                                         gapCell == 3 ? 6 : 3);
             if (scell >= 0) {
-                AddEnemy(room, EnemyType::SPIDER, (float)(scell * 2), 8.0f,
+                AddEnemy(room, EnemyType::SPIDER, (float)(scell * 2),
+                         BandY(shape, FloorBand(shape)),
                          1.0f + 0.25f * (levelNumber % 4), 8.0f);
             }
         }
@@ -1316,14 +1365,16 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
             && !RowOccupied(room, 0)) {
         const int cell = NearestAir(shape, 0, 8);
         if (cell >= 0) {
-            AddEnemy(room, EnemyType::SPIDER, (float)(cell * 2), 3.0f,
+            AddEnemy(room, EnemyType::SPIDER, (float)(cell * 2),
+                     BandY(shape, 0),
                      1.0f + 0.25f * (levelNumber % 4), 8.0f);
         }
     } else if (levelNumber >= 5 && !roomIsKeyHost
-               && !RowOccupied(room, 2)) {
-        const int cell = NearestAir(shape, 2, 8);
+               && !RowOccupied(room, FloorBand(shape))) {
+        const int cell = NearestAir(shape, FloorBand(shape), 8);
         if (cell >= 0) {
-            AddEnemy(room, EnemyType::SPIDER, (float)(cell * 2), 8.0f,
+            AddEnemy(room, EnemyType::SPIDER, (float)(cell * 2),
+                     BandY(shape, FloorBand(shape)),
                      1.0f + 0.25f * (levelNumber % 4), 8.0f);
         }
     }
@@ -1442,7 +1493,10 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                                                         : kMinerX;
             }
         }
-        level.miner_y = 7.0f;                 // convert hard-fails any other row
+        // Miner Y = the goal rock top - 12 px: 84 px (7 rows) on a 3-band room,
+        // 96 px (8 rows) on a 4-band one (the floor band sits 36 px lower).
+        // Every water-goal shape is a non-gate shape, so it is 4-row.
+        level.miner_y = 8.0f;
         level.miner_dir = 1;
         const LevelPlan plan = PlanFor(l);
         for (int i = 0; i < roomCount; ++i) {
@@ -1558,11 +1612,15 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 room.bottom_r = 24;
                 room.bottom_g = 88;
                 room.bottom_b = 208;
-                AddEnemy(room, EnemyType::RAFT, 4.0f, 8.0f, 1.0f, 0.0f);
+                AddEnemy(room, EnemyType::RAFT, 4.0f,
+                         BandY(models[shapeId[masks[l - 1][i]]],
+                              FloorBand(models[shapeId[masks[l - 1][i]]])),
+                         1.0f, 0.0f);
                 const int chBat = NearestAir(models[shapeId[masks[l - 1][i]]],
                                              0, 8);
                 if (chBat >= 0) {
-                    AddEnemy(room, EnemyType::BAT, (float)(chBat * 2), 3.0f,
+                    AddEnemy(room, EnemyType::BAT, (float)(chBat * 2),
+                         BandY(models[shapeId[masks[l - 1][i]]], 0),
                              1.25f + 0.25f * (l % 4), 13.0f);
                 }
             } else {
@@ -1593,9 +1651,11 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 float ky = 5.0f;
                 if (RowOccupied(level.rooms[j], 1)) {
                     if (!RowOccupied(level.rooms[j], 0)) {
-                        kband = 0; kprefer = 8; ky = 3.0f;
-                    } else if (!RowOccupied(level.rooms[j], 2)) {
-                        kband = 2; kprefer = 8; ky = 8.0f;
+                        kband = 0; kprefer = 8; ky = BandY(kShape, 0);
+                    } else if (!RowOccupied(level.rooms[j],
+                                            FloorBand(kShape))) {
+                        kband = FloorBand(kShape); kprefer = 8;
+                        ky = BandY(kShape, kband);
                     } else {
                         continue;
                     }
@@ -1633,13 +1693,14 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     const int gcell = NearestAir(gShape, 0, gap);
                     if (gcell < 0) continue;
                     AddEnemy(room, EnemyType::SPIDER, (float)(gcell * 2),
-                             3.0f, 1.0f + 0.25f * (l % 4), 8.0f);
+                             BandY(gShape, 0), 1.0f + 0.25f * (l % 4),
+                             8.0f);
                 } else {
                     const int gcell = LampCell(gShape, 0, gap);
                     if (gcell < 0) continue;
                     LampData lamp;
                     lamp.x = (float)(gcell * 2);
-                    lamp.y = 3.0f;
+                    lamp.y = BandY(gShape, 0);
                     lamp.lit = true;
                     room.lamps.push_back(lamp);
                 }
@@ -1648,14 +1709,11 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         levels.push_back(level);
     }
 
-    // N=4 (2026-10-24): the PLANS are built in 3 bands (band 0 ceiling / band 1
-    // shaft+gate / band 2 floor) and the models are emitted 3-row, so the
-    // converter/editor pad them to [r0, r1, AIR, r2] on load. Emitting the pad
-    // here is NOT safe yet: the arch/gallery writers own band-2 cells of their
-    // shapes ("Shape N+s+2Gap+Gallery" lands its gallery exactly where the pad
-    // band goes), so the pad would collide with authored content and invent
-    // side links. Porting the plans (arch writers + gate columns + exits) to
-    // four real bands is the remaining chunk.
+    // N=4 (2026-10-24): the PLANS are built in 3 rows (0 ceiling / 1 shaft /
+    // 2 floor) and MakeShapeModel emits 4 bands, band 2 being the vertical
+    // route's continuation. Gate/phase shapes stay 3-row (their door cell IS
+    // the corridor, so band 2 has to stay open for the descent and the strip
+    // cannot be patched twice) and the converter/editor pad those on load.
 
 }
 

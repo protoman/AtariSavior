@@ -2710,7 +2710,7 @@ ENEMY_RAFT     = 7             ; type-7 enemy record = the moving, rideable raft
                                ; water of model row 2, carries the player and
                                ; returns; body lives in bank1 (RaftBody)
 ENEMY_DATA_STRIDE = 6
-LEVEL_COUNT    = 4              ; hand copy of generated LEVEL_COUNT (cmp in
+LEVEL_COUNT    = 20              ; hand copy of generated LEVEL_COUNT (cmp in
                                 ; LoadLevel advance guard — test asserts sync).
                                 ; 2026-10-21: live stage cut 20 -> 4 levels to
                                 ; fund the HERO kernel plan (bank0 eviction);
