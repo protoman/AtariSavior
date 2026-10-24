@@ -18,6 +18,7 @@ COLUPF  = $08
 COLUBK  = $09
 PlayerLives = $AC
 PlayerBombs = $F0
+LevelStartRoom = $A7     ; b7 = KeyHeld (bank0 owns it; read-only here)
 BarLevel = $AE
 BarIdx   = $9B           ; (BarLevel+7)>>3, synced by kernel overscan (D2)
 BAR_MAX = 120            ; full bar (60 frames/step × 120 = 120s)
@@ -1052,33 +1053,59 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta PF2
 
     ; ====================================================================
-    ; Line 2: Lives — green squares, count based on PlayerLives
-    ; P0 with NUSIZ based on lives: $03=3 copies, $01=2, $00=1
+    ; Line 2: Lives (P0, green squares) + KEY indicator (P1, yellow, right)
+    ; P0 NUSIZ by lives: $03=3 copies, $01=2, $00=1; GRP0 lit only if lives>0
+    ; P1 = the KEY square, lit while KeyHeld (LevelStartRoom b7), X 132.
+    ; Same 8-line structure for every lives count: 2 SetObjectXPos (P0, P1)
+    ; + HMOVE + 5 render, then the shared 1-line gap → 9 (was 8; the pad
+    ; line pays for it, see the budget at .HudPad).
     ; ====================================================================
     lda PlayerLives
-    beq .NoLives                ; 0 lives = skip
+    beq .LivesNone
     cmp #3
     bne .LivesNot3
     lda #$03                    ; 3 copies close
     jmp .LivesSetNusiz
 .LivesNot3:
     cmp #2
-    bne .LivesNot2
+    bne .LivesOne
     lda #$01                    ; 2 copies close
     jmp .LivesSetNusiz
-.LivesNot2:
+.LivesOne:
     lda #$00                    ; 1 copy
+    jmp .LivesSetNusiz
+.LivesNone:
+    lda #$00
 .LivesSetNusiz:
     sta NUSIZ0
     lda #$C6                    ; green
     sta COLUP0
-    lda #12                     ; base X
+    lda #0
+    sta NUSIZ1                  ; one copy (the bombs row sets its own)
+    lda #12                     ; P0 base X
     ldx #0
+    jsr SetObjectXPos_b1
+    lda #132                    ; P1: key square, right side of the row
+    ldx #1
     jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
+    lda #0                      ; lives squares (off at 0 lives, GRP0 = 0)
+    sta GRP0
+    lda PlayerLives
+    beq .LivesNoP0
     lda #$E0                    ; 3-color-clock-wide square pattern
     sta GRP0
+.LivesNoP0:
+    lda #0                      ; key square: only while KeyHeld
+    sta GRP1
+    lda LevelStartRoom
+    bpl .LivesNoKey
+    lda #$1C                    ; yellow (written only when we draw it)
+    sta COLUP1
+    lda #$E0
+    sta GRP1
+.LivesNoKey:
     ldy #5                      ; 5 scanlines tall
 .LivesLoop:
     sta WSYNC
@@ -1086,19 +1113,8 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     bne .LivesLoop
     lda #0
     sta GRP0
+    sta GRP1
     sta NUSIZ0
-    jmp .LivesDone
-.NoLives:
-    lda #0
-    sta GRP0
-    sta NUSIZ0
-    ldy #5
-.LivesBlankLoop:
-    sta WSYNC
-    dey
-    bne .LivesBlankLoop
-    sta WSYNC            ; match lives path: SetObjectXPos + HMOVE
-    sta WSYNC
 .LivesDone:
 
     ; --- 1 scanline gap ---
@@ -1294,14 +1310,16 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; Path A (PlayerLives > 0) — execution count:
     ;   Top gap:  6 (4 + 2 former ball-pos lines — elements keep lines)
     ;   Timer:    3 loop + 1 gap = 4
-    ;   Lives:    1 SetObjectXPos + 1 HMOVE + 5 render + 1 gap = 8
+    ;   Lives:    2 SetObjectXPos (P0 lives, P1 key) + 1 HMOVE + 5 render
+    ;             + 1 gap = 9
     ;   Bombs:    2 SetObjectXPos + 1 HMOVE + 5 render + 3 gap = 11
     ;   Score:    2 SetObjectXPos + 1 HMOVE + 7 ScoreLoop = 10
-    ;   Subtotal: 6+4+8+11+10 = 39
-    ;   Pad:      48 - 39 = 9
-    ; .NoLives blank path pads +2 WSYNC so both paths total 48.
+    ;   Subtotal: 6+4+9+11+10 = 40
+    ;   Pad:      48 - 40 = 8
+    ; Both lives paths run the same instructions (GRP0/GRP1 just stay 0),
+    ; so the band is 48 lines for every lives count and every key state.
     ; ====================================================================
-    ldx #9
+    ldx #8
 .HudPad:
     sta WSYNC
     dex

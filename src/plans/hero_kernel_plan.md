@@ -1370,16 +1370,24 @@ This both reproduces the bug headlessly and guards the whole feature afterwards
 (the current `test_key_pickup` only calls `CEH_Key` directly, so it cannot see
 any of this).
 
-## HUD: key-held indicator (user request, queued)
+## HUD: key-held indicator (DONE 2026-10-23)
 
-Yellow square on the **lives row, right side**, drawn only while `KeyHeld`
-(`LevelStartRoom` b7) is set. That row draws with P0 only, so P1 is free and
-colour is per-sprite (`COLUP1`), so no new glyph bank is needed.
+Yellow square on the **lives row, right side** (P1, X = 132), drawn only while
+`KeyHeld` (`LevelStartRoom` b7) is set. The lives row draws with P0 only, so P1
+was free and colour is per-sprite (`COLUP1 = $1C`), so no new glyph bank.
 
-**Cost: 1 scanline** (P1's `SetObjectXPos_b1` call) and the HUD band is a hard
-48-line budget, so the first step is the budget: count the current lives row and
-gaps, find the pad line, then place the square at X ~132. Do NOT code it before
-the 48-line sum is written down (project rule).
+**Budget (48 lines, hard):** top gap 6 + timer 4 + lives 9 + bombs 11 +
+score 10 = 40, pad 8 (was 9). The lives row went 8 → 9 lines (a second
+`SetObjectXPos_b1` for P1) and the pad paid for it. `.NoLives` is gone: both
+lives counts run the SAME instructions with GRP0/GRP1 zeroed, so the band is 48
+lines for every lives count and every key state.
+
+Guard: `tools/test_hud_key.py` — runs the REAL band (`MenuMain` → `$FC70`) in
+py65, records TIA writes with the band's line index and asserts: 48 WSYNC in
+all three cases (key on, key off, 0 lives), one lit GRP1 square with
+`COLUP1 = $1C` on the lives row while the key is held, none without it, lives
+squares untouched. It was written first and was red on the pre-feature build
+("the lives row drew GRP1 $None").
 
 ## Doors: RIGHT side works, LEFT side does not (2026-10-23)
 
