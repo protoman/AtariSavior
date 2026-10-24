@@ -295,9 +295,10 @@ void DataSerializer::MigrateToFourBands(std::vector<ModelData>& models,
     // M1 wall-hide: the async M1 strip is a WHOLE-CAVE latch (ENAM1), so its
     // column must be wall-or-patched in EVERY band or a 1 px line shows in the
     // band that is neither. The old bottom row was the floor and hid it; the
-    // inserted AIR band does not. Report it instead of inventing a wall (a
-    // wall cell is band-tall and could split a corridor for other rooms that
-    // share the model).
+    // inserted AIR band does not (a gate room's corridor IS that column, so the
+    // fix is per ROOM: wall it, or extend the strip with a band-2 M1 patch).
+    // Reported, never auto-applied: a wall cell is band-tall and would seal the
+    // corridor.
     for (auto& level : *levels) {
         for (auto& room : level.rooms) {
             if (!gained.count(room.model_id)) continue;
@@ -313,6 +314,7 @@ void DataSerializer::MigrateToFourBands(std::vector<ModelData>& models,
             }
         }
     }
+
     for (auto& level : *levels) {
         for (auto& room : level.rooms) {
             if (!gained.count(room.model_id)) continue;
@@ -1589,6 +1591,15 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         }
         levels.push_back(level);
     }
+
+    // N=4 (2026-10-24): the PLANS stay 3-band (band 0 ceiling / band 1 shaft
+    // / band 2 floor: exits, gate columns and QA gates all speak those three
+    // rows). The models are therefore emitted 3-row and the converter pads
+    // them as [r0, r1, AIR, r2]; its M1 wall-hide guard only validates the
+    // AUTHORED rows, which is what keeps a gate room passable (walling the
+    // inserted band would seal the corridor the door sits on). Porting the
+    // plans to four real bands is a separate feature.
+
 }
 
 // ---------------------------------------------------------------------------
