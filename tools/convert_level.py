@@ -582,11 +582,24 @@ def check_model_objects(model: dict, who: str) -> None:
             "tools/migrate_async_to_rooms.py")
     w = int(model.get("width", WIDTH))
     tiles = model.get("tiles") or []
+    h = (len(tiles) // w) if w else 0
     for i, t in enumerate(tiles):
-        if t == RAFT and i // w != 2:
+        if t == RAFT and i // w != h - 1:
             raise ValueError(
                 f"{who}: RAFT at row {i // w} — the raft lives on the "
-                "bottom band (row 2, the water strip)")
+                "bottom band (the water strip row)")
+
+
+def units_per_band(model: dict | None) -> int:
+    """Display rows (12 px each) per drawn band: 4 on a 3-row model, 3 on a
+    4-row one. Object y is always in those 12-px display rows (0..11), so the
+    band index is y // units — never y // 4 once a model carries four bands.
+    """
+    if not model:
+        return 4
+    w = int(model.get("width", WIDTH)) or WIDTH
+    h = (len(model.get("tiles") or []) // w) or 3
+    return max(1, 12 // h)
 
 
 BAND_RULE_HARD = False   # flip to True once the live stage has no violators
@@ -645,7 +658,7 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
             seated.append(("the miner", float(miner_y)))
         bands: dict[int, list[str]] = {}
         for what, tile in seated:
-            bands.setdefault(int(tile) // 4, []).append(what)
+            bands.setdefault(int(tile) // units_per_band(model), []).append(what)
         for band, whats in sorted(bands.items()):
             if len(whats) > 1:
                 msg = (f"{who}: {len(whats)} objects in band {band} "
@@ -672,11 +685,13 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                 raise ValueError(
                     f"{who}: {what} in a room without the bottom band — "
                     f"{what}s live in the water")
-            row = int(float(e.get("y", 0))) // 4
-            if row != 2:
+            row = int(float(e.get("y", 0))) // units_per_band(model)
+            _w = int(model.get("width", WIDTH)) or WIDTH
+            _mbot = (len(model.get("tiles") or []) // _w) - 1
+            if row != _mbot:
                 raise ValueError(
                     f"{who}: {what} at display row {e.get('y')} — {what}s "
-                    "live on the bottom band (model row 2)")
+                    f"live on the bottom band (model row {_mbot})")
             if etype != RAFT_ENTITY:
                 continue
             # The moving raft floats on OPEN water: its spawn cell must be
@@ -689,10 +704,10 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                 raise ValueError(f"{who}: raft x={e.get('x')} out of 0..39")
             dcol = int(ex)
             cell = dcol // 2 if dcol < 20 else (39 - dcol) // 2
-            if bottom_rows[2][cell] != ".":
+            if bottom_rows[-1][cell] != ".":
                 raise ValueError(
                     f"{who}: raft at display col {dcol} sits on "
-                    f"{bottom_rows[2][cell]!r} — the raft floats on OPEN "
+                    f"{bottom_rows[-1][cell]!r} — the raft floats on OPEN "
                     "water (paint the cell as air)")
 
 
@@ -911,10 +926,23 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
         raise ValueError(
             f"level {level_n}: start_room = {level.get('start_room')} but the "
             "level entry no longer stores it (kernel constant 0)")
-    if px(int(level.get("miner_y", 0)), 12) != 84:
+    # Miner Y = the goal rock's top row - 12 px, i.e. 84 px (7 rows) on a
+    # 3-band room and 96 px (8 rows) on a 4-band one (its floor band sits
+    # 36 px lower). The kernel draws from this value; the model height of the
+    # miner's room decides which is legal (2026-10-24, four-band plans).
+    _mroom = next((r for r in rooms
+                   if int(r.get("room_id", 0)) == (miner_room & 0x7F)), None)
+    _mmodel = models_by_id.get(int(_mroom.get("model_id", -1))) if _mroom else None
+    _mh = 3
+    if _mmodel:
+        _mw = int(_mmodel.get("width", 10)) or 10
+        _mh = (len(_mmodel.get("tiles") or []) // _mw) or 3
+    _expect_miner_px = 84 if _mh <= 3 else 96
+    if px(int(level.get("miner_y", 0)), 12) != _expect_miner_px:
         raise ValueError(
             f"level {level_n}: miner_y = {level.get('miner_y')} rows but the "
-            "level entry no longer stores it (kernel constant 84 px = 7 rows)")
+            f"level entry no longer stores it (kernel constant "
+            f"{_expect_miner_px} px for a {_mh}-band room)")
     lines += [
         f"{prefix}_START_ROOM = {level.get('start_room', 0)}",
         f"{prefix}_WALL_COLOR = ${wall:02x}",
@@ -1085,7 +1113,7 @@ def _lamp_type(room: dict, col: float, y: float, models_by_id: dict | None) -> i
     width = int(src.get("width", WIDTH))
     if not width or len(tiles) % width or len(tiles) // width not in MODEL_ROWS:
         return LAMP_ENTITY              # no grid to read: keep the drawn art
-    band = max(0, min(int(y) // 4, len(tiles) // width - 1))  # 4 rows/band
+    band = max(0, min(int(y) // units_per_band(model), len(tiles) // width - 1))
     logical = float(col) if float(col) < 20 else 39 - float(col)   # 39-col mirror
     cell = min(int(logical * 4) // 8, width - 1)   # 8 px cell, 4 px columns
 
