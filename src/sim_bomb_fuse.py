@@ -197,7 +197,7 @@ drop_frame = None
 states_seen = []                         # (frame, B5&3) sampled per frame
 saw_fuse_zero = False
 snapshots = []
-# ---- hole probe (plan 5.1): PF buffers $C3-$CB + WallMask b3-6 ----
+# ---- hole probe (plan 5.1): PF buffers $C3-$CE (N=4, stride 4) ----
 pre_pf = post_pf = None
 pre_b5 = post_b5 = None
 blast_frame = None
@@ -274,8 +274,8 @@ while frame < 420:
             # band-1 cell cannot break his fall. BombMarkWalls ->
             # ClearPFColumn clears it at the blast edge (row 1 only: row 2 is
             # a wide slab, row 0 a wide slab).
-            mem.ram[0x46 + 1] = 0x30       # PF1Buf row1: cols 6,7
-            pre_pf = bytes(mem.ram[0x43:0x4C])     # PF0/1/2Buf rows 0-2
+            mem.ram[0x47 + 1] = 0x30       # PF1Buf ($C7) row1: cols 6,7 (ram idx = addr-0x80)
+            pre_pf = bytes(mem.ram[0x43:0x4F])     # PF0/1/2Buf rows 0-3
             pre_b5 = mem.ram[IDX_B5]
             print(f'drop detected f{frame}: bombs={mem.ram[IDX_F0]} '
                   f'F7=${mem.ram[IDX_F7]:02X} B5=${mem.ram[IDX_B5]:02X}')
@@ -283,7 +283,7 @@ while frame < 420:
         if blast_frame is None and st == 2:
             blast_frame = frame
         if blast_frame is not None and frame >= blast_frame + 5 and post_pf is None:
-            post_pf = bytes(mem.ram[0x43:0x4C])
+            post_pf = bytes(mem.ram[0x43:0x4F])
             post_b5 = mem.ram[IDX_B5]
         # input: land-detect then hold Down 4 frames
         if landed_frame is None and (mem.ram[IDX_B5] & 0x80):
@@ -335,7 +335,7 @@ stack_hits = [e for e in f7_log if e[4] == 'STACK']
 print(f'\nstack stomps on $F7: {len(stack_hits)}; bomb-code writes: {len(f7_log) - len(stack_hits)}')
 
 # ---- hole probe report (plan 5.1: punch -> ClearPFColumn -> PF buffers) ----
-print(f'\n== hole probe (PF bufs $C3-$CB, blast f{blast_frame}) ==')
+print(f'\n== hole probe (PF bufs $C3-$CE, blast f{blast_frame}) ==')
 hole_pf = hole_mask = False
 if pre_pf is not None and post_pf is not None:
     cleared = setb = 0

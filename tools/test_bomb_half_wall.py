@@ -59,7 +59,7 @@ I_BOMBX = 0x76                # $F6
 I_BOMBT = 0x77                # $F7 BombTimer
 I_BOMBSND = 0x71              # $F1
 RECTS0 = 0x4C
-PF_ROWS = range(0xC3, 0xCC)   # PF0/1/2 rows 0-2 (reported addrs)
+PF_ROWS = range(0xC3, 0xCF)   # PF0/1/2 rows 0-3 (N=4 stride 4)
 PF_IDX = [a & 0x7F for a in PF_ROWS]   # bytearray indices
 
 MODEL = {0: 0}   # room -> fixture MODEL id (C5: shared M0 shape)
@@ -216,7 +216,7 @@ def report(tag, bmw_seen, wts, initial):
     # cols14-15 = bits2,3 — the blast [10,14] hits both; 2026-10-12);
     # every other row/byte keeps its ROM value.
     want = dict(initial)
-    want[0xCA] = initial[0xCA] & 0xC0
+    want[0xCC] = initial[0xCC] & 0xC0   # PF2Buf row1 ($CB+1)
     bad = []
     for a in sorted(PF_ROWS):
         v = mem.ram[a & 0x7F]

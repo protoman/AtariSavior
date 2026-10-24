@@ -57,7 +57,7 @@ HEIGHT = 3
 # cells ARE the solid row-1 PF cells of a hot shape), band 1's index b7 carries
 # `mid_band_type`, and the extras record stream keeps FEATURE records only
 # (M1/hot records are derived). `HotOverlapBody` sweeps the expanded PF row 1.
-LEVEL_FORMAT = 6
+LEVEL_FORMAT = 7
 # New tile values (ai_new_tiles plan Phase 1). LOCKED_DOOR lives ONLY in
 # asym_patches (side 0 = async ball strip, MetaB b7); the three grid tiles
 # paint model cells and emit b7 feature records in the hot record stream.

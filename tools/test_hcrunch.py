@@ -69,7 +69,8 @@ for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
 if HUD_JMP is None:
     sys.exit("bank0.lst: `jmp $FC68` not found")
 
-PF0_B1, PF1_B1, PF2_B1 = 0xC4 & 0x7F, 0xC7 & 0x7F, 0xCA & 0x7F
+# N=4 stride 4: band-1 rows are PF0 $C4, PF1 $C8, PF2 $CC
+PF0_B1, PF1_B1, PF2_B1 = 0xC4 & 0x7F, 0xC8 & 0x7F, 0xCC & 0x7F
 PF0_B2 = 0xC5 & 0x7F
 FULL = 10
 
@@ -245,7 +246,9 @@ def main() -> None:
         else:
             print(f"  {tag}: no kill (clock={clock} x={x} y={y})")
 
-    expect_clear("band0", clock=8, x=0, y=20)
+    # N=4: a 36-line band is shorter than the 22 px player box + gap, so
+    # y must keep the whole box inside band 0 (rows 5..10 = idx < 9).
+    expect_clear("band0", clock=8, x=0, y=12)
     expect_clear("band2", clock=192, x=0, y=116)
     expect_clear("nohit", clock=8, x=70, y=68)
 

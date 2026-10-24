@@ -53,8 +53,8 @@ LevelConnSpare = $A2            ; C1 2026-10-20: exit-scan target byte (the
                                 ;   C2 2026-10-20: also the first-record sum
                                 ;   in EnterRoomB2 (scan already returned).
 RoomBandColor = $BC             ; band-color cache (kernel EQU, S3.1)
-BandTab = $ED                   ; Phase 3 band gate bytes — staged here,
-                                 ; read by kernel .Row in bank0
+BandTab = $CF                   ; N=4 band gate bytes ($CF-$D2) — staged in
+                                 ; bank3, read by kernel .Row in bank0
 CollisionX = $8B
 CollisionCellX = $8C             ; max text column
 CollisionCellY = $8D             ; top tile row
@@ -83,8 +83,8 @@ EnemyRamY = $E2                  ; live Y (refreshed this overscan — after
                                  ; the bank1 HUD score-ptr stomp; S3.4)
 TILE_COLUMNS = 20
 RoomY = $81                    ; player Y — LaserHitTest vertical window
-PF0Buf = $C3                   ; PF render buffers rows 0-2 ($C3-$CF) —
-                                ; cell map read here; must match kernel.asm
+PF0Buf = $C3                   ; PF render buffers rows 0-3 (N=4 stride 4:
+                                ; $C3-$CE); cell map read here; must match kernel.asm
 PlayerDir = $82                ; must match kernel.asm — S6 LWC tip direction
 EnemyCount = $B3               ; LaserHitTest loop bound
 EnemyDeadMask = $BA            ; LaserHitTest dead bits (written on kill)
@@ -94,14 +94,14 @@ LAMP = 5                       ; enemy type: editor lamp — kernel LAMP must ma
 RAFT = 7                       ; enemy type: moving raft — kernel ENEMY_RAFT
 SNAKE = 2                      ; enemy type: kernel ENEMY_SNAKE (load-dir invert)
 ; --- BuildColupF (S5.1, moved from bank0) — addresses must match kernel.asm ---
-TILE_ROWS = 3                     ; playable color bands (rows 0-2 of ColupfBuf)
+TILE_ROWS = 4                     ; playable color bands (rows 0-3 of ColupfBuf)
 RoomRectsLo = $90                 ; hot/solid rect stream — read directly here
 RoomRectsHi = $91
 RoomNo      = $98
 LevelWallColor = $AA              ; stripe rows 0+2
 LevelWallColor2 = $AB              ; stripe row 1
 TickCounter = $AD                 ; 60-frame game timer — hot-pulse phase bit 4
-ColupfBuf   = $E7                 ; 12-byte COLUPF image (rows 0-2 used)
+ColupfBuf   = $D3                 ; 4-byte COLUPF image (rows 0-3, N=4)
 COLOR_BOMBS = $46                ; kernel COLOR_BOMBS — fuse bomb color
 COLOR_CAVE_BG = $00
 COLOR_DARK_PF = $04             ; dark-room fuse walls
@@ -548,17 +548,15 @@ MothDoWalk:
     lda CollisionEndX
     sta CollisionX
 .MwCol:
-    lda CollisionX
-    tax
-    ldy RectCount
-    tya
+    ldx CollisionX          ; (2 B: A is reloaded below anyway)
+    lda RectCount           ; (was ldy/tya: same A, 1 B and 1 c cheaper)
     clc
-    adc ColOff,X            ; PF0/PF1/PF2 group offset (0/3/6)
+    adc ColOff,X            ; PF0/PF1/PF2 group offset (0/4/8, N=4 stride 4)
     tay
     lda PF0Buf,Y            ; $C3+row+off — the byte the kernel renders
     and ColMask,X           ; bit for this source col
     bne .MwHit              ; solid (Z=0)
-    lda CollisionX
+    txa                     ; (was lda CollisionX: X still holds the col)
     cmp CollisionCellX      ; col == max?
     beq .MwRowDone
     inc CollisionX
@@ -600,17 +598,17 @@ MothBitTable:
 ; + hot parent-mask AND.
 
 ; Band row from a scanline — replaces the old 48-byte MothRowTable copy
-; (index = line>>2, value = floor(line/48)). Same result, 24 B instead of
+; (index = line>>2, value = floor(line/36), N=4). Same result, 24 B instead of
 ; 48 B, and four call sites share it instead of carrying the table.
 ; IN: A = scanline >> 2 (0..37; callers do the two lsr)  OUT: A = band row
 BandRowFromLine:
-    cmp #36
-    bcs .BR3                ; 144..151 (also clamps >151)
-    cmp #24
-    bcs .BR2                ; 96..143
-    cmp #12
-    bcs .BR1                ; 48..95
-    lda #0                  ; 0..47
+    cmp #27
+    bcs .BR3                ; 108..151 → band 3 (also clamps >143)
+    cmp #18
+    bcs .BR2                ; 72..107
+    cmp #9
+    bcs .BR1                ; 36..71
+    lda #0                  ; 0..35
     rts
 .BR1:
     lda #1
@@ -779,10 +777,11 @@ MothGate:
 ; own copy), but bank2's MothDoWalk patch test and LWC's .LWpSetup still read
 ; these band-edge masks in-bank (cross-bank reads are impossible, so the 6 B
 ; genuinely duplicate).
-OvHead:
-    .byte 7,6,4                 ; rows 0..2 → mask bits >= row
-OvTail:
-    .byte 1,3,7                 ; rows 0..2 → mask bits <= row
+; Overlay band tables + the dead-bit table MOVED to the two data tails
+; below (this region is pinned at $F307): N=4 needs 4 entries per overlay
+; table (band 3 mirrors band 2), i.e. 8 B instead of 6.
+EnemyOffTable:
+    .byte 0,3,6
 
 ; --- Level data (frozen addresses — pointer values must match bank0's
 ;     original layout, level_bank_plan P2.1: $F9D9-$FB1E = 326B) ---
@@ -1017,7 +1016,8 @@ LoadLevelB2:
 ; `lda/and Table,X` (absolute,X) so their address is free.
 ; ------------------------------------------------------------------------------
 ColOff:
-    .byte 0,0,0,0, 3,3,3,3,3,3,3,3, 6,6,6,6,6,6,6,6
+    .byte 0,0,0,0, 4,4,4,4,4,4,4,4, 8,8,8,8,8,8,8,8
+                                ; N=4: stride 4 → PF1/PF2 rows at +4/+8
 ColMask:
     .byte $10,$20,$40,$80, $80,$40,$20,$10,$08,$04,$02,$01
     .byte $01,$02,$04,$08, $10,$20,$40,$80
@@ -1176,12 +1176,15 @@ StageSlot1B2:
     jmp ReturnPad
 .S1band:
     ldy #0
-    cmp #48
+    cmp #36
     bcc .S1bRet
     iny
-    cmp #96
+    cmp #72
     bcc .S1bRet
     iny
+    cmp #108
+    bcc .S1bRet
+    iny                     ; N=4: band 3 (was unreachable with 3 bands)
 .S1bRet:
     tya
     rts
@@ -1765,10 +1768,16 @@ LaserClampDone:
 ; Moved here 2026-10-22: the pre-$FF59 block needed 4 B for the laser bodies'
 ; lamp masks. $FFE6-$FFF1 is safe for DATA (abs,X reads, X <= 3 never reaches
 ; the $FFF6-$FFF9 F6 hotspot mirrors).
-EnemyOffTable:
-    .byte 0,3,6
+OvHead:
+    .byte 7,6,4,4               ; rows 0..3 -> mask bits >= row. N=4:
+                                ;   band 3 mirrors band 2 (3-row bridge),
+                                ;   so its gate IS bit 2 - the pack has
+                                ;   3 mask bits only (b3 = M1 flag)
+OvTail:
+    .byte 1,3,7,7               ; rows 0..3 -> mask bits <= row
+
 EnemyBitTable:
-    .byte $01, $02, $04, $08
+    .byte $01, $02, $04, $08    ; slot-indexed dead/dir bits
 
     .ds $FFF2 - *, 0            ; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
 

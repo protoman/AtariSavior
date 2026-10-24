@@ -42,7 +42,7 @@ if missing:
 # kernel.asm ColOff/ColMask (20 PF cells: 4 PF0, 8 PF1, 8 PF2). The lst has no
 # symbol line for data labels, so locate the 40-byte pair by its signature and
 # assert it — the walk's own tables, not a hand-typed copy.
-_SIG = bytes([0, 0, 0, 0] + [3] * 8 + [6] * 8
+_SIG = bytes([0, 0, 0, 0] + [4] * 8 + [8] * 8
              + [0x10, 0x20, 0x40, 0x80, 0x80, 0x40, 0x20, 0x10,
                 0x08, 0x04, 0x02, 0x01, 0x01, 0x02, 0x04, 0x08,
                 0x10, 0x20, 0x40, 0x80])
@@ -62,8 +62,8 @@ def call_ovm1(meta_a, open_cells, meta_b=0x00, dead=0x00, key=False,
     """Run OvM1Block once; return (carry_set, EnemyDeadMask after)."""
     mem = Mem()
     r = mem.ram
-    pf = bytearray(9)                      # PF0Buf rows 0-2 (stride 3)
-    for row in (0, 1, 2):                  # the envelope: walls everywhere,
+    pf = bytearray(12)                     # PF0Buf rows 0-3 (N=4 stride 4)
+    for row in (0, 1, 2, 3):               # the envelope: walls everywhere,
         for cell in range(20):             # then the patch punches one open
             wall(pf, cell, row)
     for cell, row in open_cells:

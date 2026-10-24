@@ -52,7 +52,7 @@ ROOM_NO = 0x98
 ENEMY_RAM_D = 0xC1
 LASER_STATE = 0xC0
 # BuildColupF / BCFDarkRun inputs (addr & $7F)
-COLUPF_BUF = 0xE7
+COLUPF_BUF = 0xD3        # N=4: moved out of the $E7 window (4 bands)
 WALL1, WALL2 = 0xAA, 0xAB
 TICK = 0xAD
 BOMB_PACKED = 0xB5
@@ -114,7 +114,7 @@ def set_dark(room_no, d, ls):
 
 
 def run_bcf(room_no, d, ls, bomb=0):
-    """Run bank3 BuildColupF; return ColupfBuf rows 0-2.
+    """Run bank3 BuildColupF; return ColupfBuf rows 0-3 (N=4 bands).
 
     Rect stream at $00A0: solid count 0, hot count 0 → the hot walk
     beq's straight to the dark check (no ROM stream needed).
@@ -138,7 +138,7 @@ def run_bcf(room_no, d, ls, bomb=0):
     for _ in range(192):              # P2b StageBandTab grew ~14 instrs
         mpu.step()
         if mpu.pc == ADDR2["ReturnPad"]:
-            return [r[COLUPF_BUF - 0x80 + i] for i in range(3)]
+            return [r[COLUPF_BUF - 0x80 + i] for i in range(4)]
     sys.exit(f"BuildColupF never returned (pc=${mpu.pc:04X})")
 
 
@@ -259,16 +259,17 @@ def main() -> int:
         assert (d, ls) == (0x37, 0x3D), f"room{room} SetRoomDark must be a no-op"
 
     # --- bank2 BuildColupF dark override (BCFDarkRun) ----------------------
-    stripes = [STRIPE1, STRIPE2, STRIPE1]
+    # N=4: the stripe alternates c1, c2, c1, c2 over the four bands.
+    stripes = [STRIPE1, STRIPE2, STRIPE1, STRIPE2]
     assert run_bcf(4, 0x00, 0x00) == stripes, \
         "room4 lit must keep stripe colors"
-    assert run_bcf(4, 0x00, 0x04) == [0x00, 0x00, 0x00], \
+    assert run_bcf(4, 0x00, 0x04) == [0x00] * 4, \
         "room4 dark (UI room 5 lamp) must blacken walls"
-    assert run_bcf(4, 0x00, 0x04, bomb=1) == [0x04, 0x04, 0x04], \
+    assert run_bcf(4, 0x00, 0x04, bomb=1) == [0x04] * 4, \
         "room4 dark + fuse: dark grey walls"
-    assert run_bcf(4, 0x00, 0x04, bomb=2) == [0x00, 0x00, 0x00], \
+    assert run_bcf(4, 0x00, 0x04, bomb=2) == [0x00] * 4, \
         "room4 dark + explode: black walls (blink is bg-only)"
-    assert run_bcf(1, 0x20, 0x00) == [0x00, 0x00, 0x00], \
+    assert run_bcf(1, 0x20, 0x00) == [0x00] * 4, \
         "room1 dark (EnemyRamD b5) must blacken walls"
     assert run_bcf(1, 0x00, 0x00) == stripes, \
         "room1 lit must keep stripe colors"

@@ -38,7 +38,8 @@ BANK2 = (ROOT / "src" / "bank2.asm").read_text(encoding="utf-8")
 MASK_SPEC = [0x10, 0x20, 0x40, 0x80,
              0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01,
              0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80]
-OFF_SPEC = [0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 6, 6, 6, 6, 6, 6, 6, 6]
+# N=4 (2026-10-23): PF buffers are stride 4, so PF1/PF2 rows sit at +4/+8.
+OFF_SPEC = [0, 0, 0, 0, 4, 4, 4, 4, 4, 4, 4, 4, 8, 8, 8, 8, 8, 8, 8, 8]
 
 
 def phm_block() -> str:

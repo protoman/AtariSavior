@@ -13,8 +13,10 @@ Contract:
              `line>>2` indexing stays exact), CAVE_LINES = 144,
              PLAYER_MAX_Y = CAVE_LINES - PLAYER_SPRITE_H,
              YToRowTable maps every line to its band exactly;
-  converter  WIDTH 10, HEIGHT 4, LEVEL_FORMAT 7;
-  data       every shape block carries HEIGHT row-pool indices.
+  converter  WIDTH 10, LEVEL_FORMAT 7, SHAPE_ROWS 4 (the editor still
+             authors HEIGHT = 3 rows, so a shape block pads band 3 with a
+             copy of band 2 — phase 3 of plans/band4_plan.md flips both);
+  data       every shape block carries SHAPE_ROWS row-pool indices.
 
 Run: /home/iuri/python3/bin/python3 tools/test_band_geometry.py
 """
@@ -26,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 K = (SRC / "kernel.asm").read_text(encoding="utf-8")
 CL = (ROOT / "tools" / "convert_level.py").read_text(encoding="utf-8")
+CR = (ROOT / "tools" / "convert_room.py").read_text(encoding="utf-8")
 
 WANT_BANDS = 4
 WANT_LINES = 36           # 4 x 36 = 144 (CAVE_LINES unchanged)
@@ -83,8 +86,23 @@ else:
 
 # --- converter -------------------------------------------------------------
 want(cconst("WIDTH"), 10, "converter WIDTH")
-want(cconst("HEIGHT"), WANT_BANDS, "converter HEIGHT")
 want(cconst("LEVEL_FORMAT"), WANT_FORMAT, "converter LEVEL_FORMAT")
+
+
+def crconst(name):
+    m = re.search(rf"^{name}\s*=\s*(\d+)\b", CR, re.M)
+    if not m:
+        sys.exit(f"convert_room.py: {name} not found")
+    return int(m.group(1))
+
+
+want(crconst("SHAPE_ROWS"), WANT_BANDS, "converter SHAPE_ROWS (bands per shape)")
+# Authored rows stay 3 until the editor grows a 4th row (phase 3); the shape
+# block is padded, so the ROM side is already on 4 bands. Guard the pair so a
+# half-flip (HEIGHT 4 without an editor, or SHAPE_ROWS 3) is caught here.
+if crconst("HEIGHT") not in (3, WANT_BANDS):
+    fails.append(f"converter HEIGHT = {crconst('HEIGHT')}, want 3 (authored) "
+                 f"or {WANT_BANDS} (editor phase done)")
 
 # --- emitted data ----------------------------------------------------------
 mda = (SRC / "generated" / "models_data.asm").read_text(encoding="utf-8")

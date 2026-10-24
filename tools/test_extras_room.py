@@ -60,8 +60,10 @@ SHAPE_AH = 0xF410         # same rows, band 1 flagged HOT (b7)
 SHAPE_B = 0xF420          # feature-room shape (cold)
 EXTRAS = 0xF440           # synthetic extras stream (level 0's base)
 
-PF_A = bytes.fromhex("f0 30 f0 ff 00 ff 3f 0c ff")
-PF_B = bytes.fromhex("f0 f0 f0 ff ff 3f 3f 00 ff")
+# N=4 stride 4: [PF0 r0-r3][PF1 r0-r3][PF2 r0-r3]; row 3 repeats row 2
+# (the converter pads a 3-row authored model into 4 drawn bands).
+PF_A = bytes.fromhex("f0 30 f0 f0 ff 00 ff ff 3f 0c ff ff")
+PF_B = bytes.fromhex("f0 f0 f0 f0 ff ff 3f 3f 3f 00 ff ff")
 
 
 def put(addr: int, data: bytes) -> None:
@@ -69,15 +71,15 @@ def put(addr: int, data: bytes) -> None:
     BANK3[off:off + len(data)] = data
 
 
-def install_rows(pf9: bytes) -> list[int]:
-    """C3 (2026-10-20): write a 9-byte PF triple's three band rows into the
-    private pool image and return its three row indices (band 0..2).
+def install_rows(pf12: bytes) -> list[int]:
+    """C3/C13: write a 12-byte PF image's four band rows (stride 4) into
+    the private pool image and return its four row indices (band 0..3).
 
     A shape block no longer carries PF bytes — it carries 3 one-byte indices
     into RowPoolPF0/1/2, which the loader expands into PF0Buf. The test
     OWNS these pool slots (the private bank3 copy is never played), so the
     columns are rebuilt from a deterministic walk of both fixtures."""
-    rows = [(pf9[b], pf9[3 + b], pf9[6 + b]) for b in range(3)]
+    rows = [(pf12[b], pf12[4 + b], pf12[8 + b]) for b in range(4)]
     idx = []
     for row in rows:
         if row not in _POOL:
@@ -91,9 +93,9 @@ def install_rows(pf9: bytes) -> list[int]:
     return idx
 
 
-def shape_block(pf9: bytes, hot: bool = False) -> bytes:
-    """C11 block layout: exactly the 3 row indices, band 1's b7 = hot."""
-    idx = install_rows(pf9)
+def shape_block(pf12: bytes, hot: bool = False) -> bytes:
+    """C11/C13 block layout: exactly the 4 row indices, band 1 b7 = hot."""
+    idx = install_rows(pf12)
     if hot:
         idx[1] |= 0x80
     return bytes(idx)
@@ -180,7 +182,7 @@ def main() -> int:
     # --- 1. plain cold room: MetaA=0, MetaB=0, no stream, no M1 cell ------
     r = run_room(0)
     assert meta(r) == (0, 0), f"plain room meta {meta(r)}"
-    assert bytes(r[LAB["PF0Buf"] - 0x80:LAB["PF0Buf"] - 0x80 + 9]) == PF_A
+    assert bytes(r[LAB["PF0Buf"] - 0x80:LAB["PF0Buf"] - 0x80 + 12]) == PF_A
     assert stream_ptr(r) == nostream, (
         f"plain room stream ${stream_ptr(r):04X} != sentinel ${nostream:04X}")
     assert r[LAB["RoomM1Hot"] - 0x80] == 0, "plain room staged an M1 cell"
@@ -196,7 +198,7 @@ def main() -> int:
     assert meta(r) == (0x91, 0x40), (
         f"patch room meta ${meta(r)[0]:02X}/${meta(r)[1]:02X}, want $91/$40 "
         "(stored $90 | side-0 patch row 0)")
-    assert bytes(r[LAB["PF0Buf"] - 0x80:LAB["PF0Buf"] - 0x80 + 9]) == PF_A
+    assert bytes(r[LAB["PF0Buf"] - 0x80:LAB["PF0Buf"] - 0x80 + 12]) == PF_A
     assert stream_ptr(r) == nostream, "patch-only room must have no stream"
     assert r[LAB["RoomM1Hot"] - 0x80] == 9, (
         f"RoomM1Hot=${r[LAB['RoomM1Hot'] - 0x80]:02X}, want 9 (side-1 row-1 "
@@ -204,12 +206,16 @@ def main() -> int:
 
     # --- 4. feature room: PF cells + the extras FEATURE stream ------------
     r = run_room(2, ordinal=2)
-    got = bytes(r[LAB["PF0Buf"] - 0x80:LAB["PF0Buf"] - 0x80 + 9])
+    got = bytes(r[LAB["PF0Buf"] - 0x80:LAB["PF0Buf"] - 0x80 + 12])
     want = bytearray(PF_B)
     # hcrunch prefix cols 0..9 = the whole row-1 band solid (PF pairs)
     want[1] |= 0xF0 | 0xC0                 # PF0 row1 (cols 0-1)
-    want[4] |= 0xFF                        # PF1 row1 (cols 2-5)
-    want[7] |= 0xFF                        # PF2 row1 (cols 6-9)
+    want[5] |= 0xFF                        # PF1 row1 (cols 2-5)
+    want[9] |= 0xFF                        # PF2 row1 (cols 6-9)
+    print("DBG idx", list(BANK3[SHAPE_B - 0xF000:SHAPE_B - 0xF000 + 4]),
+          "pool", list(BANK3[LAB["RowPoolPF0"] - 0xF000:
+                           LAB["RowPoolPF0"] - 0xF000 + 6]))
+    print("DBG got", got.hex(), "want", bytes(want).hex())
     assert got == want, f"feature PF {got.hex()} != {bytes(want).hex()}"
     assert meta(r) == (0, 0), f"feature room meta {meta(r)}"
     assert stream_ptr(r) == ROOM2_STREAM, (
