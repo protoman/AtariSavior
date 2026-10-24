@@ -792,27 +792,37 @@ def room_extras(room: dict, model: dict, rows: list[str],
     asym, ball_x, m1_x, m1_door, m1_right = (
         res if res else (None, 0, 0, False, False))
     hot = bool(model.get("mid_band_type"))
+    # N=4 (2026-10-24): compare the DRAWN bands, so the gate mask has one bit
+    # per band and band 3 gets its own (MetaB b4) instead of the old mirror.
+    bands = convert_room.band_map(len(rows))
     meta_a, meta_b = convert_room.meta_bytes(
-        rows, asym_rows=asym, asym_ball_x=ball_x, asym_m1_x=m1_x,
+        convert_room.pad_rows(rows),
+        asym_rows=convert_room.pad_rows(asym) if asym else None,
+        asym_ball_x=ball_x, asym_m1_x=m1_x,
         hot=hot, door=False, m1_door=m1_door, m1_right=m1_right, source=who)
     patch_bytes: list[int] = []
     derived_mask = 0
     for patch in room_patches(room):
         row, col = patch[0], patch[1]
         side = patch[3] if len(patch) == 4 else 0
-        patch_bytes.append((row << 6) | (side << 4) | col)
+        # The stored row IS the drawn band: ExtrasLoad stages gates straight
+        # from it, and the loader/kernel have no idea how many rows the model
+        # authors (a 3-row grid's row 2 lives in band 3, band 2 is AIR).
+        band = bands[row]
+        patch_bytes.append((band << 6) | (side << 4) | col)
         # The ball band gate is for BALL strips only. A side-0 LOCKED_DOOR is
         # drawn by M1 (m1_right) and paints no ball, so it must not contribute
         # to the mask (2026-10-23: a right-side door tripped this check).
         if side == 0 and patch[2] != LOCKED_DOOR:
-            derived_mask |= 1 << row   # ball band gate (MetaA b1-2 for doors)
+            derived_mask |= 1 << band   # ball band gate (MetaA b0-2/b3=MetaB b4)
     # MetaA bit 0 is the ball gate for a plain strip, but m1_right for a door
     # ("door band mask is $02 -> b0 free"), so mask it out when m1_right is set.
-    meta_mask = (meta_a & 0x06) if m1_right else (meta_a & 0x07)
+    packed_mask = ((meta_a & 0x07) | (0x08 if meta_b & 0x10 else 0))
+    meta_mask = (packed_mask & 0x06) if m1_right else packed_mask
     if meta_mask != derived_mask:
         raise ValueError(
-            f"{who}: MetaA band mask ${meta_mask:02x} != the side-0 patch "
-            f"rows ${derived_mask:02x} — the extras patch list and the packed "
+            f"{who}: band gate mask ${meta_mask:02x} != the side-0 patch "
+            f"bands ${derived_mask:02x} — the extras patch list and the packed "
             "meta drifted")
     feats = room_feature_cells(room)
     feature_bytes: list[int] = []

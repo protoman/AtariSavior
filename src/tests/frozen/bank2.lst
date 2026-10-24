@@ -2085,23 +2085,21 @@
    1772  ffe6							; lamp masks. $FFE6-$FFF1 is safe for DATA (abs,X reads, X <= 3 never reaches
    1773  ffe6							; the $FFF6-$FFF9 F6 hotspot mirrors).
    1774  ffe6				   OvHead
-   1775  ffe6		       07 06 04 04	      .byte.b	7,6,4,4	; rows 0..3 -> mask bits >= row. N=4:
-   1776  ffea							;   band 3 mirrors band 2 (3-row bridge),
-   1777  ffea							;   so its gate IS bit 2 - the pack has
-   1778  ffea							;   3 mask bits only (b3 = M1 flag)
-   1779  ffea				   OvTail
-   1780  ffea		       01 03 07 07	      .byte.b	1,3,7,7	; rows 0..3 -> mask bits <= row
-   1781  ffee
-   1782  ffee				   EnemyBitTable
-   1783  ffee		       01 02 04 08	      .byte.b	$01, $02, $04, $08	; slot-indexed dead/dir bits
+   1775  ffe6		       0f 0e 0c 08	      .byte.b	15,14,12,8	; rows 0..3 -> mask bits >= row (N=4: the
+   1776  ffea							;   pack carries four gates, b3 = band 3)
+   1777  ffea				   OvTail
+   1778  ffea		       01 03 07 0f	      .byte.b	1,3,7,15	; rows 0..3 -> mask bits <= row
+   1779  ffee
+   1780  ffee				   EnemyBitTable
+   1781  ffee		       01 02 04 08	      .byte.b	$01, $02, $04, $08	; slot-indexed dead/dir bits
+   1782  fff2
+   1783  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
    1784  fff2
-   1785  fff2					      .ds	$FFF2 - *, 0	; $FFF2-$FFF9 stay fill (F6 hotspot mirrors)
-   1786  fff2
-   1787  fff2							; Pad to vectors at $FFFA ($FFF2-$FFF9 = fill — never code: $FFF6-$FFF9
-   1788  fff2							; are F6 hotspot mirrors on peek, see MothExitPad at $FC49)
-   1789  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0
-   1790  fffa
-   1791  fffa							; Interrupt vectors
-   1792  fffa		       00 f0		      .word.w	$F000	; NMI vector
-   1793  fffc		       00 f0		      .word.w	$F000	; RESET vector
-   1794  fffe		       00 f0		      .word.w	$F000	; IRQ vector
+   1785  fff2							; Pad to vectors at $FFFA ($FFF2-$FFF9 = fill — never code: $FFF6-$FFF9
+   1786  fff2							; are F6 hotspot mirrors on peek, see MothExitPad at $FC49)
+   1787  fff2		       00 00 00 00*	      .ds	$FFFA - *, 0
+   1788  fffa
+   1789  fffa							; Interrupt vectors
+   1790  fffa		       00 f0		      .word.w	$F000	; NMI vector
+   1791  fffc		       00 f0		      .word.w	$F000	; RESET vector
+   1792  fffe		       00 f0		      .word.w	$F000	; IRQ vector

@@ -93,11 +93,15 @@ hot flag still rides band 1's index b7.
    design, the fix belongs in the staging (it must be stable), not in the
    kernel. Acceptance: `test_slot1_midband` green AND `sim_frame_budget` cave
    still constant 270.0.
-2. **Async band mask still has 3 bits** (MetaA b0-2; b3 = the M1/door flag).
-   Band 3 therefore mirrors band 2 for the ball/M1 gate (`B3StageBand` copies
-   `BandTab+2` -> `BandTab+3`). `test_cell_map`'s asym sweep is restricted to
-   rows 0-1 for that reason. Phase 2: take one of MetaB's free bits (b4/b5) as
-   the band-3 gate, extend the pack (`SBT_B`) and drop the mirror.
+2. ~~Async band mask still has 3 bits~~ **DONE 2026-10-24**: MetaB b4 is the
+   band-3 gate, the extras patch byte stores the DRAWN BAND, `B3StageBand`
+   stages `BandTab` from a 4-bit mask via `BandTpl`, the pack `$8F` carries
+   four gates (b3 = M1-present only when no band is painted), and
+   `OvHead/OvTail` are the 4-band pairs in bank0 + bank2. The retired
+   `BandTab+2` mirror was lighting the ball in the AIR band. Guards:
+   `tools/test_async_band3.py` (new), `test_phase3_ball`, `test_cell_map`.
+   Measured: the VBL gained nothing (the template copy replaced three
+   unrolled shift/rol triples), cave stays 270.0.
 3. **Editor** still authors 3 rows. Until it grows a 4th row the bottom band of
    every room is a copy of the row above it (visible seam). Phase 3: 10x4 grid,
    4 rows per model, `HEIGHT = 4`, band-occupancy warnings per 36-line band,

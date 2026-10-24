@@ -190,19 +190,19 @@ def main() -> int:
         fails.append(f"min SP (f>=2) = ${r['min_sp']:02X}, want >= $F7")
 
     # partial mask (case-1 stacked blocks: bands 0+2 painted, band1 mirror):
-    # the band gate must skip band1. N=4 cave: bands 0 and 2 are enabled
-    # and band 3 MIRRORS band 2 (the phase-1 3-row bridge: B3StageBand
-    # copies BandTab+2 into BandTab+3), so a mask with band1 clear yields
-    # exactly 3 ENABL $ff writes per frame (bands 0, 2, 3).
+    # the band gate must skip band1. N=4 cave: the pack carries four gates and
+    # band 3 has its own (MetaB b4), so the retired band-2 mirror is gone and a
+    # mask with band1 clear yields exactly 2 ENABL $ff writes per frame
+    # (bands 0 and 2 only).
     if not fails:
         rp = run(frozen_rom.path(), band1=0x00)
         weak2 = [f for f in range(3, rp["frames"])
-                 if rp["ff_per_frame"].get(f, 0) != 3]
+                 if rp["ff_per_frame"].get(f, 0) != 2]
         if weak2:
             got = sorted({rp["ff_per_frame"].get(f, 0) for f in weak2})
             fails.append(
-                f"partial mask band1=0: frames with !=3 ENABL $ff writes "
-                f"{weak2[:6]} (counts {got}; band 3 mirrors band 2)")
+                f"partial mask band1=0: frames with !=2 ENABL $ff writes "
+                f"{weak2[:6]} (counts {got}; band 3 has its own gate now)")
 
     if fails:
         for f in fails:

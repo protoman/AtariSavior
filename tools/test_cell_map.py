@@ -290,7 +290,7 @@ def overlay_hit(rx: int, rd: int, ry: int, packed: int) -> bool:
     if not (vl <= bx and vl + 6 >= bx - 7):   # lit span = 7px [vl, vl+6]
         return False
     top, bot = row_range(ry)
-    mask = packed & 7
+    mask = packed & 15                  # b0-3 = the four band gates
     return any(mask & (1 << r) for r in range(top, bot + 1))
 
 
@@ -346,7 +346,7 @@ def asym_checks(rows: list[str]) -> int:
     r[L2["RoomPF0Lo"] + 1 - 0x80] = BANK3[L3["LEVEL1_AsyncExtras"] - 0xF000 + 2]
     r[L0["EnemyDeadMask"] - 0x80] = 0
     # packed configs: (right_col, band mask); 0 = symmetric control
-    configs = [(0, 0), (0, 1), (5, 4), (9, 7), (9, 4)]
+    configs = [(0, 0), (0, 1), (5, 4), (9, 7), (9, 4), (9, 8), (3, 15)]
     checks = 0
     for dead in (0, 0x10):
         for rc, mask in configs:
@@ -356,10 +356,9 @@ def asym_checks(rows: list[str]) -> int:
             r[L0["LineCount"] - 0x80] = packed
             r[L0["EnemyDeadMask"] - 0x80] = dead
             for rd in (0, 1):
-                # N=4 bridge (phase 1): the async band mask has THREE bits
-                # (MetaA b0-2, b3 = the door flag), so band-3 overlay
-                # semantics are undefined until the format gains a 4th bit
-                # (plans/band4_plan.md, phase 2). Sweep the defined bands.
+                # N=4: the pack carries FOUR gate bits (b0-3; b3 is also
+                # the M1-present flag when no band is painted), so the bottom
+                # band is a first-class overlay band now.
                 for ry in (0, 60):
                     for rx in range(4, 160):
                         mem.ram[L0["RoomX"] - 0x80] = rx

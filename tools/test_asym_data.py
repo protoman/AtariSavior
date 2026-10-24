@@ -229,19 +229,22 @@ def main() -> int:
     record, nfeat = convert_level.room_extras(
         room, legacy, convert_level.rows_from_json(room, {90: legacy}),
         "test room")
-    # flags (2 patches, 0 features) | MetaA $05 | MetaB $01 | 2 patch bytes
-    # (row<<6 | side<<4 | col: $00 and $80)
-    assert record == bytes([0x02, 0x05, 0x01, 0x00, 0x80]), record.hex()
+    # flags (2 patches, 0 features) | MetaA $01 | MetaB $11 | 2 patch bytes
+    # (BAND<<6 | side<<4 | col). N=4: the authored rows 0 and 2 are bands 0
+    # and 3, so the gates split — band 0 stays in MetaA b0, band 3 rides
+    # MetaB b4 ($10) and the patch bytes are $00 and $c0.
+    assert record == bytes([0x02, 0x01, 0x11, 0x00, 0xc0]), record.hex()
     assert nfeat == 0
 
     # --- 5. M1-only extras: MetaA carries (m1_col+1)<<4 and no band mask,
-    # and a side-1 patch byte sets b4 (row 0 -> $10 | col 3 = $13).
+    # and a side-1 patch byte sets b4 (band 0 -> $10 | col 3 = $13; band 3
+    # -> $c0 | col 3 = $d3).
     room_m = {"room_id": 0, "model_id": 90,
               "asym_patches": [[0, 3, 1, 1], [2, 3, 1, 1]]}
     rec_m, nf_m = convert_level.room_extras(
         room_m, legacy, convert_level.rows_from_json(room_m, {90: legacy}),
         "test room m1")
-    assert rec_m == bytes([0x02, 0x40, 0x00, 0x13, 0x93]), rec_m.hex()
+    assert rec_m == bytes([0x02, 0x40, 0x00, 0x13, 0xd3]), rec_m.hex()
     assert nf_m == 0
 
     print("test_asym_data: OK (valid + partial bands + M1-only + case3 + "
