@@ -1998,33 +1998,67 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             // shows a hole on its far side. M1 (left) / ball (right) paint an
             // 8-px cell there; both are OBJECTS, not PF, so no bomb can remove
             // them (indestructible by construction — no new kernel code).
+            //
+            // The plug owns only the DEAD side's object: an async block on the
+            // other side survives, and a block that sat on the plugged side is
+            // re-homed to the opposite object (the same mirrored pair the block
+            // emitter above uses). Without this every edge room — half the
+            // stage — would silently lose its async content.
             {
                 const GridPos& p = walks[l - 1][i];
                 const bool west = HasRoomAt(walks[l - 1], p.x - 1, p.y);
                 const bool east = HasRoomAt(walks[l - 1], p.x + 1, p.y);
                 if (west != east) {
-                    // The plug owns the room's patch slots (the async block is
-                    // optional, a hole is not).
-                    // The H aperture spans BOTH walkable bands (band 1 and
-                    // the derived band 2), so the plug needs one patch per
-                    // band: same column, two rows is legal (the one-column-
-                    // per-side rule keys on the x).
+                    const ModelData& sm = models[shapeId[masks[l - 1][i]]];
+                    const int dead_side = west ? 0 : 1;   // 0 = right/ball
+                    const int dead_col = west ? 9 : 0;
+                    auto side_of = [](const std::vector<int>& pt) {
+                        return (int)pt.size() > 3 ? pt[3] : 0;
+                    };
+                    // Keep the other side's patches, remember what the plug
+                    // displaced so it can be re-homed.
+                    std::vector<std::vector<int>> kept;
+                    std::vector<int> displaced;   // column of a dropped block
+                    for (const auto& pt : room.asym_patches) {
+                        if (side_of(pt) == dead_side) {
+                            if ((int)pt.size() >= 3 && pt[0] == 1)
+                                displaced.push_back(pt[1]);
+                            continue;
+                        }
+                        kept.push_back(pt);
+                    }
+                    room.asym_patches = kept;
                     // Only the bands where the shape really carries the
                     // aperture get a plug: the wall-hide guard requires the
                     // patched cell to be OPEN (a wall would hide the patch).
-                    room.asym_patches.clear();
-                    const ModelData& sm = models[shapeId[masks[l - 1][i]]];
                     for (int band = kHorizExitA;
                          band <= std::min(kHorizExitB, sm.height - 2); ++band) {
                         if (sm.tiles[band * sm.width] != (int)TileType::AIR)
                             continue;
-                        if (!west) {
-                            room.asym_patches.push_back(
-                                {band, 0, (int)TileType::SOLID_WALL, 1});
-                        }
-                        if (!east) {
-                            room.asym_patches.push_back(
-                                {band, 9, (int)TileType::SOLID_WALL, 0});
+                        room.asym_patches.push_back(
+                            {band, dead_col, (int)TileType::SOLID_WALL,
+                             dead_side});
+                    }
+                    // Re-home the displaced async block on the free object.
+                    if (!displaced.empty()
+                            && (int)room.asym_patches.size() < 2) {
+                        const int other = kRoomWidth - 1 - displaced.front();
+                        if (dead_side == 1) {
+                            // M1 was plugged → the BALL takes the block; it
+                            // only needs its own band-1 cell open.
+                            if (sm.tiles[1 * kRoomWidth + other] == 0)
+                                room.asym_patches.push_back(
+                                    {1, other, (int)TileType::SOLID_WALL, 0});
+                        } else {
+                            // BALL was plugged → the M1 takes the block; the
+                            // whole-cave latch needs the other bands walled.
+                            if (sm.tiles[1 * kRoomWidth + other] == 0
+                                    && sm.tiles[0 * kRoomWidth + other] != 0
+                                    && sm.tiles[2 * kRoomWidth + other] != 0
+                                    && (sm.height <= 3
+                                        || sm.tiles[3 * kRoomWidth + other] != 0))
+                                room.asym_patches.push_back(
+                                    {1, other, (int)TileType::SOLID_WALL, 1});
                         }
                     }
                 }
