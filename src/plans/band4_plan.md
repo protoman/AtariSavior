@@ -117,31 +117,41 @@ hot flag still rides band 1's index b7.
    `MakeShapeModel` maps the 3-row plan onto real bands (r0→band 0, r1→band 1,
    r2→band 3) and DERIVES band 2 as the vertical route's continuation — open at
    the room's exit columns (3/6 on a two-gap shape, 8/9 otherwise), walls
-   everywhere else. 51 of 53 shapes are now 4-row, so the inserted AIR pad is
-   gone and band 2 is a real band the player descends through. The walled
-   remainder is load-bearing: the whole-cave M1 strip needs its column walled in
-   every band it does not paint, so a plain COPY of band 1 left the async-block
-   scan with no legal cell and level 7 lost its async room entirely.
+   everywhere else. **All 53 shapes are 4-row** (heights `{4: 53}`), so the
+   inserted AIR pad is gone and band 2 is a real band the player descends
+   through; the live stage was regenerated with it (commit `80b9460`, revert
+   target = the previous stage commit). The walled remainder is load-bearing:
+   the whole-cave M1 strip needs its column walled in every band it does not
+   paint, so a plain COPY of band 1 left the async-block scan with no legal cell
+   and level 7 lost its async room entirely.
    Object y is a 12-px display row, so a band spans `12/height` rows (4 on a
    3-row model, 3 on a 4-row one): the generator's placements, `convert_level`,
    `verify_build` and `test_generator` all derive the band and the bottom row
    from the model height now (no literal `// 4` or `row 2`), and the miner's Y
    follows the rock — 84 px on a 3-band room, 96 px on a 4-band one.
-   The live stage stays 3-row until the user regenerates (File → Generate);
-   `test_generator` + `test_editor_roundtrip` + a staged `STAGE_FILE` build are
-   the gates, and a generated stage builds, verifies and passes both sims.
-   **Remaining: gate/phase shapes are still 3-row** (padded on load, so their
-   pad band still shows the stray strip line). Their door cell IS the corridor:
-   band 2 must stay open at that column for the descent, while the strip may
-   only be patched on band 1 (band-1-only door rule + the 2-patch cap). A
-   four-band door therefore needs the LANDING design — enter on one side, cross
-   the door in band 1, descend on the other side, band 2 walled at the door
-   column. That only fits a two-gap room (enter 6, door 5, descend 3); the
-   single-gap scheme (cells 8/9) is adjacent, so the door cannot sit between
-   entry and descent there — a general solution wants per-pair exit columns.
-5. `plans/hero_kernel_plan.md` and `src/AGENTS.md` still describe 3x48 in the
-   overview text (`TILE_ROWS=3`, "one GRP1 object per 48-line band", the water
-   split description, the frame total). Update in the docs pass (phase 4).
+   Gates: `test_generator`, `test_editor_roundtrip`, a staged `STAGE_FILE`
+   build (verify + both sims), `test_band_restage` (211 rooms),
+   `test_level_bank`, `test_features_data`, `test_asym_data`; battery 58/59.
+   **Open design decision (needs the user): widen band 2 into a chamber.**
+   Right now band 2 is a 1-2 cell shaft (the descent). A real chamber is
+   `band1's aisle` in band 2 minus 0-2 "pillar" columns kept as walls — the
+   pillars are what the async-block scan needs (`band1 open, band0 wall,
+   band2 wall`), so they must be picked from columns the ceiling already walls.
+   Blocker: **HCRUNCH rooms**. The crunch is a band-1 prefix feature, so an open
+   band 2 lets the player drop under it and skip the obstacle; a wide band 2
+   therefore needs either the hcrunch role dropped from generated levels or a
+   dedicated hcrunch shape variant (shape budget is 53/56).
+   **Open: locked doors.** `PlanFor` sets `p.gate = false` (level 13 was
+   unsolvable). A four-band door needs the LANDING design — enter on one side,
+   cross the door in band 1, descend on the other side, band 2 walled at the
+   door column. With the current link columns that only fits a two-gap room
+   (enter cell 6, door 4/5, descend cell 3); the single-gap scheme (cells 8/9)
+   is adjacent, so no cell sits between entry and descent. A general solution
+   wants per-pair exit columns (a new mask bit + 1-2 shapes + a key plan).
+5. ~~`plans/hero_kernel_plan.md` and `src/AGENTS.md` still describe 3x48~~
+   **DONE 2026-10-24** (commit `68f4073`): AGENTS.md kernel structure, frame
+   table, Phase 1 entry and the HERO comparison now say 4 × 36
+   (`TILE_ROWS=4`, `LINES_PER_TILE=36`, `CAVE_LINES=144`).
 
 ## Editor (the ATARI stage editor is NOT in this repo)
 
