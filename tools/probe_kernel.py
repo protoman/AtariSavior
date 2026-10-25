@@ -148,6 +148,7 @@ from py65.devices.mpu6502 import MPU        # noqa: E402
 mpu = MPU(memory=mem)
 prev_cycles = 0
 pc_cyc = Counter()
+_in_vbl = [False]
 
 
 def step():
@@ -156,7 +157,12 @@ def step():
     mpu.step()
     mem.pc = mpu.pc
     c = mpu.processorCycles - prev_cycles
-    pc_cyc[(_b0, _pc0)] += c
+    if _b0 == 0 and _pc0 == LABELS["VBLTimer"]:
+        _in_vbl[0] = True
+    elif _b0 == 0 and _pc0 == LABELS[".WaitVBLANK"]:
+        _in_vbl[0] = False
+    if not os.environ.get("VBLONLY") or _in_vbl[0]:
+        pc_cyc[(_b0, _pc0)] += c
     prev_cycles = mpu.processorCycles
     mem.wall += c
     if mem.wsync_seen:
