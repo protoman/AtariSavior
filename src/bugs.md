@@ -490,7 +490,28 @@ No entry is worked on without user greenlight.
     2 it subtracts, so frames alternate 270/271 while slot 1 is staged. Same
     family as the pre-existing red `tools/test_slot1_midband.py`; needs the
     hook's exact line ledger measured (not guessed) before touching the -2.
-    **5.1 (room_id 0, 0 objects) still measures clean** — no symptom yet.
+    **THE USER'S FLICKER WAS THE GENERATOR, NOT THE KERNEL (2026-10-25).**
+    Level 5 room 2 shipped TWO enemies at the same display column (19), rows 7
+    and 10. `StageSlot1` pairs slot 1 only when the objects sit in DIFFERENT
+    bands, so same-band pairs keep the 30 Hz rotation and both blink; and even
+    across bands a shared column is fatal because objects move inside their
+    band (moth/bat/snake patrol rows) and land on the same scanlines. The
+    room's own data had them at 19/19, so every frame with both alive rotated.
+    Fixed at the source: `DataSerializer` now runs a FINAL separation pass after
+    the keys, lamps and arrival fix-ups (the old per-room nudge ran before them
+    and never saw the final content): the later object moves to an unoccupied
+    band, >=3 display columns from every other object, on an AIR cell, never
+    into band 0 (the arrival band) or a side-entry edge column, and is dropped
+    if no legal cell exists. `convert_level.BAND_RULE_HARD` is now True and a
+    new column rule raises, so both cases are BUILD ERRORS.
+    Stage after regeneration: 211 rooms, 0 same-band pairs, 0 same-column
+    pairs; level 5 room 2 = (col 8, band 2) + (col 19, band 3).
+    Guard: `tools/test_object_bands.py` (real check, 6 cases).
+    **Remaining (kernel, separate):** slot-1 rooms still measure one line long
+    on the frames the hook fires (270/271 in level 5 room 2; level 7 room 6
+    measures 272-276!), i.e. the hook spends more lines than the 2 it subtracts
+    from the body count. Not the generator: this is the `-2` in `.SHcount`.
+    **5.1 (room_id 0) still measures clean** — no symptom reported yet.
 
 ## Latent risks (verified once, fragile)
 
