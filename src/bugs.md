@@ -1089,8 +1089,13 @@ accounting (`DUMP=prefix tools/probe_kernel.py L R F0 F1`) showed identical
 work in both frames but a different SOXP WSYNC straddle (c71 vs c22): the heavy
 frame used up the whole `TIM64T #23` window (poll exited at once, +35c over)
 while the light one waited ~90c in `.WaitVBLANK`, so the entry anchor landed one
-line later on alternate frames. Fix: `VBLTimer` `#23` -> `#24` (kernel-entry is
-timer-locked again). Result: every probed room of levels 1-5 is a constant 271
-lines (was 270 plain / 271 hook / alternating). `sim_frame_budget` cave target
-270 -> 271, VBL budget 1472 -> 1536. Still open: rooms where the VBL really
-overruns (probe L6 R4, L10 R4/R6 etc. show 272-274) — different cause.
+line later on alternate frames. Fix: `VBLTimer` `#23` -> `#25` (kernel-entry is
+timer-locked again; `#24` fixed room 3 but level 6 room 4 still overran ~40c on
+a 16-frame cycle and flipped 271<->272 in blocks). Result: every probed room of
+levels 1-7 is a constant 272 lines (was 270 plain / 271 hook / alternating).
+`sim_frame_budget` cave target 270 -> 272, VBL budget 1472 -> 1600. Also trimmed
+the VBL: `SelectActiveObject` reads the enemy type once (-25c), `PhRec` uses an
+offset table + one combined flag test (-16c/record). Poll slack was measured
+by the per-PC dump (`slack.sh` idea: cycles spent at `.WaitVBLANK`). Still open: probe rooms L6R5, L7R2/R5, L9R5, L10R2/R5,
+L12R1/R2, L16R2 (0-based) measure 273-276 and band 2 shows 34 bodies instead of
+36 — a kernel-line variation (water/tide or probe state), not the VBL.

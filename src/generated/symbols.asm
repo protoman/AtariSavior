@@ -122,7 +122,7 @@
 3.SODone                 f745              (R )
 3.SOEnemy                f6d9              (R )
 3.SOEnemyColorDone       f738                  
-3.SOEnemyLit             f71b              (R )
+3.SOEnemyLit             f71f              (R )
 3.SOEnemyNoMinerOffset   f6e2              (R )
 3.SOEnemyPattern         f726              (R )
 3.SOEnemySkip            f741              (R )

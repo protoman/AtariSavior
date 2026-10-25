@@ -752,26 +752,16 @@ PhRec:
     sta CollisionEndY       ; ~mask (scratch — pack rebuild overwrites)
     ; buffer offset: pair<2 → PF0 (0), <6 → PF1 (4), else PF2 (8) — N=4
     ; stride 4, so PF1Buf($C7)/PF2Buf($CB) rows sit at +4/+8 from PF0Buf.
-    lda #0
-    cpx #2
-    bcc .PhOffA
-    lda #4
-    cpx #6
-    bcc .PhOffA
-    lda #8
-.PhOffA:
-    sta LineCount           ; offset scratch
     iny                     ; Y → row (band 0-3)
     lda (FetchPtr),Y
     clc
-    adc LineCount           ; A = buffer offset + row (0-11 → $C3+A)
+    adc PhOffTab,X          ; A = buffer offset + row (0-11 → $C3+A); table
+                            ;   lookup replaces a cpx/branch ladder (-11c)
     tax
-    lda EnemyDeadMask           ; b5 flag staged above this frame
-    and #$40                    ; b6: walls removed by crush kill
-    bne .PhOff                  ; force open every VBL until EnterRoom clears
-    lda EnemyDeadMask           ; b5 flag staged above this frame
-    and #$20                ; armed ⟺ cell solid
-    beq .PhOff
+    lda EnemyDeadMask           ; b5 = armed (cell solid), b6 = walls removed by
+    and #$60                    ;   crush kill (force open until EnterRoom clears)
+    cmp #$20                    ; solid only when b5 set AND b6 clear (-5c)
+    bne .PhOff
     lda PF0Buf,X
     ora CollisionCellX
     sta PF0Buf,X
@@ -880,6 +870,8 @@ BCFDarkMask:
     .byte $10, $20, $40, $80    ; rooms 4-7 → lsr×2 = LaserState bits 2-5
 
 
+PhOffTab:
+    .byte 0, 0, 4, 4, 4, 4, 8, 8, 8, 8   ; pair index → PF buffer column offset
 PhMaskTab:
     .byte $30, $C0                     ; PF0 pairs (0,1) (2,3)
     .byte $C0, $30, $0C, $03           ; PF1 pairs (4,5) (6,7) (8,9) (10,11)
