@@ -8,8 +8,8 @@ every frame) + bomb dropped (falling fuse + explosion mid-run), 1 enemy +
 miner in the room (post-migration 2-object cap).
 
 MEASUREMENT (py65 = pure CPU work; WSYNC/TIM64T/INTIM stubbed):
-  VBL      TIM64T arm -> WaitVBLANK entry (pure work) <= VBL_BUDGET (TIM64T #25)
-  OVER     Overscan   -> next StartFrame   must be <= OVER_BUDGET  (TIM64T #50)
+  VBL      TIM64T arm -> WaitVBLANK entry (pure work) <= VBL_BUDGET (TIM64T #31)
+  OVER     Overscan   -> next StartFrame   must be <= OVER_BUDGET  (TIM64T #44)
            NOTE: that span INCLUDES the idle INTIM poll, so it reads ~3220c on
            every frame; the real margin is the "OVER real work" line.
   KERNEL   every WSYNC-to-WSYNC gap (cave + HUD band) <= 76 cycles
@@ -18,8 +18,8 @@ MEASUREMENT (py65 = pure CPU work; WSYNC/TIM64T/INTIM stubbed):
             WSYNC-off-by-one / HUD-bar class)
   kernel WSYNC count constant per frame (structure drift guard)
 
-Budgets are the documented timers (kernel.asm VBL #25 = 1600c,
-overscan #50 = 3200c; frame = V(#25)+O(#50) = 272 lines (wall model)). A timer segment
+Budgets are the documented timers (kernel.asm VBL #31 = 1984c,
+overscan #44 = 2816c; frame = V(#31)+O(#44) = 272 lines (wall model)). A timer segment
 whose WORK exceeds its window loses the wait and eats extra scanlines on
 hardware; py65 work > budget predicts the Stella jump.
 
@@ -34,8 +34,8 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parent
 BANKS = [open(SRC / f'bank{i}.bin', 'rb').read() for i in range(8)]
-VBL_BUDGET = 1600          # TIM64T #25 (kernel.asm VBLTimer)
-OVER_BUDGET = 3200         # TIM64T #50 (kernel.asm:776)
+VBL_BUDGET = 1984          # TIM64T #31
+OVER_BUDGET = 2816         # TIM64T #44
 # Assert band = 3223 (documented fill absorb: INTIM poll granularity lets
 # ~3201-3222 pass silently; sub-window frames measure 3200 +- tick-quant
 # epsilon, so the hard 3200 line is alignment-fragile — wall-model is the
@@ -43,7 +43,7 @@ OVER_BUDGET = 3200         # TIM64T #50 (kernel.asm:776)
 # 3222 -> 3223 (2026-10-11): the #29 kernel-entry re-anchor (+4 bytes bank0)
 # shifted an abs,Y page-cross in the overscan worst path by +1c — code-motion
 # artifact, not new work; wall-model stays the hard gate.
-OVER_ABSORB = 3223
+OVER_ABSORB = 2839
 GAP_LIMIT = 76             # one scanline = 76 CPU cycles
 MIN_FRAMES = 300
 
@@ -251,6 +251,7 @@ vbl_acc = 0
 over_acc = 0
 over_work = 0
 max_over_work = (0, 0)
+max_over_work_all = (0, 0)
 gap = 0
 kwsync = 0
 frame_armed = False                       # first StartFrame seen
@@ -417,6 +418,8 @@ while frame < 1100:
     elif bk == 0 and pc == PC_START:
         if frame_armed and phase == PH_OVER:
             over_val = over_acc
+            if frame > 3 and over_work > max_over_work_all[0]:
+                max_over_work_all = (over_work, frame + 1)
             if frame >= 1 and over_work > max_over_work[0] and (frame + 1) not in transition_frames and frame > 3:
                 max_over_work = (over_work, frame + 1)
             # -- evaluate previous frame --
@@ -615,7 +618,7 @@ while frame < 1100:
 # ---- report ----
 print(f'\nmeasured frames: {measured} (landed f{landed_frame})')
 print(f'VBL    max {max_vbl}c / {VBL_BUDGET}c  (f{max_vbl_f})')
-print(f'OVER   real work (poll excluded) max {max_over_work[0]}c (f{max_over_work[1]})')
+print(f'OVER   real work (poll excluded) max {max_over_work[0]}c (f{max_over_work[1]}); incl. room-transition frames {max_over_work_all[0]}c (f{max_over_work_all[1]})')
 print(f'OVER   max {max_over}c / {OVER_BUDGET}c  (f{max_over_f})')
 print(f'KERNEL max gap {max_gap}c (informational; tail gaps >{GAP_LIMIT}c: {gap_tail})')
 print('gap_log first 8:', gap_log[:8])

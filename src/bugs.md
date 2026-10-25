@@ -1099,3 +1099,16 @@ offset table + one combined flag test (-16c/record). Poll slack was measured
 by the per-PC dump (`slack.sh` idea: cycles spent at `.WaitVBLANK`). Still open: probe rooms L6R5, L7R2/R5, L9R5, L10R2/R5,
 L12R1/R2, L16R2 (0-based) measure 273-276 and band 2 shows 34 bodies instead of
 36 — a kernel-line variation (water/tide or probe state), not the VBL.
+
+### #16 addendum 2 (2026-10-25) — the 273-276 rooms were a real VBL overrun; V/O split moved
+
+Whole-stage sweep (`xargs probe_kernel.py` over all 211 shipped rooms): ~60
+rooms with two enemies and/or M1+ball patches ran ~1830c effective VBL (four
+positioning WSYNCs + slot-1 staging) against #25 = 1600c, flipping 272..276
+lines in 16-frame blocks. The overscan only needs ~1520c (2145c worst steady
+frame) of its 3200c, so the timers were rebalanced at the same total:
+VBL #25->#31, overscan #50->#44 (75 units = 272 lines). Result: all rooms a
+constant 272 (level 20 constant 273, cause not looked into), worst poll slack
+107c (was 9-37c). The picture starts 6 lines later in the frame (closer to the
+NTSC 37-line VBLANK). Room-transition frames can now overrun the 2816c overscan
+by up to ~300c (one longer frame at a room change; the sim exempts them).
