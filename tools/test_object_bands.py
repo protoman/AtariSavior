@@ -23,6 +23,10 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import convert_level as C  # noqa: E402
 
+# The rule is a BUILD ERROR on the shipped stage (convert_level.py --stage sets
+# this); the frozen test fixtures keep the warning form, so turn it on here.
+C.OBJECT_BANDS_STRICT = True
+
 # 4-band model: band = y_row // units_per_band = row // 3.
 MODEL = {"id": 1, "width": 10, "height": 4,
          "tiles": [0] * 40, "mid_band_type": 0}
