@@ -593,8 +593,14 @@ StartFrame:
     ; Worst 1059c of the 1472c window = 413c margin.
     ; Frame budget: V(#23) + O(#50) = 73 TIM64T units → 3 + 19.4 + 197.5 +
     ; 42.1 = 262 lines. (#75 was the pre-trim 293-line frame.)
+    ; 2026-10-25: #23 -> #24 (flicker hunt, bugs.md #16). With #23 a room whose
+    ; GRP1 objects alternate (FlickerFrame) ran the heavy VBL path ~35c PAST
+    ; the timer on every other frame: the SOXP WSYNC straddled a line edge, the
+    ; poll exited at once, the entry anchor took the NEXT line -> 270/271 line
+    ; frames alternating = visible flicker. #24 (+64c) gives both paths slack,
+    ; so the entry is timer-locked: every room is a constant 271 lines.
 VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
-    lda #23
+    lda #24
     sta TIM64T
 
     ; --- Position player sprite horizontally ---

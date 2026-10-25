@@ -1081,3 +1081,16 @@ No entry is worked on without user greenlight.
 - [ ] Screenshot-verify ball/laser X vs PF (item 9)
 - [ ] Re-read AGENTS lessons vs actual code (drift check)
 - [ ] Close or re-date every entry above
+
+### #16 addendum 2026-10-25 — the 270/271 alternation was the VBL timer, not the hook
+
+Level 5 room 3 (0-based 2) measured 270,271,270,... frame by frame. Per-pc
+accounting (`DUMP=prefix tools/probe_kernel.py L R F0 F1`) showed identical
+work in both frames but a different SOXP WSYNC straddle (c71 vs c22): the heavy
+frame used up the whole `TIM64T #23` window (poll exited at once, +35c over)
+while the light one waited ~90c in `.WaitVBLANK`, so the entry anchor landed one
+line later on alternate frames. Fix: `VBLTimer` `#23` -> `#24` (kernel-entry is
+timer-locked again). Result: every probed room of levels 1-5 is a constant 271
+lines (was 270 plain / 271 hook / alternating). `sim_frame_budget` cave target
+270 -> 271, VBL budget 1472 -> 1536. Still open: rooms where the VBL really
+overruns (probe L6 R4, L10 R4/R6 etc. show 272-274) — different cause.
