@@ -8,16 +8,18 @@ every frame) + bomb dropped (falling fuse + explosion mid-run), 1 enemy +
 miner in the room (post-migration 2-object cap).
 
 MEASUREMENT (py65 = pure CPU work; WSYNC/TIM64T/INTIM stubbed):
-  VBL      TIM64T arm -> WaitVBLANK entry (pure work) <= VBL_BUDGET (TIM64T #23)
+  VBL      TIM64T arm -> WaitVBLANK entry (pure work) <= VBL_BUDGET (TIM64T #24)
   OVER     Overscan   -> next StartFrame   must be <= OVER_BUDGET  (TIM64T #50)
+           NOTE: that span INCLUDES the idle INTIM poll, so it reads ~3220c on
+           every frame; the real margin is the "OVER real work" line.
   KERNEL   every WSYNC-to-WSYNC gap (cave + HUD band) <= 76 cycles
            (a >76 body = line spills to the next scanline on hardware =
             265-line frame = whole-screen jump — the documented
             WSYNC-off-by-one / HUD-bar class)
   kernel WSYNC count constant per frame (structure drift guard)
 
-Budgets are the documented timers (kernel.asm VBL #23 = 1472c,
-overscan #50 = 3200c; frame = V(#23)+O(#50) = 262 lines). A timer segment
+Budgets are the documented timers (kernel.asm VBL #24 = 1536c,
+overscan #50 = 3200c; frame = V(#24)+O(#50) = 271 lines (wall model)). A timer segment
 whose WORK exceeds its window loses the wait and eats extra scanlines on
 hardware; py65 work > budget predicts the Stella jump.
 
