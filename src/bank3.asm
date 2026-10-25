@@ -141,7 +141,7 @@ ColupfBuf   = $D3                 ; 4-byte COLUPF image (N=4, rows 0-3)
 COLOR_BOMBS = $46                ; kernel COLOR_BOMBS — fuse bomb color
 COLOR_CAVE_BG = $00
 COLOR_DARK_PF = $04             ; dark-room fuse walls
-COLOR_HOT_Y = $1C               ; kernel COLOR_BLINK_Y
+COLOR_HOT_Y = $28               ; kernel COLOR_HOT_AMBER (dark orange)
 COLOR_HOT_R = $44               ; kernel COLOR_BLINK_R
 ; --- TallyEntry (level-bonus tally) — hand-copies, check_equ_sync guarded ---
 TallyTicks = $F2                ; countdown, 50-pt units (kernel EQU)
@@ -818,7 +818,8 @@ BuildColupF:
     and #$40                    ; b6 = mid_band_type hot
     beq .BCFdone
     lda TickCounter
-    and #$10
+    and #$20                    ; bit 5: ONE step per 60-frame second (bit 4
+                                ;   flipped twice a second = flicker)
     beq .BCFpulseY
     lda #COLOR_HOT_R
     bne .BCFhotStore
