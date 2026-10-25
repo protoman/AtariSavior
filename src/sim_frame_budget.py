@@ -80,6 +80,7 @@ for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row',
         sys.exit(f'label {_need} not found in bank0.lst')
 PC_START = LABELS['StartFrame']
 PC_OVER = LABELS['Overscan']
+PC_WAITOVER = LABELS['.WaitOverscan']
 PC_ENTER = LABELS['EnterRoom']
 PC_LOADLEVEL = LABELS['LoadLevel']
 PC_RELOAD = LABELS['ReloadLevel']
@@ -246,6 +247,8 @@ PH_VBL, PH_KER, PH_OVER = 0, 1, 2
 phase = PH_VBL
 vbl_acc = 0
 over_acc = 0
+over_work = 0
+max_over_work = (0, 0)
 gap = 0
 kwsync = 0
 frame_armed = False                       # first StartFrame seen
@@ -347,6 +350,8 @@ while frame < 1100:
         gap += c
     elif phase == PH_OVER:
         over_acc += c
+        if not (bk == 0 and pc in (PC_WAITOVER, PC_WAITOVER + 3)):
+            over_work += c          # real work: the INTIM poll is idle time
 
     # -- pure VBL work ends when the INTIM poll is first entered --
     # WHY (2026-10-02 root cause of the boot "VBL work > 1472" flakes):
@@ -402,6 +407,7 @@ while frame < 1100:
             gap_tail += 1
         phase = PH_OVER
         over_acc = 0
+        over_work = 0
         over_mark_t = 0
         _wall_ker = mem.wall
         ker_bounds.setdefault(frame, {})['over'] = mem.wall
@@ -409,6 +415,8 @@ while frame < 1100:
     elif bk == 0 and pc == PC_START:
         if frame_armed and phase == PH_OVER:
             over_val = over_acc
+            if frame >= 1 and over_work > max_over_work[0] and (frame + 1) not in transition_frames and frame > 3:
+                max_over_work = (over_work, frame + 1)
             # -- evaluate previous frame --
             frame += 1
             frame_ker[frame] = cur_ker or 'cave'   # kind of the frame just
@@ -605,6 +613,7 @@ while frame < 1100:
 # ---- report ----
 print(f'\nmeasured frames: {measured} (landed f{landed_frame})')
 print(f'VBL    max {max_vbl}c / {VBL_BUDGET}c  (f{max_vbl_f})')
+print(f'OVER   real work (poll excluded) max {max_over_work[0]}c (f{max_over_work[1]})')
 print(f'OVER   max {max_over}c / {OVER_BUDGET}c  (f{max_over_f})')
 print(f'KERNEL max gap {max_gap}c (informational; tail gaps >{GAP_LIMIT}c: {gap_tail})')
 print('gap_log first 8:', gap_log[:8])
