@@ -1186,3 +1186,19 @@ The LIVE stage (`rooms/stage.json`) is untouched: regenerate it with
 `savior_editor --generate-stage` to adopt the fix.
 Not reproduced: "the first death does not remove the enemy" - in py65 the first
 contact sets the dead bit and the spider is no longer drawn.
+
+## #21 — async wall skipped one frame in six: walk through it (2026-10-25, level 8 room 4 in the editor, shape n+H+Gate+2Gap)
+Symptom (user screenshot `screenshots/bugs/lv8_room3_pass_through_wall.png`):
+the player walks the whole left strip and ends up in the pocket behind it. NOT
+reproduced earlier because the probe used room_id 2 (the screenshot is room_id
+3: strip drawn [3,10] = column 0) and poked positions.
+Root cause: LineCount ($84) carries the async collision pack (bank1's HUD entry
+copies $8F there; `OverlayTramp` skips the whole overlay when it is 0).
+`bank3 .HOVfeature` did `lda RoomMetaB / sta LineCount` - a dead "re-stage".
+Any room with a feature record (phase / hcrunch = Gate rooms) zeroed the pack
+on every overscan frame whose floor probe reached the feature walk (~1 in 6
+while standing on a floor), and that frame's horizontal step saw "symmetric
+room": strip ignored, +1 px. Fix: the store is 4 NOPs (pin kept).
+Guard: `tools/test_linecount_pack.py` (red on the old frozen bank3).
+Real-data proof: py65, live stage, level 8 room_id 3, hold left from x=20:
+before = walked to x=4; after = stops at x=18 (flush with the strip) and stays.
