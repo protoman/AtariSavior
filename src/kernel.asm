@@ -465,8 +465,13 @@ COLOR_DARK_PF   = $04           ; hue 0 luma 2 = very dark grey (bomb fuse walls
 COLOR_BLINK_Y   = $1C           ; hue 1 luma 6 = yellow (power bar)
 COLOR_BLINK_R   = $44           ; hue 4 luma 2 = red (power bar)
 
-; Hot rock pulse (COLUPF yellow ↔ red), phase from TickCounter bit 4
-COLOR_HOT_Y     = COLOR_BLINK_Y
+; Hot rock pulse (user rule 2026-10-25): a DIM AMBER partner (hue 2, luma 4)
+; instead of bright yellow, so the band breathes instead of flashing — and the
+; phase moved to TickCounter bit 5 (one step per 60-frame second; bit 4 flipped
+; twice a second and read as flicker). The STONE walls keep their colour; only
+; the mid band's COPING light changes.
+COLOR_HOT_AMBER = $28           ; hue 2 luma 4 = dark orange
+COLOR_HOT_Y     = COLOR_HOT_AMBER  ; name kept: the "lit" phase of a hot band
 COLOR_HOT_R     = COLOR_BLINK_R
 
 ; ==============================================================================
@@ -3910,7 +3915,7 @@ RefreshEnemyY:
 ; ------------------------------------------------------------------------------
 ; BuildColupF — 12-byte final COLUPF image at ColupfBuf ($E7-$F2).
 ;   Stripe: rows 0,2 = LevelWallColor; row 1 = LevelWallColor2.
-;   Hot rows overwrite with TickCounter-bit4 pulse (COLOR_HOT_Y/R).
+;   Hot rows overwrite with the TickCounter-bit5 pulse (amber/red).
 ;   $F0-$F2 (bombs) NO LONGER overlap-saved: body writes rows 0-2 only,
 ;   save/restore round trip deleted (S3.0b — window audit: zero writers).
 ;   Bank1 clobbers $E0-$EF during HUD; VBLANK rebuilds every frame.
