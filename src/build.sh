@@ -33,6 +33,10 @@ if [ -n "$STAGE_FILE" ]; then
     python3 "$ROOT/tools/convert_level.py" --stage "$STAGE_FILE" \
         "$DIR/generated" "$STAGE_ROOMS"
     export STAGE_FILE STAGE_ROOMS
+    # Finishability (2026-10-25): WARN, never fail - the stage is the user's
+    # file. Regenerate it (savior_editor --generate-stage) to repair.
+    python3 "$ROOT/tools/stage_reach.py" "$STAGE_FILE" | sed 's/^/  WARN: /' \
+        | grep -v "WARN: stage_reach: OK" || true
 else
     echo "  Level source: legacy per-level JSON ($DIR/rooms/level_NNN.json)"
     # Generate level data from JSON (every rooms/level_XXX.json — no hardcode)

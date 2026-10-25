@@ -3256,7 +3256,19 @@ OvM1Block:
     ;    had walked 7 px INTO the art: "I can enter inside it, but I can't
     ;    pass its right side" — the block plane sat one tile right of the
     ;    drawing (user report 2026-10-23).
-    lda CollisionX              ; vl = the box's left edge
+    ; 2026-10-25 (user, level 7 room 1: "half the player can move inside the
+    ; wall"): below argument 15 SetObjectXPos strobes RESM1 inside HBLANK, so
+    ; the strip is DRAWN 3 px right of [M1X-7, M1X] - the same clamp that makes
+    ; the player's visible edge RoomX-4 (not -7) under x=15. The col-0 strip
+    ; (M1X 7) occupies [3,10]; test the box edge 3 px closer. vl < 3 (the
+    ; player at the screen edge) borrows: that is still contact.
+    lda RectCount
+    cmp #14                     ; M1X >= 14 (argument >= 15): no clamp
+    lda CollisionX              ; vl = the box's left edge (lda keeps C)
+    bcs .OvM1Cmp
+    sbc #2                      ; C clear: A - 3
+    bcc .OvM1Band
+.OvM1Cmp:
     cmp RectCount               ; M1X = the strip column
     beq .OvM1Band               ; the column is the box's left edge
     bcs .OvM1no                 ; vl > M1X → the strip is left of the box

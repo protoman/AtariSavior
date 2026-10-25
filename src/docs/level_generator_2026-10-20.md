@@ -409,3 +409,21 @@ base library first, extra archetypes only if the base fits):
   keeps >= 64 B slack, and a hot start room must keep row-1 cell 4 open
   (HotDrop: the spawn falls down cell 4, and convert promotes every row-1
   wall to a hot cell — HotSplit put a hot cell under the drop).
+
+
+## 8. Finishability (2026-10-25)
+
+Every generated level must be COMPLETABLE; this is checked on the whole stage,
+not per room (`AnalyseReach` in DataSerializer.cpp, twin `tools/stage_reach.py`):
+
+* the search runs on the 20-column FULL (mirrored) map, so the two chambers of a
+  room are different places; side links flip the chamber, vertical links keep it;
+* a solid async patch costs one bomb; a level may need exactly one - the START
+  room's designed block - and nothing else;
+* a SPIDER's column (lit span `[EX-13, EX+6]` +-2 px over the bands its 24 px bob
+  sweeps) is a hazard the route must not need;
+* a failing level is repaired deterministically (the outer loop in
+  `Build20LevelStage` rebuilds the stage until it passes): slide/remove the
+  spider, flatten an archetype, demote a channel room, drop a ledge block.
+  `test_generator.py` asserts the result; `build.sh` only WARNS about the live
+  stage (it is the user's file).

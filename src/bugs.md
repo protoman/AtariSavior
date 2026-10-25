@@ -1139,3 +1139,50 @@ present, else the other enemy if alive, else nothing. Bank0 stays byte-identical
 after it (the `jmp` is 1 B shorter; a `.byte 0` pad). Guard:
 `tools/test_miner_flicker.py` (red: `[255,85,255,85,...]`).
 Still by design: enemy + miner ALIVE share one sprite and alternate.
+
+## #19 — left-edge async strip drawn 3 px right of its collision (2026-10-25, level 7 room 1)
+
+Symptom (user): walking left into the async wall at the far left, "half the
+player can move inside the wall".
+Root cause: for SetObjectXPos arguments below 15 the RESM1 strobe lands in
+HBLANK, so the object cannot sit further left than the clamp - the same effect
+that makes the PLAYER's visible edge RoomX-4 under x=15. The col-0 strip (M1X 7,
+argument 8) is drawn at [3,10], but `OvM1Block` tested contact against [0,7]:
+the player stopped flush at vl 8 with 3 of 7 lit px inside the art.
+Fix: for M1X < 14 `OvM1Block` compares the box edge 3 px closer (vl < 3 counts
+as contact). Guard: `tools/test_m1_edge.py` (red: vl=10 not blocked).
+Not reproduced: "walks through the whole wall" in level 8 room 3 - in py65 the
+col-1 strip (argument 16, no clamp) blocks at vl 16 from the right and at vl 2
+from the left edge.
+
+## #20 — levels 8, 9, 15, 18 could not be finished (2026-10-25)
+
+Symptom (user): level 8 "looks impossible"; the only way on was dying to an
+enemy in the shaft (level 8 room 3).
+Root causes (found with the new `tools/stage_reach.py` over the whole stage):
+1. The playfield is mirrored, so a room is two chambers that only join where the
+   centre seam is open across a whole band. Several archetypes wall the centre
+   in every walkable band, and a level whose rooms all do that splits into
+   parallel universes (a westward move lands in the neighbour's RIGHT chamber,
+   an eastward one in its LEFT, a vertical link keeps the chamber): the miner
+   was unreachable in levels 8, 9, 15 and 18, and levels 13, 14 and 20 needed
+   1-2 bombs on accidental "ledge" blocks.
+2. Level 15's channel room had side neighbours only: the player enters on the
+   edge cell and every neighbour is hot wall.
+3. Spiders were parked inside the mandatory shaft (floor-band gaps, beside the
+   gap in level 8 room 3); they bob 24 px, so the passage is a timing lottery.
+Fix (DataSerializer.cpp `AnalyseReach` + the repair loop in
+`Build20LevelStage`): every level must reach the miner with at most the START
+room's designed block as its only bomb and without crossing a spider's column.
+A failing level is repaired deterministically, in this order: slide the spider
+to a clear column/band, remove it only if none exists; flatten the archetype of
+the nearest reached room (a plain shape keeps band 1 open to the seam); demote
+a channel room; drop the ledge block on the route. Result: levels 8/9/15/18
+finishable (L7/8/9/18 still ask for the start-room block), 8 spiders moved or
+dropped, 5 ledge blocks dropped, still 88 shapes.
+Guards: `tools/stage_reach.py` (independent Python twin, run by
+`test_generator.py` on the generated stage; `build.sh` WARNS on the live stage).
+The LIVE stage (`rooms/stage.json`) is untouched: regenerate it with
+`savior_editor --generate-stage` to adopt the fix.
+Not reproduced: "the first death does not remove the enemy" - in py65 the first
+contact sets the dead bit and the spider is no longer drawn.

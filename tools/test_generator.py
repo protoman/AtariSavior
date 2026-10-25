@@ -184,6 +184,14 @@ def main() -> int:
             print(f"FAIL: {sum(counts)} rooms, want {ROOMS}")
             return 1
 
+        # --- finishability (user report 2026-10-25: level 8 impossible) -----
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import stage_reach
+        bad = stage_reach.problems(stage)
+        if bad:
+            print("FAIL: unfinishable levels:\n  " + "\n  ".join(bad))
+            return 1
+
         # --- model library -------------------------------------------------
         ids = [m["id"] for m in models]
         if ids != list(range(len(models))):

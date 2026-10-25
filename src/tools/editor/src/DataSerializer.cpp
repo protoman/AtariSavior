@@ -23,6 +23,8 @@
 #include <iostream>
 #include <filesystem>
 #include <map>
+#include <queue>
+#include <tuple>
 #include <set>
 #include <vector>
 #include <sstream>
@@ -592,9 +594,14 @@ bool HasRoomAt(const std::vector<GridPos>& walk, int x, int y);
 // neighbour on each side), and it must not be the goal (the miner would stand
 // in the water). With the maze layout the room is chosen by distance to the
 // goal: the LAST room with both side neighbours.
+// Rooms the finishability repair demoted from channel to a plain room: set by
+// Build20LevelStage's outer loop (level, x, y), null outside a build.
+const std::set<std::tuple<int, int, int>>* g_channelOff = nullptr;
+
 bool IsChannelRoom(int level, const std::vector<GridPos>& walk,
                    const GridPos& pos) {
     if (level < 11 || walk.size() < 3) return false;
+    if (g_channelOff && g_channelOff->count({level, pos.x, pos.y})) return false;
     const GridPos& goal = walk.back();
     if (pos.x == goal.x && pos.y == goal.y) return false;
     if (!HasRoomAt(walk, pos.x - 1, pos.y)
@@ -606,6 +613,8 @@ bool IsChannelRoom(int level, const std::vector<GridPos>& walk,
     for (const GridPos& other : walk) {
         if (&other == &pos) continue;
         if (other.x == goal.x && other.y == goal.y) continue;
+        if (g_channelOff && g_channelOff->count({level, other.x, other.y}))
+            continue;                       // demoted by the reach repair
         if (!HasRoomAt(walk, other.x - 1, other.y)
                 || !HasRoomAt(walk, other.x + 1, other.y)) {
             continue;
@@ -1578,6 +1587,254 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
     }
 }
 
+
+// ---- stage REACHABILITY (user report 2026-10-25: "level 8 looks impossible") --
+// The playfield is MIRRORED, so a room is two chambers (the left half and its
+// mirror) that only join where the centre seam is open across a whole band.
+// Exits keep the side: a westward move lands in the neighbour's RIGHT chamber,
+// an eastward one in its LEFT, and a vertical link keeps the chamber. A level
+// whose rooms all have a centre wall in the bands the player can use therefore
+// splits into parallel universes and the miner is simply unreachable — the
+// per-room check (RoomConnectivityProblem) cannot see that, it only ever looks
+// at one half. This walks the whole level on the 20-column FULL map:
+//   * air = model cell 0 (a hot/solid cell is a wall); a 3-row model is padded
+//     with the open band 2 exactly like convert_room.band_map();
+//   * a solid async patch (M1 left strip -> full col c, ball right strip ->
+//     full col 10+c) costs ONE BOMB to cross; locked-door / phase / crunch
+//     cells are gated at run time and count as passable;
+//   * vertical links need the same full column open on both sides; side links
+//     need the same band open on the edge column (0 <-> 19);
+//   * the drop-in is the START room, band 0, display col 8 (full col 4).
+// Returns the cheapest number of bombs to reach the miner's room (-1 = never)
+// and the rooms in order of discovery (for the generator's repair loop).
+constexpr int kMaxBombsPerLevel = 1;    // the player carries BOMBS_MAX (5); the
+                                        // start room's block (user rule
+                                        // 2026-10-21) is the one bomb a level
+                                        // may ask for
+
+// A SPIDER hangs at a fixed x and bobs 24 px down (then dwells at the top), so
+// the columns it covers are a timing hazard the player cannot steer around when
+// they are the passage itself: level 8 room 3 parked one beside the only shaft
+// (user report 2026-10-25: "the only way I can continue is dying by the enemy
+// below the path"). Its danger zone is every full-map cell a colliding player
+// can occupy: CheckEnemyHit overlaps when RoomX - EX is in [-6, 7], i.e. the
+// lit span [EX-13, EX+6], plus 2 px of margin, over the bands the bob sweeps.
+// The route search charges kDangerCost per such cell so it avoids them when
+// it can and reports the rooms it had to cross.
+constexpr int kDangerCost = 1000;
+
+struct ReachResult {
+    int bombs = -1;
+    std::vector<int> dangerRooms;   // room INDEXES whose spider the route crosses
+    std::vector<int> order;     // room INDEXES, nearest first
+    std::vector<int> crossed;   // room INDEXES of the patches on the cheapest route
+};
+
+ReachResult AnalyseReach(const LevelData& lv,
+                         const std::vector<ModelData>& models) {
+    ReachResult out;
+    const int n = (int)lv.rooms.size();
+    if (n == 0) return out;
+    auto modelOf = [&](int id) -> const ModelData* {
+        for (const auto& m : models) {
+            if (m.id == id) return &m;
+        }
+        return nullptr;
+    };
+    struct Grid {
+        std::vector<std::vector<char>> air;     // [band][full col]
+        std::set<std::pair<int, int>> bomb;     // (band, full col)
+        std::set<std::pair<int, int>> danger;   // spider footprint
+        int bands = 0;
+    };
+    std::vector<Grid> grids(n);
+    std::map<std::pair<int, int>, int> at;
+    for (int i = 0; i < n; ++i) {
+        const RoomData& r = lv.rooms[i];
+        at[{r.room_x, r.room_y}] = i;
+        const ModelData* m = modelOf(r.model_id);
+        if (!m || m->width <= 0) return out;
+        std::vector<int> rows;                  // band -> model row (-1 = pad)
+        const int h = (int)m->tiles.size() / m->width;
+        if (h == 3) rows = {0, 1, -1, 2}; else for (int b = 0; b < h; ++b) rows.push_back(b);
+        Grid& g = grids[i];
+        g.bands = (int)rows.size();
+        g.air.assign(g.bands, std::vector<char>(20, 0));
+        for (int b = 0; b < g.bands; ++b) {
+            for (int f = 0; f < 20; ++f) {
+                const int c = f < 10 ? f : 19 - f;
+                g.air[b][f] = rows[b] < 0
+                    || m->tiles[rows[b] * m->width + c] == (int)TileType::AIR;
+            }
+        }
+        for (const EnemyData& e : r.enemies) {
+            if (e.type != (int)EnemyType::SPIDER) continue;
+            const int c4 = (int)std::lround(e.x) * 4;
+            const int ex = c4 + (c4 < 11 ? 4 : 7);           // enemy_x_px
+            const int top = (int)std::lround(e.y * 12.0f);
+            const int b0 = std::max(0, std::min(g.bands - 1, top / 36));
+            const int b1 = std::max(0, std::min(g.bands - 1, (top + 24 + 14) / 36));
+            const int f0 = std::max(0, (ex - 15) / 8);
+            const int f1 = std::min(19, (ex + 8) / 8);
+            for (int b = b0; b <= b1; ++b) {
+                for (int f = f0; f <= f1; ++f) g.danger.insert({b, f});
+            }
+        }
+        for (const auto& pt : r.asym_patches) {
+            if ((int)pt.size() < 3) continue;
+            if (pt[2] != (int)TileType::SOLID_WALL) continue;   // door: gated
+            const int side = pt.size() > 3 ? pt[3] : 0;
+            int band = pt[0];
+            if (h == 3 && band >= 2) ++band;
+            g.bomb.insert({band, side == 1 ? pt[1] : 10 + pt[1]});
+        }
+    }
+    // Dijkstra over (room, band, full col); crossing a patch cell costs 1.
+    using Node = std::tuple<int, int, int>;
+    using Item = std::pair<int, Node>;
+    std::map<Node, int> best;
+    std::map<Node, Node> parent;
+    std::priority_queue<Item, std::vector<Item>, std::greater<Item>> pq;
+    const int s = std::max(0, std::min(n - 1, lv.start_room));
+    int sf = 4;
+    for (int f : {4, 3, 5, 2, 6, 7, 8, 9}) {
+        if (grids[s].air[0][f]) { sf = f; break; }
+    }
+    best[{s, 0, sf}] = 0;
+    pq.push({0, {s, 0, sf}});
+    std::vector<char> seenRoom(n, 0);
+    int goal = std::max(0, std::min(n - 1, lv.miner_room));
+    while (!pq.empty()) {
+        const auto [cost, node] = pq.top();
+        pq.pop();
+        const auto it = best.find(node);
+        if (it == best.end() || it->second < cost) continue;
+        const auto [ri, b, f] = node;
+        if (!seenRoom[ri]) { seenRoom[ri] = 1; out.order.push_back(ri); }
+        if (ri == goal && out.bombs < 0) {
+            out.bombs = cost % kDangerCost;
+            Node cur = node;
+            while (true) {
+                const auto [cr, cb, cf] = cur;
+                if (grids[cr].bomb.count({cb, cf})) out.crossed.push_back(cr);
+                if (grids[cr].danger.count({cb, cf})) out.dangerRooms.push_back(cr);
+                const auto pi = parent.find(cur);
+                if (pi == parent.end()) break;
+                cur = pi->second;
+            }
+        }
+        const RoomData& r = lv.rooms[ri];
+        auto go = [&](int nr, int nb, int nf) {
+            const Grid& g = grids[nr];
+            if (nb < 0 || nb >= g.bands || nf < 0 || nf > 19) return;
+            if (!g.air[nb][nf]) return;
+            const int c = cost + (g.bomb.count({nb, nf}) ? 1 : 0)
+                               + (g.danger.count({nb, nf}) ? kDangerCost : 0);
+            const Node nn{nr, nb, nf};
+            const auto bi = best.find(nn);
+            if (bi != best.end() && bi->second <= c) return;
+            best[nn] = c;
+            parent[nn] = node;
+            pq.push({c, nn});
+        };
+        const Grid& g = grids[ri];
+        go(ri, b + 1, f); go(ri, b - 1, f); go(ri, b, f + 1); go(ri, b, f - 1);
+        if (b == g.bands - 1) {
+            const auto o = at.find({r.room_x, r.room_y + 1});
+            if (o != at.end()) go(o->second, 0, f);
+        }
+        if (b == 0) {
+            const auto o = at.find({r.room_x, r.room_y - 1});
+            if (o != at.end()) go(o->second, grids[o->second].bands - 1, f);
+        }
+        if (b == 1 || b == 2) {
+            if (f == 19) {
+                const auto o = at.find({r.room_x + 1, r.room_y});
+                if (o != at.end()) go(o->second, b, 0);
+            }
+            if (f == 0) {
+                const auto o = at.find({r.room_x - 1, r.room_y});
+                if (o != at.end()) go(o->second, b, 19);
+            }
+        }
+    }
+    return out;
+}
+
+
+// Moves the room's spider (same band) to the nearest column where the level is
+// finishable without crossing a spider zone. Keeps the placement rules the
+// generator already enforces: an AIR cell, >= 3 display columns from the other
+// objects, off the side-entry edge columns when a neighbour exists. Returns
+// false when no column works (the caller then removes the spider).
+bool RelocateSpider(LevelData& lv, int ri, const std::vector<ModelData>& models) {
+    RoomData& room = lv.rooms[ri];
+    const ModelData* sm = nullptr;
+    for (const auto& m : models) {
+        if (m.id == room.model_id) sm = &m;
+    }
+    if (!sm || sm->width <= 0) return false;
+    int si = -1;
+    for (int k = 0; k < (int)room.enemies.size(); ++k) {
+        if (room.enemies[k].type == (int)EnemyType::SPIDER) si = k;
+    }
+    if (si < 0) return false;
+    const int bandRows = std::max(1, 12 / std::max(1, sm->height));
+    auto bandOf = [&](float y) {
+        return std::min(sm->height - 1, std::max(0, (int)y / bandRows));
+    };
+    const int curBand = bandOf(room.enemies[si].y);
+    bool westN = false, eastN = false;
+    for (const RoomData& q : lv.rooms) {
+        westN = westN || (q.room_x == room.room_x - 1 && q.room_y == room.room_y);
+        eastN = eastN || (q.room_x == room.room_x + 1 && q.room_y == room.room_y);
+    }
+    const int lo = westN ? 2 : 0, hi = eastN ? 17 : 19;
+    const int cur = (int)std::lround(room.enemies[si].x);
+    // Same band first, then the other walkable bands (never band 0: the
+    // arrival band; never a hot middle band: an object there is unkillable).
+    std::vector<int> bands{curBand};
+    for (int bnd = 1; bnd < sm->height; ++bnd) {
+        if (bnd == curBand) continue;
+        if (bnd == 1 && sm->mid_band_type == 1) continue;
+        bands.push_back(bnd);
+    }
+    std::vector<int> order;
+    for (int d = 0; d < 20; ++d) {
+        order.push_back(cur + d);
+        if (d) order.push_back(cur - d);
+    }
+    for (int band : bands) {
+        if (band == 0) continue;
+        for (int cand : order) {
+            if (cand < lo || cand > hi) continue;
+            if (sm->tiles[band * sm->width + cand / 2] != (int)TileType::AIR)
+                continue;
+            bool clash = false;
+            for (int k = 0; k < (int)room.enemies.size(); ++k) {
+                if (k == si) continue;
+                if (bandOf(room.enemies[k].y) == band
+                        || std::abs((int)std::lround(room.enemies[k].x) - cand) < 3)
+                    clash = true;
+            }
+            for (const LampData& l : room.lamps) {
+                if (bandOf(l.y) == band
+                        || std::abs((int)std::lround(l.x) - cand) < 3)
+                    clash = true;
+            }
+            if (clash) continue;
+            const float oldX = room.enemies[si].x, oldY = room.enemies[si].y;
+            room.enemies[si].x = (float)cand;
+            room.enemies[si].y = BandY(*sm, band);
+            const ReachResult rr = AnalyseReach(lv, models);
+            if (rr.bombs >= 0 && rr.dangerRooms.empty()) return true;
+            room.enemies[si].x = oldX;
+            room.enemies[si].y = oldY;
+        }
+    }
+    return false;
+}
+
 }  // namespace
 
 // Stage-level LINK check (user rule 2026-10-24). See the header for the rule:
@@ -1708,8 +1965,69 @@ std::vector<std::string> DataSerializer::StageConnectionProblems(
 }
 
 
+namespace {
+// Repair state shared by the outer retry loop and the single build pass it
+// drives (see Build20LevelStage): rooms whose archetype is flattened, and what
+// the last pass found wrong.
+struct StageRepair {
+    std::set<std::pair<int, int>> flat;         // (level, room index)
+    std::set<std::pair<int, int>> noPatch;      // ledge block dropped there
+    std::set<std::pair<int, int>> noSpider;     // spider removed from there
+    std::vector<std::pair<int, int>> nextNoSpider;
+    std::vector<std::pair<int, int>> nextNoPatch;
+    std::set<std::tuple<int, int, int>> chanOff;  // (level, x, y) demoted
+    std::vector<std::tuple<int, int, int>> nextChan;
+    std::vector<std::pair<int, int>> next;      // rooms to flatten next
+    std::vector<std::string> problems;          // unfixable findings
+};
+StageRepair* g_stageRepair = nullptr;
+}  // namespace
+
 void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                                        std::vector<ModelData>& models) {
+    if (!g_stageRepair) {
+        // OUTER CALL: build, check that every level can be FINISHED, and when
+        // one cannot, flatten one more archetype in that level and rebuild
+        // (deterministic: no RNG, the repair order is the discovery order).
+        // User report 2026-10-25: levels 8, 9, 15 and 18 had no route to the
+        // miner at all (the archetypes' centre walls split every reachable
+        // room into two mirrored chambers that never join).
+        StageRepair rep;
+        struct Guard {
+            ~Guard() { g_stageRepair = nullptr; g_channelOff = nullptr; }
+        } guard;
+        g_stageRepair = &rep;
+        g_channelOff = &rep.chanOff;
+        for (int pass = 0; pass < 400; ++pass) {
+            rep.next.clear();
+            rep.nextChan.clear();
+            rep.nextNoPatch.clear();
+            rep.nextNoSpider.clear();
+            rep.problems.clear();
+            levels.clear();
+            models.clear();
+            Build20LevelStage(levels, models);
+            if (rep.next.empty() && rep.nextChan.empty()
+                    && rep.nextNoPatch.empty()
+                    && rep.nextNoSpider.empty()) break;
+            bool grew = false;
+            for (const auto& q : rep.next) grew = rep.flat.insert(q).second || grew;
+            for (const auto& q : rep.nextChan)
+                grew = rep.chanOff.insert(q).second || grew;
+            for (const auto& q : rep.nextNoPatch)
+                grew = rep.noPatch.insert(q).second || grew;
+            for (const auto& q : rep.nextNoSpider)
+                grew = rep.noSpider.insert(q).second || grew;
+            if (!grew) break;
+        }
+        if (!rep.problems.empty()) {
+            std::string all;
+            for (const auto& pr : rep.problems) all += "\n  " + pr;
+            throw std::runtime_error("generated stage cannot be finished:" + all);
+        }
+        return;
+    }
+    StageRepair& repair = *g_stageRepair;
     // 1. Every level's walk + the shape mask of each of its rooms. A room's
     //    ROLE (hot / gate / water goal) is part of the shape, so the library
     //    carries hazard variants as well as exit masks. Two passes: the base
@@ -1848,6 +2166,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                         arch = pool[(l + i) % n];
                     }
                 }
+                if (repair.flat.count({l, i})) arch = 0;   // reach repair
                 const int mask = RoomShapeMask(l, walks[l - 1], walks[l - 1][i],
                                                i, role, plan.twogap)
                                  | (arch << kArchShift);
@@ -2069,7 +2388,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             // in bands 0/2, so scan for a legal cell near the gap.
             // Start rooms never take a hot gap block: their drop column must
             // stay open (HotDrop), and they carry their own async rule below.
-            if (roles[l - 1][i] == Role::Hot && l > 10 && i != 0) {
+            if (roles[l - 1][i] == Role::Hot && l > 10 && i != 0
+                    && !repair.noPatch.count({l, i})) {
                 const ModelData& sm = models[shapeId[masks[l - 1][i]]];
                 const int hidx = ((masks[l - 1][i] >> kArchShift) & kArchMask) - 8;
                 const int gapCell = kArchHotGapX[hidx] / 2;
@@ -2118,7 +2438,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             // The optional second block is the BALL (side 0, additive) on the
             // mirrored cell — it only needs band 1 open there.
             if (roles[l - 1][i] == Role::Normal && i > 0
-                    && i < roomCount - 1 && plan.patch && i % 3 == 2) {
+                    && i < roomCount - 1 && plan.patch && i % 3 == 2
+                    && !repair.noPatch.count({l, i})) {
                 const ModelData& sm = models[shapeId[masks[l - 1][i]]];
                 int col = -1;
                 for (int c = 1; c <= 7; ++c) {
@@ -2551,6 +2872,86 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
     // route's continuation. Gate/phase shapes stay 3-row (their door cell IS
     // the corridor, so band 2 has to stay open for the descent and the strip
     // cannot be patched twice) and the converter/editor pad those on load.
+
+    // FINISHABILITY (user report 2026-10-25). Every level must reach the miner
+    // with at most kMaxBombsPerLevel bombs. A failing level asks the outer loop
+    // to flatten the archetype of the nearest room that still has one (a plain
+    // shape keeps its band 1 open from the shaft to the seam); a hot room is
+    // never flattened (its hot pattern is the arch itself).
+    for (const auto& q : repair.noSpider) {
+        auto& es = levels[q.first - 1].rooms[q.second].enemies;
+        es.erase(std::remove_if(es.begin(), es.end(), [](const EnemyData& e) {
+                     return e.type == (int)EnemyType::SPIDER;
+                 }), es.end());
+    }
+    for (int l = 1; l <= kStageLevels; ++l) {
+        // A spider the route has to pass: slide it to a clear column first
+        // (content stays), remove it only when no column works.
+        for (int tries = 0; tries < 16; ++tries) {
+            const ReachResult pre = AnalyseReach(levels[l - 1], models);
+            if (pre.dangerRooms.empty()) break;
+            if (!RelocateSpider(levels[l - 1], pre.dangerRooms.front(), models))
+                break;
+        }
+        const ReachResult rr = AnalyseReach(levels[l - 1], models);
+        // Still crossing one: remove that spider (the room keeps its other
+        // object). Checked first - the blocks and the chambers below are
+        // judged on the route that remains.
+        {
+            bool dq = false;
+            for (int ri : rr.dangerRooms) {
+                if (repair.noSpider.count({l, ri})) continue;
+                repair.nextNoSpider.push_back({l, ri});
+                dq = true;
+                break;
+            }
+            if (dq) continue;
+        }
+        bool onlyStartBlock = true;     // the one block a route may cross
+        for (int ri : rr.crossed) onlyStartBlock = onlyStartBlock && ri == 0;
+        if (rr.bombs >= 0 && rr.bombs <= kMaxBombsPerLevel && onlyStartBlock)
+            continue;
+        bool queued = false;
+        if (rr.bombs > 0) {
+            // Reachable only through ledge blocks (a level may ask for the
+            // START room's designed block and nothing else): drop the ledge
+            // block of a room on that route.
+            for (int ri : rr.crossed) {
+                if (ri == 0 || repair.noPatch.count({l, ri})) continue;
+                repair.nextNoPatch.push_back({l, ri});
+                queued = true;
+                break;
+            }
+        }
+        if (queued) continue;
+        for (int ri : rr.order) {
+            const int arch = (masks[l - 1][ri] >> kArchShift) & kArchMask;
+            if (arch == 0 || roles[l - 1][ri] == Role::Hot) continue;
+            if (repair.flat.count({l, ri})) continue;
+            repair.next.push_back({l, ri});
+            queued = true;
+            break;
+        }
+        if (!queued) {
+            // Nothing left to flatten: a CHANNEL room (hot ceiling, water
+            // floor) is only crossable from a vertical shaft, and the side
+            // exit is walled off from the water - demote the first one.
+            for (int i = 0; i < (int)walks[l - 1].size() && !queued; ++i) {
+                if (!(masks[l - 1][i] & SHAPE_CHANNEL)) continue;
+                repair.nextChan.push_back(
+                    {l, walks[l - 1][i].x, walks[l - 1][i].y});
+                queued = true;
+            }
+        }
+        if (!queued) {
+            repair.problems.push_back(
+                "level " + std::to_string(l) + ": "
+                + (rr.bombs < 0 ? std::string("the miner is unreachable")
+                                : "the miner needs " + std::to_string(rr.bombs)
+                                  + " bombs")
+                + " and no room is left to flatten");
+        }
+    }
 
 }
 
