@@ -1202,3 +1202,24 @@ room": strip ignored, +1 px. Fix: the store is 4 NOPs (pin kept).
 Guard: `tools/test_linecount_pack.py` (red on the old frozen bank3).
 Real-data proof: py65, live stage, level 8 room_id 3, hold left from x=20:
 before = walked to x=4; after = stops at x=18 (flush with the strip) and stays.
+
+## #22 — hcrunch: no escape gap, and it could be idle when the player arrived (2026-10-25)
+User: "a hcrunch can't be placed with less than a gap (above and under) of 2
+tiles ... and it should move before the player is on the same band".
+1. Generator rule: the player survives a crunch only by leaving band 1, so a
+   crunch room needs a room above AND below (the one under it neither the
+   water goal nor a channel) and a CONTIGUOUS gap of >= 2 tiles in its ceiling
+   and floor. Plain wide links (cells 8-9) already qualify; single-cell
+   flavors (two-gap, narrow) get new shape bits `SHAPE_WN`/`SHAPE_WS`
+   (ceiling / floor cells 3..6 open), and the room under a widened floor
+   widens its ceiling (and drops its archetype to share the shape). If the
+   library would outgrow the bank3 window (`kCrunchShapeCap`) the LAST crunch
+   rooms go back to ordinary rooms, one per level first. Guard:
+   `tools/test_generator.py` (run + gap assertion).
+2. Clock: the prefix is driven by the free-running frame clock, never reset at
+   room entry, so ~1 entry in 4 met the 64-frame home dwell: the band looked
+   dead while the player fell into it. `bank3 ExtrasLoad` now sets
+   `EnemyRamP = $40` (start of the grow phase) when it stages a hcrunch
+   record, so it is already advancing on arrival. Guard:
+   `tools/test_hcrunch_entry.py` (red on the old frozen bank3).
+The LIVE stage is untouched; regenerate to adopt rule 1 (rule 2 is in the ROM).

@@ -427,3 +427,17 @@ not per room (`AnalyseReach` in DataSerializer.cpp, twin `tools/stage_reach.py`)
   spider, flatten an archetype, demote a channel room, drop a ledge block.
   `test_generator.py` asserts the result; `build.sh` only WARNS about the live
   stage (it is the user's file).
+
+
+## 9. hcrunch gaps (2026-10-25)
+
+A crunch room (levels >= 14) must offer the player a way out of band 1:
+a room above and a room below (the one below neither the water goal nor a
+channel), and a contiguous gap of at least two tiles in its ceiling and in its
+floor. Wide links (cells 8-9) satisfy it; two-gap / narrow flavors get
+`SHAPE_WN` / `SHAPE_WS` (cells 3..6 open), the room under a widened floor
+widens its ceiling. `kCrunchShapeCap` keeps the shape library inside the bank3
+window by reverting the last crunch rooms (never a level's only one) to
+ordinary rooms. `test_generator.py` asserts the gap on every generated crunch.
+Runtime: `ExtrasLoad` restarts the frame clock at the grow phase for crunch
+rooms so the prefix is moving when the player arrives (`test_hcrunch_entry.py`).

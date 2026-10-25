@@ -192,6 +192,31 @@ def main() -> int:
             print("FAIL: unfinishable levels:\n  " + "\n  ".join(bad))
             return 1
 
+        # --- hcrunch needs a >= 2-tile gap above AND under (user 2026-10-25) -
+        # The crush is survived only by leaving band 1; a one-tile hole cannot
+        # be lined up in time. Rule: every room with an hcrunch feature cell
+        # (tile 12) has a CONTIGUOUS open run of >= 2 cells in its ceiling row
+        # and in its floor row.
+        def longest_run(cells):
+            best = run = 0
+            for v in cells:
+                run = run + 1 if v == 0 else 0
+                best = max(best, run)
+            return best
+
+        by_id = {m["id"]: m for m in models}
+        for level_n, level in enumerate(levels, start=1):
+            for room in level["rooms"]:
+                if not any(c[2] == 12 for c in room.get("feature_cells") or []):
+                    continue
+                tiles = by_id[room["model_id"]]["tiles"]
+                top, bottom = tiles[:10], tiles[-10:]
+                if longest_run(top) < 2 or longest_run(bottom) < 2:
+                    print(f"FAIL: level {level_n} room {room['room_id']} has a "
+                          f"hcrunch but a one-tile gap above/under (top run "
+                          f"{longest_run(top)}, bottom run {longest_run(bottom)})")
+                    return 1
+
         # --- model library -------------------------------------------------
         ids = [m["id"] for m in models]
         if ids != list(range(len(models))):
@@ -759,9 +784,19 @@ def main() -> int:
                 for (hx, hy), hrid in pos.items():
                     if hrid == 0 or hrid == level.get("miner_room"):
                         continue
-                    if (hx, hy - 1) in pos or (hx, hy + 1) in pos:
-                        host = True
-                        break
+                    # 2026-10-25: a crunch needs a gap above AND under, so a
+                    # host has a room on both sides, and the one under it is
+                    # neither the water goal nor a channel (it takes a widened
+                    # ceiling).
+                    if (hx, hy - 1) in pos and (hx, hy + 1) in pos:
+                        under = pos[(hx, hy + 1)]
+                        if (under != level.get("miner_room")
+                                and "Channel" not in shapes[
+                                    level["rooms"][under]["model_id"]]["name"]
+                                and "Channel" not in shapes[
+                                    level["rooms"][hrid]["model_id"]]["name"]):
+                            host = True
+                            break
                 if host:
                     print(f"FAIL: level {level_n} has a crunch host room but "
                           "no hcrunch band")

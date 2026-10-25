@@ -418,6 +418,12 @@ ExtrasLoad:
     sta PF0Buf,X
     lda LevelConnSpare
     bpl .EXLfNext                   ; b7 clear = phase (one cell)
+    ; hcrunch: restart the frame clock at the START of the grow phase (bucket
+    ; 4 = home dwell over), so the prefix is already advancing while the
+    ; player is still above band 1 (user 2026-10-25; tools/test_hcrunch_entry).
+    ; Rooms with a crunch have no objects, so no enemy phase rides this clock.
+    lda #$40
+    sta EnemyRamP
     dec Temp
     bpl .EXLfeatCol                 ; hcrunch prefix 0..col
 .EXLfNext:
