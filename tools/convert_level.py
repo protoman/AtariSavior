@@ -602,7 +602,9 @@ def units_per_band(model: dict | None) -> int:
     return max(1, 12 // h)
 
 
-BAND_RULE_HARD = False   # flip to True once the live stage has no violators
+BAND_RULE_HARD = True    # the generator's final separation pass keeps the live
+                         # stage clean (2026-10-25), so a same-band room is a
+                         # build error now, not a warning
 _BAND_WARNED: set[str] = set()   # one line per room (the pass runs twice)
 
 
@@ -700,6 +702,30 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                 if msg not in _BAND_WARNED:
                     _BAND_WARNED.add(msg)
                     print(f"WARN: {msg}")
+        # --- no two objects on one display COLUMN (user rule 2026-10-25) -----
+        # Different bands CAN be paired by StageSlot1, but objects move inside
+        # their band (moth/bat/snake patrol rows), so a shared column means they
+        # periodically land on the same scanlines: the pairing drops for that
+        # frame and the 30 Hz rotation returns — the "lots of flicker" report
+        # (level 5 room 2, both enemies at column 19). Keep >= 3 columns apart.
+        unit = units_per_band(model)
+        placed = [(f"enemy {i}", float(e.get("x", 0)), float(e.get("y", 0)))
+                  for i, e in enumerate(enemies)]
+        placed += [(f"lamp {i}", float(l.get("x", 0)), float(l.get("y", 0)))
+                   for i, l in enumerate(lamps)]
+        for a in range(len(placed)):
+            for b in range(a + 1, len(placed)):
+                na, xa, ya = placed[a]
+                nb, xb, yb = placed[b]
+                if int(ya) // unit == int(yb) // unit:
+                    continue            # the band rule above owns that case
+                if abs(int(round(xa)) - int(round(xb))) >= 3:
+                    continue
+                raise ValueError(
+                    f"{who}: {na} and {nb} share display column "
+                    f"{int(round(xa))} — one GRP1, and objects move inside "
+                    "their band, so they will end up on the same scanlines "
+                    "(30 Hz rotation = flicker). Keep them >= 3 columns apart")
         tiles = model.get("tiles") or []
         if any(t == RAFT for t in tiles) and not room.get("bottom_band"):
             raise ValueError(

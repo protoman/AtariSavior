@@ -2453,6 +2453,96 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 room.enemies.erase(room.enemies.begin() + (long)k);
             }
         }
+        // ---- FINAL OBJECT SEPARATION (user rule 2026-10-25) ----------------
+        // ONE GRP1 cannot draw two objects on the same scanlines: StageSlot1
+        // (bank2) pairs slot 1 only when the two objects sit in DIFFERENT
+        // bands, so a same-band pair falls back to the 30 Hz rotation and both
+        // blink. Two objects in different bands can still end up in one band
+        // as soon as either moves (moth/bat/snake patrol rows within a band),
+        // and a shared display column looks like one flickering sprite.
+        // User report: level 5 room 2, both enemies at column 19 -> "lots of
+        // flicker". The nudge in the room loop runs BEFORE the keys, the lamps
+        // and the arrival fix-ups, so it cannot see the final content: this
+        // pass runs last, and convert_level.check_object_bands mirrors it.
+        for (int j = 0; j < (int)level.rooms.size(); ++j) {
+            RoomData& room = level.rooms[j];
+            const ModelData& sm = models[shapeId[masks[l - 1][j]]];
+            const int rowsPerBand = std::max(1, 12 / std::max(1, sm.height));
+            auto bandOf = [&](float y) {
+                return std::min(sm.height - 1,
+                                std::max(0, (int)y / rowsPerBand));
+            };
+            auto bandRow = [&](int band) {
+                return (float)(band * rowsPerBand + rowsPerBand / 2);
+            };
+            auto airAt = [&](int band, int dcol) {   // left half: 0..19
+                if (dcol < 0 || dcol > 19) return false;
+                const int cell = dcol / 2;
+                return band >= 0 && band < sm.height
+                    && sm.tiles[band * sm.width + cell]
+                           == (int)TileType::AIR;
+            };
+            auto colOf = [&](float x) { return (int)std::lround(x); };
+            auto clashes = [&](int band, int col, int skipEnemy,
+                               int skipLamp) {
+                for (int a = 0; a < (int)room.enemies.size(); ++a) {
+                    if (a == skipEnemy) continue;
+                    if (bandOf(room.enemies[a].y) == band
+                        || std::abs(colOf(room.enemies[a].x) - col) < 3)
+                        return true;
+                }
+                for (int a = 0; a < (int)room.lamps.size(); ++a) {
+                    if (a == skipLamp) continue;
+                    if (bandOf(room.lamps[a].y) == band
+                        || std::abs(colOf(room.lamps[a].x) - col) < 3)
+                        return true;
+                }
+                return false;
+            };
+            // BAND 0 IS THE ARRIVAL BAND: the vertical/side arrival pass
+            // above owns it, and an object there kills the player on contact
+            // the frame the room loads. Never move anything INTO it, and keep
+            // clear of the side-entry edge columns when a neighbour exists.
+            const bool westN = occupied.count({room.room_x - 1,
+                                               room.room_y}) > 0;
+            const bool eastN = occupied.count({room.room_x + 1,
+                                               room.room_y}) > 0;
+            const int colLo = westN ? 2 : 0;
+            const int colHi = eastN ? 17 : 19;
+            for (int b = 0; b < (int)room.enemies.size(); ++b) {
+                const int bandB = bandOf(room.enemies[b].y);
+                if (!clashes(bandB, colOf(room.enemies[b].x), b, -1)) continue;
+                bool fixed = false;
+                for (int band = 1; band < sm.height && !fixed; ++band) {
+                    if (band == 1 && sm.mid_band_type == 1) continue;
+                    for (int dcol = colLo; dcol <= colHi && !fixed; ++dcol) {
+                        if (!airAt(band, dcol)) continue;
+                        if (clashes(band, dcol, b, -1)) continue;
+                        room.enemies[b].x = (float)dcol;
+                        room.enemies[b].y = bandRow(band);
+                        fixed = true;
+                    }
+                }
+                // Nothing legal left: one object beats a blinking pair (the
+                // build gate rejects a same-band room).
+                if (!fixed) room.enemies.erase(room.enemies.begin() + b--);
+            }
+            for (int b = 0; b < (int)room.lamps.size(); ++b) {
+                const int bandB = bandOf(room.lamps[b].y);
+                if (!clashes(bandB, colOf(room.lamps[b].x), -1, b)) continue;
+                for (int band = 1; band < sm.height; ++band) {
+                    if (band == 1 && sm.mid_band_type == 1) continue;
+                    bool done = false;
+                    for (int dcol = colLo; dcol <= colHi && !done; ++dcol) {
+                        if (!airAt(band, dcol)) continue;
+                        if (clashes(band, dcol, -1, b)) continue;
+                        room.lamps[b].y = bandRow(band);
+                        done = true;
+                    }
+                    if (done) break;
+                }
+            }
+        }
         levels.push_back(level);
     }
 
