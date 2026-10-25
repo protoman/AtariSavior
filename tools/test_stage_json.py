@@ -18,6 +18,7 @@ Frozen test data only (src/tests/rooms) — no live rooms/models/ are read.
 Run: /home/iuri/python3/bin/python3 tools/test_stage_json.py
 """
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -40,8 +41,12 @@ def read_level(path: Path) -> dict:
 
 
 def run(args: list[str]) -> None:
+    # The synthetic stage built here keeps two objects in one band on purpose
+    # (frozen collision fixtures), so the shipped-stage object-separation gate
+    # is relaxed to its warning form for this test only.
+    env = dict(os.environ, SAVIOR_OBJECT_BANDS="warn")
     r = subprocess.run([PY, str(CONVERT)] + args,
-                       capture_output=True, text=True, timeout=120)
+                       env=env, capture_output=True, text=True, timeout=120)
     if r.returncode != 0:
         sys.exit(f"FAIL: convert {' '.join(args)}\n{r.stderr}")
 

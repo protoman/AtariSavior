@@ -28,6 +28,7 @@ in one ROM without collisions. The level number comes from the input file name
 
 from pathlib import Path
 import json
+import os
 import re
 import sys
 
@@ -610,6 +611,11 @@ BAND_RULE_HARD = True    # the generator's final separation pass keeps the live
                          # (one enemy + the miner in one band, to drive
                          # collision tests) and keep the warning.
 OBJECT_BANDS_STRICT = False
+# Synthetic test stages (tools/test_stage_json.py builds one from the frozen
+# fixtures) legitimately park two objects in one band to drive collision tests.
+# SAVIOR_OBJECT_BANDS=warn keeps the warning form for them; the shipped stage
+# never sets it, so build.sh stays strict.
+_OBJECT_BANDS_DEFAULT_STRICT = os.environ.get("SAVIOR_OBJECT_BANDS") != "warn"
 _BAND_WARNED: set[str] = set()   # one line per room (the pass runs twice)
 
 
@@ -1982,8 +1988,9 @@ def main(argv: list[str]) -> int:
                   file=sys.stderr)
             return 2
         global OBJECT_BANDS_STRICT
-        OBJECT_BANDS_STRICT = True     # the shipped stage: object separation
-                                       # is a BUILD ERROR (user rule 2026-10-25)
+        OBJECT_BANDS_STRICT = _OBJECT_BANDS_DEFAULT_STRICT
+        # the shipped stage: object separation is a BUILD ERROR
+        # (user rule 2026-10-25); fixtures opt out via SAVIOR_OBJECT_BANDS=warn
         stage_path = Path(argv[1])
         outdir = Path(argv[2])
         rooms_dir = Path(argv[3]) if len(argv) > 3 else None
