@@ -425,7 +425,31 @@ No entry is worked on without user greenlight.
     test is a `SIM_LEVEL=<n> SIM_ROOM=<m>` frame-length run (a 1-line
     frame is a kernel band stretch or a timer-window overrun — see #29)
     plus a Stella seam-row probe for a ±1 picture jump.
-    **Status: OPEN — waiting for the room.**
+    **REPRODUCED 2026-10-25 for level 5 room 2 (room_id 1, user "5.2").**
+    `SIM_LEVEL=4 SIM_ROOM=1 sim_frame_budget.py`:
+      * wall-model: **270 lines on 802 frames, 283 on 191** (plus 280-282) —
+        the picture jumps 13 scanlines on ~1 frame in 5 = exactly the
+        "flicker";
+      * cave kernel WSYNC count `{197, 205, 206, 207, 208}` (197 is the
+        clean-room value) and the kernel segment is +912c (= 12 lines);
+      * per-line probe (`/tmp/opencode/probe_kernel.py` pattern: log every
+        WSYNC write with its gap, band and LineCount): body lines overrun
+        76c by 2-18c (78/79/83/94c) on the lines where the GRP1 object is
+        drawn, and the first body line of each band already sits at 75-79c.
+    Mechanism = the documented `.Line` worst-path class (AGENTS "WSYNC
+    off-by-one overrun — RECURRENCE"): with the player and an object on the
+    same line the body exceeds 76c, each such line steals a scanline, and the
+    30 Hz slot rotation makes it frame-dependent → 270/283 alternation.
+    Room 5.2 has 2 objects (1 enemy + 1 lamp), which is why it fires there.
+    **Level 5 room 1 (room_id 0, 0 objects): the sim is CLEAN** (270.0 on
+    every frame, WSYNC 197) — that one still needs a symptom description
+    (whole-screen jump vs one object vs colour shimmer) before it can be
+    reproduced.
+    **Fix path (NOT started):** a `.Line` object-path cycle cut (worst path
+    56c documented, but the object+player combination measures 78-94c here)
+    — the riskiest code in the project; needs its own chunk with a measured
+    ledger, not a drive-by edit.
+    **Status: 5.2 REPRODUCED (kernel overrun, above) / 5.1 needs a symptom.**
 
 ## Latent risks (verified once, fragile)
 
