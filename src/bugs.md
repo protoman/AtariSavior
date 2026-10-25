@@ -511,7 +511,26 @@ No entry is worked on without user greenlight.
     runs); the frozen collision fixtures deliberately park an enemy + the miner
     in one band and keep the warning (they opt out with
     `SAVIOR_OBJECT_BANDS=warn`, which only `test_stage_json` sets).
-    **Remaining (kernel, separate):** slot-1 rooms still measure one line long
+    **THE VISIBLE FLICKER IS THE SLOT-1 HOOK'S LINE COST (measured 2026-10-25).**
+    With the stage clean (no same-band/column pairs) the user still reports
+    flicker in level 5 rooms 2/3/4 — the three rooms that stage a SECOND object
+    (room 1 has none and is stable). Frame-length probe (`/tmp`-style py65
+    probe, real stage data):
+      * room 2 (pair bands 2+3, hook in the BOTTOM band): -2 -> 271, -3 -> 270
+      * room 3 (pair in MID bands):                         -2 -> 270, -3 -> 269
+      * room 4:                                             -2 -> 270, -3 -> 270
+      * level 9 room 8 (pair bands 1+2):                    -2 -> 270/271, -3 -> 270
+    i.e. `Slot1Hook` spends 2 scanlines on some frames and 3 on others, so no
+    constant works: at -2 the hook rooms alternate 270/271 (a whole-picture
+    one-line jitter at the rotation rate = what the user sees), at -3 one room
+    goes 269. An entry `sta WSYNC` anchor made it worse (273/274) and was
+    reverted, as was the -3 experiment; the tree is back at -2.
+    **Next:** make the hook deterministic — its div15 positioning line runs
+    ~74c against the 76c budget at far-right X (`bcs .SHDiv15` is same-page, so
+    the spill is the loop length, not a page cross), so it must be cut to a safe
+    margin or the count derived from the actual X. Then -2 can stay and the
+    270/271 alternation disappears.
+    **Old note (kernel, separate):** slot-1 rooms still measure one line long
     on the frames the hook fires (270/271 in level 5 room 2; level 7 room 6
     measures 272-276!), i.e. the hook spends more lines than the 2 it subtracts
     from the body count. Not the generator: this is the `-2` in `.SHcount`.
