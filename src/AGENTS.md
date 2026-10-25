@@ -1483,8 +1483,9 @@ these rules PREVENT making it worse:
    whole `Overscan`->`StartFrame` span, i.e. the TIM64T window itself (~3220c
    on EVERY frame, idle `INTIM` poll included) — it is NOT work and says
    nothing about margin. Read the `OVER real work (poll excluded)` line
-   instead (max ~1520c in the fly/laser/exit scenarios = ~1680c headroom in
-   the 3200c window). `OVER_ABSORB (3223)` only guards the window itself.
+   instead (max ~1520c typical, 2145c worst steady frame; the timer is now #44 =
+   2816c after the 2026-10-25 V/O split V #31 + O #44, see bugs.md #16).
+   `OVER_ABSORB (2839)` only guards the window itself.
    Chase the wall-model, not the ε.
 2. **Heavy frames = rect-walk coincidence, not one hot loop.** Every
    measured spike = enemy-probe walk (~480c = prologue ~140 + 5-rect
@@ -1502,9 +1503,9 @@ these rules PREVENT making it worse:
    per-frame walk/probe: measure with mark windows + `SIM_HIST`, and
    count how many walks already run that frame (StepDown substeps,
    CheckP0Left/Right, enemy probes, LWC).
-3. **Overscan margin at fly+laser baseline is ~1680c** (real work ~1520c of
-   3200c, measured 2026-10-25; the old "20-220c" read the poll-inclusive
-   span). The VBL is the tight budget (#24 = 1536c, worst ~1370c). New
+3. **Overscan margin at fly+laser baseline is ~670-1300c** (real work
+   ~1520-2145c of 2816c, measured 2026-10-25; the old "20-220c" read the poll-inclusive
+   span). The VBL is #31 = 1984c with >=107c poll slack in the worst shipped room. New
    overscan work must be net-0 bytes/cycles or it needs a measured cut
    elsewhere in the same change. The gate is `build.sh` (runs the sim);
     scenario gates: `SIM_LEVEL=0 SIM_FLY={Y,X,M}` — **post-title numbers

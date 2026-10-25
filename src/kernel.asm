@@ -593,17 +593,21 @@ StartFrame:
     ; Worst 1059c of the 1472c window = 413c margin.
     ; Frame budget: V(#23) + O(#50) = 73 TIM64T units → 3 + 19.4 + 197.5 +
     ; 42.1 = 262 lines. (#75 was the pre-trim 293-line frame.)
-    ; 2026-10-25: #23 -> #25 (flicker hunt, bugs.md #16). With #23 a room whose
+    ; 2026-10-25: #23 -> #31 (flicker hunt, bugs.md #16). With #23 a room whose
     ; GRP1 objects alternate (FlickerFrame) ran the heavy VBL path ~35c PAST
     ; the timer on every other frame: the SOXP WSYNC straddled a line edge, the
     ; poll exited at once, the entry anchor took the NEXT line -> 270/271 line
     ; frames alternating = visible flicker. #24 (+64c) fixed that room, but the
     ; two-object phase rooms (level 6 room 4) still overran ~40c on a 16-frame
     ; cycle (the object X moves the div15 count) and flipped 271<->272 in
-    ; blocks, so #25: every probed room of levels 1-7 is a constant 272 lines,
-    ; worst measured poll slack ~20c (L6 R4) and 100c+ elsewhere.
+    ; blocks. Then the whole-stage sweep (211 rooms) showed ~60 rooms with
+    ; two enemies + M1/ball patches overrunning by up to 5 lines (4 positioning
+    ; WSYNCs + the slot-1 staging ~ 1830c effective). The overscan real work is
+    ; only ~1520c of its 3200c, so the split moved: V #25->#31, O #50->#44 (the
+    ; V+O sum stays 75 = 272 lines). Result: every shipped room is a constant
+    ; 272 lines (level 20: constant 273), worst VBL poll slack ~107c.
 VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
-    lda #25
+    lda #31
     sta TIM64T
 
     ; --- Position player sprite horizontally ---
@@ -1164,7 +1168,11 @@ Overscan:
     ; P3.4: overscan work worst 2104c (heavy, enemy room, rect cache in) →
     ; #50 = 3200c = 1096c headroom (was #35 = 2240c = 136c — positive but
     ; too tight for transition frames). V(#23)+O(#50) = 73 units = 262 lines.
-    lda #50
+    ; 2026-10-25: #50 -> #44 = 2816c (V #31 + O #44 = 75 units = 272 lines).
+    ; Measured real work: ~1520c typical, 2145c worst steady-state frame
+    ; (L5 R3, fly+laser), 2650-3120c on the one room-transition frame (EnterRoom
+    ; = a single long frame at a room change; the sim exempts those frames).
+    lda #44
     sta TIM64T
 
     ; --- Write live Y → EnemyRamY ($E2-$E4; window-safe since S3.4: this
