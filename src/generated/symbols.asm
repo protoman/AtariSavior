@@ -239,8 +239,9 @@ COLOR_CAVE_BG            0000              (R )
 COLOR_CAVE_WALL          0084                  
 COLOR_DARK_OBJ           000a              (R )
 COLOR_DARK_PF            0004                  
+COLOR_HOT_AMBER          0028              (R )
 COLOR_HOT_R              0044                  
-COLOR_HOT_Y              001c                  
+COLOR_HOT_Y              0028                  
 COLOR_HUD_BG             0006                  
 COLOR_LIVES              00c6                  
 COLOR_P_GRAY             0008                  

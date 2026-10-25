@@ -525,6 +525,17 @@ No entry is worked on without user greenlight.
     one-line jitter at the rotation rate = what the user sees), at -3 one room
     goes 269. An entry `sta WSYNC` anchor made it worse (273/274) and was
     reverted, as was the -3 experiment; the tree is back at -2.
+    **Follow-up measurements (2026-10-25, per-room, same stage):**
+      * level 5 room 2 = HOT room (model 31, mid_band_type 1): -2 -> 271, -3 -> 270
+      * level 5 room 3 = plain room:                            -2 -> 270, -3 -> 269
+      * both have their pair in bands 2+3 and their slot-1 object at column 19,
+        so the difference is NOT the band: the HOT band's `.Row` setup already
+        sits closer to the line boundary, so the hook's extra line lands on a
+        different frame. A constant cannot serve both — that is why both `-2`
+        and `-3` were tried and reverted.
+      * the hook's pre-positioning segment measured **197c** against the 152c
+        (2-line) slot, i.e. it must lose ~45c, or the band decision must be
+        pre-staged in the VBL so the hook only swaps the trio (~50c).
     **Next:** make the hook deterministic — its div15 positioning line runs
     ~74c against the 76c budget at far-right X (`bcs .SHDiv15` is same-page, so
     the spill is the loop length, not a page cross), so it must be cut to a safe
