@@ -30,6 +30,7 @@ Notes / traps learned the hard way (2026-10-25):
     measures 270 while another measures 271 differs somewhere ELSE: use the
     per-pc diff (see docs/handoff_2026-10-25_flicker.md) to find it.
 """
+import os
 import re
 import sys
 from collections import Counter
@@ -146,13 +147,16 @@ from py65.devices.mpu6502 import MPU        # noqa: E402
 
 mpu = MPU(memory=mem)
 prev_cycles = 0
+pc_cyc = Counter()
 
 
 def step():
     global prev_cycles, frame_no
+    _pc0, _b0 = mpu.pc, mem.bank
     mpu.step()
     mem.pc = mpu.pc
     c = mpu.processorCycles - prev_cycles
+    pc_cyc[(_b0, _pc0)] += c
     prev_cycles = mpu.processorCycles
     mem.wall += c
     if mem.wsync_seen:
@@ -213,4 +217,15 @@ while frame_no <= F1:
         print(f"f{f:4d} lines {lines:6.2f} "
               f"bodies {dict(sorted(bodies.items()))} "
               f"hook {[(hex(p), g) for p, g in hook]}", flush=True)
+        if os.environ.get("DUMP"):
+            pw = None
+            out = []
+            for (pc, wall, lc, band) in wsync_log:
+                out.append(f"{pc:04x} {0 if pw is None else wall - pw} L{wall // 76 - wsync_log[0][1] // 76} c{wall % 76}")
+                pw = wall
+            Path(os.environ["DUMP"] + f".{f}").write_text("\n".join(out))
+        if os.environ.get("DUMP"):
+            Path(os.environ["DUMP"] + f".pc{f}").write_text(
+                "\n".join(f"{b} {p:04x} {c}" for (b, p), c in sorted(pc_cyc.items())))
+        pc_cyc.clear()
         wsync_log.clear()

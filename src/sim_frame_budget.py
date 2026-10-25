@@ -32,7 +32,7 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parent
 BANKS = [open(SRC / f'bank{i}.bin', 'rb').read() for i in range(8)]
-VBL_BUDGET = 1472          # TIM64T #23 (kernel.asm:449)
+VBL_BUDGET = 1536          # TIM64T #24 (kernel.asm VBLTimer)
 OVER_BUDGET = 3200         # TIM64T #50 (kernel.asm:776)
 # Assert band = 3223 (documented fill absorb: INTIM poll granularity lets
 # ~3201-3222 pass silently; sub-window frames measure 3200 +- tick-quant
@@ -634,7 +634,7 @@ _lines_raw = [(f, round(v, 2)) for f, v in frame_lines]
 # stall lines, 2026-10-06) so frame phase stays continuous across the
 # title->game switch — at its OWN 265 total.
 def _tgt(f):
-    return 267.0 if frame_ker.get(f) == 'title' else 270.0
+    return 267.0 if frame_ker.get(f) == 'title' else 271.0
 def _wall_bad(f, v):
     if f < 2:
         return False
@@ -778,8 +778,8 @@ print(f'frames with OVER work > {OVER_BUDGET}: {len(over_over)} '
       f'{[(f, o) for f, o in over_over[:12]]}')
 print(f'bomb states seen: {sorted(bomb_states)}; enemy present: {enemy_seen}; '
       f'fire held frames: {inpt4_frames}')
-vbl_hot = [(f, v) for f, o, v in frame_stats if v > 1472]
-print(f'frames with VBL > 1472: {len(vbl_hot)} {vbl_hot[:16]}')
+vbl_hot = [(f, v) for f, o, v in frame_stats if v > VBL_BUDGET]
+print(f'frames with VBL > {VBL_BUDGET}: {len(vbl_hot)} {vbl_hot[:16]}')
 # -- optional per-frame PC histogram dump (SIM_HIST=169,173) --
 for _fr in [int(x) for x in os.environ.get('SIM_HIST', '').split(',') if x]:
     _h = pc_hist_keep.get(_fr)
@@ -832,7 +832,7 @@ checks = [
      f'({{k: sorted(v) for k, v in ...}} = '
      f'{ {k: sorted(v) for k, v in kwsync_by_kind.items()} })',
      all(len(v) == 1 for v in kwsync_by_kind.values())),
-    (f'wall-model lines per kernel target (cave 270.0 / title 267.0) '
+    (f'wall-model lines per kernel target (cave 271.0 / title 267.0) '
      f'+/-0.15 on all frames >=2 (bad: {_bad_lines[:6]})',
      not _bad_lines),
     ('bomb dropped (state1 seen)', 1 in bomb_states),
