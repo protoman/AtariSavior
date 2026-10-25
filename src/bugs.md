@@ -507,6 +507,10 @@ No entry is worked on without user greenlight.
     Stage after regeneration: 211 rooms, 0 same-band pairs, 0 same-column
     pairs; level 5 room 2 = (col 8, band 2) + (col 19, band 3).
     Guard: `tools/test_object_bands.py` (real check, 6 cases).
+    The hard form applies to the SHIPPED stage (`--stage`, what `build.sh`
+    runs); the frozen collision fixtures deliberately park an enemy + the miner
+    in one band and keep the warning (they opt out with
+    `SAVIOR_OBJECT_BANDS=warn`, which only `test_stage_json` sets).
     **Remaining (kernel, separate):** slot-1 rooms still measure one line long
     on the frames the hook fires (270/271 in level 5 room 2; level 7 room 6
     measures 272-276!), i.e. the hook spends more lines than the 2 it subtracts
