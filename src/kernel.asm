@@ -2462,6 +2462,23 @@ Slot1Hook:
     bcc .SHout                  ; above this band
     cmp BandStart+1,X
     bcs .SHout                  ; in a later band
+    ; --- count THIS pass now, while X is still the band (2026-10-25, bugs #16).
+    ; The inlined positioning below ends with X=1 (`ldx #1` + the div15 loop's
+    ; `tay`), so this test used to run AFTER it and compared 1 with TILE_ROWS-1:
+    ; it never matched, every band got the fixed 34, and a slot-1 object in the
+    ; BOTTOM band ran 34 bodies instead of CollisionX-2 (22) = +10 scanlines =
+    ; the level 5 room 2 flicker (270/283-line frames). It also has to happen
+    ; HERE rather than after `sta HMOVE`: that tail feeds straight into the
+    ; first body line, and anything past ~15c there pushes the body's WSYNC
+    ; past cycle 76 (+1 stall line on every frame). LineCount is not read until
+    ; the body's `dec` tail, so an early store is free.
+    lda #LINES_PER_TILE - 2
+    cpx #TILE_ROWS-1
+    bne .SHcount
+    lda CollisionX              ; C is still 1 from `cpx` (X == last band)
+    sbc #2                      ; bottom band: tide count - 2
+.SHcount:
+    sta LineCount
     lda ObjBase1
     sta ObjBase
     lda ObjHeight1
@@ -2510,22 +2527,11 @@ Slot1Hook:
     sta RESP0,X
     sta WSYNC                   ; end of the positioning line
     sta HMOVE                   ; cycle 0 of the next line = HBLANK
-    ; --- this hook spent TWO lines inside the band: take them out of the ---
-    ; --- body count, or the band (and the frame) grows by 2.  MEASURED ---
-    ; sim_frame_budget holds a constant cave frame with a pair staged, and
-    ; -3 was measured to make it 269 (one line short) — keep -2. The bigger
-    ; numbers test_slot1_midband reports across configs are the STARTFRAME
-    ; re-anchor phase, not a band stretch: see the note in that test.
-    ; Bands 0-2 = 36 bodies, bottom band = 24..27 (tide, CollisionX). X = RowIdx.
-    lda #LINES_PER_TILE - 2
-    cpx #TILE_ROWS-1
-    bne .SHcount
-    lda CollisionX              ; C is still 1 from `cpx` (X == last band)
-    sbc #2                      ; bottom band: tide count - 2
-.SHcount:
-    sta LineCount               ; .Row's own count store is skipped on this
-                                ;   path (we jump straight into the bodies)
-    pla                         ; running-Y back (the div15 loop did `tay`)
+    ; --- this hook spent TWO lines inside the band; the count taken at the top
+    ; (`.SHcount`) already subtracted them, so the tail here is just the
+    ; running-Y restore + the body entry: 9c, inside the ~15c the first body
+    ; line can absorb before its WSYNC store crosses cycle 76.
+    pla
     tay
     jmp CaveLine
 .SHout:

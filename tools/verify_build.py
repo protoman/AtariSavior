@@ -261,6 +261,30 @@ def check_rom(src: Path) -> bytes | None:
     if re.search(r"sta\s+REFP1", ksrc):
         err("bank0 writes REFP1 — a per-frame mirror cannot serve two GRP1 "
             "objects; draw a mirrored DESIGN instead (see OBJ_LAMP_R / type 13)")
+    # Slot-1 scanline count (bugs #16, 2026-10-25): Slot1Hook must take this
+    # pass's body count while X still holds the band. Its inlined positioning
+    # ends with `ldx #1` (+ the div15 loop's `tay`), so a count block placed
+    # AFTER it compared 1 with TILE_ROWS-1, never matched, and gave a slot-1
+    # object in the BOTTOM band 34 bodies instead of CollisionX-2 (22) = +10
+    # scanlines on that frame = the level 5 room 2 flicker (270 <-> 283).
+    # It must also stay near the TOP of the hook: after `sta HMOVE` the tail
+    # feeds the first body line, and more than ~15c there pushes that line's
+    # WSYNC past cycle 76 (+1 line whenever the hook fires).
+    hook_i = ksrc.find("\nSlot1Hook:")
+    seg = ksrc[hook_i:hook_i + 4000] if hook_i >= 0 else ""
+    _cnt = re.search(r"^\s+cpx\s+#TILE_ROWS-1\b", seg, re.M)
+    _pos = re.search(r"^\s+ldx\s+#1\b", seg, re.M)
+    cnt_i = _cnt.start() if _cnt else -1
+    pos_i = _pos.start() if _pos else -1
+    if not seg:
+        err("Slot1Hook not found in kernel.asm (slot-1 count guard)")
+    elif cnt_i < 0:
+        err("Slot1Hook lost `cpx #TILE_ROWS-1` — the bottom band would run "
+            "LINES_PER_TILE-2 bodies instead of CollisionX-2 (+10-line frames)")
+    elif pos_i >= 0 and cnt_i > pos_i:
+        err("Slot1Hook takes its scanline count AFTER the inlined positioning "
+            "(`ldx #1` clobbers X): the bottom band would run 34 bodies "
+            "instead of CollisionX-2 = +10-line frames (bugs #16)")
     return pad0
 
 

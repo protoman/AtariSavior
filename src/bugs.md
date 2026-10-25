@@ -468,8 +468,29 @@ No entry is worked on without user greenlight.
     says to audit for a title-only/gameplay-dead byte (precedent: the melody
     moved to `$F6/$F7` = BombX/BombTimer) before stealing one. That audit is
     the first step of the fix chunk.
-    **Status: 5.2 ROOT-CAUSED (setup line, slot-1 dispatch) — fix designed,
-    blocked on a ZP byte / 5.1 still needs a symptom.**
+    **FIXED 2026-10-25 (commit follows):** the diagnosis above (setup line /
+    slot-1 dispatch cost) was WRONG — the real defect was one byte of state in
+    `Slot1Hook`. Its inlined P1 positioning ends with X=1 (`ldx #1` + the div15
+    loop's `tay`), and the scanline-count block sat AFTER it, so
+    `cpx #TILE_ROWS-1` compared 1 with 3: it never matched, every band got the
+    fixed `LINES_PER_TILE-2` (34), and a slot-1 object in the **bottom band**
+    ran 34 bodies instead of `CollisionX-2` (22) = **+10 scanlines**. Bands 0-2
+    were accidentally correct (34 is their value), which is why only rooms
+    whose second object sits in band 3 flickered.
+    Measured before/after, `SIM_LEVEL=4 SIM_ROOM=1`:
+      * before: wall-model `{270: 802, 283: 191, 280: 32, 281: 32, 282: 37}`,
+        cave WSYNC `{197, 205, 206, 207, 208}`;
+      * after:  `{270: 803, 271: 295}`, cave WSYNC `{196, 197}` — a 1-line
+        phase left over, no 13-line jump.
+    The count block now runs at the TOP of the hook (X is still the band) and
+    the post-HMOVE tail is just `pla/tay/jmp` (9c, inside the ~15c the first
+    body line can absorb before its WSYNC crosses cycle 76). Build gate:
+    `verify_build` rejects a count block placed after the positioning.
+    **Residual (open):** the ±1 line — the hook spends one line more than the
+    2 it subtracts, so frames alternate 270/271 while slot 1 is staged. Same
+    family as the pre-existing red `tools/test_slot1_midband.py`; needs the
+    hook's exact line ledger measured (not guessed) before touching the -2.
+    **5.1 (room_id 0, 0 objects) still measures clean** — no symptom yet.
 
 ## Latent risks (verified once, fragile)
 
