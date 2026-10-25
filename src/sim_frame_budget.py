@@ -8,7 +8,7 @@ every frame) + bomb dropped (falling fuse + explosion mid-run), 1 enemy +
 miner in the room (post-migration 2-object cap).
 
 MEASUREMENT (py65 = pure CPU work; WSYNC/TIM64T/INTIM stubbed):
-  VBL      TIM64T arm -> WaitVBLANK entry (pure work) <= VBL_BUDGET (TIM64T #24)
+  VBL      TIM64T arm -> WaitVBLANK entry (pure work) <= VBL_BUDGET (TIM64T #25)
   OVER     Overscan   -> next StartFrame   must be <= OVER_BUDGET  (TIM64T #50)
            NOTE: that span INCLUDES the idle INTIM poll, so it reads ~3220c on
            every frame; the real margin is the "OVER real work" line.
@@ -18,8 +18,8 @@ MEASUREMENT (py65 = pure CPU work; WSYNC/TIM64T/INTIM stubbed):
             WSYNC-off-by-one / HUD-bar class)
   kernel WSYNC count constant per frame (structure drift guard)
 
-Budgets are the documented timers (kernel.asm VBL #24 = 1536c,
-overscan #50 = 3200c; frame = V(#24)+O(#50) = 271 lines (wall model)). A timer segment
+Budgets are the documented timers (kernel.asm VBL #25 = 1600c,
+overscan #50 = 3200c; frame = V(#25)+O(#50) = 272 lines (wall model)). A timer segment
 whose WORK exceeds its window loses the wait and eats extra scanlines on
 hardware; py65 work > budget predicts the Stella jump.
 
@@ -34,7 +34,7 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parent
 BANKS = [open(SRC / f'bank{i}.bin', 'rb').read() for i in range(8)]
-VBL_BUDGET = 1536          # TIM64T #24 (kernel.asm VBLTimer)
+VBL_BUDGET = 1600          # TIM64T #25 (kernel.asm VBLTimer)
 OVER_BUDGET = 3200         # TIM64T #50 (kernel.asm:776)
 # Assert band = 3223 (documented fill absorb: INTIM poll granularity lets
 # ~3201-3222 pass silently; sub-window frames measure 3200 +- tick-quant
@@ -645,7 +645,7 @@ _lines_raw = [(f, round(v, 2)) for f, v in frame_lines]
 # stall lines, 2026-10-06) so frame phase stays continuous across the
 # title->game switch — at its OWN 265 total.
 def _tgt(f):
-    return 267.0 if frame_ker.get(f) == 'title' else 271.0
+    return 267.0 if frame_ker.get(f) == 'title' else 272.0
 def _wall_bad(f, v):
     if f < 2:
         return False
@@ -843,7 +843,7 @@ checks = [
      f'({{k: sorted(v) for k, v in ...}} = '
      f'{ {k: sorted(v) for k, v in kwsync_by_kind.items()} })',
      all(len(v) == 1 for v in kwsync_by_kind.values())),
-    (f'wall-model lines per kernel target (cave 271.0 / title 267.0) '
+    (f'wall-model lines per kernel target (cave 272.0 / title 267.0) '
      f'+/-0.15 on all frames >=2 (bad: {_bad_lines[:6]})',
      not _bad_lines),
     ('bomb dropped (state1 seen)', 1 in bomb_states),

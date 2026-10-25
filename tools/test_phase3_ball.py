@@ -13,7 +13,7 @@ Assertions (frames >= 2, after the RESET-pulse title -> game start):
     block ran SetObjectXPos selector 4 (the Phase 3 staging path);
   * Temp ($88) at every bank0 RESPBL write == 95 (8*2+79) — pins the
     staged-BallX constant to the calibrated arg / PHMOverlay math;
-  * frame line count constant across frames >= 3 and at 270 (N=4: four
+  * frame line count constant across frames >= 3 and at 272 (N=4: four
     36-line bands = cave 148 lines, +3 over the 3x48 era; measured, and
     the re-anchor lines of bugs.md #29 Class C are inside it);
   * min SP (frames >= 2) >= $F7 (documented whole-run stack guard).
@@ -182,8 +182,8 @@ def main() -> int:
             f"{[f'${t:02X}' for t in bad_temp]}, want ${want_temp:02X}")
 
     lens = sorted({r["per_frame"].get(f) for f in range(3, r["frames"])})
-    if len(lens) != 1 or lens[0] not in (270,):
-        fails.append(f"frame line counts (f>=3) = {lens}, want [270] "
+    if len(lens) != 1 or lens[0] not in (272,):
+        fails.append(f"frame line counts (f>=3) = {lens}, want [272] "
                      "(N=4 cave: 4x36 bands)")
 
     if r["min_sp"] < 0xF7:

@@ -593,14 +593,17 @@ StartFrame:
     ; Worst 1059c of the 1472c window = 413c margin.
     ; Frame budget: V(#23) + O(#50) = 73 TIM64T units → 3 + 19.4 + 197.5 +
     ; 42.1 = 262 lines. (#75 was the pre-trim 293-line frame.)
-    ; 2026-10-25: #23 -> #24 (flicker hunt, bugs.md #16). With #23 a room whose
+    ; 2026-10-25: #23 -> #25 (flicker hunt, bugs.md #16). With #23 a room whose
     ; GRP1 objects alternate (FlickerFrame) ran the heavy VBL path ~35c PAST
     ; the timer on every other frame: the SOXP WSYNC straddled a line edge, the
     ; poll exited at once, the entry anchor took the NEXT line -> 270/271 line
-    ; frames alternating = visible flicker. #24 (+64c) gives both paths slack,
-    ; so the entry is timer-locked: every room is a constant 271 lines.
+    ; frames alternating = visible flicker. #24 (+64c) fixed that room, but the
+    ; two-object phase rooms (level 6 room 4) still overran ~40c on a 16-frame
+    ; cycle (the object X moves the div15 count) and flipped 271<->272 in
+    ; blocks, so #25: every probed room of levels 1-7 is a constant 272 lines,
+    ; worst measured poll slack ~20c (L6 R4) and 100c+ elsewhere.
 VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
-    lda #24
+    lda #25
     sta TIM64T
 
     ; --- Position player sprite horizontally ---
@@ -2353,20 +2356,23 @@ SelectActiveObject:
     sta FetchPtr
     lda EnemyDataHi
     sta FetchPtr+1
-    jsr CallPad_IsRoomDark              ; clobbers X — Y still = type offset
+    jsr FoldIndirect            ; type, read ONCE (2026-10-25: was read again
+    and #%01111111              ;   after IsRoomDark = -25c/enemy frame). b7 = dir:
+    sta Temp                    ;   the tables are indexed by the TYPE only (a
+                                ;   dir-left record read $80|type and drew past
+                                ;   the end of both tables = the object vanished;
+                                ;   user report 2026-10-22, the tentacle demo).
+                                ;   Temp is free here (the slot count is done) and
+                                ;   IsRoomDark never touches it.
+    jsr CallPad_IsRoomDark      ; clobbers A/X only
     beq .SOEnemyLit
     lda #COLOR_DARK_OBJ         ; dark room: lamp + enemies medium grey
     sta COLUP1
-    jsr FoldIndirect            ; reload type
-    and #%01111111              ; b7 = dir: the tables below are indexed by the
-    tax                         ;   TYPE only (a dir-left record read $80|type
-    jmp .SOEnemyPattern         ;   and drew ObjBase/ObjHeight from past the end
-                                ;   of both tables = the object vanished; user
-                                ;   report 2026-10-22, the tentacle demo)
+    ldx Temp
+    jmp .SOEnemyPattern
+    .byte 0                     ; pad: keeps every later bank0 address byte-identical
 .SOEnemyLit:
-    jsr FoldIndirect            ; reload type (X was clobbered by IsRoomDark)
-    and #%01111111              ; b7 = dir (see above)
-    tax
+    ldx Temp
     lda EnemyColorTable,X
     sta COLUP1
 .SOEnemyPattern:
