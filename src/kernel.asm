@@ -2312,6 +2312,7 @@ SelectActiveObject:
     cmp EnemyCount
     beq .SOEnemy               ; no miner slot in this room
     ; This slot is the miner
+.SOMinerDraw:
     lda #OBJ_MINER              ; miner design offset into ObjSprites
     sta ObjBase
     lda #OBJ_WINDOW             ; miner design height
@@ -2354,6 +2355,7 @@ SelectActiveObject:
     and EnemyBitTable,X
     bne .SOEnemySkip
     ; Live X from RAM; Y from RAM (EnemyRamY) at .SOEnemyColorDone
+.SOEnemyLive:
     ldx EnemyIndex
     lda EnemyRamX,X
     sta ActiveObjectX
@@ -2400,8 +2402,9 @@ SelectActiveObject:
     jmp .SODone
 
 .SOEnemySkip:
-    lda #$FF
-    sta ObjBase
+    jmp SOSkipTail              ; dead enemy / taken key: hand the slot on
+    .byte 0                     ; pad (unreachable): keeps every later bank0
+                                ;   address byte-identical (tail is 1 B shorter)
 
 .SODone:
     ; Position GRP1 from ActiveObjectX — ONE shared call for every object
@@ -2642,6 +2645,39 @@ M1ColFromMeta:
     sta M1X                     ; strip destroyed: keep the byte honest too
 .M1Cnone:
     rts                         ; A = 0, Z set -> caller skips the sprite
+
+; ------------------------------------------------------------------------------
+; SOSkipTail — the rotation slot picked a DEAD enemy (or a taken key). It used
+; to draw nothing, so the survivor showed only every 2nd frame: kill the enemy
+; next to the miner and the MINER started flickering (user 2026-10-25), and a
+; two-enemy room flickered its survivor. Hand the slot on instead:
+;   1. the miner is here -> draw the miner (every frame once the enemy is gone);
+;   2. else the room's other enemy (index ^ 1) if it exists and is alive;
+;   3. else nothing.
+; Terminates: step 2 jumps into the live path only for a LIVE partner, and a
+; taken key can re-enter here only once per frame (its partner is then dead).
+; ------------------------------------------------------------------------------
+SOSkipTail:
+    lda LevelMinerRoom
+    and #$7f
+    cmp RoomNo
+    bne .SOSkipOther
+    jmp .SOMinerDraw
+.SOSkipOther:
+    lda EnemyIndex
+    eor #1
+    tax
+    cmp EnemyCount
+    bcs .SOSkipNone             ; no such enemy
+    lda EnemyDeadMask
+    and EnemyBitTable,X
+    bne .SOSkipNone             ; partner dead too
+    stx EnemyIndex
+    jmp .SOEnemyLive
+.SOSkipNone:
+    lda #$FF
+    sta ObjBase
+    jmp .SODone
 
     .ds $F830 - *, 0            ; ObjSprites: per-type heights, 121 B now
                                  ;   KEY 16, MOTH 14, SPIDER 15, LAMP 10,

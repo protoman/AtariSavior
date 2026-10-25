@@ -1042,19 +1042,6 @@ B3StageBand:
     sta BandTab+2
     lda BandTpl+3,X
     sta BandTab+3
-    ; --- strip destroyed by a bomb? (EnemyDeadMask b3 — StripBlastCheck
-    ; set it this overscan) → blank all band gates so the cave renders no
-    ; strip; the pack below then emits mask 0 → every overlay stays
-    ; transparent too. BandTab restages from ROM next room entry. ---
-    lda EnemyDeadMask
-    and #$08
-    beq .SBTstripAlive
-    lda #0
-    sta BandTab
-    sta BandTab+1
-    sta BandTab+2
-    sta BandTab+3
-.SBTstripAlive:
     ; --- D6 M1 (left-col block): M1X = 8*(m1_col+1)-1 -> CollisionEndX ($8E) ---
     ; 0 = no M1 patch. Window: this VBL write -> PositionBallM1 reads it
     ; later the same VBL (staged-file pattern like Temp/BallX). Overscan
@@ -1130,6 +1117,23 @@ B3StageBand:
     sta BandTab+2
     sta BandTab+3
 .SBTballDone:
+    ; --- strip destroyed by a bomb? (EnemyDeadMask b3 — StripBlastCheck
+    ; set it this overscan) → blank all band gates so the cave renders no
+    ; strip AND clear BallX (Temp): the pack below keys off Temp, so a dead
+    ; strip emits no ball column/gates and every overlay stays transparent.
+    ; (2026-10-25, user level 7 room 1: only BandTab was blanked, the pack
+    ; kept the column nibble — the strip vanished but still blocked.)
+    ; BandTab restages from ROM next room entry. ---
+    lda EnemyDeadMask
+    and #$08
+    beq .SBTstripAlive
+    lda #0
+    sta Temp
+    sta BandTab
+    sta BandTab+1
+    sta BandTab+2
+    sta BandTab+3
+.SBTstripAlive:
     ; --- NUSIZ1 owned here since P2b (kernel's VBL $30 restore deleted) ---
     ; Constant $30 (P1 single, M1 8 clk): the door distinction is COLOR
     ; (yellow $1C staged below), not width — the 4clk block read as "half

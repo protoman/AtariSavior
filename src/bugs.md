@@ -1112,3 +1112,30 @@ constant 272 (level 20 constant 273, cause not looked into), worst poll slack
 107c (was 9-37c). The picture starts 6 lines later in the frame (closer to the
 NTSC 37-line VBLANK). Room-transition frames can now overrun the 2816c overscan
 by up to ~300c (one longer frame at a room change; the sim exempts them).
+
+## #17 — bombed ball strip vanished but still blocked (2026-10-25, level 7 room 1)
+
+Symptom (user): the async ball block in band 1 disappears when bombed, but the
+player still cannot walk through it.
+Root cause: `B3StageBand` blanked `BandTab` on `EnemyDeadMask` b3 (what the
+cave draws), but the collision pack (`CollisionEndY` -> `LineCount`, read by
+`PHMOverlay`/`OvShutBand`) is rebuilt from `RoomMetaA/B` and `Temp` (BallX), so
+it kept the column nibble and the band gates. The comment above the kill block
+claimed "the pack then emits mask 0" - it never did.
+Fix: the kill block now also clears `Temp` (and runs after the BallX staging),
+so the pack emits only the M1-present flag. Guard: `tools/test_bomb_strip.py`
+(a ball-room staging case; red before the fix: packed `$32`).
+
+## #18 — a dead enemy made the surviving object flicker (2026-10-25)
+
+Symptom (user): enemy + miner room - the enemy flickers (expected, one GRP1),
+and after killing the enemy the MINER flickered too.
+Root cause: `SelectActiveObject` rotates over `EnemyCount` (+1 miner) slots; a
+dead enemy's slot drew nothing (`.SOEnemySkip` -> `ObjBase = $FF`), so the
+survivor showed every 2nd frame. Same for the survivor of a two-enemy room and
+for a taken key.
+Fix: `.SOEnemySkip` -> `SOSkipTail` (in the gap before `ObjSprites`): miner if
+present, else the other enemy if alive, else nothing. Bank0 stays byte-identical
+after it (the `jmp` is 1 B shorter; a `.byte 0` pad). Guard:
+`tools/test_miner_flicker.py` (red: `[255,85,255,85,...]`).
+Still by design: enemy + miner ALIVE share one sprite and alternate.
