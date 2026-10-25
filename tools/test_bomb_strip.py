@@ -190,12 +190,13 @@ def run_bmw(mem: Mem1, bomb_x: int, line_count: int,
              f"(pc=${mpu.pc:04X}, bank={mem.bank})")
 
 
-def stage(deadmask: int) -> tuple[tuple, int, int]:
+def stage(deadmask: int, metas=None) -> tuple[tuple, int, int]:
     """Drive B3StageBand (bank3); return (BandTab0..2, packed byte, staged M1X)."""
     mem = Mem1()
     r = mem.ram
-    r[L2["RoomPF0Lo"] - 0x80] = META_A          # staged meta (room entry)
-    r[(L2["RoomPF0Lo"] + 1) - 0x80] = META_B
+    ma, mb = metas if metas else (META_A, META_B)
+    r[L2["RoomPF0Lo"] - 0x80] = ma              # staged meta (room entry)
+    r[(L2["RoomPF0Lo"] + 1) - 0x80] = mb
     r[L0["EnemyDeadMask"] - 0x80] = deadmask
     mem.bank = 3            # C7: the band walker lives in bank3
     mpu = MPU(memory=mem)
@@ -328,6 +329,19 @@ def main() -> int:
     # 5. ball strip dead (b3) → BandTab blanked
     bands, pack_b, m1_b = stage(0x08)
     assert bands == (0, 0, 0), f"dead ball strip stages blank ({bands})"
+    # 2026-10-25 (user, level 7 room 1): the strip vanished but still blocked.
+    # The collision pack (read by PHMOverlay/OvShutBand) was rebuilt from the
+    # metas and ignored b3, so the dead strip kept its ball-column nibble and
+    # band gates. Only the M1-present flag (b3) may survive a ball-strip kill.
+    # The model-0 fixture has no ball column, so use a ball room: band 1 gate
+    # (MetaA b1) + ball_col+1 = 3 (MetaB), exactly level 7 room 1's shape.
+    _, live, _ = stage(0x00, (0x02, 0x03))
+    assert live & 0xF0 == 0x30 and live & 0x02, (
+        f"fixture: live ball room must pack col+gate (packed=${live:02X})")
+    _, dead, _ = stage(0x08, (0x02, 0x03))
+    assert dead & 0xF7 == 0, (
+        f"dead ball strip must pack no ball column/gates (packed=${dead:02X}) "
+        "- the strip vanished but still blocked (level 7 room 1)")
 
     # 6. alive → model's own bands + ball band mask + M1 presence flag
     bands, pack_b, m1_b = stage(0x00)
