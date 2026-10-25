@@ -511,7 +511,15 @@ enum ShapeBits {
     // consecutive links alternate, so each through-room has a different number
     // of exits at the top and the bottom and the player has to line up.
     SHAPE_N1 = 1 << 13,  // narrow TOP opening (cell vA only)
-    SHAPE_S1 = 1 << 14   // narrow BOTTOM opening
+    SHAPE_S1 = 1 << 14,  // narrow BOTTOM opening
+    // User rule 2026-10-25: a hcrunch room needs a gap of >= 2 tiles above
+    // AND under (a one-tile hole cannot be lined up before the crush). These
+    // widen the ceiling / floor to the four cells 3..6 when the link flavor
+    // only offers single cells (two-gap or narrow links); the room below a
+    // widened floor widens its ceiling too (upper floor must stay inside the
+    // lower ceiling).
+    SHAPE_WN = 1 << 15,
+    SHAPE_WS = 1 << 16
 };
 constexpr int kGateCol = 4;          // the gate/door cell in row 1
 constexpr int kGapA = 3;             // 2-gap columns (model cells)
@@ -535,6 +543,8 @@ constexpr int kArchMask = 15;   // 4 bits: hot archetypes use ids 8..14
 // the bank3 shapes window (emit_spills hard-fails, test_generator gates a 64 B
 // slack floor), not the index.
 constexpr int kShapeBudget = 128;
+// Shape-window guard for the widened hcrunch rooms (bank3 shapes slack floor).
+constexpr int kCrunchShapeCap = 95;
 const char* const kArch[8][3] = {
     {"..........", "..........", ".........."},          // 0 shaft
     {"..###.....", "..........", ".....###.."},          // 1 ledge ladder
@@ -644,6 +654,8 @@ std::string ShapeName(int mask) {
     if (mask & SHAPE_WATER) add("Water");
     if (mask & SHAPE_CHANNEL) add("Channel");
     if (mask & SHAPE_2GAP) add("2Gap");
+    if (mask & SHAPE_WN) add("wideTop");
+    if (mask & SHAPE_WS) add("wideBottom");
     const int arch = (mask >> kArchShift) & kArchMask;
     if (arch) add(kArchName[arch]);
     return name;
@@ -853,6 +865,15 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 model.tiles[base + vB] = (int)TileType::AIR;
                 sCells.push_back(vB);
             }
+        }
+        if (mask & SHAPE_WN) {
+            for (int x = kGapA; x <= kGapB; ++x)
+                model.tiles[x] = (int)TileType::AIR;
+        }
+        if (mask & SHAPE_WS) {
+            const int base = (kGenRows - 1) * kRoomWidth;
+            for (int x = kGapA; x <= kGapB; ++x)
+                model.tiles[base + x] = (int)TileType::AIR;
         }
         int lo = kRoomWidth, hi = -1;
         for (int c : nCells) { if (c < lo) lo = c; if (c > hi) hi = c; }
@@ -2074,7 +2095,25 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 // Since 2026-10-24 the kernel prefix starts at pair 1, so a
                 // crunch room keeps its side link (the crush gates the way out of
                 // the 8-px edge vestibule); it still needs a vertical passage.
-                if (r == Role::Hcrunch) return (bool)vroom[i];
+                if (r == Role::Hcrunch) {
+                    // 2026-10-25: an exit above AND one below (the escape
+                    // from band 1 is a >= 2-tile gap on both sides).
+                    // and the room under it must take a widened ceiling: not
+                    // a channel, not the water goal (see the gap step below).
+                    const GridPos& p = walks[l - 1][i];
+                    if (IsChannelRoom(l, walks[l - 1], p)
+                            || !HasRoomAt(walks[l - 1], p.x, p.y - 1)
+                            || !HasRoomAt(walks[l - 1], p.x, p.y + 1)) {
+                        return false;
+                    }
+                    for (int j = 0; j < count; ++j) {
+                        const GridPos& q = walks[l - 1][j];
+                        if (q.x != p.x || q.y != p.y + 1) continue;
+                        return j != count - 1
+                            && !IsChannelRoom(l, walks[l - 1], q);
+                    }
+                    return false;
+                }
                 return true;
             };
             // Most RESTRICTIVE first: the crunch needs a vertical-only room
@@ -2171,8 +2210,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                                                i, role, plan.twogap)
                                  | (arch << kArchShift);
                 masks[l - 1].push_back(mask);
-                used.insert(mask);
             }
+            for (const int m : masks[l - 1]) used.insert(m);
         }
     };
     // Widest archetype set that fits the budget, then the richer archetypes
@@ -2284,6 +2323,82 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 }
             }
             if (!changed) break;
+        }
+        // HCRUNCH GAPS (user rule 2026-10-25): the player survives a crunch
+        // only by leaving band 1, so its ceiling AND floor need a contiguous
+        // gap of >= 2 tiles. Plain wide links (cells 8-9) already have it;
+        // single-cell flavors (two-gap, narrow) get the widened cells 3..6,
+        // and the room below a widened floor widens its ceiling to match.
+        // Channel / water neighbours cannot take the widening: the crunch
+        // is dropped there (the room stays an ordinary one).
+        auto longestRun = [](const std::set<int>& air) {
+            int best = 0, run = 0;
+            for (int x = 0; x < kRoomWidth; ++x) {
+                run = air.count(x) ? run + 1 : 0;
+                best = std::max(best, run);
+            }
+            return best;
+        };
+        const std::vector<std::vector<int>> plainMasks = masks;
+        std::vector<std::pair<int, int>> crunchRooms;   // (level, room)
+        for (int l = 1; l <= kStageLevels; ++l) {
+            for (int i = 1; i + 1 < (int)walks[l - 1].size(); ++i) {
+                if (roles[l - 1][i] == Role::Hcrunch) {
+                    crunchRooms.push_back({l, i});
+                }
+            }
+        }
+        auto widen = [&](int l, int i) {
+            const auto& wk = walks[l - 1];
+            int& m = masks[l - 1][i];
+            int below = -1;
+            for (int j = 0; j < (int)wk.size(); ++j) {
+                if (wk[j].x == wk[i].x && wk[j].y == wk[i].y + 1) below = j;
+            }
+            if (longestRun(vertCells(m, true)) < 2) m |= SHAPE_WN;
+            if (longestRun(vertCells(m, false)) < 2) {
+                m |= SHAPE_WS;
+                if (below >= 0) {
+                    // An ordinary room under the widened floor drops its
+                    // archetype: a plain ceiling-widened shape is shared by
+                    // every such neighbour instead of costing a shape each.
+                    if (roles[l - 1][below] == Role::Normal
+                            && !(masks[l - 1][below] & SHAPE_START)) {
+                        masks[l - 1][below] &= ~(kArchMask << kArchShift);
+                    }
+                    masks[l - 1][below] |= SHAPE_WN;
+                }
+            }
+        };
+        // Every widened room (and the one under it) is a NEW shape; the bank3
+        // shape window holds only so many, so the LAST crunch rooms go back to
+        // ordinary rooms until the library fits kCrunchShapeCap.
+        auto liveShapes = [&]() {
+            std::set<int> live;
+            for (const auto& row : masks) for (int m : row) live.insert(m);
+            return (int)live.size();
+        };
+        // Keep order: the FIRST crunch of each level, then the extra ones, so
+        // the capacity trim never leaves a level without its crunch.
+        {
+            std::vector<std::pair<int, int>> first, extra;
+            std::set<int> seen;
+            for (const auto& c : crunchRooms) {
+                (seen.insert(c.first).second ? first : extra).push_back(c);
+            }
+            crunchRooms = first;
+            crunchRooms.insert(crunchRooms.end(), extra.begin(), extra.end());
+        }
+        size_t kept = crunchRooms.size();
+        for (const auto& c : crunchRooms) widen(c.first, c.second);
+        while (kept > 0 && liveShapes() > kCrunchShapeCap) {
+            --kept;
+            masks = plainMasks;
+            for (size_t k = 0; k < kept; ++k) {
+                widen(crunchRooms[k].first, crunchRooms[k].second);
+            }
+            const auto& c = crunchRooms[kept];
+            roles[c.first - 1][c.second] = Role::Normal;
         }
         // The pass REWRITES masks, so a pre-pass value that no room uses any
         // more is an orphan MODEL (15 of them after the first run): drop it —
