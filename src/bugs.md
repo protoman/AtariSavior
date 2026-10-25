@@ -411,6 +411,22 @@ No entry is worked on without user greenlight.
     to be prevented at authoring time in the EDITOR (see deferred item
     "async objects belong to the level, not the model" below).
 
+16. **Room flicker seen in play — ROOM UNKNOWN, needs the user's repro**
+    (filed 2026-10-24, user report: "there is flicker in some room").
+    **Nothing reproducible in the tree yet**, so no diagnosis has been
+    attempted: `sim_frame_budget` holds a constant 270.0 whole-frame
+    (the real flicker metric) and the only red flicker-shaped gate,
+    `tools/test_slot1_midband.py`, is documented as TEST-SIDE (its
+    fabricated room leaves `ObjTop1=$FD / ObjX1=$00 / ObjBase1=$50`, so
+    `SelectActiveObject` never stages the pair the way the game does).
+    **Needed from the user:** level + room number, what flickers (whole
+    screen up/down jump vs. one object vs. a colour shimmer), and whether
+    it needs an object/enemy/laser/bomb in the room. With that, the first
+    test is a `SIM_LEVEL=<n> SIM_ROOM=<m>` frame-length run (a 1-line
+    frame is a kernel band stretch or a timer-window overrun — see #29)
+    plus a Stella seam-row probe for a ±1 picture jump.
+    **Status: OPEN — waiting for the room.**
+
 ## Latent risks (verified once, fragile)
 
 9. **Laser position: REVERTED to original + wall-suppress shipped
