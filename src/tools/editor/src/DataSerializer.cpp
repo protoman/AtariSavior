@@ -2368,6 +2368,14 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         // sees every object. Only BAND 0 is instant: from band 1 on he has
         // landed and can react — the two-gap "drop blind is the risk" hazard
         // survives, one band lower. Lamps are collectibles, harmless to touch.
+        // SIDE links are the same class (guard only, the live stage has none
+        // today): entering from a neighbour keeps the player's Y, so an enemy
+        // standing in a side-aperture band on the entry edge column kills him
+        // the frame the room loads.
+        std::set<std::pair<int, int>> occupied;
+        for (const RoomData& q : level.rooms) {
+            occupied.insert({q.room_x, q.room_y});
+        }
         for (int j = 0; j < (int)level.rooms.size(); ++j) {
             RoomData& room = level.rooms[j];
             const ModelData& sm = models[shapeId[masks[l - 1][j]]];
@@ -2386,21 +2394,32 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     aper.push_back(2 * x + 1);
                 }
             }
-            if (aper.empty()) continue;
-            auto onAperture = [&](int col) {
-                for (int c : aper) {
-                    if (std::abs(col - c) <= 1) return true;
+            const bool westNbr = occupied.count({room.room_x - 1, room.room_y});
+            const bool eastNbr = occupied.count({room.room_x + 1, room.room_y});
+            std::set<int> sideBands;      // walkable bands open on col 0
+            for (int b = 1; b + 1 < sm.height; ++b) {
+                if (sm.tiles[b * sm.width] == (int)TileType::AIR) {
+                    sideBands.insert(b);
                 }
-                return false;
+            }
+            auto dangerous = [&](int band, int col) -> bool {
+                if (band == 0) {                  // vertical arrival
+                    for (int c : aper) {
+                        if (std::abs(col - c) <= 1) return true;
+                    }
+                    return false;
+                }
+                if (!sideBands.count(band)) return false;
+                return (westNbr && col <= 1) || (eastNbr && col >= 18);
             };
             std::set<int> taken;   // the editor's 1-object-per-row cap
             for (const EnemyData& q : room.enemies) taken.insert((int)q.y / 4);
             for (const LampData& q : room.lamps) taken.insert((int)q.y / 4);
             for (size_t k = 0; k < room.enemies.size();) {
                 EnemyData& e = room.enemies[k];
+                const int eband = (int)e.y / rowsPerBand;
                 if (e.type == (int)EnemyType::RAFT
-                        || (int)e.y / rowsPerBand != 0
-                        || !onAperture((int)std::lround(e.x))) {
+                        || !dangerous(eband, (int)std::lround(e.x))) {
                     ++k;
                     continue;
                 }
@@ -2415,7 +2434,9 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     for (int d = 3; d <= 15 && !placed; d += 2) {
                         for (int sign : {1, -1}) {
                             const int cand = col + sign * d;
-                            if (!airAt(nb, cand) || onAperture(cand)) continue;
+                            if (!airAt(nb, cand) || dangerous(nb, cand)) {
+                                continue;
+                            }
                             e.x = (float)cand;
                             e.y = BandY(sm, nb);
                             taken.insert((int)e.y / 4);

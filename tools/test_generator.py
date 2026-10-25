@@ -470,18 +470,29 @@ def main() -> int:
                     continue
                 # Enemies only: a LAMP is a collectible, harmless to touch.
                 rows_per_band = max(1, 12 // max(1, len(r2)))
+                # SIDE links: the player keeps his Y through a horizontal link,
+                # so a side-aperture band with an enemy on that edge column is
+                # the same instant kill (guard: the live stage has none).
+                west_nbr = (int(room["room_x"]) - 1, int(room["room_y"])) in pos
+                east_nbr = (int(room["room_x"]) + 1, int(room["room_y"])) in pos
+                side_bands = {b for b in range(1, len(r2) - 1)
+                              if r2[b][0] not in STRUCTURAL_WALLS}
                 for obj in (room.get("enemies") or []):
-                    # BAND 0 only: that is the frame the room loads, before any
-                    # input. From band 1 on he has landed and can react.
-                    if int(float(obj.get("y", 0))) // rows_per_band != 0:
-                        continue
+                    band = int(float(obj.get("y", 0))) // rows_per_band
                     col = int(round(float(obj.get("x", 0))))
-                    if any(abs(col - c) <= 1 for c in aper):
+                    # band 0 is the vertical arrival; from band 1 on he lands
+                    # and can react — unless it is a SIDE edge cell.
+                    if band == 0:
+                        bad = any(abs(col - c) <= 1 for c in aper)
+                    else:
+                        bad = band in side_bands and (
+                            (west_nbr and col <= 1) or (east_nbr and col >= 18))
+                    if bad:
                         print(f"FAIL: level {level_n} room {room['room_id']} "
-                              f"puts an object on arrival column {col} "
-                              f"(band-0 aperture {sorted(aper)}) — the player "
-                              "enters there and dies on contact before he can "
-                              "move")
+                              f"puts an enemy on arrival column {col} "
+                              f"(band {band}; vertical aperture {sorted(aper)}, "
+                              f"side bands {sorted(side_bands)}) — the player "
+                              "enters there and dies on contact")
                         return 1
 
             # Connectivity + gate alignment (user reports 2026-10-21).
