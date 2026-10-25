@@ -604,7 +604,12 @@ def units_per_band(model: dict | None) -> int:
 
 BAND_RULE_HARD = True    # the generator's final separation pass keeps the live
                          # stage clean (2026-10-25), so a same-band room is a
-                         # build error now, not a warning
+                         # build error now, not a warning — but only for the
+                         # SHIPPED stage: `--stage` sets OBJECT_BANDS_STRICT.
+                         # Frozen/test fixtures are deliberately synthetic
+                         # (one enemy + the miner in one band, to drive
+                         # collision tests) and keep the warning.
+OBJECT_BANDS_STRICT = False
 _BAND_WARNED: set[str] = set()   # one line per room (the pass runs twice)
 
 
@@ -697,7 +702,7 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                        f"({', '.join(whats)}) — one GRP1 cannot draw them on "
                        "the same scanlines; move one into another band "
                        "(the miner counts as an occupant)")
-                if BAND_RULE_HARD:
+                if BAND_RULE_HARD and OBJECT_BANDS_STRICT:
                     raise ValueError(msg)
                 if msg not in _BAND_WARNED:
                     _BAND_WARNED.add(msg)
@@ -721,11 +726,16 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                     continue            # the band rule above owns that case
                 if abs(int(round(xa)) - int(round(xb))) >= 3:
                     continue
-                raise ValueError(
-                    f"{who}: {na} and {nb} share display column "
-                    f"{int(round(xa))} — one GRP1, and objects move inside "
-                    "their band, so they will end up on the same scanlines "
-                    "(30 Hz rotation = flicker). Keep them >= 3 columns apart")
+                msg = (f"{who}: {na} and {nb} share display column "
+                       f"{int(round(xa))} — one GRP1, and objects move inside "
+                       "their band, so they will end up on the same scanlines "
+                       "(30 Hz rotation = flicker). Keep them >= 3 columns "
+                       "apart")
+                if OBJECT_BANDS_STRICT:
+                    raise ValueError(msg)
+                if msg not in _BAND_WARNED:
+                    _BAND_WARNED.add(msg)
+                    print(f"WARN: {msg}")
         tiles = model.get("tiles") or []
         if any(t == RAFT for t in tiles) and not room.get("bottom_band"):
             raise ValueError(
@@ -1971,6 +1981,9 @@ def main(argv: list[str]) -> int:
             print("usage: convert_level.py --stage STAGE.json OUTDIR [ROOMS_DIR]",
                   file=sys.stderr)
             return 2
+        global OBJECT_BANDS_STRICT
+        OBJECT_BANDS_STRICT = True     # the shipped stage: object separation
+                                       # is a BUILD ERROR (user rule 2026-10-25)
         stage_path = Path(argv[1])
         outdir = Path(argv[2])
         rooms_dir = Path(argv[3]) if len(argv) > 3 else None
