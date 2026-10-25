@@ -445,11 +445,31 @@ No entry is worked on without user greenlight.
     every frame, WSYNC 197) — that one still needs a symptom description
     (whole-screen jump vs one object vs colour shimmer) before it can be
     reproduced.
-    **Fix path (NOT started):** a `.Line` object-path cycle cut (worst path
-    56c documented, but the object+player combination measures 78-94c here)
-    — the riskiest code in the project; needs its own chunk with a measured
-    ledger, not a drive-by edit.
-    **Status: 5.2 REPRODUCED (kernel overrun, above) / 5.1 needs a symptom.**
+    **ROOT CAUSE (measured 2026-10-25, `tools/cycle_ledger.py` says the
+    `.Line` body is FINE — worst path P1 = 61c work / WSYNC store at c69):**
+    the overrun is on the `.Row` SETUP line, not the body. The probe shows
+    setup-line gaps of 92/103/133c (16-57c over 76), and the only
+    data-dependent work there is the slot-1 dispatch
+    `lda ObjBase1 / bmi Slot1Keep / jmp Slot1Hook`, whose band test costs
+    ~35c (tya/pha + lda/clc/adc/sec/sbc + 2× `cmp BandStart,X` + pla/tay/jmp)
+    on EVERY band when slot 1 holds an object. A room with 2 objects (level 5
+    room 2: 1 enemy + 1 lamp) therefore pays +1 line per band (4) plus the
+    hook's own 2 lines on the host band → the 270/283 alternation. The
+    0-object room (5.1) keeps the cheap path, which is why its sim is clean.
+    **FIX DESIGN (ready, NOT applied):** stage ONE byte in the VBL — the band
+    that hosts slot 1 ($FF = none, computed in bank2's StageSlot1 block from
+    `(ObjTop1 + RoomY - 1) / 36`) — and make `.Row` do
+    `lda Slot1Band / cmp RowIdx / beq .Slot1Go` = 8c on the common path
+    instead of ~35c, keeping `jmp Slot1Hook` for the one band that needs it.
+    Measured budget: setup 69c − 5c (`lda ObjBase1/bmi`) + 8c = 72c, inside
+    the 73c ceiling.
+    **Blocker:** it needs ONE free zero-page byte and the ZP map is full
+    (`$80-$BB` sequential, `$BD+` explicit); the AGENTS phase-lifetime rule
+    says to audit for a title-only/gameplay-dead byte (precedent: the melody
+    moved to `$F6/$F7` = BombX/BombTimer) before stealing one. That audit is
+    the first step of the fix chunk.
+    **Status: 5.2 ROOT-CAUSED (setup line, slot-1 dispatch) — fix designed,
+    blocked on a ZP byte / 5.1 still needs a symptom.**
 
 ## Latent risks (verified once, fragile)
 
