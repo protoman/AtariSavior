@@ -22,6 +22,12 @@ K = (ROOT / "src" / "kernel.asm").read_text(encoding="utf-8")
 if "Slot1Hook:" not in K or ".SHout:" not in K:
     sys.exit("Slot1Hook / .SHout labels missing from kernel.asm")
 hook = K.split("Slot1Hook:")[1].split(".SHout:")[0]
+# Strip comment-only lines before scanning: this guard looks for INSTRUCTION
+# text, and prose that happens to name a store (e.g. "after `sta HMOVE`")
+# otherwise hijacks index()/rindex() (2026-10-25: a comment mentioning the
+# HMOVE store made `rindex("sta WSYNC", 0, hmove)` come up empty).
+hook = "\n".join(ln for ln in hook.splitlines()
+                 if not ln.lstrip().startswith(";"))
 assert "sta HMOVE" in hook, "Slot1Hook must still strobe its own HMOVE"
 hmove = hook.index("sta HMOVE")
 wsync = hook.rindex("sta WSYNC", 0, hmove)
