@@ -660,11 +660,16 @@ HOVnext:
 .HOVfeature:
     cmp #$81
     beq HOVnext             ; unknown legacy class → pass (pops the loop Y)
-    ; LineCount is clobbered by the kernel .Row between this VBL staging and
-    ; the overscan walk, so the hot byte (MetaB b6) is re-staged HERE, at the
-    ; call, exactly like the old bank2 pre-read did.
-    lda RoomMetaB
-    sta LineCount
+    ; 2026-10-25: this used to `lda RoomMetaB / sta LineCount` ("re-stage the
+    ; hot byte"). Nothing reads it - and LineCount holds the async collision
+    ; pack (bank1's HUD entry copies $8F there; OverlayTramp gates the whole
+    ; overlay on it), so every overscan frame whose floor probe reached this
+    ; walk zeroed the pack and the same frame's horizontal step skipped the
+    ; async wall (bugs #21, tools/test_linecount_pack.py). Same 4 bytes, now NOPs.
+    nop
+    nop
+    nop
+    nop
     lda (FetchPtr),Y        ; restore the class (Y = record base)
     jmp HOVFeatEntry        ; A3b: same-bank, fields read from FetchPtr
     .ds 8, 0                ; pad: 2+2+3+8 = 15B = old body size
