@@ -3417,7 +3417,7 @@ TitleBcd:
 ; block sharing those scanlines.
 ObjColorTab:
     .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c ; 0 KEY   ($1c yellow, 12 rows)
-    .byte $0E,$9E,$9A,$9E ; 0b CELL (4 rows: white cap, cyan body)
+    .byte $9E,$9E,$9E,$9E ; 0b CELL (4 rows: all cyan - user 2026-10-26)
     .byte $0E,$0E,$F2,$F2,$1C,$1C,$F2,$F2,$F2,$1C,$1C,$F2,$F2,$0E ; 1 MOTH  (14 rows: cream tips, brown wings, gold body)
     .byte $14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$22,$22,$22,$14,$14,$14 ; 2 SPIDER (15 rows)
     .byte $06,$06,$06,$06,$0E,$0E,$0E,$0E,$0E,$0E ; 3 LAMP  (10 rows: grey bracket/neck, white bowl)

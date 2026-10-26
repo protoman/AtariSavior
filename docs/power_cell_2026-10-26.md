@@ -19,7 +19,7 @@ more than the 120 s bar; the generator estimates the time and places cells.
   blast skip type 6/14 (a shot key used to die for the visit).
 * Art: 4 rows (`$7E,$A5,$A5,$7E`, the atomic cell) in the KEY block's rows 12-15, so the KEY
   window is now 12 rows (`ObjHeightTab[6]`, both banks); `ObjHeightTab[14]=4`,
-  `ObjSpriteOffTable[14]=OBJ_CELL(12)`, colours white cap + cyan body in
+  `ObjSpriteOffTable[14]=OBJ_CELL(12)`, colours all cyan (`$9E`) in
   `ObjColorTab`. bank2's slot-1 type tables moved to `$FC29` (they now cover
   types 13/14 and the slot-1 type mask is `#$0F`).
 
