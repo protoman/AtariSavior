@@ -40,6 +40,7 @@ struct RoomView {
     bool water = false;
     float minerX = 0.0f;   // game px, only meaningful in the miner room
     float minerY = 0.0f;
+    std::vector<QPointF> extraMiners;   // display col, stage row (record type 15)
 };
 
 }  // namespace
@@ -108,6 +109,13 @@ protected:
                 p.setBrush(QColor(255, 140, 180));
                 p.drawEllipse(QPoint(mx + kColW / 2, my + kRowH / 2), 6, 6);
             }
+            // Extra miners (record type 15): same pink dot, smaller.
+            for (const QPointF& m : r.extraMiners) {
+                p.setPen(Qt::NoPen);
+                p.setBrush(QColor(255, 140, 180));
+                p.drawEllipse(QPoint(ox + (int)m.x() * kColW + kColW / 2,
+                                     oy + (int)m.y() * kRowH + kRowH / 2), 5, 5);
+            }
             QFont small = font();
             small.setPixelSize(11);
             small.setBold(true);
@@ -115,6 +123,7 @@ protected:
             QString tag = QString::number(r.id + 1);   // user counts from 1
             if (r.start) tag += "S";
             if (r.miner) tag += "M";
+            if (!r.extraMiners.empty()) tag += QString("m%1").arg((int)r.extraMiners.size());
             const QRect tagRect(ox + 2, oy + 2, 14 + 8 * tag.size(), 14);
             p.fillRect(tagRect, QColor(0, 0, 0, 170));
             p.setPen(QColor(235, 235, 240));
@@ -189,6 +198,10 @@ void LevelMapWindow::SetLevel(const hero::LevelData& level,
         v.water = room.bottom_band;
         v.minerX = level.miner_x;   // CELL units (display col = x * 2)
         v.minerY = level.miner_y;   // display row (kernel: 7 = 84 px)
+        for (const hero::EnemyData& e : room.enemies) {
+            if (e.type == (int)hero::EnemyType::EXTRA_MINER)
+                v.extraMiners.push_back(QPointF(e.x, e.y));
+        }
         for (int row = 0; row < hero::kRoomHeight; ++row) {
             QString line(hero::kRoomWidth, '.');
             if (model) {
