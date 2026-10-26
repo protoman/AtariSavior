@@ -485,9 +485,7 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             painter.setPen(Qt::black);
             painter.drawEllipse(minerRect);
             painter.drawText(minerRect, Qt::AlignCenter, "M");
-            // (no facing arrow: the miner art is stored facing RIGHT and the ROM has
-            // no mirror for GRP1 objects - the arrow would promise something the
-            // game cannot do)
+            DrawFacingArrow(painter, minerRect, m_levelData->miner_dir);
         }
 
         // Render Lamps in room
@@ -535,10 +533,9 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             painter.setPen(Qt::black);
             painter.drawRoundedRect(enemyRect, 6, 6);
             painter.drawText(enemyRect, Qt::AlignCenter, label);
-            if (enemy.type != (int)hero::EnemyType::EXTRA_MINER
-                    && enemy.type != (int)hero::EnemyType::POWER_CELL
+            if (enemy.type != (int)hero::EnemyType::POWER_CELL
                     && enemy.type != (int)hero::EnemyType::KEY) {
-                // pickups have no facing (the extra miner's art always faces right)
+                // the cell and the key have no facing; miners DO (per-slot REFP1)
                 DrawFacingArrow(painter, enemyRect, enemy.dir);
             }
         }

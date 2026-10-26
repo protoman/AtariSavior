@@ -255,12 +255,21 @@ def check_rom(src: Path) -> bytes | None:
     # REFP1 is ONE register for GRP1, but a frame can draw two objects (band
     # pairing or the 1-of-2 rotation). Driving it from the ACTIVE object made a
     # mirrored miner flip sides every other frame in any room that also had an
-    # object (user report 2026-10-22). The miner's mirror is gone and every GRP1
-    # object is drawn unmirrored, so bank0 must never write REFP1: the bank1 HUD
-    # writes 0 for its score, which is what the cave wants.
-    if re.search(r"sta\s+REFP1", ksrc):
-        err("bank0 writes REFP1 — a per-frame mirror cannot serve two GRP1 "
-            "objects; draw a mirrored DESIGN instead (see OBJ_LAMP_R / type 13)")
+    # object (user report 2026-10-22). 2026-10-26 the mirror came back PER SLOT:
+    # slot 0's value is written by bank2 S1Fin (end of StageSlot1B2) and slot 1's
+    # by Slot1Hook at the band swap, so the ONLY legal bank0 write is the single
+    # `sta REFP1` inside Slot1Hook, before its aligning WSYNC.
+    writes = re.findall(r"^[ \t]*sta\s+REFP1[^\n]*$", ksrc, re.M)
+    hook_src = ksrc.split("Slot1Hook:")[1].split(".SHout:")[0] if "Slot1Hook:" in ksrc else ""
+    hook_code = "\n".join(ln for ln in hook_src.splitlines()
+                          if not ln.lstrip().startswith(";"))
+    if len(writes) != 1 or "sta REFP1" not in hook_code:
+        err("bank0 may write REFP1 only ONCE, inside Slot1Hook (slot 1's mirror "
+            f"flag); found {len(writes)} write(s) — a per-frame mirror cannot "
+            "serve two GRP1 objects (see test_miner_facing.py)")
+    elif hook_code.index("sta REFP1") > hook_code.index("sta WSYNC"):
+        err("Slot1Hook's REFP1 write must precede its aligning `sta WSYNC` (the "
+            "positioning line after it has no cycles to spare)")
     # Slot-1 scanline count (bugs #16, 2026-10-25): Slot1Hook must take this
     # pass's body count while X still holds the band. Its inlined positioning
     # ends with `ldx #1` (+ the div15 loop's `tay`), so a count block placed

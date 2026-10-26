@@ -149,6 +149,8 @@ ObjHeight1 = $9E                 ; slot 1's draw window (= kernel ObjHeight1,
 KEY = 6                          ; enemy record type 6 = the phase-5 key
 CELL = 14                        ; type 14 = the power cell (KEY|8)
 MINER2 = 15                      ; type 15 = an extra miner to rescue
+REFP1 = $0C                      ; TIA: GRP1 reflect (D3) - written per slot, see S1Fin
+ObjRefs = $89                    ; b2 = slot 1's mirror flag (kernel.asm ObjRefs)
 OBJ_WINDOW = 16                  ; kernel constant: the GRP1 draw window rows
                                  ;   (every design's art is sized to it)
 OBJ_KEY = 0                      ; GRP1 design offsets (per-type heights,
@@ -376,6 +378,26 @@ EBLER_Done:
     ;   - Keep the whole routine inline (no jsr): tramps are tail jmps so
     ;     the stack depth equals the UE body (+0 vs the $F8 guard).
     ;   - ZP (rect cache, EnemyRam*, EnemyDataLo/Hi) is RAM: bank-independent.
+; MinerRefX - the extra miner's facing: scan the room's records for type 15 (they
+; are in THIS bank). A = $08 when its dir bit (b7 = left) is set, else 0.
+MinerRefX:
+    ldx EnemyCount
+.MRXl:
+    dex
+    bmi .MRX0
+    ldy EnemyOffTable,X
+    lda (EnemyDataLo),Y
+    tay                         ; keep the raw record byte
+    and #$0F
+    cmp #MINER2
+    bne .MRXl
+    tya
+    bpl .MRX0
+    lda #$08
+    rts
+.MRX0:
+    lda #0
+    rts
     .ds $F110 - *, 0
 MothRoutine:
     ; E4 Stage C: horizontal patrol (docs/e4_moth_plan.md). 1 px / 2 frames
@@ -1076,7 +1098,7 @@ StageSlot1B2:
     lda DropTarget
     cmp #$FE
     bne .S1go
-    jmp ReturnPad               ; tally frame: miner only (stale EnemyRamY)
+    jmp S1Fin               ; tally frame: miner only (stale EnemyRamY)
 .S1go:
     ; --- scan the room's LIVE candidates (enemies + miner): min Y, max Y ---
     ; Slot 1 must NOT depend on SelectActiveObject's rotation: with the bomb
@@ -1172,7 +1194,7 @@ StageSlot1B2:
     clc
     adc #1
     sta ObjTop1
-    jmp ReturnPad
+    jmp S1Fin
 .S1stageMiner:
     lda #OBJ_MINER
     sta ObjBase1
@@ -1188,7 +1210,7 @@ StageSlot1B2:
     clc
     adc #1
     sta ObjTop1
-    jmp ReturnPad
+    jmp S1Fin
 .S1band:
     ldy #0
     cmp #36
@@ -1206,7 +1228,7 @@ StageSlot1B2:
 .S1retPop:
     pla
 .S1ret:
-    jmp ReturnPad
+    jmp S1Fin
 
 ; ------------------------------------------------------------------------------
 ; PinSlot0 — with TWO candidates spanning two bands, slot 1 owns the highest
@@ -1263,6 +1285,29 @@ PinSlot0:
                                 ;   RECORD 0 left the lower object to the 1-of-2
                                 ;   rotation = flicker, user 2026-10-26)
 .PSout:
+    rts
+
+; ------------------------------------------------------------------------------
+; Per-slot miner mirror (2026-10-26, tools/test_miner_facing.py). The art faces
+; RIGHT; a miner that faces LEFT needs REFP1 D3. Slot 0's value is written by S1Fin
+; at the end of StageSlot1B2 (the VBL value the frame starts with), slot 1's is left
+; in ObjRefs b2 for Slot1Hook. MinerRef: A = $08 when the miner of THIS room faces
+; left. The level's own miner: LevelMinerRoom b7 = faces RIGHT (clear = mirror). An
+; extra miner (record type 15, at most one per room): record b7 = LEFT (set = mirror).
+; ------------------------------------------------------------------------------
+MinerRef:
+    lda LevelMinerRoom
+    and #$7f
+    cmp RoomNo
+    beq .MRown
+    jmp MinerRefX               ; not the level miner's room: look for a type-15 record
+.MRown:
+    lda LevelMinerRoom
+    bmi .MRright
+    lda #$08
+    rts
+.MRright:
+    lda #0
     rts
 
 ; ReturnPad ($FBF8) — bank2's live half is the `sta $1FF4` only: every body
@@ -1576,6 +1621,31 @@ BombEnemyBlastBody:
     .ds $FDD8 - *, 0
     .byte $8D, $F6, $1F         ; sta $1FF6 (twin)
     .byte $4C, $87, $FD         ; jmp $FD87 (twin — fetched post-switch)
+
+; S1Fin - every StageSlot1B2 exit lands here. Slot 0's REFP1 is written NOW (TIA
+; writes work from any bank): the miner mirrors per MinerRef, every other object
+; draws unmirrored. Slot 1's flag goes to ObjRefs b2 (Slot1Hook writes it at the
+; band swap). One register, two objects: each slot gets its own value.
+S1Fin:
+    jsr MinerRef                ; A = $08 when the room's miner faces left
+    tax
+    ldy #0
+    lda ObjBase
+    cmp #OBJ_MINER
+    bne .SFn0
+    txa
+    tay
+.SFn0:
+    sty REFP1                   ; slot 0
+    lda #0
+    ldy ObjBase1
+    cpy #OBJ_MINER
+    bne .SFn1
+    txa
+    lsr                         ; $08 -> $04: slot 1's flag in b2
+.SFn1:
+    sta ObjRefs
+    jmp ReturnPad
 ; ($FDE1 pin DELETED 2026-10-20, audit round 2: PickPlayerFrame's tramp mirror
 ;  and the PlayerWalkA/B art twin moved to bank0 — nothing sits at $FDE1.)
 

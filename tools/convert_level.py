@@ -1357,7 +1357,7 @@ def _enemy_tables(prefix: str, rooms: list[dict],
             # EnemyRamD and only seeds the first patrol leg. Emitting b7 made
             # `cmp #RAFT` in the bomb blast miss, so a dir=right raft could be
             # destroyed by its own rider's bomb.
-            direction = 0 if type_ in (RAFT_ENTITY, POWER_CELL, EXTRA_MINER) else int(enemy.get("dir", 1))
+            direction = 0 if type_ in (RAFT_ENTITY, POWER_CELL) else int(enemy.get("dir", 1))   # an extra miner KEEPS his dir: record b7 = faces left (S1Fin mirrors him)
             flat.append((
                 type_,
                 flat_x if type_ in (LAMP_ENTITY, LAMP_MIRROR) else enemy_x_px(x),
