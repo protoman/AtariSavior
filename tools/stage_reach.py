@@ -158,9 +158,9 @@ def extra_miner_nodes(level, models):
         bands = 4 if bands == 3 else bands
         for e in r.get("enemies") or []:
             if e.get("type") == EXTRA_MINER:
-                xpx = enemy_x_px(e["x"])
+                vis = int(round(e["x"])) * 4          # visible left edge (px)
                 band = min(bands - 1, int(round(e["y"] * 12)) // 36)
-                out.append((i, band, min(19, (xpx + 3) // 8)))
+                out.append((i, band, min(19, (vis + 3) // 8)))
     return out
 
 

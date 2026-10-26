@@ -49,4 +49,14 @@ assert check(FLOOR, 8.25) is None, check(FLOOR, 8.25)
 # no floor under band 1 -> refused
 msg = check(["..........", "..........", "..........", "##########"], 5.25)
 assert msg and "no floor" in msg, msg
+# User report 2026-10-26 (level 1 room 1, model 2): a miner on display column 36,
+# canvas row 7 was called "inside a WALL (band 1, cell 0)". The seat check used
+# the REQUESTED sprite X (4*col + 7, which pins the TIA coarse position) instead
+# of the VISIBLE left edge (4*col, convert_level.enemy_x_px docstring): column
+# 36 draws on px 144-151 = cell 18 -> model cell 1 (air), not the edge wall.
+MODEL2 = ["##.......#", "#.........", "####..##..", "########.."]
+assert check(MODEL2, 5.25, x=36.0) is None, check(MODEL2, 5.25, x=36.0)
+# and the columns that DO touch the wall are still refused (col 38-39 = cell 0)
+msg = check(MODEL2, 5.25, x=38.0)
+assert msg and "WALL" in msg, msg
 print("test_extra_miner_seat: OK (rows 3/7/11 stand, other heights refused)")

@@ -1823,11 +1823,10 @@ ReachResult AnalyseReach(const LevelData& lv,
         for (int i = 0; i < n; ++i) {
             for (const EnemyData& e : lv.rooms[i].enemies) {
                 if (e.type != (int)EnemyType::EXTRA_MINER) continue;
-                const int c4 = (int)std::lround(e.x) * 4;
-                const int xpx = c4 + (c4 < 11 ? 4 : 7);       // enemy_x_px
+                const int vis = (int)std::lround(e.x) * 4;    // visible left edge
                 const int band = std::max(0, std::min(grids[i].bands - 1,
                                               (int)std::lround(e.y * 12.0f) / 36));
-                pending.push_back({i, band, std::min(19, (xpx + 3) / 8)});
+                pending.push_back({i, band, std::min(19, (vis + 3) / 8)});
             }
         }
         Node cur{s, 0, sf};
@@ -1958,8 +1957,7 @@ int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
             for (int sgn : {1, -1}) {
                 const int dcol = 18 + sgn * d;              // display column
                 if (dcol < 3 || dcol > 36) continue;
-                const int c4 = dcol * 4;
-                const int xpx = c4 + (c4 < 11 ? 4 : 7);
+                const int xpx = dcol * 4;                   // visible left edge
                 const int fa = std::min(19, xpx / 8), fb = std::min(19, (xpx + 7) / 8);
                 const int mid = std::min(19, (xpx + 3) / 8);
                 if (!air(2, fa) || !air(2, fb) || air(3, mid)) continue;
