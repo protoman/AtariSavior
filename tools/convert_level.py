@@ -717,7 +717,9 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                     f"{who}: extra miner at y={e.get('y')} ({ypx} px) - he stands "
                     "on the bottom row of a band: canvas row 3, 7 or 11 "
                     "(y 2.25, 5.25 or 8.25)")
-            x_px = enemy_x_px(float(e.get("x", 0)))
+            # VISIBLE left edge = 4 * column (enemy_x_px requests +4/+7 only to
+            # pin the TIA coarse position), so he covers px [4c, 4c + 7].
+            x_px = px(float(e.get("x", 0)), 4)
             cols = {min(19, x_px // 8), min(19, (x_px + 7) // 8)}
             mid = min(19, (x_px + 3) // 8)
 

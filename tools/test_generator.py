@@ -601,8 +601,7 @@ def main() -> int:
                         # an extra miner stands anywhere in a cell run: every
                         # 8 px cell his sprite covers must be air (the
                         # converter's seat rule checks the same)
-                        c4 = int(float(enemy["x"])) * 4
-                        xpx = c4 + (4 if c4 < 11 else 7)
+                        xpx = int(float(enemy["x"])) * 4   # visible left edge
                         cell = min(19, xpx // 8)
                         if (min(19, (xpx + 7) // 8)) != cell:
                             other = min(19, (xpx + 7) // 8)
