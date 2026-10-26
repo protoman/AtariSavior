@@ -17,7 +17,7 @@ more than the 120 s bar; the generator estimates the time and places cells.
   constant), which is what freed b6-0.
 * Keys and cells are **not targets any more**: laser tip, laser body and bomb
   blast skip type 6/14 (a shot key used to die for the visit).
-* Art: 4 rows (`$18,$7E,$7E,$7E`) in the KEY block's rows 12-15, so the KEY
+* Art: 4 rows (`$7E,$A5,$A5,$7E`, the atomic cell) in the KEY block's rows 12-15, so the KEY
   window is now 12 rows (`ObjHeightTab[6]`, both banks); `ObjHeightTab[14]=4`,
   `ObjSpriteOffTable[14]=OBJ_CELL(12)`, colours white cap + cyan body in
   `ObjColorTab`. bank2's slot-1 type tables moved to `$FC29` (they now cover
