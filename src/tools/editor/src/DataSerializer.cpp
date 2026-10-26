@@ -2813,8 +2813,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         }
         // HCRUNCH GAPS (user rule 2026-10-25): the player survives a crunch
         // only by leaving band 1, so its ceiling AND floor need a contiguous
-        // gap of >= 2 tiles. Plain wide links (cells 8-9) already have it;
-        // single-cell flavors (two-gap, narrow) get the widened cells 3..6,
+        // gap of >= 4 tiles (user rule 2026-10-26: `###....###`, a 1-2 cell
+        // gap is a death trap). Every shape under 4 gets the widened cells 3..6,
         // and the room below a widened floor widens its ceiling to match.
         // Channel / water neighbours cannot take the widening: the crunch
         // is dropped there (the room stays an ordinary one).
@@ -2842,8 +2842,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             for (int j = 0; j < (int)wk.size(); ++j) {
                 if (wk[j].x == wk[i].x && wk[j].y == wk[i].y + 1) below = j;
             }
-            if (longestRun(vertCells(m, true)) < 2) m |= SHAPE_WN;
-            if (longestRun(vertCells(m, false)) < 2) {
+            if (longestRun(vertCells(m, true)) < 4) m |= SHAPE_WN;
+            if (longestRun(vertCells(m, false)) < 4) {
                 m |= SHAPE_WS;
                 if (below >= 0) {
                     // An ordinary room under the widened floor drops its

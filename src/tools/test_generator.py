@@ -193,10 +193,10 @@ def main() -> int:
             print("FAIL: unfinishable levels:\n  " + "\n  ".join(bad))
             return 1
 
-        # --- hcrunch needs a >= 2-tile gap above AND under (user 2026-10-25) -
-        # The crush is survived only by leaving band 1; a one-tile hole cannot
+        # --- hcrunch needs a >= 4-tile gap above AND under (user 2026-10-25) -
+        # The crush is survived only by leaving band 1; a short hole cannot
         # be lined up in time. Rule: every room with an hcrunch feature cell
-        # (tile 12) has a CONTIGUOUS open run of >= 2 cells in its ceiling row
+        # (tile 12) has a CONTIGUOUS open run of >= 4 cells in its ceiling row
         # and in its floor row.
         def longest_run(cells):
             best = run = 0
@@ -212,7 +212,7 @@ def main() -> int:
                     continue
                 tiles = by_id[room["model_id"]]["tiles"]
                 top, bottom = tiles[:10], tiles[-10:]
-                if longest_run(top) < 2 or longest_run(bottom) < 2:
+                if longest_run(top) < 4 or longest_run(bottom) < 4:
                     print(f"FAIL: level {level_n} room {room['room_id']} has a "
                           f"hcrunch but a one-tile gap above/under (top run "
                           f"{longest_run(top)}, bottom run {longest_run(bottom)})")

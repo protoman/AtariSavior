@@ -433,8 +433,10 @@ not per room (`AnalyseReach` in DataSerializer.cpp, twin `tools/stage_reach.py`)
 
 A crunch room (levels >= 14) must offer the player a way out of band 1:
 a room above and a room below (the one below neither the water goal nor a
-channel), and a contiguous gap of at least two tiles in its ceiling and in its
-floor. Wide links (cells 8-9) satisfy it; two-gap / narrow flavors get
+channel), and a contiguous gap of at least FOUR tiles (user rule 2026-10-26: `###....###` /
+`HHH....HHH` / `###....###`; a 1-2 cell hole is a death trap) in its ceiling
+and in its floor. The crunch is mirrored, so the gap serves both sides. Every
+shape under 4 gets
 `SHAPE_WN` / `SHAPE_WS` (cells 3..6 open), the room under a widened floor
 widens its ceiling. `kCrunchShapeCap` keeps the shape library inside the bank3
 window by reverting the last crunch rooms (never a level's only one) to
