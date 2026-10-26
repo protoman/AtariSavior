@@ -23,8 +23,9 @@ Andrew Davie - horizontal positioning
 Clean 16-bit fixed-point physics model
   The sub-pixel vertical motion model (vyLo / vyHi / PlayerYSub: a 16-bit
   signed velocity integrated into a whole-pixel position plus a sub-pixel
-  accumulator) comes from the open example code we studied
-  (the "lo-a-rad-dragon" reference project kept for comparison).
+  accumulator) comes from the open example code we studied: the
+  "lo-a-rad-dragon" reference project, from Rick Parrish's LORD2 repository
+  (https://github.com/rickparrish/LORD2).
 
 NUSIZ copies trick
   Using the player/missile copy modes (3 copies, close / medium spacing) to
