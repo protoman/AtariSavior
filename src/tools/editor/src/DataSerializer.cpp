@@ -1511,11 +1511,24 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         return;
     }
     if (role == Role::Gate || role == Role::Phase) {
-        // Gate/phase rooms carry NO enemy (user ruling 2026-10-26). The gap is
-        // a crush/door cell and the only way down is straight past the band
-        // above it, so a bat guarding the descent cost two lives per crossing
-        // (the first was the gate crush, the second the bat as the player
-        // fell back onto it - screenshots/bugs/enemy_double_kill).
+        // Gate/phase cell = row 1 (band 1). A bat in band 0 sits on the fall
+        // line: crossing cost two lives, the gate crush and then the bat
+        // (screenshots/bugs/enemy_double_kill). So the generator PREFERS the
+        // floor band, leaving band 2 empty between the gate and the enemy
+        // (user ruling 2026-10-26), on a column away from the gate's own.
+        // Fallback: band 0, then nothing. Hand-authored rooms are not blocked.
+        const int fb = FloorBand(shape);
+        int cell = NearestAir(shape, fb, 8);
+        int band = fb;
+        if (cell < 0) {
+            cell = NearestAir(shape, 0, 8);
+            band = 0;
+        }
+        if (cell >= 0) {
+            AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
+                     BandY(shape, band),
+                     1.25f + 0.25f * (levelNumber % 4), 13.0f);
+        }
         return;
     }
     if (role == Role::Hcrunch) {
@@ -2857,8 +2870,13 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 }
                 const int col = (int)std::lround(e.x);
                 bool placed = false;
+                const bool gated = roles[l - 1][j] == Role::Gate
+                                   || roles[l - 1][j] == Role::Phase;
                 for (int nb : {1, 2, 3}) {
                     if (nb >= sm.height) continue;
+                    // Gate/phase rooms: band 1 holds the gate and band 2 stays
+                    // empty (user ruling 2026-10-26) - floor band or nothing.
+                    if (gated && nb != FloorBand(sm)) continue;
                     // A hot middle band is a hazard wall: an object parked in
                     // it is invisible and unkillable (the generator's own rule).
                     if (nb == 1 && sm.mid_band_type == 1) continue;
