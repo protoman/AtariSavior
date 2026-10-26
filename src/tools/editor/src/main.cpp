@@ -407,17 +407,18 @@ static int RunBrushTest() {
                      r3.lamps[0].y);
         return 1;
     }
-    // an extra miner clicked on canvas row 11 stands at 99 px (y = 8.25): the same
-    // top as the level's own miner (converter: |px - 99| <= 3)
+    // an extra miner stands with his feet EXACTLY on the ground (user
+    // 2026-10-26): 12 visible rows end on the band's last line, so his top is
+    // 12 px above the band edge = 24 / 60 / 96 px for bands 0 / 1 / 2.
     canvas.SetActiveRoom(3);
     canvas.SetCurrentBrush(BrushTool::ADD_MINER2);
     canvas.ApplyBrushAt(5, 25, 11);
     canvas.SetActiveRoom(2);
     if (level.rooms[3].enemies.size() != 1 ||
         level.rooms[3].enemies[0].type != 15 ||
-        std::fabs(level.rooms[3].enemies[0].y * 12.0f - 99.0f) > 0.01f) {
+        std::fabs(level.rooms[3].enemies[0].y * 12.0f - 96.0f) > 0.01f) {
         std::fprintf(stderr, "brushtest: ADD_MINER2 on canvas row 11 did not "
-                     "write an extra miner at 99 px\n");
+                     "write an extra miner at 96 px\n");
         return 1;
     }
     level.rooms[3].enemies.clear();
@@ -425,7 +426,7 @@ static int RunBrushTest() {
     // clicked ANYWHERE in a band snaps to that band's bottom row (he stands on
     // the floor), and a click inside the floor band (rows 12-15) uses band 2.
     for (const auto& [row, wantPx] : std::vector<std::pair<int, float>>{
-             {5, 63.0f}, {4, 63.0f}, {1, 27.0f}, {9, 99.0f}, {14, 99.0f}}) {
+             {5, 60.0f}, {4, 60.0f}, {1, 24.0f}, {9, 96.0f}, {14, 96.0f}}) {
         canvas.SetActiveRoom(3);
         canvas.SetCurrentBrush(BrushTool::ADD_MINER2);
         canvas.ApplyBrushAt(5, 25, row);

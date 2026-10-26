@@ -1031,11 +1031,15 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         if (entityX < 0 || entityX >= displayColumns ||
             tileY < 0 || tileY >= displayRows) return;
         // An extra miner stands on the floor: wherever he is clicked inside a
-        // band, snap him to that band's BOTTOM row (his top is then 9 px above
-        // the solid cell under him), and a click in the floor band itself uses
-        // band 2 (user 2026-10-26: the editor makes the fine adjustment).
+        // band, snap him so his 12 visible rows end EXACTLY on the band's last
+        // line (top = band edge - 12 px, stage y = 3 * band + 2 = 2 / 5 / 8), and
+        // a click in the floor band itself uses band 2 (user 2026-10-26: the
+        // editor makes the fine adjustment, and he must not sink into the next
+        // band). tileY becomes the canvas row that y falls on.
+        float snapY = -1.0f;
         if (m_currentBrush == BrushTool::ADD_MINER2) {
-            tileY = std::min(tileY / 4, 2) * 4 + 3;
+            snapY = 3.0f * (float)std::min(tileY / 4, 2) + 2.0f;
+            tileY = RowOfY(snapY, displayRows);
         }
 
         hero::EnemyData eData;
@@ -1050,7 +1054,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         else eData.type = (int)hero::EnemyType::KEY;
 
         eData.x = (float)entityX;
-        eData.y = YOfRow(tileY, displayRows);
+        eData.y = snapY >= 0.0f ? snapY : YOfRow(tileY, displayRows);
         eData.range_min = (float)std::max(0, entityX - 3);
         eData.range_max = (float)std::min(displayColumns - 1, entityX + 3);
         eData.speed = 1.5f;

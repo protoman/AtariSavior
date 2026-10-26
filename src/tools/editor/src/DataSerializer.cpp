@@ -1681,9 +1681,10 @@ constexpr int kRouteRoom = 240;             // 4 s per room entered
 constexpr int kCellBudget = 90 * 60;        // refill before a segment passes 90 s
 constexpr int kCellLead = 80 * 60;          // ... aiming for ~80 s after the last (latest host keeps cells few)
 constexpr int kBarSeconds = 120;
-// An extra miner stands where the level's own miner does: top at 99 px = canvas
-// row 11 of 16 = y 8.25 in the stage's 12-px rows (editor row * 12 / 16).
-inline float YOfCanvasRow(int row) { return (float)row * 12.0f / 16.0f; }
+// An extra miner stands with his feet exactly on the ground: 12 visible rows end
+// on the band's last line, so his top is 12 px above the band edge - for the floor
+// band (2) that is 96 px = stage y 8 (the editor snaps to y = 3 * band + 2).
+inline float ExtraMinerY() { return 8.0f; }
 
 ReachResult AnalyseReach(const LevelData& lv,
                          const std::vector<ModelData>& models) {
@@ -1969,13 +1970,13 @@ int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
                         if (i == skip) continue;
                         const EnemyData& e = room.enemies[i];
                         ++cnt;
-                        if (bandOf(e.y) == 2 || bandOf(e.y) == 3   // band 3 would cut his feet
+                        if (bandOf(e.y) == 2
                                 || std::abs((int)std::lround(e.x) - dcol) < 3)
                             return false;
                     }
                     for (const LampData& l : room.lamps) {
                         ++cnt;
-                        if (bandOf(l.y) == 2 || bandOf(l.y) == 3
+                        if (bandOf(l.y) == 2
                                 || std::abs((int)std::lround(l.x) - dcol) < 3)
                             return false;
                     }
@@ -2036,7 +2037,7 @@ int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
         const Spot& sp = hosts[hi].sp;
         RoomData& room = lv.rooms[sp.room];
         if (sp.evict >= 0) room.enemies.erase(room.enemies.begin() + sp.evict);
-        AddEnemy(room, EnemyType::EXTRA_MINER, (float)sp.col, YOfCanvasRow(11),
+        AddEnemy(room, EnemyType::EXTRA_MINER, (float)sp.col, ExtraMinerY(),
                  0.0f, 0.0f);
         ++placed;
     }
@@ -2116,10 +2117,6 @@ int PlanPowerCells(LevelData& lv, const std::vector<ModelData>& models) {
                 if (i == skip) continue;
                 const EnemyData& e = room.enemies[i];
                 ++cnt;
-                // an extra miner's feet reach 3 px into the next band: nothing
-                // may sit there (the sprite swap would cut them off)
-                if (e.type == (int)EnemyType::EXTRA_MINER
-                        && band == bandOf(e.y) + 1) return false;
                 if (bandOf(e.y) == band
                         || std::abs((int)std::lround(e.x) - dcol) < 3) return false;
             }
