@@ -731,7 +731,7 @@ Requires: `dasm` (6502 cross-assembler)
 (models, level jsons, generated slices) and must NOT gate on
 ROM↔fixture equality — the user keeps editing stages, so live-coupled
 tests break on every edit. **Frozen test copies live in `src/tests/`.**
-Test scripts stay where they are (`../tools/test_*.py`,
+Test scripts stay where they are (`tools/test_*.py`,
 `src/tools/test_title_demo.py`) and read only from `src/tests/`.
 **No editor change to rooms/models may break any test or build.**
 

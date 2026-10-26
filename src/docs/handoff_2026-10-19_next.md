@@ -347,10 +347,10 @@ Remaining reductions are feature decisions, not compaction:
 ```bash
 cd src
 ./build.sh 2>&1 | grep -E "error|Done|sim_|verify"
-bash ../tools/freeze_test_banks.sh
-for f in ../tools/test_*.py; do /home/iuri/python3/bin/python3 "$f" >/dev/null || echo FAIL $f; done
+bash tools/freeze_test_banks.sh
+for f in tools/test_*.py; do /home/iuri/python3/bin/python3 "$f" >/dev/null || echo FAIL $f; done
 /home/iuri/python3/bin/python3 tools/test_title_demo.py
-/home/iuri/python3/bin/python3 ../tools/rom_size_report.py --md
+/home/iuri/python3/bin/python3 tools/rom_size_report.py --md
 # after any chain change (sim runs on the PREVIOUS savior.bin):
 cat bank0.bin bank1.bin bank2.bin bank3.bin > savior.bin
 ```

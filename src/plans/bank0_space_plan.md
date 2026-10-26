@@ -273,7 +273,7 @@ See `docs/bank_layout.md` for the full kernel/bank map.
 
 - `./build.sh` — `verify_build` (byte-identity pins + ZP EQU sync),
   `sim_bomb_fuse` (stack), `sim_frame_budget` (wall-model/VBL/overscan).
-- Full battery (`../tools/test_*.py`), especially: `test_menu_flow`,
+- Full battery (`tools/test_*.py`), especially: `test_menu_flow`,
   `test_title_demo`, `test_miner_colors`, `test_phase2_ball`,
   `test_phase3_ball`, `test_hcrunch`, `test_vcr_shutter`, `test_cell_map`,
   `test_laser_*`.

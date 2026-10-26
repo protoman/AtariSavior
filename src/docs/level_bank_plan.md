@@ -231,10 +231,10 @@ them changes. If data wouldn't fit the original addresses in bank2 (stub
   - Check (ALL must pass):
     1. `./build.sh` — zero errors; list every warning; fold/Overscan guard
        may demand `bank1.asm` jmp fixup → fix bank1, rebuild.
-    2. `rtk python3 ../tools/verify_build.py` — page guards pass
+    2. `rtk python3 tools/verify_build.py` — page guards pass
        (`ObjSprites` same-page, `SetObjectXPos` block untouched (org-fixed),
        `.Div15Loop` page).
-    3. `rtk python3 ../tools/test_enemy_movement.py` + `test_laser_s4.py` +
+    3. `rtk python3 tools/test_enemy_movement.py` + `test_laser_s4.py` +
        new `test_level_bank.py` green.
     4. `bank0.lst` must NOT contain `M0TilePF0`/`LevelDataTable` labels
        (add this assert to `test_level_bank.py` in this step).
