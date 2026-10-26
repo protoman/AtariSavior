@@ -44,3 +44,11 @@ more than the 120 s bar; the generator estimates the time and places cells.
 * The time model is a heuristic; nobody has timed a human on these levels.
   Raise `kRouteHuman` or lower the budget if cells feel late.
 * The cell sprite has not been looked at in Stella.
+
+## Pickup sounds (2026-10-26)
+`PickupSnd` (bank0, `$FC3C` hole): A = AUDF0 pitch, channel 0 square for 8 frames
+through the `BombSnd` hold (UpdateBombSound counts it down, the laser/jet sounds
+respect it). Cell = 6 (highest, `CellTail`), key = 9, miner rescue = 12
+(`MinerMore`); the tally coin stays 24 (lowest). The last miner's blip is the
+tally's own coin. Guards: `test_power_cell.py` (key and cell set the hold),
+`test_miners.py` (rescue).

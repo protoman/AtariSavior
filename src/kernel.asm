@@ -2169,7 +2169,8 @@ CEH_Key:
     lda LevelStartRoom
     ora #$80                    ; KeyHeld = b7
     sta LevelStartRoom
-    rts
+    lda #9                      ; pickup blip (pitch 9)
+    jmp PickupSnd
 
 ; ------------------------------------------------------------------------------
 ; UEDispatch — the enemy-type dispatch tail, moved out of UpdateEnemies into the
@@ -3523,9 +3524,7 @@ CEH_KeyDisp:
     lda CellBitTab,Y
     ora LevelStartRoom
     sta LevelStartRoom
-    lda #120                    ; BAR_MAX: bar full again
-    sta BarLevel
-    rts
+    jmp CellTail                ; refill + blip (hole D: this hole is full)
 
     .ds $FBD0 - *, 0            ; #22: pin tramp at $FBD0 — bank2's twin
                                  ;   sits at the same address (pin moved from
@@ -3666,6 +3665,19 @@ LF_B0Tail:
     sta RoomY
     jmp DropArm
 
+; PickupSnd - the small pickup blip (key / power cell / miner rescue, user request
+; 2026-10-26). A = AUDF0 pitch (lower = higher tone). Channel 0, square, 8 frames:
+; BombSnd is the "event owns ch0" hold that UpdateBombSound counts down and the
+; laser/jet sounds respect. Pitches: cell 6, key 9, miner 12 (the tally coin is 24).
+; Clobbers X.
+PickupSnd:
+    ldx #8
+    stx BombSnd
+    stx AUDV0
+    ldx #4
+    stx AUDC0
+    sta AUDF0
+    rts
     .ds $FC49 - *, 0             ; pin (main growth past $FC49 = build error)
 MothExitPad:
     sta $1FF4                   ; select bank0 (executed from bank2's copy)
@@ -4442,6 +4454,13 @@ TallyWork:
 
 
 
+; CellTail - the power cell's refill + blip (kept out of CEH_KeyDisp's full hole).
+CellTail:
+    lda #120                    ; BAR_MAX: bar full again
+    sta BarLevel
+    lda #6                      ; pitch 6: the highest of the three blips
+    jmp PickupSnd
+
     .ds $FEE7 - *, 0            ; bank0↔bank1 CallPad (leaf_move_plan Step 0)
 CallPad_MothYDerive:
     sta $1FF5
@@ -4678,13 +4697,8 @@ StepDelta:                      ; travel step per PlayerDir (0=right, 1=left)
 
 ; MinerMore - a rescue that is not the last: blip (ch0, coin hold) + 500 points.
 MinerMore:
-    lda #8
-    sta BombSnd                 ; coin hold (UpdateBombSound decs it)
-    sta AUDV0
-    lda #4
-    sta AUDC0                   ; square
-    lda #12
-    sta AUDF0                   ; lower than the tally coin (24)
+    lda #12                     ; rescue blip (pitch 12; the tally coin is lower, 24)
+    jsr PickupSnd
     ldx #10
 .MMscore:
     lda #$50
