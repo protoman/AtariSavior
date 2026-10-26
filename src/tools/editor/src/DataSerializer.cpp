@@ -1511,16 +1511,11 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         return;
     }
     if (role == Role::Gate || role == Role::Phase) {
-        // Door rooms allow ONE non-key enemy (convert rule). The gap itself is
-        // a LOCKED_DOOR / PHASE cell — a bat there is inside the door half the
-        // time — so it guards the descent ABOVE the gap (band 0), on the
-        // nearest open cell (user rule 2026-10-21: no enemy inside a wall).
-        const int cell = NearestAir(shape, 0, 4);
-        if (cell >= 0) {
-            AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
-                     BandY(shape, 0),
-                     1.25f + 0.25f * (levelNumber % 4), 13.0f);
-        }
+        // Gate/phase rooms carry NO enemy (user ruling 2026-10-26). The gap is
+        // a crush/door cell and the only way down is straight past the band
+        // above it, so a bat guarding the descent cost two lives per crossing
+        // (the first was the gate crush, the second the bat as the player
+        // fell back onto it - screenshots/bugs/enemy_double_kill).
         return;
     }
     if (role == Role::Hcrunch) {
@@ -2773,7 +2768,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         if (plan.twogap) {
             for (int i = 1; i < roomCount - 1; ++i) {
                 if (roles[l - 1][i] == Role::Hcrunch
-                        || roles[l - 1][i] == Role::Gate) continue;
+                        || roles[l - 1][i] == Role::Gate
+                        || roles[l - 1][i] == Role::Phase) continue;
                 RoomData& room = level.rooms[i];
                 if (ObjectCount(room) >= 2 || RowOccupied(room, 0)) continue;
                 const int gap = (i % 2) ? kGapB : kGapA;

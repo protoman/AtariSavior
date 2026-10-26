@@ -699,6 +699,15 @@ def main() -> int:
                 block_patches = [p for p in room.get("asym_patches") or []
                                  if len(p) >= 3 and p[2] == 1]
                 doors += bool(door_patches)
+                if door_patches or 10 in feats:
+                    foes = [e for e in room.get("enemies") or []
+                            if e.get("type") != 6]
+                    if foes:
+                        print(f"FAIL: level {level_n} room {room['room_id']} "
+                              "is a gate/phase room but carries an enemy "
+                              f"{[e.get('type') for e in foes]} (crossing it "
+                              "costs two lives)")
+                        return 1
                 blocks += bool(block_patches)
                 two_blocks += len(block_patches) >= 2
                 if door_patches:
