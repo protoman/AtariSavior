@@ -312,7 +312,7 @@ def main() -> None:
             # 6 KEY, 7 RAFT, and 13 = the MIRRORED lamp art (the kernel masks
             # `and #%00000111` before `cmp #LAMP`, so 13 lands on the lamp
             # path). The 4-bit field leaves 8-12 / 14-15 unused on purpose.
-            assert (typ & 0x7F) in tuple(range(8)) + (13,), (
+            assert (typ & 0x7F) in tuple(range(8)) + (13, 14), (
                 f"LEVEL{n}: enemy record type ${typ:02x} does not fit "
                 "b3-0 with dir in b7")
         extras_path = (ROOT / "src" / "generated" /

@@ -287,7 +287,7 @@ static int RunBrushTest() {
     // TWO rooms: painting a door and a phase wall in the SAME room is rejected
     // by the alone-per-room rule with a modal warning, which would hang a
     // headless run — so each brush gets its own room.
-    for (int i = 0; i < 2; ++i) {
+    for (int i = 0; i < 4; ++i) {
         hero::RoomData r;
         r.room_id = i;
         r.model_id = 0;
@@ -375,8 +375,53 @@ static int RunBrushTest() {
                      "(legacy fields must stay empty)\n");
         return 1;
     }
+    // Object Y (user report 2026-10-26, a power cell clicked in band 2 drew in
+    // the floor of band 3 in the game). The canvas has 4 rows per band (16 for
+    // a four-band room) but the stage data - convert_level, the generator, the
+    // kernel - counts 12-px display rows (12 over the cave, 3 per band), so the
+    // brush must store row * 12 / 16 and read it back the same way.
+    canvas.SetActiveRoom(2);
+    canvas.SetCurrentBrush(BrushTool::ADD_CELL);
+    canvas.ApplyBrushAt(5, 29, 11);            // canvas row 11 = band 2
+    canvas.SetCurrentBrush(BrushTool::ADD_BAT);
+    canvas.ApplyBrushAt(2, 5, 5);              // canvas row 5 = band 1
+    canvas.SetActiveRoom(3);                   // (2 objects per room at most)
+    canvas.SetCurrentBrush(BrushTool::ADD_LAMP);
+    canvas.ApplyBrushAt(7, 14, 9);             // canvas row 9 = band 2
+    canvas.SetActiveRoom(2);
+    const hero::RoomData& r2 = level.rooms[2];
+    const hero::RoomData& r3 = level.rooms[3];
+    if (r2.enemies.size() != 2 || r3.lamps.size() != 1) {
+        std::fprintf(stderr, "brushtest: entity brushes wrote %zu enemies / "
+                     "%zu lamps, want 2 / 1\n", r2.enemies.size(),
+                     r3.lamps.size());
+        return 1;
+    }
+    // stage y -> game pixels is y * 12: a canvas row is 9 px (36 / 4)
+    if (std::fabs(r2.enemies[0].y * 12.0f - 11 * 9.0f) > 0.01f ||
+        std::fabs(r2.enemies[1].y * 12.0f - 5 * 9.0f) > 0.01f ||
+        std::fabs(r3.lamps[0].y * 12.0f - 9.5f * 9.0f) > 0.01f) {
+        std::fprintf(stderr, "brushtest: entity y is not in 12-px display rows "
+                     "(cell y=%g bat y=%g lamp y=%g; canvas rows 11/5/9 want "
+                     "8.25/3.75/7.125)\n", r2.enemies[0].y, r2.enemies[1].y,
+                     r3.lamps[0].y);
+        return 1;
+    }
+    // DELETE_ENTITY clicks the CANVAS row and must find them again
+    canvas.SetCurrentBrush(BrushTool::DELETE_ENTITY);
+    canvas.ApplyBrushAt(5, 29, 11);
+    canvas.ApplyBrushAt(2, 5, 5);
+    canvas.SetActiveRoom(3);
+    canvas.ApplyBrushAt(7, 14, 9);
+    if (!r2.enemies.empty() || !r3.lamps.empty()) {
+        std::fprintf(stderr, "brushtest: DELETE_ENTITY missed objects placed "
+                     "on the same canvas rows (%zu enemies, %zu lamps left)\n",
+                     r2.enemies.size(), r3.lamps.size());
+        return 1;
+    }
     std::printf("brushtest: OK (door + phase brushes write the room, ERASE "
-                "clears both layers, the model stays clean)\n");
+                "clears both layers, the model stays clean, entity y is stored "
+                "in 12-px rows)\n");
     return 0;
 }
 

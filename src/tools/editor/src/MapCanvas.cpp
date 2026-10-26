@@ -43,6 +43,20 @@ namespace editor {
 // game's stage). Pre-D7 (1 col/cell) was width*2.
 static int DisplayColumnsFor(int roomWidth) { return roomWidth * 4; }
 
+// OBJECT Y (user report 2026-10-26: a power cell clicked in band 2 was drawn in
+// the floor of band 3 by the game). The canvas draws `displayRows` = 4 rows per
+// band (16 for a four-band room), but the stage data - convert_level, the
+// generator, the kernel - counts 12-px DISPLAY rows: 12 over the 144-px cave, 3
+// per band on a four-band room. Enemies, lamps and the miner therefore store
+// canvas_row * 12 / displayRows (a canvas row is 9 px there) and are read back
+// through RowOfY. A three-band room has 12 canvas rows, so nothing changes.
+static float YOfRow(int row, int displayRows) {
+    return (float)row * 12.0f / (float)displayRows;
+}
+static int RowOfY(float y, int displayRows) {
+    return (int)std::floor(y * (float)displayRows / 12.0f + 1e-3f);
+}
+
 // display col -> MODEL cell index (0..width-1), left-frame. Left half =
 // first width*2 display cols; right half mirrors pixel-wise (39-dcol),
 // then the 2-cols-per-cell pair collapses via >>1.
@@ -461,7 +475,7 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             // Center the marker INSIDE the cell like enemies/lamps do — the
             // old (mx-12, my-12) rect drew it on the grid lines (corner).
             int mx = (int)(m_levelData->miner_x * 2 * cellW);
-            int my = (int)(m_levelData->miner_y * cellH);
+            int my = (int)(m_levelData->miner_y * (float)displayRows / 12.0f * cellH);
             int markerSize = qMax(12, m_tileSize - 6);
             QRect minerRect(mx + (cellW - markerSize) / 2,
                             my + (cellH - markerSize) / 2,
@@ -477,7 +491,7 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
         // Render Lamps in room
         for (const auto& lamp : room->lamps) {
             int lx = (int)(lamp.x * cellW);
-            int ly = (int)(lamp.y * cellH);
+            int ly = (int)(lamp.y * (float)displayRows / 12.0f * cellH);
             int bulbSize = 12;
 
             painter.setBrush(lamp.lit ? QColor(255, 230, 80) : QColor(110, 110, 110));
@@ -496,7 +510,7 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
         // Render Enemies in room
         for (const auto& enemy : room->enemies) {
             int ex = (int)(enemy.x * cellW);
-            int ey = (int)(enemy.y * cellH);
+            int ey = (int)(enemy.y * (float)displayRows / 12.0f * cellH);
             int markerSize = qMax(12, m_tileSize - 6);
             QRect enemyRect(ex + (cellW - markerSize) / 2,
                             ey + (cellH - markerSize) / 2,
@@ -625,14 +639,15 @@ bool MapCanvas::ElementInRow(int tileY) const {
         m_activeRoomIndex >= (int)m_levelData->rooms.size())
         return false;
     const hero::RoomData& room = m_levelData->rooms[m_activeRoomIndex];
+    const int rows = RoomHeightOf(m_levelData, m_models, m_activeRoomIndex) * 4;
     for (const auto& e : room.enemies) {
-        if ((int)std::floor(e.y) == tileY) return true;
+        if (RowOfY(e.y, rows) == tileY) return true;
     }
     for (const auto& lamp : room.lamps) {
-        if ((int)std::floor(lamp.y) == tileY) return true;
+        if (RowOfY(lamp.y, rows) == tileY) return true;
     }
     if (m_levelData->miner_room == m_activeRoomIndex &&
-        (int)std::floor(m_levelData->miner_y) == tileY)
+        RowOfY(m_levelData->miner_y, rows) == tileY)
         return true;
     return false;
 }
@@ -979,7 +994,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         if (entityX < 0 || entityX >= displayColumns) return;
         if (m_levelData->miner_room == m_activeRoomIndex &&
             (int)std::floor(m_levelData->miner_x * 2.0f) == entityX &&
-            (int)std::floor(m_levelData->miner_y) == tileY) {
+            RowOfY(m_levelData->miner_y, displayRows) == tileY) {
             m_levelData->miner_dir = m_levelData->miner_dir >= 0 ? -1 : 1;
             emit levelModified();
             update();
@@ -988,12 +1003,12 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         if (m_levelData->miner_room != m_activeRoomIndex && !AllowAddElement()) return;
         // Same room: ignore miner's current row (re-place frees it first).
         int ignoreY = (m_levelData->miner_room == m_activeRoomIndex)
-                          ? (int)std::floor(m_levelData->miner_y)
+                          ? RowOfY(m_levelData->miner_y, displayRows)
                           : -1;
         if (!AllowElementInRow(tileY, ignoreY)) return;
         m_levelData->miner_room = m_activeRoomIndex;
         m_levelData->miner_x = (float)entityX / 2.0f;
-        m_levelData->miner_y = (float)tileY;
+        m_levelData->miner_y = YOfRow(tileY, displayRows);
         m_levelData->miner_dir = m_initialFacing;
         emit levelModified();
         update();
@@ -1018,7 +1033,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         else eData.type = (int)hero::EnemyType::KEY;
 
         eData.x = (float)entityX;
-        eData.y = (float)tileY;
+        eData.y = YOfRow(tileY, displayRows);
         eData.range_min = (float)std::max(0, entityX - 3);
         eData.range_max = (float)std::min(displayColumns - 1, entityX + 3);
         eData.speed = 1.5f;
@@ -1112,7 +1127,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         // Occupied tile: flip existing enemy facing instead of stacking.
         // The key has no facing — warn instead of silently doing nothing.
         for (auto& e : room->enemies) {
-            if ((int)std::floor(e.x) == entityX && (int)std::floor(e.y) == tileY) {
+            if ((int)std::floor(e.x) == entityX && RowOfY(e.y, displayRows) == tileY) {
                 if (m_currentBrush == BrushTool::ADD_KEY || m_currentBrush == BrushTool::ADD_CELL) {
                     QMessageBox::warning(
                         nullptr, QObject::tr("Key"),
@@ -1150,9 +1165,9 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
 
         // Replace any lamp already on this tile, otherwise add a new one
         for (auto& lamp : room->lamps) {
-            if ((int)std::floor(lamp.x) == entityX && (int)std::floor(lamp.y) == tileY) {
+            if ((int)std::floor(lamp.x) == entityX && RowOfY(lamp.y, displayRows) == tileY) {
                 lamp.x = (float)entityX + 0.5f;
-                lamp.y = (float)tileY + 0.5f;
+                lamp.y = YOfRow(tileY, displayRows) + 0.5f * 12.0f / (float)displayRows;
                 lamp.lit = true;
                 emit levelModified();
                 update();
@@ -1164,7 +1179,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         if (!AllowAddElement()) return;
         hero::LampData lamp;
         lamp.x = (float)entityX + 0.5f;
-        lamp.y = (float)tileY + 0.5f;
+        lamp.y = YOfRow(tileY, displayRows) + 0.5f * 12.0f / (float)displayRows;
         lamp.lit = true;
         room->lamps.push_back(lamp);
         emit levelModified();
@@ -1202,7 +1217,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         // else fall through: Entities live in full stage coordinates (no
         // mirroring)
         for (auto it = room->enemies.begin(); it != room->enemies.end(); ++it) {
-            if ((int)std::floor(it->x) == entityX && (int)std::floor(it->y) == tileY) {
+            if ((int)std::floor(it->x) == entityX && RowOfY(it->y, displayRows) == tileY) {
                 room->enemies.erase(it);
                 emit levelModified();
                 update();
@@ -1210,7 +1225,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
             }
         }
         for (auto it = room->lamps.begin(); it != room->lamps.end(); ++it) {
-            if ((int)std::floor(it->x) == entityX && (int)std::floor(it->y) == tileY) {
+            if ((int)std::floor(it->x) == entityX && RowOfY(it->y, displayRows) == tileY) {
                 room->lamps.erase(it);
                 emit levelModified();
                 update();

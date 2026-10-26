@@ -1223,3 +1223,19 @@ tiles ... and it should move before the player is on the same band".
    record, so it is already advancing on arrival. Guard:
    `tools/test_hcrunch_entry.py` (red on the old frozen bank3).
 The LIVE stage is untouched; regenerate to adopt rule 1 (rule 2 is in the ROM).
+
+## #23 — editor stored object Y in canvas rows, the game reads 12-px rows (2026-10-26)
+User report: a power cell clicked in band 2 of level 1 room 1 never showed in
+the game. The four-band editor (`kRoomHeight = 4`, 2026-10-24) draws 16 rows, 4
+per band, but the stage data - `convert_level` (`px(y, 12)`), the generator
+(`BandY`, 3 rows per band) and the kernel - counts 12 display rows over the
+144-px cave. The brush stored `y = tileY`, so row 11 became scanline 132: band
+3, inside the floor. Every hand-placed object (enemies, lamps, the miner) sat
+up to one band lower in the game than where it was clicked, and generated
+objects were drawn up to one band off in the editor.
+Fix (MapCanvas.cpp `YOfRow`/`RowOfY`): store `row * 12 / displayRows` (a canvas
+row is 9 px) and read it back the same way; three-band rooms are unchanged.
+Generated stages and the ROM are untouched. Objects hand-placed in the editor
+since 2026-10-24 were saved in canvas rows and must be re-placed. Guard:
+`savior_editor --brushtest` (cell/bat/lamp at canvas rows 11/5/9 -> y
+8.25/3.75/7.125, DELETE_ENTITY finds them again; red before the fix).
