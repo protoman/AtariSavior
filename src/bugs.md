@@ -1239,3 +1239,22 @@ Generated stages and the ROM are untouched. Objects hand-placed in the editor
 since 2026-10-24 were saved in canvas rows and must be re-placed. Guard:
 `savior_editor --brushtest` (cell/bat/lamp at canvas rows 11/5/9 -> y
 8.25/3.75/7.125, DELETE_ENTITY finds them again; red before the fix).
+
+## #24 — a bomb opened side walls that have no room behind them (2026-10-26)
+User: "when a thin wall (sync or async) is placed on the left or right side of the
+screen that has NO exit to that side, the bomb blast should NOT work on that wall.
+We should have no openings when there is no connected rooms."
+The generator already "plugs" a dead side with an indestructible-by-design edge strip
+(left M1 at col 0 / right ball at col 9) - but the ROM's strip take only checked the
+blast window, so a bomb removed the plug, and the PF edge-cell thin wall (k = 1) was
+bombable too.
+Fix: bank2 `SetRoomExits` (every room entry, via the shared `ExitFind`) leaves
+`RoomExits` ($DB): b1 = no room WEST, b0 = no room EAST (0 = connected, so older tests
+are unchanged). bank1: the EDGE M1 strip (dcol 0) needs the west room, the EDGE ball
+strip (right_col 9, pL 38) the east room; the PF thin wall next to the border (k = 1)
+needs BOTH (the PF is mirrored: breaking it opens both sides). Interior strips are
+designed blocks and stay bombable (the start room's lesson block has no side neighbour
+at all). `stage_reach` / `AnalyseReach` treat an unbreakable plug as a wall.
+Guard: `tools/test_bomb_side_walls.py` (edge wall, edge strips, interior controls,
+SetRoomExits on a fabricated grid). verify_build's exit-handler check now reads
+`ExitFind`.

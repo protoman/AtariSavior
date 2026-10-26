@@ -81,6 +81,9 @@ EnemyRamD = $C1                  ; dir bits: 1 = right, 0 = left
 EnemyRamP = $C2                  ; free-running frame clock
 EnemyClk = $D7                   ; enemy clock (speed multiplier, kernel.asm)
 EnemySpd = $D8                   ; half-units per frame = 2 + Level / 5
+RoomExits = $DB                  ; b1 = NO room to the west, b0 = NO room to the east
+                                 ;   (set by SetRoomExits at every room entry; bank1's bomb
+                                 ;   reads it: no opening where nothing is connected)
 EnemyRamY = $E2                  ; live Y (refreshed this overscan — after
                                  ; the bank1 HUD score-ptr stomp; S3.4)
 TILE_COLUMNS = 20
@@ -188,7 +191,8 @@ OBJ_CELL = 12                    ; type 14 = the power cell (KEY block rows 12-1
     .ds $F010 - *, 0
 EnterRoomB2:
     sta RoomNo
-    tay                             ; Y = room (C2: every column is 1 B/room)
+    jsr SetRoomExits                ; RoomExits: which sides have a room (bomb gate)
+    ldy RoomNo                      ; Y = room (C2: every column is 1 B/room)
     lda LevelPFDataLo
     sta FetchPtr
     lda LevelPFDataHi
@@ -204,8 +208,7 @@ EnterRoomB2:
     ; LAYOUT 8 (2026-10-24): the index is 7 bits and the band flag moved to b7;
     ; the owns-extras bit is GONE (a room has a record iff its counts byte
     ; carries a nonzero extras ordinal, which is exactly what ExtrasLoad
-    ; indexes with — b7 was redundant).
-    lda Temp
+    ; indexes with — b7 was redundant). (A still holds the byte.)
     and #$80
     beq .EBnoBand
     lda #BAND_COLOR
@@ -222,8 +225,7 @@ EnterRoomB2:
     ; BAND_COLOR (one water color per game).
     ; LevelConnSpare is free here: it only carries the exit-scan target, and
     ; that scan has already returned when EnterRoomB2 is entered.
-    lda RoomNo
-    tay                             ; Y = room (one byte per record)
+    ldy RoomNo                      ; Y = room (one byte per record)
     ; base + 2n = RoomCounts. 2n is computed FIRST: adding n twice to the
     ; low byte loses the first carry (the second `adc n` consumes it) and the
     ; high byte then misses that carry — level 14 of a 20-level stage read its
@@ -246,7 +248,7 @@ EnterRoomB2:
     sta EnemyCount
     sty Temp                        ; room index (Temp free until EBLER)
     ldy #0
-    lda #0
+    tya                             ; (= lda #0)
     sta LevelConnSpare              ; running first-record index
 .EBSumLoop:
     cpy Temp
@@ -1387,6 +1389,20 @@ CellBitTab:
     .byte 1,2,4,8
 ExtraBitTab:
     .byte $20,$40
+; SetRoomExits - which sides of THIS room have a neighbour (user 2026-10-26: a bomb
+; must not open a side wall with no room behind it). RoomExits b1 = no room to the
+; west, b0 = no room to the east: the carry of ExitFind (1 = none) is shifted in
+; twice. Called at the top of EnterRoomB2 (RoomNo is set; FetchPtr is restaged there).
+SetRoomExits:
+    lda #0
+    sta RoomExits
+    ldx #2                      ; west
+    jsr ExitFind
+    rol RoomExits
+    ldx #3                      ; east
+    jsr ExitFind
+    rol RoomExits
+    rts
     .ds $FC1A - *, 0            ; C7: CallPad_BuildColupF's +3 image is BANK3's
                                 ;   now (bank0 runs `sta $1FF7` at $FC17); the
                                 ;   3 bytes here stay fill.
@@ -1503,6 +1519,22 @@ ExitLeftB2:
 ExitRightB2:
     ldx #3                      ; (falls through: last stub)
 ExitDirB2:
+    jsr ExitFind                ; C = 1: nobody there, else A = the room
+    bcs ExitNoneB2              ; nobody there: stay here
+    cpx #2
+    bcc .EDvertical
+    ldy ExitEdgeTab,X           ; left/right: enter at the opposite X edge
+    sty RoomX
+    jmp EnterRoomB2
+.EDvertical:
+    ldy ExitEdgeTab,X           ; up/down: enter at the opposite Y edge
+    sty RoomY
+    jmp EnterRoomB2
+
+; ExitFind - the neighbour in direction X (0 up, 1 down, 2 left, 3 right): C = 1
+; none, else C = 0 and A = its room index. Shared by ExitDirB2 and SetRoomExits.
+; The tail is a `jmp`, so the stack depth equals the old inline `jsr ExitScanB2`.
+ExitFind:
     lda LevelPFDataLo
     clc
     adc LevelRoomN
@@ -1514,17 +1546,7 @@ ExitDirB2:
     lda (FetchPtr),Y            ; own position (x<<4|y)
     clc
     adc ExitDeltaTab,X          ; neighbour position (nibble 15 = off grid)
-    jsr ExitScanB2
-    bcs ExitNoneB2              ; nobody there: stay here
-    cpx #2
-    bcc .EDvertical
-    ldy ExitEdgeTab,X           ; left/right: enter at the opposite X edge
-    sty RoomX
-    jmp EnterRoomB2
-.EDvertical:
-    ldy ExitEdgeTab,X           ; up/down: enter at the opposite Y edge
-    sty RoomY
-    jmp EnterRoomB2
+    jmp ExitScanB2
 
 ExitDeltaTab:
     .byte $FF, $01, $F0, $10    ; up, down, left, right
