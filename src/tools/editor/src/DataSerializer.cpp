@@ -2316,6 +2316,7 @@ bool RelocateSpider(LevelData& lv, int ri, const std::vector<ModelData>& models)
         if (band == 0) continue;
         for (int cand : order) {
             if (cand < lo || cand > hi) continue;
+            if (cand & 1) continue;   // 8 px sprite = one whole cell (2 columns)
             if (sm->tiles[band * sm->width + cand / 2] != (int)TileType::AIR)
                 continue;
             bool clash = false;
@@ -3195,7 +3196,9 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                             clash = true;
                     }
                     if (!clash) continue;
-                    for (int d = 3; d <= 9 && clash; d += 2) {
+                    // A spider keeps to whole cells (even column): start at 4.
+                    const bool spiderB = room.enemies[b].type == (int)EnemyType::SPIDER;
+                    for (int d = spiderB ? 4 : 3; d <= 9 && clash; d += 2) {
                         for (int sign : {1, -1}) {
                             const int cand = cb + sign * d;
                             if (airAt(bandB, cand)) {
@@ -3360,7 +3363,9 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     // it is invisible and unkillable (the generator's own rule).
                     if (nb == 1 && sm.mid_band_type == 1) continue;
                     if (taken.count((int)BandY(sm, nb) / 4)) continue;
-                    for (int d = 3; d <= 15 && !placed; d += 2) {
+                    // A spider keeps to whole cells (even column): start at 4.
+                    for (int d = e.type == (int)EnemyType::SPIDER ? 4 : 3;
+                         d <= 15 && !placed; d += 2) {
                         for (int sign : {1, -1}) {
                             const int cand = col + sign * d;
                             if (!airAt(nb, cand) || dangerous(nb, cand)) {
@@ -3446,6 +3451,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     if (band == 1 && sm.mid_band_type == 1) continue;
                     for (int dcol = colLo; dcol <= colHi && !fixed; ++dcol) {
                         if (!airAt(band, dcol)) continue;
+                        if ((dcol & 1) && room.enemies[b].type == (int)EnemyType::SPIDER)
+                            continue;   // whole cells only
                         if (clashes(band, dcol, b, -1)) continue;
                         room.enemies[b].x = (float)dcol;
                         room.enemies[b].y = bandRow(band);

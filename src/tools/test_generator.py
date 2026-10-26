@@ -205,6 +205,17 @@ def main() -> int:
                 best = max(best, run)
             return best
 
+        # --- spiders sit on a whole cell (release 0.8 shot 003) -------------
+        # An 8 px sprite on an ODD display column straddles two cells and is
+        # drawn half inside the next wall; RelocateSpider used to try odd ones.
+        for level_n, level in enumerate(levels, start=1):
+            for room in level["rooms"]:
+                for e in room.get("enemies") or []:
+                    if e["type"] == 0 and int(round(e["x"])) % 2:
+                        print(f"FAIL: level {level_n} room {room['room_id']} "
+                              f"spider on odd column {e['x']}")
+                        return 1
+
         by_id = {m["id"]: m for m in models}
         for level_n, level in enumerate(levels, start=1):
             for room in level["rooms"]:
