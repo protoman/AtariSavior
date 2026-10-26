@@ -388,6 +388,7 @@ void MainWindow::SetupUI() {
         { BrushTool::ADD_LAMP, "L. Lamp" },
         { BrushTool::ADD_RAFT, "R. Raft" },
         { BrushTool::ADD_KEY, "Y. Key" },
+        { BrushTool::ADD_CELL, "E. Power cell" },
         { BrushTool::DELETE_ENTITY, "X. Delete" }
     };
     for (const auto& t : levelTools) {
@@ -1218,6 +1219,12 @@ QIcon MainWindow::MakeToolIcon(BrushTool tool) const {
             p.setBrush(QColor(255, 215, 0));
             p.drawRoundedRect(r, 6, 6);
             p.drawText(r, Qt::AlignCenter, "Y");
+            break;
+        case BrushTool::ADD_CELL:
+            p.setPen(Qt::black);
+            p.setBrush(QColor(60, 200, 230));
+            p.drawRoundedRect(r, 6, 6);
+            p.drawText(r, Qt::AlignCenter, "E");
             break;
         case BrushTool::DELETE_ENTITY:
             p.setPen(QColor(70, 70, 85));

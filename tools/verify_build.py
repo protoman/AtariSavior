@@ -896,7 +896,7 @@ def check_loadlevel_tramp(src: Path) -> None:
     if not m:
         err("bank0 LF_B0Tail body not found next to its label")
     else:
-        want = ("lda LevelStartRoom", "jsr EnterRoom", "lda LevelStartX",
+        want = ("lda #0", "jsr EnterRoom", "lda LevelStartX",
                 "sta RoomX", "lda LevelStartY", "sta RoomY", "jmp DropArm")
         norm = [ln.split(";")[0].strip() for ln in m.group(1).splitlines()]
         norm = [ln for ln in norm if ln]
@@ -2127,7 +2127,7 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
                 if len(enemies) > 1:
                     err(f"{label}: door room has {len(enemies)} enemies "
                         "— at most ONE enemy per door room")
-                if any(e.get("type", 0) == 6 for e in enemies):
+                if any(e.get("type", 0) in (6, 14) for e in enemies):
                     err(f"{label}: door room has a KEY enemy — door rooms "
                         "allow a single non-key enemy only")
                 if len(lamps) > 0 or (
@@ -2176,9 +2176,9 @@ def check_levels(src: Path, rooms_dir: Path | None = None,
             for i, e in enumerate(enemies):
                 el = f"{label} enemy {i}"
                 t = e.get("type", 0)
-                if not isinstance(t, int) or t not in (0, 1, 2, 3, 4, 6, 7):
-                    err(f"{el}: type={t!r} out of 0..4, 6, 7 (5 = lamp in the "
-                        f"merged table, 6 = key, 7 = moving raft)")
+                if not isinstance(t, int) or t not in (0, 1, 2, 3, 4, 6, 7, 14):
+                    err(f"{el}: type={t!r} out of 0..4, 6, 7, 14 (5 = lamp in the "
+                        f"merged table, 6 = key, 7 = moving raft, 14 = power cell)")
                 try:
                     if not 0 <= float(e.get("x", -1)) <= 39:
                         err(f"{el}: x={e.get('x')} out of display columns 0..39")

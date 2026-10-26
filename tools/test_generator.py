@@ -51,6 +51,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import convert_level as C            # noqa: E402  (rows_from_json / load_stage)
 import test_editor_roundtrip as ER   # noqa: E402  (editor build + PY constant)
+import stage_reach as SR           # noqa: E402  (route_segments: power-cell guard)
 
 LEVELS = 20
 ROOMS = 2 + sum(range(2, LEVELS + 1))   # 211 (level 1 has 2 rooms too)
@@ -511,6 +512,8 @@ def main() -> int:
                 side_bands = {b for b in range(1, len(r2) - 1)
                               if r2[b][0] not in STRUCTURAL_WALLS}
                 for obj in (room.get("enemies") or []):
+                    if obj.get("type") == 14:
+                        continue          # a power cell is a pickup, not a hazard
                     band = int(float(obj.get("y", 0))) // rows_per_band
                     col = int(round(float(obj.get("x", 0))))
                     # band 0 is the vertical arrival; from band 1 on he lands
@@ -594,6 +597,8 @@ def main() -> int:
                 # Placement: air cells only (snake = wall patroller).
                 for enemy in enemies:
                     cell = int(float(enemy["x"])) // 2
+                    if cell >= 10:                   # right chamber = the mirror
+                        cell = 19 - cell
                     band = int(float(enemy["y"])) // units
                     here = band_rows[band][cell]
                     if int(enemy["type"]) == 2:      # SNAKE lives in the wall
@@ -703,7 +708,7 @@ def main() -> int:
                     # Gate/phase = band 1: no enemy in band 1 itself, and the
                     # generator keeps band 2 empty too (user 2026-10-26).
                     for e in room.get("enemies") or []:
-                        if e.get("type") == 6:
+                        if e.get("type") in (6, 14):
                             continue
                         band = int(e.get("y")) * len(rows[room["room_id"]]) // 12
                         if band in (1, 2):
@@ -734,6 +739,39 @@ def main() -> int:
                 objs = (len(room.get("enemies") or [])
                         + len(room.get("lamps") or []))
                 two_obj += objs >= 2
+            # --- power cells (2026-10-26): the timer is 120 s; the estimated
+            # stretch between refills must stay inside the budget, cells live in
+            # rooms that differ mod 4 (the kernel latches bit room&3), never in
+            # the start/goal room, door rooms or hcrunch rooms.
+            seg = SR.route_segments(level, shapes)
+            if seg is None:
+                print(f"FAIL: level {level_n} has no route (route_segments)")
+                return 1
+            if seg[1] > SR.CELL_BUDGET:
+                print(f"FAIL: level {level_n}: {seg[1] / 60:.0f} s between "
+                      f"refills (> {SR.CELL_BUDGET // 60} s) - needs a power "
+                      "cell on its route")
+                return 1
+            cell_rooms = [i for i, r in enumerate(rooms)
+                          if any(e.get("type") == 14
+                                 for e in r.get("enemies") or [])]
+            if len({i & 3 for i in cell_rooms}) != len(cell_rooms):
+                print(f"FAIL: level {level_n}: power cells in rooms "
+                      f"{cell_rooms} share a taken-bit (room index mod 4)")
+                return 1
+            for i in cell_rooms:
+                r = rooms[i]
+                kinds = {c[2] for c in r.get("feature_cells") or []}
+                doors = [p for p in r.get("asym_patches") or []
+                         if len(p) >= 3 and p[2] == 9]
+                if (i in (level["start_room"], level["miner_room"])
+                        or 12 in kinds or doors):
+                    print(f"FAIL: level {level_n} room {i}: a power cell in a "
+                          "start/goal/hcrunch/door room")
+                    return 1
+            if level_n <= 8 and cell_rooms:
+                print(f"FAIL: level {level_n}: short level carries a power cell")
+                return 1
             if level_n >= 3 and hot == 0:
                 print(f"FAIL: level {level_n} has no hot room")
                 return 1
