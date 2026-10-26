@@ -44,7 +44,7 @@ def labels(bank, names):
 L0 = labels(0, ["CheckEnemyHit", "EnemyDeadMask", "LevelStartRoom", "BarLevel",
                 "RoomNo", "EnemyCount", "EnemyDataLo", "EnemyDataHi",
                 "EnemyRamX", "EnemyRamY", "RoomX", "RoomY", "PlayerLives",
-                "ScoreTe"])
+                "ScoreTe", "BombSnd"])
 L2 = labels(2, ["EBLER_Loop", "EBLER_Done", "EnemyDeadMask", "LevelStartRoom",
                 "RoomNo", "EnemyCount", "EnemyDataLo", "EnemyDataHi",
                 "EnemyRamX", "EnemyRamY", "EnemyRamD", "FetchPtr", "Temp"])
@@ -109,6 +109,7 @@ assert lsr == 0x04, (f"cell must latch bit (RoomNo&3) only: LevelStartRoom="
                      f"${lsr:02X} want $04 (KeyHeld b7 must stay clear)")
 assert peek(mem, L0, "PlayerLives") == 3, "cell must not cost a life"
 assert peek(mem, L0, "ScoreTe") == 0, "cell must not award score"
+assert peek(mem, L0, "BombSnd") > 0, "no pickup blip for the power cell (BombSnd hold)"
 
 # a real key (type 6) still behaves exactly as before
 stage(6, 60, 60)
@@ -120,6 +121,7 @@ poke(mem, L0, "LevelStartRoom", 0)
 run(mem, 0, L0["CheckEnemyHit"], RTS_SENTINEL)
 assert peek(mem, L0, "LevelStartRoom") == 0x80, "key must latch KeyHeld"
 assert peek(mem, L0, "BarLevel") == 37, "a key must not touch the timer"
+assert peek(mem, L0, "BombSnd") > 0, "no pickup blip for the key (BombSnd hold)"
 
 # --- 2. room entry: a taken cell stays dead ----------------------------------
 for taken, want in ((0x04, 1), (0x00, 0), (0x0B, 0)):
