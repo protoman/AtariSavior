@@ -1,0 +1,48 @@
+CREDITS
+=======
+
+This game is an Atari 2600 project written from scratch, but it would not exist
+without the people and the work below. Thank you.
+
+THE GAME THAT INSPIRED IT
+-------------------------
+H.E.R.O. (Activision, 1984, designed by John Van Ryzin)
+  The reference for the whole kernel: the reflected (mirrored) playfield with
+  the registers written once per tile row, the fixed-time inner loop, the
+  frame layout, the HUD band, the NUSIZ-copy icons and the way the game bank
+  switches. Whenever we were unsure how to do something on the real hardware,
+  HERO's way was the answer.
+
+TECHNIQUES AND EXAMPLES WE LEARNED FROM
+---------------------------------------
+Andrew Davie - horizontal positioning
+  The classic coarse + fine object positioning with a page-aligned lookup
+  table (fineAdjustTable, page aligned at $FF00, used by SetObjectXPos), from
+  his Atari 2600 programming tutorials and example code.
+
+Clean 16-bit fixed-point physics model
+  The sub-pixel vertical motion model (vyLo / vyHi / PlayerYSub: a 16-bit
+  signed velocity integrated into a whole-pixel position plus a sub-pixel
+  accumulator) comes from the open example code we studied
+  (the "lo-a-rad-dragon" reference project kept for comparison).
+
+NUSIZ copies trick
+  Using the player/missile copy modes (3 copies, close / medium spacing) to
+  draw the lives and bombs icons with a single sprite register, as HERO does.
+  Later we double the density with quad-size players, which builds on the
+  same idea.
+
+48-pixel sprite text
+  The six-digit score and the title text use the P0 x3 + P1 x3 interleaved
+  technique with the VDELP cross-buffer, as documented by Bumbershoot
+  Software and the Atari 2600 community.
+
+TOOLS
+-----
+Stella (the Atari 2600 emulator and its debugger), DASM (the 6502
+cross-assembler), py65 (the Python 6502 simulator used by our tests), and
+Qt (the level and model editor).
+
+And to the Atari 2600 programming community (AtariAge, the Stella mailing
+list and everyone who documented the TIA and the 6502 tricks) - thank you for
+keeping this hardware alive.
