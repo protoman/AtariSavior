@@ -700,14 +700,24 @@ def main() -> int:
                                  if len(p) >= 3 and p[2] == 1]
                 doors += bool(door_patches)
                 if door_patches or 10 in feats:
-                    foes = [e for e in room.get("enemies") or []
-                            if e.get("type") != 6]
-                    if foes:
-                        print(f"FAIL: level {level_n} room {room['room_id']} "
-                              "is a gate/phase room but carries an enemy "
-                              f"{[e.get('type') for e in foes]} (crossing it "
-                              "costs two lives)")
-                        return 1
+                    # Gate/phase = band 1: no enemy in band 1 itself, and the
+                    # generator keeps band 2 empty too (user 2026-10-26).
+                    for e in room.get("enemies") or []:
+                        if e.get("type") == 6:
+                            continue
+                        band = int(e.get("y")) * len(rows[room["room_id"]]) // 12
+                        if band in (1, 2):
+                            print(f"FAIL: level {level_n} room "
+                                  f"{room['room_id']} gate/phase room has an "
+                                  f"enemy in band {band}")
+                            return 1
+                # One object per COLUMN, whatever the band (user 2026-10-26).
+                cols = [round(e.get("x")) for e in room.get("enemies") or []]
+                cols += [round(x.get("x")) for x in room.get("lamps") or []]
+                if len(set(cols)) != len(cols):
+                    print(f"FAIL: level {level_n} room {room['room_id']} "
+                          f"has two objects on one column {sorted(cols)}")
+                    return 1
                 blocks += bool(block_patches)
                 two_blocks += len(block_patches) >= 2
                 if door_patches:
