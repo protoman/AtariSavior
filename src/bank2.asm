@@ -148,6 +148,7 @@ ObjHeight1 = $9E                 ; slot 1's draw window (= kernel ObjHeight1,
                                  ;   staged here, copied by Slot1Hook)
 KEY = 6                          ; enemy record type 6 = the phase-5 key
 CELL = 14                        ; type 14 = the power cell (KEY|8)
+MINER2 = 15                      ; type 15 = an extra miner to rescue
 OBJ_WINDOW = 16                  ; kernel constant: the GRP1 draw window rows
                                  ;   (every design's art is sized to it)
 OBJ_KEY = 0                      ; GRP1 design offsets (per-type heights,
@@ -960,15 +961,23 @@ LoadLevelB2:
     sta FetchPtr+1
     ldx #0                      ; callers' X contract (kept from the bank0 body)
     ; start room / start x/y are kernel constants now (0 / 32 / 24 px)
-    lda #0
-    sta LevelStartRoom
     lda #32
     sta LevelStartX
     lda #24
     sta LevelStartY
-    ; +0: miner room (b7 = faces right)
+    ; +0: miner room b4-0 | b6-5 = parity mask of the EXTRA miners (record
+    ;      type 15, rooms of different parity) | b7 = faces right. The miners-
+    ;      left bits live in LevelStartRoom b6-4: b4 = this miner, b5/b6 = the
+    ;      extras; the whole byte is rewritten here, so the key (b7) and the
+    ;      power-cell bits (b3-0) reset with the level too.
     lda (FetchPtr),Y
+    pha
+    and #$9F
     sta LevelMinerRoom
+    pla
+    and #$60
+    ora #$10
+    sta LevelStartRoom
     iny
     ; +1: miner x (miner y is the constant 96 px)
     ;     N=4: the floor lives in the BOTTOM band (top = line 108) and the
@@ -1312,6 +1321,13 @@ ReturnPad:
 ;                              `jmp LF_B0Tail` is the live half
 ; Guard: verify_build.check_loadlevel_tramp asserts all 12 bytes + operands.
 ; ------------------------------------------------------------------------------
+; Power-cell / extra-miner bit tables (twins of kernel.asm's; abs,Y reads so the
+; address is free - they live in the hole after ReturnPad, EBLCellCheck's own
+; window before the $FE96 pin is full).
+CellBitTab:
+    .byte 1,2,4,8
+ExtraBitTab:
+    .byte $20,$40
     .ds $FC1A - *, 0            ; C7: CallPad_BuildColupF's +3 image is BANK3's
                                 ;   now (bank0 runs `sta $1FF7` at $FC17); the
                                 ;   3 bytes here stay fill.
@@ -1343,7 +1359,7 @@ ObjHeightTab:
     .byte 14,         10
     .byte 12,         2
     .byte 0,0,0,0,0,  10
-    .byte 4
+    .byte 4,          OBJ_WINDOW
 
 ObjSpriteOffTable:
     .byte OBJ_SPIDER            ; 0
@@ -1357,6 +1373,7 @@ ObjSpriteOffTable:
     .byte 0, 0, 0, 0, 0         ; 8-12 unused
     .byte OBJ_LAMP_R            ; 13 (wall-mirrored lamp)
     .byte OBJ_CELL              ; 14 (power cell)
+    .byte OBJ_MINER             ; 15 (extra miner)
 
     .ds $FC49 - *, 0
 MothExitPad:
@@ -1622,8 +1639,9 @@ LaserTipEnemy:
     cmp #LAMP
     beq .LTElamp
     cmp #KEY
-    beq .LTEnext                ; keys and power cells (14 folds to 6) are
-                                ;   pickups: the beam passes through them
+    bcs .LTEnext                ; 6/7 (keys, power cells 14->6, extra miners
+                                ;   15->7, the raft) are not targets: the beam
+                                ;   passes through them
     lda EnemyDeadMask
     ora EnemyBitTable,X
     sta EnemyDeadMask
@@ -1641,23 +1659,34 @@ LaserTipEnemy:
 
 
 ; EBLCellCheck - the per-record tail of EBLER_Loop (moved out of line, the room
-; load half before MothRoutine's $F110 pin is full). A power cell already
-; collected this level stays gone: bit (RoomNo & 3) of LevelStartRoom b3-0 was
-; set by kernel.asm CEH_KeyDisp. Temp = the raw record byte (EBLER_Dir kept it).
+; load half before MothRoutine's $F110 pin is full). Temp = the raw record byte.
+;  * a power cell already collected this level stays gone: bit (RoomNo & 3) of
+;    LevelStartRoom b3-0 is SET (kernel.asm CEH_KeyDisp);
+;  * an extra miner (type 15) already rescued stays gone: its remaining bit
+;    (b5/b6 by RoomNo parity) is CLEAR (kernel.asm CEHMiner).
 ; Power-cell taken bits (twin of kernel.asm's CellBitTab): bit (RoomNo & 3).
-CellBitTab:
-    .byte 1,2,4,8
 EBLCellCheck:
     lda Temp
     and #$0F
     cmp #CELL
+    beq .EBLCell
+    cmp #MINER2
     bne .EBLNoCell
+    lda RoomNo
+    and #1
+    tay
+    lda ExtraBitTab,Y
+    and LevelStartRoom
+    bne .EBLNoCell              ; still to rescue: alive
+    beq .EBLDead
+.EBLCell:
     lda RoomNo
     and #3
     tay
     lda CellBitTab,Y
     and LevelStartRoom
     beq .EBLNoCell
+.EBLDead:
     lda EnemyDeadMask
     ora EnemyBitTable,X
     sta EnemyDeadMask
@@ -1780,7 +1809,8 @@ LaserClampDone:
     cmp #LAMP
     beq .LHLamp
     cmp #KEY
-    beq .LHNext                 ; pickups (key / power cell) are not targets
+    bcs .LHNext                 ; 6/7: keys, power cells, extra miners, rafts are
+                                ;   not targets
     lda EnemyDeadMask
     ora EnemyBitTable,X
     sta EnemyDeadMask

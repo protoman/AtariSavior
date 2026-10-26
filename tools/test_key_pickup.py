@@ -30,12 +30,16 @@ K = (SRC / "kernel.asm").read_text()
 
 # --- 1. asm structure -------------------------------------------------------
 ceh = K[K.index("\nCheckEnemyHit:"):K.index("\nBombTick")]
-assert "cmp #KEY" in ceh and "jmp CEH_Key" in ceh, \
-    "CheckEnemyHit must dispatch type 6 to CEH_Key"
-assert ceh.index("jmp CEH_Key") < ceh.index("jmp LoseLife"), \
-    "the type-6 dispatch must precede the kill path"
-assert "cmp #KEY" in ceh.split("jmp LoseLife")[0], \
-    "the key branch must be before the enemy-kill tail"
+assert "jmp CEHDispatch" in ceh, "CheckEnemyHit must hand the type to CEHDispatch"
+# The dispatch moved to the $F97A hole (2026-10-26, miners): same contract.
+disp = K[K.index("\nCEHDispatch:"):K.index("\nRescuePrimary:")]
+assert "cmp #KEY" in disp and "jmp CEH_KeyDisp" in disp, \
+    "CEHDispatch must dispatch type 6 (and 14/15) to the key arm"
+assert disp.index("jmp CEH_KeyDisp") < disp.index("jmp CEHkill"), \
+    "the key arm must precede the kill stub in the dispatch"
+assert "bcc .CDKill" in disp and "cmp #KEY" in disp.split("jmp CEH_KeyDisp")[0], \
+    "the key branch must be tested before the enemy-kill tail"
+assert "jmp LoseLife" in ceh, "the kill path must still end in LoseLife"
 
 body = K[K.index("\nCEH_Key:"):]
 body = body[: body.index("rts") + 3]
