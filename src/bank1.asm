@@ -770,6 +770,10 @@ AUDV0       = $19
 AUDV1       = $1A
 SWCHA       = $0280
 BombSnd     = $F1
+HudPatB     = $E0                ; bombs-row scratch (HUD owns $E0-$EF; the score
+HudEnam     = $E1                ;   pointers are written AFTER these rows)
+HudPatM     = $E2
+HudNus      = $E3                ; (RefreshEnemyY rewrites $E2-$E4 every overscan)
 JetPower    = $96
 TickCounter = $AD               ; kernel's 60-frame timer ($AC = PlayerLives!).
                                 ; Was $AC (stale) — jet wobble at `lda
@@ -1097,23 +1101,9 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; + HMOVE + 5 render, then the shared 1-line gap → 9 (was 8; the pad
     ; line pays for it, see the budget at .HudPad).
     ; ====================================================================
-    lda PlayerLives
-    beq .LivesNone
-    cmp #3
-    bne .LivesNot3
-    lda #$03                    ; 3 copies close
-    jmp .LivesSetNusiz
-.LivesNot3:
-    cmp #2
-    bne .LivesOne
-    lda #$01                    ; 2 copies close
-    jmp .LivesSetNusiz
-.LivesOne:
-    lda #$00                    ; 1 copy
-    jmp .LivesSetNusiz
-.LivesNone:
-    lda #$00
-.LivesSetNusiz:
+    lda #7                      ; QUAD-size player: every pattern bit is 4 px wide, so
+                                ;   squares on bits 7/5/3 sit 8 px apart - half of
+                                ;   the old 16 px copy pitch (user 2026-10-26)
     sta NUSIZ0
     lda #$C6                    ; green
     sta COLUP0
@@ -1127,13 +1117,9 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
-    lda #0                      ; lives squares (off at 0 lives, GRP0 = 0)
+    ldx PlayerLives             ; lives squares (0..3): SquarePat, 8 px pitch
+    lda SquarePat,X
     sta GRP0
-    lda PlayerLives
-    beq .LivesNoP0
-    lda #$E0                    ; 3-color-clock-wide square pattern
-    sta GRP0
-.LivesNoP0:
     lda #0                      ; key square: only while KeyHeld
     sta GRP1
     lda LevelStartRoom
@@ -1154,8 +1140,31 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta NUSIZ0
 .LivesDone:
 
-    ; --- 1 scanline gap ---
+    ; --- 1 scanline gap: the bombs row's patterns are computed in its slack ---
     sta WSYNC
+    lda PlayerBombs
+    and #%00000111      ; b7-3 = the raft's ramp state, not bombs (see kernel)
+    tax
+    lda SquarePat,X     ; P0 is QUAD size: 4 squares on bits 7/5/3/1 (8 px pitch)
+    sta HudPatB
+    lda #7
+    ldy #0
+    cpx #5
+    bne .BmNot5
+    lda #$27            ; the 5th bomb is M0 (4 px), 4 squares right of P0
+    ldy #2
+.BmNot5:
+    sta HudNus
+    sty HudEnam
+    lda LevelStartRoom
+    lsr
+    lsr
+    lsr
+    lsr
+    and #%00000111      ; b6-4 = miners still to rescue
+    tax
+    lda MinerPat,X
+    sta HudPatM
 
     ; ====================================================================
     ; Line 3: Bombs — red squares, count = PlayerBombs (0..5)
@@ -1163,71 +1172,34 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; P1 at 60: NUSIZ1 $00/$01 → 1/2 copies (only if count >= 4)
     ; Always same WSYNC structure (2×pos + HMOVE + 5 + 3 gap = 11)
     ; ====================================================================
-    lda #$46            ; red
-    sta COLUP0
-    sta COLUP1
-    lda PlayerBombs
-    and #%00000111      ; b7-3 = the raft's ramp state, not bombs (see kernel)
-    cmp #5
-    bne .BmNot5
-    lda #$03
-    sta NUSIZ0
-    lda #$01
-    sta NUSIZ1
-    jmp .BmNusizDone
-.BmNot5:
-    cmp #4
-    bne .BmNot4
-    lda #$03
-    sta NUSIZ0
-    lda #$00
-    sta NUSIZ1
-    jmp .BmNusizDone
-.BmNot4:
-    cmp #3
-    bne .BmNot3
-    lda #$03
-    sta NUSIZ0
-    jmp .BmP1off
-.BmNot3:
-    cmp #2
-    bne .BmNot2
-    lda #$01
-    sta NUSIZ0
-    jmp .BmP1off
-.BmNot2:
-    lda #$00            ; 0 or 1 bomb
-    sta NUSIZ0
-.BmP1off:
-    lda #$00
-    sta NUSIZ1
-.BmNusizDone:
+    ; The patterns were computed in the gap line above (HudPatB/HudNus/HudEnam/
+    ; HudPatM); positioning order P0 (short loop), M0, then P1 (the long loop) so
+    ; the last call is followed straight by `sta WSYNC` - a call that returns
+    ; after cycle ~66 plus 10c of setup would put that WSYNC on the NEXT line.
     lda #12             ; P0 base
     ldx #0
     jsr SetObjectXPos_b1
-    lda #60             ; P1 base
+    lda #$46            ; red bombs
+    sta COLUP0
+    lda #$54            ; purple: the miners still to rescue (user 2026-10-26)
+    sta COLUP1
+    lda HudNus
+    sta NUSIZ0          ; $07 quad, or $27 = quad + a 4 px missile (5th bomb)
+    lda #7
+    sta NUSIZ1          ; P1 quad: the miner squares, right aligned
+    lda #49             ; M0: the 5th bomb, 4 squares right of P0 (a missile strobes ~5 px early)
+    ldx #2
+    jsr SetObjectXPos_b1
+    lda #126            ; P1: 32 px quad sprite, squares on bits 4/2/0 (ends ~151, mirrors the left margin)
     ldx #1
     jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
-    lda PlayerBombs
-    and #%00000111      ; mask the raft's ramp bits out of the count
-    beq .BmBlank
-    cmp #4
-    bcs .BmBoth
-    lda #$E0
+    lda HudPatB
     sta GRP0
-    lda #0
-    sta GRP1
-    jmp .BmDraw
-.BmBoth:
-    lda #$E0
-    sta GRP0
-    sta GRP1
-    jmp .BmDraw
-.BmBlank:
-    lda #0
-    sta GRP0
+    lda HudEnam
+    sta ENAM0
+    lda HudPatM
     sta GRP1
 .BmDraw:
     ldy #5
@@ -1238,6 +1210,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     lda #0
     sta GRP0
     sta GRP1
+    sta ENAM0
     sta NUSIZ0
     sta NUSIZ1
 
@@ -1349,14 +1322,15 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ;   Timer:    3 loop + 1 gap = 4
     ;   Lives:    2 SetObjectXPos (P0 lives, P1 key) + 1 HMOVE + 5 render
     ;             + 1 gap = 9
-    ;   Bombs:    2 SetObjectXPos + 1 HMOVE + 5 render + 3 gap = 11
+    ;   Bombs:    3 SetObjectXPos (P0, P1 miners, M0 5th bomb) + 1 HMOVE
+    ;             + 5 render + 3 gap = 12 (2026-10-26: +1 line, pad 8 -> 7)
     ;   Score:    2 SetObjectXPos + 1 HMOVE + 7 ScoreLoop = 10
-    ;   Subtotal: 6+4+9+11+10 = 40
-    ;   Pad:      48 - 40 = 8
+    ;   Subtotal: 6+4+9+12+10 = 41
+    ;   Pad:      48 - 41 = 7
     ; Both lives paths run the same instructions (GRP0/GRP1 just stay 0),
     ; so the band is 48 lines for every lives count and every key state.
     ; ====================================================================
-    ldx #8
+    ldx #7
 .HudPad:
     sta WSYNC
     dex
@@ -1364,6 +1338,16 @@ INPT4       = $0C       ; fire button (active low, bit 7)
 
     ; --- Return to bank0 via fold-pad ---
     jmp $FC70
+
+; HUD squares (2026-10-26): QUAD-size players, one pattern bit = 4 px, so squares
+; on every other bit sit 8 px apart. SquarePat[n] = n squares from the left
+; (lives 0..3, bombs 0..5; the 5th bomb is missile 0). MinerPat[mask] = the
+; miners still to rescue (LevelStartRoom b6-4 popcount) packed to the RIGHT end
+; of the 32 px sprite (P1 at X 128), so the row reads right aligned.
+SquarePat:
+    .byte $00,$80,$A0,$A8,$AA,$AA
+MinerPat:
+    .byte $00,$01,$01,$05,$01,$05,$05,$15
 
 ; ========================================================================
 ; SetObjectXPos — Andrew Davie algorithm (page-aligned table)
