@@ -1684,10 +1684,10 @@ constexpr int kRouteRoom = 240;             // 4 s per room entered
 constexpr int kCellBudget = 90 * 60;        // refill before a segment passes 90 s
 constexpr int kCellLead = 80 * 60;          // ... aiming for ~80 s after the last (latest host keeps cells few)
 constexpr int kBarSeconds = 120;
-// An extra miner stands with his feet exactly on the ground: 12 visible rows end
-// on the band's last line, so his top is 12 px above the band edge - for the floor
-// band (2) that is 96 px = stage y 8 (the editor snaps to y = 3 * band + 2).
-inline float ExtraMinerY() { return 8.0f; }
+// An extra miner stands with his feet exactly on the ground: his 9 art rows end
+// on the band's last line, so his top is 9 px above the band edge - for the floor
+// band (2) that is 99 px = stage y 8.25 (the editor snaps to y = 3 * band + 2.25).
+inline float ExtraMinerY() { return 8.25f; }
 
 ReachResult AnalyseReach(const LevelData& lv,
                          const std::vector<ModelData>& models) {

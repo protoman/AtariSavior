@@ -706,16 +706,17 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
             rows = rows_from_json(room, models_by_id)
             e = extras_here[0]
             ypx = px(float(e.get("y", 0)), 12)
-            # He stands with his feet ON the ground: 12 visible rows end on the
-            # band's last line, so his top is 12 px above the band edge - 24 / 60 /
-            # 96 px for bands 0 / 1 / 2 (stage y 2 / 5 / 8; the editor snaps to
-            # these). +-3 px is accepted for data placed before the snap.
-            band = next((b for b in range(3) if abs(ypx - (36 * (b + 1) - 12)) <= 3),
+            # He stands with his feet ON the ground: his 9 art rows (2026-10-26,
+            # no feet) end on the band's last line, so his top is 9 px above the
+            # band edge - 27 / 63 / 99 px for bands 0 / 1 / 2 (stage y 2.25 / 5.25 /
+            # 8.25; the editor snaps to these). +-3 px is accepted, which also
+            # keeps data placed with the old 12-row art loading.
+            band = next((b for b in range(3) if abs(ypx - (36 * (b + 1) - 9)) <= 3),
                         None)
             if band is None:
                 raise ValueError(
                     f"{who}: extra miner at y={e.get('y')} ({ypx} px) - he stands "
-                    "with his feet on the ground: y 2, 5 or 8 (top 24, 60 or 96 px)"
+                    "with his feet on the ground: y 2.25, 5.25 or 8.25 (top 27, 63 or 99 px)"
                     "; place him again with the editor brush, which snaps him")
             x_px = px(float(e.get("x", 0)), 4)
             cols = {min(19, x_px // 8), min(19, (x_px + 7) // 8)}
