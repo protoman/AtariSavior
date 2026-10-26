@@ -457,7 +457,25 @@ def story():
 
     # ---- controls
     s += head("The controls", "Joystick and console")
-    s += [Joystick(), Spacer(1, 8)]
+    s += [Joystick(), Spacer(1, 4)]
+    s += [Paragraph("Console switches", H2)]
+    sw = [("SELECT", "On the title screen, each press moves to the next level "
+                     "(the number shows in the score window); after the last "
+                     "level it wraps back to 1. <b>During a game</b>, pressing "
+                     "it takes you back to the title screen."),
+          ("RESET", "On the title screen, starts the game at the level shown: "
+                    "score 000000, three lives, five bombs. <b>During a game</b>, "
+                    "pressing it also returns to the title screen, where you "
+                    "can pick a level with SELECT and press RESET again.")]
+    t = Table([[Paragraph(f"<b>{a_}</b>", CELLT), Paragraph(b_, CELLT)] for a_, b_ in sw],
+              colWidths=[0.8 * inch, W - 0.8 * inch])
+    t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
+                           ("BACKGROUND", (0, 0), (0, -1), HexColor("#efe2bd")),
+                           ("BOX", (0, 0), (-1, -1), 0.5, GREY),
+                           ("INNERGRID", (0, 0), (-1, -1), 0.4, HexColor("#d8cfb8")),
+                           ("TOPPADDING", (0, 0), (-1, -1), 4),
+                           ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    s += [t, Spacer(1, 4)]
     s += [Paragraph("Flying tips", H2)] + bullets([
         "Gravity always pulls you down. <b>Hold UP</b> to burn the jet: it builds "
         "power gradually, so take-off is gentle, but once you are falling a held "
