@@ -1942,7 +1942,8 @@ CheckMinerPickup:
     ; TallyArm (bank2, via TallyTramp) snapshots time/bombs/lives into
     ; TallyTicks and sets DropTarget=$FE; each frame's dispatch then runs
     ; TallyWork, whose done path does the old tail (level++/LoadLevel/bar).
-    jsr TallyTramp
+    jsr RescuePrimary           ; clears the primary's bit; the tally runs only when
+                                ;   it was the last miner (RescuePrimary/MinerRescued)
 .CMPDone:
     rts
 
@@ -2011,18 +2012,10 @@ CEH_HasMore:
     ldx EnemyIndex
     ldy EnemyOffTable,X         ; Y = EnemyIndex * 3
     jsr FoldIndirect            ; type|dir
-    and #%00000111              ; b7 = dir AND b3 = the LAMP's mirror flag
-                                ;   (type 13 = the wall-mirrored design), so
-                                ;   both lamp types land on `cmp #LAMP`. Without
-                                ;   it a dir=right enemy read $81+ and fell
-                                ;   through `bne` — harmless and unkillable
-    cmp #LAMP
-    beq CEH_Lamp
-    cmp #KEY                    ; type 6 = key: collect, no life loss
-    bcc .CEHkill                ; 0-4 (LAMP handled above) = enemy: lose life
-    bne CEHNext                 ; 7 = RAFT: a platform is walked on, not hit
-    jmp CEH_KeyDisp             ; 6 = key, 14 = power cell (the type mask folds b3)
-.CEHkill:
+    jmp CEHDispatch             ; type dispatch lives in the $F97A hole (bank0's
+                                ;   main region is full): 0-4 kill, 5/13 lamp,
+                                ;   6 key, 7 raft, 14 power cell, 15 extra miner
+CEHkill:
     ; Hit! Mark this enemy dead (bit = index)
     lda EnemyDeadMask
     ora EnemyBitTable,X         ; X = EnemyIndex (set at CEH hit)
@@ -2381,7 +2374,6 @@ SelectActiveObject:
     sta COLUP1
     ldx Temp
     jmp .SOEnemyPattern
-    .byte 0                     ; pad: keeps every later bank0 address byte-identical
 .SOEnemyLit:
     ldx Temp
     lda EnemyColorTable,X
@@ -2579,7 +2571,7 @@ ObjHeightTab:                                              ; by ENEMY type
     .byte 14,         10                                    ; 4 MOTH   5 LAMP
     .byte 12,         2                                     ; 6 KEY (12 rows)  7 RAFT
     .byte 0,0,0,0,0,          10                            ; 8-12 unused, 13 LAMP_R
-    .byte 4                                                 ; 14 CELL (4 rows)
+    .byte 4,          OBJ_WINDOW                            ; 14 CELL (4 rows)  15 MINER2
 
 ; CallPad_RaftBody — bank1 RaftBody entry. Pinned at $F8C0 with a
 ; BYTE-IDENTICAL twin in bank1 (bank1.asm, same address): the `sta $1FF5`
@@ -2748,7 +2740,7 @@ ObjSprites:
 ObjSpriteOffTable:
     .byte OBJ_SPIDER, OBJ_BAT, OBJ_SNAKE, OBJ_TENTACLE
     .byte OBJ_MOTH, OBJ_LAMP, OBJ_KEY, OBJ_RAFT
-    .byte 0, 0, 0, 0, 0, OBJ_LAMP_R, OBJ_CELL
+    .byte 0, 0, 0, 0, 0, OBJ_LAMP_R, OBJ_CELL, OBJ_MINER
 
     .ds $F8C0 - *, 0
 CallPad_RaftBody:
@@ -2778,6 +2770,7 @@ ENEMY_MOTH     = 4
 LAMP           = 5             ; type-5 enemy record = editor lamp (white square)
 KEY            = 6             ; type-6 enemy record = editor key (Phase 5 pickup)
 CELL           = 14            ; type-14 record = the power cell (KEY|8: the `and #7` folds)
+MINER2         = 15            ; type-15 record = an extra miner to rescue (folds to 7 = RAFT)
 ENEMY_RAFT     = 7             ; type-7 enemy record = the moving, rideable raft
                                ; (plans/raft_moving_plan.md): floats on the open
                                ; water of model row 2, carries the player and
@@ -3008,6 +3001,51 @@ EnemyOffTable:
 ; `sta` does not touch flags — IsRoomDark's `beq` contract survives the
 ; return. Carry survives. No stack use.
 ; ==============================================================================
+; ------------------------------------------------------------------------------
+; MINERS (user request 2026-10-26: up to three to rescue, the level ends when the
+; last one is taken). LevelStartRoom b6-4 = miners still to rescue: b4 = the
+; level's own miner, b5/b6 = extra miners (record type 15) by room parity (RoomNo
+; & 1). LoadLevelB2 seeds it; a rescue clears its bit; the usual tally arms when
+; none is left. tools/test_miners.py drives all of this on the frozen banks.
+; ------------------------------------------------------------------------------
+; CEHDispatch - CheckEnemyHit's type dispatch (A = record type|dir).
+CEHDispatch:
+    and #%00001111              ; b3 keeps 13/14/15; b7 = dir drops
+    cmp #CELL
+    bcs .CDKey                  ; 14 = power cell, 15 = extra miner
+    and #%00000111              ; 13 (the wall-mirrored lamp) folds to 5
+    cmp #LAMP
+    beq .CDLamp
+    cmp #KEY
+    bcc .CDKill                 ; 0-4 = enemy: lose a life
+    bne .CDNext                 ; 7 = RAFT: a platform is walked on, not hit
+.CDKey:
+    jmp CEH_KeyDisp             ; 6 = key, 14/15 = cell / extra miner
+.CDKill:
+    jmp CEHkill
+.CDLamp:
+    jmp CEH_Lamp
+.CDNext:
+    jmp CEHNext
+
+; RescuePrimary - the level's own miner was touched (CheckMinerPickup).
+RescuePrimary:
+    lda LevelStartRoom
+    and #%11101111              ; b4 = the primary is rescued
+    sta LevelStartRoom
+    and #$70
+    beq MinerRescued            ; it was the last: the tally still draws it
+    lda #$FF
+    sta LevelMinerRoom          ; others remain: it vanishes (ROOM_NONE)
+MinerRescued:
+    lda LevelStartRoom
+    and #$70
+    bne .MRmore
+    jmp TallyTramp              ; nothing left: level-bonus tally (its rts returns
+                                ;   to the caller of RescuePrimary / CEHMiner)
+.MRmore:
+    jmp MinerMore
+
     .ds $F9B8 - *, 0            ; Phase 4 overlay tramp — shared address with
                                  ; bank2's twin image (40B bank2 hole before
                                  ; org $F9D9); F6-safe ($F9B1 & $1FFF ∉ hotspots)
@@ -3461,6 +3499,10 @@ CEH_KeyDisp:
     and #%00001111
     cmp #CELL
     beq .CEHCell
+    cmp #MINER2
+    bne .CKkey
+    jmp CEHMiner                ; 15 = extra miner
+.CKkey:
     jmp CEH_Key                 ; 6 = a plain key
 .CEHCell:
     lda EnemyDeadMask
@@ -3475,8 +3517,6 @@ CEH_KeyDisp:
     lda #120                    ; BAR_MAX: bar full again
     sta BarLevel
     rts
-CellBitTab:
-    .byte 1,2,4,8
 
     .ds $FBD0 - *, 0            ; #22: pin tramp at $FBD0 — bank2's twin
                                  ;   sits at the same address (pin moved from
@@ -4112,6 +4152,25 @@ BombEnemyBlast:
 
 
 
+; CEHMiner - an extra miner (record type 15) was touched: it vanishes for the
+; visit, its remaining bit (b5/b6 by RoomNo parity) clears, then MinerRescued.
+CEHMiner:
+    lda EnemyDeadMask
+    ora EnemyBitTable,X
+    sta EnemyDeadMask
+    lda RoomNo
+    and #1
+    tay
+    lda ExtraBitTab,Y
+    eor #$FF
+    and LevelStartRoom
+    sta LevelStartRoom
+    jmp MinerRescued
+ExtraBitTab:
+    .byte $20,$40
+CellBitTab:
+    .byte 1,2,4,8
+
     .ds $FE00 - *, 0            ; ObjColorTab $FE00-$FE47, ObjSprites $FE48-$FE8F:
 ; BandStart — first scanline of bands 0..3 (moved here 2026-10-22: the
 ; $F744 fill was 4 B over after the type-mask fix; this fill is free and
@@ -4607,6 +4666,23 @@ LaserInput:
 
 StepDelta:                      ; travel step per PlayerDir (0=right, 1=left)
     .byte 4, 252
+
+; MinerMore - a rescue that is not the last: blip (ch0, coin hold) + 500 points.
+MinerMore:
+    lda #8
+    sta BombSnd                 ; coin hold (UpdateBombSound decs it)
+    sta AUDV0
+    lda #4
+    sta AUDC0                   ; square
+    lda #12
+    sta AUDF0                   ; lower than the tally coin (24)
+    ldx #10
+.MMscore:
+    lda #$50
+    jsr CallPad_AddScore        ; 10 x +50 = +500
+    dex
+    bne .MMscore
+    rts
 
     .ds $FFE6 - *, 0            ; pin TallyTramp (was the BeamMask slot)
                                  ; freed 12B here — drift must not move it)
