@@ -79,6 +79,8 @@ EnemyRamX = $BD
 LaserState = $C0                  ; b5-2 = RoomDarkMask rooms 4-7 (BCFDarkRun)
 EnemyRamD = $C1                  ; dir bits: 1 = right, 0 = left
 EnemyRamP = $C2                  ; free-running frame clock
+EnemyClk = $D7                   ; enemy clock (speed multiplier, kernel.asm)
+EnemySpd = $D8                   ; half-units per frame = 2 + Level / 5
 EnemyRamY = $E2                  ; live Y (refreshed this overscan — after
                                  ; the bank1 HUD score-ptr stomp; S3.4)
 TILE_COLUMNS = 20
@@ -411,7 +413,7 @@ MothRoutine:
     ; the col swap and walk both use X (E3 lesson). Every exit re-stages
     ; FetchPtr (the walk overwrites it with window bytes) then
     ; jmp MothExitPad (sta $1FF4 / jmp UE_Next in bank0).
-    lda EnemyRamP
+    lda EnemyClk
     and #1
     beq .MothRun              ; branch-over-jmp (tail labels exceed ±127)
     jmp MothExit             ; ÷2 gate: 1 px / 2 frames
@@ -968,6 +970,16 @@ LoadLevelB2:
     lda #(LV_SHOW_FRAMES|$80)   ; bit7 = banner flag: decs down to $80; any
     sta LevelShowTimer          ; tally ARM (<=127) kills it instantly
 .LLNoBanner:
+    lda Level                   ; enemy speed multiplier (2026-10-26): EnemySpd =
+    ldx #2                      ;   2 + Level / 5 half-units per frame (x1, x1.5 ...)
+.LLspd:
+    cmp #5
+    bcc .LLspdDone
+    sbc #5
+    inx
+    bne .LLspd
+.LLspdDone:
+    stx EnemySpd
     ; LevelDataTable is level data in THIS bank: pointer = LevelDataTable +
     ; Level*7 (no FetchPtr staging through a fold any more).
     lda Level

@@ -75,7 +75,7 @@ ColMask:
 ; Y = record+0, X = slot (preserved). Out A = live Y delta; the bank0
 ; caller then jmp DEYDelta (adds the ROM spawn y). Same math as old copy.
 MothYDerive:
-    lda EnemyRamP
+    lda EnemyClk                ; the ENEMY clock (kernel.asm EnemyClk)
     lsr
     lsr
     and #15
@@ -783,6 +783,7 @@ LaserState  = $C0       ; b7 fire held this frame, b5-2 = RoomDarkMask rooms
                         ; 4-7 (kernel.asm LaserState; laser b7/b6/b1-0 must
                         ; preserve b5-2 — see LaserInput/DropArm)
 EnemyRamP   = $C2       ; free-running frame clock (bank0 RefreshEnemyY incs)
+EnemyClk    = $D7       ; enemy clock (speed multiplier, kernel.asm)
 RoomNo      = $98
 LevelPFDataLo = $9F              ; level block base = RoomShapes column (C2:
 LevelPFDataHi = $A0              ;   pos/count/records are +n/+2n/+3n)
