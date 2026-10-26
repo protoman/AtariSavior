@@ -1023,6 +1023,13 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         // the cave (tileY >= displayRows) so enemies can't spawn in the HUD.
         if (entityX < 0 || entityX >= displayColumns ||
             tileY < 0 || tileY >= displayRows) return;
+        // An extra miner stands on the floor: wherever he is clicked inside a
+        // band, snap him to that band's BOTTOM row (his top is then 9 px above
+        // the solid cell under him), and a click in the floor band itself uses
+        // band 2 (user 2026-10-26: the editor makes the fine adjustment).
+        if (m_currentBrush == BrushTool::ADD_MINER2) {
+            tileY = std::min(tileY / 4, 2) * 4 + 3;
+        }
 
         hero::EnemyData eData;
         if (m_currentBrush == BrushTool::ADD_SPIDER) eData.type = (int)hero::EnemyType::SPIDER;
