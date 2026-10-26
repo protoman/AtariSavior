@@ -1033,14 +1033,14 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         // (the generator already places spiders on even columns).
         if (m_currentBrush == BrushTool::ADD_SPIDER) entityX &= ~1;
         // An extra miner stands on the floor: wherever he is clicked inside a
-        // band, snap him so his 12 visible rows end EXACTLY on the band's last
-        // line (top = band edge - 12 px, stage y = 3 * band + 2 = 2 / 5 / 8), and
+        // band, snap him so his 9 visible rows end EXACTLY on the band's last
+        // line (top = band edge - 9 px, stage y = 3 * band + 2.25 = 2.25 / 5.25 / 8.25), and
         // a click in the floor band itself uses band 2 (user 2026-10-26: the
         // editor makes the fine adjustment, and he must not sink into the next
         // band). tileY becomes the canvas row that y falls on.
         float snapY = -1.0f;
         if (m_currentBrush == BrushTool::ADD_MINER2) {
-            snapY = 3.0f * (float)std::min(tileY / 4, 2) + 2.0f;
+            snapY = 3.0f * (float)std::min(tileY / 4, 2) + 2.25f;
             tileY = RowOfY(snapY, displayRows);
         }
 

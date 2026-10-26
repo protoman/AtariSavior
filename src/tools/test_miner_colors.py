@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT
 
-MINER_COLORS = [0x54, 0x54, 0x54, 0x54, 0x54, 0x4A, 0x54, 0x54]   # art in rows 3-11 (2026-10-26, no feet)
+MINER_COLORS = [0x54, 0x54, 0x4A, 0x54, 0x54, 0x08, 0x54, 0x54]   # 9-row art (2026-10-26, no feet)
 
 
 def lst_labels(path: Path) -> dict[str, int]:

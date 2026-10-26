@@ -2739,10 +2739,11 @@ ObjSprites:
     ; (user 2026-10-22): the cave no longer writes REFP1 (one register, two
     ; objects per frame), so the art itself must face RIGHT — the level's
     ; miner_dir used to do this with a hardware mirror.
-    ; 2026-10-26 (user art): 9 rows, no feet. Drawn in rows 3-11 of the same
-    ; 12-row window (3 blank rows on top) so the last row still sits on the
-    ; ground line: MinerY, the editor seat and the pickup box are unchanged.
-    .byte $00,$00,$00,$30,$38,$32,$6C,$F0,$E0,$FC,$76,$3F,$00,$00,$00,$00
+    ; 2026-10-26 (user art): 9 rows, no feet. The level miner is drawn at
+    ; MinerY+3, so row 8 lands on the band's last line (the old feet/hips rows
+    ; sank 3 px into the ground). Extra miners are seated 3 px lower to match
+    ; (stage y 2.25 / 5.25 / 8.25).
+    .byte $30,$38,$32,$6C,$F0,$E0,$FC,$76,$3F,$00,$00,$00,$00,$00,$00,$00
     ; BOMB (101): 8 rows (user art 2026-10-22) - yellow fuse at the top
     ; right, grey collar, red round body tapering to the nose.
     .byte $04,$08,$08,$18,$3C,$3C,$3C,$18
@@ -3486,7 +3487,7 @@ ObjColorTab:
     .byte $4C,$4C,$4C,$6C,$6C,$6C,$68,$68,$68,$64,$64,$82,$82,$82 ; 4 TENTACLE (14 rows: pink head -> blue base)
     .byte $06,$06,$6C,$6C,$68,$68,$64,$64,$82,$82 ; 5 BAT (10 rows: grey wings, purple body, dark blue tail)
     .byte $C8,$C8,$C4,$C4,$C2,$C2 ; 6 SNAKE (6 rows: claro/claro/verde/verde/escuro/escuro)
-    .byte $54,$54,$54,$54,$54,$4a,$54,$54,$08,$54,$54,$54,$08,$08,$08,$08 ; 7 MINER (9 rows at 3-11: helmet, face, body, grey tool, hips)
+    .byte $54,$54,$4a,$54,$54,$08,$54,$54,$54,$08,$08,$08,$08,$08,$08,$08 ; 7 MINER (9 rows: helmet, face, body, grey tool, hips)
     .byte $1C,$1C,$1C,$06,$46,$46,$46,$46 ; 8 BOMB  (8 rows: yellow fuse, grey collar, red body)
     .byte $0E,$0E ; 9 RAFT  (2 rows, white — user 2026-10-22)
     .byte $06,$06,$06,$06,$0E,$0E,$0E,$0E,$0E,$0E ; 10 LAMP_R (10 rows: same colours, bracket mirrored)
