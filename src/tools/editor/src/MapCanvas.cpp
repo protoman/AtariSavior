@@ -1027,6 +1027,11 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         // the cave (tileY >= displayRows) so enemies can't spawn in the HUD.
         if (entityX < 0 || entityX >= displayColumns ||
             tileY < 0 || tileY >= displayRows) return;
+        // A spider hangs in a wall-to-wall gap one cell (8 px = 2 display
+        // columns) wide: an odd column puts its 8 px sprite half inside the
+        // next cell (release 0.8 shot 003). Snap it to the cell's first column
+        // (the generator already places spiders on even columns).
+        if (m_currentBrush == BrushTool::ADD_SPIDER) entityX &= ~1;
         // An extra miner stands on the floor: wherever he is clicked inside a
         // band, snap him so his 12 visible rows end EXACTLY on the band's last
         // line (top = band edge - 12 px, stage y = 3 * band + 2 = 2 / 5 / 8), and
