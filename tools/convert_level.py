@@ -706,12 +706,17 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                     "one rescue per room")
             rows = rows_from_json(room, models_by_id)
             e = extras_here[0]
-            if abs(px(float(e.get("y", 0)), 12) - 99) > 3:
+            ypx = px(float(e.get("y", 0)), 12)
+            # He stands on the bottom row of a band: his top is 9 px above the
+            # top of the solid cell under him (the level miner: 99 = 108 - 9).
+            # Bands 0 / 1 / 2 -> 27 / 63 / 99 px = canvas rows 3 / 7 / 11.
+            band = next((b for b in range(3) if abs(ypx - (36 * (b + 1) - 9)) <= 3),
+                        None)
+            if band is None:
                 raise ValueError(
-                    f"{who}: extra miner at y={e.get('y')} ({px(float(e.get('y', 0)), 12)} px) "
-                    "- he stands on the floor band like the level miner, "
-                    "top at 99 px (canvas row 11, y = 8.25)")
-            band = int(float(e.get("y", 0))) // units_per_band(model)
+                    f"{who}: extra miner at y={e.get('y')} ({ypx} px) - he stands "
+                    "on the bottom row of a band: canvas row 3, 7 or 11 "
+                    "(y 2.25, 5.25 or 8.25)")
             x_px = enemy_x_px(float(e.get("x", 0)))
             cols = {min(19, x_px // 8), min(19, (x_px + 7) // 8)}
             mid = min(19, (x_px + 3) // 8)

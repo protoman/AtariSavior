@@ -214,6 +214,10 @@ mem.ram[BAR] = 60            # 50% -> 10 ticks = 500
 mem.ram[BOMBS] = 2           # 100
 mem.ram[LIVES] = 3           # 300
 mem.ram[MINERROOM] = mem.ram[ROOMNO]
+mem.ram[0x27] = 0x10          # LevelStartRoom: only this miner is left to rescue (the
+                              # live level may carry extra miners; this test is
+                              # about the tally flow - tools/test_miners.py owns
+                              # the miner counting)
 mem.ram[MINERX] = mem.ram[ROOMX]
 mem.ram[MINERY] = mem.ram[ROOMY]
 expected_ticks = 20 + (60 + 3) // 6 + 2 + 3 * 2     # = 38

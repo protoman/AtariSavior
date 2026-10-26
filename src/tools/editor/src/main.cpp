@@ -421,6 +421,25 @@ static int RunBrushTest() {
         return 1;
     }
     level.rooms[3].enemies.clear();
+    // The editor makes the fine adjustment itself (user 2026-10-26): a miner
+    // clicked ANYWHERE in a band snaps to that band's bottom row (he stands on
+    // the floor), and a click inside the floor band (rows 12-15) uses band 2.
+    for (const auto& [row, wantPx] : std::vector<std::pair<int, float>>{
+             {5, 63.0f}, {4, 63.0f}, {1, 27.0f}, {9, 99.0f}, {14, 99.0f}}) {
+        canvas.SetActiveRoom(3);
+        canvas.SetCurrentBrush(BrushTool::ADD_MINER2);
+        canvas.ApplyBrushAt(5, 25, row);
+        canvas.SetActiveRoom(2);
+        if (level.rooms[3].enemies.size() != 1 ||
+            std::fabs(level.rooms[3].enemies[0].y * 12.0f - wantPx) > 0.01f) {
+            std::fprintf(stderr, "brushtest: extra miner clicked on canvas row "
+                         "%d is at %g px, want %g (the bottom row of its band)\n",
+                         row, level.rooms[3].enemies.empty() ? -1.0
+                             : level.rooms[3].enemies[0].y * 12.0, wantPx);
+            return 1;
+        }
+        level.rooms[3].enemies.clear();
+    }
     // DELETE_ENTITY clicks the CANVAS row and must find them again
     canvas.SetCurrentBrush(BrushTool::DELETE_ENTITY);
     canvas.ApplyBrushAt(5, 29, 11);
