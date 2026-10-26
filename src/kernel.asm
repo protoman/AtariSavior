@@ -2700,8 +2700,9 @@ SOSkipTail:
 ObjSprites:
     ; KEY (offset 0): bow, shaft, stepped teeth
     .byte $3C,$42,$5A,$42,$3C,$18,$18,$18,$18,$1C,$18,$10
-    ; CELL (12): power cell, 4 rows - terminal cap + body (rows 12-15 of the KEY block)
-    .byte $18,$7E,$7E,$7E
+    ; CELL (12): power cell, 4 rows, the "atomic" cell (user art 2026-10-26;
+    ; rows 12-15 of the KEY block):  .######. / #.#..#.# / #.#..#.# / .######.
+    .byte $7E,$A5,$A5,$7E
     ; MOTH (16): 14 rows (user art 2026-10-22) — cream antennae wing tips,
     ; brown wing shoulders, gold body bands, brown lower wings
     .byte $24,$42,$66,$E7,$FF,$7E,$3C,$18,$3C,$7E,$FF,$E7,$66,$24
