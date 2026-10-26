@@ -242,10 +242,11 @@ def main() -> None:
     assert "cmp #ENEMY_BAT" in dey, "DeriveEnemyY must special-case the bat"
     assert "sta Temp" in dey and "adc Temp" in dey, \
         "bat delta must be added to ROM spawn y"
-    assert "lda EnemyRamP" in dey and "jsr FoldIndirect" in dey, \
-        "bat path needs ROM spawn y (via P3.1 fold) and the clock (EnemyRamP)"
-    assert "lda TickCounter" not in dey, \
-        "TickCounter wraps every 60 frames — derives must use EnemyRamP"
+    assert "lda EnemyClk" in dey and "jsr FoldIndirect" in dey, \
+        "bat path needs ROM spawn y (via P3.1 fold) and the ENEMY clock (EnemyClk)"
+    assert "lda TickCounter" not in dey and "lda EnemyRamP" not in dey, \
+        "TickCounter wraps every 60 frames and EnemyRamP is the shared clock — " \
+        "derives must use the enemy clock (2026-10-26 speed multiplier)"
     # clock advances once per frame in RefreshEnemyY
     rey_body = KERNEL.split("RefreshEnemyY:")[1].split("HotOverlapFlag —")[0]
     assert "inc EnemyRamP" in rey_body, \
@@ -323,7 +324,7 @@ def main() -> None:
         "moth rows go through the bank2-local /48 ladder"
     assert "jmp UE_Next" not in body, \
         "exit only via jmp MothExitPad (bank0's pad half serves UE_Next)"
-    assert "and #1" in body, "gate = EnemyRamP & 1 (1 px / 2 frames)"
+    assert "and #1" in body, "gate = EnemyClk & 1 (1 px / 2 ticks)"
     assert "stx EnemyIndex" in body and "ldx EnemyIndex" in body, \
         "slot must survive the col swap + rect walk (X clobbers, E3 lesson)"
     assert "lda EnemyDataLo" in body and "sta FetchPtr" in body, \

@@ -335,6 +335,14 @@ LaserState      = $C0           ; laser: b7 fire held this frame,
 EnemyRamD       = $C1           ; dir bits 0-3 = enemy 0-3 (1=right, 0=left)
 EnemyRamP       = $C2           ; bits0-3 moth phase (shared/sync); bits4-7
                                 ;   vdir for spider/bat/tentacle (1=down)
+EnemyClk        = $D7           ; 2026-10-26 ENEMY clock: every enemy gate / bob reads
+                                ;   this, NOT EnemyRamP/TickCounter (those also drive
+                                ;   the walk cycle, tide, hcrunch, laser tone). One
+                                ;   UpdateEnemies PASS = one tick; passes per frame =
+                                ;   EnemySpd / 2 (x1 .. x3 by level: tools/test_enemy_speed.py)
+EnemySpd        = $D8           ; half-units per frame: 2 + Level / 5 (x1, x1.5, x2 ...)
+EnemyFrac       = $D9           ; 0/1 carry of the half-unit accumulator
+EnemyPass       = $DA           ; passes left this frame
 EnemyRamY       = $E2           ; 3 bytes: live Y per enemy ($E2-$E4) —
                                 ;   private since S3.4; see contract above
 
@@ -1641,6 +1649,9 @@ EnemyBitTable:
 ; user 2026-09-23. No wall collision.
 ; ------------------------------------------------------------------------------
 UpdateEnemies:
+    jmp UEPrologue              ; 2026-10-26: passes per frame (speed multiplier) -
+                                ;   a `jmp` in, a `jmp` out at UE_Exit: never a jsr
+UEBody:
     lda EnemyCount
     bne UE_Start
     rts
@@ -1667,7 +1678,7 @@ UE_Alive:
                                  ; frees 15 B of pre-pad headroom and gives the
                                  ; type tables room for the raft byte.
 UE_SnakeBody:
-    lda TickCounter              ; snake: 1 px / 8 frames (user 2026-10-19:
+    lda EnemyClk                 ; snake: 1 px / 8 ticks (x1: 8 frames) (user 2026-10-19:
     and #7                      ;   halved from /4 — it read as too fast)
     bne UE_Next
     ; live dir bit: 1 = right, 0 = left
@@ -1709,7 +1720,7 @@ UE_Next:
     inx
     jmp UE_Loop
 UE_Exit:
-    rts
+    jmp UEEpilogue              ; next pass, or rts
 
 ; ------------------------------------------------------------------------------
 ; UE_Tentacle — chase RoomX: 1 px toward the player every 4th frame, gated by
@@ -1727,7 +1738,7 @@ UE_Exit:
 ; Entered via JMP from the dispatch; every path exits .TentOut → jmp UE_Next.
 ; ------------------------------------------------------------------------------
 UE_Tentacle:
-    lda TickCounter
+    lda EnemyClk
     and #1                       ; ÷2 gate: 1 px / 2 frames = 0.5 px/frame
                                  ; = half the player's 1 px/frame (user
                                  ; 2026-10-10: &3 read as chunky/slow)
@@ -1839,11 +1850,11 @@ DeriveEnemyY:
     jsr FoldIndirect            ; static types: ROM y
     rts
 .DEYTickNoShift:
-    lda EnemyRamP
+    lda EnemyClk
     lsr                         ; ÷2: 1 px / 2 frames (bat half speed, E-gate fix)
     jmp .DEYBobTick
 .DEYTickShift:
-    lda EnemyRamP
+    lda EnemyClk
     lsr
     lsr
     lsr                         ; ÷8 gate
@@ -1863,7 +1874,7 @@ DEYDelta:                      ; A = delta, then add ROM spawn y
     adc Temp
     rts
 .DEYSpiderTick:
-    lda EnemyRamP
+    lda EnemyClk
     lsr
     lsr                         ; ÷4 gate (1 px per 4 frames)
     and #$3F                    ; p = 0..63
@@ -3576,6 +3587,15 @@ CallPad_StageSlot1:
 StageSlot1:
     sta $1FF6
 
+; UEEpilogue - end of one enemy pass: another pass (clock + 1) or done.
+UEEpilogue:
+    dec EnemyPass
+    beq .UEEdone
+    bmi .UEEdone                ; EnemySpd 0 (never set): a single pass
+    inc EnemyClk
+    jmp UEBody
+.UEEdone:
+    rts
     .ds $FBF8 - *, 0            ; TitleSequenceFold / FooterFold /
                                  ;   TitlePlayerFold retired with the intro
                                  ;   movie (merged title, 2026-10-19)
@@ -4359,6 +4379,22 @@ PlayerColTable:
     .byte $2C, $88, $88, $88   ; rows 16:Laranja, 17:Azul, 18:Azul, 19:Azul
     .byte $04, $04   ; rows 20:Cinza Escuro, 21:Cinza Escuro
 
+; UEPrologue - enemy SPEED MULTIPLIER (user request 2026-10-26: x1.5 / x2 / x2.5 / x3
+; every 5 levels). EnemySpd half-units per frame (2 = x1); EnemyFrac carries the odd
+; half, so x1.5 runs 1, 2, 1, 2 ... passes. Each pass = `inc EnemyClk` + the whole
+; enemy update (UEBody ... UE_Exit -> UEEpilogue). Entered by `jmp` from the entry.
+UEPrologue:
+    lda EnemyFrac
+    clc
+    adc EnemySpd
+    tax
+    and #1
+    sta EnemyFrac
+    txa
+    lsr                         ; A = whole passes this frame (>= 1)
+    sta EnemyPass
+    inc EnemyClk
+    jmp UEBody
     .ds $FE90 - *, 0            ; ObjColorTab/ObjSprites moved to the
                                  ; $F744 fill (Phase 6: tall art). The $FE8F
                                  ; end is kept so FoldIndirect stays at $FE90.
