@@ -138,7 +138,10 @@ def main():
     # Two objects in different bands are PAIRED (slot 1 holds the higher one, the
     # pin keeps the other in slot 0 every frame: no flicker); otherwise they
     # alternate in slot 0. Either way BOTH must be drawn.
-    paired = all({M, 30} <= {b0, b1} for b0, b1 in pairs)
+    # (the enemy record is whatever bank2 holds at $F100, so its design is not
+    # fixed: just require the miner plus a real second design in the two slots)
+    paired = all(M in (b0, b1) and 0xFF not in (b0, b1) and b0 != b1
+                 for b0, b1 in pairs)
     if not paired and (M not in c or all(x == M for x in c)):
         fails.append(f"C control: live enemy + miner must both be drawn: {c} "
                      f"(slot pairs {pairs})")

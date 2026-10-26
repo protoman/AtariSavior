@@ -104,6 +104,11 @@ ZPSpare89       byte            ; $89 FREE (was RcBase, the rect-cache count,
                                 ; retired by plan C4 2026-10-20: every walker
                                 ; is cell-based). Kept allocated so the
                                 ; sequential block does not shift.
+ObjRefs         = $89           ; 2026-10-26 (per-slot miner mirror): b2 = slot 1's
+                                ;   REFP1 flag, staged by bank2 S1Fin in the VBL and
+                                ;   written by Slot1Hook at the band swap. Lives on
+                                ;   the freed $89 slot: bank1's CPCScratch alias only
+                                ;   runs in the overscan, after the cave read.
 DropTarget      byte            ; spawn drop-in target Y (0 = idle); was
                                 ; MapPtrPad1/MapPtrHi dead pad — repurposed
                                 ; in place, keeps the sequential block from
@@ -2419,14 +2424,13 @@ SelectActiveObject:
     lda ActiveObjectX
     ldx #1
     jsr SetObjectXPos
-    ; NO REFP1 write here (2026-10-22): REFP1 is ONE register for GRP1, but a
-    ; frame can draw TWO objects (band pairing, or the 1-of-2 rotation). Driving
-    ; it from the ACTIVE object made the mirrored miner flip sides every other
-    ; frame in any room that also had another object. The miner's mirror is
-    ; gone (a design-based mirror like the LAMP's type 13 needs 32 more art
-    ; bytes and the table ends 6 B below the $F8C0 pin), so every GRP1 object
-    ; is drawn unmirrored and REFP1 stays 0 — the bank1 HUD writes 0 for its
-    ; score, which is exactly what the cave wants.
+    ; REFP1 is NOT written here (2026-10-22 lesson): it is ONE register for GRP1,
+    ; but a frame can draw TWO objects, and driving it from the ACTIVE object made
+    ; the mirrored miner flip sides every other frame. 2026-10-26: it is written
+    ; PER SLOT instead - slot 0's value by bank2 S1Fin at the end of StageSlot1
+    ; (every object path ends there), slot 1's by Slot1Hook at the band swap from
+    ; ObjRefs b2. Only the miner art ever mirrors (it is stored facing right);
+    ; the bank1 HUD clears REFP1 before its rows. tools/test_miner_facing.py.
     ; Set ObjTop for kernel GRP1 visibility check.
     ; S2.2: ObjTop stored RoomY-relative (ObjTopRel = ActiveObjectY-RoomY+1) so
     ; the kernel compares against running-Y (`tya`) instead of `lda Scanline`
@@ -2535,6 +2539,11 @@ Slot1Hook:
     ; Inlined because with the loop running the RESP line is ~74c at far-right
     ; X: the jsr/rts plus `ldx RowIdx` + `sta WSYNC` would spill into a third
     ; scanline and stretch the band (the count below assumes exactly 2).
+    lda ObjRefs                 ; slot 1's mirror flag (b2) -> REFP1's D3: the miner
+    asl                         ;   art faces right; slot 0's value was written in
+    sta REFP1                   ;   the VBL (S1Fin), this is slot 1's. BEFORE the
+                                ;   align WSYNC: that stretch has ~30c of slack,
+                                ;   the positioning line after it has none.
     lda ActiveObjectX
     ldx #1
     sta WSYNC                   ; align (the hook enters mid-line)
