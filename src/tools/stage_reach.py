@@ -86,14 +86,81 @@ def _grid(model, room, sides=(True, True)):
     return air, bomb, danger
 
 
+def _free_reach(level, grids, at):
+    """Cells reachable with no bomb and no spider zone (every strip is a wall)."""
+    rooms = level["rooms"]
+    s = min(max(level["start_room"], 0), len(rooms) - 1)
+    sf = next((f for f in (4, 3, 5, 2, 6, 7, 8, 9) if grids[s][0][0][f]), 4)
+    seen = {(s, 0, sf)}
+    stack = [(s, 0, sf)]
+    while stack:
+        ri, b, f = stack.pop()
+        air = grids[ri][0]
+        r = rooms[ri]
+        outs = [(ri, b + 1, f), (ri, b - 1, f), (ri, b, f + 1), (ri, b, f - 1)]
+        if b == len(air) - 1 and (r["room_x"], r["room_y"] + 1) in at:
+            outs.append((at[(r["room_x"], r["room_y"] + 1)], 0, f))
+        if b == 0 and (r["room_x"], r["room_y"] - 1) in at:
+            o = at[(r["room_x"], r["room_y"] - 1)]
+            outs.append((o, len(grids[o][0]) - 1, f))
+        if b in (1, 2):
+            if f == 19 and (r["room_x"] + 1, r["room_y"]) in at:
+                outs.append((at[(r["room_x"] + 1, r["room_y"])], b, 0))
+            if f == 0 and (r["room_x"] - 1, r["room_y"]) in at:
+                outs.append((at[(r["room_x"] - 1, r["room_y"])], b, 19))
+        for nr, nb, nf in outs:
+            ga, gb, gd = grids[nr]
+            if not (0 <= nb < len(ga) and 0 <= nf < 20 and ga[nb][nf]):
+                continue
+            if (nb, nf) in gb or (nb, nf) in gd or (nr, nb, nf) in seen:
+                continue
+            seen.add((nr, nb, nf))
+            stack.append((nr, nb, nf))
+    return seen
+
+
+def level_grids(level, models, at=None):
+    """-> (grids, dead_rooms). The blast window is centred 7 px LEFT of the player
+    (BombX = RoomX, visible left = BombX - 7, +-2 display columns), so a strip can
+    only be bombed from its CENTRE side (measured on the real ROM, level 18: RoomX 49
+    left of the strip never sets its dead bit, RoomX 66 right of it does). A left
+    (M1) strip at cell l needs ground to stand on at l+1 / l+2, a right (ball) strip
+    at full column F at F-1 / F-2, in a cell reachable with every strip a wall.
+    Strips nobody can bomb become WALLS and their rooms are reported."""
+    rooms = level["rooms"]
+    if at is None:
+        at = {(r["room_x"], r["room_y"]): i for i, r in enumerate(rooms)}
+    grids = [_grid(models[r["model_id"]], r,
+                   ((r["room_x"] - 1, r["room_y"]) in at,
+                    (r["room_x"] + 1, r["room_y"]) in at)) for r in rooms]
+    seen = _free_reach(level, grids, at)
+    dead = []
+    for ri, (air, bomb, _d) in enumerate(grids):
+        for (b, c) in sorted(bomb):
+            ok = False
+            for d in (1, 2):
+                f = c + d if c < 10 else c - d
+                if not 0 <= f < 20:
+                    continue
+                for bb in range(len(air) - 1):
+                    if air[bb][f] and not air[bb + 1][f] and (ri, bb, f) in seen:
+                        ok = True
+            if not ok:
+                air[b][c] = False
+                dead.append(ri)
+    for ri, (air, bomb, _d) in enumerate(grids):
+        for (b, c) in list(bomb):
+            if not air[b][c]:
+                bomb.discard((b, c))
+    return grids, sorted(set(dead))
+
+
 def analyse(level, models):
     """-> (bombs or None, [rooms whose patch the cheapest route crosses],
     [rooms whose spider zone it crosses])."""
     rooms = level["rooms"]
     at = {(r["room_x"], r["room_y"]): i for i, r in enumerate(rooms)}
-    grids = [_grid(models[r["model_id"]], r,
-                   ((r["room_x"] - 1, r["room_y"]) in at,
-                    (r["room_x"] + 1, r["room_y"]) in at)) for r in rooms]
+    grids, _dead = level_grids(level, models, at)
     s = min(max(level["start_room"], 0), len(rooms) - 1)
     goal = min(max(level["miner_room"], 0), len(rooms) - 1)
     sf = next((f for f in (4, 3, 5, 2, 6, 7, 8, 9) if grids[s][0][0][f]), 4)
@@ -178,9 +245,7 @@ def reach_cells(level, models):
     """Every (room, band, col) reachable without a bomb or a spider zone."""
     rooms = level["rooms"]
     at = {(r["room_x"], r["room_y"]): i for i, r in enumerate(rooms)}
-    grids = [_grid(models[r["model_id"]], r,
-                   ((r["room_x"] - 1, r["room_y"]) in at,
-                    (r["room_x"] + 1, r["room_y"]) in at)) for r in rooms]
+    grids, _dead = level_grids(level, models, at)
     s = min(max(level["start_room"], 0), len(rooms) - 1)
     sf = next((f for f in (4, 3, 5, 2, 6, 7, 8, 9) if grids[s][0][0][f]), 4)
     seen = {(s, 0, sf)}
@@ -220,9 +285,7 @@ def route_segments(level, models):
     route; the generator guarantees longest_stretch <= CELL_BUDGET."""
     rooms = level["rooms"]
     at = {(r["room_x"], r["room_y"]): i for i, r in enumerate(rooms)}
-    grids = [_grid(models[r["model_id"]], r,
-                   ((r["room_x"] - 1, r["room_y"]) in at,
-                    (r["room_x"] + 1, r["room_y"]) in at)) for r in rooms]
+    grids, _dead = level_grids(level, models, at)
     cells = {}
     for i, r in enumerate(rooms):
         h = len(grids[i][0])

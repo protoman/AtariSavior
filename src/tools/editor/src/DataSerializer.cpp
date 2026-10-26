@@ -1666,6 +1666,9 @@ struct ReachResult {
     // Every (room, band, full col) the player can stand in with no bomb and no
     // spider on the way (extra miners must sit in one of these).
     std::set<std::tuple<int, int, int>> reach;
+    // Rooms whose SOLID strip cannot be bombed (nowhere to stand on its centre
+    // side, see the strip loop): the grid treats it as a wall.
+    std::vector<int> deadStrips;
 };
 
 // Route time model (heuristic - the timer is 120 steps of 60 frames = 120 s and
@@ -1737,10 +1740,19 @@ ReachResult AnalyseReach(const LevelData& lv,
             }
         }
     }
-    // Bomb strips (second loop: it needs every room position). The dead-side PLUG
-    // (left M1 strip at col 0 / right ball strip at col 9) cannot be bombed when
-    // there is no room behind it (bank1 gate, 2026-10-26), so it is a plain WALL;
-    // an interior strip is a designed block and stays bombable.
+    // Bomb strips (second loop: it needs every room position). Three kinds are a
+    // plain WALL: the dead-side PLUG (left M1 strip at col 0 / right ball strip at
+    // col 9) with no room behind it (bank1 gate, 2026-10-26), and a strip nobody can
+    // BOMB. The blast window is centred 7 px LEFT of the player (BombX = RoomX,
+    // visible left = BombX - 7, +-2 display columns), so a player on the OUTER side
+    // of a strip is always 2 columns short - measured on the real ROM (level 18, the
+    // start room's block: RoomX 49 left of it never sets the strip's dead bit, RoomX
+    // 66 right of it does). A strip can only be bombed from its CENTRE side: the
+    // left (M1) strip at cell l from cells l+1/l+2, the right (ball) strip at full
+    // column F from F-1/F-2, standing on a solid cell, in a cell the player reaches
+    // without crossing any strip. Interior strips that pass this stay bombable.
+    struct Strip { int room, band, col, side; };
+    std::vector<Strip> strips;
     for (int i = 0; i < n; ++i) {
         const RoomData& r = lv.rooms[i];
         Grid& g = grids[i];
@@ -1760,7 +1772,69 @@ ReachResult AnalyseReach(const LevelData& lv,
                 if (band >= 0 && band < g.bands) g.air[band][col] = 0;
                 continue;
             }
-            g.bomb.insert({band, col});
+            strips.push_back({i, band, col, side});
+        }
+    }
+    {
+        // reach with EVERY strip a wall (no spider zones, no bombs)
+        for (const Strip& st : strips) grids[st.room].air[st.band][st.col] = 0;
+        std::set<std::tuple<int, int, int>> seen;
+        std::vector<std::tuple<int, int, int>> stack;
+        const int s0 = std::max(0, std::min(n - 1, lv.start_room));
+        int f0 = 4;
+        for (int f : {4, 3, 5, 2, 6, 7, 8, 9}) {
+            if (grids[s0].air[0][f]) { f0 = f; break; }
+        }
+        seen.insert({s0, 0, f0});
+        stack.push_back({s0, 0, f0});
+        while (!stack.empty()) {
+            const auto [ri, b, f] = stack.back();
+            stack.pop_back();
+            const RoomData& r = lv.rooms[ri];
+            const Grid& g = grids[ri];
+            auto go = [&](int nr, int nb, int nf) {
+                const Grid& ng = grids[nr];
+                if (nb < 0 || nb >= ng.bands || nf < 0 || nf > 19) return;
+                if (!ng.air[nb][nf] || ng.danger.count({nb, nf})) return;
+                if (seen.insert({nr, nb, nf}).second) stack.push_back({nr, nb, nf});
+            };
+            go(ri, b + 1, f); go(ri, b - 1, f); go(ri, b, f + 1); go(ri, b, f - 1);
+            if (b == g.bands - 1) {
+                const auto o = at.find({r.room_x, r.room_y + 1});
+                if (o != at.end()) go(o->second, 0, f);
+            }
+            if (b == 0) {
+                const auto o = at.find({r.room_x, r.room_y - 1});
+                if (o != at.end()) go(o->second, grids[o->second].bands - 1, f);
+            }
+            if (b == 1 || b == 2) {
+                if (f == 19) {
+                    const auto o = at.find({r.room_x + 1, r.room_y});
+                    if (o != at.end()) go(o->second, b, 0);
+                }
+                if (f == 0) {
+                    const auto o = at.find({r.room_x - 1, r.room_y});
+                    if (o != at.end()) go(o->second, b, 19);
+                }
+            }
+        }
+        for (const Strip& st : strips) {
+            const Grid& g = grids[st.room];
+            bool ok = false;
+            for (int d = 1; d <= 2 && !ok; ++d) {
+                const int f = st.side == 1 ? st.col + d : st.col - d;
+                if (f < 0 || f > 19) continue;
+                for (int b = 0; b + 1 < g.bands && !ok; ++b) {
+                    if (g.air[b][f] && !g.air[b + 1][f]
+                            && seen.count({st.room, b, f})) ok = true;
+                }
+            }
+            if (ok) {
+                grids[st.room].air[st.band][st.col] = 1;
+                grids[st.room].bomb.insert({st.band, st.col});
+            } else {
+                out.deadStrips.push_back(st.room);
+            }
         }
     }
     // Dijkstra over (room, band, full col); crossing a patch cell costs 1.
@@ -2938,7 +3012,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             // (user rule 2026-10-21: first room has no enemies, but async in
             // the path is welcome). Cell 7 + its mirror cell 2 are open in
             // every start shape (row 1 is '#.........').
-            if (i == 0 && plan.patch && l >= 7) {
+            if (i == 0 && plan.patch && l >= 7 && !repair.noPatch.count({l, 0})) {
                 // M1 guard: the patch cell must be OPEN in band 1 and WALLED in
                 // bands 0/2 (the whole-cave strip paints/hides the column).
                 // Prefer col 7 (next to the exit gap); hot archetypes may fill
@@ -3440,6 +3514,18 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 break;
             }
             if (dq) continue;
+        }
+        // A strip nobody can bomb (see AnalyseReach) is a pointless wall, and in the
+        // start room it can trap the player in the arrival chamber (user report
+        // 2026-10-26, level 18): drop it and rebuild the level without it.
+        {
+            bool dropped = false;
+            for (int ri : rr.deadStrips) {
+                if (repair.noPatch.count({l, ri})) continue;
+                repair.nextNoPatch.push_back({l, ri});
+                dropped = true;
+            }
+            if (dropped) continue;
         }
         bool onlyStartBlock = true;     // the one block a route may cross
         for (int ri : rr.crossed) onlyStartBlock = onlyStartBlock && ri == 0;

@@ -1258,3 +1258,20 @@ at all). `stage_reach` / `AnalyseReach` treat an unbreakable plug as a wall.
 Guard: `tools/test_bomb_side_walls.py` (edge wall, edge strips, interior controls,
 SetRoomExits on a fabricated grid). verify_build's exit-handler check now reads
 `ExitFind`.
+
+## #25 — a designed bomb block that cannot be bombed from where the player arrives (2026-10-26)
+User: level 18, room 1 (the start room): the thin M1 strip at column 7 separates the
+arrival chamber from the rest of the level and there is no place to drop a bomb that
+can break it. Measured on the real ROM with the live stage: a bomb dropped at RoomX 49
+(left of the strip) never sets the strip's dead bit, at RoomX 66 (right of it) it does.
+Cause: BombX = RoomX and the blast window is centred on the bomb's VISIBLE left edge
+(BombX - 7), +-2 display columns - 7 px left of the player. A player on the OUTER side
+of a strip is always ~2 columns short; only the CENTRE side works (left strip: cells
+l+1 / l+2; right strip at full column F: F-1 / F-2), standing on a solid cell.
+The generator's start-room block (levels >= 7) only qualifies at col 7, so it always
+sat on the far side of the arrival drop (col 4).
+Fix (generator, not the data): `AnalyseReach` / `stage_reach.level_grids` compute the
+cells reachable with every strip a wall and treat a strip with no reachable ground on
+its centre side as a WALL (`deadStrips`); the repair loop drops such a block
+(`noPatch`, now allowed for the start room) and rebuilds the level. Guard:
+`tools/test_bomb_reach.py` (+ test_generator runs the same check on the stage).
