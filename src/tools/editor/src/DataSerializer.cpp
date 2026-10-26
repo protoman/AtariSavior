@@ -23,6 +23,7 @@
 #include <iostream>
 #include <filesystem>
 #include <map>
+#include <optional>
 #include <queue>
 #include <tuple>
 #include <set>
@@ -1657,7 +1658,26 @@ struct ReachResult {
     std::vector<int> dangerRooms;   // room INDEXES whose spider the route crosses
     std::vector<int> order;     // room INDEXES, nearest first
     std::vector<int> crossed;   // room INDEXES of the patches on the cheapest route
+    // Power-cell planning (2026-10-26): the cheapest route in ESTIMATED PLAY
+    // TIME (see kRoute* below), start -> miner, one node per step. `cost` is
+    // the cumulative estimate at that node.
+    struct RouteNode { int room, band, col, cost; };
+    std::vector<RouteNode> route;
 };
+
+// Route time model (heuristic - the timer is 120 steps of 60 frames = 120 s and
+// nothing in the generator can play the level, so it estimates). One full-map
+// column is 8 px at 1 px/frame, one band about 30 frames of jet/fall, and a
+// human needs roughly kRouteHuman x the ideal time plus a look-around at every
+// room. Units are frames. tools/stage_reach.py route_segments() carries the
+// same constants as the independent guard; tune them in BOTH.
+constexpr int kRouteHuman = 3;
+constexpr int kRouteStepH = 8 * kRouteHuman;
+constexpr int kRouteStepV = 30 * kRouteHuman;
+constexpr int kRouteRoom = 240;             // 4 s per room entered
+constexpr int kCellBudget = 90 * 60;        // refill before a segment passes 90 s
+constexpr int kCellLead = 65 * 60;          // ... aiming for ~65 s after the last
+constexpr int kBarSeconds = 120;
 
 ReachResult AnalyseReach(const LevelData& lv,
                          const std::vector<ModelData>& models) {
@@ -1787,9 +1807,186 @@ ReachResult AnalyseReach(const LevelData& lv,
             }
         }
     }
+    // Second pass: the same graph weighed in estimated play time (above).
+    // Spider zones are walled off here (the first pass already reports them);
+    // a bomb patch costs a few seconds.
+    if (out.bombs >= 0) {
+        std::map<Node, long> tbest;
+        std::map<Node, Node> tparent;
+        using TItem = std::pair<long, Node>;
+        std::priority_queue<TItem, std::vector<TItem>, std::greater<TItem>> tq;
+        tbest[{s, 0, sf}] = 0;
+        tq.push({0, {s, 0, sf}});
+        std::optional<Node> reached;
+        while (!tq.empty() && !reached) {
+            const auto [cost, node] = tq.top();
+            tq.pop();
+            const auto ti = tbest.find(node);
+            if (ti == tbest.end() || ti->second < cost) continue;
+            const auto [ri, b, f] = node;
+            if (ri == goal) { reached = node; break; }
+            const RoomData& r = lv.rooms[ri];
+            auto go = [&](int nr, int nb, int nf, int w) {
+                const Grid& g = grids[nr];
+                if (nb < 0 || nb >= g.bands || nf < 0 || nf > 19) return;
+                if (!g.air[nb][nf] || g.danger.count({nb, nf})) return;
+                const long c = cost + w + (g.bomb.count({nb, nf}) ? 600 : 0);
+                const Node nn{nr, nb, nf};
+                const auto bi = tbest.find(nn);
+                if (bi != tbest.end() && bi->second <= c) return;
+                tbest[nn] = c;
+                tparent[nn] = node;
+                tq.push({c, nn});
+            };
+            const Grid& g = grids[ri];
+            go(ri, b + 1, f, kRouteStepV); go(ri, b - 1, f, kRouteStepV);
+            go(ri, b, f + 1, kRouteStepH); go(ri, b, f - 1, kRouteStepH);
+            if (b == g.bands - 1) {
+                const auto o = at.find({r.room_x, r.room_y + 1});
+                if (o != at.end()) go(o->second, 0, f, kRouteRoom);
+            }
+            if (b == 0) {
+                const auto o = at.find({r.room_x, r.room_y - 1});
+                if (o != at.end()) go(o->second, grids[o->second].bands - 1, f, kRouteRoom);
+            }
+            if (b == 1 || b == 2) {
+                if (f == 19) {
+                    const auto o = at.find({r.room_x + 1, r.room_y});
+                    if (o != at.end()) go(o->second, b, 0, kRouteRoom);
+                }
+                if (f == 0) {
+                    const auto o = at.find({r.room_x - 1, r.room_y});
+                    if (o != at.end()) go(o->second, b, 19, kRouteRoom);
+                }
+            }
+        }
+        if (reached) {
+            Node cur = *reached;
+            while (true) {
+                const auto [cr, cb, cf] = cur;
+                out.route.push_back({cr, cb, cf, (int)tbest[cur]});
+                const auto pi = tparent.find(cur);
+                if (pi == tparent.end()) break;
+                cur = pi->second;
+            }
+            std::reverse(out.route.begin(), out.route.end());
+        }
+    }
     return out;
 }
 
+
+// POWER CELLS (user request 2026-10-26): the timer is 120 s, so a level whose
+// estimated play time (the route model above) exceeds kCellBudget gets cells on
+// its route. Each cell refills the bar once (the kernel latches bit (room
+// index & 3) of LevelStartRoom, so cells sit in rooms that differ mod 4) and the
+// plan keeps every stretch between refills under kCellBudget, aiming for
+// kCellLead after the previous one. Returns the cells placed, or -1 when no
+// eligible route cell exists for a stretch (test_generator then fails loudly).
+int PlanPowerCells(LevelData& lv, const std::vector<ModelData>& models) {
+    const ReachResult rr = AnalyseReach(lv, models);
+    if (rr.route.empty() || rr.route.back().cost <= kCellBudget) return 0;
+    auto modelOf = [&](int id) -> const ModelData* {
+        for (const auto& m : models) {
+            if (m.id == id) return &m;
+        }
+        return nullptr;
+    };
+    std::set<int> bits;
+    for (int i = 0; i < (int)lv.rooms.size(); ++i) {
+        for (const EnemyData& e : lv.rooms[i].enemies) {
+            if (e.type == (int)EnemyType::POWER_CELL) bits.insert(i & 3);
+        }
+    }
+    // Cells compete with the generator's own objects for the 2 slots per room
+    // (from level 9 most route rooms are full): when no free host exists, a
+    // plain enemy of a route room is evicted in favour of the cell
+    // (evict >= 0 on return). Keys, rafts and tentacles are never evicted.
+    auto eligible = [&](size_t k, bool replace, int& evict) {
+        evict = -1;
+        const auto& nd = rr.route[k];
+        if (k < 3 || k + 3 >= rr.route.size()) return false;
+        for (size_t d = 1; d <= 3; ++d) {
+            if (rr.route[k - d].room != nd.room
+                    || rr.route[k + d].room != nd.room)
+                return false;               // too close to the arrival/exit cell
+        }
+        if (nd.room == lv.start_room || nd.room == lv.miner_room) return false;
+        if (bits.count(nd.room & 3)) return false;
+        RoomData& room = lv.rooms[nd.room];
+        const ModelData* m = modelOf(room.model_id);
+        if (!m || m->width <= 0) return false;
+        const int h = (int)m->tiles.size() / m->width;
+        if (h != 4) return false;           // legacy 3-row shapes: skip
+        if (m->mid_band_type == 1 && nd.band == 1) return false;
+        if (room.bottom_band && nd.band == h - 1) return false;
+        for (const auto& pt : room.asym_patches) {
+            if ((int)pt.size() >= 3 && pt[2] == (int)TileType::LOCKED_DOOR)
+                return false;               // door rooms allow one non-key enemy
+        }
+        for (const auto& ft : room.feature_cells) {
+            if ((int)ft.size() >= 3 && (ft[2] == (int)TileType::HCRUNCH
+                                        || ft[2] == (int)TileType::PHASE))
+                return false;               // crunch owns the slot; a phase
+                                            // room's row 1 is the gate itself
+        }
+        const int dcol = nd.col * 2;
+        auto bandOf = [&](float y) { return std::min(h - 1, (int)y / (12 / h)); };
+        auto clear = [&](int skip) {
+            int n = 0;
+            for (int i = 0; i < (int)room.enemies.size(); ++i) {
+                if (i == skip) continue;
+                const EnemyData& e = room.enemies[i];
+                ++n;
+                if (bandOf(e.y) == nd.band
+                        || std::abs((int)std::lround(e.x) - dcol) < 3) return false;
+            }
+            for (const LampData& l : room.lamps) {
+                ++n;
+                if (bandOf(l.y) == nd.band
+                        || std::abs((int)std::lround(l.x) - dcol) < 3) return false;
+            }
+            return n < 2;
+        };
+        if (clear(-1)) return true;
+        if (!replace) return false;
+        for (int i = 0; i < (int)room.enemies.size(); ++i) {
+            const int t = room.enemies[i].type;
+            if (t != (int)EnemyType::BAT && t != (int)EnemyType::SPIDER
+                    && t != (int)EnemyType::SNAKE
+                    && t != (int)EnemyType::GIANT_MOTH) continue;
+            if (clear(i)) { evict = i; return true; }
+        }
+        return false;
+    };
+    int placed = 0;
+    int last = 0;
+    const int total = rr.route.back().cost;
+    while (total - last > kCellBudget) {
+        int pick = -1, pickEvict = -1, ev = -1;
+        // Preference: a free host in the lead window, then a free host anywhere
+        // that leaves 10 s of slack, then the same two windows with eviction.
+        for (int pass = 0; pass < 4 && pick < 0; ++pass) {
+            const int limit = last + ((pass & 1) ? kCellBudget - 10 * 60 : kCellLead);
+            for (size_t k = 0; k < rr.route.size(); ++k) {
+                if (rr.route[k].cost <= last) continue;
+                if (rr.route[k].cost > limit) break;
+                if (eligible(k, pass >= 2, ev)) { pick = (int)k; pickEvict = ev; }
+            }
+        }
+        if (pick < 0) return -1;
+        const auto& nd = rr.route[pick];
+        RoomData& room = lv.rooms[nd.room];
+        const ModelData* m = modelOf(room.model_id);
+        if (pickEvict >= 0) room.enemies.erase(room.enemies.begin() + pickEvict);
+        AddEnemy(room, EnemyType::POWER_CELL, (float)(nd.col * 2),
+                 BandY(*m, nd.band), 0.0f, 0.0f);
+        bits.insert(nd.room & 3);
+        last = nd.cost;
+        ++placed;
+    }
+    return placed;
+}
 
 // Moves the room's spider (same band) to the nearest column where the level is
 // finishable without crossing a spider zone. Keeps the placement rules the
@@ -3082,6 +3279,14 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         }
     }
 
+    // Power cells go in LAST: the route they sit on is the finished level's.
+    for (int l = 1; l <= kStageLevels; ++l) {
+        if (PlanPowerCells(levels[l - 1], models) < 0) {
+            repair.problems.push_back(
+                "level " + std::to_string(l) + ": the route is longer than the "
+                "timer but no room can host a power cell");
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

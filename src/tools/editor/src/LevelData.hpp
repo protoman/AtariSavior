@@ -81,7 +81,12 @@ enum class EnemyType : int {
     // bottom band, carries the player across and returns. Convert enforces
     // water + row 2 + an open cell (plans/raft_moving_plan.md). The RAFT
     // *tile* (6) stays supported as a static platform for hand-authored data.
-    RAFT = 7
+    RAFT = 7,
+    // 14 = the POWER CELL (2026-10-26): KEY|8 in the ROM (every `and #7` type
+    // consumer folds it to the key arm, which tells them apart by the record).
+    // Collected once per level, it refills the timer bar. Convert accepts it as a
+    // plain pickup: not in door/hcrunch rooms, rooms distinct mod 4 per level.
+    POWER_CELL = 14
 };
 
 struct EnemyData {

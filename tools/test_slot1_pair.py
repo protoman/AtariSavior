@@ -217,11 +217,23 @@ if "ObjHeightTab" not in L0 or "ObjHeightTab" not in L2:
     sys.exit("ObjHeightTab missing from a frozen listing (re-freeze?)")
 b0 = (FROZEN / "bank0.bin").read_bytes()
 b2 = (FROZEN / "bank2.bin").read_bytes()
-t0 = b0[L0["ObjHeightTab"] - 0xF000:][:8]
-t2 = b2[L2["ObjHeightTab"] - 0xF000:][:8]
+t0 = b0[L0["ObjHeightTab"] - 0xF000:][:15]
+t2 = b2[L2["ObjHeightTab"] - 0xF000:][:15]
 assert t0 == t2, (f"ObjHeightTab twins differ: bank0 {t0.hex()} vs bank2 "
                   f"{t2.hex()} — a stale hand-copy would clip slot 1")
-assert set(t0) <= {2, 6, 8, 10, 14, 15, 16}, f"unexpected window rows {sorted(set(t0))}"
+assert set(t0) <= {0, 2, 4, 6, 8, 10, 12, 14, 15, 16}, f"unexpected window rows {sorted(set(t0))}"
+# Power cell (type 14, 2026-10-26) borrows the KEY block's rows 12-15: the key's
+# window must stop at its 12 art rows or it would draw the cell under itself.
+assert t0[6] == 12 and t0[14] == 4, (
+    f"KEY/CELL windows {t0[6]}/{t0[14]}, want 12/4 (cell = KEY block rows 12-15)")
+_k = {n: int(re.search(rf"^{n}\s*=\s*(\d+)", K, re.M).group(1))
+      for n in ("OBJ_CELL", "OBJ_MOTH")}
+assert _k["OBJ_CELL"] == 12 and _k["OBJ_CELL"] + t0[14] == _k["OBJ_MOTH"], \
+    "the cell art must exactly fill the KEY block's rows 12-15"
+# bank2's slot-1 offset table must cover type 14 too (it stages slot 1)
+_o = parse_labels(FROZEN / "bank2.lst", {"ObjSpriteOffTable"})["ObjSpriteOffTable"]
+assert b2[_o - 0xF000 + 14] == 12, "bank2 ObjSpriteOffTable[14] != OBJ_CELL"
+
 # SPIDER graduated to its own (15-row) art height: its declared draw window
 # must equal the art block it occupies, or .Line reads into the next design.
 assert t0[0] == 15, f"ObjHeightTab[SPIDER]={t0[0]}, want 15 (15-row art)"

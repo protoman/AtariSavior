@@ -388,6 +388,7 @@ OBJ_SNAKE       = 79
 OBJ_MINER       = 85
 OBJ_BOMB        = 101
 OBJ_RAFT        = 109
+OBJ_CELL        = 12             ; the power cell borrows the KEY block's free rows 12-15
 OBJ_LAMP_R      = 111            ; the wall-MIRRORED lamp: enemy TYPE 13
                                  ;   (b3-0 holds 8-15 unused). The converter
                                  ;   picks 5 or 13 from the wall the lamp
@@ -2020,7 +2021,7 @@ CEH_HasMore:
     cmp #KEY                    ; type 6 = key: collect, no life loss
     bcc .CEHkill                ; 0-4 (LAMP handled above) = enemy: lose life
     bne CEHNext                 ; 7 = RAFT: a platform is walked on, not hit
-    jmp CEH_Key                 ; 6 = key
+    jmp CEH_KeyDisp             ; 6 = key, 14 = power cell (the type mask folds b3)
 .CEHkill:
     ; Hit! Mark this enemy dead (bit = index)
     lda EnemyDeadMask
@@ -2403,8 +2404,8 @@ SelectActiveObject:
 
 .SOEnemySkip:
     jmp SOSkipTail              ; dead enemy / taken key: hand the slot on
-    .byte 0                     ; pad (unreachable): keeps every later bank0
-                                ;   address byte-identical (tail is 1 B shorter)
+                                ; (the unreachable 1-byte pad that stood here
+                                ;   paid for the type-14 table entries)
 
 .SODone:
     ; Position GRP1 from ActiveObjectX — ONE shared call for every object
@@ -2576,8 +2577,9 @@ ObjHeightTab:                                              ; by ENEMY type
     .byte 15,         10                                    ; 0 SPIDER 1 BAT
     .byte 6,          OBJ_WINDOW                            ; 2 SNAKE  3 TENT
     .byte 14,         10                                    ; 4 MOTH   5 LAMP
-    .byte OBJ_WINDOW, 2                                     ; 6 KEY    7 RAFT
+    .byte 12,         2                                     ; 6 KEY (12 rows)  7 RAFT
     .byte 0,0,0,0,0,          10                            ; 8-12 unused, 13 LAMP_R
+    .byte 4                                                 ; 14 CELL (4 rows)
 
 ; CallPad_RaftBody — bank1 RaftBody entry. Pinned at $F8C0 with a
 ; BYTE-IDENTICAL twin in bank1 (bank1.asm, same address): the `sta $1FF5`
@@ -2697,7 +2699,9 @@ SOSkipTail:
 ; type's art is authored.
 ObjSprites:
     ; KEY (offset 0): bow, shaft, stepped teeth
-    .byte $3C,$42,$5A,$42,$3C,$18,$18,$18,$18,$1C,$18,$10,$00,$00,$00,$00
+    .byte $3C,$42,$5A,$42,$3C,$18,$18,$18,$18,$1C,$18,$10
+    ; CELL (12): power cell, 4 rows - terminal cap + body (rows 12-15 of the KEY block)
+    .byte $18,$7E,$7E,$7E
     ; MOTH (16): 14 rows (user art 2026-10-22) — cream antennae wing tips,
     ; brown wing shoulders, gold body bands, brown lower wings
     .byte $24,$42,$66,$E7,$FF,$7E,$3C,$18,$3C,$7E,$FF,$E7,$66,$24
@@ -2743,7 +2747,7 @@ ObjSprites:
 ObjSpriteOffTable:
     .byte OBJ_SPIDER, OBJ_BAT, OBJ_SNAKE, OBJ_TENTACLE
     .byte OBJ_MOTH, OBJ_LAMP, OBJ_KEY, OBJ_RAFT
-    .byte 0, 0, 0, 0, 0, OBJ_LAMP_R
+    .byte 0, 0, 0, 0, 0, OBJ_LAMP_R, OBJ_CELL
 
     .ds $F8C0 - *, 0
 CallPad_RaftBody:
@@ -2772,6 +2776,7 @@ ENEMY_TENTACLE = 3
 ENEMY_MOTH     = 4
 LAMP           = 5             ; type-5 enemy record = editor lamp (white square)
 KEY            = 6             ; type-6 enemy record = editor key (Phase 5 pickup)
+CELL           = 14            ; type-14 record = the power cell (KEY|8: the `and #7` folds)
 ENEMY_RAFT     = 7             ; type-7 enemy record = the moving, rideable raft
                                ; (plans/raft_moving_plan.md): floats on the open
                                ; water of model row 2, carries the player and
@@ -3410,7 +3415,8 @@ TitleBcd:
 ; 16); rows 8-15 carry the type's own color, which is what tints an M1
 ; block sharing those scanlines.
 ObjColorTab:
-    .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c ; 0 KEY   ($1c yellow)
+    .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c ; 0 KEY   ($1c yellow, 12 rows)
+    .byte $0E,$9E,$9A,$9E ; 0b CELL (4 rows: white cap, cyan body)
     .byte $0E,$0E,$F2,$F2,$1C,$1C,$F2,$F2,$F2,$1C,$1C,$F2,$F2,$0E ; 1 MOTH  (14 rows: cream tips, brown wings, gold body)
     .byte $14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$22,$22,$22,$14,$14,$14 ; 2 SPIDER (15 rows)
     .byte $06,$06,$06,$06,$0E,$0E,$0E,$0E,$0E,$0E ; 3 LAMP  (10 rows: grey bracket/neck, white bowl)
@@ -3434,6 +3440,42 @@ ObjColorTab:
 ; PinSlot0 MOVED to bank2 with StageSlot1 (its only caller, 2026-10-22).
 ; ------------------------------------------------------------------------------
 
+
+
+; ------------------------------------------------------------------------------
+; CEH_KeyDisp / power cell (record type 14 = KEY|8, user request 2026-10-26):
+; every `and #7` in the type consumers folds 14 to 6, so CheckEnemyHit lands on
+; the key arm; this entry re-reads the record (FetchPtr is still staged) and
+; sends a type-14 record to the cell: the slot vanishes (no life, no score), the
+; timer bar is refilled to BAR_MAX, and bit (RoomNo & 3) of LevelStartRoom b3-0
+; latches so bank2's room load keeps it dead on re-entry (one refill per cell
+; per level: leaving and coming back is not an infinite recharge). TickCounter is
+; left alone on purpose - the 60-frame clock also paces PickPlayerFrame, and a
+; partial second on top of a full bar is harmless. The generator keeps cell
+; rooms distinct mod 4. Guard: tools/test_power_cell.py.
+; ------------------------------------------------------------------------------
+CEH_KeyDisp:
+    ldy EnemyOffTable,X
+    jsr FoldIndirect            ; record type|dir
+    and #%00001111
+    cmp #CELL
+    beq .CEHCell
+    jmp CEH_Key                 ; 6 = a plain key
+.CEHCell:
+    lda EnemyDeadMask
+    ora EnemyBitTable,X
+    sta EnemyDeadMask
+    lda RoomNo
+    and #3
+    tay
+    lda CellBitTab,Y
+    ora LevelStartRoom
+    sta LevelStartRoom
+    lda #120                    ; BAR_MAX: bar full again
+    sta BarLevel
+    rts
+CellBitTab:
+    .byte 1,2,4,8
 
     .ds $FBD0 - *, 0            ; #22: pin tramp at $FBD0 — bank2's twin
                                  ;   sits at the same address (pin moved from
@@ -3565,7 +3607,8 @@ LoadLevel:
 ; Drop-in tail, kept in bank0 (0 extra jsr levels, 0 pushes): EnterRoom is the
 ; normal bank0 tramp, and DropArm's rts still pops the original caller frame.
 LF_B0Tail:
-    lda LevelStartRoom
+    lda #0                      ; the start room is the constant 0 (LevelStartRoom
+                                ;   keeps KeyHeld b7 + the power-cell bits b3-0)
     jsr EnterRoom
     lda LevelStartX
     sta RoomX

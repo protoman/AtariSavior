@@ -133,6 +133,86 @@ def analyse(level, models):
     return None, [], []
 
 
+# --- play-time model (power cells, 2026-10-26) --------------------------------
+# The bar is 120 steps of 60 frames. Nothing here can play a level, so the model
+# ESTIMATES: one full-map column = 8 px at 1 px/frame, one band ~30 frames, a
+# human needs ~3x the ideal time plus ~4 s of look-around per room entered.
+# Constants are kept in step with DataSerializer.cpp (kRoute*/kCell*): tune both.
+ROUTE_HUMAN = 3
+ROUTE_H = 8 * ROUTE_HUMAN
+ROUTE_V = 30 * ROUTE_HUMAN
+ROUTE_ROOM = 240
+CELL_BUDGET = 90 * 60            # no stretch between refills may pass 90 s
+BAR_FRAMES = 120 * 60
+POWER_CELL = 14
+
+
+def route_segments(level, models):
+    """-> (total_estimate, longest_stretch) in frames, or None when the miner is
+    unreachable. The search is the cheapest route in ESTIMATED TIME where a cell
+    the route steps on resets the 'since last refill' clock (a cell is always
+    worth taking). longest_stretch is the worst gap between refills on the best
+    route; the generator guarantees longest_stretch <= CELL_BUDGET."""
+    rooms = level["rooms"]
+    at = {(r["room_x"], r["room_y"]): i for i, r in enumerate(rooms)}
+    grids = [_grid(models[r["model_id"]], r) for r in rooms]
+    cells = {}
+    for i, r in enumerate(rooms):
+        h = len(grids[i][0])
+        for e in r.get("enemies") or []:
+            if e.get("type") == POWER_CELL:
+                f = int(round(e["x"])) // 2
+                u = 12 // max(1, len(models[r["model_id"]]["tiles"])
+                              // models[r["model_id"]]["width"])
+                b = min(h - 1, int(e["y"]) // max(1, u))
+                cells[(i, b, f)] = True
+    s = min(max(level["start_room"], 0), len(rooms) - 1)
+    goal = min(max(level["miner_room"], 0), len(rooms) - 1)
+    sf = next((f for f in (4, 3, 5, 2, 6, 7, 8, 9) if grids[s][0][0][f]), 4)
+    # label-correcting search on (node) -> (stretch, total): a refill makes the
+    # stretch 0, so costs are not monotone along a path; minimise the stretch
+    # first (it is what the timer cares about), then the total.
+    start = (s, 0, sf)
+    best = {start: (0, 0)}
+    stack = [start]
+    while stack:
+        node = stack.pop()
+        stretch, total = best[node]
+        ri, b, f = node
+        air = grids[ri][0]
+        r = rooms[ri]
+        outs = [(ri, b + 1, f, ROUTE_V), (ri, b - 1, f, ROUTE_V),
+                (ri, b, f + 1, ROUTE_H), (ri, b, f - 1, ROUTE_H)]
+        if b == len(air) - 1 and (r["room_x"], r["room_y"] + 1) in at:
+            outs.append((at[(r["room_x"], r["room_y"] + 1)], 0, f, ROUTE_ROOM))
+        if b == 0 and (r["room_x"], r["room_y"] - 1) in at:
+            o = at[(r["room_x"], r["room_y"] - 1)]
+            outs.append((o, len(grids[o][0]) - 1, f, ROUTE_ROOM))
+        if b in (1, 2):
+            if f == 19 and (r["room_x"] + 1, r["room_y"]) in at:
+                outs.append((at[(r["room_x"] + 1, r["room_y"])], b, 0, ROUTE_ROOM))
+            if f == 0 and (r["room_x"] - 1, r["room_y"]) in at:
+                outs.append((at[(r["room_x"] - 1, r["room_y"])], b, 19, ROUTE_ROOM))
+        for nr, nb, nf, w in outs:
+            ga, gb, gd = grids[nr]
+            if not (0 <= nb < len(ga) and 0 <= nf < 20 and ga[nb][nf]):
+                continue
+            if (nb, nf) in gd:
+                continue
+            w += 600 if (nb, nf) in gb else 0
+            ns, nt = stretch + w, total + w
+            if (nr, nb, nf) in cells:
+                ns = 0
+            nn = (nr, nb, nf)
+            if nn not in best or (ns, nt) < best[nn]:
+                best[nn] = (ns, nt)
+                stack.append(nn)
+    reached = [v for k, v in best.items() if k[0] == goal]
+    if not reached:
+        return None
+    return min(reached)[1], min(reached)[0]
+
+
 def problems(stage):
     """stage = the parsed JSON's ['stage'] dict -> list of failure strings."""
     models = {m["id"]: m for m in stage["models"]}
@@ -150,6 +230,13 @@ def problems(stage):
             out.append(f"level {n}: the only route crosses {bombs} async "
                        f"block(s) in room(s) {where} (only the start room's "
                        "designed block may be on the route)")
+        else:
+            seg = route_segments(lv, models)
+            if seg and seg[1] > CELL_BUDGET:
+                out.append(f"level {n}: an estimated {seg[1] / 60:.0f} s "
+                           f"between timer refills (budget "
+                           f"{CELL_BUDGET // 60} s of the {BAR_FRAMES // 60} s "
+                           "bar) - the route needs a power cell")
     return out
 
 

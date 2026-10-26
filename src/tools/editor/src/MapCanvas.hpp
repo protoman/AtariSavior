@@ -52,7 +52,9 @@ enum class BrushTool {
     // are taken; ApplyBrushAt maps them to TileType 9-12).
     DOOR_TILE = 21,     // TileType::LOCKED_DOOR as an async side-0 patch
     PHASE_TILE = 22,    // TileType::PHASE grid cell
-    HCRUNCH_TILE = 23   // TileType::HCRUNCH grid cell
+    HCRUNCH_TILE = 23,  // TileType::HCRUNCH grid cell
+    // Level tab: the power cell (EnemyType::POWER_CELL = 14) - refills the timer.
+    ADD_CELL = 24
 };
 
 class MapCanvas : public QWidget {

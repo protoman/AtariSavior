@@ -147,6 +147,7 @@ ObjX1 = $EC
 ObjHeight1 = $9E                 ; slot 1's draw window (= kernel ObjHeight1,
                                  ;   staged here, copied by Slot1Hook)
 KEY = 6                          ; enemy record type 6 = the phase-5 key
+CELL = 14                        ; type 14 = the power cell (KEY|8)
 OBJ_WINDOW = 16                  ; kernel constant: the GRP1 draw window rows
                                  ;   (every design's art is sized to it)
 OBJ_KEY = 0                      ; GRP1 design offsets (per-type heights,
@@ -160,6 +161,7 @@ OBJ_MINER = 85
 OBJ_BOMB = 101
 OBJ_RAFT = 109
 OBJ_LAMP_R = 111                 ; type 13 = the wall-mirrored lamp
+OBJ_CELL = 12                    ; type 14 = the power cell (KEY block rows 12-15)
 
 ; C2 (2026-10-20): the level-data block labels (M<id>*, L<n>R<r>*) live in
 ; THIS bank now ($F307 slot include below), so the room tables resolve them
@@ -332,8 +334,7 @@ EBLER_Left:
     and EnemyRamD
     sta EnemyRamD
 EBLER_Next:
-    inx
-    jmp EBLER_Loop
+    jmp EBLCellCheck                ; (out of line: this half is pinned at MothRoutine)
 EBLER_Done:
     ; --- C7 (2026-10-20): the joystick-shadow refresh (Temp = SWCHA>>4)
     ;     moved to bank3's ERLoadDone: the shape/PF/meta walkers that run
@@ -1139,7 +1140,7 @@ StageSlot1B2:
     txa
     pha                         ; keep the candidate index across the type read
     lda (FetchPtr),Y            ; A = type — DIRECT, the record is in THIS bank
-    and #%00000111              ; b7 = dir (the record packs type|dir): indexing
+    and #%00001111              ; b3 keeps 13/14 (mirrored lamp, power cell); b7 = dir (the record packs type|dir): indexing
     tax                         ;   the tables with it read past their end, so
                                 ;   slot 1 got ObjBase1/ObjHeight1 = 0 and the
                                 ;   object never drew (2026-10-22 tentacle demo)
@@ -1253,27 +1254,6 @@ PinSlot0:
 .PSout:
     rts
 
-; Enemy type -> ObjSprites design offset (copy of kernel.asm's table: bank0's
-; ROM is not visible from here). Index = ENEMY_* type, stride 12.
-; enemy TYPE -> draw window rows: byte-identical twin of kernel.asm's
-; ObjHeightTab (the records are in this bank, so slot 1's window is staged here).
-ObjHeightTab:
-    .byte 15,         10
-    .byte 6,          OBJ_WINDOW
-    .byte 14,         10
-    .byte OBJ_WINDOW, 2
-    .byte 0,0,0,0,0,  10
-
-ObjSpriteOffTable:
-    .byte OBJ_SPIDER            ; 0
-    .byte OBJ_BAT               ; 1
-    .byte OBJ_SNAKE             ; 2
-    .byte OBJ_TENTACLE          ; 3
-    .byte OBJ_MOTH              ; 4
-    .byte OBJ_LAMP              ; 5 (LAMP)
-    .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
-    .byte OBJ_RAFT              ; 7 (RAFT — own 2-row white plank)
-
 ; ReturnPad ($FBF8) — bank2's live half is the `sta $1FF4` only: every body
 ; here tail-jmps `$FBF8`, the sta switches to bank0, and the `rts` at $FBFB is
 ; fetched from bank0 (so bank0's copy must keep `sta $1FF4 / rts`).
@@ -1339,7 +1319,8 @@ ReturnPad:
     jmp LoadLevelB2             ; $FC23
 LF_TailSwap:
     sta $1FF4                   ; $FC26 — bank0 serves the `jmp LF_B0Tail`
-    .byte 0,0,0                 ; $FC29-$FC2B dead (bank0's jmp fetched there)
+                                ; $FC29-: bank0's jmp operand is fetched from bank0; these bytes never
+                                ; run in bank2, so the slot-1 type tables below sit right here
 
 ; ------------------------------------------------------------------------------
 ; E4 moth exit tramp ($FC49-$FC4B) — byte-identical slice with kernel.asm's
@@ -1350,6 +1331,33 @@ LF_TailSwap:
 ; of those addresses calls checkSwitchBank in Stella and flips banks
 ; mid-instruction (see kernel.asm MothExitPad comment).
 ; ------------------------------------------------------------------------------
+; (the two slot-1 type tables moved here from the $FBD0-pin window, which was
+; full: abs,X reads, so the address is irrelevant)
+; Enemy type -> ObjSprites design offset (copy of kernel.asm's table: bank0's
+; ROM is not visible from here). Index = ENEMY_* type, stride 12.
+; enemy TYPE -> draw window rows: byte-identical twin of kernel.asm's
+; ObjHeightTab (the records are in this bank, so slot 1's window is staged here).
+ObjHeightTab:
+    .byte 15,         10
+    .byte 6,          OBJ_WINDOW
+    .byte 14,         10
+    .byte 12,         2
+    .byte 0,0,0,0,0,  10
+    .byte 4
+
+ObjSpriteOffTable:
+    .byte OBJ_SPIDER            ; 0
+    .byte OBJ_BAT               ; 1
+    .byte OBJ_SNAKE             ; 2
+    .byte OBJ_TENTACLE          ; 3
+    .byte OBJ_MOTH              ; 4
+    .byte OBJ_LAMP              ; 5 (LAMP)
+    .byte OBJ_KEY               ; 6 (KEY — offset-0 slot)
+    .byte OBJ_RAFT              ; 7 (RAFT — own 2-row white plank)
+    .byte 0, 0, 0, 0, 0         ; 8-12 unused
+    .byte OBJ_LAMP_R            ; 13 (wall-mirrored lamp)
+    .byte OBJ_CELL              ; 14 (power cell)
+
     .ds $FC49 - *, 0
 MothExitPad:
     sta $1FF4
@@ -1500,6 +1508,8 @@ BombEnemyBlastBody:
     cmp #RAFT
     beq .BEBNext                ; raft: a blast cannot destroy the platform the
                                 ; player is riding across the water
+    cmp #KEY
+    beq .BEBNext                ; key / power cell (14 folds to 6): a pickup
     lda EnemyRamX,X             ; live X from RAM
     ; |dcol| < 2 (col = px/4) — ignore Y entirely
     lsr
@@ -1543,6 +1553,7 @@ BombEnemyBlastBody:
 ; before this pad). $FDE1 no longer pins anything (PickPlayerFrame's tramp
 ; mirror retired 2026-10-20).
 ; ------------------------------------------------------------------------------
+
     .ds $FDD8 - *, 0
     .byte $8D, $F6, $1F         ; sta $1FF6 (twin)
     .byte $4C, $87, $FD         ; jmp $FD87 (twin — fetched post-switch)
@@ -1610,6 +1621,9 @@ LaserTipEnemy:
                                 ;   the mask it read as an enemy and was killed
     cmp #LAMP
     beq .LTElamp
+    cmp #KEY
+    beq .LTEnext                ; keys and power cells (14 folds to 6) are
+                                ;   pickups: the beam passes through them
     lda EnemyDeadMask
     ora EnemyBitTable,X
     sta EnemyDeadMask
@@ -1624,6 +1638,32 @@ LaserTipEnemy:
 .LTEnone:
     lda #0
     jmp LaserWallClamp
+
+
+; EBLCellCheck - the per-record tail of EBLER_Loop (moved out of line, the room
+; load half before MothRoutine's $F110 pin is full). A power cell already
+; collected this level stays gone: bit (RoomNo & 3) of LevelStartRoom b3-0 was
+; set by kernel.asm CEH_KeyDisp. Temp = the raw record byte (EBLER_Dir kept it).
+; Power-cell taken bits (twin of kernel.asm's CellBitTab): bit (RoomNo & 3).
+CellBitTab:
+    .byte 1,2,4,8
+EBLCellCheck:
+    lda Temp
+    and #$0F
+    cmp #CELL
+    bne .EBLNoCell
+    lda RoomNo
+    and #3
+    tay
+    lda CellBitTab,Y
+    and LevelStartRoom
+    beq .EBLNoCell
+    lda EnemyDeadMask
+    ora EnemyBitTable,X
+    sta EnemyDeadMask
+.EBLNoCell:
+    inx
+    jmp EBLER_Loop
 
     .ds $FE96 - *, 0            ; S5.4 LHT tramp — byte-identical w/ kernel.asm
                                 ; (shifted +$10 with kernel's tables)
@@ -1739,6 +1779,8 @@ LaserClampDone:
                                 ;   the mask it read as an enemy and was killed
     cmp #LAMP
     beq .LHLamp
+    cmp #KEY
+    beq .LHNext                 ; pickups (key / power cell) are not targets
     lda EnemyDeadMask
     ora EnemyBitTable,X
     sta EnemyDeadMask

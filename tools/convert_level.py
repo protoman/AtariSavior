@@ -71,6 +71,7 @@ PHASE = 10
 VCRUNCH = 11                # RETIRED 2026-10-19 (vertical crunch removed)
 HCRUNCH = 12
 RAFT = 6                    # RAFT **tile**: a static row-2 platform
+POWER_CELL = 14             # power cell: KEY|8, refills the timer (once per level)
 RAFT_ENTITY = 7             # RAFT **entity** (enemies[] type 7): the moving,
                             # rideable raft (plans/raft_moving_plan.md)
 LAMP_ENTITY = 5             # wall lamp: the drawn art (bracket on its LEFT)
@@ -651,10 +652,10 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                 raise ValueError(
                     f"{who}: door room has {len(enemies)} enemies — at "
                     "most ONE enemy per door room")
-            if any(int(e.get("type", 0)) == 6 for e in enemies):
+            if any(int(e.get("type", 0)) in (6, POWER_CELL) for e in enemies):
                 raise ValueError(
-                    f"{who}: door room has a KEY enemy — door rooms allow "
-                    "a single non-key enemy only")
+                    f"{who}: door room has a KEY/power-cell enemy — door "
+                    "rooms allow a single non-key enemy only")
             if lamps or miner:
                 raise ValueError(
                     f"{who}: door room has a lamp/miner — door rooms allow "
@@ -983,6 +984,19 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
     miner_room = int(level.get("miner_room", 0))
     if int(level.get("miner_dir", -1)) > 0:
         miner_room |= 0x80  # kernel uses bit 7 as miner-facing-right flag
+    # Power cells latch bit (room index & 3) of LevelStartRoom (kernel
+    # CEH_KeyDisp): two cells in rooms that agree mod 4 would share a bit, so
+    # collecting one would delete the other. Hard-fail at convert time.
+    _cell_bits: dict[int, int] = {}
+    for _ri, _room in enumerate(rooms):
+        if any(int(e.get("type", 0)) == POWER_CELL
+               for e in (_room.get("enemies") or [])):
+            if (_ri & 3) in _cell_bits:
+                raise ValueError(
+                    f"level {level_n}: power cells in rooms {_cell_bits[_ri & 3]}"
+                    f" and {_ri} share taken-bit {_ri & 3} (room index mod 4) "
+                    "- move one so the rooms differ mod 4")
+            _cell_bits[_ri & 3] = _ri
     check_rooms_against_models(rooms, models_by_id,
                                f"level {level_n}",
                                int(level.get("miner_room", 0)) & 0x7F,
@@ -1263,7 +1277,7 @@ def _enemy_tables(prefix: str, rooms: list[dict],
             # EnemyRamD and only seeds the first patrol leg. Emitting b7 made
             # `cmp #RAFT` in the bomb blast miss, so a dir=right raft could be
             # destroyed by its own rider's bomb.
-            direction = 0 if type_ == RAFT_ENTITY else int(enemy.get("dir", 1))
+            direction = 0 if type_ in (RAFT_ENTITY, POWER_CELL) else int(enemy.get("dir", 1))
             flat.append((
                 type_,
                 flat_x if type_ in (LAMP_ENTITY, LAMP_MIRROR) else enemy_x_px(x),
@@ -1291,7 +1305,7 @@ def _enemy_tables(prefix: str, rooms: list[dict],
         f"{prefix}_EnemyDataTable:",
     ]
     for type_, x, y, dir_ in flat:
-        assert 0 <= type_ <= 13, f"{prefix}: enemy type {type_} does not fit b3-0"
+        assert 0 <= type_ <= 14, f"{prefix}: enemy type {type_} does not fit b3-0"
         packed = type_ | (0x80 if dir_ < 0 else 0)
         lines.append(f"  .byte ${packed:02x}, {x}, {y}")
     return lines
