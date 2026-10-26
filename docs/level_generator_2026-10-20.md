@@ -12,3 +12,10 @@ authored rooms are not restricted. The twogap spider pass skips Phase rooms.
 
 Also enforced and tested: no two objects (enemies, lamps) share a column in any
 room, whatever the band.
+
+## 11. Extra miners and power cells (2026-10-26)
+
+See `docs/miners_2026-10-26.md` and `docs/power_cell_2026-10-26.md`. The last
+passes of the stage build are: finishability repair -> `PlaceExtraMiners` ->
+`PlanPowerCells`. Cells may sit on any reachable air cell of a route room (the
+nearest free one) and a full room gives up a plain enemy.

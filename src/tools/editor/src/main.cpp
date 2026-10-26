@@ -407,6 +407,20 @@ static int RunBrushTest() {
                      r3.lamps[0].y);
         return 1;
     }
+    // an extra miner clicked on canvas row 11 stands at 99 px (y = 8.25): the same
+    // top as the level's own miner (converter: |px - 99| <= 3)
+    canvas.SetActiveRoom(3);
+    canvas.SetCurrentBrush(BrushTool::ADD_MINER2);
+    canvas.ApplyBrushAt(5, 25, 11);
+    canvas.SetActiveRoom(2);
+    if (level.rooms[3].enemies.size() != 1 ||
+        level.rooms[3].enemies[0].type != 15 ||
+        std::fabs(level.rooms[3].enemies[0].y * 12.0f - 99.0f) > 0.01f) {
+        std::fprintf(stderr, "brushtest: ADD_MINER2 on canvas row 11 did not "
+                     "write an extra miner at 99 px\n");
+        return 1;
+    }
+    level.rooms[3].enemies.clear();
     // DELETE_ENTITY clicks the CANVAS row and must find them again
     canvas.SetCurrentBrush(BrushTool::DELETE_ENTITY);
     canvas.ApplyBrushAt(5, 29, 11);

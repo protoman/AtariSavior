@@ -145,11 +145,64 @@ ROUTE_ROOM = 240
 CELL_BUDGET = 90 * 60            # no stretch between refills may pass 90 s
 BAR_FRAMES = 120 * 60
 POWER_CELL = 14
+EXTRA_MINER = 15
+
+
+def extra_miner_nodes(level, models):
+    """-> [(room, band, full col)] stand cells of the EXTRA miners (record type
+    15): they stand on the floor band's top like the level's own miner."""
+    out = []
+    for i, r in enumerate(level["rooms"]):
+        m = models[r["model_id"]]
+        bands = len(m["tiles"]) // m["width"]
+        bands = 4 if bands == 3 else bands
+        for e in r.get("enemies") or []:
+            if e.get("type") == EXTRA_MINER:
+                xpx = enemy_x_px(e["x"])
+                band = min(bands - 1, int(round(e["y"] * 12)) // 36)
+                out.append((i, band, min(19, (xpx + 3) // 8)))
+    return out
+
+
+def reach_cells(level, models):
+    """Every (room, band, col) reachable without a bomb or a spider zone."""
+    rooms = level["rooms"]
+    at = {(r["room_x"], r["room_y"]): i for i, r in enumerate(rooms)}
+    grids = [_grid(models[r["model_id"]], r) for r in rooms]
+    s = min(max(level["start_room"], 0), len(rooms) - 1)
+    sf = next((f for f in (4, 3, 5, 2, 6, 7, 8, 9) if grids[s][0][0][f]), 4)
+    seen = {(s, 0, sf)}
+    stack = [(s, 0, sf)]
+    while stack:
+        ri, b, f = stack.pop()
+        air = grids[ri][0]
+        r = rooms[ri]
+        outs = [(ri, b + 1, f), (ri, b - 1, f), (ri, b, f + 1), (ri, b, f - 1)]
+        if b == len(air) - 1 and (r["room_x"], r["room_y"] + 1) in at:
+            outs.append((at[(r["room_x"], r["room_y"] + 1)], 0, f))
+        if b == 0 and (r["room_x"], r["room_y"] - 1) in at:
+            o = at[(r["room_x"], r["room_y"] - 1)]
+            outs.append((o, len(grids[o][0]) - 1, f))
+        if b in (1, 2):
+            if f == 19 and (r["room_x"] + 1, r["room_y"]) in at:
+                outs.append((at[(r["room_x"] + 1, r["room_y"])], b, 0))
+            if f == 0 and (r["room_x"] - 1, r["room_y"]) in at:
+                outs.append((at[(r["room_x"] - 1, r["room_y"])], b, 19))
+        for nr, nb, nf in outs:
+            ga, gb, gd = grids[nr]
+            if not (0 <= nb < len(ga) and 0 <= nf < 20 and ga[nb][nf]):
+                continue
+            if (nb, nf) in gb or (nb, nf) in gd or (nr, nb, nf) in seen:
+                continue
+            seen.add((nr, nb, nf))
+            stack.append((nr, nb, nf))
+    return seen
 
 
 def route_segments(level, models):
-    """-> (total_estimate, longest_stretch) in frames, or None when the miner is
-    unreachable. The search is the cheapest route in ESTIMATED TIME where a cell
+    """-> (total_estimate, longest_stretch) in frames, or None when the level
+    cannot be finished. The route must visit EVERY extra miner and then reach the
+    level's own miner; it is the cheapest in ESTIMATED TIME where a power cell
     the route steps on resets the 'since last refill' clock (a cell is always
     worth taking). longest_stretch is the worst gap between refills on the best
     route; the generator guarantees longest_stretch <= CELL_BUDGET."""
@@ -166,19 +219,22 @@ def route_segments(level, models):
                               // models[r["model_id"]]["width"])
                 b = min(h - 1, int(e["y"]) // max(1, u))
                 cells[(i, b, f)] = True
+    extras = {n: k for k, n in enumerate(extra_miner_nodes(level, models))}
+    full = (1 << len(extras)) - 1
     s = min(max(level["start_room"], 0), len(rooms) - 1)
     goal = min(max(level["miner_room"], 0), len(rooms) - 1)
     sf = next((f for f in (4, 3, 5, 2, 6, 7, 8, 9) if grids[s][0][0][f]), 4)
-    # label-correcting search on (node) -> (stretch, total): a refill makes the
-    # stretch 0, so costs are not monotone along a path; minimise the stretch
-    # first (it is what the timer cares about), then the total.
-    start = (s, 0, sf)
+    # label-correcting search on (node, miners taken) -> (stretch, total): a
+    # refill makes the stretch 0, so costs are not monotone along a path;
+    # minimise the stretch first (it is what the timer cares about), then the
+    # total.
+    start = (s, 0, sf, 0)
     best = {start: (0, 0)}
     stack = [start]
     while stack:
         node = stack.pop()
         stretch, total = best[node]
-        ri, b, f = node
+        ri, b, f, got = node
         air = grids[ri][0]
         r = rooms[ri]
         outs = [(ri, b + 1, f, ROUTE_V), (ri, b - 1, f, ROUTE_V),
@@ -203,11 +259,12 @@ def route_segments(level, models):
             ns, nt = stretch + w, total + w
             if (nr, nb, nf) in cells:
                 ns = 0
-            nn = (nr, nb, nf)
+            ng = got | (1 << extras[(nr, nb, nf)] if (nr, nb, nf) in extras else 0)
+            nn = (nr, nb, nf, ng)
             if nn not in best or (ns, nt) < best[nn]:
                 best[nn] = (ns, nt)
                 stack.append(nn)
-    reached = [v for k, v in best.items() if k[0] == goal]
+    reached = [v for k, v in best.items() if k[0] == goal and k[3] == full]
     if not reached:
         return None
     return min(reached)[1], min(reached)[0]
@@ -217,7 +274,8 @@ def problems(stage):
     """stage = the parsed JSON's ['stage'] dict -> list of failure strings."""
     models = {m["id"]: m for m in stage["models"]}
     out = []
-    for n, lv in enumerate(stage["levels"], start=1):
+    for n_, lv in enumerate(stage["levels"], start=1):
+        n = n_
         bombs, crossed, hazard = analyse(lv, models)
         if bombs is None:
             out.append(f"level {n}: the miner is unreachable")
@@ -231,8 +289,17 @@ def problems(stage):
                        f"block(s) in room(s) {where} (only the start room's "
                        "designed block may be on the route)")
         else:
+            reach = reach_cells(lv, models)
+            lost = [n for n in extra_miner_nodes(lv, models) if n not in reach]
+            if lost:
+                where = sorted({lv["rooms"][n[0]]["room_id"] + 1 for n in lost})
+                out.append(f"level {n_}: extra miner(s) in room(s) {where} cannot "
+                           "be reached without a bomb or a spider zone")
+                continue
             seg = route_segments(lv, models)
-            if seg and seg[1] > CELL_BUDGET:
+            if seg is None:
+                out.append(f"level {n}: no route visits every miner")
+            elif seg[1] > CELL_BUDGET:
                 out.append(f"level {n}: an estimated {seg[1] / 60:.0f} s "
                            f"between timer refills (budget "
                            f"{CELL_BUDGET // 60} s of the {BAR_FRAMES // 60} s "

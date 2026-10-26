@@ -526,6 +526,7 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
                 case hero::EnemyType::GIANT_MOTH: eColor = QColor(190, 160, 120); label = "M"; break;
                 case hero::EnemyType::KEY: eColor = QColor(255, 215, 0); label = "Y"; break;
                 case hero::EnemyType::POWER_CELL: eColor = QColor(60, 200, 230); label = "E"; break;
+                case hero::EnemyType::EXTRA_MINER: eColor = QColor(255, 140, 180); label = "M2"; break;
             }
 
             painter.setBrush(eColor);
@@ -1016,7 +1017,8 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                m_currentBrush == BrushTool::ADD_SNAKE || m_currentBrush == BrushTool::ADD_TENTACLE ||
                m_currentBrush == BrushTool::ADD_RAFT ||
                m_currentBrush == BrushTool::ADD_MOTH || m_currentBrush == BrushTool::ADD_KEY ||
-               m_currentBrush == BrushTool::ADD_CELL)) {
+               m_currentBrush == BrushTool::ADD_CELL ||
+               m_currentBrush == BrushTool::ADD_MINER2)) {
         // Entity placement: full stage width, no mirroring. Reject rows beyond
         // the cave (tileY >= displayRows) so enemies can't spawn in the HUD.
         if (entityX < 0 || entityX >= displayColumns ||
@@ -1030,6 +1032,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         else if (m_currentBrush == BrushTool::ADD_RAFT) eData.type = (int)hero::EnemyType::RAFT;
         else if (m_currentBrush == BrushTool::ADD_MOTH) eData.type = (int)hero::EnemyType::GIANT_MOTH;
         else if (m_currentBrush == BrushTool::ADD_CELL) eData.type = (int)hero::EnemyType::POWER_CELL;
+        else if (m_currentBrush == BrushTool::ADD_MINER2) eData.type = (int)hero::EnemyType::EXTRA_MINER;
         else eData.type = (int)hero::EnemyType::KEY;
 
         eData.x = (float)entityX;
@@ -1043,7 +1046,8 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         // allows ONE non-key enemy and nothing else; tentacles live in
         // the water on the bottom band, in open cells.
         if (room && (RoomSpecialBits(*room) & 1)) {
-            if (m_currentBrush == BrushTool::ADD_KEY || m_currentBrush == BrushTool::ADD_CELL) {
+            if (m_currentBrush == BrushTool::ADD_KEY || m_currentBrush == BrushTool::ADD_CELL ||
+                m_currentBrush == BrushTool::ADD_MINER2) {
                 QMessageBox::warning(
                     nullptr, QObject::tr("Door Room"),
                     QObject::tr("No key in a door room — a single enemy "
@@ -1128,7 +1132,8 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         // The key has no facing — warn instead of silently doing nothing.
         for (auto& e : room->enemies) {
             if ((int)std::floor(e.x) == entityX && RowOfY(e.y, displayRows) == tileY) {
-                if (m_currentBrush == BrushTool::ADD_KEY || m_currentBrush == BrushTool::ADD_CELL) {
+                if (m_currentBrush == BrushTool::ADD_KEY || m_currentBrush == BrushTool::ADD_CELL ||
+                    m_currentBrush == BrushTool::ADD_MINER2) {
                     QMessageBox::warning(
                         nullptr, QObject::tr("Key"),
                         QObject::tr("An object already sits on this tile — "

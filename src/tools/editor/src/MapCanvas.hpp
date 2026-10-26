@@ -54,7 +54,9 @@ enum class BrushTool {
     PHASE_TILE = 22,    // TileType::PHASE grid cell
     HCRUNCH_TILE = 23,  // TileType::HCRUNCH grid cell
     // Level tab: the power cell (EnemyType::POWER_CELL = 14) - refills the timer.
-    ADD_CELL = 24
+    ADD_CELL = 24,
+    // Level tab: an extra miner to rescue (EnemyType::EXTRA_MINER = 15).
+    ADD_MINER2 = 25
 };
 
 class MapCanvas : public QWidget {

@@ -597,6 +597,21 @@ def main() -> int:
                 # Placement: air cells only (snake = wall patroller).
                 for enemy in enemies:
                     cell = int(float(enemy["x"])) // 2
+                    if int(enemy["type"]) == 15:
+                        # an extra miner stands anywhere in a cell run: every
+                        # 8 px cell his sprite covers must be air (the
+                        # converter's seat rule checks the same)
+                        c4 = int(float(enemy["x"])) * 4
+                        xpx = c4 + (4 if c4 < 11 else 7)
+                        cell = min(19, xpx // 8)
+                        if (min(19, (xpx + 7) // 8)) != cell:
+                            other = min(19, (xpx + 7) // 8)
+                            other = other if other < 10 else 19 - other
+                            if band_rows[int(float(enemy["y"])) // units][other] != ".":
+                                print(f"FAIL: level {level_n} room "
+                                      f"{room['room_id']}: extra miner overlaps "
+                                      f"a wall cell {other}")
+                                return 1
                     if cell >= 10:                   # right chamber = the mirror
                         cell = 19 - cell
                     band = int(float(enemy["y"])) // units
@@ -769,7 +784,34 @@ def main() -> int:
                     print(f"FAIL: level {level_n} room {i}: a power cell in a "
                           "start/goal/hcrunch/door room")
                     return 1
-            if level_n <= 8 and cell_rooms:
+            # --- extra miners (2026-10-26): ramp 1/2/3 miners = 0/1/2 extras at
+            # levels 1-6 / 7-13 / 14-20 (the generator places fewer only when no
+            # room can host one); rooms of different parity, never in the
+            # start/goal/door/hcrunch/phase rooms, at most one per room.
+            extra_rooms = [i for i, r in enumerate(rooms)
+                           if any(e.get("type") == 15
+                                  for e in r.get("enemies") or [])]
+            ramp = 0 if level_n < 7 else (1 if level_n < 14 else 2)
+            if len(extra_rooms) > ramp or (ramp and not extra_rooms):
+                print(f"FAIL: level {level_n}: {len(extra_rooms)} extra miner(s), "
+                      f"ramp wants {ramp} (at least 1 from level 7)")
+                return 1
+            if len({i & 1 for i in extra_rooms}) != len(extra_rooms):
+                print(f"FAIL: level {level_n}: extra miners in rooms {extra_rooms} "
+                      "share a parity (one rescued-bit each)")
+                return 1
+            for i in extra_rooms:
+                r = rooms[i]
+                n15 = sum(1 for e in r.get("enemies") or [] if e.get("type") == 15)
+                kinds = {c[2] for c in r.get("feature_cells") or []}
+                doors = [p for p in r.get("asym_patches") or []
+                         if len(p) >= 3 and p[2] == 9]
+                if (n15 != 1 or i in (level["start_room"], level["miner_room"])
+                        or kinds or doors):
+                    print(f"FAIL: level {level_n} room {i}: bad extra-miner host "
+                          "(start/goal/door/feature room or two in one room)")
+                    return 1
+            if level_n <= 6 and cell_rooms:
                 print(f"FAIL: level {level_n}: short level carries a power cell")
                 return 1
             if level_n >= 3 and hot == 0:

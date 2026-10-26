@@ -389,6 +389,7 @@ void MainWindow::SetupUI() {
         { BrushTool::ADD_RAFT, "R. Raft" },
         { BrushTool::ADD_KEY, "Y. Key" },
         { BrushTool::ADD_CELL, "E. Power cell" },
+        { BrushTool::ADD_MINER2, "J. Extra miner" },
         { BrushTool::DELETE_ENTITY, "X. Delete" }
     };
     for (const auto& t : levelTools) {
@@ -1225,6 +1226,12 @@ QIcon MainWindow::MakeToolIcon(BrushTool tool) const {
             p.setBrush(QColor(60, 200, 230));
             p.drawRoundedRect(r, 6, 6);
             p.drawText(r, Qt::AlignCenter, "E");
+            break;
+        case BrushTool::ADD_MINER2:
+            p.setPen(Qt::black);
+            p.setBrush(QColor(255, 140, 180));
+            p.drawEllipse(r);
+            p.drawText(r, Qt::AlignCenter, "M2");
             break;
         case BrushTool::DELETE_ENTITY:
             p.setPen(QColor(70, 70, 85));
