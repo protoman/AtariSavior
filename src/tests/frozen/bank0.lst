@@ -3418,7 +3418,7 @@
    3417  fb29							; block sharing those scanlines.
    3418  fb29				   ObjColorTab
    3419  fb29		       1c 1c 1c 1c*	      .byte.b	$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c	; 0 KEY   ($1c yellow, 12 rows)
-   3420  fb35		       0e 9e 9a 9e	      .byte.b	$0E,$9E,$9A,$9E	; 0b CELL (4 rows: white cap, cyan body)
+   3420  fb35		       9e 9e 9e 9e	      .byte.b	$9E,$9E,$9E,$9E	; 0b CELL (4 rows: all cyan - user 2026-10-26)
    3421  fb39		       0e 0e f2 f2*	      .byte.b	$0E,$0E,$F2,$F2,$1C,$1C,$F2,$F2,$F2,$1C,$1C,$F2,$F2,$0E	; 1 MOTH  (14 rows: cream tips, brown wings, gold body)
    3422  fb47		       14 14 14 14*	      .byte.b	$14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$22,$22,$22,$14,$14,$14	; 2 SPIDER (15 rows)
    3423  fb56		       06 06 06 06*	      .byte.b	$06,$06,$06,$06,$0E,$0E,$0E,$0E,$0E,$0E	; 3 LAMP  (10 rows: grey bracket/neck, white bowl)
