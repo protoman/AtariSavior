@@ -116,7 +116,7 @@ bank0 state. Bank1 may overlap bank0 PF/HUD addresses — document any overlap.
 | $A4 | LevelMinerRoom | Miner room index |
 | $A5 | MinerX | Miner X |
 | $A6 | MinerY | Miner Y |
-| $A7 | LevelStartRoom | b7 = KeyHeld; b3-0 = power cells taken (bit RoomNo&3); the start room is the constant 0 (LF_B0Tail loads #0). Reset by LoadLevel |
+| $A7 | LevelStartRoom | b7 = KeyHeld; b6-4 = miners still to rescue (b4 own, b5/b6 extras by RoomNo&1); b3-0 = power cells taken (bit RoomNo&3); the start room is the constant 0. Seeded by LoadLevelB2 |
 | $A8 | LevelStartX | Spawn/teleport X |
 | $A9 | LevelStartY | Spawn/teleport Y |
 | $AA | LevelWallColor | COLUPF rows 0-3, 8-11 |

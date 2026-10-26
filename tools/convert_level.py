@@ -72,6 +72,7 @@ VCRUNCH = 11                # RETIRED 2026-10-19 (vertical crunch removed)
 HCRUNCH = 12
 RAFT = 6                    # RAFT **tile**: a static row-2 platform
 POWER_CELL = 14             # power cell: KEY|8, refills the timer (once per level)
+EXTRA_MINER = 15            # extra miner to rescue (record type 15, up to 2 per level)
 RAFT_ENTITY = 7             # RAFT **entity** (enemies[] type 7): the moving,
                             # rideable raft (plans/raft_moving_plan.md)
 LAMP_ENTITY = 5             # wall lamp: the drawn art (bracket on its LEFT)
@@ -652,7 +653,8 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                 raise ValueError(
                     f"{who}: door room has {len(enemies)} enemies — at "
                     "most ONE enemy per door room")
-            if any(int(e.get("type", 0)) in (6, POWER_CELL) for e in enemies):
+            if any(int(e.get("type", 0)) in (6, POWER_CELL, EXTRA_MINER)
+                   for e in enemies):
                 raise ValueError(
                     f"{who}: door room has a KEY/power-cell enemy — door "
                     "rooms allow a single non-key enemy only")
@@ -689,6 +691,49 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                     f"{who}: the miner has no floor under him (band {below}, "
                     f"cell {cell} is '{rows[below][cell]}') — he must stand on "
                     "a solid cell, not swim/fly")
+        # --- EXTRA MINERS (record type 15, 2026-10-26) ------------------------
+        # Same seat rule as the level's own miner: the playfield has priority
+        # over sprites, so the cells he occupies must be air and the cell under
+        # his feet solid. The kernel draws a record's sprite from y * 12 px; the
+        # level's own miner is drawn 3 px below the constant 96, i.e. his top is
+        # 99 px (canvas row 11, y = 8.25), so an extra miner must stand there.
+        extras_here = [e for e in enemies if int(e.get("type", 0)) == EXTRA_MINER]
+        if extras_here:
+            if len(extras_here) > 1 or miner:
+                raise ValueError(
+                    f"{who}: an extra miner shares the room with "
+                    f"{'the level miner' if miner else 'another extra miner'} - "
+                    "one rescue per room")
+            rows = rows_from_json(room, models_by_id)
+            e = extras_here[0]
+            if abs(px(float(e.get("y", 0)), 12) - 99) > 3:
+                raise ValueError(
+                    f"{who}: extra miner at y={e.get('y')} ({px(float(e.get('y', 0)), 12)} px) "
+                    "- he stands on the floor band like the level miner, "
+                    "top at 99 px (canvas row 11, y = 8.25)")
+            band = int(float(e.get("y", 0))) // units_per_band(model)
+            x_px = enemy_x_px(float(e.get("x", 0)))
+            cols = {min(19, x_px // 8), min(19, (x_px + 7) // 8)}
+            mid = min(19, (x_px + 3) // 8)
+
+            def _cell(f):               # full-map column -> model cell (mirror)
+                return f if f < 10 else 19 - f
+            for f in sorted(cols):
+                c = _cell(f)
+                if (0 <= band < len(rows) and 0 <= c < len(rows[band])
+                        and rows[band][c] in "#H"):
+                    raise ValueError(
+                        f"{who}: the extra miner is drawn inside a WALL (band "
+                        f"{band}, cell {c} is '{rows[band][c]}') - he is "
+                        "invisible there; carve a niche above his rock")
+            below = band + 1
+            c = _cell(mid)
+            if (below < len(rows) and 0 <= c < len(rows[below])
+                    and rows[below][c] not in "#H"):
+                raise ValueError(
+                    f"{who}: the extra miner has no floor under him (band "
+                    f"{below}, cell {c} is '{rows[below][c]}') - he must stand "
+                    "on a solid cell")
         # --- one object per 48-line BAND, the miner included -----------------
         # The kernel has ONE GRP1: StageSlot1 pairs two objects only when they
         # are in different bands (tools/test_slot1_pair.py). Two objects on the
@@ -827,6 +872,35 @@ def position_bytes(rooms: list[dict]) -> list[int]:
         owner[pos] = index
         result.append(pos)
     return result
+
+
+def extra_miner_mask(rooms: list, level_n: int, miner_room: int) -> int:
+    """Parity mask of the level's EXTRA miners (record type 15) -> LevelDataTable
+    +0 b6-5. The kernel keeps "miners still to rescue" in LevelStartRoom b6-4: b4
+    = the level's own miner, b5/b6 = the extras by room parity (RoomNo & 1). So
+    at most two extras, in rooms of different parity, and the room numbers must
+    fit b4-0 (the mask took b6-5 of the byte).
+    """
+    if miner_room >= 32 or len(rooms) > 32:
+        raise ValueError(
+            f"level {level_n}: miner room {miner_room} / {len(rooms)} rooms - "
+            "the level entry keeps the miner room in 5 bits (max 32 rooms)")
+    mask = 0
+    seen: dict[int, int] = {}
+    for index, room in enumerate(rooms):
+        for enemy in room.get("enemies") or []:
+            if int(enemy.get("type", 0)) != EXTRA_MINER:
+                continue
+            bit = index & 1
+            if bit in seen:
+                raise ValueError(
+                    f"level {level_n}: extra miners in rooms {seen[bit]} and "
+                    f"{index} share parity {bit} (they would share one "
+                    "'rescued' bit) - move one to a room of the other parity, "
+                    "and at most two extras per level")
+            seen[bit] = index
+            mask |= 1 << bit
+    return mask
 
 
 def px(value, per_tile: int) -> int:
@@ -984,6 +1058,7 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
     miner_room = int(level.get("miner_room", 0))
     if int(level.get("miner_dir", -1)) > 0:
         miner_room |= 0x80  # kernel uses bit 7 as miner-facing-right flag
+    extra_mask = extra_miner_mask(rooms, level_n, miner_room & 0x7F)
     # Power cells latch bit (room index & 3) of LevelStartRoom (kernel
     # CEH_KeyDisp): two cells in rooms that agree mod 4 would share a bit, so
     # collecting one would delete the other. Hard-fail at convert time.
@@ -1034,7 +1109,7 @@ def write_tables(level: dict, rooms: list[dict], positions: list[int],
         f"{prefix}_START_ROOM = {level.get('start_room', 0)}",
         f"{prefix}_WALL_COLOR = ${wall:02x}",
         f"{prefix}_WALL_COLOR2 = ${wall2:02x}",
-        f"{prefix}_MINER_ROOM = {miner_room}",
+        f"{prefix}_MINER_ROOM = {miner_room | (extra_mask << 5)}",
         f"{prefix}_MINER_X = {enemy_x_px(float(level.get('miner_x', 0)) * 2)}",
         f"{prefix}_MINER_Y = {px(level.get('miner_y', 0), 12)}",
         "",
@@ -1277,7 +1352,7 @@ def _enemy_tables(prefix: str, rooms: list[dict],
             # EnemyRamD and only seeds the first patrol leg. Emitting b7 made
             # `cmp #RAFT` in the bomb blast miss, so a dir=right raft could be
             # destroyed by its own rider's bomb.
-            direction = 0 if type_ in (RAFT_ENTITY, POWER_CELL) else int(enemy.get("dir", 1))
+            direction = 0 if type_ in (RAFT_ENTITY, POWER_CELL, EXTRA_MINER) else int(enemy.get("dir", 1))
             flat.append((
                 type_,
                 flat_x if type_ in (LAMP_ENTITY, LAMP_MIRROR) else enemy_x_px(x),
@@ -1305,7 +1380,7 @@ def _enemy_tables(prefix: str, rooms: list[dict],
         f"{prefix}_EnemyDataTable:",
     ]
     for type_, x, y, dir_ in flat:
-        assert 0 <= type_ <= 14, f"{prefix}: enemy type {type_} does not fit b3-0"
+        assert 0 <= type_ <= 15, f"{prefix}: enemy type {type_} does not fit b3-0"
         packed = type_ | (0x80 if dir_ < 0 else 0)
         lines.append(f"  .byte ${packed:02x}, {x}, {y}")
     return lines

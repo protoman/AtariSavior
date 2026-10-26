@@ -86,7 +86,11 @@ enum class EnemyType : int {
     // consumer folds it to the key arm, which tells them apart by the record).
     // Collected once per level, it refills the timer bar. Convert accepts it as a
     // plain pickup: not in door/hcrunch rooms, rooms distinct mod 4 per level.
-    POWER_CELL = 14
+    POWER_CELL = 14,
+    // 15 = an EXTRA MINER (2026-10-26): rescued like the level's own miner; the
+    // level ends once every miner is taken. At most two per level, in rooms of
+    // different parity, standing on the floor band (canvas row 11, y = 8.25).
+    EXTRA_MINER = 15
 };
 
 struct EnemyData {
