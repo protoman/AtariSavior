@@ -199,7 +199,7 @@ candidate was a fall-through body or a table reached through pads/pointers.
 
 To settle the HERO ferry question without guessing:
 
-1. Run `../tools/probe_hero_overlay.py` extended to snapshot `$80-$FF` per
+1. Run `tools/probe_hero_overlay.py` extended to snapshot `$80-$FF` per
    frame for ~600 frames with `default_input` (starts the game at f40).
 2. Find bytes that move ±1 with direction reversals inside a bounded range
    (platform X/Y) rather than counting down (timers) or toggling (animation).

@@ -214,7 +214,7 @@ colour table — growing first means writing it twice), Phase 4 before Phase 3
 ```bash
 cd src && ./build.sh                    # builds + sim_bomb_fuse + sim_frame_budget
 bash tools/freeze_test_banks.sh         # AFTER any bank-code change, BEFORE the battery
-for f in ../tools/test_*.py tools/test_*.py; do \
+for f in tools/test_*.py tools/test_*.py; do \
   /home/iuri/python3/bin/python3 "$f" >/dev/null 2>&1 || echo "FAIL $f"; done
 /home/iuri/python3/bin/python3 tools/rom_size_report.py --md   # ledger for the plan
 ```

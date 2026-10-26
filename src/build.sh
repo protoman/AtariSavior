@@ -7,7 +7,6 @@ set -e
 
 OUTPUT="${1:-savior.bin}"
 DIR="$(dirname "$0")"
-ROOT="$(cd "$DIR/.." && pwd)"
 
 echo "Building F4 ROM (8 banks)..."
 
@@ -30,12 +29,12 @@ if [ -n "$STAGE_FILE" ]; then
     # STAGE_FILE made verify compare the ROM against the LEGACY models.json).
     STAGE_ROOMS="$(mktemp -d "${TMPDIR:-/tmp}/savior_stage_rooms.XXXXXX")"
     trap 'rm -rf "$STAGE_ROOMS"' EXIT
-    python3 "$ROOT/tools/convert_level.py" --stage "$STAGE_FILE" \
+    python3 "$DIR/tools/convert_level.py" --stage "$STAGE_FILE" \
         "$DIR/generated" "$STAGE_ROOMS"
     export STAGE_FILE STAGE_ROOMS
     # Finishability (2026-10-25): WARN, never fail - the stage is the user's
     # file. Regenerate it (savior_editor --generate-stage) to repair.
-    python3 "$ROOT/tools/stage_reach.py" "$STAGE_FILE" | sed 's/^/  WARN: /' \
+    python3 "$DIR/tools/stage_reach.py" "$STAGE_FILE" | sed 's/^/  WARN: /' \
         | grep -v "WARN: stage_reach: OK" || true
 else
     echo "  Level source: legacy per-level JSON ($DIR/rooms/level_NNN.json)"
@@ -43,17 +42,17 @@ else
     echo "  Generating level data..."
     LEVELS=("$DIR"/rooms/level_[0-9][0-9][0-9].json)
     for J in "${LEVELS[@]}"; do
-        python3 "$ROOT/tools/convert_level.py" "$J" "$DIR/generated/$(basename "$J" .json)" "$DIR/rooms"
+        python3 "$DIR/tools/convert_level.py" "$J" "$DIR/generated/$(basename "$J" .json)" "$DIR/rooms"
     done
 
     # Generate levels index (LevelDataTable with all levels)
-    python3 "$ROOT/tools/convert_level.py" --levels "$DIR/generated/levels.asm" \
+    python3 "$DIR/tools/convert_level.py" --levels "$DIR/generated/levels.asm" \
         "${LEVELS[@]}"
 fi
 
 # level-data window pre-check (bugs.md 27): fail early with the placement
 # map instead of DASM's cryptic `Origin Reverse-indexed` at the pad line
-python3 "$ROOT/tools/verify_build.py" --precheck "$DIR"
+python3 "$DIR/tools/verify_build.py" --precheck "$DIR"
 
 # Assemble each bank (from src/ so include paths resolve)
 # C7 (2026-10-20): the level-data subsystem is SPLIT — bank3 owns the shape
@@ -66,13 +65,13 @@ echo "  bank3: OK"
 dasm bank2.asm -f3 -obank2.bin -lbank2.lst
 echo "  bank2: OK"
 # kernel's HotOverlapFlag pad ends `jmp $xxxx` -> bank3 HotOverlapBody
-python3 "$ROOT/tools/verify_build.py" --sync-hof "$DIR"
-python3 "$ROOT/tools/verify_build.py" --sync "$DIR"
+python3 "$DIR/tools/verify_build.py" --sync-hof "$DIR"
+python3 "$DIR/tools/verify_build.py" --sync "$DIR"
 dasm kernel.asm -f3 -obank0.bin -lbank0.lst -sgenerated/symbols.asm
 echo "  bank0: OK"
 # bank1's fold pad jmp literal tracks Overscan (moves with pre-pad code) —
 # self-heal from bank0.lst instead of the hand-sync that bit us 3+ times.
-python3 "$ROOT/tools/verify_build.py" --sync-overscan "$DIR"
+python3 "$DIR/tools/verify_build.py" --sync-overscan "$DIR"
 dasm bank1.asm -f3 -obank1.bin -lbank1.lst
 echo "  bank1: OK"
 # F4 (32K): banks 4-6 are free windows, bank7 is the power-up bank (F4 reads
@@ -98,7 +97,7 @@ for i in 0 1 2 3 4 5 6 7; do
 done
 
 # Verify banks + level data BEFORE shipping (errors abort via set -e)
-python3 "$ROOT/tools/verify_build.py" "$DIR"
+python3 "$DIR/tools/verify_build.py" "$DIR"
 
 # Headless py65 sim: bomb lifecycle + stack-depth guard (AGENTS.md stack rule).
 # Hard-fails the build on regression; skips with a warning only if py65 is absent.
