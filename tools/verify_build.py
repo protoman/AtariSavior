@@ -969,19 +969,27 @@ def check_exit_handlers(src: Path) -> None:
             err(f"{name}: must tail-jmp ExitDirB2 (shared body)")
 
     # shared body
-    b = body("ExitDirB2")
-    if b is not None:
-        adc_n = sum(1 for ln in b if ln == "adc LevelRoomN")
-        if adc_n != 1 or "sta FetchPtr" not in b:
-            err(f"ExitDirB2: FetchPtr must stage level base + n "
+    # 2026-10-26: the staging + scan moved into ExitFind (shared with SetRoomExits,
+    # the bomb gate's neighbour flags); ExitDirB2 `jsr`s it and ExitFind tail-jmps
+    # ExitScanB2, so the stack depth is the old inline `jsr ExitScanB2`.
+    f = body("ExitFind")
+    if f is not None:
+        adc_n = sum(1 for ln in f if ln == "adc LevelRoomN")
+        if adc_n != 1 or "sta FetchPtr" not in f:
+            err(f"ExitFind: FetchPtr must stage level base + n "
                 f"(RoomPositions, C2 3 B columns) — found {adc_n} "
                 "`adc LevelRoomN`")
-        if "adc ExitDeltaTab,X" not in b:
-            err("ExitDirB2: neighbour position must be `adc ExitDeltaTab,X` "
+        if "adc ExitDeltaTab,X" not in f:
+            err("ExitFind: neighbour position must be `adc ExitDeltaTab,X` "
                 "(nibble-wrap = off-grid, no guard code)")
-        if "jsr ExitScanB2" not in b:
-            err("ExitDirB2: the exit must scan the position column "
-                "(jsr ExitScanB2)")
+        if "jmp ExitScanB2" not in f:
+            err("ExitFind: the neighbour search must tail-jmp ExitScanB2 "
+                "(a jsr here would add a stack level to the exit path)")
+    b = body("ExitDirB2")
+    if b is not None:
+        if "jsr ExitFind" not in b:
+            err("ExitDirB2: the exit must search the position column "
+                "(jsr ExitFind)")
         if "bcs ExitNoneB2" not in b:
             err("ExitDirB2: no-exit path must branch on the scan carry")
         if not any(ln.startswith("sty Room") for ln in b):

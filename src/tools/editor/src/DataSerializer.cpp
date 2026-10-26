@@ -1736,13 +1736,31 @@ ReachResult AnalyseReach(const LevelData& lv,
                 for (int f = f0; f <= f1; ++f) g.danger.insert({b, f});
             }
         }
+    }
+    // Bomb strips (second loop: it needs every room position). The dead-side PLUG
+    // (left M1 strip at col 0 / right ball strip at col 9) cannot be bombed when
+    // there is no room behind it (bank1 gate, 2026-10-26), so it is a plain WALL;
+    // an interior strip is a designed block and stays bombable.
+    for (int i = 0; i < n; ++i) {
+        const RoomData& r = lv.rooms[i];
+        Grid& g = grids[i];
+        const ModelData* m = modelOf(r.model_id);
+        const int h = (int)m->tiles.size() / m->width;
+        const bool west = at.count({r.room_x - 1, r.room_y}) > 0;
+        const bool east = at.count({r.room_x + 1, r.room_y}) > 0;
         for (const auto& pt : r.asym_patches) {
             if ((int)pt.size() < 3) continue;
             if (pt[2] != (int)TileType::SOLID_WALL) continue;   // door: gated
             const int side = pt.size() > 3 ? pt[3] : 0;
             int band = pt[0];
             if (h == 3 && band >= 2) ++band;
-            g.bomb.insert({band, side == 1 ? pt[1] : 10 + pt[1]});
+            const int col = side == 1 ? pt[1] : 10 + pt[1];
+            const bool edge = pt[1] == (side == 1 ? 0 : 9);   // the dead-side plug cell
+            if (edge && !(side == 1 ? west : east)) {
+                if (band >= 0 && band < g.bands) g.air[band][col] = 0;
+                continue;
+            }
+            g.bomb.insert({band, col});
         }
     }
     // Dijkstra over (room, band, full col); crossing a patch cell costs 1.

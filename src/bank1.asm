@@ -784,6 +784,8 @@ LaserState  = $C0       ; b7 fire held this frame, b5-2 = RoomDarkMask rooms
                         ; preserve b5-2 — see LaserInput/DropArm)
 EnemyRamP   = $C2       ; free-running frame clock (bank0 RefreshEnemyY incs)
 EnemyClk    = $D7       ; enemy clock (speed multiplier, kernel.asm)
+RoomExits   = $DB       ; b1 = NO room to the west, b0 = NO room to the east (bank2
+                        ;   SetRoomExits): the bomb leaves side walls with no room behind
 RoomNo      = $98
 LevelPFDataLo = $9F              ; level block base = RoomShapes column (C2:
 LevelPFDataHi = $A0              ;   pos/count/records are +n/+2n/+3n)
@@ -1517,6 +1519,12 @@ StripBlastCheck:
     bcs .SBright                ; lo >= 2ℓ+2 → blast ends left of strip
                                 ;   (A=0/1 falls into take = overlap)
 .SBleftTake:
+    lda RectCount
+    bne .SBlOk                  ; an interior strip is a designed block: bombable
+    lda RoomExits               ; the EDGE strip (dcol 0) is the dead-side plug
+    and #2
+    bne .SBright                ;   (no room to the WEST): unbreakable
+.SBlOk:
     lda EnemyDeadMask
     and #$10
     bne .SBright                ; already destroyed → no double score
@@ -1552,6 +1560,13 @@ StripBlastCheck:
     cmp BMWScratch
     bne .SBdone                 ; lo >= pL+2 → blast ends left of the strip
 .SBtake:
+    lda BMWScratch
+    cmp #38
+    bne .SBrOk                  ; an interior strip is a designed block: bombable
+    lda RoomExits               ; the EDGE strip (pL 38 = right_col 9) is the plug
+    and #1
+    bne .SBdone                 ;   (no room to the EAST): unbreakable
+.SBrOk:
     lda EnemyDeadMask
     and #$08
     bne .SBdone                 ; already destroyed → no double score
@@ -1918,6 +1933,14 @@ BombMarkWalls:
     jsr BMWCellSolid
     bne .BMWrNext               ; joins a wider run on the right
 .BMWPunch:
+    lda CollisionCellY
+    cmp #1
+    bne .BMWgo                  ; only the cell next to the screen border (k = 1)
+    lda RoomExits               ; the wall in front of the edge column: the PF is
+    and #3                      ;   MIRRORED, so breaking it opens BOTH sides - it
+    bne .BMWrNext               ;   needs a room on each (user 2026-10-26: no
+                                ;   opening where nothing is connected)
+.BMWgo:
     lda CollisionEndY
     sta LineCount               ; ClearPFColumn first row = last row = r
     lda CollisionCellY
