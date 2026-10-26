@@ -127,6 +127,19 @@ assert got["flicker"] == 1, (
     f"PinSlot0 FlickerFrame={got['flicker']}, want 1 = desired(0) + count(2) "
     "- 1: SelectActiveObject's `inc` must land on 0 next frame")
 
+# --- case 1b: the HIGHER-band enemy is record 0 (user report 2026-10-26) ------
+# An extra miner (band 1) listed AFTER a power cell (band 2) flickered: slot 1 is
+# record 0, so slot 0 must be record 1 = FlickerFrame desired(1) + count(2) - 1 =
+# 2. PinSlot0 rejected that value (`cmp #2 / bcs` meant "3+ candidates" but
+# tested desired + count - 1), so the pin was skipped and the lower object took
+# slot 0 only every other frame.
+got = call_stage_slot1(ys=[96, 60], xs=[100, 71], types=[MOTH, MOTH])
+assert got["x1"] == 100, f"slot 1 must be the higher-band record 0, X={got['x1']}"
+assert got["flicker"] == 2, (
+    f"PinSlot0 FlickerFrame={got['flicker']}, want 2 = desired(1) + count(2) - 1: "
+    "with the higher-band object first the lower one was left to the 1-of-2 "
+    "rotation = flicker")
+
 # --- case 2: same band -> no pair, rotation untouched ----------------------
 # N=4: a band is 36 lines, so the pair must sit inside 36..71 (60/84 used
 # to share the 48-line band 1; 84 is now band 2 and correctly pairs).

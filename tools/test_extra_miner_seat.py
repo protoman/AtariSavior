@@ -59,4 +59,29 @@ assert check(MODEL2, 5.25, x=36.0) is None, check(MODEL2, 5.25, x=36.0)
 # and the columns that DO touch the wall are still refused (col 38-39 = cell 0)
 msg = check(MODEL2, 5.25, x=38.0)
 assert msg and "WALL" in msg, msg
+# His feet reach 3 px into the next band, where the one-GRP1 swap would cut them
+# (user report 2026-10-26: extra miner in band 1 + power cell in band 2).
+def check_with(rows, y, other_type, other_y, other_x=4.0):
+    m = model(rows)
+    room = {"room_id": 0, "model_id": 0, "room_x": 0, "room_y": 0,
+            "enemies": [{"type": 15, "x": 18.0, "y": y, "dir": 1, "range_min": 0,
+                         "range_max": 0, "speed": 0},
+                        {"type": other_type, "x": other_x, "y": other_y, "dir": 1,
+                         "range_min": 0, "range_max": 0, "speed": 0}]}
+    try:
+        C.check_rooms_against_models([room], {0: m}, "t", 5, 8.0, 4.0)
+    except ValueError as e:
+        return str(e)
+    return None
+
+
+TWO_FLOORS = ["..........", "..........", "##########", "##########"]
+C.OBJECT_BANDS_STRICT = True          # the band rules are WARNINGS by default
+msg = check_with(TWO_FLOORS, 5.25, 14, 8.25)
+assert msg and "feet" in msg, f"object right under the miner must be refused: {msg}"
+C.OBJECT_BANDS_STRICT = False
+assert check_with(TWO_FLOORS, 5.25, 14, 8.25) is None, \
+    "outside strict mode the clipped-feet rule is a warning, not an error"
+assert check_with(TWO_FLOORS, 5.25, 14, 1.0) is None, \
+    "an object ABOVE the miner is fine"
 print("test_extra_miner_seat: OK (rows 3/7/11 stand, other heights refused)")

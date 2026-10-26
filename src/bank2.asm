@@ -1241,25 +1241,27 @@ PinSlot0:
     lda FetchPtr+1              ; two enemies: the other slot
     eor #$01
 .PSadd:
-    clc
-    adc EnemyCount              ; + slot count
-    pha
+    tax                         ; X = desired slot 0 (0/1)
+    ldy #0
     lda LevelMinerRoom
     and #$7f
     cmp RoomNo
     bne .PSnm
-    pla
-    clc
-    adc #1                      ; the miner is a slot too
-    pha
+    iny                         ; the miner is a slot too
 .PSnm:
-    pla
-    sec
-    sbc #1                      ; A = slot count - 1 (for the entry `inc`)
-    cmp #2
+    tya
+    clc
+    adc EnemyCount              ; A = slot count
+    cmp #3
     bcs .PSout                  ; 3+ candidates: the pin cannot name the middle
-                                ;   one — leave the rotation alone
-    sta FlickerFrame
+                                ;   one - leave the rotation alone
+    txa                         ; count is 2 (two bands = two candidates): the
+    clc                         ;   entry `inc` + modulo lands on `desired` when
+    adc #1                      ;   FlickerFrame = desired + count - 1 = desired + 1
+    sta FlickerFrame            ;   (the old guard tested desired + count - 1 >= 2,
+                                ;   which refused desired = 1: a higher-band
+                                ;   RECORD 0 left the lower object to the 1-of-2
+                                ;   rotation = flicker, user 2026-10-26)
 .PSout:
     rts
 

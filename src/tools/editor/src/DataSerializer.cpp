@@ -1918,7 +1918,8 @@ ReachResult AnalyseReach(const LevelData& lv,
 // reachable without a bomb or a spider zone, and at most two exist per level in
 // rooms of DIFFERENT index parity (the kernel keeps one "still to rescue" bit
 // per parity). Rooms are spread along the route (1/3 and 2/3 of the order the
-// search first visits them). Returns the miners placed (-1 = not enough hosts).
+// search first visits them). Returns the miners placed (0 = no host room: the
+// level keeps only its own miner; tools/test_generator.py counts the shortfalls).
 int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
                      int levelNumber) {
     const int want = levelNumber >= 14 ? 2 : (levelNumber >= 7 ? 1 : 0);
@@ -1968,13 +1969,13 @@ int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
                         if (i == skip) continue;
                         const EnemyData& e = room.enemies[i];
                         ++cnt;
-                        if (bandOf(e.y) == 2
+                        if (bandOf(e.y) == 2 || bandOf(e.y) == 3   // band 3 would cut his feet
                                 || std::abs((int)std::lround(e.x) - dcol) < 3)
                             return false;
                     }
                     for (const LampData& l : room.lamps) {
                         ++cnt;
-                        if (bandOf(l.y) == 2
+                        if (bandOf(l.y) == 2 || bandOf(l.y) == 3
                                 || std::abs((int)std::lround(l.x) - dcol) < 3)
                             return false;
                     }
@@ -2028,7 +2029,7 @@ int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
         pick = {0};                                 // one host: place one miner
     }
     if (pick.empty()) {
-        return -1;
+        return 0;               // no host room in this level: it keeps its one miner
     }
     int placed = 0;
     for (int hi : pick) {
@@ -2115,6 +2116,10 @@ int PlanPowerCells(LevelData& lv, const std::vector<ModelData>& models) {
                 if (i == skip) continue;
                 const EnemyData& e = room.enemies[i];
                 ++cnt;
+                // an extra miner's feet reach 3 px into the next band: nothing
+                // may sit there (the sprite swap would cut them off)
+                if (e.type == (int)EnemyType::EXTRA_MINER
+                        && band == bandOf(e.y) + 1) return false;
                 if (bandOf(e.y) == band
                         || std::abs((int)std::lround(e.x) - dcol) < 3) return false;
             }

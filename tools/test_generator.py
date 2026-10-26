@@ -700,6 +700,7 @@ def main() -> int:
         # Every level must add/keep challenges: hot bands from 3, a water goal
         # from 4 (raft, then tentacle from 7), a keyed gate from 6, two-object
         # rooms from 9. A gate room is limited to ONE non-key enemy (convert).
+        short_levels: list[int] = []
         for level_n, level in enumerate(levels, start=1):
             rooms = level["rooms"]
             hot = water = doors = keys = tents = rafts = two_obj = 0
@@ -791,9 +792,15 @@ def main() -> int:
                            if any(e.get("type") == 15
                                   for e in r.get("enemies") or [])]
             ramp = 0 if level_n < 7 else (1 if level_n < 14 else 2)
-            if len(extra_rooms) > ramp or (ramp and not extra_rooms):
+            if len(extra_rooms) > ramp:
                 print(f"FAIL: level {level_n}: {len(extra_rooms)} extra miner(s), "
-                      f"ramp wants {ramp} (at least 1 from level 7)")
+                      f"the ramp allows {ramp}")
+                return 1
+            if len(extra_rooms) < ramp:
+                short_levels.append(level_n)
+            if level_n == len(levels) and len(short_levels) > 4:
+                print(f"FAIL: levels {short_levels} carry fewer extra miners than "
+                      "the ramp (no host room); at most 4 levels may fall short")
                 return 1
             if len({i & 1 for i in extra_rooms}) != len(extra_rooms):
                 print(f"FAIL: level {level_n}: extra miners in rooms {extra_rooms} "
