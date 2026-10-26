@@ -719,6 +719,23 @@ def check_rooms_against_models(rooms: list[dict], models_by_id: dict,
                     "(y 2.25, 5.25 or 8.25)")
             # VISIBLE left edge = 4 * column (enemy_x_px requests +4/+7 only to
             # pin the TIA coarse position), so he covers px [4c, 4c + 7].
+            # His 12 visible rows (top = 9 px above the band's last row) end 3 px
+            # INTO the next band; one GRP1 swaps objects at a band boundary
+            # (Slot1Hook), so any other object in that next band cuts his feet.
+            for what, oy in ([(f"enemy {i}", o.get("y", 0))
+                              for i, o in enumerate(enemies) if o is not e]
+                             + [(f"lamp {i}", l.get("y", 0))
+                                for i, l in enumerate(lamps)]):
+                if px(float(oy), 12) // 36 == band + 1:
+                    msg = (f"{who}: {what} is in band {band + 1}, right under the "
+                           f"extra miner (band {band}): the sprite swap at that "
+                           "band boundary would cut off his feet - move one of "
+                           "them")
+                    if OBJECT_BANDS_STRICT:
+                        raise ValueError(msg)
+                    if msg not in _BAND_WARNED:
+                        _BAND_WARNED.add(msg)
+                        print(f"WARN: {msg}")
             x_px = px(float(e.get("x", 0)), 4)
             cols = {min(19, x_px // 8), min(19, (x_px + 7) // 8)}
             mid = min(19, (x_px + 3) // 8)

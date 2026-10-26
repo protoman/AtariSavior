@@ -36,7 +36,7 @@ BANKS = [bytearray(open(FROZEN / f"bank{i}.bin", "rb").read()) for i in range(8)
 NAMES = {"SelectActiveObject", "DropTarget", "FlickerFrame", "BombPacked",
          "EnemyCount", "LevelMinerRoom", "RoomNo", "EnemyDeadMask", "ObjBase",
          "MinerX", "MinerY", "EnemyRamX", "EnemyRamY", "EnemyDataLo",
-         "EnemyDataHi", "EnemyIndex", "LevelStartRoom"}
+         "EnemyDataHi", "EnemyIndex", "LevelStartRoom", "ObjBase1"}
 L0 = parse_labels(FROZEN / "bank0.lst", NAMES)
 miss = NAMES - L0.keys()
 if miss:
@@ -79,10 +79,14 @@ def zp(name):
     return L0[name] - 0x80
 
 
+pairs: list = []          # (ObjBase, ObjBase1) per frame of the last run()
+
+
 def run(enemies, dead, miner, frames=8):
     """-> list of ObjBase per frame. enemies = count; dead = mask b0-2."""
     mem = Mem()
     r = mem.ram
+    pairs.clear()
     r[zp("EnemyCount")] = enemies
     r[zp("EnemyDeadMask")] = dead
     r[zp("RoomNo")] = 2
@@ -109,6 +113,7 @@ def run(enemies, dead, miner, frames=8):
         else:
             sys.exit(f"SelectActiveObject hung (enemies={enemies} dead={dead:#x})")
         out.append(r[zp("ObjBase")])
+        pairs.append((r[zp("ObjBase")], r[zp("ObjBase1")]))
     return out
 
 
@@ -130,8 +135,13 @@ def main():
         fails.append(f"B' two enemies, 2nd dead: survivor flickers: {b2}")
 
     c = run(1, 0, miner=True)
-    if M not in c or all(x == M for x in c):
-        fails.append(f"C control: live enemy + miner must alternate: {c}")
+    # Two objects in different bands are PAIRED (slot 1 holds the higher one, the
+    # pin keeps the other in slot 0 every frame: no flicker); otherwise they
+    # alternate in slot 0. Either way BOTH must be drawn.
+    paired = all({M, 30} <= {b0, b1} for b0, b1 in pairs)
+    if not paired and (M not in c or all(x == M for x in c)):
+        fails.append(f"C control: live enemy + miner must both be drawn: {c} "
+                     f"(slot pairs {pairs})")
 
     d = run(2, 0b011, miner=False)
     if set(d) != {0xFF}:
