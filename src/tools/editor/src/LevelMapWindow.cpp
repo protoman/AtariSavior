@@ -40,7 +40,9 @@ struct RoomView {
     bool water = false;
     float minerX = 0.0f;   // game px, only meaningful in the miner room
     float minerY = 0.0f;
-    std::vector<QPointF> extraMiners;   // display col, stage row (record type 15)
+    int extraMiners = 0;                // record type 15 count (tag)
+    struct Marker { QPointF pos; QColor color; QString label; };
+    std::vector<Marker> markers;        // every enemy / pickup / lamp (display col, stage row)
 };
 
 }  // namespace
@@ -109,12 +111,22 @@ protected:
                 p.setBrush(QColor(255, 140, 180));
                 p.drawEllipse(QPoint(mx + kColW / 2, my + kRowH / 2), 6, 6);
             }
-            // Extra miners (record type 15): same pink dot, smaller.
-            for (const QPointF& m : r.extraMiners) {
-                p.setPen(Qt::NoPen);
-                p.setBrush(QColor(255, 140, 180));
-                p.drawEllipse(QPoint(ox + (int)m.x() * kColW + kColW / 2,
-                                     oy + (int)m.y() * kRowH + kRowH / 2), 5, 5);
+            // Every enemy / pickup / lamp, with the same colours and letters as
+            // the room editor (x = display column, y = stage row).
+            {
+                QFont mf = font();
+                mf.setPixelSize(10);
+                mf.setBold(true);
+                p.setFont(mf);
+                for (const RoomView::Marker& m : r.markers) {
+                    const QRect mr(ox + (int)m.pos.x() * kColW - kColW,
+                                   oy + (int)m.pos.y() * kRowH,
+                                   2 * kColW, kRowH);
+                    p.setPen(Qt::black);
+                    p.setBrush(m.color);
+                    p.drawRoundedRect(mr.adjusted(0, 1, 0, -1), 4, 4);
+                    p.drawText(mr, Qt::AlignCenter, m.label);
+                }
             }
             QFont small = font();
             small.setPixelSize(11);
@@ -123,7 +135,7 @@ protected:
             QString tag = QString::number(r.id + 1);   // user counts from 1
             if (r.start) tag += "S";
             if (r.miner) tag += "M";
-            if (!r.extraMiners.empty()) tag += QString("m%1").arg((int)r.extraMiners.size());
+            if (r.extraMiners) tag += QString("m%1").arg(r.extraMiners);
             const QRect tagRect(ox + 2, oy + 2, 14 + 8 * tag.size(), 14);
             p.fillRect(tagRect, QColor(0, 0, 0, 170));
             p.setPen(QColor(235, 235, 240));
@@ -199,9 +211,25 @@ void LevelMapWindow::SetLevel(const hero::LevelData& level,
         v.minerX = level.miner_x;   // CELL units (display col = x * 2)
         v.minerY = level.miner_y;   // display row (kernel: 7 = 84 px)
         for (const hero::EnemyData& e : room.enemies) {
-            if (e.type == (int)hero::EnemyType::EXTRA_MINER)
-                v.extraMiners.push_back(QPointF(e.x, e.y));
+            QColor c(200, 200, 200);
+            QString label = "?";
+            switch (static_cast<hero::EnemyType>(e.type)) {
+                case hero::EnemyType::SPIDER: c = QColor(240, 200, 0); label = "S"; break;
+                case hero::EnemyType::BAT: c = QColor(220, 40, 60); label = "B"; break;
+                case hero::EnemyType::SNAKE: c = QColor(40, 200, 40); label = "K"; break;
+                case hero::EnemyType::TENTACLE: c = QColor(200, 60, 200); label = "T"; break;
+                case hero::EnemyType::GIANT_MOTH: c = QColor(190, 160, 120); label = "M"; break;
+                case hero::EnemyType::KEY: c = QColor(255, 215, 0); label = "Y"; break;
+                case hero::EnemyType::RAFT: c = QColor(80, 170, 80); label = "R"; break;
+                case hero::EnemyType::POWER_CELL: c = QColor(60, 200, 230); label = "E"; break;
+                case hero::EnemyType::EXTRA_MINER:
+                    c = QColor(255, 140, 180); label = "M2"; ++v.extraMiners; break;
+                default: break;
+            }
+            v.markers.push_back({QPointF(e.x, e.y), c, label});
         }
+        for (const hero::LampData& l : room.lamps)
+            v.markers.push_back({QPointF(l.x, l.y), QColor(255, 230, 80), "L"});
         for (int row = 0; row < hero::kRoomHeight; ++row) {
             QString line(hero::kRoomWidth, '.');
             if (model) {
@@ -219,7 +247,7 @@ void LevelMapWindow::SetLevel(const hero::LevelData& level,
                         if (line[c] == '#') line[c] = 'H';
                 }
             }
-            if (room.bottom_band && row == 2) {
+            if (room.bottom_band && row == hero::kRoomHeight - 1) {   // the LAST drawn band (3 on 4 bands)
                 for (int c = 0; c < hero::kRoomWidth; ++c)
                     if (line[c] == '.') line[c] = 'W';
             }
