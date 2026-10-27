@@ -1,4 +1,5 @@
 #include "LevelMapWindow.hpp"
+#include "TileColors.hpp"
 
 #include <QColor>
 #include <QFont>
@@ -34,10 +35,19 @@ constexpr int kGrid = 15;      // C1: nibble 15 is the no-room sentinel
 struct RoomView {
     int id = 0;
     int x = 0, y = 0;
-    QString rows[hero::kRoomHeight];
+    // Per drawn band (model row): the LEFT half as the model + side-1 (M1)
+    // patches, the RIGHT half as its mirror + side-0 (ball) patches — the
+    // halves differ whenever the room carries an async wall, so a single
+    // mirrored half cannot draw it (2026-10-27).
+    int left[hero::kRoomHeight][hero::kRoomWidth] = {};
+    int right[hero::kRoomHeight][hero::kRoomWidth] = {};
+    bool patchL[hero::kRoomHeight][hero::kRoomWidth] = {};
+    bool patchR[hero::kRoomHeight][hero::kRoomWidth] = {};
+    bool hotMid = false;       // model.mid_band_type != 0 (row 1 walls are hot)
+    bool water = false;
+    QColor bottom{24, 88, 176};   // room band COLUBK when water
     bool start = false;
     bool miner = false;
-    bool water = false;
     float minerX = 0.0f;   // game px, only meaningful in the miner room
     float minerY = 0.0f;
     int extraMiners = 0;                // record type 15 count (tag)
@@ -81,26 +91,55 @@ protected:
         for (const RoomView& r : m_rooms) {
             const int ox = kMargin + r.x * kRoomW;
             const int oy = kHeader + kMargin + r.y * kRoomH;
-            // Display column -> model cell (mirrored half, 2 cols per cell).
+            // Display column -> model cell (2 cols per cell); each half has
+            // its own tile grid (see RoomView).
             for (int row = 0; row < kRows; ++row) {
                 // 12-px display rows per DRAWN band: 36 lines / 12 = 3
                 // (was /4 while a band was 48 lines of 4 rows).
                 const int band = row / 3;
                 for (int dcol = 0; dcol < kCols; ++dcol) {
-                    const int src = (dcol < kCols / 2) ? dcol
-                                                      : (kCols - 1 - dcol);
-                    const int cell = src / 2;
-                    const char t = r.rows[band][cell].toLatin1();
-                    QColor col(32, 32, 44);                 // air
-                    if (t == '#' || t == 'C') col = m_wall1;
-                    else if (t == 'H') col = QColor(214, 58, 40);
-                    else if (t == 'D') col = QColor(232, 196, 48);
-                    else if (t == 'P') col = QColor(64, 196, 224);
-                    else if (t == 'W') col = QColor(28, 72, 176);
-                    // Band 1 uses the room's second wall color (kernel rule).
-                    if (t == '#' && band == 1) col = m_wall2;
+                    const bool rightHalf = dcol >= kCols / 2;
+                    const int cell = (rightHalf ? dcol - kCols / 2 : dcol) / 2;
+                    const int tile = rightHalf ? r.right[band][cell]
+                                               : r.left[band][cell];
+                    const bool patch = rightHalf ? r.patchR[band][cell]
+                                                 : r.patchL[band][cell];
+                    QColor col = editor::TileColor(tile, band, m_wall1, m_wall2);
+                    // Same overrides as MapCanvas::paintEvent: a hot middle
+                    // band makes its walls hot (feature/door tiles keep their
+                    // own colour); open air on a water room's last band shows
+                    // the room's band colour.
+                    const bool featureTile =
+                        tile == (int)hero::TileType::PHASE ||
+                        tile == (int)hero::TileType::HCRUNCH ||
+                        tile == (int)hero::TileType::LOCKED_DOOR;
+                    if (r.hotMid && band == 1 && tile != (int)hero::TileType::AIR
+                            && !featureTile && !patch) {
+                        col = editor::TileColor((int)hero::TileType::HOT_ROCK_WALL,
+                                                band, m_wall1, m_wall2);
+                    }
+                    if (r.water && band == hero::kRoomHeight - 1
+                            && tile == (int)hero::TileType::AIR) {
+                        col = r.bottom;
+                    }
                     p.fillRect(ox + dcol * kColW, oy + row * kRowH,
                                kColW, kRowH, col);
+                }
+            }
+            // Async patches get the editor's cyan outline (one cell wide, the
+            // whole band tall) so they read as the room's own async walls.
+            p.setBrush(Qt::NoBrush);
+            p.setPen(QPen(QColor(0, 210, 255), 2));
+            for (int band = 0; band < hero::kRoomHeight; ++band) {
+                for (int c = 0; c < hero::kRoomWidth; ++c) {
+                    if (r.patchL[band][c]) {
+                        p.drawRect(ox + 2 * c * kColW, oy + band * 3 * kRowH,
+                                   2 * kColW, 3 * kRowH);
+                    }
+                    if (r.patchR[band][c]) {
+                        p.drawRect(ox + (kCols / 2 + 2 * c) * kColW,
+                                   oy + band * 3 * kRowH, 2 * kColW, 3 * kRowH);
+                    }
                 }
             }
             // Miner dot at its game position (room px -> display grid).
@@ -230,45 +269,47 @@ void LevelMapWindow::SetLevel(const hero::LevelData& level,
         }
         for (const hero::LampData& l : room.lamps)
             v.markers.push_back({QPointF(l.x, l.y), QColor(255, 230, 80), "L"});
-        for (int row = 0; row < hero::kRoomHeight; ++row) {
-            QString line(hero::kRoomWidth, '.');
-            if (model) {
-                const int w = model->width > 0 ? model->width
-                                               : hero::kRoomWidth;
+        // Model shape, the room's feature cells (phase / hcrunch), then the
+        // two halves: right = mirror of the left, async patches on their own
+        // side (side 0 = right/ball, side 1 = left/M1, col = the half's own
+        // cell index — the same convention as MapCanvas::BuildRightRows).
+        int base[hero::kRoomHeight][hero::kRoomWidth] = {};
+        if (model) {
+            const int w = model->width > 0 ? model->width : hero::kRoomWidth;
+            for (int row = 0; row < hero::kRoomHeight; ++row)
                 for (int c = 0; c < hero::kRoomWidth; ++c) {
                     const int idx = row * w + c;
-                    if (idx < (int)model->tiles.size()
-                            && model->tiles[idx] != (int)hero::TileType::AIR) {
-                        line[c] = '#';       // solid (hot flagged below)
-                    }
+                    if (idx < (int)model->tiles.size())
+                        base[row][c] = model->tiles[idx];
                 }
-                if (row == 1 && model->mid_band_type == 1) {
-                    for (int c = 0; c < hero::kRoomWidth; ++c)
-                        if (line[c] == '#') line[c] = 'H';
-                }
-            }
-            if (room.bottom_band && row == hero::kRoomHeight - 1) {   // the LAST drawn band (3 on 4 bands)
-                for (int c = 0; c < hero::kRoomWidth; ++c)
-                    if (line[c] == '.') line[c] = 'W';
-            }
-            v.rows[row] = line;
+            v.hotMid = model->mid_band_type != 0;
         }
+        for (const auto& feat : room.feature_cells) {
+            if (feat.size() < 3) continue;
+            const int row = feat[0], col = feat[1];
+            if (row < 0 || row >= hero::kRoomHeight
+                    || col < 0 || col >= hero::kRoomWidth) continue;
+            base[row][col] = feat[2];
+        }
+        for (int row = 0; row < hero::kRoomHeight; ++row)
+            for (int c = 0; c < hero::kRoomWidth; ++c) {
+                v.left[row][c] = base[row][c];
+                v.right[row][c] = base[row][hero::kRoomWidth - 1 - c];
+            }
         for (const auto& patch : room.asym_patches) {
             if (patch.size() < 3) continue;
             const int row = patch[0], col = patch[1], tile = patch[2];
             if (row < 0 || row >= hero::kRoomHeight
                     || col < 0 || col >= hero::kRoomWidth) continue;
-            v.rows[row][col] = (tile == (int)hero::TileType::LOCKED_DOOR)
-                                   ? 'D' : '#';
+            const int side = patch.size() == 4 ? patch[3] : 0;
+            const int t = (tile == (int)hero::TileType::LOCKED_DOOR)
+                              ? (int)hero::TileType::LOCKED_DOOR
+                              : (int)hero::TileType::SOLID_WALL;
+            if (side == 0) { v.right[row][col] = t; v.patchR[row][col] = true; }
+            else           { v.left[row][col] = t;  v.patchL[row][col] = true; }
         }
-        for (const auto& feat : room.feature_cells) {
-            if (feat.size() < 3) continue;
-            const int row = feat[0], col = feat[1], tile = feat[2];
-            if (row < 0 || row >= hero::kRoomHeight
-                    || col < 0 || col >= hero::kRoomWidth) continue;
-            v.rows[row][col] = (tile == (int)hero::TileType::PHASE)
-                                   ? 'P' : 'C';
-        }
+        if (room.bottom_band)
+            v.bottom = QColor(room.bottom_r, room.bottom_g, room.bottom_b);
         rooms.push_back(std::move(v));
     }
     m_view->SetData(std::move(rooms), levelNumber,
