@@ -539,6 +539,33 @@ Consequences that are easy to get wrong:
   reads the wrong block; it bit `test_band_restage`, `test_bomb_strip` and
   `test_phase3_ball` on the day of the move).
 
+## Critical Rule: Generator Hazard Placement — Phase Is Horizontal, Crunch Gaps Are Band 3
+
+**The generator (`Build20LevelStage`) is the product; saved stages are
+disposable output** (user 2026-10-27). Rules live in the generator plus a test
+in `tools/test_generator.py`. Rooms/levels/models are counted from 1 when
+talking to the user (the editor's "Model 32" is data `id` 31); bands may be
+0-based, but say which.
+
+- **Phase walls are HORIZONTAL obstacles only** (user 2026-10-27). The player
+  walks or flies left/right across them; a blink is too short to fall or climb
+  through. Any room with a SIDE link (corridor, L, T, +) can host one; the cell
+  (`kPhaseCell`, data col 2, band 2) has WALL directly above and below it and
+  band 2 is open from the side edge up to it. Phase rooms do NOT use
+  `SHAPE_GATE` (that shape walls band 2 off and is for locked doors). A level
+  with no side-linked host drops its phase. Guard: the phase check in
+  `test_generator.py`.
+- **hcrunch needs a >= 4-cell gap above AND below the crunch band** (user
+  2026-10-25/26). The crunch band is band 2: its ceiling is band 1 and its
+  floor is **band 3**, NOT the cave floor (band 4). `wideBottom` (`SHAPE_WS`)
+  opens band 3 as well as band 4. Checking `tiles[-10:]` / the last row was a
+  leftover of the 3-row layout and let 2-cell gaps through (levels 17/19,
+  found 2026-10-27). Guard: the hcrunch check in `test_generator.py`.
+- **`test_generator.py` does not rebuild the editor** (`ensure_editor` only
+  builds when the binary is missing): run
+  `cmake --build tools/editor/cmake-build-debug` after any generator change, or
+  the test measures the stale binary.
+
 ## Overview
 
 A from-scratch Atari 2600 game kernel modeled after Activision's HERO (1984). Built

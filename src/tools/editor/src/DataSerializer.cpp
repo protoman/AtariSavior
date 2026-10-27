@@ -523,6 +523,7 @@ enum ShapeBits {
     SHAPE_WS = 1 << 16
 };
 constexpr int kGateCol = 4;          // the gate/door cell in row 1
+constexpr int kPhaseCell = 2;       // phase wall: solid above AND below
 constexpr int kGapA = 3;             // 2-gap columns (model cells)
 constexpr int kGapB = 6;
 // Archetype interior (HERO-like variety for ordinary/hot rooms): 3 bits in
@@ -1087,6 +1088,14 @@ ModelData MakeShapeModel(int modelId, int mask) {
             }
             model.tiles[3 * kRoomWidth + x] = three[2 * kRoomWidth + x];
         }
+        // wideBottom is a crunch room's ESCAPE below band 2: its floor is
+        // band 3 (index 2), not only the cave floor (band 4) — a 2-cell hole
+        // there was a death trap (user rule 2026-10-26: >= 4 cells).
+        if (mask & SHAPE_WS) {
+            for (int x = kGapA; x <= kGapB; ++x) {
+                model.tiles[2 * kRoomWidth + x] = (int)TileType::AIR;
+            }
+        }
         model.height = 4;
     }
     return model;
@@ -1307,7 +1316,9 @@ int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
     if (IsChannelRoom(levelNumber, walk, pos)) {
         mask |= SHAPE_CHANNEL;
     } else {
-        if (role == Role::Gate || role == Role::Phase) mask |= SHAPE_GATE;
+        // Phase keeps the plain corridor (band 2 open edge to edge); only the
+        // keyed gate walls band 2 off.
+        if (role == Role::Gate) mask |= SHAPE_GATE;
         if (role == Role::WaterGoal) mask |= SHAPE_WATER;
     }
     return mask;
@@ -2579,7 +2590,12 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             }
             auto canHost = [&](int i, Role r) {
                 if (i <= 0 || i >= count - 1) return false;
-                if (r == Role::Hot || r == Role::Phase) return (bool)vroom[i];
+                if (r == Role::Hot) return (bool)vroom[i];
+                // PHASE (user rule 2026-10-27): a horizontal obstacle only —
+                // the player walks/flies across it left<->right, so the room
+                // needs a SIDE link. Corridors, L, T and + rooms all qualify
+                // (vertical links are fine: the cell has wall above/below).
+                if (r == Role::Phase) return (bool)hroom[i];
                 // Since 2026-10-24 the kernel prefix starts at pair 1, so a
                 // crunch room keeps its side link (the crush gates the way out of
                 // the 8-px edge vestibule); it still needs a vertical passage.
@@ -2844,9 +2860,20 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 if (wk[j].x == wk[i].x && wk[j].y == wk[i].y + 1) below = j;
             }
             if (longestRun(vertCells(m, true)) < 4) m |= SHAPE_WN;
-            if (longestRun(vertCells(m, false)) < 4) {
+            // The crunch band is band 2: its floor is band 3 (row index 2),
+            // NOT the cave floor (band 4) that vertCells(.., false) reads —
+            // that mix-up let a 2-cell gap through (levels 17/19, 2026-10-27).
+            const ModelData built = MakeShapeModel(0, m);
+            std::set<int> lowAir;
+            for (int x = 0; x < kRoomWidth; ++x) {
+                if (built.tiles[2 * kRoomWidth + x] == (int)TileType::AIR) {
+                    lowAir.insert(x);
+                }
+            }
+            const bool floorShort = longestRun(vertCells(m, false)) < 4;
+            if (floorShort || longestRun(lowAir) < 4) {
                 m |= SHAPE_WS;
-                if (below >= 0) {
+                if (floorShort && below >= 0) {
                     // An ordinary room under the widened floor drops its
                     // archetype: a plain ceiling-widened shape is shared by
                     // every such neighbour instead of costing a shape each.
@@ -2970,13 +2997,12 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     {1, doorCol, (int)TileType::LOCKED_DOOR, 1});
             }
             if (roles[l - 1][i] == Role::Phase) {
-                // The corridor blinks: 45 frames solid, 45 open. Both
-                // corridor cells so the blink gates the whole passage.
-                // The phase sits on the room's PASSAGE cell: a gate shape
-                // keeps band 1 open at the first corridor cell only.
+                // The corridor blinks: 45 frames solid, 45 open. The cell sits
+                // on band 2 of a straight corridor room with WALL above and
+                // below it (cell 2: the floor holes are cells 4/5/8/9), so it
+                // is only ever crossed sideways (user rule 2026-10-27).
                 room.feature_cells.push_back(
-                    {1, (masks[l - 1][i] & SHAPE_2GAP) ? kGapA : kVertExitA,
-                     (int)TileType::PHASE});
+                    {1, kPhaseCell, (int)TileType::PHASE});
             }
             if (roles[l - 1][i] == Role::Hcrunch) {
                 // Fixed 10-cell prefix on the middle band (live stage form).
