@@ -243,9 +243,9 @@ TallyTicks = $F2               ; level-bonus countdown, 50-pt units (tally)
 
 ; Score ZP variables (shared with bank1 HUD — addresses MUST match bank1)
 ; $F3-$F5 live score only — $F6 is BombX (bank1 ScoreOn is unused).
-ScoreTh         = $F3           ; score thousands digit (0-9)
-ScoreHu         = $F4           ; score hundreds digit (0-9)
-ScoreTe         = $F5           ; score tens digit (0-9)
+ScoreTh         = $F3           ; score 100k|10k digits, packed BCD (2026-10-27)
+ScoreHu         = $F4           ; score 1k|100 digits, packed BCD
+ScoreTe         = $F5           ; score tens|ones, packed BCD
 ; PF0ScoreBuf/PF1ScoreBuf removed (S3.0): dead legacy EQUs — the 48px
 ; sprite score never used PF score buffers (decl-only, zero references).
 

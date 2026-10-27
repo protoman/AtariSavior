@@ -161,9 +161,9 @@ sequential byte would be `$BC`, but `$BD+` are explicit EQUs and `$BC` is
 | $EA-$EC | (free in gameplay) | Tile 11 VCRUNCH was removed 2026-10-19, together with its `VcrState`/`VcrNext`/`VcrBand` slice staging; the cave kernel derives every band length locally now. The bytes remain bank1-only ($EA/$EB = scorePtr6 lo/hi, $EC = scbrdCnt) and are built after the cave read, so a future gameplay writer may use them only with the usual staged-only window (rule 6). |
 | $ED | BandTab | Phase 3 asym-ball band gate bytes (3B, `$ff` = ball band). Staged by bank2 `StageBandTab` (BuildColupF tail) every VBL; read by `.Row`'s `lda BandTab,X / sta ENABL`; bank1 HUD `scbrdTmp` stomps `$ED` only after the cave read (staged-only, rule 6). Bank2 mirrors the EQU (`check_equ_sync` pins both to kernel). |
 | $E7-$F2 | ColupfBuf | Final COLUPF × 12 rows — but only rows 0-2 ($E7-$E9) are ever written (TILE_ROWS=3; rows 9-11 are the bombs' own bytes, no overlap machinery since S3.0b). Bank1 clobbers $E7-$EF during HUD; VBLANK rebuilds every frame (S2.1 blocker, see progress doc). |
-| $F3 | ScoreTh | Shared with bank1 score |
-| $F4 | ScoreHu | |
-| $F5 | ScoreTe | |
+| $F3 | ScoreTh | Score 100k\|10k, packed BCD (2026-10-27; was one binary digit, max 9,999). Shared with bank1 |
+| $F4 | ScoreHu | Score 1k\|100, packed BCD |
+| $F5 | ScoreTe | Score tens\|ones, packed BCD. Max 999,999; a carry INTO ScoreTh = +10,000 and awards the extra life (every 50,000, max 8 `PlayerLives`) |
 | $F6 | **BombX** | Bomb drop X snapshot (bank1 must not write) |
 | $F7 | **BombTimer** | Fuse/explode frames |
 | $F0 | **PlayerBombs** | Bombs left 0..5 (lives at `$F0` physically = old ColupfBuf[9]; nothing writes it but bomb logic since S3.0b) |
@@ -193,7 +193,7 @@ only and nothing else touched `$F0-$F2` between save and restore.
 | $ED | scbrdTmp | Score temp | ColupfBuf dead-row overlap OK; also kernel `BandTab` (Phase 3 band gate bytes) — staged every VBL and read by the cave BEFORE this HUD stomp, so the time-partition is safe (staged-only, see rule 6) |
 | $EE | DelayCnt | Power-bar delay | ColupfBuf dead-row overlap OK |
 | $EF | FineCnt | Power-bar fine | ColupfBuf dead-row overlap OK |
-| $F3-$F5 | ScoreTh/Hu/Te | Score digits | shared |
+| $F3-$F5 | ScoreTh/Hu/Te | Score, 3 packed-BCD bytes (6 digits) | shared |
 | $8D/$8E/$8F | CollisionCellY/EndX/EndY | Bank0 collision temps (bomb save slots deleted S3.0b) | bank1 must not use |
 | — | GameMode | Fold-pad mode flag | check `bank1.asm` before use |
 | — | HUD slots | `HudSlotsRam` etc. | see bank1 / HUD notes |
