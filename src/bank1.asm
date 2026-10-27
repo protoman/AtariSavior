@@ -1120,7 +1120,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     lda #12                     ; P0 base X: lives 1-4
     ldx #0
     jsr SetObjectXPos_b1
-    lda #44                     ; P1: lives 5-8, flush right of P0 (12 + 4 x 8)
+    lda #47                     ; P1: lives 5-8, flush right of P0 (12 + 4 x 8)
     ldx #1
     jsr SetObjectXPos_b1
     lda #132                    ; the BALL: the key square, right side of the row

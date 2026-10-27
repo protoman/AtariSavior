@@ -1135,7 +1135,7 @@
    1120  f6ba		       a9 0c		      lda	#12	; P0 base X: lives 1-4
    1121  f6bc		       a2 00		      ldx	#0
    1122  f6be		       20 1f f8 	      jsr	SetObjectXPos_b1
-   1123  f6c1		       a9 2c		      lda	#44	; P1: lives 5-8, flush right of P0 (12 + 4 x 8)
+   1123  f6c1		       a9 2f		      lda	#47	; P1: lives 5-8, flush right of P0 (12 + 4 x 8)
    1124  f6c3		       a2 01		      ldx	#1
    1125  f6c5		       20 1f f8 	      jsr	SetObjectXPos_b1
    1126  f6c8		       a9 84		      lda	#132	; the BALL: the key square, right side of the row
