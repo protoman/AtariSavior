@@ -22,7 +22,7 @@ from reportlab.platypus import (BaseDocTemplate, Flowable, Frame, KeepTogether,
 SRC = Path(__file__).resolve().parents[2]
 OUT = SRC / "docs" / "manual" / "savior_manual.pdf"
 KERNEL = (SRC / "kernel.asm").read_text()
-SHOT_HUD = SRC / "screenshots" / "releases" / "0.8" / "002.png"
+SHOT_HUD = Path(__file__).resolve().parent / "hud_8lives.png"
 SHOT_TITLE = SRC / "screenshots" / "releases" / "0.8" / "001.png"
 
 PAGE = (5.5 * inch, 8.5 * inch)          # half-letter booklet
@@ -257,8 +257,8 @@ class HudShot(Flowable):
     """The real screenshot with numbered call-outs."""
 
     MARKS = [  # (number, x, y) in screenshot pixels
-        (1, 320, 323), (2, 70, 337), (3, 604, 337),
-        (4, 110, 357), (5, 604, 357), (6, 305, 385)]
+        (1, 480, 315), (2, 300, 331), (3, 604, 331),
+        (4, 215, 351), (5, 604, 351), (6, 440, 378)]
 
     def __init__(self, width):
         super().__init__()
@@ -280,7 +280,7 @@ class HudShot(Flowable):
         # call-out for the player
         c.setStrokeColor(GOLD)
         c.setLineWidth(1.2)
-        c.rect(213 * self.scale, self.height - 124 * self.scale,
+        c.rect(97 * self.scale, self.height - 62 * self.scale,
                36 * self.scale, 50 * self.scale)
 
 
@@ -497,18 +497,19 @@ def story():
          "as the seconds pass. When it is all red, you lose a life. A power cell "
          "refills it."),
         ("2", "Lives",
-         "One green square per life remaining. When the last one goes, the "
+         "One square per life remaining, up to eight, all green. When the last one goes, the "
          "level starts again."),
         ("3", "Key",
-         "A yellow square at the right of the lives row. It lights up while you "
-         "carry a key (not shown in this picture)."),
+         "A small yellow square at the right of the lives row. It lights up "
+         "while you carry a key (not shown in this picture)."),
         ("4", "Bombs",
          "One red square per bomb in your bag (you start with five). Drop one "
          "and a square goes out."),
         ("5", "Miners",
          "Purple squares: how many miners are still waiting to be rescued."),
         ("6", "Score",
-         "Six digits. It is not reset when you lose your last life."),
+         "Six digits, up to 999999 (it stops there). It is not reset when you "
+         "lose your last life."),
     ]
     t = Table([[Paragraph(f"<b>{n}</b>", style("n", alignment=1, fontSize=9, textColor=NAVY)),
                 Paragraph(f"<b>{h}.</b> {d}", CELLT)] for n, h, d in rows],
@@ -644,7 +645,13 @@ def story():
                            ("TOPPADDING", (0, 0), (-1, -1), 4),
                            ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
     s += [t, Spacer(1, 6)]
-    s += [Paragraph("The rescue bonus", H2),
+    s += [Paragraph("Extra lives", H2),
+          Paragraph(
+              "You earn <b>one extra life every 50,000 points</b> (at 50,000, "
+              "100,000, 150,000 and so on). You can hold at most <b>eight "
+              "lives</b>; a life earned at eight is lost. The score itself "
+              "stops at 999999.", BODY),
+          Paragraph("The rescue bonus", H2),
           Paragraph(
               "When the last miner is safe, the game freezes on the rescue and "
               "counts a bonus: points for the <b>time left on the power bar</b>, "
