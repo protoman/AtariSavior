@@ -38,6 +38,11 @@ NUSIZ copies trick
   technique with the VDELP cross-buffer, as documented by Bumbershoot
   Software and the Atari 2600 community.
 
+IDEAS AND INSPIRATION
+---------------------------------------
+Felipe Zacani - The idea of multiple miners, doors and keys.
+Also his game Spelunk Man showed great ways to improve gameplay.
+
 TOOLS
 -----
 Stella (the Atari 2600 emulator and its debugger), DASM (the 6502
@@ -47,3 +52,7 @@ Qt (the level and model editor).
 And to the Atari 2600 programming community (AtariAge, the Stella mailing
 list and everyone who documented the TIA and the 6502 tricks) - thank you for
 keeping this hardware alive.
+
+SPECIAL THANKS
+---------------------------------------
+To my lovely wife Arismeire and daughter Katya Valeria.
