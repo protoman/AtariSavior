@@ -3,267 +3,50 @@ Strategic Aerial Vehicle Infiltration Operations Rescue
 #########################################################################################################################################################################
 Nome personagem: Eorley Savior.
 
-
-
-Queue, refreshed after this batch (sprites, lamp, player row 0, bomb Y, REFP1, PinSlot0 all landed):
-Object drawing / kernel
-1. Same-band flicker (the remaining half of the REFP1 story). Two objects in different bands now pair cleanly, but two in the same band still rotate → each drawn 1 of 2 frames (30 Hz strobe). Fixes: move one object a band (editor), a smarter rotation (e.g. alternate per band/scanline instead of per frame), or the ball channel. Biggest visible win per byte, IMO.
-2. Phase 4, second half — GRP1 VDEL pipeline: VDELP1 + HERO's one-byte-per-line "colour + draw flag" staged at room load. The P0 half already landed. Kernel + staging restructure, own chunk.
-3. HERO leftovers: 13+2 (ball/M1 as extra HUD columns — lives row could use it), per-scanline PF tables for cave patterns, font into ZP (partial today).
-Content-dependent (blocked on stage)
-4. Phase 3 — async-block tint: no async blocks exist yet; needs the carrier decision (ball COLUPF vs PF pillar).
-5. Phase 7 — ball/M1 as a third object slot: one ball total, conflicts with 3; decide which before building either.
-Gameplay / systems
-6. Fuel management — the power bar is a pure timer today, no fuel.
-7. In-game music, screen transitions, game-over screen, difficulty settings.
-8. Content: 5+ levels, per-level enemy patterns, boss, secret rooms, high score.
-Art / stage
-9. KEY is the last old-scale design (16-row stub). MINER you said is fine; the rest are done.
-10. Tentacle vs the water band — you wanted to check placement in the editor.
-Bookkeeping
-11. Frame-budget residual flicker investigation — still paused, your call to resume.
-12. miner_dir is now inert (bit kept in the data). Restoring the miner's facing needs 32 B of art space.
-13. 25 B just freed in bank0 (6 pre-pad + 19 post-pad) — enough to seed a small feature without a cut.
-
-My suggestion: take 1 next (same-band flicker) since it's the last visual defect we know of and it's kernel-local, then keep alternating with art (KEY) while the bigger Phase 4 chunk gets its own session.
-
-
-
-/tmp/opencode/savior_lamp3.bin - screenshots/bugs/lamp_inside_wall.png
-/tmp/opencode/savior_lamp3_mirror.bin - screenshots/bugs/lamp_outside_wall.png
-
-screenshots/bugs/player_sprite_top.png
-
-
-row  SpriteA  SpriteB  WalkA    WalkB     cor
- 0   ..####..  ..####..  ..####.. ..####..  cinza claro      $0C
- 1   .######.  .######.  .######. .######.  cinza claro      $0C
- 2   .######.  .######.  .######. .######.  cinza claro      $0C
- 3   .######.  .######.  .######. .######.  cinza claro      $0C
- 4   .####...  .####...  .####... .####...  amarelo (visor)  $1E
- 5   .######.  .######.  .######. .######.  cinza claro      $0C
- 6   ..####..  ..####..  ..####.. ..####..  cinza claro      $0C
- 7   .#####..  .#####..  .#####.. .#####..  cinza médio      $08
- 8   #######.  #######.  #######. #######.  vermelho         $48
- 9   #######.  #######.  #######. #######.  vermelho         $48
-10   #.#####.  #.#####.  #.#####. #.#####.  vermelho         $48
-11   #.#####.  #.#####.  #.#####. #.#####.  vermelho         $48
-12   ##..###.  ##..###.  ##..###. ##..###.  vermelho         $48
-13   #.#####.  #.#####.  #.#####. #.#####.  vermelho         $48
-14   ######..  ######..  ######.. ######..  cinza médio      $08
-15   #.####..  ..####..  ..####.. ..####..  laranja          $2C
-16   #.###...  ..###...  ..###... ..###...  laranja          $2C
-17   ..#.#...  ..#.#...  .#..#... ..##....  azul             $88
-18   ..#.#...  ..#.#...  .#..#... ..##....  azul             $88
-19   ..#.#...  ..#.#...  #....#.. ..##....  azul             $88
-20   ..#.#...  ..#.#...  #....#.. ..##....  cinza escuro     $04
-21   ..#.#...  ..#.#...  #....#.. ..##....  cinza escuro     $04
-
+#########################################################################################################################################################################
+Ideas:
 #########################################################################################################################################################################
 
-Open items, cheapest/next-first:
-Art finish (in flow, you're driving)
-1. Remaining enemies at the new scale: SNAKE, LAMP, KEY, MINER, BOMB, RAFT still 16-row stubs — you said small objects later.
-2. Object flicker, same-band rooms (level 2 room 2, level 3 room 3): Phase 5 handles two different bands; same-band pairs still alternate. Fix is either moving one object a band in the editor, or the ball/M1 channel (conflicts with Phase 3).
-3. Tentacle placement over water — you wanted to check that in the editor.
-4. PinSlot0 assumes ≤2 candidates: with two enemies plus the miner, the middle object never draws. ~5 B guard in the $FB20 fill.
-5. Player rows 15-16 are one colour for all frames (shared table) — resolvable only with a per-frame colour table.
-Kernel / HERO parity (big chunks, need your go-ahead)
-6. Phase 4 — VDEL pipeline (VDELP1 + one byte per line "colour + draw flag" staged at room load). Kernel + staging restructure, own session.
-7. HERO leftovers: 13+2 (ball/M1 as extra HUD columns), per-scanline PF tables for cave patterns, font into ZP.
-8. Phase 3 — async-block tint (blocked: no async blocks exist in the stage yet).
-9. Phase 7 — ball/M1 as third object slots (one ball total — must choose vs Phase 3).
-Gameplay / content
-10. Enemy vs player overlap tuning — the hit box is now 22 rows, so enemy contact reaches further down.
-11. Fuel management (none today; the power bar is the game timer).
-12. In-game music, screen transitions, game-over screen, difficulty settings.
-13. Content: 5+ levels, level-specific enemy patterns, boss, secret rooms, high score.
-14. Residual frame-budget flicker investigation (paused, user-led since S6.6).
-
-
-
-
-Verde-claro  .....##.
-Verde-claro  ....####
-Verde        #####...
-Verde        #####...
-Verde-escuro ....####
-Verde-escuro .....##.
-
-
-
-
-
-One thing only you can judge: the player sprite now sits one scanline lower for x ∈ [44,113) (it used to be one line high there). Please run stella savior.bin and check — art and colours should line up row-for-row, no flicker/seam change. If it looks worse, git revert 8ac7f3b restores the old behaviour exactly.
-
-
-#########################################################################################################################################################################
-
-
-
-
-
-OK, let me ask one thing, the async block, is there a way it won't show the color of the enemy in the same row?
-
-Now, I want to understand, how HERO can have sprites for player and enemies,
-bigger and with more colors than ours and not affecting the async walls,
-nor needing flicker to have multiple enemies and objects at same room?
-
-#########################################################################################################################################################################
-
-=========================================================================================================================================================================
-
-
-Occupied by the boot stub ($F000), HcrPush ($F010), HcrBandLo ($F0A0), and the Phase-4 crunch bodies ($F800-$FD80+tramp pads).
-=========================================================================================================================================================================
-
-
-Good catch — bank3 is the asset I under-used. Let me give you the real numbers on it.
-bank3 today
-- Free: $F0A3-$F7FF = 1885 B contiguous, plus $FECC-$FFF9 (~300 B in gaps).
-- Occupied by the boot stub ($F000), HcrPush ($F010), HcrBandLo ($F0A0), and the Phase-4 crunch bodies ($F800-$FD80+tramp pads).
-- It already speaks the tramp language (sta $1FF9 / twin jmp images / sta $1FF8 tails), so hosting level data + readers there is idiomatic, not new machinery.
-Capacity for level data: ~1885 − ~370 B of duplicated readers ≈ 1.5 KB (vs the 656 B bank2 currently has). Plus the $FECC-$FFF9 gap for small tables.
-What it buys, and why compaction is still needed
-Per-level cost today (measured): 14 B index + 8 B/room + 4 B/entity + 13+2R B per model/async block.
-campaign	today's format	compacted (~2.2×)
-20 × 4 rooms	≈1.7 KB (over 1.5 KB)	≈0.8 KB (fits easily)
-20 × 5-6 rooms	≈2.3 KB	≈1.1 KB (fits)
-today (4 levels)	500 B of blocks + 56 index	—
-So: bank3 makes 20 levels possible; compaction makes them roomy enough to be interesting (and gives headroom for the generator's varied shapes).
-What moving the data actually costs
-Data must move with its readers, because bank2 code can't read bank3 by absolute address:
-1. EnterRoomB2 copy in bank3 ($F0A3+), bank0's tramp byte sta $1FF8 → sta $1FF9, twin jmp at bank3's $FBD3 (currently fill).
-2. StageBandTab copy in bank3 (reads model meta at +9/+10), reached by a tramp at BuildColupF's tail.
-3. A ~10 B BankReadByte twin so MothRoutine / LaserHitTestBody (staying in bank2) can read enemy records from bank3.
-4. Keep the level index in bank2 (LoadLevel unchanged, 260 B of the freed slots).
-5. Delete the VBL band-color fold (§ below) — EnterRoom already stages RoomBandColor since 70a4493; the per-frame ROM re-read is redundant, and it's exactly the kind of level-data read that would otherwise need a third reader in bank3.
-6. convert: emit per-level tables/blocks into bank3 include lists, bank2 keeps levels_index; verify_build --precheck gets a bank3 slot map instead of bank2's four slots.
-7. ~22 tests read level bytes from bank2.bin + bank2.lst; they move to bank3.bin/bank3.lst (labels already come from .lst, so mostly mechanical).
-No mapper change, no ROM size change. Bank2 ends up nearly free (index + code), which also gives back the headroom the pre-pad has been begging for.
-Compaction targets (the "decrease data size" part)
-Ordered by payoff, all independent of the bank move:
-item	now	proposed	saves (live stage / 120-room campaign)
-collision rects	2R+2 B per block	derived from PF cells at load	~130 B / ~525 B
-PF rows	9 B (4+8+8 bits)	30-bit cell rows (4 B)	~75 B / ~325 B
-room record	4 B/room	2 B (offset + count, color per level)	32 B / 240 B
-enemy record	4 B (type,x,y,dir)	2 B packed	18 B / 320 B
-level index	14 B	12-13 B (drop start x/y, add fields)	16 B / 60 B
-Careful part: rect derivation must reproduce convert's greedy decomposition (bomb WallMask bits + hot-parent masks are rect-indexed), so it's a faithful 6502 port of find_rectangles, not an ad-hoc scan.
-Proposed order
-1. Move level data + readers to bank3 (format unchanged) → 1.5 KB, build/battery green.
-2. Compact the format (rects derived, PF cells, packed records) → ~2.2× smaller.
-3. Generator against the new budget.
-Step 1 is architectural (touches readers + 22 tests), so tell me to go and I'll start it. If you prefer, I can do step 2 first (pure data win, no bank move) — but then the readers get edited twice.
-
-#########################################################################################################################################################################
-
-Visible gameplay bugs
-- #15 Yellow-door color bleed/flicker — when the enemy/miner crosses the door band, the door stripe shimmers in the object's color (P1+M1 share COLUP1). Fix path is documented (restore the staged door color on the object line). Small, self-contained, user-visible.
-- #32 cross-bank Temp conflict / bank1 stomp-zone notes — latent fragility, no player-visible effect.
-Phase 9 polish (features still unchecked)
-- Screen transitions (room-change wipes).
-- Game-over screen — new screen; the "dark caves" theme fits, and we now have the bank1 screen pattern + the music engine to reuse.
-- Difficulty settings.
-Phase 10 content
-- More levels, level-specific enemy patterns, a boss encounter, secret rooms, high-score tracking. (bank0 space is no longer the blocker — we freed ~600B there.)
-Music (natural extension of what we just did)
-- Play "Hollow Earth" (or a variant) on the title/level-select screen too, or add an in-game track. The engine is single-voice — a 2nd voice is a small addition if you want it.
-Refactor leftovers (docs/refactor_v4_plan.md)
-- bank3 → data-only (move crunch bodies to bank1), level data → bank3 — optional churn, no net space.
-My pick: #15 (door flicker) if you want a quick, visible win, or the game-over screen if you want to build a feature on the space we just freed. Which one?
-
-
-=========================================================================================================================================================================
-
-
-
-Phase 8: Jetpack Physics
-- Gravity (constant downward force — vyLo/vyHi integration)
-- Thrust (upward force when button held — JetPower ramp; ÷4 clock gate + JET_MAX=$14 ≈ 1 s spin-up/float, bugs #31)
-- Inertia (momentum — subpixel accumulator PlayerYSub)
-- Fuel management (no fuel system; the power bar is the game TIMER)
-- Vertical collision with ceiling (StepUp stops flush)
-
-Phase 9: Polish
-- Sound effects (engine buzz, bomb drop/explode, laser — test_laser_sound.py)
-- Music (background theme)
-- Color schemes per level (LevelWallColor/LevelWallColor2 from level data)
-- Screen transitions
-- Title screen (level select: DROP-IN sentinel, SELECT/RESET console switches)
-- Game over screen
-- Difficulty settings
-
-Phase 10: Levels & Content
-- Design 5+ levels with increasing difficulty
-- Level-specific enemy patterns
-- Boss encounters
-- Secret rooms/areas
-- High score tracking
-Open items total: Phase 7 ×1, Phase 8 ×1, Phase 9 ×4, Phase 10 ×5. Take your time reviewing — tell me which you want to tackle and I'll start.
 
 =========================================================================================================================================================================
 BUGS
 =========================================================================================================================================================================
-# add Fiedoruk to copyright line.
-    # start with F. and try increasing.
-    # maybe split in 3 lines (c) 2026 / Iuri Fiedoruk / Upperland Studios
+"Reachability: room 3 (index 2) can only be reached through the right half of room 1 (index 0). To get there you must bomb the vertical strip at column 7 in room 1,
+which is the designed bomb lesson. stage_reach agrees: one bomb on the route, in room 1 only." - the thing is exactly that I can't reach the right side of room 1,
+because I can't put a bomb on column 7 from the left side, there is no ground on its left side for me to place it. It should have a wallground on column 6
+pof the band under the column I need to blast (column 7), for it to be possible to place a bomb on its left side.
 
-# being scripts added to ../tools
+Also, the hcrunch walls in room 4 are not following the rule I tried to add,and probably expressed badly myself.
+There should be a gap of 4 columns above and under of gap to enter the crunch, like:
+###....###
+###....HHH
+###....###
 
-# Once the game starts, the bar already looses a chunk (turns red).
-    # It should take the same time each chunk needs, for the first one to appear as red.
-    # Also, that chunk seems to be very big, something like 2 to 4 (sorry, I can't measure it well) than a normal chunk.
-
-
-=========================================================================================================================================================================
-New object types:
-    # key - once got, allows to open a locked door on that stage.
-        # sprite in form a of a key, same size of enemies such as spider and yellow.
-        # once obtained the sprite must be drawn in the HUD, on the right side of the score. (is sprite is too difficult, just draw a yellow square)
-
-Fix player falling when returning from death
-
-=========================================================================================================================================================================
-
-# mini-map in the editor that shows all rooms in their position on a grid.
-    # add an extra panel to the right
-
-# enemy speed multiplier - each X levels (5?) the speed of the enemies increases (x1,5, x2, x2.5, x3...)
-
-# tentacle pull player
-    # increase tentacle height, so part of it can leave the water
-
-# raft
-
-# use a build folder to generate the .bin
+And not:
+###....###
+###.H#####
+###....###
+This actually gives only one column to enter the crunch, making it almost impossible not to die here.
 
 
-# game over screen
-=========================================================================================================================================================================
+By the way, if the Hcruncher is symmetric, the game applies for both:
+###....###
+HHH....HHH
+###....###
 
 
+Please show the miner pixel art (as # and .), I need to fix it, and make it smaller, removing his grey feet.
+You will need to adjust positioning in the editor after the change.
 
-=========================================================================================================================================================================
-stage generator in editor
-    # take in account level number for number of rooms, available objects to add and difficulty
-=========================================================================================================================================================================
+Also, in screenshots/releases/0.8/003.png, there is a spider half inside a wall. Probably editor is placing it in the wrong position.
 
-#########################################################################################################################################################################
 
-So, before implementing this feature, write a detailed plan into a MD file, split in clear steps, each with a checkbox,
-so that, if we have an issue, we can later resume from that point, following that plan. For both options 2 and 3.
-And let me know where the MD file is stored.
-After that, start following the option 2.
 
 
 
 #########################################################################################################################################################################
 Adicionar license.txt (GPL v2)
-Adicionar doc com agradecimentos ao jogo usado como base e exemplos.
-modelo limpo de física 16-bit com ponto fixo subpixel (vyLo, vyHi, PlayerYSub)
-técnica clássica de Andrew Davie, baseada em lookup table alinhada em página (fineAdjustTable em $FF00)
-truque de cópias NUSIZ (3 cópias espaçadas/médias para vidas e bombas)
+
 
 #########################################################################################################################################################################
 
