@@ -222,12 +222,45 @@ def main() -> int:
                 if not any(c[2] == 12 for c in room.get("feature_cells") or []):
                     continue
                 tiles = by_id[room["model_id"]]["tiles"]
-                top, bottom = tiles[:10], tiles[-10:]
+                # The crunch cells live on band 2 (row 1): its ceiling is band
+                # 1 (row 0) and its FLOOR is band 3 (row 2). 2026-10-27: this
+                # used tiles[-10:] = band 4, a leftover of the 3-row layout,
+                # so a 2-cell gap under the crunch (levels 17/19, model 92)
+                # passed while the generator checked the same wrong row.
+                top, bottom = tiles[:10], tiles[20:30]
                 if longest_run(top) < 4 or longest_run(bottom) < 4:
-                    print(f"FAIL: level {level_n} room {room['room_id']} has a "
-                          f"hcrunch but a one-tile gap above/under (top run "
-                          f"{longest_run(top)}, bottom run {longest_run(bottom)})")
+                    print(f"FAIL: level {level_n} room {room['room_id'] + 1} has a "
+                          f"hcrunch but a short gap above/under band 2 (band-1 "
+                          f"run {longest_run(top)}, band-3 run "
+                          f"{longest_run(bottom)}, need >= 4)")
                     return 1
+
+        # --- phase walls are HORIZONTAL obstacles only (user 2026-10-27) -----
+        # The player walks or flies left/right across a phase wall; it is never
+        # a vertical obstacle (a blink is too short to fall/climb through).
+        # Invariant: the phase cell (row 1 = band 2) has WALL directly above and
+        # below it (bands 1 and 3), so no vertical route can reach it, and band
+        # 2 is open from the side edge (cell 0) up to the cell, so a side entry
+        # walks straight into it.
+        for level_n, level in enumerate(levels, start=1):
+            for room in level["rooms"]:
+                for f in room.get("feature_cells") or []:
+                    if f[2] != 10:
+                        continue
+                    t = by_id[room["model_id"]]["tiles"]
+                    col = f[1]
+                    where = f"level {level_n} room {room['room_id'] + 1}"
+                    if t[col] == 0 or t[20 + col] == 0:
+                        print(f"FAIL: {where} phase wall at cell {col} has "
+                              f"open air above/below it (band 1 "
+                              f"{'open' if t[col] == 0 else 'wall'}, band 3 "
+                              f"{'open' if t[20 + col] == 0 else 'wall'}) — "
+                              f"phase walls are horizontal obstacles only")
+                        return 1
+                    if any(t[10 + c] != 0 for c in range(col)):
+                        print(f"FAIL: {where} phase wall at cell {col} is not "
+                              f"reachable along band 2 from the side edge")
+                        return 1
 
         # --- model library -------------------------------------------------
         ids = [m["id"] for m in models]
@@ -550,8 +583,10 @@ def main() -> int:
                           "does not connect its carved entries — a band-1 "
                           f"wall is off the corridor {rrows}")
                     return 1
-                # A gate/blink cell gates the VERTICAL passage, so it must sit on
-                # a column the player enters or leaves the room by. In the maze
+                # A locked DOOR gates the VERTICAL passage, so it must sit on
+                # a column the player enters or leaves the room by. (Phase
+                # walls are the opposite since 2026-10-27: horizontal
+                # obstacles only, pinned by the phase check further up.) In the maze
                 # layout a room can be a corner (north link only, or south
                 # only), so "the corridor" is any column open in band 0 OR the
                 # last band — not only a through-column (2026-10-24).
@@ -560,19 +595,16 @@ def main() -> int:
                 door_cols = [int(patch[1])
                              for patch in room.get("asym_patches") or []
                              if len(patch) >= 3 and patch[2] == 9]
-                phase_cols = [int(feat[1])
-                              for feat in room.get("feature_cells") or []
-                              if len(feat) == 3 and feat[2] == 10]
-                if door_cols or phase_cols:
+                if door_cols:
                     if not corridor:
                         print(f"FAIL: level {level_n} room "
                               f"{room['room_id']} has a gate but no vertical "
                               "corridor")
                         return 1
-                    for col in door_cols + phase_cols:
+                    for col in door_cols:
                         if col not in corridor:
                             print(f"FAIL: level {level_n} room "
-                                  f"{room['room_id']} gate/blink at cell {col} "
+                                  f"{room['room_id']} door at cell {col} "
                                   f"is OFF the corridor {sorted(corridor)} — "
                                   "unreachable")
                             return 1
