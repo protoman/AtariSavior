@@ -17,6 +17,7 @@
  */
 
 #include "MapCanvas.hpp"
+#include "TileColors.hpp"
 #include <QPainter>
 #include <QMouseEvent>
 #include <QKeyEvent>
@@ -292,40 +293,10 @@ void MapCanvas::UpdateSizeForRoom() {
 
 QColor MapCanvas::GetTileColor(int tileType, int tileY) const {
     if (!m_levelData) return QColor(30, 30, 30);
-
-    switch (static_cast<hero::TileType>(tileType)) {
-        case hero::TileType::AIR:
-            return QColor(15, 15, 20);
-        case hero::TileType::SOLID_WALL: {
-            // One model row represents one full color band.
-            if (tileY % 2 == 1) {
-                return QColor(m_levelData->wall2_r, m_levelData->wall2_g, m_levelData->wall2_b);
-            }
-            return QColor(m_levelData->wall_r, m_levelData->wall_g, m_levelData->wall_b);
-        }
-        case hero::TileType::FRAGILE_WALL:
-            return QColor(210, 140, 50);
-        case hero::TileType::REINFORCED_WALL:
-            return QColor(160, 40, 40);
-        case hero::TileType::LAVA:
-            return QColor(220, 60, 0);
-        case hero::TileType::WATER:
-            return QColor(0, 90, 180);
-        case hero::TileType::RAFT:
-            return QColor(140, 80, 20);
-        case hero::TileType::MAGMA_FALL:
-            return QColor(255, 100, 0);
-        case hero::TileType::HOT_ROCK_WALL:
-            return QColor(255, 80, 20);
-        case hero::TileType::LOCKED_DOOR:
-            return QColor(150, 154, 170);   // async door = grey 4clk stripe
-        case hero::TileType::PHASE:
-            return QColor(0, 180, 90);
-        case hero::TileType::HCRUNCH:
-            return QColor(0, 170, 200);
-        default:
-            return QColor(15, 15, 20);
-    }
+    return editor::TileColor(
+        tileType, tileY,
+        QColor(m_levelData->wall_r, m_levelData->wall_g, m_levelData->wall_b),
+        QColor(m_levelData->wall2_r, m_levelData->wall2_g, m_levelData->wall2_b));
 }
 
 void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
