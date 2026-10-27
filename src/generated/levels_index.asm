@@ -24,7 +24,7 @@ LEVEL_COUNT = 20
 ;                               1 B/patch, 1 B/feature, then the
 ;                               FEATURE-record stream when the room
 ;                               has feature cells (C11: no hot records).
-LEVEL_SHAPE_COUNT = 88
+LEVEL_SHAPE_COUNT = 94
 SHAPE_M0 = 0
 SHAPE_M1 = 1
 SHAPE_M2 = 2
@@ -113,6 +113,12 @@ SHAPE_M84 = 84
 SHAPE_M85 = 85
 SHAPE_M86 = 86
 SHAPE_M87 = 87
+SHAPE_M88 = 88
+SHAPE_M89 = 89
+SHAPE_M90 = 90
+SHAPE_M91 = 91
+SHAPE_M92 = 92
+SHAPE_M93 = 93
 
 ; Shape block (C11 2026-10-21): EXACTLY 3 row-pool indices (band
 ;   0/1/2 -> RowPoolPF0/1/2 in models_data.asm; the loader expands
