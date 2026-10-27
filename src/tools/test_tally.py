@@ -162,8 +162,11 @@ def at_init_jsr():
 
 
 def score_total():
-    return (mem.ram[SC_TH] * 1000 + mem.ram[SC_HU] * 100
-            + (mem.ram[SC_TE] >> 4) * 10 + (mem.ram[SC_TE] & 15))
+    # 2026-10-27: three packed-BCD bytes (100k|10k, 1k|100, tens|ones)
+    def bcd(b):
+        return (b >> 4) * 10 + (b & 15)
+    return (bcd(mem.ram[SC_TH]) * 10000 + bcd(mem.ram[SC_HU]) * 100
+            + bcd(mem.ram[SC_TE]))
 
 
 def run_until(pred, max_frames, what):

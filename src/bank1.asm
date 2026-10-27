@@ -751,9 +751,10 @@ Hover       = $9C       ; respawn hover (kernel ZP): $FF = armed/waiting for
 HOVER_FRAMES = 90       ; 1.5 s at 60 Hz: the jet reaches lift in 1.0 s.
 ; Score digits live at $F3-$F6 — MUST match bank0 Score* EQUs.
 ; Old home $BF-$C2 collided with EnemyRamX[2]/[3]/D/P during game HUD.
-ScoreTh     = $F3       ; score thousands digit (must match bank0)
-ScoreHu     = $F4       ; score hundreds digit
-ScoreTe     = $F5       ; score tens+ones packed BCD
+ScoreTh     = $F3       ; score 100k|10k digits, packed BCD (must match bank0)
+ScoreHu     = $F4       ; score 1k|100 digits, packed BCD
+ScoreTe     = $F5       ; score tens|ones, packed BCD
+MAX_LIVES   = 8         ; extra life every 50,000 points, never above this
 Level       = $A3       ; #18 current level, 0-based (must match kernel)
 LevelShowTimer = $F2    ; #18 LV001 banner frames left (kernel sets, bank1 decs;
                          ;  ALIAS of TallyTicks — banner = gameplay entry only,
@@ -1097,40 +1098,52 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta PF2
 
     ; ====================================================================
-    ; Line 2: Lives (P0, green squares) + KEY indicator (P1, yellow, right)
-    ; P0 NUSIZ by lives: $03=3 copies, $01=2, $00=1; GRP0 lit only if lives>0
-    ; P1 = the KEY square, lit while KeyHeld (LevelStartRoom b7), X 132.
-    ; Same 8-line structure for every lives count: 2 SetObjectXPos (P0, P1)
-    ; + HMOVE + 5 render, then the shared 1-line gap → 9 (was 8; the pad
-    ; line pays for it, see the budget at .HudPad).
+    ; Line 2: Lives (P0 + P1, green squares) + KEY indicator (the BALL, yellow)
+    ; User 2026-10-27: an EXTRA LIFE every 50,000 points, up to 8, so the row
+    ; draws up to 8 squares: P0 shows min(lives,4), P1 (X 44, flush right of
+    ; P0's 4 squares x 8 px) shows max(lives-4,0). Both are QUAD size (one GRP
+    ; bit = 4 px), squares on bits 7/5/3/1 = 8 px pitch (SquarePat[0..4]).
+    ; The KEY moved from P1 to the BALL (HERO draws its HUD indicators with the
+    ; ball): ENABL=2 only while KeyHeld, COLUPF yellow, 8-clock ball ($35), X 132.
+    ; Budget: 3 SetObjectXPos (P0, P1, ball) + HMOVE + 5 render + 1 gap = 10
+    ; (was 9); the pad line pays for it, see the budget at .HudPad.
     ; ====================================================================
-    lda #7                      ; QUAD-size player: every pattern bit is 4 px wide, so
-                                ;   squares on bits 7/5/3 sit 8 px apart - half of
-                                ;   the old 16 px copy pitch (user 2026-10-26)
+    lda #7                      ; QUAD-size players: every pattern bit is 4 px wide, so
+                                ;   squares on bits 7/5/3/1 sit 8 px apart
     sta NUSIZ0
-    lda #$C6                    ; green
+    sta NUSIZ1
+    lda #$C6                    ; green lives squares (P0 and P1)
     sta COLUP0
-    lda #0
-    sta NUSIZ1                  ; one copy (the bombs row sets its own)
-    lda #12                     ; P0 base X
+    sta COLUP1
+    lda #$35                    ; CTRLPF: reflect + priority + 8-clock ball (the key)
+    sta CTRLPF
+    lda #12                     ; P0 base X: lives 1-4
     ldx #0
     jsr SetObjectXPos_b1
-    lda #132                    ; P1: key square, right side of the row
+    lda #44                     ; P1: lives 5-8, flush right of P0 (12 + 4 x 8)
     ldx #1
     jsr SetObjectXPos_b1
+    lda #132                    ; the BALL: the key square, right side of the row
+    ldx #4                      ; selector 4 = RESBL/HMBL
+    jsr SetObjectXPos_b1
+    ; NO work between the ball's SetObjectXPos and the WSYNC: the X=132 div15 loop
+    ; returns late in its line, and 12 cycles of index code there cost a whole
+    ; scanline (frames 273, 2026-10-27). Both patterns come straight from tables
+    ; indexed by the lives count, written right after the HMOVE (P1 at X 44 draws
+    ; from colour clock 112 = cycle 37, so the GRP writes must land before it).
     sta WSYNC
     sta HMOVE
-    ldx PlayerLives             ; lives squares (0..3): SquarePat, 8 px pitch
-    lda SquarePat,X
+    ldx PlayerLives             ; 0..8
+    lda SquarePat,X             ; P0: min(lives,4) squares
     sta GRP0
-    lda #0                      ; key square: only while KeyHeld
+    lda LivesP1,X               ; P1: max(lives-4,0) squares
     sta GRP1
-    lda LevelStartRoom
+    lda LevelStartRoom          ; key ball: only while KeyHeld
     bpl .LivesNoKey
     lda #$1C                    ; yellow (written only when we draw it)
-    sta COLUP1
-    lda #$E0
-    sta GRP1
+    sta COLUPF
+    lda #2
+    sta ENABL
 .LivesNoKey:
     ldy #5                      ; 5 scanlines tall
 .LivesLoop:
@@ -1141,6 +1154,8 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta GRP0
     sta GRP1
     sta NUSIZ0
+    sta NUSIZ1                  ; (the old row left NUSIZ1 = 0 as well)
+    sta ENABL
 .LivesDone:
 
     ; --- 1 scanline gap: the bombs row's patterns are computed in its slack ---
@@ -1323,17 +1338,17 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; Path A (PlayerLives > 0) — execution count:
     ;   Top gap:  6 (4 + 2 former ball-pos lines — elements keep lines)
     ;   Timer:    3 loop + 1 gap = 4
-    ;   Lives:    2 SetObjectXPos (P0 lives, P1 key) + 1 HMOVE + 5 render
-    ;             + 1 gap = 9
+    ;   Lives:    3 SetObjectXPos (P0 lives 1-4, P1 lives 5-8, ball key) + 1 HMOVE
+    ;             + 5 render + 1 gap = 10 (2026-10-27: +1 line, pad 7 -> 6)
     ;   Bombs:    3 SetObjectXPos (P0, P1 miners, M0 5th bomb) + 1 HMOVE
     ;             + 5 render + 3 gap = 12 (2026-10-26: +1 line, pad 8 -> 7)
     ;   Score:    2 SetObjectXPos + 1 HMOVE + 7 ScoreLoop = 10
-    ;   Subtotal: 6+4+9+12+10 = 41
-    ;   Pad:      48 - 41 = 7
+    ;   Subtotal: 6+4+10+12+10 = 42
+    ;   Pad:      48 - 42 = 6
     ; Both lives paths run the same instructions (GRP0/GRP1 just stay 0),
     ; so the band is 48 lines for every lives count and every key state.
     ; ====================================================================
-    ldx #7
+    ldx #6
 .HudPad:
     sta WSYNC
     dex
@@ -1344,11 +1359,13 @@ INPT4       = $0C       ; fire button (active low, bit 7)
 
 ; HUD squares (2026-10-26): QUAD-size players, one pattern bit = 4 px, so squares
 ; on every other bit sit 8 px apart. SquarePat[n] = n squares from the left
-; (lives 0..3, bombs 0..5; the 5th bomb is missile 0). MinerPat[mask] = the
+; (lives 0..4 per player, P0 then P1 = up to 8; bombs 0..5; the 5th bomb is missile 0). MinerPat[mask] = the
 ; miners still to rescue (LevelStartRoom b6-4 popcount) packed to the RIGHT end
 ; of the 32 px sprite (P1 at X 128), so the row reads right aligned.
 SquarePat:
-    .byte $00,$80,$A0,$A8,$AA,$AA
+    .byte $00,$80,$A0,$A8,$AA,$AA,$AA,$AA,$AA   ; [4..8] P0 stays full for lives 5-8
+LivesP1:                        ; P1 = the lives beyond P0's 4 squares (X 44)
+    .byte $00,$00,$00,$00,$00,$80,$A0,$A8,$AA
 MinerPat:
     .byte $00,$01,$01,$05,$01,$05,$05,$15
 
@@ -1720,45 +1737,28 @@ BombClearMask:
     .byte $FE, $FD, $FB, $F7, $EF, $DF, $BF, $7F ; col 12-19 (PF2)
 
 ; AddScore — add BCD amount in A (e.g. #$50, #$75) to HUD score.
-; ScoreTh/ScoreHu = binary 0-9; ScoreTe = packed BCD. Clobbers A.
+; Score = THREE packed-BCD bytes, 6 digits, max 999,999 (user 2026-10-27; it was
+; one binary thousands digit = 9,999, and level 1 alone is worth ~1,200):
+;   ScoreTe = tens|ones   ScoreHu = thousands|hundreds   ScoreTh = 100k|10k
 ; Real 6502 BCD add — SED/ADC/CLD straight-line: D is cleared before any
 ; jsr, the 2600 has no interrupts, and nothing here restores D via plp
-; (the 2026-09-23 decimal-mode rule). The old BINARY `cmp #$A0 / sbc #$A0`
-; fix-up missed nibble-level overflow: $25+$75 = $9A stored raw -> ones
-; digit A -> glyph index 10 -> DigitGfx+80 (past the 10-glyph font) =
-; the solid-block score digit (screenshots/score_issue_002.png).
-; C=1 = BCD carry (sum >= 100) -> ScoreHu path.
-; SIZE PIN: routine runs $FA7D..$FAA4 exactly (UpdateLaserSound's pad
-; target is $FAA5). Old head = clc/adc/cmp/bcc/sbc = 9 bytes, new head =
-; sed/clc/adc/cld/bcc = 7, so the two nops restore the exact length —
-; without them every pad below shifts silently.
+; (the 2026-09-23 decimal-mode rule). The old BINARY fix-up missed nibble-level
+; overflow: $25+$75 = $9A stored raw -> glyph index 10 -> the solid-block score
+; digit (screenshots/score_issue_002.png).
+; A carry out of ScoreTe (>= 100 points) is rare, so it jumps to AddScoreCarry
+; (in the $FABB fill) which ripples it up and awards the EXTRA LIFE.
+; SIZE PIN: routine runs exactly 40 bytes (UpdateLaserSound's pad target follows).
 AddScore:
     sed
     clc
     adc ScoreTe
-    cld
-    bcc .ASstoreTe
-    nop                         ; byte-pin (see SIZE PIN above)
-    nop                         ; byte-pin
-    pha                         ; save wrapped ScoreTe
-    inc ScoreHu
-    lda ScoreHu
-    cmp #10
-    bcc .AShuOk
-    lda #0
-    sta ScoreHu
-    inc ScoreTh
-    lda ScoreTh
-    cmp #10
-    bcc .ASthOk
-    lda #9
-    sta ScoreTh
-.ASthOk:
-.AShuOk:
-    pla
-.ASstoreTe:
     sta ScoreTe
+    bcc .ASdone                 ; the common case: no carry out of tens/ones
+    jmp AddScoreCarry           ; D is still set here, C = 1
+.ASdone:
+    cld
     jmp ReturnPad
+    .ds AddScore + 40 - *, $EA  ; byte-pin (see SIZE PIN above)
 
 ; UpdateLaserSound — low "zoom" tone on channel 0 while fire is held.
 ; Call order in bank0 overscan: UpdateBombSound, UpdateJetSound, this — so
@@ -1821,6 +1821,42 @@ LaserFreqTable:
 ;   retired: HotOverlapBody now tests its parent hot cell's PF bit.
 ;   Cost: ≤4 cells × 3 rows × ~3 cell probes; blast edge only.
 ; ========================================================================
+; AddScoreCarry — the rare path of AddScore (>= 100 points carried out of ScoreTe).
+; Entered with D=1 and C=1. Ripples the carry through ScoreHu and ScoreTh; a
+; carry INTO ScoreTh is a 10,000-point crossing, and ScoreTh's low digit
+; (ten-thousands) is then 0 or 5 exactly on a 50,000 / 100,000 mark — that is
+; the EXTRA LIFE (user 2026-10-27: every 50,000, max MAX_LIVES = 8). A carry out
+; of ScoreTh means 999,999 + more: the score sticks at 999,999. Runs once per
+; 100 points at most, and each 10,000 crossing happens once, so no life can be
+; awarded twice for the same mark. Tested by tools/test_addscore.py.
+AddScoreCarry:
+    lda ScoreHu
+    adc #0                      ; + the carry (BCD)
+    sta ScoreHu
+    bcc .ASCdone                ; no 10,000 crossing
+    lda ScoreTh
+    adc #0                      ; + the carry (BCD)
+    bcs .ASCcap                 ; past 999,999
+    sta ScoreTh
+    and #$0F                    ; ten-thousands digit
+    beq .ASClife                ; x0,000 : 100,000 / 200,000 ...
+    cmp #5
+    bne .ASCdone                ; only x5,000... i.e. 50,000 / 150,000 ...
+.ASClife:
+    lda PlayerLives
+    cmp #MAX_LIVES
+    bcs .ASCdone
+    inc PlayerLives
+.ASCdone:
+    cld
+    jmp ReturnPad
+.ASCcap:
+    lda #$99
+    sta ScoreTh
+    sta ScoreHu
+    sta ScoreTe
+    bne .ASCdone                ; A = $99, always taken
+
     .ds $FB10 - *, 0
 BombMarkWalls:
     ; visible-left mapping identical to PlayerHitsMap: the bomb is drawn from
@@ -2252,109 +2288,6 @@ DigitGfx:
     .byte %01100110
     .byte %01100110
 
-; SetupScorePointers — score digit ptrs + #18 LV001 banner (#18):
-; first frame zeroes ScoreTh/Hu/Te (Temp = $AD first-frame flag); every
-; frame points scorePtr1-6 at DigitGfx+digit*8 (right-aligned "00ThHu.."),
-; or — while LevelShowTimer > 0 — at "L V 0 tens ones _" for Level+1
-; (hundreds stays '0'; LEVEL_COUNT <= 99). Decrements LevelShowTimer
-; once per banner frame. Lives with the glyphs (bank1's pre-pad region is
-; tight; the score section is a jsr here from MenuMain).
-SetupScorePointers:
-    ; --- Initialize score to 0 on first frame ---
-    lda Temp
-    bne .scoreInitDone
-    inc Temp
-    lda #0
-    sta ScoreTh
-    sta ScoreHu
-    lda #$00
-    sta ScoreTe
-.scoreInitDone:
-
-    ; --- Set up 6 digit pointers ---
-    ; High bytes first (all $FD)
-    lda #>DigitGfx
-    sta scorePtr1+1
-    sta scorePtr2+1
-    sta scorePtr3+1
-    sta scorePtr4+1
-    sta scorePtr5+1
-    sta scorePtr6+1
-
-    lda LevelShowTimer
-    and #$80                   ; bit7 = banner flag (#18; tally ARM clears it)
-    beq .scoreLows
-    dec LevelShowTimer
-    lda #<DigitGfx+88          ; glyph 11 = L
-    sta scorePtr1
-    lda #<DigitGfx+96          ; glyph 12 = V
-    sta scorePtr2
-    lda #0                     ; hundreds '0'
-    sta scorePtr3
-    lda Level
-    clc
-    adc #1                     ; 1-based level number
-    ldx #0
-.LVTens:
-    cmp #10
-    bcc .LVTensDone
-    sbc #10
-    inx
-    bne .LVTens
-.LVTensDone:
-    asl
-    asl
-    asl                        ; ones * 8
-    sta scorePtr5
-    txa
-    asl
-    asl
-    asl                        ; tens * 8
-    sta scorePtr4
-    lda #<DigitGfx+80          ; glyph 10 = blank (trailing slot)
-    sta scorePtr6
-    rts
-
-    ; scorePtr1..2 = leading zeros
-.scoreLows:
-    lda #0
-    sta scorePtr1
-    sta scorePtr2
-
-    ; scorePtr3 = ScoreTh * 8
-    lda ScoreTh
-    asl
-    asl
-    asl
-    sta scorePtr3
-
-    ; scorePtr4 = ScoreHu * 8
-    lda ScoreHu
-    asl
-    asl
-    asl
-    sta scorePtr4
-
-    ; scorePtr5 = (ScoreTe >> 4) * 8  (tens digit)
-    lda ScoreTe
-    lsr
-    lsr
-    lsr
-    lsr                   ; tens digit in low nibble
-    asl
-    asl
-    asl
-    sta scorePtr5
-
-    ; scorePtr6 = (ScoreTe & $0F) * 8  (ones digit)
-    lda ScoreTe
-    and #$0F
-    asl
-    asl
-    asl
-    sta scorePtr6
-    rts
-
 ; ========================================================================
 ; CallPad_MothYDerive twin — byte-identical with kernel.asm at $FEE7
 ; ========================================================================
@@ -2595,6 +2528,105 @@ fineAdjustTable_b1 EQU fineAdjustBegin_b1 - %11110001
 ; ($F44F — moved here from bank2, repack chunk 3, 2026-10-20). Neither bank
 ; runs its other half. $FFF2-$FFF9 stay fill (hotspot mirrors).
 ; ------------------------------------------------------------------------------
+; SetupScorePointers — score digit ptrs + #18 LV001 banner (#18):
+; first frame zeroes ScoreTh/Hu/Te (Temp = $AD first-frame flag); every
+; frame points scorePtr1-6 at DigitGfx+digit*8 (right-aligned "00ThHu.."),
+; or — while LevelShowTimer > 0 — at "L V 0 tens ones _" for Level+1
+; (hundreds stays '0'; LEVEL_COUNT <= 99). Decrements LevelShowTimer
+; once per banner frame. Lives in the $FF0F fill since the 6-digit score
+; (2026-10-27) outgrew its old slot ending at $FDE3 (jsr here from MenuMain).
+SetupScorePointers:
+    ; --- Initialize score to 0 on first frame ---
+    lda Temp
+    bne .scoreInitDone
+    inc Temp
+    lda #0
+    sta ScoreTh
+    sta ScoreHu
+    lda #$00
+    sta ScoreTe
+.scoreInitDone:
+
+    ; --- Set up 6 digit pointers ---
+    ; High bytes first (all $FD)
+    lda #>DigitGfx
+    sta scorePtr1+1
+    sta scorePtr2+1
+    sta scorePtr3+1
+    sta scorePtr4+1
+    sta scorePtr5+1
+    sta scorePtr6+1
+
+    lda LevelShowTimer
+    and #$80                   ; bit7 = banner flag (#18; tally ARM clears it)
+    beq .scoreLows
+    dec LevelShowTimer
+    lda #<DigitGfx+88          ; glyph 11 = L
+    sta scorePtr1
+    lda #<DigitGfx+96          ; glyph 12 = V
+    sta scorePtr2
+    lda #0                     ; hundreds '0'
+    sta scorePtr3
+    lda Level
+    clc
+    adc #1                     ; 1-based level number
+    ldx #0
+.LVTens:
+    cmp #10
+    bcc .LVTensDone
+    sbc #10
+    inx
+    bne .LVTens
+.LVTensDone:
+    asl
+    asl
+    asl                        ; ones * 8
+    sta scorePtr5
+    txa
+    asl
+    asl
+    asl                        ; tens * 8
+    sta scorePtr4
+    lda #<DigitGfx+80          ; glyph 10 = blank (trailing slot)
+    sta scorePtr6
+    rts
+
+.scoreLows:
+    ; Three packed-BCD bytes -> six digit pointers (hi nibble, lo nibble each):
+    ; ScoreTh = ptr1/ptr2 (100k, 10k), ScoreHu = ptr3/ptr4, ScoreTe = ptr5/ptr6.
+    ; Unrolled on purpose: hi digit * 8 = (b & $F0) >> 1, lo digit * 8 = (b & $0F) << 3.
+    lda ScoreTh
+    and #$F0
+    lsr
+    sta scorePtr1
+    lda ScoreTh
+    and #$0F
+    asl
+    asl
+    asl
+    sta scorePtr2
+    lda ScoreHu
+    and #$F0
+    lsr
+    sta scorePtr3
+    lda ScoreHu
+    and #$0F
+    asl
+    asl
+    asl
+    sta scorePtr4
+    lda ScoreTe
+    and #$F0
+    lsr
+    sta scorePtr5
+    lda ScoreTe
+    and #$0F
+    asl
+    asl
+    asl
+    sta scorePtr6
+    rts
+
     .ds $FFE6 - *, 0
 TallyTramp_b1:
     sta $1FF5

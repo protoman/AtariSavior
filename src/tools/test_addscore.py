@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""AddScore packed-BCD regression (square-digit score bug, 2026-10-02).
+"""AddScore packed-BCD regression + 6-digit score + extra lives.
 
-Repro: score 2525, bomb a thin wall (+75) -> 25+75 = 100 must become
-ScoreTe=$00 / ScoreHu=6 (screen "002600"). The old routine added BINARY
-and only fixed up sums >= $A0: 0x25+0x75 = 0x9A stored raw, so the ones
-nibble A -> glyph index 10 -> DigitGfx+80 = past the 10-glyph font = the
-solid-block last digit in screenshots/score_issue_002.png.
+2026-10-02 (square-digit score bug): 25+75 = 100 must become ScoreTe=$00 and a
+carry. The old routine added BINARY and stored $9A raw -> glyph index 10 -> the
+solid-block score digit (screenshots/score_issue_002.png).
 
-Driver: plants `jsr AddScore` at $80, runs until ReturnPad's rts comes
-back to $83, compares ScoreTh/ScoreHu/ScoreTe against a decimal
-reference over every valid input: th 0-9 x hu 0-9 x te 00-99 x amt
-{$50 (kills/tally), $75 (wall)}.
+2026-10-27 (user): the score only reached 9,999 (ScoreTh was ONE binary digit,
+and level 1 alone is worth ~1,200), and the player must get an EXTRA LIFE every
+50,000 points, max 8 lives. New layout, no new zero-page byte — three packed-BCD
+bytes: ScoreTe = tens|ones, ScoreHu = thousands|hundreds, ScoreTh =
+hundred-thousands|ten-thousands. Max 999,999 (stays there). A carry INTO ScoreTh
+is a 10,000 crossing; ScoreTh's low digit 0 or 5 then means 100k/50k.
+
+Driver: plants `jsr AddScore` at $80, runs until ReturnPad's rts comes back to
+$83, and compares ScoreTh/Hu/Te + PlayerLives against a plain-integer reference
+(score + amount capped at 999,999; +1 life per 50,000 boundary crossed, cap 8)
+over boundary cases (every Te x amount around each 50k and 10k edge, the cap)
+and a deterministic scatter of the whole range.
 
 Run: /home/iuri/python3/bin/python3 tools/test_addscore.py
 """
@@ -23,6 +29,8 @@ SRC = ROOT
 BANKS = [open(SRC / f"bank{i}.bin", "rb").read() for i in range(8)]
 
 SC_TH, SC_HU, SC_TE = 0x73, 0x74, 0x75   # $F3/$F4/$F5 (addr & $7F)
+LIVES = 0x2C                              # PlayerLives $AC
+MAX_LIVES = 8
 PC_ENTRY, PC_RETURN = 0x80, 0x83         # jsr at $80, rts target $83
 
 
@@ -71,68 +79,88 @@ ADDSCORE = label(SRC / "bank1.lst", "AddScore")
 mem.ram[0:3] = bytes([0x20, ADDSCORE & 0xFF, ADDSCORE >> 8])   # jsr AddScore
 
 
-def add(th, hu, te_dec, amt_dec):
-    """Run AddScore once; returns (th, hu, te_packed, bank, sp)."""
-    def pack(d):
-        return (d // 10) * 16 + (d % 10)
+def pack(d):
+    return (d // 10) * 16 + (d % 10)
 
-    mem.ram[SC_TH], mem.ram[SC_HU], mem.ram[SC_TE] = th, hu, pack(te_dec)
+
+def add(score, amt_dec, lives):
+    """Run AddScore once; returns (score_bytes, lives, bank, sp)."""
+    mem.ram[SC_TH] = pack(score // 10000)
+    mem.ram[SC_HU] = pack(score // 100 % 100)
+    mem.ram[SC_TE] = pack(score % 100)
+    mem.ram[LIVES] = lives
     mpu.a = pack(amt_dec)                  # AddScore takes the amount in A
     mpu.pc, mpu.sp, mem.bank = PC_ENTRY, 0xFF, 1
     for _ in range(500):
         if mpu.pc == PC_RETURN:
-            return (mem.ram[SC_TH], mem.ram[SC_HU], mem.ram[SC_TE],
-                    mem.bank, mpu.sp)
+            return ((mem.ram[SC_TH], mem.ram[SC_HU], mem.ram[SC_TE]),
+                    mem.ram[LIVES], mem.bank, mpu.sp)
         mpu.step()
     sys.exit(f"AddScore did not return (pc=${mpu.pc:04X}, bank={mem.bank})")
 
 
-def ref(th, hu, te_dec, amt_dec):
-    """Decimal ground truth incl. AddScore's carry/cap semantics."""
-    s = te_dec + amt_dec
-    te2, carry = s % 100, s // 100
-    hu2, th2 = hu, th
-    if carry:
-        hu2 += 1
-        if hu2 == 10:
-            hu2, th2 = 0, th + 1
-            if th2 == 10:
-                th2 = 9
-    return th2, hu2, te2
+def ref(score, amt, lives):
+    """Plain-integer ground truth: cap 999,999; +1 life per 50k crossed, max 8."""
+    new = min(score + amt, 999999)
+    gained = new // 50000 - score // 50000
+    lives2 = min(lives + gained, MAX_LIVES) if lives < MAX_LIVES else lives
+    return ((pack(new // 10000), pack(new // 100 % 100), pack(new % 100)),
+            lives2)
+
+
+def cases():
+    seen = []
+    # every Te at each edge: 10k multiples +/- the amounts, the 50k boundaries,
+    # and the cap
+    for edge in list(range(0, 1000000, 10000)):
+        for off in (-80, -76, -75, -51, -50, -1, 0, 1, 24, 25, 99):
+            sc = edge + off
+            if 0 <= sc <= 999999:
+                seen.append(sc)
+    seen += [999999, 999950, 999925, 999900, 999999 - 74, 999999 - 49]
+    x = 12345
+    for _ in range(4000):                     # deterministic scatter
+        x = (x * 1103515245 + 12345) & 0x7FFFFFFF
+        seen.append(x % 1000000)
+    return sorted(set(seen))
 
 
 def main() -> int:
-    bcd_fails, infra = [], []
+    fails, infra = [], []
     total = 0
-    for th in range(10):
-        for hu in range(10):
-            for te in range(100):
-                for amt in (50, 75):
-                    total += 1
-                    got = add(th, hu, te, amt)
-                    exp = ref(th, hu, te, amt)
-                    exp_packed = (exp[2] // 10) * 16 + (exp[2] % 10)
-                    if (got[0], got[1], got[2]) != (exp[0], exp[1],
-                                                    exp_packed):
-                        bcd_fails.append((th, hu, te, amt, got[:3], exp))
-                    if got[3] != 0:
-                        infra.append(("bank not 0 after ReturnPad",
-                                      th, hu, te, amt, got[3]))
-                    if got[4] < 0xFF - 2:
-                        infra.append(("stack leak", th, hu, te, amt, got[4]))
-    if bcd_fails or infra:
-        print(f"FAIL: {len(bcd_fails)}/{total} BCD mismatches, "
-              f"{len(infra)} infra issues; first 5:")
-        for f in bcd_fails[:5]:
-            print(f"  th={f[0]} hu={f[1]} te={f[2]} amt={f[3]}: "
-                  f"got={f[4]} expected={f[5]}")
+    for sc in cases():
+        for amt in (50, 75):
+            for lives in (1, 3, 7, 8):
+                total += 1
+                got = add(sc, amt, lives)
+                exp = ref(sc, amt, lives)
+                if (got[0], got[1]) != exp:
+                    fails.append((sc, amt, lives, got[:2], exp))
+                if got[2] != 0:
+                    infra.append(("bank not 0 after ReturnPad", sc, amt, got[2]))
+                if got[3] < 0xFF - 2:
+                    infra.append(("stack leak", sc, amt, got[3]))
+    if fails or infra:
+        print(f"FAIL: {len(fails)}/{total} mismatches, {len(infra)} infra "
+              f"issues; first 5:")
+        for f in fails[:5]:
+            print(f"  score={f[0]} +{f[1]} lives={f[2]}: got "
+                  f"(bytes, lives)={f[3]} expected={f[4]}")
         for f in infra[:5]:
             print(" ", f)
         return 1
-    # explicit screenshot repro: 2525 + 75 -> 2600, both nibbles valid
-    th, hu, te_packed, bank, _sp = add(2, 5, 25, 75)
-    assert (th, hu, te_packed) == (2, 6, 0x00), (th, hu, te_packed)
-    print(f"PASS: {total} BCD cases (incl. screenshot repro 2525+75=2600)")
+    # the screenshot repro: 2525 + 75 -> 2600, both nibbles valid
+    got = add(2525, 75, 3)
+    assert got[0] == (0x00, 0x26, 0x00) and got[1] == 3, got
+    # the user's rule, spelled out: 49,950 + 50 = 50,000 -> one extra life
+    got = add(49950, 50, 3)
+    assert got[0] == (0x05, 0x00, 0x00) and got[1] == 4, got
+    # ... and not twice for the same crossing, and never past 8
+    got = add(50000, 50, 4)
+    assert got[1] == 4, got
+    got = add(99950, 50, 8)
+    assert got[0] == (0x10, 0x00, 0x00) and got[1] == 8, got
+    print(f"PASS: {total} cases (cap 999,999; +1 life per 50,000, max 8)")
     return 0
 
 
