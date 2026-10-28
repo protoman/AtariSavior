@@ -2103,7 +2103,7 @@
    2088  fc70					      .ds	$FC70 - *, 0
    2089  fc70		       a9 00		      lda	#0
    2090  fc72		       8d f4 1f 	      sta	$1FF4
-   2091  fc75		       4c 92 f1 	      jmp	$F192	; Overscan in bank0 (must match bank0 ToGameStub;
+   2091  fc75		       4c 93 f1 	      jmp	$F193	; Overscan in bank0 (must match bank0 ToGameStub;
    2092  fc78							; verify_build --sync-overscan patches this from
    2093  fc78							; bank0.lst after every bank0 build)
    2094  fc78
