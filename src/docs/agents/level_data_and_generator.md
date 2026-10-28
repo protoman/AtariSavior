@@ -177,6 +177,19 @@ talking to the user (the editor's "Model 32" is data `id` 31); bands may be
   `SHAPE_GATE` (that shape walls band 2 off and is for locked doors). A level
   with no side-linked host drops its phase. Guard: the phase check in
   `test_generator.py`.
+- **hcrunch band follows the FIRST ENTRY (user 2026-10-28).** The generator
+  does a BFS over the room grid from the start room (`FirstEntry`, vertical
+  parent wins ties). First entered from the room ABOVE (falling, little time to
+  react) -> crunch on **band 3** (row 2); from BELOW (climbing) -> **band 2**
+  (row 1); from the SIDE -> no hcrunch (the room stays ordinary). Row 2 keeps its
+  pair 0 solid (the room's only side link is on row 1); its ceiling is the
+  middle band and its floor the cave floor, so only the floor gap can need
+  widening. Data: `feature_cells` row 1/2; extras feature byte b4 = row 2; the
+  `$82` record's y byte = the row (read by `PhHcrEntry` and the HOV handler).
+  Touches: a 1 px vertical step that first overlaps the band (feet on its first
+  line / head on its last) is a plain wall (land on it, bump it); any other
+  overlap kills; a hot band stays deadly on every side. Guards:
+  `test_hcrunch.py`, `test_generator.py`.
 - **hcrunch needs a >= 4-cell gap above AND below the crunch band** (user
   2026-10-25/26). The crunch band is band 2: its ceiling is band 1 and its
   floor is **band 3**, NOT the cave floor (band 4). `wideBottom` (`SHAPE_WS`)

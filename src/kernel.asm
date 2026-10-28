@@ -342,6 +342,7 @@ EnemyClk        = $D7           ; 2026-10-26 ENEMY clock: every enemy gate / bob
                                 ;   EnemySpd / 2 (x1 .. x3 by level: tools/test_enemy_speed.py)
 EnemySpd        = $D8           ; half-units per frame: 2 + Level / 5 (x1, x1.5, x2 ...)
 EnemyFrac       = $D9           ; 0/1 carry of the half-unit accumulator
+UE_MIN_INTIM    = 12            ; TIM64T units (64c) of overscan an EXTRA enemy pass needs left
 EnemyPass       = $DA           ; passes left this frame
 EnemyRamY       = $E2           ; 3 bytes: live Y per enemy ($E2-$E4) —
                                 ;   private since S3.4; see contract above
@@ -3592,12 +3593,20 @@ StageSlot1:
     sta $1FF6
 
 ; UEEpilogue - end of one enemy pass: another pass (clock + 1) or done.
+; 2026-10-28 (flicker): extra passes are GOVERNED by the overscan timer. A pass starts
+; only while INTIM >= UE_MIN_INTIM (pass ~250c + the tail work after UpdateEnemies);
+; otherwise it is dropped, so a frame that already spent its time on 3 PlayerHitsMap
+; calls does not overrun into 273+ lines. The first pass always runs. EnemySpd is
+; never 0 here (LoadLevel sets it; sim_frame_budget asserts it), so the old `bmi`
+; guard went to make room. An expired timer reads as a wrapped INTIM (>= $80 for
+; 127c): also "enough", but by then the frame is already late either way.
 UEEpilogue:
     dec EnemyPass
     beq .UEEdone
-    bmi .UEEdone                ; EnemySpd 0 (never set): a single pass
-    inc EnemyClk
-    jmp UEBody
+    lda INTIM
+    cmp #UE_MIN_INTIM
+    bcc .UEEdone
+    jmp UEPass
 .UEEdone:
     rts
     .ds $FBF8 - *, 0            ; TitleSequenceFold / FooterFold /
@@ -4397,6 +4406,7 @@ UEPrologue:
     txa
     lsr                         ; A = whole passes this frame (>= 1)
     sta EnemyPass
+UEPass:
     inc EnemyClk
     jmp UEBody
     .ds $FE90 - *, 0            ; ObjColorTab/ObjSprites moved to the

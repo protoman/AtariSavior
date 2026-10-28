@@ -1223,6 +1223,44 @@ bool HasRoomAt(const std::vector<GridPos>& walk, int x, int y) {
     return false;
 }
 
+// How the player FIRST enters room `i` of a level: BFS over the room grid from
+// the start room (index 0). 1 = from the room ABOVE (he is going down), 2 =
+// from the room BELOW (going up), 0 = from the side (or the start room).
+// A tie between equally short routes prefers a vertical parent.
+// User rule 2026-10-28: a hcrunch sits on band 3 where he arrives falling (time
+// to react) and on band 2 where he arrives climbing; a room first entered from
+// the side never hosts one.
+int FirstEntry(const std::vector<GridPos>& walk, int i) {
+    const int n = (int)walk.size();
+    std::vector<int> dist(n, -1);
+    std::vector<int> queue{0};
+    dist[0] = 0;
+    auto indexAt = [&](int x, int y) {
+        for (int k = 0; k < n; ++k) {
+            if (walk[k].x == x && walk[k].y == y) return k;
+        }
+        return -1;
+    };
+    static const int kDx[4] = {0, 0, -1, 1};
+    static const int kDy[4] = {-1, 1, 0, 0};      // above, below, left, right
+    for (size_t h = 0; h < queue.size(); ++h) {
+        const GridPos& g = walk[queue[h]];
+        for (int d = 0; d < 4; ++d) {
+            const int k = indexAt(g.x + kDx[d], g.y + kDy[d]);
+            if (k >= 0 && dist[k] < 0) {
+                dist[k] = dist[queue[h]] + 1;
+                queue.push_back(k);
+            }
+        }
+    }
+    if (i == 0 || dist[i] < 0) return 0;
+    for (int d = 0; d < 2; ++d) {                  // vertical parent first
+        const int k = indexAt(walk[i].x + kDx[d], walk[i].y + kDy[d]);
+        if (k >= 0 && dist[k] == dist[i] - 1) return d == 0 ? 1 : 2;
+    }
+    return 0;
+}
+
 // --- 2026-10-20: per-room ROLE (the HERO-style variety) ---------------------
 // The generated stage used to be one shape with a bat; a level now alternates
 // hazard rooms and normal rooms, and the last room can be a WATER goal
@@ -2605,6 +2643,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     // and the room under it must take a widened ceiling: not
                     // a channel, not the water goal (see the gap step below).
                     const GridPos& p = walks[l - 1][i];
+                    if (FirstEntry(walks[l - 1], i) == 0) return false;
                     if (IsChannelRoom(l, walks[l - 1], p)
                             || !HasRoomAt(walks[l - 1], p.x, p.y - 1)
                             || !HasRoomAt(walks[l - 1], p.x, p.y + 1)) {
@@ -2859,8 +2898,12 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             for (int j = 0; j < (int)wk.size(); ++j) {
                 if (wk[j].x == wk[i].x && wk[j].y == wk[i].y + 1) below = j;
             }
-            if (longestRun(vertCells(m, true)) < 4) m |= SHAPE_WN;
-            // The crunch band is band 2: its floor is band 3 (row index 2),
+            // Band 3 crunch (entered from above): its ceiling is the middle
+            // band (always open on a crunch room: no archetype) and its floor
+            // is the cave floor, so only the floor gap can be short.
+            const bool bandThree = FirstEntry(wk, i) == 1;
+            if (!bandThree && longestRun(vertCells(m, true)) < 4) m |= SHAPE_WN;
+            // The band-2 crunch's floor is band 3 (row index 2),
             // NOT the cave floor (band 4) that vertCells(.., false) reads —
             // that mix-up let a 2-cell gap through (levels 17/19, 2026-10-27).
             const ModelData built = MakeShapeModel(0, m);
@@ -2871,7 +2914,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 }
             }
             const bool floorShort = longestRun(vertCells(m, false)) < 4;
-            if (floorShort || longestRun(lowAir) < 4) {
+            if (floorShort || (!bandThree && longestRun(lowAir) < 4)) {
                 m |= SHAPE_WS;
                 if (floorShort && below >= 0) {
                     // An ordinary room under the widened floor drops its
@@ -3006,9 +3049,12 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             }
             if (roles[l - 1][i] == Role::Hcrunch) {
                 // Fixed 10-cell prefix on the middle band (live stage form).
+                // Band 3 (row 2) when he arrives falling from above, band 2
+                // (row 1) when he arrives climbing from below.
+                const int crow = FirstEntry(walks[l - 1], i) == 1 ? 2 : 1;
                 for (int c = 0; c < kRoomWidth; ++c) {
                     room.feature_cells.push_back(
-                        {1, c, (int)TileType::HCRUNCH});
+                        {crow, c, (int)TileType::HCRUNCH});
                 }
             }
             // Advanced hot rooms (> level 10): a solid async block sits in
@@ -3503,6 +3549,52 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     }
                     if (done) break;
                 }
+            }
+        }
+        // WHOLE CELLS (user report 2026-10-28, enemy_inside_wall.png, level 14
+        // room 8: a bat on column 13 straddled cells 6 and 7 and was drawn half
+        // inside the wall): an enemy sprite is 8 px = one cell, and a column is
+        // 4 px, so an ODD column straddles two cells while only cell x/2 was
+        // ever checked for air. Every enemy except the snake (it lives in its
+        // wall by design), the raft and the extra miner sits on an EVEN column.
+        // Flooring keeps the validated cell; when that lands within 3 columns of
+        // another object, the next even column is used if it is air too.
+        for (int j = 0; j < (int)level.rooms.size(); ++j) {
+            RoomData& room = level.rooms[j];
+            const ModelData& sm = models[shapeId[masks[l - 1][j]]];
+            const int rowsPerBand = std::max(1, 12 / std::max(1, sm.height));
+            for (size_t k = 0; k < room.enemies.size(); ++k) {
+                EnemyData& e = room.enemies[k];
+                if (e.type == (int)EnemyType::SNAKE
+                        || e.type == (int)EnemyType::RAFT
+                        || e.type == (int)EnemyType::KEY) continue;
+                const int col = (int)std::lround(e.x);
+                if (!(col & 1)) continue;
+                auto near = [&](int c) {
+                    for (size_t o = 0; o < room.enemies.size(); ++o) {
+                        if (o != k && std::abs((int)std::lround(
+                                room.enemies[o].x) - c) < 3) return true;
+                    }
+                    for (const LampData& m : room.lamps) {
+                        if (std::abs((int)std::lround(m.x) - c) < 3) return true;
+                    }
+                    return false;
+                };
+                const int band = std::min(sm.height - 1,
+                                          std::max(0, (int)e.y / rowsPerBand));
+                auto airEven = [&](int c) {
+                    return c >= 0 && c <= 18 && !(c & 1)
+                        && sm.tiles[band * sm.width + c / 2]
+                               == (int)TileType::AIR;
+                };
+                int pick = col - 1;          // same cell as before: always air
+                for (int d = 1; d <= 15 && near(pick); d += 2) {
+                    for (int sign : {-1, 1}) {
+                        const int cand = col + sign * d;
+                        if (airEven(cand) && !near(cand)) { pick = cand; break; }
+                    }
+                }
+                e.x = (float)pick;
             }
         }
         levels.push_back(level);

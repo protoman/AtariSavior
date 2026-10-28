@@ -146,6 +146,8 @@ class Mem:
             if self.wall >= dl:
                 return 0
             return min(0xFF, max(1, (dl - self.wall + 63) // 64))
+        if a == 0x0285:
+            return 0x80 if self.wall >= self.deadline.get(0x296, 0) else 0
         if a == 0x000C:
             return self.inpt4
         if 0x1FF4 <= a <= 0x1FF7:
@@ -253,7 +255,18 @@ over_work = 0
 max_over_work = (0, 0)
 max_over_work_all = (0, 0)
 gap = 0
+_UECOST = bool(os.environ.get('SIM_UECOST'))
+_OVPROF = bool(os.environ.get('SIM_OVPROF'))
+_GOV = int(os.environ.get('SIM_GOV', '0'))
+_gov_drops = 0
+_ovp_bad = [0, {}]
+_phm_calls = {}
+_ovp_good = [0, {}]
+_ue_t0 = None
+_ue_costs = []
 kwsync = 0
+_wswall = {}                        # SIM_WSPC: frame -> [(bank, pc, wall)] at each kernel WSYNC
+_wspcs = {}                         # SIM_WSPC: frame -> [(bank, pc)] at each kernel WSYNC
 frame_armed = False                       # first StartFrame seen
 vbl_val = over_val = None
 vbl_pre = None                 # work: arm -> WaitVBLANK entry (see close)
@@ -314,6 +327,23 @@ inpt4_frames = 0
 while frame < 1100:
     c = step()
     pc, bk = mpu.pc, mem.bank
+    if bk == 0 and pc == LABELS['UEPrologue'] and mem.ram[0x58] == 0:
+        frame_bad.append(f'f{frame}: UEPrologue entered with EnemySpd 0 (epilogue has no spd-0 guard)')
+    if _GOV and bk == 0 and pc == LABELS['UEEpilogue'] + 6 and phase == PH_OVER:
+        # SIM_GOV=N: emulate the INTIM governor (no ROM room yet) - drop the extra pass
+        # when fewer than N TIM64T units (or an expired timer) are left
+        if mem.wall >= mem.deadline.get(0x296, 0) or mem[0x284] < _GOV:
+            _gov_drops += 1
+            mpu.pc = LABELS['.UEEdone']
+    if _OVPROF and bk == 0 and pc == LABELS['PlayerHitsMap'] and phase == PH_OVER:
+        _ra = (mem[0x100 + ((mpu.sp + 2) & 0xFF)] << 8 | mem[0x100 + ((mpu.sp + 1) & 0xFF)]) + 1
+        _phm_calls.setdefault(frame, []).append(near_label(_ra))
+    if _UECOST and bk == 0:      # SIM_UECOST: cycles of one UpdateEnemies CALL (all passes)
+        if pc == LABELS['UpdateEnemies']:
+            _ue_t0 = mem.wall
+        elif pc == LABELS['.UEEdone'] + 0 and _ue_t0 is not None:
+            _ue_costs.append((mem.ram[0x58], mem.ram[zp_byte_addr('EnemyCount') - 0x80], mem.wall - _ue_t0 + 6))
+            _ue_t0 = None
 
     # room poke: the boot EnterRoom runs under the title (DropTarget=$FF)
     # and the console-RESET reload re-derives RoomNo — poke the GAMEPLAY
@@ -416,6 +446,8 @@ while frame < 1100:
         ker_bounds.setdefault(frame, {})['over'] = mem.wall
         gap = 0
     elif bk == 0 and pc == PC_START:
+        if os.environ.get('SIM_SPD'):       # force EnemySpd (2=x1, 3=x1.5, 4=x2, 5=x2.5)
+            mem.ram[0x58] = int(os.environ['SIM_SPD'])
         if frame_armed and phase == PH_OVER:
             over_val = over_acc
             if frame > 3 and over_work > max_over_work_all[0]:
@@ -436,6 +468,11 @@ while frame < 1100:
                     snap_tail = over_acc - over_mark_t
                 if over_val > OVER_BUDGET:
                     pc_hist_keep[frame] = dict(pc_cycles)
+                if _OVPROF:        # SIM_OVPROF: overscan cycles per routine, bad vs good frames
+                    _agg = _ovp_bad if over_val > (int(os.environ['SIM_OVPROF']) if len(os.environ['SIM_OVPROF']) > 2 else OVER_BUDGET) else _ovp_good
+                    _agg[0] += 1
+                    for _k, _n in pc_cycles.items():
+                        _agg[1][_k] = _agg[1].get(_k, 0) + _n
                 pc_cycles = {}
                 _kind = frame_ker[frame]
                 _ws = kwsync_by_kind.setdefault(_kind, set())
@@ -444,6 +481,14 @@ while frame < 1100:
                     frame_bad.append(
                         f'f{frame}: {_kind} kernel WSYNC diverged: {sorted(_ws)}')
                 wsync_counts.add(kwsync)
+                if os.environ.get('SIM_WSDBG'):     # per-frame kernel WSYNC count + player/laser state
+                    print(f'WSDBG f{frame} ws={kwsync} RoomX={mem.ram[zp_byte_addr("RoomX")-0x80]}'
+                          f' RoomY={mem.ram[zp_byte_addr("RoomY")-0x80]}'
+                          f' LaserX={mem.ram[zp_byte_addr("LaserX")-0x80]}'
+                          f' LaserState={mem.ram[0x40]:02X}'
+                          f' Key={mem.ram[zp_byte_addr("LevelStartRoom")-0x80] >> 7}'
+                          f' Lives={mem.ram[zp_byte_addr("PlayerLives")-0x80]}'
+                          f' lines={round((_wswall[frame - 1][-1][2] - _wswall[frame - 1][0][2]) / 76, 1) if frame - 1 in _wswall else 0}')
                 frame_stats.append((frame, over_val, vbl_val))
                 wall_segs.append((frame, _wall_vbl - _wall_start,
                                   _wall_ker - _wall_vbl,
@@ -521,7 +566,7 @@ while frame < 1100:
                 max_gap, max_gap_f, gap_pc = gap, frame, pc
             if gap > GAP_LIMIT:
                 gap_log.append((frame, pc, bk, gap))
-                if os.environ.get('SIM_GAPDBG') and gap >= 100:
+                if os.environ.get('SIM_GAPDBG') and gap >= int(os.environ.get('SIM_GAPMIN', '100')):
                     _attr = {}
                     for _p, _b, _c in trail:
                         _attr[(_p, _b)] = _attr.get((_p, _b), 0) + _c
@@ -529,8 +574,13 @@ while frame < 1100:
                     print(f'GAPDBG f{frame} gap={gap} end=${pc:04X}/{bk} '
                           f'top: ' + ' '.join(
                               f'${_p:04X}/{_b}:{_n}' for (_p, _b), _n in _top))
+                    if os.environ.get('SIM_GAPSEQ'):
+                        print('GAPSEQ ' + ' '.join(f'{_b}:{_p:04X}({_c})' for _p, _b, _c in trail))
             trail = []
             kwsync += 1
+            if os.environ.get('SIM_WSPC'):
+                _wspcs.setdefault(frame, []).append((bk, pc))
+                _wswall.setdefault(frame, []).append((bk, pc, mem.wall))
             gap = 0
 
     # -- input script per frame boundary --
@@ -832,6 +882,85 @@ if _ev:
         print(f'EVENTS f{_fr}:')
         for _lb, _d in _wins.get(_fr, []):
             print(f'  {_lb}: {_d}')
+
+if os.environ.get('SIM_WSPC'):
+    _byn = {}
+    for _f, _l in sorted(_wspcs.items()):
+        if _f >= int(os.environ.get('SIM_WSPC_FROM', '0')):
+            _byn.setdefault(len(_l), _f)
+    for _n, _f in sorted(_byn.items()):
+        print(f'WSPC n={_n} first at f{_f}')
+    _ks = sorted(_byn)
+    if len(_ks) >= 2:
+        _a, _b = _wspcs[_byn[_ks[0]]], _wspcs[_byn[_ks[-1]]]
+        for _lab, _l in (('short', _a), ('long', _b)):
+            _marks = [(_i, _p[1]) for _i, _p in enumerate(_l) if _p[0] == 0 and _p[1] in (0xF106, 0xF10F, 0xF7AA)]
+            print('WSPC', _lab, 'len', len(_l), 'band marks (idx, pc):', _marks)
+
+if os.environ.get('SIM_WSLINES'):          # lines between consecutive kernel WSYNCs that are not 1
+    _from = int(os.environ.get('SIM_WSPC_FROM', '0'))
+    _seen = {}
+    for _f, _l in sorted(_wswall.items()):
+        if _f < _from:
+            continue
+        _odd = [(_l[_i][0], hex(_l[_i][1]), round((_l[_i][2] - _l[_i - 1][2]) / 76, 2), _i)
+                for _i in range(1, len(_l)) if round((_l[_i][2] - _l[_i - 1][2]) / 76) != 1]
+        _key = (round((_l[-1][2] - _l[0][2]) / 76, 1), tuple((o[0], o[1], o[2]) for o in _odd))
+        _seen.setdefault(_key, []).append(_f)
+    for _k, _fs in sorted(_seen.items(), key=lambda kv: -len(kv[1])):
+        print(f'WSLINES kernel_lines={_k[0]} frames={len(_fs)} first=f{_fs[0]} odd={list(_k[1])}')
+
+if _GOV:
+    print(f'GOV N={_GOV} dropped extra passes: {_gov_drops}')
+if _OVPROF:
+    import collections
+    _hist = collections.Counter()
+    for _f, _cs in _phm_calls.items():
+        _ov = dict((a, b) for a, b, c in frame_stats).get(_f, 0) if False else None
+    _ov_by = {f: o for f, o, v in frame_stats}
+    for _tag, _sel in (('BAD', lambda o: o > 3100), ('GOOD', lambda o: o <= 3100)):
+        _fs = [f for f in _phm_calls if _sel(_ov_by.get(f + 1, _ov_by.get(f, 0)))]
+        _cnt = collections.Counter(len(_phm_calls[f]) for f in _fs)
+        _who = collections.Counter(c.split('+')[0] for f in _fs for c in _phm_calls[f])
+        print(f'PHMCALLS {_tag} frames={len(_fs)} calls-per-frame={dict(sorted(_cnt.items()))}')
+        print(f'PHMCALLS {_tag} callers={dict(_who.most_common(8))}')
+    _syms = {}
+    for _b in range(4):
+        _t = []
+        for _l in (SRC / f'bank{_b}.lst').read_text(errors='replace').splitlines():
+            _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s+subroutine)?\s*(?:;.*)?$', _l)
+            if _m:
+                _t.append((int(_m.group(1), 16), _m.group(2)))
+        _syms[_b] = sorted(_t)
+    def _fn(bk, pc):
+        best = '?'
+        for a, n in _syms.get(bk, []):
+            if a <= pc:
+                best = n
+            else:
+                break
+        return f'b{bk}:{best}'
+    _rows = {}
+    for _tag, _agg in (('BAD', _ovp_bad), ('GOOD', _ovp_good)):
+        _tot = {}
+        for (_bk, _pc), _n in _agg[1].items():
+            _f = _fn(_bk, _pc)
+            _tot[_f] = _tot.get(_f, 0) + _n
+        _rows[_tag] = (_agg[0], _tot)
+    _names = set(_rows['BAD'][1]) | set(_rows['GOOD'][1])
+    _nb, _ng = max(_rows['BAD'][0], 1), max(_rows['GOOD'][0], 1)
+    print(f'OVPROF frames: bad={_rows["BAD"][0]} good={_rows["GOOD"][0]}  (avg cycles per frame, delta = bad-good)')
+    for _n in sorted(_names, key=lambda n: -(_rows['BAD'][1].get(n, 0) / _nb - _rows['GOOD'][1].get(n, 0) / _ng))[:18]:
+        _a, _g = _rows['BAD'][1].get(_n, 0) / _nb, _rows['GOOD'][1].get(_n, 0) / _ng
+        print(f'OVPROF {_n:40s} bad={_a:7.0f} good={_g:7.0f} delta={_a - _g:+7.0f}')
+
+if _UECOST:
+    import collections
+    _g = collections.defaultdict(list)
+    for _spd, _cnt, _c in _ue_costs:
+        _g[(_spd, _cnt)].append(_c)
+    for _k, _v in sorted(_g.items()):
+        print(f'UECOST EnemySpd={_k[0]} EnemyCount={_k[1]} calls={len(_v)} min={min(_v)} avg={sum(_v)//len(_v)} max={max(_v)}')
 
 # hard invariant: every real frame (>=2, boot excluded) sits at its
 # kernel target +/-0.15 — 267.0 for both kinds (merged title, 2026-10-19;

@@ -253,10 +253,12 @@ def room_feature_cells(room: dict) -> list[tuple[int, int, int]]:
         if not 0 <= col < WIDTH:
             raise ValueError(
                 f"{who}: feature col {col} out of 0..{WIDTH - 1} (D7 grid)")
-        if row != 1:
+        # phase: the middle band (row 1). hcrunch: row 1 (band 2) or row 2
+        # (band 3) - the generator picks it from how the player first enters.
+        if row != 1 and not (tile == HCRUNCH and row == 2):
             raise ValueError(
                 f"{who}: {FEATURE_NAME[tile]} at row {row} — special features "
-                "live on the middle band (row 1)")
+                "live on the middle band (row 1); a hcrunch may use row 2 too")
         if (row, col) in seen:
             raise ValueError(f"{who}: duplicate feature cell (row {row}, col {col})")
         seen.add((row, col))
@@ -541,7 +543,9 @@ def resolve_asym_patches(model: dict, room: dict,
                         f"a WALL cell, so the wall would hide the patch. Open "
                         f"that cell, or drop the patch for band {b} "
                         f"(wall-hide guard).")
-                if b not in left_patch_rows and cell not in "#H":
+                # a band-3 crunch (row 2) keeps its pair 0 solid at run time
+                if (b not in left_patch_rows and cell not in "#H"
+                        and not (cell == "C" and b == 2 and cc == 0)):
                     raise ValueError(
                         f"{who}: the async strip is ONE 1-px column painted "
                         f"across the whole cave (a single M1 line per frame), "
@@ -1016,7 +1020,13 @@ def room_extras(room: dict, model: dict, rows: list[str],
                 "phase XOR hcrunch)")
         if kind == HCRUNCH:
             cols = sorted(c for _r, c, _t in feats)
-            feature_bytes.append((EXTRAS_HCRUNCH << 6) | cols[-1])
+            rows_ = {r for r, _c, _t in feats}
+            if len(rows_) != 1:
+                raise ValueError(
+                    f"{who}: hcrunch cells on rows {sorted(rows_)} — one row")
+            # b4 = the crunch is on row 2 (band 3); clear = row 1 (band 2)
+            feature_bytes.append((EXTRAS_HCRUNCH << 6)
+                                 | (0x10 if rows_ == {2} else 0) | cols[-1])
         else:
             for _r, col, _t in sorted(feats, key=lambda f: f[1]):
                 feature_bytes.append((EXTRAS_PHASE << 6) | col)
@@ -1512,8 +1522,10 @@ def check_stage_connections(models_by_id: dict, levels: list[tuple[int, dict]]) 
             if HCRUNCH in kind:
                 cells = [f[1] for f in (room.get("feature_cells") or [])
                          if f[2] == HCRUNCH]
-                if 0 in cells:
-                    rows[1] = "." + rows[1][1:]
+                crow = next(f[0] for f in (room.get("feature_cells") or [])
+                            if f[2] == HCRUNCH)
+                if 0 in cells and crow == 1:      # band 3 keeps pair 0 solid
+                    rows[crow] = "." + rows[crow][1:]
         return rows
 
     for level_n, level in levels:

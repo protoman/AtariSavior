@@ -74,8 +74,10 @@ _Split out of `AGENTS.md` (2026-10-27); text unchanged. Index: `AGENTS.md`._
 5. **Vertical Positioning**: Kernel scanline counter matches player Y.
    Sprite rendered when scanline falls within player's 8-line range.
 
-6. **Collision**: TIA hardware collision registers (CXP0FB, CXPPMM, etc.)
-   checked in VBLANK/Overscan after frame renders.
+6. **Collision**: player-vs-wall is SOFTWARE (per-row limit tables + a RAM copy of the
+   screen; byte scan of hero.bin 2026-10-28: `CXP0FB` is never read). The TIA registers
+   are used only for the raft (`CXPPMM` $07) and missiles (`CXM0FB` $34, `CXM1FB`,
+   `CXM1P`). Ours is software too (`PlayerHitsMap`), see docs/cell_collision_plan.md.
 
 ### Hero's Cave Structure
 

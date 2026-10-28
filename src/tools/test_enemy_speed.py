@@ -88,8 +88,21 @@ for level, want in ((0, 2), (4, 2), (5, 3), (9, 3), (10, 4), (14, 4), (15, 5),
 bank2[REC - 0xF000:REC - 0xF000 + 3] = bytes([1, 60, 60])
 CM.BANK2 = bytes(bank2)
 FRAMES = 20
+
+
+class TimedMem(CM.Mem):
+    """INTIM ($0284) reads `intim`: UEEpilogue lets an EXTRA pass start only
+    while the overscan timer has UE_MIN_INTIM units left (2026-10-28)."""
+    intim = 44
+
+    def __getitem__(self, a):
+        if (a & 0xFFFF) == 0x0284:
+            return self.intim
+        return super().__getitem__(a)
+
+
 for spd, want in ((2, 20), (3, 30), (4, 40), (5, 50), (6, 60)):
-    mem = CM.Mem()
+    mem = TimedMem()
     poke(mem, L0, "EnemyCount", 1)
     poke(mem, L0, "EnemyDataLo", REC & 0xFF)
     poke(mem, L0, "EnemyDataHi", REC >> 8)
@@ -104,6 +117,25 @@ for spd, want in ((2, 20), (3, 30), (4, 40), (5, 50), (6, 60)):
         total += (peek(mem, L0, "EnemyClk") - before) & 0xFF
     assert total == want, (f"EnemySpd={spd}: the enemy clock advanced {total} ticks "
                            f"in {FRAMES} frames, want {want} (x{spd / 2:g})")
+
+# --- 2b. the overscan governor: with the timer nearly spent only the FIRST pass runs
+for spd in (2, 5):
+    mem = TimedMem()
+    mem.intim = 0
+    poke(mem, L0, "EnemyCount", 1)
+    poke(mem, L0, "EnemyDataLo", REC & 0xFF)
+    poke(mem, L0, "EnemyDataHi", REC >> 8)
+    poke(mem, L0, "EnemyDeadMask", 0)
+    poke(mem, L0, "EnemySpd", spd)
+    poke(mem, L0, "EnemyFrac", 0)
+    poke(mem, L0, "EnemyClk", 0)
+    total = 0
+    for _ in range(FRAMES):
+        before = peek(mem, L0, "EnemyClk")
+        run(mem, 0, L0["UpdateEnemies"], RTS_SENTINEL)
+        total += (peek(mem, L0, "EnemyClk") - before) & 0xFF
+    assert total == FRAMES, (f"EnemySpd={spd}, INTIM=0: {total} ticks in {FRAMES} "
+                             f"frames, want {FRAMES} (extra passes dropped, first kept)")
 
 # --- 3. no enemy motion still reads a shared clock ---------------------------------
 K = (SRC / "kernel.asm").read_text()
