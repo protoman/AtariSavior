@@ -458,17 +458,22 @@ M90Rows:
 ; Generated from models.json model 91. Do not edit by hand.
 M91Shape:
 M91Rows:
-  .byte $21, $04, $21, $22  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+  .byte $00, $04, $21, $22  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 92. Do not edit by hand.
 M92Shape:
 M92Rows:
-  .byte $08, $01, $08, $08  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+  .byte $07, $01, $08, $08  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; Generated from models.json model 93. Do not edit by hand.
 M93Shape:
 M93Rows:
-  .byte $08, $04, $08, $08  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+  .byte $07, $04, $08, $08  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
+
+; Generated from models.json model 94. Do not edit by hand.
+M94Shape:
+M94Rows:
+  .byte $21, $04, $21, $22  ; row-pool indices (band 0-3; band1 b7 = mid_band hot)
 
 ; C3 (2026-10-20): ROW DICTIONARY — one 3 B entry per DISTINCT
 ; (PF0,PF1,PF2) band row for the whole game. A shape block carries
@@ -485,7 +490,7 @@ RowPoolPF2:
 
 ; C7 (2026-10-20): shape ADDRESS table — bank3's B3RoomBlocks
 ; reads it in-bank; the 6-bit room-record index is the row.
-; LEVEL_SHAPE_COUNT = 94 (6-bit index ceiling: 128)
+; LEVEL_SHAPE_COUNT = 95 (6-bit index ceiling: 128)
 LEVEL_ShapeTable:
   .word M0Shape
   .word M1Shape
@@ -581,4 +586,5 @@ LEVEL_ShapeTable:
   .word M91Shape
   .word M92Shape
   .word M93Shape
+  .word M94Shape
 
