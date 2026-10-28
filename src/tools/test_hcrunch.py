@@ -2,13 +2,18 @@
 """hcrunch tests — simplified contract (user decision 2026-10-19, py65).
 
 Contract:
-  * the crunch band is ALWAYS band 1 (middle) — record y/band ignored;
+  * the crunch band is the record's y byte: row 1 (band 2) or row 2 (band 3,
+    pair 0 solid too) — the generator picks it from how the player first enters
+    the room (2026-10-28). TOUCHES: a 1 px vertical step onto the band (feet on
+    its first line / head on its last) is a plain wall, any other overlap kills;
   * ALWAYS hot: any overlap of the player box with the covered prefix kills,
     at any clock phase and any extent (no cold "closing only" rule);
   * ALWAYS the same geometry: fixed 10-cell prefix (half playfield width) —
     record x/w/h ignored, the 5-byte record stride stays for the walker;
-  * NO growth push (HcrPush removed) and NO one-kill-per-visit latch
-    (EnemyDeadMask b7 is never written by the crunch path);
+  * NO growth push (HcrPush removed). 2026-10-28 (user: "stop (retracted) when it
+    kills the player ... still restarts after a while"): a kill marks the crunch
+    SPENT for the visit (EnemyDeadMask b7, cleared by EnterRoom) - parked
+    retracted, no more kills until he leaves the room; Hover also parks it;
   * the clock animation stays: n = HcrClock(10) (1..10 cells, 16f/step,
     dwell -> grow to center -> fast retract), PF band1 = P(n).
 
@@ -57,6 +62,7 @@ I_VYLO, I_VYHI = W.I_VYLO, W.I_VYHI
 I_DEAD = W.I_DEAD
 I_RAMP = 0x42                           # $C2 EnemyRamP frame clock
 I_LIVES = 0x2C                          # $AC PlayerLives
+I_HOVER = 0x1C                          # $9C Hover (LoseLife arms it to $FF)
 
 HUD_JMP = None
 for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
@@ -115,8 +121,11 @@ def boot():
     sys.exit("player never landed")
 
 
-pins = {"x": 70, "y": 20, "clock": 8}
+pins = {"x": 70, "y": 20, "clock": 8, "hover": 0}   # hover: LoseLife arms $FF
 samples = []
+
+
+spent_seen = []                      # b7 as the last frame left it, before poke() clears it
 
 
 def poke():
@@ -128,6 +137,10 @@ def poke():
     r[I_VYHI] = 0
     r[W.I_ENCOUNT] = 0
     r[I_RAMP] = pins["clock"]
+    r[I_HOVER] = pins["hover"]       # a real kill arms Hover; keep it under test control
+    spent_seen.append(r[I_DEAD] & 0x80)
+    r[I_DEAD] &= 0x7F                # b7 = crunch spent for the visit: probes model a
+                                     # fresh visit every frame (the spent case drives its own)
 
 
 def run_frames(n):
@@ -167,14 +180,13 @@ def main() -> None:
     W.mem.ram[I_M1HOT] = 0                # no hot-band M1 block cell
     W.mem.ram[0x1A] = 0                   # $9A RoomMetaB: cold (no hot sweep)
 
-    # Patch the record's y and w in the PRIVATE bank copy: fields must be
-    # ignored (band stays 1, prefix stays 10).
+    # Patch the record's w in the PRIVATE bank copy: it must be ignored
+    # (prefix stays 10). The record's y byte IS the crunch band (1 or 2).
     off = STREAM_ADDR
     count = W.mem.ram[off - 0x80]          # record count (C11: features only)
     rec = off + 1                          # first record's class byte
     assert count and W.mem.ram[rec - 0x80] == 0x82, (
         f"fixture class {W.mem.ram[rec - 0x80]:02X}")
-    W.mem.ram[rec + 2 - 0x80] = 2          # y(band) -> 2 (ignored)
     W.mem.ram[rec + 3 - 0x80] = 4          # w -> 4 cells (ignored)
     assert rec + 4 <= off + 1 + 5, "record stride changed"
 
@@ -185,9 +197,9 @@ def main() -> None:
                      f"$30/00/00 (dwell P(1), fixed band1)")
     if W.mem.ram[PF0_B2] != 0xF0:
         fails.append(f"arm: band2 PF0=${W.mem.ram[PF0_B2]:02X}, want $F0 "
-                     f"(record y=2 must be ignored)")
+                     f"(a band-1 crunch must leave band 2 alone)")
     if dead & 0x80:
-        fails.append("arm: EnemyDeadMask b7 set (removed latch)")
+        fails.append("arm: EnemyDeadMask b7 set before any kill")
     print(f"  arm: PF0b1=${pf0:02X} (P(1)); record y/w ignored; b7 clear")
 
     # --- 2/3/4. curve + bucket stability + dwell ------------------------
@@ -219,21 +231,102 @@ def main() -> None:
         pins.update(clock=clock, x=x, y=y)
         W.mem.ram[I_DEAD] = 0
         W.mem.ram[I_LIVES] = 3
+        spent_seen.clear()
         run_frames(frames)
         took = W.mem.ram[I_LIVES] < 3      # no latch: may fire repeatedly
         dead = W.mem.ram[I_DEAD]
         if not took:
             fails.append(f"{tag}: no life lost (clock={clock} x={x} y={y})")
-        if dead & 0x80:
-            fails.append(f"{tag}: b7 latch written (must be removed)")
-        if took and not (dead & 0x80):
-            print(f"  {tag}: kill, b7 clear (clock={clock} x={x} y={y})")
+        spent = any(spent_seen) or bool(W.mem.ram[I_DEAD] & 0x80)
+        if took and not spent:
+            fails.append(f"{tag}: kill did not mark the crunch spent (b7)")
+        if took and spent:
+            print(f"  {tag}: kill, crunch spent b7 (clock={clock} x={x} y={y})")
         return took
 
     expect_kill("kill  ", clock=8, x=8, y=68)
-    expect_kill("rekill", clock=8, x=8, y=68)     # no latch -> kills again
+    expect_kill("rekill", clock=8, x=8, y=68)     # no latch: a NEW visit kills again
     expect_kill("open  ", clock=240, x=8, y=68)   # retract half: still hot
     expect_kill("sealed", clock=192, x=38, y=68)  # n=10 reaches center
+
+    # --- 7b. parked after a kill (user 2026-10-28) -----------------------
+    # "HCrunch should stop (retracted) when it kills the player. It keeps moving
+    # and killing him again and again." LoseLife arms Hover ($FF) and DropArm
+    # drops him back to the SAME spot while the clock keeps running, so the
+    # crunch was extended again when he arrived. Contract: while Hover is set
+    # the prefix is parked retracted (P(1), clock held at 0, no kill) at ANY
+    # clock phase; clearing Hover (first thrust) restarts from the home dwell.
+    for clk in (8, 120, 192, 240):
+        pins.update(clock=clk, x=8, y=68, hover=0xFF)
+        W.mem.ram[I_DEAD] = 0
+        W.mem.ram[I_LIVES] = 3
+        run_frames(6)
+        pf = samples[-1][:3]
+        if W.mem.ram[I_LIVES] != 3:
+            fails.append(f"parked: killed while Hover set (clock={clk})")
+        if tuple(pf) != P_TRIPLE[1]:
+            fails.append(f"parked: PF band1=${pf[0]:02X}/${pf[1]:02X}/${pf[2]:02X} "
+                         f"at clock {clk}, want retracted P(1)")
+    # the clock is HELD: run 3 frames with the clock poked once, Hover armed
+    pins.update(clock=192, x=8, y=68, hover=0xFF)
+    run_frames(1)
+    for _ in range(3):
+        W.mem.ram[I_HOVER] = 0xFF
+        while True:
+            W.step()
+            if W.mem.bank == 0 and W.mpu.pc == W.PC_STARTFRAME:
+                break
+    if W.mem.ram[I_RAMP] > 8:
+        fails.append(f"parked: EnemyRamP={W.mem.ram[I_RAMP]} after 3 frames, "
+                     f"want the clock held near 0")
+    pins["hover"] = 0
+    print("  parked: Hover set -> retracted P(1), no kill, clock held")
+    # real flow, NO re-poking after the first frame: the kill arms Hover, DropArm
+    # drops him back to the same spot, the clock keeps running - ONE life only.
+    r = W.mem.ram
+    pins["hover"] = 0
+    r[W.I_ENCOUNT] = 0
+    r[I_ROOMX], r[I_ROOMY], r[I_RAMP], r[I_LIVES], r[I_HOVER] = 8, 68, 192, 3, 0
+    W.mem.swcha = 0xFF                      # no input: he stays pinned by Hover
+    for _ in range(420):                    # > a full 256f clock period + the drop
+        while True:
+            W.step()
+            if W.mem.bank == 0 and W.mpu.pc == W.PC_STARTFRAME:
+                break
+    if r[I_LIVES] != 2:
+        fails.append(f"once: lives={r[I_LIVES]} after one crunch kill and 420 "
+                     f"frames, want 2 (killed again and again)")
+    else:
+        print("  once: one kill costs one life (drop-in lands on a parked crunch)")
+    # user 2026-10-28 (2nd report): "still restarts after a while". The kill marks
+    # the crunch SPENT for the rest of the visit (EnemyDeadMask b7, cleared by
+    # EnterRoom): even with Hover released (first thrust) and the live clock
+    # running through a full period, it stays retracted and never kills again.
+    if not r[I_DEAD] & 0x80:
+        fails.append("spent: the kill did not leave EnemyDeadMask b7 set")
+    r[I_HOVER] = 0
+    pins["hover"] = 0
+    lives_before = r[I_LIVES]
+    for fr in range(600):                   # > 2 clock periods, he sits in band 1
+        r[I_ROOMX], r[I_ROOMY] = 8, 68
+        r[I_VYLO] = r[I_VYHI] = 0
+        W.mem.swcha = 0x7F
+        while True:
+            W.step()
+            if W.mem.bank == 0 and W.mpu.pc == HUD_JMP:
+                if tuple(r[a] for a in (PF0_B1, PF1_B1, PF2_B1)) != P_TRIPLE[1]:
+                    fails.append(f"spent: frame {fr}: band1 prefix grew again")
+                    break
+            if W.mem.bank == 0 and W.mpu.pc == W.PC_STARTFRAME:
+                break
+        if fails and fails[-1].startswith("spent: frame"):
+            break
+    if r[I_LIVES] != lives_before:
+        fails.append("spent: killed again after Hover was released")
+    else:
+        print("  spent: Hover released, clock cycling 600f: stays retracted")
+    r[I_DEAD] = 0                           # leaving the room (EnterRoom) clears it
+    expect_kill("resume", clock=8, x=8, y=68)     # Hover cleared -> hot again
 
     # --- 9/10/11. gates -------------------------------------------------
     def expect_clear(tag, clock, x, y, frames=6):
@@ -252,6 +345,39 @@ def main() -> None:
     expect_clear("band0", clock=8, x=0, y=12)
     expect_clear("band2", clock=192, x=0, y=116)
     expect_clear("nohit", clock=8, x=70, y=68)
+
+    # --- 9b. touch from above / below (user 2026-10-28) ------------------
+    # "the player should be able to touch the top and bottom parts of the
+    # hcrunch ... land over it, or touch your head against it. From the sides,
+    # instant death." A 1 px vertical step that first overlaps the crunch band
+    # (feet on the band's first line / head on its last line) is a plain wall.
+    # Band 1 = lines 36-71, PLAYER_SPRITE_H 22: feet line = y+21, head = y.
+    expect_clear("land1 ", clock=8, x=8, y=36 - 21)      # feet on line 36
+    expect_clear("head1 ", clock=8, x=8, y=71)           # head on line 71
+    expect_clear("land1w", clock=192, x=8, y=36 - 21)    # same, crunch extended
+    expect_clear("head1w", clock=192, x=8, y=71)
+    expect_kill("side1a", clock=8, x=8, y=36 - 21 + 1)   # 1 px deeper: a side hit
+    expect_kill("side1b", clock=8, x=8, y=70)
+
+    # --- 9c. band 2 crunch (record y = 2): the generator puts it there when the
+    # player first enters the room from BELOW; band 3 (record y = 2) when from
+    # ABOVE. (Test names use the 0-based row the code uses.)
+    W.mem.ram[rec + 2 - 0x80] = 2
+    pf2 = lambda: tuple(W.mem.ram[a] for a in (0xC5 & 0x7F, 0xC9 & 0x7F, 0xCD & 0x7F))
+    for clk in (8, 120, 192):
+        probe(clk, x=70, y=20)
+        want = P_TRIPLE[covered(clk)]
+        want = (want[0] | 0x30, want[1], want[2])     # pair 0 stays solid
+        if pf2() != want:
+            fails.append(f"row2 curve clock={clk}: PF band 2={pf2()}, want "
+                         f"{want}")
+    expect_kill("row2  ", clock=8, x=8, y=104)           # inside band 2: dies
+    expect_clear("land2 ", clock=8, x=8, y=72 - 21)
+    expect_clear("head2 ", clock=8, x=8, y=107)
+    expect_kill("side2a", clock=8, x=8, y=72 - 21 + 1)
+    expect_kill("side2b", clock=8, x=8, y=106)
+    expect_clear("row2/1", clock=8, x=8, y=12)           # band 0 only: nothing
+    W.mem.ram[rec + 2 - 0x80] = 1
 
     # --- 12. no growth push ---------------------------------------------
     def probe_push(clock, x, y):
@@ -285,12 +411,12 @@ def main() -> None:
     b3 = (SRC / "bank3.asm").read_text()  # C7: the crunch walkers are bank3
     ph = b3[b3.index("PhHcrEntry:"):]
     ph = ph[:ph.index("; Prefix tables")]
-    if "(FetchPtr),Y" in ph:
-        fails.append("PhHcrEntry still reads record fields")
+    if ph.count("(FetchPtr),Y") != 1:
+        fails.append("PhHcrEntry must read exactly the band byte of the record")
     hov = b3[b3.index(".HFh_begin:"):]
     hov = hov[:hov.index(".HFkill:")]
-    if "(FetchPtr),Y" in hov or "LineCount" in hov:
-        fails.append("the $82 HOV handler still reads record fields")
+    if hov.count("(FetchPtr),Y") != 1 or "LineCount" in hov:
+        fails.append("the $82 HOV handler must read exactly the band byte")
     if "HcrPush:" in b3:
         fails.append("HcrPush still present")
     stream = FX.M4_STREAM
@@ -303,8 +429,8 @@ def main() -> None:
         for f in fails:
             print("  " + f)
         sys.exit(1)
-    print("test_hcrunch: OK (fixed band1/10 prefix, always hot, no push, "
-          "no latch)")
+    print("test_hcrunch: OK (fixed band1/10 prefix, hot, no push, parked after a "
+          "kill until the room is left)")
 
 
 if __name__ == "__main__":

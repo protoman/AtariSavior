@@ -1357,6 +1357,10 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; --- Return to bank0 via fold-pad ---
     jmp $FC70
 
+; Level banner digits * 8 for the 1-based number Level+1 (indexed by Level, 0..19).
+LvOnes8: .byte 8,16,24,32,40,48,56,64,72,0,8,16,24,32,40,48,56,64,72,0
+LvTens8: .byte 0,0,0,0,0,0,0,0,0,8,8,8,8,8,8,8,8,8,8,16
+
 ; HUD squares (2026-10-26): QUAD-size players, one pattern bit = 4 px, so squares
 ; on every other bit sit 8 px apart. SquarePat[n] = n squares from the left
 ; (lives 0..4 per player, P0 then P1 = up to 8; bombs 0..5; the 5th bomb is missile 0). MinerPat[mask] = the
@@ -2567,25 +2571,10 @@ SetupScorePointers:
     sta scorePtr2
     lda #0                     ; hundreds '0'
     sta scorePtr3
-    lda Level
-    clc
-    adc #1                     ; 1-based level number
-    ldx #0
-.LVTens:
-    cmp #10
-    bcc .LVTensDone
-    sbc #10
-    inx
-    bne .LVTens
-.LVTensDone:
-    asl
-    asl
-    asl                        ; ones * 8
-    sta scorePtr5
-    txa
-    asl
-    asl
-    asl                        ; tens * 8
+    ldx Level                  ; 0-based; tables hold the 1-based number's digits * 8
+    lda LvOnes8,X              ; (a div-10 loop cost +12c per tens digit: level 20's
+    sta scorePtr5              ;  banner ran a whole scanline long, 273-line frames)
+    lda LvTens8,X
     sta scorePtr4
     lda #<DigitGfx+80          ; glyph 10 = blank (trailing slot)
     sta scorePtr6

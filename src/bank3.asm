@@ -114,6 +114,8 @@ EnemyRamY = $E2                  ; live Y (refreshed this overscan — after
                                  ; the bank1 HUD score-ptr stomp; S3.4)
 TILE_COLUMNS = 20
 RoomY = $81                    ; player Y — LaserHitTest vertical window
+PLAYER_SPRITE_H = 22           ; must match kernel.asm
+HCR_BAND_H = 36                ; scanlines per cave band (YToRowTable: 9 x 4)
 PF0Buf = $C3                   ; PF render buffers rows 0-2 ($C3-$CF) —
                                 ; cell map read here; must match kernel.asm
 PlayerDir = $82                ; must match kernel.asm — S6 LWC tip direction
@@ -378,7 +380,7 @@ ExtrasLoad:
 .EXLfeat:
     ; --- feature cells: the PF pairs the retired per-room block carried.
     ;     A hcrunch entry ($80 kind) covers cols 0..col (contiguous prefix);
-    ;     a phase entry ($40 kind) is one cell. Row is always band 1. ---
+    ;     a phase entry ($40 kind) is one cell. Row: 1, or 2 for a hcrunch with b4. ---
     ldy #0
     lda (FetchPtr),Y
     lsr
@@ -395,8 +397,8 @@ ExtrasLoad:
     tay                             ; Y = first feature byte
 .EXLfeatLoop:
     lda (FetchPtr),Y
-    sta LevelConnSpare              ; kind b7-6 | col b3-0
-    and #$3F
+    sta LevelConnSpare              ; kind b7-6 | row b4 | col b3-0
+    and #$0F
     sta Temp                        ; current col
 .EXLfeatCol:
     ldx Temp
@@ -410,9 +412,16 @@ ExtrasLoad:
     bcc .EXLfOff
     lda #8
 .EXLfOff:
-    clc
-    adc #1                          ; row 1 in the 4-row (stride-4) buffer
-    tax
+    sta CollisionX                  ; group offset
+    lda LevelConnSpare
+    and #$10                        ; b4 = hcrunch row 2 (band 3)
+    lsr
+    lsr
+    lsr
+    lsr
+    sec
+    adc CollisionX                  ; +1 (+1 more for row 2): row in the
+    tax                             ;   4-row (stride-4) buffer
     lda PF0Buf,X
     ora RectCount
     sta PF0Buf,X
@@ -891,16 +900,26 @@ PhMaskTab:
 PhHcrEntry:
     tya
     pha                     ; [base] — PhRec needs Y = base+4
+    iny
+    iny
+    lda (FetchPtr),Y        ; record band byte: the crunch row (1 or 2)
+    pha                     ; [base, row]
     lda #10
     tax                     ; full = 10 cells
     jsr HcrClock            ; A = n covered (1..10); X/Y preserved
     tay                     ; Y = n
+    pla
+    tax                     ; X = crunch row (stride-4 buffer offset)
     lda CrPfx0,Y
-    sta PF0Buf+1
+    cpx #2
+    bcc .PhPf0
+    ora #$30                ; band 3 crunch: pair 0 stays solid - the room's
+.PhPf0:                     ;   only side link is on the middle band
+    sta PF0Buf,X
     lda CrPfx1,Y
-    sta PF1Buf+1            ; band 1 (hcrunch) — stride-4 label form
+    sta PF1Buf,X
     lda CrPfx2,Y
-    sta PF2Buf+1
+    sta PF2Buf,X
     pla
     clc
     adc #4
@@ -944,7 +963,26 @@ CrPfx2:
 ; 2026-10-16). Both callers pass full=10 (PhHcrEntry stages it, HOV
 ; tests it); the latch freeze was removed with the 2026-10-19 contract.
 ; ==============================================================================
+; PARKED (user 2026-10-28: "HCrunch should stop (retracted) when it kills the player.
+; It keeps moving and killing him again and again", then "still restarts after a
+; while"). LoseLife arms Hover ($FF) and DropArm drops him back to the SAME spot while
+; this clock kept running, so the prefix was extended again on arrival. Two parks:
+;   * Hover set (any death in this room): held retracted until his first thrust;
+;   * EnemyDeadMask b7 = crunch SPENT: a hcrunch kill sets it (.HFkill) and it stays
+;     retracted for the rest of the visit - EnterRoom clears the mask, so the crunch
+;     cycles again the next time he enters the room (or after a game-over reload).
+; Parked = n=1 (clock pinned at 0); the kill test skips while parked too.
 HcrClock:
+    lda EnemyDeadMask
+    bmi .hcPark                 ; spent this visit
+    lda Hover
+    beq .hcLive
+.hcPark:
+    lda #0
+    sta EnemyRamP       ; clock pinned: resumes at the home dwell
+    lda #1
+    rts
+.hcLive:
     cpx #1
     bne .hcN
     lda #1              ; full=1: n always 1
@@ -1314,17 +1352,46 @@ HOVFeatEntry:
     jmp .HFmiss                 ; $81 and unknown classes are inert
 .HFh_begin:
 
-    ; ---------------- $82 hcrunch: fixed band 1 + fixed 10-cell prefix ---
-    ; Record fields ignored (user decision 2026-10-19): the band is always
-    ; band 1 and the prefix is always 10 cells. ALWAYS HOT: any overlap of
-    ; the player box with the covered prefix kills, at any phase/extent
-    ; (the clock animation only moves the covered prefix).
-    lda CollisionCellY
-    cmp #2                      ; top row below band1 → miss
-    bcs .HFmissD
-    lda CollisionEndY
-    cmp #1                      ; bottom row above band1 → miss
-    bcc .HFmissD
+    ; ---------------- $82 hcrunch: band row from the record, fixed 10-cell prefix
+    ; The record's band byte is the crunch row: 1 (band 2) or 2 (band 3), chosen
+    ; by the generator from how the player first enters the room (user
+    ; 2026-10-28). Prefix = always 10 cells (record x/w/h ignored). ALWAYS HOT
+    ; from the SIDES: any overlap of the player box with the covered prefix
+    ; kills, at any phase/extent. A VERTICAL touch is a plain wall: the feet
+    ; reach the band's first line (landing on it) or the head its last line
+    ; (bumping it from below). The walk steps 1 px at a time, so the first
+    ; overlapping pixel is exact. A hot room's band 2 never gets here: the hot
+    ; sweep in HotOverlapBody already killed.
+    iny
+    iny
+    lda (FetchPtr),Y            ; B = crunch row (1/2)
+    tax
+    cmp CollisionCellY
+    bcc .HFmissD                ; top row below the band → miss
+    cpx CollisionEndY
+    beq .HFin
+    bcs .HFmissD                ; bottom row above the band → miss
+.HFin:
+    lda Hover
+    bne .HFmissD                ; parked after a death: the prefix is harmless
+    lda EnemyDeadMask
+    bmi .HFmissD                ; spent: it already killed him this visit
+    ldy #HCR_BAND_H
+    cpx #2
+    bcc .HFb1
+    ldy #2*HCR_BAND_H           ; first line of the band (36 or 72)
+.HFb1:
+    sty CollisionX
+    lda RoomY
+    clc
+    adc #PLAYER_SPRITE_H - 1    ; feet line
+    cmp CollisionX
+    beq .HFmissD                ; feet on the first line: standing on it
+    lda RoomY
+    sec
+    sbc #HCR_BAND_H - 1         ; head line - 35
+    cmp CollisionX
+    beq .HFmissD                ; head on the last line: touching from below
     ldx #10
     jsr HcrClock                ; A = n covered cells; X/Y preserved
     asl                         ; 2n = covered 4px cols from col 0
@@ -1337,6 +1404,9 @@ HOVFeatEntry:
     jmp .HFmissD
 
 .HFkill:
+    lda EnemyDeadMask
+    ora #$80                    ; crunch spent for this visit (EnterRoom clears)
+    sta EnemyDeadMask
     jmp HOVlegHit               ; loop Y still on the stack (popped there)
 .HFmissD:
 .HFmiss:

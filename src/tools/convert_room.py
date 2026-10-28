@@ -303,10 +303,10 @@ def hot_records(rows: list[str], hot_m1: list[tuple[int, int]] | None = None,
         feats.append(f"  .byte $80, {2 * c}, {r}, 2, 1  ; phase cell")
     if c_cells:
         bands = {r for r, _ in c_cells}
-        if bands != {1}:
+        if bands not in ({1}, {2}):
             raise ValueError(
                 f"{source}: hcrunch cells at rows {sorted(bands)} — the "
-                "crunch band must be the middle band (row 1)")
+                "crunch band must be row 1 (band 2) or row 2 (band 3)")
         cols = sorted(c for _, c in c_cells)
         if cols != list(range(cols[-1] + 1)):
             raise ValueError(

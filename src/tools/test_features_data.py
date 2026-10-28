@@ -177,10 +177,14 @@ def main() -> int:
         lambda: emitted(model(grid(["P" + "." * 9, "." * 10, "." * 10]))),
         "special features live on the middle band")
 
-    # hcrunch off row 1 = hard error
+    # hcrunch on row 0 = hard error; row 2 (band 3) is allowed since
+    # 2026-10-28 and its record carries the row in y
     expect_reject(
-        lambda: emitted(model(grid(["." * 10, "." * 10, "CCCC" + "." * 6]))),
+        lambda: emitted(model(grid(["CCCC" + "." * 6, "." * 10, "." * 10]))),
         "special features live on the middle band")
+    count, recs = hot_records(emitted(model(
+        grid(["." * 10, "." * 10, "CCCC" + "." * 6]))))
+    assert count == 1 and recs == [(0x82, 0, 2, 8, 1)], (count, recs)
     # hcrunch prefix cols 0-3 on the middle band -> one $82 record
     count, recs = hot_records(emitted(model(
         grid(["." * 10, "CCCC" + "." * 6, "." * 10]))))
@@ -193,7 +197,7 @@ def main() -> int:
         lambda: convert_room.lines(["." * 10, "CC" + "." * 8,
                                     "CC" + "." * 8],
                                    prefix="M91", source="test"),
-        "crunch band must be the middle band")
+        "crunch band must be row 1")
     expect_reject(
         lambda: emitted(model(grid(["." * 10, ".C.C" + "." * 6,
                                     "." * 10]))),

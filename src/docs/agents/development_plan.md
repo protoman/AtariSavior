@@ -109,21 +109,20 @@ was the disproven claim.
       every frame and no jet could slow a fall. Guard: `tools/test_jet_clamp.py`
       (ROM-level — model-based tests use a proper `>` compare and cannot see it).
 - [x] Inertia (momentum — subpixel accumulator PlayerYSub)
-- [ ] Fuel management (no fuel system; the power bar is the game TIMER)
 - [x] Vertical collision with ceiling (StepUp stops flush)
 
 ### Phase 9: Polish
 - [x] Sound effects (engine buzz, bomb drop/explode, laser — test_laser_sound.py)
-- [ ] Music (background theme)
 - [x] Color schemes per level (LevelWallColor/LevelWallColor2 from level data)
-- [ ] Screen transitions
 - [x] Title screen (level select: DROP-IN sentinel, SELECT/RESET console switches)
-- [ ] Game over screen
-- [ ] Difficulty settings
+- [x] Extra life every 50,000 points, max 8 lives, score to 999,999 (2026-10-27)
 
 ### Phase 10: Levels & Content
-- [ ] Design 5+ levels with increasing difficulty
-- [ ] Level-specific enemy patterns
-- [ ] Boss encounters
-- [ ] Secret rooms/areas
-- [ ] High score tracking
+- [x] 20 generated levels (`Build20LevelStage`), enemy speed x1..x2.5 every 5 levels
+
+### Remaining for 1.0 (user ruling 2026-10-27)
+Music, screen transitions, game over screen, difficulty settings, bosses,
+secret rooms and level-specific enemy patterns are CUT from scope.
+- [ ] SaveKey support (Atari 2600 save-key / AtariVox EEPROM): save the game
+      and the high score. Needs a design pass first (I2C bit-bang on SWCHA,
+      ROM/zero-page budget in bank1, test with a py65 EEPROM model).

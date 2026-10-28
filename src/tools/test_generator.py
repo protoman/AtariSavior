@@ -227,12 +227,43 @@ def main() -> int:
                 # used tiles[-10:] = band 4, a leftover of the 3-row layout,
                 # so a 2-cell gap under the crunch (levels 17/19, model 92)
                 # passed while the generator checked the same wrong row.
-                top, bottom = tiles[:10], tiles[20:30]
+                crow = next(c[0] for c in room["feature_cells"] if c[2] == 12)
+                top = tiles[(crow - 1) * 10:crow * 10]
+                bottom = tiles[(crow + 1) * 10:(crow + 2) * 10]
                 if longest_run(top) < 4 or longest_run(bottom) < 4:
                     print(f"FAIL: level {level_n} room {room['room_id'] + 1} has a "
-                          f"hcrunch but a short gap above/under band 2 (band-1 "
-                          f"run {longest_run(top)}, band-3 run "
+                          f"hcrunch on row {crow} but a short gap above/under it "
+                          f"(above run {longest_run(top)}, under run "
                           f"{longest_run(bottom)}, need >= 4)")
+                    return 1
+                # --- band by FIRST ENTRY (user 2026-10-28) -------------------
+                # He arrives falling (from the room above) -> band 3 (row 2);
+                # arrives climbing (from below) -> band 2 (row 1); a room first
+                # entered from the side never hosts a hcrunch.
+                grid = {(r["room_x"], r["room_y"]): r for r in level["rooms"]}
+                start = (level["rooms"][0]["room_x"], level["rooms"][0]["room_y"])
+                dist = {start: 0}
+                queue = [start]
+                for cur in queue:
+                    for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+                        nxt = (cur[0] + dx, cur[1] + dy)
+                        if nxt in grid and nxt not in dist:
+                            dist[nxt] = dist[cur] + 1
+                            queue.append(nxt)
+                me = (room["room_x"], room["room_y"])
+                above, below = (me[0], me[1] - 1), (me[0], me[1] + 1)
+                if dist.get(above, 99) == dist[me] - 1:
+                    want = 2
+                elif dist.get(below, 99) == dist[me] - 1:
+                    want = 1
+                else:
+                    print(f"FAIL: level {level_n} room {room['room_id'] + 1} has a "
+                          f"hcrunch but the player first enters it from the side")
+                    return 1
+                if crow != want:
+                    print(f"FAIL: level {level_n} room {room['room_id'] + 1} "
+                          f"hcrunch on row {crow}, want {want} (entered from "
+                          f"{'above' if want == 2 else 'below'})")
                     return 1
 
         # --- phase walls are HORIZONTAL obstacles only (user 2026-10-27) -----
@@ -673,6 +704,14 @@ def main() -> int:
                               f"enemy type {enemy['type']} at cell {cell}/"
                               f"band {band} is inside a wall ({here!r})")
                         return 1
+                    # an 8 px sprite on an ODD 4 px column straddles two cells
+                    # (user 2026-10-28, level 14 room 8: a bat half in the wall)
+                    if int(enemy["type"]) not in (2, 7, 6, 15) \
+                            and int(round(float(enemy["x"]))) % 2:
+                        print(f"FAIL: level {level_n} room {room['room_id']}: "
+                              f"enemy type {enemy['type']} on odd column "
+                              f"{enemy['x']} straddles two cells")
+                        return 1
                 for lamp in room.get("lamps") or []:
                     cell = int(float(lamp["x"])) // 2
                     band = int(float(lamp["y"])) // units
@@ -722,9 +761,9 @@ def main() -> int:
                           f"mixes feature kinds {sorted(kinds)}")
                     return 1
                 for cell in feats:
-                    if len(cell) != 3 or cell[0] != 1:
+                    if len(cell) != 3 or cell[0] not in ((1, 2) if cell[2] == 12 else (1,)):
                         print(f"FAIL: level {level_n} room {room['room_id']} "
-                              f"feature {cell} is not on row 1")
+                              f"feature {cell} is not on row 1 (hcrunch: 1 or 2)")
                         return 1
                 if 12 in kinds:
                     objs = (len(room.get("enemies") or [])

@@ -66,7 +66,7 @@ assert "lda (Grp0Ptr),Y" in cave and "sta GRP0" in cave, \
 # --- TitleBand: band 1 + band 2 from the stage buffers, logo, footer, HUD -
 title = section(bank1, "TitleBand:", "TitleFont:")
 for row in ("PF0Buf+1", "PF1Buf+1", "ColupfBuf+1", "PF2Buf+1", "BandTab+1",
-            "PF0Buf+2", "PF1Buf+2", "ColupfBuf+2", "PF2Buf+2", "BandTab+2"):
+            "PF0Buf+3", "PF1Buf+3", "ColupfBuf+3", "PF2Buf+3", "BandTab+3"):
     assert f"lda {row}" in title, f"TitleBand must draw the stage from {row}"
 assert "lda PF0Buf\n" not in title and "PF0Buf+0" not in title, \
     "band 0 belongs to the cave kernel — TitleBand must not redraw it"
