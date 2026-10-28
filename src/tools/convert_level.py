@@ -932,16 +932,70 @@ def enemy_x_px(column: float) -> int:
     return target + 4 if target < 11 else target + 7
 
 
-def spider_forced_dir(y_rows: float) -> int:
-    """+1 / -1 when a spider at this y (12-px rows) must sweep down / up to keep
-    its 24 px sweep and 15-row sprite inside the 144-px cave, else 0 (free).
-    Same rule as the editor's SpiderForcedDir (LevelData.hpp)."""
+def spider_forced_dir(y_rows: float, rows: list | None = None,
+                      col: int = 0) -> int:
+    """+1 / -1 when a spider at this y (12-px rows) must sweep down / up, else 0.
+
+    A direction is blocked when its swept extent leaves the 144-px cave (sweep
+    24 px, 15-row sprite) or, given the room's band `rows` ('#'/'H' = wall) and
+    the spider's display column, touches a wall cell above/below it (the 8 px
+    sprite covers col and col+1). Exactly one blocked direction forces the other.
+    Same rule as the editor's SpiderForcedDirIn (LevelData.hpp).
+    """
     top = px(y_rows, 12)
-    can_down = top + 24 + 15 <= 144
-    can_up = top - 24 >= 0
+
+    def blocked(lo: int, hi: int) -> bool:
+        if lo < 0 or hi > 143:
+            return True
+        if not rows:
+            return False
+        band_px = 144 // len(rows)
+        for b in range(lo // band_px, min(hi // band_px, len(rows) - 1) + 1):
+            for c in (col, col + 1):
+                c = max(0, min(39, c))
+                f = c // 2
+                cell = f if f < 10 else 19 - f
+                if 0 <= cell < len(rows[b]) and rows[b][cell] in "#H":
+                    return True
+        return False
+
+    can_down = not blocked(top, top + 24 + 14)
+    can_up = not blocked(top - 24, top + 14)
     if can_down and not can_up:
         return 1
     if can_up and not can_down:
+        return -1
+    return 0
+
+
+def moth_forced_dir(y_rows: float, rows: list | None, col: int) -> int:
+    """+1 / -1 when a moth's FIRST leg must go right / left, else 0.
+
+    The moth patrols spawn +-8 columns (32 px) and turns at walls and the
+    screen edge; a side is blocked when a wall (in the bands its 14-row sprite
+    and +-6 px bob touch) or the screen edge lies in that range. Exactly one
+    blocked side forces the other. Same rule as the editor's MothForcedDirIn.
+    """
+    top = px(y_rows, 12)
+
+    def wall_at(c: int) -> bool:
+        if c < 0 or c > 39:
+            return True
+        if not rows:
+            return False
+        band_px = 144 // len(rows)
+        lo = max(0, min(143, top - 6)) // band_px
+        hi = max(0, min(143, top + 13 + 6)) // band_px
+        f = c // 2
+        cell = f if f < 10 else 19 - f
+        return any(0 <= cell < len(rows[b]) and rows[b][cell] in "#H"
+                   for b in range(lo, min(hi, len(rows) - 1) + 1))
+
+    right = any(wall_at(col + 1 + k) for k in range(1, 9))
+    left = any(wall_at(col - k) for k in range(1, 9))
+    if left and not right:
+        return 1
+    if right and not left:
         return -1
     return 0
 
@@ -1383,10 +1437,24 @@ def _enemy_tables(prefix: str, rooms: list[dict],
             # `cmp #RAFT` in the bomb blast miss, so a dir=right raft could be
             # destroyed by its own rider's bomb.
             direction = 0 if type_ in (RAFT_ENTITY, POWER_CELL) else int(enemy.get("dir", 1))
+            if type_ == 4:
+                # MOTH: dir = its first horizontal leg; never first into a wall
+                # or off the screen (user 2026-10-28)
+                try:
+                    _mrows = rows_from_json(room, models_by_id)
+                except ValueError:
+                    _mrows = None
+                direction = (moth_forced_dir(float(enemy.get("y", 0)), _mrows,
+                                             int(round(x))) or direction)
             if type_ == 0:
                 # SPIDER: dir right = sweeps down first, left = up first (kernel
                 # DeriveEnemyY). Near the cave edge the direction is forced.
-                direction = (spider_forced_dir(float(enemy.get("y", 0)))
+                try:
+                    _srows = rows_from_json(room, models_by_id)
+                except ValueError:
+                    _srows = None
+                direction = (spider_forced_dir(float(enemy.get("y", 0)), _srows,
+                                               int(round(x)))
                              or direction)   # an extra miner KEEPS his dir: record b7 = faces left (S1Fin mirrors him)
             flat.append((
                 type_,

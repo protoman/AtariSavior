@@ -446,11 +446,24 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
             }
             // Bottom band: air on last row shows the room's band COLUBK
             // (walls stay wall-colored — matches game: COLUBK only in open PF).
-            if (room && room->bottom_band && modelY == roomHeight - 1 &&
-                tileType == (int)hero::TileType::AIR) {
-                color = QColor(room->bottom_r, room->bottom_g, room->bottom_b);
+            // The game draws the water only as the band's LAST 12 of 36 scanlines
+            // (the tide moves it 0-3 lines); above it the band is open air that
+            // a raft floats in. So: the band's last canvas row is water, the
+            // row above it only in its lower third.
+            const bool waterCell = room && room->bottom_band &&
+                modelY == roomHeight - 1 &&
+                tileType == (int)hero::TileType::AIR;
+            const QColor waterColor = waterCell
+                ? QColor(room->bottom_r, room->bottom_g, room->bottom_b) : color;
+            if (waterCell && (y % 4) == 3) {
+                color = waterColor;
             }
             painter.fillRect(tileRect, color);
+            if (waterCell && (y % 4) == 2) {
+                painter.fillRect(tileRect.x(), tileRect.y() + tileRect.height() * 2 / 3,
+                                 tileRect.width(), tileRect.height() - tileRect.height() * 2 / 3,
+                                 waterColor);
+            }
 
             // D7 grid: one model cell = 2 display cols, so the grid border
             // and per-cell decorations are drawn once per cell (even dcol =
@@ -547,8 +560,8 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
                     && enemy.type != (int)hero::EnemyType::KEY) {
                 // the cell and the key have no facing; miners DO (per-slot REFP1)
                 const bool spider = enemy.type == (int)hero::EnemyType::SPIDER;
-                // a spider near the cave edge is forced to sweep inward
-                const int forced = spider ? hero::SpiderForcedDir(enemy.y) : 0;
+                // a spider/moth next to a wall or the cave edge is forced away
+                const int forced = ForcedDirAt(enemy.type, enemy.y, (int)enemy.x);
                 DrawFacingArrow(painter, er.toRect(), forced ? forced : enemy.dir,
                                 spider);
             }
@@ -1091,13 +1104,14 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
 
         eData.x = (float)entityX;
         eData.y = snapY >= 0.0f ? snapY : YOfRow(tileY, displayRows);
+        // the kernel floats the raft ON the water surface (plank top = line 131)
+        if (eData.type == (int)hero::EnemyType::RAFT) eData.y = 131.0f / 12.0f;
         eData.range_min = (float)std::max(0, entityX - 3);
         eData.range_max = (float)std::min(displayColumns - 1, entityX + 3);
         eData.speed = 1.5f;
         eData.dir = m_initialFacing;
-        if (eData.type == (int)hero::EnemyType::SPIDER &&
-            hero::SpiderForcedDir(eData.y) != 0)
-            eData.dir = hero::SpiderForcedDir(eData.y);   // never sweep out of the cave
+        if (ForcedDirAt(eData.type, eData.y, (int)eData.x) != 0)
+            eData.dir = ForcedDirAt(eData.type, eData.y, (int)eData.x);   // never first move into a wall/edge
 
         // Door-room + tentacle rules (user rule 2026-10-14): a door room
         // allows ONE non-key enemy and nothing else; tentacles live in
@@ -1197,11 +1211,11 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                                     "erase it first."));
                     return;
                 }
-                // a spider's dir is its first sweep (right = down, left = up);
-                // near the cave top/bottom it is forced and cannot be changed
-                if (e.type == (int)hero::EnemyType::SPIDER &&
-                    hero::SpiderForcedDir(e.y) != 0) {
-                    e.dir = hero::SpiderForcedDir(e.y);
+                // a spider's dir is its first sweep (right = down, left = up), a
+                // moth's its first leg; next to a wall / the cave edge it is
+                // forced away from it and cannot be changed
+                if (ForcedDirAt(e.type, e.y, (int)e.x) != 0) {
+                    e.dir = ForcedDirAt(e.type, e.y, (int)e.x);
                     update();
                     return;
                 }
@@ -1303,6 +1317,20 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
             }
         }
     }
+}
+
+// First-move direction an enemy at (y, col) is forced to, 0 = free: a spider
+// (+1 down / -1 up) next to the cave edge or a wall above/below its 24 px
+// sweep, a moth (+1 right / -1 left) next to a wall or the screen edge on its
+// 8-column patrol. Other types are never forced.
+int MapCanvas::ForcedDirAt(int type, float y, int col) const {
+    Geo g;
+    if (type == (int)hero::EnemyType::SPIDER)
+        return GetGeo(g) ? hero::SpiderForcedDirIn(*g.model, y, col)
+                         : hero::SpiderForcedDir(y);
+    if (type == (int)hero::EnemyType::GIANT_MOTH && GetGeo(g))
+        return hero::MothForcedDirIn(*g.model, y, col);
+    return 0;
 }
 
 bool MapCanvas::GetGeo(Geo& g) const {
@@ -1481,10 +1509,10 @@ void MapCanvas::DragTo(const QPointF& pos) {
                 const float d = (float)(c - (int)e.x);
                 e.x = (float)c;
                 e.y = seated ? 3.0f * (float)std::min(row / 4, 2) + 2.25f
-                             : YOfRow(row, g.rows);
-                if (type == (int)hero::EnemyType::SPIDER &&
-                    hero::SpiderForcedDir(e.y) != 0)
-                    e.dir = hero::SpiderForcedDir(e.y);
+                    : type == (int)hero::EnemyType::RAFT ? 131.0f / 12.0f
+                    : YOfRow(row, g.rows);
+                if (ForcedDirAt(type, e.y, (int)e.x) != 0)
+                    e.dir = ForcedDirAt(type, e.y, (int)e.x);
                 e.range_min = std::max(0.0f, e.range_min + d);
                 e.range_max = std::min((float)g.cols - 1, e.range_max + d);
             } else if (m_dragKind == EntKind::Lamp) {
@@ -1546,8 +1574,7 @@ void MapCanvas::mouseReleaseEvent(QMouseEvent* event) {
                     (m_currentBrush == BrushTool::ADD_MOTH && e.type == (int)hero::EnemyType::GIANT_MOTH) ||
                     (m_currentBrush == BrushTool::ADD_MINER2 && e.type == (int)hero::EnemyType::EXTRA_MINER);
                 if (sameBrush) {
-                    const int forced = e.type == (int)hero::EnemyType::SPIDER
-                                           ? hero::SpiderForcedDir(e.y) : 0;
+                    const int forced = ForcedDirAt(e.type, e.y, (int)e.x);
                     e.dir = forced ? forced : m_initialFacing;
                     emit levelModified();
                     update();

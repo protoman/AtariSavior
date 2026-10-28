@@ -1451,9 +1451,12 @@ BarFineTable:           ; (B+7)>>3, 15 entries; ∈{0,1,2,3,4}
 ; column A solid? Reflect mapping: CTRLPF $35 (reflect) is the cave default and
 ; a raft room has no door/bar band to switch it off. IN: A = display col 0..39.
 ; OUT: Z=1 open (water) / Z=0 solid. Clobbers A/Y.
-;   cols 0-3   -> PF0 row 2 ($C5), bit 4+col (PF0 bit 4 = leftmost pixel)
-;   cols 4-11  -> PF1 row 2 ($C8), bit 7-(col-4)
-;   cols 12-19 -> PF2 row 2 ($CB), bit col-12
+;   cols 0-3   -> PF0 row 3 ($C6), bit 4+col (PF0 bit 4 = leftmost pixel)
+;   cols 4-11  -> PF1 row 3 ($CA), bit 7-(col-4)
+;   cols 12-19 -> PF2 row 3 ($CE), bit col-12
+; (row 3 = the bottom/water band of a 4-band room. These read $C5/$C8/$CB, the
+; rows of the old 3-band stride-3 layout, until 2026-10-28: the raft then turned
+; at ceiling/ledge cells that were not on its water row.)
 ;   cols 20-39 -> the mirrored half: source = 39-col
 RaftCellSolid:
     cmp #20
@@ -1466,15 +1469,15 @@ RaftCellSolid:
     lda RaftCellMasks,Y
     cpy #4
     bcs .RCPF1
-    and $C5
+    and $C6                     ; PF0Buf+3: the water row (4 bands; was +2 = band 3)
     rts
 .RCPF1:
     cpy #12
     bcs .RCPF2
-    and $C8
+    and $CA                     ; PF1Buf+3 (stride 4; $C8 was row 1)
     rts
 .RCPF2:
-    and $CB
+    and $CE                     ; PF2Buf+3 (stride 4; $CB was row 0)
     rts
 
 RaftBitTab:                     ; 1 << slot (EnemyBitTable is bank0's ROM, so a

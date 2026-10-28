@@ -332,6 +332,7 @@ def main() -> int:
     assert ".byte $06, " in tbl, f"KEY type missing:\n{tbl}"
     # lamp stays 5 and type range check in verify_build allows 0-4,6
     rooms[0]["enemies"][0]["type"] = 4
+    rooms[0]["enemies"][0]["x"] = 20.0       # mid screen: the moth's first leg is free
     assert ".byte $04, " in "\n".join(
         convert_level._enemy_tables("LEVEL1", rooms))
     # dir left must set b7 of the type byte (the loader reads it there)

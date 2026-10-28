@@ -718,12 +718,41 @@ def main() -> int:
                     if int(enemy["type"]) == 0:
                         top = int(round(float(enemy["y"]) * 12))
                         d = int(enemy.get("dir", 1))
-                        if (d >= 0 and top + 24 + 15 > 144) \
-                                or (d < 0 and top - 24 < 0):
+                        forced = C.spider_forced_dir(
+                            float(enemy["y"]), band_rows,
+                            int(round(float(enemy["x"]))))
+                        if forced and (d >= 0) != (forced > 0):
                             print(f"FAIL: level {level_n} room "
                                   f"{room['room_id']}: spider at y="
                                   f"{enemy['y']} ({top} px) faces dir {d} and "
                                   "its sweep leaves the screen")
+                            return 1
+                    if int(enemy["type"]) == 7:        # raft (user 2026-10-28)
+                        rcell = int(float(enemy["x"])) // 2
+                        shafts = [c for c in range(1, len(band_rows[0]))
+                                  if all(r[c] == "." for r in band_rows)]
+                        above = [c for c in range(1, len(band_rows[0]))
+                                 if band_rows[-1][c] == "."
+                                 and band_rows[-2][c] == "."]
+                        want = (shafts or above or [rcell])[0]
+                        if int(round(float(enemy["y"]) * 12)) != 131 \
+                                or band_rows[-1][rcell] != "." \
+                                or rcell != want:
+                            print(f"FAIL: level {level_n} room "
+                                  f"{room['room_id']}: raft at x={enemy['x']} "
+                                  f"y={enemy['y']} must float on the water "
+                                  f"surface (y px 131) under the drop shaft "
+                                  f"(cell {want})")
+                            return 1
+                    if int(enemy["type"]) == 4:        # moth: first leg
+                        forced = C.moth_forced_dir(
+                            float(enemy["y"]), band_rows,
+                            int(round(float(enemy["x"]))))
+                        d = int(enemy.get("dir", 1))
+                        if forced and (d >= 0) != (forced > 0):
+                            print(f"FAIL: level {level_n} room "
+                                  f"{room['room_id']}: moth at x={enemy['x']} "
+                                  f"faces dir {d} into a wall / the screen edge")
                             return 1
                 for lamp in room.get("lamps") or []:
                     cell = int(float(lamp["x"])) // 2
