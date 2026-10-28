@@ -52,7 +52,7 @@ LEVEL3_RoomCounts:
 LEVEL3_EnemyDataTable:
   .byte $01, 127, 60
   .byte $05, 23, 18
-  .byte $00, 23, 108
+  .byte $80, 23, 84
   .byte $02, 103, 60
   .byte $04, 39, 60
   .byte $0d, 23, 18

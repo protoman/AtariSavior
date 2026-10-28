@@ -1225,7 +1225,7 @@
      39  f9df							; Enemy data: 2 enemy records across 2 rooms, 3 bytes each (type|dir, x, y).
      40  f9df				   LEVEL1_EnemyDataTable
      41  f9df		       86 9b 54 	      .byte.b	$86, 155, 84
-     42  f9e2		       80 7f 3c 	      .byte.b	$80, 127, 60
+     42  f9e2		       80 7f 24 	      .byte.b	$80, 127, 36
 ------- FILE generated/spill_F9D9.asm
 ------- FILE generated/level_002_rooms.asm LEVEL 3 PASS 2
       0  f9e5					      include	"generated/level_002_rooms.asm"
@@ -1327,7 +1327,7 @@
      52  fa00				   LEVEL3_EnemyDataTable
      53  fa00		       01 7f 3c 	      .byte.b	$01, 127, 60
      54  fa03		       05 17 12 	      .byte.b	$05, 23, 18
-     55  fa06		       00 17 6c 	      .byte.b	$00, 23, 108
+     55  fa06		       80 17 54 	      .byte.b	$80, 23, 84
      56  fa09		       02 67 3c 	      .byte.b	$02, 103, 60
      57  fa0c		       04 27 3c 	      .byte.b	$04, 39, 60
      58  fa0f		       0d 17 12 	      .byte.b	$0d, 23, 18

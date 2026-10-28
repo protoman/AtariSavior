@@ -17,8 +17,10 @@
  */
 
 #include <QApplication>
+#include <QMouseEvent>
 #include <algorithm>
 #include <cereal/archives/json.hpp>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -452,6 +454,97 @@ static int RunBrushTest() {
                      "on the same canvas rows (%zu enemies, %zu lamps left)\n",
                      r2.enemies.size(), r3.lamps.size());
         return 1;
+    }
+
+    // Drag & drop of a placed object: it snaps to legal columns and never
+    // enters a wall cell (8 px sprite = 2 display columns).
+    {
+        canvas.SetActiveRoom(2);
+        const std::vector<int> savedTiles = models[0].tiles;
+        models[0].tiles[1 * 10 + 7] = (int)hero::TileType::SOLID_WALL; // cols 14-15
+        level.rooms[2].enemies.clear();
+        canvas.SetCurrentBrush(BrushTool::ADD_BAT);
+        canvas.ApplyBrushAt(5, 10, 5);         // bat: column 10, canvas row 5
+        const int ts = canvas.TileSize();
+        const int cellH = (int)std::lround(ts * 40 * 3.0 / 64.0);
+        auto send = [&](QEvent::Type t, int col, int row) {
+            const QPointF p(col * ts + 1, row * cellH + 1);
+            QMouseEvent ev(t, p, p, Qt::LeftButton,
+                           t == QEvent::MouseButtonRelease ? Qt::NoButton
+                                                           : Qt::LeftButton,
+                           Qt::NoModifier);
+            QCoreApplication::sendEvent(&canvas, &ev);
+        };
+        auto bat = [&]() -> const hero::EnemyData& { return level.rooms[2].enemies[0]; };
+        send(QEvent::MouseButtonPress, 10, 5);
+        send(QEvent::MouseMove, 13, 5);        // 13+14: column 14 is wall -> 12
+        if (bat().x != 12.0f) {
+            std::fprintf(stderr, "brushtest: drag next to a wall put the bat at "
+                         "column %g (want 12)\n", bat().x);
+            return 1;
+        }
+        send(QEvent::MouseMove, 14, 5);        // inside the wall -> stays/snaps off
+        if (bat().x == 14.0f || bat().x == 13.0f || bat().x == 15.0f) {
+            std::fprintf(stderr, "brushtest: drag put the bat in the wall "
+                         "(column %g)\n", bat().x);
+            return 1;
+        }
+        send(QEvent::MouseMove, 12, 1);        // band 0 is solid
+        if ((int)std::floor(bat().y * 16.0f / 12.0f + 1e-3f) != 5) {
+            std::fprintf(stderr, "brushtest: drag moved the bat into the wall "
+                         "band (y %g)\n", bat().y);
+            return 1;
+        }
+        send(QEvent::MouseButtonRelease, 12, 1);
+        const size_t n = level.rooms[2].enemies.size();
+        send(QEvent::MouseButtonPress, bat().x, 5);   // plain click = old brush
+        send(QEvent::MouseButtonRelease, bat().x, 5); //   behaviour (flip facing)
+        if (level.rooms[2].enemies.size() != n) {
+            std::fprintf(stderr, "brushtest: a click on an object stacked a "
+                         "second one\n");
+            return 1;
+        }
+        level.rooms[2].enemies.clear();
+        models[0].tiles = savedTiles;
+    }
+
+    // SPIDER direction: right = sweeps down first, left = up first; near the
+    // cave bottom/top the editor forces it inward and a click cannot flip it.
+    {
+        canvas.SetActiveRoom(2);
+        level.rooms[2].enemies.clear();
+        canvas.SetInitialFacing(-1);                  // author would pick "up"
+        canvas.SetCurrentBrush(BrushTool::ADD_SPIDER);
+        canvas.ApplyBrushAt(5, 10, 14);               // canvas row 14: bottom
+        const bool bottomOk = level.rooms[2].enemies.size() == 1 &&
+                              level.rooms[2].enemies[0].dir == -1;   // up: ok
+        level.rooms[2].enemies.clear();
+        canvas.ApplyBrushAt(5, 10, 1);                // canvas row 1: top
+        if (!bottomOk || level.rooms[2].enemies.size() != 1 ||
+            level.rooms[2].enemies[0].dir != 1) {
+            std::fprintf(stderr, "brushtest: a spider at the cave top must be "
+                         "forced to sweep down (dir %d)\n",
+                         level.rooms[2].enemies.empty() ? 0
+                             : level.rooms[2].enemies[0].dir);
+            return 1;
+        }
+        canvas.ApplyBrushAt(5, 10, 1);                // click again: no flip
+        if (level.rooms[2].enemies[0].dir != 1) {
+            std::fprintf(stderr, "brushtest: a forced spider direction flipped\n");
+            return 1;
+        }
+        level.rooms[2].enemies.clear();
+        canvas.SetInitialFacing(1);
+        canvas.ApplyBrushAt(5, 10, 7);                // canvas row 7: free
+        canvas.SetInitialFacing(-1);                  // Facing button, then click
+        canvas.ApplyBrushAt(5, 10, 7);                //   the element: dir = -1
+        canvas.ApplyBrushAt(5, 10, 7);                //   (not a toggle)
+        if (level.rooms[2].enemies[0].dir != -1) {
+            std::fprintf(stderr, "brushtest: clicking a free spider did not set "
+                         "the Facing button's value\n");
+            return 1;
+        }
+        level.rooms[2].enemies.clear();
     }
     std::printf("brushtest: OK (door + phase brushes write the room, ERASE "
                 "clears both layers, the model stays clean, entity y is stored "

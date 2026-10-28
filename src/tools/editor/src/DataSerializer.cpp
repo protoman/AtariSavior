@@ -1380,6 +1380,8 @@ void AddEnemy(RoomData& room, EnemyType type, float x, float y, float speed,
     e.range_max = rangeMax;
     e.speed = speed;
     e.dir = dir;
+    if (type == EnemyType::SPIDER && SpiderForcedDir(y) != 0)
+        e.dir = SpiderForcedDir(y);     // never sweep out of the cave
     room.enemies.push_back(e);
 }
 
@@ -1780,8 +1782,11 @@ ReachResult AnalyseReach(const LevelData& lv,
             const int c4 = (int)std::lround(e.x) * 4;
             const int ex = c4 + (c4 < 11 ? 4 : 7);           // enemy_x_px
             const int top = (int)std::lround(e.y * 12.0f);
-            const int b0 = std::max(0, std::min(g.bands - 1, top / 36));
-            const int b1 = std::max(0, std::min(g.bands - 1, (top + 24 + 14) / 36));
+            // dir < 0 sweeps UP from y (kernel DeriveEnemyY), else down
+            const int up = e.dir < 0 ? 24 : 0;
+            const int b0 = std::max(0, std::min(g.bands - 1, (top - up) / 36));
+            const int b1 = std::max(0, std::min(g.bands - 1,
+                                                (top + 24 - up + 14) / 36));
             const int f0 = std::max(0, (ex - 15) / 8);
             const int f1 = std::min(19, (ex + 8) / 8);
             for (int b = b0; b <= b1; ++b) {
@@ -3595,6 +3600,16 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     }
                 }
                 e.x = (float)pick;
+            }
+        }
+        // SPIDER direction (user 2026-10-28): dir right = sweeps DOWN first,
+        // left = UP first. Near the cave bottom/top the direction is forced so
+        // the 24 px sweep never leaves the screen; elsewhere the generator's
+        // pick stays. (AddEnemy sets it too; y may have moved since.)
+        for (RoomData& room : level.rooms) {
+            for (EnemyData& e : room.enemies) {
+                if (e.type == (int)EnemyType::SPIDER && SpiderForcedDir(e.y) != 0)
+                    e.dir = SpiderForcedDir(e.y);
             }
         }
         levels.push_back(level);
