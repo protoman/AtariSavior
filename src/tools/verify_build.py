@@ -531,15 +531,16 @@ def check_moth_tramp(src: Path) -> None:
 # target label in that bank).
 PAD_LO, PAD_HI = 0xFBF8, 0xFC49   # inclusive start, exclusive end (FC48 last)
 # F4 (32K): bank N's hotspot byte is 0xF4 + N ($1FF4-$1FFB).
-PAD_BANK_BYTE = {0: 0xF4, 1: 0xF5, 2: 0xF6, 3: 0xF7}
+PAD_BANK_BYTE = {0: 0xF4, 1: 0xF5, 2: 0xF6, 3: 0xF7, 4: 0xF8}
 
 CORRIDOR_PADS = (
     ("CallPad_UpdateBombSound", 0xFBFC, 1, "UpdateBombSound"),
     ("CallPad_UpdateJetSound", 0xFBFF, 1, "UpdateJetSound"),
     ("CallPad_BombSndDrop", 0xFC02, 1, "BombSndDrop"),
     ("CallPad_BombSndExplode", 0xFC05, 1, "BombSndExplode"),
-    # $FC08 (CallPad_GetConnIdx) RETIRED by C3: the exit handlers read the
-    # connection table in bank2 (LevelConnB2), so the pad lost its last caller.
+    # $FC08 (was CallPad_GetConnIdx, retired by C3) = the SaveKey service pad
+    # (2026-10-28): bank0 `sta $1FF8`, bank4 `jmp SkService` at $FC0B.
+    ("CallPad_SaveKey", 0xFC08, 4, "SkService"),
     ("CallPad_AddScore", 0xFC0B, 1, "AddScore"),
     ("CallPad_IsRoomDark", 0xFC0E, 1, "IsRoomDark"),
     ("CallPad_SetRoomDark", 0xFC11, 1, "SetRoomDark"),
@@ -1531,9 +1532,9 @@ def check_tramp_targets(src: Path) -> None:
     is emitted by build.sh (added 2026-10-16 — it was a silent fossil
     before, misdirecting label lookups).
     """
-    hot = {"$1FF4": 0, "$1FF5": 1, "$1FF6": 2, "$1FF7": 3}
+    hot = {"$1FF4": 0, "$1FF5": 1, "$1FF6": 2, "$1FF7": 3, "$1FF8": 4}
     starts: dict[int, set[int]] = {}
-    for b in range(4):
+    for b in range(5):
         p = src / f"bank{b}.lst"
         if not p.exists():
             err(f"bank{b}.lst missing (tramp target check)")
@@ -1588,7 +1589,7 @@ def check_callpads(src: Path) -> None:
     wrong pad address or a stale operand is a silent wrong-bank jump.
     """
     banks: dict[int, bytes] = {}
-    for idx in (0, 1, 2, 3):
+    for idx in (0, 1, 2, 3, 4):
         p = src / f"bank{idx}.bin"
         if not p.exists():
             err(f"bank{idx}.bin missing (callpad check)")
@@ -1596,10 +1597,10 @@ def check_callpads(src: Path) -> None:
         data = p.read_bytes()
         if len(data) == 4096:
             banks[idx] = data
-    if len(banks) != 4:
+    if len(banks) != 5:
         return
     labels: dict[int, dict[str, int]] = {}
-    for idx in (0, 1, 2, 3):
+    for idx in (0, 1, 2, 3, 4):
         lp = src / f"bank{idx}.lst"
         if not lp.exists():
             err(f"bank{idx}.lst missing (callpad label check)")
@@ -1612,7 +1613,7 @@ def check_callpads(src: Path) -> None:
     # --- ReturnPad: every bank that HAS bodies switches to bank0; bank0
     # serves the `rts`. C7 2026-10-20: bank3 has bodies again (the shape
     # half), so 0/1/2/3 all carry the pad.
-    for idx in (0, 1, 2, 3):
+    for idx in (0, 1, 2, 3, 4):
         rp = labels[idx].get("ReturnPad")
         if rp is not None and rp != PAD_LO:
             err(f"bank{idx} ReturnPad ${rp:04X} != ${PAD_LO:04X} (every "

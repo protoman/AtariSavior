@@ -526,9 +526,7 @@ GameStart:
     inx
     bne .ClearZP
 
-    ; --- Initialize game state ---
-    lda #0
-    sta Level
+    ; --- Initialize game state --- (ClearZP left A = 0 and Level = 0)
     lda #3
     sta PlayerLives
     lda #BOMBS_MAX
@@ -538,6 +536,9 @@ GameStart:
     sta TickCounter
     lda #120
     sta BarLevel                ; bar starts full
+    lda #0
+    jsr CallPad_SaveKey         ; SaveKey BOOT: Level := the saved stage (the
+                                ;   title then comes up on it); no key = no-op
     ; --- Merged title: DropTarget=$FF (2026-10-19). The CAVE kernel renders
     ;     the stage (room 0 + player + HUD whose score shows level+1); a band
     ;     hook overlays the SAVIOR logo and the credits, and the theme plays.
@@ -3647,7 +3648,11 @@ CallPad_BombSndDrop:
     sta $1FF5
 CallPad_BombSndExplode:
     sta $1FF5
-    .byte 0,0,0                 ; $FC08: CallPad_GetConnIdx retired by C3
+CallPad_SaveKey:
+    sta $1FF8                   ; $FC08: SaveKey service (bank4 `jmp SkService` at
+                                ;   $FC0B). In: A = op 0 BOOT / 1 RESUME /
+                                ;   2 CHECKPOINT / 3 GAMEOVER; out: C=0 done.
+                                ;   Nests 4 stack bytes below the caller's jsr.
 CallPad_AddScore:
     sta $1FF5
 CallPad_IsRoomDark:
@@ -3766,37 +3771,6 @@ UE_FlipDir:
 ; AddScore moved to bank1 (leaf_move_plan batch B) — CallPad_AddScore.
 
 ; ------------------------------------------------------------------------------
-; ReloadLevel — reset level to initial state (all enemies back, 3 lives).
-; Reloads level data from ROM and respawns player at start.
-; Score is NOT reset (persists across deaths).
-; After fold pads to keep main code under $FC68.
-; ------------------------------------------------------------------------------
-ReloadLevel:
-    lda #3
-    sta PlayerLives
-    lda #BOMBS_MAX
-    sta PlayerBombs
-    lda Level
-    ; TAIL-jmp LoadLevel (bugs.md #29 Class B, 2026-10-11). The old
-    ; `jsr LoadLevel / zeros / rts` left FOUR jsr slots live when LoadLevel
-    ; reached `jsr EnterRoom`: CheckEnemyHit/timer death paths ran
-    ; main->jsr CEH->jmp LoseLife->jsr ReloadLevel->jsr LoadLevel->
-    ; jsr EnterRoom at SP=$F7, so the return address sat on $F6/$F7
-    ; (BombX/BombTimer), EnterRoomB2's `sta BombTimer` zeroed the pushed
-    ; PCH, and ReturnPad's rts popped ($00<<8|BombX)+1 = $009A -> ZP
-    ; executed as code -> $F008 pad -> GameStart REBOOT to title (the
-    ; SIM_EXIT=down f265 296-line crash frame + the title-264 family).
-    ; With the tail-jmp the slot count drops by one: EnterRoom's return
-    ; lands on $F8/$F9 (stack-only cells) on every death path.
-    ; The old post-code (vy/JetPower zeros + rts) was unreachable; DELETED
-    ; 2026-10-16 (intro music) — the $FDD8 blast-tramp pin below absorbs the
-    ; shift, so the twins stay put. DropArm zeroes vyLo/vyHi/PlayerYSub itself
-    ; (JetPower=4 stays through the drop-in flutter — identical to the .LLStay
-    ; path). LoseLife's `sec` still runs (DropArm's rts pops the jsr ReloadLevel
-    ; slot back into LoseLife).
-    jmp LoadLevel
-
-; ------------------------------------------------------------------------------
 ; HotOverlapFlag — moved to bank2 (S5.3): fold-free body (HotOverlapBody)
 ;   reads RoomRects directly via (FetchPtr),Y — 7 folds → 7 direct reads
 ;   (one less push level on the hot path too). Entry tramp pinned $FE80
@@ -3826,13 +3800,14 @@ LoseLife:
                                 ;   (LoadLevel clears it on a stage-entry reset)
     dec PlayerLives
     bpl .LLStay
+    ldx #$FF
+    txs                         ; GAME OVER (user 2026-10-28): the caller chain
+                                ;   is abandoned - the run restarts, so no
+                                ;   frame can be deep enough to overflow the
+                                ;   SaveKey call
     lda #3
-    sta PlayerLives
-    lda #$00
-    sta EnemyDeadMask
-    jsr ReloadLevel
-    sec
-    rts
+    jsr CallPad_SaveKey         ; erase the save, keep the high score, RESTART at
+                                ;   the title (0 points, 3 lives); never returns
 .LLStay:
     jmp DropArm                 ; same drop-in code: X/Y stay, fall from top
                                 ; (DropArm zeroes physics + laser, C=0 out)
@@ -4035,6 +4010,10 @@ TitleWork:
     sta ScoreTh                ; gameplay score starts at 000000
     sta ScoreHu
     sta ScoreTe
+    lda #1
+    jsr CallPad_SaveKey        ; SaveKey RESUME: on the saved stage, lives +
+                               ;   score := the saved ones (before LoadLevel,
+                               ;   which rebuilds the buffers the op borrows)
     jsr LoadLevel
 .TWrstDone:
     lda SWCHB
@@ -4477,16 +4456,16 @@ TallyWork:
     and #4
     beq .TLive
     inc Level                   ; --- done: advance (old CheckMinerPickup tail)
-    lda Level
-    cmp #LEVEL_COUNT
-    bne .TNotWrap
-    lda #0                      ; wrap past last level
-    sta Level
-.TNotWrap:
     lda #0
     sta DropTarget           ; clear $FE BEFORE LoadLevel — DropArm's new
                              ;   `cmp #$FD / bcs` treats ≥$FD as sentinel
                              ;   pose ($FE must take the real-fall path)
+    lda #2
+    jsr CallPad_SaveKey         ; SaveKey CHECKPOINT: {Level, lives, score} at the
+                                ;   start of the new stage. Past the last stage
+                                ;   (Level == LEVEL_COUNT) the op commits the high
+                                ;   score, erases the save and RESTARTS at the
+                                ;   title - it does not return (was: wrap to 0)
     jsr LoadLevel
     lda #120                    ; reset timer for new level
     sta BarLevel

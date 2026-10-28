@@ -14,8 +14,9 @@ Cases (driving the real overscan entry CheckBandTouch):
                             is one tile above the strip (125-12=113), RoomY
                             zeroed for the drop
   4. band on, RoomY 132  -> same, destiny = 120
-  5. lives exhausted (PlayerLives=0) -> PlayerLives resets to 3 (the game-over
-                            path; today it is a level reload, NOT a screen)
+  5. lives exhausted (PlayerLives=0) -> GAME OVER (SaveKey op 3): the stack is
+                            reset to $FF and CallPad_SaveKey runs with A=3, which
+                            erases the save and restarts the run at the title
 
 Run: /home/iuri/python3/bin/python3 tools/test_water_band.py
 """
@@ -31,7 +32,7 @@ from py65.devices.mpu6502 import MPU  # noqa: E402
 FROZEN = ROOT / "tests" / "frozen"
 NEED = {"CheckBandTouch", "RoomBandColor", "RoomY", "PlayerLives", "DropTarget",
         "Hover", "DropArm", "LevelPFDataLo", "LevelPFDataHi", "LevelRoomN",
-        "RoomNo"}
+        "RoomNo", "CallPad_SaveKey"}
 L0 = parse_labels(FROZEN / "bank0.lst", NEED)
 missing = NEED - L0.keys()
 if missing:
@@ -52,7 +53,7 @@ BAND_ON = 0x1C                       # any non-zero staged band color byte
 DROP_ARM = L0["DropArm"]
 
 
-def run(room_y, band, lives=3, stage_level=False, stop_at_drop=0,
+def run(room_y, band, lives=3, stage_level=False, stop_at_drop=0, stop_pc=None,
         max_steps=40000):
     """Drive CheckBandTouch and sample the state where it matters.
 
@@ -86,8 +87,12 @@ def run(room_y, band, lives=3, stage_level=False, stop_at_drop=0,
     mem[0x1FF] = 0x01
     mem[0x1FE] = 0x00
     arms = 0
+    stopped = False
     for _ in range(max_steps):
         mpu.step()
+        if stop_pc is not None and mpu.pc == stop_pc and mem.bank == 0:
+            stopped = True
+            break
         if mpu.pc == DROP_ARM:
             arms += 1
             if stop_at_drop and arms >= stop_at_drop:
@@ -95,7 +100,8 @@ def run(room_y, band, lives=3, stage_level=False, stop_at_drop=0,
         elif not stop_at_drop and mpu.pc == RTS_SENTINEL:
             break
     return dict(room_y=r[Z["RoomY"]], lives=r[Z["PlayerLives"]],
-                drop=r[Z["DropTarget"]], hover=r[Z["Hover"]], arms=arms)
+                drop=r[Z["DropTarget"]], hover=r[Z["Hover"]], arms=arms,
+                stopped=stopped, a=mpu.a, sp=mpu.sp)
 
 
 def main() -> int:
@@ -119,13 +125,16 @@ def main() -> int:
             f"above the strip)")
         assert s["hover"], f"y={y}: respawn hover must be armed (bugs.md #1)"
 
-    # 5. lives exhausted: the game-over path (today: reset to 3 + reload)
-    s = run(132, BAND_ON, lives=0, stage_level=True, max_steps=60000)
-    assert s["lives"] == 3, (
-        f"exhausted lives must reset to 3 (the current game-over path), got {s}")
+    # 5. lives exhausted: GAME OVER = SP reset to $FF, then jsr CallPad_SaveKey(A=3) (SP $FD at the pad) (the pad
+    # then restarts the run at the title, see test_savekey.py / test_savekey_game.py)
+    s = run(132, BAND_ON, lives=0, stage_level=False, stop_pc=L0["CallPad_SaveKey"],
+            max_steps=60000)
+    assert s["stopped"], f"exhausted lives never reached CallPad_SaveKey: {s}"
+    assert s["a"] == 3 and s["sp"] == 0xFD, (
+        f"game over must call SaveKey op 3 with the stack reset, got {s}")
 
     print("test_water_band: OK (band off inert; >=125 loses a life and "
-          "respawns one tile above the strip; exhausted lives reset to 3)")
+          "respawns one tile above the strip; exhausted lives = game over via SaveKey)")
     return 0
 
 

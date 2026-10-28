@@ -76,7 +76,7 @@ for _l in (SRC / 'bank0.lst').read_text(errors='replace').splitlines():
     if _m:
         LABELS.setdefault(_m.group(2), int(_m.group(1), 16))
 for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row',
-              '.WaitVBLANK', 'CallPad_TitleBand', 'ReloadLevel',
+              '.WaitVBLANK', 'CallPad_TitleBand', 'CallPad_SaveKey',
               'CallPad_BombMarkWalls'):
     if _need not in LABELS:
         sys.exit(f'label {_need} not found in bank0.lst')
@@ -85,7 +85,7 @@ PC_OVER = LABELS['Overscan']
 PC_WAITOVER = LABELS['.WaitOverscan']
 PC_ENTER = LABELS['EnterRoom']
 PC_LOADLEVEL = LABELS['LoadLevel']
-PC_RELOAD = LABELS['ReloadLevel']
+PC_RELOAD = LABELS['CallPad_SaveKey']   # game over (was ReloadLevel)
 PC_BMW = LABELS['CallPad_BombMarkWalls']
 PC_ROW = LABELS['.Row']
 PC_VBLT = LABELS['VBLTimer']     # VBL work window: TIM64T #23 armed here
@@ -281,7 +281,7 @@ max_vbl = max_over = max_gap = 0
 # event legitimately stacks a reload/punch into one overscan, pushing it
 # ~1 TIM64T tick past the timer (+64c measured) so the frame runs ~1
 # line long. TWO event classes, each recorded once per occurrence:
-#   * death/respawn: ReloadLevel entry (frame + drop-in frame)
+#   * game over: the SaveKey call (was ReloadLevel) (frame + drop-in frame)
 #   * bomb explosion: CallPad_BombMarkWalls (fuse 1->2 edge — punches
 #     walls, reloads enemies, THEN the physics/probe coincide; post-#31
 #     slow jet spin-up keeps the player grounded so the X-repro's bomb
