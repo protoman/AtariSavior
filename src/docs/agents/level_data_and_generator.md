@@ -200,3 +200,12 @@ talking to the user (the editor's "Model 32" is data `id` 31); bands may be
   builds when the binary is missing): run
   `cmake --build tools/editor/cmake-build-debug` after any generator change, or
   the test measures the stale binary.
+
+## First-move directions (2026-10-28)
+- **Spider**: dir right = sweeps down first, left = up first (the converter
+  anchors an up-first record 24 px higher; bank0 is frozen). Forced inward when
+  the cave edge or a wall lies within the 24 px sweep.
+- **Moth**: dir = first horizontal leg; forced away from a wall or the screen
+  edge within its +-8 column patrol.
+- Same rule in `LevelData.hpp` (editor + generator) and `convert_level.py`
+  (`spider_forced_dir`, `moth_forced_dir`); `test_spider_dir.py` pins it.

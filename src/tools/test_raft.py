@@ -34,7 +34,8 @@ if missing:
 RAFT = L1["RaftBody"]
 # ZP indices as plain names (bank-independent RAM)
 X = {k: v & 0x7F for k, v in L0.items() if 0x80 <= v <= 0xFF}
-PF0_R2, PF1_R2, PF2_R2 = 0xC5 - 0x80, 0xC8 - 0x80, 0xCB - 0x80
+# the water row of a 4-band room is PF row 3 (PF0Buf $C3, PF1Buf $C7, PF2Buf $CB; stride 4)
+PF0_R2, PF1_R2, PF2_R2 = 0xC6 - 0x80, 0xCA - 0x80, 0xCE - 0x80
 RAFT_MIN_X, RAFT_MAX_X = 8, 148
 RAFTER_BASE = 131                  # raft top at tide off=0 (surface 132 - 1:
                                    # the 2-row plank's bottom sits ON the line)

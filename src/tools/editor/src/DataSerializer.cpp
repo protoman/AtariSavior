@@ -1432,6 +1432,33 @@ int FloorBand(const ModelData& m) { return m.height > 3 ? m.height - 1 : 2; }
 // Object y lives in DISPLAY ROW units of 12 px over the 144-px cave, so a band
 // spans 12/height units (4 for a 3-row model, 3 for a 4-row one).
 int BandUnits(const ModelData& m) { return m.height > 0 ? 12 / m.height : 4; }
+// Where the raft waits (user 2026-10-28, level 11 room 8 / level 14 room 9: it
+// sat beside the shaft, so the player dropped past it and it only led to a
+// wall). The ferry starts moving RIGHT when ridden (the record has no dir), so
+// it belongs in the LEFT half, under the column the player drops through: the
+// first cell open from the ceiling down to the water, else the first open
+// above the water, else any open water cell. -1 = no open water.
+int RaftCell(const ModelData& m) {
+    const int w = m.width, last = m.height - 1;
+    auto air = [&](int b, int c) {
+        return m.tiles[b * w + c] == (int)TileType::AIR;
+    };
+    for (int c = 1; c < w; ++c) {
+        bool open = true;
+        for (int b = 0; b <= last && open; ++b) open = air(b, c);
+        if (open) return c;
+    }
+    for (int c = 1; c < w; ++c)
+        if (air(last, c) && air(last - 1, c)) return c;
+    for (int c = 1; c < w; ++c)
+        if (air(last, c)) return c;
+    return -1;
+}
+// The raft's authored y: the kernel floats it on the water surface (line 132,
+// plank top 131), so author it there - the editor and the stage then show it
+// where the game draws it, not a tile inside the water band.
+constexpr float kRaftY = 131.0f / 12.0f;
+
 float BandY(const ModelData& m, int band) {
     const int u = BandUnits(m);
     return (float)(band * u + (band == 0 ? 1 : u / 2));
@@ -3227,10 +3254,12 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 room.bottom_r = 24;
                 room.bottom_g = 88;
                 room.bottom_b = 208;
-                AddEnemy(room, EnemyType::RAFT, 4.0f,
-                         BandY(models[shapeId[masks[l - 1][i]]],
-                              FloorBand(models[shapeId[masks[l - 1][i]]])),
-                         1.0f, 0.0f);
+                {
+                    const int rc = RaftCell(models[shapeId[masks[l - 1][i]]]);
+                    if (rc >= 0)
+                        AddEnemy(room, EnemyType::RAFT, (float)(rc * 2), kRaftY,
+                                 1.0f, 0.0f);
+                }
                 const int chBat = NearestAir(models[shapeId[masks[l - 1][i]]],
                                              0, 8);
                 if (chBat >= 0) {
@@ -3521,6 +3550,11 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             const int colLo = westN ? 2 : 0;
             const int colHi = eastN ? 17 : 19;
             for (int b = 0; b < (int)room.enemies.size(); ++b) {
+                // The raft is placed on purpose (under the drop shaft, on the
+                // water surface): it never moves - its partner does. This pass
+                // used to drag it to the first air column (user 2026-10-28:
+                // level 11 room 8 / level 14 room 9, raft beside the shaft).
+                if (room.enemies[b].type == (int)EnemyType::RAFT) continue;
                 const int bandB = bandOf(room.enemies[b].y);
                 if (!clashes(bandB, colOf(room.enemies[b].x), b, -1)) continue;
                 bool fixed = false;
@@ -3606,10 +3640,17 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         // left = UP first. Near the cave bottom/top the direction is forced so
         // the 24 px sweep never leaves the screen; elsewhere the generator's
         // pick stays. (AddEnemy sets it too; y may have moved since.)
-        for (RoomData& room : level.rooms) {
-            for (EnemyData& e : room.enemies) {
-                if (e.type == (int)EnemyType::SPIDER && SpiderForcedDir(e.y) != 0)
-                    e.dir = SpiderForcedDir(e.y);
+        for (int j = 0; j < (int)level.rooms.size(); ++j) {
+            const ModelData& sm = models[shapeId[masks[l - 1][j]]];
+            for (EnemyData& e : level.rooms[j].enemies) {
+                int f = 0;
+                if (e.type == (int)EnemyType::SPIDER)
+                    f = SpiderForcedDirIn(sm, e.y, (int)std::lround(e.x));
+                else if (e.type == (int)EnemyType::GIANT_MOTH)
+                    f = MothForcedDirIn(sm, e.y, (int)std::lround(e.x));
+                else
+                    continue;
+                if (f != 0) e.dir = f;      // walls and cave edges, both ways
             }
         }
         levels.push_back(level);

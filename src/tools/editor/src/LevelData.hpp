@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 
 #include <string>
@@ -193,6 +194,68 @@ struct ModelData {
         }
     }
 };
+
+// Wall tiles for the spider sweep (convert's "#H" cells).
+inline bool TileIsWall(int t) {
+    return t == (int)TileType::SOLID_WALL || t == (int)TileType::FRAGILE_WALL ||
+           t == (int)TileType::REINFORCED_WALL || t == (int)TileType::HOT_ROCK_WALL;
+}
+
+// SpiderForcedDir with the room's walls (user 2026-10-28): the 24 px sweep must
+// also stay clear of walls above/below the spider. `col` is its display column
+// (the 8 px sprite covers col and col+1, mirrored onto the model's cells).
+// A direction is blocked when the swept extent leaves the 144 px cave or
+// touches a wall cell; exactly one blocked direction forces the other, else 0.
+// MOTH (kernel MothRoutine): patrols spawn +-8 columns (32 px) horizontally,
+// turning at walls and the screen edge; record dir right (>= 0) = first leg
+// right. Returns +1 / -1 when exactly one side is blocked within that range
+// (a wall in the moth's band(s), bob included, or the screen edge) so its first
+// move never runs into one, else 0. Same rule as convert_level.moth_forced_dir.
+inline int MothForcedDirIn(const ModelData& m, float y, int col) {
+    const int top = (int)std::lround(y * 12.0f);
+    const int bandPx = 144 / std::max(1, m.height);
+    const int half = m.width * 2, cols = m.width * 4;
+    const int b0 = std::max(0, std::min(143, top - 6)) / bandPx;     // bob +-6 px
+    const int b1 = std::max(0, std::min(143, top + 13 + 6)) / bandPx;
+    auto wallAt = [&](int c) {
+        if (c < 0 || c > cols - 1) return true;                      // screen edge
+        const int cell = (c < half ? c : cols - 1 - c) >> 1;
+        for (int b = b0; b <= b1 && b < m.height; ++b)
+            if (TileIsWall(m.tiles[b * m.width + cell])) return true;
+        return false;
+    };
+    bool right = false, left = false;
+    for (int k = 1; k <= 8; ++k) {           // 32 px patrol = 8 new columns
+        if (wallAt(col + 1 + k)) right = true;   // sprite covers col, col+1
+        if (wallAt(col - k)) left = true;
+    }
+    if (left && !right) return 1;
+    if (right && !left) return -1;
+    return 0;
+}
+
+inline int SpiderForcedDirIn(const ModelData& m, float y, int col) {
+    const int top = (int)std::lround(y * 12.0f);
+    const int bandPx = 144 / std::max(1, m.height);
+    const int half = m.width * 2, cols = m.width * 4;
+    auto cellOf = [&](int c) {
+        c = std::max(0, std::min(cols - 1, c));
+        return (c < half ? c : cols - 1 - c) >> 1;
+    };
+    auto blocked = [&](int lo, int hi) {
+        if (lo < 0 || hi > 143) return true;
+        for (int b = lo / bandPx; b <= hi / bandPx && b < m.height; ++b)
+            for (int c : {col, col + 1})
+                if (TileIsWall(m.tiles[b * m.width + cellOf(c)])) return true;
+        return false;
+    };
+    const bool canDown = !blocked(top, top + 24 + 14);
+    const bool canUp = !blocked(top - 24, top + 14);
+    if (canDown && !canUp) return 1;
+    if (canUp && !canDown) return -1;
+    return 0;
+}
+
 
 struct RoomData {
     int room_id = 0;

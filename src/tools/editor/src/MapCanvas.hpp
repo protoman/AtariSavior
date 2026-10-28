@@ -117,6 +117,7 @@ private:
         double pxH = 0;   // canvas pixels per game scanline
     };
     bool GetGeo(Geo& g) const;
+    int ForcedDirAt(int type, float y, int col) const;
     QRectF EntityRect(EntKind kind, int idx) const;
     bool LampWallOnRight(int idx) const;
     bool PlacementOk(EntKind kind, int idx, int type, int col, int tileY) const;

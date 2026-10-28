@@ -54,8 +54,10 @@ Invariants (each one has a reason, do not "clean up"):
   block is not larger; it just reads bigger than the notched art, which helps the
   player land on it. `ObjSprites` is exactly 72 B and ends at `$FF00`, so a
   dedicated raft design would need 8 art bytes freed somewhere.
-- **The turn-around reads the playfield**, not rects and not data: the row-2
-  cell beyond the leading edge, reflect mapping (display col >= 20 mirrors to
+- **The turn-around reads the playfield**, not rects and not data: the WATER
+  row (PF row 3 of a 4-band room; `RaftCellSolid` read rows 2/1/0 at `$C5/$C8/$CB`
+  until 2026-10-28, a stale 3-band stride that made the raft turn at ceiling and
+  ledge cells) cell beyond the leading edge, reflect mapping (display col >= 20 mirrors to
   39-col), mask table `RaftCellMasks`. It therefore works in any water span and
   needs no new ZP and no new ROM data. `RaftBitTab` exists because bank1 cannot
   read bank0's `EnemyBitTable`.
@@ -184,3 +186,11 @@ asserts the tip is never drawn past the wall and that contact restarts
 at the eye with `b1` armed (no suppress). The 2026-10-10 hold clamp was
 first written as a *failing* red test against the pass-through bug, then
 abandoned for consume — keep this test green against consume semantics.
+
+### Raft placement (generator, 2026-10-28)
+The ferry starts moving RIGHT when ridden (the record carries no dir), so the
+generator (`RaftCell`) parks it in the LEFT half under the column the player
+drops through (first cell open from the ceiling to the water, else open above
+the water), at the authored y `131/12` (the kernel floats it on the surface;
+the editor draws the water only as the band's last 12 lines). The separation
+pass never moves a raft - its partner moves. `test_generator` pins all three.

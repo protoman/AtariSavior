@@ -508,29 +508,33 @@ static int RunBrushTest() {
         models[0].tiles = savedTiles;
     }
 
-    // SPIDER direction: right = sweeps down first, left = up first; near the
-    // cave bottom/top the editor forces it inward and a click cannot flip it.
+    // SPIDER direction: right = sweeps down first, left = up first. A wall (or
+    // the cave edge) within the 24 px sweep above/below forces it the other way
+    // and a click cannot change it.
     {
         canvas.SetActiveRoom(2);
         level.rooms[2].enemies.clear();
-        canvas.SetInitialFacing(-1);                  // author would pick "up"
         canvas.SetCurrentBrush(BrushTool::ADD_SPIDER);
-        canvas.ApplyBrushAt(5, 10, 14);               // canvas row 14: bottom
+        canvas.SetInitialFacing(1);                   // author asks for "down"
+        canvas.ApplyBrushAt(9, 18, 14);               // canvas row 14: floor edge
         const bool bottomOk = level.rooms[2].enemies.size() == 1 &&
-                              level.rooms[2].enemies[0].dir == -1;   // up: ok
+                              level.rooms[2].enemies[0].dir == -1;   // forced up
         level.rooms[2].enemies.clear();
-        canvas.ApplyBrushAt(5, 10, 1);                // canvas row 1: top
+        canvas.SetInitialFacing(-1);                  // author asks for "up"
+        canvas.ApplyBrushAt(5, 10, 4);                // band 1 under the solid band 0
         if (!bottomOk || level.rooms[2].enemies.size() != 1 ||
             level.rooms[2].enemies[0].dir != 1) {
-            std::fprintf(stderr, "brushtest: a spider at the cave top must be "
-                         "forced to sweep down (dir %d)\n",
+            std::fprintf(stderr, "brushtest: a spider under a wall / above the "
+                         "floor edge must sweep away from it (bottom ok %d, "
+                         "dir %d)\n", (int)bottomOk,
                          level.rooms[2].enemies.empty() ? 0
                              : level.rooms[2].enemies[0].dir);
             return 1;
         }
-        canvas.ApplyBrushAt(5, 10, 1);                // click again: no flip
+        canvas.SetInitialFacing(-1);
+        canvas.ApplyBrushAt(5, 10, 4);                // click again: stays forced
         if (level.rooms[2].enemies[0].dir != 1) {
-            std::fprintf(stderr, "brushtest: a forced spider direction flipped\n");
+            std::fprintf(stderr, "brushtest: a forced spider direction changed\n");
             return 1;
         }
         level.rooms[2].enemies.clear();
@@ -542,6 +546,29 @@ static int RunBrushTest() {
         if (level.rooms[2].enemies[0].dir != -1) {
             std::fprintf(stderr, "brushtest: clicking a free spider did not set "
                          "the Facing button's value\n");
+            return 1;
+        }
+        level.rooms[2].enemies.clear();
+    }
+
+    // MOTH first leg: next to the screen edge / a wall it is forced away.
+    {
+        canvas.SetActiveRoom(2);
+        level.rooms[2].enemies.clear();
+        canvas.SetCurrentBrush(BrushTool::ADD_MOTH);
+        canvas.SetInitialFacing(-1);                  // author asks "left"...
+        canvas.ApplyBrushAt(1, 2, 5);                 // ...at column 2, 8 px from the edge
+        if (level.rooms[2].enemies.size() != 1 ||
+            level.rooms[2].enemies[0].dir != 1) {
+            std::fprintf(stderr, "brushtest: a moth at the left screen edge must "
+                         "start to the right\n");
+            return 1;
+        }
+        canvas.SetInitialFacing(1);
+        level.rooms[2].enemies.clear();
+        canvas.ApplyBrushAt(5, 20, 5);                // mid room, walls far: free
+        if (level.rooms[2].enemies.size() != 1) {
+            std::fprintf(stderr, "brushtest: moth not placed\n");
             return 1;
         }
         level.rooms[2].enemies.clear();

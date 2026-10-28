@@ -261,7 +261,7 @@ def main() -> int:
                 mask = [0x30, 0xC0, 0xC0, 0x30, 0x0C, 0x03,
                         0x03, 0x0C, 0x30, 0xC0][pair]
                 off = 0 if pair < 2 else 4 if pair < 6 else 8
-                want_pf[off + 1] |= mask
+                want_pf[off + _row] |= mask   # hcrunch row 1 or 2 (b4 of the feature byte)
             hot_ptr = (mem.ram[L0["RoomRectsLo"] - 0x80]
                        | (mem.ram[L0["RoomRectsHi"] - 0x80] << 8))
             # C3 (2026-10-20): the PF0Buf the kernel renders MUST be exactly
