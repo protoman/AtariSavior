@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include <cmath>
+
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -114,6 +116,21 @@ struct EnemyData {
            CEREAL_NVP(dir));
     }
 };
+
+// A SPIDER sweeps 24 px from its y (kernel DeriveEnemyY): DOWN first when its
+// dir is right (>= 0), UP first when it is left (< 0). Its 15-row sprite must
+// stay inside the 144-px cave, so a spider near the bottom must go up and one
+// near the top must go down. Returns +1 / -1 when the position forces the
+// direction, 0 when both are fine (the author picks). y is in 12-px rows.
+// tools/convert_level.py spider_forced_dir is the same rule.
+inline int SpiderForcedDir(float y) {
+    const int top = (int)std::lround(y * 12.0f);
+    const bool canDown = top + 24 + 15 <= 144;
+    const bool canUp = top - 24 >= 0;
+    if (canDown && !canUp) return 1;
+    if (canUp && !canDown) return -1;
+    return 0;
+}
 
 struct LampData {
     float x = 0.0f;

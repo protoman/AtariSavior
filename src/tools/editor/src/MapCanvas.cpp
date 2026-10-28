@@ -24,7 +24,9 @@
 #include <QMessageBox>
 #include <QPolygonF>
 #include <QStringList>
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 namespace editor {
 
@@ -214,6 +216,49 @@ static int CellHeightFor(int cellWidth, int displayCols, int roomHeight) {
     if (roomHeight <= 0 || displayCols <= 0) return cellWidth;
     return std::max(1, (int)std::lround(cellWidth * (double)displayCols * 3.0 /
                                         (double)(roomHeight * 4)));
+}
+
+// ROM sprite art (kernel.asm ObjSprites), bit 7 = leftmost px, one row per
+// scanline. Keep in step with that table.
+struct SpriteArt { const uint8_t* rows; int n; };
+#define ART(name, ...) \
+    static const uint8_t name##Rows[] = {__VA_ARGS__}; \
+    static const SpriteArt name = {name##Rows, (int)sizeof name##Rows};
+ART(kKeyArt, 0x3C,0x42,0x5A,0x42,0x3C,0x18,0x18,0x18,0x18,0x1C,0x18,0x10)
+ART(kCellArt, 0x7E,0xA5,0xA5,0x7E)
+ART(kMothArt, 0x24,0x42,0x66,0xE7,0xFF,0x7E,0x3C,0x18,0x3C,0x7E,0xFF,0xE7,0x66,0x24)
+ART(kSpiderArt, 0xA5,0xA5,0xA5,0x5A,0x3C,0x7E,0xFF,0xFF,0x7E,0x3C,0x7E,0x7E,0x3C,0x5A,0xA5)
+ART(kTentArt, 0x1C,0x22,0x24,0x18,0x0C,0x14,0x18,0x28,0x30,0x50,0x70,0xFC,0xFF,0xBD)
+ART(kBatArt, 0x81,0xC3,0x66,0x24,0x3C,0x7E,0xFF,0x99,0x18,0x24)
+ART(kSnakeArt, 0x06,0x0F,0xF8,0xF8,0x0F,0x06)
+ART(kMinerArt, 0x30,0x38,0x32,0x6C,0xF0,0xE0,0xFC,0x76,0x3F)
+ART(kRaftArt, 0xFF,0xFF)
+ART(kLampArt, 0xFC,0xFC,0x18,0x18,0x3C,0x7E,0xFF,0xFF,0x7E,0x3C)
+ART(kLampRArt, 0x3F,0x3F,0x18,0x18,0x3C,0x7E,0xFF,0xFF,0x7E,0x3C)
+#undef ART
+
+static SpriteArt EnemyArt(int type) {
+    switch (static_cast<hero::EnemyType>(type)) {
+        case hero::EnemyType::SPIDER: return kSpiderArt;
+        case hero::EnemyType::BAT: return kBatArt;
+        case hero::EnemyType::SNAKE: return kSnakeArt;
+        case hero::EnemyType::TENTACLE: return kTentArt;
+        case hero::EnemyType::GIANT_MOTH: return kMothArt;
+        case hero::EnemyType::RAFT: return kRaftArt;
+        case hero::EnemyType::POWER_CELL: return kCellArt;
+        case hero::EnemyType::EXTRA_MINER: return kMinerArt;
+        default: return kKeyArt;
+    }
+}
+
+// Tiles the playfield draws over a sprite (convert's "#H" cells + features).
+static bool IsWallTile(int t) {
+    return t == (int)hero::TileType::SOLID_WALL ||
+           t == (int)hero::TileType::FRAGILE_WALL ||
+           t == (int)hero::TileType::REINFORCED_WALL ||
+           t == (int)hero::TileType::HOT_ROCK_WALL ||
+           t == (int)hero::TileType::PHASE ||
+           t == (int)hero::TileType::HCRUNCH;
 }
 
 MapCanvas::MapCanvas(QWidget* parent) : QWidget(parent) {
@@ -440,53 +485,48 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
 
     // In level mode, render entities and miner
     if (!m_modelMode && room && m_levelData) {
+        // Objects are drawn as the REAL ROM sprite (kernel.asm ObjSprites):
+        // 8 game px wide from the column's left edge (1 px per bit, so two
+        // 4 px display columns - an odd column straddles two wall cells),
+        // 1 scanline per row. The dotted box is the full 8 px window.
+        auto drawSprite = [&](const QRectF& r, const SpriteArt& art,
+                              const QColor& color, const QString& label) {
+            const double pxW = r.width() / 8.0;
+            const double pxH = r.height() / art.n;
+            painter.setPen(QPen(color, 1, Qt::DotLine));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRect(r);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(color);
+            for (int row = 0; row < art.n; ++row)
+                for (int bit = 0; bit < 8; ++bit)
+                    if (art.rows[row] & (0x80 >> bit))
+                        painter.drawRect(QRectF(r.x() + bit * pxW,
+                                                r.y() + row * pxH,
+                                                pxW + 0.5, pxH + 0.5));
+            painter.setPen(Qt::black);
+            painter.drawText(r, Qt::AlignCenter, label);
+        };
+
         // Render Miner Goal position if in this room
         if (m_levelData->miner_room == m_activeRoomIndex) {
-            // Cell origin (miner_x*2, miner_y = display col/row of the cell).
-            // Center the marker INSIDE the cell like enemies/lamps do — the
-            // old (mx-12, my-12) rect drew it on the grid lines (corner).
-            int mx = (int)(m_levelData->miner_x * 2 * cellW);
-            int my = (int)(m_levelData->miner_y * (float)displayRows / 12.0f * cellH);
-            int markerSize = qMax(12, m_tileSize - 6);
-            QRect minerRect(mx + (cellW - markerSize) / 2,
-                            my + (cellH - markerSize) / 2,
-                            markerSize, markerSize);
-
-            painter.setBrush(QColor(255, 140, 180));
-            painter.setPen(Qt::black);
-            painter.drawEllipse(minerRect);
-            painter.drawText(minerRect, Qt::AlignCenter, "M");
-            DrawFacingArrow(painter, minerRect, m_levelData->miner_dir);
+            const QRectF mr = EntityRect(EntKind::Miner, 0);
+            drawSprite(mr, kMinerArt, QColor(255, 140, 180), "M");
+            DrawFacingArrow(painter, mr.toRect(), m_levelData->miner_dir);
         }
 
         // Render Lamps in room
-        for (const auto& lamp : room->lamps) {
-            int lx = (int)(lamp.x * cellW);
-            int ly = (int)(lamp.y * (float)displayRows / 12.0f * cellH);
-            int bulbSize = 12;
-
-            painter.setBrush(lamp.lit ? QColor(255, 230, 80) : QColor(110, 110, 110));
-            painter.setPen(Qt::black);
-            painter.drawEllipse(lx - bulbSize / 2, ly - bulbSize, bulbSize, bulbSize);
-
-            painter.setPen(QColor(150, 150, 150));
-            painter.drawLine(lx, ly, lx, ly + 10);
-            painter.setBrush(QColor(120, 120, 120));
-            painter.drawRect(lx - 5, ly + 10, 10, 3);
-
-            painter.setPen(Qt::black);
-            painter.drawText(QRect(lx - 10, ly - bulbSize - 14, 20, 14), Qt::AlignCenter, "L");
+        for (int i = 0; i < (int)room->lamps.size(); ++i) {
+            const auto& lamp = room->lamps[i];
+            drawSprite(EntityRect(EntKind::Lamp, i),
+                       LampWallOnRight(i) ? kLampRArt : kLampArt,
+                       lamp.lit ? QColor(255, 230, 80) : QColor(110, 110, 110),
+                       "L");
         }
 
         // Render Enemies in room
-        for (const auto& enemy : room->enemies) {
-            int ex = (int)(enemy.x * cellW);
-            int ey = (int)(enemy.y * (float)displayRows / 12.0f * cellH);
-            int markerSize = qMax(12, m_tileSize - 6);
-            QRect enemyRect(ex + (cellW - markerSize) / 2,
-                            ey + (cellH - markerSize) / 2,
-                            markerSize, markerSize);
-
+        for (int i = 0; i < (int)room->enemies.size(); ++i) {
+            const auto& enemy = room->enemies[i];
             QColor eColor;
             QString label;
             switch (static_cast<hero::EnemyType>(enemy.type)) {
@@ -496,25 +536,48 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
                 case hero::EnemyType::TENTACLE: eColor = QColor(200, 60, 200); label = "T"; break;
                 case hero::EnemyType::GIANT_MOTH: eColor = QColor(190, 160, 120); label = "M"; break;
                 case hero::EnemyType::KEY: eColor = QColor(255, 215, 0); label = "Y"; break;
+                case hero::EnemyType::RAFT: eColor = QColor(80, 170, 80); label = "R"; break;
                 case hero::EnemyType::POWER_CELL: eColor = QColor(60, 200, 230); label = "E"; break;
                 case hero::EnemyType::EXTRA_MINER: eColor = QColor(255, 140, 180); label = "M2"; break;
+                default: eColor = QColor(200, 200, 200); label = "?"; break;
             }
-
-            painter.setBrush(eColor);
-            painter.setPen(Qt::black);
-            painter.drawRoundedRect(enemyRect, 6, 6);
-            painter.drawText(enemyRect, Qt::AlignCenter, label);
+            const QRectF er = EntityRect(EntKind::Enemy, i);
+            drawSprite(er, EnemyArt(enemy.type), eColor, label);
             if (enemy.type != (int)hero::EnemyType::POWER_CELL
                     && enemy.type != (int)hero::EnemyType::KEY) {
                 // the cell and the key have no facing; miners DO (per-slot REFP1)
-                DrawFacingArrow(painter, enemyRect, enemy.dir);
+                const bool spider = enemy.type == (int)hero::EnemyType::SPIDER;
+                // a spider near the cave edge is forced to sweep inward
+                const int forced = spider ? hero::SpiderForcedDir(enemy.y) : 0;
+                DrawFacingArrow(painter, er.toRect(), forced ? forced : enemy.dir,
+                                spider);
             }
         }
     } // end level-mode entity rendering
 }
 
-void MapCanvas::DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int dir) const {
+void MapCanvas::DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int dir,
+                                bool vertical) const {
     // White triangle beside the marker: tip points the way the enemy faces.
+    // A spider's "direction" is its first sweep: right = DOWN, left = UP.
+    if (vertical) {
+        const int cx = enemyRect.center().x();
+        const int halfW = std::max(4, enemyRect.width() / 6);
+        QPolygonF v;
+        if (dir >= 0) {
+            const int baseY = enemyRect.bottom() + 2;
+            v << QPointF(cx, baseY + 7) << QPointF(cx - halfW, baseY)
+              << QPointF(cx + halfW, baseY);
+        } else {
+            const int baseY = enemyRect.top() - 2;
+            v << QPointF(cx, baseY - 7) << QPointF(cx - halfW, baseY)
+              << QPointF(cx + halfW, baseY);
+        }
+        painter.setBrush(QColor(255, 255, 255));
+        painter.setPen(QPen(QColor(20, 20, 20), 1));
+        painter.drawPolygon(v);
+        return;
+    }
     const int cy = enemyRect.center().y();
     const int halfH = enemyRect.height() / 3;
     QPolygonF tri;
@@ -971,7 +1034,7 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         if (m_levelData->miner_room == m_activeRoomIndex &&
             (int)std::floor(m_levelData->miner_x * 2.0f) == entityX &&
             RowOfY(m_levelData->miner_y, displayRows) == tileY) {
-            m_levelData->miner_dir = m_levelData->miner_dir >= 0 ? -1 : 1;
+            m_levelData->miner_dir = m_initialFacing;   // click = set the Facing button's value
             emit levelModified();
             update();
             return;
@@ -1032,6 +1095,9 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
         eData.range_max = (float)std::min(displayColumns - 1, entityX + 3);
         eData.speed = 1.5f;
         eData.dir = m_initialFacing;
+        if (eData.type == (int)hero::EnemyType::SPIDER &&
+            hero::SpiderForcedDir(eData.y) != 0)
+            eData.dir = hero::SpiderForcedDir(eData.y);   // never sweep out of the cave
 
         // Door-room + tentacle rules (user rule 2026-10-14): a door room
         // allows ONE non-key enemy and nothing else; tentacles live in
@@ -1131,7 +1197,15 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
                                     "erase it first."));
                     return;
                 }
-                e.dir = (e.dir >= 0) ? -1 : 1;
+                // a spider's dir is its first sweep (right = down, left = up);
+                // near the cave top/bottom it is forced and cannot be changed
+                if (e.type == (int)hero::EnemyType::SPIDER &&
+                    hero::SpiderForcedDir(e.y) != 0) {
+                    e.dir = hero::SpiderForcedDir(e.y);
+                    update();
+                    return;
+                }
+                e.dir = m_initialFacing;   // click = set the Facing button's value
                 emit levelModified();
                 update();
                 return;
@@ -1231,17 +1305,259 @@ void MapCanvas::ApplyBrushAt(int tileX, int entityX, int tileY) {
     }
 }
 
+bool MapCanvas::GetGeo(Geo& g) const {
+    if (m_modelMode || !m_levelData || m_activeRoomIndex < 0 ||
+        m_activeRoomIndex >= (int)m_levelData->rooms.size())
+        return false;
+    g.room = &m_levelData->rooms[m_activeRoomIndex];
+    g.model = GetModelForRoom(
+        m_levelData, const_cast<std::vector<hero::ModelData>*>(m_models),
+        m_activeRoomIndex);
+    if (!g.model) return false;
+    g.rw = g.model->width;
+    g.rh = g.model->height;
+    g.cols = DisplayColumnsFor(g.rw);
+    g.rows = g.rh * 4;
+    g.cellW = m_tileSize;
+    g.cellH = CellHeightFor(m_tileSize, g.cols, g.rows);
+    g.pxH = (double)g.cellH * g.rows / 144.0;
+    return true;
+}
+
+// The sprite's 8 px window on the canvas: left edge = its display column,
+// top = the scanline the kernel starts drawing at.
+QRectF MapCanvas::EntityRect(EntKind kind, int idx) const {
+    Geo g;
+    if (!GetGeo(g)) return QRectF();
+    double col = 0, topPx = 0;
+    int rows = 0;
+    if (kind == EntKind::Enemy && idx < (int)g.room->enemies.size()) {
+        const auto& e = g.room->enemies[idx];
+        col = e.x;
+        topPx = e.y * 12.0;
+        rows = EnemyArt(e.type).n;
+    } else if (kind == EntKind::Lamp && idx < (int)g.room->lamps.size()) {
+        const auto& l = g.room->lamps[idx];
+        col = ((int)(l.x * 4) / 8) * 2;     // art is left-aligned in its cell
+        topPx = l.y * 12.0;
+        rows = kLampArt.n;
+    } else if (kind == EntKind::Miner) {
+        col = m_levelData->miner_x * 2.0;
+        topPx = m_levelData->miner_y * 12.0 + 3.0;   // kernel draws at MinerY+3
+        rows = kMinerArt.n;
+    } else {
+        return QRectF();
+    }
+    return QRectF(col * g.cellW, topPx * g.pxH, 2.0 * g.cellW, rows * g.pxH);
+}
+
+// convert's _lamp_type: the mirrored design when the wall is on the right only.
+bool MapCanvas::LampWallOnRight(int idx) const {
+    Geo g;
+    if (!GetGeo(g) || idx >= (int)g.room->lamps.size()) return false;
+    const auto& l = g.room->lamps[idx];
+    const int band = std::clamp(RowOfY(l.y, g.rows) / 4, 0, g.rh - 1);
+    const int cell = MirrorColumn(((int)(l.x * 4) / 8) * 2, g.rw);
+    auto solid = [&](int c) { return IsWallTile(g.model->tiles[band * g.rw + c]); };
+    const bool left = cell > 0 ? solid(cell - 1) : false;
+    const bool right = cell < g.rw - 1 ? solid(cell + 1) : false;
+    return right && !left;
+}
+
+// Can this object stand with its left edge on display column `col` and its
+// anchor on canvas row `tileY`? Mirrors convert_level's seat rules: the 8 px
+// sprite never overlaps a wall cell (the snake is built to), tentacle/raft sit
+// on the bottom water band, miners stand on a solid cell, one object per row.
+bool MapCanvas::PlacementOk(EntKind kind, int idx, int type, int col,
+                            int tileY) const {
+    Geo g;
+    if (!GetGeo(g)) return false;
+    if (col < 0 || col > g.cols - 2 || tileY < 0 || tileY >= g.rows) return false;
+    const int band = tileY / 4;
+    auto wallAt = [&](int b, int dcol) {
+        if (b < 0 || b >= g.rh) return false;
+        return IsWallTile(g.model->tiles[b * g.rw + MirrorColumn(dcol, g.rw)]);
+    };
+    const bool isSnake = kind == EntKind::Enemy &&
+                         type == (int)hero::EnemyType::SNAKE;
+    if (!isSnake && (wallAt(band, col) || wallAt(band, col + 1))) return false;
+
+    if (kind == EntKind::Enemy &&
+        (type == (int)hero::EnemyType::TENTACLE ||
+         type == (int)hero::EnemyType::RAFT) &&
+        (band != g.rh - 1 || !g.room->bottom_band))
+        return false;
+    const bool standing = kind == EntKind::Miner ||
+        (kind == EntKind::Enemy && type == (int)hero::EnemyType::EXTRA_MINER);
+    if (standing) {
+        const int mid = std::min(19, (col * 4 + 3) / 8);
+        if (!wallAt(band + 1, mid < 10 ? mid * 2 : (19 - mid) * 2)) return false;
+    }
+    // one object per canvas row (the editor's flicker rule), ignoring itself
+    for (int i = 0; i < (int)g.room->enemies.size(); ++i)
+        if (!(kind == EntKind::Enemy && i == idx) &&
+            RowOfY(g.room->enemies[i].y, g.rows) == tileY) return false;
+    for (int i = 0; i < (int)g.room->lamps.size(); ++i)
+        if (!(kind == EntKind::Lamp && i == idx) &&
+            RowOfY(g.room->lamps[i].y, g.rows) == tileY) return false;
+    if (kind != EntKind::Miner && m_levelData->miner_room == m_activeRoomIndex &&
+        RowOfY(m_levelData->miner_y, g.rows) == tileY) return false;
+    return true;
+}
+
+bool MapCanvas::TryBeginDrag(const QPointF& pos) {
+    Geo g;
+    if (!GetGeo(g)) return false;
+    switch (m_currentBrush) {
+        case BrushTool::DELETE_ENTITY: case BrushTool::ERASE_AIR:
+        case BrushTool::SOLID_WALL: case BrushTool::HOT_ROCK_WALL:
+        case BrushTool::ASYM_PATCH: case BrushTool::DOOR_TILE:
+        case BrushTool::PHASE_TILE: case BrushTool::HCRUNCH_TILE:
+        case BrushTool::ADD_MAGMA:
+            return false;               // those brushes own the click
+        default: break;
+    }
+    EntKind kind = EntKind::None;
+    int idx = -1;
+    for (int i = (int)g.room->enemies.size() - 1; i >= 0 && idx < 0; --i)
+        if (EntityRect(EntKind::Enemy, i).contains(pos)) { kind = EntKind::Enemy; idx = i; }
+    for (int i = (int)g.room->lamps.size() - 1; i >= 0 && idx < 0; --i)
+        if (EntityRect(EntKind::Lamp, i).contains(pos)) { kind = EntKind::Lamp; idx = i; }
+    if (idx < 0 && m_levelData->miner_room == m_activeRoomIndex &&
+        EntityRect(EntKind::Miner, 0).contains(pos)) { kind = EntKind::Miner; idx = 0; }
+    if (idx < 0) return false;
+
+    const QRectF r = EntityRect(kind, idx);
+    const int rowOfEntity = kind == EntKind::Enemy ? RowOfY(g.room->enemies[idx].y, g.rows)
+                          : kind == EntKind::Lamp ? RowOfY(g.room->lamps[idx].y, g.rows)
+                          : RowOfY(m_levelData->miner_y, g.rows);
+    m_dragKind = kind;
+    m_dragIdx = idx;
+    m_dragGrabCol = (int)(pos.x() / g.cellW) - (int)std::lround(r.x() / g.cellW);
+    m_dragGrabRow = (int)(pos.y() / g.cellH) - rowOfEntity;
+    m_dragMoved = false;
+    m_dragPress = pos;
+    return true;
+}
+
+void MapCanvas::DragTo(const QPointF& pos) {
+    Geo g;
+    if (!GetGeo(g) || m_dragKind == EntKind::None) return;
+    int type = -1, curCol = 0, curRow = 0;
+    if (m_dragKind == EntKind::Enemy) {
+        if (m_dragIdx >= (int)g.room->enemies.size()) return;
+        const auto& e = g.room->enemies[m_dragIdx];
+        type = e.type; curCol = (int)e.x; curRow = RowOfY(e.y, g.rows);
+    } else if (m_dragKind == EntKind::Lamp) {
+        if (m_dragIdx >= (int)g.room->lamps.size()) return;
+        const auto& l = g.room->lamps[m_dragIdx];
+        curCol = ((int)(l.x * 4) / 8) * 2; curRow = RowOfY(l.y, g.rows);
+    } else {
+        curCol = (int)std::lround(m_levelData->miner_x * 2.0);
+        curRow = RowOfY(m_levelData->miner_y, g.rows);
+    }
+    int col = (int)(pos.x() / g.cellW) - m_dragGrabCol;
+    int row = (int)(pos.y() / g.cellH) - m_dragGrabRow;
+    if (m_dragKind == EntKind::Miner) row = curRow;     // Y is a ROM constant
+    row = std::clamp(row, 0, g.rows - 1);
+    const bool whole = m_dragKind == EntKind::Lamp ||
+                       (m_dragKind == EntKind::Enemy &&
+                        type == (int)hero::EnemyType::SPIDER);   // whole cells
+    const bool seated = type == (int)hero::EnemyType::EXTRA_MINER;
+    if (seated)      // feet on the band's last line, like the placement brush
+        row = RowOfY(3.0f * (float)std::min(row / 4, 2) + 2.25f, g.rows);
+    if (whole) col &= ~1;
+
+    // nearest legal column on that row (a few steps either way), else stay
+    const int step = whole ? 2 : 1;
+    for (int k = 0; k <= 3; ++k) {
+        for (int sgn = (k == 0 ? 1 : -1); sgn <= 1; sgn += 2) {
+            const int c = col + sgn * k * step;
+            if (!PlacementOk(m_dragKind, m_dragIdx, type, c, row)) continue;
+            if (c == curCol && row == curRow) return;
+            m_dragMoved = true;
+            if (m_dragKind == EntKind::Enemy) {
+                auto& e = g.room->enemies[m_dragIdx];
+                const float d = (float)(c - (int)e.x);
+                e.x = (float)c;
+                e.y = seated ? 3.0f * (float)std::min(row / 4, 2) + 2.25f
+                             : YOfRow(row, g.rows);
+                if (type == (int)hero::EnemyType::SPIDER &&
+                    hero::SpiderForcedDir(e.y) != 0)
+                    e.dir = hero::SpiderForcedDir(e.y);
+                e.range_min = std::max(0.0f, e.range_min + d);
+                e.range_max = std::min((float)g.cols - 1, e.range_max + d);
+            } else if (m_dragKind == EntKind::Lamp) {
+                auto& l = g.room->lamps[m_dragIdx];
+                l.x = (float)c + 0.5f;
+                l.y = YOfRow(row, g.rows) + 0.5f * 12.0f / (float)g.rows;
+            } else {
+                m_levelData->miner_x = (float)c / 2.0f;
+            }
+            emit levelModified();
+            update();
+            return;
+        }
+    }
+}
+
 void MapCanvas::mousePressEvent(QMouseEvent* event) {
     if (event->button() == Qt::LeftButton) {
+        if (TryBeginDrag(event->position())) return;   // click applies on release
         MouseToTile(event->position(), /*apply=*/true);
     }
 }
 
 void MapCanvas::mouseMoveEvent(QMouseEvent* event) {
+    if (m_dragKind != EntKind::None) {
+        MouseToTile(event->position(), /*apply=*/false);
+        if (event->buttons() & Qt::LeftButton) DragTo(event->position());
+        return;
+    }
     MouseToTile(event->position(), event->buttons() & Qt::LeftButton);
 }
 
 void MapCanvas::mouseReleaseEvent(QMouseEvent* event) {
+    if (m_dragKind != EntKind::None) {
+        const bool moved = m_dragMoved;
+        const EntKind kind = m_dragKind;
+        const int idx = m_dragIdx;
+        m_dragKind = EntKind::None;
+        m_dragIdx = -1;
+        if (moved) return;
+        // A plain click on an object whose brush is selected sets its facing to
+        // the Facing button's value, wherever on the sprite it was hit (user
+        // 2026-10-28: pick the element's brush, set Facing, click the element).
+        Geo g;
+        if (GetGeo(g)) {
+            if (kind == EntKind::Miner && m_currentBrush == BrushTool::SET_MINER_GOAL) {
+                m_levelData->miner_dir = m_initialFacing;
+                emit levelModified();
+                update();
+                return;
+            }
+            if (kind == EntKind::Enemy && idx < (int)g.room->enemies.size()) {
+                auto& e = g.room->enemies[idx];
+                const bool sameBrush =
+                    (m_currentBrush == BrushTool::ADD_SPIDER && e.type == (int)hero::EnemyType::SPIDER) ||
+                    (m_currentBrush == BrushTool::ADD_BAT && e.type == (int)hero::EnemyType::BAT) ||
+                    (m_currentBrush == BrushTool::ADD_SNAKE && e.type == (int)hero::EnemyType::SNAKE) ||
+                    (m_currentBrush == BrushTool::ADD_TENTACLE && e.type == (int)hero::EnemyType::TENTACLE) ||
+                    (m_currentBrush == BrushTool::ADD_MOTH && e.type == (int)hero::EnemyType::GIANT_MOTH) ||
+                    (m_currentBrush == BrushTool::ADD_MINER2 && e.type == (int)hero::EnemyType::EXTRA_MINER);
+                if (sameBrush) {
+                    const int forced = e.type == (int)hero::EnemyType::SPIDER
+                                           ? hero::SpiderForcedDir(e.y) : 0;
+                    e.dir = forced ? forced : m_initialFacing;
+                    emit levelModified();
+                    update();
+                    return;
+                }
+            }
+        }
+        MouseToTile(m_dragPress, /*apply=*/true);   // otherwise: the brush as before
+        return;
+    }
     // Live feature checks fire on RELEASE only — never mid-drag (a drag
     // legitimately passes through invalid layouts cell by cell).
     if (m_modelMode &&

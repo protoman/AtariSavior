@@ -78,8 +78,9 @@ def _grid(model, room, sides=(True, True)):
             continue
         ex = enemy_x_px(e["x"])
         top = int(round(e["y"] * 12))
-        b0 = max(0, min(nb - 1, top // 36))
-        b1 = max(0, min(nb - 1, (top + 24 + 14) // 36))
+        up = 24 if int(e.get("dir", 1)) < 0 else 0   # dir left sweeps UP first
+        b0 = max(0, min(nb - 1, (top - up) // 36))
+        b1 = max(0, min(nb - 1, (top + 24 - up + 14) // 36))
         for b in range(b0, b1 + 1):
             for f in range(max(0, (ex - 15) // 8), min(19, (ex + 8) // 8) + 1):
                 danger.add((b, f))

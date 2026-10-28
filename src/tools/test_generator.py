@@ -712,6 +712,19 @@ def main() -> int:
                               f"enemy type {enemy['type']} on odd column "
                               f"{enemy['x']} straddles two cells")
                         return 1
+                    # a spider sweeps 24 px (right = down first, left = up
+                    # first): near the cave edge the direction must point
+                    # inward so the 15-row sprite never leaves the 144 px cave
+                    if int(enemy["type"]) == 0:
+                        top = int(round(float(enemy["y"]) * 12))
+                        d = int(enemy.get("dir", 1))
+                        if (d >= 0 and top + 24 + 15 > 144) \
+                                or (d < 0 and top - 24 < 0):
+                            print(f"FAIL: level {level_n} room "
+                                  f"{room['room_id']}: spider at y="
+                                  f"{enemy['y']} ({top} px) faces dir {d} and "
+                                  "its sweep leaves the screen")
+                            return 1
                 for lamp in room.get("lamps") or []:
                     cell = int(float(lamp["x"])) // 2
                     band = int(float(lamp["y"])) // units

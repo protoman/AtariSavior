@@ -105,6 +105,31 @@ public:
     void ApplyBrushAt(int tileX, int entityX, int tileY);
 
 private:
+    // Drag & drop of placed objects (level mode). An object is picked by its
+    // real sprite rectangle; it follows the mouse snapped to the positions the
+    // ROM can draw (whole display columns, 9 px rows, no wall under the 8 px
+    // sprite - the snake is the only one allowed in walls).
+    enum class EntKind { None, Enemy, Lamp, Miner };
+    struct Geo {
+        const hero::ModelData* model = nullptr;
+        hero::RoomData* room = nullptr;
+        int rw = 0, rh = 0, cols = 0, rows = 0, cellW = 0, cellH = 0;
+        double pxH = 0;   // canvas pixels per game scanline
+    };
+    bool GetGeo(Geo& g) const;
+    QRectF EntityRect(EntKind kind, int idx) const;
+    bool LampWallOnRight(int idx) const;
+    bool PlacementOk(EntKind kind, int idx, int type, int col, int tileY) const;
+    bool TryBeginDrag(const QPointF& pos);
+    void DragTo(const QPointF& pos);
+
+    EntKind m_dragKind = EntKind::None;
+    int m_dragIdx = -1;
+    int m_dragGrabCol = 0;
+    int m_dragGrabRow = 0;
+    bool m_dragMoved = false;
+    QPointF m_dragPress;
+
     void MouseToTile(const QPointF& pos, bool apply);
     // Warn (once per mouse RELEASE, never mid-drag) about feature layouts
     // convert would reject at build: phase on the hot middle band,
@@ -120,7 +145,8 @@ private:
     void WarnAsyncBrushNeedsRoomEditor();
     QColor GetTileColor(int tileType, int tileY) const;
     void UpdateSizeForRoom();
-    void DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int dir) const;
+    void DrawFacingArrow(QPainter& painter, const QRect& enemyRect, int dir,
+                         bool vertical = false) const;
     // Miner + enemies + lamps in the active room (flicker budget).
     int CountRoomElements() const;
     // Same count for an explicit room index (crunch rule scans every room

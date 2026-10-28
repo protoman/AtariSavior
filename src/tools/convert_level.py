@@ -932,6 +932,20 @@ def enemy_x_px(column: float) -> int:
     return target + 4 if target < 11 else target + 7
 
 
+def spider_forced_dir(y_rows: float) -> int:
+    """+1 / -1 when a spider at this y (12-px rows) must sweep down / up to keep
+    its 24 px sweep and 15-row sprite inside the 144-px cave, else 0 (free).
+    Same rule as the editor's SpiderForcedDir (LevelData.hpp)."""
+    top = px(y_rows, 12)
+    can_down = top + 24 + 15 <= 144
+    can_up = top - 24 >= 0
+    if can_down and not can_up:
+        return 1
+    if can_up and not can_down:
+        return -1
+    return 0
+
+
 def level_number_from_path(path: Path) -> int:
     """Level number from the input file name (level_002.json -> 2), else 0."""
     match = re.search(r"level_(\d+)", path.stem, re.IGNORECASE)
@@ -1368,11 +1382,20 @@ def _enemy_tables(prefix: str, rooms: list[dict],
             # EnemyRamD and only seeds the first patrol leg. Emitting b7 made
             # `cmp #RAFT` in the bomb blast miss, so a dir=right raft could be
             # destroyed by its own rider's bomb.
-            direction = 0 if type_ in (RAFT_ENTITY, POWER_CELL) else int(enemy.get("dir", 1))   # an extra miner KEEPS his dir: record b7 = faces left (S1Fin mirrors him)
+            direction = 0 if type_ in (RAFT_ENTITY, POWER_CELL) else int(enemy.get("dir", 1))
+            if type_ == 0:
+                # SPIDER: dir right = sweeps down first, left = up first (kernel
+                # DeriveEnemyY). Near the cave edge the direction is forced.
+                direction = (spider_forced_dir(float(enemy.get("y", 0)))
+                             or direction)   # an extra miner KEEPS his dir: record b7 = faces left (S1Fin mirrors him)
             flat.append((
                 type_,
                 flat_x if type_ in (LAMP_ENTITY, LAMP_MIRROR) else enemy_x_px(x),
-                px(float(enemy.get("y", 0)), 12),
+                # An up-first SPIDER (dir left): the kernel always sweeps
+                # spawn..spawn+24 (DeriveEnemyY, bank0 is frozen), so the record
+                # is anchored 24 px higher; the sweep then covers y-24..y.
+                px(float(enemy.get("y", 0)), 12)
+                - (24 if type_ == 0 and direction < 0 else 0),
                 direction,
             ))
     lines = [""]
