@@ -9,8 +9,13 @@
       8  f000							; is filled to the vector area, and the vectors are emitted (unused, but every
       9  f000							; bank image must be 4096 B and DASM only writes what is emitted).
      10  f000							; Hotspot for this bank: $1FFA (F4: bank = addr - $1FF4).
-     11  f000							; ==============================================================================
-     12  f000		       00 00 00 00*	      .ds	$FFFA - *, 0
-     13  fffa		       00 f0		      .word.w	$F000
-     14  fffc		       00 f0		      .word.w	$F000
-     15  fffe		       00 f0		      .word.w	$F000
+     11  f000							; The power-up stub below is mandatory in EVERY bank: F4 powers up in an undefined
+     12  f000							; bank, so each one selects bank0 (whose $F005 is `jmp GameStart`) first.
+     13  f000							; ==============================================================================
+     14  f000		       a9 00		      lda	#0
+     15  f002		       8d f4 1f 	      sta	$1FF4	; select bank0 - the fetch at $F005 is its
+     16  f005
+     17  f005		       00 00 00 00*	      .ds	$FFFA - *, 0
+     18  fffa		       00 f0		      .word.w	$F000
+     19  fffc		       00 f0		      .word.w	$F000
+     20  fffe		       00 f0		      .word.w	$F000
