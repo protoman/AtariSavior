@@ -576,7 +576,8 @@ class Pilot:
             ey = c.ram[(c.lab["EnemyRamY"] & 0x7F) + i]
             if abs(ey - y) <= 18 and 0 < (ex - x) * dx <= 72:
                 self.shoot_wait = getattr(self, "shoot_wait", 0) + 1
-                if self.shoot_wait < 150:
+                self.threat_dx = ex - x
+                if self.shoot_wait < 400:
                     return True
         else:
             self.shoot_wait = 0
@@ -594,8 +595,13 @@ class Pilot:
                 if self.phase_ahead(x, x_t, band):
                     sw = self.altitude(band)      # wait for the wall's OFF half
                 elif self.shoot_ahead(x, y, 1 if x_t > x else -1):
-                    sw = self.altitude(band)      # hold fire (laser is always on)
-                                                  # and let it come: 4 px/frame kills
+                    # face it (a tap toward it turns him round) and keep 28 px away:
+                    # the held laser, 4 px/frame, kills what it touches. Enemies
+                    # that do not patrol (stationary bats) never come to us.
+                    dx_ = self.threat_dx
+                    sw = self.altitude(band)
+                    if abs(dx_) > 28 and self.c.frames % 6 == 0:
+                        sw = (RIGHT if x_t > x else LEFT) & sw
             else:
                 # the 22-px box still overlaps the band above/below: sideways
                 # now would crush him in a wall edge (the spawn at RoomY 24)
