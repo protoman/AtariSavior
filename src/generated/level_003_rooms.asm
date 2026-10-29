@@ -18,7 +18,7 @@ LEVEL3_MINER_Y = 96
 ; indices — the hot count/stream is gone (hot derives from PF row 1).
 LEVEL3_RoomShapes:
   .byte SHAPE_M2 ; room 0 (model 2)
-  .byte SHAPE_M22 ; room 1 (model 22)
+  .byte SHAPE_M21 ; room 1 (model 21)
   .byte SHAPE_M0 ; room 2 (model 0)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
@@ -42,4 +42,4 @@ LEVEL3_RoomCounts:
 ; Enemy data: 2 enemy records across 3 rooms, 3 bytes each (type|dir, x, y).
 LEVEL3_EnemyDataTable:
   .byte $01, 79, 84
-  .byte $01, 71, 48
+  .byte $01, 55, 48
