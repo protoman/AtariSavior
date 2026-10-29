@@ -409,6 +409,16 @@ def main() -> int:
                         continue
                     theirs = rows[other]
                     opposite = "south" if direction == "north" else "north"
+                    # EXACT match (user report 2026-10-29, level 18 room 5): every hole
+                    # in the lower room's ceiling must have a hole above it, or the
+                    # player flies up into a wall with his head stuck in it.
+                    if direction == "south" and (
+                            edge_cells(mine, "south") != edge_cells(theirs, "north")):
+                        print(f"FAIL: level {level_n} rooms {rid + 1} (floor "
+                              f"{sorted(edge_cells(mine, 'south'))}) and {other + 1} "
+                              f"(ceiling {sorted(edge_cells(theirs, 'north'))}) are "
+                              "stacked with different vertical openings")
+                        return 1
                     if edge_open(mine, direction) != edge_open(theirs, opposite):
                         print(f"FAIL: level {level_n} rooms {rid} and {other} "
                               f"disagree on the {direction} carve "
