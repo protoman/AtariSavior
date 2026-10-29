@@ -616,8 +616,11 @@ bool IsChannelRoom(int level, const std::vector<GridPos>& walk,
     if (g_channelOff && g_channelOff->count({level, pos.x, pos.y})) return false;
     const GridPos& goal = walk.back();
     if (pos.x == goal.x && pos.y == goal.y) return false;
+    // User rule 2026-10-29: a water room has no exit or entry at its bottom (the
+    // player flying up out of a room below arrives in the water and drowns).
     if (!HasRoomAt(walk, pos.x - 1, pos.y)
-            || !HasRoomAt(walk, pos.x + 1, pos.y)) {
+            || !HasRoomAt(walk, pos.x + 1, pos.y)
+            || HasRoomAt(walk, pos.x, pos.y + 1)) {
         return false;
     }
     // Nearest to the goal wins (deterministic: the first in row-major order).
@@ -628,7 +631,8 @@ bool IsChannelRoom(int level, const std::vector<GridPos>& walk,
         if (g_channelOff && g_channelOff->count({level, other.x, other.y}))
             continue;                       // demoted by the reach repair
         if (!HasRoomAt(walk, other.x - 1, other.y)
-                || !HasRoomAt(walk, other.x + 1, other.y)) {
+                || !HasRoomAt(walk, other.x + 1, other.y)
+                || HasRoomAt(walk, other.x, other.y + 1)) {
             continue;
         }
         const int d = std::abs(other.x - goal.x) + std::abs(other.y - goal.y);
@@ -1127,7 +1131,8 @@ unsigned LayoutMix(unsigned a, unsigned b) {
 //   maxTouch 2 (levels < 15) : a second touch is allowed -> one loop/branch
 //   maxTouch 3 (levels 15+)  : free growth -> the drawn maze, where the
 //                              approach to the goal can be reached two ways
-std::vector<GridPos> LevelLayout(int level, int rooms) {
+std::vector<GridPos> LevelLayoutSalt(int level, int rooms, unsigned salt,
+                                     bool* waterLeaf) {
     const int n = rooms < 2 ? 2 : rooms;
     const int maxTouch = level < 6 ? 1 : (level < 15 ? 2 : 3);
     bool used[kGridH][kGridW] = {};
@@ -1188,7 +1193,7 @@ std::vector<GridPos> LevelLayout(int level, int rooms) {
             }
         }
         if (!stemmed) {
-            p = cand[LayoutMix((unsigned)level, (unsigned)step) % cand.size()];
+            p = cand[LayoutMix((unsigned)level + salt * 977u, (unsigned)step) % cand.size()];
         }
         used[p.y][p.x] = true;
         walk.push_back(p);
@@ -1207,13 +1212,34 @@ std::vector<GridPos> LevelLayout(int level, int rooms) {
     };
     int best = -1;
     int bestD = -1;
-    for (int i = 1; i < (int)walk.size(); ++i) {
-        if (degree(walk[i]) != 1) continue;     // leaves only: the goal never
-        const int d = dist(walk[i]);            // continues anywhere
-        if (d > bestD) { bestD = d; best = i; }
+    // User rule 2026-10-29: a water room has no entry at its bottom, so from
+    // level 4 (water goals) the goal is a leaf whose one neighbour is NOT below.
+    for (int pass = 0; pass < 2 && best < 0; ++pass) {
+        for (int i = 1; i < (int)walk.size(); ++i) {
+            if (degree(walk[i]) != 1) continue; // leaves only: the goal never
+            if (pass == 0 && level >= 4 && walk[i].y + 1 < kGridH
+                    && used[walk[i].y + 1][walk[i].x]) continue;
+            const int d = dist(walk[i]);        // continues anywhere
+            if (d > bestD) { bestD = d; best = i; }
+        }
     }
     if (best > 0) {
         std::swap(walk[best], walk.back());     // the goal room is the LAST room
+    }
+    if (waterLeaf) {
+        *waterLeaf = best > 0 && !(walk.back().y + 1 < kGridH
+                                   && used[walk.back().y + 1][walk.back().x]);
+    }
+    return walk;
+}
+
+// First salt whose goal has nothing below it (salt 0 = the old layout).
+std::vector<GridPos> LevelLayout(int level, int rooms) {
+    std::vector<GridPos> walk;
+    for (unsigned salt = 0; salt < 200; ++salt) {
+        bool ok = true;
+        walk = LevelLayoutSalt(level, rooms, salt, &ok);
+        if (ok || level < 4) break;
     }
     return walk;
 }

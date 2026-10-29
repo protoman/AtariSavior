@@ -380,6 +380,14 @@ def main() -> int:
                       f"{START_CELL} — the player spawns inside it")
                 return 1
 
+            # User rule 2026-10-29: a water room has no entry or exit at its
+            # bottom (flying up out of a room below arrives in the water).
+            for (x, y), rid in pos.items():
+                if rooms[rid].get("bottom_band") and (x, y + 1) in pos:
+                    print(f"FAIL: level {level_n} room {rid + 1} has water at its "
+                          f"bottom but room {pos[(x, y + 1)] + 1} joins it from below")
+                    return 1
+
             # Adjacent pairs: the carve must agree on BOTH sides (tear rule).
             passages = 0
             for (x, y), rid in pos.items():
