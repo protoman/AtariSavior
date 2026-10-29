@@ -22,6 +22,7 @@ from reportlab.platypus import (BaseDocTemplate, Flowable, Frame, KeepTogether,
 SRC = Path(__file__).resolve().parents[2]
 OUT = SRC / "docs" / "manual" / "savior_manual.pdf"
 KERNEL = (SRC / "kernel.asm").read_text()
+VERSION = (SRC / "VERSION").read_text().strip()      # the release version (src/VERSION)
 SHOT_HUD = Path(__file__).resolve().parent / "hud_8lives.png"
 SHOT_TITLE = SRC / "screenshots" / "releases" / "0.8" / "001.png"
 
@@ -361,7 +362,7 @@ def cover(c, doc):
     c.drawCentredString(w / 2, 0.75 * inch,
                         "A game cartridge for the Atari 2600™ Video Computer System™")
     c.setFont("Helvetica", 8)
-    c.drawCentredString(w / 2, 0.55 * inch, "© 2026 Iuri Fiedoruk")
+    c.drawCentredString(w / 2, 0.55 * inch, f"© 2026 Iuri Fiedoruk   ·   Version {VERSION}")
     # the hero flying, and a miner waiting
     for sp, x, y in ((player(5.2), w / 2 - 20, h - 2.05 * inch),
                      (sprite("miner", 5.2), w - 1.85 * inch, 1.55 * inch)):
