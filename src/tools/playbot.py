@@ -372,6 +372,27 @@ class Pilot:
                                        # more thrust now only carries him out the top
         return UP if y > BAND_PX * band + hi else NONE
 
+    def phase_ahead(self, x, x_t, band):
+        """True while a phase wall (45 frames ON / 45 OFF, mod-90 clock on EnemyRamP)
+        sits just ahead on `band` and is not open for long enough to cross."""
+        c = self.c
+        if c.ram[0xBA & 0x7F] & 0x40:
+            return False                          # crushed once: open for the visit
+        room = self.lv.rooms[c.r("RoomNo")]
+        dx = 1 if x_t > x else -1
+        for fc in room.get("feature_cells") or []:
+            b, col, t = fc[0], fc[1], fc[2]
+            if t != 10 or b != band:
+                continue
+            for cell in (col, 19 - col):
+                lo, hi = 8 * cell, 8 * cell + 8
+                ahead = (lo - x) if dx > 0 else (x - hi)
+                if -4 <= ahead <= 26:
+                    ph = c.ram[0xC2 & 0x7F] % 90
+                    if ph < 45 or ph > 62:        # ON, or OFF with < 28 frames left
+                        return True
+        return False
+
     def to_x(self, x_t, band, maxf=400):
         """Walk along `band` until RoomX == x_t exactly."""
         for _ in range(maxf):
@@ -381,6 +402,8 @@ class Pilot:
             y = self.c.r("RoomY")
             if BAND_PX * band <= y <= BAND_PX * band + 14:
                 sw = (RIGHT if x < x_t else LEFT) & self.altitude(band)
+                if self.phase_ahead(x, x_t, band):
+                    sw = self.altitude(band)      # wait for the wall's OFF half
             else:
                 # the 22-px box still overlaps the band above/below: sideways
                 # now would crush him in a wall edge (the spawn at RoomY 24)
