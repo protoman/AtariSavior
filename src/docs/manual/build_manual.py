@@ -400,7 +400,13 @@ def story():
         "<b>S.A.V.I.O.R.</b> and your pilot hanging in the cave above them. "
         "If you own a <b>SaveKey</b> (or AtariVox), plug it into the <b>right "
         "controller jack</b> as well: the game then remembers your high score "
-        "and where you stopped (see <i>Saving your game</i>).", BODY)]
+        "and where you stopped (see <i>Saving your game</i>).", BODY),
+        Paragraph(
+        "<b>Three versions.</b> <b>NTSC</b> runs at 60 Hz on NTSC consoles and TVs. "
+        "<b>PAL60</b> is the same game at 60 Hz with PAL colours, for PAL consoles "
+        "and TVs that accept a 60 Hz picture. <b>PAL</b> runs at 50 Hz with PAL "
+        "colours for every PAL TV: the action is about a sixth slower in real time, "
+        "but the power bar still lasts the same 120 seconds.", BODY)]
     s += [Table([[Paragraph("<b>SELECT</b>", CELLT),
                   Paragraph("On the title screen, each press picks the next level. "
                             "The level number is shown in the score window; "

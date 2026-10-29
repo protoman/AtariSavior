@@ -105,3 +105,29 @@ What it found (all fixed or noted):
   Adding them to `AnalyseReach` made the generator's power-cell planning disagree
   with `stage_reach` (level 18), so they were NOT ported yet: that needs the planner
   and the time model recalibrated together.
+
+## TV variants: PAL60 and PAL (2026-10-28)
+
+`./build.sh` builds NTSC. `TV=pal60` / `TV=pal ./build.sh` (or, without touching the tree,
+`tools/build_variant.sh pal60|pal [OUT]`, which builds in a scratch copy and runs the full
+build.sh + both sims there) select the TV. `tools/gen_colors.py` writes `colors.inc`
+(included by every bank): the timing constants (`VBL_UNITS`, `OVER_UNITS`,
+`TICKS_PER_SEC`, `TV_CAVE_LINES`) and `NC_00..NC_FF`.
+
+- **Colours**: every colour byte in the sources is written `NC_xx` (the NTSC value xx).
+  PAL / PAL60 replace only the HUE nibble (`HUE_MAP`, chosen on Stella's PAL palette,
+  `tools/pal_palette.py`) and keep the luma nibble, because the kernel reads luma bits
+  (ENAM0 from PlayerColTable bit 1, the power bar's luma steps). The level wall / band
+  colours come from `convert_level.py`, which matches the editor's RGB to the PAL palette
+  when `TV=pal|pal60`. `tools/test_tv_variants.py` fails on any raw colour literal
+  that feeds a colour register, a `COLOR_*` constant or a colour table.
+- **PAL60** = the NTSC frame (272-line cave frames) at 60 Hz with PAL colours.
+- **PAL** = 312-line cave frames (VBL 51 + overscan 71 units), a 50-frame power-bar
+  second (the bar still lasts 120 real seconds), PAL colours. Game logic is per frame, so
+  the action is ~17% slower in real time. The ROM stamp reads "S.A.V.I.O.R. 1.0.0 PAL".
+- `sim_frame_budget.py` reads the variant's `colors.inc` for its budgets and line target.
+- The NTSC ROM is byte-identical to the pre-variant build (checked when the colour
+  plumbing went in): the variants change nothing for NTSC.
+- Verified in Stella (`stella -format PAL savior-<v>-pal.bin`): the title matches the
+  `tools/tia_render.py` picture drawn with the PAL palette (`tia_render.use_pal()`).
+  `playbot.py --rom-dir <scratch tree>` finishes all 20 levels on both variants.

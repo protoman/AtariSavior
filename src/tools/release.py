@@ -15,9 +15,13 @@ from it. Steps, each of which must pass:
   5. tools/playbot.py: all 20 levels must finish on the real ROM (~5 min)
   6. the ROM is 32 KiB and carries this version
   7. the manual PDF is rebuilt
+  8. the PAL60 and PAL ROMs are built (tools/build_variant.sh: full build.sh + both
+     sims in a scratch tree), carry "S.A.V.I.O.R. <version> PAL60|PAL" in bank5 and,
+     unless --skip-playbot, the playbot finishes all 20 levels on each
 
-Artifacts go to OUT (default src/releases/, git-ignored): savior-<version>.bin,
-its .sha256, savior-<version>-manual.pdf and RELEASE.txt (commit, date, results).
+Artifacts go to OUT (default src/releases/, git-ignored): savior-<version>.bin (NTSC),
+savior-<version>-pal60.bin, savior-<version>-pal.bin, their .sha256, the manual and
+RELEASE.txt (commit, date, results).
 --tag also creates the annotated git tag v<version> (local; never pushed here).
 """
 import argparse
@@ -126,6 +130,31 @@ def main() -> int:
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
+
+    variants = []
+    for tv, label in (("pal60", "PAL60"), ("pal", "PAL")):
+        step(f"{label} build (full build.sh + both sims, scratch tree)")
+        env = dict(os.environ, KEEP="1")
+        r = subprocess.run(["tools/build_variant.sh", tv, str(out)], cwd=ROOT, text=True,
+                           capture_output=True, env=env)
+        if r.returncode:
+            fail(f"{label} build failed:\n" + r.stdout[-1500:] + r.stderr[-500:])
+        scratch = re.search(r"scratch tree: (\S+)", r.stdout).group(1)
+        try:
+            vrom = (out / f"savior-{version}-{tv}.bin").read_bytes()
+            vstamp = f"S.A.V.I.O.R. {version} {label}".encode() + b"\0"
+            if len(vrom) != 32768 or vrom[BANK5:BANK5 + len(vstamp)] != vstamp:
+                fail(f"{label} ROM is not 32768 bytes with the {label} version stamp")
+            if not a.skip_playbot:
+                step(f"{label} playbot (all 20 levels, ~5 min)")
+                r = run([py, "tools/playbot.py", "--rom-dir", scratch])
+                done = r.stdout.count(": DONE")
+                if r.returncode or done != 20:
+                    fail(f"{label} playbot finished {done} of 20 levels:\n" + r.stdout[-2000:])
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+        variants.append((label, f"savior-{version}-{tv}.bin",
+                         hashlib.sha256(vrom).hexdigest()))
     rom_out = out / f"savior-{version}.bin"
     rom_out.write_bytes(rom)
     sha = hashlib.sha256(rom).hexdigest()
@@ -137,7 +166,8 @@ def main() -> int:
         f"commit   {commit}\n"
         f"built    {datetime.datetime.now().isoformat(timespec='seconds')}\n"
         f"rom      {rom_out.name}  32768 bytes  sha256 {sha}\n"
-        f"battery  {len(tests)} tests, 0 failures\n"
+        + "".join(f"rom      {n}  32768 bytes  sha256 {h}  ({lab})\n" for lab, n, h in variants)
+        + f"battery  {len(tests)} tests, 0 failures\n"
         f"playbot  {play}\n")
     if a.tag:
         r = run(["git", "tag", "-a", f"v{version}", "-m", f"S.A.V.I.O.R. {version}"])

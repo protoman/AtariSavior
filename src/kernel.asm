@@ -1,4 +1,5 @@
     processor 6502
+    include "colors.inc"            ; NC_xx colour bytes for this TV (tools/gen_colors.py)
 
 ; ==============================================================================
 ; savior kernel — HERO-style fixed-time rendering kernel
@@ -456,36 +457,36 @@ LASER_REARM     = %00000001     ; b0: contact consumed last frame — next held
 LASER_KEEP      = %00111101     ; dark|rearm: prologue store preserving b0
 
 ; Colors (emulator-aware: hue<<4 | luma<<1)
-COLOR_PLAYER    = $48           ; red = sprite row0: stale VBLANK color on the
+COLOR_PLAYER    = NC_48           ; red = sprite row0: stale VBLANK color on the
                                 ; line before the sprite must match row0 or a
                                 ; gold fringe shows above the sprite
 ; Player sprite per-row colors (PlayerColTable)
-COLOR_P_RED     = $48           ; hue 4 luma 4 = red body
-COLOR_P_YELLOW  = $1E           ; hue 1 luma 7 = yellow face
-COLOR_P_GRAY    = $08           ; hue 0 luma 4 = grey pack + boots
-COLOR_CAVE_BG   = $00           ; black interior
-COLOR_CAVE_WALL = $84           ; hue 8 luma 2 = dark grey-blue
-COLOR_HUD_BG    = $06           ; hue 0 luma 3 = grey
-COLOR_TIMER     = $1E           ; hue 1 luma 7 = yellow
-COLOR_LIVES     = $C6           ; hue 12 luma 3 = green
-COLOR_BOMBS     = $46           ; hue 4 luma 3 = red
-COLOR_SCORE     = $0E           ; hue 0 luma 7 = white
-COLOR_TITLE     = $6A           ; hue 6 luma 5 = purple (title text)
+COLOR_P_RED     = NC_48           ; hue 4 luma 4 = red body
+COLOR_P_YELLOW  = NC_1E           ; hue 1 luma 7 = yellow face
+COLOR_P_GRAY    = NC_08           ; hue 0 luma 4 = grey pack + boots
+COLOR_CAVE_BG   = NC_00           ; black interior
+COLOR_CAVE_WALL = NC_84           ; hue 8 luma 2 = dark grey-blue
+COLOR_HUD_BG    = NC_06           ; hue 0 luma 3 = grey
+COLOR_TIMER     = NC_1E           ; hue 1 luma 7 = yellow
+COLOR_LIVES     = NC_C6           ; hue 12 luma 3 = green
+COLOR_BOMBS     = NC_46           ; hue 4 luma 3 = red
+COLOR_SCORE     = NC_0E           ; hue 0 luma 7 = white
+COLOR_TITLE     = NC_6A           ; hue 6 luma 5 = purple (title text)
 
 ; Dark room (lamp crashed): medium grey objects, black PF; fuse PF dark grey
-COLOR_DARK_OBJ  = $0A           ; hue 0 luma 5 = medium grey (lamp + enemies)
-COLOR_DARK_PF   = $04           ; hue 0 luma 2 = very dark grey (bomb fuse walls)
+COLOR_DARK_OBJ  = NC_0A           ; hue 0 luma 5 = medium grey (lamp + enemies)
+COLOR_DARK_PF   = NC_04           ; hue 0 luma 2 = very dark grey (bomb fuse walls)
 
 ; Explosion blink COLUBK cycle (BombState=2): black → yellow → red
-COLOR_BLINK_Y   = $1C           ; hue 1 luma 6 = yellow (power bar)
-COLOR_BLINK_R   = $44           ; hue 4 luma 2 = red (power bar)
+COLOR_BLINK_Y   = NC_1C           ; hue 1 luma 6 = yellow (power bar)
+COLOR_BLINK_R   = NC_44           ; hue 4 luma 2 = red (power bar)
 
 ; Hot rock pulse (user rule 2026-10-25): a DIM AMBER partner (hue 2, luma 4)
 ; instead of bright yellow, so the band breathes instead of flashing — and the
 ; phase moved to TickCounter bit 5 (one step per 60-frame second; bit 4 flipped
 ; twice a second and read as flicker). The STONE walls keep their colour; only
 ; the mid band's COPING light changes.
-COLOR_HOT_AMBER = $28           ; hue 2 luma 4 = dark orange
+COLOR_HOT_AMBER = NC_28           ; hue 2 luma 4 = dark orange
 COLOR_HOT_Y     = COLOR_HOT_AMBER  ; name kept: the "lit" phase of a hot band
 COLOR_HOT_R     = COLOR_BLINK_R
 
@@ -531,8 +532,9 @@ GameStart:
     sta PlayerLives
     lda #BOMBS_MAX
     sta PlayerBombs
-    ; Initialize timer: 60 frames/step × 120 = 7200 = 120.0s
-    lda #60
+    ; Initialize timer: 60 frames/step × 120 = 7200 = 120.0s (50 on PAL: the same
+    ; 120 real seconds at 50 Hz)
+    lda #TICKS_PER_SEC
     sta TickCounter
     lda #120
     sta BarLevel                ; bar starts full
@@ -623,7 +625,7 @@ StartFrame:
     ; V+O sum stays 75 = 272 lines). Result: every shipped room is a constant
     ; 272 lines (level 20: constant 273), worst VBL poll slack ~107c.
 VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
-    lda #31
+    lda #VBL_UNITS              ; 31 on NTSC; PAL adds blank lines (colors.inc)
     sta TIM64T
 
     ; --- Position player sprite horizontally ---
@@ -1188,7 +1190,7 @@ Overscan:
     ; Measured real work: ~1520c typical, 2145c worst steady-state frame
     ; (L5 R3, fly+laser), 2650-3120c on the one room-transition frame (EnterRoom
     ; = a single long frame at a room change; the sim exempts those frames).
-    lda #44
+    lda #OVER_UNITS             ; 44 on NTSC; PAL adds blank lines (colors.inc)
     sta TIM64T
 
     ; --- Write live Y → EnemyRamY ($E2-$E4; window-safe since S3.4: this
@@ -1527,7 +1529,7 @@ OverscanAudio:                  ; rejoin for the spawn drop-in (DropStep tail):
     ; --- Game timer (60 frames/step × 120 = 120s) ---------------------------
     dec TickCounter
     bne .TimerDone              ; not 1s yet
-    lda #60
+    lda #TICKS_PER_SEC
     sta TickCounter
     ; Forced fall (DropTarget != 0): swallow ONLY the bar step (bugs.md #30).
     ; TickCounter keeps running (jet-flutter clock + second phase stay
@@ -2260,7 +2262,7 @@ SelectActiveObject:
     clc
     adc #3                      ; same 3px offset as the normal miner path
     sta ActiveObjectY
-    lda #$66                    ; purple (hue 6, luma 3)
+    lda #NC_66                    ; purple (hue 6, luma 3)
     sta COLUP1
     jmp .SODone
 .SOFull:
@@ -2338,7 +2340,7 @@ SelectActiveObject:
                                 ; sprite floated above the floor line; tuning
                                 ; constant — pickup box still uses MinerY)
     sta ActiveObjectY
-    lda #$66                    ; purple (hue 6, luma 3)
+    lda #NC_66                    ; purple (hue 6, luma 3)
     sta COLUP1
     jmp .SODone
 
@@ -3481,18 +3483,18 @@ TitleBcd:
 ; 16); rows 8-15 carry the type's own color, which is what tints an M1
 ; block sharing those scanlines.
 ObjColorTab:
-    .byte $1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c,$1c ; 0 KEY   ($1c yellow, 12 rows)
-    .byte $9E,$9E,$9E,$9E ; 0b CELL (4 rows: all cyan - user 2026-10-26)
-    .byte $0E,$0E,$F2,$F2,$1C,$1C,$F2,$F2,$F2,$1C,$1C,$F2,$F2,$0E ; 1 MOTH  (14 rows: cream tips, brown wings, gold body)
-    .byte $14,$14,$14,$14,$14,$22,$1C,$1C,$1C,$22,$22,$22,$14,$14,$14 ; 2 SPIDER (15 rows)
-    .byte $06,$06,$06,$06,$0E,$0E,$0E,$0E,$0E,$0E ; 3 LAMP  (10 rows: grey bracket/neck, white bowl)
-    .byte $4C,$4C,$4C,$6C,$6C,$6C,$68,$68,$68,$64,$64,$82,$82,$82 ; 4 TENTACLE (14 rows: pink head -> blue base)
-    .byte $06,$06,$6C,$6C,$68,$68,$64,$64,$82,$82 ; 5 BAT (10 rows: grey wings, purple body, dark blue tail)
-    .byte $C8,$C8,$C4,$C4,$C2,$C2 ; 6 SNAKE (6 rows: claro/claro/verde/verde/escuro/escuro)
-    .byte $54,$54,$4a,$54,$54,$08,$54,$54,$54,$08,$08,$08,$08,$08,$08,$08 ; 7 MINER (9 rows: helmet, face, body, grey tool, hips)
-    .byte $1C,$1C,$1C,$06,$46,$46,$46,$46 ; 8 BOMB  (8 rows: yellow fuse, grey collar, red body)
-    .byte $0E,$0E ; 9 RAFT  (2 rows, white — user 2026-10-22)
-    .byte $06,$06,$06,$06,$0E,$0E,$0E,$0E,$0E,$0E ; 10 LAMP_R (10 rows: same colours, bracket mirrored)
+    .byte NC_1C,NC_1C,NC_1C,NC_1C,NC_1C,NC_1C,NC_1C,NC_1C,NC_1C,NC_1C,NC_1C,NC_1C ; 0 KEY   ($1c yellow, 12 rows)
+    .byte NC_9E,NC_9E,NC_9E,NC_9E ; 0b CELL (4 rows: all cyan - user 2026-10-26)
+    .byte NC_0E,NC_0E,NC_F2,NC_F2,NC_1C,NC_1C,NC_F2,NC_F2,NC_F2,NC_1C,NC_1C,NC_F2,NC_F2,NC_0E ; 1 MOTH  (14 rows: cream tips, brown wings, gold body)
+    .byte NC_14,NC_14,NC_14,NC_14,NC_14,NC_22,NC_1C,NC_1C,NC_1C,NC_22,NC_22,NC_22,NC_14,NC_14,NC_14 ; 2 SPIDER (15 rows)
+    .byte NC_06,NC_06,NC_06,NC_06,NC_0E,NC_0E,NC_0E,NC_0E,NC_0E,NC_0E ; 3 LAMP  (10 rows: grey bracket/neck, white bowl)
+    .byte NC_4C,NC_4C,NC_4C,NC_6C,NC_6C,NC_6C,NC_68,NC_68,NC_68,NC_64,NC_64,NC_82,NC_82,NC_82 ; 4 TENTACLE (14 rows: pink head -> blue base)
+    .byte NC_06,NC_06,NC_6C,NC_6C,NC_68,NC_68,NC_64,NC_64,NC_82,NC_82 ; 5 BAT (10 rows: grey wings, purple body, dark blue tail)
+    .byte NC_C8,NC_C8,NC_C4,NC_C4,NC_C2,NC_C2 ; 6 SNAKE (6 rows: claro/claro/verde/verde/escuro/escuro)
+    .byte NC_54,NC_54,NC_4A,NC_54,NC_54,NC_08,NC_54,NC_54,NC_54,NC_08,NC_08,NC_08,NC_08,NC_08,NC_08,NC_08 ; 7 MINER (9 rows: helmet, face, body, grey tool, hips)
+    .byte NC_1C,NC_1C,NC_1C,NC_06,NC_46,NC_46,NC_46,NC_46 ; 8 BOMB  (8 rows: yellow fuse, grey collar, red body)
+    .byte NC_0E,NC_0E ; 9 RAFT  (2 rows, white — user 2026-10-22)
+    .byte NC_06,NC_06,NC_06,NC_06,NC_0E,NC_0E,NC_0E,NC_0E,NC_0E,NC_0E ; 10 LAMP_R (10 rows: same colours, bracket mirrored)
 
 ; ------------------------------------------------------------------------------
 ; ObjSprites — 4×8 designs, left-aligned bits 7-4 (col0=bit7), 8 rows each.
@@ -4224,14 +4226,14 @@ BandStart:
 ; $F744 fill needed 11 B for the Slot1Hook HMOVE fix; both are read
 ; abs,X so their address is irrelevant) ---
 EnemyColorTable:
-    .byte $14                   ; spider — hue 1 luma 2 = dark yellow
-    .byte $f2                   ; bat — hue 15 luma 7 = brown
-    .byte $c4                   ; snake — hue 12 luma 2 = green
-    .byte $0e                   ; tentacle — hue 0 luma 7 = white
-    .byte $22                   ; moth — hue 2 luma 1 = dark orange
-    .byte $0e                   ; lamp (type 5) — white; dark rooms override to grey
-    .byte $1C                   ; key (type 6) — yellow
-    .byte $c4                   ; raft (type 7) — green, matching the SNAKE art
+    .byte NC_14                   ; spider — hue 1 luma 2 = dark yellow
+    .byte NC_F2                   ; bat — hue 15 luma 7 = brown
+    .byte NC_C4                   ; snake — hue 12 luma 2 = green
+    .byte NC_0E                   ; tentacle — hue 0 luma 7 = white
+    .byte NC_22                   ; moth — hue 2 luma 1 = dark orange
+    .byte NC_0E                   ; lamp (type 5) — white; dark rooms override to grey
+    .byte NC_1C                   ; key (type 6) — yellow
+    .byte NC_C4                   ; raft (type 7) — green, matching the SNAKE art
                                 ; slot it borrows ($c4 = ObjColorTab slot 6). User
                                 ; 2026-10-18: keep the SOLID block and read it as
                                 ; a trunk/log — the solid art also looks bigger
@@ -4368,12 +4370,12 @@ PlayerColTable:
     ; ONLY beam row (4); every other byte is even with bit 1 clear so
     ; ENAM0 cannot fire on it. Names: Branco, Amarelo=beam, Cinza,
     ; Vermelho, Laranja, Azul, Cinza Escuro.
-    .byte $0C, $0C, $0C, $0C   ; rows 0:Branco, 1:Branco, 2:Branco, 3:Branco
-    .byte $1E, $0C, $0C, $08   ; rows 4:Amarelo, 5:Branco, 6:Branco, 7:Cinza
-    .byte $48, $48, $48, $48   ; rows 8:Vermelho, 9:Vermelho, 10:Vermelho, 11:Vermelho
-    .byte $48, $48, $08, $2C   ; rows 12:Vermelho, 13:Vermelho, 14:Cinza, 15:Laranja
-    .byte $2C, $88, $88, $88   ; rows 16:Laranja, 17:Azul, 18:Azul, 19:Azul
-    .byte $04, $04   ; rows 20:Cinza Escuro, 21:Cinza Escuro
+    .byte NC_0C, NC_0C, NC_0C, NC_0C   ; rows 0:Branco, 1:Branco, 2:Branco, 3:Branco
+    .byte NC_1E, NC_0C, NC_0C, NC_08   ; rows 4:Amarelo, 5:Branco, 6:Branco, 7:Cinza
+    .byte NC_48, NC_48, NC_48, NC_48   ; rows 8:Vermelho, 9:Vermelho, 10:Vermelho, 11:Vermelho
+    .byte NC_48, NC_48, NC_08, NC_2C   ; rows 12:Vermelho, 13:Vermelho, 14:Cinza, 15:Laranja
+    .byte NC_2C, NC_88, NC_88, NC_88   ; rows 16:Laranja, 17:Azul, 18:Azul, 19:Azul
+    .byte NC_04, NC_04   ; rows 20:Cinza Escuro, 21:Cinza Escuro
 
 ; UEPrologue - enemy SPEED MULTIPLIER (user request 2026-10-26: x1.5 / x2 / x2.5 / x3
 ; every 5 levels). EnemySpd half-units per frame (2 = x1); EnemyFrac carries the odd
@@ -4473,7 +4475,7 @@ TallyWork:
     jsr LoadLevel
     lda #120                    ; reset timer for new level
     sta BarLevel
-    lda #60
+    lda #TICKS_PER_SEC
     sta TickCounter
     jmp OverscanAudio           ; normal sounds + timer resume
 .TLive:

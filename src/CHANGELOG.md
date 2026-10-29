@@ -3,7 +3,7 @@
 Release versions live in `VERSION` (build.sh stamps them into the ROM, the manual
 cover prints them, `tools/release.py` names the artifacts from them).
 
-## 1.0.0 (release candidate 1: `1.0.0-rc1`)
+## 1.0.0
 
 **Game**
 - 20 generated levels, each a network of mirrored cave rooms; up to three miners per
@@ -20,6 +20,10 @@ cover prints them, `tools/release.py` names the artifacts from them).
   resumes it. The title alternates the level number and the high score.
 - Crushers can be stood on and bumped from above or below; their sides still kill.
 - The start spawn sits exactly on cell 4.
+
+**TV standards**
+- NTSC (60 Hz), PAL60 (60 Hz, PAL colours) and PAL (50 Hz, 312 lines, PAL colours)
+  ROMs of the same game; `tools/build_variant.sh pal60|pal` builds them.
 
 **Tools**
 - Level editor: real sprites, drag & drop of enemies, lamps and the miner with

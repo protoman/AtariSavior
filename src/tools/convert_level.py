@@ -144,6 +144,17 @@ kPalette = [
 ]
 
 
+def _tv_palette():
+    """The palette the level colours are matched against: NTSC (the editor's) or,
+    for the PAL / PAL60 builds (TV=pal|pal60), Stella's PAL palette."""
+    import os
+    if os.environ.get("TV", "ntsc") in ("pal", "pal60"):
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from pal_palette import kPalettePAL
+        return kPalettePAL
+    return kPalette
+
+
 def nearest_byte(r: int, g: int, b: int) -> int:
     """Emulator-aware TIA color byte closest to an RGB triple.
 
@@ -159,9 +170,10 @@ def nearest_byte(r: int, g: int, b: int) -> int:
     """
     best_byte = 0
     best_dist = None
+    palette = _tv_palette()
     for hue in range(16):
         for luma in range(8):
-            pr, pg, pb = kPalette[hue][luma]
+            pr, pg, pb = palette[hue][luma]
             dr, dg, db = r - pr, g - pg, b - pb
             dist = dr * dr + dg * dg + db * db
             if best_dist is None or dist < best_dist:

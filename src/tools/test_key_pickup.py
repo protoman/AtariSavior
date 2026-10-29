@@ -79,7 +79,7 @@ noobj = noobj[:noobj.index("rts")]
 assert "sbc RoomY" in noobj, \
     "off-object ObjTop must be RoomY-compensated (never wraps into view)"
 
-assert re.search(r"\.byte\s+\$1c,\$1c,\$1c,\$1c", K), \
+assert re.search(r"\.byte\s+(?:\$1c|NC_1C),(?:\$1c|NC_1C),(?:\$1c|NC_1C),(?:\$1c|NC_1C)", K, re.I), \
     "ObjColorTab slot 0 must be $1C (yellow) — per-row table overrides frame"
 
 # --- 2. py65 run of CEH_Key -------------------------------------------------

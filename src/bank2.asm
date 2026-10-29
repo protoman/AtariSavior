@@ -1,4 +1,5 @@
     processor 6502
+    include "colors.inc"            ; NC_xx colour bytes for this TV (tools/gen_colors.py)
 ; ==============================================================================
 ; Bank2 stub — selects bank0, jumps to GameStart
 ; ==============================================================================
@@ -15,7 +16,7 @@ COLUP0  = $06
 COLUP1  = $07
 COLUBK  = $09                ; kernel line 41
 REFP0   = $0B                ; kernel line 43
-COLOR_PLAYER = $48               ; must match kernel.asm
+COLOR_PLAYER = NC_48               ; must match kernel.asm
 RESP0   = $10
 RESP1   = $11
 HMP0    = $20                   ; TIA — for the SetObjectXPos_t2 title copy
@@ -107,11 +108,11 @@ LevelWallColor = $AA              ; stripe rows 0+2
 LevelWallColor2 = $AB              ; stripe row 1
 TickCounter = $AD                 ; 60-frame game timer — hot-pulse phase bit 4
 ColupfBuf   = $D3                 ; 4-byte COLUPF image (rows 0-3, N=4)
-COLOR_BOMBS = $46                ; kernel COLOR_BOMBS — fuse bomb color
-COLOR_CAVE_BG = $00
-COLOR_DARK_PF = $04             ; dark-room fuse walls
-COLOR_HOT_Y = $1C               ; kernel COLOR_BLINK_Y
-COLOR_HOT_R = $44               ; kernel COLOR_BLINK_R
+COLOR_BOMBS = NC_46                ; kernel COLOR_BOMBS — fuse bomb color
+COLOR_CAVE_BG = NC_00
+COLOR_DARK_PF = NC_04             ; dark-room fuse walls
+COLOR_HOT_Y = NC_1C               ; kernel COLOR_BLINK_Y
+COLOR_HOT_R = NC_44               ; kernel COLOR_BLINK_R
 ; --- TallyEntry (level-bonus tally) — hand-copies, check_equ_sync guarded ---
 TallyTicks = $F2                ; countdown, 50-pt units (kernel EQU)
 DropTarget = $8A                ; $FE = tally sentinel (hand-copy kernel byte)

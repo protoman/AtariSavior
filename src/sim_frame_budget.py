@@ -34,8 +34,18 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parent
 BANKS = [open(SRC / f'bank{i}.bin', 'rb').read() for i in range(8)]
-VBL_BUDGET = 1984          # TIM64T #31
-OVER_BUDGET = 2816         # TIM64T #44
+# TV standard (colors.inc, written by build.sh/tools/gen_colors.py): the PAL build adds
+# blank lines to both waits, so the budgets and the line target follow its units.
+import re as _re
+_inc = SRC / 'colors.inc'
+_u = dict(_re.findall(r'^(VBL_UNITS|OVER_UNITS|TV_CAVE_LINES)\s*=\s*(\d+)', _inc.read_text(), _re.M)) \
+    if _inc.exists() else {}
+VBL_UNITS = int(_u.get('VBL_UNITS', 31))
+OVER_UNITS = int(_u.get('OVER_UNITS', 44))
+CAVE_LINES = int(_u.get('TV_CAVE_LINES', 272))      # 312 on the 50 Hz PAL build
+EXTRA_LINES = CAVE_LINES - 272.0                  # 0 on NTSC
+VBL_BUDGET = 1984 + (VBL_UNITS - 31) * 64          # TIM64T #31 on NTSC
+OVER_BUDGET = 2816 + (OVER_UNITS - 44) * 64        # TIM64T #44 on NTSC
 # Assert band = 3223 (documented fill absorb: INTIM poll granularity lets
 # ~3201-3222 pass silently; sub-window frames measure 3200 +- tick-quant
 # epsilon, so the hard 3200 line is alignment-fragile — wall-model is the
@@ -43,7 +53,7 @@ OVER_BUDGET = 2816         # TIM64T #44
 # 3222 -> 3223 (2026-10-11): the #29 kernel-entry re-anchor (+4 bytes bank0)
 # shifted an abs,Y page-cross in the overscan worst path by +1c — code-motion
 # artifact, not new work; wall-model stays the hard gate.
-OVER_ABSORB = 2839
+OVER_ABSORB = 2839 + (OVER_UNITS - 44) * 64
 GAP_LIMIT = 76             # one scanline = 76 CPU cycles
 MIN_FRAMES = 300
 
@@ -698,7 +708,7 @@ _lines_raw = [(f, round(v, 2)) for f, v in frame_lines]
 # stall lines, 2026-10-06) so frame phase stays continuous across the
 # title->game switch — at its OWN 265 total.
 def _tgt(f):
-    return 267.0 if frame_ker.get(f) == 'title' else 272.0
+    return (267.0 if frame_ker.get(f) == 'title' else 272.0) + EXTRA_LINES
 def _wall_bad(f, v):
     if f < 2:
         return False
@@ -975,7 +985,7 @@ checks = [
      f'({{k: sorted(v) for k, v in ...}} = '
      f'{ {k: sorted(v) for k, v in kwsync_by_kind.items()} })',
      all(len(v) == 1 for v in kwsync_by_kind.values())),
-    (f'wall-model lines per kernel target (cave 272.0 / title 267.0) '
+    (f'wall-model lines per kernel target (cave {272.0 + EXTRA_LINES:.1f} / title {267.0 + EXTRA_LINES:.1f}) '
      f'+/-0.15 on all frames >=2 (bad: {_bad_lines[:6]})',
      not _bad_lines),
     ('bomb dropped (state1 seen)', 1 in bomb_states),

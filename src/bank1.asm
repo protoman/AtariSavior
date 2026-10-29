@@ -1,4 +1,5 @@
     processor 6502
+    include "colors.inc"            ; NC_xx colour bytes for this TV (tools/gen_colors.py)
 ; ==============================================================================
 ; bank1 — HUD rendering + 6-digit score (F6 bankswitch, $F000-$FFFF)
 ; ==============================================================================
@@ -131,11 +132,11 @@ Grp0Ptr      = $86
 Grp0PtrHi    = $87
 BombTimer    = $F7
 TallyTicks   = $F2
-COLOR_CAVE_BG = $00
-COLOR_HOT_Y  = $1C
-COLOR_HOT_R  = $44
-COLOR_BOMBS  = $46
-COLOR_TITLE  = $6A
+COLOR_CAVE_BG = NC_00
+COLOR_HOT_Y  = NC_1C
+COLOR_HOT_R  = NC_44
+COLOR_BOMBS  = NC_46
+COLOR_TITLE  = NC_6A
 FooterPtr1   = $E0
 FooterPtr2   = $E2
 FooterPtr3   = $E4
@@ -300,7 +301,7 @@ TitleBand:
     jsr SetObjectXPos_b1
     sta WSYNC
     sta HMOVE
-    lda #$0E
+    lda #NC_0E
     sta COLUP0
     sta COLUP1
     jsr FooterBand
@@ -717,9 +718,9 @@ MenuMain:
     sta PF0
     sta PF1
     sta PF2
-    lda #$06            ; grey background
+    lda #NC_06            ; grey background
     sta COLUBK
-    lda #$0e            ; white sprites
+    lda #NC_0E            ; white sprites
     sta COLUP0
     sta COLUP1
     lda #0
@@ -849,7 +850,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     lda #$FF
     sta PF1
     sta PF2
-    lda #$06            ; grey (same as COLUBK)
+    lda #NC_06            ; grey (same as COLUBK)
     sta COLUPF
     lda #0
     sta GRP0            ; clear cave player sprite
@@ -917,7 +918,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ldx #3
 .YLoop:
     sta WSYNC
-    lda #$1C            ; yellow (hue 1, luma 6)
+    lda #NC_1C            ; yellow (hue 1, luma 6)
     sta COLUPF
     dex
     bne .YLoop
@@ -929,13 +930,13 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta DelayCnt
     lda BarFineTable,Y
     sta FineCnt
-    ldy #$44            ; red (hue 4, luma 2) for sty COLUPF
+    ldy #NC_44           ; red (hue 4, luma 2) for sty COLUPF
     lda FineCnt
     bne .NotF0          ; F≠0 → check F=1
     ; --- Fine=0: slim, no pad (≤67c @A=11) ---
 .BarRedF0:
     sta WSYNC
-    lda #$1C
+    lda #NC_1C
     sta COLUPF
     ldx DelayCnt
     beq .RF1
@@ -946,7 +947,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sty COLUPF
 
     sta WSYNC
-    lda #$1C
+    lda #NC_1C
     sta COLUPF
     ldx DelayCnt
     beq .RF2
@@ -957,7 +958,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sty COLUPF
 
     sta WSYNC
-    lda #$1C
+    lda #NC_1C
     sta COLUPF
     ldx DelayCnt
     beq .RF3
@@ -975,7 +976,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; --- Fine=1: slim + 2c nop/line (fills 3px gaps) ---
 .BarRedF1:
     sta WSYNC
-    lda #$1C
+    lda #NC_1C
     sta COLUPF
     ldx DelayCnt
     beq .RF1n
@@ -987,7 +988,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sty COLUPF
 
     sta WSYNC
-    lda #$1C
+    lda #NC_1C
     sta COLUPF
     ldx DelayCnt
     beq .RF2n
@@ -999,7 +1000,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sty COLUPF
 
     sta WSYNC
-    lda #$1C
+    lda #NC_1C
     sta COLUPF
     ldx DelayCnt
     beq .RF3n
@@ -1014,7 +1015,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; --- Fine ∈ {2,3,4}: full dispatch, content ≤71c ---
 .BarRedFull:
     sta WSYNC
-    lda #$1C            ; yellow (hue 1, luma 6)
+    lda #NC_1C            ; yellow (hue 1, luma 6)
     sta COLUPF
     ldx DelayCnt        ; 3c, Z if A=0
     beq .Fine1          ; A=0 → fine only
@@ -1037,7 +1038,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sty COLUPF
 
     sta WSYNC
-    lda #$1C
+    lda #NC_1C
     sta COLUPF
     ldx DelayCnt
     beq .Fine2
@@ -1060,7 +1061,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sty COLUPF
 
     sta WSYNC
-    lda #$1C
+    lda #NC_1C
     sta COLUPF
     ldx DelayCnt
     beq .Fine3
@@ -1112,7 +1113,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
                                 ;   squares on bits 7/5/3/1 sit 8 px apart
     sta NUSIZ0
     sta NUSIZ1
-    lda #$C6                    ; green lives squares (P0 and P1)
+    lda #NC_C6                    ; green lives squares (P0 and P1)
     sta COLUP0
     sta COLUP1
     lda #$35                    ; CTRLPF: reflect + priority + 8-clock ball (the key)
@@ -1140,7 +1141,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     sta GRP1
     lda LevelStartRoom          ; key ball: only while KeyHeld
     bpl .LivesNoKey
-    lda #$1C                    ; yellow (written only when we draw it)
+    lda #NC_1C                    ; yellow (written only when we draw it)
     sta COLUPF
     lda #2
     sta ENABL
@@ -1197,9 +1198,9 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     lda #12             ; P0 base
     ldx #0
     jsr SetObjectXPos_b1
-    lda #$46            ; red bombs
+    lda #NC_46            ; red bombs
     sta COLUP0
-    lda #$54            ; purple: the miners still to rescue (user 2026-10-26)
+    lda #NC_54            ; purple: the miners still to rescue (user 2026-10-26)
     sta COLUP1
     lda HudNus
     sta NUSIZ0          ; $07 quad, or $27 = quad + a 4 px missile (5th bomb)
@@ -1245,7 +1246,7 @@ INPT4       = $0C       ; fire button (active low, bit 7)
     ; ====================================================================
 
     ; --- Setup sprites ---
-    lda #$0E             ; white
+    lda #NC_0E             ; white
     sta COLUP0
     sta COLUP1
     lda #3               ; NUSIZ = 3 copies close

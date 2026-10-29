@@ -17,7 +17,8 @@ FEATURES
 - Up to three miners per level, up to eight lives, an extra life every 50,000 points, scores up to 999,999
 - SaveKey / AtariVox support (right controller port): high score, plus the level, lives and score at the start of every level. The title opens on your saved level and RESET carries on. A game over erases the save, never the high score
 - Illustrated 13-page instruction manual (PDF)
-- Standard Atari 2600 with a joystick; F4 bank-switched 32K ROM, NTSC
+- Standard Atari 2600 with a joystick; F4 bank-switched 32K ROM
+- Three versions of the ROM: NTSC (60 Hz), PAL60 (60 Hz with PAL colours) and PAL (50 Hz, 312 lines, PAL colours)
 
 SCREENSHOTS
 - Level 3: the miner waits at the bottom of the shaft. Bottom of the screen: power bar, lives (green), bombs (red), miners left (purple)
@@ -51,6 +52,11 @@ Fixed:
 - HUD: the lives squares keep an exact 8-pixel pitch from the first to the eighth
 
 CREDITS
-Written from scratch by Iuri Fiedoruk. Inspired by H.E.R.O. (Activision, 1984). Thanks to Andrew Davie for the positioning routines, to Felipe Zacani for the ideas of multiple miners, doors and keys, and to the Atari 2600 community. Tested in the Stella emulator.
+Written from scratch by Iuri Fiedoruk. Inspired by H.E.R.O. (Activision, 1984). Thanks to Andrew Davie for the positioning routines, to Felipe Zacani for the ideas of multiple miners, doors and keys, and to the Atari 2600 community. Tested in the Stella emulator (NTSC, PAL60 and PAL).
 
-DOWNLOAD: (attach savior-1.0.0.bin and savior-1.0.0-manual.pdf)
+VERSIONS
+savior-1.0.0.bin - NTSC, 60 Hz
+savior-1.0.0-pal60.bin - PAL colours at 60 Hz, for PAL consoles and TVs that accept a 60 Hz picture
+savior-1.0.0-pal.bin - PAL colours at 50 Hz, for every PAL TV. The game logic runs per frame, so the action is about a sixth slower in real time than NTSC; the power bar still lasts the same 120 seconds
+
+DOWNLOAD: (attach savior-1.0.0.bin, savior-1.0.0-pal60.bin, savior-1.0.0-pal.bin and savior-1.0.0-manual.pdf)
