@@ -367,6 +367,12 @@ class Pilot:
                                        # him out through the ceiling (an exit up)
         if band == BANDS - 1 and self.lv.rooms[self.c.r("RoomNo")].get("bottom_band"):
             hi = 2                     # the water kills from y 115: fly y 108..114
+        crow = self.crunch_band(self.lv.rooms[self.c.r("RoomNo")])
+        if crow is not None and band + 1 == crow:
+            hi = min(hi, 2)            # the crunch row is right below: the 22-px box
+                                       # must stay clear of it even when he sags
+        elif crow is not None and band - 1 == crow:
+            hi = 26                    # ... or right above: do not overshoot upward
         if self.c.r("vyHi") >= 0x80:
             return NONE                # already rising: the jet is slow to fade, so
                                        # more thrust now only carries him out the top
@@ -392,6 +398,69 @@ class Pilot:
                     if ph < 45 or ph > 62:        # ON, or OFF with < 28 frames left
                         return True
         return False
+
+    def crunch_band(self, room):
+        """Band index of the room's hcrunch row, or None."""
+        rows = [fc[0] for fc in room.get("feature_cells") or [] if fc[2] == 12]
+        if not rows:
+            return None
+        m = self.lv.models[room["model_id"]]
+        return rows[0] if len(m["tiles"]) // m["width"] != 3 else (0, 1, 3)[rows[0]]
+
+    @staticmethod
+    def crunch_pairs(p):
+        """Covered pairs 1..n of the hcrunch prefix at clock p (HcrClock in bank3:
+        s = P>>4; dwell 0-3, grow 4-12, fast retract 13-15)."""
+        s = (p & 255) >> 4
+        eff = 0 if s < 4 else s - 3 if s < 13 else 3 * (15 - s)
+        return 1 + min(eff, 9)
+
+    def crunch_wait(self, run, ahead=70):
+        """Hold still until the hcrunch (clock EnemyRamP, period 256) cannot catch the
+        flight `run` = [(x, band), ...] (one x per cell, 1.4 px/frame assumed). The prefix
+        covers pairs 1..n of 8 px from both side walls, so a shaft far from the
+        wall is clear for most of the period and a dash across fits the dwell +
+        retract window: the crunch is a timing gate, not a forced kill."""
+        c = self.c
+        room = self.lv.rooms[c.r("RoomNo")]
+        rows = [fc[0] for fc in room.get("feature_cells") or [] if fc[2] == 12]
+        if not rows:
+            return
+        m = self.lv.models[room["model_id"]]
+        h = len(m["tiles"]) // m["width"]
+        band = (rows[0] if h != 3 else (0, 1, 3)[rows[0]])
+        bs = [b for _x, b in run]
+        if not (min(bs) - 1 <= band <= max(bs)):
+            return                                  # the box clears the crunch row
+        # the flight as (x, y) points: a node's y is its band's hover height; the
+        # player moves 1.4 px/frame sideways and 1.2 px/frame vertically
+        pts = [(x, 36 * b_ + 12) for x, b_ in run]
+        track = []                                  # (x, y) at t = 0, 1, 2, ...
+        for (xa, ya), (xb, yb) in zip(pts, pts[1:]):
+            n_ = max(1, int(max(abs(xb - xa) / 1.4, abs(yb - ya) / 1.2)))
+            for i_ in range(n_):
+                track.append((xa + (xb - xa) * i_ / n_, ya + (yb - ya) * i_ / n_))
+        track.append(pts[-1])
+        dur = len(track)
+        top, bot = 36 * band, 36 * band + 36        # the crunch row's y span
+
+        def clear(p):
+            for t, (xt, yt) in enumerate(track):
+                if not (yt + 22 > top and yt < bot):
+                    continue                        # the 22-px box is off the row
+                lo, hi = xt - 10, xt + 4
+                n = self.crunch_pairs(p + t)
+                for pair in range(1, n + 1):
+                    for a_ in (8 * pair, 8 * (19 - pair)):
+                        if a_ < hi and a_ + 8 > lo:
+                            return False
+            return True
+        for _ in range(400):
+            if c.ram[0xBA & 0x7F] & 0x80:
+                return                              # spent: parked for the visit
+            if clear(c.ram[0xC2 & 0x7F]):
+                return dur
+            self.step(self.altitude(band_of(c.r("RoomY"))))
 
     def to_x(self, x_t, band, maxf=400):
         """Walk along `band` until RoomX == x_t exactly."""
@@ -430,6 +499,7 @@ class Pilot:
             if cur[0] == nxt[0] and (nxt[1], nxt[2]) in self.lv.grids[nxt[0]][1]:
                 self.bomb_strip(nxt)
                 continue                          # re-check the same edge, strip gone
+            self.path, self.path_i = path, i
             ok = self.edge(cur, nxt)
             self.say(f"edge {cur}->{nxt} ok={ok} now room {c.r('RoomNo')} "
                      f"x={c.r('RoomX')} y={c.r('RoomY')}")
@@ -508,6 +578,25 @@ class Pilot:
         (r0, b0, f0), (r1, b1, f1) = cur, nxt
         if r0 != r1:
             return self.exit_room(cur, nxt)
+        run = [(x_for_cell(f0), b0)]
+        k = self.path_i
+        while k + 1 < len(self.path) and self.path[k][0] == self.path[k + 1][0] \
+                and len(run) < 8 and self.path[k][2] \
+                == self.path[k + 1][2] or (k + 1 < len(self.path)
+                                           and self.path[k][0] == self.path[k + 1][0]
+                                           and self.path[k][1] == self.path[k + 1][1] == b0
+                                           and len(run) < 24):
+            k += 1
+            run.append((x_for_cell(self.path[k][2]), self.path[k][1]))
+        if len(run) == 1:
+            run.append((x_for_cell(f1), b1))
+        go = getattr(self, "crunch_go", None)
+        if go and go[0] == c.r("RoomNo") and self.path_i <= go[1] and c.frames < go[2]:
+            pass                                    # already cleared this whole run
+        else:
+            dur = self.crunch_wait(run)
+            if dur:
+                self.crunch_go = (c.r("RoomNo"), k, c.frames + dur)
         if b0 == b1 and b0 == BANDS - 1 and self.lv.rooms[r0].get("bottom_band"):
             return self.ride(cur, nxt)
         if b0 == b1:                       # along the band
