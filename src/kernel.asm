@@ -3993,6 +3993,10 @@ DropStep:
 ; Console switches are read again after any jsr (LoadLevel clobbers X/Y/A).
 ; ------------------------------------------------------------------------------
 TitleWork:
+    lda #4
+    jsr CallPad_SaveKey        ; stage number <-> high score in the HUD score window
+                               ;   (here DropTarget is still $FF: a RESET below
+                               ;   zeroes the score; the op does no I2C)
     ; --- SELECT edge (TitleSelect, fill region) ---
     jsr CallPad_TitleSelect
     bcc .TWselDone             ; C=0: no edge

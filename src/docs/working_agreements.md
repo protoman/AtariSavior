@@ -58,3 +58,14 @@ guide."
   with `git add TODO.txt credits.txt`. Never open, grep, edit or quote
   `TODO.txt`, and never take values or plans from it (see the `AGENTS.md` rule
   "NEVER Read or Write TODO.txt", which still holds).
+
+## Commit every finished feature or bugfix, without asking (user 2026-10-28)
+
+"You should commit at any feature or bugfix, no need to ask me."
+
+- **Why:** the green battery is the gate; the user does not want to approve each
+  commit.
+- **How to apply:** commit once the tests are green. Stage explicit paths (never
+  `git add -A`); `rooms/` and `generated/` go in their own commits after
+  `git diff --stat -- rooms generated` shows what the user regenerated. Report
+  the hash. Pushing and reverting still need the user's word.
