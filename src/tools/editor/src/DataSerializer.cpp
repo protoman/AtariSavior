@@ -544,9 +544,9 @@ constexpr int kArchMask = 15;   // 4 bits: hot archetypes use ids 8..14
 // (Build20LevelStage picks the widest set that fits) — and the REAL limit is
 // the bank3 shapes window (emit_spills hard-fails, test_generator gates a 64 B
 // slack floor), not the index.
-constexpr int kShapeBudget = 128;
+constexpr int kShapeBudget = 90;
 // Shape-window guard for the widened hcrunch rooms (bank3 shapes slack floor).
-constexpr int kCrunchShapeCap = 95;
+constexpr int kCrunchShapeCap = 100;
 const char* const kArch[8][3] = {
     {"..........", "..........", ".........."},          // 0 shaft
     {"..###.....", "..........", ".....###.."},          // 1 ledge ladder
@@ -1367,9 +1367,14 @@ int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
     // Link `i` joins walk[i] -> walk[i+1]; a room's TOP uses link i-1 and its
     // BOTTOM uses link i, so alternating the width per link makes every
     // through-room's top/bottom differ (user rule 2026-10-21).
+    // The width is a property of the LINK, so both rooms must derive it from the
+    // same thing: the grid row of the upper room (user report 2026-10-29, level 18
+    // room 5: the walk-index parity used before disagreed across links the walk
+    // does not follow, leaving a hole in a ceiling with nothing above it). In a
+    // vertical stack the links alternate wide/narrow, so top != bottom still.
     if (levelNumber >= 6) {
-        if ((mask & SHAPE_N) && (roomIndex - 1) % 2 == 0) mask |= SHAPE_N1;
-        if ((mask & SHAPE_S) && roomIndex % 2 == 0) mask |= SHAPE_S1;
+        if ((mask & SHAPE_N) && (pos.y - 1) % 2 == 0) mask |= SHAPE_N1;
+        if ((mask & SHAPE_S) && pos.y % 2 == 0) mask |= SHAPE_S1;
     }
     // Side openings come from ADJACENCY (user rule 2026-10-24). ONE bit covers
     // both sides: the playfield is reflected, cell 0 is drawn on both edges, so
@@ -2928,31 +2933,54 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     auto paired = [&]() {
                         const std::set<int> up = vertCells(above, false);
                         const std::set<int> dn = vertCells(below, true);
-                        for (int c : up) {
-                            if (!dn.count(c)) return false;
-                        }
-                        return true;
+                        // EQUAL, not a subset (user report 2026-10-29, level 18
+                        // room 5): an opening in the lower room's ceiling with no
+                        // matching hole in the upper room's floor leads the player
+                        // up into a wall - his head is stuck in it.
+                        return up == dn;
                     };
                     if (paired()) continue;
-                    above |= SHAPE_2GAP;
-                    changed = true;
-                    if (!paired()) below |= SHAPE_2GAP;
-                    if (!paired()) {
-                        // The ceiling is NARROW (SHAPE_N1 opens cell 3 only, e.g.
-                        // a channel room): match it by narrowing the floor.
-                        above |= SHAPE_S1;
-                        changed = true;
-                        // ...unless that turns the room into a STRAIGHT DROP
-                        // (ceiling == floor, which the plan forbids): widen the
-                        // ceiling to the 2-gap flavor instead of leaving a
-                        // shaft the player falls through without steering.
-                        const std::set<int> top = vertCells(above, true);
-                        if (top == vertCells(above, false) && top.size() == 1) {
-                            above &= ~SHAPE_N1;
-                            above |= SHAPE_2GAP;
-                        }
+                    // Search the flavour bits of the two rooms (2-gap on either,
+                    // the narrow floor S1 above, the narrow ceiling N1 below) for
+                    // the cheapest combination whose floor and ceiling are EQUAL
+                    // and that is not a straight drop (ceiling == floor == one
+                    // cell, which the plan forbids).
+                    const int aBase = above, bBase = below;
+                    int bestA = -1, bestB = -1, bestCost = 99;
+                    auto straight = [&](int m) {
+                        if (!(m & SHAPE_N) || !(m & SHAPE_S)) return false;
+                        const std::set<int> top = vertCells(m, true);
+                        if (top != vertCells(m, false)) return false;
+                        // level 6+: a room with no side exit may not be a straight
+                        // fall at all (test_generator); earlier: one cell only
+                        return top.size() == 1 || (l >= 6 && !(m & SHAPE_H));
+                    };
+                    for (int a2 = 0; a2 < 2; ++a2)
+                    for (int s1 = 0; s1 < 3; ++s1)
+                    for (int b2 = 0; b2 < 2; ++b2)
+                    for (int n1 = 0; n1 < 3; ++n1) {
+                        int ma = aBase, mb = bBase;
+                        if (a2) ma |= SHAPE_2GAP;
+                        if (s1 == 1) ma &= ~SHAPE_S1;
+                        if (s1 == 2) ma |= SHAPE_S1;
+                        if (b2) mb |= SHAPE_2GAP;
+                        if (n1 == 1) mb &= ~SHAPE_N1;
+                        if (n1 == 2) mb |= SHAPE_N1;
+                        const int cost = (ma != aBase) + (mb != bBase)
+                                       + __builtin_popcount(ma ^ aBase)
+                                       + __builtin_popcount(mb ^ bBase);
+                        if (cost >= bestCost) continue;
+                        if (vertCells(ma, false) != vertCells(mb, true)) continue;
+                        if (straight(ma) || straight(mb)) continue;
+                        bestCost = cost;
+                        bestA = ma;
+                        bestB = mb;
                     }
-                    if (!paired()) {
+                    if (bestA >= 0) {
+                        above = bestA;
+                        below = bestB;
+                        changed = true;
+                    } else {
                         const std::set<int> up = vertCells(above, false);
                         const std::set<int> dn = vertCells(below, true);
                         std::string u, d;
@@ -2962,11 +2990,11 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                                 "level " + std::to_string(l) + ": rooms "
                                 + std::to_string(i) + " and "
                                 + std::to_string(j) + " are stacked but the "
-                                "upper floor {" + u + "} is not open in the "
+                                "upper floor {" + u + "} does not match the "
                                 "lower ceiling {" + d + "} (masks "
                                 + std::to_string(above) + "/"
                                 + std::to_string(below) + ") — the player "
-                                "would land inside a wall");
+                                "would land inside a wall or drop into one");
                     }
                 }
             }
@@ -3746,14 +3774,37 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                      return e.type == (int)EnemyType::SPIDER;
                  }), es.end());
     }
+    // The forced direction of a spider / moth (cave edge, wall) depends on its
+    // final cell, and the reach analysis sweeps by that direction: re-apply it
+    // whenever the repair moves one (found 2026-10-29 after the stacked-opening
+    // pairing changed the shapes: a spider kept dir -1 at the cave top).
+    auto fixDirs = [&](LevelData& lvl) {
+        for (RoomData& room : lvl.rooms) {
+            const ModelData* sm = nullptr;
+            for (const ModelData& m : models) {
+                if (m.id == room.model_id) { sm = &m; break; }
+            }
+            if (!sm) continue;
+            for (EnemyData& e : room.enemies) {
+                int f = 0;
+                if (e.type == (int)EnemyType::SPIDER)
+                    f = SpiderForcedDirIn(*sm, e.y, (int)std::lround(e.x));
+                else if (e.type == (int)EnemyType::GIANT_MOTH)
+                    f = MothForcedDirIn(*sm, e.y, (int)std::lround(e.x));
+                if (f != 0) e.dir = f;
+            }
+        }
+    };
     for (int l = 1; l <= kStageLevels; ++l) {
         // A spider the route has to pass: slide it to a clear column first
         // (content stays), remove it only when no column works.
+        fixDirs(levels[l - 1]);
         for (int tries = 0; tries < 16; ++tries) {
             const ReachResult pre = AnalyseReach(levels[l - 1], models);
             if (pre.dangerRooms.empty()) break;
             if (!RelocateSpider(levels[l - 1], pre.dangerRooms.front(), models))
                 break;
+            fixDirs(levels[l - 1]);
         }
         const ReachResult rr = AnalyseReach(levels[l - 1], models);
         // Still crossing one: remove that spider (the room keeps its other
