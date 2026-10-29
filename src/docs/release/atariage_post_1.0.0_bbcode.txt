@@ -1,0 +1,66 @@
+[size=6][b]S.A.V.I.O.R. 1.0.0[/b][/size]
+[i]A cave-rescue homebrew for the Atari 2600[/i]
+
+[b]Eorley Savior[/b] founded the S.A.V.I.O.R. company ([i]Strategic Aerial Vehicle Infiltration Operations Rescue[/i]) to save people trapped in the deep mines of Minas Gerais, Brazil. You are Eorley, and the clock is running.
+
+(Attach the title screen picture here)
+
+[b]The game[/b]
+
+Twenty levels, each a network of mirrored cave rooms. Fly from room to room with a rocket-powered jet pack, find the trapped miners (up to three per level) and touch them before the power bar runs dry. Shoot creatures with the helmet laser, blow open thin walls with bombs, grab power cells to refill the timer, and mind the hazards: hot rock, phase walls that blink, crushers that sweep across a whole band, and flooded rooms where the only way across is a ferry raft that moves only while you stand on it.
+
+Rescue them all and the level pays a bonus for the time left, every unused bomb and double for every life you keep. Then the next, more dangerous cave opens, and the creatures get faster every five levels.
+
+[b]Features[/b]
+[list]
+[*]20 levels made by the project's own stage generator, each checked for a finishable route and played through on the real ROM by a joystick-only bot
+[*]Spiders, bats, snakes, tentacles and giant moths; hot rock, phase walls, crushers, locked doors and keys, lamps that plunge a room into darkness, bombs, power cells
+[*]Up to three miners per level, up to eight lives, an extra life every 50,000 points, scores up to 999,999
+[*][b]SaveKey / AtariVox support[/b] (right controller port): high score, plus the level, lives and score at the start of every level. The title opens on your saved level and RESET carries on. A game over erases the save, never the high score
+[*]Illustrated 13-page instruction manual (PDF)
+[*]Standard Atari 2600 with a joystick; F4 bank-switched 32K ROM, NTSC
+[/list]
+
+[b]Screenshots[/b]
+[list]
+[*]Level 3: the miner waits at the bottom of the shaft. Bottom of the screen: power bar, lives (green), bombs (red), miners left (purple)
+[*]Level 9: a spider in the shaft, laser firing
+[*]Level 11: a flooded room under a hot-rock ceiling; the raft under your feet is the only way across
+[*]Level 14: a crusher sweeping across the middle band, leaving a moving gap. Its sides kill, but you can land on it
+[/list]
+(Attach the four level pictures here)
+
+[b]What changed since 0.8[/b]
+
+[u]New[/u]
+[list]
+[*]SaveKey / AtariVox support: high score, level, lives and score. The title shows the saved level and alternates the level number with the high score
+[*]Real game over: running out of lives (or clearing level 20) ends the run, saves the high score and returns to the title
+[*]Eight lives and an extra life every 50,000 points; the HUD shows up to eight squares; score up to 999,999
+[*]The key is now a ball on the lives row (the way HERO draws its HUD indicators)
+[*]Crushers can be stood on: land on a closed crusher or touch it from below; its sides still kill
+[*]A story and a full instruction manual, with a page about saving
+[*]The ROM carries a version stamp ("S.A.V.I.O.R. 1.0.0") in its header
+[/list]
+
+[u]Smarter level generator[/u]
+[list]
+[*]Phase walls are horizontal obstacles only; crushers sit in the band that suits the way you enter the room and never in rooms you enter from the side
+[*]Spiders and moths start in the direction away from walls and the screen edge
+[*]No enemy is ever drawn half inside a wall (the snake, which lives in walls, excepted)
+[*]Rafts wait under the shaft you drop through, at the height of the water
+[/list]
+
+[u]Fixed[/u]
+[list]
+[*][b]Boot on real hardware:[/b] a 32K F4 cartridge can power up in any of its eight banks. Two banks had no boot stub; all eight now select the game bank first, and a new test boots from every bank
+[*]Raft turn-around read the wrong playfield row after the four-band move, so rafts turned at ledges that were not in their way
+[*]The start position straddled two cells and could drop you into a wall in some start rooms
+[*]Flicker: an overscan governor drops extra enemy passes on frames that would overrun; the level banner no longer lengthens the frame on level 20
+[*]HUD: the lives squares keep an exact 8-pixel pitch from the first to the eighth
+[/list]
+
+[b]Credits[/b]
+Written from scratch by Iuri Fiedoruk. Inspired by H.E.R.O. (Activision, 1984). Thanks to Andrew Davie for the positioning routines, to Felipe Zacani for the ideas of multiple miners, doors and keys, and to the Atari 2600 community. Tested in the Stella emulator.
+
+[b]Download:[/b] (attach savior-1.0.0.bin and savior-1.0.0-manual.pdf)
