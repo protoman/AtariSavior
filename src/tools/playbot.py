@@ -252,6 +252,7 @@ class Level:
             if best.get(node, 1 << 30) < cost:
                 continue
             if node == goal:
+                self.last_cost = cost
                 path = [node]
                 while node in parent:
                     node = parent[node]
@@ -286,15 +287,46 @@ class Pilot:
         self.deaths = 0
         self.rooms_seen = set()
         self.last_room = None
+        self.death_log = []
         self.log = []
+
+    def killer(self, pre):
+        """(room 1-based, x, y, cause) of the frame before a life was lost."""
+        rn, x, y, slots = pre
+        room = self.lv.rooms[rn]
+        causes = []
+        recs = [e for e in room.get("enemies") or []]
+        names = {0: "spider", 1: "bat", 2: "snake", 3: "tentacle", 4: "moth", 7: "raft"}
+        for i, (ex, ey) in enumerate(slots):
+            if i < len(recs) and abs(x - ex) <= 14 and -18 <= ey - y <= 22:
+                causes.append(names.get(recs[i]["type"], f"enemy{recs[i]['type']}"))
+        b = band_of(y)
+        feats = {c[2] for c in (room.get("feature_cells") or [])}
+        model = self.lv.models[room["model_id"]]
+        if not causes:
+            if room.get("bottom_band") and y >= 112:
+                causes.append("water")
+            elif 10 in feats and b == 1:
+                causes.append("phase wall")
+            elif 12 in feats:
+                causes.append("crusher")
+            elif model.get("mid_band_type") and b == 1:
+                causes.append("hot rock")
+            else:
+                causes.append("?")
+        return rn + 1, x, y, "/".join(causes)
 
     # ---- one frame ---------------------------------------------------------
     def step(self, sw=NONE):
         c = self.c
         lives = c.r("PlayerLives")
+        pre = (c.r("RoomNo"), c.r("RoomX"), c.r("RoomY"),
+               [(c.ram[(c.lab["EnemyRamX"] & 0x7F) + i], c.ram[(c.lab["EnemyRamY"] & 0x7F) + i])
+                for i in range(min(3, c.r("EnemyCount")))])
         c.frame(sw, fire=True)
-        if c.r("PlayerLives") < lives or (c.r("Hover") and not self.hover):
+        if c.r("PlayerLives") < lives:
             self.deaths += 1
+            self.death_log.append((c.frames,) + self.killer(pre))
         self.hover = bool(c.r("Hover"))
         if not self.mortal:
             c.w("PlayerLives", 8)
@@ -529,8 +561,8 @@ class Pilot:
                 if leg is None:
                     total = None
                     break
-                total += len(leg)
-                cur = t
+                total += self.lv.last_cost       # a spider zone costs SR.DANGER: a
+                cur = t                          # hazard-free order always beats a short one
             if total is not None and (best is None or total < best[0]):
                 best = (total, perm)
         if best is None:
@@ -611,6 +643,8 @@ def main() -> int:
         print(f"level {n:2d}: {'DONE' if ok else 'FAIL'}  {used:5d} frames  "
               f"deaths {pilot.deaths}  rooms {len(pilot.rooms_seen)}/{len(lv.rooms)}"
               f"  - {why}")
+        for f_, r_, x_, y_, why_ in pilot.death_log:
+            print(f"           death: frame {f_}, room {r_}, x={x_} y={y_}  ({why_})")
         bad += not ok
     return 1 if bad else 0
 
