@@ -41,7 +41,7 @@ NAMES = ("RoomX", "RoomY", "RoomNo", "DropTarget", "Level", "PlayerLives",
          "MinerX", "MinerY", "LevelStartRoom", "BarLevel", "PlayerBombs",
          "StartFrame", "PF0Buf", "PF1Buf", "PF2Buf", "vyHi", "RoomRectsLo",
          "RoomRectsHi", "RoomPF0Lo", "RoomPF0Hi", "LevelConnSpare", "LevelPFDataLo",
-         "LevelPFDataHi", "LevelRoomN")
+         "LevelPFDataHi", "LevelRoomN", "EnemyRamX", "EnemyRamY", "EnemyRamD")
 BANDS = 4
 BAND_PX = 36
 PLAYER_H = 22
@@ -192,6 +192,14 @@ class Level:
                       min(BANDS - 1, int(self.level["miner_y"] * 12) // BAND_PX),
                       min(19, mx * 1))
         self.extras = SR.extra_miner_nodes(self.level, self.models)
+        # raft rooms: the water row can only be entered by dropping onto the raft,
+        # which waits at its spawn cell (x column / 2) until somebody stands on it
+        self.raft_cell = {}
+        for i, r in enumerate(rooms):
+            for e in r.get("enemies") or []:
+                if e.get("type") == SR.RAFT_ENTITY if hasattr(SR, "RAFT_ENTITY") \
+                        else e.get("type") == 7:
+                    self.raft_cell[i] = int(round(e["x"])) // 2
         # a blown strip is only open for the visit: EnterRoom closes it again
         self.orig_bombs = [set(g[1]) for g in self.grids]
 
@@ -200,7 +208,10 @@ class Level:
         r = self.rooms[ri]
         air = self.grids[ri][0]
         outs = [(ri, b + 1, f), (ri, b - 1, f), (ri, b, f + 1), (ri, b, f - 1)]
-        if b == len(air) - 1 and (r["room_x"], r["room_y"] + 1) in self.at:
+        # a water room has no way out through the floor: the water row is no floor
+        # (the player hovers 103 px high over it) and it kills before any exit
+        if b == len(air) - 1 and (r["room_x"], r["room_y"] + 1) in self.at \
+                and not r.get("bottom_band"):
             outs.append((self.at[(r["room_x"], r["room_y"] + 1)], 0, f))
         if b == 0 and (r["room_x"], r["room_y"] - 1) in self.at:
             o = self.at[(r["room_x"], r["room_y"] - 1)]
@@ -213,6 +224,9 @@ class Level:
         for nr, nb, nf in outs:
             ga, gb, gd = self.grids[nr]
             if 0 <= nb < len(ga) and 0 <= nf < 20 and ga[nb][nf]:
+                if nr == ri and nr in self.raft_cell and nb == BANDS - 1 \
+                        and b == BANDS - 2 and nf != self.raft_cell[nr]:
+                    continue              # the water row: only onto the raft
                 strip = (nb, nf) in gb
                 if strip:
                     # a strip is bombed from its CENTRE side, so it can only be
@@ -314,7 +328,10 @@ class Pilot:
         """Joystick bits that keep the player inside `band` (gravity is weak: a
         short thrust whenever he sinks below the middle of the band)."""
         y = self.c.r("RoomY")
-        return UP if y > BAND_PX * band + 12 else NONE
+        hi = 12
+        if band == BANDS - 1 and self.lv.rooms[self.c.r("RoomNo")].get("bottom_band"):
+            hi = 2                     # the water kills from y 115: fly y 108..114
+        return UP if y > BAND_PX * band + hi else NONE
 
     def to_x(self, x_t, band, maxf=400):
         """Walk along `band` until RoomX == x_t exactly."""
@@ -423,6 +440,8 @@ class Pilot:
         (r0, b0, f0), (r1, b1, f1) = cur, nxt
         if r0 != r1:
             return self.exit_room(cur, nxt)
+        if b0 == b1 and b0 == BANDS - 1 and self.lv.rooms[r0].get("bottom_band"):
+            return self.ride(cur, nxt)
         if b0 == b1:                       # along the band
             return self.to_x(x_for_cell(f1), b0)
         # through a shaft: centre first, then climb / fall
@@ -438,6 +457,20 @@ class Pilot:
             if c.r("RoomX") != x_for_cell(f0):
                 sw &= RIGHT if c.r("RoomX") < x_for_cell(f0) else LEFT
             self.step(sw)
+        return False
+
+    def ride(self, cur, nxt):
+        """Along the WATER row: the raft is the only floor. It moves (1-1.5 px per
+        frame, right first) only while he stands on it, so after landing on it the
+        bot lets it carry him and steps off when the target cell comes by."""
+        c = self.c
+        (r0, b0, f0), (r1, b1, f1) = cur, nxt
+        x_t = x_for_cell(f1)
+        for _ in range(900):
+            x = c.r("RoomX")
+            if abs(x - x_t) <= 1:
+                return True
+            self.step(NONE)
         return False
 
     def exit_room(self, cur, nxt):
