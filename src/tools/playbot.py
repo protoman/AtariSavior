@@ -116,6 +116,19 @@ class Console:
             self.mpu.step()
         self.frames += 1
 
+    def save(self):
+        m = self.mpu
+        return (bytes(self.ram), bytes(self.tia), self.bank, self.swcha, self.swchb,
+                self.inpt4, self.frames,
+                (m.a, m.x, m.y, m.sp, m.pc, m.p, m.processorCycles))
+
+    def restore(self, snap):
+        ram, tia, self.bank, self.swcha, self.swchb, self.inpt4, self.frames, regs = snap
+        self.ram[:] = ram
+        self.tia[:] = tia
+        m = self.mpu
+        m.a, m.x, m.y, m.sp, m.pc, m.p, m.processorCycles = regs
+
     def r(self, name):
         return self.ram[self.lab[name] & 0x7F]
 
@@ -288,6 +301,10 @@ class Pilot:
         self.rooms_seen = set()
         self.last_room = None
         self.death_log = []
+        self.safe = False
+        self.hi_override = None
+        self.forced = []
+        self.waited = 0
         self.log = []
 
     def killer(self, pre):
@@ -367,6 +384,8 @@ class Pilot:
                                        # him out through the ceiling (an exit up)
         if band == BANDS - 1 and self.lv.rooms[self.c.r("RoomNo")].get("bottom_band"):
             hi = 2                     # the water kills from y 115: fly y 108..114
+        if self.hi_override is not None:
+            hi = self.hi_override
         crow = self.crunch_band(self.lv.rooms[self.c.r("RoomNo")])
         if crow is not None and band + 1 == crow:
             hi = min(hi, 2)            # the crunch row is right below: the 22-px box
@@ -462,6 +481,27 @@ class Pilot:
                 return dur
             self.step(self.altitude(band_of(c.r("RoomY"))))
 
+    def shoot_ahead(self, x, y, dx):
+        """True while a live killable enemy is level with us, ahead and close: stand
+        still facing it (the held laser kills it) instead of walking into it. At most
+        150 frames per approach, so a stationary one does not hold the bot forever."""
+        c = self.c
+        room = self.lv.rooms[c.r("RoomNo")]
+        recs = room.get("enemies") or []
+        mask = c.ram[0xBA & 0x7F]
+        for i in range(min(3, c.r("EnemyCount"), len(recs))):
+            if mask >> i & 1 or recs[i]["type"] in (3, 7):
+                continue                          # dead / tentacle / raft
+            ex = c.ram[(c.lab["EnemyRamX"] & 0x7F) + i]
+            ey = c.ram[(c.lab["EnemyRamY"] & 0x7F) + i]
+            if abs(ey - y) <= 18 and 0 < (ex - x) * dx <= 72:
+                self.shoot_wait = getattr(self, "shoot_wait", 0) + 1
+                if self.shoot_wait < 150:
+                    return True
+        else:
+            self.shoot_wait = 0
+        return False
+
     def to_x(self, x_t, band, maxf=400):
         """Walk along `band` until RoomX == x_t exactly."""
         for _ in range(maxf):
@@ -473,6 +513,9 @@ class Pilot:
                 sw = (RIGHT if x < x_t else LEFT) & self.altitude(band)
                 if self.phase_ahead(x, x_t, band):
                     sw = self.altitude(band)      # wait for the wall's OFF half
+                elif self.shoot_ahead(x, y, 1 if x_t > x else -1):
+                    sw = self.altitude(band)      # hold fire (laser is always on)
+                                                  # and let it come: 4 px/frame kills
             else:
                 # the 22-px box still overlaps the band above/below: sideways
                 # now would crush him in a wall edge (the spawn at RoomY 24)
@@ -500,7 +543,7 @@ class Pilot:
                 self.bomb_strip(nxt)
                 continue                          # re-check the same edge, strip gone
             self.path, self.path_i = path, i
-            ok = self.edge(cur, nxt)
+            ok = self.edge_safe(cur, nxt)
             self.say(f"edge {cur}->{nxt} ok={ok} now room {c.r('RoomNo')} "
                      f"x={c.r('RoomX')} y={c.r('RoomY')}")
             if c.r("RoomNo") == nxt[0] and not ok:
@@ -572,6 +615,55 @@ class Pilot:
         self.lv.grids[ri][1].discard((b, col))
         self.say("strip", strip, "should be open")
 
+    def edge_safe(self, cur, nxt):
+        """Fly the edge; with `safe` on, a life lost on it is UNDONE (snapshot) and the
+        edge retried: first after waiting in place and/or hovering higher or lower,
+        then from the START OF THE EDGE BEFORE (a bat under a shaft is lethal by the
+        time the drop has landed). If no variant gets through alive the edge is
+        FORCED: the level, not the bot, takes the life (recorded in `forced`)."""
+        if not self.safe:
+            return self.edge(cur, nxt)
+        c = self.c
+        snap = (c.save(), self.hover, self.deaths, len(self.death_log), cur, nxt)
+        ok = self.edge(cur, nxt)
+        if self.deaths == snap[2]:
+            self.prev = snap
+            return ok
+        first = self.death_log[snap[3]:]
+        prev = getattr(self, "prev", None)
+        if prev is not None and prev[5] != cur:
+            prev = None                       # the previous edge does not lead here
+        for scope in ((snap, prev) if prev else (snap,)):
+            for hi_ov in (None, 2, 24):
+                for wait in range(0, 300, 12):
+                    if scope is snap and hi_ov is None and wait == 0:
+                        continue              # that was the first attempt
+                    sv, hover, d0, n0, e_cur, e_nxt = scope
+                    c.restore(sv)
+                    self.hover, self.deaths = hover, d0
+                    del self.death_log[n0:]
+                    self.hi_override = hi_ov
+                    for _ in range(wait):
+                        self.step(self.altitude(band_of(c.r("RoomY"))))
+                    good = self.deaths == d0
+                    if good and scope is prev:
+                        self.edge(e_cur, e_nxt)       # replay the edge before
+                        good = self.deaths == d0
+                    if good:
+                        ok = self.edge(cur, nxt)
+                        good = self.deaths == d0
+                    self.hi_override = None
+                    if good:
+                        self.say(f"edge {cur}->{nxt} safe: wait {wait}, hover {hi_ov}, "
+                                 f"from {'the edge before' if scope is prev else 'here'}")
+                        self.waited += 1
+                        self.prev = scope if False else (c.save(), self.hover,
+                                                         self.deaths, len(self.death_log),
+                                                         cur, nxt)
+                        return ok
+        self.forced.append((cur, nxt, first[0] if first else None))
+        return ok
+
     def edge(self, cur, nxt):
         """Fly one graph edge. True when the player is where `nxt` says."""
         c = self.c
@@ -611,6 +703,8 @@ class Pilot:
                 if b1 > b0 and y >= BAND_PX * b1 + 2 or b1 < b0:
                     return True
             sw = UP if b1 < b0 else NONE
+            if b1 > b0 and self.hi_override is not None and y > BAND_PX * b1 - 12:
+                sw = self.altitude(b1)        # retry variant: brake into the band
             if c.r("RoomX") != x_for_cell(f0):
                 sw &= RIGHT if c.r("RoomX") < x_for_cell(f0) else LEFT
             self.step(sw)
@@ -721,8 +815,9 @@ class Pilot:
         return
 
 
-def finish(con, lv, mortal, verbose, budget):
+def finish(con, lv, mortal, verbose, budget, safe=False):
     pilot = Pilot(con, lv, mortal, verbose)
+    pilot.safe = safe
     try:
         pilot.play(budget)
         ok, why = False, "the route ended without a tally"
@@ -739,6 +834,8 @@ def main() -> int:
     ap.add_argument("--mortal", action="store_true")
     ap.add_argument("--frames", type=int, default=7200)
     ap.add_argument("-v", action="store_true")
+    ap.add_argument("--safe", action="store_true",
+                    help="undo a lost life and retry the edge later; what still dies is FORCED")
     ap.add_argument("--rom-dir", help="bank*.bin + bank0.lst of a variant build "
                                       "(tools/build_variant.sh, KEEP=1)")
     a = ap.parse_args()
@@ -750,13 +847,17 @@ def main() -> int:
         con.boot(n)
         lv = Level(stage, n)
         t0 = con.frames
-        ok, why, pilot = finish(con, lv, a.mortal, a.v, a.frames)
+        ok, why, pilot = finish(con, lv, a.mortal, a.v, a.frames, a.safe)
         used = con.frames - t0
         print(f"level {n:2d}: {'DONE' if ok else 'FAIL'}  {used:5d} frames  "
               f"deaths {pilot.deaths}  rooms {len(pilot.rooms_seen)}/{len(lv.rooms)}"
               f"  - {why}")
         for f_, r_, x_, y_, why_ in pilot.death_log:
             print(f"           death: frame {f_}, room {r_}, x={x_} y={y_}  ({why_})")
+        if a.safe:
+            print(f"           retried-and-saved edges: {pilot.waited}, FORCED edges: {len(pilot.forced)}")
+            for cur_, nxt_, d_ in pilot.forced:
+                print(f"           FORCED {cur_} -> {nxt_}: {d_}")
         bad += not ok
     return 1 if bad else 0
 

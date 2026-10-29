@@ -1453,6 +1453,42 @@ int NearestAir(const ModelData& m, int band, int prefer) {
     return -1;
 }
 
+// User rule 2026-10-29 (no forced life loss): an enemy must not sit on the
+// player's way through a vertical opening. A ceiling/floor row with only a few
+// air cells is an EXIT GAP; a bat at the foot of the gap that drops in (or
+// at its head, from below) is hit before the player can aim (the laser is
+// horizontal) - found by the playbot on level 2 room 2 (bat under the gap).
+// Prefer the nearest air cell at least 2 cells away from every exit gap of the
+// rows above (band >= 1) and below (band <= h-2); fall back to NearestAir.
+int NearestAirClear(const ModelData& m, int band, int prefer) {
+    const int h = m.height;
+    auto airCount = [&](int row) {
+        int n = 0;
+        for (int c = 0; c < kRoomWidth; ++c) n += CellAir(m, row, c) ? 1 : 0;
+        return n;
+    };
+    std::vector<int> gaps;
+    if (band >= 1 && airCount(0) <= 4) {
+        for (int c = 0; c < kRoomWidth; ++c) if (CellAir(m, 0, c)) gaps.push_back(c);
+    }
+    if (band <= h - 2 && airCount(h - 1) <= 4) {
+        for (int c = 0; c < kRoomWidth; ++c) if (CellAir(m, h - 1, c)) gaps.push_back(c);
+    }
+    auto clear = [&](int c) {
+        if (!CellAir(m, band, c)) return false;
+        for (int g : gaps) if (std::abs(g - c) <= 1) return false;
+        return true;
+    };
+    if (prefer < 0) prefer = 0;
+    if (prefer >= kRoomWidth) prefer = kRoomWidth - 1;
+    if (clear(prefer)) return prefer;
+    for (int d = 1; d < kRoomWidth; ++d) {
+        if (prefer - d >= 0 && clear(prefer - d)) return prefer - d;
+        if (prefer + d < kRoomWidth && clear(prefer + d)) return prefer + d;
+    }
+    return NearestAir(m, band, prefer);
+}
+
 // N=4 (2026-10-24): the PLANS speak three rows (0 ceiling / 1 shaft / 2 floor)
 // but a generated model carries one row per drawn band, band 2 being the
 // vertical route's continuation. Placement code that means "the floor / water
@@ -1603,7 +1639,7 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
             // wall snake at cell 0) was never fought (user rule 2026-10-21).
             // From level 2 one bat guards the APPROACH corridor (cell 8),
             // which also keeps the 2-room levels distinct (L1 is clean).
-            const int cell = NearestAir(shape, 1, 8);
+            const int cell = NearestAirClear(shape, 1, 8);
             if (cell >= 0) {
                 AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
                          (levelNumber % 2) ? 4.0f : 5.0f,
@@ -1627,10 +1663,10 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         // (user ruling 2026-10-26), on a column away from the gate's own.
         // Fallback: band 0, then nothing. Hand-authored rooms are not blocked.
         const int fb = FloorBand(shape);
-        int cell = NearestAir(shape, fb, 8);
+        int cell = NearestAirClear(shape, fb, 8);
         int band = fb;
         if (cell < 0) {
-            cell = NearestAir(shape, 0, 8);
+            cell = NearestAirClear(shape, 0, 8);
             band = 0;
         }
         if (cell >= 0) {
@@ -1653,7 +1689,7 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         // 2026-10-21: a bat inside the wall at level 3 room 2).
         const int hidx = (arch >= 8 && arch <= 14) ? arch - 8 : 0;
         const int gapCell = kArchHotGapX[hidx] / 2;
-        const int bcell = NearestAir(shape, 0, gapCell);
+        const int bcell = NearestAirClear(shape, 0, gapCell);
         if (bcell >= 0) {
             AddEnemy(room, EnemyType::BAT, (float)(bcell * 2),
                      BandY(shape, 0),
@@ -1677,7 +1713,7 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
     // room, one per band, as the user asked (2026-10-21). Flicker is the
     // kernel's job (one sprite), not a reason to starve the rooms.
     if (roomIndex % 2 == 1 || roomIndex >= 8) {
-        const int cell = NearestAir(shape, 1, 8);
+        const int cell = NearestAirClear(shape, 1, 8);
         if (cell >= 0) {
             AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
                      (levelNumber % 2) ? 4.0f : 5.0f,
