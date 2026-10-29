@@ -434,14 +434,14 @@ class Pilot:
         eff = 0 if s < 4 else s - 3 if s < 13 else 3 * (15 - s)
         return 1 + min(eff, 9)
 
-    def crunch_wait(self, run, ahead=70):
+    def crunch_wait(self, run, ahead=70, room=None, delay=0):
         """Hold still until the hcrunch (clock EnemyRamP, period 256) cannot catch the
         flight `run` = [(x, band), ...] (one x per cell, 1.4 px/frame assumed). The prefix
         covers pairs 1..n of 8 px from both side walls, so a shaft far from the
         wall is clear for most of the period and a dash across fits the dwell +
         retract window: the crunch is a timing gate, not a forced kill."""
         c = self.c
-        room = self.lv.rooms[c.r("RoomNo")]
+        room = room or self.lv.rooms[c.r("RoomNo")]
         rows = [fc[0] for fc in room.get("feature_cells") or [] if fc[2] == 12]
         if not rows:
             return
@@ -454,9 +454,10 @@ class Pilot:
         # the flight as (x, y) points: a node's y is its band's hover height; the
         # player moves 1.4 px/frame sideways and 1.2 px/frame vertically
         pts = [(x, 36 * b_ + 12) for x, b_ in run]
-        track = []                                  # (x, y) at t = 0, 1, 2, ...
+        track = [(pts[0][0], -200.0)] * delay        # still in the room before
         for (xa, ya), (xb, yb) in zip(pts, pts[1:]):
-            n_ = max(1, int(max(abs(xb - xa) / 1.4, abs(yb - ya) / 1.2)))
+            vy_ = 1.0 if yb < ya else 1.4          # the jet climbs slowly, he falls faster
+            n_ = max(1, int(max(abs(xb - xa) / 1.4, abs(yb - ya) / vy_)))
             for i_ in range(n_):
                 track.append((xa + (xb - xa) * i_ / n_, ya + (yb - ya) * i_ / n_))
         track.append(pts[-1])
@@ -616,6 +617,19 @@ class Pilot:
         self.lv.grids[ri][1].discard((b, col))
         self.say("strip", strip, "should be open")
 
+    def collect_run(self, k):
+        """Nodes of the path from index k on that stay in k's room along a shaft (one
+        column) or along a band: [(x, band), ...], and the last index used."""
+        path = self.path
+        run = [(x_for_cell(path[k][2]), path[k][1])]
+        b0 = path[k][1]
+        while k + 1 < len(path) and path[k][0] == path[k + 1][0] and (
+                (len(run) < 8 and path[k][2] == path[k + 1][2])
+                or (path[k][1] == path[k + 1][1] == b0 and len(run) < 24)):
+            k += 1
+            run.append((x_for_cell(path[k][2]), path[k][1]))
+        return run, k
+
     def edge_safe(self, cur, nxt):
         """Fly the edge; with `safe` on, a life lost on it is UNDONE (snapshot) and the
         edge retried: first after waiting in place and/or hovering higher or lower,
@@ -672,17 +686,10 @@ class Pilot:
         c = self.c
         (r0, b0, f0), (r1, b1, f1) = cur, nxt
         if r0 != r1:
+            # (EnterRoom restarts the crunch clock at 64: the wait happens inside,
+            # below the crunch row, by the in-room run)
             return self.exit_room(cur, nxt)
-        run = [(x_for_cell(f0), b0)]
-        k = self.path_i
-        while k + 1 < len(self.path) and self.path[k][0] == self.path[k + 1][0] \
-                and len(run) < 8 and self.path[k][2] \
-                == self.path[k + 1][2] or (k + 1 < len(self.path)
-                                           and self.path[k][0] == self.path[k + 1][0]
-                                           and self.path[k][1] == self.path[k + 1][1] == b0
-                                           and len(run) < 24):
-            k += 1
-            run.append((x_for_cell(self.path[k][2]), self.path[k][1]))
+        run, k = self.collect_run(self.path_i)
         if len(run) == 1:
             run.append((x_for_cell(f1), b1))
         go = getattr(self, "crunch_go", None)
