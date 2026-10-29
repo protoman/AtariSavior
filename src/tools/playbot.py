@@ -559,6 +559,7 @@ class Pilot:
                                  f"(x={c.r('RoomX')} y={c.r('RoomY')})")
                 self.hold(NONE, 20)
             self.clear_hover()
+            self.prev_end = c.frames
 
     def here(self):
         c = self.c
@@ -631,8 +632,9 @@ class Pilot:
             return ok
         first = self.death_log[snap[3]:]
         prev = getattr(self, "prev", None)
-        if prev is not None and prev[5] != cur:
-            prev = None                       # the previous edge does not lead here
+        if prev is not None and (prev[5] != cur or c.frames != snap[0][6]
+                                 or getattr(self, "prev_end", None) != snap[0][6]):
+            prev = None                       # not the edge right before (touch / bomb between)
         for scope in ((snap, prev) if prev else (snap,)):
             for hi_ov in (None, 2, 24):
                 for wait in range(0, 300, 12):
@@ -648,6 +650,7 @@ class Pilot:
                     good = self.deaths == d0
                     if good and scope is prev:
                         self.edge(e_cur, e_nxt)       # replay the edge before
+                        self.clear_hover()
                         good = self.deaths == d0
                     if good:
                         ok = self.edge(cur, nxt)
