@@ -131,3 +131,16 @@ build.sh + both sims there) select the TV. `tools/gen_colors.py` writes `colors.
 - Verified in Stella (`stella -format PAL savior-<v>-pal.bin`): the title matches the
   `tools/tia_render.py` picture drawn with the PAL palette (`tia_render.use_pal()`).
   `playbot.py --rom-dir <scratch tree>` finishes all 20 levels on both variants.
+
+## Why did the bot lose a life? (`playbot.py --log FILE`, 2026-10-29)
+
+`--log deaths.jsonl` appends one JSON line per lost life (`event: death`) and per give-up
+(`event: giveup`): level, frame, room (1-based), x/y, the cause, what the bot was doing
+(`edge a->b`, `RETRY wait=N hover=H`, `touch miner`, `bomb strip`, `waiting for the crunch`),
+the facts behind the cause (enemies within 40 px as dx/dy, hcrunch clock and the pairs it
+covers, phase wall ON/off, hot band) and `trace` = the last 48 frames (room, x, y, vy,
+joystick, hover, crunch clock, EnemyDeadMask, enemy slots). The cause comes from those
+facts, not from a guess about the room: `crusher` only when the covered pairs overlap
+the player's box in the crunch row, `phase wall` only when the wall was ON at his x.
+`--safe` retries (undone deaths) are logged too, tagged `RETRY` in `doing`.
+`tools/stage_check.sh --safe --log F` does the same on fresh generator output.
