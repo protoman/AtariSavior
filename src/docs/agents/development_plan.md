@@ -130,3 +130,8 @@ secret rooms and level-specific enemy patterns are CUT from scope.
 
 - [x] Playthrough bot for the generated stage (tools/playbot.py, 2026-10-28): all 20
       levels finish on the real ROM; see docs/agents/testing_and_build.md.
+- [x] Horizontal-position test for the lives row and the key ball
+      (tools/test_hud_positions.py, 2026-10-28): a beam model fitted on the real
+      SetObjectXPos measures the lit pixel columns; squares of 4 px on an 8-px pitch
+      from x=8 (P1 from x=40), key ball at x=125..132, every GRP/ENABL write before
+      the beam. Red-proofed by moving P1 and the ball one pixel.
