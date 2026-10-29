@@ -433,9 +433,12 @@ def story():
     # ---- mission
     s += head("Your mission", "The object of the game")
     s += [Paragraph(
-        "Miners are trapped deep in a maze of caves, and the clock is running. "
-        "You are the <b>S.A.V.I.O.R.</b> pilot: a rescuer with a rocket-powered "
-        "jet pack, a laser built into your helmet and a bag of bombs.", BODY),
+        "Miners are trapped deep in the mines of Minas Gerais, Brazil, and the "
+        "clock is running. You are <b>Eorley Savior</b>, who founded the "
+        "<b>S.A.V.I.O.R.</b> company (<i>Strategic Aerial Vehicle Infiltration "
+        "Operations Rescue</i>) to rescue people trapped in deep mines. Your "
+        "tools: a rocket-powered jet pack, a laser built into your helmet and a "
+        "bag of bombs.", BODY),
         Paragraph(
         "Fly from room to room, find the trapped miner and <b>touch</b> "
         "him. Deeper levels hide up to <b>three miners</b>, and the level is "
