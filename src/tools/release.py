@@ -69,7 +69,7 @@ def main() -> int:
     step(f"version {version}")
 
     dirty = [l for l in run(["git", "status", "--porcelain", "--untracked-files=no"]).stdout.splitlines()
-             if l[3:] not in ("TODO.txt", "credits.txt")]
+             if Path(l[3:]).name not in ("TODO.txt", "credits.txt")]
     if dirty:
         fail("uncommitted tracked changes:\n  " + "\n  ".join(dirty))
     commit = run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
