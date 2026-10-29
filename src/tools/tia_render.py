@@ -55,11 +55,20 @@ def _load_palette():
 
 
 PALETTE = _load_palette()
+_active = [PALETTE]
+
+
+def use_pal():
+    """Draw with Stella's PAL palette (for the PAL / PAL60 ROMs)."""
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT / "tools"))
+    from pal_palette import kPalettePAL
+    _active[0] = kPalettePAL
 
 
 def palette_rgb(c):
     """TIA colour byte (hue in bits 7-4, luma in bits 3-1) -> (r, g, b)."""
-    return PALETTE[(c >> 4) & 15][(c >> 1) & 7]
+    return _active[0][(c >> 4) & 15][(c >> 1) & 7]
 
 
 def signed4(hm):

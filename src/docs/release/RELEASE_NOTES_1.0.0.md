@@ -33,7 +33,10 @@ creatures get faster every five levels.
   level, lives and score at the start of every level. The title opens on your saved
   level and RESET carries on; a game over erases the save but never the high score.
 - Illustrated 13-page instruction manual (PDF).
-- Plays on a standard Atari 2600 with a joystick (F4 bank-switched 32 KB ROM, NTSC).
+- Plays on a standard Atari 2600 with a joystick (F4 bank-switched 32 KB ROM). Three
+  versions: **NTSC** (60 Hz), **PAL60** (60 Hz with PAL colours) and **PAL** (50 Hz,
+  312 lines, PAL colours; the action is about a sixth slower in real time, the power bar
+  still lasts 120 seconds).
 
 ![Level 3: the rescue](screenshots/level03_rescue.png)
 *Level 3: the miner waits at the bottom of the shaft. The bar at the bottom is the

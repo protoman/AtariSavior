@@ -399,6 +399,262 @@ MinerRescued             f9a6              (R )
 MinerX                   00a5              (R )
 MinerY                   00a6              (R )
 MothExitPad              fc49                  
+NC_00                    0000              (R )
+NC_01                    0001                  
+NC_02                    0002                  
+NC_03                    0003                  
+NC_04                    0004              (R )
+NC_05                    0005                  
+NC_06                    0006              (R )
+NC_07                    0007                  
+NC_08                    0008              (R )
+NC_09                    0009                  
+NC_0A                    000a              (R )
+NC_0B                    000b                  
+NC_0C                    000c              (R )
+NC_0D                    000d                  
+NC_0E                    000e              (R )
+NC_0F                    000f                  
+NC_10                    0010                  
+NC_11                    0011                  
+NC_12                    0012                  
+NC_13                    0013                  
+NC_14                    0014              (R )
+NC_15                    0015                  
+NC_16                    0016                  
+NC_17                    0017                  
+NC_18                    0018                  
+NC_19                    0019                  
+NC_1A                    001a                  
+NC_1B                    001b                  
+NC_1C                    001c              (R )
+NC_1D                    001d                  
+NC_1E                    001e              (R )
+NC_1F                    001f                  
+NC_20                    0020                  
+NC_21                    0021                  
+NC_22                    0022              (R )
+NC_23                    0023                  
+NC_24                    0024                  
+NC_25                    0025                  
+NC_26                    0026                  
+NC_27                    0027                  
+NC_28                    0028              (R )
+NC_29                    0029                  
+NC_2A                    002a                  
+NC_2B                    002b                  
+NC_2C                    002c              (R )
+NC_2D                    002d                  
+NC_2E                    002e                  
+NC_2F                    002f                  
+NC_30                    0030                  
+NC_31                    0031                  
+NC_32                    0032                  
+NC_33                    0033                  
+NC_34                    0034                  
+NC_35                    0035                  
+NC_36                    0036                  
+NC_37                    0037                  
+NC_38                    0038                  
+NC_39                    0039                  
+NC_3A                    003a                  
+NC_3B                    003b                  
+NC_3C                    003c                  
+NC_3D                    003d                  
+NC_3E                    003e                  
+NC_3F                    003f                  
+NC_40                    0040                  
+NC_41                    0041                  
+NC_42                    0042                  
+NC_43                    0043                  
+NC_44                    0044              (R )
+NC_45                    0045                  
+NC_46                    0046              (R )
+NC_47                    0047                  
+NC_48                    0048              (R )
+NC_49                    0049                  
+NC_4A                    004a              (R )
+NC_4B                    004b                  
+NC_4C                    004c              (R )
+NC_4D                    004d                  
+NC_4E                    004e                  
+NC_4F                    004f                  
+NC_50                    0050                  
+NC_51                    0051                  
+NC_52                    0052                  
+NC_53                    0053                  
+NC_54                    0054              (R )
+NC_55                    0055                  
+NC_56                    0056                  
+NC_57                    0057                  
+NC_58                    0058                  
+NC_59                    0059                  
+NC_5A                    005a                  
+NC_5B                    005b                  
+NC_5C                    005c                  
+NC_5D                    005d                  
+NC_5E                    005e                  
+NC_5F                    005f                  
+NC_60                    0060                  
+NC_61                    0061                  
+NC_62                    0062                  
+NC_63                    0063                  
+NC_64                    0064              (R )
+NC_65                    0065                  
+NC_66                    0066              (R )
+NC_67                    0067                  
+NC_68                    0068              (R )
+NC_69                    0069                  
+NC_6A                    006a              (R )
+NC_6B                    006b                  
+NC_6C                    006c              (R )
+NC_6D                    006d                  
+NC_6E                    006e                  
+NC_6F                    006f                  
+NC_70                    0070                  
+NC_71                    0071                  
+NC_72                    0072                  
+NC_73                    0073                  
+NC_74                    0074                  
+NC_75                    0075                  
+NC_76                    0076                  
+NC_77                    0077                  
+NC_78                    0078                  
+NC_79                    0079                  
+NC_7A                    007a                  
+NC_7B                    007b                  
+NC_7C                    007c                  
+NC_7D                    007d                  
+NC_7E                    007e                  
+NC_7F                    007f                  
+NC_80                    0080                  
+NC_81                    0081                  
+NC_82                    0082              (R )
+NC_83                    0083                  
+NC_84                    0084              (R )
+NC_85                    0085                  
+NC_86                    0086                  
+NC_87                    0087                  
+NC_88                    0088              (R )
+NC_89                    0089                  
+NC_8A                    008a                  
+NC_8B                    008b                  
+NC_8C                    008c                  
+NC_8D                    008d                  
+NC_8E                    008e                  
+NC_8F                    008f                  
+NC_90                    0090                  
+NC_91                    0091                  
+NC_92                    0092                  
+NC_93                    0093                  
+NC_94                    0094                  
+NC_95                    0095                  
+NC_96                    0096                  
+NC_97                    0097                  
+NC_98                    0098                  
+NC_99                    0099                  
+NC_9A                    009a                  
+NC_9B                    009b                  
+NC_9C                    009c                  
+NC_9D                    009d                  
+NC_9E                    009e              (R )
+NC_9F                    009f                  
+NC_A0                    00a0                  
+NC_A1                    00a1                  
+NC_A2                    00a2                  
+NC_A3                    00a3                  
+NC_A4                    00a4                  
+NC_A5                    00a5                  
+NC_A6                    00a6                  
+NC_A7                    00a7                  
+NC_A8                    00a8                  
+NC_A9                    00a9                  
+NC_AA                    00aa                  
+NC_AB                    00ab                  
+NC_AC                    00ac                  
+NC_AD                    00ad                  
+NC_AE                    00ae                  
+NC_AF                    00af                  
+NC_B0                    00b0                  
+NC_B1                    00b1                  
+NC_B2                    00b2                  
+NC_B3                    00b3                  
+NC_B4                    00b4                  
+NC_B5                    00b5                  
+NC_B6                    00b6                  
+NC_B7                    00b7                  
+NC_B8                    00b8                  
+NC_B9                    00b9                  
+NC_BA                    00ba                  
+NC_BB                    00bb                  
+NC_BC                    00bc                  
+NC_BD                    00bd                  
+NC_BE                    00be                  
+NC_BF                    00bf                  
+NC_C0                    00c0                  
+NC_C1                    00c1                  
+NC_C2                    00c2              (R )
+NC_C3                    00c3                  
+NC_C4                    00c4              (R )
+NC_C5                    00c5                  
+NC_C6                    00c6              (R )
+NC_C7                    00c7                  
+NC_C8                    00c8              (R )
+NC_C9                    00c9                  
+NC_CA                    00ca                  
+NC_CB                    00cb                  
+NC_CC                    00cc                  
+NC_CD                    00cd                  
+NC_CE                    00ce                  
+NC_CF                    00cf                  
+NC_D0                    00d0                  
+NC_D1                    00d1                  
+NC_D2                    00d2                  
+NC_D3                    00d3                  
+NC_D4                    00d4                  
+NC_D5                    00d5                  
+NC_D6                    00d6                  
+NC_D7                    00d7                  
+NC_D8                    00d8                  
+NC_D9                    00d9                  
+NC_DA                    00da                  
+NC_DB                    00db                  
+NC_DC                    00dc                  
+NC_DD                    00dd                  
+NC_DE                    00de                  
+NC_DF                    00df                  
+NC_E0                    00e0                  
+NC_E1                    00e1                  
+NC_E2                    00e2                  
+NC_E3                    00e3                  
+NC_E4                    00e4                  
+NC_E5                    00e5                  
+NC_E6                    00e6                  
+NC_E7                    00e7                  
+NC_E8                    00e8                  
+NC_E9                    00e9                  
+NC_EA                    00ea                  
+NC_EB                    00eb                  
+NC_EC                    00ec                  
+NC_ED                    00ed                  
+NC_EE                    00ee                  
+NC_EF                    00ef                  
+NC_F0                    00f0                  
+NC_F1                    00f1                  
+NC_F2                    00f2              (R )
+NC_F3                    00f3                  
+NC_F4                    00f4                  
+NC_F5                    00f5                  
+NC_F6                    00f6                  
+NC_F7                    00f7                  
+NC_F8                    00f8                  
+NC_F9                    00f9                  
+NC_FA                    00fa                  
+NC_FB                    00fb                  
+NC_FC                    00fc                  
+NC_FD                    00fd                  
+NC_FE                    00fe                  
+NC_FF                    00ff                  
 NUSIZ0                   0004              (R )
 NUSIZ1                   0005                  
 OBJ_BAT                  0045              (R )
@@ -428,6 +684,7 @@ ObjSprites               f830              (R )
 ObjTop                   00bb              (R )
 ObjTop1                  00eb              (R )
 ObjX1                    00ec              (R )
+OVER_UNITS               002c              (R )
 OverlayTramp             f9b8              (R )
 Overscan                 f193              (R )
 OverscanAudio            f336              (R )
@@ -503,6 +760,7 @@ TallyTramp               ffe6              (R )
 TallyWork                fe9c              (R )
 Temp                     0088              (R )
 TickCounter              00ad              (R )
+TICKS_PER_SEC            003c              (R )
 TILE_COLUMNS             0014              (R )
 TILE_ROWS                0004              (R )
 TIM64T                   0296              (R )
@@ -511,6 +769,9 @@ TitleTailAudio           fd55
 TitleWork                fd24              (R )
 ToGameStub               fc70                  
 ToMenuStub               fc68                  
+TV_50HZ                  0000                  
+TV_CAVE_LINES            0110                  
+TV_PAL                   0000                  
 UE_Alive                 f3e7              (R )
 UE_Exit                  f43f              (R )
 UE_FlipDir               fc78              (R )
@@ -530,6 +791,7 @@ UEPass                   fe89              (R )
 UEPrologue               fe7b              (R )
 UpdateEnemies            f3ce              (R )
 UpdateP0Vertical         f203                  
+VBL_UNITS                001f              (R )
 VBLANK                   0001              (R )
 VBLTimer                 f04e                  
 VDELP0                   0025              (R )

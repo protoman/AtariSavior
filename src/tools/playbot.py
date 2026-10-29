@@ -51,9 +51,12 @@ PLAYER_H = 22
 # the console
 # ---------------------------------------------------------------------------
 class Console:
-    def __init__(self):
-        self.banks = [bytearray((ROOT / f"bank{i}.bin").read_bytes()) for i in range(8)]
-        lab = parse_labels(ROOT / "bank0.lst", set(NAMES))
+    def __init__(self, rom_dir=None):
+        """rom_dir: where bank*.bin / bank0.lst are (default: the live build here; the
+        PAL / PAL60 variants are built in a scratch tree, see tools/build_variant.sh)."""
+        rom_dir = Path(rom_dir) if rom_dir else ROOT
+        self.banks = [bytearray((rom_dir / f"bank{i}.bin").read_bytes()) for i in range(8)]
+        lab = parse_labels(rom_dir / "bank0.lst", set(NAMES))
         missing = set(NAMES) - set(lab)
         if missing:
             sys.exit(f"bank0.lst is missing labels {sorted(missing)}")
@@ -592,12 +595,14 @@ def main() -> int:
     ap.add_argument("--mortal", action="store_true")
     ap.add_argument("--frames", type=int, default=7200)
     ap.add_argument("-v", action="store_true")
+    ap.add_argument("--rom-dir", help="bank*.bin + bank0.lst of a variant build "
+                                      "(tools/build_variant.sh, KEEP=1)")
     a = ap.parse_args()
     stage = json.loads((ROOT / "rooms" / "stage.json").read_text())["stage"]
     levels = a.levels or list(range(1, len(stage["levels"]) + 1))
     bad = 0
     for n in levels:
-        con = Console()
+        con = Console(a.rom_dir)
         con.boot(n)
         lv = Level(stage, n)
         t0 = con.frames
