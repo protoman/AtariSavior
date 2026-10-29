@@ -56,6 +56,15 @@ def sim_python():
     return py
 
 
+def python_with(module):
+    """First interpreter that can import `module` (the sims and the manual live in
+    different Python installs on the dev machine)."""
+    for py in (sys.executable, "python3", os.environ.get("SIM_PY", "")):
+        if py and run([py, "-c", f"import {module}"]).returncode == 0:
+            return py
+    fail(f"no Python with {module} found")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-playbot", action="store_true")
@@ -111,7 +120,7 @@ def main() -> int:
         fail("the ROM does not carry this version in bank5")
 
     step("manual")
-    r = run([sys.executable, "docs/manual/build_manual.py"])
+    r = run([python_with("reportlab"), "docs/manual/build_manual.py"])
     if r.returncode:
         fail("build_manual.py failed:\n" + r.stderr[-800:])
 
