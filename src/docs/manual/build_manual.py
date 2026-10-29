@@ -787,7 +787,7 @@ def build():
                           rightMargin=MARGIN, topMargin=0.5 * inch,
                           bottomMargin=0.6 * inch,
                           title="S.A.V.I.O.R. Instruction Manual",
-                          author="Iuri Fiedoruk")
+                          author="Iuri Fiedoruk", invariant=1)
     frame = Frame(MARGIN, 0.6 * inch, PAGE[0] - 2 * MARGIN,
                   PAGE[1] - 1.1 * inch, id="f", leftPadding=0, rightPadding=0,
                   topPadding=0, bottomPadding=0)
