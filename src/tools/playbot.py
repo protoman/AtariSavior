@@ -339,7 +339,13 @@ class Pilot:
             x = self.c.r("RoomX")
             if x == x_t:
                 return True
-            sw = (RIGHT if x < x_t else LEFT) & self.altitude(band)
+            y = self.c.r("RoomY")
+            if BAND_PX * band <= y <= BAND_PX * band + 14:
+                sw = (RIGHT if x < x_t else LEFT) & self.altitude(band)
+            else:
+                # the 22-px box still overlaps the band above/below: sideways
+                # now would crush him in a wall edge (the spawn at RoomY 24)
+                sw = self.altitude(band)
             self.step(sw)
         return False
 

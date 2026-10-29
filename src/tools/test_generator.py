@@ -21,7 +21,7 @@ for content and never written):
     east ONE cell (row 1, col 0), so a horizontal pair is passable only when
     both rooms cut it. The passable graph must be the serpentine: every room
     reachable, exactly (rooms - 1) passages;
-  * start room: the kernel drops the player in at (32, 24) px = display col 8 =
+  * start room: the kernel drops the player in at RoomX 39 (lit span px 32-39), Y 24 = display col 8 =
     CELL 4 of the top band with collision bypassed, so that cell must be air;
   * object caps: enemies + lamps + miner <= 2 per room, <= 1 element per tile
     row (the editor's kMaxRoomElements / ElementInRow rules);
@@ -372,13 +372,12 @@ def main() -> int:
                       f"{START_CELL} is {start_rows[0][START_CELL]!r} — the "
                       "spawn drop would land inside the ceiling")
                 return 1
-            # A hot start room must keep the drop COLUMN open: the player
-            # falls through band 1 at cell 4.
-            if shapes[rooms[0]["model_id"]].get("mid_band_type") and \
-                    start_rows[1][START_CELL] != ".":
-                print(f"FAIL: level {level_n} hot start room has "
-                      f"{start_rows[1][START_CELL]!r} at row-1 cell "
-                      f"{START_CELL} — the drop lands on a hot wall (HotDrop)")
+            # He spawns at RoomY 24 (box 24-45): the drop COLUMN must be open in
+            # band 1 too, or he is born inside the wall / on a hot wall (HotDrop).
+            if start_rows[1][START_CELL] != ".":
+                print(f"FAIL: level {level_n} start room has "
+                      f"{start_rows[1][START_CELL]!r} at band-1 cell "
+                      f"{START_CELL} — the player spawns inside it")
                 return 1
 
             # Adjacent pairs: the carve must agree on BOTH sides (tear rule).
