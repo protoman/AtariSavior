@@ -45,6 +45,15 @@ missing = (need0 - L0.keys()) | (need2 - L2.keys())
 if missing:
     sys.exit(f"labels missing: {sorted(missing)}")
 
+# Level 1 has no enemies, so LEVEL1_EnemyDataTable is just the address of whatever
+# bytes follow it in the (frozen) bank: the first record's type used to be luck. Give
+# the test its own record: a bat (type 1, dir 0) - x/y come from the RAM shadow.
+import test_cell_map as _TC  # noqa: E402
+_img = bytearray(_TC.BANK2)
+_at = L2["LEVEL1_EnemyDataTable"] & 0xFFF
+_img[_at:_at + 3] = bytes([0x01, 0x00, 0x00])
+_TC.BANK2 = _img
+
 A = 80                      # clamped beam arg -> drawn [73, 80]
 BEAM_Y = 80                 # RoomY -> beam rows 82..83
 
