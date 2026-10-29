@@ -541,7 +541,7 @@ class Pilot:
                 raise GiveUp(f"left the route: in room {room_before}, expected "
                              f"{cur[0]}/{nxt[0]}")
             if cur[0] == nxt[0] and (nxt[1], nxt[2]) in self.lv.grids[nxt[0]][1]:
-                self.bomb_strip(nxt)
+                self.edge_safe(cur, nxt, lambda _c, _n: self.bomb_strip(_n))
                 continue                          # re-check the same edge, strip gone
             self.path, self.path_i = path, i
             ok = self.edge_safe(cur, nxt)
@@ -630,17 +630,18 @@ class Pilot:
             run.append((x_for_cell(path[k][2]), path[k][1]))
         return run, k
 
-    def edge_safe(self, cur, nxt):
+    def edge_safe(self, cur, nxt, fn=None):
         """Fly the edge; with `safe` on, a life lost on it is UNDONE (snapshot) and the
         edge retried: first after waiting in place and/or hovering higher or lower,
         then from the START OF THE EDGE BEFORE (a bat under a shaft is lethal by the
         time the drop has landed). If no variant gets through alive the edge is
         FORCED: the level, not the bot, takes the life (recorded in `forced`)."""
+        fn = fn or self.edge
         if not self.safe:
-            return self.edge(cur, nxt)
+            return fn(cur, nxt)
         c = self.c
         snap = (c.save(), self.hover, self.deaths, len(self.death_log), cur, nxt)
-        ok = self.edge(cur, nxt)
+        ok = fn(cur, nxt)
         if self.deaths == snap[2]:
             self.prev = snap
             return ok
@@ -667,7 +668,7 @@ class Pilot:
                         self.clear_hover()
                         good = self.deaths == d0
                     if good:
-                        ok = self.edge(cur, nxt)
+                        ok = fn(cur, nxt)
                         good = self.deaths == d0
                     self.hi_override = None
                     if good:

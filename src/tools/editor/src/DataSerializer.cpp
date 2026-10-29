@@ -2217,7 +2217,7 @@ int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
                         const EnemyData& e = room.enemies[i];
                         ++cnt;
                         if (bandOf(e.y) == 2
-                                || std::abs((int)std::lround(e.x) - dcol) < 3)
+                                || std::abs((int)std::lround(e.x) - dcol) < 6)       // 24 px: the pickup window + a spider's reach
                             return false;
                     }
                     for (const LampData& l : room.lamps) {
