@@ -328,9 +328,13 @@ class Pilot:
         """Joystick bits that keep the player inside `band` (gravity is weak: a
         short thrust whenever he sinks below the middle of the band)."""
         y = self.c.r("RoomY")
-        hi = 12
+        hi = 14 if band == 0 else 12   # band 0: the thrust inertia must not carry
+                                       # him out through the ceiling (an exit up)
         if band == BANDS - 1 and self.lv.rooms[self.c.r("RoomNo")].get("bottom_band"):
             hi = 2                     # the water kills from y 115: fly y 108..114
+        if self.c.r("vyHi") >= 0x80:
+            return NONE                # already rising: the jet is slow to fade, so
+                                       # more thrust now only carries him out the top
         return UP if y > BAND_PX * band + hi else NONE
 
     def to_x(self, x_t, band, maxf=400):
