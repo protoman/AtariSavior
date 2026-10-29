@@ -118,7 +118,11 @@ protected:
                         col = editor::TileColor((int)hero::TileType::HOT_ROCK_WALL,
                                                 band, m_wall1, m_wall2);
                     }
-                    if (r.water && band == hero::kRoomHeight - 1
+                    // The game (and MapCanvas) paint the water only over the bottom
+                    // THIRD of the band (36 lines: the last 12); above it the band
+                    // is open air a raft floats in. 3 display rows per band, so the
+                    // band's last row is the water.
+                    if (r.water && band == hero::kRoomHeight - 1 && row % 3 == 2
                             && tile == (int)hero::TileType::AIR) {
                         col = r.bottom;
                     }
