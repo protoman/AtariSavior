@@ -32,7 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SEMVER = re.compile(r"^\d+\.\d+\.\d+(-(rc|beta)\d+)?$")
-BANK5 = 5 * 4096
+BANK5 = 5 * 4096 + 5     # the version header follows the 5-byte power-up stub
 
 
 def run(cmd, **kw):

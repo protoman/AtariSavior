@@ -622,20 +622,23 @@ def check_boot_banks(src: Path) -> None:
     hardware, so any of the four banks can be the first one fetched. Every bank
     therefore needs the same 5-byte "select bank0" prefix at $F000
     (`lda #0 / sta $1FF4`), with bank0 holding `jmp GameStart` at $F005 — the
-    post-switch fetch reads those three bytes from BANK0, so banks 1-3 can
+    post-switch fetch reads those three bytes from BANK0, so banks 1-7 can
     leave them as anything. Each bank's RESET vector must lead there (bank0
     jumps straight to GameStart at $F008).
 
     Regression this exists for: bank1 shipped with a bank-select-less
-    `jmp $F008`, i.e. a 1-in-4 chance of booting into zero fill (BRK loop).
+    `jmp $F008`, i.e. a 1-in-4 chance of booting into zero fill (BRK loop). The
+    check only covered banks 0-3 after the F4 (8-bank) move, so banks 5 and 6 had no
+    stub (bank5's $F000 even held the version string) = a 2-in-8 chance of a dead
+    boot on real hardware (found by the user, 2026-10-28).
     """
     PREFIX = bytes([0xA9, 0x00, 0x8D, 0xF4, 0x1F])   # lda #0 / sta $1FF4
     bins: dict[int, bytes] = {}
-    for idx in range(4):
+    for idx in range(8):             # F4: 8 banks, ANY of them can be first at power-up
         p = src / f"bank{idx}.bin"
         if p.exists() and p.stat().st_size == 4096:
             bins[idx] = p.read_bytes()
-    if len(bins) < 4:
+    if len(bins) < 8:
         err("bank images missing (boot-bank check)")
         return
     for idx, d in bins.items():
