@@ -192,6 +192,8 @@ class Level:
                       min(BANDS - 1, int(self.level["miner_y"] * 12) // BAND_PX),
                       min(19, mx * 1))
         self.extras = SR.extra_miner_nodes(self.level, self.models)
+        # a blown strip is only open for the visit: EnterRoom closes it again
+        self.orig_bombs = [set(g[1]) for g in self.grids]
 
     def neighbours(self, node):
         ri, b, f = node
@@ -211,7 +213,15 @@ class Level:
         for nr, nb, nf in outs:
             ga, gb, gd = self.grids[nr]
             if 0 <= nb < len(ga) and 0 <= nf < 20 and ga[nb][nf]:
-                yield (nr, nb, nf), (1 if (nb, nf) in gb else 0), \
+                strip = (nb, nf) in gb
+                if strip:
+                    # a strip is bombed from its CENTRE side, so it can only be
+                    # crossed outward: a left-half strip westward, a right-half
+                    # one eastward (stage_reach: "bombable only from the centre")
+                    out_dx = -1 if nf < 10 else 1
+                    if not (nr == ri and nb == b and nf - f == out_dx):
+                        continue
+                yield (nr, nb, nf), (1 if strip else 0), \
                     (SR.DANGER if (nb, nf) in gd else 0)
 
     def route(self, start, goal):
@@ -258,6 +268,7 @@ class Pilot:
         self.verbose = verbose
         self.deaths = 0
         self.rooms_seen = set()
+        self.last_room = None
         self.log = []
 
     # ---- one frame ---------------------------------------------------------
@@ -270,7 +281,13 @@ class Pilot:
         self.hover = bool(c.r("Hover"))
         if not self.mortal:
             c.w("PlayerLives", 8)
-        self.rooms_seen.add(c.r("RoomNo"))
+        rn = c.r("RoomNo")
+        if rn != self.last_room:
+            self.last_room = rn
+            self.bombs_tried = {}
+            self.lv.grids[rn][1].clear()
+            self.lv.grids[rn][1].update(self.lv.orig_bombs[rn])
+        self.rooms_seen.add(rn)
         if c.r("DropTarget") == 0xFE:
             raise Done()
         if c.frames - self.start_frames > self.budget:
@@ -350,14 +367,10 @@ class Pilot:
         return (c.r("RoomNo"), band_of(c.r("RoomY")), cell_of(c.r("RoomX")))
 
     def land(self):
-        """Fall (no input) until he stands on the floor."""
+        """Fall (no input) until BombPacked b7 (on the ground) is set."""
         c = self.c
-        last, still = None, 0
-        for _ in range(300):
-            y = c.r("RoomY")
-            still = still + 1 if y == last else 0
-            last = y
-            if still >= 25:
+        for _ in range(400):
+            if c.r("BombPacked") & 0x80:
                 return True
             self.step(NONE)
         return False
@@ -384,21 +397,17 @@ class Pilot:
         self.bombs_tried = getattr(self, "bombs_tried", {})
         self.bombs_tried[strip] = self.bombs_tried.get(strip, 0) + 1
         if self.here() != stand:
-            # strips are walls until opened: plan around them for the approach
-            saved = self.lv.grids[ri][1]
-            self.lv.grids[ri][1].discard((b, col))
-            try:
-                path = self.lv.route(self.here(), stand)
-            finally:
-                saved.add((b, col))
+            path = self.lv.route(self.here(), stand)
             if path is None:
-                raise GiveUp(f"cannot reach {stand} to bomb {strip}")
-            self.say("walk to the bomb spot", stand)
+                raise GiveUp(f"cannot reach {stand} to bomb {strip} from "
+                             f"{self.here()}")
+            self.say("walk to the bomb spot", stand, "path", path[:3], "...")
             self.fly(path)
         f = stand[2]
         if not self.to_x(x_for_cell(f), b):
             raise GiveUp("cannot align at the bomb spot")
-        self.land()
+        if not self.land():
+            raise GiveUp("cannot stand on the floor to plant a bomb")
         self.hold(DOWN, 4)                       # plant (edge on the floor)
         away = max(0, min(19, f + side * 3))
         self.say("bomb planted at", c.pos(), "retreat to cell", away)
