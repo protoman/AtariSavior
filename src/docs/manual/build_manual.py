@@ -396,13 +396,22 @@ def story():
         "Plug the cartridge into your console <b>with the power switched off</b>, "
         "plug a joystick controller into the <b>left controller jack</b>, then "
         "switch the console on. The title screen appears with the letters "
-        "<b>S.A.V.I.O.R.</b> and your pilot hanging in the cave above them.", BODY)]
+        "<b>S.A.V.I.O.R.</b> and your pilot hanging in the cave above them. "
+        "If you own a <b>SaveKey</b> (or AtariVox), plug it into the <b>right "
+        "controller jack</b> as well: the game then remembers your high score "
+        "and where you stopped (see <i>Saving your game</i>).", BODY)]
     s += [Table([[Paragraph("<b>SELECT</b>", CELLT),
                   Paragraph("On the title screen, each press picks the next level. "
-                            "The level number is shown in the score window.", CELLT)],
+                            "The level number is shown in the score window; "
+                            "once you have a high score, the window shows it "
+                            "for a second every few seconds. With a saved "
+                            "game, the title opens on the level where you "
+                            "stopped.", CELLT)],
                  [Paragraph("<b>RESET</b>", CELLT),
                   Paragraph("Starts the game with a score of 000000, three lives "
-                            "and five bombs.", CELLT)]],
+                            "and five bombs (on the saved level of a saved "
+                            "game, it carries on with the lives and score "
+                            "you had when that level began).", CELLT)]],
                 colWidths=[0.9 * inch, W - 0.9 * inch],
                 style=TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
                                   ("BACKGROUND", (0, 0), (0, -1), HexColor("#efe2bd")),
@@ -414,8 +423,8 @@ def story():
     s += [Paragraph("Contents", H2)]
     toc = [("Your mission", 3), ("The controls", 4), ("Reading the screen", 5),
            ("Your equipment", 6), ("The cave", 7), ("Creatures", 8),
-           ("Objects", 9), ("Scoring and levels", 10), ("Hints from the pros", 11),
-           ("Credits", 12)]
+           ("Objects", 9), ("Scoring and levels", 10), ("Saving your game", 11),
+           ("Hints from the pros", 12), ("Credits", 13)]
     for t, p in toc:
         s.append(Paragraph(f"{t} <font color='#6c6c78'>{'.' * (44 - len(t))}</font> {p}",
                            style("toc", fontSize=9.2, leading=13, spaceAfter=0)))
@@ -450,9 +459,9 @@ def story():
         "You are standing in the blast of your own <b>bomb</b>.",
         "The <b>power bar</b> runs out."])
     s += [Paragraph(
-        "You begin with <b>three lives</b>. Lose them all and the level starts "
-        "again with three fresh lives, five bombs and the creatures back in "
-        "place. <b>Your score is kept.</b>", BODY)]
+        "You begin with <b>three lives</b>. Lose them all and the game is "
+        "<b>over</b>: you are taken back to the title screen, and the score "
+        "starts again from 000000. Your <b>high score</b> is kept.", BODY)]
     s.append(PageBreak())
 
     # ---- controls
@@ -498,7 +507,7 @@ def story():
          "refills it."),
         ("2", "Lives",
          "One square per life remaining, up to eight, all green. When the last one goes, the "
-         "level starts again."),
+         "game is over."),
         ("3", "Key",
          "A small yellow square at the right of the lives row. It lights up "
          "while you carry a key (not shown in this picture)."),
@@ -508,8 +517,9 @@ def story():
         ("5", "Miners",
          "Purple squares: how many miners are still waiting to be rescued."),
         ("6", "Score",
-         "Six digits, up to 999999 (it stops there). It is not reset when you "
-         "lose your last life."),
+         "Six digits, up to 999999 (it stops there). It starts again from "
+         "000000 after a game over; your best score is kept as the high "
+         "score."),
     ]
     t = Table([[Paragraph(f"<b>{n}</b>", style("n", alignment=1, fontSize=9, textColor=NAVY)),
                 Paragraph(f"<b>{h}.</b> {d}", CELLT)] for n, h, d in rows],
@@ -573,8 +583,11 @@ def story():
                 "of the visit.")]
     s += [entry(Swatch("crunch"), "Crusher",
                 "A wall that sweeps in from the side across a whole band every "
-                "few seconds. Always leave the band through the gap <b>above or "
-                "below</b> the entrance before it closes.")]
+                "few seconds. Its <b>side</b> is deadly, so leave the band through the "
+                "gap <b>above or below</b> the entrance before it closes. "
+                "Its top and underside are safe: you can land on a closed "
+                "crusher or bump your head against it (unless the band is hot "
+                "rock).")]
     s += [entry(Swatch("water"), "Flooded room",
                 "The surface rises and falls a little. <b>Touching the water "
                 "costs a life.</b> Cross on a raft or stay above it.")]
@@ -668,9 +681,41 @@ def story():
               "deeper you go, the more of these you will meet at once.", BODY),
           Paragraph("When the game ends", H2),
           Paragraph(
-              "Lose your last life and the current level restarts. Press "
-              "<b>SELECT</b> and <b>RESET</b> on the title screen to choose a "
-              "level and start over.", BODY)]
+              "Lose your last life and it is <b>game over</b>: you return to the "
+              "title screen and the score starts again. Clear the twentieth "
+              "level and you have won; the game returns to the title too. "
+              "Press <b>RESET</b> to start a new game, or <b>SELECT</b> then "
+              "<b>RESET</b> to start from another level.", BODY)]
+    s.append(PageBreak())
+
+    # ---- saving
+    s += head("Saving your game", "High score and SaveKey")
+    s += [Paragraph("The high score", H2),
+          Paragraph(
+              "When a game ends (game over, or the twentieth level cleared), your "
+              "score is compared with the <b>high score</b>; if it is higher, it "
+              "becomes the new one. On the title screen the score window shows "
+              "the level number and, for a second every few seconds, the high "
+              "score. Nothing is shown until you have one.", BODY),
+          Paragraph("The SaveKey", H2),
+          Paragraph(
+              "A <b>SaveKey</b> (or an AtariVox) in the <b>right controller jack</b> "
+              "lets the game remember things after the console is switched off.",
+              BODY)]
+    s += bullets([
+        "Your <b>high score</b> is stored on it, and it is also updated every "
+        "time a new level begins.",
+        "At the start of <b>every level</b> the game saves that level, your "
+        "lives and your score. You will notice a very short pause then: the "
+        "game is writing to the key.",
+        "Next time you switch on, the title screen opens on the <b>saved level</b>. "
+        "Press <b>RESET</b> and you carry on with the lives and the score you "
+        "had when that level began.",
+        "If you pick another level with <b>SELECT</b>, you start that level "
+        "from scratch: 000000, three lives, five bombs.",
+        "A <b>game over</b> erases the saved game, but never the high score.",
+        "Without a SaveKey the game plays exactly the same, it just remembers "
+        "nothing."])
     s.append(PageBreak())
 
     # ---- hints
