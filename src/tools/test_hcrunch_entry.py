@@ -10,8 +10,8 @@ lands in the 64-frame home dwell, the band looks dead for the whole fall into
 band 1 and the crush starts under him.
 
 Contract: loading a room that carries a hcrunch feature record (class kind
-b7 = prefix) restarts the clock at the START of the grow phase (EnemyRamP =
-$40, bucket 4), so the prefix is visibly advancing from the first frames. A
+b7 = prefix) restarts the clock in the fast-retract bucket (EnemyRamP = $E0, 2026-10-29; was $40):
+the prefix is visibly moving from the first frames and the 64-frame home dwell follows. A
 room WITHOUT a hcrunch record must not touch the clock (enemy bob / phase
 blink keep their phase).
 
@@ -76,9 +76,9 @@ assert N_ROOMS >= 2, N_ROOMS
 hc = [(o, p) for o in range(1, N_ROOMS + 1) for p, pf2 in [load(o)] if pf2 == 0xFF]
 assert hc, "no frozen level-3 room staged a full hcrunch prefix (fixture drift)"
 for o, p in hc:
-    assert p == 0x40, (f"hcrunch room (extras ordinal {o}) left the clock at "
-                       f"${p:02X}: the prefix can sit in its home dwell while "
-                       "the player arrives (want $40 = start of the grow phase)")
+    assert p == 0xE0, (f"hcrunch room (extras ordinal {o}) left the clock at "
+                       f"${p:02X} (want $E0 = fast retract, then the home dwell: "
+                       "moving on arrival, time to climb through from below)")
 for o in range(1, N_ROOMS + 1):
     p, pf2 = load(o)
     if pf2 != 0xFF:
@@ -94,6 +94,6 @@ assert _at >= 0, "fixture extras record moved"
 _img[_at + 3] = 0x99
 _TC.BANK3 = _img
 _p, _row = load(2)
-assert _p == 0x40, _p
+assert _p == 0xE0, _p
 assert LAST == [0x00, 0xFF], f"row-2 crunch: PF2 rows 1/2 = {LAST}, want [0, $FF]"
-print("test_hcrunch_entry: OK (hcrunch rooms restart the clock at the grow phase)")
+print("test_hcrunch_entry: OK (hcrunch rooms restart the clock in the fast retract, $E0)")

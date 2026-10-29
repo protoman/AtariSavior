@@ -428,11 +428,15 @@ ExtrasLoad:
     sta PF0Buf,X
     lda LevelConnSpare
     bpl .EXLfNext                   ; b7 clear = phase (one cell)
-    ; hcrunch: restart the frame clock at the START of the grow phase (bucket
-    ; 4 = home dwell over), so the prefix is already advancing while the
-    ; player is still above band 1 (user 2026-10-25; tools/test_hcrunch_entry).
-    ; Rooms with a crunch have no objects, so no enemy phase rides this clock.
-    lda #$40
+    ; hcrunch: restart the frame clock in the FAST RETRACT (bucket 14, $E0):
+    ; the prefix is visibly moving when the player arrives (user 2026-10-25), and
+    ; the 64-frame home dwell follows right after, so a player who enters from
+    ; BELOW (the row sits between him and the exit) has the dwell + growth time to
+    ; climb through it. The old $40 (grow start) left only ~80 frames at x=55 and
+    ; no way to wait for the next window below the row (playbot --safe, L16/18/20,
+    ; 2026-10-29). tools/test_hcrunch_entry. Rooms with a crunch have no objects,
+    ; so no enemy phase rides this clock.
+    lda #$E0
     sta EnemyRamP
     dec Temp
     bpl .EXLfeatCol                 ; hcrunch prefix 0..col
