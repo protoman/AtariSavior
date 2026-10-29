@@ -138,7 +138,7 @@ the run (score 0, 3 lives) and go back to the title.
 3. (done) title alternates the stage number and the high score.
 4. Budget check in the real game (`sim_frame_budget` with a key), Stella checklist.
 
-## 10. Stella checklist (manual; not yet run)
+## 10. Stella checklist (manual; run by the user 2026-10-28: works as designed)
 
 Stella: Options > Emulation > Controllers (or the game properties), RIGHT port =
 SaveKey (it keeps its EEPROM in a `.sv` file). Then:
