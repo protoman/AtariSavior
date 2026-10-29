@@ -127,3 +127,6 @@ secret rooms and level-specific enemy patterns are CUT from scope.
       and the high score. DONE 2026-10-28 (docs/savekey_design.md; verified in Stella
       by the user). Original note: Needs a design pass first (I2C bit-bang on SWCHA,
       ROM/zero-page budget in bank1, test with a py65 EEPROM model).
+
+- [x] Playthrough bot for the generated stage (tools/playbot.py, 2026-10-28): all 20
+      levels finish on the real ROM; see docs/agents/testing_and_build.md.

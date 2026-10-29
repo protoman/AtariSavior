@@ -73,3 +73,35 @@ Run in Stella:
 stella savior.bin        # normal emulation
 stella -debug savior.bin # debugger
 ```
+
+## Playthrough bot (tools/playbot.py, 2026-10-28)
+
+`/home/iuri/python3/bin/python3 tools/playbot.py [LEVEL ...] [-v] [--mortal]` plays
+the GENERATED stage through the real ROM with the joystick only (live `bank*.bin` +
+`rooms/stage.json`; run `./build.sh` first): it picks the level on the title with
+SELECT, starts it with RESET and flies it until the tally starts. ~5 minutes for all
+20 levels (not in the battery). Result on the 2026-10-28 stage: 20 of 20 finish
+(lives topped up, deaths counted; `--mortal` turns the top-up off, but the bot does
+not dodge, so hazardous levels then end in a game over).
+
+Route = `stage_reach`'s cell graph; controller = closed loop on RoomX/RoomY, with the
+laser always held. It handles shafts, side/up/down exits, bomb strips (plant on the
+centre side, retreat, wait out the fuse; strips come back on every room entry), the
+raft (drop onto it, let it carry him) and the order of the miners.
+
+What it found (all fixed or noted):
+- **Start spawn** (fixed): RoomX is the RIGHT end of the 8-px span, so the old start
+  RoomX 32 straddled cells 3 and 4; a start room with a wall at cell 3 killed him on
+  every spawn (level 13). Start RoomX is now 39 (cell 4) and the generator opens the
+  band-1 drop column too (`test_generator` pins it).
+- **Physical rules the generator's graph does not model** (the bot enforces them;
+  `stage_reach`/`AnalyseReach` still accept routes that break them, so the generator
+  can build levels the bot must reorder around or cannot finish):
+  1. a WATER room has no exit through its floor (the water row is no floor);
+  2. the water row of a raft room is entered only by dropping onto the raft (its
+     spawn cell), and the raft is back at its spawn on every room entry;
+  3. a bomb strip is bombed from its CENTRE side, so it can only be crossed outward;
+  4. the visiting order of the miners matters because of 1-3.
+  Adding them to `AnalyseReach` made the generator's power-cell planning disagree
+  with `stage_reach` (level 18), so they were NOT ported yet: that needs the planner
+  and the time model recalibrated together.

@@ -513,7 +513,27 @@ class Pilot:
         self.start_frames = c.frames
         self.budget = budget
         self.hover = False
-        targets = [self.lv.miner] + list(self.lv.extras)
+        # The visiting order matters: crossing a raft room or a bomb strip is only
+        # possible one way round, so try every order (<= 3 miners) and take the
+        # shortest one that has a route for every leg.
+        import itertools
+        start = (c.r("RoomNo"), band_of(c.r("RoomY")), cell_of(c.r("RoomX")))
+        best = None
+        for perm in itertools.permutations([self.lv.miner] + list(self.lv.extras)):
+            cur, total = start, 0
+            for t in perm:
+                leg = self.lv.route(cur, t)
+                if leg is None:
+                    total = None
+                    break
+                total += len(leg)
+                cur = t
+            if total is not None and (best is None or total < best[0]):
+                best = (total, perm)
+        if best is None:
+            raise GiveUp("no order of the miners has a route for every leg")
+        targets = list(best[1])
+        self.say("order", targets)
         for tgt in targets:
             while True:
                 if c.r("DropTarget") == 0xFE:        # the tally started
