@@ -3,6 +3,37 @@
 Release versions live in `VERSION` (build.sh stamps them into the ROM, the manual
 cover prints them, `tools/release.py` names the artifacts from them).
 
+## 1.0.1
+
+**Level fixes (the stage was regenerated)**
+- Stacked rooms now have EXACTLY matching openings: a hole in a room's ceiling always has
+  a hole in the floor above it. Before, a lower room could keep a ceiling opening with
+  nothing above it, so the player flew up into a wall and got stuck with his head in it
+  (level 18 room 5 and two more pairs on that level).
+- A flooded room never has an entry or exit at its bottom: no more flying up out of a
+  room below into the water.
+- Bats no longer sit in an exit gap or a floor hole, where the player dropping or
+  climbing through could not avoid them (level 2 room 2 and others); a room with no
+  clear cell stays empty.
+- Extra miners keep 24 px away from every enemy (a spider's reach used to cover the
+  pickup spot, levels 8 and 16).
+- Spiders and moths get their first-move direction (away from walls and screen edges)
+  re-applied after the generator's repairs.
+
+**Game**
+- Crusher rooms: the crusher now restarts in its retract phase when you enter the room
+  (it still moves on arrival), so a player entering from below has the dwell to climb
+  through its row.
+
+**Tools**
+- Map viewer: the water band covers only the bottom third of the band, like the editor
+  and the game.
+- `tools/playbot.py`: `--safe` (undo a lost life and retry; what still dies is reported
+  as FORCED), `--log FILE` (one JSON record per death with the last 48 frames and the
+  facts behind the cause), waits for phase walls and crushers, shoots stationary enemies.
+- `tools/stage_check.sh`: run the bot on freshly generated output without touching the
+  live stage. `test_generator` pins the exact-opening and water-room rules.
+
 ## 1.0.0
 
 **Game**
