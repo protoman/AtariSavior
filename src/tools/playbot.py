@@ -39,7 +39,9 @@ UP, DOWN, LEFT, RIGHT, NONE = 0xEF, 0xDF, 0xBF, 0x7F, 0xFF   # SWCHA, active low
 NAMES = ("RoomX", "RoomY", "RoomNo", "DropTarget", "Level", "PlayerLives",
          "Hover", "BombPacked", "EnemyCount", "EnemyDeadMask", "LevelMinerRoom",
          "MinerX", "MinerY", "LevelStartRoom", "BarLevel", "PlayerBombs",
-         "StartFrame", "PF0Buf", "PF1Buf", "PF2Buf", "vyHi")
+         "StartFrame", "PF0Buf", "PF1Buf", "PF2Buf", "vyHi", "RoomRectsLo",
+         "RoomRectsHi", "RoomPF0Lo", "RoomPF0Hi", "LevelConnSpare", "LevelPFDataLo",
+         "LevelPFDataHi", "LevelRoomN")
 BANDS = 4
 BAND_PX = 36
 PLAYER_H = 22
@@ -244,6 +246,10 @@ class GiveUp(Exception):
     pass
 
 
+class Done(Exception):
+    """The level tally started: every miner is rescued."""
+
+
 class Pilot:
     def __init__(self, con, lv, mortal=False, verbose=False):
         self.c = con
@@ -265,6 +271,8 @@ class Pilot:
         if not self.mortal:
             c.w("PlayerLives", 8)
         self.rooms_seen.add(c.r("RoomNo"))
+        if c.r("DropTarget") == 0xFE:
+            raise Done()
         if c.frames - self.start_frames > self.budget:
             raise GiveUp(f"out of time at room {c.r('RoomNo')} "
                          f"x={c.r('RoomX')} y={c.r('RoomY')}")
@@ -317,7 +325,12 @@ class Pilot:
                     continue
                 raise GiveUp(f"left the route: in room {room_before}, expected "
                              f"{cur[0]}/{nxt[0]}")
+            if cur[0] == nxt[0] and (nxt[1], nxt[2]) in self.lv.grids[nxt[0]][1]:
+                self.bomb_strip(nxt)
+                continue                          # re-check the same edge, strip gone
             ok = self.edge(cur, nxt)
+            self.say(f"edge {cur}->{nxt} ok={ok} now room {c.r('RoomNo')} "
+                     f"x={c.r('RoomX')} y={c.r('RoomY')}")
             if c.r("RoomNo") == nxt[0] and not ok:
                 ok = True
             if ok:
@@ -331,6 +344,69 @@ class Pilot:
                                  f"(x={c.r('RoomX')} y={c.r('RoomY')})")
                 self.hold(NONE, 20)
             self.clear_hover()
+
+    def here(self):
+        c = self.c
+        return (c.r("RoomNo"), band_of(c.r("RoomY")), cell_of(c.r("RoomX")))
+
+    def land(self):
+        """Fall (no input) until he stands on the floor."""
+        c = self.c
+        last, still = None, 0
+        for _ in range(300):
+            y = c.r("RoomY")
+            still = still + 1 if y == last else 0
+            last = y
+            if still >= 25:
+                return True
+            self.step(NONE)
+        return False
+
+    def bomb_strip(self, strip):
+        """Open a one-cell async strip with a bomb: stand on the floor 1-2 cells on
+        the CENTRE side of it (left-half strips are bombed from the east, right-half
+        ones from the west - the blast window is centred 7 px left of the player),
+        plant, retreat three cells and wait out the fuse."""
+        c = self.c
+        ri, b, col = strip
+        side = 1 if col < 10 else -1
+        air = self.lv.grids[ri][0]
+        stand = None
+        for d in (1, 2):
+            f = col + side * d
+            if 0 <= f < 20 and air[b][f] and (b + 1 >= len(air) or not air[b + 1][f]):
+                stand = (ri, b, f)
+                break
+        if stand is None:
+            raise GiveUp(f"no floor to bomb the strip {strip} from")
+        if getattr(self, "bombs_tried", {}).get(strip, 0) >= 2:
+            raise GiveUp(f"the strip {strip} survived two bombs")
+        self.bombs_tried = getattr(self, "bombs_tried", {})
+        self.bombs_tried[strip] = self.bombs_tried.get(strip, 0) + 1
+        if self.here() != stand:
+            # strips are walls until opened: plan around them for the approach
+            saved = self.lv.grids[ri][1]
+            self.lv.grids[ri][1].discard((b, col))
+            try:
+                path = self.lv.route(self.here(), stand)
+            finally:
+                saved.add((b, col))
+            if path is None:
+                raise GiveUp(f"cannot reach {stand} to bomb {strip}")
+            self.say("walk to the bomb spot", stand)
+            self.fly(path)
+        f = stand[2]
+        if not self.to_x(x_for_cell(f), b):
+            raise GiveUp("cannot align at the bomb spot")
+        self.land()
+        self.hold(DOWN, 4)                       # plant (edge on the floor)
+        away = max(0, min(19, f + side * 3))
+        self.say("bomb planted at", c.pos(), "retreat to cell", away)
+        self.to_x(x_for_cell(away), b)
+        self.land()
+        self.hold(NONE, 230)                     # ~3 s fuse + the flash
+        self.lv.grids[ri][1].discard((b, col))
+        self.say("strip", strip, "should be open")
 
     def edge(self, cur, nxt):
         """Fly one graph edge. True when the player is where `nxt` says."""
@@ -401,20 +477,37 @@ class Pilot:
             self.touch(tgt)
         return True
 
-    def touch(self, tgt):
-        """Walk into the miner standing in cell `tgt` of the current room."""
+    def touch(self, tgt, px=None):
+        """Walk into the miner standing in cell `tgt` of the current room: the
+        pickup fires when RoomX - MinerX is in [-6, +3] and the boxes overlap in Y."""
         c = self.c
-        for _ in range(240):
+        room, band, _cell = tgt
+        for _ in range(300):
             if c.r("DropTarget") == 0xFE:
                 return
-            self.step(NONE)
-        raise GiveUp("the miner pickup never fired")
+            if c.r("RoomNo") != room:
+                raise GiveUp(f"left the miner's room {room}")
+            mx = px if px is not None else c.r("MinerX")
+            x = c.r("RoomX")
+            sw = NONE
+            if x - mx < -5:
+                sw = RIGHT
+            elif x - mx > 2:
+                sw = LEFT
+            else:
+                # in range: if it did not fire we are not low enough yet
+                sw = NONE
+            self.step(sw & self.altitude(band) if sw != NONE else self.altitude(band) if False else sw)
+        # a non-final miner is just collected (the level goes on): no tally yet
+        return
 
 
 def finish(con, lv, mortal, verbose, budget):
     pilot = Pilot(con, lv, mortal, verbose)
     try:
         pilot.play(budget)
+        ok, why = False, "the route ended without a tally"
+    except Done:
         ok, why = True, "tally started"
     except GiveUp as e:
         ok, why = False, str(e)
