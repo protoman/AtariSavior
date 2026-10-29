@@ -101,8 +101,8 @@ the run (score 0, 3 lives) and go back to the title.
    lives, back to the title.
 2. **SELECT**: the saved stage resumes with its points and lives; any other
    stage starts fresh.
-3. **High score visible**: the title's score window alternates every ~2 s between
-   the stage number and the high score.
+3. **High score visible**: the title's score window alternates between the stage
+   number and the high score (the high score shows for 1 s out of every 4.3 s).
 4. **Still open, not blocking**: the EEPROM block address (`$7FE0` proposed; check
    the AtariVox memory list before release). Pins 3/4 = SDA/SCL is confirmed.
 
@@ -125,11 +125,33 @@ the run (score 0, 3 lives) and go back to the title.
 - **Behaviour change:** running out of lives is now a REAL game over (back to the
   title, 0 points, 3 lives); clearing the last stage ends the run the same way
   (it used to wrap to stage 1 keeping the score).
-- **Step 3 TODO:** the title alternates stage number / high score.
+- **Step 3 DONE** (2026-10-28): op 4 TITLE (no I2C) runs every title frame from
+  `TitleWork`: the HUD score window shows the stage number and, for 64 of every
+  256 frames (EnemyRamP $80-$BF; the clock restarts at $F0 on each LoadLevel, so
+  SELECT always shows the stage first), the high score BOOT left in
+  vyLo/vyHi/PlayerYSub (dead on the title). No high score = stage number only.
 
 ## 9. Implementation order
 
 1. (done) chip model, tests, I2C leaf in bank4.
 2. (done) boot / resume / checkpoint / game over / last stage wired.
-3. Title: alternate the stage number and the high score.
+3. (done) title alternates the stage number and the high score.
 4. Budget check in the real game (`sim_frame_budget` with a key), Stella checklist.
+
+## 10. Stella checklist (manual; not yet run)
+
+Stella: Options > Emulation > Controllers (or the game properties), RIGHT port =
+SaveKey (it keeps its EEPROM in a `.sv` file). Then:
+1. First boot (blank key): the title shows stage 1; no high score is shown.
+2. RESET, play, rescue the miner: the next stage starts (a short hiccup is
+   expected while the key is written, ~1 frame).
+3. Close Stella, reopen with the same key: the title comes up on that stage, and
+   for ~1 s every ~4 s the score window shows the high score instead of the stage
+   number. RESET resumes with the saved lives and points.
+4. SELECT to another stage and RESET: lives 3, points 0.
+5. Lose all lives: back to the title (stage 1, 3 lives, 0 points); the high score
+   is kept; reopening Stella shows stage 1 (the save was erased).
+6. Right port = "Joystick" (no key): everything plays as before, no writes.
+7. If a step fails, `tools/eeprom24lc256.py` is the model of what the ROM expects;
+   compare Stella's `SaveKey`/`MT24LC256` behaviour (control byte `$A0/$A1`,
+   16-bit address, 64-byte pages, ACK polling during the write cycle).

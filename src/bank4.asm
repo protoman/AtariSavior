@@ -26,7 +26,8 @@ Restart:
 ; repairs it. No key (NACK on the control byte) aborts every op at once.
 ;
 ; SkService (A = op), C=0 when it did something, C=1 when there was nothing to do
-;   0 BOOT        title power-on: Level := the saved stage
+;   0 BOOT        title power-on: Level := the saved stage; the high score goes
+;                 to SkHi (vyLo/vyHi/PlayerYSub) for the title to show
 ;   1 RESUME      RESET on the saved stage: lives + score := the saved ones
 ;   2 CHECKPOINT  stage advance (the caller already did `inc Level`): save {Level,
 ;                 lives, score}; high = max(high,score). Level >= LEVEL_COUNT =
@@ -58,6 +59,7 @@ LEVEL_COUNT = 20                ; hand copy of the kernel's LEVEL_COUNT
 ; Game variables (hand copies of kernel.asm; check_equ_sync pairs the names)
 Level       = $A3
 PlayerLives = $AC
+EnemyRamP   = $C2               ; free-running frame clock (bank0 RefreshEnemyY)
 ScoreTh     = $F3
 ScoreHu     = $F4
 ScoreTe     = $F5
@@ -67,6 +69,8 @@ SkB         = $88               ; byte being shifted (kernel Temp)
 SkN         = $89               ; op flag (kernel ZPSpare89, free)
 SkT         = $8B               ; (kernel CollisionX)
 SkL         = $8E               ; loop counter (kernel CollisionEndX)
+SkHi        = $93               ; high score handed to the title: vyLo, vyHi, PlayerYSub
+                                ;   (dead on the title; bank0 TitleScore reads them)
 SkBuf       = $C3               ; 12 bytes = PF0Buf..PF2Buf (rebuilt by the room load)
 
 ; ------------------------------------------------------------------------------
@@ -290,11 +294,22 @@ SkService:
     beq SkResume
     dex
     beq SkCheckpoint
+    dex
+    beq .SkGO
+    jmp SkTitle                 ; 4 = the title's score window
+.SkGO:
     jmp SkWriter                ; 3 = game over
+
 
 SkBoot:
     jsr SkLoad
     bcs SkNothing
+    ldy #2
+.SkHi:
+    lda SkBuf+R_HIGH,y          ; the title shows the high score now and then
+    sta SkHi,y
+    dey
+    bpl .SkHi
     lda SkBuf+R_STATE
     beq SkNothing              ; state 0: no save
     lda SkBuf+R_LEVEL
@@ -397,6 +412,52 @@ SkWriter:
     lda #3
     sta SkBuf+R_LIVES
     jmp SkStore
+
+; Op 4 TITLE (every title frame, no I2C): the HUD score window shows the 1-based
+; stage number (packed BCD, 000001 = stage 1) and, for 64 of every 256 frames
+; (EnemyRamP $80-$BF; it restarts at $F0 on every LoadLevel, so SELECT always
+; shows the stage first), the HIGH SCORE BOOT left in SkHi. No high score (no key,
+; blank chip) = the stage number only. DropArm's title path writes the same stage
+; number once per LoadLevel (SELECT); this keeps it right in between.
+SkTitle:
+    lda Level
+    clc
+    adc #1
+    ldx #0
+.SkTen:
+    cmp #10
+    bcc .SkOnes
+    sbc #10
+    inx
+    bne .SkTen                  ; (X <= 2: always taken)
+.SkOnes:
+    sta SkB
+    txa
+    asl
+    asl
+    asl
+    asl
+    ora SkB
+    sta ScoreTe                 ; packed BCD: tens, ones
+    lda #0
+    sta ScoreTh
+    sta ScoreHu
+    lda EnemyRamP
+    and #$C0
+    cmp #$80
+    bne .SkTdone                ; only clock $80-$BF (64 of 256 frames) shows it
+    lda SkHi
+    ora SkHi+1
+    ora SkHi+2
+    beq .SkTdone                ; no high score yet
+    ldx #2
+.SkTHi:
+    lda SkHi,x
+    sta ScoreTh,x
+    dex
+    bpl .SkTHi
+.SkTdone:
+    jmp ReturnPad
 
 ; ------------------------------------------------------------------------------
 ; Cross-bank twins (bank0 is the caller; every pad is split across the banks):

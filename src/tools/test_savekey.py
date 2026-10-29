@@ -7,7 +7,9 @@ design is docs/savekey_design.md; the ops are
   0 BOOT        title power-on: Level := the saved stage
   1 RESUME      RESET on the saved stage: lives + score := the saved ones
   2 CHECKPOINT  stage advance: save {Level, lives, score}, high = max
-  3 GAMEOVER    erase the save, high = max(high, score)
+  3 GAMEOVER    erase the save, high = max(high, score), restart at the title
+  4 TITLE       every title frame (no I2C): stage number <-> high score in the
+                HUD score window
 All return C=0 when they did something, C=1 when there was nothing to do (no
 key, no/invalid data, wrong stage).
 
@@ -34,7 +36,8 @@ SERVICE = L4["SkService"]
 LEVEL, LIVES = 0xA3, 0xAC
 SC_TH, SC_HU, SC_TE = 0xF3, 0xF4, 0xF5
 BASE = 0x7FE0                       # record block in the chip
-OP_BOOT, OP_RESUME, OP_CHECKPOINT, OP_GAMEOVER = 0, 1, 2, 3
+OP_BOOT, OP_RESUME, OP_CHECKPOINT, OP_GAMEOVER, OP_TITLE = 0, 1, 2, 3, 4
+ENEMY_RAMP, SK_HI = 0xC2, 0x93        # frame clock; vyLo/vyHi/PlayerYSub = the high score
 FRAME_CYCLES = 19912                # 262 lines x 76 cycles
 LEVEL_COUNT = 20
 RESTART_PC = 0xF005                 # bank0's `jmp GameStart` after the power-up pad
@@ -247,6 +250,42 @@ def main() -> int:
     assert c.op(OP_RESUME)[0] and c.get()["lives"] == 3
     forge(c, 1, 2, 0)                           # zero lives is a valid last life
     assert not c.op(OP_RESUME)[0] and c.get()["lives"] == 0
+
+    # 6b. BOOT leaves the high score for the title; TITLE alternates it with the
+    # stage number (only clock $80-$BF shows the high score)
+    c = Console()
+    c.set(level=6, lives=2, score=3400)
+    c.op(OP_CHECKPOINT)
+    c.set(level=9, lives=3, score=4000)
+    c.op(OP_CHECKPOINT)                       # high = 4000
+    c.power_cycle()
+    c.set(level=0, lives=3, score=0)
+    assert not c.op(OP_BOOT)[0]
+    r = c.mem.ram
+    assert bytes(r[SK_HI & 0x7F:(SK_HI & 0x7F) + 3]) == bcd(4000), "BOOT must hand over the high score"
+    for lvl in range(LEVEL_COUNT):
+        c.set(level=lvl, lives=3, score=0)
+        r[ENEMY_RAMP & 0x7F] = 0x10
+        carry, cyc = c.op(OP_TITLE)
+        assert cyc < 400, f"title op took {cyc} cycles (runs every title frame)"
+        assert c.get()["score"] == lvl + 1, (
+            f"title shows stage {lvl + 1} as packed BCD, got {c.get()}")
+        r[ENEMY_RAMP & 0x7F] = 0x90
+        c.op(OP_TITLE)
+        assert c.get()["score"] == 4000, f"2nd half must show the high score: {c.get()}"
+    c.power_cycle()                            # no high score yet: never shown
+    c.set(level=3, lives=3, score=0)
+    c.mem.ram[ENEMY_RAMP & 0x7F] = 0x90
+    c.op(OP_TITLE)
+    assert c.get()["score"] == 4, "no high score: the stage number only"
+    r = c.mem.ram
+    c.power_cycle()
+    c.set(level=2, lives=3, score=0)
+    for clk in (0x00, 0x7F, 0xC0, 0xFF):
+        c.mem.ram[SK_HI & 0x7F] = 0x12
+        c.mem.ram[ENEMY_RAMP & 0x7F] = clk
+        c.op(OP_TITLE)
+        assert c.get()["score"] == 3, f"clock ${clk:02X} must show the stage number"
 
     # 7. cost: every op fits in ONE frame (the level-change hiccup budget)
     assert worst <= FRAME_CYCLES - 2000, (

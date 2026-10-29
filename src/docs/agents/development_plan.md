@@ -123,6 +123,7 @@ was the disproven claim.
 ### Remaining for 1.0 (user ruling 2026-10-27)
 Music, screen transitions, game over screen, difficulty settings, bosses,
 secret rooms and level-specific enemy patterns are CUT from scope.
-- [ ] SaveKey support (Atari 2600 save-key / AtariVox EEPROM): save the game
-      and the high score. Needs a design pass first (I2C bit-bang on SWCHA,
+- [x] SaveKey support (Atari 2600 save-key / AtariVox EEPROM): save the game
+      and the high score. DONE 2026-10-28 (docs/savekey_design.md; Stella check
+      pending). Original note: Needs a design pass first (I2C bit-bang on SWCHA,
       ROM/zero-page budget in bank1, test with a py65 EEPROM model).

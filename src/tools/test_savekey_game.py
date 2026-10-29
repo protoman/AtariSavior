@@ -226,6 +226,17 @@ def main() -> int:
     assert g.ram[SC_TE] == 7 and g.ram[SC_HU] == 0, "title must show stage 7"
     g.run(10)
     assert g.title_shown() and g.ram[LEVEL] == 6
+    # the score window alternates the stage number and the high score (5000)
+    seen_stage = seen_high = False
+    for _ in range(300):
+        g.next_frame()
+        if g.score() == 7:
+            seen_stage = True
+        elif g.score() == 5000:
+            seen_high = True
+    assert seen_stage and seen_high, (
+        f"title must alternate stage 7 / high score 5000 (stage {seen_stage}, "
+        f"high {seen_high})")
     start_game(g)
     assert g.ram[LEVEL] == 6 and g.ram[LIVES] == 2, (
         f"RESET on the saved stage must resume the lives: {g.ram[LIVES]}")
