@@ -132,7 +132,7 @@ MinerY = $A6
 LevelStartRoom = $A7             ; b7 = KeyHeld (loaded with the level entry)
 ; --- LoadLevelB2 (MOVED here, C2 2026-10-20) — hand-copies, check_equ_sync ---
 Level = $A3                      ; current level index (kernel decl $A3)
-LevelStartX = $A8                ; level start x (kernel constant 32)
+LevelStartX = $A8                ; level start x (kernel constant 39 = cell 4)
 LevelStartY = $A9                ; level start y (kernel constant 24)
 Hover = $9C                      ; respawn hover flag — cleared on stage entry
 LevelShowTimer = $F2             ; LV001 banner countdown (kernel $F2)
@@ -996,8 +996,12 @@ LoadLevelB2:
     lda #>LevelDataTable
     sta FetchPtr+1
     ldx #0                      ; callers' X contract (kept from the bank0 body)
-    ; start room / start x/y are kernel constants now (0 / 32 / 24 px)
-    lda #32
+    ; start room / start x/y are kernel constants now (0 / 39 / 24 px). RoomX is
+    ; the RIGHT end of the 8-px lit span, so 39 puts him exactly on cell 4
+    ; (px 32-39). It was 32 = px 25-32, which straddles cells 3 AND 4: a start
+    ; room with a wall in cell 3 (level 13) dropped him inside it and he died on
+    ; every spawn (found by tools/playbot.py, 2026-10-28).
+    lda #39
     sta LevelStartX
     lda #24
     sta LevelStartY

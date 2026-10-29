@@ -185,6 +185,11 @@ while frame < FRAMES:
     frame += 1
     mem.swchb = 0xFE if frame in (1, 4) else 0xFF     # RESET pulse
     r = mem.ram
+    if frame == 8:
+        # The level start is RoomX 39 (cell 4) since 2026-10-28; this guard needs the
+        # fall through the cell-3 aperture of level 6 room 1 (the column it was
+        # written for, RoomX 32): put him back there, still falling, no input.
+        r[Z_X - 0x80] = 32
     room, y = r[Z_ROOM - 0x80], r[Z_Y - 0x80]
     lives = r[Z_LIVES - 0x80]
     ground = bool(r[Z_BOMB - 0x80] & ON_GROUND)

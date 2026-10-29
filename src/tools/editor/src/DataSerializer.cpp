@@ -708,13 +708,17 @@ ModelData MakeShapeModel(int modelId, int mask) {
     }
     if (mask & SHAPE_START) {
         // Level start rooms: the kernel drops the player in at LevelStartX/Y =
-        // (32, 24) px = display col 8 = CELL 4 of the TOP band, and DropStep
+        // RoomX 39 (lit span px 32-39), RoomY 24 = display col 8 = CELL 4 of the TOP band, and DropStep
         // bypasses collision — a solid band there would drop him INSIDE a wall.
         // Open cells 2..6 (the drop slot); 7..9 stay solid so an async block
         // can sit at row 1 col 7 (the M1 column must be walled in the other
         // bands, 2026-10-21).
         for (int x = 2; x <= 6; ++x)
             model.tiles[x] = (int)TileType::AIR;
+        // He spawns at RoomY 24 (box 24-45), so the drop column must be open in
+        // band 1 as well: a wall at cell 4 there killed him on every spawn
+        // (level 13, found by tools/playbot.py 2026-10-28).
+        model.tiles[1 * kRoomWidth + 4] = (int)TileType::AIR;
     }
     if (mask & SHAPE_HOT) {
         // HERO-style hot band: two symmetric wall blocks narrow the middle
