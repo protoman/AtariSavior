@@ -24,6 +24,7 @@ How it plays
 Exit status 1 when any selected level was not finished.
 """
 import argparse
+import collections
 import heapq
 import json
 import sys
@@ -302,6 +303,10 @@ class Pilot:
         self.last_room = None
         self.death_log = []
         self.safe = False
+        self.trace = collections.deque(maxlen=48)   # last frames, dumped on a death
+        self.doing = "start"
+        self.log_path = None
+        self.level_no = 0
         self.hi_override = None
         self.forced = []
         self.waited = 0
@@ -334,16 +339,84 @@ class Pilot:
         return rn + 1, x, y, "/".join(causes)
 
     # ---- one frame ---------------------------------------------------------
+    def snapshot_state(self, sw):
+        """One trace row: everything that can explain a death, as the ROM sees it."""
+        c = self.c
+        room = self.lv.rooms[c.r("RoomNo")]
+        recs = room.get("enemies") or []
+        en = []
+        for i in range(min(3, c.r("EnemyCount"))):
+            t = recs[i]["type"] if i < len(recs) else -1
+            en.append((t, c.ram[(c.lab["EnemyRamX"] & 0x7F) + i],
+                       c.ram[(c.lab["EnemyRamY"] & 0x7F) + i]))
+        return {"f": c.frames, "room": c.r("RoomNo") + 1, "x": c.r("RoomX"),
+                "y": c.r("RoomY"), "vy": c.r("vyHi"), "sw": sw & 0xFF,
+                "hover": c.r("Hover"), "clock": c.ram[0xC2 & 0x7F],
+                "dm": c.ram[0xBA & 0x7F], "enemies": en, "doing": self.doing}
+
+    def explain(self, rows):
+        """Facts about the last frame before a life was lost, and the cause they point
+        to. rows[-1] is the frame the player was alive in."""
+        r = rows[-1]
+        room = self.lv.rooms[r["room"] - 1]
+        x, y = r["x"], r["y"]
+        facts, causes = [], []
+        names = {0: "spider", 1: "bat", 2: "snake", 3: "tentacle", 4: "moth",
+                 7: "raft", 15: "miner"}
+        for t, ex, ey in r["enemies"]:
+            dx, dy = ex - x, ey - y
+            if abs(dx) <= 14 and -18 <= dy <= 22:
+                causes.append(names.get(t, f"enemy{t}"))
+            if abs(dx) <= 40 and abs(dy) <= 40:
+                facts.append(f"{names.get(t, t)} at dx={dx:+d} dy={dy:+d}")
+        crow = self.crunch_band(room)
+        if crow is not None:
+            n = self.crunch_pairs(r["clock"])
+            top, bot = 36 * crow, 36 * crow + 36
+            facts.append(f"hcrunch row band {crow}, clock {r['clock']}, covers pairs 1..{n} "
+                         f"(x<{8 * n + 8} and x>{159 - 8 * n - 8})")
+            if y + 22 > top and y < bot and any(
+                    8 * p < x + 4 and 8 * p + 8 > x - 10 or
+                    8 * (19 - p) < x + 4 and 8 * (19 - p) + 8 > x - 10
+                    for p in range(1, n + 1)):
+                causes.append("crusher")
+        feats = {fc[2]: fc for fc in room.get("feature_cells") or []}
+        if 10 in feats:
+            on = bool(r["dm"] & 0x20) and not r["dm"] & 0x40
+            facts.append(f"phase wall cell {feats[10][1]}: {'ON' if on else 'off'} "
+                         f"(clock {r['clock'] % 90}/90)")
+            col = feats[10][1]
+            if on and any(8 * cell - 12 <= x <= 8 * cell + 16 for cell in (col, 19 - col)) \
+                    and band_of(y) == feats[10][0]:
+                causes.append("phase wall")
+        model = self.lv.models[room["model_id"]]
+        if model.get("mid_band_type") and band_of(y) == 1:
+            facts.append("hot band (row 1)")
+            if not causes:
+                causes.append("hot rock?")
+        if room.get("bottom_band") and y >= 112:
+            causes.append("water")
+        if not causes:
+            causes.append("?")
+        return "/".join(causes), facts
+
     def step(self, sw=NONE):
         c = self.c
         lives = c.r("PlayerLives")
         pre = (c.r("RoomNo"), c.r("RoomX"), c.r("RoomY"),
                [(c.ram[(c.lab["EnemyRamX"] & 0x7F) + i], c.ram[(c.lab["EnemyRamY"] & 0x7F) + i])
                 for i in range(min(3, c.r("EnemyCount")))])
+        self.trace.append(self.snapshot_state(sw))
         c.frame(sw, fire=True)
         if c.r("PlayerLives") < lives:
             self.deaths += 1
-            self.death_log.append((c.frames,) + self.killer(pre))
+            rn, x_, y_, why = self.killer(pre)[0:4]
+            cause, facts = self.explain(list(self.trace))
+            self.death_log.append((c.frames, rn, x_, y_, cause))
+            self.write_log({"event": "death", "level": self.level_no, "frame": c.frames,
+                            "room": rn, "x": x_, "y": y_, "cause": cause,
+                            "doing": self.doing, "facts": facts,
+                            "trace": list(self.trace)})
         self.hover = bool(c.r("Hover"))
         if not self.mortal:
             c.w("PlayerLives", 8)
@@ -359,6 +432,11 @@ class Pilot:
         if c.frames - self.start_frames > self.budget:
             raise GiveUp(f"out of time at room {c.r('RoomNo')} "
                          f"x={c.r('RoomX')} y={c.r('RoomY')}")
+
+    def write_log(self, rec):
+        if self.log_path:
+            with open(self.log_path, "a") as f:
+                f.write(json.dumps(rec) + "\n")
 
     def say(self, *a):
         if self.verbose:
@@ -475,6 +553,7 @@ class Pilot:
                         if a_ < hi and a_ + 8 > lo:
                             return False
             return True
+        self.doing = f"waiting for the crunch (run {run[0]}..{run[-1]})"
         for _ in range(400):
             if c.ram[0xBA & 0x7F] & 0x80:
                 return                              # spent: parked for the visit
@@ -544,6 +623,7 @@ class Pilot:
                 self.edge_safe(cur, nxt, lambda _c, _n: self.bomb_strip(_n))
                 continue                          # re-check the same edge, strip gone
             self.path, self.path_i = path, i
+            self.doing = f"edge {cur}->{nxt}"
             ok = self.edge_safe(cur, nxt)
             self.say(f"edge {cur}->{nxt} ok={ok} now room {c.r('RoomNo')} "
                      f"x={c.r('RoomX')} y={c.r('RoomY')}")
@@ -581,6 +661,7 @@ class Pilot:
         ones from the west - the blast window is centred 7 px left of the player),
         plant, retreat three cells and wait out the fuse."""
         c = self.c
+        self.doing = f"bomb strip {strip}"
         ri, b, col = strip
         side = 1 if col < 10 else -1
         air = self.lv.grids[ri][0]
@@ -660,6 +741,8 @@ class Pilot:
                     self.hover, self.deaths = hover, d0
                     del self.death_log[n0:]
                     self.hi_override = hi_ov
+                    self.doing = (f"edge {cur}->{nxt} RETRY wait={wait} hover={hi_ov} "
+                                  f"from {'before' if scope is prev else 'here'}")
                     for _ in range(wait):
                         self.step(self.altitude(band_of(c.r("RoomY"))))
                     good = self.deaths == d0
@@ -805,6 +888,7 @@ class Pilot:
         """Walk into the miner standing in cell `tgt` of the current room: the
         pickup fires when RoomX - MinerX is in [-6, +3] and the boxes overlap in Y."""
         c = self.c
+        self.doing = f"touch miner {tgt}"
         room, band, _cell = tgt
         for _ in range(300):
             if c.r("DropTarget") == 0xFE:
@@ -826,8 +910,9 @@ class Pilot:
         return
 
 
-def finish(con, lv, mortal, verbose, budget, safe=False):
+def finish(con, lv, mortal, verbose, budget, safe=False, log=None, level_no=0):
     pilot = Pilot(con, lv, mortal, verbose)
+    pilot.log_path, pilot.level_no = log, level_no
     pilot.safe = safe
     try:
         pilot.play(budget)
@@ -836,6 +921,8 @@ def finish(con, lv, mortal, verbose, budget, safe=False):
         ok, why = True, "tally started"
     except GiveUp as e:
         ok, why = False, str(e)
+        pilot.write_log({"event": "giveup", "level": pilot.level_no, "why": why,
+                         "doing": pilot.doing, "trace": list(pilot.trace)})
     return ok, why, pilot
 
 
@@ -845,6 +932,8 @@ def main() -> int:
     ap.add_argument("--mortal", action="store_true")
     ap.add_argument("--frames", type=int, default=7200)
     ap.add_argument("-v", action="store_true")
+    ap.add_argument("--log", help="append one JSON line per death / give-up (last 48 frames, "
+                                  "enemies, crunch/phase state, what the bot was doing)")
     ap.add_argument("--safe", action="store_true",
                     help="undo a lost life and retry the edge later; what still dies is FORCED")
     ap.add_argument("--rom-dir", help="bank*.bin + bank0.lst of a variant build "
@@ -858,13 +947,15 @@ def main() -> int:
         con.boot(n)
         lv = Level(stage, n)
         t0 = con.frames
-        ok, why, pilot = finish(con, lv, a.mortal, a.v, a.frames, a.safe)
+        ok, why, pilot = finish(con, lv, a.mortal, a.v, a.frames, a.safe, a.log, n)
         used = con.frames - t0
         print(f"level {n:2d}: {'DONE' if ok else 'FAIL'}  {used:5d} frames  "
               f"deaths {pilot.deaths}  rooms {len(pilot.rooms_seen)}/{len(lv.rooms)}"
               f"  - {why}")
         for f_, r_, x_, y_, why_ in pilot.death_log:
             print(f"           death: frame {f_}, room {r_}, x={x_} y={y_}  ({why_})")
+        if a.log and not ok:
+            print(f"           (give-up context in {a.log})")
         if a.safe:
             print(f"           retried-and-saved edges: {pilot.waited}, FORCED edges: {len(pilot.forced)}")
             for cur_, nxt_, d_ in pilot.forced:
