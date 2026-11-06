@@ -1396,7 +1396,7 @@ UpdateP0Vertical:
     sta vyHi
     lda #<MAX_FALL
     sta vyLo
-    jmp .Integrate
+    bne .Integrate              ; A = <MAX_FALL = $80 (was jmp)
 .RiseClamp:
     cmp #$ff                  ; vyHi == $ff -> |vy| <= $0100, keep it
     bcs .Integrate
@@ -1420,7 +1420,7 @@ UpdateP0Vertical:
     lda #0
     sta vyLo
     sta vyHi
-    jmp .DoInt
+    beq .DoInt                  ; A = 0 (was jmp)
 .HoverEnd:
     lda #0
     sta Hover
@@ -1438,7 +1438,7 @@ UpdateP0Vertical:
     jsr StepDown
     dec StepsLeft
     bne .JFalling
-    jmp .NoVMove
+    beq .NoVMove                ; Z = 1 here (was jmp)
 .UpSteps:
     eor #$ff
     clc
@@ -1492,6 +1492,8 @@ CheckP0Right:
     jsr ExitRoomRight
 
 EndInputCheck:
+    lda LevelConnSpare          ; a room change is pending (exit this frame): the
+    bmi OverscanAudio           ;   rest works on the OLD room's data — skip it
 
     ; --- Hot rock touch (bump into H cell this frame) → lose life ---
     lda Temp
@@ -1563,7 +1565,8 @@ OverscanAudio:                  ; rejoin for the spawn drop-in (DropStep tail):
     lda INTIM
     bne .WaitOverscan
 
-    jmp StartFrame
+    jmp CallPad_Transition      ; = jmp StartFrame, unless a room change is
+                                ;   pending: then bank5 runs a blank frame first
 
 ; ------------------------------------------------------------------------------
 ; StepDown: try one pixel of downward movement (called per pixel of vy).
@@ -3740,6 +3743,18 @@ CallPad_TitleBand:
     sta $1FF5
 CallPad_MusicTick:
     sta $1FF5
+; Room-change frame (2026-11, bank5 TransBody). Every gameplay frame ends with
+; `jmp CallPad_Transition`: bank5 checks LevelConnSpare b7 (a pending room
+; change set by the bank2 exit handlers); not pending -> its `sta $1FF4` at
+; $FC58 returns here and the `jmp StartFrame` at $FC5B runs. Pending -> bank5
+; emits ONE blank 272-line frame (VSYNC, EnterRoom with the whole frame to
+; itself, padded), then the same exit. CallPad_TransRet is where EnterRoom's
+; rts lands (bank5 pushes $FC5D) and goes back to bank5 to pad the frame.
+CallPad_Transition:
+    sta $1FF9                   ; $FC58 -> bank5 `jmp TransBody` at $FC5B
+    jmp StartFrame              ; $FC5B: reached after bank5's `sta $1FF4`
+CallPad_TransRet:
+    sta $1FF9                   ; $FC5E -> bank5 `jmp TransFinish` at $FC61
 
 ; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.

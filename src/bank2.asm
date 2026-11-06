@@ -1524,17 +1524,27 @@ ExitLeftB2:
 ExitRightB2:
     ldx #3                      ; (falls through: last stub)
 ExitDirB2:
+    ; ROOM CHANGE IS DEFERRED (2026-11): EnterRoom costs 1000-2000c, which
+    ; pushed heavy rooms' overscan past its timer (extra scanlines = glitch).
+    ; The exit only records the target (LevelConnSpare = room | $80, the
+    ; "pending" flag) and moves the player to the opposite edge; the NEXT
+    ; frame is a blank transition frame (bank5 TransBody) that runs EnterRoom
+    ; with a whole frame to itself. bank0's EndInputCheck skips the rest of
+    ; this overscan while the flag is set.
+    bit LevelConnSpare
+    bmi ExitPendingB2           ; a change is already pending this frame
     jsr ExitFind                ; C = 1: nobody there, else A = the room
     bcs ExitNoneB2              ; nobody there: stay here
+    ora #$80
+    sta LevelConnSpare          ; pending: target room | $80
+    ldy ExitEdgeTab,X           ; the opposite edge of the axis we left by
     cpx #2
     bcc .EDvertical
-    ldy ExitEdgeTab,X           ; left/right: enter at the opposite X edge
-    sty RoomX
-    jmp EnterRoomB2
+    sty RoomX                   ; left/right (C = 1 here)
+    bcs ExitPendingB2
 .EDvertical:
-    ldy ExitEdgeTab,X           ; up/down: enter at the opposite Y edge
-    sty RoomY
-    jmp EnterRoomB2
+    sty RoomY                   ; up/down (C = 0 here)
+    bcc ExitPendingB2
 
 ; ExitFind - the neighbour in direction X (0 up, 1 down, 2 left, 3 right): C = 1
 ; none, else C = 0 and A = its room index. Shared by ExitDirB2 and SetRoomExits.
@@ -1559,6 +1569,9 @@ ExitEdgeTab:
     .byte PLAYER_MAX_Y, PLAYER_MIN_Y, PLAYER_MAX_X, PLAYER_MIN_X
 
 ExitNoneB2:
+    lda #0
+    sta LevelConnSpare          ; the failed scan left its target here: keep b7 clear
+ExitPendingB2:
     jmp ReturnPad               ; no exit: stay here, back to the bank0 caller
 
 ; ------------------------------------------------------------------------------

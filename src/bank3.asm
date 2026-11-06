@@ -472,7 +472,9 @@ ERLoadDone:
     lsr
     lsr
     sta Temp
-    jmp ReturnPad
+    lda #0
+    sta LevelConnSpare          ; the load scratch must not look like a pending
+    jmp ReturnPad               ;   room change (b7) to bank0's StartFrame hook
 
 ; ------------------------------------------------------------------------------
 ; DATA WINDOW 2 — $F5CC-$F8B6 (747 B): the shape blocks + row pool + shape

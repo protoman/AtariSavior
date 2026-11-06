@@ -531,7 +531,7 @@ def check_moth_tramp(src: Path) -> None:
 # target label in that bank).
 PAD_LO, PAD_HI = 0xFBF8, 0xFC49   # inclusive start, exclusive end (FC48 last)
 # F4 (32K): bank N's hotspot byte is 0xF4 + N ($1FF4-$1FFB).
-PAD_BANK_BYTE = {0: 0xF4, 1: 0xF5, 2: 0xF6, 3: 0xF7, 4: 0xF8}
+PAD_BANK_BYTE = {0: 0xF4, 1: 0xF5, 2: 0xF6, 3: 0xF7, 4: 0xF8, 5: 0xF9}
 
 CORRIDOR_PADS = (
     ("CallPad_UpdateBombSound", 0xFBFC, 1, "UpdateBombSound"),
@@ -576,7 +576,15 @@ MOVE_PADS = (
     ("CallPad_StageSlot1", 0xFBE5, 2, "StageSlot1B2"),
 )
 
-SPLIT_PADS = CORRIDOR_PADS + EXIT_PADS + TAIL_PADS + MOVE_PADS
+# 2026-11: the blank room-transition frame lives in bank5. Pad 1 ($FC58) is
+# entered at the end of every gameplay frame; its bank0 A+3 slot is NOT dead
+# (`jmp StartFrame`, reached after bank5's `sta $1FF4` at $FC58). Pad 2 ($FC5E)
+# is where EnterRoom's rts lands (bank5 pushes $FC5D).
+TRANS_PADS = (
+    ("CallPad_Transition", 0xFC58, 5, "TransBody"),
+    ("CallPad_TransRet", 0xFC5E, 5, "TransFinish"),
+)
+SPLIT_PADS = CORRIDOR_PADS + EXIT_PADS + TAIL_PADS + MOVE_PADS + TRANS_PADS
 
 # Pinned twin tramps: these two keep BOTH halves in bank0 and bank1 (their
 # byte-identity is guarded by check_raft_tramp / check_moth_tramp); listed
@@ -999,15 +1007,19 @@ def check_exit_handlers(src: Path) -> None:
         if not any(ln.startswith("sty Room") for ln in b):
             err("ExitDirB2: opposite-edge placement must `sty RoomY/RoomX` "
                 "(A must keep the room index for EnterRoomB2)")
-        if "jmp EnterRoomB2" not in b:
-            err("ExitDirB2: exit must tail-jmp EnterRoomB2 (its ReturnPad pops "
-                "the bank0 caller frame — an `rts` here would strand bank2)")
-        else:
-            pos = len(b) - 1 - b[::-1].index("jmp EnterRoomB2")
-            sty = [i for i, ln in enumerate(b) if ln.startswith("sty Room")]
-            if not sty or max(sty) > pos:
-                err("ExitDirB2: edge store sits AFTER `jmp EnterRoomB2` in the "
-                    "list (unreachable code)")
+        # 2026-11: the room change is DEFERRED to a blank frame (bank5
+        # TransBody). The handler records room|$80 in LevelConnSpare, moves
+        # the player to the opposite edge and returns through ReturnPad
+        # (ExitPendingB2); it must NOT call EnterRoomB2 any more.
+        if "jmp EnterRoomB2" in b or "jsr EnterRoomB2" in b:
+            err("ExitDirB2: must not enter the room inline (deferred to the "
+                "bank5 transition frame: EnterRoom overran the overscan)")
+        if "ora #$80" not in b or "sta LevelConnSpare" not in b:
+            err("ExitDirB2: must publish the pending room as `ora #$80` / "
+                "`sta LevelConnSpare` (bank0 tests b7)")
+        if not any(ln.endswith("ExitPendingB2") for ln in b):
+            err("ExitDirB2: every exit path must leave through ExitPendingB2 "
+                "(jmp ReturnPad)")
         if not any(ln.startswith("ldy ExitEdgeTab,X") for ln in b):
             err("ExitDirB2: the edge value must come from ExitEdgeTab,X")
 
@@ -1041,8 +1053,11 @@ def check_exit_handlers(src: Path) -> None:
         if "sec" not in b or "clc" not in b:
             err("ExitScanB2: must return C=0 hit / C=1 none")
 
-    if not re.search(r"^ExitNoneB2:\n\s+jmp ReturnPad", text, re.M):
-        err("ExitNoneB2 must tail-jmp ReturnPad (only exit back to bank0)")
+    if not re.search(r"^ExitNoneB2:\n\s+lda #0[^\n]*\n\s+sta LevelConnSpare[^\n]*\n"
+                     r"ExitPendingB2:\n\s+jmp ReturnPad", text, re.M):
+        err("ExitNoneB2 must clear LevelConnSpare (the failed scan leaves its "
+            "target there, b7 would fake a pending room) and fall into "
+            "ExitPendingB2: jmp ReturnPad (only exit back to bank0)")
     # the retired connection table must be gone from the reader bank
     if "RoomConnections" in text:
         err("bank2.asm still reads RoomConnections — LEVEL_FORMAT 2 uses the "
@@ -1535,9 +1550,9 @@ def check_tramp_targets(src: Path) -> None:
     is emitted by build.sh (added 2026-10-16 — it was a silent fossil
     before, misdirecting label lookups).
     """
-    hot = {"$1FF4": 0, "$1FF5": 1, "$1FF6": 2, "$1FF7": 3, "$1FF8": 4}
+    hot = {"$1FF4": 0, "$1FF5": 1, "$1FF6": 2, "$1FF7": 3, "$1FF8": 4, "$1FF9": 5}
     starts: dict[int, set[int]] = {}
-    for b in range(5):
+    for b in range(6):
         p = src / f"bank{b}.lst"
         if not p.exists():
             err(f"bank{b}.lst missing (tramp target check)")
@@ -1592,7 +1607,7 @@ def check_callpads(src: Path) -> None:
     wrong pad address or a stale operand is a silent wrong-bank jump.
     """
     banks: dict[int, bytes] = {}
-    for idx in (0, 1, 2, 3, 4):
+    for idx in (0, 1, 2, 3, 4, 5):
         p = src / f"bank{idx}.bin"
         if not p.exists():
             err(f"bank{idx}.bin missing (callpad check)")
@@ -1600,10 +1615,10 @@ def check_callpads(src: Path) -> None:
         data = p.read_bytes()
         if len(data) == 4096:
             banks[idx] = data
-    if len(banks) != 5:
+    if len(banks) != 6:
         return
     labels: dict[int, dict[str, int]] = {}
-    for idx in (0, 1, 2, 3, 4):
+    for idx in (0, 1, 2, 3, 4, 5):
         lp = src / f"bank{idx}.lst"
         if not lp.exists():
             err(f"bank{idx}.lst missing (callpad label check)")
@@ -1616,7 +1631,7 @@ def check_callpads(src: Path) -> None:
     # --- ReturnPad: every bank that HAS bodies switches to bank0; bank0
     # serves the `rts`. C7 2026-10-20: bank3 has bodies again (the shape
     # half), so 0/1/2/3 all carry the pad.
-    for idx in (0, 1, 2, 3, 4):
+    for idx in (0, 1, 2, 3, 4, 5):
         rp = labels[idx].get("ReturnPad")
         if rp is not None and rp != PAD_LO:
             err(f"bank{idx} ReturnPad ${rp:04X} != ${PAD_LO:04X} (every "
@@ -1650,7 +1665,7 @@ def check_callpads(src: Path) -> None:
             err(f"{pad} bank0 ${a0:04X} = {got.hex()} != {want.hex()} "
                 "(sta $1FFx) — the bank0 half selects the target bank and must "
                 "clobber nothing")
-        if at(0, a0 + 3, 1) == b"\x4c":
+        if at(0, a0 + 3, 1) == b"\x4c" and pad != "CallPad_Transition":
             err(f"{pad}: bank0 ${a0 + 3:04X} holds a `jmp` — the pad's jmp half "
                 "must live in the TARGET bank, where the post-switch fetch "
                 "lands (a bank0 copy is a dead byte)")
@@ -1663,7 +1678,7 @@ def check_callpads(src: Path) -> None:
         if got != want_b:
             err(f"{pad} bank{tbank} ${a0 + 3:04X} = {got.hex()} != "
                 f"{want_b.hex()} (jmp {target} ${tgt:04X}, fetched from "
-                f"bank{tbank} after the $1FF{'6789'[tbank]} write — stale "
+                f"bank{tbank} after the ${0x1FF4 + tbank:04X} write — stale "
                 "operand or an overwritten slot)")
 
     # --- pinned twin tramps keep both halves (identity guarded elsewhere) ---

@@ -103,7 +103,7 @@ class Mem:
             return min(0xFF, max(1, (dl - self.wall + 63) // 64))
         if a == 0x000C:
             return self.inpt4
-        if 0x1FF4 <= a <= 0x1FF7:
+        if 0x1FF4 <= a <= 0x1FF7 or a == 0x1FF9:
             return 0
         if a <= 0x003F or 0x0100 <= a <= 0x017F:
             return self.tia[a & 0x3F]
@@ -112,7 +112,7 @@ class Mem:
     def __setitem__(self, a, v):
         a &= 0xFFFF
         v &= 0xFF
-        if 0x1FF4 <= a <= 0x1FF7:
+        if 0x1FF4 <= a <= 0x1FF7 or a == 0x1FF9:
             self.bank = a - 0x1FF4
             return
         if a >= 0xF000:
