@@ -679,6 +679,12 @@ def story():
                     "RESET keep working as before. <b>During a game</b> the stick and "
                     "button only fly and fire; use the console switches to go back to "
                     "the title."))
+    sw.append(("Demo<br/>mode", "Leave the title screen untouched for <b>5 seconds</b> and a "
+                    "demonstration plays on level 1: the hero walks, drops a bomb, flies "
+                    "out over it firing the laser and waits for the blast, then it starts "
+                    "over. The logo and credits are hidden while it runs. Press anything "
+                    "(stick, red button, SELECT or RESET) to go back to the title, with "
+                    "your chosen level still selected."))
     t = Table([[Paragraph(f"<b>{a_}</b>", CELLT), Paragraph(b_, CELLT)] for a_, b_ in sw],
               colWidths=[0.8 * inch, W - 0.8 * inch])
     t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
