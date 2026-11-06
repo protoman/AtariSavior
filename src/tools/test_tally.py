@@ -134,7 +134,7 @@ calls = []                  # dynamic jsr chain: [(jsr_pc, ...)] like sim_bomb_f
 # it: treat the whole frame, TBgo -> StartFrame, as the LoadLevel chain.
 PC_TBGO = None
 for _l in (SRC / 'bank5.lst').read_text(errors='replace').splitlines():
-    _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.TBgo\s*$', _l)
+    _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.?TBgo\s*$', _l)
     if _m:
         PC_TBGO = int(_m.group(1), 16)
 in_blank = False

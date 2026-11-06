@@ -345,6 +345,15 @@ EnemySpd        = $D8           ; half-units per frame: 2 + Level / 5 (x1, x1.5,
 EnemyFrac       = $D9           ; 0/1 carry of the half-unit accumulator
 UE_MIN_INTIM    = 12            ; TIM64T units (64c) of overscan an EXTRA enemy pass needs left
 EnemyPass       = $DA           ; passes left this frame
+; Attract mode (2026-11, bank5 DemoHook). StickA / DemoOn are EOR-ed onto the real
+; SWCHA / INPT4 reads in the three gameplay readers (main joystick read, walk
+; frame pick, LaserInput): 0 = no effect; the demo script sets a bit to "press"
+; it (the real controller is neutral during the demo, else the demo aborts).
+StickA          = $DC           ; virtual SWCHA presses (D4 up, D5 down, D6 left, D7 right)
+DemoOn          = $DD           ; b7 = virtual FIRE press (EOR-ed onto INPT4 D7),
+                                ;   b6 = the demo is playing, b5-0 = the title's Level
+DemoPos         = $DE           ; script index; title idle: 5-second counter, high part
+DemoDur         = $DF           ; frames left in this script step; title idle: low part
 EnemyRamY       = $E2           ; 3 bytes: live Y per enemy ($E2-$E4) —
                                 ;   private since S3.4; see contract above
 
@@ -1201,6 +1210,7 @@ Overscan:
     ; SWCHA bits: D4=up, D5=down, D6=left, D7=right (0=pressed)
     ; After 4x LSR: D0=up, D1=down, D2=left, D3=right
     lda SWCHA
+    eor StickA                  ; demo script presses (0 = no effect)
     lsr                         ; shift joystick 0 bits to D0-D3
     lsr
     lsr
@@ -1565,8 +1575,8 @@ OverscanAudio:                  ; rejoin for the spawn drop-in (DropStep tail):
     lda INTIM
     bne .WaitOverscan
 
-    jmp CallPad_Transition      ; = jmp StartFrame, unless a room change is
-                                ;   pending: then bank5 runs a blank frame first
+    jmp TailHook                ; = jmp StartFrame, unless a room change is pending
+                                ;   (bank5 runs a blank frame first) or the demo plays
 
 ; ------------------------------------------------------------------------------
 ; StepDown: try one pixel of downward movement (called per pixel of vy).
@@ -2349,7 +2359,7 @@ SelectActiveObject:
     sta ActiveObjectY
     lda #NC_66                    ; purple (hue 6, luma 3)
     sta COLUP1
-    jmp .SODone
+    bne .SODone
 
 .SOEnemy:
     ; Walk enemy list: find the (FlickerFrame - (miner_offset))th enemy
@@ -2369,7 +2379,7 @@ SelectActiveObject:
     ; Out of range — no object this slot
     lda #$FF
     sta ObjBase
-    jmp .SODone
+    bne .SODone
 .SOEnemyValid:
     ; Skip if this enemy is dead (mask bit = index); A already = EnemyIndex
     tax
@@ -3184,9 +3194,11 @@ PickPlayerFrame:
     lda BombPacked
     bpl .FrameA                ; b7 OnGround clear (airborne) -> static
     lda SWCHA
-    and #%11000000             ; D7 right / D6 left, active LOW
-    cmp #%11000000
-    beq .FrameA                ; neither held -> standing
+    eor StickA                 ; (demo script)
+    asl                        ; C = D7 right, N = D6 left (active LOW)
+    bcc .Held
+    bmi .FrameA                ; neither held -> standing
+.Held:
     lda EnemyRamP              ; free-running clock: bit3 = 8-frame
     and #%00001000             ; half-cycle -> 16-frame full walk cycle
     beq .WalkA                 ; (double speed of the 32-frame bit4 version)
@@ -4060,9 +4072,8 @@ TitleTailAudio:                 ; tail: TitleWork falls in (no rts)
 .TWmusic:                       ; title: music wins the audio regs
     jsr CallPad_MusicTick       ;   wins the audio registers every frame
 .TWwait:
-    lda INTIM
-    bne .TWwait
-    jmp StartFrame
+    jmp CallPad_Transition      ; bank5 DemoHook: attract-mode idle count, then it
+                                ;   waits out the title's INTIM and `jmp StartFrame`
 
 ; ------------------------------------------------------------------------------
 ; RefreshEnemyY — write live Y → EnemyRamY (every slot, live or dead).
@@ -4175,6 +4186,17 @@ ColMask:    .byte $10,$20,$40,$80,$80,$40,$20,$10,$08,$04,$02,$01
 ; .HOVdone). The PickPlayerFrame pin that used to absorb the size is gone
 ; (retired 2026-10-20); the $FC49 / $FBF8 pins bound this block today.
 ; ------------------------------------------------------------------------------
+; TailHook: the end of every gameplay frame. Only a pending room change (LevelConnSpare
+; b7) or the attract-mode demo (DemoOn b7) needs bank5; every other frame goes straight
+; to StartFrame without the two bank switches (-7c vs the old always-bank5 tail).
+TailHook:
+    lda DemoOn
+    asl                         ; b6 (demo playing) -> N; the fire bit goes to C
+    ora LevelConnSpare
+    bpl .THplain
+    jmp CallPad_Transition
+.THplain:
+    jmp StartFrame
     .ds $FDD8 - *, 0            ; pin: bank2's blast-tramp mirror is at $FDD8
 BombEnemyBlast:
     sta $1FF6
@@ -4629,6 +4651,7 @@ LaserInput:
     ora LaserState              ; prev in b6; b7/b1 cleared for this frame
     sta LaserState
     lda INPT4                   ; active-low fire button, D7: 0 = pressed
+    eor DemoOn                  ; demo script presses (b7; 0 = no effect)
     bpl .LaserFire              ; pressed: arm + travel (released sits right
                                 ; below — moved here so the cap code could
                                 ; not push .LaserReleased past bmi's ±127)

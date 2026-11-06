@@ -17,6 +17,11 @@ cover prints them, `tools/release.py` names the artifacts from them).
 
 - Title screen can be driven with the joystick: UP / DOWN change the stage (DOWN goes
   back, both wrap), FIRE starts the game. SELECT and RESET still work as before.
+- Attract mode is back: leave the title untouched for 5 seconds and the demo plays on stage 1
+  (the logo and credits disappear while it runs): the player walks, drops a bomb, flies out
+  over it firing the laser, waits for the blast and falls back, in a loop. Any stick move,
+  FIRE, SELECT or RESET returns to the title with your stage selection intact (FIRE does not
+  start the game on that press). The demo never costs a life and never saves.
 
 ## 1.0.1
 
