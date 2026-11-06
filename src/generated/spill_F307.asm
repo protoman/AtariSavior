@@ -2,5 +2,6 @@
 ; Include list for this bank2 gap — see emit_spills().
     include "generated/levels_index.asm"
     include "generated/level_007_rooms.asm"
-    include "generated/level_011_rooms.asm"
-    include "generated/level_012_rooms.asm"
+    include "generated/level_008_rooms.asm"
+    include "generated/level_009_rooms.asm"
+    include "generated/level_010_rooms.asm"
