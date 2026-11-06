@@ -4188,7 +4188,7 @@
                             {
                                 "type": 1,
                                 "x": 12.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
@@ -4238,7 +4238,7 @@
                         "enemies": [
                             {
                                 "type": 1,
-                                "x": 18.0,
+                                "x": 10.0,
                                 "y": 7.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
@@ -4311,7 +4311,7 @@
                         "enemies": [
                             {
                                 "type": 1,
-                                "x": 18.0,
+                                "x": 10.0,
                                 "y": 7.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
@@ -4521,7 +4521,7 @@
                         "enemies": [
                             {
                                 "type": 1,
-                                "x": 8.0,
+                                "x": 10.0,
                                 "y": 7.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
@@ -4898,15 +4898,6 @@
                         "room_y": 1,
                         "enemies": [
                             {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.25,
-                                "dir": 1
-                            },
-                            {
                                 "type": 0,
                                 "x": 12.0,
                                 "y": 10.0,
@@ -4935,22 +4926,20 @@
                         "model_id": 57,
                         "room_x": 1,
                         "room_y": 0,
-                        "enemies": [
-                            {
-                                "type": 0,
-                                "x": 6.0,
-                                "y": 10.0,
-                                "range_min": 0.0,
-                                "range_max": 8.0,
-                                "speed": 1.0,
-                                "dir": -1
-                            }
-                        ],
+                        "enemies": [],
                         "lamps": [],
                         "bottom_band": false,
                         "bottom_r": 0,
                         "bottom_g": 0,
-                        "bottom_b": 0
+                        "bottom_b": 0,
+                        "asym_patches": [
+                            [
+                                1,
+                                1,
+                                1,
+                                1
+                            ]
+                        ]
                     },
                     {
                         "room_id": 3,
@@ -4984,17 +4973,7 @@
                         "model_id": 6,
                         "room_x": 2,
                         "room_y": 0,
-                        "enemies": [
-                            {
-                                "type": 15,
-                                "x": 12.0,
-                                "y": 8.25,
-                                "range_min": 0.0,
-                                "range_max": 0.0,
-                                "speed": 0.0,
-                                "dir": 1
-                            }
-                        ],
+                        "enemies": [],
                         "lamps": [],
                         "bottom_band": false,
                         "bottom_r": 0,
@@ -5008,22 +4987,13 @@
                         "room_y": 1,
                         "enemies": [
                             {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 7.0,
+                                "type": 15,
+                                "x": 9.0,
+                                "y": 8.25,
                                 "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.25,
+                                "range_max": 0.0,
+                                "speed": 0.0,
                                 "dir": 1
-                            },
-                            {
-                                "type": 0,
-                                "x": 12.0,
-                                "y": 10.0,
-                                "range_min": 0.0,
-                                "range_max": 8.0,
-                                "speed": 1.0,
-                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -5286,7 +5256,7 @@
                         "enemies": [
                             {
                                 "type": 0,
-                                "x": 0.0,
+                                "x": 4.0,
                                 "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
@@ -5399,15 +5369,6 @@
                         "room_y": 1,
                         "enemies": [
                             {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.75,
-                                "dir": 1
-                            },
-                            {
                                 "type": 0,
                                 "x": 12.0,
                                 "y": 10.0,
@@ -5517,15 +5478,6 @@
                         "room_y": 1,
                         "enemies": [
                             {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.75,
-                                "dir": 1
-                            },
-                            {
                                 "type": 0,
                                 "x": 12.0,
                                 "y": 10.0,
@@ -5554,17 +5506,7 @@
                         "model_id": 15,
                         "room_x": 0,
                         "room_y": 2,
-                        "enemies": [
-                            {
-                                "type": 0,
-                                "x": 2.0,
-                                "y": 4.0,
-                                "range_min": 0.0,
-                                "range_max": 8.0,
-                                "speed": 1.5,
-                                "dir": -1
-                            }
-                        ],
+                        "enemies": [],
                         "lamps": [
                             {
                                 "x": 12.0,
@@ -5621,7 +5563,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
@@ -5920,7 +5862,7 @@
                             },
                             {
                                 "type": 1,
-                                "x": 8.0,
+                                "x": 10.0,
                                 "y": 7.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
@@ -5981,7 +5923,7 @@
                         "enemies": [
                             {
                                 "type": 1,
-                                "x": 18.0,
+                                "x": 10.0,
                                 "y": 7.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
@@ -6068,15 +6010,6 @@
                         "room_x": 0,
                         "room_y": 1,
                         "enemies": [
-                            {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.25,
-                                "dir": 1
-                            },
                             {
                                 "type": 0,
                                 "x": 12.0,
@@ -6275,7 +6208,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -6301,17 +6234,7 @@
                         "model_id": 23,
                         "room_x": 1,
                         "room_y": 2,
-                        "enemies": [
-                            {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.25,
-                                "dir": 1
-                            }
-                        ],
+                        "enemies": [],
                         "lamps": [],
                         "bottom_band": false,
                         "bottom_r": 0,
@@ -6335,7 +6258,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -6494,12 +6417,12 @@
                         "enemies": [
                             {
                                 "type": 0,
-                                "x": 0.0,
+                                "x": 4.0,
                                 "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
                                 "speed": 1.25,
-                                "dir": -1
+                                "dir": 1
                             }
                         ],
                         "lamps": [
@@ -7030,15 +6953,6 @@
                         "room_y": 2,
                         "enemies": [
                             {
-                                "type": 1,
-                                "x": 12.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.75,
-                                "dir": 1
-                            },
-                            {
                                 "type": 0,
                                 "x": 6.0,
                                 "y": 10.0,
@@ -7120,20 +7034,11 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
                                 "dir": 1
-                            },
-                            {
-                                "type": 0,
-                                "x": 6.0,
-                                "y": 10.0,
-                                "range_min": 0.0,
-                                "range_max": 8.0,
-                                "speed": 1.5,
-                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -7159,7 +7064,7 @@
                             {
                                 "type": 1,
                                 "x": 2.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
@@ -7190,7 +7095,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
@@ -7418,7 +7323,7 @@
                             },
                             {
                                 "type": 1,
-                                "x": 8.0,
+                                "x": 10.0,
                                 "y": 7.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
@@ -7440,12 +7345,12 @@
                         "enemies": [
                             {
                                 "type": 0,
-                                "x": 2.0,
+                                "x": 4.0,
                                 "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
                                 "speed": 1.75,
-                                "dir": -1
+                                "dir": 1
                             }
                         ],
                         "lamps": [
@@ -7791,15 +7696,6 @@
                         "room_y": 1,
                         "enemies": [
                             {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.25,
-                                "dir": 1
-                            },
-                            {
                                 "type": 0,
                                 "x": 12.0,
                                 "y": 10.0,
@@ -8014,15 +7910,6 @@
                                 "range_max": 0.0,
                                 "speed": 1.0,
                                 "dir": 1
-                            },
-                            {
-                                "type": 1,
-                                "x": 10.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.25,
-                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -8071,7 +7958,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -8160,7 +8047,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -8196,7 +8083,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -8223,15 +8110,6 @@
                         "room_x": 3,
                         "room_y": 1,
                         "enemies": [
-                            {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.25,
-                                "dir": 1
-                            },
                             {
                                 "type": 0,
                                 "x": 12.0,
@@ -8265,7 +8143,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -8479,17 +8357,7 @@
                         "model_id": 75,
                         "room_x": 1,
                         "room_y": 2,
-                        "enemies": [
-                            {
-                                "type": 1,
-                                "x": 16.0,
-                                "y": 10.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.5,
-                                "dir": 1
-                            }
-                        ],
+                        "enemies": [],
                         "lamps": [],
                         "bottom_band": false,
                         "bottom_r": 0,
@@ -8620,12 +8488,12 @@
                         "enemies": [
                             {
                                 "type": 0,
-                                "x": 2.0,
+                                "x": 4.0,
                                 "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 8.0,
                                 "speed": 1.25,
-                                "dir": -1
+                                "dir": 1
                             }
                         ],
                         "lamps": [
@@ -9014,15 +8882,6 @@
                         "room_y": 1,
                         "enemies": [
                             {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.75,
-                                "dir": 1
-                            },
-                            {
                                 "type": 0,
                                 "x": 12.0,
                                 "y": 10.0,
@@ -9145,12 +9004,12 @@
                                 "dir": 1
                             },
                             {
-                                "type": 14,
-                                "x": 32.0,
+                                "type": 1,
+                                "x": 10.0,
                                 "y": 7.0,
                                 "range_min": 0.0,
-                                "range_max": 0.0,
-                                "speed": 0.0,
+                                "range_max": 13.0,
+                                "speed": 1.75,
                                 "dir": 1
                             }
                         ],
@@ -9273,17 +9132,7 @@
                         "model_id": 22,
                         "room_x": 0,
                         "room_y": 4,
-                        "enemies": [
-                            {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.75,
-                                "dir": 1
-                            }
-                        ],
+                        "enemies": [],
                         "lamps": [],
                         "bottom_band": false,
                         "bottom_r": 0,
@@ -9299,20 +9148,20 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
                                 "dir": 1
                             },
                             {
-                                "type": 0,
-                                "x": 6.0,
-                                "y": 10.0,
+                                "type": 14,
+                                "x": 32.0,
+                                "y": 1.0,
                                 "range_min": 0.0,
-                                "range_max": 8.0,
-                                "speed": 1.5,
-                                "dir": -1
+                                "range_max": 0.0,
+                                "speed": 0.0,
+                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -9371,7 +9220,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
@@ -9441,20 +9290,11 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
                                 "dir": 1
-                            },
-                            {
-                                "type": 0,
-                                "x": 12.0,
-                                "y": 10.0,
-                                "range_min": 0.0,
-                                "range_max": 8.0,
-                                "speed": 1.5,
-                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -9477,15 +9317,6 @@
                         "room_x": 3,
                         "room_y": 2,
                         "enemies": [
-                            {
-                                "type": 1,
-                                "x": 10.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.75,
-                                "dir": 1
-                            },
                             {
                                 "type": 0,
                                 "x": 6.0,
@@ -9519,7 +9350,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
@@ -9577,20 +9408,11 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.75,
                                 "dir": 1
-                            },
-                            {
-                                "type": 0,
-                                "x": 12.0,
-                                "y": 10.0,
-                                "range_min": 0.0,
-                                "range_max": 8.0,
-                                "speed": 1.5,
-                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -10340,15 +10162,6 @@
                         "room_y": 1,
                         "enemies": [
                             {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.25,
-                                "dir": 1
-                            },
-                            {
                                 "type": 0,
                                 "x": 12.0,
                                 "y": 10.0,
@@ -10377,17 +10190,7 @@
                         "model_id": 15,
                         "room_x": 0,
                         "room_y": 2,
-                        "enemies": [
-                            {
-                                "type": 0,
-                                "x": 2.0,
-                                "y": 4.0,
-                                "range_min": 0.0,
-                                "range_max": 8.0,
-                                "speed": 1.0,
-                                "dir": -1
-                            }
-                        ],
+                        "enemies": [],
                         "lamps": [
                             {
                                 "x": 12.0,
@@ -10626,17 +10429,8 @@
                         "room_y": 3,
                         "enemies": [
                             {
-                                "type": 0,
-                                "x": 6.0,
-                                "y": 10.0,
-                                "range_min": 0.0,
-                                "range_max": 8.0,
-                                "speed": 1.0,
-                                "dir": -1
-                            },
-                            {
                                 "type": 15,
-                                "x": 28.0,
+                                "x": 11.0,
                                 "y": 8.25,
                                 "range_min": 0.0,
                                 "range_max": 0.0,
@@ -10659,20 +10453,11 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
                                 "dir": 1
-                            },
-                            {
-                                "type": 0,
-                                "x": 12.0,
-                                "y": 10.0,
-                                "range_min": 0.0,
-                                "range_max": 8.0,
-                                "speed": 1.0,
-                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -10717,19 +10502,10 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
-                                "dir": 1
-                            },
-                            {
-                                "type": 14,
-                                "x": 32.0,
-                                "y": 1.0,
-                                "range_min": 0.0,
-                                "range_max": 0.0,
-                                "speed": 0.0,
                                 "dir": 1
                             }
                         ],
@@ -10748,7 +10524,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -10785,18 +10561,18 @@
                         "room_y": 2,
                         "enemies": [
                             {
-                                "type": 0,
-                                "x": 6.0,
-                                "y": 10.0,
-                                "range_min": 0.0,
-                                "range_max": 8.0,
-                                "speed": 1.0,
-                                "dir": -1
-                            },
-                            {
                                 "type": 15,
                                 "x": 18.0,
                                 "y": 8.25,
+                                "range_min": 0.0,
+                                "range_max": 0.0,
+                                "speed": 0.0,
+                                "dir": 1
+                            },
+                            {
+                                "type": 14,
+                                "x": 22.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
@@ -10825,7 +10601,7 @@
                         "enemies": [
                             {
                                 "type": 1,
-                                "x": 8.0,
+                                "x": 10.0,
                                 "y": 7.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
@@ -10856,7 +10632,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -10900,15 +10676,6 @@
                                 "range_max": 0.0,
                                 "speed": 1.0,
                                 "dir": 1
-                            },
-                            {
-                                "type": 1,
-                                "x": 10.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.25,
-                                "dir": 1
                             }
                         ],
                         "lamps": [],
@@ -10926,7 +10693,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -10965,7 +10732,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
@@ -11004,7 +10771,7 @@
                             {
                                 "type": 1,
                                 "x": 16.0,
-                                "y": 5.0,
+                                "y": 4.0,
                                 "range_min": 0.0,
                                 "range_max": 13.0,
                                 "speed": 1.25,
