@@ -887,7 +887,14 @@ class Pilot:
                     raise GiveUp(f"no route {here} -> {tgt}")
                 self.say("route", len(path), "cells", here, "->", tgt)
                 self.fly(path)
-            self.touch(tgt)
+            px = None
+            if tgt in self.lv.extras:
+                # An EXTRA miner is a type-15 enemy record: MinerX is the main miner's
+                # column, so walk to the record's own X (4-px units, RoomX = right end).
+                for e in self.lv.rooms[tgt[0]].get("enemies") or []:
+                    if e.get("type") == 15:
+                        px = int(e["x"] * 4) + 7
+            self.touch(tgt, px)
         return True
 
     def touch(self, tgt, px=None):

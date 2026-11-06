@@ -1458,6 +1458,67 @@ int NearestAir(const ModelData& m, int band, int prefer) {
     return -1;
 }
 
+// A normal-room BAT hangs at the TOP of band 1 (row 4 = px 48, drawn 48..60 with its
+// 2 px bob): a player standing on that band's floor (feet at px 72) has his beam there,
+// so he can shoot it. Row 5 (px 60..72) sat ON the floor, 10 px under the beam: nobody
+// could hit it (user report 2026-11-06, level 20 room 11: the playbot stood under it
+// holding fire until the time ran out). It used to alternate 4/5 by level parity.
+constexpr float kBatRow = 4.0f;
+
+// Columns of the EXIT GAPS of a shape: the air cells of a ceiling/floor row that has at
+// most 4 of them (a sparse row's own air cells ARE the vertical opening).
+std::vector<int> ExitGapCells(const ModelData& m) {
+    std::vector<int> gaps;
+    for (const int row : {0, m.height - 1}) {
+        int n = 0;
+        for (int c = 0; c < kRoomWidth; ++c) n += m.tiles[row * kRoomWidth + c] == 0 ? 1 : 0;
+        if (n > 4) continue;
+        for (int c = 0; c < kRoomWidth; ++c)
+            if (m.tiles[row * kRoomWidth + c] == 0) gaps.push_back(c);
+    }
+    return gaps;
+}
+// True when cell `c` is on or next to an exit gap.
+bool NearExitGap(const ModelData& m, int c) {
+    for (int g : ExitGapCells(m)) if (std::abs(g - c) <= 1) return true;
+    return false;
+}
+
+// SPIDER sweep (user report 2026-11-06, level 20 room 3): a spider whose column is rock
+// both above and below sweeps through the wall either way. Slide it along its band to
+// the nearest column with a free sweep (not on an exit gap, 3 columns off the room's
+// other objects), else drop it.
+void FixSpiderSweeps(RoomData& room, const ModelData& sm) {
+    const int rowsPerBand = std::max(1, 12 / std::max(1, sm.height));
+    auto& es = room.enemies;
+    for (size_t k = 0; k < es.size();) {
+        EnemyData& e = es[k];
+        const int col = (int)std::lround(e.x);
+        if (e.type != (int)EnemyType::SPIDER || SpiderSweepFreeIn(sm, e.y, col)) {
+            ++k;
+            continue;
+        }
+        const int band = std::min(sm.height - 1, std::max(0, (int)e.y / rowsPerBand));
+        bool moved = false;
+        for (int d = 2; d <= 18 && !moved; d += 2) {
+            for (int sign : {-1, 1}) {
+                const int cand = col + sign * d;
+                if (cand < 0 || cand > 18 || (cand & 1)) continue;
+                if (sm.tiles[band * sm.width + cand / 2] != (int)TileType::AIR) continue;
+                if (!SpiderSweepFreeIn(sm, e.y, cand) || NearExitGap(sm, cand / 2)) continue;
+                bool clash = false;
+                for (size_t q = 0; q < es.size(); ++q)
+                    if (q != k && std::abs((int)std::lround(es[q].x) - cand) < 3) clash = true;
+                if (clash) continue;
+                e.x = (float)cand;
+                moved = true;
+                break;
+            }
+        }
+        if (moved) ++k; else es.erase(es.begin() + (long)k);
+    }
+}
+
 // User rule 2026-10-29 (no forced life loss): an enemy must not sit on the
 // player's way through a vertical opening. A ceiling/floor row with only a few
 // air cells is an EXIT GAP; a bat at the foot of the gap that drops in (or
@@ -1648,7 +1709,7 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
             if (cell < 0) cell = NearestAir(shape, 1, 8);
             if (cell >= 0) {
                 AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
-                         (levelNumber % 2) ? 4.0f : 5.0f,
+                         kBatRow,
                          1.25f + 0.25f * (levelNumber % 4), 13.0f);
             }
         }
@@ -1728,7 +1789,7 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         if (cell < 0) cell = NearestAir(shape, 1, 8);
         if (cell >= 0) {
             AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
-                     (levelNumber % 2) ? 4.0f : 5.0f,
+                     kBatRow,
                      1.25f + 0.25f * (levelNumber % 4), 13.0f);
         }
     } else {
@@ -3575,7 +3636,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                          d <= 15 && !placed; d += 2) {
                         for (int sign : {1, -1}) {
                             const int cand = col + sign * d;
-                            if (!airAt(nb, cand) || dangerous(nb, cand)) {
+                            if (!airAt(nb, cand) || dangerous(nb, cand)
+                                    || NearExitGap(sm, cand / 2)) {   // never on a vertical opening
                                 continue;
                             }
                             e.x = (float)cand;
@@ -3785,6 +3847,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 if (m.id == room.model_id) { sm = &m; break; }
             }
             if (!sm) continue;
+            FixSpiderSweeps(room, *sm);
             for (EnemyData& e : room.enemies) {
                 int f = 0;
                 if (e.type == (int)EnemyType::SPIDER)
@@ -3880,6 +3943,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
 
     // Extra miners next, then the power cells: the cells' route has to include
     // the miners the player must walk to.
+    for (int l = 1; l <= kStageLevels; ++l) fixDirs(levels[l - 1]);   // last word on spider placement
     for (int l = 1; l <= kStageLevels; ++l) {
         if (PlaceExtraMiners(levels[l - 1], models, l) < 0) {
             repair.problems.push_back(

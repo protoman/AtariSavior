@@ -729,6 +729,33 @@ def main() -> int:
                               f"enemy type {enemy['type']} on odd column "
                               f"{enemy['x']} straddles two cells")
                         return 1
+                    # BAT row (user 2026-11-06, level 20 room 11): never the LAST row of
+                    # its band - there it sits on the floor, under the player's beam,
+                    # and nobody can shoot it. And never on a vertical opening (level 17
+                    # room 4: the bat sat in the floor gap the player enters through).
+                    if int(enemy["type"]) == 1:
+                        brow = int(float(enemy["y"])) % units
+                        if brow == units - 1 and units > 1:
+                            print(f"FAIL: level {level_n} room {room['room_id']}: bat at "
+                                  f"y={enemy['y']} sits on its band's floor (row "
+                                  f"{brow + 1}/{units}) - the beam cannot hit it")
+                            return 1
+                        gaps = []
+                        for grow in (0, len(band_rows) - 1):
+                            air = [c for c in range(10) if band_rows[grow][c] == "."]
+                            if len(air) <= 4:
+                                gaps += air
+                        if any(abs(g - cell) <= 1 for g in gaps):
+                            print(f"FAIL: level {level_n} room {room['room_id']}: bat at "
+                                  f"cell {cell} is on/next to an exit gap {sorted(set(gaps))}")
+                            return 1
+                    # a spider needs a wall-free sweep up OR down (level 20 room 3)
+                    if int(enemy["type"]) == 0 and not C.spider_sweep_free(
+                            float(enemy["y"]), band_rows, int(round(float(enemy["x"])))):
+                        print(f"FAIL: level {level_n} room {room['room_id']}: spider at "
+                              f"x={enemy['x']} y={enemy['y']} has rock above AND below "
+                              "(its sweep runs through a wall)")
+                        return 1
                     # a spider sweeps 24 px (right = down first, left = up
                     # first): near the cave edge the direction must point
                     # inward so the 15-row sprite never leaves the 144 px cave

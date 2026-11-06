@@ -944,6 +944,27 @@ def enemy_x_px(column: float) -> int:
     return target + 4 if target < 11 else target + 7
 
 
+def spider_sweep_free(y_rows: float, rows: list, col: int) -> bool:
+    """True when the spider's 24 px sweep has a wall-free column on at least one side
+    (same rule as the editor's SpiderSweepFreeIn)."""
+    top = px(y_rows, 12)
+    band_px = 144 // len(rows)
+
+    def blocked(lo: int, hi: int) -> bool:
+        if lo < 0 or hi > 143:
+            return True
+        for b in range(lo // band_px, min(hi // band_px, len(rows) - 1) + 1):
+            for c in (col, col + 1):
+                c = max(0, min(39, c))
+                f = c // 2
+                cell = f if f < 10 else 19 - f
+                if 0 <= cell < len(rows[b]) and rows[b][cell] in "#H":
+                    return True
+        return False
+
+    return not blocked(top, top + 24 + 14) or not blocked(top - 24, top + 14)
+
+
 def spider_forced_dir(y_rows: float, rows: list | None = None,
                       col: int = 0) -> int:
     """+1 / -1 when a spider at this y (12-px rows) must sweep down / up, else 0.
