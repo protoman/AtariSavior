@@ -7,6 +7,7 @@ PlayerSpriteA / PlayerColTable), so the pictures follow the art in the ROM.
 
 Run:  python3 docs/manual/build_manual.py     ->  docs/manual/savior_manual.pdf
 """
+import io
 import re
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from PIL import Image as PILImage
 from reportlab.lib.colors import Color, HexColor, white, black
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas as pdfcanvas
 from reportlab.platypus import (BaseDocTemplate, Flowable, Frame, KeepTogether,
                                 NextPageTemplate, PageBreak, PageTemplate,
@@ -25,6 +27,34 @@ KERNEL = (SRC / "kernel.asm").read_text()
 VERSION = (SRC / "VERSION").read_text().strip()      # the release version (src/VERSION)
 SHOT_HUD = Path(__file__).resolve().parent / "hud_8lives.png"
 SHOT_TITLE = SRC / "screenshots" / "releases" / "0.8" / "001.png"
+LOGO = SRC / "art" / "logo.png"
+POSTER = SRC / "art" / "poster.png"
+
+_IMG_CACHE = {}
+
+
+def picture(path, width_in, dpi=200, crop=None):
+    """Resize an art file down to print size and hand reportlab a compact copy
+    (JPEG for photos, PNG when the alpha channel must survive).
+    `crop` = (left, top, right, bottom) as fractions of the source."""
+    key = (str(path), round(width_in, 2), dpi, crop)
+    if key in _IMG_CACHE:
+        return _IMG_CACHE[key]
+    im = PILImage.open(path)
+    if crop:
+        l, t, r, b = crop
+        im = im.crop((round(l * im.width), round(t * im.height),
+                      round(r * im.width), round(b * im.height)))
+    w = min(im.width, int(width_in * dpi))
+    im = im.resize((w, max(1, round(im.height * w / im.width))), PILImage.LANCZOS)
+    buf = io.BytesIO()
+    if im.mode in ("RGBA", "LA", "P"):
+        im.convert("RGBA").save(buf, "PNG", optimize=True)
+    else:
+        im.convert("RGB").save(buf, "JPEG", quality=88, optimize=True)
+    buf.seek(0)
+    _IMG_CACHE[key] = ImageReader(buf)
+    return _IMG_CACHE[key]
 
 PAGE = (5.5 * inch, 8.5 * inch)          # half-letter booklet
 MARGIN = 0.5 * inch
@@ -65,6 +95,8 @@ def bytes_of(line):
             out.append(int(tok[1:], 16))
         elif tok.startswith("%"):
             out.append(int(tok[1:], 2))
+        elif re.fullmatch(r"NC_[0-9A-Fa-f]{2}", tok):
+            out.append(int(tok[3:], 16))    # TIA colour name (NC_1C -> $1C)
     return out
 
 
@@ -130,6 +162,86 @@ def player(px=3.0):
     return Sprite(PLAYER_GFX, PLAYER_COL, px=px)
 
 
+# --- hand-drawn extras (not from the ROM): the jet pack and the laser beam ---
+JET = {
+    "K": "#14141c", "S": "#cfd6de", "s": "#8b939c",
+    "R": "#d63a28", "r": "#8f231a",
+    "Y": "#f2b632", "O": "#e8742a", "B": "#3aa0e8", "W": "#fff4d0",
+}
+JET_ART = [
+    "...KKKKKK...",
+    "..KSSSSSSK..",
+    "..KSRRSRSK..",
+    "..KSSSSSSK..",
+    "..KSsSSsSK..",
+    "..KSsSSsSK..",
+    "..KSsSSsSK..",
+    "..KKKKKKKK..",
+    "..KSsSSsSK..",
+    "..K.SSSS.K..",
+    "..K.SSSS.K..",
+    "...KKKKKK...",
+    "....OYYO....",
+    "...OYBBYO...",
+    "...OBBBBO...",
+    "...OYBBYO...",
+    "....BBBB....",
+    "....B..B....",
+    ".....BB.....",
+]
+
+
+class Pixels(Flowable):
+    """A pixel picture drawn from a char map (for the hand-made extras)."""
+
+    def __init__(self, art, palette, px=3.2):
+        super().__init__()
+        self.art, self.palette, self.px = art, palette, px
+        self.width = max(len(r) for r in art) * px
+        self.height = len(art) * px
+
+    def draw(self):
+        c, rows = self.canv, len(self.art)
+        for r, line in enumerate(self.art):
+            for col, ch in enumerate(line):
+                if ch in self.palette:
+                    c.setFillColor(HexColor(self.palette[ch]))
+                    c.rect(col * self.px, (rows - 1 - r) * self.px,
+                           self.px + 0.2, self.px + 0.2, stroke=0, fill=1)
+
+
+def jetpack(px=3.2):
+    return Pixels(JET_ART, JET, px=px)
+
+
+class Laser(Flowable):
+    """The pilot firing the helmet laser, seen against the dark cave."""
+
+    def __init__(self, w=0.66 * inch, h=0.82 * inch):
+        super().__init__()
+        self.width, self.height = w, h
+        self.px = (h - 4) / len(PLAYER_GFX)
+
+    def draw(self):
+        c = self.canv
+        c.setFillColor(HexColor("#0d0d12"))
+        c.rect(0, 0, self.width, self.height, stroke=0, fill=1)
+        c.saveState()
+        c.translate(1.5, 2)
+        Sprite(PLAYER_GFX, PLAYER_COL, px=self.px).drawOn(c, 0, 0)
+        c.restoreState()
+        # the beam leaves the helmet row and fades out at the right edge
+        x0 = 1.5 + 8 * self.px
+        y = 2 + (len(PLAYER_GFX) - 5) * self.px
+        c.setFillColor(HexColor("#f2b632"))
+        c.rect(x0, y - 0.8, self.width - x0 - 1.5, 4.2, stroke=0, fill=1)
+        c.setFillColor(HexColor("#fff4d0"))
+        c.rect(x0, y, self.width - x0 - 1.5, 2.4, stroke=0, fill=1)
+        c.setFillColor(HexColor("#f2b632"))
+        for i in range(3):
+            c.rect(x0 + i * 6 + 3, y - 3.4, 2.6, 2.6, stroke=0, fill=1)
+
+
 # ------------------------------------------------------------------ styles ---
 def style(name, **kw):
     base = dict(fontName="Helvetica", fontSize=9.2, leading=12.6,
@@ -160,6 +272,39 @@ class Rule(Flowable):
     def draw(self):
         self.canv.setFillColor(self.color)
         self.canv.rect(0, 2, self.w, self.t, stroke=0, fill=1)
+
+
+class TocLine(Flowable):
+    """A contents line: title on the left, page number flush right, and a dot
+    leader that stretches so it stops exactly at the number (monospaced, so the
+    dots and the numbers line up in a column)."""
+
+    def __init__(self, title, page, width, size=9.2, gap=5):
+        super().__init__()
+        self.title, self.page, self.width = title, page, width
+        self.size, self.gap = size, gap
+        self.height = size + 4.0
+
+    def draw(self):
+        c, size, y = self.canv, self.size, 2.2
+        c.setFillColor(INK)
+        c.setFont("Helvetica", size)
+        c.drawString(0, y, self.title)
+        tw = c.stringWidth(self.title, "Helvetica", size)
+        num = f"{self.page:02d}"                     # 03, 04 ... 13
+        c.setFont("Courier-Bold", size)
+        nx = self.width - c.stringWidth(num, "Courier-Bold", size)
+        c.setFillColor(NAVY)
+        c.drawString(nx, y, num)
+        c.setFillColor(GREY)
+        c.setFont("Courier", size)
+        start, stop = tw + self.gap, nx - self.gap
+        dw = c.stringWidth(".", "Courier", size)
+        if stop - start > dw:
+            n = int((stop - start) / dw)
+            step = (stop - start) / n
+            for i in range(n):
+                c.drawString(start + i * step, y, ".")
 
 
 def head(title, kicker):
@@ -343,47 +488,81 @@ def cover(c, doc):
     c.rect(w - 1.1 * inch, h - 1.2 * inch, 1.1 * inch, 1.2 * inch, stroke=0, fill=1)
     c.rect(2.1 * inch, h - 0.9 * inch, 0.9 * inch, 0.9 * inch, stroke=0, fill=1)
     c.setFillColor(HexColor("#c9692a"))
-    c.rect(0, 0, 2.2 * inch, 1.35 * inch, stroke=0, fill=1)
-    c.rect(w - 2.2 * inch, 0, 2.2 * inch, 1.35 * inch, stroke=0, fill=1)
+    c.rect(0, 0, 1.5 * inch, 0.5 * inch, stroke=0, fill=1)
+    c.rect(w - 1.5 * inch, 0, 1.5 * inch, 0.5 * inch, stroke=0, fill=1)
     c.setFillColor(ORANGE)
-    c.rect(0, 1.35 * inch, w, 0.08 * inch, stroke=0, fill=1)
+    c.rect(0, 1.12 * inch, w, 0.07 * inch, stroke=0, fill=1)
 
-    c.setFillColor(HexColor("#b48cf0"))
-    c.setFont("Helvetica-Bold", 31)
-    c.drawCentredString(w / 2, h - 3.0 * inch, "S.A.V.I.O.R.")
+    # the game's own logo art
+    lw = 4.15 * inch
+    lh = lw * 835.0 / 1883.0
+    c.drawImage(picture(LOGO, 4.15), (w - lw) / 2, h - 0.55 * inch - lh, lw, lh,
+                mask="auto")
     c.setFillColor(GOLD)
     c.setFont("Helvetica-Bold", 10)
-    c.drawCentredString(w / 2, h - 3.35 * inch, "I N S T R U C T I O N   M A N U A L")
+    c.drawCentredString(w / 2, 5.5 * inch, "I N S T R U C T I O N   M A N U A L")
     c.setFillColor(CREAM)
     c.setFont("Helvetica", 9)
-    c.drawCentredString(w / 2, h - 3.7 * inch,
+    c.drawCentredString(w / 2, 5.15 * inch,
                         "Dive into the caves. Bring every miner home.")
     c.setFont("Helvetica-Oblique", 8.4)
-    c.drawCentredString(w / 2, 0.75 * inch,
+    c.drawCentredString(w / 2, 0.68 * inch,
                         "A game cartridge for the Atari 2600™ Video Computer System™")
     c.setFont("Helvetica", 8)
-    c.drawCentredString(w / 2, 0.55 * inch, f"© 2026 Iuri Fiedoruk   ·   Version {VERSION}")
+    c.drawCentredString(w / 2, 0.46 * inch, f"© 2026 Iuri Fiedoruk   ·   Version {VERSION}")
     # the hero flying, and a miner waiting
-    for sp, x, y in ((player(5.2), w / 2 - 20, h - 2.05 * inch),
-                     (sprite("miner", 5.2), w - 1.85 * inch, 1.55 * inch)):
-        sp.canv = c
+    for sp, x, y in ((player(5.2), w / 2 - 1.15 * inch, 3.45 * inch),
+                     (sprite("miner", 5.2), w / 2 + 0.55 * inch, 3.62 * inch)):
         c.saveState()
         c.translate(x, y)
-        sp.draw()
+        sp.drawOn(c, 0, 0)
         c.restoreState()
+
+
+def backcover(c, doc):
+    """The back cover: the poster art, full bleed, with the logo and credits."""
+    w, h = PAGE
+    iw, ih = 1170.0, 1345.0
+    sc = max(w / iw, h / ih)
+    dw, dh = iw * sc, ih * sc
+    c.saveState()
+    p = c.beginPath()
+    p.rect(0, 0, w, h)
+    c.clipPath(p, stroke=0, fill=0)
+    c.drawImage(picture(POSTER, 5.5), (w - dw) / 2, (h - dh) / 2, dw, dh)
+    c.restoreState()
+    band = 2.0 * inch
+    c.setFillColor(NAVY)
+    c.rect(0, 0, w, band, stroke=0, fill=1)
+    c.setFillColor(ORANGE)
+    c.rect(0, band, w, 0.06 * inch, stroke=0, fill=1)
+    lw = 2.5 * inch
+    lh = lw * 835.0 / 1883.0
+    c.drawImage(picture(LOGO, 2.5), (w - lw) / 2, band - 0.16 * inch - lh, lw, lh,
+                mask="auto")
+    c.setFillColor(CREAM)
+    c.setFont("Helvetica", 7.8)
+    c.drawCentredString(w / 2, 0.58 * inch,
+                        "S.A.V.I.O.R.  ·  Strategic Aerial Vehicle Infiltration "
+                        "Operations Rescue")
+    c.drawCentredString(w / 2, 0.38 * inch, f"© 2026 Iuri Fiedoruk   ·   Version {VERSION}")
 
 
 def inside(c, doc):
     w, h = PAGE
     c.setFillColor(CREAM)
     c.rect(0, 0, w, h, stroke=0, fill=1)
+    band = 0.46 * inch
     c.setFillColor(NAVY)
-    c.rect(0, 0, w, 0.36 * inch, stroke=0, fill=1)
-    c.setFillColor(GOLD)
-    c.setFont("Helvetica-Bold", 7.5)
-    c.drawString(MARGIN, 0.14 * inch, "S.A.V.I.O.R.")
+    c.rect(0, 0, w, band, stroke=0, fill=1)
+    # the game's wordmark, cropped out of the logo art
+    lw = 1.5 * inch
+    lh = lw * ((0.766 - 0.235) * 835.0) / 1883.0
+    c.drawImage(picture(LOGO, 1.5, crop=(0, 0.235, 1, 0.766)),
+                MARGIN, (band - lh) / 2, lw, lh, mask="auto")
     c.setFillColor(CREAM)
-    c.drawRightString(w - MARGIN, 0.14 * inch, str(doc.page))
+    c.setFont("Courier-Bold", 8)
+    c.drawRightString(w - MARGIN, 0.15 * inch, f"{doc.page:02d}")
 
 
 # ----------------------------------------------------------------- content ---
@@ -418,7 +597,13 @@ def story():
                   Paragraph("Starts the game with a score of 000000, three lives "
                             "and five bombs (on the saved level of a saved "
                             "game, it carries on with the lives and score "
-                            "you had when that level began).", CELLT)]],
+                            "you had when that level began).", CELLT)],
+                 [Paragraph("<b>Joystick</b>", CELLT),
+                  Paragraph("On the title screen the joystick does the same "
+                            "without touching the console: <b>stick UP</b> picks "
+                            "the next level (like SELECT), <b>stick DOWN</b> "
+                            "goes back one level, and the <b>red button</b> "
+                            "starts the game (like RESET).", CELLT)]],
                 colWidths=[0.9 * inch, W - 0.9 * inch],
                 style=TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
                                   ("BACKGROUND", (0, 0), (0, -1), HexColor("#efe2bd")),
@@ -433,8 +618,7 @@ def story():
            ("Objects", 9), ("Scoring and levels", 10), ("Saving your game", 11),
            ("Hints from the pros", 12), ("Credits", 13)]
     for t, p in toc:
-        s.append(Paragraph(f"{t} <font color='#6c6c78'>{'.' * (44 - len(t))}</font> {p}",
-                           style("toc", fontSize=9.2, leading=13, spaceAfter=0)))
+        s.append(TocLine(t, p, W))
     s.append(PageBreak())
 
     # ---- mission
@@ -486,6 +670,15 @@ def story():
                     "score 000000, three lives, five bombs. <b>During a game</b>, "
                     "pressing it also returns to the title screen, where you "
                     "can pick a level with SELECT and press RESET again.")]
+    sw.append(("Joystick<br/>on the title", "You do not need the console to choose a level: "
+                    "<b>stick UP</b> moves to the next level, exactly like SELECT, and "
+                    "<b>stick DOWN</b> moves back one level (from level 1 it wraps to the "
+                    "last level, and from the last level UP wraps to 1). The "
+                    "<b>red button</b> starts the game at the level shown, exactly like "
+                    "RESET. Each push counts once, however long you hold it. SELECT and "
+                    "RESET keep working as before. <b>During a game</b> the stick and "
+                    "button only fly and fire; use the console switches to go back to "
+                    "the title."))
     t = Table([[Paragraph(f"<b>{a_}</b>", CELLT), Paragraph(b_, CELLT)] for a_, b_ in sw],
               colWidths=[0.8 * inch, W - 0.8 * inch])
     t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -544,17 +737,16 @@ def story():
 
     # ---- equipment
     s += head("Your equipment", "Jet pack, laser and bombs")
-    s += [entry(player(2.6), "The jet pack",
+    s += [entry(jetpack(3.5), "The jet pack",
                 "Powered by the stick: <b>UP</b>. Its thrust grows the longer you "
                 "hold it and fades gently when you let go. It makes noise, so "
-                "listen: a steady buzz means you are climbing.", art_w=0.7 * inch)]
-    laser = Table([[""]], colWidths=[0.6 * inch], rowHeights=[0.1 * inch])
-    laser.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), tia(0x1E))]))
-    s += [entry(laser, "The helmet laser",
+                "listen: a steady buzz means you are climbing.", art_w=0.66 * inch)]
+    s += [entry(Laser(), "The helmet laser",
                 "Hold the <b>red button</b> to send a short beam the way you "
                 "face. It destroys creatures (<b>+50</b>) and switches off a lamp. "
                 "It is stopped by any wall, and it cannot hurt miners, keys or "
-                "power cells. Keep the button down to fire again and again.")]
+                "power cells. Keep the button down to fire again and again.",
+                art_w=0.72 * inch)]
     s += [entry(sprite("bomb", 4.0), "Bombs",
                 "Press <b>DOWN</b> while standing on the floor to plant a bomb "
                 "(one at a time). After about <b>three seconds</b> it explodes and "
@@ -630,7 +822,7 @@ def story():
 
     # ---- objects
     s += head("Objects", "Things worth finding")
-    s += [entry(sprite("miner", 4.0), "The miner",
+    s += [entry(sprite("miner", 5.0), "The miner",
                 "Touch him to rescue him. If other miners remain you hear a short "
                 "blip and score <b>500</b>; after the last one the level ends "
                 "with the rescue bonus. Check the purple squares on screen to "
@@ -694,8 +886,8 @@ def story():
               "Lose your last life and it is <b>game over</b>: you return to the "
               "title screen and the score starts again. Clear the twentieth "
               "level and you have won; the game returns to the title too. "
-              "Press <b>RESET</b> to start a new game, or <b>SELECT</b> then "
-              "<b>RESET</b> to start from another level.", BODY)]
+              "Press <b>RESET</b> (or the red button) to start a new game, or "
+              "pick another level with <b>SELECT</b> or the stick first.", BODY)]
     s.append(PageBreak())
 
     # ---- saving
@@ -719,9 +911,9 @@ def story():
         "lives and your score. You will notice a very short pause then: the "
         "game is writing to the key.",
         "Next time you switch on, the title screen opens on the <b>saved level</b>. "
-        "Press <b>RESET</b> and you carry on with the lives and the score you "
-        "had when that level began.",
-        "If you pick another level with <b>SELECT</b>, you start that level "
+        "Press <b>RESET</b> (or the red button) and you carry on with the lives "
+        "and the score you had when that level began.",
+        "If you pick another level with <b>SELECT</b> (or the stick), you start that level "
         "from scratch: 000000, three lives, five bombs.",
         "A <b>game over</b> erases the saved game, but never the high score.",
         "Without a SaveKey the game plays exactly the same, it just remembers "
@@ -799,8 +991,10 @@ def build():
                   topPadding=0, bottomPadding=0)
     doc.addPageTemplates([
         PageTemplate(id="cover", frames=[frame], onPage=cover),
-        PageTemplate(id="inside", frames=[frame], onPage=inside)])
-    flow = [NextPageTemplate("inside"), PageBreak()] + story()
+        PageTemplate(id="inside", frames=[frame], onPage=inside),
+        PageTemplate(id="backcover", frames=[frame], onPage=backcover)])
+    flow = ([NextPageTemplate("inside"), PageBreak()] + story()
+            + [NextPageTemplate("backcover"), PageBreak(), Spacer(1, 1)])
     doc.build(flow)
     print("manual ->", OUT)
 
