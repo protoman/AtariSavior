@@ -155,15 +155,18 @@ minx, maxx = 255, 0
 was_zero = False
 prev_dt = R("DropTarget")
 bombs_min = 9
+last = None
 for _ in range(1600):
     nextframe()
     dt = R("DropTarget")
     if prev_dt == 0 and dt != 0 and dt != 0xFF:
         seen["loop"] += 1
+        check(last == (39, 0, 0), f"loop restart from X/Y/dir {last}, want (39, 0, 0)")
     prev_dt = dt
     if dt != 0:
         continue
     x, y = R("RoomX"), R("RoomY")
+    last = (x, y, R("PlayerDir"))
     gnd = R("BombPacked") >> 7
     minx, maxx = min(minx, x), max(maxx, x)
     if R("PlayerBombs") & 7 < 5:
@@ -182,6 +185,9 @@ for k in ("bomb", "laser", "fly", "walk", "left"):
     check(seen[k], f"demo never showed: {k}")
 check(maxx - minx >= 25, f"demo moved only {maxx - minx} px")
 check(seen["loop"] >= 1, "demo script did not loop (no second drop-in)")
+
+# seamless loop: the frame before each restart the player is where the drop-in starts
+
 
 # --- 3. exit on a stick press, FIRE held through it -----------------------------
 for _ in range(20):

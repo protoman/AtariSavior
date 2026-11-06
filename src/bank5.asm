@@ -263,7 +263,7 @@ DHpend:
 ; (drops the bomb on its press edge, standing only), $10 up (jet), $01 fire (laser).
 ; Stage 1 (the pocket under the start): fall in, walk to both walls, drop a bomb,
 ; fly out over it (the laser fires while flying), hover until it has gone off,
-; fall back. The first step covers the drop-in (~72 frames) and the free fall.
+; then glide back to the drop-in spot (X=39, Y=0, facing right) for a seamless loop. The first step covers the drop-in (~72 frames) and the free fall.
 DemoScript:
     .byte 140, $00             ; drop-in + fall to the floor
     .byte  12, $80             ; walk right to the wall
@@ -278,8 +278,9 @@ DemoScript:
     .byte  35, $90             ; up + right
     .byte  40, $11             ; up + FIRE
     .byte  30, $10
-    .byte  40, $00             ; let go: float, then fall
-    .byte  90, $00
+    .byte  39, $50             ; up + left along the ceiling ...
+    .byte   6, $90             ; ... and back right: ends at X=39, facing right, Y=0 --
+    .byte  10, $10             ;   exactly where the next drop-in starts (a seamless loop)
     .byte   0                  ; end: restart the demo
 
     .ds $FBD0 - *, 0
