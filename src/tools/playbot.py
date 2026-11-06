@@ -570,8 +570,10 @@ class Pilot:
         recs = room.get("enemies") or []
         mask = c.ram[0xBA & 0x7F]
         for i in range(min(3, c.r("EnemyCount"), len(recs))):
-            if mask >> i & 1 or recs[i]["type"] in (3, 7):
-                continue                          # dead / tentacle / raft
+            if mask >> i & 1 or recs[i]["type"] not in (0, 1, 2, 4):
+                continue                          # dead, or not killable: only spider / bat /
+                                                  # snake / moth are (a power cell, key, lamp,
+                                                  # extra miner, tentacle and raft are not)
             ex = c.ram[(c.lab["EnemyRamX"] & 0x7F) + i]
             ey = c.ram[(c.lab["EnemyRamY"] & 0x7F) + i]
             if abs(ey - y) <= 18 and 0 < (ex - x) * dx <= 72:
