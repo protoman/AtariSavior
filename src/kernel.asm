@@ -3984,6 +3984,7 @@ DropStep:
 ; selected level number (digits band) and the credits; the theme plays here.
 ; No gravity/enemies/sound beyond the music (frame is title-owned; timer
 ; frozen). SELECT cycles Level, RESET starts the game at the selected level.
+; Joystick (2026-11): UP = SELECT, DOWN = level-1, FIRE = RESET (bank1 TitleSelect).
 ;   SELECT (SWCHB b1, active-low EDGE) → jsr TitleSelect (fill): level+1,
 ;          wrap → 000001, reload room 0 (swallow removed 2026-10-07, 8b —
 ;          the intro exit ate the first press and made #2 read as dead)
@@ -3999,18 +4000,16 @@ TitleWork:
     jsr CallPad_SaveKey        ; stage number <-> high score in the HUD score window
                                ;   (here DropTarget is still $FF: a RESET below
                                ;   zeroes the score; the op does no I2C)
-    ; --- SELECT edge (TitleSelect, fill region) ---
+    ; --- SELECT/UP/DOWN edge + RESET/FIRE edge (TitleSelect, bank1) ---
+    ;     It samples console + joystick, stores the sample in StepsLeft for
+    ;     next frame's edges, and returns A != 0 for a RESET/FIRE start edge,
+    ;     else A = 0 with C = level changed (Z/C survive the pad).
     jsr CallPad_TitleSelect
-    bcc .TWselDone             ; C=0: no edge
+    bne .TWstart
+    bcc .TWrstDone             ; C=0: no edge
     jsr LoadLevel              ; preview + HUD score follow the selected level
-.TWselDone:
-    ; --- RESET edge ---
-    lda StepsLeft
-    and #%00000001
-    beq .TWrstDone
-    lda SWCHB
-    and #%00000001
-    bne .TWrstDone
+    jmp .TWrstDone
+.TWstart:
     lda #0
     sta DropTarget             ; leave title → LoadLevel tail arms real fall
     sta ScoreTh                ; gameplay score starts at 000000
@@ -4022,8 +4021,6 @@ TitleWork:
                                ;   which rebuilds the buffers the op borrows)
     jsr LoadLevel
 .TWrstDone:
-    lda SWCHB
-    sta StepsLeft              ; remember sample for next frame's edges
     ; --- Frame audio: ch0 silenced by UpdateBombSound (BombSnd=0); jet
     ;     channel force-muted here — UpdateJetSound is skipped because
     ;     $FF would read as "falling" and buzz; laser skipped (LaserState
@@ -4086,10 +4083,11 @@ RefreshEnemyY:
     lda DropTarget
     bne .REYRts                 ; not idle: not ours
     lda SWCHB
-    sta StepsLeft               ; latch so TitleWork sees "held" (no re-fire)
     and #%00000011              ; SELECT b1 + RESET b0 (level-triggered,
     cmp #%00000011              ;   same style as the old SELECT-only check)
     beq .REYRts                 ; neither pressed
+    lda #%11101000              ; latch: SELECT/RESET/UP/DOWN/FIRE count as "held" (no
+    sta StepsLeft               ;   re-fire, no instant start if fire is down)
     lda #$FF
     sta DropTarget              ; merged title sentinel ($FF, 2026-10-19)
     lda #0                      ; restart the title theme: bank1's melody state

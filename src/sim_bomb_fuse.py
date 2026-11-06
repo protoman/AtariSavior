@@ -44,7 +44,7 @@ class Mem:
         self.bank = 7                     # F6 power-up bank
         self.swcha = 0xFF                 # nothing pressed
         self.swchb = 0xFF
-        self.inpt4 = 0x40                 # fire released
+        self.inpt4 = 0x80                 # fire released
         self.pc_obj = None                # set to mpu for pc of executing instr
         self.mirror_stomps = []           # stack-page writes onto bomb ZP ($F6/$F7)
     def __getitem__(self, a):

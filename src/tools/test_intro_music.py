@@ -21,7 +21,7 @@ class Mem:
         self.bank = 7
         self.swcha = 0xFF
         self.swchb = 0xFF
-        self.inpt4 = 0x40
+        self.inpt4 = 0x80
 
     def __getitem__(self, a):
         a &= 0xFFFF

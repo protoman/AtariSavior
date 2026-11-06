@@ -3,6 +3,11 @@
 Release versions live in `VERSION` (build.sh stamps them into the ROM, the manual
 cover prints them, `tools/release.py` names the artifacts from them).
 
+## Unreleased
+
+- Title screen can be driven with the joystick: UP / DOWN change the stage (DOWN goes
+  back, both wrap), FIRE starts the game. SELECT and RESET still work as before.
+
 ## 1.0.1
 
 **Level fixes (the stage was regenerated)**

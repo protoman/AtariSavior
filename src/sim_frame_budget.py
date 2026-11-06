@@ -674,6 +674,8 @@ while frame < 1100:
                 mem.ram[0x01] = 132        # RoomY = PLAYER_MAX_Y
                 mem.ram[0x13] = 0x40       # vyLo
                 mem.ram[0x14] = 0x01       # vyHi  (falling)
+        if mem.ram[DROP_IDX] == 0xFF:
+            mem.swcha = 0xFF           # title: UP/DOWN would change the level
 
 # ---- report ----
 print(f'\nmeasured frames: {measured} (landed f{landed_frame})')

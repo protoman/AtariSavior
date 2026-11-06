@@ -54,7 +54,7 @@ class Mem:
         self.bank = 3                     # F6 power-up bank
         self.swcha = 0xFF
         self.swchb = 0xFF
-        self.inpt4 = 0x40
+        self.inpt4 = 0x80
         self.pc_obj = None
 
     def __getitem__(self, a):

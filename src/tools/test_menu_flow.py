@@ -49,7 +49,7 @@ class Mem:
         self.bank = 3                     # F6 power-up bank
         self.swcha = 0xFF
         self.swchb = 0xFF
-        self.inpt4 = 0x40
+        self.inpt4 = 0x80
 
     def __getitem__(self, a):
         a &= 0xFFFF
@@ -115,8 +115,13 @@ def step():
     mpu.step()
 
 
-def next_frame(sw=REL):
-    """Advance to the next frame boundary; arm SWCHB for that frame."""
+UP = 0xEF                  # SWCHA: joystick up pressed
+DOWN = 0xDF                # SWCHA: joystick down pressed
+FIRE = 0x00                # INPT4 D7=0: fire pressed (0x80 = released)
+
+
+def next_frame(sw=REL, ja=0xFF, fire=0x80):
+    """Advance to the next frame boundary; arm SWCHB/SWCHA/INPT4 for it."""
     global frame, title_seen, fd_seen
     guard = 0
     while True:
@@ -127,6 +132,8 @@ def next_frame(sw=REL):
         if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
             frame += 1
             mem.swchb = sw
+            mem.swcha = ja
+            mem.inpt4 = fire
             d = mem.ram[DROPT]
             if d == 0xFF:
                 title_seen = True
@@ -199,6 +206,30 @@ want = [(start + k) % LEVEL_COUNT for k in range(LEVEL_COUNT + 1)]
 check(seen == want, f"SELECT cycle levels {seen}, want {want}")
 check(mem.ram[LEVEL] == start, f"wrap not exact: {mem.ram[LEVEL]} != {start}")
 
+# ---- 3b. joystick UP/DOWN = SELECT / reverse SELECT ---------------------
+lvl0 = mem.ram[LEVEL]
+for _ in range(3):           # UP held 3 frames -> exactly one edge
+    next_frame(REL, UP)
+run(3)
+check(mem.ram[LEVEL] == (lvl0 + 1) % LEVEL_COUNT,
+      f"UP held 3f must inc Level once: {lvl0} -> {mem.ram[LEVEL]}")
+check(mem.ram[SC_TE] == mem.ram[LEVEL] + 1 and mem.ram[DROPT] == 0xFF,
+      "UP must refresh the title score and stay on the title")
+for _ in range(3):
+    next_frame(REL, DOWN)
+run(3)
+check(mem.ram[LEVEL] == lvl0, f"DOWN must dec Level back to {lvl0}, got {mem.ram[LEVEL]}")
+mem.ram[LEVEL] = 0           # DOWN from the first level wraps to the last
+run(1)
+next_frame(REL, DOWN)
+run(4)
+check(mem.ram[LEVEL] == LEVEL_COUNT - 1,
+      f"DOWN at level 1 must wrap to {LEVEL_COUNT}, got {mem.ram[LEVEL] + 1}")
+check(mem.ram[DROPT] == 0xFF, "DOWN must stay on the title")
+next_frame(REL, UP)         # back to 1 so the rest of the flow is unchanged
+run(4)
+check(mem.ram[LEVEL] == 0, f"UP at the last level must wrap to 1, got {mem.ram[LEVEL] + 1}")
+
 # ---- 4. title RESET -> game (score zeroed, drop-in lands) ---------------
 run(4)
 next_frame(RST)
@@ -259,6 +290,33 @@ for _ in range(400):
         break
 check(mem.ram[DROPT] == 0,
       f"second game start never landed, DROPT=${mem.ram[DROPT]:02X}")
+
+# ---- 7. FIRE on the title starts the game like RESET ---------------------
+run(5)
+next_frame(SEL)
+run(4)
+check(mem.ram[DROPT] == 0xFF, "SELECT -> title before the FIRE start")
+lvl_f = mem.ram[LEVEL]
+next_frame(REL, 0xFF, FIRE)
+run(2, REL)
+check(score() == 0 and mem.ram[DROPT] not in (0xFF, 0xFD),
+      f"title FIRE must start the game, DROPT=${mem.ram[DROPT]:02X}")
+check(mem.ram[LEVEL] == lvl_f, "FIRE must keep the selected level")
+for _ in range(400):
+    next_frame(REL)
+    if mem.ram[DROPT] == 0:
+        break
+check(mem.ram[DROPT] == 0, "FIRE start never landed")
+# SELECT pressed while FIRE is held returns to the title without an instant start
+next_frame(SEL, 0xFF, FIRE)
+for _ in range(4):
+    next_frame(REL, 0xFF, FIRE)
+check(mem.ram[DROPT] == 0xFF,
+      f"title must wait for a fresh FIRE press, DROPT=${mem.ram[DROPT]:02X}")
+run(2)
+next_frame(REL, 0xFF, FIRE)
+run(2)
+check(mem.ram[DROPT] != 0xFF, "a released-then-pressed FIRE must start")
 
 # ---- global: the retired $FD sentinel never appears ---------------------
 check(title_seen, "merged title $FF never ran")
