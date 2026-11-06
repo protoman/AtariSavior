@@ -129,7 +129,20 @@ min_sp_calls = []
 calls = []                  # dynamic jsr chain: [(jsr_pc, ...)] like sim_bomb_fuse
 
 
+# The blank transition frame (bank5 TransBody, 2026-11) reaches SaveKey/LoadLevel
+# with pushed return addresses instead of a `jsr`, so the jsr chain cannot see
+# it: treat the whole frame, TBgo -> StartFrame, as the LoadLevel chain.
+PC_TBGO = None
+for _l in (SRC / 'bank5.lst').read_text(errors='replace').splitlines():
+    _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.TBgo\s*$', _l)
+    if _m:
+        PC_TBGO = int(_m.group(1), 16)
+in_blank = False
+
+
 def in_loadlevel_chain():
+    if in_blank:
+        return True
     # any active jsr whose target is LoadLevel. Target captured at push time:
     # re-reading mem[pc] later can hit ANOTHER bank (fold/tramp switches
     # $1FF4-$1FF7 mid-chain), giving a bogus operand.
@@ -139,8 +152,13 @@ def in_loadlevel_chain():
 def step():
     global frame, min_sp_game, min_sp_pc, min_sp_frame, min_sp_calls
     global min_sp_all, min_sp_all_pc, min_sp_all_frame
+    global in_blank
     prev_pc = mpu.pc
     op = mem[prev_pc]
+    if mem.bank == 5 and prev_pc == PC_TBGO:
+        in_blank = True
+    elif in_blank and mem.bank == 0 and prev_pc == PC_STARTFRAME:
+        in_blank = False
     mpu.step()
     if op == 0x20:                          # JSR: entered a subroutine
         calls.append((prev_pc, mem[prev_pc + 1] | (mem[prev_pc + 2] << 8)))

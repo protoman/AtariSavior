@@ -1130,8 +1130,18 @@ EnterRoom (bank5 pushes $FC5D). bank3 `ERLoadDone` zeroes `LevelConnSpare`
 (the flag is consumed, and the load scratch must never look pending).
 Guards: `tools/test_room_transition.py`, `sim_frame_budget` (blank frames are
 2 x 272 lines +-1.1; their cycles are kept out of the overscan budget).
-Not covered: LoadLevel in the overscan (death respawn, level advance) is still
-a long frame (3600c+ in heavy rooms) -- same fix would apply.
+Follow-up (same day): the stage-advance tail of TallyWork (SaveKey CHECKPOINT +
+LoadLevel, ~10 lines over) uses the same mechanism: `LevelConnSpare = $C0`
+(b6 = "new stage"); TransBody runs SaveKey op 2 (return pad 3 at $FC61), then
+LoadLevel (return pad 2). The sim never finishes a stage; `test_tally` covers it.
+Bomb blast edge: BombMarkWalls (~920c) shared the fuse-edge frame with the enemy
+kill, the player hit and the noise burst; those three now run at BombTimer == 59
+(next frame), so no-fire explosion frames dropped from 19 over-long cases (60
+level/room starts) to 1 (+2 lines, level 17 room 2). What is LEFT, by design:
+title -> game start and game-over restart (LoadLevel under the title kernel, the
+user-accepted "loading screen"), and `sim_frame_budget`'s fire-held worst case
+(laser + thrust pulses) in a few rooms, a steady load of 2700-3400c, not a spike
+(`SIM_NOFIRE=1` runs the sim with the fire button released).
 
 ## #17 — bombed ball strip vanished but still blocked (2026-10-25, level 7 room 1)
 

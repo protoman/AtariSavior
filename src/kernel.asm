@@ -1319,7 +1319,7 @@ UpdateP0Vertical:
     beq .JetClimb               ; at rest -> ramp
     lda #JET_MAX                ; falling: full thrust this frame
     sta JetPower
-    jmp .Gravity
+    bne .Gravity                ; A = JET_MAX != 0 (was jmp)
 .JetClimb:
     lda JetPower
     cmp #JET_MAX
@@ -1327,7 +1327,7 @@ UpdateP0Vertical:
     clc
     adc #1                      ; +1 EVERY frame (ramp gate removed)
     sta JetPower
-    jmp .Gravity
+    bne .Gravity                ; A = JetPower+1 != 0 (was jmp)
 .JetDecay:                      ; Up NOT held this frame
     lda JetPower
     beq .Gravity                ; 0: idle / normal fall
@@ -1338,7 +1338,7 @@ UpdateP0Vertical:
                                 ;   climb to stop, do NOT float
     lda #$80+54                 ;   $B6 = float flag | 54-frame countdown:
     sta JetPower                ;   ~26f climb-decel + ~28f pinned-Y
-    jmp .Gravity                ;   (user: 1s hover too long ->
+    bne .Gravity                ;   (user: 1s hover too long ->
 .FloatRun:
     dec JetPower                ;   halved to ~0.5s); fall ~0.85s
     lda JetPower                ;   after release. tick: $B6..$81
@@ -1352,7 +1352,7 @@ UpdateP0Vertical:
     lda #0                      ; rise stopped: pin Y for the rest of
     sta vyLo                    ;   the countdown (~1.0s hover)
     sta vyHi
-    jmp .Integrate
+    beq .Integrate           ; A = 0 (was jmp)
 
 ; --- Physics: vy += GRAVITY (gravity), vy -= JetPower (jet thrust). ---
 ;     JetPower b7 = float flag (bugs #31): float frames add gravity
@@ -2075,7 +2075,22 @@ BombTick subroutine
     beq .BTFuse
     ; state 2 — exploding
     dec BombTimer
-    bne .BTDone
+    beq .BTEnd
+    lda BombTimer
+    cmp #59                     ; the frame AFTER the blast edge: enemy kill, player
+    bne .BTDone                 ;   hit and the noise burst (2026-11: they used to
+                                ;   share the edge frame with BombMarkWalls, ~920c,
+                                ;   and pushed that overscan up to 6 lines long)
+    jsr BombEnemyBlast          ; S9: A = 1 kill (bank2, lamp-safe), 0 none
+    beq .BTNoKill
+    lda #$50                    ; +50 per kill — moved out of the pad body
+    jsr CallPad_AddScore        ;   (pads cannot nest; same shape as BMW above)
+.BTNoKill:
+    jsr BombPlayerBlast         ; S5: player ±1 col any Y → life (may ReloadLevel → clears masks)
+    jsr CallPad_BombSndExplode          ; S10: noise burst
+.BTDone:
+    rts
+.BTEnd:
     lda BombPacked              ; clear state bits only (keep mask + DownPrev)
     and #%11111100
     sta BombPacked
@@ -2085,10 +2100,7 @@ BombTick subroutine
 .BTFuse:
     dec BombTimer
     bne .BTDone
-    lda BombPacked              ; 1 → 2
-    and #%11111100
-    ora #%00000010
-    sta BombPacked
+    inc BombPacked              ; state 1 -> 2 (b1:0 = 01 -> 10; no carry into b2)
     lda #60
     sta BombTimer
     jsr CallPad_BombMarkWalls   ; S6.3: set WallMask; A = #walls newly broken
@@ -2100,15 +2112,7 @@ BombTick subroutine
     dex
     bne .BTScore
 .BTNoScore:
-    jsr BombEnemyBlast          ; S9: A = 1 kill (bank2, lamp-safe), 0 none
-    beq .BTNoKill
-    lda #$50                    ; +50 per kill — moved out of the pad body
-    jsr CallPad_AddScore        ;   (pads cannot nest; same shape as BMW above)
-.BTNoKill:
-    jsr BombPlayerBlast         ; S5: player ±1 col any Y → life (may ReloadLevel → clears masks)
-    jsr CallPad_BombSndExplode          ; S10: noise burst
-.BTDone:
-    rts
+    rts                         ; enemy/player/sound follow next frame (timer 59)
 
 ; ------------------------------------------------------------------------------
 ; BombPlayerBlast — on explode, if player col in ±1 col of bomb col (any Y):
@@ -3755,6 +3759,8 @@ CallPad_Transition:
     jmp StartFrame              ; $FC5B: reached after bank5's `sta $1FF4`
 CallPad_TransRet:
     sta $1FF9                   ; $FC5E -> bank5 `jmp TransFinish` at $FC61
+CallPad_TransSaved:
+    sta $1FF9                   ; $FC61 -> bank5 `jmp TransAfterSave` at $FC64
 
 ; ==============================================================================
 ; F6 cross-bank fold pads — MUST match bank1's copies at these addresses.
@@ -4479,13 +4485,15 @@ TallyWork:
     sta DropTarget           ; clear $FE BEFORE LoadLevel — DropArm's new
                              ;   `cmp #$FD / bcs` treats ≥$FD as sentinel
                              ;   pose ($FE must take the real-fall path)
-    lda #2
-    jsr CallPad_SaveKey         ; SaveKey CHECKPOINT: {Level, lives, score} at the
-                                ;   start of the new stage. Past the last stage
-                                ;   (Level == LEVEL_COUNT) the op commits the high
-                                ;   score, erases the save and RESTARTS at the
-                                ;   title - it does not return (was: wrap to 0)
-    jsr LoadLevel
+    ; 2026-11: the SaveKey CHECKPOINT (I2C) and LoadLevel (~3600c) no longer run
+    ; here - together they overran this overscan by ~10 scanlines. LevelConnSpare
+    ; = $C0 (pending + b6 = "new stage") makes the frame END in bank5's blank
+    ; transition frame, which runs SaveKey op 2 (CHECKPOINT: {Level, lives,
+    ; score} at the start of the new stage; past the last stage it commits the
+    ; high score, erases the save and RESTARTS at the title) and then LoadLevel.
+    ; LoadLevel leaves BarLevel/TickCounter alone, so they reset right here.
+    lda #$C0
+    sta LevelConnSpare
     lda #120                    ; reset timer for new level
     sta BarLevel
     lda #TICKS_PER_SEC

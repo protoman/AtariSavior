@@ -54,6 +54,9 @@ TransBody:
     sta VSYNC
     lda #255
     sta TIM64T                  ; 255 * 64c = 214 lines, EnterRoom runs inside
+    lda LevelConnSpare
+    asl                         ; N = b6: new stage (TallyWork), else a room exit
+    bmi .TBlevel
     lda #$FC
     pha
     lda #$5D
@@ -61,6 +64,21 @@ TransBody:
     lda LevelConnSpare
     and #$7F                    ; A = target room
     jmp $FBD0                   ; EnterRoom tramp twin: sta $1FF6, bank2 jmp $F010
+.TBlevel:
+    lda #0
+    sta LevelConnSpare          ; consumed (LoadLevel's chain would zero it too)
+    lda #$FC
+    pha
+    lda #$60
+    pha                         ; SaveKey's rts -> $FC61 (bank0 pad 3)
+    lda #2                      ; SaveKey op 2 = CHECKPOINT (may RESTART the game)
+    jmp $FC08                   ; twin of bank0's CallPad_SaveKey: sta $1FF8, bank4 jmp
+TransAfterSave:
+    lda #$FC
+    pha
+    lda #$5D
+    pha                         ; LoadLevel's final rts (DropArm) -> $FC5E
+    jmp $FC20                   ; twin of bank0's LoadLevel: sta $1FF6, bank2 jmp LoadLevelB2
 TransFinish:
 .TBwait:
     lda INTIM
@@ -77,11 +95,17 @@ TransFinish:
     .ds $FBF8 - *, 0
 ReturnPad:
     sta $1FF4                   ; the every-bank ReturnPad contract (bank0 rts at $FBFB)
+    .ds $FC08 - *, 0
+    sta $1FF8                   ; twin of CallPad_SaveKey (bank4 serves the jmp at $FC0B)
+    .ds $FC20 - *, 0
+    sta $1FF6                   ; twin of LoadLevel (bank2 serves the jmp at $FC23)
     .ds $FC58 - *, 0
     sta $1FF4                   ; bank0 $FC5B = jmp StartFrame
     jmp TransBody               ; $FC5B: fetched after bank0's `sta $1FF9` at $FC58
     .ds $FC61 - *, 0
     jmp TransFinish             ; $FC61: after bank0's second pad at $FC5E
+    .ds $FC64 - *, 0
+    jmp TransAfterSave          ; $FC64: after bank0's third pad at $FC61
 
     .ds $FFFA - *, 0
     .word $F000
