@@ -36,7 +36,7 @@ class Mem:
         self.bank = 7
         self.swcha = 0xFF
         self.swchb = 0xFF
-        self.inpt4 = 0x40
+        self.inpt4 = 0x80
         self.wsync_writes = 0
         self.log_wsync = False
         self.wsync_log = []      # list of (bank, pc) at each WSYNC write

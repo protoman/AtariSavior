@@ -93,32 +93,13 @@ MothYDerive:
     jmp ReturnPad
 
 ; TitleSelect — moved from bank0 (refactor_v4_plan Phase 3.1 canary, 2026-10-16).
-; Pure leaf (no calls); returns C=1 edge (caller runs LoadLevel) / C=0 no-edge.
+; Pure leaf (no calls); returns C=1 edge (caller runs LoadLevel) / C=0 no-edge,
+; A != 0 = RESET/FIRE start edge (flags from A survive the pad).
 ; Entered via CallPad_TitleSelect ($FC4F); tail-exits through ReturnPad
 ; (sta $1FF4/rts), which returns to the bank0 caller with C intact.
 SWCHB       = $0282
 StepsLeft   = $97               ; bank0 per-frame step latch (ZP byte block)
 LEVEL_COUNT = 20                 ; hand copy of kernel LEVEL_COUNT
-TitleSelect:
-    lda StepsLeft
-    and #%00000010
-    beq .TSnoB1
-    lda SWCHB
-    and #%00000010
-    bne .TSnoB1
-    inc Level
-    lda Level
-    cmp #LEVEL_COUNT
-    bne .TSokB1
-    lda #0
-    sta Level
-.TSokB1:
-    sec
-    jmp ReturnPad
-.TSnoB1:
-    clc
-    jmp ReturnPad
-
 ; ==============================================================================
 ; Merged title screen (2026-10-19): banner shown over the CAVE kernel? No —
 ; TitleKernel is the title frame itself: stage PF (rows 0-2) + player + logo
@@ -479,6 +460,60 @@ FooterFont:
     .byte $00, $E8, $A8, $A8, $AA, $EC, $00, $00, $00, $00, $00, $00, $00, $00    ; sprite 4 (x 32-39)
     .byte $00, $EA, $AC, $AC, $AC, $AA, $00, $00, $00, $00, $00, $00, $00, $00    ; sprite 5 (x 40-47)
 
+; TitleSelect lives here (2026-11: sample + joystick grew it past the $F080
+; pin; the $FC52 pad jumps by label).
+TitleSelect:
+    ; Sample = console switches merged with the joystick (title only):
+    ;   b0 = RESET, b1 = SELECT and UP, b2 = DOWN, b4 = FIRE (SWCHB b2/b4 are
+    ;   unused). FIRE has its own bit so RESET still starts with fire held.
+    lda $0280                   ; SWCHA: D4 up, D5 down (0 = pressed)
+    and #%00110000
+    lsr
+    lsr
+    lsr                         ; up -> b1, down -> b2
+    ora #%11111001
+    and SWCHB
+    bit $0C                     ; INPT4 D7 -> N (0 = fire pressed)
+    bmi .TSfire
+    and #%11101111
+.TSfire:
+    tax                         ; X = this frame's sample
+    eor #$FF
+    and StepsLeft               ; edges: released last frame, pressed now
+    stx StepsLeft               ; remember the sample for next frame
+    tay
+    and #%00010001              ; RESET or FIRE edge
+    bne .TSstart
+    tya
+    lsr
+    lsr                         ; C = b1 edge (SELECT or UP)
+    bcc .TSnoUp
+    inc Level
+    lda Level
+    cmp #LEVEL_COUNT
+    bne .TSok
+    lda #0
+    sta Level
+    beq .TSok                   ; always
+.TSnoUp:
+    lsr                         ; C = b2 edge (DOWN)
+    bcc .TSnone
+    dec Level
+    bpl .TSok
+    lda #LEVEL_COUNT-1
+    sta Level
+.TSok:
+    lda #0                      ; A = 0 (no start), C = 1 (level changed)
+    sec
+    jmp ReturnPad
+.TSnone:
+    lda #0
+    clc
+    jmp ReturnPad
+.TSstart:
+    lda #1                      ; A != 0: start the game
+    clc
+    jmp ReturnPad
     .ds $F35A - *, 0            ; title movie art/bands retired
                                  ;   (merged title screen, 2026-10-19)
 

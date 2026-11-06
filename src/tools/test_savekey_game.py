@@ -68,7 +68,7 @@ class Game:
         self.bank = 3
         self.swcha = 0xFF
         self.swchb = REL
-        self.inpt4 = 0x40
+        self.inpt4 = 0x80
         self.mpu = None
         self.base = 0
         self.chip = Eeprom24LC256(clock=lambda: self.mpu.processorCycles,
