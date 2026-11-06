@@ -3,7 +3,9 @@
 Release versions live in `VERSION` (build.sh stamps them into the ROM, the manual
 cover prints them, `tools/release.py` names the artifacts from them).
 
-## Unreleased
+## 1.0.2
+
+**Smoother picture, joystick on the title, demo mode**
 
 - Room changes no longer glitch the picture. Loading the next room used to run in the same
   overscan as the frame that crossed the edge, which in heavy rooms ran up to 11 scanlines
@@ -14,12 +16,11 @@ cover prints them, `tools/release.py` names the artifacts from them).
   the next stage now run in the same short blank frame.
 - A bomb explosion is lighter on the explosion frame: the wall holes still appear at once, but
   the enemy kill, the player hit and the boom now follow one frame later (1/60 s).
-
 - Title screen can be driven with the joystick: UP / DOWN change the stage (DOWN goes
   back, both wrap), FIRE starts the game. SELECT and RESET still work as before.
 - Attract mode is back: leave the title untouched for 5 seconds and the demo plays on stage 1
   (the logo and credits disappear while it runs): the player walks, drops a bomb, flies out
-  over it firing the laser, waits for the blast and falls back, in a loop. Any stick move,
+  over it firing the laser, waits for the blast and ends where it began, in a seamless loop. Any stick move,
   FIRE, SELECT or RESET returns to the title with your stage selection intact (FIRE does not
   start the game on that press). The demo never costs a life and never saves.
 
