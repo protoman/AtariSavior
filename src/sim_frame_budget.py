@@ -151,7 +151,7 @@ class Mem:
         self.bank = 7                     # F6 power-up bank
         self.swcha = 0xFF                 # nothing pressed
         self.swchb = 0xFF
-        self.inpt4 = 0x00                 # fire HELD from boot (laser worst case)
+        self.inpt4 = 0x80 if os.environ.get('SIM_NOFIRE') else 0x00  # fire HELD from boot (laser worst case); SIM_NOFIRE=1 = released
         self.wsync_seen = False
         self.wall = 0                     # beam/CPU wall clock (76c per line)
         self.deadline = {}                # RIOT timer addr -> wall expiry

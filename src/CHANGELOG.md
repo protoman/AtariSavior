@@ -10,6 +10,10 @@ cover prints them, `tools/release.py` names the artifacts from them).
   long (rolling/flickering picture). The exit now only records the target room; the next
   frame is a short blank frame that loads the room, then play resumes. In effect: one
   black frame (1/60 s) at every room change, no more stretched frames.
+- Finishing a stage no longer stretches a frame either: the checkpoint save and the load of
+  the next stage now run in the same short blank frame.
+- A bomb explosion is lighter on the explosion frame: the wall holes still appear at once, but
+  the enemy kill, the player hit and the boom now follow one frame later (1/60 s).
 
 - Title screen can be driven with the joystick: UP / DOWN change the stage (DOWN goes
   back, both wrap), FIRE starts the game. SELECT and RESET still work as before.

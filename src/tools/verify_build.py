@@ -583,6 +583,7 @@ MOVE_PADS = (
 TRANS_PADS = (
     ("CallPad_Transition", 0xFC58, 5, "TransBody"),
     ("CallPad_TransRet", 0xFC5E, 5, "TransFinish"),
+    ("CallPad_TransSaved", 0xFC61, 5, "TransAfterSave"),
 )
 SPLIT_PADS = CORRIDOR_PADS + EXIT_PADS + TAIL_PADS + MOVE_PADS + TRANS_PADS
 
