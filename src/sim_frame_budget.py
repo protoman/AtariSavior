@@ -53,7 +53,10 @@ OVER_BUDGET = 2816 + (OVER_UNITS - 44) * 64        # TIM64T #44 on NTSC
 # 3222 -> 3223 (2026-10-11): the #29 kernel-entry re-anchor (+4 bytes bank0)
 # shifted an abs,Y page-cross in the overscan worst path by +1c — code-motion
 # artifact, not new work; wall-model stays the hard gate.
-OVER_ABSORB = 2839 + (OVER_UNITS - 44) * 64
+# +25 (2026-11): every gameplay frame now ends in the bank5 Transition pad
+# (jmp CallPad_Transition -> TransBody -> sta $1FF4 -> jmp StartFrame) before the
+# StartFrame the sim stops at; the wall model is unchanged.
+OVER_ABSORB = 2864 + (OVER_UNITS - 44) * 64
 GAP_LIMIT = 76             # one scanline = 76 CPU cycles
 MIN_FRAMES = 300
 
@@ -91,6 +94,18 @@ for _need in ('StartFrame', 'Overscan', 'EnterRoom', 'LoadLevel', '.Row',
     if _need not in LABELS:
         sys.exit(f'label {_need} not found in bank0.lst')
 PC_START = LABELS['StartFrame']
+# Blank room-transition frame (2026-11): bank5 TransBody's `.TBgo` entry.
+PC_TBGO = None
+for _l in (SRC / 'bank5.lst').read_text(errors='replace').splitlines():
+    _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.TBgo\s*$', _l)
+    if _m:
+        PC_TBGO = int(_m.group(1), 16)
+if PC_TBGO is None:
+    sys.exit('label .TBgo not found in bank5.lst')
+blank_active = False
+blank_start = 0
+blank_lines = []              # length of each blank transition frame, in lines
+blank_frames = set()          # frames whose StartFrame->StartFrame span holds one blank frame
 PC_OVER = LABELS['Overscan']
 PC_WAITOVER = LABELS['.WaitOverscan']
 PC_ENTER = LABELS['EnterRoom']
@@ -160,7 +175,7 @@ class Mem:
             return 0x80 if self.wall >= self.deadline.get(0x296, 0) else 0
         if a == 0x000C:
             return self.inpt4
-        if 0x1FF4 <= a <= 0x1FF7:
+        if 0x1FF4 <= a <= 0x1FF7 or a == 0x1FF9:
             return 0
         if a <= 0x003F or 0x0100 <= a <= 0x017F:
             return self.tia[a & 0x3F]
@@ -169,7 +184,7 @@ class Mem:
     def __setitem__(self, a, v):
         a &= 0xFFFF
         v &= 0xFF
-        if 0x1FF4 <= a <= 0x1FF7:
+        if 0x1FF4 <= a <= 0x1FF7 or a == 0x1FF9:
             self.bank = a - 0x1FF4
             return
         if a >= 0xF000:
@@ -391,7 +406,7 @@ while frame < 1100:
             vbl_pc[(bk, pc)] = vbl_pc.get((bk, pc), 0) + c
     elif phase == PH_KER:
         gap += c
-    elif phase == PH_OVER:
+    elif phase == PH_OVER and not blank_active:
         over_acc += c
         if not (bk == 0 and pc in (PC_WAITOVER, PC_WAITOVER + 3)):
             over_work += c          # real work: the INTIM poll is idle time
@@ -455,7 +470,15 @@ while frame < 1100:
         _wall_ker = mem.wall
         ker_bounds.setdefault(frame, {})['over'] = mem.wall
         gap = 0
+    elif bk == 5 and pc == PC_TBGO and not blank_active:
+        blank_active = True        # a room change is pending: one blank frame
+        blank_start = mem.wall
     elif bk == 0 and pc == PC_START:
+        _blank_span = 0
+        if blank_active:
+            _blank_span = mem.wall - blank_start
+            blank_lines.append(_blank_span / 76)
+            blank_active = False
         if os.environ.get('SIM_SPD'):       # force EnemySpd (2=x1, 3=x1.5, 4=x2, 5=x2.5)
             mem.ram[0x58] = int(os.environ['SIM_SPD'])
         if frame_armed and phase == PH_OVER:
@@ -610,6 +633,8 @@ while frame < 1100:
         if prev_wall is None:
             prev_wall = mem.wall
         else:
+            if _blank_span:
+                blank_frames.add(frame)
             frame_lines.append((frame, (mem.wall - prev_wall) / 76))
             if os.environ.get('SIM_KERDBG') and frame % 50 == 0:
                 print(f'PROBE f{frame} DT={mem.ram[DROP_IDX]:02X} '
@@ -678,6 +703,8 @@ while frame < 1100:
             mem.swcha = 0xFF           # title: UP/DOWN would change the level
 
 # ---- report ----
+print(f'blank room-transition frames: {len(blank_lines)} lines={[round(x, 2) for x in blank_lines[:8]]}')
+print('frames holding a blank frame (want 2 x '+str(272+EXTRA_LINES)+'):', [(f, round(v, 2)) for f, v in frame_lines if f in blank_frames])
 print(f'\nmeasured frames: {measured} (landed f{landed_frame})')
 print(f'VBL    max {max_vbl}c / {VBL_BUDGET}c  (f{max_vbl_f})')
 print(f'OVER   real work (poll excluded) max {max_over_work[0]}c (f{max_over_work[1]}); incl. room-transition frames {max_over_work_all[0]}c (f{max_over_work_all[1]})')
@@ -710,7 +737,9 @@ _lines_raw = [(f, round(v, 2)) for f, v in frame_lines]
 # stall lines, 2026-10-06) so frame phase stays continuous across the
 # title->game switch — at its OWN 265 total.
 def _tgt(f):
-    return (267.0 if frame_ker.get(f) == 'title' else 272.0) + EXTRA_LINES
+    # a frame that ends in a blank room-transition frame spans TWO frames
+    return ((267.0 if frame_ker.get(f) == 'title' else 272.0) + EXTRA_LINES
+            + ((272.0 + EXTRA_LINES) if f in blank_frames else 0))
 def _wall_bad(f, v):
     if f < 2:
         return False
@@ -740,6 +769,11 @@ def _wall_bad(f, v):
         # 15254 (200.71) with identical game state — a pre-existing timing
         # property, not a code regression. +-1.1 covers both classes
         # (264.0 and 263.99 wall-model rounding edge).
+        return abs(v - t) > 1.1
+    if f in blank_frames or (f - 1) in blank_frames:
+        # frame that ends in a blank room-transition frame (bank5): two
+        # frames' worth of lines (and the frame after it, which re-syncs), with the same +-1 line wall-phase slack as
+        # the death/respawn transition below.
         return abs(v - t) > 1.1
     if f in transition_frames:
         # death/respawn transition: reload chain runs exactly +1 TIM64T

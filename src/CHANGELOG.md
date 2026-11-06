@@ -5,6 +5,12 @@ cover prints them, `tools/release.py` names the artifacts from them).
 
 ## Unreleased
 
+- Room changes no longer glitch the picture. Loading the next room used to run in the same
+  overscan as the frame that crossed the edge, which in heavy rooms ran up to 11 scanlines
+  long (rolling/flickering picture). The exit now only records the target room; the next
+  frame is a short blank frame that loads the room, then play resumes. In effect: one
+  black frame (1/60 s) at every room change, no more stretched frames.
+
 - Title screen can be driven with the joystick: UP / DOWN change the stage (DOWN goes
   back, both wrap), FIRE starts the game. SELECT and RESET still work as before.
 

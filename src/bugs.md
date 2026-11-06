@@ -1113,6 +1113,26 @@ constant 272 (level 20 constant 273, cause not looked into), worst poll slack
 NTSC 37-line VBLANK). Room-transition frames can now overrun the 2816c overscan
 by up to ~300c (one longer frame at a room change; the sim exempts them).
 
+**RESOLVED 2026-11 (user report: glitching at every playfield transition).** The
+"~300c" was wrong for heavy rooms: `sim_frame_budget` swept over all levels
+(`SIM_EXIT=down SIM_LEVEL=n SIM_ROOM=0`) showed transition frames of 2800-4800c
+against the 2816c overscan, i.e. up to +11 scanlines on 11 of 20 levels (steady
+frames of those rooms already use 2700c; `EnterRoom` adds 1000-2000c).
+Fix = option "blank frame": bank2 `ExitDirB2` no longer enters the room; it
+publishes `LevelConnSpare = room | $80` (the pending flag), moves the player to
+the opposite edge and returns. bank0 `EndInputCheck` skips the rest of that
+overscan (old room data) and every gameplay frame ends in
+`jmp CallPad_Transition` ($FC58, bank5 `TransBody`): not pending -> back via
+bank5's `sta $1FF4` and the `jmp StartFrame` at $FC5B (+22c/frame); pending ->
+one blank 272-line frame (own VSYNC, VBLANK on, EnterRoom under a 255-unit
+timer, then `TF_LINES` WSYNC lines), re-entering the pad through the rts of
+EnterRoom (bank5 pushes $FC5D). bank3 `ERLoadDone` zeroes `LevelConnSpare`
+(the flag is consumed, and the load scratch must never look pending).
+Guards: `tools/test_room_transition.py`, `sim_frame_budget` (blank frames are
+2 x 272 lines +-1.1; their cycles are kept out of the overscan budget).
+Not covered: LoadLevel in the overscan (death respawn, level advance) is still
+a long frame (3600c+ in heavy rooms) -- same fix would apply.
+
 ## #17 — bombed ball strip vanished but still blocked (2026-10-25, level 7 room 1)
 
 Symptom (user): the async ball block in band 1 disappears when bombed, but the
