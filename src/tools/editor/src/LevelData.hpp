@@ -234,6 +234,27 @@ inline int MothForcedDirIn(const ModelData& m, float y, int col) {
     return 0;
 }
 
+// A spider's 24 px sweep needs a free vertical corridor on at least ONE side: when its
+// 8 px column meets a wall both above and below, it bobs through rock either way
+// (user report 2026-11-06, level 20 room 3).
+inline bool SpiderSweepFreeIn(const ModelData& m, float y, int col) {
+    const int top = (int)std::lround(y * 12.0f);
+    const int bandPx = 144 / std::max(1, m.height);
+    const int half = m.width * 2, cols = m.width * 4;
+    auto cellOf = [&](int c) {
+        c = std::max(0, std::min(cols - 1, c));
+        return (c < half ? c : cols - 1 - c) >> 1;
+    };
+    auto blocked = [&](int lo, int hi) {
+        if (lo < 0 || hi > 143) return true;
+        for (int b = lo / bandPx; b <= hi / bandPx && b < m.height; ++b)
+            for (int c : {col, col + 1})
+                if (TileIsWall(m.tiles[b * m.width + cellOf(c)])) return true;
+        return false;
+    };
+    return !blocked(top, top + 24 + 14) || !blocked(top - 24, top + 14);
+}
+
 inline int SpiderForcedDirIn(const ModelData& m, float y, int col) {
     const int top = (int)std::lround(y * 12.0f);
     const int bandPx = 144 / std::max(1, m.height);
