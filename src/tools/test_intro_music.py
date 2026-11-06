@@ -101,6 +101,7 @@ while frame < 1400:
     mpu.step()
     if mem.bank == 0 and mpu.pc == PC_STARTFRAME:
         frame += 1
+        mem.ram[0xDF - 0x80] = 0          # DemoDur: keep the attract-mode idle count at 0
         if mem.ram[I_DROP] == 0xFF:
             intro += 1
             if mem.tia[AUDV0] != 0:

@@ -26,7 +26,10 @@ def section(source: str, start: str, end: str) -> str:
 
 for name in SOURCES:
     source = (SRC / name).read_text()
-    assert "Demo" not in source, f"intro demo code remains in {name}"
+    # (the 2026-11 attract mode lives in bank5 DemoHook; only the retired splash
+    #  demo's names must stay gone)
+    for dead in ("TitleDemo", "DemoPhase", "TitleSequence:"):
+        assert dead not in source, f"intro demo code remains in {name}"
 
 kernel = (SRC / "kernel.asm").read_text()
 bank1 = (SRC / "bank1.asm").read_text()
