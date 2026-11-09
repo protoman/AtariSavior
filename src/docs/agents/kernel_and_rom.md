@@ -1,5 +1,11 @@
 # Kernel and ROM architecture
 
+> **2026-11 update:** gameplay frames no longer run the `.Row`/`.Line` kernel described below:
+> bank0 dispatches to the generated bank6 cave kernel (see `docs/agents/cave_kernel.md`). The
+> bank0 kernel text below is still what the TITLE runs (band 0 + bank1 `TitleBand`). Cycle
+> numbers for the cave loop in this file are the OLD kernel's.
+
+
 _ROM layout, F4 banks, frame timing, zero-page map rules, TIA notes, the cave kernel and its cycle budget._  
 _Split out of `AGENTS.md` (2026-10-27); text unchanged. Index: `AGENTS.md`._
 
