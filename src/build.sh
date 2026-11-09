@@ -98,7 +98,7 @@ python3 "$DIR/tools/cave_kernel_gen.py" --real "$DIR/generated" "$DIR/kernel.asm
 # F4 (32K): banks 4-5 are free windows, bank7 is the power-up bank (F4 reads
 # its reset vector from the LAST bank).
 for b in 4 5 6 7; do
-    dasm "bank$b.asm" -f3 -o"bank$b.bin" -l"bank$b.lst"
+    dasm "bank$b.asm" -f3 -Igenerated -o"bank$b.bin" -l"bank$b.lst"
     echo "  bank$b: OK"
 done
 
