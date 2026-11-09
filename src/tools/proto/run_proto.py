@@ -26,7 +26,7 @@ DOOR = None
 
 
 def build(outdir, overscan):
-    subprocess.check_call([sys.executable, str(HERE / "gen_kernel.py"), str(outdir)])
+    subprocess.check_call([sys.executable, str(HERE.parent / "cave_kernel_gen.py"), str(outdir)])
     (outdir / "main.asm").write_text((HERE / "main.asm").read_text())
     r = subprocess.run(["dasm", "main.asm", "-f3", "-oproto.bin", "-lproto.lst",
                         "-sproto.sym", f"-DOVERSCAN={overscan}"], cwd=outdir,
@@ -189,7 +189,7 @@ def main():
         con.ram[(sym["BandTab"] + k) & 0x7F] = 0
     for _ in range(3):
         con.tia_frame()
-    import gen_kernel as G0_
+    import cave_kernel_gen as G0_
     for n, v in (("P0Top", 30), ("P1Top", 60), ("P0GHi", 0xFA), ("P0CHi", 0xFB), ("P1GHi", 0xFC),
                  ("P1CHi", 0xFE), ("P0Kb", G0_.PAD + G0_.H0), ("P1Kb", G0_.PAD + G0_.H1)):
         poke(con, n, v)
@@ -208,7 +208,7 @@ def main():
     bad = []
     tops = list(range(-25, 151, a.step))
     combos = [("A", "D0"), ("B", "D1"), ("A", "D2")]
-    import gen_kernel as G
+    import cave_kernel_gen as G
     P0 = {"A": (0xFA, 0xFB, G.PAD + G.H0 + G.BASE_P0["A"]),
           "B": (0xFA, 0xFB, G.PAD + G.H0 + G.BASE_P0["B"])}
     P1 = {"D0": (0xFC, 0xFE, G.PAD + G.H1 + G.BASE_P1["D0"]),

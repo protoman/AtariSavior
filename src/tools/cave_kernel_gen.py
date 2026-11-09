@@ -260,7 +260,7 @@ def kernel():
     return "".join(out)
 
 
-def prologue():
+def prologue(hi=True):
     """VBL code: initial pointers (u=0), NextS for the update line u=UPD, E for the first
     prep (u=UPD+36), line-0 prime, band colour."""
     def ins(lst):
@@ -273,9 +273,10 @@ def prologue():
     # u = 0
     s += ins(step_e(H0, 1, "E0") + step_s(f"#{PAD + H0}", "NextC0") + step_s("P0Kb", "NextS0"))
     s += ins(step_e(H1, 0, "E1") + step_s("P1Kb", "NextS1"))
-    s += ins(["lda NextC0", "sta C0", "lda NextS0", "sta G0", "lda NextS1", "sta G1", "sta C1",
-              "lda P0GHi", "sta G0+1", "lda P0CHi", "sta C0+1", "lda P1GHi", "sta G1+1",
-              "lda P1CHi", "sta C1+1"])
+    s += ins(["lda NextC0", "sta C0", "lda NextS0", "sta G0", "lda NextS1", "sta G1", "sta C1"])
+    if hi:
+        s += ins(["lda P0GHi", "sta G0+1", "lda P0CHi", "sta C0+1", "lda P1GHi", "sta G1+1",
+                  "lda P1CHi", "sta C1+1"])
     # u = UPD
     s += sub("E0", UPD) + sub("E1", UPD)
     s += ins(step_e(H0, 1, "E0") + step_s(f"#{PAD + H0}", "NextC0") + step_s("P0Kb", "NextS0"))
@@ -297,6 +298,12 @@ def prologue():
     ldx #0
 """
     return s
+
+
+SMALL_ROM = """NAROM:       .byte 10,10,10,13
+TideMask:    .byte 0,0,0,$FF
+WaterXROM:   .byte $30,$30,$30,0
+"""
 
 
 def tables():
@@ -325,14 +332,159 @@ def tables():
     out += blk("P1G1", 0xFD00, page([(BASE_P1["D2"], p1g["D2"])]))
     out += blk("P1C0", 0xFE00, page([(BASE_P1["D0"], p1c), (BASE_P1["D1"], p1c)]))
     out += blk("P1C1", 0xFF00, page([(BASE_P1["D2"], p1c)])[:0xFA])
-    small = """NAROM:       .byte 10,10,10,13
-TideMask:    .byte 0,0,0,$FF
-WaterXROM:   .byte $30,$30,$30,0
-"""
-    return small + out
+    return SMALL_ROM + out
+
+
+# ---------------------------------------------------------------------------------------
+# Production tables: the padded sprite pages are generated from the game's own art in
+# kernel.asm (PlayerSprite*/PlayerWalk*/PlayerColTable, ObjSprites/ObjColorTab, OBJ_*).
+# ---------------------------------------------------------------------------------------
+import re
+
+# Table pages (each 256 B, abs addresses): code lives in $F000-$F5FF, $FF00 holds the vectors,
+# and page $FC also carries the HUD fold pad at $FC68-$FC6F (its bytes are zero padding here).
+PAGES = {"CaveP0G0": 0xF6, "CaveP0G1": 0xF7, "CaveP1G0": 0xF8, "CaveP1G1": 0xF9,
+         "CaveP1G2": 0xFA, "CaveP1C0": 0xFB, "CaveP0C": 0xFC, "CaveP1C1": 0xFD, "CaveP1C2": 0xFE}
+HUD_PAD = ["$A9", "$01", "$8D", "$F5", "$1F", "$4C", "$40", "$F5"]   # lda #1/sta $1FF5/jmp $F540
+FRAMES = ["PlayerSpriteA", "PlayerSpriteB", "PlayerWalkA", "PlayerWalkB"]
+
+
+def _bytes_after(lines, label, stop):
+    """Tokens of every `.byte` line after `label:` until `stop` matches a line."""
+    i = next(n for n, l in enumerate(lines) if re.match(rf"^{label}:", l))
+    toks = []
+    for l in lines[i + 1:]:
+        if stop(l):
+            break
+        code = l.split(";")[0].strip()
+        if code.startswith(".byte"):
+            toks += [t.strip() for t in code[5:].split(",") if t.strip()]
+    return toks
+
+
+def _num(t):
+    return int(t[1:], 2) if t.startswith("%") else int(t.lstrip("$"), 16) if t.startswith("$") else int(t)
+
+
+def read_art(kernel_asm):
+    lines = Path(kernel_asm).read_text().splitlines()
+    label = re.compile(r"^[A-Za-z_]\w*:")
+    art = {}
+    for f in FRAMES:
+        toks = _bytes_after(lines, f, lambda l: bool(label.match(l)) or l.startswith(".ds"))
+        assert len(toks) == H0, (f, len(toks))
+        art[f] = [_num(t) for t in toks]
+    art["col0"] = _bytes_after(lines, "PlayerColTable", lambda l: bool(label.match(l)) or l.startswith(".ds")
+                               or l.startswith("; UEPrologue"))
+    assert len(art["col0"]) == H0, len(art["col0"])
+    spr = _bytes_after(lines, "ObjSprites", lambda l: l.startswith("; Enemy type") or bool(label.match(l)))
+    art["spr"] = [_num(t) for t in spr]
+    col = _bytes_after(lines, "ObjColorTab", lambda l: l.startswith("; ---") and "FoldIndirect" not in l and False
+                       or l.startswith("; ----------------------------------------------------------"))
+    art["col"] = col
+    consts = {}
+    for l in lines:
+        m = re.match(r"^(OBJ_[A-Z_]+)\s*=\s*(\d+)", l)
+        if m:
+            consts[m.group(1)] = int(m.group(2))
+    art["consts"] = consts
+    return art
+
+
+DESIGNS = ["OBJ_KEY", "OBJ_CELL", "OBJ_MOTH", "OBJ_SPIDER", "OBJ_LAMP", "OBJ_TENTACLE", "OBJ_BAT",
+           "OBJ_SNAKE", "OBJ_MINER", "OBJ_BOMB", "OBJ_RAFT", "OBJ_LAMP_R"]
+DESIGN_ROWS = {"OBJ_KEY": 12, "OBJ_CELL": 4, "OBJ_MOTH": 14, "OBJ_SPIDER": 15, "OBJ_LAMP": 10,
+               "OBJ_TENTACLE": 14, "OBJ_BAT": 10, "OBJ_SNAKE": 6, "OBJ_MINER": 16, "OBJ_BOMB": 8,
+               "OBJ_RAFT": 2, "OBJ_LAMP_R": 10}
+P1_STRIDE = PAD + H1 + 1
+
+
+def real_tables(kernel_asm):
+    art = read_art(kernel_asm)
+    c = art["consts"]
+    offs = [c[d] for d in DESIGNS]
+    assert sum(DESIGN_ROWS.values()) == len(art["spr"]) == len(art["col"]), (
+        sum(DESIGN_ROWS.values()), len(art["spr"]), len(art["col"]))
+    # every design must start where the packed table says it does
+    run = 0
+    for d in DESIGNS:
+        pass
+    order = sorted(DESIGNS, key=lambda d: c[d])
+    run = 0
+    for d in order:
+        assert c[d] == run, (d, c[d], run)
+        run += DESIGN_ROWS[d]
+    designs = order                      # already sorted by offset == table order
+
+    def page_text(name, entries):
+        out = [f"    ORG ${PAGES[name]:02X}00\n{name}:\n"]
+        for i in range(0, 256, 16):
+            out.append("    .byte " + ",".join(entries[i:i + 16]) + "\n")
+        return "".join(out)
+
+    pages = []
+    # P0 gfx: frames 0,1,2 on page 0 (bases 0,60,120), frame 3 on page 1
+    p0g = [["0"] * 256, ["0"] * 256]
+    frame_loc = []
+    for fi, f in enumerate(FRAMES):
+        pg, slot = (0, fi) if fi < 3 else (1, 0)
+        base = (PAD + H0 + 1) * slot
+        for r, v in enumerate(art[f]):
+            p0g[pg][base + PAD + r] = f"${v:02X}"
+        frame_loc.append((PAGES[f"CaveP0G{pg}"], PAD + H0 + base))
+    p0c = ["0"] * 256
+    for r, t in enumerate(art["col0"]):
+        p0c[PAD + r + 1] = t
+    p1g = [["0"] * 256 for _ in range(3)]
+    p1c = [["0"] * 256 for _ in range(3)]
+    design_loc = []
+    run = 0
+    for i, d in enumerate(designs):
+        pg, slot = divmod(i, 4)
+        base = P1_STRIDE * slot
+        h = DESIGN_ROWS[d]
+        for r in range(h):
+            g = art["spr"][run + r]
+            col = art["col"][run + r]
+            p1g[pg][base + PAD + r] = f"${g:02X}"
+            p1c[pg][base + PAD + r] = col
+            assert g == 0 or col not in ("NC_00", "0", "$00"), (d, r)
+        run += h
+        design_loc.append((PAGES[f"CaveP1G{pg}"], PAGES[f"CaveP1C{pg}"], PAD + H1 + base))
+    for k, v in enumerate(HUD_PAD):
+        assert p0c[0x68 + k] == "0"
+        p0c[0x68 + k] = v
+    pg_data = {"CaveP0G0": p0g[0], "CaveP0G1": p0g[1], "CaveP0C": p0c}
+    for pg in range(3):
+        pg_data[f"CaveP1G{pg}"] = p1g[pg]
+        pg_data[f"CaveP1C{pg}"] = p1c[pg]
+    txt = "".join(page_text(n, pg_data[n]) for n in sorted(PAGES, key=lambda n: PAGES[n]))
+    equs = f"""; generated by tools/cave_kernel_gen.py --real: do not edit
+CAVE_PAD     = {PAD}
+CAVE_H0      = {H0}
+CAVE_H1      = {H1}
+CAVE_P0CHI   = ${PAGES['CaveP0C']:02X}
+CAVE_NDESIGN = {len(designs)}
+CaveDesignOff:  .byte {",".join(str(c[d]) for d in designs)}
+CaveDesignGHi:  .byte {",".join(f"${g:02X}" for g, _, _ in design_loc)}
+CaveDesignCHi:  .byte {",".join(f"${cc:02X}" for _, cc, _ in design_loc)}
+CaveDesignKb:   .byte {",".join(str(k) for _, _, k in design_loc)}
+CaveFrameGHi:   .byte {",".join(f"${g:02X}" for g, _ in frame_loc)}
+CaveFrameKb:    .byte {",".join(str(k) for _, k in frame_loc)}
+{SMALL_ROM}"""
+    return txt, equs
 
 
 def main():
+    if sys.argv[1] == "--real":
+        out = Path(sys.argv[2])
+        out.mkdir(parents=True, exist_ok=True)
+        tab, equ = real_tables(sys.argv[3])
+        (out / "cave_tables.inc").write_text(tab)
+        (out / "cave_luts.inc").write_text(equ)
+        (out / "cave_kernel.inc").write_text(kernel())
+        (out / "cave_prologue.inc").write_text(prologue(hi=False))
+        return
     out = Path(sys.argv[1])
     out.mkdir(parents=True, exist_ok=True)
     (out / "kernel_gen.inc").write_text(kernel())

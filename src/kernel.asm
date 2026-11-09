@@ -805,6 +805,17 @@ VBLTimer:                       ; sim: VBL work window starts here (TIM64T)
     ; the contract `tools/test_vdel_cave.py` guards. HERO clears both bits at
     ; cave entry and uses VDEL only for its HUD text, so this is the one place
     ; we deliberately differ (measured, not guessed).
+    ; --- Gameplay runs the bank6 cave kernel (tools/cave_kernel_gen.py: one band
+    ; code run 4x, branch-free sprite fetch, no dead lines at the band changes).
+    ; The title keeps THIS bank's kernel for its band 0 (+ bank1's TitleBand).
+    ; `sta $1FFA` selects bank6; the next fetch (the byte after the sta) comes from
+    ; bank6 = `jmp Kernel6Entry`; the title branch lands on that same byte in bank0.
+    lda DropTarget
+    cmp #$FF
+    beq .TitleKernel
+GoKernel6:
+    sta $1FFA
+.TitleKernel:
     lda #1
     sta VDELP0
     lda #0
@@ -950,17 +961,10 @@ Slot1Keep:
     ; first body line (66max+3LC[+3jmp]+3WSYNC = 75 rows0/1, 72 row2).
     ; LineCount is not read until the line's `dec` tail — the early store
     ; was never required; keep the store strictly between WSYNC and .Line.
-    cpx #TILE_ROWS-1
-    beq .RowLinesTide        ; bottom band: tide count (24+off) from CollisionX
-    ; other bands: fixed LINES_PER_TILE bodies (36 since N=4).
+    ; The title only ever runs band 0 through here (gameplay: the bank6 kernel), so the
+    ; bottom-band tide count that used to follow is gone.
     lda #LINES_PER_TILE
-    ; --- Sync to next scanline (rows 0/1) ---
-    sta WSYNC
-    sta LineCount
-    jmp CaveLine
-.RowLinesTide:
-    lda CollisionX           ; 24..27 — VBL tide calc (see VBL comment)
-    ; --- Sync to next scanline (row 2; falls straight into .Line) ---
+    ; --- Sync to next scanline ---
     sta WSYNC
     sta LineCount
 
@@ -1107,28 +1111,10 @@ CaveLine:
     lda (Grp0Ptr),Y             ; 5c — art row 0
     sta GRP0
     jmp .Grp1
+; .WaterRow (the water strip pass) lived here: gameplay now runs the bank6 kernel, and the
+; title never gets past band 0. The advance block below still branches to it (cycle
+; neutral for the title); the target is a trap.
 .WaterRow:
-    ; PF0/1/2 + COLUPF persist from row 2's setup; COLUBK = the VBL .BgStore
-    ; value (Phase 3: .Row no longer re-stores it per band) — the strip
-    ; overlays the same cells, so only the band color + 11 lines are needed.
-    ; Band color: blink (BombPacked state=2) keeps COLUBK; 0 = band off.
-    lda BombPacked
-    and #%00000011
-    cmp #2
-    beq .WRSkip
-    lda RoomBandColor           ; inlined band-color read (was a jsr helper)
-    beq .WRRestore              ; band off (0): keep Temp, no store
-    sta COLUBK
-.WRRestore:
-.WRSkip:
-    lda #LINES_PER_TILE         ; strip bodies = LINES_PER_TILE - CollisionX
-    sec                         ;   N=4: 36 - (24+off) = 12-off, so the band
-    sbc CollisionX              ;   is exactly LINES_PER_TILE bodies tall and the
-                                ;   cave body count is exactly CAVE_LINES (144,
-                                ;   first water body still at 132+off).
-    sta LineCount
-    sta WSYNC
-    jmp CaveLine
 .GrpZero:                       ; entered from .GrpSkip on every skipped
                                 ;   line EXCEPT the one above the sprite
     lda #0                      ; (nothing falls through `jmp .Row`)
@@ -1158,30 +1144,7 @@ CaveLine:
     beq .AfterObj              ; Z=1 from lda #0 — always taken (3c = jmp,
                                ; saves 1B vs jmp: net +1B total = $FC67 fit)
 .AfterRows:
-    ; Phase 3: cave may leave the ball on (band2 BandTab=$ff) — clear ENABL
-    ; at the very start of the HUD line, before bank1's first WSYNC and
-    ; before the ball's x pixel on this line (bank1 has no pre-pin room for
-    ; the clear: +2B tripped .ds $F9C0).
-    lda #0
-    sta ENABL
-    sta ENAM1                    ; D6: end M1 whole-cave latch (HERO writes
-                                 ; the ball latch twice per frame — same
-                                 ; discipline; bank1 HUD has no room for it)
-    ; Bomb save/restore deleted (S3.0b): BuildColupF writes rows 0-2 only
-    ; (TILE_ROWS=3) — nothing touched $F0-$F2 between the old save and
-    ; restore (window audited: zero writers), so the round trip was a no-op.
-
-; ==============================================================================
-; HUD band: 48 scanlines (144-191)
-; Uses 13+2 sprite technique via bank1 (fold-pad trampoline)
-; ==============================================================================
-
-    ; --- Call bank1 for 13+2 HUD rendering via fold-pad at $FC68 ---
-    ; The fold-pad at $FC68 has identical bytes in bank0 and bank1:
-    ;   $FC68: lda #1 / sta $1FF5 / jmp $F540
-    ; After sta $1FF5, CPU reads next instruction from bank1 at $FC6D.
-    ; Bank1's $FC6D has the same jmp $F540 → seamless bank switch.
-    jmp $FC68                   ; jump to fold-pad (switches to bank1, runs MenuMain)
+    brk                         ; trap: the HUD hand-off moved to the end of the bank6 kernel
     ; Bank1's MenuMain returns to bank0 via: lda #0 / sta $1FF4 / jmp Overscan
 
 ; ==============================================================================

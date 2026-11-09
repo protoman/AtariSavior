@@ -90,8 +90,13 @@ echo "  bank0: OK"
 python3 "$DIR/tools/verify_build.py" --sync-overscan "$DIR"
 dasm bank1.asm -f3 -obank1.bin -lbank1.lst
 echo "  bank1: OK"
-# F4 (32K): banks 4-6 are free windows, bank7 is the power-up bank (F4 reads
-# its reset vector from the LAST bank). No cross-bank literals in them yet.
+# Bank6 = the gameplay cave kernel: its kernel lines and sprite tables are GENERATED
+# (tools/cave_kernel_gen.py, art parsed from kernel.asm) and it needs a few bank0
+# addresses (the dispatch pad, the player frames) from bank0's symbol dump.
+python3 "$DIR/tools/gen_bank6_equs.py" "$DIR"
+python3 "$DIR/tools/cave_kernel_gen.py" --real "$DIR/generated" "$DIR/kernel.asm"
+# F4 (32K): banks 4-5 are free windows, bank7 is the power-up bank (F4 reads
+# its reset vector from the LAST bank).
 for b in 4 5 6 7; do
     dasm "bank$b.asm" -f3 -o"bank$b.bin" -l"bank$b.lst"
     echo "  bank$b: OK"
