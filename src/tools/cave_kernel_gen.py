@@ -79,6 +79,7 @@ def zp_inc():
     out.append(f"CAVE_H1       = {H1}")
     out.append(f"CAVE_NSUM     = {NSUM}")
     out.append("CAVE_LINES    = 144")
+    out.append("CAVE_DEAD_LINES = 8            ; the lines the old kernel spent on band changes: the frame length stays 272")
     out.append(f"BAND_LINES    = {BAND}")
     return "\n".join(out) + "\n"
 

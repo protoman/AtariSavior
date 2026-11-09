@@ -77,4 +77,5 @@ CAVE_H0       = 22
 CAVE_H1       = 16
 CAVE_NSUM     = 20
 CAVE_LINES    = 144
+CAVE_DEAD_LINES = 8            ; the lines the old kernel spent on band changes: the frame length stays 272
 BAND_LINES    = 36

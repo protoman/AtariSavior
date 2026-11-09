@@ -440,40 +440,18 @@ def main() -> None:
             < disp.index("cmp #ENEMY_SNAKE")), \
         "dispatch order must stay tentacle -> moth -> snake"
 
-    # --- water strip: bottom 1/4 of the bottom band, split pass ------------
-    assert ".WaterRow:" in KERNEL, "water strip pass missing"
-    adv = KERNEL.split("Advance to next tile row")[1].split(".AfterRows:")[0]
-    assert "beq .WaterRow" in adv, "row 2 must hand off to .WaterRow"
-    assert "bcs .AfterRows" in adv, \
-        "water pass must exit .AfterRows (X=4 bcs after cpx #TILE_ROWS)"
-    gate = KERNEL.split("Scanlines this pass")[1].split(".Line:")[0]
-    assert "lda CollisionX" in gate, \
-        "row 2 body count must be the tide value 36+off (CollisionX carrier)"
-    # split tail (2026-10-05): rows 0/1 store 48 + WSYNC + `jmp .Line` BEFORE
-    # the tide block; row 2 loads CollisionX, WSYNCs, stores its tide count,
-    # then falls straight into .Line (row1 setup gap 77->74c = the +1
-    # line/frame stall).
-    # A1 gap fix (2026-10-05): `sta LineCount` sits AFTER `sta WSYNC` in
-    # both paths — -3c from the setup-gap window (A1's `sta Temp` in .Row
-    # pushed gaps to 77/79 = +2 lines/frame), +3c to the first body line.
-    # Moving either store back before its WSYNC re-opens the stall.
-    assert gate.index(".RowLinesTide:") > gate.index("jmp CaveLine"), \
-        "split tail: tide block must come after the fixed-band WSYNC jmp"
-    # strip comments first — the A1 explanation above quotes both mnemonics
-    gcode = "\n".join(l.split(";")[0] for l in gate.splitlines())
-    assert gcode.index("sta LineCount") > gcode.index("sta WSYNC"), \
-        "LineCount store must follow WSYNC (setup-gap A1 fix)"
-    assert "sta LineCount" in gcode, \
-        "the bottom band must store LineCount between its WSYNC and the loop"
-    wr = KERNEL.split(".WaterRow:")[1].split(".GrpZero:")[0]
-    assert re.search(r"lda\s+#LINES_PER_TILE\b", wr) and \
-        "sbc CollisionX" in wr, \
-        ("strip pass: setup line + (LINES_PER_TILE-(24+off)) bodies = "
-         "12-off strip (N=4)")
-    assert "lda RoomBandColor" in wr and "sta COLUBK" in wr, \
-        "strip must paint the band color (blink-off path, inlined read)"
-    assert wr.rstrip().endswith("jmp CaveLine"), \
-        "strip must continue into the shared .Line loop"
+    # --- water strip: the bottom 1/4 of the bottom band ------------------------
+    # 2026-11: the gameplay kernel is the generated bank6 kernel (tools/cave_kernel_gen.py);
+    # the strip is one COLUBK store on the line 132+off (tools/test_cave_kernel.py measures
+    # the line for every tide). Pin the structure here: tide count from the CollisionX
+    # carrier, band colour from RoomBandColor, dead-address store when the strip is off.
+    gen = (ROOT / "generated" / "cave_kernel.inc").read_text(encoding="utf-8")
+    assert "sta COLUBK,X" in gen and "lda RoomBandColor" in gen, \
+        "the bank6 kernel must paint the water strip with RoomBandColor"
+    assert "and CollisionX" in gen, \
+        "the bottom band's line count must be the tide value (CollisionX carrier)"
+    assert "WaterXROM" in gen and "ora WaterOff" in gen, \
+        "the strip store must be redirectable to a dead TIA address (blink / band off)"
     # death check + respawn follow the strip (bottom_band_plan rules 2/4)
     cbt = KERNEL.split("CheckBandTouch:")[1].split(".CBTdone:")[0]
     assert "cmp #115" in cbt, "band touch origin must be RoomY >= 115"

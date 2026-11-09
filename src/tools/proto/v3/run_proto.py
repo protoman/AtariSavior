@@ -15,8 +15,8 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent))
-sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent.parent))     # tools/ (tia_render)
+sys.path.insert(0, str(HERE))                    # this directory's generator wins
 from py65.devices.mpu6502 import MPU  # noqa: E402
 
 import tia_render as T  # noqa: E402
@@ -26,7 +26,7 @@ DOOR = None
 
 
 def build(outdir, overscan):
-    subprocess.check_call([sys.executable, str(HERE.parent / "cave_kernel_gen.py"), str(outdir)])
+    subprocess.check_call([sys.executable, str(HERE / "cave_kernel_gen.py"), str(outdir)])
     (outdir / "main.asm").write_text((HERE / "main.asm").read_text())
     r = subprocess.run(["dasm", "main.asm", "-f3", "-oproto.bin", "-lproto.lst",
                         "-sproto.sym", f"-DOVERSCAN={overscan}"], cwd=outdir,
