@@ -16,11 +16,13 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE))
 from py65.devices.mpu6502 import MPU  # noqa: E402
 
 import tia_render as T  # noqa: E402
 
 H0, H1 = 22, 16
+DOOR = None
 
 
 def build(outdir, overscan):
@@ -132,6 +134,30 @@ def shown(con, by, first, last, k0):
     return seen0, seen1
 
 
+def colours(by, k0, n_lines=144):
+    """{line: (COLUP0 write, COLUP1 write)} of the last write on each kernel line."""
+    out = {}
+    for n in range(n_lines):
+        c0 = [v for t, r, v in by.get(k0 + n, []) if r == T.COLUP0]
+        c1 = [v for t, r, v in by.get(k0 + n, []) if r == T.COLUP1]
+        out[n] = (c0[-1] if c0 else None, c1[-1] if c1 else None)
+    return out
+
+
+def pf_phases(by, k0):
+    """cycles of the playfield stores on every band's first two lines"""
+    bad = []
+    lim = {T.PF0: (29, 70), T.PF1: (39, 59), T.COLUPF: (49, 60)}
+    for b in range(4):
+        for t, r, v in by.get(k0 + 36 * b, []):
+            if r in lim and not lim[r][0] <= t <= lim[r][1]:
+                bad.append((b, r, t))
+        pf2 = [t for t, r, v in by.get(k0 + 36 * b + 1, []) if r == T.PF2]
+        if not pf2 or not pf2[0] <= 38:
+            bad.append((b, "PF2", pf2))
+    return bad
+
+
 def expect(top, h, frame, n_lines=144):
     return {n: (frame, n - top) for n in range(n_lines) if 0 <= n - top < h}
 
@@ -145,6 +171,7 @@ def main():
     overscan = 77
     rom, sym = build(out, overscan)
     con = make(rom, sym)
+    con.tia_frame()                          # the reset code clears the zero page: poke after it
     for n, v in (("PF0B", 0xF0), ("PF1B", 0xAA), ("PF2B", 0x55), ("CPFB", 0x4A)):
         for k in range(4):
             con.ram[(sym[n] + k) & 0x7F] = [0xF0, 0x0F, 0xFF, 0x00][k] if n == "PF0B" else \
@@ -153,6 +180,10 @@ def main():
     poke(con, "P0X", 40)
     poke(con, "P1X", 90)
     poke(con, "LaserState", 0)
+    poke(con, "DoorAnd", 0xFF)
+    poke(con, "DoorOr", 0)
+    for k in range(4):
+        con.ram[(sym["BandTab"] + k) & 0x7F] = 0
     for _ in range(3):
         con.tia_frame()
     # frame length
@@ -168,25 +199,52 @@ def main():
           "lines without WSYNC:", [n for n, v in ws.items() if v is None][:5])
     bad = []
     tops = list(range(-25, 151, a.step))
+    combos = [("A", "D0"), ("B", "D1"), ("A", "D2")]
+    import gen_kernel as G
+    P0 = {"A": (0xFA, 0xFB, G.BASE_P0["A"]), "B": (0xFA, 0xFB, G.BASE_P0["B"])}
+    P1 = {"D0": (0xFC, 0xFE, G.BASE_P1["D0"]), "D1": (0xFC, 0xFE, G.BASE_P1["D1"]),
+          "D2": (0xFD, 0xFF, G.BASE_P1["D2"])}
     for i, t0 in enumerate(tops):
-        for fb0, fb1 in ((0, 0), (59, 53)):
+        for f0, f1 in combos:
             t1 = ((t0 * 3 + 7) % 170) - 20
             poke(con, "P0Top", t0)
             poke(con, "P1Top", t1)
-            poke(con, "P0Base", fb0)
-            poke(con, "P1Base", fb1)
+            poke(con, "P0GHi", P0[f0][0])
+            poke(con, "P0CHi", P0[f0][1])
+            poke(con, "P0Base", P0[f0][2])
+            poke(con, "P1GHi", P1[f1][0])
+            poke(con, "P1CHi", P1[f1][1])
+            poke(con, "P1Base", P1[f1][2])
             con.tia_frame()
             log = con.tia_frame()
             by, first, last, k0 = frame_info(con, log)
             s0, s1 = shown(con, by, first, last, k0)
-            e0 = expect(t0, H0, 1 if fb0 else 0)
-            e1 = expect(t1, H1, 1 if fb1 else 0)
+            col = colours(by, k0)
+            for n, (c0, c1) in col.items():
+                r0 = n - t0
+                want0 = 0x40 + 2 * r0 if 0 <= r0 < H0 else None
+                if want0 is not None and c0 != want0:
+                    bad.append(("COLUP0", t0, f0, (n, c0, want0)))
+            for n in range(143):                 # line 143 feeds the HUD, not a cave row
+                # COLUP1 written on line n belongs to the row shown on line n+1 (like GRP1);
+                # BandCol (latched on the last line of a band) otherwise
+                nxt = s1.get(n + 1)
+                band = min(3, (n + 1) // 36) if n % 36 == 35 else n // 36
+                bc = [0x44, 0x66, 0x88, 0xAA][band] if DOOR is None else DOOR
+                want = (0x20 + 2 * nxt[1]) if nxt is not None else bc
+                if col[n][1] != want:
+                    bad.append(("COLUP1", t1, f1, (n, col[n][1], want)))
+            ph = pf_phases(by, k0)
+            if ph:
+                bad.append(("PF phase", t0, f0, ph[:3]))
+            e0 = expect(t0, H0, 1 if f0 == "B" else 0)
+            e1 = expect(t1, H1, 1 if f1 == "D1" else 0)
             for name, s, e in (("P0", s0, e0), ("P1", s1, e1)):
                 s = {n: v for n, v in s.items() if 0 <= n < 144}
                 if s != e:
                     diff = sorted(set(s.items()) ^ set(e.items()))
-                    bad.append((name, t0 if name == "P0" else t1, fb0, diff[:6]))
-    print(f"{len(tops) * 2} frames, sprite pictures that differ from the art: {len(bad)}")
+                    bad.append((name, t0 if name == "P0" else t1, f0 + f1, diff[:6]))
+    print(f"{len(tops) * 3} frames, sprite pictures that differ from the art: {len(bad)}")
     for b in bad[:12]:
         print(" ", b)
     return 1 if bad else 0

@@ -20,6 +20,7 @@ RESP0   = $10
 RESP1   = $11
 GRP0    = $1B
 GRP1    = $1C
+ENABL   = $1F
 ENAM0   = $1D
 HMP0    = $20
 HMP1    = $21
@@ -33,22 +34,33 @@ TIM64T  = $0296
 ; ---- zero page: the harness pokes the inputs ----
 P0Top   = $80       ; kernel line of the player's first row (two's complement)
 P1Top   = $81
-P0Base  = $82       ; frame base index into the P0 tables (0 / 58)
-P1Base  = $83       ; design base index into the P1 tables (0 / 52)
-P0X     = $84
-P1X     = $85
-LaserState = $86
-NextX   = $87
-NextY   = $88
-SavX    = $89
-T0      = $8A
-T1      = $8B
-LineCnt = $8C
-Tmp     = $8D
+P0Base  = $82       ; frame block offset inside its page
+P1Base  = $83
+P0GHi   = $84       ; page of the player gfx / colour block
+P0CHi   = $85
+P1GHi   = $86
+P1CHi   = $87
+P0X     = $88
+P1X     = $89
+LaserState = $8A
+DoorAnd = $8B
+DoorOr  = $8C
+NextS0  = $8D
+NextS1  = $8E
+T       = $8F
+M       = $A8
+BandCol = $A9
+BandColNext = $AA
+Tmp     = $AB
 PF0B    = $90       ; 4 bytes per register: one per band
 PF1B    = $94
 PF2B    = $98
 CPFB    = $9C
+BandTab = $B0
+G0      = $A0       ; zero page pointers (lo = segment offset, hi = page)
+C0      = $A2
+G1      = $A4
+C1      = $A6
 
     ORG $F000
 Reset:
@@ -104,25 +116,7 @@ StartFrame:
     jsr SetX
     sta WSYNC
     sta HMOVE
-    ; band 0 counters: X = P0Base + SMap0[P0Top - 0], Y = P1Base + SMap1[P1Top - 0]
-    ldx P0Top
-    lda SMap0,x
-    clc
-    adc P0Base
-    sta T0
-    ldx P1Top
-    lda SMap1,x
-    clc
-    adc P1Base
-    tay
-    ldx T0
-    ; prime line 0: its row is fetched on the line "before" the kernel
-    lda P0Gfx-1,x
-    sta GRP0
-    lda P1Gfx-1,y
-    sta GRP1                ; latches old0 (VDELP0)
-    lda P1Col-1,y
-    sta COLUP1
+    include "prologue_gen.inc"
 
 .wait:
     lda INTIM
