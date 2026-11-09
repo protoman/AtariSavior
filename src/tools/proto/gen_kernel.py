@@ -26,7 +26,8 @@ H0, H1 = 22, 16
 BAND = 36
 UPD = 2                      # line of the band where the pointers are rewritten
 STRIDE1 = PAD + H1 + 1       # object block stride (rows slot 16, +1 spare zero)
-BASE_P0 = {"A": 0, "B": PAD + H0 + 1}
+NSUM = 22                    # loop A + loop B lines of a band (36 - 11 specials - water - B+ - L35)
+BASE_P0 = {"A": 0, "B": PAD + H0 + 1}          # frame block offsets (page = 37 zeros first)
 BASE_P1 = {"D0": 0, "D1": PAD + H1 + 1, "D2": 0}
 
 
@@ -35,7 +36,7 @@ def cycles(ins):
     arg = arg.strip()
     if op in ("sec", "clc", "inx", "iny", "dex", "tax", "nop", "beq", "bne"):
         return 2                          # branches: not-taken cost (taken is set by hand)
-    if op in ("lda", "ldx", "ldy", "sbc", "adc", "and", "cmp", "ora"):
+    if op in ("lda", "ldx", "ldy", "sbc", "adc", "and", "cmp", "cpx", "ora"):
         if arg.startswith("#"):
             return 2
         if arg.endswith("),Y"):
@@ -116,18 +117,6 @@ def core(tl, s, window):
     assert tl.cur - 1 <= 75
 
 
-def prep1(top, h, u, late=0):
-    """late=1 for P0: its fetch on the update line still uses the OLD pointer (y=36), so
-    the old segment must also cover a sprite that starts one line after it."""
-    imm = (h - 1 - u) & 255
-    return ["clc", f"lda {top}", f"adc #{imm}", "sta T", f"cmp #{BAND + late + h}",
-            "lda #0", "sbc #0", "sta M"]
-
-
-def prep2(h, base, nxt):
-    return [f"lda #{PAD + h}", "sec", "sbc T", "and M", "clc", f"adc {base}", f"sta {nxt}"]
-
-
 def seqwin(instrs):
     def w(tl, c):
         for i in instrs:
@@ -150,108 +139,151 @@ def guarded(build):
             f"{tb}    ELSE\n{ta}    ENDIF\n")
 
 
-def line(s, window):
+def line(window, label=None):
     def build(start):
         tl = Timeline(start)
-        core(tl, s, window)
-        return tl.text(), tl.size
+        core(tl, 0, window)
+        return (f"{label}:\n" if label else "") + tl.text(), tl.size
     return guarded(build)
 
 
-def loop_unit(k, last_window):
-    """entry pad -> LoopBody (27 lines) -> L35 (entered at c4 on the not-taken bne)."""
+def loop_unit(name, setup, tail):
+    """entry pad -> loop body -> tail line (entered at c4 on the not-taken bne)."""
     def build(start):
-        tl = Timeline(start)
-        pad = Timeline(start)
-        pad.at(5, "nop") if False else None
-        # pad to c5
         gap = 5 - start
-        txt = ""
-        sz = 0
-        if gap == 5:
-            txt += "    nop\n    bit Tmp\n"
-            sz += 3
-        else:
-            assert gap == 2
-            txt += "    nop\n"
-            sz += 1
+        assert gap in (5, 2)
+        txt = "    nop\n    bit Tmp\n" if gap == 5 else "    nop\n"
+        sz = 3 if gap == 5 else 1
         tl = Timeline(5)
         core(tl, 0, lambda t, c: None)
-        txt += f"LoopBody{k}:\n" + tl.text() + "    dex\n" + f"    bne LoopBody{k}\n"
+        txt += f"{name}:\n" + tl.text() + "    dex\n" + f"    bne {name}\n"
         sz += tl.size + 3
         t2 = Timeline(4)
-        core(t2, -1, last_window)
+        core(t2, -1, tail)
         txt += t2.text()
         sz += t2.size
         return txt, sz
     return guarded(build)
 
 
-def band(k):
-    out = [f"; ---- band {k} ----\n"]
-    u_next = BAND * (k + 1) + UPD
+# -- next-segment arithmetic (A only) ---------------------------------------------------
+# e = Top + (H-1) - u ; in range iff e < BAND + late + H ; S = ((K - e) & mask)
+def step_e(h, late, e):
+    """T = e, M = in-range mask. `e` is the ZP byte holding e for the NEXT update line."""
+    return [f"lda {e}", "sta T", f"cmp #{BAND + late + h}", "lda #0", "sbc #0", "sta M"]
 
-    # L0: PF0 / PF1 / COLUPF (left half old, right half new)
-    def w0(tl, c):
-        tl.at(c, f"lda PF0B+{k}")
-        tl.at(c + 3, "sta PF0")                 # write c32 (>= c29)
-        tl.at(c + 8, f"lda PF1B+{k}")
-        tl.at(c + 11, "sta PF1")                # write c40 (>= c39)
-        tl.at(c + 14, f"lda CPFB+{k}")
-        tl.at(c + 20, "sta COLUPF")             # write c49 (>= c49)
-    out.append(line(0, w0))
-    # L1: PF2 + ball gate
-    out.append(line(0, seqwin([f"lda PF2B+{k}", "sta PF2", f"lda BandTab+{k}", "sta ENABL"])))
-    # L2: segment update
-    out.append(line(0, seqwin(["lda NextS0", "sta G0", "sta C0", "lda NextS1", "sta G1",
-                               "sta C1", "ldy #0"])))
-    if k < 3:
-        out.append(line(0, seqwin(prep1("P0Top", H0, u_next, 1))))
-        out.append(line(0, seqwin(prep2(H0, "P0Base", "NextS0"))))
-        out.append(line(0, seqwin(prep1("P1Top", H1, u_next))))
-        out.append(line(0, seqwin(prep2(H1, "P1Base", "NextS1"))))
-        out.append(line(0, seqwin([f"lda CPFB+{k + 1}", "and DoorAnd", "ora DoorOr",
-                                   "sta BandColNext", "ldx #27"])))
-    else:
-        for _ in range(4):
-            out.append(line(0, seqwin([])))
-        out.append(line(0, seqwin(["ldx #27"])))
-    last = seqwin(["lda BandColNext", "sta BandCol"]) if k < 3 else (lambda t, c: None)
-    out.append(loop_unit(k, last))
-    return "".join(out)
+
+def step_s(k, dst):
+    return [f"lda {k}", "sec", "sbc T", "and M", f"sta {dst}"]
+
+
+def step_dec(e):
+    return [f"lda {e}", "sec", f"sbc #{BAND}", f"sta {e}"]
+
+
+def tail_text():
+    """The last line of a band (entered at c4 after LoopB): latch the next band's colour,
+    advance Band; on the last band take the exit path. Both paths cost the same up to the
+    P1 section; the loop-back is `jmp BandPad` (3c) + the pad's `nop` (2c) = c5."""
+    res = []
+    for exit_path in (False, True):
+        tl = Timeline(4)
+
+        def w(t, c, exit_path=exit_path):
+            for i in ("lda BandColNext", "sta BandCol", "inc Band", "ldx Band", "cpx #4"):
+                t.at(max(t.cur, c), i)
+            t.at(42, "beq .xt")                       # taken (3c) / not taken (2c)
+            if exit_path:
+                t.cur = 42 + 3
+                t.out.append(".xt:\n")
+                t.at(45, "nop")
+                t.at(47, "nop")                       # 7c after the branch in both paths
+            else:
+                t.at(44, "bit Tmp")
+                t.at(47, "nop")
+        core(tl, -1, w)
+        res.append(tl)
+    cont, ex = res
+    return cont.text() + "    jmp BandPad\n" + ex.text(), cont.size + 3 + ex.size
 
 
 def kernel():
-    return "".join(band(k) for k in range(4))
+    """The same band code runs 4 times; X = band index in the special lines."""
+    out = []
+    # B0: PF0 / PF1 / COLUPF (left half old, right half new)
+    def w0(tl, c):
+        tl.at(c, "lda PF0B,X")
+        tl.at(c + 4, "sta PF0")                 # write c33 (>= c29)
+        tl.at(c + 7, "lda PF1B,X")
+        tl.at(c + 11, "sta PF1")                # write c40 (>= c39)
+        tl.at(c + 14, "lda CPFB,X")
+        tl.at(c + 20, "sta COLUPF")             # write c49 (>= c49)
+    def build0(start):
+        # entered ONLY by `jmp BandPad` (c0-c3) + this nop = c5 (the VBL jumps too)
+        tl = Timeline(5)
+        core(tl, 0, w0)
+        return "BandPad:\n    nop\nBandStart:\n" + tl.text(), tl.size + 1
+    ta, sa = build0(0)
+    _g[0] += 1
+    out.append(f"    IF (* & $FF) + {sa} > $100\n    align 256\n    ENDIF\n{ta}")
+    out.append(line(seqwin(["lda PF2B,X", "sta PF2", "lda BandTab,X", "sta ENABL"])))
+    out.append(line(seqwin(["lda NextS0", "sta G0", "lda NextC0", "sta C0", "lda NextS1",
+                            "sta G1", "sta C1", "ldy #0"])))
+    out.append(line(seqwin(step_e(H0, 1, "E0"))))
+    out.append(line(seqwin(step_s("#" + str(PAD + H0), "NextC0"))))
+    out.append(line(seqwin(step_s("P0Kb", "NextS0"))))
+    out.append(line(seqwin(step_e(H1, 0, "E1"))))
+    out.append(line(seqwin(step_s("P1Kb", "NextS1"))))
+    out.append(line(seqwin(step_dec("E0") + step_dec("E1"))))
+    out.append(line(seqwin(["lda CPFB+1,X", "and DoorAnd", "ora DoorOr", "sta BandColNext"])))
+    # loop A count: NA = NAROM[band] + (TideMask[band] & TideOff); X = NA
+    out.append(line(seqwin(["lda TideMask,X", "and TideOff", "clc", "adc NAROM,X", "sta T",
+                            "tax"])))
+    out.append(loop_unit("LoopA", seqwin([]), seqwin([
+        "ldx Band", "lda WaterXROM,X", "ora WaterOff", "tax", "lda WaterCol",
+        "sta COLUBK,X"])))
+    # after the water line: X = NB = NSUM - NA
+    out.append(line(seqwin([f"lda #{NSUM}", "sec", "sbc T", "tax"])))
+    # LoopB; its tail is the band's last line
+    def buildB(start):
+        gap = 5 - start
+        assert gap in (5, 2)
+        txt = "    nop\n    bit Tmp\n" if gap == 5 else "    nop\n"
+        sz = 3 if gap == 5 else 1
+        tl = Timeline(5)
+        core(tl, 0, lambda t, c: None)
+        txt += "LoopB:\n" + tl.text() + "    dex\n" + "    bne LoopB\n"
+        sz += tl.size + 3
+        tt, ts = tail_text()
+        return txt + tt, sz + ts
+    out.append(guarded(buildB))
+    return "".join(out)
 
 
 def prologue():
-    """VBL code: initial segment (u=0) into the pointers, NextS for u=UPD, line-0 prime."""
-    def steps(top, h, base, nxt, u, late=0):
-        return "".join(f"    {i}\n" for i in prep1(top, h, u, late) + prep2(h, base, nxt))
-    s = steps("P0Top", H0, "P0Base", "NextS0", 0, 1) + steps("P1Top", H1, "P1Base", "NextS1", 0)
-    s += """    lda NextS0
-    sta G0
-    sta C0
-    lda NextS1
-    sta G1
-    sta C1
-    lda P0GHi
-    sta G0+1
-    lda P0CHi
-    sta C0+1
-    lda P1GHi
-    sta G1+1
-    lda P1CHi
-    sta C1+1
-"""
-    s += steps("P0Top", H0, "P0Base", "NextS0", UPD, 1) + steps("P1Top", H1, "P1Base", "NextS1", UPD)
-    s += """    lda CPFB+0
-    and DoorAnd
-    ora DoorOr
-    sta BandCol
-    sta COLUP1
-    ; prime line 0: its rows are fetched on the line before the kernel (index S-1)
+    """VBL code: initial pointers (u=0), NextS for the update line u=UPD, E for the first
+    prep (u=UPD+36), line-0 prime, band colour."""
+    def ins(lst):
+        return "".join(f"    {i}\n" for i in lst)
+
+    def sub(e, n):
+        return ins([f"lda {e}", "sec", f"sbc #{n}", f"sta {e}"])
+    s = ins(["lda P0Top", "clc", f"adc #{H0 - 1}", "sta E0", "lda P1Top", "clc",
+             f"adc #{H1 - 1}", "sta E1"])
+    # u = 0
+    s += ins(step_e(H0, 1, "E0") + step_s(f"#{PAD + H0}", "NextC0") + step_s("P0Kb", "NextS0"))
+    s += ins(step_e(H1, 0, "E1") + step_s("P1Kb", "NextS1"))
+    s += ins(["lda NextC0", "sta C0", "lda NextS0", "sta G0", "lda NextS1", "sta G1", "sta C1",
+              "lda P0GHi", "sta G0+1", "lda P0CHi", "sta C0+1", "lda P1GHi", "sta G1+1",
+              "lda P1CHi", "sta C1+1"])
+    # u = UPD
+    s += sub("E0", UPD) + sub("E1", UPD)
+    s += ins(step_e(H0, 1, "E0") + step_s(f"#{PAD + H0}", "NextC0") + step_s("P0Kb", "NextS0"))
+    s += ins(step_e(H1, 0, "E1") + step_s("P1Kb", "NextS1"))
+    s += sub("E0", BAND) + sub("E1", BAND)               # e for the first prep (u = UPD + 36)
+    s += ins(["lda CPFB+0", "and DoorAnd", "ora DoorOr", "sta BandCol", "sta COLUP1",
+              "lda #0", "sta Band"])
+    s += """    ; prime line 0: its rows are fetched on the line before the kernel (index S-1)
     ldy #0
     dec G0
     lda (G0),Y
@@ -262,6 +294,7 @@ def prologue():
     sta GRP1
     inc G1
     ldy #0
+    ldx #0
 """
     return s
 
@@ -285,13 +318,18 @@ def tables():
            "D2": [0xA0 | r for r in range(H1)]}
     p1c = [0x20 + 2 * r for r in range(H1)]
     out = blk("P0G", 0xFA00, page([(BASE_P0["A"], p0g["A"]), (BASE_P0["B"], p0g["B"])]))
-    # colour: the colour of row r is read at the gfx index of row r+1  => shift +1
-    out += blk("P0C", 0xFB00, page([(BASE_P0["A"], p0c), (BASE_P0["B"], p0c)], 1))
+    # ONE colour block (all frames share the colours), base 0; the colour of row r is read at
+    # the gfx index of row r+1  => shift +1
+    out += blk("P0C", 0xFB00, page([(0, p0c)], 1))
     out += blk("P1G0", 0xFC00, page([(BASE_P1["D0"], p1g["D0"]), (BASE_P1["D1"], p1g["D1"])]))
     out += blk("P1G1", 0xFD00, page([(BASE_P1["D2"], p1g["D2"])]))
     out += blk("P1C0", 0xFE00, page([(BASE_P1["D0"], p1c), (BASE_P1["D1"], p1c)]))
     out += blk("P1C1", 0xFF00, page([(BASE_P1["D2"], p1c)])[:0xFA])
-    return out
+    small = """NAROM:       .byte 10,10,10,13
+TideMask:    .byte 0,0,0,$FF
+WaterXROM:   .byte $30,$30,$30,0
+"""
+    return small + out
 
 
 def main():

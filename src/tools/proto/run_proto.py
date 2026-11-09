@@ -180,12 +180,20 @@ def main():
     poke(con, "P0X", 40)
     poke(con, "P1X", 90)
     poke(con, "LaserState", 0)
+    poke(con, "WaterCol", 0x96)
+    poke(con, "WaterOff", 0)
+    poke(con, "TideOff", 0)
     poke(con, "DoorAnd", 0xFF)
     poke(con, "DoorOr", 0)
     for k in range(4):
         con.ram[(sym["BandTab"] + k) & 0x7F] = 0
     for _ in range(3):
         con.tia_frame()
+    import gen_kernel as G0_
+    for n, v in (("P0Top", 30), ("P1Top", 60), ("P0GHi", 0xFA), ("P0CHi", 0xFB), ("P1GHi", 0xFC),
+                 ("P1CHi", 0xFE), ("P0Kb", G0_.PAD + G0_.H0), ("P1Kb", G0_.PAD + G0_.H1)):
+        poke(con, n, v)
+    con.tia_frame()
     # frame length
     log = con.tia_frame()
     by, first, last, k0 = frame_info(con, log)
@@ -201,20 +209,24 @@ def main():
     tops = list(range(-25, 151, a.step))
     combos = [("A", "D0"), ("B", "D1"), ("A", "D2")]
     import gen_kernel as G
-    P0 = {"A": (0xFA, 0xFB, G.BASE_P0["A"]), "B": (0xFA, 0xFB, G.BASE_P0["B"])}
-    P1 = {"D0": (0xFC, 0xFE, G.BASE_P1["D0"]), "D1": (0xFC, 0xFE, G.BASE_P1["D1"]),
-          "D2": (0xFD, 0xFF, G.BASE_P1["D2"])}
+    P0 = {"A": (0xFA, 0xFB, G.PAD + G.H0 + G.BASE_P0["A"]),
+          "B": (0xFA, 0xFB, G.PAD + G.H0 + G.BASE_P0["B"])}
+    P1 = {"D0": (0xFC, 0xFE, G.PAD + G.H1 + G.BASE_P1["D0"]),
+          "D1": (0xFC, 0xFE, G.PAD + G.H1 + G.BASE_P1["D1"]),
+          "D2": (0xFD, 0xFF, G.PAD + G.H1 + G.BASE_P1["D2"])}
     for i, t0 in enumerate(tops):
         for f0, f1 in combos:
             t1 = ((t0 * 3 + 7) % 170) - 20
+            tide = (i + t0) % 4
+            poke(con, "TideOff", tide)
             poke(con, "P0Top", t0)
             poke(con, "P1Top", t1)
             poke(con, "P0GHi", P0[f0][0])
             poke(con, "P0CHi", P0[f0][1])
-            poke(con, "P0Base", P0[f0][2])
+            poke(con, "P0Kb", P0[f0][2])
             poke(con, "P1GHi", P1[f1][0])
             poke(con, "P1CHi", P1[f1][1])
-            poke(con, "P1Base", P1[f1][2])
+            poke(con, "P1Kb", P1[f1][2])
             con.tia_frame()
             log = con.tia_frame()
             by, first, last, k0 = frame_info(con, log)
@@ -234,6 +246,11 @@ def main():
                 want = (0x20 + 2 * nxt[1]) if nxt is not None else bc
                 if col[n][1] != want:
                     bad.append(("COLUP1", t1, f1, (n, col[n][1], want)))
+            wl = [(n, v) for n in range(144) for t_, r, v in by.get(k0 + n, []) if r == 9]
+            if wl != [(132 + tide, 0x96)]:
+                bad.append(("water", tide, f0, wl[:3]))
+            if last - first + 1 != 262:
+                bad.append(("frame length", tide, f0, last - first + 1))
             ph = pf_phases(by, k0)
             if ph:
                 bad.append(("PF phase", t0, f0, ph[:3]))

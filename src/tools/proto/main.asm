@@ -34,8 +34,8 @@ TIM64T  = $0296
 ; ---- zero page: the harness pokes the inputs ----
 P0Top   = $80       ; kernel line of the player's first row (two's complement)
 P1Top   = $81
-P0Base  = $82       ; frame block offset inside its page
-P1Base  = $83
+P0Kb    = $82       ; PAD + H0 + frame block offset (K of the gfx pointer arithmetic)
+P1Kb    = $83
 P0GHi   = $84       ; page of the player gfx / colour block
 P0CHi   = $85
 P1GHi   = $86
@@ -52,6 +52,13 @@ M       = $A8
 BandCol = $A9
 BandColNext = $AA
 Tmp     = $AB
+E0      = $AC
+E1      = $AD
+NextC0  = $AE
+Band    = $AF
+TideOff = $B4
+WaterOff = $B5
+WaterCol = $B6
 PF0B    = $90       ; 4 bytes per register: one per band
 PF1B    = $94
 PF2B    = $98
@@ -126,6 +133,7 @@ StartFrame:
     sta VBLANK
     sta WSYNC               ; kernel line 0 starts on the line after this one
 
+    jmp BandPad
     include "kernel_gen.inc"
 
     ; ---- overscan ----
