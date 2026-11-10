@@ -1839,27 +1839,41 @@ int LampCell(const ModelData& m, int band, int prefer) {
 // models (the door is a room patch).
 // Returns an empty string when the room is fine, else a short description.
 std::string RoomConnectivityProblem(const ModelData& m) {
-    auto air = [&](int band, int x) { return CellAir(m, band, x); };
-    // Height-aware (N=4): the south edge is the LAST band and the pads add a
-    // band in the middle, so a generated 4-row model is checked as it ships.
+    // No geometric assumptions (user 2026-11-10): flood the real 20-column
+    // mirrored map. Every side the model opens (top row, bottom row, the
+    // side aperture at cell 0 / mirrored cell 19) must reach another opened
+    // side through air. Gated (phase / crunch) cells are air to CellAir.
     const int bands = (m.width > 0)
         ? (int)m.tiles.size() / m.width : 0;
     if (bands < 3) return "";
     const int last = bands - 1;
-    std::vector<std::pair<int, int>> ins, outs;
-    for (int x = 0; x < kRoomWidth; ++x) {
-        if (air(0, x)) ins.push_back({0, x});
-        if (air(last, x)) outs.push_back({last, x});
+    const int W = kRoomWidth * 2;
+    auto air = [&](int b, int f) {
+        return CellAir(m, b, f < kRoomWidth ? f : W - 1 - f);
+    };
+    struct Side { const char* name; std::vector<std::pair<int, int>> cells; };
+    std::vector<Side> sides(4);
+    sides[0].name = "top";    sides[1].name = "bottom";
+    sides[2].name = "left";   sides[3].name = "right";
+    for (int f = 0; f < W; ++f) {
+        if (air(0, f)) sides[0].cells.push_back({0, f});
+        if (air(last, f)) sides[1].cells.push_back({last, f});
     }
-    if (air(1, 0)) {
-        ins.push_back({1, 0});
-        outs.push_back({1, 0});
+    for (int b = 1; b <= 2 && b < last; ++b) {
+        if (air(b, 0)) sides[2].cells.push_back({b, 0});
+        if (air(b, W - 1)) sides[3].cells.push_back({b, W - 1});
     }
-    if (ins.empty() || outs.empty()) return "";   // sentinel / dead end
-    for (const auto& start : ins) {
-        bool seen[8][hero::kRoomWidth] = {};
-        std::vector<std::pair<int, int>> stack{start};
-        seen[start.first][start.second] = true;
+    int live = 0;
+    for (const Side& s : sides) live += s.cells.empty() ? 0 : 1;
+    if (live < 2) return "";                       // sentinel / dead end
+    for (size_t i = 0; i < sides.size(); ++i) {
+        if (sides[i].cells.empty()) continue;
+        std::vector<std::vector<char>> seen(bands, std::vector<char>(W, 0));
+        std::vector<std::pair<int, int>> stack;
+        for (const auto& c : sides[i].cells) {
+            seen[c.first][c.second] = 1;
+            stack.push_back(c);
+        }
         while (!stack.empty()) {
             auto [y, x] = stack.back();
             stack.pop_back();
@@ -1867,20 +1881,22 @@ std::string RoomConnectivityProblem(const ModelData& m) {
             static const int dx[4] = {0, 0, 1, -1};
             for (int k = 0; k < 4; ++k) {
                 const int ny = y + dy[k], nx = x + dx[k];
-                if (ny < 0 || ny >= bands || nx < 0
-                        || nx >= kRoomWidth) continue;
-                if (seen[ny][nx] || !CellAir(m, ny, nx)) continue;
-                seen[ny][nx] = true;
+                if (ny < 0 || ny >= bands || nx < 0 || nx >= W) continue;
+                if (seen[ny][nx] || !air(ny, nx)) continue;
+                seen[ny][nx] = 1;
                 stack.push_back({ny, nx});
             }
         }
         bool reaches = false;
-        for (const auto& goal : outs) {
-            if (seen[goal.first][goal.second]) { reaches = true; break; }
+        for (size_t j = 0; j < sides.size() && !reaches; ++j) {
+            if (j == i) continue;
+            for (const auto& c : sides[j].cells) {
+                if (seen[c.first][c.second]) { reaches = true; break; }
+            }
         }
         if (!reaches) {
-            return "entry cell (" + std::to_string(start.first) + ","
-                 + std::to_string(start.second) + ") reaches no exit";
+            return std::string("the ") + sides[i].name
+                 + " opening reaches no other opening";
         }
     }
     return "";
