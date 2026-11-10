@@ -18,6 +18,7 @@
 
 #include "DataSerializer.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <fstream>
 #include <iostream>
@@ -520,8 +521,29 @@ enum ShapeBits {
     // widened floor widens its ceiling too (upper floor must stay inside the
     // lower ceiling).
     SHAPE_WN = 1 << 15,
-    SHAPE_WS = 1 << 16
+    SHAPE_WS = 1 << 16,
+    // User rules 2026-11-10 (vertical rooms): a through room (N and S, no side
+    // exit) gets an explicit PROFILE - the opening of band 1 and band 2 as two
+    // runs chosen by VerticalProfiles() against the ceiling / floor gaps - so
+    // the four bands never share one width and the ceiling and floor differ.
+    // VHOT turns the band-1 walls hot: a hot band is a BARRIER with gaps that
+    // differ from the passages above and below (HERO's hot walls), never a
+    // plain tunnel painted red. PROFILE_V (2 bits) picks the variant.
+    SHAPE_PROFILE = 1 << 17,
+    SHAPE_VHOT = 1 << 18,
+    kProfShift = 19,                 // bits 19-20: profile variant
+    // The goal room only: it carries the miner's rest niche (band 2, cells
+    // 4/5). Every other room used to carve it too - an unreachable hole the
+    // generator then filled with an enemy (level 3 room 2).
+    SHAPE_MINER = 1 << 21,
+    // WIDE links (HERO's wide caverns): the ceiling / the floor of this room is
+    // the open run of cells 2..9 instead of the 1-2 cell shaft. A link is wide
+    // on BOTH of its rooms (Build20LevelStage pairs the bits), on every other
+    // link of a stack so a room's top and bottom never have the same width.
+    SHAPE_WIDE_N = 1 << 22,
+    SHAPE_WIDE_S = 1 << 23
 };
+constexpr int kProfVariants = 2;
 constexpr int kGateCol = 4;          // the gate/door cell in row 1
 constexpr int kPhaseCell = 2;       // phase wall: solid above AND below
 constexpr int kGapA = 3;             // 2-gap columns (model cells)
@@ -664,6 +686,13 @@ std::string ShapeName(int mask) {
     if (mask & SHAPE_WS) add("wideBottom");
     const int arch = (mask >> kArchShift) & kArchMask;
     if (arch) add(kArchName[arch]);
+    if (mask & SHAPE_PROFILE) {
+        add((mask & SHAPE_VHOT) ? "HotBarrier" : "Profile");
+        name += std::to_string((mask >> kProfShift) & 3);
+    }
+    if (mask & SHAPE_WIDE_N) add("wideCeil");
+    if (mask & SHAPE_WIDE_S) add("wideFloor");
+    if (mask & SHAPE_MINER) add("Miner");
     return name;
 }
 
@@ -672,6 +701,111 @@ std::string ShapeName(int mask) {
 // every loaded/saved model are 4 bands (kRoomHeight); a generated 3-row model
 // is migrated to [r0, r1, AIR, r2] on load, exactly like any legacy file.
 constexpr int kGenRows = 3;
+
+// ---- VERTICAL PROFILES (user rules 2026-11-10) -----------------------------
+// A through room's ceiling gap `top` and floor gap `bottom` are fixed by its two
+// links (cells of the half model, the playfield mirrors them). Band 1 and band
+// 2 are each ONE run of open cells [lo, hi]; this lists every (band-1 run,
+// band-2 run) pair that
+//   * keeps the room one connected passage (every top and bottom cell reaches
+//     every other: flying up from the floor works as well as falling),
+//   * does not give all four bands the same width (no straight tunnel),
+//   * differs between the two bands (and, for a HOT band, from the passages
+//     above and below it: a hot band is a barrier with a gap of its own, as in
+//     HERO's hero_vtunnel_* / hero_score screens).
+// Pure function of its arguments: the mask stores only the variant index.
+using VProfile = std::array<int, 4>;           // m1lo, m1hi, m2lo, m2hi
+std::vector<VProfile> VerticalProfiles(const std::set<int>& top,
+                                       const std::set<int>& bottom, bool hot) {
+    std::vector<VProfile> out;
+    if (top.empty() || bottom.empty()) return out;
+    auto runSet = [](int lo, int hi) {
+        std::set<int> r;
+        for (int c = lo; c <= hi; ++c) r.insert(c);
+        return r;
+    };
+    for (int a = 1; a < kRoomWidth; ++a)
+    for (int b = a; b < kRoomWidth; ++b)
+    for (int c = 1; c < kRoomWidth; ++c)
+    for (int d = c; d < kRoomWidth; ++d) {
+        const int w1 = b - a + 1, w2 = d - c + 1;
+        if (w1 == w2 && w1 == (int)top.size() && w1 == (int)bottom.size())
+            continue;                                   // four equal widths
+        const std::set<int> m1 = runSet(a, b), m2 = runSet(c, d);
+        if (m1 == m2) continue;
+        if (hot) {
+            if (w1 > 3 || m1 == top || m1 == bottom) continue;
+        } else {
+            if (w1 < 2 || w2 < 2) continue;
+            // a normal room hosts a bat / lamp in band 1: keep one cell that is
+            // not on or beside an exit gap (a bat there is hit on the way in)
+            bool clear = false;
+            for (int x : m1) {
+                bool near = false;
+                for (int g : top) near = near || std::abs(g - x) <= 1;
+                for (int g : bottom) near = near || std::abs(g - x) <= 1;
+                clear = clear || !near;
+            }
+            if (!clear) continue;
+        }
+        // connectivity over the 4 band rows
+        bool air[4][kRoomWidth] = {};
+        for (int x : top) air[0][x] = true;
+        for (int x : bottom) air[3][x] = true;
+        for (int x : m1) air[1][x] = true;
+        for (int x : m2) air[2][x] = true;
+        bool seen[4][kRoomWidth] = {};
+        std::vector<std::pair<int, int>> st{{0, *top.begin()}};
+        seen[0][*top.begin()] = true;
+        while (!st.empty()) {
+            const auto [y, x] = st.back();
+            st.pop_back();
+            static const int dy[4] = {1, -1, 0, 0}, dx[4] = {0, 0, 1, -1};
+            for (int k = 0; k < 4; ++k) {
+                const int ny = y + dy[k], nx = x + dx[k];
+                if (ny < 0 || ny > 3 || nx < 0 || nx >= kRoomWidth) continue;
+                if (!air[ny][nx] || seen[ny][nx]) continue;
+                seen[ny][nx] = true;
+                st.push_back({ny, nx});
+            }
+        }
+        bool ok = true;
+        for (int x : top) ok = ok && seen[0][x];
+        for (int x : bottom) ok = ok && seen[3][x];
+        if (ok) out.push_back({a, b, c, d});
+    }
+    return out;
+}
+// The variant `v` (0..kProfVariants-1) takes one of the best-scoring profiles.
+// HOT: prefer a gap that leaves the centre cell 9 solid (the mirror then shows
+// TWO narrow gaps around a hot pillar, like hero_score.png) and is 1-2 cells
+// wide. PLAIN: prefer band 1 and band 2 of very different widths (a stepped
+// cave, not a shifted tube).
+bool PickVerticalProfile(const std::set<int>& top, const std::set<int>& bottom,
+                         bool hot, int v, VProfile& pick) {
+    auto list = VerticalProfiles(top, bottom, hot);
+    if (list.empty()) return false;
+    auto key = [&](const VProfile& p) {
+        const int w1 = p[1] - p[0] + 1, w2 = p[3] - p[2] + 1;
+        if (hot) return (p[1] >= 9 ? 100 : 0) + std::abs(w1 - 2) * 10
+                        + (9 - p[2] > 0 ? 0 : 0) - std::min(w2, 6);
+        return -std::abs(w1 - w2) * 10 - std::abs(p[0] - p[2]);
+    };
+    std::stable_sort(list.begin(), list.end(),
+                     [&](const VProfile& a, const VProfile& b) {
+                         return key(a) < key(b);
+                     });
+    std::vector<VProfile> best;
+    for (const VProfile& p : list) {
+        bool dup = false;
+        for (const VProfile& q : best)
+            dup = dup || ((q[1] - q[0]) == (p[1] - p[0]) && q[0] == p[0]);
+        if (!dup) best.push_back(p);
+        if ((int)best.size() == kProfVariants) break;
+    }
+    pick = best[(size_t)(v % (int)best.size())];
+    return true;
+}
 
 ModelData MakeShapeModel(int modelId, int mask) {
     ModelData model;
@@ -931,6 +1065,13 @@ ModelData MakeShapeModel(int modelId, int mask) {
             }
         }
     }
+    if (mask & SHAPE_WIDE_N) {
+        for (int x = 2; x < kRoomWidth; ++x) model.tiles[x] = (int)TileType::AIR;
+    }
+    if (mask & SHAPE_WIDE_S) {
+        for (int x = 2; x < kRoomWidth; ++x)
+            model.tiles[(kGenRows - 1) * kRoomWidth + x] = (int)TileType::AIR;
+    }
     // --- NO DEAD AIR POCKETS (user rule 2026-10-21) -----------------------
     // A band-1 air cell that cannot be reached from any band-0/2 opening (or
     // from the horizontal exit) is decoration the player can never use — the
@@ -1081,7 +1222,8 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 // a water room (level 1's goal is a plain shape), and the gate
                 // in convert now refuses any model where his body cell is
                 // solid. Two cells because his 8-px sprite straddles them.
-                const bool minerNiche = (x == kMinerCell || x == kMinerCell + 1);
+                const bool minerNiche = (mask & SHAPE_MINER)
+                        && (x == kMinerCell || x == kMinerCell + 1);
                 const bool pillar = (x == 0 || x == 1 || x == 7);
                 const bool archWall = kArch[arch][2][x] == '#';
                 model.tiles[2 * kRoomWidth + x] = (route || minerNiche
@@ -1091,7 +1233,8 @@ ModelData MakeShapeModel(int modelId, int mask) {
                 // Water rooms take this path (bandArt is off for them), so the
                 // miner niche has to be carved here.
                 model.tiles[2 * kRoomWidth + x] = (route
-                        || x == kMinerCell || x == kMinerCell + 1)
+                        || ((mask & SHAPE_MINER)
+                            && (x == kMinerCell || x == kMinerCell + 1)))
                         ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
             }
             model.tiles[3 * kRoomWidth + x] = three[2 * kRoomWidth + x];
@@ -1105,6 +1248,60 @@ ModelData MakeShapeModel(int modelId, int mask) {
             }
         }
         model.height = 4;
+    }
+    if (mask & SHAPE_PROFILE) {
+        std::set<int> top, bottom;
+        for (int x = 0; x < kRoomWidth; ++x) {
+            if (model.tiles[x] == (int)TileType::AIR) top.insert(x);
+            if (model.tiles[3 * kRoomWidth + x] == (int)TileType::AIR)
+                bottom.insert(x);
+        }
+        VProfile pr;
+        if (PickVerticalProfile(top, bottom, (mask & SHAPE_VHOT) != 0,
+                                (mask >> kProfShift) & 3, pr)) {
+            for (int x = 0; x < kRoomWidth; ++x) {
+                model.tiles[1 * kRoomWidth + x] = (x >= pr[0] && x <= pr[1])
+                        ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
+                model.tiles[2 * kRoomWidth + x] = (x >= pr[2] && x <= pr[3])
+                        ? (int)TileType::AIR : (int)TileType::SOLID_WALL;
+            }
+            model.mid_band_type = (mask & SHAPE_VHOT) ? 1 : 0;
+        }
+    }
+    // SEALED AIR (user 2026-11-10: enemies inside holes the player never
+    // reaches): air that no opening of the room connects to is decoration at
+    // best and an unfightable enemy cage at worst. Wall it up - except the
+    // goal room's miner niche, which the rescue needs.
+    if (model.height == 4) {
+        bool seen[4][kRoomWidth] = {};
+        std::vector<std::pair<int, int>> st;
+        auto seed = [&](int y, int x) {
+            if (model.tiles[y * kRoomWidth + x] == (int)TileType::AIR
+                    && !seen[y][x]) {
+                seen[y][x] = true;
+                st.push_back({y, x});
+            }
+        };
+        for (int x = 0; x < kRoomWidth; ++x) { seed(0, x); seed(3, x); }
+        for (int y = 0; y < 4; ++y) seed(y, 0);          // side aperture
+        while (!st.empty()) {
+            const auto [y, x] = st.back();
+            st.pop_back();
+            static const int dy[4] = {1, -1, 0, 0}, dx[4] = {0, 0, 1, -1};
+            for (int k = 0; k < 4; ++k) {
+                const int ny = y + dy[k], nx = x + dx[k];
+                if (ny >= 0 && ny < 4 && nx >= 0 && nx < kRoomWidth)
+                    seed(ny, nx);
+            }
+        }
+        for (int y = 0; y < 4; ++y)
+            for (int x = 0; x < kRoomWidth; ++x) {
+                const bool niche = (mask & SHAPE_MINER) && y == 2
+                        && (x == kMinerCell || x == kMinerCell + 1);
+                if (model.tiles[y * kRoomWidth + x] == (int)TileType::AIR
+                        && !seen[y][x] && !niche)
+                    model.tiles[y * kRoomWidth + x] = (int)TileType::SOLID_WALL;
+            }
     }
     return model;
 }
@@ -1359,8 +1556,9 @@ Role RoleForRoom(int roomIndex, int roomCount, const LevelPlan& p) {
 // Exit mask a room's SHAPE must carry (see the layout notes above).
 int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
                   const GridPos& pos, int roomIndex, Role role,
-                  bool twogap) {
+                  bool twogap, bool goal = false) {
     int mask = 0;
+    if (goal) mask |= SHAPE_MINER;
     if (twogap) mask |= SHAPE_2GAP;
     if (HasRoomAt(walk, pos.x, pos.y - 1)) mask |= SHAPE_N;
     if (HasRoomAt(walk, pos.x, pos.y + 1)) mask |= SHAPE_S;
@@ -1372,7 +1570,9 @@ int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
     // room 5: the walk-index parity used before disagreed across links the walk
     // does not follow, leaving a hole in a ceiling with nothing above it). In a
     // vertical stack the links alternate wide/narrow, so top != bottom still.
-    if (levelNumber >= 6) {
+    // User rule 2026-11-10: from EVERY level (it used to start at level 6), so
+    // no through room has the same gap at the top and at the bottom.
+    {
         if ((mask & SHAPE_N) && (pos.y - 1) % 2 == 0) mask |= SHAPE_N1;
         if ((mask & SHAPE_S) && pos.y % 2 == 0) mask |= SHAPE_S1;
     }
@@ -1674,6 +1874,19 @@ std::string RoomConnectivityProblem(const ModelData& m) {
     return "";
 }
 
+// The cell the player squeezes through in a hot room: the profile / archetype's
+// band-1 gap (the cell of the open run nearest the shaft), else the legacy table.
+int HotGapCell(const ModelData& m, int arch) {
+    if (arch >= 8 && arch <= 14) return kArchHotGapX[arch - 8] / 2;
+    int best = -1;
+    for (int c = 1; c < kRoomWidth; ++c) {
+        if (m.tiles[1 * kRoomWidth + c] == 0) {
+            if (best < 0 || std::abs(c - 6) < std::abs(best - 6)) best = c;
+        }
+    }
+    return best < 0 ? 5 : best;
+}
+
 void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
                      const LevelPlan& plan, RoomData& room,
                      const ModelData& shape,
@@ -1758,8 +1971,7 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
         // CENTRE (row 1), so the guards go on the OPEN cells of bands 0/2
         // near that gap — never inside the band-0/2 walls (user report
         // 2026-10-21: a bat inside the wall at level 3 room 2).
-        const int hidx = (arch >= 8 && arch <= 14) ? arch - 8 : 0;
-        const int gapCell = kArchHotGapX[hidx] / 2;
+        const int gapCell = HotGapCell(shape, arch);
         int bcell = NearestAirClear(shape, 0, gapCell);
         if (bcell < 0) bcell = NearestAir(shape, 0, gapCell);
         if (bcell >= 0) {
@@ -2921,9 +3133,32 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                 }
                 if (repair.flat.count({l, i})) arch = 0;   // reach repair
                 const int mask = RoomShapeMask(l, walks[l - 1], walks[l - 1][i],
-                                               i, role, plan.twogap)
+                                               i, role, plan.twogap,
+                                               i == count - 1)
                                  | (arch << kArchShift);
                 masks[l - 1].push_back(mask);
+            }
+            // WIDE links (user rule 2026-11-10): both rooms of a vertical link
+            // between two ordinary rooms take the wide cavern opening, on every
+            // other link of a stack (rows alternate), so no through room has the
+            // same width at the top and at the bottom.
+            for (int i = 0; i < count; ++i) {
+                const GridPos& pi = walks[l - 1][i];
+                if ((pi.y + l) % 2 != 0) continue;
+                for (int j = 0; j < count; ++j) {
+                    const GridPos& pj = walks[l - 1][j];
+                    if (pj.x != pi.x || pj.y != pi.y + 1) continue;
+                    auto plain = [&](int k) {
+                        return (roles[l - 1][k] == Role::Normal
+                                || roles[l - 1][k] == Role::Hot)
+                            && !(masks[l - 1][k] & (SHAPE_CHANNEL | SHAPE_WATER | SHAPE_H));
+                    };
+                    if (!plain(i) || !plain(j)) continue;
+                    if (!(masks[l - 1][i] & SHAPE_S)
+                            || !(masks[l - 1][j] & SHAPE_N)) continue;
+                    masks[l - 1][i] |= SHAPE_WIDE_S;
+                    masks[l - 1][j] |= SHAPE_WIDE_N;
+                }
             }
             for (const int m : masks[l - 1]) used.insert(m);
         }
@@ -3165,6 +3400,49 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         for (int m : live) used.insert(m);   // the post-pass masks themselves
     }
 
+    // --- VERTICAL PROFILES (user rules 2026-11-10) --------------------------
+    // After the pairing and crunch passes fixed every room's ceiling and floor,
+    // a plain through room (N and S, no side exit, not the start / a hazard
+    // corridor) swaps its archetype for a PROFILE (see VerticalProfiles). A hot
+    // room becomes a hot BARRIER: its band-1 walls stay hot but the gap differs
+    // from the ones above and below. A room with no valid profile keeps its
+    // archetype (a hot one is then demoted to a plain room: no tunnel in red).
+    for (int l = 1; l <= kStageLevels; ++l) {
+        for (int i = 0; i < (int)walks[l - 1].size(); ++i) {
+            int& m = masks[l - 1][i];
+            const Role role = roles[l - 1][i];
+            if (role != Role::Normal && role != Role::Hot) continue;
+            if (i == 0 || i + 1 == (int)walks[l - 1].size()) continue;
+            if ((m & (SHAPE_N | SHAPE_S)) != (SHAPE_N | SHAPE_S)) continue;
+            if (m & (SHAPE_H | SHAPE_START | SHAPE_GATE | SHAPE_WATER
+                     | SHAPE_CHANNEL)) continue;
+            if (repair.flat.count({l, i}) && role != Role::Hot) continue;
+            const int base = m & ~(kArchMask << kArchShift);
+            const ModelData plain = MakeShapeModel(0, base);
+            std::set<int> top, bottom;
+            for (int x = 0; x < kRoomWidth; ++x) {
+                if (plain.tiles[x] == (int)TileType::AIR) top.insert(x);
+                if (plain.tiles[3 * kRoomWidth + x] == (int)TileType::AIR)
+                    bottom.insert(x);
+            }
+            const bool hot = role == Role::Hot;
+            VProfile probe;
+            const int v = (l + i) % kProfVariants;
+            if (PickVerticalProfile(top, bottom, hot, v, probe)) {
+                m = base | SHAPE_PROFILE | (hot ? SHAPE_VHOT : 0)
+                    | (v << kProfShift);
+            } else if (hot) {
+                m = base;                       // no tunnel painted red
+                roles[l - 1][i] = Role::Normal;
+            }
+        }
+    }
+    {
+        std::set<int> live;
+        for (const auto& row : masks) for (int m : row) live.insert(m);
+        used = live;
+    }
+
     // 2. The shape library: model ids ARE the ascending masks (deterministic).
     models.clear();
     std::map<int, int> shapeId;
@@ -3260,8 +3538,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             if (roles[l - 1][i] == Role::Hot && l > 10 && i != 0
                     && !repair.noPatch.count({l, i})) {
                 const ModelData& sm = models[shapeId[masks[l - 1][i]]];
-                const int hidx = ((masks[l - 1][i] >> kArchShift) & kArchMask) - 8;
-                const int gapCell = kArchHotGapX[hidx] / 2;
+                const int gapCell = HotGapCell(
+                    sm, (masks[l - 1][i] >> kArchShift) & kArchMask);
                 for (int c = gapCell; c <= gapCell + 1; ++c) {
                     if (c < 1 || c > 7) continue;
                     if (sm.tiles[1 * kRoomWidth + c] == 0

@@ -814,6 +814,76 @@ def main() -> int:
                               f"lamp at cell {cell}/band {band} floats in a "
                               "gap with no wall beside it")
                         return 1
+                # User rules 2026-11-10 (level 3 room 2: a bat inside the miner's
+                # niche, a hot band that was a plain red tunnel):
+                #  (a) an enemy / lamp stands on air the player can REACH from the
+                #      room's openings (no object in a sealed hole);
+                #  (b) a vertical through room (ceiling AND floor opening, no side
+                #      exit, no feature cells) never has all four bands the same
+                #      width and never the same ceiling / floor width;
+                #  (c) its hot band (when hot) is a BARRIER: the open cells of the
+                #      hot band differ from the ceiling's and from the floor's.
+                nb = len(band_rows)
+                seen = set()
+                stack = [(0, c) for c in range(10) if band_rows[0][c] == "."]
+                stack += [(nb - 1, c) for c in range(10) if band_rows[nb - 1][c] == "."]
+                stack += [(b, 0) for b in range(nb) if band_rows[b][0] == "."]
+                seen.update(stack)
+                while stack:
+                    by, bx = stack.pop()
+                    for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        ny, nx = by + dy, bx + dx
+                        if 0 <= ny < nb and 0 <= nx < 10 and (ny, nx) not in seen \
+                                and band_rows[ny][nx] == ".":
+                            seen.add((ny, nx))
+                            stack.append((ny, nx))
+                for enemy in enemies:
+                    if int(enemy["type"]) in (2, 7, 6, 15):
+                        continue
+                    ecell = int(float(enemy["x"])) // 2
+                    ecell = ecell if ecell < 10 else 19 - ecell
+                    eband = int(float(enemy["y"])) // units
+                    if band_rows[eband][ecell] == "." and (eband, ecell) not in seen:
+                        print(f"FAIL: level {level_n} room {room['room_id']}: enemy "
+                              f"type {enemy['type']} at cell {ecell}/band {eband} "
+                              "sits in sealed air the player never reaches")
+                        return 1
+                for lamp in lamps:
+                    lcell = int(float(lamp["x"])) // 2
+                    lcell = lcell if lcell < 10 else 19 - lcell
+                    lband = int(float(lamp["y"])) // units
+                    if band_rows[lband][lcell] == "." and (lband, lcell) not in seen:
+                        print(f"FAIL: level {level_n} room {room['room_id']}: lamp "
+                              f"at cell {lcell}/band {lband} is in sealed air")
+                        return 1
+                top_air = {c for c in range(1, 10) if band_rows[0][c] == "."}
+                bot_air = {c for c in range(1, 10) if band_rows[-1][c] == "."}
+                if (nb == 4 and top_air and bot_air and band_rows[1][0] != "."
+                        and band_rows[2][0] != "."
+                        and not room.get("feature_cells")
+                        and not room.get("bottom_band")
+                        and not any(p[0] == 1 and len(p) > 2 and p[2] == 5
+                                    for p in (room.get("asym_patches") or []))
+                        and room["room_id"] != 0):
+                    widths = [sum(1 for c in range(1, 10) if band_rows[b][c] == ".")
+                              for b in range(4)]
+                    if len(set(widths)) == 1:
+                        print(f"FAIL: level {level_n} room {room['room_id']}: "
+                              f"vertical room with four equal band widths {widths}")
+                        return 1
+                    if len(top_air) == len(bot_air):
+                        print(f"FAIL: level {level_n} room {room['room_id']}: "
+                              f"ceiling gap {sorted(top_air)} and floor gap "
+                              f"{sorted(bot_air)} have the same width")
+                        return 1
+                    if shapes[room["model_id"]].get("mid_band_type"):
+                        hot_air = {c for c in range(1, 10)
+                                   if band_rows[1][c] == "."}
+                        if hot_air == top_air or hot_air == bot_air:
+                            print(f"FAIL: level {level_n} room {room['room_id']}: "
+                                  f"hot band gap {sorted(hot_air)} is just the "
+                                  "ceiling/floor tunnel painted red")
+                            return 1
                 # Async is one of three generated specials, all row 1:
                 # LOCKED_DOOR (gate), PHASE (blinking gate), HCRUNCH (10-cell
                 # prefix). A hcrunch room must be object-free (convert rule).
