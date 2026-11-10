@@ -916,7 +916,11 @@ ModelData MakeShapeModel(int modelId, int mask) {
         // Hot ceiling cells 1..7; cells 8/9 stay the N shaft, cell 0 is the
         // H exit. The floor is open water: crossing low on the raft is the
         // only safe route (row 1 is lethal wall).
-        for (int x = 1; x <= ((mask & SHAPE_N) ? 7 : kRoomWidth - 1); ++x) {
+        // RAFT RUN-OUT (user 2026-11-10): the water has a thin ledge at cell 0, so a
+        // player leaving the raft at the water's edge flies up from cell 1 only. The hot
+        // ceiling starts at cell 3: cells 1 and 2 are two free columns above the raft's
+        // reach on each side (the inertia needs them to stop before the hot wall).
+        for (int x = 3; x <= ((mask & SHAPE_N) ? 7 : kRoomWidth - 1); ++x) {
             model.tiles[1 * kRoomWidth + x] = (int)TileType::SOLID_WALL;
         }
         model.mid_band_type = 1;

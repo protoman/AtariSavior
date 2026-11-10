@@ -874,6 +874,22 @@ def main() -> int:
                                       "hot wall right at the side entry (needs 2 open "
                                       "cells to stop)")
                                 return 1
+                # (f) RAFT RUN-OUT (user 2026-11-10): leaving the raft at the water's edge
+                #     the player flies up from the first water column; the hot row above
+                #     needs TWO open columns there (cells w0 and w0+1), or he hits it.
+                if (room.get("bottom_band") and nb >= 3
+                        and int(shapes[room["model_id"]].get("mid_band_type", 0)) == 1):
+                    last_row = band_rows[-1]
+                    w0 = next((c for c in range(10) if last_row[c] == "."), None)
+                    hot_row = band_rows[1]
+                    if w0 is not None and hot_row[0] == "." \
+                            and any(r.get("type") == 7 for r in room.get("enemies") or []):
+                        need = w0 + 2
+                        if any(hot_row[c] != "." for c in range(need)):
+                            print(f"FAIL: level {level_n} room {room['room_id']}: the raft's "
+                                  f"edge column {w0} has less than 2 free columns under "
+                                  "the hot wall")
+                            return 1
                 def passable(ch):
                     return ch not in STRUCTURAL_WALLS
                 gx, gy = int(room["room_x"]), int(room["room_y"])
