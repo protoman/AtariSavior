@@ -2,10 +2,10 @@
 ; NC_xx = the colour the NTSC byte xx means on this TV
 TV_PAL = 0      ; PAL colours
 TV_50HZ = 0          ; 312-line, 50 Hz frame
-VBL_UNITS = 31      ; TIM64T units of VBLANK work window
-OVER_UNITS = 44     ; TIM64T units of overscan
+VBL_UNITS = 45      ; TIM64T units of VBLANK work window
+OVER_UNITS = 45     ; TIM64T units of overscan
 TICKS_PER_SEC = 60   ; frames per power-bar step
-TV_CAVE_LINES = 272      ; scanlines of a gameplay frame (title: 5 fewer)
+TV_CAVE_LINES = 277      ; scanlines of a gameplay frame (title: 5 fewer)
 NC_00 = $00
 NC_01 = $01
 NC_02 = $02

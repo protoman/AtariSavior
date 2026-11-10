@@ -749,7 +749,9 @@ _lines_raw = [(f, round(v, 2)) for f, v in frame_lines]
 # title->game switch — at its OWN 265 total.
 def _tgt(f):
     # a frame that ends in a blank room-transition frame spans TWO frames
-    return ((267.0 if frame_ker.get(f) == 'title' else 272.0) + EXTRA_LINES
+    # the title still runs the old 152-line kernel; the bank6 cave kernel is 8 lines shorter and
+    # the VBL window was widened for it, so a title frame is TV_CAVE_LINES + 3 (measured 279.96)
+    return ((CAVE_LINES + 3.0 if frame_ker.get(f) == 'title' else CAVE_LINES + 0.0)
             + ((272.0 + EXTRA_LINES) if f in blank_frames else 0))
 def _wall_bad(f, v):
     if f < 2:

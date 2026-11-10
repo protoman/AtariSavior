@@ -14,6 +14,25 @@
     lda #0
     sta $1FF4                       ; select bank0 — the fetch at $F005 is its
 
+    include "colors.inc"
+    include "generated/bank6_equs.inc"
+    include "generated/cave_zp.inc"
+    include "generated/cave_luts.inc"
+CaveFrameLo:    .byte <PlayerSpriteA,<PlayerSpriteB,<PlayerWalkA,<PlayerWalkB
+
+; ---- the cave kernel's PROLOGUE (bank6 has no room for it) ------------------------------
+; Entered from bank6: `sta $1FFB` at Kernel6Entry, then the byte at +3 is the jmp below.
+; Leaves with `sta $1FFA` at Kernel6Entry+6 (bank6 continues at +9, `Kernel6Back`).
+Kernel6Entry = Kernel6Pad + 3
+    org Kernel6Entry + 3
+    jmp Prologue7
+    org Kernel6Entry + 6
+    sta $1FFA
+    org $F100
+Prologue7:
+    include "bank6_prologue.inc"
+    jmp Kernel6Entry + 6
+
     .ds $FFFA - *, 0
     .word $F000                     ; NMI (never used: sei)
     .word $F000                     ; RESET -> this bank's stub

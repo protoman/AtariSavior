@@ -11,7 +11,7 @@ checks, with the laser held and released:
 
   * the VBL work (timer arm -> the first INTIM poll of the bank6 kernel) leaves >= 150c of the
     window,
-  * every ordinary frame is 272 lines (a stray 273 is allowed up to 3% of the frames: the old
+  * every ordinary frame is TV_CAVE_LINES long (a stray +1 is allowed up to 3% of the frames: the old
     kernel shows the same overscan spike; room-change frames are skipped),
 (Same-band object pairs rotate at 30 Hz by design, so the rows drawn per frame are not checked.)
 
@@ -31,6 +31,7 @@ import tia_render as T  # noqa: E402
 STAGE = json.loads((ROOT / "rooms" / "stage.json").read_text())["stage"]
 UNITS = dict(re.findall(r"^(VBL_UNITS|OVER_UNITS)\s*=\s*(\d+)", (ROOT / "colors.inc").read_text(), re.M))
 VBL_WINDOW = int(UNITS["VBL_UNITS"]) * 64
+TARGET = int(re.search(r"TV_CAVE_LINES\s*=\s*(\d+)", (ROOT / "colors.inc").read_text()).group(1))
 
 
 def heavy_rooms(limit):
@@ -111,11 +112,11 @@ def main():
             lens, rows, vbl = measure(con, fire)
             tested += 1
             total = sum(lens.values())
-            off = total - lens.get(272, 0)
+            off = total - lens.get(TARGET, 0)
             msg = f"L{level} room {room + 1} ({n} objects) fire={fire}: lines {dict(lens)}, VBL {vbl}/{VBL_WINDOW}c"
             if vbl > VBL_WINDOW - 150:
                 bad.append(msg + "  <- VBL work leaves < 150c")
-            elif off > 0.03 * total or any(k not in (271, 272, 273) for k in lens):
+            elif off > 0.03 * total or any(k not in (TARGET - 1, TARGET, TARGET + 1) for k in lens):
                 bad.append(msg + "  <- unstable frame length")
     if not tested:
         print("test_frame_stability: SKIP (no heavy room reachable)")

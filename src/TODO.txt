@@ -3,10 +3,146 @@ Strategic Aerial Vehicle Infiltration Operations Rescue
 #########################################################################################################################################################################
 Nome personagem: Eorley Savior.
 
+
+
 #########################################################################################################################################################################
 Ideas:
 #########################################################################################################################################################################
 
+First, a correction to my wording. "Band" is already taken in this project: it means the horizontal strips inside a room (the 3–4 drawn bands). What I meant was a band of levels, such as levels 1–4, 5–8 and so on. That was confusing, and I should have said "per level group".
+
+The idea
+
+Each group of levels gets its own look and a small set of rules, so the 20 levels don't feel like one cave repeated. A group could change:
+- Palette: the wall color (COLUPF), the background color (COLUBK), and the per-band color gradient the kernel already stages. For example, brown cave, then icy blue, then red lava, then dark green flooded.
+- Hazard mix: the generator would weight hot rocks, water, crushable phase walls, bats and miners differently per group. Lava levels get more hot cells, and flooded levels get more rafts and water.
+- Mechanics: a group could add a rule, such as the lamp/dark-room only in the deep levels.
+- Music or SFX: a different tune per group, if banks 5–7 get used for audio.
+
+Why it fits this project
+
+- Mostly data, not kernel. Colors are baked in by convert_level.py from the level data, so a theme is mainly a palette table plus generator weights. I haven't traced exactly where per-level colors are stored, so I can't give a ROM cost yet.
+- The generator is the product, so "theme = a set of generator parameters" fits your existing rule. A theme would be a named profile in Build20LevelStage, with its own test in test_generator.py.
+- PAL is already handled: gen_colors.py maps NTSC hues to PAL hues and keeps the luma nibble. New theme colors must follow that rule, because the kernel reads luma bits (for example, ENAM0 reads bit 1 of the player color).
+- No kernel or HERO-rule conflict: it only changes the values fed into the existing kernel.
+
+Risks
+
+- Luma constraints: the kernel reads some luma bits, so not every color is allowed.
+- Readability: a new palette must keep walls, enemies and hazards distinguishable. Your user review of rendered stages would be needed.
+- Frozen test data: themed colors would change the output, so the frozen test banks would need re-freezing.
+
+If you want, I can check how level colors flow from the JSON to the ROM and tell you the actual cost.
+=====================================================================================================================================================================
+
+What the overlays do today
+
+- Ball: it is 8 color clocks wide, which is exactly 1 cell on the 10-column grid.
+  - It sits at one X for the whole cave frame, and the plan says HERO never repositions it inside the cave.
+  - ENABL (the ball enable register) is gated per band on the setup lines.
+  - The playfield priority bit (PFP) hides the ball wherever it overlaps a real wall.
+- M1: it is a second patch, because the laser uses M0. The plan lists it as "parked", and Phase 3 would wire it in.
+- Limits: patches are additive-only, so they can add a wall piece but not open a gap in a wall. They are also limited to about 1–2 cells and one X per object per frame.
+
+Where there's room to use them better
+
+1. Animate the X between frames.
+   - The ball and M1 positions are set in the vertical blank (VBL), so changing them each frame costs no extra kernel cycles.
+   - That gives sliding doors, a drifting wall, or a moving raft platform that is drawn by the hardware. Collision would have to follow the same X.
+   - This links to the moving-raft idea from earlier.
+2. Use both objects, with different widths.
+   - The ball can be 1, 2, 4 or 8 clocks wide through CTRLPF. M1 can be 1, 2, 4 or 8 clocks through NUSIZ1.
+   - Two patches per room, or a 1.5- or 2-cell patch, would allow more room shapes than one ball.
+3. Use the band gating for taller and shorter shapes.
+   - The ENABL value per band already lets one column show on any subset of the 4 bands.
+   - A catalog of "which band combinations" would give stepped ledges and L-shaped walls from the same hardware.
+4. Carve instead of only add.
+   - The ball is colored from COLUPF, so it can only paint wall color. M1 is colored from COLUP1, which could be set to the background color to open a gap in a wall.
+   - The plan notes that idle P1 could write wall defaults, marked unverified. This would be the most valuable change, but it needs a probe to confirm.
+5. Color the patch differently.
+   - The ball takes COLUPF, which is already staged per band. A patch on a hot band can look hot, with no extra cost.
+6. Share patch layouts across rooms.
+   - Patches are part of the per-level extras stream.
+   - A small library of vetted patch types (door, ledge, pillar) would let the generator pick from them. That is where "more varied caves" would come from, and it fits the generator-as-product approach.
+
+What the overlays can't do
+
+They won't give a free-form right half. The late PF write that would do that is the dead approach from before, so the variety here is limited to a few extra shapes per room.
+
+=====================================================================================================================================================================
+
+
+So for 2.0, I'd drop "asymmetric PF" as a goal. Better ways to get more varied caves within the current approach would be:
+- more shape archetypes;
+- better use of the overlay objects;
+- hazard and enemy variety;
+- theming per band.
+
+
+=====================================================================================================================================================================
+
+
+Here are ideas for 2.0.0, grouped by theme. I only skimmed the repo. It looks like banks 5–7 are nearly empty (about 1 KB each) and the raft is still static, so that's where the headroom is.
+
+Gameplay (the "2.0" feel)
+
+- Moving raft. The raft is a static platform today, and your notes say motion was never specified. A drifting or rideable raft would make water rooms a real mechanic. It needs your ruling first.
+- New enemy types. Candidates are a ceiling dripper, a rolling boulder, a spitting plant, or a mini-boss at the end of each band. Bats and miners are dodgeable, so a "must use the bomb" enemy would add variety.
+- Boss rooms. Every N levels, a fixed hand-authored room with a pattern-based boss. It gives the generator a break and gives players a milestone.
+- Pickups. Ideas are a power-bar refill, a temporary shield, a slow-fall or double-jump item, and a laser upgrade (wider beam or faster recharge).
+- Hot rock wall and lamp/dark-room. You have plans for both (hot_rock_wall_plan.md, lamp_dark_room_plan.md). Shipping them as headline 2.0 features would make sense.
+- Difficulty modes. Use the console difficulty switches or Game Select for Novice/Expert, with fewer or more enemies, a shorter fuse, and less power.
+- Two-player alternate. Players swap on death, with separate scores, using the standard 2600 pattern.
+
+Content / generator
+
+- Endless mode. The generator is the product, so a seeded run with a displayed seed would give the game replay value.
+- Themed bands. Every few levels would get a visual theme (ice, lava, flooded) with its own palette and hazard rules.
+- Daily seed. Players could compare scores on the same seed.
+- Secret rooms. Bomb-able walls that lead to bonus rooms.
+
+Presentation
+
+- Music and SFX. docs/2600_music_guide.txt already exists. Add a title jingle, a per-theme loop and a death sting, and use the free banks for the tunes.
+- Better title/attract mode. The attract mode could replay a bot run, since you already have a bot and sim.
+- Level-complete bonus tally. Show time, power left and lives as a score breakdown, as HERO does.
+- Use the new art. art/logo.png and art/poster.png are untracked. A 2.0 box and label release could go with the manual PDF.
+
+Technical
+
+- Asymmetric playfield. asymmetric_pf_plan.md is large. Dropping the reflected-PF limit would allow far more varied caves, but it conflicts with the "follow HERO" rule, so it needs a deliberate decision.
+- Fill the HUD gaps. The ball (ENABL) indicators and the 13+2 sprite text are still on your not-yet-implemented list.
+- Flicker budget. Do another pass on the flicker findings so 2.0 has zero visible flicker with the extra enemies.
+- Save and high scores. Use AtariVox/SaveKey support for high-score persistence. It's optional hardware, but it would be a good extra.
+- Region support. An NTSC/PAL60/PAL build flag, with the frame timing parameterized (262 vs 312 scanlines).
+
+Release / process
+
+- Regression gates. Keep sim_* and qa_* as hard CI gates, and add a "full-run bot completes N levels" gate for the generator.
+- Cartridge and manual. Publish a version with a ROM label, a manual update and a changelog.
+
+If I had to pick a minimal set for a convincing 2.0, I'd take the moving raft, one or two new enemies, boss rooms, music and endless seeded mode. That gives new mechanics, new content, and replay value without a kernel rewrite.
+
+=====================================================================================================================================================================
+
+
+
+Update the 1.0.1 PDF in releases folder.
+- use (combine both) art/logo.png and art/poster.png in the manual
+- missing bomb, enemies and objects images in the pdf manual
+- also create image for the jetpack and add into the pdf.
+
+In the Contents section, the dots should keep going until the number is aligned to the right of the pace.
+In sections witch number is smaller than 10, add a leading zero.
+Use monospaced font in this part, if needed to get all perfectly aligned in the right margin.
+
+=========================================================================================================================================================================
+v1.0
+=========================================================================================================================================================================
+- a playthrough bot for the generated stage;
+- re-reading the manual pages, since game over now returns to the title and the high score now shows there;
+- release versioning;
+- the horizontal-position test for the lives row and key.
 
 =========================================================================================================================================================================
 BUGS

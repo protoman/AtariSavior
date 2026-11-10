@@ -25,15 +25,21 @@
     include "colors.inc"
     include "generated/bank6_equs.inc"
     include "generated/cave_zp.inc"
-    include "generated/cave_luts.inc"
-CaveFrameLo:    .byte <PlayerSpriteA,<PlayerSpriteB,<PlayerWalkA,<PlayerWalkB
+    include "generated/cave_small.inc"
 
 ; ---------------------------------------------------------------- entry from bank0
     org Kernel6Pad
     jmp Kernel6Entry
 
+; The prologue (frame/object/door/water staging, ~650 cycles) lives in bank7 (bank6 has no room
+; for it): `sta $1FFB` selects bank7, whose bytes at Kernel6Entry+3 are `jmp Prologue7`; it ends
+; with `sta $1FFA` at Kernel6Entry+6, so the next fetch (+9) is bank6's `Kernel6Back`.
 Kernel6Entry:
-    include "bank6_prologue.inc"
+    sta $1FFB
+    .byte 0,0,0                     ; bank7: jmp Prologue7
+    .byte 0,0,0                     ; bank7: sta $1FFA
+Kernel6Back:
+    include "generated/cave_prime.inc"   ; line-0 prime (reads the bank6 tables)
 
     ; ---- wait for the VBL timer, then start the kernel (one blank line first) ----
 .wait:
@@ -51,7 +57,7 @@ Kernel6Entry:
 ; The kernel's last line falls through here at cycle 0 of the first HUD line. The old kernel
 ; reached the HUD pad at cycle 33; MenuMain's first PF store must keep landing at cycle 47,
 ; so the nops make up the difference.
-KernelExit:
+KernelExit:                         ; entered by `bcs` at cycle 3 of the first HUD line
     lda #0
     sta ENABL
     sta ENAM1                       ; end the whole-cave M1 latch
@@ -63,13 +69,9 @@ KernelExit:
     nop
     nop
     nop
-    nop
-    nop
-    nop
+    bit Tmp
     jmp $FC68                       ; fold pad (in table page $FC): lda #1 / sta $1FF5 / jmp $F540
 
-    include "generated/cave_slot1.inc"   ; the second object's positioning lines (entered by jmp)
-    include "generated/cave_idx.inc"     ; ObjBase -> design index (a lookup, not a search: VBL time)
 
     include "generated/cave_tables.inc"
 

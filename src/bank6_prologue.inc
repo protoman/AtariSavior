@@ -7,6 +7,7 @@
 ; Registers are free; no jsr (the stack bytes $F8-$FF double as kernel arrays).
 ; ==============================================================================
     MAC FINDDESIGN                  ; A = ObjBase-style offset -> X = design index (a table lookup)
+    lsr                             ; (the design offsets are unique in ObjBase >> 1)
     tax
     lda CaveDesignIdx,X
     tax

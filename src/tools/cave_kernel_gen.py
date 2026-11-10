@@ -151,17 +151,26 @@ class Timeline:
 _n = [0]
 
 
-def core(tl, s, window):
+def core(tl, s, window, first=False):
     """One sprite line starting at c5+s. `window(tl, start)` fills c27+s .. c50+s."""
     _n[0] += 1
     n = _n[0]
-    tl.at(5 + s, "lda (C0),Y")
-    tl.at(10 + s, "sta COLUP0")
-    tl.at(13 + s, "and LaserState")
-    tl.at(16 + s, "sta ENAM0")
-    tl.at(19 + s, "lda (G0),Y")
-    tl.at(24 + s, "sta GRP0")
-    window(tl, 27 + s)
+    if first:
+        # band-first line: every playfield register of the new band is stored in HBLANK (before
+        # the first left-half pixel, c22.7), so BOTH halves change on the same line. The player's
+        # colour / beam stores (c5-c21 of a normal line) do not fit: this one line keeps the
+        # previous line's COLUP0/ENAM0 (a row's colour is almost always its neighbour's).
+        window(tl, 5)
+        tl.at(max(tl.cur, 40), "lda (G0),Y")
+        tl.at(tl.cur, "sta GRP0")
+    else:
+        tl.at(5 + s, "lda (C0),Y")
+        tl.at(10 + s, "sta COLUP0")
+        tl.at(13 + s, "and LaserState")
+        tl.at(16 + s, "sta ENAM0")
+        tl.at(19 + s, "lda (G0),Y")
+        tl.at(24 + s, "sta GRP0")
+        window(tl, 27 + s)
     assert tl.cur <= 50 + s, f"window overruns c{50 + s}: c{tl.cur}"
     tl.at(50 + s, "lda (G1),Y")
     tl.at(55 + s, "sta GRP1")
@@ -256,28 +265,17 @@ assert NSUM == 36 - N_SPECIALS - 3, (NSUM, N_SPECIALS)
 
 
 def tail_text():
-    """The last line of a band (entered at c4 after LoopB): latch the next band's colour; on
-    the last band take the exit path. Both paths cost the same up to the P1 section; the
-    loop-back is `jmp BandPad` (3c) + the pad's `nop` (2c) = c5."""
-    res = []
-    for exit_path in (False, True):
-        tl = Timeline(4)
+    """The last line of a band (entered at c4 after LoopB): latch the next band's colour and
+    set carry (cpx #4) when it was the last band. Carry survives the line (lda/sta/branches/
+    iny do not touch it), so after the WSYNC `bcs KernelExit` (3c taken) or `jmp BandStart`
+    (3c) takes either way at c5 / c3 without a second copy of the line."""
+    tl = Timeline(4)
 
-        def w(t, c, exit_path=exit_path):
-            for i in ("ldx Band", "lda CPFB,X", "and DoorAnd", "ora DoorOr", "sta BandCol",
-                      "cpx #4"):
-                t.at(max(t.cur, c), i)
-            t.at(44, "beq .xt")                       # taken (3c) / not taken (2c)
-            if exit_path:
-                t.cur = 44 + 3
-                t.label(".xt")
-                t.at(47, "nop")                       # 5c after the branch in both paths
-            else:
-                t.at(46, "bit Tmp")
-        core(tl, -1, w)
-        res.append(tl)
-    cont, ex = res
-    return cont.text() + "    jmp BandPad\n" + ex.text(), cont.size + 3 + ex.size
+    def w(t, c):
+        for i in ("ldx Band", "lda CPFB,X", "and DoorAnd", "ora DoorOr", "sta BandCol", "cpx #4"):
+            t.at(max(t.cur, c), i)
+    core(tl, -1, w)
+    return tl.text() + "    bcs KernelExit\n    jmp BandStart\n", tl.size + 5
 
 
 def loop_unit(name, tail):
@@ -294,26 +292,38 @@ def loop_unit(name, tail):
     return guarded(build)
 
 
+DESIGN_IDX = [""]      # filled by main() (the lookup table text)
+
+
 def kernel():
     out = []
 
     def w0(tl, c):
-        tl.at(c, "lda PF0B,X")
-        tl.at(c + 4, "sta PF0")                 # write c33 (>= c29)
-        tl.at(c + 7, "lda PF1B,X")
-        tl.at(c + 11, "sta PF1")                # write c40 (>= c39)
-        tl.at(c + 14, "lda CPFB,X")
-        tl.at(c + 20, "sta COLUPF")             # write c49 (>= c49)
+        # all stores land in HBLANK (writes at c11, c18, c25, c32, c39): the whole line is the
+        # new band for both playfield halves; COLUPF first (it colours every left pixel)
+        tl.at(5, "lda CPFB,X")
+        tl.at(9, "sta COLUPF")
+        tl.at(12, "lda PF0B,X")
+        tl.at(16, "sta PF0")
+        tl.at(19, "lda PF1B,X")
+        tl.at(23, "sta PF1")           # write c25 (< c28, the first left PF1 pixel)
+        tl.at(26, "lda PF2B,X")
+        tl.at(30, "sta PF2")           # write c32 (< c38.7)
+        tl.at(33, "lda BandTab,X")
+        tl.at(37, "sta ENABL")         # the ball/M1 strip switches on the same line
 
     # B0: PF0 / PF1 / COLUPF (left half old, right half new); entered by `jmp BandPad`
     tl = Timeline(5)
-    core(tl, 0, w0)
+    core(tl, 0, w0, first=True)
     b0 = "BandPad:\n    nop\nBandStart:\n" + tl.text()
     out.append(aligned(b0, tl.size + 1))
     out.append("    jmp B1in\n")
+    # code entered only by jmp (the slot-1 path, the design lookup table) sits here: the aligned
+    # unit that follows would leave a hole in the page anyway
+    out.append(slot1_path())
     # B1 + the update line: B1 PF2/ENABL; U's pad is the slot-1 hook (`cpx Slot1Band / beq`)
     tl1 = Timeline(5)
-    core(tl1, 0, seqwin(["lda PF2B,X", "sta PF2", "lda BandTab,X", "sta ENABL"]))
+    core(tl1, 0, seqwin([]))
     tlu = Timeline(5)
     core(tlu, 0, seqwin(OPS["update"]))
     b1u = ("S1Stub:\n    jmp S1Path\nB1in:\n    nop\n" + tl1.text()
@@ -363,7 +373,7 @@ def slot1_path():
     hm = "    sta HMOVE\n    nop\n" + tl.text() + "    jmp H1in\n"
     text = "\n".join(part) + "\n" + "\n".join(pos) + "\n" + hm
     sz = 3 + 4 + 4 + 2 + 2 + 3 + 3 + 3 + 2 + 5 + 2 + 3 + 1 + 3 + 3 + 1 + 3 + 2 + 2 + tl.size + 3
-    return aligned(text, sz + 20)
+    return aligned(text, sz + 4)
 
 
 # ------------------------------------------------------------------------- prologue core
@@ -498,7 +508,14 @@ def prologue_core():
     sta COLUP1
     lda #0
     sta Band
-    ldy #0
+    ldx #0
+"""
+
+
+def prime_core():
+    """Line-0 prime: its rows are fetched on the line before the kernel (index S-1). Runs in
+    bank6 (the tables are bank6 data: a (zp),Y read sees the CURRENT bank)."""
+    return """    ldy #0
     lda G0
     beq .zero0                      ; out of range (S = 0): the prime byte is 0
     dec G0
@@ -658,10 +675,11 @@ CaveDesignKb:   .byte {",".join(str(k) for _, _, k in design_loc)}
 CaveFrameGHi:   .byte {",".join(f"${g:02X}" for g, _ in frame_loc)}
 CaveFrameKb:    .byte {",".join(str(k) for _, k in frame_loc)}
 CaveFineTab:    .byte $70,$60,$50,$40,$30,$20,$10,$00,$F0,$E0,$D0,$C0,$B0,$A0,$90
-{SMALL_ROM}"""
-    idx = [0] * (max(c[d] for d in designs) + 1)
+"""
+    idx = [0] * (max(c[d] for d in designs) // 2 + 1)      # indexed by ObjBase >> 1
     for i, d in enumerate(designs):
-        idx[c[d]] = i
+        assert idx[c[d] // 2] == 0 and (c[d] // 2 or i == 0), "ObjBase >> 1 must be unique"
+        idx[c[d] // 2] = i
     lut = "CAVE_IDXLEN = %d\nCaveDesignIdx:\n" % len(idx)
     for i in range(0, len(idx), 16):
         lut += "    .byte " + ",".join(str(v) for v in idx[i:i + 16]) + "\n"
@@ -675,13 +693,13 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     art = test_art() if mode == "--test" else read_art(sys.argv[3])
     txt, luts, _, lut = tables(art)
-    (out / "cave_idx.inc").write_text(lut)
+    (out / "cave_luts.inc").write_text(luts + lut)       # the prologue's tables (bank7)
+    (out / "cave_small.inc").write_text(SMALL_ROM)       # the kernel's own ROM tables (bank6)
     (out / "cave_zp.inc").write_text(zp_inc())
     (out / "cave_kernel.inc").write_text(kernel())
-    (out / "cave_slot1.inc").write_text(slot1_path())
     (out / "cave_prologue.inc").write_text(prologue_core())
+    (out / "cave_prime.inc").write_text(prime_core())
     (out / "cave_tables.inc").write_text(txt)
-    (out / "cave_luts.inc").write_text(luts)
 
 
 if __name__ == "__main__":

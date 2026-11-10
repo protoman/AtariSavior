@@ -76,7 +76,7 @@ def hooked(con):
     keep = {}
 
     def si(self, a, v):
-        if (a & 0xFFFF) == 0x1FFA and self.scn is not None:
+        if (a & 0xFFFF) == 0x1FFA and self.bank == 0 and self.scn is not None:
             keep.clear()
             for name in ("RoomY", "Grp0Ptr", "ObjBase", "ObjTop", "ObjBase1", "ObjTop1",
                          "ObjX1", "ObjRefs", "CollisionX", "CollisionCellY", "BombPacked",
@@ -237,6 +237,18 @@ def main():
         wl = [n for n in range(144) for t, r, v in by.get(k0 + n, []) if r == T.COLUBK]
         if wl != [132 + tide]:
             problems.append(("water", tide, wl, [132 + tide]))
+    # ---- band changes: every playfield store of the new band lands in HBLANK of the band's
+    # first line (before the first pixel each register draws), so both halves change together
+    by, first, last, k0, _ = run(con, dict(ry=60, frame="PlayerSpriteA"))
+    lim = {T.COLUPF: 22, T.PF0: 22, T.PF1: 27, T.PF2: 38, T.ENABL: 45}   # the ball sits at x >= 79: its first pixel is at c49
+    for b in range(4):
+        for n in range(36 * b, 36 * b + 4):
+            for t, r, v in by.get(k0 + n, []):
+                if r in lim and (n != 36 * b or t > lim[r]):
+                    problems.append(("playfield store", b, n - 36 * b, hex(r), t))
+        got = {r for t, r, v in by.get(k0 + 36 * b, []) if r in lim}
+        if got != set(lim):
+            problems.append(("band", b, "first line misses", sorted(set(lim) - got)))
     # ---- laser beam: ENAM0 only on the player's beam row, only while armed ----------------
     for armed in (0, 2):
         by, first, last, k0, _ = run(con, dict(ry=50, frame="PlayerSpriteA", laser=armed))
