@@ -17,8 +17,8 @@ LEVEL2_MINER_Y = 96
 ; (the shape must be shared). C11 (2026-10-21): block = 3 row-pool
 ; indices — the hot count/stream is gone (hot derives from PF row 1).
 LEVEL2_RoomShapes:
-  .byte SHAPE_M3 ; room 0 (model 3)
-  .byte SHAPE_M0 ; room 1 (model 0)
+  .byte SHAPE_M88 ; room 0 (model 88)
+  .byte SHAPE_M85 ; room 1 (model 85)
 
 ; Room grid positions (LEVEL_FORMAT 2, C1 2026-10-20): ONE byte/room,
 ; (x<<4 | y) normalised to the level origin. Exits are DERIVED at
@@ -38,4 +38,4 @@ LEVEL2_RoomCounts:
 
 ; Enemy data: 1 enemy records across 2 rooms, 3 bytes each (type|dir, x, y).
 LEVEL2_EnemyDataTable:
-  .byte $01, 55, 48
+  .byte $01, 71, 48
