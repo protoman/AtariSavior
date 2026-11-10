@@ -2952,6 +2952,9 @@ struct StageRepair {
 StageRepair* g_stageRepair = nullptr;
 }  // namespace
 
+std::function<void(int, int)> DataSerializer::progress;
+namespace { int g_pass = 0; }
+
 void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                                        std::vector<ModelData>& models) {
     if (!g_stageRepair) {
@@ -2975,6 +2978,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             rep.problems.clear();
             levels.clear();
             models.clear();
+            g_pass = pass + 1;
+            if (progress) progress(g_pass, 0);
             Build20LevelStage(levels, models);
             if (rep.next.empty() && rep.nextChan.empty()
                     && rep.nextNoPatch.empty()
@@ -3494,6 +3499,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
     }
 
     for (int l = 1; l <= kStageLevels; ++l) {
+        if (progress) progress(g_pass, l);
         LevelData level;
         level.level_id = l;
         level.name = "Level " + std::to_string(l);

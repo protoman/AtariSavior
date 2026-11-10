@@ -26,6 +26,7 @@
 #include <QStatusBar>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include "AtariPalette.hpp"
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -1040,9 +1041,27 @@ void MainWindow::GenerateLevelStage() {
     // deterministic, so a re-run reproduces the same stage.
     std::vector<hero::LevelData> levels;
     std::vector<hero::ModelData> models;
+    // Progress bar: the build retries (repair passes) until every level can be
+    // finished, which takes a while - without feedback the window looks frozen.
+    QProgressDialog bar("Generating levels...", QString(), 0, 20, this);
+    bar.setWindowTitle("Generate 20 Levels");
+    bar.setWindowModality(Qt::WindowModal);
+    bar.setMinimumDuration(0);
+    bar.setValue(0);
+    hero::DataSerializer::progress = [&bar](int pass, int level) {
+        bar.setLabelText(QString("Building level %1 / 20 (pass %2)")
+                             .arg(level).arg(pass));
+        bar.setValue(level);
+        QApplication::processEvents();
+    };
+    struct Reset {
+        ~Reset() { hero::DataSerializer::progress = nullptr; }
+    } reset;
     try {
         hero::DataSerializer::Build20LevelStage(levels, models);
+        bar.setValue(20);
     } catch (const std::exception& e) {
+        bar.close();
         // Completability guard: never save a stage whose rooms cannot be
         // crossed (see DataSerializer::RoomConnectivityProblem).
         QMessageBox::critical(this, "Generate 20 Levels",
