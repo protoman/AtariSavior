@@ -80,7 +80,7 @@ def hooked(con):
             keep.clear()
             for name in ("RoomY", "Grp0Ptr", "ObjBase", "ObjTop", "ObjBase1", "ObjTop1",
                          "ObjX1", "ObjRefs", "CollisionX", "CollisionCellY", "BombPacked",
-                         "RoomBandColor"):
+                         "RoomBandColor", "LaserState"):
                 keep[Z[name]] = self.ram[Z[name]]
             keep[(Z["Grp0Ptr"] + 1) & 0x7F] = self.ram[(Z["Grp0Ptr"] + 1) & 0x7F]
             apply(self, self.scn)
@@ -114,9 +114,10 @@ def apply(con, s):
     else:
         r[Z["ObjBase1"]] = 0xFF
     r[Z["CollisionX"]] = 24 + s.get("tide", 0)
-    r[Z["CollisionCellY"]] = 0x80
-    r[Z["BombPacked"]] = 0
+    r[Z["CollisionCellY"]] = s.get("door", 0x80)
+    r[Z["BombPacked"]] = s.get("bombstate", 0)
     r[Z["RoomBandColor"]] = s.get("water", 0x96)
+    r[Z["LaserState"]] = s.get("laser", 0)
 
 
 def frame_lines(con, log):
@@ -207,11 +208,16 @@ def main():
     # ---- slot 1: a second object lower in another band ------------------------------------
     for d1 in ("OBJ_SPIDER", "OBJ_TENTACLE", "OBJ_MINER"):
         rows1 = design_rows(d1)
-        for top1 in range(40, 130, 7):
+        for top1 in sorted(set(list(range(40, 130, 7)) + [36, 37, 72, 73, 108, 109])):
             for x1 in (10, 40, 90):          # (x >= ~103 sees the next row one line early: the GRP1 write is at c57)
                 scn = dict(ry=10, frame="PlayerSpriteB", obj0=("OBJ_BAT", 12),
                            obj1=(d1, top1, x1, 0))
                 by, first, last, k0, (s0, s1) = run(con, scn)
+                ws = [n for n in range(144)
+                      if not [t for t, r, v in by.get(k0 + n, []) if r == T.WSYNC]]
+                if ws:          # a kernel line without its WSYNC = a stalled (76c+) line
+                    problems.append((f"slot1 {d1} top={top1} x={x1}: stalled lines", ws[:4]))
+                    break
                 band = top1 // 36
                 # the hook line pair of its band (lines 3,4 of the band) is allowed to repeat
                 skip = {36 * band + 3, 36 * band + 4, 36 * band + 5}
@@ -231,6 +237,32 @@ def main():
         wl = [n for n in range(144) for t, r, v in by.get(k0 + n, []) if r == T.COLUBK]
         if wl != [132 + tide]:
             problems.append(("water", tide, wl, [132 + tide]))
+    # ---- laser beam: ENAM0 only on the player's beam row, only while armed ----------------
+    for armed in (0, 2):
+        by, first, last, k0, _ = run(con, dict(ry=50, frame="PlayerSpriteA", laser=armed))
+        beam = [n for n in range(144) for t, r, v in by.get(k0 + n, []) if r == T.ENAM0 and v & 2]
+        if beam != ([54] if armed else []):
+            problems.append(("laser", armed, beam))
+    # ---- COLUP1 outside objects: the band colour (door: the stripe colour) ------------------
+    for door in (0x80, 0x1C):
+        scn = dict(ry=50, frame="PlayerSpriteA", door=door)
+        con.scn = scn
+        con.tia_frame()
+        cpf = [con.ram[(Z["CPFB"] + k) & 0x7F] for k in range(4)]      # (the game's own bytes)
+        by, first, last, k0, _ = run(con, scn)
+        for n in range(143):
+            band = n // 36 + (1 if n % 36 == 35 else 0)             # a band's last line latches the next
+            want = 0x1C if door != 0x80 else cpf[band]
+            got = [v for t, r, v in by.get(k0 + n, []) if r == T.COLUP1]
+            if got and got[-1] != want:
+                problems.append(("COLUP1", door, n, got[-1], want))
+                break
+    # ---- the water strip is not painted during the explosion blink / when the band is off --
+    for kw in (dict(bombstate=2), dict(water=0)):
+        by, first, last, k0, _ = run(con, dict(ry=60, frame="PlayerSpriteA", **kw))
+        wl = [n for n in range(144) for t, r, v in by.get(k0 + n, []) if r == T.COLUBK]
+        if wl:
+            problems.append(("water must be off", kw, wl))
     if problems:
         print("FAIL:", problems[0])
         for p in problems[1:6]:

@@ -39,14 +39,6 @@ Kernel6Entry:
 .wait:
     lda INTIM
     bne .wait
-    ; The old kernel spent 8 more scanlines on the cave (two dead setup lines per band change);
-    ; the frame keeps its 272 lines (every gate and TV timing assumes it) by waiting here,
-    ; with VBLANK still on, so the picture ends where it always did.
-    ldx #CAVE_DEAD_LINES
-.pad:
-    sta WSYNC
-    dex
-    bne .pad
     sta WSYNC
     lda #0
     sta VBLANK
@@ -77,6 +69,7 @@ KernelExit:
     jmp $FC68                       ; fold pad (in table page $FC): lda #1 / sta $1FF5 / jmp $F540
 
     include "generated/cave_slot1.inc"   ; the second object's positioning lines (entered by jmp)
+    include "generated/cave_idx.inc"     ; ObjBase -> design index (a lookup, not a search: VBL time)
 
     include "generated/cave_tables.inc"
 

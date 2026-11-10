@@ -801,7 +801,7 @@ UEPass                   fe89              (R )
 UEPrologue               fe7b              (R )
 UpdateEnemies            f3a7              (R )
 UpdateP0Vertical         f1df                  
-VBL_UNITS                001f              (R )
+VBL_UNITS                0029              (R )
 VBLANK                   0001              (R )
 VBLTimer                 f04e                  
 VDELP0                   0025              (R )

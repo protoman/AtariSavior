@@ -2,6 +2,10 @@
     align 256
     ENDIF
 S1Path:
+    lda G1hiC+1
+    sta G1+1
+    lda C1hiC+1
+    sta C1+1
     lda #0
     sta HMP0
     sta HMM0
@@ -41,16 +45,16 @@ S1Delay:
     ldy #2
     lda (G1),Y
     sta GRP1
-    beq .e36
+    beq .e34
     lda (C1),Y
     sta COLUP1
-    bne .j36
-.e36:
+    bne .j34
+.e34:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j36:
+.j34:
     iny
     sta WSYNC
     jmp H1in

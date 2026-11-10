@@ -115,6 +115,17 @@ PC_BMW = LABELS['CallPad_BombMarkWalls']
 PC_ROW = LABELS['.Row']
 PC_VBLT = LABELS['VBLTimer']     # VBL work window: TIM64T #23 armed here
 PC_WAIT = LABELS['.WaitVBLANK']  # INTIM poll entry = end of pure VBL work
+# Gameplay frames poll the VBL timer in the bank6 cave kernel (prologue work included): the
+# measurement must end at ITS first INTIM read, not only at bank0's .WaitVBLANK (2026-11: the
+# guard stopped at the bank0 dispatch and missed 730c of prologue -> enemy rooms overran the window)
+PC_WAIT6 = None
+for _l in (SRC / 'bank6.lst').read_text(errors='replace').splitlines():
+    _m = re.match(r'^\s*\d+\s+([0-9a-f]{4})\s+\.wait\s*$', _l)
+    if _m:
+        PC_WAIT6 = int(_m.group(1), 16)
+        break
+if PC_WAIT6 is None:
+    sys.exit('label .wait not found in bank6.lst')
 PC_TITLE = LABELS['CallPad_TitleBand']  # bank0 pad -> bank1 TitleBand (bands 1-2)
 
 # overscan sub-marks for attribution (which caller eats the timer window)
@@ -427,7 +438,7 @@ while frame < 1100:
     # that outlives the deadline reaches the poll late, so vbl_pre alone
     # exceeds the budget.  Frame-length consequences stay covered by the
     # wall-model assert (265 lines).
-    if bk == 0 and pc == PC_WAIT and phase == PH_VBL and vbl_pre is None:
+    if ((bk == 0 and pc == PC_WAIT) or (bk == 6 and pc == PC_WAIT6)) and phase == PH_VBL and vbl_pre is None:
         vbl_pre = vbl_acc
 
     # -- phase transitions (landmarks are bank0 labels) --

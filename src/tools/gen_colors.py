@@ -21,7 +21,9 @@ from pathlib import Path
 # 8 blue, 9 cyan, C green, F brown).
 # 312-line frame: NTSC runs 272 lines (V 31 + O 44 units of 64 cycles); the extra ~40
 # lines (3040 cycles = ~47 units) are split between the two waits.
-VBL_PAL, OVER_PAL = 51, 71
+VBL_PAL, OVER_PAL = 60, 71      # PAL: the same +9 VBL units as NTSC (see VBL_NTSC)
+VBL_NTSC, OVER_NTSC = 41, 44
+                    # cave is 8 lines shorter than the old kernel's (9 units = 7.6 lines)
 
 HUE_MAP = {0: 0, 1: 2, 2: 4, 3: 4, 4: 6, 5: 8, 6: 10, 7: 13, 8: 11, 9: 9,
            10: 9, 11: 7, 12: 5, 13: 3, 14: 2, 15: 4}
@@ -41,8 +43,8 @@ def main() -> int:
     pal50 = tv == "pal"
     lines += [f"TV_PAL = {1 if tv != 'ntsc' else 0}      ; PAL colours",
               f"TV_50HZ = {1 if pal50 else 0}          ; 312-line, 50 Hz frame",
-              f"VBL_UNITS = {VBL_PAL if pal50 else 31}      ; TIM64T units of VBLANK work window",
-              f"OVER_UNITS = {OVER_PAL if pal50 else 44}     ; TIM64T units of overscan",
+              f"VBL_UNITS = {VBL_PAL if pal50 else VBL_NTSC}      ; TIM64T units of VBLANK work window",
+              f"OVER_UNITS = {OVER_PAL if pal50 else OVER_NTSC}     ; TIM64T units of overscan",
               f"TICKS_PER_SEC = {50 if pal50 else 60}   ; frames per power-bar step",
               f"TV_CAVE_LINES = {312 if pal50 else 272}      ; scanlines of a gameplay frame (title: 5 fewer)"]
     for c in range(256):

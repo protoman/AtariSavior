@@ -6,15 +6,10 @@
 ; computes the first segment. Needs: cave_zp.inc, cave_luts.inc, CaveFrameLo, CaveFineTab.
 ; Registers are free; no jsr (the stack bytes $F8-$FF double as kernel arrays).
 ; ==============================================================================
-    MAC FINDDESIGN                  ; A = ObjBase-style offset -> X = design index (0 if unknown)
-    ldx #CAVE_NDESIGN-1
-.find{1}:
-    cmp CaveDesignOff,X
-    beq .found{1}
-    dex
-    bpl .find{1}
-    inx
-.found{1}:
+    MAC FINDDESIGN                  ; A = ObjBase-style offset -> X = design index (a table lookup)
+    tax
+    lda CaveDesignIdx,X
+    tax
     ENDM
 
     ; the VBL-tail inits the live kernel did right before its timer poll

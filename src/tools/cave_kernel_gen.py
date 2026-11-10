@@ -36,7 +36,7 @@ H0, H1 = 22, 16
 BAND = 36
 UPD = 2                      # line of the band where the pointers are rewritten
 P1_STRIDE = PAD + H1 + 1
-NSUM = 20                    # loop A + loop B lines of a band (36 - 13 specials - 3)
+NSUM = 21                    # loop A + loop B lines of a band (36 - 12 specials - 3)
 
 # ------------------------------------------------------------------------- zero page
 LIVE = {  # bytes owned by the rest of the game that the kernel reads
@@ -79,7 +79,6 @@ def zp_inc():
     out.append(f"CAVE_H1       = {H1}")
     out.append(f"CAVE_NSUM     = {NSUM}")
     out.append("CAVE_LINES    = 144")
-    out.append("CAVE_DEAD_LINES = 8            ; the lines the old kernel spent on band changes: the frame length stays 272")
     out.append(f"BAND_LINES    = {BAND}")
     return "\n".join(out) + "\n"
 
@@ -238,9 +237,6 @@ def K_c():
 OPS = {
     "update": ["lda NextS0", "sta G0", "lda NextC0", "sta C0", "lda NextS1", "sta G1", "sta C1",
                "ldy #0"],
-    "h1": ["lda Band", "cmp Slot1Band", "lda #0", "rol", "sta.w T", "tax", "lda G1hiC,X",
-           "sta G1+1"],
-    "h2": ["ldx T", "lda C1hiC,X", "sta C1+1"],
     "p0a": ["lda E0", f"cmp #{BND0}", "lda #0", "sbc #0", "sta.w T"],
     "p0c": ["lda P0Kb", "sec", "sbc E0", "and T", "sta NextS0"],
     "p0b": [f"lda #{K_c()}", "sec", "sbc E0", "and T", "sta NextC0"],
@@ -253,7 +249,7 @@ OPS = {
     "na": ["ldx Band", "lda TideMask,X", "and CollisionX", "clc", "adc NAROM,X", "sta T", "tax"],
 }
 # lines of specials after B0/B1 (each entry = ops packed into one line)
-SCHEDULE = [["update"], ["h1"], ["h2", "p0a"], ["p0c"], ["p0b", "p0d"], ["cn"], ["p1a"],
+SCHEDULE = [["update"], ["p0a"], ["p0c"], ["p0b", "p0d"], ["cn"], ["p1a"],
             ["p1b"], ["p1c"], ["s1adj"], ["na"]]
 N_SPECIALS = 2 + len(SCHEDULE)
 assert NSUM == 36 - N_SPECIALS - 3, (NSUM, N_SPECIALS)
@@ -350,7 +346,11 @@ def slot1_path():
     Partial line (no sprite fetch): clear the player's fine motion, REFP1, Y++ ; positioning
     line: delay N iterations, strobe RESP1 at the same cycle SetObjectXPos would (5N+15);
     HMOVE line: a normal sprite line that does the update line's work and returns to H1."""
+    # the slot-1 pointer pages (gfx AND colour) switch together here, in a line that fetches
+    # nothing: switching them on separate lines let one fetch read a gfx byte of one object
+    # with the colour of the other (colour 0 -> the NZ path fell into the Z path: a stalled line)
     part = ["S1Path:",
+            "    lda G1hiC+1", "    sta G1+1", "    lda C1hiC+1", "    sta C1+1",
             "    lda #0", "    sta HMP0", "    sta HMM0", "    sta HMBL",
             "    lda ObjRefs", "    asl", "    sta REFP1", "    iny", "    sta WSYNC"]
     pos = ["    lda S1Pos", "    sta HMP1", "    and #$0F", "    tax",
@@ -536,7 +536,7 @@ DESIGN_ROWS = {"OBJ_KEY": 12, "OBJ_CELL": 4, "OBJ_MOTH": 14, "OBJ_SPIDER": 15, "
 HUD_PAD_AT = 0x68             # page $FC: the HUD fold pad bytes live here
 FRAME3_BASE = 112             # frame 3 (WalkB) gfx block inside page $FC (after the pad)
 
-SMALL_ROM = """NAROM:       .byte 10,10,10,243            ; nA: 10 (bands 0-2), 11+off (band 3) - 24
+SMALL_ROM = """NAROM:       .byte 10,10,10,244            ; nA: 10 (bands 0-2), 12+off (band 3) - 24
 TideMask:    .byte 0,0,0,$FF
 WaterXROM:   .byte $30,$30,$30,0
 """
@@ -659,8 +659,14 @@ CaveFrameGHi:   .byte {",".join(f"${g:02X}" for g, _ in frame_loc)}
 CaveFrameKb:    .byte {",".join(str(k) for _, k in frame_loc)}
 CaveFineTab:    .byte $70,$60,$50,$40,$30,$20,$10,$00,$F0,$E0,$D0,$C0,$B0,$A0,$90
 {SMALL_ROM}"""
+    idx = [0] * (max(c[d] for d in designs) + 1)
+    for i, d in enumerate(designs):
+        idx[c[d]] = i
+    lut = "CAVE_IDXLEN = %d\nCaveDesignIdx:\n" % len(idx)
+    for i in range(0, len(idx), 16):
+        lut += "    .byte " + ",".join(str(v) for v in idx[i:i + 16]) + "\n"
     layout = {"frames": frame_loc, "designs": design_loc, "design_names": designs}
-    return txt, luts, layout
+    return txt, luts, layout, lut
 
 
 def main():
@@ -668,7 +674,8 @@ def main():
     out = Path(sys.argv[2])
     out.mkdir(parents=True, exist_ok=True)
     art = test_art() if mode == "--test" else read_art(sys.argv[3])
-    txt, luts, _ = tables(art)
+    txt, luts, _, lut = tables(art)
+    (out / "cave_idx.inc").write_text(lut)
     (out / "cave_zp.inc").write_text(zp_inc())
     (out / "cave_kernel.inc").write_text(kernel())
     (out / "cave_slot1.inc").write_text(slot1_path())
