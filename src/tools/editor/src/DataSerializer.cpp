@@ -1902,6 +1902,97 @@ std::string RoomConnectivityProblem(const ModelData& m) {
     return "";
 }
 
+
+// --- REAL room check on the placed stage (user 2026-11-10: "the generator should
+// always check if the room can be passed through, not make geometrical
+// assumptions"). Floods the 20-column mirrored map of a PLACED room from the
+// sides its neighbours actually use; returns the cells the player can reach and
+// whether every used side reaches another used side.
+struct RoomFlood {
+    int bands = 0;
+    std::vector<std::vector<char>> reach;   // [band][0..19] reachable from any live side
+    std::string problem;                    // empty = every live side crosses
+};
+
+RoomFlood FloodRoom(const LevelData& lvl, const RoomData& room,
+                    const ModelData& m) {
+    RoomFlood out;
+    const int W = kRoomWidth * 2;
+    out.bands = m.width > 0 ? (int)m.tiles.size() / m.width : 0;
+    const int nb = out.bands;
+    out.reach.assign(nb, std::vector<char>(W, 0));
+    if (nb < 3) return out;
+    auto has = [&](int dx, int dy) {
+        for (const RoomData& o : lvl.rooms) {
+            if (o.room_x == room.room_x + dx && o.room_y == room.room_y + dy)
+                return true;
+        }
+        return false;
+    };
+    auto air = [&](int b, int f) {
+        return CellAir(m, b, f < kRoomWidth ? f : W - 1 - f);
+    };
+    std::vector<std::vector<std::pair<int, int>>> sides(4);
+    if (has(-1, 0)) for (int b = 1; b <= 2; ++b) sides[0].push_back({b, 0});
+    if (has(1, 0))  for (int b = 1; b <= 2; ++b) sides[1].push_back({b, W - 1});
+    if (has(0, -1)) for (int f = 0; f < W; ++f) sides[2].push_back({0, f});
+    if (has(0, 1))  for (int f = 0; f < W; ++f) sides[3].push_back({nb - 1, f});
+    static const char* const names[4] = {"west", "east", "north", "south"};
+    int live = 0;
+    for (auto& s : sides) live += s.empty() ? 0 : 1;
+    // A room with no neighbour at all (single-room level): every opening counts.
+    if (live == 0) {
+        for (int f = 0; f < W; ++f) {
+            sides[2].push_back({0, f});
+            sides[3].push_back({nb - 1, f});
+        }
+    }
+    auto flood = [&](const std::vector<std::pair<int, int>>& from) {
+        std::vector<std::vector<char>> seen(nb, std::vector<char>(W, 0));
+        std::vector<std::pair<int, int>> st;
+        for (auto& c : from) {
+            if (air(c.first, c.second) && !seen[c.first][c.second]) {
+                seen[c.first][c.second] = 1;
+                st.push_back(c);
+            }
+        }
+        while (!st.empty()) {
+            auto [y, x] = st.back();
+            st.pop_back();
+            static const int dy[4] = {1, -1, 0, 0};
+            static const int dx[4] = {0, 0, 1, -1};
+            for (int k = 0; k < 4; ++k) {
+                const int ny = y + dy[k], nx = x + dx[k];
+                if (ny < 0 || ny >= nb || nx < 0 || nx >= W) continue;
+                if (seen[ny][nx] || !air(ny, nx)) continue;
+                seen[ny][nx] = 1;
+                st.push_back({ny, nx});
+            }
+        }
+        return seen;
+    };
+    for (int i = 0; i < 4; ++i) {
+        if (sides[i].empty()) continue;
+        const auto seen = flood(sides[i]);
+        for (int b = 0; b < nb; ++b)
+            for (int f = 0; f < W; ++f)
+                if (seen[b][f]) out.reach[b][f] = 1;
+        if (live >= 2 && out.problem.empty()) {
+            bool ok = false;
+            for (int j = 0; j < 4 && !ok; ++j) {
+                if (j == i) continue;
+                for (auto& c : sides[j])
+                    if (seen[c.first][c.second]) { ok = true; break; }
+            }
+            if (!ok) {
+                out.problem = std::string("the ") + names[i]
+                            + " entry reaches no other exit";
+            }
+        }
+    }
+    return out;
+}
+
 // The cell the player squeezes through in a hot room: the profile / archetype's
 // band-1 gap (the cell of the open run nearest the shaft), else the legacy table.
 int HotGapCell(const ModelData& m, int arch) {
@@ -4170,6 +4261,80 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             }
         }
     };
+    // REAL per-room validation of the placed stage (flood on the mirrored map,
+    // sides from the actual neighbours): a room that cannot be crossed is
+    // flattened (or its channel demoted) and the stage rebuilt; an object in air
+    // the player never reaches is moved to the nearest reachable cell of its
+    // band, or dropped when the band has none.
+    for (int l = 1; l <= kStageLevels; ++l) {
+        LevelData& lv = levels[l - 1];
+        bool queuedRoom = false;
+        for (int ri = 0; ri < (int)lv.rooms.size(); ++ri) {
+            RoomData& room = lv.rooms[ri];
+            const ModelData* sm = nullptr;
+            for (const ModelData& m : models) {
+                if (m.id == room.model_id) { sm = &m; break; }
+            }
+            if (!sm) continue;
+            const RoomFlood fl = FloodRoom(lv, room, *sm);
+            if (fl.bands < 3) continue;
+            if (!fl.problem.empty()) {
+                const int arch = (masks[l - 1][ri] >> kArchShift) & kArchMask;
+                if (arch != 0 && roles[l - 1][ri] != Role::Hot
+                        && !repair.flat.count({l, ri})) {
+                    repair.next.push_back({l, ri});
+                } else if ((masks[l - 1][ri] & SHAPE_CHANNEL)
+                        && !repair.chanOff.count(
+                               {l, room.room_x, room.room_y})) {
+                    repair.nextChan.push_back({l, room.room_x, room.room_y});
+                } else {
+                    repair.problems.push_back(
+                        "level " + std::to_string(l) + " room "
+                        + std::to_string(ri + 1) + ": " + fl.problem);
+                }
+                queuedRoom = true;
+                continue;
+            }
+            const int units = BandUnits(*sm);
+            auto cellOf = [&](float x) {
+                int c = (int)x / 2;
+                if (c < 0) c = 0;
+                if (c > 2 * kRoomWidth - 1) c = 2 * kRoomWidth - 1;
+                return c;
+            };
+            auto reachable = [&](int b, int f) {
+                return b >= 0 && b < fl.bands && fl.reach[b][f];
+            };
+            auto relocate = [&](float& x, float y, bool& drop) {
+                const int b = (int)y / units;
+                const int f = cellOf(x);
+                if (reachable(b, f)) return;
+                int best = -1;
+                for (int d = 0; d < 2 * kRoomWidth && best < 0; ++d) {
+                    for (int s = 0; s < 2; ++s) {
+                        const int g = f + (s ? d : -d);
+                        if (g >= 0 && g < kRoomWidth && reachable(b, g)) {
+                            best = g;
+                            break;
+                        }
+                    }
+                }
+                if (best < 0) drop = true;
+                else x = (float)(best * 2);
+            };
+            for (size_t e = room.enemies.size(); e-- > 0;) {
+                bool drop = false;
+                relocate(room.enemies[e].x, room.enemies[e].y, drop);
+                if (drop) room.enemies.erase(room.enemies.begin() + e);
+            }
+            for (size_t k = room.lamps.size(); k-- > 0;) {
+                bool drop = false;
+                relocate(room.lamps[k].x, room.lamps[k].y, drop);
+                if (drop) room.lamps.erase(room.lamps.begin() + k);
+            }
+        }
+        if (queuedRoom) continue;
+    }
     for (int l = 1; l <= kStageLevels; ++l) {
         // A spider the route has to pass: slide it to a clear column first
         // (content stays), remove it only when no column works.
