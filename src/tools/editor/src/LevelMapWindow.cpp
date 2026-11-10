@@ -146,6 +146,26 @@ protected:
                     }
                 }
             }
+            // Crusher: arrows pointing INWARD on both sides of its band (the shutter
+            // closes from both outer walls).
+            {
+                QFont af = font();
+                af.setPixelSize(16);
+                af.setBold(true);
+                p.setFont(af);
+                p.setPen(QColor(255, 255, 255));
+                for (int band = 0; band < hero::kRoomHeight; ++band) {
+                    bool crush = false;
+                    for (int c = 0; c < hero::kRoomWidth; ++c)
+                        crush = crush || r.left[band][c] == (int)hero::TileType::HCRUNCH;
+                    if (!crush) continue;
+                    const int by = oy + band * 3 * kRowH;
+                    const QRect lr(ox, by, 4 * kColW, 3 * kRowH);
+                    const QRect rr(ox + (kCols - 4) * kColW, by, 4 * kColW, 3 * kRowH);
+                    p.drawText(lr, Qt::AlignCenter, QString::fromUtf8("\u2192"));
+                    p.drawText(rr, Qt::AlignCenter, QString::fromUtf8("\u2190"));
+                }
+            }
             // Miner dot at its game position (room px -> display grid).
             if (r.miner) {
                 const int mx = ox + (int)(r.minerX * 2.0f) * kColW;

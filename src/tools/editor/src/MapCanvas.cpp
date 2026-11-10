@@ -269,7 +269,24 @@ MapCanvas::MapCanvas(QWidget* parent) : QWidget(parent) {
     setFixedSize(DisplayColumnsFor(kDefaultRoomWidth) * m_tileSize,
                  kDefaultRoomHeight * 4 * CellHeightFor(m_tileSize,
                      DisplayColumnsFor(kDefaultRoomWidth), kDefaultRoomHeight * 4));
+    // The hcrunch shutter animates like in the game (60 Hz clock, see CrunchPairs).
+    m_crunchTimer = new QTimer(this);
+    connect(m_crunchTimer, &QTimer::timeout, this, [this]() {
+        m_crunchClock = (m_crunchClock + 1) & 255;
+        if (RoomHasCrunch()) update();
+    });
+    m_crunchTimer->start(1000 / 60);
 }
+
+namespace {
+// Covered pairs 1..n of the hcrunch prefix at clock p - HcrClock in bank3:
+// s = P>>4; dwell 0-3, grow 4-12, fast retract 13-15 (tools/playbot.py crunch_pairs).
+int CrunchPairs(int p) {
+    const int s = (p & 255) >> 4;
+    const int eff = s < 4 ? 0 : s < 13 ? s - 3 : 3 * (15 - s);
+    return 1 + std::min(eff, 9);
+}
+}  // namespace
 
 // The room that owns the async layer being edited/drawn: the ACTIVE room in
 // level mode; NULL in model mode (the model tab has no room context, and the
@@ -422,7 +439,14 @@ void MapCanvas::paintEvent(QPaintEvent* /*event*/) {
                 // The room's feature cells paint their own colour (the model
                 // grid holds the shape, not the behaviour).
                 const int feat = FindFeature(*ar, modelY, x);
-                if (feat >= 0 && dcol < half) tileType = feat;
+                if (feat == (int)hero::TileType::HCRUNCH) {
+                    // The playfield is reflected: the shutter closes from BOTH outer
+                    // walls (pairs 1..n, the seam cell is pair 9). Open = the model.
+                    const int n = CrunchPairs(m_crunchClock);
+                    if (x >= 1 && x <= n) tileType = feat;
+                } else if (feat >= 0 && dcol < half) {
+                    tileType = feat;
+                }
             }
             if (patch)
                 tileType = doorPatch ? (int)hero::TileType::LOCKED_DOOR
