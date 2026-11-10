@@ -4,19 +4,19 @@
 BandPad:
     nop
 BandStart:
-    lda (C0),Y
-    sta COLUP0
-    and LaserState
-    sta ENAM0
-    lda (G0),Y
-    sta GRP0
+    lda CPFB,X
+    sta COLUPF
     lda PF0B,X
     sta PF0
     lda PF1B,X
     sta PF1
-    lda CPFB,X
+    lda PF2B,X
+    sta PF2
+    lda BandTab,X
+    sta ENABL
+    lda (G0),Y
+    sta GRP0
     nop
-    sta COLUPF
     lda (G1),Y
     sta GRP1
     beq .e1
@@ -32,12 +32,36 @@ BandStart:
     iny
     sta WSYNC
     jmp B1in
-    IF (* & $FF) + 104 > $100
+    IF (* & $FF) + 107 > $100
     align 256
     ENDIF
-S1Stub:
-    jmp S1Path
-B1in:
+S1Path:
+    lda G1hiC+1
+    sta G1+1
+    lda C1hiC+1
+    sta C1+1
+    lda #0
+    sta HMP0
+    sta HMM0
+    sta HMBL
+    lda ObjRefs
+    asl
+    sta REFP1
+    iny
+    sta WSYNC
+    lda S1Pos
+    sta HMP1
+    and #$0F
+    tax
+S1Delay:
+    dex
+    bne S1Delay
+    nop
+    nop
+    sta RESP1
+    iny
+    sta WSYNC
+    sta HMOVE
     nop
     lda (C0),Y
     sta COLUP0
@@ -45,14 +69,14 @@ B1in:
     sta ENAM0
     lda (G0),Y
     sta GRP0
-    lda PF2B,X
-    sta PF2
-    lda BandTab,X
-    sta ENABL
-    bit Tmp
-    nop
-    nop
-    nop
+    lda NextS0
+    sta G0
+    lda NextC0
+    sta C0
+    lda NextS1
+    sta G1
+    sta C1
+    ldy #2
     lda (G1),Y
     sta GRP1
     beq .e2
@@ -65,6 +89,45 @@ B1in:
     nop
     nop
 .j2:
+    iny
+    sta WSYNC
+    jmp H1in
+    IF (* & $FF) + 103 > $100
+    align 256
+    ENDIF
+S1Stub:
+    jmp S1Path
+B1in:
+    nop
+    lda (C0),Y
+    sta COLUP0
+    and LaserState
+    sta ENAM0
+    lda (G0),Y
+    sta GRP0
+    bit Tmp
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    lda (G1),Y
+    sta GRP1
+    beq .e3
+    lda (C1),Y
+    sta COLUP1
+    bne .j3
+.e3:
+    lda BandCol
+    sta COLUP1
+    nop
+    nop
+.j3:
     iny
     sta WSYNC
     cpx Slot1Band
@@ -85,22 +148,56 @@ B1in:
     ldy #0
     lda (G1),Y
     sta GRP1
-    beq .e3
+    beq .e4
     lda (C1),Y
     sta COLUP1
-    bne .j3
-.e3:
+    bne .j4
+.e4:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j3:
+.j4:
     iny
     sta WSYNC
     IF (* & $FF) + 52 > $100
     jmp .g1
     align 256
 .g1
+H1in:
+    nop
+    lda (C0),Y
+    sta COLUP0
+    and LaserState
+    sta ENAM0
+    lda (G0),Y
+    sta GRP0
+    lda E0
+    cmp #59
+    lda #0
+    sbc #0
+    sta.w T
+    nop
+    nop
+    nop
+    nop
+    nop
+    lda (G1),Y
+    sta GRP1
+    beq .e6
+    lda (C1),Y
+    sta COLUP1
+    bne .j6
+.e6:
+    lda BandCol
+    sta COLUP1
+    nop
+    nop
+.j6:
+    iny
+    sta WSYNC
+    ELSE
+    bit Tmp
 H1in:
     nop
     lda (C0),Y
@@ -133,9 +230,11 @@ H1in:
 .j5:
     iny
     sta WSYNC
-    ELSE
-    bit Tmp
-H1in:
+    ENDIF
+    IF (* & $FF) + 50 > $100
+    jmp .g2
+    align 256
+.g2
     nop
     lda (C0),Y
     sta COLUP0
@@ -143,35 +242,31 @@ H1in:
     sta ENAM0
     lda (G0),Y
     sta GRP0
-    lda E0
-    cmp #59
-    lda #0
-    sbc #0
-    sta.w T
-    nop
-    nop
+    lda P0Kb
+    sec
+    sbc E0
+    and T
+    sta NextS0
+    bit Tmp
     nop
     nop
     nop
     lda (G1),Y
     sta GRP1
-    beq .e4
+    beq .e8
     lda (C1),Y
     sta COLUP1
-    bne .j4
-.e4:
+    bne .j8
+.e8:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j4:
+.j8:
     iny
     sta WSYNC
-    ENDIF
-    IF (* & $FF) + 50 > $100
-    jmp .g2
-    align 256
-.g2
+    ELSE
+    bit Tmp
     nop
     lda (C0),Y
     sta COLUP0
@@ -202,8 +297,11 @@ H1in:
 .j7:
     iny
     sta WSYNC
-    ELSE
-    bit Tmp
+    ENDIF
+    IF (* & $FF) + 52 > $100
+    jmp .g3
+    align 256
+.g3
     nop
     lda (C0),Y
     sta COLUP0
@@ -211,34 +309,31 @@ H1in:
     sta ENAM0
     lda (G0),Y
     sta GRP0
-    lda P0Kb
+    lda #59
     sec
     sbc E0
     and T
-    sta NextS0
-    bit Tmp
-    nop
-    nop
-    nop
+    sta NextC0
+    lda E0
+    sec
+    sbc #36
+    sta E0
     lda (G1),Y
     sta GRP1
-    beq .e6
+    beq .e10
     lda (C1),Y
     sta COLUP1
-    bne .j6
-.e6:
+    bne .j10
+.e10:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j6:
+.j10:
     iny
     sta WSYNC
-    ENDIF
-    IF (* & $FF) + 52 > $100
-    jmp .g3
-    align 256
-.g3
+    ELSE
+    bit Tmp
     nop
     lda (C0),Y
     sta COLUP0
@@ -269,8 +364,11 @@ H1in:
 .j9:
     iny
     sta WSYNC
-    ELSE
-    bit Tmp
+    ENDIF
+    IF (* & $FF) + 51 > $100
+    jmp .g4
+    align 256
+.g4
     nop
     lda (C0),Y
     sta COLUP0
@@ -278,34 +376,32 @@ H1in:
     sta ENAM0
     lda (G0),Y
     sta GRP0
-    lda #59
-    sec
-    sbc E0
-    and T
-    sta NextC0
-    lda E0
-    sec
-    sbc #36
-    sta E0
+    lda Band
+    clc
+    adc #1
+    cmp Slot1Band
+    lda #0
+    rol
+    sta CtxNext
+    nop
+    nop
+    nop
     lda (G1),Y
     sta GRP1
-    beq .e8
+    beq .e12
     lda (C1),Y
     sta COLUP1
-    bne .j8
-.e8:
+    bne .j12
+.e12:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j8:
+.j12:
     iny
     sta WSYNC
-    ENDIF
-    IF (* & $FF) + 51 > $100
-    jmp .g4
-    align 256
-.g4
+    ELSE
+    bit Tmp
     nop
     lda (C0),Y
     sta COLUP0
@@ -337,8 +433,11 @@ H1in:
 .j11:
     iny
     sta WSYNC
-    ELSE
-    bit Tmp
+    ENDIF
+    IF (* & $FF) + 52 > $100
+    jmp .g5
+    align 256
+.g5
     nop
     lda (C0),Y
     sta COLUP0
@@ -346,35 +445,31 @@ H1in:
     sta ENAM0
     lda (G0),Y
     sta GRP0
-    lda Band
-    clc
-    adc #1
-    cmp Slot1Band
+    ldx CtxNext
+    lda EC,X
+    cmp #52
     lda #0
-    rol
-    sta CtxNext
-    nop
+    sbc #0
+    sta T
+    bit Tmp
     nop
     nop
     lda (G1),Y
     sta GRP1
-    beq .e10
+    beq .e14
     lda (C1),Y
     sta COLUP1
-    bne .j10
-.e10:
+    bne .j14
+.e14:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j10:
+.j14:
     iny
     sta WSYNC
-    ENDIF
-    IF (* & $FF) + 52 > $100
-    jmp .g5
-    align 256
-.g5
+    ELSE
+    bit Tmp
     nop
     lda (C0),Y
     sta COLUP0
@@ -405,8 +500,11 @@ H1in:
 .j13:
     iny
     sta WSYNC
-    ELSE
-    bit Tmp
+    ENDIF
+    IF (* & $FF) + 49 > $100
+    jmp .g6
+    align 256
+.g6
     nop
     lda (C0),Y
     sta COLUP0
@@ -415,33 +513,29 @@ H1in:
     lda (G0),Y
     sta GRP0
     ldx CtxNext
-    lda EC,X
-    cmp #52
-    lda #0
-    sbc #0
-    sta T
-    bit Tmp
+    lda KbC,X
+    sec
+    sbc EC,X
+    and T
+    sta NextS1
     nop
     nop
     lda (G1),Y
     sta GRP1
-    beq .e12
+    beq .e16
     lda (C1),Y
     sta COLUP1
-    bne .j12
-.e12:
+    bne .j16
+.e16:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j12:
+.j16:
     iny
     sta WSYNC
-    ENDIF
-    IF (* & $FF) + 49 > $100
-    jmp .g6
-    align 256
-.g6
+    ELSE
+    bit Tmp
     nop
     lda (C0),Y
     sta COLUP0
@@ -471,8 +565,11 @@ H1in:
 .j15:
     iny
     sta WSYNC
-    ELSE
-    bit Tmp
+    ENDIF
+    IF (* & $FF) + 49 > $100
+    jmp .g7
+    align 256
+.g7
     nop
     lda (C0),Y
     sta COLUP0
@@ -481,32 +578,30 @@ H1in:
     lda (G0),Y
     sta GRP0
     ldx CtxNext
-    lda KbC,X
+    lda EC,X
     sec
-    sbc EC,X
-    and T
-    sta NextS1
+    sbc #36
+    sta EC,X
+    nop
+    nop
     nop
     nop
     lda (G1),Y
     sta GRP1
-    beq .e14
+    beq .e18
     lda (C1),Y
     sta COLUP1
-    bne .j14
-.e14:
+    bne .j18
+.e18:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j14:
+.j18:
     iny
     sta WSYNC
-    ENDIF
-    IF (* & $FF) + 49 > $100
-    jmp .g7
-    align 256
-.g7
+    ELSE
+    bit Tmp
     nop
     lda (C0),Y
     sta COLUP0
@@ -537,8 +632,11 @@ H1in:
 .j17:
     iny
     sta WSYNC
-    ELSE
-    bit Tmp
+    ENDIF
+    IF (* & $FF) + 53 > $100
+    jmp .g8
+    align 256
+.g8
     nop
     lda (C0),Y
     sta COLUP0
@@ -546,34 +644,32 @@ H1in:
     sta ENAM0
     lda (G0),Y
     sta GRP0
-    ldx CtxNext
-    lda EC,X
-    sec
-    sbc #36
-    sta EC,X
-    nop
+    lda Band
+    eor Slot1Band
+    cmp #1
+    lda #0
+    sbc #0
+    and #2
+    sta S1Adj
     nop
     nop
     nop
     lda (G1),Y
     sta GRP1
-    beq .e16
+    beq .e20
     lda (C1),Y
     sta COLUP1
-    bne .j16
-.e16:
+    bne .j20
+.e20:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j16:
+.j20:
     iny
     sta WSYNC
-    ENDIF
-    IF (* & $FF) + 53 > $100
-    jmp .g8
-    align 256
-.g8
+    ELSE
+    bit Tmp
     nop
     lda (C0),Y
     sta COLUP0
@@ -605,8 +701,11 @@ H1in:
 .j19:
     iny
     sta WSYNC
-    ELSE
-    bit Tmp
+    ENDIF
+    IF (* & $FF) + 49 > $100
+    jmp .g9
+    align 256
+.g9
     nop
     lda (C0),Y
     sta COLUP0
@@ -614,35 +713,30 @@ H1in:
     sta ENAM0
     lda (G0),Y
     sta GRP0
-    lda Band
-    eor Slot1Band
-    cmp #1
-    lda #0
-    sbc #0
-    and #2
-    sta S1Adj
-    nop
-    nop
+    ldx Band
+    lda TideMask,X
+    and CollisionX
+    clc
+    adc NAROM,X
+    sta T
+    tax
     nop
     lda (G1),Y
     sta GRP1
-    beq .e18
+    beq .e22
     lda (C1),Y
     sta COLUP1
-    bne .j18
-.e18:
+    bne .j22
+.e22:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j18:
+.j22:
     iny
     sta WSYNC
-    ENDIF
-    IF (* & $FF) + 49 > $100
-    jmp .g9
-    align 256
-.g9
+    ELSE
+    bit Tmp
     nop
     lda (C0),Y
     sta COLUP0
@@ -672,37 +766,6 @@ H1in:
 .j21:
     iny
     sta WSYNC
-    ELSE
-    bit Tmp
-    nop
-    lda (C0),Y
-    sta COLUP0
-    and LaserState
-    sta ENAM0
-    lda (G0),Y
-    sta GRP0
-    ldx Band
-    lda TideMask,X
-    and CollisionX
-    clc
-    adc NAROM,X
-    sta T
-    tax
-    nop
-    lda (G1),Y
-    sta GRP1
-    beq .e20
-    lda (C1),Y
-    sta COLUP1
-    bne .j20
-.e20:
-    lda BandCol
-    sta COLUP1
-    nop
-    nop
-.j20:
-    iny
-    sta WSYNC
     ENDIF
     IF (* & $FF) + 97 > $100
     jmp .g10
@@ -729,16 +792,16 @@ LoopA:
     nop
     lda (G1),Y
     sta GRP1
-    beq .e24
+    beq .e25
     lda (C1),Y
     sta COLUP1
-    bne .j24
-.e24:
+    bne .j25
+.e25:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j24:
+.j25:
     iny
     sta WSYNC
     dex
@@ -759,16 +822,16 @@ LoopA:
     nop
     lda (G1),Y
     sta GRP1
-    beq .e25
+    beq .e26
     lda (C1),Y
     sta COLUP1
-    bne .j25
-.e25:
+    bne .j26
+.e26:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j25:
+.j26:
     iny
     sta WSYNC
     ELSE
@@ -794,16 +857,16 @@ LoopA:
     nop
     lda (G1),Y
     sta GRP1
-    beq .e22
+    beq .e23
     lda (C1),Y
     sta COLUP1
-    bne .j22
-.e22:
+    bne .j23
+.e23:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j22:
+.j23:
     iny
     sta WSYNC
     dex
@@ -824,16 +887,16 @@ LoopA:
     nop
     lda (G1),Y
     sta GRP1
-    beq .e23
+    beq .e24
     lda (C1),Y
     sta COLUP1
-    bne .j23
-.e23:
+    bne .j24
+.e24:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j23:
+.j24:
     iny
     sta WSYNC
     ENDIF
@@ -841,6 +904,38 @@ LoopA:
     jmp .g11
     align 256
 .g11
+    nop
+    lda (C0),Y
+    sta COLUP0
+    and LaserState
+    sta ENAM0
+    lda (G0),Y
+    sta GRP0
+    inc Band
+    lda #21
+    sec
+    sbc T
+    sbc S1Adj
+    tax
+    nop
+    nop
+    nop
+    lda (G1),Y
+    sta GRP1
+    beq .e28
+    lda (C1),Y
+    sta COLUP1
+    bne .j28
+.e28:
+    lda BandCol
+    sta COLUP1
+    nop
+    nop
+.j28:
+    iny
+    sta WSYNC
+    ELSE
+    bit Tmp
     nop
     lda (C0),Y
     sta COLUP0
@@ -871,40 +966,8 @@ LoopA:
 .j27:
     iny
     sta WSYNC
-    ELSE
-    bit Tmp
-    nop
-    lda (C0),Y
-    sta COLUP0
-    and LaserState
-    sta ENAM0
-    lda (G0),Y
-    sta GRP0
-    inc Band
-    lda #21
-    sec
-    sbc T
-    sbc S1Adj
-    tax
-    nop
-    nop
-    nop
-    lda (G1),Y
-    sta GRP1
-    beq .e26
-    lda (C1),Y
-    sta COLUP1
-    bne .j26
-.e26:
-    lda BandCol
-    sta COLUP1
-    nop
-    nop
-.j26:
-    iny
-    sta WSYNC
     ENDIF
-    IF (* & $FF) + 151 > $100
+    IF (* & $FF) + 104 > $100
     jmp .g12
     align 256
 .g12
@@ -955,8 +1018,8 @@ LoopB:
     ora DoorOr
     sta BandCol
     cpx #4
-    beq .xt
     bit Tmp
+    nop
     lda (G1),Y
     sta GRP1
     beq .e32
@@ -971,36 +1034,8 @@ LoopB:
 .j32:
     iny
     sta WSYNC
-    jmp BandPad
-    lda (C0),Y
-    sta COLUP0
-    and LaserState
-    sta ENAM0
-    lda (G0),Y
-    sta GRP0
-    ldx Band
-    lda CPFB,X
-    and DoorAnd
-    ora DoorOr
-    sta BandCol
-    cpx #4
-    beq .xt
-.xt:
-    nop
-    lda (G1),Y
-    sta GRP1
-    beq .e33
-    lda (C1),Y
-    sta COLUP1
-    bne .j33
-.e33:
-    lda BandCol
-    sta COLUP1
-    nop
-    nop
-.j33:
-    iny
-    sta WSYNC
+    bcs KernelExit
+    jmp BandStart
     ELSE
     bit Tmp
     nop
@@ -1024,16 +1059,16 @@ LoopB:
     nop
     lda (G1),Y
     sta GRP1
-    beq .e28
+    beq .e29
     lda (C1),Y
     sta COLUP1
-    bne .j28
-.e28:
+    bne .j29
+.e29:
     lda BandCol
     sta COLUP1
     nop
     nop
-.j28:
+.j29:
     iny
     sta WSYNC
     dex
@@ -1050,37 +1085,7 @@ LoopB:
     ora DoorOr
     sta BandCol
     cpx #4
-    beq .xt
     bit Tmp
-    lda (G1),Y
-    sta GRP1
-    beq .e29
-    lda (C1),Y
-    sta COLUP1
-    bne .j29
-.e29:
-    lda BandCol
-    sta COLUP1
-    nop
-    nop
-.j29:
-    iny
-    sta WSYNC
-    jmp BandPad
-    lda (C0),Y
-    sta COLUP0
-    and LaserState
-    sta ENAM0
-    lda (G0),Y
-    sta GRP0
-    ldx Band
-    lda CPFB,X
-    and DoorAnd
-    ora DoorOr
-    sta BandCol
-    cpx #4
-    beq .xt
-.xt:
     nop
     lda (G1),Y
     sta GRP1
@@ -1096,4 +1101,6 @@ LoopB:
 .j30:
     iny
     sta WSYNC
+    bcs KernelExit
+    jmp BandStart
     ENDIF

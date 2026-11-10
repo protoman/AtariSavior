@@ -7,6 +7,9 @@ CaveDesignKb:   .byte 53,107,161,215,53,107,161,215,53,107,161,215
 CaveFrameGHi:   .byte $FF,$FF,$FF,$FC
 CaveFrameKb:    .byte 59,119,179,171
 CaveFineTab:    .byte $70,$60,$50,$40,$30,$20,$10,$00,$F0,$E0,$D0,$C0,$B0,$A0,$90
-NAROM:       .byte 10,10,10,244            ; nA: 10 (bands 0-2), 12+off (band 3) - 24
-TideMask:    .byte 0,0,0,$FF
-WaterXROM:   .byte $30,$30,$30,0
+CAVE_IDXLEN = 56
+CaveDesignIdx:
+    .byte 0,0,0,0,0,0,1,0,2,0,0,0,0,0,0,3
+    .byte 0,0,0,0,0,0,4,0,0,0,0,5,0,0,0,0
+    .byte 0,0,6,0,0,0,0,7,0,0,8,0,0,0,0,0
+    .byte 0,0,9,0,0,0,10,11
