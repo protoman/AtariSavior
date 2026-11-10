@@ -625,6 +625,14 @@ class Pilot:
                 if room_before == nxt[0]:
                     i += 1
                     continue
+                # a WIDE link (cavern floor/ceiling spanning several columns) lets the
+                # player cross the vertical edge at any column, not only the planned
+                # one: resync on the first later path node in the room we are in
+                j = next((k for k in range(i + 1, len(path))
+                          if path[k][0] == room_before), None)
+                if j is not None:
+                    i = j
+                    continue
                 raise GiveUp(f"left the route: in room {room_before}, expected "
                              f"{cur[0]}/{nxt[0]}")
             if cur[0] == nxt[0] and (nxt[1], nxt[2]) in self.lv.grids[nxt[0]][1]:
