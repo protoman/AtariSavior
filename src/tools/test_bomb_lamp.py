@@ -38,7 +38,7 @@ L2 = parse_labels(FROZEN / "bank2.lst",
                   NEED | {"BombEnemyBlastBody"})
 # C7: the shape blocks live in bank3, so the scratch address is a bank3 label
 # (same address space; the private bank2 copy is only the staging buffer).
-L3 = parse_labels(FROZEN / "bank3.lst", {"M5Shape"})
+L3 = parse_labels(FROZEN / "bank7.lst", {"M5Shape"})   # shapes live in bank7 now
 missing = (NEED | {"BombEnemyBlastBody"}) - set(L0) - set(L2)
 if missing:
     sys.exit(f"labels missing: {sorted(missing)}")

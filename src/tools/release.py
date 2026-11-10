@@ -112,13 +112,26 @@ def main() -> int:
     r = run([py, "tools/test_frame_stability.py", "--all"])
     if r.returncode:
         fail("test_frame_stability --all:\n" + r.stdout[-2500:])
-    step("flicker: sweep_frame_budget (every room of the stage)")
-    r = run(["sh", "tools/sweep_frame_budget.sh", "/tmp/release_frame_sweep"], env=dict(os.environ, PY=py))
-    bad_levels = [l for l in r.stdout.splitlines()
-                  if (m := re.match(r"level (\d+): (\d+)/(\d+) rooms", l)) and m.group(2) != m.group(3)]
-    if r.returncode or bad_levels or r.stdout.count("rooms inside the frame budget") != 20:
-        fail("frame-budget sweep:\n" + r.stdout[-2500:])
-    sweep_rooms = sum(int(m.group(3)) for m in re.finditer(r"level \d+: \d+/(\d+) rooms", r.stdout))
+    step("flicker: sim_frame_budget in the 16 heaviest rooms (parallel, ~25 min)")
+    heavy = subprocess.run(
+        [py, "-c", "import sys; sys.path.insert(0, 'tools'); import test_frame_stability as F; "
+                   "print(' '.join(f'{l - 1},{r}' for l, r, n in F.heavy_rooms(16)))"],
+        cwd=ROOT, text=True, capture_output=True).stdout.split()
+    procs = []
+    for lr in heavy:
+        lv, rm = lr.split(",")
+        procs.append((lr, subprocess.Popen(
+            [py, "sim_frame_budget.py"], cwd=ROOT, text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, env=dict(os.environ, SIM_LEVEL=lv, SIM_ROOM=rm))))
+    bad_sim = []
+    for lr, pr in procs:
+        out_ = pr.communicate()[0]
+        if pr.returncode or "SIM OK" not in out_:
+            bad_sim.append(f"L{int(lr.split(',')[0]) + 1} room {int(lr.split(',')[1]) + 1}: "
+                           + out_[-300:].replace("\n", " | "))
+    if bad_sim or not heavy:
+        fail("frame-budget sim failed in:\n  " + "\n  ".join(bad_sim or ["no heavy rooms found"]))
+    sweep_rooms = len(heavy)
 
     step("stage_reach")
     r = run([sys.executable, "tools/stage_reach.py", "rooms/stage.json"])

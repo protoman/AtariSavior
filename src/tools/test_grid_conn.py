@@ -177,6 +177,7 @@ def run_exit(mem: Mem, handler: str, room: int, positions: list[int],
     _zp(mem, "LevelPFDataHi", BASE >> 8)
     _zp(mem, "LevelRoomN", len(positions))
     _zp(mem, "RoomNo", room)
+    _zp(mem, "LevelConnSpare", 0)      # no room change pending
     _zp(mem, "RoomY", room_y)
     _zp(mem, "RoomX", room_x)
     mem.bank = 2
@@ -193,6 +194,14 @@ def run_exit(mem: Mem, handler: str, room: int, positions: list[int],
                         room_y=mem.ram[Z["RoomY"] - 0x80],
                         room_x=mem.ram[Z["RoomX"] - 0x80])
         if mpu.pc == L2["ReturnPad"]:
+            # DEFERRED room change (2026-11): the exit only records the target room as
+            # LevelConnSpare = room | $80 and moves the player to the opposite edge; the
+            # next (blank) frame runs EnterRoom.
+            pending = mem.ram[Z["LevelConnSpare"] - 0x80]
+            if pending & 0x80:
+                return dict(moved=True, room=pending & 0x7F,
+                            room_y=mem.ram[Z["RoomY"] - 0x80],
+                            room_x=mem.ram[Z["RoomX"] - 0x80])
             return dict(moved=False, room=None,
                         room_y=mem.ram[Z["RoomY"] - 0x80],
                         room_x=mem.ram[Z["RoomX"] - 0x80])

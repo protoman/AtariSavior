@@ -692,7 +692,7 @@ ObjSprites               f830              (R )
 ObjTop                   00bb              (R )
 ObjTop1                  00eb              (R )
 ObjX1                    00ec              (R )
-OVER_UNITS               002d              (R )
+OVER_UNITS               0030              (R )
 OverlayTramp             f9b8              (R )
 Overscan                 f16d              (R )
 OverscanAudio            f30f              (R )
@@ -780,7 +780,7 @@ TitleWork                fd24              (R )
 ToGameStub               fc70                  
 ToMenuStub               fc68                  
 TV_50HZ                  0000                  
-TV_CAVE_LINES            0115                  
+TV_CAVE_LINES            0118                  
 TV_PAL                   0000                  
 UE_Alive                 f3c0              (R )
 UE_Exit                  f418              (R )

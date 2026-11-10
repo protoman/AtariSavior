@@ -7,9 +7,9 @@
       3  10000 ????		00 00	    TV_PAL     =	0	; PAL colours
       4  10000 ????		00 00	    TV_50HZ    =	0	; 312-line, 50 Hz frame
       5  10000 ????		00 2d	    VBL_UNITS  =	45	; TIM64T units of VBLANK work window
-      6  10000 ????		00 2d	    OVER_UNITS =	45	; TIM64T units of overscan
+      6  10000 ????		00 30	    OVER_UNITS =	48	; TIM64T units of overscan
       7  10000 ????		00 3c	    TICKS_PER_SEC =	60	; frames per power-bar step
-      8  10000 ????		01 15	    TV_CAVE_LINES =	277	; scanlines of a gameplay frame (title: 3 more)
+      8  10000 ????		01 18	    TV_CAVE_LINES =	280	; scanlines of a gameplay frame (title: 3 more)
       9  10000 ????		00 00	    NC_00      =	$00
      10  10000 ????		00 01	    NC_01      =	$01
      11  10000 ????		00 02	    NC_02      =	$02
@@ -1429,7 +1429,7 @@
    1162  f171							; Measured real work: ~1520c typical, 2145c worst steady-state frame
    1163  f171							; (L5 R3, fly+laser), 2650-3120c on the one room-transition frame (EnterRoom
    1164  f171							; = a single long frame at a room change; the sim exempts those frames).
-   1165  f171		       a9 2d		      lda	#OVER_UNITS	; 44 on NTSC; PAL adds blank lines (colors.inc)
+   1165  f171		       a9 30		      lda	#OVER_UNITS	; 44 on NTSC; PAL adds blank lines (colors.inc)
    1166  f173		       8d 96 02 	      sta	TIM64T
    1167  f176
    1168  f176							; --- Write live Y → EnemyRamY ($E2-$E4; window-safe since S3.4: this

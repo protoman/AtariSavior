@@ -234,6 +234,8 @@ def main() -> int:
             seen_stage = True
         elif g.score() == 5000:
             seen_high = True
+        if seen_stage and seen_high:
+            break           # stay under the 5 s attract-mode idle (300 frames), or the demo starts
     assert seen_stage and seen_high, (
         f"title must alternate stage 7 / high score 5000 (stage {seen_stage}, "
         f"high {seen_high})")

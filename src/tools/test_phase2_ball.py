@@ -49,11 +49,19 @@ for _l in (FROZEN / "bank0.lst").read_text(errors="replace").splitlines():
                   r"([A-Za-z_.][A-Za-z0-9_.]*)(?:\s+subroutine)?\s*(?:;.*)?$", _l)
     if _m:
         LABELS.setdefault(_m.group(2), int(_m.group(1), 16))
-for _need in ("StartFrame", ".Row", "Overscan"):
+for _need in ("StartFrame", "Overscan"):
     if _need not in LABELS:
         sys.exit(f"label {_need} not found in bank0.lst")
+# 2026-11: the cave kernel is bank6 (generated); its first band entry is `BandPad`.
+_B6 = {}
+for _l in (FROZEN / "bank6.lst").read_text(errors="replace").splitlines():
+    _m = re.match(r"^\s*\d+\s+([0-9a-f]{4})\s+(BandPad)\s*$", _l)
+    if _m:
+        _B6[_m.group(2)] = int(_m.group(1), 16)
+if "BandPad" not in _B6:
+    sys.exit("label BandPad not found in bank6.lst")
 PC_START = LABELS["StartFrame"]
-PC_ROW = LABELS[".Row"]
+PC_ROW = _B6["BandPad"]
 PC_OVER = LABELS["Overscan"]
 
 FRAMES = 60
@@ -160,7 +168,7 @@ def run(rom: Path) -> dict:
             # console RESET pulses (intro 2026-10-06): f1 leaves $FD intro,
             # f4 hits TitleWork RESET -> game start (same as sim)
             mem.swchb = 0xFE if frame in (1, 4) else 0xFF
-        if bk == 0 and pc == PC_ROW and frame >= 0:
+        if bk == 6 and pc == PC_ROW and frame >= 0:
             cave_rows += 1
             ctrlpf_at_row.append((frame, mem.last.get(CTRLPF)))
             enabl_at_row.append((frame, mem.last.get(ENABL)))

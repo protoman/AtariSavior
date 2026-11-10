@@ -7,8 +7,8 @@ cover prints them, `tools/release.py` names the artifacts from them).
 
 **New cave kernel, new levels, slower raft**
 
-- New HERO-style gameplay kernel (bank 6): a steadier picture. The frame is now a fixed 277
-  lines (NTSC; the VBL window holds the prologue even in the heaviest rooms), the flicker
+- New HERO-style gameplay kernel (bank 6): a steadier picture. The frame is now a fixed 280
+  lines (NTSC; the VBL window holds the prologue and the overscan window the collision work even in the heaviest rooms), the flicker
   that rolled the picture in rooms with two creatures is gone, and the player art no longer
   repeats rows at band boundaries.
 - **The raft is half as fast** (0.75 px/frame at full speed, 0.5 while it takes off), so it

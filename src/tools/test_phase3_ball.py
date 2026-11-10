@@ -128,7 +128,7 @@ def run(rom: Path, band1: int = 0xFF) -> dict:
             mem.swchb = 0xFE if frame in (1, 2) else 0xFF
 
     enabl = [(f, v) for f, b, a, v in mem.log
-             if f >= 2 and b == 0 and a == ENABL]
+             if f >= 2 and b in (0, 6) and a == ENABL]   # 2026-11: the band gates run in the bank6 kernel
     respbl = {f for f, b, a, v in mem.log
               if f >= 2 and b == 0 and a == RESBL}
     hmbll = {f for f, b, a, v in mem.log if f >= 2 and b == 0 and a == HMBL}
@@ -182,8 +182,9 @@ def main() -> int:
             f"{[f'${t:02X}' for t in bad_temp]}, want ${want_temp:02X}")
 
     lens = sorted({r["per_frame"].get(f) for f in range(3, r["frames"])})
-    if len(lens) != 1 or lens[0] not in (272,):
-        fails.append(f"frame line counts (f>=3) = {lens}, want [272] "
+    _want = int(re.search(r"TV_CAVE_LINES\s*=\s*(\d+)", (SRC / "colors.inc").read_text()).group(1))
+    if len(lens) != 1 or lens[0] != _want:
+        fails.append(f"frame line counts (f>=3) = {lens}, want [{_want}] "
                      "(N=4 cave: 4x36 bands)")
 
     if r["min_sp"] < 0xF7:

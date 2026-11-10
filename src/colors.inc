@@ -3,9 +3,9 @@
 TV_PAL = 0      ; PAL colours
 TV_50HZ = 0          ; 312-line, 50 Hz frame
 VBL_UNITS = 45      ; TIM64T units of VBLANK work window
-OVER_UNITS = 45     ; TIM64T units of overscan
+OVER_UNITS = 48     ; TIM64T units of overscan
 TICKS_PER_SEC = 60   ; frames per power-bar step
-TV_CAVE_LINES = 277      ; scanlines of a gameplay frame (title: 3 more)
+TV_CAVE_LINES = 280      ; scanlines of a gameplay frame (title: 3 more)
 NC_00 = $00
 NC_01 = $01
 NC_02 = $02
