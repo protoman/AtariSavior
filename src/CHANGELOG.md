@@ -3,6 +3,34 @@
 Release versions live in `VERSION` (build.sh stamps them into the ROM, the manual
 cover prints them, `tools/release.py` names the artifacts from them).
 
+## 1.1.0
+
+**New cave kernel, new levels, slower raft**
+
+- New HERO-style gameplay kernel (bank 6): a steadier picture. The frame is now a fixed 277
+  lines (NTSC; the VBL window holds the prologue even in the heaviest rooms), the flicker
+  that rolled the picture in rooms with two creatures is gone, and the player art no longer
+  repeats rows at band boundaries.
+- **The raft is half as fast** (0.75 px/frame at full speed, 0.5 while it takes off), so it
+  is possible to step off it where the room asks you to.
+- The 20 stages were regenerated with new level rules:
+  - vertical rooms vary: the four bands are never all the same width and the top opening
+    differs from the bottom one; wide caverns link rooms, so the same shaft no longer
+    repeats;
+  - hot rock appears from level 5 and as HERO-style barriers (a wide space with narrow,
+    offset gaps), not as painted tunnels;
+  - a hot band entered from the side leaves 2 open cells to stop in (inertia), and rooms
+    with a raft keep 2 free columns under the hot ceiling at each water edge;
+  - every room is checked to be crossable (water/raft rooms that could not be crossed are
+    gone), and no creature or lamp sits in air the player cannot reach;
+  - every level from 5 has a room with two objects.
+- Editor: Generate shows a progress bar; the crusher is drawn on both sides of the room
+  and animated like in the game; the level map marks it with inward arrows.
+- Internal: the shape library moved to bank 7 (2.8 KB window, up from 747 bytes; 121 shapes);
+  `build.sh` skips the slow frame-budget simulation unless `FULL_SIMS=1` (releases always
+  run it, plus a frame-budget sweep of every room and a frame-stability check of the
+  heaviest ones); the bot flies the stage you see in the editor.
+
 ## 1.0.2
 
 **Smoother picture, joystick on the title, demo mode**

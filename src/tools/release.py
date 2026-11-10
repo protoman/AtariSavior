@@ -8,9 +8,13 @@ source of truth: build.sh writes it into bank5 ("S.A.V.I.O.R. <version>" at $F00
 of the fifth 4K bank), the manual cover prints it, and the artifacts are named
 from it. Steps, each of which must pass:
 
-  1. the git tree has no uncommitted tracked changes (TODO.txt / credits.txt aside)
+  1. the git tree has no uncommitted tracked changes (TODO.txt / credits.txt / the
+     user-owned tools/make_video.py aside) and CHANGELOG.md has a "## <version>" section
   2. ./build.sh   (conversion + verify_build + the two headless sims)
   3. the whole battery: every tools/test_*.py
+  3b. FLICKER: tools/test_frame_stability.py --all (the 40 heaviest real rooms: VBL window
+     and frame length) and tools/sweep_frame_budget.sh (sim_frame_budget in EVERY room of
+     the live stage, fire held + thrust + bomb): every room must hold the frame budget
   4. tools/stage_reach.py on the live stage
   5. tools/playbot.py: all 20 levels must finish on the real ROM (~5 min)
   6. the ROM is 32 KiB and carries this version
@@ -82,9 +86,11 @@ def main() -> int:
     step(f"version {version}")
 
     dirty = [l for l in run(["git", "status", "--porcelain", "--untracked-files=no"]).stdout.splitlines()
-             if Path(l[3:]).name not in ("TODO.txt", "credits.txt")]
+             if Path(l[3:]).name not in ("TODO.txt", "credits.txt", "make_video.py")]
     if dirty:
         fail("uncommitted tracked changes:\n  " + "\n  ".join(dirty))
+    if not re.search(rf"^## {re.escape(version)}\b", (ROOT / "CHANGELOG.md").read_text(), re.M):
+        fail(f'CHANGELOG.md has no "## {version}" section')
     commit = run(["git", "rev-parse", "--short", "HEAD"]).stdout.strip()
 
     py = sim_python()
@@ -101,6 +107,18 @@ def main() -> int:
             bad.append(t.name)
     if bad:
         fail(f"{len(bad)} failing test(s): {', '.join(bad)}")
+
+    step("flicker: test_frame_stability --all (40 heaviest rooms)")
+    r = run([py, "tools/test_frame_stability.py", "--all"])
+    if r.returncode:
+        fail("test_frame_stability --all:\n" + r.stdout[-2500:])
+    step("flicker: sweep_frame_budget (every room of the stage)")
+    r = run(["sh", "tools/sweep_frame_budget.sh", "/tmp/release_frame_sweep"], env=dict(os.environ, PY=py))
+    bad_levels = [l for l in r.stdout.splitlines()
+                  if (m := re.match(r"level (\d+): (\d+)/(\d+) rooms", l)) and m.group(2) != m.group(3)]
+    if r.returncode or bad_levels or r.stdout.count("rooms inside the frame budget") != 20:
+        fail("frame-budget sweep:\n" + r.stdout[-2500:])
+    sweep_rooms = sum(int(m.group(3)) for m in re.finditer(r"level \d+: \d+/(\d+) rooms", r.stdout))
 
     step("stage_reach")
     r = run([sys.executable, "tools/stage_reach.py", "rooms/stage.json"])
