@@ -534,6 +534,7 @@ class Pilot:
         wall is clear for most of the period and a dash across fits the dwell +
         retract window: the crunch is a timing gate, not a forced kill."""
         c = self.c
+        run_room = c.r("RoomNo")
         room = room or self.lv.rooms[c.r("RoomNo")]
         rows = [fc[0] for fc in room.get("feature_cells") or [] if fc[2] == 12]
         if not rows:
@@ -547,9 +548,26 @@ class Pilot:
         # the flight as (x, y) points: a node's y is its band's hover height; the
         # player moves 1.4 px/frame sideways and 1.2 px/frame vertically
         pts = [(x, 36 * b_ + 12) for x, b_ in run]
+        # start from where he REALLY is (a flight that was delayed by a fight or a
+        # hover is lower / further on than its first node)
+        pts[0] = (c.r("RoomX"), min(float(c.r("RoomY")), pts[0][1] + 40.0)
+                  if c.r("RoomNo") == run_room else pts[0][1])
         track = [(pts[0][0], -200.0)] * delay        # still in the room before
         for (xa, ya), (xb, yb) in zip(pts, pts[1:]):
-            vy_ = 1.0 if yb < ya else 1.4          # the jet climbs slowly, he falls faster
+            if yb > ya:
+                # a FALL starts from rest and speeds up (measured: 0.0325 px/frame^2, cap
+                # 1.4 px/frame - a drop through a 36-px band from a hover takes ~60
+                # frames, not the 26 a constant 1.4 px/frame would give)
+                x_, y_, v_ = float(xa), float(ya), 0.0
+                for _i in range(400):
+                    if y_ >= yb and abs(x_ - xb) < 0.7:
+                        break
+                    track.append((x_, y_))
+                    x_ += max(-1.4, min(1.4, xb - x_))
+                    y_ = min(float(yb), y_ + v_)
+                    v_ = min(1.4, v_ + 0.0325)
+                continue
+            vy_ = 1.0                              # the jet climbs slowly
             n_ = max(1, int(max(abs(xb - xa) / 1.4, abs(yb - ya) / vy_)))
             for i_ in range(n_):
                 track.append((xa + (xb - xa) * i_ / n_, ya + (yb - ya) * i_ / n_))
@@ -569,6 +587,9 @@ class Pilot:
                             return False
             return True
         self.doing = f"waiting for the crunch (run {run[0]}..{run[-1]})"
+        if c.r("RoomY") + 22 > top and c.r("RoomY") < bot and c.r("RoomNo") == run_room:
+            return dur          # already INSIDE the row: holding still here is the one
+                                # move that always loses to the closing shutter - go on
         for _ in range(400):
             if c.ram[0xBA & 0x7F] & 0x80:
                 return                              # spent: parked for the visit
