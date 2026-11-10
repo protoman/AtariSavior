@@ -2436,20 +2436,23 @@ RaftBody:
     ; b6-b3 = the ramp level (0-15); b2-0 stay the bomb count. Adding $10 never
     ; carries into b2-0, and the drop's `dec` is guarded by a non-zero count so
     ; it cannot borrow upward either (see the kernel EQU for the contract).
-    ; Riding advances the level every 2nd frame: the raft leaves at 1 px/frame
-    ; and reaches the full 1/2 parity (1.5 avg) after ~30 frames (~0.5 s), the
+    ; Riding advances the level every 2nd frame: the raft leaves at 0.5 px/frame
+    ; and reaches the full 0.75 px/frame after ~30 frames (~0.5 s), the
     ; heavy take-off. Empty (b7 clear) or level 15: full speed straight away.
     lda $F0
     bpl .RaftAtSpeed            ; b7 clear = nobody aboard -> no ramp
     cmp #%11111000              ; flag + all four level bits = spun up
     beq .RaftAtSpeed
-    lda #1                      ; still ramping: 1 px/frame
-    bne .RaftHaveStep           ; always
+    lda EnemyRamP
+    and #1                      ; still ramping: 1 px on odd frames = 0.5 px/frame
+    jmp .RaftHaveStep
 .RaftAtSpeed:
     lda EnemyRamP
-    and #1
-    clc
-    adc #1                      ; 1 px even frames, 2 px odd = 1.5 px/frame
+    and #3
+    cmp #1                      ; C = (P&3) != 0
+    lda #0
+    adc #0                      ; 1 px on 3 of 4 frames = 0.75 px/frame (user 2026-11-10:
+                                ; the raft was too quick to leave: HALF of 1.5)
 .RaftHaveStep:
     sta $88                     ; bank0 Temp = this frame's step
     lda RaftBitTab,X

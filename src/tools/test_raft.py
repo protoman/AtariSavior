@@ -2,8 +2,8 @@
 """Raft guard (enemy type 7): the moving, rideable platform.
 
 Drives bank1's real `RaftBody` (the bank0 CallPad target at $F822) in py65, so
-the whole body is under the battery: the fixed float line, the 1.5 px/frame
-parity step, the playfield-derived turn-around (all three PF arms + the mirrored
+the whole body is under the battery: the fixed float line, the 0.75 px/frame
+(1 px on 3 of 4 frames) step, the playfield-derived turn-around (all three PF arms + the mirrored
 right half), the rails, and the ride (carry + Y pin + vy reset) — including the
 invariant that matters most: a rider is held well above the 125 water-kill line.
 
@@ -57,7 +57,7 @@ def raft_top(enemy_ram_p):
     return RAFTER_BASE + tide_off(enemy_ram_p)
 
 
-def run(x, dir_right=True, parity=0, lead=0, room_x=None, room_y=None,
+def run(x, dir_right=True, parity=1, lead=0, room_x=None, room_y=None,
         vyhi=0, pf0=0, pf1=0, pf2=0, slot=0, bombs=0):
     """One RaftBody frame. `lead` seeds the elements ahead of the raft."""
     mem = Mem()
@@ -145,7 +145,7 @@ def integration() -> None:
     r[X["EnemyRamX"]] = 80
     r[X["EnemyRamY"]] = 0
     r[X["EnemyRamD"]] = 0x01           # slot 0 faces right
-    r[X["EnemyRamP"]] = 0              # even frame -> 1 px
+    r[X["EnemyRamP"]] = 1              # P&3 != 0 -> 1 px
     r[X["EnemyDeadMask"]] = 0
     r[X["EnemyCount"]] = 1
     r[X["EnemyDataLo"]] = off & 0xFF
@@ -236,11 +236,12 @@ def main() -> int:
     s = run(80, pf1=0xFF)
     assert s["y"] == raft_top(0), f"raft must float on the surface: {s}"
 
-    # 2. 1.5 px/frame = 1 px even frames, 2 px odd frames (open water ahead)
-    assert run(80, parity=0)["x"] == 81, "even frame must move 1 px"
-    assert run(80, parity=1)["x"] == 82, "odd frame must move 2 px"
-    assert run(80, dir_right=False, parity=0)["x"] == 79, "left even = -1"
-    assert run(80, dir_right=False, parity=1, pf0=0)["x"] == 78, "left odd = -2"
+    # 2. 0.75 px/frame = 1 px when (EnemyRamP & 3) != 0, 0 px otherwise (open water ahead)
+    assert run(80, parity=0)["x"] == 80, "P&3 == 0 must not move"
+    for par in (1, 2, 3):
+        assert run(80, parity=par)["x"] == 81, f"P={par} must move 1 px"
+    assert run(80, dir_right=False, parity=0)["x"] == 80, "left P&3==0 = still"
+    assert run(80, dir_right=False, parity=1, pf0=0)["x"] == 79, "left = -1"
 
     # 3. turn-around from the PLAYFIELD, one case per PF register, plus the
     #    mirrored right half (display col >= 20 is source 39-col):
@@ -274,8 +275,10 @@ def main() -> int:
     RAMP_FULL = 0xF8                   # flag + level 15 = spun up
     s = run(80, parity=1, bombs=0x80)  # just boarded -> still slow on an odd frame
     assert s["x"] == 81, f"ramped raft must do 1 px/frame: {s}"
+    s = run(80, parity=0, bombs=0x80)  # ramping, even frame: 0.5 px/frame -> still
+    assert s["x"] == 80, f"ramped raft must idle on an even frame: {s}"
     s = run(80, parity=1, bombs=RAMP_FULL)
-    assert s["x"] == 82, f"spun-up raft must do the full 1/2 parity: {s}"
+    assert s["x"] == 81, f"spun-up raft must do 1 px on P&3 != 0: {s}"
     # even frame while ridden: level +1 (bombs must survive untouched)
     s = run(80, parity=0, room_x=77, room_y=raft_top(0) + 2, bombs=0x05)
     assert s["bombs_after"] == 0x05 | 0x80 | 0x10, (
@@ -312,9 +315,9 @@ def main() -> int:
     assert s["room_y"] == raft_top(1) - PIN_FIT, f"feet must land on the raft: {s}"
     assert s["room_y"] < KILL_LINE, f"rider inside the water line!: {s}"
     assert s["vyhi"] == 0, f"landing must zero the fall speed: {s}"
-    assert s["room_x"] == 79, f"rider must be carried by the step: {s}"
+    assert s["room_x"] == 78, f"rider must be carried by the step: {s}"
     #    ... and the rider keeps riding on later frames (the pin re-applies)
-    s = run(82, parity=0, room_x=79, room_y=raft_top(0) - PIN_FIT, pf1=0xFF)
+    s = run(82, parity=1, room_x=79, room_y=raft_top(0) - PIN_FIT, pf1=0xFF)
     assert (s["room_y"], s["room_x"]) == (raft_top(0) - PIN_FIT, 80), f"re-pin: {s}"
 
     # 5b. BOXED-IN raft (user report 2026-10-22, level 4 room 4): the authored

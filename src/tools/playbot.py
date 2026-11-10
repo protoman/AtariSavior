@@ -843,7 +843,7 @@ class Pilot:
         return False
 
     def ride(self, cur, nxt):
-        """Along the WATER row: the raft is the only floor. It moves (1-1.5 px per
+        """Along the WATER row: the raft is the only floor. It moves (0.5-0.75 px per
         frame, right first) only while he stands on it, so after landing on it the
         bot lets it carry him and steps off when the target cell comes by."""
         c = self.c

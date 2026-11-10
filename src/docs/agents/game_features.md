@@ -81,8 +81,9 @@ Invariants (each one has a reason, do not "clean up"):
 - **Inertia (the take-off ramp) is IN** (2026-10-18). State = `PlayerBombs`
   ($F0) spare high bits: b2-0 stay the bomb count, b7 = "ridden last frame",
   b6-b3 = the ramp level stepping every 2nd frame, so the raft leaves at
-  1 px/frame and reaches the full 1/2 parity (1.5 avg) after ~30 frames
-  (~0.5 s).
+  0.5 px/frame (1 px on odd frames) and reaches full speed, 0.75 px/frame (1 px
+  when `EnemyRamP & 3 != 0`), after ~30 frames (~0.5 s). HALVED 2026-11-10 (user:
+  the raft was too quick to step off; it was 1 -> 1.5 px/frame).
 - **The raft is a FERRY (user rule 2026-10-18): it moves ONLY while the player is
   over it.** The ride test gates the whole motion block, so it parks the moment
   he steps (or flies) off; parking also clears the ramp state, so the next
