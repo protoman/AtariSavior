@@ -1509,7 +1509,7 @@ struct LevelPlan {
 
 LevelPlan PlanFor(int level) {
     LevelPlan p;
-    p.hot = level >= 3;
+    p.hot = level >= 5;       // user rule 2026-11-10: hot walls only from level 5
     p.water = level >= 4;
     // Locked doors are DISABLED (user report 2026-10-21: level 13 could not
     // be completed). The door is an M1 column stripe, so it may only sit on a

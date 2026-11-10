@@ -935,7 +935,7 @@ def main() -> int:
             return 1
 
         # --- feature progression (2026-10-20: HERO-style variety) ----------
-        # Every level must add/keep challenges: hot bands from 3, a water goal
+        # Every level must add/keep challenges: hot bands from 5, a water goal
         # from 4 (raft, then tentacle from 7), a keyed gate from 6, two-object
         # rooms from 9. A gate room is limited to ONE non-key enemy (convert).
         short_levels: list[int] = []
@@ -1058,8 +1058,12 @@ def main() -> int:
             if level_n <= 6 and cell_rooms:
                 print(f"FAIL: level {level_n}: short level carries a power cell")
                 return 1
-            if level_n >= 3 and hot == 0:
+            if level_n >= 5 and hot == 0:
                 print(f"FAIL: level {level_n} has no hot room")
+                return 1
+            # user rule 2026-11-10: hot walls only from level 5
+            if level_n < 5 and hot:
+                print(f"FAIL: level {level_n} has {hot} hot room(s) below level 5")
                 return 1
             if level_n >= 4 and (water < 1
                                  or not rooms[-1].get("bottom_band")):
