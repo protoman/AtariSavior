@@ -861,6 +861,19 @@ def main() -> int:
                 #     the entry cell as its own exit). On the 20-column mirrored map,
                 #     every live side of a room with >= 2 live sides must reach another
                 #     live side. Gated cells (phase / crunch) count as open.
+                # (e) HOT RUN-OUT (user 2026-11-10, level 14 room 9): a hot band entered
+                #     from a side needs 2 open cells before its first wall, or the
+                #     inertia carries the player into it.
+                if int(shapes[room["model_id"]].get("mid_band_type", 0)) == 1 and nb >= 2:
+                    gx0, gy0 = int(room["room_x"]), int(room["room_y"])
+                    hot_row = band_rows[1]
+                    for dx_, cols in ((-1, (0, 1)), (1, (0, 1))):
+                        if (gx0 + dx_, gy0) in pos and hot_row[cols[0]] == ".":
+                            if hot_row[cols[1]] != ".":
+                                print(f"FAIL: level {level_n} room {room['room_id']}: "
+                                      "hot wall right at the side entry (needs 2 open "
+                                      "cells to stop)")
+                                return 1
                 def passable(ch):
                     return ch not in STRUCTURAL_WALLS
                 gx, gy = int(room["room_x"]), int(room["room_y"])

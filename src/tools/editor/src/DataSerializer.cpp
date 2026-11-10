@@ -1280,6 +1280,13 @@ ModelData MakeShapeModel(int modelId, int mask) {
             model.mid_band_type = (mask & SHAPE_VHOT) ? 1 : 0;
         }
     }
+    // HOT WALLS NEED RUN-OUT (user 2026-11-10, level 14 room 9): a player who enters a
+    // hot band from the side arrives with inertia and cannot stop within one tile, so
+    // the first two cells of the hot row at the side aperture stay open.
+    if ((mask & SHAPE_H) && model.height == 4 && model.mid_band_type == 1
+            && model.tiles[1 * kRoomWidth + 0] == (int)TileType::AIR) {
+        model.tiles[1 * kRoomWidth + 1] = (int)TileType::AIR;
+    }
     // SEALED AIR (user 2026-11-10: enemies inside holes the player never
     // reaches): air that no opening of the room connects to is decoration at
     // best and an unfightable enemy cage at worst. Wall it up - except the

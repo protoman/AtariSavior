@@ -659,10 +659,10 @@ class Pilot:
             try:
                 ok = self.edge_safe(cur, nxt)
             except OffEdge:
-                self.edge_rooms = None
                 continue
             finally:
                 self.edge_rooms = None
+                self.hi_override = None       # a retry variant must not outlive its edge
             self.say(f"edge {cur}->{nxt} ok={ok} now room {c.r('RoomNo')} "
                      f"x={c.r('RoomX')} y={c.r('RoomY')}")
             if c.r("RoomNo") == nxt[0] and not ok:
