@@ -84,12 +84,19 @@ Consequences that are easy to get wrong:
   `RoomShapes`/`RoomPositions`/`RoomCounts` block + flat `EnemyDataTable`) with
   its walkers `EnterRoomB2`, `ExitScanB2`/`ExitDirB2` + the four exit bodies,
   `LoadLevelB2`, `MothRoutine`, `LaserWallClamp`/`LaserHitTestBody`,
-  `BombEnemyBlastBody`. **bank3 = the SHAPE half** (shape blocks + row pool +
-  `LEVEL_ShapeTable` + the async extras streams + the `LevExtrasLo/Hi` base
+  `BombEnemyBlastBody`. **bank3 = the extras half** (the async extras streams + the `LevExtrasLo/Hi` base
   table) with its walkers `B3RoomBlocks`/`ExtrasLoad`, `PhaseBlink`/
   `BuildColupF`/`BCFDarkRun`, `HotOverlapBody`/`HOVFeatEntry`,
   `B3StageBand`, `PhHcrEntry`/`CrPfx`/`HcrClock`.
-- `bank3.B3RoomBlocks` (PINNED at `$F453`) expands the shape rows, then either
+- **Shape step in bank7 (2026-11-10).** The shape blocks + row pool + `LEVEL_ShapeTable`
+  live in bank7's window `$F4C0-$FFF9` (~2.8 KB, `_BANK3_SHAPES_SLOT` in
+  `convert_level.py`; the name is historical). `bank3.B3RoomBlocks` (PINNED at
+  `$F453`) does `sta $1FFB`; bank7's bytes at `$F456` are `jmp ShapeStep7`, which
+  expands the 4 row-pool indices into PF0/1/2Buf, stages `RoomMetaB` = hot flag,
+  and ends with `sta $1FF7` at `$F459`, so the next fetch is bank3's `B3Meta`
+  (`$F45C`). Tests that read shapes use `bank7.lst`/`bank7.bin`. Bank3's old
+  `$F5CC-$F8B6` window is free.
+- After the hop `B3Meta` either
   derives `MetaA=0 / MetaB=$40*hot` (no extras; the hot flag is band 1's index
   b7, C11) or tail-jumps to `ExtrasLoad`, which indexes bank3's
   `LevExtrasLo/Hi[Level]`, walks the stream by the room's 1-based ordinal, ORs
@@ -128,14 +135,12 @@ Consequences that are easy to get wrong:
   matching `.ds` pads). bank3's level data uses **TWO windows** (C12
   2026-10-21): extras (async streams + base table) at `$F010-$F44F` (1 088 B,
   `_BANK3_EXTRAS_SLOT`) and shapes (blocks + row pool + address table) at
-  `$F5CC-$F8B6` (747 B, `_BANK3_SHAPES_SLOT`), each capacity-checked by
+  `$F4C0-$FFF9` in BANK7 (2 874 B, `_BANK3_SHAPES_SLOT`), each capacity-checked by
   `emit_spills`; the shape include list is `spill_bank3_shapes.asm`. The
-  shapes window starts where `ERLoadDone` ends — do NOT lower the `.ds` target
-  below `*` (DASM `Origin Reverse-indexed`; the old `$F5BF` figure was a stale
-  binary measurement).
+  index (7 bits) caps the library at 128 shapes.
 - The generator has a declared shape budget (`kShapeBudget` in
-  `DataSerializer.cpp`, currently 56, two-pass: base library first, extra
-  archetypes only if the base fits). `test_generator` gates the shape count,
+  `DataSerializer.cpp`, currently 126, two-pass: base library first, extra
+  archetypes only if the base fits; 121 shapes at 2 028 B slack). `test_generator` gates the shape count,
   a >= 64 B slack floor in every window, and the hot-start drop column
   (HotDrop keeps row-1 cell 4 open).
 - `emit_spills` slot starts must be the REAL bank2 include site: `spill_F767`
@@ -200,6 +205,20 @@ talking to the user (the editor's "Model 32" is data `id` 31); bands may be
   builds when the binary is missing): run
   `cmake --build tools/editor/cmake-build-debug` after any generator change, or
   the test measures the stale binary.
+
+## Room validation in the generator (2026-11-10)
+- The generator never assumes geometry: `RoomConnectivityProblem` (per model) and
+  `FloodRoom` (per PLACED room, sides from the real neighbours) flood the 20-column
+  mirrored map. Every live side must reach another; a failing room is flattened
+  (`repair.next`) or its channel demoted, then the stage is rebuilt. Objects in
+  air the player never reaches are moved to the nearest reachable cell or dropped.
+  `test_generator` repeats the check independently (d).
+- Vertical rooms: profiles (`VerticalProfiles`) avoid four equal widths and equal
+  top/bottom widths; hot bands only from level 5 and only as barriers (wide space,
+  narrow offset gaps); wide links join two rooms with a cavern. From level 5 each
+  level must keep a two-object room (the generator adds a bat if separation
+  stripped them all).
+- Editor: Generate 20 Levels shows a progress bar (`DataSerializer::progress`).
 
 ## First-move directions (2026-10-28)
 - **Spider**: dir right = sweeps down first, left = up first (the converter
