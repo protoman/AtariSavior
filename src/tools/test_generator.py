@@ -856,6 +856,49 @@ def main() -> int:
                         print(f"FAIL: level {level_n} room {room['room_id']}: lamp "
                               f"at cell {lcell}/band {lband} is in sealed air")
                         return 1
+                # (d) PASSABLE (user report 2026-11-10, level 14 room 9: a channel room
+                #     whose side entry was sealed - the old connectivity guard counted
+                #     the entry cell as its own exit). On the 20-column mirrored map,
+                #     every live side of a room with >= 2 live sides must reach another
+                #     live side. Gated cells (phase / crunch) count as open.
+                def passable(ch):
+                    return ch not in STRUCTURAL_WALLS
+                gx, gy = int(room["room_x"]), int(room["room_y"])
+                sides = {}
+                if (gx - 1, gy) in pos:
+                    sides["W"] = {(b, 0) for b in (1, 2) if b < nb}
+                if (gx + 1, gy) in pos:
+                    sides["E"] = {(b, 19) for b in (1, 2) if b < nb}
+                if (gx, gy - 1) in pos:
+                    sides["N"] = {(0, c) for c in range(20)}
+                if (gx, gy + 1) in pos:
+                    sides["S"] = {(nb - 1, c) for c in range(20)}
+                def cell_ok(b, f):
+                    return passable(band_rows[b][f if f < 10 else 19 - f])
+                if len(sides) >= 2:
+                    for sname, cells in sides.items():
+                        starts = [c for c in cells if cell_ok(*c)]
+                        if not starts:
+                            continue
+                        seen2 = set(starts)
+                        st2 = list(starts)
+                        while st2:
+                            by, bx = st2.pop()
+                            for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                                ny, nx = by + dy, bx + dx
+                                if 0 <= ny < nb and 0 <= nx < 20 \
+                                        and (ny, nx) not in seen2 and cell_ok(ny, nx):
+                                    seen2.add((ny, nx))
+                                    st2.append((ny, nx))
+                        others = set()
+                        for o, ocells in sides.items():
+                            if o != sname:
+                                others |= {c for c in ocells if cell_ok(*c)}
+                        if others and not (seen2 & others):
+                            print(f"FAIL: level {level_n} room {room['room_id']}: "
+                                  f"the {sname} entry reaches no other exit "
+                                  f"{sorted(sides)} - the room cannot be crossed")
+                            return 1
                 top_air = {c for c in range(1, 10) if band_rows[0][c] == "."}
                 bot_air = {c for c in range(1, 10) if band_rows[-1][c] == "."}
                 if (nb == 4 and top_air and bot_air and band_rows[1][0] != "."

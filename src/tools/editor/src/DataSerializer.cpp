@@ -916,13 +916,15 @@ ModelData MakeShapeModel(int modelId, int mask) {
         // Hot ceiling cells 1..7; cells 8/9 stay the N shaft, cell 0 is the
         // H exit. The floor is open water: crossing low on the raft is the
         // only safe route (row 1 is lethal wall).
-        for (int x = 1; x <= 7; ++x) {
+        for (int x = 1; x <= ((mask & SHAPE_N) ? 7 : kRoomWidth - 1); ++x) {
             model.tiles[1 * kRoomWidth + x] = (int)TileType::SOLID_WALL;
         }
         model.mid_band_type = 1;
-        if (mask & SHAPE_2GAP) {
+        if ((mask & SHAPE_2GAP) && (mask & SHAPE_N)) {
             // The 2-gap ceiling above must drop INTO the channel, not onto a
-            // hot cell: open the same two cells in the hot row.
+            // hot cell: open the same two cells in the hot row. (Without a
+            // ceiling opening they would be two dead-end shafts out of the
+            // water: level 14 room 9.)
             model.tiles[1 * kRoomWidth + kGapA] = (int)TileType::AIR;
             model.tiles[1 * kRoomWidth + kGapB] = (int)TileType::AIR;
         }
@@ -1027,12 +1029,16 @@ ModelData MakeShapeModel(int modelId, int mask) {
             // corridor cell (the door column).
             hi = lo;
         }
-        if (hi >= lo) {
+        if (mask & SHAPE_CHANNEL) {
+            // The hot ceiling stays: band 1 opens only at the shaft cells (and
+            // the side aperture, cell 0). The player crosses LOW, in band 2.
+            for (int c : nCells) model.tiles[1 * kRoomWidth + c] = (int)TileType::AIR;
+        } else if (hi >= lo) {
             for (int x = lo; x <= hi; ++x) {
                 model.tiles[1 * kRoomWidth + x] = (int)TileType::AIR;
             }
         }
-        if (mask & SHAPE_H) {
+        if ((mask & SHAPE_H) && !(mask & SHAPE_CHANNEL)) {
             const int near = (hi >= lo) ? lo : 0;
             for (int x = 0; x <= near; ++x) {
                 model.tiles[1 * kRoomWidth + x] = (int)TileType::AIR;
@@ -1202,8 +1208,14 @@ ModelData MakeShapeModel(int modelId, int mask) {
         for (int x = 0; x < kRoomWidth; ++x) {
             model.tiles[0 * kRoomWidth + x] = three[0 * kRoomWidth + x];
             model.tiles[1 * kRoomWidth + x] = three[1 * kRoomWidth + x];
-            const bool route = (x == routeA || x == routeB)
-                    && three[1 * kRoomWidth + x] == (int)TileType::AIR;
+            // CHANNEL: band 2 is the open LOW CHANNEL under the hot ceiling, from
+            // the side aperture to the other side. The N=4 rewrite made band 2
+            // route-only, which sealed the side entry of every channel room
+            // with no ceiling shaft (level 12 room 6, level 14 room 9: the
+            // player entered at band 1, cell 0 and could go nowhere).
+            const bool route = ((x == routeA || x == routeB)
+                    && three[1 * kRoomWidth + x] == (int)TileType::AIR)
+                    || (mask & SHAPE_CHANNEL);
             if (bandArt) {
                 // The lower chamber: open, with the archetype's third row as
                 // its ledges. Cells 0/1/7 stay SOLID on purpose — the outer
