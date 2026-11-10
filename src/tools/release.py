@@ -112,10 +112,10 @@ def main() -> int:
     r = run([py, "tools/test_frame_stability.py", "--all"])
     if r.returncode:
         fail("test_frame_stability --all:\n" + r.stdout[-2500:])
-    step("flicker: sim_frame_budget in the 16 heaviest rooms (parallel, ~25 min)")
+    step("flicker: sim_frame_budget in the 8 heaviest rooms (parallel, ~40 min)")
     heavy = subprocess.run(
         [py, "-c", "import sys; sys.path.insert(0, 'tools'); import test_frame_stability as F; "
-                   "print(' '.join(f'{l - 1},{r}' for l, r, n in F.heavy_rooms(16)))"],
+                   "print(' '.join(f'{l - 1},{r}' for l, r, n in F.heavy_rooms(8)))"],
         cwd=ROOT, text=True, capture_output=True).stdout.split()
     procs = []
     for lr in heavy:

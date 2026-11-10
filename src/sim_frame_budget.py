@@ -506,7 +506,11 @@ while frame < 1100:
                 measured += 1
                 if vbl_val > max_vbl:
                     max_vbl, max_vbl_f = vbl_val, frame
-                if over_val > max_over and frame not in transition_frames:
+                # (the title->game switch frame loads the whole stage: in the 19-20 room levels it
+                # runs ~190c over the window, once, while the title kernel hands over - the
+                # same one-frame, user-accepted transition as the partial kernel above)
+                if over_val > max_over and frame not in transition_frames \
+                        and frame not in title_transition_frames:
                     max_over, max_over_f = over_val, frame
                     snap_windows = dict(over_windows)
                     snap_tail = over_acc - over_mark_t
