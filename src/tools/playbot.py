@@ -284,6 +284,11 @@ class Level:
 # ---------------------------------------------------------------------------
 # the pilot
 # ---------------------------------------------------------------------------
+class OffEdge(Exception):
+    """The ROM put us in a room the current edge neither starts nor ends in (a wide link
+    crossed at another column, a respawn): abandon the edge and resync the plan."""
+
+
 class GiveUp(Exception):
     pass
 
@@ -421,6 +426,8 @@ class Pilot:
         if not self.mortal:
             c.w("PlayerLives", 8)
         rn = c.r("RoomNo")
+        if getattr(self, "edge_rooms", None) and rn not in self.edge_rooms:
+            raise OffEdge()
         if rn != self.last_room:
             self.last_room = rn
             self.bombs_tried = {}
@@ -462,6 +469,14 @@ class Pilot:
                                        # him out through the ceiling (an exit up)
         if band == BANDS - 1 and self.lv.rooms[self.c.r("RoomNo")].get("bottom_band"):
             hi = 2                     # the water kills from y 115: fly y 108..114
+        if band == BANDS - 1:
+            # a wide floor opens a south exit under any column: fly high in the last band
+            # when the room has a room below, or sagging a few px leaves the cave
+            me = self.lv.rooms[self.c.r("RoomNo")]
+            if any(o.get("room_x") == me.get("room_x")
+                   and o.get("room_y") == me.get("room_y", 0) + 1
+                   for o in self.lv.rooms):
+                hi = min(hi, 4)
         if self.hi_override is not None:
             hi = self.hi_override
         crow = self.crunch_band(self.lv.rooms[self.c.r("RoomNo")])
@@ -640,7 +655,14 @@ class Pilot:
                 continue                          # re-check the same edge, strip gone
             self.path, self.path_i = path, i
             self.doing = f"edge {cur}->{nxt}"
-            ok = self.edge_safe(cur, nxt)
+            self.edge_rooms = {cur[0], nxt[0]}
+            try:
+                ok = self.edge_safe(cur, nxt)
+            except OffEdge:
+                self.edge_rooms = None
+                continue
+            finally:
+                self.edge_rooms = None
             self.say(f"edge {cur}->{nxt} ok={ok} now room {c.r('RoomNo')} "
                      f"x={c.r('RoomX')} y={c.r('RoomY')}")
             if c.r("RoomNo") == nxt[0] and not ok:
