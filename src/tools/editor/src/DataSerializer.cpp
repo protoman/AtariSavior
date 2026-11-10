@@ -566,9 +566,9 @@ constexpr int kArchMask = 15;   // 4 bits: hot archetypes use ids 8..14
 // (Build20LevelStage picks the widest set that fits) — and the REAL limit is
 // the bank3 shapes window (emit_spills hard-fails, test_generator gates a 64 B
 // slack floor), not the index.
-constexpr int kShapeBudget = 90;
+constexpr int kShapeBudget = 126;
 // Shape-window guard for the widened hcrunch rooms (bank3 shapes slack floor).
-constexpr int kCrunchShapeCap = 100;
+constexpr int kCrunchShapeCap = 126;
 const char* const kArch[8][3] = {
     {"..........", "..........", ".........."},          // 0 shaft
     {"..###.....", "..........", ".....###.."},          // 1 ledge ladder
@@ -3275,7 +3275,7 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     auto plain = [&](int k) {
                         return (roles[l - 1][k] == Role::Normal
                                 || roles[l - 1][k] == Role::Hot)
-                            && !(masks[l - 1][k] & (SHAPE_CHANNEL | SHAPE_WATER | SHAPE_H));
+                            && !(masks[l - 1][k] & (SHAPE_CHANNEL | SHAPE_WATER));
                     };
                     if (!plain(i) || !plain(j)) continue;
                     if (!(masks[l - 1][i] & SHAPE_S)
@@ -4334,6 +4334,52 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
             }
         }
         if (queuedRoom) continue;
+        // Density rule (from level 5 a level needs a room with two objects):
+        // the object separation and the wide caverns can strip every pair, so
+        // CHECK the level and, when it has none, give one single-object room a
+        // bat on another band - on a cell the player really reaches.
+        if (l >= 5) {
+            auto objs = [](const RoomData& r) {
+                return (int)(r.enemies.size() + r.lamps.size());
+            };
+            bool have = false;
+            for (const RoomData& r : lv.rooms) have = have || objs(r) >= 2;
+            for (int ri = 1; !have && ri + 1 < (int)lv.rooms.size(); ++ri) {
+                RoomData& room = lv.rooms[ri];
+                if (objs(room) != 1) continue;
+                bool door = false;
+                for (const auto& p : room.asym_patches)
+                    door = door || (p.size() >= 3 && p[2] == 9);
+                if (door || roles[l - 1][ri] == Role::Gate
+                        || roles[l - 1][ri] == Role::Phase) continue;
+                const ModelData* sm = nullptr;
+                for (const ModelData& m : models) {
+                    if (m.id == room.model_id) { sm = &m; break; }
+                }
+                if (!sm) continue;
+                const RoomFlood fl = FloodRoom(lv, room, *sm);
+                if (fl.bands < 3) continue;
+                const int units = BandUnits(*sm);
+                const int firstCol = room.enemies.empty()
+                    ? (int)room.lamps[0].x : (int)room.enemies[0].x;
+                const int firstBand = (int)(room.enemies.empty()
+                    ? room.lamps[0].y : room.enemies[0].y) / units;
+                for (int b = 1; b < fl.bands && !have; ++b) {
+                    if (b == firstBand || (b == 1 && sm->mid_band_type == 1))
+                        continue;
+                    for (int cell = 0; cell < kRoomWidth && !have; ++cell) {
+                        const int x2 = cell * 2;
+                        if (!fl.reach[b][cell] || std::abs(x2 - firstCol) < 6
+                                || NearExitGap(*sm, cell)
+                                || !CellAir(*sm, b, cell)) continue;
+                        AddEnemy(room, EnemyType::BAT, (float)x2,
+                                 BandY(*sm, b),
+                                 1.25f + 0.25f * (l % 4), 13.0f);
+                        have = true;
+                    }
+                }
+            }
+        }
     }
     for (int l = 1; l <= kStageLevels; ++l) {
         // A spider the route has to pass: slide it to a clear column first
