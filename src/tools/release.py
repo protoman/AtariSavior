@@ -89,7 +89,7 @@ def main() -> int:
 
     py = sim_python()
     step("build.sh")
-    r = run(["./build.sh"])
+    r = run(["env", "FULL_SIMS=1", "./build.sh"])
     if r.returncode:
         fail("build.sh failed:\n" + r.stdout[-1500:] + r.stderr[-500:])
 

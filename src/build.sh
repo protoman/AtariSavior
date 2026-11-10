@@ -142,7 +142,11 @@ cat bank0.bin bank1.bin bank2.bin bank3.bin \
 
 # Headless frame-budget sim: worst-case frame (fly + laser held + bomb +
 # 2 objects) must hold 263 lines/frame — hard-fails on flicker regressions.
-if "$SIM_PY" -c "import py65" 2>/dev/null; then
+# It is SLOW (minutes), so day-to-day builds skip it (user 2026-11-10): releases run
+# it (tools/release.py sets FULL_SIMS=1), or run `FULL_SIMS=1 ./build.sh` by hand.
+if [ "${FULL_SIMS:-0}" != "1" ]; then
+    echo "  sim_frame_budget: skipped (FULL_SIMS=1 ./build.sh runs it; releases do)"
+elif "$SIM_PY" -c "import py65" 2>/dev/null; then
     echo "  sim_frame_budget: running..."
     "$SIM_PY" "$DIR/sim_frame_budget.py" > /tmp/sim_frame_budget.out 2>&1 || {
         echo "SIM FAILED — last lines:"
