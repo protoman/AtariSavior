@@ -17,8 +17,8 @@ LEVEL4_MINER_Y = 96
 ; (the shape must be shared). C11 (2026-10-21): block = 3 row-pool
 ; indices — the hot count/stream is gone (hot derives from PF row 1).
 LEVEL4_RoomShapes:
-  .byte SHAPE_M88 ; room 0 (model 88)
-  .byte SHAPE_M81 ; room 1 (model 81)
+  .byte SHAPE_M107 ; room 0 (model 107)
+  .byte SHAPE_M88 ; room 1 (model 88)
   .byte SHAPE_M70 ; room 2 (model 70)
   .byte SHAPE_M78 | $80 ; room 3 (model 78)
 
@@ -44,5 +44,5 @@ LEVEL4_RoomCounts:
 
 ; Enemy data: 2 enemy records across 4 rooms, 3 bytes each (type|dir, x, y).
 LEVEL4_EnemyDataTable:
-  .byte $01, 39, 48
+  .byte $01, 55, 48
   .byte $05, 15, 48
