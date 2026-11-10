@@ -202,19 +202,18 @@ PLAYER_MIN_Y = 0
 ; room derives MetaA = 0 and MetaB = $40 iff the shape is hot.
 ; ==============================================================================
 B3RoomBlocks:
-    ; C7: the shape ADDRESS comes from THIS bank's LEVEL_ShapeTable, so bank2
-    ; needs no bank3 label and no symbol export. RoomPF0Lo = the raw shapes
-    ; byte staged by EnterRoomB2 (idx b6-0 | band b7; LAYOUT 8 2026-10-24).
-    lda RoomPF0Lo
-    and #$7F                        ; shape index, 7 bits (128 shapes)
-    asl                             ; *2: LEVEL_ShapeTable is a word table
-    tax
-    lda LEVEL_ShapeTable,X          ; block address = the table entry
-    sta FetchPtr
-    lda LEVEL_ShapeTable+1,X
-    sta FetchPtr+1
-    ; C11: no stream by default — a room only gets one from its extras record
-    ; (feature records). RoomMetaB/RoomM1Hot are staged below or by ExtrasLoad.
+    ; SHAPE STEP MOVED TO BANK7 (2026-11-10): the shape table, blocks and row pool
+    ; live in bank7's big free area (this bank's 747 B window capped the library
+    ; at ~100 shapes). `sta $1FFB` selects bank7 whose bytes at +3 are
+    ; `jmp ShapeStep7`; it expands the shape into PF0Buf/PF1Buf/PF2Buf, stages
+    ; RoomMetaB (hot flag) and ends with `sta $1FF7` at +6, so the next fetch
+    ; (+9) is B3Meta below. FetchPtr/X/Y/A are scratch across the hop.
+    sta $1FFB
+    .byte 0,0,0                     ; bank7: jmp ShapeStep7
+    .byte 0,0,0                     ; bank7: sta $1FF7
+B3Meta:
+    ; C11: no stream by default - a room only gets one from its extras record
+    ; (feature records). RoomMetaB/RoomM1Hot are staged by bank7 / ExtrasLoad.
     ; RoomRects points at a static $00 count byte so the walkers (overscan
     ; HotOverlapBody / VBL PhaseBlink) read "empty stream", never TIA.
     lda #0
@@ -224,36 +223,13 @@ B3RoomBlocks:
     lda #>RoomNoStream
     sta RoomRectsHi
 
-    ; --- C3/C13 PF rebuild: 4 row-pool indices -> PF buffers (N=4, stride 4) ---
-    ;     Y = band (3..0) for BOTH the index read and the three PF stores;
-    ;     X = pool row. SoA columns, so one index register serves all three.
-    ;     C11: mask b7 (band 1's hot flag) before the pool lookup.
-    ldy #TILE_ROWS-1
-.EBpf:
-    lda (FetchPtr),Y                ; row index for this band
-    and #$7F
-    tax
-    lda RowPoolPF0,X
-    sta PF0Buf,Y
-    lda RowPoolPF1,X
-    sta PF1Buf,Y
-    lda RowPoolPF2,X
-    sta PF2Buf,Y
-    dey
-    bpl .EBpf
-
     ; --- C5 meta source: the room's extras ordinal (LevelConnSpare, staged by
-    ;     EnterRoomB2, 0 = none) → the extras stream; otherwise MetaA = 0 and
-    ;     MetaB = $40 iff the shape is hot (C11: the flag is band 1's b7).
+    ;     EnterRoomB2, 0 = none) -> the extras stream; otherwise MetaA = 0 and
+    ;     MetaB = $40 iff the shape is hot (staged by bank7's ShapeStep7).
     lda LevelConnSpare
     bne .EBextras
     lda #0
     sta RoomMetaA
-    ldy #1
-    lda (FetchPtr),Y                ; band-1 index | hot b7
-    and #$80
-    lsr                             ; $80 -> $40 (MetaB b6)
-    sta RoomMetaB
     jmp ERLoadDone
 .EBextras:
     jmp ExtrasLoad
@@ -482,8 +458,7 @@ ERLoadDone:
 ; C12 (2026-10-21): split off the $F010 window so the shape library is not
 ; capped by it. B3RoomBlocks (in-bank) is the only reader, so no new tramp.
 ; ------------------------------------------------------------------------------
-    .ds $F5CC - *, 0
-    include "generated/spill_bank3_shapes.asm"
+    ; (2026-11-10: the shape window moved to bank7; this area is free again.)
 
 
 ; ------------------------------------------------------------------------------

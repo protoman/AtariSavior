@@ -86,9 +86,9 @@ if {"RoomMetaA", "RoomMetaB"} - ZMETA.keys():
 
 # C3 (2026-10-20): the row dictionary — the shape block stores 3 indices and
 # the loader expands them through these three SoA columns into PF0Buf.
-POOL = parse_labels(SRC / "bank3.lst",
-                    {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2",
-                     "RoomNoStream"})
+POOL = parse_labels(SRC / "bank7.lst",
+                    {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2"})
+POOL.update(parse_labels(SRC / "bank3.lst", {"RoomNoStream"}))
 if {"RowPoolPF0", "RowPoolPF1", "RowPoolPF2", "RoomNoStream"} - POOL.keys():
     sys.exit(f"bank2.lst labels missing: {sorted(set(POOL) or {'RowPool'})}")
 nostream = POOL["RoomNoStream"]
@@ -134,7 +134,7 @@ def main() -> int:
     shape_count = int(re.search(r"^LEVEL_SHAPE_COUNT = (\d+)$",
                                 idx_text, re.M).group(1))
     model_blocks = parse_labels(
-        SRC / "bank3.lst", {f"M{mid}Shape" for mid in range(shape_count)})
+        SRC / "bank7.lst", {f"M{mid}Shape" for mid in range(shape_count)})
     for n, syms, level in levels:
         table = syms[f"LEVEL{n}_RoomShapes"]
         enemy_data = syms[f"LEVEL{n}_EnemyDataTable"]
@@ -194,7 +194,8 @@ def main() -> int:
                     "must have no record stream)")
             # C13 (N=4): the shape block is EXACTLY the 4 row-pool
             # indices at block + 0..3 (band 0-3); band 1's b7 = hot.
-            blocks = _CM.BANK3
+            blocks = _CM.BANK7           # shape blocks + row pool (bank7)
+            ext = _CM.BANK3              # extras streams stay in bank3
             idx = blocks[shape - 0xF000:shape - 0xF000 + 4]
             hot = bool(MODELS[int(model)].get("mid_band_type"))
             assert (idx[1] & 0x80) == (0x80 if hot else 0), (
@@ -275,12 +276,12 @@ def main() -> int:
                 assert hot_ptr != shape and hot_ptr != nostream, (
                     f"level {n} room {i}: feature room must point the record "
                     "stream at its extras record")
-                assert blocks[hot_ptr - 0xF000] >= 1, (
+                assert ext[hot_ptr - 0xF000] >= 1, (
                     f"level {n} room {i}: extras record stream count should "
-                    f"be >= 1 (got {blocks[hot_ptr - 0xF000]})")
-                assert blocks[hot_ptr - 0xF000 + 1] & 0x80, (
+                    f"be >= 1 (got {ext[hot_ptr - 0xF000]})")
+                assert ext[hot_ptr - 0xF000 + 1] & 0x80, (
                     f"level {n} room {i}: extras stream class "
-                    f"${blocks[hot_ptr - 0xF000 + 1]:02X} must be a FEATURE "
+                    f"${ext[hot_ptr - 0xF000 + 1]:02X} must be a FEATURE "
                     "record (b7 set) — C11 dropped the hot records")
             else:
                 assert hot_ptr == nostream, (

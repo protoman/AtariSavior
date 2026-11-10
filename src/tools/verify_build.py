@@ -1439,23 +1439,29 @@ def check_shape_blocks(src: Path) -> None:
     # C7 (2026-10-20): the loader and the pool live in BANK3 now — the shapes
     # (and the walkers that read them) moved back together, so the reads are
     # plain in-bank (FetchPtr),Y.
+    # 2026-11-10: the shape step (table, pool, hot flag) moved to BANK7's
+    # ShapeStep7; bank3's B3RoomBlocks hops there and resumes at B3Meta.
     bank3_p = src / "bank3.asm"
-    if bank3_p.exists():
+    bank7_p = src / "bank7.asm"
+    if bank3_p.exists() and bank7_p.exists():
         loader = bank3_p.read_text(errors="replace")
-        if not re.search(r"lda\s+RowPoolPF0,X", loader, re.M):
-            err("bank3.asm B3RoomBlocks does not read RowPoolPF0,X — the "
+        shape7 = bank7_p.read_text(errors="replace")
+        if not re.search(r"lda\s+RowPoolPF0,X", shape7, re.M):
+            err("bank7.asm ShapeStep7 does not read RowPoolPF0,X — the "
                 "row-pool expansion is missing (C3)")
-        if re.search(r"cpy\s+#9\b", loader):
-            err("bank3.asm still assembles the retired 9-byte PF copy "
-                "(cpy #9) — C3 replaces it with per-band pool lookups")
-        if "LEVEL_ShapeTable" not in loader:
-            err("bank3.asm B3RoomBlocks does not read LEVEL_ShapeTable — the "
-                "shape index must resolve in-bank (C7)")
+        if re.search(r"cpy\s+#9\b", shape7 + loader):
+            err("the retired 9-byte PF copy (cpy #9) is back — C3 replaces it "
+                "with per-band pool lookups")
+        if "LEVEL_ShapeTable" not in shape7:
+            err("bank7.asm ShapeStep7 does not read LEVEL_ShapeTable — the "
+                "shape index must resolve in bank7 (2026-11-10)")
+        if not re.search(r"sta\s+\$1FFB", loader):
+            err("bank3.asm B3RoomBlocks does not hop to bank7 (sta $1FFB)")
         # C11 (2026-10-21): the hot flag rides band 1's index byte and the
         # overscan hot test must read the PF buffers, not a record stream.
-        if not re.search(r"and\s+#\$80\s*\n\s*lsr\b", loader):
-            err("bank3.asm B3RoomBlocks does not derive the hot flag from "
-                "band 1's index b7 (and #$80 / lsr → MetaB b6) — C11")
+        if not re.search(r"and\s+#\$80\s*\n\s*lsr\b", shape7):
+            err("bank7.asm ShapeStep7 does not derive the hot flag from "
+                "band 1's index b7 (and #$80 / lsr -> MetaB b6) - C11")
         if not re.search(r"lda\s+RoomM1Hot", loader):
             err("bank3.asm has no RoomM1Hot reader — the hot-band M1 block "
                 "cell is PF-open and must be staged from the patch list (C11)")
@@ -1473,22 +1479,28 @@ def check_shape_blocks(src: Path) -> None:
     if not spill_shapes.exists() or "models_data.asm" not in \
             spill_shapes.read_text(errors="replace"):
         err("generated/spill_bank3_shapes.asm must include models_data.asm — "
-            "the shape blocks + row pool live in bank3's $F5CC window (C12)")
+            "the shape blocks + row pool live in bank7's shape window")
     if "models_data.asm" in spill.read_text(errors="replace"):
         err("generated/spill_bank3.asm still includes models_data.asm — the "
             "$F010 window is EXTRAS only since C12 (shapes -> $F5BF)")
     lst = src / "bank3.lst"
     if lst.exists():
         labels, _ = parse_lst(lst.read_text(errors="replace").splitlines())
-        for name in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2",
-                     "LEVEL_ShapeTable", "LevExtrasLo", "LevExtrasHi"):
+        for name in ("LevExtrasLo", "LevExtrasHi"):
             if name not in labels:
-                err(f"bank3.lst has no {name} — the level-data window did not "
-                    "assemble into bank3 ($F010/$F5BF)")
-        # C12: the shape half must really sit in its own window.
-        if "M0Shape" in labels and not 0xF5CC <= labels["M0Shape"] < 0xF8B7:
-            err(f"bank3.lst: M0Shape at ${labels['M0Shape']:04X} is outside "
-                "the $F5CC-$F8B6 shape window (C12 split)")
+                err(f"bank3.lst has no {name} - the extras window did not "
+                    "assemble into bank3 ($F010)")
+    lst7 = src / "bank7.lst"
+    if lst7.exists():
+        labels, _ = parse_lst(lst7.read_text(errors="replace").splitlines())
+        for name in ("RowPoolPF0", "RowPoolPF1", "RowPoolPF2",
+                     "LEVEL_ShapeTable", "ShapeStep7"):
+            if name not in labels:
+                err(f"bank7.lst has no {name} - the shape window did not "
+                    "assemble into bank7")
+        if "M0Shape" in labels and not 0xF4C0 <= labels["M0Shape"] < 0xFFFA:
+            err(f"bank7.lst: M0Shape at ${labels['M0Shape']:04X} is outside "
+                "the $F4C0-$FFF9 shape window")
 
 
 def check_bank3_entry(src: Path) -> None:

@@ -110,7 +110,7 @@ def main() -> None:
     # C2 (2026-10-20): the rect/PF/meta block reader (B3RoomBlocks) moved into
     # bank2 and is tail-jumped from EnterRoomB2 BEFORE the enemy shadow loop, so
     # PF is still loaded first (the ordering the original assertion pinned).
-    assert ".EBpf:" in BANK3.split("B3RoomBlocks:")[1]
+    assert "sta $1FFB" in BANK3.split("B3RoomBlocks:")[1]  # shape step hops to bank7
     assert "jmp ERBlocksPad" in BANK2
     # C7 (2026-10-20): the PF/meta/extras half moved to bank3 and runs LAST
     # (it ends in bank3's own ReturnPad, so the shape step needs no cross-bank
