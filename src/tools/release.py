@@ -199,6 +199,7 @@ def main() -> int:
         f"rom      {rom_out.name}  32768 bytes  sha256 {sha}\n"
         + "".join(f"rom      {n}  32768 bytes  sha256 {h}  ({lab})\n" for lab, n, h in variants)
         + f"battery  {len(tests)} tests, 0 failures\n"
+        f"flicker  test_frame_stability --all OK (40 heaviest rooms); sim_frame_budget OK in the {sweep_rooms} heaviest rooms\n"
         f"playbot  {play}\n")
     if a.tag:
         r = run(["git", "tag", "-a", f"v{version}", "-m", f"S.A.V.I.O.R. {version}"])
