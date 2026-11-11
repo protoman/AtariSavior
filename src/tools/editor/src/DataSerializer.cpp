@@ -451,6 +451,33 @@ static const int kLevelPalettes[20][3] = {
     {220, 220, 220}  // L20: Silver Gray
 };
 
+// Row-1 band colour per level (user 2026-11-11: "increase the contrast of the band colors;
+// orange+red, red+blue, pink+green... are all fine"). It used to be the level colour lifted
+// by 40 (nearly the same hue); now a different hue on purpose, at a similar brightness so the
+// sprites stay readable. Every pair lands on a distinct TIA hue (test_generator checks it).
+static const int kLevelPalettes2[20][3] = {
+    {40, 80, 220},   // L1:  orange + blue
+    {220, 70, 30},   // L2:  cyan + red-orange
+    {220, 80, 180},  // L3:  green + pink
+    {90, 70, 220},   // L4:  gold + blue-violet
+    {170, 200, 50},  // L5:  purple + yellow-green
+    {40, 170, 190},  // L6:  crimson + cyan
+    {210, 50, 60},   // L7:  teal + red
+    {70, 120, 220},  // L8:  ochre + blue
+    {220, 130, 40},  // L9:  deep blue + orange
+    {60, 180, 90},   // L10: rose + green
+    {150, 70, 200},  // L11: lime + violet
+    {50, 100, 220},  // L12: amber + blue
+    {210, 70, 70},   // L13: sky blue + red
+    {110, 190, 60},  // L14: violet + green
+    {140, 60, 200},  // L15: olive + purple
+    {50, 190, 110},  // L16: magenta + green
+    {210, 60, 80},   // L17: emerald + red
+    {220, 150, 50},  // L18: purple-blue + orange
+    {60, 110, 210},  // L19: copper + blue
+    {240, 90, 90}    // L20: silver + red
+};
+
 // ---------------------------------------------------------------------------
 // E2 (2026-10-20): the 20-LEVEL STAGE GENERATOR.
 //
@@ -1618,10 +1645,6 @@ int RoomShapeMask(int levelNumber, const std::vector<GridPos>& walk,
         if (role == Role::WaterGoal) mask |= SHAPE_WATER;
     }
     return mask;
-}
-
-int Lift(int value) {                 // a lighter wall colour for the row-1 band
-    return value + 40 > 255 ? 255 : value + 40;
 }
 
 // One room's objects. The editor's caps are the contract: <= 2 objects per
@@ -3640,9 +3663,9 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         level.wall_r = kLevelPalettes[l - 1][0];
         level.wall_g = kLevelPalettes[l - 1][1];
         level.wall_b = kLevelPalettes[l - 1][2];
-        level.wall2_r = Lift(level.wall_r);
-        level.wall2_g = Lift(level.wall_g);
-        level.wall2_b = Lift(level.wall_b);
+        level.wall2_r = kLevelPalettes2[l - 1][0];
+        level.wall2_g = kLevelPalettes2[l - 1][1];
+        level.wall2_b = kLevelPalettes2[l - 1][2];
         level.start_room = 0;                 // convert: 0 is the kernel constant
         const int roomCount = (int)walks[l - 1].size();
         level.miner_room = roomCount - 1;     // the goal is the last room

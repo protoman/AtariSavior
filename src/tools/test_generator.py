@@ -259,6 +259,17 @@ def main() -> int:
                 best = max(best, run)
             return best
 
+        # --- the two band colours must contrast (user 2026-11-11) ------------
+        # wall2 used to be wall lifted by 40: nearly the same hue. Now every level
+        # pairs two DIFFERENT TIA hues (orange+blue, cyan+red, green+pink...).
+        for level_n, level in enumerate(levels, start=1):
+            a = C.nearest_byte(level["wall_r"], level["wall_g"], level["wall_b"])
+            b = C.nearest_byte(level["wall2_r"], level["wall2_g"], level["wall2_b"])
+            if (a >> 4) == (b >> 4) or abs(((a >> 1) & 7) - ((b >> 1) & 7)) > 3:
+                print(f"FAIL: level {level_n} band colours ${a:02x}/${b:02x} do not contrast "
+                      f"(same hue, or luma too far apart)")
+                return 1
+
         # --- spiders sit on a whole cell (release 0.8 shot 003) -------------
         # An 8 px sprite on an ODD display column straddles two cells and is
         # drawn half inside the next wall; RelocateSpider used to try odd ones.
