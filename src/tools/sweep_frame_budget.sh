@@ -17,7 +17,7 @@ for lv, l in enumerate(json.load(open('rooms/stage.json'))['stage']['levels']):
         print(lv, r)
 PYEOF
 export OUT PY
-xargs -P 14 -L 1 sh -c 'SIM_LEVEL=$0 SIM_ROOM=$1 $PY sim_frame_budget.py > $OUT/L$0R$1.out 2>&1' < "$OUT/jobs.txt"
+xargs -P ${JOBS:-14} -L 1 sh -c 'SIM_LEVEL=$0 SIM_ROOM=$1 $PY sim_frame_budget.py > $OUT/L$0R$1.out 2>&1' < "$OUT/jobs.txt"
 $PY - "$OUT" <<'PYEOF'
 import glob, re, sys, collections
 agg = collections.defaultdict(lambda: [0, 0])
