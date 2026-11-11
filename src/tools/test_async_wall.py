@@ -29,48 +29,58 @@ def band_y(band: int) -> int:
 
 def main() -> int:
     stage = json.loads((ROOT / "rooms" / "stage.json").read_text())["stage"]
-    bad, checked = [], 0
+    bad, checked, unproven = [], 0, []
     for n, lv in enumerate(stage["levels"], 1):
-        room = lv["rooms"][0]
-        patches = [p for p in (room.get("asym_patches") or [])
-                   if len(p) >= 4 and p[2] == 1]                 # solid wall patches
-        if not patches:
-            continue
         con = P.Console()
         con.boot(n)
         base = con.save()
-        for row, col, _tile, side in patches:
+        for ri, room in enumerate(lv["rooms"]):
+          patches = [p for p in (room.get("asym_patches") or [])
+                     if len(p) >= 4 and p[2] == 1]               # solid wall patches
+          for row, col, _tile, side in patches:
             con.restore(base)
+            if ri:                              # enter room ri the way a room exit does
+                con.w("LevelConnSpare", ri | 0x80)
+                for _ in range(4):
+                    con.frame(P.NONE)
+                assert con.r("RoomNo") == ri, (n, ri, con.r("RoomNo"))
             con.w("PlayerLives", 8)
             con.w("RoomY", band_y(row))
             if side == 0:                      # ball strip: full column 10 + col
                 f = 10 + col
-                con.w("RoomX", max(20, 8 * f - 40))
-                xs = []
+                con.w("RoomX", max(4, 8 * f - 16))
+                xs, left = [], False
                 for _ in range(90):
+                    prev_y = con.r("RoomY")
                     con.frame(P.RIGHT)
-                    if con.r("RoomNo") != 0:
+                    if con.r("RoomNo") != ri:
+                        left = abs(prev_y - band_y(row)) <= 2   # a side exit, not a fall
                         break
                     xs.append(con.r("RoomX"))
-                ok = bool(xs) and max(xs) <= 8 * f + 1
+                ok = not left and bool(xs) and max(xs) <= 8 * f + 1
+                if ok and max(xs) < 8 * f - 6: unproven.append((n, ri + 1, row, f))
                 what = f"ball strip col {f}: max RoomX {max(xs) if xs else '?'} > {8 * f + 1}"
             else:                              # M1 strip: full column col
                 f = col
-                con.w("RoomX", 8 * f + 8 + 7 + 40)
-                xs = []
+                con.w("RoomX", 8 * f + 8 + 7 + 14)
+                xs, left = [], False
                 for _ in range(90):
+                    prev_y = con.r("RoomY")
                     con.frame(P.LEFT)
-                    if con.r("RoomNo") != 0:
+                    if con.r("RoomNo") != ri:
+                        left = abs(prev_y - band_y(row)) <= 2   # a side exit, not a fall
                         break
                     xs.append(con.r("RoomX"))
-                ok = bool(xs) and min(xs) >= 8 * f + 8 + 7 - 2
+                ok = not left and bool(xs) and min(xs) >= 8 * f + 8 + 7 - 2
+                if ok and min(xs) > 8 * f + 8 + 7 + 6: unproven.append((n, ri + 1, row, f))
                 what = f"M1 strip col {f}: min RoomX {min(xs) if xs else '?'} < {8 * f + 13}"
             checked += 1
             if not ok:
-                bad.append(f"level {n} room 1 band {row}: walked through the {what}")
+                bad.append(f"level {n} room {ri + 1} band {row}: walked through the {what}")
     if bad:
         print("FAIL:\n  " + "\n  ".join(bad))
         return 1
+    print("unproven (never reached the strip):", unproven)
     print(f"test_async_wall: OK ({checked} patch walls solid in the real ROM)")
     return 0
 
