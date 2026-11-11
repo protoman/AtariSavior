@@ -67,6 +67,11 @@ Cost: two stale sprite lines in that band (the old kernel lost two as well).
 Kernel-local bytes are free while the cave runs (VBL/overscan scratch, bank1-only HUD bytes
 $E0-$EF, the EnemyRamY window, and the stack bytes $F8-$FF: bank6 never calls). Map and
 contract: `tools/cave_kernel_gen.py KERNEL_ZP/LIVE`, guarded by `tools/test_cave_zp.py`.
+**"Free while the cave runs" also means "nothing may be handed over in it"**: bank3's SBT_B packs
+the async-collision byte into `$8F` in the VBL and bank1's HUD entry copies it to `LineCount`
+after the cave. `$8F` was once the kernel's `S1Adj`, so the byte arrived as 0 and every pillar,
+bomb wall and door was walk-through (1.1.0, found by the user on level 9). `S1Adj` now shares
+`$92` with `CtxNext`; `tools/test_async_wall.py` flies the real ROM into every start-room patch.
 
 ## Tests
 `tools/test_cave_kernel.py` (real ROM + real art: player rows for every frame across all band

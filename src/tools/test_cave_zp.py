@@ -57,7 +57,7 @@ def main():
         for k in range(size):
             owners.setdefault(addr + k, []).append(name)
     for addr, names in sorted(owners.items()):
-        if len(names) > 1 and set(names) != {"S1Pos", "ObjX1"}:
+        if len(names) > 1 and set(names) not in ({"S1Pos", "ObjX1"}, {"S1Adj", "CtxNext"}):
             bad.append(f"${addr:02X} claimed twice: {names}")
         live = [n for n, a in sym.items() if a == addr and not n.startswith(("0.", "NC_", "COLOR_"))
                 and "." not in n and 0x80 <= a <= 0xFF]

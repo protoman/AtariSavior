@@ -3,6 +3,25 @@
 Release versions live in `VERSION` (build.sh stamps them into the ROM, the manual
 cover prints them, `tools/release.py` names the artifacts from them).
 
+## 1.1.1
+
+**Fixes: async walls were walk-through, miners, bats, Select, game over**
+
+- **Pillars, async walls and doors are solid again.** The 1.1.0 cave kernel reused `$8F` as
+  scratch, which zeroed the packed collision byte bank3 stages there for the HUD to copy, so
+  every pillar (ball/M1 strip), bomb wall and locked door could be walked through. The
+  kernel's scratch byte moved (`S1Adj` shares `$92` with `CtxNext`); `test_async_wall.py` walks
+  into every start-room patch of the real ROM.
+- The rescue miner stands on the side opposite the REAL entrance (the neighbour on the map, not
+  the room listed before the goal: levels 7 and 19 had him on the wrong side) and every miner
+  - the goal one and the extra ones - faces the entrance (it was always facing right).
+- No bat sits in a pocket of one or two cells that nobody can reach (level 3 room 2, level 6
+  room 2, level 19 room 16, level 20 room 14 had one): the generator keeps bats in air runs of
+  at least four cells and the stage lost those four useless bats.
+- SELECT during a game resets the power bar and its clock.
+- After a game over the title comes back on the level you were playing (with or without a
+  SaveKey).
+
 ## 1.1.0
 
 **New cave kernel, new levels, slower raft**

@@ -49,7 +49,9 @@ KERNEL_ZP = {  # kernel-local state: bytes that are free while the cave runs
     "G0": 0xE0, "C0": 0xE2, "G1": 0xE4, "C1": 0xE6,        # (zp),Y pointer pairs
     "NextS0": 0xE8, "NextC0": 0xE9, "NextS1": 0xED, "T": 0xEE, "BandCol": 0xEF,
     "Band": 0x84, "E0": 0x86, "P0Kb": 0x87, "WaterOff": 0x88, "DoorAnd": 0x8C,
-    "DoorOr": 0x8D, "Slot1Band": 0x8E, "S1Adj": 0x8F, "CtxNext": 0x92,
+    "DoorOr": 0x8D, "Slot1Band": 0x8E, "S1Adj": 0x92, "CtxNext": 0x92,   # (aliases: CtxNext is dead after p1c, S1Adj lives s1adj..water; $8F stays free
+                                                  #  for bank3's VBL -> HUD async-collision byte, 2026-11-11)
+   
     "S1Pos": 0xEC,                                          # ObjX1's byte, repacked
     "G1hiC": 0xF8, "C1hiC": 0xFA, "KbC": 0xFC, "EC": 0xFE,  # [slot0, slot1] arrays (stack area)
 }

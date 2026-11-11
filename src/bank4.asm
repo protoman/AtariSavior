@@ -279,6 +279,16 @@ SkRelease:                      ; leave the bus released (C kept)
     dex
     dex                         ; (dex keeps C) SkN = 3: game over / run won
     bne .SkBack
+    lda Level                   ; game over / run won: the title comes back on the level
+    cmp #LEVEL_COUNT            ;   just played (no SaveKey needed): GameStart keeps
+    bcc .SkKeep                 ;   Level when these two bytes hold the magic
+    lda #0
+    sta Level
+.SkKeep:
+    lda #$5A
+    sta SkT
+    lda #$A5
+    sta SkL
     jmp Restart
 .SkBack:
     jmp ReturnPad               ; back to the bank0 caller (the C flag survives)
@@ -310,10 +320,8 @@ SkBoot:
     sta SkHi,y
     dey
     bpl .SkHi
-    lda SkBuf+R_STATE
-    beq SkNothing              ; state 0: no save
-    lda SkBuf+R_LEVEL
-    cmp #LEVEL_COUNT
+    lda SkBuf+R_LEVEL           ; (state 0 = no run to resume, but the level of the
+    cmp #LEVEL_COUNT            ;   last run stays selected: user 2026-11-11)
     bcs SkNothing
     sta Level
     jmp SkOk
@@ -403,9 +411,14 @@ SkWriter:
     bpl .SkSv
     jmp SkStore
 .SkOver:
+    lda Level                   ; the title comes back on the level just played
+    cmp #LEVEL_COUNT            ;   (a cleared last stage wraps to the first)
+    bcc .SkOvLv
+    lda #0
+.SkOvLv:
+    sta SkBuf+R_LEVEL
     lda #0
     sta SkBuf+R_STATE
-    sta SkBuf+R_LEVEL
     sta SkBuf+R_SCORE
     sta SkBuf+R_SCORE+1
     sta SkBuf+R_SCORE+2

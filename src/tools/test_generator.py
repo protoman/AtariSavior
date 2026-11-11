@@ -193,6 +193,60 @@ def main() -> int:
             print("FAIL: unfinishable levels:\n  " + "\n  ".join(bad))
             return 1
 
+        # --- miners face / stand by the REAL entrance (user 2026-11-11; the
+        # facing was asked for twice - never again a regression) -----------
+        mshapes = {m["id"]: m for m in models}
+        for li, lv in enumerate(levels, 1):
+            rs = lv["rooms"]
+            pos = {(r["room_x"], r["room_y"]) for r in rs}
+            g = rs[lv["miner_room"]]
+            nl = (g["room_x"] - 1, g["room_y"]) in pos
+            nr = (g["room_x"] + 1, g["room_y"]) in pos
+            if nl != nr:
+                want_far = nl
+                if (lv["miner_x"] > 8) != want_far:
+                    print(f"FAIL: level {li}: the goal miner must stand on the side "
+                          f"opposite the entrance (neighbour {'left' if nl else 'right'})")
+                    return 1
+            want_dir = -1 if lv["miner_x"] > 8 else 1
+            if lv["miner_dir"] != want_dir:
+                print(f"FAIL: level {li}: the goal miner must face the room "
+                      f"(miner_x {lv['miner_x']}, miner_dir {lv['miner_dir']})")
+                return 1
+            for r in rs:
+                for e in r["enemies"]:
+                    if e["type"] != 15:
+                        continue
+                    l2 = (r["room_x"] - 1, r["room_y"]) in pos
+                    r2 = (r["room_x"] + 1, r["room_y"]) in pos
+                    wd = (-1 if l2 else 1) if l2 != r2 else (1 if e["x"] < 18 else -1)
+                    if e["dir"] != wd:
+                        print(f"FAIL: level {li} room {r['room_id'] + 1}: the extra "
+                              f"miner must face the entrance (dir {e['dir']}, want {wd})")
+                        return 1
+                # a bat needs room to fly: its air run (mirrored 20 columns) >= 4
+                if r["model_id"] in mshapes:
+                    m = mshapes[r["model_id"]]
+                    w, h = m["width"], len(m["tiles"]) // m["width"]
+                    for e in r["enemies"]:
+                        if e["type"] != 1:
+                            continue
+                        band = min(h - 1, int(e["y"]) // (12 // h))
+                        row = m["tiles"][band * w:(band + 1) * w]
+                        full = row + row[::-1]
+                        c = int(round(e["x"])) // 2
+                        if c >= w or full[c] != 0:
+                            continue
+                        lo = hi = c
+                        while lo > 0 and full[lo - 1] == 0:
+                            lo -= 1
+                        while hi < 2 * w - 1 and full[hi + 1] == 0:
+                            hi += 1
+                        if hi - lo + 1 < 4:
+                            print(f"FAIL: level {li} room {r['room_id'] + 1}: a bat in "
+                                  f"a pocket ({hi - lo + 1} air cells) can never be met")
+                            return 1
+
         # --- hcrunch needs a >= 4-tile gap above AND under (user 2026-10-25) -
         # The crush is survived only by leaving band 1; a short hole cannot
         # be lined up in time. Rule: every room with an hcrunch feature cell
@@ -546,17 +600,18 @@ def main() -> int:
                       "entry cell connected to the miner")
                 return 1
             # A SIDE entry must put the miner on the OPPOSITE side (user rule
-            # 2026-10-21): walked rooms are in order, so the room before the
-            # goal is where the player comes from.
+            # 2026-10-21). The entrance is the goal's REAL neighbour on the grid,
+            # not the room listed before it (user 2026-11-11, level 7).
             if len(rooms) > 1:
-                prev, goal = rooms[-2], rooms[-1]
-                if int(prev["room_y"]) == int(goal["room_y"]) and \
-                        int(prev["room_x"]) != int(goal["room_x"]):
-                    from_west = int(prev["room_x"]) < int(goal["room_x"])
-                    want_right = from_west
+                goal = rooms[-1]
+                gp = {(int(r["room_x"]), int(r["room_y"])) for r in rooms}
+                wl = (int(goal["room_x"]) - 1, int(goal["room_y"])) in gp
+                wr = (int(goal["room_x"]) + 1, int(goal["room_y"])) in gp
+                if wl != wr:
+                    want_right = wl
                     if (miner_cell >= 10) != want_right:
                         print(f"FAIL: level {level_n} miner entered from "
-                              f"{'west' if from_west else 'east'} but sits "
+                              f"{'west' if wl else 'east'} but sits "
                               f"at cell {miner_cell} (same side)")
                         return 1
 

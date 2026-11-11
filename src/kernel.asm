@@ -528,6 +528,17 @@ GameStart:
     ldx #$FF
     txs                         ; stack pointer = $FF
 
+    ; --- A game over (bank4 SkRelease) leaves the magic $5A/$A5 in $8B/$8E: the
+    ;     title then keeps the level just played (user 2026-11-11). Y = Level or 0.
+    ldy #0
+    lda $8B
+    cmp #$5A
+    bne .NoKeepLv
+    lda $8E
+    cmp #$A5
+    bne .NoKeepLv
+    ldy Level
+.NoKeepLv:
     ; --- Clear zero-page RAM ---
     lda #0
     ldx #$80
@@ -535,6 +546,7 @@ GameStart:
     sta $00,X
     inx
     bne .ClearZP
+    sty Level
 
     ; --- Initialize game state --- (ClearZP left A = 0 and Level = 0)
     lda #3
@@ -4089,6 +4101,10 @@ RefreshEnemyY:
     sta BombX                   ;   lives in BombX/BombTimer while the title
     sta BombTimer               ;   runs (both dead there), so returning from a
                                 ;   game must clear them for a clean melody
+    lda #120                    ; the power bar and its clock start over too
+    sta BarLevel                ;   (user 2026-11-11: SELECT during a game kept
+    lda #TICKS_PER_SEC          ;   the half-empty bar)
+    sta TickCounter
     jsr LoadLevel               ; reload the level-start room for the preview
     pla                         ; drop OUR return address (LoadLevel already
     pla                         ;   popped its own) — tail into TitleWork

@@ -1668,6 +1668,23 @@ bool CellAir(const ModelData& m, int band, int cell) {
         && m.tiles[band * kRoomWidth + cell] == 0;
 }
 
+// Length of the horizontal air run through `cell` of `band` on the MIRRORED
+// 20-column row (cell c and 19-c are the same air). A bat in a 1- or 2-cell
+// notch can never be met by a player flying the room (user report 2026-11-11,
+// level 3 room 2: a bat inside a one-cell pocket of the shaft wall).
+int AirRun(const ModelData& m, int band, int cell) {
+    auto air = [&](int f) {          // f = 0..19 on the full row
+        const int c = f < kRoomWidth ? f : 2 * kRoomWidth - 1 - f;
+        return CellAir(m, band, c);
+    };
+    if (!air(cell)) return 0;
+    int lo = cell, hi = cell;
+    while (lo > 0 && air(lo - 1)) --lo;
+    while (hi < 2 * kRoomWidth - 1 && air(hi + 1)) ++hi;
+    return hi - lo + 1;
+}
+constexpr int kMinEnemyRun = 4;      // a moving creature needs room to move
+
 // Nearest AIR cell of `band` to `prefer` (search outward), or -1 if the band is
 // fully solid.
 int NearestAir(const ModelData& m, int band, int prefer) {
@@ -1764,7 +1781,7 @@ int NearestAirClear(const ModelData& m, int band, int prefer) {
         for (int c = 0; c < kRoomWidth; ++c) if (CellAir(m, h - 1, c)) gaps.push_back(c);
     }
     auto clear = [&](int c) {
-        if (!CellAir(m, band, c)) return false;
+        if (!CellAir(m, band, c) || AirRun(m, band, c) < kMinEnemyRun) return false;
         for (int g : gaps) if (std::abs(g - c) <= 1) return false;
         return true;
     };
@@ -2049,7 +2066,6 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
             // From level 2 one bat guards the APPROACH corridor (cell 8),
             // which also keeps the 2-room levels distinct (L1 is clean).
             int cell = NearestAirClear(shape, 1, 8);
-            if (cell < 0) cell = NearestAir(shape, 1, 8);
             if (cell >= 0) {
                 AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
                          kBatRow,
@@ -2128,7 +2144,6 @@ void FillRoomObjects(int levelNumber, int roomIndex, int roomCount, Role role,
     // kernel's job (one sprite), not a reason to starve the rooms.
     if (roomIndex % 2 == 1 || roomIndex >= 8) {
         int cell = NearestAirClear(shape, 1, 8);
-        if (cell < 0) cell = NearestAir(shape, 1, 8);
         if (cell >= 0) {
             AddEnemy(room, EnemyType::BAT, (float)(cell * 2),
                      kBatRow,
@@ -2575,6 +2590,21 @@ ReachResult AnalyseReach(const LevelData& lv,
 // per parity). Rooms are spread along the route (1/3 and 2/3 of the order the
 // search first visits them). Returns the miners placed (0 = no host room: the
 // level keeps only its own miner; tools/test_generator.py counts the shortfalls).
+// Which way a room's extra miner faces: toward the entrance side (the side with
+// a neighbouring room); both sides or none (vertical rooms): toward the centre.
+// dir 1 = right, -1 = left (record b7 = faces left).
+int MinerFaceDir(const LevelData& lv, int roomIdx, int dcol) {
+    const RoomData& r = lv.rooms[roomIdx];
+    bool nl = false, nr = false;
+    for (const RoomData& o : lv.rooms) {
+        if (o.room_y != r.room_y) continue;
+        if (o.room_x == r.room_x - 1) nl = true;
+        if (o.room_x == r.room_x + 1) nr = true;
+    }
+    if (nl != nr) return nl ? -1 : 1;
+    return dcol < 18 ? 1 : -1;
+}
+
 int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
                      int levelNumber) {
     const int want = levelNumber >= 14 ? 2 : (levelNumber >= 7 ? 1 : 0);
@@ -2691,8 +2721,10 @@ int PlaceExtraMiners(LevelData& lv, const std::vector<ModelData>& models,
         const Spot& sp = hosts[hi].sp;
         RoomData& room = lv.rooms[sp.room];
         if (sp.evict >= 0) room.enemies.erase(room.enemies.begin() + sp.evict);
+        // He faces the room's entrance side (user 2026-11-11): the side that
+        // has a neighbour room; with both or neither, toward the room centre.
         AddEnemy(room, EnemyType::EXTRA_MINER, (float)sp.col, ExtraMinerY(),
-                 0.0f, 0.0f);
+                 0.0f, 0.0f, MinerFaceDir(lv, sp.room, sp.col));
         ++placed;
     }
     return placed;
@@ -3618,19 +3650,32 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
         // User rule 2026-10-21: if the walk enters the goal room from a SIDE,
         // the miner waits on the OPPOSITE side (on the entry side the room is
         // trivial). Vertical entry keeps the left-positioned miner.
+        // The side comes from the goal room's REAL neighbours on the grid (the
+        // walk order is not adjacency: level 7's goal is entered from its left
+        // neighbour, not from the room listed before it). The miner faces the
+        // entrance (miner_dir 1 = right, -1 = left).
+        level.miner_dir = 1;
         if (roomCount >= 2) {
             const GridPos& goalPos = walks[l - 1][roomCount - 1];
-            const GridPos& prevPos = walks[l - 1][roomCount - 2];
-            if (prevPos.x != goalPos.x) {
-                level.miner_x = (prevPos.x < goalPos.x) ? kMinerFarX
-                                                        : kMinerX;
+            const bool nl = HasRoomAt(walks[l - 1], goalPos.x - 1, goalPos.y);
+            const bool nr = HasRoomAt(walks[l - 1], goalPos.x + 1, goalPos.y);
+            if (nl != nr) {
+                level.miner_x = nl ? kMinerFarX : kMinerX;   // far from the entry
+                level.miner_dir = nl ? -1 : 1;               // facing the entry
+            } else if (nl && nr) {
+                const GridPos& prevPos = walks[l - 1][roomCount - 2];
+                if (prevPos.x != goalPos.x) {
+                    level.miner_x = (prevPos.x < goalPos.x) ? kMinerFarX
+                                                            : kMinerX;
+                    level.miner_dir = (prevPos.x < goalPos.x) ? -1 : 1;
+                }
             }
         }
+        if (level.miner_x > 8.0f && level.miner_dir > 0) level.miner_dir = -1;
         // Miner Y = the goal rock top - 12 px: 84 px (7 rows) on a 3-band room,
         // 96 px (8 rows) on a 4-band one (the floor band sits 36 px lower).
         // Every water-goal shape is a non-gate shape, so it is 4-row.
         level.miner_y = 8.0f;
-        level.miner_dir = 1;
         const LevelPlan plan = PlanFor(l);
         for (int i = 0; i < roomCount; ++i) {
             RoomData room;
@@ -4051,6 +4096,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                         for (int sign : {1, -1}) {
                             const int cand = col + sign * d;
                             if (!airAt(nb, cand) || dangerous(nb, cand)
+                                    || (e.type == (int)EnemyType::BAT
+                                        && AirRun(sm, nb, cand / 2) < kMinEnemyRun)
                                     || NearExitGap(sm, cand / 2)) {   // never on a vertical opening
                                 continue;
                             }
@@ -4139,6 +4186,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                     if (band == 1 && sm.mid_band_type == 1) continue;
                     for (int dcol = colLo; dcol <= colHi && !fixed; ++dcol) {
                         if (!airAt(band, dcol)) continue;
+                        if (room.enemies[b].type == (int)EnemyType::BAT
+                                && AirRun(sm, band, dcol / 2) < kMinEnemyRun) continue;
                         if ((dcol & 1) && room.enemies[b].type == (int)EnemyType::SPIDER)
                             continue;   // whole cells only
                         if (clashes(band, dcol, b, -1)) continue;
@@ -4382,7 +4431,8 @@ void DataSerializer::Build20LevelStage(std::vector<LevelData>& levels,
                         const int x2 = cell * 2;
                         if (!fl.reach[b][cell] || std::abs(x2 - firstCol) < 6
                                 || NearExitGap(*sm, cell)
-                                || !CellAir(*sm, b, cell)) continue;
+                                || !CellAir(*sm, b, cell)
+                                || AirRun(*sm, b, cell) < kMinEnemyRun) continue;
                         AddEnemy(room, EnemyType::BAT, (float)x2,
                                  BandY(*sm, b),
                                  1.25f + 0.25f * (l % 4), 13.0f);
