@@ -5975,15 +5975,6 @@
                         "room_x": 0,
                         "room_y": 1,
                         "enemies": [
-                            {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 4.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 2.0,
-                                "dir": 1
-                            }
                         ],
                         "lamps": [],
                         "bottom_band": false,
@@ -6258,15 +6249,6 @@
                         "room_x": 0,
                         "room_y": 1,
                         "enemies": [
-                            {
-                                "type": 1,
-                                "x": 12.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.75,
-                                "dir": 1
-                            }
                         ],
                         "lamps": [],
                         "bottom_band": false,
@@ -6392,9 +6374,9 @@
                 "wall2_b": 200,
                 "start_room": 0,
                 "miner_room": 6,
-                "miner_x": 4.0,
+                "miner_x": 15.0,
                 "miner_y": 8.0,
-                "miner_dir": 1,
+                "miner_dir": -1,
                 "rooms": [
                     {
                         "room_id": 0,
@@ -6608,7 +6590,7 @@
                 "miner_room": 7,
                 "miner_x": 15.0,
                 "miner_y": 8.0,
-                "miner_dir": 1,
+                "miner_dir": -1,
                 "rooms": [
                     {
                         "room_id": 0,
@@ -6848,7 +6830,7 @@
                 "miner_room": 8,
                 "miner_x": 15.0,
                 "miner_y": 8.0,
-                "miner_dir": 1,
+                "miner_dir": -1,
                 "rooms": [
                     {
                         "room_id": 0,
@@ -6970,7 +6952,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             }
                         ],
                         "lamps": [
@@ -7105,7 +7087,7 @@
                 "miner_room": 9,
                 "miner_x": 15.0,
                 "miner_y": 8.0,
-                "miner_dir": 1,
+                "miner_dir": -1,
                 "rooms": [
                     {
                         "room_id": 0,
@@ -7397,7 +7379,7 @@
                 "miner_room": 10,
                 "miner_x": 15.0,
                 "miner_y": 8.0,
-                "miner_dir": 1,
+                "miner_dir": -1,
                 "rooms": [
                     {
                         "room_id": 0,
@@ -7474,7 +7456,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -8784,7 +8766,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -8814,7 +8796,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -8904,7 +8886,7 @@
                 "miner_room": 14,
                 "miner_x": 15.0,
                 "miner_y": 8.0,
-                "miner_dir": 1,
+                "miner_dir": -1,
                 "rooms": [
                     {
                         "room_id": 0,
@@ -9052,7 +9034,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -9186,7 +9168,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -9397,7 +9379,7 @@
                 "miner_room": 15,
                 "miner_x": 15.0,
                 "miner_y": 8.0,
-                "miner_dir": 1,
+                "miner_dir": -1,
                 "rooms": [
                     {
                         "room_id": 0,
@@ -9471,7 +9453,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -9963,7 +9945,7 @@
                 "miner_room": 16,
                 "miner_x": 15.0,
                 "miner_y": 8.0,
-                "miner_dir": 1,
+                "miner_dir": -1,
                 "rooms": [
                     {
                         "room_id": 0,
@@ -10216,7 +10198,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             }
                         ],
                         "lamps": [
@@ -10380,7 +10362,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -10963,7 +10945,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -11186,9 +11168,9 @@
                 "wall2_b": 120,
                 "start_room": 0,
                 "miner_room": 18,
-                "miner_x": 4.0,
+                "miner_x": 15.0,
                 "miner_y": 8.0,
-                "miner_dir": 1,
+                "miner_dir": -1,
                 "rooms": [
                     {
                         "room_id": 0,
@@ -11686,7 +11668,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             },
                             {
                                 "type": 14,
@@ -11718,15 +11700,6 @@
                         "room_x": 3,
                         "room_y": 1,
                         "enemies": [
-                            {
-                                "type": 1,
-                                "x": 8.0,
-                                "y": 4.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 2.0,
-                                "dir": 1
-                            },
                             {
                                 "type": 0,
                                 "x": 12.0,
@@ -11857,7 +11830,7 @@
                 "miner_room": 19,
                 "miner_x": 15.0,
                 "miner_y": 8.0,
-                "miner_dir": 1,
+                "miner_dir": -1,
                 "rooms": [
                     {
                         "room_id": 0,
@@ -12184,7 +12157,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             }
                         ],
                         "lamps": [],
@@ -12371,15 +12344,6 @@
                         "room_x": 3,
                         "room_y": 3,
                         "enemies": [
-                            {
-                                "type": 1,
-                                "x": 12.0,
-                                "y": 7.0,
-                                "range_min": 0.0,
-                                "range_max": 13.0,
-                                "speed": 1.25,
-                                "dir": 1
-                            }
                         ],
                         "lamps": [],
                         "bottom_band": false,
@@ -12417,7 +12381,7 @@
                                 "range_min": 0.0,
                                 "range_max": 0.0,
                                 "speed": 0.0,
-                                "dir": 1
+                                "dir": -1
                             }
                         ],
                         "lamps": [],
