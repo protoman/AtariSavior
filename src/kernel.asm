@@ -538,6 +538,9 @@ GameStart:
     cmp #$A5
     bne .NoKeepLv
     ldy Level
+    tya
+    ora #$80                    ; bit 7 = "game-over restart": the title ignores keys for ~1 s
+    tay                         ;   (TitleSelect grace; stripped again below)
 .NoKeepLv:
     ; --- Clear zero-page RAM ---
     lda #0
@@ -548,6 +551,17 @@ GameStart:
     bne .ClearZP
     sty Level
 
+    ; --- Title key grace (user 2026-11-11: dying while tapping UP stepped the title's
+    ;     level, 8 -> 9). After a game-over restart (Level bit 7, set above) BombY - dead
+    ;     on title frames, written only when a bomb drops - counts $C4 -> 0 (60 frames)
+    ;     in TitleSelect, which ignores every key meanwhile. A cold boot has no grace.
+    lda Level
+    bpl .NoGrace
+    and #$7F
+    sta Level
+    lda #$C4
+    sta BombY
+.NoGrace:
     ; --- Initialize game state --- (ClearZP left A = 0 and Level = 0)
     lda #3
     sta PlayerLives

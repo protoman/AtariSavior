@@ -42,7 +42,7 @@ NAMES = ("RoomX", "RoomY", "RoomNo", "DropTarget", "Level", "PlayerLives",
          "MinerX", "MinerY", "LevelStartRoom", "BarLevel", "PlayerBombs",
          "StartFrame", "PF0Buf", "PF1Buf", "PF2Buf", "vyHi", "RoomRectsLo",
          "RoomRectsHi", "RoomPF0Lo", "RoomPF0Hi", "LevelConnSpare", "LevelPFDataLo",
-         "LevelPFDataHi", "LevelRoomN", "EnemyRamX", "EnemyRamY", "EnemyRamD")
+         "LevelPFDataHi", "LevelRoomN", "EnemyRamX", "EnemyRamY", "EnemyRamD", "TickCounter")
 BANDS = 4
 BAND_PX = 36
 PLAYER_H = 22

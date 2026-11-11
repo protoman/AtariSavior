@@ -42,7 +42,25 @@ def main() -> int:
     if con.r("Level") != 8:
         print(f"FAIL: after the game over the title shows Level {con.r('Level') + 1}, want 9")
         return 1
-    print("test_select_gameover: OK (SELECT refills the bar; game over keeps the level)")
+    # --- user 2026-11-11: died in level 8 tapping UP, the title came back on 9. The title
+    # now ignores every key for ~1 s after a game over; later presses work as before.
+    lvl = con.r("Level")
+    for i in range(40):                           # inside the grace: UP + FIRE taps
+        con.frame(P.UP if (i // 3) % 2 == 0 else P.NONE, (i // 3) % 2 == 0)
+    if con.r("Level") != lvl or con.r("DropTarget") != 0xFF:
+        print(f"FAIL: keys tapped just after the game over changed the title "
+              f"(Level {lvl + 1} -> {con.r('Level') + 1}, DropTarget ${con.r('DropTarget'):02X})")
+        return 1
+    for _ in range(40):                           # grace over, everything released
+        con.frame(P.NONE)
+    con.frame(P.UP)
+    for _ in range(3):
+        con.frame(P.NONE)
+    if con.r("Level") != (lvl + 1) % 20:
+        print(f"FAIL: UP after the grace no longer steps the level ({con.r('Level') + 1})")
+        return 1
+    print("test_select_gameover: OK (SELECT refills the bar; game over keeps the level "
+          "and ignores keys for ~1 s)")
     return 0
 
 

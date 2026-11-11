@@ -99,6 +99,7 @@ MothYDerive:
 ; (sta $1FF4/rts), which returns to the bank0 caller with C intact.
 SWCHB       = $0282
 StepsLeft   = $97               ; bank0 per-frame step latch (ZP byte block)
+BombY       = $85               ; bank0 bomb Y; on the title it is the key-grace counter (TitleSelect)
 LEVEL_COUNT = 20                 ; hand copy of kernel LEVEL_COUNT
 ; ==============================================================================
 ; Merged title screen (2026-10-19): banner shown over the CAVE kernel? No —
@@ -482,6 +483,13 @@ TitleSelect:
     and StepsLeft               ; edges: released last frame, pressed now
     stx StepsLeft               ; remember the sample for next frame
     tay
+    lda BombY                   ; grace after a game over (GameStart sets it to $C4):
+    cmp #$C4                    ;   keys are ignored while it counts up $C4..$FF -> 0
+    bcc .TSlive                 ;   (a real bomb Y is < $C0, so a leftover one - after
+    inc BombY                   ;   a demo or SELECT - is no grace). The sample is still
+    jmp .TSnone                 ;   stored: a key held through it gives no edge later
+.TSlive:
+    tya
     and #%00010001              ; RESET or FIRE edge
     bne .TSstart
     tya
@@ -2124,7 +2132,7 @@ ReturnPad:
     .ds $FC70 - *, 0
     lda #0
     sta $1FF4
-    jmp $F17F           ; Overscan in bank0 (must match bank0 ToGameStub;
+    jmp $F18F           ; Overscan in bank0 (must match bank0 ToGameStub;
                         ; verify_build --sync-overscan patches this from
                         ; bank0.lst after every bank0 build)
 
