@@ -20,7 +20,12 @@ cover prints them, `tools/release.py` names the artifacts from them).
   at least four cells and the stage lost those four useless bats.
 - SELECT during a game resets the power bar and its clock.
 - After a game over the title comes back on the level you were playing (with or without a
-  SaveKey).
+  SaveKey), and ignores every key for about a second, so the taps that were flying the ship
+  neither step the level nor start a new game.
+- A pillar (ball strip) on a hot band kills on touch, like the left pillar and the hot walls
+  around it. Any element on a hot-wall band is hot.
+- The two band colours of a level are different hues now (orange and blue, cyan and red, green
+  and pink...) instead of the same colour lightened.
 
 ## 1.1.0
 

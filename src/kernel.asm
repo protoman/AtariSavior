@@ -3273,10 +3273,9 @@ PHMOverlay:
                                 ; left D3=0 = phantom right-press = drift bug).
     lda CollisionX
     cmp RectCount               ; vl vs BallX
-    bcc .OvT2
     beq .OvT2
     bcs .OvClear                ; vl > BallX → player fully right of patch
-.OvT2:
+.OvT2:                          ; (vl < BallX falls through)
     lda RectCount
     sec
     sbc #13                     ; BallX-13 (lit span is 7px, not 8: [vl,vl+6])
@@ -3384,8 +3383,6 @@ OvM1Block:
                                 ; (RowIdx re-inits at kernel entry)
 .OvM1Row:
     lda RectCount
-    tay
-    tya
     clc
     adc ColOff,X                ; PF0/PF1/PF2 group offset (0/3/6)
     tay
@@ -3434,6 +3431,8 @@ OvShutBand:
     and OvTail,X                ; bits <= row
     and LineCount               ; active-band mask (b0-2)
     beq .OSBm1                  ; not in a painted band → M1 strip test
+    and #$02                    ; b1 = the box overlaps the strip's band 2 (the hot band)
+    tax                         ;   X = 2 / 0 (PHM callers preserve X themselves)
     lda RoomPF0Hi               ; staged MetaB ($9A)
     bpl .OSBsolid               ; b7=0: plain D6 strip → solid
     lda LevelStartRoom          ; KeyHeld?
@@ -3443,17 +3442,21 @@ OvShutBand:
     sta EnemyDeadMask
     jmp .OSBm1                  ; passable (strip blanked next B3StageBand)
 .OSBsolid:
+    ; User 2026-11-11 (level 9 room 1): "all elements (PF or simulating PF) in a hot band
+    ; should kill on touch" - the ball strip is drawn in the hot colours there, so touching
+    ; it on the hot band is HotBump (Temp b7), like the M1 block and a hot PF wall.
+    txa
+    beq .OSBsolidRet            ; not on the hot band
+    bit RoomPF0Hi               ; MetaB: V = b6 hot room
+    bvc .OSBsolidRet
+    asl Temp
+    sec
+    ror Temp                    ; Temp b7 = HotBump: UpdateP0Vertical turns it into LoseLife
+.OSBsolidRet:
     sec
     rts
 .OSBm1:
     jmp OvM1Block
-
-OvHead:
-    .byte 15,14,12,8            ; rows 0..3 -> mask bits >= row (4 bands)
-OvTail:
-    .byte 1,3,7,15              ; rows 0..3 -> mask bits <= row
-M1OffTab:                       ; MetaA b0 -> M1 x-offset.
-    .byte $ff, $4f              ; B3StageBand has the twin.
 
 ; ------------------------------------------------------------------------------
 ; TitleBcd (2026-10-20) — A = 1-based level number → packed BCD in ScoreTe.
@@ -4531,6 +4534,16 @@ CellTail:
     sta BarLevel
     lda #6                      ; pitch 6: the highest of the three blips
     jmp PickupSnd
+
+; OvHead/OvTail/M1OffTab moved here from the overlay cluster (2026-11-11: the ball-strip
+; hot kill needed their 10 bytes; they are data, position-free, but keep OvHead/OvTail adjacent -
+; test_async_band3 reads them as one 8-byte signature).
+OvHead:
+    .byte 15,14,12,8            ; rows 0..3 -> mask bits >= row (4 bands)
+OvTail:
+    .byte 1,3,7,15              ; rows 0..3 -> mask bits <= row
+M1OffTab:                       ; MetaA b0 -> M1 x-offset.
+    .byte $ff, $4f              ; B3StageBand has the twin.
 
     .ds $FEE7 - *, 0            ; bank0↔bank1 CallPad (leaf_move_plan Step 0)
 CallPad_MothYDerive:

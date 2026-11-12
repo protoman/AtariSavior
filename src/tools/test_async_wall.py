@@ -8,6 +8,8 @@ LineCount ($84) AFTER the cave -> always 0 -> OverlayTramp skipped PHMOverlay: e
 wall, ball strip and door was walk-through from 1.1.0 on. Every test staged its own bytes, so
 nothing noticed. This one flies the REAL ROM (tools/playbot Console) through the real title ->
 drop-in entry path of every level whose START room has a patch, and walks into each patch:
+  * (2026-11-11) a ball strip on the HOT band of a hot room kills on touch (user: "all elements,
+    PF or simulating PF, in a hot-wall band should kill on touch"); on a cold band it only blocks;
   * ball strip [row, c, tile, 0] = full column 10+c: walk RIGHT through that band from the
     left, the player must stop at the strip (RoomX <= 8*(10+c) + 1);
   * M1 strip [row, c, tile, 1] = full column c: walk LEFT from the right, the player must
@@ -29,6 +31,7 @@ def band_y(band: int) -> int:
 
 def main() -> int:
     stage = json.loads((ROOT / "rooms" / "stage.json").read_text())["stage"]
+    models = {m["id"]: m for m in stage["models"]}
     bad, checked, unproven = [], 0, []
     for n, lv in enumerate(stage["levels"], 1):
         con = P.Console()
@@ -50,14 +53,24 @@ def main() -> int:
                 f = 10 + col
                 con.w("RoomX", max(4, 8 * f - 16))
                 xs, left = [], False
+                hot = row == 1 and bool(models[room["model_id"]].get("mid_band_type"))
                 for _ in range(90):
                     prev_y = con.r("RoomY")
                     con.frame(P.RIGHT)
+                    if con.r("PlayerLives") < 8:        # died (hot band): stop at the touch
+                        break
                     if con.r("RoomNo") != ri:
                         left = abs(prev_y - band_y(row)) <= 2   # a side exit, not a fall
                         break
                     xs.append(con.r("RoomX"))
-                ok = not left and bool(xs) and max(xs) <= 8 * f + 1
+                died = con.r("PlayerLives") < 8
+                if not hot and room.get("feature_cells"):
+                    died = False      # a phase/crunch cell beside the strip may kill: not ours
+                ok = not left and bool(xs) and max(xs) <= 8 * f + 1 and died == hot
+                if died != hot:
+                    bad.append(f"level {n} room {ri + 1}: the ball strip on a "
+                               f"{'hot' if hot else 'cold'} band "
+                               f"{'did not kill' if hot else 'killed'}")
                 if ok and max(xs) < 8 * f - 6: unproven.append((n, ri + 1, row, f))
                 what = f"ball strip col {f}: max RoomX {max(xs) if xs else '?'} > {8 * f + 1}"
             else:                              # M1 strip: full column col
