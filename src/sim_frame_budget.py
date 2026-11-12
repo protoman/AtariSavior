@@ -638,7 +638,11 @@ while frame < 1100:
         # f4 edge hits TitleWork's RESET → game start. Single-frame pulses:
         # a held press in gameplay bounces back to title (RefreshEnemyY
         # now owns SELECT|RESET there).
-        mem.swchb = 0xFE if frame in (1, 4) else 0xFF
+        # After a game over the title ignores every key for ~1 s (grace, 2026-11): the
+        # reboot's own f1/f4 pulses fall inside it, so repeat the start pulse on the title
+        # (DropTarget $FF) once the grace is over; in-game RESET would bounce to the title.
+        mem.swchb = 0xFE if (frame in (1, 4) or (
+            mem.ram[DROP_IDX] == 0xFF and frame >= 70 and frame % 8 == 4)) else 0xFF
         if PIN_ROW:
             # attractor (max 3px/frame, no teleport artifacts): slide RoomY
             # toward the enemy window (enemy screen Y = RoomY + ObjTop rel).
