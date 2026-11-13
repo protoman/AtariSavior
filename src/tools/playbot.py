@@ -209,6 +209,21 @@ class Level:
                       min(BANDS - 1, int(self.level["miner_y"] * 12) // BAND_PX),
                       min(19, mx * 1))
         self.extras = SR.extra_miner_nodes(self.level, self.models)
+        # the level's KEY (type 6): collected first, so every locked door of the level opens
+        # locked doors: (room, band, full col) cells that are WALLS until the key is held
+        self.doors = set()
+        self.doors_open = True
+        for i, r in enumerate(rooms):
+            for pt in r.get("asym_patches") or []:
+                if len(pt) >= 3 and pt[2] == 9:
+                    side = pt[3] if len(pt) > 3 else 0
+                    self.doors.add((i, pt[0], pt[1] if side == 1 else 10 + pt[1]))
+        self.key = None
+        for i, r in enumerate(rooms):
+            for e in r.get("enemies") or []:
+                if e.get("type") == 6:
+                    kb = min(BANDS - 1, int(round(e["y"] * 12)) // BAND_PX)
+                    self.key = (i, kb, min(19, (int(round(e["x"])) * 4 + 3) // 8))
         # raft rooms: the water row can only be entered by dropping onto the raft,
         # which waits at its spawn cell (x column / 2) until somebody stands on it
         self.raft_cell = {}
@@ -241,6 +256,8 @@ class Level:
         for nr, nb, nf in outs:
             ga, gb, gd = self.grids[nr]
             if 0 <= nb < len(ga) and 0 <= nf < 20 and ga[nb][nf]:
+                if not self.doors_open and (nr, nb, nf) in self.doors:
+                    continue              # a locked door is a wall until the key is held
                 if nr == ri and nr in self.raft_cell and nb == BANDS - 1 \
                         and b == BANDS - 2 and nf != self.raft_cell[nr]:
                     continue              # the water row: only onto the raft
@@ -927,8 +944,13 @@ class Pilot:
         if best is None:
             raise GiveUp("no order of the miners has a route for every leg")
         targets = list(best[1])
+        if self.lv.key is not None:
+            # the key first: from the start to the key, then on to the miners (the route
+            # to the first miner is re-planned from wherever the key leaves the bot)
+            targets = [self.lv.key] + targets
         self.say("order", targets)
         for tgt in targets:
+            self.lv.doors_open = tgt != self.lv.key       # the key leg may not cross a door
             while True:
                 if c.r("DropTarget") == 0xFE:        # the tally started
                     break
@@ -941,6 +963,13 @@ class Pilot:
                 self.say("route", len(path), "cells", here, "->", tgt)
                 self.fly(path)
             px = None
+            if tgt == self.lv.key:
+                for e in self.lv.rooms[tgt[0]].get("enemies") or []:
+                    if e.get("type") == 6:
+                        px = int(e["x"] * 4) + 7
+                self.touch(tgt, px)
+                self.lv.doors_open = True
+                continue
             if tgt in self.lv.extras:
                 # An EXTRA miner is a type-15 enemy record: MinerX is the main miner's
                 # column, so walk to the record's own X (4-px units, RoomX = right end).

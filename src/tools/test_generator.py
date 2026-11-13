@@ -150,6 +150,94 @@ def entries_connected(rows) -> bool:
     return True
 
 
+def key_before_door_problem(level: dict, shapes: dict) -> str:
+    """The key must sit in a cell the player reaches with EVERY door closed (a door is a
+    wall until the key is held), and the miner must still be reachable with the doors open
+    (stage_reach counts a door as passable)."""
+    import copy
+    closed = copy.deepcopy(level)
+    for r in closed["rooms"]:
+        for p in r.get("asym_patches") or []:
+            if len(p) >= 3 and p[2] == 9:
+                p[2] = 1
+    at = {(r["room_x"], r["room_y"]): i for i, r in enumerate(closed["rooms"])}
+    grids, _dead = SR.level_grids(closed, shapes, at)
+    free = SR._free_reach(closed, grids, at)
+    for i, r in enumerate(level["rooms"]):
+        for e in r.get("enemies") or []:
+            if e.get("type") != 6:
+                continue
+            m = shapes[r["model_id"]]
+            bands = len(m["tiles"]) // m["width"]
+            band = min(bands - 1, int(round(e["y"] * 12)) // 36)
+            cell = min(19, (int(round(e["x"])) * 4 + 3) // 8)
+            if (i, band, cell) not in free:
+                return (f"the key (room {i + 1}, band {band}, cell {cell}) is behind a locked "
+                        "door: unreachable before the key is held")
+    return ""
+
+
+# ---- the stage AUDIT (mirror of DataSerializer.cpp AuditStage): NOTHING may be unused ----
+AUDIT_RULES = [   # (name, first level it may START, exactly?)
+    ("moth", 1, True), ("bat", 2, False), ("snake", 4, True), ("lamp", 4, False),
+    ("water", 4, False), ("spider", 5, False), ("hot", 5, False), ("phase", 6, False),
+    ("tentacle", 7, False), ("extra miner", 7, False), ("pillar", 7, False),
+    ("power cell", 9, False), ("raft", 11, False), ("hcrunch", 14, False),
+    ("door", 15, True), ("key", 15, True),
+]
+ENEMY_NAMES = {0: "spider", 1: "bat", 2: "snake", 3: "tentacle", 4: "moth"}
+
+
+def audit_stage(levels: list, shapes: dict) -> list:
+    """-> problems. Every element is used, starts at its level (the dated ones EXACTLY), and
+    each level has >= 2 enemy types from level 4, >= 3 from 8, >= 4 from 12."""
+    first: dict[str, int] = {}
+    problems = []
+    for n, level in enumerate(levels, start=1):
+        kinds = set()
+        for room in level["rooms"]:
+            for e in room.get("enemies") or []:
+                t = e.get("type")
+                if t in ENEMY_NAMES:
+                    kinds.add(ENEMY_NAMES[t])
+                    first.setdefault(ENEMY_NAMES[t], n)
+                elif t == 7:
+                    first.setdefault("raft", n)
+                elif t == 14:
+                    first.setdefault("power cell", n)
+                elif t == 15:
+                    first.setdefault("extra miner", n)
+                elif t == 6:
+                    first.setdefault("key", n)
+            if room.get("lamps"):
+                first.setdefault("lamp", n)
+            if room.get("bottom_band"):
+                first.setdefault("water", n)
+            if shapes[room["model_id"]].get("mid_band_type"):
+                first.setdefault("hot", n)
+            for c in room.get("feature_cells") or []:
+                if c[2] == 10:
+                    first.setdefault("phase", n)
+                if c[2] == 12:
+                    first.setdefault("hcrunch", n)
+            for p in room.get("asym_patches") or []:
+                if len(p) >= 3 and p[2] == 1:
+                    first.setdefault("pillar", n)
+                if len(p) >= 3 and p[2] == 9:
+                    first.setdefault("door", n)
+        need = 4 if n >= 12 else 3 if n >= 8 else 2 if n >= 4 else 0
+        if len(kinds) < need:
+            problems.append(f"level {n} has {len(kinds)} enemy types, needs {need}")
+    for name, lvl, exact in AUDIT_RULES:
+        if name not in first:
+            problems.append(f"{name} is UNUSED")
+        elif first[name] > lvl:
+            problems.append(f"{name} starts at level {first[name]}, must be from {lvl}")
+        elif exact and first[name] < lvl:
+            problems.append(f"{name} starts at level {first[name]}, must START at {lvl}")
+    return problems
+
+
 def main() -> int:
     binary = ER.ensure_editor()
 
@@ -372,6 +460,21 @@ def main() -> int:
                   "window fit")
             return 1
         shapes = {m["id"]: m for m in models}
+        # The generator audits itself (AuditStage); this is the independent guard, plus a
+        # negative test: a stage without its moths / doors must FAIL the audit.
+        audit = audit_stage(levels, shapes)
+        if audit:
+            print("FAIL: stage audit: " + "; ".join(audit))
+            return 1
+        import copy
+        for victim, expect in ((4, "moth"), (6, "key"), (2, "snake")):
+            broken = copy.deepcopy(levels)
+            for lv in broken:
+                for room in lv["rooms"]:
+                    room["enemies"] = [e for e in room.get("enemies") or [] if e.get("type") != victim]
+            if not any(expect in pr for pr in audit_stage(broken, shapes)):
+                print(f"FAIL: the audit did not notice a stage without any {expect}")
+                return 1
         referenced = set()
 
         # --- per level: positions, adjacency carve, objects -----------------
@@ -670,8 +773,8 @@ def main() -> int:
                 side_bands = {b for b in range(1, len(r2) - 1)
                               if r2[b][0] not in STRUCTURAL_WALLS}
                 for obj in (room.get("enemies") or []):
-                    if obj.get("type") == 14:
-                        continue          # a power cell is a pickup, not a hazard
+                    if obj.get("type") in (6, 14):
+                        continue          # a key / power cell is a pickup, not a hazard
                     band = int(float(obj.get("y", 0))) // rows_per_band
                     col = int(round(float(obj.get("x", 0))))
                     # band 0 is the vertical arrival; from band 1 on he lands
@@ -697,31 +800,32 @@ def main() -> int:
                           "does not connect its carved entries — a band-1 "
                           f"wall is off the corridor {rrows}")
                     return 1
-                # A locked DOOR gates the VERTICAL passage, so it must sit on
-                # a column the player enters or leaves the room by. (Phase
-                # walls are the opposite since 2026-10-27: horizontal
-                # obstacles only, pinned by the phase check further up.) In the maze
-                # layout a room can be a corner (north link only, or south
-                # only), so "the corridor" is any column open in band 0 OR the
-                # last band — not only a through-column (2026-10-24).
-                corridor = {x for x in range(10)
-                            if rrows[0][x] == "." or rrows[-1][x] == "."}
-                door_cols = [int(patch[1])
-                             for patch in room.get("asym_patches") or []
-                             if len(patch) >= 3 and patch[2] == 9]
-                if door_cols:
-                    if not corridor:
-                        print(f"FAIL: level {level_n} room "
-                              f"{room['room_id']} has a gate but no vertical "
-                              "corridor")
+                # A locked DOOR is a sideways DOORWAY (2026-11-13; the old vertical-corridor
+                # gate could not be built with an M1 strip): band 1 is air at its column,
+                # every other band is wall there, and the room has a side neighbour.
+                for patch in room.get("asym_patches") or []:
+                    if len(patch) < 3 or patch[2] != 9:
+                        continue
+                    col = int(patch[1])
+                    if level_n < 15:
+                        print(f"FAIL: level {level_n} room {room['room_id']} has a locked "
+                              "door before level 15")
                         return 1
-                    for col in door_cols:
-                        if col not in corridor:
-                            print(f"FAIL: level {level_n} room "
-                                  f"{room['room_id']} door at cell {col} "
-                                  f"is OFF the corridor {sorted(corridor)} — "
-                                  "unreachable")
-                            return 1
+                    if int(patch[3] if len(patch) > 3 else 0) != 1:
+                        print(f"FAIL: level {level_n} room {room['room_id']} door is not "
+                              "an M1 (left) strip")
+                        return 1
+                    if rrows[1][col] != "." or any(rrows[b][col] == "."
+                                                   for b in range(len(rrows)) if b != 1):
+                        print(f"FAIL: level {level_n} room {room['room_id']} door at cell "
+                              f"{col} is not a doorway (band 1 open, other bands wall): {rrows}")
+                        return 1
+                    west = (int(room["room_x"]) - 1, int(room["room_y"])) in pos
+                    east = (int(room["room_x"]) + 1, int(room["room_y"])) in pos
+                    if not (west or east):
+                        print(f"FAIL: level {level_n} room {room['room_id']} door has no "
+                              "side neighbour: it gates nothing")
+                        return 1
 
             # Objects: the editor caps (2 per room, 1 per tile row).
             for room in rooms:
@@ -1223,14 +1327,26 @@ def main() -> int:
                 print(f"FAIL: level {level_n} water goal has several guards "
                       f"({goal_hazards})")
                 return 1
-            # Locked doors are disabled (M1 stripe cannot gate a vertical
-            # corridor — see DataSerializer PlanFor); the gate role is the
-            # blinking PHASE corridor from level 6.
-            if doors or keys:
-                print(f"FAIL: level {level_n} has locked doors/keys "
-                      f"(doors={doors}, keys={keys}) — disabled until the "
-                      "per-pair exit redesign")
+            # Locked doors + the key start at level 15 (user 2026-11-13), at least one
+            # door and exactly one key per level from there; before it neither exists.
+            if level_n < 15 and any(
+                    (len(p) >= 3 and p[2] == 9) for rm in rooms
+                    for p in rm.get("asym_patches") or []) or (level_n < 15 and keys):
+                print(f"FAIL: level {level_n} has locked doors/keys before level 15")
                 return 1
+            if level_n >= 15:
+                door_total = sum(1 for rm in rooms for p in rm.get("asym_patches") or []
+                                 if len(p) >= 3 and p[2] == 9)
+                key_total = sum(1 for rm in rooms for e in rm.get("enemies") or []
+                                if e.get("type") == 6)
+                if not door_total or key_total != 1:
+                    print(f"FAIL: level {level_n} needs >= 1 locked door and exactly one "
+                          f"key (doors={door_total}, keys={key_total})")
+                    return 1
+                bad = key_before_door_problem(level, shapes)
+                if bad:
+                    print(f"FAIL: level {level_n}: {bad}")
+                    return 1
             if level_n >= 7 and tents == 0:
                 print(f"FAIL: level {level_n} has no tentacle")
                 return 1

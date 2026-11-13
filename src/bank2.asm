@@ -982,6 +982,10 @@ LoadLevelB2:
     inx
     bne .LLspd
 .LLspdDone:
+    cpx #6                      ; cap at x2.5 (EnemySpd 5): the speed levels 16-20 already run
+    bcc .LLspdCap               ;   with a proven frame budget; levels 21-32 stay there
+    ldx #5
+.LLspdCap:
     stx EnemySpd
     ; LevelDataTable is level data in THIS bank: pointer = LevelDataTable +
     ; Level*7 (no FetchPtr staging through a fold any more).
