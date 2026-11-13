@@ -545,7 +545,7 @@ def prime_core():
 # ------------------------------------------------------------------------------- tables
 PAGES = {"CaveP0G0": 0xFF, "CaveP1G0": 0xF8, "CaveP1G1": 0xF9, "CaveP1G2": 0xFA,
          "CaveP1C0": 0xFB, "CaveP0C": 0xFC, "CaveP1C1": 0xFD, "CaveP1C2": 0xFE}
-HUD_PAD = ["$A9", "$01", "$8D", "$F5", "$1F", "$4C", "$40", "$F5"]   # lda #1/sta $1FF5/jmp $F540
+HUD_PAD = ["$A9", "$01", "$8D", "<BK_HUD", ">BK_HUD", "$4C", "$40", "$F5"]   # lda #1/sta BK_HUD/jmp $F540
 FRAMES = ["PlayerSpriteA", "PlayerSpriteB", "PlayerWalkA", "PlayerWalkB"]
 DESIGNS = ["OBJ_KEY", "OBJ_CELL", "OBJ_MOTH", "OBJ_SPIDER", "OBJ_LAMP", "OBJ_TENTACLE", "OBJ_BAT",
            "OBJ_SNAKE", "OBJ_MINER", "OBJ_BOMB", "OBJ_RAFT", "OBJ_LAMP_R"]

@@ -1544,7 +1544,7 @@ RaftCellMasks:                  ; mask for source column 0..19: PF0 cols 0-3 —
 ; deleted 2026-10-20 — the body floats and the $F9AC pin bounds the leaves).
 ; ------------------------------------------------------------------------------
     .ds $F8C0 - *, 0
-    .byte $8D, $F5, $1F         ; sta $1FF5 (twin)
+    sta BK_HUD                  ; sta $1FF5 in the old layout (twin)
     .byte $4C, $E3, $FD         ; jmp $FDE3 (twin — fetched post-switch)
 
 ; ($F937 pin DELETED 2026-10-20, audit round 2: it pinned bank2's

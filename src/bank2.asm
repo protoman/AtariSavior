@@ -1676,7 +1676,7 @@ BombEnemyBlastBody:
 ; ------------------------------------------------------------------------------
 
     .ds $FDD8 - *, 0
-    .byte $8D, $F6, $1F         ; sta $1FF6 (twin)
+    sta BK_ROOMS                ; sta $1FF6 in the old layout (twin)
     .byte $4C, $87, $FD         ; jmp $FD87 (twin — fetched post-switch)
 
 ; S1Fin - every StageSlot1B2 exit lands here. Slot 0's REFP1 is written NOW (TIA
