@@ -36,9 +36,10 @@ LEVEL3_RoomPositions:
 ; none; the enemy record index is derived at room load).
 LEVEL3_RoomCounts:
   .byte $00 ; room 0: 0 record(s)
-  .byte $00 ; room 1: 0 record(s)
+  .byte $40 ; room 1: 1 record(s)
   .byte $40 ; room 2: 1 record(s)
 
-; Enemy data: 1 enemy records across 3 rooms, 3 bytes each (type|dir, x, y).
+; Enemy data: 2 enemy records across 3 rooms, 3 bytes each (type|dir, x, y).
 LEVEL3_EnemyDataTable:
+  .byte $04, 63, 48
   .byte $01, 71, 48
